@@ -36,11 +36,9 @@
 - [验收标准](./docs/engineering/验收标准.md)
 - [执行计划](./docs/plans/00-基础工程计划.md)
 
-## 本地开发
+## 本地开发（说明）
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
 pip install -e .
 npm --prefix apps/web install
 ```
@@ -57,19 +55,33 @@ npm run api:dev
 npm run web:dev
 ```
 
+运行时依赖（本仓库首选）：
+
+- Python、Node 不要求虚拟环境，使用系统可执行环境直接运行。
+- PostgreSQL/Redis 使用本机 Homebrew 安装的服务（默认 `localhost`）；不要在仓库内再次创建数据库容器。
+
 数据库连接：
 
 ```bash
 cp infra/env/.env.example infra/env/.env
 ```
 
-然后把 `infra/env/.env` 中的 `DATABASE_URL` 改成你本机 PostgreSQL 的连接串，例如：
+然后把 `infra/env/.env` 中 `DATABASE_URL` 改成你本机 PostgreSQL 的连接串，例如：
 
 ```bash
 DATABASE_URL=postgresql+psycopg://你的用户:你的密码@localhost:5432/ai_hotspot_radar
+REDIS_URL=redis://localhost:6379/0
 ```
 
-本机 PostgreSQL 可以使用你已经创建的 `root` 角色；真实密码只写入本地 `infra/env/.env`，不要提交到 GitHub。
+本机 PostgreSQL 与 Redis 可通过 Homebrew 安装启动，例如：
+
+```bash
+brew install postgresql redis
+brew services start postgresql
+brew services start redis
+```
+
+本机 PostgreSQL 可以使用你已经创建的 `root` 角色；Redis 不需要创建额外实例；真实密码只写入本地 `infra/env/.env`，不要提交到 GitHub。
 
 需要填写的环境变量如下。可选项不使用时保持为空，系统会自动降级或跳过对应能力：
 
