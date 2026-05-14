@@ -88,16 +88,16 @@ export function SearchClient() {
       {result ? (
         <div className="grid gap-4">
           {result.errors.length > 0 ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4" role="alert">
+            <div className="ios-card-muted rounded-lg border border-amber-200 bg-amber-50 p-4" role="alert">
               <p className="font-semibold text-amber-900">部分来源返回错误</p>
               <ul className="mt-2 grid gap-1 text-sm text-amber-800">
                 {result.errors.map((item) => <li key={item}>{item}</li>)}
               </ul>
             </div>
           ) : null}
-          {result.items.length === 0 ? <p className="rounded-lg border border-dashed border-border bg-white p-6 text-sm text-muted-foreground">没有搜索结果。</p> : null}
+          {result.items.length === 0 ? <p className="rounded-lg border border-dashed border-border bg-muted/40 p-6 text-sm text-muted-foreground">没有搜索结果。</p> : null}
           {result.items.map((item) => (
-            <Card key={`${item.source_id}-${item.url}`}>
+            <Card className="ios-card-muted" key={`${item.source_id}-${item.url}`}>
               <CardHeader>
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0">

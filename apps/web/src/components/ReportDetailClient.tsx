@@ -33,21 +33,32 @@ export function ReportDetailClient({ id }: { id: string }) {
     }
   }
 
-  if (!report && !error) return <Skeleton className="h-96" />;
+  if (!report && !error) return <Skeleton className="h-96 ios-shell-card" />;
+
+  const statusText: Record<string, string> = {
+    generated: "已生成",
+    sent: "已发送",
+    failed: "发送失败",
+    filtered: "已过滤",
+  };
 
   return (
     <div className="grid gap-5">
-      {error ? <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">{error}</p> : null}
+      {error ? (
+        <p className="ios-card-muted border-destructive/35 bg-destructive/10 border p-3 text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
       {report ? (
         <>
-          <Card>
+          <Card className="ios-shell-card">
             <CardHeader>
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
                   <CardTitle className="text-2xl leading-tight">{report.subject}</CardTitle>
                   <CardDescription className="mt-2">{report.summary || "暂无摘要"}</CardDescription>
                 </div>
-                <Badge variant={statusTone(report.status)}>{report.status}</Badge>
+                <Badge variant={statusTone(report.status)}>{statusText[report.status] || report.status}</Badge>
               </div>
             </CardHeader>
             <CardContent className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -63,7 +74,7 @@ export function ReportDetailClient({ id }: { id: string }) {
               </Button>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="ios-shell-card">
             <CardHeader>
               <CardTitle>Markdown 预览</CardTitle>
             </CardHeader>

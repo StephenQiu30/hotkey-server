@@ -16,7 +16,10 @@ export default function MarketingHomePage() {
     <main className="min-h-screen bg-background">
       <header className="border-b border-border bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 md:px-6">
-          <Link className="flex min-h-11 items-center gap-3 rounded-md focus:outline-none focus:ring-2 focus:ring-ring" href="/">
+          <Link
+            className="ios-shell-card flex min-h-11 items-center gap-3 rounded-full border border-border/80 px-3 transition hover:bg-muted/60 focus-visible:outline-none"
+            href="/"
+          >
             <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <Sparkles className="h-5 w-5" />
             </span>
@@ -36,7 +39,8 @@ export default function MarketingHomePage() {
       <section className="mx-auto grid max-w-7xl gap-10 px-4 py-14 md:px-6 lg:grid-cols-[1.05fr_.95fr] lg:py-20">
         <div className="flex flex-col justify-center">
           <Badge className="mb-5" variant="default">单用户私有部署 SaaS</Badge>
-          <h1 className="max-w-4xl text-4xl font-extrabold leading-tight tracking-normal text-slate-950 md:text-6xl">
+          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-primary">AI 热点监控工作流</p>
+          <h1 className="ios-reveal mt-4 max-w-4xl text-4xl font-extrabold leading-tight tracking-tight text-slate-950 md:text-6xl">
             AI 热点检测平台，从信息噪声里筛出真正值得看的信号。
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-muted-foreground">
@@ -55,26 +59,19 @@ export default function MarketingHomePage() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-border bg-white p-4 shadow-xl">
-          <div className="rounded-xl border border-border bg-slate-950 p-4 text-white">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-blue-200">今日监控概览</p>
-                <p className="text-2xl font-extrabold">24 active / 7 filtered</p>
-              </div>
-              <BarChart3 className="h-8 w-8 text-amber-300" />
-            </div>
-            <div className="grid gap-3">
-              {["OpenAI agent workflow", "AI video generation benchmark", "Enterprise search copilots"].map((title, index) => (
-                <div className="rounded-lg border border-white/10 bg-white/10 p-3" key={title}>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="font-semibold">{title}</span>
-                    <span className="rounded-full bg-emerald-300/20 px-2 py-1 text-xs text-emerald-100">active</span>
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-slate-300">相关性 {92 - index * 6}，已进入日报候选。</p>
+        <div className="ios-shell-card p-4">
+          <p className="mb-4 text-sm font-semibold text-muted-foreground">今日监控概览</p>
+          <p className="text-2xl font-extrabold">24 活动 / 7 已过滤</p>
+          <div className="mt-4 grid gap-3">
+            {["OpenAI agent workflow", "AI video generation benchmark", "Enterprise search copilots"].map((title, index) => (
+              <div className="ios-card-muted p-3" key={title}>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-semibold">{title}</span>
+                  <span className="rounded-full bg-sky-100 px-2 py-1 text-xs text-sky-700">活动</span>
                 </div>
-              ))}
-            </div>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">相关性 {92 - index * 6}，已进入日报候选。</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -83,7 +80,7 @@ export default function MarketingHomePage() {
         {capabilities.map((item) => {
           const Icon = item.icon;
           return (
-            <Card key={item.title}>
+            <Card className="ios-reveal" key={item.title}>
               <CardHeader>
                 <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-lg bg-blue-50 text-primary">
                   <Icon className="h-5 w-5" />
@@ -96,23 +93,23 @@ export default function MarketingHomePage() {
         })}
       </section>
 
-      <section className="border-t border-border bg-white">
+      <section className="border-t border-border bg-white/80">
         <div className="mx-auto grid max-w-7xl gap-6 px-4 py-12 md:grid-cols-3 md:px-6">
-          <Card>
+          <Card className="ios-shell-card">
             <CardHeader>
               <ServerCog className="h-5 w-5 text-primary" />
               <CardTitle>后端闭环已就绪</CardTitle>
               <CardDescription>检测、搜索、通知、报告统一基于现有 FastAPI API。</CardDescription>
             </CardHeader>
           </Card>
-          <Card>
+          <Card className="ios-shell-card">
             <CardHeader>
               <BellRing className="h-5 w-5 text-primary" />
               <CardTitle>失败可追踪</CardTitle>
               <CardDescription>SMTP 未配置时记录 skipped，来源失败不会中断整体任务。</CardDescription>
             </CardHeader>
           </Card>
-          <Card>
+          <Card className="ios-shell-card">
             <CardHeader>
               <FileText className="h-5 w-5 text-primary" />
               <CardTitle>报告唯一入口</CardTitle>

@@ -13,6 +13,7 @@ import {
   Settings,
   Sparkles,
   TrendingUp,
+  ChevronRight,
   Tags,
   Workflow,
 } from "lucide-react";
@@ -37,10 +38,13 @@ export function AppShell({ title, description, actions, children }: { title: str
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-30 border-b border-border bg-white/95 backdrop-blur">
+      <header className="sticky top-0 z-30 border-b border-border/70 bg-white/85 backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 px-4 py-3 md:px-6 lg:px-8">
           <div className="flex min-w-0 items-center justify-between gap-3">
-            <Link className="flex min-h-11 min-w-0 items-center gap-3 rounded-md focus:outline-none focus:ring-2 focus:ring-ring" href="/app">
+            <Link
+              className="ios-reveal ios-shell-card flex min-h-11 min-w-0 items-center gap-3 rounded-2xl border border-border/80 bg-white px-2 py-2 transition hover:bg-muted/60 focus-visible:outline-none"
+              href="/app"
+            >
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
                 <Sparkles className="h-5 w-5" />
               </span>
@@ -60,29 +64,33 @@ export function AppShell({ title, description, actions, children }: { title: str
               return (
                 <Link
                   className={cn(
-                    "flex min-h-10 shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring",
-                    active && "bg-blue-50 text-primary"
+                    "ios-reveal ios-shell-card flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-transparent bg-white/70 px-3 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:bg-white hover:text-foreground focus-visible:outline-none",
+                    active && "border-border bg-primary/12 text-primary"
                   )}
                   href={item.href}
                   key={item.href}
                 >
                   <Icon className="h-4 w-4 shrink-0" />
                   <span>{item.label}</span>
+                  {active ? <ChevronRight className="h-3.5 w-3.5 text-primary" /> : null}
                 </Link>
               );
             })}
           </nav>
         </div>
       </header>
-      <section className="mx-auto w-full max-w-7xl px-4 py-5 md:px-6 lg:px-8">
+      <section className="mx-auto w-full max-w-7xl px-4 py-6 md:px-6 lg:px-8">
         <header className="mb-6 flex min-w-0 flex-col gap-4 border-b border-border pb-5 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl font-extrabold tracking-normal text-slate-950 md:text-3xl">{title}</h1>
+            <p className="text-xs font-medium uppercase tracking-[0.26em] text-muted-foreground">控制面板</p>
+            <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-foreground md:text-3xl">{title}</h1>
             {description ? <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p> : null}
           </div>
           {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
         </header>
-        {children}
+        <div className="ios-reveal">
+          {children}
+        </div>
       </section>
     </main>
   );

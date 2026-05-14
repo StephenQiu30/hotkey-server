@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Play } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api, CheckRun, formatDate, Page, statusTone } from "@/lib/api";
@@ -37,18 +37,33 @@ export function RunsClient() {
     }
   }
 
-  if (loading) return <Skeleton className="h-80" />;
+  if (loading) return <Skeleton className="h-80 ios-shell-card" />;
+
+  const statusLabel: Record<string, string> = {
+    active: "活动",
+    filtered: "已过滤",
+  };
 
   return (
     <div className="grid gap-4">
-      <div>
-        <Button disabled={running} onClick={triggerRun} type="button">
-          {running ? "运行中" : "手动检查"}
-          <Play className="h-4 w-4" />
-        </Button>
-      </div>
-      {error ? <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">{error}</p> : null}
-      <Card>
+      <Card className="ios-shell-card">
+        <CardHeader>
+          <CardTitle>任务编排</CardTitle>
+          <CardDescription>手动触发一次检测，结果回填到热点列表、通知和报告。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button disabled={running} onClick={triggerRun} type="button">
+            {running ? "运行中" : "手动检查"}
+            <Play className="h-4 w-4" />
+          </Button>
+        </CardContent>
+      </Card>
+      {error ? (
+        <p className="ios-card-muted border-destructive/35 bg-destructive/10 border p-3 text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <Card className="ios-shell-card">
         {items.length === 0 ? <p className="p-6 text-sm text-muted-foreground">暂无任务记录。</p> : null}
         {items.length > 0 ? (
           <Table>
@@ -66,7 +81,7 @@ export function RunsClient() {
               {items.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell>{item.trigger_type}</TableCell>
-                  <TableCell><Badge variant={statusTone(item.status)}>{item.status}</Badge></TableCell>
+                  <TableCell><Badge variant={statusTone(item.status)}>{statusLabel[item.status] || item.status}</Badge></TableCell>
                   <TableCell>{item.success_count}</TableCell>
                   <TableCell>{item.failure_count}</TableCell>
                   <TableCell>{formatDate(item.started_at)}</TableCell>

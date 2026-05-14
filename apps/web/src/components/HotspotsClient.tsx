@@ -98,14 +98,17 @@ export function HotspotsClient() {
         </CardContent>
       </Card>
       {error ? <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">{error}</p> : null}
-      {items.length === 0 ? <p className="rounded-lg border border-dashed border-border bg-white p-6 text-sm text-muted-foreground">暂无热点。请先配置关键词和来源，然后在任务页触发检测。</p> : null}
+      {items.length === 0 ? <p className="rounded-lg border border-dashed border-border bg-muted/40 p-6 text-sm text-muted-foreground">暂无热点。请先配置关键词和来源，然后在任务页触发检测。</p> : null}
       <div className="grid gap-3">
         {items.map((item) => (
-          <Card key={item.id}>
+          <Card key={item.id} className="ios-card-muted">
             <CardHeader className="gap-3">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div className="min-w-0">
-                  <Link className="text-lg font-extrabold leading-7 text-slate-950 transition-colors hover:text-primary focus:outline-none focus:ring-2 focus:ring-ring" href={`/app/hotspots/${item.id}`}>
+                  <Link
+                    className="text-lg font-extrabold leading-7 text-slate-950 transition-colors hover:text-primary ios-focus-ring"
+                    href={`/app/hotspots/${item.id}`}
+                  >
                     {item.title}
                   </Link>
                   <p className="mt-2 line-clamp-2 leading-7 text-muted-foreground">{item.ai_analysis?.summary || item.snippet || item.url}</p>

@@ -5,6 +5,7 @@ import { ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, formatDate, Hotspot, statusTone } from "@/lib/api";
 
@@ -16,36 +17,52 @@ export function HotspotDetailClient({ id }: { id: string }) {
     api<Hotspot>(`/api/hotspots/${id}`).then(setItem).catch((err) => setError(err.message));
   }, [id]);
 
-  if (error) return <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">{error}</p>;
-  if (!item) return <Skeleton className="h-96" />;
+  if (error) return <p className="ios-card-muted border-destructive/35 bg-destructive/10 border p-3 text-sm text-destructive" role="alert">{error}</p>;
+  if (!item) return <Skeleton className="h-96 ios-shell-card" />;
+
+  const statusMap: Record<string, string> = {
+    active: "活动",
+    filtered: "已过滤",
+  };
 
   return (
     <div className="grid gap-5 xl:grid-cols-[1.2fr_.8fr]">
-      <Card>
+      <Card className="ios-shell-card">
         <CardHeader>
-          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div className="min-w-0">
-              <CardTitle className="text-2xl leading-tight">{item.title}</CardTitle>
-              <CardDescription className="mt-2">{item.ai_analysis?.summary || item.snippet || "暂无摘要"}</CardDescription>
-            </div>
-            <Badge variant={statusTone(item.status)}>{item.status}</Badge>
-          </div>
+          <CardTitle className="text-2xl leading-tight">{item.title}</CardTitle>
+          <CardDescription className="mt-2">{item.ai_analysis?.summary || item.snippet || "暂无摘要"}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-5">
-          <dl className="grid gap-4 md:grid-cols-[140px_1fr]">
-            <dt className="font-semibold text-muted-foreground">来源</dt>
-            <dd>{item.source?.name || item.source_id}</dd>
-            <dt className="font-semibold text-muted-foreground">关键词</dt>
-            <dd>{item.keyword?.keyword || "-"}</dd>
-            <dt className="font-semibold text-muted-foreground">发布时间</dt>
-            <dd>{formatDate(item.published_at || item.fetched_at)}</dd>
-            <dt className="font-semibold text-muted-foreground">作者</dt>
-            <dd>{item.author || "-"}</dd>
-            <dt className="font-semibold text-muted-foreground">原始链接</dt>
-            <dd className="min-w-0 truncate">
-              <a className="text-primary underline-offset-4 hover:underline" href={item.url} rel="noreferrer" target="_blank">{item.url}</a>
-            </dd>
-          </dl>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={statusTone(item.status)}>{statusMap[item.status] || item.status}</Badge>
+            <Badge variant={statusTone(item.ai_analysis?.importance || "default")}>{item.ai_analysis?.importance || "unknown"}</Badge>
+            <span className="text-xs text-muted-foreground">热度 {item.ai_analysis?.relevance_score || "-"}</span>
+          </div>
+          <Separator />
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-2 ios-card-muted p-3">
+              <p className="text-xs text-muted-foreground">来源</p>
+              <p className="font-semibold">{item.source?.name || item.source_id}</p>
+            </div>
+            <div className="grid gap-2 ios-card-muted p-3">
+              <p className="text-xs text-muted-foreground">关键词</p>
+              <p className="font-semibold">{item.keyword?.keyword || "-"}</p>
+            </div>
+            <div className="grid gap-2 ios-card-muted p-3">
+              <p className="text-xs text-muted-foreground">发布时间</p>
+              <p className="font-semibold">{formatDate(item.published_at || item.fetched_at)}</p>
+            </div>
+            <div className="grid gap-2 ios-card-muted p-3">
+              <p className="text-xs text-muted-foreground">作者</p>
+              <p className="font-semibold">{item.author || "-"}</p>
+            </div>
+          </div>
+          <div className="ios-card-muted grid gap-2 p-3">
+            <p className="text-xs text-muted-foreground">原始链接</p>
+            <a className="text-primary underline-offset-4 hover:underline" href={item.url} rel="noreferrer" target="_blank">
+              {item.url}
+            </a>
+          </div>
           <Button asChild className="w-fit" variant="secondary">
             <a href={item.url} rel="noreferrer" target="_blank">
               打开原文
@@ -55,7 +72,7 @@ export function HotspotDetailClient({ id }: { id: string }) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="ios-shell-card">
         <CardHeader>
           <CardTitle>AI 分析</CardTitle>
           <CardDescription>真实性、相关性和报告入选依据。</CardDescription>

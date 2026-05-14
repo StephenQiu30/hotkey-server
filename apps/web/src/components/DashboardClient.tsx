@@ -60,7 +60,7 @@ export function DashboardClient() {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1.25fr_.75fr]">
-        <Card>
+        <Card className="ios-shell-card">
           <CardHeader className="flex flex-row items-center justify-between gap-4">
             <div>
               <CardTitle>最新热点</CardTitle>
@@ -73,7 +73,11 @@ export function DashboardClient() {
           <CardContent className="grid gap-3">
             {hotspots.length === 0 ? <EmptyState text="暂无热点。先配置关键词和来源，然后触发一次检测。" /> : null}
             {hotspots.slice(0, 5).map((item) => (
-              <Link className="group rounded-lg border border-border p-3 transition-colors hover:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-ring" href={`/app/hotspots/${item.id}`} key={item.id}>
+              <Link
+                className="ios-card-muted group rounded-2xl border border-border/70 p-3 transition-colors hover:bg-blue-50/70 focus:outline-none ios-focus-ring"
+                href={`/app/hotspots/${item.id}`}
+                key={item.id}
+              >
                 <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0">
                     <p className="truncate font-bold text-slate-950 group-hover:text-primary">{item.title}</p>
@@ -86,7 +90,7 @@ export function DashboardClient() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="ios-shell-card">
           <CardHeader>
             <CardTitle>下一步</CardTitle>
             <CardDescription>常用工作流入口。</CardDescription>
@@ -99,7 +103,7 @@ export function DashboardClient() {
               { href: "/app/keywords", label: "维护监控关键词" },
               { href: "/app/analytics", label: "查看趋势图" },
             ].map((item) => (
-              <Button asChild className="justify-between" key={item.href} variant="secondary">
+                <Button asChild className="justify-between" key={item.href} variant="secondary">
                 <Link href={item.href}>
                   {item.label}
                   <ArrowRight className="h-4 w-4" />
@@ -115,7 +119,7 @@ export function DashboardClient() {
 
 function MetricCard({ icon: Icon, label, value, helper }: { icon: typeof Radar; label: string; value: string; helper: string }) {
   return (
-    <Card>
+    <Card className="ios-shell-card">
       <CardHeader>
         <div className="flex items-center justify-between gap-3">
           <CardDescription>{label}</CardDescription>

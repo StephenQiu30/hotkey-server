@@ -39,7 +39,7 @@ export function AnalyticsClient() {
   }, []);
 
   if (state.loading) {
-    return <Skeleton className="h-80" />;
+    return <Skeleton className="h-80 ios-shell-card" />;
   }
 
   const maxTrend = Math.max(1, ...(state.trend?.points.map((item) => item.total_count) || [1]));
@@ -48,7 +48,11 @@ export function AnalyticsClient() {
 
   return (
     <div className="grid gap-5">
-      {state.error ? <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">{state.error}</p> : null}
+      {state.error ? (
+        <p className="ios-card-muted border-destructive/35 bg-destructive/10 border p-3 text-sm text-destructive" role="alert">
+          {state.error}
+        </p>
+      ) : null}
 
       <section className="grid gap-4 md:grid-cols-3">
         <StatCard
@@ -72,7 +76,7 @@ export function AnalyticsClient() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
-        <Card>
+        <Card className="ios-shell-card">
           <CardHeader>
             <CardTitle>热点趋势（新增数量）</CardTitle>
             <CardDescription>每天新增热点总量、active 与 filtered 分离。</CardDescription>
@@ -86,9 +90,9 @@ export function AnalyticsClient() {
                     <span>{item.date}</span>
                     <span className="text-muted-foreground">{item.total_count}</span>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-muted">
+                  <div className="h-2 overflow-hidden rounded-full bg-muted/70">
                     <div
-                      className="h-full rounded-full bg-blue-500 transition-all"
+                      className="h-full rounded-full bg-primary/80 transition-all"
                       style={{ width: `${(item.total_count / maxTrend) * 100}%` }}
                     />
                   </div>
@@ -98,7 +102,7 @@ export function AnalyticsClient() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="ios-shell-card">
           <CardHeader>
             <CardTitle>来源排行（最近 {state.sources?.period_days || DEFAULT_DAYS} 天）</CardTitle>
             <CardDescription>按热点总量排序。</CardDescription>
@@ -112,9 +116,9 @@ export function AnalyticsClient() {
                       <span className="font-semibold">{item.source_name}</span>
                       <span className="text-muted-foreground">{item.hotspot_count}</span>
                     </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-muted">
+                    <div className="h-2 overflow-hidden rounded-full bg-muted/70">
                       <div
-                        className="h-full rounded-full bg-emerald-500 transition-all"
+                        className="h-full rounded-full bg-emerald-400/85 transition-all"
                         style={{ width: `${(item.hotspot_count / maxSource) * 100}%` }}
                       />
                     </div>
@@ -128,7 +132,7 @@ export function AnalyticsClient() {
       </section>
 
       <section>
-        <Card>
+        <Card className="ios-shell-card">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle>热点重要性分布</CardTitle>
@@ -138,19 +142,19 @@ export function AnalyticsClient() {
           </CardHeader>
           <CardContent className="grid gap-3 md:grid-cols-2">
             {state.sentiment?.by_importance.map((item) => (
-              <div className="grid gap-2" key={item.importance}>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-semibold">{item.importance}</span>
-                  <span className="text-muted-foreground">{item.count}</span>
+                <div className="grid gap-2" key={item.importance}>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-semibold">{item.importance}</span>
+                    <span className="text-muted-foreground">{item.count}</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-muted/70">
+                    <div
+                      className="h-full rounded-full bg-amber-400 transition-all"
+                      style={{ width: `${sentimentTotal === 0 ? 0 : (item.count / sentimentTotal) * 100}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-orange-500 transition-all"
-                    style={{ width: `${sentimentTotal === 0 ? 0 : (item.count / sentimentTotal) * 100}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+              ))}
             {state.sentiment?.by_importance.length === 0 ? <Empty message="暂无 AI 分析记录。"/> : null}
           </CardContent>
         </Card>
@@ -161,7 +165,7 @@ export function AnalyticsClient() {
 
 function StatCard({ icon: Icon, label, value, helper }: { icon: typeof TrendingUp; label: string; value: string; helper: string }) {
   return (
-    <Card>
+    <Card className="ios-shell-card ios-reveal">
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
           <CardDescription>{label}</CardDescription>
@@ -175,5 +179,5 @@ function StatCard({ icon: Icon, label, value, helper }: { icon: typeof TrendingU
 }
 
 function Empty({ message }: { message: string }) {
-  return <p className="rounded-lg border border-dashed border-border bg-muted/40 p-3 text-sm text-muted-foreground">{message}</p>;
+  return <p className="ios-card-muted border-dashed border border-sky-200/80 bg-sky-50/70 p-3 text-sm text-muted-foreground">{message}</p>;
 }

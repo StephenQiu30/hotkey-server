@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { FileText, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -62,11 +62,22 @@ export function ReportsClient() {
     }
   }
 
-  if (loading) return <Skeleton className="h-80" />;
+  if (loading) return <Skeleton className="h-80 ios-shell-card" />;
+
+  const statusText: Record<string, string> = {
+    generated: "已生成",
+    sent: "已发送",
+    failed: "发送失败",
+    filtered: "已过滤",
+  };
 
   return (
     <div className="grid gap-4">
-      <Card>
+      <Card className="ios-shell-card">
+        <CardHeader>
+          <CardTitle>报告编排</CardTitle>
+          <CardDescription>按周期生成日报或周报，并可快速触发发送。</CardDescription>
+        </CardHeader>
         <CardContent className="pt-5">
           <form className="grid gap-3 md:grid-cols-2 xl:grid-cols-[180px_200px_160px_max-content]" onSubmit={createReport}>
             <div className="grid gap-2">
@@ -103,9 +114,13 @@ export function ReportsClient() {
         </CardContent>
       </Card>
 
-      {error ? <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">{error}</p> : null}
+      {error ? (
+        <p className="ios-card-muted border-destructive/35 bg-destructive/10 border p-3 text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
 
-      <Card>
+      <Card className="ios-shell-card">
         {items.length === 0 ? <p className="p-6 text-sm text-muted-foreground">暂无报告。选择类型后生成第一份日报或周报。</p> : null}
         {items.length > 0 ? (
           <Table>
@@ -123,11 +138,11 @@ export function ReportsClient() {
               {items.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell className="max-w-sm truncate font-semibold">
-                    <Link className="text-slate-950 hover:text-primary" href={`/app/reports/${item.id}`}>{item.subject}</Link>
+                    <Link className="ios-focus-ring rounded-md hover:text-primary" href={`/app/reports/${item.id}`}>{item.subject}</Link>
                   </TableCell>
                   <TableCell>{item.report_type}</TableCell>
                   <TableCell>{item.hotspot_count}</TableCell>
-                  <TableCell><Badge variant={statusTone(item.status)}>{item.status}</Badge></TableCell>
+                  <TableCell><Badge variant={statusTone(item.status)}>{statusText[item.status] || item.status}</Badge></TableCell>
                   <TableCell>{formatDate(item.period_start)} - {formatDate(item.period_end)}</TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-2">

@@ -12,7 +12,7 @@ export const DialogClose = DialogPrimitive.Close;
 
 export const DialogOverlay = React.forwardRef<React.ElementRef<typeof DialogPrimitive.Overlay>, React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>>(
   ({ className, ...props }, ref) => (
-    <DialogPrimitive.Overlay className={cn("fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm", className)} ref={ref} {...props} />
+    <DialogPrimitive.Overlay className={cn("fixed inset-0 z-50 bg-slate-900/35 backdrop-blur-sm", className)} ref={ref} {...props} />
   )
 );
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
@@ -22,7 +22,10 @@ export const DialogContent = React.forwardRef<React.ElementRef<typeof DialogPrim
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Content
-        className={cn("fixed left-1/2 top-1/2 z-50 grid w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border border-border bg-card p-6 shadow-xl", className)}
+        className={cn(
+          "ios-shell-card fixed left-1/2 top-1/2 z-50 grid w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-2xl border border-border bg-card p-6 shadow-xl",
+          className
+        )}
         ref={ref}
         {...props}
       >
