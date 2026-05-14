@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from apps.api.app.db.session import get_session
 from apps.api.app.models.report import Report
 from apps.api.app.schemas.report import ReportCreate, ReportRead
-from apps.api.app.services.reports import generate_report, send_report
+from apps.api.app.services.reports import generate_report, send_report, report_to_html
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -63,3 +64,11 @@ def get_report(report_id: int, session: Session = Depends(get_session)) -> Repor
     if report is None:
         raise HTTPException(status_code=404, detail="Report not found.")
     return report
+
+
+@router.get("/{report_id}/html", response_class=HTMLResponse)
+def get_report_html(report_id: int, session: Session = Depends(get_session)) -> str:
+    report = session.get(Report, report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Report not found.")
+    return report_to_html(report)

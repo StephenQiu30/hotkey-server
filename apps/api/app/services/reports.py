@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Literal
+import html
 
 from sqlalchemy import case, select
 from sqlalchemy.orm import Session, selectinload
@@ -168,3 +169,19 @@ def _render_report(
             ]
         )
     return subject, summary, "\n".join(lines)
+
+
+def report_to_html(report: Report) -> str:
+    lines = ["<html><head><meta charset=\"utf-8\"></head><body>", f"<h1>{html.escape(report.subject)}</h1>"]
+    for line in report.content.splitlines():
+        if line.startswith("# "):
+            lines.append(f"<h2>{html.escape(line[2:])}</h2>")
+        elif line.startswith("## "):
+            lines.append(f"<h3>{html.escape(line[3:])}</h3>")
+        elif line.startswith("   - "):
+            lines.append(f"<li>{html.escape(line[5:])}</li>")
+        elif line.strip():
+            lines.append(f"<p>{html.escape(line)}</p>")
+    lines.append(f"<p>热点数量: {report.hotspot_count}</p>")
+    lines.append("</body></html>")
+    return "\n".join(lines)

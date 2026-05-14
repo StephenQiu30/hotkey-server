@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from datetime import date, datetime, timezone
 from unittest.mock import patch
+from xml.etree.ElementTree import fromstring as parse_xml
 
 from apps.api.app.core.settings import settings
 from apps.api.app.main import create_app
@@ -14,6 +15,7 @@ from apps.api.app.models.source import Source
 from apps.api.app.services.ai_analysis import AnalysisResult, analyze_hotspot, expand_keyword_queries, is_analysis_active
 from apps.api.app.services.ingestion import Candidate, SourceIngestionError, fetch_candidates
 from apps.api.app.services.notification import notify_hotspot, notify_report
+from apps.api.app.services.check_runner import _normalize_url
 from apps.api.app.services.reports import previous_weekly_period_start, report_period
 from apps.api.app.services.search import search_sources
 from apps.api.app.services.providers import get_provider_class
@@ -229,8 +231,80 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertIn("/api/reports", paths)
         self.assertIn("/api/reports/{report_id}", paths)
         self.assertIn("/api/reports/{report_id}/send", paths)
+        self.assertIn("/api/reports/{report_id}/html", paths)
         self.assertNotIn("/api/daily-reports", paths)
         self.assertNotIn("/api/daily-reports/{report_id}/send", paths)
+
+    def test_rss_routes_registered(self) -> None:
+        paths = {route.path for route in create_app().routes}
+
+        self.assertIn("/rss/trending", paths)
+        self.assertIn("/rss/keyword/{keyword_name}", paths)
+        self.assertIn("/rss/user/{user_id}", paths)
+
+    def test_check_runner_normalize_url_removes_tracking_params_and_preserves_non_http(self) -> None:
+        normalized = _normalize_url("https://example.com/news/abc/?utm_source=qq&q=1")
+        self.assertEqual(normalized, "https://example.com/news/abc?q=1")
+        self.assertEqual(_normalize_url("mailto:test@example.com"), "mailto:test@example.com")
+        self.assertEqual(_normalize_url("relative/path"), "relative/path")
+
+    def test_ai_analysis_falls_back_when_provider_call_fails(self) -> None:
+        self.patch_settings(
+            ai_provider="openai",
+            openai_api_key=None,
+            openai_model="gpt-4o-mini",
+            deepseek_api_key=None,
+            deepseek_model=None,
+            gemini_api_key=None,
+            gemini_model=None,
+        )
+        keyword = Keyword(id=1, keyword="AI agent", query_template=None, enabled=True, priority=0)
+        hotspot = Hotspot(
+            id=101,
+            title="AI agent update",
+            url="https://example.com/agent",
+            source_id=1,
+            keyword_id=1,
+            snippet="AI agent update release notes.",
+            raw_payload={},
+        )
+
+        result = analyze_hotspot(hotspot, keyword)
+
+        self.assertTrue(result.used_fallback)
+        self.assertEqual(result.provider, "fallback")
+        self.assertIn("AI agent update release notes.", result.summary)
+
+    def test_rss_render_feed_outputs_valid_xml(self) -> None:
+        hotspot = Hotspot(
+            id=1,
+            title="AI test",
+            url="https://example.com/1",
+            source_id=1,
+            keyword_id=1,
+            snippet="test summary",
+            raw_payload={},
+            status="active",
+        )
+        analysis = AiAnalysis(
+            hotspot_id=1,
+            is_real=True,
+            relevance_score=88,
+            relevance_reason="",
+            keyword_mentioned=True,
+            importance="high",
+            summary="AI 分析摘要",
+            model_name="fallback",
+            raw_response={},
+        )
+        hotspot.ai_analysis = analysis  # type: ignore[attr-defined]
+        from apps.api.app.services import rss as rss_service
+
+        xml_content = rss_service._render_feed("测试", "desc", [hotspot])
+        root = parse_xml(xml_content)
+
+        self.assertEqual(root.tag, "rss")
+        self.assertEqual(root.findtext("channel/title"), "测试")
 
 
 if __name__ == "__main__":

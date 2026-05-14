@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str | None = None
+    deepseek_api_key: str | None = None
+    deepseek_base_url: str = "https://api.deepseek.com/v1"
+    deepseek_model: str | None = None
+    gemini_api_key: str | None = None
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    gemini_model: str | None = None
+    ai_provider: str = "openai"
     relevance_threshold: float = 50.0
     source_fetch_limit: int = 20
     x_api_bearer_token: str | None = None
@@ -33,6 +40,7 @@ class Settings(BaseSettings):
     smtp_from_email: str | None = None
     smtp_to_email: str | None = None
     smtp_use_tls: bool = True
+    rss_access_token: str | None = None
 
 
 settings = Settings()

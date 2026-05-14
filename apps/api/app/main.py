@@ -14,6 +14,7 @@ from apps.api.app.api.routes.reports import router as reports_router
 from apps.api.app.api.routes.search import router as search_router
 from apps.api.app.api.routes.settings import router as settings_router
 from apps.api.app.api.routes.sources import router as sources_router
+from apps.api.app.api.routes.rss import router as rss_router
 from apps.api.app.db.init_schema import initialize_database
 from apps.api.app.services.scheduler import start_scheduler, stop_scheduler
 
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
     app.include_router(check_runs_router)
     app.include_router(reports_router)
     app.include_router(notifications_router)
+    app.include_router(rss_router)
     app.include_router(search_router)
     app.include_router(settings_router)
     return app

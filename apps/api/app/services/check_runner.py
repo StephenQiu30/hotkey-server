@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from urllib.parse import urlparse, urlencode, parse_qsl, urlunparse
+from uuid import uuid5, NAMESPACE_URL
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -34,6 +36,8 @@ def run_hotspot_check(session: Session, trigger_type: str = "manual") -> CheckRu
     if not sources:
         errors.append("No enabled sources.")
 
+    seen_urls: set[tuple[int, str]] = set()
+
     for source in sources:
         for keyword in keywords:
             for query in expand_keyword_queries(keyword):
@@ -44,7 +48,18 @@ def run_hotspot_check(session: Session, trigger_type: str = "manual") -> CheckRu
                     errors.append(str(exc))
                     continue
                 for candidate in candidates:
-                    hotspot = _get_or_create_hotspot(session, candidate=candidate)
+                    candidate.url = _normalize_url(candidate.url)
+                    if not candidate.url:
+                        continue
+                    seen_key = (source.id, candidate.url.lower())
+                    if seen_key in seen_urls:
+                        continue
+                    seen_urls.add(seen_key)
+                    candidate.raw_payload["cluster_id"] = _cluster_id(candidate)
+                    try:
+                        hotspot = _get_or_create_hotspot(session, candidate=candidate)
+                    except IntegrityError:
+                        continue
                     if hotspot is None:
                         continue
                     analysis_result = analyze_hotspot(hotspot, keyword)
@@ -58,7 +73,12 @@ def run_hotspot_check(session: Session, trigger_type: str = "manual") -> CheckRu
                         importance=analysis_result.importance,
                         summary=analysis_result.summary,
                         model_name=analysis_result.model_name,
-                        raw_response=analysis_result.raw_response,
+                        raw_response={
+                            "provider": analysis_result.provider,
+                            **analysis_result.raw_response,
+                            "token_usage": analysis_result.token_usage,
+                            "prompt_name": analysis_result.prompt_name,
+                        },
                     )
                     session.add(analysis)
                     session.flush()
@@ -109,9 +129,36 @@ def _get_or_create_hotspot(session: Session, candidate) -> Hotspot | None:
         raw_payload=candidate.raw_payload,
     )
     try:
-        with session.begin_nested():
-            session.add(hotspot)
-            session.flush()
+        session.add(hotspot)
+        session.flush()
     except IntegrityError:
+        session.rollback()
         return None
     return hotspot
+
+
+def _normalize_url(url: str) -> str:
+    source = (url or "").strip()
+    if not source:
+        return ""
+    parsed = urlparse(source)
+    if not parsed.scheme and not parsed.netloc:
+        return source
+    if parsed.scheme and not parsed.netloc and parsed.scheme not in {"http", "https"}:
+        return source
+
+    params = [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True) if not key.startswith("utm_")]
+    cleaned_query = urlencode(params)
+    netloc = parsed.netloc.lower()
+    scheme = parsed.scheme.lower() or "https"
+    if not netloc and source.startswith("//"):
+        # Preserve protocol-relative URLs.
+        return source
+    path = parsed.path.rstrip("/") or "/"
+    return urlunparse((scheme, netloc, path, parsed.params, cleaned_query, ""))
+
+
+def _cluster_id(candidate) -> str:
+    title = (candidate.title or "").strip().lower()
+    normalized = " ".join(title.split()[:12]) if title else "untitled"
+    return str(uuid5(NAMESPACE_URL, normalized))
