@@ -6,6 +6,7 @@ from apps.api.app.models.notification import Notification
 from apps.api.app.models.report import Report
 from apps.api.app.models.setting import Setting
 from apps.api.app.models.source import Source
+from apps.api.app.models.user import User
 
 __all__ = [
     "AiAnalysis",
@@ -16,4 +17,5 @@ __all__ = [
     "Report",
     "Setting",
     "Source",
+    "User",
 ]

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from fastapi import Depends, FastAPI
 
-from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api.app.api.routes.check_runs import router as check_runs_router
@@ -17,8 +17,10 @@ from apps.api.app.api.routes.settings import router as settings_router
 from apps.api.app.api.routes.sources import router as sources_router
 from apps.api.app.api.routes.rss import router as rss_router
 from apps.api.app.api.routes.ops import router as ops_router
+from apps.api.app.api.routes.auth import router as auth_router
 from apps.api.app.core.errors import register_error_handlers
 from apps.api.app.core.middleware import RateLimitMiddleware, RequestAuditMiddleware
+from apps.api.app.core.security import get_current_user
 from apps.api.app.core.settings import settings
 from apps.api.app.db.init_schema import initialize_database
 from apps.api.app.services.scheduler import start_scheduler, stop_scheduler
@@ -55,17 +57,18 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(health_router)
-    app.include_router(keywords_router)
-    app.include_router(sources_router)
-    app.include_router(hotspots_router)
-    app.include_router(check_runs_router)
-    app.include_router(reports_router)
-    app.include_router(analytics_router)
-    app.include_router(notifications_router)
-    app.include_router(rss_router)
-    app.include_router(search_router)
-    app.include_router(settings_router)
-    app.include_router(ops_router)
+    app.include_router(auth_router)
+    app.include_router(keywords_router, dependencies=[Depends(get_current_user)])
+    app.include_router(sources_router, dependencies=[Depends(get_current_user)])
+    app.include_router(hotspots_router, dependencies=[Depends(get_current_user)])
+    app.include_router(check_runs_router, dependencies=[Depends(get_current_user)])
+    app.include_router(reports_router, dependencies=[Depends(get_current_user)])
+    app.include_router(analytics_router, dependencies=[Depends(get_current_user)])
+    app.include_router(notifications_router, dependencies=[Depends(get_current_user)])
+    app.include_router(rss_router, dependencies=[Depends(get_current_user)])
+    app.include_router(search_router, dependencies=[Depends(get_current_user)])
+    app.include_router(settings_router, dependencies=[Depends(get_current_user)])
+    app.include_router(ops_router, dependencies=[Depends(get_current_user)])
     return app
 
 

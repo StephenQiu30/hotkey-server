@@ -21,6 +21,13 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
     gemini_model: str | None = None
+    github_client_id: str | None = None
+    github_client_secret: str | None = None
+    github_redirect_uri: str | None = None
+    jwt_secret_key: str = "change-me-dev-secret-key"
+    jwt_session_expire_days: int = 7
+    oauth_state_ttl_seconds: int = 300
+    web_base_url: str = "http://localhost:3000"
     ai_provider: str = "openai"
     relevance_threshold: float = 50.0
     source_fetch_limit: int = 20

@@ -12,6 +12,42 @@ export type Keyword = {
   updated_at: string;
 };
 
+export type AuthUser = {
+  id: number;
+  github_id: number;
+  github_login: string;
+  github_name: string | null;
+  email: string | null;
+  avatar_url: string | null;
+  is_active: boolean;
+  last_login_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const AUTH_TOKEN_KEY = "ai_hotspot_radar_session_token";
+
+export function getAuthToken(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return window.localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+export function setAuthToken(token: string): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(AUTH_TOKEN_KEY, token);
+}
+
+export function clearAuthToken(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
 export type Source = {
   id: number;
   name: string;
@@ -172,7 +208,41 @@ export type Page<T> = {
   offset: number;
 };
 
+function withAuthHeaders(init?: RequestInit): HeadersInit {
+  const token = getAuthToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  if (init?.headers) {
+    const custom = init.headers as Record<string, string>;
+    return { ...headers, ...custom };
+  }
+  return headers;
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers: withAuthHeaders(init),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    if (response.status === 401) {
+      clearAuthToken();
+    }
+    const body = await response.text();
+    throw new Error(body || response.statusText);
+  }
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  return response.json() as Promise<T>;
+}
+
+export async function apiWithoutAuth<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
@@ -189,6 +259,14 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     return undefined as T;
   }
   return response.json() as Promise<T>;
+}
+
+export async function getAuthLoginUrl(): Promise<{ authorization_url: string }> {
+  return apiWithoutAuth<{ authorization_url: string }>("/api/auth/github/login");
+}
+
+export async function getCurrentUser(): Promise<AuthUser> {
+  return api<AuthUser>("/api/auth/me");
 }
 
 export function formatDate(value: string | null | undefined): string {

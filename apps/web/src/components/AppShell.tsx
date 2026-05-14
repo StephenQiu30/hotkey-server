@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Bell,
   FileText,
@@ -16,9 +16,13 @@ import {
   ChevronRight,
   Tags,
   Workflow,
+  LogOut,
+  User2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { clearAuthToken, getCurrentUser, type AuthUser } from "@/lib/api";
 
 const navItems = [
   { href: "/app", label: "总览", icon: Gauge },
@@ -35,6 +39,51 @@ const navItems = [
 
 export function AppShell({ title, description, actions, children }: { title: string; description?: string; actions?: ReactNode; children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [me, setMe] = useState<AuthUser | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let isActive = true;
+    getCurrentUser()
+      .then((user) => {
+        if (!isActive) return;
+        setMe(user);
+      })
+      .catch(() => {
+        if (!isActive) return;
+        clearAuthToken();
+        router.replace("/login");
+      })
+      .finally(() => {
+        if (!isActive) return;
+        setLoading(false);
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [router]);
+
+  const displayName = useMemo(() => {
+    if (!me?.github_name) {
+      return me?.github_login || "用户";
+    }
+    return me.github_name;
+  }, [me]);
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-background text-foreground">
+        <section className="mx-auto w-full max-w-7xl px-4 py-6 md:px-6 lg:px-8">
+          <div className="flex min-h-screen flex-col gap-4">
+            <Skeleton className="h-16 rounded-xl" />
+            <Skeleton className="h-12 rounded-lg" />
+            <Skeleton className="h-64 flex-1 rounded-xl" />
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -53,9 +102,27 @@ export function AppShell({ title, description, actions, children }: { title: str
                 <span className="block truncate text-xs font-medium text-muted-foreground">Private SaaS Console</span>
               </span>
             </Link>
-            <Button asChild className="shrink-0" size="sm" variant="secondary">
-              <Link href="/">官网</Link>
-            </Button>
+            <div className="flex items-center gap-2">
+              <span className="hidden items-center gap-2 rounded-full border border-border bg-slate-50 px-3 py-2 text-sm text-muted-foreground md:flex">
+                <User2 className="h-4 w-4" />
+                <span className="max-w-32 truncate">{displayName}</span>
+              </span>
+              <Button
+                className="shrink-0"
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  clearAuthToken();
+                  router.replace("/login");
+                }}
+              >
+                <LogOut className="mr-1 h-4 w-4" />
+                退出
+              </Button>
+              <Button asChild className="shrink-0" size="sm" variant="secondary">
+                <Link href="/">官网</Link>
+              </Button>
+            </div>
           </div>
           <nav aria-label="主导航" className="flex gap-2 overflow-x-auto pb-1">
             {navItems.map((item) => {

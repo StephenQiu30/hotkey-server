@@ -54,6 +54,9 @@ export default function MarketingHomePage() {
               </Link>
             </Button>
             <Button asChild size="lg" variant="secondary">
+              <Link href="/login">GitHub 登录</Link>
+            </Button>
+            <Button asChild size="lg" variant="secondary">
               <Link href="/pricing">查看部署方案</Link>
             </Button>
           </div>

@@ -7,13 +7,18 @@ from unittest.mock import patch
 from xml.etree.ElementTree import fromstring as parse_xml
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.dialects import postgresql
 
+from apps.api.app.core.security import issue_signed_token, issue_session_token, parse_session_token, verify_signed_token
 from apps.api.app.core.middleware import reset_request_metrics
 from apps.api.app.core.settings import settings
 from apps.api.app.main import create_app
+from apps.api.app.db.session import SessionLocal
 from apps.api.app.models.ai_analysis import AiAnalysis
 from apps.api.app.models.hotspot import Hotspot
 from apps.api.app.models.keyword import Keyword
+from apps.api.app.models.user import User
 from apps.api.app.models.report import Report
 from apps.api.app.models.source import Source
 from apps.api.app.services.ai_analysis import AnalysisResult, analyze_hotspot, expand_keyword_queries, is_analysis_active
@@ -28,7 +33,6 @@ from apps.api.app.services.reports import previous_weekly_period_start, report_p
 from apps.api.app.services.search import search_sources, _load_search_sources
 from apps.api.app.services import rss as rss_service
 from apps.api.app.services.providers import get_provider_class
-from sqlalchemy.dialects import postgresql
 
 
 class CollectingSession:
@@ -79,6 +83,24 @@ class SettingsPatchMixin:
         for key, value in values.items():
             setattr(settings, key, value)
         self.addCleanup(lambda: [setattr(settings, key, value) for key, value in originals.items()])
+
+    def _auth_headers(self) -> dict[str, str]:
+        with SessionLocal() as db:
+            user = db.scalar(select(User).where(User.github_id == 987654321))
+            if user is None:
+                user = User(
+                    github_id=987654321,
+                    github_login="test-ci-user",
+                    github_name="CI User",
+                    email="ci@example.com",
+                    avatar_url=None,
+                    is_active=True,
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+            token = issue_session_token(user)
+            return {"Authorization": f"Bearer {token}"}
 
 
 class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
@@ -332,7 +354,7 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         app = create_app()
         with TestClient(app) as client:
             first = client.get("/api/health")
-            metrics_resp = client.get("/api/ops/metrics")
+            metrics_resp = client.get("/api/ops/metrics", headers=self._auth_headers())
 
         self.assertEqual(first.status_code, 200)
         self.assertEqual(metrics_resp.status_code, 200)
@@ -349,7 +371,7 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         with TestClient(app) as client:
             first = client.get("/api/health", headers={"X-Forwarded-For": "192.0.2.9"})
             second = client.get("/api/health", headers={"X-Forwarded-For": "192.0.2.9"})
-            metrics_resp = client.get("/api/ops/metrics")
+            metrics_resp = client.get("/api/ops/metrics", headers=self._auth_headers())
 
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 429)
@@ -378,9 +400,9 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
             patch("apps.api.app.api.routes.analytics.analytics_service.get_sentiment", return_value=sentiment),
             TestClient(app) as client,
         ):
-            trend_response = client.get("/api/analytics/trend?days=7")
-            source_response = client.get("/api/analytics/sources?days=7&limit=5")
-            sentiment_response = client.get("/api/analytics/sentiment?days=7")
+            trend_response = client.get("/api/analytics/trend?days=7", headers=self._auth_headers())
+            source_response = client.get("/api/analytics/sources?days=7&limit=5", headers=self._auth_headers())
+            sentiment_response = client.get("/api/analytics/sentiment?days=7", headers=self._auth_headers())
 
         self.assertEqual(trend_response.status_code, 200)
         self.assertEqual(source_response.status_code, 200)
@@ -391,7 +413,7 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
 
     def test_error_response_is_structured_and_hides_stacktrace(self) -> None:
         with TestClient(create_app()) as client:
-            resp = client.get("/api/notifications?limit=0")
+            resp = client.get("/api/notifications?limit=0", headers=self._auth_headers())
         self.assertEqual(resp.status_code, 422)
         payload = resp.json()
         self.assertEqual(payload["error"]["code"], "validation_error")
@@ -520,6 +542,31 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         links = root.findall("channel/item/link")
         self.assertEqual(len(links), 1)
         self.assertEqual(links[0].text, "https://news.example.com/api/reports/88")
+
+    def test_session_token_roundtrip(self) -> None:
+        payload = issue_signed_token({"type": "unit-test", "sub": "1"}, ttl_seconds=60)
+        decoded = verify_signed_token(payload)
+        self.assertEqual(decoded["type"], "unit-test")
+
+    def test_api_endpoints_require_auth(self) -> None:
+        app = create_app()
+        with TestClient(app) as client:
+            response = client.get("/api/keywords")
+        self.assertEqual(response.status_code, 401)
+
+    def test_issue_and_validate_session_token(self) -> None:
+        user = User(
+            id=1,
+            github_id=123456,
+            github_login="tester",
+            github_name="Tester",
+            email="tester@example.com",
+            avatar_url=None,
+            is_active=True,
+        )
+        token = issue_session_token(user)
+        subject = parse_session_token(token)
+        self.assertEqual(subject, user.id)
 
 
 if __name__ == "__main__":

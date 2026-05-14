@@ -104,6 +104,19 @@ CREATE TABLE IF NOT EXISTS settings (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS users (
+    id BIGSERIAL PRIMARY KEY,
+    github_id BIGINT NOT NULL UNIQUE,
+    github_login TEXT NOT NULL,
+    github_name TEXT,
+    email TEXT,
+    avatar_url TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    last_login_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS ix_keywords_enabled ON keywords(enabled);
 CREATE INDEX IF NOT EXISTS ix_keywords_priority ON keywords(priority);
 CREATE INDEX IF NOT EXISTS ix_sources_enabled ON sources(enabled);
@@ -122,3 +135,5 @@ CREATE INDEX IF NOT EXISTS ix_notifications_hotspot_id ON notifications(hotspot_
 CREATE INDEX IF NOT EXISTS ix_notifications_report_id ON notifications(report_id);
 CREATE INDEX IF NOT EXISTS ix_check_runs_status ON check_runs(status);
 CREATE INDEX IF NOT EXISTS ix_check_runs_started_at ON check_runs(started_at);
+CREATE INDEX IF NOT EXISTS ix_users_github_id ON users(github_id);
+CREATE INDEX IF NOT EXISTS ix_users_is_active ON users(is_active);
