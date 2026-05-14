@@ -8,7 +8,13 @@
     "db:init": "python -m apps.api.app.db.init_schema",
     "db:reset": "echo \"本项目默认使用本机 PostgreSQL；如需清空数据，请在本机 PGSQL 中 drop/create 数据库后执行 npm run db:init。\"",
     "docker:up": "test -f .env || cp .env.example .env && docker compose up -d --build",
+    "docker:up:dev": "test -f .env.development || cp .env.development.example .env.development && docker compose -f docker-compose.yml -f docker-compose.development.yml up -d --build",
+    "docker:up:staging": "test -f .env.staging || cp .env.staging.example .env.staging && docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --build",
+    "docker:up:production": "test -f .env.production || cp .env.production.example .env.production && docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build",
     "docker:down": "docker compose down",
+    "docker:down:dev": "docker compose -f docker-compose.yml -f docker-compose.development.yml down",
+    "docker:down:staging": "docker compose -f docker-compose.yml -f docker-compose.staging.yml down",
+    "docker:down:production": "docker compose -f docker-compose.yml -f docker-compose.production.yml down",
     "docker:logs": "docker compose logs -f"
   }
 }

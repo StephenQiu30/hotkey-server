@@ -127,6 +127,31 @@ npm run db:init
 npm run docker:up
 ```
 
+### 多环境部署（dev / staging / production）
+
+项目已提供环境文件模板与 Compose 覆盖文件，可按环境启动：
+
+```bash
+# 开发环境（默认 8080）
+npm run docker:up:dev
+
+# 预发布环境（8080）
+npm run docker:up:staging
+
+# 生产环境（80）
+npm run docker:up:production
+```
+
+如需本地初始化环境变量文件，可复制对应模板：
+
+```bash
+cp .env.development.example .env.development
+cp .env.staging.example .env.staging
+cp .env.production.example .env.production
+```
+
+开发调试也可直接使用 `.env`（本地直接运行时仍按 `.env` 读取）。
+
 数据库表结构：
 
 - 表结构事实源位于 `sql/001_init_schema.sql`。

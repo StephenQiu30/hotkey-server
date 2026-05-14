@@ -1,0 +1,23 @@
+services:
+  api:
+    env_file:
+      - path: ./.env.example
+        required: true
+      - path: ./.env.staging
+        required: false
+    environment:
+      APP_ENV: staging
+
+  web:
+    env_file:
+      - path: ./.env.example
+        required: true
+      - path: ./.env.staging
+        required: false
+    environment:
+      APP_ENV: staging
+      NEXT_PUBLIC_API_BASE_URL: /
+
+  nginx:
+    ports:
+      - "8080:80"
