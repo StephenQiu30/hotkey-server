@@ -185,13 +185,20 @@ def _should_enhance_analysis(
     evidence: SourceEvidence,
     *,
     hotness_score: float,
-    langgraph_enabled: bool,
+    langgraph_enabled: object,
 ) -> bool:
-    if not langgraph_enabled:
+    # Mirror check-runner gating: environment values like "false" must keep LangGraph disabled.
+    if not _is_langgraph_enabled(langgraph_enabled):
         return False
     source_conflict = getattr(evidence, "cross_source_count", 1) >= 2
     truth_low = evidence.truth_score() <= settings.ai_enhance_risk_threshold
     return hotness_score >= settings.ai_enhance_hotness_threshold and (source_conflict or truth_low)
+
+
+def _is_langgraph_enabled(value: object) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
 
 
 def _is_low_trust_blocked(evidence: SourceEvidence) -> bool:

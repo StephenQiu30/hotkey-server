@@ -786,6 +786,33 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
 
         self.assertEqual(result.ai_orchestrator_decision, "langchain")
 
+    def test_expand_keyword_queries_uses_langchain_orchestrator(self) -> None:
+        provider = build_provider("fallback")
+        keyword = Keyword(id=1, keyword="AI agent", query_template=None, enabled=True, priority=0)
+
+        class SpyOrchestrator:
+            def __init__(self) -> None:
+                self.called = False
+
+            def expand_queries(self, target_keyword: Keyword, base_query: str):
+                self.called = True
+                self.assert_keyword = target_keyword
+                self.assert_query = base_query
+                return ["AI agent", "AI agent trend"], SimpleNamespace(decision={"path": "langchain"}, trace_id="trace-expand")
+
+        spy = SpyOrchestrator()
+        with (
+            patch("server.app.services.ai_analysis._select_provider", return_value=provider),
+            patch("server.app.services.ai_analysis.build_orchestrator", return_value=spy) as build_spy,
+        ):
+            queries = expand_keyword_queries(keyword)
+
+        self.assertEqual(queries, ["AI agent", "AI agent trend"])
+        self.assertTrue(spy.called)
+        self.assertIs(spy.assert_keyword, keyword)
+        self.assertEqual(spy.assert_query, "AI agent")
+        build_spy.assert_called_once_with(provider, use_langgraph=False)
+
     def test_langgraph_trigger_routes_to_graph(self) -> None:
         self.patch_settings(ai_use_langgraph=True)
         evidence = SourceEvidence(
@@ -799,6 +826,49 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         )
 
         self.assertTrue(check_runner_should_enhance(evidence, hotness_score=95.0, langgraph_enabled=settings.ai_use_langgraph))
+
+    def test_langgraph_success_records_enhance_decision(self) -> None:
+        class EnhancedProvider(BaseLLMProvider):
+            provider_name = "enhanced"
+
+            def expand_queries(self, keyword: Keyword, base_query: str) -> list[str]:
+                return [base_query]
+
+            def analyze(self, hotspot: Hotspot, keyword: Keyword | None) -> LLMResult:
+                return LLMResult(
+                    is_real=True,
+                    relevance_score=92,
+                    relevance_reason="enhanced ok",
+                    keyword_mentioned=True,
+                    importance="high",
+                    summary="enhanced summary",
+                    model_name="enhanced",
+                    raw_response={"provider": "enhanced"},
+                    used_fallback=False,
+                    prompt_name="analysis",
+                    provider="enhanced",
+                )
+
+        self.patch_settings(ai_use_langgraph=True, ai_langgraph_timeout_seconds=10)
+        provider = EnhancedProvider()
+        orchestrator = LangGraphOrchestrator(provider)
+
+        result, decision = orchestrator.analyze(
+            Hotspot(
+                id=89,
+                title="AI 高价值热点",
+                url="https://example.com/high-value",
+                source_id=1,
+                keyword_id=1,
+                snippet="AI 高价值热点",
+                raw_payload={},
+            ),
+            Keyword(id=1, keyword="AI", query_template=None, enabled=True, priority=0),
+        )
+
+        self.assertEqual(result.raw_response["enhance_path"], "enhanced")
+        self.assertEqual(result.raw_response["enhance_decision"]["path"], "langgraph")
+        self.assertEqual(decision.decision["enhance_decision"]["status"], "success")
 
     def test_langgraph_timeout_falls_back_to_chain(self) -> None:
         class SlowProvider(BaseLLMProvider):
@@ -1677,6 +1747,21 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertTrue(check_runner_should_enhance(conflict, hotness_score=75, langgraph_enabled=True))
         self.assertFalse(check_runner_should_enhance(low_truth, hotness_score=65, langgraph_enabled=True))
 
+    def test_langgraph_false_string_keeps_enhancement_disabled(self) -> None:
+        self.patch_settings(ai_enhance_hotness_threshold=70.0, ai_enhance_risk_threshold=40.0)
+        low_truth = SourceEvidence(
+            source_reachable=True,
+            url_stability=False,
+            domain_risk=0,
+            publish_depth=0,
+            cross_source_count=2,
+            status="ok",
+            risk_tags=[],
+        )
+
+        self.assertFalse(check_runner_should_enhance(low_truth, hotness_score=95, langgraph_enabled="false"))
+        self.assertFalse(search_should_enhance(low_truth, hotness_score=95, langgraph_enabled="false"))
+
     def test_build_analysis_raw_response_merges_enrichment_fields(self) -> None:
         source = Source(id=2, name="hacker news", source_type="hacker_news", enabled=True, config={})
         hotspot = Hotspot(
@@ -1825,6 +1910,63 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertEqual(decision.decision.get("path"), "langchain")
         self.assertTrue(decision.decision.get("langgraph_fallback"))
         self.assertEqual(decision.decision.get("path_from"), "langgraph")
+
+    def test_provider_fallback_records_langchain_trace(self) -> None:
+        class BrokenProvider(BaseLLMProvider):
+            provider_name = "broken"
+
+            def expand_queries(self, keyword: Keyword, base_query: str) -> list[str]:
+                return [base_query]
+
+            def analyze(self, hotspot: Hotspot, keyword: Keyword | None) -> LLMResult:
+                raise RuntimeError("provider unavailable")
+
+        class RecoveryProvider(BaseLLMProvider):
+            provider_name = "recovery"
+
+            def expand_queries(self, keyword: Keyword, base_query: str) -> list[str]:
+                return [base_query]
+
+            def analyze(self, hotspot: Hotspot, keyword: Keyword | None) -> LLMResult:
+                return LLMResult(
+                    is_real=True,
+                    relevance_score=82,
+                    relevance_reason="recovered",
+                    keyword_mentioned=True,
+                    importance="high",
+                    summary="recovered summary",
+                    model_name="recovery",
+                    raw_response={"provider": "recovery"},
+                    used_fallback=False,
+                    prompt_name="analysis",
+                    provider="recovery",
+                )
+
+        self.patch_settings(ai_provider="broken", ai_fallback_provider="recovery", ai_provider_error_strategy="fallback")
+        with (
+            patch("server.app.services.ai_analysis._select_provider", return_value=BrokenProvider()),
+            patch("server.app.services.ai_analysis._safe_build_provider", return_value=RecoveryProvider()),
+        ):
+            result = analyze_hotspot(
+                Hotspot(
+                    id=99,
+                    title="AI provider fallback",
+                    url="https://example.com/provider-fallback",
+                    source_id=1,
+                    keyword_id=1,
+                    snippet="provider fallback",
+                    raw_payload={},
+                ),
+                Keyword(id=1, keyword="AI", query_template=None, enabled=True, priority=0),
+            )
+
+        self.assertTrue(result.used_fallback)
+        self.assertEqual(result.ai_orchestrator_decision, "langchain")
+        self.assertIsNotNone(result.trace_id)
+        self.assertEqual(result.raw_response["fallback_from"], "broken")
+        self.assertEqual(result.raw_response["fallback_reason"], "provider unavailable")
+        self.assertIn("provider_trace", result.raw_response)
+        self.assertTrue(any(item.get("event") == "provider_fallback" for item in result.provider_trace))
 
     def test_hotness_scoring_applies_truth_penalty_and_bounds(self) -> None:
         source = Source(id=1, name="rss", source_type="rss", enabled=True, config={"source_strength": 80})

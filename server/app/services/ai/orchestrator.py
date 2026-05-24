@@ -105,10 +105,19 @@ class LangGraphOrchestrator(AIOrchestrator):
             if timeout_ms > 0 and duration > timeout_ms:
                 raise TimeoutError(f"LangGraph analyze timeout: {duration:.1f}ms > {timeout_ms:.0f}ms")
             self._record(decision, "analyze_success", duration_ms=duration)
+            # Enhanced success needs a durable decision payload so callers can audit why this result
+            # came from LangGraph instead of the default LangChain path.
+            decision.decision["enhance_decision"] = {
+                "path": "langgraph",
+                "status": "success",
+                "provider": self.provider.provider_name,
+                "duration_ms": duration,
+            }
             result.raw_response = dict(result.raw_response)
             result.raw_response["provider_trace"] = decision.decision.get("provider_trace", [])
             result.raw_response["ai_orchestrator_decision"] = decision.decision.get("ai_orchestrator_decision")
             result.raw_response["enhance_path"] = decision.decision.get("enhance_path")
+            result.raw_response["enhance_decision"] = decision.decision.get("enhance_decision")
             result.raw_response["trace_id"] = decision.trace_id
             return result, decision
         except Exception as exc:  # noqa: BLE001
