@@ -15,8 +15,8 @@ version: "0.1.0"
 owner: "StephenQiu30"
 inputs:
   - "docs/engineering/验收标准.md（A2）"
-  - "apps/api/app/services/ai_analysis.py"
-  - "apps/api/app/services/ai/providers"
+  - "server/app/services/ai_analysis.py"
+  - "server/app/services/ai/providers"
 outputs:
   - "LLM Provider 可切换与异常容错的实现与验收标准"
   - "后续运维可查的 provider 调用链日志"
@@ -79,8 +79,8 @@ downstream:
 
 ## 6. 交付与验收
 
-- 在 `apps/api/app/core/settings.py` 增加上述策略配置。
-- 在 `apps/api/app/services/ai_analysis.py` 增加统一策略分支与日志埋点。
+- 在 `server/app/core/settings.py` 增加上述策略配置。
+- 在 `server/app/services/ai_analysis.py` 增加统一策略分支与日志埋点。
 - 为策略、fallback/skip 与日志行为补充 `tests/test_mvp_services.py`。
 - 更新 `docs/验收标准.md` 将 A2 勾选为“本轮执行中/完成待确认”。
 

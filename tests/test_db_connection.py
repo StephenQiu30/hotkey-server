@@ -3,9 +3,9 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock, patch
 
-from apps.api.app.core.settings import settings
-from apps.api.app.db.connection import resolve_database_url
-from apps.api.app.db import init_schema
+from server.app.core.settings import settings
+from server.app.db.connection import resolve_database_url
+from server.app.db import init_schema
 
 
 class DbConnectionTests(unittest.TestCase):
@@ -33,8 +33,8 @@ class DbConnectionTests(unittest.TestCase):
         mock_engine.begin.return_value.__enter__.return_value = mock_connection
 
         with (
-            patch("apps.api.app.db.init_schema.resolve_database_url", return_value="postgresql+psycopg://postgres:postgres@postgres:5432/ai_hotspot_radar"),
-            patch("apps.api.app.db.init_schema.create_engine", return_value=mock_engine),
+            patch("server.app.db.init_schema.resolve_database_url", return_value="postgresql+psycopg://postgres:postgres@postgres:5432/ai_hotspot_radar"),
+            patch("server.app.db.init_schema.create_engine", return_value=mock_engine),
             patch.object(
                 init_schema,
                 "SCHEMA_PATH",
@@ -48,8 +48,8 @@ class DbConnectionTests(unittest.TestCase):
 
     def test_initialize_database_raises_for_unsupported_scheme(self) -> None:
         with (
-            patch("apps.api.app.db.init_schema.resolve_database_url", return_value="sqlite:///:memory:"),
-            patch("apps.api.app.db.init_schema.create_engine"),
+            patch("server.app.db.init_schema.resolve_database_url", return_value="sqlite:///:memory:"),
+            patch("server.app.db.init_schema.create_engine"),
         ):
             with self.assertRaises(ValueError):
                 init_schema.initialize_database()

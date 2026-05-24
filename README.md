@@ -3,6 +3,7 @@
 `hotkey-server` 是 HotKey 内容创作者热点选题工具的 FastAPI 后端仓库。
 
 本仓是跨仓规范主源，也是 Swagger/OpenAPI 契约事实源。`hotkey-web` 和 `hotkey-miniapp` 必须通过 `@umijs/openapi` 从本仓 OpenAPI 文档生成 API 客户端，不手写后端 API 类型。
+`hotkey-server` 仅承担后端服务入口职责，不保留 `apps` 运行时目录；所有前端仓只作为客户端消费层对接该入口。
 
 ## P0 职责
 

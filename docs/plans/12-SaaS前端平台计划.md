@@ -2,7 +2,7 @@
 
 ## Summary
 
-本阶段将现有 `apps/web` 从简易控制台升级为可私有部署、可直接使用的浅色企业 SaaS 前端平台。
+本阶段将现有 `hotkey-web` 从简易控制台升级为可私有部署、可直接使用的浅色企业 SaaS 前端平台。
 
 本阶段只规划和实现前端产品体验，不改变后端数据模型，不新增后端认证、租户、计费或权限能力。后端 API 继续以 FastAPI 当前 OpenAPI 为准，报告能力统一使用 `/api/reports`，不恢复 `/api/daily-reports`。
 
@@ -130,8 +130,8 @@
   - 本计划明确不做多用户、租户、真实认证和真实计费。
   - 本计划明确不恢复 `/api/daily-reports`。
 - 实现后检查：
-  - `npm --prefix apps/web run typecheck`
-  - `npm --prefix apps/web run build`
+  - `npm --prefix hotkey-web run typecheck`
+  - `npm --prefix hotkey-web run build`
   - 使用 `agent-browser` 验证 `/`、`/pricing`、`/app`、`/app/search`、`/app/reports`。
   - 验证移动端无横向溢出，按钮和表单不重叠。
   - 验证页面不出现 `/api/daily-reports`。

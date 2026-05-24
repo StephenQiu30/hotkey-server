@@ -17,14 +17,14 @@
 ## 任务拆解
 
 - **P0-A2-1：配置与策略模型**
-  - 在 `apps/api/app/core/settings.py` 新增：
+  - 在 `server/app/core/settings.py` 新增：
     - `ai_provider_error_strategy`
     - `ai_fallback_provider`
   - 写单测：
     - 配置加载不影响默认行为（fallback）。
 
 - **P0-A2-2：分析链路策略分支**
-  - 在 `apps/api/app/services/ai_analysis.py` 增加：
+  - 在 `server/app/services/ai_analysis.py` 增加：
     - `analyze_hotspot` 主路径异常捕获分支；
     - `expand_keyword_queries` 失败策略；
     - `provider_event` 日志；

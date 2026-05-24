@@ -15,8 +15,8 @@ version: "0.1.0"
 owner: "StephenQiu30"
 inputs:
   - "docs/engineering/验收标准.md（A4）"
-  - "apps/api/app/services/check_runner.py"
-  - "apps/api/app/api/routes/hotspots.py"
+  - "server/app/services/check_runner.py"
+  - "server/app/api/routes/hotspots.py"
 outputs:
   - "聚类回溯 API 与版本元数据查询"
   - "版本化检索与运营可读性说明"
@@ -74,7 +74,7 @@ downstream:
 ## 6. 交付与验收
 
 - 在 `check_runner` 中补齐聚类版本元数据写入逻辑。
-- 在 `apps/api/app/api/routes/hotspots.py` 增加聚类回溯与时间线接口。
+- 在 `server/app/api/routes/hotspots.py` 增加聚类回溯与时间线接口。
 - 通过 `tests/test_mvp_services.py` 增加聚类回溯与版本化查询测试。
 - 更新 `docs/验收标准.md` 对 A4 做回填状态管理。
 

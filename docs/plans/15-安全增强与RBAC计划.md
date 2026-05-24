@@ -18,12 +18,12 @@
 ## 任务拆解
 
 - **P0-A8-1：模型与 schema**
-  - 在 `apps/api/app/models/user.py` 增加 `role`；
-  - 在 `apps/api/app/core/settings.py` 可选补充默认角色配置；
-  - 在 `apps/api/app/schemas/auth.py` 暴露 `role`。
+  - 在 `server/app/models/user.py` 增加 `role`；
+  - 在 `server/app/core/settings.py` 可选补充默认角色配置；
+  - 在 `server/app/schemas/auth.py` 暴露 `role`。
 
 - **P0-A8-2：权限依赖**
-  - 在 `apps/api/app/core/security.py` 实现 `require_permission(permission)`；
+  - 在 `server/app/core/security.py` 实现 `require_permission(permission)`；
   - 权限映射：
     - `keyword.manage`
     - `source.manage`

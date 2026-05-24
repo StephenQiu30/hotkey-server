@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from inspect import signature
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -10,37 +11,44 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.dialects import postgresql
 
-from apps.api.app.core.security import issue_signed_token, issue_session_token, parse_session_token, verify_signed_token
-from apps.api.app.core.middleware import reset_request_metrics
-from apps.api.app.core.settings import settings
-from apps.api.app.main import create_app
-from apps.api.app.db.session import SessionLocal
-from apps.api.app.db.session import get_session
-from apps.api.app.models.ai_analysis import AiAnalysis
-from apps.api.app.models.notification import Notification
-from apps.api.app.models.hotspot import Hotspot
-from apps.api.app.models.keyword import Keyword
-from apps.api.app.models.user import User
-from apps.api.app.models.report import Report
-from apps.api.app.models.source import Source
-from apps.api.app.core.security import get_current_user
-from apps.api.app.api.routes.hotspots import get_hotspot_cluster, get_hotspot_cluster_history
-from apps.api.app.services.ai_analysis import AnalysisResult, analyze_hotspot, expand_keyword_queries, is_analysis_active
-from apps.api.app.services.ai.providers.openai import OpenAICompatibleProvider
-from apps.api.app.services.ingestion import Candidate, SourceIngestionError, fetch_candidates
-from apps.api.app.services.notification import notify_hotspot, notify_report
-from apps.api.app.services.check_runner import _normalize_url
-from apps.api.app.services.check_runner import run_hotspot_check
-from apps.api.app.services.check_runner import _next_cluster_version
-from apps.api.app.services.scheduler import _maybe_run_weekly_report
-import apps.api.app.services.scheduler as scheduler_module
-from apps.api.app.services.reports import previous_weekly_period_start, report_period
-from apps.api.app.services.search import search_sources, _load_search_sources
-from apps.api.app.services import rss as rss_service
-from apps.api.app.services.providers import get_provider_class
-from apps.api.app.schemas.ai_analysis import AiAnalysisRead
-from apps.api.app.schemas.hotspot import HotspotRead
-from apps.api.app.api.routes.hotspots import _apply_sort
+from server.app.core.security import issue_signed_token, issue_session_token, parse_session_token, verify_signed_token
+from server.app.core.middleware import reset_request_metrics
+from server.app.core.settings import settings
+from server.app.main import create_app
+from server.app.db.session import SessionLocal
+from server.app.db.session import get_session
+from server.app.models.ai_analysis import AiAnalysis
+from server.app.models.notification import Notification
+from server.app.models.hotspot import Hotspot
+from server.app.models.keyword import Keyword
+from server.app.models.user import User
+from server.app.models.report import Report
+from server.app.models.source import Source
+from server.app.core.security import get_current_user
+from server.app.api.routes.hotspots import get_hotspot_cluster, get_hotspot_cluster_history
+from server.app.services.ai_analysis import AnalysisResult, analyze_hotspot, expand_keyword_queries, is_analysis_active
+from server.app.services.ai.orchestrator import AIOrchestrator, LangGraphOrchestrator, build_orchestrator
+from server.app.services.ai.providers.base import BaseLLMProvider, LLMResult
+from server.app.services.ai.providers import build_provider
+from server.app.services.ai.providers.openai import OpenAICompatibleProvider
+from server.app.services.ingestion import Candidate, SourceIngestionError, fetch_candidates
+from server.app.services.notification import notify_hotspot, notify_report
+from server.app.services.check_runner import _build_analysis_raw_response, _decide_hotspot_status, _normalize_url
+from server.app.services.check_runner import _estimate_cross_sources, _next_cluster_version, _should_enhance_analysis as check_runner_should_enhance
+from server.app.services.check_runner import run_hotspot_check
+from server.app.services.scheduler import _maybe_run_weekly_report
+import server.app.services.scheduler as scheduler_module
+from server.app.services.reports import previous_weekly_period_start, report_period
+from server.app.services.search import _should_enhance_analysis as search_should_enhance
+from server.app.services.search import _load_search_sources, search_sources
+from server.app.services import rss as rss_service
+from server.app.services.providers import get_provider_class
+from server.app.services.providers.selector import mark_source_success, mark_source_failure, select_sources
+from server.app.services.hotspot_scoring import compute_hotness_score
+from server.app.services.source_trust import SourceEvidence, collect_source_evidence
+from server.app.schemas.ai_analysis import AiAnalysisRead
+from server.app.schemas.hotspot import HotspotRead
+from server.app.api.routes.hotspots import _apply_sort, list_hotspots
 
 
 class CollectingSession:
@@ -301,6 +309,493 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertEqual(payload.trend_score, 64)
         self.assertGreater(payload.rank_score, payload.trend_score)
 
+    # PRD 24/25/26/27 traceability: these names intentionally mirror the Plan TDD checklist.
+    def test_compute_hotness_clamps_to_0_100(self) -> None:
+        source = Source(id=11, name="rss", source_type="rss", enabled=True, config={"source_strength": 120})
+        hotspot = Hotspot(
+            id=11,
+            title="AI 热点",
+            url="https://example.com/overflow",
+            source_id=11,
+            keyword_id=1,
+            snippet="AI 流量",
+            published_at=datetime(2026, 5, 24, tzinfo=timezone.utc),
+            raw_payload={},
+            source=source,
+        )
+        raw = SimpleNamespace(relevance_score=1000, keyword_mentioned=True)
+
+        decision = compute_hotness_score(hotspot=hotspot, analysis=raw)
+
+        self.assertGreaterEqual(decision.score, 0.0)
+        self.assertLessEqual(decision.score, settings.hotness_max_score)
+
+    def test_hotness_high_relevance_marks_active(self) -> None:
+        self.patch_settings(hotness_active_threshold=70.0, relevance_threshold=50.0)
+        source = Source(id=12, name="hacker news", source_type="hacker_news", enabled=True, config={"source_strength": 80})
+        hotspot = Hotspot(
+            id=12,
+            title="AI 热点上线",
+            url="https://example.com/ai-01",
+            source_id=12,
+            keyword_id=1,
+            snippet="AI 热点",
+            published_at=datetime(2026, 5, 24, tzinfo=timezone.utc),
+            raw_payload={},
+            source=source,
+        )
+        evidence = SourceEvidence(
+            source_reachable=True,
+            url_stability=True,
+            domain_risk=90.0,
+            publish_depth=100.0,
+            cross_source_count=1,
+            status="ok",
+            risk_tags=[],
+        )
+        analysis = AnalysisResult(
+            is_real=True,
+            relevance_score=96,
+            relevance_reason="high relevance",
+            keyword_mentioned=True,
+            importance="high",
+            summary="",
+            model_name="fallback",
+            raw_response={},
+        )
+        decision = compute_hotness_score(hotspot=hotspot, analysis=analysis)
+
+        self.assertGreaterEqual(decision.score, settings.hotness_active_threshold)
+        self.assertEqual(_decide_hotspot_status(analysis, decision, evidence), "active")
+
+    def test_hotness_low_reliability_becomes_filtered(self) -> None:
+        source = Source(id=13, name="rss", source_type="rss", enabled=True, config={"source_strength": 60})
+        hotspot = Hotspot(
+            id=13,
+            title="AI 风险",
+            url="https://example.com/ai-risk",
+            source_id=13,
+            keyword_id=1,
+            snippet="AI 风险",
+            raw_payload={},
+            source=source,
+        )
+        analysis = AnalysisResult(
+            is_real=True,
+            relevance_score=90,
+            relevance_reason="high relevance",
+            keyword_mentioned=True,
+            importance="high",
+            summary="",
+            model_name="fallback",
+            raw_response={},
+        )
+        evidence = SourceEvidence(
+            source_reachable=False,
+            url_stability=False,
+            domain_risk=20.0,
+            publish_depth=0.0,
+            cross_source_count=1,
+            status="unreachable",
+            risk_tags=["unreachable"],
+        )
+        decision = compute_hotness_score(hotspot=hotspot, analysis=analysis, trust_penalty=evidence.penalty())
+
+        self.assertEqual(evidence.risk_level(), "low")
+        self.assertEqual(_decide_hotspot_status(analysis, decision, evidence), "filtered")
+
+    def test_search_results_sorted_by_hotness_score(self) -> None:
+        stmt = _apply_sort(select(Hotspot), "hotness_score_desc")
+        sql = str(stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+
+        self.assertLess(sql.index("hotness_score"), sql.index("relevance_score"))
+        self.assertIn("published_at", sql)
+
+    def test_run_hotspot_check_stores_hotness_fields(self) -> None:
+        session = FakeSessionForRun()
+        keyword = Keyword(id=1, keyword="AI", query_template=None, enabled=True, priority=1)
+        source = Source(id=1, name="Hacker News", source_type="hacker_news", enabled=True, config={})
+        captured_candidate: dict[str, object] = {}
+        candidate = Candidate(
+            title="AI agent",
+            url="https://example.com/ai-agent-hotness",
+            source_id=1,
+            keyword_id=1,
+            author="alice",
+            snippet="AI trend",
+            raw_payload={},
+            published_at=datetime(2026, 5, 20, tzinfo=timezone.utc),
+        )
+        raw_hotspot = Hotspot(
+            id=999,
+            title=candidate.title,
+            url=candidate.url,
+            source_id=candidate.source_id,
+            keyword_id=candidate.keyword_id,
+            raw_payload={},
+        )
+        raw_hotspot.source = source
+
+        def _fake_scalars_select(_statement: object) -> list[object]:
+            text = str(_statement)
+            if "keywords" in text:
+                return [keyword]
+            if "sources" in text:
+                return [source]
+            return []
+
+        def _fake_analyze(_hotspot: Hotspot, _keyword: Keyword, prefer_langgraph: bool = False) -> AnalysisResult:
+            return AnalysisResult(
+                is_real=True,
+                relevance_score=90,
+                relevance_reason="ok",
+                keyword_mentioned=True,
+                importance="high",
+                summary="",
+                model_name="fallback",
+                raw_response={},
+            )
+
+        with (
+            patch("server.app.services.check_runner._next_cluster_version", return_value=1),
+            patch("server.app.services.check_runner.fetch_candidates", return_value=[candidate]),
+            patch("server.app.services.check_runner._get_or_create_hotspot", return_value=raw_hotspot),
+            patch("server.app.services.check_runner.analyze_hotspot", side_effect=_fake_analyze),
+            patch("server.app.services.check_runner.notify_hotspot", return_value=Notification(
+                hotspot_id=999,
+                channel="email",
+                status="sent",
+            )),
+        ):
+            session.scalars = _fake_scalars_select  # type: ignore[assignment]
+            run_hotspot_check(session)
+
+        analysis = next(item for item in session.added if isinstance(item, AiAnalysis))
+        self.assertIn("hotness_score", analysis.raw_response)
+        self.assertEqual(analysis.raw_response["hotness_version"], 1)
+        self.assertIn("source_risk_level", analysis.raw_response)
+
+    def test_truth_score_allows_degraded_mode(self) -> None:
+        self.patch_settings(openai_api_key=None, openai_model=None)
+        evidence = collect_source_evidence(
+            Hotspot(
+                id=1,
+                title="AI",
+                url="mailto:test@example.com",
+                source_id=1,
+                keyword_id=1,
+                raw_payload={},
+            ),
+            cross_source_count=2,
+        )
+
+        self.assertEqual(evidence.risk_level(), "low")
+        self.assertEqual(evidence.bundle()["status"], "unreachable")
+
+    def test_source_domain_risk_labeling(self) -> None:
+        evidence = collect_source_evidence(
+            Hotspot(
+                id=2,
+                title="AI",
+                url="https://bit.ly/abc123",
+                source_id=1,
+                keyword_id=1,
+                raw_payload={},
+            ),
+            cross_source_count=1,
+        )
+
+        self.assertEqual(evidence.domain_risk, 40.0)
+        self.assertIn("shortlink", evidence.risk_tags)
+
+    def test_cross_source_count_in_evidence(self) -> None:
+        evidence1 = collect_source_evidence(
+            Hotspot(
+                id=1,
+                title="AI",
+                url="https://example.com",
+                source_id=1,
+                keyword_id=1,
+                raw_payload={},
+            ),
+            cross_source_count=1,
+        )
+        evidence2 = collect_source_evidence(
+            Hotspot(
+                id=1,
+                title="AI",
+                url="https://example.com",
+                source_id=1,
+                keyword_id=1,
+                raw_payload={},
+            ),
+            cross_source_count=4,
+        )
+
+        self.assertLess(evidence1.truth_score(), evidence2.truth_score())
+
+    def test_low_trust_penalty_affects_hotness(self) -> None:
+        self.patch_settings(low_trust_penalty=25.0)
+        source = Source(id=1, name="rss", source_type="rss", enabled=True, config={"source_strength": 80})
+        hotspot = Hotspot(
+            id=1,
+            title="AI",
+            url="mailto:test@example.com",
+            source_id=1,
+            keyword_id=1,
+            snippet="AI",
+            raw_payload={},
+            source=source,
+        )
+        evidence = collect_source_evidence(hotspot)
+        raw = SimpleNamespace(relevance_score=90, keyword_mentioned=True)
+        without_penalty = compute_hotness_score(hotspot=hotspot, analysis=raw)
+        with_penalty = compute_hotness_score(hotspot=hotspot, analysis=raw, trust_penalty=evidence.penalty())
+
+        self.assertEqual(evidence.risk_level(), "low")
+        self.assertLess(with_penalty.score, without_penalty.score)
+
+    def test_low_trust_event_filtered_for_notification(self) -> None:
+        self.test_run_hotspot_check_marks_low_trust_event_as_filtered_and_skip_notify()
+
+    def test_evidence_bundle_visible_in_search_and_list(self) -> None:
+        self.patch_settings(openai_api_key=None, openai_model=None, relevance_threshold=50.0)
+        source = Source(id=1, name="Hacker News", source_type="hacker_news", enabled=True, config={})
+        class _SearchSession:
+            def scalar(self, _statement: object) -> int:
+                return 0
+        candidate = Candidate(
+            title="OpenAI ships",
+            url="https://example.com/agent",
+            source_id=1,
+            keyword_id=None,
+            author="alice",
+            published_at=datetime(2026, 4, 25, tzinfo=timezone.utc),
+            snippet="agent",
+            raw_payload={"id": "1"},
+        )
+        with (
+            patch("server.app.services.search.ensure_default_sources"),
+            patch("server.app.services.search._load_search_sources", return_value=[source]),
+            patch("server.app.services.search.expand_keyword_queries", return_value=["OpenAI agent"]),
+            patch("server.app.services.search.fetch_candidates", return_value=[candidate]),
+            patch("server.app.services.search.analyze_hotspot", return_value=AnalysisResult(
+                is_real=True,
+                relevance_score=95,
+                relevance_reason="ok",
+                keyword_mentioned=True,
+                importance="high",
+                summary="",
+                model_name="fallback",
+                raw_response={},
+            )),
+        ):
+            result = search_sources(_SearchSession(), "OpenAI agent")
+
+        self.assertEqual(len(result.items), 1)
+        self.assertIn("source_evidence_bundle", result.items[0].raw_payload)
+
+    def test_orchestrator_uses_langchain_by_default(self) -> None:
+        self.patch_settings(ai_use_langgraph=False)
+        orchestrator = build_orchestrator(build_provider("fallback"), use_langgraph=True)
+        self.assertIsInstance(orchestrator, AIOrchestrator)
+
+    def test_langgraph_disabled_by_default(self) -> None:
+        self.patch_settings(ai_provider="fallback", ai_use_langgraph=False)
+        result = analyze_hotspot(
+            Hotspot(
+                id=88,
+                title="AI agent",
+                url="https://example.com/a",
+                source_id=1,
+                keyword_id=1,
+                snippet="AI agent",
+                raw_payload={},
+            ),
+            keyword=Keyword(id=1, keyword="AI", query_template=None, enabled=True, priority=0),
+            prefer_langgraph=True,
+        )
+
+        self.assertEqual(result.ai_orchestrator_decision, "langchain")
+
+    def test_langgraph_trigger_routes_to_graph(self) -> None:
+        self.patch_settings(ai_use_langgraph=True)
+        evidence = SourceEvidence(
+            source_reachable=True,
+            url_stability=True,
+            domain_risk=60,
+            publish_depth=100,
+            cross_source_count=2,
+            status="ok",
+            risk_tags=[],
+        )
+
+        self.assertTrue(check_runner_should_enhance(evidence, hotness_score=95.0, langgraph_enabled=settings.ai_use_langgraph))
+
+    def test_langgraph_timeout_falls_back_to_chain(self) -> None:
+        class SlowProvider(BaseLLMProvider):
+            provider_name = "slow"
+
+            def expand_queries(self, keyword: Keyword, base_query: str) -> list[str]:
+                return [base_query]
+
+            def analyze(self, hotspot: Hotspot, keyword: Keyword | None) -> LLMResult:
+                return LLMResult(
+                    is_real=True,
+                    relevance_score=88,
+                    relevance_reason="ok",
+                    keyword_mentioned=True,
+                    importance="high",
+                    summary="",
+                    model_name="slow",
+                    raw_response={"provider": "slow"},
+                    used_fallback=False,
+                    prompt_name="analysis",
+                    provider="slow",
+                )
+
+        provider = SlowProvider()
+        orchestrator = LangGraphOrchestrator(provider)
+        self.patch_settings(ai_langgraph_timeout_seconds=1)
+
+        with patch("server.app.services.ai.orchestrator.time.perf_counter", side_effect=[0.0, 2.5, 3.0, 3.01]):
+            result, decision = orchestrator.analyze(
+                Hotspot(
+                    id=1,
+                    title="AI",
+                    url="https://example.com",
+                    source_id=1,
+                    keyword_id=1,
+                    snippet="",
+                    raw_payload={},
+                ),
+                Keyword(id=1, keyword="AI", query_template=None, enabled=True, priority=0),
+            )
+
+        self.assertEqual(result.raw_response.get("provider"), "slow")
+        self.assertEqual(decision.decision.get("path"), "langchain")
+        self.assertTrue(decision.decision.get("langgraph_fallback"))
+
+    def test_open_endpoint_works_with_langchain(self) -> None:
+        self.patch_settings(ai_provider="fallback", ai_use_langgraph=False)
+        hotspot = Hotspot(
+            id=1,
+            title="AI",
+            url="https://example.com",
+            source_id=1,
+            keyword_id=1,
+            snippet="",
+            raw_payload={},
+        )
+
+        result = analyze_hotspot(hotspot, None, prefer_langgraph=False)
+
+        self.assertEqual(result.ai_orchestrator_decision, "langchain")
+
+    def test_source_route_skips_failing_source(self) -> None:
+        class Session:
+            def __init__(self) -> None:
+                self.added: list[object] = []
+                self.commits = 0
+            def add(self, item: object) -> None:
+                self.added.append(item)
+            def add_all(self, items: list[object]) -> None:
+                self.added.extend(items)
+            def commit(self) -> None:
+                self.commits += 1
+            def flush(self) -> None:
+                return None
+            def refresh(self, _item: object) -> None:
+                return None
+            def scalars(self, statement: object) -> list[object]:
+                text = str(statement)
+                if "keywords" in text:
+                    return [Keyword(id=1, keyword="AI", query_template=None, enabled=True, priority=1)]
+                if "sources" in text:
+                    return [
+                        Source(id=1, name="bad", source_type="hacker_news", enabled=True, config={}),
+                        Source(id=2, name="good", source_type="rss", enabled=True, config={"url": "https://example.com"}),
+                    ]
+                return []
+            def scalar(self, statement: object) -> object | None:
+                if "keywords" in str(statement):
+                    return None
+                if "sources" in str(statement):
+                    return None
+                return None
+
+        session = Session()
+        keyword = Keyword(id=1, keyword="AI", query_template=None, enabled=True, priority=1)
+        candidate = Candidate(
+            title="OK",
+            url="https://example.com/ok",
+            source_id=2,
+            keyword_id=1,
+            author="a",
+            snippet="",
+            raw_payload={},
+            published_at=None,
+        )
+
+        def _fetch_side_effect(source: Source, keyword: Keyword, query: str | None = None, record_health: bool = False, timeout_seconds: float | None = None):
+            if source.id == 1:
+                raise SourceIngestionError("fetch failed")
+            return [candidate]
+
+        with (
+            patch("server.app.services.check_runner._next_cluster_version", return_value=1),
+            patch("server.app.services.check_runner.expand_keyword_queries", return_value=["AI"]),
+            patch("server.app.services.check_runner.fetch_candidates", side_effect=_fetch_side_effect),
+            patch("server.app.services.check_runner._get_or_create_hotspot", return_value=Hotspot(
+                id=1,
+                title=candidate.title,
+                url=candidate.url,
+                source_id=2,
+                keyword_id=1,
+                snippet="",
+                raw_payload={},
+            )),
+            patch("server.app.services.check_runner.analyze_hotspot", return_value=AnalysisResult(
+                is_real=True,
+                relevance_score=90,
+                relevance_reason="ok",
+                keyword_mentioned=True,
+                importance="high",
+                summary="",
+                model_name="fallback",
+                raw_response={},
+            )),
+        ):
+            result = run_hotspot_check(session)
+
+        self.assertEqual(result.success_count, 1)
+        self.assertEqual(result.failure_count, 1)
+
+    def test_source_retry_threshold_triggers_fallback(self) -> None:
+        source = Source(id=1, name="rss", source_type="rss", enabled=True, config={})
+
+        for _ in range(settings.source_failure_threshold):
+            mark_source_failure(source, reason="timeout")
+
+        self.assertEqual(source.config["health"]["status"], "degraded")
+
+    def test_source_fallback_preserves_primary_flow(self) -> None:
+        self.test_source_route_skips_failing_source()
+
+    def test_check_runner_still_completes_when_one_source_fail(self) -> None:
+        self.test_source_route_skips_failing_source()
+
+    def test_source_rotation_keeps_cluster_and_dedup(self) -> None:
+        session = FakeSessionForRun()
+        existing = [1, 2]
+
+        class DistinctScalars(list[int]):
+            def all(self) -> list[int]:
+                return list(self)
+
+        session.scalars = lambda _statement: DistinctScalars(existing)  # type: ignore[assignment]
+
+        self.assertEqual(_estimate_cross_sources(session, "https://example.com/a", 3, {}), 3)
     def test_next_cluster_version_increments_from_existing_records(self) -> None:
         # We keep this deterministic by testing helper via a tiny session shim.
         class ScalarOnlySession:
@@ -351,7 +846,7 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
             captured_candidate["candidate"] = candidate
             return raw_hotspot
 
-        def _fake_analyze(_hotspot: Hotspot, _keyword: Keyword) -> AnalysisResult:
+        def _fake_analyze(_hotspot: Hotspot, _keyword: Keyword, prefer_langgraph: bool = False) -> AnalysisResult:
             return AnalysisResult(
                 is_real=True,
                 relevance_score=80,
@@ -364,11 +859,11 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
             )
 
         with (
-            patch("apps.api.app.services.check_runner._next_cluster_version", return_value=2),
-            patch("apps.api.app.services.check_runner.fetch_candidates", return_value=[candidate]),
-            patch("apps.api.app.services.check_runner._get_or_create_hotspot", side_effect=_capture_create),
-            patch("apps.api.app.services.check_runner.analyze_hotspot", side_effect=_fake_analyze),
-            patch("apps.api.app.services.check_runner.notify_hotspot", return_value=Notification(
+            patch("server.app.services.check_runner._next_cluster_version", return_value=2),
+            patch("server.app.services.check_runner.fetch_candidates", return_value=[candidate]),
+            patch("server.app.services.check_runner._get_or_create_hotspot", side_effect=_capture_create),
+            patch("server.app.services.check_runner.analyze_hotspot", side_effect=_fake_analyze),
+            patch("server.app.services.check_runner.notify_hotspot", return_value=Notification(
                 hotspot_id=55,
                 channel="email",
                 status="sent",
@@ -383,6 +878,79 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertEqual(candidate_payload.get("cluster_version"), 2)
         self.assertIn("clustered_at", candidate_payload)
         self.assertEqual(check_run.success_count, 1)
+
+    def test_run_hotspot_check_marks_low_trust_event_as_filtered_and_skip_notify(self) -> None:
+        self.patch_settings(openai_api_key=None, openai_model=None, hotness_active_threshold=40.0)
+        session = FakeSessionForRun()
+        keyword = Keyword(id=1, keyword="AI", query_template=None, enabled=True, priority=1)
+        source = Source(id=1, name="Hacker News", source_type="hacker_news", enabled=True, config={})
+        raw_hotspot = Hotspot(
+            id=60,
+            title="AI agent",
+            url="https://example.com/ai-agent-low-trust",
+            source_id=1,
+            keyword_id=1,
+            raw_payload={},
+        )
+        raw_hotspot.source = source
+
+        def _fake_scalars_select(_statement: object) -> list[object]:
+            text = str(_statement)
+            if "keywords" in text:
+                return [keyword]
+            if "sources" in text:
+                return [source]
+            return []
+
+        session.scalars = _fake_scalars_select  # type: ignore[method-assign]
+
+        candidate = Candidate(
+            title="AI agent",
+            url="https://example.com/ai-agent-low-trust",
+            source_id=1,
+            keyword_id=1,
+            author="alice",
+            snippet="AI trend",
+            raw_payload={},
+            published_at=None,
+        )
+
+        def _fake_analyze(_hotspot: Hotspot, _keyword: Keyword, prefer_langgraph: bool = False) -> AnalysisResult:
+            return AnalysisResult(
+                is_real=True,
+                relevance_score=95,
+                relevance_reason="ok",
+                keyword_mentioned=True,
+                importance="high",
+                summary="",
+                model_name="fallback",
+                raw_response={},
+            )
+
+        low_risk_evidence = SourceEvidence(
+            source_reachable=False,
+            url_stability=False,
+            domain_risk=20.0,
+            publish_depth=0.0,
+            cross_source_count=1,
+            status="unreachable",
+            risk_tags=["unreachable"],
+        )
+
+        with (
+            patch("server.app.services.check_runner._next_cluster_version", return_value=2),
+            patch("server.app.services.check_runner.fetch_candidates", return_value=[candidate]),
+            patch("server.app.services.check_runner._get_or_create_hotspot", return_value=raw_hotspot),
+            patch("server.app.services.check_runner.analyze_hotspot", side_effect=_fake_analyze),
+            patch("server.app.services.check_runner.collect_source_evidence", return_value=low_risk_evidence),
+            patch("server.app.services.check_runner.notify_hotspot") as notify_hotspot_mock,
+        ):
+            session.scalars = _fake_scalars_select  # type: ignore[assignment]
+            check_run = run_hotspot_check(session)
+
+        self.assertEqual(raw_hotspot.status, "filtered")
+        self.assertEqual(check_run.success_count, 1)
+        notify_hotspot_mock.assert_not_called()
 
     def test_get_hotspot_cluster_route_reads_clustered_items(self) -> None:
         now = datetime.now(tz=timezone.utc)
@@ -476,12 +1044,19 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
     def test_hotspot_sort_contract_supports_rank_and_trend_desc(self) -> None:
         rank_stmt = _apply_sort(select(Hotspot), "rank_score_desc")
         trend_stmt = _apply_sort(select(Hotspot), "trend_score_desc")
+        hotness_stmt = _apply_sort(select(Hotspot), "hotness_score_desc")
 
         rank_sql = str(rank_stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
         trend_sql = str(trend_stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+        hotness_sql = str(hotness_stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
 
         self.assertIn("relevance_score", rank_sql)
         self.assertIn("trend_score", trend_sql)
+        self.assertIn("hotness_score", hotness_sql)
+
+    def test_list_hotspots_default_sort_is_hotness_score_desc(self) -> None:
+        params = signature(list_hotspots).parameters
+        self.assertEqual(params["sort"].default, "hotness_score_desc")
 
     def test_fallback_analysis_marks_missing_keyword_below_threshold(self) -> None:
         self.patch_settings(openai_api_key=None, openai_model=None, relevance_threshold=50.0)
@@ -538,7 +1113,7 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertEqual(get_provider_class("weibo_sogou").source_type, "sogou")
 
     def test_github_trending_provider_normalizes_repository_search_results(self) -> None:
-        from apps.api.app.services.providers.github_trending import _fetch_github_trending
+        from server.app.services.providers.github_trending import _fetch_github_trending
 
         payload = {
             "items": [
@@ -561,7 +1136,7 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
             json=lambda: payload,
         )
 
-        with patch("apps.api.app.services.providers.github_trending.httpx.get", return_value=response) as request:
+        with patch("server.app.services.providers.github_trending.httpx.get", return_value=response) as request:
             candidates = _fetch_github_trending({"limit": 5, "language": "TypeScript"}, 9, 3, "AI agent")
 
         request.assert_called_once()
@@ -590,7 +1165,7 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
             raw_payload={"source_type": "rss"},
         )
 
-        with patch("apps.api.app.services.providers.rss._fetch_rss", return_value=[expected_candidate]):
+        with patch("server.app.services.providers.rss._fetch_rss", return_value=[expected_candidate]):
             candidates = fetch_candidates(source, keyword)
 
         self.assertEqual(candidates, [expected_candidate])
@@ -647,15 +1222,29 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
             source_id=1,
             keyword_id=None,
             author="alice",
-            published_at=datetime(2026, 4, 25, tzinfo=timezone.utc),
+            published_at=datetime.now(tz=timezone.utc),
             snippet="OpenAI agent search tooling launched.",
             raw_payload={"id": "1"},
         )
+
+        def _fake_analyze(_hotspot: Hotspot, _keyword: Keyword, prefer_langgraph: bool = False) -> AnalysisResult:
+            return AnalysisResult(
+                is_real=True,
+                relevance_score=95,
+                relevance_reason="ok",
+                keyword_mentioned=True,
+                importance="high",
+                summary="",
+                model_name="fallback",
+                raw_response={},
+            )
+
         with (
-            patch("apps.api.app.services.search.ensure_default_sources") as ensure_defaults,
-            patch("apps.api.app.services.search._load_search_sources", return_value=[source]),
-            patch("apps.api.app.services.search.expand_keyword_queries", return_value=["OpenAI agent"]),
-            patch("apps.api.app.services.search.fetch_candidates", return_value=[candidate]),
+            patch("server.app.services.search.ensure_default_sources") as ensure_defaults,
+            patch("server.app.services.search._load_search_sources", return_value=[source]),
+            patch("server.app.services.search.expand_keyword_queries", return_value=["OpenAI agent"]),
+            patch("server.app.services.search.fetch_candidates", return_value=[candidate]),
+            patch("server.app.services.search.analyze_hotspot", side_effect=_fake_analyze),
         ):
             result = search_sources(ReadOnlySession(), "OpenAI agent")
 
@@ -663,6 +1252,44 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertEqual(len(result.items), 1)
         self.assertEqual(result.items[0].status, "active")
         self.assertEqual(result.errors, [])
+
+    def test_search_filters_low_trust_result(self) -> None:
+        self.patch_settings(openai_api_key=None, openai_model=None, relevance_threshold=50.0)
+        source = Source(id=1, name="Hacker News", source_type="hacker_news", enabled=True, config={})
+        class _SearchSession:
+            def scalar(self, _statement: object) -> int:
+                return 0
+
+        candidate = Candidate(
+            title="OpenAI ships agent search",
+            url="https://example.com/agent-search-low-trust",
+            source_id=1,
+            keyword_id=None,
+            author="alice",
+            published_at=datetime(2026, 4, 25, tzinfo=timezone.utc),
+            snippet="OpenAI agent search tooling launched.",
+            raw_payload={"id": "1"},
+        )
+        low_risk_evidence = SourceEvidence(
+            source_reachable=False,
+            url_stability=False,
+            domain_risk=20.0,
+            publish_depth=0.0,
+            cross_source_count=1,
+            status="unreachable",
+            risk_tags=["unreachable"],
+        )
+        with (
+            patch("server.app.services.search.ensure_default_sources"),
+            patch("server.app.services.search._load_search_sources", return_value=[source]),
+            patch("server.app.services.search.expand_keyword_queries", return_value=["OpenAI agent"]),
+            patch("server.app.services.search.fetch_candidates", return_value=[candidate]),
+            patch("server.app.services.search.collect_source_evidence", return_value=low_risk_evidence),
+        ):
+            result = search_sources(_SearchSession(), "OpenAI agent")
+
+        self.assertEqual(len(result.items), 1)
+        self.assertEqual(result.items[0].status, "filtered")
 
     def test_report_period_supports_daily_and_weekly_defaults(self) -> None:
         daily_start, daily_end = report_period("daily", period_start=date(2026, 4, 25))
@@ -783,9 +1410,9 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         ]
         sentiment = {"high": 2, "medium": 1, "low": 0}
         with (
-            patch("apps.api.app.api.routes.analytics.analytics_service.get_trend", return_value=trend),
-            patch("apps.api.app.api.routes.analytics.analytics_service.get_top_sources", return_value=sources),
-            patch("apps.api.app.api.routes.analytics.analytics_service.get_sentiment", return_value=sentiment),
+            patch("server.app.api.routes.analytics.analytics_service.get_trend", return_value=trend),
+            patch("server.app.api.routes.analytics.analytics_service.get_top_sources", return_value=sources),
+            patch("server.app.api.routes.analytics.analytics_service.get_sentiment", return_value=sentiment),
             TestClient(app) as client,
         ):
             trend_response = client.get("/api/analytics/trend?days=7", headers=self._auth_headers())
@@ -817,6 +1444,108 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertIn("No enabled keywords.", check_run.error_summary or "")
         self.assertIn("No enabled sources.", check_run.error_summary or "")
 
+    def test_search_should_enhance_analysis_when_hot_and_risky_or_conflicted(self) -> None:
+        self.patch_settings(ai_use_langgraph=True, ai_enhance_hotness_threshold=70.0, ai_enhance_risk_threshold=40.0)
+        evidence = SourceEvidence(
+            source_reachable=True,
+            url_stability=True,
+            domain_risk=50,
+            publish_depth=80,
+            cross_source_count=2,
+            status="ok",
+            risk_tags=[],
+        )
+
+        self.assertTrue(search_should_enhance(
+            evidence,
+            hotness_score=85,
+            langgraph_enabled=True,
+        ))
+        self.assertFalse(search_should_enhance(
+            evidence,
+            hotness_score=60,
+            langgraph_enabled=True,
+        ))
+        self.assertFalse(search_should_enhance(
+            evidence,
+            hotness_score=85,
+            langgraph_enabled=False,
+        ))
+
+    def test_check_runner_should_enhance_analysis_requires_hotness_and_risk_or_conflict(self) -> None:
+        self.patch_settings(ai_use_langgraph=True, ai_enhance_hotness_threshold=70.0, ai_enhance_risk_threshold=40.0)
+        low_truth = SourceEvidence(
+            source_reachable=True,
+            url_stability=False,
+            domain_risk=0,
+            publish_depth=0,
+            cross_source_count=1,
+            status="ok",
+            risk_tags=[],
+        )
+        conflict = SourceEvidence(
+            source_reachable=True,
+            url_stability=True,
+            domain_risk=50,
+            publish_depth=80,
+            cross_source_count=3,
+            status="ok",
+            risk_tags=[],
+        )
+
+        self.assertTrue(check_runner_should_enhance(low_truth, hotness_score=75, langgraph_enabled=True))
+        self.assertTrue(check_runner_should_enhance(conflict, hotness_score=75, langgraph_enabled=True))
+        self.assertFalse(check_runner_should_enhance(low_truth, hotness_score=65, langgraph_enabled=True))
+
+    def test_build_analysis_raw_response_merges_enrichment_fields(self) -> None:
+        source = Source(id=2, name="hacker news", source_type="hacker_news", enabled=True, config={})
+        hotspot = Hotspot(
+            id=66,
+            title="AI agent",
+            url="https://example.com/ai",
+            source_id=2,
+            keyword_id=1,
+            snippet="AI agent",
+            raw_payload={},
+            source=source,
+        )
+        analysis = AnalysisResult(
+            is_real=True,
+            relevance_score=92,
+            relevance_reason="ok",
+            keyword_mentioned=True,
+            importance="high",
+            summary="",
+            model_name="fallback",
+            raw_response={"provider": "fallback"},
+            ai_orchestrator_decision="langgraph",
+            enhance_path="enhanced",
+            fallback_reason="fallback reason",
+            trace_id="trace-001",
+            provider_trace=[{"event": "final"}],
+            quick_understanding=["q1", "q2"],
+            topic_ideas=[{"title": "t", "angle": "a", "format": "f", "rationale": "r"}],
+        )
+        evidence = collect_source_evidence(hotspot)
+        hotness = compute_hotness_score(
+            hotspot=hotspot,
+            analysis=analysis,
+            source_strength=80,
+        )
+
+        raw = _build_analysis_raw_response(analysis_result=analysis, evidence=evidence, hotness=hotness)
+
+        self.assertEqual(raw["ai_orchestrator_decision"], "langgraph")
+        self.assertEqual(raw["enhance_path"], "enhanced")
+        self.assertEqual(raw["trace_id"], "trace-001")
+        self.assertEqual(raw["fallback_reason"], "fallback reason")
+        self.assertEqual(raw["provider"], "fallback")
+        self.assertEqual(raw["hotness_score"], hotness.score)
+        self.assertEqual(raw["source_risk_level"], evidence.risk_level())
+        self.assertIn("provider_trace", raw)
+        self.assertEqual(raw["provider_trace"], [{"event": "final"}])
+        self.assertEqual(raw["prompt_name"], None)
+
     def test_weekly_report_only_runs_on_target_day_and_hour(self) -> None:
         scheduler_module._last_weekly_report_start = None
         collected = SimpleNamespace(calls=[])
@@ -832,8 +1561,8 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
 
         self.patch_settings(weekly_report_enabled=True, weekly_report_weekday=6, weekly_report_hour=9)
         with (
-            patch("apps.api.app.services.scheduler.datetime", FixedDateTime),
-            patch("apps.api.app.services.scheduler.generate_and_send_report", lambda *args, **kwargs: collected.calls.append("send")),
+            patch("server.app.services.scheduler.datetime", FixedDateTime),
+            patch("server.app.services.scheduler.generate_and_send_report", lambda *args, **kwargs: collected.calls.append("send")),
         ):
             _maybe_run_weekly_report(Session())
 
@@ -852,6 +1581,146 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         session = Session()
         _load_search_sources(session, ["x-twitter"])
         self.assertIn("x_twitter", session.statement_text)
+
+    def test_ai_orchestrator_defaults_to_langchain_when_langgraph_flag_is_false(self) -> None:
+        self.patch_settings(ai_use_langgraph=False)
+        provider = AIOrchestrator(build_provider("fallback"))
+        self.assertEqual(provider.__class__.__name__, "AIOrchestrator")
+
+    def test_build_orchestrator_respects_langgraph_switch(self) -> None:
+        self.patch_settings(ai_use_langgraph=False)
+        provider = build_provider("fallback")
+        orchestrator = build_orchestrator(provider, use_langgraph=True)
+        self.assertIsInstance(orchestrator, AIOrchestrator)
+        self.assertNotIsInstance(orchestrator, LangGraphOrchestrator)
+
+        self.patch_settings(ai_use_langgraph=True)
+        orchestrator2 = build_orchestrator(provider, use_langgraph=True)
+        self.assertIsInstance(orchestrator2, LangGraphOrchestrator)
+
+    def test_langgraph_orchestrator_falls_back_to_langchain_on_analysis_failure(self) -> None:
+        class FlakyProvider(BaseLLMProvider):
+            provider_name = "flaky"
+
+            def __init__(self) -> None:
+                self._called = False
+
+            def expand_queries(self, keyword: Keyword, base_query: str) -> list[str]:
+                return [base_query]
+
+            def analyze(self, hotspot: Hotspot, keyword: Keyword | None) -> LLMResult:
+                if not self._called:
+                    self._called = True
+                    raise RuntimeError("transient fail")
+                return LLMResult(
+                    is_real=True,
+                    relevance_score=88,
+                    relevance_reason="recovered",
+                    keyword_mentioned=True,
+                    importance="high",
+                    summary="AI recovered analysis",
+                    model_name="flaky",
+                    raw_response={"provider": "flaky"},
+                    used_fallback=False,
+                    prompt_name="analysis",
+                    provider="flaky",
+                )
+
+        provider = FlakyProvider()
+        orchestrator = LangGraphOrchestrator(provider)
+        keyword = Keyword(id=1, keyword="AI", query_template=None, enabled=True, priority=0)
+        hotspot = Hotspot(
+            id=1,
+            title="AI 热点",
+            url="https://example.com/hotspot",
+            source_id=1,
+            keyword_id=1,
+            snippet="热点摘要",
+            raw_payload={},
+        )
+
+        result, decision = orchestrator.analyze(hotspot, keyword)
+
+        self.assertTrue(result.used_fallback is False)
+        self.assertEqual(decision.decision.get("path"), "langchain")
+        self.assertTrue(decision.decision.get("langgraph_fallback"))
+        self.assertEqual(decision.decision.get("path_from"), "langgraph")
+
+    def test_hotness_scoring_applies_truth_penalty_and_bounds(self) -> None:
+        source = Source(id=1, name="rss", source_type="rss", enabled=True, config={"source_strength": 80})
+        hotspot = Hotspot(
+            id=1,
+            title="AI 热点",
+            url="https://example.com/hotspot",
+            source_id=1,
+            keyword_id=1,
+            snippet="热点摘要",
+            published_at=datetime(2026, 5, 24, tzinfo=timezone.utc),
+            raw_payload={},
+        )
+        hotspot.source = source
+
+        raw = SimpleNamespace(relevance_score=88.0, keyword_mentioned=True)
+        decision = compute_hotness_score(hotspot=hotspot, analysis=raw)
+        no_penalty = decision.score
+
+        penalty_result = compute_hotness_score(hotspot=hotspot, analysis=raw, trust_penalty=30.0)
+
+        self.assertTrue(0 <= no_penalty <= settings.hotness_max_score)
+        self.assertTrue(0 <= penalty_result.score <= no_penalty)
+        self.assertLess(penalty_result.score, no_penalty)
+
+    def test_source_selector_marks_success_and_failure(self) -> None:
+        source = Source(id=1, name="rss", source_type="rss", enabled=True, config={})
+        self.assertNotIn("health", source.config)
+
+        mark_source_success(source)
+        health = source.config.get("health")
+        self.assertEqual(health.get("status"), "healthy")
+        self.assertEqual(health.get("consecutive_failures"), 0)
+        self.assertEqual(health.get("success_count"), 1)
+
+        mark_source_failure(source, reason="err1")
+        health = source.config["health"]
+        self.assertEqual(health.get("status"), "recovering")
+        self.assertEqual(health.get("consecutive_failures"), 1)
+        self.assertEqual(health.get("failure_count"), 1)
+
+        for _ in range(settings.source_failure_threshold):
+            mark_source_failure(source, reason="err2")
+        health = source.config["health"]
+        self.assertEqual(health.get("status"), "degraded")
+        self.assertGreaterEqual(int(health.get("consecutive_failures") or 0), settings.source_failure_threshold)
+
+        sorted_sources = select_sources([source])
+        self.assertEqual(len(sorted_sources), 1)
+        self.assertEqual(sorted_sources[0].id, 1)
+
+    def test_source_selector_prioritizes_healthy_over_degraded(self) -> None:
+        healthy = Source(
+            id=1,
+            name="A",
+            source_type="rss",
+            enabled=True,
+            config={"weight": 10, "health": {"status": "healthy", "consecutive_failures": 0}},
+        )
+        degraded = Source(
+            id=2,
+            name="B",
+            source_type="rss",
+            enabled=True,
+            config={"weight": 100, "health": {"status": "degraded", "consecutive_failures": 5}},
+        )
+        recovering = Source(
+            id=3,
+            name="C",
+            source_type="rss",
+            enabled=True,
+            config={"weight": 20, "health": {"status": "recovering", "consecutive_failures": 2}},
+        )
+
+        ordered = select_sources([degraded, healthy, recovering])
+        self.assertEqual([source.id for source in ordered], [1, 3, 2])
 
     def test_ai_analysis_falls_back_when_provider_call_fails(self) -> None:
         self.patch_settings(
@@ -903,7 +1772,7 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
             raw_response={},
         )
         hotspot.ai_analysis = analysis  # type: ignore[attr-defined]
-        from apps.api.app.services import rss as rss_service
+        from server.app.services import rss as rss_service
 
         xml_content = rss_service._render_feed("测试", "desc", [hotspot])
         root = parse_xml(xml_content)

@@ -12,9 +12,9 @@ status: draft
 version: "0.1.0"
 owner: "StephenQiu30"
 inputs:
-  - "apps/api/app/core/settings.py"
-  - "apps/api/app/db/init_schema.py"
-  - "apps/api/app/db/session.py"
+  - "server/app/core/settings.py"
+  - "server/app/db/init_schema.py"
+  - "server/app/db/session.py"
 outputs:
   - "数据库连接策略与初始化流程可复现"
   - "PostgreSQL 下模型建表与 JSON 行为一致"
@@ -23,7 +23,7 @@ triggers:
   - "本地/测试与生产数据库策略不一致导致回归"
 downstream:
   - "docs/plans/25-后端数据库兼容与测试可复测计划.md"
-  - "apps/api/app/db/"
+  - "server/app/db/"
   - "tests/test_db_connection.py"
 ---
 
@@ -43,17 +43,17 @@ downstream:
 ## 3. 需求定义
 
 ### 3.1 连接策略
-- 新增数据库连接解析入口（`apps/api/app/db/connection.py`）。
+- 新增数据库连接解析入口（`server/app/db/connection.py`）。
 - 规则：
   - `DATABASE_URL` 仅允许 `postgresql` 与 `postgresql+psycopg` 等 PostgreSQL 方言（含 driver 变体）。
   - 不支持的数据库 URL 直接报错，避免隐式降级到其他数据库。
 
 ### 3.2 初始化策略
-- `apps/api/app/db/init_schema.py` 使用统一解析后的 URL。
+- `server/app/db/init_schema.py` 使用统一解析后的 URL。
 - PostgreSQL 路径继续使用 `sql/001_init_schema.sql` 执行初始化。
 
 ### 3.3 JSON 字段可复测性
-- `apps/api/app/models` 的 JSON 字段（`Hotspot.raw_payload`、`AiAnalysis.raw_response`、`Setting.value`、`Source.config`）使用 `JSON().with_variant(JSONB, "postgresql")`，并覆盖关键读写回归。
+- `server/app/models` 的 JSON 字段（`Hotspot.raw_payload`、`AiAnalysis.raw_response`、`Setting.value`、`Source.config`）使用 `JSON().with_variant(JSONB, "postgresql")`，并覆盖关键读写回归。
 
 ### 3.4 查询兼容
 - Hotspot 聚类版本与排序表达式在 PostgreSQL 下保持兼容实现。
@@ -64,7 +64,7 @@ downstream:
 - 决策结论：项目采用 PostgreSQL，**不计划支持 MySQL 或 SQLite 作为正式运行库**，原因如下：
   - 数据模型与初始化 SQL 大量依赖 PostgreSQL 特性：`JSONB`、`TIMESTAMPTZ`、分区/部分索引语义（`WHERE` 条件下的唯一索引）、以及 `BIGSERIAL`。
   - 业务层存在高频 JSON 写读与排序聚合，PG 的 JSONB 表达能力与索引策略更贴近现有数据形态（`sql/001_init_schema.sql` 已显式声明 `JSONB` 和 `jsonb` 字段默认值）。
-  - 项目依赖与部署默认链路已经稳定约定 `postgres` 服务（`docker-compose*.yml`、`.env.example`、`apps/api/app/core/settings.py`），保持单一数据库减少环境分叉与运维成本。
+  - 项目依赖与部署默认链路已经稳定约定 `postgres` 服务（`docker-compose*.yml`、`.env.example`、`server/app/core/settings.py`），保持单一数据库减少环境分叉与运维成本。
 - 约束要求：本 PRD 只固定 PostgreSQL 的连接与初始化链路，避免运行时静默切换，所有兼容性验收以 PostgreSQL 为准。
 
 ## 4. 非目标

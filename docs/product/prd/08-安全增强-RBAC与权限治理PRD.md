@@ -15,8 +15,8 @@ version: "0.1.0"
 owner: "StephenQiu30"
 inputs:
   - "docs/engineering/验收标准.md（A8）"
-  - "apps/api/app/core/security.py"
-  - "apps/api/app/api/routes/*"
+  - "server/app/core/security.py"
+  - "server/app/api/routes/*"
 outputs:
   - "最小 RBAC 权限模型与接口依赖"
   - "角色字段与权限错误返回一致性"
@@ -70,8 +70,8 @@ downstream:
 
 ## 6. 交付与验收
 
-- 在 `apps/api/app/models/user.py` 与 `sql/001_init_schema.sql` 增加 `role`；
-- 在 `apps/api/app/core/security.py` 实现 `Permission` 依赖；
+- 在 `server/app/models/user.py` 与 `sql/001_init_schema.sql` 增加 `role`；
+- 在 `server/app/core/security.py` 实现 `Permission` 依赖；
 - 在关键路由补齐权限依赖；
 - 增加 `tests/test_mvp_services.py` 的 RBAC 权限测试。
 

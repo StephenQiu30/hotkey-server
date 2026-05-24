@@ -34,27 +34,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
       - name: Run backend tests
+        working-directory: server
         env:
           DATABASE_URL: postgresql+psycopg://ai_user:ai_pass@localhost:5432/ai_hotspot_radar
           APP_ENV: test
           RATE_LIMIT_PER_MINUTE: 120
-        run: python -m unittest tests/test_mvp_services.py
-
-  web:
-    name: web-build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - name: Install web dependencies
-        working-directory: apps/web
-        run: npm install
-      - name: Run web checks
-        working-directory: apps/web
-        run: |
-          npm run build
-          npm run typecheck
+        run: PYTHONPATH=. python -m unittest tests/test_mvp_services.py

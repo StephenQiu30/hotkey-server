@@ -4,7 +4,7 @@ import json
 import sys
 from pathlib import Path
 
-from apps.api.app.main import create_app
+from server.app.main import create_app
 
 DEFAULT_OUTPUT_PATH = Path("docs/openapi.json")
 
