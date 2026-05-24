@@ -5,12 +5,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
-from apps.api.app.core import security
-from apps.api.app.core.security import issue_session_token, parse_session_token, verify_signed_token
-from apps.api.app.api.routes.auth import login_with_email, login_with_miniapp, register_with_email
-from apps.api.app.main import create_app
-from apps.api.app.models.user import User
-from apps.api.app.schemas.auth import EmailLoginRequest, EmailRegisterRequest, MiniappLoginRequest, UserRead
+from server.app.core import security
+from server.app.core.security import issue_session_token, parse_session_token, verify_signed_token
+from server.app.api.routes.auth import login_with_email, login_with_miniapp, register_with_email
+from server.app.main import create_app
+from server.app.models.user import User
+from server.app.schemas.auth import EmailLoginRequest, EmailRegisterRequest, MiniappLoginRequest, UserRead
 
 
 class FakeAuthSession:

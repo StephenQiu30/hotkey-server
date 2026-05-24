@@ -22,15 +22,3 @@ services:
       start_period: 15s
     restart: unless-stopped
 
-  web:
-    build:
-      context: .
-      dockerfile: Dockerfile.web
-    environment:
-      NEXT_PUBLIC_API_BASE_URL: http://api:8000
-    depends_on:
-      api:
-        condition: service_healthy
-    ports:
-      - "${WEB_PUBLISHED_PORT:-3000}:3000"
-    restart: unless-stopped

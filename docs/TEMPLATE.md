@@ -1,95 +1,100 @@
 ---
-layer: PRD
-doc_no: "00"
+layer: guide
+doc_no: "TEMPLATE"
+audience:
+  - PM
+  - Tech-Lead
+  - Dev
+  - QA
+  - Ops
+feature_area: documentation
+purpose: "定义 HotKey 文档标准格式，保证 PRD/Plan/验收/运维文档可追溯、可交付。"
+canonical_path: docs/TEMPLATE.md
+status: active
+version: "2.0.0"
+owner: "StephenQiu30"
+inputs:
+  - AGENTS.md
+  - AGENTS.local.md
+downstream:
+  - docs/README.md
+  - 各类 PRD 与 Plan 文档
+---
+
+# 文档模板（HotKey v2.0）
+
+## 0. 适用范围
+
+本模板用于本仓库 `docs/` 下的正式长期文档（PRD、Plan、Design、Acceptance、Operations）。  
+临时记录请写到 OpenSpec 的 `tasks`，不可作为 `docs/` 长期文档。
+
+## 1. 文档头部（YAML）
+
+所有正式文档必须保留以下字段：
+
+```yaml
+layer: PRD | Plan | Design | Acceptance | Operations | guide
+doc_no: "XX"
 audience:
   - PM
   - Dev
   - QA
   - Ops
-feature_area: example-feature
-purpose: "用一句话说明本文档要定义的产品边界、技术边界或验收边界。"
-canonical_path: "docs/product/00-example.md"
-status: draft
-version: "0.1.0"
-owner: "StephenQiu30"
+feature_area: "领域简称"
+purpose: "一句话说明本篇解决什么问题"
+canonical_path: "docs/xxx/..."
+status: draft | approved | archived
+version: "1.0.0"
+owner: "StevehnQiu30"
 inputs:
-  - "无"
+  - "上游文档路径"
 outputs:
-  - "本文档产生的长期决策或交付物"
+  - "本稿会产出的交付物"
 triggers:
-  - "什么情况下需要阅读或更新本文档"
+  - "什么条件下必须更新本稿"
 downstream:
-  - "后续计划、验收、设计或运维文档路径"
----
-
-# 文档标题
-
-## 1. 背景
-
-说明为什么需要这份文档，当前项目遇到了什么问题，为什么该问题值得长期沉淀到 `docs/`。
-
-## 2. 目标
-
-说明本文档要达成的目标。目标应符合 SMART 原则，并能被设计、开发、QA 或运维验证。
-
-需求类文档可以使用 BDD 场景描述：
-
-```gherkin
-Given 当前前置条件
-When 用户或系统执行某个动作
-Then 系统应产生可验证的结果
-And 补充关键验收行为
+  - "下游文档路径"
 ```
 
-## 3. 非目标
+## 2. 必含章节（按文档类型）
 
-列出本文档明确不解决的问题，避免范围膨胀。
+- PRD
+  - 背景、目标（SMART）、非目标、输入、功能边界、数据字段、验收、风险、变更记录。
+- Plan
+  - 目标、文件清单、任务拆解、TDD验收清单、依赖关系、顺序、回滚点、变更记录。
+- Acceptance
+  - Given/When/Then 场景、执行脚本、证据、失败回退、残余风险。
+- Operations
+  - 运行约束、发布、回滚、监控、交接规则。
 
-- 不处理的事项 1。
-- 不处理的事项 2。
+## 3. 文档质量门禁
 
-## 4. 核心内容
+- 禁止中间产物（TBD、TODO、待补充占位）入库。
+- 标题和文件名必须可读，可追溯地表达领域与序号。
+- 测试标准与验收项必须可执行（测试名、预期字段、日志项可核验）。
+- 每份文档须包含变更记录。
 
-按文档类型展开主体内容：
+## 4. 与本仓库协作约束
 
-1. PRD：写核心用户故事、体验原则、产品边界、数据与权限边界。
-2. Plan：写阶段计划、任务拆解、依赖、风险和交付顺序。
-3. Design：写技术方案、架构决策、接口、数据结构和关键权衡。
-4. Acceptance：写验收门禁、测试场景、验证证据和残余风险。
-5. Operations：写发布、部署、Git/PR、回滚和运行维护流程。
+- PRD 先于 Plan。
+- Plan 与 Issue 一一映射，且每个 issue 包含 Given/When/Then、回退与回滚点。
+- 仅在计划和验收通过后创建 PR，PR 模板必须包含 tests/commands/result 说明。
 
-## 5. 关联文档
+## 5. 示例结构
 
-### 5.1 输入文档
+```text
+docs/
+  product/
+    prd/
+  plans/
+    28-...
+  acceptance/
+  engineering/
+  archive/
+```
 
-1. `docs/...`
-
-### 5.2 输出文档
-
-1. `docs/...`
-
-### 5.3 下游文档
-
-1. `docs/...`
-
-## 6. 验收门禁
-
-说明如何判断本文档已经完整、可执行、可验证。
-
-- 验收项 1。
-- 验收项 2。
-
-## 7. 风险与边界
-
-说明当前仍需关注的风险、前置依赖、延期事项或需要人工确认的问题。
-
-## 8. 待确认问题
-
-- 问题 1。
-- 问题 2。
-
-## 9. 变更记录
+## 6. 更新记录
 
 | 日期 | 作者 | 版本 | 变更说明 |
 | --- | --- | --- | --- |
-| YYYY-MM-DD | StephenQiu30 | 0.1.0 | 初始化文档 |
+| 2026-05-24 | StephenQiu30 | 2.0.0 | 替换为执行用模板，明确测试与交付门禁 |
