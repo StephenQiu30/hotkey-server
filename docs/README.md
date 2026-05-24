@@ -44,7 +44,7 @@
   - `python3 -m unittest discover -s tests -p 'test_repository_governance.py'`
   - `find . -type d -name apps -print`
   - `find . -type f | rg '(^|/)apps/'`
-  - `git status --short`（测试前确认无中间产物；提交前后都要求输出为空）
+  - `git status --short`（执行前确认无未计划中间产物；测试后/提交前后都要求输出为空）
 
 ## 推荐阅读路径
 
