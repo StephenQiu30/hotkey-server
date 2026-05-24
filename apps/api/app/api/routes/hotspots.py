@@ -113,11 +113,11 @@ def _cluster_scope_count(cluster_id: str):
 
 
 def _cluster_version_expr():
-    return cast(Hotspot.raw_payload["cluster_version"].astext, Integer)
+    return cast(Hotspot.raw_payload["cluster_version"], Integer)
 
 
 def _apply_sort(stmt: Select, sort: str) -> Select:
-    trend_score = cast(Hotspot.raw_payload["trend_score"].astext, Numeric(8, 2))
+    trend_score = cast(Hotspot.raw_payload["trend_score"], Numeric(8, 2))
     if sort == "rank_score_desc":
         return stmt.outerjoin(AiAnalysis, AiAnalysis.hotspot_id == Hotspot.id).order_by(AiAnalysis.relevance_score.desc().nullslast(), trend_score.desc().nullslast(), Hotspot.id.desc())
     if sort == "trend_score_desc":

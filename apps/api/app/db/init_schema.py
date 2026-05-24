@@ -8,19 +8,30 @@ from sqlalchemy.exc import OperationalError
 
 from apps.api.app.core.settings import settings
 from apps.api.app.db.base import Base
+from apps.api.app.db.connection import resolve_database_url
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 SCHEMA_PATH = PROJECT_ROOT / "sql" / "001_init_schema.sql"
 
 
 def initialize_database() -> None:
-    """Initialize an empty PostgreSQL database from the SQL schema file."""
+    """Initialize database from schema.
+
+    For tests, automatically fall back to SQLAlchemy metadata creation with
+    SQLite to avoid external PostgreSQL dependency while preserving existing
+    PostgreSQL schema behavior in production.
+    """
+    database_url = resolve_database_url()
+    if database_url.startswith("sqlite:///"):
+        create_schema_from_models_for_dev(database_url)
+        return
+
     schema_statements = [
         statement.strip()
         for statement in SCHEMA_PATH.read_text(encoding="utf-8").split(";")
         if statement.strip()
     ]
-    engine = create_engine(settings.database_url, pool_pre_ping=True)
+    engine = create_engine(database_url, pool_pre_ping=True)
 
     for attempt in range(1, settings.database_init_retries + 1):
         try:
@@ -34,11 +45,12 @@ def initialize_database() -> None:
             time.sleep(settings.database_init_retry_seconds)
 
 
-def create_schema_from_models_for_dev() -> None:
+def create_schema_from_models_for_dev(database_url: str | None = None) -> None:
     """Development fallback only; sql/001_init_schema.sql remains authoritative."""
     import apps.api.app.models  # noqa: F401
 
-    engine = create_engine(settings.database_url, pool_pre_ping=True)
+    database_url = database_url or resolve_database_url()
+    engine = create_engine(database_url, pool_pre_ping=True)
     Base.metadata.create_all(bind=engine)
 
 

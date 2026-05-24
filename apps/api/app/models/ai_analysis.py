@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Numeric, Text, func
+from sqlalchemy import JSON as PortableJSON
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,7 +28,11 @@ class AiAnalysis(Base):
     importance: Mapped[str] = mapped_column(Text, nullable=False, server_default="medium")
     summary: Mapped[str | None] = mapped_column(Text)
     model_name: Mapped[str | None] = mapped_column(Text)
-    raw_response: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
+    raw_response: Mapped[dict[str, Any]] = mapped_column(
+        PortableJSON().with_variant(JSONB, "postgresql"),
+        nullable=False,
+        server_default="{}",
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 

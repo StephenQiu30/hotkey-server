@@ -190,7 +190,7 @@ def _next_cluster_version(session: Session, cluster_id: str) -> int:
     max_version = session.scalar(
         select(
             func.coalesce(
-                func.max(cast(Hotspot.raw_payload["cluster_version"].astext, Integer)),
+                func.max(cast(Hotspot.raw_payload["cluster_version"], Integer)),
                 0,
             )
         ).where(Hotspot.raw_payload["cluster_id"].as_string() == cluster_id)
