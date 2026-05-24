@@ -21,6 +21,8 @@ from server.app.services.hotspot_scoring import HotnessDecision, compute_hotness
 from server.app.services.providers.selector import select_sources
 from server.app.services.source_trust import SourceEvidence, collect_source_evidence
 
+_DEFAULT_HOTNESS_ACTIVE_THRESHOLD = 70.0
+
 
 def run_hotspot_check(session: Session, trigger_type: str = "manual") -> CheckRun:
     ensure_default_sources(session)
@@ -257,7 +259,7 @@ def _decide_hotspot_status(
     # without blocking the ingestion and analysis pipeline.
     if _is_low_trust_blocked(evidence):
         return "filtered"
-    return "active" if is_analysis_active(result) and hotness.score >= settings.hotness_active_threshold else "filtered"
+    return "active" if is_analysis_active(result) and hotness.score >= _hotness_active_threshold() else "filtered"
 
 
 def _is_low_trust_blocked(result_evidence: SourceEvidence | object | None) -> bool:
@@ -285,6 +287,8 @@ def _build_analysis_raw_response(
         "source_evidence_version": int(raw_bundle.get("version", 0)),
         "ai_orchestrator_decision": getattr(analysis_result, "ai_orchestrator_decision", None),
         "enhance_path": getattr(analysis_result, "enhance_path", "default"),
+        "hotness_active_threshold": _hotness_active_threshold(),
+        "hotness_filter_reason": _hotness_filter_reason(analysis_result, hotness, evidence),
         "fallback_reason": getattr(analysis_result, "fallback_reason", None),
         "trace_id": getattr(analysis_result, "trace_id", None),
         "provider_trace": list(getattr(analysis_result, "provider_trace", [])),
@@ -293,6 +297,28 @@ def _build_analysis_raw_response(
         "token_usage": getattr(analysis_result, "token_usage", None),
         "prompt_name": getattr(analysis_result, "prompt_name", None),
     }
+
+
+def _hotness_active_threshold() -> float:
+    # Keep the hotness gate rollback-safe: a bad env/config value must not break the ingest loop.
+    try:
+        return float(settings.hotness_active_threshold)
+    except (TypeError, ValueError):
+        return _DEFAULT_HOTNESS_ACTIVE_THRESHOLD
+
+
+def _hotness_filter_reason(
+    result: object,
+    hotness: HotnessDecision,
+    evidence: SourceEvidence,
+) -> str | None:
+    if _is_low_trust_blocked(evidence):
+        return "low_trust_source"
+    if not is_analysis_active(result):
+        return "inactive_analysis"
+    if hotness.score < _hotness_active_threshold():
+        return "below_threshold"
+    return None
 
 
 def _should_enhance_analysis(
