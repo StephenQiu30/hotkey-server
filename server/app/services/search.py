@@ -51,18 +51,21 @@ def search_sources(session: Session, query: str, source_types: list[str] | None 
                     published_at=candidate.published_at,
                     raw_payload=candidate.raw_payload,
                 )
+                hotspot.source = source
                 evidence = collect_source_evidence(hotspot, cross_source_count=cross_source_count)
                 analysis = analyze_hotspot(hotspot, keyword, prefer_langgraph=False)
                 hotness = _build_hotness_decision(hotspot=hotspot, analysis=analysis, evidence=evidence)
                 if _should_enhance_analysis(
                     evidence,
                     hotness_score=hotness.score,
-                    langgraph_enabled=settings.AI_USE_LANGGRAPH,
+                    langgraph_enabled=settings.ai_use_langgraph,
                 ):
                     analysis = analyze_hotspot(hotspot, keyword, prefer_langgraph=True)
                     hotness = _build_hotness_decision(hotspot=hotspot, analysis=analysis, evidence=evidence)
                 _append_enrichment_payload(candidate.raw_payload, analysis_result=analysis, evidence=evidence, hotness=hotness)
-                status = "active" if is_analysis_active(analysis) and hotness.score >= settings.hotness_active_threshold else "filtered"
+                status = "filtered" if _is_low_trust_blocked(evidence) else (
+                    "active" if is_analysis_active(analysis) and hotness.score >= settings.hotness_active_threshold else "filtered"
+                )
                 items.append(
                     SearchResultRead(
                         title=candidate.title,
@@ -117,11 +120,16 @@ def _sort_items(items: list[SearchResultRead]) -> list[SearchResultRead]:
 
 def _count_cross_sources(session: Session, normalized_url: str) -> int:
     statement = select(func.count(func.distinct(Hotspot.source_id))).where(Hotspot.url == normalized_url)
-    if hasattr(session, "scalar"):
-        total = session.scalar(statement)
+    scalar_fn = getattr(session, "scalar", None)
+    if callable(scalar_fn):
+        total = scalar_fn(statement)
         return int(total or 0) + 1
 
-    raw_total = session.scalars(statement)
+    raw_scalars = getattr(session, "scalars", None)
+    if not callable(raw_scalars):
+        return 1
+
+    raw_total = raw_scalars(statement)
     if hasattr(raw_total, "all"):
         rows = raw_total.all()
     else:
@@ -184,3 +192,7 @@ def _should_enhance_analysis(
     source_conflict = getattr(evidence, "cross_source_count", 1) >= 2
     truth_low = evidence.truth_score() <= settings.ai_enhance_risk_threshold
     return hotness_score >= settings.ai_enhance_hotness_threshold and (source_conflict or truth_low)
+
+
+def _is_low_trust_blocked(evidence: SourceEvidence) -> bool:
+    return evidence.risk_level() == "low"

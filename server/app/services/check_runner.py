@@ -73,18 +73,20 @@ def run_hotspot_check(session: Session, trigger_type: str = "manual") -> CheckRu
                         continue
                     if hotspot is None:
                         continue
+                    if hotspot.source is None:
+                        hotspot.source = source
                     evidence = collect_source_evidence(hotspot, cross_source_count=cross_source_count)
                     analysis_result = analyze_hotspot(hotspot, keyword, prefer_langgraph=False)
                     hotness = _build_hotness_decision(hotspot=hotspot, analysis=analysis_result, evidence=evidence)
                     if _should_enhance_analysis(
                         evidence,
                         hotness_score=hotness.score,
-                        langgraph_enabled=settings.AI_USE_LANGGRAPH,
+                        langgraph_enabled=settings.ai_use_langgraph,
                     ):
                         analysis_result = analyze_hotspot(hotspot, keyword, prefer_langgraph=True)
                         hotness = _build_hotness_decision(hotspot=hotspot, analysis=analysis_result, evidence=evidence)
                     _append_enrichment_payload(candidate.raw_payload, analysis_result=analysis_result, evidence=evidence, hotness=hotness)
-                    hotspot.status = _decide_hotspot_status(analysis_result, hotness)
+                    hotspot.status = _decide_hotspot_status(analysis_result, hotness, evidence)
                     hotspot.raw_payload.update(candidate.raw_payload)
                     final_raw_response = _build_analysis_raw_response(
                         analysis_result=analysis_result,
@@ -246,8 +248,20 @@ def _append_enrichment_payload(
     )
 
 
-def _decide_hotspot_status(result: object, hotness: HotnessDecision) -> str:
+def _decide_hotspot_status(
+    result: object,
+    hotness: HotnessDecision,
+    evidence: SourceEvidence,
+) -> str:
+    if _is_low_trust_blocked(evidence):
+        return "filtered"
     return "active" if is_analysis_active(result) and hotness.score >= settings.hotness_active_threshold else "filtered"
+
+
+def _is_low_trust_blocked(result_evidence: SourceEvidence | object | None) -> bool:
+    if isinstance(result_evidence, SourceEvidence):
+        return result_evidence.risk_level() == "low"
+    return False
 
 
 def _build_analysis_raw_response(

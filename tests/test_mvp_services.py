@@ -359,7 +359,7 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
             captured_candidate["candidate"] = candidate
             return raw_hotspot
 
-        def _fake_analyze(_hotspot: Hotspot, _keyword: Keyword, _prefer_langgraph: bool = False) -> AnalysisResult:
+        def _fake_analyze(_hotspot: Hotspot, _keyword: Keyword, prefer_langgraph: bool = False) -> AnalysisResult:
             return AnalysisResult(
                 is_real=True,
                 relevance_score=80,
@@ -391,6 +391,79 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertEqual(candidate_payload.get("cluster_version"), 2)
         self.assertIn("clustered_at", candidate_payload)
         self.assertEqual(check_run.success_count, 1)
+
+    def test_run_hotspot_check_marks_low_trust_event_as_filtered_and_skip_notify(self) -> None:
+        self.patch_settings(openai_api_key=None, openai_model=None, hotness_active_threshold=40.0)
+        session = FakeSessionForRun()
+        keyword = Keyword(id=1, keyword="AI", query_template=None, enabled=True, priority=1)
+        source = Source(id=1, name="Hacker News", source_type="hacker_news", enabled=True, config={})
+        raw_hotspot = Hotspot(
+            id=60,
+            title="AI agent",
+            url="https://example.com/ai-agent-low-trust",
+            source_id=1,
+            keyword_id=1,
+            raw_payload={},
+        )
+        raw_hotspot.source = source
+
+        def _fake_scalars_select(_statement: object) -> list[object]:
+            text = str(_statement)
+            if "keywords" in text:
+                return [keyword]
+            if "sources" in text:
+                return [source]
+            return []
+
+        session.scalars = _fake_scalars_select  # type: ignore[method-assign]
+
+        candidate = Candidate(
+            title="AI agent",
+            url="https://example.com/ai-agent-low-trust",
+            source_id=1,
+            keyword_id=1,
+            author="alice",
+            snippet="AI trend",
+            raw_payload={},
+            published_at=None,
+        )
+
+        def _fake_analyze(_hotspot: Hotspot, _keyword: Keyword, prefer_langgraph: bool = False) -> AnalysisResult:
+            return AnalysisResult(
+                is_real=True,
+                relevance_score=95,
+                relevance_reason="ok",
+                keyword_mentioned=True,
+                importance="high",
+                summary="",
+                model_name="fallback",
+                raw_response={},
+            )
+
+        low_risk_evidence = SourceEvidence(
+            source_reachable=False,
+            url_stability=False,
+            domain_risk=20.0,
+            publish_depth=0.0,
+            cross_source_count=1,
+            status="unreachable",
+            risk_tags=["unreachable"],
+        )
+
+        with (
+            patch("server.app.services.check_runner._next_cluster_version", return_value=2),
+            patch("server.app.services.check_runner.fetch_candidates", return_value=[candidate]),
+            patch("server.app.services.check_runner._get_or_create_hotspot", return_value=raw_hotspot),
+            patch("server.app.services.check_runner.analyze_hotspot", side_effect=_fake_analyze),
+            patch("server.app.services.check_runner.collect_source_evidence", return_value=low_risk_evidence),
+            patch("server.app.services.check_runner.notify_hotspot") as notify_hotspot_mock,
+        ):
+            session.scalars = _fake_scalars_select  # type: ignore[assignment]
+            check_run = run_hotspot_check(session)
+
+        self.assertEqual(raw_hotspot.status, "filtered")
+        self.assertEqual(check_run.success_count, 1)
+        notify_hotspot_mock.assert_not_called()
 
     def test_get_hotspot_cluster_route_reads_clustered_items(self) -> None:
         now = datetime.now(tz=timezone.utc)
@@ -662,15 +735,29 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
             source_id=1,
             keyword_id=None,
             author="alice",
-            published_at=datetime(2026, 4, 25, tzinfo=timezone.utc),
+            published_at=datetime.now(tz=timezone.utc),
             snippet="OpenAI agent search tooling launched.",
             raw_payload={"id": "1"},
         )
+
+        def _fake_analyze(_hotspot: Hotspot, _keyword: Keyword, prefer_langgraph: bool = False) -> AnalysisResult:
+            return AnalysisResult(
+                is_real=True,
+                relevance_score=95,
+                relevance_reason="ok",
+                keyword_mentioned=True,
+                importance="high",
+                summary="",
+                model_name="fallback",
+                raw_response={},
+            )
+
         with (
             patch("server.app.services.search.ensure_default_sources") as ensure_defaults,
             patch("server.app.services.search._load_search_sources", return_value=[source]),
             patch("server.app.services.search.expand_keyword_queries", return_value=["OpenAI agent"]),
             patch("server.app.services.search.fetch_candidates", return_value=[candidate]),
+            patch("server.app.services.search.analyze_hotspot", side_effect=_fake_analyze),
         ):
             result = search_sources(ReadOnlySession(), "OpenAI agent")
 
@@ -678,6 +765,44 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertEqual(len(result.items), 1)
         self.assertEqual(result.items[0].status, "active")
         self.assertEqual(result.errors, [])
+
+    def test_search_filters_low_trust_result(self) -> None:
+        self.patch_settings(openai_api_key=None, openai_model=None, relevance_threshold=50.0)
+        source = Source(id=1, name="Hacker News", source_type="hacker_news", enabled=True, config={})
+        class _SearchSession:
+            def scalar(self, _statement: object) -> int:
+                return 0
+
+        candidate = Candidate(
+            title="OpenAI ships agent search",
+            url="https://example.com/agent-search-low-trust",
+            source_id=1,
+            keyword_id=None,
+            author="alice",
+            published_at=datetime(2026, 4, 25, tzinfo=timezone.utc),
+            snippet="OpenAI agent search tooling launched.",
+            raw_payload={"id": "1"},
+        )
+        low_risk_evidence = SourceEvidence(
+            source_reachable=False,
+            url_stability=False,
+            domain_risk=20.0,
+            publish_depth=0.0,
+            cross_source_count=1,
+            status="unreachable",
+            risk_tags=["unreachable"],
+        )
+        with (
+            patch("server.app.services.search.ensure_default_sources"),
+            patch("server.app.services.search._load_search_sources", return_value=[source]),
+            patch("server.app.services.search.expand_keyword_queries", return_value=["OpenAI agent"]),
+            patch("server.app.services.search.fetch_candidates", return_value=[candidate]),
+            patch("server.app.services.search.collect_source_evidence", return_value=low_risk_evidence),
+        ):
+            result = search_sources(_SearchSession(), "OpenAI agent")
+
+        self.assertEqual(len(result.items), 1)
+        self.assertEqual(result.items[0].status, "filtered")
 
     def test_report_period_supports_daily_and_weekly_defaults(self) -> None:
         daily_start, daily_end = report_period("daily", period_start=date(2026, 4, 25))
