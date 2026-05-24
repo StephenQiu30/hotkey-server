@@ -589,6 +589,22 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertEqual(evidence.domain_risk, 40.0)
         self.assertIn("shortlink", evidence.risk_tags)
 
+    def test_source_evidence_marks_duplicate_query_parameter_pollution(self) -> None:
+        evidence = collect_source_evidence(
+            Hotspot(
+                id=311,
+                title="AI",
+                url="https://example.com/hot?id=1&id=2",
+                source_id=1,
+                keyword_id=1,
+                raw_payload={},
+            ),
+            cross_source_count=1,
+        )
+
+        self.assertFalse(evidence.url_stability)
+        self.assertIn("duplicate_query_param", evidence.risk_tags)
+
     def test_cross_source_count_in_evidence(self) -> None:
         evidence1 = collect_source_evidence(
             Hotspot(

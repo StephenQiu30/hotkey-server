@@ -86,14 +86,20 @@ def collect_source_evidence(hotspot: Hotspot, *, cross_source_count: int = 1) ->
     now = datetime.now(timezone.utc)
     parsed = urlparse((hotspot.url or "").strip())
     hostname = _domain(parsed.hostname)
-    params = {k.lower() for k, _ in parse_qsl(parsed.query or "", keep_blank_values=True)}
-    url_stability = not any(tag in {"utm_source", "utm_medium", "fbclid", "yclid", "ref"} for tag in params)
+    param_pairs = [(k.lower(), v) for k, v in parse_qsl(parsed.query or "", keep_blank_values=True)]
+    params = {key for key, _ in param_pairs}
+    duplicate_params = {key for key in params if sum(1 for pair_key, _ in param_pairs if pair_key == key) > 1}
+    # Repeated query keys are treated as parameter pollution because they can change canonical URLs
+    # and make source evidence hard to reproduce during later audits.
+    url_stability = not any(tag in {"utm_source", "utm_medium", "fbclid", "yclid", "ref"} for tag in params) and not duplicate_params
     source_reachable = bool(parsed.scheme in {"http", "https"} and hostname)
 
     domain_risk_score, domain_tags = _domain_risk_for_host(hostname)
     tags = list(dict.fromkeys(domain_tags))
     if not url_stability:
         tags.append("query_noise")
+    if duplicate_params:
+        tags.append("duplicate_query_param")
     if parsed.fragment:
         tags.append("fragment")
 
