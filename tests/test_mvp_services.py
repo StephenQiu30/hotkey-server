@@ -309,6 +309,37 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertEqual(payload.trend_score, 64)
         self.assertGreater(payload.rank_score, payload.trend_score)
 
+    def test_hotspot_read_exposes_source_route_fields(self) -> None:
+        created_at = datetime.now(tz=timezone.utc)
+        hotspot = Hotspot(
+            id=14,
+            title="AI source fallback trend",
+            url="https://example.com/source-fallback",
+            source_id=1,
+            keyword_id=1,
+            snippet="Source fallback details.",
+            status="active",
+            raw_payload={
+                "source_selected": "backup",
+                "source_selected_type": "rss",
+                "source_fallback": {
+                    "from": "primary",
+                    "to": "backup",
+                    "reason": "timeout",
+                },
+            },
+            fetched_at=created_at,
+            created_at=created_at,
+            updated_at=created_at,
+        )
+
+        payload = HotspotRead.model_validate(hotspot)
+
+        self.assertEqual(payload.source_selected, "backup")
+        self.assertEqual(payload.source_selected_type, "rss")
+        self.assertEqual(payload.source_fallback["from"], "primary")
+        self.assertEqual(payload.source_fallback["reason"], "timeout")
+
     # PRD 24/25/26/27 traceability: these names intentionally mirror the Plan TDD checklist.
     def test_compute_hotness_clamps_to_0_100(self) -> None:
         source = Source(id=11, name="rss", source_type="rss", enabled=True, config={"source_strength": 120})

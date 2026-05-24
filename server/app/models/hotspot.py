@@ -139,3 +139,22 @@ class Hotspot(Base):
         if self.ai_analysis is None:
             return 0
         return int(self.ai_analysis.source_evidence_version or 0)
+
+    @property
+    def source_selected(self) -> str | None:
+        if isinstance(self.raw_payload, dict) and isinstance(self.raw_payload.get("source_selected"), str):
+            return self.raw_payload["source_selected"]
+        return None
+
+    @property
+    def source_selected_type(self) -> str | None:
+        if isinstance(self.raw_payload, dict) and isinstance(self.raw_payload.get("source_selected_type"), str):
+            return self.raw_payload["source_selected_type"]
+        return None
+
+    @property
+    def source_fallback(self) -> dict[str, Any]:
+        # Expose source routing audit data as schema-safe defaults so fallback evidence stays API-readable.
+        if isinstance(self.raw_payload, dict) and isinstance(self.raw_payload.get("source_fallback"), dict):
+            return self.raw_payload["source_fallback"]  # type: ignore[return-value]
+        return {}
