@@ -1704,6 +1704,21 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertTrue(check_runner_should_enhance(conflict, hotness_score=75, langgraph_enabled=True))
         self.assertFalse(check_runner_should_enhance(low_truth, hotness_score=65, langgraph_enabled=True))
 
+    def test_langgraph_false_string_keeps_enhancement_disabled(self) -> None:
+        self.patch_settings(ai_enhance_hotness_threshold=70.0, ai_enhance_risk_threshold=40.0)
+        low_truth = SourceEvidence(
+            source_reachable=True,
+            url_stability=False,
+            domain_risk=0,
+            publish_depth=0,
+            cross_source_count=2,
+            status="ok",
+            risk_tags=[],
+        )
+
+        self.assertFalse(check_runner_should_enhance(low_truth, hotness_score=95, langgraph_enabled="false"))
+        self.assertFalse(search_should_enhance(low_truth, hotness_score=95, langgraph_enabled="false"))
+
     def test_build_analysis_raw_response_merges_enrichment_fields(self) -> None:
         source = Source(id=2, name="hacker news", source_type="hacker_news", enabled=True, config={})
         hotspot = Hotspot(

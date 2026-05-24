@@ -360,15 +360,21 @@ def _should_enhance_analysis(
     evidence: SourceEvidence,
     *,
     hotness_score: float,
-    langgraph_enabled: bool,
+    langgraph_enabled: object,
 ) -> bool:
     # LangGraph is an opt-in enhancement: only hot events with weak/conflicting evidence enter it.
-    # The default path remains LangChain for cost control and predictable fallback behavior.
-    if not langgraph_enabled:
+    # Normalize config-like values so string "false" cannot accidentally enable the costly path.
+    if not _is_langgraph_enabled(langgraph_enabled):
         return False
     source_conflict = getattr(evidence, "cross_source_count", 1) >= 2
     truth_low = evidence.truth_score() <= settings.ai_enhance_risk_threshold
     return hotness_score >= settings.ai_enhance_hotness_threshold and (source_conflict or truth_low)
+
+
+def _is_langgraph_enabled(value: object) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
 
 
 def _next_cluster_version(session: Session, cluster_id: str) -> int:
