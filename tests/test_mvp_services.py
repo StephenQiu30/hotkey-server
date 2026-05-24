@@ -174,7 +174,7 @@ class SettingsPatchMixin:
             return {"Authorization": f"Bearer {token}"}
 
     def _app_with_user(self, role: str, session_override: object | None = None):
-        app = create_app()
+        app = create_app(initialize_on_startup=False)
         user = User(
             id=10001,
             github_id=987654321,
@@ -1594,7 +1594,7 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
 
     def test_rate_limit_middleware_blocks_excessive_requests(self) -> None:
         self.patch_settings(rate_limit_per_minute=2)
-        app = create_app()
+        app = create_app(initialize_on_startup=False)
         with TestClient(app) as client:
             responses = [client.get("/api/health") for _ in range(3)]
         statuses = [response.status_code for response in responses]
@@ -1604,7 +1604,7 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
 
     def test_rate_limit_middleware_uses_forwarded_for(self) -> None:
         self.patch_settings(rate_limit_per_minute=1)
-        app = create_app()
+        app = create_app(initialize_on_startup=False)
         with TestClient(app) as client:
             first = client.get("/api/health", headers={"X-Forwarded-For": "203.0.113.17"})
             second = client.get("/api/health", headers={"X-Forwarded-For": "203.0.113.17"})
@@ -1616,10 +1616,10 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
 
     def test_ops_metrics_includes_request_and_status_counters(self) -> None:
         reset_request_metrics()
-        app = create_app()
+        app = self._app_with_user("admin")
         with TestClient(app) as client:
             first = client.get("/api/health")
-            metrics_resp = client.get("/api/ops/metrics", headers=self._auth_headers())
+            metrics_resp = client.get("/api/ops/metrics")
 
         self.assertEqual(first.status_code, 200)
         self.assertEqual(metrics_resp.status_code, 200)
@@ -1632,11 +1632,11 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
     def test_ops_metrics_counts_rate_limit_blocks(self) -> None:
         reset_request_metrics()
         self.patch_settings(rate_limit_per_minute=1)
-        app = create_app()
+        app = self._app_with_user("admin")
         with TestClient(app) as client:
             first = client.get("/api/health", headers={"X-Forwarded-For": "192.0.2.9"})
             second = client.get("/api/health", headers={"X-Forwarded-For": "192.0.2.9"})
-            metrics_resp = client.get("/api/ops/metrics", headers=self._auth_headers())
+            metrics_resp = client.get("/api/ops/metrics")
 
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 429)
@@ -1647,7 +1647,7 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertGreaterEqual(metrics["active_rate_limit_clients"], 1)
 
     def test_analytics_endpoints_return_aggregated_data(self) -> None:
-        app = create_app()
+        app = self._app_with_user("admin")
         trend = [{"date": "2026-05-01", "total_count": 3, "active_count": 2, "filtered_count": 1}]
         sources = [
             {
@@ -1665,9 +1665,9 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
             patch("server.app.api.routes.analytics.analytics_service.get_sentiment", return_value=sentiment),
             TestClient(app) as client,
         ):
-            trend_response = client.get("/api/analytics/trend?days=7", headers=self._auth_headers())
-            source_response = client.get("/api/analytics/sources?days=7&limit=5", headers=self._auth_headers())
-            sentiment_response = client.get("/api/analytics/sentiment?days=7", headers=self._auth_headers())
+            trend_response = client.get("/api/analytics/trend?days=7")
+            source_response = client.get("/api/analytics/sources?days=7&limit=5")
+            sentiment_response = client.get("/api/analytics/sentiment?days=7")
 
         self.assertEqual(trend_response.status_code, 200)
         self.assertEqual(source_response.status_code, 200)
@@ -1677,8 +1677,8 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertEqual(sentiment_response.json()["total"], 3)
 
     def test_error_response_is_structured_and_hides_stacktrace(self) -> None:
-        with TestClient(create_app()) as client:
-            resp = client.get("/api/notifications?limit=0", headers=self._auth_headers())
+        with TestClient(self._app_with_user("admin")) as client:
+            resp = client.get("/api/notifications?limit=0")
         self.assertEqual(resp.status_code, 422)
         payload = resp.json()
         self.assertEqual(payload["error"]["code"], "validation_error")
@@ -2128,7 +2128,7 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertEqual(decoded["type"], "unit-test")
 
     def test_api_endpoints_require_auth(self) -> None:
-        app = create_app()
+        app = create_app(initialize_on_startup=False)
         with TestClient(app) as client:
             response = client.get("/api/keywords")
         self.assertEqual(response.status_code, 401)

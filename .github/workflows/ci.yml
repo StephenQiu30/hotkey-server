@@ -34,9 +34,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
       - name: Run backend tests
-        working-directory: server
         env:
           DATABASE_URL: postgresql+psycopg://ai_user:ai_pass@localhost:5432/ai_hotspot_radar
           APP_ENV: test
           RATE_LIMIT_PER_MINUTE: 120
-        run: PYTHONPATH=. python -m unittest tests/test_mvp_services.py
+        run: PYTHONPATH=. python -m unittest tests.test_mvp_services
