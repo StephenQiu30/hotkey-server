@@ -15,7 +15,7 @@ owner: "StephenQiu30"
 inputs:
   - "docs/product/prd/08-安全增强-RBAC与权限治理PRD.md"
   - "docs/plans/15-安全增强与RBAC计划.md"
-  - "apps/api/app/api/deps.py"
+  - "server/app/api/deps.py"
 outputs:
   - "可复核的角色边界定义与操作手册"
   - "权限异常排障流程与验证清单"

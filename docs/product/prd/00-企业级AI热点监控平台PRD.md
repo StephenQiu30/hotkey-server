@@ -257,6 +257,6 @@ downstream:
 
 - 优先实现 MVP，避免过度设计。
 - 新增能力先更新 PRD/技术方案/验收项再编码。
-- 与现有仓库事实源对齐后再改造：`apps/api`、`apps/web`、`packages/core`、`sql`、`infra`。
+- 与现有仓库事实源对齐后再改造：`server`、`apps/web`、`packages/core`、`sql`、`infra`。
 - 任务提交建议沿用 `test/impl/refactor/chore` 与中文提交信息。
 
