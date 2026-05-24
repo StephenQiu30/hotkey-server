@@ -340,6 +340,38 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertEqual(payload.source_fallback["from"], "primary")
         self.assertEqual(payload.source_fallback["reason"], "timeout")
 
+    def test_hotspot_read_falls_back_to_raw_payload_source_evidence(self) -> None:
+        created_at = datetime.now(tz=timezone.utc)
+        hotspot = Hotspot(
+            id=15,
+            title="AI evidence persistence",
+            url="https://example.com/evidence",
+            source_id=1,
+            keyword_id=1,
+            snippet="Evidence persisted in raw payload.",
+            status="filtered",
+            raw_payload={
+                "source_risk_level": "low",
+                "source_risk_tags": ["duplicate_query_param"],
+                "source_evidence_bundle": {
+                    "version": 1,
+                    "cross_source_count": 3,
+                    "status": "ok",
+                },
+                "source_evidence_version": 1,
+            },
+            fetched_at=created_at,
+            created_at=created_at,
+            updated_at=created_at,
+        )
+
+        payload = HotspotRead.model_validate(hotspot)
+
+        self.assertEqual(payload.source_risk_level, "low")
+        self.assertEqual(payload.source_risk_tags, ["duplicate_query_param"])
+        self.assertEqual(payload.source_evidence_bundle["cross_source_count"], 3)
+        self.assertEqual(payload.source_evidence_version, 1)
+
     # PRD 24/25/26/27 traceability: these names intentionally mirror the Plan TDD checklist.
     def test_compute_hotness_clamps_to_0_100(self) -> None:
         source = Source(id=11, name="rss", source_type="rss", enabled=True, config={"source_strength": 120})

@@ -118,24 +118,36 @@ class Hotspot(Base):
 
     @property
     def source_risk_level(self) -> str:
+        if isinstance(self.raw_payload, dict) and isinstance(self.raw_payload.get("source_risk_level"), str):
+            return self.raw_payload["source_risk_level"]
         if self.ai_analysis is None:
             return "medium"
         return self.ai_analysis.source_risk_level or "medium"
 
     @property
     def source_risk_tags(self) -> list[str]:
+        if isinstance(self.raw_payload, dict) and isinstance(self.raw_payload.get("source_risk_tags"), list):
+            return list(self.raw_payload["source_risk_tags"])
         if self.ai_analysis is None:
             return []
         return list(self.ai_analysis.source_risk_tags)
 
     @property
     def source_evidence_bundle(self) -> dict[str, Any]:
+        # Evidence is persisted both on hotspot.raw_payload and AiAnalysis; raw payload fallback keeps
+        # audit fields readable even when analysis is absent or not eagerly loaded.
+        if isinstance(self.raw_payload, dict) and isinstance(self.raw_payload.get("source_evidence_bundle"), dict):
+            return self.raw_payload["source_evidence_bundle"]  # type: ignore[return-value]
         if self.ai_analysis is None:
             return {}
         return dict(self.ai_analysis.source_evidence_bundle)
 
     @property
     def source_evidence_version(self) -> int:
+        if isinstance(self.raw_payload, dict):
+            version = self.raw_payload.get("source_evidence_version")
+            if isinstance(version, int | float):
+                return int(version)
         if self.ai_analysis is None:
             return 0
         return int(self.ai_analysis.source_evidence_version or 0)
