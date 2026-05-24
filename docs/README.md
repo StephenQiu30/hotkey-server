@@ -41,9 +41,7 @@
   - `impl:`：补齐实现使测试通过（绿）
   - `refactor:`/`chore:`：仅做非行为变更整理（可选）
 - 每个执行单元完成前后都必须执行：
-  - `python3 -m unittest discover -s tests -p 'test_repository_governance.py'`
-  - `find . -type d -name apps -print`
-  - `find . -type f | rg '(^|/)apps/'`
+  - `bash scripts/checkpoint-gate.sh`
   - `git status --short`（执行前确认无未计划中间产物；测试后/提交前后都要求输出为空）
 
 ## 推荐阅读路径
