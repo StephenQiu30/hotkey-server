@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
@@ -17,14 +18,13 @@ SCHEMA_PATH = PROJECT_ROOT / "sql" / "001_init_schema.sql"
 def initialize_database() -> None:
     """Initialize database from schema.
 
-    For tests, automatically fall back to SQLAlchemy metadata creation with
-    SQLite to avoid external PostgreSQL dependency while preserving existing
-    PostgreSQL schema behavior in production.
+    PostgreSQL uses the SQL script as the schema source of truth.
     """
     database_url = resolve_database_url()
-    if database_url.startswith("sqlite:///"):
-        create_schema_from_models_for_dev(database_url)
-        return
+    scheme = urlparse(database_url).scheme.lower()
+
+    if not scheme.startswith("postgresql"):
+        raise ValueError(f"Unsupported database scheme '{scheme}' in DATABASE_URL.")
 
     schema_statements = [
         statement.strip()
@@ -44,9 +44,8 @@ def initialize_database() -> None:
                 raise
             time.sleep(settings.database_init_retry_seconds)
 
-
 def create_schema_from_models_for_dev(database_url: str | None = None) -> None:
-    """Development fallback only; sql/001_init_schema.sql remains authoritative."""
+    """Create tables from SQLAlchemy metadata."""
     import apps.api.app.models  # noqa: F401
 
     database_url = database_url or resolve_database_url()

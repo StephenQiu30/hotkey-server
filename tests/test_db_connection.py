@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import os
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from apps.api.app.core.settings import settings
 from apps.api.app.db.connection import resolve_database_url
@@ -10,34 +9,47 @@ from apps.api.app.db import init_schema
 
 
 class DbConnectionTests(unittest.TestCase):
-    def test_resolve_database_url_prefers_local_sqlite_when_pytest_without_sqlite_url(self) -> None:
-        original_url = settings.database_url
-        with (
-            patch.dict(os.environ, {"PYTEST_CURRENT_TEST": "test_foo"}, clear=False),
-            patch.object(settings, "database_url", "postgresql+psycopg://postgres:postgres@postgres:5432/ai_hotspot_radar"),
-        ):
-            resolved_url = resolve_database_url()
-            self.assertTrue(resolved_url.startswith("sqlite:///"))
-            self.assertTrue(resolved_url.endswith("hotkey_test.sqlite3"))
-
-        settings.database_url = original_url
-
-    def test_resolve_database_url_keeps_sqlite_setting(self) -> None:
-        original_url = settings.database_url
+    def test_resolve_database_url_keeps_postgresql_setting(self) -> None:
         with patch.object(
             settings,
             "database_url",
-            "sqlite:////tmp/explicit.sqlite3",
+            "postgresql+psycopg://postgres:postgres@postgres:5432/ai_hotspot_radar",
         ):
-            self.assertEqual(resolve_database_url(), "sqlite:////tmp/explicit.sqlite3")
+            self.assertEqual(resolve_database_url(), "postgresql+psycopg://postgres:postgres@postgres:5432/ai_hotspot_radar")
 
-        settings.database_url = original_url
+    def test_resolve_database_url_rejects_unsupported_scheme(self) -> None:
+        with patch.object(
+            settings,
+            "database_url",
+            "sqlite:////tmp/local.sqlite3",
+        ):
+            with self.assertRaises(RuntimeError):
+                resolve_database_url()
 
-    def test_initialize_database_uses_model_metadata_for_sqlite(self) -> None:
+    def test_initialize_database_uses_sql_script_for_postgresql(self) -> None:
+        statements = ["CREATE TABLE test_table (id INT)", "CREATE INDEX idx_test_table_id ON test_table(id)"]
+        mock_engine = MagicMock()
+        mock_connection = MagicMock()
+        mock_engine.begin.return_value.__enter__.return_value = mock_connection
+
         with (
-            patch("apps.api.app.db.init_schema.resolve_database_url", return_value="sqlite:////tmp/hotspot_test.sqlite3"),
-            patch("apps.api.app.db.init_schema.create_schema_from_models_for_dev") as create_schema_from_models_for_dev,
+            patch("apps.api.app.db.init_schema.resolve_database_url", return_value="postgresql+psycopg://postgres:postgres@postgres:5432/ai_hotspot_radar"),
+            patch("apps.api.app.db.init_schema.create_engine", return_value=mock_engine),
+            patch.object(
+                init_schema,
+                "SCHEMA_PATH",
+                MagicMock(read_text=lambda *args, **kwargs: ";".join(statements)),
+            ),
         ):
             init_schema.initialize_database()
 
-        create_schema_from_models_for_dev.assert_called_once_with("sqlite:////tmp/hotspot_test.sqlite3")
+        mock_connection.exec_driver_sql.assert_any_call("CREATE TABLE test_table (id INT)")
+        mock_connection.exec_driver_sql.assert_any_call("CREATE INDEX idx_test_table_id ON test_table(id)")
+
+    def test_initialize_database_raises_for_unsupported_scheme(self) -> None:
+        with (
+            patch("apps.api.app.db.init_schema.resolve_database_url", return_value="sqlite:///:memory:"),
+            patch("apps.api.app.db.init_schema.create_engine"),
+        ):
+            with self.assertRaises(ValueError):
+                init_schema.initialize_database()

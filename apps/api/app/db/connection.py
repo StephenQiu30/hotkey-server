@@ -1,37 +1,28 @@
 from __future__ import annotations
 
-import os
-import sys
-import tempfile
 from urllib.parse import urlparse
 
 from apps.api.app.core.settings import settings
 
 
-def is_pytest_run() -> bool:
-    """Return True when running under pytest, to enable local fallback policy."""
-
-    if "PYTEST_CURRENT_TEST" in os.environ:
-        return True
-    if "pytest" in sys.modules:
-        return True
-    return any("pytest" in os.path.basename(arg).lower() for arg in sys.argv)
-
-
-def _is_sqlite_url(database_url: str) -> bool:
+def _is_supported_url(database_url: str) -> bool:
     parsed = urlparse(database_url)
-    return parsed.scheme.startswith("sqlite")
+    return parsed.scheme.lower().startswith("postgresql")
+
+
+def _shortened_scheme(database_url: str) -> str:
+    parsed = urlparse(database_url)
+    return parsed.scheme.split("+", 1)[0] if parsed.scheme else "unknown"
 
 
 def resolve_database_url() -> str:
-    """Resolve the effective DB URL for current runtime.
+    """Return the configured database URL, enforcing a PostgreSQL-only policy."""
 
-    In pytest, non-SQLite URLs are redirected to a local file-backed SQLite
-    database to keep tests executable when PostgreSQL is unavailable in the
-    local environment.
-    """
-
-    if is_pytest_run() and not _is_sqlite_url(settings.database_url):
-        sqlite_file = tempfile.gettempdir() + "/hotkey_test.sqlite3"
-        return f"sqlite:///{sqlite_file}"
-    return settings.database_url
+    database_url = settings.database_url
+    if not _is_supported_url(database_url):
+        scheme = _shortened_scheme(database_url)
+        raise RuntimeError(
+            f"Unsupported database URL scheme '{scheme}' in DATABASE_URL. "
+            "本项目当前仅支持 PostgreSQL，请配置 DATABASE_URL 为 postgresql://（含对应 driver）."
+        )
+    return database_url
