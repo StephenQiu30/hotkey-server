@@ -32,6 +32,9 @@ class AIOrchestrator:
 
     def _record(self, decision: AIPathDecision, event: str, **fields: object) -> dict[str, object]:
         decision.decision.setdefault("provider_trace", []).append({"event": event, "trace_id": decision.trace_id, **fields})
+        decision.decision["ai_orchestrator_decision"] = decision.path
+        decision.decision["trace_id"] = decision.trace_id
+        decision.decision.setdefault("enhance_path", "enhanced" if decision.path == "langgraph" else "default")
         return decision.decision
 
     def analyze(self, hotspot: Hotspot, keyword: Keyword | None) -> tuple[LLMResult, AIPathDecision]:
@@ -48,6 +51,9 @@ class AIOrchestrator:
         self._record(decision, "analyze_success", duration_ms=duration)
         result.raw_response = dict(result.raw_response)
         result.raw_response["provider_trace"] = decision.decision.get("provider_trace", [])
+        result.raw_response["ai_orchestrator_decision"] = decision.decision.get("ai_orchestrator_decision")
+        result.raw_response["enhance_path"] = decision.decision.get("enhance_path")
+        result.raw_response["trace_id"] = decision.trace_id
         return result, decision
 
     def expand_queries(self, keyword: Keyword, base_query: str) -> tuple[list[str], AIPathDecision]:
@@ -95,9 +101,15 @@ class LangGraphOrchestrator(AIOrchestrator):
         try:
             result = self.provider.analyze(hotspot, keyword)
             duration = (time.perf_counter() - start) * 1000
+            timeout_ms = float(app_settings.ai_langgraph_timeout_seconds) * 1000
+            if timeout_ms > 0 and duration > timeout_ms:
+                raise TimeoutError(f"LangGraph analyze timeout: {duration:.1f}ms > {timeout_ms:.0f}ms")
             self._record(decision, "analyze_success", duration_ms=duration)
             result.raw_response = dict(result.raw_response)
             result.raw_response["provider_trace"] = decision.decision.get("provider_trace", [])
+            result.raw_response["ai_orchestrator_decision"] = decision.decision.get("ai_orchestrator_decision")
+            result.raw_response["enhance_path"] = decision.decision.get("enhance_path")
+            result.raw_response["trace_id"] = decision.trace_id
             return result, decision
         except Exception as exc:  # noqa: BLE001
             fallback_orchestrator = AIOrchestrator(self.provider)
@@ -106,6 +118,11 @@ class LangGraphOrchestrator(AIOrchestrator):
             fallback_decision.decision["path_from"] = "langgraph"
             fallback_decision.decision["langgraph_fallback"] = True
             fallback_decision.decision["langgraph_path_status"] = "fallbacked"
+            fallback_decision.decision["fallback_reason"] = str(exc)
+            fallback_decision.decision.setdefault("enhance_path", "fallback")
+            fallback_traces = fallback_decision.decision.get("provider_trace")
+            if isinstance(fallback_traces, list):
+                fallback_traces.extend(decision.decision.get("provider_trace", []))
             return fallback_result, fallback_decision
 
     def expand_queries(self, keyword: Keyword, base_query: str) -> tuple[list[str], AIPathDecision]:

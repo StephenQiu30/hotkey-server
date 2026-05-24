@@ -38,7 +38,22 @@ class RepositoryGovernanceTest(unittest.TestCase):
 
         self.assertIn("server", docs_readme)
         self.assertIn("后端服务入口", docs_readme)
-        self.assertIn("apps", docs_readme)
+        self.assertNotIn("apps/api", docs_readme)
+
+    def test_backend_entrypoint_is_server_module(self):
+        dockerfile = self.read_text("Dockerfile.api")
+        package_json = self.read_text("package.json")
+        pyproject = self.read_text("pyproject.toml")
+
+        self.assertIn("server.app.main:app", dockerfile)
+        self.assertIn("server.app.main:app", package_json)
+        self.assertIn("server.app.main:app", pyproject)
+
+    def test_no_apps_api_entrypoint_references(self):
+        for relative_path in ["README.md", "docs/README.md", "package.json", "docs/plans/08-部署计划.md"]:
+            text = self.read_text(relative_path)
+            self.assertNotIn("apps/api", text, f"发现旧后端入口引用: {relative_path}")
+            self.assertNotIn("apps/api/app/main:app", text, f"发现旧后端入口引用: {relative_path}")
 
 
 if __name__ == "__main__":
