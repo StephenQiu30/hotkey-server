@@ -33,6 +33,7 @@ from apps.api.app.services.reports import previous_weekly_period_start, report_p
 from apps.api.app.services.search import search_sources, _load_search_sources
 from apps.api.app.services import rss as rss_service
 from apps.api.app.services.providers import get_provider_class
+from apps.api.app.schemas.ai_analysis import AiAnalysisRead
 
 
 class CollectingSession:
@@ -134,6 +135,60 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertGreaterEqual(result.relevance_score, settings.relevance_threshold)
         self.assertEqual(result.importance, "high")
         self.assertTrue(result.used_fallback)
+
+    def test_fallback_analysis_returns_quick_understanding_and_topic_ideas(self) -> None:
+        self.patch_settings(openai_api_key=None, openai_model=None)
+        keyword = Keyword(id=1, keyword="AI agent", query_template=None, enabled=True, priority=0)
+        hotspot = Hotspot(
+            id=12,
+            title="AI agent workflows become a creator trend",
+            url="https://example.com/agent-workflows",
+            source_id=1,
+            keyword_id=1,
+            snippet="Creators are explaining how agent workflows change daily production.",
+            raw_payload={},
+        )
+
+        result = analyze_hotspot(hotspot, keyword)
+
+        self.assertGreaterEqual(len(result.quick_understanding), 2)
+        self.assertGreaterEqual(len(result.topic_ideas), 2)
+        self.assertIn("title", result.topic_ideas[0])
+        self.assertIn("angle", result.topic_ideas[0])
+        self.assertIn("format", result.topic_ideas[0])
+        self.assertIn("rationale", result.topic_ideas[0])
+
+    def test_ai_analysis_read_exposes_creator_understanding_fields_from_raw_response(self) -> None:
+        created_at = datetime.now(tz=timezone.utc)
+        analysis = AiAnalysis(
+            id=1,
+            hotspot_id=12,
+            is_real=True,
+            relevance_score=82,
+            relevance_reason="与创作者工具高度相关。",
+            keyword_mentioned=True,
+            importance="high",
+            summary="AI agent 工作流成为创作者热点。",
+            model_name="fallback",
+            raw_response={
+                "quick_understanding": ["一句话看懂", "为什么重要"],
+                "topic_ideas": [
+                    {
+                        "title": "AI agent 工作流怎么用",
+                        "angle": "实操教程",
+                        "format": "图文",
+                        "rationale": "创作者可直接复用为选题。",
+                    }
+                ],
+            },
+            created_at=created_at,
+            updated_at=created_at,
+        )
+
+        payload = AiAnalysisRead.model_validate(analysis)
+
+        self.assertEqual(payload.quick_understanding, ["一句话看懂", "为什么重要"])
+        self.assertEqual(payload.topic_ideas[0].title, "AI agent 工作流怎么用")
 
     def test_fallback_analysis_marks_missing_keyword_below_threshold(self) -> None:
         self.patch_settings(openai_api_key=None, openai_model=None, relevance_threshold=50.0)
