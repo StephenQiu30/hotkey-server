@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -51,8 +52,15 @@ def search_sources(session: Session, query: str, source_types: list[str] | None 
                     raw_payload=candidate.raw_payload,
                 )
                 evidence = collect_source_evidence(hotspot, cross_source_count=cross_source_count)
-                analysis = analyze_hotspot(hotspot, keyword, prefer_langgraph=_should_enhance_analysis(evidence, langgraph_enabled=settings.AI_USE_LANGGRAPH))
+                analysis = analyze_hotspot(hotspot, keyword, prefer_langgraph=False)
                 hotness = _build_hotness_decision(hotspot=hotspot, analysis=analysis, evidence=evidence)
+                if _should_enhance_analysis(
+                    evidence,
+                    hotness_score=hotness.score,
+                    langgraph_enabled=settings.AI_USE_LANGGRAPH,
+                ):
+                    analysis = analyze_hotspot(hotspot, keyword, prefer_langgraph=True)
+                    hotness = _build_hotness_decision(hotspot=hotspot, analysis=analysis, evidence=evidence)
                 _append_enrichment_payload(candidate.raw_payload, analysis_result=analysis, evidence=evidence, hotness=hotness)
                 status = "active" if is_analysis_active(analysis) and hotness.score >= settings.hotness_active_threshold else "filtered"
                 items.append(
@@ -97,7 +105,12 @@ def _sort_items(items: list[SearchResultRead]) -> list[SearchResultRead]:
     importance_rank = {"high": 3, "medium": 2, "low": 1}
     return sorted(
         items,
-        key=lambda item: (importance_rank.get(item.importance, 0), item.hotness_score, item.relevance_score),
+        key=lambda item: (
+            item.hotness_score,
+            item.relevance_score,
+            item.published_at or datetime.min.replace(tzinfo=timezone.utc),
+            importance_rank.get(item.importance, 0),
+        ),
         reverse=True,
     )
 
@@ -146,6 +159,10 @@ def _append_enrichment_payload(
             "token_usage": getattr(analysis_result, "token_usage", None),
             "prompt_name": getattr(analysis_result, "prompt_name", None),
             "provider_trace": list(getattr(analysis_result, "provider_trace", [])),
+            "ai_orchestrator_decision": getattr(analysis_result, "ai_orchestrator_decision", None),
+            "enhance_path": getattr(analysis_result, "enhance_path", "default"),
+            "fallback_reason": getattr(analysis_result, "fallback_reason", None),
+            "trace_id": getattr(analysis_result, "trace_id", None),
             "truth_score": evidence.truth_score(),
             "source_risk_level": evidence.risk_level(),
             "source_risk_tags": evidence.risk_tags,
@@ -156,7 +173,14 @@ def _append_enrichment_payload(
     )
 
 
-def _should_enhance_analysis(evidence: SourceEvidence, *, langgraph_enabled: bool) -> bool:
+def _should_enhance_analysis(
+    evidence: SourceEvidence,
+    *,
+    hotness_score: float,
+    langgraph_enabled: bool,
+) -> bool:
     if not langgraph_enabled:
         return False
-    return evidence.truth_score() <= settings.ai_enhance_risk_threshold
+    source_conflict = getattr(evidence, "cross_source_count", 1) >= 2
+    truth_low = evidence.truth_score() <= settings.ai_enhance_risk_threshold
+    return hotness_score >= settings.ai_enhance_hotness_threshold and (source_conflict or truth_low)

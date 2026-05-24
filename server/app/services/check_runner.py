@@ -74,15 +74,23 @@ def run_hotspot_check(session: Session, trigger_type: str = "manual") -> CheckRu
                     if hotspot is None:
                         continue
                     evidence = collect_source_evidence(hotspot, cross_source_count=cross_source_count)
-                    analysis_result = analyze_hotspot(
-                        hotspot,
-                        keyword,
-                        prefer_langgraph=_should_enhance_analysis(evidence, settings.AI_USE_LANGGRAPH),
-                    )
+                    analysis_result = analyze_hotspot(hotspot, keyword, prefer_langgraph=False)
                     hotness = _build_hotness_decision(hotspot=hotspot, analysis=analysis_result, evidence=evidence)
+                    if _should_enhance_analysis(
+                        evidence,
+                        hotness_score=hotness.score,
+                        langgraph_enabled=settings.AI_USE_LANGGRAPH,
+                    ):
+                        analysis_result = analyze_hotspot(hotspot, keyword, prefer_langgraph=True)
+                        hotness = _build_hotness_decision(hotspot=hotspot, analysis=analysis_result, evidence=evidence)
                     _append_enrichment_payload(candidate.raw_payload, analysis_result=analysis_result, evidence=evidence, hotness=hotness)
                     hotspot.status = _decide_hotspot_status(analysis_result, hotness)
                     hotspot.raw_payload.update(candidate.raw_payload)
+                    final_raw_response = _build_analysis_raw_response(
+                        analysis_result=analysis_result,
+                        evidence=evidence,
+                        hotness=hotness,
+                    )
                     analysis = AiAnalysis(
                         hotspot_id=hotspot.id,
                         is_real=analysis_result.is_real,
@@ -92,7 +100,7 @@ def run_hotspot_check(session: Session, trigger_type: str = "manual") -> CheckRu
                         importance=analysis_result.importance,
                         summary=analysis_result.summary,
                         model_name=analysis_result.model_name,
-                        raw_response=analysis_result.raw_response,
+                        raw_response=final_raw_response,
                     )
                     session.add(analysis)
                     session.flush()
@@ -242,10 +250,46 @@ def _decide_hotspot_status(result: object, hotness: HotnessDecision) -> str:
     return "active" if is_analysis_active(result) and hotness.score >= settings.hotness_active_threshold else "filtered"
 
 
-def _should_enhance_analysis(evidence: SourceEvidence, *, langgraph_enabled: bool) -> bool:
+def _build_analysis_raw_response(
+    *,
+    analysis_result: object,
+    evidence: SourceEvidence,
+    hotness: HotnessDecision,
+) -> dict:
+    raw_bundle = evidence.bundle()
+    provider_value = getattr(analysis_result, "provider", None) or (analysis_result.raw_response or {}).get("provider", "unknown")
+    return {
+        **(analysis_result.raw_response or {}),
+        **hotness.raw_payload(),
+        "provider": provider_value,
+        "truth_score": evidence.truth_score(),
+        "source_risk_level": evidence.risk_level(),
+        "source_risk_tags": evidence.risk_tags,
+        "source_evidence_bundle": raw_bundle,
+        "source_evidence_version": int(raw_bundle.get("version", 0)),
+        "ai_orchestrator_decision": getattr(analysis_result, "ai_orchestrator_decision", None),
+        "enhance_path": getattr(analysis_result, "enhance_path", "default"),
+        "fallback_reason": getattr(analysis_result, "fallback_reason", None),
+        "trace_id": getattr(analysis_result, "trace_id", None),
+        "provider_trace": list(getattr(analysis_result, "provider_trace", [])),
+        "quick_understanding": list(getattr(analysis_result, "quick_understanding", [])),
+        "topic_ideas": list(getattr(analysis_result, "topic_ideas", [])),
+        "token_usage": getattr(analysis_result, "token_usage", None),
+        "prompt_name": getattr(analysis_result, "prompt_name", None),
+    }
+
+
+def _should_enhance_analysis(
+    evidence: SourceEvidence,
+    *,
+    hotness_score: float,
+    langgraph_enabled: bool,
+) -> bool:
     if not langgraph_enabled:
         return False
-    return evidence.truth_score() <= settings.ai_enhance_risk_threshold
+    source_conflict = getattr(evidence, "cross_source_count", 1) >= 2
+    truth_low = evidence.truth_score() <= settings.ai_enhance_risk_threshold
+    return hotness_score >= settings.ai_enhance_hotness_threshold and (source_conflict or truth_low)
 
 
 def _next_cluster_version(session: Session, cluster_id: str) -> int:

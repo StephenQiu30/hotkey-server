@@ -27,6 +27,10 @@ class AnalysisResult:
     quick_understanding: list[str] = field(default_factory=list)
     topic_ideas: list[dict[str, str]] = field(default_factory=list)
     used_fallback: bool = False
+    ai_orchestrator_decision: str | None = None
+    enhance_path: str = "default"
+    fallback_reason: str | None = None
+    trace_id: str | None = None
     prompt_name: str | None = None
     token_usage: dict[str, int] | None = None
     provider_trace: list[dict[str, Any]] = field(default_factory=list)
@@ -157,7 +161,15 @@ def _analyze_with_provider(
     final.raw_response = {
         **final.raw_response,
         "provider_trace": decision.decision.get("provider_trace", []),
+        "ai_orchestrator_decision": decision.decision.get("ai_orchestrator_decision"),
+        "enhance_path": decision.decision.get("enhance_path", "default"),
+        "fallback_reason": decision.decision.get("fallback_reason"),
+        "trace_id": decision.trace_id,
     }
+    final.ai_orchestrator_decision = final.raw_response.get("ai_orchestrator_decision")
+    final.enhance_path = final.raw_response.get("enhance_path", "default")
+    final.fallback_reason = final.raw_response.get("fallback_reason")
+    final.trace_id = final.raw_response.get("trace_id")
     trace_payload = decision.decision.get("provider_trace")
     if isinstance(trace_payload, list):
         final.provider_trace = list(trace_payload)

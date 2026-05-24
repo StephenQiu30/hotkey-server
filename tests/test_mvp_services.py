@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from inspect import signature
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -32,20 +33,22 @@ from server.app.services.ai.providers import build_provider
 from server.app.services.ai.providers.openai import OpenAICompatibleProvider
 from server.app.services.ingestion import Candidate, SourceIngestionError, fetch_candidates
 from server.app.services.notification import notify_hotspot, notify_report
-from server.app.services.check_runner import _normalize_url
+from server.app.services.check_runner import _build_analysis_raw_response, _normalize_url
+from server.app.services.check_runner import _next_cluster_version, _should_enhance_analysis as check_runner_should_enhance
 from server.app.services.check_runner import run_hotspot_check
-from server.app.services.check_runner import _next_cluster_version
 from server.app.services.scheduler import _maybe_run_weekly_report
 import server.app.services.scheduler as scheduler_module
 from server.app.services.reports import previous_weekly_period_start, report_period
-from server.app.services.search import search_sources, _load_search_sources
+from server.app.services.search import _should_enhance_analysis as search_should_enhance
+from server.app.services.search import _load_search_sources, search_sources
 from server.app.services import rss as rss_service
 from server.app.services.providers import get_provider_class
 from server.app.services.providers.selector import mark_source_success, select_sources
 from server.app.services.hotspot_scoring import compute_hotness_score
+from server.app.services.source_trust import SourceEvidence, collect_source_evidence
 from server.app.schemas.ai_analysis import AiAnalysisRead
 from server.app.schemas.hotspot import HotspotRead
-from server.app.api.routes.hotspots import _apply_sort
+from server.app.api.routes.hotspots import _apply_sort, list_hotspots
 
 
 class CollectingSession:
@@ -481,12 +484,19 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
     def test_hotspot_sort_contract_supports_rank_and_trend_desc(self) -> None:
         rank_stmt = _apply_sort(select(Hotspot), "rank_score_desc")
         trend_stmt = _apply_sort(select(Hotspot), "trend_score_desc")
+        hotness_stmt = _apply_sort(select(Hotspot), "hotness_score_desc")
 
         rank_sql = str(rank_stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
         trend_sql = str(trend_stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+        hotness_sql = str(hotness_stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
 
         self.assertIn("relevance_score", rank_sql)
         self.assertIn("trend_score", trend_sql)
+        self.assertIn("hotness_score", hotness_sql)
+
+    def test_list_hotspots_default_sort_is_hotness_score_desc(self) -> None:
+        params = signature(list_hotspots).parameters
+        self.assertEqual(params["sort"].default, "hotness_score_desc")
 
     def test_fallback_analysis_marks_missing_keyword_below_threshold(self) -> None:
         self.patch_settings(openai_api_key=None, openai_model=None, relevance_threshold=50.0)
@@ -821,6 +831,108 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertIsNotNone(check_run.error_summary)
         self.assertIn("No enabled keywords.", check_run.error_summary or "")
         self.assertIn("No enabled sources.", check_run.error_summary or "")
+
+    def test_search_should_enhance_analysis_when_hot_and_risky_or_conflicted(self) -> None:
+        self.patch_settings(ai_use_langgraph=True, ai_enhance_hotness_threshold=70.0, ai_enhance_risk_threshold=40.0)
+        evidence = SourceEvidence(
+            source_reachable=True,
+            url_stability=True,
+            domain_risk=50,
+            publish_depth=80,
+            cross_source_count=2,
+            status="ok",
+            risk_tags=[],
+        )
+
+        self.assertTrue(search_should_enhance(
+            evidence,
+            hotness_score=85,
+            langgraph_enabled=True,
+        ))
+        self.assertFalse(search_should_enhance(
+            evidence,
+            hotness_score=60,
+            langgraph_enabled=True,
+        ))
+        self.assertFalse(search_should_enhance(
+            evidence,
+            hotness_score=85,
+            langgraph_enabled=False,
+        ))
+
+    def test_check_runner_should_enhance_analysis_requires_hotness_and_risk_or_conflict(self) -> None:
+        self.patch_settings(ai_use_langgraph=True, ai_enhance_hotness_threshold=70.0, ai_enhance_risk_threshold=40.0)
+        low_truth = SourceEvidence(
+            source_reachable=True,
+            url_stability=False,
+            domain_risk=0,
+            publish_depth=0,
+            cross_source_count=1,
+            status="ok",
+            risk_tags=[],
+        )
+        conflict = SourceEvidence(
+            source_reachable=True,
+            url_stability=True,
+            domain_risk=50,
+            publish_depth=80,
+            cross_source_count=3,
+            status="ok",
+            risk_tags=[],
+        )
+
+        self.assertTrue(check_runner_should_enhance(low_truth, hotness_score=75, langgraph_enabled=True))
+        self.assertTrue(check_runner_should_enhance(conflict, hotness_score=75, langgraph_enabled=True))
+        self.assertFalse(check_runner_should_enhance(low_truth, hotness_score=65, langgraph_enabled=True))
+
+    def test_build_analysis_raw_response_merges_enrichment_fields(self) -> None:
+        source = Source(id=2, name="hacker news", source_type="hacker_news", enabled=True, config={})
+        hotspot = Hotspot(
+            id=66,
+            title="AI agent",
+            url="https://example.com/ai",
+            source_id=2,
+            keyword_id=1,
+            snippet="AI agent",
+            raw_payload={},
+            source=source,
+        )
+        analysis = AnalysisResult(
+            is_real=True,
+            relevance_score=92,
+            relevance_reason="ok",
+            keyword_mentioned=True,
+            importance="high",
+            summary="",
+            model_name="fallback",
+            raw_response={"provider": "fallback"},
+            ai_orchestrator_decision="langgraph",
+            enhance_path="enhanced",
+            fallback_reason="fallback reason",
+            trace_id="trace-001",
+            provider_trace=[{"event": "final"}],
+            quick_understanding=["q1", "q2"],
+            topic_ideas=[{"title": "t", "angle": "a", "format": "f", "rationale": "r"}],
+        )
+        evidence = collect_source_evidence(hotspot)
+        hotness = compute_hotness_score(
+            hotspot=hotspot,
+            analysis=analysis,
+            source_strength=80,
+        )
+
+        raw = _build_analysis_raw_response(analysis_result=analysis, evidence=evidence, hotness=hotness)
+
+        self.assertEqual(raw["ai_orchestrator_decision"], "langgraph")
+        self.assertEqual(raw["enhance_path"], "enhanced")
+        self.assertEqual(raw["trace_id"], "trace-001")
+        self.assertEqual(raw["fallback_reason"], "fallback reason")
+        self.assertEqual(raw["provider"], "fallback")
+        self.assertEqual(raw["hotness_score"], hotness.score)
+        self.assertEqual(raw["source_risk_level"], evidence.risk_level())
+        self.assertIn("provider_trace", raw)
+        self.assertEqual(raw["provider_trace"], [{"event": "final"}])
+        self.assertEqual(raw["prompt_name"], None)
 
     def test_weekly_report_only_runs_on_target_day_and_hour(self) -> None:
         scheduler_module._last_weekly_report_start = None

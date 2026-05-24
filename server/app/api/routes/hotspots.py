@@ -21,7 +21,7 @@ def list_hotspots(
     importance: str | None = None,
     published_from: datetime | None = None,
     published_to: datetime | None = None,
-    sort: str = "fetched_at_desc",
+    sort: str = "hotness_score_desc",
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     session: Session = Depends(get_session),
@@ -118,8 +118,20 @@ def _cluster_version_expr():
 
 def _apply_sort(stmt: Select, sort: str) -> Select:
     trend_score = cast(Hotspot.raw_payload["trend_score"], Numeric(8, 2))
+    hotness_score = cast(Hotspot.raw_payload["hotness_score"], Numeric(8, 2))
+    if sort == "hotness_score_desc":
+        return stmt.outerjoin(AiAnalysis, AiAnalysis.hotspot_id == Hotspot.id).order_by(
+            hotness_score.desc().nullslast(),
+            cast(AiAnalysis.relevance_score, Numeric(8, 2)).desc().nullslast(),
+            Hotspot.published_at.desc().nullslast(),
+            Hotspot.id.desc(),
+        )
     if sort == "rank_score_desc":
-        return stmt.outerjoin(AiAnalysis, AiAnalysis.hotspot_id == Hotspot.id).order_by(AiAnalysis.relevance_score.desc().nullslast(), trend_score.desc().nullslast(), Hotspot.id.desc())
+        return stmt.outerjoin(AiAnalysis, AiAnalysis.hotspot_id == Hotspot.id).order_by(
+            AiAnalysis.relevance_score.desc().nullslast(),
+            trend_score.desc().nullslast(),
+            Hotspot.id.desc(),
+        )
     if sort == "trend_score_desc":
         return stmt.order_by(trend_score.desc().nullslast(), Hotspot.fetched_at.desc(), Hotspot.id.desc())
     if sort == "published_at_asc":
