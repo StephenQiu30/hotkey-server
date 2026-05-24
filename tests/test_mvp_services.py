@@ -1911,6 +1911,63 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertTrue(decision.decision.get("langgraph_fallback"))
         self.assertEqual(decision.decision.get("path_from"), "langgraph")
 
+    def test_provider_fallback_records_langchain_trace(self) -> None:
+        class BrokenProvider(BaseLLMProvider):
+            provider_name = "broken"
+
+            def expand_queries(self, keyword: Keyword, base_query: str) -> list[str]:
+                return [base_query]
+
+            def analyze(self, hotspot: Hotspot, keyword: Keyword | None) -> LLMResult:
+                raise RuntimeError("provider unavailable")
+
+        class RecoveryProvider(BaseLLMProvider):
+            provider_name = "recovery"
+
+            def expand_queries(self, keyword: Keyword, base_query: str) -> list[str]:
+                return [base_query]
+
+            def analyze(self, hotspot: Hotspot, keyword: Keyword | None) -> LLMResult:
+                return LLMResult(
+                    is_real=True,
+                    relevance_score=82,
+                    relevance_reason="recovered",
+                    keyword_mentioned=True,
+                    importance="high",
+                    summary="recovered summary",
+                    model_name="recovery",
+                    raw_response={"provider": "recovery"},
+                    used_fallback=False,
+                    prompt_name="analysis",
+                    provider="recovery",
+                )
+
+        self.patch_settings(ai_provider="broken", ai_fallback_provider="recovery", ai_provider_error_strategy="fallback")
+        with (
+            patch("server.app.services.ai_analysis._select_provider", return_value=BrokenProvider()),
+            patch("server.app.services.ai_analysis._safe_build_provider", return_value=RecoveryProvider()),
+        ):
+            result = analyze_hotspot(
+                Hotspot(
+                    id=99,
+                    title="AI provider fallback",
+                    url="https://example.com/provider-fallback",
+                    source_id=1,
+                    keyword_id=1,
+                    snippet="provider fallback",
+                    raw_payload={},
+                ),
+                Keyword(id=1, keyword="AI", query_template=None, enabled=True, priority=0),
+            )
+
+        self.assertTrue(result.used_fallback)
+        self.assertEqual(result.ai_orchestrator_decision, "langchain")
+        self.assertIsNotNone(result.trace_id)
+        self.assertEqual(result.raw_response["fallback_from"], "broken")
+        self.assertEqual(result.raw_response["fallback_reason"], "provider unavailable")
+        self.assertIn("provider_trace", result.raw_response)
+        self.assertTrue(any(item.get("event") == "provider_fallback" for item in result.provider_trace))
+
     def test_hotness_scoring_applies_truth_penalty_and_bounds(self) -> None:
         source = Source(id=1, name="rss", source_type="rss", enabled=True, config={"source_strength": 80})
         hotspot = Hotspot(

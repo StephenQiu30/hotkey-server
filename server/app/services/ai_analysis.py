@@ -125,17 +125,37 @@ def _apply_error_strategy(exc: Exception, hotspot: Hotspot, keyword: Keyword | N
     fallback_provider = _normalize_provider_key(settings.ai_fallback_provider)
     try:
         fallback = _safe_build_provider(fallback_provider)
-        fallback_result = _to_analysis_result(fallback.analyze(hotspot, keyword))
+        # Provider fallback still uses the LangChain orchestrator so trace_id and provider_trace
+        # stay consistent with the normal analysis path.
+        orchestrator = build_orchestrator(fallback, use_langgraph=False)
+        fallback_llm_result, decision = orchestrator.analyze(hotspot, keyword)
+        fallback_result = _to_analysis_result(fallback_llm_result)
         fallback_result.used_fallback = True
-        fallback_result.raw_response = {**fallback_result.raw_response, "fallback_reason": str(exc), "fallback_from": settings.ai_provider}
-        fallback_result.provider_trace = [
-            {
-                "event": "provider_fallback",
-                "source": settings.ai_provider,
-                "target": fallback.provider_name,
-                "error": str(exc),
-            }
-        ]
+        fallback_event = {
+            "event": "provider_fallback",
+            "source": settings.ai_provider,
+            "target": fallback.provider_name,
+            "error": str(exc),
+            "trace_id": decision.trace_id,
+        }
+        orchestrator_trace = decision.decision.get("provider_trace")
+        provider_trace = [fallback_event]
+        if isinstance(orchestrator_trace, list):
+            provider_trace.extend(orchestrator_trace)
+        fallback_result.raw_response = {
+            **fallback_result.raw_response,
+            "fallback_reason": str(exc),
+            "fallback_from": settings.ai_provider,
+            "provider_trace": provider_trace,
+            "ai_orchestrator_decision": decision.decision.get("ai_orchestrator_decision"),
+            "enhance_path": decision.decision.get("enhance_path", "default"),
+            "trace_id": decision.trace_id,
+        }
+        fallback_result.provider_trace = provider_trace
+        fallback_result.ai_orchestrator_decision = fallback_result.raw_response.get("ai_orchestrator_decision")
+        fallback_result.enhance_path = fallback_result.raw_response.get("enhance_path", "default")
+        fallback_result.fallback_reason = fallback_result.raw_response.get("fallback_reason")
+        fallback_result.trace_id = fallback_result.raw_response.get("trace_id")
         fallback_result.provider = fallback.provider_name
         return fallback_result
     except Exception as fallback_exc:
