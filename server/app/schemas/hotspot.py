@@ -35,6 +35,9 @@ class HotspotRead(BaseModel):
     source_risk_tags: list[str] = Field(default_factory=list)
     source_evidence_bundle: dict[str, Any] = Field(default_factory=dict)
     source_evidence_version: int = 0
+    source_selected: str | None = None
+    source_selected_type: str | None = None
+    source_fallback: dict[str, Any] = Field(default_factory=dict)
     raw_payload: dict[str, Any]
     created_at: datetime
     updated_at: datetime

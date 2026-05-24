@@ -33,7 +33,7 @@ from server.app.services.ai.providers import build_provider
 from server.app.services.ai.providers.openai import OpenAICompatibleProvider
 from server.app.services.ingestion import Candidate, SourceIngestionError, fetch_candidates
 from server.app.services.notification import notify_hotspot, notify_report
-from server.app.services.check_runner import _build_analysis_raw_response, _decide_hotspot_status, _normalize_url
+from server.app.services.check_runner import _build_analysis_raw_response, _decide_hotspot_status, _normalize_url, _source_route_payload
 from server.app.services.check_runner import _estimate_cross_sources, _next_cluster_version, _should_enhance_analysis as check_runner_should_enhance
 from server.app.services.check_runner import run_hotspot_check
 from server.app.services.scheduler import _maybe_run_weekly_report
@@ -309,6 +309,37 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertEqual(payload.trend_score, 64)
         self.assertGreater(payload.rank_score, payload.trend_score)
 
+    def test_hotspot_read_exposes_source_route_fields(self) -> None:
+        created_at = datetime.now(tz=timezone.utc)
+        hotspot = Hotspot(
+            id=14,
+            title="AI source fallback trend",
+            url="https://example.com/source-fallback",
+            source_id=1,
+            keyword_id=1,
+            snippet="Source fallback details.",
+            status="active",
+            raw_payload={
+                "source_selected": "backup",
+                "source_selected_type": "rss",
+                "source_fallback": {
+                    "from": "primary",
+                    "to": "backup",
+                    "reason": "timeout",
+                },
+            },
+            fetched_at=created_at,
+            created_at=created_at,
+            updated_at=created_at,
+        )
+
+        payload = HotspotRead.model_validate(hotspot)
+
+        self.assertEqual(payload.source_selected, "backup")
+        self.assertEqual(payload.source_selected_type, "rss")
+        self.assertEqual(payload.source_fallback["from"], "primary")
+        self.assertEqual(payload.source_fallback["reason"], "timeout")
+
     # PRD 24/25/26/27 traceability: these names intentionally mirror the Plan TDD checklist.
     def test_compute_hotness_clamps_to_0_100(self) -> None:
         source = Source(id=11, name="rss", source_type="rss", enabled=True, config={"source_strength": 120})
@@ -329,6 +360,56 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
 
         self.assertGreaterEqual(decision.score, 0.0)
         self.assertLessEqual(decision.score, settings.hotness_max_score)
+
+    def test_compute_hotness_uses_default_source_strength_without_source(self) -> None:
+        self.patch_settings(hotness_source_strength_default=65.0)
+        hotspot = Hotspot(
+            id=111,
+            title="AI 来源缺失边界",
+            url="https://example.com/no-source",
+            source_id=11,
+            keyword_id=1,
+            snippet="来源对象未预加载时仍需可复现打分。",
+            published_at=datetime(2026, 5, 24, tzinfo=timezone.utc),
+            raw_payload={},
+        )
+        raw = SimpleNamespace(relevance_score=80, keyword_mentioned=True)
+
+        decision = compute_hotness_score(hotspot=hotspot, analysis=raw)
+
+        self.assertEqual(decision.breakdown.source_strength, 65.0)
+        self.assertGreater(decision.score, 0.0)
+        self.assertIn("来源强度=65.00", decision.reason)
+
+    def test_hotness_threshold_falls_back_and_records_filter_reason(self) -> None:
+        self.patch_settings(hotness_active_threshold="bad-threshold")
+        evidence = SourceEvidence(
+            source_reachable=True,
+            url_stability=True,
+            domain_risk=90.0,
+            publish_depth=100.0,
+            cross_source_count=1,
+            status="ok",
+            risk_tags=[],
+        )
+        analysis = AnalysisResult(
+            is_real=True,
+            relevance_score=95,
+            relevance_reason="high relevance",
+            keyword_mentioned=True,
+            importance="high",
+            summary="summary",
+            model_name="fallback",
+            raw_response={},
+        )
+        hotness = SimpleNamespace(score=69.0, raw_payload=lambda: {"hotness_score": 69.0, "hotness_version": 1})
+
+        status = _decide_hotspot_status(analysis, hotness, evidence)
+        raw = _build_analysis_raw_response(analysis_result=analysis, evidence=evidence, hotness=hotness)
+
+        self.assertEqual(status, "filtered")
+        self.assertEqual(raw["hotness_active_threshold"], 70.0)
+        self.assertEqual(raw["hotness_filter_reason"], "below_threshold")
 
     def test_hotness_high_relevance_marks_active(self) -> None:
         self.patch_settings(hotness_active_threshold=70.0, relevance_threshold=50.0)
@@ -781,6 +862,18 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
 
     def test_source_fallback_preserves_primary_flow(self) -> None:
         self.test_source_route_skips_failing_source()
+
+    def test_source_route_payload_records_selected_and_fallback(self) -> None:
+        primary = Source(id=1, name="primary", source_type="rss", enabled=True, config={})
+        backup = Source(id=2, name="backup", source_type="rss", enabled=True, config={})
+
+        payload = _source_route_payload(backup, fallback_from=primary, fallback_reason="timeout")
+
+        self.assertEqual(payload["source_selected"], "backup")
+        self.assertEqual(payload["source_selected_type"], "rss")
+        self.assertEqual(payload["source_fallback"]["from"], "primary")
+        self.assertEqual(payload["source_fallback"]["to"], "backup")
+        self.assertEqual(payload["source_fallback"]["reason"], "timeout")
 
     def test_check_runner_still_completes_when_one_source_fail(self) -> None:
         self.test_source_route_skips_failing_source()
