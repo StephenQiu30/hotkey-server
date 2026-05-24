@@ -33,6 +33,7 @@ class HotspotRead(BaseModel):
     hotness_breakdown: dict[str, Any] = Field(default_factory=dict)
     source_risk_level: str | None = None
     source_risk_tags: list[str] = Field(default_factory=list)
+    source_risk_badge: str | None = None
     source_evidence_bundle: dict[str, Any] = Field(default_factory=dict)
     source_evidence_version: int = 0
     source_selected: str | None = None
