@@ -372,6 +372,30 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertEqual(payload.source_evidence_bundle["cross_source_count"], 3)
         self.assertEqual(payload.source_evidence_version, 1)
 
+    def test_hotspot_read_marks_low_trust_source_for_display(self) -> None:
+        created_at = datetime.now(tz=timezone.utc)
+        hotspot = Hotspot(
+            id=16,
+            title="AI low trust display",
+            url="https://example.com/low-trust",
+            source_id=1,
+            keyword_id=1,
+            snippet="Low trust source should be visible but risk-marked.",
+            status="filtered",
+            raw_payload={
+                "source_risk_level": "low",
+                "source_risk_tags": ["shortlink"],
+            },
+            fetched_at=created_at,
+            created_at=created_at,
+            updated_at=created_at,
+        )
+
+        payload = HotspotRead.model_validate(hotspot)
+
+        self.assertEqual(payload.source_risk_badge, "low_trust_source")
+        self.assertIn("shortlink", payload.source_risk_tags)
+
     # PRD 24/25/26/27 traceability: these names intentionally mirror the Plan TDD checklist.
     def test_compute_hotness_clamps_to_0_100(self) -> None:
         source = Source(id=11, name="rss", source_type="rss", enabled=True, config={"source_strength": 120})

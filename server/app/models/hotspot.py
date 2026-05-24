@@ -133,6 +133,16 @@ class Hotspot(Base):
         return list(self.ai_analysis.source_risk_tags)
 
     @property
+    def source_risk_badge(self) -> str | None:
+        # Low-trust events stay listable for review, but the response carries a stable display badge
+        # so clients and reports can keep them visibly risk-marked instead of silently promoting them.
+        if self.source_risk_level == "low":
+            return "low_trust_source"
+        if self.source_risk_tags:
+            return "source_risk_review"
+        return None
+
+    @property
     def source_evidence_bundle(self) -> dict[str, Any]:
         # Evidence is persisted both on hotspot.raw_payload and AiAnalysis; raw payload fallback keeps
         # audit fields readable even when analysis is absent or not eagerly loaded.
