@@ -330,6 +330,26 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertGreaterEqual(decision.score, 0.0)
         self.assertLessEqual(decision.score, settings.hotness_max_score)
 
+    def test_compute_hotness_uses_default_source_strength_without_source(self) -> None:
+        self.patch_settings(hotness_source_strength_default=65.0)
+        hotspot = Hotspot(
+            id=111,
+            title="AI 来源缺失边界",
+            url="https://example.com/no-source",
+            source_id=11,
+            keyword_id=1,
+            snippet="来源对象未预加载时仍需可复现打分。",
+            published_at=datetime(2026, 5, 24, tzinfo=timezone.utc),
+            raw_payload={},
+        )
+        raw = SimpleNamespace(relevance_score=80, keyword_mentioned=True)
+
+        decision = compute_hotness_score(hotspot=hotspot, analysis=raw)
+
+        self.assertEqual(decision.breakdown.source_strength, 65.0)
+        self.assertGreater(decision.score, 0.0)
+        self.assertIn("来源强度=65.00", decision.reason)
+
     def test_hotness_high_relevance_marks_active(self) -> None:
         self.patch_settings(hotness_active_threshold=70.0, relevance_threshold=50.0)
         source = Source(id=12, name="hacker news", source_type="hacker_news", enabled=True, config={"source_strength": 80})
