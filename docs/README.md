@@ -34,13 +34,16 @@
 
 ## 执行约束补充
 
-- `server` 为后端服务入口，避免继续维护 `apps` 目录路径。
-- 任何执行单元（Issue/PR）完成前后都必须执行：
+- `server` 为后端服务入口，且不维护独立 `apps` 运行时目录；非归档 `apps` 文件不得作为运行时入口。
+- 每个执行单元（Issue/PR）须按 test-first 先后顺序执行并提交：
+  - `test:`：先补充/更新相关测试并让测试先失败（红）
+  - `impl:`：补齐实现使测试通过（绿）
+  - `refactor:`/`chore:`：仅做非行为变更整理（可选）
+- 每个执行单元完成前后都必须执行：
   - `python3 -m unittest discover -s tests -p 'test_repository_governance.py'`
   - `find . -type d -name apps -print`
   - `find . -type f | rg '(^|/)apps/'`
-  - `git status --short`（提交前后均要求输出为空）
-- `server` 为后端服务入口，避免继续维护 `apps` 目录路径。非归档目录文件不得作为运行时入口。
+  - `git status --short`（测试前确认无中间产物；提交前后都要求输出为空）
 
 ## 推荐阅读路径
 
