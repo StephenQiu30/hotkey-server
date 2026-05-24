@@ -16,6 +16,10 @@
 
 - `bash scripts/checkpoint-gate.sh`  
   执行门禁检查：扫描 `apps/` 运行时残留、运行仓库治理测试，并检查 `git status --short` 是否为空。
+- `PYTHONPATH=. python3 scripts/verify_ai_provider.py --json`  
+  执行 #50-#53/#55 真实 AI provider 验收门禁：无凭据时返回 `missing_credentials`
+  和所需 env；配置真实 provider 后触发一次 `analyze_hotspot`，校验 `trace_id`、
+  `ai_orchestrator_decision` 与 `provider_trace`。脚本只输出密钥是否缺失，不输出密钥内容。
 
 ### 质量门禁约定（按轮执行）
 

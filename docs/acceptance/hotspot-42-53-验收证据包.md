@@ -46,6 +46,10 @@ downstream:
 - `python3 -m unittest tests.test_mvp_services`
   - 结果：通过
   - 证据：`Ran 86 tests in 0.376s`，`OK`
+- `python3 -m unittest tests.test_ai_provider_acceptance`
+  - 结果：通过
+  - 证据：`Ran 3 tests`，`OK`
+  - 覆盖：无凭据时给出可执行 required env；有真实 provider 返回时必须包含 `trace_id`、`ai_orchestrator_decision` 与 `provider_trace`。
 - `python3 -m unittest discover -s tests -p 'test_repository_governance.py'`
   - 结果：通过
   - 证据：`Ran 7 tests`，`OK`
@@ -96,7 +100,12 @@ downstream:
 
 ## 5. Issue 关闭前剩余缺口
 
-- GitHub #42-#53 当前仍为 `OPEN`，关闭前需将本证据包或对应命令结果回填到 Issue。
+- GitHub #42-#49 已回填证据并关闭；#50-#53 仍保持 `OPEN`，由 #55 跟踪真实外部 AI provider 最终验收。
 - 真实外部 provider 尚未回放：OpenAI 兼容模型、X/Bing/公开源、SMTP/通知链路。
 - 当前 AI 真实外部调用未配置有效 `OPENAI_API_KEY` / `OPENAI_MODEL`，本轮 AI 验证以 fallback/provider trace 自动化测试为准。
-- 若关闭 #50-#53，需要补充至少一次真实 OpenAI 兼容 provider 或明确记录转后续外部凭据验收任务。
+- #55 的可执行验收入口已补齐：
+  - 命令：`PYTHONPATH=. python3 scripts/verify_ai_provider.py --json`
+  - 当前无凭据结果：`status=missing_credentials`
+  - 当前 required env：`OPENAI_API_KEY`、`OPENAI_MODEL`
+  - 缺凭据退出码：`2`
+- 若关闭 #50-#53，需要配置真实 OpenAI 兼容 provider 后执行上述脚本，并回填成功输出中的 `trace_id`、`ai_orchestrator_decision` 与 `provider_trace`。

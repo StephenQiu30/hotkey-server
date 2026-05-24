@@ -32,3 +32,9 @@ downstream:
 - `C1-运维手册补充.md`
 - `C2-阈值与变更SOP.md`
 - `hotspot-42-53-验收证据包.md`
+
+AI provider 真实回放入口：
+
+- `PYTHONPATH=. python3 scripts/verify_ai_provider.py --json`
+  - 缺少真实 provider 凭据时返回 `missing_credentials` 与 required env。
+  - 配置真实 provider 后校验 LangChain/LangGraph 决策、`trace_id` 与 `provider_trace`。
