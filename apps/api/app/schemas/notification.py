@@ -18,3 +18,9 @@ class NotificationRead(BaseModel):
     sent_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class NotificationListResponse(BaseModel):
+    items: list[NotificationRead]
+    limit: int
+    offset: int
