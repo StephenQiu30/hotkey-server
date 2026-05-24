@@ -652,6 +652,21 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertEqual(evidence.risk_level(), "low")
         self.assertLess(with_penalty.score, without_penalty.score)
 
+    def test_low_trust_penalty_bad_config_falls_back_to_zero(self) -> None:
+        self.patch_settings(low_trust_penalty="bad-penalty")
+        evidence = SourceEvidence(
+            source_reachable=False,
+            url_stability=False,
+            domain_risk=20.0,
+            publish_depth=0.0,
+            cross_source_count=1,
+            status="degraded",
+            risk_tags=["shortlink"],
+        )
+
+        self.assertEqual(evidence.risk_level(), "low")
+        self.assertEqual(evidence.penalty(), 0.0)
+
     def test_low_trust_event_filtered_for_notification(self) -> None:
         self.test_run_hotspot_check_marks_low_trust_event_as_filtered_and_skip_notify()
 

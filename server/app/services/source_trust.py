@@ -40,7 +40,12 @@ class SourceEvidence:
 
     def penalty(self) -> float:
         if self.risk_level() == "low":
-            return float(settings.low_trust_penalty)
+            # LOW_TRUST_PENALTY is an operational rollback knob; invalid config must degrade to
+            # no penalty instead of breaking the scoring and notification pipeline.
+            try:
+                return max(0.0, float(settings.low_trust_penalty))
+            except (TypeError, ValueError):
+                return 0.0
         return 0.0
 
     def bundle(self) -> dict[str, Any]:
