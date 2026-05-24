@@ -36,12 +36,12 @@ async def lifespan(app: FastAPI):
         await stop_scheduler(scheduler_task)
 
 
-def create_app() -> FastAPI:
+def create_app(*, initialize_on_startup: bool = True) -> FastAPI:
     app = FastAPI(
         title="AI Hotspot Radar API",
         version="0.1.0",
         description="Rebuilt FastAPI backend for the self-hosted AI hotspot monitoring MVP.",
-        lifespan=lifespan,
+        lifespan=lifespan if initialize_on_startup else None,
     )
     register_error_handlers(app)
     app.add_middleware(RequestAuditMiddleware)
