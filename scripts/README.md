@@ -15,4 +15,9 @@
 ## 常用执行命令
 
 - `bash scripts/checkpoint-gate.sh`  
-  执行门禁检查：扫描 `apps/` 运行时残留、运行仓库治理测试，并检查 `git status --short`。
+  执行门禁检查：扫描 `apps/` 运行时残留、运行仓库治理测试，并检查 `git status --short` 是否为空。
+
+### 质量门禁约定（按轮执行）
+
+- 每个 Issue/PR 执行前后必须保持 `git status --short` 清洁，避免中间产物留在工作区。
+- 提交顺序要求：先补/跑测试（红绿循环），再提交代码（`feat`/`fix`/`test` 前缀）并再次通过门禁。
