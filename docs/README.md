@@ -35,7 +35,12 @@
 ## 执行约束补充
 
 - `server` 为后端服务入口，避免继续维护 `apps` 目录路径。
-- 执行完后工作区应保持干净（`git status` 无未跟踪/未提交文件）。
+- 任何执行单元（Issue/PR）完成前后都必须执行：
+  - `python3 -m unittest discover -s tests -p 'test_repository_governance.py'`
+  - `find . -type d -name apps -print`
+  - `find . -type f | rg '(^|/)apps/'`
+  - `git status --short`（提交前后均要求输出为空）
+- `server` 为后端服务入口，避免继续维护 `apps` 目录路径。非归档目录文件不得作为运行时入口。
 
 ## 推荐阅读路径
 
