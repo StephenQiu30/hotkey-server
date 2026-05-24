@@ -102,7 +102,10 @@ def compute_hotness_score(
     now = datetime.now(timezone.utc)
     freshness = _freshed_time_score(hotspot.published_at, now=now)
     if source_strength is None:
-        source_strength = _to_float(hotspot.source.config.get("source_strength", settings.hotness_source_strength_default), default=0.0)
+        # Source can be absent on compatibility/fallback paths; default strength keeps scoring deterministic
+        # instead of blocking ingestion when ORM relationships are not preloaded.
+        source_config = hotspot.source.config if hotspot.source is not None and isinstance(hotspot.source.config, dict) else {}
+        source_strength = _to_float(source_config.get("source_strength", settings.hotness_source_strength_default), default=settings.hotness_source_strength_default)
     keyword_fit = 100.0 if bool(getattr(analysis, "keyword_mentioned", False)) else 60.0
     source_strength_score = _source_strength_score(source_strength)
 
