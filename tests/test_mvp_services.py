@@ -183,10 +183,50 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
 
     def test_provider_registry_has_default_adapters(self) -> None:
         self.assertEqual(get_provider_class("rss").source_type, "rss")
+        self.assertEqual(get_provider_class("github-trending").source_type, "github_trending")
         self.assertEqual(get_provider_class("hacker-news").source_type, "hacker_news")
         self.assertEqual(get_provider_class("x-twitter").source_type, "x_twitter")
         self.assertEqual(get_provider_class("bili").source_type, "bilibili")
         self.assertEqual(get_provider_class("weibo_sogou").source_type, "sogou")
+
+    def test_github_trending_provider_normalizes_repository_search_results(self) -> None:
+        from apps.api.app.services.providers.github_trending import _fetch_github_trending
+
+        payload = {
+            "items": [
+                {
+                    "id": 123,
+                    "full_name": "openai/agents",
+                    "html_url": "https://github.com/openai/agents",
+                    "description": "Build agentic applications.",
+                    "stargazers_count": 42000,
+                    "forks_count": 1200,
+                    "language": "TypeScript",
+                    "pushed_at": "2026-05-24T08:00:00Z",
+                    "owner": {"login": "openai"},
+                    "topics": ["ai", "agents"],
+                }
+            ]
+        }
+        response = SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: payload,
+        )
+
+        with patch("apps.api.app.services.providers.github_trending.httpx.get", return_value=response) as request:
+            candidates = _fetch_github_trending({"limit": 5, "language": "TypeScript"}, 9, 3, "AI agent")
+
+        request.assert_called_once()
+        params = request.call_args.kwargs["params"]
+        self.assertIn("AI agent", params["q"])
+        self.assertIn("language:TypeScript", params["q"])
+        self.assertEqual(candidates[0].title, "openai/agents")
+        self.assertEqual(candidates[0].url, "https://github.com/openai/agents")
+        self.assertEqual(candidates[0].author, "openai")
+        self.assertEqual(candidates[0].source_id, 9)
+        self.assertEqual(candidates[0].keyword_id, 3)
+        self.assertEqual(candidates[0].raw_payload["source_type"], "github_trending")
+        self.assertEqual(candidates[0].raw_payload["stars"], 42000)
 
     def test_fetch_candidates_uses_registered_provider_implementation(self) -> None:
         source = Source(id=10, name="Mock RSS", source_type="rss", enabled=True, config={"url": "https://example.com/rss"})
