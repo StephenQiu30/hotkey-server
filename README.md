@@ -45,3 +45,13 @@ python3 -m unittest discover -s tests -p 'test_repository_governance.py'
 ```
 
 该测试用于确认本仓声明了后端职责、跨仓主规范源、Swagger/OpenAPI 契约源和生成客户端规则。
+
+## OpenAPI 契约导出
+
+Web 与小程序默认通过运行中的 Swagger/OpenAPI 文档接入，也可以导出静态契约文件用于 `@umijs/openapi` 生成客户端：
+
+```bash
+npm run openapi:export
+```
+
+默认输出为 `docs/openapi.json`。
