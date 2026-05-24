@@ -36,6 +36,8 @@ def run_hotspot_check(session: Session, trigger_type: str = "manual") -> CheckRu
     keywords = list(session.scalars(select(Keyword).where(Keyword.enabled.is_(True)).order_by(Keyword.priority.desc(), Keyword.id)))
     sources = select_sources(list(session.scalars(select(Source).where(Source.enabled.is_(True)).order_by(Source.id))))
     url_source_hits: dict[str, set[int]] = {}
+    last_failed_source: Source | None = None
+    last_source_failure_reason: str | None = None
 
     if not keywords:
         errors.append("No enabled keywords.")
@@ -54,8 +56,18 @@ def run_hotspot_check(session: Session, trigger_type: str = "manual") -> CheckRu
                 except SourceIngestionError as exc:
                     failure_count += 1
                     errors.append(str(exc))
+                    last_failed_source = source
+                    last_source_failure_reason = str(exc)
                     continue
+                route_payload = _source_route_payload(
+                    source,
+                    fallback_from=last_failed_source,
+                    fallback_reason=last_source_failure_reason,
+                )
+                last_failed_source = None
+                last_source_failure_reason = None
                 for candidate in candidates:
+                    candidate.raw_payload.update(route_payload)
                     candidate.url = _normalize_url(candidate.url)
                     if not candidate.url:
                         continue
@@ -141,6 +153,29 @@ def ensure_default_sources(session: Session) -> None:
         if source.name not in existing_names:
             session.add(source)
     session.flush()
+
+
+def _source_route_payload(
+    source: Source,
+    *,
+    fallback_from: Source | None = None,
+    fallback_reason: str | None = None,
+) -> dict[str, object]:
+    # Persist route decisions on each accepted candidate so source fallback is auditable from API payloads.
+    payload: dict[str, object] = {
+        "source_selected": source.name,
+        "source_selected_type": source.source_type,
+        "source_selected_id": source.id,
+    }
+    if fallback_from is not None:
+        payload["source_fallback"] = {
+            "from": fallback_from.name,
+            "from_type": fallback_from.source_type,
+            "to": source.name,
+            "to_type": source.source_type,
+            "reason": fallback_reason,
+        }
+    return payload
 
 
 def _get_or_create_hotspot(session: Session, candidate) -> Hotspot | None:

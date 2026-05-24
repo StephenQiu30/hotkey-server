@@ -33,7 +33,7 @@ from server.app.services.ai.providers import build_provider
 from server.app.services.ai.providers.openai import OpenAICompatibleProvider
 from server.app.services.ingestion import Candidate, SourceIngestionError, fetch_candidates
 from server.app.services.notification import notify_hotspot, notify_report
-from server.app.services.check_runner import _build_analysis_raw_response, _decide_hotspot_status, _normalize_url
+from server.app.services.check_runner import _build_analysis_raw_response, _decide_hotspot_status, _normalize_url, _source_route_payload
 from server.app.services.check_runner import _estimate_cross_sources, _next_cluster_version, _should_enhance_analysis as check_runner_should_enhance
 from server.app.services.check_runner import run_hotspot_check
 from server.app.services.scheduler import _maybe_run_weekly_report
@@ -831,6 +831,18 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
 
     def test_source_fallback_preserves_primary_flow(self) -> None:
         self.test_source_route_skips_failing_source()
+
+    def test_source_route_payload_records_selected_and_fallback(self) -> None:
+        primary = Source(id=1, name="primary", source_type="rss", enabled=True, config={})
+        backup = Source(id=2, name="backup", source_type="rss", enabled=True, config={})
+
+        payload = _source_route_payload(backup, fallback_from=primary, fallback_reason="timeout")
+
+        self.assertEqual(payload["source_selected"], "backup")
+        self.assertEqual(payload["source_selected_type"], "rss")
+        self.assertEqual(payload["source_fallback"]["from"], "primary")
+        self.assertEqual(payload["source_fallback"]["to"], "backup")
+        self.assertEqual(payload["source_fallback"]["reason"], "timeout")
 
     def test_check_runner_still_completes_when_one_source_fail(self) -> None:
         self.test_source_route_skips_failing_source()
