@@ -2,6 +2,31 @@
 
 本文件用于存放项目开发过程中的规范性要求。
 
+## HotKey 跨仓通用规范
+
+hotkey-server 是跨仓库 AGENTS.md 主规范源。通用工程规范、OpenAPI 契约规范、TDD/验收规范、Git/PR 规范和跨仓协作顺序必须先在本文件维护，再同步到 `hotkey-web` 与 `hotkey-miniapp` 的 `AGENTS.md`。
+
+跨仓默认执行顺序为：`server -> web -> miniapp -> 回归`。
+
+### 仓库职责
+
+1. `hotkey-server`：FastAPI 后端，负责账号、热点、榜单、AI 摘要、选题生成、收藏关注、通知、搜索、数据源采集和 OpenAPI 输出。
+2. `hotkey-web`：Next.js Web 创作者工作台，通过后端 OpenAPI 生成客户端。
+3. `hotkey-miniapp`：Taro 跨端小程序，通过后端 OpenAPI 生成客户端。
+
+### OpenAPI 契约规则
+
+1. `hotkey-server` 的 Swagger/OpenAPI 是 OpenAPI 契约事实源。
+2. Web 和小程序不得手写后端 API 类型，必须通过 `@umijs/openapi` 从后端 OpenAPI 文档生成客户端。
+3. 涉及接口字段、状态码、错误结构或鉴权方式变更时，必须先更新 server 测试和 OpenAPI，再同步 Web 和小程序生成产物。
+4. 契约变更 PR 必须记录生成命令、生成结果和端侧影响范围。
+
+### P0 范围边界
+
+1. P0 聚焦内容创作者热点选题工作台：热点聚合、榜单排行、AI 快速理解、AI 选题生成、搜索、收藏关注、基础通知和 Web/Taro 端访问。
+2. P0 不引入多租户、计费、复杂 RBAC、向量库、RAG、企业舆情工作流或复杂分布式采集治理。
+3. 每个阶段必须有 PO 审查 issue 和验收 issue，未完成审查与验收前不得关闭对应 milestone。
+
 ## 项目开发原则
 
 1. 项目开发遵循 MVP 原则，以最小可用功能闭环为优先，不对功能、架构、流程或文档进行过度设计。
