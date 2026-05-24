@@ -57,10 +57,10 @@
 
 ## 4. 架构底线
 
-- `apps/api` 承载 FastAPI 后端入口、路由、依赖注入、数据库访问和任务触发入口。
-- `apps/web` 承载 Next.js SaaS 前端平台。
+- `server` 承载 FastAPI 后端入口、路由、依赖注入、数据库访问和任务触发入口。
+- `hotkey-web`（独立仓）承载 Next.js SaaS 前端平台。
 - `packages/core` 承载跨应用共享的轻量类型、常量或文档化规则；不得重新引入旧 `backend/core` 分层。
-- `sql/` 是数据库表结构事实源；`apps/api` 的 SQLAlchemy models 必须与 `sql/001_init_schema.sql` 保持一致。
+- `sql/` 是数据库表结构事实源；`server/app/models` 的 SQLAlchemy models 必须与 `sql/001_init_schema.sql` 保持一致。
 - `migrations` 已废弃，不引入数据库迁移工具；数据库初始化优先执行 `sql/001_init_schema.sql`，重置时通过清空数据库重建。
 - 外部平台、模型服务、邮件服务和数据库访问必须放在 infrastructure/adapter 层或等价隔离层中。
 - 当前架构中不利于 MVP 落地的部分已允许删除，包括静态样例数据主链路、启动时隐式初始化业务数据、内存仓库作为生产默认实现。
