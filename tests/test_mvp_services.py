@@ -350,6 +350,36 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         self.assertGreater(decision.score, 0.0)
         self.assertIn("来源强度=65.00", decision.reason)
 
+    def test_hotness_threshold_falls_back_and_records_filter_reason(self) -> None:
+        self.patch_settings(hotness_active_threshold="bad-threshold")
+        evidence = SourceEvidence(
+            source_reachable=True,
+            url_stability=True,
+            domain_risk=90.0,
+            publish_depth=100.0,
+            cross_source_count=1,
+            status="ok",
+            risk_tags=[],
+        )
+        analysis = AnalysisResult(
+            is_real=True,
+            relevance_score=95,
+            relevance_reason="high relevance",
+            keyword_mentioned=True,
+            importance="high",
+            summary="summary",
+            model_name="fallback",
+            raw_response={},
+        )
+        hotness = SimpleNamespace(score=69.0, raw_payload=lambda: {"hotness_score": 69.0, "hotness_version": 1})
+
+        status = _decide_hotspot_status(analysis, hotness, evidence)
+        raw = _build_analysis_raw_response(analysis_result=analysis, evidence=evidence, hotness=hotness)
+
+        self.assertEqual(status, "filtered")
+        self.assertEqual(raw["hotness_active_threshold"], 70.0)
+        self.assertEqual(raw["hotness_filter_reason"], "below_threshold")
+
     def test_hotness_high_relevance_marks_active(self) -> None:
         self.patch_settings(hotness_active_threshold=70.0, relevance_threshold=50.0)
         source = Source(id=12, name="hacker news", source_type="hacker_news", enabled=True, config={"source_strength": 80})
