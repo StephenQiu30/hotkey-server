@@ -34,6 +34,8 @@ from apps.api.app.services.search import search_sources, _load_search_sources
 from apps.api.app.services import rss as rss_service
 from apps.api.app.services.providers import get_provider_class
 from apps.api.app.schemas.ai_analysis import AiAnalysisRead
+from apps.api.app.schemas.hotspot import HotspotRead
+from apps.api.app.api.routes.hotspots import _apply_sort
 
 
 class CollectingSession:
@@ -189,6 +191,52 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
 
         self.assertEqual(payload.quick_understanding, ["一句话看懂", "为什么重要"])
         self.assertEqual(payload.topic_ideas[0].title, "AI agent 工作流怎么用")
+
+    def test_hotspot_read_exposes_ranking_trend_and_cluster_fields(self) -> None:
+        created_at = datetime.now(tz=timezone.utc)
+        hotspot = Hotspot(
+            id=13,
+            title="AI agent trend",
+            url="https://example.com/agent-trend",
+            source_id=1,
+            keyword_id=1,
+            snippet="AI agent trend details.",
+            status="active",
+            raw_payload={"cluster_id": "cluster-ai-agent", "trend_score": 64},
+            fetched_at=created_at,
+            created_at=created_at,
+            updated_at=created_at,
+        )
+        hotspot.ai_analysis = AiAnalysis(  # type: ignore[assignment]
+            id=2,
+            hotspot_id=13,
+            is_real=True,
+            relevance_score=90,
+            relevance_reason="高相关。",
+            keyword_mentioned=True,
+            importance="high",
+            summary="摘要",
+            model_name="fallback",
+            raw_response={},
+            created_at=created_at,
+            updated_at=created_at,
+        )
+
+        payload = HotspotRead.model_validate(hotspot)
+
+        self.assertEqual(payload.cluster_id, "cluster-ai-agent")
+        self.assertEqual(payload.trend_score, 64)
+        self.assertGreater(payload.rank_score, payload.trend_score)
+
+    def test_hotspot_sort_contract_supports_rank_and_trend_desc(self) -> None:
+        rank_stmt = _apply_sort(select(Hotspot), "rank_score_desc")
+        trend_stmt = _apply_sort(select(Hotspot), "trend_score_desc")
+
+        rank_sql = str(rank_stmt.compile(dialect=postgresql.dialect()))
+        trend_sql = str(trend_stmt.compile(dialect=postgresql.dialect()))
+
+        self.assertIn("relevance_score", rank_sql)
+        self.assertIn("trend_score", trend_sql)
 
     def test_fallback_analysis_marks_missing_keyword_below_threshold(self) -> None:
         self.patch_settings(openai_api_key=None, openai_model=None, relevance_threshold=50.0)
