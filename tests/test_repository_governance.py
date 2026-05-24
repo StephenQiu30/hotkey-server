@@ -33,6 +33,16 @@ class RepositoryGovernanceTest(unittest.TestCase):
             "检测到遗留的 apps 目录，后端交付应使用 server 作为唯一后端入口",
         )
 
+    def test_no_runtime_apps_directory(self):
+        forbidden_apps_dirs = [
+            p for p in ROOT.rglob("apps") if p.is_dir() and ".git" not in p.parts and "openspec/changes/archive" not in p.as_posix()
+        ]
+        self.assertEqual(
+            forbidden_apps_dirs,
+            [],
+            "发现除历史归档外的 apps 目录，需移除并改为 server 运行入口",
+        )
+
     def test_docs_declare_server_as_only_backend_entry(self):
         docs_readme = self.read_text("docs/README.md")
 
