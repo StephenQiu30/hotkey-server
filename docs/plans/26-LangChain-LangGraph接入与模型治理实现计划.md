@@ -40,20 +40,20 @@ downstream:
 ## 3. 任务拆解（含文件）
 
 ### T1 Orchestrator 接口
-- 新建：`apps/api/app/services/ai/orchestrator.py`
-- 修改：`apps/api/app/services/ai_analysis.py`
+- 新建：`server/app/services/ai/orchestrator.py`
+- 修改：`server/app/services/ai_analysis.py`
 
 ### T2 LangChain 主路径
-- 修改：`apps/api/app/services/ai/providers/*`
-- 新建：`apps/api/app/services/ai/chain_factory.py`
+- 修改：`server/app/services/ai/providers/*`
+- 新建：`server/app/services/ai/chain_factory.py`
 
 ### T3 LangGraph 增强与路由
-- 新建：`apps/api/app/services/ai/workflow.py`
-- 修改：`apps/api/app/core/settings.py`
+- 新建：`server/app/services/ai/workflow.py`
+- 修改：`server/app/core/settings.py`
 
 ### T4 可观测与回退
-- 修改：`apps/api/app/services/check_runner.py`
-- 修改：`apps/api/app/services/ai/chain_factory.py`
+- 修改：`server/app/services/check_runner.py`
+- 修改：`server/app/services/ai/chain_factory.py`
 
 ## 4. TDD 测试清单
 
