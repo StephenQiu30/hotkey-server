@@ -232,8 +232,8 @@ class MvpServiceTests(SettingsPatchMixin, unittest.TestCase):
         rank_stmt = _apply_sort(select(Hotspot), "rank_score_desc")
         trend_stmt = _apply_sort(select(Hotspot), "trend_score_desc")
 
-        rank_sql = str(rank_stmt.compile(dialect=postgresql.dialect()))
-        trend_sql = str(trend_stmt.compile(dialect=postgresql.dialect()))
+        rank_sql = str(rank_stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+        trend_sql = str(trend_stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
 
         self.assertIn("relevance_score", rank_sql)
         self.assertIn("trend_score", trend_sql)

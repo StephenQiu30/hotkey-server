@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import Select, select
+from sqlalchemy import Numeric, Select, cast, select
 from sqlalchemy.orm import Session, selectinload
 
 from apps.api.app.db.session import get_session
@@ -59,6 +59,11 @@ def _base_hotspot_query() -> Select:
 
 
 def _apply_sort(stmt: Select, sort: str) -> Select:
+    trend_score = cast(Hotspot.raw_payload["trend_score"].astext, Numeric(8, 2))
+    if sort == "rank_score_desc":
+        return stmt.outerjoin(AiAnalysis, AiAnalysis.hotspot_id == Hotspot.id).order_by(AiAnalysis.relevance_score.desc().nullslast(), trend_score.desc().nullslast(), Hotspot.id.desc())
+    if sort == "trend_score_desc":
+        return stmt.order_by(trend_score.desc().nullslast(), Hotspot.fetched_at.desc(), Hotspot.id.desc())
     if sort == "published_at_asc":
         return stmt.order_by(Hotspot.published_at.asc().nullslast(), Hotspot.id.desc())
     if sort == "relevance_desc":
