@@ -35,3 +35,16 @@ func TestSpecContainsKeywordEndpoints(t *testing.T) {
 		}
 	}
 }
+
+func TestSpecContainsSourceEndpoints(t *testing.T) {
+	spec := Spec()
+
+	for _, path := range []string{
+		"/api/v1/admin/sources",
+		"/api/v1/admin/sources/{id}",
+	} {
+		if _, ok := spec.Paths[path]; !ok {
+			t.Fatalf("paths missing %s", path)
+		}
+	}
+}

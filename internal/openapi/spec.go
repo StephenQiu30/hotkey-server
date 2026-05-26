@@ -105,6 +105,22 @@ func Spec() SpecDocument {
 					Responses:   okObjectResponse("Platform keyword updated"),
 				},
 			},
+			"/api/v1/admin/sources": {
+				Get: Operation{
+					Summary:     "List configured collection sources",
+					OperationID: "listSources",
+					Tags:        []string{"source"},
+					Responses:   okObjectResponse("Source list"),
+				},
+			},
+			"/api/v1/admin/sources/{id}": {
+				Patch: Operation{
+					Summary:     "Enable, disable, or throttle a collection source",
+					OperationID: "updateSourceConfig",
+					Tags:        []string{"source"},
+					Responses:   okObjectResponse("Source configuration updated"),
+				},
+			},
 			"/api/v1/keywords/follow": {
 				Post: Operation{
 					Summary:     "Follow keyword for a user",

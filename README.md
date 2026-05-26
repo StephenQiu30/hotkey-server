@@ -74,9 +74,13 @@ curl http://127.0.0.1:18080/openapi.json
 - `GET /api/v1/admin/keywords`
 - `POST /api/v1/admin/keywords`
 - `PATCH /api/v1/admin/keywords/{id}`
+- `GET /api/v1/admin/sources`
+- `PATCH /api/v1/admin/sources/{id}`
 - `POST /api/v1/keywords/follow`
 - `POST /api/v1/keywords/block`
 - `POST /api/v1/keywords/additional`
 - `GET /api/v1/keywords/preferences?userId=...`
 
 当前关键词能力先使用进程内仓储锁定 API 行为和 OpenAPI 契约；PostgreSQL schema、pgvector 和 Redis 持久化会在后续 P0 数据与队列任务中接入。
+
+当前来源能力先使用进程内来源注册表锁定合规字段、启停与限流契约；默认内置 `arxiv-ai` 作为国外事实源、`github-trending-ai` 作为传播源，不包含绕过授权、抓取真实 token 或规避平台限制的采集逻辑。

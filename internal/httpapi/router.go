@@ -6,14 +6,19 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/keyword"
 	"github.com/StephenQiu30/hotkey-server/internal/openapi"
+	"github.com/StephenQiu30/hotkey-server/internal/source"
 	"github.com/gin-gonic/gin"
 )
 
 func NewRouter() *gin.Engine {
-	return NewRouterWithKeywordService(keyword.NewService())
+	return NewRouterWithServices(keyword.NewService(), source.NewService())
 }
 
 func NewRouterWithKeywordService(keywordService *keyword.Service) *gin.Engine {
+	return NewRouterWithServices(keywordService, source.NewService())
+}
+
+func NewRouterWithServices(keywordService *keyword.Service, sourceService *source.Service) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.GET("/healthz", handleHealth)
@@ -21,6 +26,8 @@ func NewRouterWithKeywordService(keywordService *keyword.Service) *gin.Engine {
 	router.GET("/api/v1/admin/keywords", listPlatformKeywords(keywordService))
 	router.POST("/api/v1/admin/keywords", createPlatformKeyword(keywordService))
 	router.PATCH("/api/v1/admin/keywords/:id", setPlatformKeywordEnabled(keywordService))
+	router.GET("/api/v1/admin/sources", listSources(sourceService))
+	router.PATCH("/api/v1/admin/sources/:id", updateSource(sourceService))
 	router.POST("/api/v1/keywords/follow", followKeyword(keywordService))
 	router.POST("/api/v1/keywords/block", blockKeyword(keywordService))
 	router.POST("/api/v1/keywords/additional", addUserKeyword(keywordService))
@@ -46,6 +53,11 @@ type createKeywordRequest struct {
 
 type updateKeywordRequest struct {
 	Enabled *bool `json:"enabled"`
+}
+
+type updateSourceRequest struct {
+	Enabled          *bool `json:"enabled"`
+	RateLimitPerHour *int  `json:"rateLimitPerHour"`
 }
 
 type userKeywordRequest struct {
@@ -92,6 +104,31 @@ func setPlatformKeywordEnabled(service *keyword.Service) gin.HandlerFunc {
 		updated, err := service.SetPlatformKeywordEnabled(c.Param("id"), *req.Enabled)
 		if err != nil {
 			writeKeywordError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, updated)
+	}
+}
+
+func listSources(service *source.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"sources": service.ListSources()})
+	}
+}
+
+func updateSource(service *source.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req updateSourceRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		updated, err := service.UpdateSourceConfig(c.Param("id"), source.UpdateSourceConfigInput{
+			Enabled:          req.Enabled,
+			RateLimitPerHour: req.RateLimitPerHour,
+		})
+		if err != nil {
+			writeSourceError(c, err)
 			return
 		}
 		c.JSON(http.StatusOK, updated)
@@ -150,6 +187,19 @@ func writeKeywordError(c *gin.Context, err error) {
 		writeError(c, http.StatusNotFound, "keyword_not_found", "keyword was not found")
 	default:
 		writeError(c, http.StatusInternalServerError, "internal_error", "unexpected keyword error")
+	}
+}
+
+func writeSourceError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, source.ErrInvalidSourceConfig):
+		writeError(c, http.StatusBadRequest, "invalid_source_config", "source configuration is invalid")
+	case errors.Is(err, source.ErrNonCompliantSource):
+		writeError(c, http.StatusBadRequest, "non_compliant_source", "source access mode is not allowed")
+	case errors.Is(err, source.ErrSourceNotFound):
+		writeError(c, http.StatusNotFound, "source_not_found", "source was not found")
+	default:
+		writeError(c, http.StatusInternalServerError, "internal_error", "unexpected source error")
 	}
 }
 
