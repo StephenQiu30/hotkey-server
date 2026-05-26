@@ -160,3 +160,28 @@ func TestSpecContainsMiniappClientContract(t *testing.T) {
 		t.Fatalf("OpenAPI spec JSON is invalid")
 	}
 }
+
+func TestSpecContainsAdminAPIContract(t *testing.T) {
+	spec := Spec()
+
+	for _, path := range []string{
+		"/api/v1/admin/keywords",
+		"/api/v1/admin/keywords/{id}",
+		"/api/v1/admin/sources",
+		"/api/v1/admin/sources/{id}",
+		"/api/v1/admin/task-runs",
+		"/api/v1/admin/reports/daily",
+		"/api/v1/admin/event-clusters",
+		"/api/v1/admin/event-evidence",
+	} {
+		if _, ok := spec.Paths[path]; !ok {
+			t.Fatalf("admin contract missing %s", path)
+		}
+	}
+	if _, ok := spec.Paths["/api/v1/admin/reports/daily"].Post.Responses["202"]; !ok {
+		t.Fatalf("admin daily report trigger missing 202 response")
+	}
+	if _, ok := spec.Paths["/api/v1/admin/task-runs"].Get.Responses["401"]; !ok {
+		t.Fatalf("admin task runs missing 401 response")
+	}
+}
