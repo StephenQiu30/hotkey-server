@@ -10,7 +10,7 @@ hotkey-server 是跨仓库 AGENTS.md 主规范源。通用工程规范、OpenAPI
 
 ### 仓库职责
 
-1. `hotkey-server`：FastAPI 后端，负责账号、热点、榜单、AI 摘要、选题生成、收藏关注、通知、搜索、数据源采集和 OpenAPI 输出。
+1. `hotkey-server`：Go 后端，负责 AI 热点关键词、来源采集、内容标准化、相似事件聚合、证据链、热点排序、日报生成、OpenAPI 输出和后续平台化能力。
 2. `hotkey-web`：Next.js Web 创作者工作台，通过后端 OpenAPI 生成客户端。
 3. `hotkey-miniapp`：Taro 跨端小程序，通过后端 OpenAPI 生成客户端。
 
@@ -23,9 +23,10 @@ hotkey-server 是跨仓库 AGENTS.md 主规范源。通用工程规范、OpenAPI
 
 ### P0 范围边界
 
-1. P0 聚焦内容创作者热点选题工作台：热点聚合、榜单排行、AI 快速理解、AI 选题生成、搜索、收藏关注、基础通知和 Web/Taro 端访问。
-2. P0 不引入多租户、计费、复杂 RBAC、向量库、RAG、企业舆情工作流或复杂分布式采集治理。
-3. 每个阶段必须有 PO 审查 issue 和验收 issue，未完成审查与验收前不得关闭对应 milestone。
+1. P0 聚焦 AI 实时热点监测小程序的开源核心闭环：关键词、来源采集、内容标准化、pgvector 相似聚合、证据链、热点排序、日报、OpenAPI 和端侧契约。
+2. 多租户、计费、复杂 RBAC、复杂消息队列、多服务拆分、秒级实时和完整事件图谱属于完整目标架构，必须按 P1-P3 分阶段进入里程碑，不在 P0 隐式完成。
+3. 每个阶段必须有对应 Epic issue，且一个 Epic 对应一个 milestone；未完成该 Epic 的审查与验收前不得关闭对应 milestone。
+4. 阶段 milestone 必须同步到 GitHub 与 Linear，任务 issue 必须分配到所属 Epic 的 milestone，并指定负责人。
 
 ## 项目开发原则
 
@@ -78,16 +79,17 @@ hotkey-server 是跨仓库 AGENTS.md 主规范源。通用工程规范、OpenAPI
 ## docs 目录规范
 
 1. 项目文档应按类型写入 `docs/` 下的对应子目录，避免把 PRD、计划、设计、验收和运维文档混放。
-2. `docs/prd/` 存放产品需求、范围定义、用户故事和 MVP 边界。
+2. `docs/product/prd/` 存放产品需求、范围定义、用户故事和阶段边界。
 3. `docs/plans/` 存放执行计划、阶段拆解、任务清单和排期安排。
-4. `docs/design/` 存放技术方案、架构决策、接口设计和实现设计。
+4. `docs/engineering/` 存放技术方案、架构决策、接口设计和实现设计。
 5. `docs/acceptance/` 存放验收标准、测试记录、验证报告和回归证据。
 6. `docs/operations/` 存放发布流程、Git/PR 规范、部署说明和运行手册。
-7. `docs/` 只存放会对项目产生长期真实影响的文档，例如需求边界、设计决策、验收标准、发布流程和运维规范。
-8. 执行 todo、临时任务清单、过程性进展记录、一次性排查记录不应写入 `docs/`；这类内容应在 OpenSpec change 的 tasks 中执行，并随 change 归档闭环。
+7. `docs/` 只保留最终有长期价值的事实源文档，例如需求边界、设计决策、验收标准、发布流程和运维规范。
+8. 执行 todo、临时任务清单、过程性进展记录、一次性排查记录、草稿和中间状态文件不应写入 `docs/`；这类内容应留在 issue、PR、OpenSpec change 或临时工作区，并在闭环后删除或归档到对应平台。
 9. 正式 docs 文档必须使用 YAML frontmatter 描述 `layer`、`doc_no`、`audience`、`purpose`、`owner`、`inputs`、`outputs`、`triggers` 和 `downstream` 等元信息。
 10. `docs/TEMPLATE.md` 是正式文档模板，新增 PRD、计划、设计、验收或运维文档时应优先复用。
 11. 每个 docs 子目录必须有 README，说明该目录放什么、不放什么，以及文档命名建议。
+12. 每次提交前必须检查 `docs/` 是否存在旧编号、旧架构、中间状态或一次性文件；不符合长期事实源标准的文件不得进入提交。
 
 ## 角色协作结构
 
@@ -148,7 +150,7 @@ hotkey-server 是跨仓库 AGENTS.md 主规范源。通用工程规范、OpenAPI
 6. 多个 PR 需要合并时，应按用户指定顺序逐个合并；每合并一个 PR 后都要重新检查后续 PR 的冲突、CI 和合并状态。
 7. PR 合并后应同步本地分支状态，并执行必要的仓库健康检查，确认没有合并后遗留的工作区污染或格式问题。
 8. 功能 PR 描述必须包含 Test-first Evidence、Tests added、Commands run、Result、Agent Usage 和 Reviewer Checklist；Reviewer 应先审 `test:` commit，再审 `impl:` commit。
-9. CI 必须包含完整测试入口，至少运行仓库结构检查、Markdown 空白检查和 `npm test`；项目增加真实单元、集成、UI、快照或性能测试后，应把对应命令接入 `npm test` 或 CI 明确步骤。
+9. CI 必须包含当前阶段可执行的完整验证入口。Go 后端重建前至少运行仓库结构检查、Markdown 空白检查、文档编号检查和旧运行时缺失检查；项目增加 Go 代码、OpenAPI 导出、端侧生成或真实单元/集成测试后，应把 `go test ./...`、OpenAPI 导出校验和对应生成验证接入 CI。
 
 ## PR 模板要求
 

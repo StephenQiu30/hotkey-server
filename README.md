@@ -1,58 +1,52 @@
 # hotkey-server
 
-`hotkey-server` 是 HotKey 内容创作者热点选题工具的 FastAPI 后端仓库。
+`hotkey-server` 是 HotKey AI 实时热点监测小程序的后端仓库，当前处于 Go 后端全面重建阶段。
 
-本仓是跨仓规范主源，也是 Swagger/OpenAPI 契约事实源。`hotkey-web` 和 `hotkey-miniapp` 必须通过 `@umijs/openapi` 从本仓 OpenAPI 文档生成 API 客户端，不手写后端 API 类型。
-`hotkey-server` 仅承担后端服务入口职责，不保留 `apps` 运行时目录；所有前端仓只作为客户端消费层对接该入口。
+本仓库是跨仓规范主源，也是未来 OpenAPI 契约事实源。`hotkey-web` 和 `hotkey-miniapp` 必须以后端导出的 OpenAPI 为准生成客户端，不手写后端 API 类型。
 
-## P0 职责
+## 当前状态
 
-1. 基础账号体系：Web 邮箱/密码登录，小程序平台登录凭证换取后端会话。
-2. 热点数据：公开源采集、标准化、去重、聚合和榜单排行。
-3. AI 能力：热点快速理解、结构化摘要、风险点和内容选题生成。
-4. 用户动作：收藏、关注、搜索、通知状态。
-5. 接口契约：维护 Swagger/OpenAPI，并作为 Web 与小程序生成客户端的唯一事实源。
+- 旧 FastAPI 运行时、Python 测试、旧 Docker/Compose、旧 SQL 初始化和旧 OpenSpec 实现内容已移除。
+- 当前只保留开源治理文件、Go 重建 PRD/Plan、工程设计和 OpenSpec 配置入口。
+- 新实现必须从 `docs/product/prd/` 与 `docs/plans/` 的连续编号任务开始推进。
 
-## 跨仓协作顺序
+## 目标技术栈
 
-默认顺序：
-
-```text
-server -> web -> miniapp -> 回归
-```
-
-接口相关变更必须先在本仓完成测试、OpenAPI 更新和契约审查，再同步到 `hotkey-web` 与 `hotkey-miniapp`。
-
-## 技术栈
-
-- Python
-- FastAPI
+- Go
 - PostgreSQL
-- SQLAlchemy 2.0
-- Swagger/OpenAPI
-- OpenAI 兼容模型接口
+- pgvector
+- Redis
+- OpenAPI 生成/导出
 
-## 规范文件
+## 文档入口
 
 - [AGENTS.md](./AGENTS.md)：跨仓主规范源。
 - [AGENTS.local.md](./AGENTS.local.md)：当前仓库局部补充规则。
+- [docs/README.md](./docs/README.md)：Go 重建后的长期文档入口。
+- [docs/engineering/1-Go后端重建与开源仓库治理设计.md](./docs/engineering/1-Go后端重建与开源仓库治理设计.md)：目标架构与任务编排规则。
 
-## M0 验证
+## 任务编号
 
-运行仓库治理基线测试：
+- `1-13`：P0 开源核心闭环。
+- `14-16`：P1 平台化能力。
+- `17-19`：P2 商业化与规模化能力。
+- `20-22`：P3 高级实时与事件图谱。
 
-```bash
-python3 -m unittest discover -s tests -p 'test_repository_governance.py'
+每个任务必须同时维护：
+
+```text
+docs/product/prd/N-能力名称PRD.md
+docs/plans/N-能力名称实现计划.md
 ```
 
-该测试用于确认本仓声明了后端职责、跨仓主规范源、Swagger/OpenAPI 契约源和生成客户端规则。
+## 本地验证
 
-## OpenAPI 契约导出
-
-Web 与小程序默认通过运行中的 Swagger/OpenAPI 文档接入，也可以导出静态契约文件用于 `@umijs/openapi` 生成客户端：
+当前阶段尚未引入 Go 运行时代码。提交前至少执行：
 
 ```bash
-npm run openapi:export
+git status --short
+git diff --check
+find docs/product/prd docs/plans -maxdepth 1 -type f | sort -V
 ```
 
-默认输出为 `docs/openapi.json`。
+实现 Go 服务后，应补充 `go test ./...`、OpenAPI 导出和端侧客户端生成验证。

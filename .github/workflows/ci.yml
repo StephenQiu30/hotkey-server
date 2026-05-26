@@ -5,39 +5,38 @@ on:
   pull_request:
 
 jobs:
-  backend:
-    name: backend-tests
+  docs-hygiene:
+    name: docs-hygiene
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_DB: ai_hotspot_radar
-          POSTGRES_USER: ai_user
-          POSTGRES_PASSWORD: ai_pass
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U ai_user -d ai_hotspot_radar"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install dependencies
+
+      - name: Check markdown whitespace
+        run: git diff --check
+
+      - name: Check PRD and plan numbering
+        shell: bash
         run: |
-          python -m pip install --upgrade pip
-          pip install -e .
-      - name: Run backend tests
-        env:
-          DATABASE_URL: postgresql+psycopg://ai_user:ai_pass@localhost:5432/ai_hotspot_radar
-          APP_ENV: test
-          RATE_LIMIT_PER_MINUTE: 120
+          prd_numbers="$(find docs/product/prd -maxdepth 1 -type f -name '*.md' -printf '%f\n' | sed -n 's/^\([0-9]\+\)-.*/\1/p' | sort -n | tr '\n' ' ')"
+          plan_numbers="$(find docs/plans -maxdepth 1 -type f -name '*.md' -printf '%f\n' | sed -n 's/^\([0-9]\+\)-.*/\1/p' | sort -n | tr '\n' ' ')"
+          expected="$(seq 1 22 | tr '\n' ' ')"
+          test "$prd_numbers" = "$expected"
+          test "$plan_numbers" = "$expected"
+
+      - name: Check old runtime is absent
         run: |
-          PYTHONPATH=. python -m unittest tests.test_mvp_services
-          PYTHONPATH=. python -m unittest tests.test_ai_provider_acceptance
+          test ! -d server
+          test ! -d tests
+          test ! -d scripts
+          test ! -d sql
+          test ! -d packages
+          test ! -d deploy
+          test ! -d openspec/changes
+          test ! -d openspec/specs
+          test ! -f .env.example
+          test ! -f package.json
+          test ! -f pyproject.toml
+          test ! -f Dockerfile.api
+          test ! -f docker-compose.yml
+          test ! -f docker-compose.prod.yml
