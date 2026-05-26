@@ -83,6 +83,9 @@ curl http://127.0.0.1:18080/openapi.json
 - `POST /api/v1/admin/event-evidence`
 - `POST /api/v1/admin/events/{id}/ai-summary`
 - `POST /api/v1/realtime/events`
+- `POST /api/v1/admin/event-graph/events`
+- `POST /api/v1/admin/event-graph/relations`
+- `GET /api/v1/events/{id}/graph`
 - `GET /api/v1/admin/task-runs`
 - `POST /api/v1/admin/reports/daily`
 - `POST /api/v1/admin/tenants`
@@ -150,5 +153,7 @@ curl http://127.0.0.1:18080/openapi.json
 当前 API 与 Worker 拆分能力先使用进程内服务边界拓扑锁定拆分契约；API 服务是 OpenAPI 事实源，Worker 服务只消费任务消息，任务消息必须包含 `id`、`type`、`tenantId`、`priority`、`payload` 和 `maxAttempts`。
 
 当前秒级实时检测能力先使用授权实时推送接口锁定低延迟入候选契约；实时源必须携带已登记 token，推送会进入事件候选聚合，并具备窗口限流、熔断和降级队列。
+
+当前完整事件图谱能力先使用进程内图谱锁定跨语言归并和关系表达契约；同一事件可按 `crossLanguageKey` 合并中英文内容，事件节点之间可表达 `evolution`、`citation` 和 `conflict` 关系。
 
 OpenAPI 已声明 `BearerAuth` 鉴权方案和统一结构化错误响应；小程序端应从 `/openapi.json` 生成客户端，不手写后端 API 类型。
