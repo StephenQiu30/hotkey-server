@@ -108,6 +108,10 @@ curl http://127.0.0.1:18080/openapi.json
 - `POST /api/v1/refresh-queue`
 - `GET /api/v1/admin/refresh-queue`
 - `GET /api/v1/admin/redis/health`
+- `GET /api/v1/admin/work-queue/jobs`
+- `POST /api/v1/admin/work-queue/jobs`
+- `POST /api/v1/admin/work-queue/run`
+- `GET /api/v1/admin/work-queue/compensations`
 - `POST /api/v1/keywords/follow`
 - `POST /api/v1/keywords/block`
 - `POST /api/v1/keywords/additional`
@@ -138,5 +142,7 @@ curl http://127.0.0.1:18080/openapi.json
 当前租户级管理员 API 扩展允许平台管理员列出租户，租户管理员通过租户路径管理本租户关键词、来源和日报入口；跨租户治理仍通过平台管理接口和 RBAC/审计契约约束。
 
 当前计费能力先使用进程内套餐、额度和用量记录锁定商业化契约；用量可按租户统计，套餐额度可限制采集、刷新和 AI 调用，超限时返回 `402`。
+
+当前复杂消息队列能力先使用进程内优先级队列和 Worker 池锁定任务契约；采集、分析、日报任务可异步排队，支持优先级、失败重试和补偿记录，后续可替换为真实 MQ。
 
 OpenAPI 已声明 `BearerAuth` 鉴权方案和统一结构化错误响应；小程序端应从 `/openapi.json` 生成客户端，不手写后端 API 类型。
