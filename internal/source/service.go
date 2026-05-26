@@ -23,6 +23,7 @@ var (
 )
 
 type Source struct {
+	TenantID               string   `json:"tenantId,omitempty"`
 	ID                     string   `json:"id"`
 	Name                   string   `json:"name"`
 	Layer                  string   `json:"layer"`
@@ -49,9 +50,7 @@ type Service struct {
 }
 
 func NewService() *Service {
-	service := &Service{
-		sources: make(map[string]Source),
-	}
+	service := NewEmptyService()
 	mustRegister(service, Source{
 		ID:                     "arxiv-ai",
 		Name:                   "arXiv AI",
@@ -85,6 +84,13 @@ func NewService() *Service {
 	return service
 }
 
+func NewEmptyService() *Service {
+	service := &Service{
+		sources: make(map[string]Source),
+	}
+	return service
+}
+
 func mustRegister(service *Service, src Source) {
 	if err := service.RegisterSource(src); err != nil {
 		panic(err)
@@ -99,7 +105,7 @@ func (s *Service) RegisterSource(src Source) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.sources[normalized.ID] = normalized
+	s.sources[sourceKey(normalized.TenantID, normalized.ID)] = normalized
 	return nil
 }
 
@@ -117,11 +123,34 @@ func (s *Service) ListSources() []Source {
 	return sources
 }
 
-func (s *Service) UpdateSourceConfig(id string, input UpdateSourceConfigInput) (Source, error) {
+func (s *Service) ListSourcesByTenant(tenantID string) []Source {
+	tenantID = strings.TrimSpace(tenantID)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	src, ok := s.sources[id]
+	sources := make([]Source, 0)
+	for _, src := range s.sources {
+		if src.TenantID != tenantID {
+			continue
+		}
+		sources = append(sources, cloneSource(src))
+	}
+	sort.Slice(sources, func(i, j int) bool {
+		return sources[i].ID < sources[j].ID
+	})
+	return sources
+}
+
+func (s *Service) UpdateSourceConfig(id string, input UpdateSourceConfigInput) (Source, error) {
+	return s.UpdateTenantSourceConfig("", id, input)
+}
+
+func (s *Service) UpdateTenantSourceConfig(tenantID string, id string, input UpdateSourceConfigInput) (Source, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := sourceKey(strings.TrimSpace(tenantID), id)
+	src, ok := s.sources[key]
 	if !ok {
 		return Source{}, ErrSourceNotFound
 	}
@@ -134,7 +163,7 @@ func (s *Service) UpdateSourceConfig(id string, input UpdateSourceConfigInput) (
 		}
 		src.RateLimitPerHour = *input.RateLimitPerHour
 	}
-	s.sources[id] = src
+	s.sources[key] = src
 	return cloneSource(src), nil
 }
 
@@ -147,17 +176,18 @@ func (s *Service) RecordSourceStatus(id string, status string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	src, ok := s.sources[id]
+	src, ok := s.sources[sourceKey("", id)]
 	if !ok {
 		return ErrSourceNotFound
 	}
 	src.LastStatus = normalized
-	s.sources[id] = src
+	s.sources[sourceKey("", id)] = src
 	return nil
 }
 
 func normalizeSource(src Source) (Source, error) {
 	src.ID = strings.TrimSpace(src.ID)
+	src.TenantID = strings.TrimSpace(src.TenantID)
 	src.Name = strings.TrimSpace(src.Name)
 	src.Layer = strings.TrimSpace(src.Layer)
 	src.Region = strings.TrimSpace(src.Region)
@@ -183,6 +213,9 @@ func normalizeSource(src Source) (Source, error) {
 	}
 	if src.LastStatus == "" {
 		src.LastStatus = "ready"
+	}
+	if !src.Enabled {
+		src.Enabled = true
 	}
 
 	src.Categories = normalizeCategories(src.Categories)
@@ -213,4 +246,8 @@ func normalizeCategories(categories []string) []string {
 func cloneSource(src Source) Source {
 	src.Categories = append([]string(nil), src.Categories...)
 	return src
+}
+
+func sourceKey(tenantID string, id string) string {
+	return strings.TrimSpace(tenantID) + ":" + strings.TrimSpace(id)
 }

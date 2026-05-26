@@ -17,6 +17,7 @@ var ErrMissingEvidenceLink = errors.New("missing evidence link")
 
 type HotspotSnapshot struct {
 	EventID     string   `json:"eventId"`
+	TenantID    string   `json:"tenantId,omitempty"`
 	Title       string   `json:"title"`
 	Keywords    []string `json:"keywords"`
 	HeatScore   int      `json:"heatScore"`
@@ -26,6 +27,7 @@ type HotspotSnapshot struct {
 
 type DailyReportItem struct {
 	EventID     string   `json:"eventId"`
+	TenantID    string   `json:"tenantId,omitempty"`
 	Title       string   `json:"title"`
 	Keywords    []string `json:"keywords"`
 	HeatScore   int      `json:"heatScore"`
@@ -36,6 +38,7 @@ type DailyReportItem struct {
 type DailyReport struct {
 	ID          string            `json:"id"`
 	Scope       string            `json:"scope"`
+	TenantID    string            `json:"tenantId,omitempty"`
 	UserID      string            `json:"userId,omitempty"`
 	ReportDate  time.Time         `json:"reportDate"`
 	GeneratedAt time.Time         `json:"generatedAt"`
@@ -88,6 +91,24 @@ func (s *Service) GenerateUserDailyReport(reportDate time.Time, userID string, f
 	return cloneReport(report), nil
 }
 
+func (s *Service) GenerateTenantDailyReport(reportDate time.Time, tenantID string, hotspots []HotspotSnapshot) (DailyReport, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	items, err := buildReportItemsWithTenant(filterByTenant(hotspots, tenantID), tenantID)
+	if err != nil {
+		return DailyReport{}, err
+	}
+	report := DailyReport{
+		ID:          reportID("tenant", tenantID, reportDate),
+		Scope:       "tenant",
+		TenantID:    tenantID,
+		ReportDate:  normalizeDate(reportDate),
+		GeneratedAt: time.Now().UTC(),
+		Items:       items,
+	}
+	s.save(report)
+	return cloneReport(report), nil
+}
+
 func (s *Service) save(report DailyReport) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -95,9 +116,13 @@ func (s *Service) save(report DailyReport) {
 }
 
 func buildReportItems(hotspots []HotspotSnapshot) ([]DailyReportItem, error) {
+	return buildReportItemsWithTenant(hotspots, "")
+}
+
+func buildReportItemsWithTenant(hotspots []HotspotSnapshot, fallbackTenantID string) ([]DailyReportItem, error) {
 	items := make([]DailyReportItem, 0, len(hotspots))
 	for _, hotspot := range hotspots {
-		item, err := normalizeItem(hotspot)
+		item, err := normalizeItemWithTenant(hotspot, fallbackTenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -113,7 +138,15 @@ func buildReportItems(hotspots []HotspotSnapshot) ([]DailyReportItem, error) {
 }
 
 func normalizeItem(hotspot HotspotSnapshot) (DailyReportItem, error) {
+	return normalizeItemWithTenant(hotspot, "")
+}
+
+func normalizeItemWithTenant(hotspot HotspotSnapshot, fallbackTenantID string) (DailyReportItem, error) {
 	eventID := strings.TrimSpace(hotspot.EventID)
+	tenantID := strings.TrimSpace(hotspot.TenantID)
+	if tenantID == "" {
+		tenantID = strings.TrimSpace(fallbackTenantID)
+	}
 	title := strings.Join(strings.Fields(hotspot.Title), " ")
 	evidenceIDs := normalizeStrings(hotspot.EvidenceIDs)
 	if eventID == "" || title == "" || len(evidenceIDs) == 0 {
@@ -121,12 +154,24 @@ func normalizeItem(hotspot HotspotSnapshot) (DailyReportItem, error) {
 	}
 	return DailyReportItem{
 		EventID:     eventID,
+		TenantID:    tenantID,
 		Title:       title,
 		Keywords:    normalizeStrings(hotspot.Keywords),
 		HeatScore:   hotspot.HeatScore,
 		TrustScore:  hotspot.TrustScore,
 		EvidenceIDs: evidenceIDs,
 	}, nil
+}
+
+func filterByTenant(hotspots []HotspotSnapshot, tenantID string) []HotspotSnapshot {
+	filtered := make([]HotspotSnapshot, 0, len(hotspots))
+	for _, hotspot := range hotspots {
+		if hotspot.TenantID != "" && hotspot.TenantID != tenantID {
+			continue
+		}
+		filtered = append(filtered, hotspot)
+	}
+	return filtered
 }
 
 func filterByKeywords(hotspots []HotspotSnapshot, keywords []string) []HotspotSnapshot {
@@ -184,10 +229,14 @@ func normalizeStrings(values []string) []string {
 
 func reportID(scope string, userID string, reportDate time.Time) string {
 	date := normalizeDate(reportDate).Format("2006-01-02")
-	if scope == ScopeUser {
+	switch scope {
+	case ScopeUser:
 		return scope + ":" + userID + ":" + date
+	case "tenant":
+		return scope + ":" + userID + ":" + date
+	default:
+		return scope + ":" + date
 	}
-	return scope + ":" + date
 }
 
 func normalizeDate(value time.Time) time.Time {

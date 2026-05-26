@@ -185,3 +185,64 @@ func TestSpecContainsAdminAPIContract(t *testing.T) {
 		t.Fatalf("admin task runs missing 401 response")
 	}
 }
+
+func TestSpecContainsTenantContract(t *testing.T) {
+	spec := Spec()
+
+	for _, path := range []string{
+		"/api/v1/admin/tenants",
+		"/api/v1/admin/tenants/{id}/members",
+		"/api/v1/users/{id}/tenants",
+		"/api/v1/tenants/{id}/reports/daily",
+	} {
+		if _, ok := spec.Paths[path]; !ok {
+			t.Fatalf("tenant contract missing %s", path)
+		}
+	}
+	if _, ok := spec.Paths["/api/v1/admin/tenants"].Post.Responses["201"]; !ok {
+		t.Fatalf("tenant create missing 201 response")
+	}
+	if _, ok := spec.Paths["/api/v1/users/{id}/tenants"].Get.Responses["401"]; !ok {
+		t.Fatalf("user tenant list missing 401 response")
+	}
+}
+
+func TestSpecContainsRBACAuditContract(t *testing.T) {
+	spec := Spec()
+
+	for _, path := range []string{
+		"/api/v1/admin/tenants/{id}/roles",
+		"/api/v1/admin/tenants/{id}/authorize",
+		"/api/v1/admin/tenants/{id}/audit-logs",
+	} {
+		if _, ok := spec.Paths[path]; !ok {
+			t.Fatalf("rbac contract missing %s", path)
+		}
+	}
+	if _, ok := spec.Paths["/api/v1/admin/tenants/{id}/roles"].Post.Responses["201"]; !ok {
+		t.Fatalf("role grant missing 201 response")
+	}
+	if _, ok := spec.Paths["/api/v1/admin/tenants/{id}/audit-logs"].Get.Responses["401"]; !ok {
+		t.Fatalf("audit logs missing 401 response")
+	}
+}
+
+func TestSpecContainsTenantAdminExtensionContract(t *testing.T) {
+	spec := Spec()
+
+	for _, path := range []string{
+		"/api/v1/admin/tenants/{id}/keywords",
+		"/api/v1/admin/tenants/{id}/sources",
+		"/api/v1/admin/tenants/{id}/sources/{sourceId}",
+	} {
+		if _, ok := spec.Paths[path]; !ok {
+			t.Fatalf("tenant admin extension missing %s", path)
+		}
+	}
+	if _, ok := spec.Paths["/api/v1/admin/tenants"].Get.Responses["200"]; !ok {
+		t.Fatalf("platform tenant list missing 200 response")
+	}
+	if _, ok := spec.Paths["/api/v1/admin/tenants/{id}/keywords"].Post.Responses["201"]; !ok {
+		t.Fatalf("tenant keyword create missing 201 response")
+	}
+}

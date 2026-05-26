@@ -12,9 +12,11 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/hotspot"
 	"github.com/StephenQiu30/hotkey-server/internal/keyword"
 	"github.com/StephenQiu30/hotkey-server/internal/openapi"
+	"github.com/StephenQiu30/hotkey-server/internal/rbac"
 	"github.com/StephenQiu30/hotkey-server/internal/redisinfra"
 	"github.com/StephenQiu30/hotkey-server/internal/report"
 	"github.com/StephenQiu30/hotkey-server/internal/source"
+	"github.com/StephenQiu30/hotkey-server/internal/tenant"
 	"github.com/StephenQiu30/hotkey-server/internal/trust"
 	"github.com/gin-gonic/gin"
 )
@@ -40,11 +42,13 @@ func NewRouterWithServices(keywordService *keyword.Service, sourceService *sourc
 	reportService := report.NewService()
 	redisInfraService := redisinfra.NewService()
 	adminAPIService := adminapi.NewService()
+	tenantService := tenant.NewService()
+	rbacService := rbac.NewService()
 
-	return newRouter(keywordService, sourceService, contentService, eventService, trustService, hotspotService, reportService, redisInfraService, adminAPIService)
+	return newRouter(keywordService, sourceService, contentService, eventService, trustService, hotspotService, reportService, redisInfraService, adminAPIService, tenantService, rbacService)
 }
 
-func newRouter(keywordService *keyword.Service, sourceService *source.Service, contentService *content.Service, eventService *event.Service, trustService *trust.Service, hotspotService *hotspot.Service, reportService *report.Service, redisInfraService *redisinfra.Service, adminAPIService *adminapi.Service) *gin.Engine {
+func newRouter(keywordService *keyword.Service, sourceService *source.Service, contentService *content.Service, eventService *event.Service, trustService *trust.Service, hotspotService *hotspot.Service, reportService *report.Service, redisInfraService *redisinfra.Service, adminAPIService *adminapi.Service, tenantService *tenant.Service, rbacService *rbac.Service) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.GET("/healthz", handleHealth)
@@ -62,11 +66,24 @@ func newRouter(keywordService *keyword.Service, sourceService *source.Service, c
 	router.POST("/api/v1/admin/events/:id/ai-summary", setEventAISummary(trustService))
 	router.GET("/api/v1/admin/task-runs", listAdminTaskRuns(adminAPIService))
 	router.POST("/api/v1/admin/reports/daily", triggerAdminDailyReport(reportService, adminAPIService))
+	router.POST("/api/v1/admin/tenants", createTenant(tenantService))
+	router.GET("/api/v1/admin/tenants", listTenants(tenantService))
+	router.POST("/api/v1/admin/tenants/:id/members", addTenantMember(tenantService))
+	router.GET("/api/v1/admin/tenants/:id/keywords", listTenantKeywords(keywordService))
+	router.POST("/api/v1/admin/tenants/:id/keywords", createTenantKeyword(keywordService))
+	router.GET("/api/v1/admin/tenants/:id/sources", listTenantSources(sourceService))
+	router.POST("/api/v1/admin/tenants/:id/sources", createTenantSource(sourceService))
+	router.PATCH("/api/v1/admin/tenants/:id/sources/:sourceId", updateTenantSource(sourceService))
+	router.POST("/api/v1/admin/tenants/:id/roles", grantTenantRole(rbacService))
+	router.POST("/api/v1/admin/tenants/:id/authorize", authorizeTenantAction(rbacService))
+	router.GET("/api/v1/admin/tenants/:id/audit-logs", listTenantAuditLogs(rbacService))
+	router.GET("/api/v1/users/:id/tenants", listUserTenants(tenantService))
 	router.GET("/api/v1/events/:id/evidence", getEventEvidence(trustService))
 	router.GET("/api/v1/hotspots", listHotspots(hotspotService))
 	router.GET("/api/v1/hotspots/:id", getHotspotDetail(hotspotService))
 	router.GET("/api/v1/reports/daily", getPlatformDailyReport(reportService))
 	router.GET("/api/v1/users/:id/reports/daily", getUserDailyReport(reportService))
+	router.GET("/api/v1/tenants/:id/reports/daily", getTenantDailyReport(reportService))
 	router.POST("/api/v1/refresh-queue", enqueueRefresh(redisInfraService))
 	router.GET("/api/v1/admin/refresh-queue", listRefreshQueue(redisInfraService))
 	router.GET("/api/v1/admin/redis/health", getRedisHealth(redisInfraService))
@@ -147,6 +164,26 @@ type adminDailyReportRequest struct {
 	Scope    string   `json:"scope"`
 	UserID   string   `json:"userId"`
 	Keywords []string `json:"keywords"`
+}
+
+type createTenantRequest struct {
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
+type tenantMemberRequest struct {
+	UserID string `json:"userId"`
+	Role   string `json:"role"`
+}
+
+type roleGrantRequest struct {
+	UserID string `json:"userId"`
+	Role   string `json:"role"`
+}
+
+type authorizeRequest struct {
+	UserID string `json:"userId"`
+	Action string `json:"action"`
 }
 
 type userKeywordRequest struct {
@@ -394,6 +431,173 @@ func getUserDailyReport(service *report.Service) gin.HandlerFunc {
 	}
 }
 
+func getTenantDailyReport(service *report.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		reportDate, ok := parseReportDate(c)
+		if !ok {
+			return
+		}
+		daily, err := service.GenerateTenantDailyReport(reportDate, c.Param("id"), defaultReportHotspots())
+		if err != nil {
+			writeReportError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, daily)
+	}
+}
+
+func createTenant(service *tenant.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req createTenantRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		created, err := service.CreateTenant(tenant.CreateTenantInput{Name: req.Name, Slug: req.Slug})
+		if err != nil {
+			writeTenantError(c, err)
+			return
+		}
+		c.JSON(http.StatusCreated, created)
+	}
+}
+
+func listTenants(service *tenant.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"tenants": service.ListTenants()})
+	}
+}
+
+func addTenantMember(service *tenant.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req tenantMemberRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		if err := service.AddMembership(tenant.MembershipInput{
+			TenantID: c.Param("id"),
+			UserID:   req.UserID,
+			Role:     req.Role,
+		}); err != nil {
+			writeTenantError(c, err)
+			return
+		}
+		c.JSON(http.StatusCreated, gin.H{"ok": true})
+	}
+}
+
+func listUserTenants(service *tenant.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"tenants": service.ListUserTenants(c.Param("id"))})
+	}
+}
+
+func listTenantKeywords(service *keyword.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"keywords": service.ListPlatformKeywordsByTenant(c.Param("id"))})
+	}
+}
+
+func createTenantKeyword(service *keyword.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req createKeywordRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		created, err := service.CreatePlatformKeyword(keyword.CreatePlatformKeywordInput{
+			TenantID: c.Param("id"),
+			Term:     req.Term,
+			Category: req.Category,
+		})
+		if err != nil {
+			writeKeywordError(c, err)
+			return
+		}
+		c.JSON(http.StatusCreated, created)
+	}
+}
+
+func listTenantSources(service *source.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"sources": service.ListSourcesByTenant(c.Param("id"))})
+	}
+}
+
+func createTenantSource(service *source.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req source.Source
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		req.TenantID = c.Param("id")
+		if err := service.RegisterSource(req); err != nil {
+			writeSourceError(c, err)
+			return
+		}
+		c.JSON(http.StatusCreated, req)
+	}
+}
+
+func updateTenantSource(service *source.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req updateSourceRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		updated, err := service.UpdateTenantSourceConfig(c.Param("id"), c.Param("sourceId"), source.UpdateSourceConfigInput{
+			Enabled:          req.Enabled,
+			RateLimitPerHour: req.RateLimitPerHour,
+		})
+		if err != nil {
+			writeSourceError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, updated)
+	}
+}
+
+func grantTenantRole(service *rbac.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req roleGrantRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		binding := service.GrantRole(rbac.RoleGrantInput{
+			TenantID: c.Param("id"),
+			UserID:   req.UserID,
+			Role:     req.Role,
+		})
+		c.JSON(http.StatusCreated, binding)
+	}
+}
+
+func authorizeTenantAction(service *rbac.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req authorizeRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		allowed := service.Can(rbac.AuthorizeInput{
+			TenantID: c.Param("id"),
+			UserID:   req.UserID,
+			Action:   req.Action,
+		})
+		c.JSON(http.StatusOK, gin.H{"allowed": allowed})
+	}
+}
+
+func listTenantAuditLogs(service *rbac.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"events": service.ListAuditEvents(c.Param("id"))})
+	}
+}
+
 func listAdminTaskRuns(service *adminapi.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"taskRuns": service.ListTaskRuns(adminapi.ListTaskRunsOptions{
@@ -533,6 +737,19 @@ func writeKeywordError(c *gin.Context, err error) {
 		writeError(c, http.StatusNotFound, "keyword_not_found", "keyword was not found")
 	default:
 		writeError(c, http.StatusInternalServerError, "internal_error", "unexpected keyword error")
+	}
+}
+
+func writeTenantError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, tenant.ErrInvalidTenant):
+		writeError(c, http.StatusBadRequest, "invalid_tenant", "tenant name and slug are required")
+	case errors.Is(err, tenant.ErrInvalidMembership):
+		writeError(c, http.StatusBadRequest, "invalid_membership", "tenant membership is invalid")
+	case errors.Is(err, tenant.ErrTenantNotFound):
+		writeError(c, http.StatusNotFound, "tenant_not_found", "tenant was not found")
+	default:
+		writeError(c, http.StatusInternalServerError, "internal_error", "unexpected tenant error")
 	}
 }
 

@@ -15,6 +15,7 @@ var (
 )
 
 type PlatformKeyword struct {
+	TenantID string `json:"tenantId,omitempty"`
 	ID       string `json:"id"`
 	Term     string `json:"term"`
 	Category string `json:"category"`
@@ -22,6 +23,7 @@ type PlatformKeyword struct {
 }
 
 type CreatePlatformKeywordInput struct {
+	TenantID string
 	Term     string
 	Category string
 }
@@ -64,6 +66,7 @@ func (s *Service) CreatePlatformKeyword(input CreatePlatformKeywordInput) (Platf
 	defer s.mu.Unlock()
 
 	keyword := PlatformKeyword{
+		TenantID: strings.TrimSpace(input.TenantID),
 		ID:       fmt.Sprintf("kw_%d", s.nextKeywordNumber),
 		Term:     term,
 		Category: strings.TrimSpace(input.Category),
@@ -80,6 +83,24 @@ func (s *Service) ListPlatformKeywords() []PlatformKeyword {
 
 	keywords := make([]PlatformKeyword, 0, len(s.platformKeywords))
 	for _, keyword := range s.platformKeywords {
+		keywords = append(keywords, keyword)
+	}
+	sort.Slice(keywords, func(i, j int) bool {
+		return keywords[i].ID < keywords[j].ID
+	})
+	return keywords
+}
+
+func (s *Service) ListPlatformKeywordsByTenant(tenantID string) []PlatformKeyword {
+	tenantID = strings.TrimSpace(tenantID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	keywords := make([]PlatformKeyword, 0)
+	for _, keyword := range s.platformKeywords {
+		if keyword.TenantID != tenantID {
+			continue
+		}
 		keywords = append(keywords, keyword)
 	}
 	sort.Slice(keywords, func(i, j int) bool {

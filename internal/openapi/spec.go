@@ -209,6 +209,96 @@ func Spec() SpecDocument {
 					Responses:   acceptedObjectResponse("Daily report generation accepted"),
 				},
 			},
+			"/api/v1/admin/tenants": {
+				Get: Operation{
+					Summary:     "List tenant organization spaces",
+					OperationID: "listTenants",
+					Tags:        []string{"tenant"},
+					Responses:   okObjectResponse("Tenant list"),
+				},
+				Post: Operation{
+					Summary:     "Create tenant organization space",
+					OperationID: "createTenant",
+					Tags:        []string{"tenant"},
+					Responses:   createdObjectResponse("Tenant created"),
+				},
+			},
+			"/api/v1/admin/tenants/{id}/members": {
+				Post: Operation{
+					Summary:     "Add user membership to a tenant",
+					OperationID: "addTenantMember",
+					Tags:        []string{"tenant"},
+					Responses:   createdObjectResponse("Tenant member added"),
+				},
+			},
+			"/api/v1/admin/tenants/{id}/keywords": {
+				Get: Operation{
+					Summary:     "List tenant-scoped keywords",
+					OperationID: "listTenantKeywords",
+					Tags:        []string{"tenant", "keyword"},
+					Responses:   okObjectResponse("Tenant keyword list"),
+				},
+				Post: Operation{
+					Summary:     "Create tenant-scoped keyword",
+					OperationID: "createTenantKeyword",
+					Tags:        []string{"tenant", "keyword"},
+					Responses:   createdObjectResponse("Tenant keyword created"),
+				},
+			},
+			"/api/v1/admin/tenants/{id}/sources": {
+				Get: Operation{
+					Summary:     "List tenant-scoped sources",
+					OperationID: "listTenantSources",
+					Tags:        []string{"tenant", "source"},
+					Responses:   okObjectResponse("Tenant source list"),
+				},
+				Post: Operation{
+					Summary:     "Create tenant-scoped source",
+					OperationID: "createTenantSource",
+					Tags:        []string{"tenant", "source"},
+					Responses:   createdObjectResponse("Tenant source created"),
+				},
+			},
+			"/api/v1/admin/tenants/{id}/sources/{sourceId}": {
+				Patch: Operation{
+					Summary:     "Update tenant-scoped source",
+					OperationID: "updateTenantSource",
+					Tags:        []string{"tenant", "source"},
+					Responses:   okObjectResponse("Tenant source updated"),
+				},
+			},
+			"/api/v1/admin/tenants/{id}/roles": {
+				Post: Operation{
+					Summary:     "Grant RBAC role in tenant scope",
+					OperationID: "grantTenantRole",
+					Tags:        []string{"rbac"},
+					Responses:   createdObjectResponse("Tenant role granted"),
+				},
+			},
+			"/api/v1/admin/tenants/{id}/authorize": {
+				Post: Operation{
+					Summary:     "Evaluate tenant-scoped RBAC permission",
+					OperationID: "authorizeTenantAction",
+					Tags:        []string{"rbac"},
+					Responses:   okObjectResponse("Tenant authorization result"),
+				},
+			},
+			"/api/v1/admin/tenants/{id}/audit-logs": {
+				Get: Operation{
+					Summary:     "List tenant audit log events",
+					OperationID: "listTenantAuditLogs",
+					Tags:        []string{"audit"},
+					Responses:   okObjectResponse("Tenant audit logs"),
+				},
+			},
+			"/api/v1/users/{id}/tenants": {
+				Get: Operation{
+					Summary:     "List tenant spaces for a user",
+					OperationID: "listUserTenants",
+					Tags:        []string{"tenant"},
+					Responses:   okObjectResponse("User tenant list"),
+				},
+			},
 			"/api/v1/events/{id}/evidence": {
 				Get: Operation{
 					Summary:     "Get event evidence detail",
@@ -247,6 +337,14 @@ func Spec() SpecDocument {
 					OperationID: "getUserDailyReport",
 					Tags:        []string{"report"},
 					Responses:   okObjectResponse("User daily report"),
+				},
+			},
+			"/api/v1/tenants/{id}/reports/daily": {
+				Get: Operation{
+					Summary:     "Get tenant-scoped daily report",
+					OperationID: "getTenantDailyReport",
+					Tags:        []string{"tenant", "report"},
+					Responses:   okObjectResponse("Tenant daily report"),
 				},
 			},
 			"/api/v1/refresh-queue": {
