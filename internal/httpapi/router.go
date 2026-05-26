@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/adminapi"
+	"github.com/StephenQiu30/hotkey-server/internal/billing"
 	"github.com/StephenQiu30/hotkey-server/internal/content"
 	"github.com/StephenQiu30/hotkey-server/internal/event"
 	"github.com/StephenQiu30/hotkey-server/internal/hotspot"
@@ -15,9 +16,11 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/rbac"
 	"github.com/StephenQiu30/hotkey-server/internal/redisinfra"
 	"github.com/StephenQiu30/hotkey-server/internal/report"
+	"github.com/StephenQiu30/hotkey-server/internal/serviceboundary"
 	"github.com/StephenQiu30/hotkey-server/internal/source"
 	"github.com/StephenQiu30/hotkey-server/internal/tenant"
 	"github.com/StephenQiu30/hotkey-server/internal/trust"
+	"github.com/StephenQiu30/hotkey-server/internal/workqueue"
 	"github.com/gin-gonic/gin"
 )
 
@@ -44,11 +47,14 @@ func NewRouterWithServices(keywordService *keyword.Service, sourceService *sourc
 	adminAPIService := adminapi.NewService()
 	tenantService := tenant.NewService()
 	rbacService := rbac.NewService()
+	billingService := billing.NewService()
+	workQueueService := workqueue.NewService()
+	serviceBoundaryService := serviceboundary.NewService()
 
-	return newRouter(keywordService, sourceService, contentService, eventService, trustService, hotspotService, reportService, redisInfraService, adminAPIService, tenantService, rbacService)
+	return newRouter(keywordService, sourceService, contentService, eventService, trustService, hotspotService, reportService, redisInfraService, adminAPIService, tenantService, rbacService, billingService, workQueueService, serviceBoundaryService)
 }
 
-func newRouter(keywordService *keyword.Service, sourceService *source.Service, contentService *content.Service, eventService *event.Service, trustService *trust.Service, hotspotService *hotspot.Service, reportService *report.Service, redisInfraService *redisinfra.Service, adminAPIService *adminapi.Service, tenantService *tenant.Service, rbacService *rbac.Service) *gin.Engine {
+func newRouter(keywordService *keyword.Service, sourceService *source.Service, contentService *content.Service, eventService *event.Service, trustService *trust.Service, hotspotService *hotspot.Service, reportService *report.Service, redisInfraService *redisinfra.Service, adminAPIService *adminapi.Service, tenantService *tenant.Service, rbacService *rbac.Service, billingService *billing.Service, workQueueService *workqueue.Service, serviceBoundaryService *serviceboundary.Service) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.GET("/healthz", handleHealth)
@@ -77,6 +83,9 @@ func newRouter(keywordService *keyword.Service, sourceService *source.Service, c
 	router.POST("/api/v1/admin/tenants/:id/roles", grantTenantRole(rbacService))
 	router.POST("/api/v1/admin/tenants/:id/authorize", authorizeTenantAction(rbacService))
 	router.GET("/api/v1/admin/tenants/:id/audit-logs", listTenantAuditLogs(rbacService))
+	router.POST("/api/v1/admin/tenants/:id/billing/plan", assignTenantBillingPlan(billingService))
+	router.GET("/api/v1/admin/tenants/:id/billing/usage", getTenantUsageSummary(billingService))
+	router.POST("/api/v1/admin/tenants/:id/billing/usage", recordTenantUsage(billingService))
 	router.GET("/api/v1/users/:id/tenants", listUserTenants(tenantService))
 	router.GET("/api/v1/events/:id/evidence", getEventEvidence(trustService))
 	router.GET("/api/v1/hotspots", listHotspots(hotspotService))
@@ -87,6 +96,11 @@ func newRouter(keywordService *keyword.Service, sourceService *source.Service, c
 	router.POST("/api/v1/refresh-queue", enqueueRefresh(redisInfraService))
 	router.GET("/api/v1/admin/refresh-queue", listRefreshQueue(redisInfraService))
 	router.GET("/api/v1/admin/redis/health", getRedisHealth(redisInfraService))
+	router.GET("/api/v1/admin/work-queue/jobs", listWorkQueueJobs(workQueueService))
+	router.POST("/api/v1/admin/work-queue/jobs", enqueueWorkQueueJob(workQueueService))
+	router.POST("/api/v1/admin/work-queue/run", runWorkQueue(workQueueService))
+	router.GET("/api/v1/admin/work-queue/compensations", listWorkQueueCompensations(workQueueService))
+	router.GET("/api/v1/admin/service-boundaries", getServiceBoundaries(serviceBoundaryService))
 	router.POST("/api/v1/keywords/follow", followKeyword(keywordService))
 	router.POST("/api/v1/keywords/block", blockKeyword(keywordService))
 	router.POST("/api/v1/keywords/additional", addUserKeyword(keywordService))
@@ -184,6 +198,22 @@ type roleGrantRequest struct {
 type authorizeRequest struct {
 	UserID string `json:"userId"`
 	Action string `json:"action"`
+}
+
+type billingPlanRequest struct {
+	PlanID string         `json:"planId"`
+	Name   string         `json:"name"`
+	Quotas map[string]int `json:"quotas"`
+}
+
+type billingUsageRequest struct {
+	Metric string `json:"metric"`
+	Amount int    `json:"amount"`
+}
+
+type runWorkQueueRequest struct {
+	Workers int `json:"workers"`
+	MaxJobs int `json:"maxJobs"`
 }
 
 type userKeywordRequest struct {
@@ -595,6 +625,94 @@ func authorizeTenantAction(service *rbac.Service) gin.HandlerFunc {
 func listTenantAuditLogs(service *rbac.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"events": service.ListAuditEvents(c.Param("id"))})
+	}
+}
+
+func assignTenantBillingPlan(service *billing.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req billingPlanRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		plan := service.AssignPlan(c.Param("id"), billing.Plan{
+			ID:     req.PlanID,
+			Name:   req.Name,
+			Quotas: req.Quotas,
+		})
+		c.JSON(http.StatusOK, plan)
+	}
+}
+
+func getTenantUsageSummary(service *billing.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, service.GetUsageSummary(c.Param("id")))
+	}
+}
+
+func recordTenantUsage(service *billing.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req billingUsageRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		result := service.RecordUsage(billing.UsageInput{
+			TenantID: c.Param("id"),
+			Metric:   req.Metric,
+			Amount:   req.Amount,
+		})
+		if !result.Allowed {
+			c.JSON(http.StatusPaymentRequired, result)
+			return
+		}
+		c.JSON(http.StatusAccepted, result)
+	}
+}
+
+func listWorkQueueJobs(service *workqueue.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"jobs": service.ListPendingJobs()})
+	}
+}
+
+func enqueueWorkQueueJob(service *workqueue.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req workqueue.JobInput
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		c.JSON(http.StatusCreated, service.Enqueue(req))
+	}
+}
+
+func runWorkQueue(service *workqueue.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req runWorkQueueRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		c.JSON(http.StatusOK, service.RunWorkerPool(workqueue.WorkerPoolConfig{
+			Workers: req.Workers,
+			MaxJobs: req.MaxJobs,
+		}))
+	}
+}
+
+func listWorkQueueCompensations(service *workqueue.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"compensations": service.ListCompensations()})
+	}
+}
+
+func getServiceBoundaries(service *serviceboundary.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"topology":            service.Topology(),
+			"taskMessageContract": service.TaskMessageContract(),
+		})
 	}
 }
 

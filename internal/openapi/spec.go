@@ -291,6 +291,28 @@ func Spec() SpecDocument {
 					Responses:   okObjectResponse("Tenant audit logs"),
 				},
 			},
+			"/api/v1/admin/tenants/{id}/billing/plan": {
+				Post: Operation{
+					Summary:     "Assign tenant billing plan and quotas",
+					OperationID: "assignTenantBillingPlan",
+					Tags:        []string{"billing"},
+					Responses:   okObjectResponse("Tenant billing plan assigned"),
+				},
+			},
+			"/api/v1/admin/tenants/{id}/billing/usage": {
+				Get: Operation{
+					Summary:     "Get tenant usage summary",
+					OperationID: "getTenantUsageSummary",
+					Tags:        []string{"billing"},
+					Responses:   okObjectResponse("Tenant usage summary"),
+				},
+				Post: Operation{
+					Summary:     "Record tenant usage against quotas",
+					OperationID: "recordTenantUsage",
+					Tags:        []string{"billing"},
+					Responses:   acceptedOrPaymentRequiredResponse("Tenant usage recorded"),
+				},
+			},
 			"/api/v1/users/{id}/tenants": {
 				Get: Operation{
 					Summary:     "List tenant spaces for a user",
@@ -371,6 +393,44 @@ func Spec() SpecDocument {
 					Responses:   okObjectResponse("Redis health"),
 				},
 			},
+			"/api/v1/admin/work-queue/jobs": {
+				Get: Operation{
+					Summary:     "List pending work queue jobs",
+					OperationID: "listWorkQueueJobs",
+					Tags:        []string{"queue"},
+					Responses:   okObjectResponse("Work queue job list"),
+				},
+				Post: Operation{
+					Summary:     "Enqueue prioritized async job",
+					OperationID: "enqueueWorkQueueJob",
+					Tags:        []string{"queue"},
+					Responses:   createdObjectResponse("Work queue job enqueued"),
+				},
+			},
+			"/api/v1/admin/work-queue/run": {
+				Post: Operation{
+					Summary:     "Run worker pool for pending jobs",
+					OperationID: "runWorkQueue",
+					Tags:        []string{"queue"},
+					Responses:   okObjectResponse("Worker pool result"),
+				},
+			},
+			"/api/v1/admin/work-queue/compensations": {
+				Get: Operation{
+					Summary:     "List failed job compensations",
+					OperationID: "listWorkQueueCompensations",
+					Tags:        []string{"queue"},
+					Responses:   okObjectResponse("Compensation list"),
+				},
+			},
+			"/api/v1/admin/service-boundaries": {
+				Get: Operation{
+					Summary:     "Get API and Worker service split boundaries",
+					OperationID: "getServiceBoundaries",
+					Tags:        []string{"infra"},
+					Responses:   okObjectResponse("Service boundary topology and task message contract"),
+				},
+			},
 			"/api/v1/keywords/follow": {
 				Post: Operation{
 					Summary:     "Follow keyword for a user",
@@ -428,6 +488,15 @@ func acceptedObjectResponse(description string) map[string]Response {
 		"202": objectResponse(description),
 		"400": errorResponse(),
 		"401": errorResponse(),
+	}
+}
+
+func acceptedOrPaymentRequiredResponse(description string) map[string]Response {
+	return map[string]Response{
+		"202": objectResponse(description),
+		"400": errorResponse(),
+		"401": errorResponse(),
+		"402": objectResponse("Quota exceeded"),
 	}
 }
 

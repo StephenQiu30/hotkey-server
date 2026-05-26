@@ -246,3 +246,47 @@ func TestSpecContainsTenantAdminExtensionContract(t *testing.T) {
 		t.Fatalf("tenant keyword create missing 201 response")
 	}
 }
+
+func TestSpecContainsBillingContract(t *testing.T) {
+	spec := Spec()
+
+	for _, path := range []string{
+		"/api/v1/admin/tenants/{id}/billing/plan",
+		"/api/v1/admin/tenants/{id}/billing/usage",
+	} {
+		if _, ok := spec.Paths[path]; !ok {
+			t.Fatalf("billing contract missing %s", path)
+		}
+	}
+	if _, ok := spec.Paths["/api/v1/admin/tenants/{id}/billing/usage"].Post.Responses["402"]; !ok {
+		t.Fatalf("billing usage missing quota exceeded response")
+	}
+}
+
+func TestSpecContainsWorkQueueContract(t *testing.T) {
+	spec := Spec()
+
+	for _, path := range []string{
+		"/api/v1/admin/work-queue/jobs",
+		"/api/v1/admin/work-queue/run",
+		"/api/v1/admin/work-queue/compensations",
+	} {
+		if _, ok := spec.Paths[path]; !ok {
+			t.Fatalf("work queue contract missing %s", path)
+		}
+	}
+	if _, ok := spec.Paths["/api/v1/admin/work-queue/jobs"].Post.Responses["201"]; !ok {
+		t.Fatalf("work queue enqueue missing 201 response")
+	}
+}
+
+func TestSpecContainsServiceBoundaryContract(t *testing.T) {
+	spec := Spec()
+
+	if _, ok := spec.Paths["/api/v1/admin/service-boundaries"]; !ok {
+		t.Fatalf("service boundary contract missing")
+	}
+	if _, ok := spec.Paths["/api/v1/admin/service-boundaries"].Get.Responses["200"]; !ok {
+		t.Fatalf("service boundary response missing 200")
+	}
+}
