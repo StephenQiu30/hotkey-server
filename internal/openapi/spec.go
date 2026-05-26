@@ -291,6 +291,28 @@ func Spec() SpecDocument {
 					Responses:   okObjectResponse("Tenant audit logs"),
 				},
 			},
+			"/api/v1/admin/tenants/{id}/billing/plan": {
+				Post: Operation{
+					Summary:     "Assign tenant billing plan and quotas",
+					OperationID: "assignTenantBillingPlan",
+					Tags:        []string{"billing"},
+					Responses:   okObjectResponse("Tenant billing plan assigned"),
+				},
+			},
+			"/api/v1/admin/tenants/{id}/billing/usage": {
+				Get: Operation{
+					Summary:     "Get tenant usage summary",
+					OperationID: "getTenantUsageSummary",
+					Tags:        []string{"billing"},
+					Responses:   okObjectResponse("Tenant usage summary"),
+				},
+				Post: Operation{
+					Summary:     "Record tenant usage against quotas",
+					OperationID: "recordTenantUsage",
+					Tags:        []string{"billing"},
+					Responses:   acceptedOrPaymentRequiredResponse("Tenant usage recorded"),
+				},
+			},
 			"/api/v1/users/{id}/tenants": {
 				Get: Operation{
 					Summary:     "List tenant spaces for a user",
@@ -428,6 +450,15 @@ func acceptedObjectResponse(description string) map[string]Response {
 		"202": objectResponse(description),
 		"400": errorResponse(),
 		"401": errorResponse(),
+	}
+}
+
+func acceptedOrPaymentRequiredResponse(description string) map[string]Response {
+	return map[string]Response{
+		"202": objectResponse(description),
+		"400": errorResponse(),
+		"401": errorResponse(),
+		"402": objectResponse("Quota exceeded"),
 	}
 }
 
