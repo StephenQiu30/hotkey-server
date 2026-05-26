@@ -83,3 +83,16 @@ func TestSpecContainsEventEvidenceEndpoints(t *testing.T) {
 		}
 	}
 }
+
+func TestSpecContainsHotspotEndpoints(t *testing.T) {
+	spec := Spec()
+
+	for _, path := range []string{
+		"/api/v1/hotspots",
+		"/api/v1/hotspots/{id}",
+	} {
+		if _, ok := spec.Paths[path]; !ok {
+			t.Fatalf("paths missing %s", path)
+		}
+	}
+}

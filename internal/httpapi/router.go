@@ -7,6 +7,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/content"
 	"github.com/StephenQiu30/hotkey-server/internal/event"
+	"github.com/StephenQiu30/hotkey-server/internal/hotspot"
 	"github.com/StephenQiu30/hotkey-server/internal/keyword"
 	"github.com/StephenQiu30/hotkey-server/internal/openapi"
 	"github.com/StephenQiu30/hotkey-server/internal/source"
@@ -31,11 +32,12 @@ func NewRouterWithServices(keywordService *keyword.Service, sourceService *sourc
 		eventService = eventServices[0]
 	}
 	trustService := trust.NewService()
+	hotspotService := hotspot.NewService()
 
-	return newRouter(keywordService, sourceService, contentService, eventService, trustService)
+	return newRouter(keywordService, sourceService, contentService, eventService, trustService, hotspotService)
 }
 
-func newRouter(keywordService *keyword.Service, sourceService *source.Service, contentService *content.Service, eventService *event.Service, trustService *trust.Service) *gin.Engine {
+func newRouter(keywordService *keyword.Service, sourceService *source.Service, contentService *content.Service, eventService *event.Service, trustService *trust.Service, hotspotService *hotspot.Service) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.GET("/healthz", handleHealth)
@@ -52,6 +54,8 @@ func newRouter(keywordService *keyword.Service, sourceService *source.Service, c
 	router.POST("/api/v1/admin/event-evidence", addEventEvidence(trustService))
 	router.POST("/api/v1/admin/events/:id/ai-summary", setEventAISummary(trustService))
 	router.GET("/api/v1/events/:id/evidence", getEventEvidence(trustService))
+	router.GET("/api/v1/hotspots", listHotspots(hotspotService))
+	router.GET("/api/v1/hotspots/:id", getHotspotDetail(hotspotService))
 	router.POST("/api/v1/keywords/follow", followKeyword(keywordService))
 	router.POST("/api/v1/keywords/block", blockKeyword(keywordService))
 	router.POST("/api/v1/keywords/additional", addUserKeyword(keywordService))
@@ -310,6 +314,29 @@ func getEventEvidence(service *trust.Service) gin.HandlerFunc {
 	}
 }
 
+func listHotspots(service *hotspot.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"hotspots": service.ListHotspots(hotspot.ListOptions{
+			Keyword:  c.Query("keyword"),
+			Region:   c.Query("region"),
+			Language: c.Query("language"),
+			MinTrust: parsePositiveInt(c.Query("minTrust")),
+			SortBy:   c.DefaultQuery("sort", hotspot.SortByHeat),
+		})})
+	}
+}
+
+func getHotspotDetail(service *hotspot.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		detail, err := service.GetHotspotDetail(c.Param("id"))
+		if err != nil {
+			writeHotspotError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, detail)
+	}
+}
+
 func followKeyword(service *keyword.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		handleUserKeywordMutation(c, service.FollowKeyword)
@@ -365,6 +392,15 @@ func writeKeywordError(c *gin.Context, err error) {
 	}
 }
 
+func writeHotspotError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, hotspot.ErrHotspotNotFound):
+		writeError(c, http.StatusNotFound, "hotspot_not_found", "hotspot was not found")
+	default:
+		writeError(c, http.StatusInternalServerError, "internal_error", "unexpected hotspot error")
+	}
+}
+
 func writeTrustError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, trust.ErrMissingCitation):
@@ -405,6 +441,17 @@ func writeSourceError(c *gin.Context, err error) {
 	default:
 		writeError(c, http.StatusInternalServerError, "internal_error", "unexpected source error")
 	}
+}
+
+func parsePositiveInt(value string) int {
+	var result int
+	for _, ch := range value {
+		if ch < '0' || ch > '9' {
+			return 0
+		}
+		result = result*10 + int(ch-'0')
+	}
+	return result
 }
 
 func writeError(c *gin.Context, status int, code string, message string) {

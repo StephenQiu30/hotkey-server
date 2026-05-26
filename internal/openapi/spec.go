@@ -175,6 +175,22 @@ func Spec() SpecDocument {
 					Responses:   okObjectResponse("Event evidence detail"),
 				},
 			},
+			"/api/v1/hotspots": {
+				Get: Operation{
+					Summary:     "List ranked hotspots",
+					OperationID: "listHotspots",
+					Tags:        []string{"hotspot"},
+					Responses:   okObjectResponse("Hotspot list"),
+				},
+			},
+			"/api/v1/hotspots/{id}": {
+				Get: Operation{
+					Summary:     "Get hotspot detail",
+					OperationID: "getHotspotDetail",
+					Tags:        []string{"hotspot"},
+					Responses:   okObjectResponse("Hotspot detail"),
+				},
+			},
 			"/api/v1/keywords/follow": {
 				Post: Operation{
 					Summary:     "Follow keyword for a user",
