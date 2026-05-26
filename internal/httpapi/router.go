@@ -14,6 +14,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/hotspot"
 	"github.com/StephenQiu30/hotkey-server/internal/keyword"
 	"github.com/StephenQiu30/hotkey-server/internal/openapi"
+	"github.com/StephenQiu30/hotkey-server/internal/propagation"
 	"github.com/StephenQiu30/hotkey-server/internal/rbac"
 	"github.com/StephenQiu30/hotkey-server/internal/realtime"
 	"github.com/StephenQiu30/hotkey-server/internal/redisinfra"
@@ -54,6 +55,7 @@ func NewRouterWithServices(keywordService *keyword.Service, sourceService *sourc
 	serviceBoundaryService := serviceboundary.NewService()
 	realtimeService := realtime.NewService(eventService, realtime.Options{MaxEventsPerWindow: 1})
 	eventGraphService := eventgraph.NewService()
+	propagationService := propagation.NewService()
 	if err := realtimeService.RegisterSource(realtime.Source{
 		ID:         "openai-realtime",
 		Token:      "demo-realtime-token",
@@ -63,10 +65,10 @@ func NewRouterWithServices(keywordService *keyword.Service, sourceService *sourc
 		panic(err)
 	}
 
-	return newRouter(keywordService, sourceService, contentService, eventService, trustService, hotspotService, reportService, redisInfraService, adminAPIService, tenantService, rbacService, billingService, workQueueService, serviceBoundaryService, realtimeService, eventGraphService)
+	return newRouter(keywordService, sourceService, contentService, eventService, trustService, hotspotService, reportService, redisInfraService, adminAPIService, tenantService, rbacService, billingService, workQueueService, serviceBoundaryService, realtimeService, eventGraphService, propagationService)
 }
 
-func newRouter(keywordService *keyword.Service, sourceService *source.Service, contentService *content.Service, eventService *event.Service, trustService *trust.Service, hotspotService *hotspot.Service, reportService *report.Service, redisInfraService *redisinfra.Service, adminAPIService *adminapi.Service, tenantService *tenant.Service, rbacService *rbac.Service, billingService *billing.Service, workQueueService *workqueue.Service, serviceBoundaryService *serviceboundary.Service, realtimeService *realtime.Service, eventGraphService *eventgraph.Service) *gin.Engine {
+func newRouter(keywordService *keyword.Service, sourceService *source.Service, contentService *content.Service, eventService *event.Service, trustService *trust.Service, hotspotService *hotspot.Service, reportService *report.Service, redisInfraService *redisinfra.Service, adminAPIService *adminapi.Service, tenantService *tenant.Service, rbacService *rbac.Service, billingService *billing.Service, workQueueService *workqueue.Service, serviceBoundaryService *serviceboundary.Service, realtimeService *realtime.Service, eventGraphService *eventgraph.Service, propagationService *propagation.Service) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.GET("/healthz", handleHealth)
@@ -83,6 +85,8 @@ func newRouter(keywordService *keyword.Service, sourceService *source.Service, c
 	router.POST("/api/v1/realtime/events", acceptRealtimeEvent(realtimeService))
 	router.POST("/api/v1/admin/event-graph/events", upsertEventGraphEvent(eventGraphService))
 	router.POST("/api/v1/admin/event-graph/relations", addEventGraphRelation(eventGraphService))
+	router.POST("/api/v1/admin/events/:id/propagation", addPropagationStep(propagationService))
+	router.POST("/api/v1/admin/events/:id/claims", addArbitrationClaim(propagationService))
 	router.POST("/api/v1/admin/event-evidence", addEventEvidence(trustService))
 	router.POST("/api/v1/admin/events/:id/ai-summary", setEventAISummary(trustService))
 	router.GET("/api/v1/admin/task-runs", listAdminTaskRuns(adminAPIService))
@@ -103,6 +107,8 @@ func newRouter(keywordService *keyword.Service, sourceService *source.Service, c
 	router.POST("/api/v1/admin/tenants/:id/billing/usage", recordTenantUsage(billingService))
 	router.GET("/api/v1/users/:id/tenants", listUserTenants(tenantService))
 	router.GET("/api/v1/events/:id/graph", getEventGraph(eventGraphService))
+	router.GET("/api/v1/events/:id/propagation", getPropagationPath(propagationService))
+	router.GET("/api/v1/events/:id/arbitration", getArbitration(propagationService))
 	router.GET("/api/v1/events/:id/evidence", getEventEvidence(trustService))
 	router.GET("/api/v1/hotspots", listHotspots(hotspotService))
 	router.GET("/api/v1/hotspots/:id", getHotspotDetail(hotspotService))
@@ -189,6 +195,22 @@ type eventGraphRelationRequest struct {
 	ToNodeID   string `json:"toNodeId"`
 	Type       string `json:"type"`
 	EvidenceID string `json:"evidenceId"`
+}
+
+type propagationStepRequest struct {
+	SourceID   string    `json:"sourceId"`
+	Layer      string    `json:"layer"`
+	URL        string    `json:"url"`
+	ObservedAt time.Time `json:"observedAt"`
+	Note       string    `json:"note"`
+}
+
+type arbitrationClaimRequest struct {
+	ClaimKey   string `json:"claimKey"`
+	Value      string `json:"value"`
+	SourceID   string `json:"sourceId"`
+	Layer      string `json:"layer"`
+	TrustScore int    `json:"trustScore"`
 }
 
 type eventEvidenceRequest struct {
@@ -470,6 +492,62 @@ func addEventGraphRelation(service *eventgraph.Service) gin.HandlerFunc {
 func getEventGraph(service *eventgraph.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.JSON(http.StatusOK, service.GetGraph(c.Param("id")))
+	}
+}
+
+func addPropagationStep(service *propagation.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req propagationStepRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		if err := service.AddStep(propagation.StepInput{
+			EventID:    c.Param("id"),
+			SourceID:   req.SourceID,
+			Layer:      req.Layer,
+			URL:        req.URL,
+			ObservedAt: req.ObservedAt,
+			Note:       req.Note,
+		}); err != nil {
+			writePropagationError(c, err)
+			return
+		}
+		c.JSON(http.StatusCreated, service.GetPath(c.Param("id")))
+	}
+}
+
+func getPropagationPath(service *propagation.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, service.GetPath(c.Param("id")))
+	}
+}
+
+func addArbitrationClaim(service *propagation.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req arbitrationClaimRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		if err := service.AddClaim(propagation.ClaimInput{
+			EventID:    c.Param("id"),
+			ClaimKey:   req.ClaimKey,
+			Value:      req.Value,
+			SourceID:   req.SourceID,
+			Layer:      req.Layer,
+			TrustScore: req.TrustScore,
+		}); err != nil {
+			writePropagationError(c, err)
+			return
+		}
+		c.JSON(http.StatusCreated, service.Arbitrate(c.Param("id")))
+	}
+}
+
+func getArbitration(service *propagation.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, service.Arbitrate(c.Param("id")))
 	}
 }
 
@@ -1061,6 +1139,17 @@ func writeEventGraphError(c *gin.Context, err error) {
 		writeError(c, http.StatusNotFound, "event_graph_node_not_found", "event graph node was not found")
 	default:
 		writeError(c, http.StatusInternalServerError, "internal_error", "unexpected event graph error")
+	}
+}
+
+func writePropagationError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, propagation.ErrInvalidStep):
+		writeError(c, http.StatusBadRequest, "invalid_propagation_step", "propagation step is invalid")
+	case errors.Is(err, propagation.ErrInvalidClaim):
+		writeError(c, http.StatusBadRequest, "invalid_arbitration_claim", "arbitration claim is invalid")
+	default:
+		writeError(c, http.StatusInternalServerError, "internal_error", "unexpected propagation error")
 	}
 }
 

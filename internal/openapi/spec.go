@@ -193,6 +193,22 @@ func Spec() SpecDocument {
 					Responses:   createdObjectResponse("Event graph relation added"),
 				},
 			},
+			"/api/v1/admin/events/{id}/propagation": {
+				Post: Operation{
+					Summary:     "Add observed propagation path step",
+					OperationID: "addPropagationStep",
+					Tags:        []string{"event", "trust"},
+					Responses:   createdObjectResponse("Propagation step added"),
+				},
+			},
+			"/api/v1/admin/events/{id}/claims": {
+				Post: Operation{
+					Summary:     "Add fact or signal claim for arbitration",
+					OperationID: "addArbitrationClaim",
+					Tags:        []string{"trust"},
+					Responses:   createdObjectResponse("Arbitration claim added"),
+				},
+			},
 			"/api/v1/admin/event-clusters": {
 				Get: Operation{
 					Summary:     "List candidate event clusters",
@@ -359,6 +375,22 @@ func Spec() SpecDocument {
 					OperationID: "getEventGraph",
 					Tags:        []string{"event", "graph"},
 					Responses:   okObjectResponse("Event graph"),
+				},
+			},
+			"/api/v1/events/{id}/propagation": {
+				Get: Operation{
+					Summary:     "Get event propagation path",
+					OperationID: "getPropagationPath",
+					Tags:        []string{"event", "trust"},
+					Responses:   okObjectResponse("Propagation path"),
+				},
+			},
+			"/api/v1/events/{id}/arbitration": {
+				Get: Operation{
+					Summary:     "Get fact-source conflict arbitration result",
+					OperationID: "getArbitration",
+					Tags:        []string{"trust"},
+					Responses:   okObjectResponse("Arbitration result"),
 				},
 			},
 			"/api/v1/hotspots": {
