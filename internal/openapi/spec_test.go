@@ -279,3 +279,14 @@ func TestSpecContainsWorkQueueContract(t *testing.T) {
 		t.Fatalf("work queue enqueue missing 201 response")
 	}
 }
+
+func TestSpecContainsServiceBoundaryContract(t *testing.T) {
+	spec := Spec()
+
+	if _, ok := spec.Paths["/api/v1/admin/service-boundaries"]; !ok {
+		t.Fatalf("service boundary contract missing")
+	}
+	if _, ok := spec.Paths["/api/v1/admin/service-boundaries"].Get.Responses["200"]; !ok {
+		t.Fatalf("service boundary response missing 200")
+	}
+}
