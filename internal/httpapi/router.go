@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/adminapi"
 	"github.com/StephenQiu30/hotkey-server/internal/content"
 	"github.com/StephenQiu30/hotkey-server/internal/event"
 	"github.com/StephenQiu30/hotkey-server/internal/hotspot"
@@ -38,11 +39,12 @@ func NewRouterWithServices(keywordService *keyword.Service, sourceService *sourc
 	hotspotService := hotspot.NewService()
 	reportService := report.NewService()
 	redisInfraService := redisinfra.NewService()
+	adminAPIService := adminapi.NewService()
 
-	return newRouter(keywordService, sourceService, contentService, eventService, trustService, hotspotService, reportService, redisInfraService)
+	return newRouter(keywordService, sourceService, contentService, eventService, trustService, hotspotService, reportService, redisInfraService, adminAPIService)
 }
 
-func newRouter(keywordService *keyword.Service, sourceService *source.Service, contentService *content.Service, eventService *event.Service, trustService *trust.Service, hotspotService *hotspot.Service, reportService *report.Service, redisInfraService *redisinfra.Service) *gin.Engine {
+func newRouter(keywordService *keyword.Service, sourceService *source.Service, contentService *content.Service, eventService *event.Service, trustService *trust.Service, hotspotService *hotspot.Service, reportService *report.Service, redisInfraService *redisinfra.Service, adminAPIService *adminapi.Service) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.GET("/healthz", handleHealth)
@@ -58,6 +60,8 @@ func newRouter(keywordService *keyword.Service, sourceService *source.Service, c
 	router.POST("/api/v1/admin/event-candidates", upsertEventCandidate(eventService))
 	router.POST("/api/v1/admin/event-evidence", addEventEvidence(trustService))
 	router.POST("/api/v1/admin/events/:id/ai-summary", setEventAISummary(trustService))
+	router.GET("/api/v1/admin/task-runs", listAdminTaskRuns(adminAPIService))
+	router.POST("/api/v1/admin/reports/daily", triggerAdminDailyReport(reportService, adminAPIService))
 	router.GET("/api/v1/events/:id/evidence", getEventEvidence(trustService))
 	router.GET("/api/v1/hotspots", listHotspots(hotspotService))
 	router.GET("/api/v1/hotspots/:id", getHotspotDetail(hotspotService))
@@ -136,6 +140,13 @@ type refreshQueueRequest struct {
 	UserID string `json:"userId"`
 	Scope  string `json:"scope"`
 	Target string `json:"target"`
+}
+
+type adminDailyReportRequest struct {
+	Date     string   `json:"date"`
+	Scope    string   `json:"scope"`
+	UserID   string   `json:"userId"`
+	Keywords []string `json:"keywords"`
 }
 
 type userKeywordRequest struct {
@@ -383,6 +394,57 @@ func getUserDailyReport(service *report.Service) gin.HandlerFunc {
 	}
 }
 
+func listAdminTaskRuns(service *adminapi.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"taskRuns": service.ListTaskRuns(adminapi.ListTaskRunsOptions{
+			Status: c.Query("status"),
+		})})
+	}
+}
+
+func triggerAdminDailyReport(reportService *report.Service, adminService *adminapi.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req adminDailyReportRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		reportDate, ok := parseReportDateValue(c, req.Date)
+		if !ok {
+			return
+		}
+
+		var (
+			daily report.DailyReport
+			err   error
+		)
+		if req.Scope == report.ScopeUser {
+			daily, err = reportService.GenerateUserDailyReport(reportDate, req.UserID, req.Keywords, defaultReportHotspots())
+		} else {
+			daily, err = reportService.GeneratePlatformDailyReport(reportDate, defaultReportHotspots())
+		}
+		if err != nil {
+			adminService.RecordTaskRun(adminapi.TaskRunInput{
+				TaskName: "daily-report",
+				Status:   adminapi.TaskStatusFailed,
+				Message:  err.Error(),
+			})
+			writeReportError(c, err)
+			return
+		}
+
+		run := adminService.RecordTaskRun(adminapi.TaskRunInput{
+			TaskName: "daily-report",
+			Status:   adminapi.TaskStatusSucceeded,
+			Message:  "manual trigger accepted",
+		})
+		c.JSON(http.StatusAccepted, gin.H{
+			"report":  daily,
+			"taskRun": run,
+		})
+	}
+}
+
 func enqueueRefresh(service *redisinfra.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req refreshQueueRequest
@@ -544,7 +606,10 @@ func writeSourceError(c *gin.Context, err error) {
 }
 
 func parseReportDate(c *gin.Context) (time.Time, bool) {
-	value := c.Query("date")
+	return parseReportDateValue(c, c.Query("date"))
+}
+
+func parseReportDateValue(c *gin.Context, value string) (time.Time, bool) {
 	if value == "" {
 		value = time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02")
 	}

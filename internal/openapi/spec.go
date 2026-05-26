@@ -193,6 +193,22 @@ func Spec() SpecDocument {
 					Responses:   okObjectResponse("Event AI summary updated"),
 				},
 			},
+			"/api/v1/admin/task-runs": {
+				Get: Operation{
+					Summary:     "List admin task run records",
+					OperationID: "listAdminTaskRuns",
+					Tags:        []string{"admin"},
+					Responses:   okObjectResponse("Admin task run list"),
+				},
+			},
+			"/api/v1/admin/reports/daily": {
+				Post: Operation{
+					Summary:     "Trigger daily report generation from admin console",
+					OperationID: "triggerAdminDailyReport",
+					Tags:        []string{"admin", "report"},
+					Responses:   acceptedObjectResponse("Daily report generation accepted"),
+				},
+			},
 			"/api/v1/events/{id}/evidence": {
 				Get: Operation{
 					Summary:     "Get event evidence detail",
@@ -304,6 +320,14 @@ func okObjectResponse(description string) map[string]Response {
 func createdObjectResponse(description string) map[string]Response {
 	return map[string]Response{
 		"201": objectResponse(description),
+		"400": errorResponse(),
+		"401": errorResponse(),
+	}
+}
+
+func acceptedObjectResponse(description string) map[string]Response {
+	return map[string]Response{
+		"202": objectResponse(description),
 		"400": errorResponse(),
 		"401": errorResponse(),
 	}
