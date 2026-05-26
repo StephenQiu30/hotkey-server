@@ -206,3 +206,23 @@ func TestSpecContainsTenantContract(t *testing.T) {
 		t.Fatalf("user tenant list missing 401 response")
 	}
 }
+
+func TestSpecContainsRBACAuditContract(t *testing.T) {
+	spec := Spec()
+
+	for _, path := range []string{
+		"/api/v1/admin/tenants/{id}/roles",
+		"/api/v1/admin/tenants/{id}/authorize",
+		"/api/v1/admin/tenants/{id}/audit-logs",
+	} {
+		if _, ok := spec.Paths[path]; !ok {
+			t.Fatalf("rbac contract missing %s", path)
+		}
+	}
+	if _, ok := spec.Paths["/api/v1/admin/tenants/{id}/roles"].Post.Responses["201"]; !ok {
+		t.Fatalf("role grant missing 201 response")
+	}
+	if _, ok := spec.Paths["/api/v1/admin/tenants/{id}/audit-logs"].Get.Responses["401"]; !ok {
+		t.Fatalf("audit logs missing 401 response")
+	}
+}
