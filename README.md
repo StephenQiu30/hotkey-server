@@ -82,6 +82,8 @@ curl http://127.0.0.1:18080/openapi.json
 - `GET /api/v1/admin/event-clusters`
 - `POST /api/v1/admin/event-evidence`
 - `POST /api/v1/admin/events/{id}/ai-summary`
+- `GET /api/v1/admin/task-runs`
+- `POST /api/v1/admin/reports/daily`
 - `GET /api/v1/events/{id}/evidence`
 - `GET /api/v1/hotspots`
 - `GET /api/v1/hotspots/{id}`
@@ -110,5 +112,7 @@ curl http://127.0.0.1:18080/openapi.json
 当前日报能力先使用进程内日报生成器锁定平台日报和用户关注日报契约；日报条目必须回链事件簇和证据 ID，默认 `date` 为昨日。
 
 当前 Redis 基础能力先使用进程内实现锁定任务锁、手动刷新限流、刷新队列、短期去重和降级读契约；后续可替换为真实 Redis 客户端。
+
+当前管理员 API 契约覆盖关键词和来源启停、任务运行与失败记录查询、管理员手动触发日报生成；任务记录先使用进程内实现锁定管理端契约，后续可替换为 PostgreSQL 任务运行表。
 
 OpenAPI 已声明 `BearerAuth` 鉴权方案和统一结构化错误响应；小程序端应从 `/openapi.json` 生成客户端，不手写后端 API 类型。
