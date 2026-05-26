@@ -225,6 +225,30 @@ func Spec() SpecDocument {
 					Responses:   createdObjectResponse("Tenant member added"),
 				},
 			},
+			"/api/v1/admin/tenants/{id}/roles": {
+				Post: Operation{
+					Summary:     "Grant RBAC role in tenant scope",
+					OperationID: "grantTenantRole",
+					Tags:        []string{"rbac"},
+					Responses:   createdObjectResponse("Tenant role granted"),
+				},
+			},
+			"/api/v1/admin/tenants/{id}/authorize": {
+				Post: Operation{
+					Summary:     "Evaluate tenant-scoped RBAC permission",
+					OperationID: "authorizeTenantAction",
+					Tags:        []string{"rbac"},
+					Responses:   okObjectResponse("Tenant authorization result"),
+				},
+			},
+			"/api/v1/admin/tenants/{id}/audit-logs": {
+				Get: Operation{
+					Summary:     "List tenant audit log events",
+					OperationID: "listTenantAuditLogs",
+					Tags:        []string{"audit"},
+					Responses:   okObjectResponse("Tenant audit logs"),
+				},
+			},
 			"/api/v1/users/{id}/tenants": {
 				Get: Operation{
 					Summary:     "List tenant spaces for a user",

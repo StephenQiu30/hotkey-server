@@ -12,6 +12,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/hotspot"
 	"github.com/StephenQiu30/hotkey-server/internal/keyword"
 	"github.com/StephenQiu30/hotkey-server/internal/openapi"
+	"github.com/StephenQiu30/hotkey-server/internal/rbac"
 	"github.com/StephenQiu30/hotkey-server/internal/redisinfra"
 	"github.com/StephenQiu30/hotkey-server/internal/report"
 	"github.com/StephenQiu30/hotkey-server/internal/source"
@@ -42,11 +43,12 @@ func NewRouterWithServices(keywordService *keyword.Service, sourceService *sourc
 	redisInfraService := redisinfra.NewService()
 	adminAPIService := adminapi.NewService()
 	tenantService := tenant.NewService()
+	rbacService := rbac.NewService()
 
-	return newRouter(keywordService, sourceService, contentService, eventService, trustService, hotspotService, reportService, redisInfraService, adminAPIService, tenantService)
+	return newRouter(keywordService, sourceService, contentService, eventService, trustService, hotspotService, reportService, redisInfraService, adminAPIService, tenantService, rbacService)
 }
 
-func newRouter(keywordService *keyword.Service, sourceService *source.Service, contentService *content.Service, eventService *event.Service, trustService *trust.Service, hotspotService *hotspot.Service, reportService *report.Service, redisInfraService *redisinfra.Service, adminAPIService *adminapi.Service, tenantService *tenant.Service) *gin.Engine {
+func newRouter(keywordService *keyword.Service, sourceService *source.Service, contentService *content.Service, eventService *event.Service, trustService *trust.Service, hotspotService *hotspot.Service, reportService *report.Service, redisInfraService *redisinfra.Service, adminAPIService *adminapi.Service, tenantService *tenant.Service, rbacService *rbac.Service) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.GET("/healthz", handleHealth)
@@ -66,6 +68,9 @@ func newRouter(keywordService *keyword.Service, sourceService *source.Service, c
 	router.POST("/api/v1/admin/reports/daily", triggerAdminDailyReport(reportService, adminAPIService))
 	router.POST("/api/v1/admin/tenants", createTenant(tenantService))
 	router.POST("/api/v1/admin/tenants/:id/members", addTenantMember(tenantService))
+	router.POST("/api/v1/admin/tenants/:id/roles", grantTenantRole(rbacService))
+	router.POST("/api/v1/admin/tenants/:id/authorize", authorizeTenantAction(rbacService))
+	router.GET("/api/v1/admin/tenants/:id/audit-logs", listTenantAuditLogs(rbacService))
 	router.GET("/api/v1/users/:id/tenants", listUserTenants(tenantService))
 	router.GET("/api/v1/events/:id/evidence", getEventEvidence(trustService))
 	router.GET("/api/v1/hotspots", listHotspots(hotspotService))
@@ -163,6 +168,16 @@ type createTenantRequest struct {
 type tenantMemberRequest struct {
 	UserID string `json:"userId"`
 	Role   string `json:"role"`
+}
+
+type roleGrantRequest struct {
+	UserID string `json:"userId"`
+	Role   string `json:"role"`
+}
+
+type authorizeRequest struct {
+	UserID string `json:"userId"`
+	Action string `json:"action"`
 }
 
 type userKeywordRequest struct {
@@ -463,6 +478,44 @@ func addTenantMember(service *tenant.Service) gin.HandlerFunc {
 func listUserTenants(service *tenant.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"tenants": service.ListUserTenants(c.Param("id"))})
+	}
+}
+
+func grantTenantRole(service *rbac.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req roleGrantRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		binding := service.GrantRole(rbac.RoleGrantInput{
+			TenantID: c.Param("id"),
+			UserID:   req.UserID,
+			Role:     req.Role,
+		})
+		c.JSON(http.StatusCreated, binding)
+	}
+}
+
+func authorizeTenantAction(service *rbac.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req authorizeRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		allowed := service.Can(rbac.AuthorizeInput{
+			TenantID: c.Param("id"),
+			UserID:   req.UserID,
+			Action:   req.Action,
+		})
+		c.JSON(http.StatusOK, gin.H{"allowed": allowed})
+	}
+}
+
+func listTenantAuditLogs(service *rbac.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"events": service.ListAuditEvents(c.Param("id"))})
 	}
 }
 
