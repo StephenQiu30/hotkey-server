@@ -169,6 +169,46 @@ func Spec() SpecDocument {
 					Responses:   createdObjectResponse("Event candidate clustered"),
 				},
 			},
+			"/api/v1/realtime/events": {
+				Post: Operation{
+					Summary:     "Accept authorized realtime event push with rate limiting and fallback",
+					OperationID: "acceptRealtimeEvent",
+					Tags:        []string{"event", "realtime"},
+					Responses:   acceptedObjectResponse("Realtime event accepted or degraded to fallback queue"),
+				},
+			},
+			"/api/v1/admin/event-graph/events": {
+				Post: Operation{
+					Summary:     "Upsert event graph node and merge cross-language events",
+					OperationID: "upsertEventGraphEvent",
+					Tags:        []string{"event", "graph"},
+					Responses:   createdObjectResponse("Event graph node upserted"),
+				},
+			},
+			"/api/v1/admin/event-graph/relations": {
+				Post: Operation{
+					Summary:     "Add event graph evolution, citation, or conflict relation",
+					OperationID: "addEventGraphRelation",
+					Tags:        []string{"event", "graph"},
+					Responses:   createdObjectResponse("Event graph relation added"),
+				},
+			},
+			"/api/v1/admin/events/{id}/propagation": {
+				Post: Operation{
+					Summary:     "Add observed propagation path step",
+					OperationID: "addPropagationStep",
+					Tags:        []string{"event", "trust"},
+					Responses:   createdObjectResponse("Propagation step added"),
+				},
+			},
+			"/api/v1/admin/events/{id}/claims": {
+				Post: Operation{
+					Summary:     "Add fact or signal claim for arbitration",
+					OperationID: "addArbitrationClaim",
+					Tags:        []string{"trust"},
+					Responses:   createdObjectResponse("Arbitration claim added"),
+				},
+			},
 			"/api/v1/admin/event-clusters": {
 				Get: Operation{
 					Summary:     "List candidate event clusters",
@@ -327,6 +367,30 @@ func Spec() SpecDocument {
 					OperationID: "getEventEvidence",
 					Tags:        []string{"trust"},
 					Responses:   okObjectResponse("Event evidence detail"),
+				},
+			},
+			"/api/v1/events/{id}/graph": {
+				Get: Operation{
+					Summary:     "Get connected event graph for an event node",
+					OperationID: "getEventGraph",
+					Tags:        []string{"event", "graph"},
+					Responses:   okObjectResponse("Event graph"),
+				},
+			},
+			"/api/v1/events/{id}/propagation": {
+				Get: Operation{
+					Summary:     "Get event propagation path",
+					OperationID: "getPropagationPath",
+					Tags:        []string{"event", "trust"},
+					Responses:   okObjectResponse("Propagation path"),
+				},
+			},
+			"/api/v1/events/{id}/arbitration": {
+				Get: Operation{
+					Summary:     "Get fact-source conflict arbitration result",
+					OperationID: "getArbitration",
+					Tags:        []string{"trust"},
+					Responses:   okObjectResponse("Arbitration result"),
 				},
 			},
 			"/api/v1/hotspots": {
