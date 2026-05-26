@@ -67,6 +67,9 @@ func TestSpecContainsEventClusterEndpoints(t *testing.T) {
 		"/api/v1/admin/event-candidates",
 		"/api/v1/admin/event-clusters",
 		"/api/v1/realtime/events",
+		"/api/v1/admin/event-graph/events",
+		"/api/v1/admin/event-graph/relations",
+		"/api/v1/events/{id}/graph",
 	} {
 		if _, ok := spec.Paths[path]; !ok {
 			t.Fatalf("paths missing %s", path)
