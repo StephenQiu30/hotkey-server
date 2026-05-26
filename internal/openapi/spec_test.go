@@ -18,3 +18,20 @@ func TestSpecContainsFoundationEndpoints(t *testing.T) {
 		t.Fatalf("paths missing /openapi.json")
 	}
 }
+
+func TestSpecContainsKeywordEndpoints(t *testing.T) {
+	spec := Spec()
+
+	for _, path := range []string{
+		"/api/v1/admin/keywords",
+		"/api/v1/admin/keywords/{id}",
+		"/api/v1/keywords/follow",
+		"/api/v1/keywords/block",
+		"/api/v1/keywords/additional",
+		"/api/v1/keywords/preferences",
+	} {
+		if _, ok := spec.Paths[path]; !ok {
+			t.Fatalf("paths missing %s", path)
+		}
+	}
+}

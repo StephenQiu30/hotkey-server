@@ -23,7 +23,9 @@ type MediaType struct {
 }
 
 type PathItem struct {
-	Get Operation `json:"get,omitempty"`
+	Get   Operation `json:"get,omitempty"`
+	Post  Operation `json:"post,omitempty"`
+	Patch Operation `json:"patch,omitempty"`
 }
 
 type SpecDocument struct {
@@ -79,6 +81,109 @@ func Spec() SpecDocument {
 							},
 						},
 					},
+				},
+			},
+			"/api/v1/admin/keywords": {
+				Get: Operation{
+					Summary:     "List platform keywords",
+					OperationID: "listPlatformKeywords",
+					Tags:        []string{"keyword"},
+					Responses:   okObjectResponse("Platform keyword list"),
+				},
+				Post: Operation{
+					Summary:     "Create platform keyword",
+					OperationID: "createPlatformKeyword",
+					Tags:        []string{"keyword"},
+					Responses:   createdObjectResponse("Platform keyword created"),
+				},
+			},
+			"/api/v1/admin/keywords/{id}": {
+				Patch: Operation{
+					Summary:     "Enable or disable platform keyword",
+					OperationID: "setPlatformKeywordEnabled",
+					Tags:        []string{"keyword"},
+					Responses:   okObjectResponse("Platform keyword updated"),
+				},
+			},
+			"/api/v1/keywords/follow": {
+				Post: Operation{
+					Summary:     "Follow keyword for a user",
+					OperationID: "followKeyword",
+					Tags:        []string{"keyword"},
+					Responses:   okObjectResponse("Keyword followed"),
+				},
+			},
+			"/api/v1/keywords/block": {
+				Post: Operation{
+					Summary:     "Block keyword for a user",
+					OperationID: "blockKeyword",
+					Tags:        []string{"keyword"},
+					Responses:   okObjectResponse("Keyword blocked"),
+				},
+			},
+			"/api/v1/keywords/additional": {
+				Post: Operation{
+					Summary:     "Add user-specific keyword",
+					OperationID: "addUserKeyword",
+					Tags:        []string{"keyword"},
+					Responses:   okObjectResponse("Keyword added"),
+				},
+			},
+			"/api/v1/keywords/preferences": {
+				Get: Operation{
+					Summary:     "Get user keyword preferences",
+					OperationID: "getUserKeywordPreferences",
+					Tags:        []string{"keyword"},
+					Responses:   okObjectResponse("User keyword preferences"),
+				},
+			},
+		},
+	}
+}
+
+func okObjectResponse(description string) map[string]Response {
+	return map[string]Response{
+		"200": objectResponse(description),
+		"400": errorResponse(),
+	}
+}
+
+func createdObjectResponse(description string) map[string]Response {
+	return map[string]Response{
+		"201": objectResponse(description),
+		"400": errorResponse(),
+	}
+}
+
+func objectResponse(description string) Response {
+	return Response{
+		Description: description,
+		Content: map[string]MediaType{
+			"application/json": {
+				Schema: map[string]any{"type": "object"},
+			},
+		},
+	}
+}
+
+func errorResponse() Response {
+	return Response{
+		Description: "Structured error response",
+		Content: map[string]MediaType{
+			"application/json": {
+				Schema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"error": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"code":    map[string]any{"type": "string"},
+								"message": map[string]any{"type": "string"},
+							},
+							"required": []string{"code", "message"},
+						},
+					},
+					"required": []string{"error"},
 				},
 			},
 		},

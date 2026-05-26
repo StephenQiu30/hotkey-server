@@ -66,3 +66,17 @@ curl http://127.0.0.1:18080/openapi.json
 - `HOTKEY_HTTP_ADDR=:8080`
 - `HOTKEY_DATABASE_URL=postgres://hotkey:hotkey@localhost:5432/hotkey?sslmode=disable`
 - `HOTKEY_REDIS_URL=redis://localhost:6379/0`
+
+## 当前 API
+
+- `GET /healthz`
+- `GET /openapi.json`
+- `GET /api/v1/admin/keywords`
+- `POST /api/v1/admin/keywords`
+- `PATCH /api/v1/admin/keywords/{id}`
+- `POST /api/v1/keywords/follow`
+- `POST /api/v1/keywords/block`
+- `POST /api/v1/keywords/additional`
+- `GET /api/v1/keywords/preferences?userId=...`
+
+当前关键词能力先使用进程内仓储锁定 API 行为和 OpenAPI 契约；PostgreSQL schema、pgvector 和 Redis 持久化会在后续 P0 数据与队列任务中接入。
