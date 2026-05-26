@@ -134,7 +134,7 @@ hotkey-server 是跨仓库 AGENTS.md 主规范源。通用工程规范、OpenAPI
 
 1. 每次完成较大的 OpenSpec change 后，应先完成测试、验证、归档和归档后校验，再使用中文 Git 提交信息提交本次改动。
 2. 提交前必须检查工作区范围，确认只包含本次 change 相关文件；无关修改不得混入提交。
-3. 功能 PR 必须优先使用 `test:`、`impl:`、`refactor:`、`chore:` 的提交顺序；单个提交应保持职责单一，不能混合测试、实现、重构和配置变更。
+3. 功能实现应优先使用 `test:`、`impl:`、`refactor:`、`chore:` 的提交顺序；单个提交应保持职责单一，不能混合测试、实现、重构和配置变更。
 4. 非功能类提交信息应简洁说明核心结果，优先使用 `fix:`、`docs:`、`ci:`、`chore:` 等类型前缀。
 5. 中间产物、临时文件、一次性报告、本地缓存、测试输出目录和调试日志不需要提交到 GitHub；如果必须保留长期证据，应沉淀为正式 docs 文档或验收记录。
 6. 提交后应再次检查工作区状态，确认没有遗漏文件、未暂存文件或意外生成物。
@@ -142,15 +142,17 @@ hotkey-server 是跨仓库 AGENTS.md 主规范源。通用工程规范、OpenAPI
 
 ## PR 提交与合并规范
 
-1. 创建或更新 PR 前，应先确认分支、提交范围、验证结果和是否存在可复用的已有 PR。
-2. PR 标题和描述应使用中文，说明修改内容、验证方式、影响范围、风险和 OpenSpec change 状态。
-3. 同一任务已有 PR 时，应优先更新现有 PR，不要无意义创建重复 PR。
-4. PR 合并前必须检查状态、CI、冲突和目标分支最新状态；不能只因为代码已完成就直接合并。
-5. 每次 PR 合并前必须先给当前目标分支状态打 tag，作为合并前回滚点；tag 名称应能体现合并对象和日期，例如 `pre-merge-pr12-20260508`。
-6. 多个 PR 需要合并时，应按用户指定顺序逐个合并；每合并一个 PR 后都要重新检查后续 PR 的冲突、CI 和合并状态。
-7. PR 合并后应同步本地分支状态，并执行必要的仓库健康检查，确认没有合并后遗留的工作区污染或格式问题。
-8. 功能 PR 描述必须包含 Test-first Evidence、Tests added、Commands run、Result、Agent Usage 和 Reviewer Checklist；Reviewer 应先审 `test:` commit，再审 `impl:` commit。
-9. CI 必须包含当前阶段可执行的完整验证入口。Go 后端重建前至少运行仓库结构检查、Markdown 空白检查、文档编号检查和旧运行时缺失检查；项目增加 Go 代码、OpenAPI 导出、端侧生成或真实单元/集成测试后，应把 `go test ./...`、OpenAPI 导出校验和对应生成验证接入 CI。
+1. PR 粒度以 Epic 或 milestone 为边界，不以单个 task issue 为边界；一个 Epic 完整实现、验证和验收证据齐备后，再创建一个汇总 PR。
+2. Task issue 应在 Epic 分支内通过独立 feature commit、验收文档和 issue/Linear 评论跟踪，不为每个 task 单独创建 PR。
+3. 创建或更新 Epic PR 前，应先确认分支、提交范围、验证结果、关联 task issue 列表和是否存在可复用的已有 Epic PR。
+4. PR 标题和描述应使用中文，说明覆盖的 Epic、包含的 task issue、修改内容、验证方式、影响范围、风险和 OpenSpec change 状态。
+5. 同一 Epic 已有 PR 时，应优先更新现有 PR，不要为新增 task 或 feature 无意义创建重复 PR。
+6. PR 合并前必须检查状态、CI、冲突和目标分支最新状态；不能只因为代码已完成就直接合并。
+7. 每次 PR 合并前必须先给当前目标分支状态打 tag，作为合并前回滚点；tag 名称应能体现合并对象和日期，例如 `pre-merge-pr12-20260508`。
+8. 多个 PR 需要合并时，应按用户指定顺序逐个合并；每合并一个 PR 后都要重新检查后续 PR 的冲突、CI 和合并状态。
+9. PR 合并后应同步本地分支状态，并执行必要的仓库健康检查，确认没有合并后遗留的工作区污染或格式问题。
+10. 功能 PR 描述必须包含 Test-first Evidence、Tests added、Commands run、Result、Agent Usage 和 Reviewer Checklist；Reviewer 应先审 `test:` commit，再审 `impl:` commit。
+11. CI 必须包含当前阶段可执行的完整验证入口。Go 后端重建前至少运行仓库结构检查、Markdown 空白检查、文档编号检查和旧运行时缺失检查；项目增加 Go 代码、OpenAPI 导出、端侧生成或真实单元/集成测试后，应把 `go test ./...`、OpenAPI 导出校验和对应生成验证接入 CI。
 
 ## PR 模板要求
 

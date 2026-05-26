@@ -1,6 +1,9 @@
 package openapi
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestSpecContainsFoundationEndpoints(t *testing.T) {
 	spec := Spec()
@@ -33,5 +36,152 @@ func TestSpecContainsKeywordEndpoints(t *testing.T) {
 		if _, ok := spec.Paths[path]; !ok {
 			t.Fatalf("paths missing %s", path)
 		}
+	}
+}
+
+func TestSpecContainsSourceEndpoints(t *testing.T) {
+	spec := Spec()
+
+	for _, path := range []string{
+		"/api/v1/admin/sources",
+		"/api/v1/admin/sources/{id}",
+	} {
+		if _, ok := spec.Paths[path]; !ok {
+			t.Fatalf("paths missing %s", path)
+		}
+	}
+}
+
+func TestSpecContainsSourceItemEndpoints(t *testing.T) {
+	spec := Spec()
+
+	if _, ok := spec.Paths["/api/v1/admin/source-items"]; !ok {
+		t.Fatalf("paths missing /api/v1/admin/source-items")
+	}
+}
+
+func TestSpecContainsEventClusterEndpoints(t *testing.T) {
+	spec := Spec()
+
+	for _, path := range []string{
+		"/api/v1/admin/event-candidates",
+		"/api/v1/admin/event-clusters",
+	} {
+		if _, ok := spec.Paths[path]; !ok {
+			t.Fatalf("paths missing %s", path)
+		}
+	}
+}
+
+func TestSpecContainsEventEvidenceEndpoints(t *testing.T) {
+	spec := Spec()
+
+	for _, path := range []string{
+		"/api/v1/admin/event-evidence",
+		"/api/v1/admin/events/{id}/ai-summary",
+		"/api/v1/events/{id}/evidence",
+	} {
+		if _, ok := spec.Paths[path]; !ok {
+			t.Fatalf("paths missing %s", path)
+		}
+	}
+}
+
+func TestSpecContainsHotspotEndpoints(t *testing.T) {
+	spec := Spec()
+
+	for _, path := range []string{
+		"/api/v1/hotspots",
+		"/api/v1/hotspots/{id}",
+	} {
+		if _, ok := spec.Paths[path]; !ok {
+			t.Fatalf("paths missing %s", path)
+		}
+	}
+}
+
+func TestSpecContainsReportEndpoints(t *testing.T) {
+	spec := Spec()
+
+	for _, path := range []string{
+		"/api/v1/reports/daily",
+		"/api/v1/users/{id}/reports/daily",
+	} {
+		if _, ok := spec.Paths[path]; !ok {
+			t.Fatalf("paths missing %s", path)
+		}
+	}
+}
+
+func TestSpecContainsRedisInfraEndpoints(t *testing.T) {
+	spec := Spec()
+
+	for _, path := range []string{
+		"/api/v1/refresh-queue",
+		"/api/v1/admin/refresh-queue",
+		"/api/v1/admin/redis/health",
+	} {
+		if _, ok := spec.Paths[path]; !ok {
+			t.Fatalf("paths missing %s", path)
+		}
+	}
+}
+
+func TestSpecContainsMiniappClientContract(t *testing.T) {
+	spec := Spec()
+
+	for _, path := range []string{
+		"/api/v1/hotspots",
+		"/api/v1/hotspots/{id}",
+		"/api/v1/keywords/preferences",
+		"/api/v1/reports/daily",
+		"/api/v1/users/{id}/reports/daily",
+		"/api/v1/refresh-queue",
+	} {
+		if _, ok := spec.Paths[path]; !ok {
+			t.Fatalf("miniapp contract missing %s", path)
+		}
+	}
+	if spec.Components.SecuritySchemes["BearerAuth"].Type != "http" {
+		t.Fatalf("BearerAuth security scheme missing")
+	}
+	if len(spec.Security) == 0 || spec.Security[0]["BearerAuth"] == nil {
+		t.Fatalf("global BearerAuth requirement missing: %#v", spec.Security)
+	}
+	if _, ok := spec.Paths["/api/v1/hotspots"].Get.Responses["401"]; !ok {
+		t.Fatalf("hotspot list missing 401 response")
+	}
+
+	encoded, err := json.Marshal(spec)
+	if err != nil {
+		t.Fatalf("marshal OpenAPI spec: %v", err)
+	}
+	if !json.Valid(encoded) {
+		t.Fatalf("OpenAPI spec JSON is invalid")
+	}
+}
+
+func TestSpecContainsAdminAPIContract(t *testing.T) {
+	spec := Spec()
+
+	for _, path := range []string{
+		"/api/v1/admin/keywords",
+		"/api/v1/admin/keywords/{id}",
+		"/api/v1/admin/sources",
+		"/api/v1/admin/sources/{id}",
+		"/api/v1/admin/task-runs",
+		"/api/v1/admin/reports/daily",
+		"/api/v1/admin/event-clusters",
+		"/api/v1/admin/event-evidence",
+	} {
+		if _, ok := spec.Paths[path]; !ok {
+			t.Fatalf("admin contract missing %s", path)
+		}
+	}
+	if _, ok := spec.Paths["/api/v1/admin/reports/daily"].Post.Responses["202"]; !ok {
+		t.Fatalf("admin daily report trigger missing 202 response")
+	}
+	if _, ok := spec.Paths["/api/v1/admin/task-runs"].Get.Responses["401"]; !ok {
+		t.Fatalf("admin task runs missing 401 response")
 	}
 }

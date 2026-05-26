@@ -28,10 +28,23 @@ type PathItem struct {
 	Patch Operation `json:"patch,omitempty"`
 }
 
+type Components struct {
+	SecuritySchemes map[string]SecurityScheme `json:"securitySchemes,omitempty"`
+}
+
+type SecurityScheme struct {
+	Type         string `json:"type"`
+	Scheme       string `json:"scheme,omitempty"`
+	BearerFormat string `json:"bearerFormat,omitempty"`
+	Description  string `json:"description,omitempty"`
+}
+
 type SpecDocument struct {
-	OpenAPI string              `json:"openapi"`
-	Info    Info                `json:"info"`
-	Paths   map[string]PathItem `json:"paths"`
+	OpenAPI    string                `json:"openapi"`
+	Info       Info                  `json:"info"`
+	Paths      map[string]PathItem   `json:"paths"`
+	Components Components            `json:"components,omitempty"`
+	Security   []map[string][]string `json:"security,omitempty"`
 }
 
 func Spec() SpecDocument {
@@ -40,6 +53,19 @@ func Spec() SpecDocument {
 		Info: Info{
 			Title:   "HotKey Server API",
 			Version: "0.1.0",
+		},
+		Components: Components{
+			SecuritySchemes: map[string]SecurityScheme{
+				"BearerAuth": {
+					Type:         "http",
+					Scheme:       "bearer",
+					BearerFormat: "JWT",
+					Description:  "小程序和管理端调用受保护接口时使用 Authorization: Bearer <token>。",
+				},
+			},
+		},
+		Security: []map[string][]string{
+			{"BearerAuth": {}},
 		},
 		Paths: map[string]PathItem{
 			"/healthz": {
@@ -105,6 +131,148 @@ func Spec() SpecDocument {
 					Responses:   okObjectResponse("Platform keyword updated"),
 				},
 			},
+			"/api/v1/admin/sources": {
+				Get: Operation{
+					Summary:     "List configured collection sources",
+					OperationID: "listSources",
+					Tags:        []string{"source"},
+					Responses:   okObjectResponse("Source list"),
+				},
+			},
+			"/api/v1/admin/sources/{id}": {
+				Patch: Operation{
+					Summary:     "Enable, disable, or throttle a collection source",
+					OperationID: "updateSourceConfig",
+					Tags:        []string{"source"},
+					Responses:   okObjectResponse("Source configuration updated"),
+				},
+			},
+			"/api/v1/admin/source-items": {
+				Get: Operation{
+					Summary:     "List normalized source items",
+					OperationID: "listSourceItems",
+					Tags:        []string{"content"},
+					Responses:   okObjectResponse("Source item list"),
+				},
+				Post: Operation{
+					Summary:     "Ingest and deduplicate a source item",
+					OperationID: "ingestSourceItem",
+					Tags:        []string{"content"},
+					Responses:   createdObjectResponse("Source item ingested"),
+				},
+			},
+			"/api/v1/admin/event-candidates": {
+				Post: Operation{
+					Summary:     "Upsert source item into a candidate event cluster",
+					OperationID: "upsertEventCandidate",
+					Tags:        []string{"event"},
+					Responses:   createdObjectResponse("Event candidate clustered"),
+				},
+			},
+			"/api/v1/admin/event-clusters": {
+				Get: Operation{
+					Summary:     "List candidate event clusters",
+					OperationID: "listEventClusters",
+					Tags:        []string{"event"},
+					Responses:   okObjectResponse("Event cluster list"),
+				},
+			},
+			"/api/v1/admin/event-evidence": {
+				Post: Operation{
+					Summary:     "Add fact or signal evidence to an event",
+					OperationID: "addEventEvidence",
+					Tags:        []string{"trust"},
+					Responses:   createdObjectResponse("Event evidence added"),
+				},
+			},
+			"/api/v1/admin/events/{id}/ai-summary": {
+				Post: Operation{
+					Summary:     "Set event AI summary with source citations",
+					OperationID: "setEventAISummary",
+					Tags:        []string{"trust"},
+					Responses:   okObjectResponse("Event AI summary updated"),
+				},
+			},
+			"/api/v1/admin/task-runs": {
+				Get: Operation{
+					Summary:     "List admin task run records",
+					OperationID: "listAdminTaskRuns",
+					Tags:        []string{"admin"},
+					Responses:   okObjectResponse("Admin task run list"),
+				},
+			},
+			"/api/v1/admin/reports/daily": {
+				Post: Operation{
+					Summary:     "Trigger daily report generation from admin console",
+					OperationID: "triggerAdminDailyReport",
+					Tags:        []string{"admin", "report"},
+					Responses:   acceptedObjectResponse("Daily report generation accepted"),
+				},
+			},
+			"/api/v1/events/{id}/evidence": {
+				Get: Operation{
+					Summary:     "Get event evidence detail",
+					OperationID: "getEventEvidence",
+					Tags:        []string{"trust"},
+					Responses:   okObjectResponse("Event evidence detail"),
+				},
+			},
+			"/api/v1/hotspots": {
+				Get: Operation{
+					Summary:     "List ranked hotspots",
+					OperationID: "listHotspots",
+					Tags:        []string{"hotspot"},
+					Responses:   okObjectResponse("Hotspot list"),
+				},
+			},
+			"/api/v1/hotspots/{id}": {
+				Get: Operation{
+					Summary:     "Get hotspot detail",
+					OperationID: "getHotspotDetail",
+					Tags:        []string{"hotspot"},
+					Responses:   okObjectResponse("Hotspot detail"),
+				},
+			},
+			"/api/v1/reports/daily": {
+				Get: Operation{
+					Summary:     "Get platform daily report",
+					OperationID: "getPlatformDailyReport",
+					Tags:        []string{"report"},
+					Responses:   okObjectResponse("Platform daily report"),
+				},
+			},
+			"/api/v1/users/{id}/reports/daily": {
+				Get: Operation{
+					Summary:     "Get user keyword daily report",
+					OperationID: "getUserDailyReport",
+					Tags:        []string{"report"},
+					Responses:   okObjectResponse("User daily report"),
+				},
+			},
+			"/api/v1/refresh-queue": {
+				Post: Operation{
+					Summary:     "Enqueue a manual refresh request with rate limiting",
+					OperationID: "enqueueRefresh",
+					Tags:        []string{"redis"},
+					Responses:   createdObjectResponse("Refresh request queued"),
+				},
+			},
+			"/api/v1/admin/refresh-queue": {
+				Get: Operation{
+					Summary:     "List pending refresh queue items",
+					OperationID: "listRefreshQueue",
+					Tags:        []string{"redis"},
+					Responses:   okObjectResponse("Refresh queue list"),
+				},
+			},
+			"/api/v1/admin/redis/health": {
+				Get: Operation{
+					Summary:     "Get Redis infrastructure health",
+					OperationID: "getRedisHealth",
+					Tags:        []string{"redis"},
+					Responses:   okObjectResponse("Redis health"),
+				},
+			},
 			"/api/v1/keywords/follow": {
 				Post: Operation{
 					Summary:     "Follow keyword for a user",
@@ -145,6 +313,7 @@ func okObjectResponse(description string) map[string]Response {
 	return map[string]Response{
 		"200": objectResponse(description),
 		"400": errorResponse(),
+		"401": errorResponse(),
 	}
 }
 
@@ -152,6 +321,15 @@ func createdObjectResponse(description string) map[string]Response {
 	return map[string]Response{
 		"201": objectResponse(description),
 		"400": errorResponse(),
+		"401": errorResponse(),
+	}
+}
+
+func acceptedObjectResponse(description string) map[string]Response {
+	return map[string]Response{
+		"202": objectResponse(description),
+		"400": errorResponse(),
+		"401": errorResponse(),
 	}
 }
 
