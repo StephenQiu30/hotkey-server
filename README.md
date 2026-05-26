@@ -86,6 +86,9 @@ curl http://127.0.0.1:18080/openapi.json
 - `POST /api/v1/admin/reports/daily`
 - `POST /api/v1/admin/tenants`
 - `POST /api/v1/admin/tenants/{id}/members`
+- `POST /api/v1/admin/tenants/{id}/roles`
+- `POST /api/v1/admin/tenants/{id}/authorize`
+- `GET /api/v1/admin/tenants/{id}/audit-logs`
 - `GET /api/v1/users/{id}/tenants`
 - `GET /api/v1/events/{id}/evidence`
 - `GET /api/v1/hotspots`
@@ -120,5 +123,7 @@ curl http://127.0.0.1:18080/openapi.json
 当前管理员 API 契约覆盖关键词和来源启停、任务运行与失败记录查询、管理员手动触发日报生成；任务记录先使用进程内实现锁定管理端契约，后续可替换为 PostgreSQL 任务运行表。
 
 当前多租户能力先使用进程内租户、成员关系和租户隔离字段锁定平台化契约；用户可属于多个租户，关键词、来源和日报具备租户级隔离入口，后续与 PostgreSQL schema、RBAC 和审计日志合并演进。
+
+当前 RBAC 与审计能力先使用进程内角色绑定、权限判定和审计事件锁定平台化契约；租户内 `owner`、`admin`、`viewer` 具备不同管理边界，关键角色和配置变更需要写入租户审计日志。
 
 OpenAPI 已声明 `BearerAuth` 鉴权方案和统一结构化错误响应；小程序端应从 `/openapi.json` 生成客户端，不手写后端 API 类型。
