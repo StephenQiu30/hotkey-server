@@ -151,6 +151,30 @@ func Spec() SpecDocument {
 					Responses:   okObjectResponse("Event cluster list"),
 				},
 			},
+			"/api/v1/admin/event-evidence": {
+				Post: Operation{
+					Summary:     "Add fact or signal evidence to an event",
+					OperationID: "addEventEvidence",
+					Tags:        []string{"trust"},
+					Responses:   createdObjectResponse("Event evidence added"),
+				},
+			},
+			"/api/v1/admin/events/{id}/ai-summary": {
+				Post: Operation{
+					Summary:     "Set event AI summary with source citations",
+					OperationID: "setEventAISummary",
+					Tags:        []string{"trust"},
+					Responses:   okObjectResponse("Event AI summary updated"),
+				},
+			},
+			"/api/v1/events/{id}/evidence": {
+				Get: Operation{
+					Summary:     "Get event evidence detail",
+					OperationID: "getEventEvidence",
+					Tags:        []string{"trust"},
+					Responses:   okObjectResponse("Event evidence detail"),
+				},
+			},
 			"/api/v1/keywords/follow": {
 				Post: Operation{
 					Summary:     "Follow keyword for a user",

@@ -69,3 +69,17 @@ func TestSpecContainsEventClusterEndpoints(t *testing.T) {
 		}
 	}
 }
+
+func TestSpecContainsEventEvidenceEndpoints(t *testing.T) {
+	spec := Spec()
+
+	for _, path := range []string{
+		"/api/v1/admin/event-evidence",
+		"/api/v1/admin/events/{id}/ai-summary",
+		"/api/v1/events/{id}/evidence",
+	} {
+		if _, ok := spec.Paths[path]; !ok {
+			t.Fatalf("paths missing %s", path)
+		}
+	}
+}

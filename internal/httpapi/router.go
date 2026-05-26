@@ -10,6 +10,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/keyword"
 	"github.com/StephenQiu30/hotkey-server/internal/openapi"
 	"github.com/StephenQiu30/hotkey-server/internal/source"
+	"github.com/StephenQiu30/hotkey-server/internal/trust"
 	"github.com/gin-gonic/gin"
 )
 
@@ -29,11 +30,12 @@ func NewRouterWithServices(keywordService *keyword.Service, sourceService *sourc
 	if len(eventServices) > 0 && eventServices[0] != nil {
 		eventService = eventServices[0]
 	}
+	trustService := trust.NewService()
 
-	return newRouter(keywordService, sourceService, contentService, eventService)
+	return newRouter(keywordService, sourceService, contentService, eventService, trustService)
 }
 
-func newRouter(keywordService *keyword.Service, sourceService *source.Service, contentService *content.Service, eventService *event.Service) *gin.Engine {
+func newRouter(keywordService *keyword.Service, sourceService *source.Service, contentService *content.Service, eventService *event.Service, trustService *trust.Service) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.GET("/healthz", handleHealth)
@@ -47,6 +49,9 @@ func newRouter(keywordService *keyword.Service, sourceService *source.Service, c
 	router.POST("/api/v1/admin/source-items", ingestSourceItem(contentService))
 	router.GET("/api/v1/admin/event-clusters", listEventClusters(eventService))
 	router.POST("/api/v1/admin/event-candidates", upsertEventCandidate(eventService))
+	router.POST("/api/v1/admin/event-evidence", addEventEvidence(trustService))
+	router.POST("/api/v1/admin/events/:id/ai-summary", setEventAISummary(trustService))
+	router.GET("/api/v1/events/:id/evidence", getEventEvidence(trustService))
 	router.POST("/api/v1/keywords/follow", followKeyword(keywordService))
 	router.POST("/api/v1/keywords/block", blockKeyword(keywordService))
 	router.POST("/api/v1/keywords/additional", addUserKeyword(keywordService))
@@ -94,6 +99,23 @@ type eventCandidateRequest struct {
 	Title        string    `json:"title"`
 	ContentHash  string    `json:"contentHash"`
 	Vector       []float64 `json:"vector"`
+}
+
+type eventEvidenceRequest struct {
+	EventID      string `json:"eventId"`
+	SourceID     string `json:"sourceId"`
+	SourceItemID string `json:"sourceItemId"`
+	Layer        string `json:"layer"`
+	TrustLevel   string `json:"trustLevel"`
+	Title        string `json:"title"`
+	URL          string `json:"url"`
+	HeatWeight   int    `json:"heatWeight"`
+	RiskNote     string `json:"riskNote"`
+}
+
+type aiSummaryRequest struct {
+	Summary     string   `json:"summary"`
+	CitationIDs []string `json:"citationIds"`
 }
 
 type userKeywordRequest struct {
@@ -239,6 +261,55 @@ func upsertEventCandidate(service *event.Service) gin.HandlerFunc {
 	}
 }
 
+func addEventEvidence(service *trust.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req eventEvidenceRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		if err := service.AddEvidence(trust.EvidenceInput{
+			EventID:      req.EventID,
+			SourceID:     req.SourceID,
+			SourceItemID: req.SourceItemID,
+			Layer:        req.Layer,
+			TrustLevel:   req.TrustLevel,
+			Title:        req.Title,
+			URL:          req.URL,
+			HeatWeight:   req.HeatWeight,
+			RiskNote:     req.RiskNote,
+		}); err != nil {
+			writeTrustError(c, err)
+			return
+		}
+		c.JSON(http.StatusCreated, gin.H{"ok": true})
+	}
+}
+
+func setEventAISummary(service *trust.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req aiSummaryRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		if err := service.SetAISummary(c.Param("id"), trust.AISummaryInput{
+			Summary:     req.Summary,
+			CitationIDs: req.CitationIDs,
+		}); err != nil {
+			writeTrustError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, service.GetEventEvidence(c.Param("id")))
+	}
+}
+
+func getEventEvidence(service *trust.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, service.GetEventEvidence(c.Param("id")))
+	}
+}
+
 func followKeyword(service *keyword.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		handleUserKeywordMutation(c, service.FollowKeyword)
@@ -291,6 +362,17 @@ func writeKeywordError(c *gin.Context, err error) {
 		writeError(c, http.StatusNotFound, "keyword_not_found", "keyword was not found")
 	default:
 		writeError(c, http.StatusInternalServerError, "internal_error", "unexpected keyword error")
+	}
+}
+
+func writeTrustError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, trust.ErrMissingCitation):
+		writeError(c, http.StatusBadRequest, "missing_citation", "AI summary must include source citations")
+	case errors.Is(err, trust.ErrInvalidEvidence):
+		writeError(c, http.StatusBadRequest, "invalid_evidence", "event evidence is invalid")
+	default:
+		writeError(c, http.StatusInternalServerError, "internal_error", "unexpected trust error")
 	}
 }
 

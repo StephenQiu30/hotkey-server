@@ -80,6 +80,9 @@ curl http://127.0.0.1:18080/openapi.json
 - `POST /api/v1/admin/source-items`
 - `POST /api/v1/admin/event-candidates`
 - `GET /api/v1/admin/event-clusters`
+- `POST /api/v1/admin/event-evidence`
+- `POST /api/v1/admin/events/{id}/ai-summary`
+- `GET /api/v1/events/{id}/evidence`
 - `POST /api/v1/keywords/follow`
 - `POST /api/v1/keywords/block`
 - `POST /api/v1/keywords/additional`
@@ -92,3 +95,5 @@ curl http://127.0.0.1:18080/openapi.json
 当前内容能力先使用进程内 SourceItem 仓储锁定标准化与去重契约；会保留原始 URL、来源、发布时间、抓取时间、内容 hash 和原始元数据，并按 canonical URL、内容 hash、标题时间窗口去重。
 
 当前相似聚合能力先使用进程内事件簇仓储锁定 pgvector 契约；向量可用时使用余弦相似度归簇，向量不可用时退回 hash/标题规则聚合，并在响应中展示 `matchMethod` 与 `similarity`。
+
+当前可信度能力先使用进程内证据链仓储锁定事实证据、传播证据和 AI 引用契约；低可信传播源只贡献热度，不能生成事实分，AI 总结必须携带来源引用。
