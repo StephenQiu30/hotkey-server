@@ -177,6 +177,22 @@ func Spec() SpecDocument {
 					Responses:   acceptedObjectResponse("Realtime event accepted or degraded to fallback queue"),
 				},
 			},
+			"/api/v1/admin/event-graph/events": {
+				Post: Operation{
+					Summary:     "Upsert event graph node and merge cross-language events",
+					OperationID: "upsertEventGraphEvent",
+					Tags:        []string{"event", "graph"},
+					Responses:   createdObjectResponse("Event graph node upserted"),
+				},
+			},
+			"/api/v1/admin/event-graph/relations": {
+				Post: Operation{
+					Summary:     "Add event graph evolution, citation, or conflict relation",
+					OperationID: "addEventGraphRelation",
+					Tags:        []string{"event", "graph"},
+					Responses:   createdObjectResponse("Event graph relation added"),
+				},
+			},
 			"/api/v1/admin/event-clusters": {
 				Get: Operation{
 					Summary:     "List candidate event clusters",
@@ -335,6 +351,14 @@ func Spec() SpecDocument {
 					OperationID: "getEventEvidence",
 					Tags:        []string{"trust"},
 					Responses:   okObjectResponse("Event evidence detail"),
+				},
+			},
+			"/api/v1/events/{id}/graph": {
+				Get: Operation{
+					Summary:     "Get connected event graph for an event node",
+					OperationID: "getEventGraph",
+					Tags:        []string{"event", "graph"},
+					Responses:   okObjectResponse("Event graph"),
 				},
 			},
 			"/api/v1/hotspots": {

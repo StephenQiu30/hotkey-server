@@ -10,6 +10,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/billing"
 	"github.com/StephenQiu30/hotkey-server/internal/content"
 	"github.com/StephenQiu30/hotkey-server/internal/event"
+	"github.com/StephenQiu30/hotkey-server/internal/eventgraph"
 	"github.com/StephenQiu30/hotkey-server/internal/hotspot"
 	"github.com/StephenQiu30/hotkey-server/internal/keyword"
 	"github.com/StephenQiu30/hotkey-server/internal/openapi"
@@ -52,6 +53,7 @@ func NewRouterWithServices(keywordService *keyword.Service, sourceService *sourc
 	workQueueService := workqueue.NewService()
 	serviceBoundaryService := serviceboundary.NewService()
 	realtimeService := realtime.NewService(eventService, realtime.Options{MaxEventsPerWindow: 1})
+	eventGraphService := eventgraph.NewService()
 	if err := realtimeService.RegisterSource(realtime.Source{
 		ID:         "openai-realtime",
 		Token:      "demo-realtime-token",
@@ -61,10 +63,10 @@ func NewRouterWithServices(keywordService *keyword.Service, sourceService *sourc
 		panic(err)
 	}
 
-	return newRouter(keywordService, sourceService, contentService, eventService, trustService, hotspotService, reportService, redisInfraService, adminAPIService, tenantService, rbacService, billingService, workQueueService, serviceBoundaryService, realtimeService)
+	return newRouter(keywordService, sourceService, contentService, eventService, trustService, hotspotService, reportService, redisInfraService, adminAPIService, tenantService, rbacService, billingService, workQueueService, serviceBoundaryService, realtimeService, eventGraphService)
 }
 
-func newRouter(keywordService *keyword.Service, sourceService *source.Service, contentService *content.Service, eventService *event.Service, trustService *trust.Service, hotspotService *hotspot.Service, reportService *report.Service, redisInfraService *redisinfra.Service, adminAPIService *adminapi.Service, tenantService *tenant.Service, rbacService *rbac.Service, billingService *billing.Service, workQueueService *workqueue.Service, serviceBoundaryService *serviceboundary.Service, realtimeService *realtime.Service) *gin.Engine {
+func newRouter(keywordService *keyword.Service, sourceService *source.Service, contentService *content.Service, eventService *event.Service, trustService *trust.Service, hotspotService *hotspot.Service, reportService *report.Service, redisInfraService *redisinfra.Service, adminAPIService *adminapi.Service, tenantService *tenant.Service, rbacService *rbac.Service, billingService *billing.Service, workQueueService *workqueue.Service, serviceBoundaryService *serviceboundary.Service, realtimeService *realtime.Service, eventGraphService *eventgraph.Service) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.GET("/healthz", handleHealth)
@@ -79,6 +81,8 @@ func newRouter(keywordService *keyword.Service, sourceService *source.Service, c
 	router.GET("/api/v1/admin/event-clusters", listEventClusters(eventService))
 	router.POST("/api/v1/admin/event-candidates", upsertEventCandidate(eventService))
 	router.POST("/api/v1/realtime/events", acceptRealtimeEvent(realtimeService))
+	router.POST("/api/v1/admin/event-graph/events", upsertEventGraphEvent(eventGraphService))
+	router.POST("/api/v1/admin/event-graph/relations", addEventGraphRelation(eventGraphService))
 	router.POST("/api/v1/admin/event-evidence", addEventEvidence(trustService))
 	router.POST("/api/v1/admin/events/:id/ai-summary", setEventAISummary(trustService))
 	router.GET("/api/v1/admin/task-runs", listAdminTaskRuns(adminAPIService))
@@ -98,6 +102,7 @@ func newRouter(keywordService *keyword.Service, sourceService *source.Service, c
 	router.GET("/api/v1/admin/tenants/:id/billing/usage", getTenantUsageSummary(billingService))
 	router.POST("/api/v1/admin/tenants/:id/billing/usage", recordTenantUsage(billingService))
 	router.GET("/api/v1/users/:id/tenants", listUserTenants(tenantService))
+	router.GET("/api/v1/events/:id/graph", getEventGraph(eventGraphService))
 	router.GET("/api/v1/events/:id/evidence", getEventEvidence(trustService))
 	router.GET("/api/v1/hotspots", listHotspots(hotspotService))
 	router.GET("/api/v1/hotspots/:id", getHotspotDetail(hotspotService))
@@ -169,6 +174,21 @@ type realtimeEventRequest struct {
 	ContentHash  string    `json:"contentHash"`
 	ReceivedAt   time.Time `json:"receivedAt"`
 	Vector       []float64 `json:"vector"`
+}
+
+type eventGraphEventRequest struct {
+	EventID          string `json:"eventId"`
+	Title            string `json:"title"`
+	Language         string `json:"language"`
+	CrossLanguageKey string `json:"crossLanguageKey"`
+	ClusterID        string `json:"clusterId"`
+}
+
+type eventGraphRelationRequest struct {
+	FromNodeID string `json:"fromNodeId"`
+	ToNodeID   string `json:"toNodeId"`
+	Type       string `json:"type"`
+	EvidenceID string `json:"evidenceId"`
 }
 
 type eventEvidenceRequest struct {
@@ -401,6 +421,55 @@ func acceptRealtimeEvent(service *realtime.Service) gin.HandlerFunc {
 			return
 		}
 		c.JSON(http.StatusAccepted, result)
+	}
+}
+
+func upsertEventGraphEvent(service *eventgraph.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req eventGraphEventRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		node, err := service.UpsertEvent(eventgraph.EventInput{
+			EventID:          req.EventID,
+			Title:            req.Title,
+			Language:         req.Language,
+			CrossLanguageKey: req.CrossLanguageKey,
+			ClusterID:        req.ClusterID,
+		})
+		if err != nil {
+			writeEventGraphError(c, err)
+			return
+		}
+		c.JSON(http.StatusCreated, node)
+	}
+}
+
+func addEventGraphRelation(service *eventgraph.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req eventGraphRelationRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		relation, err := service.AddRelation(eventgraph.RelationInput{
+			FromNodeID: req.FromNodeID,
+			ToNodeID:   req.ToNodeID,
+			Type:       req.Type,
+			EvidenceID: req.EvidenceID,
+		})
+		if err != nil {
+			writeEventGraphError(c, err)
+			return
+		}
+		c.JSON(http.StatusCreated, relation)
+	}
+}
+
+func getEventGraph(service *eventgraph.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, service.GetGraph(c.Param("id")))
 	}
 }
 
@@ -979,6 +1048,19 @@ func writeRealtimeError(c *gin.Context, result realtime.PushResult, err error) {
 		writeError(c, http.StatusForbidden, "realtime_source_disabled", "realtime source is disabled")
 	default:
 		writeError(c, http.StatusInternalServerError, "internal_error", "unexpected realtime error")
+	}
+}
+
+func writeEventGraphError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, eventgraph.ErrInvalidEvent):
+		writeError(c, http.StatusBadRequest, "invalid_event_graph_event", "event graph event is missing required fields")
+	case errors.Is(err, eventgraph.ErrInvalidRelation):
+		writeError(c, http.StatusBadRequest, "invalid_event_graph_relation", "event graph relation is invalid")
+	case errors.Is(err, eventgraph.ErrNodeNotFound):
+		writeError(c, http.StatusNotFound, "event_graph_node_not_found", "event graph node was not found")
+	default:
+		writeError(c, http.StatusInternalServerError, "internal_error", "unexpected event graph error")
 	}
 }
 
