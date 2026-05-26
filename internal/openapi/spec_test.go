@@ -226,3 +226,23 @@ func TestSpecContainsRBACAuditContract(t *testing.T) {
 		t.Fatalf("audit logs missing 401 response")
 	}
 }
+
+func TestSpecContainsTenantAdminExtensionContract(t *testing.T) {
+	spec := Spec()
+
+	for _, path := range []string{
+		"/api/v1/admin/tenants/{id}/keywords",
+		"/api/v1/admin/tenants/{id}/sources",
+		"/api/v1/admin/tenants/{id}/sources/{sourceId}",
+	} {
+		if _, ok := spec.Paths[path]; !ok {
+			t.Fatalf("tenant admin extension missing %s", path)
+		}
+	}
+	if _, ok := spec.Paths["/api/v1/admin/tenants"].Get.Responses["200"]; !ok {
+		t.Fatalf("platform tenant list missing 200 response")
+	}
+	if _, ok := spec.Paths["/api/v1/admin/tenants/{id}/keywords"].Post.Responses["201"]; !ok {
+		t.Fatalf("tenant keyword create missing 201 response")
+	}
+}
