@@ -48,3 +48,11 @@ func TestSpecContainsSourceEndpoints(t *testing.T) {
 		}
 	}
 }
+
+func TestSpecContainsSourceItemEndpoints(t *testing.T) {
+	spec := Spec()
+
+	if _, ok := spec.Paths["/api/v1/admin/source-items"]; !ok {
+		t.Fatalf("paths missing /api/v1/admin/source-items")
+	}
+}

@@ -3,7 +3,9 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/content"
 	"github.com/StephenQiu30/hotkey-server/internal/keyword"
 	"github.com/StephenQiu30/hotkey-server/internal/openapi"
 	"github.com/StephenQiu30/hotkey-server/internal/source"
@@ -11,14 +13,19 @@ import (
 )
 
 func NewRouter() *gin.Engine {
-	return NewRouterWithServices(keyword.NewService(), source.NewService())
+	return NewRouterWithServices(keyword.NewService(), source.NewService(), content.NewService())
 }
 
 func NewRouterWithKeywordService(keywordService *keyword.Service) *gin.Engine {
-	return NewRouterWithServices(keywordService, source.NewService())
+	return NewRouterWithServices(keywordService, source.NewService(), content.NewService())
 }
 
-func NewRouterWithServices(keywordService *keyword.Service, sourceService *source.Service) *gin.Engine {
+func NewRouterWithServices(keywordService *keyword.Service, sourceService *source.Service, contentServices ...*content.Service) *gin.Engine {
+	contentService := content.NewService()
+	if len(contentServices) > 0 && contentServices[0] != nil {
+		contentService = contentServices[0]
+	}
+
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.GET("/healthz", handleHealth)
@@ -28,6 +35,8 @@ func NewRouterWithServices(keywordService *keyword.Service, sourceService *sourc
 	router.PATCH("/api/v1/admin/keywords/:id", setPlatformKeywordEnabled(keywordService))
 	router.GET("/api/v1/admin/sources", listSources(sourceService))
 	router.PATCH("/api/v1/admin/sources/:id", updateSource(sourceService))
+	router.GET("/api/v1/admin/source-items", listSourceItems(contentService))
+	router.POST("/api/v1/admin/source-items", ingestSourceItem(contentService))
 	router.POST("/api/v1/keywords/follow", followKeyword(keywordService))
 	router.POST("/api/v1/keywords/block", blockKeyword(keywordService))
 	router.POST("/api/v1/keywords/additional", addUserKeyword(keywordService))
@@ -58,6 +67,16 @@ type updateKeywordRequest struct {
 type updateSourceRequest struct {
 	Enabled          *bool `json:"enabled"`
 	RateLimitPerHour *int  `json:"rateLimitPerHour"`
+}
+
+type ingestSourceItemRequest struct {
+	SourceID    string            `json:"sourceId"`
+	OriginalURL string            `json:"originalUrl"`
+	Title       string            `json:"title"`
+	Summary     string            `json:"summary"`
+	PublishedAt time.Time         `json:"publishedAt"`
+	FetchedAt   time.Time         `json:"fetchedAt"`
+	RawMetadata map[string]string `json:"rawMetadata"`
 }
 
 type userKeywordRequest struct {
@@ -135,6 +154,43 @@ func updateSource(service *source.Service) gin.HandlerFunc {
 	}
 }
 
+func listSourceItems(service *content.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"items": service.ListSourceItems()})
+	}
+}
+
+func ingestSourceItem(service *content.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req ingestSourceItemRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		item, result, err := service.IngestSourceItem(content.IngestSourceItemInput{
+			SourceID:    req.SourceID,
+			OriginalURL: req.OriginalURL,
+			Title:       req.Title,
+			Summary:     req.Summary,
+			PublishedAt: req.PublishedAt,
+			FetchedAt:   req.FetchedAt,
+			RawMetadata: req.RawMetadata,
+		})
+		if err != nil {
+			writeContentError(c, err)
+			return
+		}
+		status := http.StatusCreated
+		if result == content.ResultDuplicate {
+			status = http.StatusOK
+		}
+		c.JSON(status, gin.H{
+			"result": result,
+			"item":   item,
+		})
+	}
+}
+
 func followKeyword(service *keyword.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		handleUserKeywordMutation(c, service.FollowKeyword)
@@ -187,6 +243,15 @@ func writeKeywordError(c *gin.Context, err error) {
 		writeError(c, http.StatusNotFound, "keyword_not_found", "keyword was not found")
 	default:
 		writeError(c, http.StatusInternalServerError, "internal_error", "unexpected keyword error")
+	}
+}
+
+func writeContentError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, content.ErrInvalidSourceItem):
+		writeError(c, http.StatusBadRequest, "invalid_source_item", "source item is missing required trace fields")
+	default:
+		writeError(c, http.StatusInternalServerError, "internal_error", "unexpected content error")
 	}
 }
 

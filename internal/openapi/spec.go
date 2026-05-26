@@ -121,6 +121,20 @@ func Spec() SpecDocument {
 					Responses:   okObjectResponse("Source configuration updated"),
 				},
 			},
+			"/api/v1/admin/source-items": {
+				Get: Operation{
+					Summary:     "List normalized source items",
+					OperationID: "listSourceItems",
+					Tags:        []string{"content"},
+					Responses:   okObjectResponse("Source item list"),
+				},
+				Post: Operation{
+					Summary:     "Ingest and deduplicate a source item",
+					OperationID: "ingestSourceItem",
+					Tags:        []string{"content"},
+					Responses:   createdObjectResponse("Source item ingested"),
+				},
+			},
 			"/api/v1/keywords/follow": {
 				Post: Operation{
 					Summary:     "Follow keyword for a user",
