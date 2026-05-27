@@ -80,3 +80,10 @@ workflow 中还需要设置以下 header：
 | `N8N_FACT_SOURCE_WORKFLOW` | 事实源采集 workflow 名 | `fact_source_collector` |
 | `N8N_SIGNAL_SOURCE_WORKFLOW` | 传播源采集 workflow 名 | `signal_source_collector` |
 | `N8N_DAILY_REPORT_WORKFLOW` | 日报 workflow 名 | `daily_ai_hotspot_email_digest` |
+| `DASHSCOPE_API_KEY` | 阿里云灵积 API Key | 无，必须配置 |
+| `DASHSCOPE_BASE_URL` | DashScope OpenAI 兼容接口地址 | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| `DASHSCOPE_CHAT_MODEL` | 聊天/总结模型 | `qwen-plus` |
+| `DASHSCOPE_EMBEDDING_MODEL` | 向量模型 | `text-embedding-v2` |
+| `SMTP_HOST` | SMTP 服务器地址 | `smtp.example.com` |
+| `SMTP_PORT` | SMTP 端口 | `587` |
+| `DAILY_REPORT_RECIPIENTS` | 日报收件人（逗号分隔） | `admin@example.com` |
