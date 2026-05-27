@@ -527,6 +527,38 @@ func Spec() SpecDocument {
 					Responses:   okObjectResponse("User keyword preferences"),
 				},
 			},
+			"/api/v1/internal/workflow/status": {
+				Post: Operation{
+					Summary:     "Report n8n workflow execution status",
+					OperationID: "reportWorkflowStatus",
+					Tags:        []string{"internal", "n8n"},
+					Responses:   okObjectResponse("Workflow status recorded"),
+				},
+			},
+			"/api/v1/internal/ingest/contents": {
+				Post: Operation{
+					Summary:     "Batch ingest content items from n8n workflows",
+					OperationID: "batchIngestContents",
+					Tags:        []string{"internal", "n8n", "content"},
+					Responses:   acceptedObjectResponse("Batch ingest accepted"),
+				},
+			},
+			"/api/v1/internal/daily/candidates": {
+				Get: Operation{
+					Summary:     "List daily report candidates for n8n workflow",
+					OperationID: "listDailyCandidates",
+					Tags:        []string{"internal", "n8n", "report"},
+					Responses:   okObjectResponse("Daily candidate list"),
+				},
+			},
+			"/api/v1/internal/daily/reports": {
+				Post: Operation{
+					Summary:     "Save daily report from n8n workflow",
+					OperationID: "saveDailyReport",
+					Tags:        []string{"internal", "n8n", "report"},
+					Responses:   createdObjectResponse("Daily report saved"),
+				},
+			},
 		},
 	}
 }

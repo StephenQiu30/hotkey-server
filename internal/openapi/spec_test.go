@@ -298,3 +298,18 @@ func TestSpecContainsServiceBoundaryContract(t *testing.T) {
 		t.Fatalf("service boundary response missing 200")
 	}
 }
+
+func TestSpecContainsInternalAPIEndpoints(t *testing.T) {
+	spec := Spec()
+
+	for _, path := range []string{
+		"/api/v1/internal/workflow/status",
+		"/api/v1/internal/ingest/contents",
+		"/api/v1/internal/daily/candidates",
+		"/api/v1/internal/daily/reports",
+	} {
+		if _, ok := spec.Paths[path]; !ok {
+			t.Fatalf("paths missing %s", path)
+		}
+	}
+}

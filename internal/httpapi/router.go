@@ -8,6 +8,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/adminapi"
 	"github.com/StephenQiu30/hotkey-server/internal/billing"
+	"github.com/StephenQiu30/hotkey-server/internal/config"
 	"github.com/StephenQiu30/hotkey-server/internal/content"
 	"github.com/StephenQiu30/hotkey-server/internal/event"
 	"github.com/StephenQiu30/hotkey-server/internal/eventgraph"
@@ -127,6 +128,19 @@ func newRouter(keywordService *keyword.Service, sourceService *source.Service, c
 	router.POST("/api/v1/keywords/block", blockKeyword(keywordService))
 	router.POST("/api/v1/keywords/additional", addUserKeyword(keywordService))
 	router.GET("/api/v1/keywords/preferences", getUserPreferences(keywordService))
+
+	cfg := config.Load()
+	if cfg.InternalAPIKey != "" {
+		internalGroup := router.Group("/api/v1/internal")
+		internalGroup.Use(InternalAPIAuthMiddleware(cfg.InternalAPIKey, cfg.DefaultTenantID))
+		{
+			internalGroup.POST("/workflow/status", handleInternalWorkflowStatus())
+			internalGroup.POST("/ingest/contents", handleInternalBatchIngestContents())
+			internalGroup.GET("/daily/candidates", handleInternalDailyCandidates())
+			internalGroup.POST("/daily/reports", handleInternalSaveDailyReport())
+		}
+	}
+
 	return router
 }
 
@@ -1245,4 +1259,60 @@ func writeError(c *gin.Context, status int, code string, message string) {
 			"message": message,
 		},
 	})
+}
+
+type internalWorkflowStatusRequest struct {
+	WorkflowName string `json:"workflowName"`
+	ExecutionID  string `json:"executionId"`
+	Status       string `json:"status"`
+	Message      string `json:"message,omitempty"`
+}
+
+func handleInternalWorkflowStatus() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req internalWorkflowStatusRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeError(c, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		if req.WorkflowName == "" || req.ExecutionID == "" || req.Status == "" {
+			writeError(c, http.StatusBadRequest, "invalid_request", "workflowName, executionId and status are required")
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"ok":               true,
+			"tenantId":         getTenantID(c),
+			"idempotentReplay": isIdempotentReplay(c),
+		})
+	}
+}
+
+func handleInternalBatchIngestContents() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusAccepted, gin.H{
+			"ok":       true,
+			"tenantId": getTenantID(c),
+			"accepted": true,
+		})
+	}
+}
+
+func handleInternalDailyCandidates() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"ok":         true,
+			"tenantId":   getTenantID(c),
+			"candidates": []any{},
+		})
+	}
+}
+
+func handleInternalSaveDailyReport() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusCreated, gin.H{
+			"ok":       true,
+			"tenantId": getTenantID(c),
+			"saved":    true,
+		})
+	}
 }

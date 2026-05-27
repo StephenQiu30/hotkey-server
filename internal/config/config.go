@@ -9,16 +9,20 @@ const (
 )
 
 type Config struct {
-	HTTPAddr    string
-	DatabaseURL string
-	RedisURL    string
+	HTTPAddr        string
+	DatabaseURL     string
+	RedisURL        string
+	InternalAPIKey  string
+	DefaultTenantID string
 }
 
 func Load() Config {
 	return Config{
-		HTTPAddr:    envOrDefault("HOTKEY_HTTP_ADDR", defaultHTTPAddr),
-		DatabaseURL: envOrDefault("HOTKEY_DATABASE_URL", defaultDatabaseURL),
-		RedisURL:    envOrDefault("HOTKEY_REDIS_URL", defaultRedisURL),
+		HTTPAddr:        envOrDefault("HOTKEY_HTTP_ADDR", defaultHTTPAddr),
+		DatabaseURL:     envOrDefault("HOTKEY_DATABASE_URL", defaultDatabaseURL),
+		RedisURL:        envOrDefault("HOTKEY_REDIS_URL", defaultRedisURL),
+		InternalAPIKey:  os.Getenv("HOTKEY_INTERNAL_API_KEY"),
+		DefaultTenantID: envOrDefault("HOTKEY_DEFAULT_TENANT_ID", ""),
 	}
 }
 
