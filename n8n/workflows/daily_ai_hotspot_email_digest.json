@@ -43,13 +43,41 @@
     },
     {
       "parameters": {
-        "jsCode": "const candidates = $input.first().json.events || [];\nconst date = $input.first().json.date;\n\n// Generate Markdown\nlet markdown = `# AI Hotspot Daily Report - ${date}\\n\\n`;\nmarkdown += `## Today's Hotspots\\n\\n`;\n\nif (candidates.length === 0) {\n  markdown += 'No significant hotspots detected today.\\n';\n} else {\n  candidates.forEach((event, i) => {\n    markdown += `### ${i + 1}. ${event.title}\\n`;\n    markdown += `- Heat: ${event.heatScore || 'N/A'}\\n`;\n    markdown += `- Trust: ${event.trustScore || 'N/A'}\\n`;\n    if (event.keywords) markdown += `- Keywords: ${event.keywords.join(', ')}\\n`;\n    markdown += `\\n`;\n  });\n}\n\n// Generate HTML\nlet html = `<h1>AI Hotspot Daily Report - ${date}</h1>`;\nhtml += `<h2>Today's Hotspots</h2>`;\n\nif (candidates.length === 0) {\n  html += '<p>No significant hotspots detected today.</p>';\n} else {\n  html += '<ol>';\n  candidates.forEach(event => {\n    html += `<li><strong>${event.title}</strong> (Heat: ${event.heatScore || 'N/A'}, Trust: ${event.trustScore || 'N/A'})</li>`;\n  });\n  html += '</ol>';\n}\n\nreturn [{\n  json: {\n    date,\n    markdown,\n    html,\n    candidates\n  }\n}];"
+        "url": "={{$env.DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1'}}/chat/completions",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.DASHSCOPE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $env.DASHSCOPE_CHAT_MODEL || 'qwen-plus' }}\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"你是一位专业的 AI 热点分析师。请根据提供的候选事件数据，生成一份简洁的中文日报。日报格式要求：1) 标题包含日期 2) 按热度排序列出事件 3) 每个事件包含标题、热度分数、可信度分数和关键词 4) 最后给出今日趋势总结。输出纯 Markdown 格式。\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"请为 {{ $now.minus({days: 1}).toFormat('yyyy-MM-dd') }} 生成 AI 热点日报。候选事件数据：{{ JSON.stringify($input.first().json.events || []) }}\"\n    }\n  ],\n  \"temperature\": 0.7,\n  \"max_tokens\": 2000\n}",
+        "options": {}
       },
-      "id": "generate-report",
-      "name": "Generate Report",
+      "id": "ai-generate-report",
+      "name": "AI Generate Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst date = '{{ $now.minus({days: 1}).toFormat(\"yyyy-MM-dd\") }}';\n\nlet markdown = '';\nlet html = '';\n\nif (response.choices && response.choices[0] && response.choices[0].message) {\n  markdown = response.choices[0].message.content;\n  // Convert markdown to basic HTML\n  html = markdown\n    .replace(/^### (.+)$/gm, '<h3>$1</h3>')\n    .replace(/^## (.+)$/gm, '<h2>$1</h2>')\n    .replace(/^# (.+)$/gm, '<h1>$1</h1>')\n    .replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>')\n    .replace(/^- (.+)$/gm, '<li>$1</li>')\n    .replace(/\\n/g, '<br/>');\n} else {\n  markdown = `# AI Hotspot Daily Report - ${date}\\n\\nNo data available.`;\n  html = `<h1>AI Hotspot Daily Report - ${date}</h1><p>No data available.</p>`;\n}\n\nreturn [{\n  json: {\n    date,\n    markdown,\n    html\n  }\n}];"
+      },
+      "id": "format-report",
+      "name": "Format Report",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [690, 300]
+      "position": [910, 300]
     },
     {
       "parameters": {
@@ -80,21 +108,21 @@
       "name": "Save Daily Report",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [910, 300]
+      "position": [1130, 300]
     },
     {
       "parameters": {
         "fromEmail": "={{$env.SMTP_FROM || 'HotKey <no-reply@example.com>'}}",
         "toEmail": "={{$env.DAILY_REPORT_RECIPIENTS || 'admin@example.com'}}",
         "subject": "=AI Hotspot Daily Report - {{ $now.minus({days: 1}).toFormat('yyyy-MM-dd') }}",
-        "html": "={{ $('Generate Report').first().json.html }}",
+        "html": "={{ $('Format Report').first().json.html }}",
         "options": {}
       },
       "id": "send-email",
       "name": "Send Email",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
-      "position": [1130, 300],
+      "position": [1350, 300],
       "credentials": {
         "smtp": {
           "id": "hotkey-smtp",
@@ -131,7 +159,7 @@
       "name": "Report Success",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1350, 300]
+      "position": [1570, 300]
     }
   ],
   "connections": {
@@ -150,14 +178,25 @@
       "main": [
         [
           {
-            "node": "Generate Report",
+            "node": "AI Generate Report",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Generate Report": {
+    "AI Generate Report": {
+      "main": [
+        [
+          {
+            "node": "Format Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Report": {
       "main": [
         [
           {
