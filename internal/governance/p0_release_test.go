@@ -22,8 +22,10 @@ func TestP0AcceptanceEvidenceIsComplete(t *testing.T) {
 }
 
 func TestPRDAndPlanNumberingIsContinuous(t *testing.T) {
-	assertContinuousDocs(t, filepath.Join("..", "..", "docs", "product", "prd"), 22)
-	assertContinuousDocs(t, filepath.Join("..", "..", "docs", "plans"), 22)
+	assertContinuousDocs(t, filepath.Join("..", "..", "docs", "product", "prd"), 25)
+	assertContinuousDocs(t, filepath.Join("..", "..", "docs", "plans"), 30)
+	assertDocNumberMetadataMatchesFilename(t, filepath.Join("..", "..", "docs", "product", "prd"))
+	assertDocNumberMetadataMatchesFilename(t, filepath.Join("..", "..", "docs", "plans"))
 }
 
 func TestLegacyFastAPIRuntimeIsAbsent(t *testing.T) {
@@ -36,7 +38,6 @@ func TestLegacyFastAPIRuntimeIsAbsent(t *testing.T) {
 		"deploy",
 		"openspec/changes",
 		"openspec/specs",
-		".env.example",
 		"package.json",
 		"pyproject.toml",
 		"Dockerfile.api",
@@ -99,5 +100,37 @@ func assertContinuousDocs(t *testing.T, dir string, max int) {
 	}
 	if len(seen) != max {
 		t.Fatalf("%s numbered document count = %d, want %d", dir, len(seen), max)
+	}
+}
+
+func assertDocNumberMetadataMatchesFilename(t *testing.T, dir string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read %s: %v", dir, err)
+	}
+	re := regexp.MustCompile(`^([0-9]+)-.*\.md$`)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		matches := re.FindStringSubmatch(entry.Name())
+		if len(matches) == 0 {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		number := matches[1]
+		docNoPattern := regexp.MustCompile(fmt.Sprintf(`(?m)^doc_no:\s+"%s"$`, regexp.QuoteMeta(number)))
+		if !docNoPattern.Match(content) {
+			t.Fatalf("%s doc_no does not match filename number %s", path, number)
+		}
+		titlePattern := regexp.MustCompile(fmt.Sprintf(`(?m)^# %s-`, regexp.QuoteMeta(number)))
+		if !titlePattern.Match(content) {
+			t.Fatalf("%s title does not start with document number %s", path, number)
+		}
 	}
 }
