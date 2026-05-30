@@ -1,0 +1,7 @@
+.reboot-safety/pre-cleanup-diff.patch
+.reboot-safety/pre-cleanup-status.txt
+.reboot-safety/pre-cleanup-untracked.txt
+internal/content/default_repo.go
+internal/hotspot/default_repo.go
+internal/keyword/default_repo.go
+internal/source/default_repo.go
