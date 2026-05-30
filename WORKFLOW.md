@@ -1,11 +1,12 @@
 ---
 tracker:
   kind: linear
-  api_key: "$LINEAR_API_KEY"
   project_slug: "$SYMPHONY_LINEAR_PROJECT_SLUG"
   active_states:
     - Todo
     - In Progress
+    - Merging
+    - Rework
   terminal_states:
     - Closed
     - Cancelled
@@ -14,6 +15,8 @@ tracker:
     - Done
 polling:
   interval_ms: 30000
+server:
+  host: "0.0.0.0"
 workspace:
   root: "$SYMPHONY_WORKSPACE_ROOT"
 hooks:
@@ -29,9 +32,10 @@ agent:
   max_retry_backoff_ms: 300000
 codex:
   command: codex app-server
-  turn_timeout_ms: 3600000
-  read_timeout_ms: 5000
-  stall_timeout_ms: 300000
+  approval_policy: never
+  thread_sandbox: workspace-write
+  turn_sandbox_policy:
+    type: workspaceWrite
 ---
 
 # HotKey Server Symphony Workflow

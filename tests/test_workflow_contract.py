@@ -18,10 +18,12 @@ class WorkflowContractTest(unittest.TestCase):
             self.assertIn(key, front_matter)
 
         self.assertIn("kind: linear", front_matter)
-        self.assertIn('api_key: "$LINEAR_API_KEY"', front_matter)
         self.assertIn('project_slug: "$SYMPHONY_LINEAR_PROJECT_SLUG"', front_matter)
         self.assertRegex(front_matter, re.compile(r"active_states:\n(\s+- .+\n)+"))
         self.assertRegex(front_matter, re.compile(r"terminal_states:\n(\s+- .+\n)+"))
+        self.assertIn("- Merging", front_matter)
+        self.assertIn("- Rework", front_matter)
+        self.assertIn("approval_policy: never", front_matter)
         self.assertIn("{{ issue.identifier }}", body)
         self.assertIn("hotkey-server", body)
 
