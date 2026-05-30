@@ -1,0 +1,995 @@
+diff --git "a/docs/plans/31-\347\263\273\347\273\237\347\253\257\345\210\260\347\253\257\345\217\257\350\277\220\350\241\214\345\220\216\347\253\257\345\237\272\347\241\200\350\256\276\346\226\275\345\256\236\347\216\260\350\256\241\345\210\222.md" "b/docs/plans/31-\347\263\273\347\273\237\347\253\257\345\210\260\347\253\257\345\217\257\350\277\220\350\241\214\345\220\216\347\253\257\345\237\272\347\241\200\350\256\276\346\226\275\345\256\236\347\216\260\350\256\241\345\210\222.md"
+index 2363ed0..675eee2 100644
+--- "a/docs/plans/31-\347\263\273\347\273\237\347\253\257\345\210\260\347\253\257\345\217\257\350\277\220\350\241\214\345\220\216\347\253\257\345\237\272\347\241\200\350\256\276\346\226\275\345\256\236\347\216\260\350\256\241\345\210\222.md"
++++ "b/docs/plans/31-\347\263\273\347\273\237\347\253\257\345\210\260\347\253\257\345\217\257\350\277\220\350\241\214\345\220\216\347\253\257\345\237\272\347\241\200\350\256\276\346\226\275\345\256\236\347\216\260\350\256\241\345\210\222.md"
+@@ -13,7 +13,7 @@ version: "1.0.0"
+ owner: "StephenQiu30"
+ inputs:
+   - docs/product/prd/26-系统端到端可运行与基础设施对接PRD.md
+-  - docs/superpowers/specs/2026-05-28-system-running-design.md
++
+ outputs:
+   - 后端基础设施实现任务
+   - 后端基础设施验证证据
+@@ -34,7 +34,6 @@ downstream:
+ 
+ - PRD：`docs/product/prd/26-系统端到端可运行与基础设施对接PRD.md`
+ - Plan：`docs/plans/31-系统端到端可运行后端基础设施实现计划.md`
+-- 设计输入：`docs/superpowers/specs/2026-05-28-system-running-design.md`
+ - 数据库 Schema：`db/schema.sql`
+ - 迁移目录：`db/migrations/`
+ 
+diff --git "a/docs/plans/32-Web\345\211\215\347\253\257\346\216\245\347\234\237\345\256\236API\345\256\236\347\216\260\350\256\241\345\210\222.md" "b/docs/plans/32-Web\345\211\215\347\253\257\346\216\245\347\234\237\345\256\236API\345\256\236\347\216\260\350\256\241\345\210\222.md"
+index c9e80f8..c9d8086 100644
+--- "a/docs/plans/32-Web\345\211\215\347\253\257\346\216\245\347\234\237\345\256\236API\345\256\236\347\216\260\350\256\241\345\210\222.md"
++++ "b/docs/plans/32-Web\345\211\215\347\253\257\346\216\245\347\234\237\345\256\236API\345\256\236\347\216\260\350\256\241\345\210\222.md"
+@@ -13,7 +13,7 @@ version: "1.0.0"
+ owner: "StephenQiu30"
+ inputs:
+   - docs/product/prd/26-系统端到端可运行与基础设施对接PRD.md
+-  - docs/superpowers/specs/2026-05-28-system-running-design.md
++
+ outputs:
+   - Web 前端实现任务
+   - Web 前端验证证据
+diff --git "a/docs/plans/33-Docker\351\203\250\347\275\262\350\203\275\345\212\233\345\256\236\347\216\260\350\256\241\345\210\222.md" "b/docs/plans/33-Docker\351\203\250\347\275\262\350\203\275\345\212\233\345\256\236\347\216\260\350\256\241\345\210\222.md"
+index bbedf2f..6155660 100644
+--- "a/docs/plans/33-Docker\351\203\250\347\275\262\350\203\275\345\212\233\345\256\236\347\216\260\350\256\241\345\210\222.md"
++++ "b/docs/plans/33-Docker\351\203\250\347\275\262\350\203\275\345\212\233\345\256\236\347\216\260\350\256\241\345\210\222.md"
+@@ -13,7 +13,7 @@ version: "1.0.0"
+ owner: "StephenQiu30"
+ inputs:
+   - docs/product/prd/26-系统端到端可运行与基础设施对接PRD.md
+-  - docs/superpowers/specs/2026-05-28-system-running-design.md
++
+ outputs:
+   - Docker 部署实现任务
+   - Docker 部署验证证据
+diff --git "a/docs/product/prd/26-\347\263\273\347\273\237\347\253\257\345\210\260\347\253\257\345\217\257\350\277\220\350\241\214\344\270\216\345\237\272\347\241\200\350\256\276\346\226\275\345\257\271\346\216\245PRD.md" "b/docs/product/prd/26-\347\263\273\347\273\237\347\253\257\345\210\260\347\253\257\345\217\257\350\277\220\350\241\214\344\270\216\345\237\272\347\241\200\350\256\276\346\226\275\345\257\271\346\216\245PRD.md"
+index 1e4e2d7..c7c67ab 100644
+--- "a/docs/product/prd/26-\347\263\273\347\273\237\347\253\257\345\210\260\347\253\257\345\217\257\350\277\220\350\241\214\344\270\216\345\237\272\347\241\200\350\256\276\346\226\275\345\257\271\346\216\245PRD.md"
++++ "b/docs/product/prd/26-\347\263\273\347\273\237\347\253\257\345\210\260\347\253\257\345\217\257\350\277\220\350\241\214\344\270\216\345\237\272\347\241\200\350\256\276\346\226\275\345\257\271\346\216\245PRD.md"
+@@ -14,7 +14,7 @@ version: "1.0.0"
+ owner: "StephenQiu30"
+ inputs:
+   - docs/engineering/1-Go后端重建与开源仓库治理设计.md
+-  - docs/superpowers/specs/2026-05-28-system-running-design.md
++
+ outputs:
+   - 系统端到端可运行需求边界
+   - 系统端到端可运行验收标准
+diff --git a/internal/content/service.go b/internal/content/service.go
+index 1fbe1f7..e606cbc 100644
+--- a/internal/content/service.go
++++ b/internal/content/service.go
+@@ -8,7 +8,6 @@ import (
+ 	"net/url"
+ 	"sort"
+ 	"strings"
+-	"sync"
+ 	"time"
+ )
+ 
+@@ -16,21 +15,23 @@ const titleDuplicateWindow = 24 * time.Hour
+ 
+ var ErrInvalidSourceItem = errors.New("invalid source item")
+ 
++// Repo defines the storage interface for content items.
++type Repo interface {
++	CreateItem(item SourceItem) error
++	ListItems() ([]SourceItem, error)
++	GetItem(id string) (SourceItem, error)
++	GetByCanonicalURL(url string) (SourceItem, bool, error)
++	GetByContentHash(hash string) (SourceItem, bool, error)
++	ListByTitleWindow(normalizedTitle string) ([]SourceItem, error)
++}
++
+ type Service struct {
+-	mu         sync.Mutex
++	repo       Repo
+ 	nextNumber int
+-	items      map[string]SourceItem
+-	byURL      map[string]string
+-	byHash     map[string]string
+ }
+ 
+-func NewService() *Service {
+-	return &Service{
+-		nextNumber: 1,
+-		items:      make(map[string]SourceItem),
+-		byURL:      make(map[string]string),
+-		byHash:     make(map[string]string),
+-	}
++func NewServiceWithRepo(r Repo) *Service {
++	return &Service{repo: r, nextNumber: 1}
+ }
+ 
+ func (s *Service) IngestSourceItem(input IngestSourceItemInput) (SourceItem, string, error) {
+@@ -39,34 +40,36 @@ func (s *Service) IngestSourceItem(input IngestSourceItemInput) (SourceItem, str
+ 		return SourceItem{}, "", err
+ 	}
+ 
+-	s.mu.Lock()
+-	defer s.mu.Unlock()
+-
+-	if id, ok := s.byURL[item.CanonicalURL]; ok {
+-		return cloneItem(s.items[id]), ResultDuplicate, nil
++	if existing, found, _ := s.repo.GetByCanonicalURL(item.CanonicalURL); found {
++		return existing, ResultDuplicate, nil
+ 	}
+-	if id, ok := s.byHash[item.ContentHash]; ok {
+-		return cloneItem(s.items[id]), ResultDuplicate, nil
++	if existing, found, _ := s.repo.GetByContentHash(item.ContentHash); found {
++		return existing, ResultDuplicate, nil
+ 	}
+-	if duplicate, ok := s.findTitleWindowDuplicate(normalizedTitle, item.PublishedAt); ok {
+-		return cloneItem(duplicate), ResultDuplicate, nil
++
++	items, _ := s.repo.ListByTitleWindow(normalizedTitle)
++	for _, existing := range items {
++		delta := existing.PublishedAt.Sub(item.PublishedAt)
++		if delta < 0 {
++			delta = -delta
++		}
++		if delta <= titleDuplicateWindow {
++			return existing, ResultDuplicate, nil
++		}
+ 	}
+ 
+ 	item.ID = fmt.Sprintf("item_%d", s.nextNumber)
+ 	s.nextNumber++
+-	s.items[item.ID] = item
+-	s.byURL[item.CanonicalURL] = item.ID
+-	s.byHash[item.ContentHash] = item.ID
+-	return cloneItem(item), ResultCreated, nil
++	if err := s.repo.CreateItem(item); err != nil {
++		return SourceItem{}, "", err
++	}
++	return item, ResultCreated, nil
+ }
+ 
+ func (s *Service) ListSourceItems() []SourceItem {
+-	s.mu.Lock()
+-	defer s.mu.Unlock()
+-
+-	items := make([]SourceItem, 0, len(s.items))
+-	for _, item := range s.items {
+-		items = append(items, cloneItem(item))
++	items, err := s.repo.ListItems()
++	if err != nil {
++		return nil
+ 	}
+ 	sort.Slice(items, func(i, j int) bool {
+ 		return items[i].ID < items[j].ID
+@@ -74,22 +77,6 @@ func (s *Service) ListSourceItems() []SourceItem {
+ 	return items
+ }
+ 
+-func (s *Service) findTitleWindowDuplicate(normalizedTitle string, publishedAt time.Time) (SourceItem, bool) {
+-	for _, item := range s.items {
+-		if normalizeText(item.Title) != normalizedTitle {
+-			continue
+-		}
+-		delta := item.PublishedAt.Sub(publishedAt)
+-		if delta < 0 {
+-			delta = -delta
+-		}
+-		if delta <= titleDuplicateWindow {
+-			return item, true
+-		}
+-	}
+-	return SourceItem{}, false
+-}
+-
+ func normalizeItem(input IngestSourceItemInput) (SourceItem, string, error) {
+ 	sourceID := strings.TrimSpace(input.SourceID)
+ 	originalURL := strings.TrimSpace(input.OriginalURL)
+@@ -147,11 +134,6 @@ func collapseSpaces(value string) string {
+ 	return strings.Join(strings.Fields(value), " ")
+ }
+ 
+-func cloneItem(item SourceItem) SourceItem {
+-	item.RawMetadata = cloneMetadata(item.RawMetadata)
+-	return item
+-}
+-
+ func cloneMetadata(metadata map[string]string) map[string]string {
+ 	cloned := make(map[string]string, len(metadata))
+ 	for key, value := range metadata {
+diff --git a/internal/governance/p0_release_test.go b/internal/governance/p0_release_test.go
+index 1332d9f..c60d0a4 100644
+--- a/internal/governance/p0_release_test.go
++++ b/internal/governance/p0_release_test.go
+@@ -22,8 +22,8 @@ func TestP0AcceptanceEvidenceIsComplete(t *testing.T) {
+ }
+ 
+ func TestPRDAndPlanNumberingIsContinuous(t *testing.T) {
+-	assertContinuousDocs(t, filepath.Join("..", "..", "docs", "product", "prd"), 25)
+-	assertContinuousDocs(t, filepath.Join("..", "..", "docs", "plans"), 30)
++	assertContinuousDocs(t, filepath.Join("..", "..", "docs", "product", "prd"), 26)
++	assertContinuousDocs(t, filepath.Join("..", "..", "docs", "plans"), 33)
+ 	assertDocNumberMetadataMatchesFilename(t, filepath.Join("..", "..", "docs", "product", "prd"))
+ 	assertDocNumberMetadataMatchesFilename(t, filepath.Join("..", "..", "docs", "plans"))
+ }
+diff --git a/internal/hotspot/service.go b/internal/hotspot/service.go
+index b5e433a..64e1829 100644
+--- a/internal/hotspot/service.go
++++ b/internal/hotspot/service.go
+@@ -4,77 +4,38 @@ import (
+ 	"errors"
+ 	"sort"
+ 	"strings"
+-	"sync"
+ )
+ 
+ var ErrHotspotNotFound = errors.New("hotspot not found")
+ 
+-type Service struct {
+-	mu       sync.Mutex
+-	hotspots map[string]HotspotDetail
++// Repo defines the storage interface for hotspots.
++type Repo interface {
++	UpsertHotspot(detail HotspotDetail) error
++	ListHotspots() ([]HotspotDetail, error)
++	GetHotspot(id string) (HotspotDetail, error)
+ }
+ 
+-func NewService() *Service {
+-	service := NewEmptyService()
+-	service.UpsertHotspot(HotspotInput{
+-		ID:              "cluster_openai_reasoning",
+-		Title:           "OpenAI releases new reasoning model",
+-		Keywords:        []string{"OpenAI", "model", "reasoning"},
+-		Region:          "global",
+-		Language:        "en",
+-		HeatScore:       88,
+-		TrustScore:      95,
+-		SimilarityScore: 0.93,
+-		RelatedContent: []RelatedContent{
+-			{SourceItemID: "item_1", Title: "Research source", URL: "https://arxiv.org/abs/2605.00001"},
+-			{SourceItemID: "item_2", Title: "Developer discussion", URL: "https://github.com/trending"},
+-		},
+-		Evidence: EvidenceDetail{
+-			FactEvidenceIDs:   []string{"item_1"},
+-			SignalEvidenceIDs: []string{"item_2"},
+-			RiskLabels:        []string{"needs_followup"},
+-		},
+-	})
+-	service.UpsertHotspot(HotspotInput{
+-		ID:              "cluster_ai_safety_report",
+-		Title:           "Anthropic publishes AI safety report",
+-		Keywords:        []string{"Anthropic", "safety", "AI"},
+-		Region:          "global",
+-		Language:        "en",
+-		HeatScore:       64,
+-		TrustScore:      90,
+-		SimilarityScore: 0.86,
+-		RelatedContent: []RelatedContent{
+-			{SourceItemID: "item_3", Title: "Safety report", URL: "https://example.com/safety-report"},
+-		},
+-		Evidence: EvidenceDetail{
+-			FactEvidenceIDs: []string{"item_3"},
+-			RiskLabels:      []string{"low_risk"},
+-		},
+-	})
+-	return service
++type Service struct {
++	repo Repo
+ }
+ 
+-func NewEmptyService() *Service {
+-	return &Service{
+-		hotspots: make(map[string]HotspotDetail),
+-	}
++func NewServiceWithRepo(r Repo) *Service {
++	return &Service{repo: r}
+ }
+ 
+ func (s *Service) UpsertHotspot(input HotspotInput) {
+ 	detail := normalizeHotspot(input)
+-
+-	s.mu.Lock()
+-	defer s.mu.Unlock()
+-	s.hotspots[detail.ID] = detail
++	_ = s.repo.UpsertHotspot(detail)
+ }
+ 
+ func (s *Service) ListHotspots(options ListOptions) []HotspotSummary {
+-	s.mu.Lock()
+-	defer s.mu.Unlock()
++	all, err := s.repo.ListHotspots()
++	if err != nil {
++		return nil
++	}
+ 
+-	result := make([]HotspotSummary, 0, len(s.hotspots))
+-	for _, detail := range s.hotspots {
++	result := make([]HotspotSummary, 0, len(all))
++	for _, detail := range all {
+ 		if !matches(detail.HotspotSummary, options) {
+ 			continue
+ 		}
+@@ -87,14 +48,11 @@ func (s *Service) ListHotspots(options ListOptions) []HotspotSummary {
+ }
+ 
+ func (s *Service) GetHotspotDetail(id string) (HotspotDetail, error) {
+-	s.mu.Lock()
+-	defer s.mu.Unlock()
+-
+-	detail, ok := s.hotspots[id]
+-	if !ok {
++	detail, err := s.repo.GetHotspot(id)
++	if err != nil {
+ 		return HotspotDetail{}, ErrHotspotNotFound
+ 	}
+-	return cloneDetail(detail), nil
++	return detail, nil
+ }
+ 
+ func normalizeHotspot(input HotspotInput) HotspotDetail {
+@@ -175,17 +133,6 @@ func sortHotspots(hotspots []HotspotSummary, sortBy string) {
+ 	})
+ }
+ 
+-func cloneDetail(detail HotspotDetail) HotspotDetail {
+-	detail.Keywords = append([]string(nil), detail.Keywords...)
+-	detail.RelatedContent = cloneRelated(detail.RelatedContent)
+-	detail.Evidence = EvidenceDetail{
+-		FactEvidenceIDs:   append([]string(nil), detail.Evidence.FactEvidenceIDs...),
+-		SignalEvidenceIDs: append([]string(nil), detail.Evidence.SignalEvidenceIDs...),
+-		RiskLabels:        append([]string(nil), detail.Evidence.RiskLabels...),
+-	}
+-	return detail
+-}
+-
+ func cloneRelated(items []RelatedContent) []RelatedContent {
+ 	return append([]RelatedContent(nil), items...)
+ }
+diff --git a/internal/httpapi/router.go b/internal/httpapi/router.go
+index 0f1a497..2ba8a7b 100644
+--- a/internal/httpapi/router.go
++++ b/internal/httpapi/router.go
+@@ -23,6 +23,7 @@ import (
+ 	"github.com/StephenQiu30/hotkey-server/internal/report"
+ 	"github.com/StephenQiu30/hotkey-server/internal/serviceboundary"
+ 	"github.com/StephenQiu30/hotkey-server/internal/source"
++	"github.com/StephenQiu30/hotkey-server/internal/store/memory"
+ 	"github.com/StephenQiu30/hotkey-server/internal/tenant"
+ 	"github.com/StephenQiu30/hotkey-server/internal/trust"
+ 	"github.com/StephenQiu30/hotkey-server/internal/workqueue"
+@@ -30,16 +31,25 @@ import (
+ )
+ 
+ func NewRouter() *gin.Engine {
+-	return NewRouterWithServices(keyword.NewService(), source.NewService(), content.NewService(), event.NewService(event.Options{VectorEnabled: true}))
++	return NewRouterWithServices(
++		keyword.NewServiceWithRepo(memory.NewKeywordRepo()),
++		source.NewServiceWithRepo(memory.NewSourceRepo()),
++		content.NewServiceWithRepo(memory.NewContentRepo()),
++		event.NewService(event.Options{VectorEnabled: true}),
++	)
+ }
+ 
+ func NewRouterWithKeywordService(keywordService *keyword.Service) *gin.Engine {
+-	return NewRouterWithServices(keywordService, source.NewService(), content.NewService(), event.NewService(event.Options{VectorEnabled: true}))
++	return NewRouterWithServices(keywordService,
++		source.NewServiceWithRepo(memory.NewSourceRepo()),
++		content.NewServiceWithRepo(memory.NewContentRepo()),
++		event.NewService(event.Options{VectorEnabled: true}),
++	)
+ }
+ 
+ func NewRouterWithServices(keywordService *keyword.Service, sourceService *source.Service, contentService *content.Service, eventServices ...*event.Service) *gin.Engine {
+ 	if contentService == nil {
+-		contentService = content.NewService()
++		contentService = content.NewServiceWithRepo(memory.NewContentRepo())
+ 	}
+ 	eventService := event.NewService(event.Options{VectorEnabled: true})
+ 	if len(eventServices) > 0 && eventServices[0] != nil {
+diff --git a/internal/keyword/service.go b/internal/keyword/service.go
+index 75db4af..b316b52 100644
+--- a/internal/keyword/service.go
++++ b/internal/keyword/service.go
+@@ -5,7 +5,6 @@ import (
+ 	"fmt"
+ 	"sort"
+ 	"strings"
+-	"sync"
+ )
+ 
+ var (
+@@ -14,25 +13,24 @@ var (
+ 	ErrKeywordNotFound = errors.New("keyword not found")
+ )
+ 
+-type Service struct {
+-	mu                sync.Mutex
+-	nextKeywordNumber int
+-	platformKeywords  map[string]PlatformKeyword
+-	userPreferences   map[string]preferenceSets
++// Repo defines the storage interface for keywords.
++type Repo interface {
++	CreateKeyword(kw PlatformKeyword) error
++	ListKeywords() ([]PlatformKeyword, error)
++	ListKeywordsByTenant(tenantID string) ([]PlatformKeyword, error)
++	GetKeyword(id string) (PlatformKeyword, error)
++	UpdateKeyword(kw PlatformKeyword) error
++	GetUserPreferences(userID string) (UserPreferences, error)
++	SaveUserPreferences(userID string, prefs UserPreferences) error
+ }
+ 
+-type preferenceSets struct {
+-	followed   map[string]string
+-	blocked    map[string]string
+-	additional map[string]string
++type Service struct {
++	repo   Repo
++	nextID int
+ }
+ 
+-func NewService() *Service {
+-	return &Service{
+-		nextKeywordNumber: 1,
+-		platformKeywords:  make(map[string]PlatformKeyword),
+-		userPreferences:   make(map[string]preferenceSets),
+-	}
++func NewServiceWithRepo(r Repo) *Service {
++	return &Service{repo: r, nextID: 1}
+ }
+ 
+ func (s *Service) CreatePlatformKeyword(input CreatePlatformKeywordInput) (PlatformKeyword, error) {
+@@ -41,28 +39,24 @@ func (s *Service) CreatePlatformKeyword(input CreatePlatformKeywordInput) (Platf
+ 		return PlatformKeyword{}, err
+ 	}
+ 
+-	s.mu.Lock()
+-	defer s.mu.Unlock()
+-
+-	keyword := PlatformKeyword{
++	kw := PlatformKeyword{
++		ID:       fmt.Sprintf("kw_%d", s.nextID),
+ 		TenantID: strings.TrimSpace(input.TenantID),
+-		ID:       fmt.Sprintf("kw_%d", s.nextKeywordNumber),
+ 		Term:     term,
+ 		Category: strings.TrimSpace(input.Category),
+ 		Enabled:  true,
+ 	}
+-	s.nextKeywordNumber++
+-	s.platformKeywords[keyword.ID] = keyword
+-	return keyword, nil
++	s.nextID++
++	if err := s.repo.CreateKeyword(kw); err != nil {
++		return PlatformKeyword{}, err
++	}
++	return kw, nil
+ }
+ 
+ func (s *Service) ListPlatformKeywords() []PlatformKeyword {
+-	s.mu.Lock()
+-	defer s.mu.Unlock()
+-
+-	keywords := make([]PlatformKeyword, 0, len(s.platformKeywords))
+-	for _, keyword := range s.platformKeywords {
+-		keywords = append(keywords, keyword)
++	keywords, err := s.repo.ListKeywords()
++	if err != nil {
++		return nil
+ 	}
+ 	sort.Slice(keywords, func(i, j int) bool {
+ 		return keywords[i].ID < keywords[j].ID
+@@ -71,16 +65,9 @@ func (s *Service) ListPlatformKeywords() []PlatformKeyword {
+ }
+ 
+ func (s *Service) ListPlatformKeywordsByTenant(tenantID string) []PlatformKeyword {
+-	tenantID = strings.TrimSpace(tenantID)
+-	s.mu.Lock()
+-	defer s.mu.Unlock()
+-
+-	keywords := make([]PlatformKeyword, 0)
+-	for _, keyword := range s.platformKeywords {
+-		if keyword.TenantID != tenantID {
+-			continue
+-		}
+-		keywords = append(keywords, keyword)
++	keywords, err := s.repo.ListKeywordsByTenant(tenantID)
++	if err != nil {
++		return nil
+ 	}
+ 	sort.Slice(keywords, func(i, j int) bool {
+ 		return keywords[i].ID < keywords[j].ID
+@@ -89,52 +76,46 @@ func (s *Service) ListPlatformKeywordsByTenant(tenantID string) []PlatformKeywor
+ }
+ 
+ func (s *Service) SetPlatformKeywordEnabled(id string, enabled bool) (PlatformKeyword, error) {
+-	s.mu.Lock()
+-	defer s.mu.Unlock()
+-
+-	keyword, ok := s.platformKeywords[id]
+-	if !ok {
++	kw, err := s.repo.GetKeyword(id)
++	if err != nil {
+ 		return PlatformKeyword{}, ErrKeywordNotFound
+ 	}
+-	keyword.Enabled = enabled
+-	s.platformKeywords[id] = keyword
+-	return keyword, nil
++	kw.Enabled = enabled
++	if err := s.repo.UpdateKeyword(kw); err != nil {
++		return PlatformKeyword{}, err
++	}
++	return kw, nil
+ }
+ 
+ func (s *Service) FollowKeyword(userID string, term string) error {
+-	return s.updatePreference(userID, term, func(sets preferenceSets, normalized string) {
+-		delete(sets.blocked, normalized)
+-		sets.followed[normalized] = normalized
+-	})
++	if strings.TrimSpace(userID) == "" {
++		return ErrInvalidUserID
++	}
++	normalized, err := normalizeKeyword(term)
++	if err != nil {
++		return err
++	}
++	prefs, _ := s.repo.GetUserPreferences(userID)
++	prefs.FollowedKeywords = addToSet(prefs.FollowedKeywords, normalized)
++	prefs.BlockedKeywords = removeFromSet(prefs.BlockedKeywords, normalized)
++	return s.repo.SaveUserPreferences(userID, prefs)
+ }
+ 
+ func (s *Service) BlockKeyword(userID string, term string) error {
+-	return s.updatePreference(userID, term, func(sets preferenceSets, normalized string) {
+-		delete(sets.followed, normalized)
+-		sets.blocked[normalized] = normalized
+-	})
+-}
+-
+-func (s *Service) AddUserKeyword(userID string, term string) error {
+-	return s.updatePreference(userID, term, func(sets preferenceSets, normalized string) {
+-		sets.additional[normalized] = normalized
+-	})
+-}
+-
+-func (s *Service) GetUserPreferences(userID string) UserPreferences {
+-	s.mu.Lock()
+-	defer s.mu.Unlock()
+-
+-	sets := s.preferenceSetsFor(userID)
+-	return UserPreferences{
+-		UserID:             userID,
+-		FollowedKeywords:   sortedValues(sets.followed),
+-		BlockedKeywords:    sortedValues(sets.blocked),
+-		AdditionalKeywords: sortedValues(sets.additional),
++	if strings.TrimSpace(userID) == "" {
++		return ErrInvalidUserID
++	}
++	normalized, err := normalizeKeyword(term)
++	if err != nil {
++		return err
+ 	}
++	prefs, _ := s.repo.GetUserPreferences(userID)
++	prefs.BlockedKeywords = addToSet(prefs.BlockedKeywords, normalized)
++	prefs.FollowedKeywords = removeFromSet(prefs.FollowedKeywords, normalized)
++	return s.repo.SaveUserPreferences(userID, prefs)
+ }
+ 
+-func (s *Service) updatePreference(userID string, term string, update func(preferenceSets, string)) error {
++func (s *Service) AddUserKeyword(userID string, term string) error {
+ 	if strings.TrimSpace(userID) == "" {
+ 		return ErrInvalidUserID
+ 	}
+@@ -142,26 +123,17 @@ func (s *Service) updatePreference(userID string, term string, update func(prefe
+ 	if err != nil {
+ 		return err
+ 	}
+-
+-	s.mu.Lock()
+-	defer s.mu.Unlock()
+-
+-	sets := s.preferenceSetsFor(userID)
+-	update(sets, normalized)
+-	s.userPreferences[userID] = sets
+-	return nil
++	prefs, _ := s.repo.GetUserPreferences(userID)
++	prefs.AdditionalKeywords = addToSet(prefs.AdditionalKeywords, normalized)
++	return s.repo.SaveUserPreferences(userID, prefs)
+ }
+ 
+-func (s *Service) preferenceSetsFor(userID string) preferenceSets {
+-	sets, ok := s.userPreferences[userID]
+-	if ok {
+-		return sets
+-	}
+-	return preferenceSets{
+-		followed:   make(map[string]string),
+-		blocked:    make(map[string]string),
+-		additional: make(map[string]string),
+-	}
++func (s *Service) GetUserPreferences(userID string) UserPreferences {
++	prefs, _ := s.repo.GetUserPreferences(userID)
++	sort.Strings(prefs.FollowedKeywords)
++	sort.Strings(prefs.BlockedKeywords)
++	sort.Strings(prefs.AdditionalKeywords)
++	return prefs
+ }
+ 
+ func normalizeKeyword(term string) (string, error) {
+@@ -172,11 +144,21 @@ func normalizeKeyword(term string) (string, error) {
+ 	return normalized, nil
+ }
+ 
+-func sortedValues(values map[string]string) []string {
+-	result := make([]string, 0, len(values))
+-	for _, value := range values {
+-		result = append(result, value)
++func addToSet(set []string, value string) []string {
++	for _, v := range set {
++		if v == value {
++			return set
++		}
++	}
++	return append(set, value)
++}
++
++func removeFromSet(set []string, value string) []string {
++	result := make([]string, 0, len(set))
++	for _, v := range set {
++		if v != value {
++			result = append(result, v)
++		}
+ 	}
+-	sort.Strings(result)
+ 	return result
+ }
+diff --git a/internal/repo/content.go b/internal/repo/content.go
+deleted file mode 100644
+index c411e54..0000000
+--- a/internal/repo/content.go
++++ /dev/null
+@@ -1,13 +0,0 @@
+-package repo
+-
+-import "github.com/StephenQiu30/hotkey-server/internal/content"
+-
+-// ContentRepo defines the storage interface for source content items.
+-type ContentRepo interface {
+-	CreateItem(item content.SourceItem) error
+-	ListItems() ([]content.SourceItem, error)
+-	GetItem(id string) (content.SourceItem, error)
+-	GetByCanonicalURL(url string) (content.SourceItem, bool, error)
+-	GetByContentHash(hash string) (content.SourceItem, bool, error)
+-	ListByTitleWindow(normalizedTitle string) ([]content.SourceItem, error)
+-}
+diff --git a/internal/repo/hotspot.go b/internal/repo/hotspot.go
+deleted file mode 100644
+index b922ca0..0000000
+--- a/internal/repo/hotspot.go
++++ /dev/null
+@@ -1,10 +0,0 @@
+-package repo
+-
+-import "github.com/StephenQiu30/hotkey-server/internal/hotspot"
+-
+-// HotspotRepo defines the storage interface for hotspots.
+-type HotspotRepo interface {
+-	UpsertHotspot(detail hotspot.HotspotDetail) error
+-	ListHotspots() ([]hotspot.HotspotDetail, error)
+-	GetHotspot(id string) (hotspot.HotspotDetail, error)
+-}
+diff --git a/internal/repo/keyword.go b/internal/repo/keyword.go
+deleted file mode 100644
+index f35d4c5..0000000
+--- a/internal/repo/keyword.go
++++ /dev/null
+@@ -1,15 +0,0 @@
+-package repo
+-
+-import "github.com/StephenQiu30/hotkey-server/internal/keyword"
+-
+-// KeywordRepo defines the storage interface for platform keywords and user preferences.
+-type KeywordRepo interface {
+-	CreateKeyword(kw keyword.PlatformKeyword) error
+-	ListKeywords() ([]keyword.PlatformKeyword, error)
+-	ListKeywordsByTenant(tenantID string) ([]keyword.PlatformKeyword, error)
+-	GetKeyword(id string) (keyword.PlatformKeyword, error)
+-	UpdateKeyword(kw keyword.PlatformKeyword) error
+-
+-	GetUserPreferences(userID string) (keyword.UserPreferences, error)
+-	SaveUserPreferences(userID string, prefs keyword.UserPreferences) error
+-}
+diff --git a/internal/repo/source.go b/internal/repo/source.go
+deleted file mode 100644
+index 17c8a48..0000000
+--- a/internal/repo/source.go
++++ /dev/null
+@@ -1,12 +0,0 @@
+-package repo
+-
+-import "github.com/StephenQiu30/hotkey-server/internal/source"
+-
+-// SourceRepo defines the storage interface for content sources.
+-type SourceRepo interface {
+-	CreateSource(src source.Source) error
+-	ListSources() ([]source.Source, error)
+-	ListSourcesByTenant(tenantID string) ([]source.Source, error)
+-	GetSource(tenantID, id string) (source.Source, error)
+-	UpdateSource(src source.Source) error
+-}
+diff --git a/internal/source/service.go b/internal/source/service.go
+index 175ffe0..58a80f2 100644
+--- a/internal/source/service.go
++++ b/internal/source/service.go
+@@ -4,7 +4,6 @@ import (
+ 	"errors"
+ 	"sort"
+ 	"strings"
+-	"sync"
+ )
+ 
+ var (
+@@ -13,57 +12,21 @@ var (
+ 	ErrSourceNotFound      = errors.New("source not found")
+ )
+ 
+-type Service struct {
+-	mu      sync.Mutex
+-	sources map[string]Source
++// Repo defines the storage interface for sources.
++type Repo interface {
++	CreateSource(src Source) error
++	ListSources() ([]Source, error)
++	ListSourcesByTenant(tenantID string) ([]Source, error)
++	GetSource(tenantID, id string) (Source, error)
++	UpdateSource(src Source) error
+ }
+ 
+-func NewService() *Service {
+-	service := NewEmptyService()
+-	mustRegister(service, Source{
+-		ID:                     "arxiv-ai",
+-		Name:                   "arXiv AI",
+-		Layer:                  LayerFact,
+-		Region:                 "global",
+-		Language:               "en",
+-		Categories:             []string{"research", "model", "ai"},
+-		AccessMode:             AccessModePublicFeed,
+-		AuthRequired:           false,
+-		Enabled:                true,
+-		RateLimitPerHour:       30,
+-		RefreshIntervalMinutes: 180,
+-		ComplianceNote:         "Use public metadata feeds and respect provider rate limits.",
+-		LastStatus:             "ready",
+-	})
+-	mustRegister(service, Source{
+-		ID:                     "github-trending-ai",
+-		Name:                   "GitHub Trending AI",
+-		Layer:                  LayerSignal,
+-		Region:                 "global",
+-		Language:               "en",
+-		Categories:             []string{"repository", "developer-signal", "ai"},
+-		AccessMode:             AccessModePublicFeed,
+-		AuthRequired:           false,
+-		Enabled:                true,
+-		RateLimitPerHour:       12,
+-		RefreshIntervalMinutes: 240,
+-		ComplianceNote:         "Use public pages or official API where available; no auth bypass or token capture.",
+-		LastStatus:             "ready",
+-	})
+-	return service
++type Service struct {
++	repo Repo
+ }
+ 
+-func NewEmptyService() *Service {
+-	service := &Service{
+-		sources: make(map[string]Source),
+-	}
+-	return service
+-}
+-
+-func mustRegister(service *Service, src Source) {
+-	if err := service.RegisterSource(src); err != nil {
+-		panic(err)
+-	}
++func NewServiceWithRepo(r Repo) *Service {
++	return &Service{repo: r}
+ }
+ 
+ func (s *Service) RegisterSource(src Source) error {
+@@ -71,20 +34,13 @@ func (s *Service) RegisterSource(src Source) error {
+ 	if err != nil {
+ 		return err
+ 	}
+-
+-	s.mu.Lock()
+-	defer s.mu.Unlock()
+-	s.sources[sourceKey(normalized.TenantID, normalized.ID)] = normalized
+-	return nil
++	return s.repo.CreateSource(normalized)
+ }
+ 
+ func (s *Service) ListSources() []Source {
+-	s.mu.Lock()
+-	defer s.mu.Unlock()
+-
+-	sources := make([]Source, 0, len(s.sources))
+-	for _, src := range s.sources {
+-		sources = append(sources, cloneSource(src))
++	sources, err := s.repo.ListSources()
++	if err != nil {
++		return nil
+ 	}
+ 	sort.Slice(sources, func(i, j int) bool {
+ 		return sources[i].ID < sources[j].ID
+@@ -93,16 +49,9 @@ func (s *Service) ListSources() []Source {
+ }
+ 
+ func (s *Service) ListSourcesByTenant(tenantID string) []Source {
+-	tenantID = strings.TrimSpace(tenantID)
+-	s.mu.Lock()
+-	defer s.mu.Unlock()
+-
+-	sources := make([]Source, 0)
+-	for _, src := range s.sources {
+-		if src.TenantID != tenantID {
+-			continue
+-		}
+-		sources = append(sources, cloneSource(src))
++	sources, err := s.repo.ListSourcesByTenant(tenantID)
++	if err != nil {
++		return nil
+ 	}
+ 	sort.Slice(sources, func(i, j int) bool {
+ 		return sources[i].ID < sources[j].ID
+@@ -115,12 +64,8 @@ func (s *Service) UpdateSourceConfig(id string, input UpdateSourceConfigInput) (
+ }
+ 
+ func (s *Service) UpdateTenantSourceConfig(tenantID string, id string, input UpdateSourceConfigInput) (Source, error) {
+-	s.mu.Lock()
+-	defer s.mu.Unlock()
+-
+-	key := sourceKey(strings.TrimSpace(tenantID), id)
+-	src, ok := s.sources[key]
+-	if !ok {
++	src, err := s.repo.GetSource(tenantID, id)
++	if err != nil {
+ 		return Source{}, ErrSourceNotFound
+ 	}
+ 	if input.Enabled != nil {
+@@ -132,8 +77,10 @@ func (s *Service) UpdateTenantSourceConfig(tenantID string, id string, input Upd
+ 		}
+ 		src.RateLimitPerHour = *input.RateLimitPerHour
+ 	}
+-	s.sources[key] = src
+-	return cloneSource(src), nil
++	if err := s.repo.UpdateSource(src); err != nil {
++		return Source{}, err
++	}
++	return src, nil
+ }
+ 
+ func (s *Service) RecordSourceStatus(id string, status string) error {
+@@ -141,17 +88,12 @@ func (s *Service) RecordSourceStatus(id string, status string) error {
+ 	if normalized == "" {
+ 		return ErrInvalidSourceConfig
+ 	}
+-
+-	s.mu.Lock()
+-	defer s.mu.Unlock()
+-
+-	src, ok := s.sources[sourceKey("", id)]
+-	if !ok {
++	src, err := s.repo.GetSource("", id)
++	if err != nil {
+ 		return ErrSourceNotFound
+ 	}
+ 	src.LastStatus = normalized
+-	s.sources[sourceKey("", id)] = src
+-	return nil
++	return s.repo.UpdateSource(src)
+ }
+ 
+ func normalizeSource(src Source) (Source, error) {
+@@ -211,12 +153,3 @@ func normalizeCategories(categories []string) []string {
+ 	sort.Strings(normalized)
+ 	return normalized
+ }
+-
+-func cloneSource(src Source) Source {
+-	src.Categories = append([]string(nil), src.Categories...)
+-	return src
+-}
+-
+-func sourceKey(tenantID string, id string) string {
+-	return strings.TrimSpace(tenantID) + ":" + strings.TrimSpace(id)
+-}
+diff --git a/internal/store/memory/content.go b/internal/store/memory/content.go
+index 7e42224..4354d7e 100644
+--- a/internal/store/memory/content.go
++++ b/internal/store/memory/content.go
+@@ -9,6 +9,8 @@ import (
+ 	"github.com/StephenQiu30/hotkey-server/internal/content"
+ )
+ 
++var _ content.Repo = (*ContentRepo)(nil)
++
+ const titleDuplicateWindow = 24 * time.Hour
+ 
+ // ContentRepo is an in-memory implementation of repo.ContentRepo.
+diff --git a/internal/store/memory/hotspot.go b/internal/store/memory/hotspot.go
+index 99d59c6..27503eb 100644
+--- a/internal/store/memory/hotspot.go
++++ b/internal/store/memory/hotspot.go
+@@ -7,6 +7,8 @@ import (
+ 	"github.com/StephenQiu30/hotkey-server/internal/hotspot"
+ )
+ 
++var _ hotspot.Repo = (*HotspotRepo)(nil)
++
+ // HotspotRepo is an in-memory implementation of repo.HotspotRepo.
+ type HotspotRepo struct {
+ 	mu       sync.Mutex
+diff --git a/internal/store/memory/keyword.go b/internal/store/memory/keyword.go
+index c524a54..6d8cb43 100644
+--- a/internal/store/memory/keyword.go
++++ b/internal/store/memory/keyword.go
+@@ -1,7 +1,6 @@
+ package memory
+ 
+ import (
+-	"fmt"
+ 	"sort"
+ 	"strings"
+ 	"sync"
+@@ -9,29 +8,25 @@ import (
+ 	"github.com/StephenQiu30/hotkey-server/internal/keyword"
+ )
+ 
+-// KeywordRepo is an in-memory implementation of repo.KeywordRepo.
++var _ keyword.Repo = (*KeywordRepo)(nil)
++
++// KeywordRepo is an in-memory implementation of keyword.Repo.
+ type KeywordRepo struct {
+-	mu                sync.Mutex
+-	nextKeywordNumber int
+-	platformKeywords  map[string]keyword.PlatformKeyword
+-	userPreferences   map[string]keyword.UserPreferences
++	mu               sync.Mutex
++	platformKeywords map[string]keyword.PlatformKeyword
++	userPreferences  map[string]keyword.UserPreferences
+ }
+ 
+ func NewKeywordRepo() *KeywordRepo {
+ 	return &KeywordRepo{
+-		nextKeywordNumber: 1,
+-		platformKeywords:  make(map[string]keyword.PlatformKeyword),
+-		userPreferences:   make(map[string]keyword.UserPreferences),
++		platformKeywords: make(map[string]keyword.PlatformKeyword),
++		userPreferences:  make(map[string]keyword.UserPreferences),
+ 	}
+ }
+ 
+ func (r *KeywordRepo) CreateKeyword(kw keyword.PlatformKeyword) error {
+ 	r.mu.Lock()
+ 	defer r.mu.Unlock()
+-	if kw.ID == "" {
+-		kw.ID = fmt.Sprintf("kw_%d", r.nextKeywordNumber)
+-		r.nextKeywordNumber++
+-	}
+ 	r.platformKeywords[kw.ID] = kw
+ 	return nil
+ }
+diff --git a/internal/store/memory/source.go b/internal/store/memory/source.go
+index 8009a0e..66354e8 100644
+--- a/internal/store/memory/source.go
++++ b/internal/store/memory/source.go
+@@ -8,6 +8,8 @@ import (
+ 	"github.com/StephenQiu30/hotkey-server/internal/source"
+ )
+ 
++var _ source.Repo = (*SourceRepo)(nil)
++
+ // SourceRepo is an in-memory implementation of repo.SourceRepo.
+ type SourceRepo struct {
+ 	mu      sync.Mutex
