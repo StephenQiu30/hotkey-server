@@ -107,6 +107,7 @@ func (s *ScoringService) SetClock(clock func() time.Time) {
 }
 
 // ScoreClusters computes scores for all clusters within the given time window.
+// Items outside the window are excluded from scoring.
 func (s *ScoringService) ScoreClusters(ctx context.Context, windowStart, windowEnd time.Time) ([]HotspotScore, error) {
 	clusters, err := s.clusters.ListClusters(ctx)
 	if err != nil {
@@ -120,7 +121,15 @@ func (s *ScoringService) ScoreClusters(ctx context.Context, windowStart, windowE
 			return nil, err
 		}
 
-		score := s.scoreCluster(cluster, items)
+		// Filter items by window (inclusive on both ends)
+		filtered := make([]domainhotspot.ClusterItem, 0, len(items))
+		for _, item := range items {
+			if !item.CreatedAt.Before(windowStart) && !item.CreatedAt.After(windowEnd) {
+				filtered = append(filtered, item)
+			}
+		}
+
+		score := s.scoreCluster(cluster, filtered)
 		if s.scores != nil {
 			saved, err := s.scores.SaveScore(ctx, score)
 			if err != nil {
@@ -174,7 +183,9 @@ func (s *ScoringService) scoreCluster(cluster domainhotspot.Cluster, items []dom
 
 	uniqueSources := make(map[string]struct{})
 	for _, item := range items {
-		uniqueSources[item.ItemID] = struct{}{}
+		if item.SourceID != "" {
+			uniqueSources[item.SourceID] = struct{}{}
+		}
 	}
 
 	avgSim := 0.0

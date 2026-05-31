@@ -81,12 +81,12 @@ func TestScoreMultiSourceHigherThanSingleLowQuality(t *testing.T) {
 		UpdatedAt:   now,
 	}
 	multiItems := []domainhotspot.ClusterItem{
-		{ClusterID: "cluster-multi", ItemID: "item-multi-a", Similarity: 1, CreatedAt: now},
-		{ClusterID: "cluster-multi", ItemID: "item-multi-b", Similarity: 0.98, CreatedAt: now},
-		{ClusterID: "cluster-multi", ItemID: "item-multi-c", Similarity: 0.96, CreatedAt: now},
+		{ClusterID: "cluster-multi", ItemID: "item-multi-a", SourceID: "src-a", Similarity: 1, CreatedAt: now},
+		{ClusterID: "cluster-multi", ItemID: "item-multi-b", SourceID: "src-b", Similarity: 0.98, CreatedAt: now},
+		{ClusterID: "cluster-multi", ItemID: "item-multi-c", SourceID: "src-c", Similarity: 0.96, CreatedAt: now},
 	}
 	singleItems := []domainhotspot.ClusterItem{
-		{ClusterID: "cluster-single", ItemID: "item-single", Similarity: 1, CreatedAt: now},
+		{ClusterID: "cluster-single", ItemID: "item-single", SourceID: "src-x", Similarity: 1, CreatedAt: now},
 	}
 	if err := repo.ReplaceClusters(context.Background(),
 		[]domainhotspot.Cluster{multiCluster, singleCluster},
@@ -164,7 +164,7 @@ func TestScoreExplanationContainsAllDimensions(t *testing.T) {
 	if err := repo.ReplaceClusters(context.Background(),
 		[]domainhotspot.Cluster{cluster},
 		map[string][]domainhotspot.ClusterItem{
-			"cluster-1": {{ClusterID: "cluster-1", ItemID: "item-1", Similarity: 1, CreatedAt: now}},
+			"cluster-1": {{ClusterID: "cluster-1", ItemID: "item-1", SourceID: "src-1", Similarity: 1, CreatedAt: now}},
 		},
 	); err != nil {
 		t.Fatal(err)
@@ -230,8 +230,8 @@ func TestScoreFreshnessDecaysOverTime(t *testing.T) {
 	if err := repo.ReplaceClusters(context.Background(),
 		[]domainhotspot.Cluster{recentCluster, oldCluster},
 		map[string][]domainhotspot.ClusterItem{
-			"cluster-recent": {{ClusterID: "cluster-recent", ItemID: "item-recent", Similarity: 1, CreatedAt: recentTime}},
-			"cluster-old":    {{ClusterID: "cluster-old", ItemID: "item-old", Similarity: 1, CreatedAt: oldTime}},
+			"cluster-recent": {{ClusterID: "cluster-recent", ItemID: "item-recent", SourceID: "src-1", Similarity: 1, CreatedAt: recentTime}},
+			"cluster-old":    {{ClusterID: "cluster-old", ItemID: "item-old", SourceID: "src-2", Similarity: 1, CreatedAt: oldTime}},
 		},
 	); err != nil {
 		t.Fatal(err)

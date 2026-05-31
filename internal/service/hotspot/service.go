@@ -99,6 +99,7 @@ func (s *Service) Cluster(ctx context.Context, window Window) (Result, error) {
 				items: []domainhotspot.ClusterItem{{
 					ClusterID:  clusterID,
 					ItemID:     candidate.Item.ID,
+					SourceID:   candidate.Item.SourceID,
 					Similarity: 1,
 					CreatedAt:  s.now().UTC(),
 				}},
@@ -111,6 +112,7 @@ func (s *Service) Cluster(ctx context.Context, window Window) (Result, error) {
 		draft.items = append(draft.items, domainhotspot.ClusterItem{
 			ClusterID:  draft.cluster.ID,
 			ItemID:     candidate.Item.ID,
+			SourceID:   candidate.Item.SourceID,
 			Similarity: bestSimilarity,
 			CreatedAt:  s.now().UTC(),
 		})

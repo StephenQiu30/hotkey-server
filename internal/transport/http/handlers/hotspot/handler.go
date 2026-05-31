@@ -2,6 +2,7 @@ package hotspot
 
 import (
 	"net/http"
+	"time"
 
 	servicehotspot "github.com/StephenQiu30/hotkey-server/internal/service/hotspot"
 	"github.com/gin-gonic/gin"
@@ -18,8 +19,30 @@ func New(service *servicehotspot.ScoringService) *Handler {
 }
 
 // ListHotspots returns hotspot scores sorted by total_score descending.
+// Supports optional query parameters: since, until (ISO 8601 date-time).
 func (h *Handler) ListHotspots(c *gin.Context) {
-	scores, err := h.service.ListScores(c.Request.Context())
+	sinceStr := c.Query("since")
+	untilStr := c.Query("until")
+
+	var scores []servicehotspot.HotspotScore
+	var err error
+
+	if sinceStr != "" || untilStr != "" {
+		since, parseErr := parseTimeParam(sinceStr, time.Time{})
+		if parseErr != nil {
+			writeError(c, http.StatusBadRequest, "invalid_since", "invalid since parameter")
+			return
+		}
+		until, parseErr := parseTimeParam(untilStr, time.Now().UTC())
+		if parseErr != nil {
+			writeError(c, http.StatusBadRequest, "invalid_until", "invalid until parameter")
+			return
+		}
+		scores, err = h.service.ListScoresByWindow(c.Request.Context(), since, until)
+	} else {
+		scores, err = h.service.ListScores(c.Request.Context())
+	}
+
 	if err != nil {
 		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
 		return
@@ -33,6 +56,13 @@ func (h *Handler) ListHotspots(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"items": items,
 	})
+}
+
+func parseTimeParam(value string, defaultVal time.Time) (time.Time, error) {
+	if value == "" {
+		return defaultVal, nil
+	}
+	return time.Parse(time.RFC3339, value)
 }
 
 // GetHotspot returns a single hotspot detail by cluster ID.

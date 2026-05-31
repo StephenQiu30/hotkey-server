@@ -37,7 +37,7 @@ func TestScoreHotspotsHandlerProcessesClusterRun(t *testing.T) {
 	if err := repo.ReplaceClusters(context.Background(),
 		[]domainhotspot.Cluster{cluster},
 		map[string][]domainhotspot.ClusterItem{
-			"cluster-1": {{ClusterID: "cluster-1", ItemID: "item-1", Similarity: 1, CreatedAt: now}},
+			"cluster-1": {{ClusterID: "cluster-1", ItemID: "item-1", SourceID: "src-1", Similarity: 1, CreatedAt: now}},
 		},
 	); err != nil {
 		t.Fatal(err)

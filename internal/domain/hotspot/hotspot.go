@@ -46,6 +46,7 @@ type Cluster struct {
 type ClusterItem struct {
 	ClusterID  string
 	ItemID     string
+	SourceID   string
 	Similarity float64
 	CreatedAt  time.Time
 }
