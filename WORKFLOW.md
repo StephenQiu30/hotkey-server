@@ -12,6 +12,7 @@ tracker:
     - Cancelled
     - Canceled
     - Duplicate
+    - Blocked
     - Done
 polling:
   interval_ms: 5000
@@ -25,13 +26,8 @@ hooks:
 agent:
   max_concurrent_agents: 4
   max_turns: 20
-codex:
-  command: codex --config shell_environment_policy.inherit=all app-server
-  approval_policy: never
-  thread_sandbox: danger-full-access
-  read_timeout_ms: 30000
-  turn_sandbox_policy:
-    type: dangerFullAccess
+claude:
+  command: claude --dangerously-skip-permissions
 ---
 
 You are working on a Linear ticket `{{ issue.identifier }}`
@@ -42,7 +38,7 @@ Continuation context:
 - This is retry attempt #{{ attempt }} because the ticket is still in an active state.
 - Resume from the current workspace state instead of restarting from scratch.
 - Do not repeat already-completed investigation or validation unless needed for new code changes.
-- Do not end the turn while the issue remains in an active state unless you are blocked by missing required permissions/secrets.
+- Do not end the turn while the issue remains in an active state unless a true external blocker has been recorded and the issue has been moved to `Blocked`.
   {% endif %}
 
 Issue context:
@@ -62,10 +58,12 @@ No description provided.
 Instructions:
 
 1. This is an unattended orchestration session. Never ask a human to perform follow-up actions.
-2. Only stop early for a true blocker (missing required auth/permissions/secrets). If blocked, record it in the workpad and move the issue to `Blocked`.
+2. Only stop early for a true external blocker (missing required non-GitHub auth, permissions, secrets, or services). If blocked, record it in the workpad and move the issue to `Blocked`.
 3. Final message must report completed actions and blockers only. Do not include "next steps for user".
 
 Work only in the provided repository copy. Do not touch any other path.
+
+This workflow runs Claude by default. Use the `claude:` configuration key, `.claude/` paths, and the `## Claude Workpad` marker throughout this workflow.
 
 ## HotKey Server scope
 
@@ -89,6 +87,7 @@ The agent should be able to talk to Linear, either via a configured Linear MCP s
 - Start every task by opening the tracking workpad comment and bringing it up to date before doing new implementation work.
 - Spend extra effort up front on planning and verification design before implementation.
 - Reproduce first: always confirm the current behavior/issue signal before changing code so the fix target is explicit.
+- Follow TDD/test-first by default: define the expected behavior as a failing automated test or executable validation before implementation. If a test cannot be written first, document the reason in the workpad and add the closest executable acceptance check before coding.
 - Keep ticket metadata current (state, checklist, acceptance criteria, links).
 - Treat a single persistent Linear comment as the source of truth for progress.
 - Use that single workpad comment for all progress and handoff notes; do not post separate "done"/summary comments.
@@ -100,8 +99,9 @@ The agent should be able to talk to Linear, either via a configured Linear MCP s
   current issue as `related`, and use `blockedBy` when the follow-up depends on
   the current issue.
 - Move status only when the matching quality bar is met.
-- Operate autonomously end-to-end unless blocked by missing requirements, secrets, or permissions.
-- Use the blocked-access escape hatch only for true external blockers (missing required tools/auth) after exhausting documented fallbacks.
+- Operate autonomously end-to-end unless blocked by missing non-GitHub requirements, secrets, permissions, or services.
+- Git and GitHub permission problems are not blockers by default; exhaust remote, auth, branch, fork, PR, and manual-link fallbacks before using the blocked-access escape hatch.
+- Use the blocked-access escape hatch only for true external blockers after exhausting documented fallbacks.
 
 ## Related skills
 
@@ -109,7 +109,20 @@ The agent should be able to talk to Linear, either via a configured Linear MCP s
 - `commit`: produce clean, logical commits during implementation.
 - `push`: keep remote branch current and publish updates.
 - `pull`: keep branch updated with latest `origin/main` before handoff.
-- `land`: when ticket reaches `Merging`, explicitly open and follow `.codex/skills/land/SKILL.md`, which includes the `land` loop.
+- `land`: when ticket reaches `Merging`, explicitly open and follow `.claude/skills/land/SKILL.md`, which includes the `land` loop.
+
+## Commit discipline
+
+Allowed commit types are fixed: `test:`, `docs:`, `impl:`, `chore:`, `feat:`, and `refactor:`.
+
+- Use `test:` for failing tests, fixtures, mocks, acceptance scripts, and test-only expectations.
+- Use `impl:` for the smallest implementation that makes existing red tests pass.
+- Use `feat:` for user-visible capability or behavior changes, backed by prior `test:` evidence unless explicitly documented as not scriptable.
+- Use `refactor:` only after tests are green, and do not change verified behavior.
+- Use `docs:` for documentation, examples, workflow text, and acceptance notes.
+- Use `chore:` for CI, configuration, dependency metadata, generated housekeeping, or repository maintenance.
+- For feature and behavior work, preserve test-first commit order: `test:` first, then `impl:`/`feat:`, then optional `refactor:`, `docs:`, or `chore:` cleanup.
+- Do not mix unrelated commit types in one commit. If a change spans tests, implementation, and docs, split commits by type whenever practical.
 
 ## GitHub automation contract
 
@@ -146,7 +159,7 @@ The agent should be able to talk to Linear, either via a configured Linear MCP s
    - `In Progress` -> continue execution flow from current scratchpad comment.
    - `Blocked` -> do not run implementation; leave the workpad blocker brief intact and stop.
    - `Human Review` -> wait and poll for decision/review updates.
-   - `Merging` -> on entry, open and follow `.codex/skills/land/SKILL.md`; do not call `gh pr merge` directly.
+   - `Merging` -> on entry, open and follow `.claude/skills/land/SKILL.md`; do not call `gh pr merge` directly.
    - `Rework` -> run rework flow.
    - `Done` -> do nothing and shut down.
 4. Check whether a PR already exists for the current branch and whether it is closed.
@@ -154,14 +167,14 @@ The agent should be able to talk to Linear, either via a configured Linear MCP s
    - Create a fresh branch from `origin/main` and restart execution flow as a new attempt.
 5. For `Todo` tickets, do startup sequencing in this exact order:
    - `update_issue(..., state: "In Progress")`
-   - find/create `## Codex Workpad` bootstrap comment
+   - find/create `## Claude Workpad` bootstrap comment
    - only then begin analysis/planning/implementation work.
 6. Add a short comment if state and issue content are inconsistent, then proceed with the safest flow.
 
 ## Step 1: Start/continue execution (Todo or In Progress)
 
 1. Find or create a single persistent scratchpad comment for the issue:
-   - Search existing comments for a marker header: `## Codex Workpad`.
+   - Search existing comments for a marker header: `## Claude Workpad`.
    - Ignore resolved comments while searching; only active/unresolved comments are eligible to be reused as the live workpad.
    - If found, reuse that comment; do not create a new workpad comment.
    - If not found, create one workpad comment and use it for all updates.
@@ -274,7 +287,7 @@ Use this only when completion is blocked by missing required tools or missing au
 2. Poll for updates as needed, including GitHub PR review comments from humans and bots.
 3. If review feedback requires changes, move the issue to `Rework` and follow the rework flow.
 4. If approved, human moves the issue to `Merging`.
-5. When the issue is in `Merging`, open and follow `.codex/skills/land/SKILL.md`, then run the `land` skill in a loop until the PR is merged. Do not call `gh pr merge` directly.
+5. When the issue is in `Merging`, open and follow `.claude/skills/land/SKILL.md`, then run the `land` skill in a loop until the PR is merged. Do not call `gh pr merge` directly.
 6. After merge is complete, move the issue to `Done`.
 
 ## Step 4: Rework handling
@@ -282,11 +295,11 @@ Use this only when completion is blocked by missing required tools or missing au
 1. Treat `Rework` as a full approach reset, not incremental patching.
 2. Re-read the full issue body and all human comments; explicitly identify what will be done differently this attempt.
 3. Close the existing PR tied to the issue.
-4. Remove the existing `## Codex Workpad` comment from the issue.
+4. Remove the existing `## Claude Workpad` comment from the issue.
 5. Create a fresh branch from `origin/main`.
 6. Start over from the normal kickoff flow:
    - If current issue state is `Todo`, move it to `In Progress`; otherwise keep the current state.
-   - Create a new bootstrap `## Codex Workpad` comment.
+   - Create a new bootstrap `## Claude Workpad` comment.
    - Build a fresh plan/checklist and execute end-to-end.
 
 ## Completion bar before Human Review
@@ -308,7 +321,7 @@ Use this only when completion is blocked by missing required tools or missing au
 - If issue state is `Backlog`, do not modify it; wait for human to move to `Todo`.
 - If issue state is `Blocked`, do not dispatch implementation work; wait for the blocker to be cleared and the issue to be moved back to `Todo`, `In Progress`, `Rework`, or `Merging`.
 - Do not edit the issue body/description for planning or progress tracking.
-- Use exactly one persistent workpad comment (`## Codex Workpad`) per issue.
+- Use exactly one persistent workpad comment (`## Claude Workpad`) per issue.
 - If comment editing is unavailable in-session, use the update script. Only report blocked if both MCP editing and script-based editing are unavailable.
 - Temporary proof edits are allowed only for local verification and must be reverted before commit.
 - If out-of-scope improvements are found, create a separate Backlog issue rather than expanding current scope, and include a clear title/description/acceptance criteria, same-project assignment, a `related` link to the current issue, and `blockedBy` when the follow-up depends on the current issue.
@@ -323,7 +336,7 @@ Use this only when completion is blocked by missing required tools or missing au
 Use this exact structure for the persistent workpad comment and keep it updated in place throughout execution:
 
 ````md
-## Codex Workpad
+## Claude Workpad
 
 ```text
 <hostname>:<abs-path>@<short-sha>

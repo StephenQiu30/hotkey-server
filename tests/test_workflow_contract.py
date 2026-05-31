@@ -7,10 +7,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / "WORKFLOW.md"
 PRD_DIR = ROOT / "docs" / "product" / "prd"
 PLAN_DIR = ROOT / "docs" / "plans"
-SYMPHONY_SKILLS_DIR = ROOT / ".codex" / "skills"
+SYMPHONY_SKILLS_DIR = ROOT / ".claude" / "skills"
 REQUIRED_SYMPHONY_SKILLS = ("commit", "debug", "land", "linear", "pull", "push")
-LAND_SKILL = ROOT / ".codex" / "skills" / "land" / "SKILL.md"
-LAND_WATCH = ROOT / ".codex" / "skills" / "land" / "land_watch.py"
+LAND_SKILL = ROOT / ".claude" / "skills" / "land" / "SKILL.md"
+LAND_WATCH = ROOT / ".claude" / "skills" / "land" / "land_watch.py"
 
 
 def numbered_markdown_files(path):
@@ -30,7 +30,7 @@ class WorkflowContractTest(unittest.TestCase):
         front_matter = text.split("---\n", 2)[1]
         body = text.split("---\n", 2)[2].strip()
 
-        for key in ["tracker:", "polling:", "workspace:", "hooks:", "agent:", "codex:"]:
+        for key in ["tracker:", "polling:", "workspace:", "hooks:", "agent:", "claude:"]:
             self.assertIn(key, front_matter)
 
         self.assertIn("kind: linear", front_matter)
@@ -39,22 +39,18 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertRegex(front_matter, re.compile(r"terminal_states:\n(\s+- .+\n)+"))
         self.assertIn("- Merging", front_matter)
         self.assertIn("- Rework", front_matter)
-        self.assertNotIn("- Blocked", front_matter)
+        self.assertIn("- Blocked", front_matter)
         self.assertIn("interval_ms: 5000", front_matter)
         self.assertIn("max_concurrent_agents: 4", front_matter)
         self.assertIn('git clone --depth 1 "$SOURCE_REPO_URL" .', front_matter)
-        self.assertIn("approval_policy: never", front_matter)
-        self.assertIn("thread_sandbox: danger-full-access", front_matter)
-        self.assertIn("type: dangerFullAccess", front_matter)
-        self.assertNotIn("thread_sandbox: workspace-write", front_matter)
-        self.assertNotIn("type: workspaceWrite", front_matter)
-        self.assertIn("read_timeout_ms: 30000", front_matter)
+        self.assertIn("command: claude --dangerously-skip-permissions", front_matter)
+        self.assertNotIn("codex:", front_matter)
         self.assertIn("{{ issue.identifier }}", body)
         self.assertIn("hotkey-server", body)
         self.assertIn("## Status map", body)
         self.assertIn("## Step 0: Determine current ticket state and route", body)
         self.assertIn('update_issue(..., state: "In Progress")', body)
-        self.assertIn("## Codex Workpad", body)
+        self.assertIn("## Claude Workpad", body)
         self.assertIn("`Blocked` -> non-active blocked state", body)
         self.assertIn("move the ticket to `Blocked`", body)
         self.assertIn("If issue state is `Blocked`", body)
@@ -68,7 +64,7 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("Blocked access never bypasses the completion bar", body)
         self.assertIn("There is no blocker exception for incomplete work", body)
         self.assertIn("move it to `Blocked`", body)
-        self.assertIn(".codex/skills/land/SKILL.md", body)
+        self.assertIn(".claude/skills/land/SKILL.md", body)
         self.assertIn("## GitHub automation contract", body)
         self.assertIn("Use the authenticated `gh` CLI", body)
         self.assertIn("Do not use GitHub MCP/Connector tools", body)
@@ -101,7 +97,7 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("gh pr view --json number", skill)
         self.assertIn("gh pr checks --watch", skill)
         self.assertIn("gh pr merge --squash", skill)
-        self.assertIn("python3 .codex/skills/land/land_watch.py", skill)
+        self.assertIn("python3 .claude/skills/land/land_watch.py", skill)
         self.assertIn("async def get_pr_info", watch)
         self.assertIn("async def get_check_runs", watch)
 
