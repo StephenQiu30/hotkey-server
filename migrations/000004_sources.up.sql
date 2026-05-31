@@ -11,7 +11,7 @@ CREATE TABLE sources (
     last_collected_at timestamptz,
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
-    CHECK (type <> 'public_page' OR compliance_note ~ '\S')
+    CHECK (type <> 'public_page' OR compliance_note ~ E'\\S')
 );
 
 CREATE INDEX idx_sources_status ON sources (status);
@@ -37,7 +37,7 @@ CREATE TABLE collection_runs (
     finished_at timestamptz NOT NULL,
     created_at timestamptz NOT NULL,
     CHECK (finished_at >= started_at),
-    CHECK (status <> 'failed' OR error ~ '\S')
+    CHECK (status <> 'failed' OR error ~ E'\\S')
 );
 
 CREATE INDEX idx_collection_runs_source_id_started_at
