@@ -21,6 +21,8 @@ type Config struct {
 	RedisURL        string
 	RuntimeMode     RuntimeMode
 	CollectSourceID string
+	DashScopeAPIKey string
+	SMTPHost        string
 }
 
 func Load() Config {
@@ -32,6 +34,8 @@ func Load() Config {
 		RedisURL:        envOrDefault("HOTKEY_REDIS_URL", "redis://127.0.0.1:6379/0"),
 		RuntimeMode:     parseRuntimeMode(os.Getenv("HOTKEY_RUNTIME_MODE")),
 		CollectSourceID: envOrDefault("HOTKEY_COLLECT_SOURCE_ID", "default"),
+		DashScopeAPIKey: os.Getenv("HOTKEY_DASHSCOPE_API_KEY"),
+		SMTPHost:        os.Getenv("HOTKEY_SMTP_HOST"),
 	}
 }
 

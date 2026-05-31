@@ -200,6 +200,7 @@ func (h *Handler) CreateChannel(c *gin.Context) {
 		writeServiceError(c, err)
 		return
 	}
+	c.Set("adminAuditResourceID", channel.ID)
 	c.JSON(http.StatusCreated, gin.H{"channel": channelResponse(channel)})
 }
 
@@ -218,6 +219,7 @@ func (h *Handler) UpdateChannel(c *gin.Context) {
 			writeServiceError(c, err)
 			return
 		}
+		c.Set("adminAuditResourceID", channel.ID)
 		c.JSON(http.StatusOK, gin.H{"channel": channelResponse(channel)})
 		return
 	}
@@ -231,6 +233,7 @@ func (h *Handler) UpdateChannel(c *gin.Context) {
 		writeServiceError(c, err)
 		return
 	}
+	c.Set("adminAuditResourceID", channel.ID)
 	c.JSON(http.StatusOK, gin.H{"channel": channelResponse(channel)})
 }
 
@@ -239,6 +242,7 @@ func (h *Handler) DeleteChannel(c *gin.Context) {
 		writeServiceError(c, err)
 		return
 	}
+	c.Set("adminAuditResourceID", c.Param("channelID"))
 	c.Status(http.StatusNoContent)
 }
 
