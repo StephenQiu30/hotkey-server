@@ -3,6 +3,7 @@ package hotspotrepo
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -25,7 +26,8 @@ INSERT INTO item_embeddings (
 ) VALUES (
 	$1, $2, $3::vector, $4, $5, NULLIF($6, ''), $7, $8
 )
-ON CONFLICT (item_id, model) DO UPDATE SET
+ON CONFLICT (item_id) DO UPDATE SET
+	model = EXCLUDED.model,
 	embedding = EXCLUDED.embedding,
 	text_hash = EXCLUDED.text_hash,
 	status = EXCLUDED.status,
@@ -48,7 +50,11 @@ RETURNING item_id, model, embedding::text, text_hash, status, COALESCE(last_erro
 		return hotspot.Embedding{}, err
 	}
 	embedding.Status = hotspot.EmbeddingStatus(status)
-	embedding.Vector = parseVectorLiteral(vectorText)
+	vector, err := parseVectorLiteral(vectorText)
+	if err != nil {
+		return hotspot.Embedding{}, err
+	}
+	embedding.Vector = vector
 	return embedding, nil
 }
 
@@ -70,7 +76,11 @@ LIMIT 1`
 		return hotspot.Embedding{}, err
 	}
 	embedding.Status = hotspot.EmbeddingStatus(status)
-	embedding.Vector = parseVectorLiteral(vectorText)
+	vector, err := parseVectorLiteral(vectorText)
+	if err != nil {
+		return hotspot.Embedding{}, err
+	}
+	embedding.Vector = vector
 	return embedding, nil
 }
 
@@ -104,7 +114,11 @@ ORDER BY COALESCE(i.published_at, i.created_at), i.id`
 		}
 		candidate.Item.DuplicateOfItemID = duplicateOf
 		candidate.Embedding.Status = hotspot.EmbeddingStatus(embeddingStatus)
-		candidate.Embedding.Vector = parseVectorLiteral(vectorText)
+		vector, err := parseVectorLiteral(vectorText)
+		if err != nil {
+			return nil, err
+		}
+		candidate.Embedding.Vector = vector
 		candidates = append(candidates, candidate)
 	}
 	return candidates, rows.Err()
@@ -126,7 +140,7 @@ func (r *Repository) ReplaceClusters(ctx context.Context, clusters []hotspot.Clu
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO hotspot_clusters (id, title, keywords, centroid, window_start, window_end, created_at, updated_at)
 VALUES ($1, $2, $3, $4::vector, $5, $6, $7, $8)
-`, cluster.ID, cluster.Title, "{"+strings.Join(cluster.Keywords, ",")+"}", vectorLiteral(cluster.Centroid), cluster.WindowStart, cluster.WindowEnd, cluster.CreatedAt, cluster.UpdatedAt); err != nil {
+`, cluster.ID, cluster.Title, arrayLiteral(cluster.Keywords), vectorLiteral(cluster.Centroid), cluster.WindowStart, cluster.WindowEnd, cluster.CreatedAt, cluster.UpdatedAt); err != nil {
 			return err
 		}
 		for _, item := range itemsByCluster[cluster.ID] {
@@ -149,18 +163,29 @@ func vectorLiteral(vector []float64) string {
 	return "[" + strings.Join(parts, ",") + "]"
 }
 
-func parseVectorLiteral(value string) []float64 {
+func parseVectorLiteral(value string) ([]float64, error) {
 	value = strings.Trim(value, "[] ")
 	if value == "" {
-		return nil
+		return nil, nil
 	}
 	parts := strings.Split(value, ",")
 	vector := make([]float64, 0, len(parts))
 	for _, part := range parts {
 		parsed, err := strconv.ParseFloat(strings.TrimSpace(part), 64)
-		if err == nil {
-			vector = append(vector, parsed)
+		if err != nil {
+			return nil, fmt.Errorf("parse vector literal %q: %w", value, err)
 		}
+		vector = append(vector, parsed)
 	}
-	return vector
+	return vector, nil
+}
+
+func arrayLiteral(values []string) string {
+	escaped := make([]string, len(values))
+	for i, value := range values {
+		value = strings.ReplaceAll(value, `\`, `\\`)
+		value = strings.ReplaceAll(value, `"`, `\"`)
+		escaped[i] = `"` + value + `"`
+	}
+	return "{" + strings.Join(escaped, ",") + "}"
 }

@@ -59,6 +59,26 @@ func TestServiceGenerateMissingProviderConfigRecordsFailedConfig(t *testing.T) {
 	}
 }
 
+func TestServiceGenerateEmptyVectorRecordsFailure(t *testing.T) {
+	repo := hotspot.NewMemoryRepository()
+	items := &memoryItemRepository{items: map[string]content.SourceItem{
+		"item-1": {ID: "item-1", Title: "AI 新闻", Snippet: "正文片段"},
+	}}
+	service := NewService(Config{Model: "text-embedding-v2"}, items, repo, fakeProvider{model: "text-embedding-v2"})
+
+	_, err := service.Generate(context.Background(), "item-1")
+	if !errors.Is(err, ErrEmptyVector) {
+		t.Fatalf("expected ErrEmptyVector, got %v", err)
+	}
+	embedding, findErr := repo.FindEmbedding(context.Background(), "item-1")
+	if findErr != nil {
+		t.Fatalf("expected failed embedding audit row, got %v", findErr)
+	}
+	if embedding.Status != hotspot.EmbeddingStatusFailed || embedding.LastError != ErrEmptyVector.Error() {
+		t.Fatalf("expected failed embedding for empty vector, got %+v", embedding)
+	}
+}
+
 type fakeProvider struct {
 	vector []float64
 	model  string

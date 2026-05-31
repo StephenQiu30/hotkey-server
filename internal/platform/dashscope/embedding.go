@@ -75,7 +75,9 @@ func (c *Client) Embed(ctx context.Context, input serviceembedding.Request) (ser
 	if err != nil {
 		return serviceembedding.Response{}, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return serviceembedding.Response{}, fmt.Errorf("dashscope embedding failed: status %d", resp.StatusCode)
 	}
@@ -85,6 +87,9 @@ func (c *Client) Embed(ctx context.Context, input serviceembedding.Request) (ser
 	}
 	if len(decoded.Output.Embeddings) == 0 {
 		return serviceembedding.Response{}, errors.New("dashscope embedding response missing embeddings")
+	}
+	if len(decoded.Output.Embeddings[0].Embedding) == 0 {
+		return serviceembedding.Response{}, serviceembedding.ErrEmptyVector
 	}
 	return serviceembedding.Response{
 		Vector: decoded.Output.Embeddings[0].Embedding,

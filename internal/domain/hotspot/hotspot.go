@@ -127,6 +127,11 @@ func (r *MemoryRepository) ListCandidates(_ context.Context, start time.Time, en
 		candidates = append(candidates, Candidate{Item: cloneItem(item), Embedding: cloneEmbedding(embedding)})
 	}
 	sort.Slice(candidates, func(i, j int) bool {
+		left := effectiveItemTime(candidates[i].Item)
+		right := effectiveItemTime(candidates[j].Item)
+		if !left.Equal(right) {
+			return left.Before(right)
+		}
 		return candidates[i].Item.ID < candidates[j].Item.ID
 	})
 	return candidates, nil
@@ -205,6 +210,13 @@ func cloneItem(item content.SourceItem) content.SourceItem {
 		item.PublishedAt = &publishedAt
 	}
 	return item
+}
+
+func effectiveItemTime(item content.SourceItem) time.Time {
+	if item.PublishedAt != nil {
+		return *item.PublishedAt
+	}
+	return item.CreatedAt
 }
 
 func containsString(values []string, want string) bool {

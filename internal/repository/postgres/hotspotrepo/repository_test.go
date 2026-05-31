@@ -55,6 +55,12 @@ func TestRepositorySaveEmbeddingUpsertsVectorAndAuditStatus(t *testing.T) {
 	}
 }
 
+func TestParseVectorLiteralRejectsMalformedToken(t *testing.T) {
+	if _, err := parseVectorLiteral("[0.1,nope,0.3]"); err == nil {
+		t.Fatal("expected malformed vector token to return an error")
+	}
+}
+
 func openRecordingDB(t *testing.T, d *recordingDriver) *sql.DB {
 	t.Helper()
 	name := "hotspotrepo_test_" + strings.ReplaceAll(t.Name(), "/", "_")

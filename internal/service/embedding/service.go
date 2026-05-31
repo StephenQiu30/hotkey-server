@@ -13,7 +13,10 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
 )
 
-var ErrFailedConfig = errors.New("failed_config: embedding provider is not configured")
+var (
+	ErrFailedConfig = errors.New("failed_config: embedding provider is not configured")
+	ErrEmptyVector  = errors.New("empty embedding vector")
+)
 
 type Request struct {
 	Text  string
@@ -69,27 +72,14 @@ func (s *Service) Generate(ctx context.Context, itemID string) (hotspot.Embeddin
 	response, err := s.provider.Embed(ctx, Request{Text: text, Model: s.cfg.Model})
 	now := s.now().UTC()
 	if err != nil {
-		status := hotspot.EmbeddingStatusFailed
-		if errors.Is(err, ErrFailedConfig) {
-			status = hotspot.EmbeddingStatusFailedConfig
-		}
-		embedding, saveErr := s.repo.SaveEmbedding(ctx, hotspot.Embedding{
-			ItemID:    item.ID,
-			Model:     s.cfg.Model,
-			TextHash:  textHash(text),
-			Status:    status,
-			LastError: err.Error(),
-			CreatedAt: now,
-			UpdatedAt: now,
-		})
-		if saveErr != nil {
-			return hotspot.Embedding{}, saveErr
-		}
-		return embedding, err
+		return s.saveFailure(ctx, item.ID, s.cfg.Model, text, err, now)
 	}
 	model := response.Model
 	if model == "" {
 		model = s.cfg.Model
+	}
+	if len(response.Vector) == 0 {
+		return s.saveFailure(ctx, item.ID, model, text, ErrEmptyVector, now)
 	}
 	return s.repo.SaveEmbedding(ctx, hotspot.Embedding{
 		ItemID:    item.ID,
@@ -100,6 +90,26 @@ func (s *Service) Generate(ctx context.Context, itemID string) (hotspot.Embeddin
 		CreatedAt: now,
 		UpdatedAt: now,
 	})
+}
+
+func (s *Service) saveFailure(ctx context.Context, itemID string, model string, text string, err error, now time.Time) (hotspot.Embedding, error) {
+	status := hotspot.EmbeddingStatusFailed
+	if errors.Is(err, ErrFailedConfig) {
+		status = hotspot.EmbeddingStatusFailedConfig
+	}
+	embedding, saveErr := s.repo.SaveEmbedding(ctx, hotspot.Embedding{
+		ItemID:    itemID,
+		Model:     model,
+		TextHash:  textHash(text),
+		Status:    status,
+		LastError: err.Error(),
+		CreatedAt: now,
+		UpdatedAt: now,
+	})
+	if saveErr != nil {
+		return hotspot.Embedding{}, saveErr
+	}
+	return embedding, err
 }
 
 func textHash(value string) string {

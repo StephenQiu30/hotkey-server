@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS item_embeddings (
     last_error text,
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
-    PRIMARY KEY (item_id, model),
+    PRIMARY KEY (item_id),
     CHECK (
         (status = 'succeeded' AND embedding IS NOT NULL) OR
         (status IN ('failed', 'failed_config'))
