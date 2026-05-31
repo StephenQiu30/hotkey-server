@@ -26,6 +26,8 @@ func TestSourceItemsMigrationDefinesDedupeColumns(t *testing.T) {
 		"status",
 		"duplicate_of_item_id",
 		"unique",
+		"status = 'primary' and duplicate_of_item_id is null",
+		"status = 'duplicate' and duplicate_of_item_id is not null",
 		"idx_source_items_content_hash",
 	} {
 		if !strings.Contains(sql, want) {

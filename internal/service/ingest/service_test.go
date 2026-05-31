@@ -74,6 +74,35 @@ func TestIngestKeepsSinglePrimaryForSameCanonicalURL(t *testing.T) {
 	}
 }
 
+func TestIngestHandlesConcurrentCanonicalCreateRace(t *testing.T) {
+	existing := content.SourceItem{
+		ID:           "item-existing",
+		SourceID:     "src-1",
+		Title:        "AI 新闻",
+		Snippet:      "正文片段",
+		RawURL:       "https://example.com/a",
+		CanonicalURL: "https://example.com/a",
+		ContentHash:  content.ContentHash(content.HashInput{Title: "AI 新闻", Snippet: "正文片段"}),
+		Language:     "zh",
+		Status:       content.ItemStatusPrimary,
+	}
+	service := NewService(&canonicalRaceRepository{existing: existing}, &recordingQueue{})
+
+	result, err := service.Ingest(context.Background(), Input{
+		SourceID: "src-1",
+		Title:    "AI 新闻",
+		Snippet:  "正文片段",
+		URL:      "https://example.com/a",
+		Language: "zh",
+	})
+	if err != nil {
+		t.Fatalf("ingest failed: %v", err)
+	}
+	if result.Created || result.Item.ID != existing.ID {
+		t.Fatalf("expected existing item after race, got %+v", result)
+	}
+}
+
 func TestIngestMarksSameHashDifferentURLAsDuplicate(t *testing.T) {
 	repo := content.NewMemoryRepository()
 	service := NewService(repo, &recordingQueue{})
@@ -116,4 +145,28 @@ func (q *recordingQueue) Enqueue(_ context.Context, req queue.EnqueueRequest) (q
 
 func ptrTime(value time.Time) *time.Time {
 	return &value
+}
+
+type canonicalRaceRepository struct {
+	existing     content.SourceItem
+	canonicalHit bool
+}
+
+func (r *canonicalRaceRepository) FindByCanonicalURL(_ context.Context, canonicalURL string) (content.SourceItem, error) {
+	if r.canonicalHit && canonicalURL == r.existing.CanonicalURL {
+		return r.existing, nil
+	}
+	r.canonicalHit = true
+	return content.SourceItem{}, content.ErrNotFound
+}
+
+func (r *canonicalRaceRepository) FindByContentHash(_ context.Context, contentHash string) (content.SourceItem, error) {
+	if contentHash == r.existing.ContentHash {
+		return r.existing, nil
+	}
+	return content.SourceItem{}, content.ErrNotFound
+}
+
+func (r *canonicalRaceRepository) Create(context.Context, content.SourceItem) (content.SourceItem, error) {
+	return content.SourceItem{}, content.ErrAlreadyExists
 }

@@ -13,7 +13,10 @@ CREATE TABLE IF NOT EXISTS source_items (
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
     UNIQUE (canonical_url),
-    CHECK (status = 'primary' OR duplicate_of_item_id IS NOT NULL)
+    CHECK (
+        (status = 'primary' AND duplicate_of_item_id IS NULL) OR
+        (status = 'duplicate' AND duplicate_of_item_id IS NOT NULL)
+    )
 );
 
 CREATE INDEX IF NOT EXISTS idx_source_items_source_id_created_at

@@ -67,6 +67,14 @@ func (s *Service) Ingest(ctx context.Context, input Input) (Result, error) {
 
 	created, err := s.repo.Create(ctx, item)
 	if err != nil {
+		if errors.Is(err, content.ErrAlreadyExists) {
+			if existing, findErr := s.repo.FindByCanonicalURL(ctx, item.CanonicalURL); findErr == nil {
+				return Result{Item: existing, Created: false}, nil
+			}
+			if existing, findErr := s.repo.FindByContentHash(ctx, item.ContentHash); findErr == nil {
+				return Result{Item: existing, Created: false}, nil
+			}
+		}
 		return Result{}, err
 	}
 	if created.Status == content.ItemStatusPrimary {
