@@ -23,6 +23,8 @@ type Config struct {
 	RuntimeMode                RuntimeMode
 	CollectSourceID            string
 	DashScopeAPIKey            string
+	DashScopeBaseURL           string
+	DashScopeChatModel         string
 	EmbeddingModel             string
 	HotspotSimilarityThreshold float64
 	HotspotWindow              time.Duration
@@ -39,6 +41,8 @@ func Load() Config {
 		RuntimeMode:                parseRuntimeMode(os.Getenv("HOTKEY_RUNTIME_MODE")),
 		CollectSourceID:            envOrDefault("HOTKEY_COLLECT_SOURCE_ID", "default"),
 		DashScopeAPIKey:            os.Getenv("HOTKEY_DASHSCOPE_API_KEY"),
+		DashScopeBaseURL:           envOrDefault("HOTKEY_DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+		DashScopeChatModel:         envOrDefault("HOTKEY_DASHSCOPE_CHAT_MODEL", "qwen-plus"),
 		EmbeddingModel:             envOrDefault("HOTKEY_EMBEDDING_MODEL", "text-embedding-v2"),
 		HotspotSimilarityThreshold: floatOrDefault("HOTKEY_HOTSPOT_SIMILARITY_THRESHOLD", 0.82),
 		HotspotWindow:              durationOrDefault("HOTKEY_HOTSPOT_WINDOW", 24*time.Hour),

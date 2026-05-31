@@ -606,6 +606,47 @@ paths:
                     error:
                       code: hotspot_not_found
                       message: hotspot not found
+  /api/v1/reports:
+    get:
+      summary: List daily reports by date.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Daily reports for the requested date.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyReportList"
+        "400":
+          description: Invalid date.
+        "401":
+          description: Missing or invalid access token.
+  /api/v1/reports/{reportID}:
+    get:
+      summary: Get one daily report.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ReportID"
+      responses:
+        "200":
+          description: Daily report with source references.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyReport"
+        "401":
+          description: Missing or invalid access token.
+        "404":
+          description: Report not found.
 components:
   parameters:
     ChannelID:
@@ -634,6 +675,12 @@ components:
         type: string
     JobID:
       name: jobID
+      in: path
+      required: true
+      schema:
+        type: string
+    ReportID:
+      name: reportID
       in: path
       required: true
       schema:
@@ -1152,3 +1199,61 @@ components:
           type: string
         userId:
           type: string
+    SourceRef:
+      type: object
+      properties:
+        sourceId:
+          type: string
+        itemId:
+          type: string
+        title:
+          type: string
+        url:
+          type: string
+          format: uri
+    DailyReport:
+      type: object
+      properties:
+        id:
+          type: string
+        date:
+          type: string
+          format: date
+        channelId:
+          type: string
+        userId:
+          type: string
+        promptVersion:
+          type: string
+        inputHotspotIds:
+          type: array
+          items:
+            type: string
+        body:
+          type: string
+        status:
+          type: string
+          enum:
+            - succeeded
+            - degraded
+            - failed_config
+            - failed
+        lastError:
+          type: string
+        sourceRefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceRef"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    DailyReportList:
+      type: object
+      properties:
+        reports:
+          type: array
+          items:
+            $ref: "#/components/schemas/DailyReport"
