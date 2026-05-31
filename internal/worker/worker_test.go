@@ -108,6 +108,7 @@ type completeFailQueue struct {
 	job         queue.Job
 	claimed     bool
 	completeErr error
+	completed   chan struct{}
 	failed      chan error
 }
 
@@ -120,6 +121,9 @@ func (q *completeFailQueue) Claim(context.Context) (queue.Job, error) {
 }
 
 func (q *completeFailQueue) Complete(context.Context, string) (queue.Job, error) {
+	if q.completeErr == nil && q.completed != nil {
+		close(q.completed)
+	}
 	return queue.Job{}, q.completeErr
 }
 

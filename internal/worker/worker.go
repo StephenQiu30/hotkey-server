@@ -251,7 +251,7 @@ func (h *GenerateEmbeddingHandler) Handle(ctx context.Context, job queue.Job) er
 	}
 	if _, err := h.service.Generate(ctx, payload.ItemID); err != nil {
 		if errors.Is(err, serviceembedding.ErrFailedConfig) {
-			return serviceembedding.ErrFailedConfig
+			return nil
 		}
 		return err
 	}

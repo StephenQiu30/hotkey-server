@@ -2,9 +2,7 @@ package worker
 
 import (
 	"context"
-	"errors"
 	"log/slog"
-	"strings"
 	"testing"
 	"time"
 
@@ -13,14 +11,15 @@ import (
 	serviceembedding "github.com/StephenQiu30/hotkey-server/internal/service/embedding"
 )
 
-func TestGenerateEmbeddingHandlerMarksMissingConfigAsFailedConfig(t *testing.T) {
+func TestGenerateEmbeddingHandlerCompletesMissingConfigAfterRecordingFailedConfig(t *testing.T) {
 	jobQueue := &completeFailQueue{
 		job: queue.Job{
 			ID:      "job-1",
 			Type:    queue.JobTypeGenerateEmbedding,
 			Payload: mustJSON(t, queue.GenerateEmbeddingPayload{ItemID: "item-1"}),
 		},
-		failed: make(chan error, 1),
+		completed: make(chan struct{}),
+		failed:    make(chan error, 1),
 	}
 	handler := NewGenerateEmbeddingHandler(failingEmbeddingService{err: serviceembedding.ErrFailedConfig})
 	worker := New(jobQueue, nil, slog.Default(), WithHandler(queue.JobTypeGenerateEmbedding, handler))
@@ -33,14 +32,13 @@ func TestGenerateEmbeddingHandlerMarksMissingConfigAsFailedConfig(t *testing.T) 
 	}()
 
 	select {
+	case <-jobQueue.completed:
 	case err := <-jobQueue.failed:
-		if !errors.Is(err, serviceembedding.ErrFailedConfig) || !strings.Contains(err.Error(), "failed_config") {
-			t.Fatalf("expected failed_config failure, got %v", err)
-		}
+		t.Fatalf("expected terminal completion after failed_config record, got queue failure %v", err)
 	case err := <-done:
 		t.Fatalf("worker exited early: %v", err)
 	case <-time.After(100 * time.Millisecond):
-		t.Fatal("worker did not fail embedding job")
+		t.Fatal("worker did not complete embedding job")
 	}
 	cancel()
 	<-done
