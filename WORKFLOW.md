@@ -209,10 +209,11 @@ Use this only when completion is blocked by missing required tools or missing au
 
 - GitHub is not a valid blocker by default. Always try fallback strategies first (alternate remote/auth mode, then continue publish/review flow).
 - Do not move to `Human Review` for GitHub access/auth until all fallback strategies have been attempted and documented in the workpad.
-- If a non-GitHub required tool is missing, or required non-GitHub auth is unavailable, move the ticket to `Human Review` with a short blocker brief in the workpad that includes:
+- If a non-GitHub required tool is missing, or required non-GitHub auth is unavailable, keep the ticket in `In Progress` with a short blocker brief in the workpad that includes:
   - what is missing,
   - why it blocks required acceptance/validation,
   - exact human action needed to unblock.
+- Blocked access never bypasses the completion bar: if any required checklist item remains incomplete, keep the ticket in `In Progress`, record `### Remaining Items`, and do not move to `Human Review`.
 - Keep the brief concise and action-oriented; do not add extra top-level comments outside the workpad.
 
 ## Step 2: Execution phase (Todo -> In Progress -> Human Review)
@@ -259,7 +260,7 @@ Use this only when completion is blocked by missing required tools or missing au
     - Repeat this check-address-verify loop until no outstanding comments remain and checks are fully passing.
     - Re-open and refresh the workpad before state transition so `Plan`, `Acceptance Criteria`, and `Validation` exactly match completed work.
 12. Only then move issue to `Human Review`.
-    - Exception: if blocked by missing required non-GitHub tools/auth per the blocked-access escape hatch, move to `Human Review` with the blocker brief and explicit unblock actions.
+    - There is no blocker exception for incomplete work: any `### Remaining Items` or unchecked required checklist item means the issue stays in `In Progress`.
 13. For `Todo` tickets that already had a PR attached at kickoff:
     - Ensure all existing PR feedback was reviewed and resolved, including inline review comments (code changes or explicit, justified pushback response).
     - Ensure branch was pushed with any required updates.
