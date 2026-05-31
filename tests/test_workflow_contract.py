@@ -43,7 +43,7 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("interval_ms: 5000", front_matter)
         self.assertIn("max_concurrent_agents: 4", front_matter)
         self.assertIn('git clone --depth 1 "$SOURCE_REPO_URL" .', front_matter)
-        self.assertIn("command: claude --dangerously-skip-permissions", front_matter)
+        self.assertIn("command: claude -p --dangerously-skip-permissions", front_matter)
         self.assertNotIn("codex:", front_matter)
         self.assertIn("{{ issue.identifier }}", body)
         self.assertIn("hotkey-server", body)
