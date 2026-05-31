@@ -110,6 +110,18 @@ The agent should be able to talk to Linear, either via a configured Linear MCP s
 - `pull`: keep branch updated with latest `origin/main` before handoff.
 - `land`: when ticket reaches `Merging`, explicitly open and follow `.codex/skills/land/SKILL.md`, which includes the `land` loop.
 
+## GitHub automation contract
+
+- Use the authenticated `gh` CLI for all GitHub publishing and review actions.
+- Do not use GitHub MCP/Connector tools for pull request creation, label updates, PR comments, review lookup, or check polling; those tools can request interactive approval and break unattended Symphony execution.
+- Required commands use this shape:
+  - `gh pr create --repo StephenQiu30/hotkey-server --head <branch> --base main ...`
+  - `gh pr edit <number> --repo StephenQiu30/hotkey-server --add-label symphony`
+  - `gh pr view <number> --repo StephenQiu30/hotkey-server --json ...`
+  - `gh pr checks <number> --repo StephenQiu30/hotkey-server`
+  - `gh api repos/StephenQiu30/hotkey-server/pulls/<number>/comments`
+- If a GitHub Connector approval prompt appears, abandon that tool path immediately and retry through `gh` CLI before considering the task blocked.
+
 ## Status map
 
 - `Backlog` -> out of scope for this workflow; do not modify.
@@ -225,6 +237,8 @@ Use this only when completion is blocked by missing required tools or missing au
 7. Before every `git push` attempt, run the required validation for your scope and confirm it passes; if it fails, address issues and rerun until green, then commit and push changes.
 8. Attach PR URL to the issue (prefer attachment; use the workpad comment only if attachment is unavailable).
    - Ensure the GitHub PR has label `symphony` (add it if missing).
+   - Use `gh` CLI for PR creation, label updates, PR inspection, and check polling.
+   - Do not use GitHub Connector tools because unattended Symphony cannot answer interactive connector approval prompts.
 9. Merge latest `origin/main` into branch, resolve conflicts, and rerun checks.
 10. Update the workpad comment with final checklist status and validation notes.
     - Mark completed plan/acceptance/validation checklist items as checked.

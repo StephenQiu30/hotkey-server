@@ -48,6 +48,12 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("PR feedback sweep protocol", body)
         self.assertIn("Completion bar before Human Review", body)
         self.assertIn(".codex/skills/land/SKILL.md", body)
+        self.assertIn("## GitHub automation contract", body)
+        self.assertIn("Use the authenticated `gh` CLI", body)
+        self.assertIn("Do not use GitHub MCP/Connector tools", body)
+        self.assertIn("interactive connector approval prompts", body)
+        self.assertIn("gh pr create --repo StephenQiu30/hotkey-server", body)
+        self.assertIn("gh pr checks <number> --repo StephenQiu30/hotkey-server", body)
 
     def test_prd_and_plan_numbers_are_contiguous_and_paired(self):
         prds = numbered_markdown_files(PRD_DIR)
