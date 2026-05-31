@@ -17,6 +17,8 @@ class SourceContractTest(unittest.TestCase):
             "collection_runs",
             "CHECK (type IN ('rss', 'public_page'))",
             "CHECK (status IN ('enabled', 'disabled'))",
+            "btrim(compliance_note, E' \\t\\n\\r\\f\\v')",
+            "btrim(error, E' \\t\\n\\r\\f\\v')",
             "compliance_note",
             "fetch_interval_min",
             "rate_limit_per_hour",

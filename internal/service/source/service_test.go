@@ -65,6 +65,14 @@ func TestSourceLifecycleValidationAndCollectionSelection(t *testing.T) {
 	}); !errors.Is(err, servicesource.ErrInvalidInput) {
 		t.Fatalf("expected blank update source id to fail validation, got %v", err)
 	}
+	if _, err := svc.CreateSource(ctx, servicesource.CreateSourceInput{
+		Name:             "FTP Feed",
+		Type:             servicesource.SourceTypeRSS,
+		URL:              "ftp://example.com/feed.xml",
+		FetchIntervalMin: 30,
+	}); !errors.Is(err, servicesource.ErrInvalidInput) {
+		t.Fatalf("expected non-http source URL to fail validation, got %v", err)
+	}
 
 	selected, err := svc.ListCollectableSources(ctx)
 	if err != nil {

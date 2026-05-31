@@ -241,6 +241,9 @@ func buildSource(existing Source, name string, sourceType SourceType, rawURL str
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return Source{}, ErrInvalidInput
 	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return Source{}, ErrInvalidInput
+	}
 	if sourceType == SourceTypePublicPage && complianceNote == "" {
 		return Source{}, ErrComplianceNoteRequired
 	}

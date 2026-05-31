@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS sources (
     last_collected_at timestamptz,
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
-    CHECK (type <> 'public_page' OR length(trim(compliance_note)) > 0)
+    CHECK (type <> 'public_page' OR length(btrim(compliance_note, E' \t\n\r\f\v')) > 0)
 );
 
 CREATE INDEX IF NOT EXISTS idx_sources_status ON sources (status);
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS collection_runs (
     finished_at timestamptz NOT NULL,
     created_at timestamptz NOT NULL,
     CHECK (finished_at >= started_at),
-    CHECK (status <> 'failed' OR length(trim(error)) > 0)
+    CHECK (status <> 'failed' OR length(btrim(error, E' \t\n\r\f\v')) > 0)
 );
 
 CREATE INDEX IF NOT EXISTS idx_collection_runs_source_id_started_at
