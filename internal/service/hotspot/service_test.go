@@ -27,8 +27,15 @@ func TestClusterSimilarItemsTogetherAndKeepsReferences(t *testing.T) {
 	if len(items) != 2 || items[0].ItemID == items[1].ItemID {
 		t.Fatalf("expected two referenced source items, got %+v", items)
 	}
-	if len(items[0].ChannelIDs) == 0 || len(items[1].ChannelIDs) == 0 {
-		t.Fatalf("expected clustered items to preserve candidate channel IDs, got %+v", items)
+	gotByID := map[string][]string{
+		items[0].ItemID: items[0].ChannelIDs,
+		items[1].ItemID: items[1].ChannelIDs,
+	}
+	if got := gotByID["item-1"]; len(got) != 1 || got[0] != "chn_ai_models" {
+		t.Fatalf("expected item-1 channel IDs to be preserved, got %#v", got)
+	}
+	if got := gotByID["item-2"]; len(got) != 2 || got[0] != "chn_ai_models" || got[1] != "chn_ai_products" {
+		t.Fatalf("expected item-2 channel IDs to be preserved, got %#v", got)
 	}
 }
 

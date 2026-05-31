@@ -230,6 +230,7 @@ func (r *MemoryRepository) List(_ context.Context) ([]SourceItem, error) {
 }
 
 func cloneItem(item SourceItem) SourceItem {
+	item.ChannelIDs = append([]string(nil), item.ChannelIDs...)
 	if item.PublishedAt != nil {
 		publishedAt := *item.PublishedAt
 		item.PublishedAt = &publishedAt
