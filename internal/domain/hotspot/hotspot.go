@@ -160,6 +160,30 @@ func (r *MemoryRepository) CreateCluster(_ context.Context, cluster Cluster, ite
 	return cloneCluster(cluster), nil
 }
 
+func (r *MemoryRepository) ListClusters(_ context.Context) ([]Cluster, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	clusters := make([]Cluster, 0, len(r.clusterIDs))
+	for _, id := range r.clusterIDs {
+		clusters = append(clusters, cloneCluster(r.clusters[id]))
+	}
+	return clusters, nil
+}
+
+func (r *MemoryRepository) ListClusterItems(_ context.Context, clusterID string) ([]ClusterItem, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	links, ok := r.links[clusterID]
+	if !ok {
+		return nil, nil
+	}
+	items := make([]ClusterItem, 0, len(links))
+	for _, item := range links {
+		items = append(items, item)
+	}
+	return items, nil
+}
+
 func (r *MemoryRepository) ReplaceClusters(_ context.Context, clusters []Cluster, itemsByCluster map[string][]ClusterItem) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
