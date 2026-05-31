@@ -23,6 +23,11 @@ type Client struct {
 	dialTimeout time.Duration
 }
 
+var dialContext = func(ctx context.Context, network string, address string) (net.Conn, error) {
+	var dialer net.Dialer
+	return dialer.DialContext(ctx, network, address)
+}
+
 func NewClient(rawURL string, opts Options) *Client {
 	addr := rawURL
 	if parsed, err := url.Parse(rawURL); err == nil && parsed.Host != "" {
@@ -81,28 +86,25 @@ func (c *Client) RPop(ctx context.Context, key string) ([]byte, error) {
 }
 
 func (c *Client) do(ctx context.Context, args ...string) ([]byte, error) {
-	var dialer net.Dialer
 	ctx, cancel := context.WithTimeout(ctx, c.dialTimeout)
 	defer cancel()
 
-	conn, err := dialer.DialContext(ctx, "tcp", c.addr)
+	conn, err := dialContext(ctx, "tcp", c.addr)
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		_ = conn.Close()
-	}()
 
 	if deadline, ok := ctx.Deadline(); ok {
 		if err := conn.SetDeadline(deadline); err != nil {
-			return nil, err
+			return nil, errors.Join(err, conn.Close())
 		}
 	}
 
 	if _, err := conn.Write(encodeCommand(args...)); err != nil {
-		return nil, err
+		return nil, errors.Join(err, conn.Close())
 	}
-	return readReply(bufio.NewReader(conn))
+	reply, err := readReply(bufio.NewReader(conn))
+	return reply, errors.Join(err, conn.Close())
 }
 
 func encodeCommand(args ...string) []byte {
