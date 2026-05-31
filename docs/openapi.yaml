@@ -825,6 +825,8 @@ components:
         - qualityScore
         - explanation
         - scoreVersion
+        - channelIDs
+        - sourceRefs
         - createdAt
         - updatedAt
       properties:
@@ -855,6 +857,14 @@ components:
           description: JSON string containing scoring dimension details.
         scoreVersion:
           type: string
+        channelIDs:
+          type: array
+          items:
+            type: string
+        sourceRefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/HotspotSourceRef"
         createdAt:
           type: string
           format: date-time
@@ -863,6 +873,21 @@ components:
           format: date-time
     HotspotDetail:
       $ref: "#/components/schemas/HotspotScore"
+    HotspotSourceRef:
+      type: object
+      required:
+        - itemId
+        - sourceId
+      properties:
+        itemId:
+          type: string
+        sourceId:
+          type: string
+        title:
+          type: string
+        url:
+          type: string
+          format: uri
     HotspotList:
       type: object
       required:

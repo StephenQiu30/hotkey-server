@@ -34,3 +34,13 @@ func TestContentHashIsStableAcrossWhitespace(t *testing.T) {
 		t.Fatalf("expected stable hash, got %q and %q", first, second)
 	}
 }
+
+func TestCloneItemCopiesChannelIDs(t *testing.T) {
+	original := SourceItem{ID: "item-1", ChannelIDs: []string{"chn_ai_models"}}
+	cloned := cloneItem(original)
+	cloned.ChannelIDs[0] = "mutated"
+
+	if original.ChannelIDs[0] != "chn_ai_models" {
+		t.Fatalf("expected original channel IDs to be isolated, got %#v", original.ChannelIDs)
+	}
+}

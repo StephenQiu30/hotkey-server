@@ -34,11 +34,11 @@ func (r *MemoryScoreRepository) SaveScore(_ context.Context, score HotspotScore)
 	if score.UpdatedAt.IsZero() {
 		score.UpdatedAt = score.CreatedAt
 	}
-	r.scores[score.ID] = score
+	r.scores[score.ID] = cloneScore(score)
 	if !containsID(r.ids, score.ID) {
 		r.ids = append(r.ids, score.ID)
 	}
-	return score, nil
+	return cloneScore(score), nil
 }
 
 func (r *MemoryScoreRepository) ListScores(_ context.Context) ([]HotspotScore, error) {
@@ -46,7 +46,7 @@ func (r *MemoryScoreRepository) ListScores(_ context.Context) ([]HotspotScore, e
 	defer r.mu.RUnlock()
 	scores := make([]HotspotScore, 0, len(r.ids))
 	for _, id := range r.ids {
-		scores = append(scores, r.scores[id])
+		scores = append(scores, cloneScore(r.scores[id]))
 	}
 	sort.Slice(scores, func(i, j int) bool {
 		return scores[i].TotalScore > scores[j].TotalScore
@@ -60,7 +60,7 @@ func (r *MemoryScoreRepository) ListScoresByWindow(_ context.Context, start, end
 	var scores []HotspotScore
 	for _, score := range r.scores {
 		if (score.CreatedAt.Equal(start) || score.CreatedAt.After(start)) && score.CreatedAt.Before(end) {
-			scores = append(scores, score)
+			scores = append(scores, cloneScore(score))
 		}
 	}
 	sort.Slice(scores, func(i, j int) bool {
@@ -74,10 +74,16 @@ func (r *MemoryScoreRepository) FindScoreByClusterID(_ context.Context, clusterI
 	defer r.mu.RUnlock()
 	for _, score := range r.scores {
 		if score.ClusterID == clusterID {
-			return score, nil
+			return cloneScore(score), nil
 		}
 	}
 	return HotspotScore{}, ErrScoreNotFound
+}
+
+func cloneScore(score HotspotScore) HotspotScore {
+	score.ChannelIDs = append([]string{}, score.ChannelIDs...)
+	score.SourceRefs = append([]SourceRef{}, score.SourceRefs...)
+	return score
 }
 
 func containsID(ids []string, want string) bool {

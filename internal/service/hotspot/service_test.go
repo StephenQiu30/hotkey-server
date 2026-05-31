@@ -12,8 +12,8 @@ import (
 func TestClusterSimilarItemsTogetherAndKeepsReferences(t *testing.T) {
 	repo := domainhotspot.NewMemoryRepository()
 	now := time.Date(2026, 5, 31, 2, 0, 0, 0, time.UTC)
-	mustSaveCandidate(t, repo, content.SourceItem{ID: "item-1", Title: "OpenAI 发布新模型", Snippet: "模型推理能力提升", PublishedAt: &now}, []float64{1, 0, 0})
-	mustSaveCandidate(t, repo, content.SourceItem{ID: "item-2", Title: "OpenAI 新模型上线", Snippet: "推理能力明显增强", PublishedAt: &now}, []float64{0.98, 0.02, 0})
+	mustSaveCandidate(t, repo, content.SourceItem{ID: "item-1", Title: "OpenAI 发布新模型", Snippet: "模型推理能力提升", PublishedAt: &now, ChannelIDs: []string{"chn_ai_models"}}, []float64{1, 0, 0})
+	mustSaveCandidate(t, repo, content.SourceItem{ID: "item-2", Title: "OpenAI 新模型上线", Snippet: "推理能力明显增强", PublishedAt: &now, ChannelIDs: []string{"chn_ai_models", "chn_ai_products"}}, []float64{0.98, 0.02, 0})
 
 	service := NewService(Config{SimilarityThreshold: 0.95, KeywordOverlapThreshold: 1, Window: 24 * time.Hour}, repo)
 	result, err := service.Cluster(context.Background(), Window{Start: now.Add(-time.Hour), End: now.Add(time.Hour)})
@@ -26,6 +26,16 @@ func TestClusterSimilarItemsTogetherAndKeepsReferences(t *testing.T) {
 	items := result.ItemsByCluster[result.Clusters[0].ID]
 	if len(items) != 2 || items[0].ItemID == items[1].ItemID {
 		t.Fatalf("expected two referenced source items, got %+v", items)
+	}
+	gotByID := map[string][]string{
+		items[0].ItemID: items[0].ChannelIDs,
+		items[1].ItemID: items[1].ChannelIDs,
+	}
+	if got := gotByID["item-1"]; len(got) != 1 || got[0] != "chn_ai_models" {
+		t.Fatalf("expected item-1 channel IDs to be preserved, got %#v", got)
+	}
+	if got := gotByID["item-2"]; len(got) != 2 || got[0] != "chn_ai_models" || got[1] != "chn_ai_products" {
+		t.Fatalf("expected item-2 channel IDs to be preserved, got %#v", got)
 	}
 }
 
