@@ -5,6 +5,18 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / "WORKFLOW.md"
+PRD_DIR = ROOT / "docs" / "product" / "prd"
+PLAN_DIR = ROOT / "docs" / "plans"
+
+
+def numbered_markdown_files(path):
+    files = sorted(path.glob("*.md"))
+    pairs = []
+    for file in files:
+        match = re.match(r"^(\d+)-", file.name)
+        if match:
+            pairs.append((int(match.group(1)), file.name))
+    return pairs
 
 
 class WorkflowContractTest(unittest.TestCase):
@@ -36,6 +48,17 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("PR feedback sweep protocol", body)
         self.assertIn("Completion bar before Human Review", body)
         self.assertIn(".codex/skills/land/SKILL.md", body)
+
+    def test_prd_and_plan_numbers_are_contiguous_and_paired(self):
+        prds = numbered_markdown_files(PRD_DIR)
+        plans = numbered_markdown_files(PLAN_DIR)
+
+        self.assertGreater(len(prds), 0)
+        self.assertEqual(len(prds), len(plans))
+
+        expected = list(range(1, len(prds) + 1))
+        self.assertEqual([number for number, _ in prds], expected)
+        self.assertEqual([number for number, _ in plans], expected)
 
 
 if __name__ == "__main__":
