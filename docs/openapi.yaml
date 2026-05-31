@@ -414,6 +414,10 @@ paths:
                 $ref: "#/components/schemas/CollectionRunResponse"
         "502":
           description: Test fetch failed and recorded a collection run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionRunResponse"
 components:
   parameters:
     ChannelID:

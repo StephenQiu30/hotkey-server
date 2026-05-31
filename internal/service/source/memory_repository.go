@@ -2,7 +2,6 @@ package source
 
 import (
 	"context"
-	"database/sql"
 	"sync"
 )
 
@@ -37,7 +36,7 @@ func (r *MemoryRepository) SourceByID(_ context.Context, sourceID string) (Sourc
 	defer r.mu.RUnlock()
 	source, exists := r.sources[sourceID]
 	if !exists {
-		return Source{}, sql.ErrNoRows
+		return Source{}, ErrNotFound
 	}
 	return cloneSource(source), nil
 }
@@ -57,7 +56,7 @@ func (r *MemoryRepository) UpdateSource(_ context.Context, source Source) (Sourc
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, exists := r.sources[source.ID]; !exists {
-		return Source{}, sql.ErrNoRows
+		return Source{}, ErrNotFound
 	}
 	r.sources[source.ID] = cloneSource(source)
 	return cloneSource(source), nil
@@ -67,7 +66,7 @@ func (r *MemoryRepository) CreateCollectionRun(_ context.Context, run Collection
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, exists := r.sources[run.SourceID]; !exists {
-		return CollectionRun{}, sql.ErrNoRows
+		return CollectionRun{}, ErrNotFound
 	}
 	r.runs[run.SourceID] = append(r.runs[run.SourceID], run)
 	source := r.sources[run.SourceID]

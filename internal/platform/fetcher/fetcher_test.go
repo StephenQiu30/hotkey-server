@@ -3,6 +3,7 @@ package fetcher_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"testing"
@@ -47,6 +48,27 @@ func TestPublicPageFetcherReturnsPageBoundaryWithoutPrivateCollection(t *testing
 	}
 }
 
+func TestRSSFetcherReturnsBodyCloseError(t *testing.T) {
+	closeErr := errors.New("close failed")
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       errReadCloser{Reader: bytes.NewBufferString(`<?xml version="1.0"?><rss version="2.0"><channel></channel></rss>`), closeErr: closeErr},
+			Request:    req,
+		}, nil
+	})}
+
+	_, err := fetcher.NewRSSFetcher(client).Fetch(context.Background(), fetcher.Source{
+		ID:   "src_rss",
+		Type: fetcher.SourceTypeRSS,
+		URL:  "https://fake.local/rss.xml",
+	})
+	if !errors.Is(err, closeErr) {
+		t.Fatalf("expected response body close error, got %v", err)
+	}
+}
+
 type fakeServer struct {
 	URL  string
 	body string
@@ -71,4 +93,13 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
+}
+
+type errReadCloser struct {
+	io.Reader
+	closeErr error
+}
+
+func (c errReadCloser) Close() error {
+	return c.closeErr
 }

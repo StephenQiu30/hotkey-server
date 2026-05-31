@@ -40,7 +40,7 @@ FROM sources
 WHERE id = $1`
 	source, err := scanSource(r.db.QueryRowContext(ctx, query, sourceID))
 	if err != nil {
-		return servicesource.Source{}, err
+		return servicesource.Source{}, normalizeDBError(err)
 	}
 	source.ChannelIDs, err = r.channelIDs(ctx, source.ID)
 	return source, err
@@ -64,7 +64,7 @@ RETURNING id, name, type, url, status, compliance_note, fetch_interval_min, rate
 		if isUniqueViolation(err) {
 			return servicesource.Source{}, servicesource.ErrAlreadyExists
 		}
-		return servicesource.Source{}, err
+		return servicesource.Source{}, normalizeDBError(err)
 	}
 	if err := replaceChannelLinks(ctx, tx, created.ID, source.ChannelIDs); err != nil {
 		return servicesource.Source{}, err
@@ -92,7 +92,10 @@ RETURNING id, name, type, url, status, compliance_note, fetch_interval_min, rate
 		source.LastError, source.LastCollectedAt, source.UpdatedAt,
 	))
 	if err != nil {
-		return servicesource.Source{}, err
+		if isUniqueViolation(err) {
+			return servicesource.Source{}, servicesource.ErrAlreadyExists
+		}
+		return servicesource.Source{}, normalizeDBError(err)
 	}
 	if err := replaceChannelLinks(ctx, tx, updated.ID, source.ChannelIDs); err != nil {
 		return servicesource.Source{}, err
@@ -107,7 +110,7 @@ RETURNING id, name, type, url, status, compliance_note, fetch_interval_min, rate
 func (r *Repository) CreateCollectionRun(ctx context.Context, run servicesource.CollectionRun) (servicesource.CollectionRun, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return servicesource.CollectionRun{}, err
+		return servicesource.CollectionRun{}, normalizeDBError(err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	const query = `
@@ -234,4 +237,11 @@ func scanCollectionRun(row scanner) (servicesource.CollectionRun, error) {
 func isUniqueViolation(err error) bool {
 	var pgErr interface{ SQLState() string }
 	return errors.As(err, &pgErr) && pgErr.SQLState() == "23505"
+}
+
+func normalizeDBError(err error) error {
+	if errors.Is(err, sql.ErrNoRows) {
+		return servicesource.ErrNotFound
+	}
+	return err
 }

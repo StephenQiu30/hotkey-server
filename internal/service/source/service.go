@@ -3,7 +3,6 @@ package source
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -154,6 +153,10 @@ func (s *Service) CreateSource(ctx context.Context, input CreateSourceInput) (So
 }
 
 func (s *Service) UpdateSource(ctx context.Context, input UpdateSourceInput) (Source, error) {
+	input.SourceID = strings.TrimSpace(input.SourceID)
+	if input.SourceID == "" {
+		return Source{}, ErrInvalidInput
+	}
 	found, err := s.repo.SourceByID(ctx, input.SourceID)
 	if err != nil {
 		return Source{}, normalizeNotFound(err)
@@ -167,6 +170,10 @@ func (s *Service) UpdateSource(ctx context.Context, input UpdateSourceInput) (So
 }
 
 func (s *Service) SetSourceStatus(ctx context.Context, input SetSourceStatusInput) (Source, error) {
+	input.SourceID = strings.TrimSpace(input.SourceID)
+	if input.SourceID == "" {
+		return Source{}, ErrInvalidInput
+	}
 	if input.Status != SourceStatusEnabled && input.Status != SourceStatusDisabled {
 		return Source{}, ErrInvalidInput
 	}
@@ -197,6 +204,12 @@ func (s *Service) RecordCollectionRun(ctx context.Context, input RecordCollectio
 	finishedAt := input.FinishedAt
 	if finishedAt.IsZero() {
 		finishedAt = now
+	}
+	if input.ItemsFetched < 0 {
+		return CollectionRun{}, ErrInvalidInput
+	}
+	if finishedAt.Before(startedAt) {
+		return CollectionRun{}, ErrInvalidInput
 	}
 	return s.repo.CreateCollectionRun(ctx, CollectionRun{
 		ID:           newID("run"),
@@ -272,7 +285,7 @@ func normalizeNotFound(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, ErrNotFound) {
+	if errors.Is(err, ErrNotFound) {
 		return ErrNotFound
 	}
 	return err

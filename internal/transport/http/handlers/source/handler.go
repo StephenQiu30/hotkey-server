@@ -29,13 +29,17 @@ type statusRequest struct {
 	Status string `json:"status"`
 }
 
-func New(service *servicesource.Service) *Handler {
+func New(service *servicesource.Service, fetcherMaps ...map[servicesource.SourceType]platformfetcher.Fetcher) *Handler {
+	fetchers := map[servicesource.SourceType]platformfetcher.Fetcher{
+		servicesource.SourceTypeRSS:        platformfetcher.NewRSSFetcher(nil),
+		servicesource.SourceTypePublicPage: platformfetcher.NewPublicPageFetcher(nil),
+	}
+	if len(fetcherMaps) > 0 && fetcherMaps[0] != nil {
+		fetchers = fetcherMaps[0]
+	}
 	return &Handler{
-		service: service,
-		fetchers: map[servicesource.SourceType]platformfetcher.Fetcher{
-			servicesource.SourceTypeRSS:        platformfetcher.NewRSSFetcher(http.DefaultClient),
-			servicesource.SourceTypePublicPage: platformfetcher.NewPublicPageFetcher(http.DefaultClient),
-		},
+		service:  service,
+		fetchers: fetchers,
 	}
 }
 

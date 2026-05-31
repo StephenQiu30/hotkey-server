@@ -52,7 +52,7 @@ func NewPublicPageFetcher(client *http.Client) *PublicPageFetcher {
 	return &PublicPageFetcher{client: httpClient(client)}
 }
 
-func (f *RSSFetcher) Fetch(ctx context.Context, source Source) ([]Item, error) {
+func (f *RSSFetcher) Fetch(ctx context.Context, source Source) (items []Item, err error) {
 	if source.Type != SourceTypeRSS {
 		return nil, errors.New("rss fetcher requires rss source")
 	}
@@ -60,13 +60,17 @@ func (f *RSSFetcher) Fetch(ctx context.Context, source Source) ([]Item, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer body.Close()
+	defer func() {
+		if closeErr := body.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close response body: %w", closeErr)
+		}
+	}()
 
 	var feed rssFeed
 	if err := xml.NewDecoder(body).Decode(&feed); err != nil {
 		return nil, fmt.Errorf("parse rss: %w", err)
 	}
-	items := make([]Item, 0, len(feed.Channel.Items))
+	items = make([]Item, 0, len(feed.Channel.Items))
 	for _, rssItem := range feed.Channel.Items {
 		item := Item{
 			Title:      strings.TrimSpace(rssItem.Title),
@@ -84,7 +88,7 @@ func (f *RSSFetcher) Fetch(ctx context.Context, source Source) ([]Item, error) {
 	return items, nil
 }
 
-func (f *PublicPageFetcher) Fetch(ctx context.Context, source Source) ([]Item, error) {
+func (f *PublicPageFetcher) Fetch(ctx context.Context, source Source) (items []Item, err error) {
 	if source.Type != SourceTypePublicPage {
 		return nil, errors.New("public page fetcher requires public_page source")
 	}
@@ -95,7 +99,11 @@ func (f *PublicPageFetcher) Fetch(ctx context.Context, source Source) ([]Item, e
 	if err != nil {
 		return nil, err
 	}
-	defer body.Close()
+	defer func() {
+		if closeErr := body.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close response body: %w", closeErr)
+		}
+	}()
 	payload, err := io.ReadAll(io.LimitReader(body, 1<<20))
 	if err != nil {
 		return nil, err
@@ -125,10 +133,15 @@ func fetchBody(ctx context.Context, client *http.Client, rawURL string) (io.Read
 }
 
 func httpClient(client *http.Client) *http.Client {
-	if client != nil {
+	if client == nil {
+		return &http.Client{Timeout: 15 * time.Second}
+	}
+	if client.Timeout > 0 {
 		return client
 	}
-	return http.DefaultClient
+	clone := *client
+	clone.Timeout = 15 * time.Second
+	return &clone
 }
 
 func pageTitle(payload string) string {

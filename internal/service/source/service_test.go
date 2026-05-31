@@ -56,6 +56,15 @@ func TestSourceLifecycleValidationAndCollectionSelection(t *testing.T) {
 	if updated.Type != servicesource.SourceTypePublicPage || updated.ComplianceNote == "" || len(updated.ChannelIDs) != 1 {
 		t.Fatalf("expected updated public page source with compliance and links, got %#v", updated)
 	}
+	if _, err := svc.UpdateSource(ctx, servicesource.UpdateSourceInput{
+		SourceID:         "   ",
+		Name:             "Invalid",
+		Type:             servicesource.SourceTypeRSS,
+		URL:              "https://example.com/invalid.xml",
+		FetchIntervalMin: 30,
+	}); !errors.Is(err, servicesource.ErrInvalidInput) {
+		t.Fatalf("expected blank update source id to fail validation, got %v", err)
+	}
 
 	selected, err := svc.ListCollectableSources(ctx)
 	if err != nil {
@@ -74,6 +83,12 @@ func TestSourceLifecycleValidationAndCollectionSelection(t *testing.T) {
 	}
 	if disabled.Status != servicesource.SourceStatusDisabled {
 		t.Fatalf("expected disabled status, got %s", disabled.Status)
+	}
+	if _, err := svc.SetSourceStatus(ctx, servicesource.SetSourceStatusInput{
+		SourceID: "   ",
+		Status:   servicesource.SourceStatusEnabled,
+	}); !errors.Is(err, servicesource.ErrInvalidInput) {
+		t.Fatalf("expected blank status source id to fail validation, got %v", err)
 	}
 
 	selected, err = svc.ListCollectableSources(ctx)
@@ -128,5 +143,20 @@ func TestCollectionRunsRecordSuccessAndFailure(t *testing.T) {
 	}
 	if runs[0].ItemsFetched != 3 || runs[1].Error == "" {
 		t.Fatalf("expected run details recorded, got %#v", runs)
+	}
+	if _, err := svc.RecordCollectionRun(ctx, servicesource.RecordCollectionRunInput{
+		SourceID:     created.ID,
+		Status:       servicesource.CollectionRunStatusSuccess,
+		ItemsFetched: -1,
+	}); !errors.Is(err, servicesource.ErrInvalidInput) {
+		t.Fatalf("expected negative items fetched to fail validation, got %v", err)
+	}
+	if _, err := svc.RecordCollectionRun(ctx, servicesource.RecordCollectionRunInput{
+		SourceID:   created.ID,
+		Status:     servicesource.CollectionRunStatusSuccess,
+		StartedAt:  created.CreatedAt.Add(2),
+		FinishedAt: created.CreatedAt.Add(1),
+	}); !errors.Is(err, servicesource.ErrInvalidInput) {
+		t.Fatalf("expected inverted run time range to fail validation, got %v", err)
 	}
 }
