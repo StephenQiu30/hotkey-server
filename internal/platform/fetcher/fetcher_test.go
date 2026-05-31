@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/platform/fetcher"
 )
@@ -26,8 +27,22 @@ func TestRSSFetcherParsesItemsFromFakeHTTPServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fetch rss: %v", err)
 	}
-	if len(items) != 1 || items[0].Title != "Model Launch" || items[0].URL != "https://example.com/model" {
-		t.Fatalf("expected parsed rss item, got %#v", items)
+	if len(items) != 1 {
+		t.Fatalf("expected one parsed rss item, got %#v", items)
+	}
+	item := items[0]
+	if item.Title != "Model Launch" {
+		t.Fatalf("expected rss title %q, got %q", "Model Launch", item.Title)
+	}
+	if item.URL != "https://example.com/model" {
+		t.Fatalf("expected rss URL %q, got %q", "https://example.com/model", item.URL)
+	}
+	if item.ExternalID != "model-1" {
+		t.Fatalf("expected rss external ID %q, got %q", "model-1", item.ExternalID)
+	}
+	wantPublishedAt := time.Date(2026, 5, 31, 1, 0, 0, 0, time.UTC)
+	if item.PublishedAt == nil || !item.PublishedAt.Equal(wantPublishedAt) {
+		t.Fatalf("expected rss published_at %s, got %v", wantPublishedAt.Format(time.RFC3339), item.PublishedAt)
 	}
 }
 
@@ -43,8 +58,12 @@ func TestPublicPageFetcherReturnsPageBoundaryWithoutPrivateCollection(t *testing
 	if err != nil {
 		t.Fatalf("fetch public page: %v", err)
 	}
-	if len(items) != 1 || items[0].Title != "Public AI Page" || items[0].URL != server.URL {
-		t.Fatalf("expected public page boundary item, got %#v", items)
+	if len(items) != 1 {
+		t.Fatalf("expected one public page boundary item, got %#v", items)
+	}
+	item := items[0]
+	if item.Title != "Public AI Page" || item.URL != server.URL || item.ExternalID != server.URL {
+		t.Fatalf("expected public page boundary item with title, URL, and external ID from source URL; got %#v", item)
 	}
 }
 
@@ -63,6 +82,28 @@ func TestRSSFetcherReturnsBodyCloseError(t *testing.T) {
 		ID:   "src_rss",
 		Type: fetcher.SourceTypeRSS,
 		URL:  "https://fake.local/rss.xml",
+	})
+	if !errors.Is(err, closeErr) {
+		t.Fatalf("expected response body close error, got %v", err)
+	}
+}
+
+func TestPublicPageFetcherReturnsBodyCloseError(t *testing.T) {
+	closeErr := errors.New("close failed")
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       errReadCloser{Reader: bytes.NewBufferString(`<html><head><title>Public AI Page</title></head></html>`), closeErr: closeErr},
+			Request:    req,
+		}, nil
+	})}
+
+	_, err := fetcher.NewPublicPageFetcher(client).Fetch(context.Background(), fetcher.Source{
+		ID:             "src_page",
+		Type:           fetcher.SourceTypePublicPage,
+		URL:            "https://fake.local/page",
+		ComplianceNote: "Public page only.",
 	})
 	if !errors.Is(err, closeErr) {
 		t.Fatalf("expected response body close error, got %v", err)
