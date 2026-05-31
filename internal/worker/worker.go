@@ -288,10 +288,16 @@ type SendDailyEmailHandler struct {
 }
 
 func NewSendDailyEmailHandler(service DailyEmailService) *SendDailyEmailHandler {
+	if service == nil {
+		panic("send daily email handler requires service")
+	}
 	return &SendDailyEmailHandler{service: service}
 }
 
 func (h *SendDailyEmailHandler) Handle(ctx context.Context, job queue.Job) error {
+	if h.service == nil {
+		return errors.New("send daily email handler missing service")
+	}
 	var payload queue.SendDailyEmailPayload
 	if err := json.Unmarshal(job.Payload, &payload); err != nil {
 		return err

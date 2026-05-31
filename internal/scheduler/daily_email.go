@@ -48,8 +48,9 @@ func NewDailyEmailScheduler(producer Producer, opts DailyEmailOptions) *DailyEma
 }
 
 func (s *DailyEmailScheduler) Tick(ctx context.Context) error {
-	current := s.now().Format("15:04")
-	today := s.now().Format("2006-01-02")
+	now := s.now()
+	current := now.Format("15:04")
+	today := now.Format("2006-01-02")
 	for _, recipient := range s.recipients {
 		if !recipient.EmailEnabled {
 			continue

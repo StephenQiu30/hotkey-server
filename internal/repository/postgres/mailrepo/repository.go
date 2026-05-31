@@ -53,7 +53,11 @@ func (r *Repository) RecipientByUserID(ctx context.Context, userID string) (serv
 
 func (r *Repository) CreateDelivery(ctx context.Context, delivery servicemail.Delivery) (servicemail.Delivery, error) {
 	if delivery.ID == "" {
-		delivery.ID = "email_delivery_" + randomHex(16)
+		id, err := randomHex(16)
+		if err != nil {
+			return servicemail.Delivery{}, err
+		}
+		delivery.ID = "email_delivery_" + id
 	}
 	now := r.now().UTC()
 	if delivery.CreatedAt.IsZero() {
@@ -81,7 +85,7 @@ func (r *Repository) CreateDelivery(ctx context.Context, delivery servicemail.De
 
 func (r *Repository) UpdateDelivery(ctx context.Context, delivery servicemail.Delivery) (servicemail.Delivery, error) {
 	delivery.UpdatedAt = r.now().UTC()
-	_, err := r.db.ExecContext(ctx, `
+	result, err := r.db.ExecContext(ctx, `
 		UPDATE email_deliveries
 		SET status = $2,
 			attempt = $3,
@@ -90,13 +94,23 @@ func (r *Repository) UpdateDelivery(ctx context.Context, delivery servicemail.De
 			updated_at = $6
 		WHERE id = $1
 	`, delivery.ID, string(delivery.Status), delivery.Attempt, delivery.LastError, delivery.SentAt, delivery.UpdatedAt)
+	if err != nil {
+		return servicemail.Delivery{}, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return servicemail.Delivery{}, err
+	}
+	if affected == 0 {
+		return servicemail.Delivery{}, servicemail.ErrNotFound
+	}
 	return delivery, err
 }
 
-func randomHex(size int) string {
+func randomHex(size int) (string, error) {
 	buf := make([]byte, size)
 	if _, err := rand.Read(buf); err != nil {
-		return hex.EncodeToString([]byte(time.Now().UTC().Format("20060102150405.000000000")))
+		return "", err
 	}
-	return hex.EncodeToString(buf)
+	return hex.EncodeToString(buf), nil
 }

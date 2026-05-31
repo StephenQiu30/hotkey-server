@@ -51,6 +51,9 @@ func (r *memoryRepository) CreateDelivery(_ context.Context, delivery Delivery) 
 func (r *memoryRepository) UpdateDelivery(_ context.Context, delivery Delivery) (Delivery, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if len(r.deliveries) == 0 {
+		return Delivery{}, ErrNotFound
+	}
 	delivery.UpdatedAt = r.now
 	r.deliveries[len(r.deliveries)-1] = delivery
 	return delivery, nil

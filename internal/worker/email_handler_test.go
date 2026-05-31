@@ -31,6 +31,12 @@ func TestSendDailyEmailHandlerPassesPayloadToMailService(t *testing.T) {
 	}
 }
 
+func TestNewSendDailyEmailHandlerRejectsNilService(t *testing.T) {
+	assertPanic(t, func() {
+		NewSendDailyEmailHandler(nil)
+	})
+}
+
 type recordingMailService struct {
 	input servicemail.SendDailyEmailInput
 }

@@ -38,24 +38,42 @@ func (m *SMTPMailer) Send(ctx context.Context, message servicemail.Message) erro
 	if m.cfg.Username != "" || m.cfg.Password != "" {
 		auth = smtp.PlainAuth("", m.cfg.Username, m.cfg.Password, m.cfg.Host)
 	}
-	body := buildMIME(message)
-	if m.cfg.TLS {
-		return m.sendTLS(addr, auth, message, body)
+	body, err := buildMIME(message)
+	if err != nil {
+		return err
 	}
-	return smtp.SendMail(addr, auth, message.From, []string{message.To}, body)
+	return m.send(ctx, addr, auth, message, body)
 }
 
-func (m *SMTPMailer) sendTLS(addr string, auth smtp.Auth, message servicemail.Message, body []byte) error {
-	conn, err := tls.Dial("tcp", addr, &tls.Config{ServerName: m.cfg.Host, MinVersion: tls.VersionTLS12})
+func (m *SMTPMailer) send(ctx context.Context, addr string, auth smtp.Auth, message servicemail.Message, body []byte) error {
+	dialer := &net.Dialer{}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(deadline)
+	}
+
+	tlsConfig := &tls.Config{ServerName: m.cfg.Host, MinVersion: tls.VersionTLS12}
+	if m.cfg.TLS {
+		tlsConn := tls.Client(conn, tlsConfig)
+		if err := tlsConn.Handshake(); err != nil {
+			return err
+		}
+		conn = tlsConn
+	}
 	client, err := smtp.NewClient(conn, m.cfg.Host)
 	if err != nil {
 		return err
 	}
 	defer client.Close()
+	if !m.cfg.TLS && m.cfg.StartTLS {
+		if err := client.StartTLS(tlsConfig); err != nil {
+			return err
+		}
+	}
 	if auth != nil {
 		if err := client.Auth(auth); err != nil {
 			return err
@@ -80,7 +98,16 @@ func (m *SMTPMailer) sendTLS(addr string, auth smtp.Auth, message servicemail.Me
 	return client.Quit()
 }
 
-func buildMIME(message servicemail.Message) []byte {
+func buildMIME(message servicemail.Message) ([]byte, error) {
+	for name, value := range map[string]string{
+		"from":    message.From,
+		"to":      message.To,
+		"subject": message.Subject,
+	} {
+		if strings.ContainsAny(value, "\r\n") {
+			return nil, fmt.Errorf("smtp message %s header contains newline", name)
+		}
+	}
 	var body bytes.Buffer
 	body.WriteString("From: " + message.From + "\r\n")
 	body.WriteString("To: " + message.To + "\r\n")
@@ -94,5 +121,5 @@ func buildMIME(message servicemail.Message) []byte {
 	body.WriteString("Content-Type: text/html; charset=UTF-8\r\n\r\n")
 	body.WriteString(message.HTMLBody + "\r\n")
 	body.WriteString("--hotkey-daily-report--\r\n")
-	return body.Bytes()
+	return body.Bytes(), nil
 }

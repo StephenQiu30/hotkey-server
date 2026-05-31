@@ -109,7 +109,7 @@ func intOrDefault(key string, fallback int) int {
 		return fallback
 	}
 	parsed, err := strconv.Atoi(value)
-	if err != nil {
+	if err != nil || parsed < 1 || parsed > 65535 {
 		return fallback
 	}
 	return parsed
