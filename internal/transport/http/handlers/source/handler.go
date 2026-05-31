@@ -71,6 +71,7 @@ func (h *Handler) CreateSource(c *gin.Context) {
 		writeServiceError(c, err)
 		return
 	}
+	c.Set("adminAuditResourceID", source.ID)
 	c.JSON(http.StatusCreated, gin.H{"source": sourceResponse(source)})
 }
 
@@ -94,6 +95,7 @@ func (h *Handler) UpdateSource(c *gin.Context) {
 		writeServiceError(c, err)
 		return
 	}
+	c.Set("adminAuditResourceID", source.ID)
 	c.JSON(http.StatusOK, gin.H{"source": sourceResponse(source)})
 }
 
@@ -111,6 +113,7 @@ func (h *Handler) SetSourceStatus(c *gin.Context) {
 		writeServiceError(c, err)
 		return
 	}
+	c.Set("adminAuditResourceID", source.ID)
 	c.JSON(http.StatusOK, gin.H{"source": sourceResponse(source)})
 }
 

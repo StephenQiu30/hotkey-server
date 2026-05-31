@@ -113,6 +113,10 @@ func TestChannelSubscriptionKeywordAndPreferenceHTTPFlow(t *testing.T) {
 }
 
 func transportRouterForTest() http.Handler {
+	return transportRouterWithDependenciesForTest(transporthttp.Dependencies{})
+}
+
+func transportRouterWithDependenciesForTest(deps transporthttp.Dependencies) http.Handler {
 	authRepo := serviceauth.NewMemoryRepository()
 	hash, err := bcrypt.GenerateFromPassword([]byte("correct horse battery staple"), bcrypt.DefaultCost)
 	if err != nil {
@@ -134,8 +138,13 @@ func transportRouterForTest() http.Handler {
 	if err != nil {
 		panic(err)
 	}
-	channelService := servicechannel.NewService(servicechannel.NewMemoryRepository())
-	return transporthttp.NewRouterWithServices(authService, channelService)
+	if deps.AuthService == nil {
+		deps.AuthService = authService
+	}
+	if deps.ChannelService == nil {
+		deps.ChannelService = servicechannel.NewService(servicechannel.NewMemoryRepository())
+	}
+	return transporthttp.NewRouterWithDependencies(deps)
 }
 
 func registerAndLogin(t *testing.T, handler http.Handler, email string) string {

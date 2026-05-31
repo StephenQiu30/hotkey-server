@@ -418,6 +418,104 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CollectionRunResponse"
+  /api/v1/admin/config/status:
+    get:
+      summary: Inspect PostgreSQL, Redis, DashScope, and SMTP configuration status.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Config status. Unavailable or missing dependencies return degraded rather than panic.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigStatusResponse"
+        "403":
+          description: User role cannot access admin config status.
+  /api/v1/admin/audit-logs:
+    get:
+      summary: List recent admin write audit logs.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Audit logs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditLogListResponse"
+  /api/v1/admin/jobs:
+    get:
+      summary: Queue overview by status.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Queue overview.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueOverviewResponse"
+  /api/v1/admin/jobs/failed:
+    get:
+      summary: List failed and dead-letter jobs.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Failed jobs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobListResponse"
+  /api/v1/admin/jobs/{jobID}:
+    get:
+      summary: Read job detail.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/JobID"
+      responses:
+        "200":
+          description: Job detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobResponse"
+        "404":
+          description: Job not found.
+  /api/v1/admin/jobs/{jobID}/retry:
+    post:
+      summary: Retry a failed or dead-letter job.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/JobID"
+      responses:
+        "202":
+          description: Job reset to pending for retry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobResponse"
+  /api/v1/admin/daily-reports/rerun:
+    post:
+      summary: Enqueue a daily report rerun for a date with optional channel and user scope.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DailyReportRerunRequest"
+      responses:
+        "202":
+          description: Rerun job accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobResponse"
 components:
   parameters:
     ChannelID:
@@ -434,6 +532,12 @@ components:
         type: string
     SourceID:
       name: sourceID
+      in: path
+      required: true
+      schema:
+        type: string
+    JobID:
+      name: jobID
       in: path
       required: true
       schema:
@@ -744,3 +848,151 @@ components:
       properties:
         collectionRun:
           $ref: "#/components/schemas/CollectionRun"
+    AuditLog:
+      type: object
+      required:
+        - id
+        - actorId
+        - action
+        - resourceType
+        - result
+        - createdAt
+      properties:
+        id:
+          type: string
+        actorId:
+          type: string
+        action:
+          type: string
+          enum:
+            - create
+            - update
+            - delete
+        resourceType:
+          type: string
+        resourceId:
+          type: string
+        result:
+          type: string
+          enum:
+            - success
+            - failure
+        createdAt:
+          type: string
+          format: date-time
+    AuditLogListResponse:
+      type: object
+      properties:
+        auditLogs:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditLog"
+    ComponentStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+            - degraded
+        reason:
+          type: string
+          description: Uses missing_config when DashScope or SMTP configuration is absent.
+    ConfigStatus:
+      type: object
+      properties:
+        overall:
+          type: string
+          enum:
+            - ok
+            - degraded
+        components:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ComponentStatus"
+    ConfigStatusResponse:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/ConfigStatus"
+    QueueOverview:
+      type: object
+      properties:
+        total:
+          type: integer
+        pending:
+          type: integer
+        running:
+          type: integer
+        scheduled:
+          type: integer
+        succeeded:
+          type: integer
+        failed:
+          type: integer
+        deadLetter:
+          type: integer
+    QueueOverviewResponse:
+      type: object
+      properties:
+        queue:
+          $ref: "#/components/schemas/QueueOverview"
+    Job:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        payload:
+          type: object
+        status:
+          type: string
+          enum:
+            - pending
+            - running
+            - scheduled
+            - succeeded
+            - failed
+            - dead_letter
+        attempt:
+          type: integer
+        maxAttempts:
+          type: integer
+        idempotencyKey:
+          type: string
+        lastError:
+          type: string
+        nextRunAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    JobResponse:
+      type: object
+      properties:
+        job:
+          $ref: "#/components/schemas/Job"
+    JobListResponse:
+      type: object
+      properties:
+        jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/Job"
+    DailyReportRerunRequest:
+      type: object
+      required:
+        - date
+      properties:
+        date:
+          type: string
+          format: date
+        channelId:
+          type: string
+        userId:
+          type: string
