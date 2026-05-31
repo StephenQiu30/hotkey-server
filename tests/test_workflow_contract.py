@@ -38,6 +38,7 @@ class WorkflowContractTest(unittest.TestCase):
             "agent:",
             "codex:",
             "claude:",
+            "cursor:",
         ]:
             self.assertIn(key, front_matter)
 
