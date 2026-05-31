@@ -47,7 +47,7 @@ func (s *Service) GenerateChannelReport(ctx context.Context, input GenerateRepor
 	} else if !errorsIsNotFound(err) {
 		return DailyReport{}, err
 	}
-	hotspots, err := s.gatherHotspotData(ctx, input.ChannelID, "", filter{})
+	hotspots, err := s.gatherHotspotData(ctx, input.ChannelID, filter{})
 	if err != nil {
 		return DailyReport{}, err
 	}
@@ -69,7 +69,7 @@ func (s *Service) GenerateUserReport(ctx context.Context, input GenerateReportIn
 	if err != nil {
 		return DailyReport{}, err
 	}
-	hotspots, err := s.gatherHotspotData(ctx, "", input.UserID, filter{channelIDs: channelIDs, keywords: keywords})
+	hotspots, err := s.gatherHotspotData(ctx, "", filter{channelIDs: channelIDs, keywords: keywords})
 	if err != nil {
 		return DailyReport{}, err
 	}
@@ -86,7 +86,7 @@ func (s *Service) GenerateSummary(ctx context.Context, input GenerateSummaryInpu
 	} else if !errorsIsNotFound(err) {
 		return AISummary{}, err
 	}
-	hotspots, err := s.gatherHotspotData(ctx, "", "", filter{})
+	hotspots, err := s.gatherHotspotData(ctx, "", filter{})
 	if err != nil {
 		return AISummary{}, err
 	}

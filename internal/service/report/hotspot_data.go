@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 type filter struct {
@@ -11,7 +12,7 @@ type filter struct {
 	keywords   []string
 }
 
-func (s *Service) gatherHotspotData(ctx context.Context, channelID string, userID string, f filter) ([]HotspotData, error) {
+func (s *Service) gatherHotspotData(ctx context.Context, channelID string, f filter) ([]HotspotData, error) {
 	if s.clusters == nil {
 		return nil, nil
 	}
@@ -39,12 +40,13 @@ func (s *Service) gatherHotspotData(ctx context.Context, channelID string, userI
 			sourceByID[source.ID] = source
 		}
 	}
+	itemsByCluster, err := s.itemsByCluster(ctx, clusters)
+	if err != nil {
+		return nil, err
+	}
 	result := make([]HotspotData, 0, len(clusters))
 	for _, cluster := range clusters {
-		items, err := s.clusters.ListClusterItems(ctx, cluster.ID)
-		if err != nil {
-			return nil, err
-		}
+		items := itemsByCluster[cluster.ID]
 		data := HotspotData{Cluster: cluster, Score: scoreByCluster[cluster.ID]}
 		seenSource := map[string]struct{}{}
 		for _, item := range items {
@@ -75,6 +77,25 @@ func (s *Service) gatherHotspotData(ctx context.Context, channelID string, userI
 		return result[i].Cluster.UpdatedAt.After(result[j].Cluster.UpdatedAt)
 	})
 	return result, nil
+}
+
+func (s *Service) itemsByCluster(ctx context.Context, clusters []ClusterInfo) (map[string][]ContentItemInfo, error) {
+	ids := make([]string, 0, len(clusters))
+	for _, cluster := range clusters {
+		ids = append(ids, cluster.ID)
+	}
+	if batch, ok := s.clusters.(BatchClusterRepository); ok {
+		return batch.ListClusterItemsByClusterIDs(ctx, ids)
+	}
+	itemsByCluster := make(map[string][]ContentItemInfo, len(clusters))
+	for _, cluster := range clusters {
+		items, err := s.clusters.ListClusterItems(ctx, cluster.ID)
+		if err != nil {
+			return nil, err
+		}
+		itemsByCluster[cluster.ID] = items
+	}
+	return itemsByCluster, nil
 }
 
 func (s *Service) userFilters(ctx context.Context, userID string) ([]string, []string, error) {
@@ -141,11 +162,35 @@ func intersects(left []string, right []string) bool {
 
 func matchesKeywords(cluster ClusterInfo, item ContentItemInfo, keywords []string) bool {
 	text := strings.ToLower(cluster.Title + " " + strings.Join(cluster.Keywords, " ") + " " + item.Title + " " + item.Snippet)
+	tokens := tokenize(text)
 	for _, keyword := range keywords {
 		keyword = strings.ToLower(strings.TrimSpace(keyword))
-		if keyword != "" && strings.Contains(text, keyword) {
+		if keyword == "" {
+			continue
+		}
+		if containsNonASCII(keyword) && strings.Contains(text, keyword) {
 			return true
+		}
+		for _, token := range tokens {
+			if token == keyword {
+				return true
+			}
 		}
 	}
 	return len(keywords) == 0
+}
+
+func tokenize(text string) []string {
+	return strings.FieldsFunc(text, func(r rune) bool {
+		return !(unicode.IsLetter(r) || unicode.IsDigit(r))
+	})
+}
+
+func containsNonASCII(value string) bool {
+	for _, r := range value {
+		if r > unicode.MaxASCII {
+			return true
+		}
+	}
+	return false
 }

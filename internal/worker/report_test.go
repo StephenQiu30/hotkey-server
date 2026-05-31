@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"testing"
 
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
@@ -49,5 +48,3 @@ func (m *mockReportService) GenerateChannelReport(_ context.Context, input servi
 	}
 	return servicereport.DailyReport{ID: "rpt-1"}, nil
 }
-
-var _ = errors.Is

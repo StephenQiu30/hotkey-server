@@ -121,6 +121,10 @@ type ClusterRepository interface {
 	ListClusterItems(context.Context, string) ([]ContentItemInfo, error)
 }
 
+type BatchClusterRepository interface {
+	ListClusterItemsByClusterIDs(context.Context, []string) (map[string][]ContentItemInfo, error)
+}
+
 type ScoreRepository interface {
 	ListScores(context.Context) ([]ScoreInfo, error)
 }

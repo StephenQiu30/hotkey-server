@@ -2,6 +2,7 @@ package report
 
 import (
 	"context"
+	"sort"
 	"sync"
 )
 
@@ -55,6 +56,12 @@ func (r *MemoryReportRepository) ListReportsByDate(_ context.Context, date strin
 			reports = append(reports, cloneReport(report))
 		}
 	}
+	sort.Slice(reports, func(i, j int) bool {
+		if reports[i].CreatedAt.Equal(reports[j].CreatedAt) {
+			return reports[i].ID < reports[j].ID
+		}
+		return reports[i].CreatedAt.Before(reports[j].CreatedAt)
+	})
 	return reports, nil
 }
 
