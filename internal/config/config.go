@@ -26,6 +26,7 @@ type Config struct {
 	EmbeddingModel             string
 	HotspotSimilarityThreshold float64
 	HotspotWindow              time.Duration
+	SMTPHost                   string
 }
 
 func Load() Config {
@@ -41,6 +42,7 @@ func Load() Config {
 		EmbeddingModel:             envOrDefault("HOTKEY_EMBEDDING_MODEL", "text-embedding-v2"),
 		HotspotSimilarityThreshold: floatOrDefault("HOTKEY_HOTSPOT_SIMILARITY_THRESHOLD", 0.82),
 		HotspotWindow:              durationOrDefault("HOTKEY_HOTSPOT_WINDOW", 24*time.Hour),
+		SMTPHost:                   os.Getenv("HOTKEY_SMTP_HOST"),
 	}
 }
 
