@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/config"
+	serviceauth "github.com/StephenQiu30/hotkey-server/internal/service/auth"
 	transporthttp "github.com/StephenQiu30/hotkey-server/internal/transport/http"
 )
 
@@ -16,10 +17,18 @@ type API struct {
 }
 
 func NewAPI(cfg config.Config, logger *slog.Logger) *API {
+	authService, err := serviceauth.NewService(serviceauth.NewMemoryRepository(), serviceauth.Config{
+		AccessTokenSecret: cfg.AuthTokenSecret,
+		AccessTokenTTL:    cfg.AccessTokenTTL,
+		RefreshTokenTTL:   cfg.RefreshTokenTTL,
+	})
+	if err != nil {
+		panic(err)
+	}
 	return &API{
 		server: &http.Server{
 			Addr:              cfg.HTTPAddr,
-			Handler:           transporthttp.NewRouter(),
+			Handler:           transporthttp.NewRouterWithAuth(authService),
 			ReadHeaderTimeout: 5 * time.Second,
 		},
 		logger: logger,
