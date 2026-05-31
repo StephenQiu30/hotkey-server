@@ -59,7 +59,7 @@ func (m *SMTPMailer) send(ctx context.Context, addr string, auth smtp.Auth, mess
 	tlsConfig := &tls.Config{ServerName: m.cfg.Host, MinVersion: tls.VersionTLS12}
 	if m.cfg.TLS {
 		tlsConn := tls.Client(conn, tlsConfig)
-		if err := tlsConn.Handshake(); err != nil {
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
 			return err
 		}
 		conn = tlsConn
