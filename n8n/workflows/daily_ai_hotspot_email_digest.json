@@ -1,0 +1,247 @@
+{
+  "name": "daily_ai_hotspot_email_digest",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.HOTKEY_SERVER_URL || 'http://localhost:8080'}}/api/v1/internal/daily/candidates?date={{ $now.minus({days: 1}).toFormat('yyyy-MM-dd') }}",
+        "options": {},
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-HotKey-Internal-Key",
+              "value": "={{$env.HOTKEY_INTERNAL_API_KEY}}"
+            },
+            {
+              "name": "X-HotKey-Tenant-ID",
+              "value": "={{$env.HOTKEY_DEFAULT_TENANT_ID || 'tenant-default'}}"
+            }
+          ]
+        }
+      },
+      "id": "get-candidates",
+      "name": "Get Daily Candidates",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1'}}/chat/completions",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.DASHSCOPE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $env.DASHSCOPE_CHAT_MODEL || 'qwen-plus' }}\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"你是一位专业的 AI 热点分析师。请根据提供的候选事件数据，生成一份简洁的中文日报。日报格式要求：1) 标题包含日期 2) 按热度排序列出事件 3) 每个事件包含标题、热度分数、可信度分数和关键词 4) 最后给出今日趋势总结。输出纯 Markdown 格式。\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"请为 {{ $now.minus({days: 1}).toFormat('yyyy-MM-dd') }} 生成 AI 热点日报。候选事件数据：{{ JSON.stringify($input.first().json.events || []) }}\"\n    }\n  ],\n  \"temperature\": 0.7,\n  \"max_tokens\": 2000\n}",
+        "options": {}
+      },
+      "id": "ai-generate-report",
+      "name": "AI Generate Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst date = '{{ $now.minus({days: 1}).toFormat(\"yyyy-MM-dd\") }}';\n\nlet markdown = '';\nlet html = '';\n\nif (response.choices && response.choices[0] && response.choices[0].message) {\n  markdown = response.choices[0].message.content;\n  // Convert markdown to basic HTML\n  html = markdown\n    .replace(/^### (.+)$/gm, '<h3>$1</h3>')\n    .replace(/^## (.+)$/gm, '<h2>$1</h2>')\n    .replace(/^# (.+)$/gm, '<h1>$1</h1>')\n    .replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>')\n    .replace(/^- (.+)$/gm, '<li>$1</li>')\n    .replace(/\\n/g, '<br/>');\n} else {\n  markdown = `# AI Hotspot Daily Report - ${date}\\n\\nNo data available.`;\n  html = `<h1>AI Hotspot Daily Report - ${date}</h1><p>No data available.</p>`;\n}\n\nreturn [{\n  json: {\n    date,\n    markdown,\n    html\n  }\n}];"
+      },
+      "id": "format-report",
+      "name": "Format Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.HOTKEY_SERVER_URL || 'http://localhost:8080'}}/api/v1/internal/daily/reports",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"reportDate\": \"{{ $json.date }}\",\n  \"markdown\": {{ JSON.stringify($json.markdown) }},\n  \"html\": {{ JSON.stringify($json.html) }},\n  \"workflowName\": \"daily_ai_hotspot_email_digest\",\n  \"executionId\": \"{{ $runId }}\"\n}",
+        "options": {},
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-HotKey-Internal-Key",
+              "value": "={{$env.HOTKEY_INTERNAL_API_KEY}}"
+            },
+            {
+              "name": "X-HotKey-Tenant-ID",
+              "value": "={{$env.HOTKEY_DEFAULT_TENANT_ID || 'tenant-default'}}"
+            },
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $runId }}-daily-report"
+            }
+          ]
+        }
+      },
+      "id": "save-report",
+      "name": "Save Daily Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.SMTP_FROM || 'HotKey <no-reply@example.com>'}}",
+        "toEmail": "={{$env.DAILY_REPORT_RECIPIENTS || 'admin@example.com'}}",
+        "subject": "=AI Hotspot Daily Report - {{ $now.minus({days: 1}).toFormat('yyyy-MM-dd') }}",
+        "html": "={{ $('Format Report').first().json.html }}",
+        "options": {}
+      },
+      "id": "send-email",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1350, 300],
+      "credentials": {
+        "smtp": {
+          "id": "hotkey-smtp",
+          "name": "HotKey SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{$env.HOTKEY_SERVER_URL || 'http://localhost:8080'}}/api/v1/internal/workflow/status",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"workflowName\": \"daily_ai_hotspot_email_digest\",\n  \"executionId\": \"{{ $runId }}\",\n  \"status\": \"succeeded\",\n  \"runStartedAt\": \"{{ $now.toISO() }}\"\n}",
+        "options": {},
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-HotKey-Internal-Key",
+              "value": "={{$env.HOTKEY_INTERNAL_API_KEY}}"
+            },
+            {
+              "name": "X-HotKey-Tenant-ID",
+              "value": "={{$env.HOTKEY_DEFAULT_TENANT_ID || 'tenant-default'}}"
+            },
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $runId }}-status"
+            }
+          ]
+        }
+      },
+      "id": "report-success",
+      "name": "Report Success",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1570, 300]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Daily Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Daily Candidates": {
+      "main": [
+        [
+          {
+            "node": "AI Generate Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Generate Report": {
+      "main": [
+        [
+          {
+            "node": "Format Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Report": {
+      "main": [
+        [
+          {
+            "node": "Save Daily Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Daily Report": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email": {
+      "main": [
+        [
+          {
+            "node": "Report Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "hotkey",
+      "id": "1"
+    },
+    {
+      "name": "daily-report",
+      "id": "4"
+    }
+  ]
+}

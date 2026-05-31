@@ -1,0 +1,156 @@
+{
+  "name": "signal_source_collector",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.HOTKEY_SERVER_URL || 'http://localhost:8080'}}/api/v1/admin/sources",
+        "options": {},
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-HotKey-Internal-Key",
+              "value": "={{$env.HOTKEY_INTERNAL_API_KEY}}"
+            },
+            {
+              "name": "X-HotKey-Tenant-ID",
+              "value": "={{$env.HOTKEY_DEFAULT_TENANT_ID || 'tenant-default'}}"
+            }
+          ]
+        }
+      },
+      "id": "get-sources",
+      "name": "Get Signal Sources",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.HOTKEY_SERVER_URL || 'http://localhost:8080'}}/api/v1/internal/ingest/contents",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"sourceCode\": \"{{ $json.sourceCode }}\",\n  \"sourceType\": \"propagation\",\n  \"items\": {{ JSON.stringify($json.items) }}\n}",
+        "options": {},
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-HotKey-Internal-Key",
+              "value": "={{$env.HOTKEY_INTERNAL_API_KEY}}"
+            },
+            {
+              "name": "X-HotKey-Tenant-ID",
+              "value": "={{$env.HOTKEY_DEFAULT_TENANT_ID || 'tenant-default'}}"
+            },
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $runId }}-signal-collector"
+            }
+          ]
+        }
+      },
+      "id": "ingest-contents",
+      "name": "Ingest Signal Contents",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.HOTKEY_SERVER_URL || 'http://localhost:8080'}}/api/v1/internal/workflow/status",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"workflowName\": \"signal_source_collector\",\n  \"executionId\": \"{{ $runId }}\",\n  \"status\": \"succeeded\",\n  \"runStartedAt\": \"{{ $now.toISO() }}\"\n}",
+        "options": {},
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-HotKey-Internal-Key",
+              "value": "={{$env.HOTKEY_INTERNAL_API_KEY}}"
+            },
+            {
+              "name": "X-HotKey-Tenant-ID",
+              "value": "={{$env.HOTKEY_DEFAULT_TENANT_ID || 'tenant-default'}}"
+            },
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $runId }}-status"
+            }
+          ]
+        }
+      },
+      "id": "report-success",
+      "name": "Report Success",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 300]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Signal Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Signal Sources": {
+      "main": [
+        [
+          {
+            "node": "Ingest Signal Contents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingest Signal Contents": {
+      "main": [
+        [
+          {
+            "node": "Report Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "hotkey",
+      "id": "1"
+    },
+    {
+      "name": "signal-source",
+      "id": "3"
+    }
+  ]
+}
