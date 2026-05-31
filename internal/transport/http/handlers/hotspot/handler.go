@@ -140,6 +140,8 @@ func paginateScores(scores []servicehotspot.HotspotScore, limit int, offset int)
 }
 
 func scoreResponse(score servicehotspot.HotspotScore) gin.H {
+	channelIDs := append([]string{}, score.ChannelIDs...)
+	sourceRefs := append([]servicehotspot.SourceRef{}, score.SourceRefs...)
 	return gin.H{
 		"id":               score.ID,
 		"clusterId":        score.ClusterID,
@@ -151,8 +153,8 @@ func scoreResponse(score servicehotspot.HotspotScore) gin.H {
 		"qualityScore":     score.QualityScore,
 		"explanation":      score.Explanation,
 		"scoreVersion":     score.ScoreVersion,
-		"channelIDs":       score.ChannelIDs,
-		"sourceRefs":       score.SourceRefs,
+		"channelIDs":       channelIDs,
+		"sourceRefs":       sourceRefs,
 		"createdAt":        score.CreatedAt,
 		"updatedAt":        score.UpdatedAt,
 	}

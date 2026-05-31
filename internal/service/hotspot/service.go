@@ -102,6 +102,7 @@ func (s *Service) Cluster(ctx context.Context, window Window) (Result, error) {
 					SourceID:   candidate.Item.SourceID,
 					Title:      candidate.Item.Title,
 					URL:        candidate.Item.CanonicalURL,
+					ChannelIDs: append([]string(nil), candidate.Item.ChannelIDs...),
 					Similarity: 1,
 					CreatedAt:  s.now().UTC(),
 				}},
@@ -117,6 +118,7 @@ func (s *Service) Cluster(ctx context.Context, window Window) (Result, error) {
 			SourceID:   candidate.Item.SourceID,
 			Title:      candidate.Item.Title,
 			URL:        candidate.Item.CanonicalURL,
+			ChannelIDs: append([]string(nil), candidate.Item.ChannelIDs...),
 			Similarity: bestSimilarity,
 			CreatedAt:  s.now().UTC(),
 		})

@@ -35,6 +35,7 @@ type SourceItem struct {
 	Snippet           string
 	RawURL            string
 	CanonicalURL      string
+	ChannelIDs        []string
 	PublishedAt       *time.Time
 	ContentHash       string
 	Language          string

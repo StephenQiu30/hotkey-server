@@ -81,8 +81,8 @@ func (r *MemoryScoreRepository) FindScoreByClusterID(_ context.Context, clusterI
 }
 
 func cloneScore(score HotspotScore) HotspotScore {
-	score.ChannelIDs = append([]string(nil), score.ChannelIDs...)
-	score.SourceRefs = append([]SourceRef(nil), score.SourceRefs...)
+	score.ChannelIDs = append([]string{}, score.ChannelIDs...)
+	score.SourceRefs = append([]SourceRef{}, score.SourceRefs...)
 	return score
 }
 

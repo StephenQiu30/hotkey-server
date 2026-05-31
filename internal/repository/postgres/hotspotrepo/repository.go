@@ -88,6 +88,11 @@ func (r *Repository) ListCandidates(ctx context.Context, start time.Time, end ti
 	const query = `
 SELECT
 	i.id, i.source_id, i.title, i.snippet, i.raw_url, i.canonical_url, i.published_at, i.content_hash, i.language, i.status, COALESCE(i.duplicate_of_item_id, ''), i.created_at, i.updated_at,
+	COALESCE((
+		SELECT string_agg(scl.channel_id, ',' ORDER BY scl.channel_id)
+		FROM source_channel_links scl
+		WHERE scl.source_id = i.source_id
+	), '') AS channel_ids,
 	e.item_id, e.model, e.embedding::text, e.text_hash, e.status, COALESCE(e.last_error, ''), e.created_at, e.updated_at
 FROM source_items i
 JOIN item_embeddings e ON e.item_id = i.id
@@ -104,15 +109,18 @@ ORDER BY COALESCE(i.published_at, i.created_at), i.id`
 	for rows.Next() {
 		var candidate hotspot.Candidate
 		var duplicateOf string
+		var channelIDs string
 		var embeddingStatus string
 		var vectorText string
 		if err := rows.Scan(
 			&candidate.Item.ID, &candidate.Item.SourceID, &candidate.Item.Title, &candidate.Item.Snippet, &candidate.Item.RawURL, &candidate.Item.CanonicalURL, &candidate.Item.PublishedAt, &candidate.Item.ContentHash, &candidate.Item.Language, &candidate.Item.Status, &duplicateOf, &candidate.Item.CreatedAt, &candidate.Item.UpdatedAt,
+			&channelIDs,
 			&candidate.Embedding.ItemID, &candidate.Embedding.Model, &vectorText, &candidate.Embedding.TextHash, &embeddingStatus, &candidate.Embedding.LastError, &candidate.Embedding.CreatedAt, &candidate.Embedding.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
 		candidate.Item.DuplicateOfItemID = duplicateOf
+		candidate.Item.ChannelIDs = splitChannelIDs(channelIDs)
 		candidate.Embedding.Status = hotspot.EmbeddingStatus(embeddingStatus)
 		vector, err := parseVectorLiteral(vectorText)
 		if err != nil {
@@ -153,6 +161,21 @@ VALUES ($1, $2, $3, $4)
 		}
 	}
 	return tx.Commit()
+}
+
+func splitChannelIDs(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	channelIDs := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			channelIDs = append(channelIDs, part)
+		}
+	}
+	return channelIDs
 }
 
 func vectorLiteral(vector []float64) string {

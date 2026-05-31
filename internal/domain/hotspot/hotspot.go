@@ -233,6 +233,7 @@ func cloneCluster(cluster Cluster) Cluster {
 }
 
 func cloneItem(item content.SourceItem) content.SourceItem {
+	item.ChannelIDs = append([]string(nil), item.ChannelIDs...)
 	if item.PublishedAt != nil {
 		publishedAt := *item.PublishedAt
 		item.PublishedAt = &publishedAt

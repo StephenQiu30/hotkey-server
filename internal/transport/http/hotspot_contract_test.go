@@ -130,6 +130,34 @@ func TestHotspotDetailReturnsSourceRefs(t *testing.T) {
 	assertJSONField(t, response.Body.Bytes(), "sourceRefs.0.url", "https://example.com/agent")
 }
 
+func TestHotspotResponseSerializesEmptyArrayFields(t *testing.T) {
+	router := hotspotRouterWithScores(t, servicehotspot.HotspotScore{
+		ID: "score-empty-metadata", ClusterID: "cluster-empty-metadata", TotalScore: 0.42,
+		CreatedAt: time.Date(2026, 5, 31, 10, 0, 0, 0, time.UTC),
+		UpdatedAt: time.Date(2026, 5, 31, 10, 0, 0, 0, time.UTC),
+	})
+	userToken := registerAndLogin(t, router, "hotspot-empty-arrays@example.com")
+
+	response := getWithBearer(router, "/api/v1/hotspots/cluster-empty-metadata", userToken)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected hotspot detail 200, got %d with body %s", response.Code, response.Body.String())
+	}
+
+	var body struct {
+		ChannelIDs []string                   `json:"channelIDs"`
+		SourceRefs []servicehotspot.SourceRef `json:"sourceRefs"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON %s: %v", response.Body.String(), err)
+	}
+	if body.ChannelIDs == nil {
+		t.Fatalf("expected channelIDs to serialize as [], got %s", response.Body.String())
+	}
+	if body.SourceRefs == nil {
+		t.Fatalf("expected sourceRefs to serialize as [], got %s", response.Body.String())
+	}
+}
+
 func TestHotspotListDefaultSortedByTotalScoreDescending(t *testing.T) {
 	router := transportRouterForTest()
 	userToken := registerAndLogin(t, router, "hotspot-sort@example.com")
