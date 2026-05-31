@@ -28,10 +28,10 @@ agent:
 codex:
   command: codex --config shell_environment_policy.inherit=all app-server
   approval_policy: never
-  thread_sandbox: workspace-write
+  thread_sandbox: danger-full-access
   read_timeout_ms: 30000
   turn_sandbox_policy:
-    type: workspaceWrite
+    type: dangerFullAccess
 ---
 
 You are working on a Linear ticket `{{ issue.identifier }}`
