@@ -51,6 +51,7 @@ type HashInput struct {
 }
 
 type Repository interface {
+	FindByID(context.Context, string) (SourceItem, error)
 	FindByCanonicalURL(context.Context, string) (SourceItem, error)
 	FindByContentHash(context.Context, string) (SourceItem, error)
 	Create(context.Context, SourceItem) (SourceItem, error)
@@ -177,6 +178,16 @@ func (r *MemoryRepository) FindByCanonicalURL(_ context.Context, canonicalURL st
 		return SourceItem{}, ErrNotFound
 	}
 	return cloneItem(r.items[id]), nil
+}
+
+func (r *MemoryRepository) FindByID(_ context.Context, id string) (SourceItem, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	item, exists := r.items[id]
+	if !exists {
+		return SourceItem{}, ErrNotFound
+	}
+	return cloneItem(item), nil
 }
 
 func (r *MemoryRepository) FindByContentHash(_ context.Context, contentHash string) (SourceItem, error) {

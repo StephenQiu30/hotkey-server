@@ -9,8 +9,11 @@ import (
 	"strings"
 	"time"
 
+	domainhotspot "github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/fetcher"
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
+	serviceembedding "github.com/StephenQiu30/hotkey-server/internal/service/embedding"
+	servicehotspot "github.com/StephenQiu30/hotkey-server/internal/service/hotspot"
 	"github.com/StephenQiu30/hotkey-server/internal/service/ingest"
 	servicesource "github.com/StephenQiu30/hotkey-server/internal/service/source"
 )
@@ -151,6 +154,14 @@ type IngestService interface {
 	Ingest(context.Context, CollectIngestInput) (ingest.Result, error)
 }
 
+type EmbeddingService interface {
+	Generate(context.Context, string) (domainhotspot.Embedding, error)
+}
+
+type HotspotClusterService interface {
+	Cluster(context.Context, servicehotspot.Window) (servicehotspot.Result, error)
+}
+
 type CollectSourceHandler struct {
 	sourceService SourceService
 	fetcher       SourceFetcher
@@ -220,4 +231,49 @@ func (h *CollectSourceHandler) recordRun(ctx context.Context, sourceID string, s
 		StartedAt:    startedAt,
 		FinishedAt:   h.now().UTC(),
 	})
+}
+
+type GenerateEmbeddingHandler struct {
+	service EmbeddingService
+}
+
+func NewGenerateEmbeddingHandler(service EmbeddingService) *GenerateEmbeddingHandler {
+	return &GenerateEmbeddingHandler{service: service}
+}
+
+func (h *GenerateEmbeddingHandler) Handle(ctx context.Context, job queue.Job) error {
+	var payload queue.GenerateEmbeddingPayload
+	if err := json.Unmarshal(job.Payload, &payload); err != nil {
+		return err
+	}
+	if payload.ItemID == "" {
+		return errors.New("generate_embedding payload missing item_id")
+	}
+	if _, err := h.service.Generate(ctx, payload.ItemID); err != nil {
+		if errors.Is(err, serviceembedding.ErrFailedConfig) {
+			return serviceembedding.ErrFailedConfig
+		}
+		return err
+	}
+	return nil
+}
+
+type ClusterHotspotsHandler struct {
+	service HotspotClusterService
+}
+
+func NewClusterHotspotsHandler(service HotspotClusterService) *ClusterHotspotsHandler {
+	return &ClusterHotspotsHandler{service: service}
+}
+
+func (h *ClusterHotspotsHandler) Handle(ctx context.Context, job queue.Job) error {
+	var payload queue.ClusterHotspotsPayload
+	if err := json.Unmarshal(job.Payload, &payload); err != nil {
+		return err
+	}
+	if payload.WindowStart.IsZero() || payload.WindowEnd.IsZero() || !payload.WindowEnd.After(payload.WindowStart) {
+		return errors.New("cluster_hotspots payload missing valid window")
+	}
+	_, err := h.service.Cluster(ctx, servicehotspot.Window{Start: payload.WindowStart, End: payload.WindowEnd})
+	return err
 }

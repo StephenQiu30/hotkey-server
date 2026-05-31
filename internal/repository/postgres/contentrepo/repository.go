@@ -16,6 +16,18 @@ func New(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
+func (r *Repository) FindByID(ctx context.Context, id string) (content.SourceItem, error) {
+	const query = `
+SELECT id, source_id, title, snippet, raw_url, canonical_url, published_at, content_hash, language, status, duplicate_of_item_id, created_at, updated_at
+FROM source_items
+WHERE id = $1`
+	item, err := scanItem(r.db.QueryRowContext(ctx, query, id))
+	if err != nil {
+		return content.SourceItem{}, normalizeDBError(err)
+	}
+	return item, nil
+}
+
 func (r *Repository) FindByCanonicalURL(ctx context.Context, canonicalURL string) (content.SourceItem, error) {
 	const query = `
 SELECT id, source_id, title, snippet, raw_url, canonical_url, published_at, content_hash, language, status, duplicate_of_item_id, created_at, updated_at

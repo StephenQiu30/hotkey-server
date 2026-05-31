@@ -164,6 +164,13 @@ func (r *canonicalRaceRepository) FindByCanonicalURL(_ context.Context, canonica
 	return content.SourceItem{}, content.ErrNotFound
 }
 
+func (r *canonicalRaceRepository) FindByID(_ context.Context, id string) (content.SourceItem, error) {
+	if id == r.existing.ID {
+		return r.existing, nil
+	}
+	return content.SourceItem{}, content.ErrNotFound
+}
+
 func (r *canonicalRaceRepository) FindByContentHash(_ context.Context, contentHash string) (content.SourceItem, error) {
 	if contentHash == r.existing.ContentHash {
 		return r.existing, nil
