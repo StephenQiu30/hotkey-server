@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -106,11 +107,15 @@ func assertPanic(t *testing.T, fn func()) {
 }
 
 type flakyProducer struct {
+	mu           sync.Mutex
 	failuresLeft int
 	successCount int
 }
 
 func (p *flakyProducer) Enqueue(_ context.Context, req queue.EnqueueRequest) (queue.Job, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	if p.failuresLeft > 0 {
 		p.failuresLeft--
 		return queue.Job{}, errors.New("temporary enqueue failure")
@@ -120,5 +125,8 @@ func (p *flakyProducer) Enqueue(_ context.Context, req queue.EnqueueRequest) (qu
 }
 
 func (p *flakyProducer) successes() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	return p.successCount
 }
