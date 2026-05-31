@@ -46,7 +46,7 @@ class ChannelContractTest(unittest.TestCase):
             "Keyword:",
             "DailySendAtRequest:",
             "channel_disabled",
-            "already_exists",
+            "channel_slug_already_exists",
         ]:
             self.assertIn(schema, spec)
 

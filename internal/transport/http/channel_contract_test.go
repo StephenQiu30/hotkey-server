@@ -109,7 +109,7 @@ func TestChannelSubscriptionKeywordAndPreferenceHTTPFlow(t *testing.T) {
 	if duplicateChannel.Code != http.StatusConflict {
 		t.Fatalf("expected duplicate admin channel create 409, got %d with body %s", duplicateChannel.Code, duplicateChannel.Body.String())
 	}
-	assertJSONField(t, duplicateChannel.Body.Bytes(), "error.code", "already_exists")
+	assertJSONField(t, duplicateChannel.Body.Bytes(), "error.code", "channel_slug_already_exists")
 }
 
 func transportRouterForTest() http.Handler {

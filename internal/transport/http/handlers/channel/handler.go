@@ -311,7 +311,7 @@ func writeServiceError(c *gin.Context, err error) {
 	case errors.Is(err, servicechannel.ErrNotFound):
 		writeError(c, http.StatusNotFound, "not_found", "not found")
 	case errors.Is(err, servicechannel.ErrAlreadyExists):
-		writeError(c, http.StatusConflict, "already_exists", "already exists")
+		writeError(c, http.StatusConflict, "channel_slug_already_exists", "channel slug already exists")
 	case errors.Is(err, servicechannel.ErrChannelDisabled):
 		writeError(c, http.StatusConflict, "channel_disabled", "channel disabled")
 	default:

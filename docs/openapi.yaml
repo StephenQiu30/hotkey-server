@@ -262,8 +262,8 @@ paths:
                 duplicate:
                   value:
                     error:
-                      code: already_exists
-                      message: already exists
+                      code: channel_slug_already_exists
+                      message: channel slug already exists
   /api/v1/admin/channels/{channelID}:
     patch:
       summary: Update a channel or set channel status.
