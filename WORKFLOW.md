@@ -243,6 +243,9 @@ Use this only when completion is blocked by missing required tools or missing au
 9. Merge latest `origin/main` into branch, resolve conflicts, and rerun checks.
 10. Update the workpad comment with final checklist status and validation notes.
     - Mark completed plan/acceptance/validation checklist items as checked.
+    - Re-read the issue description, issue checklist/Plan, and the live workpad checklist before editing final status.
+    - Every checked item must correspond to completed evidence; never check an item only because it is planned or partially done.
+    - If any issue-level or workpad checklist item is still unchecked, add it to `### Remaining Items` and do not move to `Human Review`.
     - Add final handoff notes (commit + validation summary) in the same workpad comment.
     - Do not include PR URL in the workpad comment; keep PR linkage on the issue via attachment/link fields.
     - Add a short `### Confusions` section at the bottom when any part of task execution was unclear/confusing, with concise bullets.
@@ -250,7 +253,9 @@ Use this only when completion is blocked by missing required tools or missing au
 11. Before moving to `Human Review`, poll PR feedback and checks:
     - Run the full PR feedback sweep protocol.
     - Confirm PR checks are passing (green) after the latest changes.
+    - Confirm every issue description checkbox, issue Plan checkbox, workpad `Plan`, workpad `Acceptance Criteria`, and workpad `Validation` checkbox is complete.
     - Confirm every required ticket-provided validation/test-plan item is explicitly marked complete in the workpad.
+    - If any required checkbox remains unchecked or lacks evidence, continue implementation or move to `Rework`; do not move to `Human Review`.
     - Repeat this check-address-verify loop until no outstanding comments remain and checks are fully passing.
     - Re-open and refresh the workpad before state transition so `Plan`, `Acceptance Criteria`, and `Validation` exactly match completed work.
 12. Only then move issue to `Human Review`.
@@ -283,8 +288,11 @@ Use this only when completion is blocked by missing required tools or missing au
 
 ## Completion bar before Human Review
 
+- Hard gate: issue-level Plan/checklist items and workpad checklist items have zero unchecked required items.
 - Step 1/2 checklist is fully complete and accurately reflected in the single workpad comment.
 - Acceptance criteria and required ticket-provided validation items are complete.
+- Each completed checkbox has concrete evidence in `Validation`, `Notes`, commit diff, or PR checks.
+- If any item is intentionally out of scope, create/link a follow-up Backlog issue and record why it is not required for this ticket before considering it complete.
 - Validation/tests are green for the latest commit.
 - PR feedback sweep is complete and no actionable comments remain.
 - PR checks are green, branch is pushed, and PR is linked on the issue.
