@@ -5,11 +5,22 @@ import (
 	"time"
 )
 
+type RuntimeMode string
+
+const (
+	RuntimeModeAll    RuntimeMode = "all"
+	RuntimeModeAPI    RuntimeMode = "api"
+	RuntimeModeWorker RuntimeMode = "worker"
+)
+
 type Config struct {
 	HTTPAddr        string
 	AuthTokenSecret string
 	AccessTokenTTL  time.Duration
 	RefreshTokenTTL time.Duration
+	RedisURL        string
+	RuntimeMode     RuntimeMode
+	CollectSourceID string
 }
 
 func Load() Config {
@@ -18,6 +29,22 @@ func Load() Config {
 		AuthTokenSecret: os.Getenv("HOTKEY_AUTH_TOKEN_SECRET"),
 		AccessTokenTTL:  durationOrDefault("HOTKEY_AUTH_ACCESS_TOKEN_TTL", 15*time.Minute),
 		RefreshTokenTTL: durationOrDefault("HOTKEY_AUTH_REFRESH_TOKEN_TTL", 30*24*time.Hour),
+		RedisURL:        envOrDefault("HOTKEY_REDIS_URL", "redis://127.0.0.1:6379/0"),
+		RuntimeMode:     parseRuntimeMode(os.Getenv("HOTKEY_RUNTIME_MODE")),
+		CollectSourceID: envOrDefault("HOTKEY_COLLECT_SOURCE_ID", "default"),
+	}
+}
+
+func parseRuntimeMode(value string) RuntimeMode {
+	switch RuntimeMode(value) {
+	case RuntimeModeAPI:
+		return RuntimeModeAPI
+	case RuntimeModeWorker:
+		return RuntimeModeWorker
+	case RuntimeModeAll:
+		return RuntimeModeAll
+	default:
+		return RuntimeModeAll
 	}
 }
 

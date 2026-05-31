@@ -2,12 +2,12 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/config"
-	serviceauth "github.com/StephenQiu30/hotkey-server/internal/service/auth"
 	transporthttp "github.com/StephenQiu30/hotkey-server/internal/transport/http"
 )
 
@@ -17,27 +17,42 @@ type API struct {
 }
 
 func NewAPI(cfg config.Config, logger *slog.Logger) *API {
-	authService, err := serviceauth.NewService(serviceauth.NewMemoryRepository(), serviceauth.Config{
-		AccessTokenSecret: cfg.AuthTokenSecret,
-		AccessTokenTTL:    cfg.AccessTokenTTL,
-		RefreshTokenTTL:   cfg.RefreshTokenTTL,
-	})
-	if err != nil {
-		panic(err)
-	}
 	return &API{
 		server: &http.Server{
 			Addr:              cfg.HTTPAddr,
-			Handler:           transporthttp.NewRouterWithAuth(authService),
+			Handler:           transporthttp.NewRouter(),
 			ReadHeaderTimeout: 5 * time.Second,
 		},
 		logger: logger,
 	}
 }
 
-func (api *API) Run() error {
+func (api *API) Run(ctx context.Context) error {
 	api.logger.Info("starting hotkey api", "addr", api.server.Addr)
-	return api.server.ListenAndServe()
+	errs := make(chan error, 1)
+	go func() {
+		errs <- api.server.ListenAndServe()
+	}()
+
+	select {
+	case err := <-errs:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		shutdownErr := api.server.Shutdown(shutdownCtx)
+		listenErr := <-errs
+		if shutdownErr != nil && !errors.Is(shutdownErr, http.ErrServerClosed) {
+			return errors.Join(ctx.Err(), shutdownErr)
+		}
+		if listenErr != nil && !errors.Is(listenErr, http.ErrServerClosed) {
+			return errors.Join(ctx.Err(), listenErr)
+		}
+		return ctx.Err()
+	}
 }
 
 func (api *API) Shutdown(ctx context.Context) error {

@@ -74,7 +74,10 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("Do not use GitHub MCP/Connector tools", body)
         self.assertIn("interactive connector approval prompts", body)
         self.assertIn("gh pr create --repo StephenQiu30/hotkey-server", body)
+        self.assertIn("gh pr edit <number> --repo StephenQiu30/hotkey-server --add-label symphony", body)
+        self.assertIn("gh pr view <number> --repo StephenQiu30/hotkey-server --json", body)
         self.assertIn("gh pr checks <number> --repo StephenQiu30/hotkey-server", body)
+        self.assertIn("gh api repos/StephenQiu30/hotkey-server/pulls/<number>/comments", body)
 
     def test_prd_and_plan_numbers_are_contiguous_and_paired(self):
         prds = numbered_markdown_files(PRD_DIR)
