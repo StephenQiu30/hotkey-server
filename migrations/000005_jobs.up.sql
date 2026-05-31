@@ -3,8 +3,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     job_type text NOT NULL,
     payload jsonb NOT NULL,
     status text NOT NULL,
-    attempt integer NOT NULL DEFAULT 0,
-    max_attempts integer NOT NULL DEFAULT 3,
+    attempt integer NOT NULL DEFAULT 0 CHECK (attempt >= 0),
+    max_attempts integer NOT NULL DEFAULT 3 CHECK (max_attempts > 0),
     idempotency_key text NOT NULL,
     last_error text,
     scheduled_at timestamptz NOT NULL DEFAULT now(),
@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     finished_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (idempotency_key)
+    UNIQUE (idempotency_key),
+    CHECK (attempt <= max_attempts)
 );
 
 CREATE INDEX IF NOT EXISTS idx_jobs_status_scheduled_at

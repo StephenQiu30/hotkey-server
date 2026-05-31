@@ -127,6 +127,10 @@ func (q *MemoryQueue) Claim(_ context.Context) (Job, error) {
 }
 
 func (q *MemoryQueue) Fail(_ context.Context, id string, err error) (Job, error) {
+	if err == nil {
+		return Job{}, errors.New("job failure error is required")
+	}
+
 	q.mu.Lock()
 	defer q.mu.Unlock()
 

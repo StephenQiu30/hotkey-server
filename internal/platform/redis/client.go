@@ -27,6 +27,9 @@ func NewClient(rawURL string, opts Options) *Client {
 	addr := rawURL
 	if parsed, err := url.Parse(rawURL); err == nil && parsed.Host != "" {
 		addr = parsed.Host
+		if _, _, splitErr := net.SplitHostPort(addr); splitErr != nil {
+			addr = net.JoinHostPort(addr, "6379")
+		}
 	}
 	timeout := opts.DialTimeout
 	if timeout <= 0 {
@@ -63,6 +66,11 @@ func (c *Client) Get(ctx context.Context, key string) ([]byte, error) {
 	return c.do(ctx, "GET", key)
 }
 
+func (c *Client) Del(ctx context.Context, key string) error {
+	_, err := c.do(ctx, "DEL", key)
+	return err
+}
+
 func (c *Client) LPush(ctx context.Context, key string, value []byte) error {
 	_, err := c.do(ctx, "LPUSH", key, string(value))
 	return err
@@ -81,7 +89,9 @@ func (c *Client) do(ctx context.Context, args ...string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 
 	if deadline, ok := ctx.Deadline(); ok {
 		if err := conn.SetDeadline(deadline); err != nil {

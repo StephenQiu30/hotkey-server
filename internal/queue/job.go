@@ -112,6 +112,9 @@ func ValidatePayload(jobType JobType, payload json.RawMessage) error {
 		if body.Date == "" {
 			return errors.New("generate_daily_report payload requires date")
 		}
+		if _, err := time.Parse("2006-01-02", body.Date); err != nil {
+			return errors.New("generate_daily_report payload requires date in YYYY-MM-DD format")
+		}
 	case JobTypeSendDailyEmail:
 		var body SendDailyEmailPayload
 		if err := json.Unmarshal(payload, &body); err != nil {

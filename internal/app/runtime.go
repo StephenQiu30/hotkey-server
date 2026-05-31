@@ -79,7 +79,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 
 	for err := range errs {
 		if err != nil {
-			return err
+			runErr = errors.Join(runErr, err)
 		}
 	}
 	return runErr

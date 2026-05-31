@@ -47,6 +47,14 @@ func (s *fakeRedisStore) Get(_ context.Context, key string) ([]byte, error) {
 	return append([]byte(nil), s.values[key]...), nil
 }
 
+func (s *fakeRedisStore) Del(_ context.Context, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.values, key)
+	delete(s.lists, key)
+	return nil
+}
+
 func (s *fakeRedisStore) LPush(_ context.Context, key string, value []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

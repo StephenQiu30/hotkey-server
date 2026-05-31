@@ -11,6 +11,7 @@ import (
 type RedisStore interface {
 	Set(context.Context, string, []byte) error
 	SetNX(context.Context, string, []byte) (bool, error)
+	Del(context.Context, string) error
 	Get(context.Context, string) ([]byte, error)
 	LPush(context.Context, string, []byte) error
 	RPop(context.Context, string) ([]byte, error)
@@ -102,9 +103,12 @@ func (q *RedisQueue) Enqueue(ctx context.Context, req EnqueueRequest) (Job, erro
 		return existingJob, nil
 	}
 	if err := q.store.Set(ctx, q.jobKey(job.ID), body); err != nil {
+		_ = q.store.Del(ctx, idempotencyKey)
 		return Job{}, err
 	}
 	if err := q.store.LPush(ctx, q.queueName, body); err != nil {
+		_ = q.store.Del(ctx, q.jobKey(job.ID))
+		_ = q.store.Del(ctx, idempotencyKey)
 		return Job{}, err
 	}
 	return job, nil
@@ -113,6 +117,9 @@ func (q *RedisQueue) Enqueue(ctx context.Context, req EnqueueRequest) (Job, erro
 func (q *RedisQueue) Claim(ctx context.Context) (Job, error) {
 	body, err := q.store.RPop(ctx, q.queueName)
 	if err != nil {
+		if err.Error() == "redis nil reply" {
+			return Job{}, ErrNoJobs
+		}
 		return Job{}, err
 	}
 	var job Job
@@ -135,6 +142,10 @@ func (q *RedisQueue) Claim(ctx context.Context) (Job, error) {
 }
 
 func (q *RedisQueue) Fail(ctx context.Context, id string, err error) (Job, error) {
+	if err == nil {
+		return Job{}, errors.New("job failure error is required")
+	}
+
 	body, getErr := q.store.Get(ctx, q.jobKey(id))
 	if getErr != nil {
 		return Job{}, getErr

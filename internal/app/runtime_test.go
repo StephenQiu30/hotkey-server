@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/StephenQiu30/hotkey-server/internal/config"
@@ -10,6 +11,33 @@ import (
 type runtimeComponent struct {
 	starts    int
 	shutdowns int
+}
+
+type failingRuntimeComponent struct {
+	err error
+}
+
+func (c *failingRuntimeComponent) Run(context.Context) error {
+	return c.err
+}
+
+func (c *failingRuntimeComponent) Shutdown(context.Context) error {
+	return nil
+}
+
+func TestRuntimeRunJoinsComponentErrors(t *testing.T) {
+	errA := errors.New("api failed")
+	errB := errors.New("worker failed")
+	runtime := NewRuntime(config.Config{RuntimeMode: config.RuntimeModeAll}, RuntimeComponents{
+		API:       &failingRuntimeComponent{err: errA},
+		Worker:    &failingRuntimeComponent{err: errB},
+		Scheduler: &runtimeComponent{},
+	})
+
+	err := runtime.Run(context.Background())
+	if !errors.Is(err, errA) || !errors.Is(err, errB) {
+		t.Fatalf("expected joined errors containing %v and %v, got %v", errA, errB, err)
+	}
 }
 
 func (c *runtimeComponent) Run(context.Context) error {

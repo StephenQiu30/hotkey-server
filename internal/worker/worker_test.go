@@ -22,7 +22,8 @@ func TestNewRejectsNilQueueAndDefaultsLogger(t *testing.T) {
 
 func TestWorkerCompletesClaimedPlaceholderJob(t *testing.T) {
 	jobQueue := &claimOnceQueue{
-		job: queue.Job{ID: "job-1", Type: queue.JobTypeCollectSource},
+		job:       queue.Job{ID: "job-1", Type: queue.JobTypeCollectSource},
+		completed: make(chan struct{}),
 	}
 	worker := New(jobQueue, nil, slog.Default())
 	ctx, cancel := context.WithCancel(context.Background())
@@ -33,16 +34,13 @@ func TestWorkerCompletesClaimedPlaceholderJob(t *testing.T) {
 		done <- worker.Run(ctx)
 	}()
 
-	deadline := time.After(time.Second)
-	for !jobQueue.completed {
-		select {
-		case err := <-done:
-			t.Fatalf("worker exited before completing job: %v", err)
-		case <-deadline:
-			t.Fatal("worker did not complete claimed job")
-		default:
-			time.Sleep(time.Millisecond)
-		}
+	deadline := time.After(2 * time.Second)
+	select {
+	case <-jobQueue.completed:
+	case err := <-done:
+		t.Fatalf("worker exited before completing job: %v", err)
+	case <-deadline:
+		t.Fatal("worker did not complete claimed job")
 	}
 	cancel()
 	<-done
@@ -51,7 +49,7 @@ func TestWorkerCompletesClaimedPlaceholderJob(t *testing.T) {
 type claimOnceQueue struct {
 	job       queue.Job
 	claimed   bool
-	completed bool
+	completed chan struct{}
 }
 
 func (q *claimOnceQueue) Claim(context.Context) (queue.Job, error) {
@@ -66,7 +64,7 @@ func (q *claimOnceQueue) Complete(_ context.Context, id string) (queue.Job, erro
 	if id != q.job.ID {
 		return queue.Job{}, queue.ErrNoJobs
 	}
-	q.completed = true
+	close(q.completed)
 	q.job.Status = queue.JobStatusSucceeded
 	return q.job, nil
 }
