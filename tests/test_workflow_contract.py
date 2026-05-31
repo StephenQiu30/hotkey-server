@@ -30,7 +30,16 @@ class WorkflowContractTest(unittest.TestCase):
         front_matter = text.split("---\n", 2)[1]
         body = text.split("---\n", 2)[2].strip()
 
-        for key in ["tracker:", "polling:", "workspace:", "hooks:", "agent:", "codex:", "claude:", "cursor:"]:
+        for key in [
+            "tracker:",
+            "polling:",
+            "workspace:",
+            "hooks:",
+            "agent:",
+            "codex:",
+            "claude:",
+            "cursor:",
+        ]:
             self.assertIn(key, front_matter)
 
         self.assertIn("kind: linear", front_matter)
