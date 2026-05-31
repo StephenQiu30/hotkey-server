@@ -16,13 +16,13 @@ func TestScoreMultiSourceHigherThanSingleLowQuality(t *testing.T) {
 	// Multi-source cluster: 3 items from different sources
 	for i, srcID := range []string{"src-a", "src-b", "src-c"} {
 		item := content.SourceItem{
-			ID:         "item-multi-" + string(rune('a'+i)),
-			SourceID:   srcID,
-			Title:      "OpenAI 发布新模型",
-			Snippet:    "模型推理能力大幅提升",
+			ID:          "item-multi-" + string(rune('a'+i)),
+			SourceID:    srcID,
+			Title:       "OpenAI 发布新模型",
+			Snippet:     "模型推理能力大幅提升",
 			PublishedAt: &now,
-			CreatedAt:  now,
-			UpdatedAt:  now,
+			CreatedAt:   now,
+			UpdatedAt:   now,
 		}
 		if err := repo.SaveItem(context.Background(), item); err != nil {
 			t.Fatal(err)
@@ -39,13 +39,13 @@ func TestScoreMultiSourceHigherThanSingleLowQuality(t *testing.T) {
 
 	// Single-source cluster: 1 item from one source
 	singleItem := content.SourceItem{
-		ID:         "item-single",
-		SourceID:   "src-x",
-		Title:      "小道消息",
-		Snippet:    "未确认传闻",
+		ID:          "item-single",
+		SourceID:    "src-x",
+		Title:       "小道消息",
+		Snippet:     "未确认传闻",
 		PublishedAt: &now,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 	if err := repo.SaveItem(context.Background(), singleItem); err != nil {
 		t.Fatal(err)
@@ -139,13 +139,13 @@ func TestScoreExplanationContainsAllDimensions(t *testing.T) {
 	now := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
 
 	item := content.SourceItem{
-		ID:         "item-1",
-		SourceID:   "src-1",
-		Title:      "AI Agent 新突破",
-		Snippet:    "自动化代理能力增强",
+		ID:          "item-1",
+		SourceID:    "src-1",
+		Title:       "AI Agent 新突破",
+		Snippet:     "自动化代理能力增强",
 		PublishedAt: &now,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 	if err := repo.SaveItem(context.Background(), item); err != nil {
 		t.Fatal(err)

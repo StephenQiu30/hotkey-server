@@ -47,6 +47,9 @@ type ClusterItem struct {
 	ClusterID  string
 	ItemID     string
 	SourceID   string
+	Title      string
+	URL        string
+	ChannelIDs []string
 	Similarity float64
 	CreatedAt  time.Time
 }
