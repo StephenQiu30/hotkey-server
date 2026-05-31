@@ -303,6 +303,121 @@ paths:
       responses:
         "200":
           description: Default send time updated.
+  /api/v1/admin/sources:
+    get:
+      summary: List sources for admins.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Sources.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceListResponse"
+        "403":
+          description: User role cannot access source management.
+    post:
+      summary: Create a source.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SourceRequest"
+      responses:
+        "201":
+          description: Source created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceResponse"
+        "400":
+          description: Source validation failed.
+          content:
+            application/json:
+              examples:
+                compliance:
+                  value:
+                    error:
+                      code: compliance_note_required
+                      message: compliance note required
+  /api/v1/admin/sources/{sourceID}:
+    patch:
+      summary: Update source metadata, strategy, and channel bindings.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SourceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SourceRequest"
+      responses:
+        "200":
+          description: Source updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceResponse"
+  /api/v1/admin/sources/{sourceID}/status:
+    patch:
+      summary: Enable or disable a source.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SourceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SourceStatusRequest"
+      responses:
+        "200":
+          description: Source status updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceResponse"
+  /api/v1/admin/sources/{sourceID}/collection-runs:
+    get:
+      summary: List collection runs for a source.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SourceID"
+      responses:
+        "200":
+          description: Collection runs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionRunListResponse"
+  /api/v1/admin/sources/{sourceID}/test-fetch:
+    post:
+      summary: Test source collection boundary without content normalization.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SourceID"
+      responses:
+        "200":
+          description: Test fetch succeeded and recorded a collection run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionRunResponse"
+        "502":
+          description: Test fetch failed and recorded a collection run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionRunResponse"
 components:
   parameters:
     ChannelID:
@@ -313,6 +428,12 @@ components:
         type: string
     KeywordID:
       name: keywordID
+      in: path
+      required: true
+      schema:
+        type: string
+    SourceID:
+      name: sourceID
       in: path
       required: true
       schema:
@@ -491,3 +612,135 @@ components:
         dailySendAt:
           type: string
           pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+    Source:
+      type: object
+      required:
+        - id
+        - name
+        - type
+        - url
+        - status
+        - fetchIntervalMin
+        - channelIDs
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum:
+            - rss
+            - public_page
+        url:
+          type: string
+          format: uri
+        status:
+          type: string
+          enum:
+            - enabled
+            - disabled
+        complianceNote:
+          type: string
+        fetchIntervalMin:
+          type: integer
+          minimum: 1
+        rateLimitPerHour:
+          type: integer
+          minimum: 0
+        channelIDs:
+          type: array
+          items:
+            type: string
+        lastError:
+          type: string
+        lastCollectedAt:
+          type: string
+          format: date-time
+    SourceRequest:
+      type: object
+      required:
+        - name
+        - type
+        - url
+        - fetchIntervalMin
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum:
+            - rss
+            - public_page
+        url:
+          type: string
+          format: uri
+        complianceNote:
+          type: string
+          description: Required for public_page sources.
+        fetchIntervalMin:
+          type: integer
+          minimum: 1
+        rateLimitPerHour:
+          type: integer
+          minimum: 0
+        channelIDs:
+          type: array
+          items:
+            type: string
+    SourceStatusRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - enabled
+            - disabled
+    SourceResponse:
+      type: object
+      properties:
+        source:
+          $ref: "#/components/schemas/Source"
+    SourceListResponse:
+      type: object
+      properties:
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/Source"
+    CollectionRun:
+      type: object
+      properties:
+        id:
+          type: string
+        sourceID:
+          type: string
+        status:
+          type: string
+          enum:
+            - success
+            - failed
+        itemsFetched:
+          type: integer
+        error:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+    CollectionRunListResponse:
+      type: object
+      properties:
+        collectionRuns:
+          type: array
+          items:
+            $ref: "#/components/schemas/CollectionRun"
+    CollectionRunResponse:
+      type: object
+      properties:
+        collectionRun:
+          $ref: "#/components/schemas/CollectionRun"

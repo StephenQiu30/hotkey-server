@@ -7,6 +7,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / "WORKFLOW.md"
 PRD_DIR = ROOT / "docs" / "product" / "prd"
 PLAN_DIR = ROOT / "docs" / "plans"
+SYMPHONY_SKILLS_DIR = ROOT / ".codex" / "skills"
+REQUIRED_SYMPHONY_SKILLS = ("commit", "debug", "land", "linear", "pull", "push")
+LAND_SKILL = ROOT / ".codex" / "skills" / "land" / "SKILL.md"
+LAND_WATCH = ROOT / ".codex" / "skills" / "land" / "land_watch.py"
 
 
 def numbered_markdown_files(path):
@@ -39,6 +43,7 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("max_concurrent_agents: 4", front_matter)
         self.assertIn('git clone --depth 1 "$SOURCE_REPO_URL" .', front_matter)
         self.assertIn("approval_policy: never", front_matter)
+        self.assertIn("read_timeout_ms: 30000", front_matter)
         self.assertIn("{{ issue.identifier }}", body)
         self.assertIn("hotkey-server", body)
         self.assertIn("## Status map", body)
@@ -47,6 +52,14 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("## Codex Workpad", body)
         self.assertIn("PR feedback sweep protocol", body)
         self.assertIn("Completion bar before Human Review", body)
+        self.assertIn("zero unchecked required items", body)
+        self.assertIn("issue description checkbox", body)
+        self.assertIn("issue Plan checkbox", body)
+        self.assertIn("If any required checkbox remains unchecked", body)
+        self.assertIn("### Remaining Items", body)
+        self.assertIn("Blocked access never bypasses the completion bar", body)
+        self.assertIn("There is no blocker exception for incomplete work", body)
+        self.assertIn("keep the ticket in `In Progress`", body)
         self.assertIn(".codex/skills/land/SKILL.md", body)
         self.assertIn("## GitHub automation contract", body)
         self.assertIn("Use the authenticated `gh` CLI", body)
@@ -68,6 +81,41 @@ class WorkflowContractTest(unittest.TestCase):
         expected = list(range(1, len(prds) + 1))
         self.assertEqual([number for number, _ in prds], expected)
         self.assertEqual([number for number, _ in plans], expected)
+
+    def test_land_skill_is_available_for_merging_state(self):
+        self.assertTrue(LAND_SKILL.exists())
+        self.assertTrue(LAND_WATCH.exists())
+
+        skill = LAND_SKILL.read_text(encoding="utf-8")
+        watch = LAND_WATCH.read_text(encoding="utf-8")
+
+        self.assertIn("name: land", skill)
+        self.assertIn("gh pr view --json number", skill)
+        self.assertIn("gh pr checks --watch", skill)
+        self.assertIn("gh pr merge --squash", skill)
+        self.assertIn("python3 .codex/skills/land/land_watch.py", skill)
+        self.assertIn("async def get_pr_info", watch)
+        self.assertIn("async def get_check_runs", watch)
+
+    def test_required_symphony_skills_are_available(self):
+        for skill_name in REQUIRED_SYMPHONY_SKILLS:
+            with self.subTest(skill=skill_name):
+                skill_file = SYMPHONY_SKILLS_DIR / skill_name / "SKILL.md"
+                self.assertTrue(skill_file.exists())
+                skill = skill_file.read_text(encoding="utf-8")
+                self.assertIn(f"name: {skill_name}", skill)
+
+        push_skill = (SYMPHONY_SKILLS_DIR / "push" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("make test", push_skill)
+        self.assertIn("Test-first Evidence", push_skill)
+        self.assertNotIn("make -C elixir all", push_skill)
+        self.assertNotIn("mix pr_body.check", push_skill)
+
+    def test_legacy_codex_agent_roles_are_not_committed(self):
+        legacy_agents_dir = ROOT / ".codex" / "agents"
+        self.assertEqual(list(legacy_agents_dir.glob("*.toml")), [])
 
 
 if __name__ == "__main__":
