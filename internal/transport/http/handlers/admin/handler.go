@@ -174,8 +174,10 @@ func writeServiceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, serviceadmin.ErrInvalidInput):
 		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
-	default:
+	case errors.Is(err, serviceadmin.ErrNotFound):
 		writeError(c, http.StatusNotFound, "not_found", "not found")
+	default:
+		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
 	}
 }
 

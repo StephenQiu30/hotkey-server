@@ -31,7 +31,7 @@ func (r *Repository) CreateAuditLog(ctx context.Context, entry admin.AuditLog) (
 	return entry, err
 }
 
-func (r *Repository) ListAuditLogs(ctx context.Context) ([]admin.AuditLog, error) {
+func (r *Repository) ListAuditLogs(ctx context.Context) (_ []admin.AuditLog, err error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, actor_id, action, resource_type, resource_id, result, created_at
 		FROM audit_logs
@@ -41,7 +41,11 @@ func (r *Repository) ListAuditLogs(ctx context.Context) ([]admin.AuditLog, error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if cerr := rows.Close(); err == nil && cerr != nil {
+			err = cerr
+		}
+	}()
 
 	var logs []admin.AuditLog
 	for rows.Next() {
@@ -51,7 +55,10 @@ func (r *Repository) ListAuditLogs(ctx context.Context) ([]admin.AuditLog, error
 		}
 		logs = append(logs, entry)
 	}
-	return logs, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return logs, nil
 }
 
 func (r *Repository) CreateJob(ctx context.Context, job queue.Job) (queue.Job, error) {
@@ -73,7 +80,7 @@ func (r *Repository) CreateJob(ctx context.Context, job queue.Job) (queue.Job, e
 	return job, err
 }
 
-func (r *Repository) ListJobs(ctx context.Context) ([]queue.Job, error) {
+func (r *Repository) ListJobs(ctx context.Context) (_ []queue.Job, err error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, job_type, payload, status, attempt, max_attempts, idempotency_key, last_error, scheduled_at, created_at, updated_at
 		FROM jobs
@@ -83,7 +90,11 @@ func (r *Repository) ListJobs(ctx context.Context) ([]queue.Job, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if cerr := rows.Close(); err == nil && cerr != nil {
+			err = cerr
+		}
+	}()
 
 	var jobs []queue.Job
 	for rows.Next() {
@@ -93,7 +104,10 @@ func (r *Repository) ListJobs(ctx context.Context) ([]queue.Job, error) {
 		}
 		jobs = append(jobs, job)
 	}
-	return jobs, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return jobs, nil
 }
 
 func (r *Repository) JobByID(ctx context.Context, jobID string) (queue.Job, error) {
@@ -121,7 +135,7 @@ func (r *Repository) UpdateJob(ctx context.Context, job queue.Job) (queue.Job, e
 	if count, err := result.RowsAffected(); err != nil {
 		return queue.Job{}, err
 	} else if count == 0 {
-		return queue.Job{}, sql.ErrNoRows
+		return queue.Job{}, admin.ErrNotFound
 	}
 	return job, nil
 }
@@ -136,6 +150,9 @@ func scanJob(scanner jobScanner) (queue.Job, error) {
 	var status string
 	var payload []byte
 	if err := scanner.Scan(&job.ID, &jobType, &payload, &status, &job.Attempt, &job.MaxAttempts, &job.IdempotencyKey, &job.LastError, &job.NextRunAt, &job.CreatedAt, &job.UpdatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return queue.Job{}, admin.ErrNotFound
+		}
 		return queue.Job{}, err
 	}
 	job.Type = queue.JobType(jobType)

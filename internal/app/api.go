@@ -54,7 +54,7 @@ func authSecret(cfg config.Config) string {
 	if cfg.AuthTokenSecret != "" {
 		return cfg.AuthTokenSecret
 	}
-	return "test-router-secret"
+	panic("AuthTokenSecret must be configured")
 }
 
 func (api *API) Run(ctx context.Context) error {

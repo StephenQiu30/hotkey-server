@@ -2,7 +2,6 @@ package admin
 
 import (
 	"context"
-	"database/sql"
 	"sync"
 
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
@@ -57,7 +56,7 @@ func (r *MemoryRepository) JobByID(_ context.Context, jobID string) (queue.Job, 
 	defer r.mu.RUnlock()
 	job, exists := r.jobs[jobID]
 	if !exists {
-		return queue.Job{}, sql.ErrNoRows
+		return queue.Job{}, ErrNotFound
 	}
 	return job, nil
 }
@@ -66,7 +65,7 @@ func (r *MemoryRepository) UpdateJob(_ context.Context, job queue.Job) (queue.Jo
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, exists := r.jobs[job.ID]; !exists {
-		return queue.Job{}, sql.ErrNoRows
+		return queue.Job{}, ErrNotFound
 	}
 	r.jobs[job.ID] = job
 	return job, nil

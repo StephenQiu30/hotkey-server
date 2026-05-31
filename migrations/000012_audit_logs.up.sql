@@ -15,3 +15,6 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_created_at
 
 CREATE INDEX IF NOT EXISTS idx_audit_logs_resource_created_at
     ON audit_logs (resource_type, resource_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at
+    ON audit_logs (created_at DESC, id DESC);

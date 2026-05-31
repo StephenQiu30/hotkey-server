@@ -22,6 +22,10 @@ func TestAuditLogsMigrationDefinesAdminAuditTrail(t *testing.T) {
 		"result",
 		"created_at",
 		"idx_audit_logs_actor_created_at",
+		"idx_audit_logs_resource_created_at",
+		"idx_audit_logs_created_at",
+		"check (action in ('create', 'update', 'delete'))",
+		"check (result in ('success', 'failure'))",
 	} {
 		if !strings.Contains(sql, want) {
 			t.Fatalf("expected audit log migration to contain %q", want)
