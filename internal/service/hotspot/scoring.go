@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"math"
+	"sort"
 	"time"
 
 	domainhotspot "github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
@@ -54,18 +55,28 @@ type HotspotScore struct {
 	QualityScore     float64
 	Explanation      string
 	ScoreVersion     string
+	ChannelIDs       []string
+	SourceRefs       []SourceRef
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
 
+type SourceRef struct {
+	ItemID   string `json:"itemId"`
+	SourceID string `json:"sourceId"`
+	Title    string `json:"title"`
+	URL      string `json:"url"`
+}
+
 // ScoreExplanation is the structured explanation JSON.
 type ScoreExplanation struct {
-	SourceCount     int     `json:"sourceCount"`
-	UniqueSources   int     `json:"uniqueSources"`
-	AvgSimilarity   float64 `json:"avgSimilarity"`
-	HoursSinceLatest float64 `json:"hoursSinceLatest"`
-	KeywordCount    int     `json:"keywordCount"`
-	Weights         ScoringConfig `json:"weights"`
+	SourceCount      int           `json:"sourceCount"`
+	UniqueSources    int           `json:"uniqueSources"`
+	AvgSimilarity    float64       `json:"avgSimilarity"`
+	HoursSinceLatest float64       `json:"hoursSinceLatest"`
+	KeywordCount     int           `json:"keywordCount"`
+	SourceRefs       []SourceRef   `json:"sourceRefs"`
+	Weights          ScoringConfig `json:"weights"`
 }
 
 // ScoreRepository stores computed hotspot scores.
@@ -84,10 +95,10 @@ type ClusterRepository interface {
 
 // ScoringService computes scores for hotspot clusters.
 type ScoringService struct {
-	cfg        ScoringConfig
-	clusters   ClusterRepository
-	scores     ScoreRepository
-	now        func() time.Time
+	cfg      ScoringConfig
+	clusters ClusterRepository
+	scores   ScoreRepository
+	now      func() time.Time
 }
 
 // NewScoringService creates a scoring service with the given config and repositories.
@@ -182,11 +193,29 @@ func (s *ScoringService) scoreCluster(cluster domainhotspot.Cluster, items []dom
 		s.cfg.QualityWeight*qualityScore
 
 	uniqueSources := make(map[string]struct{})
+	channelSet := make(map[string]struct{})
+	sourceRefs := make([]SourceRef, 0, len(items))
 	for _, item := range items {
 		if item.SourceID != "" {
 			uniqueSources[item.SourceID] = struct{}{}
 		}
+		for _, channelID := range item.ChannelIDs {
+			if channelID != "" {
+				channelSet[channelID] = struct{}{}
+			}
+		}
+		sourceRefs = append(sourceRefs, SourceRef{
+			ItemID:   item.ItemID,
+			SourceID: item.SourceID,
+			Title:    item.Title,
+			URL:      item.URL,
+		})
 	}
+	channelIDs := make([]string, 0, len(channelSet))
+	for channelID := range channelSet {
+		channelIDs = append(channelIDs, channelID)
+	}
+	sort.Strings(channelIDs)
 
 	avgSim := 0.0
 	for _, item := range items {
@@ -207,6 +236,7 @@ func (s *ScoringService) scoreCluster(cluster domainhotspot.Cluster, items []dom
 		AvgSimilarity:    avgSim,
 		HoursSinceLatest: hoursSinceLatest,
 		KeywordCount:     len(cluster.Keywords),
+		SourceRefs:       sourceRefs,
 		Weights:          s.cfg,
 	}
 	explanationJSON, _ := json.Marshal(explanation)
@@ -222,6 +252,8 @@ func (s *ScoringService) scoreCluster(cluster domainhotspot.Cluster, items []dom
 		QualityScore:     qualityScore,
 		Explanation:      string(explanationJSON),
 		ScoreVersion:     "v1",
+		ChannelIDs:       channelIDs,
+		SourceRefs:       sourceRefs,
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}

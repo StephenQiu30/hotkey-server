@@ -30,7 +30,16 @@ class WorkflowContractTest(unittest.TestCase):
         front_matter = text.split("---\n", 2)[1]
         body = text.split("---\n", 2)[2].strip()
 
-        for key in ["tracker:", "polling:", "workspace:", "hooks:", "agent:", "codex:", "claude:"]:
+        for key in [
+            "tracker:",
+            "polling:",
+            "workspace:",
+            "hooks:",
+            "agent:",
+            "codex:",
+            "claude:",
+            "cursor:",
+        ]:
             self.assertIn(key, front_matter)
 
         self.assertIn("kind: linear", front_matter)
@@ -44,6 +53,7 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("max_concurrent_agents: 4", front_matter)
         self.assertIn('git clone --depth 1 "$SOURCE_REPO_URL" .', front_matter)
         self.assertIn("default_runtime: codex", front_matter)
+        self.assertIn("agent:codex: codex", front_matter)
         self.assertIn("command: codex app-server", front_matter)
         self.assertIn("command: claude -p --dangerously-skip-permissions", front_matter)
         self.assertIn("{{ issue.identifier }}", body)

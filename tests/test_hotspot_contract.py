@@ -85,9 +85,18 @@ class HotspotContractTest(unittest.TestCase):
         for schema in [
             "HotspotScore",
             "HotspotDetail",
+            "HotspotSourceRef",
             "HotspotList",
         ]:
             self.assertIn(schema, schemas)
+
+        score_schema = schemas["HotspotScore"]
+        self.assertIn("channelIDs", score_schema["required"])
+        self.assertIn("sourceRefs", score_schema["required"])
+        self.assertEqual(
+            score_schema["properties"]["sourceRefs"]["items"]["$ref"],
+            "#/components/schemas/HotspotSourceRef",
+        )
 
 
 if __name__ == "__main__":

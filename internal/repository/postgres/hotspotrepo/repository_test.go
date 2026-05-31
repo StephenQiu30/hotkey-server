@@ -6,11 +6,13 @@ import (
 	"database/sql/driver"
 	"errors"
 	"io"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/domain/content"
 	"github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
 )
 
@@ -58,6 +60,52 @@ func TestRepositorySaveEmbeddingUpsertsVectorAndAuditStatus(t *testing.T) {
 func TestParseVectorLiteralRejectsMalformedToken(t *testing.T) {
 	if _, err := parseVectorLiteral("[0.1,nope,0.3]"); err == nil {
 		t.Fatal("expected malformed vector token to return an error")
+	}
+}
+
+func TestRepositoryListCandidatesIncludesSourceChannelIDs(t *testing.T) {
+	now := time.Date(2026, 5, 31, 3, 0, 0, 0, time.UTC)
+	driver := &recordingDriver{
+		rows: [][]driver.Value{{
+			"item-1",
+			"src-1",
+			"AI 模型更新",
+			"推理能力提升",
+			"https://example.com/raw",
+			"https://example.com/canonical",
+			now,
+			"hash-1",
+			"zh",
+			string(content.ItemStatusPrimary),
+			"",
+			now,
+			now,
+			"chn_ai_models,chn_ai_products",
+			"item-1",
+			"text-embedding-v2",
+			"[0.1,0.2,0.3]",
+			"hash-1",
+			string(hotspot.EmbeddingStatusSucceeded),
+			"",
+			now,
+			now,
+		}},
+	}
+	db := openRecordingDB(t, driver)
+	repo := New(db)
+
+	candidates, err := repo.ListCandidates(context.Background(), now.Add(-time.Hour), now.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("list candidates failed: %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("expected one candidate, got %d", len(candidates))
+	}
+	if got := candidates[0].Item.ChannelIDs; len(got) != 2 || got[0] != "chn_ai_models" || got[1] != "chn_ai_products" {
+		t.Fatalf("expected source channel ids from source_channel_links, got %#v", got)
+	}
+	if !strings.Contains(driver.lastQuery(), "source_channel_links") {
+		t.Fatalf("expected candidates query to load source_channel_links, got %q", driver.lastQuery())
 	}
 }
 
@@ -138,7 +186,14 @@ type recordingRows struct {
 }
 
 func (r *recordingRows) Columns() []string {
-	return []string{"item_id", "model", "embedding", "text_hash", "status", "last_error", "created_at", "updated_at"}
+	if len(r.rows) == 0 {
+		return []string{"item_id", "model", "embedding", "text_hash", "status", "last_error", "created_at", "updated_at"}
+	}
+	columns := make([]string, len(r.rows[0]))
+	for i := range columns {
+		columns[i] = "col_" + strconv.Itoa(i+1)
+	}
+	return columns
 }
 
 func (r *recordingRows) Close() error {
