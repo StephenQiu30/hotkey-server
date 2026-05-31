@@ -24,13 +24,15 @@ hooks:
   after_create: |
     git clone --depth 1 "$SOURCE_REPO_URL" .
 agent:
-  default_runtime: claude
+  default_runtime: codex
   max_concurrent_agents: 4
   max_turns: 20
   runtime_by_label:
     agent:codex: codex
     agent:claude: claude
     agent:cursor: cursor
+codex:
+  command: codex app-server
 claude:
   command: claude -p --dangerously-skip-permissions --output-format stream-json --include-partial-messages --verbose
 cursor:
@@ -70,7 +72,7 @@ Instructions:
 
 Work only in the provided repository copy. Do not touch any other path.
 
-This workflow runs Claude by default. Linear labels can override the runtime: `agent:codex`, `agent:claude`, or `agent:cursor`. Use the active runtime's configuration key, matching agent paths, and workpad marker throughout this workflow.
+This workflow runs Codex by default. Linear labels can override the runtime: `agent:codex`, `agent:claude`, or `agent:cursor`. Use the active runtime's configuration key, matching agent paths, and workpad marker throughout this workflow.
 
 ## HotKey Server scope
 
