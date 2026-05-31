@@ -86,7 +86,8 @@ func TestIngestHandlesConcurrentCanonicalCreateRace(t *testing.T) {
 		Language:     "zh",
 		Status:       content.ItemStatusPrimary,
 	}
-	service := NewService(&canonicalRaceRepository{existing: existing}, &recordingQueue{})
+	jobQueue := &recordingQueue{}
+	service := NewService(&canonicalRaceRepository{existing: existing}, jobQueue)
 
 	result, err := service.Ingest(context.Background(), Input{
 		SourceID: "src-1",
@@ -100,6 +101,9 @@ func TestIngestHandlesConcurrentCanonicalCreateRace(t *testing.T) {
 	}
 	if result.Created || result.Item.ID != existing.ID {
 		t.Fatalf("expected existing item after race, got %+v", result)
+	}
+	if len(jobQueue.requests) != 0 {
+		t.Fatalf("expected no embedding job for existing item, got %d", len(jobQueue.requests))
 	}
 }
 
