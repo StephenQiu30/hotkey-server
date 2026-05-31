@@ -151,6 +151,21 @@ func (q *MemoryQueue) Fail(_ context.Context, id string, err error) (Job, error)
 	return job, nil
 }
 
+func (q *MemoryQueue) Complete(_ context.Context, id string) (Job, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	job, ok := q.jobs[id]
+	if !ok {
+		return Job{}, fmt.Errorf("job %q not found", id)
+	}
+	now := q.now()
+	job.Status = JobStatusSucceeded
+	job.UpdatedAt = now
+	q.jobs[id] = job
+	return job, nil
+}
+
 func (q *MemoryQueue) PendingLen() int {
 	q.mu.Lock()
 	defer q.mu.Unlock()

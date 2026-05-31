@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -52,4 +53,72 @@ func TestHourlySchedulerEnqueuesCollectSourceJob(t *testing.T) {
 	if !payload.ScheduledFor.Equal(time.Date(2026, 5, 31, 1, 0, 0, 0, time.UTC)) {
 		t.Fatalf("expected scheduled_for to be truncated to the hour, got %s", payload.ScheduledFor)
 	}
+}
+
+func TestHourlySchedulerRejectsMissingRequiredInputs(t *testing.T) {
+	assertPanic(t, func() {
+		NewHourlyCollectScheduler(nil, HourlyCollectOptions{SourceID: "source-1"})
+	})
+	assertPanic(t, func() {
+		NewHourlyCollectScheduler(&recordingProducer{}, HourlyCollectOptions{})
+	})
+}
+
+func TestHourlySchedulerContinuesAfterTransientTickError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	producer := &flakyProducer{failuresLeft: 1}
+	now := time.Date(2026, 5, 31, 1, 24, 0, 0, time.UTC)
+	s := NewHourlyCollectScheduler(producer, HourlyCollectOptions{
+		SourceID: "source-1",
+		Now:      func() time.Time { return now },
+		Interval: time.Millisecond,
+	})
+
+	done := make(chan error, 1)
+	go func() {
+		done <- s.Run(ctx)
+	}()
+
+	deadline := time.After(time.Second)
+	for producer.successes() == 0 {
+		select {
+		case err := <-done:
+			t.Fatalf("scheduler exited on transient error: %v", err)
+		case <-deadline:
+			t.Fatal("scheduler did not continue after transient error")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+	cancel()
+	<-done
+}
+
+func assertPanic(t *testing.T, fn func()) {
+	t.Helper()
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected panic")
+		}
+	}()
+	fn()
+}
+
+type flakyProducer struct {
+	failuresLeft int
+	successCount int
+}
+
+func (p *flakyProducer) Enqueue(_ context.Context, req queue.EnqueueRequest) (queue.Job, error) {
+	if p.failuresLeft > 0 {
+		p.failuresLeft--
+		return queue.Job{}, errors.New("temporary enqueue failure")
+	}
+	p.successCount++
+	return queue.Job{ID: "job-1", Type: req.Type}, nil
+}
+
+func (p *flakyProducer) successes() int {
+	return p.successCount
 }

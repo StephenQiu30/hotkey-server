@@ -170,6 +170,23 @@ func (q *RedisQueue) Fail(ctx context.Context, id string, err error) (Job, error
 	return job, nil
 }
 
+func (q *RedisQueue) Complete(ctx context.Context, id string) (Job, error) {
+	body, getErr := q.store.Get(ctx, q.jobKey(id))
+	if getErr != nil {
+		return Job{}, getErr
+	}
+	var job Job
+	if unmarshalErr := json.Unmarshal(body, &job); unmarshalErr != nil {
+		return Job{}, unmarshalErr
+	}
+	job.Status = JobStatusSucceeded
+	job.UpdatedAt = q.now()
+	if saveErr := q.save(ctx, job); saveErr != nil {
+		return Job{}, saveErr
+	}
+	return job, nil
+}
+
 func (q *RedisQueue) save(ctx context.Context, job Job) error {
 	body, err := json.Marshal(job)
 	if err != nil {

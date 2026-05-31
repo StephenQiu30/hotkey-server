@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
@@ -11,6 +12,7 @@ import (
 
 type Queue interface {
 	Claim(context.Context) (queue.Job, error)
+	Complete(context.Context, string) (queue.Job, error)
 }
 
 type RedisHealth interface {
@@ -24,6 +26,12 @@ type Worker struct {
 }
 
 func New(queue Queue, redis RedisHealth, logger *slog.Logger) *Worker {
+	if queue == nil {
+		panic("worker requires queue")
+	}
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
+	}
 	return &Worker{queue: queue, redis: redis, logger: logger}
 }
 
@@ -50,7 +58,12 @@ func (w *Worker) Run(ctx context.Context) error {
 				w.logger.Warn("worker claim failed", "error", err)
 				continue
 			}
-			w.logger.Info("claimed job without business handler", "job_id", job.ID, "job_type", job.Type)
+			completed, err := w.queue.Complete(ctx, job.ID)
+			if err != nil {
+				w.logger.Warn("worker complete failed", "job_id", job.ID, "job_type", job.Type, "error", err)
+				continue
+			}
+			w.logger.Info("completed placeholder job", "job_id", completed.ID, "job_type", completed.Type)
 		}
 	}
 }

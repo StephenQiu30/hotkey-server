@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
@@ -27,6 +28,12 @@ type HourlyCollectScheduler struct {
 }
 
 func NewHourlyCollectScheduler(producer Producer, opts HourlyCollectOptions) *HourlyCollectScheduler {
+	if producer == nil {
+		panic("hourly collect scheduler requires producer")
+	}
+	if opts.SourceID == "" {
+		panic("hourly collect scheduler requires source id")
+	}
 	now := opts.Now
 	if now == nil {
 		now = time.Now
@@ -62,7 +69,7 @@ func (s *HourlyCollectScheduler) Tick(ctx context.Context) error {
 
 func (s *HourlyCollectScheduler) Run(ctx context.Context) error {
 	if err := s.Tick(ctx); err != nil {
-		return err
+		slog.Warn("hourly collect scheduler tick failed", "error", err)
 	}
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
@@ -73,7 +80,7 @@ func (s *HourlyCollectScheduler) Run(ctx context.Context) error {
 			return ctx.Err()
 		case <-ticker.C:
 			if err := s.Tick(ctx); err != nil {
-				return err
+				slog.Warn("hourly collect scheduler tick failed", "error", err)
 			}
 		}
 	}
