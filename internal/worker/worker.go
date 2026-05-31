@@ -15,6 +15,7 @@ import (
 	serviceembedding "github.com/StephenQiu30/hotkey-server/internal/service/embedding"
 	servicehotspot "github.com/StephenQiu30/hotkey-server/internal/service/hotspot"
 	"github.com/StephenQiu30/hotkey-server/internal/service/ingest"
+	servicemail "github.com/StephenQiu30/hotkey-server/internal/service/mail"
 	servicesource "github.com/StephenQiu30/hotkey-server/internal/service/source"
 )
 
@@ -162,6 +163,10 @@ type HotspotClusterService interface {
 	Cluster(context.Context, servicehotspot.Window) (servicehotspot.Result, error)
 }
 
+type DailyEmailService interface {
+	SendDailyEmail(context.Context, servicemail.SendDailyEmailInput) (servicemail.Delivery, error)
+}
+
 type CollectSourceHandler struct {
 	sourceService SourceService
 	fetcher       SourceFetcher
@@ -275,5 +280,29 @@ func (h *ClusterHotspotsHandler) Handle(ctx context.Context, job queue.Job) erro
 		return errors.New("cluster_hotspots payload missing valid window")
 	}
 	_, err := h.service.Cluster(ctx, servicehotspot.Window{Start: payload.WindowStart, End: payload.WindowEnd})
+	return err
+}
+
+type SendDailyEmailHandler struct {
+	service DailyEmailService
+}
+
+func NewSendDailyEmailHandler(service DailyEmailService) *SendDailyEmailHandler {
+	return &SendDailyEmailHandler{service: service}
+}
+
+func (h *SendDailyEmailHandler) Handle(ctx context.Context, job queue.Job) error {
+	var payload queue.SendDailyEmailPayload
+	if err := json.Unmarshal(job.Payload, &payload); err != nil {
+		return err
+	}
+	if payload.ReportID == "" || payload.RecipientUserID == "" {
+		return errors.New("send_daily_email payload missing report_id or recipient_user_id")
+	}
+	_, err := h.service.SendDailyEmail(ctx, servicemail.SendDailyEmailInput{
+		ReportID:        payload.ReportID,
+		RecipientUserID: payload.RecipientUserID,
+		Attempt:         job.Attempt,
+	})
 	return err
 }
