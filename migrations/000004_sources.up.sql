@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS sources (
+CREATE TABLE sources (
     id text PRIMARY KEY,
     name text NOT NULL,
     type text NOT NULL CHECK (type IN ('rss', 'public_page')),
@@ -11,23 +11,23 @@ CREATE TABLE IF NOT EXISTS sources (
     last_collected_at timestamptz,
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
-    CHECK (type <> 'public_page' OR length(btrim(compliance_note, E' \t\n\r\f\v')) > 0)
+    CHECK (type <> 'public_page' OR compliance_note ~ E'\\S')
 );
 
-CREATE INDEX IF NOT EXISTS idx_sources_status ON sources (status);
-CREATE INDEX IF NOT EXISTS idx_sources_type ON sources (type);
+CREATE INDEX idx_sources_status ON sources (status);
+CREATE INDEX idx_sources_type ON sources (type);
 
-CREATE TABLE IF NOT EXISTS source_channel_links (
+CREATE TABLE source_channel_links (
     source_id text NOT NULL REFERENCES sources (id) ON DELETE CASCADE,
     channel_id text NOT NULL REFERENCES channels (id) ON DELETE CASCADE,
     created_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (source_id, channel_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_source_channel_links_channel_id
+CREATE INDEX idx_source_channel_links_channel_id
     ON source_channel_links (channel_id);
 
-CREATE TABLE IF NOT EXISTS collection_runs (
+CREATE TABLE collection_runs (
     id text PRIMARY KEY,
     source_id text NOT NULL REFERENCES sources (id) ON DELETE CASCADE,
     status text NOT NULL CHECK (status IN ('success', 'failed')),
@@ -37,8 +37,8 @@ CREATE TABLE IF NOT EXISTS collection_runs (
     finished_at timestamptz NOT NULL,
     created_at timestamptz NOT NULL,
     CHECK (finished_at >= started_at),
-    CHECK (status <> 'failed' OR length(btrim(error, E' \t\n\r\f\v')) > 0)
+    CHECK (status <> 'failed' OR error ~ E'\\S')
 );
 
-CREATE INDEX IF NOT EXISTS idx_collection_runs_source_id_started_at
+CREATE INDEX idx_collection_runs_source_id_started_at
     ON collection_runs (source_id, started_at DESC);

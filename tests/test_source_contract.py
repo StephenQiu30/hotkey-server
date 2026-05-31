@@ -12,18 +12,23 @@ class SourceContractTest(unittest.TestCase):
         sql = MIGRATION.read_text(encoding="utf-8")
 
         for required in [
-            "CREATE TABLE IF NOT EXISTS sources",
+            "CREATE TABLE sources",
+            "CREATE TABLE source_channel_links",
+            "CREATE TABLE collection_runs",
             "source_channel_links",
             "collection_runs",
             "CHECK (type IN ('rss', 'public_page'))",
             "CHECK (status IN ('enabled', 'disabled'))",
-            "btrim(compliance_note, E' \\t\\n\\r\\f\\v')",
-            "btrim(error, E' \\t\\n\\r\\f\\v')",
+            "compliance_note ~ E'\\\\S'",
+            "error ~ E'\\\\S'",
             "compliance_note",
             "fetch_interval_min",
             "rate_limit_per_hour",
         ]:
             self.assertIn(required, sql)
+
+        self.assertNotIn("CREATE TABLE IF NOT EXISTS", sql)
+        self.assertNotIn("CREATE INDEX IF NOT EXISTS", sql)
 
     def test_openapi_source_paths_are_documented(self):
         spec = OPENAPI.read_text(encoding="utf-8")
