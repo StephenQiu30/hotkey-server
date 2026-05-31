@@ -26,7 +26,7 @@ func NewAPI(cfg config.Config, logger *slog.Logger) *API {
 	}
 }
 
-func (api *API) Run() error {
+func (api *API) Run(_ context.Context) error {
 	api.logger.Info("starting hotkey api", "addr", api.server.Addr)
 	return api.server.ListenAndServe()
 }
