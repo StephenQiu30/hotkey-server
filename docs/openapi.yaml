@@ -528,6 +528,84 @@ paths:
                 $ref: "#/components/schemas/JobResponse"
         "403":
           description: User role cannot rerun daily reports.
+  /api/v1/hotspots:
+    get:
+      summary: List hotspot scores sorted by total_score descending.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: channel
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by channel slug.
+        - name: since
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Start of time window (ISO 8601).
+        - name: until
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: End of time window (ISO 8601).
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Maximum number of results.
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of results to skip.
+      responses:
+        "200":
+          description: Hotspot scores sorted by total_score descending.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HotspotList"
+        "401":
+          description: Missing or invalid access token.
+  /api/v1/hotspots/{hotspotID}:
+    get:
+      summary: Get hotspot detail by cluster ID.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HotspotID"
+      responses:
+        "200":
+          description: Hotspot detail with score explanation and source refs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HotspotDetail"
+        "401":
+          description: Missing or invalid access token.
+        "404":
+          description: Hotspot not found.
+          content:
+            application/json:
+              examples:
+                not_found:
+                  value:
+                    error:
+                      code: hotspot_not_found
+                      message: hotspot not found
 components:
   parameters:
     ChannelID:
@@ -544,6 +622,12 @@ components:
         type: string
     SourceID:
       name: sourceID
+      in: path
+      required: true
+      schema:
+        type: string
+    HotspotID:
+      name: hotspotID
       in: path
       required: true
       schema:
@@ -728,6 +812,66 @@ components:
         dailySendAt:
           type: string
           pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+    HotspotScore:
+      type: object
+      required:
+        - id
+        - clusterId
+        - totalScore
+        - sourceCountScore
+        - freshnessScore
+        - relevanceScore
+        - propagationScore
+        - qualityScore
+        - explanation
+        - scoreVersion
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        clusterId:
+          type: string
+        totalScore:
+          type: number
+          format: double
+        sourceCountScore:
+          type: number
+          format: double
+        freshnessScore:
+          type: number
+          format: double
+        relevanceScore:
+          type: number
+          format: double
+        propagationScore:
+          type: number
+          format: double
+        qualityScore:
+          type: number
+          format: double
+        explanation:
+          type: string
+          description: JSON string containing scoring dimension details.
+        scoreVersion:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    HotspotDetail:
+      $ref: "#/components/schemas/HotspotScore"
+    HotspotList:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/HotspotScore"
     Source:
       type: object
       required:

@@ -3,14 +3,17 @@ package http
 import (
 	"context"
 
+	domainhotspot "github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
 	serviceadmin "github.com/StephenQiu30/hotkey-server/internal/service/admin"
 	serviceauth "github.com/StephenQiu30/hotkey-server/internal/service/auth"
 	servicechannel "github.com/StephenQiu30/hotkey-server/internal/service/channel"
+	servicehotspot "github.com/StephenQiu30/hotkey-server/internal/service/hotspot"
 	servicesource "github.com/StephenQiu30/hotkey-server/internal/service/source"
 	"github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers"
 	adminhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/admin"
 	authhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/auth"
 	channelhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/channel"
+	hotspothandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/hotspot"
 	sourcehandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/source"
 	"github.com/gin-gonic/gin"
 )
@@ -20,6 +23,7 @@ type Dependencies struct {
 	ChannelService *servicechannel.Service
 	SourceService  *servicesource.Service
 	AdminService   *serviceadmin.Service
+	ScoringService *servicehotspot.ScoringService
 }
 
 func NewRouter() *gin.Engine {
@@ -75,6 +79,13 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 		sourceService = deps.SourceService
 	}
 	sources := sourcehandler.New(sourceService)
+	if deps.ScoringService == nil {
+		clusterRepo := domainhotspot.NewMemoryRepository()
+		scoreRepo := servicehotspot.NewMemoryScoreRepository()
+		deps.ScoringService = servicehotspot.NewScoringService(servicehotspot.ScoringConfig{}, clusterRepo, scoreRepo)
+	}
+	hotspots := hotspothandler.New(deps.ScoringService)
+
 	adminObservability := adminhandler.New(deps.AdminService)
 	v1 := router.Group("/api/v1")
 	v1.POST("/auth/register", auth.Register)
@@ -91,6 +102,8 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	v1.PATCH("/me/keywords/:keywordID", auth.AuthRequired(), channels.UpdateKeyword)
 	v1.DELETE("/me/keywords/:keywordID", auth.AuthRequired(), channels.DeleteKeyword)
 	v1.PUT("/me/preferences/daily-send-at", auth.AuthRequired(), channels.SetUserDailySendAt)
+	v1.GET("/hotspots", auth.AuthRequired(), hotspots.ListHotspots)
+	v1.GET("/hotspots/:hotspotID", auth.AuthRequired(), hotspots.GetHotspot)
 
 	admin := v1.Group("/admin", auth.AdminRequired(), adminObservability.AuditMiddleware())
 	admin.GET("/healthz", auth.AdminHealthz)
