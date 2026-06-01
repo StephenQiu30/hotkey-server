@@ -56,12 +56,33 @@ func (r *MemoryReportRepository) ListReportsByDate(_ context.Context, date strin
 			reports = append(reports, cloneReport(report))
 		}
 	}
-	sort.Slice(reports, func(i, j int) bool {
-		if reports[i].CreatedAt.Equal(reports[j].CreatedAt) {
-			return reports[i].ID < reports[j].ID
+	sortReports(reports)
+	return reports, nil
+}
+
+func (r *MemoryReportRepository) ListReportsByChannel(_ context.Context, channelID string) ([]DailyReport, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	reports := []DailyReport{}
+	for _, report := range r.reports {
+		if report.ChannelID == channelID && report.UserID == "" {
+			reports = append(reports, cloneReport(report))
 		}
-		return reports[i].CreatedAt.Before(reports[j].CreatedAt)
-	})
+	}
+	sortReports(reports)
+	return reports, nil
+}
+
+func (r *MemoryReportRepository) ListReportsByUser(_ context.Context, userID string) ([]DailyReport, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	reports := []DailyReport{}
+	for _, report := range r.reports {
+		if report.UserID == userID {
+			reports = append(reports, cloneReport(report))
+		}
+	}
+	sortReports(reports)
 	return reports, nil
 }
 
@@ -91,4 +112,13 @@ func cloneReport(report DailyReport) DailyReport {
 func cloneSummary(summary AISummary) AISummary {
 	summary.SourceRefs = append([]SourceRef(nil), summary.SourceRefs...)
 	return summary
+}
+
+func sortReports(reports []DailyReport) {
+	sort.Slice(reports, func(i, j int) bool {
+		if reports[i].CreatedAt.Equal(reports[j].CreatedAt) {
+			return reports[i].ID < reports[j].ID
+		}
+		return reports[i].CreatedAt.After(reports[j].CreatedAt)
+	})
 }

@@ -647,8 +647,85 @@ paths:
           description: Missing or invalid access token.
         "404":
           description: Report not found.
+  /rss/channels/{channelCode}.xml:
+    get:
+      summary: Public channel RSS feed.
+      parameters:
+        - $ref: "#/components/parameters/ChannelCode"
+      responses:
+        "200":
+          description: RSS 2.0 XML built from generated channel daily reports.
+          content:
+            application/rss+xml:
+              schema:
+                type: string
+        "400":
+          description: Invalid channel code.
+  /rss/users/{token}.xml:
+    get:
+      summary: Private user RSS feed by opaque token.
+      parameters:
+        - $ref: "#/components/parameters/RSSToken"
+      responses:
+        "200":
+          description: RSS 2.0 XML built from generated user daily reports.
+          content:
+            application/rss+xml:
+              schema:
+                type: string
+        "404":
+          description: Token is missing, invalid, reset, or disabled.
+  /api/v1/me/rss:
+    get:
+      summary: Get current user's RSS feed status.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user's private RSS status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RSSFeed"
+        "401":
+          description: Missing or invalid access token.
+    delete:
+      summary: Disable current user's private RSS feed.
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: RSS feed disabled.
+        "401":
+          description: Missing or invalid access token.
+  /api/v1/me/rss/reset:
+    post:
+      summary: Create or rotate current user's private RSS token.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: New private RSS token. The plaintext token is returned once and only its hash is stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RSSFeedWithToken"
+        "401":
+          description: Missing or invalid access token.
 components:
   parameters:
+    ChannelCode:
+      name: channelCode
+      in: path
+      required: true
+      schema:
+        type: string
+    RSSToken:
+      name: token
+      in: path
+      required: true
+      schema:
+        type: string
     ChannelID:
       name: channelID
       in: path
@@ -1282,3 +1359,28 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/DailyReport"
+    RSSFeed:
+      type: object
+      properties:
+        userId:
+          type: string
+        enabled:
+          type: boolean
+        lastAccessedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    RSSFeedWithToken:
+      allOf:
+        - $ref: "#/components/schemas/RSSFeed"
+        - type: object
+          properties:
+            token:
+              type: string

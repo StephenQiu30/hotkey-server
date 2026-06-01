@@ -9,6 +9,7 @@ import (
 	servicechannel "github.com/StephenQiu30/hotkey-server/internal/service/channel"
 	servicehotspot "github.com/StephenQiu30/hotkey-server/internal/service/hotspot"
 	servicereport "github.com/StephenQiu30/hotkey-server/internal/service/report"
+	servicerss "github.com/StephenQiu30/hotkey-server/internal/service/rss"
 	servicesource "github.com/StephenQiu30/hotkey-server/internal/service/source"
 	"github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers"
 	adminhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/admin"
@@ -16,6 +17,7 @@ import (
 	channelhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/channel"
 	hotspothandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/hotspot"
 	reporthandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/report"
+	rsshandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/rss"
 	sourcehandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/source"
 	"github.com/gin-gonic/gin"
 )
@@ -27,6 +29,7 @@ type Dependencies struct {
 	AdminService   *serviceadmin.Service
 	ScoringService *servicehotspot.ScoringService
 	ReportService  *servicereport.Service
+	RSSService     *servicerss.Service
 }
 
 func NewRouter() *gin.Engine {
@@ -74,6 +77,16 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 			RedisPing:      func(context.Context) error { return nil },
 		})
 	}
+	var reportRepo servicereport.ReportRepository
+	if deps.ReportService == nil {
+		reportRepo = servicereport.NewMemoryReportRepository()
+		deps.ReportService = servicereport.NewService(reportRepo, nil, nil, nil, nil, nil)
+	} else {
+		reportRepo = deps.ReportService.Repository()
+	}
+	if deps.RSSService == nil {
+		deps.RSSService = servicerss.NewService(servicerss.NewMemoryFeedRepository(), reportRepo, servicerss.Config{})
+	}
 
 	auth := authhandler.New(deps.AuthService)
 	channels := channelhandler.New(deps.ChannelService)
@@ -88,12 +101,13 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 		deps.ScoringService = servicehotspot.NewScoringService(servicehotspot.ScoringConfig{}, clusterRepo, scoreRepo)
 	}
 	hotspots := hotspothandler.New(deps.ScoringService)
-	var reports *reporthandler.Handler
-	if deps.ReportService != nil {
-		reports = reporthandler.New(deps.ReportService)
-	}
+	reports := reporthandler.New(deps.ReportService)
+	rss := rsshandler.New(deps.RSSService)
 
 	adminObservability := adminhandler.New(deps.AdminService)
+	router.GET("/rss/channels/:channelCode", rss.PublicChannel)
+	router.GET("/rss/users/:token", rss.PrivateUser)
+
 	v1 := router.Group("/api/v1")
 	v1.POST("/auth/register", auth.Register)
 	v1.POST("/auth/login", auth.Login)
@@ -111,10 +125,11 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	v1.PUT("/me/preferences/daily-send-at", auth.AuthRequired(), channels.SetUserDailySendAt)
 	v1.GET("/hotspots", auth.AuthRequired(), hotspots.ListHotspots)
 	v1.GET("/hotspots/:hotspotID", auth.AuthRequired(), hotspots.GetHotspot)
-	if reports != nil {
-		v1.GET("/reports", auth.AuthRequired(), reports.ListReports)
-		v1.GET("/reports/:reportID", auth.AuthRequired(), reports.GetReport)
-	}
+	v1.GET("/reports", auth.AuthRequired(), reports.ListReports)
+	v1.GET("/reports/:reportID", auth.AuthRequired(), reports.GetReport)
+	v1.GET("/me/rss", auth.AuthRequired(), rss.GetUserFeed)
+	v1.POST("/me/rss/reset", auth.AuthRequired(), rss.ResetUserFeed)
+	v1.DELETE("/me/rss", auth.AuthRequired(), rss.DisableUserFeed)
 
 	admin := v1.Group("/admin", auth.AdminRequired(), adminObservability.AuditMiddleware())
 	admin.GET("/healthz", auth.AdminHealthz)

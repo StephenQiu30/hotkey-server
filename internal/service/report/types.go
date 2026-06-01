@@ -112,6 +112,8 @@ type ReportRepository interface {
 	FindReportByDateChannelUser(context.Context, string, string, string) (DailyReport, error)
 	FindReportByID(context.Context, string) (DailyReport, error)
 	ListReportsByDate(context.Context, string) ([]DailyReport, error)
+	ListReportsByChannel(context.Context, string) ([]DailyReport, error)
+	ListReportsByUser(context.Context, string) ([]DailyReport, error)
 	SaveSummary(context.Context, AISummary) (AISummary, error)
 	FindSummaryByClusterID(context.Context, string) (AISummary, error)
 }
