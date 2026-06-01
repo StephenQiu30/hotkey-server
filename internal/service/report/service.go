@@ -30,6 +30,10 @@ func NewService(repo ReportRepository, qwen QwenClient, clusters ClusterReposito
 	}
 }
 
+func (s *Service) Repository() ReportRepository {
+	return s.reports
+}
+
 func (s *Service) SetClock(clock func() time.Time) {
 	if clock != nil {
 		s.now = clock
