@@ -23,12 +23,16 @@ type Config struct {
 	RuntimeMode                RuntimeMode
 	CollectSourceID            string
 	DashScopeAPIKey            string
-	DashScopeBaseURL           string
-	DashScopeChatModel         string
 	EmbeddingModel             string
 	HotspotSimilarityThreshold float64
 	HotspotWindow              time.Duration
 	SMTPHost                   string
+	SMTPPort                   int
+	SMTPUsername               string
+	SMTPPassword               string
+	SMTPFrom                   string
+	SMTPTLS                    bool
+	SMTPStartTLS               bool
 }
 
 func Load() Config {
@@ -41,12 +45,16 @@ func Load() Config {
 		RuntimeMode:                parseRuntimeMode(os.Getenv("HOTKEY_RUNTIME_MODE")),
 		CollectSourceID:            envOrDefault("HOTKEY_COLLECT_SOURCE_ID", "default"),
 		DashScopeAPIKey:            os.Getenv("HOTKEY_DASHSCOPE_API_KEY"),
-		DashScopeBaseURL:           envOrDefault("HOTKEY_DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
-		DashScopeChatModel:         envOrDefault("HOTKEY_DASHSCOPE_CHAT_MODEL", "qwen-plus"),
 		EmbeddingModel:             envOrDefault("HOTKEY_EMBEDDING_MODEL", "text-embedding-v2"),
 		HotspotSimilarityThreshold: floatOrDefault("HOTKEY_HOTSPOT_SIMILARITY_THRESHOLD", 0.82),
 		HotspotWindow:              durationOrDefault("HOTKEY_HOTSPOT_WINDOW", 24*time.Hour),
 		SMTPHost:                   os.Getenv("HOTKEY_SMTP_HOST"),
+		SMTPPort:                   intOrDefault("HOTKEY_SMTP_PORT", 587),
+		SMTPUsername:               os.Getenv("HOTKEY_SMTP_USERNAME"),
+		SMTPPassword:               os.Getenv("HOTKEY_SMTP_PASSWORD"),
+		SMTPFrom:                   os.Getenv("HOTKEY_SMTP_FROM"),
+		SMTPTLS:                    boolOrDefault("HOTKEY_SMTP_TLS", false),
+		SMTPStartTLS:               boolOrDefault("HOTKEY_SMTP_STARTTLS", true),
 	}
 }
 
@@ -89,6 +97,30 @@ func floatOrDefault(key string, fallback float64) float64 {
 		return fallback
 	}
 	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func intOrDefault(key string, fallback int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 1 || parsed > 65535 {
+		return fallback
+	}
+	return parsed
+}
+
+func boolOrDefault(key string, fallback bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(value)
 	if err != nil {
 		return fallback
 	}

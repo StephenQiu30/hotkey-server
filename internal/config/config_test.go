@@ -68,3 +68,39 @@ func TestLoadEmbeddingAndHotspotOverrides(t *testing.T) {
 		t.Fatalf("unexpected window: %s", got.HotspotWindow)
 	}
 }
+
+func TestLoadSMTPConfig(t *testing.T) {
+	t.Setenv("HOTKEY_SMTP_HOST", "smtp.example.com")
+	t.Setenv("HOTKEY_SMTP_PORT", "465")
+	t.Setenv("HOTKEY_SMTP_USERNAME", "daily")
+	t.Setenv("HOTKEY_SMTP_PASSWORD", "secret")
+	t.Setenv("HOTKEY_SMTP_FROM", "HotKey <daily@example.com>")
+	t.Setenv("HOTKEY_SMTP_TLS", "true")
+	t.Setenv("HOTKEY_SMTP_STARTTLS", "false")
+
+	got := Load()
+
+	if got.SMTPHost != "smtp.example.com" || got.SMTPPort != 465 {
+		t.Fatalf("unexpected SMTP endpoint config: host=%q port=%d", got.SMTPHost, got.SMTPPort)
+	}
+	if got.SMTPUsername != "daily" || got.SMTPPassword != "secret" || got.SMTPFrom != "HotKey <daily@example.com>" {
+		t.Fatalf("unexpected SMTP auth/from config: username=%q from=%q", got.SMTPUsername, got.SMTPFrom)
+	}
+	if !got.SMTPTLS || got.SMTPStartTLS {
+		t.Fatalf("unexpected SMTP TLS config: tls=%t starttls=%t", got.SMTPTLS, got.SMTPStartTLS)
+	}
+}
+
+func TestLoadSMTPPortFallsBackWhenOutOfRange(t *testing.T) {
+	for _, value := range []string{"0", "-1", "70000", "not-a-port"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("HOTKEY_SMTP_PORT", value)
+
+			got := Load()
+
+			if got.SMTPPort != 587 {
+				t.Fatalf("expected default SMTP port for %q, got %d", value, got.SMTPPort)
+			}
+		})
+	}
+}
