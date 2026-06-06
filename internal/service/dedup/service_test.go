@@ -163,7 +163,7 @@ type fakeEmbedRepo struct {
 	vectors map[string][]float64
 }
 
-func (r *fakeEmbedRepo) FindByItemID(_ context.Context, itemID string) (hotspot.Embedding, error) {
+func (r *fakeEmbedRepo) FindEmbedding(_ context.Context, itemID string) (hotspot.Embedding, error) {
 	if r.vectors == nil {
 		return hotspot.Embedding{}, hotspot.ErrNotFound
 	}
@@ -174,7 +174,7 @@ func (r *fakeEmbedRepo) FindByItemID(_ context.Context, itemID string) (hotspot.
 	return hotspot.Embedding{ItemID: itemID, Vector: vec, Status: hotspot.EmbeddingStatusSucceeded}, nil
 }
 
-func (r *fakeEmbedRepo) List(_ context.Context) ([]hotspot.Embedding, error) {
+func (r *fakeEmbedRepo) ListEmbeddings(_ context.Context) ([]hotspot.Embedding, error) {
 	var result []hotspot.Embedding
 	for id, vec := range r.vectors {
 		result = append(result, hotspot.Embedding{ItemID: id, Vector: vec, Status: hotspot.EmbeddingStatusSucceeded})

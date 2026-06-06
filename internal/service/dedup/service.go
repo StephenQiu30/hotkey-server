@@ -39,8 +39,8 @@ func DefaultConfig() Config {
 }
 
 type EmbeddingRepository interface {
-	FindByItemID(ctx context.Context, itemID string) (hotspot.Embedding, error)
-	List(ctx context.Context) ([]hotspot.Embedding, error)
+	FindEmbedding(ctx context.Context, itemID string) (hotspot.Embedding, error)
+	ListEmbeddings(ctx context.Context) ([]hotspot.Embedding, error)
 }
 
 type ItemRepository interface {
@@ -79,7 +79,7 @@ func (s *Service) CheckDuplicate(ctx context.Context, item content.SourceItem, n
 		return Result{DuplicateType: DuplicateTypeNone}, nil
 	}
 
-	allEmbeds, err := s.embeds.List(ctx)
+	allEmbeds, err := s.embeds.ListEmbeddings(ctx)
 	if err != nil {
 		return Result{}, err
 	}
