@@ -2,6 +2,7 @@ package quality
 
 import (
 	"context"
+	"math"
 	"unicode/utf8"
 
 	"github.com/StephenQiu30/hotkey-server/internal/domain/content"
@@ -13,9 +14,9 @@ type Result struct {
 }
 
 type Config struct {
-	MinTitleRunesForSummary  int
+	MinTitleRunesForSummary   int
 	MinSnippetRunesForSummary int
-	MaxScore                 float64
+	MaxScore                  float64
 }
 
 func DefaultConfig() Config {
@@ -44,7 +45,43 @@ func NewService(cfg Config) *Service {
 }
 
 func (s *Service) Score(_ context.Context, item content.SourceItem) (Result, error) {
-	panic("not implemented")
+	score := 0.0
+
+	// Title quality (0.0 - 0.2)
+	titleLen := runeLen(item.Title)
+	if titleLen > 0 {
+		score += 0.2 * math.Min(float64(titleLen)/15.0, 1.0)
+	}
+
+	// Snippet quality (0.0 - 0.35)
+	snippetLen := runeLen(item.Snippet)
+	if snippetLen > 0 {
+		score += 0.35 * math.Min(float64(snippetLen)/50.0, 1.0)
+	}
+
+	// URL quality (0.0 - 0.15)
+	if item.CanonicalURL != "" {
+		score += 0.15
+	}
+
+	// Language quality (0.0 - 0.15)
+	if item.Language != "" && item.Language != "unknown" {
+		score += 0.15
+	}
+
+	// PublishedAt quality (0.0 - 0.15)
+	if item.PublishedAt != nil {
+		score += 0.15
+	}
+
+	// Summarizable: needs enough title + snippet content
+	summarizable := titleLen >= s.cfg.MinTitleRunesForSummary &&
+		snippetLen >= s.cfg.MinSnippetRunesForSummary
+
+	return Result{
+		Score:        math.Min(score, s.cfg.MaxScore),
+		Summarizable: summarizable,
+	}, nil
 }
 
 func runeLen(s string) int {

@@ -3,15 +3,19 @@ package normalize
 import (
 	"context"
 	"errors"
+	"html"
+	"regexp"
+	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/StephenQiu30/hotkey-server/internal/domain/content"
 )
 
 var (
-	ErrInvalidInput  = errors.New("invalid input")
-	ErrEmptyContent  = errors.New("empty content after normalization")
+	ErrInvalidInput = errors.New("invalid input")
+	ErrEmptyContent = errors.New("empty content after normalization")
 )
 
 type Input struct {
@@ -30,10 +34,10 @@ type Result struct {
 }
 
 type Config struct {
-	MaxTitleRunes    int
-	MaxSnippetRunes  int
-	MaxContentRunes  int
-	DefaultLanguage  string
+	MaxTitleRunes   int
+	MaxSnippetRunes int
+	MaxContentRunes int
+	DefaultLanguage string
 }
 
 func DefaultConfig() Config {
@@ -67,15 +71,92 @@ func NewService(cfg Config) *Service {
 }
 
 func (s *Service) Normalize(_ context.Context, input Input) (Result, error) {
-	panic("not implemented")
+	sourceID := strings.TrimSpace(input.SourceID)
+	if sourceID == "" {
+		return Result{}, ErrInvalidInput
+	}
+
+	canonicalURL, err := content.CanonicalURL(input.URL)
+	if err != nil {
+		return Result{}, ErrInvalidInput
+	}
+
+	title := cleanText(input.Title)
+	snippet := cleanText(input.Snippet)
+	rawContent := cleanText(input.RawContent)
+
+	title = trimRunes(title, s.cfg.MaxTitleRunes)
+	snippet = trimRunes(snippet, s.cfg.MaxSnippetRunes)
+	rawContent = trimRunes(rawContent, s.cfg.MaxContentRunes)
+
+	if title == "" && snippet == "" {
+		return Result{}, ErrEmptyContent
+	}
+
+	language := strings.TrimSpace(input.Language)
+	if language == "" {
+		language = detectLanguage(title + " " + snippet)
+	}
+	if language == "" {
+		language = s.cfg.DefaultLanguage
+	}
+
+	now := s.now().UTC()
+	return Result{
+		Item: content.SourceItem{
+			ID:           content.NewID(),
+			SourceID:     sourceID,
+			Title:        title,
+			Snippet:      snippet,
+			RawURL:       strings.TrimSpace(input.URL),
+			CanonicalURL: canonicalURL,
+			PublishedAt:  cloneTime(input.PublishedAt),
+			ContentHash: content.ContentHash(content.HashInput{
+				Title:        title,
+				Snippet:      snippet,
+				CanonicalURL: canonicalURL,
+			}),
+			Language:  language,
+			Status:    content.ItemStatusPrimary,
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}, nil
 }
 
+var htmlTagRe = regexp.MustCompile(`<[^>]*>`)
+var multiSpaceRe = regexp.MustCompile(`\s+`)
+var scriptRe = regexp.MustCompile(`(?i)<script[\s>].*?</script>`)
+
 func cleanText(value string) string {
-	panic("not implemented")
+	value = scriptRe.ReplaceAllString(value, "")
+	value = htmlTagRe.ReplaceAllString(value, "")
+	value = html.UnescapeString(value)
+	value = multiSpaceRe.ReplaceAllString(strings.TrimSpace(value), " ")
+	return value
 }
 
 func detectLanguage(text string) string {
-	panic("not implemented")
+	var chinese, latin int
+	for _, r := range text {
+		if unicode.Is(unicode.Han, r) {
+			chinese++
+		} else if unicode.Is(unicode.Latin, r) {
+			latin++
+		}
+	}
+	total := chinese + latin
+	if total == 0 {
+		return "unknown"
+	}
+	threshold := 0.3
+	if float64(chinese)/float64(total) >= threshold {
+		return "zh"
+	}
+	if float64(latin)/float64(total) >= threshold {
+		return "en"
+	}
+	return "unknown"
 }
 
 func trimRunes(value string, limit int) string {
@@ -84,4 +165,12 @@ func trimRunes(value string, limit int) string {
 	}
 	runes := []rune(value)
 	return string(runes[:limit])
+}
+
+func cloneTime(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	cloned := value.UTC()
+	return &cloned
 }

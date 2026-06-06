@@ -70,27 +70,39 @@ func (s *Service) Generate(ctx context.Context, itemID string) (hotspot.Embeddin
 		return hotspot.Embedding{}, err
 	}
 	text := trimRunes(strings.TrimSpace(item.Title+"\n"+item.Snippet), s.cfg.MaxTextRunes)
-	response, err := s.provider.Embed(ctx, Request{Text: text, Model: s.cfg.Model})
 	now := s.now().UTC()
-	if err != nil {
-		return s.saveFailure(ctx, item.ID, s.cfg.Model, text, err, now)
+
+	maxAttempts := 1 + s.cfg.MaxRetries
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		response, err := s.provider.Embed(ctx, Request{Text: text, Model: s.cfg.Model})
+		if err != nil {
+			// Config errors are not retryable
+			if errors.Is(err, ErrFailedConfig) {
+				return s.saveFailure(ctx, item.ID, s.cfg.Model, text, err, now)
+			}
+			lastErr = err
+			continue
+		}
+		model := response.Model
+		if model == "" {
+			model = s.cfg.Model
+		}
+		if len(response.Vector) == 0 {
+			lastErr = ErrEmptyVector
+			continue
+		}
+		return s.repo.SaveEmbedding(ctx, hotspot.Embedding{
+			ItemID:    item.ID,
+			Model:     model,
+			Vector:    response.Vector,
+			TextHash:  textHash(text),
+			Status:    hotspot.EmbeddingStatusSucceeded,
+			CreatedAt: now,
+			UpdatedAt: now,
+		})
 	}
-	model := response.Model
-	if model == "" {
-		model = s.cfg.Model
-	}
-	if len(response.Vector) == 0 {
-		return s.saveFailure(ctx, item.ID, model, text, ErrEmptyVector, now)
-	}
-	return s.repo.SaveEmbedding(ctx, hotspot.Embedding{
-		ItemID:    item.ID,
-		Model:     model,
-		Vector:    response.Vector,
-		TextHash:  textHash(text),
-		Status:    hotspot.EmbeddingStatusSucceeded,
-		CreatedAt: now,
-		UpdatedAt: now,
-	})
+	return s.saveFailure(ctx, item.ID, s.cfg.Model, text, lastErr, now)
 }
 
 func (s *Service) saveFailure(ctx context.Context, itemID string, model string, text string, err error, now time.Time) (hotspot.Embedding, error) {

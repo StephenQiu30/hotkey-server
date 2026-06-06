@@ -2,14 +2,10 @@ package filter
 
 import (
 	"context"
-	"errors"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/StephenQiu30/hotkey-server/internal/domain/content"
-)
-
-var (
-	ErrInvalidInput = errors.New("invalid input")
 )
 
 type FilterReason string
@@ -27,9 +23,9 @@ type Result struct {
 }
 
 type Config struct {
-	Keywords      []string
-	ExcludeWords  []string
-	MinTitleRunes int
+	Keywords        []string
+	ExcludeWords    []string
+	MinTitleRunes   int
 	MinSnippetRunes int
 }
 
@@ -42,7 +38,24 @@ func NewService(cfg Config) *Service {
 }
 
 func (s *Service) Filter(_ context.Context, item content.SourceItem) (Result, error) {
-	panic("not implemented")
+	// Check minimum length first
+	if utf8.RuneCountInString(item.Title) < s.cfg.MinTitleRunes ||
+		utf8.RuneCountInString(item.Snippet) < s.cfg.MinSnippetRunes {
+		return Result{Accepted: false, Reason: ReasonShortContent}, nil
+	}
+
+	// Check exclusion words (takes precedence)
+	combined := item.Title + " " + item.Snippet
+	if len(s.cfg.ExcludeWords) > 0 && containsAny(combined, s.cfg.ExcludeWords) {
+		return Result{Accepted: false, Reason: ReasonExcluded}, nil
+	}
+
+	// Check keywords (if configured)
+	if len(s.cfg.Keywords) > 0 && !containsAny(combined, s.cfg.Keywords) {
+		return Result{Accepted: false, Reason: ReasonNoKeywords}, nil
+	}
+
+	return Result{Accepted: true, Reason: ReasonPassed}, nil
 }
 
 func containsAny(text string, words []string) bool {
