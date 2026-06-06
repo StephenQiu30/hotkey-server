@@ -10,8 +10,8 @@ import (
 func TestScoreFullQualityItem(t *testing.T) {
 	svc := NewService(DefaultConfig())
 	result, err := svc.Score(context.Background(), content.SourceItem{
-		Title:       "人工智能最新进展：深度学习技术突破",
-		Snippet:     "研究人员在自然语言处理领域取得了重大突破，新的模型在多项基准测试中表现优异，涵盖多项任务。",
+		Title:       "人工智能最新进展：深度学习技术取得重大突破",
+		Snippet:     "研究人员在自然语言处理领域取得了重大突破，新的模型在多项基准测试中表现优异，涵盖文本分类、情感分析、机器翻译和问答系统等多项核心任务，推动了整个行业的技术进步与创新发展。",
 		Language:    "zh",
 		CanonicalURL: "https://example.com/article/1",
 	})
