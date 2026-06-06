@@ -1,16 +1,64 @@
 package http_test
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/domain/user"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/adapter"
+	serviceauth "github.com/StephenQiu30/hotkey-server/internal/service/auth"
 	transporthttp "github.com/StephenQiu30/hotkey-server/internal/transport/http"
+	"golang.org/x/crypto/bcrypt"
 )
 
+func setupAdapterTest(t *testing.T, reg *adapter.Registry) (http.Handler, *serviceauth.Service) {
+	t.Helper()
+	authRepo := serviceauth.NewMemoryRepository()
+	hash, err := bcrypt.GenerateFromPassword([]byte("correct horse battery staple"), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	_, _ = authRepo.CreateUser(context.Background(), user.User{
+		ID:           "usr_admin",
+		Email:        "adapter-admin@example.com",
+		PasswordHash: string(hash),
+		Role:         user.RoleAdmin,
+		Status:       user.StatusActive,
+		Timezone:     "Asia/Shanghai",
+		DailySendAt:  "08:30",
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	})
+	authService, err := serviceauth.NewService(authRepo, serviceauth.Config{AccessTokenSecret: "test-adapter-secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := transporthttp.NewRouterWithDependencies(transporthttp.Dependencies{
+		AuthService:     authService,
+		AdapterRegistry: reg,
+	})
+	return router, authService
+}
+
+func loginAsAdmin(t *testing.T, handler http.Handler, authService *serviceauth.Service) string {
+	t.Helper()
+	login := postJSON(t, handler, "/api/v1/auth/login", map[string]string{
+		"email":    "adapter-admin@example.com",
+		"password": "correct horse battery staple",
+	})
+	if login.Code != http.StatusOK {
+		t.Fatalf("expected login 200, got %d with body %s", login.Code, login.Body.String())
+	}
+	return jsonStringAt(t, login.Body.Bytes(), "accessToken")
+}
+
 func TestListAdaptersRequiresAdminAuth(t *testing.T) {
-	router := transportRouterForTest()
+	reg := adapter.NewRegistry()
+	router, _ := setupAdapterTest(t, reg)
 	userToken := registerAndLogin(t, router, "adapter-user@example.com")
 
 	denied := getWithBearer(router, "/api/v1/admin/adapters", userToken)
@@ -34,10 +82,8 @@ func TestListAdaptersReturnsAllRegisteredAdapters(t *testing.T) {
 		Name:     "page-adapter",
 	}))
 
-	router := transportRouterWithDependenciesForTest(transporthttp.Dependencies{
-		AdapterRegistry: reg,
-	})
-	adminToken := registerAdminAndLogin(t, router, "adapter-admin@example.com")
+	router, authService := setupAdapterTest(t, reg)
+	adminToken := loginAsAdmin(t, router, authService)
 
 	adapters := getWithBearer(router, "/api/v1/admin/adapters", adminToken)
 	if adapters.Code != http.StatusOK {
@@ -55,10 +101,8 @@ func TestGetAdapterHealthReturnsStatus(t *testing.T) {
 		Name:     "rss-adapter",
 	}))
 
-	router := transportRouterWithDependenciesForTest(transporthttp.Dependencies{
-		AdapterRegistry: reg,
-	})
-	adminToken := registerAdminAndLogin(t, router, "adapter-health@example.com")
+	router, authService := setupAdapterTest(t, reg)
+	adminToken := loginAsAdmin(t, router, authService)
 
 	health := getWithBearer(router, "/api/v1/admin/adapters/rss/health", adminToken)
 	if health.Code != http.StatusOK {
@@ -69,10 +113,8 @@ func TestGetAdapterHealthReturnsStatus(t *testing.T) {
 
 func TestGetAdapterHealthReturns404ForMissing(t *testing.T) {
 	reg := adapter.NewRegistry()
-	router := transportRouterWithDependenciesForTest(transporthttp.Dependencies{
-		AdapterRegistry: reg,
-	})
-	adminToken := registerAdminAndLogin(t, router, "adapter-missing@example.com")
+	router, authService := setupAdapterTest(t, reg)
+	adminToken := loginAsAdmin(t, router, authService)
 
 	health := getWithBearer(router, "/api/v1/admin/adapters/official_api/health", adminToken)
 	if health.Code != http.StatusNotFound {
@@ -92,26 +134,32 @@ func TestGetAdapterCapabilitiesReturnsConfig(t *testing.T) {
 		},
 	}))
 
-	router := transportRouterWithDependenciesForTest(transporthttp.Dependencies{
-		AdapterRegistry: reg,
-	})
-	adminToken := registerAdminAndLogin(t, router, "adapter-caps@example.com")
+	router, authService := setupAdapterTest(t, reg)
+	adminToken := loginAsAdmin(t, router, authService)
 
 	caps := getWithBearer(router, "/api/v1/admin/adapters/rss/capabilities", adminToken)
 	if caps.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d with body %s", caps.Code, caps.Body.String())
 	}
-	assertJSONField(t, caps.Body.Bytes(), "supports_incremental", "true")
-	assertJSONField(t, caps.Body.Bytes(), "max_items_per_fetch", "50")
-	assertJSONField(t, caps.Body.Bytes(), "rate_limit_per_hour", "100")
+	var body map[string]any
+	if err := json.Unmarshal(caps.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["supports_incremental"] != true {
+		t.Fatalf("expected supports_incremental=true, got %v", body["supports_incremental"])
+	}
+	if body["max_items_per_fetch"] != float64(50) {
+		t.Fatalf("expected max_items_per_fetch=50, got %v", body["max_items_per_fetch"])
+	}
+	if body["rate_limit_per_hour"] != float64(100) {
+		t.Fatalf("expected rate_limit_per_hour=100, got %v", body["rate_limit_per_hour"])
+	}
 }
 
 func TestGetAdapterCapabilitiesReturns404ForMissing(t *testing.T) {
 	reg := adapter.NewRegistry()
-	router := transportRouterWithDependenciesForTest(transporthttp.Dependencies{
-		AdapterRegistry: reg,
-	})
-	adminToken := registerAdminAndLogin(t, router, "adapter-caps-miss@example.com")
+	router, authService := setupAdapterTest(t, reg)
+	adminToken := loginAsAdmin(t, router, authService)
 
 	caps := getWithBearer(router, "/api/v1/admin/adapters/official_api/capabilities", adminToken)
 	if caps.Code != http.StatusNotFound {
