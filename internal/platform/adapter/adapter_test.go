@@ -1,7 +1,6 @@
 package adapter_test
 
 import (
-	"context"
 	"errors"
 	"testing"
 	"time"
