@@ -79,6 +79,89 @@ func TestServiceGenerateEmptyVectorRecordsFailure(t *testing.T) {
 	}
 }
 
+func TestServiceRetrySucceedsAfterTransientFailure(t *testing.T) {
+	repo := hotspot.NewMemoryRepository()
+	items := &memoryItemRepository{items: map[string]content.SourceItem{
+		"item-1": {ID: "item-1", Title: "AI 新闻", Snippet: "正文片段"},
+	}}
+	callCount := 0
+	provider := &countingProvider{
+		fn: func() (Response, error) {
+			callCount++
+			if callCount == 1 {
+				return Response{}, errors.New("transient network error")
+			}
+			return Response{Vector: []float64{0.1, 0.2, 0.3}, Model: "text-embedding-v2"}, nil
+		},
+	}
+	service := NewService(Config{Model: "text-embedding-v2", MaxRetries: 2}, items, repo, provider)
+
+	embedding, err := service.Generate(context.Background(), "item-1")
+	if err != nil {
+		t.Fatalf("expected retry to succeed, got %v", err)
+	}
+	if embedding.Status != hotspot.EmbeddingStatusSucceeded {
+		t.Fatalf("expected succeeded after retry, got %+v", embedding)
+	}
+	if callCount != 2 {
+		t.Fatalf("expected 2 calls, got %d", callCount)
+	}
+}
+
+func TestServiceRetryFailsAfterMaxRetries(t *testing.T) {
+	repo := hotspot.NewMemoryRepository()
+	items := &memoryItemRepository{items: map[string]content.SourceItem{
+		"item-1": {ID: "item-1", Title: "AI 新闻", Snippet: "正文片段"},
+	}}
+	callCount := 0
+	provider := &countingProvider{
+		fn: func() (Response, error) {
+			callCount++
+			return Response{}, errors.New("persistent error")
+		},
+	}
+	service := NewService(Config{Model: "text-embedding-v2", MaxRetries: 3}, items, repo, provider)
+
+	_, err := service.Generate(context.Background(), "item-1")
+	if err == nil {
+		t.Fatal("expected error after max retries")
+	}
+	if callCount != 4 { // 1 initial + 3 retries
+		t.Fatalf("expected 4 calls (1 initial + 3 retries), got %d", callCount)
+	}
+}
+
+func TestServiceNoRetryOnConfigError(t *testing.T) {
+	repo := hotspot.NewMemoryRepository()
+	items := &memoryItemRepository{items: map[string]content.SourceItem{
+		"item-1": {ID: "item-1", Title: "AI 新闻", Snippet: "正文片段"},
+	}}
+	callCount := 0
+	provider := &countingProvider{
+		fn: func() (Response, error) {
+			callCount++
+			return Response{}, ErrFailedConfig
+		},
+	}
+	service := NewService(Config{Model: "text-embedding-v2", MaxRetries: 3}, items, repo, provider)
+
+	_, err := service.Generate(context.Background(), "item-1")
+	if !errors.Is(err, ErrFailedConfig) {
+		t.Fatalf("expected ErrFailedConfig, got %v", err)
+	}
+	if callCount != 1 {
+		t.Fatalf("expected no retry for config error, got %d calls", callCount)
+	}
+}
+
+type countingProvider struct {
+	fn func() (Response, error)
+}
+
+func (p *countingProvider) Embed(context.Context, Request) (Response, error) {
+	return p.fn()
+}
+
 type fakeProvider struct {
 	vector []float64
 	model  string

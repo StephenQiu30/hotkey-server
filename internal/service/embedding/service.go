@@ -43,6 +43,7 @@ type Repository interface {
 type Config struct {
 	Model        string
 	MaxTextRunes int
+	MaxRetries   int
 }
 
 type Service struct {
