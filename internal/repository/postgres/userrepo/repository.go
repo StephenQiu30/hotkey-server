@@ -131,6 +131,28 @@ func scanUser(row userScanner) (user.User, error) {
 	return account, nil
 }
 
+func (r *Repository) DeleteUser(ctx context.Context, id string) error {
+	const query = `DELETE FROM users WHERE id = $1`
+	result, err := r.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (r *Repository) DeleteRefreshTokensByUserID(ctx context.Context, userID string) error {
+	const query = `DELETE FROM refresh_tokens WHERE user_id = $1`
+	_, err := r.db.ExecContext(ctx, query, userID)
+	return err
+}
+
 func isUniqueViolation(err error) bool {
 	var pgErr interface{ SQLState() string }
 	return errors.As(err, &pgErr) && pgErr.SQLState() == "23505"

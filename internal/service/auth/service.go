@@ -35,9 +35,11 @@ type Repository interface {
 	CreateUser(ctx context.Context, user user.User) (user.User, error)
 	UserByEmail(ctx context.Context, email string) (user.User, error)
 	UserByID(ctx context.Context, id string) (user.User, error)
+	DeleteUser(ctx context.Context, id string) error
 	CreateRefreshToken(ctx context.Context, token RefreshToken) error
 	RefreshTokenByHash(ctx context.Context, tokenHash string) (RefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, tokenHash string, revokedAt time.Time) error
+	DeleteRefreshTokensByUserID(ctx context.Context, userID string) error
 }
 
 type RefreshToken struct {

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	domainhotspot "github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/crypto"
 	serviceadmin "github.com/StephenQiu30/hotkey-server/internal/service/admin"
 	serviceauth "github.com/StephenQiu30/hotkey-server/internal/service/auth"
 	servicechannel "github.com/StephenQiu30/hotkey-server/internal/service/channel"
@@ -14,6 +15,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers"
 	adminhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/admin"
 	authhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/auth"
+	azhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/authorization"
 	channelhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/channel"
 	hotspothandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/hotspot"
 	reporthandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/report"
@@ -23,33 +25,47 @@ import (
 )
 
 type Dependencies struct {
-	AuthService    *serviceauth.Service
-	ChannelService *servicechannel.Service
-	SourceService  *servicesource.Service
-	AdminService   *serviceadmin.Service
-	ScoringService *servicehotspot.ScoringService
-	ReportService  *servicereport.Service
-	RSSService     *servicerss.Service
+	AuthService          *serviceauth.Service
+	AuthorizationService *serviceauth.AuthorizationService
+	ChannelService       *servicechannel.Service
+	SourceService        *servicesource.Service
+	AdminService         *serviceadmin.Service
+	ScoringService       *servicehotspot.ScoringService
+	ReportService        *servicereport.Service
+	RSSService           *servicerss.Service
 }
 
 func NewRouter() *gin.Engine {
-	authService, err := serviceauth.NewService(serviceauth.NewMemoryRepository(), serviceauth.Config{
+	repo := serviceauth.NewMemoryRepository()
+	authService, err := serviceauth.NewService(repo, serviceauth.Config{
 		AccessTokenSecret: "test-router-secret",
 	})
 	if err != nil {
 		panic(err)
 	}
-	return NewRouterWithServices(authService, servicechannel.NewService(servicechannel.NewMemoryRepository()))
+	key := []byte("0123456789abcdef0123456789abcdef")
+	enc, err := crypto.NewAESGCMEncryptor(key)
+	if err != nil {
+		panic(err)
+	}
+	azService := serviceauth.NewAuthorizationService(repo, enc, nil)
+	return NewRouterWithServices(authService, servicechannel.NewService(servicechannel.NewMemoryRepository()), azService)
 }
 
 func NewRouterWithAuth(authService *serviceauth.Service) *gin.Engine {
-	return NewRouterWithServices(authService, servicechannel.NewService(servicechannel.NewMemoryRepository()))
+	key := []byte("0123456789abcdef0123456789abcdef")
+	enc, err := crypto.NewAESGCMEncryptor(key)
+	if err != nil {
+		panic(err)
+	}
+	azService := serviceauth.NewAuthorizationService(serviceauth.NewMemoryRepository(), enc, nil)
+	return NewRouterWithServices(authService, servicechannel.NewService(servicechannel.NewMemoryRepository()), azService)
 }
 
-func NewRouterWithServices(authService *serviceauth.Service, channelService *servicechannel.Service, sourceServices ...*servicesource.Service) *gin.Engine {
+func NewRouterWithServices(authService *serviceauth.Service, channelService *servicechannel.Service, azServices ...*serviceauth.AuthorizationService) *gin.Engine {
 	deps := Dependencies{AuthService: authService, ChannelService: channelService}
-	if len(sourceServices) > 0 {
-		deps.SourceService = sourceServices[0]
+	if len(azServices) > 0 {
+		deps.AuthorizationService = azServices[0]
 	}
 	return NewRouterWithDependencies(deps)
 }
@@ -87,8 +103,17 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	if deps.RSSService == nil {
 		deps.RSSService = servicerss.NewService(servicerss.NewMemoryFeedRepository(), reportRepo, servicerss.Config{})
 	}
+	if deps.AuthorizationService == nil {
+		key := []byte("0123456789abcdef0123456789abcdef")
+		enc, err := crypto.NewAESGCMEncryptor(key)
+		if err != nil {
+			panic(err)
+		}
+		deps.AuthorizationService = serviceauth.NewAuthorizationService(serviceauth.NewMemoryRepository(), enc, nil)
+	}
 
 	auth := authhandler.New(deps.AuthService)
+	authorizations := azhandler.New(deps.AuthorizationService)
 	channels := channelhandler.New(deps.ChannelService)
 	sourceService := servicesource.NewService(servicesource.NewMemoryRepository())
 	if deps.SourceService != nil {
@@ -130,6 +155,13 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	v1.GET("/me/rss", auth.AuthRequired(), rss.GetUserFeed)
 	v1.POST("/me/rss/reset", auth.AuthRequired(), rss.ResetUserFeed)
 	v1.DELETE("/me/rss", auth.AuthRequired(), rss.DisableUserFeed)
+
+	// Authorization endpoints
+	v1.POST("/authorizations/connect", auth.AuthRequired(), authorizations.Connect)
+	v1.GET("/authorizations", auth.AuthRequired(), authorizations.List)
+	v1.POST("/authorizations/:authorizationID/test", auth.AuthRequired(), authorizations.Test)
+	v1.DELETE("/authorizations/:authorizationID", auth.AuthRequired(), authorizations.Disconnect)
+	v1.DELETE("/me", auth.AuthRequired(), authorizations.DeleteAccount)
 
 	admin := v1.Group("/admin", auth.AdminRequired(), adminObservability.AuditMiddleware())
 	admin.GET("/healthz", auth.AdminHealthz)

@@ -83,3 +83,26 @@ func (r *MemoryRepository) RevokeRefreshToken(_ context.Context, tokenHash strin
 	r.refreshByHash[tokenHash] = token
 	return nil
 }
+
+func (r *MemoryRepository) DeleteUser(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	user, exists := r.usersByID[id]
+	if !exists {
+		return sql.ErrNoRows
+	}
+	delete(r.userIDByEmail, user.Email)
+	delete(r.usersByID, id)
+	return nil
+}
+
+func (r *MemoryRepository) DeleteRefreshTokensByUserID(_ context.Context, userID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for hash, token := range r.refreshByHash {
+		if token.UserID == userID {
+			delete(r.refreshByHash, hash)
+		}
+	}
+	return nil
+}
