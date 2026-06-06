@@ -1,0 +1,68 @@
+package e2e_test
+
+import (
+	"context"
+	"net/http"
+	"os"
+	"testing"
+	"time"
+)
+
+func e2ePostgresAddr(t *testing.T) string {
+	t.Helper()
+	if addr := os.Getenv("HOTKEY_E2E_POSTGRES_ADDR"); addr != "" {
+		return addr
+	}
+	return "127.0.0.1:15432"
+}
+
+func e2eRedisURL(t *testing.T) string {
+	t.Helper()
+	if addr := os.Getenv("HOTKEY_E2E_REDIS_URL"); addr != "" {
+		return addr
+	}
+	return "redis://127.0.0.1:16379/0"
+}
+
+func e2eServerURL(t *testing.T) string {
+	t.Helper()
+	if addr := os.Getenv("HOTKEY_E2E_SERVER_URL"); addr != "" {
+		return addr
+	}
+	return "http://127.0.0.1:18080"
+}
+
+// TestHealthCheck_PostgreSQL verifies the E2E PostgreSQL port is accepting connections.
+func TestHealthCheck_PostgreSQL(t *testing.T) {
+	addr := e2ePostgresAddr(t)
+	if err := pingTCP(addr, 3*time.Second); err != nil {
+		t.Fatalf("E2E PostgreSQL not reachable at %s: %v", addr, err)
+	}
+	t.Logf("E2E PostgreSQL healthy at %s", addr)
+}
+
+// TestHealthCheck_Redis verifies the E2E Redis responds to PING.
+func TestHealthCheck_Redis(t *testing.T) {
+	rawURL := e2eRedisURL(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := redisPing(ctx, rawURL); err != nil {
+		t.Fatalf("E2E Redis not reachable: %v", err)
+	}
+	t.Logf("E2E Redis healthy at %s", rawURL)
+}
+
+// TestHealthCheck_ServerHTTP verifies the E2E server responds to /healthz.
+func TestHealthCheck_ServerHTTP(t *testing.T) {
+	baseURL := e2eServerURL(t)
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(baseURL + "/healthz")
+	if err != nil {
+		t.Fatalf("E2E server not reachable at %s/healthz: %v", baseURL, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("E2E server /healthz returned status %d, want 200", resp.StatusCode)
+	}
+	t.Logf("E2E server healthy at %s/healthz", baseURL)
+}
