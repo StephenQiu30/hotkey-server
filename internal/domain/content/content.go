@@ -28,6 +28,13 @@ var (
 	ErrAlreadyExists = errors.New("already exists")
 )
 
+type ItemFilterStatus string
+
+const (
+	ItemFilterStatusPassed   ItemFilterStatus = "passed"
+	ItemFilterStatusFiltered ItemFilterStatus = "filtered"
+)
+
 type SourceItem struct {
 	ID                string
 	SourceID          string
@@ -41,6 +48,10 @@ type SourceItem struct {
 	Language          string
 	Status            ItemStatus
 	DuplicateOfItemID string
+	FilterStatus      ItemFilterStatus
+	FilterReason      string
+	QualityScore      float64
+	Summarizable      bool
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }

@@ -109,6 +109,16 @@ func (r *MemoryRepository) FindEmbedding(_ context.Context, itemID string) (Embe
 	return cloneEmbedding(embedding), nil
 }
 
+func (r *MemoryRepository) ListEmbeddings(_ context.Context) ([]Embedding, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make([]Embedding, 0, len(r.embeddings))
+	for _, emb := range r.embeddings {
+		result = append(result, cloneEmbedding(emb))
+	}
+	return result, nil
+}
+
 func (r *MemoryRepository) ListCandidates(_ context.Context, start time.Time, end time.Time) ([]Candidate, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
