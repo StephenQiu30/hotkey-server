@@ -14,7 +14,7 @@ func TestAuthorizationService_Connect(t *testing.T) {
 	enc := newTestEncryptor(t)
 	authRepo := serviceauth.NewMemoryRepository()
 	userSvc := newUserService(t, authRepo)
-	azSvc := serviceauth.NewAuthorizationService(authRepo, enc, time.Now)
+	azSvc := serviceauth.NewAuthorizationService(authRepo, nil, enc, time.Now)
 
 	ctx := context.Background()
 
@@ -50,7 +50,7 @@ func TestAuthorizationService_Disconnect(t *testing.T) {
 	enc := newTestEncryptor(t)
 	authRepo := serviceauth.NewMemoryRepository()
 	userSvc := newUserService(t, authRepo)
-	azSvc := serviceauth.NewAuthorizationService(authRepo, enc, time.Now)
+	azSvc := serviceauth.NewAuthorizationService(authRepo, nil, enc, time.Now)
 
 	ctx := context.Background()
 
@@ -97,7 +97,7 @@ func TestAuthorizationService_HealthCheck_Expired(t *testing.T) {
 	userSvc := newUserService(t, authRepo)
 
 	pastTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-	azSvc := serviceauth.NewAuthorizationService(authRepo, enc, func() time.Time { return pastTime })
+	azSvc := serviceauth.NewAuthorizationService(authRepo, nil, enc, func() time.Time { return pastTime })
 
 	ctx := context.Background()
 
@@ -123,7 +123,7 @@ func TestAuthorizationService_HealthCheck_Expired(t *testing.T) {
 	}
 
 	// Health check should detect expired
-	result, err := azSvc.HealthCheck(ctx, az.ID)
+	result, err := azSvc.HealthCheck(ctx, account.ID, az.ID)
 	if err != nil {
 		t.Fatalf("health check: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestAuthorizationService_ListByUser(t *testing.T) {
 	enc := newTestEncryptor(t)
 	authRepo := serviceauth.NewMemoryRepository()
 	userSvc := newUserService(t, authRepo)
-	azSvc := serviceauth.NewAuthorizationService(authRepo, enc, time.Now)
+	azSvc := serviceauth.NewAuthorizationService(authRepo, nil, enc, time.Now)
 
 	ctx := context.Background()
 
@@ -184,7 +184,7 @@ func TestAuthorizationService_DeleteAccount(t *testing.T) {
 	enc := newTestEncryptor(t)
 	authRepo := serviceauth.NewMemoryRepository()
 	userSvc := newUserService(t, authRepo)
-	azSvc := serviceauth.NewAuthorizationService(authRepo, enc, time.Now)
+	azSvc := serviceauth.NewAuthorizationService(authRepo, nil, enc, time.Now)
 
 	ctx := context.Background()
 
@@ -224,17 +224,18 @@ func TestAuthorizationService_DeleteAccount(t *testing.T) {
 	}
 
 	// Verify user is deleted
-	_, err = userSvc.CurrentUser(ctx, "invalid")
-	// User should no longer be findable
+	_, err = userSvc.CurrentUser(ctx, account.ID)
+	if err == nil {
+		t.Fatal("expected error after user deletion, got nil")
+	}
+
+	// Verify all authorizations are deleted
 	list, err := azSvc.ListByUser(ctx, account.ID)
 	if err != nil {
 		t.Fatalf("list after delete: %v", err)
 	}
-	// All authorizations should be revoked
-	for _, az := range list {
-		if az.Status != authorization.StatusRevoked {
-			t.Fatalf("expected all revoked, got %s", az.Status)
-		}
+	if len(list) != 0 {
+		t.Fatalf("expected 0 authorizations after delete, got %d", len(list))
 	}
 }
 

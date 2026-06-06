@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS authorizations (
     expires_at TIMESTAMP WITH TIME ZONE,
     revoked_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    UNIQUE(user_id, platform)
 );
 
 CREATE INDEX idx_authorizations_user_id ON authorizations(user_id);

@@ -49,7 +49,7 @@ func (a Authorization) IsExpired(now time.Time) bool {
 	if a.ExpiresAt == nil {
 		return false
 	}
-	return a.ExpiresAt.Before(now)
+	return !a.ExpiresAt.After(now)
 }
 
 func (a Authorization) IsRevoked() bool {

@@ -39,21 +39,19 @@ type AuthorizationService struct {
 	now         func() time.Time
 }
 
-func NewAuthorizationService(repo Repository, encryptor crypto.Encryptor, now func() time.Time) *AuthorizationService {
+func NewAuthorizationService(authRepo Repository, azRepo AuthorizationRepository, encryptor crypto.Encryptor, now func() time.Time) *AuthorizationService {
 	if now == nil {
 		now = time.Now
 	}
+	if azRepo == nil {
+		azRepo = NewMemoryAuthorizationRepository()
+	}
 	return &AuthorizationService{
-		authRepo:  repo,
-		azRepo:    NewMemoryAuthorizationRepository(),
+		authRepo:  authRepo,
+		azRepo:    azRepo,
 		encryptor: encryptor,
 		now:       now,
 	}
-}
-
-type combinedRepository struct {
-	Repository
-	AuthorizationRepository
 }
 
 func (s *AuthorizationService) Connect(ctx context.Context, input ConnectInput) (authorization.Authorization, error) {
@@ -125,13 +123,18 @@ func (s *AuthorizationService) Disconnect(ctx context.Context, userID string, az
 	return s.azRepo.UpdateAuthorizationStatus(ctx, azID, authorization.StatusRevoked, s.now().UTC())
 }
 
-func (s *AuthorizationService) HealthCheck(ctx context.Context, azID string) (authorization.Authorization, error) {
+func (s *AuthorizationService) HealthCheck(ctx context.Context, userID string, azID string) (authorization.Authorization, error) {
 	az, err := s.azRepo.AuthorizationByID(ctx, azID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return authorization.Authorization{}, authorization.ErrNotFound
 		}
 		return authorization.Authorization{}, err
+	}
+
+	// Verify ownership before mutating
+	if az.UserID != userID {
+		return authorization.Authorization{}, authorization.ErrNotFound
 	}
 
 	if az.IsRevoked() {

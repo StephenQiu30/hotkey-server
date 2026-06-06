@@ -87,18 +87,13 @@ func (h *Handler) Test(c *gin.Context) {
 	}
 
 	azID := c.Param("authorizationID")
-	az, err := h.azService.HealthCheck(c.Request.Context(), azID)
+	az, err := h.azService.HealthCheck(c.Request.Context(), account.ID, azID)
 	if err != nil {
 		if errors.Is(err, authorization.ErrNotFound) {
 			writeError(c, http.StatusNotFound, "not_found", "authorization not found")
 			return
 		}
 		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
-		return
-	}
-
-	if az.UserID != account.ID {
-		writeError(c, http.StatusNotFound, "not_found", "authorization not found")
 		return
 	}
 

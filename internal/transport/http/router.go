@@ -48,7 +48,7 @@ func NewRouter() *gin.Engine {
 	if err != nil {
 		panic(err)
 	}
-	azService := serviceauth.NewAuthorizationService(repo, enc, nil)
+	azService := serviceauth.NewAuthorizationService(repo, nil, enc, nil)
 	return NewRouterWithServices(authService, servicechannel.NewService(servicechannel.NewMemoryRepository()), azService)
 }
 
@@ -58,7 +58,7 @@ func NewRouterWithAuth(authService *serviceauth.Service) *gin.Engine {
 	if err != nil {
 		panic(err)
 	}
-	azService := serviceauth.NewAuthorizationService(serviceauth.NewMemoryRepository(), enc, nil)
+	azService := serviceauth.NewAuthorizationService(serviceauth.NewMemoryRepository(), nil, enc, nil)
 	return NewRouterWithServices(authService, servicechannel.NewService(servicechannel.NewMemoryRepository()), azService)
 }
 
@@ -109,7 +109,7 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 		if err != nil {
 			panic(err)
 		}
-		deps.AuthorizationService = serviceauth.NewAuthorizationService(serviceauth.NewMemoryRepository(), enc, nil)
+		deps.AuthorizationService = serviceauth.NewAuthorizationService(serviceauth.NewMemoryRepository(), nil, enc, nil)
 	}
 
 	auth := authhandler.New(deps.AuthService)
