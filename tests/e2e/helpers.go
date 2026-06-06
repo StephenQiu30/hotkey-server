@@ -1,0 +1,53 @@
+package e2e_test
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"net/url"
+	"time"
+)
+
+// pingTCP checks if a TCP port is accepting connections.
+func pingTCP(addr string, timeout time.Duration) error {
+	conn, err := net.DialTimeout("tcp", addr, timeout)
+	if err != nil {
+		return fmt.Errorf("tcp dial %s: %w", addr, err)
+	}
+	conn.Close()
+	return nil
+}
+
+// redisPing performs a PING command over a raw TCP connection to Redis.
+func redisPing(ctx context.Context, rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("parse redis url: %w", err)
+	}
+	addr := u.Host
+	if addr == "" {
+		addr = "127.0.0.1:6379"
+	}
+	dialer := &net.Dialer{Timeout: 3 * time.Second}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return fmt.Errorf("dial redis %s: %w", addr, err)
+	}
+	defer conn.Close()
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(deadline)
+	}
+	if _, err := conn.Write([]byte("PING\r\n")); err != nil {
+		return fmt.Errorf("redis PING write: %w", err)
+	}
+	buf := make([]byte, 64)
+	n, err := conn.Read(buf)
+	if err != nil {
+		return fmt.Errorf("redis PING read: %w", err)
+	}
+	resp := string(buf[:n])
+	if resp != "+PONG\r\n" && resp != "+PONG" {
+		return fmt.Errorf("redis PING unexpected response: %q", resp)
+	}
+	return nil
+}
