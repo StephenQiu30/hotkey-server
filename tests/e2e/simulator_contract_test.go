@@ -212,54 +212,26 @@ func TestAllBehaviors_Coverage(t *testing.T) {
 	}
 }
 
-// --- Simulator constructors (will fail until implemented) ---
-
-var (
-	errNotImplemented = errors.New("simulator not implemented")
-)
+// --- Simulator constructors (wired to real implementations) ---
 
 func newAISimulator(t *testing.T) AIProviderSimulator {
 	t.Helper()
-	// Will be replaced with real implementation
-	return &stubAISimulator{}
+	return newAISimulatorImpl()
 }
 
 func newSMTPSink(t *testing.T) SMTPSink {
 	t.Helper()
-	return &stubSMTPSink{}
+	sink, err := newSMTPSinkImpl()
+	if err != nil {
+		t.Fatalf("create SMTP sink: %v", err)
+	}
+	return sink
 }
 
 func newFetcherSimulator(t *testing.T) FetcherSimulator {
 	t.Helper()
-	return &stubFetcherSimulator{}
+	return newFetcherSimulatorImpl()
 }
-
-// --- Stubs that return errors (red phase) ---
-
-type stubAISimulator struct{}
-
-func (s *stubAISimulator) SetBehavior(b ProviderBehavior) {}
-func (s *stubAISimulator) Embed(ctx context.Context, text string) ([]float64, error) {
-	return nil, errNotImplemented
-}
-func (s *stubAISimulator) Chat(ctx context.Context, prompt string) (string, error) {
-	return "", errNotImplemented
-}
-func (s *stubAISimulator) Reset() {}
-
-type stubSMTPSink struct{}
-
-func (s *stubSMTPSink) Addr() string           { return "" }
-func (s *stubSMTPSink) Records() []EmailRecord  { return nil }
-func (s *stubSMTPSink) Reset()                  {}
-
-type stubFetcherSimulator struct{}
-
-func (s *stubFetcherSimulator) SetBehavior(b ProviderBehavior) {}
-func (s *stubFetcherSimulator) Fetch(ctx context.Context, sourceURL string) ([]map[string]string, error) {
-	return nil, errNotImplemented
-}
-func (s *stubFetcherSimulator) Reset() {}
 
 // --- Error assertion helper ---
 
