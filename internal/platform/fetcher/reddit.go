@@ -211,7 +211,7 @@ type redditPost struct {
 	NumComments int     `json:"num_comments"`
 	CreatedUTC  float64 `json:"created_utc"`
 	Subreddit   string  `json:"subreddit"`
-	SelfText    string  `json:"self_text"`
+	SelfText    string  `json:"selftext"`
 	Over18      bool    `json:"over_18"`
 	Permalink   string  `json:"permalink"`
 	Body        string  `json:"body"`   // for comments
