@@ -56,4 +56,5 @@ jobs:
         env:
           HOTKEY_E2E_POSTGRES_ADDR: "127.0.0.1:15432"
           HOTKEY_E2E_REDIS_URL: "redis://127.0.0.1:16379/0"
+          HOTKEY_E2E_SERVER_URL: "" # Server not started in CI yet
         run: go test -v -tags e2e -count=1 -timeout=60s ./tests/e2e/...
