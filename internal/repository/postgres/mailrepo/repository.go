@@ -107,6 +107,26 @@ func (r *Repository) UpdateDelivery(ctx context.Context, delivery servicemail.De
 	return delivery, err
 }
 
+func (r *Repository) FindDeliveryByReportAndUser(ctx context.Context, reportID, userID string) (servicemail.Delivery, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, recipient_user_id, recipient_email, report_id, status, attempt, last_error, sent_at, created_at, updated_at
+		FROM email_deliveries
+		WHERE report_id = $1 AND recipient_user_id = $2
+		ORDER BY created_at DESC
+		LIMIT 1
+	`, reportID, userID)
+	var d servicemail.Delivery
+	var sentAt *time.Time
+	if err := row.Scan(&d.ID, &d.RecipientUserID, &d.RecipientEmail, &d.ReportID, &d.Status, &d.Attempt, &d.LastError, &sentAt, &d.CreatedAt, &d.UpdatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return servicemail.Delivery{}, servicemail.ErrNotFound
+		}
+		return servicemail.Delivery{}, err
+	}
+	d.SentAt = sentAt
+	return d, nil
+}
+
 func randomHex(size int) (string, error) {
 	buf := make([]byte, size)
 	if _, err := rand.Read(buf); err != nil {

@@ -37,6 +37,28 @@ func TestJobPayloadSchemasCoverRequiredTypes(t *testing.T) {
 	}
 }
 
+func TestJobPayloadSchemasCoverWeeklyTypes(t *testing.T) {
+	tests := []struct {
+		name    string
+		jobType JobType
+		payload any
+	}{
+		{"send weekly email", JobTypeSendWeeklyEmail, SendWeeklyEmailPayload{ReportID: "wr-1", RecipientUserID: "user-1"}},
+		{"generate weekly report", JobTypeGenerateWeeklyReport, GenerateWeeklyReportPayload{WeekOf: "2026-W23"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := json.Marshal(tt.payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := ValidatePayload(tt.jobType, body); err != nil {
+				t.Fatalf("expected payload to validate: %v", err)
+			}
+		})
+	}
+}
+
 func TestValidatePayloadRejectsUnknownTypeAndMissingRequiredFields(t *testing.T) {
 	if err := ValidatePayload(JobType("unknown"), json.RawMessage(`{}`)); err == nil {
 		t.Fatal("expected unknown job type to fail")

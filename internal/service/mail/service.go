@@ -11,6 +11,13 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
+type ReportType string
+
+const (
+	ReportTypeDaily  ReportType = "daily"
+	ReportTypeWeekly ReportType = "weekly"
+)
+
 type DeliveryStatus string
 
 const (
@@ -18,6 +25,7 @@ const (
 	DeliveryStatusSent         DeliveryStatus = "sent"
 	DeliveryStatusFailed       DeliveryStatus = "failed"
 	DeliveryStatusFailedConfig DeliveryStatus = "failed_config"
+	DeliveryStatusSkipped      DeliveryStatus = "skipped"
 )
 
 type Config struct {
@@ -41,6 +49,7 @@ type Recipient struct {
 type DailyReport struct {
 	ID           string
 	ReportDate   string
+	ReportType   ReportType
 	Title        string
 	Summary      string
 	BodyMarkdown string
@@ -78,6 +87,7 @@ type Repository interface {
 	RecipientByUserID(context.Context, string) (Recipient, error)
 	CreateDelivery(context.Context, Delivery) (Delivery, error)
 	UpdateDelivery(context.Context, Delivery) (Delivery, error)
+	FindDeliveryByReportAndUser(ctx context.Context, reportID, userID string) (Delivery, error)
 }
 
 type Service struct {
@@ -124,6 +134,13 @@ func (s *Service) SendDailyEmail(ctx context.Context, input SendDailyEmailInput)
 		return Delivery{}, err
 	}
 
+	// Idempotency: check if delivery already exists for this report+user
+	if existing, err := s.repo.FindDeliveryByReportAndUser(ctx, input.ReportID, input.RecipientUserID); err == nil {
+		existing.Status = DeliveryStatusSkipped
+		existing.LastError = "duplicate: delivery already exists"
+		return existing, nil
+	}
+
 	delivery, err := s.repo.CreateDelivery(ctx, Delivery{
 		RecipientUserID: recipient.UserID,
 		RecipientEmail:  recipient.Email,
@@ -136,10 +153,18 @@ func (s *Service) SendDailyEmail(ctx context.Context, input SendDailyEmailInput)
 	}
 
 	if !recipient.EmailEnabled {
-		delivery.Status = DeliveryStatusFailed
+		delivery.Status = DeliveryStatusSkipped
 		delivery.LastError = "recipient email disabled"
 		return s.repo.UpdateDelivery(ctx, delivery)
 	}
+
+	// Skip empty reports (no content to send)
+	if isReportEmpty(report) {
+		delivery.Status = DeliveryStatusSkipped
+		delivery.LastError = "report has no content"
+		return s.repo.UpdateDelivery(ctx, delivery)
+	}
+
 	if !s.cfg.Configured || strings.TrimSpace(s.cfg.Host) == "" || strings.TrimSpace(s.cfg.From) == "" {
 		delivery.Status = DeliveryStatusFailedConfig
 		delivery.LastError = "smtp missing_config"
@@ -151,7 +176,12 @@ func (s *Service) SendDailyEmail(ctx context.Context, input SendDailyEmailInput)
 		return s.repo.UpdateDelivery(ctx, delivery)
 	}
 
-	message := BuildDailyReportMessage(s.cfg.From, recipient.Email, report)
+	var message Message
+	if report.ReportType == ReportTypeWeekly {
+		message = BuildWeeklyReportMessage(s.cfg.From, recipient.Email, report)
+	} else {
+		message = BuildDailyReportMessage(s.cfg.From, recipient.Email, report)
+	}
 	if err := s.mailer.Send(ctx, message); err != nil {
 		delivery.Status = DeliveryStatusFailed
 		delivery.LastError = err.Error()
@@ -167,6 +197,13 @@ func (s *Service) SendDailyEmail(ctx context.Context, input SendDailyEmailInput)
 	delivery.LastError = ""
 	delivery.SentAt = &sentAt
 	return s.repo.UpdateDelivery(ctx, delivery)
+}
+
+func isReportEmpty(report DailyReport) bool {
+	return strings.TrimSpace(report.Title) == "" &&
+		strings.TrimSpace(report.Summary) == "" &&
+		strings.TrimSpace(report.BodyMarkdown) == "" &&
+		strings.TrimSpace(report.BodyHTML) == ""
 }
 
 func BuildDailyReportMessage(from string, to string, report DailyReport) Message {
@@ -203,6 +240,48 @@ func BuildDailyReportMessage(from string, to string, report DailyReport) Message
 			safeURL := html.EscapeString(report.URL)
 			htmlBody += `<p><a href="` + safeURL + `">查看日报</a></p>`
 		}
+	}
+	return Message{From: from, To: to, Subject: subject, TextBody: textBody, HTMLBody: htmlBody}
+}
+
+func BuildWeeklyReportMessage(from string, to string, report DailyReport) Message {
+	title := strings.TrimSpace(report.Title)
+	if title == "" {
+		title = "HotKey AI 热点周报"
+	}
+	subject := fmt.Sprintf("[HotKey 周报] %s", title)
+	if report.ReportDate != "" {
+		subject += " - " + report.ReportDate
+	}
+
+	unsubscribeNote := "\n\n退订：在 HotKey 设置中关闭邮件订阅即可停止接收周报。"
+	textParts := []string{title}
+	if report.Summary != "" {
+		textParts = append(textParts, "", report.Summary)
+	}
+	if report.BodyMarkdown != "" {
+		textParts = append(textParts, "", report.BodyMarkdown)
+	}
+	if report.URL != "" {
+		textParts = append(textParts, "", "查看周报: "+report.URL)
+	}
+	textParts = append(textParts, unsubscribeNote)
+	textBody := strings.Join(textParts, "\n")
+
+	htmlBody := strings.TrimSpace(report.BodyHTML)
+	if htmlBody == "" {
+		htmlBody = "<h1>" + html.EscapeString(title) + "</h1>"
+		if report.Summary != "" {
+			htmlBody += "<p>" + html.EscapeString(report.Summary) + "</p>"
+		}
+		if report.BodyMarkdown != "" {
+			htmlBody += "<pre>" + html.EscapeString(report.BodyMarkdown) + "</pre>"
+		}
+		if report.URL != "" {
+			safeURL := html.EscapeString(report.URL)
+			htmlBody += `<p><a href="` + safeURL + `">查看周报</a></p>`
+		}
+		htmlBody += `<p style="color:#999;font-size:12px;">退订：在 HotKey 设置中关闭邮件订阅即可停止接收周报。</p>`
 	}
 	return Message{From: from, To: to, Subject: subject, TextBody: textBody, HTMLBody: htmlBody}
 }
