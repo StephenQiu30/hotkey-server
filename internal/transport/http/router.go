@@ -107,10 +107,10 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	reports := reporthandler.New(deps.ReportService)
 	rss := rsshandler.New(deps.RSSService)
 
-	var adapterHandler *adapterhandler.Handler
-	if deps.AdapterRegistry != nil {
-		adapterHandler = adapterhandler.New(deps.AdapterRegistry)
+	if deps.AdapterRegistry == nil {
+		deps.AdapterRegistry = adapter.NewRegistry()
 	}
+	adapterHandler := adapterhandler.New(deps.AdapterRegistry)
 
 	adminObservability := adminhandler.New(deps.AdminService)
 	router.GET("/rss/channels/:channelCode", rss.PublicChannel)
@@ -160,11 +160,9 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	admin.GET("/sources/:sourceID/collection-runs", sources.ListCollectionRuns)
 	admin.POST("/sources/:sourceID/test-fetch", sources.TestFetch)
 
-	if adapterHandler != nil {
-		admin.GET("/adapters", adapterHandler.ListAdapters)
-		admin.GET("/adapters/:provider/health", adapterHandler.GetAdapterHealth)
-		admin.GET("/adapters/:provider/capabilities", adapterHandler.GetAdapterCapabilities)
-	}
+	admin.GET("/adapters", adapterHandler.ListAdapters)
+	admin.GET("/adapters/:provider/health", adapterHandler.GetAdapterHealth)
+	admin.GET("/adapters/:provider/capabilities", adapterHandler.GetAdapterCapabilities)
 
 	return router
 }
