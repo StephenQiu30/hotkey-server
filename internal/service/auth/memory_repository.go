@@ -83,3 +83,53 @@ func (r *MemoryRepository) RevokeRefreshToken(_ context.Context, tokenHash strin
 	r.refreshByHash[tokenHash] = token
 	return nil
 }
+
+func (r *MemoryRepository) UpdateUser(_ context.Context, account user.User) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	existing, exists := r.usersByID[account.ID]
+	if !exists {
+		return sql.ErrNoRows
+	}
+	if existing.Email != account.Email {
+		delete(r.userIDByEmail, existing.Email)
+		r.userIDByEmail[account.Email] = account.ID
+	}
+	r.usersByID[account.ID] = account
+	return nil
+}
+
+func (r *MemoryRepository) RevokeAllTokensForUser(_ context.Context, userID string, revokedAt time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for hash, token := range r.refreshByHash {
+		if token.UserID == userID && token.RevokedAt == nil {
+			token.RevokedAt = &revokedAt
+			r.refreshByHash[hash] = token
+		}
+	}
+	return nil
+}
+
+func (r *MemoryRepository) DeleteUser(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	user, exists := r.usersByID[id]
+	if !exists {
+		return sql.ErrNoRows
+	}
+	delete(r.userIDByEmail, user.Email)
+	delete(r.usersByID, id)
+	return nil
+}
+
+func (r *MemoryRepository) DeleteRefreshTokensByUserID(_ context.Context, userID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for hash, token := range r.refreshByHash {
+		if token.UserID == userID {
+			delete(r.refreshByHash, hash)
+		}
+	}
+	return nil
+}

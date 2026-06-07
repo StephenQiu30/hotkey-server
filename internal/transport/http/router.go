@@ -6,6 +6,7 @@ import (
 	domainhotspot "github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
 	domainobsidian "github.com/StephenQiu30/hotkey-server/internal/domain/obsidian"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/adapter"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/crypto"
 	platformfetcher "github.com/StephenQiu30/hotkey-server/internal/platform/fetcher"
 	serviceadmin "github.com/StephenQiu30/hotkey-server/internal/service/admin"
 	serviceauth "github.com/StephenQiu30/hotkey-server/internal/service/auth"
@@ -22,6 +23,7 @@ import (
 	adapterhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/adapter"
 	adminhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/admin"
 	authhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/auth"
+	azhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/authorization"
 	channelhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/channel"
 	eventsummaryhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/eventsummary"
 	hotspothandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/hotspot"
@@ -35,8 +37,9 @@ import (
 )
 
 type Dependencies struct {
-	AuthService         *serviceauth.Service
-	ChannelService      *servicechannel.Service
+	AuthService          *serviceauth.Service
+	AuthorizationService *serviceauth.AuthorizationService
+	ChannelService       *servicechannel.Service
 	SourceService       *servicesource.Service
 	AdminService        *serviceadmin.Service
 	ScoringService      *servicehotspot.ScoringService
@@ -107,6 +110,24 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	if deps.ObsidianService == nil {
 		deps.ObsidianService = serviceobsidian.NewService(domainobsidian.NewMemoryRepository(), nil, serviceobsidian.Config{})
 	}
+	if deps.AuthorizationService == nil {
+		key := []byte("0123456789abcdef0123456789abcdef")
+		enc, err := crypto.NewAESGCMEncryptor(key)
+		if err != nil {
+			panic(err)
+		}
+		var userRepo serviceauth.Repository
+		if deps.AuthService != nil {
+			userRepo = deps.AuthService.Repository()
+		} else {
+			userRepo = serviceauth.NewMemoryRepository()
+		}
+		azSvc, err := serviceauth.NewAuthorizationService(userRepo, serviceauth.NewMemoryAuthorizationRepository(), enc, nil)
+		if err != nil {
+			panic(err)
+		}
+		deps.AuthorizationService = azSvc
+	}
 	if deps.MonitorTopicService == nil {
 		deps.MonitorTopicService = servicemonitortopic.NewService(servicemonitortopic.NewMemoryRepository())
 	}
@@ -138,6 +159,7 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	reports := reporthandler.New(deps.ReportService)
 	rss := rsshandler.New(deps.RSSService)
 	obsidian := obsidianhandler.New(deps.ObsidianService)
+	authorizations := azhandler.New(deps.AuthorizationService)
 	topics := monitortopichandler.New(deps.MonitorTopicService)
 
 	if deps.AdapterRegistry == nil {
@@ -193,6 +215,12 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	v1.GET("/me/obsidian", auth.AuthRequired(), obsidian.GetStatus)
 	v1.POST("/me/obsidian/sync", auth.AuthRequired(), obsidian.Sync)
 
+	v1.POST("/authorizations/connect", auth.AuthRequired(), authorizations.Connect)
+	v1.DELETE("/authorizations/:id", auth.AuthRequired(), authorizations.Disconnect)
+	v1.GET("/authorizations", auth.AuthRequired(), authorizations.List)
+	v1.POST("/authorizations/:id/test", auth.AuthRequired(), authorizations.Test)
+	v1.DELETE("/me", auth.AuthRequired(), authorizations.DeleteAccount)
+
 	admin := v1.Group("/admin", auth.AdminRequired(), adminObservability.AuditMiddleware())
 	admin.GET("/healthz", auth.AdminHealthz)
 	admin.GET("/config/status", adminObservability.ConfigStatus)
@@ -222,6 +250,9 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	admin.GET("/adapters", adapterHandler.ListAdapters)
 	admin.GET("/adapters/:provider/health", adapterHandler.GetAdapterHealth)
 	admin.GET("/adapters/:provider/capabilities", adapterHandler.GetAdapterCapabilities)
+
+	admin.POST("/users/:userID/disable", auth.AdminDisableUser)
+	admin.POST("/users/:userID/revoke-tokens", auth.AdminRevokeAllTokens)
 
 	return router
 }

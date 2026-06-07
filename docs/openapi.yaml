@@ -104,6 +104,87 @@ paths:
                 $ref: "#/components/schemas/UserResponse"
         "401":
           description: Missing or invalid access token.
+    delete:
+      summary: Delete current user account and all associated data.
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: Account deleted.
+        "401":
+          description: Missing or invalid access token.
+  /api/v1/authorizations:
+    get:
+      summary: List current user's platform authorizations.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User authorizations.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthorizationListResponse"
+        "401":
+          description: Missing or invalid access token.
+  /api/v1/authorizations/connect:
+    post:
+      summary: Connect a new platform authorization.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectRequest"
+      responses:
+        "201":
+          description: Authorization created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthorizationResponse"
+        "400":
+          description: Invalid platform.
+        "401":
+          description: Missing or invalid access token.
+        "409":
+          description: Platform already connected for this user.
+  /api/v1/authorizations/{authorizationID}:
+    delete:
+      summary: Disconnect and revoke a platform authorization.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationID"
+      responses:
+        "204":
+          description: Authorization revoked.
+        "401":
+          description: Missing or invalid access token.
+        "404":
+          description: Authorization not found.
+        "409":
+          description: Authorization already revoked.
+  /api/v1/authorizations/{authorizationID}/test:
+    post:
+      summary: Test authorization health and update status.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationID"
+      responses:
+        "200":
+          description: Health check result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthorizationResponse"
+        "401":
+          description: Missing or invalid access token.
+        "404":
+          description: Authorization not found.
   /api/v1/channels:
     get:
       summary: List active channels.
@@ -786,83 +867,6 @@ paths:
                 $ref: "#/components/schemas/RSSFeedWithToken"
         "401":
           description: Missing or invalid access token.
-  /api/v1/me/obsidian/connect:
-    post:
-      summary: Connect Obsidian Git repository for sync.
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ObsidianConnectRequest"
-      responses:
-        "200":
-          description: Repository connected successfully.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ObsidianConnectResponse"
-        "400":
-          description: Invalid input or branch/directory not found.
-        "401":
-          description: Missing or invalid access token.
-        "403":
-          description: Git authentication failed.
-  /api/v1/me/obsidian:
-    get:
-      summary: Get current Obsidian sync status.
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Current sync configuration and status.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ObsidianStatusResponse"
-        "401":
-          description: Missing or invalid access token.
-        "404":
-          description: Obsidian sync not connected.
-    delete:
-      summary: Disconnect Obsidian Git sync.
-      security:
-        - bearerAuth: []
-      responses:
-        "204":
-          description: Disconnected successfully.
-        "401":
-          description: Missing or invalid access token.
-        "404":
-          description: Obsidian sync not connected.
-  /api/v1/me/obsidian/sync:
-    post:
-      summary: Sync content to Obsidian Git repository.
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ObsidianSyncRequest"
-      responses:
-        "200":
-          description: Sync result (may be idempotent, conflicted, or failed).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ObsidianSyncResponse"
-        "400":
-          description: Invalid input.
-        "401":
-          description: Missing or invalid access token.
-        "404":
-          description: Obsidian sync not connected.
-        "409":
-          description: File conflict detected.
 components:
   parameters:
     ChannelCode:
@@ -913,6 +917,12 @@ components:
       required: true
       schema:
         type: string
+    AuthorizationID:
+      name: authorizationID
+      in: path
+      required: true
+      schema:
+        type: string
     Provider:
       name: provider
       in: path
@@ -929,6 +939,82 @@ components:
       type: http
       scheme: bearer
   schemas:
+    Authorization:
+      type: object
+      required:
+        - id
+        - platform
+        - platformUserId
+        - displayName
+        - status
+        - connectedAt
+        - lastCheckedAt
+      properties:
+        id:
+          type: string
+        platform:
+          type: string
+          enum:
+            - github
+            - wechat
+            - rss
+            - custom
+        platformUserId:
+          type: string
+        displayName:
+          type: string
+        status:
+          type: string
+          enum:
+            - connected
+            - expired
+            - revoked
+        connectedAt:
+          type: string
+          format: date-time
+        lastCheckedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+    AuthorizationResponse:
+      type: object
+      required:
+        - authorization
+      properties:
+        authorization:
+          $ref: "#/components/schemas/Authorization"
+    AuthorizationListResponse:
+      type: object
+      required:
+        - authorizations
+      properties:
+        authorizations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Authorization"
+    ConnectRequest:
+      type: object
+      required:
+        - platform
+        - accessToken
+      properties:
+        platform:
+          type: string
+          enum:
+            - github
+            - wechat
+            - rss
+            - custom
+        platformUserId:
+          type: string
+        displayName:
+          type: string
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
     AuthRequest:
       type: object
       required:
@@ -1546,99 +1632,6 @@ components:
           properties:
             token:
               type: string
-    ObsidianConnectRequest:
-      type: object
-      required:
-        - repoUrl
-        - accessToken
-      properties:
-        repoUrl:
-          type: string
-        branch:
-          type: string
-        baseDir:
-          type: string
-        accessToken:
-          type: string
-        eventNoteTemplate:
-          type: string
-        dailyReportIndex:
-          type: string
-        weeklyReportIndex:
-          type: string
-        conflictResolution:
-          type: string
-          enum: [skip, branch]
-    ObsidianConnectResponse:
-      type: object
-      properties:
-        configId:
-          type: string
-        status:
-          type: string
-        defaultBranch:
-          type: string
-        branches:
-          type: array
-          items:
-            type: string
-    ObsidianStatusResponse:
-      type: object
-      properties:
-        configId:
-          type: string
-        repoUrl:
-          type: string
-        branch:
-          type: string
-        baseDir:
-          type: string
-        status:
-          type: string
-        lastError:
-          type: string
-        lastSync:
-          type: string
-          format: date-time
-          nullable: true
-    ObsidianSyncRequest:
-      type: object
-      required:
-        - contentType
-        - contentId
-        - title
-      properties:
-        contentType:
-          type: string
-        contentId:
-          type: string
-        title:
-          type: string
-        body:
-          type: string
-        tags:
-          type: array
-          items:
-            type: string
-        frontmatter:
-          type: object
-          additionalProperties:
-            type: string
-    ObsidianSyncResponse:
-      type: object
-      properties:
-        recordId:
-          type: string
-        filePath:
-          type: string
-        commitSha:
-          type: string
-        commitUrl:
-          type: string
-        state:
-          type: string
-        wasIdempotent:
-          type: boolean
     AdapterInfo:
       type: object
       required:

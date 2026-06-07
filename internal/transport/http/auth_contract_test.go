@@ -8,12 +8,10 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
-
-	transporthttp "github.com/StephenQiu30/hotkey-server/internal/transport/http"
 )
 
 func TestAuthHTTPFlowAndAdminDenial(t *testing.T) {
-	router := transporthttp.NewRouter()
+	router := newRouterWithAuthorization(t)
 
 	register := postJSON(t, router, "/api/v1/auth/register", map[string]string{
 		"email":    "flow@example.com",
@@ -92,6 +90,122 @@ func TestAuthHTTPFlowAndAdminDenial(t *testing.T) {
 	})
 	if revoked.Code != http.StatusUnauthorized {
 		t.Fatalf("expected revoked refresh 401, got %d with body %s", revoked.Code, revoked.Body.String())
+	}
+}
+
+func TestAdminDisableUserHTTP(t *testing.T) {
+	router := transportRouterForTest()
+
+	// Register a regular user
+	userToken := registerAndLogin(t, router, "disable-target@example.com")
+	me := getWithBearer(router, "/api/v1/me", userToken)
+	if me.Code != http.StatusOK {
+		t.Fatalf("expected me 200, got %d: %s", me.Code, me.Body.String())
+	}
+	userID := jsonStringAt(t, me.Body.Bytes(), "user.id")
+	if userID == "" {
+		t.Fatalf("expected non-empty user.id in /me response: %s", me.Body.String())
+	}
+
+	// Regular user cannot access admin disable endpoint
+	adminToken := registerAdminAndLogin(t, router, "channels-admin@example.com")
+	denied := postJSONWithBearer(t, router, "/api/v1/admin/users/"+userID+"/disable", userToken, nil)
+	if denied.Code != http.StatusForbidden {
+		t.Fatalf("expected non-admin disable 403, got %d: %s", denied.Code, denied.Body.String())
+	}
+
+	// Admin can disable user
+	disable := postJSONWithBearer(t, router, "/api/v1/admin/users/"+userID+"/disable", adminToken, nil)
+	if disable.Code != http.StatusNoContent {
+		t.Fatalf("expected admin disable 204, got %d: %s", disable.Code, disable.Body.String())
+	}
+
+	// Disabled user cannot login
+	login := postJSON(t, router, "/api/v1/auth/login", map[string]string{
+		"email":    "disable-target@example.com",
+		"password": "correct horse battery staple",
+	})
+	if login.Code != http.StatusUnauthorized {
+		t.Fatalf("expected disabled user login 401, got %d: %s", login.Code, login.Body.String())
+	}
+
+	// Disabled user's existing token no longer works
+	meAfter := getWithBearer(router, "/api/v1/me", userToken)
+	if meAfter.Code != http.StatusUnauthorized {
+		t.Fatalf("expected disabled user me 401, got %d: %s", meAfter.Code, meAfter.Body.String())
+	}
+}
+
+func TestAdminRevokeAllTokensHTTP(t *testing.T) {
+	router := transportRouterForTest()
+
+	// Register a user and create two sessions
+	registerAndLogin(t, router, "revoke-target@example.com")
+	login2 := postJSON(t, router, "/api/v1/auth/login", map[string]string{
+		"email":    "revoke-target@example.com",
+		"password": "correct horse battery staple",
+	})
+	if login2.Code != http.StatusOK {
+		t.Fatalf("expected second login 200, got %d: %s", login2.Code, login2.Body.String())
+	}
+	refreshToken1 := jsonStringAt(t, login2.Body.Bytes(), "refreshToken")
+
+	// Create a third session to get its refresh token
+	login3 := postJSON(t, router, "/api/v1/auth/login", map[string]string{
+		"email":    "revoke-target@example.com",
+		"password": "correct horse battery staple",
+	})
+	if login3.Code != http.StatusOK {
+		t.Fatalf("expected third login 200, got %d: %s", login3.Code, login3.Body.String())
+	}
+	refreshToken2 := jsonStringAt(t, login3.Body.Bytes(), "refreshToken")
+
+	// Get user ID
+	userToken := jsonStringAt(t, login2.Body.Bytes(), "accessToken")
+	me := getWithBearer(router, "/api/v1/me", userToken)
+	if me.Code != http.StatusOK {
+		t.Fatalf("expected me 200, got %d: %s", me.Code, me.Body.String())
+	}
+	userID := jsonStringAt(t, me.Body.Bytes(), "user.id")
+	if userID == "" {
+		t.Fatalf("expected non-empty user.id in /me response: %s", me.Body.String())
+	}
+
+	// Both refresh tokens work initially; save the rotated tokens
+	refresh1Resp := postJSON(t, router, "/api/v1/auth/refresh", map[string]string{"refreshToken": refreshToken1})
+	if refresh1Resp.Code != http.StatusOK {
+		t.Fatalf("expected refresh1 200, got %d", refresh1Resp.Code)
+	}
+	rotatedRefresh1 := jsonStringAt(t, refresh1Resp.Body.Bytes(), "refreshToken")
+
+	refresh2Resp := postJSON(t, router, "/api/v1/auth/refresh", map[string]string{"refreshToken": refreshToken2})
+	if refresh2Resp.Code != http.StatusOK {
+		t.Fatalf("expected refresh2 200, got %d", refresh2Resp.Code)
+	}
+	rotatedRefresh2 := jsonStringAt(t, refresh2Resp.Body.Bytes(), "refreshToken")
+
+	// Admin revokes all tokens
+	adminToken := registerAdminAndLogin(t, router, "channels-admin@example.com")
+	revoke := postJSONWithBearer(t, router, "/api/v1/admin/users/"+userID+"/revoke-tokens", adminToken, nil)
+	if revoke.Code != http.StatusNoContent {
+		t.Fatalf("expected admin revoke-tokens 204, got %d: %s", revoke.Code, revoke.Body.String())
+	}
+
+	// Rotated refresh tokens should no longer work after revoke
+	if got := postJSON(t, router, "/api/v1/auth/refresh", map[string]string{"refreshToken": rotatedRefresh1}); got.Code != http.StatusUnauthorized {
+		t.Fatalf("expected rotated refresh1 401 after revoke, got %d", got.Code)
+	}
+	if got := postJSON(t, router, "/api/v1/auth/refresh", map[string]string{"refreshToken": rotatedRefresh2}); got.Code != http.StatusUnauthorized {
+		t.Fatalf("expected rotated refresh2 401 after revoke, got %d", got.Code)
+	}
+
+	// User can still login again (unlike disable)
+	relogin := postJSON(t, router, "/api/v1/auth/login", map[string]string{
+		"email":    "revoke-target@example.com",
+		"password": "correct horse battery staple",
+	})
+	if relogin.Code != http.StatusOK {
+		t.Fatalf("expected relogin 200 after revoke, got %d: %s", relogin.Code, relogin.Body.String())
 	}
 }
 

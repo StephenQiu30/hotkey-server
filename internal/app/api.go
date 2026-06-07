@@ -2,27 +2,53 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/config"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/crypto"
+	platformpostgres "github.com/StephenQiu30/hotkey-server/internal/platform/postgres"
 	platformredis "github.com/StephenQiu30/hotkey-server/internal/platform/redis"
+	"github.com/StephenQiu30/hotkey-server/internal/repository/postgres/authorizationrepo"
+	"github.com/StephenQiu30/hotkey-server/internal/repository/postgres/userrepo"
 	serviceadmin "github.com/StephenQiu30/hotkey-server/internal/service/admin"
 	serviceauth "github.com/StephenQiu30/hotkey-server/internal/service/auth"
 	servicechannel "github.com/StephenQiu30/hotkey-server/internal/service/channel"
-	servicexauth "github.com/StephenQiu30/hotkey-server/internal/service/xauth"
 	transporthttp "github.com/StephenQiu30/hotkey-server/internal/transport/http"
 )
 
 type API struct {
 	server *http.Server
 	logger *slog.Logger
+	db     *sql.DB
 }
 
 func NewAPI(cfg config.Config, logger *slog.Logger) *API {
-	authService, err := serviceauth.NewService(serviceauth.NewMemoryRepository(), serviceauth.Config{
+	var db *sql.DB
+	var err error
+	if cfg.DatabaseURL != "" {
+		db, err = platformpostgres.NewPool(cfg.DatabaseURL, platformpostgres.Options{})
+		if err != nil {
+			logger.Error("failed to connect to postgres", "error", err)
+			panic("failed to connect to postgres: " + err.Error())
+		}
+	}
+
+	var authRepo serviceauth.Repository
+	var azRepo serviceauth.AuthorizationRepository
+	if db != nil {
+		authRepo = userrepo.New(db)
+		azRepo = authorizationrepo.New(db)
+	} else {
+		logger.Warn("using in-memory repositories")
+		authRepo = serviceauth.NewMemoryRepository()
+		azRepo = serviceauth.NewMemoryAuthorizationRepository()
+	}
+
+	authService, err := serviceauth.NewService(authRepo, serviceauth.Config{
 		AccessTokenSecret: authSecret(cfg),
 		AccessTokenTTL:    cfg.AccessTokenTTL,
 		RefreshTokenTTL:   cfg.RefreshTokenTTL,
@@ -30,27 +56,44 @@ func NewAPI(cfg config.Config, logger *slog.Logger) *API {
 	if err != nil {
 		panic(err)
 	}
+
+	if cfg.EncryptionKey == "" {
+		panic("EncryptionKey must be configured")
+	}
+	encKey := []byte(cfg.EncryptionKey)
+	enc, err := crypto.NewAESGCMEncryptor(encKey)
+	if err != nil {
+		panic(err)
+	}
+
+	azService, err := serviceauth.NewAuthorizationService(authRepo, azRepo, enc, nil)
+	if err != nil {
+		panic(err)
+	}
+	if db != nil {
+		azService = azService.WithTransactor(platformpostgres.NewTransactionalDB(db))
+	}
+
 	redisClient := platformredis.NewClient(cfg.RedisURL, platformredis.Options{DialTimeout: 250 * time.Millisecond})
 	adminService := serviceadmin.NewService(serviceadmin.NewMemoryRepository(), serviceadmin.Config{
-		PostgreSQLPing: func(context.Context) error { return nil },
-		RedisPing:      redisClient.Ping,
-		DashScopeKey:   cfg.DashScopeAPIKey,
-		SMTPHost:       cfg.SMTPHost,
+		PostgreSQLPing: func(ctx context.Context) error {
+			if db == nil {
+				return errors.New("postgres not connected")
+			}
+			return db.PingContext(ctx)
+		},
+		RedisPing:    redisClient.Ping,
+		DashScopeKey: cfg.DashScopeAPIKey,
+		SMTPHost:     cfg.SMTPHost,
 	})
-	xAuthService := servicexauth.NewService(servicexauth.NewMemoryRepository(), servicexauth.Config{
-		ClientID:     cfg.XClientID,
-		ClientSecret: cfg.XClientSecret,
-		RedirectURL:  cfg.XRedirectURL,
-	})
-
 	return &API{
 		server: &http.Server{
 			Addr: cfg.HTTPAddr,
 			Handler: transporthttp.NewRouterWithDependencies(transporthttp.Dependencies{
-				AuthService:    authService,
-				ChannelService: servicechannel.NewService(servicechannel.NewMemoryRepository()),
-				AdminService:   adminService,
-				XAuthService:   xAuthService,
+				AuthService:          authService,
+				AuthorizationService: azService,
+				ChannelService:       servicechannel.NewService(servicechannel.NewMemoryRepository()),
+				AdminService:         adminService,
 			}),
 			ReadHeaderTimeout: 5 * time.Second,
 		},
@@ -94,5 +137,10 @@ func (api *API) Run(ctx context.Context) error {
 }
 
 func (api *API) Shutdown(ctx context.Context) error {
+	if api.db != nil {
+		if err := api.db.Close(); err != nil {
+			api.logger.Error("failed to close database pool", "error", err)
+		}
+	}
 	return api.server.Shutdown(ctx)
 }
