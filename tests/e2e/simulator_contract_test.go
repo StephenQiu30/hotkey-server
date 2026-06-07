@@ -1,3 +1,5 @@
+//go:build e2e
+
 package e2e_test
 
 import (
@@ -122,8 +124,19 @@ func TestSMTPSink_Capture(t *testing.T) {
 	writeCmd("Subject: Test Subject\r\n\r\nTest Body\r\n.\r\n")
 	writeCmd("QUIT\r\n")
 
-	// Wait a bit for sink to process
-	time.Sleep(100 * time.Millisecond)
+	// Poll until sink processes the email or timeout.
+	deadline := time.After(3 * time.Second)
+	for {
+		if len(sink.Records()) >= 1 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("timed out waiting for SMTP sink to capture email")
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
 
 	records := sink.Records()
 	if len(records) != 1 {

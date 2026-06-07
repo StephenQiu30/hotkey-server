@@ -71,7 +71,7 @@ func TestHealthCheck_ServerHTTP(t *testing.T) {
 		t.Fatalf("failed to create request: %v", err)
 	}
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 3 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("E2E server not reachable at %s/healthz: %v", baseURL, err)
