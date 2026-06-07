@@ -127,6 +127,33 @@ func TestIngestMarksSameHashDifferentURLAsDuplicate(t *testing.T) {
 	}
 }
 
+func TestIngestMetadataOnlySkipsEmbeddingJob(t *testing.T) {
+	repo := content.NewMemoryRepository()
+	jobQueue := &recordingQueue{}
+	service := NewService(repo, jobQueue)
+
+	result, err := service.Ingest(context.Background(), Input{
+		SourceID:     "src-1",
+		Title:        "付费墙文章",
+		Snippet:      "[metadata_only] 正文片段",
+		URL:          "https://example.com/paywall",
+		Language:     "zh",
+		MetadataOnly: true,
+	})
+	if err != nil {
+		t.Fatalf("ingest failed: %v", err)
+	}
+	if !result.Created {
+		t.Fatal("expected item to be created")
+	}
+	if !result.Item.MetadataOnly {
+		t.Fatal("expected MetadataOnly=true on created item")
+	}
+	if len(jobQueue.requests) != 0 {
+		t.Fatalf("expected no embedding job for metadata-only item, got %d", len(jobQueue.requests))
+	}
+}
+
 func TestIngestRejectsInvalidInputs(t *testing.T) {
 	service := NewService(content.NewMemoryRepository(), &recordingQueue{})
 	tests := []Input{

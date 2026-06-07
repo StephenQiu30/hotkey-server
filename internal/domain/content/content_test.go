@@ -35,6 +35,20 @@ func TestContentHashIsStableAcrossWhitespace(t *testing.T) {
 	}
 }
 
+func TestSourceItemMetadataOnlyDefaultFalse(t *testing.T) {
+	item := SourceItem{ID: "item-1", Title: "test"}
+	if item.MetadataOnly {
+		t.Fatal("expected MetadataOnly to default to false")
+	}
+}
+
+func TestSourceItemMetadataOnlyCanBeSet(t *testing.T) {
+	item := SourceItem{ID: "item-2", Title: "paywall article", MetadataOnly: true}
+	if !item.MetadataOnly {
+		t.Fatal("expected MetadataOnly to be true after setting")
+	}
+}
+
 func TestCloneItemCopiesChannelIDs(t *testing.T) {
 	original := SourceItem{ID: "item-1", ChannelIDs: []string{"chn_ai_models"}}
 	cloned := cloneItem(original)
