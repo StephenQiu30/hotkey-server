@@ -22,6 +22,7 @@ const (
 	SourceTypeZhihu        SourceType = "zhihu"
 	SourceTypeReddit       SourceType = "reddit"
 	SourceTypeXiaohongshu  SourceType = "xiaohongshu"
+	SourceTypeYouTube      SourceType = "youtube"
 )
 
 type SourceStatus string
@@ -270,7 +271,7 @@ func buildSource(existing Source, name string, sourceType SourceType, rawURL str
 }
 
 func validSourceType(sourceType SourceType) bool {
-	return sourceType == SourceTypeRSS || sourceType == SourceTypePublicPage || sourceType == SourceTypeX || sourceType == SourceTypeHackerNews || sourceType == SourceTypeWeChatMP || sourceType == SourceTypeZhihu || sourceType == SourceTypeReddit || sourceType == SourceTypeXiaohongshu
+	return sourceType == SourceTypeRSS || sourceType == SourceTypePublicPage || sourceType == SourceTypeX || sourceType == SourceTypeHackerNews || sourceType == SourceTypeWeChatMP || sourceType == SourceTypeZhihu || sourceType == SourceTypeReddit || sourceType == SourceTypeXiaohongshu || sourceType == SourceTypeYouTube
 }
 
 func compactUnique(values []string) []string {

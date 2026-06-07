@@ -15,6 +15,7 @@ const (
 	ProviderWeibo        Provider = "weibo"
 	ProviderZhihu        Provider = "zhihu"
 	ProviderXiaohongshu  Provider = "xiaohongshu"
+	ProviderYouTube      Provider = "youtube"
 )
 
 // HealthStatus describes adapter operational readiness.
