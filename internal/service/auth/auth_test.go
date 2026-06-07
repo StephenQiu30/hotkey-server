@@ -147,6 +147,89 @@ func TestRefreshRejectsRevokedAndExpiredTokens(t *testing.T) {
 	}
 }
 
+func TestRevokeAllTokensForUserInvalidatesAllSessions(t *testing.T) {
+	service := newTestService(t)
+	ctx := context.Background()
+
+	_, err := service.Register(ctx, auth.RegisterInput{
+		Email:    "revokeall@example.com",
+		Password: "correct horse battery staple",
+	})
+	if err != nil {
+		t.Fatalf("register returned error: %v", err)
+	}
+
+	session1, err := service.Login(ctx, auth.LoginInput{
+		Email:    "revokeall@example.com",
+		Password: "correct horse battery staple",
+	})
+	if err != nil {
+		t.Fatalf("login 1 returned error: %v", err)
+	}
+	session2, err := service.Login(ctx, auth.LoginInput{
+		Email:    "revokeall@example.com",
+		Password: "correct horse battery staple",
+	})
+	if err != nil {
+		t.Fatalf("login 2 returned error: %v", err)
+	}
+
+	if _, err := service.Refresh(ctx, session1.RefreshToken); err != nil {
+		t.Fatalf("refresh session1 failed before revoke: %v", err)
+	}
+
+	if err := service.RevokeAllTokensForUser(ctx, session1.User.ID); err != nil {
+		t.Fatalf("revoke all returned error: %v", err)
+	}
+
+	_, err = service.Refresh(ctx, session1.RefreshToken)
+	if !errors.Is(err, auth.ErrInvalidRefreshToken) {
+		t.Fatalf("expected session1 refresh to fail after revoke all, got %v", err)
+	}
+	_, err = service.Refresh(ctx, session2.RefreshToken)
+	if !errors.Is(err, auth.ErrInvalidRefreshToken) {
+		t.Fatalf("expected session2 refresh to fail after revoke all, got %v", err)
+	}
+}
+
+func TestDisableUserPreventsLoginAndRefresh(t *testing.T) {
+	service := newTestService(t)
+	ctx := context.Background()
+
+	created, err := service.Register(ctx, auth.RegisterInput{
+		Email:    "disable@example.com",
+		Password: "correct horse battery staple",
+	})
+	if err != nil {
+		t.Fatalf("register returned error: %v", err)
+	}
+
+	session, err := service.Login(ctx, auth.LoginInput{
+		Email:    "disable@example.com",
+		Password: "correct horse battery staple",
+	})
+	if err != nil {
+		t.Fatalf("login returned error: %v", err)
+	}
+
+	if err := service.DisableUser(ctx, created.ID); err != nil {
+		t.Fatalf("disable user returned error: %v", err)
+	}
+
+	_, err = service.Login(ctx, auth.LoginInput{
+		Email:    "disable@example.com",
+		Password: "correct horse battery staple",
+	})
+	if !errors.Is(err, auth.ErrInvalidCredentials) {
+		t.Fatalf("expected disabled user login to fail, got %v", err)
+	}
+
+	_, err = service.Refresh(ctx, session.RefreshToken)
+	if !errors.Is(err, auth.ErrInvalidRefreshToken) {
+		t.Fatalf("expected disabled user refresh to fail, got %v", err)
+	}
+}
+
 func newTestService(t *testing.T) *auth.Service {
 	t.Helper()
 	return newTestServiceWithTTL(t, 24*time.Hour)
