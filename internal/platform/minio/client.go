@@ -34,6 +34,9 @@ func NewClient(cfg Config) (*Client, error) {
 	if cfg.Bucket == "" {
 		return nil, fmt.Errorf("minio bucket is required")
 	}
+	if cfg.AccessKey == "" || cfg.SecretKey == "" {
+		return nil, fmt.Errorf("minio access key and secret key are required")
+	}
 
 	inner, err := minio.New(cfg.Endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
@@ -73,15 +76,15 @@ func (c *Client) Put(ctx context.Context, obj objectstorage.Object, reader io.Re
 
 	// Set custom metadata for retention tracking
 	userMeta := map[string]string{
-		"x-amz-meta-source-item-id": obj.Metadata.SourceItemID,
-		"x-amz-meta-source-id":     obj.Metadata.SourceID,
-		"x-amz-meta-user-id":       obj.Metadata.UserID,
-		"x-amz-meta-platform":      obj.Metadata.Platform,
-		"x-amz-meta-retention":     string(obj.Metadata.Retention),
-		"x-amz-meta-original-url":  obj.Metadata.OriginalURL,
+		"source-item-id": obj.Metadata.SourceItemID,
+		"source-id":     obj.Metadata.SourceID,
+		"user-id":       obj.Metadata.UserID,
+		"platform":      obj.Metadata.Platform,
+		"retention":     string(obj.Metadata.Retention),
+		"original-url":  obj.Metadata.OriginalURL,
 	}
 	if obj.Metadata.ExpiresAt != nil {
-		userMeta["x-amz-meta-expires-at"] = obj.Metadata.ExpiresAt.Format(time.RFC3339)
+		userMeta["expires-at"] = obj.Metadata.ExpiresAt.Format(time.RFC3339)
 	}
 	opts.UserMetadata = userMeta
 
@@ -100,6 +103,7 @@ func (c *Client) Get(ctx context.Context, key string) (objectstorage.Object, io.
 
 	info, err := object.Stat()
 	if err != nil {
+		object.Close()
 		return objectstorage.Object{}, nil, fmt.Errorf("stat object %s: %w", key, err)
 	}
 
@@ -135,7 +139,7 @@ func (c *Client) ListExpired(ctx context.Context, bucket string, before time.Tim
 
 		info, err := c.inner.StatObject(ctx, bucket, object.Key, minio.StatObjectOptions{})
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("stat object %s during list: %w", object.Key, err)
 		}
 
 		obj := statToObject(object.Key, info)
@@ -185,15 +189,15 @@ func SnapshotContent(title, snippet, originalURL string) []byte {
 
 func statToObject(key string, info minio.ObjectInfo) objectstorage.Object {
 	meta := objectstorage.Metadata{
-		SourceItemID: info.UserMetadata["x-amz-meta-source-item-id"],
-		SourceID:     info.UserMetadata["x-amz-meta-source-id"],
-		UserID:       info.UserMetadata["x-amz-meta-user-id"],
-		Platform:     info.UserMetadata["x-amz-meta-platform"],
-		Retention:    objectstorage.RetentionPolicy(info.UserMetadata["x-amz-meta-retention"]),
-		OriginalURL:  info.UserMetadata["x-amz-meta-original-url"],
+		SourceItemID: info.UserMetadata["source-item-id"],
+		SourceID:     info.UserMetadata["source-id"],
+		UserID:       info.UserMetadata["user-id"],
+		Platform:     info.UserMetadata["platform"],
+		Retention:    objectstorage.RetentionPolicy(info.UserMetadata["retention"]),
+		OriginalURL:  info.UserMetadata["original-url"],
 	}
 
-	if expiresAt := info.UserMetadata["x-amz-meta-expires-at"]; expiresAt != "" {
+	if expiresAt := info.UserMetadata["expires-at"]; expiresAt != "" {
 		if t, err := time.Parse(time.RFC3339, expiresAt); err == nil {
 			meta.ExpiresAt = &t
 		}
