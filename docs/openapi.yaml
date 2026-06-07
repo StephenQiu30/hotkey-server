@@ -1126,6 +1126,8 @@ components:
           enum:
             - rss
             - public_page
+            - hackernews
+            - bilibili
         url:
           type: string
           format: uri
@@ -1166,6 +1168,8 @@ components:
           enum:
             - rss
             - public_page
+            - hackernews
+            - bilibili
         url:
           type: string
           format: uri
