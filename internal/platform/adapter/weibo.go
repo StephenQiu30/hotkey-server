@@ -3,6 +3,7 @@ package adapter
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"regexp"
@@ -10,6 +11,8 @@ import (
 	"sync"
 	"time"
 )
+
+const maxWeiboResponseBodySize = 10 * 1024 * 1024 // 10 MB
 
 const (
 	defaultWeiboBaseURL = "https://m.weibo.cn"
@@ -129,7 +132,7 @@ func (a *WeiboAdapter) Provider() Provider {
 
 func (a *WeiboAdapter) Capabilities() Capabilities {
 	return Capabilities{
-		SupportsIncremental: true,
+		SupportsIncremental: false,
 		MaxItemsPerFetch:    50,
 		RateLimitPerHour:    weiboRateLimit,
 	}
@@ -171,17 +174,19 @@ func (a *WeiboAdapter) Collect(input CollectInput) (CollectOutput, error) {
 	return CollectOutput{Items: items}, nil
 }
 
-func (a *WeiboAdapter) fetchSearchResults(url string) (*WeiboSearchResponse, error) {
-	if url == "" {
-		url = a.baseURL + "/2/search/topics"
+func (a *WeiboAdapter) fetchSearchResults(requestURL string) (*WeiboSearchResponse, error) {
+	if requestURL == "" {
+		requestURL = a.baseURL + "/2/search/topics"
 	}
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", requestURL, nil)
 	if err != nil {
 		return nil, NewAdapterError(FailureClassPermanent, "failed to create request", err)
 	}
 
-	// Add access token as query parameter
+	// Add access token as query parameter (Weibo mobile API convention).
+	// NOTE: This exposes the token in server/proxy access logs.
+	// Production deployments should prefer Authorization header if supported.
 	if a.config.AccessToken != "" {
 		q := req.URL.Query()
 		q.Set("access_token", a.config.AccessToken)
@@ -197,14 +202,14 @@ func (a *WeiboAdapter) fetchSearchResults(url string) (*WeiboSearchResponse, err
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxWeiboResponseBodySize))
 	if err != nil {
 		return nil, NewAdapterError(FailureClassTransient, "failed to read response body", err)
 	}
 
 	// Check HTTP status codes
 	if resp.StatusCode == http.StatusTooManyRequests {
-		return nil, NewAdapterError(FailureClassRateLimit, fmt.Sprintf("HTTP 429: rate limited"), nil)
+		return nil, NewAdapterError(FailureClassRateLimit, "HTTP 429: rate limited", nil)
 	}
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		return nil, NewAdapterError(FailureClassAuth, fmt.Sprintf("HTTP %d: unauthorized", resp.StatusCode), nil)
@@ -213,7 +218,7 @@ func (a *WeiboAdapter) fetchSearchResults(url string) (*WeiboSearchResponse, err
 		return nil, NewAdapterError(FailureClassPermanent, fmt.Sprintf("HTTP %d: content not found", resp.StatusCode), nil)
 	}
 	if resp.StatusCode >= 400 {
-		return nil, NewAdapterError(FailureClassPermanent, fmt.Sprintf("HTTP %d", resp.StatusCode), nil)
+		return nil, NewAdapterError(FailureClassPermanent, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(body)), nil)
 	}
 
 	var searchResp WeiboSearchResponse
@@ -354,7 +359,8 @@ func (a *WeiboAdapter) updateHealth(err error) {
 var htmlTagRe = regexp.MustCompile(`<[^>]*>`)
 
 func stripHTMLTags(s string) string {
-	return strings.TrimSpace(htmlTagRe.ReplaceAllString(s, ""))
+	stripped := htmlTagRe.ReplaceAllString(s, "")
+	return strings.TrimSpace(html.UnescapeString(stripped))
 }
 
 func extractTitle(text string) string {
@@ -362,11 +368,13 @@ func extractTitle(text string) string {
 	if cleaned == "" {
 		return ""
 	}
-	// Use first line or first 100 chars as title
+	// Use first line as title
 	lines := strings.SplitN(cleaned, "\n", 2)
 	title := strings.TrimSpace(lines[0])
-	if len(title) > 100 {
-		title = title[:100] + "..."
+	// Truncate by rune count to avoid corrupting multibyte (CJK) text
+	runes := []rune(title)
+	if len(runes) > 100 {
+		title = string(runes[:100]) + "..."
 	}
 	return title
 }
