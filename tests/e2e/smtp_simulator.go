@@ -16,6 +16,7 @@ type smtpSink struct {
 	records []EmailRecord
 }
 
+// newSMTPSinkImpl creates and starts a new instance of smtpSink on a random local port.
 func newSMTPSinkImpl() (*smtpSink, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -39,6 +40,7 @@ func newSMTPSinkImpl() (*smtpSink, error) {
 	return s, nil
 }
 
+// handleSMTPConn manages a single SMTP connection, following a minimal protocol flow to capture emails.
 func handleSMTPConn(conn net.Conn, sink *smtpSink) {
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
@@ -135,10 +137,12 @@ func extractAngle(line string) string {
 	return ""
 }
 
+// Addr returns the network address the SMTP sink is listening on.
 func (s *smtpSink) Addr() string {
 	return s.addr
 }
 
+// Records returns a copy of all captured email records.
 func (s *smtpSink) Records() []EmailRecord {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -147,6 +151,7 @@ func (s *smtpSink) Records() []EmailRecord {
 	return cp
 }
 
+// Reset clears all captured email records from the sink.
 func (s *smtpSink) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
