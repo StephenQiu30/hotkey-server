@@ -108,6 +108,31 @@ func (r *Repository) RevokeRefreshToken(ctx context.Context, tokenHash string, r
 	return nil
 }
 
+func (r *Repository) RevokeAllTokensForUser(ctx context.Context, userID string, revokedAt time.Time) error {
+	const query = `UPDATE refresh_tokens SET revoked_at = $1 WHERE user_id = $2 AND revoked_at IS NULL`
+	_, err := r.db.ExecContext(ctx, query, revokedAt, userID)
+	return err
+}
+
+func (r *Repository) UpdateUser(ctx context.Context, account user.User) (user.User, error) {
+	const query = `
+UPDATE users SET email = $2, password_hash = $3, role = $4, status = $5, timezone = $6, daily_send_at = $7, wechat_open_id = NULLIF($8, ''), updated_at = $9
+WHERE id = $1
+RETURNING id, email, password_hash, role, status, timezone, daily_send_at, COALESCE(wechat_open_id, ''), created_at, updated_at`
+	row := r.db.QueryRowContext(ctx, query,
+		account.ID,
+		account.Email,
+		account.PasswordHash,
+		account.Role,
+		account.Status,
+		account.Timezone,
+		account.DailySendAt,
+		account.WeChatOpenID,
+		account.UpdatedAt,
+	)
+	return scanUser(row)
+}
+
 type userScanner interface {
 	Scan(dest ...any) error
 }

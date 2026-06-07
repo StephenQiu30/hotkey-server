@@ -35,9 +35,11 @@ type Repository interface {
 	CreateUser(ctx context.Context, user user.User) (user.User, error)
 	UserByEmail(ctx context.Context, email string) (user.User, error)
 	UserByID(ctx context.Context, id string) (user.User, error)
+	UpdateUser(ctx context.Context, user user.User) (user.User, error)
 	CreateRefreshToken(ctx context.Context, token RefreshToken) error
 	RefreshTokenByHash(ctx context.Context, tokenHash string) (RefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, tokenHash string, revokedAt time.Time) error
+	RevokeAllTokensForUser(ctx context.Context, userID string, revokedAt time.Time) error
 }
 
 type RefreshToken struct {
@@ -152,6 +154,29 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 		return ErrInvalidRefreshToken
 	}
 	return s.repo.RevokeRefreshToken(ctx, hashToken(refreshToken), s.now().UTC())
+}
+
+func (s *Service) RevokeAllTokensForUser(ctx context.Context, userID string) error {
+	if strings.TrimSpace(userID) == "" {
+		return errors.New("user id is required")
+	}
+	return s.repo.RevokeAllTokensForUser(ctx, userID, s.now().UTC())
+}
+
+func (s *Service) DisableUser(ctx context.Context, userID string) error {
+	if strings.TrimSpace(userID) == "" {
+		return errors.New("user id is required")
+	}
+	found, err := s.repo.UserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	found.Status = user.StatusDisabled
+	found.UpdatedAt = s.now().UTC()
+	if _, err := s.repo.UpdateUser(ctx, found); err != nil {
+		return err
+	}
+	return s.repo.RevokeAllTokensForUser(ctx, userID, s.now().UTC())
 }
 
 func (s *Service) CurrentUser(ctx context.Context, accessToken string) (user.User, error) {
