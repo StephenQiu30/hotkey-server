@@ -18,6 +18,14 @@ func New(db *sql.DB) *Repository {
 }
 
 func (r *Repository) CreateAuditLog(ctx context.Context, entry admin.AuditLog) (admin.AuditLog, error) {
+	var metadataJSON []byte
+	if len(entry.Metadata) > 0 {
+		var err error
+		metadataJSON, err = json.Marshal(entry.Metadata)
+		if err != nil {
+			return admin.AuditLog{}, err
+		}
+	}
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO audit_logs (
 			id,
@@ -26,15 +34,16 @@ func (r *Repository) CreateAuditLog(ctx context.Context, entry admin.AuditLog) (
 			resource_type,
 			resource_id,
 			result,
+			metadata,
 			created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)
-	`, entry.ID, entry.ActorID, entry.Action, entry.ResourceType, entry.ResourceID, entry.Result, entry.CreatedAt)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`, entry.ID, entry.ActorID, entry.Action, entry.ResourceType, entry.ResourceID, entry.Result, metadataJSON, entry.CreatedAt)
 	return entry, err
 }
 
 func (r *Repository) ListAuditLogs(ctx context.Context) (_ []admin.AuditLog, err error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, actor_id, action, resource_type, resource_id, result, created_at
+		SELECT id, actor_id, action, resource_type, resource_id, result, metadata, created_at
 		FROM audit_logs
 		ORDER BY created_at DESC
 		LIMIT 100
@@ -51,8 +60,14 @@ func (r *Repository) ListAuditLogs(ctx context.Context) (_ []admin.AuditLog, err
 	var logs []admin.AuditLog
 	for rows.Next() {
 		var entry admin.AuditLog
-		if err := rows.Scan(&entry.ID, &entry.ActorID, &entry.Action, &entry.ResourceType, &entry.ResourceID, &entry.Result, &entry.CreatedAt); err != nil {
+		var metadataJSON []byte
+		if err := rows.Scan(&entry.ID, &entry.ActorID, &entry.Action, &entry.ResourceType, &entry.ResourceID, &entry.Result, &metadataJSON, &entry.CreatedAt); err != nil {
 			return nil, err
+		}
+		if len(metadataJSON) > 0 {
+			if err := json.Unmarshal(metadataJSON, &entry.Metadata); err != nil {
+				return nil, err
+			}
 		}
 		logs = append(logs, entry)
 	}

@@ -57,9 +57,21 @@ func (r *MemoryRepository) SetDeleteReportError(err error) {
 	r.deleteReportErr = err
 }
 
+func cloneMetadata(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
 func (r *MemoryRepository) CreateAuditLog(_ context.Context, entry AuditLog) (AuditLog, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	entry.Metadata = cloneMetadata(entry.Metadata)
 	r.auditLogs = append(r.auditLogs, entry)
 	return entry, nil
 }
@@ -68,7 +80,10 @@ func (r *MemoryRepository) ListAuditLogs(_ context.Context) ([]AuditLog, error) 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	logs := make([]AuditLog, len(r.auditLogs))
-	copy(logs, r.auditLogs)
+	for i, entry := range r.auditLogs {
+		logs[i] = entry
+		logs[i].Metadata = cloneMetadata(entry.Metadata)
+	}
 	return logs, nil
 }
 

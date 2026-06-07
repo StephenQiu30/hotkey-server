@@ -406,7 +406,10 @@ func (s *Service) DeleteAccount(ctx context.Context, userID string) (CleanupTask
 		return CleanupTask{}, ErrInvalidInput
 	}
 	if _, err := s.repo.UserByID(ctx, userID); err != nil {
-		return CleanupTask{}, ErrNotFound
+		if errors.Is(err, ErrNotFound) {
+			return CleanupTask{}, ErrNotFound
+		}
+		return CleanupTask{}, err
 	}
 
 	now := s.now().UTC()
@@ -433,24 +436,29 @@ func (s *Service) DeleteAccount(ctx context.Context, userID string) (CleanupTask
 		{"delete_user", s.repo.DeleteUser},
 	}
 
-	allOK := true
+	// Persist the pending task before destructive steps so progress is durable.
+	if err := s.repo.SaveCleanupTask(ctx, task); err != nil {
+		return CleanupTask{}, err
+	}
+
 	for i, step := range stepDefs {
 		if err := step.fn(ctx, userID); err != nil {
 			task.Steps[i].Status = CleanupStatusFailed
 			task.Steps[i].Error = err.Error()
-			allOK = false
-			break
+			task.Status = CleanupStatusFailed
+			task.UpdatedAt = s.now().UTC()
+			_ = s.repo.SaveCleanupTask(ctx, task)
+			return task, nil
 		}
 		task.Steps[i].Status = CleanupStatusCompleted
+		task.UpdatedAt = s.now().UTC()
+		if err := s.repo.SaveCleanupTask(ctx, task); err != nil {
+			return CleanupTask{}, err
+		}
 	}
 
-	if allOK {
-		task.Status = CleanupStatusCompleted
-	} else {
-		task.Status = CleanupStatusFailed
-	}
+	task.Status = CleanupStatusCompleted
 	task.UpdatedAt = s.now().UTC()
-
 	if err := s.repo.SaveCleanupTask(ctx, task); err != nil {
 		return CleanupTask{}, err
 	}
@@ -481,7 +489,6 @@ func (s *Service) RetryCleanup(ctx context.Context, taskID string) (CleanupTask,
 		{"delete_user", s.repo.DeleteUser},
 	}
 
-	allOK := true
 	for i, step := range task.Steps {
 		if step.Status == CleanupStatusCompleted {
 			continue
@@ -489,20 +496,21 @@ func (s *Service) RetryCleanup(ctx context.Context, taskID string) (CleanupTask,
 		if err := stepDefs[i].fn(ctx, task.UserID); err != nil {
 			task.Steps[i].Status = CleanupStatusFailed
 			task.Steps[i].Error = err.Error()
-			allOK = false
-			break
+			task.Status = CleanupStatusFailed
+			task.UpdatedAt = s.now().UTC()
+			_ = s.repo.SaveCleanupTask(ctx, task)
+			return task, nil
 		}
 		task.Steps[i].Status = CleanupStatusCompleted
 		task.Steps[i].Error = ""
+		task.UpdatedAt = s.now().UTC()
+		if err := s.repo.SaveCleanupTask(ctx, task); err != nil {
+			return CleanupTask{}, err
+		}
 	}
 
-	if allOK {
-		task.Status = CleanupStatusCompleted
-	} else {
-		task.Status = CleanupStatusFailed
-	}
+	task.Status = CleanupStatusCompleted
 	task.UpdatedAt = s.now().UTC()
-
 	if err := s.repo.SaveCleanupTask(ctx, task); err != nil {
 		return CleanupTask{}, err
 	}

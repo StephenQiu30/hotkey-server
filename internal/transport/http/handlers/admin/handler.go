@@ -163,6 +163,7 @@ func (h *Handler) CleanupStatus(c *gin.Context) {
 
 func (h *Handler) RetryCleanup(c *gin.Context) {
 	taskID := c.Param("taskID")
+	c.Set("adminAuditResourceID", taskID)
 	task, err := h.service.RetryCleanup(c.Request.Context(), taskID)
 	if err != nil {
 		writeServiceError(c, err)
