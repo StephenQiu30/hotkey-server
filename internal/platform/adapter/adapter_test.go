@@ -326,3 +326,117 @@ func TestNewIdempotencyKeyDiffersForDifferentInput(t *testing.T) {
 		t.Fatal("expected different keys for different URLs")
 	}
 }
+
+// --- Acceptance criteria: rate-limit isolation ---
+
+func TestRegistryRateLimitIsolation(t *testing.T) {
+	reg := adapter.NewRegistry()
+
+	// Register a rate-limited adapter
+	reg.Register(adapter.NewSimulator(adapter.SimulatorConfig{
+		Provider:   adapter.ProviderOfficialAPI,
+		Name:       "api-limited",
+		CollectErr: adapter.NewAdapterError(adapter.FailureClassRateLimit, "429 too many requests", nil),
+	}))
+
+	// Register a healthy adapter
+	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	reg.Register(adapter.NewSimulator(adapter.SimulatorConfig{
+		Provider: adapter.ProviderRSS,
+		Name:     "rss-healthy",
+		Items: []adapter.NormalizedItem{
+			{Title: "RSS Article", URL: "https://example.com/rss/1", PublishedAt: &now},
+		},
+	}))
+
+	// Rate-limited adapter should fail
+	apiAdapter, ok := reg.Get(adapter.ProviderOfficialAPI)
+	if !ok {
+		t.Fatal("expected to find official_api adapter")
+	}
+	_, err := apiAdapter.Collect(adapter.CollectInput{SourceID: "src-api", Provider: adapter.ProviderOfficialAPI, URL: "https://api.example.com"})
+	if !adapter.IsAdapterError(err, adapter.FailureClassRateLimit) {
+		t.Fatalf("expected rate_limit error, got %v", err)
+	}
+
+	// Healthy adapter should still succeed independently
+	rssAdapter, ok := reg.Get(adapter.ProviderRSS)
+	if !ok {
+		t.Fatal("expected to find rss adapter")
+	}
+	output, err := rssAdapter.Collect(adapter.CollectInput{SourceID: "src-rss", Provider: adapter.ProviderRSS, URL: "https://example.com/rss"})
+	if err != nil {
+		t.Fatalf("expected rss collect to succeed, got %v", err)
+	}
+	if len(output.Items) != 1 {
+		t.Fatalf("expected 1 item from healthy rss adapter, got %d", len(output.Items))
+	}
+}
+
+// --- Acceptance criteria: duplicate content prevention ---
+
+func TestDuplicateIdempotencyKeyProducesSameResult(t *testing.T) {
+	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	sim := adapter.NewSimulator(adapter.SimulatorConfig{
+		Provider: adapter.ProviderRSS,
+		Name:     "rss-sim",
+		Items: []adapter.NormalizedItem{
+			{Title: "Article 1", URL: "https://example.com/1", ExternalID: "ext-1", PublishedAt: &now, IdempotencyKey: adapter.NewIdempotencyKey("src-1", "https://example.com/1")},
+			{Title: "Article 2", URL: "https://example.com/2", ExternalID: "ext-2", PublishedAt: &now, IdempotencyKey: adapter.NewIdempotencyKey("src-1", "https://example.com/2")},
+		},
+	})
+
+	input := adapter.CollectInput{
+		SourceID:       "src-1",
+		Provider:       adapter.ProviderRSS,
+		URL:            "https://example.com/rss",
+		IdempotencyKey: "collect-idem-key",
+	}
+
+	// First collect
+	out1, err := sim.Collect(input)
+	if err != nil {
+		t.Fatalf("first collect: %v", err)
+	}
+
+	// Second collect with same idempotency key
+	out2, err := sim.Collect(input)
+	if err != nil {
+		t.Fatalf("second collect: %v", err)
+	}
+
+	// Same number of items
+	if len(out1.Items) != len(out2.Items) {
+		t.Fatalf("expected same item count, got %d vs %d", len(out1.Items), len(out2.Items))
+	}
+
+	// Items should have consistent idempotency keys
+	for i, item := range out1.Items {
+		if item.IdempotencyKey != out2.Items[i].IdempotencyKey {
+			t.Fatalf("item %d: expected same idempotency key, got %q vs %q", i, item.IdempotencyKey, out2.Items[i].IdempotencyKey)
+		}
+	}
+}
+
+func TestCollectOutputIdempotencyKeyPopulated(t *testing.T) {
+	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	sim := adapter.NewSimulator(adapter.SimulatorConfig{
+		Provider: adapter.ProviderRSS,
+		Name:     "rss-sim",
+		Items: []adapter.NormalizedItem{
+			{Title: "Article", URL: "https://example.com/1", ExternalID: "ext-1", PublishedAt: &now},
+		},
+	})
+
+	output, err := sim.Collect(adapter.CollectInput{SourceID: "src-1", Provider: adapter.ProviderRSS, URL: "https://example.com/rss"})
+	if err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	if len(output.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(output.Items))
+	}
+	// Item should have an idempotency key populated
+	if output.Items[0].IdempotencyKey == "" {
+		t.Fatal("expected NormalizedItem.IdempotencyKey to be populated")
+	}
+}
