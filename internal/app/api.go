@@ -12,6 +12,7 @@ import (
 	serviceadmin "github.com/StephenQiu30/hotkey-server/internal/service/admin"
 	serviceauth "github.com/StephenQiu30/hotkey-server/internal/service/auth"
 	servicechannel "github.com/StephenQiu30/hotkey-server/internal/service/channel"
+	servicexauth "github.com/StephenQiu30/hotkey-server/internal/service/xauth"
 	transporthttp "github.com/StephenQiu30/hotkey-server/internal/transport/http"
 )
 
@@ -36,6 +37,12 @@ func NewAPI(cfg config.Config, logger *slog.Logger) *API {
 		DashScopeKey:   cfg.DashScopeAPIKey,
 		SMTPHost:       cfg.SMTPHost,
 	})
+	xAuthService := servicexauth.NewService(servicexauth.NewMemoryRepository(), servicexauth.Config{
+		ClientID:     cfg.XClientID,
+		ClientSecret: cfg.XClientSecret,
+		RedirectURL:  cfg.XRedirectURL,
+	})
+
 	return &API{
 		server: &http.Server{
 			Addr: cfg.HTTPAddr,
@@ -43,6 +50,7 @@ func NewAPI(cfg config.Config, logger *slog.Logger) *API {
 				AuthService:    authService,
 				ChannelService: servicechannel.NewService(servicechannel.NewMemoryRepository()),
 				AdminService:   adminService,
+				XAuthService:   xAuthService,
 			}),
 			ReadHeaderTimeout: 5 * time.Second,
 		},

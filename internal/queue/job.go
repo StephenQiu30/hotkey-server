@@ -16,6 +16,7 @@ const (
 	JobTypeScoreHotspots       JobType = "score_hotspots"
 	JobTypeGenerateDailyReport JobType = "generate_daily_report"
 	JobTypeSendDailyEmail          JobType = "send_daily_email"
+	JobTypeGenerateEventSummary    JobType = "generate_event_summary"
 	JobTypeStoreSnapshot           JobType = "store_snapshot"
 	JobTypeCleanupExpiredObjects   JobType = "cleanup_expired_objects"
 	JobTypeDeleteUserObjects       JobType = "delete_user_objects"
@@ -71,6 +72,20 @@ type GenerateDailyReportPayload struct {
 type SendDailyEmailPayload struct {
 	ReportID        string `json:"report_id"`
 	RecipientUserID string `json:"recipient_user_id"`
+}
+
+type EventSummaryItem struct {
+	ID       string `json:"id"`
+	SourceID string `json:"sourceId"`
+	Title    string `json:"title"`
+	Snippet  string `json:"snippet"`
+	URL      string `json:"url"`
+}
+
+type GenerateEventSummaryPayload struct {
+	EventID string             `json:"event_id"`
+	Title   string             `json:"title"`
+	Items   []EventSummaryItem `json:"items"`
 }
 
 type StoreSnapshotPayload struct {
@@ -143,6 +158,17 @@ func ValidatePayload(jobType JobType, payload json.RawMessage) error {
 		}
 		if body.ReportID == "" || body.RecipientUserID == "" {
 			return errors.New("send_daily_email payload requires report_id and recipient_user_id")
+		}
+	case JobTypeGenerateEventSummary:
+		var body GenerateEventSummaryPayload
+		if err := json.Unmarshal(payload, &body); err != nil {
+			return err
+		}
+		if body.EventID == "" {
+			return errors.New("generate_event_summary payload requires event_id")
+		}
+		if body.Title == "" {
+			return errors.New("generate_event_summary payload requires title")
 		}
 	case JobTypeStoreSnapshot:
 		var body StoreSnapshotPayload
