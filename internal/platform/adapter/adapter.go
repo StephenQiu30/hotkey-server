@@ -13,6 +13,7 @@ const (
 	ProviderPublicPage Provider = "public_page"
 	ProviderOfficialAPI Provider = "official_api"
 	ProviderZhihu      Provider = "zhihu"
+	ProviderBiliBili   Provider = "bilibili"
 )
 
 // HealthStatus describes adapter operational readiness.
