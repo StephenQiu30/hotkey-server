@@ -7,5 +7,6 @@ Contains minimal test tenant, users, keywords, sources, contents, and events.
 
 ## git-remote/
 
-Bare Git repository used as a test remote for Git-related E2E tests.
-Initialized with `git init --bare`. Tests can clone/push to this path.
+Bare Git repository created dynamically by `scripts/e2e-setup.sh` and
+cleaned up by `scripts/e2e-teardown.sh`. Used as a test remote for
+Git-related E2E tests. Not committed to the repository.

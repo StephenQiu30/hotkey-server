@@ -29,3 +29,4 @@ coverage/
 # IDE
 .idea/
 .vscode/
+tests/fixtures/git-remote/
