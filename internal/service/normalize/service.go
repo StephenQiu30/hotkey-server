@@ -126,8 +126,8 @@ func (s *Service) Normalize(_ context.Context, input Input) (Result, error) {
 
 var htmlTagRe = regexp.MustCompile(`<[^>]*>`)
 var multiSpaceRe = regexp.MustCompile(`\s+`)
-var scriptRe = regexp.MustCompile(`(?i)<script[\s>].*?</script>`)
-var styleRe = regexp.MustCompile(`(?i)<style[\s>].*?</style>`)
+var scriptRe = regexp.MustCompile(`(?is)<script[\s>].*?</script>`)
+var styleRe = regexp.MustCompile(`(?is)<style[\s>].*?</style>`)
 
 func cleanText(value string) string {
 	value = scriptRe.ReplaceAllString(value, "")

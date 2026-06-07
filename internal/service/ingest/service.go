@@ -105,9 +105,13 @@ func (s *Service) Ingest(ctx context.Context, input Input) (Result, error) {
 		if err != nil {
 			return Result{}, err
 		}
+		item.FilterStatus = content.ItemFilterStatusFiltered
+		item.FilterReason = string(filterResult.Reason)
 		if !filterResult.Accepted {
 			return Result{Item: item, Created: false}, nil
 		}
+		item.FilterStatus = content.ItemFilterStatusPassed
+		item.FilterReason = ""
 	}
 
 	// Quality score if service is configured
