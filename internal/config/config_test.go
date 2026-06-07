@@ -174,7 +174,7 @@ func TestLoadMinIOOverrides(t *testing.T) {
 }
 
 func TestLoadMinIORetentionDaysFallsBackWhenInvalid(t *testing.T) {
-	for _, value := range []string{"0", "-1", "70000", "not-a-number"} {
+	for _, value := range []string{"-1", "not-a-number"} {
 		t.Run(value, func(t *testing.T) {
 			t.Setenv("HOTKEY_CONTENT_RETENTION_DAYS", value)
 			got := Load()
@@ -182,5 +182,21 @@ func TestLoadMinIORetentionDaysFallsBackWhenInvalid(t *testing.T) {
 				t.Fatalf("expected default retention days for %q, got %d", value, got.ContentRetentionDays)
 			}
 		})
+	}
+}
+
+func TestLoadMinIORetentionDaysAllowsZero(t *testing.T) {
+	t.Setenv("HOTKEY_CONTENT_RETENTION_DAYS", "0")
+	got := Load()
+	if got.ContentRetentionDays != 0 {
+		t.Fatalf("expected 0 for immediate deletion, got %d", got.ContentRetentionDays)
+	}
+}
+
+func TestLoadMinIORetentionDaysAllowsLargeValues(t *testing.T) {
+	t.Setenv("HOTKEY_CONTENT_RETENTION_DAYS", "70000")
+	got := Load()
+	if got.ContentRetentionDays != 70000 {
+		t.Fatalf("expected 70000 for long-term archival, got %d", got.ContentRetentionDays)
 	}
 }
