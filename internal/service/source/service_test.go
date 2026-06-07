@@ -168,3 +168,63 @@ func TestCollectionRunsRecordSuccessAndFailure(t *testing.T) {
 		t.Fatalf("expected inverted run time range to fail validation, got %v", err)
 	}
 }
+
+func TestRevokeSourceExcludesFromCollectable(t *testing.T) {
+	ctx := context.Background()
+	repo := servicesource.NewMemoryRepository()
+	svc := servicesource.NewService(repo)
+
+	created, err := svc.CreateSource(ctx, servicesource.CreateSourceInput{
+		Name:             "RSS Feed",
+		Type:             servicesource.SourceTypeRSS,
+		URL:              "https://example.com/rss.xml",
+		FetchIntervalMin: 30,
+	})
+	if err != nil {
+		t.Fatalf("create source: %v", err)
+	}
+
+	collectable, err := svc.ListCollectableSources(ctx)
+	if err != nil {
+		t.Fatalf("list collectable: %v", err)
+	}
+	if len(collectable) != 1 {
+		t.Fatalf("expected 1 collectable source, got %d", len(collectable))
+	}
+
+	revokeSource, err := svc.RevokeSource(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("revoke source: %v", err)
+	}
+	if revokeSource.Status != servicesource.SourceStatusRevoked {
+		t.Fatalf("expected revoked status, got %s", revokeSource.Status)
+	}
+
+	collectable, err = svc.ListCollectableSources(ctx)
+	if err != nil {
+		t.Fatalf("list collectable after revoke: %v", err)
+	}
+	if len(collectable) != 0 {
+		t.Fatalf("expected revoked source excluded from collectable, got %d", len(collectable))
+	}
+
+	all, err := svc.ListSources(ctx)
+	if err != nil {
+		t.Fatalf("list all sources: %v", err)
+	}
+	if len(all) != 1 || all[0].Status != servicesource.SourceStatusRevoked {
+		t.Fatalf("expected revoked source in full list, got %#v", all)
+	}
+}
+
+func TestRevokeSourceRejectsInvalidInput(t *testing.T) {
+	ctx := context.Background()
+	svc := servicesource.NewService(servicesource.NewMemoryRepository())
+
+	if _, err := svc.RevokeSource(ctx, "   "); !errors.Is(err, servicesource.ErrInvalidInput) {
+		t.Fatalf("expected invalid input for blank source id, got %v", err)
+	}
+	if _, err := svc.RevokeSource(ctx, "nonexistent"); !errors.Is(err, servicesource.ErrNotFound) {
+		t.Fatalf("expected not found for nonexistent source, got %v", err)
+	}
+}
