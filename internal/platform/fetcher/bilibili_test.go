@@ -207,35 +207,21 @@ func TestBiliBiliFetcherDeduplicatesByBVID(t *testing.T) {
 }
 
 func TestBiliBiliFetcherFiltersTakedowns(t *testing.T) {
-	var calls atomic.Int32
-	server := &httpServer{
-		handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			calls.Add(1)
-			w.Header().Set("Content-Type", "application/json")
-			if r.URL.Path == "/x/web-interface/popular" {
-				json.NewEncoder(w).Encode(biliPopularResp([]map[string]any{
-					biliVideo("BV1xx411c7mD", "正常视频", "UP主A", 1700000000, "正常描述"),
-				}))
-				return
-			}
-			// Any other path returns takedown
-			json.NewEncoder(w).Encode(biliTakedownResp())
-		}),
-	}
-	srv := server.start(t)
-	defer srv.Close()
+	server := fakeBiliAPI(t, map[string]any{
+		"/x/web-interface/popular": biliTakedownResp(),
+	})
 
-	f := fetcher.NewBiliBiliFetcher(srv.Client(), fetcher.BiliBiliConfig{})
+	f := fetcher.NewBiliBiliFetcher(server.Client(), fetcher.BiliBiliConfig{})
 	items, err := f.Fetch(context.Background(), fetcher.Source{
 		ID:   "src_bili",
 		Type: fetcher.SourceTypeBiliBili,
-		URL:  srv.URL + "/x/web-interface/popular",
+		URL:  server.URL + "/x/web-interface/popular",
 	})
 	if err != nil {
 		t.Fatalf("fetch bilibili should not fail on takedown: %v", err)
 	}
-	if len(items) != 1 {
-		t.Fatalf("expected 1 item (takedowns filtered), got %d", len(items))
+	if len(items) != 0 {
+		t.Fatalf("expected 0 items (takedown filtered), got %d", len(items))
 	}
 }
 

@@ -50,6 +50,9 @@ func (f *BiliBiliFetcher) fetchVideos(ctx context.Context, source Source) ([]Ite
 		return nil, fmt.Errorf("parse bilibili response: %w", err)
 	}
 	if err := checkBiliCode(resp.Code, resp.Message); err != nil {
+		if errors.Is(err, errBiliTakedown) {
+			return nil, nil // takedowns are filtered out, not a failure
+		}
 		return nil, err
 	}
 
@@ -105,6 +108,9 @@ func (f *BiliBiliFetcher) fetchDynamics(ctx context.Context, source Source) ([]I
 		return nil, fmt.Errorf("parse bilibili dynamic response: %w", err)
 	}
 	if err := checkBiliCode(resp.Code, resp.Message); err != nil {
+		if errors.Is(err, errBiliTakedown) {
+			return nil, nil // takedowns are filtered out, not a failure
+		}
 		return nil, err
 	}
 
@@ -134,16 +140,20 @@ func isDynamicURL(rawURL string) bool {
 	return strings.Contains(rawURL, "/polymer/web-dynamic/")
 }
 
+// errBiliTakedown is returned when the Bilibili API reports content unavailable (-404).
+// Callers should treat this as an empty result (filter out), not a hard failure.
+var errBiliTakedown = errors.New("bilibili content unavailable")
+
 // checkBiliCode checks the Bilibili API response code.
-// -404: content unavailable/takedown
-// -412: rate limit
+// -404: content unavailable/takedown → returns errBiliTakedown
+// -412: rate limit → returns error
 // Other non-zero: generic error
 func checkBiliCode(code int, message string) error {
 	switch {
 	case code == 0:
 		return nil
 	case code == -404:
-		return fmt.Errorf("bilibili content unavailable: %s", message)
+		return errBiliTakedown
 	case code == -412:
 		return fmt.Errorf("bilibili rate limit: %s", message)
 	default:
