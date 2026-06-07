@@ -239,6 +239,7 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	admin.POST("/sources", sources.CreateSource)
 	admin.PATCH("/sources/:sourceID", sources.UpdateSource)
 	admin.PATCH("/sources/:sourceID/status", sources.SetSourceStatus)
+	admin.POST("/sources/:sourceID/revoke", sources.RevokeSource)
 	admin.GET("/sources/:sourceID/collection-runs", sources.ListCollectionRuns)
 	admin.POST("/sources/:sourceID/test-fetch", sources.TestFetch)
 

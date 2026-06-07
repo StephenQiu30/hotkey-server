@@ -128,6 +128,17 @@ func (h *Handler) SetSourceStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"source": sourceResponse(source)})
 }
 
+// RevokeSource revokes a source, stopping collection.
+func (h *Handler) RevokeSource(c *gin.Context) {
+	source, err := h.service.RevokeSource(c.Request.Context(), c.Param("sourceID"))
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	c.Set("adminAuditResourceID", source.ID)
+	c.JSON(http.StatusOK, gin.H{"source": sourceResponse(source)})
+}
+
 // ListCollectionRuns returns collection run history for a source.
 func (h *Handler) ListCollectionRuns(c *gin.Context) {
 	runs, err := h.service.ListCollectionRuns(c.Request.Context(), c.Param("sourceID"))

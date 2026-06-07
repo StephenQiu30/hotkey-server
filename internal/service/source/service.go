@@ -31,6 +31,7 @@ type SourceStatus string
 const (
 	SourceStatusEnabled  SourceStatus = "enabled"
 	SourceStatusDisabled SourceStatus = "disabled"
+	SourceStatusRevoked  SourceStatus = "revoked"
 )
 
 type CollectionRunStatus string
@@ -190,6 +191,21 @@ func (s *Service) SetSourceStatus(ctx context.Context, input SetSourceStatusInpu
 		return Source{}, normalizeNotFound(err)
 	}
 	found.Status = input.Status
+	found.UpdatedAt = s.now().UTC()
+	return s.repo.UpdateSource(ctx, found)
+}
+
+// RevokeSource revokes a source, stopping collection and marking it as revoked.
+func (s *Service) RevokeSource(ctx context.Context, sourceID string) (Source, error) {
+	sourceID = strings.TrimSpace(sourceID)
+	if sourceID == "" {
+		return Source{}, ErrInvalidInput
+	}
+	found, err := s.repo.SourceByID(ctx, sourceID)
+	if err != nil {
+		return Source{}, normalizeNotFound(err)
+	}
+	found.Status = SourceStatusRevoked
 	found.UpdatedAt = s.now().UTC()
 	return s.repo.UpdateSource(ctx, found)
 }
