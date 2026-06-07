@@ -17,6 +17,7 @@ const (
 	SourceTypeRSS        SourceType = "rss"
 	SourceTypePublicPage SourceType = "public_page"
 	SourceTypeHackerNews SourceType = "hackernews"
+	SourceTypeWeChatMP   SourceType = "wechat_mp"
 )
 
 type SourceStatus string
@@ -245,7 +246,7 @@ func buildSource(existing Source, name string, sourceType SourceType, rawURL str
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return Source{}, ErrInvalidInput
 	}
-	if sourceType == SourceTypePublicPage && complianceNote == "" {
+	if (sourceType == SourceTypePublicPage || sourceType == SourceTypeWeChatMP) && complianceNote == "" {
 		return Source{}, ErrComplianceNoteRequired
 	}
 	if fetchIntervalMin <= 0 {
@@ -265,7 +266,7 @@ func buildSource(existing Source, name string, sourceType SourceType, rawURL str
 }
 
 func validSourceType(sourceType SourceType) bool {
-	return sourceType == SourceTypeRSS || sourceType == SourceTypePublicPage || sourceType == SourceTypeHackerNews
+	return sourceType == SourceTypeRSS || sourceType == SourceTypePublicPage || sourceType == SourceTypeHackerNews || sourceType == SourceTypeWeChatMP
 }
 
 func compactUnique(values []string) []string {

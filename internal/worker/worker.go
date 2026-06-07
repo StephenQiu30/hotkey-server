@@ -215,7 +215,10 @@ func (h *CollectSourceHandler) Handle(ctx context.Context, job queue.Job) error 
 
 	ingested := 0
 	for _, item := range items {
-		snippet := strings.TrimSpace(item.Title)
+		snippet := strings.TrimSpace(item.Snippet)
+		if snippet == "" {
+			snippet = strings.TrimSpace(item.Title)
+		}
 		if _, err := h.ingest.Ingest(ctx, CollectIngestInput{
 			SourceID:    source.ID,
 			Title:       item.Title,
