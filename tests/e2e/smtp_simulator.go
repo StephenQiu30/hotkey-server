@@ -3,6 +3,7 @@ package e2e_test
 import (
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
@@ -58,6 +59,7 @@ func handleSMTPConn(conn net.Conn, sink *smtpSink) {
 		if inData {
 			if line == ".\r\n" || line == ".\n" || line == "." {
 				inData = false
+				subject = extractSubject(body) // Extract subject from body headers
 				sink.mu.Lock()
 				sink.records = append(sink.records, EmailRecord{
 					From:    from,
@@ -69,6 +71,7 @@ func handleSMTPConn(conn net.Conn, sink *smtpSink) {
 				sink.mu.Unlock()
 				fmt.Fprintf(conn, "250 OK\r\n")
 				body = ""
+				subject = ""
 			} else {
 				body += line
 			}
@@ -93,13 +96,27 @@ func handleSMTPConn(conn net.Conn, sink *smtpSink) {
 			fmt.Fprintf(conn, "221 Bye\r\n")
 			return
 		default:
-			// Try to extract Subject from headers
-			if len(line) > 8 && line[:8] == "Subject:" {
-				subject = line[8:]
-			}
 			fmt.Fprintf(conn, "250 OK\r\n")
 		}
 	}
+}
+
+// extractSubject extracts the Subject header from message body.
+func extractSubject(body string) string {
+	lines := strings.Split(body, "\r\n")
+	for _, l := range lines {
+		if len(l) > 8 && strings.HasPrefix(strings.ToLower(l), "subject:") {
+			return strings.TrimSpace(l[8:])
+		}
+	}
+	// Try \n if \r\n failed
+	lines = strings.Split(body, "\n")
+	for _, l := range lines {
+		if len(l) > 8 && strings.HasPrefix(strings.ToLower(l), "subject:") {
+			return strings.TrimSpace(l[8:])
+		}
+	}
+	return ""
 }
 
 // extractAngle extracts the address from <addr> format.
