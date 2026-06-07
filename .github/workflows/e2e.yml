@@ -1,0 +1,60 @@
+name: e2e
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  e2e-tests:
+    name: e2e-tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: hotkey
+          POSTGRES_PASSWORD: hotkey_e2e
+          POSTGRES_DB: hotkey_e2e
+        ports:
+          - 15432:5432
+        options: >-
+          --health-cmd "pg_isready -U hotkey -d hotkey_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 16379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Run schema migration
+        run: |
+          PGPASSWORD=hotkey_e2e psql -h 127.0.0.1 -p 15432 -U hotkey -d hotkey_e2e -f internal/db/schema.sql
+          PGPASSWORD=hotkey_e2e psql -h 127.0.0.1 -p 15432 -U hotkey -d hotkey_e2e -f tests/fixtures/seed.sql
+
+      - name: Run E2E tests
+        env:
+          HOTKEY_E2E_POSTGRES_ADDR: "127.0.0.1:15432"
+          HOTKEY_E2E_REDIS_URL: "redis://127.0.0.1:16379/0"
+          HOTKEY_E2E_SERVER_URL: "" # Server not started in CI yet
+        run: go test -v -tags e2e -count=1 -timeout=60s ./tests/e2e/...
