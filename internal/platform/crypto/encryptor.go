@@ -27,7 +27,7 @@ func NewAESGCMEncryptor(key []byte) (*AESGCMEncryptor, error) {
 	if len(key) != 32 {
 		return nil, ErrInvalidKey
 	}
-	keyCopy := make([]byte, len(key))
+	keyCopy := make([]byte, 32)
 	copy(keyCopy, key)
 	return &AESGCMEncryptor{key: keyCopy}, nil
 }
@@ -73,10 +73,3 @@ func (e *AESGCMEncryptor) Decrypt(encoded string) (string, error) {
 	}
 	return string(plaintext), nil
 }
-
-// NoOpEncryptor is a pass-through encryptor for testing/development.
-// It returns plaintext as-is without encryption.
-type NoOpEncryptor struct{}
-
-func (NoOpEncryptor) Encrypt(plaintext string) (string, error) { return plaintext, nil }
-func (NoOpEncryptor) Decrypt(ciphertext string) (string, error) { return ciphertext, nil }

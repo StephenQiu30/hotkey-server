@@ -1,14 +1,40 @@
 package http_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"testing"
 
+	"github.com/StephenQiu30/hotkey-server/internal/platform/crypto"
+	serviceauth "github.com/StephenQiu30/hotkey-server/internal/service/auth"
 	transporthttp "github.com/StephenQiu30/hotkey-server/internal/transport/http"
+	"github.com/gin-gonic/gin"
 )
 
+func newRouterWithAuthorization(t *testing.T) *gin.Engine {
+	t.Helper()
+	repo := serviceauth.NewMemoryRepository()
+	authSvc, err := serviceauth.NewService(repo, serviceauth.Config{AccessTokenSecret: "test-az-secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := []byte("0123456789abcdef0123456789abcdef")
+	enc, err := crypto.NewAESGCMEncryptor(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	azSvc, err := serviceauth.NewAuthorizationService(repo, nil, enc, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return transporthttp.NewRouterWithDependencies(transporthttp.Dependencies{
+		AuthService:          authSvc,
+		AuthorizationService: azSvc,
+	})
+}
+
 func TestAuthorizationHTTPConnectAndList(t *testing.T) {
-	router := transporthttp.NewRouter()
+	router := newRouterWithAuthorization(t)
 
 	// Register and login
 	register := postJSON(t, router, "/api/v1/auth/register", map[string]string{
@@ -66,10 +92,19 @@ func TestAuthorizationHTTPConnectAndList(t *testing.T) {
 	if list2.Code != http.StatusOK {
 		t.Fatalf("expected list 200, got %d: %s", list2.Code, list2.Body.String())
 	}
+	var listResp2 struct {
+		Authorizations []map[string]interface{} `json:"authorizations"`
+	}
+	if err := json.Unmarshal(list2.Body.Bytes(), &listResp2); err != nil {
+		t.Fatalf("failed to parse list2 response: %v", err)
+	}
+	if len(listResp2.Authorizations) != 1 || listResp2.Authorizations[0]["status"] != "revoked" {
+		t.Fatalf("expected 1 revoked authorization, got %v", listResp2.Authorizations)
+	}
 }
 
 func TestAuthorizationHTTPDeleteAccount(t *testing.T) {
-	router := transporthttp.NewRouter()
+	router := newRouterWithAuthorization(t)
 
 	// Register and login
 	register := postJSON(t, router, "/api/v1/auth/register", map[string]string{
@@ -114,7 +149,7 @@ func TestAuthorizationHTTPDeleteAccount(t *testing.T) {
 }
 
 func TestAuthorizationHTTPUnauthorized(t *testing.T) {
-	router := transporthttp.NewRouter()
+	router := newRouterWithAuthorization(t)
 
 	// List without auth should fail
 	list := getWithBearer(router, "/api/v1/authorizations", "")

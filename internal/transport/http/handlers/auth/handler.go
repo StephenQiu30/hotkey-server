@@ -148,9 +148,9 @@ func (h *Handler) AdminDisableUser(c *gin.Context) {
 	if err := h.service.DisableUser(c.Request.Context(), userID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(c, http.StatusNotFound, "user_not_found", "user not found")
-		} else {
-			writeError(c, http.StatusInternalServerError, "internal_error", "failed to disable user")
+			return
 		}
+		writeError(c, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -165,9 +165,9 @@ func (h *Handler) AdminRevokeAllTokens(c *gin.Context) {
 	if err := h.service.RevokeAllTokensForUser(c.Request.Context(), userID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(c, http.StatusNotFound, "user_not_found", "user not found")
-		} else {
-			writeError(c, http.StatusInternalServerError, "internal_error", "failed to revoke tokens")
+			return
 		}
+		writeError(c, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}
 	c.Status(http.StatusNoContent)

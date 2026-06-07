@@ -151,7 +151,11 @@ func transportRouterWithDependenciesForTest(deps transporthttp.Dependencies) htt
 		if err != nil {
 			panic(err)
 		}
-		deps.AuthorizationService = serviceauth.NewAuthorizationService(deps.AuthService.Repository(), serviceauth.NewMemoryAuthorizationRepository(), enc, nil)
+		azSvc, err := serviceauth.NewAuthorizationService(deps.AuthService.Repository(), serviceauth.NewMemoryAuthorizationRepository(), enc, nil)
+		if err != nil {
+			panic(err)
+		}
+		deps.AuthorizationService = azSvc
 	}
 	return transporthttp.NewRouterWithDependencies(deps)
 }

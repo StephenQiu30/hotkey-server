@@ -175,12 +175,12 @@ func TestRevokeAllTokensForUserInvalidatesAllSessions(t *testing.T) {
 		t.Fatalf("login 2: %v", err)
 	}
 
-	// Both sessions should work initially; save rotated tokens
-	rotated1, err := service.Refresh(ctx, s1.RefreshToken)
+	// Both sessions should work initially; save the rotated tokens
+	s1Refreshed, err := service.Refresh(ctx, s1.RefreshToken)
 	if err != nil {
 		t.Fatalf("refresh s1 before revoke: %v", err)
 	}
-	rotated2, err := service.Refresh(ctx, s2.RefreshToken)
+	s2Refreshed, err := service.Refresh(ctx, s2.RefreshToken)
 	if err != nil {
 		t.Fatalf("refresh s2 before revoke: %v", err)
 	}
@@ -190,14 +190,14 @@ func TestRevokeAllTokensForUserInvalidatesAllSessions(t *testing.T) {
 		t.Fatalf("revoke all: %v", err)
 	}
 
-	// Rotated tokens should be invalidated
-	_, err = service.Refresh(ctx, rotated1.RefreshToken)
+	// Rotated tokens should be invalidated after revoke all
+	_, err = service.Refresh(ctx, s1Refreshed.RefreshToken)
 	if !errors.Is(err, auth.ErrInvalidRefreshToken) {
-		t.Fatalf("expected rotated1 invalidated after revoke all, got %v", err)
+		t.Fatalf("expected s1 rotated token invalidated after revoke all, got %v", err)
 	}
-	_, err = service.Refresh(ctx, rotated2.RefreshToken)
+	_, err = service.Refresh(ctx, s2Refreshed.RefreshToken)
 	if !errors.Is(err, auth.ErrInvalidRefreshToken) {
-		t.Fatalf("expected rotated2 invalidated after revoke all, got %v", err)
+		t.Fatalf("expected s2 rotated token invalidated after revoke all, got %v", err)
 	}
 }
 

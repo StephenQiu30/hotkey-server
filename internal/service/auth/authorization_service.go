@@ -44,22 +44,30 @@ type Transactor interface {
 	WithinTransaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
-func NewAuthorizationService(authRepo Repository, azRepo AuthorizationRepository, encryptor crypto.Encryptor, now func() time.Time) *AuthorizationService {
+var (
+	ErrNilEncryptor = errors.New("encryptor must not be nil")
+	ErrNilAuthRepo  = errors.New("auth repository must not be nil")
+)
+
+func NewAuthorizationService(authRepo Repository, azRepo AuthorizationRepository, encryptor crypto.Encryptor, now func() time.Time) (*AuthorizationService, error) {
+	if authRepo == nil {
+		return nil, ErrNilAuthRepo
+	}
+	if encryptor == nil {
+		return nil, ErrNilEncryptor
+	}
 	if now == nil {
 		now = time.Now
 	}
 	if azRepo == nil {
 		azRepo = NewMemoryAuthorizationRepository()
 	}
-	if encryptor == nil {
-		encryptor = crypto.NoOpEncryptor{}
-	}
 	return &AuthorizationService{
 		authRepo:  authRepo,
 		azRepo:    azRepo,
 		encryptor: encryptor,
 		now:       now,
-	}
+	}, nil
 }
 
 func (s *AuthorizationService) WithTransactor(t Transactor) *AuthorizationService {

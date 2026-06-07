@@ -8,12 +8,10 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
-
-	transporthttp "github.com/StephenQiu30/hotkey-server/internal/transport/http"
 )
 
 func TestAuthHTTPFlowAndAdminDenial(t *testing.T) {
-	router := transporthttp.NewRouter()
+	router := newRouterWithAuthorization(t)
 
 	register := postJSON(t, router, "/api/v1/auth/register", map[string]string{
 		"email":    "flow@example.com",
@@ -105,6 +103,9 @@ func TestAdminDisableUserHTTP(t *testing.T) {
 		t.Fatalf("expected me 200, got %d: %s", me.Code, me.Body.String())
 	}
 	userID := jsonStringAt(t, me.Body.Bytes(), "user.id")
+	if userID == "" {
+		t.Fatalf("expected non-empty user.id in /me response: %s", me.Body.String())
+	}
 
 	// Regular user cannot access admin disable endpoint
 	adminToken := registerAdminAndLogin(t, router, "channels-admin@example.com")
@@ -162,20 +163,26 @@ func TestAdminRevokeAllTokensHTTP(t *testing.T) {
 	// Get user ID
 	userToken := jsonStringAt(t, login2.Body.Bytes(), "accessToken")
 	me := getWithBearer(router, "/api/v1/me", userToken)
+	if me.Code != http.StatusOK {
+		t.Fatalf("expected me 200, got %d: %s", me.Code, me.Body.String())
+	}
 	userID := jsonStringAt(t, me.Body.Bytes(), "user.id")
+	if userID == "" {
+		t.Fatalf("expected non-empty user.id in /me response: %s", me.Body.String())
+	}
 
-	// Both refresh tokens work initially; save rotated tokens
+	// Both refresh tokens work initially; save the rotated tokens
 	refresh1Resp := postJSON(t, router, "/api/v1/auth/refresh", map[string]string{"refreshToken": refreshToken1})
 	if refresh1Resp.Code != http.StatusOK {
 		t.Fatalf("expected refresh1 200, got %d", refresh1Resp.Code)
 	}
-	rotatedToken1 := jsonStringAt(t, refresh1Resp.Body.Bytes(), "refreshToken")
+	rotatedRefresh1 := jsonStringAt(t, refresh1Resp.Body.Bytes(), "refreshToken")
 
 	refresh2Resp := postJSON(t, router, "/api/v1/auth/refresh", map[string]string{"refreshToken": refreshToken2})
 	if refresh2Resp.Code != http.StatusOK {
 		t.Fatalf("expected refresh2 200, got %d", refresh2Resp.Code)
 	}
-	rotatedToken2 := jsonStringAt(t, refresh2Resp.Body.Bytes(), "refreshToken")
+	rotatedRefresh2 := jsonStringAt(t, refresh2Resp.Body.Bytes(), "refreshToken")
 
 	// Admin revokes all tokens
 	adminToken := registerAdminAndLogin(t, router, "channels-admin@example.com")
@@ -184,12 +191,12 @@ func TestAdminRevokeAllTokensHTTP(t *testing.T) {
 		t.Fatalf("expected admin revoke-tokens 204, got %d: %s", revoke.Code, revoke.Body.String())
 	}
 
-	// Rotated refresh tokens should no longer work
-	if got := postJSON(t, router, "/api/v1/auth/refresh", map[string]string{"refreshToken": rotatedToken1}); got.Code != http.StatusUnauthorized {
-		t.Fatalf("expected rotated1 401 after revoke, got %d", got.Code)
+	// Rotated refresh tokens should no longer work after revoke
+	if got := postJSON(t, router, "/api/v1/auth/refresh", map[string]string{"refreshToken": rotatedRefresh1}); got.Code != http.StatusUnauthorized {
+		t.Fatalf("expected rotated refresh1 401 after revoke, got %d", got.Code)
 	}
-	if got := postJSON(t, router, "/api/v1/auth/refresh", map[string]string{"refreshToken": rotatedToken2}); got.Code != http.StatusUnauthorized {
-		t.Fatalf("expected rotated2 401 after revoke, got %d", got.Code)
+	if got := postJSON(t, router, "/api/v1/auth/refresh", map[string]string{"refreshToken": rotatedRefresh2}); got.Code != http.StatusUnauthorized {
+		t.Fatalf("expected rotated refresh2 401 after revoke, got %d", got.Code)
 	}
 
 	// User can still login again (unlike disable)
