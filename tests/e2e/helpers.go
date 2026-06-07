@@ -14,7 +14,7 @@ func pingTCP(ctx context.Context, addr string) error {
 	if err != nil {
 		return fmt.Errorf("tcp dial %s: %w", addr, err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	return nil
 }
 
@@ -39,7 +39,7 @@ func redisPing(ctx context.Context, rawURL string) error {
 	if err != nil {
 		return fmt.Errorf("dial redis %s: %w", addr, err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = conn.SetDeadline(deadline)
 	}

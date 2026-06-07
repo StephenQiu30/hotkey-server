@@ -206,8 +206,8 @@ func TestSMTPSink_Capture(t *testing.T) {
 	if r.Subject != "Test Subject" {
 		t.Errorf("expected subject 'Test Subject', got %q", r.Subject)
 	}
-	if r.Body == "" {
-		t.Error("expected non-empty body")
+	if !strings.Contains(r.Body, "Test Body") {
+		t.Errorf("expected body to contain 'Test Body', got %q", r.Body)
 	}
 }
 
