@@ -16,10 +16,13 @@ const (
 	JobTypeClusterHotspots     JobType = "cluster_hotspots"
 	JobTypeScoreHotspots       JobType = "score_hotspots"
 	JobTypeGenerateDailyReport JobType = "generate_daily_report"
-	JobTypeSendDailyEmail      JobType = "send_daily_email"
-	JobTypeSendWeeklyEmail     JobType = "send_weekly_email"
-	JobTypeGenerateWeeklyReport JobType = "generate_weekly_report"
-	JobTypeGenerateEventSummary JobType = "generate_event_summary"
+	JobTypeSendDailyEmail          JobType = "send_daily_email"
+	JobTypeSendWeeklyEmail         JobType = "send_weekly_email"
+	JobTypeGenerateWeeklyReport    JobType = "generate_weekly_report"
+	JobTypeGenerateEventSummary    JobType = "generate_event_summary"
+	JobTypeStoreSnapshot           JobType = "store_snapshot"
+	JobTypeCleanupExpiredObjects   JobType = "cleanup_expired_objects"
+	JobTypeDeleteUserObjects       JobType = "delete_user_objects"
 )
 
 type JobStatus string
@@ -92,9 +95,27 @@ type EventSummaryItem struct {
 }
 
 type GenerateEventSummaryPayload struct {
-	EventID string              `json:"event_id"`
-	Title   string              `json:"title"`
-	Items   []EventSummaryItem  `json:"items"`
+	EventID string             `json:"event_id"`
+	Title   string             `json:"title"`
+	Items   []EventSummaryItem `json:"items"`
+}
+
+type StoreSnapshotPayload struct {
+	SourceItemID string `json:"source_item_id"`
+	SourceID     string `json:"source_id"`
+	UserID       string `json:"user_id"`
+	Platform     string `json:"platform"`
+	Title        string `json:"title"`
+	Snippet      string `json:"snippet"`
+	OriginalURL  string `json:"original_url"`
+}
+
+type CleanupExpiredObjectsPayload struct {
+	Bucket string `json:"bucket"`
+}
+
+type DeleteUserObjectsPayload struct {
+	UserID string `json:"user_id"`
 }
 
 func ValidatePayload(jobType JobType, payload json.RawMessage) error {
@@ -179,6 +200,28 @@ func ValidatePayload(jobType JobType, payload json.RawMessage) error {
 		}
 		if body.Title == "" {
 			return errors.New("generate_event_summary payload requires title")
+		}
+	case JobTypeStoreSnapshot:
+		var body StoreSnapshotPayload
+		if err := json.Unmarshal(payload, &body); err != nil {
+			return err
+		}
+		if body.SourceItemID == "" || body.SourceID == "" || body.UserID == "" {
+			return errors.New("store_snapshot payload requires source_item_id, source_id, and user_id")
+		}
+	case JobTypeCleanupExpiredObjects:
+		var body CleanupExpiredObjectsPayload
+		if err := json.Unmarshal(payload, &body); err != nil {
+			return err
+		}
+		// Empty Bucket is allowed — handler uses configured default
+	case JobTypeDeleteUserObjects:
+		var body DeleteUserObjectsPayload
+		if err := json.Unmarshal(payload, &body); err != nil {
+			return err
+		}
+		if body.UserID == "" {
+			return errors.New("delete_user_objects payload requires user_id")
 		}
 	default:
 		return fmt.Errorf("unknown job type %q", jobType)

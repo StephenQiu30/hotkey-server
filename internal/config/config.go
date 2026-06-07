@@ -37,6 +37,13 @@ type Config struct {
 	XClientID                  string
 	XClientSecret              string
 	XRedirectURL               string
+	MinIOEndpoint              string
+	MinIOAccessKey             string
+	MinIOSecretKey             string
+	MinIOBucket                string
+	MinIOUseSSL                bool
+	MinIOLocation              string
+	ContentRetentionDays       int
 }
 
 func Load() Config {
@@ -63,6 +70,13 @@ func Load() Config {
 		XClientID:                  os.Getenv("HOTKEY_X_CLIENT_ID"),
 		XClientSecret:              os.Getenv("HOTKEY_X_CLIENT_SECRET"),
 		XRedirectURL:               envOrDefault("HOTKEY_X_REDIRECT_URL", "http://localhost:8080/api/v1/admin/x/auth/callback"),
+		MinIOEndpoint:              envOrDefault("HOTKEY_MINIO_ENDPOINT", "localhost:9000"),
+		MinIOAccessKey:             os.Getenv("HOTKEY_MINIO_ACCESS_KEY"),
+		MinIOSecretKey:             os.Getenv("HOTKEY_MINIO_SECRET_KEY"),
+		MinIOBucket:                envOrDefault("HOTKEY_MINIO_BUCKET", "hotkey-snapshots"),
+		MinIOUseSSL:                boolOrDefault("HOTKEY_MINIO_USE_SSL", false),
+		MinIOLocation:              envOrDefault("HOTKEY_MINIO_LOCATION", "us-east-1"),
+		ContentRetentionDays:       intOrDefaultAllowZero("HOTKEY_CONTENT_RETENTION_DAYS", 30),
 	}
 }
 
@@ -118,6 +132,18 @@ func intOrDefault(key string, fallback int) int {
 	}
 	parsed, err := strconv.Atoi(value)
 	if err != nil || parsed < 1 || parsed > 65535 {
+		return fallback
+	}
+	return parsed
+}
+
+func intOrDefaultAllowZero(key string, fallback int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
 		return fallback
 	}
 	return parsed

@@ -104,3 +104,99 @@ func TestLoadSMTPPortFallsBackWhenOutOfRange(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadMinIODefaults(t *testing.T) {
+	t.Setenv("HOTKEY_MINIO_ENDPOINT", "")
+	t.Setenv("HOTKEY_MINIO_ACCESS_KEY", "")
+	t.Setenv("HOTKEY_MINIO_SECRET_KEY", "")
+	t.Setenv("HOTKEY_MINIO_BUCKET", "")
+	t.Setenv("HOTKEY_MINIO_USE_SSL", "")
+	t.Setenv("HOTKEY_MINIO_LOCATION", "")
+	t.Setenv("HOTKEY_CONTENT_RETENTION_DAYS", "")
+
+	got := Load()
+
+	if got.MinIOEndpoint != "localhost:9000" {
+		t.Errorf("MinIOEndpoint = %q, want %q", got.MinIOEndpoint, "localhost:9000")
+	}
+	if got.MinIOAccessKey != "" {
+		t.Errorf("MinIOAccessKey = %q, want empty (no weak default)", got.MinIOAccessKey)
+	}
+	if got.MinIOSecretKey != "" {
+		t.Errorf("MinIOSecretKey = %q, want empty (no weak default)", got.MinIOSecretKey)
+	}
+	if got.MinIOBucket != "hotkey-snapshots" {
+		t.Errorf("MinIOBucket = %q, want %q", got.MinIOBucket, "hotkey-snapshots")
+	}
+	if got.MinIOUseSSL {
+		t.Errorf("MinIOUseSSL = %v, want false", got.MinIOUseSSL)
+	}
+	if got.MinIOLocation != "us-east-1" {
+		t.Errorf("MinIOLocation = %q, want %q", got.MinIOLocation, "us-east-1")
+	}
+	if got.ContentRetentionDays != 30 {
+		t.Errorf("ContentRetentionDays = %d, want 30", got.ContentRetentionDays)
+	}
+}
+
+func TestLoadMinIOOverrides(t *testing.T) {
+	t.Setenv("HOTKEY_MINIO_ENDPOINT", "minio.example.com:443")
+	t.Setenv("HOTKEY_MINIO_ACCESS_KEY", "mykey")
+	t.Setenv("HOTKEY_MINIO_SECRET_KEY", "mysecret")
+	t.Setenv("HOTKEY_MINIO_BUCKET", "my-bucket")
+	t.Setenv("HOTKEY_MINIO_USE_SSL", "true")
+	t.Setenv("HOTKEY_MINIO_LOCATION", "eu-west-1")
+	t.Setenv("HOTKEY_CONTENT_RETENTION_DAYS", "90")
+
+	got := Load()
+
+	if got.MinIOEndpoint != "minio.example.com:443" {
+		t.Errorf("MinIOEndpoint = %q, want %q", got.MinIOEndpoint, "minio.example.com:443")
+	}
+	if got.MinIOAccessKey != "mykey" {
+		t.Errorf("MinIOAccessKey = %q, want %q", got.MinIOAccessKey, "mykey")
+	}
+	if got.MinIOSecretKey != "mysecret" {
+		t.Errorf("MinIOSecretKey = %q, want %q", got.MinIOSecretKey, "mysecret")
+	}
+	if got.MinIOBucket != "my-bucket" {
+		t.Errorf("MinIOBucket = %q, want %q", got.MinIOBucket, "my-bucket")
+	}
+	if !got.MinIOUseSSL {
+		t.Errorf("MinIOUseSSL = %v, want true", got.MinIOUseSSL)
+	}
+	if got.MinIOLocation != "eu-west-1" {
+		t.Errorf("MinIOLocation = %q, want %q", got.MinIOLocation, "eu-west-1")
+	}
+	if got.ContentRetentionDays != 90 {
+		t.Errorf("ContentRetentionDays = %d, want 90", got.ContentRetentionDays)
+	}
+}
+
+func TestLoadMinIORetentionDaysFallsBackWhenInvalid(t *testing.T) {
+	for _, value := range []string{"-1", "not-a-number"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("HOTKEY_CONTENT_RETENTION_DAYS", value)
+			got := Load()
+			if got.ContentRetentionDays != 30 {
+				t.Fatalf("expected default retention days for %q, got %d", value, got.ContentRetentionDays)
+			}
+		})
+	}
+}
+
+func TestLoadMinIORetentionDaysAllowsZero(t *testing.T) {
+	t.Setenv("HOTKEY_CONTENT_RETENTION_DAYS", "0")
+	got := Load()
+	if got.ContentRetentionDays != 0 {
+		t.Fatalf("expected 0 for immediate deletion, got %d", got.ContentRetentionDays)
+	}
+}
+
+func TestLoadMinIORetentionDaysAllowsLargeValues(t *testing.T) {
+	t.Setenv("HOTKEY_CONTENT_RETENTION_DAYS", "70000")
+	got := Load()
+	if got.ContentRetentionDays != 70000 {
+		t.Fatalf("expected 70000 for long-term archival, got %d", got.ContentRetentionDays)
+	}
+}
