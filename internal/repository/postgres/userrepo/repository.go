@@ -132,6 +132,40 @@ func scanUser(row userScanner) (user.User, error) {
 	return account, nil
 }
 
+func (r *Repository) UpdateUser(ctx context.Context, account user.User) error {
+	const query = `
+UPDATE users SET email = $2, password_hash = $3, role = $4, status = $5, timezone = $6, daily_send_at = $7, wechat_open_id = NULLIF($8, ''), updated_at = $9
+WHERE id = $1`
+	result, err := postgres.GetQueryer(ctx, r.db).ExecContext(ctx, query,
+		account.ID,
+		account.Email,
+		account.PasswordHash,
+		account.Role,
+		account.Status,
+		account.Timezone,
+		account.DailySendAt,
+		account.WeChatOpenID,
+		account.UpdatedAt,
+	)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (r *Repository) RevokeAllTokensForUser(ctx context.Context, userID string, revokedAt time.Time) error {
+	const query = `UPDATE refresh_tokens SET revoked_at = $1 WHERE user_id = $2 AND revoked_at IS NULL`
+	_, err := postgres.GetQueryer(ctx, r.db).ExecContext(ctx, query, revokedAt, userID)
+	return err
+}
+
 func (r *Repository) DeleteUser(ctx context.Context, id string) error {
 	const query = `DELETE FROM users WHERE id = $1`
 	result, err := postgres.GetQueryer(ctx, r.db).ExecContext(ctx, query, id)
