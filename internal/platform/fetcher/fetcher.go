@@ -17,6 +17,7 @@ const (
 	SourceTypeRSS          SourceType = "rss"
 	SourceTypePublicPage   SourceType = "public_page"
 	SourceTypeHackerNews   SourceType = "hackernews"
+	SourceTypeBiliBili     SourceType = "bilibili"
 )
 
 type Source struct {
@@ -33,6 +34,7 @@ type Item struct {
 	PublishedAt *time.Time
 	Score       int
 	Descendants int
+	Snippet     string
 	CommentSamples []CommentSample
 }
 
