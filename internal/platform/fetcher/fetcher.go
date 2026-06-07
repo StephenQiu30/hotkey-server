@@ -19,6 +19,7 @@ const (
 	SourceTypeX            SourceType = "x"
 	SourceTypeHackerNews   SourceType = "hackernews"
 	SourceTypeZhihu        SourceType = "zhihu"
+	SourceTypeReddit       SourceType = "reddit"
 )
 
 type Source struct {
