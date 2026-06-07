@@ -29,8 +29,8 @@ class AuthorizationContractTest(unittest.TestCase):
         for path in [
             "/api/v1/authorizations:",
             "/api/v1/authorizations/connect:",
-            "/api/v1/authorizations/{authorizationID}:",
-            "/api/v1/authorizations/{authorizationID}/test:",
+            "/api/v1/authorizations/{id}:",
+            "/api/v1/authorizations/{id}/test:",
         ]:
             self.assertIn(path, spec)
 
