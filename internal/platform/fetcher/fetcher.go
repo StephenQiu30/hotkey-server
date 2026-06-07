@@ -91,6 +91,7 @@ type PublicPageFetcher struct {
 	client *http.Client
 }
 
+// XiaohongshuFetcher retrieves Xiaohongshu note pages and extracts titles.
 type XiaohongshuFetcher struct {
 	client *http.Client
 }
@@ -103,6 +104,7 @@ func NewPublicPageFetcher(client *http.Client) *PublicPageFetcher {
 	return &PublicPageFetcher{client: httpClient(client)}
 }
 
+// NewXiaohongshuFetcher creates a XiaohongshuFetcher with the given HTTP client.
 func NewXiaohongshuFetcher(client *http.Client) *XiaohongshuFetcher {
 	return &XiaohongshuFetcher{client: httpClient(client)}
 }
@@ -172,6 +174,8 @@ func (f *PublicPageFetcher) Fetch(ctx context.Context, source Source) (items []I
 	return []Item{{Title: title, URL: source.URL, ExternalID: source.URL}}, nil
 }
 
+// Fetch retrieves a Xiaohongshu note page and extracts its title.
+// It requires a non-empty compliance note and validates the source type.
 func (f *XiaohongshuFetcher) Fetch(ctx context.Context, source Source) (items []Item, err error) {
 	if source.Type != SourceTypeXiaohongshu {
 		return nil, errors.New("xiaohongshu fetcher requires xiaohongshu source")
