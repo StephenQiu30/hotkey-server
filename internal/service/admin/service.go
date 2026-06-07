@@ -145,12 +145,21 @@ type Repository interface {
 	CleanupTaskByID(ctx context.Context, taskID string) (CleanupTask, error)
 }
 
+// RevokeSourceResult is the result of revoking a source.
+type RevokeSourceResult struct {
+	ID        string
+	Name      string
+	Status    string
+	UpdatedAt time.Time
+}
+
 type Config struct {
 	PostgreSQLPing func(context.Context) error
 	RedisPing      func(context.Context) error
 	DashScopeKey   string
 	SMTPHost       string
 	Now            func() time.Time
+	RevokeSourceFunc func(ctx context.Context, sourceID string) (RevokeSourceResult, error)
 }
 
 type Service struct {
@@ -375,6 +384,18 @@ func newID(prefix string) string {
 		return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
 	}
 	return prefix + "_" + hex.EncodeToString(data[:])
+}
+
+// RevokeSource delegates to the configured RevokeSourceFunc to revoke a source.
+func (s *Service) RevokeSource(ctx context.Context, sourceID string) (RevokeSourceResult, error) {
+	sourceID = strings.TrimSpace(sourceID)
+	if sourceID == "" {
+		return RevokeSourceResult{}, ErrInvalidInput
+	}
+	if s.cfg.RevokeSourceFunc == nil {
+		return RevokeSourceResult{}, errors.New("revoke source not configured")
+	}
+	return s.cfg.RevokeSourceFunc(ctx, sourceID)
 }
 
 // DeleteAccount orchestrates account deletion with ordered cleanup steps.

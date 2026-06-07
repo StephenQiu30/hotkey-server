@@ -72,3 +72,96 @@ func TestAdminObservabilityHTTPFlow(t *testing.T) {
 		t.Fatalf("expected failed jobs 200, got %d with body %s", failedJobs.Code, failedJobs.Body.String())
 	}
 }
+
+func TestAdminRevokeSourceHTTPFlow(t *testing.T) {
+	adminRepo := serviceadmin.NewMemoryRepository()
+	adminService := serviceadmin.NewService(adminRepo, serviceadmin.Config{})
+	router := transportRouterWithDependenciesForTest(transporthttp.Dependencies{
+		AdminService: adminService,
+	})
+	adminToken := registerAdminAndLogin(t, router, "channels-admin@example.com")
+
+	// Create a source
+	create := postJSONWithBearer(t, router, "/api/v1/admin/sources", adminToken, map[string]any{
+		"name":             "RSS To Revoke",
+		"type":             "rss",
+		"url":              "https://example.com/revoke.xml",
+		"fetchIntervalMin": 30,
+	})
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected source create 201, got %d with body %s", create.Code, create.Body.String())
+	}
+	sourceID := jsonStringAt(t, create.Body.Bytes(), "source.id")
+
+	// Revoke the source
+	revoke := postJSONWithBearer(t, router, "/api/v1/admin/sources/"+sourceID+"/revoke", adminToken, nil)
+	if revoke.Code != http.StatusOK {
+		t.Fatalf("expected revoke 200, got %d with body %s", revoke.Code, revoke.Body.String())
+	}
+	assertJSONField(t, revoke.Body.Bytes(), "source.status", "revoked")
+
+	// Check audit log recorded
+	auditLogs := getWithBearer(router, "/api/v1/admin/audit-logs", adminToken)
+	if auditLogs.Code != http.StatusOK {
+		t.Fatalf("expected audit logs 200, got %d with body %s", auditLogs.Code, auditLogs.Body.String())
+	}
+	assertJSONField(t, auditLogs.Body.Bytes(), "auditLogs.0.resourceType", "source")
+}
+
+func TestAdminDeleteAccountHTTPFlow(t *testing.T) {
+	adminRepo := serviceadmin.NewMemoryRepository()
+	adminRepo.SetUser("usr_del_http", serviceadmin.UserRecord{ID: "usr_del_http", Email: "delete-target@example.com"})
+	adminService := serviceadmin.NewService(adminRepo, serviceadmin.Config{})
+	router := transportRouterWithDependenciesForTest(transporthttp.Dependencies{
+		AdminService: adminService,
+	})
+	adminToken := registerAdminAndLogin(t, router, "channels-admin@example.com")
+
+	// Delete the account
+	deleteResp := deleteWithBearer(router, "/api/v1/admin/users/usr_del_http", adminToken)
+	if deleteResp.Code != http.StatusOK {
+		t.Fatalf("expected delete 200, got %d with body %s", deleteResp.Code, deleteResp.Body.String())
+	}
+	assertJSONField(t, deleteResp.Body.Bytes(), "cleanupTask.status", "completed")
+
+	cleanupID := jsonStringAt(t, deleteResp.Body.Bytes(), "cleanupTask.id")
+	if cleanupID == "" {
+		t.Fatalf("expected cleanup task id in response: %s", deleteResp.Body.String())
+	}
+
+	// Check cleanup status
+	statusResp := getWithBearer(router, "/api/v1/admin/cleanup-tasks/"+cleanupID, adminToken)
+	if statusResp.Code != http.StatusOK {
+		t.Fatalf("expected cleanup status 200, got %d with body %s", statusResp.Code, statusResp.Body.String())
+	}
+	assertJSONField(t, statusResp.Body.Bytes(), "cleanupTask.status", "completed")
+}
+
+func TestAdminCleanupRetryHTTPFlow(t *testing.T) {
+	adminRepo := serviceadmin.NewMemoryRepository()
+	// Set up a user but inject an error for daily report deletion
+	adminRepo.SetUser("usr_retry", serviceadmin.UserRecord{ID: "usr_retry", Email: "retry@example.com"})
+	adminRepo.SetDeleteReportError(errors.New("db connection lost"))
+
+	adminService := serviceadmin.NewService(adminRepo, serviceadmin.Config{})
+	router := transportRouterWithDependenciesForTest(transporthttp.Dependencies{
+		AdminService: adminService,
+	})
+	adminToken := registerAdminAndLogin(t, router, "channels-admin@example.com")
+
+	// Delete should fail on first step
+	deleteResp := deleteWithBearer(router, "/api/v1/admin/users/usr_retry", adminToken)
+	if deleteResp.Code != http.StatusOK {
+		t.Fatalf("expected delete 200, got %d with body %s", deleteResp.Code, deleteResp.Body.String())
+	}
+	assertJSONField(t, deleteResp.Body.Bytes(), "cleanupTask.status", "failed")
+	cleanupID := jsonStringAt(t, deleteResp.Body.Bytes(), "cleanupTask.id")
+
+	// Fix the error and retry
+	adminRepo.SetDeleteReportError(nil)
+	retryResp := postJSONWithBearer(t, router, "/api/v1/admin/cleanup-tasks/"+cleanupID+"/retry", adminToken, nil)
+	if retryResp.Code != http.StatusOK {
+		t.Fatalf("expected retry 200, got %d with body %s", retryResp.Code, retryResp.Body.String())
+	}
+	assertJSONField(t, retryResp.Body.Bytes(), "cleanupTask.status", "completed")
+}

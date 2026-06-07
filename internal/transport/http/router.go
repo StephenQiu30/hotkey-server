@@ -245,6 +245,10 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 
 	admin.POST("/users/:userID/disable", auth.AdminDisableUser)
 	admin.POST("/users/:userID/revoke-tokens", auth.AdminRevokeAllTokens)
+	admin.DELETE("/users/:userID", adminObservability.DeleteAccount)
+
+	admin.GET("/cleanup-tasks/:taskID", adminObservability.CleanupStatus)
+	admin.POST("/cleanup-tasks/:taskID/retry", adminObservability.RetryCleanup)
 
 	admin.GET("/x/auth", xauth.AuthURL)
 	admin.GET("/x/auth/callback", xauth.Callback)
