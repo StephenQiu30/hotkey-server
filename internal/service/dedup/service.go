@@ -3,7 +3,6 @@ package dedup
 import (
 	"context"
 	"errors"
-	"math"
 
 	"github.com/StephenQiu30/hotkey-server/internal/domain/content"
 	"github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
@@ -96,21 +95,4 @@ func (s *Service) CheckDuplicate(ctx context.Context, item content.SourceItem, n
 	}
 
 	return Result{DuplicateType: DuplicateTypeNone}, nil
-}
-
-func cosineSimilarity(a, b []float64) float64 {
-	if len(a) != len(b) || len(a) == 0 {
-		return 0
-	}
-	var dot, normA, normB float64
-	for i := range a {
-		dot += a[i] * b[i]
-		normA += a[i] * a[i]
-		normB += b[i] * b[i]
-	}
-	denom := math.Sqrt(normA) * math.Sqrt(normB)
-	if denom == 0 {
-		return 0
-	}
-	return dot / denom
 }
