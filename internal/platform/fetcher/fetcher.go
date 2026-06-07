@@ -32,6 +32,8 @@ const (
 	SourceTypeZhihu       SourceType = "zhihu"
 	SourceTypeReddit      SourceType = "reddit"
 	SourceTypeXiaohongshu SourceType = "xiaohongshu"
+	SourceTypeYouTube     SourceType = "youtube"
+	SourceTypeBilibili    SourceType = "bilibili"
 )
 
 type Source struct {
