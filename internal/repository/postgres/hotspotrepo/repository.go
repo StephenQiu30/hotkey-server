@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
+	"github.com/lib/pq"
 )
 
 type Repository struct {
@@ -168,6 +169,68 @@ ORDER BY COALESCE(i.published_at, i.created_at), i.id`
 		candidates = append(candidates, candidate)
 	}
 	return candidates, rows.Err()
+}
+
+func (r *Repository) ListClusters(ctx context.Context) ([]hotspot.Cluster, error) {
+	const query = `
+SELECT id, title, keywords, centroid::text, window_start, window_end, created_at, updated_at
+FROM hotspot_clusters
+ORDER BY updated_at DESC`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var clusters []hotspot.Cluster
+	for rows.Next() {
+		var c hotspot.Cluster
+		var vectorText string
+		var keywords []string
+		if err := rows.Scan(&c.ID, &c.Title, pq.Array(&keywords), &vectorText, &c.WindowStart, &c.WindowEnd, &c.CreatedAt, &c.UpdatedAt); err != nil {
+			return nil, err
+		}
+		c.Keywords = keywords
+		v, err := parseVectorLiteral(vectorText)
+		if err != nil {
+			return nil, err
+		}
+		c.Centroid = v
+		clusters = append(clusters, c)
+	}
+	return clusters, rows.Err()
+}
+
+func (r *Repository) ListClusterItems(ctx context.Context, clusterID string) ([]hotspot.ClusterItem, error) {
+	const query = `
+SELECT hi.cluster_id, hi.item_id, hi.similarity, hi.created_at,
+       si.source_id, si.title, si.raw_url,
+       COALESCE((
+           SELECT string_agg(scl.channel_id, ',' ORDER BY scl.channel_id)
+           FROM source_channel_links scl
+           WHERE scl.source_id = si.source_id
+       ), '') AS channel_ids
+FROM hotspot_items hi
+JOIN source_items si ON hi.item_id = si.id
+WHERE hi.cluster_id = $1
+ORDER BY hi.similarity DESC, hi.created_at DESC`
+	rows, err := r.db.QueryContext(ctx, query, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []hotspot.ClusterItem
+	for rows.Next() {
+		var hi hotspot.ClusterItem
+		var channelIDs string
+		if err := rows.Scan(&hi.ClusterID, &hi.ItemID, &hi.Similarity, &hi.CreatedAt, &hi.SourceID, &hi.Title, &hi.URL, &channelIDs); err != nil {
+			return nil, err
+		}
+		hi.ChannelIDs = splitChannelIDs(channelIDs)
+		items = append(items, hi)
+	}
+	return items, rows.Err()
 }
 
 func (r *Repository) ReplaceClusters(ctx context.Context, clusters []hotspot.Cluster, itemsByCluster map[string][]hotspot.ClusterItem) error {
