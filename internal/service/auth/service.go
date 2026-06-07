@@ -35,9 +35,13 @@ type Repository interface {
 	CreateUser(ctx context.Context, user user.User) (user.User, error)
 	UserByEmail(ctx context.Context, email string) (user.User, error)
 	UserByID(ctx context.Context, id string) (user.User, error)
+	UpdateUser(ctx context.Context, account user.User) error
+	DeleteUser(ctx context.Context, id string) error
 	CreateRefreshToken(ctx context.Context, token RefreshToken) error
 	RefreshTokenByHash(ctx context.Context, tokenHash string) (RefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, tokenHash string, revokedAt time.Time) error
+	RevokeAllTokensForUser(ctx context.Context, userID string, revokedAt time.Time) error
+	DeleteRefreshTokensByUserID(ctx context.Context, userID string) error
 }
 
 type RefreshToken struct {
@@ -83,6 +87,10 @@ func NewService(repo Repository, cfg Config) (*Service, error) {
 		cfg.RefreshTokenTTL = 30 * 24 * time.Hour
 	}
 	return &Service{repo: repo, cfg: cfg, now: time.Now}, nil
+}
+
+func (s *Service) Repository() Repository {
+	return s.repo
 }
 
 func (s *Service) Register(ctx context.Context, input RegisterInput) (user.User, error) {
@@ -175,6 +183,28 @@ func (s *Service) RequireAdmin(ctx context.Context, accessToken string) (user.Us
 		return user.User{}, ErrForbidden
 	}
 	return found, nil
+}
+
+func (s *Service) RevokeAllTokensForUser(ctx context.Context, userID string) error {
+	return s.repo.RevokeAllTokensForUser(ctx, userID, s.now().UTC())
+}
+
+func (s *Service) DisableUser(ctx context.Context, userID string) error {
+	now := s.now().UTC()
+
+	// Revoke all refresh tokens first
+	if err := s.repo.RevokeAllTokensForUser(ctx, userID, now); err != nil {
+		return fmt.Errorf("revoke tokens: %w", err)
+	}
+
+	// Update user status to disabled
+	found, err := s.repo.UserByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("find user: %w", err)
+	}
+	found.Status = user.StatusDisabled
+	found.UpdatedAt = now
+	return s.repo.UpdateUser(ctx, found)
 }
 
 func (s *Service) issueSession(ctx context.Context, account user.User) (Session, error) {

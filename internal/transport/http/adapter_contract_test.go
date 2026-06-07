@@ -9,6 +9,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/domain/user"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/adapter"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/crypto"
 	serviceauth "github.com/StephenQiu30/hotkey-server/internal/service/auth"
 	transporthttp "github.com/StephenQiu30/hotkey-server/internal/transport/http"
 	"golang.org/x/crypto/bcrypt"
@@ -40,9 +41,18 @@ func setupAdapterTest(t *testing.T, reg *adapter.Registry) (http.Handler, *servi
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	key := []byte("0123456789abcdef0123456789abcdef")
+	enc, err := crypto.NewAESGCMEncryptor(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	azService := serviceauth.NewAuthorizationService(authRepo, serviceauth.NewMemoryAuthorizationRepository(), enc, nil)
+
 	router := transporthttp.NewRouterWithDependencies(transporthttp.Dependencies{
-		AuthService:     authService,
-		AdapterRegistry: reg,
+		AuthService:          authService,
+		AuthorizationService: azService,
+		AdapterRegistry:      reg,
 	})
 	return router, authService
 }
