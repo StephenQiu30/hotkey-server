@@ -108,6 +108,107 @@ func TestSourceLifecycleValidationAndCollectionSelection(t *testing.T) {
 	}
 }
 
+func TestXSourceTypeAcceptedByCreateAndUpdate(t *testing.T) {
+	ctx := context.Background()
+	svc := servicesource.NewService(servicesource.NewMemoryRepository())
+
+	created, err := svc.CreateSource(ctx, servicesource.CreateSourceInput{
+		Name:             "X AI News",
+		Type:             servicesource.SourceTypeX,
+		URL:              "https://api.x.com/2/tweets/search/recent",
+		ComplianceNote:   "X public API v2 recent search; OAuth 2.0 PKCE authorized.",
+		FetchIntervalMin: 30,
+		RateLimitPerHour: 30,
+		ChannelIDs:       []string{"chn_ai_models"},
+	})
+	if err != nil {
+		t.Fatalf("create x source: %v", err)
+	}
+	if created.Type != servicesource.SourceTypeX {
+		t.Fatalf("expected x source type, got %s", created.Type)
+	}
+	if created.ComplianceNote == "" {
+		t.Fatalf("expected compliance note for x source")
+	}
+
+	updated, err := svc.UpdateSource(ctx, servicesource.UpdateSourceInput{
+		SourceID:         created.ID,
+		Name:             "X AI News Updated",
+		Type:             servicesource.SourceTypeX,
+		URL:              "https://api.x.com/2/tweets/search/recent",
+		ComplianceNote:   "X public API v2 recent search; OAuth 2.0 PKCE authorized.",
+		FetchIntervalMin: 60,
+		RateLimitPerHour: 15,
+		ChannelIDs:       []string{"chn_ai_models", "chn_ai_products"},
+	})
+	if err != nil {
+		t.Fatalf("update x source: %v", err)
+	}
+	if updated.Type != servicesource.SourceTypeX {
+		t.Fatalf("expected x source type after update, got %s", updated.Type)
+	}
+	if updated.FetchIntervalMin != 60 {
+		t.Fatalf("expected updated fetch interval 60, got %d", updated.FetchIntervalMin)
+	}
+}
+
+func TestXSourceTypeRequiresComplianceNote(t *testing.T) {
+	ctx := context.Background()
+	svc := servicesource.NewService(servicesource.NewMemoryRepository())
+
+	_, err := svc.CreateSource(ctx, servicesource.CreateSourceInput{
+		Name:             "X No Compliance",
+		Type:             servicesource.SourceTypeX,
+		URL:              "https://api.x.com/2/tweets/search/recent",
+		FetchIntervalMin: 30,
+		RateLimitPerHour: 30,
+	})
+	if !errors.Is(err, servicesource.ErrComplianceNoteRequired) {
+		t.Fatalf("expected compliance note required for x source, got %v", err)
+	}
+}
+
+func TestXSourceTypeCollectableWhenEnabled(t *testing.T) {
+	ctx := context.Background()
+	svc := servicesource.NewService(servicesource.NewMemoryRepository())
+
+	created, err := svc.CreateSource(ctx, servicesource.CreateSourceInput{
+		Name:             "X Source",
+		Type:             servicesource.SourceTypeX,
+		URL:              "https://api.x.com/2/tweets/search/recent",
+		ComplianceNote:   "X public API v2.",
+		FetchIntervalMin: 30,
+		RateLimitPerHour: 30,
+	})
+	if err != nil {
+		t.Fatalf("create x source: %v", err)
+	}
+
+	collectable, err := svc.ListCollectableSources(ctx)
+	if err != nil {
+		t.Fatalf("list collectable: %v", err)
+	}
+	if len(collectable) != 1 || collectable[0].ID != created.ID {
+		t.Fatalf("expected x source to be collectable, got %#v", collectable)
+	}
+
+	_, err = svc.SetSourceStatus(ctx, servicesource.SetSourceStatusInput{
+		SourceID: created.ID,
+		Status:   servicesource.SourceStatusDisabled,
+	})
+	if err != nil {
+		t.Fatalf("disable x source: %v", err)
+	}
+
+	collectable, err = svc.ListCollectableSources(ctx)
+	if err != nil {
+		t.Fatalf("list collectable after disable: %v", err)
+	}
+	if len(collectable) != 0 {
+		t.Fatalf("expected disabled x source excluded, got %#v", collectable)
+	}
+}
+
 func TestCollectionRunsRecordSuccessAndFailure(t *testing.T) {
 	ctx := context.Background()
 	svc := servicesource.NewService(servicesource.NewMemoryRepository())
