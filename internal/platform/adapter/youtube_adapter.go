@@ -192,26 +192,31 @@ func (a *YouTubeAdapter) doRequest(rawURL string) (io.ReadCloser, error) {
 }
 
 func (a *YouTubeAdapter) normalizeVideo(v youTubeVideo, input CollectInput) NormalizedItem {
-	snippet := v.Snippet.Description
-	if len(snippet) > subtitleTextMaxLen {
-		snippet = snippet[:subtitleTextMaxLen]
-	}
-
+	var snippet, title, lang string
 	var publishedAt *time.Time
-	if t, err := time.Parse(time.RFC3339, v.Snippet.PublishedAt); err == nil {
-		publishedAt = &t
+
+	if v.Snippet != nil {
+		snippet = v.Snippet.Description
+		if len(snippet) > subtitleTextMaxLen {
+			snippet = snippet[:subtitleTextMaxLen]
+		}
+		title = strings.TrimSpace(v.Snippet.Title)
+		lang = v.Snippet.DefaultLanguage
+		if t, err := time.Parse(time.RFC3339, v.Snippet.PublishedAt); err == nil {
+			publishedAt = &t
+		}
 	}
 
 	videoURL := fmt.Sprintf("https://www.youtube.com/watch?v=%s", v.ID)
 	idemKey := NewIdempotencyKey(input.SourceID, videoURL)
 
 	return NormalizedItem{
-		Title:          strings.TrimSpace(v.Snippet.Title),
+		Title:          title,
 		URL:            videoURL,
 		Snippet:        snippet,
 		ExternalID:     v.ID,
 		PublishedAt:    publishedAt,
-		Language:       v.Snippet.DefaultLanguage,
+		Language:       lang,
 		IdempotencyKey: idemKey,
 	}
 }
