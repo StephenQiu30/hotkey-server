@@ -13,6 +13,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/app"
 	"github.com/StephenQiu30/hotkey-server/internal/config"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/dashscope"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/fetcher"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logger"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/redis"
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
@@ -86,6 +87,12 @@ func main() {
 
 	sourceSvc := servicesource.NewService(sourceRepo)
 
+	// Initialize Fetchers
+	multiFetcher := fetcher.NewMultiFetcher(map[fetcher.SourceType]fetcher.Fetcher{
+		fetcher.SourceTypeRSS:        fetcher.NewRSSFetcher(nil),
+		fetcher.SourceTypePublicPage: fetcher.NewPublicPageFetcher(nil),
+	})
+
 	jobQueue := queue.NewRedisQueue(redisClient, queue.RedisQueueOptions{QueueName: "hotkey:jobs:pending"})
 	ingestSvc := ingest.NewService(contentRepo, jobQueue,
 		ingest.WithNormalize(normalizeSvc),
@@ -98,7 +105,7 @@ func main() {
 
 	// Initialize Worker Runtime
 	workerRuntime := worker.New(jobQueue, redisClient, logSlog,
-		worker.WithHandler(queue.JobTypeCollectSource, worker.NewCollectSourceHandler(sourceSvc, nil, ingestSvc)),
+		worker.WithHandler(queue.JobTypeCollectSource, worker.NewCollectSourceHandler(sourceSvc, multiFetcher, ingestSvc)),
 		worker.WithHandler(queue.JobTypeGenerateEmbedding, worker.NewGenerateEmbeddingHandler(embeddingSvc, dedupSvc, contentRepo)),
 	)
 
