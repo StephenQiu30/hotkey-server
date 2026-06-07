@@ -59,6 +59,12 @@ type Candidate struct {
 	Embedding Embedding
 }
 
+type SimilarityResult struct {
+	ItemID     string
+	Embedding  Embedding
+	Similarity float64
+}
+
 type MemoryRepository struct {
 	mu         sync.RWMutex
 	items      map[string]content.SourceItem
@@ -107,6 +113,35 @@ func (r *MemoryRepository) FindEmbedding(_ context.Context, itemID string) (Embe
 		return Embedding{}, ErrNotFound
 	}
 	return cloneEmbedding(embedding), nil
+}
+
+func (r *MemoryRepository) SearchSimilar(_ context.Context, vector []float64, limit int, minSimilarity float64) ([]SimilarityResult, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var results []SimilarityResult
+	for itemID, emb := range r.embeddings {
+		if emb.Status != EmbeddingStatusSucceeded {
+			continue
+		}
+		sim := CosineSimilarity(vector, emb.Vector)
+		if sim >= minSimilarity {
+			results = append(results, SimilarityResult{
+				ItemID:     itemID,
+				Embedding:  cloneEmbedding(emb),
+				Similarity: sim,
+			})
+		}
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Similarity > results[j].Similarity
+	})
+
+	if len(results) > limit {
+		results = results[:limit]
+	}
+	return results, nil
 }
 
 func (r *MemoryRepository) ListCandidates(_ context.Context, start time.Time, end time.Time) ([]Candidate, error) {

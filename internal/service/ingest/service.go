@@ -9,6 +9,9 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/domain/content"
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
+	"github.com/StephenQiu30/hotkey-server/internal/service/filter"
+	"github.com/StephenQiu30/hotkey-server/internal/service/normalize"
+	"github.com/StephenQiu30/hotkey-server/internal/service/quality"
 )
 
 var ErrInvalidInput = errors.New("invalid input")
@@ -24,9 +27,26 @@ type Queue interface {
 }
 
 type Service struct {
-	repo  Repository
-	queue Queue
-	now   func() time.Time
+	repo       Repository
+	queue      Queue
+	normalizr  *normalize.Service
+	filterSvc  *filter.Service
+	qualitySvc *quality.Service
+	now        func() time.Time
+}
+
+type Option func(*Service)
+
+func WithNormalize(svc *normalize.Service) Option {
+	return func(s *Service) { s.normalizr = svc }
+}
+
+func WithFilter(svc *filter.Service) Option {
+	return func(s *Service) { s.filterSvc = svc }
+}
+
+func WithQuality(svc *quality.Service) Option {
+	return func(s *Service) { s.qualitySvc = svc }
 }
 
 type Input struct {
@@ -43,14 +63,65 @@ type Result struct {
 	Created bool
 }
 
-func NewService(repo Repository, jobQueue Queue) *Service {
-	return &Service{repo: repo, queue: jobQueue, now: time.Now}
+func NewService(repo Repository, jobQueue Queue, opts ...Option) *Service {
+	svc := &Service{repo: repo, queue: jobQueue, now: time.Now}
+	for _, opt := range opts {
+		opt(svc)
+	}
+	return svc
 }
 
 func (s *Service) Ingest(ctx context.Context, input Input) (Result, error) {
-	item, err := s.buildItem(input)
+	// Normalize input if service is configured
+	ingestInput := input
+	if s.normalizr != nil {
+		normResult, err := s.normalizr.Normalize(ctx, normalize.Input{
+			SourceID:    input.SourceID,
+			Title:       input.Title,
+			Snippet:     input.Snippet,
+			RawContent:  "", // raw body not available in ingest pipeline
+			URL:         input.URL,
+			Platform:    "unknown",
+			Language:    input.Language,
+			PublishedAt: input.PublishedAt,
+		})
+		if err != nil {
+			return Result{}, err
+		}
+		ingestInput.Title = normResult.Item.Title
+		ingestInput.Snippet = normResult.Item.Snippet
+		ingestInput.URL = normResult.Item.CanonicalURL
+		ingestInput.Language = normResult.Item.Language
+	}
+
+	item, err := s.buildItem(ingestInput)
 	if err != nil {
 		return Result{}, err
+	}
+
+	// Filter if service is configured
+	if s.filterSvc != nil {
+		filterResult, err := s.filterSvc.Filter(ctx, item)
+		if err != nil {
+			return Result{}, err
+		}
+		if !filterResult.Accepted {
+			item.FilterStatus = content.ItemFilterStatusFiltered
+			item.FilterReason = string(filterResult.Reason)
+			return Result{Item: item, Created: false}, nil
+		}
+		item.FilterStatus = content.ItemFilterStatusPassed
+		item.FilterReason = ""
+	}
+
+	// Quality score if service is configured
+	if s.qualitySvc != nil {
+		qualityResult, err := s.qualitySvc.Score(ctx, item)
+		if err != nil {
+			return Result{}, err
+		}
+		item.QualityScore = qualityResult.Score
+		item.Summarizable = qualityResult.Summarizable
 	}
 	if existing, err := s.repo.FindByCanonicalURL(ctx, item.CanonicalURL); err == nil {
 		return Result{Item: existing, Created: false}, nil

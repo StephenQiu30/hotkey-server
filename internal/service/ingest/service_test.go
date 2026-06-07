@@ -9,6 +9,9 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/domain/content"
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
+	"github.com/StephenQiu30/hotkey-server/internal/service/filter"
+	"github.com/StephenQiu30/hotkey-server/internal/service/normalize"
+	"github.com/StephenQiu30/hotkey-server/internal/service/quality"
 )
 
 func TestIngestCreatesPrimaryItemAndEmbeddingJob(t *testing.T) {
@@ -180,4 +183,132 @@ func (r *canonicalRaceRepository) FindByContentHash(_ context.Context, contentHa
 
 func (r *canonicalRaceRepository) Create(context.Context, content.SourceItem) (content.SourceItem, error) {
 	return content.SourceItem{}, content.ErrAlreadyExists
+}
+
+func TestIngestPipelineNormalizesCleansAndFilters(t *testing.T) {
+	repo := content.NewMemoryRepository()
+	jobQueue := &recordingQueue{}
+
+	normalizr := normalize.NewService(normalize.DefaultConfig())
+	filterSvc := filter.NewService(filter.Config{
+		Keywords:        []string{"AI", "人工智能"},
+		ExcludeWords:    []string{"广告"},
+		MinTitleRunes:   1,
+		MinSnippetRunes: 1,
+	})
+	qualitySvc := quality.NewService(quality.DefaultConfig())
+
+	service := NewService(repo, jobQueue, WithNormalize(normalizr), WithFilter(filterSvc), WithQuality(qualitySvc))
+
+	// HTML content should be cleaned, language detected, and keyword matched
+	result, err := service.Ingest(context.Background(), Input{
+		SourceID: "src-1",
+		Title:    "<b>AI</b>  新闻标题",
+		Snippet:  "<p>人工智能最新进展</p>",
+		URL:      "https://example.com/news?utm_source=rss",
+	})
+	if err != nil {
+		t.Fatalf("pipeline ingest failed: %v", err)
+	}
+	if !result.Created {
+		t.Fatal("expected item to be created")
+	}
+	if result.Item.Title == "<b>AI</b>  新闻标题" {
+		t.Fatalf("expected HTML to be cleaned, got %q", result.Item.Title)
+	}
+	if result.Item.Language != "zh" {
+		t.Fatalf("expected language zh, got %q", result.Item.Language)
+	}
+	if result.Item.CanonicalURL != "https://example.com/news" {
+		t.Fatalf("expected tracking params removed, got %q", result.Item.CanonicalURL)
+	}
+	if result.Item.FilterStatus != content.ItemFilterStatusPassed {
+		t.Fatalf("expected filter status passed, got %q", result.Item.FilterStatus)
+	}
+	if result.Item.QualityScore <= 0 {
+		t.Fatalf("expected positive quality score, got %f", result.Item.QualityScore)
+	}
+}
+
+func TestIngestPipelineRejectsFilteredContent(t *testing.T) {
+	repo := content.NewMemoryRepository()
+	filterSvc := filter.NewService(filter.Config{
+		Keywords:        []string{"AI"},
+		ExcludeWords:    []string{"广告"},
+		MinTitleRunes:   1,
+		MinSnippetRunes: 1,
+	})
+
+	service := NewService(repo, &recordingQueue{}, WithFilter(filterSvc))
+
+	result, err := service.Ingest(context.Background(), Input{
+		SourceID: "src-1",
+		Title:    "AI 广告推广",
+		Snippet:  "正文片段",
+		URL:      "https://example.com/ad",
+	})
+	if err != nil {
+		t.Fatalf("ingest failed: %v", err)
+	}
+	if result.Created {
+		t.Fatal("expected filtered content to not be created")
+	}
+	if result.Item.FilterStatus != content.ItemFilterStatusFiltered {
+		t.Fatalf("expected filter status filtered, got %q", result.Item.FilterStatus)
+	}
+	if result.Item.FilterReason == "" {
+		t.Fatal("expected non-empty filter reason for filtered content")
+	}
+	items, err := repo.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected no items in repo, got %d", len(items))
+	}
+}
+
+func TestIngestPipelineDeduplicatesAcrossPlatforms(t *testing.T) {
+	repo := content.NewMemoryRepository()
+	jobQueue := &recordingQueue{}
+	normalizr := normalize.NewService(normalize.DefaultConfig())
+
+	service := NewService(repo, jobQueue, WithNormalize(normalizr))
+
+	// Same content from different host URLs → different canonical URLs but same content hash
+	first, err := service.Ingest(context.Background(), Input{
+		SourceID: "src-rss",
+		Title:    "AI 新闻",
+		Snippet:  "正文片段",
+		URL:      "https://example.com/article",
+		Language: "zh",
+	})
+	if err != nil {
+		t.Fatalf("first ingest failed: %v", err)
+	}
+	if !first.Created || first.Item.Status != content.ItemStatusPrimary {
+		t.Fatalf("expected primary created, got %+v", first)
+	}
+
+	second, err := service.Ingest(context.Background(), Input{
+		SourceID: "src-web",
+		Title:    "AI 新闻",
+		Snippet:  "正文片段",
+		URL:      "https://mirror.example.com/article",
+		Language: "zh",
+	})
+	if err != nil {
+		t.Fatalf("second ingest failed: %v", err)
+	}
+	// Different canonical URLs, same content hash → created as duplicate linked to primary
+	if !second.Created || second.Item.Status != content.ItemStatusDuplicate {
+		t.Fatalf("expected duplicate created, got %+v", second)
+	}
+	if second.Item.DuplicateOfItemID != first.Item.ID {
+		t.Fatalf("expected linked to primary %q, got %q", first.Item.ID, second.Item.DuplicateOfItemID)
+	}
+	// Only the primary item gets an embedding job
+	if len(jobQueue.requests) != 1 {
+		t.Fatalf("expected 1 embedding job (only primary), got %d", len(jobQueue.requests))
+	}
 }
