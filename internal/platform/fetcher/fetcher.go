@@ -24,13 +24,14 @@ func IsNotFound(err error) bool    { return errors.Is(err, ErrNotFound) }
 type SourceType string
 
 const (
-	SourceTypeRSS        SourceType = "rss"
-	SourceTypePublicPage SourceType = "public_page"
-	SourceTypeX          SourceType = "x"
-	SourceTypeHackerNews SourceType = "hackernews"
-	SourceTypeWeChatMP   SourceType = "wechat_mp"
-	SourceTypeZhihu      SourceType = "zhihu"
-	SourceTypeReddit     SourceType = "reddit"
+	SourceTypeRSS         SourceType = "rss"
+	SourceTypePublicPage  SourceType = "public_page"
+	SourceTypeX           SourceType = "x"
+	SourceTypeHackerNews  SourceType = "hackernews"
+	SourceTypeWeChatMP    SourceType = "wechat_mp"
+	SourceTypeZhihu       SourceType = "zhihu"
+	SourceTypeReddit      SourceType = "reddit"
+	SourceTypeXiaohongshu SourceType = "xiaohongshu"
 )
 
 type Source struct {
@@ -90,12 +91,20 @@ type PublicPageFetcher struct {
 	client *http.Client
 }
 
+type XiaohongshuFetcher struct {
+	client *http.Client
+}
+
 func NewRSSFetcher(client *http.Client) *RSSFetcher {
 	return &RSSFetcher{client: httpClient(client)}
 }
 
 func NewPublicPageFetcher(client *http.Client) *PublicPageFetcher {
 	return &PublicPageFetcher{client: httpClient(client)}
+}
+
+func NewXiaohongshuFetcher(client *http.Client) *XiaohongshuFetcher {
+	return &XiaohongshuFetcher{client: httpClient(client)}
 }
 
 func (f *RSSFetcher) Fetch(ctx context.Context, source Source) (items []Item, err error) {
@@ -161,6 +170,36 @@ func (f *PublicPageFetcher) Fetch(ctx context.Context, source Source) (items []I
 		title = source.URL
 	}
 	return []Item{{Title: title, URL: source.URL, ExternalID: source.URL}}, nil
+}
+
+func (f *XiaohongshuFetcher) Fetch(ctx context.Context, source Source) (items []Item, err error) {
+	if source.Type != SourceTypeXiaohongshu {
+		return nil, errors.New("xiaohongshu fetcher requires xiaohongshu source")
+	}
+	if strings.TrimSpace(source.ComplianceNote) == "" {
+		return nil, errors.New("xiaohongshu compliance note is required")
+	}
+	var body io.ReadCloser
+	body, err = fetchBody(ctx, f.client, source.URL)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := body.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close response body: %w", closeErr)
+		}
+	}()
+	var payload []byte
+	payload, err = io.ReadAll(io.LimitReader(body, 1<<20))
+	if err != nil {
+		return nil, err
+	}
+	title := pageTitle(string(payload))
+	if title == "" {
+		title = source.URL
+	}
+	items = []Item{{Title: title, URL: source.URL, ExternalID: source.URL}}
+	return items, nil
 }
 
 func fetchBody(ctx context.Context, client *http.Client, rawURL string) (io.ReadCloser, error) {

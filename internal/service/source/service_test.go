@@ -108,7 +108,6 @@ func TestSourceLifecycleValidationAndCollectionSelection(t *testing.T) {
 	}
 }
 
-<<<<<<< HEAD
 func TestXSourceTypeAcceptedByCreateAndUpdate(t *testing.T) {
 	ctx := context.Background()
 	svc := servicesource.NewService(servicesource.NewMemoryRepository())
