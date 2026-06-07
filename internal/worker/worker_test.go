@@ -10,6 +10,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
 	servicemail "github.com/StephenQiu30/hotkey-server/internal/service/mail"
+	servicereport "github.com/StephenQiu30/hotkey-server/internal/service/report"
 )
 
 func TestNewRejectsNilQueueAndDefaultsLogger(t *testing.T) {
@@ -171,6 +172,42 @@ type fakeWeeklyEmailService struct {
 func (s *fakeWeeklyEmailService) SendDailyEmail(_ context.Context, input servicemail.SendDailyEmailInput) (servicemail.Delivery, error) {
 	s.lastInput = input
 	return servicemail.Delivery{Status: servicemail.DeliveryStatusSent}, nil
+}
+
+func TestGenerateWeeklyReportHandlerDelegatesToService(t *testing.T) {
+	svc := &fakeWeeklyReportService{}
+	handler := NewGenerateWeeklyReportHandler(svc)
+	payload, _ := json.Marshal(queue.GenerateWeeklyReportPayload{WeekOf: "2026-W23"})
+	job := queue.Job{ID: "job-1", Type: queue.JobTypeGenerateWeeklyReport, Payload: payload}
+	if err := handler.Handle(context.Background(), job); err != nil {
+		t.Fatalf("handle failed: %v", err)
+	}
+	if svc.lastInput.WeekOf != "2026-W23" {
+		t.Fatalf("expected week_of 2026-W23, got %q", svc.lastInput.WeekOf)
+	}
+}
+
+func TestGenerateWeeklyReportHandlerRejectsEmptyPayload(t *testing.T) {
+	handler := NewGenerateWeeklyReportHandler(&fakeWeeklyReportService{})
+	job := queue.Job{ID: "job-1", Type: queue.JobTypeGenerateWeeklyReport, Payload: json.RawMessage(`{}`)}
+	if err := handler.Handle(context.Background(), job); err == nil {
+		t.Fatal("expected error for empty payload")
+	}
+}
+
+func TestGenerateWeeklyReportHandlerPanicsOnNilService(t *testing.T) {
+	assertPanic(t, func() {
+		NewGenerateWeeklyReportHandler(nil)
+	})
+}
+
+type fakeWeeklyReportService struct {
+	lastInput servicereport.GenerateWeeklyReportInput
+}
+
+func (s *fakeWeeklyReportService) GenerateWeeklyReport(_ context.Context, input servicereport.GenerateWeeklyReportInput) (servicereport.WeeklyReport, error) {
+	s.lastInput = input
+	return servicereport.WeeklyReport{}, nil
 }
 
 func assertPanic(t *testing.T, fn func()) {
