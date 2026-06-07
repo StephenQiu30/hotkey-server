@@ -9,11 +9,12 @@ import (
 type Provider string
 
 const (
-	ProviderRSS        Provider = "rss"
-	ProviderPublicPage Provider = "public_page"
-	ProviderOfficialAPI Provider = "official_api"
-	ProviderWeibo      Provider = "weibo"
-	ProviderZhihu      Provider = "zhihu"
+	ProviderRSS          Provider = "rss"
+	ProviderPublicPage   Provider = "public_page"
+	ProviderOfficialAPI  Provider = "official_api"
+	ProviderWeibo        Provider = "weibo"
+	ProviderZhihu        Provider = "zhihu"
+	ProviderXiaohongshu  Provider = "xiaohongshu"
 )
 
 // HealthStatus describes adapter operational readiness.
