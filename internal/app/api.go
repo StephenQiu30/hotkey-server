@@ -144,10 +144,11 @@ func (api *API) Run(ctx context.Context) error {
 }
 
 func (api *API) Shutdown(ctx context.Context) error {
+	shutdownErr := api.server.Shutdown(ctx)
 	if api.db != nil {
 		if err := api.db.Close(); err != nil {
 			api.logger.Error("failed to close database pool", "error", err)
 		}
 	}
-	return api.server.Shutdown(ctx)
+	return shutdownErr
 }

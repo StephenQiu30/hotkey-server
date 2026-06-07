@@ -166,7 +166,7 @@ paths:
           description: Missing or invalid access token.
         "409":
           description: Platform already connected for this user.
-  /api/v1/authorizations/{authorizationID}:
+  /api/v1/authorizations/{id}:
     delete:
       summary: Disconnect and revoke a platform authorization.
       security:
@@ -182,7 +182,7 @@ paths:
           description: Authorization not found.
         "409":
           description: Authorization already revoked.
-  /api/v1/authorizations/{authorizationID}/test:
+  /api/v1/authorizations/{id}/test:
     post:
       summary: Test authorization health and update status.
       security:
@@ -973,7 +973,7 @@ components:
       schema:
         type: string
     AuthorizationID:
-      name: authorizationID
+      name: id
       in: path
       required: true
       schema:
