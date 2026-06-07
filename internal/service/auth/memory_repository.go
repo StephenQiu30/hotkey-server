@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"sync"
 	"time"
 
@@ -87,8 +88,14 @@ func (r *MemoryRepository) RevokeRefreshToken(_ context.Context, tokenHash strin
 func (r *MemoryRepository) UpdateUser(_ context.Context, account user.User) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, exists := r.usersByID[account.ID]; !exists {
+	old, exists := r.usersByID[account.ID]
+	if !exists {
 		return sql.ErrNoRows
+	}
+	// Update email index if email changed
+	if old.Email != account.Email {
+		delete(r.userIDByEmail, strings.ToLower(old.Email))
+		r.userIDByEmail[strings.ToLower(account.Email)] = account.ID
 	}
 	r.usersByID[account.ID] = account
 	return nil
