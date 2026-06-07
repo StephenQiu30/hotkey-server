@@ -27,7 +27,9 @@ func NewAESGCMEncryptor(key []byte) (*AESGCMEncryptor, error) {
 	if len(key) != 32 {
 		return nil, ErrInvalidKey
 	}
-	return &AESGCMEncryptor{key: key}, nil
+	keyCopy := make([]byte, len(key))
+	copy(keyCopy, key)
+	return &AESGCMEncryptor{key: keyCopy}, nil
 }
 
 func (e *AESGCMEncryptor) Encrypt(plaintext string) (string, error) {

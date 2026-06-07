@@ -44,6 +44,7 @@ func NewPool(url string, opts Options) (*sql.DB, error) {
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
+		db.Close()
 		return nil, err
 	}
 
@@ -70,13 +71,13 @@ func (t *TransactionalDB) WithinTransaction(ctx context.Context, fn func(ctx con
 
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			panic(p)
 		}
 	}()
 
 	if err := fn(context.WithValue(ctx, txKey{}, tx)); err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return err
 	}
 
