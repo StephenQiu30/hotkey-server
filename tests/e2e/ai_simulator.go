@@ -73,11 +73,14 @@ func (s *aiSimulator) Chat(ctx context.Context, prompt string) (string, error) {
 	}
 }
 
-// normalEmbed generates a deterministic 128-dim vector from text hash.
+const EmbeddingDimension = 1536
+
+// normalEmbed generates a deterministic 1536-dim vector from text hash.
 func (s *aiSimulator) normalEmbed(text string) []float64 {
 	hash := deterministicHash(text)
-	vec := make([]float64, 128)
+	vec := make([]float64, EmbeddingDimension)
 	for i := range vec {
+		// Cycle over hash bytes to fill the larger vector
 		vec[i] = float64(hash[i%len(hash)]) / 255.0
 	}
 	// Normalize to unit vector
