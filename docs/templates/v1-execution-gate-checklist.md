@@ -31,10 +31,13 @@ purpose: V1 ticket 执行门禁检查清单模板
 
 ## 测试验证
 
-- [ ] `go test ./tests/e2e/... -run TestHealthCheck` 全部通过
-- [ ] `go test ./tests/e2e/... -run TestAllBehaviors` 通过
+- [ ] `go test -tags e2e ./tests/e2e/... -run TestHealthCheck` 全部通过
+- [ ] `go test -tags e2e ./tests/e2e/... -run TestAISimulator` 全部通过
+- [ ] `go test -tags e2e ./tests/e2e/... -run TestFetcherSimulator` 全部通过
+- [ ] `go test -tags e2e ./tests/e2e/... -run TestSMTPSink` 全部通过
+- [ ] `go test -tags e2e ./tests/e2e/... -run TestAllBehaviors` 全部通过
 - [ ] 本 ticket 新增测试全部通过
-- [ ] `go test ./...` 全量测试无回归
+- [ ] `go test ./...` 全量测试无回归（E2E 通过 build tag 排除）
 
 ## 收尾
 

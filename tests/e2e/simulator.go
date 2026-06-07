@@ -29,13 +29,6 @@ func AllBehaviors() []ProviderBehavior {
 
 // --- AI Provider Simulator Contract ---
 
-// AIResponse represents a simulated AI provider response.
-type AIResponse struct {
-	Text   string
-	Vector []float64
-	Model  string
-}
-
 // AIProviderSimulator simulates DashScope embedding + chat behaviors.
 type AIProviderSimulator interface {
 	SetBehavior(b ProviderBehavior)
