@@ -59,6 +59,12 @@ type Candidate struct {
 	Embedding Embedding
 }
 
+type SimilarityResult struct {
+	ItemID     string
+	Embedding  Embedding
+	Similarity float64
+}
+
 type MemoryRepository struct {
 	mu         sync.RWMutex
 	items      map[string]content.SourceItem
@@ -109,14 +115,33 @@ func (r *MemoryRepository) FindEmbedding(_ context.Context, itemID string) (Embe
 	return cloneEmbedding(embedding), nil
 }
 
-func (r *MemoryRepository) ListEmbeddings(_ context.Context) ([]Embedding, error) {
+func (r *MemoryRepository) SearchSimilar(_ context.Context, vector []float64, limit int, minSimilarity float64) ([]SimilarityResult, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	result := make([]Embedding, 0, len(r.embeddings))
-	for _, emb := range r.embeddings {
-		result = append(result, cloneEmbedding(emb))
+
+	var results []SimilarityResult
+	for itemID, emb := range r.embeddings {
+		if emb.Status != EmbeddingStatusSucceeded {
+			continue
+		}
+		sim := CosineSimilarity(vector, emb.Vector)
+		if sim >= minSimilarity {
+			results = append(results, SimilarityResult{
+				ItemID:     itemID,
+				Embedding:  cloneEmbedding(emb),
+				Similarity: sim,
+			})
+		}
 	}
-	return result, nil
+
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Similarity > results[j].Similarity
+	})
+
+	if len(results) > limit {
+		results = results[:limit]
+	}
+	return results, nil
 }
 
 func (r *MemoryRepository) ListCandidates(_ context.Context, start time.Time, end time.Time) ([]Candidate, error) {

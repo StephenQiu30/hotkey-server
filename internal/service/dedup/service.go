@@ -40,7 +40,7 @@ func DefaultConfig() Config {
 
 type EmbeddingRepository interface {
 	FindEmbedding(ctx context.Context, itemID string) (hotspot.Embedding, error)
-	ListEmbeddings(ctx context.Context) ([]hotspot.Embedding, error)
+	SearchSimilar(ctx context.Context, vector []float64, limit int, minSimilarity float64) ([]hotspot.SimilarityResult, error)
 }
 
 type ItemRepository interface {
@@ -79,29 +79,19 @@ func (s *Service) CheckDuplicate(ctx context.Context, item content.SourceItem, n
 		return Result{DuplicateType: DuplicateTypeNone}, nil
 	}
 
-	allEmbeds, err := s.embeds.ListEmbeddings(ctx)
+	similar, err := s.embeds.SearchSimilar(ctx, newEmbedding, 1, s.cfg.SimilarityThreshold)
 	if err != nil {
 		return Result{}, err
 	}
 
-	bestSim := 0.0
-	bestItemID := ""
-	for _, emb := range allEmbeds {
-		if emb.ItemID == item.ID || emb.Status != hotspot.EmbeddingStatusSucceeded {
+	for _, res := range similar {
+		if res.ItemID == item.ID {
 			continue
 		}
-		sim := cosineSimilarity(newEmbedding, emb.Vector)
-		if sim > bestSim {
-			bestSim = sim
-			bestItemID = emb.ItemID
-		}
-	}
-
-	if bestSim >= s.cfg.SimilarityThreshold && bestItemID != "" {
 		return Result{
 			DuplicateType:  DuplicateTypeNear,
-			ExistingItemID: bestItemID,
-			Similarity:     bestSim,
+			ExistingItemID: res.ItemID,
+			Similarity:     res.Similarity,
 		}, nil
 	}
 

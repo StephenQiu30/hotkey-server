@@ -90,6 +90,12 @@ RETURNING id, source_id, title, snippet, raw_url, canonical_url, published_at, c
 	return created, nil
 }
 
+func (r *Repository) UpdateStatus(ctx context.Context, id string, status content.ItemStatus, duplicateOf string) error {
+	const query = `UPDATE source_items SET status = $1, duplicate_of_item_id = NULLIF($2, ''), updated_at = NOW() WHERE id = $3`
+	_, err := r.db.ExecContext(ctx, query, string(status), duplicateOf, id)
+	return err
+}
+
 type scanner interface {
 	Scan(dest ...any) error
 }

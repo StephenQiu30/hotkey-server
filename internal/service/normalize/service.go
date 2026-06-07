@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 	"unicode"
-	"unicode/utf8"
 
 	"github.com/StephenQiu30/hotkey-server/internal/domain/content"
+	"github.com/StephenQiu30/hotkey-server/internal/strutil"
 )
 
 var (
@@ -85,9 +85,9 @@ func (s *Service) Normalize(_ context.Context, input Input) (Result, error) {
 	snippet := cleanText(input.Snippet)
 	rawContent := cleanText(input.RawContent)
 
-	title = trimRunes(title, s.cfg.MaxTitleRunes)
-	snippet = trimRunes(snippet, s.cfg.MaxSnippetRunes)
-	rawContent = trimRunes(rawContent, s.cfg.MaxContentRunes)
+	title = strutil.TrimRunes(title, s.cfg.MaxTitleRunes)
+	snippet = strutil.TrimRunes(snippet, s.cfg.MaxSnippetRunes)
+	rawContent = strutil.TrimRunes(rawContent, s.cfg.MaxContentRunes)
 
 	if title == "" && snippet == "" {
 		return Result{}, ErrEmptyContent
@@ -110,7 +110,7 @@ func (s *Service) Normalize(_ context.Context, input Input) (Result, error) {
 			Snippet:      snippet,
 			RawURL:       strings.TrimSpace(input.URL),
 			CanonicalURL: canonicalURL,
-			PublishedAt:  cloneTime(input.PublishedAt),
+			PublishedAt:  strutil.CloneTime(input.PublishedAt),
 			ContentHash: content.ContentHash(content.HashInput{
 				Title:        title,
 				Snippet:      snippet,
@@ -127,9 +127,11 @@ func (s *Service) Normalize(_ context.Context, input Input) (Result, error) {
 var htmlTagRe = regexp.MustCompile(`<[^>]*>`)
 var multiSpaceRe = regexp.MustCompile(`\s+`)
 var scriptRe = regexp.MustCompile(`(?i)<script[\s>].*?</script>`)
+var styleRe = regexp.MustCompile(`(?i)<style[\s>].*?</style>`)
 
 func cleanText(value string) string {
 	value = scriptRe.ReplaceAllString(value, "")
+	value = styleRe.ReplaceAllString(value, "")
 	value = htmlTagRe.ReplaceAllString(value, "")
 	value = html.UnescapeString(value)
 	value = multiSpaceRe.ReplaceAllString(strings.TrimSpace(value), " ")
@@ -159,18 +161,3 @@ func detectLanguage(text string) string {
 	return "unknown"
 }
 
-func trimRunes(value string, limit int) string {
-	if limit <= 0 || utf8.RuneCountInString(value) <= limit {
-		return value
-	}
-	runes := []rune(value)
-	return string(runes[:limit])
-}
-
-func cloneTime(value *time.Time) *time.Time {
-	if value == nil {
-		return nil
-	}
-	cloned := value.UTC()
-	return &cloned
-}

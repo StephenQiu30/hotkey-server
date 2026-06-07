@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,12 +22,16 @@ func TestNewRejectsNilQueueAndDefaultsLogger(t *testing.T) {
 	}
 }
 
+type dummyHandler struct{}
+
+func (h *dummyHandler) Handle(context.Context, queue.Job) error { return nil }
+
 func TestWorkerCompletesClaimedPlaceholderJob(t *testing.T) {
 	jobQueue := &claimOnceQueue{
 		job:       queue.Job{ID: "job-1", Type: queue.JobTypeCollectSource},
 		completed: make(chan struct{}),
 	}
-	worker := New(jobQueue, nil, slog.Default())
+	worker := New(jobQueue, nil, slog.Default(), WithHandler(queue.JobTypeCollectSource, &dummyHandler{}))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -54,7 +59,7 @@ func TestWorkerMarksClaimedJobFailedWhenCompleteFails(t *testing.T) {
 		completeErr: expectedErr,
 		failed:      make(chan error, 1),
 	}
-	worker := New(jobQueue, nil, slog.Default())
+	worker := New(jobQueue, nil, slog.Default(), WithHandler(queue.JobTypeCollectSource, &dummyHandler{}))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -72,6 +77,34 @@ func TestWorkerMarksClaimedJobFailedWhenCompleteFails(t *testing.T) {
 		t.Fatalf("worker exited before marking job failed: %v", err)
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("worker did not mark claimed job failed")
+	}
+	cancel()
+	<-done
+}
+
+func TestWorkerMarksClaimedJobFailedWhenNoHandlerRegistered(t *testing.T) {
+	jobQueue := &completeFailQueue{
+		job:    queue.Job{ID: "job-1", Type: "unknown_type"},
+		failed: make(chan error, 1),
+	}
+	worker := New(jobQueue, nil, slog.Default())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- worker.Run(ctx)
+	}()
+
+	select {
+	case err := <-jobQueue.failed:
+		if err == nil || !strings.Contains(err.Error(), "no handler registered") {
+			t.Fatalf("expected no handler error, got %v", err)
+		}
+	case err := <-done:
+		t.Fatalf("worker exited early: %v", err)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("worker did not mark unhandled job failed")
 	}
 	cancel()
 	<-done

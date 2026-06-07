@@ -84,6 +84,44 @@ LIMIT 1`
 	return embedding, nil
 }
 
+func (r *Repository) SearchSimilar(ctx context.Context, vector []float64, limit int, minSimilarity float64) ([]hotspot.SimilarityResult, error) {
+	const query = `
+SELECT item_id, model, embedding::text, text_hash, status, COALESCE(last_error, ''), created_at, updated_at,
+       1 - (embedding <=> $1::vector) AS similarity
+FROM item_embeddings
+WHERE status = 'succeeded'
+  AND 1 - (embedding <=> $1::vector) >= $2
+ORDER BY embedding <=> $1::vector
+LIMIT $3`
+	rows, err := r.db.QueryContext(ctx, query, vectorLiteral(vector), minSimilarity, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []hotspot.SimilarityResult
+	for rows.Next() {
+		var res hotspot.SimilarityResult
+		var vectorText string
+		var status string
+		if err := rows.Scan(
+			&res.Embedding.ItemID, &res.Embedding.Model, &vectorText, &res.Embedding.TextHash, &status, &res.Embedding.LastError, &res.Embedding.CreatedAt, &res.Embedding.UpdatedAt,
+			&res.Similarity,
+		); err != nil {
+			return nil, err
+		}
+		res.ItemID = res.Embedding.ItemID
+		res.Embedding.Status = hotspot.EmbeddingStatus(status)
+		v, err := parseVectorLiteral(vectorText)
+		if err != nil {
+			return nil, err
+		}
+		res.Embedding.Vector = v
+		results = append(results, res)
+	}
+	return results, rows.Err()
+}
+
 func (r *Repository) ListCandidates(ctx context.Context, start time.Time, end time.Time) ([]hotspot.Candidate, error) {
 	const query = `
 SELECT

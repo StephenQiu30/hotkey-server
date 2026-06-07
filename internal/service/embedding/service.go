@@ -7,10 +7,10 @@ import (
 	"errors"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/StephenQiu30/hotkey-server/internal/domain/content"
 	"github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
+	"github.com/StephenQiu30/hotkey-server/internal/strutil"
 )
 
 var (
@@ -69,7 +69,7 @@ func (s *Service) Generate(ctx context.Context, itemID string) (hotspot.Embeddin
 	if err != nil {
 		return hotspot.Embedding{}, err
 	}
-	text := trimRunes(strings.TrimSpace(item.Title+"\n"+item.Snippet), s.cfg.MaxTextRunes)
+	text := strutil.TrimRunes(strings.TrimSpace(item.Title+"\n"+item.Snippet), s.cfg.MaxTextRunes)
 	now := s.now().UTC()
 
 	maxAttempts := 1 + s.cfg.MaxRetries
@@ -128,12 +128,4 @@ func (s *Service) saveFailure(ctx context.Context, itemID string, model string, 
 func textHash(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:])
-}
-
-func trimRunes(value string, limit int) string {
-	if limit <= 0 || utf8.RuneCountInString(value) <= limit {
-		return value
-	}
-	runes := []rune(value)
-	return string(runes[:limit])
 }

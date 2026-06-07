@@ -67,6 +67,7 @@ type Repository interface {
 	FindByCanonicalURL(context.Context, string) (SourceItem, error)
 	FindByContentHash(context.Context, string) (SourceItem, error)
 	Create(context.Context, SourceItem) (SourceItem, error)
+	UpdateStatus(ctx context.Context, id string, status ItemStatus, duplicateOf string) error
 }
 
 func NewID() string {
@@ -228,6 +229,20 @@ func (r *MemoryRepository) Create(_ context.Context, item SourceItem) (SourceIte
 		r.byHash[item.ContentHash] = item.ID
 	}
 	return cloneItem(item), nil
+}
+
+func (r *MemoryRepository) UpdateStatus(_ context.Context, id string, status ItemStatus, duplicateOf string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	item, ok := r.items[id]
+	if !ok {
+		return ErrNotFound
+	}
+	item.Status = status
+	item.DuplicateOfItemID = duplicateOf
+	item.UpdatedAt = time.Now().UTC()
+	r.items[id] = item
+	return nil
 }
 
 func (r *MemoryRepository) List(_ context.Context) ([]SourceItem, error) {

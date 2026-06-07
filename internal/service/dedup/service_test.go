@@ -174,10 +174,17 @@ func (r *fakeEmbedRepo) FindEmbedding(_ context.Context, itemID string) (hotspot
 	return hotspot.Embedding{ItemID: itemID, Vector: vec, Status: hotspot.EmbeddingStatusSucceeded}, nil
 }
 
-func (r *fakeEmbedRepo) ListEmbeddings(_ context.Context) ([]hotspot.Embedding, error) {
-	var result []hotspot.Embedding
+func (r *fakeEmbedRepo) SearchSimilar(_ context.Context, vector []float64, limit int, minSimilarity float64) ([]hotspot.SimilarityResult, error) {
+	var results []hotspot.SimilarityResult
 	for id, vec := range r.vectors {
-		result = append(result, hotspot.Embedding{ItemID: id, Vector: vec, Status: hotspot.EmbeddingStatusSucceeded})
+		sim := cosineSimilarity(vector, vec)
+		if sim >= minSimilarity {
+			results = append(results, hotspot.SimilarityResult{
+				ItemID:     id,
+				Embedding:  hotspot.Embedding{ItemID: id, Vector: vec, Status: hotspot.EmbeddingStatusSucceeded},
+				Similarity: sim,
+			})
+		}
 	}
-	return result, nil
+	return results, nil
 }
