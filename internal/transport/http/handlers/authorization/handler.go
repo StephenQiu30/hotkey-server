@@ -19,10 +19,10 @@ func New(azService *serviceauth.AuthorizationService) *Handler {
 }
 
 type connectRequest struct {
-	Platform       string  `json:"platform"`
+	Platform       string  `json:"platform" binding:"required"`
 	PlatformUserID string  `json:"platformUserId"`
 	DisplayName    string  `json:"displayName"`
-	AccessToken    string  `json:"accessToken"`
+	AccessToken    string  `json:"accessToken" binding:"required"`
 	RefreshToken   string  `json:"refreshToken"`
 }
 

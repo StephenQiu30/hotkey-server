@@ -32,6 +32,8 @@ coverage/
 
 # Symphony
 .symphony-claude-prompt.*
+.symphony-gemini-prompt.*
+update_comment.json
 
 # Test fixtures
 tests/fixtures/git-remote/

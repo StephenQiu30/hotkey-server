@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"crypto/rand"
 
 	domainhotspot "github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
 	domainobsidian "github.com/StephenQiu30/hotkey-server/internal/domain/obsidian"
@@ -111,7 +112,10 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 		deps.ObsidianService = serviceobsidian.NewService(domainobsidian.NewMemoryRepository(), nil, serviceobsidian.Config{})
 	}
 	if deps.AuthorizationService == nil {
-		key := []byte("0123456789abcdef0123456789abcdef")
+		key := make([]byte, 32)
+		if _, err := rand.Read(key); err != nil {
+			panic("failed to generate encryption key: " + err.Error())
+		}
 		enc, err := crypto.NewAESGCMEncryptor(key)
 		if err != nil {
 			panic(err)
