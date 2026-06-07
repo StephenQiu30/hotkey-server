@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 )
 
@@ -141,6 +142,9 @@ func ValidatePayload(jobType JobType, payload json.RawMessage) error {
 		}
 		if body.WeekOf == "" {
 			return errors.New("generate_weekly_report payload requires week_of")
+		}
+		if !regexp.MustCompile(`^\d{4}-W\d{2}$`).MatchString(body.WeekOf) {
+			return fmt.Errorf("generate_weekly_report payload week_of must be YYYY-Www format, got %q", body.WeekOf)
 		}
 	case JobTypeSendWeeklyEmail:
 		var body SendWeeklyEmailPayload

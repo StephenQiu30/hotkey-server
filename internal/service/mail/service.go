@@ -138,7 +138,7 @@ func (s *Service) SendDailyEmail(ctx context.Context, input SendDailyEmailInput)
 	if existing, err := s.repo.FindDeliveryByReportAndUser(ctx, input.ReportID, input.RecipientUserID); err == nil {
 		existing.Status = DeliveryStatusSkipped
 		existing.LastError = "duplicate: delivery already exists"
-		return existing, nil
+		return s.repo.UpdateDelivery(ctx, existing)
 	}
 
 	delivery, err := s.repo.CreateDelivery(ctx, Delivery{

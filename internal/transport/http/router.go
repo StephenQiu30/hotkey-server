@@ -113,6 +113,9 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	reports := reporthandler.New(deps.ReportService)
 	rss := rsshandler.New(deps.RSSService)
 
+	if deps.EmailPrefService == nil {
+		deps.EmailPrefService = newNoopEmailPrefService()
+	}
 	mailH := mailhandler.New(deps.EmailPrefService)
 
 	if deps.AdapterRegistry == nil {
@@ -176,3 +179,13 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 
 	return router
 }
+
+type noopEmailPrefService struct{}
+
+func newNoopEmailPrefService() EmailPreferenceService { return noopEmailPrefService{} }
+
+func (noopEmailPrefService) GetEmailPreference(_ string) (EmailPreference, error) {
+	return EmailPreference{EmailEnabled: true, DailyEnabled: true, WeeklyEnabled: true}, nil
+}
+
+func (noopEmailPrefService) SetEmailPreference(_ string, _ EmailPreference) error { return nil }

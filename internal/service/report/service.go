@@ -89,7 +89,7 @@ func (s *Service) GenerateWeeklyReport(ctx context.Context, input GenerateWeekly
 	}
 	startDate, endDate, err := parseWeekRange(input.WeekOf)
 	if err != nil {
-		return WeeklyReport{}, ErrInvalidInput
+		return WeeklyReport{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 	dailyReports, err := s.reports.ListReportsByDateRange(ctx, startDate, endDate, input.ChannelID)
 	if err != nil {
@@ -99,18 +99,18 @@ func (s *Service) GenerateWeeklyReport(ctx context.Context, input GenerateWeekly
 		now := s.now().UTC()
 		return WeeklyReport{
 			DailyReport: DailyReport{
-				ID:         newID("wrpt"),
-				Date:       input.WeekOf,
-				ReportType: "weekly",
-				ChannelID:  input.ChannelID,
-				UserID:     input.UserID,
-				Body:       "本周无日报数据，暂不生成周报。",
-				Status:     ReportStatusDegraded,
-				SourceRefs: []SourceRef{},
-				CreatedAt:  now,
-				UpdatedAt:  now,
+				ID:             newID("wrpt"),
+				Date:           input.WeekOf,
+				ReportType:     "weekly",
+				ChannelID:      input.ChannelID,
+				UserID:         input.UserID,
+				Body:           "本周无日报数据，暂不生成周报。",
+				Status:         ReportStatusDegraded,
+				SourceRefs:     []SourceRef{},
+				DailyReportIDs: []string{},
+				CreatedAt:      now,
+				UpdatedAt:      now,
 			},
-			DailyReportIDs: []string{},
 		}, nil
 	}
 	var dailyIDs []string
@@ -158,7 +158,7 @@ func (s *Service) GenerateWeeklyReport(ctx context.Context, input GenerateWeekly
 	if err != nil {
 		return WeeklyReport{}, err
 	}
-	return WeeklyReport{DailyReport: saved, DailyReportIDs: dailyIDs}, nil
+	return WeeklyReport{DailyReport: saved}, nil
 }
 
 func (s *Service) GenerateSummary(ctx context.Context, input GenerateSummaryInput) (AISummary, error) {
@@ -295,5 +295,11 @@ func parseWeekRange(weekOf string) (startDate, endDate string, err error) {
 	mondayWeek1 := jan4.Add(-time.Duration(weekday-1) * 24 * time.Hour)
 	start := mondayWeek1.Add(time.Duration(week-1) * 7 * 24 * time.Hour)
 	end := start.Add(6 * 24 * time.Hour)
+	// Validate the computed date actually belongs to the requested ISO week
+	thursday := start.Add(3 * 24 * time.Hour)
+	isoYear, isoWeek := thursday.ISOWeek()
+	if isoYear != year || isoWeek != week {
+		return "", "", fmt.Errorf("invalid ISO week: %d-W%02d does not exist", year, week)
+	}
 	return start.Format("2006-01-02"), end.Format("2006-01-02"), nil
 }

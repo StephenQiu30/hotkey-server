@@ -66,12 +66,16 @@ func (s *WeeklyEmailScheduler) Tick(ctx context.Context) error {
 		return nil
 	}
 	current := now.Format("15:04")
-	if current != s.weeklySendAt {
-		return nil
-	}
 	weekOf := isoWeek(now)
 	for _, recipient := range s.recipients {
 		if !recipient.EmailEnabled {
+			continue
+		}
+		sendAt := s.weeklySendAt
+		if recipient.WeeklySendAt != "" {
+			sendAt = recipient.WeeklySendAt
+		}
+		if current != sendAt {
 			continue
 		}
 		payload, err := json.Marshal(queue.SendWeeklyEmailPayload{

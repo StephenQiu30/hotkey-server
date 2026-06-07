@@ -81,6 +81,30 @@ func TestWeeklyEmailSchedulerTickSkipsWrongTime(t *testing.T) {
 	}
 }
 
+func TestWeeklyEmailSchedulerTickPerRecipientSendAt(t *testing.T) {
+	producer := &fakeProducer{}
+	// Sunday at 09:00
+	now := time.Date(2026, 6, 7, 9, 0, 0, 0, time.UTC)
+	s := NewWeeklyEmailScheduler(producer, WeeklyEmailOptions{
+		ReportID:           "wr-1",
+		WeeklySendDay:      time.Sunday,
+		WeeklySendAt:       "09:00",
+		DefaultWeeklySendAt: "09:00",
+		Recipients: []WeeklyEmailRecipient{
+			{UserID: "user-1", EmailEnabled: true, WeeklySendAt: "09:00"},
+			{UserID: "user-2", EmailEnabled: true, WeeklySendAt: "10:00"},
+		},
+		Now: func() time.Time { return now },
+	})
+
+	if err := s.Tick(context.Background()); err != nil {
+		t.Fatalf("tick failed: %v", err)
+	}
+	if len(producer.enqueued) != 1 {
+		t.Fatalf("expected 1 enqueued job (user-2 at 10:00), got %d", len(producer.enqueued))
+	}
+}
+
 type fakeProducer struct {
 	enqueued []queue.EnqueueRequest
 }

@@ -59,6 +59,21 @@ func TestJobPayloadSchemasCoverWeeklyTypes(t *testing.T) {
 	}
 }
 
+func TestValidatePayloadRejectsMalformedWeekOf(t *testing.T) {
+	badWeeks := []string{"2026/23", "2026-23", "W23", "2026-W", ""}
+	for _, week := range badWeeks {
+		t.Run("week="+week, func(t *testing.T) {
+			body, err := json.Marshal(GenerateWeeklyReportPayload{WeekOf: week})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := ValidatePayload(JobTypeGenerateWeeklyReport, body); err == nil {
+				t.Fatalf("expected validation to reject malformed week_of %q", week)
+			}
+		})
+	}
+}
+
 func TestValidatePayloadRejectsUnknownTypeAndMissingRequiredFields(t *testing.T) {
 	if err := ValidatePayload(JobType("unknown"), json.RawMessage(`{}`)); err == nil {
 		t.Fatal("expected unknown job type to fail")

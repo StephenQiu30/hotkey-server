@@ -176,7 +176,7 @@ func TestGenerateWeeklyReportAggregatesPast7Days(t *testing.T) {
 
 	// Save 3 daily reports for the past week
 	for i, date := range []string{"2026-05-25", "2026-05-27", "2026-05-29"} {
-		repo.SaveReport(context.Background(), DailyReport{
+		if _, err := repo.SaveReport(context.Background(), DailyReport{
 			ID:        fmt.Sprintf("daily-%d", i),
 			Date:      date,
 			ChannelID: "ai",
@@ -188,7 +188,9 @@ func TestGenerateWeeklyReportAggregatesPast7Days(t *testing.T) {
 			},
 			CreatedAt: time.Date(2026, 5, 25+i, 8, 0, 0, 0, time.UTC),
 			UpdatedAt: time.Date(2026, 5, 25+i, 8, 0, 0, 0, time.UTC),
-		})
+		}); err != nil {
+			t.Fatalf("SaveReport failed: %v", err)
+		}
 	}
 
 	report, err := service.GenerateWeeklyReport(context.Background(), GenerateWeeklyReportInput{

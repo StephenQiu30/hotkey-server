@@ -109,7 +109,6 @@ type GenerateWeeklyReportInput struct {
 
 type WeeklyReport struct {
 	DailyReport
-	DailyReportIDs []string
 }
 
 type GenerateSummaryInput struct {

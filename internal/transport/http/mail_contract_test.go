@@ -17,7 +17,7 @@ import (
 
 func TestMailGetEmailPreferenceRequiresAuth(t *testing.T) {
 	handler, _ := setupMailTest(t)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/me/email", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/me/email", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
@@ -28,7 +28,7 @@ func TestMailGetEmailPreferenceRequiresAuth(t *testing.T) {
 func TestMailGetEmailPreferenceReturnsDefaults(t *testing.T) {
 	handler, authService := setupMailTest(t)
 	token := loginAsUser(t, authService)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/me/email", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/me/email", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -43,7 +43,7 @@ func TestMailGetEmailPreferenceReturnsDefaults(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if !body.EmailEnabled || !body.DailyEnabled {
+	if !body.EmailEnabled || !body.DailyEnabled || !body.WeeklyEnabled {
 		t.Fatalf("expected defaults to be true, got %+v", body)
 	}
 }
@@ -53,7 +53,7 @@ func TestMailSetEmailPreferenceTogglesValues(t *testing.T) {
 	token := loginAsUser(t, authService)
 	falseVal := false
 	payload, _ := json.Marshal(map[string]*bool{"weeklyEnabled": &falseVal})
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/me/email", bytes.NewReader(payload))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPut, "/api/v1/me/email", bytes.NewReader(payload))
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
