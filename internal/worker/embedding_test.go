@@ -21,7 +21,7 @@ func TestGenerateEmbeddingHandlerCompletesMissingConfigAfterRecordingFailedConfi
 		completed: make(chan struct{}),
 		failed:    make(chan error, 1),
 	}
-	handler := NewGenerateEmbeddingHandler(failingEmbeddingService{err: serviceembedding.ErrFailedConfig})
+	handler := NewGenerateEmbeddingHandler(failingEmbeddingService{err: serviceembedding.ErrFailedConfig}, nil, nil)
 	worker := New(jobQueue, nil, slog.Default(), WithHandler(queue.JobTypeGenerateEmbedding, handler))
 
 	ctx, cancel := context.WithCancel(context.Background())

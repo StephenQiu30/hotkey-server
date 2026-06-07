@@ -11,6 +11,16 @@ import (
 	"time"
 )
 
+var (
+	ErrRateLimited = errors.New("rate limited")
+	ErrForbidden   = errors.New("forbidden")
+	ErrNotFound    = errors.New("not found")
+)
+
+func IsRateLimited(err error) bool { return errors.Is(err, ErrRateLimited) }
+func IsForbidden(err error) bool   { return errors.Is(err, ErrForbidden) }
+func IsNotFound(err error) bool    { return errors.Is(err, ErrNotFound) }
+
 type SourceType string
 
 const (
@@ -20,6 +30,7 @@ const (
 	SourceTypeHackerNews SourceType = "hackernews"
 	SourceTypeWeChatMP   SourceType = "wechat_mp"
 	SourceTypeZhihu      SourceType = "zhihu"
+	SourceTypeReddit     SourceType = "reddit"
 )
 
 type Source struct {

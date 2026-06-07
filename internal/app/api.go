@@ -12,7 +12,9 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/platform/crypto"
 	platformpostgres "github.com/StephenQiu30/hotkey-server/internal/platform/postgres"
 	platformredis "github.com/StephenQiu30/hotkey-server/internal/platform/redis"
+	"github.com/StephenQiu30/hotkey-server/internal/repository/postgres/adminrepo"
 	"github.com/StephenQiu30/hotkey-server/internal/repository/postgres/authorizationrepo"
+	"github.com/StephenQiu30/hotkey-server/internal/repository/postgres/channelrepo"
 	"github.com/StephenQiu30/hotkey-server/internal/repository/postgres/userrepo"
 	serviceadmin "github.com/StephenQiu30/hotkey-server/internal/service/admin"
 	serviceauth "github.com/StephenQiu30/hotkey-server/internal/service/auth"
@@ -26,17 +28,7 @@ type API struct {
 	db     *sql.DB
 }
 
-func NewAPI(cfg config.Config, logger *slog.Logger) *API {
-	var db *sql.DB
-	var err error
-	if cfg.DatabaseURL != "" {
-		db, err = platformpostgres.NewPool(cfg.DatabaseURL, platformpostgres.Options{})
-		if err != nil {
-			logger.Error("failed to connect to postgres", "error", err)
-			panic("failed to connect to postgres: " + err.Error())
-		}
-	}
-
+func NewAPI(cfg config.Config, logger *slog.Logger, db *sql.DB, redisClient *platformredis.Client) *API {
 	var authRepo serviceauth.Repository
 	var azRepo serviceauth.AuthorizationRepository
 	if db != nil {
@@ -74,30 +66,45 @@ func NewAPI(cfg config.Config, logger *slog.Logger) *API {
 		azService = azService.WithTransactor(platformpostgres.NewTransactionalDB(db))
 	}
 
-	redisClient := platformredis.NewClient(cfg.RedisURL, platformredis.Options{DialTimeout: 250 * time.Millisecond})
-	adminService := serviceadmin.NewService(serviceadmin.NewMemoryRepository(), serviceadmin.Config{
-		PostgreSQLPing: func(ctx context.Context) error {
-			if db == nil {
+	var adminService *serviceadmin.Service
+	if db != nil {
+		adminService = serviceadmin.NewService(adminrepo.New(db), serviceadmin.Config{
+			PostgreSQLPing: func(ctx context.Context) error { return db.PingContext(ctx) },
+			RedisPing:      redisClient.Ping,
+			DashScopeKey:   cfg.DashScopeAPIKey,
+			SMTPHost:       cfg.SMTPHost,
+		})
+	} else {
+		adminService = serviceadmin.NewService(serviceadmin.NewMemoryRepository(), serviceadmin.Config{
+			PostgreSQLPing: func(ctx context.Context) error {
 				return errors.New("postgres not connected")
-			}
-			return db.PingContext(ctx)
-		},
-		RedisPing:    redisClient.Ping,
-		DashScopeKey: cfg.DashScopeAPIKey,
-		SMTPHost:     cfg.SMTPHost,
-	})
+			},
+			RedisPing:    redisClient.Ping,
+			DashScopeKey: cfg.DashScopeAPIKey,
+			SMTPHost:     cfg.SMTPHost,
+		})
+	}
+
+	var channelSvc *servicechannel.Service
+	if db != nil {
+		channelSvc = servicechannel.NewService(channelrepo.New(db))
+	} else {
+		channelSvc = servicechannel.NewService(servicechannel.NewMemoryRepository())
+	}
+
 	return &API{
 		server: &http.Server{
 			Addr: cfg.HTTPAddr,
 			Handler: transporthttp.NewRouterWithDependencies(transporthttp.Dependencies{
 				AuthService:          authService,
 				AuthorizationService: azService,
-				ChannelService:       servicechannel.NewService(servicechannel.NewMemoryRepository()),
+				ChannelService:       channelSvc,
 				AdminService:         adminService,
 			}),
 			ReadHeaderTimeout: 5 * time.Second,
 		},
 		logger: logger,
+		db:     db,
 	}
 }
 

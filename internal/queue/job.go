@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 )
 
@@ -15,8 +16,13 @@ const (
 	JobTypeClusterHotspots     JobType = "cluster_hotspots"
 	JobTypeScoreHotspots       JobType = "score_hotspots"
 	JobTypeGenerateDailyReport JobType = "generate_daily_report"
-	JobTypeSendDailyEmail      JobType = "send_daily_email"
-	JobTypeGenerateEventSummary JobType = "generate_event_summary"
+	JobTypeSendDailyEmail          JobType = "send_daily_email"
+	JobTypeSendWeeklyEmail         JobType = "send_weekly_email"
+	JobTypeGenerateWeeklyReport    JobType = "generate_weekly_report"
+	JobTypeGenerateEventSummary    JobType = "generate_event_summary"
+	JobTypeStoreSnapshot           JobType = "store_snapshot"
+	JobTypeCleanupExpiredObjects   JobType = "cleanup_expired_objects"
+	JobTypeDeleteUserObjects       JobType = "delete_user_objects"
 )
 
 type JobStatus string
@@ -71,6 +77,15 @@ type SendDailyEmailPayload struct {
 	RecipientUserID string `json:"recipient_user_id"`
 }
 
+type SendWeeklyEmailPayload struct {
+	ReportID        string `json:"report_id"`
+	RecipientUserID string `json:"recipient_user_id"`
+}
+
+type GenerateWeeklyReportPayload struct {
+	WeekOf string `json:"week_of"`
+}
+
 type EventSummaryItem struct {
 	ID       string `json:"id"`
 	SourceID string `json:"sourceId"`
@@ -80,9 +95,27 @@ type EventSummaryItem struct {
 }
 
 type GenerateEventSummaryPayload struct {
-	EventID string              `json:"event_id"`
-	Title   string              `json:"title"`
-	Items   []EventSummaryItem  `json:"items"`
+	EventID string             `json:"event_id"`
+	Title   string             `json:"title"`
+	Items   []EventSummaryItem `json:"items"`
+}
+
+type StoreSnapshotPayload struct {
+	SourceItemID string `json:"source_item_id"`
+	SourceID     string `json:"source_id"`
+	UserID       string `json:"user_id"`
+	Platform     string `json:"platform"`
+	Title        string `json:"title"`
+	Snippet      string `json:"snippet"`
+	OriginalURL  string `json:"original_url"`
+}
+
+type CleanupExpiredObjectsPayload struct {
+	Bucket string `json:"bucket"`
+}
+
+type DeleteUserObjectsPayload struct {
+	UserID string `json:"user_id"`
 }
 
 func ValidatePayload(jobType JobType, payload json.RawMessage) error {
@@ -138,6 +171,25 @@ func ValidatePayload(jobType JobType, payload json.RawMessage) error {
 		if body.ReportID == "" || body.RecipientUserID == "" {
 			return errors.New("send_daily_email payload requires report_id and recipient_user_id")
 		}
+	case JobTypeSendWeeklyEmail:
+		var body SendWeeklyEmailPayload
+		if err := json.Unmarshal(payload, &body); err != nil {
+			return err
+		}
+		if body.ReportID == "" || body.RecipientUserID == "" {
+			return errors.New("send_weekly_email payload requires report_id and recipient_user_id")
+		}
+	case JobTypeGenerateWeeklyReport:
+		var body GenerateWeeklyReportPayload
+		if err := json.Unmarshal(payload, &body); err != nil {
+			return err
+		}
+		if body.WeekOf == "" {
+			return errors.New("generate_weekly_report payload requires week_of")
+		}
+		if matched, _ := regexp.MatchString(`^\d{4}-W(0[1-9]|[1-4]\d|5[0-3])$`, body.WeekOf); !matched {
+			return errors.New("generate_weekly_report payload requires week_of in YYYY-Www format")
+		}
 	case JobTypeGenerateEventSummary:
 		var body GenerateEventSummaryPayload
 		if err := json.Unmarshal(payload, &body); err != nil {
@@ -148,6 +200,28 @@ func ValidatePayload(jobType JobType, payload json.RawMessage) error {
 		}
 		if body.Title == "" {
 			return errors.New("generate_event_summary payload requires title")
+		}
+	case JobTypeStoreSnapshot:
+		var body StoreSnapshotPayload
+		if err := json.Unmarshal(payload, &body); err != nil {
+			return err
+		}
+		if body.SourceItemID == "" || body.SourceID == "" || body.UserID == "" {
+			return errors.New("store_snapshot payload requires source_item_id, source_id, and user_id")
+		}
+	case JobTypeCleanupExpiredObjects:
+		var body CleanupExpiredObjectsPayload
+		if err := json.Unmarshal(payload, &body); err != nil {
+			return err
+		}
+		// Empty Bucket is allowed — handler uses configured default
+	case JobTypeDeleteUserObjects:
+		var body DeleteUserObjectsPayload
+		if err := json.Unmarshal(payload, &body); err != nil {
+			return err
+		}
+		if body.UserID == "" {
+			return errors.New("delete_user_objects payload requires user_id")
 		}
 	default:
 		return fmt.Errorf("unknown job type %q", jobType)

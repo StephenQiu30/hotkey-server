@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
+	"github.com/lib/pq"
 )
 
 type Repository struct {
@@ -84,6 +85,44 @@ LIMIT 1`
 	return embedding, nil
 }
 
+func (r *Repository) SearchSimilar(ctx context.Context, vector []float64, limit int, minSimilarity float64) ([]hotspot.SimilarityResult, error) {
+	const query = `
+SELECT item_id, model, embedding::text, text_hash, status, COALESCE(last_error, ''), created_at, updated_at,
+       1 - (embedding <=> $1::vector) AS similarity
+FROM item_embeddings
+WHERE status = 'succeeded'
+  AND 1 - (embedding <=> $1::vector) >= $2
+ORDER BY embedding <=> $1::vector
+LIMIT $3`
+	rows, err := r.db.QueryContext(ctx, query, vectorLiteral(vector), minSimilarity, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []hotspot.SimilarityResult
+	for rows.Next() {
+		var res hotspot.SimilarityResult
+		var vectorText string
+		var status string
+		if err := rows.Scan(
+			&res.Embedding.ItemID, &res.Embedding.Model, &vectorText, &res.Embedding.TextHash, &status, &res.Embedding.LastError, &res.Embedding.CreatedAt, &res.Embedding.UpdatedAt,
+			&res.Similarity,
+		); err != nil {
+			return nil, err
+		}
+		res.ItemID = res.Embedding.ItemID
+		res.Embedding.Status = hotspot.EmbeddingStatus(status)
+		v, err := parseVectorLiteral(vectorText)
+		if err != nil {
+			return nil, err
+		}
+		res.Embedding.Vector = v
+		results = append(results, res)
+	}
+	return results, rows.Err()
+}
+
 func (r *Repository) ListCandidates(ctx context.Context, start time.Time, end time.Time) ([]hotspot.Candidate, error) {
 	const query = `
 SELECT
@@ -130,6 +169,68 @@ ORDER BY COALESCE(i.published_at, i.created_at), i.id`
 		candidates = append(candidates, candidate)
 	}
 	return candidates, rows.Err()
+}
+
+func (r *Repository) ListClusters(ctx context.Context) ([]hotspot.Cluster, error) {
+	const query = `
+SELECT id, title, keywords, centroid::text, window_start, window_end, created_at, updated_at
+FROM hotspot_clusters
+ORDER BY updated_at DESC`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var clusters []hotspot.Cluster
+	for rows.Next() {
+		var c hotspot.Cluster
+		var vectorText string
+		var keywords []string
+		if err := rows.Scan(&c.ID, &c.Title, pq.Array(&keywords), &vectorText, &c.WindowStart, &c.WindowEnd, &c.CreatedAt, &c.UpdatedAt); err != nil {
+			return nil, err
+		}
+		c.Keywords = keywords
+		v, err := parseVectorLiteral(vectorText)
+		if err != nil {
+			return nil, err
+		}
+		c.Centroid = v
+		clusters = append(clusters, c)
+	}
+	return clusters, rows.Err()
+}
+
+func (r *Repository) ListClusterItems(ctx context.Context, clusterID string) ([]hotspot.ClusterItem, error) {
+	const query = `
+SELECT hi.cluster_id, hi.item_id, hi.similarity, hi.created_at,
+       si.source_id, si.title, si.raw_url,
+       COALESCE((
+           SELECT string_agg(scl.channel_id, ',' ORDER BY scl.channel_id)
+           FROM source_channel_links scl
+           WHERE scl.source_id = si.source_id
+       ), '') AS channel_ids
+FROM hotspot_items hi
+JOIN source_items si ON hi.item_id = si.id
+WHERE hi.cluster_id = $1
+ORDER BY hi.similarity DESC, hi.created_at DESC`
+	rows, err := r.db.QueryContext(ctx, query, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []hotspot.ClusterItem
+	for rows.Next() {
+		var hi hotspot.ClusterItem
+		var channelIDs string
+		if err := rows.Scan(&hi.ClusterID, &hi.ItemID, &hi.Similarity, &hi.CreatedAt, &hi.SourceID, &hi.Title, &hi.URL, &channelIDs); err != nil {
+			return nil, err
+		}
+		hi.ChannelIDs = splitChannelIDs(channelIDs)
+		items = append(items, hi)
+	}
+	return items, rows.Err()
 }
 
 func (r *Repository) ReplaceClusters(ctx context.Context, clusters []hotspot.Cluster, itemsByCluster map[string][]hotspot.ClusterItem) error {

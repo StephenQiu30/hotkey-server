@@ -176,7 +176,7 @@ func hotspotRouterWithScores(t *testing.T, scores ...servicehotspot.HotspotScore
 			t.Fatal(err)
 		}
 	}
-	return transporthttp.NewRouterWithDependencies(transporthttp.Dependencies{
+	return transportRouterWithDependenciesForTest(transporthttp.Dependencies{
 		ScoringService: servicehotspot.NewScoringService(servicehotspot.ScoringConfig{}, nil, scoreRepo),
 	})
 }

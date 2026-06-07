@@ -225,6 +225,28 @@ func (r *Repository) SetUserDailySendAt(ctx context.Context, userID string, dail
 	return requireRows(result, err)
 }
 
+func (r *Repository) SetUserWeeklyEnabled(ctx context.Context, userID string, enabled bool, updatedAt time.Time) error {
+	result, err := r.db.ExecContext(ctx, `UPDATE users SET weekly_enabled = $2, updated_at = $3 WHERE id = $1`, userID, enabled, updatedAt)
+	return requireRows(result, err)
+}
+
+func (r *Repository) UserWeeklyEnabled(ctx context.Context, userID string) (bool, error) {
+	var enabled bool
+	err := r.db.QueryRowContext(ctx, `SELECT weekly_enabled FROM users WHERE id = $1`, userID).Scan(&enabled)
+	return enabled, err
+}
+
+func (r *Repository) SetUserWeeklySendAt(ctx context.Context, userID string, weeklySendAt string, updatedAt time.Time) error {
+	result, err := r.db.ExecContext(ctx, `UPDATE users SET weekly_send_at = $2, updated_at = $3 WHERE id = $1`, userID, weeklySendAt, updatedAt)
+	return requireRows(result, err)
+}
+
+func (r *Repository) UserWeeklySendAt(ctx context.Context, userID string) (string, error) {
+	var weeklySendAt string
+	err := r.db.QueryRowContext(ctx, `SELECT weekly_send_at FROM users WHERE id = $1`, userID).Scan(&weeklySendAt)
+	return weeklySendAt, err
+}
+
 type scanner interface {
 	Scan(dest ...any) error
 }

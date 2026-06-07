@@ -9,9 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/domain/content"
 	domainhotspot "github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/fetcher"
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
+	servicededup "github.com/StephenQiu30/hotkey-server/internal/service/dedup"
 	serviceembedding "github.com/StephenQiu30/hotkey-server/internal/service/embedding"
 	serviceeventsummary "github.com/StephenQiu30/hotkey-server/internal/service/eventsummary"
 	servicehotspot "github.com/StephenQiu30/hotkey-server/internal/service/hotspot"
@@ -120,6 +122,13 @@ func (w *Worker) runOnce(ctx context.Context) error {
 			}
 			return nil
 		}
+	} else {
+		err := errors.New("no handler registered for job type: " + string(job.Type))
+		w.logger.Warn("unhandled job type; marking job failed", "job_id", job.ID, "job_type", job.Type, "error", err)
+		if _, failErr := w.queue.Fail(ctx, job.ID, err); failErr != nil {
+			return failErr
+		}
+		return nil
 	}
 
 	completed, err := w.queue.Complete(ctx, job.ID)
@@ -166,6 +175,10 @@ type HotspotClusterService interface {
 
 type DailyEmailService interface {
 	SendDailyEmail(context.Context, servicemail.SendDailyEmailInput) (servicemail.Delivery, error)
+}
+
+type WeeklyEmailService interface {
+	SendWeeklyEmail(context.Context, servicemail.SendWeeklyEmailInput) (servicemail.Delivery, error)
 }
 
 type EventSummaryService interface {
@@ -246,12 +259,23 @@ func (h *CollectSourceHandler) recordRun(ctx context.Context, sourceID string, s
 	})
 }
 
-type GenerateEmbeddingHandler struct {
-	service EmbeddingService
+type ContentRepository interface {
+	FindByID(context.Context, string) (content.SourceItem, error)
+	UpdateStatus(context.Context, string, content.ItemStatus, string) error
 }
 
-func NewGenerateEmbeddingHandler(service EmbeddingService) *GenerateEmbeddingHandler {
-	return &GenerateEmbeddingHandler{service: service}
+type DedupService interface {
+	CheckDuplicate(ctx context.Context, item content.SourceItem, newEmbedding []float64) (servicededup.Result, error)
+}
+
+type GenerateEmbeddingHandler struct {
+	service EmbeddingService
+	dedup   DedupService
+	repo    ContentRepository
+}
+
+func NewGenerateEmbeddingHandler(service EmbeddingService, dedup DedupService, repo ContentRepository) *GenerateEmbeddingHandler {
+	return &GenerateEmbeddingHandler{service: service, dedup: dedup, repo: repo}
 }
 
 func (h *GenerateEmbeddingHandler) Handle(ctx context.Context, job queue.Job) error {
@@ -262,11 +286,33 @@ func (h *GenerateEmbeddingHandler) Handle(ctx context.Context, job queue.Job) er
 	if payload.ItemID == "" {
 		return errors.New("generate_embedding payload missing item_id")
 	}
-	if _, err := h.service.Generate(ctx, payload.ItemID); err != nil {
+	emb, err := h.service.Generate(ctx, payload.ItemID)
+	if err != nil {
 		if errors.Is(err, serviceembedding.ErrFailedConfig) {
 			return nil
 		}
 		return err
+	}
+
+	// If dedup service is provided, check for near-duplicates after successful embedding generation
+	if h.dedup != nil && h.repo != nil && emb.Status == domainhotspot.EmbeddingStatusSucceeded {
+		item, err := h.repo.FindByID(ctx, payload.ItemID)
+		if err != nil {
+			return err
+		}
+		// If item is already marked as duplicate (e.g. by exact hash), skip near-dedup
+		if item.Status == content.ItemStatusDuplicate {
+			return nil
+		}
+
+		res, err := h.dedup.CheckDuplicate(ctx, item, emb.Vector)
+		if err != nil {
+			return err
+		}
+
+		if res.DuplicateType != servicededup.DuplicateTypeNone {
+			return h.repo.UpdateStatus(ctx, item.ID, content.ItemStatusDuplicate, res.ExistingItemID)
+		}
 	}
 	return nil
 }
@@ -314,6 +360,36 @@ func (h *SendDailyEmailHandler) Handle(ctx context.Context, job queue.Job) error
 		return errors.New("send_daily_email payload missing report_id or recipient_user_id")
 	}
 	_, err := h.service.SendDailyEmail(ctx, servicemail.SendDailyEmailInput{
+		ReportID:        payload.ReportID,
+		RecipientUserID: payload.RecipientUserID,
+		Attempt:         job.Attempt,
+	})
+	return err
+}
+
+type SendWeeklyEmailHandler struct {
+	service WeeklyEmailService
+}
+
+func NewSendWeeklyEmailHandler(service WeeklyEmailService) *SendWeeklyEmailHandler {
+	if service == nil {
+		panic("send weekly email handler requires service")
+	}
+	return &SendWeeklyEmailHandler{service: service}
+}
+
+func (h *SendWeeklyEmailHandler) Handle(ctx context.Context, job queue.Job) error {
+	if h.service == nil {
+		return errors.New("send weekly email handler missing service")
+	}
+	var payload queue.SendWeeklyEmailPayload
+	if err := json.Unmarshal(job.Payload, &payload); err != nil {
+		return err
+	}
+	if payload.ReportID == "" || payload.RecipientUserID == "" {
+		return errors.New("send_weekly_email payload missing report_id or recipient_user_id")
+	}
+	_, err := h.service.SendWeeklyEmail(ctx, servicemail.SendWeeklyEmailInput{
 		ReportID:        payload.ReportID,
 		RecipientUserID: payload.RecipientUserID,
 		Attempt:         job.Attempt,

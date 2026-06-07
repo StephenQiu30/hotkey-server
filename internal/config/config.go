@@ -16,6 +16,7 @@ const (
 
 type Config struct {
 	HTTPAddr                   string
+	DatabaseURL                string
 	AuthTokenSecret            string
 	AccessTokenTTL             time.Duration
 	RefreshTokenTTL            time.Duration
@@ -34,12 +35,22 @@ type Config struct {
 	SMTPTLS                    bool
 	SMTPStartTLS               bool
 	EncryptionKey              string
-	DatabaseURL                string
+	XClientID                  string
+	XClientSecret              string
+	XRedirectURL               string
+	MinIOEndpoint              string
+	MinIOAccessKey             string
+	MinIOSecretKey             string
+	MinIOBucket                string
+	MinIOUseSSL                bool
+	MinIOLocation              string
+	ContentRetentionDays       int
 }
 
 func Load() Config {
 	return Config{
 		HTTPAddr:                   envOrDefault("HOTKEY_HTTP_ADDR", ":8080"),
+		DatabaseURL:                envOrDefault("HOTKEY_DATABASE_URL", "postgres://hotkey:hotkey@localhost:5432/hotkey?sslmode=disable"),
 		AuthTokenSecret:            os.Getenv("HOTKEY_AUTH_TOKEN_SECRET"),
 		AccessTokenTTL:             durationOrDefault("HOTKEY_AUTH_ACCESS_TOKEN_TTL", 15*time.Minute),
 		RefreshTokenTTL:            durationOrDefault("HOTKEY_AUTH_REFRESH_TOKEN_TTL", 30*24*time.Hour),
@@ -58,7 +69,16 @@ func Load() Config {
 		SMTPTLS:                    boolOrDefault("HOTKEY_SMTP_TLS", false),
 		SMTPStartTLS:               boolOrDefault("HOTKEY_SMTP_STARTTLS", true),
 		EncryptionKey:              os.Getenv("HOTKEY_ENCRYPTION_KEY"),
-		DatabaseURL:                os.Getenv("HOTKEY_DATABASE_URL"),
+		XClientID:                  os.Getenv("HOTKEY_X_CLIENT_ID"),
+		XClientSecret:              os.Getenv("HOTKEY_X_CLIENT_SECRET"),
+		XRedirectURL:               envOrDefault("HOTKEY_X_REDIRECT_URL", "http://localhost:8080/api/v1/admin/x/auth/callback"),
+		MinIOEndpoint:              envOrDefault("HOTKEY_MINIO_ENDPOINT", "localhost:9000"),
+		MinIOAccessKey:             os.Getenv("HOTKEY_MINIO_ACCESS_KEY"),
+		MinIOSecretKey:             os.Getenv("HOTKEY_MINIO_SECRET_KEY"),
+		MinIOBucket:                envOrDefault("HOTKEY_MINIO_BUCKET", "hotkey-snapshots"),
+		MinIOUseSSL:                boolOrDefault("HOTKEY_MINIO_USE_SSL", false),
+		MinIOLocation:              envOrDefault("HOTKEY_MINIO_LOCATION", "us-east-1"),
+		ContentRetentionDays:       intOrDefaultAllowZero("HOTKEY_CONTENT_RETENTION_DAYS", 30),
 	}
 }
 
@@ -114,6 +134,18 @@ func intOrDefault(key string, fallback int) int {
 	}
 	parsed, err := strconv.Atoi(value)
 	if err != nil || parsed < 1 || parsed > 65535 {
+		return fallback
+	}
+	return parsed
+}
+
+func intOrDefaultAllowZero(key string, fallback int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
 		return fallback
 	}
 	return parsed
