@@ -195,6 +195,30 @@ func TestNoPaywallForFreeContent(t *testing.T) {
 	}
 }
 
+func TestCanonicalURLWithReversedAttributeOrder(t *testing.T) {
+	html := `<html><head><link href="https://example.com/reversed" rel="canonical"></head></html>`
+	article := fetcher.ExtractArticleMetadata(html, "https://example.com/fallback")
+	if article.CanonicalURL != "https://example.com/reversed" {
+		t.Fatalf("expected canonical URL with reversed attrs %q, got %q", "https://example.com/reversed", article.CanonicalURL)
+	}
+}
+
+func TestDescriptionWithReversedAttributeOrder(t *testing.T) {
+	html := `<html><head><meta content="Reversed description" name="description"></head></html>`
+	article := fetcher.ExtractArticleMetadata(html, "https://example.com/fallback")
+	if article.Description != "Reversed description" {
+		t.Fatalf("expected description with reversed attrs %q, got %q", "Reversed description", article.Description)
+	}
+}
+
+func TestLanguageMetaWithReversedAttributeOrder(t *testing.T) {
+	html := `<html><head><meta content="fr" http-equiv="content-language"></head></html>`
+	article := fetcher.ExtractArticleMetadata(html, "https://example.com/fallback")
+	if article.Language != "fr" {
+		t.Fatalf("expected language with reversed attrs %q, got %q", "fr", article.Language)
+	}
+}
+
 func TestExtractAllFieldsFromCompleteArticle(t *testing.T) {
 	html := `<!DOCTYPE html>
 <html lang="zh-CN">
