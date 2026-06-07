@@ -28,6 +28,7 @@ import (
 	channelhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/channel"
 	eventsummaryhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/eventsummary"
 	hotspothandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/hotspot"
+	mailhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/mail"
 	monitortopichandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/monitortopic"
 	obsidianhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/obsidian"
 	reporthandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/report"
@@ -165,6 +166,7 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	obsidian := obsidianhandler.New(deps.ObsidianService)
 	authorizations := azhandler.New(deps.AuthorizationService)
 	topics := monitortopichandler.New(deps.MonitorTopicService)
+	email := mailhandler.New(deps.ChannelService)
 
 	if deps.AdapterRegistry == nil {
 		deps.AdapterRegistry = adapter.NewRegistry()
@@ -186,6 +188,8 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	v1.POST("/auth/refresh", auth.Refresh)
 	v1.POST("/auth/logout", auth.Logout)
 	v1.GET("/me", auth.AuthRequired(), auth.Me)
+	v1.GET("/me/email", auth.AuthRequired(), email.GetEmailPreferences)
+	v1.PUT("/me/email", auth.AuthRequired(), email.UpdateEmailPreferences)
 	v1.GET("/channels", channels.ListChannels)
 	v1.GET("/me/channels", auth.AuthRequired(), channels.ListSubscriptions)
 	v1.POST("/me/channels/:channelID", auth.AuthRequired(), channels.Subscribe)
