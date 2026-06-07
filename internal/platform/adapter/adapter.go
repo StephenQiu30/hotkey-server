@@ -86,15 +86,16 @@ type CollectInput struct {
 
 // NormalizedItem is the unified content schema produced by adapters.
 type NormalizedItem struct {
-	Title        string
-	URL          string
-	Snippet      string
-	ExternalID   string
-	PublishedAt  *time.Time
-	Language     string
+	Title          string
+	URL            string
+	Snippet        string
+	ExternalID     string
+	PublishedAt    *time.Time
+	Language       string
 	IdempotencyKey string
 	// Metadata holds platform-specific key-value pairs (author, score, etc.).
-	Metadata     map[string]string
+	Metadata       map[string]string
+	MetadataOnly   bool
 }
 
 // CollectOutput is the result of a collection operation.
