@@ -33,6 +33,8 @@ type Config struct {
 	SMTPFrom                   string
 	SMTPTLS                    bool
 	SMTPStartTLS               bool
+	EncryptionKey              string
+	DatabaseURL                string
 }
 
 func Load() Config {
@@ -55,6 +57,8 @@ func Load() Config {
 		SMTPFrom:                   os.Getenv("HOTKEY_SMTP_FROM"),
 		SMTPTLS:                    boolOrDefault("HOTKEY_SMTP_TLS", false),
 		SMTPStartTLS:               boolOrDefault("HOTKEY_SMTP_STARTTLS", true),
+		EncryptionKey:              os.Getenv("HOTKEY_ENCRYPTION_KEY"),
+		DatabaseURL:                os.Getenv("HOTKEY_DATABASE_URL"),
 	}
 }
 

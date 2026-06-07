@@ -36,7 +36,12 @@ type AuthorizationService struct {
 	authRepo    Repository
 	azRepo      AuthorizationRepository
 	encryptor   crypto.Encryptor
+	transactor  Transactor
 	now         func() time.Time
+}
+
+type Transactor interface {
+	WithinTransaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
 func NewAuthorizationService(authRepo Repository, azRepo AuthorizationRepository, encryptor crypto.Encryptor, now func() time.Time) *AuthorizationService {
@@ -52,6 +57,11 @@ func NewAuthorizationService(authRepo Repository, azRepo AuthorizationRepository
 		encryptor: encryptor,
 		now:       now,
 	}
+}
+
+func (s *AuthorizationService) WithTransactor(t Transactor) *AuthorizationService {
+	s.transactor = t
+	return s
 }
 
 func (s *AuthorizationService) Connect(ctx context.Context, input ConnectInput) (authorization.Authorization, error) {
@@ -166,27 +176,34 @@ func (s *AuthorizationService) ListByUser(ctx context.Context, userID string) ([
 func (s *AuthorizationService) DeleteAccount(ctx context.Context, userID string) error {
 	now := s.now().UTC()
 
-	// Revoke all authorizations
-	if err := s.azRepo.RevokeAllByUserID(ctx, userID, now); err != nil {
-		return fmt.Errorf("revoke authorizations: %w", err)
+	fn := func(ctx context.Context) error {
+		// Revoke all authorizations
+		if err := s.azRepo.RevokeAllByUserID(ctx, userID, now); err != nil {
+			return fmt.Errorf("revoke authorizations: %w", err)
+		}
+
+		// Delete authorizations
+		if err := s.azRepo.DeleteAuthorizationsByUserID(ctx, userID); err != nil {
+			return fmt.Errorf("delete authorizations: %w", err)
+		}
+
+		// Delete all refresh tokens for the user
+		if err := s.authRepo.DeleteRefreshTokensByUserID(ctx, userID); err != nil {
+			return fmt.Errorf("delete refresh tokens: %w", err)
+		}
+
+		// Delete the user
+		if err := s.authRepo.DeleteUser(ctx, userID); err != nil {
+			return fmt.Errorf("delete user: %w", err)
+		}
+
+		return nil
 	}
 
-	// Delete authorizations
-	if err := s.azRepo.DeleteAuthorizationsByUserID(ctx, userID); err != nil {
-		return fmt.Errorf("delete authorizations: %w", err)
+	if s.transactor != nil {
+		return s.transactor.WithinTransaction(ctx, fn)
 	}
-
-	// Delete all refresh tokens for the user
-	if err := s.authRepo.DeleteRefreshTokensByUserID(ctx, userID); err != nil {
-		return fmt.Errorf("delete refresh tokens: %w", err)
-	}
-
-	// Delete the user
-	if err := s.authRepo.DeleteUser(ctx, userID); err != nil {
-		return fmt.Errorf("delete user: %w", err)
-	}
-
-	return nil
+	return fn(ctx)
 }
 
 func newAuthID(prefix string) string {

@@ -26,6 +26,7 @@ var (
 	ErrNotFound        = errors.New("authorization not found")
 	ErrInvalidPlatform = errors.New("invalid platform")
 	ErrAlreadyRevoked  = errors.New("authorization already revoked")
+	ErrUniqueViolation = errors.New("authorization already exists for this platform")
 )
 
 type Authorization struct {

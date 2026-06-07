@@ -52,6 +52,10 @@ func (h *Handler) Connect(c *gin.Context) {
 			writeError(c, http.StatusBadRequest, "invalid_platform", "invalid platform")
 			return
 		}
+		if errors.Is(err, authorization.ErrUniqueViolation) {
+			writeError(c, http.StatusConflict, "already_connected", "platform already connected")
+			return
+		}
 		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}

@@ -24,6 +24,14 @@ func NewMemoryAuthorizationRepository() *MemoryAuthorizationRepository {
 func (r *MemoryAuthorizationRepository) CreateAuthorization(_ context.Context, az authorization.Authorization) (authorization.Authorization, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	// Check uniqueness
+	for _, id := range r.byUser[az.UserID] {
+		if existing, ok := r.store[id]; ok && existing.Platform == az.Platform {
+			return authorization.Authorization{}, authorization.ErrUniqueViolation
+		}
+	}
+
 	r.store[az.ID] = az
 	r.byUser[az.UserID] = append(r.byUser[az.UserID], az.ID)
 	return az, nil

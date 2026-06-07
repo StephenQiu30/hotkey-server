@@ -223,8 +223,8 @@ func TestAuthorizationService_DeleteAccount(t *testing.T) {
 		t.Fatalf("delete account: %v", err)
 	}
 
-	// Verify user is deleted
-	_, err = userSvc.CurrentUser(ctx, account.ID)
+	// Verify user is deleted via repository
+	_, err = authRepo.UserByID(ctx, account.ID)
 	if err == nil {
 		t.Fatal("expected error after user deletion, got nil")
 	}
