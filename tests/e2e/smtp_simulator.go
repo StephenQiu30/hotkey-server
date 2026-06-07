@@ -1,6 +1,7 @@
 package e2e_test
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"strings"
@@ -45,21 +46,17 @@ func handleSMTPConn(conn net.Conn, sink *smtpSink) {
 	// Send greeting
 	fmt.Fprintf(conn, "220 e2e-smtp-sink ready\r\n")
 
-	buf := make([]byte, 4096)
+	scanner := bufio.NewScanner(conn)
 	var from, to, subject, body string
 	inData := false
 
-	for {
-		n, err := conn.Read(buf)
-		if err != nil {
-			return
-		}
-		line := string(buf[:n])
+	for scanner.Scan() {
+		line := scanner.Text()
 
 		if inData {
-			if line == ".\r\n" || line == ".\n" || line == "." {
+			if line == "." {
 				inData = false
-				subject = extractSubject(body) // Extract subject from body headers
+				subject = extractSubject(body)
 				sink.mu.Lock()
 				sink.records = append(sink.records, EmailRecord{
 					From:    from,
@@ -73,26 +70,27 @@ func handleSMTPConn(conn net.Conn, sink *smtpSink) {
 				body = ""
 				subject = ""
 			} else {
-				body += line
+				body += line + "\r\n"
 			}
 			continue
 		}
 
+		upperLine := strings.ToUpper(line)
 		switch {
-		case len(line) >= 4 && line[:4] == "EHLO":
+		case strings.HasPrefix(upperLine, "EHLO"):
 			fmt.Fprintf(conn, "250-e2e-smtp-sink\r\n250 OK\r\n")
-		case len(line) >= 4 && line[:4] == "HELO":
+		case strings.HasPrefix(upperLine, "HELO"):
 			fmt.Fprintf(conn, "250 OK\r\n")
-		case len(line) >= 9 && line[:9] == "MAIL FROM":
+		case strings.HasPrefix(upperLine, "MAIL FROM"):
 			from = extractAngle(line)
 			fmt.Fprintf(conn, "250 OK\r\n")
-		case len(line) >= 7 && line[:7] == "RCPT TO":
+		case strings.HasPrefix(upperLine, "RCPT TO"):
 			to = extractAngle(line)
 			fmt.Fprintf(conn, "250 OK\r\n")
-		case len(line) >= 4 && line[:4] == "DATA":
+		case strings.HasPrefix(upperLine, "DATA"):
 			fmt.Fprintf(conn, "354 End data with <CR><LF>.<CR><LF>\r\n")
 			inData = true
-		case len(line) >= 4 && line[:4] == "QUIT":
+		case strings.HasPrefix(upperLine, "QUIT"):
 			fmt.Fprintf(conn, "221 Bye\r\n")
 			return
 		default:

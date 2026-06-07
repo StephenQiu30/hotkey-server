@@ -2,8 +2,6 @@ package e2e_test
 
 import (
 	"context"
-	"errors"
-	"strings"
 	"time"
 )
 
@@ -71,21 +69,4 @@ type FetcherSimulator interface {
 	SetBehavior(b ProviderBehavior)
 	Fetch(ctx context.Context, sourceURL string) ([]map[string]string, error)
 	Reset()
-}
-
-// --- Error assertion helper ---
-
-func assertSimulatorError(err error, expectedType string) bool {
-	if err == nil {
-		return false
-	}
-	var simErr *SimulatorError
-	if errors.As(err, &simErr) {
-		return simErr.Code == expectedType
-	}
-	return strings.Contains(err.Error(), expectedType)
-}
-
-func containsSubstring(s, sub string) bool {
-	return strings.Contains(s, sub)
 }
