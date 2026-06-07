@@ -66,6 +66,10 @@ func (c *Client) EnsureBucket(ctx context.Context, location string) error {
 			location = "us-east-1"
 		}
 		if err := c.inner.MakeBucket(ctx, c.bucket, minio.MakeBucketOptions{Region: location}); err != nil {
+			// Treat concurrent-creation race as success.
+			if resp := minio.ToErrorResponse(err); resp.Code == "BucketAlreadyOwnedByYou" || resp.Code == "BucketAlreadyExists" {
+				return nil
+			}
 			return fmt.Errorf("create bucket: %w", err)
 		}
 	}

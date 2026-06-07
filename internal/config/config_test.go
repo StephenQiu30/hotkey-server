@@ -119,11 +119,11 @@ func TestLoadMinIODefaults(t *testing.T) {
 	if got.MinIOEndpoint != "localhost:9000" {
 		t.Errorf("MinIOEndpoint = %q, want %q", got.MinIOEndpoint, "localhost:9000")
 	}
-	if got.MinIOAccessKey != "minioadmin" {
-		t.Errorf("MinIOAccessKey = %q, want %q", got.MinIOAccessKey, "minioadmin")
+	if got.MinIOAccessKey != "" {
+		t.Errorf("MinIOAccessKey = %q, want empty (no weak default)", got.MinIOAccessKey)
 	}
-	if got.MinIOSecretKey != "minioadmin" {
-		t.Errorf("MinIOSecretKey = %q, want %q", got.MinIOSecretKey, "minioadmin")
+	if got.MinIOSecretKey != "" {
+		t.Errorf("MinIOSecretKey = %q, want empty (no weak default)", got.MinIOSecretKey)
 	}
 	if got.MinIOBucket != "hotkey-snapshots" {
 		t.Errorf("MinIOBucket = %q, want %q", got.MinIOBucket, "hotkey-snapshots")
@@ -170,5 +170,17 @@ func TestLoadMinIOOverrides(t *testing.T) {
 	}
 	if got.ContentRetentionDays != 90 {
 		t.Errorf("ContentRetentionDays = %d, want 90", got.ContentRetentionDays)
+	}
+}
+
+func TestLoadMinIORetentionDaysFallsBackWhenInvalid(t *testing.T) {
+	for _, value := range []string{"0", "-1", "70000", "not-a-number"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("HOTKEY_CONTENT_RETENTION_DAYS", value)
+			got := Load()
+			if got.ContentRetentionDays != 30 {
+				t.Fatalf("expected default retention days for %q, got %d", value, got.ContentRetentionDays)
+			}
+		})
 	}
 }
