@@ -166,7 +166,7 @@ func (h *Handler) UpdateTopic(c *gin.Context) {
 		for i, p := range *req.Platforms {
 			platforms[i] = svc.Platform(p)
 		}
-		input.Platforms = platforms
+		input.Platforms = &platforms
 	}
 	topic, err := h.service.UpdateTopic(c.Request.Context(), input)
 	if err != nil {
