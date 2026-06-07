@@ -1,6 +1,7 @@
 package mail
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/StephenQiu30/hotkey-server/internal/service/channel"
@@ -72,7 +73,11 @@ func (h *Handler) UpdateEmailPreferences(c *gin.Context) {
 			UserID:      account.ID,
 			DailySendAt: req.DailySendAt,
 		}); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid daily send time"})
+			if errors.Is(err, channel.ErrInvalidInput) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid daily send time"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to set daily send time"})
+			}
 			return
 		}
 	}
@@ -86,7 +91,11 @@ func (h *Handler) UpdateEmailPreferences(c *gin.Context) {
 
 	if req.WeeklySendAt != "" {
 		if err := h.channelService.SetUserWeeklySendAt(c.Request.Context(), account.ID, req.WeeklySendAt); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid weekly send time"})
+			if errors.Is(err, channel.ErrInvalidInput) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid weekly send time"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to set weekly send time"})
+			}
 			return
 		}
 	}
