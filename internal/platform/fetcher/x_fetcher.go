@@ -78,7 +78,7 @@ func (f *XFetcher) Fetch(ctx context.Context, source Source) ([]Item, error) {
 	for _, tweet := range apiResp.Data {
 		item := Item{
 			Title:      strings.TrimSpace(tweet.Text),
-			URL:        buildXTweetURL(tweet.AuthorID, tweet.ID),
+			URL:        buildXTweetURL(tweet.ID),
 			ExternalID: strings.TrimSpace(tweet.ID),
 		}
 		if parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(tweet.CreatedAt)); err == nil {
@@ -111,8 +111,8 @@ func handleXAPIError(resp *http.Response) error {
 	}
 }
 
-func buildXTweetURL(authorID, tweetID string) string {
-	if authorID == "" || tweetID == "" {
+func buildXTweetURL(tweetID string) string {
+	if tweetID == "" {
 		return ""
 	}
 	return fmt.Sprintf("https://x.com/i/status/%s", tweetID)

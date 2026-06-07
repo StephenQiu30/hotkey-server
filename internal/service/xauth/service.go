@@ -143,12 +143,13 @@ func (s *Service) GenerateAuthURL(ctx context.Context, state string) (AuthURLRes
 type ExchangeInput struct {
 	Code         string
 	State        string
+	SourceID     string // Required: associates credential with a source.
 	CodeVerifier string // If empty, looked up from stored state.
 }
 
-// ExchangeCode exchanges an authorization code for tokens.
+// ExchangeCode exchanges an authorization code for tokens and stores the credential.
 func (s *Service) ExchangeCode(ctx context.Context, input ExchangeInput) (TokenResult, error) {
-	if strings.TrimSpace(input.Code) == "" || strings.TrimSpace(input.State) == "" {
+	if strings.TrimSpace(input.Code) == "" || strings.TrimSpace(input.State) == "" || strings.TrimSpace(input.SourceID) == "" {
 		return TokenResult{}, ErrInvalidInput
 	}
 
@@ -168,6 +169,19 @@ func (s *Service) ExchangeCode(ctx context.Context, input ExchangeInput) (TokenR
 	token, err := s.exchanger.ExchangeCode(ctx, input.Code, codeVerifier, s.config)
 	if err != nil {
 		return TokenResult{}, fmt.Errorf("exchange code: %w", err)
+	}
+
+	// Store the credential for future use (status, refresh, revoke).
+	now := s.now().UTC()
+	if err := s.repo.StoreCredential(ctx, Credential{
+		SourceID:     strings.TrimSpace(input.SourceID),
+		AccessToken:  token.AccessToken,
+		RefreshToken: token.RefreshToken,
+		ExpiresAt:    token.ExpiresAt,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}); err != nil {
+		return TokenResult{}, fmt.Errorf("store credential: %w", err)
 	}
 
 	// Clean up the pending state.

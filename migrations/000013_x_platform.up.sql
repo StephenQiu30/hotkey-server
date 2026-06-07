@@ -5,8 +5,23 @@ ALTER TABLE sources DROP CONSTRAINT IF EXISTS sources_type_check;
 ALTER TABLE sources ADD CONSTRAINT sources_type_check CHECK (type IN ('rss', 'public_page', 'x'));
 
 -- X sources require compliance notes, same as public_page.
--- Update the existing compliance note constraint to include x.
-ALTER TABLE sources DROP CONSTRAINT IF EXISTS sources_type_compliance_check;
+-- Drop the original unnamed compliance constraint from 000004 by querying pg_constraint.
+DO $$
+DECLARE
+    conname text;
+BEGIN
+    SELECT c.conname INTO conname
+    FROM pg_constraint c
+    JOIN pg_class t ON c.conrelid = t.oid
+    WHERE t.relname = 'sources'
+      AND c.contype = 'c'
+      AND pg_get_constraintdef(c.oid) LIKE '%compliance_note%'
+      AND c.conname != 'sources_type_compliance_check';
+    IF conname IS NOT NULL THEN
+        EXECUTE 'ALTER TABLE sources DROP CONSTRAINT ' || quote_ident(conname);
+    END IF;
+END $$;
+
 ALTER TABLE sources ADD CONSTRAINT sources_type_compliance_check
     CHECK (type NOT IN ('public_page', 'x') OR compliance_note ~ E'\\S');
 

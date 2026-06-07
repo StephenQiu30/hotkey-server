@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 
 	servicexauth "github.com/StephenQiu30/hotkey-server/internal/service/xauth"
@@ -20,7 +21,7 @@ func New(service *servicexauth.Service) *Handler {
 	return &Handler{service: service}
 }
 
-// AuthURL returns an X OAuth authorization URL with PKCE parameters.
+// AuthURL returns an X OAuth authorization URL. The PKCE code verifier is stored server-side only.
 func (h *Handler) AuthURL(c *gin.Context) {
 	state := generateState()
 	result, err := h.service.GenerateAuthURL(c.Request.Context(), state)
@@ -29,24 +30,25 @@ func (h *Handler) AuthURL(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"authURL":      result.URL,
-		"state":        result.State,
-		"codeVerifier": result.CodeVerifier,
+		"authURL": result.URL,
+		"state":   result.State,
 	})
 }
 
-// Callback handles the OAuth callback from X.
+// Callback handles the OAuth callback from X and stores the credential.
 func (h *Handler) Callback(c *gin.Context) {
 	code := c.Query("code")
 	state := c.Query("state")
-	if code == "" || state == "" {
-		writeError(c, http.StatusBadRequest, "invalid_request", "missing code or state parameter")
+	sourceID := c.Query("sourceId")
+	if code == "" || state == "" || sourceID == "" {
+		writeError(c, http.StatusBadRequest, "invalid_request", "missing code, state, or sourceId parameter")
 		return
 	}
 
 	token, err := h.service.ExchangeCode(c.Request.Context(), servicexauth.ExchangeInput{
-		Code:  code,
-		State: state,
+		Code:     code,
+		State:    state,
+		SourceID: sourceID,
 	})
 	if err != nil {
 		if errors.Is(err, servicexauth.ErrInvalidState) {
@@ -58,9 +60,9 @@ func (h *Handler) Callback(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"accessToken":  token.AccessToken,
-		"refreshToken": token.RefreshToken,
-		"expiresAt":    token.ExpiresAt,
+		"accessToken": token.AccessToken,
+		"expiresAt":   token.ExpiresAt,
+		"sourceId":    sourceID,
 	})
 }
 
@@ -123,7 +125,7 @@ func writeError(c *gin.Context, status int, code string, message string) {
 func generateState() string {
 	data := make([]byte, 16)
 	if _, err := rand.Read(data); err != nil {
-		return hex.EncodeToString([]byte("fallback-state"))
+		panic(fmt.Sprintf("generate state: %v", err))
 	}
 	return hex.EncodeToString(data)
 }

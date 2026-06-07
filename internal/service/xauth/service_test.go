@@ -109,6 +109,7 @@ func TestExchangeCodeForTokenSuccess(t *testing.T) {
 	token, err := svc.ExchangeCode(context.Background(), xauth.ExchangeInput{
 		Code:         "auth_code_123",
 		State:        "state_exchange",
+		SourceID:     "src_x_exchange",
 		CodeVerifier: "", // Will be looked up from stored state
 	})
 	if err != nil {
@@ -120,6 +121,15 @@ func TestExchangeCodeForTokenSuccess(t *testing.T) {
 	if token.RefreshToken == "" {
 		t.Fatalf("expected non-empty refresh token")
 	}
+
+	// Verify credential was stored.
+	cred, err := svc.GetCredential(context.Background(), "src_x_exchange")
+	if err != nil {
+		t.Fatalf("get credential after exchange: %v", err)
+	}
+	if cred.AccessToken != token.AccessToken {
+		t.Fatalf("expected stored access token to match returned token")
+	}
 }
 
 func TestExchangeCodeRejectsInvalidState(t *testing.T) {
@@ -130,8 +140,9 @@ func TestExchangeCodeRejectsInvalidState(t *testing.T) {
 	})
 
 	_, err := svc.ExchangeCode(context.Background(), xauth.ExchangeInput{
-		Code:  "auth_code_123",
-		State: "nonexistent_state",
+		Code:     "auth_code_123",
+		State:    "nonexistent_state",
+		SourceID: "src_x_invalid",
 	})
 	if !errors.Is(err, xauth.ErrInvalidState) {
 		t.Fatalf("expected ErrInvalidState, got %v", err)
@@ -151,7 +162,8 @@ func TestExchangeCodeRejectsMismatchedState(t *testing.T) {
 	}
 
 	_, err = svc.ExchangeCode(context.Background(), xauth.ExchangeInput{
-		Code:  "auth_code_123",
+		Code:     "auth_code_123",
+		SourceID: "src_x_mismatch",
 		State: "state_b", // different state
 	})
 	if !errors.Is(err, xauth.ErrInvalidState) {
