@@ -15,6 +15,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/platform/redis"
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
 	"github.com/StephenQiu30/hotkey-server/internal/scheduler"
+	"github.com/StephenQiu30/hotkey-server/internal/service/mail"
 	"github.com/StephenQiu30/hotkey-server/internal/worker"
 )
 
@@ -28,10 +29,34 @@ func main() {
 	api := app.NewAPI(cfg, log)
 	redisClient := redis.NewClient(cfg.RedisURL, redis.Options{})
 	jobQueue := queue.NewRedisQueue(redisClient, queue.RedisQueueOptions{QueueName: "hotkey:jobs:pending"})
-	workerRuntime := worker.New(jobQueue, redisClient, log)
-	schedulerRuntime := scheduler.NewHourlyCollectScheduler(jobQueue, scheduler.HourlyCollectOptions{
-		SourceID: cfg.CollectSourceID,
+	mailService := mail.NewService(nil, nil, mail.Config{
+		Host:       cfg.SMTPHost,
+		Port:       cfg.SMTPPort,
+		Username:   cfg.SMTPUsername,
+		Password:   cfg.SMTPPassword,
+		From:       cfg.SMTPFrom,
+		TLS:        cfg.SMTPTLS,
+		StartTLS:   cfg.SMTPStartTLS,
+		Configured: cfg.SMTPHost != "",
 	})
+	workerRuntime := worker.New(jobQueue, redisClient, log,
+		worker.WithHandler(queue.JobTypeSendDailyEmail, worker.NewSendDailyEmailHandler(mailService)),
+		worker.WithHandler(queue.JobTypeSendWeeklyEmail, worker.NewSendWeeklyEmailHandler(mailService)),
+	)
+	dailyEmailScheduler := scheduler.NewDailyEmailScheduler(jobQueue, scheduler.DailyEmailOptions{
+		DefaultDailySendAt: "08:30",
+	})
+	weeklyEmailScheduler := scheduler.NewWeeklyEmailScheduler(jobQueue, scheduler.WeeklyEmailOptions{
+		DefaultWeeklySendAt: "09:00",
+		WeeklySendDay:       time.Monday,
+	})
+	schedulerRuntime := scheduler.NewCompositeScheduler(
+		scheduler.NewHourlyCollectScheduler(jobQueue, scheduler.HourlyCollectOptions{
+			SourceID: cfg.CollectSourceID,
+		}),
+		dailyEmailScheduler,
+		weeklyEmailScheduler,
+	)
 	runtime := app.NewRuntime(cfg, app.RuntimeComponents{
 		API:       api,
 		Worker:    workerRuntime,
