@@ -26,7 +26,7 @@ jobs:
       - name: Check old runtime is absent
         run: |
           test ! -d server
-          test ! -d scripts
+          # scripts/ is used by E2E infrastructure (e2e-setup.sh, e2e-teardown.sh)
           test ! -d sql
           test ! -d packages
           test ! -d deploy
