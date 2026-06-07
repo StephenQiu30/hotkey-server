@@ -175,5 +175,8 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	admin.GET("/adapters/:provider/health", adapterHandler.GetAdapterHealth)
 	admin.GET("/adapters/:provider/capabilities", adapterHandler.GetAdapterCapabilities)
 
+	admin.POST("/users/:userID/disable", auth.AdminDisableUser)
+	admin.POST("/users/:userID/revoke-tokens", auth.AdminRevokeAllTokens)
+
 	return router
 }

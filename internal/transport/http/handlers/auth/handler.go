@@ -138,6 +138,32 @@ func (h *Handler) AdminHealthz(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+func (h *Handler) AdminDisableUser(c *gin.Context) {
+	userID := c.Param("userID")
+	if userID == "" {
+		writeError(c, http.StatusBadRequest, "invalid_request", "user ID is required")
+		return
+	}
+	if err := h.service.DisableUser(c.Request.Context(), userID); err != nil {
+		writeError(c, http.StatusNotFound, "user_not_found", "user not found")
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) AdminRevokeAllTokens(c *gin.Context) {
+	userID := c.Param("userID")
+	if userID == "" {
+		writeError(c, http.StatusBadRequest, "invalid_request", "user ID is required")
+		return
+	}
+	if err := h.service.RevokeAllTokensForUser(c.Request.Context(), userID); err != nil {
+		writeError(c, http.StatusNotFound, "user_not_found", "user not found")
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func writeSession(c *gin.Context, session serviceauth.Session) {
 	c.JSON(http.StatusOK, gin.H{
 		"accessToken":  session.AccessToken,
