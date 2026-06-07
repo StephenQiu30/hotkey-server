@@ -104,3 +104,71 @@ func TestLoadSMTPPortFallsBackWhenOutOfRange(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadMinIODefaults(t *testing.T) {
+	t.Setenv("HOTKEY_MINIO_ENDPOINT", "")
+	t.Setenv("HOTKEY_MINIO_ACCESS_KEY", "")
+	t.Setenv("HOTKEY_MINIO_SECRET_KEY", "")
+	t.Setenv("HOTKEY_MINIO_BUCKET", "")
+	t.Setenv("HOTKEY_MINIO_USE_SSL", "")
+	t.Setenv("HOTKEY_MINIO_LOCATION", "")
+	t.Setenv("HOTKEY_CONTENT_RETENTION_DAYS", "")
+
+	got := Load()
+
+	if got.MinIOEndpoint != "localhost:9000" {
+		t.Errorf("MinIOEndpoint = %q, want %q", got.MinIOEndpoint, "localhost:9000")
+	}
+	if got.MinIOAccessKey != "minioadmin" {
+		t.Errorf("MinIOAccessKey = %q, want %q", got.MinIOAccessKey, "minioadmin")
+	}
+	if got.MinIOSecretKey != "minioadmin" {
+		t.Errorf("MinIOSecretKey = %q, want %q", got.MinIOSecretKey, "minioadmin")
+	}
+	if got.MinIOBucket != "hotkey-snapshots" {
+		t.Errorf("MinIOBucket = %q, want %q", got.MinIOBucket, "hotkey-snapshots")
+	}
+	if got.MinIOUseSSL {
+		t.Errorf("MinIOUseSSL = %v, want false", got.MinIOUseSSL)
+	}
+	if got.MinIOLocation != "us-east-1" {
+		t.Errorf("MinIOLocation = %q, want %q", got.MinIOLocation, "us-east-1")
+	}
+	if got.ContentRetentionDays != 30 {
+		t.Errorf("ContentRetentionDays = %d, want 30", got.ContentRetentionDays)
+	}
+}
+
+func TestLoadMinIOOverrides(t *testing.T) {
+	t.Setenv("HOTKEY_MINIO_ENDPOINT", "minio.example.com:443")
+	t.Setenv("HOTKEY_MINIO_ACCESS_KEY", "mykey")
+	t.Setenv("HOTKEY_MINIO_SECRET_KEY", "mysecret")
+	t.Setenv("HOTKEY_MINIO_BUCKET", "my-bucket")
+	t.Setenv("HOTKEY_MINIO_USE_SSL", "true")
+	t.Setenv("HOTKEY_MINIO_LOCATION", "eu-west-1")
+	t.Setenv("HOTKEY_CONTENT_RETENTION_DAYS", "90")
+
+	got := Load()
+
+	if got.MinIOEndpoint != "minio.example.com:443" {
+		t.Errorf("MinIOEndpoint = %q, want %q", got.MinIOEndpoint, "minio.example.com:443")
+	}
+	if got.MinIOAccessKey != "mykey" {
+		t.Errorf("MinIOAccessKey = %q, want %q", got.MinIOAccessKey, "mykey")
+	}
+	if got.MinIOSecretKey != "mysecret" {
+		t.Errorf("MinIOSecretKey = %q, want %q", got.MinIOSecretKey, "mysecret")
+	}
+	if got.MinIOBucket != "my-bucket" {
+		t.Errorf("MinIOBucket = %q, want %q", got.MinIOBucket, "my-bucket")
+	}
+	if !got.MinIOUseSSL {
+		t.Errorf("MinIOUseSSL = %v, want true", got.MinIOUseSSL)
+	}
+	if got.MinIOLocation != "eu-west-1" {
+		t.Errorf("MinIOLocation = %q, want %q", got.MinIOLocation, "eu-west-1")
+	}
+	if got.ContentRetentionDays != 90 {
+		t.Errorf("ContentRetentionDays = %d, want 90", got.ContentRetentionDays)
+	}
+}
