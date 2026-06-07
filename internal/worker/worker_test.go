@@ -2,12 +2,14 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
+	servicemail "github.com/StephenQiu30/hotkey-server/internal/service/mail"
 )
 
 func TestNewRejectsNilQueueAndDefaultsLogger(t *testing.T) {
@@ -134,6 +136,41 @@ func (q *completeFailQueue) Fail(_ context.Context, id string, err error) (queue
 	q.failed <- err
 	q.job.Status = queue.JobStatusFailed
 	return q.job, nil
+}
+
+func TestSendWeeklyEmailHandlerDelegatesToService(t *testing.T) {
+	svc := &fakeWeeklyEmailService{}
+	handler := NewSendWeeklyEmailHandler(svc)
+	payload, _ := json.Marshal(queue.SendWeeklyEmailPayload{
+		ReportID: "wr-1", RecipientUserID: "user-1",
+	})
+	job := queue.Job{ID: "job-1", Type: queue.JobTypeSendWeeklyEmail, Payload: payload, Attempt: 1}
+	if err := handler.Handle(context.Background(), job); err != nil {
+		t.Fatalf("handle failed: %v", err)
+	}
+	if svc.lastInput.ReportID != "wr-1" || svc.lastInput.RecipientUserID != "user-1" {
+		t.Fatalf("unexpected input: %+v", svc.lastInput)
+	}
+	if svc.lastInput.Attempt != 1 {
+		t.Fatalf("expected attempt 1, got %d", svc.lastInput.Attempt)
+	}
+}
+
+func TestSendWeeklyEmailHandlerRejectsEmptyPayload(t *testing.T) {
+	handler := NewSendWeeklyEmailHandler(&fakeWeeklyEmailService{})
+	job := queue.Job{ID: "job-1", Type: queue.JobTypeSendWeeklyEmail, Payload: json.RawMessage(`{}`), Attempt: 1}
+	if err := handler.Handle(context.Background(), job); err == nil {
+		t.Fatal("expected error for empty payload")
+	}
+}
+
+type fakeWeeklyEmailService struct {
+	lastInput servicemail.SendDailyEmailInput
+}
+
+func (s *fakeWeeklyEmailService) SendDailyEmail(_ context.Context, input servicemail.SendDailyEmailInput) (servicemail.Delivery, error) {
+	s.lastInput = input
+	return servicemail.Delivery{Status: servicemail.DeliveryStatusSent}, nil
 }
 
 func assertPanic(t *testing.T, fn func()) {
