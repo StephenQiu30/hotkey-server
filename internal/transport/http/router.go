@@ -4,18 +4,22 @@ import (
 	"context"
 
 	domainhotspot "github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/adapter"
 	serviceadmin "github.com/StephenQiu30/hotkey-server/internal/service/admin"
 	serviceauth "github.com/StephenQiu30/hotkey-server/internal/service/auth"
 	servicechannel "github.com/StephenQiu30/hotkey-server/internal/service/channel"
 	servicehotspot "github.com/StephenQiu30/hotkey-server/internal/service/hotspot"
+	servicemonitortopic "github.com/StephenQiu30/hotkey-server/internal/service/monitortopic"
 	servicereport "github.com/StephenQiu30/hotkey-server/internal/service/report"
 	servicerss "github.com/StephenQiu30/hotkey-server/internal/service/rss"
 	servicesource "github.com/StephenQiu30/hotkey-server/internal/service/source"
 	"github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers"
+	adapterhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/adapter"
 	adminhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/admin"
 	authhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/auth"
 	channelhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/channel"
 	hotspothandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/hotspot"
+	monitortopichandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/monitortopic"
 	reporthandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/report"
 	rsshandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/rss"
 	sourcehandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/source"
@@ -23,13 +27,15 @@ import (
 )
 
 type Dependencies struct {
-	AuthService    *serviceauth.Service
-	ChannelService *servicechannel.Service
-	SourceService  *servicesource.Service
-	AdminService   *serviceadmin.Service
-	ScoringService *servicehotspot.ScoringService
-	ReportService  *servicereport.Service
-	RSSService     *servicerss.Service
+	AuthService         *serviceauth.Service
+	ChannelService      *servicechannel.Service
+	SourceService       *servicesource.Service
+	AdminService        *serviceadmin.Service
+	ScoringService      *servicehotspot.ScoringService
+	ReportService       *servicereport.Service
+	RSSService          *servicerss.Service
+	MonitorTopicService *servicemonitortopic.Service
+	AdapterRegistry     *adapter.Registry
 }
 
 func NewRouter() *gin.Engine {
@@ -87,6 +93,9 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	if deps.RSSService == nil {
 		deps.RSSService = servicerss.NewService(servicerss.NewMemoryFeedRepository(), reportRepo, servicerss.Config{})
 	}
+	if deps.MonitorTopicService == nil {
+		deps.MonitorTopicService = servicemonitortopic.NewService(servicemonitortopic.NewMemoryRepository())
+	}
 
 	auth := authhandler.New(deps.AuthService)
 	channels := channelhandler.New(deps.ChannelService)
@@ -103,6 +112,12 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	hotspots := hotspothandler.New(deps.ScoringService)
 	reports := reporthandler.New(deps.ReportService)
 	rss := rsshandler.New(deps.RSSService)
+	topics := monitortopichandler.New(deps.MonitorTopicService)
+
+	if deps.AdapterRegistry == nil {
+		deps.AdapterRegistry = adapter.NewRegistry()
+	}
+	adapterHandler := adapterhandler.New(deps.AdapterRegistry)
 
 	adminObservability := adminhandler.New(deps.AdminService)
 	router.GET("/rss/channels/:channelCode", rss.PublicChannel)
@@ -130,6 +145,15 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	v1.GET("/me/rss", auth.AuthRequired(), rss.GetUserFeed)
 	v1.POST("/me/rss/reset", auth.AuthRequired(), rss.ResetUserFeed)
 	v1.DELETE("/me/rss", auth.AuthRequired(), rss.DisableUserFeed)
+	v1.GET("/me/topics", auth.AuthRequired(), topics.ListTopics)
+	v1.POST("/me/topics", auth.AuthRequired(), topics.CreateTopic)
+	v1.GET("/me/topics/:topicID", auth.AuthRequired(), topics.GetTopic)
+	v1.PATCH("/me/topics/:topicID", auth.AuthRequired(), topics.UpdateTopic)
+	v1.POST("/me/topics/:topicID/status", auth.AuthRequired(), topics.SetTopicStatus)
+	v1.DELETE("/me/topics/:topicID", auth.AuthRequired(), topics.DeleteTopic)
+	v1.GET("/me/topics/:topicID/keywords", auth.AuthRequired(), topics.ListKeywords)
+	v1.POST("/me/topics/:topicID/keywords", auth.AuthRequired(), topics.AddKeyword)
+	v1.DELETE("/me/topics/:topicID/keywords/:keywordID", auth.AuthRequired(), topics.DeleteKeyword)
 
 	admin := v1.Group("/admin", auth.AdminRequired(), adminObservability.AuditMiddleware())
 	admin.GET("/healthz", auth.AdminHealthz)
@@ -151,6 +175,10 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	admin.PATCH("/sources/:sourceID/status", sources.SetSourceStatus)
 	admin.GET("/sources/:sourceID/collection-runs", sources.ListCollectionRuns)
 	admin.POST("/sources/:sourceID/test-fetch", sources.TestFetch)
+
+	admin.GET("/adapters", adapterHandler.ListAdapters)
+	admin.GET("/adapters/:provider/health", adapterHandler.GetAdapterHealth)
+	admin.GET("/adapters/:provider/capabilities", adapterHandler.GetAdapterCapabilities)
 
 	return router
 }
