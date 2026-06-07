@@ -72,6 +72,7 @@ type Repository interface {
 	UpdateStatus(ctx context.Context, id string, status ItemStatus, duplicateOf string) error
 }
 
+// NewID generates a unique content item ID.
 func NewID() string {
 	var body [16]byte
 	if _, err := rand.Read(body[:]); err != nil {
@@ -80,6 +81,7 @@ func NewID() string {
 	return "item-" + hex.EncodeToString(body[:])
 }
 
+// CanonicalURL normalizes a URL by lowercasing scheme/host, removing tracking params, and cleaning the path.
 func CanonicalURL(rawURL string) (string, error) {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
@@ -121,6 +123,7 @@ func CanonicalURL(rawURL string) (string, error) {
 	return parsed.String(), nil
 }
 
+// ContentHash generates a SHA-256 hash from the title and snippet for deduplication.
 func ContentHash(input HashInput) string {
 	parts := []string{
 		normalizeText(input.Title),
@@ -177,6 +180,7 @@ type MemoryRepository struct {
 	byHash      map[string]string
 }
 
+// NewMemoryRepository creates an in-memory content repository.
 func NewMemoryRepository() *MemoryRepository {
 	return &MemoryRepository{
 		items:       make(map[string]SourceItem),
@@ -185,6 +189,7 @@ func NewMemoryRepository() *MemoryRepository {
 	}
 }
 
+// FindByCanonicalURL looks up a content item by its canonical URL.
 func (r *MemoryRepository) FindByCanonicalURL(_ context.Context, canonicalURL string) (SourceItem, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -195,6 +200,7 @@ func (r *MemoryRepository) FindByCanonicalURL(_ context.Context, canonicalURL st
 	return cloneItem(r.items[id]), nil
 }
 
+// FindByID looks up a content item by its ID.
 func (r *MemoryRepository) FindByID(_ context.Context, id string) (SourceItem, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -205,6 +211,7 @@ func (r *MemoryRepository) FindByID(_ context.Context, id string) (SourceItem, e
 	return cloneItem(item), nil
 }
 
+// FindByContentHash looks up a content item by its content hash.
 func (r *MemoryRepository) FindByContentHash(_ context.Context, contentHash string) (SourceItem, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -215,6 +222,7 @@ func (r *MemoryRepository) FindByContentHash(_ context.Context, contentHash stri
 	return cloneItem(r.items[id]), nil
 }
 
+// Create stores a new content item, returning an error if it already exists.
 func (r *MemoryRepository) Create(_ context.Context, item SourceItem) (SourceItem, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -247,6 +255,7 @@ func (r *MemoryRepository) UpdateStatus(_ context.Context, id string, status Ite
 	return nil
 }
 
+// List returns all content items in insertion order.
 func (r *MemoryRepository) List(_ context.Context) ([]SourceItem, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

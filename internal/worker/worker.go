@@ -291,10 +291,7 @@ func (h *CollectSourceHandler) collectViaFetcher(ctx context.Context, source ser
 
 	ingested := 0
 	for _, item := range items {
-		snippet := strings.TrimSpace(item.Snippet)
-		if snippet == "" {
-			snippet = strings.TrimSpace(item.Title)
-		}
+		snippet := strings.TrimSpace(item.Title)
 		if _, err := h.ingest.Ingest(ctx, CollectIngestInput{
 			SourceID:    source.ID,
 			Title:       item.Title,
