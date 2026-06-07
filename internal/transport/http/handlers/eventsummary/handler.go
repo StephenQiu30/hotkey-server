@@ -23,9 +23,12 @@ func (h *Handler) GetSummary(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "invalid_request", "eventID is required")
 		return
 	}
-	repo := h.service.Repository()
-	summary, err := repo.FindByEventID(c.Request.Context(), eventID)
+	summary, err := h.service.GetSummary(c.Request.Context(), eventID)
 	if err != nil {
+		if errors.Is(err, serviceeventsummary.ErrInvalidInput) {
+			writeError(c, http.StatusBadRequest, "invalid_request", err.Error())
+			return
+		}
 		if errors.Is(err, serviceeventsummary.ErrNotFound) {
 			writeError(c, http.StatusNotFound, "not_found", "event summary not found")
 			return

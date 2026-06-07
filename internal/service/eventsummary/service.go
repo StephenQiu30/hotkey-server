@@ -33,10 +33,15 @@ func (s *Service) SetMaxRetries(n int) {
 	s.maxRetries = n
 }
 
-// Repository returns the underlying summary repository.
-func (s *Service) Repository() SummaryRepository {
-	return s.repo
+// GetSummary retrieves an existing event summary by event ID.
+func (s *Service) GetSummary(ctx context.Context, eventID string) (EventSummary, error) {
+	if eventID == "" {
+		return EventSummary{}, fmt.Errorf("%w: eventID is required", ErrInvalidInput)
+	}
+	return s.repo.FindByEventID(ctx, eventID)
 }
+
+// GenerateSummary generates or refreshes an AI summary for the given event.
 
 // GenerateSummary generates or refreshes an AI summary for the given event.
 func (s *Service) GenerateSummary(ctx context.Context, input GenerateSummaryInput) (EventSummary, error) {
@@ -69,6 +74,9 @@ func (s *Service) GenerateSummary(ctx context.Context, input GenerateSummaryInpu
 }
 
 func (s *Service) callLLMWithRetry(ctx context.Context, prompt string) (string, error) {
+	if s.llm == nil {
+		return "", fmt.Errorf("LLM client is not configured")
+	}
 	var lastErr error
 	for i := 0; i < s.maxRetries; i++ {
 		resp, err := s.llm.GenerateReport(ctx, prompt)
@@ -83,9 +91,11 @@ func (s *Service) callLLMWithRetry(ctx context.Context, prompt string) (string, 
 func (s *Service) buildFailedSummary(input GenerateSummaryInput, existing EventSummary, isRefresh bool, llmErr error, now time.Time) EventSummary {
 	id := newID("es")
 	version := 1
+	createdAt := now
 	if isRefresh {
 		id = existing.ID
 		version = existing.Version + 1
+		createdAt = existing.CreatedAt
 	}
 	return EventSummary{
 		ID:            id,
@@ -96,7 +106,7 @@ func (s *Service) buildFailedSummary(input GenerateSummaryInput, existing EventS
 		LastError:     llmErr.Error(),
 		Version:       version,
 		SourceRefs:    buildSourceRefs(input.Items),
-		CreatedAt:     now,
+		CreatedAt:     createdAt,
 		UpdatedAt:     now,
 	}
 }
@@ -117,9 +127,11 @@ func (s *Service) buildSuccessSummary(input GenerateSummaryInput, existing Event
 
 	id := newID("es")
 	version := 1
+	createdAt := now
 	if isRefresh {
 		id = existing.ID
 		version = existing.Version + 1
+		createdAt = existing.CreatedAt
 	}
 
 	return EventSummary{
@@ -137,7 +149,7 @@ func (s *Service) buildSuccessSummary(input GenerateSummaryInput, existing Event
 		ModelStatus:   status,
 		Version:       version,
 		LowEvidence:   lowEvidence,
-		CreatedAt:     now,
+		CreatedAt:     createdAt,
 		UpdatedAt:     now,
 	}
 }

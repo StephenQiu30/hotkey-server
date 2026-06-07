@@ -71,9 +71,18 @@ type SendDailyEmailPayload struct {
 	RecipientUserID string `json:"recipient_user_id"`
 }
 
+type EventSummaryItem struct {
+	ID       string `json:"id"`
+	SourceID string `json:"sourceId"`
+	Title    string `json:"title"`
+	Snippet  string `json:"snippet"`
+	URL      string `json:"url"`
+}
+
 type GenerateEventSummaryPayload struct {
-	EventID string `json:"event_id"`
-	Title   string `json:"title"`
+	EventID string              `json:"event_id"`
+	Title   string              `json:"title"`
+	Items   []EventSummaryItem  `json:"items"`
 }
 
 func ValidatePayload(jobType JobType, payload json.RawMessage) error {
@@ -136,6 +145,9 @@ func ValidatePayload(jobType JobType, payload json.RawMessage) error {
 		}
 		if body.EventID == "" {
 			return errors.New("generate_event_summary payload requires event_id")
+		}
+		if body.Title == "" {
+			return errors.New("generate_event_summary payload requires title")
 		}
 	default:
 		return fmt.Errorf("unknown job type %q", jobType)

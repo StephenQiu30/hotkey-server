@@ -334,9 +334,20 @@ func (h *GenerateEventSummaryHandler) Handle(ctx context.Context, job queue.Job)
 	if payload.EventID == "" {
 		return errors.New("generate_event_summary payload missing event_id")
 	}
+	items := make([]serviceeventsummary.ItemInfo, len(payload.Items))
+	for i, item := range payload.Items {
+		items[i] = serviceeventsummary.ItemInfo{
+			ID:       item.ID,
+			SourceID: item.SourceID,
+			Title:    item.Title,
+			Snippet:  item.Snippet,
+			URL:      item.URL,
+		}
+	}
 	_, err := h.service.GenerateSummary(ctx, serviceeventsummary.GenerateSummaryInput{
 		EventID: payload.EventID,
 		Title:   payload.Title,
+		Items:   items,
 	})
 	return err
 }
