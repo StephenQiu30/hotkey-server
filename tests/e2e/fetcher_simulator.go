@@ -39,6 +39,7 @@ func (s *fetcherSimulator) behaviorValue() ProviderBehavior {
 }
 
 // Fetch simulates fetching items from a source URL, following the configured behavior.
+// ctx is accepted for interface compatibility but ignored by the simulator.
 func (s *fetcherSimulator) Fetch(ctx context.Context, sourceURL string) ([]map[string]string, error) {
 	b := s.behaviorValue()
 	switch b {

@@ -11,9 +11,10 @@ import (
 
 // smtpSink implements SMTPSink as an in-memory email capture server.
 type smtpSink struct {
-	mu      sync.Mutex
-	addr    string
-	records []EmailRecord
+	mu       sync.Mutex
+	addr     string
+	listener net.Listener
+	records  []EmailRecord
 }
 
 // newSMTPSinkImpl creates and starts a new instance of smtpSink on a random local port.
@@ -23,8 +24,9 @@ func newSMTPSinkImpl() (*smtpSink, error) {
 		return nil, fmt.Errorf("smtp sink listen: %w", err)
 	}
 	s := &smtpSink{
-		addr:    ln.Addr().String(),
-		records: make([]EmailRecord, 0),
+		addr:     ln.Addr().String(),
+		listener: ln,
+		records:  make([]EmailRecord, 0),
 	}
 	// Accept connections in background to keep port open
 	go func() {
@@ -70,7 +72,6 @@ func handleSMTPConn(conn net.Conn, sink *smtpSink) {
 				sink.mu.Unlock()
 				fmt.Fprintf(conn, "250 OK\r\n")
 				body = ""
-				subject = ""
 			} else {
 				body += line + "\r\n"
 			}
@@ -156,4 +157,12 @@ func (s *smtpSink) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.records = make([]EmailRecord, 0)
+}
+
+// Close stops the SMTP sink listener and releases resources.
+func (s *smtpSink) Close() error {
+	if s.listener != nil {
+		return s.listener.Close()
+	}
+	return nil
 }

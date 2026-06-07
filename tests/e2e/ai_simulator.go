@@ -42,6 +42,7 @@ func (s *aiSimulator) behaviorValue() ProviderBehavior {
 }
 
 // Embed simulates generating a vector embedding for the given text.
+// ctx is accepted for interface compatibility but ignored by the simulator.
 func (s *aiSimulator) Embed(ctx context.Context, text string) ([]float64, error) {
 	b := s.behaviorValue()
 	switch b {
@@ -61,6 +62,7 @@ func (s *aiSimulator) Embed(ctx context.Context, text string) ([]float64, error)
 }
 
 // Chat simulates an AI chat interaction for generating responses or reports.
+// ctx is accepted for interface compatibility but ignored by the simulator.
 func (s *aiSimulator) Chat(ctx context.Context, prompt string) (string, error) {
 	b := s.behaviorValue()
 	switch b {

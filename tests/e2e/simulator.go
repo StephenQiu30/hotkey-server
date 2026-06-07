@@ -53,6 +53,7 @@ type SMTPSink interface {
 	Addr() string
 	Records() []EmailRecord
 	Reset()
+	Close() error
 }
 
 // --- Fetcher Simulator Contract ---
