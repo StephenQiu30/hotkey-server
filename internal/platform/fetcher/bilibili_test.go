@@ -457,7 +457,6 @@ func TestBiliBiliFetcherMultipleVideoStatFields(t *testing.T) {
 
 func fakeBiliAPI(t *testing.T, routes map[string]any) *httptest.Server {
 	t.Helper()
-	t.Helper()
 	mux := http.NewServeMux()
 	for path, data := range routes {
 		pathCopy := path
