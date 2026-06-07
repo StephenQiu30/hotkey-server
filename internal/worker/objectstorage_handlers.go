@@ -86,7 +86,10 @@ func (h *StoreSnapshotHandler) Handle(ctx context.Context, job queue.Job) error 
 		CreatedAt: now,
 	}
 
-	return h.store.Put(ctx, obj, bytes.NewReader(data))
+	if err := h.store.Put(ctx, obj, bytes.NewReader(data)); err != nil {
+		return queue.NewRetryableError(err)
+	}
+	return nil
 }
 
 // CleanupExpiredObjectsHandler removes expired objects from storage.
