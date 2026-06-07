@@ -18,6 +18,7 @@ const (
 	SourceTypePublicPage SourceType = "public_page"
 	SourceTypeHackerNews SourceType = "hackernews"
 	SourceTypeWeChatMP   SourceType = "wechat_mp"
+	SourceTypeZhihu      SourceType = "zhihu"
 )
 
 type SourceStatus string
@@ -266,7 +267,7 @@ func buildSource(existing Source, name string, sourceType SourceType, rawURL str
 }
 
 func validSourceType(sourceType SourceType) bool {
-	return sourceType == SourceTypeRSS || sourceType == SourceTypePublicPage || sourceType == SourceTypeHackerNews || sourceType == SourceTypeWeChatMP
+	return sourceType == SourceTypeRSS || sourceType == SourceTypePublicPage || sourceType == SourceTypeHackerNews || sourceType == SourceTypeWeChatMP || sourceType == SourceTypeZhihu
 }
 
 func compactUnique(values []string) []string {

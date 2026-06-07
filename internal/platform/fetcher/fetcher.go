@@ -18,6 +18,7 @@ const (
 	SourceTypePublicPage SourceType = "public_page"
 	SourceTypeHackerNews SourceType = "hackernews"
 	SourceTypeWeChatMP   SourceType = "wechat_mp"
+	SourceTypeZhihu      SourceType = "zhihu"
 )
 
 type Source struct {
