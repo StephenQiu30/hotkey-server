@@ -591,6 +591,32 @@ func TestWeiboAdapterSkipsContentWithDeletedFlag(t *testing.T) {
 	}
 }
 
+func TestWeiboAdapter5xxIsTransient(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"internal server error"}`))
+	}))
+	defer srv.Close()
+
+	a := adapter.NewWeiboAdapter(adapter.WeiboAdapterConfig{
+		Name:        "weibo-search",
+		AccessToken: "test-token",
+		BaseURL:     srv.URL,
+	})
+
+	_, err := a.Collect(adapter.CollectInput{
+		SourceID: "src-weibo",
+		Provider: adapter.ProviderWeibo,
+		URL:      srv.URL + "/2/search/topics",
+	})
+	if err == nil {
+		t.Fatal("expected error for 500 response")
+	}
+	if !adapter.IsAdapterError(err, adapter.FailureClassTransient) {
+		t.Fatalf("expected FailureClassTransient for 500, got %v", err)
+	}
+}
+
 // --- Red: Health status ---
 
 func TestWeiboAdapterHealthInitiallyHealthy(t *testing.T) {
