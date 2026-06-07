@@ -141,6 +141,38 @@ func TestHackerNewsSourceDoesNotRequireComplianceNote(t *testing.T) {
 	}
 }
 
+func TestWeChatMPSourceRequiresComplianceNote(t *testing.T) {
+	ctx := context.Background()
+	svc := servicesource.NewService(servicesource.NewMemoryRepository())
+
+	if _, err := svc.CreateSource(ctx, servicesource.CreateSourceInput{
+		Name:             "WeChat MP",
+		Type:             servicesource.SourceTypeWeChatMP,
+		URL:              "https://mp.weixin.qq.com/s/abc123",
+		FetchIntervalMin: 60,
+	}); !errors.Is(err, servicesource.ErrComplianceNoteRequired) {
+		t.Fatalf("expected wechat_mp compliance note error, got %v", err)
+	}
+
+	created, err := svc.CreateSource(ctx, servicesource.CreateSourceInput{
+		Name:             "WeChat MP",
+		Type:             servicesource.SourceTypeWeChatMP,
+		URL:              "https://mp.weixin.qq.com/s/abc123",
+		ComplianceNote:   "Only collect publicly available WeChat articles.",
+		FetchIntervalMin: 60,
+		ChannelIDs:       []string{"chn_wechat"},
+	})
+	if err != nil {
+		t.Fatalf("create wechat_mp source: %v", err)
+	}
+	if created.Type != servicesource.SourceTypeWeChatMP {
+		t.Fatalf("expected wechat_mp type, got %s", created.Type)
+	}
+	if created.ComplianceNote == "" {
+		t.Fatal("expected compliance note to be set")
+	}
+}
+
 func TestCollectionRunsRecordSuccessAndFailure(t *testing.T) {
 	ctx := context.Background()
 	svc := servicesource.NewService(servicesource.NewMemoryRepository())
