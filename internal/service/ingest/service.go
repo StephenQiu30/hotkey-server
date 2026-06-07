@@ -50,12 +50,13 @@ func WithQuality(svc *quality.Service) Option {
 }
 
 type Input struct {
-	SourceID    string
-	Title       string
-	Snippet     string
-	URL         string
-	Language    string
-	PublishedAt *time.Time
+	SourceID     string
+	Title        string
+	Snippet      string
+	URL          string
+	Language     string
+	PublishedAt  *time.Time
+	MetadataOnly bool
 }
 
 type Result struct {
@@ -148,7 +149,7 @@ func (s *Service) Ingest(ctx context.Context, input Input) (Result, error) {
 		}
 		return Result{}, err
 	}
-	if created.Status == content.ItemStatusPrimary {
+	if created.Status == content.ItemStatusPrimary && !created.MetadataOnly {
 		if err := s.enqueueEmbedding(ctx, created.ID); err != nil {
 			return Result{}, err
 		}
@@ -185,10 +186,11 @@ func (s *Service) buildItem(input Input) (content.SourceItem, error) {
 			Snippet:      snippet,
 			CanonicalURL: canonicalURL,
 		}),
-		Language:  language,
-		Status:    content.ItemStatusPrimary,
-		CreatedAt: now,
-		UpdatedAt: now,
+		Language:     language,
+		MetadataOnly: input.MetadataOnly,
+		Status:       content.ItemStatusPrimary,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}, nil
 }
 

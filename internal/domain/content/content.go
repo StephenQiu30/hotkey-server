@@ -47,6 +47,7 @@ type SourceItem struct {
 	PublishedAt       *time.Time
 	ContentHash       string
 	Language          string
+	MetadataOnly      bool
 	Status            ItemStatus
 	DuplicateOfItemID string
 	FilterStatus      ItemFilterStatus
