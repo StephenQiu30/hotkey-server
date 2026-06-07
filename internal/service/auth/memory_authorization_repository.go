@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"database/sql"
 	"sync"
 	"time"
 
@@ -35,7 +34,7 @@ func (r *MemoryAuthorizationRepository) AuthorizationByID(_ context.Context, id 
 	defer r.mu.RUnlock()
 	az, exists := r.store[id]
 	if !exists {
-		return authorization.Authorization{}, sql.ErrNoRows
+		return authorization.Authorization{}, authorization.ErrNotFound
 	}
 	return az, nil
 }
@@ -58,13 +57,26 @@ func (r *MemoryAuthorizationRepository) UpdateAuthorizationStatus(_ context.Cont
 	defer r.mu.Unlock()
 	az, exists := r.store[id]
 	if !exists {
-		return sql.ErrNoRows
+		return authorization.ErrNotFound
 	}
 	az.Status = status
 	az.UpdatedAt = now
 	if status == authorization.StatusRevoked {
 		az.RevokedAt = &now
 	}
+	r.store[id] = az
+	return nil
+}
+
+func (r *MemoryAuthorizationRepository) TouchAuthorization(_ context.Context, id string, now time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	az, exists := r.store[id]
+	if !exists {
+		return authorization.ErrNotFound
+	}
+	az.LastCheckedAt = now
+	az.UpdatedAt = now
 	r.store[id] = az
 	return nil
 }

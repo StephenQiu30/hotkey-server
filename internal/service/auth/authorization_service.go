@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -18,6 +17,7 @@ type AuthorizationRepository interface {
 	AuthorizationByID(ctx context.Context, id string) (authorization.Authorization, error)
 	AuthorizationsByUserID(ctx context.Context, userID string) ([]authorization.Authorization, error)
 	UpdateAuthorizationStatus(ctx context.Context, id string, status authorization.Status, now time.Time) error
+	TouchAuthorization(ctx context.Context, id string, now time.Time) error
 	RevokeAllByUserID(ctx context.Context, userID string, now time.Time) error
 	DeleteAuthorizationsByUserID(ctx context.Context, userID string) error
 }
@@ -109,7 +109,7 @@ func (s *AuthorizationService) ConnectWithExpiry(ctx context.Context, input Conn
 func (s *AuthorizationService) Disconnect(ctx context.Context, userID string, azID string) error {
 	az, err := s.azRepo.AuthorizationByID(ctx, azID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, authorization.ErrNotFound) {
 			return authorization.ErrNotFound
 		}
 		return err
@@ -126,7 +126,7 @@ func (s *AuthorizationService) Disconnect(ctx context.Context, userID string, az
 func (s *AuthorizationService) HealthCheck(ctx context.Context, userID string, azID string) (authorization.Authorization, error) {
 	az, err := s.azRepo.AuthorizationByID(ctx, azID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, authorization.ErrNotFound) {
 			return authorization.Authorization{}, authorization.ErrNotFound
 		}
 		return authorization.Authorization{}, err
@@ -150,7 +150,10 @@ func (s *AuthorizationService) HealthCheck(ctx context.Context, userID string, a
 		return az, nil
 	}
 
-	// Update last checked time
+	// Persist last checked time
+	if err := s.azRepo.TouchAuthorization(ctx, azID, now); err != nil {
+		return authorization.Authorization{}, err
+	}
 	az.LastCheckedAt = now
 	az.UpdatedAt = now
 	return az, nil
