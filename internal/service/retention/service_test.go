@@ -18,14 +18,18 @@ func TestCleanupExpired_DeletesExpiredObjects(t *testing.T) {
 	past := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	future := time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	store.Put(ctx, objectstorage.Object{
+	if err := store.Put(ctx, objectstorage.Object{
 		Key:      "user1/src1/2026/01/01/expired",
 		Metadata: objectstorage.Metadata{UserID: "user1", ExpiresAt: &past},
-	}, bytes.NewReader(nil))
-	store.Put(ctx, objectstorage.Object{
+	}, bytes.NewReader(nil)); err != nil {
+		t.Fatalf("Put expired fixture: %v", err)
+	}
+	if err := store.Put(ctx, objectstorage.Object{
 		Key:      "user1/src1/2026/01/01/valid",
 		Metadata: objectstorage.Metadata{UserID: "user1", ExpiresAt: &future},
-	}, bytes.NewReader(nil))
+	}, bytes.NewReader(nil)); err != nil {
+		t.Fatalf("Put valid fixture: %v", err)
+	}
 
 	svc := NewService(store, slog.Default())
 	svc.now = func() time.Time { return time.Date(2026, 6, 7, 0, 0, 0, 0, time.UTC) }
@@ -63,18 +67,24 @@ func TestDeleteUserObjects_ByUserPrefix(t *testing.T) {
 	store := objectstorage.NewMemoryStore()
 	ctx := context.Background()
 
-	store.Put(ctx, objectstorage.Object{
+	if err := store.Put(ctx, objectstorage.Object{
 		Key:      "user1/src1/2026/01/01/a",
 		Metadata: objectstorage.Metadata{UserID: "user1"},
-	}, bytes.NewReader(nil))
-	store.Put(ctx, objectstorage.Object{
+	}, bytes.NewReader(nil)); err != nil {
+		t.Fatalf("Put fixture: %v", err)
+	}
+	if err := store.Put(ctx, objectstorage.Object{
 		Key:      "user1/src2/2026/01/02/b",
 		Metadata: objectstorage.Metadata{UserID: "user1"},
-	}, bytes.NewReader(nil))
-	store.Put(ctx, objectstorage.Object{
+	}, bytes.NewReader(nil)); err != nil {
+		t.Fatalf("Put fixture: %v", err)
+	}
+	if err := store.Put(ctx, objectstorage.Object{
 		Key:      "user2/src1/2026/01/01/c",
 		Metadata: objectstorage.Metadata{UserID: "user2"},
-	}, bytes.NewReader(nil))
+	}, bytes.NewReader(nil)); err != nil {
+		t.Fatalf("Put fixture: %v", err)
+	}
 
 	svc := NewService(store, slog.Default())
 
@@ -110,10 +120,12 @@ func TestDeleteUserObjects_MetadataMismatchSkips(t *testing.T) {
 	store := objectstorage.NewMemoryStore()
 	ctx := context.Background()
 
-	store.Put(ctx, objectstorage.Object{
+	if err := store.Put(ctx, objectstorage.Object{
 		Key:      "user1/src1/2026/01/01/orphan",
 		Metadata: objectstorage.Metadata{UserID: "user2"}, // mismatch
-	}, bytes.NewReader(nil))
+	}, bytes.NewReader(nil)); err != nil {
+		t.Fatalf("Put fixture: %v", err)
+	}
 
 	svc := NewService(store, slog.Default())
 
@@ -133,10 +145,12 @@ func TestDeleteUserObjects_DeleteError(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	store.MemoryStore.Put(ctx, objectstorage.Object{
+	if err := store.MemoryStore.Put(ctx, objectstorage.Object{
 		Key:      "user1/src1/2026/01/01/a",
 		Metadata: objectstorage.Metadata{UserID: "user1"},
-	}, bytes.NewReader(nil))
+	}, bytes.NewReader(nil)); err != nil {
+		t.Fatalf("Put fixture: %v", err)
+	}
 
 	svc := NewService(store, slog.Default())
 
