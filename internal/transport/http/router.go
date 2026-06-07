@@ -4,10 +4,12 @@ import (
 	"context"
 
 	domainhotspot "github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
+	domainobsidian "github.com/StephenQiu30/hotkey-server/internal/domain/obsidian"
 	serviceadmin "github.com/StephenQiu30/hotkey-server/internal/service/admin"
 	serviceauth "github.com/StephenQiu30/hotkey-server/internal/service/auth"
 	servicechannel "github.com/StephenQiu30/hotkey-server/internal/service/channel"
 	servicehotspot "github.com/StephenQiu30/hotkey-server/internal/service/hotspot"
+	serviceobsidian "github.com/StephenQiu30/hotkey-server/internal/service/obsidian"
 	servicereport "github.com/StephenQiu30/hotkey-server/internal/service/report"
 	servicerss "github.com/StephenQiu30/hotkey-server/internal/service/rss"
 	servicesource "github.com/StephenQiu30/hotkey-server/internal/service/source"
@@ -16,6 +18,7 @@ import (
 	authhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/auth"
 	channelhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/channel"
 	hotspothandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/hotspot"
+	obsidianhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/obsidian"
 	reporthandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/report"
 	rsshandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/rss"
 	sourcehandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/source"
@@ -23,13 +26,14 @@ import (
 )
 
 type Dependencies struct {
-	AuthService    *serviceauth.Service
-	ChannelService *servicechannel.Service
-	SourceService  *servicesource.Service
-	AdminService   *serviceadmin.Service
-	ScoringService *servicehotspot.ScoringService
-	ReportService  *servicereport.Service
-	RSSService     *servicerss.Service
+	AuthService     *serviceauth.Service
+	ChannelService  *servicechannel.Service
+	SourceService   *servicesource.Service
+	AdminService    *serviceadmin.Service
+	ScoringService  *servicehotspot.ScoringService
+	ReportService   *servicereport.Service
+	RSSService      *servicerss.Service
+	ObsidianService *serviceobsidian.Service
 }
 
 func NewRouter() *gin.Engine {
@@ -87,6 +91,9 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	if deps.RSSService == nil {
 		deps.RSSService = servicerss.NewService(servicerss.NewMemoryFeedRepository(), reportRepo, servicerss.Config{})
 	}
+	if deps.ObsidianService == nil {
+		deps.ObsidianService = serviceobsidian.NewService(domainobsidian.NewMemoryRepository(), nil, serviceobsidian.Config{})
+	}
 
 	auth := authhandler.New(deps.AuthService)
 	channels := channelhandler.New(deps.ChannelService)
@@ -103,6 +110,7 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	hotspots := hotspothandler.New(deps.ScoringService)
 	reports := reporthandler.New(deps.ReportService)
 	rss := rsshandler.New(deps.RSSService)
+	obsidian := obsidianhandler.New(deps.ObsidianService)
 
 	adminObservability := adminhandler.New(deps.AdminService)
 	router.GET("/rss/channels/:channelCode", rss.PublicChannel)
@@ -130,6 +138,11 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	v1.GET("/me/rss", auth.AuthRequired(), rss.GetUserFeed)
 	v1.POST("/me/rss/reset", auth.AuthRequired(), rss.ResetUserFeed)
 	v1.DELETE("/me/rss", auth.AuthRequired(), rss.DisableUserFeed)
+
+	v1.POST("/me/obsidian/connect", auth.AuthRequired(), obsidian.Connect)
+	v1.DELETE("/me/obsidian", auth.AuthRequired(), obsidian.Disconnect)
+	v1.GET("/me/obsidian", auth.AuthRequired(), obsidian.GetStatus)
+	v1.POST("/me/obsidian/sync", auth.AuthRequired(), obsidian.Sync)
 
 	admin := v1.Group("/admin", auth.AdminRequired(), adminObservability.AuditMiddleware())
 	admin.GET("/healthz", auth.AdminHealthz)
