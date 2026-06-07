@@ -11,6 +11,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/domain/content"
 	domainhotspot "github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/adapter"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/fetcher"
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
 	servicededup "github.com/StephenQiu30/hotkey-server/internal/service/dedup"
@@ -161,6 +162,10 @@ type SourceFetcher interface {
 	Fetch(context.Context, fetcher.Source) ([]fetcher.Item, error)
 }
 
+type AdapterCollector interface {
+	Collect(context.Context, adapter.CollectInput) (adapter.CollectOutput, error)
+}
+
 type IngestService interface {
 	Ingest(context.Context, CollectIngestInput) (ingest.Result, error)
 }
@@ -188,6 +193,7 @@ type EventSummaryService interface {
 type CollectSourceHandler struct {
 	sourceService SourceService
 	fetcher       SourceFetcher
+	adapter       AdapterCollector
 	ingest        IngestService
 	now           func() time.Time
 }
@@ -196,6 +202,15 @@ func NewCollectSourceHandler(sourceService SourceService, sourceFetcher SourceFe
 	return &CollectSourceHandler{
 		sourceService: sourceService,
 		fetcher:       sourceFetcher,
+		ingest:        ingestService,
+		now:           time.Now,
+	}
+}
+
+func NewCollectSourceHandlerWithAdapter(sourceService SourceService, adapterCollector AdapterCollector, ingestService IngestService) *CollectSourceHandler {
+	return &CollectSourceHandler{
+		sourceService: sourceService,
+		adapter:       adapterCollector,
 		ingest:        ingestService,
 		now:           time.Now,
 	}
@@ -215,6 +230,55 @@ func (h *CollectSourceHandler) Handle(ctx context.Context, job queue.Job) error 
 		_, _ = h.recordRun(ctx, payload.SourceID, servicesource.CollectionRunStatusFailed, 0, err.Error(), startedAt)
 		return err
 	}
+
+	var ingested int
+	if h.adapter != nil {
+		ingested, err = h.collectViaAdapter(ctx, source, startedAt)
+	} else {
+		ingested, err = h.collectViaFetcher(ctx, source, startedAt)
+	}
+	if err != nil {
+		_, _ = h.recordRun(ctx, source.ID, servicesource.CollectionRunStatusFailed, 0, err.Error(), startedAt)
+		return err
+	}
+	_, err = h.recordRun(ctx, source.ID, servicesource.CollectionRunStatusSuccess, ingested, "", startedAt)
+	return err
+}
+
+func (h *CollectSourceHandler) collectViaAdapter(ctx context.Context, source servicesource.Source, _ time.Time) (int, error) {
+	provider := sourceTypeToProvider(source.Type)
+	output, err := h.adapter.Collect(ctx, adapter.CollectInput{
+		SourceID: source.ID,
+		Provider: provider,
+		URL:      source.URL,
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	ingested := 0
+	for _, item := range output.Items {
+		snippet := strings.TrimSpace(item.Snippet)
+		if snippet == "" {
+			snippet = strings.TrimSpace(item.Title)
+		}
+		if _, err := h.ingest.Ingest(ctx, CollectIngestInput{
+			SourceID:     source.ID,
+			Title:        strings.TrimSpace(item.Title),
+			Snippet:      snippet,
+			URL:          item.URL,
+			Language:     item.Language,
+			PublishedAt:  item.PublishedAt,
+			MetadataOnly: item.MetadataOnly,
+		}); err != nil {
+			continue
+		}
+		ingested++
+	}
+	return ingested, nil
+}
+
+func (h *CollectSourceHandler) collectViaFetcher(ctx context.Context, source servicesource.Source, _ time.Time) (int, error) {
 	items, err := h.fetcher.Fetch(ctx, fetcher.Source{
 		ID:             source.ID,
 		Type:           fetcher.SourceType(source.Type),
@@ -222,16 +286,12 @@ func (h *CollectSourceHandler) Handle(ctx context.Context, job queue.Job) error 
 		ComplianceNote: source.ComplianceNote,
 	})
 	if err != nil {
-		_, _ = h.recordRun(ctx, source.ID, servicesource.CollectionRunStatusFailed, 0, err.Error(), startedAt)
-		return err
+		return 0, err
 	}
 
 	ingested := 0
 	for _, item := range items {
-		snippet := strings.TrimSpace(item.Snippet)
-		if snippet == "" {
-			snippet = strings.TrimSpace(item.Title)
-		}
+		snippet := strings.TrimSpace(item.Title)
 		if _, err := h.ingest.Ingest(ctx, CollectIngestInput{
 			SourceID:    source.ID,
 			Title:       item.Title,
@@ -244,8 +304,18 @@ func (h *CollectSourceHandler) Handle(ctx context.Context, job queue.Job) error 
 		}
 		ingested++
 	}
-	_, err = h.recordRun(ctx, source.ID, servicesource.CollectionRunStatusSuccess, ingested, "", startedAt)
-	return err
+	return ingested, nil
+}
+
+func sourceTypeToProvider(sourceType servicesource.SourceType) adapter.Provider {
+	switch sourceType {
+	case servicesource.SourceTypeRSS:
+		return adapter.ProviderRSS
+	case servicesource.SourceTypePublicPage:
+		return adapter.ProviderPublicPage
+	default:
+		return adapter.ProviderRSS
+	}
 }
 
 func (h *CollectSourceHandler) recordRun(ctx context.Context, sourceID string, status servicesource.CollectionRunStatus, itemsFetched int, message string, startedAt time.Time) (servicesource.CollectionRun, error) {

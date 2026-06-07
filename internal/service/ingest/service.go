@@ -50,12 +50,13 @@ func WithQuality(svc *quality.Service) Option {
 }
 
 type Input struct {
-	SourceID    string
-	Title       string
-	Snippet     string
-	URL         string
-	Language    string
-	PublishedAt *time.Time
+	SourceID     string
+	Title        string
+	Snippet      string
+	URL          string
+	Language     string
+	PublishedAt  *time.Time
+	MetadataOnly bool
 }
 
 type Result struct {
@@ -71,6 +72,7 @@ func NewService(repo Repository, jobQueue Queue, opts ...Option) *Service {
 	return svc
 }
 
+// Ingest processes an input item, deduplicating by canonical URL and content hash.
 func (s *Service) Ingest(ctx context.Context, input Input) (Result, error) {
 	// Normalize input if service is configured
 	ingestInput := input
@@ -148,7 +150,7 @@ func (s *Service) Ingest(ctx context.Context, input Input) (Result, error) {
 		}
 		return Result{}, err
 	}
-	if created.Status == content.ItemStatusPrimary {
+	if created.Status == content.ItemStatusPrimary && !created.MetadataOnly {
 		if err := s.enqueueEmbedding(ctx, created.ID); err != nil {
 			return Result{}, err
 		}
@@ -156,6 +158,7 @@ func (s *Service) Ingest(ctx context.Context, input Input) (Result, error) {
 	return Result{Item: created, Created: true}, nil
 }
 
+// buildItem constructs a SourceItem from the given input.
 func (s *Service) buildItem(input Input) (content.SourceItem, error) {
 	sourceID := strings.TrimSpace(input.SourceID)
 	title := strings.TrimSpace(input.Title)
@@ -185,13 +188,15 @@ func (s *Service) buildItem(input Input) (content.SourceItem, error) {
 			Snippet:      snippet,
 			CanonicalURL: canonicalURL,
 		}),
-		Language:  language,
-		Status:    content.ItemStatusPrimary,
-		CreatedAt: now,
-		UpdatedAt: now,
+		Language:     language,
+		MetadataOnly: input.MetadataOnly,
+		Status:       content.ItemStatusPrimary,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}, nil
 }
 
+// enqueueEmbedding enqueues a job to generate embeddings for the given item.
 func (s *Service) enqueueEmbedding(ctx context.Context, itemID string) error {
 	if s.queue == nil {
 		return nil
@@ -208,6 +213,7 @@ func (s *Service) enqueueEmbedding(ctx context.Context, itemID string) error {
 	return err
 }
 
+// cloneTime returns a UTC clone of the given time, or nil if the input is nil.
 func cloneTime(value *time.Time) *time.Time {
 	if value == nil {
 		return nil
