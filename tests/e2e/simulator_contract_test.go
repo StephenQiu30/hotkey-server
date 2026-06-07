@@ -3,6 +3,7 @@
 package e2e_test
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -110,16 +111,27 @@ func TestSMTPSink_Capture(t *testing.T) {
 	}
 	defer conn.Close()
 
-	// readLine reads a single SMTP response line from the server.
-	readLine := func() string {
+	reader := bufio.NewReader(conn)
+
+	// readSMTPReply reads SMTP reply lines until terminal line for code is reached.
+	readSMTPReply := func(expectCode string) string {
 		t.Helper()
 		_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
-		buf := make([]byte, 512)
-		n, err := conn.Read(buf)
-		if err != nil {
-			t.Fatalf("SMTP read: %v", err)
+		var all strings.Builder
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				t.Fatalf("SMTP read: %v", err)
+			}
+			all.WriteString(line)
+			// Terminal line per RFC SMTP reply framing: "XYZ " (not "XYZ-").
+			if strings.HasPrefix(line, expectCode+" ") {
+				return all.String()
+			}
+			if !strings.HasPrefix(line, expectCode+"-") {
+				t.Fatalf("unexpected SMTP reply line %q (want prefix %s)", line, expectCode)
+			}
 		}
-		return string(buf[:n])
 	}
 
 	// Minimal SMTP flow — write command and validate server response.
@@ -130,37 +142,37 @@ func TestSMTPSink_Capture(t *testing.T) {
 		}
 	}
 
-	resp := readLine() // 220 greeting
+	resp := readSMTPReply("220")
 	if !strings.HasPrefix(resp, "220") {
 		t.Fatalf("expected 220 greeting, got %q", resp)
 	}
 	writeCmd("EHLO localhost\r\n")
-	resp = readLine() // 250 EHLO
+	resp = readSMTPReply("250")
 	if !strings.HasPrefix(resp, "250") {
 		t.Fatalf("expected 250 for EHLO, got %q", resp)
 	}
 	writeCmd("MAIL FROM:<sender@example.com>\r\n")
-	resp = readLine() // 250 OK
+	resp = readSMTPReply("250")
 	if !strings.HasPrefix(resp, "250") {
 		t.Fatalf("expected 250 for MAIL FROM, got %q", resp)
 	}
 	writeCmd("RCPT TO:<receiver@example.com>\r\n")
-	resp = readLine() // 250 OK
+	resp = readSMTPReply("250")
 	if !strings.HasPrefix(resp, "250") {
 		t.Fatalf("expected 250 for RCPT TO, got %q", resp)
 	}
 	writeCmd("DATA\r\n")
-	resp = readLine() // 354
+	resp = readSMTPReply("354")
 	if !strings.HasPrefix(resp, "354") {
 		t.Fatalf("expected 354 for DATA, got %q", resp)
 	}
 	writeCmd("Subject: Test Subject\r\n\r\nTest Body\r\n.\r\n")
-	resp = readLine() // 250 OK
+	resp = readSMTPReply("250")
 	if !strings.HasPrefix(resp, "250") {
 		t.Fatalf("expected 250 for message body, got %q", resp)
 	}
 	writeCmd("QUIT\r\n")
-	resp = readLine() // 221
+	resp = readSMTPReply("221")
 	if !strings.HasPrefix(resp, "221") {
 		t.Fatalf("expected 221 for QUIT, got %q", resp)
 	}
