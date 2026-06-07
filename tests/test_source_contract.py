@@ -30,6 +30,22 @@ class SourceContractTest(unittest.TestCase):
         self.assertNotIn("CREATE TABLE IF NOT EXISTS", sql)
         self.assertNotIn("CREATE INDEX IF NOT EXISTS", sql)
 
+    def test_x_platform_migration_contract(self):
+        x_migration = ROOT / "migrations" / "000013_x_platform.up.sql"
+        if not x_migration.exists():
+            self.skipTest("X platform migration not found")
+        sql = x_migration.read_text(encoding="utf-8")
+
+        for required in [
+            "CREATE TABLE x_oauth_states",
+            "CREATE TABLE x_credentials",
+            "CHECK (type IN ('rss', 'public_page', 'x'))",
+            "access_token text NOT NULL",
+            "refresh_token text NOT NULL DEFAULT ''",
+            "code_verifier text NOT NULL",
+        ]:
+            self.assertIn(required, sql)
+
     def test_openapi_source_paths_are_documented(self):
         spec = OPENAPI.read_text(encoding="utf-8")
 
