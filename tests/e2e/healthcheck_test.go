@@ -53,7 +53,11 @@ func TestHealthCheck_Redis(t *testing.T) {
 }
 
 // TestHealthCheck_ServerHTTP verifies the E2E server responds to /healthz.
+// Skipped when HOTKEY_E2E_SERVER_URL is not set (e.g. CI without a running server).
 func TestHealthCheck_ServerHTTP(t *testing.T) {
+	if os.Getenv("HOTKEY_E2E_SERVER_URL") == "" {
+		t.Skip("HOTKEY_E2E_SERVER_URL not set, skipping server health check")
+	}
 	baseURL := e2eServerURL(t)
 	client := &http.Client{Timeout: 3 * time.Second}
 	resp, err := client.Get(baseURL + "/healthz")
