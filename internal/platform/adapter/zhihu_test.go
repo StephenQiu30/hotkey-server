@@ -238,8 +238,8 @@ func TestZhihuSimulatorTruncatesLongText(t *testing.T) {
 	}
 
 	result := output.Items[0]
-	if len(result.Snippet) > 500+20 { // allow for ellipsis
-		t.Errorf("snippet too long: %d chars, want <= ~500", len(result.Snippet))
+	if len(result.Snippet) > 503 { // 500 chars + "..."
+		t.Errorf("snippet too long: %d chars, want <= 503", len(result.Snippet))
 	}
 	if !strings.HasSuffix(result.Snippet, "...") {
 		t.Errorf("expected truncated snippet to end with '...', got suffix %q", result.Snippet[len(result.Snippet)-10:])
@@ -591,9 +591,9 @@ func TestZhihuSimulatorSupportsCollectFn(t *testing.T) {
 	}
 }
 
-// --- E2E acceptance: simulator returns deleted item ---
+// --- E2E acceptance: simulator returns error for deleted content ---
 
-func TestZhihuSimulatorE2EDeletedItemVisible(t *testing.T) {
+func TestZhihuSimulatorE2EDeletedItemReturnsError(t *testing.T) {
 	sim := adapter.NewZhihuSimulator(adapter.ZhihuSimulatorConfig{
 		CollectFn: func(input adapter.CollectInput) (adapter.CollectOutput, error) {
 			// Simulate: some items succeed, one is deleted
