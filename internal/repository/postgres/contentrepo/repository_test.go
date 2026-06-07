@@ -30,6 +30,10 @@ func TestRepositoryCreateInsertsSourceItemDedupeFields(t *testing.T) {
 			"zh",
 			string(content.ItemStatusDuplicate),
 			"item-primary",
+			string(content.ItemFilterStatusPassed),
+			"",
+			0.85,
+			true,
 			now,
 			now,
 		}},
@@ -48,6 +52,9 @@ func TestRepositoryCreateInsertsSourceItemDedupeFields(t *testing.T) {
 		Language:          "zh",
 		Status:            content.ItemStatusDuplicate,
 		DuplicateOfItemID: "item-primary",
+		FilterStatus:      content.ItemFilterStatusPassed,
+		QualityScore:      0.85,
+		Summarizable:      true,
 		CreatedAt:         now,
 		UpdatedAt:         now,
 	}
@@ -59,17 +66,68 @@ func TestRepositoryCreateInsertsSourceItemDedupeFields(t *testing.T) {
 	if !strings.Contains(driver.lastQuery(), "insert into source_items") {
 		t.Fatalf("expected insert into source_items, got %q", driver.lastQuery())
 	}
-	for _, want := range []string{"canonical_url", "content_hash", "language", "status", "duplicate_of_item_id"} {
+	for _, want := range []string{"canonical_url", "content_hash", "language", "status", "duplicate_of_item_id", "filter_status", "filter_reason", "quality_score", "summarizable"} {
 		if !strings.Contains(driver.lastQuery(), want) {
 			t.Fatalf("expected query to include %q, got %q", want, driver.lastQuery())
 		}
 	}
 	args := driver.lastArgs()
-	if len(args) != 13 {
-		t.Fatalf("expected 13 insert args, got %d", len(args))
+	if len(args) != 17 {
+		t.Fatalf("expected 17 insert args, got %d", len(args))
 	}
 	if args[5] != item.CanonicalURL || args[7] != item.ContentHash || args[10] != item.DuplicateOfItemID {
 		t.Fatalf("unexpected insert args: %#v", args)
+	}
+}
+
+func TestRepositoryCreateInsertsFilteredItemWithReason(t *testing.T) {
+	now := time.Date(2026, 5, 31, 2, 0, 0, 0, time.UTC)
+	driver := &recordingDriver{
+		rows: [][]driver.Value{{
+			"item-2",
+			"src-1",
+			"广告内容",
+			"推广片段",
+			"https://example.com/ad",
+			"https://example.com/ad",
+			nil,
+			"hash-2",
+			"zh",
+			string(content.ItemStatusPrimary),
+			"",
+			string(content.ItemFilterStatusFiltered),
+			"exclusion_word_match",
+			0.0,
+			false,
+			now,
+			now,
+		}},
+	}
+	db := openRecordingDB(t, driver)
+	repo := New(db)
+	item := content.SourceItem{
+		ID:           "item-2",
+		SourceID:     "src-1",
+		Title:        "广告内容",
+		Snippet:      "推广片段",
+		RawURL:       "https://example.com/ad",
+		CanonicalURL: "https://example.com/ad",
+		ContentHash:  "hash-2",
+		Language:     "zh",
+		Status:       content.ItemStatusPrimary,
+		FilterStatus: content.ItemFilterStatusFiltered,
+		FilterReason: "exclusion_word_match",
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+
+	if _, err := repo.Create(context.Background(), item); err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+	args := driver.lastArgs()
+	// filter_reason should be at index 12 (0-based: id,source_id,title,snippet,raw_url,canonical_url,published_at,content_hash,language,status,duplicate_of_item_id,filter_status,filter_reason,...)
+	if args[12] != "exclusion_word_match" {
+		t.Fatalf("expected filter_reason 'exclusion_word_match', got %q", args[12])
 	}
 }
 
@@ -88,6 +146,10 @@ func TestRepositoryFindByContentHashQueriesPrimaryItem(t *testing.T) {
 			"zh",
 			string(content.ItemStatusPrimary),
 			nil,
+			string(content.ItemFilterStatusPassed),
+			"",
+			0.9,
+			true,
 			now,
 			now,
 		}},
@@ -101,6 +163,9 @@ func TestRepositoryFindByContentHashQueriesPrimaryItem(t *testing.T) {
 	}
 	if item.ID != "item-1" || item.ContentHash != "hash-1" || item.Status != content.ItemStatusPrimary {
 		t.Fatalf("unexpected item: %+v", item)
+	}
+	if item.FilterStatus != content.ItemFilterStatusPassed || item.QualityScore != 0.9 || !item.Summarizable {
+		t.Fatalf("expected quality fields populated, got %+v", item)
 	}
 	if !strings.Contains(driver.lastQuery(), "where content_hash =") || !strings.Contains(driver.lastQuery(), "status = 'primary'") {
 		t.Fatalf("expected primary content hash lookup, got %q", driver.lastQuery())
@@ -191,7 +256,7 @@ type recordingRows struct {
 }
 
 func (r *recordingRows) Columns() []string {
-	return []string{"id", "source_id", "title", "snippet", "raw_url", "canonical_url", "published_at", "content_hash", "language", "status", "duplicate_of_item_id", "created_at", "updated_at"}
+	return []string{"id", "source_id", "title", "snippet", "raw_url", "canonical_url", "published_at", "content_hash", "language", "status", "duplicate_of_item_id", "filter_status", "filter_reason", "quality_score", "summarizable", "created_at", "updated_at"}
 }
 
 func (r *recordingRows) Close() error {

@@ -109,6 +109,70 @@ func TestRepositoryListCandidatesIncludesSourceChannelIDs(t *testing.T) {
 	}
 }
 
+func TestRepositoryListClustersLoadsKeywordsAndVector(t *testing.T) {
+	now := time.Date(2026, 5, 31, 3, 0, 0, 0, time.UTC)
+	driver := &recordingDriver{
+		rows: [][]driver.Value{{
+			"cluster-1",
+			"AI Daily",
+			"{ai,llm}",
+			"[0.1,0.2,0.3]",
+			now,
+			now,
+			now,
+			now,
+		}},
+	}
+	db := openRecordingDB(t, driver)
+	repo := New(db)
+
+	clusters, err := repo.ListClusters(context.Background())
+	if err != nil {
+		t.Fatalf("list clusters failed: %v", err)
+	}
+	if len(clusters) != 1 {
+		t.Fatalf("expected one cluster, got %d", len(clusters))
+	}
+	if len(clusters[0].Keywords) != 2 || clusters[0].Keywords[0] != "ai" || clusters[0].Keywords[1] != "llm" {
+		t.Fatalf("unexpected keywords: %v", clusters[0].Keywords)
+	}
+	if len(clusters[0].Centroid) != 3 {
+		t.Fatalf("unexpected centroid: %v", clusters[0].Centroid)
+	}
+}
+
+func TestRepositoryListClusterItemsJoinsSourceItem(t *testing.T) {
+	now := time.Date(2026, 5, 31, 3, 0, 0, 0, time.UTC)
+	driver := &recordingDriver{
+		rows: [][]driver.Value{{
+			"cluster-1",
+			"item-1",
+			0.95,
+			now,
+			"src-1",
+			"AI Title",
+			"https://example.com",
+			"chn-1,chn-2",
+		}},
+	}
+	db := openRecordingDB(t, driver)
+	repo := New(db)
+
+	items, err := repo.ListClusterItems(context.Background(), "cluster-1")
+	if err != nil {
+		t.Fatalf("list cluster items failed: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected one item, got %d", len(items))
+	}
+	if items[0].Title != "AI Title" || items[0].SourceID != "src-1" {
+		t.Fatalf("unexpected item data: %+v", items[0])
+	}
+	if len(items[0].ChannelIDs) != 2 || items[0].ChannelIDs[0] != "chn-1" {
+		t.Fatalf("unexpected channel ids: %v", items[0].ChannelIDs)
+	}
+}
+
 func openRecordingDB(t *testing.T, d *recordingDriver) *sql.DB {
 	t.Helper()
 	name := "hotspotrepo_test_" + strings.ReplaceAll(t.Name(), "/", "_")

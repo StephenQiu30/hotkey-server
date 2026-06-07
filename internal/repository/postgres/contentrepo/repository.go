@@ -18,7 +18,7 @@ func New(db *sql.DB) *Repository {
 
 func (r *Repository) FindByID(ctx context.Context, id string) (content.SourceItem, error) {
 	const query = `
-SELECT id, source_id, title, snippet, raw_url, canonical_url, published_at, content_hash, language, status, duplicate_of_item_id, created_at, updated_at
+SELECT id, source_id, title, snippet, raw_url, canonical_url, published_at, content_hash, language, status, duplicate_of_item_id, filter_status, filter_reason, quality_score, summarizable, created_at, updated_at
 FROM source_items
 WHERE id = $1`
 	item, err := scanItem(r.db.QueryRowContext(ctx, query, id))
@@ -30,7 +30,7 @@ WHERE id = $1`
 
 func (r *Repository) FindByCanonicalURL(ctx context.Context, canonicalURL string) (content.SourceItem, error) {
 	const query = `
-SELECT id, source_id, title, snippet, raw_url, canonical_url, published_at, content_hash, language, status, duplicate_of_item_id, created_at, updated_at
+SELECT id, source_id, title, snippet, raw_url, canonical_url, published_at, content_hash, language, status, duplicate_of_item_id, filter_status, filter_reason, quality_score, summarizable, created_at, updated_at
 FROM source_items
 WHERE canonical_url = $1`
 	item, err := scanItem(r.db.QueryRowContext(ctx, query, canonicalURL))
@@ -42,7 +42,7 @@ WHERE canonical_url = $1`
 
 func (r *Repository) FindByContentHash(ctx context.Context, contentHash string) (content.SourceItem, error) {
 	const query = `
-SELECT id, source_id, title, snippet, raw_url, canonical_url, published_at, content_hash, language, status, duplicate_of_item_id, created_at, updated_at
+SELECT id, source_id, title, snippet, raw_url, canonical_url, published_at, content_hash, language, status, duplicate_of_item_id, filter_status, filter_reason, quality_score, summarizable, created_at, updated_at
 FROM source_items
 WHERE content_hash = $1 AND status = 'primary'
 ORDER BY created_at ASC, id ASC
@@ -57,11 +57,11 @@ LIMIT 1`
 func (r *Repository) Create(ctx context.Context, item content.SourceItem) (content.SourceItem, error) {
 	const query = `
 INSERT INTO source_items (
-	id, source_id, title, snippet, raw_url, canonical_url, published_at, content_hash, language, status, duplicate_of_item_id, created_at, updated_at
+	id, source_id, title, snippet, raw_url, canonical_url, published_at, content_hash, language, status, duplicate_of_item_id, filter_status, filter_reason, quality_score, summarizable, created_at, updated_at
 ) VALUES (
-	$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULLIF($11, ''), $12, $13
+	$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULLIF($11, ''), $12, $13, $14, $15, $16, $17
 )
-RETURNING id, source_id, title, snippet, raw_url, canonical_url, published_at, content_hash, language, status, duplicate_of_item_id, created_at, updated_at`
+RETURNING id, source_id, title, snippet, raw_url, canonical_url, published_at, content_hash, language, status, duplicate_of_item_id, filter_status, filter_reason, quality_score, summarizable, created_at, updated_at`
 	created, err := scanItem(r.db.QueryRowContext(ctx, query,
 		item.ID,
 		item.SourceID,
@@ -74,6 +74,10 @@ RETURNING id, source_id, title, snippet, raw_url, canonical_url, published_at, c
 		item.Language,
 		item.Status,
 		item.DuplicateOfItemID,
+		item.FilterStatus,
+		item.FilterReason,
+		item.QualityScore,
+		item.Summarizable,
 		item.CreatedAt,
 		item.UpdatedAt,
 	))
@@ -84,6 +88,12 @@ RETURNING id, source_id, title, snippet, raw_url, canonical_url, published_at, c
 		return content.SourceItem{}, normalizeDBError(err)
 	}
 	return created, nil
+}
+
+func (r *Repository) UpdateStatus(ctx context.Context, id string, status content.ItemStatus, duplicateOf string) error {
+	const query = `UPDATE source_items SET status = $1, duplicate_of_item_id = NULLIF($2, ''), updated_at = NOW() WHERE id = $3`
+	_, err := r.db.ExecContext(ctx, query, string(status), duplicateOf, id)
+	return err
 }
 
 type scanner interface {
@@ -105,6 +115,10 @@ func scanItem(row scanner) (content.SourceItem, error) {
 		&item.Language,
 		&item.Status,
 		&duplicateOf,
+		&item.FilterStatus,
+		&item.FilterReason,
+		&item.QualityScore,
+		&item.Summarizable,
 		&item.CreatedAt,
 		&item.UpdatedAt,
 	)

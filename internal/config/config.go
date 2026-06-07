@@ -16,6 +16,7 @@ const (
 
 type Config struct {
 	HTTPAddr                   string
+	DatabaseURL                string
 	AuthTokenSecret            string
 	AccessTokenTTL             time.Duration
 	RefreshTokenTTL            time.Duration
@@ -41,6 +42,7 @@ type Config struct {
 func Load() Config {
 	return Config{
 		HTTPAddr:                   envOrDefault("HOTKEY_HTTP_ADDR", ":8080"),
+		DatabaseURL:                envOrDefault("HOTKEY_DATABASE_URL", "postgres://hotkey:hotkey@localhost:5432/hotkey?sslmode=disable"),
 		AuthTokenSecret:            os.Getenv("HOTKEY_AUTH_TOKEN_SECRET"),
 		AccessTokenTTL:             durationOrDefault("HOTKEY_AUTH_ACCESS_TOKEN_TTL", 15*time.Minute),
 		RefreshTokenTTL:            durationOrDefault("HOTKEY_AUTH_REFRESH_TOKEN_TTL", 30*24*time.Hour),
