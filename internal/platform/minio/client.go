@@ -146,7 +146,7 @@ func (c *Client) ListExpired(ctx context.Context, bucket string, before time.Tim
 		}
 
 		obj := statToObject(object.Key, info)
-		if obj.Metadata.ExpiresAt != nil && obj.Metadata.ExpiresAt.Before(before) {
+		if obj.Metadata.ExpiresAt != nil && !obj.Metadata.ExpiresAt.After(before) {
 			expired = append(expired, obj)
 		}
 	}
