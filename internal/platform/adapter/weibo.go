@@ -1,6 +1,7 @@
 package adapter
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -179,7 +180,7 @@ func (a *WeiboAdapter) fetchSearchResults(requestURL string) (*WeiboSearchRespon
 		requestURL = a.baseURL + "/2/search/topics"
 	}
 
-	req, err := http.NewRequest("GET", requestURL, nil)
+	req, err := http.NewRequestWithContext(context.Background(), "GET", requestURL, nil)
 	if err != nil {
 		return nil, NewAdapterError(FailureClassPermanent, "failed to create request", err)
 	}
@@ -216,6 +217,9 @@ func (a *WeiboAdapter) fetchSearchResults(requestURL string) (*WeiboSearchRespon
 	}
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
 		return nil, NewAdapterError(FailureClassPermanent, fmt.Sprintf("HTTP %d: content not found", resp.StatusCode), nil)
+	}
+	if resp.StatusCode >= 500 {
+		return nil, NewAdapterError(FailureClassTransient, fmt.Sprintf("HTTP %d: server error", resp.StatusCode), nil)
 	}
 	if resp.StatusCode >= 400 {
 		return nil, NewAdapterError(FailureClassPermanent, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(body)), nil)
