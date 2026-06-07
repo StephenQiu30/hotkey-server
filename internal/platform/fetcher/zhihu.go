@@ -4,10 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"time"
 )
-
-const defaultZhihuTimeout = 15 * time.Second
 
 // ZhihuFetcher fetches content from Zhihu platform.
 // Currently a stub that returns empty results; real API integration pending.
