@@ -61,17 +61,17 @@ func TestAuditLogAndFailedJobRetry(t *testing.T) {
 }
 
 func TestDeleteAccountReturnsCleanupTask(t *testing.T) {
-	repo := NewMemoryRepository()
-	repo.users["usr_1"] = UserRecord{
+	repo := admin.NewMemoryRepository()
+	repo.SetUser("usr_1", admin.UserRecord{
 		ID:           "usr_1",
 		Email:        "alice@example.com",
 		PasswordHash: "$2a$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ12",
 		Role:         "user",
 		Status:       "active",
-	}
-	repo.rssFeeds["usr_1"] = RSSFeedRecord{UserID: "usr_1", TokenHash: "hash_abc", Enabled: true}
-	repo.dailyReports = append(repo.dailyReports, DailyReportRecord{ID: "rpt_1", UserID: "usr_1", Date: "2026-06-01"})
-	repo.dailyReports = append(repo.dailyReports, DailyReportRecord{ID: "rpt_2", UserID: "usr_2", Date: "2026-06-01"})
+	})
+	repo.SetRSSFeed("usr_1", admin.RSSFeedRecord{UserID: "usr_1", TokenHash: "hash_abc", Enabled: true})
+	repo.AddDailyReport(admin.DailyReportRecord{ID: "rpt_1", UserID: "usr_1", Date: "2026-06-01"})
+	repo.AddDailyReport(admin.DailyReportRecord{ID: "rpt_2", UserID: "usr_2", Date: "2026-06-01"})
 
 	svc := admin.NewService(repo, admin.Config{})
 	ctx := context.Background()
@@ -87,19 +87,20 @@ func TestDeleteAccountReturnsCleanupTask(t *testing.T) {
 		t.Fatalf("expected completed cleanup status, got %s", task.Status)
 	}
 
-	if _, exists := repo.users["usr_1"]; exists {
+	if repo.HasUser("usr_1") {
 		t.Fatalf("expected user usr_1 to be deleted")
 	}
-	if len(repo.rssFeeds) != 0 {
-		t.Fatalf("expected rss feeds cleaned up, got %d", len(repo.rssFeeds))
+	if repo.RSSFeedCount() != 0 {
+		t.Fatalf("expected rss feeds cleaned up, got %d", repo.RSSFeedCount())
 	}
-	if len(repo.dailyReports) != 1 || repo.dailyReports[0].UserID != "usr_2" {
-		t.Fatalf("expected only usr_2 daily reports remaining, got %#v", repo.dailyReports)
+	reports := repo.DailyReports()
+	if len(reports) != 1 || reports[0].UserID != "usr_2" {
+		t.Fatalf("expected only usr_2 daily reports remaining, got %#v", reports)
 	}
 }
 
 func TestDeleteAccountRejectsInvalidInput(t *testing.T) {
-	svc := admin.NewService(NewMemoryRepository(), admin.Config{})
+	svc := admin.NewService(admin.NewMemoryRepository(), admin.Config{})
 	ctx := context.Background()
 
 	if _, err := svc.DeleteAccount(ctx, "   "); !errors.Is(err, admin.ErrInvalidInput) {
@@ -111,15 +112,15 @@ func TestDeleteAccountRejectsInvalidInput(t *testing.T) {
 }
 
 func TestDeleteAccountPartialFailureIsRetryable(t *testing.T) {
-	repo := NewMemoryRepository()
-	repo.users["usr_1"] = UserRecord{
+	repo := admin.NewMemoryRepository()
+	repo.SetUser("usr_1", admin.UserRecord{
 		ID:           "usr_1",
 		Email:        "bob@example.com",
 		PasswordHash: "$2a$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ12",
 		Role:         "user",
 		Status:       "active",
-	}
-	repo.deleteReportErr = errors.New("database timeout")
+	})
+	repo.SetDeleteReportError(errors.New("database timeout"))
 
 	svc := admin.NewService(repo, admin.Config{})
 	ctx := context.Background()
@@ -136,7 +137,7 @@ func TestDeleteAccountPartialFailureIsRetryable(t *testing.T) {
 		t.Fatalf("expected delete_daily_reports step to be failed, got %#v", task.Steps)
 	}
 
-	repo.deleteReportErr = nil
+	repo.SetDeleteReportError(nil)
 	retried, err := svc.RetryCleanup(ctx, task.ID)
 	if err != nil {
 		t.Fatalf("retry cleanup returned error: %v", err)
@@ -147,7 +148,7 @@ func TestDeleteAccountPartialFailureIsRetryable(t *testing.T) {
 }
 
 func TestAuditLogSanitizesSensitiveFields(t *testing.T) {
-	svc := admin.NewService(NewMemoryRepository(), admin.Config{})
+	svc := admin.NewService(admin.NewMemoryRepository(), admin.Config{})
 	ctx := context.Background()
 
 	entry, err := svc.RecordAuditLog(ctx, admin.AuditLogInput{
@@ -181,12 +182,12 @@ func TestAuditLogSanitizesSensitiveFields(t *testing.T) {
 }
 
 func TestCleanupStatusLookup(t *testing.T) {
-	repo := NewMemoryRepository()
-	repo.users["usr_1"] = UserRecord{
+	repo := admin.NewMemoryRepository()
+	repo.SetUser("usr_1", admin.UserRecord{
 		ID:     "usr_1",
 		Email:  "carol@example.com",
 		Status: "active",
-	}
+	})
 	svc := admin.NewService(repo, admin.Config{})
 	ctx := context.Background()
 
