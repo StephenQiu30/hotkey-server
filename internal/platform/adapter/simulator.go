@@ -47,24 +47,42 @@ func (s *Simulator) Provider() Provider {
 
 func (s *Simulator) Collect(input CollectInput) (CollectOutput, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	s.lastCall = &input
+	collectFn := s.config.CollectFn
+	collectErr := s.config.CollectErr
+	items := make([]NormalizedItem, len(s.config.Items))
+	copy(items, s.config.Items)
+	s.mu.Unlock()
 
-	if s.config.CollectFn != nil {
-		output, err := s.config.CollectFn(input)
+	if collectFn != nil {
+		output, err := collectFn(input)
+		s.mu.Lock()
 		s.updateHealth(err)
+		s.mu.Unlock()
 		return output, err
 	}
 
-	if s.config.CollectErr != nil {
-		s.updateHealth(s.config.CollectErr)
-		return CollectOutput{}, s.config.CollectErr
+	if collectErr != nil {
+		s.mu.Lock()
+		s.updateHealth(collectErr)
+		s.mu.Unlock()
+		return CollectOutput{}, collectErr
 	}
 
+	s.mu.Lock()
 	s.updateHealth(nil)
+	s.mu.Unlock()
+	for i := range items {
+		if items[i].IdempotencyKey == "" {
+			keySource := items[i].URL
+			if keySource == "" {
+				keySource = items[i].ExternalID
+			}
+			items[i].IdempotencyKey = NewIdempotencyKey(input.SourceID, keySource)
+		}
+	}
 	return CollectOutput{
-		Items: s.config.Items,
+		Items: items,
 	}, nil
 }
 
