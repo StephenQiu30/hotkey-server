@@ -83,3 +83,15 @@ func (r *MemoryRepository) RevokeRefreshToken(_ context.Context, tokenHash strin
 	r.refreshByHash[tokenHash] = token
 	return nil
 }
+
+func (r *MemoryRepository) RevokeRefreshTokensByUserID(_ context.Context, userID string, revokedAt time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for hash, token := range r.refreshByHash {
+		if token.UserID == userID && token.RevokedAt == nil {
+			token.RevokedAt = &revokedAt
+			r.refreshByHash[hash] = token
+		}
+	}
+	return nil
+}

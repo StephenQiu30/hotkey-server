@@ -38,6 +38,7 @@ type Repository interface {
 	CreateRefreshToken(ctx context.Context, token RefreshToken) error
 	RefreshTokenByHash(ctx context.Context, tokenHash string) (RefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, tokenHash string, revokedAt time.Time) error
+	RevokeRefreshTokensByUserID(ctx context.Context, userID string, revokedAt time.Time) error
 }
 
 type RefreshToken struct {
@@ -152,6 +153,13 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 		return ErrInvalidRefreshToken
 	}
 	return s.repo.RevokeRefreshToken(ctx, hashToken(refreshToken), s.now().UTC())
+}
+
+func (s *Service) RevokeAllUserTokens(ctx context.Context, userID string) error {
+	if strings.TrimSpace(userID) == "" {
+		return ErrInvalidRefreshToken
+	}
+	return s.repo.RevokeRefreshTokensByUserID(ctx, strings.TrimSpace(userID), s.now().UTC())
 }
 
 func (s *Service) CurrentUser(ctx context.Context, accessToken string) (user.User, error) {

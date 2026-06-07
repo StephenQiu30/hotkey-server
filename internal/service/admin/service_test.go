@@ -99,6 +99,40 @@ func TestDeleteAccountReturnsCleanupTask(t *testing.T) {
 	}
 }
 
+func TestDeleteAccountRevokesAllTokens(t *testing.T) {
+	repo := admin.NewMemoryRepository()
+	repo.SetUser("usr_1", admin.UserRecord{
+		ID:           "usr_1",
+		Email:        "alice@example.com",
+		PasswordHash: "$2a$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ12",
+		Role:         "user",
+		Status:       "active",
+	})
+
+	revokeCalled := false
+	svc := admin.NewService(repo, admin.Config{
+		RevokeAllTokensFunc: func(ctx context.Context, userID string) error {
+			revokeCalled = true
+			if userID != "usr_1" {
+				t.Fatalf("expected userID usr_1, got %s", userID)
+			}
+			return nil
+		},
+	})
+	ctx := context.Background()
+
+	task, err := svc.DeleteAccount(ctx, "usr_1")
+	if err != nil {
+		t.Fatalf("delete account returned error: %v", err)
+	}
+	if !revokeCalled {
+		t.Fatal("expected RevokeAllTokensFunc to be called")
+	}
+	if task.Status != admin.CleanupStatusCompleted {
+		t.Fatalf("expected completed cleanup status, got %s", task.Status)
+	}
+}
+
 func TestDeleteAccountRejectsInvalidInput(t *testing.T) {
 	svc := admin.NewService(admin.NewMemoryRepository(), admin.Config{})
 	ctx := context.Background()

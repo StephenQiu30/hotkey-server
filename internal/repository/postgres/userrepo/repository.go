@@ -108,6 +108,12 @@ func (r *Repository) RevokeRefreshToken(ctx context.Context, tokenHash string, r
 	return nil
 }
 
+func (r *Repository) RevokeRefreshTokensByUserID(ctx context.Context, userID string, revokedAt time.Time) error {
+	const query = `UPDATE refresh_tokens SET revoked_at = $1 WHERE user_id = $2 AND revoked_at IS NULL`
+	_, err := r.db.ExecContext(ctx, query, revokedAt, userID)
+	return err
+}
+
 type userScanner interface {
 	Scan(dest ...any) error
 }

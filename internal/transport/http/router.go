@@ -94,6 +94,9 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 					UpdatedAt: src.UpdatedAt,
 				}, nil
 			},
+			RevokeAllTokensFunc: func(ctx context.Context, userID string) error {
+				return deps.AuthService.RevokeAllUserTokens(ctx, userID)
+			},
 		})
 	}
 	var reportRepo servicereport.ReportRepository

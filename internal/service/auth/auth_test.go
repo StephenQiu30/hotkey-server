@@ -147,6 +147,47 @@ func TestRefreshRejectsRevokedAndExpiredTokens(t *testing.T) {
 	}
 }
 
+func TestRevokeAllUserTokensRevokesAllRefreshTokens(t *testing.T) {
+	service := newTestService(t)
+	ctx := context.Background()
+
+	_, err := service.Register(ctx, auth.RegisterInput{
+		Email:    "revokeall@example.com",
+		Password: "correct horse battery staple",
+	})
+	if err != nil {
+		t.Fatalf("register returned error: %v", err)
+	}
+
+	session1, err := service.Login(ctx, auth.LoginInput{
+		Email:    "revokeall@example.com",
+		Password: "correct horse battery staple",
+	})
+	if err != nil {
+		t.Fatalf("login 1 returned error: %v", err)
+	}
+	session2, err := service.Login(ctx, auth.LoginInput{
+		Email:    "revokeall@example.com",
+		Password: "correct horse battery staple",
+	})
+	if err != nil {
+		t.Fatalf("login 2 returned error: %v", err)
+	}
+
+	if err := service.RevokeAllUserTokens(ctx, session1.User.ID); err != nil {
+		t.Fatalf("revoke all tokens returned error: %v", err)
+	}
+
+	_, err = service.Refresh(ctx, session1.RefreshToken)
+	if !errors.Is(err, auth.ErrInvalidRefreshToken) {
+		t.Fatalf("expected session1 refresh to fail after revoke all, got %v", err)
+	}
+	_, err = service.Refresh(ctx, session2.RefreshToken)
+	if !errors.Is(err, auth.ErrInvalidRefreshToken) {
+		t.Fatalf("expected session2 refresh to fail after revoke all, got %v", err)
+	}
+}
+
 func newTestService(t *testing.T) *auth.Service {
 	t.Helper()
 	return newTestServiceWithTTL(t, 24*time.Hour)

@@ -149,12 +149,13 @@ type RevokedSource struct {
 }
 
 type Config struct {
-	PostgreSQLPing   func(context.Context) error
-	RedisPing        func(context.Context) error
-	DashScopeKey     string
-	SMTPHost         string
-	Now              func() time.Time
-	RevokeSourceFunc func(ctx context.Context, sourceID string) (RevokedSource, error)
+	PostgreSQLPing     func(context.Context) error
+	RedisPing          func(context.Context) error
+	DashScopeKey       string
+	SMTPHost           string
+	Now                func() time.Time
+	RevokeSourceFunc   func(ctx context.Context, sourceID string) (RevokedSource, error)
+	RevokeAllTokensFunc func(ctx context.Context, userID string) error
 }
 
 type Service struct {
@@ -366,6 +367,7 @@ func (s *Service) DeleteAccount(ctx context.Context, userID string) (CleanupTask
 		name string
 		fn   func(context.Context, string) error
 	}{
+		{"revoke_all_tokens", s.revokeAllTokensStep},
 		{"delete_daily_reports", s.repo.DeleteDailyReportsByUser},
 		{"delete_rss_feeds", s.repo.DeleteRSSFeedByUser},
 		{"delete_user", s.repo.DeleteUser},
@@ -418,6 +420,8 @@ func (s *Service) RetryCleanup(ctx context.Context, taskID string) (CleanupTask,
 		}
 		var stepErr error
 		switch step.Name {
+		case "revoke_all_tokens":
+			stepErr = s.revokeAllTokensStep(ctx, task.UserID)
 		case "delete_daily_reports":
 			stepErr = s.repo.DeleteDailyReportsByUser(ctx, task.UserID)
 		case "delete_rss_feeds":
@@ -450,6 +454,13 @@ func (s *Service) CleanupStatus(ctx context.Context, taskID string) (CleanupTask
 		return CleanupTask{}, ErrInvalidInput
 	}
 	return s.repo.CleanupTaskByID(ctx, taskID)
+}
+
+func (s *Service) revokeAllTokensStep(ctx context.Context, userID string) error {
+	if s.cfg.RevokeAllTokensFunc == nil {
+		return nil
+	}
+	return s.cfg.RevokeAllTokensFunc(ctx, userID)
 }
 
 func (s *Service) RevokeSource(ctx context.Context, sourceID string) (RevokedSource, error) {
