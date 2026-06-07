@@ -108,13 +108,19 @@ func TestSMTPSink_Capture(t *testing.T) {
 	}
 	defer conn.Close()
 
-	// Minimal SMTP flow
-	fmt.Fprintf(conn, "EHLO localhost\r\n")
-	fmt.Fprintf(conn, "MAIL FROM:<sender@example.com>\r\n")
-	fmt.Fprintf(conn, "RCPT TO:<receiver@example.com>\r\n")
-	fmt.Fprintf(conn, "DATA\r\n")
-	fmt.Fprintf(conn, "Subject: Test Subject\r\n\r\nTest Body\r\n.\r\n")
-	fmt.Fprintf(conn, "QUIT\r\n")
+	// Minimal SMTP flow — each write must succeed or the test is invalid.
+	writeCmd := func(format string, args ...any) {
+		t.Helper()
+		if _, err := fmt.Fprintf(conn, format, args...); err != nil {
+			t.Fatalf("SMTP write %q: %v", fmt.Sprintf(format, args...), err)
+		}
+	}
+	writeCmd("EHLO localhost\r\n")
+	writeCmd("MAIL FROM:<sender@example.com>\r\n")
+	writeCmd("RCPT TO:<receiver@example.com>\r\n")
+	writeCmd("DATA\r\n")
+	writeCmd("Subject: Test Subject\r\n\r\nTest Body\r\n.\r\n")
+	writeCmd("QUIT\r\n")
 
 	// Wait a bit for sink to process
 	time.Sleep(100 * time.Millisecond)
