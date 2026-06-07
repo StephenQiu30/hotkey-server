@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"database/sql"
 	"errors"
 	"net/http"
 	"strings"
@@ -145,7 +146,11 @@ func (h *Handler) AdminDisableUser(c *gin.Context) {
 		return
 	}
 	if err := h.service.DisableUser(c.Request.Context(), userID); err != nil {
-		writeError(c, http.StatusNotFound, "user_not_found", "user not found")
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(c, http.StatusNotFound, "user_not_found", "user not found")
+		} else {
+			writeError(c, http.StatusInternalServerError, "internal_error", "failed to disable user")
+		}
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -158,7 +163,11 @@ func (h *Handler) AdminRevokeAllTokens(c *gin.Context) {
 		return
 	}
 	if err := h.service.RevokeAllTokensForUser(c.Request.Context(), userID); err != nil {
-		writeError(c, http.StatusNotFound, "user_not_found", "user not found")
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(c, http.StatusNotFound, "user_not_found", "user not found")
+		} else {
+			writeError(c, http.StatusInternalServerError, "internal_error", "failed to revoke tokens")
+		}
 		return
 	}
 	c.Status(http.StatusNoContent)
