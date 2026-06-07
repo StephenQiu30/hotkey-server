@@ -108,6 +108,39 @@ func TestSourceLifecycleValidationAndCollectionSelection(t *testing.T) {
 	}
 }
 
+func TestHackerNewsSourceDoesNotRequireComplianceNote(t *testing.T) {
+	ctx := context.Background()
+	svc := servicesource.NewService(servicesource.NewMemoryRepository())
+
+	created, err := svc.CreateSource(ctx, servicesource.CreateSourceInput{
+		Name:             "Hacker News Top",
+		Type:             servicesource.SourceTypeHackerNews,
+		URL:              "https://hacker-news.firebaseio.com/v0/topstories.json",
+		FetchIntervalMin: 30,
+		ChannelIDs:       []string{"chn_hn"},
+	})
+	if err != nil {
+		t.Fatalf("create hackernews source without compliance note: %v", err)
+	}
+	if created.Type != servicesource.SourceTypeHackerNews {
+		t.Fatalf("expected hackernews type, got %s", created.Type)
+	}
+	if created.ComplianceNote != "" {
+		t.Fatalf("expected empty compliance note for hackernews, got %q", created.ComplianceNote)
+	}
+	if created.Status != servicesource.SourceStatusEnabled {
+		t.Fatalf("expected enabled status, got %s", created.Status)
+	}
+
+	collectable, err := svc.ListCollectableSources(ctx)
+	if err != nil {
+		t.Fatalf("list collectable: %v", err)
+	}
+	if len(collectable) != 1 || collectable[0].ID != created.ID {
+		t.Fatalf("expected hackernews source to be collectable, got %#v", collectable)
+	}
+}
+
 func TestCollectionRunsRecordSuccessAndFailure(t *testing.T) {
 	ctx := context.Background()
 	svc := servicesource.NewService(servicesource.NewMemoryRepository())
