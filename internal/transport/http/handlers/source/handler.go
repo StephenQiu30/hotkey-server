@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Handler provides HTTP endpoints for managing content sources.
 type Handler struct {
 	service  *servicesource.Service
 	fetchers map[servicesource.SourceType]platformfetcher.Fetcher
@@ -29,14 +30,16 @@ type statusRequest struct {
 	Status string `json:"status"`
 }
 
+// New creates a Handler with the given service and optional fetcher overrides.
 func New(service *servicesource.Service, fetcherMaps ...map[servicesource.SourceType]platformfetcher.Fetcher) *Handler {
 	fetchers := map[servicesource.SourceType]platformfetcher.Fetcher{
-		servicesource.SourceTypeRSS:        platformfetcher.NewRSSFetcher(nil),
-		servicesource.SourceTypePublicPage: platformfetcher.NewPublicPageFetcher(nil),
-		servicesource.SourceTypeHackerNews: platformfetcher.NewHNFetcher(nil, platformfetcher.HNConfig{}),
-		servicesource.SourceTypeWeChatMP:   platformfetcher.NewWeChatMPFetcher(nil),
-		servicesource.SourceTypeZhihu:      platformfetcher.NewZhihuFetcher(nil),
-		servicesource.SourceTypeReddit:     platformfetcher.NewRedditFetcher(nil),
+		servicesource.SourceTypeRSS:         platformfetcher.NewRSSFetcher(nil),
+		servicesource.SourceTypePublicPage:  platformfetcher.NewPublicPageFetcher(nil),
+		servicesource.SourceTypeHackerNews:  platformfetcher.NewHNFetcher(nil, platformfetcher.HNConfig{}),
+		servicesource.SourceTypeWeChatMP:    platformfetcher.NewWeChatMPFetcher(nil),
+		servicesource.SourceTypeZhihu:       platformfetcher.NewZhihuFetcher(nil),
+		servicesource.SourceTypeReddit:      platformfetcher.NewRedditFetcher(nil),
+		servicesource.SourceTypeXiaohongshu: platformfetcher.NewXiaohongshuFetcher(nil),
 	}
 	if len(fetcherMaps) > 0 && fetcherMaps[0] != nil {
 		fetchers = fetcherMaps[0]
@@ -47,6 +50,7 @@ func New(service *servicesource.Service, fetcherMaps ...map[servicesource.Source
 	}
 }
 
+// ListSources returns all sources as a JSON response.
 func (h *Handler) ListSources(c *gin.Context) {
 	sources, err := h.service.ListSources(c.Request.Context())
 	if err != nil {
@@ -56,6 +60,7 @@ func (h *Handler) ListSources(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"sources": sourceResponses(sources)})
 }
 
+// CreateSource creates a new source from the JSON request body.
 func (h *Handler) CreateSource(c *gin.Context) {
 	var req sourceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -79,6 +84,7 @@ func (h *Handler) CreateSource(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"source": sourceResponse(source)})
 }
 
+// UpdateSource updates an existing source by ID.
 func (h *Handler) UpdateSource(c *gin.Context) {
 	var req sourceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -103,6 +109,7 @@ func (h *Handler) UpdateSource(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"source": sourceResponse(source)})
 }
 
+// SetSourceStatus enables or disables a source by ID.
 func (h *Handler) SetSourceStatus(c *gin.Context) {
 	var req statusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -121,6 +128,7 @@ func (h *Handler) SetSourceStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"source": sourceResponse(source)})
 }
 
+// ListCollectionRuns returns collection run history for a source.
 func (h *Handler) ListCollectionRuns(c *gin.Context) {
 	runs, err := h.service.ListCollectionRuns(c.Request.Context(), c.Param("sourceID"))
 	if err != nil {
@@ -130,6 +138,7 @@ func (h *Handler) ListCollectionRuns(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"collectionRuns": collectionRunResponses(runs)})
 }
 
+// TestFetch triggers a test fetch for a source and returns the result.
 func (h *Handler) TestFetch(c *gin.Context) {
 	ctx := c.Request.Context()
 	source, err := h.service.SourceByID(ctx, c.Param("sourceID"))

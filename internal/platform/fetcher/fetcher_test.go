@@ -88,6 +88,73 @@ func TestRSSFetcherReturnsBodyCloseError(t *testing.T) {
 	}
 }
 
+func TestXiaohongshuFetcherRejectsWrongSourceType(t *testing.T) {
+	f := fetcher.NewXiaohongshuFetcher(nil)
+	_, err := f.Fetch(context.Background(), fetcher.Source{
+		ID:             "src_xhs",
+		Type:           fetcher.SourceTypeRSS,
+		URL:            "https://www.xiaohongshu.com/explore/note-1",
+		ComplianceNote: "test",
+	})
+	if err == nil {
+		t.Fatal("expected error for wrong source type")
+	}
+}
+
+func TestXiaohongshuFetcherRequiresComplianceNote(t *testing.T) {
+	f := fetcher.NewXiaohongshuFetcher(nil)
+	_, err := f.Fetch(context.Background(), fetcher.Source{
+		ID:   "src_xhs",
+		Type: fetcher.SourceTypeXiaohongshu,
+		URL:  "https://www.xiaohongshu.com/explore/note-1",
+	})
+	if err == nil {
+		t.Fatal("expected error for missing compliance note")
+	}
+}
+
+func TestXiaohongshuFetcherReturnsPageTitleOnSuccess(t *testing.T) {
+	server := fakeHTTPServer(`<html><head><title>小红书笔记标题</title></head><body>content</body></html>`)
+
+	items, err := fetcher.NewXiaohongshuFetcher(server.Client()).Fetch(context.Background(), fetcher.Source{
+		ID:             "src_xhs",
+		Type:           fetcher.SourceTypeXiaohongshu,
+		URL:            server.URL,
+		ComplianceNote: "Only collect publicly visible notes.",
+	})
+	if err != nil {
+		t.Fatalf("fetch xiaohongshu: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected one item, got %d", len(items))
+	}
+	if items[0].Title != "小红书笔记标题" {
+		t.Fatalf("expected title %q, got %q", "小红书笔记标题", items[0].Title)
+	}
+}
+
+func TestXiaohongshuFetcherReturnsBodyCloseError(t *testing.T) {
+	closeErr := errors.New("close failed")
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       errReadCloser{Reader: bytes.NewBufferString(`<html><head><title>XHS</title></head></html>`), closeErr: closeErr},
+			Request:    req,
+		}, nil
+	})}
+
+	_, err := fetcher.NewXiaohongshuFetcher(client).Fetch(context.Background(), fetcher.Source{
+		ID:             "src_xhs",
+		Type:           fetcher.SourceTypeXiaohongshu,
+		URL:            "https://fake.local/xhs",
+		ComplianceNote: "Public notes only.",
+	})
+	if !errors.Is(err, closeErr) {
+		t.Fatalf("expected response body close error, got %v", err)
+	}
+}
+
 func TestPublicPageFetcherReturnsBodyCloseError(t *testing.T) {
 	closeErr := errors.New("close failed")
 	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {

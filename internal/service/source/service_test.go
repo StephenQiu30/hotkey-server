@@ -274,6 +274,41 @@ func TestWeChatMPSourceRequiresComplianceNote(t *testing.T) {
 	}
 }
 
+func TestXiaohongshuSourceRequiresComplianceNote(t *testing.T) {
+	ctx := context.Background()
+	svc := servicesource.NewService(servicesource.NewMemoryRepository())
+
+	// xiaohongshu without compliance note should fail
+	if _, err := svc.CreateSource(ctx, servicesource.CreateSourceInput{
+		Name:             "小红书美食探店",
+		Type:             servicesource.SourceTypeXiaohongshu,
+		URL:              "https://www.xiaohongshu.com/user/profile/user-001",
+		FetchIntervalMin: 30,
+		RateLimitPerHour: 12,
+	}); !errors.Is(err, servicesource.ErrComplianceNoteRequired) {
+		t.Fatalf("expected xiaohongshu compliance note error, got %v", err)
+	}
+
+	// xiaohongshu with compliance note should succeed
+	created, err := svc.CreateSource(ctx, servicesource.CreateSourceInput{
+		Name:             "小红书美食探店",
+		Type:             servicesource.SourceTypeXiaohongshu,
+		URL:              "https://www.xiaohongshu.com/user/profile/user-001",
+		ComplianceNote:   "Only collect publicly visible notes; respect rate limits and robots.txt.",
+		FetchIntervalMin: 30,
+		RateLimitPerHour: 12,
+	})
+	if err != nil {
+		t.Fatalf("create xiaohongshu source with compliance note: %v", err)
+	}
+	if created.Type != servicesource.SourceTypeXiaohongshu {
+		t.Fatalf("expected xiaohongshu source type, got %s", created.Type)
+	}
+	if created.ComplianceNote == "" {
+		t.Fatal("expected compliance note to be stored")
+	}
+}
+
 func TestCollectionRunsRecordSuccessAndFailure(t *testing.T) {
 	ctx := context.Background()
 	svc := servicesource.NewService(servicesource.NewMemoryRepository())
