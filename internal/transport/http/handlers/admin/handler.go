@@ -122,6 +122,53 @@ func (h *Handler) RerunDailyReport(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"job": jobResponse(job)})
 }
 
+func (h *Handler) RevokeSource(c *gin.Context) {
+	sourceID := c.Param("sourceID")
+	c.Set("adminAuditResourceID", sourceID)
+	source, err := h.service.RevokeSource(c.Request.Context(), sourceID)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"source": gin.H{
+			"id":        source.ID,
+			"name":      source.Name,
+			"status":    source.Status,
+			"updatedAt": source.UpdatedAt,
+		},
+	})
+}
+
+func (h *Handler) DeleteAccount(c *gin.Context) {
+	userID := c.Param("userID")
+	c.Set("adminAuditResourceID", userID)
+	task, err := h.service.DeleteAccount(c.Request.Context(), userID)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"cleanupTask": cleanupTaskResponse(task)})
+}
+
+func (h *Handler) CleanupStatus(c *gin.Context) {
+	task, err := h.service.CleanupStatus(c.Request.Context(), c.Param("taskID"))
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"cleanupTask": cleanupTaskResponse(task)})
+}
+
+func (h *Handler) RetryCleanup(c *gin.Context) {
+	task, err := h.service.RetryCleanup(c.Request.Context(), c.Param("taskID"))
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"cleanupTask": cleanupTaskResponse(task)})
+}
+
 func auditLogResponses(logs []serviceadmin.AuditLog) []gin.H {
 	responses := make([]gin.H, 0, len(logs))
 	for _, log := range logs {
@@ -206,10 +253,14 @@ func auditResource(c *gin.Context) (string, string) {
 	path := c.FullPath()
 	contextResourceID := c.GetString("adminAuditResourceID")
 	switch {
+	case strings.Contains(path, "/cleanup-tasks"):
+		return "cleanup_task", firstNonEmpty(contextResourceID, c.Param("taskID"))
 	case strings.Contains(path, "/sources"):
 		return "source", firstNonEmpty(contextResourceID, c.Param("sourceID"))
 	case strings.Contains(path, "/channels"):
 		return "channel", firstNonEmpty(contextResourceID, c.Param("channelID"))
+	case strings.Contains(path, "/users"):
+		return "user", firstNonEmpty(contextResourceID, c.Param("userID"))
 	case strings.Contains(path, "/settings"):
 		return "config", "default_daily_send_at"
 	case strings.Contains(path, "/daily-reports"):
@@ -228,4 +279,23 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func cleanupTaskResponse(task serviceadmin.CleanupTask) gin.H {
+	steps := make([]gin.H, 0, len(task.Steps))
+	for _, step := range task.Steps {
+		steps = append(steps, gin.H{
+			"name":   step.Name,
+			"status": step.Status,
+			"error":  step.Error,
+		})
+	}
+	return gin.H{
+		"id":        task.ID,
+		"userId":    task.UserID,
+		"status":    task.Status,
+		"steps":     steps,
+		"createdAt": task.CreatedAt,
+		"updatedAt": task.UpdatedAt,
+	}
 }

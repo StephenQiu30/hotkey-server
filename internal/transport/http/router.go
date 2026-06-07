@@ -71,10 +71,29 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	if deps.ChannelService == nil {
 		deps.ChannelService = servicechannel.NewService(servicechannel.NewMemoryRepository())
 	}
+
+	// Resolve source service early so admin service can wire RevokeSourceFunc.
+	sourceService := servicesource.NewService(servicesource.NewMemoryRepository())
+	if deps.SourceService != nil {
+		sourceService = deps.SourceService
+	}
+
 	if deps.AdminService == nil {
 		deps.AdminService = serviceadmin.NewService(serviceadmin.NewMemoryRepository(), serviceadmin.Config{
 			PostgreSQLPing: func(context.Context) error { return nil },
 			RedisPing:      func(context.Context) error { return nil },
+			RevokeSourceFunc: func(ctx context.Context, sourceID string) (serviceadmin.RevokedSource, error) {
+				src, err := sourceService.RevokeSource(ctx, sourceID)
+				if err != nil {
+					return serviceadmin.RevokedSource{}, err
+				}
+				return serviceadmin.RevokedSource{
+					ID:        src.ID,
+					Name:      src.Name,
+					Status:    string(src.Status),
+					UpdatedAt: src.UpdatedAt,
+				}, nil
+			},
 		})
 	}
 	var reportRepo servicereport.ReportRepository
@@ -90,10 +109,6 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 
 	auth := authhandler.New(deps.AuthService)
 	channels := channelhandler.New(deps.ChannelService)
-	sourceService := servicesource.NewService(servicesource.NewMemoryRepository())
-	if deps.SourceService != nil {
-		sourceService = deps.SourceService
-	}
 	sources := sourcehandler.New(sourceService)
 	if deps.ScoringService == nil {
 		clusterRepo := domainhotspot.NewMemoryRepository()
@@ -149,8 +164,12 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	admin.POST("/sources", sources.CreateSource)
 	admin.PATCH("/sources/:sourceID", sources.UpdateSource)
 	admin.PATCH("/sources/:sourceID/status", sources.SetSourceStatus)
+	admin.PATCH("/sources/:sourceID/revoke", adminObservability.RevokeSource)
 	admin.GET("/sources/:sourceID/collection-runs", sources.ListCollectionRuns)
 	admin.POST("/sources/:sourceID/test-fetch", sources.TestFetch)
+	admin.DELETE("/users/:userID", adminObservability.DeleteAccount)
+	admin.GET("/cleanup-tasks/:taskID", adminObservability.CleanupStatus)
+	admin.POST("/cleanup-tasks/:taskID/retry", adminObservability.RetryCleanup)
 
 	return router
 }

@@ -141,12 +141,20 @@ type Repository interface {
 	CleanupTaskByID(ctx context.Context, taskID string) (CleanupTask, error)
 }
 
+type RevokedSource struct {
+	ID        string
+	Name      string
+	Status    string
+	UpdatedAt time.Time
+}
+
 type Config struct {
-	PostgreSQLPing func(context.Context) error
-	RedisPing      func(context.Context) error
-	DashScopeKey   string
-	SMTPHost       string
-	Now            func() time.Time
+	PostgreSQLPing   func(context.Context) error
+	RedisPing        func(context.Context) error
+	DashScopeKey     string
+	SMTPHost         string
+	Now              func() time.Time
+	RevokeSourceFunc func(ctx context.Context, sourceID string) (RevokedSource, error)
 }
 
 type Service struct {
@@ -442,6 +450,17 @@ func (s *Service) CleanupStatus(ctx context.Context, taskID string) (CleanupTask
 		return CleanupTask{}, ErrInvalidInput
 	}
 	return s.repo.CleanupTaskByID(ctx, taskID)
+}
+
+func (s *Service) RevokeSource(ctx context.Context, sourceID string) (RevokedSource, error) {
+	sourceID = strings.TrimSpace(sourceID)
+	if sourceID == "" {
+		return RevokedSource{}, ErrInvalidInput
+	}
+	if s.cfg.RevokeSourceFunc == nil {
+		return RevokedSource{}, ErrNotFound
+	}
+	return s.cfg.RevokeSourceFunc(ctx, sourceID)
 }
 
 func (s *Service) ConfigStatus(ctx context.Context) ConfigStatus {
