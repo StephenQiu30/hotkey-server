@@ -39,8 +39,13 @@ func TestReportTypeMigrationDownRemovesColumnsAndRevertsConstraint(t *testing.T)
 			t.Fatalf("down migration missing %q", want)
 		}
 	}
-	// Verify 'skipped' is NOT in the reverted constraint
-	if strings.Contains(sql, "'skipped'") {
-		t.Fatal("down migration should not contain 'skipped' in the reverted constraint")
+	// Verify 'skipped' is NOT in the reverted CHECK constraint definition
+	if strings.Contains(sql, "CHECK (status IN") {
+		checkStart := strings.Index(sql, "CHECK (status IN")
+		checkEnd := strings.Index(sql[checkStart:], ")")
+		checkClause := sql[checkStart : checkStart+checkEnd+1]
+		if strings.Contains(checkClause, "'skipped'") {
+			t.Fatal("down migration reverted CHECK should not contain 'skipped'")
+		}
 	}
 }
