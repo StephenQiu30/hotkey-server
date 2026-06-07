@@ -14,8 +14,9 @@ import (
 type SourceType string
 
 const (
-	SourceTypeRSS        SourceType = "rss"
-	SourceTypePublicPage SourceType = "public_page"
+	SourceTypeRSS          SourceType = "rss"
+	SourceTypePublicPage   SourceType = "public_page"
+	SourceTypeHackerNews   SourceType = "hackernews"
 )
 
 type Source struct {
@@ -30,6 +31,14 @@ type Item struct {
 	URL         string
 	ExternalID  string
 	PublishedAt *time.Time
+	Score       int
+	Descendants int
+	CommentSamples []CommentSample
+}
+
+type CommentSample struct {
+	Text   string
+	Author string
 }
 
 type Fetcher interface {
