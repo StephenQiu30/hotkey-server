@@ -14,11 +14,12 @@ import (
 type SourceType string
 
 const (
-	SourceTypeRSS          SourceType = "rss"
-	SourceTypePublicPage   SourceType = "public_page"
-	SourceTypeX            SourceType = "x"
-	SourceTypeHackerNews   SourceType = "hackernews"
-	SourceTypeZhihu        SourceType = "zhihu"
+	SourceTypeRSS        SourceType = "rss"
+	SourceTypePublicPage SourceType = "public_page"
+	SourceTypeX          SourceType = "x"
+	SourceTypeHackerNews SourceType = "hackernews"
+	SourceTypeWeChatMP   SourceType = "wechat_mp"
+	SourceTypeZhihu      SourceType = "zhihu"
 )
 
 type Source struct {
@@ -29,12 +30,15 @@ type Source struct {
 }
 
 type Item struct {
-	Title       string
-	URL         string
-	ExternalID  string
-	PublishedAt *time.Time
-	Score       int
-	Descendants int
+	Title         string
+	URL           string
+	ExternalID    string
+	Snippet       string
+	Author        string
+	CoverImageURL string
+	PublishedAt   *time.Time
+	Score         int
+	Descendants   int
 	CommentSamples []CommentSample
 }
 
@@ -45,6 +49,26 @@ type CommentSample struct {
 
 type Fetcher interface {
 	Fetch(ctx context.Context, source Source) ([]Item, error)
+}
+
+// MultiFetcher dispatches Fetch calls to the registered Fetcher for each SourceType.
+type MultiFetcher struct {
+	fetchers map[SourceType]Fetcher
+}
+
+func NewMultiFetcher(fetchers map[SourceType]Fetcher) *MultiFetcher {
+	return &MultiFetcher{fetchers: fetchers}
+}
+
+func (m *MultiFetcher) Fetch(ctx context.Context, source Source) ([]Item, error) {
+	f, ok := m.fetchers[source.Type]
+	if !ok {
+		return nil, fmt.Errorf("no fetcher registered for source type %q", source.Type)
+	}
+	if f == nil {
+		return nil, fmt.Errorf("nil fetcher registered for source type %q", source.Type)
+	}
+	return f.Fetch(ctx, source)
 }
 
 type RSSFetcher struct {
@@ -77,26 +101,28 @@ func (f *RSSFetcher) Fetch(ctx context.Context, source Source) (items []Item, er
 		}
 	}()
 
+	payload, err := io.ReadAll(io.LimitReader(body, 5<<20))
+	if err != nil {
+		return nil, err
+	}
+
+	// Try RSS 2.0 first
 	var feed rssFeed
-	if err := xml.NewDecoder(body).Decode(&feed); err != nil {
-		return nil, fmt.Errorf("parse rss: %w", err)
+	if xmlErr := xml.Unmarshal(payload, &feed); xmlErr == nil && len(feed.Channel.Items) > 0 {
+		return feed.Channel.toItems(), nil
 	}
-	items = make([]Item, 0, len(feed.Channel.Items))
-	for _, rssItem := range feed.Channel.Items {
-		item := Item{
-			Title:      strings.TrimSpace(rssItem.Title),
-			URL:        strings.TrimSpace(rssItem.Link),
-			ExternalID: strings.TrimSpace(rssItem.GUID),
-		}
-		if parsed, err := http.ParseTime(strings.TrimSpace(rssItem.PubDate)); err == nil {
-			item.PublishedAt = &parsed
-		}
-		if item.Title == "" && item.URL == "" {
-			continue
-		}
-		items = append(items, item)
+
+	// Try Atom
+	var atomFeed atomFeed
+	if xmlErr := xml.Unmarshal(payload, &atomFeed); xmlErr == nil && len(atomFeed.Entries) > 0 {
+		return atomFeed.toItems(), nil
 	}
-	return items, nil
+
+	// Neither format matched — try RSS parse again to get the real error
+	if err := xml.Unmarshal(payload, &feed); err != nil {
+		return nil, fmt.Errorf("parse feed: %w", err)
+	}
+	return feed.Channel.toItems(), nil
 }
 
 func (f *PublicPageFetcher) Fetch(ctx context.Context, source Source) (items []Item, err error) {
@@ -165,6 +191,8 @@ func pageTitle(payload string) string {
 	return strings.TrimSpace(payload[start+len("<title>") : end])
 }
 
+// RSS 2.0 structures
+
 type rssFeed struct {
 	Channel rssChannel `xml:"channel"`
 }
@@ -173,9 +201,122 @@ type rssChannel struct {
 	Items []rssItem `xml:"item"`
 }
 
+func (ch rssChannel) toItems() []Item {
+	items := make([]Item, 0, len(ch.Items))
+	for _, ri := range ch.Items {
+		item := ri.toItem()
+		if item.Title == "" && item.URL == "" {
+			continue
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
 type rssItem struct {
-	Title   string `xml:"title"`
-	Link    string `xml:"link"`
-	GUID    string `xml:"guid"`
-	PubDate string `xml:"pubDate"`
+	Title       string          `xml:"title"`
+	Link        string          `xml:"link"`
+	GUID        string          `xml:"guid"`
+	PubDate     string          `xml:"pubDate"`
+	Description string          `xml:"description"`
+	ContentEnc  string          `xml:"http://purl.org/rss/1.0/modules/content/ encoded"`
+	Author      string          `xml:"author"`
+	Enclosure   rssEnclosure    `xml:"enclosure"`
+	MediaThumb  rssMediaThumb   `xml:"http://search.yahoo.com/mrss/ thumbnail"`
+}
+
+type rssEnclosure struct {
+	URL  string `xml:"url,attr"`
+	Type string `xml:"type,attr"`
+}
+
+type rssMediaThumb struct {
+	URL string `xml:"url,attr"`
+}
+
+func (ri rssItem) toItem() Item {
+	item := Item{
+		Title:      strings.TrimSpace(ri.Title),
+		URL:        strings.TrimSpace(ri.Link),
+		ExternalID: strings.TrimSpace(ri.GUID),
+		Author:     strings.TrimSpace(ri.Author),
+	}
+	if parsed, err := http.ParseTime(strings.TrimSpace(ri.PubDate)); err == nil {
+		item.PublishedAt = &parsed
+	}
+	// Snippet: prefer content:encoded over description
+	if s := strings.TrimSpace(ri.ContentEnc); s != "" {
+		item.Snippet = s
+	} else {
+		item.Snippet = strings.TrimSpace(ri.Description)
+	}
+	// Cover: prefer media:thumbnail over enclosure
+	if u := strings.TrimSpace(ri.MediaThumb.URL); u != "" {
+		item.CoverImageURL = u
+	} else if strings.HasPrefix(ri.Enclosure.Type, "image/") && ri.Enclosure.URL != "" {
+		item.CoverImageURL = ri.Enclosure.URL
+	}
+	// If no GUID, use link as external ID
+	if item.ExternalID == "" {
+		item.ExternalID = item.URL
+	}
+	return item
+}
+
+// Atom structures
+
+type atomFeed struct {
+	Entries []atomEntry `xml:"entry"`
+}
+
+func (af atomFeed) toItems() []Item {
+	items := make([]Item, 0, len(af.Entries))
+	for _, e := range af.Entries {
+		item := e.toItem()
+		if item.Title == "" && item.URL == "" {
+			continue
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
+type atomEntry struct {
+	Title   string       `xml:"title"`
+	Link    atomLink     `xml:"link"`
+	ID      string       `xml:"id"`
+	Updated string       `xml:"updated"`
+	Author  atomAuthor   `xml:"author"`
+	Summary string       `xml:"summary"`
+	Content string       `xml:"content"`
+}
+
+type atomLink struct {
+	Href string `xml:"href,attr"`
+}
+
+type atomAuthor struct {
+	Name string `xml:"name"`
+}
+
+func (e atomEntry) toItem() Item {
+	item := Item{
+		Title:      strings.TrimSpace(e.Title),
+		URL:        strings.TrimSpace(e.Link.Href),
+		ExternalID: strings.TrimSpace(e.ID),
+		Author:     strings.TrimSpace(e.Author.Name),
+	}
+	if parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(e.Updated)); err == nil {
+		item.PublishedAt = &parsed
+	}
+	// Snippet: prefer content over summary
+	if s := strings.TrimSpace(e.Content); s != "" {
+		item.Snippet = s
+	} else {
+		item.Snippet = strings.TrimSpace(e.Summary)
+	}
+	if item.ExternalID == "" {
+		item.ExternalID = item.URL
+	}
+	return item
 }
