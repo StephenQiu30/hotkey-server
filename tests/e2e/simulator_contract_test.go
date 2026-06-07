@@ -4,74 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 )
-
-// ProviderBehavior enumerates the five simulator behaviors required by V1 E2E.
-type ProviderBehavior string
-
-const (
-	BehaviorNormal      ProviderBehavior = "normal"
-	BehaviorRateLimit   ProviderBehavior = "rate_limit"
-	BehaviorAuthInvalid ProviderBehavior = "auth_invalid"
-	BehaviorSchemaChange ProviderBehavior = "schema_change"
-	BehaviorEmptyResult ProviderBehavior = "empty_result"
-)
-
-// AllBehaviors returns all five required simulator behaviors.
-func AllBehaviors() []ProviderBehavior {
-	return []ProviderBehavior{
-		BehaviorNormal,
-		BehaviorRateLimit,
-		BehaviorAuthInvalid,
-		BehaviorSchemaChange,
-		BehaviorEmptyResult,
-	}
-}
-
-// --- AI Provider Simulator Contract ---
-
-// AIResponse represents a simulated AI provider response.
-type AIResponse struct {
-	Text   string
-	Vector []float64
-	Model  string
-}
-
-// AIProviderSimulator simulates DashScope embedding + chat behaviors.
-type AIProviderSimulator interface {
-	SetBehavior(b ProviderBehavior)
-	Embed(ctx context.Context, text string) ([]float64, error)
-	Chat(ctx context.Context, prompt string) (string, error)
-	Reset()
-}
-
-// --- SMTP Sink Contract ---
-
-// EmailRecord captures a simulated email send.
-type EmailRecord struct {
-	From    string
-	To      string
-	Subject string
-	Body    string
-	SentAt  time.Time
-}
-
-// SMTPSink simulates an SMTP server that captures emails.
-type SMTPSink interface {
-	Addr() string
-	Records() []EmailRecord
-	Reset()
-}
-
-// --- Fetcher Simulator Contract ---
-
-// FetcherSimulator simulates RSS/public page fetcher behaviors.
-type FetcherSimulator interface {
-	SetBehavior(b ProviderBehavior)
-	Fetch(ctx context.Context, sourceURL string) ([]map[string]string, error)
-	Reset()
-}
 
 // --- Contract Tests ---
 
@@ -102,7 +35,7 @@ func TestAISimulator_AllBehaviors(t *testing.T) {
 				if err == nil {
 					t.Fatalf("behavior %s: expected error, got vector len=%d", tt.behavior, len(vec))
 				}
-				assertSimulatorError(t, err, tt.errType)
+				assertSimulatorErrorf(t, err, tt.errType)
 			} else {
 				if err != nil {
 					t.Fatalf("behavior %s: unexpected error: %v", tt.behavior, err)
@@ -134,7 +67,7 @@ func TestAISimulator_Chat(t *testing.T) {
 	if err == nil {
 		t.Fatal("rate_limit chat: expected error")
 	}
-	assertSimulatorError(t, err, "rate_limit")
+	assertSimulatorErrorf(t, err, "rate_limit")
 }
 
 // TestSMTPSink_Capture verifies the SMTP sink captures sent emails.
@@ -179,7 +112,7 @@ func TestFetcherSimulator_AllBehaviors(t *testing.T) {
 				if err == nil {
 					t.Fatalf("behavior %s: expected error, got %d items", tt.behavior, len(items))
 				}
-				assertSimulatorError(t, err, tt.errType)
+				assertSimulatorErrorf(t, err, tt.errType)
 			} else {
 				if err != nil {
 					t.Fatalf("behavior %s: unexpected error: %v", tt.behavior, err)
@@ -233,9 +166,9 @@ func newFetcherSimulator(t *testing.T) FetcherSimulator {
 	return newFetcherSimulatorImpl()
 }
 
-// --- Error assertion helper ---
+// --- Error assertion helper (test-only, calls shared helper) ---
 
-func assertSimulatorError(t *testing.T, err error, expectedType string) {
+func assertSimulatorErrorf(t *testing.T, err error, expectedType string) {
 	t.Helper()
 	if err == nil {
 		t.Fatalf("expected %s error, got nil", expectedType)
@@ -251,17 +184,4 @@ func assertSimulatorError(t *testing.T, err error, expectedType string) {
 	if !containsSubstring(err.Error(), expectedType) {
 		t.Fatalf("expected error containing %q, got: %v", expectedType, err)
 	}
-}
-
-func containsSubstring(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub || len(s) > 0 && containsAt(s, sub))
-}
-
-func containsAt(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
 }
