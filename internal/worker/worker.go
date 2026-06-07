@@ -16,6 +16,7 @@ import (
 	servicehotspot "github.com/StephenQiu30/hotkey-server/internal/service/hotspot"
 	"github.com/StephenQiu30/hotkey-server/internal/service/ingest"
 	servicemail "github.com/StephenQiu30/hotkey-server/internal/service/mail"
+	servicereport "github.com/StephenQiu30/hotkey-server/internal/service/report"
 	servicesource "github.com/StephenQiu30/hotkey-server/internal/service/source"
 )
 
@@ -343,6 +344,38 @@ func (h *SendWeeklyEmailHandler) Handle(ctx context.Context, job queue.Job) erro
 		ReportID:        payload.ReportID,
 		RecipientUserID: payload.RecipientUserID,
 		Attempt:         job.Attempt,
+	})
+	return err
+}
+
+type WeeklyReportService interface {
+	GenerateWeeklyReport(context.Context, servicereport.GenerateWeeklyReportInput) (servicereport.WeeklyReport, error)
+}
+
+type GenerateWeeklyReportHandler struct {
+	service WeeklyReportService
+}
+
+func NewGenerateWeeklyReportHandler(service WeeklyReportService) *GenerateWeeklyReportHandler {
+	if service == nil {
+		panic("generate weekly report handler requires service")
+	}
+	return &GenerateWeeklyReportHandler{service: service}
+}
+
+func (h *GenerateWeeklyReportHandler) Handle(ctx context.Context, job queue.Job) error {
+	if h.service == nil {
+		return errors.New("generate weekly report handler missing service")
+	}
+	var payload queue.GenerateWeeklyReportPayload
+	if err := json.Unmarshal(job.Payload, &payload); err != nil {
+		return err
+	}
+	if payload.WeekOf == "" {
+		return errors.New("generate_weekly_report payload missing week_of")
+	}
+	_, err := h.service.GenerateWeeklyReport(ctx, servicereport.GenerateWeeklyReportInput{
+		WeekOf: payload.WeekOf,
 	})
 	return err
 }
