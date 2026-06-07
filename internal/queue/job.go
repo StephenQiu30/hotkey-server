@@ -15,7 +15,10 @@ const (
 	JobTypeClusterHotspots     JobType = "cluster_hotspots"
 	JobTypeScoreHotspots       JobType = "score_hotspots"
 	JobTypeGenerateDailyReport JobType = "generate_daily_report"
-	JobTypeSendDailyEmail      JobType = "send_daily_email"
+	JobTypeSendDailyEmail          JobType = "send_daily_email"
+	JobTypeStoreSnapshot           JobType = "store_snapshot"
+	JobTypeCleanupExpiredObjects   JobType = "cleanup_expired_objects"
+	JobTypeDeleteUserObjects       JobType = "delete_user_objects"
 )
 
 type JobStatus string
@@ -70,6 +73,24 @@ type SendDailyEmailPayload struct {
 	RecipientUserID string `json:"recipient_user_id"`
 }
 
+type StoreSnapshotPayload struct {
+	SourceItemID string `json:"source_item_id"`
+	SourceID     string `json:"source_id"`
+	UserID       string `json:"user_id"`
+	Platform     string `json:"platform"`
+	Title        string `json:"title"`
+	Snippet      string `json:"snippet"`
+	OriginalURL  string `json:"original_url"`
+}
+
+type CleanupExpiredObjectsPayload struct {
+	Bucket string `json:"bucket"`
+}
+
+type DeleteUserObjectsPayload struct {
+	UserID string `json:"user_id"`
+}
+
 func ValidatePayload(jobType JobType, payload json.RawMessage) error {
 	switch jobType {
 	case JobTypeCollectSource:
@@ -122,6 +143,30 @@ func ValidatePayload(jobType JobType, payload json.RawMessage) error {
 		}
 		if body.ReportID == "" || body.RecipientUserID == "" {
 			return errors.New("send_daily_email payload requires report_id and recipient_user_id")
+		}
+	case JobTypeStoreSnapshot:
+		var body StoreSnapshotPayload
+		if err := json.Unmarshal(payload, &body); err != nil {
+			return err
+		}
+		if body.SourceItemID == "" || body.SourceID == "" {
+			return errors.New("store_snapshot payload requires source_item_id and source_id")
+		}
+	case JobTypeCleanupExpiredObjects:
+		var body CleanupExpiredObjectsPayload
+		if err := json.Unmarshal(payload, &body); err != nil {
+			return err
+		}
+		if body.Bucket == "" {
+			return errors.New("cleanup_expired_objects payload requires bucket")
+		}
+	case JobTypeDeleteUserObjects:
+		var body DeleteUserObjectsPayload
+		if err := json.Unmarshal(payload, &body); err != nil {
+			return err
+		}
+		if body.UserID == "" {
+			return errors.New("delete_user_objects payload requires user_id")
 		}
 	default:
 		return fmt.Errorf("unknown job type %q", jobType)

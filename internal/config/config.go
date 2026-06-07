@@ -33,6 +33,13 @@ type Config struct {
 	SMTPFrom                   string
 	SMTPTLS                    bool
 	SMTPStartTLS               bool
+	MinIOEndpoint              string
+	MinIOAccessKey             string
+	MinIOSecretKey             string
+	MinIOBucket                string
+	MinIOUseSSL                bool
+	MinIOLocation              string
+	ContentRetentionDays       int
 }
 
 func Load() Config {
@@ -55,6 +62,13 @@ func Load() Config {
 		SMTPFrom:                   os.Getenv("HOTKEY_SMTP_FROM"),
 		SMTPTLS:                    boolOrDefault("HOTKEY_SMTP_TLS", false),
 		SMTPStartTLS:               boolOrDefault("HOTKEY_SMTP_STARTTLS", true),
+		MinIOEndpoint:              envOrDefault("HOTKEY_MINIO_ENDPOINT", "127.0.0.1:9000"),
+		MinIOAccessKey:             os.Getenv("HOTKEY_MINIO_ACCESS_KEY"),
+		MinIOSecretKey:             os.Getenv("HOTKEY_MINIO_SECRET_KEY"),
+		MinIOBucket:                envOrDefault("HOTKEY_MINIO_BUCKET", "hotkey-content"),
+		MinIOUseSSL:                boolOrDefault("HOTKEY_MINIO_USE_SSL", false),
+		MinIOLocation:              envOrDefault("HOTKEY_MINIO_LOCATION", "us-east-1"),
+		ContentRetentionDays:       intOrDefault("HOTKEY_CONTENT_RETENTION_DAYS", 30),
 	}
 }
 
