@@ -107,27 +107,6 @@ func TestCheckDuplicateHandlesEmptyEmbedding(t *testing.T) {
 	}
 }
 
-func TestCosineSimilarityIdentical(t *testing.T) {
-	sim := cosineSimilarity([]float64{1, 0, 0}, []float64{1, 0, 0})
-	if sim < 0.999 {
-		t.Fatalf("expected ~1.0, got %f", sim)
-	}
-}
-
-func TestCosineSimilarityOrthogonal(t *testing.T) {
-	sim := cosineSimilarity([]float64{1, 0, 0}, []float64{0, 1, 0})
-	if sim > 0.001 {
-		t.Fatalf("expected ~0.0, got %f", sim)
-	}
-}
-
-func TestCosineSimilarityZeroVector(t *testing.T) {
-	sim := cosineSimilarity([]float64{0, 0, 0}, []float64{1, 0, 0})
-	if sim != 0 {
-		t.Fatalf("expected 0 for zero vector, got %f", sim)
-	}
-}
-
 type fakeItemRepo struct {
 	byHash map[string]content.SourceItem
 	byID   map[string]content.SourceItem
@@ -177,7 +156,7 @@ func (r *fakeEmbedRepo) FindEmbedding(_ context.Context, itemID string) (hotspot
 func (r *fakeEmbedRepo) SearchSimilar(_ context.Context, vector []float64, limit int, minSimilarity float64) ([]hotspot.SimilarityResult, error) {
 	var results []hotspot.SimilarityResult
 	for id, vec := range r.vectors {
-		sim := cosineSimilarity(vector, vec)
+		sim := hotspot.CosineSimilarity(vector, vec)
 		if sim >= minSimilarity {
 			results = append(results, hotspot.SimilarityResult{
 				ItemID:     id,

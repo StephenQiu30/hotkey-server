@@ -23,12 +23,16 @@ func TestGenerateEmbeddingHandlerMarksNearDuplicate(t *testing.T) {
 		CanonicalURL: "https://example.com/1",
 		Status:       content.ItemStatusPrimary,
 	}
-	contentRepo.Create(context.Background(), existingItem)
-	hotspotRepo.SaveEmbedding(context.Background(), hotspot.Embedding{
+	if _, err := contentRepo.Create(context.Background(), existingItem); err != nil {
+		t.Fatalf("create existing item failed: %v", err)
+	}
+	if _, err := hotspotRepo.SaveEmbedding(context.Background(), hotspot.Embedding{
 		ItemID: "item-existing",
 		Vector: []float64{1.0, 0.0, 0.0},
 		Status: hotspot.EmbeddingStatusSucceeded,
-	})
+	}); err != nil {
+		t.Fatalf("save existing embedding failed: %v", err)
+	}
 
 	// Create a new similar item
 	newItem := content.SourceItem{
@@ -39,7 +43,9 @@ func TestGenerateEmbeddingHandlerMarksNearDuplicate(t *testing.T) {
 		CanonicalURL: "https://example.com/2",
 		Status:       content.ItemStatusPrimary,
 	}
-	contentRepo.Create(context.Background(), newItem)
+	if _, err := contentRepo.Create(context.Background(), newItem); err != nil {
+		t.Fatalf("create new item failed: %v", err)
+	}
 
 	// Setup dedup service and embedding service mock
 	dedupSvc := dedup.NewService(dedup.Config{SimilarityThreshold: 0.9}, contentRepo, hotspotRepo)
