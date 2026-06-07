@@ -16,10 +16,11 @@ CREATE TABLE IF NOT EXISTS users (
     id         TEXT PRIMARY KEY,
     tenant_id  TEXT NOT NULL REFERENCES tenants(id),
     name       TEXT NOT NULL,
-    email      TEXT UNIQUE NOT NULL,
+    email      TEXT NOT NULL,
     role       TEXT NOT NULL DEFAULT 'viewer',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(tenant_id, email)
 );
 
 -- Keywords
@@ -29,6 +30,7 @@ CREATE TABLE IF NOT EXISTS keywords (
     word       TEXT NOT NULL,
     category   TEXT NOT NULL DEFAULT 'general',
     enabled    BOOLEAN NOT NULL DEFAULT true,
+    embedding  vector(1536),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -54,6 +56,7 @@ CREATE TABLE IF NOT EXISTS contents (
     body         TEXT NOT NULL DEFAULT '',
     url          TEXT NOT NULL DEFAULT '',
     published_at TIMESTAMPTZ,
+    embedding    vector(1536),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
