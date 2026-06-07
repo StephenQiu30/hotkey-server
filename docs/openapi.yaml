@@ -712,6 +712,8 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/AdapterInfo"
+        "401":
+          description: Missing or invalid access token.
         "403":
           description: User role cannot access adapter management.
   /api/v1/admin/adapters/{provider}/health:
@@ -728,6 +730,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdapterHealth"
+        "401":
+          description: Missing or invalid access token.
+        "403":
+          description: User role cannot access adapter management.
         "404":
           description: Adapter not found for provider.
           content:
@@ -752,6 +758,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdapterCapabilities"
+        "401":
+          description: Missing or invalid access token.
+        "403":
+          description: User role cannot access adapter management.
         "404":
           description: Adapter not found for provider.
           content:
