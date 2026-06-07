@@ -73,3 +73,10 @@ func (e *AESGCMEncryptor) Decrypt(encoded string) (string, error) {
 	}
 	return string(plaintext), nil
 }
+
+// NoOpEncryptor is a pass-through encryptor for testing/development.
+// It returns plaintext as-is without encryption.
+type NoOpEncryptor struct{}
+
+func (NoOpEncryptor) Encrypt(plaintext string) (string, error) { return plaintext, nil }
+func (NoOpEncryptor) Decrypt(ciphertext string) (string, error) { return ciphertext, nil }

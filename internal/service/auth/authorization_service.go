@@ -51,6 +51,9 @@ func NewAuthorizationService(authRepo Repository, azRepo AuthorizationRepository
 	if azRepo == nil {
 		azRepo = NewMemoryAuthorizationRepository()
 	}
+	if encryptor == nil {
+		encryptor = crypto.NoOpEncryptor{}
+	}
 	return &AuthorizationService{
 		authRepo:  authRepo,
 		azRepo:    azRepo,
@@ -157,6 +160,7 @@ func (s *AuthorizationService) HealthCheck(ctx context.Context, userID string, a
 			return authorization.Authorization{}, err
 		}
 		az.Status = authorization.StatusExpired
+		az.UpdatedAt = now
 		return az, nil
 	}
 
