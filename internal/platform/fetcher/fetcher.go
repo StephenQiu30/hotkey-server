@@ -31,6 +31,7 @@ const (
 	SourceTypeWeChatMP   SourceType = "wechat_mp"
 	SourceTypeZhihu      SourceType = "zhihu"
 	SourceTypeReddit     SourceType = "reddit"
+	SourceTypeYouTube    SourceType = "youtube"
 )
 
 type Source struct {
