@@ -179,12 +179,15 @@ func TestGetTopic_FoundAndNotFound(t *testing.T) {
 	svc := monitortopic.NewService(monitortopic.NewMemoryRepository())
 	ctx := context.Background()
 
-	created, _ := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
+	created, err := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
 		UserID:   "usr_1",
 		Name:     "AI Trends",
 		Language: monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
 	})
+	if err != nil {
+		t.Fatalf("create topic: %v", err)
+	}
 
 	found, err := svc.GetTopic(ctx, created.ID)
 	if err != nil {
@@ -236,12 +239,15 @@ func TestUpdateTopic_SuccessAndValidation(t *testing.T) {
 	svc := monitortopic.NewService(monitortopic.NewMemoryRepository())
 	ctx := context.Background()
 
-	created, _ := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
+	created, err := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
 		UserID:   "usr_1",
 		Name:     "AI Trends",
 		Language: monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
 	})
+	if err != nil {
+		t.Fatalf("create topic: %v", err)
+	}
 
 	// Update name
 	updated, err := svc.UpdateTopic(ctx, monitortopic.UpdateTopicInput{
@@ -287,12 +293,15 @@ func TestStatusTransitions_ValidAndInvalid(t *testing.T) {
 	svc := monitortopic.NewService(monitortopic.NewMemoryRepository())
 	ctx := context.Background()
 
-	created, _ := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
+	created, err := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
 		UserID:   "usr_1",
 		Name:     "AI Trends",
 		Language: monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
 	})
+	if err != nil {
+		t.Fatalf("create topic: %v", err)
+	}
 
 	// draft → active
 	activated, err := svc.SetTopicStatus(ctx, created.ID, monitortopic.TopicStatusActive)
@@ -337,10 +346,13 @@ func TestStatusTransitions_ValidAndInvalid(t *testing.T) {
 	}
 
 	// draft → paused (invalid)
-	created2, _ := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
+	created2, err := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
 		UserID: "usr_1", Name: "Another", Language: monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
 	})
+	if err != nil {
+		t.Fatalf("create topic 2: %v", err)
+	}
 	_, err = svc.SetTopicStatus(ctx, created2.ID, monitortopic.TopicStatusPaused)
 	if err == nil {
 		t.Fatal("expected error for draft → paused")
@@ -386,7 +398,10 @@ func TestDeleteTopic_CascadingCleanup(t *testing.T) {
 	}
 
 	// Keywords should be gone
-	keywords, _ := svc.ListKeywords(ctx, created.ID)
+	keywords, err := svc.ListKeywords(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("list keywords: %v", err)
+	}
 	if len(keywords) != 0 {
 		t.Fatalf("expected 0 keywords after delete, got %d", len(keywords))
 	}
@@ -396,12 +411,15 @@ func TestKeywordManagement_AddListDelete(t *testing.T) {
 	svc := monitortopic.NewService(monitortopic.NewMemoryRepository())
 	ctx := context.Background()
 
-	created, _ := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
+	created, err := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
 		UserID:   "usr_1",
 		Name:     "AI Trends",
 		Language: monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
 	})
+	if err != nil {
+		t.Fatalf("create topic: %v", err)
+	}
 
 	// Add include keyword
 	kw1, err := svc.AddKeyword(ctx, monitortopic.AddKeywordInput{
@@ -440,7 +458,10 @@ func TestKeywordManagement_AddListDelete(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	keywords, _ = svc.ListKeywords(ctx, created.ID)
+	keywords, err = svc.ListKeywords(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("list keywords after delete: %v", err)
+	}
 	if len(keywords) != 1 {
 		t.Fatalf("expected 1 keyword after delete, got %d", len(keywords))
 	}
@@ -450,12 +471,15 @@ func TestKeywordLimits_MaxIncludeAndExclude(t *testing.T) {
 	svc := monitortopic.NewService(monitortopic.NewMemoryRepository())
 	ctx := context.Background()
 
-	created, _ := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
+	created, err := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
 		UserID:   "usr_1",
 		Name:     "AI Trends",
 		Language: monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
 	})
+	if err != nil {
+		t.Fatalf("create topic: %v", err)
+	}
 
 	// Add 50 include keywords (max)
 	for i := 0; i < 50; i++ {
@@ -468,7 +492,7 @@ func TestKeywordLimits_MaxIncludeAndExclude(t *testing.T) {
 	}
 
 	// 51st include keyword should fail
-	_, err := svc.AddKeyword(ctx, monitortopic.AddKeywordInput{
+	_, err = svc.AddKeyword(ctx, monitortopic.AddKeywordInput{
 		TopicID: created.ID, Word: "overflow", Type: monitortopic.KeywordTypeInclude,
 	})
 	if err == nil {
@@ -515,10 +539,13 @@ func TestAddKeyword_EmptyWordAndInvalidTopic(t *testing.T) {
 	}
 
 	// Invalid keyword type
-	created, _ := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
+	created, err := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
 		UserID: "usr_1", Name: "Test", Language: monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
 	})
+	if err != nil {
+		t.Fatalf("create topic: %v", err)
+	}
 	_, err = svc.AddKeyword(ctx, monitortopic.AddKeywordInput{
 		TopicID: created.ID, Word: "test", Type: monitortopic.KeywordType("invalid"),
 	})

@@ -2,7 +2,6 @@ package monitortopic
 
 import (
 	"context"
-	"database/sql"
 	"sync"
 )
 
@@ -40,7 +39,7 @@ func (r *MemoryRepository) TopicByID(_ context.Context, topicID string) (Monitor
 	defer r.mu.RUnlock()
 	topic, exists := r.topics[topicID]
 	if !exists {
-		return MonitorTopic{}, sql.ErrNoRows
+		return MonitorTopic{}, ErrNotFound
 	}
 	return topic, nil
 }
@@ -61,7 +60,7 @@ func (r *MemoryRepository) UpdateTopic(_ context.Context, topic MonitorTopic) (M
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, exists := r.topics[topic.ID]; !exists {
-		return MonitorTopic{}, sql.ErrNoRows
+		return MonitorTopic{}, ErrNotFound
 	}
 	r.topics[topic.ID] = topic
 	return topic, nil
@@ -72,7 +71,7 @@ func (r *MemoryRepository) DeleteTopic(_ context.Context, topicID string) error 
 	defer r.mu.Unlock()
 	topic, exists := r.topics[topicID]
 	if !exists {
-		return sql.ErrNoRows
+		return ErrNotFound
 	}
 	delete(r.topics, topicID)
 	for i, id := range r.topicOrder {
@@ -101,7 +100,7 @@ func (r *MemoryRepository) CreateKeyword(_ context.Context, kw TopicKeyword) (To
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, exists := r.topics[kw.TopicID]; !exists {
-		return TopicKeyword{}, sql.ErrNoRows
+		return TopicKeyword{}, ErrNotFound
 	}
 	r.keywords[kw.ID] = kw
 	r.kwByTopic[kw.TopicID] = append(r.kwByTopic[kw.TopicID], kw.ID)
@@ -125,7 +124,7 @@ func (r *MemoryRepository) DeleteKeyword(_ context.Context, keywordID string) er
 	defer r.mu.Unlock()
 	kw, exists := r.keywords[keywordID]
 	if !exists {
-		return sql.ErrNoRows
+		return ErrNotFound
 	}
 	delete(r.keywords, keywordID)
 	topicKWs := r.kwByTopic[kw.TopicID]

@@ -377,7 +377,7 @@ func writeServiceError(c *gin.Context, err error) {
 	case errors.Is(err, svc.ErrNotFound):
 		writeError(c, http.StatusNotFound, "not_found", "not found")
 	case errors.Is(err, svc.ErrAlreadyExists):
-		writeError(c, http.StatusConflict, "topic_already_exists", "topic already exists")
+		writeError(c, http.StatusConflict, "already_exists", "resource already exists")
 	case errors.Is(err, svc.ErrInvalidTransition):
 		writeError(c, http.StatusConflict, "invalid_status_transition", "invalid status transition")
 	default:

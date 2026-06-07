@@ -3,7 +3,6 @@ package monitortopic
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -111,10 +110,11 @@ func (s *Service) CreateTopic(ctx context.Context, input CreateTopicInput) (Moni
 
 // GetTopic retrieves a topic by ID.
 func (s *Service) GetTopic(ctx context.Context, topicID string) (MonitorTopic, error) {
-	if strings.TrimSpace(topicID) == "" {
+	trimmedID := strings.TrimSpace(topicID)
+	if trimmedID == "" {
 		return MonitorTopic{}, ErrInvalidInput
 	}
-	topic, err := s.repo.TopicByID(ctx, strings.TrimSpace(topicID))
+	topic, err := s.repo.TopicByID(ctx, trimmedID)
 	if err != nil {
 		return MonitorTopic{}, normalizeNotFound(err)
 	}
@@ -123,18 +123,20 @@ func (s *Service) GetTopic(ctx context.Context, topicID string) (MonitorTopic, e
 
 // ListTopics returns all topics for a user.
 func (s *Service) ListTopics(ctx context.Context, userID string) ([]MonitorTopic, error) {
-	if strings.TrimSpace(userID) == "" {
+	trimmedUserID := strings.TrimSpace(userID)
+	if trimmedUserID == "" {
 		return nil, ErrInvalidInput
 	}
-	return s.repo.ListTopics(ctx, userID)
+	return s.repo.ListTopics(ctx, trimmedUserID)
 }
 
 // UpdateTopic validates and applies partial updates.
 func (s *Service) UpdateTopic(ctx context.Context, input UpdateTopicInput) (MonitorTopic, error) {
-	if strings.TrimSpace(input.TopicID) == "" {
+	trimmedID := strings.TrimSpace(input.TopicID)
+	if trimmedID == "" {
 		return MonitorTopic{}, ErrInvalidInput
 	}
-	found, err := s.repo.TopicByID(ctx, input.TopicID)
+	found, err := s.repo.TopicByID(ctx, trimmedID)
 	if err != nil {
 		return MonitorTopic{}, normalizeNotFound(err)
 	}
@@ -186,10 +188,11 @@ func (s *Service) UpdateTopic(ctx context.Context, input UpdateTopicInput) (Moni
 
 // SetTopicStatus validates and applies a status transition.
 func (s *Service) SetTopicStatus(ctx context.Context, topicID string, status TopicStatus) (MonitorTopic, error) {
-	if strings.TrimSpace(topicID) == "" {
+	trimmedID := strings.TrimSpace(topicID)
+	if trimmedID == "" {
 		return MonitorTopic{}, ErrInvalidInput
 	}
-	found, err := s.repo.TopicByID(ctx, topicID)
+	found, err := s.repo.TopicByID(ctx, trimmedID)
 	if err != nil {
 		return MonitorTopic{}, normalizeNotFound(err)
 	}
@@ -203,22 +206,25 @@ func (s *Service) SetTopicStatus(ctx context.Context, topicID string, status Top
 
 // DeleteTopic removes a topic and cascades keyword cleanup.
 func (s *Service) DeleteTopic(ctx context.Context, topicID string) error {
-	if strings.TrimSpace(topicID) == "" {
+	trimmedID := strings.TrimSpace(topicID)
+	if trimmedID == "" {
 		return ErrInvalidInput
 	}
-	return normalizeNotFound(s.repo.DeleteTopic(ctx, topicID))
+	return normalizeNotFound(s.repo.DeleteTopic(ctx, trimmedID))
 }
 
 // AddKeyword validates and adds a keyword/exclusion word to a topic.
 func (s *Service) AddKeyword(ctx context.Context, input AddKeywordInput) (TopicKeyword, error) {
-	if strings.TrimSpace(input.TopicID) == "" || strings.TrimSpace(input.Word) == "" {
+	trimmedTopicID := strings.TrimSpace(input.TopicID)
+	trimmedWord := strings.TrimSpace(input.Word)
+	if trimmedTopicID == "" || trimmedWord == "" {
 		return TopicKeyword{}, ErrInvalidInput
 	}
 	if input.Type != KeywordTypeInclude && input.Type != KeywordTypeExclude {
 		return TopicKeyword{}, ErrInvalidInput
 	}
 	// Verify topic exists
-	if _, err := s.repo.TopicByID(ctx, input.TopicID); err != nil {
+	if _, err := s.repo.TopicByID(ctx, trimmedTopicID); err != nil {
 		return TopicKeyword{}, normalizeNotFound(err)
 	}
 	// Check limits
@@ -229,10 +235,10 @@ func (s *Service) AddKeyword(ctx context.Context, input AddKeywordInput) (TopicK
 	)
 	if input.Type == KeywordTypeInclude {
 		limit = maxIncludeKeywords
-		count, kwErr = s.repo.CountKeywords(ctx, input.TopicID, KeywordTypeInclude)
+		count, kwErr = s.repo.CountKeywords(ctx, trimmedTopicID, KeywordTypeInclude)
 	} else {
 		limit = maxExcludeKeywords
-		count, kwErr = s.repo.CountKeywords(ctx, input.TopicID, KeywordTypeExclude)
+		count, kwErr = s.repo.CountKeywords(ctx, trimmedTopicID, KeywordTypeExclude)
 	}
 	if kwErr != nil {
 		return TopicKeyword{}, normalizeNotFound(kwErr)
@@ -243,8 +249,8 @@ func (s *Service) AddKeyword(ctx context.Context, input AddKeywordInput) (TopicK
 	now := s.now().UTC()
 	kw, err := s.repo.CreateKeyword(ctx, TopicKeyword{
 		ID:        newID("mkw"),
-		TopicID:   input.TopicID,
-		Word:      strings.TrimSpace(input.Word),
+		TopicID:   trimmedTopicID,
+		Word:      trimmedWord,
 		Type:      input.Type,
 		CreatedAt: now,
 	})
@@ -256,18 +262,20 @@ func (s *Service) AddKeyword(ctx context.Context, input AddKeywordInput) (TopicK
 
 // ListKeywords returns all keywords for a topic.
 func (s *Service) ListKeywords(ctx context.Context, topicID string) ([]TopicKeyword, error) {
-	if strings.TrimSpace(topicID) == "" {
+	trimmedID := strings.TrimSpace(topicID)
+	if trimmedID == "" {
 		return nil, ErrInvalidInput
 	}
-	return s.repo.ListKeywords(ctx, topicID)
+	return s.repo.ListKeywords(ctx, trimmedID)
 }
 
 // DeleteKeyword removes a keyword by ID.
 func (s *Service) DeleteKeyword(ctx context.Context, keywordID string) error {
-	if strings.TrimSpace(keywordID) == "" {
+	trimmedID := strings.TrimSpace(keywordID)
+	if trimmedID == "" {
 		return ErrInvalidInput
 	}
-	return normalizeNotFound(s.repo.DeleteKeyword(ctx, keywordID))
+	return normalizeNotFound(s.repo.DeleteKeyword(ctx, trimmedID))
 }
 
 func validateCreateInput(input CreateTopicInput) error {
@@ -318,7 +326,7 @@ func normalizeNotFound(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, ErrNotFound) {
+	if errors.Is(err, ErrNotFound) {
 		return ErrNotFound
 	}
 	return err
