@@ -108,6 +108,172 @@ func TestSourceLifecycleValidationAndCollectionSelection(t *testing.T) {
 	}
 }
 
+func TestXSourceTypeAcceptedByCreateAndUpdate(t *testing.T) {
+	ctx := context.Background()
+	svc := servicesource.NewService(servicesource.NewMemoryRepository())
+
+	created, err := svc.CreateSource(ctx, servicesource.CreateSourceInput{
+		Name:             "X AI News",
+		Type:             servicesource.SourceTypeX,
+		URL:              "https://api.x.com/2/tweets/search/recent",
+		ComplianceNote:   "X public API v2 recent search; OAuth 2.0 PKCE authorized.",
+		FetchIntervalMin: 30,
+		RateLimitPerHour: 30,
+		ChannelIDs:       []string{"chn_ai_models"},
+	})
+	if err != nil {
+		t.Fatalf("create x source: %v", err)
+	}
+	if created.Type != servicesource.SourceTypeX {
+		t.Fatalf("expected x source type, got %s", created.Type)
+	}
+	if created.ComplianceNote == "" {
+		t.Fatalf("expected compliance note for x source")
+	}
+
+	updated, err := svc.UpdateSource(ctx, servicesource.UpdateSourceInput{
+		SourceID:         created.ID,
+		Name:             "X AI News Updated",
+		Type:             servicesource.SourceTypeX,
+		URL:              "https://api.x.com/2/tweets/search/recent",
+		ComplianceNote:   "X public API v2 recent search; OAuth 2.0 PKCE authorized.",
+		FetchIntervalMin: 60,
+		RateLimitPerHour: 15,
+		ChannelIDs:       []string{"chn_ai_models", "chn_ai_products"},
+	})
+	if err != nil {
+		t.Fatalf("update x source: %v", err)
+	}
+	if updated.Type != servicesource.SourceTypeX {
+		t.Fatalf("expected x source type after update, got %s", updated.Type)
+	}
+	if updated.FetchIntervalMin != 60 {
+		t.Fatalf("expected updated fetch interval 60, got %d", updated.FetchIntervalMin)
+	}
+}
+
+func TestXSourceTypeRequiresComplianceNote(t *testing.T) {
+	ctx := context.Background()
+	svc := servicesource.NewService(servicesource.NewMemoryRepository())
+
+	_, err := svc.CreateSource(ctx, servicesource.CreateSourceInput{
+		Name:             "X No Compliance",
+		Type:             servicesource.SourceTypeX,
+		URL:              "https://api.x.com/2/tweets/search/recent",
+		FetchIntervalMin: 30,
+		RateLimitPerHour: 30,
+	})
+	if !errors.Is(err, servicesource.ErrComplianceNoteRequired) {
+		t.Fatalf("expected compliance note required for x source, got %v", err)
+	}
+}
+
+func TestXSourceTypeCollectableWhenEnabled(t *testing.T) {
+	ctx := context.Background()
+	svc := servicesource.NewService(servicesource.NewMemoryRepository())
+
+	created, err := svc.CreateSource(ctx, servicesource.CreateSourceInput{
+		Name:             "X Source",
+		Type:             servicesource.SourceTypeX,
+		URL:              "https://api.x.com/2/tweets/search/recent",
+		ComplianceNote:   "X public API v2.",
+		FetchIntervalMin: 30,
+		RateLimitPerHour: 30,
+	})
+	if err != nil {
+		t.Fatalf("create x source: %v", err)
+	}
+
+	collectable, err := svc.ListCollectableSources(ctx)
+	if err != nil {
+		t.Fatalf("list collectable: %v", err)
+	}
+	if len(collectable) != 1 || collectable[0].ID != created.ID {
+		t.Fatalf("expected x source to be collectable, got %#v", collectable)
+	}
+
+	_, err = svc.SetSourceStatus(ctx, servicesource.SetSourceStatusInput{
+		SourceID: created.ID,
+		Status:   servicesource.SourceStatusDisabled,
+	})
+	if err != nil {
+		t.Fatalf("disable x source: %v", err)
+	}
+
+	collectable, err = svc.ListCollectableSources(ctx)
+	if err != nil {
+		t.Fatalf("list collectable after disable: %v", err)
+	}
+	if len(collectable) != 0 {
+		t.Fatalf("expected disabled x source excluded, got %#v", collectable)
+	}
+}
+
+func TestHackerNewsSourceDoesNotRequireComplianceNote(t *testing.T) {
+	ctx := context.Background()
+	svc := servicesource.NewService(servicesource.NewMemoryRepository())
+
+	created, err := svc.CreateSource(ctx, servicesource.CreateSourceInput{
+		Name:             "Hacker News Top",
+		Type:             servicesource.SourceTypeHackerNews,
+		URL:              "https://hacker-news.firebaseio.com/v0/topstories.json",
+		FetchIntervalMin: 30,
+		ChannelIDs:       []string{"chn_hn"},
+	})
+	if err != nil {
+		t.Fatalf("create hackernews source without compliance note: %v", err)
+	}
+	if created.Type != servicesource.SourceTypeHackerNews {
+		t.Fatalf("expected hackernews type, got %s", created.Type)
+	}
+	if created.ComplianceNote != "" {
+		t.Fatalf("expected empty compliance note for hackernews, got %q", created.ComplianceNote)
+	}
+	if created.Status != servicesource.SourceStatusEnabled {
+		t.Fatalf("expected enabled status, got %s", created.Status)
+	}
+
+	collectable, err := svc.ListCollectableSources(ctx)
+	if err != nil {
+		t.Fatalf("list collectable: %v", err)
+	}
+	if len(collectable) != 1 || collectable[0].ID != created.ID {
+		t.Fatalf("expected hackernews source to be collectable, got %#v", collectable)
+	}
+}
+
+func TestWeChatMPSourceRequiresComplianceNote(t *testing.T) {
+	ctx := context.Background()
+	svc := servicesource.NewService(servicesource.NewMemoryRepository())
+
+	if _, err := svc.CreateSource(ctx, servicesource.CreateSourceInput{
+		Name:             "WeChat MP",
+		Type:             servicesource.SourceTypeWeChatMP,
+		URL:              "https://mp.weixin.qq.com/s/abc123",
+		FetchIntervalMin: 60,
+	}); !errors.Is(err, servicesource.ErrComplianceNoteRequired) {
+		t.Fatalf("expected wechat_mp compliance note error, got %v", err)
+	}
+
+	created, err := svc.CreateSource(ctx, servicesource.CreateSourceInput{
+		Name:             "WeChat MP",
+		Type:             servicesource.SourceTypeWeChatMP,
+		URL:              "https://mp.weixin.qq.com/s/abc123",
+		ComplianceNote:   "Only collect publicly available WeChat articles.",
+		FetchIntervalMin: 60,
+		ChannelIDs:       []string{"chn_wechat"},
+	})
+	if err != nil {
+		t.Fatalf("create wechat_mp source: %v", err)
+	}
+	if created.Type != servicesource.SourceTypeWeChatMP {
+		t.Fatalf("expected wechat_mp type, got %s", created.Type)
+	}
+	if created.ComplianceNote == "" {
+		t.Fatal("expected compliance note to be set")
+	}
+}
+
 func TestCollectionRunsRecordSuccessAndFailure(t *testing.T) {
 	ctx := context.Background()
 	svc := servicesource.NewService(servicesource.NewMemoryRepository())

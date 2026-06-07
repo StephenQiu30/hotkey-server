@@ -698,6 +698,80 @@ paths:
           description: RSS feed disabled.
         "401":
           description: Missing or invalid access token.
+  /api/v1/admin/adapters:
+    get:
+      summary: List all registered platform adapters with health and capabilities.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Registered adapters.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdapterInfo"
+        "401":
+          description: Missing or invalid access token.
+        "403":
+          description: User role cannot access adapter management.
+  /api/v1/admin/adapters/{provider}/health:
+    get:
+      summary: Get health status of a specific adapter.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Provider"
+      responses:
+        "200":
+          description: Adapter health status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdapterHealth"
+        "401":
+          description: Missing or invalid access token.
+        "403":
+          description: User role cannot access adapter management.
+        "404":
+          description: Adapter not found for provider.
+          content:
+            application/json:
+              examples:
+                not_found:
+                  value:
+                    error:
+                      code: adapter_not_found
+                      message: "no adapter registered for provider: official_api"
+  /api/v1/admin/adapters/{provider}/capabilities:
+    get:
+      summary: Get capabilities of a specific adapter.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Provider"
+      responses:
+        "200":
+          description: Adapter capabilities.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdapterCapabilities"
+        "401":
+          description: Missing or invalid access token.
+        "403":
+          description: User role cannot access adapter management.
+        "404":
+          description: Adapter not found for provider.
+          content:
+            application/json:
+              examples:
+                not_found:
+                  value:
+                    error:
+                      code: adapter_not_found
+                      message: "no adapter registered for provider: official_api"
   /api/v1/me/rss/reset:
     post:
       summary: Create or rotate current user's private RSS token.
@@ -712,6 +786,83 @@ paths:
                 $ref: "#/components/schemas/RSSFeedWithToken"
         "401":
           description: Missing or invalid access token.
+  /api/v1/me/obsidian/connect:
+    post:
+      summary: Connect Obsidian Git repository for sync.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ObsidianConnectRequest"
+      responses:
+        "200":
+          description: Repository connected successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObsidianConnectResponse"
+        "400":
+          description: Invalid input or branch/directory not found.
+        "401":
+          description: Missing or invalid access token.
+        "403":
+          description: Git authentication failed.
+  /api/v1/me/obsidian:
+    get:
+      summary: Get current Obsidian sync status.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current sync configuration and status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObsidianStatusResponse"
+        "401":
+          description: Missing or invalid access token.
+        "404":
+          description: Obsidian sync not connected.
+    delete:
+      summary: Disconnect Obsidian Git sync.
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: Disconnected successfully.
+        "401":
+          description: Missing or invalid access token.
+        "404":
+          description: Obsidian sync not connected.
+  /api/v1/me/obsidian/sync:
+    post:
+      summary: Sync content to Obsidian Git repository.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ObsidianSyncRequest"
+      responses:
+        "200":
+          description: Sync result (may be idempotent, conflicted, or failed).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObsidianSyncResponse"
+        "400":
+          description: Invalid input.
+        "401":
+          description: Missing or invalid access token.
+        "404":
+          description: Obsidian sync not connected.
+        "409":
+          description: File conflict detected.
 components:
   parameters:
     ChannelCode:
@@ -762,6 +913,17 @@ components:
       required: true
       schema:
         type: string
+    Provider:
+      name: provider
+      in: path
+      required: true
+      schema:
+        type: string
+        enum:
+          - rss
+          - public_page
+          - official_api
+      description: Platform provider identifier.
   securitySchemes:
     bearerAuth:
       type: http
@@ -1384,3 +1546,161 @@ components:
           properties:
             token:
               type: string
+    ObsidianConnectRequest:
+      type: object
+      required:
+        - repoUrl
+        - accessToken
+      properties:
+        repoUrl:
+          type: string
+        branch:
+          type: string
+        baseDir:
+          type: string
+        accessToken:
+          type: string
+        eventNoteTemplate:
+          type: string
+        dailyReportIndex:
+          type: string
+        weeklyReportIndex:
+          type: string
+        conflictResolution:
+          type: string
+          enum: [skip, branch]
+    ObsidianConnectResponse:
+      type: object
+      properties:
+        configId:
+          type: string
+        status:
+          type: string
+        defaultBranch:
+          type: string
+        branches:
+          type: array
+          items:
+            type: string
+    ObsidianStatusResponse:
+      type: object
+      properties:
+        configId:
+          type: string
+        repoUrl:
+          type: string
+        branch:
+          type: string
+        baseDir:
+          type: string
+        status:
+          type: string
+        lastError:
+          type: string
+        lastSync:
+          type: string
+          format: date-time
+          nullable: true
+    ObsidianSyncRequest:
+      type: object
+      required:
+        - contentType
+        - contentId
+        - title
+      properties:
+        contentType:
+          type: string
+        contentId:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        frontmatter:
+          type: object
+          additionalProperties:
+            type: string
+    ObsidianSyncResponse:
+      type: object
+      properties:
+        recordId:
+          type: string
+        filePath:
+          type: string
+        commitSha:
+          type: string
+        commitUrl:
+          type: string
+        state:
+          type: string
+        wasIdempotent:
+          type: boolean
+    AdapterInfo:
+      type: object
+      required:
+        - name
+        - provider
+        - health_status
+        - supports_incremental
+        - max_items_per_fetch
+        - rate_limit_per_hour
+      properties:
+        name:
+          type: string
+        provider:
+          type: string
+          enum:
+            - rss
+            - public_page
+            - official_api
+        health_status:
+          type: string
+          enum:
+            - healthy
+            - degraded
+            - unhealthy
+        health_last_error:
+          type: string
+        health_last_checked_at:
+          type: string
+          format: date-time
+        supports_incremental:
+          type: boolean
+        max_items_per_fetch:
+          type: integer
+        rate_limit_per_hour:
+          type: integer
+    AdapterHealth:
+      type: object
+      required:
+        - status
+        - last_checked_at
+      properties:
+        status:
+          type: string
+          enum:
+            - healthy
+            - degraded
+            - unhealthy
+        last_error:
+          type: string
+        last_checked_at:
+          type: string
+          format: date-time
+    AdapterCapabilities:
+      type: object
+      required:
+        - supports_incremental
+        - max_items_per_fetch
+        - rate_limit_per_hour
+      properties:
+        supports_incremental:
+          type: boolean
+        max_items_per_fetch:
+          type: integer
+        rate_limit_per_hour:
+          type: integer

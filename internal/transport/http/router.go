@@ -4,32 +4,49 @@ import (
 	"context"
 
 	domainhotspot "github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
+	domainobsidian "github.com/StephenQiu30/hotkey-server/internal/domain/obsidian"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/adapter"
+	platformfetcher "github.com/StephenQiu30/hotkey-server/internal/platform/fetcher"
 	serviceadmin "github.com/StephenQiu30/hotkey-server/internal/service/admin"
 	serviceauth "github.com/StephenQiu30/hotkey-server/internal/service/auth"
 	servicechannel "github.com/StephenQiu30/hotkey-server/internal/service/channel"
+	serviceeventsummary "github.com/StephenQiu30/hotkey-server/internal/service/eventsummary"
 	servicehotspot "github.com/StephenQiu30/hotkey-server/internal/service/hotspot"
+	servicemonitortopic "github.com/StephenQiu30/hotkey-server/internal/service/monitortopic"
+	serviceobsidian "github.com/StephenQiu30/hotkey-server/internal/service/obsidian"
 	servicereport "github.com/StephenQiu30/hotkey-server/internal/service/report"
 	servicerss "github.com/StephenQiu30/hotkey-server/internal/service/rss"
 	servicesource "github.com/StephenQiu30/hotkey-server/internal/service/source"
+	servicexauth "github.com/StephenQiu30/hotkey-server/internal/service/xauth"
 	"github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers"
+	adapterhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/adapter"
 	adminhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/admin"
 	authhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/auth"
 	channelhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/channel"
+	eventsummaryhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/eventsummary"
 	hotspothandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/hotspot"
+	monitortopichandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/monitortopic"
+	obsidianhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/obsidian"
 	reporthandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/report"
 	rsshandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/rss"
 	sourcehandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/source"
+	xauthhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/xauth"
 	"github.com/gin-gonic/gin"
 )
 
 type Dependencies struct {
-	AuthService    *serviceauth.Service
-	ChannelService *servicechannel.Service
-	SourceService  *servicesource.Service
-	AdminService   *serviceadmin.Service
-	ScoringService *servicehotspot.ScoringService
-	ReportService  *servicereport.Service
-	RSSService     *servicerss.Service
+	AuthService         *serviceauth.Service
+	ChannelService      *servicechannel.Service
+	SourceService       *servicesource.Service
+	AdminService        *serviceadmin.Service
+	ScoringService      *servicehotspot.ScoringService
+	ReportService       *servicereport.Service
+	RSSService          *servicerss.Service
+	ObsidianService     *serviceobsidian.Service
+	XAuthService        *servicexauth.Service
+	EventSummaryService *serviceeventsummary.Service
+	MonitorTopicService *servicemonitortopic.Service
+	AdapterRegistry     *adapter.Registry
 }
 
 func NewRouter() *gin.Engine {
@@ -87,6 +104,12 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	if deps.RSSService == nil {
 		deps.RSSService = servicerss.NewService(servicerss.NewMemoryFeedRepository(), reportRepo, servicerss.Config{})
 	}
+	if deps.ObsidianService == nil {
+		deps.ObsidianService = serviceobsidian.NewService(domainobsidian.NewMemoryRepository(), nil, serviceobsidian.Config{})
+	}
+	if deps.MonitorTopicService == nil {
+		deps.MonitorTopicService = servicemonitortopic.NewService(servicemonitortopic.NewMemoryRepository())
+	}
 
 	auth := authhandler.New(deps.AuthService)
 	channels := channelhandler.New(deps.ChannelService)
@@ -94,7 +117,18 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	if deps.SourceService != nil {
 		sourceService = deps.SourceService
 	}
-	sources := sourcehandler.New(sourceService)
+	xFetchers := map[servicesource.SourceType]platformfetcher.Fetcher{
+		servicesource.SourceTypeRSS:        platformfetcher.NewRSSFetcher(nil),
+		servicesource.SourceTypePublicPage: platformfetcher.NewPublicPageFetcher(nil),
+		servicesource.SourceTypeX:          platformfetcher.NewXFetcher(nil, ""),
+	}
+	sources := sourcehandler.New(sourceService, xFetchers)
+
+	xAuthService := deps.XAuthService
+	if xAuthService == nil {
+		xAuthService = servicexauth.NewService(servicexauth.NewMemoryRepository(), servicexauth.Config{})
+	}
+	xauth := xauthhandler.New(xAuthService)
 	if deps.ScoringService == nil {
 		clusterRepo := domainhotspot.NewMemoryRepository()
 		scoreRepo := servicehotspot.NewMemoryScoreRepository()
@@ -103,6 +137,18 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	hotspots := hotspothandler.New(deps.ScoringService)
 	reports := reporthandler.New(deps.ReportService)
 	rss := rsshandler.New(deps.RSSService)
+	obsidian := obsidianhandler.New(deps.ObsidianService)
+	topics := monitortopichandler.New(deps.MonitorTopicService)
+
+	if deps.AdapterRegistry == nil {
+		deps.AdapterRegistry = adapter.NewRegistry()
+	}
+	adapterHandler := adapterhandler.New(deps.AdapterRegistry)
+
+	if deps.EventSummaryService == nil {
+		deps.EventSummaryService = serviceeventsummary.NewService(serviceeventsummary.NewMemoryRepository(), nil)
+	}
+	eventSummary := eventsummaryhandler.New(deps.EventSummaryService)
 
 	adminObservability := adminhandler.New(deps.AdminService)
 	router.GET("/rss/channels/:channelCode", rss.PublicChannel)
@@ -130,6 +176,22 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	v1.GET("/me/rss", auth.AuthRequired(), rss.GetUserFeed)
 	v1.POST("/me/rss/reset", auth.AuthRequired(), rss.ResetUserFeed)
 	v1.DELETE("/me/rss", auth.AuthRequired(), rss.DisableUserFeed)
+	v1.GET("/events/:eventID/summary", auth.AuthRequired(), eventSummary.GetSummary)
+	v1.POST("/events/:eventID/summary", auth.AuthRequired(), eventSummary.GenerateSummary)
+	v1.GET("/me/topics", auth.AuthRequired(), topics.ListTopics)
+	v1.POST("/me/topics", auth.AuthRequired(), topics.CreateTopic)
+	v1.GET("/me/topics/:topicID", auth.AuthRequired(), topics.GetTopic)
+	v1.PATCH("/me/topics/:topicID", auth.AuthRequired(), topics.UpdateTopic)
+	v1.POST("/me/topics/:topicID/status", auth.AuthRequired(), topics.SetTopicStatus)
+	v1.DELETE("/me/topics/:topicID", auth.AuthRequired(), topics.DeleteTopic)
+	v1.GET("/me/topics/:topicID/keywords", auth.AuthRequired(), topics.ListKeywords)
+	v1.POST("/me/topics/:topicID/keywords", auth.AuthRequired(), topics.AddKeyword)
+	v1.DELETE("/me/topics/:topicID/keywords/:keywordID", auth.AuthRequired(), topics.DeleteKeyword)
+
+	v1.POST("/me/obsidian/connect", auth.AuthRequired(), obsidian.Connect)
+	v1.DELETE("/me/obsidian", auth.AuthRequired(), obsidian.Disconnect)
+	v1.GET("/me/obsidian", auth.AuthRequired(), obsidian.GetStatus)
+	v1.POST("/me/obsidian/sync", auth.AuthRequired(), obsidian.Sync)
 
 	admin := v1.Group("/admin", auth.AdminRequired(), adminObservability.AuditMiddleware())
 	admin.GET("/healthz", auth.AdminHealthz)
@@ -151,6 +213,15 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	admin.PATCH("/sources/:sourceID/status", sources.SetSourceStatus)
 	admin.GET("/sources/:sourceID/collection-runs", sources.ListCollectionRuns)
 	admin.POST("/sources/:sourceID/test-fetch", sources.TestFetch)
+
+	admin.GET("/x/auth", xauth.AuthURL)
+	admin.GET("/x/auth/callback", xauth.Callback)
+	admin.GET("/x/auth/status", xauth.Status)
+	admin.POST("/x/auth/revoke", xauth.Revoke)
+
+	admin.GET("/adapters", adapterHandler.ListAdapters)
+	admin.GET("/adapters/:provider/health", adapterHandler.GetAdapterHealth)
+	admin.GET("/adapters/:provider/capabilities", adapterHandler.GetAdapterCapabilities)
 
 	return router
 }
