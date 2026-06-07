@@ -43,7 +43,7 @@ func (f *BiliBiliFetcher) fetchVideos(ctx context.Context, source Source) ([]Ite
 	if err != nil {
 		return nil, err
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	var resp biliVideoListResponse
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
@@ -101,7 +101,7 @@ func (f *BiliBiliFetcher) fetchDynamics(ctx context.Context, source Source) ([]I
 	if err != nil {
 		return nil, err
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	var resp biliDynamicResponse
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
@@ -149,12 +149,12 @@ var errBiliTakedown = errors.New("bilibili content unavailable")
 // -412: rate limit → returns error
 // Other non-zero: generic error
 func checkBiliCode(code int, message string) error {
-	switch {
-	case code == 0:
+	switch code {
+	case 0:
 		return nil
-	case code == -404:
+	case -404:
 		return errBiliTakedown
-	case code == -412:
+	case -412:
 		return fmt.Errorf("bilibili rate limit: %s", message)
 	default:
 		return fmt.Errorf("bilibili API error %d: %s", code, message)
@@ -186,10 +186,11 @@ func parseVideoList(raw json.RawMessage) ([]biliVideo, error) {
 }
 
 func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
 		return s
 	}
-	return s[:maxLen] + "…"
+	return string(runes[:maxLen]) + "…"
 }
 
 // --- Bilibili API response types ---
