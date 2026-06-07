@@ -479,21 +479,26 @@ func (s *Service) RetryCleanup(ctx context.Context, taskID string) (CleanupTask,
 		return CleanupTask{}, ErrInvalidInput
 	}
 
-	type cleanupStepDef struct {
-		name string
-		fn   func(context.Context, string) error
-	}
-	stepDefs := []cleanupStepDef{
-		{"delete_daily_reports", s.repo.DeleteDailyReportsByUser},
-		{"delete_rss_feeds", s.repo.DeleteRSSFeedByUser},
-		{"delete_user", s.repo.DeleteUser},
+	stepFuncs := map[string]func(context.Context, string) error{
+		"delete_daily_reports": s.repo.DeleteDailyReportsByUser,
+		"delete_rss_feeds":     s.repo.DeleteRSSFeedByUser,
+		"delete_user":          s.repo.DeleteUser,
 	}
 
 	for i, step := range task.Steps {
 		if step.Status == CleanupStatusCompleted {
 			continue
 		}
-		if err := stepDefs[i].fn(ctx, task.UserID); err != nil {
+		fn, ok := stepFuncs[step.Name]
+		if !ok {
+			task.Steps[i].Status = CleanupStatusFailed
+			task.Steps[i].Error = "unknown step"
+			task.Status = CleanupStatusFailed
+			task.UpdatedAt = s.now().UTC()
+			_ = s.repo.SaveCleanupTask(ctx, task)
+			return task, nil
+		}
+		if err := fn(ctx, task.UserID); err != nil {
 			task.Steps[i].Status = CleanupStatusFailed
 			task.Steps[i].Error = err.Error()
 			task.Status = CleanupStatusFailed
