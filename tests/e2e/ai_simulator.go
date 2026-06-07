@@ -15,28 +15,33 @@ type aiSimulator struct {
 	behavior ProviderBehavior
 }
 
+// newAISimulatorImpl creates a new instance of aiSimulator with default behavior.
 func newAISimulatorImpl() *aiSimulator {
 	return &aiSimulator{behavior: BehaviorNormal}
 }
 
+// SetBehavior updates the current simulator behavior.
 func (s *aiSimulator) SetBehavior(b ProviderBehavior) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.behavior = b
 }
 
+// Reset restores the simulator to its default BehaviorNormal.
 func (s *aiSimulator) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.behavior = BehaviorNormal
 }
 
+// behaviorValue returns the current behavior in a thread-safe manner.
 func (s *aiSimulator) behaviorValue() ProviderBehavior {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.behavior
 }
 
+// Embed simulates generating a vector embedding for the given text.
 func (s *aiSimulator) Embed(ctx context.Context, text string) ([]float64, error) {
 	b := s.behaviorValue()
 	switch b {
@@ -55,6 +60,7 @@ func (s *aiSimulator) Embed(ctx context.Context, text string) ([]float64, error)
 	}
 }
 
+// Chat simulates an AI chat interaction for generating responses or reports.
 func (s *aiSimulator) Chat(ctx context.Context, prompt string) (string, error) {
 	b := s.behaviorValue()
 	switch b {
