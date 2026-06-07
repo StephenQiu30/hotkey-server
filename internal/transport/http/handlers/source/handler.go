@@ -34,6 +34,7 @@ func New(service *servicesource.Service, fetcherMaps ...map[servicesource.Source
 		servicesource.SourceTypeRSS:        platformfetcher.NewRSSFetcher(nil),
 		servicesource.SourceTypePublicPage: platformfetcher.NewPublicPageFetcher(nil),
 		servicesource.SourceTypeHackerNews: platformfetcher.NewHNFetcher(nil, platformfetcher.HNConfig{}),
+		servicesource.SourceTypeBiliBili:   platformfetcher.NewBiliBiliFetcher(nil, platformfetcher.BiliBiliConfig{}),
 	}
 	if len(fetcherMaps) > 0 && fetcherMaps[0] != nil {
 		fetchers = fetcherMaps[0]
