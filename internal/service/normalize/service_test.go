@@ -32,11 +32,11 @@ func TestNormalizeCleansHTMLAndWhitespace(t *testing.T) {
 func TestNormalizeDetectsLanguage(t *testing.T) {
 	svc := NewService(DefaultConfig())
 	tests := []struct {
-		name     string
-		title    string
-		snippet  string
+		name      string
+		title     string
+		snippet   string
 		inputLang string
-		wantLang string
+		wantLang  string
 	}{
 		{name: "chinese content", title: "人工智能最新进展", snippet: "深度学习技术突破", inputLang: "", wantLang: "zh"},
 		{name: "english content", title: "Latest AI breakthroughs", snippet: "Deep learning advances", inputLang: "", wantLang: "en"},

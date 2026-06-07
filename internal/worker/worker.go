@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	domainhotspot "github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
 	"github.com/StephenQiu30/hotkey-server/internal/domain/content"
+	domainhotspot "github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/fetcher"
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
 	servicededup "github.com/StephenQiu30/hotkey-server/internal/service/dedup"

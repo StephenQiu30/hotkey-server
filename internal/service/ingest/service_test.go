@@ -190,9 +190,9 @@ func TestIngestPipelineNormalizesCleansAndFilters(t *testing.T) {
 
 	normalizr := normalize.NewService(normalize.DefaultConfig())
 	filterSvc := filter.NewService(filter.Config{
-		Keywords:       []string{"AI", "人工智能"},
-		ExcludeWords:   []string{"广告"},
-		MinTitleRunes:  1,
+		Keywords:        []string{"AI", "人工智能"},
+		ExcludeWords:    []string{"广告"},
+		MinTitleRunes:   1,
 		MinSnippetRunes: 1,
 	})
 
@@ -225,9 +225,9 @@ func TestIngestPipelineNormalizesCleansAndFilters(t *testing.T) {
 func TestIngestPipelineRejectsFilteredContent(t *testing.T) {
 	repo := content.NewMemoryRepository()
 	filterSvc := filter.NewService(filter.Config{
-		Keywords:       []string{"AI"},
-		ExcludeWords:   []string{"广告"},
-		MinTitleRunes:  1,
+		Keywords:        []string{"AI"},
+		ExcludeWords:    []string{"广告"},
+		MinTitleRunes:   1,
 		MinSnippetRunes: 1,
 	})
 

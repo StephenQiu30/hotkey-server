@@ -27,12 +27,12 @@ type Queue interface {
 }
 
 type Service struct {
-	repo      Repository
-	queue     Queue
-	normalizr *normalize.Service
-	filterSvc *filter.Service
+	repo       Repository
+	queue      Queue
+	normalizr  *normalize.Service
+	filterSvc  *filter.Service
 	qualitySvc *quality.Service
-	now       func() time.Time
+	now        func() time.Time
 }
 
 type Option func(*Service)

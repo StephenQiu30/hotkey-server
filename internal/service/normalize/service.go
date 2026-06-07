@@ -160,4 +160,3 @@ func detectLanguage(text string) string {
 	}
 	return "unknown"
 }
-

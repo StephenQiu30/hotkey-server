@@ -9,8 +9,8 @@ import (
 
 func TestFilterPassesContentWithMatchingKeyword(t *testing.T) {
 	svc := NewService(Config{
-		Keywords:       []string{"AI", "人工智能", "机器学习"},
-		MinTitleRunes:  1,
+		Keywords:        []string{"AI", "人工智能", "机器学习"},
+		MinTitleRunes:   1,
 		MinSnippetRunes: 1,
 	})
 	result, err := svc.Filter(context.Background(), content.SourceItem{
@@ -27,8 +27,8 @@ func TestFilterPassesContentWithMatchingKeyword(t *testing.T) {
 
 func TestFilterRejectsContentWithoutKeyword(t *testing.T) {
 	svc := NewService(Config{
-		Keywords:       []string{"AI", "人工智能"},
-		MinTitleRunes:  1,
+		Keywords:        []string{"AI", "人工智能"},
+		MinTitleRunes:   1,
 		MinSnippetRunes: 1,
 	})
 	result, err := svc.Filter(context.Background(), content.SourceItem{
@@ -45,9 +45,9 @@ func TestFilterRejectsContentWithoutKeyword(t *testing.T) {
 
 func TestFilterRejectsContentWithExclusionWord(t *testing.T) {
 	svc := NewService(Config{
-		Keywords:       []string{"AI"},
-		ExcludeWords:   []string{"广告", "推广"},
-		MinTitleRunes:  1,
+		Keywords:        []string{"AI"},
+		ExcludeWords:    []string{"广告", "推广"},
+		MinTitleRunes:   1,
 		MinSnippetRunes: 1,
 	})
 	result, err := svc.Filter(context.Background(), content.SourceItem{
@@ -64,8 +64,8 @@ func TestFilterRejectsContentWithExclusionWord(t *testing.T) {
 
 func TestFilterRejectsTooShortContent(t *testing.T) {
 	svc := NewService(Config{
-		Keywords:       []string{"AI"},
-		MinTitleRunes:  5,
+		Keywords:        []string{"AI"},
+		MinTitleRunes:   5,
 		MinSnippetRunes: 10,
 	})
 	result, err := svc.Filter(context.Background(), content.SourceItem{
@@ -82,8 +82,8 @@ func TestFilterRejectsTooShortContent(t *testing.T) {
 
 func TestFilterPassesWhenNoKeywordsConfigured(t *testing.T) {
 	svc := NewService(Config{
-		Keywords:       nil,
-		MinTitleRunes:  1,
+		Keywords:        nil,
+		MinTitleRunes:   1,
 		MinSnippetRunes: 1,
 	})
 	result, err := svc.Filter(context.Background(), content.SourceItem{
@@ -100,9 +100,9 @@ func TestFilterPassesWhenNoKeywordsConfigured(t *testing.T) {
 
 func TestFilterExclusionTakesPrecedenceOverKeyword(t *testing.T) {
 	svc := NewService(Config{
-		Keywords:       []string{"AI"},
-		ExcludeWords:   []string{"spam"},
-		MinTitleRunes:  1,
+		Keywords:        []string{"AI"},
+		ExcludeWords:    []string{"spam"},
+		MinTitleRunes:   1,
 		MinSnippetRunes: 1,
 	})
 	result, err := svc.Filter(context.Background(), content.SourceItem{
@@ -119,8 +119,8 @@ func TestFilterExclusionTakesPrecedenceOverKeyword(t *testing.T) {
 
 func TestFilterKeywordMatchIsCaseInsensitive(t *testing.T) {
 	svc := NewService(Config{
-		Keywords:       []string{"ai"},
-		MinTitleRunes:  1,
+		Keywords:        []string{"ai"},
+		MinTitleRunes:   1,
 		MinSnippetRunes: 1,
 	})
 	result, err := svc.Filter(context.Background(), content.SourceItem{

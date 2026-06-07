@@ -13,7 +13,7 @@ import (
 func TestGenerateEmbeddingHandlerMarksNearDuplicate(t *testing.T) {
 	contentRepo := content.NewMemoryRepository()
 	hotspotRepo := hotspot.NewMemoryRepository()
-	
+
 	// Create an existing item with its embedding
 	existingItem := content.SourceItem{
 		ID:           "item-existing",
@@ -52,7 +52,7 @@ func TestGenerateEmbeddingHandlerMarksNearDuplicate(t *testing.T) {
 	}
 
 	handler := NewGenerateEmbeddingHandler(embedSvc, dedupSvc, contentRepo)
-	
+
 	job := queue.Job{
 		Payload: mustJSON(t, queue.GenerateEmbeddingPayload{ItemID: "item-new"}),
 	}
