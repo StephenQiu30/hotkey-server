@@ -12,28 +12,33 @@ type fetcherSimulator struct {
 	behavior ProviderBehavior
 }
 
+// newFetcherSimulatorImpl creates a new instance of fetcherSimulator with default behavior.
 func newFetcherSimulatorImpl() *fetcherSimulator {
 	return &fetcherSimulator{behavior: BehaviorNormal}
 }
 
+// SetBehavior updates the current simulator behavior.
 func (s *fetcherSimulator) SetBehavior(b ProviderBehavior) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.behavior = b
 }
 
+// Reset restores the simulator to its default BehaviorNormal.
 func (s *fetcherSimulator) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.behavior = BehaviorNormal
 }
 
+// behaviorValue returns the current behavior in a thread-safe manner.
 func (s *fetcherSimulator) behaviorValue() ProviderBehavior {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.behavior
 }
 
+// Fetch simulates fetching items from a source URL, following the configured behavior.
 func (s *fetcherSimulator) Fetch(ctx context.Context, sourceURL string) ([]map[string]string, error) {
 	b := s.behaviorValue()
 	switch b {
