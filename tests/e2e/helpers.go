@@ -28,15 +28,9 @@ func redisPing(ctx context.Context, rawURL string) error {
 	addr := u.Host
 	if addr == "" {
 		addr = "127.0.0.1:6379"
-	} else {
-		// Handle cases where Host is just a hostname without port
-		host, port, err := net.SplitHostPort(addr)
-		if err != nil {
-			// Probably missing port
-			addr = net.JoinHostPort(addr, "6379")
-		} else if port == "" {
-			addr = net.JoinHostPort(host, "6379")
-		}
+	} else if _, _, err := net.SplitHostPort(addr); err != nil {
+		// Host is just a hostname without port — append default Redis port.
+		addr = net.JoinHostPort(addr, "6379")
 	}
 
 	dialer := &net.Dialer{}
