@@ -20,12 +20,13 @@ func pingTCP(ctx context.Context, addr string) error {
 
 // redisPing performs a PING command over a raw TCP connection to Redis.
 func redisPing(ctx context.Context, rawURL string) error {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return fmt.Errorf("parse redis url: %w", err)
+	// Handle bare host:port input (e.g. "127.0.0.1:16379") which url.Parse
+	// puts into Host only when a scheme is present.
+	addr := rawURL
+	if u, err := url.Parse(rawURL); err == nil && u.Host != "" {
+		addr = u.Host
 	}
 
-	addr := u.Host
 	if addr == "" {
 		addr = "127.0.0.1:6379"
 	} else if _, _, err := net.SplitHostPort(addr); err != nil {
