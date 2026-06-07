@@ -3,7 +3,11 @@ package e2e_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net"
+	"strings"
 	"testing"
+	"time"
 )
 
 // --- Contract Tests ---
@@ -53,21 +57,39 @@ func TestAISimulator_Chat(t *testing.T) {
 	sim := newAISimulator(t)
 	ctx := context.Background()
 
-	sim.SetBehavior(BehaviorNormal)
-	text, err := sim.Chat(ctx, "生成日报")
-	if err != nil {
-		t.Fatalf("normal chat: unexpected error: %v", err)
-	}
-	if text == "" {
-		t.Fatal("normal chat: expected non-empty response")
+	tests := []struct {
+		behavior ProviderBehavior
+		wantErr  bool
+		errType  string
+	}{
+		{BehaviorNormal, false, ""},
+		{BehaviorRateLimit, true, "rate_limit"},
+		{BehaviorAuthInvalid, true, "auth_invalid"},
+		{BehaviorSchemaChange, true, "schema_change"},
+		{BehaviorEmptyResult, true, "empty_result"},
 	}
 
-	sim.SetBehavior(BehaviorRateLimit)
-	_, err = sim.Chat(ctx, "生成日报")
-	if err == nil {
-		t.Fatal("rate_limit chat: expected error")
+	for _, tt := range tests {
+		t.Run(string(tt.behavior), func(t *testing.T) {
+			sim.SetBehavior(tt.behavior)
+			defer sim.Reset()
+
+			text, err := sim.Chat(ctx, "生成日报")
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("behavior %s: expected error, got text: %s", tt.behavior, text)
+				}
+				assertSimulatorErrorf(t, err, tt.errType)
+			} else {
+				if err != nil {
+					t.Fatalf("behavior %s: unexpected error: %v", tt.behavior, err)
+				}
+				if text == "" {
+					t.Fatalf("behavior %s: expected non-empty response", tt.behavior)
+				}
+			}
+		})
 	}
-	assertSimulatorErrorf(t, err, "rate_limit")
 }
 
 // TestSMTPSink_Capture verifies the SMTP sink captures sent emails.
@@ -78,11 +100,43 @@ func TestSMTPSink_Capture(t *testing.T) {
 		t.Fatal("SMTP sink returned empty address")
 	}
 
-	records := sink.Records()
-	if len(records) != 0 {
-		t.Fatalf("SMTP sink expected 0 records initially, got %d", len(records))
+	// Send a test email
+	d := net.Dialer{Timeout: 3 * time.Second}
+	conn, err := d.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("failed to connect to SMTP sink: %v", err)
 	}
-	t.Logf("SMTP sink listening at %s", addr)
+	defer conn.Close()
+
+	// Minimal SMTP flow
+	fmt.Fprintf(conn, "EHLO localhost\r\n")
+	fmt.Fprintf(conn, "MAIL FROM:<sender@example.com>\r\n")
+	fmt.Fprintf(conn, "RCPT TO:<receiver@example.com>\r\n")
+	fmt.Fprintf(conn, "DATA\r\n")
+	fmt.Fprintf(conn, "Subject: Test Subject\r\n\r\nTest Body\r\n.\r\n")
+	fmt.Fprintf(conn, "QUIT\r\n")
+
+	// Wait a bit for sink to process
+	time.Sleep(100 * time.Millisecond)
+
+	records := sink.Records()
+	if len(records) != 1 {
+		t.Fatalf("SMTP sink expected 1 record, got %d", len(records))
+	}
+
+	r := records[0]
+	if r.From != "sender@example.com" {
+		t.Errorf("expected from sender@example.com, got %s", r.From)
+	}
+	if r.To != "receiver@example.com" {
+		t.Errorf("expected to receiver@example.com, got %s", r.To)
+	}
+	if r.Subject != "Test Subject" {
+		t.Errorf("expected subject 'Test Subject', got %q", r.Subject)
+	}
+	if r.Body == "" {
+		t.Error("expected non-empty body")
+	}
 }
 
 // TestFetcherSimulator_AllBehaviors verifies the fetcher simulator supports all five behaviors.
@@ -181,7 +235,7 @@ func assertSimulatorErrorf(t *testing.T, err error, expectedType string) {
 		return
 	}
 	// Fallback: check error message contains expected type
-	if !containsSubstring(err.Error(), expectedType) {
+	if !strings.Contains(err.Error(), expectedType) {
 		t.Fatalf("expected error containing %q, got: %v", expectedType, err)
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"time"
 )
 
 // pingTCP checks if a TCP port is accepting connections.
