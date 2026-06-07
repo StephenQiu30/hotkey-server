@@ -25,6 +25,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/service/embedding"
 	"github.com/StephenQiu30/hotkey-server/internal/service/filter"
 	"github.com/StephenQiu30/hotkey-server/internal/service/ingest"
+	"github.com/StephenQiu30/hotkey-server/internal/service/mail"
 	"github.com/StephenQiu30/hotkey-server/internal/service/normalize"
 	"github.com/StephenQiu30/hotkey-server/internal/service/quality"
 	servicesource "github.com/StephenQiu30/hotkey-server/internal/service/source"
@@ -104,6 +105,17 @@ func main() {
 		ingest.WithQuality(qualitySvc),
 	)
 
+	mailService := mail.NewService(nil, nil, mail.Config{
+		Host:       cfg.SMTPHost,
+		Port:       cfg.SMTPPort,
+		Username:   cfg.SMTPUsername,
+		Password:   cfg.SMTPPassword,
+		From:       cfg.SMTPFrom,
+		TLS:        cfg.SMTPTLS,
+		StartTLS:   cfg.SMTPStartTLS,
+		Configured: cfg.SMTPHost != "",
+	})
+
 	// Initialize API Runtime
 	api := app.NewAPI(cfg, logSlog, db, redisClient)
 
@@ -111,12 +123,24 @@ func main() {
 	workerRuntime := worker.New(jobQueue, redisClient, logSlog,
 		worker.WithHandler(queue.JobTypeCollectSource, worker.NewCollectSourceHandler(sourceSvc, multiFetcher, ingestSvc)),
 		worker.WithHandler(queue.JobTypeGenerateEmbedding, worker.NewGenerateEmbeddingHandler(embeddingSvc, dedupSvc, contentRepo)),
+		worker.WithHandler(queue.JobTypeSendDailyEmail, worker.NewSendDailyEmailHandler(mailService)),
+		worker.WithHandler(queue.JobTypeSendWeeklyEmail, worker.NewSendWeeklyEmailHandler(mailService)),
 	)
 
-	schedulerRuntime := scheduler.NewHourlyCollectScheduler(jobQueue, scheduler.HourlyCollectOptions{
-		SourceID: cfg.CollectSourceID,
+	dailyEmailScheduler := scheduler.NewDailyEmailScheduler(jobQueue, scheduler.DailyEmailOptions{
+		DefaultDailySendAt: "08:30",
 	})
-
+	weeklyEmailScheduler := scheduler.NewWeeklyEmailScheduler(jobQueue, scheduler.WeeklyEmailOptions{
+		DefaultWeeklySendAt: "09:00",
+		WeeklySendDay:       time.Monday,
+	})
+	schedulerRuntime := scheduler.NewCompositeScheduler(
+		scheduler.NewHourlyCollectScheduler(jobQueue, scheduler.HourlyCollectOptions{
+			SourceID: cfg.CollectSourceID,
+		}),
+		dailyEmailScheduler,
+		weeklyEmailScheduler,
+	)
 	runtime := app.NewRuntime(cfg, app.RuntimeComponents{
 		API:       api,
 		Worker:    workerRuntime,

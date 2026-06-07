@@ -21,6 +21,8 @@ func TestJobPayloadSchemasCoverRequiredTypes(t *testing.T) {
 		{"score hotspots", JobTypeScoreHotspots, ScoreHotspotsPayload{ClusterRunID: "cluster-run-1"}},
 		{"generate daily report", JobTypeGenerateDailyReport, GenerateDailyReportPayload{Date: "2026-05-31"}},
 		{"send daily email", JobTypeSendDailyEmail, SendDailyEmailPayload{ReportID: "report-1", RecipientUserID: "user-1"}},
+		{"send weekly email", JobTypeSendWeeklyEmail, SendWeeklyEmailPayload{ReportID: "report-1", RecipientUserID: "user-1"}},
+		{"generate weekly report", JobTypeGenerateWeeklyReport, GenerateWeeklyReportPayload{WeekOf: "2026-W23"}},
 	}
 
 	for _, tt := range tests {
@@ -44,6 +46,44 @@ func TestValidatePayloadRejectsUnknownTypeAndMissingRequiredFields(t *testing.T)
 
 	if err := ValidatePayload(JobTypeCollectSource, json.RawMessage(`{"source_id":""}`)); err == nil {
 		t.Fatal("expected missing collect_source fields to fail")
+	}
+}
+
+func TestValidatePayloadRejectsMalformedWeekOf(t *testing.T) {
+	tests := []struct {
+		name    string
+		weekOf  string
+		wantErr bool
+	}{
+		{"valid 2026-W23", "2026-W23", false},
+		{"valid 2026-W01", "2026-W01", false},
+		{"valid 2026-W52", "2026-W52", false},
+		{"empty", "", true},
+		{"slash format 2026/23", "2026/23", true},
+		{"no W 2026-23", "2026-23", true},
+		{"week 00", "2026-W00", true},
+		{"week 54", "2026-W54", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			payload := mustPayload(t, GenerateWeeklyReportPayload{WeekOf: tt.weekOf})
+			err := ValidatePayload(JobTypeGenerateWeeklyReport, payload)
+			if tt.wantErr && err == nil {
+				t.Fatalf("expected error for week_of=%q", tt.weekOf)
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("unexpected error for week_of=%q: %v", tt.weekOf, err)
+			}
+		})
+	}
+}
+
+func TestValidatePayloadRejectsWeeklyEmailMissingFields(t *testing.T) {
+	if err := ValidatePayload(JobTypeSendWeeklyEmail, json.RawMessage(`{"report_id":""}`)); err == nil {
+		t.Fatal("expected missing recipient_user_id to fail")
+	}
+	if err := ValidatePayload(JobTypeSendWeeklyEmail, json.RawMessage(`{"recipient_user_id":"u1"}`)); err == nil {
+		t.Fatal("expected missing report_id to fail")
 	}
 }
 

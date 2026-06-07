@@ -18,8 +18,9 @@ const (
 	ChannelStatusActive   ChannelStatus = "active"
 	ChannelStatusDisabled ChannelStatus = "disabled"
 
-	defaultDailySendAtKey = "default_daily_send_at"
-	defaultDailySendAt    = "08:30"
+	defaultDailySendAtKey  = "default_daily_send_at"
+	defaultDailySendAt     = "08:30"
+	defaultWeeklySendAt    = "09:00"
 )
 
 var (
@@ -73,6 +74,10 @@ type Repository interface {
 	UpsertSetting(ctx context.Context, key string, value string, updatedAt time.Time) error
 	UserDailySendAt(ctx context.Context, userID string) (string, error)
 	SetUserDailySendAt(ctx context.Context, userID string, dailySendAt string, updatedAt time.Time) error
+	UserWeeklyEnabled(ctx context.Context, userID string) (bool, error)
+	SetUserWeeklyEnabled(ctx context.Context, userID string, enabled bool, updatedAt time.Time) error
+	UserWeeklySendAt(ctx context.Context, userID string) (string, error)
+	SetUserWeeklySendAt(ctx context.Context, userID string, weeklySendAt string, updatedAt time.Time) error
 }
 
 type Service struct {
@@ -258,7 +263,7 @@ func (s *Service) ListKeywords(ctx context.Context, userID string) ([]Keyword, e
 }
 
 func (s *Service) SetDefaultDailySendAt(ctx context.Context, dailySendAt string) error {
-	if !validDailySendAt(dailySendAt) {
+	if !validTimeOfDay(dailySendAt) {
 		return ErrInvalidInput
 	}
 	return s.repo.UpsertSetting(ctx, defaultDailySendAtKey, dailySendAt, s.now().UTC())
@@ -273,12 +278,39 @@ func (s *Service) DefaultDailySendAt(ctx context.Context) (string, error) {
 }
 
 func (s *Service) SetUserDailySendAt(ctx context.Context, input UserDailySendAtInput) error {
-	if strings.TrimSpace(input.UserID) == "" || !validDailySendAt(input.DailySendAt) {
+	if strings.TrimSpace(input.UserID) == "" || !validTimeOfDay(input.DailySendAt) {
 		return ErrInvalidInput
 	}
 	return s.repo.SetUserDailySendAt(ctx, input.UserID, input.DailySendAt, s.now().UTC())
 }
 
+func (s *Service) UserWeeklyEnabled(ctx context.Context, userID string) (bool, error) {
+	if strings.TrimSpace(userID) == "" {
+		return false, ErrInvalidInput
+	}
+	return s.repo.UserWeeklyEnabled(ctx, userID)
+}
+
+func (s *Service) SetUserWeeklyEnabled(ctx context.Context, userID string, enabled bool) error {
+	if strings.TrimSpace(userID) == "" {
+		return ErrInvalidInput
+	}
+	return s.repo.SetUserWeeklyEnabled(ctx, userID, enabled, s.now().UTC())
+}
+
+func (s *Service) UserWeeklySendAt(ctx context.Context, userID string) (string, error) {
+	if strings.TrimSpace(userID) == "" {
+		return "", ErrInvalidInput
+	}
+	return s.repo.UserWeeklySendAt(ctx, userID)
+}
+
+func (s *Service) SetUserWeeklySendAt(ctx context.Context, userID string, weeklySendAt string) error {
+	if strings.TrimSpace(userID) == "" || !validTimeOfDay(weeklySendAt) {
+		return ErrInvalidInput
+	}
+	return s.repo.SetUserWeeklySendAt(ctx, userID, weeklySendAt, s.now().UTC())
+}
 func (s *Service) UserDailySendAt(ctx context.Context, userID string) (string, error) {
 	if strings.TrimSpace(userID) == "" {
 		return "", ErrInvalidInput
@@ -286,7 +318,7 @@ func (s *Service) UserDailySendAt(ctx context.Context, userID string) (string, e
 	return s.repo.UserDailySendAt(ctx, userID)
 }
 
-func validDailySendAt(value string) bool {
+func validTimeOfDay(value string) bool {
 	return errInvalidTimeRegex.MatchString(value)
 }
 
