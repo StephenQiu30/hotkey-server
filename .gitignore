@@ -29,4 +29,9 @@ coverage/
 # IDE
 .idea/
 .vscode/
+
+# Symphony
+.symphony-claude-prompt.*
+
+# Test fixtures
 tests/fixtures/git-remote/
