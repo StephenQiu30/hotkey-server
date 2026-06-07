@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -78,6 +79,86 @@ func (s *Service) GenerateUserReport(ctx context.Context, input GenerateReportIn
 		return DailyReport{}, err
 	}
 	return s.generateReport(ctx, input, hotspots)
+}
+
+func (s *Service) GenerateWeeklyReport(ctx context.Context, input GenerateWeeklyReportInput) (WeeklyReport, error) {
+	input.WeekOf = strings.TrimSpace(input.WeekOf)
+	input.ChannelID = strings.TrimSpace(input.ChannelID)
+	if input.WeekOf == "" {
+		return WeeklyReport{}, ErrInvalidInput
+	}
+	startDate, endDate, err := parseWeekRange(input.WeekOf)
+	if err != nil {
+		return WeeklyReport{}, ErrInvalidInput
+	}
+	dailyReports, err := s.reports.ListReportsByDateRange(ctx, startDate, endDate, input.ChannelID)
+	if err != nil {
+		return WeeklyReport{}, err
+	}
+	if len(dailyReports) == 0 {
+		now := s.now().UTC()
+		return WeeklyReport{
+			DailyReport: DailyReport{
+				ID:         newID("wrpt"),
+				Date:       input.WeekOf,
+				ReportType: "weekly",
+				ChannelID:  input.ChannelID,
+				UserID:     input.UserID,
+				Body:       "本周无日报数据，暂不生成周报。",
+				Status:     ReportStatusDegraded,
+				SourceRefs: []SourceRef{},
+				CreatedAt:  now,
+				UpdatedAt:  now,
+			},
+			DailyReportIDs: []string{},
+		}, nil
+	}
+	var dailyIDs []string
+	var allRefs []SourceRef
+	seen := map[string]bool{}
+	for _, dr := range dailyReports {
+		dailyIDs = append(dailyIDs, dr.ID)
+		for _, ref := range dr.SourceRefs {
+			key := ref.SourceID + ":" + ref.ItemID
+			if !seen[key] {
+				seen[key] = true
+				allRefs = append(allRefs, ref)
+			}
+		}
+	}
+	prompt := BuildWeeklyReportPrompt(input.WeekOf, dailyReports)
+	body, err := s.callQwen(ctx, prompt, allRefs)
+	status := ReportStatusSucceeded
+	lastError := ""
+	if err != nil {
+		status = ReportStatusDegraded
+		if errorsIs(err, ErrFailedConfig) {
+			status = ReportStatusFailedConfig
+		}
+		lastError = err.Error()
+		body = buildDegradedWeeklyReportBody(input.WeekOf, dailyReports, allRefs, status)
+	}
+	now := s.now().UTC()
+	report := DailyReport{
+		ID:             newID("wrpt"),
+		Date:           input.WeekOf,
+		ReportType:     "weekly",
+		ChannelID:      input.ChannelID,
+		UserID:         input.UserID,
+		PromptVersion:  PromptVersion,
+		Body:           body,
+		Status:         status,
+		LastError:      lastError,
+		SourceRefs:     allRefs,
+		DailyReportIDs: dailyIDs,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	saved, err := s.reports.SaveReport(ctx, report)
+	if err != nil {
+		return WeeklyReport{}, err
+	}
+	return WeeklyReport{DailyReport: saved, DailyReportIDs: dailyIDs}, nil
 }
 
 func (s *Service) GenerateSummary(ctx context.Context, input GenerateSummaryInput) (AISummary, error) {
@@ -193,4 +274,26 @@ func newID(prefix string) string {
 		return prefix + "-" + time.Now().UTC().Format("20060102150405")
 	}
 	return prefix + "-" + hex.EncodeToString(b[:])
+}
+
+// parseWeekRange parses a week identifier like "2026-W23" and returns the start and end dates (YYYY-MM-DD).
+func parseWeekRange(weekOf string) (startDate, endDate string, err error) {
+	year, week := 0, 0
+	if _, parseErr := fmt.Sscanf(weekOf, "%d-W%d", &year, &week); parseErr != nil {
+		return "", "", fmt.Errorf("invalid week format %q: %w", weekOf, parseErr)
+	}
+	if year < 2000 || year > 2100 || week < 1 || week > 53 {
+		return "", "", fmt.Errorf("invalid week range: year=%d week=%d", year, week)
+	}
+	// ISO week: find the Thursday of the given week, then derive Monday and Sunday
+	jan4 := time.Date(year, 1, 4, 0, 0, 0, 0, time.UTC)
+	// Find the Monday of week 1
+	weekday := jan4.Weekday()
+	if weekday == time.Sunday {
+		weekday = 7
+	}
+	mondayWeek1 := jan4.Add(-time.Duration(weekday-1) * 24 * time.Hour)
+	start := mondayWeek1.Add(time.Duration(week-1) * 7 * 24 * time.Hour)
+	end := start.Add(6 * 24 * time.Hour)
+	return start.Format("2006-01-02"), end.Format("2006-01-02"), nil
 }

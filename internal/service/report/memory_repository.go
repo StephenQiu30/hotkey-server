@@ -86,6 +86,21 @@ func (r *MemoryReportRepository) ListReportsByUser(_ context.Context, userID str
 	return reports, nil
 }
 
+func (r *MemoryReportRepository) ListReportsByDateRange(_ context.Context, startDate, endDate, channelID string) ([]DailyReport, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var reports []DailyReport
+	for _, report := range r.reports {
+		if report.Date >= startDate && report.Date <= endDate && report.ReportType != "weekly" {
+			if channelID == "" || report.ChannelID == channelID {
+				reports = append(reports, cloneReport(report))
+			}
+		}
+	}
+	sortReports(reports)
+	return reports, nil
+}
+
 func (r *MemoryReportRepository) SaveSummary(_ context.Context, summary AISummary) (AISummary, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -106,6 +121,7 @@ func (r *MemoryReportRepository) FindSummaryByClusterID(_ context.Context, clust
 func cloneReport(report DailyReport) DailyReport {
 	report.InputHotspotIDs = append([]string(nil), report.InputHotspotIDs...)
 	report.SourceRefs = append([]SourceRef(nil), report.SourceRefs...)
+	report.DailyReportIDs = append([]string(nil), report.DailyReportIDs...)
 	return report
 }
 

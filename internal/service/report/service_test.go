@@ -2,6 +2,7 @@ package report
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -166,4 +167,63 @@ func (m *mockPrefs) ListUserChannelIDs(context.Context, string) ([]string, error
 
 func (m *mockPrefs) ListUserKeywords(context.Context, string) ([]string, error) {
 	return m.keywords, nil
+}
+
+func TestGenerateWeeklyReportAggregatesPast7Days(t *testing.T) {
+	repo := NewMemoryReportRepository()
+	qwen := &mockQwen{body: "# 周报\n\n## 本周摘要\n\n周报正文。"}
+	service := newTestService(repo, qwen)
+
+	// Save 3 daily reports for the past week
+	for i, date := range []string{"2026-05-25", "2026-05-27", "2026-05-29"} {
+		repo.SaveReport(context.Background(), DailyReport{
+			ID:        fmt.Sprintf("daily-%d", i),
+			Date:      date,
+			ChannelID: "ai",
+			Body:      fmt.Sprintf("日报正文 %d", i),
+			Status:    ReportStatusSucceeded,
+			SourceRefs: []SourceRef{
+				{SourceID: "src-1", ItemID: "item-1", Title: "来源1", URL: "https://example.test/1"},
+				{SourceID: "src-2", ItemID: "item-2", Title: "来源2", URL: "https://example.test/2"},
+			},
+			CreatedAt: time.Date(2026, 5, 25+i, 8, 0, 0, 0, time.UTC),
+			UpdatedAt: time.Date(2026, 5, 25+i, 8, 0, 0, 0, time.UTC),
+		})
+	}
+
+	report, err := service.GenerateWeeklyReport(context.Background(), GenerateWeeklyReportInput{
+		WeekOf:    "2026-W22",
+		ChannelID: "ai",
+	})
+	if err != nil {
+		t.Fatalf("GenerateWeeklyReport returned error: %v", err)
+	}
+	if report.Status != ReportStatusSucceeded {
+		t.Fatalf("expected succeeded, got %s", report.Status)
+	}
+	if report.ReportType != "weekly" {
+		t.Fatalf("expected weekly report type, got %s", report.ReportType)
+	}
+	if len(report.DailyReportIDs) != 3 {
+		t.Fatalf("expected 3 daily report IDs, got %d", len(report.DailyReportIDs))
+	}
+}
+
+func TestGenerateWeeklyReportNoDailyReportsReturnsDegraded(t *testing.T) {
+	repo := NewMemoryReportRepository()
+	service := newTestService(repo, &mockQwen{body: "不应调用"})
+
+	report, err := service.GenerateWeeklyReport(context.Background(), GenerateWeeklyReportInput{
+		WeekOf:    "2026-W22",
+		ChannelID: "ai",
+	})
+	if err != nil {
+		t.Fatalf("GenerateWeeklyReport returned error: %v", err)
+	}
+	if report.Status != ReportStatusDegraded {
+		t.Fatalf("expected degraded for no daily reports, got %s", report.Status)
+	}
+	if !strings.Contains(report.Body, "本周无日报数据") {
+		t.Fatalf("expected no-data note in body, got %s", report.Body)
+	}
 }

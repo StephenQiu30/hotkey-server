@@ -34,6 +34,7 @@ type SourceRef struct {
 type DailyReport struct {
 	ID              string
 	Date            string
+	ReportType      string
 	ChannelID       string
 	UserID          string
 	PromptVersion   string
@@ -42,6 +43,7 @@ type DailyReport struct {
 	Status          ReportStatus
 	LastError       string
 	SourceRefs      []SourceRef
+	DailyReportIDs  []string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }
@@ -99,6 +101,17 @@ type GenerateReportInput struct {
 	UserID    string
 }
 
+type GenerateWeeklyReportInput struct {
+	WeekOf    string
+	ChannelID string
+	UserID    string
+}
+
+type WeeklyReport struct {
+	DailyReport
+	DailyReportIDs []string
+}
+
 type GenerateSummaryInput struct {
 	ClusterID string
 }
@@ -114,6 +127,7 @@ type ReportRepository interface {
 	ListReportsByDate(context.Context, string) ([]DailyReport, error)
 	ListReportsByChannel(context.Context, string) ([]DailyReport, error)
 	ListReportsByUser(context.Context, string) ([]DailyReport, error)
+	ListReportsByDateRange(ctx context.Context, startDate, endDate, channelID string) ([]DailyReport, error)
 	SaveSummary(context.Context, AISummary) (AISummary, error)
 	FindSummaryByClusterID(context.Context, string) (AISummary, error)
 }
