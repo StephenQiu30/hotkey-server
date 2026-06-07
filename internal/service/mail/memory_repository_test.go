@@ -58,3 +58,14 @@ func (r *memoryRepository) UpdateDelivery(_ context.Context, delivery Delivery) 
 	r.deliveries[len(r.deliveries)-1] = delivery
 	return delivery, nil
 }
+
+func (r *memoryRepository) FindDeliveryByReportAndUser(_ context.Context, reportID, userID string) (Delivery, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, d := range r.deliveries {
+		if d.ReportID == reportID && d.RecipientUserID == userID {
+			return d, nil
+		}
+	}
+	return Delivery{}, ErrNotFound
+}
