@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -11,11 +12,11 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/platform/crypto"
 	platformpostgres "github.com/StephenQiu30/hotkey-server/internal/platform/postgres"
 	platformredis "github.com/StephenQiu30/hotkey-server/internal/platform/redis"
+	"github.com/StephenQiu30/hotkey-server/internal/repository/postgres/authorizationrepo"
+	"github.com/StephenQiu30/hotkey-server/internal/repository/postgres/userrepo"
 	serviceadmin "github.com/StephenQiu30/hotkey-server/internal/service/admin"
 	serviceauth "github.com/StephenQiu30/hotkey-server/internal/service/auth"
 	servicechannel "github.com/StephenQiu30/hotkey-server/internal/service/channel"
-	"github.com/StephenQiu30/hotkey-server/internal/repository/postgres/authorizationrepo"
-	"github.com/StephenQiu30/hotkey-server/internal/repository/postgres/userrepo"
 	transporthttp "github.com/StephenQiu30/hotkey-server/internal/transport/http"
 )
 
