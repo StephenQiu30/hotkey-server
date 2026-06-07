@@ -8,6 +8,7 @@ import (
 	serviceadmin "github.com/StephenQiu30/hotkey-server/internal/service/admin"
 	serviceauth "github.com/StephenQiu30/hotkey-server/internal/service/auth"
 	servicechannel "github.com/StephenQiu30/hotkey-server/internal/service/channel"
+	serviceeventsummary "github.com/StephenQiu30/hotkey-server/internal/service/eventsummary"
 	servicehotspot "github.com/StephenQiu30/hotkey-server/internal/service/hotspot"
 	servicemonitortopic "github.com/StephenQiu30/hotkey-server/internal/service/monitortopic"
 	servicereport "github.com/StephenQiu30/hotkey-server/internal/service/report"
@@ -18,6 +19,7 @@ import (
 	adminhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/admin"
 	authhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/auth"
 	channelhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/channel"
+	eventsummaryhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/eventsummary"
 	hotspothandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/hotspot"
 	monitortopichandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/monitortopic"
 	reporthandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/report"
@@ -34,6 +36,7 @@ type Dependencies struct {
 	ScoringService      *servicehotspot.ScoringService
 	ReportService       *servicereport.Service
 	RSSService          *servicerss.Service
+	EventSummaryService *serviceeventsummary.Service
 	MonitorTopicService *servicemonitortopic.Service
 	AdapterRegistry     *adapter.Registry
 }
@@ -119,6 +122,11 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	}
 	adapterHandler := adapterhandler.New(deps.AdapterRegistry)
 
+	if deps.EventSummaryService == nil {
+		deps.EventSummaryService = serviceeventsummary.NewService(serviceeventsummary.NewMemoryRepository(), nil)
+	}
+	eventSummary := eventsummaryhandler.New(deps.EventSummaryService)
+
 	adminObservability := adminhandler.New(deps.AdminService)
 	router.GET("/rss/channels/:channelCode", rss.PublicChannel)
 	router.GET("/rss/users/:token", rss.PrivateUser)
@@ -145,6 +153,8 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	v1.GET("/me/rss", auth.AuthRequired(), rss.GetUserFeed)
 	v1.POST("/me/rss/reset", auth.AuthRequired(), rss.ResetUserFeed)
 	v1.DELETE("/me/rss", auth.AuthRequired(), rss.DisableUserFeed)
+	v1.GET("/events/:eventID/summary", auth.AuthRequired(), eventSummary.GetSummary)
+	v1.POST("/events/:eventID/summary", auth.AuthRequired(), eventSummary.GenerateSummary)
 	v1.GET("/me/topics", auth.AuthRequired(), topics.ListTopics)
 	v1.POST("/me/topics", auth.AuthRequired(), topics.CreateTopic)
 	v1.GET("/me/topics/:topicID", auth.AuthRequired(), topics.GetTopic)
