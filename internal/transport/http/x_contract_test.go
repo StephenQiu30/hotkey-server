@@ -1,6 +1,7 @@
 package http_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"testing"
 )
@@ -8,7 +9,7 @@ import (
 func TestXSourceCreateUpdateAndDisableRequiresAdmin(t *testing.T) {
 	router := transportRouterForTest()
 	userToken := registerAndLogin(t, router, "x-user@example.com")
-	adminToken := registerAdminAndLogin(t, router, "x-admin@example.com")
+	adminToken := registerAdminAndLogin(t, router, "channels-admin@example.com")
 
 	// Non-admin cannot create X source.
 	denied := postJSONWithBearer(t, router, "/api/v1/admin/sources", userToken, map[string]any{
@@ -65,7 +66,7 @@ func TestXSourceCreateUpdateAndDisableRequiresAdmin(t *testing.T) {
 
 func TestXSourceRequiresComplianceNote(t *testing.T) {
 	router := transportRouterForTest()
-	adminToken := registerAdminAndLogin(t, router, "x-compliance-admin@example.com")
+	adminToken := registerAdminAndLogin(t, router, "channels-admin@example.com")
 
 	missingCompliance := postJSONWithBearer(t, router, "/api/v1/admin/sources", adminToken, map[string]any{
 		"name":             "X No Compliance",
@@ -83,7 +84,7 @@ func TestXSourceRequiresComplianceNote(t *testing.T) {
 func TestXAuthEndpointsRequireAdmin(t *testing.T) {
 	router := transportRouterForTest()
 	userToken := registerAndLogin(t, router, "x-auth-user@example.com")
-	adminToken := registerAdminAndLogin(t, router, "x-auth-admin@example.com")
+	adminToken := registerAdminAndLogin(t, router, "channels-admin@example.com")
 
 	// Non-admin cannot access X auth endpoints.
 	deniedAuth := getWithBearer(router, "/api/v1/admin/x/auth", userToken)
@@ -108,12 +109,19 @@ func TestXAuthEndpointsRequireAdmin(t *testing.T) {
 
 func TestXAuthStatusEndpointReturnsNotAuthorized(t *testing.T) {
 	router := transportRouterForTest()
-	adminToken := registerAdminAndLogin(t, router, "x-status-admin@example.com")
+	adminToken := registerAdminAndLogin(t, router, "channels-admin@example.com")
 
 	// Before any authorization, status should indicate not authorized.
 	status := getWithBearer(router, "/api/v1/admin/x/auth/status?sourceId=src_x_nonexistent", adminToken)
 	if status.Code != http.StatusOK {
 		t.Fatalf("expected X auth status 200, got %d with body %s", status.Code, status.Body.String())
 	}
-	assertJSONField(t, status.Body.Bytes(), "authorized", "false")
+	// authorized is a boolean false, not a string "false"
+	var statusBody map[string]any
+	if err := json.Unmarshal(status.Body.Bytes(), &statusBody); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if auth, ok := statusBody["authorized"].(bool); !ok || auth {
+		t.Fatalf("expected authorized=false, got %v", statusBody["authorized"])
+	}
 }

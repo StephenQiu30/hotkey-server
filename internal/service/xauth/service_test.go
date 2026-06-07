@@ -4,9 +4,47 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/service/xauth"
 )
+
+// fakeTokenExchanger implements TokenExchanger for testing.
+type fakeTokenExchanger struct {
+	exchangeErr  error
+	refreshErr   error
+	revokeErr    error
+	fixedToken   xauth.TokenResult
+}
+
+func (f *fakeTokenExchanger) ExchangeCode(_ context.Context, _ string, _ string, _ xauth.Config) (xauth.TokenResult, error) {
+	if f.exchangeErr != nil {
+		return xauth.TokenResult{}, f.exchangeErr
+	}
+	if f.fixedToken.AccessToken != "" {
+		return f.fixedToken, nil
+	}
+	return xauth.TokenResult{
+		AccessToken:  "fake_access_token_" + time.Now().Format("150405"),
+		RefreshToken: "fake_refresh_token_" + time.Now().Format("150405"),
+		ExpiresAt:    time.Now().Add(2 * time.Hour),
+	}, nil
+}
+
+func (f *fakeTokenExchanger) RefreshToken(_ context.Context, _ string, _ xauth.Config) (xauth.TokenResult, error) {
+	if f.refreshErr != nil {
+		return xauth.TokenResult{}, f.refreshErr
+	}
+	return xauth.TokenResult{
+		AccessToken:  "refreshed_access_token_" + time.Now().Format("150405"),
+		RefreshToken: "refreshed_refresh_token_" + time.Now().Format("150405"),
+		ExpiresAt:    time.Now().Add(2 * time.Hour),
+	}, nil
+}
+
+func (f *fakeTokenExchanger) RevokeToken(_ context.Context, _ string, _ xauth.Config) error {
+	return f.revokeErr
+}
 
 func TestGenerateAuthURLReturnsValidURL(t *testing.T) {
 	repo := xauth.NewMemoryRepository()
@@ -55,11 +93,11 @@ func TestGenerateAuthURLIncludesPKCEChallenge(t *testing.T) {
 
 func TestExchangeCodeForTokenSuccess(t *testing.T) {
 	repo := xauth.NewMemoryRepository()
-	svc := xauth.NewService(repo, xauth.Config{
+	svc := xauth.NewServiceWithExchanger(repo, xauth.Config{
 		ClientID:    "test_client_id",
 		RedirectURL: "http://localhost:8080/api/v1/admin/x/auth/callback",
 		Scopes:      []string{"tweet.read", "users.read", "offline.access"},
-	})
+	}, &fakeTokenExchanger{})
 
 	// Setup: store a pending state with code verifier.
 	_, err := svc.GenerateAuthURL(context.Background(), "state_exchange")
@@ -123,9 +161,9 @@ func TestExchangeCodeRejectsMismatchedState(t *testing.T) {
 
 func TestRefreshTokenSuccess(t *testing.T) {
 	repo := xauth.NewMemoryRepository()
-	svc := xauth.NewService(repo, xauth.Config{
+	svc := xauth.NewServiceWithExchanger(repo, xauth.Config{
 		ClientID: "test_client_id",
-	})
+	}, &fakeTokenExchanger{})
 
 	// Store a credential to refresh.
 	err := repo.StoreCredential(context.Background(), xauth.Credential{
@@ -160,9 +198,9 @@ func TestRefreshTokenFailsWhenNoCredential(t *testing.T) {
 
 func TestRevokeCredentialClearsTokens(t *testing.T) {
 	repo := xauth.NewMemoryRepository()
-	svc := xauth.NewService(repo, xauth.Config{
+	svc := xauth.NewServiceWithExchanger(repo, xauth.Config{
 		ClientID: "test_client_id",
-	})
+	}, &fakeTokenExchanger{})
 
 	err := repo.StoreCredential(context.Background(), xauth.Credential{
 		SourceID:     "src_x_revoke",

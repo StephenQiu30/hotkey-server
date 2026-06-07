@@ -16,6 +16,7 @@ type SourceType string
 const (
 	SourceTypeRSS        SourceType = "rss"
 	SourceTypePublicPage SourceType = "public_page"
+	SourceTypeX          SourceType = "x"
 )
 
 type Source struct {
