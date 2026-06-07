@@ -124,9 +124,15 @@ func TestMemoryStore_ListExpired(t *testing.T) {
 	past := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	future := time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	store.Put(ctx, Object{Key: "expired", Metadata: Metadata{UserID: "u1", ExpiresAt: &past}}, bytes.NewReader(nil))
-	store.Put(ctx, Object{Key: "valid", Metadata: Metadata{UserID: "u1", ExpiresAt: &future}}, bytes.NewReader(nil))
-	store.Put(ctx, Object{Key: "noexpiry", Metadata: Metadata{UserID: "u1"}}, bytes.NewReader(nil))
+	if err := store.Put(ctx, Object{Key: "expired", Metadata: Metadata{UserID: "u1", ExpiresAt: &past}}, bytes.NewReader(nil)); err != nil {
+		t.Fatalf("Put expired: %v", err)
+	}
+	if err := store.Put(ctx, Object{Key: "valid", Metadata: Metadata{UserID: "u1", ExpiresAt: &future}}, bytes.NewReader(nil)); err != nil {
+		t.Fatalf("Put valid: %v", err)
+	}
+	if err := store.Put(ctx, Object{Key: "noexpiry", Metadata: Metadata{UserID: "u1"}}, bytes.NewReader(nil)); err != nil {
+		t.Fatalf("Put noexpiry: %v", err)
+	}
 
 	now := time.Date(2026, 6, 7, 0, 0, 0, 0, time.UTC)
 	expired, err := store.ListExpired(ctx, "", now)
@@ -146,9 +152,15 @@ func TestMemoryStore_ListByPrefix(t *testing.T) {
 	store := NewMemoryStore()
 	ctx := context.Background()
 
-	store.Put(ctx, Object{Key: "user1/src1/2026/01/01/a", Metadata: Metadata{UserID: "user1"}}, bytes.NewReader(nil))
-	store.Put(ctx, Object{Key: "user1/src2/2026/01/01/b", Metadata: Metadata{UserID: "user1"}}, bytes.NewReader(nil))
-	store.Put(ctx, Object{Key: "user2/src1/2026/01/01/c", Metadata: Metadata{UserID: "user2"}}, bytes.NewReader(nil))
+	if err := store.Put(ctx, Object{Key: "user1/src1/2026/01/01/a", Metadata: Metadata{UserID: "user1"}}, bytes.NewReader(nil)); err != nil {
+		t.Fatalf("Put user1/a: %v", err)
+	}
+	if err := store.Put(ctx, Object{Key: "user1/src2/2026/01/01/b", Metadata: Metadata{UserID: "user1"}}, bytes.NewReader(nil)); err != nil {
+		t.Fatalf("Put user1/b: %v", err)
+	}
+	if err := store.Put(ctx, Object{Key: "user2/src1/2026/01/01/c", Metadata: Metadata{UserID: "user2"}}, bytes.NewReader(nil)); err != nil {
+		t.Fatalf("Put user2/c: %v", err)
+	}
 
 	matched, err := store.ListByPrefix(ctx, "user1/")
 	if err != nil {
@@ -164,7 +176,9 @@ func TestMemoryStore_ListByPrefix_NoMatch(t *testing.T) {
 	store := NewMemoryStore()
 	ctx := context.Background()
 
-	store.Put(ctx, Object{Key: "user1/src1/a", Metadata: Metadata{UserID: "user1"}}, bytes.NewReader(nil))
+	if err := store.Put(ctx, Object{Key: "user1/src1/a", Metadata: Metadata{UserID: "user1"}}, bytes.NewReader(nil)); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
 
 	matched, err := store.ListByPrefix(ctx, "user999/")
 	if err != nil {
