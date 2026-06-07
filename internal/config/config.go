@@ -37,6 +37,13 @@ type Config struct {
 	XClientID                  string
 	XClientSecret              string
 	XRedirectURL               string
+	MinIOEndpoint              string
+	MinIOAccessKey             string
+	MinIOSecretKey             string
+	MinIOBucket                string
+	MinIOUseSSL                bool
+	MinIOLocation              string
+	ContentRetentionDays       int
 }
 
 func Load() Config {
@@ -63,6 +70,13 @@ func Load() Config {
 		XClientID:                  os.Getenv("HOTKEY_X_CLIENT_ID"),
 		XClientSecret:              os.Getenv("HOTKEY_X_CLIENT_SECRET"),
 		XRedirectURL:               envOrDefault("HOTKEY_X_REDIRECT_URL", "http://localhost:8080/api/v1/admin/x/auth/callback"),
+		MinIOEndpoint:              envOrDefault("HOTKEY_MINIO_ENDPOINT", "localhost:9000"),
+		MinIOAccessKey:             envOrDefault("HOTKEY_MINIO_ACCESS_KEY", "minioadmin"),
+		MinIOSecretKey:             envOrDefault("HOTKEY_MINIO_SECRET_KEY", "minioadmin"),
+		MinIOBucket:                envOrDefault("HOTKEY_MINIO_BUCKET", "hotkey-snapshots"),
+		MinIOUseSSL:                boolOrDefault("HOTKEY_MINIO_USE_SSL", false),
+		MinIOLocation:              envOrDefault("HOTKEY_MINIO_LOCATION", "us-east-1"),
+		ContentRetentionDays:       intOrDefault("HOTKEY_CONTENT_RETENTION_DAYS", 30),
 	}
 }
 
