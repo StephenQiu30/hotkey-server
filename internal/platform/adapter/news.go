@@ -42,14 +42,18 @@ func NewNewsAdapter(cfg NewsAdapterConfig) *NewsAdapter {
 	}
 }
 
+// Name returns the adapter identifier.
 func (a *NewsAdapter) Name() string {
 	return "news"
 }
 
+// Provider returns the default provider type for this adapter.
 func (a *NewsAdapter) Provider() Provider {
 	return ProviderRSS
 }
 
+// Collect fetches items from the configured source and enriches them with
+// article metadata (canonical URL, language, paywall detection).
 func (a *NewsAdapter) Collect(input CollectInput) (CollectOutput, error) {
 	var items []fetcher.Item
 	var err error
@@ -90,6 +94,7 @@ func (a *NewsAdapter) Collect(input CollectInput) (CollectOutput, error) {
 	return CollectOutput{Items: normalized}, nil
 }
 
+// Health returns the current health status of the adapter.
 func (a *NewsAdapter) Health() HealthInfo {
 	return HealthInfo{
 		Status:        HealthStatusHealthy,
@@ -97,6 +102,7 @@ func (a *NewsAdapter) Health() HealthInfo {
 	}
 }
 
+// Capabilities returns the adapter's operational limits and features.
 func (a *NewsAdapter) Capabilities() Capabilities {
 	return Capabilities{
 		SupportsIncremental: true,
@@ -105,6 +111,8 @@ func (a *NewsAdapter) Capabilities() Capabilities {
 	}
 }
 
+// normalizeItem converts a fetcher.Item into a NormalizedItem, enriching it
+// with article metadata (canonical URL, language, paywall status).
 func (a *NewsAdapter) normalizeItem(sourceID string, item fetcher.Item) NormalizedItem {
 	ni := NormalizedItem{
 		Title:       strings.TrimSpace(item.Title),
@@ -143,6 +151,7 @@ func (a *NewsAdapter) normalizeItem(sourceID string, item fetcher.Item) Normaliz
 
 const metadataOnlyPrefix = "[metadata_only] "
 
+// prependMetadataOnly adds the metadata-only prefix to a snippet if not already present.
 func prependMetadataOnly(snippet string) string {
 	if strings.HasPrefix(snippet, metadataOnlyPrefix) {
 		return snippet
