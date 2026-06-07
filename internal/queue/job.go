@@ -206,8 +206,8 @@ func ValidatePayload(jobType JobType, payload json.RawMessage) error {
 		if err := json.Unmarshal(payload, &body); err != nil {
 			return err
 		}
-		if body.SourceItemID == "" || body.SourceID == "" {
-			return errors.New("store_snapshot payload requires source_item_id and source_id")
+		if body.SourceItemID == "" || body.SourceID == "" || body.UserID == "" {
+			return errors.New("store_snapshot payload requires source_item_id, source_id, and user_id")
 		}
 	case JobTypeCleanupExpiredObjects:
 		var body CleanupExpiredObjectsPayload
