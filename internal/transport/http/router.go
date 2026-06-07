@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"crypto/rand"
+	"log"
 
 	domainhotspot "github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
 	domainobsidian "github.com/StephenQiu30/hotkey-server/internal/domain/obsidian"
@@ -113,6 +114,7 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 		deps.ObsidianService = serviceobsidian.NewService(domainobsidian.NewMemoryRepository(), nil, serviceobsidian.Config{})
 	}
 	if deps.AuthorizationService == nil {
+		log.Printf("WARNING: using ephemeral AES key for authorization service; encrypted tokens will not survive restarts")
 		key := make([]byte, 32)
 		if _, err := rand.Read(key); err != nil {
 			panic("failed to generate encryption key: " + err.Error())

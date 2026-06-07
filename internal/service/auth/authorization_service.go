@@ -44,9 +44,15 @@ type Transactor interface {
 	WithinTransaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
-var ErrNilEncryptor = errors.New("encryptor must not be nil")
+var (
+	ErrNilEncryptor = errors.New("encryptor must not be nil")
+	ErrNilAuthRepo  = errors.New("auth repository must not be nil")
+)
 
 func NewAuthorizationService(authRepo Repository, azRepo AuthorizationRepository, encryptor crypto.Encryptor, now func() time.Time) (*AuthorizationService, error) {
+	if authRepo == nil {
+		return nil, ErrNilAuthRepo
+	}
 	if encryptor == nil {
 		return nil, ErrNilEncryptor
 	}
