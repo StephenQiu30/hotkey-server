@@ -15,7 +15,9 @@ type MemoryRepository struct {
 	keywords         map[string]Keyword
 	keywordsByUser   map[string][]string
 	settings         map[string]string
-	userDailySendAts map[string]string
+	userDailySendAts  map[string]string
+	userWeeklyEnabled map[string]bool
+	userWeeklySendAts map[string]string
 }
 
 func NewMemoryRepository() *MemoryRepository {
@@ -25,7 +27,9 @@ func NewMemoryRepository() *MemoryRepository {
 		keywords:         make(map[string]Keyword),
 		keywordsByUser:   make(map[string][]string),
 		settings:         map[string]string{defaultDailySendAtKey: defaultDailySendAt},
-		userDailySendAts: make(map[string]string),
+		userDailySendAts:  make(map[string]string),
+		userWeeklyEnabled: make(map[string]bool),
+		userWeeklySendAts: make(map[string]string),
 	}
 	now := time.Now().UTC()
 	for _, seed := range []Channel{
@@ -242,5 +246,35 @@ func (r *MemoryRepository) SetUserDailySendAt(_ context.Context, userID string, 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.userDailySendAts[userID] = dailySendAt
+	return nil
+}
+
+func (r *MemoryRepository) UserWeeklyEnabled(_ context.Context, userID string) (bool, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.userWeeklyEnabled[userID], nil
+}
+
+func (r *MemoryRepository) SetUserWeeklyEnabled(_ context.Context, userID string, enabled bool, _ time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.userWeeklyEnabled[userID] = enabled
+	return nil
+}
+
+func (r *MemoryRepository) UserWeeklySendAt(_ context.Context, userID string) (string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	value, exists := r.userWeeklySendAts[userID]
+	if !exists {
+		value = defaultDailySendAt
+	}
+	return value, nil
+}
+
+func (r *MemoryRepository) SetUserWeeklySendAt(_ context.Context, userID string, weeklySendAt string, _ time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.userWeeklySendAts[userID] = weeklySendAt
 	return nil
 }

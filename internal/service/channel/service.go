@@ -73,6 +73,10 @@ type Repository interface {
 	UpsertSetting(ctx context.Context, key string, value string, updatedAt time.Time) error
 	UserDailySendAt(ctx context.Context, userID string) (string, error)
 	SetUserDailySendAt(ctx context.Context, userID string, dailySendAt string, updatedAt time.Time) error
+	UserWeeklyEnabled(ctx context.Context, userID string) (bool, error)
+	SetUserWeeklyEnabled(ctx context.Context, userID string, enabled bool, updatedAt time.Time) error
+	UserWeeklySendAt(ctx context.Context, userID string) (string, error)
+	SetUserWeeklySendAt(ctx context.Context, userID string, weeklySendAt string, updatedAt time.Time) error
 }
 
 type Service struct {
@@ -279,6 +283,35 @@ func (s *Service) SetUserDailySendAt(ctx context.Context, input UserDailySendAtI
 	return s.repo.SetUserDailySendAt(ctx, input.UserID, input.DailySendAt, s.now().UTC())
 }
 
+
+
+func (s *Service) UserWeeklyEnabled(ctx context.Context, userID string) (bool, error) {
+	if strings.TrimSpace(userID) == "" {
+		return false, ErrInvalidInput
+	}
+	return s.repo.UserWeeklyEnabled(ctx, userID)
+}
+
+func (s *Service) SetUserWeeklyEnabled(ctx context.Context, userID string, enabled bool) error {
+	if strings.TrimSpace(userID) == "" {
+		return ErrInvalidInput
+	}
+	return s.repo.SetUserWeeklyEnabled(ctx, userID, enabled, s.now().UTC())
+}
+
+func (s *Service) UserWeeklySendAt(ctx context.Context, userID string) (string, error) {
+	if strings.TrimSpace(userID) == "" {
+		return "", ErrInvalidInput
+	}
+	return s.repo.UserWeeklySendAt(ctx, userID)
+}
+
+func (s *Service) SetUserWeeklySendAt(ctx context.Context, userID string, weeklySendAt string) error {
+	if strings.TrimSpace(userID) == "" || !validDailySendAt(weeklySendAt) {
+		return ErrInvalidInput
+	}
+	return s.repo.SetUserWeeklySendAt(ctx, userID, weeklySendAt, s.now().UTC())
+}
 func (s *Service) UserDailySendAt(ctx context.Context, userID string) (string, error) {
 	if strings.TrimSpace(userID) == "" {
 		return "", ErrInvalidInput

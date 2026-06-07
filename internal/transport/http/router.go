@@ -26,6 +26,7 @@ import (
 	eventsummaryhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/eventsummary"
 	hotspothandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/hotspot"
 	monitortopichandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/monitortopic"
+	mailhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/mail"
 	obsidianhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/obsidian"
 	reporthandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/report"
 	rsshandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/rss"
@@ -139,6 +140,7 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	rss := rsshandler.New(deps.RSSService)
 	obsidian := obsidianhandler.New(deps.ObsidianService)
 	topics := monitortopichandler.New(deps.MonitorTopicService)
+	mail := mailhandler.New(deps.ChannelService)
 
 	if deps.AdapterRegistry == nil {
 		deps.AdapterRegistry = adapter.NewRegistry()
@@ -169,6 +171,8 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	v1.PATCH("/me/keywords/:keywordID", auth.AuthRequired(), channels.UpdateKeyword)
 	v1.DELETE("/me/keywords/:keywordID", auth.AuthRequired(), channels.DeleteKeyword)
 	v1.PUT("/me/preferences/daily-send-at", auth.AuthRequired(), channels.SetUserDailySendAt)
+	v1.GET("/me/email", auth.AuthRequired(), mail.GetEmailPreferences)
+	v1.PUT("/me/email", auth.AuthRequired(), mail.UpdateEmailPreferences)
 	v1.GET("/hotspots", auth.AuthRequired(), hotspots.ListHotspots)
 	v1.GET("/hotspots/:hotspotID", auth.AuthRequired(), hotspots.GetHotspot)
 	v1.GET("/reports", auth.AuthRequired(), reports.ListReports)
