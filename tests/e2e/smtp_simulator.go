@@ -36,7 +36,7 @@ func newSMTPSinkImpl() (*smtpSink, error) {
 				return
 			}
 			// Minimal SMTP handshake: 220 -> EHLO -> MAIL -> RCPT -> DATA -> QUIT
-			handleSMTPConn(conn, s)
+			go handleSMTPConn(conn, s)
 		}
 	}()
 	return s, nil
@@ -99,6 +99,10 @@ func handleSMTPConn(conn net.Conn, sink *smtpSink) {
 		default:
 			fmt.Fprintf(conn, "250 OK\r\n")
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		// Best-effort protocol-level signal for debugging flakiness.
+		_, _ = fmt.Fprintf(conn, "421 read error: %v\r\n", err)
 	}
 }
 
