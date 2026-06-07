@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/domain/user"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/crypto"
 	serviceauth "github.com/StephenQiu30/hotkey-server/internal/service/auth"
 	servicechannel "github.com/StephenQiu30/hotkey-server/internal/service/channel"
 	transporthttp "github.com/StephenQiu30/hotkey-server/internal/transport/http"
@@ -143,6 +144,14 @@ func transportRouterWithDependenciesForTest(deps transporthttp.Dependencies) htt
 	}
 	if deps.ChannelService == nil {
 		deps.ChannelService = servicechannel.NewService(servicechannel.NewMemoryRepository())
+	}
+	if deps.AuthorizationService == nil {
+		key := []byte("0123456789abcdef0123456789abcdef")
+		enc, err := crypto.NewAESGCMEncryptor(key)
+		if err != nil {
+			panic(err)
+		}
+		deps.AuthorizationService = serviceauth.NewAuthorizationService(deps.AuthService.Repository(), serviceauth.NewMemoryAuthorizationRepository(), enc, nil)
 	}
 	return transporthttp.NewRouterWithDependencies(deps)
 }

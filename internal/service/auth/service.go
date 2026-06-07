@@ -87,6 +87,10 @@ func NewService(repo Repository, cfg Config) (*Service, error) {
 	return &Service{repo: repo, cfg: cfg, now: time.Now}, nil
 }
 
+func (s *Service) Repository() Repository {
+	return s.repo
+}
+
 func (s *Service) Register(ctx context.Context, input RegisterInput) (user.User, error) {
 	email, err := user.NormalizeEmail(input.Email)
 	if err != nil {

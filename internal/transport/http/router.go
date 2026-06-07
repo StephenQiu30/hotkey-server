@@ -5,7 +5,6 @@ import (
 
 	domainhotspot "github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/adapter"
-	"github.com/StephenQiu30/hotkey-server/internal/platform/crypto"
 	serviceadmin "github.com/StephenQiu30/hotkey-server/internal/service/admin"
 	serviceauth "github.com/StephenQiu30/hotkey-server/internal/service/auth"
 	servicechannel "github.com/StephenQiu30/hotkey-server/internal/service/channel"
@@ -38,54 +37,13 @@ type Dependencies struct {
 	AdapterRegistry      *adapter.Registry
 }
 
-func NewRouter() *gin.Engine {
-	repo := serviceauth.NewMemoryRepository()
-	authService, err := serviceauth.NewService(repo, serviceauth.Config{
-		AccessTokenSecret: "test-router-secret",
-	})
-	if err != nil {
-		panic(err)
-	}
-	key := []byte("0123456789abcdef0123456789abcdef")
-	enc, err := crypto.NewAESGCMEncryptor(key)
-	if err != nil {
-		panic(err)
-	}
-	azService := serviceauth.NewAuthorizationService(repo, nil, enc, nil)
-	return NewRouterWithServices(authService, servicechannel.NewService(servicechannel.NewMemoryRepository()), azService)
-}
-
-func NewRouterWithAuth(authService *serviceauth.Service) *gin.Engine {
-	key := []byte("0123456789abcdef0123456789abcdef")
-	enc, err := crypto.NewAESGCMEncryptor(key)
-	if err != nil {
-		panic(err)
-	}
-	azService := serviceauth.NewAuthorizationService(serviceauth.NewMemoryRepository(), nil, enc, nil)
-	return NewRouterWithServices(authService, servicechannel.NewService(servicechannel.NewMemoryRepository()), azService)
-}
-
-func NewRouterWithServices(authService *serviceauth.Service, channelService *servicechannel.Service, azServices ...*serviceauth.AuthorizationService) *gin.Engine {
-	deps := Dependencies{AuthService: authService, ChannelService: channelService}
-	if len(azServices) > 0 {
-		deps.AuthorizationService = azServices[0]
-	}
-	return NewRouterWithDependencies(deps)
-}
-
 func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.GET("/healthz", handlers.Healthz)
 
 	if deps.AuthService == nil {
-		authService, err := serviceauth.NewService(serviceauth.NewMemoryRepository(), serviceauth.Config{
-			AccessTokenSecret: "test-router-secret",
-		})
-		if err != nil {
-			panic(err)
-		}
-		deps.AuthService = authService
+		panic("AuthService is required")
 	}
 	if deps.ChannelService == nil {
 		deps.ChannelService = servicechannel.NewService(servicechannel.NewMemoryRepository())
@@ -107,12 +65,7 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 		deps.RSSService = servicerss.NewService(servicerss.NewMemoryFeedRepository(), reportRepo, servicerss.Config{})
 	}
 	if deps.AuthorizationService == nil {
-		key := []byte("0123456789abcdef0123456789abcdef")
-		enc, err := crypto.NewAESGCMEncryptor(key)
-		if err != nil {
-			panic(err)
-		}
-		deps.AuthorizationService = serviceauth.NewAuthorizationService(serviceauth.NewMemoryRepository(), nil, enc, nil)
+		panic("AuthorizationService is required")
 	}
 
 	auth := authhandler.New(deps.AuthService)

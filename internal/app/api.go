@@ -25,9 +25,14 @@ type API struct {
 }
 
 func NewAPI(cfg config.Config, logger *slog.Logger) *API {
-	db, err := platformpostgres.NewPool(cfg.DatabaseURL, platformpostgres.Options{})
-	if err != nil {
-		logger.Error("failed to connect to postgres, falling back to memory", "error", err)
+	var db *sql.DB
+	var err error
+	if cfg.DatabaseURL != "" {
+		db, err = platformpostgres.NewPool(cfg.DatabaseURL, platformpostgres.Options{})
+		if err != nil {
+			logger.Error("failed to connect to postgres", "error", err)
+			panic("failed to connect to postgres: " + err.Error())
+		}
 	}
 
 	var authRepo serviceauth.Repository
@@ -36,6 +41,7 @@ func NewAPI(cfg config.Config, logger *slog.Logger) *API {
 		authRepo = userrepo.New(db)
 		azRepo = authorizationrepo.New(db)
 	} else {
+		logger.Warn("using in-memory repositories")
 		authRepo = serviceauth.NewMemoryRepository()
 		azRepo = serviceauth.NewMemoryAuthorizationRepository()
 	}
@@ -49,10 +55,10 @@ func NewAPI(cfg config.Config, logger *slog.Logger) *API {
 		panic(err)
 	}
 
-	encKey := []byte(cfg.EncryptionKey)
-	if len(encKey) == 0 {
-		encKey = []byte("0123456789abcdef0123456789abcdef") // Fallback for dev
+	if cfg.EncryptionKey == "" {
+		panic("EncryptionKey must be configured")
 	}
+	encKey := []byte(cfg.EncryptionKey)
 	enc, err := crypto.NewAESGCMEncryptor(encKey)
 	if err != nil {
 		panic(err)

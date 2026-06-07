@@ -163,6 +163,7 @@ type scanner interface {
 
 func scanAuthorization(s scanner) (authorization.Authorization, error) {
 	var az authorization.Authorization
+	var expiresAt sql.NullTime
 	var revokedAt sql.NullTime
 	if err := s.Scan(
 		&az.ID,
@@ -175,12 +176,15 @@ func scanAuthorization(s scanner) (authorization.Authorization, error) {
 		&az.Status,
 		&az.ConnectedAt,
 		&az.LastCheckedAt,
-		&az.ExpiresAt,
+		&expiresAt,
 		&revokedAt,
 		&az.CreatedAt,
 		&az.UpdatedAt,
 	); err != nil {
 		return authorization.Authorization{}, err
+	}
+	if expiresAt.Valid {
+		az.ExpiresAt = &expiresAt.Time
 	}
 	if revokedAt.Valid {
 		az.RevokedAt = &revokedAt.Time
