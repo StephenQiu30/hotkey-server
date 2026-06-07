@@ -22,7 +22,7 @@ func setupAdapterTest(t *testing.T, reg *adapter.Registry) (http.Handler, *servi
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	_, _ = authRepo.CreateUser(context.Background(), user.User{
+	_, err = authRepo.CreateUser(context.Background(), user.User{
 		ID:           "usr_admin",
 		Email:        "adapter-admin@example.com",
 		PasswordHash: string(hash),
@@ -33,6 +33,9 @@ func setupAdapterTest(t *testing.T, reg *adapter.Registry) (http.Handler, *servi
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	authService, err := serviceauth.NewService(authRepo, serviceauth.Config{AccessTokenSecret: "test-adapter-secret"})
 	if err != nil {
 		t.Fatal(err)
