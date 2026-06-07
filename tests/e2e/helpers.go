@@ -9,12 +9,13 @@ import (
 )
 
 // pingTCP checks if a TCP port is accepting connections.
-func pingTCP(addr string, timeout time.Duration) error {
-	conn, err := net.DialTimeout("tcp", addr, timeout)
+func pingTCP(ctx context.Context, addr string) error {
+	d := net.Dialer{}
+	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("tcp dial %s: %w", addr, err)
 	}
-	conn.Close()
+	defer conn.Close()
 	return nil
 }
 
@@ -24,11 +25,22 @@ func redisPing(ctx context.Context, rawURL string) error {
 	if err != nil {
 		return fmt.Errorf("parse redis url: %w", err)
 	}
+
 	addr := u.Host
 	if addr == "" {
 		addr = "127.0.0.1:6379"
+	} else {
+		// Handle cases where Host is just a hostname without port
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			// Probably missing port
+			addr = net.JoinHostPort(addr, "6379")
+		} else if port == "" {
+			addr = net.JoinHostPort(host, "6379")
+		}
 	}
-	dialer := &net.Dialer{Timeout: 3 * time.Second}
+
+	dialer := &net.Dialer{}
 	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("dial redis %s: %w", addr, err)

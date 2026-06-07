@@ -37,7 +37,9 @@ func e2eServerURL(t *testing.T) string {
 // TestHealthCheck_PostgreSQL verifies the E2E PostgreSQL port is accepting connections.
 func TestHealthCheck_PostgreSQL(t *testing.T) {
 	addr := e2ePostgresAddr(t)
-	if err := pingTCP(addr, 3*time.Second); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := pingTCP(ctx, addr); err != nil {
 		t.Fatalf("E2E PostgreSQL not reachable at %s: %v", addr, err)
 	}
 	t.Logf("E2E PostgreSQL healthy at %s", addr)
@@ -61,8 +63,16 @@ func TestHealthCheck_ServerHTTP(t *testing.T) {
 		t.Skip("HOTKEY_E2E_SERVER_URL not set, skipping server health check")
 	}
 	baseURL := e2eServerURL(t)
-	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get(baseURL + "/healthz")
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", baseURL+"/healthz", nil)
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("E2E server not reachable at %s/healthz: %v", baseURL, err)
 	}
