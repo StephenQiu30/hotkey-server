@@ -7,6 +7,7 @@ import (
 	serviceadmin "github.com/StephenQiu30/hotkey-server/internal/service/admin"
 	serviceauth "github.com/StephenQiu30/hotkey-server/internal/service/auth"
 	servicechannel "github.com/StephenQiu30/hotkey-server/internal/service/channel"
+	serviceeventsummary "github.com/StephenQiu30/hotkey-server/internal/service/eventsummary"
 	servicehotspot "github.com/StephenQiu30/hotkey-server/internal/service/hotspot"
 	servicereport "github.com/StephenQiu30/hotkey-server/internal/service/report"
 	servicerss "github.com/StephenQiu30/hotkey-server/internal/service/rss"
@@ -15,6 +16,7 @@ import (
 	adminhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/admin"
 	authhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/auth"
 	channelhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/channel"
+	eventsummaryhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/eventsummary"
 	hotspothandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/hotspot"
 	reporthandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/report"
 	rsshandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/rss"
@@ -23,13 +25,14 @@ import (
 )
 
 type Dependencies struct {
-	AuthService    *serviceauth.Service
-	ChannelService *servicechannel.Service
-	SourceService  *servicesource.Service
-	AdminService   *serviceadmin.Service
-	ScoringService *servicehotspot.ScoringService
-	ReportService  *servicereport.Service
-	RSSService     *servicerss.Service
+	AuthService         *serviceauth.Service
+	ChannelService      *servicechannel.Service
+	SourceService       *servicesource.Service
+	AdminService        *serviceadmin.Service
+	ScoringService      *servicehotspot.ScoringService
+	ReportService       *servicereport.Service
+	RSSService          *servicerss.Service
+	EventSummaryService *serviceeventsummary.Service
 }
 
 func NewRouter() *gin.Engine {
@@ -104,6 +107,11 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	reports := reporthandler.New(deps.ReportService)
 	rss := rsshandler.New(deps.RSSService)
 
+	if deps.EventSummaryService == nil {
+		deps.EventSummaryService = serviceeventsummary.NewService(serviceeventsummary.NewMemoryRepository(), nil)
+	}
+	eventSummary := eventsummaryhandler.New(deps.EventSummaryService)
+
 	adminObservability := adminhandler.New(deps.AdminService)
 	router.GET("/rss/channels/:channelCode", rss.PublicChannel)
 	router.GET("/rss/users/:token", rss.PrivateUser)
@@ -130,6 +138,8 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	v1.GET("/me/rss", auth.AuthRequired(), rss.GetUserFeed)
 	v1.POST("/me/rss/reset", auth.AuthRequired(), rss.ResetUserFeed)
 	v1.DELETE("/me/rss", auth.AuthRequired(), rss.DisableUserFeed)
+	v1.GET("/events/:eventID/summary", auth.AuthRequired(), eventSummary.GetSummary)
+	v1.POST("/events/:eventID/summary", auth.AuthRequired(), eventSummary.GenerateSummary)
 
 	admin := v1.Group("/admin", auth.AdminRequired(), adminObservability.AuditMiddleware())
 	admin.GET("/healthz", auth.AdminHealthz)

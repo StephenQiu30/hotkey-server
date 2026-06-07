@@ -13,6 +13,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/platform/fetcher"
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
 	serviceembedding "github.com/StephenQiu30/hotkey-server/internal/service/embedding"
+	serviceeventsummary "github.com/StephenQiu30/hotkey-server/internal/service/eventsummary"
 	servicehotspot "github.com/StephenQiu30/hotkey-server/internal/service/hotspot"
 	"github.com/StephenQiu30/hotkey-server/internal/service/ingest"
 	servicemail "github.com/StephenQiu30/hotkey-server/internal/service/mail"
@@ -167,6 +168,10 @@ type DailyEmailService interface {
 	SendDailyEmail(context.Context, servicemail.SendDailyEmailInput) (servicemail.Delivery, error)
 }
 
+type EventSummaryService interface {
+	GenerateSummary(context.Context, serviceeventsummary.GenerateSummaryInput) (serviceeventsummary.EventSummary, error)
+}
+
 type CollectSourceHandler struct {
 	sourceService SourceService
 	fetcher       SourceFetcher
@@ -309,6 +314,29 @@ func (h *SendDailyEmailHandler) Handle(ctx context.Context, job queue.Job) error
 		ReportID:        payload.ReportID,
 		RecipientUserID: payload.RecipientUserID,
 		Attempt:         job.Attempt,
+	})
+	return err
+}
+
+type GenerateEventSummaryHandler struct {
+	service EventSummaryService
+}
+
+func NewGenerateEventSummaryHandler(service EventSummaryService) *GenerateEventSummaryHandler {
+	return &GenerateEventSummaryHandler{service: service}
+}
+
+func (h *GenerateEventSummaryHandler) Handle(ctx context.Context, job queue.Job) error {
+	var payload queue.GenerateEventSummaryPayload
+	if err := json.Unmarshal(job.Payload, &payload); err != nil {
+		return err
+	}
+	if payload.EventID == "" {
+		return errors.New("generate_event_summary payload missing event_id")
+	}
+	_, err := h.service.GenerateSummary(ctx, serviceeventsummary.GenerateSummaryInput{
+		EventID: payload.EventID,
+		Title:   payload.Title,
 	})
 	return err
 }
