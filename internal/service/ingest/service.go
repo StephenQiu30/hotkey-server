@@ -79,7 +79,7 @@ func (s *Service) Ingest(ctx context.Context, input Input) (Result, error) {
 			SourceID:    input.SourceID,
 			Title:       input.Title,
 			Snippet:     input.Snippet,
-			RawContent:  input.Snippet,
+			RawContent:  "", // raw body not available in ingest pipeline
 			URL:         input.URL,
 			Platform:    "unknown",
 			Language:    input.Language,
@@ -105,9 +105,9 @@ func (s *Service) Ingest(ctx context.Context, input Input) (Result, error) {
 		if err != nil {
 			return Result{}, err
 		}
-		item.FilterStatus = content.ItemFilterStatusFiltered
-		item.FilterReason = string(filterResult.Reason)
 		if !filterResult.Accepted {
+			item.FilterStatus = content.ItemFilterStatusFiltered
+			item.FilterReason = string(filterResult.Reason)
 			return Result{Item: item, Created: false}, nil
 		}
 		item.FilterStatus = content.ItemFilterStatusPassed

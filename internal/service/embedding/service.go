@@ -61,6 +61,9 @@ func NewService(cfg Config, items ItemRepository, repo Repository, provider Prov
 	if cfg.MaxTextRunes <= 0 {
 		cfg.MaxTextRunes = 2048
 	}
+	if cfg.MaxRetries < 0 {
+		cfg.MaxRetries = 0
+	}
 	return &Service{cfg: cfg, items: items, repo: repo, provider: provider, now: time.Now}
 }
 

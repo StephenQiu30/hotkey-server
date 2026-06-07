@@ -46,7 +46,11 @@ func main() {
 		logSlog.Error("failed to open database", "error", err)
 		panic(err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			logSlog.Error("failed to close database", "error", err)
+		}
+	}()
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(25)
 	db.SetConnMaxLifetime(5 * time.Minute)

@@ -11,6 +11,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
 	"github.com/StephenQiu30/hotkey-server/internal/service/filter"
 	"github.com/StephenQiu30/hotkey-server/internal/service/normalize"
+	"github.com/StephenQiu30/hotkey-server/internal/service/quality"
 )
 
 func TestIngestCreatesPrimaryItemAndEmbeddingJob(t *testing.T) {
@@ -195,8 +196,9 @@ func TestIngestPipelineNormalizesCleansAndFilters(t *testing.T) {
 		MinTitleRunes:   1,
 		MinSnippetRunes: 1,
 	})
+	qualitySvc := quality.NewService(quality.DefaultConfig())
 
-	service := NewService(repo, jobQueue, WithNormalize(normalizr), WithFilter(filterSvc))
+	service := NewService(repo, jobQueue, WithNormalize(normalizr), WithFilter(filterSvc), WithQuality(qualitySvc))
 
 	// HTML content should be cleaned, language detected, and keyword matched
 	result, err := service.Ingest(context.Background(), Input{
@@ -219,6 +221,12 @@ func TestIngestPipelineNormalizesCleansAndFilters(t *testing.T) {
 	}
 	if result.Item.CanonicalURL != "https://example.com/news" {
 		t.Fatalf("expected tracking params removed, got %q", result.Item.CanonicalURL)
+	}
+	if result.Item.FilterStatus != content.ItemFilterStatusPassed {
+		t.Fatalf("expected filter status passed, got %q", result.Item.FilterStatus)
+	}
+	if result.Item.QualityScore <= 0 {
+		t.Fatalf("expected positive quality score, got %f", result.Item.QualityScore)
 	}
 }
 
@@ -244,6 +252,12 @@ func TestIngestPipelineRejectsFilteredContent(t *testing.T) {
 	}
 	if result.Created {
 		t.Fatal("expected filtered content to not be created")
+	}
+	if result.Item.FilterStatus != content.ItemFilterStatusFiltered {
+		t.Fatalf("expected filter status filtered, got %q", result.Item.FilterStatus)
+	}
+	if result.Item.FilterReason == "" {
+		t.Fatal("expected non-empty filter reason for filtered content")
 	}
 	items, err := repo.List(context.Background())
 	if err != nil {

@@ -83,11 +83,9 @@ func (s *Service) Normalize(_ context.Context, input Input) (Result, error) {
 
 	title := cleanText(input.Title)
 	snippet := cleanText(input.Snippet)
-	rawContent := cleanText(input.RawContent)
 
 	title = strutil.TrimRunes(title, s.cfg.MaxTitleRunes)
 	snippet = strutil.TrimRunes(snippet, s.cfg.MaxSnippetRunes)
-	rawContent = strutil.TrimRunes(rawContent, s.cfg.MaxContentRunes)
 
 	if title == "" && snippet == "" {
 		return Result{}, ErrEmptyContent
@@ -152,10 +150,18 @@ func detectLanguage(text string) string {
 		return "unknown"
 	}
 	threshold := 0.3
-	if float64(chinese)/float64(total) >= threshold {
+	chineseRatio := float64(chinese) / float64(total)
+	latinRatio := float64(latin) / float64(total)
+	if chineseRatio >= threshold && latinRatio >= threshold {
+		if chineseRatio >= latinRatio {
+			return "zh"
+		}
+		return "en"
+	}
+	if chineseRatio >= threshold {
 		return "zh"
 	}
-	if float64(latin)/float64(total) >= threshold {
+	if latinRatio >= threshold {
 		return "en"
 	}
 	return "unknown"

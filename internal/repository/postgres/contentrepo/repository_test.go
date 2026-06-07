@@ -80,6 +80,57 @@ func TestRepositoryCreateInsertsSourceItemDedupeFields(t *testing.T) {
 	}
 }
 
+func TestRepositoryCreateInsertsFilteredItemWithReason(t *testing.T) {
+	now := time.Date(2026, 5, 31, 2, 0, 0, 0, time.UTC)
+	driver := &recordingDriver{
+		rows: [][]driver.Value{{
+			"item-2",
+			"src-1",
+			"广告内容",
+			"推广片段",
+			"https://example.com/ad",
+			"https://example.com/ad",
+			nil,
+			"hash-2",
+			"zh",
+			string(content.ItemStatusPrimary),
+			"",
+			string(content.ItemFilterStatusFiltered),
+			"exclusion_word_match",
+			0.0,
+			false,
+			now,
+			now,
+		}},
+	}
+	db := openRecordingDB(t, driver)
+	repo := New(db)
+	item := content.SourceItem{
+		ID:           "item-2",
+		SourceID:     "src-1",
+		Title:        "广告内容",
+		Snippet:      "推广片段",
+		RawURL:       "https://example.com/ad",
+		CanonicalURL: "https://example.com/ad",
+		ContentHash:  "hash-2",
+		Language:     "zh",
+		Status:       content.ItemStatusPrimary,
+		FilterStatus: content.ItemFilterStatusFiltered,
+		FilterReason: "exclusion_word_match",
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+
+	if _, err := repo.Create(context.Background(), item); err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+	args := driver.lastArgs()
+	// filter_reason should be at index 12 (0-based: id,source_id,title,snippet,raw_url,canonical_url,published_at,content_hash,language,status,duplicate_of_item_id,filter_status,filter_reason,...)
+	if args[12] != "exclusion_word_match" {
+		t.Fatalf("expected filter_reason 'exclusion_word_match', got %q", args[12])
+	}
+}
+
 func TestRepositoryFindByContentHashQueriesPrimaryItem(t *testing.T) {
 	now := time.Date(2026, 5, 31, 2, 0, 0, 0, time.UTC)
 	driver := &recordingDriver{

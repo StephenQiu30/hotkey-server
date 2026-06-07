@@ -31,9 +31,9 @@ var (
 type ItemFilterStatus string
 
 const (
-	ItemFilterStatusUnfiltered ItemFilterStatus = "unfiltered"
-	ItemFilterStatusPassed     ItemFilterStatus = "passed"
-	ItemFilterStatusFiltered   ItemFilterStatus = "filtered"
+	ItemFilterStatusUnknown  ItemFilterStatus = "unknown"
+	ItemFilterStatusPassed   ItemFilterStatus = "passed"
+	ItemFilterStatusFiltered ItemFilterStatus = "filtered"
 )
 
 type SourceItem struct {
