@@ -104,3 +104,71 @@ func TestLoadSMTPPortFallsBackWhenOutOfRange(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadMinIOConfigDefaults(t *testing.T) {
+	t.Setenv("HOTKEY_MINIO_ENDPOINT", "")
+	t.Setenv("HOTKEY_MINIO_ACCESS_KEY", "")
+	t.Setenv("HOTKEY_MINIO_SECRET_KEY", "")
+	t.Setenv("HOTKEY_MINIO_BUCKET", "")
+	t.Setenv("HOTKEY_MINIO_USE_SSL", "")
+	t.Setenv("HOTKEY_MINIO_LOCATION", "")
+	t.Setenv("HOTKEY_CONTENT_RETENTION_DAYS", "")
+
+	got := Load()
+
+	if got.MinIOEndpoint != "127.0.0.1:9000" {
+		t.Fatalf("expected default MinIO endpoint, got %q", got.MinIOEndpoint)
+	}
+	if got.MinIOAccessKey != "" {
+		t.Fatalf("expected empty MinIO access key, got %q", got.MinIOAccessKey)
+	}
+	if got.MinIOSecretKey != "" {
+		t.Fatalf("expected empty MinIO secret key, got %q", got.MinIOSecretKey)
+	}
+	if got.MinIOBucket != "hotkey-content" {
+		t.Fatalf("expected default MinIO bucket, got %q", got.MinIOBucket)
+	}
+	if got.MinIOUseSSL {
+		t.Fatalf("expected MinIO SSL false, got %t", got.MinIOUseSSL)
+	}
+	if got.MinIOLocation != "us-east-1" {
+		t.Fatalf("expected default MinIO location, got %q", got.MinIOLocation)
+	}
+	if got.ContentRetentionDays != 30 {
+		t.Fatalf("expected default retention days 30, got %d", got.ContentRetentionDays)
+	}
+}
+
+func TestLoadMinIOConfigOverrides(t *testing.T) {
+	t.Setenv("HOTKEY_MINIO_ENDPOINT", "minio.example.com:9000")
+	t.Setenv("HOTKEY_MINIO_ACCESS_KEY", "my-access-key")
+	t.Setenv("HOTKEY_MINIO_SECRET_KEY", "my-secret-key")
+	t.Setenv("HOTKEY_MINIO_BUCKET", "custom-bucket")
+	t.Setenv("HOTKEY_MINIO_USE_SSL", "true")
+	t.Setenv("HOTKEY_MINIO_LOCATION", "cn-hangzhou")
+	t.Setenv("HOTKEY_CONTENT_RETENTION_DAYS", "90")
+
+	got := Load()
+
+	if got.MinIOEndpoint != "minio.example.com:9000" {
+		t.Fatalf("expected MinIO endpoint override, got %q", got.MinIOEndpoint)
+	}
+	if got.MinIOAccessKey != "my-access-key" {
+		t.Fatalf("expected MinIO access key override, got %q", got.MinIOAccessKey)
+	}
+	if got.MinIOSecretKey != "my-secret-key" {
+		t.Fatalf("expected MinIO secret key override, got %q", got.MinIOSecretKey)
+	}
+	if got.MinIOBucket != "custom-bucket" {
+		t.Fatalf("expected MinIO bucket override, got %q", got.MinIOBucket)
+	}
+	if !got.MinIOUseSSL {
+		t.Fatalf("expected MinIO SSL true, got %t", got.MinIOUseSSL)
+	}
+	if got.MinIOLocation != "cn-hangzhou" {
+		t.Fatalf("expected MinIO location override, got %q", got.MinIOLocation)
+	}
+	if got.ContentRetentionDays != 90 {
+		t.Fatalf("expected retention days override 90, got %d", got.ContentRetentionDays)
+	}
+}
