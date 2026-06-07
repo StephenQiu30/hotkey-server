@@ -7,26 +7,6 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
 )
 
-type UserRecord struct {
-	ID           string
-	Email        string
-	PasswordHash string
-	Role         string
-	Status       string
-}
-
-type RSSFeedRecord struct {
-	UserID    string
-	TokenHash string
-	Enabled   bool
-}
-
-type DailyReportRecord struct {
-	ID     string
-	UserID string
-	Date   string
-}
-
 type MemoryRepository struct {
 	mu            sync.RWMutex
 	auditLogs     []AuditLog
@@ -46,6 +26,51 @@ func NewMemoryRepository() *MemoryRepository {
 		rssFeeds:     make(map[string]RSSFeedRecord),
 		cleanupTasks: make(map[string]CleanupTask),
 	}
+}
+
+func (r *MemoryRepository) SetUser(id string, u UserRecord) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.users[id] = u
+}
+
+func (r *MemoryRepository) SetRSSFeed(userID string, f RSSFeedRecord) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.rssFeeds[userID] = f
+}
+
+func (r *MemoryRepository) AddDailyReport(d DailyReportRecord) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.dailyReports = append(r.dailyReports, d)
+}
+
+func (r *MemoryRepository) HasUser(id string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	_, exists := r.users[id]
+	return exists
+}
+
+func (r *MemoryRepository) RSSFeedCount() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.rssFeeds)
+}
+
+func (r *MemoryRepository) DailyReports() []DailyReportRecord {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]DailyReportRecord, len(r.dailyReports))
+	copy(out, r.dailyReports)
+	return out
+}
+
+func (r *MemoryRepository) SetDeleteReportError(err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.deleteReportErr = err
 }
 
 func (r *MemoryRepository) CreateAuditLog(_ context.Context, entry AuditLog) (AuditLog, error) {

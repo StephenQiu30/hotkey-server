@@ -32,6 +32,7 @@ type AuditLog struct {
 	ResourceType string
 	ResourceID   string
 	Result       string
+	Metadata     map[string]string
 	CreatedAt    time.Time
 }
 
@@ -41,6 +42,51 @@ type AuditLogInput struct {
 	ResourceType string
 	ResourceID   string
 	Result       string
+	Metadata     map[string]string
+}
+
+type CleanupStatus string
+
+const (
+	CleanupStatusPending    CleanupStatus = "pending"
+	CleanupStatusInProgress CleanupStatus = "in_progress"
+	CleanupStatusCompleted  CleanupStatus = "completed"
+	CleanupStatusFailed     CleanupStatus = "failed"
+)
+
+type CleanupStep struct {
+	Name   string
+	Status CleanupStatus
+	Error  string
+}
+
+type CleanupTask struct {
+	ID        string
+	UserID    string
+	Status    CleanupStatus
+	Steps     []CleanupStep
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type UserRecord struct {
+	ID           string
+	Email        string
+	PasswordHash string
+	Role         string
+	Status       string
+}
+
+type RSSFeedRecord struct {
+	UserID    string
+	TokenHash string
+	Enabled   bool
+}
+
+type DailyReportRecord struct {
+	ID     string
+	UserID string
+	Date   string
 }
 
 type CreateJobInput struct {
@@ -87,6 +133,12 @@ type Repository interface {
 	ListJobs(ctx context.Context) ([]queue.Job, error)
 	JobByID(ctx context.Context, jobID string) (queue.Job, error)
 	UpdateJob(ctx context.Context, job queue.Job) (queue.Job, error)
+	UserByID(ctx context.Context, userID string) (UserRecord, error)
+	DeleteUser(ctx context.Context, userID string) error
+	DeleteRSSFeedByUser(ctx context.Context, userID string) error
+	DeleteDailyReportsByUser(ctx context.Context, userID string) error
+	SaveCleanupTask(ctx context.Context, task CleanupTask) error
+	CleanupTaskByID(ctx context.Context, taskID string) (CleanupTask, error)
 }
 
 type Config struct {
@@ -111,6 +163,10 @@ func NewService(repo Repository, cfg Config) *Service {
 	return &Service{repo: repo, cfg: cfg, now: now}
 }
 
+var sensitiveFieldPatterns = []string{
+	"token", "password", "secret", "api_key", "apikey", "credential",
+}
+
 func (s *Service) RecordAuditLog(ctx context.Context, input AuditLogInput) (AuditLog, error) {
 	if strings.TrimSpace(input.ActorID) == "" || strings.TrimSpace(input.Action) == "" || strings.TrimSpace(input.ResourceType) == "" || strings.TrimSpace(input.Result) == "" {
 		return AuditLog{}, ErrInvalidInput
@@ -122,8 +178,34 @@ func (s *Service) RecordAuditLog(ctx context.Context, input AuditLogInput) (Audi
 		ResourceType: strings.TrimSpace(input.ResourceType),
 		ResourceID:   strings.TrimSpace(input.ResourceID),
 		Result:       strings.TrimSpace(input.Result),
+		Metadata:     sanitizeMetadata(input.Metadata),
 		CreatedAt:    s.now().UTC(),
 	})
+}
+
+func sanitizeMetadata(metadata map[string]string) map[string]string {
+	if metadata == nil {
+		return nil
+	}
+	sanitized := make(map[string]string, len(metadata))
+	for k, v := range metadata {
+		if isSensitiveField(k) {
+			sanitized[k] = "[REDACTED]"
+		} else {
+			sanitized[k] = v
+		}
+	}
+	return sanitized
+}
+
+func isSensitiveField(key string) bool {
+	lower := strings.ToLower(key)
+	for _, pattern := range sensitiveFieldPatterns {
+		if strings.Contains(lower, pattern) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) ListAuditLogs(ctx context.Context) ([]AuditLog, error) {
@@ -252,6 +334,114 @@ func (s *Service) RerunDailyReport(ctx context.Context, input RerunDailyReportIn
 		Status:         queue.JobStatusPending,
 		IdempotencyKey: fmt.Sprintf("daily_report_rerun:%s:%s:%s", date, strings.TrimSpace(input.ChannelID), strings.TrimSpace(input.UserID)),
 	})
+}
+
+func (s *Service) DeleteAccount(ctx context.Context, userID string) (CleanupTask, error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return CleanupTask{}, ErrInvalidInput
+	}
+	if _, err := s.repo.UserByID(ctx, userID); err != nil {
+		return CleanupTask{}, err
+	}
+
+	task := CleanupTask{
+		ID:        newID("cleanup"),
+		UserID:    userID,
+		Status:    CleanupStatusInProgress,
+		Steps:     make([]CleanupStep, 0),
+		CreatedAt: s.now().UTC(),
+		UpdatedAt: s.now().UTC(),
+	}
+
+	steps := []struct {
+		name string
+		fn   func(context.Context, string) error
+	}{
+		{"delete_daily_reports", s.repo.DeleteDailyReportsByUser},
+		{"delete_rss_feeds", s.repo.DeleteRSSFeedByUser},
+		{"delete_user", s.repo.DeleteUser},
+	}
+
+	allOK := true
+	for _, step := range steps {
+		cs := CleanupStep{Name: step.name, Status: CleanupStatusCompleted}
+		if err := step.fn(ctx, userID); err != nil {
+			cs.Status = CleanupStatusFailed
+			cs.Error = err.Error()
+			allOK = false
+		}
+		task.Steps = append(task.Steps, cs)
+		if !allOK {
+			break
+		}
+	}
+
+	if allOK {
+		task.Status = CleanupStatusCompleted
+	} else {
+		task.Status = CleanupStatusFailed
+	}
+	task.UpdatedAt = s.now().UTC()
+	_ = s.repo.SaveCleanupTask(ctx, task)
+	return task, nil
+}
+
+func (s *Service) RetryCleanup(ctx context.Context, taskID string) (CleanupTask, error) {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return CleanupTask{}, ErrInvalidInput
+	}
+	task, err := s.repo.CleanupTaskByID(ctx, taskID)
+	if err != nil {
+		return CleanupTask{}, err
+	}
+	if task.Status != CleanupStatusFailed {
+		return task, nil
+	}
+
+	task.Status = CleanupStatusInProgress
+	task.UpdatedAt = s.now().UTC()
+
+	allOK := true
+	for i, step := range task.Steps {
+		if step.Status != CleanupStatusFailed {
+			continue
+		}
+		var stepErr error
+		switch step.Name {
+		case "delete_daily_reports":
+			stepErr = s.repo.DeleteDailyReportsByUser(ctx, task.UserID)
+		case "delete_rss_feeds":
+			stepErr = s.repo.DeleteRSSFeedByUser(ctx, task.UserID)
+		case "delete_user":
+			stepErr = s.repo.DeleteUser(ctx, task.UserID)
+		}
+		if stepErr != nil {
+			task.Steps[i].Error = stepErr.Error()
+			allOK = false
+			break
+		}
+		task.Steps[i].Status = CleanupStatusCompleted
+		task.Steps[i].Error = ""
+	}
+
+	if allOK {
+		task.Status = CleanupStatusCompleted
+	} else {
+		task.Status = CleanupStatusFailed
+	}
+	task.UpdatedAt = s.now().UTC()
+	_ = s.repo.SaveCleanupTask(ctx, task)
+	return task, nil
+}
+
+func (s *Service) CleanupStatus(ctx context.Context, taskID string) (CleanupTask, error) {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return CleanupTask{}, ErrInvalidInput
+	}
+	return s.repo.CleanupTaskByID(ctx, taskID)
 }
 
 func (s *Service) ConfigStatus(ctx context.Context) ConfigStatus {
