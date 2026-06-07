@@ -18,21 +18,27 @@ import (
 	authhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/auth"
 	channelhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/channel"
 	hotspothandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/hotspot"
+	mailhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/mail"
 	reporthandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/report"
 	rsshandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/rss"
 	sourcehandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/source"
 	"github.com/gin-gonic/gin"
 )
 
+type EmailPreference = mailhandler.EmailPreference
+
+type EmailPreferenceService = mailhandler.EmailPreferenceService
+
 type Dependencies struct {
-	AuthService     *serviceauth.Service
-	ChannelService  *servicechannel.Service
-	SourceService   *servicesource.Service
-	AdminService    *serviceadmin.Service
-	ScoringService  *servicehotspot.ScoringService
-	ReportService   *servicereport.Service
-	RSSService      *servicerss.Service
-	AdapterRegistry *adapter.Registry
+	AuthService      *serviceauth.Service
+	ChannelService   *servicechannel.Service
+	SourceService    *servicesource.Service
+	AdminService     *serviceadmin.Service
+	ScoringService   *servicehotspot.ScoringService
+	ReportService    *servicereport.Service
+	RSSService       *servicerss.Service
+	AdapterRegistry  *adapter.Registry
+	EmailPrefService EmailPreferenceService
 }
 
 func NewRouter() *gin.Engine {
@@ -107,6 +113,8 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	reports := reporthandler.New(deps.ReportService)
 	rss := rsshandler.New(deps.RSSService)
 
+	mailH := mailhandler.New(deps.EmailPrefService)
+
 	if deps.AdapterRegistry == nil {
 		deps.AdapterRegistry = adapter.NewRegistry()
 	}
@@ -131,6 +139,8 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	v1.PATCH("/me/keywords/:keywordID", auth.AuthRequired(), channels.UpdateKeyword)
 	v1.DELETE("/me/keywords/:keywordID", auth.AuthRequired(), channels.DeleteKeyword)
 	v1.PUT("/me/preferences/daily-send-at", auth.AuthRequired(), channels.SetUserDailySendAt)
+	v1.GET("/me/email", auth.AuthRequired(), mailH.GetEmailPreference)
+	v1.PUT("/me/email", auth.AuthRequired(), mailH.SetEmailPreference)
 	v1.GET("/hotspots", auth.AuthRequired(), hotspots.ListHotspots)
 	v1.GET("/hotspots/:hotspotID", auth.AuthRequired(), hotspots.GetHotspot)
 	v1.GET("/reports", auth.AuthRequired(), reports.ListReports)
