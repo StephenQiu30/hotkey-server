@@ -406,3 +406,65 @@ func TestXiaohongshuSourceTypeConstant(t *testing.T) {
 		t.Fatalf("expected ProviderXiaohongshu to be %q, got %q", "xiaohongshu", adapter.ProviderXiaohongshu)
 	}
 }
+
+// --- ValidateXiaohongshuNote direct tests ---
+
+func TestValidateXiaohongshuNoteValidNote(t *testing.T) {
+	note := adapter.XiaohongshuNote{
+		NoteID:      "note-valid",
+		Title:       "有效笔记",
+		Description: "描述内容",
+		Visible:     true,
+	}
+	if err := adapter.ValidateXiaohongshuNote(note); err != nil {
+		t.Errorf("expected nil error for valid note, got %v", err)
+	}
+}
+
+func TestValidateXiaohongshuNoteInvisibleReturnsPermanent(t *testing.T) {
+	note := adapter.XiaohongshuNote{
+		NoteID:      "note-hidden",
+		Title:       "隐藏笔记",
+		Description: "内容不可见",
+		Visible:     false,
+	}
+	err := adapter.ValidateXiaohongshuNote(note)
+	if err == nil {
+		t.Fatal("expected error for invisible note")
+	}
+	if !adapter.IsAdapterError(err, adapter.FailureClassPermanent) {
+		t.Errorf("expected FailureClassPermanent, got %v", err)
+	}
+}
+
+func TestValidateXiaohongshuNoteMissingIDReturnsParseError(t *testing.T) {
+	note := adapter.XiaohongshuNote{
+		NoteID:      "",
+		Title:       "缺少ID",
+		Description: "内容",
+		Visible:     true,
+	}
+	err := adapter.ValidateXiaohongshuNote(note)
+	if err == nil {
+		t.Fatal("expected error for missing note_id")
+	}
+	if !adapter.IsAdapterError(err, adapter.FailureClassParseError) {
+		t.Errorf("expected FailureClassParseError, got %v", err)
+	}
+}
+
+func TestValidateXiaohongshuNoteMissingTitleAndDescriptionReturnsParseError(t *testing.T) {
+	note := adapter.XiaohongshuNote{
+		NoteID:      "note-empty",
+		Title:       "",
+		Description: "",
+		Visible:     true,
+	}
+	err := adapter.ValidateXiaohongshuNote(note)
+	if err == nil {
+		t.Fatal("expected error for missing title and description")
+	}
+	if !adapter.IsAdapterError(err, adapter.FailureClassParseError) {
+		t.Errorf("expected FailureClassParseError, got %v", err)
+	}
+}

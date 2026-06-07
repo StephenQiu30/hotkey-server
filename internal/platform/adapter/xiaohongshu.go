@@ -59,8 +59,8 @@ func buildSnippet(note XiaohongshuNote) string {
 		}
 	}
 
-	if note.Likes > 0 || note.Collects > 0 || note.Comments > 0 {
-		metrics := fmt.Sprintf("赞:%d 藏:%d 评:%d", note.Likes, note.Collects, note.Comments)
+	if note.Likes > 0 || note.Collects > 0 || note.Comments > 0 || note.Shares > 0 {
+		metrics := fmt.Sprintf("赞:%d 藏:%d 评:%d 转:%d", note.Likes, note.Collects, note.Comments, note.Shares)
 		parts = append(parts, metrics)
 	}
 
