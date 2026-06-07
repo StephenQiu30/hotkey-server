@@ -35,6 +35,7 @@ const (
 	PlatformReddit     Platform = "reddit"
 	PlatformHackerNews Platform = "hackernews"
 	PlatformRSS        Platform = "rss"
+	PlatformZhihu      Platform = "zhihu"
 )
 
 // KeywordType distinguishes inclusion from exclusion keywords.
@@ -94,6 +95,7 @@ var validPlatforms = map[Platform]bool{
 	PlatformReddit:     true,
 	PlatformHackerNews: true,
 	PlatformRSS:        true,
+	PlatformZhihu:      true,
 }
 
 // validTransitions defines the allowed status transitions.

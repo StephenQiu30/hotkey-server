@@ -12,6 +12,8 @@ const (
 	ProviderRSS        Provider = "rss"
 	ProviderPublicPage Provider = "public_page"
 	ProviderOfficialAPI Provider = "official_api"
+	ProviderWeibo      Provider = "weibo"
+	ProviderZhihu      Provider = "zhihu"
 )
 
 // HealthStatus describes adapter operational readiness.
@@ -91,6 +93,8 @@ type NormalizedItem struct {
 	PublishedAt  *time.Time
 	Language     string
 	IdempotencyKey string
+	// Metadata holds platform-specific key-value pairs (author, score, etc.).
+	Metadata     map[string]string
 }
 
 // CollectOutput is the result of a collection operation.
