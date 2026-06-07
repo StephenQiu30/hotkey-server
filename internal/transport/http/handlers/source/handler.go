@@ -36,6 +36,7 @@ func New(service *servicesource.Service, fetcherMaps ...map[servicesource.Source
 		servicesource.SourceTypeHackerNews: platformfetcher.NewHNFetcher(nil, platformfetcher.HNConfig{}),
 		servicesource.SourceTypeWeChatMP:   platformfetcher.NewWeChatMPFetcher(nil),
 		servicesource.SourceTypeZhihu:      platformfetcher.NewZhihuFetcher(nil),
+		servicesource.SourceTypeReddit:     platformfetcher.NewRedditFetcher(nil),
 	}
 	if len(fetcherMaps) > 0 && fetcherMaps[0] != nil {
 		fetchers = fetcherMaps[0]
