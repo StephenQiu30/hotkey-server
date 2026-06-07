@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 )
 
@@ -16,6 +17,8 @@ const (
 	JobTypeScoreHotspots       JobType = "score_hotspots"
 	JobTypeGenerateDailyReport JobType = "generate_daily_report"
 	JobTypeSendDailyEmail      JobType = "send_daily_email"
+	JobTypeSendWeeklyEmail     JobType = "send_weekly_email"
+	JobTypeGenerateWeeklyReport JobType = "generate_weekly_report"
 	JobTypeGenerateEventSummary JobType = "generate_event_summary"
 )
 
@@ -69,6 +72,15 @@ type GenerateDailyReportPayload struct {
 type SendDailyEmailPayload struct {
 	ReportID        string `json:"report_id"`
 	RecipientUserID string `json:"recipient_user_id"`
+}
+
+type SendWeeklyEmailPayload struct {
+	ReportID        string `json:"report_id"`
+	RecipientUserID string `json:"recipient_user_id"`
+}
+
+type GenerateWeeklyReportPayload struct {
+	WeekOf string `json:"week_of"`
 }
 
 type EventSummaryItem struct {
@@ -137,6 +149,25 @@ func ValidatePayload(jobType JobType, payload json.RawMessage) error {
 		}
 		if body.ReportID == "" || body.RecipientUserID == "" {
 			return errors.New("send_daily_email payload requires report_id and recipient_user_id")
+		}
+	case JobTypeSendWeeklyEmail:
+		var body SendWeeklyEmailPayload
+		if err := json.Unmarshal(payload, &body); err != nil {
+			return err
+		}
+		if body.ReportID == "" || body.RecipientUserID == "" {
+			return errors.New("send_weekly_email payload requires report_id and recipient_user_id")
+		}
+	case JobTypeGenerateWeeklyReport:
+		var body GenerateWeeklyReportPayload
+		if err := json.Unmarshal(payload, &body); err != nil {
+			return err
+		}
+		if body.WeekOf == "" {
+			return errors.New("generate_weekly_report payload requires week_of")
+		}
+		if matched, _ := regexp.MatchString(`^\d{4}-W(0[1-9]|[1-4]\d|5[0-3])$`, body.WeekOf); !matched {
+			return errors.New("generate_weekly_report payload requires week_of in YYYY-Www format")
 		}
 	case JobTypeGenerateEventSummary:
 		var body GenerateEventSummaryPayload
