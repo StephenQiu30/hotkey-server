@@ -97,8 +97,8 @@ func (a *BiliBiliAdapter) Collect(input CollectInput) (CollectOutput, error) {
 		subtitleText, err := a.fetchSubtitles(v.CID)
 		if err == nil && subtitleText != "" {
 			item.Metadata["subtitle"] = subtitleText
-			if len(subtitleText) > subtitleTextMaxLen {
-				item.Snippet = subtitleText[:subtitleTextMaxLen]
+			if len([]rune(subtitleText)) > subtitleTextMaxLen {
+				item.Snippet = string([]rune(subtitleText)[:subtitleTextMaxLen])
 			} else {
 				item.Snippet = subtitleText
 			}
@@ -130,7 +130,7 @@ func (a *BiliBiliAdapter) updateHealth(status HealthStatus, errMsg string) {
 	defer a.mu.Unlock()
 	a.health.Status = status
 	a.health.LastError = errMsg
-	a.health.LastCheckedAt = time.Now()
+	a.health.LastCheckedAt = time.Now().UTC()
 }
 
 // Bilibili API response structures
@@ -261,7 +261,7 @@ func (a *BiliBiliAdapter) fetchUserVideos(mid string, since *time.Time) ([]bilib
 }
 
 func (a *BiliBiliAdapter) fetchSubtitles(cid int64) (string, error) {
-	url := fmt.Sprintf("%x/x/player/v2?cid=%d", a.config.BaseURL, cid)
+	url := fmt.Sprintf("%s/x/player/v2?cid=%d", a.config.BaseURL, cid)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {

@@ -14,7 +14,10 @@ func TestAuthorizationService_Connect(t *testing.T) {
 	enc := newTestEncryptor(t)
 	authRepo := serviceauth.NewMemoryRepository()
 	userSvc := newUserService(t, authRepo)
-	azSvc := serviceauth.NewAuthorizationService(authRepo, nil, enc, time.Now)
+	azSvc, err := serviceauth.NewAuthorizationService(authRepo, nil, enc, time.Now)
+	if err != nil {
+		t.Fatalf("new authorization service: %v", err)
+	}
 
 	ctx := context.Background()
 
@@ -50,7 +53,10 @@ func TestAuthorizationService_Disconnect(t *testing.T) {
 	enc := newTestEncryptor(t)
 	authRepo := serviceauth.NewMemoryRepository()
 	userSvc := newUserService(t, authRepo)
-	azSvc := serviceauth.NewAuthorizationService(authRepo, nil, enc, time.Now)
+	azSvc, err := serviceauth.NewAuthorizationService(authRepo, nil, enc, time.Now)
+	if err != nil {
+		t.Fatalf("new authorization service: %v", err)
+	}
 
 	ctx := context.Background()
 
@@ -97,7 +103,10 @@ func TestAuthorizationService_HealthCheck_Expired(t *testing.T) {
 	userSvc := newUserService(t, authRepo)
 
 	pastTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-	azSvc := serviceauth.NewAuthorizationService(authRepo, nil, enc, func() time.Time { return pastTime })
+	azSvc, err := serviceauth.NewAuthorizationService(authRepo, nil, enc, func() time.Time { return pastTime })
+	if err != nil {
+		t.Fatalf("new authorization service: %v", err)
+	}
 
 	ctx := context.Background()
 
@@ -136,7 +145,10 @@ func TestAuthorizationService_ListByUser(t *testing.T) {
 	enc := newTestEncryptor(t)
 	authRepo := serviceauth.NewMemoryRepository()
 	userSvc := newUserService(t, authRepo)
-	azSvc := serviceauth.NewAuthorizationService(authRepo, nil, enc, time.Now)
+	azSvc, err := serviceauth.NewAuthorizationService(authRepo, nil, enc, time.Now)
+	if err != nil {
+		t.Fatalf("new authorization service: %v", err)
+	}
 
 	ctx := context.Background()
 
@@ -184,7 +196,10 @@ func TestAuthorizationService_DeleteAccount(t *testing.T) {
 	enc := newTestEncryptor(t)
 	authRepo := serviceauth.NewMemoryRepository()
 	userSvc := newUserService(t, authRepo)
-	azSvc := serviceauth.NewAuthorizationService(authRepo, nil, enc, time.Now)
+	azSvc, err := serviceauth.NewAuthorizationService(authRepo, nil, enc, time.Now)
+	if err != nil {
+		t.Fatalf("new authorization service: %v", err)
+	}
 
 	ctx := context.Background()
 

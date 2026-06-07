@@ -34,6 +34,7 @@ type Config struct {
 	SMTPFrom                   string
 	SMTPTLS                    bool
 	SMTPStartTLS               bool
+	EncryptionKey              string
 	XClientID                  string
 	XClientSecret              string
 	XRedirectURL               string
@@ -67,6 +68,7 @@ func Load() Config {
 		SMTPFrom:                   os.Getenv("HOTKEY_SMTP_FROM"),
 		SMTPTLS:                    boolOrDefault("HOTKEY_SMTP_TLS", false),
 		SMTPStartTLS:               boolOrDefault("HOTKEY_SMTP_STARTTLS", true),
+		EncryptionKey:              os.Getenv("HOTKEY_ENCRYPTION_KEY"),
 		XClientID:                  os.Getenv("HOTKEY_X_CLIENT_ID"),
 		XClientSecret:              os.Getenv("HOTKEY_X_CLIENT_SECRET"),
 		XRedirectURL:               envOrDefault("HOTKEY_X_REDIRECT_URL", "http://localhost:8080/api/v1/admin/x/auth/callback"),

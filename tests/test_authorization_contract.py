@@ -29,8 +29,8 @@ class AuthorizationContractTest(unittest.TestCase):
         for path in [
             "/api/v1/authorizations:",
             "/api/v1/authorizations/connect:",
-            "/api/v1/authorizations/{authorizationID}:",
-            "/api/v1/authorizations/{authorizationID}/test:",
+            "/api/v1/authorizations/{id}:",
+            "/api/v1/authorizations/{id}/test:",
         ]:
             self.assertIn(path, spec)
 
@@ -41,7 +41,10 @@ class AuthorizationContractTest(unittest.TestCase):
         
         # Verify account deletion
         self.assertIn("/api/v1/me:", spec)
-        self.assertIn("delete:", spec.split("/api/v1/me:")[1].split("/api/v1/channels:")[0])
+        me_section = spec.split("/api/v1/me:", 1)[1]
+        next_api_path_idx = me_section.find("\n  /api/v1/")
+        me_block = me_section if next_api_path_idx == -1 else me_section[:next_api_path_idx]
+        self.assertIn("delete:", me_block)
 
 
 if __name__ == "__main__":

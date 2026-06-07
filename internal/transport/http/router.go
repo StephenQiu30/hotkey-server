@@ -2,6 +2,8 @@ package http
 
 import (
 	"context"
+	"crypto/rand"
+	"log"
 
 	domainhotspot "github.com/StephenQiu30/hotkey-server/internal/domain/hotspot"
 	domainobsidian "github.com/StephenQiu30/hotkey-server/internal/domain/obsidian"
@@ -23,12 +25,12 @@ import (
 	adapterhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/adapter"
 	adminhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/admin"
 	authhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/auth"
-	authorizationhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/authorization"
+	azhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/authorization"
 	channelhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/channel"
 	eventsummaryhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/eventsummary"
 	hotspothandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/hotspot"
-	monitortopichandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/monitortopic"
 	mailhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/mail"
+	monitortopichandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/monitortopic"
 	obsidianhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/obsidian"
 	reporthandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/report"
 	rsshandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/rss"
@@ -39,18 +41,18 @@ import (
 
 type Dependencies struct {
 	AuthService          *serviceauth.Service
-	ChannelService       *servicechannel.Service
-	SourceService        *servicesource.Service
-	AdminService         *serviceadmin.Service
-	ScoringService       *servicehotspot.ScoringService
-	ReportService        *servicereport.Service
-	RSSService           *servicerss.Service
-	ObsidianService      *serviceobsidian.Service
-	XAuthService         *servicexauth.Service
-	EventSummaryService  *serviceeventsummary.Service
-	MonitorTopicService  *servicemonitortopic.Service
-	AdapterRegistry      *adapter.Registry
 	AuthorizationService *serviceauth.AuthorizationService
+	ChannelService       *servicechannel.Service
+	SourceService       *servicesource.Service
+	AdminService        *serviceadmin.Service
+	ScoringService      *servicehotspot.ScoringService
+	ReportService       *servicereport.Service
+	RSSService          *servicerss.Service
+	ObsidianService     *serviceobsidian.Service
+	XAuthService        *servicexauth.Service
+	EventSummaryService *serviceeventsummary.Service
+	MonitorTopicService *servicemonitortopic.Service
+	AdapterRegistry     *adapter.Registry
 }
 
 func NewRouter() *gin.Engine {
@@ -111,11 +113,12 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	if deps.ObsidianService == nil {
 		deps.ObsidianService = serviceobsidian.NewService(domainobsidian.NewMemoryRepository(), nil, serviceobsidian.Config{})
 	}
-	if deps.MonitorTopicService == nil {
-		deps.MonitorTopicService = servicemonitortopic.NewService(servicemonitortopic.NewMemoryRepository())
-	}
 	if deps.AuthorizationService == nil {
-		key := []byte("0123456789abcdef0123456789abcdef")
+		log.Printf("WARNING: using ephemeral AES key for authorization service; encrypted tokens will not survive restarts")
+		key := make([]byte, 32)
+		if _, err := rand.Read(key); err != nil {
+			panic("failed to generate encryption key: " + err.Error())
+		}
 		enc, err := crypto.NewAESGCMEncryptor(key)
 		if err != nil {
 			panic(err)
@@ -126,11 +129,17 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 		} else {
 			userRepo = serviceauth.NewMemoryRepository()
 		}
-		deps.AuthorizationService = serviceauth.NewAuthorizationService(userRepo, serviceauth.NewMemoryAuthorizationRepository(), enc, nil)
+		azSvc, err := serviceauth.NewAuthorizationService(userRepo, serviceauth.NewMemoryAuthorizationRepository(), enc, nil)
+		if err != nil {
+			panic(err)
+		}
+		deps.AuthorizationService = azSvc
+	}
+	if deps.MonitorTopicService == nil {
+		deps.MonitorTopicService = servicemonitortopic.NewService(servicemonitortopic.NewMemoryRepository())
 	}
 
 	auth := authhandler.New(deps.AuthService)
-	azHandler := authorizationhandler.New(deps.AuthorizationService)
 	channels := channelhandler.New(deps.ChannelService)
 	sourceService := servicesource.NewService(servicesource.NewMemoryRepository())
 	if deps.SourceService != nil {
@@ -157,8 +166,9 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	reports := reporthandler.New(deps.ReportService)
 	rss := rsshandler.New(deps.RSSService)
 	obsidian := obsidianhandler.New(deps.ObsidianService)
+	authorizations := azhandler.New(deps.AuthorizationService)
 	topics := monitortopichandler.New(deps.MonitorTopicService)
-	mail := mailhandler.New(deps.ChannelService)
+	email := mailhandler.New(deps.ChannelService)
 
 	if deps.AdapterRegistry == nil {
 		deps.AdapterRegistry = adapter.NewRegistry()
@@ -180,6 +190,8 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	v1.POST("/auth/refresh", auth.Refresh)
 	v1.POST("/auth/logout", auth.Logout)
 	v1.GET("/me", auth.AuthRequired(), auth.Me)
+	v1.GET("/me/email", auth.AuthRequired(), email.GetEmailPreferences)
+	v1.PUT("/me/email", auth.AuthRequired(), email.UpdateEmailPreferences)
 	v1.GET("/channels", channels.ListChannels)
 	v1.GET("/me/channels", auth.AuthRequired(), channels.ListSubscriptions)
 	v1.POST("/me/channels/:channelID", auth.AuthRequired(), channels.Subscribe)
@@ -189,8 +201,6 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	v1.PATCH("/me/keywords/:keywordID", auth.AuthRequired(), channels.UpdateKeyword)
 	v1.DELETE("/me/keywords/:keywordID", auth.AuthRequired(), channels.DeleteKeyword)
 	v1.PUT("/me/preferences/daily-send-at", auth.AuthRequired(), channels.SetUserDailySendAt)
-	v1.GET("/me/email", auth.AuthRequired(), mail.GetEmailPreferences)
-	v1.PUT("/me/email", auth.AuthRequired(), mail.UpdateEmailPreferences)
 	v1.GET("/hotspots", auth.AuthRequired(), hotspots.ListHotspots)
 	v1.GET("/hotspots/:hotspotID", auth.AuthRequired(), hotspots.GetHotspot)
 	v1.GET("/reports", auth.AuthRequired(), reports.ListReports)
@@ -215,11 +225,11 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	v1.GET("/me/obsidian", auth.AuthRequired(), obsidian.GetStatus)
 	v1.POST("/me/obsidian/sync", auth.AuthRequired(), obsidian.Sync)
 
-	v1.POST("/authorizations/connect", auth.AuthRequired(), azHandler.Connect)
-	v1.GET("/authorizations", auth.AuthRequired(), azHandler.List)
-	v1.POST("/authorizations/:authorizationID/test", auth.AuthRequired(), azHandler.Test)
-	v1.DELETE("/authorizations/:authorizationID", auth.AuthRequired(), azHandler.Disconnect)
-	v1.DELETE("/me", auth.AuthRequired(), azHandler.DeleteAccount)
+	v1.POST("/authorizations/connect", auth.AuthRequired(), authorizations.Connect)
+	v1.DELETE("/authorizations/:id", auth.AuthRequired(), authorizations.Disconnect)
+	v1.GET("/authorizations", auth.AuthRequired(), authorizations.List)
+	v1.POST("/authorizations/:id/test", auth.AuthRequired(), authorizations.Test)
+	v1.DELETE("/me", auth.AuthRequired(), authorizations.DeleteAccount)
 
 	admin := v1.Group("/admin", auth.AdminRequired(), adminObservability.AuditMiddleware())
 	admin.GET("/healthz", auth.AdminHealthz)

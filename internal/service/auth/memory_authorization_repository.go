@@ -25,7 +25,12 @@ func (r *MemoryAuthorizationRepository) CreateAuthorization(_ context.Context, a
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// Check uniqueness
+	// Check ID uniqueness
+	if _, exists := r.store[az.ID]; exists {
+		return authorization.Authorization{}, authorization.ErrUniqueViolation
+	}
+
+	// Check (userID, platform) uniqueness
 	for _, id := range r.byUser[az.UserID] {
 		if existing, ok := r.store[id]; ok && existing.Platform == az.Platform {
 			return authorization.Authorization{}, authorization.ErrUniqueViolation
@@ -94,7 +99,7 @@ func (r *MemoryAuthorizationRepository) RevokeAllByUserID(_ context.Context, use
 	defer r.mu.Unlock()
 	ids := r.byUser[userID]
 	for _, id := range ids {
-		if az, exists := r.store[id]; exists {
+		if az, exists := r.store[id]; exists && az.Status != authorization.StatusRevoked {
 			az.Status = authorization.StatusRevoked
 			az.RevokedAt = &now
 			az.UpdatedAt = now

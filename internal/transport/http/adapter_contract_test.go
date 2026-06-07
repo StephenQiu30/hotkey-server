@@ -47,7 +47,10 @@ func setupAdapterTest(t *testing.T, reg *adapter.Registry) (http.Handler, *servi
 	if err != nil {
 		t.Fatal(err)
 	}
-	azService := serviceauth.NewAuthorizationService(authRepo, serviceauth.NewMemoryAuthorizationRepository(), enc, nil)
+	azService, err := serviceauth.NewAuthorizationService(authRepo, serviceauth.NewMemoryAuthorizationRepository(), enc, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	router := transporthttp.NewRouterWithDependencies(transporthttp.Dependencies{
 		AuthService:          authService,

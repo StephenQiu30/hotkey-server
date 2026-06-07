@@ -28,18 +28,19 @@ func NewMemoryRepository() *MemoryRepository {
 func (r *MemoryRepository) CreateUser(_ context.Context, account user.User) (user.User, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, exists := r.userIDByEmail[account.Email]; exists {
+	key := strings.ToLower(account.Email)
+	if _, exists := r.userIDByEmail[key]; exists {
 		return user.User{}, ErrEmailAlreadyExists
 	}
 	r.usersByID[account.ID] = account
-	r.userIDByEmail[account.Email] = account.ID
+	r.userIDByEmail[key] = account.ID
 	return account, nil
 }
 
 func (r *MemoryRepository) UserByEmail(_ context.Context, email string) (user.User, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	id, exists := r.userIDByEmail[email]
+	id, exists := r.userIDByEmail[strings.ToLower(email)]
 	if !exists {
 		return user.User{}, sql.ErrNoRows
 	}
@@ -88,14 +89,15 @@ func (r *MemoryRepository) RevokeRefreshToken(_ context.Context, tokenHash strin
 func (r *MemoryRepository) UpdateUser(_ context.Context, account user.User) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	old, exists := r.usersByID[account.ID]
+	existing, exists := r.usersByID[account.ID]
 	if !exists {
 		return sql.ErrNoRows
 	}
-	// Update email index if email changed
-	if old.Email != account.Email {
-		delete(r.userIDByEmail, strings.ToLower(old.Email))
-		r.userIDByEmail[strings.ToLower(account.Email)] = account.ID
+	oldKey := strings.ToLower(existing.Email)
+	newKey := strings.ToLower(account.Email)
+	if oldKey != newKey {
+		delete(r.userIDByEmail, oldKey)
+		r.userIDByEmail[newKey] = account.ID
 	}
 	r.usersByID[account.ID] = account
 	return nil
@@ -120,7 +122,7 @@ func (r *MemoryRepository) DeleteUser(_ context.Context, id string) error {
 	if !exists {
 		return sql.ErrNoRows
 	}
-	delete(r.userIDByEmail, user.Email)
+	delete(r.userIDByEmail, strings.ToLower(user.Email))
 	delete(r.usersByID, id)
 	return nil
 }

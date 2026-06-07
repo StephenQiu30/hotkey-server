@@ -19,10 +19,10 @@ func New(azService *serviceauth.AuthorizationService) *Handler {
 }
 
 type connectRequest struct {
-	Platform       string  `json:"platform"`
+	Platform       string  `json:"platform" binding:"required"`
 	PlatformUserID string  `json:"platformUserId"`
 	DisplayName    string  `json:"displayName"`
-	AccessToken    string  `json:"accessToken"`
+	AccessToken    string  `json:"accessToken" binding:"required"`
 	RefreshToken   string  `json:"refreshToken"`
 }
 
@@ -90,7 +90,7 @@ func (h *Handler) Test(c *gin.Context) {
 		return
 	}
 
-	azID := c.Param("authorizationID")
+	azID := c.Param("id")
 	az, err := h.azService.HealthCheck(c.Request.Context(), account.ID, azID)
 	if err != nil {
 		if errors.Is(err, authorization.ErrNotFound) {
@@ -111,7 +111,7 @@ func (h *Handler) Disconnect(c *gin.Context) {
 		return
 	}
 
-	azID := c.Param("authorizationID")
+	azID := c.Param("id")
 	err := h.azService.Disconnect(c.Request.Context(), account.ID, azID)
 	if err != nil {
 		if errors.Is(err, authorization.ErrNotFound) {
