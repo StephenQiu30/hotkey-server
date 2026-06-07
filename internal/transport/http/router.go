@@ -43,28 +43,6 @@ type Dependencies struct {
 	AdapterRegistry      *adapter.Registry
 }
 
-func NewRouter() *gin.Engine {
-	authService, err := serviceauth.NewService(serviceauth.NewMemoryRepository(), serviceauth.Config{
-		AccessTokenSecret: "test-router-secret",
-	})
-	if err != nil {
-		panic(err)
-	}
-	return NewRouterWithServices(authService, servicechannel.NewService(servicechannel.NewMemoryRepository()))
-}
-
-func NewRouterWithAuth(authService *serviceauth.Service) *gin.Engine {
-	return NewRouterWithServices(authService, servicechannel.NewService(servicechannel.NewMemoryRepository()))
-}
-
-func NewRouterWithServices(authService *serviceauth.Service, channelService *servicechannel.Service, sourceServices ...*servicesource.Service) *gin.Engine {
-	deps := Dependencies{AuthService: authService, ChannelService: channelService}
-	if len(sourceServices) > 0 {
-		deps.SourceService = sourceServices[0]
-	}
-	return NewRouterWithDependencies(deps)
-}
-
 func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
