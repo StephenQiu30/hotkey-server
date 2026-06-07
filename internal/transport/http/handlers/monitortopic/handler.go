@@ -26,14 +26,14 @@ type createTopicRequest struct {
 }
 
 type updateTopicRequest struct {
-	Name                *string  `json:"name"`
-	Description         *string  `json:"description"`
-	Language            *string  `json:"language"`
-	Platforms           []string `json:"platforms"`
-	SimilarityThreshold *float64 `json:"similarityThreshold"`
-	CollectIntervalMin  *int     `json:"collectIntervalMin"`
-	DailyReportEnabled  *bool    `json:"dailyReportEnabled"`
-	ObsidianOutputDir   *string  `json:"obsidianOutputDir"`
+	Name                *string   `json:"name"`
+	Description         *string   `json:"description"`
+	Language            *string   `json:"language"`
+	Platforms           *[]string `json:"platforms"`
+	SimilarityThreshold *float64  `json:"similarityThreshold"`
+	CollectIntervalMin  *int      `json:"collectIntervalMin"`
+	DailyReportEnabled  *bool     `json:"dailyReportEnabled"`
+	ObsidianOutputDir   *string   `json:"obsidianOutputDir"`
 }
 
 type setStatusRequest struct {
@@ -161,9 +161,9 @@ func (h *Handler) UpdateTopic(c *gin.Context) {
 		lang := svc.Language(*req.Language)
 		input.Language = &lang
 	}
-	if len(req.Platforms) > 0 {
-		platforms := make([]svc.Platform, len(req.Platforms))
-		for i, p := range req.Platforms {
+	if req.Platforms != nil {
+		platforms := make([]svc.Platform, len(*req.Platforms))
+		for i, p := range *req.Platforms {
 			platforms[i] = svc.Platform(p)
 		}
 		input.Platforms = platforms
@@ -249,7 +249,7 @@ func (h *Handler) ListKeywords(c *gin.Context) {
 	}
 	keywords, err := h.service.ListKeywords(c.Request.Context(), c.Param("topicID"))
 	if err != nil {
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
+		writeServiceError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"keywords": keywordResponses(keywords)})

@@ -1,6 +1,7 @@
 package http_test
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/StephenQiu30/hotkey-server/internal/service/monitortopic"
@@ -256,7 +257,13 @@ func TestMonitorTopicValidationErrors(t *testing.T) {
 		"language": "zh",
 		"platforms": []string{"weibo"},
 	})
+	if create.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for topic creation, got %d: %s", create.Code, create.Body.String())
+	}
 	topicID := jsonStringAt(t, create.Body.Bytes(), "topic.id")
+	if topicID == "" {
+		t.Fatal("expected non-empty topic ID from creation response")
+	}
 	resp = postJSONWithBearer(t, router, "/api/v1/me/topics/"+topicID+"/keywords", userToken, map[string]any{
 		"word": "",
 		"type": "include",

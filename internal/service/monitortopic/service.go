@@ -222,25 +222,36 @@ func (s *Service) AddKeyword(ctx context.Context, input AddKeywordInput) (TopicK
 		return TopicKeyword{}, normalizeNotFound(err)
 	}
 	// Check limits
+	var (
+		count int
+		limit int
+		kwErr error
+	)
 	if input.Type == KeywordTypeInclude {
-		count, _ := s.repo.CountKeywords(ctx, input.TopicID, KeywordTypeInclude)
-		if count >= maxIncludeKeywords {
-			return TopicKeyword{}, ErrInvalidInput
-		}
+		limit = maxIncludeKeywords
+		count, kwErr = s.repo.CountKeywords(ctx, input.TopicID, KeywordTypeInclude)
 	} else {
-		count, _ := s.repo.CountKeywords(ctx, input.TopicID, KeywordTypeExclude)
-		if count >= maxExcludeKeywords {
-			return TopicKeyword{}, ErrInvalidInput
-		}
+		limit = maxExcludeKeywords
+		count, kwErr = s.repo.CountKeywords(ctx, input.TopicID, KeywordTypeExclude)
+	}
+	if kwErr != nil {
+		return TopicKeyword{}, normalizeNotFound(kwErr)
+	}
+	if count >= limit {
+		return TopicKeyword{}, ErrInvalidInput
 	}
 	now := s.now().UTC()
-	return s.repo.CreateKeyword(ctx, TopicKeyword{
+	kw, err := s.repo.CreateKeyword(ctx, TopicKeyword{
 		ID:        newID("mkw"),
 		TopicID:   input.TopicID,
 		Word:      strings.TrimSpace(input.Word),
 		Type:      input.Type,
 		CreatedAt: now,
 	})
+	if err != nil {
+		return TopicKeyword{}, normalizeNotFound(err)
+	}
+	return kw, nil
 }
 
 // ListKeywords returns all keywords for a topic.

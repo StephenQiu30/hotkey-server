@@ -204,18 +204,24 @@ func TestListTopics_FilterByUser(t *testing.T) {
 	svc := monitortopic.NewService(monitortopic.NewMemoryRepository())
 	ctx := context.Background()
 
-	svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
+	if _, err := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
 		UserID: "usr_1", Name: "Topic A", Language: monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
-	})
-	svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
+	}); err != nil {
+		t.Fatalf("create topic A: %v", err)
+	}
+	if _, err := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
 		UserID: "usr_1", Name: "Topic B", Language: monitortopic.LanguageEN,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformTwitter},
-	})
-	svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
+	}); err != nil {
+		t.Fatalf("create topic B: %v", err)
+	}
+	if _, err := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
 		UserID: "usr_2", Name: "Topic C", Language: monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
-	})
+	}); err != nil {
+		t.Fatalf("create topic C: %v", err)
+	}
 
 	topics, err := svc.ListTopics(ctx, "usr_1")
 	if err != nil {
@@ -345,23 +351,30 @@ func TestDeleteTopic_CascadingCleanup(t *testing.T) {
 	svc := monitortopic.NewService(monitortopic.NewMemoryRepository())
 	ctx := context.Background()
 
-	created, _ := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
+	created, err := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
 		UserID:   "usr_1",
 		Name:     "AI Trends",
 		Language: monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
 	})
+	if err != nil {
+		t.Fatalf("create topic: %v", err)
+	}
 
 	// Add keywords
-	svc.AddKeyword(ctx, monitortopic.AddKeywordInput{
+	if _, err := svc.AddKeyword(ctx, monitortopic.AddKeywordInput{
 		TopicID: created.ID, Word: "GPT", Type: monitortopic.KeywordTypeInclude,
-	})
-	svc.AddKeyword(ctx, monitortopic.AddKeywordInput{
+	}); err != nil {
+		t.Fatalf("add keyword GPT: %v", err)
+	}
+	if _, err := svc.AddKeyword(ctx, monitortopic.AddKeywordInput{
 		TopicID: created.ID, Word: "spam", Type: monitortopic.KeywordTypeExclude,
-	})
+	}); err != nil {
+		t.Fatalf("add keyword spam: %v", err)
+	}
 
 	// Delete topic
-	err := svc.DeleteTopic(ctx, created.ID)
+	err = svc.DeleteTopic(ctx, created.ID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

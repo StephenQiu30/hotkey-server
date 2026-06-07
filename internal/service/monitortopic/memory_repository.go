@@ -100,6 +100,9 @@ func (r *MemoryRepository) DeleteTopic(_ context.Context, topicID string) error 
 func (r *MemoryRepository) CreateKeyword(_ context.Context, kw TopicKeyword) (TopicKeyword, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if _, exists := r.topics[kw.TopicID]; !exists {
+		return TopicKeyword{}, sql.ErrNoRows
+	}
 	r.keywords[kw.ID] = kw
 	r.kwByTopic[kw.TopicID] = append(r.kwByTopic[kw.TopicID], kw.ID)
 	return kw, nil
