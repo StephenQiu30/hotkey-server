@@ -35,4 +35,5 @@ e2e-test:
 e2e-smoke:
 	HOTKEY_E2E_POSTGRES_ADDR=127.0.0.1:15432 \
 	HOTKEY_E2E_REDIS_URL=redis://127.0.0.1:16379/0 \
+	HOTKEY_E2E_SERVER_URL=http://127.0.0.1:18080 \
 	go test -v -tags e2e -count=1 -timeout=30s -run "TestHealthCheck|TestAllBehaviors" ./tests/e2e/...
