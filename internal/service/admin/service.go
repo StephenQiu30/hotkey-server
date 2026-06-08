@@ -25,6 +25,51 @@ var (
 	ErrNotFound     = errors.New("not found")
 )
 
+// CleanupStatus represents the state of a cleanup task or step.
+type CleanupStatus string
+
+const (
+	CleanupStatusInProgress CleanupStatus = "in_progress"
+	CleanupStatusCompleted  CleanupStatus = "completed"
+	CleanupStatusFailed     CleanupStatus = "failed"
+	CleanupStatusPending    CleanupStatus = "pending"
+)
+
+// CleanupStep represents a single step in a cleanup task.
+type CleanupStep struct {
+	Name   string        `json:"name"`
+	Status CleanupStatus `json:"status"`
+	Error  string        `json:"error,omitempty"`
+}
+
+// CleanupTask tracks the progress of an account deletion cleanup.
+type CleanupTask struct {
+	ID        string        `json:"id"`
+	UserID    string        `json:"userId"`
+	Status    CleanupStatus `json:"status"`
+	Steps     []CleanupStep `json:"steps"`
+	CreatedAt time.Time     `json:"createdAt"`
+	UpdatedAt time.Time     `json:"updatedAt"`
+}
+
+// UserRecord is a minimal user record for admin cleanup operations.
+type UserRecord struct {
+	ID    string
+	Email string
+}
+
+// RSSFeedRecord represents an RSS feed owned by a user.
+type RSSFeedRecord struct {
+	UserID string
+	Token  string
+}
+
+// DailyReportRecord represents a daily report owned by a user.
+type DailyReportRecord struct {
+	ID     string
+	UserID string
+}
+
 type AuditLog struct {
 	ID           string
 	ActorID      string
@@ -32,6 +77,7 @@ type AuditLog struct {
 	ResourceType string
 	ResourceID   string
 	Result       string
+	Metadata     map[string]string
 	CreatedAt    time.Time
 }
 
@@ -41,7 +87,11 @@ type AuditLogInput struct {
 	ResourceType string
 	ResourceID   string
 	Result       string
+	Metadata     map[string]string
 }
+
+// sensitiveFieldPatterns are lowercase substrings that trigger metadata redaction.
+var sensitiveFieldPatterns = []string{"token", "secret", "password", "api_key", "apikey", "access_token", "refresh_token"}
 
 type CreateJobInput struct {
 	Type           queue.JobType
@@ -87,6 +137,20 @@ type Repository interface {
 	ListJobs(ctx context.Context) ([]queue.Job, error)
 	JobByID(ctx context.Context, jobID string) (queue.Job, error)
 	UpdateJob(ctx context.Context, job queue.Job) (queue.Job, error)
+	UserByID(ctx context.Context, userID string) (UserRecord, error)
+	DeleteUser(ctx context.Context, userID string) error
+	DeleteRSSFeedByUser(ctx context.Context, userID string) error
+	DeleteDailyReportsByUser(ctx context.Context, userID string) error
+	SaveCleanupTask(ctx context.Context, task CleanupTask) error
+	CleanupTaskByID(ctx context.Context, taskID string) (CleanupTask, error)
+}
+
+// RevokeSourceResult is the result of revoking a source.
+type RevokeSourceResult struct {
+	ID        string
+	Name      string
+	Status    string
+	UpdatedAt time.Time
 }
 
 type Config struct {
@@ -95,6 +159,7 @@ type Config struct {
 	DashScopeKey   string
 	SMTPHost       string
 	Now            func() time.Time
+	RevokeSourceFunc func(ctx context.Context, sourceID string) (RevokeSourceResult, error)
 }
 
 type Service struct {
@@ -122,8 +187,33 @@ func (s *Service) RecordAuditLog(ctx context.Context, input AuditLogInput) (Audi
 		ResourceType: strings.TrimSpace(input.ResourceType),
 		ResourceID:   strings.TrimSpace(input.ResourceID),
 		Result:       strings.TrimSpace(input.Result),
+		Metadata:     sanitizeMetadata(input.Metadata),
 		CreatedAt:    s.now().UTC(),
 	})
+}
+
+// sanitizeMetadata redacts sensitive fields from audit metadata.
+func sanitizeMetadata(metadata map[string]string) map[string]string {
+	if len(metadata) == 0 {
+		return nil
+	}
+	sanitized := make(map[string]string, len(metadata))
+	for k, v := range metadata {
+		lower := strings.ToLower(k)
+		sensitive := false
+		for _, pattern := range sensitiveFieldPatterns {
+			if strings.Contains(lower, pattern) {
+				sensitive = true
+				break
+			}
+		}
+		if sensitive {
+			sanitized[k] = "[REDACTED]"
+		} else {
+			sanitized[k] = v
+		}
+	}
+	return sanitized
 }
 
 func (s *Service) ListAuditLogs(ctx context.Context) ([]AuditLog, error) {
@@ -294,4 +384,149 @@ func newID(prefix string) string {
 		return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
 	}
 	return prefix + "_" + hex.EncodeToString(data[:])
+}
+
+// RevokeSource delegates to the configured RevokeSourceFunc to revoke a source.
+func (s *Service) RevokeSource(ctx context.Context, sourceID string) (RevokeSourceResult, error) {
+	sourceID = strings.TrimSpace(sourceID)
+	if sourceID == "" {
+		return RevokeSourceResult{}, ErrInvalidInput
+	}
+	if s.cfg.RevokeSourceFunc == nil {
+		return RevokeSourceResult{}, errors.New("revoke source not configured")
+	}
+	return s.cfg.RevokeSourceFunc(ctx, sourceID)
+}
+
+// DeleteAccount orchestrates account deletion with ordered cleanup steps.
+// All steps are pre-registered as pending so RetryCleanup can resume from the failed step.
+func (s *Service) DeleteAccount(ctx context.Context, userID string) (CleanupTask, error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return CleanupTask{}, ErrInvalidInput
+	}
+	if _, err := s.repo.UserByID(ctx, userID); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return CleanupTask{}, ErrNotFound
+		}
+		return CleanupTask{}, err
+	}
+
+	now := s.now().UTC()
+	task := CleanupTask{
+		ID:     newID("cleanup"),
+		UserID: userID,
+		Status: CleanupStatusInProgress,
+		Steps: []CleanupStep{
+			{Name: "delete_daily_reports", Status: CleanupStatusPending},
+			{Name: "delete_rss_feeds", Status: CleanupStatusPending},
+			{Name: "delete_user", Status: CleanupStatusPending},
+		},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	type cleanupStepDef struct {
+		name string
+		fn   func(context.Context, string) error
+	}
+	stepDefs := []cleanupStepDef{
+		{"delete_daily_reports", s.repo.DeleteDailyReportsByUser},
+		{"delete_rss_feeds", s.repo.DeleteRSSFeedByUser},
+		{"delete_user", s.repo.DeleteUser},
+	}
+
+	// Persist the pending task before destructive steps so progress is durable.
+	if err := s.repo.SaveCleanupTask(ctx, task); err != nil {
+		return CleanupTask{}, err
+	}
+
+	for i, step := range stepDefs {
+		if err := step.fn(ctx, userID); err != nil {
+			task.Steps[i].Status = CleanupStatusFailed
+			task.Steps[i].Error = err.Error()
+			task.Status = CleanupStatusFailed
+			task.UpdatedAt = s.now().UTC()
+			_ = s.repo.SaveCleanupTask(ctx, task)
+			return task, nil
+		}
+		task.Steps[i].Status = CleanupStatusCompleted
+		task.UpdatedAt = s.now().UTC()
+		if err := s.repo.SaveCleanupTask(ctx, task); err != nil {
+			return CleanupTask{}, err
+		}
+	}
+
+	task.Status = CleanupStatusCompleted
+	task.UpdatedAt = s.now().UTC()
+	if err := s.repo.SaveCleanupTask(ctx, task); err != nil {
+		return CleanupTask{}, err
+	}
+	return task, nil
+}
+
+// RetryCleanup retries failed steps of a cleanup task.
+func (s *Service) RetryCleanup(ctx context.Context, taskID string) (CleanupTask, error) {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return CleanupTask{}, ErrInvalidInput
+	}
+	task, err := s.repo.CleanupTaskByID(ctx, taskID)
+	if err != nil {
+		return CleanupTask{}, err
+	}
+	if task.Status != CleanupStatusFailed {
+		return CleanupTask{}, ErrInvalidInput
+	}
+
+	stepFuncs := map[string]func(context.Context, string) error{
+		"delete_daily_reports": s.repo.DeleteDailyReportsByUser,
+		"delete_rss_feeds":     s.repo.DeleteRSSFeedByUser,
+		"delete_user":          s.repo.DeleteUser,
+	}
+
+	for i, step := range task.Steps {
+		if step.Status == CleanupStatusCompleted {
+			continue
+		}
+		fn, ok := stepFuncs[step.Name]
+		if !ok {
+			task.Steps[i].Status = CleanupStatusFailed
+			task.Steps[i].Error = "unknown step"
+			task.Status = CleanupStatusFailed
+			task.UpdatedAt = s.now().UTC()
+			_ = s.repo.SaveCleanupTask(ctx, task)
+			return task, nil
+		}
+		if err := fn(ctx, task.UserID); err != nil {
+			task.Steps[i].Status = CleanupStatusFailed
+			task.Steps[i].Error = err.Error()
+			task.Status = CleanupStatusFailed
+			task.UpdatedAt = s.now().UTC()
+			_ = s.repo.SaveCleanupTask(ctx, task)
+			return task, nil
+		}
+		task.Steps[i].Status = CleanupStatusCompleted
+		task.Steps[i].Error = ""
+		task.UpdatedAt = s.now().UTC()
+		if err := s.repo.SaveCleanupTask(ctx, task); err != nil {
+			return CleanupTask{}, err
+		}
+	}
+
+	task.Status = CleanupStatusCompleted
+	task.UpdatedAt = s.now().UTC()
+	if err := s.repo.SaveCleanupTask(ctx, task); err != nil {
+		return CleanupTask{}, err
+	}
+	return task, nil
+}
+
+// CleanupStatus returns the current state of a cleanup task.
+func (s *Service) CleanupStatus(ctx context.Context, taskID string) (CleanupTask, error) {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return CleanupTask{}, ErrInvalidInput
+	}
+	return s.repo.CleanupTaskByID(ctx, taskID)
 }

@@ -3,6 +3,7 @@ package adminrepo
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
 	"github.com/StephenQiu30/hotkey-server/internal/service/admin"
@@ -17,6 +18,14 @@ func New(db *sql.DB) *Repository {
 }
 
 func (r *Repository) CreateAuditLog(ctx context.Context, entry admin.AuditLog) (admin.AuditLog, error) {
+	var metadataJSON []byte
+	if len(entry.Metadata) > 0 {
+		var err error
+		metadataJSON, err = json.Marshal(entry.Metadata)
+		if err != nil {
+			return admin.AuditLog{}, err
+		}
+	}
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO audit_logs (
 			id,
@@ -25,15 +34,16 @@ func (r *Repository) CreateAuditLog(ctx context.Context, entry admin.AuditLog) (
 			resource_type,
 			resource_id,
 			result,
+			metadata,
 			created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)
-	`, entry.ID, entry.ActorID, entry.Action, entry.ResourceType, entry.ResourceID, entry.Result, entry.CreatedAt)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`, entry.ID, entry.ActorID, entry.Action, entry.ResourceType, entry.ResourceID, entry.Result, metadataJSON, entry.CreatedAt)
 	return entry, err
 }
 
 func (r *Repository) ListAuditLogs(ctx context.Context) (_ []admin.AuditLog, err error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, actor_id, action, resource_type, resource_id, result, created_at
+		SELECT id, actor_id, action, resource_type, resource_id, result, metadata, created_at
 		FROM audit_logs
 		ORDER BY created_at DESC
 		LIMIT 100
@@ -50,8 +60,14 @@ func (r *Repository) ListAuditLogs(ctx context.Context) (_ []admin.AuditLog, err
 	var logs []admin.AuditLog
 	for rows.Next() {
 		var entry admin.AuditLog
-		if err := rows.Scan(&entry.ID, &entry.ActorID, &entry.Action, &entry.ResourceType, &entry.ResourceID, &entry.Result, &entry.CreatedAt); err != nil {
+		var metadataJSON []byte
+		if err := rows.Scan(&entry.ID, &entry.ActorID, &entry.Action, &entry.ResourceType, &entry.ResourceID, &entry.Result, &metadataJSON, &entry.CreatedAt); err != nil {
 			return nil, err
+		}
+		if len(metadataJSON) > 0 {
+			if err := json.Unmarshal(metadataJSON, &entry.Metadata); err != nil {
+				return nil, err
+			}
 		}
 		logs = append(logs, entry)
 	}
@@ -159,4 +175,75 @@ func scanJob(scanner jobScanner) (queue.Job, error) {
 	job.Status = queue.JobStatus(status)
 	job.Payload = append(job.Payload[:0], payload...)
 	return job, nil
+}
+
+func (r *Repository) UserByID(ctx context.Context, userID string) (admin.UserRecord, error) {
+	row := r.db.QueryRowContext(ctx, `SELECT id, email FROM users WHERE id = $1`, userID)
+	var u admin.UserRecord
+	if err := row.Scan(&u.ID, &u.Email); err != nil {
+		if err == sql.ErrNoRows {
+			return admin.UserRecord{}, admin.ErrNotFound
+		}
+		return admin.UserRecord{}, err
+	}
+	return u, nil
+}
+
+func (r *Repository) DeleteUser(ctx context.Context, userID string) error {
+	result, err := r.db.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, userID)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return admin.ErrNotFound
+	}
+	return nil
+}
+
+func (r *Repository) DeleteRSSFeedByUser(ctx context.Context, userID string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM rss_feeds WHERE user_id = $1`, userID)
+	return err
+}
+
+func (r *Repository) DeleteDailyReportsByUser(ctx context.Context, userID string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM daily_reports WHERE user_id = $1`, userID)
+	return err
+}
+
+func (r *Repository) SaveCleanupTask(ctx context.Context, task admin.CleanupTask) error {
+	stepsJSON, err := json.Marshal(task.Steps)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.ExecContext(ctx, `
+		INSERT INTO cleanup_tasks (id, user_id, status, steps, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (id) DO UPDATE SET status = $3, steps = $4, updated_at = $6
+	`, task.ID, task.UserID, string(task.Status), stepsJSON, task.CreatedAt, task.UpdatedAt)
+	return err
+}
+
+func (r *Repository) CleanupTaskByID(ctx context.Context, taskID string) (admin.CleanupTask, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, user_id, status, steps, created_at, updated_at
+		FROM cleanup_tasks WHERE id = $1
+	`, taskID)
+	var task admin.CleanupTask
+	var status string
+	var stepsJSON []byte
+	if err := row.Scan(&task.ID, &task.UserID, &status, &stepsJSON, &task.CreatedAt, &task.UpdatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return admin.CleanupTask{}, admin.ErrNotFound
+		}
+		return admin.CleanupTask{}, err
+	}
+	task.Status = admin.CleanupStatus(status)
+	if err := json.Unmarshal(stepsJSON, &task.Steps); err != nil {
+		return admin.CleanupTask{}, err
+	}
+	return task, nil
 }

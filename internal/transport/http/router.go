@@ -253,6 +253,13 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	admin.GET("/sources/:sourceID/collection-runs", sources.ListCollectionRuns)
 	admin.POST("/sources/:sourceID/test-fetch", sources.TestFetch)
 
+	admin.POST("/users/:userID/disable", auth.AdminDisableUser)
+	admin.POST("/users/:userID/revoke-tokens", auth.AdminRevokeAllTokens)
+	admin.DELETE("/users/:userID", adminObservability.DeleteAccount)
+
+	admin.GET("/cleanup-tasks/:taskID", adminObservability.CleanupStatus)
+	admin.POST("/cleanup-tasks/:taskID/retry", adminObservability.RetryCleanup)
+
 	admin.GET("/x/auth", xauth.AuthURL)
 	admin.GET("/x/auth/callback", xauth.Callback)
 	admin.GET("/x/auth/status", xauth.Status)
@@ -261,9 +268,6 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 	admin.GET("/adapters", adapterHandler.ListAdapters)
 	admin.GET("/adapters/:provider/health", adapterHandler.GetAdapterHealth)
 	admin.GET("/adapters/:provider/capabilities", adapterHandler.GetAdapterCapabilities)
-
-	admin.POST("/users/:userID/disable", auth.AdminDisableUser)
-	admin.POST("/users/:userID/revoke-tokens", auth.AdminRevokeAllTokens)
 
 	return router
 }

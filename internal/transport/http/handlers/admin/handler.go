@@ -122,6 +122,56 @@ func (h *Handler) RerunDailyReport(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"job": jobResponse(job)})
 }
 
+func (h *Handler) RevokeSource(c *gin.Context) {
+	sourceID := c.Param("sourceID")
+	c.Set("adminAuditResourceID", sourceID)
+	result, err := h.service.RevokeSource(c.Request.Context(), sourceID)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"source": gin.H{
+			"id":        result.ID,
+			"name":      result.Name,
+			"status":    result.Status,
+			"updatedAt": result.UpdatedAt,
+		},
+	})
+}
+
+func (h *Handler) DeleteAccount(c *gin.Context) {
+	userID := c.Param("userID")
+	c.Set("adminAuditResourceID", userID)
+	task, err := h.service.DeleteAccount(c.Request.Context(), userID)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"cleanupTask": cleanupTaskResponse(task)})
+}
+
+func (h *Handler) CleanupStatus(c *gin.Context) {
+	taskID := c.Param("taskID")
+	task, err := h.service.CleanupStatus(c.Request.Context(), taskID)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"cleanupTask": cleanupTaskResponse(task)})
+}
+
+func (h *Handler) RetryCleanup(c *gin.Context) {
+	taskID := c.Param("taskID")
+	c.Set("adminAuditResourceID", taskID)
+	task, err := h.service.RetryCleanup(c.Request.Context(), taskID)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"cleanupTask": cleanupTaskResponse(task)})
+}
+
 func auditLogResponses(logs []serviceadmin.AuditLog) []gin.H {
 	responses := make([]gin.H, 0, len(logs))
 	for _, log := range logs {
@@ -216,6 +266,10 @@ func auditResource(c *gin.Context) (string, string) {
 		return "daily_report", contextResourceID
 	case strings.Contains(path, "/jobs"):
 		return "job", c.Param("jobID")
+	case strings.Contains(path, "/users"):
+		return "user", firstNonEmpty(contextResourceID, c.Param("userID"))
+	case strings.Contains(path, "/cleanup-tasks"):
+		return "cleanup_task", c.Param("taskID")
 	default:
 		return "", ""
 	}
@@ -228,4 +282,23 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func cleanupTaskResponse(task serviceadmin.CleanupTask) gin.H {
+	steps := make([]gin.H, 0, len(task.Steps))
+	for _, step := range task.Steps {
+		s := gin.H{"name": step.Name, "status": step.Status}
+		if step.Error != "" {
+			s["error"] = step.Error
+		}
+		steps = append(steps, s)
+	}
+	return gin.H{
+		"id":        task.ID,
+		"userId":    task.UserID,
+		"status":    task.Status,
+		"steps":     steps,
+		"createdAt": task.CreatedAt,
+		"updatedAt": task.UpdatedAt,
+	}
 }
