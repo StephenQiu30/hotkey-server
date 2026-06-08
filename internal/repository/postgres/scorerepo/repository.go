@@ -34,7 +34,7 @@ ON CONFLICT (cluster_id, score_version) DO UPDATE SET
 	explanation = EXCLUDED.explanation,
 	updated_at = EXCLUDED.updated_at
 RETURNING id, cluster_id, total_score, source_count_score, freshness_score, relevance_score, propagation_score, quality_score, explanation, score_version, created_at, updated_at`
-	
+
 	err := r.db.QueryRowContext(ctx, query,
 		score.ID, score.ClusterID, score.TotalScore, score.SourceCountScore, score.FreshnessScore, score.RelevanceScore, score.PropagationScore, score.QualityScore, score.Explanation, score.ScoreVersion, score.CreatedAt, score.UpdatedAt,
 	).Scan(
@@ -43,10 +43,10 @@ RETURNING id, cluster_id, total_score, source_count_score, freshness_score, rele
 	if err != nil {
 		return servicehotspot.HotspotScore{}, err
 	}
-	
+
 	// Hydrate ChannelIDs and SourceRefs from explanation if possible, or leave to caller to join
 	hydrateFromExplanation(&score)
-	
+
 	return score, nil
 }
 
@@ -129,7 +129,7 @@ func hydrateFromExplanation(s *servicehotspot.HotspotScore) {
 	var exp servicehotspot.ScoreExplanation
 	if err := json.Unmarshal([]byte(s.Explanation), &exp); err == nil {
 		s.SourceRefs = exp.SourceRefs
-		// Note: ChannelIDs are not currently in ScoreExplanation, 
+		// Note: ChannelIDs are not currently in ScoreExplanation,
 		// but they could be added if needed for persistence without joining.
 	}
 }

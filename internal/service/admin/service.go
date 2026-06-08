@@ -154,11 +154,11 @@ type RevokeSourceResult struct {
 }
 
 type Config struct {
-	PostgreSQLPing func(context.Context) error
-	RedisPing      func(context.Context) error
-	DashScopeKey   string
-	SMTPHost       string
-	Now            func() time.Time
+	PostgreSQLPing   func(context.Context) error
+	RedisPing        func(context.Context) error
+	DashScopeKey     string
+	SMTPHost         string
+	Now              func() time.Time
 	RevokeSourceFunc func(ctx context.Context, sourceID string) (RevokeSourceResult, error)
 }
 

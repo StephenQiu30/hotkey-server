@@ -15,8 +15,8 @@ import (
 func TestHNFetcherParsesTopStoriesFromFakeAPI(t *testing.T) {
 	server := fakeHNAPI(t, map[string]any{
 		"/v0/topstories.json": []int64{1001, 1002},
-		"/v0/item/1001.json": hnStory(1001, "Go 2.0 Released", "https://go.dev/blog/go2", "gopher", 500, 120),
-		"/v0/item/1002.json": hnStory(1002, "AI Agents Explained", "https://example.com/ai", "researcher", 300, 80),
+		"/v0/item/1001.json":  hnStory(1001, "Go 2.0 Released", "https://go.dev/blog/go2", "gopher", 500, 120),
+		"/v0/item/1002.json":  hnStory(1002, "AI Agents Explained", "https://example.com/ai", "researcher", 300, 80),
 	})
 
 	f := fetcher.NewHNFetcher(server.Client(), fetcher.HNConfig{CommentSampleLimit: 5})
@@ -53,8 +53,8 @@ func TestHNFetcherParsesTopStoriesFromFakeAPI(t *testing.T) {
 func TestHNFetcherDeduplicatesByURL(t *testing.T) {
 	server := fakeHNAPI(t, map[string]any{
 		"/v0/topstories.json": []int64{2001, 2002},
-		"/v0/item/2001.json": hnStory(2001, "Same Article", "https://example.com/same", "user1", 100, 10),
-		"/v0/item/2002.json": hnStory(2002, "Same Article RePost", "https://example.com/same", "user2", 50, 5),
+		"/v0/item/2001.json":  hnStory(2001, "Same Article", "https://example.com/same", "user1", 100, 10),
+		"/v0/item/2002.json":  hnStory(2002, "Same Article RePost", "https://example.com/same", "user2", 50, 5),
 	})
 
 	f := fetcher.NewHNFetcher(server.Client(), fetcher.HNConfig{CommentSampleLimit: 5})
@@ -74,8 +74,8 @@ func TestHNFetcherDeduplicatesByURL(t *testing.T) {
 func TestHNFetcherSkipsDeletedItems(t *testing.T) {
 	server := fakeHNAPI(t, map[string]any{
 		"/v0/topstories.json": []int64{3001, 3002},
-		"/v0/item/3001.json": hnStory(3001, "Valid Post", "https://example.com/valid", "author", 100, 10),
-		"/v0/item/3002.json": map[string]any{"id": 3002, "deleted": true},
+		"/v0/item/3001.json":  hnStory(3001, "Valid Post", "https://example.com/valid", "author", 100, 10),
+		"/v0/item/3002.json":  map[string]any{"id": 3002, "deleted": true},
 	})
 
 	f := fetcher.NewHNFetcher(server.Client(), fetcher.HNConfig{CommentSampleLimit: 5})
@@ -98,7 +98,7 @@ func TestHNFetcherSkipsDeletedItems(t *testing.T) {
 func TestHNFetcherSkipsDeadItems(t *testing.T) {
 	server := fakeHNAPI(t, map[string]any{
 		"/v0/topstories.json": []int64{4001},
-		"/v0/item/4001.json": map[string]any{"id": 4001, "dead": true, "title": "Dead Post", "url": "https://example.com/dead"},
+		"/v0/item/4001.json":  map[string]any{"id": 4001, "dead": true, "title": "Dead Post", "url": "https://example.com/dead"},
 	})
 
 	f := fetcher.NewHNFetcher(server.Client(), fetcher.HNConfig{CommentSampleLimit: 5})
@@ -146,16 +146,16 @@ func TestHNFetcherCommentSampleRespectsLimit(t *testing.T) {
 	}
 
 	server := fakeHNAPI(t, map[string]any{
-		"/v0/topstories.json":  []int64{6001},
-		"/v0/item/6001.json":   itemData,
-		"/v0/item/5001.json":   hnComment(5001, "Comment 1", "commenter"),
-		"/v0/item/5002.json":   hnComment(5002, "Comment 2", "commenter"),
-		"/v0/item/5003.json":   hnComment(5003, "Comment 3", "commenter"),
-		"/v0/item/5004.json":   hnComment(5004, "Comment 4", "commenter"),
-		"/v0/item/5005.json":   hnComment(5005, "Comment 5", "commenter"),
-		"/v0/item/5006.json":   hnComment(5006, "Comment 6", "commenter"),
-		"/v0/item/5007.json":   hnComment(5007, "Comment 7", "commenter"),
-		"/v0/item/5008.json":   hnComment(5008, "Comment 8", "commenter"),
+		"/v0/topstories.json": []int64{6001},
+		"/v0/item/6001.json":  itemData,
+		"/v0/item/5001.json":  hnComment(5001, "Comment 1", "commenter"),
+		"/v0/item/5002.json":  hnComment(5002, "Comment 2", "commenter"),
+		"/v0/item/5003.json":  hnComment(5003, "Comment 3", "commenter"),
+		"/v0/item/5004.json":  hnComment(5004, "Comment 4", "commenter"),
+		"/v0/item/5005.json":  hnComment(5005, "Comment 5", "commenter"),
+		"/v0/item/5006.json":  hnComment(5006, "Comment 6", "commenter"),
+		"/v0/item/5007.json":  hnComment(5007, "Comment 7", "commenter"),
+		"/v0/item/5008.json":  hnComment(5008, "Comment 8", "commenter"),
 	})
 
 	f := fetcher.NewHNFetcher(server.Client(), fetcher.HNConfig{CommentSampleLimit: 3})

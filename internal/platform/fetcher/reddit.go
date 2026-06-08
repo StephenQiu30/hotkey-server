@@ -101,18 +101,18 @@ func classifyHTTPError(err error) error {
 }
 
 type redditPost struct {
-	Title      string  `json:"title"`
-	URL        string  `json:"url"`
-	Permalink  string  `json:"permalink"`
-	Author     string  `json:"author"`
-	Subreddit  string  `json:"subreddit"`
-	CreatedUTC float64 `json:"created_utc"`
-	Selftext   string  `json:"selftext"`
-	Over18     bool    `json:"over_18"`
-	Name       string  `json:"name"`
-	IsSelf     bool    `json:"is_self"`
-	Score      int     `json:"score"`
-	NumComments int    `json:"num_comments"`
+	Title       string  `json:"title"`
+	URL         string  `json:"url"`
+	Permalink   string  `json:"permalink"`
+	Author      string  `json:"author"`
+	Subreddit   string  `json:"subreddit"`
+	CreatedUTC  float64 `json:"created_utc"`
+	Selftext    string  `json:"selftext"`
+	Over18      bool    `json:"over_18"`
+	Name        string  `json:"name"`
+	IsSelf      bool    `json:"is_self"`
+	Score       int     `json:"score"`
+	NumComments int     `json:"num_comments"`
 }
 
 type redditComment struct {
@@ -203,9 +203,9 @@ func shouldSkipPost(post redditPost, allowNSFW bool) bool {
 
 func mapPostToItem(post redditPost) Item {
 	item := Item{
-		Title:      strings.TrimSpace(post.Title),
-		ExternalID: post.Name,
-		Score:      post.Score,
+		Title:       strings.TrimSpace(post.Title),
+		ExternalID:  post.Name,
+		Score:       post.Score,
 		Descendants: post.NumComments,
 	}
 	if post.IsSelf || post.URL == "" {

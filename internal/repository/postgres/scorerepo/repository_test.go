@@ -25,13 +25,13 @@ func TestRepositorySaveScore(t *testing.T) {
 	repo := New(db)
 
 	score := servicehotspot.HotspotScore{
-		ID:         "score-1",
-		ClusterID:  "cluster-1",
-		TotalScore: 0.85,
-		Explanation: `{"sourceCount": 5}`,
+		ID:           "score-1",
+		ClusterID:    "cluster-1",
+		TotalScore:   0.85,
+		Explanation:  `{"sourceCount": 5}`,
 		ScoreVersion: "v1",
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 	saved, err := repo.SaveScore(context.Background(), score)
 	if err != nil {
