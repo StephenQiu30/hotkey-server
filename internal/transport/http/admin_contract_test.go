@@ -189,7 +189,7 @@ func TestAdminConfigStatusDoesNotLeakSecrets(t *testing.T) {
 	router := transportRouterWithDependenciesForTest(transporthttp.Dependencies{
 		AdminService: adminService,
 	})
-	adminToken := registerAdminAndLogin(t, router, "admin-secret-check@example.com")
+	adminToken := registerAdminAndLogin(t, router, "channels-admin@example.com")
 
 	resp := getWithBearer(router, "/api/v1/admin/config/status", adminToken)
 	if resp.Code != http.StatusOK {
