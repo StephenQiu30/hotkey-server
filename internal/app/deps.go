@@ -13,6 +13,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
 	"github.com/StephenQiu30/hotkey-server/internal/repository/postgres/contentrepo"
 	"github.com/StephenQiu30/hotkey-server/internal/repository/postgres/hotspotrepo"
+	"github.com/StephenQiu30/hotkey-server/internal/repository/postgres/jobrepo"
 	"github.com/StephenQiu30/hotkey-server/internal/repository/postgres/sourcerepo"
 )
 
@@ -34,6 +35,7 @@ type Deps struct {
 	DB          *sql.DB
 	RedisClient *redis.Client
 	JobQueue    *queue.RedisQueue
+	JobRepo     *jobrepo.Repository
 	ContentRepo *contentrepo.Repository
 	HotspotRepo *hotspotrepo.Repository
 	SourceRepo  *sourcerepo.Repository
@@ -121,13 +123,16 @@ func NewDeps(cfg config.Config, opts ...DepsOption) (*Deps, error) {
 	contentRepo := contentrepo.New(db)
 	hotspotRepo := hotspotrepo.New(db)
 	sourceRepo := sourcerepo.New(db)
+	jobRepo := jobrepo.New(db)
 
 	// --- Infrastructure Providers ---
 	dashScopeClient := dashscope.New(cfg.DashScopeAPIKey)
 
-	// --- Queue ---
+	// --- Queue with persistence ---
+	persister := queue.NewJobStatePersister(jobRepo)
 	jobQueue := queue.NewRedisQueue(redisClient, queue.RedisQueueOptions{
-		QueueName: "hotkey:jobs:pending",
+		QueueName:     "hotkey:jobs:pending",
+		OnStateChange: persister.OnStateChange,
 	})
 
 	return &Deps{
@@ -135,6 +140,7 @@ func NewDeps(cfg config.Config, opts ...DepsOption) (*Deps, error) {
 		DB:          db,
 		RedisClient: redisClient,
 		JobQueue:    jobQueue,
+		JobRepo:     jobRepo,
 		ContentRepo: contentRepo,
 		HotspotRepo: hotspotRepo,
 		SourceRepo:  sourceRepo,
