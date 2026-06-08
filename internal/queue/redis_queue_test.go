@@ -62,6 +62,17 @@ func (s *fakeRedisStore) LPush(_ context.Context, key string, value []byte) erro
 	return nil
 }
 
+type failingRedisStore struct {
+	err error
+}
+
+func (s *failingRedisStore) Set(context.Context, string, []byte) error        { return s.err }
+func (s *failingRedisStore) SetNX(context.Context, string, []byte) (bool, error) { return false, s.err }
+func (s *failingRedisStore) Del(context.Context, string) error                { return s.err }
+func (s *failingRedisStore) Get(context.Context, string) ([]byte, error)      { return nil, s.err }
+func (s *failingRedisStore) LPush(context.Context, string, []byte) error      { return s.err }
+func (s *failingRedisStore) RPop(context.Context, string) ([]byte, error)     { return nil, s.err }
+
 func (s *fakeRedisStore) RPop(_ context.Context, key string) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -115,6 +126,134 @@ func TestRedisQueueEnqueueIdempotentlyAndClaim(t *testing.T) {
 	if _, err := q.Claim(ctx); err != ErrNoJobs {
 		t.Fatalf("expected duplicate enqueue to leave one queue item, got %v", err)
 	}
+}
+
+func TestRedisQueueEnqueueReturnsRedisConnectionErrorWhenStoreDown(t *testing.T) {
+	ctx := context.Background()
+	store := &failingRedisStore{err: errors.New("dial tcp 127.0.0.1:6379: connect: connection refused")}
+	q := NewRedisQueue(store, RedisQueueOptions{QueueName: "hotkey:test"})
+	payload := mustPayload(t, CollectSourcePayload{SourceID: "source-1", ScheduledFor: time.Now()})
+
+	_, err := q.Enqueue(ctx, EnqueueRequest{
+		Type:           JobTypeCollectSource,
+		Payload:        payload,
+		IdempotencyKey: "collect:source-1",
+	})
+	if err == nil {
+		t.Fatal("expected error when Redis is down")
+	}
+	if !IsRedisConnectionError(err) {
+		t.Fatalf("expected RedisConnectionError, got %T: %v", err, err)
+	}
+}
+
+func TestRedisQueueClaimReturnsRedisConnectionErrorWhenStoreDown(t *testing.T) {
+	ctx := context.Background()
+	store := &failingRedisStore{err: errors.New("dial tcp 127.0.0.1:6379: connect: connection refused")}
+	q := NewRedisQueue(store, RedisQueueOptions{QueueName: "hotkey:test"})
+
+	_, err := q.Claim(ctx)
+	if err == nil {
+		t.Fatal("expected error when Redis is down")
+	}
+	if !IsRedisConnectionError(err) {
+		t.Fatalf("expected RedisConnectionError, got %T: %v", err, err)
+	}
+}
+
+func TestRedisQueueFailReturnsRedisConnectionErrorWhenStoreDown(t *testing.T) {
+	ctx := context.Background()
+	store := &failingRedisStore{err: errors.New("dial tcp 127.0.0.1:6379: connect: connection refused")}
+	q := NewRedisQueue(store, RedisQueueOptions{QueueName: "hotkey:test"})
+
+	_, err := q.Fail(ctx, "job-1", errors.New("handler error"))
+	if err == nil {
+		t.Fatal("expected error when Redis is down")
+	}
+	if !IsRedisConnectionError(err) {
+		t.Fatalf("expected RedisConnectionError, got %T: %v", err, err)
+	}
+}
+
+func TestRedisQueuePendingLenReturnsCount(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 5, 31, 1, 0, 0, 0, time.UTC)
+	store := newFakeRedisStore()
+	q := NewRedisQueue(store, RedisQueueOptions{
+		QueueName: "hotkey:test",
+		Now:       func() time.Time { return now },
+	})
+
+	if got := q.PendingLen(); got != 0 {
+		t.Fatalf("expected 0 pending, got %d", got)
+	}
+
+	payload := mustPayload(t, CollectSourcePayload{SourceID: "source-1", ScheduledFor: now})
+	if _, err := q.Enqueue(ctx, EnqueueRequest{
+		Type:           JobTypeCollectSource,
+		Payload:        payload,
+		IdempotencyKey: "collect:source-1",
+	}); err != nil {
+		t.Fatalf("enqueue failed: %v", err)
+	}
+
+	if got := q.PendingLen(); got != 1 {
+		t.Fatalf("expected 1 pending, got %d", got)
+	}
+}
+
+func TestRedisQueuePersistenceCallbackFiresOnStateChange(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 5, 31, 1, 0, 0, 0, time.UTC)
+	store := newFakeRedisStore()
+	var persisted []Job
+	q := NewRedisQueue(store, RedisQueueOptions{
+		QueueName: "hotkey:test",
+		Now:       func() time.Time { return now },
+		OnStateChange: func(_ context.Context, job Job) {
+			persisted = append(persisted, job)
+		},
+	})
+	payload := mustPayload(t, CollectSourcePayload{SourceID: "source-1", ScheduledFor: now})
+
+	job, err := q.Enqueue(ctx, EnqueueRequest{
+		Type:           JobTypeCollectSource,
+		Payload:        payload,
+		IdempotencyKey: "collect:source-1",
+	})
+	if err != nil {
+		t.Fatalf("enqueue failed: %v", err)
+	}
+	if len(persisted) != 1 {
+		t.Fatalf("expected 1 persistence call after enqueue, got %d", len(persisted))
+	}
+	if persisted[0].Status != JobStatusPending {
+		t.Fatalf("expected persisted status pending, got %s", persisted[0].Status)
+	}
+
+	claimed, err := q.Claim(ctx)
+	if err != nil {
+		t.Fatalf("claim failed: %v", err)
+	}
+	if len(persisted) != 2 {
+		t.Fatalf("expected 2 persistence calls after claim, got %d", len(persisted))
+	}
+	if persisted[1].Status != JobStatusRunning {
+		t.Fatalf("expected persisted status running, got %s", persisted[1].Status)
+	}
+
+	completed, err := q.Complete(ctx, claimed.ID)
+	if err != nil {
+		t.Fatalf("complete failed: %v", err)
+	}
+	if len(persisted) != 3 {
+		t.Fatalf("expected 3 persistence calls after complete, got %d", len(persisted))
+	}
+	if persisted[2].Status != JobStatusSucceeded {
+		t.Fatalf("expected persisted status succeeded, got %s", persisted[2].Status)
+	}
+	_ = job
+	_ = completed
 }
 
 func TestRedisQueueRetryBackoffAndDeadLetter(t *testing.T) {

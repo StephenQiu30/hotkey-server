@@ -184,6 +184,104 @@ func TestMemoryQueueRetryBackoffAndDeadLetter(t *testing.T) {
 	}
 }
 
+func TestMemoryQueuePersistenceCallbackFiresOnStateChange(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 5, 31, 1, 0, 0, 0, time.UTC)
+	var persisted []Job
+	q := NewMemoryQueue(QueueOptions{
+		Now:         func() time.Time { return now },
+		MaxAttempts: 3,
+		Backoff:     FixedBackoff(time.Minute),
+		OnStateChange: func(_ context.Context, job Job) {
+			persisted = append(persisted, job)
+		},
+	})
+	payload := mustPayload(t, CollectSourcePayload{SourceID: "source-1", ScheduledFor: now})
+
+	job, err := q.Enqueue(ctx, EnqueueRequest{
+		Type:           JobTypeCollectSource,
+		Payload:        payload,
+		IdempotencyKey: "collect:source-1",
+	})
+	if err != nil {
+		t.Fatalf("enqueue failed: %v", err)
+	}
+	if len(persisted) != 1 || persisted[0].Status != JobStatusPending {
+		t.Fatalf("expected 1 pending persistence call, got %d calls with statuses %v", len(persisted), statuses(persisted))
+	}
+
+	claimed, err := q.Claim(ctx)
+	if err != nil {
+		t.Fatalf("claim failed: %v", err)
+	}
+	if len(persisted) != 2 || persisted[1].Status != JobStatusRunning {
+		t.Fatalf("expected 2 calls with running, got %d calls with statuses %v", len(persisted), statuses(persisted))
+	}
+
+	completed, err := q.Complete(ctx, claimed.ID)
+	if err != nil {
+		t.Fatalf("complete failed: %v", err)
+	}
+	if len(persisted) != 3 || persisted[2].Status != JobStatusSucceeded {
+		t.Fatalf("expected 3 calls with succeeded, got %d calls with statuses %v", len(persisted), statuses(persisted))
+	}
+	_ = job
+	_ = completed
+}
+
+func TestMemoryQueuePersistenceCallbackFiresOnRetryAndDeadLetter(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 5, 31, 1, 0, 0, 0, time.UTC)
+	var persisted []Job
+	q := NewMemoryQueue(QueueOptions{
+		Now:         func() time.Time { return now },
+		MaxAttempts: 2,
+		Backoff:     FixedBackoff(5 * time.Minute),
+		OnStateChange: func(_ context.Context, job Job) {
+			persisted = append(persisted, job)
+		},
+	})
+	payload := mustPayload(t, GenerateEmbeddingPayload{ItemID: "item-1"})
+
+	_, err := q.Enqueue(ctx, EnqueueRequest{
+		Type:           JobTypeGenerateEmbedding,
+		Payload:        payload,
+		IdempotencyKey: "embedding:item-1",
+	})
+	if err != nil {
+		t.Fatalf("enqueue failed: %v", err)
+	}
+	claimed, err := q.Claim(ctx)
+	if err != nil {
+		t.Fatalf("claim failed: %v", err)
+	}
+	// enqueue=1, claim=2
+	if len(persisted) != 2 {
+		t.Fatalf("expected 2 calls before fail, got %d", len(persisted))
+	}
+
+	retried, err := q.Fail(ctx, claimed.ID, NewRetryableError(errors.New("temporary")))
+	if err != nil {
+		t.Fatalf("fail retryable failed: %v", err)
+	}
+	// fail fires callback with scheduled status
+	if len(persisted) != 3 || persisted[2].Status != JobStatusScheduled {
+		t.Fatalf("expected 3 calls with scheduled, got %d calls with statuses %v", len(persisted), statuses(persisted))
+	}
+	if retried.Attempt != 1 {
+		t.Fatalf("expected attempt 1, got %d", retried.Attempt)
+	}
+	_ = retried
+}
+
+func statuses(jobs []Job) []JobStatus {
+	s := make([]JobStatus, len(jobs))
+	for i, j := range jobs {
+		s[i] = j.Status
+	}
+	return s
+}
+
 func mustPayload(t *testing.T, payload any) json.RawMessage {
 	t.Helper()
 	body, err := json.Marshal(payload)
