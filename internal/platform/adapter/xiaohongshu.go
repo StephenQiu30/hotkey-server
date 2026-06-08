@@ -28,12 +28,12 @@ func NormalizeXiaohongshuNote(note XiaohongshuNote, sourceID string) NormalizedI
 	snippet := buildSnippet(note)
 
 	return NormalizedItem{
-		Title:        strings.TrimSpace(note.Title),
-		URL:          strings.TrimSpace(note.URL),
-		Snippet:      snippet,
-		ExternalID:   strings.TrimSpace(note.NoteID),
-		PublishedAt:  &note.PublishedAt,
-		Language:     "zh",
+		Title:          strings.TrimSpace(note.Title),
+		URL:            strings.TrimSpace(note.URL),
+		Snippet:        snippet,
+		ExternalID:     strings.TrimSpace(note.NoteID),
+		PublishedAt:    &note.PublishedAt,
+		Language:       "zh",
 		IdempotencyKey: NewIdempotencyKey(sourceID, note.URL),
 	}
 }

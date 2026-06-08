@@ -44,15 +44,15 @@ type Source struct {
 }
 
 type Item struct {
-	Title         string
-	URL           string
-	ExternalID    string
-	Snippet       string
-	Author        string
-	CoverImageURL string
-	PublishedAt   *time.Time
-	Score         int
-	Descendants   int
+	Title          string
+	URL            string
+	ExternalID     string
+	Snippet        string
+	Author         string
+	CoverImageURL  string
+	PublishedAt    *time.Time
+	Score          int
+	Descendants    int
 	CommentSamples []CommentSample
 }
 
@@ -270,15 +270,15 @@ func (ch rssChannel) toItems() []Item {
 }
 
 type rssItem struct {
-	Title       string          `xml:"title"`
-	Link        string          `xml:"link"`
-	GUID        string          `xml:"guid"`
-	PubDate     string          `xml:"pubDate"`
-	Description string          `xml:"description"`
-	ContentEnc  string          `xml:"http://purl.org/rss/1.0/modules/content/ encoded"`
-	Author      string          `xml:"author"`
-	Enclosure   rssEnclosure    `xml:"enclosure"`
-	MediaThumb  rssMediaThumb   `xml:"http://search.yahoo.com/mrss/ thumbnail"`
+	Title       string        `xml:"title"`
+	Link        string        `xml:"link"`
+	GUID        string        `xml:"guid"`
+	PubDate     string        `xml:"pubDate"`
+	Description string        `xml:"description"`
+	ContentEnc  string        `xml:"http://purl.org/rss/1.0/modules/content/ encoded"`
+	Author      string        `xml:"author"`
+	Enclosure   rssEnclosure  `xml:"enclosure"`
+	MediaThumb  rssMediaThumb `xml:"http://search.yahoo.com/mrss/ thumbnail"`
 }
 
 type rssEnclosure struct {
@@ -338,13 +338,13 @@ func (af atomFeed) toItems() []Item {
 }
 
 type atomEntry struct {
-	Title   string       `xml:"title"`
-	Link    atomLink     `xml:"link"`
-	ID      string       `xml:"id"`
-	Updated string       `xml:"updated"`
-	Author  atomAuthor   `xml:"author"`
-	Summary string       `xml:"summary"`
-	Content string       `xml:"content"`
+	Title   string     `xml:"title"`
+	Link    atomLink   `xml:"link"`
+	ID      string     `xml:"id"`
+	Updated string     `xml:"updated"`
+	Author  atomAuthor `xml:"author"`
+	Summary string     `xml:"summary"`
+	Content string     `xml:"content"`
 }
 
 type atomLink struct {

@@ -43,16 +43,16 @@ type Dependencies struct {
 	AuthService          *serviceauth.Service
 	AuthorizationService *serviceauth.AuthorizationService
 	ChannelService       *servicechannel.Service
-	SourceService       *servicesource.Service
-	AdminService        *serviceadmin.Service
-	ScoringService      *servicehotspot.ScoringService
-	ReportService       *servicereport.Service
-	RSSService          *servicerss.Service
-	ObsidianService     *serviceobsidian.Service
-	XAuthService        *servicexauth.Service
-	EventSummaryService *serviceeventsummary.Service
-	MonitorTopicService *servicemonitortopic.Service
-	AdapterRegistry     *adapter.Registry
+	SourceService        *servicesource.Service
+	AdminService         *serviceadmin.Service
+	ScoringService       *servicehotspot.ScoringService
+	ReportService        *servicereport.Service
+	RSSService           *servicerss.Service
+	ObsidianService      *serviceobsidian.Service
+	XAuthService         *servicexauth.Service
+	EventSummaryService  *serviceeventsummary.Service
+	MonitorTopicService  *servicemonitortopic.Service
+	AdapterRegistry      *adapter.Registry
 }
 
 func NewRouter() *gin.Engine {

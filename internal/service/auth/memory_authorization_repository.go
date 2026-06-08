@@ -9,8 +9,8 @@ import (
 )
 
 type MemoryAuthorizationRepository struct {
-	mu    sync.RWMutex
-	store map[string]authorization.Authorization
+	mu     sync.RWMutex
+	store  map[string]authorization.Authorization
 	byUser map[string][]string // userID -> []authorizationID
 }
 

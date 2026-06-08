@@ -223,8 +223,8 @@ func TestRenderDailyReportIndex_ContainsLinks(t *testing.T) {
 	s, _ := newTestService(git)
 
 	md := s.RenderDailyReportIndex(svc.ReportIndexInput{
-		Date:     "2026-06-07",
-		Reports:  []svc.ReportIndexEntry{{Title: "06-07 日报", FilePath: "daily/2026-06-07.md"}},
+		Date:    "2026-06-07",
+		Reports: []svc.ReportIndexEntry{{Title: "06-07 日报", FilePath: "daily/2026-06-07.md"}},
 	})
 
 	if !strings.Contains(md, "# 2026-06-07 日报索引") {
