@@ -3,6 +3,7 @@ package jobrepo
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
 )
@@ -63,4 +64,18 @@ func (r *Repository) FindByIdempotencyKey(ctx context.Context, key string) (queu
 	job.Payload = append(job.Payload[:0], payload...)
 	job.Status = queue.JobStatus(status)
 	return job, nil
+}
+
+// UpdateStatus 更新 job 的状态、失败原因、尝试次数和更新时间。
+// 用于 queue 状态变更后的 PostgreSQL 持久化。
+func (r *Repository) UpdateStatus(ctx context.Context, id string, status queue.JobStatus, lastError string, attempt int) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE jobs
+		SET status = $1,
+		    last_error = $2,
+		    attempt = $3,
+		    updated_at = $4
+		WHERE id = $5
+	`, string(status), lastError, attempt, time.Now().UTC(), id)
+	return err
 }

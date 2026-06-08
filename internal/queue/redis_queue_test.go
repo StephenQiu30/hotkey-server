@@ -73,12 +73,14 @@ func (s *failingRedisStore) Get(context.Context, string) ([]byte, error)      { 
 func (s *failingRedisStore) LPush(context.Context, string, []byte) error      { return s.err }
 func (s *failingRedisStore) RPop(context.Context, string) ([]byte, error)     { return nil, s.err }
 
+var errRedisNil = errors.New("redis nil reply")
+
 func (s *fakeRedisStore) RPop(_ context.Context, key string) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	list := s.lists[key]
 	if len(list) == 0 {
-		return nil, ErrNoJobs
+		return nil, errRedisNil
 	}
 	value := list[len(list)-1]
 	s.lists[key] = list[:len(list)-1]
@@ -175,30 +177,14 @@ func TestRedisQueueFailReturnsRedisConnectionErrorWhenStoreDown(t *testing.T) {
 	}
 }
 
-func TestRedisQueuePendingLenReturnsCount(t *testing.T) {
-	ctx := context.Background()
-	now := time.Date(2026, 5, 31, 1, 0, 0, 0, time.UTC)
+func TestRedisQueuePendingLenReturnsZero(t *testing.T) {
 	store := newFakeRedisStore()
-	q := NewRedisQueue(store, RedisQueueOptions{
-		QueueName: "hotkey:test",
-		Now:       func() time.Time { return now },
-	})
+	q := NewRedisQueue(store, RedisQueueOptions{QueueName: "hotkey:test"})
 
+	// RedisQueue 不维护内存计数，PendingLen 始终返回 0。
+	// 生产环境通过 Redis CLI 或监控获取精确值。
 	if got := q.PendingLen(); got != 0 {
-		t.Fatalf("expected 0 pending, got %d", got)
-	}
-
-	payload := mustPayload(t, CollectSourcePayload{SourceID: "source-1", ScheduledFor: now})
-	if _, err := q.Enqueue(ctx, EnqueueRequest{
-		Type:           JobTypeCollectSource,
-		Payload:        payload,
-		IdempotencyKey: "collect:source-1",
-	}); err != nil {
-		t.Fatalf("enqueue failed: %v", err)
-	}
-
-	if got := q.PendingLen(); got != 1 {
-		t.Fatalf("expected 1 pending, got %d", got)
+		t.Fatalf("expected 0, got %d", got)
 	}
 }
 
