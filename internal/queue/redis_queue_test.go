@@ -66,12 +66,12 @@ type failingRedisStore struct {
 	err error
 }
 
-func (s *failingRedisStore) Set(context.Context, string, []byte) error        { return s.err }
+func (s *failingRedisStore) Set(context.Context, string, []byte) error           { return s.err }
 func (s *failingRedisStore) SetNX(context.Context, string, []byte) (bool, error) { return false, s.err }
-func (s *failingRedisStore) Del(context.Context, string) error                { return s.err }
-func (s *failingRedisStore) Get(context.Context, string) ([]byte, error)      { return nil, s.err }
-func (s *failingRedisStore) LPush(context.Context, string, []byte) error      { return s.err }
-func (s *failingRedisStore) RPop(context.Context, string) ([]byte, error)     { return nil, s.err }
+func (s *failingRedisStore) Del(context.Context, string) error                   { return s.err }
+func (s *failingRedisStore) Get(context.Context, string) ([]byte, error)         { return nil, s.err }
+func (s *failingRedisStore) LPush(context.Context, string, []byte) error         { return s.err }
+func (s *failingRedisStore) RPop(context.Context, string) ([]byte, error)        { return nil, s.err }
 
 var errRedisNil = errors.New("redis nil reply")
 
