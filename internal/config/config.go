@@ -136,10 +136,10 @@ func (c Config) Validate() error {
 // Capabilities 返回各可选子系统的启用状态。
 func (c Config) Capabilities() Capabilities {
 	return Capabilities{
-		SMTPEnabled:      c.SMTPHost != "",
-		MinIOEnabled:     c.MinIOAccessKey != "",
-		DashScopeEnabled: c.DashScopeAPIKey != "",
-		XEnabled:         c.XClientID != "",
+		SMTPEnabled:      strings.TrimSpace(c.SMTPHost) != "",
+		MinIOEnabled:     strings.TrimSpace(c.MinIOAccessKey) != "",
+		DashScopeEnabled: strings.TrimSpace(c.DashScopeAPIKey) != "",
+		XEnabled:         strings.TrimSpace(c.XClientID) != "",
 	}
 }
 
