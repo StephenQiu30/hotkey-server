@@ -286,12 +286,111 @@ func TestIngestPipelineRejectsFilteredContent(t *testing.T) {
 	if result.Item.FilterReason == "" {
 		t.Fatal("expected non-empty filter reason for filtered content")
 	}
+	// Filtered items should be persisted so filter status and reason are tracked.
 	items, err := repo.List(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 0 {
-		t.Fatalf("expected no items in repo, got %d", len(items))
+	if len(items) != 1 {
+		t.Fatalf("expected 1 filtered item in repo, got %d", len(items))
+	}
+	if items[0].FilterStatus != content.ItemFilterStatusFiltered {
+		t.Fatalf("expected persisted item filter status filtered, got %q", items[0].FilterStatus)
+	}
+	if items[0].FilterReason == "" {
+		t.Fatal("expected persisted item to have non-empty filter reason")
+	}
+}
+
+func TestIngestFilteredItemPersistedWithStatusAndReason(t *testing.T) {
+	repo := content.NewMemoryRepository()
+	filterSvc := filter.NewService(filter.Config{
+		Keywords:        []string{"AI"},
+		ExcludeWords:    []string{"广告"},
+		MinTitleRunes:   1,
+		MinSnippetRunes: 1,
+	})
+
+	service := NewService(repo, &recordingQueue{}, WithFilter(filterSvc))
+
+	result, err := service.Ingest(context.Background(), Input{
+		SourceID: "src-1",
+		Title:    "普通推广内容",
+		Snippet:  "不含关键词的正文片段",
+		URL:      "https://example.com/promo",
+	})
+	if err != nil {
+		t.Fatalf("ingest failed: %v", err)
+	}
+	if result.Created {
+		t.Fatal("expected filtered content (no keywords) to not be created")
+	}
+	if result.Item.FilterStatus != content.ItemFilterStatusFiltered {
+		t.Fatalf("expected filter status filtered, got %q", result.Item.FilterStatus)
+	}
+	if result.Item.FilterReason != string(filter.ReasonNoKeywords) {
+		t.Fatalf("expected filter reason %q, got %q", filter.ReasonNoKeywords, result.Item.FilterReason)
+	}
+
+	// Verify the filtered item is persisted in the repository with full status.
+	items, err := repo.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 persisted item, got %d", len(items))
+	}
+	persisted := items[0]
+	if persisted.ID != result.Item.ID {
+		t.Fatalf("expected persisted item ID %q, got %q", result.Item.ID, persisted.ID)
+	}
+	if persisted.FilterStatus != content.ItemFilterStatusFiltered {
+		t.Fatalf("expected persisted filter status filtered, got %q", persisted.FilterStatus)
+	}
+	if persisted.FilterReason != string(filter.ReasonNoKeywords) {
+		t.Fatalf("expected persisted filter reason %q, got %q", filter.ReasonNoKeywords, persisted.FilterReason)
+	}
+	if persisted.Status != content.ItemStatusPrimary {
+		t.Fatalf("expected persisted status primary, got %q", persisted.Status)
+	}
+}
+
+func TestIngestFilteredItemNoEmbeddingJob(t *testing.T) {
+	repo := content.NewMemoryRepository()
+	jobQueue := &recordingQueue{}
+	filterSvc := filter.NewService(filter.Config{
+		Keywords:        []string{"AI"},
+		ExcludeWords:    []string{"广告"},
+		MinTitleRunes:   1,
+		MinSnippetRunes: 1,
+	})
+
+	service := NewService(repo, jobQueue, WithFilter(filterSvc))
+
+	result, err := service.Ingest(context.Background(), Input{
+		SourceID: "src-1",
+		Title:    "AI 广告推广",
+		Snippet:  "正文片段",
+		URL:      "https://example.com/ad",
+	})
+	if err != nil {
+		t.Fatalf("ingest failed: %v", err)
+	}
+	if result.Created {
+		t.Fatal("expected filtered content to not be created")
+	}
+	// Filtered items should NOT trigger embedding jobs.
+	if len(jobQueue.requests) != 0 {
+		t.Fatalf("expected no embedding job for filtered item, got %d", len(jobQueue.requests))
+	}
+
+	// But the item should still be in the repo.
+	items, err := repo.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 filtered item in repo, got %d", len(items))
 	}
 }
 

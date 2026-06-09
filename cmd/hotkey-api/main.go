@@ -19,6 +19,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/service/dedup"
 	"github.com/StephenQiu30/hotkey-server/internal/service/embedding"
 	"github.com/StephenQiu30/hotkey-server/internal/service/filter"
+	"github.com/StephenQiu30/hotkey-server/internal/service/hotspot"
 	"github.com/StephenQiu30/hotkey-server/internal/service/ingest"
 	"github.com/StephenQiu30/hotkey-server/internal/service/mail"
 	"github.com/StephenQiu30/hotkey-server/internal/service/normalize"
@@ -62,6 +63,11 @@ func main() {
 	embeddingSvc := embedding.NewService(embedding.Config{
 		Model: cfg.EmbeddingModel,
 	}, deps.ContentRepo, deps.HotspotRepo, deps.DashScope)
+	hotspotSvc := hotspot.NewService(hotspot.Config{
+		SimilarityThreshold: cfg.HotspotSimilarityThreshold,
+		Window:              cfg.HotspotWindow,
+	}, deps.HotspotRepo)
+	scoringSvc := hotspot.NewScoringService(hotspot.ScoringConfig{}, deps.HotspotRepo, deps.ScoreRepo)
 	sourceSvc := servicesource.NewService(deps.SourceRepo)
 
 	// Initialize Fetchers
@@ -88,12 +94,14 @@ func main() {
 	})
 
 	// Initialize API Runtime
-	api := app.NewAPI(cfg, logSlog, deps.DB, deps.RedisClient)
+	api := app.NewAPI(cfg, logSlog, deps.DB, deps.RedisClient, scoringSvc)
 
 	// Initialize Worker Runtime
 	workerRuntime := worker.New(deps.JobQueue, deps.RedisClient, logSlog,
 		worker.WithHandler(queue.JobTypeCollectSource, worker.NewCollectSourceHandler(sourceSvc, multiFetcher, ingestSvc)),
 		worker.WithHandler(queue.JobTypeGenerateEmbedding, worker.NewGenerateEmbeddingHandler(embeddingSvc, dedupSvc, deps.ContentRepo)),
+		worker.WithHandler(queue.JobTypeClusterHotspots, worker.NewClusterHotspotsHandler(hotspotSvc)),
+		worker.WithHandler(queue.JobTypeScoreHotspots, worker.NewScoreHotspotsHandler(scoringSvc)),
 		worker.WithHandler(queue.JobTypeSendDailyEmail, worker.NewSendDailyEmailHandler(mailService)),
 		worker.WithHandler(queue.JobTypeSendWeeklyEmail, worker.NewSendWeeklyEmailHandler(mailService)),
 	)
@@ -106,10 +114,14 @@ func main() {
 		DefaultWeeklySendAt: "09:00",
 		WeeklySendDay:       time.Monday,
 	})
+	hotspotScheduler := scheduler.NewHotspotScheduler(deps.JobQueue, scheduler.HotspotSchedulerOptions{
+		Window: cfg.HotspotWindow,
+	})
 	schedulerRuntime := scheduler.NewCompositeScheduler(
 		scheduler.NewHourlyCollectScheduler(deps.JobQueue, scheduler.HourlyCollectOptions{
 			SourceID: cfg.CollectSourceID,
 		}),
+		hotspotScheduler,
 		dailyEmailScheduler,
 		weeklyEmailScheduler,
 	)

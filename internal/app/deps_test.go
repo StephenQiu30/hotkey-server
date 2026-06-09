@@ -103,6 +103,9 @@ func TestNewDepsSucceedsWithValidDeps(t *testing.T) {
 	if deps.DashScope == nil {
 		t.Error("expected DashScope to be set")
 	}
+	if deps.ScoreRepo == nil {
+		t.Error("expected ScoreRepo to be set")
+	}
 }
 
 func TestNewDepsWithoutDashScopeKey(t *testing.T) {
@@ -128,6 +131,30 @@ func TestNewDepsWithoutDashScopeKey(t *testing.T) {
 	// 具体业务层决定是否需要 DashScope
 	if deps.DashScope == nil {
 		t.Error("expected DashScope client to be created even without API key")
+	}
+}
+
+func TestNewDepsCreatesScoreRepo(t *testing.T) {
+	cfg := config.Config{
+		DatabaseURL: "postgres://hotkey:hotkey@localhost:5432/hotkey",
+		RedisURL:    "redis://127.0.0.1:6379/0",
+	}
+
+	mockDB, _ := sql.Open("postgres", "postgres://invalid/nil")
+	mockRedis := redis.NewClient("redis://127.0.0.1:1", redis.Options{})
+
+	deps, err := NewDeps(cfg,
+		WithDialer(&testDialer{}),
+		WithDB(mockDB),
+		WithRedisClient(mockRedis),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer deps.Close()
+
+	if deps.ScoreRepo == nil {
+		t.Error("expected ScoreRepo to be set for hotspot scoring wiring")
 	}
 }
 
