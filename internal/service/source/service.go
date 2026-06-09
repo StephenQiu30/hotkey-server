@@ -41,6 +41,16 @@ const (
 	CollectionRunStatusFailed  CollectionRunStatus = "failed"
 )
 
+// CollectionRunErrorType classifies the failure reason for a collection run.
+type CollectionRunErrorType string
+
+const (
+	CollectionRunErrorTypeNone        CollectionRunErrorType = ""
+	CollectionRunErrorTypeAuthFailed  CollectionRunErrorType = "auth_failed"
+	CollectionRunErrorTypeRateLimited CollectionRunErrorType = "rate_limited"
+	CollectionRunErrorTypeGeneric     CollectionRunErrorType = "generic"
+)
+
 var (
 	ErrInvalidInput           = errors.New("invalid input")
 	ErrComplianceNoteRequired = errors.New("compliance note required")
@@ -68,6 +78,7 @@ type CollectionRun struct {
 	ID           string
 	SourceID     string
 	Status       CollectionRunStatus
+	ErrorType    CollectionRunErrorType
 	ItemsFetched int
 	Error        string
 	StartedAt    time.Time
@@ -119,6 +130,7 @@ type SetSourceStatusInput struct {
 type RecordCollectionRunInput struct {
 	SourceID     string
 	Status       CollectionRunStatus
+	ErrorType    CollectionRunErrorType
 	ItemsFetched int
 	Error        string
 	StartedAt    time.Time
@@ -239,6 +251,7 @@ func (s *Service) RecordCollectionRun(ctx context.Context, input RecordCollectio
 		ID:           newID("run"),
 		SourceID:     strings.TrimSpace(input.SourceID),
 		Status:       input.Status,
+		ErrorType:    input.ErrorType,
 		ItemsFetched: input.ItemsFetched,
 		Error:        strings.TrimSpace(input.Error),
 		StartedAt:    startedAt.UTC(),
