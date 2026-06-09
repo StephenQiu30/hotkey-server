@@ -13,6 +13,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
 	"github.com/StephenQiu30/hotkey-server/internal/repository/postgres/contentrepo"
 	"github.com/StephenQiu30/hotkey-server/internal/repository/postgres/hotspotrepo"
+	"github.com/StephenQiu30/hotkey-server/internal/repository/postgres/scorerepo"
 	"github.com/StephenQiu30/hotkey-server/internal/repository/postgres/sourcerepo"
 )
 
@@ -37,6 +38,7 @@ type Deps struct {
 	ContentRepo *contentrepo.Repository
 	HotspotRepo *hotspotrepo.Repository
 	SourceRepo  *sourcerepo.Repository
+	ScoreRepo   *scorerepo.Repository
 	DashScope   *dashscope.Client
 }
 
@@ -121,6 +123,7 @@ func NewDeps(cfg config.Config, opts ...DepsOption) (*Deps, error) {
 	contentRepo := contentrepo.New(db)
 	hotspotRepo := hotspotrepo.New(db)
 	sourceRepo := sourcerepo.New(db)
+	scoreRepo := scorerepo.New(db)
 
 	// --- Infrastructure Providers ---
 	dashScopeClient := dashscope.New(cfg.DashScopeAPIKey)
@@ -138,6 +141,7 @@ func NewDeps(cfg config.Config, opts ...DepsOption) (*Deps, error) {
 		ContentRepo: contentRepo,
 		HotspotRepo: hotspotRepo,
 		SourceRepo:  sourceRepo,
+		ScoreRepo:   scoreRepo,
 		DashScope:   dashScopeClient,
 	}, nil
 }

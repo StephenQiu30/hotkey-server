@@ -482,4 +482,3 @@ func redditListingJSON(posts []redditTestPost, comments []redditTestComment) str
 	b, _ := json.Marshal(result)
 	return string(b)
 }
-

@@ -18,9 +18,9 @@ const (
 	ChannelStatusActive   ChannelStatus = "active"
 	ChannelStatusDisabled ChannelStatus = "disabled"
 
-	defaultDailySendAtKey  = "default_daily_send_at"
-	defaultDailySendAt     = "08:30"
-	defaultWeeklySendAt    = "09:00"
+	defaultDailySendAtKey = "default_daily_send_at"
+	defaultDailySendAt    = "08:30"
+	defaultWeeklySendAt   = "09:00"
 )
 
 var (

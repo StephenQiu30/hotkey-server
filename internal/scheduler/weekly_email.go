@@ -17,12 +17,12 @@ type WeeklyEmailRecipient struct {
 }
 
 type WeeklyEmailOptions struct {
-	ReportID           string
-	ReportIDProvider   func() string
-	WeeklySendDay      time.Weekday
+	ReportID            string
+	ReportIDProvider    func() string
+	WeeklySendDay       time.Weekday
 	DefaultWeeklySendAt string
-	Recipients         []WeeklyEmailRecipient
-	Now                func() time.Time
+	Recipients          []WeeklyEmailRecipient
+	Now                 func() time.Time
 }
 
 type WeeklyEmailScheduler struct {

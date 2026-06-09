@@ -13,8 +13,8 @@ func TestCreateTopic_RequiredFields(t *testing.T) {
 
 	// Empty name should fail
 	_, err := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
-		UserID:   "usr_1",
-		Language: monitortopic.LanguageZH,
+		UserID:    "usr_1",
+		Language:  monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
 	})
 	if err == nil {
@@ -43,8 +43,8 @@ func TestCreateTopic_RequiredFields(t *testing.T) {
 
 	// Empty userID should fail
 	_, err = svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
-		Name:     "AI Trends",
-		Language: monitortopic.LanguageZH,
+		Name:      "AI Trends",
+		Language:  monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
 	})
 	if err == nil {
@@ -58,9 +58,9 @@ func TestCreateTopic_InvalidEnums(t *testing.T) {
 
 	// Invalid language
 	_, err := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
-		UserID:   "usr_1",
-		Name:     "AI Trends",
-		Language: monitortopic.Language("invalid"),
+		UserID:    "usr_1",
+		Name:      "AI Trends",
+		Language:  monitortopic.Language("invalid"),
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
 	})
 	if err == nil {
@@ -69,9 +69,9 @@ func TestCreateTopic_InvalidEnums(t *testing.T) {
 
 	// Invalid platform
 	_, err = svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
-		UserID:   "usr_1",
-		Name:     "AI Trends",
-		Language: monitortopic.LanguageZH,
+		UserID:    "usr_1",
+		Name:      "AI Trends",
+		Language:  monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.Platform("tiktok")},
 	})
 	if err == nil {
@@ -83,9 +83,9 @@ func TestCreateTopic_SimilarityThresholdBounds(t *testing.T) {
 	svc := monitortopic.NewService(monitortopic.NewMemoryRepository())
 	ctx := context.Background()
 	valid := monitortopic.CreateTopicInput{
-		UserID:   "usr_1",
-		Name:     "AI Trends",
-		Language: monitortopic.LanguageZH,
+		UserID:    "usr_1",
+		Name:      "AI Trends",
+		Language:  monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
 	}
 
@@ -119,9 +119,9 @@ func TestCreateTopic_CollectIntervalMin(t *testing.T) {
 	svc := monitortopic.NewService(monitortopic.NewMemoryRepository())
 	ctx := context.Background()
 	valid := monitortopic.CreateTopicInput{
-		UserID:   "usr_1",
-		Name:     "AI Trends",
-		Language: monitortopic.LanguageZH,
+		UserID:    "usr_1",
+		Name:      "AI Trends",
+		Language:  monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
 	}
 
@@ -149,9 +149,9 @@ func TestCreateTopic_DefaultValues(t *testing.T) {
 	ctx := context.Background()
 
 	topic, err := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
-		UserID:   "usr_1",
-		Name:     "AI Trends",
-		Language: monitortopic.LanguageZH,
+		UserID:    "usr_1",
+		Name:      "AI Trends",
+		Language:  monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
 	})
 	if err != nil {
@@ -180,9 +180,9 @@ func TestGetTopic_FoundAndNotFound(t *testing.T) {
 	ctx := context.Background()
 
 	created, err := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
-		UserID:   "usr_1",
-		Name:     "AI Trends",
-		Language: monitortopic.LanguageZH,
+		UserID:    "usr_1",
+		Name:      "AI Trends",
+		Language:  monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
 	})
 	if err != nil {
@@ -240,9 +240,9 @@ func TestUpdateTopic_SuccessAndValidation(t *testing.T) {
 	ctx := context.Background()
 
 	created, err := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
-		UserID:   "usr_1",
-		Name:     "AI Trends",
-		Language: monitortopic.LanguageZH,
+		UserID:    "usr_1",
+		Name:      "AI Trends",
+		Language:  monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
 	})
 	if err != nil {
@@ -294,9 +294,9 @@ func TestStatusTransitions_ValidAndInvalid(t *testing.T) {
 	ctx := context.Background()
 
 	created, err := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
-		UserID:   "usr_1",
-		Name:     "AI Trends",
-		Language: monitortopic.LanguageZH,
+		UserID:    "usr_1",
+		Name:      "AI Trends",
+		Language:  monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
 	})
 	if err != nil {
@@ -364,9 +364,9 @@ func TestDeleteTopic_CascadingCleanup(t *testing.T) {
 	ctx := context.Background()
 
 	created, err := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
-		UserID:   "usr_1",
-		Name:     "AI Trends",
-		Language: monitortopic.LanguageZH,
+		UserID:    "usr_1",
+		Name:      "AI Trends",
+		Language:  monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
 	})
 	if err != nil {
@@ -412,9 +412,9 @@ func TestKeywordManagement_AddListDelete(t *testing.T) {
 	ctx := context.Background()
 
 	created, err := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
-		UserID:   "usr_1",
-		Name:     "AI Trends",
-		Language: monitortopic.LanguageZH,
+		UserID:    "usr_1",
+		Name:      "AI Trends",
+		Language:  monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
 	})
 	if err != nil {
@@ -472,9 +472,9 @@ func TestKeywordLimits_MaxIncludeAndExclude(t *testing.T) {
 	ctx := context.Background()
 
 	created, err := svc.CreateTopic(ctx, monitortopic.CreateTopicInput{
-		UserID:   "usr_1",
-		Name:     "AI Trends",
-		Language: monitortopic.LanguageZH,
+		UserID:    "usr_1",
+		Name:      "AI Trends",
+		Language:  monitortopic.LanguageZH,
 		Platforms: []monitortopic.Platform{monitortopic.PlatformWeibo},
 	})
 	if err != nil {
@@ -581,9 +581,9 @@ func TestStatusTransitionConstants(t *testing.T) {
 	}
 }
 
-func strPtr(s string) *string { return &s }
+func strPtr(s string) *string       { return &s }
 func float64Ptr(f float64) *float64 { return &f }
-func intPtr(i int) *int { return &i }
+func intPtr(i int) *int             { return &i }
 func intToStr(i int) string {
 	if i == 0 {
 		return "0"

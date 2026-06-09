@@ -7,7 +7,7 @@ import (
 
 // MemoryRepository is an in-memory implementation of SummaryRepository.
 type MemoryRepository struct {
-	mu       sync.RWMutex
+	mu        sync.RWMutex
 	byEventID map[string]EventSummary
 }
 

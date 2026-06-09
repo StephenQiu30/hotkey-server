@@ -51,15 +51,15 @@ const (
 
 // SyncRecord tracks an individual sync operation for idempotency and audit.
 type SyncRecord struct {
-	ID          string
-	ConfigID    string
-	ContentType string // "event_note" | "daily_report" | "weekly_report"
-	ContentID   string // source entity ID (event ID, report ID)
-	FilePath    string
+	ID             string
+	ConfigID       string
+	ContentType    string // "event_note" | "daily_report" | "weekly_report"
+	ContentID      string // source entity ID (event ID, report ID)
+	FilePath       string
 	IdempotencyKey string
-	CommitSHA   string
-	State       SyncRecordState
-	Error       string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	CommitSHA      string
+	State          SyncRecordState
+	Error          string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }

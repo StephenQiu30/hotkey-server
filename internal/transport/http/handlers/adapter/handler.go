@@ -25,14 +25,14 @@ func (h *Handler) ListAdapters(c *gin.Context) {
 		health := a.Health()
 		caps := a.Capabilities()
 		result = append(result, map[string]any{
-			"name":                  a.Name(),
-			"provider":              string(a.Provider()),
-			"health_status":         string(health.Status),
-			"health_last_error":     health.LastError,
+			"name":                   a.Name(),
+			"provider":               string(a.Provider()),
+			"health_status":          string(health.Status),
+			"health_last_error":      health.LastError,
 			"health_last_checked_at": health.LastCheckedAt,
-			"supports_incremental":  caps.SupportsIncremental,
-			"max_items_per_fetch":   caps.MaxItemsPerFetch,
-			"rate_limit_per_hour":   caps.RateLimitPerHour,
+			"supports_incremental":   caps.SupportsIncremental,
+			"max_items_per_fetch":    caps.MaxItemsPerFetch,
+			"rate_limit_per_hour":    caps.RateLimitPerHour,
 		})
 	}
 	c.JSON(http.StatusOK, result)
@@ -48,8 +48,8 @@ func (h *Handler) GetAdapterHealth(c *gin.Context) {
 	}
 	health := a.Health()
 	c.JSON(http.StatusOK, gin.H{
-		"status":         string(health.Status),
-		"last_error":     health.LastError,
+		"status":          string(health.Status),
+		"last_error":      health.LastError,
 		"last_checked_at": health.LastCheckedAt,
 	})
 }

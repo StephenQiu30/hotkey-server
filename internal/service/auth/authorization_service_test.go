@@ -24,7 +24,7 @@ func TestAuthorizationService_Connect(t *testing.T) {
 	// Register a user first
 	account, err := userSvc.Register(ctx, serviceauth.RegisterInput{
 		Email:    "auth-test@example.com",
-		Password:  "correct horse battery staple",
+		Password: "correct horse battery staple",
 	})
 	if err != nil {
 		t.Fatalf("register: %v", err)
@@ -62,7 +62,7 @@ func TestAuthorizationService_Disconnect(t *testing.T) {
 
 	account, err := userSvc.Register(ctx, serviceauth.RegisterInput{
 		Email:    "disconnect@example.com",
-		Password:  "correct horse battery staple",
+		Password: "correct horse battery staple",
 	})
 	if err != nil {
 		t.Fatalf("register: %v", err)
@@ -112,7 +112,7 @@ func TestAuthorizationService_HealthCheck_Expired(t *testing.T) {
 
 	account, err := userSvc.Register(ctx, serviceauth.RegisterInput{
 		Email:    "health@example.com",
-		Password:  "correct horse battery staple",
+		Password: "correct horse battery staple",
 	})
 	if err != nil {
 		t.Fatalf("register: %v", err)
@@ -154,7 +154,7 @@ func TestAuthorizationService_ListByUser(t *testing.T) {
 
 	account, err := userSvc.Register(ctx, serviceauth.RegisterInput{
 		Email:    "list@example.com",
-		Password:  "correct horse battery staple",
+		Password: "correct horse battery staple",
 	})
 	if err != nil {
 		t.Fatalf("register: %v", err)
@@ -205,7 +205,7 @@ func TestAuthorizationService_DeleteAccount(t *testing.T) {
 
 	account, err := userSvc.Register(ctx, serviceauth.RegisterInput{
 		Email:    "delete@example.com",
-		Password:  "correct horse battery staple",
+		Password: "correct horse battery staple",
 	})
 	if err != nil {
 		t.Fatalf("register: %v", err)
@@ -214,7 +214,7 @@ func TestAuthorizationService_DeleteAccount(t *testing.T) {
 	// Login to create refresh token
 	_, err = userSvc.Login(ctx, serviceauth.LoginInput{
 		Email:    "delete@example.com",
-		Password:  "correct horse battery staple",
+		Password: "correct horse battery staple",
 	})
 	if err != nil {
 		t.Fatalf("login: %v", err)
