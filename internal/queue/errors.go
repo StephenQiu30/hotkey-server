@@ -9,10 +9,16 @@ type RedisConnectionError struct {
 }
 
 func NewRedisConnectionError(err error) error {
+	if err == nil {
+		return nil
+	}
 	return RedisConnectionError{err: err}
 }
 
 func (e RedisConnectionError) Error() string {
+	if e.err == nil {
+		return "redis connection error"
+	}
 	return "redis connection error: " + e.err.Error()
 }
 

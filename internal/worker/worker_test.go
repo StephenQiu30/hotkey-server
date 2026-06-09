@@ -172,7 +172,9 @@ func (q *completeFailQueue) Fail(_ context.Context, id string, err error) (queue
 func TestWorkerLogsRedisConnectionErrorOnClaim(t *testing.T) {
 	redisErr := queue.NewRedisConnectionError(errors.New("dial tcp 127.0.0.1:6379: connect: connection refused"))
 	jobQueue := &claimFailQueue{claimErr: redisErr}
-	worker := New(jobQueue, nil, slog.Default())
+	var logBuf strings.Builder
+	logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	worker := New(jobQueue, nil, logger)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -190,6 +192,10 @@ func TestWorkerLogsRedisConnectionErrorOnClaim(t *testing.T) {
 	}
 	cancel()
 	<-done
+
+	if !strings.Contains(logBuf.String(), "redis 连接失败") {
+		t.Fatalf("expected redis connection log, got: %s", logBuf.String())
+	}
 }
 
 type claimFailQueue struct {

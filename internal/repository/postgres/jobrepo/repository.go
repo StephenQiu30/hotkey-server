@@ -69,7 +69,7 @@ func (r *Repository) FindByIdempotencyKey(ctx context.Context, key string) (queu
 // UpdateStatus 更新 job 的状态、失败原因、尝试次数和更新时间。
 // 用于 queue 状态变更后的 PostgreSQL 持久化。
 func (r *Repository) UpdateStatus(ctx context.Context, id string, status queue.JobStatus, lastError string, attempt int) error {
-	_, err := r.db.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		UPDATE jobs
 		SET status = $1,
 		    last_error = $2,
@@ -77,5 +77,15 @@ func (r *Repository) UpdateStatus(ctx context.Context, id string, status queue.J
 		    updated_at = $4
 		WHERE id = $5
 	`, string(status), lastError, attempt, time.Now().UTC(), id)
-	return err
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
