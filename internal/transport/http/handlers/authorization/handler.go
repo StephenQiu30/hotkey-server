@@ -19,11 +19,11 @@ func New(azService *serviceauth.AuthorizationService) *Handler {
 }
 
 type connectRequest struct {
-	Platform       string  `json:"platform" binding:"required"`
-	PlatformUserID string  `json:"platformUserId"`
-	DisplayName    string  `json:"displayName"`
-	AccessToken    string  `json:"accessToken" binding:"required"`
-	RefreshToken   string  `json:"refreshToken"`
+	Platform       string `json:"platform" binding:"required"`
+	PlatformUserID string `json:"platformUserId"`
+	DisplayName    string `json:"displayName"`
+	AccessToken    string `json:"accessToken" binding:"required"`
+	RefreshToken   string `json:"refreshToken"`
 }
 
 func (h *Handler) Connect(c *gin.Context) {

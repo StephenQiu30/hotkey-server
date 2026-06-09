@@ -7,12 +7,12 @@ import (
 
 // SimulatorConfig configures a Simulator adapter for testing.
 type SimulatorConfig struct {
-	Provider    Provider
-	Name        string
-	Items       []NormalizedItem
+	Provider     Provider
+	Name         string
+	Items        []NormalizedItem
 	Capabilities Capabilities
-	CollectErr  error
-	CollectFn   func(CollectInput) (CollectOutput, error)
+	CollectErr   error
+	CollectFn    func(CollectInput) (CollectOutput, error)
 }
 
 // Simulator is a test adapter that returns pre-configured results.

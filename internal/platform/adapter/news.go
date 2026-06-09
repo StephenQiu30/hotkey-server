@@ -20,25 +20,25 @@ type ArticleFetcher interface {
 
 // NewsAdapterConfig configures a NewsAdapter.
 type NewsAdapterConfig struct {
-	RSSFetcher      Fetcher
+	RSSFetcher        Fetcher
 	PublicPageFetcher Fetcher
-	ArticleFetcher  ArticleFetcher
+	ArticleFetcher    ArticleFetcher
 }
 
 // NewsAdapter bridges fetchers to the adapter.Adapter interface, adding
 // article metadata extraction (canonical URL, language, paywall detection).
 type NewsAdapter struct {
-	rssFetcher       Fetcher
+	rssFetcher        Fetcher
 	publicPageFetcher Fetcher
-	articleFetcher   ArticleFetcher
+	articleFetcher    ArticleFetcher
 }
 
 // NewNewsAdapter creates a new NewsAdapter.
 func NewNewsAdapter(cfg NewsAdapterConfig) *NewsAdapter {
 	return &NewsAdapter{
-		rssFetcher:       cfg.RSSFetcher,
+		rssFetcher:        cfg.RSSFetcher,
 		publicPageFetcher: cfg.PublicPageFetcher,
-		articleFetcher:   cfg.ArticleFetcher,
+		articleFetcher:    cfg.ArticleFetcher,
 	}
 }
 
@@ -115,10 +115,10 @@ func (a *NewsAdapter) Capabilities() Capabilities {
 // with article metadata (canonical URL, language, paywall status).
 func (a *NewsAdapter) normalizeItem(sourceID string, item fetcher.Item) NormalizedItem {
 	ni := NormalizedItem{
-		Title:       strings.TrimSpace(item.Title),
-		URL:         strings.TrimSpace(item.URL),
-		ExternalID:  strings.TrimSpace(item.ExternalID),
-		PublishedAt: item.PublishedAt,
+		Title:          strings.TrimSpace(item.Title),
+		URL:            strings.TrimSpace(item.URL),
+		ExternalID:     strings.TrimSpace(item.ExternalID),
+		PublishedAt:    item.PublishedAt,
 		IdempotencyKey: NewIdempotencyKey(sourceID, item.URL),
 	}
 
