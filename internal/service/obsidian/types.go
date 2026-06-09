@@ -8,15 +8,15 @@ import (
 )
 
 var (
-	ErrInvalidInput    = errors.New("invalid input")
-	ErrNotConnected    = errors.New("not connected")
-	ErrAlreadySynced   = errors.New("already synced")
-	ErrConflict        = errors.New("conflict")
-	ErrAuthFailed      = errors.New("auth failed")
-	ErrRepoNotFound    = errors.New("repo not found")
-	ErrBranchNotFound  = errors.New("branch not found")
-	ErrDirNotFound     = errors.New("dir not found")
-	ErrInternal        = errors.New("internal error")
+	ErrInvalidInput   = errors.New("invalid input")
+	ErrNotConnected   = errors.New("not connected")
+	ErrAlreadySynced  = errors.New("already synced")
+	ErrConflict       = errors.New("conflict")
+	ErrAuthFailed     = errors.New("auth failed")
+	ErrRepoNotFound   = errors.New("repo not found")
+	ErrBranchNotFound = errors.New("branch not found")
+	ErrDirNotFound    = errors.New("dir not found")
+	ErrInternal       = errors.New("internal error")
 )
 
 // GitProvider abstracts Git operations for testability.
@@ -38,13 +38,13 @@ type ValidateRepoResult struct {
 }
 
 type CommitInput struct {
-	RepoURL     string
-	Branch      string
-	Dir         string
-	FilePath    string
-	Content     []byte
-	CommitMsg   string
-	AccessToken string
+	RepoURL        string
+	Branch         string
+	Dir            string
+	FilePath       string
+	Content        []byte
+	CommitMsg      string
+	AccessToken    string
 	IdempotencyKey string
 }
 
@@ -66,10 +66,10 @@ type SyncInput struct {
 
 // SyncOutput is the result of a sync operation.
 type SyncOutput struct {
-	RecordID    string
-	FilePath    string
-	CommitSHA   string
-	CommitURL   string
-	State       domain.SyncRecordState
+	RecordID      string
+	FilePath      string
+	CommitSHA     string
+	CommitURL     string
+	State         domain.SyncRecordState
 	WasIdempotent bool
 }

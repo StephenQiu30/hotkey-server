@@ -8,10 +8,10 @@ import (
 
 // ArticleMetadata holds extracted metadata from an HTML article page.
 type ArticleMetadata struct {
-	CanonicalURL   string
-	Language       string
-	PublishedAt    *time.Time
-	Description    string
+	CanonicalURL    string
+	Language        string
+	PublishedAt     *time.Time
+	Description     string
 	PaywallDetected bool
 }
 

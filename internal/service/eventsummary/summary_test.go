@@ -22,14 +22,14 @@ func TestEventSummarySchemaValid(t *testing.T) {
 			{Date: "2026-06-05", Description: "公司 A 发布新工具"},
 			{Date: "2026-06-06", Description: "创作者社区开始试用"},
 		},
-		KeySignals:   []string{"工具更新", "工作流变革"},
-		SourceRefs:   []SourceRef{{SourceID: "src-1", ItemID: "item-1", Title: "来源一", URL: "https://example.test/1"}},
-		RiskAlerts:   []string{"技术壁垒上升"},
-		FollowUp:     []string{"关注用户反馈"},
-		Confidence:   0.85,
-		ModelStatus:  ModelStatusSucceeded,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		KeySignals:  []string{"工具更新", "工作流变革"},
+		SourceRefs:  []SourceRef{{SourceID: "src-1", ItemID: "item-1", Title: "来源一", URL: "https://example.test/1"}},
+		RiskAlerts:  []string{"技术壁垒上升"},
+		FollowUp:    []string{"关注用户反馈"},
+		Confidence:  0.85,
+		ModelStatus: ModelStatusSucceeded,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 	if err := ValidateSummary(summary); err != nil {
 		t.Fatalf("expected valid summary, got error: %v", err)
@@ -38,11 +38,11 @@ func TestEventSummarySchemaValid(t *testing.T) {
 
 func TestEventSummarySchemaMissingTitle(t *testing.T) {
 	summary := EventSummary{
-		ID:           "es-1",
-		EventID:      "evt-1",
-		Summary:      "摘要内容",
-		ModelStatus:  ModelStatusSucceeded,
-		Confidence:   0.8,
+		ID:          "es-1",
+		EventID:     "evt-1",
+		Summary:     "摘要内容",
+		ModelStatus: ModelStatusSucceeded,
+		Confidence:  0.8,
 	}
 	if err := ValidateSummary(summary); err == nil {
 		t.Fatal("expected error for missing title")
@@ -51,11 +51,11 @@ func TestEventSummarySchemaMissingTitle(t *testing.T) {
 
 func TestEventSummarySchemaMissingSummary(t *testing.T) {
 	summary := EventSummary{
-		ID:           "es-1",
-		EventID:      "evt-1",
-		Title:        "标题",
-		ModelStatus:  ModelStatusSucceeded,
-		Confidence:   0.8,
+		ID:          "es-1",
+		EventID:     "evt-1",
+		Title:       "标题",
+		ModelStatus: ModelStatusSucceeded,
+		Confidence:  0.8,
 	}
 	if err := ValidateSummary(summary); err == nil {
 		t.Fatal("expected error for missing summary")
@@ -64,12 +64,12 @@ func TestEventSummarySchemaMissingSummary(t *testing.T) {
 
 func TestEventSummarySchemaConfidenceRange(t *testing.T) {
 	summary := EventSummary{
-		ID:           "es-1",
-		EventID:      "evt-1",
-		Title:        "标题",
-		Summary:      "摘要",
-		Confidence:   1.5,
-		ModelStatus:  ModelStatusSucceeded,
+		ID:          "es-1",
+		EventID:     "evt-1",
+		Title:       "标题",
+		Summary:     "摘要",
+		Confidence:  1.5,
+		ModelStatus: ModelStatusSucceeded,
 	}
 	if err := ValidateSummary(summary); err == nil {
 		t.Fatal("expected error for confidence > 1.0")
@@ -140,9 +140,9 @@ func TestParseLLMResponseWithMarkdownWrapper(t *testing.T) {
 
 func TestLowEvidenceFlagging(t *testing.T) {
 	tests := []struct {
-		name       string
+		name        string
 		sourceCount int
-		wantLow    bool
+		wantLow     bool
 	}{
 		{"single source is low evidence", 1, true},
 		{"two sources is low evidence", 2, true},
@@ -161,9 +161,9 @@ func TestLowEvidenceFlagging(t *testing.T) {
 
 func TestLowEvidenceConfidenceCap(t *testing.T) {
 	tests := []struct {
-		name         string
-		sourceCount  int
-		wantMaxConf  float64
+		name        string
+		sourceCount int
+		wantMaxConf float64
 	}{
 		{"single source caps at 0.3", 1, 0.3},
 		{"two sources caps at 0.5", 2, 0.5},

@@ -20,12 +20,12 @@ func zhihuAnswerItem() adapter.NormalizedItem {
 		PublishedAt: &now,
 		Language:    "zh",
 		Metadata: map[string]string{
-			"content_type":  "answer",
-			"author":        "张三",
-			"author_link":   "https://www.zhihu.com/people/zhangsan",
-			"voteup_count":  "1256",
-			"comment_count": "89",
-			"question_id":   "123456789",
+			"content_type":   "answer",
+			"author":         "张三",
+			"author_link":    "https://www.zhihu.com/people/zhangsan",
+			"voteup_count":   "1256",
+			"comment_count":  "89",
+			"question_id":    "123456789",
 			"question_title": "如何评价 Go 语言 2026 年的发展？",
 		},
 	}
@@ -60,9 +60,9 @@ func zhihuQuestionItem() adapter.NormalizedItem {
 		PublishedAt: &now,
 		Language:    "zh",
 		Metadata: map[string]string{
-			"content_type":    "question",
-			"answer_count":    "156",
-			"follower_count":  "2340",
+			"content_type":   "question",
+			"answer_count":   "156",
+			"follower_count": "2340",
 		},
 	}
 }

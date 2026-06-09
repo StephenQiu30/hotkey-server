@@ -14,16 +14,16 @@ import (
 type SourceType string
 
 const (
-	SourceTypeRSS          SourceType = "rss"
-	SourceTypePublicPage   SourceType = "public_page"
-	SourceTypeX            SourceType = "x"
-	SourceTypeHackerNews   SourceType = "hackernews"
-	SourceTypeWeChatMP     SourceType = "wechat_mp"
-	SourceTypeZhihu        SourceType = "zhihu"
-	SourceTypeReddit       SourceType = "reddit"
-	SourceTypeXiaohongshu  SourceType = "xiaohongshu"
-	SourceTypeYouTube      SourceType = "youtube"
-	SourceTypeBilibili     SourceType = "bilibili"
+	SourceTypeRSS         SourceType = "rss"
+	SourceTypePublicPage  SourceType = "public_page"
+	SourceTypeX           SourceType = "x"
+	SourceTypeHackerNews  SourceType = "hackernews"
+	SourceTypeWeChatMP    SourceType = "wechat_mp"
+	SourceTypeZhihu       SourceType = "zhihu"
+	SourceTypeReddit      SourceType = "reddit"
+	SourceTypeXiaohongshu SourceType = "xiaohongshu"
+	SourceTypeYouTube     SourceType = "youtube"
+	SourceTypeBilibili    SourceType = "bilibili"
 )
 
 type SourceStatus string

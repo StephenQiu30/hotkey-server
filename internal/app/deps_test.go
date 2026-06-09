@@ -106,6 +106,9 @@ func TestNewDepsSucceedsWithValidDeps(t *testing.T) {
 	if deps.DashScope == nil {
 		t.Error("expected DashScope to be set")
 	}
+	if deps.ScoreRepo == nil {
+		t.Error("expected ScoreRepo to be set")
+	}
 }
 
 func TestNewDepsWithoutDashScopeKey(t *testing.T) {

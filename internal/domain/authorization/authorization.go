@@ -8,10 +8,10 @@ import (
 type Platform string
 
 const (
-	PlatformGitHub  Platform = "github"
-	PlatformWeChat  Platform = "wechat"
-	PlatformRSS     Platform = "rss"
-	PlatformCustom  Platform = "custom"
+	PlatformGitHub Platform = "github"
+	PlatformWeChat Platform = "wechat"
+	PlatformRSS    Platform = "rss"
+	PlatformCustom Platform = "custom"
 )
 
 type Status string
@@ -30,20 +30,20 @@ var (
 )
 
 type Authorization struct {
-	ID             string
-	UserID         string
-	Platform       Platform
-	PlatformUserID string
-	DisplayName    string
-	AccessTokenEnc string // encrypted access token
+	ID              string
+	UserID          string
+	Platform        Platform
+	PlatformUserID  string
+	DisplayName     string
+	AccessTokenEnc  string // encrypted access token
 	RefreshTokenEnc string // encrypted refresh token (optional)
-	Status         Status
-	ConnectedAt    time.Time
-	LastCheckedAt  time.Time
-	ExpiresAt      *time.Time
-	RevokedAt      *time.Time
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	Status          Status
+	ConnectedAt     time.Time
+	LastCheckedAt   time.Time
+	ExpiresAt       *time.Time
+	RevokedAt       *time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 func (a Authorization) IsExpired(now time.Time) bool {
