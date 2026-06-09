@@ -23,10 +23,10 @@ const (
 
 // WeiboSearchResponse represents the Weibo search API response structure.
 type WeiboSearchResponse struct {
-	OK   int              `json:"ok"`
-	Data WeiboSearchData  `json:"data"`
+	OK    int             `json:"ok"`
+	Data  WeiboSearchData `json:"data"`
 	ErrNo int             `json:"errno"`
-	Msg  string           `json:"msg"`
+	Msg   string          `json:"msg"`
 }
 
 // WeiboSearchData contains the search result cards.
@@ -36,26 +36,26 @@ type WeiboSearchData struct {
 
 // WeiboCard represents a single card in the search results.
 type WeiboCard struct {
-	CardType int        `json:"card_type"`
+	CardType int         `json:"card_type"`
 	Mblog    *WeiboMblog `json:"mblog,omitempty"`
 }
 
 // WeiboMblog represents a Weibo post.
 type WeiboMblog struct {
-	ID           string        `json:"id"`
-	MID          string        `json:"mid"`
-	Text         string        `json:"text"`
-	TextRaw      string        `json:"text_raw"`
-	CreatedAt    string        `json:"created_at"`
-	User         WeiboUser     `json:"user"`
-	RepostsCount int           `json:"reposts_count"`
-	CommentsCount int          `json:"comments_count"`
-	AttitudesCount int         `json:"attitudes_count"`
-	Pics         []WeiboPic    `json:"pics"`
-	IsLongText   bool          `json:"isLongText"`
-	Visible      WeiboVisible  `json:"visible"`
-	Deleted      string        `json:"deleted,omitempty"`
-	PageInfo     *WeiboPageInfo `json:"page_info,omitempty"`
+	ID             string         `json:"id"`
+	MID            string         `json:"mid"`
+	Text           string         `json:"text"`
+	TextRaw        string         `json:"text_raw"`
+	CreatedAt      string         `json:"created_at"`
+	User           WeiboUser      `json:"user"`
+	RepostsCount   int            `json:"reposts_count"`
+	CommentsCount  int            `json:"comments_count"`
+	AttitudesCount int            `json:"attitudes_count"`
+	Pics           []WeiboPic     `json:"pics"`
+	IsLongText     bool           `json:"isLongText"`
+	Visible        WeiboVisible   `json:"visible"`
+	Deleted        string         `json:"deleted,omitempty"`
+	PageInfo       *WeiboPageInfo `json:"page_info,omitempty"`
 }
 
 // WeiboUser represents a Weibo user.
@@ -93,11 +93,11 @@ type WeiboAdapterConfig struct {
 
 // WeiboAdapter implements the Adapter interface for Weibo platform.
 type WeiboAdapter struct {
-	config     WeiboAdapterConfig
-	baseURL    string
-	client     *http.Client
-	health     HealthInfo
-	mu         sync.Mutex
+	config  WeiboAdapterConfig
+	baseURL string
+	client  *http.Client
+	health  HealthInfo
+	mu      sync.Mutex
 }
 
 // NewWeiboAdapter creates a new WeiboAdapter with the given config.

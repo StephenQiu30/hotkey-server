@@ -19,7 +19,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/service/dedup"
 	"github.com/StephenQiu30/hotkey-server/internal/service/embedding"
 	"github.com/StephenQiu30/hotkey-server/internal/service/filter"
-	servicehotspot "github.com/StephenQiu30/hotkey-server/internal/service/hotspot"
+	"github.com/StephenQiu30/hotkey-server/internal/service/hotspot"
 	"github.com/StephenQiu30/hotkey-server/internal/service/ingest"
 	"github.com/StephenQiu30/hotkey-server/internal/service/mail"
 	"github.com/StephenQiu30/hotkey-server/internal/service/normalize"
@@ -63,11 +63,12 @@ func main() {
 	embeddingSvc := embedding.NewService(embedding.Config{
 		Model: cfg.EmbeddingModel,
 	}, deps.ContentRepo, deps.HotspotRepo, deps.DashScope)
-	sourceSvc := servicesource.NewService(deps.SourceRepo)
-	clusterSvc := servicehotspot.NewService(servicehotspot.Config{
+	hotspotSvc := hotspot.NewService(hotspot.Config{
 		SimilarityThreshold: cfg.HotspotSimilarityThreshold,
+		Window:              cfg.HotspotWindow,
 	}, deps.HotspotRepo)
-	scoringSvc := servicehotspot.NewScoringService(servicehotspot.ScoringConfig{}, deps.HotspotRepo, deps.ScoreRepo)
+	scoringSvc := hotspot.NewScoringService(hotspot.ScoringConfig{}, deps.HotspotRepo, deps.ScoreRepo)
+	sourceSvc := servicesource.NewService(deps.SourceRepo)
 
 	// Initialize Fetchers
 	multiFetcher := fetcher.NewMultiFetcher(map[fetcher.SourceType]fetcher.Fetcher{
@@ -99,10 +100,10 @@ func main() {
 	workerRuntime := worker.New(deps.JobQueue, deps.RedisClient, logSlog,
 		worker.WithHandler(queue.JobTypeCollectSource, worker.NewCollectSourceHandler(sourceSvc, multiFetcher, ingestSvc)),
 		worker.WithHandler(queue.JobTypeGenerateEmbedding, worker.NewGenerateEmbeddingHandler(embeddingSvc, dedupSvc, deps.ContentRepo)),
+		worker.WithHandler(queue.JobTypeClusterHotspots, worker.NewClusterHotspotsHandler(hotspotSvc)),
+		worker.WithHandler(queue.JobTypeScoreHotspots, worker.NewScoreHotspotsHandler(scoringSvc)),
 		worker.WithHandler(queue.JobTypeSendDailyEmail, worker.NewSendDailyEmailHandler(mailService)),
 		worker.WithHandler(queue.JobTypeSendWeeklyEmail, worker.NewSendWeeklyEmailHandler(mailService)),
-		worker.WithHandler(queue.JobTypeClusterHotspots, worker.NewClusterHotspotsHandler(clusterSvc)),
-		worker.WithHandler(queue.JobTypeScoreHotspots, worker.NewScoreHotspotsHandler(scoringSvc)),
 	)
 
 	// Initialize Scheduler Runtime
@@ -113,7 +114,9 @@ func main() {
 		DefaultWeeklySendAt: "09:00",
 		WeeklySendDay:       time.Monday,
 	})
-	hotspotScheduler := scheduler.NewHotspotScheduler(deps.JobQueue, scheduler.HotspotSchedulerOptions{})
+	hotspotScheduler := scheduler.NewHotspotScheduler(deps.JobQueue, scheduler.HotspotSchedulerOptions{
+		Window: cfg.HotspotWindow,
+	})
 	schedulerRuntime := scheduler.NewCompositeScheduler(
 		scheduler.NewHourlyCollectScheduler(deps.JobQueue, scheduler.HourlyCollectOptions{
 			SourceID: cfg.CollectSourceID,

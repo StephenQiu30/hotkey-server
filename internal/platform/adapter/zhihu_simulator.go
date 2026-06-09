@@ -7,17 +7,17 @@ import (
 )
 
 const (
-	defaultZhihuName           = "zhihu-simulator"
+	defaultZhihuName            = "zhihu-simulator"
 	defaultZhihuMaxSnippetChars = 500
 )
 
 // ZhihuSimulatorConfig configures a ZhihuSimulator adapter for testing.
 type ZhihuSimulatorConfig struct {
-	Name           string
-	Items          []NormalizedItem
-	Capabilities   Capabilities
-	CollectErr     error
-	CollectFn      func(CollectInput) (CollectOutput, error)
+	Name            string
+	Items           []NormalizedItem
+	Capabilities    Capabilities
+	CollectErr      error
+	CollectFn       func(CollectInput) (CollectOutput, error)
 	MaxSnippetChars int
 }
 

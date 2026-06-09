@@ -53,7 +53,7 @@ func TestMonitorTopicCRUDAndStatusHTTPFlow(t *testing.T) {
 
 	// Update topic
 	update := patchJSONWithBearer(t, router, "/api/v1/me/topics/"+topicID, userToken, map[string]any{
-		"name":    "AI 热点监控",
+		"name":     "AI 热点监控",
 		"language": "multi",
 	})
 	if update.Code != 200 {
@@ -131,8 +131,8 @@ func TestMonitorTopicCRUDAndStatusHTTPFlow(t *testing.T) {
 
 	// Create with invalid language
 	badLang := postJSONWithBearer(t, router, "/api/v1/me/topics", userToken, map[string]any{
-		"name":     "Bad",
-		"language": "klingon",
+		"name":      "Bad",
+		"language":  "klingon",
 		"platforms": []string{"weibo"},
 	})
 	if badLang.Code != 400 {
@@ -163,8 +163,8 @@ func TestMonitorTopicOwnershipIsolation(t *testing.T) {
 
 	// User 1 creates a topic
 	create := postJSONWithBearer(t, router, "/api/v1/me/topics", user1, map[string]any{
-		"name":     "Private Topic",
-		"language": "zh",
+		"name":      "Private Topic",
+		"language":  "zh",
 		"platforms": []string{"weibo"},
 	})
 	if create.Code != 201 {
@@ -203,7 +203,7 @@ func TestMonitorTopicValidationErrors(t *testing.T) {
 
 	// Missing language
 	resp := postJSONWithBearer(t, router, "/api/v1/me/topics", userToken, map[string]any{
-		"name":     "Test",
+		"name":      "Test",
 		"platforms": []string{"weibo"},
 	})
 	if resp.Code != 400 {
@@ -221,8 +221,8 @@ func TestMonitorTopicValidationErrors(t *testing.T) {
 
 	// Invalid platform
 	resp = postJSONWithBearer(t, router, "/api/v1/me/topics", userToken, map[string]any{
-		"name":     "Test",
-		"language": "zh",
+		"name":      "Test",
+		"language":  "zh",
 		"platforms": []string{"tiktok"},
 	})
 	if resp.Code != 400 {
@@ -242,9 +242,9 @@ func TestMonitorTopicValidationErrors(t *testing.T) {
 
 	// Interval below minimum
 	resp = postJSONWithBearer(t, router, "/api/v1/me/topics", userToken, map[string]any{
-		"name":              "Test",
-		"language":          "zh",
-		"platforms":         []string{"weibo"},
+		"name":               "Test",
+		"language":           "zh",
+		"platforms":          []string{"weibo"},
 		"collectIntervalMin": 2,
 	})
 	if resp.Code != 400 {
@@ -253,8 +253,8 @@ func TestMonitorTopicValidationErrors(t *testing.T) {
 
 	// Empty keyword word
 	create := postJSONWithBearer(t, router, "/api/v1/me/topics", userToken, map[string]any{
-		"name":     "Test",
-		"language": "zh",
+		"name":      "Test",
+		"language":  "zh",
 		"platforms": []string{"weibo"},
 	})
 	if create.Code != http.StatusCreated {

@@ -8,12 +8,12 @@ import (
 
 // llmResponse mirrors the JSON structure returned by the LLM.
 type llmResponse struct {
-	Title      string           `json:"title"`
-	Summary    string           `json:"summary"`
-	Timeline   []TimelineEntry  `json:"timeline"`
-	KeySignals []string         `json:"key_signals"`
-	RiskAlerts []string         `json:"risk_alerts"`
-	FollowUp   []string         `json:"follow_up"`
+	Title      string          `json:"title"`
+	Summary    string          `json:"summary"`
+	Timeline   []TimelineEntry `json:"timeline"`
+	KeySignals []string        `json:"key_signals"`
+	RiskAlerts []string        `json:"risk_alerts"`
+	FollowUp   []string        `json:"follow_up"`
 }
 
 // ParseLLMResponse parses raw JSON bytes from the LLM into an llmResponse.

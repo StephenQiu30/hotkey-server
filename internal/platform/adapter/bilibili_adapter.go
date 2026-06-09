@@ -17,8 +17,8 @@ const (
 
 // BiliBiliAdapterConfig configures the Bilibili adapter.
 type BiliBiliAdapterConfig struct {
-	SESSDATA   string // Cookie for authentication
-	BaseURL    string // override for testing
+	SESSDATA string // Cookie for authentication
+	BaseURL  string // override for testing
 }
 
 // BiliBiliAdapter implements Adapter for the Bilibili API.
@@ -79,17 +79,17 @@ func (a *BiliBiliAdapter) Collect(input CollectInput) (CollectOutput, error) {
 			ExternalID:  v.BVID,
 			PublishedAt: timePtr(time.Unix(v.Created, 0)),
 			Metadata: map[string]string{
-				"mid":        fmt.Sprintf("%d", v.Author.MID),
-				"author":     v.Author.Name,
-				"view":       fmt.Sprintf("%d", v.Stat.View),
-				"danmaku":    fmt.Sprintf("%d", v.Stat.Danmaku),
-				"reply":      fmt.Sprintf("%d", v.Stat.Reply),
-				"favorite":   fmt.Sprintf("%d", v.Stat.Favorite),
-				"coin":       fmt.Sprintf("%d", v.Stat.Coin),
-				"share":      fmt.Sprintf("%d", v.Stat.Share),
-				"like":       fmt.Sprintf("%d", v.Stat.Like),
-				"thumbnail":  v.Pic,
-				"duration":   v.Duration,
+				"mid":       fmt.Sprintf("%d", v.Author.MID),
+				"author":    v.Author.Name,
+				"view":      fmt.Sprintf("%d", v.Stat.View),
+				"danmaku":   fmt.Sprintf("%d", v.Stat.Danmaku),
+				"reply":     fmt.Sprintf("%d", v.Stat.Reply),
+				"favorite":  fmt.Sprintf("%d", v.Stat.Favorite),
+				"coin":      fmt.Sprintf("%d", v.Stat.Coin),
+				"share":     fmt.Sprintf("%d", v.Stat.Share),
+				"like":      fmt.Sprintf("%d", v.Stat.Like),
+				"thumbnail": v.Pic,
+				"duration":  v.Duration,
 			},
 		}
 
@@ -136,8 +136,8 @@ func (a *BiliBiliAdapter) updateHealth(status HealthStatus, errMsg string) {
 // Bilibili API response structures
 
 type bilibiliVideoListResponse struct {
-	Code    int              `json:"code"`
-	Message string           `json:"message"`
+	Code    int               `json:"code"`
+	Message string            `json:"message"`
 	Data    bilibiliVideoData `json:"data"`
 }
 
@@ -150,15 +150,15 @@ type bilibiliVideoList struct {
 }
 
 type bilibiliVideo struct {
-	BVID        string           `json:"bvid"`
-	CID         int64            `json:"cid"`
-	Title       string           `json:"title"`
-	Description string           `json:"description"`
-	Created     int64            `json:"created"`
-	Duration    string           `json:"duration"`
-	Pic         string           `json:"pic"`
-	Author      bilibiliAuthor   `json:"author"`
-	Stat        bilibiliStat     `json:"stat"`
+	BVID        string         `json:"bvid"`
+	CID         int64          `json:"cid"`
+	Title       string         `json:"title"`
+	Description string         `json:"description"`
+	Created     int64          `json:"created"`
+	Duration    string         `json:"duration"`
+	Pic         string         `json:"pic"`
+	Author      bilibiliAuthor `json:"author"`
+	Stat        bilibiliStat   `json:"stat"`
 }
 
 type bilibiliAuthor struct {

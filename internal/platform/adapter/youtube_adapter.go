@@ -65,8 +65,8 @@ func (a *YouTubeAdapter) Provider() Provider {
 func (a *YouTubeAdapter) Capabilities() Capabilities {
 	return Capabilities{
 		SupportsIncremental: true,
-		MaxItemsPerFetch:   defaultMaxItemsPerFetch,
-		RateLimitPerHour:   defaultRateLimitPerHour,
+		MaxItemsPerFetch:    defaultMaxItemsPerFetch,
+		RateLimitPerHour:    defaultRateLimitPerHour,
 	}
 }
 

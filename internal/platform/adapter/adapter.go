@@ -9,14 +9,14 @@ import (
 type Provider string
 
 const (
-	ProviderRSS          Provider = "rss"
-	ProviderPublicPage   Provider = "public_page"
-	ProviderOfficialAPI  Provider = "official_api"
-	ProviderWeibo        Provider = "weibo"
-	ProviderZhihu        Provider = "zhihu"
-	ProviderXiaohongshu  Provider = "xiaohongshu"
-	ProviderYouTube      Provider = "youtube"
-	ProviderBilibili     Provider = "bilibili"
+	ProviderRSS         Provider = "rss"
+	ProviderPublicPage  Provider = "public_page"
+	ProviderOfficialAPI Provider = "official_api"
+	ProviderWeibo       Provider = "weibo"
+	ProviderZhihu       Provider = "zhihu"
+	ProviderXiaohongshu Provider = "xiaohongshu"
+	ProviderYouTube     Provider = "youtube"
+	ProviderBilibili    Provider = "bilibili"
 )
 
 // HealthStatus describes adapter operational readiness.
@@ -80,10 +80,10 @@ type Capabilities struct {
 
 // CollectInput is the input for a collection operation.
 type CollectInput struct {
-	SourceID     string
-	Provider     Provider
-	URL          string
-	Since        *time.Time
+	SourceID       string
+	Provider       Provider
+	URL            string
+	Since          *time.Time
 	IdempotencyKey string
 }
 
@@ -97,21 +97,21 @@ type NormalizedItem struct {
 	Language       string
 	IdempotencyKey string
 	// Metadata holds platform-specific key-value pairs (author, score, etc.).
-	Metadata       map[string]string
-	MetadataOnly   bool
+	Metadata     map[string]string
+	MetadataOnly bool
 }
 
 // CollectOutput is the result of a collection operation.
 type CollectOutput struct {
-	Items      []NormalizedItem
-	HasMore    bool
-	NextSince  *time.Time
+	Items     []NormalizedItem
+	HasMore   bool
+	NextSince *time.Time
 }
 
 // HealthInfo reports adapter health status.
 type HealthInfo struct {
-	Status       HealthStatus
-	LastError    string
+	Status        HealthStatus
+	LastError     string
 	LastCheckedAt time.Time
 }
 
