@@ -91,6 +91,9 @@ func TestNewDepsSucceedsWithValidDeps(t *testing.T) {
 	if deps.JobQueue == nil {
 		t.Error("expected JobQueue to be set")
 	}
+	if deps.JobRepo == nil {
+		t.Error("expected JobRepo to be set")
+	}
 	if deps.ContentRepo == nil {
 		t.Error("expected ContentRepo to be set")
 	}

@@ -20,10 +20,14 @@ type EnqueueRequest struct {
 
 type BackoffFunc func(attempt int) time.Duration
 
+// StateChangeFunc 在 job 状态变更后被调用，用于持久化到 PostgreSQL 等外部存储。
+type StateChangeFunc func(ctx context.Context, job Job)
+
 type QueueOptions struct {
-	Now         func() time.Time
-	MaxAttempts int
-	Backoff     BackoffFunc
+	Now           func() time.Time
+	MaxAttempts   int
+	Backoff       BackoffFunc
+	OnStateChange StateChangeFunc
 }
 
 func FixedBackoff(delay time.Duration) BackoffFunc {
@@ -33,14 +37,15 @@ func FixedBackoff(delay time.Duration) BackoffFunc {
 }
 
 type MemoryQueue struct {
-	mu          sync.Mutex
-	now         func() time.Time
-	maxAttempts int
-	backoff     BackoffFunc
-	nextID      int
-	jobs        map[string]Job
-	idempotency map[string]string
-	order       []string
+	mu            sync.Mutex
+	now           func() time.Time
+	maxAttempts   int
+	backoff       BackoffFunc
+	onStateChange StateChangeFunc
+	nextID        int
+	jobs          map[string]Job
+	idempotency   map[string]string
+	order         []string
 }
 
 func NewMemoryQueue(opts QueueOptions) *MemoryQueue {
@@ -59,15 +64,16 @@ func NewMemoryQueue(opts QueueOptions) *MemoryQueue {
 		maxAttempts = 3
 	}
 	return &MemoryQueue{
-		now:         now,
-		maxAttempts: maxAttempts,
-		backoff:     backoff,
-		jobs:        make(map[string]Job),
-		idempotency: make(map[string]string),
+		now:           now,
+		maxAttempts:   maxAttempts,
+		backoff:       backoff,
+		onStateChange: opts.OnStateChange,
+		jobs:          make(map[string]Job),
+		idempotency:   make(map[string]string),
 	}
 }
 
-func (q *MemoryQueue) Enqueue(_ context.Context, req EnqueueRequest) (Job, error) {
+func (q *MemoryQueue) Enqueue(ctx context.Context, req EnqueueRequest) (Job, error) {
 	if err := ValidatePayload(req.Type, req.Payload); err != nil {
 		return Job{}, err
 	}
@@ -76,10 +82,11 @@ func (q *MemoryQueue) Enqueue(_ context.Context, req EnqueueRequest) (Job, error
 	}
 
 	q.mu.Lock()
-	defer q.mu.Unlock()
 
 	if existingID, ok := q.idempotency[req.IdempotencyKey]; ok {
-		return q.jobs[existingID], nil
+		job := q.jobs[existingID]
+		q.mu.Unlock()
+		return job, nil
 	}
 
 	q.nextID++
@@ -106,12 +113,16 @@ func (q *MemoryQueue) Enqueue(_ context.Context, req EnqueueRequest) (Job, error
 	q.jobs[job.ID] = job
 	q.idempotency[job.IdempotencyKey] = job.ID
 	q.order = append(q.order, job.ID)
+	q.mu.Unlock()
+
+	if q.onStateChange != nil {
+		q.onStateChange(ctx, job)
+	}
 	return job, nil
 }
 
-func (q *MemoryQueue) Claim(_ context.Context) (Job, error) {
+func (q *MemoryQueue) Claim(ctx context.Context) (Job, error) {
 	q.mu.Lock()
-	defer q.mu.Unlock()
 
 	now := q.now()
 	for _, id := range q.order {
@@ -120,22 +131,27 @@ func (q *MemoryQueue) Claim(_ context.Context) (Job, error) {
 			job.Status = JobStatusRunning
 			job.UpdatedAt = now
 			q.jobs[id] = job
+			q.mu.Unlock()
+			if q.onStateChange != nil {
+				q.onStateChange(ctx, job)
+			}
 			return job, nil
 		}
 	}
+	q.mu.Unlock()
 	return Job{}, ErrNoJobs
 }
 
-func (q *MemoryQueue) Fail(_ context.Context, id string, err error) (Job, error) {
+func (q *MemoryQueue) Fail(ctx context.Context, id string, err error) (Job, error) {
 	if err == nil {
 		return Job{}, errors.New("job failure error is required")
 	}
 
 	q.mu.Lock()
-	defer q.mu.Unlock()
 
 	job, ok := q.jobs[id]
 	if !ok {
+		q.mu.Unlock()
 		return Job{}, fmt.Errorf("job %q not found", id)
 	}
 	now := q.now()
@@ -152,21 +168,31 @@ func (q *MemoryQueue) Fail(_ context.Context, id string, err error) (Job, error)
 		job.Status = JobStatusFailed
 	}
 	q.jobs[id] = job
+	q.mu.Unlock()
+
+	if q.onStateChange != nil {
+		q.onStateChange(ctx, job)
+	}
 	return job, nil
 }
 
-func (q *MemoryQueue) Complete(_ context.Context, id string) (Job, error) {
+func (q *MemoryQueue) Complete(ctx context.Context, id string) (Job, error) {
 	q.mu.Lock()
-	defer q.mu.Unlock()
 
 	job, ok := q.jobs[id]
 	if !ok {
+		q.mu.Unlock()
 		return Job{}, fmt.Errorf("job %q not found", id)
 	}
 	now := q.now()
 	job.Status = JobStatusSucceeded
 	job.UpdatedAt = now
 	q.jobs[id] = job
+	q.mu.Unlock()
+
+	if q.onStateChange != nil {
+		q.onStateChange(ctx, job)
+	}
 	return job, nil
 }
 
