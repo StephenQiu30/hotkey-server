@@ -114,11 +114,11 @@ func (r *Repository) CreateCollectionRun(ctx context.Context, run servicesource.
 	}
 	defer func() { _ = tx.Rollback() }()
 	const query = `
-INSERT INTO collection_runs (id, source_id, status, items_fetched, error, started_at, finished_at, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, source_id, status, items_fetched, error, started_at, finished_at, created_at`
+INSERT INTO collection_runs (id, source_id, status, error_type, items_fetched, error, started_at, finished_at, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, source_id, status, error_type, items_fetched, error, started_at, finished_at, created_at`
 	created, err := scanCollectionRun(tx.QueryRowContext(ctx, query,
-		run.ID, run.SourceID, run.Status, run.ItemsFetched, run.Error, run.StartedAt, run.FinishedAt, run.CreatedAt,
+		run.ID, run.SourceID, run.Status, run.ErrorType, run.ItemsFetched, run.Error, run.StartedAt, run.FinishedAt, run.CreatedAt,
 	))
 	if err != nil {
 		return servicesource.CollectionRun{}, err
@@ -131,7 +131,7 @@ RETURNING id, source_id, status, items_fetched, error, started_at, finished_at, 
 
 func (r *Repository) ListCollectionRuns(ctx context.Context, sourceID string) ([]servicesource.CollectionRun, error) {
 	const query = `
-SELECT id, source_id, status, items_fetched, error, started_at, finished_at, created_at
+SELECT id, source_id, status, error_type, items_fetched, error, started_at, finished_at, created_at
 FROM collection_runs
 WHERE source_id = $1
 ORDER BY started_at ASC, id ASC`
@@ -230,7 +230,7 @@ func scanSource(row scanner) (servicesource.Source, error) {
 
 func scanCollectionRun(row scanner) (servicesource.CollectionRun, error) {
 	var run servicesource.CollectionRun
-	err := row.Scan(&run.ID, &run.SourceID, &run.Status, &run.ItemsFetched, &run.Error, &run.StartedAt, &run.FinishedAt, &run.CreatedAt)
+	err := row.Scan(&run.ID, &run.SourceID, &run.Status, &run.ErrorType, &run.ItemsFetched, &run.Error, &run.StartedAt, &run.FinishedAt, &run.CreatedAt)
 	return run, err
 }
 

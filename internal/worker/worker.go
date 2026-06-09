@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -166,6 +167,11 @@ type SourceFetcher interface {
 	Fetch(context.Context, fetcher.Source) ([]fetcher.Item, error)
 }
 
+// CredentialResolver resolves OAuth access tokens for sources that require them (e.g. X).
+type CredentialResolver interface {
+	ResolveAccessToken(ctx context.Context, sourceID string) (string, error)
+}
+
 type AdapterCollector interface {
 	Collect(context.Context, adapter.CollectInput) (adapter.CollectOutput, error)
 }
@@ -195,11 +201,18 @@ type EventSummaryService interface {
 }
 
 type CollectSourceHandler struct {
-	sourceService SourceService
-	fetcher       SourceFetcher
-	adapter       AdapterCollector
-	ingest        IngestService
-	now           func() time.Time
+	sourceService      SourceService
+	fetcher            SourceFetcher
+	adapter            AdapterCollector
+	ingest             IngestService
+	credentialResolver CredentialResolver
+	xFetcherFn         func(accessToken string) SourceFetcher
+	now                func() time.Time
+}
+
+// SetCredentialResolver sets the credential resolver for sources that require OAuth (e.g. X).
+func (h *CollectSourceHandler) SetCredentialResolver(resolver CredentialResolver) {
+	h.credentialResolver = resolver
 }
 
 func NewCollectSourceHandler(sourceService SourceService, sourceFetcher SourceFetcher, ingestService IngestService) *CollectSourceHandler {
@@ -207,7 +220,10 @@ func NewCollectSourceHandler(sourceService SourceService, sourceFetcher SourceFe
 		sourceService: sourceService,
 		fetcher:       sourceFetcher,
 		ingest:        ingestService,
-		now:           time.Now,
+		xFetcherFn: func(token string) SourceFetcher {
+			return fetcher.NewXFetcher(nil, token)
+		},
+		now: time.Now,
 	}
 }
 
@@ -236,16 +252,19 @@ func (h *CollectSourceHandler) Handle(ctx context.Context, job queue.Job) error 
 	}
 
 	var ingested int
-	if h.adapter != nil {
+	if source.Type == servicesource.SourceTypeX && h.credentialResolver != nil {
+		ingested, err = h.collectXSource(ctx, source, startedAt)
+	} else if h.adapter != nil {
 		ingested, err = h.collectViaAdapter(ctx, source, startedAt)
 	} else {
 		ingested, err = h.collectViaFetcher(ctx, source, startedAt)
 	}
 	if err != nil {
-		_, _ = h.recordRun(ctx, source.ID, servicesource.CollectionRunStatusFailed, 0, err.Error(), startedAt)
+		errorType := classifyCollectionError(err)
+		_, _ = h.recordRunWithErrorType(ctx, source.ID, servicesource.CollectionRunStatusFailed, errorType, 0, err.Error(), startedAt)
 		return err
 	}
-	_, err = h.recordRun(ctx, source.ID, servicesource.CollectionRunStatusSuccess, ingested, "", startedAt)
+	_, err = h.recordRunWithErrorType(ctx, source.ID, servicesource.CollectionRunStatusSuccess, servicesource.CollectionRunErrorTypeNone, ingested, "", startedAt)
 	return err
 }
 
@@ -311,6 +330,60 @@ func (h *CollectSourceHandler) collectViaFetcher(ctx context.Context, source ser
 	return ingested, nil
 }
 
+func (h *CollectSourceHandler) collectXSource(ctx context.Context, source servicesource.Source, _ time.Time) (int, error) {
+	accessToken, err := h.credentialResolver.ResolveAccessToken(ctx, source.ID)
+	if err != nil {
+		return 0, fmt.Errorf("resolve x credential: %w", err)
+	}
+
+	xFetcher := h.xFetcherFn(accessToken)
+	items, err := xFetcher.Fetch(ctx, fetcher.Source{
+		ID:             source.ID,
+		Type:           fetcher.SourceTypeX,
+		URL:            source.URL,
+		ComplianceNote: source.ComplianceNote,
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	ingested := 0
+	for _, item := range items {
+		snippet := strings.TrimSpace(item.Title)
+		if item.Snippet != "" {
+			snippet = strings.TrimSpace(item.Snippet)
+		}
+		if _, err := h.ingest.Ingest(ctx, CollectIngestInput{
+			SourceID:    source.ID,
+			Title:       strings.TrimSpace(item.Title),
+			Snippet:     snippet,
+			URL:         item.URL,
+			Language:    "unknown",
+			PublishedAt: item.PublishedAt,
+		}); err != nil {
+			continue
+		}
+		ingested++
+	}
+	return ingested, nil
+}
+
+// classifyCollectionError maps fetcher errors to collection run error types.
+func classifyCollectionError(err error) servicesource.CollectionRunErrorType {
+	var rateLimitErr *fetcher.RateLimitError
+	if errors.As(err, &rateLimitErr) {
+		return servicesource.CollectionRunErrorTypeRateLimited
+	}
+	var authErr *fetcher.AuthError
+	if errors.As(err, &authErr) {
+		return servicesource.CollectionRunErrorTypeAuthFailed
+	}
+	if strings.Contains(err.Error(), "credential") || strings.Contains(err.Error(), "access token") {
+		return servicesource.CollectionRunErrorTypeAuthFailed
+	}
+	return servicesource.CollectionRunErrorTypeGeneric
+}
+
 func sourceTypeToProvider(sourceType servicesource.SourceType) adapter.Provider {
 	switch sourceType {
 	case servicesource.SourceTypeRSS:
@@ -323,9 +396,14 @@ func sourceTypeToProvider(sourceType servicesource.SourceType) adapter.Provider 
 }
 
 func (h *CollectSourceHandler) recordRun(ctx context.Context, sourceID string, status servicesource.CollectionRunStatus, itemsFetched int, message string, startedAt time.Time) (servicesource.CollectionRun, error) {
+	return h.recordRunWithErrorType(ctx, sourceID, status, servicesource.CollectionRunErrorTypeNone, itemsFetched, message, startedAt)
+}
+
+func (h *CollectSourceHandler) recordRunWithErrorType(ctx context.Context, sourceID string, status servicesource.CollectionRunStatus, errorType servicesource.CollectionRunErrorType, itemsFetched int, message string, startedAt time.Time) (servicesource.CollectionRun, error) {
 	return h.sourceService.RecordCollectionRun(ctx, servicesource.RecordCollectionRunInput{
 		SourceID:     sourceID,
 		Status:       status,
+		ErrorType:    errorType,
 		ItemsFetched: itemsFetched,
 		Error:        message,
 		StartedAt:    startedAt,
