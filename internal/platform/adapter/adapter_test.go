@@ -120,8 +120,8 @@ func TestSimulatorReportsCapabilities(t *testing.T) {
 
 func TestSimulatorReturnsAuthError(t *testing.T) {
 	sim := adapter.NewSimulator(adapter.SimulatorConfig{
-		Provider:  adapter.ProviderOfficialAPI,
-		Name:      "test-api",
+		Provider:   adapter.ProviderOfficialAPI,
+		Name:       "test-api",
 		CollectErr: adapter.NewAdapterError(adapter.FailureClassAuth, "unauthorized", nil),
 	})
 
@@ -140,8 +140,8 @@ func TestSimulatorReturnsAuthError(t *testing.T) {
 
 func TestSimulatorReturnsRateLimitError(t *testing.T) {
 	sim := adapter.NewSimulator(adapter.SimulatorConfig{
-		Provider:  adapter.ProviderOfficialAPI,
-		Name:      "test-api",
+		Provider:   adapter.ProviderOfficialAPI,
+		Name:       "test-api",
 		CollectErr: adapter.NewAdapterError(adapter.FailureClassRateLimit, "rate limited", nil),
 	})
 
@@ -157,8 +157,8 @@ func TestSimulatorReturnsRateLimitError(t *testing.T) {
 
 func TestSimulatorHealthDegradedAfterError(t *testing.T) {
 	sim := adapter.NewSimulator(adapter.SimulatorConfig{
-		Provider:  adapter.ProviderRSS,
-		Name:      "test-rss",
+		Provider:   adapter.ProviderRSS,
+		Name:       "test-rss",
 		CollectErr: adapter.NewAdapterError(adapter.FailureClassTransient, "timeout", nil),
 	})
 

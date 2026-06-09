@@ -108,7 +108,11 @@ func (w *Worker) runOnce(ctx context.Context) error {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return err
 		}
-		w.logger.Warn("worker claim failed", "error", err)
+		if queue.IsRedisConnectionError(err) {
+			w.logger.Error("redis 连接失败，任务无法领取", "error", err)
+		} else {
+			w.logger.Warn("worker claim failed", "error", err)
+		}
 		return nil
 	}
 

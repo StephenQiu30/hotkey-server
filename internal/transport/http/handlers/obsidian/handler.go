@@ -161,13 +161,13 @@ type connectResponse struct {
 }
 
 type statusResponse struct {
-	ConfigID  string     `json:"configId"`
-	RepoURL   string     `json:"repoUrl"`
-	Branch    string     `json:"branch"`
-	BaseDir   string     `json:"baseDir"`
-	Status    string     `json:"status"`
-	LastError string     `json:"lastError,omitempty"`
-	LastSync  *string    `json:"lastSync,omitempty"` // simplified for JSON
+	ConfigID  string  `json:"configId"`
+	RepoURL   string  `json:"repoUrl"`
+	Branch    string  `json:"branch"`
+	BaseDir   string  `json:"baseDir"`
+	Status    string  `json:"status"`
+	LastError string  `json:"lastError,omitempty"`
+	LastSync  *string `json:"lastSync,omitempty"` // simplified for JSON
 }
 
 type syncRequest struct {

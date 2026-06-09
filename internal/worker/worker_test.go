@@ -169,6 +169,51 @@ func (q *completeFailQueue) Fail(_ context.Context, id string, err error) (queue
 	return q.job, nil
 }
 
+func TestWorkerLogsRedisConnectionErrorOnClaim(t *testing.T) {
+	redisErr := queue.NewRedisConnectionError(errors.New("dial tcp 127.0.0.1:6379: connect: connection refused"))
+	jobQueue := &claimFailQueue{claimErr: redisErr}
+	var logBuf strings.Builder
+	logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	worker := New(jobQueue, nil, logger)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- worker.Run(ctx)
+	}()
+
+	// Worker should log the error but not exit
+	select {
+	case <-time.After(150 * time.Millisecond):
+		// Expected: worker continues running, just logs the error
+	case err := <-done:
+		t.Fatalf("worker should not exit on Redis connection error, got: %v", err)
+	}
+	cancel()
+	<-done
+
+	if !strings.Contains(logBuf.String(), "redis 连接失败") {
+		t.Fatalf("expected redis connection log, got: %s", logBuf.String())
+	}
+}
+
+type claimFailQueue struct {
+	claimErr error
+}
+
+func (q *claimFailQueue) Claim(context.Context) (queue.Job, error) {
+	return queue.Job{}, q.claimErr
+}
+
+func (q *claimFailQueue) Complete(context.Context, string) (queue.Job, error) {
+	return queue.Job{}, nil
+}
+
+func (q *claimFailQueue) Fail(context.Context, string, error) (queue.Job, error) {
+	return queue.Job{}, nil
+}
+
 func assertPanic(t *testing.T, fn func()) {
 	t.Helper()
 	defer func() {

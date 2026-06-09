@@ -33,11 +33,11 @@ type ConnectInput struct {
 }
 
 type AuthorizationService struct {
-	authRepo    Repository
-	azRepo      AuthorizationRepository
-	encryptor   crypto.Encryptor
-	transactor  Transactor
-	now         func() time.Time
+	authRepo   Repository
+	azRepo     AuthorizationRepository
+	encryptor  crypto.Encryptor
+	transactor Transactor
+	now        func() time.Time
 }
 
 type Transactor interface {

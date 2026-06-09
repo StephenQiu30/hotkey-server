@@ -11,10 +11,10 @@ import (
 
 // fakeTokenExchanger implements TokenExchanger for testing.
 type fakeTokenExchanger struct {
-	exchangeErr  error
-	refreshErr   error
-	revokeErr    error
-	fixedToken   xauth.TokenResult
+	exchangeErr error
+	refreshErr  error
+	revokeErr   error
+	fixedToken  xauth.TokenResult
 }
 
 func (f *fakeTokenExchanger) ExchangeCode(_ context.Context, _ string, _ string, _ xauth.Config) (xauth.TokenResult, error) {
@@ -164,7 +164,7 @@ func TestExchangeCodeRejectsMismatchedState(t *testing.T) {
 	_, err = svc.ExchangeCode(context.Background(), xauth.ExchangeInput{
 		Code:     "auth_code_123",
 		SourceID: "src_x_mismatch",
-		State: "state_b", // different state
+		State:    "state_b", // different state
 	})
 	if !errors.Is(err, xauth.ErrInvalidState) {
 		t.Fatalf("expected ErrInvalidState for mismatched state, got %v", err)

@@ -187,3 +187,77 @@ func (r *recordingRows) Next(dest []driver.Value) error {
 	r.index++
 	return nil
 }
+
+func TestRepositoryUpdateStatusUpdatesJobState(t *testing.T) {
+	driver := &recordingDriver{}
+	db := openRecordingDB(t, driver)
+	repo := New(db)
+	ctx := context.Background()
+
+	if err := repo.UpdateStatus(ctx, "job-1", queue.JobStatusRunning, "", 1); err != nil {
+		t.Fatalf("update status failed: %v", err)
+	}
+
+	if !strings.Contains(driver.lastQuery(), "update jobs") {
+		t.Fatalf("expected update jobs, got %q", driver.lastQuery())
+	}
+	if !strings.Contains(driver.lastQuery(), "status") {
+		t.Fatalf("expected query to include status column, got %q", driver.lastQuery())
+	}
+	if !strings.Contains(driver.lastQuery(), "attempt") {
+		t.Fatalf("expected query to include attempt column, got %q", driver.lastQuery())
+	}
+	args := driver.lastArgs()
+	if len(args) != 5 {
+		t.Fatalf("expected 5 update args (status, last_error, attempt, updated_at, id), got %d", len(args))
+	}
+	if args[0] != string(queue.JobStatusRunning) {
+		t.Fatalf("expected status %q, got %v", queue.JobStatusRunning, args[0])
+	}
+	if args[1] != "" {
+		t.Fatalf("expected empty last_error, got %v", args[1])
+	}
+	if args[2] != int64(1) {
+		t.Fatalf("expected attempt 1, got %v", args[2])
+	}
+	if args[4] != "job-1" {
+		t.Fatalf("expected id job-1, got %v", args[4])
+	}
+}
+
+func TestRepositoryUpdateStatusRecordsLastError(t *testing.T) {
+	driver := &recordingDriver{}
+	db := openRecordingDB(t, driver)
+	repo := New(db)
+	ctx := context.Background()
+
+	lastErr := "connection timeout: redis unreachable"
+	if err := repo.UpdateStatus(ctx, "job-2", queue.JobStatusDeadLetter, lastErr, 3); err != nil {
+		t.Fatalf("update status failed: %v", err)
+	}
+
+	args := driver.lastArgs()
+	if args[0] != string(queue.JobStatusDeadLetter) {
+		t.Fatalf("expected dead_letter status, got %v", args[0])
+	}
+	if args[1] != lastErr {
+		t.Fatalf("expected last_error %q, got %v", lastErr, args[1])
+	}
+	if args[2] != int64(3) {
+		t.Fatalf("expected attempt 3, got %v", args[2])
+	}
+}
+
+func TestRepositoryFindByIdempotencyKeyReturnsErrNoRows(t *testing.T) {
+	driver := &recordingDriver{rows: [][]driver.Value{}}
+	db := openRecordingDB(t, driver)
+	repo := New(db)
+
+	_, err := repo.FindByIdempotencyKey(context.Background(), "nonexistent-key")
+	if err == nil {
+		t.Fatal("expected error for nonexistent idempotency key")
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected sql.ErrNoRows, got %v", err)
+	}
+}

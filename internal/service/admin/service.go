@@ -154,11 +154,13 @@ type RevokeSourceResult struct {
 }
 
 type Config struct {
-	PostgreSQLPing func(context.Context) error
-	RedisPing      func(context.Context) error
-	DashScopeKey   string
-	SMTPHost       string
-	Now            func() time.Time
+	PostgreSQLPing   func(context.Context) error
+	RedisPing        func(context.Context) error
+	MinIOPing        func(context.Context) error
+	DashScopeKey     string
+	SMTPHost         string
+	MinIOEndpoint    string
+	Now              func() time.Time
 	RevokeSourceFunc func(ctx context.Context, sourceID string) (RevokeSourceResult, error)
 }
 
@@ -348,6 +350,7 @@ func (s *Service) ConfigStatus(ctx context.Context) ConfigStatus {
 	components := map[string]ComponentCheck{
 		"postgresql": s.pingStatus(ctx, s.cfg.PostgreSQLPing),
 		"redis":      s.pingStatus(ctx, s.cfg.RedisPing),
+		"minio":      s.minioStatus(ctx),
 		"dashscope":  configPresenceStatus(s.cfg.DashScopeKey),
 		"smtp":       configPresenceStatus(s.cfg.SMTPHost),
 	}
@@ -366,6 +369,19 @@ func (s *Service) pingStatus(ctx context.Context, ping func(context.Context) err
 		return ComponentCheck{Status: ComponentStatusOK}
 	}
 	if err := ping(ctx); err != nil {
+		return ComponentCheck{Status: ComponentStatusDegraded, Reason: "unavailable"}
+	}
+	return ComponentCheck{Status: ComponentStatusOK}
+}
+
+func (s *Service) minioStatus(ctx context.Context) ComponentCheck {
+	if s.cfg.MinIOPing == nil {
+		if strings.TrimSpace(s.cfg.MinIOEndpoint) == "" {
+			return ComponentCheck{Status: ComponentStatusDegraded, Reason: "missing_config"}
+		}
+		return ComponentCheck{Status: ComponentStatusOK}
+	}
+	if err := s.cfg.MinIOPing(ctx); err != nil {
 		return ComponentCheck{Status: ComponentStatusDegraded, Reason: "unavailable"}
 	}
 	return ComponentCheck{Status: ComponentStatusOK}

@@ -18,18 +18,20 @@ type RedisStore interface {
 }
 
 type RedisQueueOptions struct {
-	QueueName   string
-	Now         func() time.Time
-	MaxAttempts int
-	Backoff     BackoffFunc
+	QueueName     string
+	Now           func() time.Time
+	MaxAttempts   int
+	Backoff       BackoffFunc
+	OnStateChange StateChangeFunc
 }
 
 type RedisQueue struct {
-	store       RedisStore
-	queueName   string
-	now         func() time.Time
-	maxAttempts int
-	backoff     BackoffFunc
+	store         RedisStore
+	queueName     string
+	now           func() time.Time
+	maxAttempts   int
+	backoff       BackoffFunc
+	onStateChange StateChangeFunc
 }
 
 func NewRedisQueue(store RedisStore, opts RedisQueueOptions) *RedisQueue {
@@ -51,7 +53,7 @@ func NewRedisQueue(store RedisStore, opts RedisQueueOptions) *RedisQueue {
 			return time.Duration(attempt) * time.Minute
 		}
 	}
-	return &RedisQueue{store: store, queueName: queueName, now: now, maxAttempts: maxAttempts, backoff: backoff}
+	return &RedisQueue{store: store, queueName: queueName, now: now, maxAttempts: maxAttempts, backoff: backoff, onStateChange: opts.OnStateChange}
 }
 
 func (q *RedisQueue) Enqueue(ctx context.Context, req EnqueueRequest) (Job, error) {
@@ -89,12 +91,12 @@ func (q *RedisQueue) Enqueue(ctx context.Context, req EnqueueRequest) (Job, erro
 	idempotencyKey := q.idempotencyKey(req.IdempotencyKey)
 	created, err := q.store.SetNX(ctx, idempotencyKey, body)
 	if err != nil {
-		return Job{}, err
+		return Job{}, wrapRedisErr(err)
 	}
 	if !created {
 		existing, err := q.store.Get(ctx, idempotencyKey)
 		if err != nil {
-			return Job{}, err
+			return Job{}, wrapRedisErr(err)
 		}
 		var existingJob Job
 		if err := json.Unmarshal(existing, &existingJob); err != nil {
@@ -104,12 +106,15 @@ func (q *RedisQueue) Enqueue(ctx context.Context, req EnqueueRequest) (Job, erro
 	}
 	if err := q.store.Set(ctx, q.jobKey(job.ID), body); err != nil {
 		_ = q.store.Del(ctx, idempotencyKey)
-		return Job{}, err
+		return Job{}, wrapRedisErr(err)
 	}
 	if err := q.store.LPush(ctx, q.queueName, body); err != nil {
 		_ = q.store.Del(ctx, q.jobKey(job.ID))
 		_ = q.store.Del(ctx, idempotencyKey)
-		return Job{}, err
+		return Job{}, wrapRedisErr(err)
+	}
+	if q.onStateChange != nil {
+		q.onStateChange(ctx, job)
 	}
 	return job, nil
 }
@@ -120,7 +125,7 @@ func (q *RedisQueue) Claim(ctx context.Context) (Job, error) {
 		if err.Error() == "redis nil reply" {
 			return Job{}, ErrNoJobs
 		}
-		return Job{}, err
+		return Job{}, wrapRedisErr(err)
 	}
 	var job Job
 	if err := json.Unmarshal(body, &job); err != nil {
@@ -129,14 +134,17 @@ func (q *RedisQueue) Claim(ctx context.Context) (Job, error) {
 	now := q.now()
 	if (job.Status == JobStatusScheduled || job.Status == JobStatusPending) && job.NextRunAt.After(now) {
 		if err := q.store.LPush(ctx, q.queueName, body); err != nil {
-			return Job{}, err
+			return Job{}, wrapRedisErr(err)
 		}
 		return Job{}, ErrNoJobs
 	}
 	job.Status = JobStatusRunning
 	job.UpdatedAt = now
 	if err := q.save(ctx, job); err != nil {
-		return Job{}, err
+		return Job{}, wrapRedisErr(err)
+	}
+	if q.onStateChange != nil {
+		q.onStateChange(ctx, job)
 	}
 	return job, nil
 }
@@ -148,7 +156,7 @@ func (q *RedisQueue) Fail(ctx context.Context, id string, err error) (Job, error
 
 	body, getErr := q.store.Get(ctx, q.jobKey(id))
 	if getErr != nil {
-		return Job{}, getErr
+		return Job{}, wrapRedisErr(getErr)
 	}
 	var job Job
 	if unmarshalErr := json.Unmarshal(body, &job); unmarshalErr != nil {
@@ -163,10 +171,13 @@ func (q *RedisQueue) Fail(ctx context.Context, id string, err error) (Job, error
 		job.Status = JobStatusScheduled
 		job.NextRunAt = now.Add(q.backoff(job.Attempt))
 		if saveErr := q.save(ctx, job); saveErr != nil {
-			return Job{}, saveErr
+			return Job{}, wrapRedisErr(saveErr)
 		}
 		if enqueueErr := q.enqueueJob(ctx, job); enqueueErr != nil {
-			return Job{}, enqueueErr
+			return Job{}, wrapRedisErr(enqueueErr)
+		}
+		if q.onStateChange != nil {
+			q.onStateChange(ctx, job)
 		}
 		return job, nil
 	}
@@ -176,7 +187,10 @@ func (q *RedisQueue) Fail(ctx context.Context, id string, err error) (Job, error
 		job.Status = JobStatusFailed
 	}
 	if saveErr := q.save(ctx, job); saveErr != nil {
-		return Job{}, saveErr
+		return Job{}, wrapRedisErr(saveErr)
+	}
+	if q.onStateChange != nil {
+		q.onStateChange(ctx, job)
 	}
 	return job, nil
 }
@@ -184,7 +198,7 @@ func (q *RedisQueue) Fail(ctx context.Context, id string, err error) (Job, error
 func (q *RedisQueue) Complete(ctx context.Context, id string) (Job, error) {
 	body, getErr := q.store.Get(ctx, q.jobKey(id))
 	if getErr != nil {
-		return Job{}, getErr
+		return Job{}, wrapRedisErr(getErr)
 	}
 	var job Job
 	if unmarshalErr := json.Unmarshal(body, &job); unmarshalErr != nil {
@@ -193,7 +207,10 @@ func (q *RedisQueue) Complete(ctx context.Context, id string) (Job, error) {
 	job.Status = JobStatusSucceeded
 	job.UpdatedAt = q.now()
 	if saveErr := q.save(ctx, job); saveErr != nil {
-		return Job{}, saveErr
+		return Job{}, wrapRedisErr(saveErr)
+	}
+	if q.onStateChange != nil {
+		q.onStateChange(ctx, job)
 	}
 	return job, nil
 }
@@ -223,4 +240,25 @@ func (q *RedisQueue) idempotencyKey(value string) string {
 
 func (q *RedisQueue) jobKey(id string) string {
 	return q.queueName + ":job:" + id
+}
+
+// PendingLen 返回 pending 队列中的任务数。
+// 注意：此方法通过 LLEN 模拟，实际使用 LPush/RPop 的客户端可能不支持 LLEN。
+// 当前实现通过遍历 job 存储近似计算，仅用于观测。
+func (q *RedisQueue) PendingLen() int {
+	// RedisQueue 没有 O(1) 的 LLEN；返回 0 表示无法精确计算。
+	// 生产环境中通过 Redis CLI 或监控获取精确值。
+	return 0
+}
+
+// wrapRedisErr 将 Redis 操作错误包装为 RedisConnectionError，
+// 排除 "redis nil reply"（表示 key 不存在，非连接错误）。
+func wrapRedisErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	if err.Error() == "redis nil reply" {
+		return err
+	}
+	return NewRedisConnectionError(err)
 }

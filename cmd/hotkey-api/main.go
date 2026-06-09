@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,18 +12,14 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/app"
 	"github.com/StephenQiu30/hotkey-server/internal/config"
-	"github.com/StephenQiu30/hotkey-server/internal/platform/dashscope"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/fetcher"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logger"
-	"github.com/StephenQiu30/hotkey-server/internal/platform/redis"
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
-	"github.com/StephenQiu30/hotkey-server/internal/repository/postgres/contentrepo"
-	"github.com/StephenQiu30/hotkey-server/internal/repository/postgres/hotspotrepo"
-	"github.com/StephenQiu30/hotkey-server/internal/repository/postgres/sourcerepo"
 	"github.com/StephenQiu30/hotkey-server/internal/scheduler"
 	"github.com/StephenQiu30/hotkey-server/internal/service/dedup"
 	"github.com/StephenQiu30/hotkey-server/internal/service/embedding"
 	"github.com/StephenQiu30/hotkey-server/internal/service/filter"
+	"github.com/StephenQiu30/hotkey-server/internal/service/hotspot"
 	"github.com/StephenQiu30/hotkey-server/internal/service/ingest"
 	"github.com/StephenQiu30/hotkey-server/internal/service/mail"
 	"github.com/StephenQiu30/hotkey-server/internal/service/normalize"
@@ -36,47 +32,25 @@ import (
 
 func main() {
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "配置校验失败: %s\n", err)
+		os.Exit(1)
+	}
 	logSlog := logger.New()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Initialize Database
-	db, err := sql.Open("postgres", cfg.DatabaseURL)
+	// 统一依赖装配：DB、Redis、Queue、Repository、基础设施客户端
+	deps, err := app.NewDeps(cfg)
 	if err != nil {
-		logSlog.Error("failed to open database", "error", err)
-		panic(err)
+		logSlog.Error("依赖初始化失败", "error", err)
+		fmt.Fprintf(os.Stderr, "依赖初始化失败: %s\n", err)
+		os.Exit(1)
 	}
-	defer func() {
-		if err := db.Close(); err != nil {
-			logSlog.Error("failed to close database", "error", err)
-		}
-	}()
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(25)
-	db.SetConnMaxLifetime(5 * time.Minute)
+	defer deps.Close()
 
-	if err := db.PingContext(ctx); err != nil {
-		logSlog.Error("failed to ping database", "error", err)
-		panic(err)
-	}
-
-	// Initialize Redis
-	redisClient := redis.NewClient(cfg.RedisURL, redis.Options{})
-	if err := redisClient.Ping(ctx); err != nil {
-		logSlog.Error("failed to ping redis", "error", err)
-		panic(err)
-	}
-
-	// Initialize Repositories
-	contentRepo := contentrepo.New(db)
-	hotspotRepo := hotspotrepo.New(db)
-	sourceRepo := sourcerepo.New(db)
-
-	// Initialize Infrastructure Providers
-	embeddingProvider := dashscope.New(cfg.DashScopeAPIKey)
-
-	// Initialize Services
+	// Initialize Services（worker pipeline 所需）
 	normalizeSvc := normalize.NewService(normalize.DefaultConfig())
 	filterSvc := filter.NewService(filter.Config{
 		MinTitleRunes:   4,
@@ -85,12 +59,16 @@ func main() {
 	qualitySvc := quality.NewService(quality.DefaultConfig())
 	dedupSvc := dedup.NewService(dedup.Config{
 		SimilarityThreshold: cfg.HotspotSimilarityThreshold,
-	}, contentRepo, hotspotRepo)
+	}, deps.ContentRepo, deps.HotspotRepo)
 	embeddingSvc := embedding.NewService(embedding.Config{
 		Model: cfg.EmbeddingModel,
-	}, contentRepo, hotspotRepo, embeddingProvider)
-
-	sourceSvc := servicesource.NewService(sourceRepo)
+	}, deps.ContentRepo, deps.HotspotRepo, deps.DashScope)
+	hotspotSvc := hotspot.NewService(hotspot.Config{
+		SimilarityThreshold: cfg.HotspotSimilarityThreshold,
+		Window:              cfg.HotspotWindow,
+	}, deps.HotspotRepo)
+	scoringSvc := hotspot.NewScoringService(hotspot.ScoringConfig{}, deps.HotspotRepo, deps.ScoreRepo)
+	sourceSvc := servicesource.NewService(deps.SourceRepo)
 
 	// Initialize Fetchers
 	multiFetcher := fetcher.NewMultiFetcher(map[fetcher.SourceType]fetcher.Fetcher{
@@ -98,8 +76,7 @@ func main() {
 		fetcher.SourceTypePublicPage: fetcher.NewPublicPageFetcher(nil),
 	})
 
-	jobQueue := queue.NewRedisQueue(redisClient, queue.RedisQueueOptions{QueueName: "hotkey:jobs:pending"})
-	ingestSvc := ingest.NewService(contentRepo, jobQueue,
+	ingestSvc := ingest.NewService(deps.ContentRepo, deps.JobQueue,
 		ingest.WithNormalize(normalizeSvc),
 		ingest.WithFilter(filterSvc),
 		ingest.WithQuality(qualitySvc),
@@ -117,30 +94,38 @@ func main() {
 	})
 
 	// Initialize API Runtime
-	api := app.NewAPI(cfg, logSlog, db, redisClient)
+	api := app.NewAPI(cfg, logSlog, deps.DB, deps.RedisClient, scoringSvc)
 
 	// Initialize Worker Runtime
-	workerRuntime := worker.New(jobQueue, redisClient, logSlog,
+	workerRuntime := worker.New(deps.JobQueue, deps.RedisClient, logSlog,
 		worker.WithHandler(queue.JobTypeCollectSource, worker.NewCollectSourceHandler(sourceSvc, multiFetcher, ingestSvc)),
-		worker.WithHandler(queue.JobTypeGenerateEmbedding, worker.NewGenerateEmbeddingHandler(embeddingSvc, dedupSvc, contentRepo)),
+		worker.WithHandler(queue.JobTypeGenerateEmbedding, worker.NewGenerateEmbeddingHandler(embeddingSvc, dedupSvc, deps.ContentRepo)),
+		worker.WithHandler(queue.JobTypeClusterHotspots, worker.NewClusterHotspotsHandler(hotspotSvc)),
+		worker.WithHandler(queue.JobTypeScoreHotspots, worker.NewScoreHotspotsHandler(scoringSvc)),
 		worker.WithHandler(queue.JobTypeSendDailyEmail, worker.NewSendDailyEmailHandler(mailService)),
 		worker.WithHandler(queue.JobTypeSendWeeklyEmail, worker.NewSendWeeklyEmailHandler(mailService)),
 	)
 
-	dailyEmailScheduler := scheduler.NewDailyEmailScheduler(jobQueue, scheduler.DailyEmailOptions{
+	// Initialize Scheduler Runtime
+	dailyEmailScheduler := scheduler.NewDailyEmailScheduler(deps.JobQueue, scheduler.DailyEmailOptions{
 		DefaultDailySendAt: "08:30",
 	})
-	weeklyEmailScheduler := scheduler.NewWeeklyEmailScheduler(jobQueue, scheduler.WeeklyEmailOptions{
+	weeklyEmailScheduler := scheduler.NewWeeklyEmailScheduler(deps.JobQueue, scheduler.WeeklyEmailOptions{
 		DefaultWeeklySendAt: "09:00",
 		WeeklySendDay:       time.Monday,
 	})
+	hotspotScheduler := scheduler.NewHotspotScheduler(deps.JobQueue, scheduler.HotspotSchedulerOptions{
+		Window: cfg.HotspotWindow,
+	})
 	schedulerRuntime := scheduler.NewCompositeScheduler(
-		scheduler.NewHourlyCollectScheduler(jobQueue, scheduler.HourlyCollectOptions{
+		scheduler.NewHourlyCollectScheduler(deps.JobQueue, scheduler.HourlyCollectOptions{
 			SourceID: cfg.CollectSourceID,
 		}),
+		hotspotScheduler,
 		dailyEmailScheduler,
 		weeklyEmailScheduler,
 	)
+
 	runtime := app.NewRuntime(cfg, app.RuntimeComponents{
 		API:       api,
 		Worker:    workerRuntime,
