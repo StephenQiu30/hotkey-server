@@ -37,8 +37,8 @@ type Deps struct {
 	JobQueue    *queue.RedisQueue
 	ContentRepo *contentrepo.Repository
 	HotspotRepo *hotspotrepo.Repository
-	SourceRepo  *sourcerepo.Repository
 	ScoreRepo   *scorerepo.Repository
+	SourceRepo  *sourcerepo.Repository
 	DashScope   *dashscope.Client
 }
 
@@ -122,8 +122,8 @@ func NewDeps(cfg config.Config, opts ...DepsOption) (*Deps, error) {
 	// --- Repositories ---
 	contentRepo := contentrepo.New(db)
 	hotspotRepo := hotspotrepo.New(db)
-	sourceRepo := sourcerepo.New(db)
 	scoreRepo := scorerepo.New(db)
+	sourceRepo := sourcerepo.New(db)
 
 	// --- Infrastructure Providers ---
 	dashScopeClient := dashscope.New(cfg.DashScopeAPIKey)
@@ -140,8 +140,8 @@ func NewDeps(cfg config.Config, opts ...DepsOption) (*Deps, error) {
 		JobQueue:    jobQueue,
 		ContentRepo: contentRepo,
 		HotspotRepo: hotspotRepo,
-		SourceRepo:  sourceRepo,
 		ScoreRepo:   scoreRepo,
+		SourceRepo:  sourceRepo,
 		DashScope:   dashScopeClient,
 	}, nil
 }

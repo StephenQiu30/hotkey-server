@@ -94,7 +94,7 @@ func main() {
 	})
 
 	// Initialize API Runtime
-	api := app.NewAPI(cfg, logSlog, deps.DB, deps.RedisClient)
+	api := app.NewAPI(cfg, logSlog, deps.DB, deps.RedisClient, scoringSvc)
 
 	// Initialize Worker Runtime
 	workerRuntime := worker.New(deps.JobQueue, deps.RedisClient, logSlog,
