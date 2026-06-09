@@ -19,10 +19,10 @@ const (
 type Language string
 
 const (
-	LanguageZH     Language = "zh"
-	LanguageEN     Language = "en"
-	LanguageJA     Language = "ja"
-	LanguageMulti  Language = "multi"
+	LanguageZH    Language = "zh"
+	LanguageEN    Language = "en"
+	LanguageJA    Language = "ja"
+	LanguageMulti Language = "multi"
 )
 
 // Platform represents a monitoring source platform.
@@ -47,9 +47,9 @@ const (
 )
 
 var (
-	ErrInvalidInput  = errors.New("invalid input")
-	ErrNotFound      = errors.New("not found")
-	ErrAlreadyExists = errors.New("already exists")
+	ErrInvalidInput      = errors.New("invalid input")
+	ErrNotFound          = errors.New("not found")
+	ErrAlreadyExists     = errors.New("already exists")
 	ErrInvalidTransition = errors.New("invalid status transition")
 )
 

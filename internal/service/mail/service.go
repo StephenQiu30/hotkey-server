@@ -40,8 +40,8 @@ type Config struct {
 }
 
 type Recipient struct {
-	UserID       string
-	Email        string
+	UserID        string
+	Email         string
 	EmailEnabled  bool
 	WeeklyEnabled bool
 	DailySendAt   string
@@ -49,15 +49,15 @@ type Recipient struct {
 }
 
 type DailyReport struct {
-	ID           string
+	ID             string
 	ReportDate     string
 	ReportType     ReportType
 	DailyReportIDs []string
 	Title          string
-	Summary      string
-	BodyMarkdown string
-	BodyHTML     string
-	URL          string
+	Summary        string
+	BodyMarkdown   string
+	BodyHTML       string
+	URL            string
 }
 
 type Delivery struct {
@@ -187,7 +187,6 @@ func (s *Service) SendDailyEmail(ctx context.Context, input SendDailyEmailInput)
 	delivery.SentAt = &sentAt
 	return s.repo.UpdateDelivery(ctx, delivery)
 }
-
 
 func (s *Service) SendWeeklyEmail(ctx context.Context, input SendWeeklyEmailInput) (Delivery, error) {
 	if s.repo == nil {

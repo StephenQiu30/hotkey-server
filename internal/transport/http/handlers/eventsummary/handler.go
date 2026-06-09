@@ -41,8 +41,8 @@ func (h *Handler) GetSummary(c *gin.Context) {
 
 // GenerateSummaryRequest is the request body for GenerateSummary.
 type GenerateSummaryRequest struct {
-	EventID string                       `json:"eventId"`
-	Title   string                       `json:"title"`
+	EventID string                         `json:"eventId"`
+	Title   string                         `json:"title"`
 	Items   []serviceeventsummary.ItemInfo `json:"items"`
 }
 

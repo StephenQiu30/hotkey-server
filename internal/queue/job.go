@@ -11,18 +11,18 @@ import (
 type JobType string
 
 const (
-	JobTypeCollectSource       JobType = "collect_source"
-	JobTypeGenerateEmbedding   JobType = "generate_embedding"
-	JobTypeClusterHotspots     JobType = "cluster_hotspots"
-	JobTypeScoreHotspots       JobType = "score_hotspots"
-	JobTypeGenerateDailyReport JobType = "generate_daily_report"
-	JobTypeSendDailyEmail          JobType = "send_daily_email"
-	JobTypeSendWeeklyEmail         JobType = "send_weekly_email"
-	JobTypeGenerateWeeklyReport    JobType = "generate_weekly_report"
-	JobTypeGenerateEventSummary    JobType = "generate_event_summary"
-	JobTypeStoreSnapshot           JobType = "store_snapshot"
-	JobTypeCleanupExpiredObjects   JobType = "cleanup_expired_objects"
-	JobTypeDeleteUserObjects       JobType = "delete_user_objects"
+	JobTypeCollectSource         JobType = "collect_source"
+	JobTypeGenerateEmbedding     JobType = "generate_embedding"
+	JobTypeClusterHotspots       JobType = "cluster_hotspots"
+	JobTypeScoreHotspots         JobType = "score_hotspots"
+	JobTypeGenerateDailyReport   JobType = "generate_daily_report"
+	JobTypeSendDailyEmail        JobType = "send_daily_email"
+	JobTypeSendWeeklyEmail       JobType = "send_weekly_email"
+	JobTypeGenerateWeeklyReport  JobType = "generate_weekly_report"
+	JobTypeGenerateEventSummary  JobType = "generate_event_summary"
+	JobTypeStoreSnapshot         JobType = "store_snapshot"
+	JobTypeCleanupExpiredObjects JobType = "cleanup_expired_objects"
+	JobTypeDeleteUserObjects     JobType = "delete_user_objects"
 )
 
 type JobStatus string

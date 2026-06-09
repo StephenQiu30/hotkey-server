@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	ErrInvalidKey      = errors.New("encryption key must be 32 bytes")
+	ErrInvalidKey       = errors.New("encryption key must be 32 bytes")
 	ErrDecryptionFailed = errors.New("decryption failed")
 )
 

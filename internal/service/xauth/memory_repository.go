@@ -11,10 +11,10 @@ const pendingStateTTL = 10 * time.Minute
 
 // MemoryRepository is a thread-safe in-memory implementation of Repository.
 type MemoryRepository struct {
-	mu       sync.RWMutex
-	states   map[string]PendingState
-	creds    map[string]Credential
-	now      func() time.Time
+	mu     sync.RWMutex
+	states map[string]PendingState
+	creds  map[string]Credential
+	now    func() time.Time
 }
 
 // NewMemoryRepository creates a new MemoryRepository.

@@ -7,12 +7,12 @@ import (
 
 // MemoryRepository is an in-memory implementation of Repository.
 type MemoryRepository struct {
-	mu          sync.RWMutex
-	topics      map[string]MonitorTopic
-	topicOrder  []string
-	byUser      map[string][]string
-	keywords    map[string]TopicKeyword
-	kwByTopic   map[string][]string
+	mu         sync.RWMutex
+	topics     map[string]MonitorTopic
+	topicOrder []string
+	byUser     map[string][]string
+	keywords   map[string]TopicKeyword
+	kwByTopic  map[string][]string
 }
 
 // NewMemoryRepository creates a new in-memory repository.

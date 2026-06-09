@@ -8,13 +8,13 @@ import (
 )
 
 type MemoryRepository struct {
-	mu               sync.RWMutex
-	channels         map[string]Channel
-	channelOrder     []string
-	subscriptions    map[string]map[string]Subscription
-	keywords         map[string]Keyword
-	keywordsByUser   map[string][]string
-	settings         map[string]string
+	mu                sync.RWMutex
+	channels          map[string]Channel
+	channelOrder      []string
+	subscriptions     map[string]map[string]Subscription
+	keywords          map[string]Keyword
+	keywordsByUser    map[string][]string
+	settings          map[string]string
 	userDailySendAts  map[string]string
 	userWeeklyEnabled map[string]bool
 	userWeeklySendAts map[string]string
@@ -22,11 +22,11 @@ type MemoryRepository struct {
 
 func NewMemoryRepository() *MemoryRepository {
 	repo := &MemoryRepository{
-		channels:         make(map[string]Channel),
-		subscriptions:    make(map[string]map[string]Subscription),
-		keywords:         make(map[string]Keyword),
-		keywordsByUser:   make(map[string][]string),
-		settings:         map[string]string{defaultDailySendAtKey: defaultDailySendAt},
+		channels:          make(map[string]Channel),
+		subscriptions:     make(map[string]map[string]Subscription),
+		keywords:          make(map[string]Keyword),
+		keywordsByUser:    make(map[string][]string),
+		settings:          map[string]string{defaultDailySendAtKey: defaultDailySendAt},
 		userDailySendAts:  make(map[string]string),
 		userWeeklyEnabled: make(map[string]bool),
 		userWeeklySendAts: make(map[string]string),
