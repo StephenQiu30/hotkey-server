@@ -244,6 +244,75 @@ func TestCleanupTaskStepsDefensiveCopy(t *testing.T) {
 	}
 }
 
+func TestConfigStatusIncludesMinIO(t *testing.T) {
+	service := admin.NewService(admin.NewMemoryRepository(), admin.Config{
+		PostgreSQLPing: func(context.Context) error { return nil },
+		RedisPing:      func(context.Context) error { return nil },
+		DashScopeKey:   "sk-test-key",
+		SMTPHost:       "smtp.example.com",
+		MinIOPing:      func(context.Context) error { return nil },
+		MinIOEndpoint:  "minio.example.com:9000",
+	})
+	ctx := context.Background()
+
+	status := service.ConfigStatus(ctx)
+	if status.Overall != admin.ComponentStatusOK {
+		t.Fatalf("expected overall ok when all components healthy, got %#v", status)
+	}
+	minio, exists := status.Components["minio"]
+	if !exists {
+		t.Fatalf("expected minio component in config status, got components: %v", status.Components)
+	}
+	if minio.Status != admin.ComponentStatusOK {
+		t.Fatalf("expected minio ok, got %#v", minio)
+	}
+}
+
+func TestConfigStatusMinIODegraded(t *testing.T) {
+	service := admin.NewService(admin.NewMemoryRepository(), admin.Config{
+		PostgreSQLPing: func(context.Context) error { return nil },
+		RedisPing:      func(context.Context) error { return nil },
+		DashScopeKey:   "sk-test-key",
+		SMTPHost:       "smtp.example.com",
+		MinIOPing:      func(context.Context) error { return errors.New("connection refused") },
+		MinIOEndpoint:  "minio.example.com:9000",
+	})
+	ctx := context.Background()
+
+	status := service.ConfigStatus(ctx)
+	if status.Overall != admin.ComponentStatusDegraded {
+		t.Fatalf("expected degraded when minio ping fails, got %#v", status)
+	}
+	if status.Components["minio"].Status != admin.ComponentStatusDegraded {
+		t.Fatalf("expected minio degraded, got %#v", status.Components["minio"])
+	}
+	if status.Components["minio"].Reason != "unavailable" {
+		t.Fatalf("expected minio reason unavailable, got %q", status.Components["minio"].Reason)
+	}
+}
+
+func TestConfigStatusMinIOMissingConfig(t *testing.T) {
+	service := admin.NewService(admin.NewMemoryRepository(), admin.Config{
+		PostgreSQLPing: func(context.Context) error { return nil },
+		RedisPing:      func(context.Context) error { return nil },
+		DashScopeKey:   "sk-test-key",
+		SMTPHost:       "smtp.example.com",
+	})
+	ctx := context.Background()
+
+	status := service.ConfigStatus(ctx)
+	minio, exists := status.Components["minio"]
+	if !exists {
+		t.Fatalf("expected minio component even when not configured, got components: %v", status.Components)
+	}
+	if minio.Status != admin.ComponentStatusDegraded {
+		t.Fatalf("expected minio degraded when not configured, got %#v", minio)
+	}
+	if minio.Reason != "missing_config" {
+		t.Fatalf("expected minio reason missing_config, got %q", minio.Reason)
+	}
+}
+
 func TestCleanupStatusLookup(t *testing.T) {
 	repo := admin.NewMemoryRepository()
 	repo.SetUser("usr_cl", admin.UserRecord{ID: "usr_cl", Email: "cl@example.com"})

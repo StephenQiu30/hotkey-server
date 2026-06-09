@@ -2,8 +2,11 @@ package http_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	serviceadmin "github.com/StephenQiu30/hotkey-server/internal/service/admin"
@@ -135,6 +138,95 @@ func TestAdminDeleteAccountHTTPFlow(t *testing.T) {
 		t.Fatalf("expected cleanup status 200, got %d with body %s", statusResp.Code, statusResp.Body.String())
 	}
 	assertJSONField(t, statusResp.Body.Bytes(), "cleanupTask.status", "completed")
+}
+
+func TestAdminObservabilityEndpointsReturn403ForNonAdmin(t *testing.T) {
+	adminService := serviceadmin.NewService(serviceadmin.NewMemoryRepository(), serviceadmin.Config{
+		PostgreSQLPing: func(ctx context.Context) error { return nil },
+		RedisPing:      func(ctx context.Context) error { return nil },
+	})
+	router := transportRouterWithDependenciesForTest(transporthttp.Dependencies{
+		AdminService: adminService,
+	})
+	userToken := registerAndLogin(t, router, "non-admin-obs@example.com")
+
+	endpoints := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/v1/admin/config/status"},
+		{http.MethodGet, "/api/v1/admin/audit-logs"},
+		{http.MethodGet, "/api/v1/admin/jobs"},
+		{http.MethodGet, "/api/v1/admin/jobs/failed"},
+		{http.MethodGet, "/api/v1/admin/sources"},
+	}
+	for _, ep := range endpoints {
+		var resp *httptest.ResponseRecorder
+		switch ep.method {
+		case http.MethodGet:
+			resp = getWithBearer(router, ep.path, userToken)
+		default:
+			resp = getWithBearer(router, ep.path, userToken)
+		}
+		if resp.Code != http.StatusForbidden {
+			t.Errorf("expected 403 for %s %s with user token, got %d: %s", ep.method, ep.path, resp.Code, resp.Body.String())
+		}
+	}
+}
+
+func TestAdminConfigStatusDoesNotLeakSecrets(t *testing.T) {
+	realAPIKey := "sk-real-dashscope-key-12345"
+	realSMTPHost := "smtp.example.com"
+
+	adminService := serviceadmin.NewService(serviceadmin.NewMemoryRepository(), serviceadmin.Config{
+		PostgreSQLPing: func(ctx context.Context) error { return nil },
+		RedisPing:      func(ctx context.Context) error { return nil },
+		DashScopeKey:   realAPIKey,
+		SMTPHost:       realSMTPHost,
+		MinIOPing:      func(ctx context.Context) error { return nil },
+		MinIOEndpoint:  "minio.example.com:9000",
+	})
+	router := transportRouterWithDependenciesForTest(transporthttp.Dependencies{
+		AdminService: adminService,
+	})
+	adminToken := registerAdminAndLogin(t, router, "channels-admin@example.com")
+
+	resp := getWithBearer(router, "/api/v1/admin/config/status", adminToken)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected config status 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+
+	body := resp.Body.String()
+	if strings.Contains(body, realAPIKey) {
+		t.Errorf("config status response must not contain real DashScope API key, got: %s", body)
+	}
+
+	// Verify the response structure only contains status/reason, not secret values
+	var parsed map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &parsed); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	status, ok := parsed["status"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected status object in response: %s", body)
+	}
+	components, ok := status["components"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected components object in response: %s", body)
+	}
+	for name, comp := range components {
+		compMap, ok := comp.(map[string]any)
+		if !ok {
+			t.Errorf("expected component %s to be object, got %T", name, comp)
+			continue
+		}
+		// Only "status" and "reason" fields are allowed — no secret values
+		for key := range compMap {
+			if key != "status" && key != "reason" {
+				t.Errorf("component %s has unexpected field %q — must not expose config values", name, key)
+			}
+		}
+	}
 }
 
 func TestAdminCleanupRetryHTTPFlow(t *testing.T) {

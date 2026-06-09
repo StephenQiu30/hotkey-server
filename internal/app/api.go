@@ -19,6 +19,7 @@ import (
 	serviceadmin "github.com/StephenQiu30/hotkey-server/internal/service/admin"
 	serviceauth "github.com/StephenQiu30/hotkey-server/internal/service/auth"
 	servicechannel "github.com/StephenQiu30/hotkey-server/internal/service/channel"
+	servicehotspot "github.com/StephenQiu30/hotkey-server/internal/service/hotspot"
 	transporthttp "github.com/StephenQiu30/hotkey-server/internal/transport/http"
 )
 
@@ -28,7 +29,7 @@ type API struct {
 	db     *sql.DB
 }
 
-func NewAPI(cfg config.Config, logger *slog.Logger, db *sql.DB, redisClient *platformredis.Client) *API {
+func NewAPI(cfg config.Config, logger *slog.Logger, db *sql.DB, redisClient *platformredis.Client, scoringSvc *servicehotspot.ScoringService) *API {
 	var authRepo serviceauth.Repository
 	var azRepo serviceauth.AuthorizationRepository
 	if db != nil {
@@ -100,6 +101,7 @@ func NewAPI(cfg config.Config, logger *slog.Logger, db *sql.DB, redisClient *pla
 				AuthorizationService: azService,
 				ChannelService:       channelSvc,
 				AdminService:         adminService,
+				ScoringService:       scoringSvc,
 			}),
 			ReadHeaderTimeout: 5 * time.Second,
 		},

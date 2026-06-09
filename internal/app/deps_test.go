@@ -137,6 +137,30 @@ func TestNewDepsWithoutDashScopeKey(t *testing.T) {
 	}
 }
 
+func TestNewDepsCreatesScoreRepo(t *testing.T) {
+	cfg := config.Config{
+		DatabaseURL: "postgres://hotkey:hotkey@localhost:5432/hotkey",
+		RedisURL:    "redis://127.0.0.1:6379/0",
+	}
+
+	mockDB, _ := sql.Open("postgres", "postgres://invalid/nil")
+	mockRedis := redis.NewClient("redis://127.0.0.1:1", redis.Options{})
+
+	deps, err := NewDeps(cfg,
+		WithDialer(&testDialer{}),
+		WithDB(mockDB),
+		WithRedisClient(mockRedis),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer deps.Close()
+
+	if deps.ScoreRepo == nil {
+		t.Error("expected ScoreRepo to be set for hotspot scoring wiring")
+	}
+}
+
 func TestDepsClose(t *testing.T) {
 	cfg := config.Config{
 		DatabaseURL: "postgres://hotkey:hotkey@localhost:5432/hotkey",
