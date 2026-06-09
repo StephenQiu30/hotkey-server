@@ -110,7 +110,11 @@ func (s *Service) Ingest(ctx context.Context, input Input) (Result, error) {
 		if !filterResult.Accepted {
 			item.FilterStatus = content.ItemFilterStatusFiltered
 			item.FilterReason = string(filterResult.Reason)
-			return Result{Item: item, Created: false}, nil
+			persisted, err := s.repo.Create(ctx, item)
+			if err != nil {
+				return Result{}, err
+			}
+			return Result{Item: persisted, Created: false}, nil
 		}
 		item.FilterStatus = content.ItemFilterStatusPassed
 		item.FilterReason = ""
