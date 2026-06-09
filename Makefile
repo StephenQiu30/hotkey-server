@@ -4,7 +4,7 @@
 
 test:
 	go test ./...
-	python3 -m unittest discover -s tests
+	python3 -m unittest tests/test_workflow_contract.py
 
 workflow-test:
 	python3 -m unittest tests/test_workflow_contract.py

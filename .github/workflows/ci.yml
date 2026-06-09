@@ -20,7 +20,7 @@ jobs:
       - name: Check markdown whitespace
         run: git diff --check
 
-      - name: Check PRD and plan numbering
+      - name: Check workflow contract
         run: python3 -m unittest tests.test_workflow_contract
 
       - name: Check old runtime is absent

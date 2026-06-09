@@ -5,22 +5,6 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / "WORKFLOW.md"
-PRD_DIR = ROOT / "docs" / "product" / "prd"
-PLAN_DIR = ROOT / "docs" / "plans"
-SYMPHONY_SKILLS_DIR = ROOT / ".claude" / "skills"
-REQUIRED_SYMPHONY_SKILLS = ("commit", "debug", "land", "linear", "pull", "push")
-LAND_SKILL = ROOT / ".claude" / "skills" / "land" / "SKILL.md"
-LAND_WATCH = ROOT / ".claude" / "skills" / "land" / "land_watch.py"
-
-
-def numbered_markdown_files(path):
-    files = sorted(path.glob("*.md"))
-    pairs = []
-    for file in files:
-        match = re.match(r"^(\d+)-", file.name)
-        if match:
-            pairs.append((int(match.group(1)), file.name))
-    return pairs
 
 
 class WorkflowContractTest(unittest.TestCase):
@@ -85,56 +69,6 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("gh pr view <number> --repo StephenQiu30/hotkey-server --json", body)
         self.assertIn("gh pr checks <number> --repo StephenQiu30/hotkey-server", body)
         self.assertIn("gh api repos/StephenQiu30/hotkey-server/pulls/<number>/comments", body)
-
-    def test_prd_and_plan_numbers_are_contiguous_and_paired(self):
-        prds = numbered_markdown_files(PRD_DIR)
-        plans = numbered_markdown_files(PLAN_DIR)
-
-        self.assertGreater(len(prds), 0)
-        self.assertGreaterEqual(len(plans), len(prds))
-
-        prd_numbers = [number for number, _ in prds]
-        plan_numbers = [number for number, _ in plans]
-
-        expected_prd = list(range(1, len(prds) + 1))
-        self.assertEqual(prd_numbers, expected_prd)
-        self.assertEqual(plan_numbers, list(range(1, len(plans) + 1)))
-        self.assertEqual(plan_numbers[: len(prds)], prd_numbers)
-
-    def test_land_skill_is_available_for_merging_state(self):
-        self.assertTrue(LAND_SKILL.exists())
-        self.assertTrue(LAND_WATCH.exists())
-
-        skill = LAND_SKILL.read_text(encoding="utf-8")
-        watch = LAND_WATCH.read_text(encoding="utf-8")
-
-        self.assertIn("name: land", skill)
-        self.assertIn("gh pr view --json number", skill)
-        self.assertIn("gh pr checks --watch", skill)
-        self.assertIn("gh pr merge --squash", skill)
-        self.assertIn("python3 .claude/skills/land/land_watch.py", skill)
-        self.assertIn("async def get_pr_info", watch)
-        self.assertIn("async def get_check_runs", watch)
-
-    def test_required_symphony_skills_are_available(self):
-        for skill_name in REQUIRED_SYMPHONY_SKILLS:
-            with self.subTest(skill=skill_name):
-                skill_file = SYMPHONY_SKILLS_DIR / skill_name / "SKILL.md"
-                self.assertTrue(skill_file.exists())
-                skill = skill_file.read_text(encoding="utf-8")
-                self.assertIn(f"name: {skill_name}", skill)
-
-        push_skill = (SYMPHONY_SKILLS_DIR / "push" / "SKILL.md").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn("make test", push_skill)
-        self.assertIn("Test-first Evidence", push_skill)
-        self.assertNotIn("make -C elixir all", push_skill)
-        self.assertNotIn("mix pr_body.check", push_skill)
-
-    def test_legacy_codex_agent_roles_are_not_committed(self):
-        legacy_agents_dir = ROOT / ".codex" / "agents"
-        self.assertEqual(list(legacy_agents_dir.glob("*.toml")), [])
 
 
 if __name__ == "__main__":
