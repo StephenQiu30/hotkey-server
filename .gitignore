@@ -21,6 +21,7 @@ coverage/
 .env
 .env.local
 .env.*.local
+.env.prod
 **/.claude/settings.local.json
 
 # Logs

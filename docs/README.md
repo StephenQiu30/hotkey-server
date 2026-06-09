@@ -20,7 +20,7 @@
 - `23-25`：n8n 外部自动化编排、热点内容采集和 AI 日报邮件工作流。
 - `26`：系统端到端可运行与基础设施对接（后端接 PG/Redis、Web 接真实 API、Docker 部署）。
 
-Plan 编号独立连续。`1-22` 保持既有 PRD 与 Plan 同号结构；`23+` 允许一个 PRD 通过 frontmatter `downstream` 指向多个后续 Plan，用于进一步拆解执行内容。
+Plan 编号独立连续。`1-12` 与 product PRD 同号一一对应；`13+` 可承接 Design 文档拆出的上线接通或补充执行计划，不要求新增 PRD。`23+` 仍允许一个 PRD 通过 frontmatter `downstream` 指向多个后续 Plan，用于进一步拆解执行内容。
 
 ## 里程碑规则
 

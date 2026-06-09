@@ -91,11 +91,15 @@ class WorkflowContractTest(unittest.TestCase):
         plans = numbered_markdown_files(PLAN_DIR)
 
         self.assertGreater(len(prds), 0)
-        self.assertEqual(len(prds), len(plans))
+        self.assertGreaterEqual(len(plans), len(prds))
 
-        expected = list(range(1, len(prds) + 1))
-        self.assertEqual([number for number, _ in prds], expected)
-        self.assertEqual([number for number, _ in plans], expected)
+        prd_numbers = [number for number, _ in prds]
+        plan_numbers = [number for number, _ in plans]
+
+        expected_prd = list(range(1, len(prds) + 1))
+        self.assertEqual(prd_numbers, expected_prd)
+        self.assertEqual(plan_numbers, list(range(1, len(plans) + 1)))
+        self.assertEqual(plan_numbers[: len(prds)], prd_numbers)
 
     def test_land_skill_is_available_for_merging_state(self):
         self.assertTrue(LAND_SKILL.exists())

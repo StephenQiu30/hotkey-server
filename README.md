@@ -47,19 +47,55 @@ HotKey 帮助内容创作者：
 
 ### 本地运行
 
+先在本机启动 PostgreSQL 与 Redis，再复制环境变量并按 `.env.example` 填写本机连接信息：
+
 ```bash
-# 复制环境变量模板并按需填写
 cp .env.example .env
+# 编辑 .env：确认 HOTKEY_DATABASE_URL、HOTKEY_REDIS_URL 指向本机服务
 
-# 运行测试
 make test
+make run
 
-# 启动 API（默认读取 HOTKEY_HTTP_ADDR，示例为 127.0.0.1:18080）
-HOTKEY_HTTP_ADDR=127.0.0.1:18080 make run
-
-# 健康检查
-curl http://127.0.0.1:18080/healthz
+curl http://127.0.0.1:8080/healthz
 ```
+
+### Docker Compose（本地开发）
+
+PostgreSQL、Redis、MinIO **不在 compose 中启动**，需在本机先行运行；`docker-compose.yml` 仅拉起 API 与 Web 容器，并通过 `host.docker.internal` 连接宿主机服务。
+
+```bash
+cp .env.example .env
+# 确认 POSTGRES_*、REDIS_* 与本机服务一致
+
+make compose-up    # 构建并启动 server + web
+make compose-logs  # 查看日志
+make compose-down  # 停止
+```
+
+- API：`http://127.0.0.1:8080`
+- Web：`http://127.0.0.1:3000`
+
+### Docker Compose（线上 / 自托管全栈）
+
+`docker-compose.prod.yml` 会一并启动 PostgreSQL（pgvector）、Redis、MinIO、n8n 以及 API / Web 应用，适合单机自托管或线上环境。
+
+```bash
+cp .env.prod.example .env.prod
+# 编辑 .env.prod：替换所有 replace-with-* 占位符，设置 PUBLIC_API_URL / PUBLIC_WEB_URL
+
+make compose-prod-up    # 构建并启动全栈
+make compose-prod-logs  # 查看日志
+make compose-prod-down  # 停止（数据卷保留）
+```
+
+| 服务 | 默认端口 | 说明 |
+|------|----------|------|
+| API | 8080 | `WEB_PUBLISHED_PORT` |
+| Web | 3000 | `WEB_FRONTEND_PORT` |
+| n8n | 5678 | `N8N_PUBLISHED_PORT` |
+| PostgreSQL / Redis / MinIO | 仅容器内网 | 不映射宿主机端口 |
+
+首次启动会自动执行 `db/schema.sql` 初始化数据库，并创建 MinIO 存储桶。
 
 ### E2E 测试
 

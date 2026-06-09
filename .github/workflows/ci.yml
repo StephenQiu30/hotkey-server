@@ -35,8 +35,10 @@ jobs:
           test ! -f package.json
           test ! -f pyproject.toml
           test ! -f Dockerfile.api
-          test ! -f docker-compose.yml
-          test ! -f docker-compose.prod.yml
+          test -f Dockerfile
+          test -f docker-compose.yml
+          test -f docker-compose.prod.yml
+          test -f .env.prod.example
 
       - name: Run Go tests
         run: go test ./...

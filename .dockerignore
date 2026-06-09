@@ -1,0 +1,12 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+**/*_test.go
+tests/
+docs/
+n8n/
+scripts/e2e-*.sh
+docker-compose.e2e.yml
+*.md
