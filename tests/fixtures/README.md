@@ -1,12 +1,7 @@
-# E2E Test Fixtures
+# E2E Fixtures
 
 ## seed.sql
 
-PostgreSQL seed data loaded automatically by `docker-compose.e2e.yml`.
-Contains minimal test tenant, users, keywords, sources, contents, and events.
+可选的 E2E 种子数据。CI 在应用 `db/schema.sql` 之后执行本文件。
 
-## git-remote/
-
-Bare Git repository created dynamically by `scripts/e2e-setup.sh` and
-cleaned up by `scripts/e2e-teardown.sh`. Used as a test remote for
-Git-related E2E tests. Not committed to the repository.
+当前仅插入一个测试用户，供后续扩展 E2E 场景使用。

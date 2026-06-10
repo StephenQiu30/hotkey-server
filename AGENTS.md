@@ -15,7 +15,7 @@
 
 ## Go 约定
 
-- 布局：`cmd/`、`internal/`、`migrations/`
+- 布局：`cmd/`、`internal/`、`db/schema.sql`
 - HTTP：`internal/transport/http`
 - 外部集成：`internal/platform`
 - 持久化：`internal/repository/postgres`

@@ -29,7 +29,7 @@ downstream:
 
 ## 2. 文件清单
 
-- 创建：`migrations/000005_jobs.up.sql`
+- 维护：`db/schema.sql`
 - 创建：`internal/platform/redis/`
 - 创建：`internal/queue/`
 - 创建：`internal/scheduler/`

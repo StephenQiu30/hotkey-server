@@ -29,7 +29,7 @@ downstream:
 
 ## 2. 文件清单
 
-- 创建：`migrations/000010_rss_feeds.up.sql`
+- 维护：`db/schema.sql`
 - 创建：`internal/service/rss/`
 - 创建：`internal/repository/postgres/rssrepo/`
 - 创建：`internal/transport/http/handlers/rss/`

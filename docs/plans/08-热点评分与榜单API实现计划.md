@@ -29,7 +29,7 @@ downstream:
 
 ## 2. 文件清单
 
-- 创建：`migrations/000008_hotspot_scores.up.sql`
+- 维护：`db/schema.sql`
 - 创建：`internal/service/hotspot/scoring.go`
 - 创建：`internal/transport/http/handlers/hotspot/`
 - 创建：`internal/worker/handlers/scoring/`

@@ -47,10 +47,10 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Run schema migration
+      - name: Apply database schema
         run: |
-          PGPASSWORD=hotkey_e2e psql -h 127.0.0.1 -p 15432 -U hotkey -d hotkey_e2e -f internal/db/schema.sql
-          PGPASSWORD=hotkey_e2e psql -h 127.0.0.1 -p 15432 -U hotkey -d hotkey_e2e -f tests/fixtures/seed.sql
+          PGPASSWORD=hotkey_e2e psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 15432 -U hotkey -d hotkey_e2e -f db/schema.sql
+          PGPASSWORD=hotkey_e2e psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 15432 -U hotkey -d hotkey_e2e -f tests/fixtures/seed.sql
 
       - name: Run E2E tests
         env:

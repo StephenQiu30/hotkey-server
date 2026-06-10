@@ -28,8 +28,7 @@ internal/
   repository/postgres/       # 持久化
   platform/                  # 外部集成（Redis、DashScope、SMTP、MinIO…）
   worker/、scheduler/、queue/
-migrations/                  # 数据库迁移
-db/schema.sql                # 生产 compose 初始化 schema
+db/schema.sql                # PostgreSQL 完整 schema（唯一事实源）
 docs/                        # PRD、Plan、Design、OpenAPI 静态产物
 openspec/                    # SDD 规范层
 tests/                       # workflow 校验与 E2E

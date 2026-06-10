@@ -29,7 +29,7 @@ downstream:
 
 ## 2. 文件清单
 
-- 创建：`migrations/000007_embeddings_hotspots.up.sql`
+- 维护：`db/schema.sql`
 - 创建：`internal/platform/dashscope/`
 - 创建：`internal/domain/hotspot/`
 - 创建：`internal/service/embedding/`

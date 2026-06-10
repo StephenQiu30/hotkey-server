@@ -1,777 +1,457 @@
--- HotKey Server V1 database schema.
--- Fact source: docs/prd/001-产品总览与上线门禁.md and related V1 PRDs.
--- Target database: PostgreSQL 15+ with pgcrypto, citext, and pgvector.
-
-BEGIN;
+-- HotKey Server PostgreSQL schema (single source of truth).
+-- Apply with: psql -v ON_ERROR_STOP=1 -d <database> -f db/schema.sql
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
-CREATE EXTENSION IF NOT EXISTS citext;
 CREATE EXTENSION IF NOT EXISTS vector;
 
-CREATE OR REPLACE FUNCTION hotkey_touch_updated_at()
-RETURNS trigger AS $$
-BEGIN
-  NEW.updated_at = now();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
 -- ---------------------------------------------------------------------------
--- Accounts, sessions, authorization custody
+-- Users & auth
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE users (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  email citext NOT NULL UNIQUE,
-  display_name text,
-  password_hash text,
-  status text NOT NULL DEFAULT 'pending_email_verification'
-    CHECK (status IN ('pending_email_verification', 'active', 'locked', 'deleting', 'deleted')),
-  timezone text NOT NULL DEFAULT 'Asia/Shanghai',
-  locale text NOT NULL DEFAULT 'zh-CN',
-  email_verified_at timestamptz,
-  last_login_at timestamptz,
-  delete_requested_at timestamptz,
-  deleted_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+    id text PRIMARY KEY,
+    email text NOT NULL UNIQUE,
+    password_hash text NOT NULL,
+    role text NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+    status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+    timezone text NOT NULL DEFAULT 'Asia/Shanghai',
+    daily_send_at text NOT NULL DEFAULT '08:30',
+    email_enabled boolean NOT NULL DEFAULT true,
+    weekly_enabled boolean NOT NULL DEFAULT false,
+    weekly_send_at text NOT NULL DEFAULT '09:00',
+    wechat_open_id text UNIQUE,
+    wechat_union_id text,
+    password_reset_token_hash text,
+    password_reset_expires_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-COMMENT ON TABLE users IS '个人创作者 / 研究者账号。V1 不做团队或组织空间。';
-COMMENT ON COLUMN users.status IS 'pending_email_verification/active/locked/deleting/deleted';
+CREATE INDEX idx_users_role ON users (role);
+CREATE INDEX idx_users_status ON users (status);
+CREATE INDEX idx_users_wechat_open_id ON users (wechat_open_id);
 
-CREATE TRIGGER users_touch_updated_at
-BEFORE UPDATE ON users
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
-
-CREATE TABLE user_sessions (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  session_token_hash text NOT NULL UNIQUE,
-  status text NOT NULL DEFAULT 'active'
-    CHECK (status IN ('active', 'revoked', 'expired')),
-  ip_address inet,
-  user_agent text,
-  last_seen_at timestamptz,
-  expires_at timestamptz NOT NULL,
-  revoked_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+CREATE TABLE refresh_tokens (
+    id text PRIMARY KEY,
+    user_id text NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    token_hash text NOT NULL UNIQUE,
+    expires_at timestamptz NOT NULL,
+    revoked_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX user_sessions_user_id_idx ON user_sessions(user_id);
-CREATE INDEX user_sessions_expires_at_idx ON user_sessions(expires_at);
+CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens (user_id);
+CREATE INDEX idx_refresh_tokens_expires_at ON refresh_tokens (expires_at);
 
-CREATE TRIGGER user_sessions_touch_updated_at
-BEFORE UPDATE ON user_sessions
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
-
-CREATE TABLE platform_providers (
-  id text PRIMARY KEY,
-  display_name text NOT NULL,
-  provider_kind text NOT NULL
-    CHECK (provider_kind IN ('social', 'video', 'community', 'rss', 'news', 'git', 'email', 'ai')),
-  auth_required boolean NOT NULL DEFAULT true,
-  status text NOT NULL DEFAULT 'available'
-    CHECK (status IN ('available', 'degraded', 'limited', 'disabled')),
-  capabilities jsonb NOT NULL DEFAULT '{}'::jsonb,
-  compliance_note text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+CREATE TABLE authorizations (
+    id varchar(64) PRIMARY KEY,
+    user_id varchar(64) NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    platform varchar(32) NOT NULL CHECK (platform IN ('github', 'wechat', 'rss', 'custom')),
+    platform_user_id varchar(255) NOT NULL DEFAULT '',
+    display_name varchar(255) NOT NULL DEFAULT '',
+    access_token_enc text NOT NULL,
+    refresh_token_enc text NOT NULL DEFAULT '',
+    status varchar(32) NOT NULL DEFAULT 'connected' CHECK (status IN ('connected', 'expired', 'revoked')),
+    connected_at timestamptz NOT NULL DEFAULT now(),
+    last_checked_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz,
+    revoked_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (user_id, platform)
 );
 
-COMMENT ON TABLE platform_providers IS '平台能力矩阵。包含 X、Reddit、YouTube、HN、微博、小红书、知乎、B站、微信公众号/RSS、新闻/RSS、Git、邮件等。';
+CREATE INDEX idx_authorizations_user_id ON authorizations (user_id);
+CREATE INDEX idx_authorizations_platform ON authorizations (platform);
+CREATE INDEX idx_authorizations_status ON authorizations (status);
 
-CREATE TRIGGER platform_providers_touch_updated_at
-BEFORE UPDATE ON platform_providers
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
+-- ---------------------------------------------------------------------------
+-- Channels & subscriptions
+-- ---------------------------------------------------------------------------
 
-INSERT INTO platform_providers (id, display_name, provider_kind, auth_required, capabilities)
+CREATE TABLE channels (
+    id text PRIMARY KEY,
+    name text NOT NULL,
+    slug text NOT NULL UNIQUE,
+    description text NOT NULL DEFAULT '',
+    status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_channels_status ON channels (status);
+
+INSERT INTO channels (id, name, slug, description, status)
 VALUES
-  ('x', 'X', 'social', true, '{"keywords": true, "engagement": true}'::jsonb),
-  ('reddit', 'Reddit', 'community', true, '{"keywords": true, "comments": true, "engagement": true}'::jsonb),
-  ('youtube', 'YouTube', 'video', true, '{"keywords": true, "channels": true, "transcript": true}'::jsonb),
-  ('hacker_news', 'Hacker News', 'community', false, '{"public_feed": true, "comments": true}'::jsonb),
-  ('weibo', '微博', 'social', true, '{"keywords": true, "engagement": true}'::jsonb),
-  ('xiaohongshu', '小红书', 'social', true, '{"keywords": true, "notes": true}'::jsonb),
-  ('zhihu', '知乎', 'community', true, '{"questions": true, "answers": true, "articles": true}'::jsonb),
-  ('bilibili', 'B站', 'video', true, '{"videos": true, "dynamics": true, "articles": true}'::jsonb),
-  ('wechat_rss', '微信公众号/RSS', 'rss', false, '{"feeds": true, "articles": true}'::jsonb),
-  ('news_rss', '新闻/RSS', 'news', false, '{"feeds": true, "articles": true}'::jsonb),
-  ('github', 'GitHub', 'git', true, '{"repository_sync": true}'::jsonb),
-  ('smtp', 'SMTP', 'email', true, '{"report_delivery": true}'::jsonb),
-  ('ai', 'AI Provider', 'ai', true, '{"summary": true, "embedding": true}'::jsonb)
-ON CONFLICT (id) DO NOTHING;
+    ('chn_ai_models', 'AI 模型', 'ai-models', 'AI 模型发布、能力更新与评测', 'active'),
+    ('chn_ai_products', 'AI 产品', 'ai-products', 'AI 产品发布、增长与使用场景', 'active'),
+    ('chn_ai_open_source', 'AI 开源', 'ai-open-source', 'AI 开源项目、框架与社区动态', 'active'),
+    ('chn_ai_funding', 'AI 投融资', 'ai-funding', 'AI 公司融资、并购与资本动态', 'active')
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    slug = EXCLUDED.slug,
+    description = EXCLUDED.description,
+    status = EXCLUDED.status,
+    updated_at = now();
 
-CREATE TABLE authorization_connections (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  provider_id text NOT NULL REFERENCES platform_providers(id),
-  connection_kind text NOT NULL DEFAULT 'oauth'
-    CHECK (connection_kind IN ('oauth', 'api_key', 'cookie', 'rss', 'public', 'git_token', 'smtp', 'ai_key')),
-  status text NOT NULL DEFAULT 'draft'
-    CHECK (status IN ('draft', 'connected', 'refreshing', 'limited', 'expired', 'revoked', 'failed')),
-  external_account_id text,
-  external_account_name text,
-  scopes text[] NOT NULL DEFAULT '{}',
-  rate_limit jsonb NOT NULL DEFAULT '{}'::jsonb,
-  last_health_check_at timestamptz,
-  last_success_at timestamptz,
-  last_failure_at timestamptz,
-  failure_category text
-    CHECK (failure_category IS NULL OR failure_category IN ('auth', 'rate_limit', 'network', 'provider_schema', 'content_unavailable', 'policy_restricted', 'unknown')),
-  failure_reason text,
-  expires_at timestamptz,
-  revoked_at timestamptz,
-  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (user_id, provider_id, external_account_id)
+CREATE TABLE user_channel_subscriptions (
+    user_id text NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    channel_id text NOT NULL REFERENCES channels (id) ON DELETE CASCADE,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, channel_id)
 );
 
-COMMENT ON TABLE authorization_connections IS '用户自备平台账号、Git、SMTP 和 AI provider 授权连接。';
+CREATE INDEX idx_user_channel_subscriptions_channel_id
+    ON user_channel_subscriptions (channel_id);
 
-CREATE INDEX authorization_connections_user_idx ON authorization_connections(user_id);
-CREATE INDEX authorization_connections_provider_status_idx ON authorization_connections(provider_id, status);
-
-CREATE TRIGGER authorization_connections_touch_updated_at
-BEFORE UPDATE ON authorization_connections
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
-
-CREATE TABLE credential_secrets (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  connection_id uuid REFERENCES authorization_connections(id) ON DELETE CASCADE,
-  secret_kind text NOT NULL
-    CHECK (secret_kind IN ('access_token', 'refresh_token', 'api_key', 'cookie', 'smtp_password', 'git_token', 'ai_key')),
-  encrypted_payload bytea NOT NULL,
-  encryption_key_id text NOT NULL,
-  payload_checksum text NOT NULL,
-  status text NOT NULL DEFAULT 'active'
-    CHECK (status IN ('active', 'rotated', 'revoked', 'deleted')),
-  expires_at timestamptz,
-  rotated_at timestamptz,
-  revoked_at timestamptz,
-  deleted_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+CREATE TABLE user_keywords (
+    id text PRIMARY KEY,
+    user_id text NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    keyword text NOT NULL,
+    enabled boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-COMMENT ON TABLE credential_secrets IS '敏感凭据密文仓。禁止存储或记录明文 token。';
+CREATE INDEX idx_user_keywords_user_id ON user_keywords (user_id);
+CREATE INDEX idx_user_keywords_enabled ON user_keywords (enabled);
 
-CREATE INDEX credential_secrets_user_idx ON credential_secrets(user_id);
-CREATE INDEX credential_secrets_connection_idx ON credential_secrets(connection_id);
+CREATE TABLE system_settings (
+    key text PRIMARY KEY,
+    value text NOT NULL,
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
 
-CREATE TRIGGER credential_secrets_touch_updated_at
-BEFORE UPDATE ON credential_secrets
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
+INSERT INTO system_settings (key, value)
+VALUES ('default_daily_send_at', '08:30')
+ON CONFLICT (key) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
--- Topics, sources, scheduling
+-- Sources & collection
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE monitored_topics (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  name text NOT NULL,
-  description text,
-  semantic_prompt text,
-  include_keywords text[] NOT NULL DEFAULT '{}',
-  exclude_keywords text[] NOT NULL DEFAULT '{}',
-  languages text[] NOT NULL DEFAULT '{}',
-  regions text[] NOT NULL DEFAULT '{}',
-  status text NOT NULL DEFAULT 'draft'
-    CHECK (status IN ('draft', 'active', 'paused', 'invalid', 'deleting', 'deleted')),
-  similarity_threshold numeric(5,4) NOT NULL DEFAULT 0.7800 CHECK (similarity_threshold >= 0 AND similarity_threshold <= 1),
-  heat_threshold numeric(8,4) NOT NULL DEFAULT 0,
-  collection_frequency_minutes integer NOT NULL DEFAULT 60 CHECK (collection_frequency_minutes >= 5),
-  obsidian_folder text,
-  report_enabled boolean NOT NULL DEFAULT true,
-  last_collected_at timestamptz,
-  deleted_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (user_id, name)
+CREATE TABLE sources (
+    id text PRIMARY KEY,
+    name text NOT NULL,
+    type text NOT NULL CHECK (type IN (
+        'rss', 'public_page', 'hackernews', 'wechat_mp', 'x', 'xiaohongshu'
+    )),
+    url text NOT NULL UNIQUE,
+    status text NOT NULL DEFAULT 'enabled' CHECK (status IN ('enabled', 'disabled')),
+    compliance_note text NOT NULL DEFAULT '',
+    fetch_interval_min integer NOT NULL CHECK (fetch_interval_min > 0),
+    rate_limit_per_hour integer NOT NULL DEFAULT 0 CHECK (rate_limit_per_hour >= 0),
+    last_error text NOT NULL DEFAULT '',
+    last_collected_at timestamptz,
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    CONSTRAINT sources_compliance_check CHECK (
+        type NOT IN ('public_page', 'wechat_mp', 'x', 'xiaohongshu')
+        OR compliance_note ~ E'\\S'
+    )
 );
 
-COMMENT ON TABLE monitored_topics IS '用户监控主题与关键词配置。';
+CREATE INDEX idx_sources_status ON sources (status);
+CREATE INDEX idx_sources_type ON sources (type);
 
-CREATE INDEX monitored_topics_user_status_idx ON monitored_topics(user_id, status);
-
-CREATE TRIGGER monitored_topics_touch_updated_at
-BEFORE UPDATE ON monitored_topics
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
-
-CREATE TABLE topic_sources (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  topic_id uuid NOT NULL REFERENCES monitored_topics(id) ON DELETE CASCADE,
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  provider_id text NOT NULL REFERENCES platform_providers(id),
-  connection_id uuid REFERENCES authorization_connections(id) ON DELETE SET NULL,
-  status text NOT NULL DEFAULT 'active'
-    CHECK (status IN ('active', 'paused', 'auth_required', 'limited', 'failed', 'deleted')),
-  config jsonb NOT NULL DEFAULT '{}'::jsonb,
-  last_collected_at timestamptz,
-  last_failure_at timestamptz,
-  failure_reason text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (topic_id, provider_id, connection_id)
+CREATE TABLE source_channel_links (
+    source_id text NOT NULL REFERENCES sources (id) ON DELETE CASCADE,
+    channel_id text NOT NULL REFERENCES channels (id) ON DELETE CASCADE,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (source_id, channel_id)
 );
 
-CREATE INDEX topic_sources_topic_idx ON topic_sources(topic_id);
-CREATE INDEX topic_sources_user_provider_idx ON topic_sources(user_id, provider_id, status);
+CREATE INDEX idx_source_channel_links_channel_id
+    ON source_channel_links (channel_id);
 
-CREATE TRIGGER topic_sources_touch_updated_at
-BEFORE UPDATE ON topic_sources
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
-
-CREATE TABLE feed_sources (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  provider_id text NOT NULL REFERENCES platform_providers(id),
-  url text NOT NULL,
-  title text,
-  source_kind text NOT NULL
-    CHECK (source_kind IN ('rss', 'wechat_public_article', 'news_rss', 'web_page')),
-  status text NOT NULL DEFAULT 'active'
-    CHECK (status IN ('active', 'invalid_url', 'fetch_failed', 'parse_failed', 'stale', 'disabled', 'deleted')),
-  last_fetched_at timestamptz,
-  last_success_at timestamptz,
-  last_failure_at timestamptz,
-  failure_reason text,
-  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
-  deleted_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (user_id, provider_id, url)
+CREATE TABLE collection_runs (
+    id text PRIMARY KEY,
+    source_id text NOT NULL REFERENCES sources (id) ON DELETE CASCADE,
+    status text NOT NULL CHECK (status IN ('success', 'failed')),
+    error_type text NOT NULL DEFAULT '',
+    items_fetched integer NOT NULL DEFAULT 0 CHECK (items_fetched >= 0),
+    error text NOT NULL DEFAULT '',
+    started_at timestamptz NOT NULL,
+    finished_at timestamptz NOT NULL,
+    created_at timestamptz NOT NULL,
+    CHECK (finished_at >= started_at),
+    CHECK (status <> 'failed' OR error ~ E'\\S')
 );
 
-CREATE INDEX feed_sources_user_status_idx ON feed_sources(user_id, status);
+CREATE INDEX idx_collection_runs_source_id_started_at
+    ON collection_runs (source_id, started_at DESC);
 
-CREATE TRIGGER feed_sources_touch_updated_at
-BEFORE UPDATE ON feed_sources
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
+COMMENT ON COLUMN collection_runs.error_type IS
+    'Classifies the failure reason: auth_failed, rate_limited, generic, or empty for success.';
 
-CREATE TABLE collection_jobs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  topic_id uuid REFERENCES monitored_topics(id) ON DELETE SET NULL,
-  topic_source_id uuid REFERENCES topic_sources(id) ON DELETE SET NULL,
-  provider_id text NOT NULL REFERENCES platform_providers(id),
-  connection_id uuid REFERENCES authorization_connections(id) ON DELETE SET NULL,
-  feed_source_id uuid REFERENCES feed_sources(id) ON DELETE SET NULL,
-  status text NOT NULL DEFAULT 'queued'
-    CHECK (status IN ('queued', 'running', 'rate_limited', 'auth_failed', 'provider_failed', 'normalized', 'empty', 'completed', 'failed', 'cancelled')),
-  idempotency_key text NOT NULL UNIQUE,
-  scheduled_for timestamptz NOT NULL DEFAULT now(),
-  window_start timestamptz,
-  window_end timestamptz,
-  started_at timestamptz,
-  completed_at timestamptz,
-  attempt_count integer NOT NULL DEFAULT 0,
-  max_attempts integer NOT NULL DEFAULT 3,
-  next_retry_at timestamptz,
-  failure_category text
-    CHECK (failure_category IS NULL OR failure_category IN ('auth', 'rate_limit', 'network', 'provider_schema', 'content_unavailable', 'policy_restricted', 'unknown')),
-  failure_reason text,
-  stats jsonb NOT NULL DEFAULT '{}'::jsonb,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+CREATE TABLE x_oauth_states (
+    state text PRIMARY KEY,
+    code_verifier text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL DEFAULT (now() + interval '10 minutes')
 );
 
-CREATE INDEX collection_jobs_due_idx ON collection_jobs(status, scheduled_for);
-CREATE INDEX collection_jobs_user_topic_idx ON collection_jobs(user_id, topic_id, created_at DESC);
-CREATE INDEX collection_jobs_provider_status_idx ON collection_jobs(provider_id, status);
+CREATE INDEX idx_x_oauth_states_expires_at ON x_oauth_states (expires_at);
 
-CREATE TRIGGER collection_jobs_touch_updated_at
-BEFORE UPDATE ON collection_jobs
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
+CREATE TABLE x_credentials (
+    source_id text PRIMARY KEY REFERENCES sources (id) ON DELETE CASCADE,
+    access_token text NOT NULL,
+    refresh_token text NOT NULL DEFAULT '',
+    expires_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
 
 -- ---------------------------------------------------------------------------
--- Object storage, raw and normalized content
+-- Source items & deduplication
 -- ---------------------------------------------------------------------------
-
-CREATE TABLE storage_objects (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  bucket text NOT NULL,
-  object_key text NOT NULL,
-  object_kind text NOT NULL
-    CHECK (object_kind IN ('raw_response', 'content_snapshot', 'media_ref', 'markdown_export', 'email_archive', 'test_fixture')),
-  content_type text,
-  provider_id text REFERENCES platform_providers(id),
-  source_platform_item_id text,
-  retention_policy text NOT NULL
-    CHECK (retention_policy IN ('raw_30_days', 'short_cache_7_days', 'derived_long_term', 'audit_required')),
-  status text NOT NULL DEFAULT 'active'
-    CHECK (status IN ('active', 'scheduled_for_expiry', 'expired', 'delete_pending', 'deleted', 'delete_failed')),
-  checksum text,
-  byte_size bigint,
-  expires_at timestamptz,
-  delete_requested_at timestamptz,
-  deleted_at timestamptz,
-  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (bucket, object_key)
-);
-
-COMMENT ON TABLE storage_objects IS 'MinIO 对象索引。原始内容默认 raw_30_days。';
-
-CREATE INDEX storage_objects_user_status_idx ON storage_objects(user_id, status);
-CREATE INDEX storage_objects_expires_idx ON storage_objects(status, expires_at);
-
-CREATE TRIGGER storage_objects_touch_updated_at
-BEFORE UPDATE ON storage_objects
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
 
 CREATE TABLE source_items (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  provider_id text NOT NULL REFERENCES platform_providers(id),
-  connection_id uuid REFERENCES authorization_connections(id) ON DELETE SET NULL,
-  collection_job_id uuid REFERENCES collection_jobs(id) ON DELETE SET NULL,
-  feed_source_id uuid REFERENCES feed_sources(id) ON DELETE SET NULL,
-  raw_object_id uuid REFERENCES storage_objects(id) ON DELETE SET NULL,
-  source_item_id text NOT NULL,
-  canonical_url text,
-  author_name text,
-  author_handle text,
-  title text,
-  body_text text,
-  language text,
-  content_kind text NOT NULL DEFAULT 'post'
-    CHECK (content_kind IN ('post', 'comment', 'article', 'video', 'dynamic', 'rss_item', 'news_article')),
-  visibility text NOT NULL DEFAULT 'public'
-    CHECK (visibility IN ('public', 'limited', 'deleted', 'unavailable', 'metadata_only')),
-  published_at timestamptz,
-  fetched_at timestamptz NOT NULL DEFAULT now(),
-  engagement jsonb NOT NULL DEFAULT '{}'::jsonb,
-  media_refs jsonb NOT NULL DEFAULT '[]'::jsonb,
-  license_hint text,
-  content_hash text NOT NULL,
-  dedupe_key text,
-  status text NOT NULL DEFAULT 'normalized'
-    CHECK (status IN ('raw_received', 'normalized', 'filtered_out', 'similarity_matched', 'duplicate', 'ready_for_clustering', 'processing_failed')),
-  failure_reason text,
-  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (user_id, provider_id, source_item_id)
+    id text PRIMARY KEY,
+    source_id text NOT NULL REFERENCES sources (id) ON DELETE CASCADE,
+    title text NOT NULL CHECK (title ~ E'\\S'),
+    snippet text NOT NULL CHECK (snippet ~ E'\\S'),
+    raw_url text NOT NULL,
+    canonical_url text NOT NULL,
+    published_at timestamptz,
+    content_hash text NOT NULL,
+    language text NOT NULL DEFAULT 'unknown',
+    status text NOT NULL DEFAULT 'primary' CHECK (status IN ('primary', 'duplicate')),
+    duplicate_of_item_id text REFERENCES source_items (id) ON DELETE SET NULL,
+    filter_status text NOT NULL DEFAULT 'unknown' CHECK (filter_status IN ('unknown', 'passed', 'filtered')),
+    filter_reason text NOT NULL DEFAULT '',
+    quality_score double precision NOT NULL DEFAULT 0.0,
+    summarizable boolean NOT NULL DEFAULT false,
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    UNIQUE (canonical_url),
+    CHECK (
+        (status = 'primary' AND duplicate_of_item_id IS NULL) OR
+        (status = 'duplicate' AND duplicate_of_item_id IS NOT NULL)
+    )
 );
 
-CREATE INDEX source_items_user_provider_idx ON source_items(user_id, provider_id, fetched_at DESC);
-CREATE INDEX source_items_canonical_url_idx ON source_items(canonical_url) WHERE canonical_url IS NOT NULL;
-CREATE INDEX source_items_content_hash_idx ON source_items(user_id, content_hash);
-CREATE INDEX source_items_status_idx ON source_items(status, fetched_at DESC);
+CREATE INDEX idx_source_items_source_id_created_at
+    ON source_items (source_id, created_at DESC);
 
-CREATE TRIGGER source_items_touch_updated_at
-BEFORE UPDATE ON source_items
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
+CREATE INDEX idx_source_items_content_hash
+    ON source_items (content_hash);
 
-CREATE TABLE topic_content_matches (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  topic_id uuid NOT NULL REFERENCES monitored_topics(id) ON DELETE CASCADE,
-  source_item_id uuid NOT NULL REFERENCES source_items(id) ON DELETE CASCADE,
-  match_status text NOT NULL DEFAULT 'pending'
-    CHECK (match_status IN ('pending', 'filtered_out', 'similarity_matched', 'duplicate', 'ready_for_clustering', 'failed')),
-  keyword_score numeric(6,5),
-  similarity_score numeric(6,5),
-  quality_score numeric(6,5),
-  filter_reason text,
-  matched_keywords text[] NOT NULL DEFAULT '{}',
-  duplicate_of_source_item_id uuid REFERENCES source_items(id) ON DELETE SET NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (topic_id, source_item_id)
-);
-
-CREATE INDEX topic_content_matches_topic_status_idx ON topic_content_matches(topic_id, match_status);
-CREATE INDEX topic_content_matches_source_idx ON topic_content_matches(source_item_id);
-
-CREATE TRIGGER topic_content_matches_touch_updated_at
-BEFORE UPDATE ON topic_content_matches
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
-
-CREATE TABLE content_dedupe_groups (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  topic_id uuid REFERENCES monitored_topics(id) ON DELETE CASCADE,
-  primary_source_item_id uuid REFERENCES source_items(id) ON DELETE SET NULL,
-  dedupe_type text NOT NULL
-    CHECK (dedupe_type IN ('source_id', 'canonical_url', 'text_hash', 'near_duplicate')),
-  dedupe_key text NOT NULL,
-  member_count integer NOT NULL DEFAULT 0,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (user_id, topic_id, dedupe_type, dedupe_key)
-);
-
-CREATE TABLE content_dedupe_members (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  dedupe_group_id uuid NOT NULL REFERENCES content_dedupe_groups(id) ON DELETE CASCADE,
-  source_item_id uuid NOT NULL REFERENCES source_items(id) ON DELETE CASCADE,
-  similarity_score numeric(6,5),
-  created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (dedupe_group_id, source_item_id)
-);
-
-CREATE TRIGGER content_dedupe_groups_touch_updated_at
-BEFORE UPDATE ON content_dedupe_groups
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
-
-CREATE TABLE content_embeddings (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  source_item_id uuid NOT NULL REFERENCES source_items(id) ON DELETE CASCADE,
-  topic_id uuid REFERENCES monitored_topics(id) ON DELETE CASCADE,
-  embedding_model text NOT NULL,
-  embedding_dimensions integer NOT NULL DEFAULT 1536,
-  content_hash text NOT NULL,
-  embedding vector(1536) NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (source_item_id, embedding_model, content_hash)
-);
-
-CREATE INDEX content_embeddings_user_topic_idx ON content_embeddings(user_id, topic_id);
-CREATE INDEX content_embeddings_vector_idx ON content_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+CREATE INDEX idx_source_items_status
+    ON source_items (status);
 
 -- ---------------------------------------------------------------------------
--- Hotspot events, AI summaries
+-- Embeddings & hotspots
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE hotspot_events (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  topic_id uuid NOT NULL REFERENCES monitored_topics(id) ON DELETE CASCADE,
-  status text NOT NULL DEFAULT 'forming'
-    CHECK (status IN ('forming', 'active', 'updated', 'cooling', 'archived', 'suppressed')),
-  title text NOT NULL,
-  short_summary text,
-  evidence_state text NOT NULL DEFAULT 'single_source'
-    CHECK (evidence_state IN ('sufficient', 'single_source', 'low_confidence', 'conflicting')),
-  heat_score numeric(8,4) NOT NULL DEFAULT 0,
-  relevance_score numeric(6,5) NOT NULL DEFAULT 0,
-  credibility_score numeric(6,5) NOT NULL DEFAULT 0,
-  freshness_score numeric(6,5) NOT NULL DEFAULT 0,
-  trend_score numeric(8,4) NOT NULL DEFAULT 0,
-  first_seen_at timestamptz NOT NULL DEFAULT now(),
-  last_seen_at timestamptz NOT NULL DEFAULT now(),
-  last_scored_at timestamptz,
-  archived_at timestamptz,
-  suppressed_at timestamptz,
-  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+CREATE TABLE item_embeddings (
+    item_id text NOT NULL REFERENCES source_items (id) ON DELETE CASCADE,
+    model text NOT NULL DEFAULT 'text-embedding-v2',
+    embedding vector(1536),
+    text_hash text NOT NULL DEFAULT '',
+    status text NOT NULL DEFAULT 'succeeded' CHECK (status IN ('succeeded', 'failed', 'failed_config')),
+    last_error text,
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    PRIMARY KEY (item_id),
+    CHECK (
+        (status = 'succeeded' AND embedding IS NOT NULL) OR
+        (status IN ('failed', 'failed_config'))
+    )
 );
 
-CREATE INDEX hotspot_events_topic_status_idx ON hotspot_events(topic_id, status, heat_score DESC);
-CREATE INDEX hotspot_events_user_seen_idx ON hotspot_events(user_id, last_seen_at DESC);
+CREATE INDEX idx_item_embeddings_status_updated_at
+    ON item_embeddings (status, updated_at DESC);
 
-CREATE TRIGGER hotspot_events_touch_updated_at
-BEFORE UPDATE ON hotspot_events
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
+CREATE INDEX idx_item_embeddings_embedding
+    ON item_embeddings USING hnsw (embedding vector_cosine_ops)
+    WHERE status = 'succeeded';
 
-CREATE TABLE event_sources (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  event_id uuid NOT NULL REFERENCES hotspot_events(id) ON DELETE CASCADE,
-  source_item_id uuid NOT NULL REFERENCES source_items(id) ON DELETE CASCADE,
-  evidence_role text NOT NULL DEFAULT 'supporting'
-    CHECK (evidence_role IN ('primary', 'supporting', 'conflicting', 'context')),
-  confidence_score numeric(6,5),
-  added_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (event_id, source_item_id)
+CREATE TABLE hotspot_clusters (
+    id text PRIMARY KEY,
+    title text NOT NULL CHECK (title ~ E'\\S'),
+    keywords text[] NOT NULL DEFAULT '{}',
+    centroid vector(1536) NOT NULL,
+    window_start timestamptz NOT NULL,
+    window_end timestamptz NOT NULL,
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    CHECK (window_end > window_start)
 );
 
-CREATE INDEX event_sources_event_idx ON event_sources(event_id);
-CREATE INDEX event_sources_source_idx ON event_sources(source_item_id);
+CREATE INDEX idx_hotspot_clusters_window
+    ON hotspot_clusters (window_start, window_end);
 
-CREATE TABLE event_embeddings (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  event_id uuid NOT NULL REFERENCES hotspot_events(id) ON DELETE CASCADE,
-  embedding_model text NOT NULL,
-  embedding_dimensions integer NOT NULL DEFAULT 1536,
-  summary_hash text NOT NULL,
-  embedding vector(1536) NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (event_id, embedding_model, summary_hash)
+CREATE INDEX idx_hotspot_clusters_centroid
+    ON hotspot_clusters USING hnsw (centroid vector_cosine_ops);
+
+CREATE TABLE hotspot_items (
+    cluster_id text NOT NULL REFERENCES hotspot_clusters (id) ON DELETE CASCADE,
+    item_id text NOT NULL REFERENCES source_items (id) ON DELETE CASCADE,
+    similarity double precision NOT NULL CHECK (similarity >= -1 AND similarity <= 1),
+    created_at timestamptz NOT NULL,
+    PRIMARY KEY (cluster_id, item_id)
 );
 
-CREATE INDEX event_embeddings_user_idx ON event_embeddings(user_id);
-CREATE INDEX event_embeddings_vector_idx ON event_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+CREATE INDEX idx_hotspot_items_item_id
+    ON hotspot_items (item_id);
 
-CREATE TABLE ai_event_summaries (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  event_id uuid NOT NULL REFERENCES hotspot_events(id) ON DELETE CASCADE,
-  status text NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending', 'generating', 'generated', 'needs_refresh', 'failed', 'suppressed')),
-  model_provider text NOT NULL,
-  model_name text NOT NULL,
-  prompt_version text NOT NULL,
-  output_schema_version text NOT NULL,
-  summary_json jsonb,
-  source_item_ids uuid[] NOT NULL DEFAULT '{}',
-  failure_reason text,
-  generated_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (event_id, prompt_version, output_schema_version)
+CREATE TABLE hotspot_scores (
+    id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    cluster_id text NOT NULL REFERENCES hotspot_clusters (id) ON DELETE CASCADE,
+    total_score double precision NOT NULL DEFAULT 0,
+    source_count_score double precision NOT NULL DEFAULT 0,
+    freshness_score double precision NOT NULL DEFAULT 0,
+    relevance_score double precision NOT NULL DEFAULT 0,
+    propagation_score double precision NOT NULL DEFAULT 0,
+    quality_score double precision NOT NULL DEFAULT 0,
+    explanation jsonb NOT NULL DEFAULT '{}',
+    score_version text NOT NULL DEFAULT 'v1',
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    UNIQUE (cluster_id, score_version)
 );
 
-CREATE INDEX ai_event_summaries_event_status_idx ON ai_event_summaries(event_id, status);
+CREATE INDEX idx_hotspot_scores_cluster_id
+    ON hotspot_scores (cluster_id);
 
-CREATE TRIGGER ai_event_summaries_touch_updated_at
-BEFORE UPDATE ON ai_event_summaries
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
+CREATE INDEX idx_hotspot_scores_total_score
+    ON hotspot_scores (total_score DESC);
 
 -- ---------------------------------------------------------------------------
--- Obsidian Git sync and email reports
+-- AI summaries & reports
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE obsidian_vaults (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  git_connection_id uuid NOT NULL REFERENCES authorization_connections(id) ON DELETE RESTRICT,
-  provider text NOT NULL DEFAULT 'github',
-  repository_owner text NOT NULL,
-  repository_name text NOT NULL,
-  branch_name text NOT NULL DEFAULT 'main',
-  vault_path text NOT NULL,
-  status text NOT NULL DEFAULT 'connected'
-    CHECK (status IN ('connected', 'expired', 'permission_limited', 'revoked', 'failed')),
-  last_commit_sha text,
-  last_synced_at timestamptz,
-  failure_reason text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (user_id, provider, repository_owner, repository_name, branch_name, vault_path)
+CREATE TABLE ai_summaries (
+    id text PRIMARY KEY,
+    cluster_id text NOT NULL,
+    prompt_version text NOT NULL,
+    summary text NOT NULL,
+    status text NOT NULL CHECK (status IN ('succeeded', 'degraded', 'failed_config', 'failed')),
+    last_error text NOT NULL DEFAULT '',
+    source_refs_json jsonb NOT NULL DEFAULT '[]'::jsonb,
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL
 );
 
-CREATE INDEX obsidian_vaults_user_status_idx ON obsidian_vaults(user_id, status);
+CREATE UNIQUE INDEX idx_ai_summaries_cluster_prompt
+    ON ai_summaries (cluster_id, prompt_version);
 
-CREATE TRIGGER obsidian_vaults_touch_updated_at
-BEFORE UPDATE ON obsidian_vaults
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
-
-CREATE TABLE git_sync_jobs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  vault_id uuid NOT NULL REFERENCES obsidian_vaults(id) ON DELETE CASCADE,
-  event_id uuid REFERENCES hotspot_events(id) ON DELETE SET NULL,
-  report_run_id uuid,
-  sync_kind text NOT NULL
-    CHECK (sync_kind IN ('event_note', 'daily_index', 'weekly_index', 'test')),
-  status text NOT NULL DEFAULT 'queued'
-    CHECK (status IN ('queued', 'rendering', 'committing', 'conflicted', 'completed', 'failed', 'cancelled')),
-  idempotency_key text NOT NULL UNIQUE,
-  file_path text NOT NULL,
-  markdown_object_id uuid REFERENCES storage_objects(id) ON DELETE SET NULL,
-  commit_sha text,
-  commit_url text,
-  failure_reason text,
-  attempt_count integer NOT NULL DEFAULT 0,
-  next_retry_at timestamptz,
-  completed_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+CREATE TABLE daily_reports (
+    id text PRIMARY KEY,
+    date date NOT NULL,
+    channel_id text NOT NULL DEFAULT '',
+    user_id text NOT NULL DEFAULT '',
+    prompt_version text NOT NULL,
+    input_hotspot_ids_json jsonb NOT NULL DEFAULT '[]'::jsonb,
+    body text NOT NULL,
+    status text NOT NULL CHECK (status IN ('succeeded', 'degraded', 'failed_config', 'failed')),
+    last_error text NOT NULL DEFAULT '',
+    source_refs_json jsonb NOT NULL DEFAULT '[]'::jsonb,
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL
 );
 
-CREATE INDEX git_sync_jobs_user_status_idx ON git_sync_jobs(user_id, status, created_at DESC);
-CREATE INDEX git_sync_jobs_event_idx ON git_sync_jobs(event_id);
+CREATE UNIQUE INDEX idx_daily_reports_date_channel_user
+    ON daily_reports (date, channel_id, user_id);
 
-CREATE TRIGGER git_sync_jobs_touch_updated_at
-BEFORE UPDATE ON git_sync_jobs
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
+CREATE INDEX idx_daily_reports_status
+    ON daily_reports (status);
 
-CREATE TABLE report_subscriptions (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  report_type text NOT NULL CHECK (report_type IN ('daily', 'weekly')),
-  status text NOT NULL DEFAULT 'enabled'
-    CHECK (status IN ('enabled', 'disabled', 'invalid_email', 'paused_due_to_bounce')),
-  timezone text NOT NULL DEFAULT 'Asia/Shanghai',
-  send_time_local time NOT NULL DEFAULT '08:30',
-  topic_ids uuid[] NOT NULL DEFAULT '{}',
-  recipient_email citext NOT NULL,
-  last_sent_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (user_id, report_type, recipient_email)
-);
+-- ---------------------------------------------------------------------------
+-- RSS, email & audit
+-- ---------------------------------------------------------------------------
 
-CREATE INDEX report_subscriptions_due_idx ON report_subscriptions(status, report_type, send_time_local);
-
-CREATE TRIGGER report_subscriptions_touch_updated_at
-BEFORE UPDATE ON report_subscriptions
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
-
-CREATE TABLE report_runs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  subscription_id uuid REFERENCES report_subscriptions(id) ON DELETE SET NULL,
-  report_type text NOT NULL CHECK (report_type IN ('daily', 'weekly')),
-  status text NOT NULL DEFAULT 'scheduled'
-    CHECK (status IN ('scheduled', 'rendering', 'sending', 'sent', 'retrying', 'failed', 'skipped_no_content')),
-  period_start timestamptz NOT NULL,
-  period_end timestamptz NOT NULL,
-  idempotency_key text NOT NULL UNIQUE,
-  rendered_object_id uuid REFERENCES storage_objects(id) ON DELETE SET NULL,
-  event_count integer NOT NULL DEFAULT 0,
-  failure_reason text,
-  sent_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE INDEX report_runs_user_period_idx ON report_runs(user_id, report_type, period_start DESC);
-CREATE INDEX report_runs_status_idx ON report_runs(status, created_at DESC);
-
-CREATE TRIGGER report_runs_touch_updated_at
-BEFORE UPDATE ON report_runs
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
-
-ALTER TABLE git_sync_jobs
-  ADD CONSTRAINT git_sync_jobs_report_run_fk
-  FOREIGN KEY (report_run_id) REFERENCES report_runs(id) ON DELETE SET NULL;
-
-CREATE TABLE report_event_items (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  report_run_id uuid NOT NULL REFERENCES report_runs(id) ON DELETE CASCADE,
-  event_id uuid NOT NULL REFERENCES hotspot_events(id) ON DELETE CASCADE,
-  rank_position integer NOT NULL,
-  section text NOT NULL DEFAULT 'hot',
-  created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (report_run_id, event_id)
+CREATE TABLE rss_feeds (
+    user_id text NOT NULL PRIMARY KEY,
+    token_hash text NOT NULL,
+    enabled boolean NOT NULL DEFAULT true,
+    last_accessed_at timestamptz,
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    UNIQUE (token_hash)
 );
 
 CREATE TABLE email_deliveries (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  report_run_id uuid REFERENCES report_runs(id) ON DELETE SET NULL,
-  provider_id text REFERENCES platform_providers(id),
-  recipient_email citext NOT NULL,
-  status text NOT NULL DEFAULT 'scheduled'
-    CHECK (status IN ('scheduled', 'rendering', 'sending', 'sent', 'retrying', 'failed', 'skipped_no_content')),
-  provider_message_id text,
-  attempt_count integer NOT NULL DEFAULT 0,
-  last_attempt_at timestamptz,
-  next_retry_at timestamptz,
-  failure_reason text,
-  sent_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+    id text PRIMARY KEY,
+    recipient_user_id text NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    recipient_email text NOT NULL,
+    report_id text NOT NULL,
+    status text NOT NULL CHECK (status IN ('pending', 'sent', 'failed', 'failed_config')),
+    attempt integer NOT NULL DEFAULT 0 CHECK (attempt >= 0),
+    last_error text,
+    sent_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX email_deliveries_user_status_idx ON email_deliveries(user_id, status, created_at DESC);
-CREATE INDEX email_deliveries_report_idx ON email_deliveries(report_run_id);
+CREATE INDEX idx_email_deliveries_recipient_user_id
+    ON email_deliveries (recipient_user_id);
 
-CREATE TRIGGER email_deliveries_touch_updated_at
-BEFORE UPDATE ON email_deliveries
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
+CREATE INDEX idx_email_deliveries_report_id
+    ON email_deliveries (report_id);
+
+CREATE INDEX idx_email_deliveries_status
+    ON email_deliveries (status);
+
+CREATE TABLE audit_logs (
+    id text PRIMARY KEY,
+    actor_id text NOT NULL,
+    action text NOT NULL,
+    resource_type text NOT NULL,
+    resource_id text,
+    result text NOT NULL,
+    metadata jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (action IN ('create', 'update', 'delete')),
+    CHECK (result IN ('success', 'failure'))
+);
+
+CREATE INDEX idx_audit_logs_actor_created_at
+    ON audit_logs (actor_id, created_at DESC);
+
+CREATE INDEX idx_audit_logs_resource_created_at
+    ON audit_logs (resource_type, resource_id, created_at DESC);
+
+CREATE INDEX idx_audit_logs_created_at
+    ON audit_logs (created_at DESC, id DESC);
 
 -- ---------------------------------------------------------------------------
--- Audit, revocation, deletion, cleanup
+-- Jobs & admin
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE audit_events (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid REFERENCES users(id) ON DELETE SET NULL,
-  actor_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
-  event_type text NOT NULL,
-  resource_type text NOT NULL,
-  resource_id uuid,
-  ip_address inet,
-  user_agent text,
-  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
-  created_at timestamptz NOT NULL DEFAULT now()
+CREATE TABLE jobs (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_type text NOT NULL,
+    payload jsonb NOT NULL,
+    status text NOT NULL,
+    attempt integer NOT NULL DEFAULT 0 CHECK (attempt >= 0),
+    max_attempts integer NOT NULL DEFAULT 3 CHECK (max_attempts > 0),
+    idempotency_key text NOT NULL,
+    last_error text,
+    scheduled_at timestamptz NOT NULL DEFAULT now(),
+    started_at timestamptz,
+    finished_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (idempotency_key),
+    CHECK (attempt <= max_attempts)
 );
 
-COMMENT ON TABLE audit_events IS '用户可见和运维可追踪审计事件。metadata 禁止写入明文凭据。';
+CREATE INDEX idx_jobs_status_scheduled_at
+    ON jobs (status, scheduled_at);
 
-CREATE INDEX audit_events_user_time_idx ON audit_events(user_id, created_at DESC);
-CREATE INDEX audit_events_resource_idx ON audit_events(resource_type, resource_id);
-
-CREATE TABLE deletion_requests (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  request_type text NOT NULL
-    CHECK (request_type IN ('account', 'topic', 'connection', 'feed_source', 'event')),
-  resource_type text NOT NULL,
-  resource_id uuid,
-  status text NOT NULL DEFAULT 'queued'
-    CHECK (status IN ('queued', 'running', 'blocked_by_retry', 'partially_failed', 'completed')),
-  requested_at timestamptz NOT NULL DEFAULT now(),
-  started_at timestamptz,
-  completed_at timestamptz,
-  failure_summary jsonb NOT NULL DEFAULT '{}'::jsonb,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE INDEX deletion_requests_user_status_idx ON deletion_requests(user_id, status, requested_at DESC);
-
-CREATE TRIGGER deletion_requests_touch_updated_at
-BEFORE UPDATE ON deletion_requests
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
+CREATE INDEX idx_jobs_job_type_created_at
+    ON jobs (job_type, created_at);
 
 CREATE TABLE cleanup_tasks (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  deletion_request_id uuid REFERENCES deletion_requests(id) ON DELETE CASCADE,
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  target_type text NOT NULL,
-  target_id uuid,
-  status text NOT NULL DEFAULT 'queued'
-    CHECK (status IN ('queued', 'running', 'blocked_by_retry', 'partially_failed', 'completed', 'failed')),
-  attempt_count integer NOT NULL DEFAULT 0,
-  max_attempts integer NOT NULL DEFAULT 5,
-  next_retry_at timestamptz,
-  failure_reason text,
-  completed_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+    id text PRIMARY KEY,
+    user_id text NOT NULL,
+    status text NOT NULL,
+    steps jsonb NOT NULL DEFAULT '[]',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX cleanup_tasks_due_idx ON cleanup_tasks(status, next_retry_at);
-CREATE INDEX cleanup_tasks_user_idx ON cleanup_tasks(user_id, status);
-
-CREATE TRIGGER cleanup_tasks_touch_updated_at
-BEFORE UPDATE ON cleanup_tasks
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
-
--- ---------------------------------------------------------------------------
--- Queue and worker coordination
--- ---------------------------------------------------------------------------
-
-CREATE TABLE worker_jobs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  job_type text NOT NULL,
-  status text NOT NULL DEFAULT 'queued'
-    CHECK (status IN ('queued', 'running', 'retrying', 'completed', 'failed', 'cancelled')),
-  idempotency_key text NOT NULL UNIQUE,
-  user_id uuid REFERENCES users(id) ON DELETE CASCADE,
-  payload jsonb NOT NULL DEFAULT '{}'::jsonb,
-  scheduled_for timestamptz NOT NULL DEFAULT now(),
-  started_at timestamptz,
-  completed_at timestamptz,
-  attempt_count integer NOT NULL DEFAULT 0,
-  max_attempts integer NOT NULL DEFAULT 3,
-  locked_by text,
-  locked_at timestamptz,
-  next_retry_at timestamptz,
-  failure_reason text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE INDEX worker_jobs_due_idx ON worker_jobs(status, scheduled_for, next_retry_at);
-CREATE INDEX worker_jobs_user_idx ON worker_jobs(user_id, created_at DESC);
-
-CREATE TRIGGER worker_jobs_touch_updated_at
-BEFORE UPDATE ON worker_jobs
-FOR EACH ROW EXECUTE FUNCTION hotkey_touch_updated_at();
-
-COMMIT;
+CREATE INDEX idx_cleanup_tasks_user_id
+    ON cleanup_tasks (user_id);

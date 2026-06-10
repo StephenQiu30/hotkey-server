@@ -29,7 +29,7 @@ downstream:
 
 ## 2. 文件清单
 
-- 创建：`migrations/000012_audit_logs.up.sql`
+- 维护：`db/schema.sql`
 - 创建：`internal/domain/job/`
 - 创建：`internal/service/admin/`
 - 创建：`internal/repository/postgres/adminrepo/`

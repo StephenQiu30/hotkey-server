@@ -29,7 +29,7 @@ downstream:
 
 ## 2. 文件清单
 
-- 创建：`migrations/000011_email_deliveries.up.sql`
+- 维护：`db/schema.sql`
 - 创建：`internal/platform/mailer/`
 - 创建：`internal/service/mail/`
 - 创建：`internal/repository/postgres/mailrepo/`

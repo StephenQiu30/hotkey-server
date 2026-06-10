@@ -65,6 +65,7 @@ test ! -d .agents
 test ! -d .codex
 test ! -f skills-lock.json
 
+test ! -d migrations
 test ! -d server
 test ! -d sql
 test ! -d packages
