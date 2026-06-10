@@ -12,7 +12,7 @@ status: draft
 version: "1.0.0"
 owner: "StephenQiu30"
 inputs:
-  - "docs/product/prd/01-项目治理与Symphony编排PRD.md"
+  - "docs/prd/001-产品总览与上线门禁.md"
   - "docs/plans/01-项目治理与Symphony编排实现计划.md"
 outputs:
   - "Symphony 编排验收记录"
@@ -66,7 +66,7 @@ Required commands for this governance slice:
 
 ```bash
 make test
-python3 -m unittest discover -s tests
+make validate
 ```
 
 Repository handoff also requires:
@@ -76,4 +76,4 @@ gofmt -w cmd internal
 go test ./...
 ```
 
-The governance tests must fail if a PRD under `docs/product/prd/` does not have a matching Plan under `docs/plans/`, or if this acceptance document loses the Linear/Symphony orchestration evidence above.
+Governance validation must confirm required `.claude/` assets, `openspec/` baseline, and `WORKFLOW.md` contract remain intact.

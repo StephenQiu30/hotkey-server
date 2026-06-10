@@ -1,0 +1,22 @@
+schema: spec-driven
+
+context: |
+  Project: hotkey-server (HotKey Go backend)
+  Stable governance: CLAUDE.md, CLAUDE.local.md, WORKFLOW.md, AGENTS.md, docs/
+  OpenSpec: openspec/specs/ for accepted requirements; openspec/changes/ for deltas
+  Validation: make validate -> scripts/validate-repository.sh; make test adds go test ./...
+  Scope: server-only; do not modify hotkey-web or hotkey-miniapp unless ticket says so
+  Agent config: .claude/agents/ and .claude/skills/ only
+  Testing: no compatibility-only or string-matching contract tests outside accepted behavior
+
+rules:
+  proposal:
+    - State which normative files or workflow contracts will change.
+    - Keep scope MVP-sized and list explicit non-goals.
+  specs:
+    - Use MUST or SHALL for normative requirements.
+    - Include success, failure, and validation scenarios.
+  design:
+    - Document goals, non-goals, contracts, and rollback only when needed.
+  tasks:
+    - Map work to concrete files and validation commands within server scope.

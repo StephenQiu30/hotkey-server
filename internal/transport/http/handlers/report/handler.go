@@ -2,6 +2,7 @@ package report
 
 import (
 	"errors"
+	"github.com/StephenQiu30/hotkey-server/internal/transport/http/httputil"
 	"net/http"
 	"time"
 
@@ -20,12 +21,12 @@ func New(service *servicereport.Service) *Handler {
 func (h *Handler) ListReports(c *gin.Context) {
 	date := c.Query("date")
 	if _, err := time.Parse("2006-01-02", date); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_date", "date must use YYYY-MM-DD")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_date", "date must use YYYY-MM-DD")
 		return
 	}
 	reports, err := h.service.ListReportsByDate(c.Request.Context(), date)
 	if err != nil {
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal server error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}
 	items := make([]gin.H, 0, len(reports))
@@ -40,10 +41,10 @@ func (h *Handler) GetReport(c *gin.Context) {
 	report, err := h.service.FindReportByID(c.Request.Context(), reportID)
 	if err != nil {
 		if errors.Is(err, servicereport.ErrNotFound) {
-			writeError(c, http.StatusNotFound, "report_not_found", "report not found")
+			httputil.WriteError(c, http.StatusNotFound, "report_not_found", "report not found")
 			return
 		}
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal server error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}
 	c.JSON(http.StatusOK, reportResponse(report))
@@ -68,8 +69,4 @@ func reportResponse(report servicereport.DailyReport) gin.H {
 		"createdAt":       report.CreatedAt,
 		"updatedAt":       report.UpdatedAt,
 	}
-}
-
-func writeError(c *gin.Context, status int, code string, message string) {
-	c.JSON(status, gin.H{"error": gin.H{"code": code, "message": message}})
 }

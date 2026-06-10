@@ -3,6 +3,7 @@ package admin
 import (
 	"encoding/json"
 	"errors"
+	"github.com/StephenQiu30/hotkey-server/internal/transport/http/httputil"
 	"net/http"
 	"strings"
 
@@ -57,7 +58,7 @@ func (h *Handler) AuditMiddleware() gin.HandlerFunc {
 func (h *Handler) ListAuditLogs(c *gin.Context) {
 	logs, err := h.service.ListAuditLogs(c.Request.Context())
 	if err != nil {
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"auditLogs": auditLogResponses(logs)})
@@ -70,7 +71,7 @@ func (h *Handler) ConfigStatus(c *gin.Context) {
 func (h *Handler) QueueOverview(c *gin.Context) {
 	overview, err := h.service.QueueOverview(c.Request.Context())
 	if err != nil {
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"queue": overview})
@@ -79,7 +80,7 @@ func (h *Handler) QueueOverview(c *gin.Context) {
 func (h *Handler) ListFailedJobs(c *gin.Context) {
 	jobs, err := h.service.ListFailedJobs(c.Request.Context())
 	if err != nil {
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"jobs": jobResponses(jobs)})
@@ -106,7 +107,7 @@ func (h *Handler) RetryJob(c *gin.Context) {
 func (h *Handler) RerunDailyReport(c *gin.Context) {
 	var req rerunDailyReportRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	job, err := h.service.RerunDailyReport(c.Request.Context(), serviceadmin.RerunDailyReportInput{
@@ -223,16 +224,12 @@ func jobResponse(job queue.Job) gin.H {
 func writeServiceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, serviceadmin.ErrInvalidInput):
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 	case errors.Is(err, serviceadmin.ErrNotFound):
-		writeError(c, http.StatusNotFound, "not_found", "not found")
+		httputil.WriteError(c, http.StatusNotFound, "not_found", "not found")
 	default:
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal error")
 	}
-}
-
-func writeError(c *gin.Context, status int, code string, message string) {
-	c.JSON(status, gin.H{"error": gin.H{"code": code, "message": message}})
 }
 
 func isWriteMethod(method string) bool {

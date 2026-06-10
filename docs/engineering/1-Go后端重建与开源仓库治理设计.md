@@ -15,7 +15,7 @@ version: "1.1.0"
 owner: "StephenQiu30"
 inputs:
   - "AGENTS.md"
-  - "docs/product/产品需求文档.md"
+  - "docs/prd/README.md"
   - "docs/engineering/技术方案.md"
 outputs:
   - "Go 后端目标架构"
@@ -269,15 +269,11 @@ P0 不追求秒级实时，但目标架构必须支持后续近秒级能力。
 
 ```text
 docs/
-  product/
+  prd/
     README.md
-    prd/
-      1-产品总览与阶段路线PRD.md
-      2-Go服务基础工程与OpenAPI PRD.md
-      3-关键词与用户偏好PRD.md
-      4-来源与采集合规PRD.md
-      5-内容标准化与去重PRD.md
-      6-pgvector相似聚合PRD.md
+    001-产品总览与上线门禁.md
+    002-账号体系与用户授权托管.md
+    ...
   plans/
     1-产品总览与阶段路线计划.md
     2-Go服务基础工程与OpenAPI实现计划.md
@@ -291,22 +287,22 @@ docs/
   archive/
 ```
 
-`docs/product/prd/` 存放需求、范围、用户故事和验收口径；`docs/plans/` 存放与 PRD 一一对应的实施计划、任务拆解、测试清单、文件清单和回滚点。
+`docs/prd/` 存放需求、范围、用户故事和验收口径；`docs/plans/` 存放实施计划、任务拆解、测试清单、文件清单和回滚点。
 
 ### 13.2 PRD 与 Plan 配对规则
 
 每个可实施任务必须先拆成一份 PRD 和一份 Plan。编号必须一致，便于追踪：
 
 ```text
-docs/product/prd/N-能力名称PRD.md
+docs/prd/NNN-能力名称.md
 docs/plans/N-能力名称实现计划.md
 ```
 
 示例：
 
 ```text
-docs/product/prd/3-关键词与用户偏好PRD.md
-docs/plans/3-关键词与用户偏好实现计划.md
+docs/prd/003-监控主题与关键词配置.md
+docs/plans/03-频道与订阅实现计划.md
 ```
 
 PRD 必须说明目标用户、业务范围、非目标、数据字段、API 影响、验收标准和风险。Plan 必须说明文件清单、任务拆解、TDD 测试清单、执行顺序、回滚点、OpenAPI 影响和验收命令。
@@ -372,7 +368,7 @@ P0 完成时必须满足：
 
 1. `hotkey-server` 已重建为 Go 服务，旧 FastAPI 运行时不再作为主实现。
 2. 根目录有全局 `AGENTS.md`，且覆盖跨仓治理、OpenAPI 事实源、Go 工程规范和开源合规边界。
-3. `docs/product/prd/` 和 `docs/plans/` 已按新架构重新编号，且每个实施任务都有配对 PRD 与 Plan。
+3. `docs/prd/` 和 `docs/plans/` 已按新架构重新编号，Plan 通过 frontmatter 引用相关 PRD 或 Design。
 4. 历史遗留文档已按计划归档或删除，不再与 Go 重建架构冲突。
 5. PostgreSQL schema、pgvector、Redis 连接和本地启动路径可验证。
 6. 可配置平台关键词和用户关键词偏好。

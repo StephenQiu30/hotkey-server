@@ -34,8 +34,9 @@
 
 ```bash
 # 示例命令
+make test
+gofmt -w cmd internal
 go test ./...
-npm run test
 ```
 
 ## Result

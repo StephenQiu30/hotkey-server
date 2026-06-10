@@ -2,6 +2,7 @@ package channel
 
 import (
 	"errors"
+	"github.com/StephenQiu30/hotkey-server/internal/transport/http/httputil"
 	"net/http"
 
 	servicechannel "github.com/StephenQiu30/hotkey-server/internal/service/channel"
@@ -38,7 +39,7 @@ func (h *Handler) ListChannels(c *gin.Context) {
 		ActiveOnly: c.Query("includeDisabled") != "true",
 	})
 	if err != nil {
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"channels": channelResponses(channels)})
@@ -47,7 +48,7 @@ func (h *Handler) ListChannels(c *gin.Context) {
 func (h *Handler) ListSubscriptions(c *gin.Context) {
 	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 	subscriptions, err := h.service.ListSubscriptions(c.Request.Context(), account.ID)
@@ -61,7 +62,7 @@ func (h *Handler) ListSubscriptions(c *gin.Context) {
 func (h *Handler) Subscribe(c *gin.Context) {
 	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 	subscription, err := h.service.Subscribe(c.Request.Context(), servicechannel.UserChannelInput{
@@ -78,7 +79,7 @@ func (h *Handler) Subscribe(c *gin.Context) {
 func (h *Handler) Unsubscribe(c *gin.Context) {
 	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 	if err := h.service.Unsubscribe(c.Request.Context(), servicechannel.UserChannelInput{
@@ -94,7 +95,7 @@ func (h *Handler) Unsubscribe(c *gin.Context) {
 func (h *Handler) ListKeywords(c *gin.Context) {
 	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 	keywords, err := h.service.ListKeywords(c.Request.Context(), account.ID)
@@ -108,12 +109,12 @@ func (h *Handler) ListKeywords(c *gin.Context) {
 func (h *Handler) CreateKeyword(c *gin.Context) {
 	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 	var req keywordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	keyword, err := h.service.CreateKeyword(c.Request.Context(), servicechannel.KeywordInput{
@@ -130,12 +131,12 @@ func (h *Handler) CreateKeyword(c *gin.Context) {
 func (h *Handler) UpdateKeyword(c *gin.Context) {
 	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 	var req keywordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	keyword, err := h.service.UpdateKeyword(c.Request.Context(), servicechannel.UpdateKeywordInput{
@@ -154,7 +155,7 @@ func (h *Handler) UpdateKeyword(c *gin.Context) {
 func (h *Handler) DeleteKeyword(c *gin.Context) {
 	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 	if err := h.service.DeleteKeyword(c.Request.Context(), account.ID, c.Param("keywordID")); err != nil {
@@ -167,12 +168,12 @@ func (h *Handler) DeleteKeyword(c *gin.Context) {
 func (h *Handler) SetUserDailySendAt(c *gin.Context) {
 	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 	var req dailySendAtRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	if err := h.service.SetUserDailySendAt(c.Request.Context(), servicechannel.UserDailySendAtInput{
@@ -188,7 +189,7 @@ func (h *Handler) SetUserDailySendAt(c *gin.Context) {
 func (h *Handler) CreateChannel(c *gin.Context) {
 	var req channelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	channel, err := h.service.CreateChannel(c.Request.Context(), servicechannel.CreateChannelInput{
@@ -207,7 +208,7 @@ func (h *Handler) CreateChannel(c *gin.Context) {
 func (h *Handler) UpdateChannel(c *gin.Context) {
 	var req channelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	if req.Status != "" {
@@ -249,7 +250,7 @@ func (h *Handler) DeleteChannel(c *gin.Context) {
 func (h *Handler) SetDefaultDailySendAt(c *gin.Context) {
 	var req dailySendAtRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	if err := h.service.SetDefaultDailySendAt(c.Request.Context(), req.DailySendAt); err != nil {
@@ -311,18 +312,14 @@ func keywordResponses(keywords []servicechannel.Keyword) []gin.H {
 func writeServiceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, servicechannel.ErrInvalidInput):
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 	case errors.Is(err, servicechannel.ErrNotFound):
-		writeError(c, http.StatusNotFound, "not_found", "not found")
+		httputil.WriteError(c, http.StatusNotFound, "not_found", "not found")
 	case errors.Is(err, servicechannel.ErrAlreadyExists):
-		writeError(c, http.StatusConflict, "channel_slug_already_exists", "channel slug already exists")
+		httputil.WriteError(c, http.StatusConflict, "channel_slug_already_exists", "channel slug already exists")
 	case errors.Is(err, servicechannel.ErrChannelDisabled):
-		writeError(c, http.StatusConflict, "channel_disabled", "channel disabled")
+		httputil.WriteError(c, http.StatusConflict, "channel_disabled", "channel disabled")
 	default:
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal error")
 	}
-}
-
-func writeError(c *gin.Context, status int, code string, message string) {
-	c.JSON(status, gin.H{"error": gin.H{"code": code, "message": message}})
 }

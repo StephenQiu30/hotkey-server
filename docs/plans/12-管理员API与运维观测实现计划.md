@@ -12,7 +12,7 @@ status: draft
 version: "1.0.0"
 owner: "StephenQiu30"
 inputs:
-  - "docs/product/prd/12-管理员API与运维观测PRD.md"
+  - "docs/prd/021-审计撤权与删除.md"
 outputs:
   - "管理员API与运维观测实现任务"
 triggers:

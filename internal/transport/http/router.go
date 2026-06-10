@@ -65,10 +65,6 @@ func NewRouter() *gin.Engine {
 	return NewRouterWithServices(authService, servicechannel.NewService(servicechannel.NewMemoryRepository()))
 }
 
-func NewRouterWithAuth(authService *serviceauth.Service) *gin.Engine {
-	return NewRouterWithServices(authService, servicechannel.NewService(servicechannel.NewMemoryRepository()))
-}
-
 func NewRouterWithServices(authService *serviceauth.Service, channelService *servicechannel.Service, sourceServices ...*servicesource.Service) *gin.Engine {
 	deps := Dependencies{AuthService: authService, ChannelService: channelService}
 	if len(sourceServices) > 0 {
@@ -141,9 +137,11 @@ func NewRouterWithDependencies(deps Dependencies) *gin.Engine {
 
 	auth := authhandler.New(deps.AuthService)
 	channels := channelhandler.New(deps.ChannelService)
-	sourceService := servicesource.NewService(servicesource.NewMemoryRepository())
+	var sourceService *servicesource.Service
 	if deps.SourceService != nil {
 		sourceService = deps.SourceService
+	} else {
+		sourceService = servicesource.NewService(servicesource.NewMemoryRepository())
 	}
 	xFetchers := map[servicesource.SourceType]platformfetcher.Fetcher{
 		servicesource.SourceTypeRSS:        platformfetcher.NewRSSFetcher(nil),

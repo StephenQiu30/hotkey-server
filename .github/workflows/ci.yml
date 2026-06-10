@@ -5,8 +5,8 @@ on:
   pull_request:
 
 jobs:
-  docs-hygiene:
-    name: docs-hygiene
+  test:
+    name: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -17,28 +17,8 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Check markdown whitespace
-        run: git diff --check
-
-      - name: Check workflow contract
-        run: python3 -m unittest tests.test_workflow_contract
-
-      - name: Check old runtime is absent
-        run: |
-          test ! -d server
-          # scripts/ is used by E2E infrastructure (e2e-setup.sh, e2e-teardown.sh)
-          test ! -d sql
-          test ! -d packages
-          test ! -d deploy
-          test ! -d openspec/changes
-          test ! -d openspec/specs
-          test ! -f package.json
-          test ! -f pyproject.toml
-          test ! -f Dockerfile.api
-          test -f Dockerfile
-          test -f docker-compose.yml
-          test -f docker-compose.prod.yml
-          test -f .env.prod.example
+      - name: Repository governance checks
+        run: bash scripts/validate-repository.sh
 
       - name: Run Go tests
         run: go test ./...

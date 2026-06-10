@@ -12,7 +12,7 @@ status: draft
 version: "1.0.0"
 owner: "StephenQiu30"
 inputs:
-  - "docs/product/prd/05-Redis任务队列与调度PRD.md"
+  - "docs/engineering/1-Go后端重建与开源仓库治理设计.md"
 outputs:
   - "Redis任务队列与调度实现任务"
 triggers:

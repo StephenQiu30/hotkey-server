@@ -2,6 +2,7 @@ package obsidian
 
 import (
 	"errors"
+	"github.com/StephenQiu30/hotkey-server/internal/transport/http/httputil"
 	"net/http"
 
 	domain "github.com/StephenQiu30/hotkey-server/internal/domain/obsidian"
@@ -22,13 +23,13 @@ func New(service *svc.Service) *Handler {
 func (h *Handler) Connect(c *gin.Context) {
 	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 
 	var req connectRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request body")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request body")
 		return
 	}
 
@@ -60,7 +61,7 @@ func (h *Handler) Connect(c *gin.Context) {
 func (h *Handler) Disconnect(c *gin.Context) {
 	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 
@@ -75,7 +76,7 @@ func (h *Handler) Disconnect(c *gin.Context) {
 func (h *Handler) GetStatus(c *gin.Context) {
 	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 
@@ -106,13 +107,13 @@ func (h *Handler) GetStatus(c *gin.Context) {
 func (h *Handler) Sync(c *gin.Context) {
 	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 
 	var req syncRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request body")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request body")
 		return
 	}
 
@@ -193,22 +194,18 @@ type syncResponse struct {
 func handleServiceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, svc.ErrInvalidInput):
-		writeError(c, http.StatusBadRequest, "invalid_request", err.Error())
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", err.Error())
 	case errors.Is(err, svc.ErrNotConnected):
-		writeError(c, http.StatusNotFound, "not_connected", "obsidian sync not connected")
+		httputil.WriteError(c, http.StatusNotFound, "not_connected", "obsidian sync not connected")
 	case errors.Is(err, svc.ErrAuthFailed):
-		writeError(c, http.StatusForbidden, "auth_failed", "git authentication failed")
+		httputil.WriteError(c, http.StatusForbidden, "auth_failed", "git authentication failed")
 	case errors.Is(err, svc.ErrBranchNotFound):
-		writeError(c, http.StatusBadRequest, "branch_not_found", "branch not found in repository")
+		httputil.WriteError(c, http.StatusBadRequest, "branch_not_found", "branch not found in repository")
 	case errors.Is(err, svc.ErrDirNotFound):
-		writeError(c, http.StatusBadRequest, "dir_not_found", "directory not found in repository")
+		httputil.WriteError(c, http.StatusBadRequest, "dir_not_found", "directory not found in repository")
 	case errors.Is(err, svc.ErrConflict):
-		writeError(c, http.StatusConflict, "conflict", "file conflict detected")
+		httputil.WriteError(c, http.StatusConflict, "conflict", "file conflict detected")
 	default:
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal server error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal server error")
 	}
-}
-
-func writeError(c *gin.Context, status int, code string, message string) {
-	c.JSON(status, gin.H{"error": gin.H{"code": code, "message": message}})
 }

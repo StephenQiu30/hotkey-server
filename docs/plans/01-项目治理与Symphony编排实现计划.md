@@ -12,7 +12,7 @@ status: draft
 version: "1.0.0"
 owner: "StephenQiu30"
 inputs:
-  - "docs/product/prd/01-项目治理与Symphony编排PRD.md"
+  - "docs/prd/001-产品总览与上线门禁.md"
 outputs:
   - "项目治理与 Symphony 编排实现任务"
 triggers:

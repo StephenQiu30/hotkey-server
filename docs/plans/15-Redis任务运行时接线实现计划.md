@@ -14,7 +14,7 @@ owner: "StephenQiu30"
 inputs:
   - "docs/design/002-热点平台能力补齐与上线接通设计.md"
   - "docs/plans/14-runtime服务装配实现计划.md"
-  - "docs/product/prd/05-Redis任务队列与调度PRD.md"
+  - "docs/engineering/1-Go后端重建与开源仓库治理设计.md"
   - "docs/plans/05-Redis任务队列与调度实现计划.md"
 outputs:
   - "Redis 任务运行时接线实现任务"

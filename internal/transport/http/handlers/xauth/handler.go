@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/StephenQiu30/hotkey-server/internal/transport/http/httputil"
 	"net/http"
 
 	servicexauth "github.com/StephenQiu30/hotkey-server/internal/service/xauth"
@@ -26,7 +27,7 @@ func (h *Handler) AuthURL(c *gin.Context) {
 	state := generateState()
 	result, err := h.service.GenerateAuthURL(c.Request.Context(), state)
 	if err != nil {
-		writeError(c, http.StatusInternalServerError, "internal_error", "failed to generate auth url")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "failed to generate auth url")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -41,7 +42,7 @@ func (h *Handler) Callback(c *gin.Context) {
 	state := c.Query("state")
 	sourceID := c.Query("sourceId")
 	if code == "" || state == "" || sourceID == "" {
-		writeError(c, http.StatusBadRequest, "invalid_request", "missing code, state, or sourceId parameter")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "missing code, state, or sourceId parameter")
 		return
 	}
 
@@ -52,10 +53,10 @@ func (h *Handler) Callback(c *gin.Context) {
 	})
 	if err != nil {
 		if errors.Is(err, servicexauth.ErrInvalidState) {
-			writeError(c, http.StatusBadRequest, "invalid_state", "invalid or expired oauth state")
+			httputil.WriteError(c, http.StatusBadRequest, "invalid_state", "invalid or expired oauth state")
 			return
 		}
-		writeError(c, http.StatusBadGateway, "token_exchange_failed", "failed to exchange authorization code")
+		httputil.WriteError(c, http.StatusBadGateway, "token_exchange_failed", "failed to exchange authorization code")
 		return
 	}
 
@@ -70,7 +71,7 @@ func (h *Handler) Callback(c *gin.Context) {
 func (h *Handler) Status(c *gin.Context) {
 	sourceID := c.Query("sourceId")
 	if sourceID == "" {
-		writeError(c, http.StatusBadRequest, "invalid_request", "missing sourceId parameter")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "missing sourceId parameter")
 		return
 	}
 
@@ -80,7 +81,7 @@ func (h *Handler) Status(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"authorized": false})
 			return
 		}
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
@@ -97,29 +98,25 @@ func (h *Handler) Revoke(c *gin.Context) {
 		SourceID string `json:"sourceId"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	if req.SourceID == "" {
-		writeError(c, http.StatusBadRequest, "invalid_request", "sourceId is required")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "sourceId is required")
 		return
 	}
 
 	err := h.service.RevokeCredential(c.Request.Context(), req.SourceID)
 	if err != nil {
 		if errors.Is(err, servicexauth.ErrNotFound) {
-			writeError(c, http.StatusNotFound, "not_found", "credential not found")
+			httputil.WriteError(c, http.StatusNotFound, "not_found", "credential not found")
 			return
 		}
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"revoked": true})
-}
-
-func writeError(c *gin.Context, status int, code string, message string) {
-	c.JSON(status, gin.H{"error": gin.H{"code": code, "message": message}})
 }
 
 func generateState() string {

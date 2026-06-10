@@ -12,7 +12,7 @@ status: draft
 version: "1.0.0"
 owner: "StephenQiu30"
 inputs:
-  - "docs/product/prd/11-SMTP邮件推送PRD.md"
+  - "docs/prd/019-邮件日报周报.md"
 outputs:
   - "SMTP邮件推送实现任务"
 triggers:

@@ -1,34 +1,28 @@
 # AGENTS.md
 
-This repository contains `hotkey-server`, the Go backend for HotKey.
+本仓库是 HotKey 的 Go 后端 `hotkey-server`。
 
-## Scope
+## 规范入口
 
-Current work is server-only. Do not modify `hotkey-web` or `hotkey-miniapp` from this repository workflow.
+- 协作规范：`CLAUDE.md`（全局）+ `CLAUDE.local.md`（本仓局部）
+- Symphony 调度：`WORKFLOW.md`
+- 角色与技能：`.claude/agents/`、`.claude/skills/`（**仅此一处**，不维护 `.codex/`、`.agents/`）
 
-## Workflow
+## 范围
 
-- Linear issues are the task source of truth.
-- Symphony reads `WORKFLOW.md` and runs each issue in an isolated workspace.
-- Keep cleanup tasks separate from feature tasks.
-- Preserve unrelated user changes.
-- Use Chinese commit messages.
+- 只在本仓实现 server 能力；不要改 `hotkey-web` / `hotkey-miniapp`，除非 ticket 明确要求。
+- Linear issue + Workpad 是任务事实源。
 
-## Go Standards
+## Go 约定
 
-- Use standard Go layout under `cmd/` and `internal/`.
-- Keep domain logic independent from HTTP, SQL, and external SDKs.
-- Put HTTP routing under `internal/transport/http`.
-- Put external integrations under `internal/platform`.
-- Put persistence under `internal/repository/postgres`.
-- Put database migrations under `migrations/`.
+- 布局：`cmd/`、`internal/`、`migrations/`
+- HTTP：`internal/transport/http`
+- 外部集成：`internal/platform`
+- 持久化：`internal/repository/postgres`
 
-## Required Checks
-
-Run before handoff:
+## 交付前检查
 
 ```bash
 gofmt -w cmd internal
-go test ./...
-python3 -m unittest tests/test_workflow_contract.py
+make test
 ```

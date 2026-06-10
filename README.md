@@ -25,11 +25,11 @@ HotKey 帮助内容创作者：
 | 存储与治理 | PostgreSQL + pgvector、Redis 任务队列、MinIO 对象存储、数据最小化留存 |
 | 运维管理 | 管理员 API、审计日志、任务队列观测、用户撤权与禁用 |
 
-完整接口定义见 [`docs/openapi.yaml`](./docs/openapi.yaml)。运行服务后可访问 `/openapi.json` 导出规范。
+完整接口定义见 [`docs/openapi.yaml`](./docs/openapi.yaml)。
 
 ## 技术栈
 
-- **语言与框架**：Go、标准库 HTTP 路由
+- **语言与框架**：Go 1.25、Gin
 - **数据层**：PostgreSQL（pgvector）、Redis
 - **对象存储**：MinIO（可选）
 - **AI**：DashScope / Qwen（Embedding 与摘要）
@@ -43,7 +43,7 @@ HotKey 帮助内容创作者：
 - Go 1.25+
 - PostgreSQL 16（建议启用 pgvector）
 - Redis 7+
-- Python 3（用于治理与契约测试）
+- Python 3（仓库治理与 WORKFLOW 契约测试）
 
 ### 本地运行
 
@@ -132,13 +132,15 @@ server → web → miniapp → 回归
 | [hotkey-web](https://github.com/StephenQiu30/hotkey-web) | Next.js 创作者工作台 |
 | [hotkey-miniapp](https://github.com/StephenQiu30/hotkey-miniapp) | Taro 微信小程序轻量端 |
 
-## 文档
+## 文档与协作
 
 - [文档中心](./docs/README.md)
 - [环境变量说明](./.env.example)
 - [数据库说明](./db/README.md)
 - [运维手册](./docs/operations/README.md)
-- [AGENTS.md](./AGENTS.md) — AI 协作与工程规范
+- [CLAUDE.md](./CLAUDE.md) — Agent 协作规范
+- [WORKFLOW.md](./WORKFLOW.md) — Symphony / Linear 调度契约
+- [OpenSpec 规范](./openspec/specs/) — SDD 规范层（Markdown/YAML，无 Node 依赖）
 
 ## 许可证
 

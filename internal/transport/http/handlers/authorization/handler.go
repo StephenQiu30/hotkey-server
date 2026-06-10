@@ -5,8 +5,9 @@ import (
 	"net/http"
 
 	"github.com/StephenQiu30/hotkey-server/internal/domain/authorization"
-	"github.com/StephenQiu30/hotkey-server/internal/domain/user"
 	serviceauth "github.com/StephenQiu30/hotkey-server/internal/service/auth"
+	authhandler "github.com/StephenQiu30/hotkey-server/internal/transport/http/handlers/auth"
+	"github.com/StephenQiu30/hotkey-server/internal/transport/http/httputil"
 	"github.com/gin-gonic/gin"
 )
 
@@ -27,15 +28,15 @@ type connectRequest struct {
 }
 
 func (h *Handler) Connect(c *gin.Context) {
-	account, ok := currentUser(c)
+	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 
 	var req connectRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 
@@ -49,14 +50,14 @@ func (h *Handler) Connect(c *gin.Context) {
 	})
 	if err != nil {
 		if errors.Is(err, authorization.ErrInvalidPlatform) {
-			writeError(c, http.StatusBadRequest, "invalid_platform", "invalid platform")
+			httputil.WriteError(c, http.StatusBadRequest, "invalid_platform", "invalid platform")
 			return
 		}
 		if errors.Is(err, authorization.ErrUniqueViolation) {
-			writeError(c, http.StatusConflict, "already_connected", "platform already connected")
+			httputil.WriteError(c, http.StatusConflict, "already_connected", "platform already connected")
 			return
 		}
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
@@ -64,15 +65,15 @@ func (h *Handler) Connect(c *gin.Context) {
 }
 
 func (h *Handler) List(c *gin.Context) {
-	account, ok := currentUser(c)
+	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 
 	authorizations, err := h.azService.ListByUser(c.Request.Context(), account.ID)
 	if err != nil {
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
@@ -84,9 +85,9 @@ func (h *Handler) List(c *gin.Context) {
 }
 
 func (h *Handler) Test(c *gin.Context) {
-	account, ok := currentUser(c)
+	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 
@@ -94,10 +95,10 @@ func (h *Handler) Test(c *gin.Context) {
 	az, err := h.azService.HealthCheck(c.Request.Context(), account.ID, azID)
 	if err != nil {
 		if errors.Is(err, authorization.ErrNotFound) {
-			writeError(c, http.StatusNotFound, "not_found", "authorization not found")
+			httputil.WriteError(c, http.StatusNotFound, "not_found", "authorization not found")
 			return
 		}
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
@@ -105,9 +106,9 @@ func (h *Handler) Test(c *gin.Context) {
 }
 
 func (h *Handler) Disconnect(c *gin.Context) {
-	account, ok := currentUser(c)
+	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 
@@ -115,14 +116,14 @@ func (h *Handler) Disconnect(c *gin.Context) {
 	err := h.azService.Disconnect(c.Request.Context(), account.ID, azID)
 	if err != nil {
 		if errors.Is(err, authorization.ErrNotFound) {
-			writeError(c, http.StatusNotFound, "not_found", "authorization not found")
+			httputil.WriteError(c, http.StatusNotFound, "not_found", "authorization not found")
 			return
 		}
 		if errors.Is(err, authorization.ErrAlreadyRevoked) {
-			writeError(c, http.StatusConflict, "already_revoked", "authorization already revoked")
+			httputil.WriteError(c, http.StatusConflict, "already_revoked", "authorization already revoked")
 			return
 		}
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
@@ -130,14 +131,14 @@ func (h *Handler) Disconnect(c *gin.Context) {
 }
 
 func (h *Handler) DeleteAccount(c *gin.Context) {
-	account, ok := currentUser(c)
+	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 
 	if err := h.azService.DeleteAccount(c.Request.Context(), account.ID); err != nil {
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
@@ -155,17 +156,4 @@ func authorizationResponse(az authorization.Authorization) gin.H {
 		"lastCheckedAt":  az.LastCheckedAt,
 		"expiresAt":      az.ExpiresAt,
 	}
-}
-
-func currentUser(c *gin.Context) (user.User, bool) {
-	val, exists := c.Get("currentUser")
-	if !exists {
-		return user.User{}, false
-	}
-	account, ok := val.(user.User)
-	return account, ok
-}
-
-func writeError(c *gin.Context, status int, code string, message string) {
-	c.JSON(status, gin.H{"error": gin.H{"code": code, "message": message}})
 }

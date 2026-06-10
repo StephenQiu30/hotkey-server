@@ -12,7 +12,7 @@ status: draft
 version: "1.0.0"
 owner: "StephenQiu30"
 inputs:
-  - "docs/product/prd/10-RSS订阅PRD.md"
+  - "docs/prd/014-新闻与rss采集.md"
 outputs:
   - "RSS订阅实现任务"
 triggers:

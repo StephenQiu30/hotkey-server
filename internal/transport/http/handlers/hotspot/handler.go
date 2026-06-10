@@ -1,6 +1,7 @@
 package hotspot
 
 import (
+	"github.com/StephenQiu30/hotkey-server/internal/transport/http/httputil"
 	"net/http"
 	"strconv"
 	"time"
@@ -40,16 +41,16 @@ func (h *Handler) ListHotspots(c *gin.Context) {
 	if sinceStr != "" || untilStr != "" {
 		since, parseErr := parseTimeParam(sinceStr, time.Time{})
 		if parseErr != nil {
-			writeError(c, http.StatusBadRequest, "invalid_since", "invalid since parameter")
+			httputil.WriteError(c, http.StatusBadRequest, "invalid_since", "invalid since parameter")
 			return
 		}
 		until, parseErr := parseTimeParam(untilStr, time.Now().UTC())
 		if parseErr != nil {
-			writeError(c, http.StatusBadRequest, "invalid_until", "invalid until parameter")
+			httputil.WriteError(c, http.StatusBadRequest, "invalid_until", "invalid until parameter")
 			return
 		}
 		if !since.IsZero() && since.After(until) {
-			writeError(c, http.StatusBadRequest, "invalid_time_window", "since must be before or equal to until")
+			httputil.WriteError(c, http.StatusBadRequest, "invalid_time_window", "since must be before or equal to until")
 			return
 		}
 		scores, err = h.service.ListScoresByWindow(c.Request.Context(), since, until)
@@ -58,7 +59,7 @@ func (h *Handler) ListHotspots(c *gin.Context) {
 	}
 
 	if err != nil {
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 
@@ -89,7 +90,7 @@ func parseIntParam(c *gin.Context, name string, defaultVal int, min int, max int
 	}
 	parsed, err := strconv.Atoi(value)
 	if err != nil || parsed < min || (max > 0 && parsed > max) {
-		writeError(c, http.StatusBadRequest, "invalid_"+name, "invalid "+name+" parameter")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_"+name, "invalid "+name+" parameter")
 		return 0, false
 	}
 	return parsed, true
@@ -99,13 +100,13 @@ func parseIntParam(c *gin.Context, name string, defaultVal int, min int, max int
 func (h *Handler) GetHotspot(c *gin.Context) {
 	clusterID := c.Param("hotspotID")
 	if clusterID == "" {
-		writeError(c, http.StatusBadRequest, "invalid_hotspot_id", "hotspot ID is required")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_hotspot_id", "hotspot ID is required")
 		return
 	}
 
 	score, err := h.service.FindScoreByClusterID(c.Request.Context(), clusterID)
 	if err != nil {
-		writeError(c, http.StatusNotFound, "hotspot_not_found", "hotspot not found")
+		httputil.WriteError(c, http.StatusNotFound, "hotspot_not_found", "hotspot not found")
 		return
 	}
 
@@ -158,13 +159,4 @@ func scoreResponse(score servicehotspot.HotspotScore) gin.H {
 		"createdAt":        score.CreatedAt,
 		"updatedAt":        score.UpdatedAt,
 	}
-}
-
-func writeError(c *gin.Context, status int, code string, message string) {
-	c.JSON(status, gin.H{
-		"error": gin.H{
-			"code":    code,
-			"message": message,
-		},
-	})
 }

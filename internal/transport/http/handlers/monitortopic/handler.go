@@ -2,6 +2,7 @@ package monitortopic
 
 import (
 	"errors"
+	"github.com/StephenQiu30/hotkey-server/internal/transport/http/httputil"
 	"net/http"
 
 	svc "github.com/StephenQiu30/hotkey-server/internal/service/monitortopic"
@@ -54,12 +55,12 @@ func New(service *svc.Service) *Handler {
 func (h *Handler) ListTopics(c *gin.Context) {
 	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 	topics, err := h.service.ListTopics(c.Request.Context(), account.ID)
 	if err != nil {
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"topics": topicResponses(topics)})
@@ -69,12 +70,12 @@ func (h *Handler) ListTopics(c *gin.Context) {
 func (h *Handler) CreateTopic(c *gin.Context) {
 	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 	var req createTopicRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	platforms := make([]svc.Platform, len(req.Platforms))
@@ -111,7 +112,7 @@ func (h *Handler) CreateTopic(c *gin.Context) {
 func (h *Handler) GetTopic(c *gin.Context) {
 	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 	topic, err := h.service.GetTopic(c.Request.Context(), c.Param("topicID"))
@@ -120,7 +121,7 @@ func (h *Handler) GetTopic(c *gin.Context) {
 		return
 	}
 	if topic.UserID != account.ID {
-		writeError(c, http.StatusNotFound, "not_found", "not found")
+		httputil.WriteError(c, http.StatusNotFound, "not_found", "not found")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"topic": topicResponse(topic)})
@@ -130,12 +131,12 @@ func (h *Handler) GetTopic(c *gin.Context) {
 func (h *Handler) UpdateTopic(c *gin.Context) {
 	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 	var req updateTopicRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	// Verify ownership
@@ -145,7 +146,7 @@ func (h *Handler) UpdateTopic(c *gin.Context) {
 		return
 	}
 	if existing.UserID != account.ID {
-		writeError(c, http.StatusNotFound, "not_found", "not found")
+		httputil.WriteError(c, http.StatusNotFound, "not_found", "not found")
 		return
 	}
 	input := svc.UpdateTopicInput{
@@ -180,12 +181,12 @@ func (h *Handler) UpdateTopic(c *gin.Context) {
 func (h *Handler) SetTopicStatus(c *gin.Context) {
 	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 	var req setStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	// Verify ownership
@@ -195,7 +196,7 @@ func (h *Handler) SetTopicStatus(c *gin.Context) {
 		return
 	}
 	if existing.UserID != account.ID {
-		writeError(c, http.StatusNotFound, "not_found", "not found")
+		httputil.WriteError(c, http.StatusNotFound, "not_found", "not found")
 		return
 	}
 	topic, err := h.service.SetTopicStatus(c.Request.Context(), c.Param("topicID"), svc.TopicStatus(req.Status))
@@ -210,7 +211,7 @@ func (h *Handler) SetTopicStatus(c *gin.Context) {
 func (h *Handler) DeleteTopic(c *gin.Context) {
 	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 	// Verify ownership
@@ -220,7 +221,7 @@ func (h *Handler) DeleteTopic(c *gin.Context) {
 		return
 	}
 	if existing.UserID != account.ID {
-		writeError(c, http.StatusNotFound, "not_found", "not found")
+		httputil.WriteError(c, http.StatusNotFound, "not_found", "not found")
 		return
 	}
 	if err := h.service.DeleteTopic(c.Request.Context(), c.Param("topicID")); err != nil {
@@ -234,7 +235,7 @@ func (h *Handler) DeleteTopic(c *gin.Context) {
 func (h *Handler) ListKeywords(c *gin.Context) {
 	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 	// Verify ownership
@@ -244,7 +245,7 @@ func (h *Handler) ListKeywords(c *gin.Context) {
 		return
 	}
 	if existing.UserID != account.ID {
-		writeError(c, http.StatusNotFound, "not_found", "not found")
+		httputil.WriteError(c, http.StatusNotFound, "not_found", "not found")
 		return
 	}
 	keywords, err := h.service.ListKeywords(c.Request.Context(), c.Param("topicID"))
@@ -259,7 +260,7 @@ func (h *Handler) ListKeywords(c *gin.Context) {
 func (h *Handler) AddKeyword(c *gin.Context) {
 	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 	// Verify ownership
@@ -269,12 +270,12 @@ func (h *Handler) AddKeyword(c *gin.Context) {
 		return
 	}
 	if existing.UserID != account.ID {
-		writeError(c, http.StatusNotFound, "not_found", "not found")
+		httputil.WriteError(c, http.StatusNotFound, "not_found", "not found")
 		return
 	}
 	var req addKeywordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	kw, err := h.service.AddKeyword(c.Request.Context(), svc.AddKeywordInput{
@@ -293,7 +294,7 @@ func (h *Handler) AddKeyword(c *gin.Context) {
 func (h *Handler) DeleteKeyword(c *gin.Context) {
 	account, ok := authhandler.CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 	// Verify ownership via keyword lookup
@@ -308,7 +309,7 @@ func (h *Handler) DeleteKeyword(c *gin.Context) {
 		return
 	}
 	if existing.UserID != account.ID {
-		writeError(c, http.StatusNotFound, "not_found", "not found")
+		httputil.WriteError(c, http.StatusNotFound, "not_found", "not found")
 		return
 	}
 	found := false
@@ -319,7 +320,7 @@ func (h *Handler) DeleteKeyword(c *gin.Context) {
 		}
 	}
 	if !found {
-		writeError(c, http.StatusNotFound, "not_found", "not found")
+		httputil.WriteError(c, http.StatusNotFound, "not_found", "not found")
 		return
 	}
 	if err := h.service.DeleteKeyword(c.Request.Context(), c.Param("keywordID")); err != nil {
@@ -373,18 +374,14 @@ func keywordResponses(keywords []svc.TopicKeyword) []gin.H {
 func writeServiceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, svc.ErrInvalidInput):
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 	case errors.Is(err, svc.ErrNotFound):
-		writeError(c, http.StatusNotFound, "not_found", "not found")
+		httputil.WriteError(c, http.StatusNotFound, "not_found", "not found")
 	case errors.Is(err, svc.ErrAlreadyExists):
-		writeError(c, http.StatusConflict, "already_exists", "resource already exists")
+		httputil.WriteError(c, http.StatusConflict, "already_exists", "resource already exists")
 	case errors.Is(err, svc.ErrInvalidTransition):
-		writeError(c, http.StatusConflict, "invalid_status_transition", "invalid status transition")
+		httputil.WriteError(c, http.StatusConflict, "invalid_status_transition", "invalid status transition")
 	default:
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal error")
 	}
-}
-
-func writeError(c *gin.Context, status int, code string, message string) {
-	c.JSON(status, gin.H{"error": gin.H{"code": code, "message": message}})
 }

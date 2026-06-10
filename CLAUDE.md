@@ -1,256 +1,90 @@
 # CLAUDE.md
 
-本文件为 Claude Code 提供在本仓库中工作的指导规范。
+本文件记录 Claude 侧长期稳定的项目协作规范。项目级差异放在 `CLAUDE.local.md`、`.claude/agents/*`、`.claude/skills/*` 或 `WORKFLOW.md`。
 
-## 项目概述
+## 核心原则
 
-HotKey 是一个面向内容创作者的 AI 实时热点话题监控平台。包含三个独立子项目：
+1. 以可验证的最小闭环为优先，避免过度设计和无关扩展。
+2. 先读现有代码和规范，再设计方案；优先复用项目既有结构、命名和工具链。
+3. 需求、计划和验收遵循 SMART：具体、可衡量、可达成、相关、有阶段边界。
+4. SDD 是实现前置门禁：涉及架构、数据模型、接口、状态机、队列或权限的任务，先写/更新设计，再写代码。
+5. OpenSpec 是仓库内 SDD 规范层：`openspec/specs/` 记录当前事实，`openspec/changes/` 承载增量变更，`docs/design/` 补充设计解释。
+6. 修改核心逻辑时默认 TDD：先红灯测试或可执行验收，再最小实现，最后在绿灯保护下重构。
+7. RAG 指红绿测试门禁：Red 必须先证明需求/缺陷未满足，Green 必须证明最小实现已满足验收。
+8. 无法先写测试时，必须说明原因，并提供替代验证证据。
+9. 测试只约束当前项目已接受的行为边界；不要为了兼容旧行为、灰度双轨、临时兜底或未被规范接受的历史分支补写兼容性测试。
+10. 只改本任务相关文件并严格守住当前项目边界；跨项目兼容适配、泛化抽象和额外能力扩展默认视为越界。
+11. 单文件长期目标不超过 500 行；确需更长时按职责拆分。
 
-- **hotkey-server** — Go 1.25 + Gin 后端（API、关键词管理、来源采集、内容标准化、pgvector 聚类、证据链、热点排名、日报）
-- **hotkey-web** — Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui Web 工作台
-- **hotkey-miniapp** — Taro 4 + React 18 微信小程序
+## 当前项目边界
 
-基础设施：PostgreSQL + pgvector、Redis、阿里云 DashScope（Qwen 模型、text-embedding-v2）。
+1. 本仓库只承载 `hotkey-server` Go 后端，不修改 `hotkey-web` 或 `hotkey-miniapp`，除非 ticket 明确要求。
+2. Agent 配置只维护 `.claude/agents/` 与 `.claude/skills/`；不新增 `.codex/`、`.agents/` 等并行规范树。
+3. 长期文档放在 `docs/`；任务执行以 Linear ticket + Workpad 为准，不把 issue 草稿当长期文档入库。
 
-## 常用命令
+## SDD / TDD / RAG 门禁
 
-### hotkey-server（在 `hotkey-server/` 目录下运行）
-```bash
-go run ./cmd/server                          # 启动服务器
-HOTKEY_HTTP_ADDR=127.0.0.1:18080 go run ./cmd/server  # 自定义地址
-go test ./...                                # 运行所有测试
-go test ./internal/hotspot/...               # 运行单个包测试
-curl http://127.0.0.1:18080/healthz          # 健康检查
-curl http://127.0.0.1:18080/openapi.json     # 导出 OpenAPI 规范
-```
+1. SDD 至少说明目标、非目标、数据/接口契约、状态流、失败路径、权限边界、验证方式和迁移/回滚影响。
+2. 涉及长期行为、契约或流程约束的修改时，必须同步更新 `openspec/specs/` 中的规范，必要时再决定是否补充解释性文档。
+3. TDD 必须绑定验收标准：先证明问题或需求，再写最小实现；`test:` commit 先于 `impl:`/`feat:` commit。
+4. RAG（红绿测试）必须记录红灯命令、失败信号、绿灯命令和通过结果；不能只写“已测试”。
+5. 红灯必须能约束实现：不能是空测试、快照噪音、兼容性兜底测试或永远通过的脚本。
+6. 涉及 SDD/TDD/RAG 的 ticket，Workpad 和 PR 都必须记录规范链接、红绿证据和测试命令。
 
-### hotkey-web（在 `hotkey-web/` 目录下运行）
-```bash
-npm run dev           # 开发服务器
-npm run build         # 生产构建
-npx tsc --noEmit      # 类型检查
-npx openapi2ts        # 从服务器 OpenAPI 重新生成 API 客户端
-python3 -m unittest discover -s tests   # 治理/契约测试
-```
+## 执行流程
 
-### hotkey-miniapp（在 `hotkey-miniapp/` 目录下运行）
-```bash
-npx taro build --type weapp            # 构建微信小程序
-npx taro build --type weapp --watch    # 开发模式带监听
-npx tsc --noEmit                       # 类型检查
-npx openapi2ts                         # 重新生成 API 客户端
-python3 -m unittest discover -s tests  # 治理/契约测试
-```
+复杂任务按 `Explorer -> PM -> Builder -> Tester -> Reporter` 收敛：
 
-## 架构
+1. `Explorer`：读取代码、配置、历史提交、issue/PR 评论，给出事实依据。
+2. `PM`：拆范围、验收标准、风险和不做事项。
+3. `Builder`：按最小方案实现，遵循既有风格。
+4. `Tester`：运行测试、lint、构建、E2E 或可复现手工验证。
+5. `Reporter`：汇总改动、验证、风险、提交和 PR 状态。
 
-### 跨仓库 API 契约
-`hotkey-server` 是 API 的唯一事实来源。两个前端通过 `@umijs/openapi` 从服务器的 OpenAPI 规范（`/openapi.json`）生成 TypeScript 客户端。绝不手写后端 API 类型。
+## TDD 与验证
 
-生成顺序：服务器优先，然后 web，然后 miniapp。
+1. 红灯阶段用测试表达需求、缺陷复现点或关键边界，避免空测试。
+2. 绿灯阶段只写让测试通过的最小代码。
+3. 重构阶段不得改变已验证行为。
+4. 测试优先覆盖核心业务规则、边界条件、回归缺陷、红绿证据和 ticket 验收标准。
+5. 交付前必须执行与改动范围匹配的验证；无法执行时说明原因和残余风险。
 
-### 服务器结构（hotkey-server/internal/）
-- `httpapi/router.go` — 中央 Gin 路由器，所有 50+ 端点，请求/响应类型（最重要的文件）
-- `config/config.go` — 基于环境的配置加载器
-- `openapi/spec.go` — OpenAPI 规范生成
-- 领域包：`keyword/`、`source/`、`content/`、`event/`、`eventgraph/`、`hotspot/`、`report/`、`trust/`、`propagation/`、`realtime/`、`redisinfra/`、`adminapi/`、`tenant/`、`rbac/`、`billing/`、`workqueue/`
-- `db/schema.sql` — 完整的 PostgreSQL 模式（50+ 表，含 pgvector）
+## Linear 与 Workpad
 
-当前所有领域服务使用内存仓库；PostgreSQL/Redis 持久化正在逐步接入。
+1. 复杂任务优先以 Linear ticket 为执行单位，并在隔离 workspace 中完成。
+2. 每个 ticket 只维护一个持久评论：`## Claude Workpad`。
+3. Workpad 必含环境戳、Plan、Acceptance Criteria、Validation、Notes。
+4. 进度、阻塞、验证和交付说明都更新到同一个 Workpad。
 
-### 前端结构
-- `hotkey-web/app/` — Next.js App Router（layout.tsx、page.tsx）
-- `hotkey-web/src/components/CreatorWorkbench.tsx` — 主 UI 组件
-- `hotkey-web/src/services/hotkey/hotkey-server/` — 自动生成的 API 客户端
-- `hotkey-miniapp/src/pages/index/` — 单页面小程序
-- `hotkey-miniapp/src/services/hotkey/hotkey-server/` — 自动生成的 API 客户端
+## Symphony 与 Agent Review
 
-### n8n 集成
-`hotkey-server/n8n/` 包含工作流定义。服务器通过 `/api/v1/internal/*` 端点（经 `HOTKEY_INTERNAL_API_KEY` 认证）供 n8n 回调。
+1. `CLAUDE.md` 写稳定行为准则；`WORKFLOW.md` 写 Linear project、workspace、hooks、agent command、并发和 label 路由。
+2. 执行 agent 使用 `agent:*` 标签；审核 agent 使用 `reviewer:*` 标签。
+3. Review 通过后才移动到 `Human Review`。
 
----
+## Commit 规范
 
-## 项目开发原则
+1. 提交类型只使用：`test:`、`docs:`、`impl:`、`feat:`、`chore:`、`refactor:`。
+2. 功能变更保持 test-first 提交顺序：`test:` -> `impl:`/`feat:` -> 可选 `refactor:`/`docs:`/`chore:`。
+3. `test:` 只放测试、fixture、mock、期望和测试辅助；不得混入生产实现。
+4. 提交信息使用中文；提交前后检查工作区，避免混入无关修改。
 
-### 核心原则
+## PR 与 Human Review 门禁
 
-**MVP 优先** — 以最小可用功能闭环为优先，不对功能、架构、流程或文档进行过度设计。
+进入 `Human Review` 前必须满足：
 
-**单文件尺寸** — 文件保持在 200-500 行以内。超过时按职责拆分。
+1. Workpad 计划、验收和验证清单已更新且完成项勾选。
+2. 最新提交的测试、lint、构建或运行时验证通过。
+3. PR 已创建/更新并关联 Linear；PR 检查为绿色，或明确说明没有配置检查。
+4. PR 正文包含 Summary、Test-first Evidence、Commands run、Result、Agent Usage、Reviewer Checklist。
 
-**TDD 驱动** — 严格遵循红-绿-重构循环。
+## 交付输出
 
-**SMART 工程** — 需求和验收标准遵循 SMART 原则。
+每次完成任务时，用中文简洁说明：
 
-**变更闭环** — 每次重要的 OpenSpec 变更必须完成完整循环：实现、测试、验证、归档、归档后验证，然后才能进行中文 Git 提交。
-
----
-
-## TDD 执行规范
-
-1. 红阶段测试必须**明确表达预期行为或缺陷复现点**，不允许写空测试
-2. 绿阶段只允许最少代码通过测试 — 不扩大范围、不过度设计
-3. 重构阶段保持所有测试通过，聚焦命名、结构、可读性，不改变已验证的行为
-4. 测试边界必须覆盖：正常路径、边界条件、错误处理
-5. 测试失败时必须先理解失败原因，再编写最少代码使其通过
-6. 重构后必须运行完整测试套件确认无回归
-
----
-
-## Test-First PR 提交规范
-
-提交顺序严格按：`test:` → `impl:` → `refactor:` → `chore:`
-
-1. `test:` 提交只包含测试相关文件，**不允许包含业务实现、生产代码改动**
-2. `impl:` 提交只交付通过测试的最少代码
-3. `refactor:` 提交只做不改变行为的重构
-4. `chore:` 提交包含配置、格式化、生成文件
-5. 没有明确测试的 PR 不进入代码审查
-6. Agent 只能协助生成实现，测试、边界和最终质量由提交人负责
-
----
-
-## SMART 执行规范
-
-- **Specific（具体）** — 清晰描述问题和影响范围
-- **Measurable（可衡量）** — 通过测试、lint、API 响应、日志可验证标准
-- **Achievable（可达成）** — MVP 范围的最小实现
-- **Relevant（相关）** — 不做无关的重构或功能
-- **Time-bound（有时限）** — 分阶段步骤，有清晰边界
-
----
-
-## 文档规范
-
-### docs 目录结构
-```
-docs/
-├── prd/           # 产品需求文档（编号 1-25）
-├── plans/         # 实现计划（编号 1-30）
-├── design/        # 技术设计文档
-├── acceptance/    # 验收测试文档
-└── operations/    # 运维文档
-```
-
-### 文档要求
-- 只有对项目有长期影响的文档才放入 `docs/`
-- 临时事项如待办列表、进度笔记放在 OpenSpec change 任务中
-- 正式文档需要 YAML frontmatter，包含 `layer`、`doc_no`、`audience`、`purpose` 等元数据字段
-- 使用 `docs/TEMPLATE.md` 作为标准模板
-
----
-
-## Git 提交规范
-
-1. 重大变更后必须先完成测试和验证
-2. 提交前检查工作区只包含相关文件
-3. 功能性 PR 必须遵循 `test:→impl:→refactor:→chore:` 顺序
-4. 提交信息使用中文
-5. 中间产物和调试日志不进入提交
-6. 提交前确认所有测试通过
-
----
-
-## PR 提交与合并规范
-
-1. 创建 PR 前检查是否有可复用的现有 PR
-2. PR 标题和描述使用中文
-3. 合并前必须打 tag 标记当前分支状态作为回滚点 — tag 名称应体现合并对象和日期
-4. 多个 PR 按用户指定顺序合并，每次合并间重新检查冲突
-5. PR 描述必须包含：Test-first Evidence、Tests added、Commands run、Result、Agent Usage、Reviewer Checklist
-
-### PR 模板
-```
-## Test-first Evidence
-（测试先行的证据）
-
-## Tests added
-- [ ] Unit
-- [ ] Integration
-- [ ] UI
-- [ ] Snapshot
-- [ ] Performance
-
-## Commands run
-（运行的命令）
-
-## Result
-（结果）
-
-## Agent Usage
-（区分人工编写和 Agent 生成的工作）
-
-## Reviewer Checklist
-（优先审查测试提交）
-```
-
----
-
-## 角色协作结构
-
-### 标准角色与职责
-
-| 角色 | 职责 |
-|------|------|
-| **PM** | 策略分解、任务拆分 |
-| **Explorer** | 事实验证、上下文收集 |
-| **Builder** | 实现执行、最小变更 |
-| **Tester** | 质量保证、测试验证 |
-| **Reporter** | 交付回顾、风险总结 |
-
-### 角色配置
-- 角色配置存放于 `.claude/agents/` 目录
-- 可复用流程存放于 `.claude/skills/` 目录
-- OpenSpec 配置存放于 `openspec/` 目录
-
-### 标准执行流程
-**Explorer → PM → Builder → Tester → Reporter**
-1. Explorer 先收集上下文
-2. PM 拆分任务，明确范围
-3. Builder 实现最少变更
-4. Tester 通过测试和 lint 验证
-5. Reporter 总结变更内容、验证方式、剩余风险
-
----
-
-## 并行拆分与收口
-
-1. 大型任务必须先产出拆分计划
-2. 子角色交付干净的结果，包含输出、证据路径、风险项
-3. 主代理只负责协调边界和合并冲突，不复述中间推理
-4. 子任务间通过明确的输入输出接口通信
-5. 主代理在所有子任务完成后统一收口
-
----
-
-## 交付输出要求
-
-每个任务完成必须包含：
-1. 变更了什么
-2. 如何验证
-3. 未验证的内容或残余风险
-4. 关键文件
-5. Git 提交状态（是否已中文提交、提交信息、工作区是否干净）
-6. PR 状态（已创建/更新、合并需求、预合并 tag）
-
----
-
-## Harness 能力要求
-
-1. 本地启动脚本可用
-2. 统一验证命令可用
-3. `.env.example` 文档完整
-4. 可重复的验证方法
-5. 前端任务使用 Playwright 提供证据
-6. 参考相关 skill 文件：本地服务器设置、Playwright 证据、Linear 集成
-
----
-
-## 环境配置
-
-复制 `hotkey-server/.env.example` 到 `.env` 并配置。关键变量：
-- `HOTKEY_HTTP_ADDR` — 服务器地址
-- `HOTKEY_DATABASE_URL` — 数据库连接
-- `HOTKEY_REDIS_URL` — Redis 连接
-- `HOTKEY_DASHSCOPE_API_KEY` — DashScope API 密钥
-- `HOTKEY_INTERNAL_API_KEY` — 内部 API 密钥
+1. 修改了什么。
+2. 如何验证。
+3. 残余风险或未验证内容。
+4. 关键文件。
+5. Git 提交状态和工作区是否干净。
+6. PR 状态和是否需要合并。

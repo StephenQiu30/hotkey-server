@@ -12,7 +12,7 @@ status: draft
 version: "1.0.0"
 owner: "StephenQiu30"
 inputs:
-  - "docs/product/prd/08-热点评分与榜单APIPRD.md"
+  - "docs/prd/016-热点事件聚类与评分.md"
 outputs:
   - "热点评分与榜单API实现任务"
 triggers:

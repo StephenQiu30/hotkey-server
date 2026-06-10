@@ -2,6 +2,7 @@ package source
 
 import (
 	"errors"
+	"github.com/StephenQiu30/hotkey-server/internal/transport/http/httputil"
 	"net/http"
 	"time"
 
@@ -54,7 +55,7 @@ func New(service *servicesource.Service, fetcherMaps ...map[servicesource.Source
 func (h *Handler) ListSources(c *gin.Context) {
 	sources, err := h.service.ListSources(c.Request.Context())
 	if err != nil {
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"sources": sourceResponses(sources)})
@@ -64,7 +65,7 @@ func (h *Handler) ListSources(c *gin.Context) {
 func (h *Handler) CreateSource(c *gin.Context) {
 	var req sourceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	source, err := h.service.CreateSource(c.Request.Context(), servicesource.CreateSourceInput{
@@ -88,7 +89,7 @@ func (h *Handler) CreateSource(c *gin.Context) {
 func (h *Handler) UpdateSource(c *gin.Context) {
 	var req sourceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	source, err := h.service.UpdateSource(c.Request.Context(), servicesource.UpdateSourceInput{
@@ -113,7 +114,7 @@ func (h *Handler) UpdateSource(c *gin.Context) {
 func (h *Handler) SetSourceStatus(c *gin.Context) {
 	var req statusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	source, err := h.service.SetSourceStatus(c.Request.Context(), servicesource.SetSourceStatusInput{
@@ -159,7 +160,7 @@ func (h *Handler) TestFetch(c *gin.Context) {
 	}
 	fetcher, exists := h.fetchers[source.Type]
 	if !exists {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	startedAt := time.Now().UTC()
@@ -244,18 +245,14 @@ func collectionRunResponse(run servicesource.CollectionRun) gin.H {
 func writeServiceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, servicesource.ErrComplianceNoteRequired):
-		writeError(c, http.StatusBadRequest, "compliance_note_required", "compliance note required")
+		httputil.WriteError(c, http.StatusBadRequest, "compliance_note_required", "compliance note required")
 	case errors.Is(err, servicesource.ErrInvalidInput):
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 	case errors.Is(err, servicesource.ErrNotFound):
-		writeError(c, http.StatusNotFound, "not_found", "not found")
+		httputil.WriteError(c, http.StatusNotFound, "not_found", "not found")
 	case errors.Is(err, servicesource.ErrAlreadyExists):
-		writeError(c, http.StatusConflict, "source_already_exists", "source already exists")
+		httputil.WriteError(c, http.StatusConflict, "source_already_exists", "source already exists")
 	default:
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal error")
 	}
-}
-
-func writeError(c *gin.Context, status int, code string, message string) {
-	c.JSON(status, gin.H{"error": gin.H{"code": code, "message": message}})
 }

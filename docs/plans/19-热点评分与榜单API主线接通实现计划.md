@@ -14,7 +14,7 @@ owner: "StephenQiu30"
 inputs:
   - "docs/design/002-热点平台能力补齐与上线接通设计.md"
   - "docs/plans/18-Embedding热点聚类管线接通实现计划.md"
-  - "docs/product/prd/08-热点评分与榜单APIPRD.md"
+  - "docs/prd/016-热点事件聚类与评分.md"
   - "docs/plans/08-热点评分与榜单API实现计划.md"
 outputs:
   - "热点评分与榜单 API 主线接通实现任务"

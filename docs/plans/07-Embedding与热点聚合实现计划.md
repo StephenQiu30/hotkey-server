@@ -12,7 +12,7 @@ status: draft
 version: "1.0.0"
 owner: "StephenQiu30"
 inputs:
-  - "docs/product/prd/07-Embedding与热点聚合PRD.md"
+  - "docs/prd/016-热点事件聚类与评分.md"
 outputs:
   - "Embedding与热点聚合实现任务"
 triggers:

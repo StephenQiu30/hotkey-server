@@ -2,6 +2,7 @@ package eventsummary
 
 import (
 	"errors"
+	"github.com/StephenQiu30/hotkey-server/internal/transport/http/httputil"
 	"net/http"
 
 	serviceeventsummary "github.com/StephenQiu30/hotkey-server/internal/service/eventsummary"
@@ -20,20 +21,20 @@ func New(service *serviceeventsummary.Service) *Handler {
 func (h *Handler) GetSummary(c *gin.Context) {
 	eventID := c.Param("eventID")
 	if eventID == "" {
-		writeError(c, http.StatusBadRequest, "invalid_request", "eventID is required")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "eventID is required")
 		return
 	}
 	summary, err := h.service.GetSummary(c.Request.Context(), eventID)
 	if err != nil {
 		if errors.Is(err, serviceeventsummary.ErrInvalidInput) {
-			writeError(c, http.StatusBadRequest, "invalid_request", err.Error())
+			httputil.WriteError(c, http.StatusBadRequest, "invalid_request", err.Error())
 			return
 		}
 		if errors.Is(err, serviceeventsummary.ErrNotFound) {
-			writeError(c, http.StatusNotFound, "not_found", "event summary not found")
+			httputil.WriteError(c, http.StatusNotFound, "not_found", "event summary not found")
 			return
 		}
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal server error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}
 	c.JSON(http.StatusOK, summaryResponse(summary))
@@ -50,15 +51,15 @@ type GenerateSummaryRequest struct {
 func (h *Handler) GenerateSummary(c *gin.Context) {
 	var req GenerateSummaryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request body")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request body")
 		return
 	}
 	if req.EventID == "" {
-		writeError(c, http.StatusBadRequest, "invalid_request", "eventId is required")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "eventId is required")
 		return
 	}
 	if req.Title == "" {
-		writeError(c, http.StatusBadRequest, "invalid_request", "title is required")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "title is required")
 		return
 	}
 
@@ -71,10 +72,10 @@ func (h *Handler) GenerateSummary(c *gin.Context) {
 	summary, err := h.service.GenerateSummary(c.Request.Context(), input)
 	if err != nil {
 		if errors.Is(err, serviceeventsummary.ErrInvalidInput) {
-			writeError(c, http.StatusBadRequest, "invalid_request", err.Error())
+			httputil.WriteError(c, http.StatusBadRequest, "invalid_request", err.Error())
 			return
 		}
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal server error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}
 	c.JSON(http.StatusOK, summaryResponse(summary))
@@ -108,8 +109,4 @@ func summaryResponse(s serviceeventsummary.EventSummary) gin.H {
 		"createdAt":     s.CreatedAt,
 		"updatedAt":     s.UpdatedAt,
 	}
-}
-
-func writeError(c *gin.Context, status int, code string, message string) {
-	c.JSON(status, gin.H{"error": gin.H{"code": code, "message": message}})
 }

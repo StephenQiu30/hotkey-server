@@ -14,7 +14,7 @@ owner: "StephenQiu30"
 inputs:
   - "docs/design/002-热点平台能力补齐与上线接通设计.md"
   - "docs/plans/17-内容标准化去重管线接通实现计划.md"
-  - "docs/product/prd/07-Embedding与热点聚合PRD.md"
+  - "docs/prd/016-热点事件聚类与评分.md"
   - "docs/plans/07-Embedding与热点聚合实现计划.md"
 outputs:
   - "Embedding 热点聚类管线接通实现任务"

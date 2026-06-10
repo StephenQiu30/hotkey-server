@@ -14,7 +14,7 @@ owner: "StephenQiu30"
 inputs:
   - "docs/design/002-热点平台能力补齐与上线接通设计.md"
   - "docs/plans/13-配置与环境启动实现计划.md"
-  - "docs/product/prd/01-项目治理与Symphony编排PRD.md"
+  - "docs/prd/001-产品总览与上线门禁.md"
 outputs:
   - "runtime 服务装配实现任务"
 triggers:

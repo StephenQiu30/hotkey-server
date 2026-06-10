@@ -3,6 +3,7 @@ package auth
 import (
 	"database/sql"
 	"errors"
+	"github.com/StephenQiu30/hotkey-server/internal/transport/http/httputil"
 	"net/http"
 	"strings"
 
@@ -30,7 +31,7 @@ type refreshRequest struct {
 func (h *Handler) Register(c *gin.Context) {
 	var req authRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	account, err := h.service.Register(c.Request.Context(), serviceauth.RegisterInput{
@@ -39,10 +40,10 @@ func (h *Handler) Register(c *gin.Context) {
 	})
 	if err != nil {
 		if errors.Is(err, serviceauth.ErrEmailAlreadyExists) {
-			writeError(c, http.StatusConflict, "email_already_exists", "email already exists")
+			httputil.WriteError(c, http.StatusConflict, "email_already_exists", "email already exists")
 			return
 		}
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"user": userResponse(account)})
@@ -51,7 +52,7 @@ func (h *Handler) Register(c *gin.Context) {
 func (h *Handler) Login(c *gin.Context) {
 	var req authRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	session, err := h.service.Login(c.Request.Context(), serviceauth.LoginInput{
@@ -59,7 +60,7 @@ func (h *Handler) Login(c *gin.Context) {
 		Password: req.Password,
 	})
 	if err != nil {
-		writeError(c, http.StatusUnauthorized, "invalid_credentials", "invalid credentials")
+		httputil.WriteError(c, http.StatusUnauthorized, "invalid_credentials", "invalid credentials")
 		return
 	}
 	writeSession(c, session)
@@ -68,12 +69,12 @@ func (h *Handler) Login(c *gin.Context) {
 func (h *Handler) Refresh(c *gin.Context) {
 	var req refreshRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	session, err := h.service.Refresh(c.Request.Context(), req.RefreshToken)
 	if err != nil {
-		writeError(c, http.StatusUnauthorized, "invalid_refresh_token", "invalid refresh token")
+		httputil.WriteError(c, http.StatusUnauthorized, "invalid_refresh_token", "invalid refresh token")
 		return
 	}
 	writeSession(c, session)
@@ -82,11 +83,11 @@ func (h *Handler) Refresh(c *gin.Context) {
 func (h *Handler) Logout(c *gin.Context) {
 	var req refreshRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_request", "invalid request")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	if err := h.service.Logout(c.Request.Context(), req.RefreshToken); err != nil {
-		writeError(c, http.StatusUnauthorized, "invalid_refresh_token", "invalid refresh token")
+		httputil.WriteError(c, http.StatusUnauthorized, "invalid_refresh_token", "invalid refresh token")
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -95,7 +96,7 @@ func (h *Handler) Logout(c *gin.Context) {
 func (h *Handler) Me(c *gin.Context) {
 	account, ok := CurrentUser(c)
 	if !ok {
-		writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"user": userResponse(account)})
@@ -106,7 +107,7 @@ func (h *Handler) AuthRequired() gin.HandlerFunc {
 		token := bearerToken(c.GetHeader("Authorization"))
 		account, err := h.service.CurrentUser(c.Request.Context(), token)
 		if err != nil {
-			writeError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+			httputil.WriteError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
 			c.Abort()
 			return
 		}
@@ -126,7 +127,7 @@ func (h *Handler) AdminRequired() gin.HandlerFunc {
 				status = http.StatusUnauthorized
 				code = "unauthorized"
 			}
-			writeError(c, status, code, code)
+			httputil.WriteError(c, status, code, code)
 			c.Abort()
 			return
 		}
@@ -142,15 +143,15 @@ func (h *Handler) AdminHealthz(c *gin.Context) {
 func (h *Handler) AdminDisableUser(c *gin.Context) {
 	userID := c.Param("userID")
 	if userID == "" {
-		writeError(c, http.StatusBadRequest, "invalid_request", "user ID is required")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "user ID is required")
 		return
 	}
 	if err := h.service.DisableUser(c.Request.Context(), userID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeError(c, http.StatusNotFound, "user_not_found", "user not found")
+			httputil.WriteError(c, http.StatusNotFound, "user_not_found", "user not found")
 			return
 		}
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal server error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -159,15 +160,15 @@ func (h *Handler) AdminDisableUser(c *gin.Context) {
 func (h *Handler) AdminRevokeAllTokens(c *gin.Context) {
 	userID := c.Param("userID")
 	if userID == "" {
-		writeError(c, http.StatusBadRequest, "invalid_request", "user ID is required")
+		httputil.WriteError(c, http.StatusBadRequest, "invalid_request", "user ID is required")
 		return
 	}
 	if err := h.service.RevokeAllTokensForUser(c.Request.Context(), userID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeError(c, http.StatusNotFound, "user_not_found", "user not found")
+			httputil.WriteError(c, http.StatusNotFound, "user_not_found", "user not found")
 			return
 		}
-		writeError(c, http.StatusInternalServerError, "internal_error", "internal server error")
+		httputil.WriteError(c, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}
 	c.Status(http.StatusNoContent)
@@ -188,8 +189,4 @@ func bearerToken(header string) string {
 		return ""
 	}
 	return strings.TrimSpace(strings.TrimPrefix(header, prefix))
-}
-
-func writeError(c *gin.Context, status int, code string, message string) {
-	c.JSON(status, gin.H{"error": gin.H{"code": code, "message": message}})
 }

@@ -1,13 +1,12 @@
-.PHONY: test run fmt workflow-test build compose-up compose-down compose-logs compose-prod-up compose-prod-down compose-prod-logs e2e-up e2e-down e2e-test e2e-smoke
+.PHONY: test validate run fmt build compose-up compose-down compose-logs compose-prod-up compose-prod-down compose-prod-logs e2e-up e2e-down e2e-test e2e-smoke
 
 # --- Standard targets ---
 
-test:
-	go test ./...
-	python3 -m unittest tests/test_workflow_contract.py
+validate:
+	bash scripts/validate-repository.sh
 
-workflow-test:
-	python3 -m unittest tests/test_workflow_contract.py
+test: validate
+	go test ./...
 
 run:
 	go run ./cmd/hotkey-api
