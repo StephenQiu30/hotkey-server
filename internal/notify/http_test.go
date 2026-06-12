@@ -18,12 +18,10 @@ func TestListUnreadHandlerReturnsJSON(t *testing.T) {
 	svc := NewService(repo)
 	handler := NewHandler(svc)
 
-	mux := http.NewServeMux()
-	handler.RegisterRoutes(mux)
-
-	req := httptest.NewRequest("GET", "/api/v1/notifications?user_id=1", nil)
+	req := httptest.NewRequest("GET", "/api/v1/notifications", nil)
+	req = req.WithContext(ContextWithUserID(req.Context(), 1))
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
+	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
@@ -41,20 +39,17 @@ func TestListUnreadHandlerReturnsJSON(t *testing.T) {
 	}
 }
 
-func TestListUnreadHandlerRequiresUserID(t *testing.T) {
+func TestListUnreadHandlerRequiresAuth(t *testing.T) {
 	repo := &fakeNotificationRepo{}
 	svc := NewService(repo)
 	handler := NewHandler(svc)
 
-	mux := http.NewServeMux()
-	handler.RegisterRoutes(mux)
-
 	req := httptest.NewRequest("GET", "/api/v1/notifications", nil)
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
+	handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
 	}
 }
 
@@ -67,12 +62,10 @@ func TestMarkReadHandlerReturnsNoContent(t *testing.T) {
 	svc := NewService(repo)
 	handler := NewHandler(svc)
 
-	mux := http.NewServeMux()
-	handler.RegisterRoutes(mux)
-
-	req := httptest.NewRequest("POST", "/api/v1/notifications/1/read?user_id=1", nil)
+	req := httptest.NewRequest("POST", "/api/v1/notifications/1/read", nil)
+	req = req.WithContext(ContextWithUserID(req.Context(), 1))
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
+	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d", rec.Code)
@@ -88,12 +81,10 @@ func TestMarkReadHandlerReturnsNotFoundForWrongUser(t *testing.T) {
 	svc := NewService(repo)
 	handler := NewHandler(svc)
 
-	mux := http.NewServeMux()
-	handler.RegisterRoutes(mux)
-
-	req := httptest.NewRequest("POST", "/api/v1/notifications/1/read?user_id=99", nil)
+	req := httptest.NewRequest("POST", "/api/v1/notifications/1/read", nil)
+	req = req.WithContext(ContextWithUserID(req.Context(), 99))
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
+	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rec.Code)

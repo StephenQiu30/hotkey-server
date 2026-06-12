@@ -54,10 +54,10 @@ func main() {
 	}
 
 	router := server.NewRouter(server.Dependencies{
-		AuthHandler:    authHandler,
-		MonitorHandler: monitorHandler,
-		RegisterNotificationRoutes: notifyHandler.RegisterRoutes,
-		AuthMiddleware: authMiddleware,
+		AuthHandler:         authHandler,
+		MonitorHandler:      monitorHandler,
+		NotificationHandler: notifyHandler,
+		AuthMiddleware:      authMiddleware,
 	})
 
 	srv := &http.Server{

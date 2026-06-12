@@ -6,13 +6,13 @@ import (
 
 // Dependencies holds injected handlers and middleware for the router.
 type Dependencies struct {
-	AuthHandler               http.Handler
-	MonitorHandler            http.Handler
-	TopicHandler              http.Handler
-	TrendHandler              http.Handler
-	PostHandler               http.Handler
-	RegisterNotificationRoutes func(mux *http.ServeMux)
-	AuthMiddleware            func(http.Handler) http.Handler
+	AuthHandler         http.Handler
+	MonitorHandler      http.Handler
+	TopicHandler        http.Handler
+	TrendHandler        http.Handler
+	PostHandler         http.Handler
+	NotificationHandler http.Handler
+	AuthMiddleware      func(http.Handler) http.Handler
 }
 
 // NewRouter creates the application HTTP router with all routes mounted.
@@ -50,8 +50,9 @@ func NewRouter(deps Dependencies) http.Handler {
 	}
 
 	// Notification endpoints
-	if deps.RegisterNotificationRoutes != nil {
-		deps.RegisterNotificationRoutes(mux)
+	if deps.NotificationHandler != nil && deps.AuthMiddleware != nil {
+		mux.Handle("GET /api/v1/notifications", deps.AuthMiddleware(deps.NotificationHandler))
+		mux.Handle("POST /api/v1/notifications/{id}/read", deps.AuthMiddleware(deps.NotificationHandler))
 	}
 
 	return mux
