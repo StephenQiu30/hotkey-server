@@ -70,6 +70,31 @@ test ! -f skills-lock.json
 echo "OK: no anti-patterns found"
 
 echo ""
+echo "=== Implementation files ==="
+impl_files=(
+  "cmd/api/main.go"
+  "internal/config/config.go"
+  "internal/server/router.go"
+  "db/schema.sql"
+)
+for file in "${impl_files[@]}"; do
+  if [ ! -f "$file" ]; then
+    echo "FAIL: missing implementation file $file"
+    exit 1
+  fi
+done
+echo "OK: all implementation files present"
+
+echo ""
+echo "=== Schema validation ==="
+if ! grep -q "create table" db/schema.sql; then
+  echo "FAIL: db/schema.sql contains no CREATE TABLE statements"
+  exit 1
+fi
+table_count=$(grep -c "create table" db/schema.sql)
+echo "OK: db/schema.sql contains $table_count tables"
+
+echo ""
 echo "=== Go tests ==="
 go test ./...
 echo "OK: all Go tests pass"
