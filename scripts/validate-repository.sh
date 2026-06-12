@@ -54,4 +54,10 @@ grep -q "superpowers" WORKFLOW.md
 test ! -d .agents
 test ! -f skills-lock.json
 
+# Validate Go code compiles
+go build ./...
+
+# Validate Docker Compose configuration
+docker compose config >/dev/null
+
 git diff --check
