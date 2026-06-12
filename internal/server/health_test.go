@@ -19,9 +19,10 @@ func TestHealthReturnsOK(t *testing.T) {
 }
 
 func TestNewRouterHasHealthRoute(t *testing.T) {
+	router := newTestRouter()
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rr := httptest.NewRecorder()
-	NewRouter().ServeHTTP(rr, req)
+	router.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
 	}
