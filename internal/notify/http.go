@@ -1,11 +1,27 @@
 package notify
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
 )
+
+type contextKey string
+
+const userIDKey contextKey = "user_id"
+
+// ContextWithUserID returns a new context with the given user ID.
+func ContextWithUserID(ctx context.Context, userID int64) context.Context {
+	return context.WithValue(ctx, userIDKey, userID)
+}
+
+// userIDFromContext extracts the user ID from the context.
+func userIDFromContext(ctx context.Context) (int64, bool) {
+	id, ok := ctx.Value(userIDKey).(int64)
+	return id, ok
+}
 
 // writeJSON writes a JSON response with the given status code.
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -29,10 +45,27 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// RegisterRoutes registers notification routes on the given mux.
-func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/v1/notifications", h.listUnread)
-	mux.HandleFunc("POST /api/v1/notifications/{id}/read", h.markRead)
+// ServeHTTP routes requests to the appropriate handler method.
+func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	userID, ok := userIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	// /api/v1/notifications/{id}/read
+	if r.URL.Path != "/api/v1/notifications" {
+		h.markRead(w, r, userID)
+		return
+	}
+
+	// /api/v1/notifications
+	switch r.Method {
+	case http.MethodGet:
+		h.listUnread(w, r, userID)
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
 }
 
 // notificationJSON is the JSON representation of a notification.
@@ -62,18 +95,7 @@ func toNotificationJSON(n Notification) notificationJSON {
 	return j
 }
 
-func (h *Handler) listUnread(w http.ResponseWriter, r *http.Request) {
-	userIDStr := r.URL.Query().Get("user_id")
-	if userIDStr == "" {
-		writeError(w, http.StatusBadRequest, "user_id required")
-		return
-	}
-	userID, err := strconv.ParseInt(userIDStr, 10, 64)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid user_id")
-		return
-	}
-
+func (h *Handler) listUnread(w http.ResponseWriter, r *http.Request, userID int64) {
 	items, err := h.svc.ListUnread(r.Context(), userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -88,22 +110,19 @@ func (h *Handler) listUnread(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
-func (h *Handler) markRead(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("id")
+func (h *Handler) markRead(w http.ResponseWriter, r *http.Request, userID int64) {
+	// Extract notification ID from path: /api/v1/notifications/{id}/read
+	path := r.URL.Path
+	prefix := "/api/v1/notifications/"
+	suffix := "/read"
+	if len(path) <= len(prefix)+len(suffix) || path[:len(prefix)] != prefix || path[len(path)-len(suffix):] != suffix {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	idStr := path[len(prefix) : len(path)-len(suffix)]
 	notifID, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid notification id")
-		return
-	}
-
-	userIDStr := r.URL.Query().Get("user_id")
-	if userIDStr == "" {
-		writeError(w, http.StatusBadRequest, "user_id required")
-		return
-	}
-	userID, err := strconv.ParseInt(userIDStr, 10, 64)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid user_id")
 		return
 	}
 

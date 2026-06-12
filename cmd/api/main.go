@@ -13,6 +13,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/auth"
 	"github.com/StephenQiu30/hotkey-server/internal/config"
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
+	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	"github.com/StephenQiu30/hotkey-server/internal/observability"
 	"github.com/StephenQiu30/hotkey-server/internal/server"
 )
@@ -52,6 +53,11 @@ func runAPI() {
 	monitorSvc := monitor.NewService(monitorRepo)
 	monitorHandler := monitor.NewHandler(monitorSvc)
 
+	// Wire notification
+	notifyRepo := &stubNotifyRepo{}
+	notifySvc := notify.NewService(notifyRepo)
+	notifyHandler := notify.NewHandler(notifySvc)
+
 	// Auth middleware: validates token and injects user ID into context.
 	authMiddleware := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -62,9 +68,10 @@ func runAPI() {
 	}
 
 	router := server.NewRouter(server.Dependencies{
-		AuthHandler:    authHandler,
-		MonitorHandler: monitorHandler,
-		AuthMiddleware: authMiddleware,
+		AuthHandler:         authHandler,
+		MonitorHandler:      monitorHandler,
+		NotificationHandler: notifyHandler,
+		AuthMiddleware:      authMiddleware,
 	})
 
 	srv := &http.Server{
@@ -140,4 +147,18 @@ func (r *stubMonitorRepo) ListByUser(_ context.Context, _ int64) ([]monitor.Moni
 }
 func (r *stubMonitorRepo) Update(_ context.Context, _ int64, _ monitor.UpdateMonitorInput) (monitor.Monitor, error) {
 	return monitor.Monitor{}, monitor.ErrNotFound
+}
+
+// stubNotifyRepo is a placeholder repository that returns empty results.
+// Replace with a real database-backed implementation.
+type stubNotifyRepo struct{}
+
+func (r *stubNotifyRepo) ListUnread(_ context.Context, _ int64) ([]notify.Notification, error) {
+	return nil, nil
+}
+func (r *stubNotifyRepo) MarkRead(_ context.Context, _, _ int64) error {
+	return nil
+}
+func (r *stubNotifyRepo) Create(_ context.Context, n notify.Notification) (notify.Notification, error) {
+	return n, nil
 }
