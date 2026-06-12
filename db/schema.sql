@@ -1,100 +1,110 @@
--- Base schema for hotkey-server
--- Plan 002 foundation tables + Plan 003 ingestion tables
+-- HotKey Server schema
+-- Applies: users, keyword_monitors, Plan 003 ingestion tables
+
+BEGIN;
 
 -- Users (Plan 002)
-create table users (
-  id bigserial primary key,
-  email text not null unique,
-  password_hash text not null,
-  display_name text not null,
-  status text not null default 'active',
-  plan_type text not null default 'free',
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS users (
+    id            BIGSERIAL PRIMARY KEY,
+    email         TEXT        NOT NULL UNIQUE,
+    password_hash TEXT        NOT NULL,
+    display_name  TEXT        NOT NULL,
+    status        TEXT        NOT NULL DEFAULT 'active',
+    plan_type     TEXT        NOT NULL DEFAULT 'free',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Keyword monitors (Plan 002)
-create table keyword_monitors (
-  id bigserial primary key,
-  user_id bigint not null references users(id),
-  name text not null,
-  query_text text not null,
-  language text not null default 'en',
-  region text not null default 'global',
-  status text not null default 'active',
-  poll_interval_minutes integer not null,
-  alert_enabled boolean not null default true,
-  alert_threshold_config jsonb not null default '{}'::jsonb,
-  last_polled_at timestamptz,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS keyword_monitors (
+    id                     BIGSERIAL PRIMARY KEY,
+    user_id                BIGINT  NOT NULL REFERENCES users(id),
+    name                   TEXT    NOT NULL,
+    query_text             TEXT    NOT NULL,
+    language               TEXT    NOT NULL DEFAULT 'en',
+    region                 TEXT    NOT NULL DEFAULT 'global',
+    status                 TEXT    NOT NULL DEFAULT 'active',
+    poll_interval_minutes  INTEGER NOT NULL,
+    alert_enabled          BOOLEAN NOT NULL DEFAULT true,
+    alert_threshold_config JSONB   NOT NULL DEFAULT '{}'::jsonb,
+    last_polled_at         TIMESTAMPTZ,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE INDEX IF NOT EXISTS idx_keyword_monitors_user_id ON keyword_monitors(user_id);
+CREATE INDEX IF NOT EXISTS idx_keyword_monitors_status  ON keyword_monitors(status);
+
 -- Monitor runs (Plan 003)
-create table monitor_runs (
-  id bigserial primary key,
-  monitor_id bigint not null references keyword_monitors(id),
-  platform text not null,
-  run_type text not null,
-  status text not null,
-  started_at timestamptz not null,
-  finished_at timestamptz,
-  fetched_count integer not null default 0,
-  stored_count integer not null default 0,
-  error_message text,
-  cursor_snapshot jsonb not null default '{}'::jsonb
+CREATE TABLE IF NOT EXISTS monitor_runs (
+    id              BIGSERIAL PRIMARY KEY,
+    monitor_id      BIGINT      NOT NULL REFERENCES keyword_monitors(id),
+    platform        TEXT        NOT NULL,
+    run_type        TEXT        NOT NULL,
+    status          TEXT        NOT NULL,
+    started_at      TIMESTAMPTZ NOT NULL,
+    finished_at     TIMESTAMPTZ,
+    fetched_count   INTEGER     NOT NULL DEFAULT 0,
+    stored_count    INTEGER     NOT NULL DEFAULT 0,
+    error_message   TEXT,
+    cursor_snapshot JSONB       NOT NULL DEFAULT '{}'::jsonb
 );
 
 -- Platform authors (Plan 003)
-create table platform_authors (
-  id bigserial primary key,
-  platform text not null,
-  platform_author_id text not null,
-  handle text not null,
-  display_name text not null,
-  followers_count integer not null default 0,
-  verified boolean not null default false,
-  raw_payload jsonb not null default '{}'::jsonb,
-  updated_at timestamptz not null default now(),
-  unique(platform, platform_author_id)
+CREATE TABLE IF NOT EXISTS platform_authors (
+    id                 BIGSERIAL PRIMARY KEY,
+    platform           TEXT        NOT NULL,
+    platform_author_id TEXT       NOT NULL,
+    handle             TEXT        NOT NULL,
+    display_name       TEXT        NOT NULL,
+    followers_count    INTEGER     NOT NULL DEFAULT 0,
+    verified           BOOLEAN     NOT NULL DEFAULT false,
+    raw_payload        JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(platform, platform_author_id)
 );
 
 -- Platform posts (Plan 003)
-create table platform_posts (
-  id bigserial primary key,
-  platform text not null,
-  platform_post_id text not null,
-  author_platform_id text not null,
-  author_name text not null,
-  author_handle text not null,
-  content_text text not null,
-  content_lang text not null,
-  post_url text not null,
-  published_at timestamptz not null,
-  like_count integer not null default 0,
-  reply_count integer not null default 0,
-  repost_count integer not null default 0,
-  quote_count integer not null default 0,
-  view_count integer not null default 0,
-  raw_payload jsonb not null default '{}'::jsonb,
-  normalized_hash text not null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique(platform, platform_post_id)
+CREATE TABLE IF NOT EXISTS platform_posts (
+    id                BIGSERIAL PRIMARY KEY,
+    platform          TEXT        NOT NULL,
+    platform_post_id  TEXT        NOT NULL,
+    author_platform_id TEXT       NOT NULL,
+    author_name       TEXT        NOT NULL,
+    author_handle     TEXT        NOT NULL,
+    content_text      TEXT        NOT NULL,
+    content_lang      TEXT        NOT NULL,
+    post_url          TEXT        NOT NULL,
+    published_at      TIMESTAMPTZ NOT NULL,
+    like_count        INTEGER     NOT NULL DEFAULT 0,
+    reply_count       INTEGER     NOT NULL DEFAULT 0,
+    repost_count      INTEGER     NOT NULL DEFAULT 0,
+    quote_count       INTEGER     NOT NULL DEFAULT 0,
+    view_count        INTEGER     NOT NULL DEFAULT 0,
+    raw_payload       JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    normalized_hash   TEXT        NOT NULL,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(platform, platform_post_id)
 );
 
+CREATE INDEX IF NOT EXISTS idx_platform_posts_normalized_hash ON platform_posts(normalized_hash);
+CREATE INDEX IF NOT EXISTS idx_platform_posts_published_at    ON platform_posts(published_at);
+
 -- Monitor post hits (Plan 003)
-create table monitor_post_hits (
-  id bigserial primary key,
-  monitor_id bigint not null references keyword_monitors(id),
-  post_id bigint not null references platform_posts(id),
-  matched_keywords jsonb not null default '[]'::jsonb,
-  relevance_score numeric(5,4) not null default 0,
-  heat_score numeric(10,4) not null default 0,
-  freshness_score numeric(10,4) not null default 0,
-  author_influence_score numeric(10,4) not null default 0,
-  final_score numeric(10,4) not null default 0,
-  first_seen_at timestamptz not null default now(),
-  last_seen_at timestamptz not null default now(),
-  unique(monitor_id, post_id)
+CREATE TABLE IF NOT EXISTS monitor_post_hits (
+    id                   BIGSERIAL PRIMARY KEY,
+    monitor_id           BIGINT      NOT NULL REFERENCES keyword_monitors(id),
+    post_id              BIGINT      NOT NULL REFERENCES platform_posts(id),
+    matched_keywords     JSONB       NOT NULL DEFAULT '[]'::jsonb,
+    relevance_score      NUMERIC(5,4)  NOT NULL DEFAULT 0,
+    heat_score           NUMERIC(10,4) NOT NULL DEFAULT 0,
+    freshness_score      NUMERIC(10,4) NOT NULL DEFAULT 0,
+    author_influence_score NUMERIC(10,4) NOT NULL DEFAULT 0,
+    final_score          NUMERIC(10,4) NOT NULL DEFAULT 0,
+    first_seen_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_seen_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(monitor_id, post_id)
 );
+
+COMMIT;
