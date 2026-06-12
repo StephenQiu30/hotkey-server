@@ -2,71 +2,54 @@ package auth
 
 import (
 	"context"
-	"errors"
-	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
-var (
-	ErrEmailExists        = errors.New("email already exists")
-	ErrInvalidCredentials = errors.New("invalid email or password")
-)
-
-type RegisterInput struct {
-	Email       string `json:"email"`
-	Password    string `json:"password"`
-	DisplayName string `json:"display_name"`
-}
-
-type LoginInput struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-type LoginOutput struct {
-	Token string `json:"token"`
-	User  User   `json:"user"`
-}
-
+// Service provides authentication operations.
 type Service struct {
-	repo      Repository
-	jwtSecret string
+	repo Repository
 }
 
-func NewService(repo Repository, jwtSecret string) *Service {
-	return &Service{repo: repo, jwtSecret: jwtSecret}
+// NewService creates a new auth Service.
+func NewService(repo Repository) *Service {
+	return &Service{repo: repo}
 }
 
+// Register creates a new user account.
 func (s *Service) Register(ctx context.Context, input RegisterInput) (User, error) {
+	if input.Email == "" || input.Password == "" || input.DisplayName == "" {
+		return User{}, ErrInvalidInput
+	}
+	if len(input.Password) < 8 {
+		return User{}, ErrInvalidInput
+	}
+
 	if s.repo.ExistsByEmail(ctx, input.Email) {
 		return User{}, ErrEmailExists
 	}
+
 	hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return User{}, err
 	}
+
 	return s.repo.Create(ctx, input.Email, string(hash), input.DisplayName)
 }
 
-func (s *Service) Login(ctx context.Context, input LoginInput) (LoginOutput, error) {
-	user, hash, err := s.repo.FindByEmail(ctx, input.Email)
+// Login authenticates a user by email and password.
+func (s *Service) Login(ctx context.Context, input LoginInput) (User, error) {
+	user, err := s.repo.GetByEmail(ctx, input.Email)
 	if err != nil {
-		return LoginOutput{}, ErrInvalidCredentials
+		return User{}, err
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(input.Password)); err != nil {
-		return LoginOutput{}, ErrInvalidCredentials
+	if user == nil {
+		return User{}, ErrInvalidCredentials
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": user.ID,
-		"exp": time.Now().Add(24 * time.Hour).Unix(),
-	})
-	tokenStr, err := token.SignedString([]byte(s.jwtSecret))
-	if err != nil {
-		return LoginOutput{}, err
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(input.Password)); err != nil {
+		return User{}, ErrInvalidCredentials
 	}
 
-	return LoginOutput{Token: tokenStr, User: user}, nil
+	return *user, nil
 }

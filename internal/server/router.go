@@ -1,40 +1,33 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
-
-	"github.com/stephenqiu/hotkey-server/internal/auth"
-	"github.com/stephenqiu/hotkey-server/internal/monitor"
 )
 
+// Dependencies holds injected handlers and middleware for the router.
 type Dependencies struct {
-	AuthHandler    *auth.HTTPHandler
-	MonitorHandler *monitor.HTTPHandler
-	JWTSecret      string
+	AuthHandler    http.Handler
+	MonitorHandler http.Handler
+	AuthMiddleware func(http.Handler) http.Handler
 }
 
-func NewRouter(deps Dependencies) *http.ServeMux {
+// NewRouter creates the application HTTP router with all routes mounted.
+func NewRouter(deps Dependencies) http.Handler {
 	mux := http.NewServeMux()
+
 	mux.HandleFunc("GET /healthz", Health)
 
-	// Auth routes (public)
-	mux.HandleFunc("POST /api/v1/auth/register", deps.AuthHandler.Register)
-	mux.HandleFunc("POST /api/v1/auth/login", deps.AuthHandler.Login)
+	if deps.AuthHandler != nil {
+		mux.Handle("POST /api/v1/auth/register", deps.AuthHandler)
+		mux.Handle("POST /api/v1/auth/login", deps.AuthHandler)
+	}
 
-	// Monitor routes (protected)
-	authMw := AuthMiddleware(deps.JWTSecret)
-	mux.Handle("POST /api/v1/monitors", authMw(http.HandlerFunc(deps.MonitorHandler.Create)))
-	mux.Handle("GET /api/v1/monitors", authMw(http.HandlerFunc(deps.MonitorHandler.List)))
-	mux.Handle("GET /api/v1/monitors/{id}", authMw(http.HandlerFunc(deps.MonitorHandler.Get)))
-	mux.Handle("PATCH /api/v1/monitors/{id}", authMw(http.HandlerFunc(deps.MonitorHandler.Update)))
-	mux.Handle("DELETE /api/v1/monitors/{id}", authMw(http.HandlerFunc(deps.MonitorHandler.Deactivate)))
+	if deps.MonitorHandler != nil && deps.AuthMiddleware != nil {
+		mux.Handle("GET /api/v1/monitors", deps.AuthMiddleware(deps.MonitorHandler))
+		mux.Handle("POST /api/v1/monitors", deps.AuthMiddleware(deps.MonitorHandler))
+		mux.Handle("GET /api/v1/monitors/{id}", deps.AuthMiddleware(deps.MonitorHandler))
+		mux.Handle("PATCH /api/v1/monitors/{id}", deps.AuthMiddleware(deps.MonitorHandler))
+	}
 
 	return mux
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
 }
