@@ -36,12 +36,23 @@ required_files=(
   "docs/design/README.md"
   "docs/acceptance/README.md"
   "docs/operations/README.md"
+  "Dockerfile"
+  "docker-compose.yml"
+  "Makefile"
+  "cmd/api/main.go"
 )
 
+echo "=== Required files ==="
 for file in "${required_files[@]}"; do
-  test -f "$file"
+  if [ ! -f "$file" ]; then
+    echo "FAIL: missing $file"
+    exit 1
+  fi
 done
+echo "OK: all required files present"
 
+echo ""
+echo "=== WORKFLOW.md content ==="
 grep -q "tracker:" WORKFLOW.md
 grep -q "kind: linear" WORKFLOW.md
 grep -q "project_slug" WORKFLOW.md
@@ -50,14 +61,37 @@ grep -q "command: claude" WORKFLOW.md
 grep -q "Human Review" WORKFLOW.md
 grep -q "harness-quality-gate" WORKFLOW.md
 grep -q "superpowers" WORKFLOW.md
+echo "OK: WORKFLOW.md contains required markers"
 
+echo ""
+echo "=== Anti-patterns ==="
 test ! -d .agents
 test ! -f skills-lock.json
+echo "OK: no anti-patterns found"
 
-# Validate Go code compiles
+echo ""
+echo "=== Go tests ==="
+go test ./...
+echo "OK: all Go tests pass"
+
+echo ""
+echo "=== Go build ==="
 go build ./...
+echo "OK: Go code compiles"
 
-# Validate Docker Compose configuration
+echo ""
+echo "=== Docker Compose ==="
 docker compose config >/dev/null
+echo "OK: docker compose config valid"
 
-git diff --check
+echo ""
+echo "=== Git diff check ==="
+if git diff --check; then
+  echo "OK: no whitespace errors"
+else
+  echo "FAIL: whitespace errors detected"
+  exit 1
+fi
+
+echo ""
+echo "=== All validations passed ==="

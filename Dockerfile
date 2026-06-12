@@ -7,7 +7,7 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o hotkey-server ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -o hotkey-server ./cmd/api
 
 FROM alpine:3.19
 

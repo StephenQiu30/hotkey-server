@@ -4,23 +4,26 @@ set -euo pipefail
 # Validate compose configuration
 docker compose config >/dev/null
 
-# Check required environment variables
-if [ -z "${DATABASE_URL:-}" ]; then
-  export DATABASE_URL="postgres://hotkey:hotkey@localhost:5432/hotkey?sslmode=disable"
-fi
-
-if [ -z "${REDIS_URL:-}" ]; then
-  export REDIS_URL="redis://localhost:6379/0"
-fi
-
 echo "Starting local development environment..."
 docker compose up -d
 
 echo "Waiting for services to be healthy..."
-docker compose exec api curl -f http://localhost:8080/health || echo "API health check will be available after startup"
+for i in {1..30}; do
+  if curl -fsS http://localhost:8080/healthz >/dev/null 2>&1; then
+    docker compose ps
+    break
+  fi
+  sleep 1
+  if [ "$i" -eq 30 ]; then
+    echo "FAIL: API health check timed out"
+    docker compose ps
+    exit 1
+  fi
+done
 
+echo ""
 echo "Local environment started successfully!"
-echo "  API: http://localhost:8080"
-echo "  Web: http://localhost:3000"
-echo "  PostgreSQL: localhost:5432"
-echo "  Redis: localhost:6379"
+echo "  API:      http://localhost:8080"
+echo "  Health:   http://localhost:8080/healthz"
+echo "  Postgres: localhost:5432"
+echo "  Redis:    localhost:6379"
