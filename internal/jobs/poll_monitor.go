@@ -8,16 +8,16 @@ import (
 
 // MonitorRun represents a single execution of a monitor poll job.
 type MonitorRun struct {
-	ID            int64
-	MonitorID     int64
-	Platform      string
-	RunType       string
-	Status        string
-	StartedAt     time.Time
-	FinishedAt    *time.Time
-	FetchedCount  int
-	StoredCount   int
-	ErrorMessage  string
+	ID           int64
+	MonitorID    int64
+	Platform     string
+	RunType      string
+	Status       string
+	StartedAt    time.Time
+	FinishedAt   *time.Time
+	FetchedCount int
+	StoredCount  int
+	ErrorMessage string
 }
 
 // MonitorInfo contains the configuration for a monitor to poll.
@@ -46,19 +46,20 @@ type PostResult struct {
 
 // HitResult represents a monitor-post hit relationship.
 type HitResult struct {
-	MonitorID int64
-	PostID    int64
+	MonitorID      int64
+	PostID         int64
+	MatchedKeywords []string
 }
 
 // RunRepository persists monitor run records.
 type RunRepository interface {
-	CreateRun(ctx context.Context, run MonitorRun) error
-	UpdateRunStatus(ctx context.Context, runID int64, status string, errMsg string) error
+	CreateRun(ctx context.Context, run MonitorRun) (int64, error)
+	UpdateRun(ctx context.Context, runID int64, run MonitorRun) error
 }
 
 // PostRepository persists platform posts.
 type PostRepository interface {
-	UpsertPost(ctx context.Context, post PostResult) error
+	UpsertPost(ctx context.Context, post PostResult) (int64, error)
 }
 
 // HitRepository persists monitor-post hits.
@@ -73,9 +74,9 @@ type PlatformConnector interface {
 
 // PollMonitorJob orchestrates a single monitor poll cycle.
 type PollMonitorJob struct {
-	runRepo  RunRepository
-	postRepo PostRepository
-	hitRepo  HitRepository
+	runRepo   RunRepository
+	postRepo  PostRepository
+	hitRepo   HitRepository
 	connector PlatformConnector
 }
 
@@ -99,27 +100,46 @@ func (j *PollMonitorJob) Run(ctx context.Context, monitor MonitorInfo) error {
 		StartedAt: time.Now(),
 	}
 
-	if err := j.runRepo.CreateRun(ctx, run); err != nil {
+	runID, err := j.runRepo.CreateRun(ctx, run)
+	if err != nil {
 		return fmt.Errorf("create run: %w", err)
 	}
 
 	posts, _, err := j.connector.SearchPosts(ctx, monitor.QueryText, "")
 	if err != nil {
-		_ = j.runRepo.UpdateRunStatus(ctx, run.ID, "failed", err.Error())
+		run.Status = "failed"
+		run.ErrorMessage = err.Error()
+		_ = j.runRepo.UpdateRun(ctx, runID, run)
 		return fmt.Errorf("search posts: %w", err)
 	}
 
 	run.FetchedCount = len(posts)
 	for _, post := range posts {
-		if err := j.postRepo.UpsertPost(ctx, post); err != nil {
-			_ = j.runRepo.UpdateRunStatus(ctx, run.ID, "failed", err.Error())
+		postID, err := j.postRepo.UpsertPost(ctx, post)
+		if err != nil {
+			run.Status = "failed"
+			run.ErrorMessage = err.Error()
+			_ = j.runRepo.UpdateRun(ctx, runID, run)
 			return fmt.Errorf("upsert post %s: %w", post.ID, err)
 		}
 		run.StoredCount++
+
+		if err := j.hitRepo.UpsertHit(ctx, HitResult{
+			MonitorID:      monitor.ID,
+			PostID:         postID,
+			MatchedKeywords: monitor.Keywords,
+		}); err != nil {
+			run.Status = "failed"
+			run.ErrorMessage = err.Error()
+			_ = j.runRepo.UpdateRun(ctx, runID, run)
+			return fmt.Errorf("upsert hit for post %s: %w", post.ID, err)
+		}
 	}
 
+	now := time.Now()
 	run.Status = "success"
-	if err := j.runRepo.CreateRun(ctx, run); err != nil {
+	run.FinishedAt = &now
+	if err := j.runRepo.UpdateRun(ctx, runID, run); err != nil {
 		return fmt.Errorf("update run: %w", err)
 	}
 

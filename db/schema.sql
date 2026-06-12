@@ -104,6 +104,7 @@ CREATE TABLE IF NOT EXISTS monitor_post_hits (
     final_score          NUMERIC(10,4) NOT NULL DEFAULT 0,
     first_seen_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_seen_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (jsonb_typeof(matched_keywords) = 'array'),
     UNIQUE(monitor_id, post_id)
 );
 

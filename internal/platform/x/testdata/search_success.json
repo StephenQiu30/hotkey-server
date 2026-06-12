@@ -3,8 +3,6 @@
     {
       "id": "1234567890",
       "author_id": "author_001",
-      "author_name": "OpenAI",
-      "author_handle": "openai",
       "text": "Introducing our latest AI agent capabilities",
       "lang": "en",
       "created_at": "2026-06-12T10:00:00Z",
@@ -19,8 +17,6 @@
     {
       "id": "1234567891",
       "author_id": "author_002",
-      "author_name": "AI Researcher",
-      "author_handle": "ai_researcher",
       "text": "The new OpenAI agent is impressive for coding tasks",
       "lang": "en",
       "created_at": "2026-06-12T11:30:00Z",
@@ -36,5 +32,19 @@
   "meta": {
     "next_token": "NEXT123",
     "result_count": 2
+  },
+  "includes": {
+    "users": [
+      {
+        "id": "author_001",
+        "name": "OpenAI",
+        "username": "openai"
+      },
+      {
+        "id": "author_002",
+        "name": "AI Researcher",
+        "username": "ai_researcher"
+      }
+    ]
   }
 }

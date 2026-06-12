@@ -39,7 +39,8 @@ func Normalize(raw RawPost, platform string) NormalizedPost {
 }
 
 // computeContentHash generates a stable SHA-256 hash from platform, author, and content.
+// Uses null-byte separators to prevent collisions when fields contain colons.
 func computeContentHash(platform, authorID, text string) string {
-	h := sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%s", platform, authorID, text)))
+	h := sha256.Sum256([]byte(platform + "\x00" + authorID + "\x00" + text))
 	return fmt.Sprintf("%x", h)
 }
