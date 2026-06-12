@@ -7,6 +7,18 @@ import (
 	"time"
 )
 
+// writeJSON writes a JSON response with the given status code.
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(v)
+}
+
+// writeError writes a JSON error response.
+func writeError(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, map[string]string{"error": message})
+}
+
 // Handler provides HTTP endpoints for notifications.
 type Handler struct {
 	svc *Service
@@ -53,18 +65,18 @@ func toNotificationJSON(n Notification) notificationJSON {
 func (h *Handler) listUnread(w http.ResponseWriter, r *http.Request) {
 	userIDStr := r.URL.Query().Get("user_id")
 	if userIDStr == "" {
-		http.Error(w, "user_id required", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "user_id required")
 		return
 	}
 	userID, err := strconv.ParseInt(userIDStr, 10, 64)
 	if err != nil {
-		http.Error(w, "invalid user_id", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "invalid user_id")
 		return
 	}
 
 	items, err := h.svc.ListUnread(r.Context(), userID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -73,35 +85,34 @@ func (h *Handler) listUnread(w http.ResponseWriter, r *http.Request) {
 		result[i] = toNotificationJSON(n)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (h *Handler) markRead(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	notifID, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		http.Error(w, "invalid notification id", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "invalid notification id")
 		return
 	}
 
 	userIDStr := r.URL.Query().Get("user_id")
 	if userIDStr == "" {
-		http.Error(w, "user_id required", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "user_id required")
 		return
 	}
 	userID, err := strconv.ParseInt(userIDStr, 10, 64)
 	if err != nil {
-		http.Error(w, "invalid user_id", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "invalid user_id")
 		return
 	}
 
 	if err := h.svc.MarkRead(r.Context(), userID, notifID); err != nil {
 		if err == ErrNotFound || err == ErrNotOwned {
-			http.Error(w, err.Error(), http.StatusNotFound)
+			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 

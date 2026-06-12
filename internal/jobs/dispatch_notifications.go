@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/StephenQiu30/hotkey-server/internal/notify"
 )
 
 // EmailDelivery represents an email delivery record.
@@ -30,20 +32,14 @@ type DeliveryRepository interface {
 	GetPendingDeliveries(ctx context.Context, limit int) ([]EmailDelivery, error)
 }
 
-// Mailer abstracts email sending.
-type Mailer interface {
-	// Send sends an email and returns the provider message ID.
-	Send(ctx context.Context, to, subject, body string) (string, error)
-}
-
 // DispatchJob orchestrates email delivery for pending notifications.
 type DispatchJob struct {
 	repo   DeliveryRepository
-	mailer Mailer
+	mailer notify.Mailer
 }
 
 // NewDispatchJob creates a new DispatchJob.
-func NewDispatchJob(repo DeliveryRepository, mailer Mailer) *DispatchJob {
+func NewDispatchJob(repo DeliveryRepository, mailer notify.Mailer) *DispatchJob {
 	return &DispatchJob{repo: repo, mailer: mailer}
 }
 
