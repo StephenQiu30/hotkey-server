@@ -98,6 +98,7 @@ create table monitor_post_hits (
   final_score numeric(10,4) not null default 0,
   first_seen_at timestamptz not null default now(),
   last_seen_at timestamptz not null default now(),
+  check (jsonb_typeof(matched_keywords) = 'array'),
   unique(monitor_id, post_id)
 );
 
