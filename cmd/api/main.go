@@ -96,7 +96,7 @@ func runAPI() {
 }
 
 func runWorker() {
-	cfg, err := config.Load()
+	_, err := config.Load()
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
@@ -107,7 +107,9 @@ func runWorker() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	log.Print(observability.RenderLog("worker", fmt.Sprintf("ready, DATABASE_URL=%s REDIS_ADDR=%s", cfg.DatabaseURL, cfg.RedisAddr)))
+	// TODO: Register background jobs (poll_monitor, aggregate_topics, build_snapshots, dispatch_notifications)
+	// when the jobs module is wired with real repositories. See internal/jobs/.
+	log.Print(observability.RenderLog("worker", "ready, waiting for jobs"))
 
 	<-sigCh
 	log.Print(observability.RenderLog("worker", "shutting down"))
