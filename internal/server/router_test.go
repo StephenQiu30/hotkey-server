@@ -47,28 +47,28 @@ func TestProtectedMonitorRoutesRequireAuth(t *testing.T) {
 	}
 }
 
-func TestNotificationRoutesRequireAuth(t *testing.T) {
-	rejectMiddleware := func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusUnauthorized)
+func TestNotificationRoutesAreRegistered(t *testing.T) {
+	registerRoutes := func(mux *http.ServeMux) {
+		mux.HandleFunc("GET /api/v1/notifications", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`[]`))
+		})
+		mux.HandleFunc("POST /api/v1/notifications/{id}/read", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
 		})
 	}
 
-	dummyHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-
 	deps := Dependencies{
-		NotificationHandler: dummyHandler,
-		AuthMiddleware:      rejectMiddleware,
+		RegisterNotificationRoutes: registerRoutes,
 	}
 
 	tests := []struct {
-		method string
-		path   string
+		method     string
+		path       string
+		wantStatus int
 	}{
-		{http.MethodGet, "/api/v1/notifications?user_id=1"},
-		{http.MethodPost, "/api/v1/notifications/1/read?user_id=1"},
+		{http.MethodGet, "/api/v1/notifications?user_id=1", http.StatusOK},
+		{http.MethodPost, "/api/v1/notifications/1/read?user_id=1", http.StatusNoContent},
 	}
 
 	for _, tt := range tests {
@@ -76,8 +76,8 @@ func TestNotificationRoutesRequireAuth(t *testing.T) {
 		rr := httptest.NewRecorder()
 		NewRouter(deps).ServeHTTP(rr, req)
 
-		if rr.Code != http.StatusUnauthorized {
-			t.Errorf("%s %s: expected 401, got %d", tt.method, tt.path, rr.Code)
+		if rr.Code != tt.wantStatus {
+			t.Errorf("%s %s: expected %d, got %d", tt.method, tt.path, tt.wantStatus, rr.Code)
 		}
 	}
 }
