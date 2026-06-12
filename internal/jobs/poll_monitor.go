@@ -72,21 +72,28 @@ type PlatformConnector interface {
 	SearchPosts(ctx context.Context, query string, cursor string) ([]PostResult, string, error)
 }
 
+// HitScorer computes and persists scores for a monitor-post hit.
+type HitScorer interface {
+	ScoreHit(hitID int64, post PostResult, matchedKeywords []string, totalKeywords int, publishedMinutesAgo float64) error
+}
+
 // PollMonitorJob orchestrates a single monitor poll cycle.
 type PollMonitorJob struct {
 	runRepo   RunRepository
 	postRepo  PostRepository
 	hitRepo   HitRepository
 	connector PlatformConnector
+	scorer    HitScorer
 }
 
 // NewPollMonitorJob creates a new PollMonitorJob.
-func NewPollMonitorJob(runRepo RunRepository, postRepo PostRepository, hitRepo HitRepository, connector PlatformConnector) *PollMonitorJob {
+func NewPollMonitorJob(runRepo RunRepository, postRepo PostRepository, hitRepo HitRepository, connector PlatformConnector, scorer HitScorer) *PollMonitorJob {
 	return &PollMonitorJob{
 		runRepo:   runRepo,
 		postRepo:  postRepo,
 		hitRepo:   hitRepo,
 		connector: connector,
+		scorer:    scorer,
 	}
 }
 
@@ -133,6 +140,15 @@ func (j *PollMonitorJob) Run(ctx context.Context, monitor MonitorInfo) error {
 			run.ErrorMessage = err.Error()
 			_ = j.runRepo.UpdateRun(ctx, runID, run)
 			return fmt.Errorf("upsert hit for post %s: %w", post.ID, err)
+		}
+
+		// Score the hit if scorer is available
+		if j.scorer != nil {
+			publishedMinutesAgo := time.Since(post.PublishedAt).Minutes()
+			if err := j.scorer.ScoreHit(postID, post, monitor.Keywords, len(monitor.Keywords), publishedMinutesAgo); err != nil {
+				// Log but don't fail the run for scoring errors
+				run.ErrorMessage = fmt.Sprintf("score warning for post %s: %v", post.ID, err)
+			}
 		}
 	}
 

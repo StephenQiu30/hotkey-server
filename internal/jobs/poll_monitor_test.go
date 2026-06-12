@@ -17,7 +17,7 @@ func TestPollMonitorCreatesSuccessfulRun(t *testing.T) {
 	postRepo := &fakePostRepo{}
 	hitRepo := &fakeHitRepo{}
 
-	job := NewPollMonitorJob(runRepo, postRepo, hitRepo, connector)
+	job := NewPollMonitorJob(runRepo, postRepo, hitRepo, connector, nil)
 	err := job.Run(context.Background(), MonitorInfo{
 		ID:        42,
 		Platform:  "x",
@@ -47,7 +47,7 @@ func TestPollMonitorRecordsErrorOnFailure(t *testing.T) {
 	postRepo := &fakePostRepo{}
 	hitRepo := &fakeHitRepo{}
 
-	job := NewPollMonitorJob(runRepo, postRepo, hitRepo, connector)
+	job := NewPollMonitorJob(runRepo, postRepo, hitRepo, connector, nil)
 	err := job.Run(context.Background(), MonitorInfo{
 		ID:        42,
 		Platform:  "x",
@@ -75,7 +75,7 @@ func TestPollMonitorCreatesHitsForMatchedPosts(t *testing.T) {
 	postRepo := &fakePostRepo{nextID: 100}
 	hitRepo := &fakeHitRepo{}
 
-	job := NewPollMonitorJob(runRepo, postRepo, hitRepo, connector)
+	job := NewPollMonitorJob(runRepo, postRepo, hitRepo, connector, nil)
 	err := job.Run(context.Background(), MonitorInfo{
 		ID:        42,
 		Platform:  "x",
@@ -96,6 +96,35 @@ func TestPollMonitorCreatesHitsForMatchedPosts(t *testing.T) {
 	}
 	if len(hitRepo.hits[0].MatchedKeywords) != 2 {
 		t.Errorf("expected 2 matched keywords, got %d", len(hitRepo.hits[0].MatchedKeywords))
+	}
+}
+
+func TestPollMonitorScoresHitWhenScorerProvided(t *testing.T) {
+	runRepo := &fakeRunRepo{}
+	connector := &fakeConnector{
+		posts: []PostResult{
+			{ID: "post-1", Text: "AI agent launch", PublishedAt: time.Now().Add(-30 * time.Minute)},
+		},
+	}
+	postRepo := &fakePostRepo{nextID: 50}
+	hitRepo := &fakeHitRepo{}
+	scorer := &fakeScorer{}
+
+	job := NewPollMonitorJob(runRepo, postRepo, hitRepo, connector, scorer)
+	err := job.Run(context.Background(), MonitorInfo{
+		ID:        10,
+		Platform:  "x",
+		QueryText: "ai agent",
+		Keywords:  []string{"ai", "agent"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(scorer.calls) != 1 {
+		t.Fatalf("expected 1 scoring call, got %d", len(scorer.calls))
+	}
+	if scorer.calls[0].postID != 51 {
+		t.Errorf("expected scored post ID 51, got %d", scorer.calls[0].postID)
 	}
 }
 
@@ -153,6 +182,29 @@ type fakeHitRepo struct {
 
 func (f *fakeHitRepo) UpsertHit(_ context.Context, hit HitResult) error {
 	f.hits = append(f.hits, hit)
+	return nil
+}
+
+type fakeScorerCall struct {
+	postID              int64
+	post                PostResult
+	matchedKeywords     []string
+	totalKeywords       int
+	publishedMinutesAgo float64
+}
+
+type fakeScorer struct {
+	calls []fakeScorerCall
+}
+
+func (f *fakeScorer) ScoreHit(hitID int64, post PostResult, matchedKeywords []string, totalKeywords int, publishedMinutesAgo float64) error {
+	f.calls = append(f.calls, fakeScorerCall{
+		postID:              hitID,
+		post:                post,
+		matchedKeywords:     matchedKeywords,
+		totalKeywords:       totalKeywords,
+		publishedMinutesAgo: publishedMinutesAgo,
+	})
 	return nil
 }
 

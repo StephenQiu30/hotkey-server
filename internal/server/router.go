@@ -8,6 +8,9 @@ import (
 type Dependencies struct {
 	AuthHandler    http.Handler
 	MonitorHandler http.Handler
+	TopicHandler   http.Handler
+	TrendHandler   http.Handler
+	PostHandler    http.Handler
 	AuthMiddleware func(http.Handler) http.Handler
 }
 
@@ -27,6 +30,22 @@ func NewRouter(deps Dependencies) http.Handler {
 		mux.Handle("POST /api/v1/monitors", deps.AuthMiddleware(deps.MonitorHandler))
 		mux.Handle("GET /api/v1/monitors/{id}", deps.AuthMiddleware(deps.MonitorHandler))
 		mux.Handle("PATCH /api/v1/monitors/{id}", deps.AuthMiddleware(deps.MonitorHandler))
+	}
+
+	// Content flow: GET /api/v1/monitors/{id}/posts
+	if deps.PostHandler != nil && deps.AuthMiddleware != nil {
+		mux.Handle("GET /api/v1/monitors/{id}/posts", deps.AuthMiddleware(deps.PostHandler))
+	}
+
+	// Topic list: GET /api/v1/monitors/{id}/topics
+	if deps.TopicHandler != nil && deps.AuthMiddleware != nil {
+		mux.Handle("GET /api/v1/monitors/{id}/topics", deps.AuthMiddleware(deps.TopicHandler))
+	}
+
+	// Trend endpoints
+	if deps.TrendHandler != nil && deps.AuthMiddleware != nil {
+		mux.Handle("GET /api/v1/monitors/{id}/trends", deps.AuthMiddleware(deps.TrendHandler))
+		mux.Handle("GET /api/v1/topics/{id}/trends", deps.AuthMiddleware(deps.TrendHandler))
 	}
 
 	return mux
