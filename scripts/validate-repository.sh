@@ -86,8 +86,12 @@ echo "OK: docker compose config valid"
 
 echo ""
 echo "=== Git diff check ==="
-git diff --check || true
-echo "OK: no whitespace errors"
+if git diff --check; then
+  echo "OK: no whitespace errors"
+else
+  echo "FAIL: whitespace errors detected"
+  exit 1
+fi
 
 echo ""
 echo "=== All validations passed ==="

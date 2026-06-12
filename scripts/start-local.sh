@@ -8,8 +8,18 @@ echo "Starting local development environment..."
 docker compose up -d
 
 echo "Waiting for services to be healthy..."
-sleep 5
-docker compose ps
+for i in {1..30}; do
+  if curl -fsS http://localhost:8080/healthz >/dev/null 2>&1; then
+    docker compose ps
+    break
+  fi
+  sleep 1
+  if [ "$i" -eq 30 ]; then
+    echo "FAIL: API health check timed out"
+    docker compose ps
+    exit 1
+  fi
+done
 
 echo ""
 echo "Local environment started successfully!"
