@@ -34,14 +34,14 @@ services:
       - "8080:8080"
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-hotkey}:${POSTGRES_PASSWORD:-hotkey}@postgres:5432/${POSTGRES_DB:-hotkey}?sslmode=disable
-      REDIS_URL: redis://redis:6379/0
+      REDIS_ADDR: redis:6379
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -51,21 +51,11 @@ services:
     command: ["./hotkey-server", "worker"]
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-hotkey}:${POSTGRES_PASSWORD:-hotkey}@postgres:5432/${POSTGRES_DB:-hotkey}?sslmode=disable
-      REDIS_URL: redis://redis:6379/0
+      REDIS_ADDR: redis:6379
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-
-  web:
-    build: ./web
-    ports:
-      - "3000:3000"
-    environment:
-      API_URL: http://api:8080
-    depends_on:
-      api:
         condition: service_healthy
 
 volumes:
