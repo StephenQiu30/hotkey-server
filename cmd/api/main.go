@@ -75,8 +75,14 @@ func runAPI() {
 	trendHandler := trend.NewTrendHandler(trendQuerySvc)
 
 	// Auth middleware: validates token and injects user ID into context.
+	// When SMOKE_TEST=1, bypasses auth and injects a default user ID for smoke testing.
 	authMiddleware := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if os.Getenv("SMOKE_TEST") == "1" {
+				ctx := monitor.ContextWithUserID(r.Context(), 1)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
 			// TODO: Implement real JWT/token validation.
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
@@ -168,14 +174,38 @@ func runWorker() {
 	runner.Run(ctx)
 }
 
-// stubAuthRepo is a placeholder repository that returns errors.
-type stubAuthRepo struct{}
-
-func (r *stubAuthRepo) ExistsByEmail(_ context.Context, _ string) bool { return false }
-func (r *stubAuthRepo) Create(_ context.Context, _, _, _ string) (auth.User, error) {
-	return auth.User{}, nil
+// stubAuthRepo is a placeholder repository for smoke testing.
+// Tracks registered users in-memory so login can validate credentials.
+type stubAuthRepo struct {
+	users []auth.User
+	nextID int64
 }
-func (r *stubAuthRepo) GetByEmail(_ context.Context, _ string) (*auth.User, error) {
+
+func (r *stubAuthRepo) ExistsByEmail(_ context.Context, email string) bool {
+	for _, u := range r.users {
+		if u.Email == email {
+			return true
+		}
+	}
+	return false
+}
+func (r *stubAuthRepo) Create(_ context.Context, email, passwordHash, displayName string) (auth.User, error) {
+	r.nextID++
+	u := auth.User{
+		ID:           r.nextID,
+		Email:        email,
+		PasswordHash: passwordHash,
+		DisplayName:  displayName,
+	}
+	r.users = append(r.users, u)
+	return u, nil
+}
+func (r *stubAuthRepo) GetByEmail(_ context.Context, email string) (*auth.User, error) {
+	for _, u := range r.users {
+		if u.Email == email {
+			return &u, nil
+		}
+	}
 	return nil, nil
 }
 
@@ -262,6 +292,7 @@ type stubTrendQueryService struct{}
 func (s *stubTrendQueryService) GetTopicTrends(_ int64, _ time.Time) ([]trend.TrendPoint, error) {
 	return nil, nil
 }
+
 
 func (s *stubTrendQueryService) GetMonitorTrends(_ int64, _ time.Time) ([]trend.TrendPoint, error) {
 	return nil, nil
