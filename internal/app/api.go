@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"go.uber.org/fx"
@@ -14,6 +15,11 @@ import (
 
 // RunAPI starts the API server using Fx.
 func RunAPI() {
+	if os.Getenv("SMOKE_TEST") == "1" {
+		runAPISmoke()
+		return
+	}
+
 	fx.New(
 		fx.Provide(config.Load),
 		fx.Provide(func(cfg config.Config) (http.Handler, error) {
@@ -47,4 +53,15 @@ func startHTTPServer(lc fx.Lifecycle, cfg config.Config, handler http.Handler) {
 			return srv.Shutdown(ctx)
 		},
 	})
+}
+
+// runAPISmoke starts the API in smoke test mode (SMOKE_TEST=1).
+// Uses in-memory stubs and bypasses auth — no database required.
+func runAPISmoke() {
+	log.Print(observability.RenderLog("api", "smoke test mode"))
+	fx.New(
+		fx.Provide(config.Load),
+		fx.Provide(newSmokeRouter),
+		fx.Invoke(startHTTPServer),
+	).Run()
 }
