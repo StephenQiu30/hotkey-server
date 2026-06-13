@@ -32,9 +32,13 @@ services:
     command: ["./hotkey-server", "api"]
     ports:
       - "8080:8080"
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-hotkey}:${POSTGRES_PASSWORD:-hotkey}@postgres:5432/${POSTGRES_DB:-hotkey}?sslmode=disable
       REDIS_ADDR: redis:6379
+      HTTP_ADDR: :8080
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required in .env}
     depends_on:
       postgres:
         condition: service_healthy
@@ -49,9 +53,12 @@ services:
   worker:
     build: .
     command: ["./hotkey-server", "worker"]
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-hotkey}:${POSTGRES_PASSWORD:-hotkey}@postgres:5432/${POSTGRES_DB:-hotkey}?sslmode=disable
       REDIS_ADDR: redis:6379
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required in .env}
     depends_on:
       postgres:
         condition: service_healthy
