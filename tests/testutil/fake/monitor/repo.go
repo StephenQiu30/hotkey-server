@@ -36,7 +36,8 @@ func (r *Repo) Create(_ context.Context, userID int64, input monitor.CreateMonit
 func (r *Repo) GetByID(_ context.Context, id int64) (*monitor.Monitor, error) {
 	for i := range r.Monitors {
 		if r.Monitors[i].ID == id {
-			return &r.Monitors[i], nil
+			m := r.Monitors[i]
+			return &m, nil
 		}
 	}
 	return nil, nil

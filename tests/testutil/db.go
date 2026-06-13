@@ -1,9 +1,11 @@
 package testutil
 
 import (
+	"context"
 	"database/sql"
 	"os"
 	"testing"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -26,16 +28,18 @@ func SetupTestDB(t *testing.T) *sql.DB {
 		t.Fatalf("testutil: open db: %v", err)
 	}
 
-	if err := db.Ping(); err != nil {
+	t.Cleanup(func() {
 		db.Close()
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := db.PingContext(ctx); err != nil {
 		t.Fatalf("testutil: ping db: %v", err)
 	}
 
 	cleanTables(t, db)
-
-	t.Cleanup(func() {
-		db.Close()
-	})
 
 	return db
 }
@@ -61,8 +65,11 @@ func cleanTables(t *testing.T, db *sql.DB) {
 		"users",
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	for _, tbl := range tables {
-		if _, err := db.Exec("DELETE FROM " + tbl); err != nil {
+		if _, err := db.ExecContext(ctx, "DELETE FROM "+tbl); err != nil {
 			t.Fatalf("testutil: clean table %s: %v", tbl, err)
 		}
 	}

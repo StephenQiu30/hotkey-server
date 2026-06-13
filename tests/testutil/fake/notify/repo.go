@@ -42,6 +42,13 @@ func (r *Repo) MarkRead(_ context.Context, userID, notificationID int64) error {
 }
 
 func (r *Repo) Create(_ context.Context, n notify.Notification) (notify.Notification, error) {
+	if r.nextID == 0 {
+		for _, existing := range r.Notifications {
+			if existing.ID >= r.nextID {
+				r.nextID = existing.ID
+			}
+		}
+	}
 	r.nextID++
 	n.ID = r.nextID
 	if n.CreatedAt.IsZero() {

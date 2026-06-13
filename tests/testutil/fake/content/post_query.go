@@ -20,6 +20,9 @@ func (s *PostQueryService) ListPostsByMonitor(monitorID int64, limit, offset int
 		// For simplicity we return the stored slice (tests pre-filter).
 		out = append(out, p)
 	}
+	if offset < 0 || limit < 0 {
+		return nil, nil
+	}
 	if offset >= len(out) {
 		return nil, nil
 	}
