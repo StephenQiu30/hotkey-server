@@ -12,11 +12,14 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/auth"
 	"github.com/StephenQiu30/hotkey-server/internal/config"
+	"github.com/StephenQiu30/hotkey-server/internal/content"
 	"github.com/StephenQiu30/hotkey-server/internal/database"
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	"github.com/StephenQiu30/hotkey-server/internal/observability"
 	"github.com/StephenQiu30/hotkey-server/internal/server"
+	"github.com/StephenQiu30/hotkey-server/internal/topic"
+	"github.com/StephenQiu30/hotkey-server/internal/trend"
 )
 
 func main() {
@@ -66,12 +69,27 @@ func runAPI() {
 	notifySvc := notify.NewService(notifyRepo)
 	notifyHandler := notify.NewHandler(notifySvc)
 
+	// Wire content (post query) — uses stub until content repo is implemented.
+	postQuerySvc := &stubPostQueryService{}
+	postHandler := content.NewPostHandler(postQuerySvc)
+
+	// Wire topic (query) — uses stub until topic repo is implemented.
+	topicQuerySvc := &stubTopicQueryService{}
+	topicHandler := topic.NewTopicHandler(topicQuerySvc)
+
+	// Wire trend (query) — uses stub until trend repo is implemented.
+	trendQuerySvc := &stubTrendQueryService{}
+	trendHandler := trend.NewTrendHandler(trendQuerySvc)
+
 	// Auth middleware: validates JWT token and injects user ID into context.
 	authMiddleware := server.AuthMiddleware(cfg.JWTSecret)
 
 	router := server.NewRouter(server.Dependencies{
 		AuthHandler:         authHandler,
 		MonitorHandler:      monitorHandler,
+		TopicHandler:        topicHandler,
+		TrendHandler:        trendHandler,
+		PostHandler:         postHandler,
 		NotificationHandler: notifyHandler,
 		AuthMiddleware:      authMiddleware,
 	})
@@ -122,4 +140,29 @@ func runWorker() {
 
 	<-sigCh
 	log.Print(observability.RenderLog("worker", "shutting down"))
+}
+
+// stubPostQueryService is a placeholder query service for content posts.
+type stubPostQueryService struct{}
+
+func (s *stubPostQueryService) ListPostsByMonitor(_ int64, _, _ int) ([]content.PostSummary, error) {
+	return nil, nil
+}
+
+// stubTopicQueryService is a placeholder query service for topics.
+type stubTopicQueryService struct{}
+
+func (s *stubTopicQueryService) ListByMonitor(_ int64) ([]topic.TopicSummary, error) {
+	return nil, nil
+}
+
+// stubTrendQueryService is a placeholder query service for trends.
+type stubTrendQueryService struct{}
+
+func (s *stubTrendQueryService) GetTopicTrends(_ int64, _ time.Time) ([]trend.TrendPoint, error) {
+	return nil, nil
+}
+
+func (s *stubTrendQueryService) GetMonitorTrends(_ int64, _ time.Time) ([]trend.TrendPoint, error) {
+	return nil, nil
 }
