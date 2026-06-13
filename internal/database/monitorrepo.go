@@ -21,27 +21,38 @@ func NewMonitorRepo(db *sql.DB) *MonitorRepo {
 
 func (r *MonitorRepo) Create(ctx context.Context, userID int64, input monitor.CreateMonitorInput) (monitor.Monitor, error) {
 	var m monitor.Monitor
+	var configRaw []byte
 	configJSON, _ := json.Marshal(map[string]interface{}{})
 	err := r.db.QueryRowContext(ctx,
 		`INSERT INTO keyword_monitors (user_id, name, query_text, language, region, poll_interval_minutes, alert_enabled, alert_threshold_config)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		 RETURNING id, user_id, name, query_text, language, region, status, poll_interval_minutes, alert_enabled, alert_threshold_config, last_polled_at, created_at, updated_at`,
 		userID, input.Name, input.QueryText, input.Language, input.Region, input.PollIntervalMinutes, input.AlertEnabled, configJSON,
-	).Scan(&m.ID, &m.UserID, &m.Name, &m.QueryText, &m.Language, &m.Region, &m.Status, &m.PollIntervalMinutes, &m.AlertEnabled, &m.AlertThresholdConfig, &m.LastPolledAt, &m.CreatedAt, &m.UpdatedAt)
-	return m, err
+	).Scan(&m.ID, &m.UserID, &m.Name, &m.QueryText, &m.Language, &m.Region, &m.Status, &m.PollIntervalMinutes, &m.AlertEnabled, &configRaw, &m.LastPolledAt, &m.CreatedAt, &m.UpdatedAt)
+	if err != nil {
+		return m, err
+	}
+	if len(configRaw) > 0 {
+		_ = json.Unmarshal(configRaw, &m.AlertThresholdConfig)
+	}
+	return m, nil
 }
 
 func (r *MonitorRepo) GetByID(ctx context.Context, id int64) (*monitor.Monitor, error) {
 	var m monitor.Monitor
+	var configRaw []byte
 	err := r.db.QueryRowContext(ctx,
 		`SELECT id, user_id, name, query_text, language, region, status, poll_interval_minutes, alert_enabled, alert_threshold_config, last_polled_at, created_at, updated_at
 		 FROM keyword_monitors WHERE id = $1`, id,
-	).Scan(&m.ID, &m.UserID, &m.Name, &m.QueryText, &m.Language, &m.Region, &m.Status, &m.PollIntervalMinutes, &m.AlertEnabled, &m.AlertThresholdConfig, &m.LastPolledAt, &m.CreatedAt, &m.UpdatedAt)
+	).Scan(&m.ID, &m.UserID, &m.Name, &m.QueryText, &m.Language, &m.Region, &m.Status, &m.PollIntervalMinutes, &m.AlertEnabled, &configRaw, &m.LastPolledAt, &m.CreatedAt, &m.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	if len(configRaw) > 0 {
+		_ = json.Unmarshal(configRaw, &m.AlertThresholdConfig)
 	}
 	return &m, nil
 }
@@ -59,8 +70,12 @@ func (r *MonitorRepo) ListByUser(ctx context.Context, userID int64) ([]monitor.M
 	var monitors []monitor.Monitor
 	for rows.Next() {
 		var m monitor.Monitor
-		if err := rows.Scan(&m.ID, &m.UserID, &m.Name, &m.QueryText, &m.Language, &m.Region, &m.Status, &m.PollIntervalMinutes, &m.AlertEnabled, &m.AlertThresholdConfig, &m.LastPolledAt, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		var configRaw []byte
+		if err := rows.Scan(&m.ID, &m.UserID, &m.Name, &m.QueryText, &m.Language, &m.Region, &m.Status, &m.PollIntervalMinutes, &m.AlertEnabled, &configRaw, &m.LastPolledAt, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, err
+		}
+		if len(configRaw) > 0 {
+			_ = json.Unmarshal(configRaw, &m.AlertThresholdConfig)
 		}
 		monitors = append(monitors, m)
 	}
@@ -133,13 +148,20 @@ func (r *MonitorRepo) Update(ctx context.Context, id int64, input monitor.Update
 	query += " WHERE id = $" + itoa(argIdx) + " RETURNING id, user_id, name, query_text, language, region, status, poll_interval_minutes, alert_enabled, alert_threshold_config, last_polled_at, created_at, updated_at"
 
 	var m monitor.Monitor
+	var configRaw []byte
 	err := r.db.QueryRowContext(ctx, query, args...).Scan(
-		&m.ID, &m.UserID, &m.Name, &m.QueryText, &m.Language, &m.Region, &m.Status, &m.PollIntervalMinutes, &m.AlertEnabled, &m.AlertThresholdConfig, &m.LastPolledAt, &m.CreatedAt, &m.UpdatedAt,
+		&m.ID, &m.UserID, &m.Name, &m.QueryText, &m.Language, &m.Region, &m.Status, &m.PollIntervalMinutes, &m.AlertEnabled, &configRaw, &m.LastPolledAt, &m.CreatedAt, &m.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return monitor.Monitor{}, monitor.ErrNotFound
 	}
-	return m, err
+	if err != nil {
+		return m, err
+	}
+	if len(configRaw) > 0 {
+		_ = json.Unmarshal(configRaw, &m.AlertThresholdConfig)
+	}
+	return m, nil
 }
 
 func itoa(i int) string {
