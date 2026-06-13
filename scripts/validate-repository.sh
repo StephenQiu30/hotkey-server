@@ -106,6 +106,9 @@ echo "OK: Go code compiles"
 
 echo ""
 echo "=== Docker Compose ==="
+if [ ! -f .env ]; then
+  cp .env.example .env
+fi
 docker compose config >/dev/null
 echo "OK: docker compose config valid"
 
