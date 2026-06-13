@@ -37,6 +37,7 @@ func startWorker(lc fx.Lifecycle, cfg config.Config) {
 		log.Print(observability.RenderLog("worker", "build_snapshots: running"))
 		return nil
 	}, 10*time.Minute)
+	// 0 means no limit — process all pending deliveries
 	runner.Register("dispatch_notifications", func(ctx context.Context) error {
 		log.Print(observability.RenderLog("worker", "dispatch_notifications: running"))
 		return dispatchJob.Run(ctx, 0)

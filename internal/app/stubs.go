@@ -47,7 +47,7 @@ func (r *smokeMonitorRepo) Create(_ context.Context, _ int64, _ monitor.CreateMo
 }
 func (r *smokeMonitorRepo) GetByID(_ context.Context, _ int64) (*monitor.Monitor, error) { return nil, nil }
 func (r *smokeMonitorRepo) ListByUser(_ context.Context, _ int64) ([]monitor.Monitor, error) {
-	return nil, nil
+	return []monitor.Monitor{}, nil
 }
 func (r *smokeMonitorRepo) Update(_ context.Context, _ int64, _ monitor.UpdateMonitorInput) (monitor.Monitor, error) {
 	return monitor.Monitor{}, monitor.ErrNotFound
@@ -56,7 +56,7 @@ func (r *smokeMonitorRepo) Update(_ context.Context, _ int64, _ monitor.UpdateMo
 type smokeNotifyRepo struct{}
 
 func (r *smokeNotifyRepo) ListUnread(_ context.Context, _ int64) ([]notify.Notification, error) {
-	return nil, nil
+	return []notify.Notification{}, nil
 }
 func (r *smokeNotifyRepo) MarkRead(_ context.Context, _, _ int64) error { return nil }
 func (r *smokeNotifyRepo) Create(_ context.Context, n notify.Notification) (notify.Notification, error) {
@@ -74,7 +74,7 @@ func (r *stubDeliveryRepo) UpdateDeliveryStatus(_ context.Context, _ int64, _ st
 	return nil
 }
 func (r *stubDeliveryRepo) GetPendingDeliveries(_ context.Context, _ int) ([]jobs.EmailDelivery, error) {
-	return nil, nil
+	return []jobs.EmailDelivery{}, nil
 }
 
 type stubUserEmailLookup struct{}
@@ -94,20 +94,20 @@ func (m *stubMailer) Send(_ context.Context, _, _, _ string) (string, error) {
 type stubPostQueryService struct{}
 
 func (s *stubPostQueryService) ListPostsByMonitor(_ int64, _, _ int) ([]content.PostSummary, error) {
-	return nil, nil
+	return []content.PostSummary{}, nil
 }
 
 type stubTopicQueryService struct{}
 
 func (s *stubTopicQueryService) ListByMonitor(_ int64) ([]topic.TopicSummary, error) {
-	return nil, nil
+	return []topic.TopicSummary{}, nil
 }
 
 type stubTrendQueryService struct{}
 
 func (s *stubTrendQueryService) GetTopicTrends(_ int64, _ time.Time) ([]trend.TrendPoint, error) {
-	return nil, nil
+	return []trend.TrendPoint{}, nil
 }
 func (s *stubTrendQueryService) GetMonitorTrends(_ int64, _ time.Time) ([]trend.TrendPoint, error) {
-	return nil, nil
+	return []trend.TrendPoint{}, nil
 }
