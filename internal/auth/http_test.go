@@ -11,7 +11,7 @@ import (
 func setupTestHandler() *Handler {
 	repo := &fakeRepo{}
 	svc := NewService(repo)
-	return NewHandler(svc)
+	return NewHandler(svc, "test-secret")
 }
 
 func TestRegisterHTTPSuccess(t *testing.T) {
@@ -100,7 +100,7 @@ func TestLoginHTTPWrongPassword(t *testing.T) {
 func TestRegisterHTTPEndToEnd(t *testing.T) {
 	repo := &fakeRepo{}
 	svc := NewService(repo)
-	handler := NewHandler(svc)
+	handler := NewHandler(svc, "test-secret")
 
 	// Create a test server
 	ts := httptest.NewServer(http.HandlerFunc(handler.ServeHTTP))

@@ -12,6 +12,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/auth"
 	"github.com/StephenQiu30/hotkey-server/internal/config"
+	"github.com/StephenQiu30/hotkey-server/internal/database"
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	"github.com/StephenQiu30/hotkey-server/internal/observability"
@@ -43,29 +44,30 @@ func runAPI() {
 
 	log.Print(observability.RenderLog("api", "starting"))
 
-	// Wire auth
-	authRepo := &stubAuthRepo{}
-	authSvc := auth.NewService(authRepo)
-	authHandler := auth.NewHandler(authSvc)
+	// Connect to database.
+	db, err := database.Open(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("failed to connect to database: %v", err)
+	}
+	defer db.Close()
 
-	// Wire monitor
-	monitorRepo := &stubMonitorRepo{}
+	// Wire auth with real Postgres repository.
+	authRepo := database.NewAuthRepo(db)
+	authSvc := auth.NewService(authRepo)
+	authHandler := auth.NewHandler(authSvc, cfg.JWTSecret)
+
+	// Wire monitor with real Postgres repository.
+	monitorRepo := database.NewMonitorRepo(db)
 	monitorSvc := monitor.NewService(monitorRepo)
 	monitorHandler := monitor.NewHandler(monitorSvc)
 
-	// Wire notification
-	notifyRepo := &stubNotifyRepo{}
+	// Wire notification with real Postgres repository.
+	notifyRepo := database.NewNotifyRepo(db)
 	notifySvc := notify.NewService(notifyRepo)
 	notifyHandler := notify.NewHandler(notifySvc)
 
-	// Auth middleware: validates token and injects user ID into context.
-	authMiddleware := func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// TODO: Implement real JWT/token validation.
-			w.WriteHeader(http.StatusUnauthorized)
-			_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
-		})
-	}
+	// Auth middleware: validates JWT token and injects user ID into context.
+	authMiddleware := server.AuthMiddleware(cfg.JWTSecret)
 
 	router := server.NewRouter(server.Dependencies{
 		AuthHandler:         authHandler,
@@ -120,45 +122,4 @@ func runWorker() {
 
 	<-sigCh
 	log.Print(observability.RenderLog("worker", "shutting down"))
-}
-
-// stubAuthRepo is a placeholder repository that returns errors.
-type stubAuthRepo struct{}
-
-func (r *stubAuthRepo) ExistsByEmail(_ context.Context, _ string) bool { return false }
-func (r *stubAuthRepo) Create(_ context.Context, _, _, _ string) (auth.User, error) {
-	return auth.User{}, nil
-}
-func (r *stubAuthRepo) GetByEmail(_ context.Context, _ string) (*auth.User, error) {
-	return nil, nil
-}
-
-// stubMonitorRepo is a placeholder repository that returns errors.
-type stubMonitorRepo struct{}
-
-func (r *stubMonitorRepo) Create(_ context.Context, _ int64, _ monitor.CreateMonitorInput) (monitor.Monitor, error) {
-	return monitor.Monitor{}, nil
-}
-func (r *stubMonitorRepo) GetByID(_ context.Context, _ int64) (*monitor.Monitor, error) {
-	return nil, nil
-}
-func (r *stubMonitorRepo) ListByUser(_ context.Context, _ int64) ([]monitor.Monitor, error) {
-	return nil, nil
-}
-func (r *stubMonitorRepo) Update(_ context.Context, _ int64, _ monitor.UpdateMonitorInput) (monitor.Monitor, error) {
-	return monitor.Monitor{}, monitor.ErrNotFound
-}
-
-// stubNotifyRepo is a placeholder repository that returns empty results.
-// Replace with a real database-backed implementation.
-type stubNotifyRepo struct{}
-
-func (r *stubNotifyRepo) ListUnread(_ context.Context, _ int64) ([]notify.Notification, error) {
-	return nil, nil
-}
-func (r *stubNotifyRepo) MarkRead(_ context.Context, _, _ int64) error {
-	return nil
-}
-func (r *stubNotifyRepo) Create(_ context.Context, n notify.Notification) (notify.Notification, error) {
-	return n, nil
 }
