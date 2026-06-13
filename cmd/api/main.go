@@ -83,7 +83,16 @@ func runAPI() {
 	trendHandler := trend.NewTrendHandler(trendQuerySvc)
 
 	// Auth middleware: validates JWT token and injects user ID into context.
-	authMiddleware := server.AuthMiddleware(cfg.JWTSecret)
+	// When SMOKE_TEST=1, bypasses auth and injects a default user ID for smoke testing.
+	authMiddleware := func(next http.Handler) http.Handler {
+		if os.Getenv("SMOKE_TEST") == "1" {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				ctx := monitor.ContextWithUserID(r.Context(), 1)
+				next.ServeHTTP(w, r.WithContext(ctx))
+			})
+		}
+		return server.AuthMiddleware(cfg.JWTSecret)(next)
+	}
 
 	router := server.NewRouter(server.Dependencies{
 		AuthHandler:         authHandler,
@@ -219,6 +228,7 @@ type stubTrendQueryService struct{}
 func (s *stubTrendQueryService) GetTopicTrends(_ int64, _ time.Time) ([]trend.TrendPoint, error) {
 	return nil, nil
 }
+
 
 func (s *stubTrendQueryService) GetMonitorTrends(_ int64, _ time.Time) ([]trend.TrendPoint, error) {
 	return nil, nil
