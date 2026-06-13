@@ -32,23 +32,35 @@ type DeliveryRepository interface {
 	GetPendingDeliveries(ctx context.Context, limit int) ([]EmailDelivery, error)
 }
 
+// UserEmailLookup resolves a user's email address from a notification ID.
+type UserEmailLookup interface {
+	ResolveEmail(ctx context.Context, notificationID int64) (string, error)
+}
+
 // DispatchJob orchestrates email delivery for pending notifications.
 type DispatchJob struct {
-	repo   DeliveryRepository
-	mailer notify.Mailer
+	repo     DeliveryRepository
+	mailer   notify.Mailer
+	resolver UserEmailLookup
 }
 
 // NewDispatchJob creates a new DispatchJob.
-func NewDispatchJob(repo DeliveryRepository, mailer notify.Mailer) *DispatchJob {
-	return &DispatchJob{repo: repo, mailer: mailer}
+func NewDispatchJob(repo DeliveryRepository, mailer notify.Mailer, resolver UserEmailLookup) *DispatchJob {
+	return &DispatchJob{repo: repo, mailer: mailer, resolver: resolver}
 }
 
 // Run processes pending email deliveries for the given notification.
 func (j *DispatchJob) Run(ctx context.Context, notificationID int64) error {
+	// Resolve real recipient email from notification
+	recipientEmail, err := j.resolver.ResolveEmail(ctx, notificationID)
+	if err != nil {
+		return fmt.Errorf("resolve recipient email: %w", err)
+	}
+
 	// Create delivery record
 	delivery := EmailDelivery{
 		NotificationID: notificationID,
-		RecipientEmail: "user@example.com", // placeholder; real impl would look up
+		RecipientEmail: recipientEmail,
 		Provider:       "smtp",
 		Status:         "pending",
 	}

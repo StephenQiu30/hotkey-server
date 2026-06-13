@@ -10,7 +10,8 @@ import (
 func TestDispatchMarksEmailDeliveryFailed(t *testing.T) {
 	repo := &fakeDeliveryRepo{}
 	mailer := &fakeMailer{err: errors.New("smtp down")}
-	job := NewDispatchJob(repo, mailer)
+	resolver := &fakeEmailResolver{email: "user@example.com"}
+	job := NewDispatchJob(repo, mailer, resolver)
 	err := job.Run(context.Background(), 1)
 	if err == nil {
 		t.Fatal("expected dispatch error")
@@ -23,7 +24,8 @@ func TestDispatchMarksEmailDeliveryFailed(t *testing.T) {
 func TestDispatchMarksEmailDeliverySuccess(t *testing.T) {
 	repo := &fakeDeliveryRepo{}
 	mailer := &fakeMailer{messageID: "msg-123"}
-	job := NewDispatchJob(repo, mailer)
+	resolver := &fakeEmailResolver{email: "user@example.com"}
+	job := NewDispatchJob(repo, mailer, resolver)
 	err := job.Run(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -39,7 +41,8 @@ func TestDispatchMarksEmailDeliverySuccess(t *testing.T) {
 func TestDispatchCreatesDeliveryRecord(t *testing.T) {
 	repo := &fakeDeliveryRepo{}
 	mailer := &fakeMailer{messageID: "msg-456"}
-	job := NewDispatchJob(repo, mailer)
+	resolver := &fakeEmailResolver{email: "user@example.com"}
+	job := NewDispatchJob(repo, mailer, resolver)
 	err := job.Run(context.Background(), 42)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -55,13 +58,45 @@ func TestDispatchCreatesDeliveryRecord(t *testing.T) {
 func TestDispatchSetsSentAtOnSuccess(t *testing.T) {
 	repo := &fakeDeliveryRepo{}
 	mailer := &fakeMailer{messageID: "msg-789"}
-	job := NewDispatchJob(repo, mailer)
+	resolver := &fakeEmailResolver{email: "user@example.com"}
+	job := NewDispatchJob(repo, mailer, resolver)
 	err := job.Run(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if repo.lastSentAt == nil {
 		t.Fatal("expected sent_at to be set on success")
+	}
+}
+
+func TestDispatchResolvesRecipientEmail(t *testing.T) {
+	repo := &fakeDeliveryRepo{}
+	mailer := &fakeMailer{messageID: "msg-real"}
+	resolver := &fakeEmailResolver{email: "alice@example.com"}
+	job := NewDispatchJob(repo, mailer, resolver)
+	err := job.Run(context.Background(), 99)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.lastRecipientEmail != "alice@example.com" {
+		t.Errorf("expected recipient alice@example.com, got %q", repo.lastRecipientEmail)
+	}
+	if mailer.lastTo != "alice@example.com" {
+		t.Errorf("expected mailer to alice@example.com, got %q", mailer.lastTo)
+	}
+}
+
+func TestDispatchFailsWhenEmailResolutionFails(t *testing.T) {
+	repo := &fakeDeliveryRepo{}
+	mailer := &fakeMailer{messageID: "msg-never"}
+	resolver := &fakeEmailResolver{err: errors.New("notification not found")}
+	job := NewDispatchJob(repo, mailer, resolver)
+	err := job.Run(context.Background(), 99)
+	if err == nil {
+		t.Fatal("expected error when email resolution fails")
+	}
+	if repo.lastRecipientEmail != "" {
+		t.Errorf("expected no delivery record created, got email %q", repo.lastRecipientEmail)
 	}
 }
 
@@ -103,12 +138,23 @@ func (r *fakeDeliveryRepo) GetPendingDeliveries(_ context.Context, limit int) ([
 
 type fakeMailer struct {
 	messageID string
+	lastTo    string
 	err       error
 }
 
 func (m *fakeMailer) Send(_ context.Context, to, subject, body string) (string, error) {
+	m.lastTo = to
 	if m.err != nil {
 		return "", m.err
 	}
 	return m.messageID, nil
+}
+
+type fakeEmailResolver struct {
+	email string
+	err   error
+}
+
+func (r *fakeEmailResolver) ResolveEmail(_ context.Context, _ int64) (string, error) {
+	return r.email, r.err
 }
