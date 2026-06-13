@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
+
 	"github.com/StephenQiu30/hotkey-server/internal/auth"
 	"github.com/StephenQiu30/hotkey-server/internal/content"
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
@@ -194,6 +196,39 @@ func TestMonitorsRequireAuth(t *testing.T) {
 				t.Errorf("expected 401, got %d: %s", rr.Code, rr.Body.String())
 			}
 		})
+	}
+}
+
+func TestJWTAuthPropagatesUserID(t *testing.T) {
+	// Create API without smoke test mode to exercise real JWT validation.
+	_, mux := NewAPI(Config{
+		JWTSecret:     "test-secret",
+		SmokeTest:     false,
+		AuthService:   auth.NewService(&stubAuthRepo{}),
+		MonitorSvc:    monitor.NewService(&stubMonitorRepo{}),
+		NotifySvc:     notify.NewService(&stubNotifyRepo{}),
+		PostQuerySvc:  &stubPostQueryService{},
+		TopicQuerySvc: &stubTopicQueryService{},
+		TrendQuerySvc: &stubTrendQueryService{},
+	})
+
+	// Generate a valid JWT token for user ID 42.
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": float64(42),
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	tokenStr, err := token.SignedString([]byte("test-secret"))
+	if err != nil {
+		t.Fatalf("failed to sign token: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/monitors", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 with valid JWT, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 

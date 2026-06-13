@@ -2,9 +2,12 @@ package http
 
 import (
 	"context"
+	"crypto/rand"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
@@ -65,50 +68,50 @@ func AuthMiddleware(jwtSecret string, smokeTest bool) func(ctx huma.Context, nex
 			return
 		}
 
-		if err := validateJWT(ctx, jwtSecret); err != nil {
+		newCtx, err := validateJWT(ctx, jwtSecret)
+		if err != nil {
 			huma.WriteErr(globalAPI, ctx, http.StatusUnauthorized, err.Error())
 			return
 		}
 
-		next(ctx)
+		next(huma.WithContext(ctx, newCtx))
 	}
 }
 
 // validateJWT extracts and validates the JWT from the Authorization header.
-// On success, injects the user ID into the context. Returns an error if
-// validation fails.
-func validateJWT(ctx huma.Context, jwtSecret string) error {
+// On success, returns a new context with the user ID injected. Returns an error
+// if validation fails.
+func validateJWT(ctx huma.Context, jwtSecret string) (context.Context, error) {
 	authHeader := ctx.Header("Authorization")
 	if authHeader == "" {
-		return &authError{"missing authorization header"}
+		return nil, &authError{"missing authorization header"}
 	}
 
 	parts := strings.SplitN(authHeader, " ", 2)
 	if len(parts) != 2 || parts[0] != "Bearer" {
-		return &authError{"invalid authorization format"}
+		return nil, &authError{"invalid authorization format"}
 	}
 
 	token, err := jwt.Parse(parts[1], func(token *jwt.Token) (any, error) {
 		return []byte(jwtSecret), nil
 	})
 	if err != nil || !token.Valid {
-		return &authError{"invalid token"}
+		return nil, &authError{"invalid token"}
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return &authError{"invalid token claims"}
+		return nil, &authError{"invalid token claims"}
 	}
 
 	sub, ok := claims["sub"].(float64)
 	if !ok {
-		return &authError{"invalid user id in token"}
+		return nil, &authError{"invalid user id in token"}
 	}
 
 	// Inject user ID into context (same key as internal/server.UserIDKey).
 	newCtx := context.WithValue(ctx.Context(), UserIDKey, int64(sub))
-	_ = huma.WithContext(ctx, newCtx) // result unused; value set via context
-	return nil
+	return newCtx, nil
 }
 
 // authError is a simple error type for authentication failures.
@@ -123,12 +126,13 @@ func generateRequestID() string {
 	return "req-" + randomHex(8)
 }
 
-// randomHex generates a random hex string of the given byte length.
+// randomHex generates a random hex string of the given byte length using
+// crypto/rand. Returns a string of length 2*n.
 func randomHex(n int) string {
-	const hex = "0123456789abcdef"
 	b := make([]byte, n)
-	for i := range b {
-		b[i] = hex[i%16]
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to timestamp-based ID if rand fails (should never happen).
+		return fmt.Sprintf("%x", time.Now().UnixNano())
 	}
-	return string(b)
+	return fmt.Sprintf("%x", b)
 }
