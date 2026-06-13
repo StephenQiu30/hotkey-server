@@ -32,4 +32,4 @@
 
 ## Task 5: 跨仓文档
 
-- [ ] 5.1 创建 `docs/cross-repo-client-generation.md`
+- [x] 5.1 创建 `docs/cross-repo-client-generation.md`
