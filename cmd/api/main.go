@@ -18,9 +18,9 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	"github.com/StephenQiu30/hotkey-server/internal/observability"
+	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/x"
 	"github.com/StephenQiu30/hotkey-server/internal/scoring"
-	"github.com/StephenQiu30/hotkey-server/internal/server"
 	"github.com/StephenQiu30/hotkey-server/internal/topic"
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
 )
@@ -86,38 +86,19 @@ func runAPI() {
 	}
 
 	authSvc := auth.NewService(authRepo)
-	authHandler := auth.NewHandler(authSvc, cfg.JWTSecret)
-
 	monitorSvc := monitor.NewService(monitorRepo)
-	monitorHandler := monitor.NewHandler(monitorSvc)
-
 	notifySvc := notify.NewService(notifyRepo)
-	notifyHandler := notify.NewHandler(notifySvc)
 
-	postHandler := content.NewPostHandler(postQuerySvc)
-	topicHandler := topic.NewTopicHandler(topicQuerySvc)
-	trendHandler := trend.NewTrendHandler(trendQuerySvc)
-
-	// Auth middleware: validates JWT token and injects user ID into context.
-	// When SMOKE_TEST=1, bypasses auth and injects a default user ID for smoke testing.
-	authMiddleware := func(next http.Handler) http.Handler {
-		if smokeTest {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				ctx := monitor.ContextWithUserID(r.Context(), 1)
-				next.ServeHTTP(w, r.WithContext(ctx))
-			})
-		}
-		return server.AuthMiddleware(cfg.JWTSecret)(next)
-	}
-
-	router := server.NewRouter(server.Dependencies{
-		AuthHandler:         authHandler,
-		MonitorHandler:      monitorHandler,
-		TopicHandler:        topicHandler,
-		TrendHandler:        trendHandler,
-		PostHandler:         postHandler,
-		NotificationHandler: notifyHandler,
-		AuthMiddleware:      authMiddleware,
+	// Create Huma-based API with middleware (JWT/RequestID/Recover) and all routes.
+	_, router := platformhttp.NewAPI(platformhttp.Config{
+		JWTSecret:     cfg.JWTSecret,
+		SmokeTest:     smokeTest,
+		AuthService:   authSvc,
+		MonitorSvc:    monitorSvc,
+		NotifySvc:     notifySvc,
+		PostQuerySvc:  postQuerySvc,
+		TopicQuerySvc: topicQuerySvc,
+		TrendQuerySvc: trendQuerySvc,
 	})
 
 	srv := &http.Server{
