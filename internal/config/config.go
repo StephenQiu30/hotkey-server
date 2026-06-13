@@ -10,6 +10,7 @@ type Config struct {
 	HTTPAddr    string
 	DatabaseURL string
 	RedisAddr   string
+	JWTSecret   string
 }
 
 // Load reads configuration from environment variables and validates required fields.
@@ -24,9 +25,15 @@ func Load() (Config, error) {
 		httpAddr = ":8080"
 	}
 
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		return Config{}, errors.New("JWT_SECRET is required")
+	}
+
 	return Config{
 		HTTPAddr:    httpAddr,
 		DatabaseURL: dbURL,
 		RedisAddr:   os.Getenv("REDIS_ADDR"),
+		JWTSecret:   jwtSecret,
 	}, nil
 }

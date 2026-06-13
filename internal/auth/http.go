@@ -4,16 +4,20 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // Handler provides HTTP endpoints for auth operations.
 type Handler struct {
-	svc *Service
+	svc       *Service
+	jwtSecret string
 }
 
 // NewHandler creates a new auth HTTP handler.
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc *Service, jwtSecret string) *Handler {
+	return &Handler{svc: svc, jwtSecret: jwtSecret}
 }
 
 // ServeHTTP routes requests to the appropriate handler method.
@@ -43,6 +47,11 @@ type userResponse struct {
 	ID          int64  `json:"id"`
 	Email       string `json:"email"`
 	DisplayName string `json:"display_name"`
+}
+
+type loginResponse struct {
+	User  userResponse `json:"user"`
+	Token string       `json:"token"`
 }
 
 // Register handles POST /api/v1/auth/register.
@@ -109,10 +118,25 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, userResponse{
-		ID:          user.ID,
-		Email:       user.Email,
-		DisplayName: user.DisplayName,
+	// Generate JWT token.
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub":   user.ID,
+		"email": user.Email,
+		"exp":   time.Now().Add(24 * time.Hour).Unix(),
+	})
+	tokenStr, err := token.SignedString([]byte(h.jwtSecret))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to sign token")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, loginResponse{
+		User: userResponse{
+			ID:          user.ID,
+			Email:       user.Email,
+			DisplayName: user.DisplayName,
+		},
+		Token: tokenStr,
 	})
 }
 

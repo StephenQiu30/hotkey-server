@@ -13,6 +13,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/auth"
 	"github.com/StephenQiu30/hotkey-server/internal/config"
 	"github.com/StephenQiu30/hotkey-server/internal/content"
+	"github.com/StephenQiu30/hotkey-server/internal/database"
 	"github.com/StephenQiu30/hotkey-server/internal/jobs"
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
@@ -47,54 +48,69 @@ func runAPI() {
 
 	log.Print(observability.RenderLog("api", "starting"))
 
-	// Wire auth
-	authRepo := &stubAuthRepo{}
-	authSvc := auth.NewService(authRepo)
-	authHandler := auth.NewHandler(authSvc)
+	smokeTest := os.Getenv("SMOKE_TEST") == "1"
 
-	// Wire monitor
-	monitorRepo := &stubMonitorRepo{}
+	// Wire auth, monitor, notify repositories.
+	var authRepo auth.Repository
+	var monitorRepo monitor.Repository
+	var notifyRepo notify.Repository
+
+	if smokeTest {
+		// In smoke test mode, use in-memory stubs (no database required).
+		authRepo = &smokeAuthRepo{}
+		monitorRepo = &smokeMonitorRepo{}
+		notifyRepo = &smokeNotifyRepo{}
+	} else {
+		// Connect to database and use real Postgres repositories.
+		db, err := database.Open(cfg.DatabaseURL)
+		if err != nil {
+			log.Fatalf("failed to connect to database: %v", err)
+		}
+		defer db.Close()
+		authRepo = database.NewAuthRepo(db)
+		monitorRepo = database.NewMonitorRepo(db)
+		notifyRepo = database.NewNotifyRepo(db)
+	}
+
+	authSvc := auth.NewService(authRepo)
+	authHandler := auth.NewHandler(authSvc, cfg.JWTSecret)
+
 	monitorSvc := monitor.NewService(monitorRepo)
 	monitorHandler := monitor.NewHandler(monitorSvc)
 
-	// Wire notification
-	notifyRepo := &stubNotifyRepo{}
 	notifySvc := notify.NewService(notifyRepo)
 	notifyHandler := notify.NewHandler(notifySvc)
 
-	// Wire content (post query)
+	// Wire content (post query) — uses stub until content repo is implemented.
 	postQuerySvc := &stubPostQueryService{}
 	postHandler := content.NewPostHandler(postQuerySvc)
 
-	// Wire topic (query)
+	// Wire topic (query) — uses stub until topic repo is implemented.
 	topicQuerySvc := &stubTopicQueryService{}
 	topicHandler := topic.NewTopicHandler(topicQuerySvc)
 
-	// Wire trend (query)
+	// Wire trend (query) — uses stub until trend repo is implemented.
 	trendQuerySvc := &stubTrendQueryService{}
 	trendHandler := trend.NewTrendHandler(trendQuerySvc)
 
-	// Auth middleware: validates token and injects user ID into context.
+	// Auth middleware: validates JWT token and injects user ID into context.
 	// When SMOKE_TEST=1, bypasses auth and injects a default user ID for smoke testing.
 	authMiddleware := func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if os.Getenv("SMOKE_TEST") == "1" {
+		if smokeTest {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				ctx := monitor.ContextWithUserID(r.Context(), 1)
 				next.ServeHTTP(w, r.WithContext(ctx))
-				return
-			}
-			// TODO: Implement real JWT/token validation.
-			w.WriteHeader(http.StatusUnauthorized)
-			_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
-		})
+			})
+		}
+		return server.AuthMiddleware(cfg.JWTSecret)(next)
 	}
 
 	router := server.NewRouter(server.Dependencies{
 		AuthHandler:         authHandler,
 		MonitorHandler:      monitorHandler,
-		PostHandler:         postHandler,
 		TopicHandler:        topicHandler,
 		TrendHandler:        trendHandler,
+		PostHandler:         postHandler,
 		NotificationHandler: notifyHandler,
 		AuthMiddleware:      authMiddleware,
 	})
@@ -174,75 +190,6 @@ func runWorker() {
 	runner.Run(ctx)
 }
 
-// stubAuthRepo is a placeholder repository for smoke testing.
-// Tracks registered users in-memory so login can validate credentials.
-type stubAuthRepo struct {
-	users []auth.User
-	nextID int64
-}
-
-func (r *stubAuthRepo) ExistsByEmail(_ context.Context, email string) bool {
-	for _, u := range r.users {
-		if u.Email == email {
-			return true
-		}
-	}
-	return false
-}
-func (r *stubAuthRepo) Create(_ context.Context, email, passwordHash, displayName string) (auth.User, error) {
-	r.nextID++
-	u := auth.User{
-		ID:           r.nextID,
-		Email:        email,
-		PasswordHash: passwordHash,
-		DisplayName:  displayName,
-	}
-	r.users = append(r.users, u)
-	return u, nil
-}
-func (r *stubAuthRepo) GetByEmail(_ context.Context, email string) (*auth.User, error) {
-	for _, u := range r.users {
-		if u.Email == email {
-			return &u, nil
-		}
-	}
-	return nil, nil
-}
-
-func (r *stubAuthRepo) GetByID(_ context.Context, _ int64) (*auth.User, error) {
-	return nil, nil
-}
-
-// stubMonitorRepo is a placeholder repository that returns errors.
-type stubMonitorRepo struct{}
-
-func (r *stubMonitorRepo) Create(_ context.Context, _ int64, _ monitor.CreateMonitorInput) (monitor.Monitor, error) {
-	return monitor.Monitor{}, nil
-}
-func (r *stubMonitorRepo) GetByID(_ context.Context, _ int64) (*monitor.Monitor, error) {
-	return nil, nil
-}
-func (r *stubMonitorRepo) ListByUser(_ context.Context, _ int64) ([]monitor.Monitor, error) {
-	return nil, nil
-}
-func (r *stubMonitorRepo) Update(_ context.Context, _ int64, _ monitor.UpdateMonitorInput) (monitor.Monitor, error) {
-	return monitor.Monitor{}, monitor.ErrNotFound
-}
-
-// stubNotifyRepo is a placeholder repository that returns empty results.
-// Replace with a real database-backed implementation.
-type stubNotifyRepo struct{}
-
-func (r *stubNotifyRepo) ListUnread(_ context.Context, _ int64) ([]notify.Notification, error) {
-	return nil, nil
-}
-func (r *stubNotifyRepo) MarkRead(_ context.Context, _, _ int64) error {
-	return nil
-}
-func (r *stubNotifyRepo) Create(_ context.Context, n notify.Notification) (notify.Notification, error) {
-	return n, nil
-}
-
 // stubDeliveryRepo is a placeholder for the jobs delivery repository.
 type stubDeliveryRepo struct{}
 
@@ -296,4 +243,54 @@ func (s *stubTrendQueryService) GetTopicTrends(_ int64, _ time.Time) ([]trend.Tr
 
 func (s *stubTrendQueryService) GetMonitorTrends(_ int64, _ time.Time) ([]trend.TrendPoint, error) {
 	return nil, nil
+}
+
+// --- Smoke test stubs (in-memory, no database required) ---
+
+type smokeAuthRepo struct{ users []auth.User }
+
+func (r *smokeAuthRepo) ExistsByEmail(_ context.Context, email string) bool {
+	for _, u := range r.users {
+		if u.Email == email {
+			return true
+		}
+	}
+	return false
+}
+func (r *smokeAuthRepo) Create(_ context.Context, email, passwordHash, displayName string) (auth.User, error) {
+	u := auth.User{ID: int64(len(r.users) + 1), Email: email, PasswordHash: passwordHash, DisplayName: displayName, Status: "active", PlanType: "free"}
+	r.users = append(r.users, u)
+	return u, nil
+}
+func (r *smokeAuthRepo) GetByEmail(_ context.Context, email string) (*auth.User, error) {
+	for _, u := range r.users {
+		if u.Email == email {
+			return &u, nil
+		}
+	}
+	return nil, nil
+}
+func (r *smokeAuthRepo) GetByID(_ context.Context, _ int64) (*auth.User, error) { return nil, nil }
+
+type smokeMonitorRepo struct{}
+
+func (r *smokeMonitorRepo) Create(_ context.Context, _ int64, _ monitor.CreateMonitorInput) (monitor.Monitor, error) {
+	return monitor.Monitor{}, nil
+}
+func (r *smokeMonitorRepo) GetByID(_ context.Context, _ int64) (*monitor.Monitor, error) { return nil, nil }
+func (r *smokeMonitorRepo) ListByUser(_ context.Context, _ int64) ([]monitor.Monitor, error) {
+	return nil, nil
+}
+func (r *smokeMonitorRepo) Update(_ context.Context, _ int64, _ monitor.UpdateMonitorInput) (monitor.Monitor, error) {
+	return monitor.Monitor{}, monitor.ErrNotFound
+}
+
+type smokeNotifyRepo struct{}
+
+func (r *smokeNotifyRepo) ListUnread(_ context.Context, _ int64) ([]notify.Notification, error) {
+	return nil, nil
+}
+func (r *smokeNotifyRepo) MarkRead(_ context.Context, _, _ int64) error { return nil }
+func (r *smokeNotifyRepo) Create(_ context.Context, n notify.Notification) (notify.Notification, error) {
+	return n, nil
 }
