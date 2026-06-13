@@ -42,6 +42,15 @@ func (r *fakeRepo) GetByEmail(_ context.Context, email string) (*User, error) {
 	return nil, nil
 }
 
+func (r *fakeRepo) GetByID(_ context.Context, id int64) (*User, error) {
+	for i := range r.users {
+		if r.users[i].ID == id {
+			return &r.users[i], nil
+		}
+	}
+	return nil, nil
+}
+
 func TestRegisterRejectsDuplicateEmail(t *testing.T) {
 	repo := &fakeRepo{
 		users: []User{{Email: "user@example.com", PasswordHash: "hash"}},
