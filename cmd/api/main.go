@@ -48,25 +48,36 @@ func runAPI() {
 
 	log.Print(observability.RenderLog("api", "starting"))
 
-	// Connect to database.
-	db, err := database.Open(cfg.DatabaseURL)
-	if err != nil {
-		log.Fatalf("failed to connect to database: %v", err)
-	}
-	defer db.Close()
+	smokeTest := os.Getenv("SMOKE_TEST") == "1"
 
-	// Wire auth with real Postgres repository.
-	authRepo := database.NewAuthRepo(db)
+	// Wire auth, monitor, notify repositories.
+	var authRepo auth.Repository
+	var monitorRepo monitor.Repository
+	var notifyRepo notify.Repository
+
+	if smokeTest {
+		// In smoke test mode, use in-memory stubs (no database required).
+		authRepo = &smokeAuthRepo{}
+		monitorRepo = &smokeMonitorRepo{}
+		notifyRepo = &smokeNotifyRepo{}
+	} else {
+		// Connect to database and use real Postgres repositories.
+		db, err := database.Open(cfg.DatabaseURL)
+		if err != nil {
+			log.Fatalf("failed to connect to database: %v", err)
+		}
+		defer db.Close()
+		authRepo = database.NewAuthRepo(db)
+		monitorRepo = database.NewMonitorRepo(db)
+		notifyRepo = database.NewNotifyRepo(db)
+	}
+
 	authSvc := auth.NewService(authRepo)
 	authHandler := auth.NewHandler(authSvc, cfg.JWTSecret)
 
-	// Wire monitor with real Postgres repository.
-	monitorRepo := database.NewMonitorRepo(db)
 	monitorSvc := monitor.NewService(monitorRepo)
 	monitorHandler := monitor.NewHandler(monitorSvc)
 
-	// Wire notification with real Postgres repository.
-	notifyRepo := database.NewNotifyRepo(db)
 	notifySvc := notify.NewService(notifyRepo)
 	notifyHandler := notify.NewHandler(notifySvc)
 
@@ -85,7 +96,7 @@ func runAPI() {
 	// Auth middleware: validates JWT token and injects user ID into context.
 	// When SMOKE_TEST=1, bypasses auth and injects a default user ID for smoke testing.
 	authMiddleware := func(next http.Handler) http.Handler {
-		if os.Getenv("SMOKE_TEST") == "1" {
+		if smokeTest {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				ctx := monitor.ContextWithUserID(r.Context(), 1)
 				next.ServeHTTP(w, r.WithContext(ctx))
@@ -232,4 +243,54 @@ func (s *stubTrendQueryService) GetTopicTrends(_ int64, _ time.Time) ([]trend.Tr
 
 func (s *stubTrendQueryService) GetMonitorTrends(_ int64, _ time.Time) ([]trend.TrendPoint, error) {
 	return nil, nil
+}
+
+// --- Smoke test stubs (in-memory, no database required) ---
+
+type smokeAuthRepo struct{ users []auth.User }
+
+func (r *smokeAuthRepo) ExistsByEmail(_ context.Context, email string) bool {
+	for _, u := range r.users {
+		if u.Email == email {
+			return true
+		}
+	}
+	return false
+}
+func (r *smokeAuthRepo) Create(_ context.Context, email, passwordHash, displayName string) (auth.User, error) {
+	u := auth.User{ID: int64(len(r.users) + 1), Email: email, PasswordHash: passwordHash, DisplayName: displayName, Status: "active", PlanType: "free"}
+	r.users = append(r.users, u)
+	return u, nil
+}
+func (r *smokeAuthRepo) GetByEmail(_ context.Context, email string) (*auth.User, error) {
+	for _, u := range r.users {
+		if u.Email == email {
+			return &u, nil
+		}
+	}
+	return nil, nil
+}
+func (r *smokeAuthRepo) GetByID(_ context.Context, _ int64) (*auth.User, error) { return nil, nil }
+
+type smokeMonitorRepo struct{}
+
+func (r *smokeMonitorRepo) Create(_ context.Context, _ int64, _ monitor.CreateMonitorInput) (monitor.Monitor, error) {
+	return monitor.Monitor{}, nil
+}
+func (r *smokeMonitorRepo) GetByID(_ context.Context, _ int64) (*monitor.Monitor, error) { return nil, nil }
+func (r *smokeMonitorRepo) ListByUser(_ context.Context, _ int64) ([]monitor.Monitor, error) {
+	return nil, nil
+}
+func (r *smokeMonitorRepo) Update(_ context.Context, _ int64, _ monitor.UpdateMonitorInput) (monitor.Monitor, error) {
+	return monitor.Monitor{}, monitor.ErrNotFound
+}
+
+type smokeNotifyRepo struct{}
+
+func (r *smokeNotifyRepo) ListUnread(_ context.Context, _ int64) ([]notify.Notification, error) {
+	return nil, nil
+}
+func (r *smokeNotifyRepo) MarkRead(_ context.Context, _, _ int64) error { return nil }
+func (r *smokeNotifyRepo) Create(_ context.Context, n notify.Notification) (notify.Notification, error) {
+	return n, nil
 }
