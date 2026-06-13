@@ -12,4 +12,7 @@ type Repository interface {
 
 	// GetByEmail retrieves a user by email. Returns nil if not found.
 	GetByEmail(ctx context.Context, email string) (*User, error)
+
+	// GetByID retrieves a user by ID. Returns nil if not found.
+	GetByID(ctx context.Context, id int64) (*User, error)
 }
