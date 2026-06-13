@@ -1,4 +1,4 @@
-.PHONY: test lint build validate up down schema dev dev-worker
+.PHONY: test lint build validate up down schema dev dev-worker openapi
 
 test:
 	go test ./...
@@ -26,3 +26,6 @@ dev:
 
 dev-worker:
 	bash scripts/dev-worker.sh
+
+openapi:
+	go run ./cmd/openapi

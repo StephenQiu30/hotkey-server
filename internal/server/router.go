@@ -1,3 +1,9 @@
+// Package server provides the legacy HTTP router and middleware.
+//
+// Deprecated: This package is superseded by internal/platform/http which uses
+// Huma v2 for route registration, middleware, and OpenAPI generation. Retained
+// only for backward compatibility with existing tests and domain packages that
+// import server.UserIDKey.
 package server
 
 import (
@@ -5,6 +11,8 @@ import (
 )
 
 // Dependencies holds injected handlers and middleware for the router.
+//
+// Deprecated: Use internal/platform/http.Config with huma.API instead.
 type Dependencies struct {
 	AuthHandler         http.Handler
 	MonitorHandler      http.Handler
