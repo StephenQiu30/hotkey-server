@@ -12,6 +12,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/auth"
 	"github.com/StephenQiu30/hotkey-server/internal/config"
+	"github.com/StephenQiu30/hotkey-server/internal/jobs"
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	"github.com/StephenQiu30/hotkey-server/internal/observability"
@@ -111,15 +112,42 @@ func runWorker() {
 	log.Print(observability.RenderLog("worker", "starting"))
 
 	// Graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		log.Print(observability.RenderLog("worker", "shutting down"))
+		cancel()
+	}()
 
-	// TODO: Register background jobs (poll_monitor, aggregate_topics, build_snapshots, dispatch_notifications)
-	// when the jobs module is wired with real repositories. See internal/jobs/.
-	log.Print(observability.RenderLog("worker", "ready, waiting for jobs"))
+	// Wire dispatch job
+	deliveryRepo := &stubDeliveryRepo{}
+	mailer := &stubMailer{}
+	emailResolver := &stubUserEmailLookup{}
+	dispatchJob := jobs.NewDispatchJob(deliveryRepo, mailer, emailResolver)
 
-	<-sigCh
-	log.Print(observability.RenderLog("worker", "shutting down"))
+	// Register background jobs
+	runner := jobs.NewRunner()
+	runner.Register("poll_monitor", func(ctx context.Context) error {
+		log.Print(observability.RenderLog("worker", "poll_monitor: running"))
+		return nil
+	}, 1*time.Minute)
+	runner.Register("aggregate_topics", func(ctx context.Context) error {
+		log.Print(observability.RenderLog("worker", "aggregate_topics: running"))
+		return nil
+	}, 5*time.Minute)
+	runner.Register("build_snapshots", func(ctx context.Context) error {
+		log.Print(observability.RenderLog("worker", "build_snapshots: running"))
+		return nil
+	}, 10*time.Minute)
+	runner.Register("dispatch_notifications", func(ctx context.Context) error {
+		log.Print(observability.RenderLog("worker", "dispatch_notifications: running"))
+		return dispatchJob.Run(ctx, 0)
+	}, 1*time.Minute)
+
+	log.Print(observability.RenderLog("worker", "ready, running jobs"))
+	runner.Run(ctx)
 }
 
 // stubAuthRepo is a placeholder repository that returns errors.
@@ -130,6 +158,10 @@ func (r *stubAuthRepo) Create(_ context.Context, _, _, _ string) (auth.User, err
 	return auth.User{}, nil
 }
 func (r *stubAuthRepo) GetByEmail(_ context.Context, _ string) (*auth.User, error) {
+	return nil, nil
+}
+
+func (r *stubAuthRepo) GetByID(_ context.Context, _ int64) (*auth.User, error) {
 	return nil, nil
 }
 
@@ -161,4 +193,33 @@ func (r *stubNotifyRepo) MarkRead(_ context.Context, _, _ int64) error {
 }
 func (r *stubNotifyRepo) Create(_ context.Context, n notify.Notification) (notify.Notification, error) {
 	return n, nil
+}
+
+// stubDeliveryRepo is a placeholder for the jobs delivery repository.
+type stubDeliveryRepo struct{}
+
+func (r *stubDeliveryRepo) CreateDelivery(_ context.Context, _ jobs.EmailDelivery) error {
+	return nil
+}
+
+func (r *stubDeliveryRepo) UpdateDeliveryStatus(_ context.Context, _ int64, _ string, _ string, _ string) error {
+	return nil
+}
+
+func (r *stubDeliveryRepo) GetPendingDeliveries(_ context.Context, _ int) ([]jobs.EmailDelivery, error) {
+	return nil, nil
+}
+
+// stubUserEmailLookup resolves notification IDs to empty email addresses.
+type stubUserEmailLookup struct{}
+
+func (r *stubUserEmailLookup) ResolveEmail(_ context.Context, _ int64) (string, error) {
+	return "unresolved@example.com", nil
+}
+
+// stubMailer is a placeholder mailer that logs instead of sending.
+type stubMailer struct{}
+
+func (m *stubMailer) Send(_ context.Context, _, _, _ string) (string, error) {
+	return "stub-msg-id", nil
 }
