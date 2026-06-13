@@ -7,7 +7,7 @@ lint:
 	go vet ./...
 
 build:
-	go build ./...
+	go build -o hotkey-server ./cmd/hotkey
 
 validate:
 	bash scripts/validate-repository.sh
