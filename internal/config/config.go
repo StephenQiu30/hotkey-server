@@ -11,6 +11,8 @@ type Config struct {
 	DatabaseURL string
 	RedisAddr   string
 	JWTSecret   string
+	XToken      string
+	XBaseURL    string
 }
 
 // Load reads configuration from environment variables and validates required fields.
@@ -30,10 +32,17 @@ func Load() (Config, error) {
 		return Config{}, errors.New("JWT_SECRET is required")
 	}
 
+	xBaseURL := os.Getenv("X_BASE_URL")
+	if xBaseURL == "" {
+		xBaseURL = "https://api.x.com"
+	}
+
 	return Config{
 		HTTPAddr:    httpAddr,
 		DatabaseURL: dbURL,
 		RedisAddr:   os.Getenv("REDIS_ADDR"),
 		JWTSecret:   jwtSecret,
+		XToken:      os.Getenv("X_BEARER_TOKEN"),
+		XBaseURL:    xBaseURL,
 	}, nil
 }
