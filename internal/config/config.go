@@ -1,39 +1,48 @@
 package config
 
 import (
-	"errors"
-	"os"
+	"fmt"
+
+	"github.com/spf13/viper"
 )
 
 // Config holds application configuration loaded from environment variables.
 type Config struct {
-	HTTPAddr    string
-	DatabaseURL string
-	RedisAddr   string
-	JWTSecret   string
+	HTTPAddr    string `mapstructure:"HTTP_ADDR"`
+	DatabaseURL string `mapstructure:"DATABASE_URL"`
+	RedisAddr   string `mapstructure:"REDIS_ADDR"`
+	JWTSecret   string `mapstructure:"JWT_SECRET"`
 }
 
-// Load reads configuration from environment variables and validates required fields.
+// Load reads configuration from .env / environment variables via Viper
+// and validates required fields.
 func Load() (Config, error) {
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
-		return Config{}, errors.New("DATABASE_URL is required")
+	v := viper.New()
+
+	// Defaults
+	v.SetDefault("HTTP_ADDR", ":8080")
+
+	// Bind environment variables explicitly
+	_ = v.BindEnv("HTTP_ADDR")
+	_ = v.BindEnv("DATABASE_URL")
+	_ = v.BindEnv("REDIS_ADDR")
+	_ = v.BindEnv("JWT_SECRET")
+
+	// Try .env file (non-fatal if missing)
+	v.SetConfigFile(".env")
+	_ = v.ReadInConfig()
+
+	var cfg Config
+	if err := v.Unmarshal(&cfg); err != nil {
+		return Config{}, fmt.Errorf("unmarshal config: %w", err)
 	}
 
-	httpAddr := os.Getenv("HTTP_ADDR")
-	if httpAddr == "" {
-		httpAddr = ":8080"
+	if cfg.DatabaseURL == "" {
+		return Config{}, fmt.Errorf("DATABASE_URL is required")
+	}
+	if cfg.JWTSecret == "" {
+		return Config{}, fmt.Errorf("JWT_SECRET is required")
 	}
 
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		return Config{}, errors.New("JWT_SECRET is required")
-	}
-
-	return Config{
-		HTTPAddr:    httpAddr,
-		DatabaseURL: dbURL,
-		RedisAddr:   os.Getenv("REDIS_ADDR"),
-		JWTSecret:   jwtSecret,
-	}, nil
+	return cfg, nil
 }
