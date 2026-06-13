@@ -1,10 +1,13 @@
-.PHONY: test lint build
+.PHONY: test lint build validate
 
 test:
-	go test ./internal/alert/... ./internal/notify/... ./internal/jobs/...
+	go test ./...
 
 lint:
-	go vet ./internal/alert/... ./internal/notify/... ./internal/jobs/...
+	go vet ./...
 
 build:
 	go build ./...
+
+validate:
+	bash scripts/validate-repository.sh
