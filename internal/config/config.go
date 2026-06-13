@@ -12,6 +12,8 @@ type Config struct {
 	DatabaseURL string `mapstructure:"DATABASE_URL"`
 	RedisAddr   string `mapstructure:"REDIS_ADDR"`
 	JWTSecret   string `mapstructure:"JWT_SECRET"`
+	XToken      string `mapstructure:"X_BEARER_TOKEN"`
+	XBaseURL    string `mapstructure:"X_BASE_URL"`
 }
 
 // Load reads configuration from .env file and environment variables using Viper.
@@ -32,6 +34,8 @@ func Load() (Config, error) {
 	_ = v.BindEnv("JWT_SECRET")
 	_ = v.BindEnv("HTTP_ADDR")
 	_ = v.BindEnv("REDIS_ADDR")
+	_ = v.BindEnv("X_BEARER_TOKEN")
+	_ = v.BindEnv("X_BASE_URL")
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
@@ -44,6 +48,11 @@ func Load() (Config, error) {
 	}
 	if cfg.JWTSecret == "" {
 		return Config{}, errors.New("JWT_SECRET is required")
+	}
+
+	// X config defaults
+	if cfg.XBaseURL == "" {
+		cfg.XBaseURL = "https://api.x.com"
 	}
 
 	return cfg, nil
