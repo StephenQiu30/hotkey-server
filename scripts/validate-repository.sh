@@ -119,4 +119,9 @@ else
 fi
 
 echo ""
+echo "=== Runtime API smoke ==="
+bash "$(dirname "$0")/smoke-api.sh"
+echo "OK: runtime API smoke passed"
+
+echo ""
 echo "=== All validations passed ==="
