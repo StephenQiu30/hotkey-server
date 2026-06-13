@@ -1,4 +1,4 @@
-package http
+package platformhttp_test
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/content"
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
+	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	"github.com/StephenQiu30/hotkey-server/internal/topic"
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
 )
@@ -93,7 +94,7 @@ func (s *stubTrendQueryService) GetMonitorTrends(_ int64, _ time.Time) ([]trend.
 
 // newTestHandler creates an http.Handler with smoke test mode enabled.
 func newTestHandler() http.Handler {
-	_, mux := NewAPI(Config{
+	_, mux := platformhttp.NewAPI(platformhttp.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     true,
 		AuthService:   auth.NewService(&stubAuthRepo{}),
@@ -163,7 +164,7 @@ func TestLoginReturns200(t *testing.T) {
 
 func TestMonitorsRequireAuth(t *testing.T) {
 	// Without smoke test mode, protected endpoints should return 401.
-	_, mux := NewAPI(Config{
+	_, mux := platformhttp.NewAPI(platformhttp.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
 		AuthService:   auth.NewService(&stubAuthRepo{}),
@@ -201,7 +202,7 @@ func TestMonitorsRequireAuth(t *testing.T) {
 
 func TestJWTAuthPropagatesUserID(t *testing.T) {
 	// Create API without smoke test mode to exercise real JWT validation.
-	_, mux := NewAPI(Config{
+	_, mux := platformhttp.NewAPI(platformhttp.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
 		AuthService:   auth.NewService(&stubAuthRepo{}),
