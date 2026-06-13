@@ -77,7 +77,7 @@ assert_json_field() {
 # --- build & start server --------------------------------------------------
 
 echo "=== Building server ==="
-BINARY=$(mktemp -t hotkey-smoke)
+BINARY=$(mktemp -t hotkey-smoke.XXXXXX)
 go build -o "$BINARY" ./cmd/api
 echo "OK: binary built at $BINARY"
 
