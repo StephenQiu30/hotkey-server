@@ -22,6 +22,11 @@ func NewTopicHandler(svc TopicQueryService) *TopicHandler {
 	return &TopicHandler{svc: svc}
 }
 
+// ServeHTTP routes requests to the appropriate handler method.
+func (h *TopicHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.ListByMonitor(w, r)
+}
+
 // ListByMonitor handles GET /api/v1/monitors/{id}/topics.
 func (h *TopicHandler) ListByMonitor(w http.ResponseWriter, r *http.Request) {
 	monitorIDStr := extractIDFromPath(r.URL.Path, "monitors")

@@ -32,6 +32,15 @@ func NewTrendHandler(svc TrendQueryService) *TrendHandler {
 	return &TrendHandler{svc: svc}
 }
 
+// ServeHTTP routes requests to the appropriate handler method based on path.
+func (h *TrendHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if strings.Contains(r.URL.Path, "/topics/") {
+		h.GetTopicTrends(w, r)
+	} else {
+		h.GetMonitorTrends(w, r)
+	}
+}
+
 // GetTopicTrends handles GET /api/v1/topics/{id}/trends.
 func (h *TrendHandler) GetTopicTrends(w http.ResponseWriter, r *http.Request) {
 	topicIDStr := extractIDFromPath(r.URL.Path, "topics")
