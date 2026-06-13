@@ -18,6 +18,8 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	"github.com/StephenQiu30/hotkey-server/internal/observability"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/x"
+	"github.com/StephenQiu30/hotkey-server/internal/scoring"
 	"github.com/StephenQiu30/hotkey-server/internal/server"
 	"github.com/StephenQiu30/hotkey-server/internal/topic"
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
@@ -55,11 +57,19 @@ func runAPI() {
 	var monitorRepo monitor.Repository
 	var notifyRepo notify.Repository
 
+	// Wire content, topic, trend query services.
+	var postQuerySvc content.PostQueryService
+	var topicQuerySvc topic.TopicQueryService
+	var trendQuerySvc trend.TrendQueryService
+
 	if smokeTest {
 		// In smoke test mode, use in-memory stubs (no database required).
 		authRepo = &smokeAuthRepo{}
 		monitorRepo = &smokeMonitorRepo{}
 		notifyRepo = &smokeNotifyRepo{}
+		postQuerySvc = &smokePostQueryService{}
+		topicQuerySvc = &smokeTopicQueryService{}
+		trendQuerySvc = &smokeTrendQueryService{}
 	} else {
 		// Connect to database and use real Postgres repositories.
 		db, err := database.Open(cfg.DatabaseURL)
@@ -70,6 +80,9 @@ func runAPI() {
 		authRepo = database.NewAuthRepo(db)
 		monitorRepo = database.NewMonitorRepo(db)
 		notifyRepo = database.NewNotifyRepo(db)
+		postQuerySvc = database.NewContentQueryService(db)
+		topicQuerySvc = database.NewTopicQueryService(db)
+		trendQuerySvc = database.NewTrendQueryService(db)
 	}
 
 	authSvc := auth.NewService(authRepo)
@@ -81,16 +94,8 @@ func runAPI() {
 	notifySvc := notify.NewService(notifyRepo)
 	notifyHandler := notify.NewHandler(notifySvc)
 
-	// Wire content (post query) — uses stub until content repo is implemented.
-	postQuerySvc := &stubPostQueryService{}
 	postHandler := content.NewPostHandler(postQuerySvc)
-
-	// Wire topic (query) — uses stub until topic repo is implemented.
-	topicQuerySvc := &stubTopicQueryService{}
 	topicHandler := topic.NewTopicHandler(topicQuerySvc)
-
-	// Wire trend (query) — uses stub until trend repo is implemented.
-	trendQuerySvc := &stubTrendQueryService{}
 	trendHandler := trend.NewTrendHandler(trendQuerySvc)
 
 	// Auth middleware: validates JWT token and injects user ID into context.
@@ -144,12 +149,18 @@ func runAPI() {
 }
 
 func runWorker() {
-	_, err := config.Load()
+	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
 	log.Print(observability.RenderLog("worker", "starting"))
+
+	db, err := database.Open(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("failed to connect to database: %v", err)
+	}
+	defer db.Close()
 
 	// Graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -161,24 +172,84 @@ func runWorker() {
 		cancel()
 	}()
 
+	// Wire platform connector (X API)
+	xClient := x.NewClient(cfg.XToken, cfg.XBaseURL)
+	connector := jobs.NewXConnectorAdapter(xClient, cfg.XToken)
+
+	// Wire scoring
+	hitScorerRepo := jobs.NewDBHitScorerRepo(db)
+	scoringSvc := scoring.NewService(hitScorerRepo)
+	scorer := jobs.NewScorerAdapter(scoringSvc)
+
+	// Wire PollMonitorJob
+	runRepo := jobs.NewDBRunRepository(db)
+	postRepo := jobs.NewDBPostRepository(db)
+	hitRepo := jobs.NewDBHitRepository(db)
+	pollJob := jobs.NewPollMonitorJob(runRepo, postRepo, hitRepo, connector, scorer)
+
+	// Wire topic aggregation
+	topicRepo := database.NewTopicRepo(db)
+	postCandidateProvider := jobs.NewDBPostCandidateProvider(db)
+	topicPersister := jobs.NewTopicPersisterAdapter(topicRepo)
+	aggregateJob := jobs.NewAggregateTopicsJob(postCandidateProvider, topicPersister)
+
+	// Wire snapshot building
+	trendRepo := database.NewTrendRepo(db)
+	trendSvc := trend.NewService(trendRepo)
+	topicProvider := jobs.NewDBTopicProvider(db)
+	snapshotJob := jobs.NewBuildSnapshotsJob(trendSvc, topicProvider)
+
 	// Wire dispatch job
-	deliveryRepo := &stubDeliveryRepo{}
-	mailer := &stubMailer{}
-	emailResolver := &stubUserEmailLookup{}
+	deliveryRepo := jobs.NewDBDeliveryRepository(db)
+	emailResolver := jobs.NewDBUserEmailLookup(db)
+	mailer := &noopMailer{}
 	dispatchJob := jobs.NewDispatchJob(deliveryRepo, mailer, emailResolver)
+
+	// Wire monitor lister for worker jobs
+	monitorLister := jobs.NewDBMonitorLister(db)
 
 	// Register background jobs
 	runner := jobs.NewRunner()
 	runner.Register("poll_monitor", func(ctx context.Context) error {
 		log.Print(observability.RenderLog("worker", "poll_monitor: running"))
+		monitorIDs, err := monitorLister.ListActiveIDs(ctx)
+		if err != nil {
+			return fmt.Errorf("list monitors: %w", err)
+		}
+		for _, monitorID := range monitorIDs {
+			if err := pollJob.Run(ctx, jobs.MonitorInfo{
+				ID:       monitorID,
+				Platform: "x",
+			}); err != nil {
+				log.Printf("poll_monitor: error for monitor %d: %v", monitorID, err)
+			}
+		}
 		return nil
 	}, 1*time.Minute)
 	runner.Register("aggregate_topics", func(ctx context.Context) error {
 		log.Print(observability.RenderLog("worker", "aggregate_topics: running"))
+		monitorIDs, err := monitorLister.ListActiveIDs(ctx)
+		if err != nil {
+			return fmt.Errorf("list monitors: %w", err)
+		}
+		for _, monitorID := range monitorIDs {
+			if _, err := aggregateJob.Run(jobs.AggregateTopicsInput{MonitorID: monitorID, RunTime: time.Now()}); err != nil {
+				log.Printf("aggregate_topics: error for monitor %d: %v", monitorID, err)
+			}
+		}
 		return nil
 	}, 5*time.Minute)
 	runner.Register("build_snapshots", func(ctx context.Context) error {
 		log.Print(observability.RenderLog("worker", "build_snapshots: running"))
+		monitorIDs, err := monitorLister.ListActiveIDs(ctx)
+		if err != nil {
+			return fmt.Errorf("list monitors: %w", err)
+		}
+		for _, monitorID := range monitorIDs {
+			if _, err := snapshotJob.Run(jobs.BuildSnapshotsInput{MonitorID: monitorID, SnapshotTime: time.Now()}); err != nil {
+				log.Printf("build_snapshots: error for monitor %d: %v", monitorID, err)
+			}
+		}
 		return nil
 	}, 10*time.Minute)
 	runner.Register("dispatch_notifications", func(ctx context.Context) error {
@@ -190,59 +261,12 @@ func runWorker() {
 	runner.Run(ctx)
 }
 
-// stubDeliveryRepo is a placeholder for the jobs delivery repository.
-type stubDeliveryRepo struct{}
+// noopMailer is a mailer that logs instead of sending (no SMTP configured).
+type noopMailer struct{}
 
-func (r *stubDeliveryRepo) CreateDelivery(_ context.Context, _ jobs.EmailDelivery) error {
-	return nil
-}
-
-func (r *stubDeliveryRepo) UpdateDeliveryStatus(_ context.Context, _ int64, _ string, _ string, _ string) error {
-	return nil
-}
-
-func (r *stubDeliveryRepo) GetPendingDeliveries(_ context.Context, _ int) ([]jobs.EmailDelivery, error) {
-	return nil, nil
-}
-
-// stubUserEmailLookup resolves notification IDs to empty email addresses.
-type stubUserEmailLookup struct{}
-
-func (r *stubUserEmailLookup) ResolveEmail(_ context.Context, _ int64) (string, error) {
-	return "unresolved@example.com", nil
-}
-
-// stubMailer is a placeholder mailer that logs instead of sending.
-type stubMailer struct{}
-
-func (m *stubMailer) Send(_ context.Context, _, _, _ string) (string, error) {
-	return "stub-msg-id", nil
-}
-
-// stubPostQueryService is a placeholder query service for content posts.
-type stubPostQueryService struct{}
-
-func (s *stubPostQueryService) ListPostsByMonitor(_ int64, _, _ int) ([]content.PostSummary, error) {
-	return nil, nil
-}
-
-// stubTopicQueryService is a placeholder query service for topics.
-type stubTopicQueryService struct{}
-
-func (s *stubTopicQueryService) ListByMonitor(_ int64) ([]topic.TopicSummary, error) {
-	return nil, nil
-}
-
-// stubTrendQueryService is a placeholder query service for trends.
-type stubTrendQueryService struct{}
-
-func (s *stubTrendQueryService) GetTopicTrends(_ int64, _ time.Time) ([]trend.TrendPoint, error) {
-	return nil, nil
-}
-
-
-func (s *stubTrendQueryService) GetMonitorTrends(_ int64, _ time.Time) ([]trend.TrendPoint, error) {
-	return nil, nil
+func (m *noopMailer) Send(_ context.Context, to, subject, _ string) (string, error) {
+	log.Printf("mailer: would send to %s subject=%q (noop)", to, subject)
+	return "noop-msg-id", nil
 }
 
 // --- Smoke test stubs (in-memory, no database required) ---
@@ -293,4 +317,26 @@ func (r *smokeNotifyRepo) ListUnread(_ context.Context, _ int64) ([]notify.Notif
 func (r *smokeNotifyRepo) MarkRead(_ context.Context, _, _ int64) error { return nil }
 func (r *smokeNotifyRepo) Create(_ context.Context, n notify.Notification) (notify.Notification, error) {
 	return n, nil
+}
+
+type smokePostQueryService struct{}
+
+func (s *smokePostQueryService) ListPostsByMonitor(_ int64, _, _ int) ([]content.PostSummary, error) {
+	return nil, nil
+}
+
+type smokeTopicQueryService struct{}
+
+func (s *smokeTopicQueryService) ListByMonitor(_ int64) ([]topic.TopicSummary, error) {
+	return nil, nil
+}
+
+type smokeTrendQueryService struct{}
+
+func (s *smokeTrendQueryService) GetTopicTrends(_ int64, _ time.Time) ([]trend.TrendPoint, error) {
+	return nil, nil
+}
+
+func (s *smokeTrendQueryService) GetMonitorTrends(_ int64, _ time.Time) ([]trend.TrendPoint, error) {
+	return nil, nil
 }
