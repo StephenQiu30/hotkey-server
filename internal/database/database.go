@@ -14,6 +14,7 @@ func Open(databaseURL string) (*sql.DB, error) {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
 	if err := db.Ping(); err != nil {
+		db.Close()
 		return nil, fmt.Errorf("ping db: %w", err)
 	}
 	return db, nil

@@ -25,10 +25,15 @@ func Load() (Config, error) {
 		httpAddr = ":8080"
 	}
 
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		return Config{}, errors.New("JWT_SECRET is required")
+	}
+
 	return Config{
 		HTTPAddr:    httpAddr,
 		DatabaseURL: dbURL,
 		RedisAddr:   os.Getenv("REDIS_ADDR"),
-		JWTSecret:   os.Getenv("JWT_SECRET"),
+		JWTSecret:   jwtSecret,
 	}, nil
 }

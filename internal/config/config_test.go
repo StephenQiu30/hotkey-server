@@ -13,9 +13,19 @@ func TestLoadConfigFailsWhenDatabaseURLMissing(t *testing.T) {
 	}
 }
 
+func TestLoadConfigFailsWhenJWTSecretMissing(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost:5432/testdb")
+	t.Setenv("JWT_SECRET", "")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error when JWT_SECRET is missing")
+	}
+}
+
 func TestLoadConfigSuccess(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://localhost:5432/testdb")
 	t.Setenv("HTTP_ADDR", ":9090")
+	t.Setenv("JWT_SECRET", "test-secret")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
