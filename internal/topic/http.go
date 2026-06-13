@@ -22,7 +22,7 @@ func NewTopicHandler(svc TopicQueryService) *TopicHandler {
 	return &TopicHandler{svc: svc}
 }
 
-// ServeHTTP routes requests to the appropriate handler method.
+// ServeHTTP dispatches requests to the appropriate handler method.
 func (h *TopicHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.ListByMonitor(w, r)
 }

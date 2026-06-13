@@ -61,14 +61,17 @@ func runAPI() {
 	notifySvc := notify.NewService(notifyRepo)
 	notifyHandler := notify.NewHandler(notifySvc)
 
-	// Wire content (posts)
-	postHandler := content.NewPostHandler(&stubPostQueryService{})
+	// Wire content (post query)
+	postQuerySvc := &stubPostQueryService{}
+	postHandler := content.NewPostHandler(postQuerySvc)
 
-	// Wire topics
-	topicHandler := topic.NewTopicHandler(&stubTopicQueryService{})
+	// Wire topic (query)
+	topicQuerySvc := &stubTopicQueryService{}
+	topicHandler := topic.NewTopicHandler(topicQuerySvc)
 
-	// Wire trends
-	trendHandler := trend.NewTrendHandler(&stubTrendQueryService{})
+	// Wire trend (query)
+	trendQuerySvc := &stubTrendQueryService{}
+	trendHandler := trend.NewTrendHandler(trendQuerySvc)
 
 	// Auth middleware: validates token and injects user ID into context.
 	// When SMOKE_TEST=1, bypasses auth and injects a default user ID for smoke testing.
@@ -208,26 +211,28 @@ func (r *stubNotifyRepo) Create(_ context.Context, n notify.Notification) (notif
 	return n, nil
 }
 
-// stubPostQueryService is a placeholder for content post queries.
+// stubPostQueryService is a placeholder query service for content posts.
 type stubPostQueryService struct{}
 
 func (s *stubPostQueryService) ListPostsByMonitor(_ int64, _, _ int) ([]content.PostSummary, error) {
 	return nil, nil
 }
 
-// stubTopicQueryService is a placeholder for topic queries.
+// stubTopicQueryService is a placeholder query service for topics.
 type stubTopicQueryService struct{}
 
 func (s *stubTopicQueryService) ListByMonitor(_ int64) ([]topic.TopicSummary, error) {
 	return nil, nil
 }
 
-// stubTrendQueryService is a placeholder for trend queries.
+// stubTrendQueryService is a placeholder query service for trends.
 type stubTrendQueryService struct{}
 
 func (s *stubTrendQueryService) GetTopicTrends(_ int64, _ time.Time) ([]trend.TrendPoint, error) {
 	return nil, nil
 }
+
+
 func (s *stubTrendQueryService) GetMonitorTrends(_ int64, _ time.Time) ([]trend.TrendPoint, error) {
 	return nil, nil
 }
