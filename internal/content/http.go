@@ -43,6 +43,11 @@ func NewPostHandler(svc PostQueryService) *PostHandler {
 	return &PostHandler{svc: svc}
 }
 
+// ServeHTTP dispatches requests to the appropriate handler method.
+func (h *PostHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.ListByMonitor(w, r)
+}
+
 // ListByMonitor handles GET /api/v1/monitors/{id}/posts.
 func (h *PostHandler) ListByMonitor(w http.ResponseWriter, r *http.Request) {
 	monitorIDStr := extractMonitorIDFromPath(r.URL.Path)
