@@ -40,6 +40,8 @@ required_files=(
   "docker-compose.yml"
   "Makefile"
   "cmd/api/main.go"
+  "docs/openapi.json"
+  "scripts/validate-openapi.sh"
 )
 
 echo "=== Required files ==="
@@ -120,6 +122,11 @@ else
   echo "FAIL: whitespace errors detected"
   exit 1
 fi
+
+echo ""
+echo "=== OpenAPI validation ==="
+bash "$(dirname "$0")/validate-openapi.sh"
+echo "OK: OpenAPI validation passed"
 
 echo ""
 echo "=== Runtime API smoke ==="
