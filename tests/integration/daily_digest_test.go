@@ -98,7 +98,7 @@ func TestPublishDailyTopics_Idempotent(t *testing.T) {
 	// Record content of first run files for comparison
 	firstContent := readAllMdFiles(t, vaultDir)
 
-	// Second run: same topic+date → should be idempotent
+	// Second run: same topic+date → file count stable, content updated (S10)
 	llmClient.Summary = "更新后的摘要内容。"
 	results2, err := job.Run(context.Background(), now, "yesterday")
 	if err != nil {
@@ -116,8 +116,9 @@ func TestPublishDailyTopics_Idempotent(t *testing.T) {
 		t.Errorf("idempotent: file count changed from %d to %d", filesAfterFirst, filesAfterSecond)
 	}
 
-	// Content should NOT have changed because IsExported returns true (skip re-render)
+	// Content SHOULD have changed — S10: 已 published 的记录重复执行时 SHALL 覆盖文件内容
 	secondContent := readAllMdFiles(t, vaultDir)
+	contentChanged := false
 	for path, oldContent := range firstContent {
 		newContent, ok := secondContent[path]
 		if !ok {
@@ -125,8 +126,11 @@ func TestPublishDailyTopics_Idempotent(t *testing.T) {
 			continue
 		}
 		if newContent != oldContent {
-			t.Errorf("idempotent: file %s content changed on second run (expected same content due to skip)", path)
+			contentChanged = true
 		}
+	}
+	if !contentChanged {
+		t.Error("idempotent: expected content to be overwritten on second run (S10)")
 	}
 }
 

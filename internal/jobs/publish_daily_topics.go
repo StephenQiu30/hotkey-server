@@ -97,15 +97,10 @@ func (j *PublishDailyTopicsJob) publishTopic(ctx context.Context, td digest.Topi
 		Title:   td.Topic.Title,
 	}
 
-	// Check idempotency: skip if already exported
-	exported, err := j.exporter.IsExported(ctx, td.Topic.ID, dateStr)
-	if err != nil {
+	// Check export status for error reporting; always re-render per S10
+	if _, err := j.exporter.IsExported(ctx, td.Topic.ID, dateStr); err != nil {
 		result.Status = "failed"
 		result.Error = fmt.Errorf("check export status: %w", err)
-		return result
-	}
-	if exported {
-		result.Status = "published"
 		return result
 	}
 
