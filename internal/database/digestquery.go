@@ -20,8 +20,8 @@ func NewDigestQueryService(db *sql.DB) *DigestQueryService {
 // ListTopicsForDay returns active topics for a monitor that have at least one
 // post with first_seen_at or published_at within the given window.
 // Results are ordered by current_heat_score DESC.
-func (s *DigestQueryService) ListTopicsForDay(monitorID int64, window digest.Window) ([]digest.TopicEntry, error) {
-	rows, err := s.db.QueryContext(context.Background(),
+func (s *DigestQueryService) ListTopicsForDay(ctx context.Context, monitorID int64, window digest.Window) ([]digest.TopicEntry, error) {
+	rows, err := s.db.QueryContext(ctx,
 		`SELECT DISTINCT t.id, t.title, t.current_heat_score
 		 FROM topics t
 		 JOIN topic_posts tp ON tp.topic_id = t.id
@@ -29,8 +29,8 @@ func (s *DigestQueryService) ListTopicsForDay(monitorID int64, window digest.Win
 		 JOIN platform_posts pp ON pp.id = tp.post_id
 		 WHERE t.monitor_id = $1
 		   AND t.status = 'active'
-		   AND (mph.first_seen_at >= $2 AND mph.first_seen_at < $3
-		        OR pp.published_at >= $2 AND pp.published_at < $3)
+		   AND ((mph.first_seen_at >= $2 AND mph.first_seen_at < $3)
+		        OR (pp.published_at >= $2 AND pp.published_at < $3))
 		 ORDER BY t.current_heat_score DESC`,
 		monitorID, window.Start, window.End,
 	)
@@ -52,8 +52,8 @@ func (s *DigestQueryService) ListTopicsForDay(monitorID int64, window digest.Win
 
 // FetchRepresentativePosts returns up to limit posts for a topic, ordered by
 // membership_score DESC. Each post includes author name, content excerpt, and URL.
-func (s *DigestQueryService) FetchRepresentativePosts(topicID int64, limit int) ([]digest.PostEntry, error) {
-	rows, err := s.db.QueryContext(context.Background(),
+func (s *DigestQueryService) FetchRepresentativePosts(ctx context.Context, topicID int64, limit int) ([]digest.PostEntry, error) {
+	rows, err := s.db.QueryContext(ctx,
 		`SELECT pp.id, pp.author_name, pp.content_text, pp.post_url, tp.membership_score
 		 FROM topic_posts tp
 		 JOIN platform_posts pp ON pp.id = tp.post_id
@@ -74,11 +74,12 @@ func (s *DigestQueryService) FetchRepresentativePosts(topicID int64, limit int) 
 		if err := rows.Scan(&p.PostID, &p.AuthorName, &contentText, &p.PostURL, &p.MembershipScore); err != nil {
 			return nil, err
 		}
-		// Truncate content to excerpt (first 200 chars)
-		if len(contentText) > 200 {
-			contentText = contentText[:200]
+		// Truncate content to excerpt (rune-safe for multi-byte text)
+		runes := []rune(contentText)
+		if len(runes) > 200 {
+			runes = runes[:200]
 		}
-		p.ContentExcerpt = contentText
+		p.ContentExcerpt = string(runes)
 		posts = append(posts, p)
 	}
 	return posts, rows.Err()

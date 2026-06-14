@@ -1,6 +1,9 @@
 package digest
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 const DefaultTopN = 20
 const DefaultRepresentativeLimit = 3
@@ -21,14 +24,14 @@ type TopicDigest struct {
 // 1. Resolve the export date from now + target
 // 2. Select top N topics for that day
 // 3. Fetch representative posts for each topic
-func (s *Service) BuildDayDigest(monitorID int64, now time.Time, target string, topN int) (*DayDigest, error) {
+func (s *Service) BuildDayDigest(ctx context.Context, monitorID int64, now time.Time, target string, topN int) (*DayDigest, error) {
 	if topN <= 0 {
 		topN = DefaultTopN
 	}
 
 	exportDate := ResolveExportDate(now, target)
 
-	topics, err := s.SelectTopicsForDay(monitorID, exportDate, topN)
+	topics, err := s.SelectTopicsForDay(ctx, monitorID, exportDate, topN)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +42,7 @@ func (s *Service) BuildDayDigest(monitorID int64, now time.Time, target string, 
 	}
 
 	for _, t := range topics {
-		posts, err := s.SelectRepresentativePosts(t.ID, DefaultRepresentativeLimit)
+		posts, err := s.SelectRepresentativePosts(ctx, t.ID, DefaultRepresentativeLimit)
 		if err != nil {
 			return nil, err
 		}

@@ -1,6 +1,9 @@
 package digest
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // TopicEntry represents a topic candidate for the daily digest.
 type TopicEntry struct {
@@ -23,11 +26,11 @@ type PostEntry struct {
 type TopicFilter interface {
 	// ListTopicsForDay returns active topics for a monitor that have posts
 	// within the given window, ordered by current_heat_score DESC.
-	ListTopicsForDay(monitorID int64, window Window) ([]TopicEntry, error)
+	ListTopicsForDay(ctx context.Context, monitorID int64, window Window) ([]TopicEntry, error)
 
 	// FetchRepresentativePosts returns up to limit posts for a topic,
 	// ordered by membership_score DESC.
-	FetchRepresentativePosts(topicID int64, limit int) ([]PostEntry, error)
+	FetchRepresentativePosts(ctx context.Context, topicID int64, limit int) ([]PostEntry, error)
 }
 
 // Service provides digest selection operations.
@@ -42,10 +45,10 @@ func NewService(f TopicFilter) *Service {
 
 // SelectTopicsForDay returns the top N active topics for a monitor on the
 // given CST date, sorted by current_heat_score DESC.
-func (s *Service) SelectTopicsForDay(monitorID int64, date time.Time, topN int) ([]TopicEntry, error) {
+func (s *Service) SelectTopicsForDay(ctx context.Context, monitorID int64, date time.Time, topN int) ([]TopicEntry, error) {
 	window := DayWindow(date)
 
-	topics, err := s.filter.ListTopicsForDay(monitorID, window)
+	topics, err := s.filter.ListTopicsForDay(ctx, monitorID, window)
 	if err != nil {
 		return nil, err
 	}
@@ -57,6 +60,6 @@ func (s *Service) SelectTopicsForDay(monitorID int64, date time.Time, topN int) 
 }
 
 // SelectRepresentativePosts returns up to limit representative posts for a topic.
-func (s *Service) SelectRepresentativePosts(topicID int64, limit int) ([]PostEntry, error) {
-	return s.filter.FetchRepresentativePosts(topicID, limit)
+func (s *Service) SelectRepresentativePosts(ctx context.Context, topicID int64, limit int) ([]PostEntry, error) {
+	return s.filter.FetchRepresentativePosts(ctx, topicID, limit)
 }
