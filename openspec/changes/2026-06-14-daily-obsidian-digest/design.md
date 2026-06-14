@@ -36,7 +36,7 @@ flowchart TB
   job --> obsidian
   job --> exports
   obsidian --> md
-```
+```text
 
 ## 模块职责
 
@@ -51,7 +51,7 @@ flowchart TB
 
 ## 数据流
 
-```
+```text
 daily_scheduler (每分钟)
   └─ ShouldRun(now, lastRunDate)?
        └─ true → PublishDailyTopicsJob.Run(ctx)
@@ -66,7 +66,7 @@ daily_scheduler (每分钟)
                  ├─ path = obsidian.BuildPath(vaultRoot, monitorSlug, filename)
                  ├─ obsidian.WriteAtomic(path, content)
                  └─ digestRepo.UpdateStatus(published)
-```
+```text
 
 ## 数据模型
 
@@ -86,7 +86,7 @@ create table topic_daily_exports (
   created_at timestamptz not null default now(),
   unique(monitor_id, topic_id, export_date)
 );
-```
+```text
 
 - 状态机：`pending` → `published` | `failed`
 - 幂等键：`(monitor_id, topic_id, export_date)`
@@ -94,13 +94,13 @@ create table topic_daily_exports (
 
 ## Obsidian 文件结构
 
-```
+```text
 {OBSIDIAN_VAULT_PATH}/
   HotKey/
     topics/
       {monitor-slug}/
         {date}-topic-{id}-{title-slug}.md
-```
+```text
 
 ## 配置项
 
