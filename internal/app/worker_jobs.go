@@ -12,7 +12,6 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/digest"
 	"github.com/StephenQiu30/hotkey-server/internal/jobs"
 	"github.com/StephenQiu30/hotkey-server/internal/llm"
-	"github.com/StephenQiu30/hotkey-server/internal/obsidian"
 	"github.com/StephenQiu30/hotkey-server/internal/observability"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/x"
 	"github.com/StephenQiu30/hotkey-server/internal/scoring"
@@ -97,10 +96,14 @@ func newJobRunner(cfg config.Config, db *sql.DB) *jobs.Runner {
 	// Daily digest publish job — gates on DAILY_DIGEST_TIME CST
 	if cfg.ObsidianVaultPath != "" {
 		scheduler := jobs.NewDailyScheduler(cfg.DailyDigestTime, cfg.DailyDigestTimezone)
-		exportRepo := jobs.NewExportRepoAdapter(database.NewDigestExportRepo(db))
-		digestSvc := jobs.NewDigestServiceAdapter(digest.NewService(db))
-		llmClient := jobs.NewLLMClientAdapter(llm.NewClient(cfg.LLMAPIKey, cfg.LLMBaseURL, cfg.LLMModel))
-		obsidianWriter := jobs.NewObsidianWriterAdapter(obsidian.NewWriter())
+		exportRepo := jobs.NewExportRepoAdapter(database.NewDigestRepo(db))
+		digestSvc := jobs.NewDigestServiceAdapter(digest.NewService(nil)) // TODO: provide TopicFilter
+		llmClient := jobs.NewLLMClientAdapter(llm.NewOpenAIClient(llm.OpenAIConfig{
+			APIKey:  cfg.LLMAPIKey,
+			BaseURL: cfg.LLMBaseURL,
+			Model:   cfg.LLMModel,
+		}))
+		obsidianWriter := jobs.NewObsidianWriterAdapter()
 		publishJob := jobs.NewPublishDailyTopicsJob(
 			monitorLister,
 			digestSvc,
