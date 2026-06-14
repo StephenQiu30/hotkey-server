@@ -8,7 +8,7 @@ create table if not exists topic_daily_exports (
   export_date date not null,
   summary_text text not null default '',
   markdown_path text not null default '',
-  status text not null default 'pending',
+  status text not null default 'pending' check (status in ('pending', 'published', 'failed')),
   error_message text not null default '',
   published_at timestamptz,
   created_at timestamptz not null default now(),
@@ -17,3 +17,4 @@ create table if not exists topic_daily_exports (
 
 create index if not exists idx_topic_daily_exports_monitor_id on topic_daily_exports(monitor_id);
 create index if not exists idx_topic_daily_exports_topic_id on topic_daily_exports(topic_id);
+create index if not exists idx_topic_daily_exports_monitor_date on topic_daily_exports(monitor_id, export_date);
