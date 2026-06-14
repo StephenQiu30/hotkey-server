@@ -1,70 +1,56 @@
 package database
 
 import (
-	"context"
 	"database/sql"
+	"time"
+
+	"github.com/StephenQiu30/hotkey-server/internal/digest"
 )
 
-// DigestExportRepo manages topic_daily_exports persistence.
-type DigestExportRepo struct {
+// DigestRepo implements digest.Repository using PostgreSQL.
+type DigestRepo struct {
 	db *sql.DB
 }
 
-// NewDigestExportRepo creates a new DigestExportRepo.
-func NewDigestExportRepo(db *sql.DB) *DigestExportRepo {
-	return &DigestExportRepo{db: db}
+// NewDigestRepo creates a new Postgres-backed digest repository.
+func NewDigestRepo(db *sql.DB) *DigestRepo {
+	return &DigestRepo{db: db}
 }
 
-// ExportRecord represents a row in topic_daily_exports.
-type ExportRecord struct {
-	ID           int64
-	MonitorID    int64
-	TopicID      int64
-	ExportDate   string
-	SummaryText  string
-	MarkdownPath string
-	Status       string
-	ErrorMessage string
-}
-
-// UpsertExport inserts or updates an export record.
-func (r *DigestExportRepo) UpsertExport(ctx context.Context, rec ExportRecord) (int64, error) {
-	var id int64
-	err := r.db.QueryRowContext(ctx,
-		`INSERT INTO topic_daily_exports
-			(monitor_id, topic_id, export_date, summary_text, markdown_path, status, error_message)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+// Upsert inserts or updates a daily export record.
+func (r *DigestRepo) Upsert(e digest.TopicDailyExport) (digest.TopicDailyExport, error) {
+	var out digest.TopicDailyExport
+	err := r.db.QueryRow(
+		`INSERT INTO topic_daily_exports (monitor_id, topic_id, export_date, summary_text, markdown_path, status)
+		 VALUES ($1, $2, $3, $4, $5, $6)
 		 ON CONFLICT (monitor_id, topic_id, export_date) DO UPDATE SET
 			 summary_text = EXCLUDED.summary_text,
 			 markdown_path = EXCLUDED.markdown_path,
 			 status = EXCLUDED.status,
-			 error_message = EXCLUDED.error_message
-		 RETURNING id`,
-		rec.MonitorID, rec.TopicID, rec.ExportDate,
-		rec.SummaryText, rec.MarkdownPath, rec.Status, rec.ErrorMessage,
-	).Scan(&id)
-	return id, err
+			 error_message = '',
+			 published_at = CASE WHEN EXCLUDED.status = 'published' THEN now() ELSE topic_daily_exports.published_at END
+		 RETURNING id, monitor_id, topic_id, export_date, summary_text, markdown_path, status, error_message, published_at, created_at`,
+		e.MonitorID, e.TopicID, e.ExportDate, e.SummaryText, e.MarkdownPath, string(e.Status),
+	).Scan(&out.ID, &out.MonitorID, &out.TopicID, &out.ExportDate, &out.SummaryText,
+		&out.MarkdownPath, &out.Status, &out.ErrorMessage, &out.PublishedAt, &out.CreatedAt)
+	return out, err
 }
 
-// GetLastRunDate returns the last run date from the metadata table.
-func (r *DigestExportRepo) GetLastRunDate(ctx context.Context) (string, error) {
-	var date string
-	err := r.db.QueryRowContext(ctx,
-		`SELECT value FROM job_metadata WHERE key = 'daily_publish_last_run'`,
-	).Scan(&date)
+// GetByTopicDate retrieves a daily export by topic_id and export_date.
+func (r *DigestRepo) GetByTopicDate(topicID int64, exportDate time.Time) (*digest.TopicDailyExport, error) {
+	var e digest.TopicDailyExport
+	err := r.db.QueryRow(
+		`SELECT id, monitor_id, topic_id, export_date, summary_text, markdown_path, status, error_message, published_at, created_at
+		 FROM topic_daily_exports
+		 WHERE topic_id = $1 AND export_date = $2`,
+		topicID, exportDate,
+	).Scan(&e.ID, &e.MonitorID, &e.TopicID, &e.ExportDate, &e.SummaryText,
+		&e.MarkdownPath, &e.Status, &e.ErrorMessage, &e.PublishedAt, &e.CreatedAt)
 	if err == sql.ErrNoRows {
-		return "", nil
+		return nil, nil
 	}
-	return date, err
-}
-
-// SetLastRunDate persists the last run date.
-func (r *DigestExportRepo) SetLastRunDate(ctx context.Context, date string) error {
-	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO job_metadata (key, value)
-		 VALUES ('daily_publish_last_run', $1)
-		 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
-		date,
-	)
-	return err
+	if err != nil {
+		return nil, err
+	}
+	return &e, nil
 }

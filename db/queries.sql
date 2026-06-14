@@ -68,3 +68,21 @@ ORDER BY created_at DESC;
 UPDATE user_notifications
 SET read_at = now()
 WHERE id = sqlc.arg(id) AND user_id = sqlc.arg(user_id) AND read_at IS NULL;
+
+-- topic_daily_exports --------------------------------------------------------
+
+-- name: UpsertTopicDailyExport :one
+INSERT INTO topic_daily_exports (monitor_id, topic_id, export_date, summary_text, markdown_path, status)
+VALUES (sqlc.arg(monitor_id), sqlc.arg(topic_id), sqlc.arg(export_date), sqlc.arg(summary_text), sqlc.arg(markdown_path), sqlc.arg(status))
+ON CONFLICT (monitor_id, topic_id, export_date) DO UPDATE SET
+  summary_text = EXCLUDED.summary_text,
+  markdown_path = EXCLUDED.markdown_path,
+  status = EXCLUDED.status,
+  error_message = '',
+  published_at = CASE WHEN EXCLUDED.status = 'published' THEN now() ELSE topic_daily_exports.published_at END
+RETURNING id, monitor_id, topic_id, export_date, summary_text, markdown_path, status, error_message, published_at, created_at;
+
+-- name: GetTopicDailyExportByTopicDate :one
+SELECT id, monitor_id, topic_id, export_date, summary_text, markdown_path, status, error_message, published_at, created_at
+FROM topic_daily_exports
+WHERE topic_id = sqlc.arg(topic_id) AND export_date = sqlc.arg(export_date);

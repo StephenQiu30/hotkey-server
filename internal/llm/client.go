@@ -1,48 +1,27 @@
-// Package llm provides LLM-based summarization for topic digests.
-// This is a stub implementation; full logic will be added in STE-305.
 package llm
 
-import (
-	"context"
-	"fmt"
-)
+import "context"
 
-// SummarizeInput holds the data needed to generate a topic summary.
-type SummarizeInput struct {
-	MonitorName string
-	TopicTitle  string
-	TopicKey    string
-	HeatScore   float64
-	Trend       string
-	PostCount   int
-	Posts       []Post
+// TopicSummaryInput holds the data needed to generate a topic summary.
+type TopicSummaryInput struct {
+	MonitorName string      // keyword monitor display name
+	QueryWords  []string    // monitor query terms
+	TopicTitle  string      // topic title
+	TopicKey    string      // topic key (e.g. "ai:监管:政策")
+	Heat        float64     // current heat score
+	Trend       string      // trend direction: rising / stable / falling
+	PostCount   int         // number of posts in topic
+	Posts       []PostInput // representative posts (top N)
 }
 
-// Post represents a representative post for summarization.
-type Post struct {
-	AuthorName string
-	Text       string
-	URL        string
+// PostInput is a single post to include in the summarization prompt.
+type PostInput struct {
+	Author  string
+	Content string
+	URL     string
 }
 
-// Client provides LLM summarization.
-type Client struct {
-	apiKey  string
-	baseURL string
-	model   string
-}
-
-// NewClient creates an LLM client.
-func NewClient(apiKey, baseURL, model string) *Client {
-	return &Client{
-		apiKey:  apiKey,
-		baseURL: baseURL,
-		model:   model,
-	}
-}
-
-// SummarizeTopic generates a summary for the given topic input.
-// TODO(STE-305): implement real LLM call.
-func (c *Client) SummarizeTopic(_ context.Context, _ SummarizeInput) (string, error) {
-	return "", fmt.Errorf("llm: not implemented (stub from STE-305)")
+// Client generates summaries for daily digest topics.
+type Client interface {
+	SummarizeTopic(ctx context.Context, in TopicSummaryInput) (string, error)
 }

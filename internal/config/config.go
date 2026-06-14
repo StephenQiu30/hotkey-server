@@ -15,16 +15,18 @@ type Config struct {
 	XToken      string `mapstructure:"X_BEARER_TOKEN"`
 	XBaseURL    string `mapstructure:"X_BASE_URL"`
 
-	// Daily digest / Obsidian export
-	ObsidianVaultPath    string `mapstructure:"OBSIDIAN_VAULT_PATH"`
-	DailyDigestTime      string `mapstructure:"DAILY_DIGEST_TIME"`
-	DailyDigestTimezone  string `mapstructure:"DAILY_DIGEST_TIMEZONE"`
-	DailyDigestTarget    string `mapstructure:"DAILY_DIGEST_TARGET"`
-	DailyDigestTopN      int    `mapstructure:"DAILY_DIGEST_TOP_N"`
-	LLMProvider          string `mapstructure:"LLM_PROVIDER"`
-	LLMAPIKey            string `mapstructure:"LLM_API_KEY"`
-	LLMBaseURL           string `mapstructure:"LLM_BASE_URL"`
-	LLMModel             string `mapstructure:"LLM_MODEL"`
+	// Obsidian / daily digest
+	ObsidianVaultPath  string `mapstructure:"OBSIDIAN_VAULT_PATH"`
+	DailyDigestTime    string `mapstructure:"DAILY_DIGEST_TIME"`
+	DailyDigestTimezone string `mapstructure:"DAILY_DIGEST_TIMEZONE"`
+	DailyDigestTarget  string `mapstructure:"DAILY_DIGEST_TARGET"`
+	DailyDigestTopN    int    `mapstructure:"DAILY_DIGEST_TOP_N"`
+
+	// LLM
+	LLMProvider string `mapstructure:"LLM_PROVIDER"`
+	LLMAPIKey   string `mapstructure:"LLM_API_KEY"`
+	LLMBaseURL  string `mapstructure:"LLM_BASE_URL"`
+	LLMModel    string `mapstructure:"LLM_MODEL"`
 }
 
 // Load reads configuration from .env file and environment variables using Viper.
@@ -36,6 +38,13 @@ func Load() (Config, error) {
 
 	// Set defaults
 	v.SetDefault("HTTP_ADDR", ":8080")
+	v.SetDefault("DAILY_DIGEST_TIME", "08:00")
+	v.SetDefault("DAILY_DIGEST_TIMEZONE", "Asia/Shanghai")
+	v.SetDefault("DAILY_DIGEST_TARGET", "yesterday")
+	v.SetDefault("DAILY_DIGEST_TOP_N", 20)
+	v.SetDefault("LLM_PROVIDER", "openai")
+	v.SetDefault("LLM_BASE_URL", "https://api.openai.com/v1")
+	v.SetDefault("LLM_MODEL", "gpt-4o-mini")
 
 	// Try to read .env file (ignore if not found)
 	_ = v.ReadInConfig()

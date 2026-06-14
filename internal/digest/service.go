@@ -1,43 +1,56 @@
-// Package digest provides topic selection for daily digest exports.
-// This is a stub implementation; full logic will be added in STE-304.
 package digest
 
 import (
 	"context"
-	"database/sql"
 	"time"
 )
 
-// TopicCandidate represents a topic eligible for daily export.
-type TopicCandidate struct {
-	TopicID        int64
-	TopicKey       string
-	Title          string
-	HeatScore      float64
-	TrendDirection string
-	PostCount      int
-	Posts          []RepresentativePost
+const DefaultTopN = 20
+const DefaultRepresentativeLimit = 3
+
+// DayDigest holds the result of a daily digest selection.
+type DayDigest struct {
+	ExportDate time.Time
+	Topics     []TopicDigest
 }
 
-// RepresentativePost holds a top post for a topic.
-type RepresentativePost struct {
-	AuthorName string
-	Text       string
-	URL        string
+// TopicDigest pairs a topic with its representative posts.
+type TopicDigest struct {
+	Topic TopicEntry
+	Posts []PostEntry
 }
 
-// Service provides topic selection for a given day.
-type Service struct {
-	db *sql.DB
-}
+// BuildDayDigest orchestrates the full digest selection for a monitor:
+// 1. Resolve the export date from now + target
+// 2. Select top N topics for that day
+// 3. Fetch representative posts for each topic
+func (s *Service) BuildDayDigest(ctx context.Context, monitorID int64, now time.Time, target string, topN int) (*DayDigest, error) {
+	if topN <= 0 {
+		topN = DefaultTopN
+	}
 
-// NewService creates a digest Service.
-func NewService(db *sql.DB) *Service {
-	return &Service{db: db}
-}
+	exportDate := ResolveExportDate(now, target)
 
-// ListTopicsForDay returns topics with activity on the given export date.
-// TODO(STE-304): implement real topic selection logic.
-func (s *Service) ListTopicsForDay(_ context.Context, _ int64, _ time.Time, _ int) ([]TopicCandidate, error) {
-	return nil, nil
+	topics, err := s.SelectTopicsForDay(ctx, monitorID, exportDate, topN)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &DayDigest{
+		ExportDate: exportDate,
+		Topics:     make([]TopicDigest, 0, len(topics)),
+	}
+
+	for _, t := range topics {
+		posts, err := s.SelectRepresentativePosts(ctx, t.ID, DefaultRepresentativeLimit)
+		if err != nil {
+			return nil, err
+		}
+		result.Topics = append(result.Topics, TopicDigest{
+			Topic: t,
+			Posts: posts,
+		})
+	}
+
+	return result, nil
 }

@@ -1,46 +1,30 @@
-// Package obsidian provides Obsidian vault note writing.
-// This is a stub implementation; full logic will be added in STE-306.
 package obsidian
 
 import (
-	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 )
 
-// NoteInput holds the data needed to write an Obsidian topic note.
-type NoteInput struct {
-	VaultPath   string
-	MonitorID   int64
-	MonitorName string
-	MonitorSlug string
-	TopicID     int64
-	TopicKey    string
-	Title       string
-	Date        string
-	HeatScore   float64
-	Trend       string
-	PostCount   int
-	Summary     string
-	Posts       []Post
-}
+// WriteAtomic writes content to path atomically by writing to a temporary
+// file first, then renaming. Parent directories are created if needed.
+// This prevents sync tools (iCloud, Dropbox) from reading partial files.
+func WriteAtomic(path, content string) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("obsidian: mkdir %s: %w", dir, err)
+	}
 
-// Post represents a representative post in a note.
-type Post struct {
-	AuthorName string
-	Text       string
-	URL        string
-}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("obsidian: write tmp %s: %w", tmp, err)
+	}
 
-// Writer writes notes to an Obsidian vault.
-type Writer struct{}
+	if err := os.Rename(tmp, path); err != nil {
+		// Clean up the tmp file on rename failure
+		_ = os.Remove(tmp)
+		return fmt.Errorf("obsidian: rename %s -> %s: %w", tmp, path, err)
+	}
 
-// NewWriter creates an Obsidian writer.
-func NewWriter() *Writer {
-	return &Writer{}
-}
-
-// WriteTopicNote writes a topic note to the vault and returns the file path.
-// TODO(STE-306): implement real Obsidian write.
-func (w *Writer) WriteTopicNote(_ context.Context, _ NoteInput) (string, error) {
-	return "", fmt.Errorf("obsidian: not implemented (stub from STE-306)")
+	return nil
 }
