@@ -34,8 +34,8 @@ done
 echo "Applying database schema..."
 bash "${ROOT_DIR}/scripts/apply-schema.sh"
 
-echo "Starting API and worker..."
-docker compose up -d api worker
+echo "Starting app..."
+docker compose up -d app
 
 echo "Waiting for API health check..."
 for i in {1..30}; do
@@ -59,6 +59,5 @@ echo "  Postgres: localhost:5432 (user=${POSTGRES_USER:-hotkey}, db=${POSTGRES_D
 echo "  Redis:    localhost:6379"
 echo ""
 echo "Useful commands:"
-echo "  make dev          # run API locally with .env"
-echo "  make dev-worker   # run worker locally with .env"
+echo "  make dev          # run API + worker locally with .env"
 echo "  make schema       # re-apply db/schema.sql"

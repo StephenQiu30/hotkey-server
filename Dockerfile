@@ -19,4 +19,4 @@ COPY --from=builder /app/hotkey-server .
 
 EXPOSE 8080
 
-CMD ["./hotkey-server", "api"]
+CMD ["./hotkey-server"]

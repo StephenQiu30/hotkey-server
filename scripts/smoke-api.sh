@@ -78,7 +78,7 @@ assert_json_field() {
 
 echo "=== Building server ==="
 BINARY=$(mktemp -t hotkey-smoke.XXXXXX)
-go build -o "$BINARY" ./cmd/api
+go build -o "$BINARY" ./cmd/hotkey
 echo "OK: binary built at $BINARY"
 
 echo ""
@@ -86,7 +86,7 @@ echo "=== Starting server on :${SMOKE_PORT} ==="
 SMOKE_TEST=1 DATABASE_URL="postgres://dummy:dummy@localhost:5432/hotkey?sslmode=disable" \
   JWT_SECRET="smoke-test-secret" \
   HTTP_ADDR=":${SMOKE_PORT}" \
-  "$BINARY" api &
+  "$BINARY" &
 SERVER_PID=$!
 
 # Wait for server to be ready (up to 10s).

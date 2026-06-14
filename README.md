@@ -4,7 +4,8 @@ X 热点监控平台后端服务：API、采集、热点评分、主题聚合、
 
 ## 架构
 
-- `cmd/api` — API 与 Worker 双模式入口（`./hotkey-server api|worker`）
+- `cmd/hotkey` — 唯一入口（启动 API + Worker）
+- `internal/app` — 应用启动逻辑
 - `internal/auth` — 账号注册/登录
 - `internal/monitor` — 监控任务 CRUD
 - `internal/content` — 内容标准化与 hits 评分
@@ -17,17 +18,20 @@ X 热点监控平台后端服务：API、采集、热点评分、主题聚合、
 - `internal/platform/x` — X 平台采集客户端
 - `internal/observability` — 结构化日志、指标、健康检查
 - `internal/config` — 环境变量配置加载
-- `internal/server` — HTTP 路由与中间件
 - `db/schema.sql` — PostgreSQL 数据库 schema
 
 ## 本地开发
 
 ```bash
-# 一键启动（PostgreSQL + Redis + API + Worker）
-bash scripts/start-local.sh
+# 一条命令启动（API + Worker，自动建库并初始化 schema）
+make dev
 
-# 或手动
-docker compose up -d
+# 或构建后直接运行
+make build
+./hotkey-server
+
+# Docker 环境（PostgreSQL + Redis + 应用）
+bash scripts/start-local.sh
 ```
 
 ## 验证

@@ -20,7 +20,7 @@ make openapi
 make openapi-validate
 ```
 
-生成器位于 `cmd/openapi/main.go`，通过构造 Huma API 实例并调用 `api.OpenAPI()` 输出 spec。
+生成器通过 `make openapi` 输出 spec。
 
 ## 2. hotkey-web 客户端生成
 

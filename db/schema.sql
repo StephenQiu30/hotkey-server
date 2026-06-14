@@ -1,9 +1,7 @@
--- HotKey Server Schema
--- Plans 002-005 table definitions
+-- hotkey-server PostgreSQL schema
+-- Single source of truth for all table definitions (13 tables).
 
--- ============================================================
--- Plan 002: Users & Monitors
--- ============================================================
+-- users & monitors
 
 create table users (
   id bigserial primary key,
@@ -32,6 +30,9 @@ create table keyword_monitors (
   updated_at timestamptz not null default now()
 );
 
+create index idx_keyword_monitors_user_id on keyword_monitors(user_id);
+create index idx_keyword_monitors_status on keyword_monitors(status);
+
 create table monitor_runs (
   id bigserial primary key,
   monitor_id bigint not null references keyword_monitors(id),
@@ -46,9 +47,9 @@ create table monitor_runs (
   cursor_snapshot jsonb not null default '{}'
 );
 
--- ============================================================
--- Plan 003: Platform Content & Hits
--- ============================================================
+create index idx_monitor_runs_monitor_id on monitor_runs(monitor_id);
+
+-- platform content & hits
 
 create table platform_posts (
   id bigserial primary key,
@@ -102,9 +103,10 @@ create table monitor_post_hits (
   unique(monitor_id, post_id)
 );
 
--- ============================================================
--- Plan 004: Topics & Trends
--- ============================================================
+create index idx_monitor_post_hits_monitor_id on monitor_post_hits(monitor_id);
+create index idx_monitor_post_hits_post_id on monitor_post_hits(post_id);
+
+-- topics & trends
 
 create table topics (
   id bigserial primary key,
@@ -122,6 +124,8 @@ create table topics (
   updated_at timestamptz not null default now(),
   unique(monitor_id, topic_key)
 );
+
+create index idx_topics_monitor_id on topics(monitor_id);
 
 create table topic_posts (
   id bigserial primary key,
@@ -144,6 +148,8 @@ create table topic_snapshots (
   trend_velocity numeric(10,4) not null default 0
 );
 
+create index idx_topic_snapshots_topic_id on topic_snapshots(topic_id, snapshot_time);
+
 create table monitor_snapshots (
   id bigserial primary key,
   monitor_id bigint not null references keyword_monitors(id),
@@ -154,9 +160,9 @@ create table monitor_snapshots (
   top_topic_id bigint references topics(id)
 );
 
--- ============================================================
--- Plan 005: Alerts & Notifications
--- ============================================================
+create index idx_monitor_snapshots_monitor_id on monitor_snapshots(monitor_id, snapshot_time);
+
+-- alerts & notifications
 
 create table alerts (
   id bigserial primary key,
@@ -171,6 +177,8 @@ create table alerts (
   created_at timestamptz not null default now()
 );
 
+create index idx_alerts_monitor_id on alerts(monitor_id);
+
 create table user_notifications (
   id bigserial primary key,
   user_id bigint not null references users(id),
@@ -182,6 +190,8 @@ create table user_notifications (
   created_at timestamptz not null default now()
 );
 
+create index idx_user_notifications_user_id on user_notifications(user_id);
+
 create table email_deliveries (
   id bigserial primary key,
   notification_id bigint not null references user_notifications(id),
@@ -192,3 +202,5 @@ create table email_deliveries (
   error_message text not null default '',
   sent_at timestamptz
 );
+
+create index idx_email_deliveries_notification_id on email_deliveries(notification_id);

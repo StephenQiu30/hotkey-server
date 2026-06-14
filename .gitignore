@@ -18,3 +18,10 @@ temp/
 .env
 .env.*
 !.env.example
+
+# Build output & runtime artifacts
+/hotkey-server
+
+# Symphony runtime artifacts
+.symphony-claude-prompt.*
+.symphony-workspaces/

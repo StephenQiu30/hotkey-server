@@ -9,11 +9,15 @@ import (
 )
 
 type Querier interface {
+	// keyword_monitors ----------------------------------------------------------
 	CreateMonitor(ctx context.Context, arg CreateMonitorParams) (KeywordMonitor, error)
+	// user_notifications --------------------------------------------------------
 	CreateNotification(ctx context.Context, arg CreateNotificationParams) (UserNotification, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	ExistsByEmail(ctx context.Context, email string) (bool, error)
 	GetMonitorByID(ctx context.Context, id int64) (KeywordMonitor, error)
+	// sqlc query definitions (auth, monitor, notify)
+	// users ---------------------------------------------------------------------
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	ListMonitorsByUser(ctx context.Context, userID int64) ([]KeywordMonitor, error)

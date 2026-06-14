@@ -39,7 +39,7 @@ required_files=(
   "Dockerfile"
   "docker-compose.yml"
   "Makefile"
-  "cmd/api/main.go"
+  "cmd/hotkey/main.go"
   "docs/openapi.json"
   "scripts/validate-openapi.sh"
 )
@@ -74,7 +74,7 @@ echo "OK: no anti-patterns found"
 echo ""
 echo "=== Implementation files ==="
 impl_files=(
-  "cmd/api/main.go"
+  "cmd/hotkey/main.go"
   "internal/config/config.go"
   "internal/server/router.go"
   "db/schema.sql"

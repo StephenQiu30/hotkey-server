@@ -27,9 +27,8 @@ services:
       timeout: 5s
       retries: 5
 
-  api:
+  app:
     build: .
-    command: ["./hotkey-server", "api"]
     ports:
       - "8080:8080"
     env_file:
@@ -49,21 +48,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
-  worker:
-    build: .
-    command: ["./hotkey-server", "worker"]
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-hotkey}:${POSTGRES_PASSWORD:-hotkey}@postgres:5432/${POSTGRES_DB:-hotkey}?sslmode=disable
-      REDIS_ADDR: redis:6379
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required in .env}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
 
 volumes:
   postgres_data:
