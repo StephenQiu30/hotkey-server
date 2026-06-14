@@ -26,6 +26,14 @@ type VaultWriter interface {
 	WriteAtomic(path, content string) error
 }
 
+// DefaultVaultWriter implements VaultWriter using the obsidian package.
+type DefaultVaultWriter struct{}
+
+// WriteAtomic delegates to obsidian.WriteAtomic.
+func (w *DefaultVaultWriter) WriteAtomic(path, content string) error {
+	return obsidian.WriteAtomic(path, content)
+}
+
 // PublishDailyTopicsJob orchestrates the daily digest publishing pipeline:
 // digest selection → LLM summary → Obsidian markdown → vault write.
 type PublishDailyTopicsJob struct {
@@ -39,9 +47,9 @@ type PublishDailyTopicsJob struct {
 
 // MonitorConfig holds the monitor metadata needed for publishing.
 type MonitorConfig struct {
-	ID      int64
-	Name    string
-	Slug    string
+	ID   int64
+	Name string
+	Slug string
 }
 
 // NewPublishDailyTopicsJob creates a new PublishDailyTopicsJob.

@@ -9,7 +9,9 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/config"
 	"github.com/StephenQiu30/hotkey-server/internal/database"
+	"github.com/StephenQiu30/hotkey-server/internal/digest"
 	"github.com/StephenQiu30/hotkey-server/internal/jobs"
+	"github.com/StephenQiu30/hotkey-server/internal/llm"
 	"github.com/StephenQiu30/hotkey-server/internal/observability"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/x"
 	"github.com/StephenQiu30/hotkey-server/internal/scoring"
@@ -90,6 +92,50 @@ func newJobRunner(cfg config.Config, db *sql.DB) *jobs.Runner {
 		log.Print(observability.RenderLog("worker", "dispatch_notifications: running"))
 		return dispatchJob.Run(ctx, 0)
 	}, 1*time.Minute)
+
+	// Daily digest publish job — gates on DAILY_DIGEST_TIME CST
+	if cfg.ObsidianVaultPath != "" {
+		exporter := database.NewExporter(db)
+		llmClient := llm.NewOpenAIClient(llm.OpenAIConfig{
+			APIKey:  cfg.LLMAPIKey,
+			BaseURL: cfg.LLMBaseURL,
+			Model:   cfg.LLMModel,
+		})
+		writer := &jobs.DefaultVaultWriter{}
+
+		// For each active monitor, create a publish job
+		monitorIDs, err := monitorLister.ListActiveIDs(context.Background())
+		if err != nil {
+			log.Printf("worker: failed to list monitors: %v", err)
+		} else {
+			for _, monitorID := range monitorIDs {
+				// Get monitor config (in real app, this would come from database)
+				monitorCfg := jobs.MonitorConfig{
+					ID:   monitorID,
+					Name: "Monitor", // TODO: get from database
+					Slug: "monitor", // TODO: get from database
+				}
+
+				digestSvc := digest.NewService(nil) // TODO: provide TopicFilter
+				publishJob := jobs.NewPublishDailyTopicsJob(
+					digestSvc,
+					llmClient,
+					exporter,
+					writer,
+					cfg.ObsidianVaultPath,
+					monitorCfg,
+				)
+
+				runner.Register("publish_daily_topics", func(ctx context.Context) error {
+					log.Print(observability.RenderLog("worker", "publish_daily_topics: running"))
+					_, err := publishJob.Run(ctx, time.Now(), cfg.DailyDigestTarget)
+					return err
+				}, 1*time.Minute)
+			}
+		}
+	} else {
+		log.Print("worker: publish_daily_topics disabled (OBSIDIAN_VAULT_PATH not set)")
+	}
 
 	return runner
 }

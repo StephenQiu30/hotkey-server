@@ -84,5 +84,25 @@ func Load() (Config, error) {
 		cfg.XBaseURL = "https://api.x.com"
 	}
 
+	// Daily digest defaults
+	if cfg.DailyDigestTime == "" {
+		cfg.DailyDigestTime = "08:00"
+	}
+	if cfg.DailyDigestTimezone == "" {
+		cfg.DailyDigestTimezone = "Asia/Shanghai"
+	}
+	if cfg.DailyDigestTarget == "" {
+		cfg.DailyDigestTarget = "yesterday"
+	}
+	if cfg.DailyDigestTopN == 0 {
+		cfg.DailyDigestTopN = 20
+	}
+	if cfg.LLMBaseURL == "" {
+		cfg.LLMBaseURL = "https://api.openai.com/v1"
+	}
+	if cfg.LLMModel == "" {
+		cfg.LLMModel = "gpt-4o-mini"
+	}
+
 	return cfg, nil
 }
