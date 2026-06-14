@@ -1,6 +1,8 @@
 package fakedigest
 
 import (
+	"context"
+
 	"github.com/StephenQiu30/hotkey-server/internal/digest"
 )
 
@@ -11,14 +13,14 @@ type TopicFilter struct {
 	Err    error
 }
 
-func (f *TopicFilter) ListTopicsForDay(_ int64, _ digest.Window) ([]digest.TopicEntry, error) {
+func (f *TopicFilter) ListTopicsForDay(_ context.Context, _ int64, _ digest.Window) ([]digest.TopicEntry, error) {
 	if f.Err != nil {
 		return nil, f.Err
 	}
 	return f.Topics, nil
 }
 
-func (f *TopicFilter) FetchRepresentativePosts(topicID int64, limit int) ([]digest.PostEntry, error) {
+func (f *TopicFilter) FetchRepresentativePosts(_ context.Context, topicID int64, limit int) ([]digest.PostEntry, error) {
 	if f.Err != nil {
 		return nil, f.Err
 	}

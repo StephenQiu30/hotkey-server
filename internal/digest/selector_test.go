@@ -1,6 +1,7 @@
 package digest
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -12,14 +13,14 @@ type fakeTopicFilter struct {
 	err    error
 }
 
-func (f *fakeTopicFilter) ListTopicsForDay(_ int64, _ Window) ([]TopicEntry, error) {
+func (f *fakeTopicFilter) ListTopicsForDay(_ context.Context, _ int64, _ Window) ([]TopicEntry, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
 	return f.topics, nil
 }
 
-func (f *fakeTopicFilter) FetchRepresentativePosts(topicID int64, limit int) ([]PostEntry, error) {
+func (f *fakeTopicFilter) FetchRepresentativePosts(_ context.Context, topicID int64, limit int) ([]PostEntry, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -42,9 +43,10 @@ func TestSelectTopicsForDay_TopN(t *testing.T) {
 	filter := &fakeTopicFilter{topics: topics}
 	svc := NewService(filter)
 
+	ctx := context.Background()
 	cst := CST
 	date, _ := time.ParseInLocation("2006-01-02", "2026-06-14", cst)
-	result, err := svc.SelectTopicsForDay(1, date, 3)
+	result, err := svc.SelectTopicsForDay(ctx, 1, date, 3)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -70,9 +72,10 @@ func TestSelectTopicsForDay_ActiveOnly(t *testing.T) {
 	filter := &fakeTopicFilter{topics: nil}
 	svc := NewService(filter)
 
+	ctx := context.Background()
 	cst := CST
 	date, _ := time.ParseInLocation("2006-01-02", "2026-06-14", cst)
-	result, err := svc.SelectTopicsForDay(1, date, 20)
+	result, err := svc.SelectTopicsForDay(ctx, 1, date, 20)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -89,9 +92,10 @@ func TestSelectTopicsForDay_FewerThanN(t *testing.T) {
 	filter := &fakeTopicFilter{topics: topics}
 	svc := NewService(filter)
 
+	ctx := context.Background()
 	cst := CST
 	date, _ := time.ParseInLocation("2006-01-02", "2026-06-14", cst)
-	result, err := svc.SelectTopicsForDay(1, date, 20)
+	result, err := svc.SelectTopicsForDay(ctx, 1, date, 20)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -113,7 +117,8 @@ func TestSelectRepresentativePosts_Top3(t *testing.T) {
 	filter := &fakeTopicFilter{posts: posts}
 	svc := NewService(filter)
 
-	result, err := svc.SelectRepresentativePosts(1, 3)
+	ctx := context.Background()
+	result, err := svc.SelectRepresentativePosts(ctx, 1, 3)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -138,7 +143,8 @@ func TestSelectRepresentativePosts_Empty(t *testing.T) {
 	filter := &fakeTopicFilter{posts: map[int64][]PostEntry{}}
 	svc := NewService(filter)
 
-	result, err := svc.SelectRepresentativePosts(999, 3)
+	ctx := context.Background()
+	result, err := svc.SelectRepresentativePosts(ctx, 999, 3)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -165,10 +171,11 @@ func TestBuildDayDigest_Orchestration(t *testing.T) {
 	filter := &fakeTopicFilter{topics: topics, posts: posts}
 	svc := NewService(filter)
 
+	ctx := context.Background()
 	cst := CST
 	now, _ := time.ParseInLocation("2006-01-02 15:04", "2026-06-14 10:00", cst)
 
-	digest, err := svc.BuildDayDigest(1, now, "today", 20)
+	digest, err := svc.BuildDayDigest(ctx, 1, now, "today", 20)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -196,11 +203,12 @@ func TestBuildDayDigest_DefaultTopN(t *testing.T) {
 	filter := &fakeTopicFilter{topics: nil, posts: map[int64][]PostEntry{}}
 	svc := NewService(filter)
 
+	ctx := context.Background()
 	cst := CST
 	now, _ := time.ParseInLocation("2006-01-02 15:04", "2026-06-14 10:00", cst)
 
 	// topN=0 should default to DefaultTopN
-	digest, err := svc.BuildDayDigest(1, now, "yesterday", 0)
+	digest, err := svc.BuildDayDigest(ctx, 1, now, "yesterday", 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
