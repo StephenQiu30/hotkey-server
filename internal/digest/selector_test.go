@@ -146,3 +146,70 @@ func TestSelectRepresentativePosts_Empty(t *testing.T) {
 		t.Errorf("got %d posts, want 0", len(result))
 	}
 }
+
+func TestBuildDayDigest_Orchestration(t *testing.T) {
+	topics := []TopicEntry{
+		{ID: 1, Title: "AI news", Heat: 80.0},
+		{ID: 2, Title: "crypto", Heat: 60.0},
+	}
+	posts := map[int64][]PostEntry{
+		1: {
+			{PostID: 101, AuthorName: "alice", ContentExcerpt: "AI breakthrough", PostURL: "https://x.com/101", MembershipScore: 0.9},
+			{PostID: 102, AuthorName: "bob", ContentExcerpt: "LLM update", PostURL: "https://x.com/102", MembershipScore: 0.8},
+		},
+		2: {
+			{PostID: 201, AuthorName: "carol", ContentExcerpt: "BTC rally", PostURL: "https://x.com/201", MembershipScore: 0.95},
+		},
+	}
+
+	filter := &fakeTopicFilter{topics: topics, posts: posts}
+	svc := NewService(filter)
+
+	cst := CST
+	now, _ := time.ParseInLocation("2006-01-02 15:04", "2026-06-14 10:00", cst)
+
+	digest, err := svc.BuildDayDigest(1, now, "today", 20)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(digest.Topics) != 2 {
+		t.Fatalf("got %d topics, want 2", len(digest.Topics))
+	}
+	if digest.Topics[0].Topic.Title != "AI news" {
+		t.Errorf("first topic = %q, want %q", digest.Topics[0].Topic.Title, "AI news")
+	}
+	if len(digest.Topics[0].Posts) != 2 {
+		t.Errorf("first topic posts = %d, want 2", len(digest.Topics[0].Posts))
+	}
+	if len(digest.Topics[1].Posts) != 1 {
+		t.Errorf("second topic posts = %d, want 1", len(digest.Topics[1].Posts))
+	}
+	// Verify export date is today CST midnight
+	wantDate, _ := time.ParseInLocation("2006-01-02", "2026-06-14", cst)
+	if !digest.ExportDate.Equal(wantDate) {
+		t.Errorf("export date = %v, want %v", digest.ExportDate, wantDate)
+	}
+}
+
+func TestBuildDayDigest_DefaultTopN(t *testing.T) {
+	filter := &fakeTopicFilter{topics: nil, posts: map[int64][]PostEntry{}}
+	svc := NewService(filter)
+
+	cst := CST
+	now, _ := time.ParseInLocation("2006-01-02 15:04", "2026-06-14 10:00", cst)
+
+	// topN=0 should default to DefaultTopN
+	digest, err := svc.BuildDayDigest(1, now, "yesterday", 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if digest == nil {
+		t.Fatal("digest should not be nil")
+	}
+	// Verify export date is yesterday
+	wantDate, _ := time.ParseInLocation("2006-01-02", "2026-06-13", cst)
+	if !digest.ExportDate.Equal(wantDate) {
+		t.Errorf("export date = %v, want %v", digest.ExportDate, wantDate)
+	}
+}
