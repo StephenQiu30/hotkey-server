@@ -1,5 +1,3 @@
-// Package jobs implements background job orchestration for the hotkey-server.
-// PublishDailyTopicsJob orchestrates daily topic digest → LLM → obsidian export.
 package jobs
 
 import (
@@ -7,269 +5,185 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	"github.com/StephenQiu30/hotkey-server/internal/digest"
+	"github.com/StephenQiu30/hotkey-server/internal/llm"
+	"github.com/StephenQiu30/hotkey-server/internal/obsidian"
 )
 
-// TopicCandidate represents a topic eligible for daily export.
-type TopicCandidate struct {
-	TopicID        int64
-	TopicKey       string
-	Title          string
-	HeatScore      float64
-	TrendDirection string
-	PostCount      int
-	Posts          []RepresentativePost
+// TopicExporter tracks per-topic export status for idempotency.
+type TopicExporter interface {
+	// IsExported reports whether the topic+date combination has already been exported.
+	IsExported(ctx context.Context, topicID int64, date string) (bool, error)
+	// MarkExported records a successful export.
+	MarkExported(ctx context.Context, topicID int64, date string) error
+	// MarkFailed records a failed export.
+	MarkFailed(ctx context.Context, topicID int64, date string, reason string) error
 }
 
-// RepresentativePost holds a top post for a topic.
-type RepresentativePost struct {
-	AuthorName string
-	Text       string
-	URL        string
+// VaultWriter writes content to the Obsidian vault.
+type VaultWriter interface {
+	WriteAtomic(path, content string) error
 }
 
-// DigestService selects eligible topics for a given day.
-type DigestService interface {
-	ListTopicsForDay(ctx context.Context, monitorID int64, exportDate time.Time, topN int) ([]TopicCandidate, error)
+// DefaultVaultWriter implements VaultWriter using the obsidian package.
+type DefaultVaultWriter struct{}
+
+// WriteAtomic delegates to obsidian.WriteAtomic.
+func (w *DefaultVaultWriter) WriteAtomic(path, content string) error {
+	return obsidian.WriteAtomic(path, content)
 }
 
-// LLMClient generates summaries for topics.
-type LLMClient interface {
-	SummarizeTopic(ctx context.Context, in TopicSummaryInput) (string, error)
-}
-
-// TopicSummaryInput is the input for LLM summarization.
-type TopicSummaryInput struct {
-	MonitorName string
-	TopicTitle  string
-	TopicKey    string
-	HeatScore   float64
-	Trend       string
-	PostCount   int
-	Posts       []RepresentativePost
-}
-
-// ObsidianWriter renders and writes a topic note to the vault.
-type ObsidianWriter interface {
-	WriteTopicNote(ctx context.Context, in ObsidianNoteInput) (string, error)
-}
-
-// ObsidianNoteInput is the input for writing an Obsidian note.
-type ObsidianNoteInput struct {
-	VaultPath    string
-	MonitorID    int64
-	MonitorName  string
-	MonitorSlug  string
-	TopicID      int64
-	TopicKey     string
-	Title        string
-	Date         string // "2006-01-02"
-	HeatScore    float64
-	Trend        string
-	PostCount    int
-	Summary      string
-	Posts        []RepresentativePost
-}
-
-// ExportRecord represents a row in topic_daily_exports.
-type ExportRecord struct {
-	ID           int64
-	MonitorID    int64
-	TopicID      int64
-	ExportDate   string
-	SummaryText  string
-	MarkdownPath string
-	Status       string
-	ErrorMessage string
-}
-
-// ExportRepository manages topic_daily_exports persistence.
-type ExportRepository interface {
-	// UpsertExport inserts or updates an export record, returning the ID.
-	UpsertExport(ctx context.Context, rec ExportRecord) (int64, error)
-	// GetExportDate returns the last run date string, or "" if never run.
-	GetLastRunDate(ctx context.Context) (string, error)
-	// SetLastRunDate persists the last run date.
-	SetLastRunDate(ctx context.Context, date string) error
-}
-
-// PublishDailyTopicsConfig holds configuration for the publish job.
-type PublishDailyTopicsConfig struct {
-	VaultPath string // OBSIDIAN_VAULT_PATH
-	Target    string // "yesterday" or "today"
-	TopN      int    // max topics per monitor
-}
-
-// PublishDailyTopicsJob orchestrates the daily topic publishing pipeline:
-//
-//	monitors → digest → LLM → export → obsidian write → status update
+// PublishDailyTopicsJob orchestrates the daily digest publishing pipeline:
+// digest selection → LLM summary → Obsidian markdown → vault write.
 type PublishDailyTopicsJob struct {
-	monitors   MonitorLister
-	digest     DigestService
-	llm        LLMClient
-	writer     ObsidianWriter
-	exports    ExportRepository
-	scheduler  *DailyScheduler
-	cfg        PublishDailyTopicsConfig
+	digestSvc *digest.Service
+	llmClient llm.Client
+	exporter  TopicExporter
+	writer    VaultWriter
+	vaultRoot string
+	monitor   MonitorConfig
 }
 
-// NewPublishDailyTopicsJob creates a PublishDailyTopicsJob.
+// MonitorConfig holds the monitor metadata needed for publishing.
+type MonitorConfig struct {
+	ID   int64
+	Name string
+	Slug string
+}
+
+// NewPublishDailyTopicsJob creates a new PublishDailyTopicsJob.
 func NewPublishDailyTopicsJob(
-	monitors MonitorLister,
-	digest DigestService,
-	llm LLMClient,
-	writer ObsidianWriter,
-	exports ExportRepository,
-	scheduler *DailyScheduler,
-	cfg PublishDailyTopicsConfig,
+	digestSvc *digest.Service,
+	llmClient llm.Client,
+	exporter TopicExporter,
+	writer VaultWriter,
+	vaultRoot string,
+	monitor MonitorConfig,
 ) *PublishDailyTopicsJob {
-	if cfg.TopN <= 0 {
-		cfg.TopN = 20
-	}
-	if cfg.Target == "" {
-		cfg.Target = "yesterday"
-	}
 	return &PublishDailyTopicsJob{
-		monitors:  monitors,
-		digest:    digest,
-		llm:       llm,
+		digestSvc: digestSvc,
+		llmClient: llmClient,
+		exporter:  exporter,
 		writer:    writer,
-		exports:   exports,
-		scheduler: scheduler,
-		cfg:       cfg,
+		vaultRoot: vaultRoot,
+		monitor:   monitor,
 	}
 }
 
-// Run executes the daily publish pipeline. It returns nil without action
-// if the scheduler gate determines it is not time to run.
-func (j *PublishDailyTopicsJob) Run(ctx context.Context, now time.Time) error {
-	lastRunDate, err := j.exports.GetLastRunDate(ctx)
-	if err != nil {
-		return fmt.Errorf("get last run date: %w", err)
-	}
-
-	if !j.scheduler.ShouldRun(now, lastRunDate) {
-		return nil
-	}
-
-	log.Printf("publish_daily_topics: starting for %s", j.scheduler.MarkRun(now))
-
-	exportDate := ResolveExportDate(now, j.cfg.Target)
-	monitorIDs, err := j.monitors.ListActiveIDs(ctx)
-	if err != nil {
-		return fmt.Errorf("list monitors: %w", err)
-	}
-
-	var lastErr error
-	for _, monitorID := range monitorIDs {
-		if err := j.publishForMonitor(ctx, monitorID, exportDate); err != nil {
-			log.Printf("publish_daily_topics: monitor %d error: %v", monitorID, err)
-			lastErr = err
-			// Continue with other monitors
-		}
-	}
-
-	runDate := j.scheduler.MarkRun(now)
-	if err := j.exports.SetLastRunDate(ctx, runDate); err != nil {
-		return fmt.Errorf("set last run date: %w", err)
-	}
-
-	log.Printf("publish_daily_topics: completed for %s", runDate)
-	return lastErr
+// ExportResult holds the outcome of publishing a single topic.
+type ExportResult struct {
+	TopicID int64
+	Title   string
+	Status  string // "published" or "failed"
+	Error   error
 }
 
-func (j *PublishDailyTopicsJob) publishForMonitor(ctx context.Context, monitorID int64, exportDate time.Time) error {
-	topics, err := j.digest.ListTopicsForDay(ctx, monitorID, exportDate, j.cfg.TopN)
+// Run executes the full daily digest publishing pipeline for a given date.
+// It returns results for each topic processed.
+func (j *PublishDailyTopicsJob) Run(ctx context.Context, now time.Time, target string) ([]ExportResult, error) {
+	exportDate := digest.ResolveExportDate(now, target)
+	dateStr := exportDate.Format("2006-01-02")
+
+	d, err := j.digestSvc.BuildDayDigest(ctx, j.monitor.ID, now, target, digest.DefaultTopN)
 	if err != nil {
-		return fmt.Errorf("list topics: %w", err)
+		return nil, fmt.Errorf("build digest: %w", err)
 	}
 
-	for _, tc := range topics {
-		if err := j.publishTopic(ctx, monitorID, exportDate, tc); err != nil {
-			log.Printf("publish_daily_topics: topic %d error: %v", tc.TopicID, err)
-			// Record failure but continue
-			_, _ = j.exports.UpsertExport(ctx, ExportRecord{
-				MonitorID:  monitorID,
-				TopicID:    tc.TopicID,
-				ExportDate: exportDate.Format("2006-01-02"),
-				Status:     "failed",
-				ErrorMessage: err.Error(),
-			})
-		}
+	results := make([]ExportResult, 0, len(d.Topics))
+	for _, td := range d.Topics {
+		r := j.publishTopic(ctx, td, dateStr)
+		results = append(results, r)
 	}
 
-	return nil
+	return results, nil
 }
 
-func (j *PublishDailyTopicsJob) publishTopic(ctx context.Context, monitorID int64, exportDate time.Time, tc TopicCandidate) error {
-	// LLM summary
-	summary, err := j.llm.SummarizeTopic(ctx, TopicSummaryInput{
-		TopicTitle:  tc.Title,
-		TopicKey:    tc.TopicKey,
-		HeatScore:   tc.HeatScore,
-		Trend:       tc.TrendDirection,
-		PostCount:   tc.PostCount,
-		Posts:       tc.Posts,
-	})
+func (j *PublishDailyTopicsJob) publishTopic(ctx context.Context, td digest.TopicDigest, dateStr string) ExportResult {
+	result := ExportResult{
+		TopicID: td.Topic.ID,
+		Title:   td.Topic.Title,
+	}
+
+	// Check export status for error reporting; always re-render per S10
+	if _, err := j.exporter.IsExported(ctx, td.Topic.ID, dateStr); err != nil {
+		result.Status = "failed"
+		result.Error = fmt.Errorf("check export status: %w", err)
+		return result
+	}
+
+	// Build LLM input from topic + posts
+	input := buildLLMInput(j.monitor.Name, td)
+	summary, err := j.llmClient.SummarizeTopic(ctx, input)
 	if err != nil {
-		return fmt.Errorf("llm summarize: %w", err)
+		_ = j.exporter.MarkFailed(ctx, td.Topic.ID, dateStr, err.Error())
+		log.Printf("publish: topic %d LLM error: %v", td.Topic.ID, err)
+		result.Status = "failed"
+		result.Error = err
+		return result
 	}
 
-	// Upsert export record (pending)
-	exportRec := ExportRecord{
-		MonitorID:   monitorID,
-		TopicID:     tc.TopicID,
-		ExportDate:  exportDate.Format("2006-01-02"),
-		SummaryText: summary,
-		Status:      "pending",
-	}
-	exportID, err := j.exports.UpsertExport(ctx, exportRec)
-	if err != nil {
-		return fmt.Errorf("upsert export: %w", err)
+	// Render markdown
+	posts := make([]obsidian.PostExcerpt, 0, len(td.Posts))
+	for _, p := range td.Posts {
+		posts = append(posts, obsidian.PostExcerpt{
+			Author:  p.AuthorName,
+			Excerpt: p.ContentExcerpt,
+			URL:     p.PostURL,
+		})
 	}
 
-	// Write to Obsidian vault
-	noteInput := ObsidianNoteInput{
-		VaultPath:   j.cfg.VaultPath,
-		MonitorID:   monitorID,
-		TopicID:     tc.TopicID,
-		TopicKey:    tc.TopicKey,
-		Title:       tc.Title,
-		Date:        exportDate.Format("2006-01-02"),
-		HeatScore:   tc.HeatScore,
-		Trend:       tc.TrendDirection,
-		PostCount:   tc.PostCount,
-		Summary:     summary,
-		Posts:       tc.Posts,
-	}
-	mdPath, err := j.writer.WriteTopicNote(ctx, noteInput)
-	if err != nil {
-		return fmt.Errorf("write note: %w", err)
+	noteInput := obsidian.TopicNoteInput{
+		Date:      dateStr,
+		Monitor:   j.monitor.Name,
+		MonitorID: j.monitor.ID,
+		TopicID:   td.Topic.ID,
+		TopicKey:  td.Topic.Title,
+		Title:     td.Topic.Title,
+		Heat:      td.Topic.Heat,
+		Trend:     "stable",
+		PostCount: len(td.Posts),
+		Summary:   summary,
+		Posts:     posts,
 	}
 
-	// Update export to published
-	exportRec.ID = exportID
-	exportRec.MarkdownPath = mdPath
-	exportRec.Status = "published"
-	if _, err := j.exports.UpsertExport(ctx, exportRec); err != nil {
-		return fmt.Errorf("update export status: %w", err)
+	content := obsidian.RenderTopicNote(noteInput)
+	topicSlug := obsidian.Slugify(td.Topic.Title)
+	idStr := fmt.Sprintf("%d", td.Topic.ID)
+	path := obsidian.BuildPath(j.vaultRoot, j.monitor.Slug, dateStr, idStr, topicSlug)
+
+	// Write to vault
+	if err := j.writer.WriteAtomic(path, content); err != nil {
+		_ = j.exporter.MarkFailed(ctx, td.Topic.ID, dateStr, err.Error())
+		log.Printf("publish: topic %d write error: %v", td.Topic.ID, err)
+		result.Status = "failed"
+		result.Error = err
+		return result
 	}
 
-	return nil
+	// Mark success
+	if err := j.exporter.MarkExported(ctx, td.Topic.ID, dateStr); err != nil {
+		log.Printf("publish: topic %d mark exported error: %v", td.Topic.ID, err)
+	}
+	result.Status = "published"
+	return result
 }
 
-// ResolveExportDate computes the export date based on the target setting.
-// "yesterday" returns the previous day in CST; "today" returns the current day.
-func ResolveExportDate(now time.Time, target string) time.Time {
-	loc, err := time.LoadLocation("Asia/Shanghai")
-	if err != nil {
-		loc = time.FixedZone("CST", 8*3600)
+func buildLLMInput(monitorName string, td digest.TopicDigest) llm.TopicSummaryInput {
+	posts := make([]llm.PostInput, 0, len(td.Posts))
+	for _, p := range td.Posts {
+		posts = append(posts, llm.PostInput{
+			Author:  p.AuthorName,
+			Content: p.ContentExcerpt,
+			URL:     p.PostURL,
+		})
 	}
-	local := now.In(loc)
-	year, month, day := local.Date()
-	today := time.Date(year, month, day, 0, 0, 0, 0, loc)
-
-	if target == "yesterday" {
-		return today.AddDate(0, 0, -1)
+	return llm.TopicSummaryInput{
+		MonitorName: monitorName,
+		TopicTitle:  td.Topic.Title,
+		Heat:        td.Topic.Heat,
+		Trend:       "stable",
+		PostCount:   len(td.Posts),
+		Posts:       posts,
 	}
-	return today
 }

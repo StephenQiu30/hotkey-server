@@ -95,32 +95,44 @@ func newJobRunner(cfg config.Config, db *sql.DB) *jobs.Runner {
 
 	// Daily digest publish job — gates on DAILY_DIGEST_TIME CST
 	if cfg.ObsidianVaultPath != "" {
-		scheduler := jobs.NewDailyScheduler(cfg.DailyDigestTime, cfg.DailyDigestTimezone)
-		exportRepo := jobs.NewExportRepoAdapter(database.NewDigestRepo(db))
-		digestSvc := jobs.NewDigestServiceAdapter(digest.NewService(nil)) // TODO: provide TopicFilter
-		llmClient := jobs.NewLLMClientAdapter(llm.NewOpenAIClient(llm.OpenAIConfig{
+		exporter := database.NewExporter(db)
+		llmClient := llm.NewOpenAIClient(llm.OpenAIConfig{
 			APIKey:  cfg.LLMAPIKey,
 			BaseURL: cfg.LLMBaseURL,
 			Model:   cfg.LLMModel,
-		}))
-		obsidianWriter := jobs.NewObsidianWriterAdapter()
-		publishJob := jobs.NewPublishDailyTopicsJob(
-			monitorLister,
-			digestSvc,
-			llmClient,
-			obsidianWriter,
-			exportRepo,
-			scheduler,
-			jobs.PublishDailyTopicsConfig{
-				VaultPath: cfg.ObsidianVaultPath,
-				Target:    cfg.DailyDigestTarget,
-				TopN:      cfg.DailyDigestTopN,
-			},
-		)
-		runner.Register("publish_daily_topics", func(ctx context.Context) error {
-			log.Print(observability.RenderLog("worker", "publish_daily_topics: running"))
-			return publishJob.Run(ctx, time.Now())
-		}, 1*time.Minute)
+		})
+		writer := &jobs.DefaultVaultWriter{}
+
+		// For each active monitor, create a publish job
+		monitorIDs, err := monitorLister.ListActiveIDs(context.Background())
+		if err != nil {
+			log.Printf("worker: failed to list monitors: %v", err)
+		} else {
+			for _, monitorID := range monitorIDs {
+				// Get monitor config (in real app, this would come from database)
+				monitorCfg := jobs.MonitorConfig{
+					ID:   monitorID,
+					Name: "Monitor", // TODO: get from database
+					Slug: "monitor", // TODO: get from database
+				}
+
+				digestSvc := digest.NewService(nil) // TODO: provide TopicFilter
+				publishJob := jobs.NewPublishDailyTopicsJob(
+					digestSvc,
+					llmClient,
+					exporter,
+					writer,
+					cfg.ObsidianVaultPath,
+					monitorCfg,
+				)
+
+				runner.Register("publish_daily_topics", func(ctx context.Context) error {
+					log.Print(observability.RenderLog("worker", "publish_daily_topics: running"))
+					_, err := publishJob.Run(ctx, time.Now(), cfg.DailyDigestTarget)
+					return err
+				}, 1*time.Minute)
+			}
+		}
 	} else {
 		log.Print("worker: publish_daily_topics disabled (OBSIDIAN_VAULT_PATH not set)")
 	}

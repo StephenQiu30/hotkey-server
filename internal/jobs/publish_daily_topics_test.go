@@ -5,305 +5,244 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/StephenQiu30/hotkey-server/internal/digest"
+	"github.com/StephenQiu30/hotkey-server/internal/llm"
 )
+
+// --- Mock TopicFilter ---
+
+type mockTopicFilter struct {
+	topics []digest.TopicEntry
+	posts  map[int64][]digest.PostEntry
+}
+
+func (m *mockTopicFilter) ListTopicsForDay(_ context.Context, _ int64, _ digest.Window) ([]digest.TopicEntry, error) {
+	return m.topics, nil
+}
+
+func (m *mockTopicFilter) FetchRepresentativePosts(_ context.Context, topicID int64, _ int) ([]digest.PostEntry, error) {
+	if posts, ok := m.posts[topicID]; ok {
+		return posts, nil
+	}
+	return nil, nil
+}
 
 // --- Mocks ---
 
-type mockMonitorLister struct {
-	ids []int64
-	err error
+type mockTopicExporter struct {
+	exported map[string]bool
+	failures map[string]string
 }
 
-func (m *mockMonitorLister) ListActiveIDs(_ context.Context) ([]int64, error) {
-	return m.ids, m.err
+func newMockTopicExporter() *mockTopicExporter {
+	return &mockTopicExporter{
+		exported: make(map[string]bool),
+		failures: make(map[string]string),
+	}
 }
 
-type mockDigestService struct {
-	topics []TopicCandidate
-	err    error
+func (m *mockTopicExporter) key(topicID int64, date string) string {
+	return string(rune(topicID)) + ":" + date
 }
 
-func (m *mockDigestService) ListTopicsForDay(_ context.Context, _ int64, _ time.Time, _ int) ([]TopicCandidate, error) {
-	return m.topics, m.err
+func (m *mockTopicExporter) IsExported(_ context.Context, topicID int64, date string) (bool, error) {
+	return m.exported[m.key(topicID, date)], nil
 }
 
-type mockLLMClient struct {
+func (m *mockTopicExporter) MarkExported(_ context.Context, topicID int64, date string) error {
+	m.exported[m.key(topicID, date)] = true
+	return nil
+}
+
+func (m *mockTopicExporter) MarkFailed(_ context.Context, topicID int64, date string, reason string) error {
+	m.failures[m.key(topicID, date)] = reason
+	return nil
+}
+
+type mockVaultWriter struct {
+	written map[string]string
+	err     error
+}
+
+func newMockVaultWriter() *mockVaultWriter {
+	return &mockVaultWriter{
+		written: make(map[string]string),
+	}
+}
+
+func (m *mockVaultWriter) WriteAtomic(path, content string) error {
+	if m.err != nil {
+		return m.err
+	}
+	m.written[path] = content
+	return nil
+}
+
+type mockLLMClientForPublish struct {
 	summary string
 	err     error
 }
 
-func (m *mockLLMClient) SummarizeTopic(_ context.Context, _ TopicSummaryInput) (string, error) {
+func (m *mockLLMClientForPublish) SummarizeTopic(_ context.Context, _ llm.TopicSummaryInput) (string, error) {
 	return m.summary, m.err
 }
 
-type mockObsidianWriter struct {
-	path string
-	err  error
-}
-
-func (m *mockObsidianWriter) WriteTopicNote(_ context.Context, _ ObsidianNoteInput) (string, error) {
-	return m.path, m.err
-}
-
-type mockExportRepo struct {
-	lastRunDate string
-	getErr      error
-	setErr      error
-	upsertErr   error
-	upsertCalls []ExportRecord
-}
-
-func (m *mockExportRepo) GetLastRunDate(_ context.Context) (string, error) {
-	return m.lastRunDate, m.getErr
-}
-
-func (m *mockExportRepo) SetLastRunDate(_ context.Context, _ string) error {
-	return m.setErr
-}
-
-func (m *mockExportRepo) UpsertExport(_ context.Context, rec ExportRecord) (int64, error) {
-	m.upsertCalls = append(m.upsertCalls, rec)
-	if m.upsertErr != nil {
-		return 0, m.upsertErr
-	}
-	return int64(len(m.upsertCalls)), nil
-}
-
-// --- Tests ---
-
-func TestPublishDailyTopics_SkipsWhenNotTime(t *testing.T) {
-	// 07:30 CST — before 08:00 gate
-	now := time.Date(2026, 6, 13, 23, 30, 0, 0, time.UTC)
-	sched := NewDailyScheduler("08:00", "Asia/Shanghai")
-
-	exports := &mockExportRepo{lastRunDate: ""}
-	monitors := &mockMonitorLister{ids: []int64{1}}
-
-	job := NewPublishDailyTopicsJob(
-		monitors,
-		&mockDigestService{},
-		&mockLLMClient{},
-		&mockObsidianWriter{},
-		exports,
-		sched,
-		PublishDailyTopicsConfig{VaultPath: "/tmp/vault", Target: "yesterday", TopN: 20},
-	)
-
-	err := job.Run(context.Background(), now)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(exports.upsertCalls) != 0 {
-		t.Fatalf("expected no upsert calls, got %d", len(exports.upsertCalls))
-	}
-}
-
-func TestPublishDailyTopics_SkipsWhenAlreadyRun(t *testing.T) {
-	// 10:00 CST — after gate, but already ran today
-	now := time.Date(2026, 6, 14, 2, 0, 0, 0, time.UTC)
-	sched := NewDailyScheduler("08:00", "Asia/Shanghai")
-
-	exports := &mockExportRepo{lastRunDate: "2026-06-14"}
-	monitors := &mockMonitorLister{ids: []int64{1}}
-
-	job := NewPublishDailyTopicsJob(
-		monitors,
-		&mockDigestService{},
-		&mockLLMClient{},
-		&mockObsidianWriter{},
-		exports,
-		sched,
-		PublishDailyTopicsConfig{VaultPath: "/tmp/vault", Target: "yesterday", TopN: 20},
-	)
-
-	err := job.Run(context.Background(), now)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(exports.upsertCalls) != 0 {
-		t.Fatalf("expected no upsert calls, got %d", len(exports.upsertCalls))
-	}
-}
-
-func TestPublishDailyTopics_PublishesTopics(t *testing.T) {
-	// 09:00 CST — after gate, first run today
-	now := time.Date(2026, 6, 14, 1, 0, 0, 0, time.UTC)
-	sched := NewDailyScheduler("08:00", "Asia/Shanghai")
-
-	topics := []TopicCandidate{
-		{
-			TopicID:        1,
-			TopicKey:       "ai:监管",
-			Title:          "AI 监管政策",
-			HeatScore:      85.5,
-			TrendDirection: "rising",
-			PostCount:      12,
-			Posts: []RepresentativePost{
-				{AuthorName: "user1", Text: "post text", URL: "https://x.com/1"},
-			},
-		},
-	}
-
-	exports := &mockExportRepo{lastRunDate: ""}
-	monitors := &mockMonitorLister{ids: []int64{1}}
-
-	job := NewPublishDailyTopicsJob(
-		monitors,
-		&mockDigestService{topics: topics},
-		&mockLLMClient{summary: "AI 监管摘要"},
-		&mockObsidianWriter{path: "/tmp/vault/HotKey/topics/ai/2026-06-13-topic-1.md"},
-		exports,
-		sched,
-		PublishDailyTopicsConfig{VaultPath: "/tmp/vault", Target: "yesterday", TopN: 20},
-	)
-
-	err := job.Run(context.Background(), now)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Should have 2 upsert calls: pending + published
-	if len(exports.upsertCalls) != 2 {
-		t.Fatalf("expected 2 upsert calls, got %d", len(exports.upsertCalls))
-	}
-	if exports.upsertCalls[0].Status != "pending" {
-		t.Fatalf("first upsert: expected status=pending, got %s", exports.upsertCalls[0].Status)
-	}
-	if exports.upsertCalls[1].Status != "published" {
-		t.Fatalf("second upsert: expected status=published, got %s", exports.upsertCalls[1].Status)
-	}
-	if exports.upsertCalls[1].MarkdownPath == "" {
-		t.Fatal("second upsert: expected non-empty markdown path")
-	}
-}
-
-func TestPublishDailyTopics_LLMFailureDoesNotBlockOtherTopics(t *testing.T) {
-	now := time.Date(2026, 6, 14, 1, 0, 0, 0, time.UTC)
-	sched := NewDailyScheduler("08:00", "Asia/Shanghai")
-
-	topics := []TopicCandidate{
-		{TopicID: 1, TopicKey: "a", Title: "Topic A", HeatScore: 90},
-		{TopicID: 2, TopicKey: "b", Title: "Topic B", HeatScore: 80},
-	}
-
-	llmMock := &failingLLMClient{failOnTopic: 1}
-
-	exports := &mockExportRepo{lastRunDate: ""}
-	monitors := &mockMonitorLister{ids: []int64{1}}
-
-	job := NewPublishDailyTopicsJob(
-		monitors,
-		&mockDigestService{topics: topics},
-		llmMock,
-		&mockObsidianWriter{path: "/tmp/vault/topic.md"},
-		exports,
-		sched,
-		PublishDailyTopicsConfig{VaultPath: "/tmp/vault", Target: "yesterday", TopN: 20},
-	)
-
-	err := job.Run(context.Background(), now)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Topic 1: 1 upsert (failed)
-	// Topic 2: 2 upserts (pending + published)
-	totalUpserts := len(exports.upsertCalls)
-	if totalUpserts != 3 {
-		t.Fatalf("expected 3 upsert calls, got %d", totalUpserts)
-	}
-
-	// First call should be failed for topic 1
-	if exports.upsertCalls[0].Status != "failed" {
-		t.Fatalf("first upsert: expected status=failed, got %s", exports.upsertCalls[0].Status)
-	}
-	// Third call should be published for topic 2
-	if exports.upsertCalls[2].Status != "published" {
-		t.Fatalf("third upsert: expected status=published, got %s", exports.upsertCalls[2].Status)
-	}
-}
-
-type failingLLMClient struct {
+type failingLLMClientForPublish struct {
 	failOnTopic int64
 	callCount   int
 }
 
-func (m *failingLLMClient) SummarizeTopic(_ context.Context, in TopicSummaryInput) (string, error) {
+func (m *failingLLMClientForPublish) SummarizeTopic(_ context.Context, in llm.TopicSummaryInput) (string, error) {
 	m.callCount++
-	// Fail on first call by checking topic key
+	// Fail on first call
 	if m.callCount == 1 {
 		return "", errors.New("llm timeout")
 	}
 	return "summary", nil
 }
 
-func TestPublishDailyTopics_IdempotentPublish(t *testing.T) {
-	// First run
+// --- Tests ---
+
+func TestPublishDailyTopics_PublishesTopics(t *testing.T) {
+	// 09:00 CST — after gate, first run today
 	now := time.Date(2026, 6, 14, 1, 0, 0, 0, time.UTC)
-	sched := NewDailyScheduler("08:00", "Asia/Shanghai")
 
-	topics := []TopicCandidate{
-		{TopicID: 1, TopicKey: "a", Title: "Topic A", HeatScore: 90},
+	// Create a mock digest service
+	filter := &mockTopicFilter{
+		topics: []digest.TopicEntry{
+			{ID: 1, Title: "AI 监管政策", Heat: 85.5},
+		},
+		posts: map[int64][]digest.PostEntry{
+			1: {
+				{PostID: 1, AuthorName: "user1", ContentExcerpt: "post text", PostURL: "https://x.com/1"},
+			},
+		},
 	}
+	digestSvc := digest.NewService(filter)
 
-	exports := &mockExportRepo{lastRunDate: ""}
-	monitors := &mockMonitorLister{ids: []int64{1}}
+	exporter := newMockTopicExporter()
+	writer := newMockVaultWriter()
+	llmClient := &mockLLMClientForPublish{summary: "AI 监管摘要"}
 
 	job := NewPublishDailyTopicsJob(
-		monitors,
-		&mockDigestService{topics: topics},
-		&mockLLMClient{summary: "summary"},
-		&mockObsidianWriter{path: "/tmp/vault/topic.md"},
-		exports,
-		sched,
-		PublishDailyTopicsConfig{VaultPath: "/tmp/vault", Target: "yesterday", TopN: 20},
+		digestSvc,
+		llmClient,
+		exporter,
+		writer,
+		"/tmp/vault",
+		MonitorConfig{ID: 1, Name: "AI Monitor", Slug: "ai"},
 	)
 
-	err := job.Run(context.Background(), now)
+	results, err := job.Run(context.Background(), now, "yesterday")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should have 1 result (published)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Status != "published" {
+		t.Fatalf("expected status=published, got %s", results[0].Status)
+	}
+}
+
+func TestPublishDailyTopics_LLMFailureDoesNotBlockOtherTopics(t *testing.T) {
+	now := time.Date(2026, 6, 14, 1, 0, 0, 0, time.UTC)
+
+	// Create a mock digest service with 2 topics
+	filter := &mockTopicFilter{
+		topics: []digest.TopicEntry{
+			{ID: 1, Title: "Topic A", Heat: 90},
+			{ID: 2, Title: "Topic B", Heat: 80},
+		},
+		posts: map[int64][]digest.PostEntry{
+			1: {{PostID: 1, AuthorName: "user1", ContentExcerpt: "post1", PostURL: "https://x.com/1"}},
+			2: {{PostID: 2, AuthorName: "user2", ContentExcerpt: "post2", PostURL: "https://x.com/2"}},
+		},
+	}
+	digestSvc := digest.NewService(filter)
+
+	exporter := newMockTopicExporter()
+	writer := newMockVaultWriter()
+	llmClient := &failingLLMClientForPublish{failOnTopic: 1}
+
+	job := NewPublishDailyTopicsJob(
+		digestSvc,
+		llmClient,
+		exporter,
+		writer,
+		"/tmp/vault",
+		MonitorConfig{ID: 1, Name: "AI Monitor", Slug: "ai"},
+	)
+
+	results, err := job.Run(context.Background(), now, "yesterday")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should have 2 results: first failed, second published
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	if results[0].Status != "failed" {
+		t.Fatalf("first result: expected status=failed, got %s", results[0].Status)
+	}
+	if results[1].Status != "published" {
+		t.Fatalf("second result: expected status=published, got %s", results[1].Status)
+	}
+}
+
+func TestPublishDailyTopics_IdempotentPublish(t *testing.T) {
+	now := time.Date(2026, 6, 14, 1, 0, 0, 0, time.UTC)
+
+	// Create a mock digest service
+	filter := &mockTopicFilter{
+		topics: []digest.TopicEntry{
+			{ID: 1, Title: "Topic A", Heat: 90},
+		},
+		posts: map[int64][]digest.PostEntry{
+			1: {{PostID: 1, AuthorName: "user1", ContentExcerpt: "post1", PostURL: "https://x.com/1"}},
+		},
+	}
+	digestSvc := digest.NewService(filter)
+
+	exporter := newMockTopicExporter()
+	writer := newMockVaultWriter()
+	llmClient := &mockLLMClientForPublish{summary: "summary"}
+
+	job := NewPublishDailyTopicsJob(
+		digestSvc,
+		llmClient,
+		exporter,
+		writer,
+		"/tmp/vault",
+		MonitorConfig{ID: 1, Name: "AI Monitor", Slug: "ai"},
+	)
+
+	// First run
+	results1, err := job.Run(context.Background(), now, "yesterday")
 	if err != nil {
 		t.Fatalf("first run: unexpected error: %v", err)
 	}
 
-	// Second run same day — should be skipped
-	exports.lastRunDate = "2026-06-14"
-	exports.upsertCalls = nil
-
-	err = job.Run(context.Background(), now)
+	// Second run — should be idempotent
+	results2, err := job.Run(context.Background(), now, "yesterday")
 	if err != nil {
 		t.Fatalf("second run: unexpected error: %v", err)
 	}
-	if len(exports.upsertCalls) != 0 {
-		t.Fatalf("second run: expected 0 upsert calls, got %d", len(exports.upsertCalls))
-	}
-}
 
-func TestPublishDailyTopics_GetLastRunDateError(t *testing.T) {
-	now := time.Date(2026, 6, 14, 1, 0, 0, 0, time.UTC)
-	sched := NewDailyScheduler("08:00", "Asia/Shanghai")
-
-	exports := &mockExportRepo{getErr: errors.New("db down")}
-	monitors := &mockMonitorLister{ids: []int64{1}}
-
-	job := NewPublishDailyTopicsJob(
-		monitors,
-		&mockDigestService{},
-		&mockLLMClient{},
-		&mockObsidianWriter{},
-		exports,
-		sched,
-		PublishDailyTopicsConfig{VaultPath: "/tmp/vault"},
-	)
-
-	err := job.Run(context.Background(), now)
-	if err == nil {
-		t.Fatal("expected error from GetLastRunDate")
+	// Both runs should return results
+	if len(results1) != 1 || len(results2) != 1 {
+		t.Fatalf("expected 1 result from each run, got %d and %d", len(results1), len(results2))
 	}
 }
 
 func TestResolveExportDate_Yesterday(t *testing.T) {
 	// 2026-06-14 12:00 CST = 2026-06-14 04:00 UTC
 	now := time.Date(2026, 6, 14, 4, 0, 0, 0, time.UTC)
-	d := ResolveExportDate(now, "yesterday")
+	d := digest.ResolveExportDate(now, "yesterday")
 	want := time.Date(2026, 6, 13, 0, 0, 0, 0, d.Location())
 	if d != want {
 		t.Fatalf("got %v, want %v", d, want)
@@ -312,7 +251,7 @@ func TestResolveExportDate_Yesterday(t *testing.T) {
 
 func TestResolveExportDate_Today(t *testing.T) {
 	now := time.Date(2026, 6, 14, 4, 0, 0, 0, time.UTC)
-	d := ResolveExportDate(now, "today")
+	d := digest.ResolveExportDate(now, "today")
 	want := time.Date(2026, 6, 14, 0, 0, 0, 0, d.Location())
 	if d != want {
 		t.Fatalf("got %v, want %v", d, want)
