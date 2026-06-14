@@ -93,6 +93,8 @@ tests/
     monitor/
     notify/
     observability/
+    platform/queue/
+    platform/redis/
     platform/x/
     scoring/
     server/
@@ -154,6 +156,8 @@ scripts/           # smoke-api.sh 保留
 | `internal/trend/*_test.go` | `tests/unit/trend/` |
 | `internal/alert/service_test.go` | `tests/unit/alert/service_test.go` |
 | `internal/scoring/service_test.go` | `tests/unit/scoring/service_test.go` |
+| `internal/platform/redis/client_test.go` | `tests/unit/platform/redis/client_test.go` |
+| `internal/platform/queue/queue_test.go` | `tests/unit/platform/queue/queue_test.go` |
 | `internal/platform/x/client_test.go` | `tests/unit/platform/x/client_test.go` |
 | `internal/platform/x/testdata/` | `tests/fixtures/platform/x/` |
 | `cmd/api/main_test.go` | `tests/integration/api/main_test.go` |
