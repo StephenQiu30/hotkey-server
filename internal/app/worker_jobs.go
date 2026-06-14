@@ -9,7 +9,10 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/config"
 	"github.com/StephenQiu30/hotkey-server/internal/database"
+	"github.com/StephenQiu30/hotkey-server/internal/digest"
 	"github.com/StephenQiu30/hotkey-server/internal/jobs"
+	"github.com/StephenQiu30/hotkey-server/internal/llm"
+	"github.com/StephenQiu30/hotkey-server/internal/obsidian"
 	"github.com/StephenQiu30/hotkey-server/internal/observability"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/x"
 	"github.com/StephenQiu30/hotkey-server/internal/scoring"
@@ -90,6 +93,34 @@ func newJobRunner(cfg config.Config, db *sql.DB) *jobs.Runner {
 		log.Print(observability.RenderLog("worker", "dispatch_notifications: running"))
 		return dispatchJob.Run(ctx, 0)
 	}, 1*time.Minute)
+
+	// Daily digest publish job — gates on DAILY_DIGEST_TIME CST
+	if cfg.ObsidianVaultPath != "" {
+		scheduler := jobs.NewDailyScheduler(cfg.DailyDigestTime, cfg.DailyDigestTimezone)
+		exportRepo := jobs.NewExportRepoAdapter(database.NewDigestExportRepo(db))
+		digestSvc := jobs.NewDigestServiceAdapter(digest.NewService(db))
+		llmClient := jobs.NewLLMClientAdapter(llm.NewClient(cfg.LLMAPIKey, cfg.LLMBaseURL, cfg.LLMModel))
+		obsidianWriter := jobs.NewObsidianWriterAdapter(obsidian.NewWriter())
+		publishJob := jobs.NewPublishDailyTopicsJob(
+			monitorLister,
+			digestSvc,
+			llmClient,
+			obsidianWriter,
+			exportRepo,
+			scheduler,
+			jobs.PublishDailyTopicsConfig{
+				VaultPath: cfg.ObsidianVaultPath,
+				Target:    cfg.DailyDigestTarget,
+				TopN:      cfg.DailyDigestTopN,
+			},
+		)
+		runner.Register("publish_daily_topics", func(ctx context.Context) error {
+			log.Print(observability.RenderLog("worker", "publish_daily_topics: running"))
+			return publishJob.Run(ctx, time.Now())
+		}, 1*time.Minute)
+	} else {
+		log.Print("worker: publish_daily_topics disabled (OBSIDIAN_VAULT_PATH not set)")
+	}
 
 	return runner
 }

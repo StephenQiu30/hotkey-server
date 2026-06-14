@@ -14,6 +14,17 @@ type Config struct {
 	JWTSecret   string `mapstructure:"JWT_SECRET"`
 	XToken      string `mapstructure:"X_BEARER_TOKEN"`
 	XBaseURL    string `mapstructure:"X_BASE_URL"`
+
+	// Daily digest / Obsidian export
+	ObsidianVaultPath    string `mapstructure:"OBSIDIAN_VAULT_PATH"`
+	DailyDigestTime      string `mapstructure:"DAILY_DIGEST_TIME"`
+	DailyDigestTimezone  string `mapstructure:"DAILY_DIGEST_TIMEZONE"`
+	DailyDigestTarget    string `mapstructure:"DAILY_DIGEST_TARGET"`
+	DailyDigestTopN      int    `mapstructure:"DAILY_DIGEST_TOP_N"`
+	LLMProvider          string `mapstructure:"LLM_PROVIDER"`
+	LLMAPIKey            string `mapstructure:"LLM_API_KEY"`
+	LLMBaseURL           string `mapstructure:"LLM_BASE_URL"`
+	LLMModel             string `mapstructure:"LLM_MODEL"`
 }
 
 // Load reads configuration from .env file and environment variables using Viper.
@@ -36,6 +47,15 @@ func Load() (Config, error) {
 	_ = v.BindEnv("REDIS_ADDR")
 	_ = v.BindEnv("X_BEARER_TOKEN")
 	_ = v.BindEnv("X_BASE_URL")
+	_ = v.BindEnv("OBSIDIAN_VAULT_PATH")
+	_ = v.BindEnv("DAILY_DIGEST_TIME")
+	_ = v.BindEnv("DAILY_DIGEST_TIMEZONE")
+	_ = v.BindEnv("DAILY_DIGEST_TARGET")
+	_ = v.BindEnv("DAILY_DIGEST_TOP_N")
+	_ = v.BindEnv("LLM_PROVIDER")
+	_ = v.BindEnv("LLM_API_KEY")
+	_ = v.BindEnv("LLM_BASE_URL")
+	_ = v.BindEnv("LLM_MODEL")
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
@@ -53,6 +73,26 @@ func Load() (Config, error) {
 	// X config defaults
 	if cfg.XBaseURL == "" {
 		cfg.XBaseURL = "https://api.x.com"
+	}
+
+	// Daily digest defaults
+	if cfg.DailyDigestTime == "" {
+		cfg.DailyDigestTime = "08:00"
+	}
+	if cfg.DailyDigestTimezone == "" {
+		cfg.DailyDigestTimezone = "Asia/Shanghai"
+	}
+	if cfg.DailyDigestTarget == "" {
+		cfg.DailyDigestTarget = "yesterday"
+	}
+	if cfg.DailyDigestTopN == 0 {
+		cfg.DailyDigestTopN = 20
+	}
+	if cfg.LLMBaseURL == "" {
+		cfg.LLMBaseURL = "https://api.openai.com/v1"
+	}
+	if cfg.LLMModel == "" {
+		cfg.LLMModel = "gpt-4o-mini"
 	}
 
 	return cfg, nil
