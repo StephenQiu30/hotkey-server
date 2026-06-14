@@ -144,8 +144,7 @@ func TestPublishDailyTopics_FailureIsolation(t *testing.T) {
 	}
 	svc := digest.NewService(filter)
 
-	// LLM fails for topic 102 only: use per-call tracking
-	callCount := 0
+	// LLM fails for topic 102 only
 	failingClient := &failingLLMClient{
 		failForTopic: "数据隐私合规",
 		normalSummary: "正常摘要。",
@@ -157,7 +156,6 @@ func TestPublishDailyTopics_FailureIsolation(t *testing.T) {
 
 	job := jobs.NewPublishDailyTopicsJob(svc, failingClient, exporter, writer, vaultDir, testMonitorConfig())
 	now := time.Date(2026, 6, 14, 10, 0, 0, 0, time.UTC)
-	_ = callCount
 
 	results, err := job.Run(context.Background(), now, "yesterday")
 	if err != nil {
