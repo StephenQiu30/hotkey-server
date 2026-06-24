@@ -59,7 +59,11 @@ downstream: []
    - `src/utils/request.ts`
 2. 增加契约测试，防止回退为纯状态码错误：
    - `tests/test_miniapp_taro_contract.py`
-3. 修正 README 与 `CLAUDE.md` 以满足仓库治理契约：
+3. 新增 H5 浏览器承载能力与首页模板：
+   - `package.json`
+   - `src/index.html`
+   - `src/pages/index/index.tsx`
+4. 修正 README 与 `CLAUDE.md` 以满足仓库治理契约：
    - `README.md`
    - `CLAUDE.md`
 
@@ -68,7 +72,7 @@ downstream: []
 1. 本地开发机
 2. `hotkey-server`：Go + Docker Compose + 本地 `make dev`
 3. `hotkey-web`：Next.js dev server (`http://localhost:3000`)
-4. `hotkey-miniapp`：Taro 微信小程序构建
+4. `hotkey-miniapp`：Taro 微信小程序构建 + H5 浏览器承载入口（`http://localhost:10086`）
 
 # `hotkey-server` 验收结果
 
@@ -150,6 +154,7 @@ downstream: []
 
 - [x] `npm run test`
 - [x] `npm run typecheck`
+- [x] `npm run build:h5`
 - [x] `npm run build:weapp`
 - [x] `bash scripts/validate-repository.sh`
 
@@ -158,17 +163,31 @@ downstream: []
 - [x] 请求封装可解析 JSON 错误体中的 `error` 与 `code`
 - [x] 统一抛出 `HotKeyAPIError`
 - [x] 契约测试覆盖统一错误体消费要求
+- [x] H5 承载入口具备 `index.html` 模板，不再回落到目录索引页
+- [x] H5 环境对 `Taro.login` / `requestSubscribeMessage` 提供兼容兜底，不再因平台 API 缺失导致页面崩溃
 
 ## C. 回归验证
 
-- [ ] 使用 `vercel:agent-browser` 完成同等级页面回归
+- [x] 使用 `vercel:agent-browser` 完成页面回归
 - [x] 已记录当前验证边界
+
+页面/链路：
+
+1. `http://localhost:10086/#/pages/index/index`
+2. 平台登录 -> 热点榜单 -> 切换热点详情 -> 收藏关注 -> 订阅消息提醒入口
+
+结果：
+
+1. 根路径已返回真实应用页，不再出现目录索引页。
+2. 点击“平台登录”后可进入已登录态，并展示热点榜单、快速理解、内容选题、通知列表。
+3. 点击第二条热点后，快速理解区域会切换到对应热点详情。
+4. 点击“收藏关注”后，按钮文本会切换为“已收藏关注”。
+5. 点击“订阅消息提醒入口”后，H5 环境不再抛运行时错误，而是走非阻塞提示。
 
 边界说明：
 
-1. 当前 `hotkey-miniapp` 只配置了微信小程序编译链路（`build:weapp` / `dev:weapp`）。
-2. 仓内没有可直接承载到浏览器页面的 H5 调试入口。
-3. 因此本轮只能完成构建、类型检查、契约测试和仓库治理校验，无法对 miniapp 做与 web 同等级的 `agent-browser` 页面回归。
+1. H5 登录属于浏览器承载环境下的演示兜底，不代表已打通真实微信登录换会话链路。
+2. 订阅消息能力在 H5 环境仅做能力提示；真实订阅仍需在微信小程序端结合平台配置验收。
 
 # 代码审核结论
 
@@ -177,11 +196,12 @@ downstream: []
 1. `hotkey-server` recover 路径统一错误响应结构。
 2. `hotkey-server` 公共健康检查匿名访问能力恢复。
 3. `hotkey-web` / `hotkey-miniapp` 请求封装改为消费 server 统一错误体。
+4. `hotkey-miniapp` H5 承载入口恢复，可完成 `agent-browser` 页面回归。
 
 ## 未修复但已明确记录
 
 1. `hotkey-web` 当前登录链路仍是前端状态驱动，不是调用真实后端登录 API。
-2. `hotkey-miniapp` 当前没有浏览器可承载入口，无法完成 `agent-browser` 页面回归。
+2. `hotkey-miniapp` H5 登录与订阅消息是浏览器承载兜底，不是真实微信端会话与订阅链路。
 3. `hotkey-web` 仓仍存在与本次任务无关的现有工作区变更，未被本次提交带入。
 
 # Git 提交状态
@@ -201,6 +221,7 @@ downstream: []
 ## `hotkey-miniapp`
 
 1. `b2ae027` `impl: 同步miniapp统一错误响应处理`
+2. 待提交：H5 承载入口与跨端兼容修复
 
 # PR 状态
 
@@ -216,11 +237,12 @@ downstream: []
 2. server 工程化关键缺陷修复
 3. web 与 miniapp 对 server 统一错误体的同步消费
 4. web 的 `agent-browser` 主链路回归
-5. 三仓按项目规范完成相关提交
+5. miniapp 的 `agent-browser` 主链路回归
+6. `hotkey-server` 与 `hotkey-web` 已按项目规范完成相关提交
 
 本轮未完全完成：
 
-1. miniapp 无法进行同等级 `agent-browser` 页面回归
+1. `web` 与 `miniapp` 的登录仍是演示链路，未接入真实后端认证闭环
 2. 三仓尚未创建 PR，PR 状态仍为空
 
 # 变更记录
