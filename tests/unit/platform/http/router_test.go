@@ -124,6 +124,27 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 }
 
+func TestHealthEndpointDoesNotRequireAuth(t *testing.T) {
+	_, mux := platformhttp.NewAPI(platformhttp.Config{
+		JWTSecret:     "test-secret",
+		SmokeTest:     false,
+		AuthService:   auth.NewService(&stubAuthRepo{}),
+		MonitorSvc:    monitor.NewService(&stubMonitorRepo{}),
+		NotifySvc:     notify.NewService(&stubNotifyRepo{}),
+		PostQuerySvc:  &stubPostQueryService{},
+		TopicQuerySvc: &stubTopicQueryService{},
+		TrendQuerySvc: &stubTrendQueryService{},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 without auth, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestRegisterReturns201(t *testing.T) {
 	handler := newTestHandler()
 	body := `{"email":"test@example.com","password":"Passw0rd!","display_name":"Test"}`

@@ -66,7 +66,7 @@ func RecoverMiddleware() func(ctx huma.Context, next func(huma.Context)) {
 // validation and injects a default user ID.
 func AuthMiddleware(jwtSecret string, smokeTest bool) func(ctx huma.Context, next func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
-		if smokeTest {
+		if smokeTest || isPublicPath(ctx.URL().Path) {
 			newCtx := context.WithValue(ctx.Context(), UserIDKey, int64(1))
 			next(huma.WithContext(ctx, newCtx))
 			return
@@ -128,6 +128,15 @@ func (e *authError) Error() string { return e.msg }
 // generateRequestID creates a simple request ID.
 func generateRequestID() string {
 	return "req-" + randomHex(8)
+}
+
+func isPublicPath(path string) bool {
+	switch path {
+	case "/healthz", "/openapi.json":
+		return true
+	default:
+		return strings.HasPrefix(path, "/schemas/")
+	}
 }
 
 // randomHex generates a random hex string of the given byte length using
