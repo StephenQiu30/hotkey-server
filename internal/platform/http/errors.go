@@ -6,3 +6,12 @@ type ErrorBody struct {
 	Error string `json:"error" doc:"Human-readable error message"`
 	Code  string `json:"code,omitempty" doc:"Optional machine-readable error code"`
 }
+
+const internalErrorCode = "internal_error"
+
+func newInternalErrorBody() ErrorBody {
+	return ErrorBody{
+		Error: "internal server error",
+		Code:  internalErrorCode,
+	}
+}

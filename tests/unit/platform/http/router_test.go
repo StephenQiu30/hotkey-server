@@ -1,6 +1,7 @@
 package platformhttp_test
 
 import (
+	"encoding/json"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/StephenQiu30/hotkey-server/internal/auth"
@@ -259,5 +262,36 @@ func TestSmokeBypassAuth(t *testing.T) {
 				t.Errorf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 			}
 		})
+	}
+}
+
+func TestRecoverMiddlewareReturnsUnifiedErrorBody(t *testing.T) {
+	mux := http.NewServeMux()
+	api := humago.New(mux, huma.DefaultConfig("test", "1.0.0"))
+	api.UseMiddleware(platformhttp.RecoverMiddleware())
+
+	huma.Get(api, "/panic", func(ctx context.Context, input *struct{}) (*struct{}, error) {
+		panic("boom")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/panic", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var body platformhttp.ErrorBody
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected JSON error body, got %v: %s", err, rr.Body.String())
+	}
+
+	if body.Error != "internal server error" {
+		t.Fatalf("expected unified error message, got %q", body.Error)
+	}
+
+	if body.Code != "internal_error" {
+		t.Fatalf("expected unified error code, got %q", body.Code)
 	}
 }

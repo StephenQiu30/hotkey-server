@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -46,11 +47,14 @@ func RecoverMiddleware() func(ctx huma.Context, next func(huma.Context)) {
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("panic recovered: %v", r)
-				// Use humago.Unwrap to write the 500 error response.
 				_, w := humago.Unwrap(ctx)
+				body, err := json.Marshal(newInternalErrorBody())
+				if err != nil {
+					body = []byte(`{"error":"internal server error","code":"internal_error"}`)
+				}
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusInternalServerError)
-				_, _ = w.Write([]byte(`{"error":"internal server error"}`))
+				_, _ = w.Write(body)
 			}
 		}()
 		next(ctx)
