@@ -1,82 +1,66 @@
 package http
 
 import (
-	"context"
 	"net/http"
+	"strconv"
 	"time"
 
-	"github.com/danielgtaylor/huma/v2"
+	"github.com/gin-gonic/gin"
 
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
 )
 
 // RegisterTrendRoutes registers the trend endpoints.
-func RegisterTrendRoutes(api huma.API, svc trend.TrendQueryService) {
-	huma.Register(api, huma.Operation{
-		OperationID: "get-monitor-trends",
-		Method:      http.MethodGet,
-		Path:        "/api/v1/monitors/{id}/trends",
-		Summary:     "Get trends for a monitor",
-		Description: "Returns trend data points for the specified monitor.",
-		Tags:        []string{"trends"},
-		Security:    []map[string][]string{{"bearer": {}}},
-		Errors:      []int{401, 500},
-	}, func(ctx context.Context, input *MonitorTrendsInput) (*TrendsOutput, error) {
-		if _, ok := userIDFromCtx(ctx); !ok {
-			return nil, huma.Error401Unauthorized("unauthorized")
+func RegisterTrendRoutes(r *gin.Engine, svc trend.TrendQueryService) {
+	r.GET("/api/v1/monitors/:id/trends", func(c *gin.Context) {
+		if _, ok := userIDFromCtx(c.Request.Context()); !ok {
+			respondError(c, http.StatusUnauthorized, "unauthorized")
+			return
 		}
 
-		since := parseSince(input.Since)
-		points, err := svc.GetMonitorTrends(input.ID, since)
+		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("internal error")
+			respondError(c, http.StatusBadRequest, "invalid monitor id")
+			return
+		}
+
+		since := parseSince(c.Query("since"))
+		points, err := svc.GetMonitorTrends(id, since)
+		if err != nil {
+			respondInternalError(c)
+			return
 		}
 		if points == nil {
 			points = []trend.TrendPoint{}
 		}
 
-		return &TrendsOutput{Body: points}, nil
+		c.JSON(http.StatusOK, points)
 	})
 
-	huma.Register(api, huma.Operation{
-		OperationID: "get-topic-trends",
-		Method:      http.MethodGet,
-		Path:        "/api/v1/topics/{id}/trends",
-		Summary:     "Get trends for a topic",
-		Description: "Returns trend data points for the specified topic.",
-		Tags:        []string{"trends"},
-		Security:    []map[string][]string{{"bearer": {}}},
-		Errors:      []int{401, 500},
-	}, func(ctx context.Context, input *TopicTrendsInput) (*TrendsOutput, error) {
-		if _, ok := userIDFromCtx(ctx); !ok {
-			return nil, huma.Error401Unauthorized("unauthorized")
+	r.GET("/api/v1/topics/:id/trends", func(c *gin.Context) {
+		if _, ok := userIDFromCtx(c.Request.Context()); !ok {
+			respondError(c, http.StatusUnauthorized, "unauthorized")
+			return
 		}
 
-		since := parseSince(input.Since)
-		points, err := svc.GetTopicTrends(input.ID, since)
+		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("internal error")
+			respondError(c, http.StatusBadRequest, "invalid topic id")
+			return
+		}
+
+		since := parseSince(c.Query("since"))
+		points, err := svc.GetTopicTrends(id, since)
+		if err != nil {
+			respondInternalError(c)
+			return
 		}
 		if points == nil {
 			points = []trend.TrendPoint{}
 		}
 
-		return &TrendsOutput{Body: points}, nil
+		c.JSON(http.StatusOK, points)
 	})
-}
-
-type MonitorTrendsInput struct {
-	ID    int64  `path:"id" validate:"required" doc:"Monitor ID"`
-	Since string `query:"since" doc:"ISO 8601 timestamp (defaults to 24h ago)"`
-}
-
-type TopicTrendsInput struct {
-	ID    int64  `path:"id" validate:"required" doc:"Topic ID"`
-	Since string `query:"since" doc:"ISO 8601 timestamp (defaults to 24h ago)"`
-}
-
-type TrendsOutput struct {
-	Body []trend.TrendPoint
 }
 
 func parseSince(s string) time.Time {

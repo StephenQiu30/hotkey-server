@@ -2,38 +2,35 @@ package database
 
 import (
 	"context"
-	"database/sql"
 
 	"github.com/StephenQiu30/hotkey-server/internal/digest"
+	"gorm.io/gorm"
 )
 
-// DigestQueryService implements digest.TopicFilter using PostgreSQL.
+// DigestQueryService implements digest.TopicFilter using PostgreSQL via GORM.
 type DigestQueryService struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
 // NewDigestQueryService creates a new Postgres-backed digest query service.
-func NewDigestQueryService(db *sql.DB) *DigestQueryService {
+func NewDigestQueryService(db *gorm.DB) *DigestQueryService {
 	return &DigestQueryService{db: db}
 }
 
-// ListTopicsForDay returns active topics for a monitor that have at least one
-// post with first_seen_at or published_at within the given window.
-// Results are ordered by current_heat_score DESC.
 func (s *DigestQueryService) ListTopicsForDay(ctx context.Context, monitorID int64, window digest.Window) ([]digest.TopicEntry, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.db.WithContext(ctx).Raw(
 		`SELECT DISTINCT t.id, t.title, t.current_heat_score
 		 FROM topics t
 		 JOIN topic_posts tp ON tp.topic_id = t.id
 		 JOIN monitor_post_hits mph ON mph.post_id = tp.post_id AND mph.monitor_id = t.monitor_id
 		 JOIN platform_posts pp ON pp.id = tp.post_id
-		 WHERE t.monitor_id = $1
+		 WHERE t.monitor_id = ?
 		   AND t.status = 'active'
-		   AND ((mph.first_seen_at >= $2 AND mph.first_seen_at < $3)
-		        OR (pp.published_at >= $2 AND pp.published_at < $3))
+		   AND ((mph.first_seen_at >= ? AND mph.first_seen_at < ?)
+		        OR (pp.published_at >= ? AND pp.published_at < ?))
 		 ORDER BY t.current_heat_score DESC`,
-		monitorID, window.Start, window.End,
-	)
+		monitorID, window.Start, window.End, window.Start, window.End,
+	).Rows()
 	if err != nil {
 		return nil, err
 	}
@@ -50,18 +47,16 @@ func (s *DigestQueryService) ListTopicsForDay(ctx context.Context, monitorID int
 	return topics, rows.Err()
 }
 
-// FetchRepresentativePosts returns up to limit posts for a topic, ordered by
-// membership_score DESC. Each post includes author name, content excerpt, and URL.
 func (s *DigestQueryService) FetchRepresentativePosts(ctx context.Context, topicID int64, limit int) ([]digest.PostEntry, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.db.WithContext(ctx).Raw(
 		`SELECT pp.id, pp.author_name, pp.content_text, pp.post_url, tp.membership_score
 		 FROM topic_posts tp
 		 JOIN platform_posts pp ON pp.id = tp.post_id
-		 WHERE tp.topic_id = $1
+		 WHERE tp.topic_id = ?
 		 ORDER BY tp.membership_score DESC
-		 LIMIT $2`,
+		 LIMIT ?`,
 		topicID, limit,
-	)
+	).Rows()
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +69,6 @@ func (s *DigestQueryService) FetchRepresentativePosts(ctx context.Context, topic
 		if err := rows.Scan(&p.PostID, &p.AuthorName, &contentText, &p.PostURL, &p.MembershipScore); err != nil {
 			return nil, err
 		}
-		// Truncate content to excerpt (rune-safe for multi-byte text)
 		runes := []rune(contentText)
 		if len(runes) > 200 {
 			runes = runes[:200]

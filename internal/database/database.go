@@ -2,25 +2,29 @@ package database
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 // Open connects to PostgreSQL using the given DATABASE_URL.
 // It creates the database and applies db/schema.sql when they are missing.
-func Open(databaseURL string) (*sql.DB, error) {
+func Open(databaseURL string) (*gorm.DB, error) {
 	if err := EnsureReady(context.Background(), databaseURL); err != nil {
 		return nil, fmt.Errorf("ensure database ready: %w", err)
 	}
 
-	db, err := sql.Open("pgx", databaseURL)
+	db, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{})
 	if err != nil {
-		return nil, fmt.Errorf("open db: %w", err)
+		return nil, fmt.Errorf("open gorm db: %w", err)
 	}
-	if err := db.Ping(); err != nil {
-		db.Close()
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("get sql db: %w", err)
+	}
+	if err := sqlDB.Ping(); err != nil {
 		return nil, fmt.Errorf("ping db: %w", err)
 	}
 	return db, nil

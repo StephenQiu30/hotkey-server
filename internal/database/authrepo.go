@@ -2,47 +2,48 @@ package database
 
 import (
 	"context"
-	"database/sql"
+	"errors"
 
 	"github.com/StephenQiu30/hotkey-server/internal/auth"
+	"gorm.io/gorm"
 )
 
-// AuthRepo implements auth.Repository using PostgreSQL.
+// AuthRepo implements auth.Repository using PostgreSQL via GORM.
 type AuthRepo struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
 // NewAuthRepo creates a new Postgres-backed auth repository.
-func NewAuthRepo(db *sql.DB) *AuthRepo {
+func NewAuthRepo(db *gorm.DB) *AuthRepo {
 	return &AuthRepo{db: db}
 }
 
 func (r *AuthRepo) ExistsByEmail(ctx context.Context, email string) bool {
 	var exists bool
-	err := r.db.QueryRowContext(ctx,
-		"SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)", email,
-	).Scan(&exists)
+	err := r.db.WithContext(ctx).Raw(
+		"SELECT EXISTS(SELECT 1 FROM users WHERE email = ?)", email,
+	).Scan(&exists).Error
 	return err == nil && exists
 }
 
 func (r *AuthRepo) Create(ctx context.Context, email, passwordHash, displayName string) (auth.User, error) {
 	var u auth.User
-	err := r.db.QueryRowContext(ctx,
+	err := r.db.WithContext(ctx).Raw(
 		`INSERT INTO users (email, password_hash, display_name)
-		 VALUES ($1, $2, $3)
+		 VALUES (?, ?, ?)
 		 RETURNING id, email, password_hash, display_name, status, plan_type, created_at, updated_at`,
 		email, passwordHash, displayName,
-	).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.DisplayName, &u.Status, &u.PlanType, &u.CreatedAt, &u.UpdatedAt)
+	).Scan(&u).Error
 	return u, err
 }
 
 func (r *AuthRepo) GetByEmail(ctx context.Context, email string) (*auth.User, error) {
 	var u auth.User
-	err := r.db.QueryRowContext(ctx,
+	err := r.db.WithContext(ctx).Raw(
 		`SELECT id, email, password_hash, display_name, status, plan_type, created_at, updated_at
-		 FROM users WHERE email = $1`, email,
-	).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.DisplayName, &u.Status, &u.PlanType, &u.CreatedAt, &u.UpdatedAt)
-	if err == sql.ErrNoRows {
+		 FROM users WHERE email = ?`, email,
+	).Scan(&u).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) || (err == nil && u.ID == 0) {
 		return nil, nil
 	}
 	if err != nil {
@@ -53,11 +54,11 @@ func (r *AuthRepo) GetByEmail(ctx context.Context, email string) (*auth.User, er
 
 func (r *AuthRepo) GetByID(ctx context.Context, id int64) (*auth.User, error) {
 	var u auth.User
-	err := r.db.QueryRowContext(ctx,
+	err := r.db.WithContext(ctx).Raw(
 		`SELECT id, email, password_hash, display_name, status, plan_type, created_at, updated_at
-		 FROM users WHERE id = $1`, id,
-	).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.DisplayName, &u.Status, &u.PlanType, &u.CreatedAt, &u.UpdatedAt)
-	if err == sql.ErrNoRows {
+		 FROM users WHERE id = ?`, id,
+	).Scan(&u).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) || (err == nil && u.ID == 0) {
 		return nil, nil
 	}
 	if err != nil {

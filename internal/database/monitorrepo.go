@@ -4,18 +4,20 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"strconv"
 
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
+	"gorm.io/gorm"
 )
 
-// MonitorRepo implements monitor.Repository using PostgreSQL.
+// MonitorRepo implements monitor.Repository using PostgreSQL via GORM.
 type MonitorRepo struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
 // NewMonitorRepo creates a new Postgres-backed monitor repository.
-func NewMonitorRepo(db *sql.DB) *MonitorRepo {
+func NewMonitorRepo(db *gorm.DB) *MonitorRepo {
 	return &MonitorRepo{db: db}
 }
 
@@ -23,12 +25,12 @@ func (r *MonitorRepo) Create(ctx context.Context, userID int64, input monitor.Cr
 	var m monitor.Monitor
 	var configRaw []byte
 	configJSON, _ := json.Marshal(map[string]interface{}{})
-	err := r.db.QueryRowContext(ctx,
+	err := r.db.WithContext(ctx).Raw(
 		`INSERT INTO keyword_monitors (user_id, name, query_text, language, region, poll_interval_minutes, alert_enabled, alert_threshold_config)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		 RETURNING id, user_id, name, query_text, language, region, status, poll_interval_minutes, alert_enabled, alert_threshold_config, last_polled_at, created_at, updated_at`,
 		userID, input.Name, input.QueryText, input.Language, input.Region, input.PollIntervalMinutes, input.AlertEnabled, configJSON,
-	).Scan(&m.ID, &m.UserID, &m.Name, &m.QueryText, &m.Language, &m.Region, &m.Status, &m.PollIntervalMinutes, &m.AlertEnabled, &configRaw, &m.LastPolledAt, &m.CreatedAt, &m.UpdatedAt)
+	).Row().Scan(&m.ID, &m.UserID, &m.Name, &m.QueryText, &m.Language, &m.Region, &m.Status, &m.PollIntervalMinutes, &m.AlertEnabled, &configRaw, &m.LastPolledAt, &m.CreatedAt, &m.UpdatedAt)
 	if err != nil {
 		return m, err
 	}
@@ -41,11 +43,11 @@ func (r *MonitorRepo) Create(ctx context.Context, userID int64, input monitor.Cr
 func (r *MonitorRepo) GetByID(ctx context.Context, id int64) (*monitor.Monitor, error) {
 	var m monitor.Monitor
 	var configRaw []byte
-	err := r.db.QueryRowContext(ctx,
+	err := r.db.WithContext(ctx).Raw(
 		`SELECT id, user_id, name, query_text, language, region, status, poll_interval_minutes, alert_enabled, alert_threshold_config, last_polled_at, created_at, updated_at
-		 FROM keyword_monitors WHERE id = $1`, id,
-	).Scan(&m.ID, &m.UserID, &m.Name, &m.QueryText, &m.Language, &m.Region, &m.Status, &m.PollIntervalMinutes, &m.AlertEnabled, &configRaw, &m.LastPolledAt, &m.CreatedAt, &m.UpdatedAt)
-	if err == sql.ErrNoRows {
+		 FROM keyword_monitors WHERE id = ?`, id,
+	).Row().Scan(&m.ID, &m.UserID, &m.Name, &m.QueryText, &m.Language, &m.Region, &m.Status, &m.PollIntervalMinutes, &m.AlertEnabled, &configRaw, &m.LastPolledAt, &m.CreatedAt, &m.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
@@ -58,10 +60,10 @@ func (r *MonitorRepo) GetByID(ctx context.Context, id int64) (*monitor.Monitor, 
 }
 
 func (r *MonitorRepo) ListByUser(ctx context.Context, userID int64) ([]monitor.Monitor, error) {
-	rows, err := r.db.QueryContext(ctx,
+	rows, err := r.db.WithContext(ctx).Raw(
 		`SELECT id, user_id, name, query_text, language, region, status, poll_interval_minutes, alert_enabled, alert_threshold_config, last_polled_at, created_at, updated_at
-		 FROM keyword_monitors WHERE user_id = $1 ORDER BY created_at DESC`, userID,
-	)
+		 FROM keyword_monitors WHERE user_id = ? ORDER BY created_at DESC`, userID,
+	).Rows()
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +85,6 @@ func (r *MonitorRepo) ListByUser(ctx context.Context, userID int64) ([]monitor.M
 }
 
 func (r *MonitorRepo) Update(ctx context.Context, id int64, input monitor.UpdateMonitorInput) (monitor.Monitor, error) {
-	// Build dynamic SET clause.
 	sets := []string{}
 	args := []interface{}{}
 	argIdx := 1
@@ -149,10 +150,10 @@ func (r *MonitorRepo) Update(ctx context.Context, id int64, input monitor.Update
 
 	var m monitor.Monitor
 	var configRaw []byte
-	err := r.db.QueryRowContext(ctx, query, args...).Scan(
+	err := r.db.WithContext(ctx).Raw(query, args...).Row().Scan(
 		&m.ID, &m.UserID, &m.Name, &m.QueryText, &m.Language, &m.Region, &m.Status, &m.PollIntervalMinutes, &m.AlertEnabled, &configRaw, &m.LastPolledAt, &m.CreatedAt, &m.UpdatedAt,
 	)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return monitor.Monitor{}, monitor.ErrNotFound
 	}
 	if err != nil {

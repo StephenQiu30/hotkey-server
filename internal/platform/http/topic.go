@@ -1,46 +1,37 @@
 package http
 
 import (
-	"context"
 	"net/http"
+	"strconv"
 
-	"github.com/danielgtaylor/huma/v2"
+	"github.com/gin-gonic/gin"
 
 	"github.com/StephenQiu30/hotkey-server/internal/topic"
 )
 
 // RegisterTopicRoutes registers the topic endpoints.
-func RegisterTopicRoutes(api huma.API, svc topic.TopicQueryService) {
-	huma.Register(api, huma.Operation{
-		OperationID: "list-topics",
-		Method:      http.MethodGet,
-		Path:        "/api/v1/monitors/{id}/topics",
-		Summary:     "List topics for a monitor",
-		Description: "Returns topics extracted from posts collected by the specified monitor.",
-		Tags:        []string{"topics"},
-		Security:    []map[string][]string{{"bearer": {}}},
-		Errors:      []int{401, 500},
-	}, func(ctx context.Context, input *ListTopicsInput) (*ListTopicsOutput, error) {
-		if _, ok := userIDFromCtx(ctx); !ok {
-			return nil, huma.Error401Unauthorized("unauthorized")
+func RegisterTopicRoutes(r *gin.Engine, svc topic.TopicQueryService) {
+	r.GET("/api/v1/monitors/:id/topics", func(c *gin.Context) {
+		if _, ok := userIDFromCtx(c.Request.Context()); !ok {
+			respondError(c, http.StatusUnauthorized, "unauthorized")
+			return
 		}
 
-		topics, err := svc.ListByMonitor(input.ID)
+		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("internal error")
+			respondError(c, http.StatusBadRequest, "invalid monitor id")
+			return
+		}
+
+		topics, err := svc.ListByMonitor(id)
+		if err != nil {
+			respondInternalError(c)
+			return
 		}
 		if topics == nil {
 			topics = []topic.TopicSummary{}
 		}
 
-		return &ListTopicsOutput{Body: topics}, nil
+		c.JSON(http.StatusOK, topics)
 	})
-}
-
-type ListTopicsInput struct {
-	ID int64 `path:"id" validate:"required" doc:"Monitor ID"`
-}
-
-type ListTopicsOutput struct {
-	Body []topic.TopicSummary
 }

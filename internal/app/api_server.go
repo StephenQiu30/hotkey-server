@@ -1,7 +1,6 @@
 package app
 
 import (
-	"database/sql"
 	"net/http"
 	"os"
 	"time"
@@ -15,9 +14,10 @@ import (
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	"github.com/StephenQiu30/hotkey-server/internal/topic"
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
+	"gorm.io/gorm"
 )
 
-func newAPIServer(cfg config.Config, db *sql.DB) (*http.Server, error) {
+func newAPIServer(cfg config.Config, db *gorm.DB) (*http.Server, error) {
 	smokeTest := os.Getenv("SMOKE_TEST") == "1"
 
 	var authRepo auth.Repository
@@ -43,7 +43,7 @@ func newAPIServer(cfg config.Config, db *sql.DB) (*http.Server, error) {
 		trendQuerySvc = database.NewTrendQueryService(db)
 	}
 
-	_, router := platformhttp.NewAPI(platformhttp.Config{
+	router := platformhttp.NewRouter(platformhttp.Config{
 		JWTSecret:     cfg.JWTSecret,
 		SmokeTest:     smokeTest,
 		AuthService:   auth.NewService(authRepo),

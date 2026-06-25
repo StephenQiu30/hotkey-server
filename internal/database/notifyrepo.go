@@ -2,26 +2,26 @@ package database
 
 import (
 	"context"
-	"database/sql"
 
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
+	"gorm.io/gorm"
 )
 
-// NotifyRepo implements notify.Repository using PostgreSQL.
+// NotifyRepo implements notify.Repository using PostgreSQL via GORM.
 type NotifyRepo struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
 // NewNotifyRepo creates a new Postgres-backed notification repository.
-func NewNotifyRepo(db *sql.DB) *NotifyRepo {
+func NewNotifyRepo(db *gorm.DB) *NotifyRepo {
 	return &NotifyRepo{db: db}
 }
 
 func (r *NotifyRepo) ListUnread(ctx context.Context, userID int64) ([]notify.Notification, error) {
-	rows, err := r.db.QueryContext(ctx,
+	rows, err := r.db.WithContext(ctx).Raw(
 		`SELECT id, user_id, alert_id, channel, delivery_status, read_at, sent_at, created_at
-		 FROM user_notifications WHERE user_id = $1 AND read_at IS NULL ORDER BY created_at DESC`, userID,
-	)
+		 FROM user_notifications WHERE user_id = ? AND read_at IS NULL ORDER BY created_at DESC`, userID,
+	).Rows()
 	if err != nil {
 		return nil, err
 	}
@@ -39,26 +39,25 @@ func (r *NotifyRepo) ListUnread(ctx context.Context, userID int64) ([]notify.Not
 }
 
 func (r *NotifyRepo) MarkRead(ctx context.Context, userID, notificationID int64) error {
-	res, err := r.db.ExecContext(ctx,
-		`UPDATE user_notifications SET read_at = now() WHERE id = $1 AND user_id = $2 AND read_at IS NULL`,
+	result := r.db.WithContext(ctx).Exec(
+		`UPDATE user_notifications SET read_at = now() WHERE id = ? AND user_id = ? AND read_at IS NULL`,
 		notificationID, userID,
 	)
-	if err != nil {
-		return err
+	if result.Error != nil {
+		return result.Error
 	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
+	if result.RowsAffected == 0 {
 		return notify.ErrNotFound
 	}
 	return nil
 }
 
 func (r *NotifyRepo) Create(ctx context.Context, n notify.Notification) (notify.Notification, error) {
-	err := r.db.QueryRowContext(ctx,
+	err := r.db.WithContext(ctx).Raw(
 		`INSERT INTO user_notifications (user_id, alert_id, channel, delivery_status)
-		 VALUES ($1, $2, $3, $4)
+		 VALUES (?, ?, ?, ?)
 		 RETURNING id, user_id, alert_id, channel, delivery_status, read_at, sent_at, created_at`,
 		n.UserID, n.AlertID, n.Channel, n.DeliveryStatus,
-	).Scan(&n.ID, &n.UserID, &n.AlertID, &n.Channel, &n.DeliveryStatus, &n.ReadAt, &n.SentAt, &n.CreatedAt)
+	).Scan(&n).Error
 	return n, err
 }

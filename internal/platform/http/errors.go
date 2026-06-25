@@ -1,10 +1,15 @@
 package http
 
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+)
+
 // ErrorBody is the unified error response format for all API endpoints.
-// Matches ADR-007 OpenAPI conventions.
 type ErrorBody struct {
-	Error string `json:"error" doc:"Human-readable error message"`
-	Code  string `json:"code,omitempty" doc:"Optional machine-readable error code"`
+	Error string `json:"error"`
+	Code  string `json:"code,omitempty"`
 }
 
 const internalErrorCode = "internal_error"
@@ -14,4 +19,16 @@ func newInternalErrorBody() ErrorBody {
 		Error: "internal server error",
 		Code:  internalErrorCode,
 	}
+}
+
+func respondError(c *gin.Context, status int, message string) {
+	body := ErrorBody{Error: message}
+	if status >= http.StatusInternalServerError {
+		body.Code = internalErrorCode
+	}
+	c.JSON(status, body)
+}
+
+func respondInternalError(c *gin.Context) {
+	c.JSON(http.StatusInternalServerError, newInternalErrorBody())
 }

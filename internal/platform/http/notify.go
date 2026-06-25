@@ -1,35 +1,28 @@
 package http
 
 import (
-	"context"
 	"net/http"
+	"strconv"
 	"time"
 
-	"github.com/danielgtaylor/huma/v2"
+	"github.com/gin-gonic/gin"
 
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 )
 
 // RegisterNotifyRoutes registers the notification endpoints.
-func RegisterNotifyRoutes(api huma.API, svc *notify.Service) {
-	huma.Register(api, huma.Operation{
-		OperationID: "list-notifications",
-		Method:      http.MethodGet,
-		Path:        "/api/v1/notifications",
-		Summary:     "List unread notifications",
-		Description: "Returns all unread notifications for the authenticated user.",
-		Tags:        []string{"notifications"},
-		Security:    []map[string][]string{{"bearer": {}}},
-		Errors:      []int{401, 500},
-	}, func(ctx context.Context, input *struct{}) (*ListNotificationsOutput, error) {
-		userID, ok := userIDFromCtx(ctx)
+func RegisterNotifyRoutes(r *gin.Engine, svc *notify.Service) {
+	r.GET("/api/v1/notifications", func(c *gin.Context) {
+		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
-			return nil, huma.Error401Unauthorized("unauthorized")
+			respondError(c, http.StatusUnauthorized, "unauthorized")
+			return
 		}
 
-		items, err := svc.ListUnread(ctx, userID)
+		items, err := svc.ListUnread(c.Request.Context(), userID)
 		if err != nil {
-			return nil, huma.Error500InternalServerError(err.Error())
+			respondError(c, http.StatusInternalServerError, err.Error())
+			return
 		}
 
 		result := make([]NotificationResponse, len(items))
@@ -37,51 +30,43 @@ func RegisterNotifyRoutes(api huma.API, svc *notify.Service) {
 			result[i] = toNotificationResponse(n)
 		}
 
-		return &ListNotificationsOutput{Body: result}, nil
+		c.JSON(http.StatusOK, result)
 	})
 
-	huma.Register(api, huma.Operation{
-		OperationID: "mark-notification-read",
-		Method:      http.MethodPost,
-		Path:        "/api/v1/notifications/{id}/read",
-		Summary:     "Mark notification as read",
-		Description: "Marks a specific notification as read for the authenticated user.",
-		Tags:        []string{"notifications"},
-		Security:    []map[string][]string{{"bearer": {}}},
-		Errors:      []int{401, 404, 500},
-	}, func(ctx context.Context, input *MarkReadInput) (*struct{}, error) {
-		userID, ok := userIDFromCtx(ctx)
+	r.POST("/api/v1/notifications/:id/read", func(c *gin.Context) {
+		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
-			return nil, huma.Error401Unauthorized("unauthorized")
+			respondError(c, http.StatusUnauthorized, "unauthorized")
+			return
 		}
 
-		if err := svc.MarkRead(ctx, userID, input.ID); err != nil {
+		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil {
+			respondError(c, http.StatusBadRequest, "invalid notification id")
+			return
+		}
+
+		if err := svc.MarkRead(c.Request.Context(), userID, id); err != nil {
 			if err == notify.ErrNotFound || err == notify.ErrNotOwned {
-				return nil, huma.Error404NotFound(err.Error())
+				respondError(c, http.StatusNotFound, err.Error())
+				return
 			}
-			return nil, huma.Error500InternalServerError(err.Error())
+			respondError(c, http.StatusInternalServerError, err.Error())
+			return
 		}
 
-		return nil, nil
+		c.Status(http.StatusNoContent)
 	})
-}
-
-type MarkReadInput struct {
-	ID int64 `path:"id" validate:"required" doc:"Notification ID"`
-}
-
-type ListNotificationsOutput struct {
-	Body []NotificationResponse
 }
 
 type NotificationResponse struct {
-	ID             int64   `json:"id" doc:"Notification ID"`
-	UserID         int64   `json:"user_id" doc:"User ID"`
-	AlertID        int64   `json:"alert_id" doc:"Alert ID"`
-	Channel        string  `json:"channel" doc:"Notification channel"`
-	DeliveryStatus string  `json:"delivery_status" doc:"Delivery status"`
-	ReadAt         *string `json:"read_at,omitempty" doc:"Read timestamp (ISO 8601)"`
-	CreatedAt      string  `json:"created_at" doc:"Creation timestamp (ISO 8601)"`
+	ID             int64   `json:"id"`
+	UserID         int64   `json:"user_id"`
+	AlertID        int64   `json:"alert_id"`
+	Channel        string  `json:"channel"`
+	DeliveryStatus string  `json:"delivery_status"`
+	ReadAt         *string `json:"read_at,omitempty"`
+	CreatedAt      string  `json:"created_at"`
 }
 
 func toNotificationResponse(n notify.Notification) NotificationResponse {

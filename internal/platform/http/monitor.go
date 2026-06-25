@@ -1,206 +1,183 @@
 package http
 
 import (
-	"context"
 	"net/http"
+	"strconv"
 
-	"github.com/danielgtaylor/huma/v2"
+	"github.com/gin-gonic/gin"
 
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 )
 
 // RegisterMonitorRoutes registers the monitor CRUD endpoints.
-func RegisterMonitorRoutes(api huma.API, svc *monitor.Service) {
-	huma.Register(api, huma.Operation{
-		OperationID: "list-monitors",
-		Method:      http.MethodGet,
-		Path:        "/api/v1/monitors",
-		Summary:     "List monitors",
-		Description: "Returns all monitors for the authenticated user.",
-		Tags:        []string{"monitors"},
-		Security:    []map[string][]string{{"bearer": {}}},
-		Errors:      []int{401, 500},
-	}, func(ctx context.Context, input *struct{}) (*ListMonitorsOutput, error) {
-		userID, ok := userIDFromCtx(ctx)
+func RegisterMonitorRoutes(r *gin.Engine, svc *monitor.Service) {
+	r.GET("/api/v1/monitors", func(c *gin.Context) {
+		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
-			return nil, huma.Error401Unauthorized("unauthorized")
+			respondError(c, http.StatusUnauthorized, "unauthorized")
+			return
 		}
 
-		monitors, err := svc.ListByUser(ctx, userID)
+		monitors, err := svc.ListByUser(c.Request.Context(), userID)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("internal error")
+			respondInternalError(c)
+			return
 		}
 
 		resp := make([]MonitorResponse, len(monitors))
 		for i, m := range monitors {
 			resp[i] = monitorToResponse(m)
 		}
-		return &ListMonitorsOutput{Body: resp}, nil
+		c.JSON(http.StatusOK, resp)
 	})
 
-	huma.Register(api, huma.Operation{
-		OperationID: "create-monitor",
-		Method:      http.MethodPost,
-		Path:        "/api/v1/monitors",
-		Summary:     "Create a monitor",
-		Description: "Creates a new monitoring configuration for the authenticated user.",
-		Tags:        []string{"monitors"},
-		Security:    []map[string][]string{{"bearer": {}}},
-		Errors:      []int{400, 401, 500},
-	}, func(ctx context.Context, input *CreateMonitorInput) (*CreateMonitorOutput, error) {
-		userID, ok := userIDFromCtx(ctx)
+	r.POST("/api/v1/monitors", func(c *gin.Context) {
+		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
-			return nil, huma.Error401Unauthorized("unauthorized")
+			respondError(c, http.StatusUnauthorized, "unauthorized")
+			return
 		}
 
-		m, err := svc.Create(ctx, userID, monitor.CreateMonitorInput{
-			Name:                input.Body.Name,
-			QueryText:           input.Body.QueryText,
-			Language:            input.Body.Language,
-			Region:              input.Body.Region,
-			PollIntervalMinutes: input.Body.PollIntervalMinutes,
-			AlertEnabled:        input.Body.AlertEnabled,
+		var body struct {
+			Name                string `json:"name" binding:"required"`
+			QueryText           string `json:"query_text" binding:"required"`
+			Language            string `json:"language"`
+			Region              string `json:"region"`
+			PollIntervalMinutes int    `json:"poll_interval_minutes" binding:"min=1"`
+			AlertEnabled        bool   `json:"alert_enabled"`
+		}
+		if err := c.ShouldBindJSON(&body); err != nil {
+			respondError(c, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		m, err := svc.Create(c.Request.Context(), userID, monitor.CreateMonitorInput{
+			Name:                body.Name,
+			QueryText:           body.QueryText,
+			Language:            body.Language,
+			Region:              body.Region,
+			PollIntervalMinutes: body.PollIntervalMinutes,
+			AlertEnabled:        body.AlertEnabled,
 		})
 		if err != nil {
 			switch {
 			case err == monitor.ErrInvalidInterval || err == monitor.ErrInvalidInput:
-				return nil, huma.Error400BadRequest(err.Error())
+				respondError(c, http.StatusBadRequest, err.Error())
 			default:
-				return nil, huma.Error500InternalServerError("internal error")
+				respondInternalError(c)
 			}
+			return
 		}
 
-		return &CreateMonitorOutput{Body: monitorToResponse(m)}, nil
+		c.JSON(http.StatusCreated, monitorToResponse(m))
 	})
 
-	huma.Register(api, huma.Operation{
-		OperationID: "get-monitor",
-		Method:      http.MethodGet,
-		Path:        "/api/v1/monitors/{id}",
-		Summary:     "Get a monitor",
-		Description: "Returns a single monitor by ID.",
-		Tags:        []string{"monitors"},
-		Security:    []map[string][]string{{"bearer": {}}},
-		Errors:      []int{401, 403, 404, 500},
-	}, func(ctx context.Context, input *GetMonitorInput) (*GetMonitorOutput, error) {
-		userID, ok := userIDFromCtx(ctx)
+	r.GET("/api/v1/monitors/:id", func(c *gin.Context) {
+		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
-			return nil, huma.Error401Unauthorized("unauthorized")
+			respondError(c, http.StatusUnauthorized, "unauthorized")
+			return
 		}
 
-		m, err := svc.GetByID(ctx, input.ID)
+		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil {
+			respondError(c, http.StatusBadRequest, "invalid monitor id")
+			return
+		}
+
+		m, err := svc.GetByID(c.Request.Context(), id)
 		if err != nil {
 			switch {
 			case err == monitor.ErrNotFound:
-				return nil, huma.Error404NotFound("monitor not found")
+				respondError(c, http.StatusNotFound, "monitor not found")
 			default:
-				return nil, huma.Error500InternalServerError("internal error")
+				respondInternalError(c)
 			}
+			return
 		}
 		if m.UserID != userID {
-			return nil, huma.Error403Forbidden("not authorized")
+			respondError(c, http.StatusForbidden, "not authorized")
+			return
 		}
 
-		return &GetMonitorOutput{Body: monitorToResponse(m)}, nil
+		c.JSON(http.StatusOK, monitorToResponse(m))
 	})
 
-	huma.Register(api, huma.Operation{
-		OperationID: "update-monitor",
-		Method:      http.MethodPatch,
-		Path:        "/api/v1/monitors/{id}",
-		Summary:     "Update a monitor",
-		Description: "Updates an existing monitor configuration.",
-		Tags:        []string{"monitors"},
-		Security:    []map[string][]string{{"bearer": {}}},
-		Errors:      []int{400, 401, 403, 404, 500},
-	}, func(ctx context.Context, input *UpdateMonitorInput) (*UpdateMonitorOutput, error) {
-		userID, ok := userIDFromCtx(ctx)
+	r.PATCH("/api/v1/monitors/:id", func(c *gin.Context) {
+		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
-			return nil, huma.Error401Unauthorized("unauthorized")
+			respondError(c, http.StatusUnauthorized, "unauthorized")
+			return
 		}
 
-		m, err := svc.GetByID(ctx, input.ID)
+		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil {
+			respondError(c, http.StatusBadRequest, "invalid monitor id")
+			return
+		}
+
+		m, err := svc.GetByID(c.Request.Context(), id)
 		if err != nil {
 			switch {
 			case err == monitor.ErrNotFound:
-				return nil, huma.Error404NotFound("monitor not found")
+				respondError(c, http.StatusNotFound, "monitor not found")
 			default:
-				return nil, huma.Error500InternalServerError("internal error")
+				respondInternalError(c)
 			}
+			return
 		}
 		if m.UserID != userID {
-			return nil, huma.Error403Forbidden("not authorized")
+			respondError(c, http.StatusForbidden, "not authorized")
+			return
 		}
 
-		updated, err := svc.Update(ctx, input.ID, monitor.UpdateMonitorInput{
-			Name:                input.Body.Name,
-			QueryText:           input.Body.QueryText,
-			Language:            input.Body.Language,
-			Region:              input.Body.Region,
-			PollIntervalMinutes: input.Body.PollIntervalMinutes,
-			AlertEnabled:        input.Body.AlertEnabled,
-			Status:              input.Body.Status,
+		var body struct {
+			Name                *string `json:"name"`
+			QueryText           *string `json:"query_text"`
+			Language            *string `json:"language"`
+			Region              *string `json:"region"`
+			PollIntervalMinutes *int    `json:"poll_interval_minutes"`
+			AlertEnabled        *bool   `json:"alert_enabled"`
+			Status              *string `json:"status"`
+		}
+		if err := c.ShouldBindJSON(&body); err != nil {
+			respondError(c, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		updated, err := svc.Update(c.Request.Context(), id, monitor.UpdateMonitorInput{
+			Name:                body.Name,
+			QueryText:           body.QueryText,
+			Language:            body.Language,
+			Region:              body.Region,
+			PollIntervalMinutes: body.PollIntervalMinutes,
+			AlertEnabled:        body.AlertEnabled,
+			Status:              body.Status,
 		})
 		if err != nil {
 			switch {
 			case err == monitor.ErrInvalidInterval:
-				return nil, huma.Error400BadRequest(err.Error())
+				respondError(c, http.StatusBadRequest, err.Error())
 			default:
-				return nil, huma.Error500InternalServerError("internal error")
+				respondInternalError(c)
 			}
+			return
 		}
 
-		return &UpdateMonitorOutput{Body: monitorToResponse(updated)}, nil
+		c.JSON(http.StatusOK, monitorToResponse(updated))
 	})
 }
 
-// --- Input / Output types ---
-
-type CreateMonitorInput struct {
-	Body struct {
-		Name                string `json:"name" validate:"required" doc:"Monitor name"`
-		QueryText           string `json:"query_text" validate:"required" doc:"Search query text"`
-		Language            string `json:"language" doc:"Language filter"`
-		Region              string `json:"region" doc:"Region filter"`
-		PollIntervalMinutes int    `json:"poll_interval_minutes" validate:"min=1" doc:"Polling interval in minutes"`
-		AlertEnabled        bool   `json:"alert_enabled" doc:"Whether alerts are enabled"`
-	}
-}
-
-type CreateMonitorOutput struct{ Body MonitorResponse }
-type ListMonitorsOutput struct{ Body []MonitorResponse }
-
-type GetMonitorInput struct {
-	ID int64 `path:"id" validate:"required" doc:"Monitor ID"`
-}
-
-type GetMonitorOutput struct{ Body MonitorResponse }
-
-type UpdateMonitorInput struct {
-	ID   int64 `path:"id" validate:"required" doc:"Monitor ID"`
-	Body struct {
-		Name                *string `json:"name,omitempty" doc:"Monitor name"`
-		QueryText           *string `json:"query_text,omitempty" doc:"Search query text"`
-		Language            *string `json:"language,omitempty" doc:"Language filter"`
-		Region              *string `json:"region,omitempty" doc:"Region filter"`
-		PollIntervalMinutes *int    `json:"poll_interval_minutes,omitempty" doc:"Polling interval in minutes"`
-		AlertEnabled        *bool   `json:"alert_enabled,omitempty" doc:"Whether alerts are enabled"`
-		Status              *string `json:"status,omitempty" doc:"Monitor status"`
-	}
-}
-
-type UpdateMonitorOutput struct{ Body MonitorResponse }
-
 type MonitorResponse struct {
-	ID                  int64  `json:"id" doc:"Monitor ID"`
-	UserID              int64  `json:"user_id" doc:"Owner user ID"`
-	Name                string `json:"name" doc:"Monitor name"`
-	QueryText           string `json:"query_text" doc:"Search query text"`
-	Language            string `json:"language" doc:"Language filter"`
-	Region              string `json:"region" doc:"Region filter"`
-	Status              string `json:"status" doc:"Monitor status"`
-	PollIntervalMinutes int    `json:"poll_interval_minutes" doc:"Polling interval in minutes"`
-	AlertEnabled        bool   `json:"alert_enabled" doc:"Whether alerts are enabled"`
+	ID                  int64  `json:"id"`
+	UserID              int64  `json:"user_id"`
+	Name                string `json:"name"`
+	QueryText           string `json:"query_text"`
+	Language            string `json:"language"`
+	Region              string `json:"region"`
+	Status              string `json:"status"`
+	PollIntervalMinutes int    `json:"poll_interval_minutes"`
+	AlertEnabled        bool   `json:"alert_enabled"`
 }
 
 func monitorToResponse(m monitor.Monitor) MonitorResponse {

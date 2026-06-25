@@ -16,37 +16,40 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/platform/x"
 	"github.com/StephenQiu30/hotkey-server/internal/scoring"
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
-func newJobRunner(cfg config.Config, db *sql.DB) *jobs.Runner {
+func newJobRunner(cfg config.Config, sqlDB *sql.DB) *jobs.Runner {
 	xClient := x.NewClient(cfg.XToken, cfg.XBaseURL)
 	connector := jobs.NewXConnectorAdapter(xClient, cfg.XToken)
 
-	hitScorerRepo := jobs.NewDBHitScorerRepo(db)
+	hitScorerRepo := jobs.NewDBHitScorerRepo(sqlDB)
 	scoringSvc := scoring.NewService(hitScorerRepo)
 	scorer := jobs.NewScorerAdapter(scoringSvc)
 
-	runRepo := jobs.NewDBRunRepository(db)
-	postRepo := jobs.NewDBPostRepository(db)
-	hitRepo := jobs.NewDBHitRepository(db)
+	runRepo := jobs.NewDBRunRepository(sqlDB)
+	postRepo := jobs.NewDBPostRepository(sqlDB)
+	hitRepo := jobs.NewDBHitRepository(sqlDB)
 	pollJob := jobs.NewPollMonitorJob(runRepo, postRepo, hitRepo, connector, scorer)
 
-	topicRepo := database.NewTopicRepo(db)
-	postCandidateProvider := jobs.NewDBPostCandidateProvider(db)
+	gdb := gormDBFromSQL(sqlDB)
+	topicRepo := database.NewTopicRepo(gdb)
+	postCandidateProvider := jobs.NewDBPostCandidateProvider(sqlDB)
 	topicPersister := jobs.NewTopicPersisterAdapter(topicRepo)
 	aggregateJob := jobs.NewAggregateTopicsJob(postCandidateProvider, topicPersister)
 
-	trendRepo := database.NewTrendRepo(db)
+	trendRepo := database.NewTrendRepo(gdb)
 	trendSvc := trend.NewService(trendRepo)
-	topicProvider := jobs.NewDBTopicProvider(db)
+	topicProvider := jobs.NewDBTopicProvider(sqlDB)
 	snapshotJob := jobs.NewBuildSnapshotsJob(trendSvc, topicProvider)
 
-	deliveryRepo := jobs.NewDBDeliveryRepository(db)
-	emailResolver := jobs.NewDBUserEmailLookup(db)
+	deliveryRepo := jobs.NewDBDeliveryRepository(sqlDB)
+	emailResolver := jobs.NewDBUserEmailLookup(sqlDB)
 	mailer := &noopMailer{}
 	dispatchJob := jobs.NewDispatchJob(deliveryRepo, mailer, emailResolver)
 
-	monitorLister := jobs.NewDBMonitorLister(db)
+	monitorLister := jobs.NewDBMonitorLister(sqlDB)
 
 	runner := jobs.NewRunner()
 	runner.Register("poll_monitor", func(ctx context.Context) error {
@@ -93,9 +96,8 @@ func newJobRunner(cfg config.Config, db *sql.DB) *jobs.Runner {
 		return dispatchJob.Run(ctx, 0)
 	}, 1*time.Minute)
 
-	// Daily digest publish job — gates on DAILY_DIGEST_TIME CST
 	if cfg.ObsidianVaultPath != "" {
-		exporter := database.NewExporter(db)
+		exporter := database.NewExporter(gdb)
 		llmClient := llm.NewOpenAIClient(llm.OpenAIConfig{
 			APIKey:  cfg.LLMAPIKey,
 			BaseURL: cfg.LLMBaseURL,
@@ -103,20 +105,18 @@ func newJobRunner(cfg config.Config, db *sql.DB) *jobs.Runner {
 		})
 		writer := &jobs.DefaultVaultWriter{}
 
-		// For each active monitor, create a publish job
 		monitorIDs, err := monitorLister.ListActiveIDs(context.Background())
 		if err != nil {
 			log.Printf("worker: failed to list monitors: %v", err)
 		} else {
 			for _, monitorID := range monitorIDs {
-				// Get monitor config (in real app, this would come from database)
 				monitorCfg := jobs.MonitorConfig{
 					ID:   monitorID,
-					Name: "Monitor", // TODO: get from database
-					Slug: "monitor", // TODO: get from database
+					Name: "Monitor",
+					Slug: "monitor",
 				}
 
-				digestSvc := digest.NewService(nil) // TODO: provide TopicFilter
+				digestSvc := digest.NewService(nil)
 				publishJob := jobs.NewPublishDailyTopicsJob(
 					digestSvc,
 					llmClient,
@@ -138,6 +138,16 @@ func newJobRunner(cfg config.Config, db *sql.DB) *jobs.Runner {
 	}
 
 	return runner
+}
+
+// gormDBFromSQL wraps an existing *sql.DB as *gorm.DB for repository use in worker.
+func gormDBFromSQL(sqlDB *sql.DB) *gorm.DB {
+	gdb, err := gorm.Open(postgres.New(postgres.Config{Conn: sqlDB}), &gorm.Config{})
+	if err != nil {
+		log.Printf("worker: gorm wrap failed: %v", err)
+		return nil
+	}
+	return gdb
 }
 
 type noopMailer struct{}

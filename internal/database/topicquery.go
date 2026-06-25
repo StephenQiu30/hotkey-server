@@ -1,31 +1,30 @@
 package database
 
 import (
-	"database/sql"
-
 	"github.com/StephenQiu30/hotkey-server/internal/topic"
+	"gorm.io/gorm"
 )
 
-// TopicQueryService implements topic.TopicQueryService using PostgreSQL.
+// TopicQueryService implements topic.TopicQueryService using PostgreSQL via GORM.
 type TopicQueryService struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
 // NewTopicQueryService creates a new Postgres-backed topic query service.
-func NewTopicQueryService(db *sql.DB) *TopicQueryService {
+func NewTopicQueryService(db *gorm.DB) *TopicQueryService {
 	return &TopicQueryService{db: db}
 }
 
-// ListByMonitor returns topic summaries for a given monitor.
 func (s *TopicQueryService) ListByMonitor(monitorID int64) ([]topic.TopicSummary, error) {
-	rows, err := s.db.Query(
+	rows, err := s.db.Raw(
 		`SELECT t.id, t.title, t.summary, t.current_heat_score, t.trend_direction,
 		        COUNT(tp.id) AS post_count
 		 FROM topics t
 		 LEFT JOIN topic_posts tp ON tp.topic_id = t.id
-		 WHERE t.monitor_id = $1 AND t.status = 'active'
+		 WHERE t.monitor_id = ? AND t.status = 'active'
 		 GROUP BY t.id
-		 ORDER BY t.current_heat_score DESC`, monitorID)
+		 ORDER BY t.current_heat_score DESC`, monitorID,
+	).Rows()
 	if err != nil {
 		return nil, err
 	}

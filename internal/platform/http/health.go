@@ -1,32 +1,19 @@
 package http
 
 import (
-	"context"
 	"net/http"
 
-	"github.com/danielgtaylor/huma/v2"
+	"github.com/gin-gonic/gin"
 )
 
 // RegisterHealthRoutes registers the /healthz endpoint.
-func RegisterHealthRoutes(api huma.API) {
-	huma.Register(api, huma.Operation{
-		OperationID: "health-check",
-		Method:      http.MethodGet,
-		Path:        "/healthz",
-		Summary:     "Health check",
-		Description: "Returns 200 OK if the server is running.",
-		Tags:        []string{"health"},
-	}, func(ctx context.Context, input *struct{}) (*HealthOutput, error) {
-		return &HealthOutput{Body: HealthBody{Status: "ok"}}, nil
+func RegisterHealthRoutes(r *gin.Engine) {
+	r.GET("/healthz", func(c *gin.Context) {
+		c.JSON(http.StatusOK, HealthBody{Status: "ok"})
 	})
 }
 
 // HealthBody is the health check response body.
 type HealthBody struct {
-	Status string `json:"status" example:"ok" doc:"Server status"`
-}
-
-// HealthOutput is the health check response.
-type HealthOutput struct {
-	Body HealthBody
+	Status string `json:"status"`
 }

@@ -2,32 +2,31 @@ package database
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
+	"errors"
 
 	"github.com/StephenQiu30/hotkey-server/internal/content"
+	"gorm.io/gorm"
 )
 
-// ContentRepo implements content.PostRepository and content.HitRepository
-// using PostgreSQL.
+// ContentRepo implements content.PostRepository and content.HitRepository via GORM.
 type ContentRepo struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
 // NewContentRepo creates a new Postgres-backed content repository.
-func NewContentRepo(db *sql.DB) *ContentRepo {
+func NewContentRepo(db *gorm.DB) *ContentRepo {
 	return &ContentRepo{db: db}
 }
 
-// UpsertPost inserts or updates a normalized post and returns its ID.
 func (r *ContentRepo) UpsertPost(ctx context.Context, post content.NormalizedPost) (int64, error) {
 	var id int64
-	err := r.db.QueryRowContext(ctx,
+	err := r.db.WithContext(ctx).Raw(
 		`INSERT INTO platform_posts
 			(platform, platform_post_id, author_platform_id, author_name, author_handle,
 			 content_text, content_lang, post_url, published_at,
 			 like_count, reply_count, repost_count, quote_count, view_count, normalized_hash)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT (platform, platform_post_id) DO UPDATE SET
 			 author_name = EXCLUDED.author_name,
 			 author_handle = EXCLUDED.author_handle,
@@ -43,24 +42,20 @@ func (r *ContentRepo) UpsertPost(ctx context.Context, post content.NormalizedPos
 		post.AuthorName, post.AuthorHandle, post.ContentText, post.ContentLang,
 		post.PostURL, post.PublishedAt, post.LikeCount, post.ReplyCount,
 		post.RepostCount, post.QuoteCount, post.ViewCount, post.NormalizedHash,
-	).Scan(&id)
+	).Scan(&id).Error
 	return id, err
 }
 
-// GetPostByPlatformID retrieves a post by its platform and platform post ID.
 func (r *ContentRepo) GetPostByPlatformID(ctx context.Context, platform, platformPostID string) (*content.NormalizedPost, error) {
 	var p content.NormalizedPost
-	err := r.db.QueryRowContext(ctx,
+	err := r.db.WithContext(ctx).Raw(
 		`SELECT platform, platform_post_id, author_platform_id, author_name, author_handle,
 		        content_text, content_lang, post_url, published_at,
 		        like_count, reply_count, repost_count, quote_count, view_count, normalized_hash
-		 FROM platform_posts WHERE platform = $1 AND platform_post_id = $2`,
+		 FROM platform_posts WHERE platform = ? AND platform_post_id = ?`,
 		platform, platformPostID,
-	).Scan(&p.Platform, &p.PlatformPostID, &p.AuthorPlatformID,
-		&p.AuthorName, &p.AuthorHandle, &p.ContentText, &p.ContentLang,
-		&p.PostURL, &p.PublishedAt, &p.LikeCount, &p.ReplyCount,
-		&p.RepostCount, &p.QuoteCount, &p.ViewCount, &p.NormalizedHash)
-	if err == sql.ErrNoRows {
+	).Scan(&p).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) || (err == nil && p.Platform == "") {
 		return nil, nil
 	}
 	if err != nil {
@@ -69,26 +64,24 @@ func (r *ContentRepo) GetPostByPlatformID(ctx context.Context, platform, platfor
 	return &p, nil
 }
 
-// UpsertHit inserts or updates a monitor-post hit relationship.
 func (r *ContentRepo) UpsertHit(ctx context.Context, hit content.MonitorHit) error {
 	kwJSON, _ := json.Marshal(hit.MatchedKeywords)
-	_, err := r.db.ExecContext(ctx,
+	return r.db.WithContext(ctx).Exec(
 		`INSERT INTO monitor_post_hits (monitor_id, post_id, matched_keywords, relevance_score)
-		 VALUES ($1, $2, $3, $4)
+		 VALUES (?, ?, ?, ?)
 		 ON CONFLICT (monitor_id, post_id) DO UPDATE SET
 			 matched_keywords = EXCLUDED.matched_keywords,
 			 relevance_score = EXCLUDED.relevance_score,
 			 last_seen_at = now()`,
 		hit.MonitorID, hit.PostID, kwJSON, hit.RelevanceScore,
-	)
-	return err
+	).Error
 }
 
-// GetHitsByMonitor retrieves all hits for a given monitor.
 func (r *ContentRepo) GetHitsByMonitor(ctx context.Context, monitorID int64) ([]content.MonitorHit, error) {
-	rows, err := r.db.QueryContext(ctx,
+	rows, err := r.db.WithContext(ctx).Raw(
 		`SELECT monitor_id, post_id, matched_keywords, relevance_score
-		 FROM monitor_post_hits WHERE monitor_id = $1 ORDER BY first_seen_at DESC`, monitorID)
+		 FROM monitor_post_hits WHERE monitor_id = ? ORDER BY first_seen_at DESC`, monitorID,
+	).Rows()
 	if err != nil {
 		return nil, err
 	}

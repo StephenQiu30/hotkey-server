@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -13,9 +14,20 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/config"
 	"github.com/StephenQiu30/hotkey-server/internal/database"
 	"github.com/StephenQiu30/hotkey-server/internal/observability"
+	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"gorm.io/gorm"
 )
 
-// Run starts the HotKey server (API + worker in one process).
+// App manages the HotKey server lifecycle (API + worker in one process).
+type App struct {
+	cfg    config.Config
+	db     *gorm.DB
+	server *http.Server
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+}
+
+// Run starts the HotKey server.
 func Run() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -27,50 +39,81 @@ func Run() {
 		return
 	}
 
-	log.Print(observability.RenderLog("app", "starting"))
-
-	db, err := database.Open(cfg.DatabaseURL)
+	app, err := New(cfg)
 	if err != nil {
-		log.Fatalf("failed to connect to database: %v", err)
-	}
-	defer db.Close()
-
-	srv, err := newAPIServer(cfg, db)
-	if err != nil {
-		log.Fatalf("failed to create api server: %v", err)
+		log.Fatalf("failed to create app: %v", err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		runWorkerWithDB(ctx, cfg, db)
-	}()
-
-	go func() {
-		log.Print(observability.RenderLog("api", "listening on "+cfg.HTTPAddr))
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
-		}
-	}()
+	if err := app.Start(); err != nil {
+		log.Fatalf("failed to start app: %v", err)
+	}
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
 
 	log.Print(observability.RenderLog("app", "shutting down"))
-	cancel()
-
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("api shutdown error: %v", err)
+	if err := app.Shutdown(shutdownCtx); err != nil {
+		log.Printf("shutdown error: %v", err)
+	}
+}
+
+// New creates an App with database and HTTP server wired.
+func New(cfg config.Config) (*App, error) {
+	db, err := database.Open(cfg.DatabaseURL)
+	if err != nil {
+		return nil, err
 	}
 
-	wg.Wait()
+	srv, err := newAPIServer(cfg, db)
+	if err != nil {
+		sqlDB, _ := db.DB()
+		if sqlDB != nil {
+			sqlDB.Close()
+		}
+		return nil, err
+	}
+
+	return &App{cfg: cfg, db: db, server: srv}, nil
+}
+
+// Start launches the API server and background worker.
+func (a *App) Start() error {
+	ctx, cancel := context.WithCancel(context.Background())
+	a.cancel = cancel
+
+	a.wg.Add(1)
+	go func() {
+		defer a.wg.Done()
+		runWorkerWithDB(ctx, a.cfg, a.db)
+	}()
+
+	go func() {
+		log.Print(observability.RenderLog("api", "listening on "+a.cfg.HTTPAddr))
+		if err := a.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server error: %v", err)
+		}
+	}()
+
+	log.Print(observability.RenderLog("app", "starting"))
+	return nil
+}
+
+// Shutdown stops the worker and API server gracefully.
+func (a *App) Shutdown(ctx context.Context) error {
+	if a.cancel != nil {
+		a.cancel()
+	}
+	if err := a.server.Shutdown(ctx); err != nil {
+		return err
+	}
+	a.wg.Wait()
+	if sqlDB, err := a.db.DB(); err == nil && sqlDB != nil {
+		sqlDB.Close()
+	}
+	return nil
 }
 
 func runAPISmoke(cfg config.Config) {
@@ -98,4 +141,21 @@ func runAPISmoke(cfg config.Config) {
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server error: %v", err)
 	}
+}
+
+// GenerateOpenAPI writes docs/openapi.json from static route definitions.
+func GenerateOpenAPI() {
+	data, err := json.MarshalIndent(platformhttp.BuildOpenAPISpec(), "", "  ")
+	if err != nil {
+		log.Fatalf("failed to marshal OpenAPI spec: %v", err)
+	}
+
+	if err := os.MkdirAll("docs", 0o755); err != nil {
+		log.Fatalf("failed to create docs directory: %v", err)
+	}
+	if err := os.WriteFile("docs/openapi.json", data, 0o644); err != nil {
+		log.Fatalf("failed to write openapi.json: %v", err)
+	}
+
+	log.Printf("wrote docs/openapi.json (%d bytes)", len(data))
 }

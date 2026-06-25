@@ -10,83 +10,69 @@ import (
 	"strings"
 	"time"
 
-	"github.com/danielgtaylor/huma/v2"
-	"github.com/danielgtaylor/huma/v2/adapters/humago"
+	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// contextKey is a private type for context keys in this package.
 type contextKey string
 
 // UserIDKey is the context key for the authenticated user ID.
-// Value matches internal/server.UserIDKey for backward compatibility.
 const UserIDKey contextKey = "userID"
 
-// globalAPI holds the Huma API instance for use in middleware error responses.
-// Set once during NewAPI construction.
-var globalAPI huma.API
-
-// RequestIDMiddleware returns a Huma middleware that adds a request ID to the
-// response header. If the request already has an X-Request-Id header, it is
-// preserved; otherwise a new one is generated.
-func RequestIDMiddleware() func(ctx huma.Context, next func(huma.Context)) {
-	return func(ctx huma.Context, next func(huma.Context)) {
-		reqID := ctx.Header("X-Request-Id")
+// RequestIDMiddleware adds a request ID to the response header.
+func RequestIDMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		reqID := c.GetHeader("X-Request-Id")
 		if reqID == "" {
 			reqID = generateRequestID()
 		}
-		ctx.SetHeader("X-Request-Id", reqID)
-		next(ctx)
+		c.Header("X-Request-Id", reqID)
+		c.Next()
 	}
 }
 
-// RecoverMiddleware returns a Huma middleware that recovers from panics and
-// returns a 500 error instead of crashing the server.
-func RecoverMiddleware() func(ctx huma.Context, next func(huma.Context)) {
-	return func(ctx huma.Context, next func(huma.Context)) {
+// RecoverMiddleware recovers from panics and returns a 500 error.
+func RecoverMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("panic recovered: %v", r)
-				_, w := humago.Unwrap(ctx)
 				body, err := json.Marshal(newInternalErrorBody())
 				if err != nil {
 					body = []byte(`{"error":"internal server error","code":"internal_error"}`)
 				}
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusInternalServerError)
-				_, _ = w.Write(body)
+				c.Data(http.StatusInternalServerError, "application/json", body)
+				c.Abort()
 			}
 		}()
-		next(ctx)
+		c.Next()
 	}
 }
 
-// AuthMiddleware returns a Huma middleware that validates JWT tokens and injects
-// the user ID into the request context. For smoke test mode, bypasses JWT
-// validation and injects a default user ID.
-func AuthMiddleware(jwtSecret string, smokeTest bool) func(ctx huma.Context, next func(huma.Context)) {
-	return func(ctx huma.Context, next func(huma.Context)) {
-		if smokeTest || isPublicPath(ctx.URL().Path) {
-			newCtx := context.WithValue(ctx.Context(), UserIDKey, int64(1))
-			next(huma.WithContext(ctx, newCtx))
+// AuthMiddleware validates JWT tokens and injects the user ID into context.
+func AuthMiddleware(jwtSecret string, smokeTest bool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if smokeTest || isPublicPath(c.Request.URL.Path) {
+			ctx := context.WithValue(c.Request.Context(), UserIDKey, int64(1))
+			c.Request = c.Request.WithContext(ctx)
+			c.Next()
 			return
 		}
 
-		newCtx, err := validateJWT(ctx, jwtSecret)
+		newCtx, err := validateJWT(c, jwtSecret)
 		if err != nil {
-			huma.WriteErr(globalAPI, ctx, http.StatusUnauthorized, err.Error())
+			respondError(c, http.StatusUnauthorized, err.Error())
+			c.Abort()
 			return
 		}
 
-		next(huma.WithContext(ctx, newCtx))
+		c.Request = c.Request.WithContext(newCtx)
+		c.Next()
 	}
 }
 
-// validateJWT extracts and validates the JWT from the Authorization header.
-// On success, returns a new context with the user ID injected. Returns an error
-// if validation fails.
-func validateJWT(ctx huma.Context, jwtSecret string) (context.Context, error) {
-	authHeader := ctx.Header("Authorization")
+func validateJWT(c *gin.Context, jwtSecret string) (context.Context, error) {
+	authHeader := c.GetHeader("Authorization")
 	if authHeader == "" {
 		return nil, &authError{"missing authorization header"}
 	}
@@ -113,19 +99,15 @@ func validateJWT(ctx huma.Context, jwtSecret string) (context.Context, error) {
 		return nil, &authError{"invalid user id in token"}
 	}
 
-	// Inject user ID into context (same key as internal/server.UserIDKey).
-	newCtx := context.WithValue(ctx.Context(), UserIDKey, int64(sub))
-	return newCtx, nil
+	return context.WithValue(c.Request.Context(), UserIDKey, int64(sub)), nil
 }
 
-// authError is a simple error type for authentication failures.
 type authError struct {
 	msg string
 }
 
 func (e *authError) Error() string { return e.msg }
 
-// generateRequestID creates a simple request ID.
 func generateRequestID() string {
 	return "req-" + randomHex(8)
 }
@@ -139,12 +121,9 @@ func isPublicPath(path string) bool {
 	}
 }
 
-// randomHex generates a random hex string of the given byte length using
-// crypto/rand. Returns a string of length 2*n.
 func randomHex(n int) string {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
-		// Fallback to timestamp-based ID if rand fails (should never happen).
 		return fmt.Sprintf("%x", time.Now().UnixNano())
 	}
 	return fmt.Sprintf("%x", b)

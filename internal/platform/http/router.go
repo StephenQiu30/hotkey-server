@@ -1,10 +1,7 @@
 package http
 
 import (
-	"net/http"
-
-	"github.com/danielgtaylor/huma/v2"
-	"github.com/danielgtaylor/huma/v2/adapters/humago"
+	"github.com/gin-gonic/gin"
 
 	"github.com/StephenQiu30/hotkey-server/internal/auth"
 	"github.com/StephenQiu30/hotkey-server/internal/content"
@@ -14,7 +11,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
 )
 
-// Config holds all dependencies for the Huma-based HTTP API.
+// Config holds all dependencies for the Gin HTTP API.
 type Config struct {
 	JWTSecret     string
 	SmokeTest     bool
@@ -26,40 +23,32 @@ type Config struct {
 	TrendQuerySvc trend.TrendQueryService
 }
 
-// NewAPI creates a Huma API instance with middleware and all routes registered.
-// Returns both the huma.API and the underlying http.ServeMux.
-func NewAPI(cfg Config) (huma.API, *http.ServeMux) {
-	mux := http.NewServeMux()
+// NewRouter creates a Gin engine with middleware and all routes registered.
+func NewRouter(cfg Config) *gin.Engine {
+	gin.SetMode(gin.ReleaseMode)
+	r := gin.New()
 
-	config := huma.DefaultConfig("HotKey Server", "1.0.0")
-	config.Info.Description = "X (Twitter) hot-topic monitoring platform API"
-	config.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
-		"bearer": {
-			Type:         "http",
-			Scheme:       "bearer",
-			BearerFormat: "JWT",
-		},
-	}
+	r.Use(RecoverMiddleware())
+	r.Use(RequestIDMiddleware())
+	r.Use(AuthMiddleware(cfg.JWTSecret, cfg.SmokeTest))
 
-	api := humago.New(mux, config)
+	RegisterHealthRoutes(r)
+	RegisterAuthRoutes(r, cfg.AuthService, cfg.JWTSecret)
+	RegisterMonitorRoutes(r, cfg.MonitorSvc)
+	RegisterContentRoutes(r, cfg.PostQuerySvc)
+	RegisterTopicRoutes(r, cfg.TopicQuerySvc)
+	RegisterTrendRoutes(r, cfg.TrendQuerySvc)
+	RegisterNotifyRoutes(r, cfg.NotifySvc)
 
-	// Set global API reference before registering middleware (closures capture
-	// the variable, not the value, so it's available when middleware runs).
-	globalAPI = api
+	r.GET("/openapi.json", func(c *gin.Context) {
+		c.JSON(200, BuildOpenAPISpec())
+	})
 
-	// Register global middleware.
-	api.UseMiddleware(RecoverMiddleware())
-	api.UseMiddleware(RequestIDMiddleware())
-	api.UseMiddleware(AuthMiddleware(cfg.JWTSecret, cfg.SmokeTest))
+	return r
+}
 
-	// Register routes for each domain.
-	RegisterHealthRoutes(api)
-	RegisterAuthRoutes(api, cfg.AuthService, cfg.JWTSecret)
-	RegisterMonitorRoutes(api, cfg.MonitorSvc)
-	RegisterContentRoutes(api, cfg.PostQuerySvc)
-	RegisterTopicRoutes(api, cfg.TopicQuerySvc)
-	RegisterTrendRoutes(api, cfg.TrendQuerySvc)
-	RegisterNotifyRoutes(api, cfg.NotifySvc)
-
-	return api, mux
+// NewAPI is an alias for NewRouter for backward compatibility in tests.
+func NewAPI(cfg Config) (*gin.Engine, *gin.Engine) {
+	r := NewRouter(cfg)
+	return r, r
 }

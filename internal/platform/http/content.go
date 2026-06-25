@@ -1,48 +1,40 @@
 package http
 
 import (
-	"context"
 	"net/http"
+	"strconv"
 
-	"github.com/danielgtaylor/huma/v2"
+	"github.com/gin-gonic/gin"
 
 	"github.com/StephenQiu30/hotkey-server/internal/content"
 )
 
 // RegisterContentRoutes registers the content (posts) endpoints.
-func RegisterContentRoutes(api huma.API, svc content.PostQueryService) {
-	huma.Register(api, huma.Operation{
-		OperationID: "list-posts",
-		Method:      http.MethodGet,
-		Path:        "/api/v1/monitors/{id}/posts",
-		Summary:     "List posts for a monitor",
-		Description: "Returns posts collected by the specified monitor.",
-		Tags:        []string{"content"},
-		Security:    []map[string][]string{{"bearer": {}}},
-		Errors:      []int{401, 500},
-	}, func(ctx context.Context, input *ListPostsInput) (*ListPostsOutput, error) {
-		if _, ok := userIDFromCtx(ctx); !ok {
-			return nil, huma.Error401Unauthorized("unauthorized")
+func RegisterContentRoutes(r *gin.Engine, svc content.PostQueryService) {
+	r.GET("/api/v1/monitors/:id/posts", func(c *gin.Context) {
+		if _, ok := userIDFromCtx(c.Request.Context()); !ok {
+			respondError(c, http.StatusUnauthorized, "unauthorized")
+			return
 		}
 
-		posts, err := svc.ListPostsByMonitor(input.ID, input.Limit, input.Offset)
+		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("internal error")
+			respondError(c, http.StatusBadRequest, "invalid monitor id")
+			return
+		}
+
+		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+		offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+
+		posts, err := svc.ListPostsByMonitor(id, limit, offset)
+		if err != nil {
+			respondInternalError(c)
+			return
 		}
 		if posts == nil {
 			posts = []content.PostSummary{}
 		}
 
-		return &ListPostsOutput{Body: posts}, nil
+		c.JSON(http.StatusOK, posts)
 	})
-}
-
-type ListPostsInput struct {
-	ID     int64 `path:"id" validate:"required" doc:"Monitor ID"`
-	Limit  int   `query:"limit" default:"20" doc:"Maximum number of posts to return"`
-	Offset int   `query:"offset" default:"0" doc:"Number of posts to skip"`
-}
-
-type ListPostsOutput struct {
-	Body []content.PostSummary
 }
