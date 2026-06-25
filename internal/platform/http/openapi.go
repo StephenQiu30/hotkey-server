@@ -20,6 +20,52 @@ func BuildOpenAPISpec() map[string]any {
 					"bearerFormat": "JWT",
 				},
 			},
+			"schemas": map[string]any{
+				"ErrorBody": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"error": map[string]any{"type": "string"},
+						"code":  map[string]any{"type": "string"},
+					},
+					"required": []string{"error"},
+				},
+				"UserResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"id":           map[string]any{"type": "integer", "format": "int64"},
+						"email":        map[string]any{"type": "string"},
+						"display_name": map[string]any{"type": "string"},
+					},
+				},
+				"LoginResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"user":  map[string]any{"$ref": "#/components/schemas/UserResponse"},
+						"token": map[string]any{"type": "string"},
+					},
+				},
+				"MonitorResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"id":                    map[string]any{"type": "integer", "format": "int64"},
+						"user_id":               map[string]any{"type": "integer", "format": "int64"},
+						"name":                  map[string]any{"type": "string"},
+						"query_text":            map[string]any{"type": "string"},
+						"status":                map[string]any{"type": "string"},
+						"poll_interval_minutes": map[string]any{"type": "integer"},
+						"alert_enabled":         map[string]any{"type": "boolean"},
+					},
+				},
+				"NotificationResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"id":              map[string]any{"type": "integer", "format": "int64"},
+						"channel":         map[string]any{"type": "string"},
+						"delivery_status": map[string]any{"type": "string"},
+						"created_at":      map[string]any{"type": "string", "format": "date-time"},
+					},
+				},
+			},
 		},
 		"paths": map[string]any{
 			"/healthz": map[string]any{
