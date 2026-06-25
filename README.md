@@ -13,10 +13,12 @@ X 热点监控平台后端服务：API、采集、热点评分、主题聚合、
 - `internal/trend` — 趋势分析
 - `internal/alert` — 告警模型
 - `internal/notify` — 通知服务（站内 + 邮件）
+- `internal/platform/http` — Gin HTTP API（唯一 HTTP 主线）
+- `internal/database` — GORM 持久化（API 与 Worker 共用）
 - `internal/jobs` — 后台任务（poll/aggregate/snapshot/dispatch）
 - `internal/scoring` — 热点评分
 - `internal/platform/x` — X 平台采集客户端
-- `internal/observability` — 结构化日志、指标、健康检查
+- `internal/observability` — 结构化日志
 - `internal/config` — 环境变量配置加载
 - `db/schema.sql` — PostgreSQL 数据库 schema
 
@@ -30,7 +32,7 @@ make dev
 make build
 ./hotkey-server
 
-# Docker 环境（PostgreSQL + Redis + 应用）
+# Docker 环境（PostgreSQL + 应用）
 bash scripts/start-local.sh
 ```
 

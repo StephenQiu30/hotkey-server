@@ -16,7 +16,7 @@ fi
 docker compose config >/dev/null
 
 echo "Starting local development environment..."
-docker compose up -d postgres redis
+docker compose up -d postgres
 
 echo "Waiting for PostgreSQL..."
 for i in {1..30}; do
@@ -56,7 +56,6 @@ echo "Local environment started successfully!"
 echo "  API:      http://localhost:8080"
 echo "  Health:   http://localhost:8080/healthz"
 echo "  Postgres: localhost:5432 (user=${POSTGRES_USER:-hotkey}, db=${POSTGRES_DB:-hotkey})"
-echo "  Redis:    localhost:6379"
 echo ""
 echo "Useful commands:"
 echo "  make dev          # run API + worker locally with .env"

@@ -10,7 +10,6 @@ import (
 type Config struct {
 	HTTPAddr    string `mapstructure:"HTTP_ADDR"`
 	DatabaseURL string `mapstructure:"DATABASE_URL"`
-	RedisAddr   string `mapstructure:"REDIS_ADDR"`
 	JWTSecret   string `mapstructure:"JWT_SECRET"`
 	XToken      string `mapstructure:"X_BEARER_TOKEN"`
 	XBaseURL    string `mapstructure:"X_BASE_URL"`
@@ -53,7 +52,6 @@ func Load() (Config, error) {
 	_ = v.BindEnv("DATABASE_URL")
 	_ = v.BindEnv("JWT_SECRET")
 	_ = v.BindEnv("HTTP_ADDR")
-	_ = v.BindEnv("REDIS_ADDR")
 	_ = v.BindEnv("X_BEARER_TOKEN")
 	_ = v.BindEnv("X_BASE_URL")
 	_ = v.BindEnv("OBSIDIAN_VAULT_PATH")
