@@ -5,8 +5,8 @@ audience: Dev, QA, Ops
 feature_area: worker收敛与遗留清理
 purpose: 定义 worker 运行时收敛、后台任务迁移和旧主线删除清单
 canonical_path: docs/plans/016-worker与遗留清理计划.md
-status: draft
-version: v1.0
+status: completed
+version: v1.1
 owner: Codex
 inputs:
   - docs/design/005-平台整体重构设计.md
@@ -113,6 +113,12 @@ bash scripts/smoke-api.sh
 2. 如果 worker 运行边界不先收敛，多副本与幂等问题会被继续掩盖。
 
 # 变更记录
+
+## v1.1（2026-06-25 完成）
+
+1. Task 3 遗留清理已完成：Huma、internal/server、sqlc、redis/queue 占位、域 http.go 已删除。
+2. Worker 持久化已迁入 `internal/database` GORM，消除 API/Worker 双轨。
+3. 验证门禁：`go test ./...`、`rg` 无 huma/internal/server/sqlc 运行代码引用。
 
 ## v1.0
 

@@ -1,105 +1,72 @@
-# 跨仓客户端生成指南
+# 跨仓 OpenAPI 客户端生成
 
-> 契约事实源：`hotkey-server/docs/openapi.json`
+`hotkey-server` 的 `docs/openapi.json` 是 **hotkey-web** 与 **hotkey-miniapp** 的唯一契约事实源。
 
-## 流程
+## 工程主线（当前）
 
-```
-hotkey-server (OpenAPI export) ──> hotkey-web (@umijs/openapi) ──> hotkey-miniapp
-```
+- HTTP：Gin（`internal/platform/http`）
+- 契约生成：静态 `BuildOpenAPISpec()`（`make openapi`）
+- 入口：`cmd/hotkey`（API + Worker 单进程）
 
-OpenAPI 变更必须先在 `hotkey-server` 合并，再通知下游仓库重新生成客户端。
-
-未完成以下 server 门禁前，不允许进入下游同步：
-
-1. `make openapi`
-2. `make openapi-validate`
-3. `bash scripts/validate-repository.sh`
-
-## 1. 导出 OpenAPI Spec
+## Server 侧：生成与校验
 
 ```bash
-cd /Users/stephenqiu/Desktop/StephenQiu30/HotKey/hotkey-server
-
-# 重新生成 docs/openapi.json
+cd hotkey-server
 make openapi
-
-# 验证 spec 完整性
 make openapi-validate
-
-# 运行仓内总体验证，确保 server 已达到可同步状态
 bash scripts/validate-repository.sh
 ```
 
-生成器通过 `make openapi` 输出 spec。
+`make openapi` 等价于 `go run ./cmd/openapi`，输出 `docs/openapi.json`。
 
-## 2. hotkey-web 客户端生成
+## 下游同步顺序
 
-在 `hotkey-web` 仓库中使用仓内 `openapi2ts.config.ts`：
+固定为：
 
-```bash
-cd /Users/stephenqiu/Desktop/StephenQiu30/HotKey/hotkey-web
-
-# 基于 ../hotkey-server/docs/openapi.json 生成客户端
-npm run openapi:generate
-
-# 继续执行 Web 端同步门禁
-npm run test
-npm run typecheck
-npm run build
-bash scripts/validate-repository.sh
+```text
+hotkey-server → hotkey-web → hotkey-miniapp → 回归
 ```
 
-生成产物包含：
+1. 在 **hotkey-server** 稳定契约并合并。
+2. 在 **hotkey-web** / **hotkey-miniapp** 用 `@umijs/openapi` 从 `docs/openapi.json` 重新生成客户端。
+3. 不得手写漂移的后端 API 类型。
 
-- `src/services/hotkey/hotkey-server/*.ts`
-- `src/services/hotkey/hotkey-server/typings.d.ts`
-- 与 `@/lib/request` 对接的请求入口
+## Web 生成（hotkey-web）
 
-## 3. hotkey-miniapp 客户端生成
-
-在 `hotkey-miniapp` 仓库中使用仓内 `openapi2ts.config.ts`：
+以该仓 `package.json` / OpenAPI 配置为准，典型流程：
 
 ```bash
-cd /Users/stephenqiu/Desktop/StephenQiu30/HotKey/hotkey-miniapp
-
-# 基于 ../hotkey-server/docs/openapi.json 生成客户端
-npm run openapi:generate
-
-# 继续执行小程序端同步门禁
-npm run test
+cd hotkey-web
+# 从 ../hotkey-server/docs/openapi.json 生成客户端（具体脚本见 web 仓 README）
+npm run openapi
 npm run typecheck
-npm run build:weapp
-bash scripts/validate-repository.sh
+npm run test
 ```
 
-生成产物包含：
-
-- `src/services/hotkey/hotkey-server/*.ts`
-- `src/services/hotkey/hotkey-server/typings.d.ts`
-- 与 `@/utils/request` 对接的请求入口
-
-## 4. 验证
-
-每次生成后按仓执行验证：
+## 小程序生成（hotkey-miniapp）
 
 ```bash
-# hotkey-web
-npm run test
+cd hotkey-miniapp
+# 从 ../hotkey-server/docs/openapi.json 生成客户端（具体脚本见 miniapp 仓 README）
+npm run openapi
 npm run typecheck
-npm run build
-
-# hotkey-miniapp
 npm run test
-npm run typecheck
-npm run build:weapp
 ```
 
-## 5. 契约变更检查清单
+## 错误响应契约
 
-1. `hotkey-server`：修改路由/DTO → `make openapi` → `make openapi-validate` → `bash scripts/validate-repository.sh` 全绿
-2. `hotkey-server`：PR 合并到 main
-3. `hotkey-web`：拉取最新 `docs/openapi.json` → `npm run openapi:generate` → `npm run test` → `npm run typecheck` → `npm run build`
-4. `hotkey-miniapp`：拉取最新 `docs/openapi.json` → `npm run openapi:generate` → `npm run test` → `npm run typecheck` → `npm run build:weapp`
-5. 对 Web 受影响主链路使用 `vercel:agent-browser` 回归
-6. 若 miniapp 有浏览器可承载入口，执行等价回归；否则记录专属小程序验证路径
+所有 API 错误体统一为：
+
+```json
+{ "error": "human readable message", "code": "optional_machine_code" }
+```
+
+Web 与小程序请求层必须消费 `{ error, code }`，不得仅依赖 HTTP 状态码文案。
+
+## 何时禁止进入下游
+
+以下情况 **不得** 在 web/miniapp 开始同步：
+
+1. 未运行 `make openapi` / `make openapi-validate`
+2. `docs/openapi.json` 未更新或与路由不一致
+3. `bash scripts/validate-repository.sh` 未通过
