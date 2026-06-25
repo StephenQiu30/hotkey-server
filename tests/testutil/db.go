@@ -8,13 +8,14 @@ import (
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
-// SetupTestDB opens a pgx connection to the test database, verifies
+// SetupTestDB opens a GORM connection to the test database, verifies
 // connectivity, truncates all tables in FK-safe order, and returns
-// the ready-to-use *sql.DB.  The test is skipped when no database
-// URL is available.
-func SetupTestDB(t *testing.T) *sql.DB {
+// the ready-to-use *gorm.DB. The test is skipped when no database URL is available.
+func SetupTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	SkipIfNoDB(t)
 
@@ -23,29 +24,36 @@ func SetupTestDB(t *testing.T) *sql.DB {
 		dsn = os.Getenv("DATABASE_URL")
 	}
 
-	db, err := sql.Open("pgx", dsn)
+	sqlDB, err := sql.Open("pgx", dsn)
 	if err != nil {
 		t.Fatalf("testutil: open db: %v", err)
 	}
 
-	t.Cleanup(func() {
-		db.Close()
-	})
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := db.PingContext(ctx); err != nil {
+	if err := sqlDB.PingContext(ctx); err != nil {
+		sqlDB.Close()
 		t.Fatalf("testutil: ping db: %v", err)
 	}
 
-	cleanTables(t, db)
+	cleanTables(t, sqlDB)
 
-	return db
+	gdb, err := gorm.Open(postgres.New(postgres.Config{Conn: sqlDB}), &gorm.Config{})
+	if err != nil {
+		sqlDB.Close()
+		t.Fatalf("testutil: open gorm: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if db, err := gdb.DB(); err == nil {
+			db.Close()
+		}
+	})
+
+	return gdb
 }
 
-// cleanTables truncates every table in FK-dependency order so that
-// each test starts from a known-empty state.
 func cleanTables(t *testing.T, db *sql.DB) {
 	t.Helper()
 

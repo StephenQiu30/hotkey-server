@@ -1,7 +1,6 @@
 package testutil
 
 import (
-	"database/sql"
 	"net/http"
 	"testing"
 
@@ -9,43 +8,26 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/database"
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
-	"github.com/StephenQiu30/hotkey-server/internal/server"
+	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"gorm.io/gorm"
 )
 
 // TestJWTSecret is a deterministic secret used across integration tests.
-// Exported so that test helpers in other packages can mint valid tokens.
 const TestJWTSecret = "test-jwt-secret-for-integration"
 
-// SetupTestRouter wires the real service layer against the given *sql.DB
+// SetupTestRouter wires the real service layer against the given *gorm.DB
 // and returns a fully-initialised http.Handler ready for httptest.NewServer.
-func SetupTestRouter(t *testing.T, db *sql.DB) http.Handler {
+func SetupTestRouter(t *testing.T, db *gorm.DB) http.Handler {
 	t.Helper()
 
-	// Auth
-	authRepo := database.NewAuthRepo(db)
-	authSvc := auth.NewService(authRepo)
-	authHandler := auth.NewHandler(authSvc, TestJWTSecret)
-
-	// Monitor
-	monitorRepo := database.NewMonitorRepo(db)
-	monitorSvc := monitor.NewService(monitorRepo)
-	monitorHandler := monitor.NewHandler(monitorSvc)
-
-	// Notification
-	notifyRepo := database.NewNotifyRepo(db)
-	notifySvc := notify.NewService(notifyRepo)
-	notifyHandler := notify.NewHandler(notifySvc)
-
-	// Middleware
-	authMiddleware := server.AuthMiddleware(TestJWTSecret)
-
-	return server.NewRouter(server.Dependencies{
-		AuthHandler:         authHandler,
-		MonitorHandler:      monitorHandler,
-		TopicHandler:        nil,
-		TrendHandler:        nil,
-		PostHandler:         nil,
-		NotificationHandler: notifyHandler,
-		AuthMiddleware:      authMiddleware,
+	return platformhttp.NewRouter(platformhttp.Config{
+		JWTSecret:     TestJWTSecret,
+		SmokeTest:     false,
+		AuthService:   auth.NewService(database.NewAuthRepo(db)),
+		MonitorSvc:    monitor.NewService(database.NewMonitorRepo(db)),
+		NotifySvc:     notify.NewService(database.NewNotifyRepo(db)),
+		PostQuerySvc:  database.NewContentQueryService(db),
+		TopicQuerySvc: database.NewTopicQueryService(db),
+		TrendQuerySvc: database.NewTrendQueryService(db),
 	})
 }

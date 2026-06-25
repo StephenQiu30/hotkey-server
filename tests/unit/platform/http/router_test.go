@@ -1,16 +1,15 @@
 package platformhttp_test
 
 import (
-	"encoding/json"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/danielgtaylor/huma/v2"
-	"github.com/danielgtaylor/huma/v2/adapters/humago"
+	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/StephenQiu30/hotkey-server/internal/auth"
@@ -21,8 +20,6 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/topic"
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
 )
-
-// --- Stub repositories for testing ---
 
 type stubAuthRepo struct{ users []auth.User }
 
@@ -95,9 +92,8 @@ func (s *stubTrendQueryService) GetMonitorTrends(_ int64, _ time.Time) ([]trend.
 	return nil, nil
 }
 
-// newTestHandler creates an http.Handler with smoke test mode enabled.
 func newTestHandler() http.Handler {
-	_, mux := platformhttp.NewAPI(platformhttp.Config{
+	return platformhttp.NewRouter(platformhttp.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     true,
 		AuthService:   auth.NewService(&stubAuthRepo{}),
@@ -107,7 +103,6 @@ func newTestHandler() http.Handler {
 		TopicQuerySvc: &stubTopicQueryService{},
 		TrendQuerySvc: &stubTrendQueryService{},
 	})
-	return mux
 }
 
 func TestHealthEndpoint(t *testing.T) {
@@ -125,7 +120,7 @@ func TestHealthEndpoint(t *testing.T) {
 }
 
 func TestHealthEndpointDoesNotRequireAuth(t *testing.T) {
-	_, mux := platformhttp.NewAPI(platformhttp.Config{
+	router := platformhttp.NewRouter(platformhttp.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
 		AuthService:   auth.NewService(&stubAuthRepo{}),
@@ -138,7 +133,7 @@ func TestHealthEndpointDoesNotRequireAuth(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rr := httptest.NewRecorder()
-	mux.ServeHTTP(rr, req)
+	router.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200 without auth, got %d: %s", rr.Code, rr.Body.String())
@@ -160,7 +155,6 @@ func TestRegisterReturns201(t *testing.T) {
 
 func TestLoginReturns200(t *testing.T) {
 	handler := newTestHandler()
-	// Register first
 	regBody := `{"email":"login@example.com","password":"Passw0rd!","display_name":"Login"}`
 	regReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(regBody))
 	regReq.Header.Set("Content-Type", "application/json")
@@ -171,7 +165,6 @@ func TestLoginReturns200(t *testing.T) {
 		t.Fatalf("register failed: %d", regRR.Code)
 	}
 
-	// Login
 	loginBody := `{"email":"login@example.com","password":"Passw0rd!"}`
 	loginReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(loginBody))
 	loginReq.Header.Set("Content-Type", "application/json")
@@ -187,8 +180,7 @@ func TestLoginReturns200(t *testing.T) {
 }
 
 func TestMonitorsRequireAuth(t *testing.T) {
-	// Without smoke test mode, protected endpoints should return 401.
-	_, mux := platformhttp.NewAPI(platformhttp.Config{
+	router := platformhttp.NewRouter(platformhttp.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
 		AuthService:   auth.NewService(&stubAuthRepo{}),
@@ -215,7 +207,7 @@ func TestMonitorsRequireAuth(t *testing.T) {
 		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
 			req := httptest.NewRequest(tt.method, tt.path, nil)
 			rr := httptest.NewRecorder()
-			mux.ServeHTTP(rr, req)
+			router.ServeHTTP(rr, req)
 
 			if rr.Code != http.StatusUnauthorized {
 				t.Errorf("expected 401, got %d: %s", rr.Code, rr.Body.String())
@@ -225,8 +217,7 @@ func TestMonitorsRequireAuth(t *testing.T) {
 }
 
 func TestJWTAuthPropagatesUserID(t *testing.T) {
-	// Create API without smoke test mode to exercise real JWT validation.
-	_, mux := platformhttp.NewAPI(platformhttp.Config{
+	router := platformhttp.NewRouter(platformhttp.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
 		AuthService:   auth.NewService(&stubAuthRepo{}),
@@ -237,7 +228,6 @@ func TestJWTAuthPropagatesUserID(t *testing.T) {
 		TrendQuerySvc: &stubTrendQueryService{},
 	})
 
-	// Generate a valid JWT token for user ID 42.
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": float64(42),
 		"exp": time.Now().Add(time.Hour).Unix(),
@@ -250,7 +240,7 @@ func TestJWTAuthPropagatesUserID(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/monitors", nil)
 	req.Header.Set("Authorization", "Bearer "+tokenStr)
 	rr := httptest.NewRecorder()
-	mux.ServeHTTP(rr, req)
+	router.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200 with valid JWT, got %d: %s", rr.Code, rr.Body.String())
@@ -287,17 +277,16 @@ func TestSmokeBypassAuth(t *testing.T) {
 }
 
 func TestRecoverMiddlewareReturnsUnifiedErrorBody(t *testing.T) {
-	mux := http.NewServeMux()
-	api := humago.New(mux, huma.DefaultConfig("test", "1.0.0"))
-	api.UseMiddleware(platformhttp.RecoverMiddleware())
-
-	huma.Get(api, "/panic", func(ctx context.Context, input *struct{}) (*struct{}, error) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(platformhttp.RecoverMiddleware())
+	r.GET("/panic", func(c *gin.Context) {
 		panic("boom")
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/panic", nil)
 	rr := httptest.NewRecorder()
-	mux.ServeHTTP(rr, req)
+	r.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d: %s", rr.Code, rr.Body.String())
