@@ -5,8 +5,8 @@ audience: Dev, QA, Ops
 feature_area: GORM与数据库迁移
 purpose: 定义新 ORM 主线、migration 主线、核心 repository 迁移顺序与复杂查询约束
 canonical_path: docs/plans/015-GORM与数据库迁移计划.md
-status: draft
-version: v1.0
+status: completed
+version: v1.1
 owner: Codex
 inputs:
   - docs/design/006-Go后端工程与启动架构设计.md
@@ -20,6 +20,8 @@ triggers:
 downstream:
   - docs/plans/016-worker与遗留清理计划.md
 ---
+
+> **已完成（2026-06-25）：** API 与 Worker 均已收敛至 `internal/database` GORM 单轨；sqlc 与 raw SQL 业务路径已移除。
 
 # 背景
 
@@ -114,6 +116,10 @@ rg -n "db/schema.sql" README.md docs/operations scripts
 2. 如果 schema 权威不先切换，ORM 模型会反向驱动数据库漂移。
 
 # 变更记录
+
+## v1.1
+
+1. 标记计划状态为已完成。
 
 ## v1.0
 

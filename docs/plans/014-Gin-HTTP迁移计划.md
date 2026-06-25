@@ -5,8 +5,8 @@ audience: Dev, QA
 feature_area: Gin HTTP迁移
 purpose: 定义从旧 HTTP 主线迁移到 Gin 主线的执行顺序、边界和验证门禁
 canonical_path: docs/plans/014-Gin-HTTP迁移计划.md
-status: draft
-version: v1.0
+status: completed
+version: v1.1
 owner: Codex
 inputs:
   - docs/design/005-平台整体重构设计.md
@@ -20,6 +20,8 @@ triggers:
 downstream:
   - docs/plans/016-worker与遗留清理计划.md
 ---
+
+> **已完成（2026-06-25）：** Gin 主线、`internal/platform/http`、静态 OpenAPI 与旧 Huma/server 删除均已完成。
 
 # 背景
 
@@ -117,6 +119,10 @@ rg -n "internal/server|huma" internal tests scripts cmd
 2. 如果旧路由继续留在主运行路径上，HTTP 主线不会真正收敛。
 
 # 变更记录
+
+## v1.1
+
+1. 标记计划状态为已完成。
 
 ## v1.0
 

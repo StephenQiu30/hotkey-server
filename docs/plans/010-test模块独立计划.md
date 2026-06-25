@@ -5,8 +5,8 @@ audience: Dev, QA
 feature_area: 测试工程化
 purpose: 按 003 设计将 28 个 Go 测试外移至 tests/，保持 make validate 全绿
 canonical_path: docs/plans/010-test模块独立计划.md
-status: draft
-version: v1.0
+status: partial
+version: v1.1
 owner: Codex
 inputs:
   - docs/design/003-test模块独立设计.md
@@ -18,6 +18,8 @@ triggers:
   - 003 设计评审通过
 downstream: []
 ---
+
+> **路径注记：** 文中 `internal/server` 等为迁移前示例。`tests/` 外移已基本完成；工程主线见 [`006`](../design/006-Go后端工程与启动架构设计.md)。
 
 # Test 模块独立实施计划
 
