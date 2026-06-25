@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 	"time"
@@ -16,45 +15,40 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/platform/x"
 	"github.com/StephenQiu30/hotkey-server/internal/scoring"
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
-func newJobRunner(cfg config.Config, sqlDB *sql.DB) *jobs.Runner {
+func newJobRunner(cfg config.Config, db *gorm.DB) *jobs.Runner {
 	xClient := x.NewClient(cfg.XToken, cfg.XBaseURL)
 	connector := jobs.NewXConnectorAdapter(xClient, cfg.XToken)
 
-	hitScorerRepo := jobs.NewDBHitScorerRepo(sqlDB)
+	hitScorerRepo := database.NewHitScoreRepo(db)
 	scoringSvc := scoring.NewService(hitScorerRepo)
 	scorer := jobs.NewScorerAdapter(scoringSvc)
 
-	runRepo := jobs.NewDBRunRepository(sqlDB)
-	postRepo := jobs.NewDBPostRepository(sqlDB)
-	hitRepo := jobs.NewDBHitRepository(sqlDB)
+	runRepo := database.NewRunRepo(db)
+	postRepo := database.NewPollPostRepo(db)
+	hitRepo := database.NewPollHitRepo(db)
 	pollJob := jobs.NewPollMonitorJob(runRepo, postRepo, hitRepo, connector, scorer)
 
-	gdb := gormDBFromSQL(sqlDB)
-	topicRepo := database.NewTopicRepo(gdb)
-	postCandidateProvider := jobs.NewDBPostCandidateProvider(sqlDB)
-	topicPersister := jobs.NewTopicPersisterAdapter(topicRepo)
-	aggregateJob := jobs.NewAggregateTopicsJob(postCandidateProvider, topicPersister)
+	topicRepo := database.NewTopicRepo(db)
+	jobQuery := database.NewJobQueryRepo(db)
+	aggregateJob := jobs.NewAggregateTopicsJob(jobQuery, topicRepo)
 
-	trendRepo := database.NewTrendRepo(gdb)
+	trendRepo := database.NewTrendRepo(db)
 	trendSvc := trend.NewService(trendRepo)
-	topicProvider := jobs.NewDBTopicProvider(sqlDB)
-	snapshotJob := jobs.NewBuildSnapshotsJob(trendSvc, topicProvider)
+	snapshotJob := jobs.NewBuildSnapshotsJob(trendSvc, jobQuery)
 
-	deliveryRepo := jobs.NewDBDeliveryRepository(sqlDB)
-	emailResolver := jobs.NewDBUserEmailLookup(sqlDB)
+	deliveryRepo := database.NewDeliveryRepo(db)
 	mailer := &noopMailer{}
-	dispatchJob := jobs.NewDispatchJob(deliveryRepo, mailer, emailResolver)
+	dispatchJob := jobs.NewDispatchJob(deliveryRepo, mailer, deliveryRepo)
 
-	monitorLister := jobs.NewDBMonitorLister(sqlDB)
+	monitorRepo := database.NewMonitorRepo(db)
 
 	runner := jobs.NewRunner()
 	runner.Register("poll_monitor", func(ctx context.Context) error {
 		log.Print(observability.RenderLog("worker", "poll_monitor: running"))
-		monitorIDs, err := monitorLister.ListActiveIDs(ctx)
+		monitorIDs, err := monitorRepo.ListActiveIDs(ctx)
 		if err != nil {
 			return fmt.Errorf("list monitors: %w", err)
 		}
@@ -67,7 +61,7 @@ func newJobRunner(cfg config.Config, sqlDB *sql.DB) *jobs.Runner {
 	}, 1*time.Minute)
 	runner.Register("aggregate_topics", func(ctx context.Context) error {
 		log.Print(observability.RenderLog("worker", "aggregate_topics: running"))
-		monitorIDs, err := monitorLister.ListActiveIDs(ctx)
+		monitorIDs, err := monitorRepo.ListActiveIDs(ctx)
 		if err != nil {
 			return fmt.Errorf("list monitors: %w", err)
 		}
@@ -80,7 +74,7 @@ func newJobRunner(cfg config.Config, sqlDB *sql.DB) *jobs.Runner {
 	}, 5*time.Minute)
 	runner.Register("build_snapshots", func(ctx context.Context) error {
 		log.Print(observability.RenderLog("worker", "build_snapshots: running"))
-		monitorIDs, err := monitorLister.ListActiveIDs(ctx)
+		monitorIDs, err := monitorRepo.ListActiveIDs(ctx)
 		if err != nil {
 			return fmt.Errorf("list monitors: %w", err)
 		}
@@ -97,7 +91,7 @@ func newJobRunner(cfg config.Config, sqlDB *sql.DB) *jobs.Runner {
 	}, 1*time.Minute)
 
 	if cfg.ObsidianVaultPath != "" {
-		exporter := database.NewExporter(gdb)
+		exporter := database.NewExporter(db)
 		llmClient := llm.NewOpenAIClient(llm.OpenAIConfig{
 			APIKey:  cfg.LLMAPIKey,
 			BaseURL: cfg.LLMBaseURL,
@@ -105,7 +99,7 @@ func newJobRunner(cfg config.Config, sqlDB *sql.DB) *jobs.Runner {
 		})
 		writer := &jobs.DefaultVaultWriter{}
 
-		monitorIDs, err := monitorLister.ListActiveIDs(context.Background())
+		monitorIDs, err := monitorRepo.ListActiveIDs(context.Background())
 		if err != nil {
 			log.Printf("worker: failed to list monitors: %v", err)
 		} else {
@@ -138,16 +132,6 @@ func newJobRunner(cfg config.Config, sqlDB *sql.DB) *jobs.Runner {
 	}
 
 	return runner
-}
-
-// gormDBFromSQL wraps an existing *sql.DB as *gorm.DB for repository use in worker.
-func gormDBFromSQL(sqlDB *sql.DB) *gorm.DB {
-	gdb, err := gorm.Open(postgres.New(postgres.Config{Conn: sqlDB}), &gorm.Config{})
-	if err != nil {
-		log.Printf("worker: gorm wrap failed: %v", err)
-		return nil
-	}
-	return gdb
 }
 
 type noopMailer struct{}

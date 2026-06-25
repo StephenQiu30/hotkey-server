@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func runWorkerWithDB(ctx context.Context, cfg config.Config, gdb *gorm.DB) {
+func runWorkerWithDB(ctx context.Context, cfg config.Config, db *gorm.DB) {
 	ctx, cancel := context.WithCancel(ctx)
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -22,13 +22,7 @@ func runWorkerWithDB(ctx context.Context, cfg config.Config, gdb *gorm.DB) {
 		cancel()
 	}()
 
-	sqlDB, err := gdb.DB()
-	if err != nil {
-		log.Printf("worker: failed to get sql db: %v", err)
-		return
-	}
-
-	runner := newJobRunner(cfg, sqlDB)
+	runner := newJobRunner(cfg, db)
 	log.Print(observability.RenderLog("worker", "ready, running jobs"))
 	runner.Run(ctx)
 }

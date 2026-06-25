@@ -84,6 +84,27 @@ func (r *MonitorRepo) ListByUser(ctx context.Context, userID int64) ([]monitor.M
 	return monitors, rows.Err()
 }
 
+// ListActiveIDs returns IDs of all active monitors for worker iteration.
+func (r *MonitorRepo) ListActiveIDs(ctx context.Context) ([]int64, error) {
+	rows, err := r.db.WithContext(ctx).Raw(
+		`SELECT id FROM keyword_monitors WHERE status = 'active' ORDER BY id`,
+	).Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 func (r *MonitorRepo) Update(ctx context.Context, id int64, input monitor.UpdateMonitorInput) (monitor.Monitor, error) {
 	sets := []string{}
 	args := []interface{}{}
