@@ -12,22 +12,25 @@
 
 ### 职责
 
-- FastAPI 后端：账号、热点、榜单、AI 摘要、选题生成、收藏关注、通知、搜索、数据源采集。
-- OpenAPI/Swagger 是跨仓契约事实源；`hotkey-web` 与 `hotkey-miniapp` 均从本仓生成客户端。
+- Go 后端（Gin + GORM）：账号、热点监控、内容采集、话题聚合、趋势、通知、Obsidian 日报。
+- OpenAPI 契约事实源：`docs/openapi.json`；`hotkey-web` 与 `hotkey-miniapp` 从本仓生成客户端。
 
 ### 常用命令
 
 ```bash
 make test              # 运行测试
 make lint              # 静态检查
-make build             # 构建
-uvicorn app.main:app --reload   # 本地开发（以实际入口为准）
+make build             # 构建 ./hotkey-server
+make dev               # 本地开发（go run ./cmd/hotkey）
+make up                # Docker Compose 全栈
+make openapi           # 生成 docs/openapi.json
 ```
 
-### OpenAPI 输出
+### 工程主线
 
-- 规范路径：`docs/openapi.json`（或项目实际导出路径）
-- 契约变更必须先在本仓稳定并合并，再通知 web/miniapp 重新生成客户端
+- HTTP：`internal/platform/http`（Gin）
+- 持久化：`internal/database`（GORM）
+- 入口：`cmd/hotkey`（API + Worker 单进程）
 
 ### 角色与流程
 
