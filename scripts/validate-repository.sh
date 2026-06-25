@@ -76,7 +76,7 @@ echo "=== Implementation files ==="
 impl_files=(
   "cmd/hotkey/main.go"
   "internal/config/config.go"
-  "internal/server/router.go"
+  "internal/platform/http/router.go"
   "db/schema.sql"
 )
 for file in "${impl_files[@]}"; do

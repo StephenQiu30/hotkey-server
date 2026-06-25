@@ -46,9 +46,3 @@ func NewRouter(cfg Config) *gin.Engine {
 
 	return r
 }
-
-// NewAPI is an alias for NewRouter for backward compatibility in tests.
-func NewAPI(cfg Config) (*gin.Engine, *gin.Engine) {
-	r := NewRouter(cfg)
-	return r, r
-}
