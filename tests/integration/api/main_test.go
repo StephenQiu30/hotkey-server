@@ -40,7 +40,7 @@ func TestIntegrationSmoke(t *testing.T) {
 		Email       string `json:"email"`
 		DisplayName string `json:"display_name"`
 	}
-	if err := json.NewDecoder(regResp.Body).Decode(&regUser); err != nil {
+	if err := decodeData(regResp, &regUser); err != nil {
 		t.Fatalf("register decode: %v", err)
 	}
 	if regUser.ID == 0 {
@@ -71,7 +71,7 @@ func TestIntegrationSmoke(t *testing.T) {
 		User  struct{ ID int64 } `json:"user"`
 		Token string             `json:"token"`
 	}
-	if err := json.NewDecoder(loginResp.Body).Decode(&loginResult); err != nil {
+	if err := decodeData(loginResp, &loginResult); err != nil {
 		t.Fatalf("login decode: %v", err)
 	}
 	if loginResult.Token == "" {
@@ -94,7 +94,7 @@ func TestIntegrationSmoke(t *testing.T) {
 	}
 
 	var monitors []monitor.Monitor
-	if err := json.NewDecoder(monResp.Body).Decode(&monitors); err != nil {
+	if err := decodeData(monResp, &monitors); err != nil {
 		t.Fatalf("monitors decode: %v", err)
 	}
 	// New user has no monitors, so empty list is expected.
@@ -129,7 +129,7 @@ func TestIntegrationSmoke(t *testing.T) {
 	defer listResp.Body.Close()
 
 	var monitorsList []monitor.Monitor
-	if err := json.NewDecoder(listResp.Body).Decode(&monitorsList); err != nil {
+	if err := decodeData(listResp, &monitorsList); err != nil {
 		t.Fatalf("list monitors decode: %v", err)
 	}
 	if len(monitorsList) != 1 {
@@ -178,7 +178,7 @@ func TestIntegrationRegisterReturnsRealFields(t *testing.T) {
 		Email       string `json:"email"`
 		DisplayName string `json:"display_name"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := decodeData(resp, &result); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 
@@ -191,6 +191,16 @@ func TestIntegrationRegisterReturnsRealFields(t *testing.T) {
 	if result.DisplayName == "" {
 		t.Error("expected non-empty display_name")
 	}
+}
+
+func decodeData(resp *http.Response, out any) error {
+	var envelope struct {
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+		return err
+	}
+	return json.Unmarshal(envelope.Data, out)
 }
 
 // TestIntegrationProtectedEndpointRejectsNoToken verifies 401 without auth.

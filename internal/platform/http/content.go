@@ -35,6 +35,6 @@ func RegisterContentRoutes(r *gin.Engine, svc content.PostQueryService) {
 			posts = []content.PostSummary{}
 		}
 
-		c.JSON(http.StatusOK, posts)
+		RespondOK(c, posts)
 	})
 }

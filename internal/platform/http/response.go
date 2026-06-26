@@ -29,6 +29,14 @@ func RespondOK(c *gin.Context, data any) {
 	})
 }
 
+// RespondCreated writes a created response using the unified response contract.
+func RespondCreated(c *gin.Context, data any) {
+	c.JSON(http.StatusCreated, ResponseBody{
+		Data:      data,
+		RequestID: requestIDFromContext(c),
+	})
+}
+
 // RespondPage writes a paginated response using the unified response contract.
 func RespondPage(c *gin.Context, data any, page, pageSize, total int) {
 	c.JSON(http.StatusOK, PageBody{

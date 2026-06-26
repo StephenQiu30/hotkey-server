@@ -28,7 +28,7 @@ func RegisterMonitorRoutes(r *gin.Engine, svc *monitor.Service) {
 		for i, m := range monitors {
 			resp[i] = monitorToResponse(m)
 		}
-		c.JSON(http.StatusOK, resp)
+		RespondOK(c, resp)
 	})
 
 	r.POST("/api/v1/monitors", func(c *gin.Context) {
@@ -69,7 +69,7 @@ func RegisterMonitorRoutes(r *gin.Engine, svc *monitor.Service) {
 			return
 		}
 
-		c.JSON(http.StatusCreated, monitorToResponse(m))
+		RespondCreated(c, monitorToResponse(m))
 	})
 
 	r.GET("/api/v1/monitors/:id", func(c *gin.Context) {
@@ -100,7 +100,7 @@ func RegisterMonitorRoutes(r *gin.Engine, svc *monitor.Service) {
 			return
 		}
 
-		c.JSON(http.StatusOK, monitorToResponse(m))
+		RespondOK(c, monitorToResponse(m))
 	})
 
 	r.PATCH("/api/v1/monitors/:id", func(c *gin.Context) {
@@ -164,7 +164,7 @@ func RegisterMonitorRoutes(r *gin.Engine, svc *monitor.Service) {
 			return
 		}
 
-		c.JSON(http.StatusOK, monitorToResponse(updated))
+		RespondOK(c, monitorToResponse(updated))
 	})
 }
 

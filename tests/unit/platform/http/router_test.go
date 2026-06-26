@@ -159,11 +159,27 @@ func TestRegisterReturns201(t *testing.T) {
 	body := `{"email":"test@example.com","password":"Passw0rd!","display_name":"Test"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Request-Id", "req-register")
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var resp struct {
+		Data struct {
+			Email string `json:"email"`
+		} `json:"data"`
+		RequestID string `json:"request_id"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode register response: %v", err)
+	}
+	if resp.Data.Email != "test@example.com" {
+		t.Fatalf("expected wrapped register email, got %q", resp.Data.Email)
+	}
+	if resp.RequestID != "req-register" {
+		t.Fatalf("expected request id req-register, got %q", resp.RequestID)
 	}
 }
 
@@ -188,8 +204,16 @@ func TestLoginReturns200(t *testing.T) {
 	if loginRR.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", loginRR.Code, loginRR.Body.String())
 	}
-	if !strings.Contains(loginRR.Body.String(), `"token"`) {
-		t.Fatalf("expected token in response, got: %s", loginRR.Body.String())
+	var resp struct {
+		Data struct {
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(loginRR.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode login response: %v", err)
+	}
+	if resp.Data.Token == "" {
+		t.Fatalf("expected token in wrapped response, got: %s", loginRR.Body.String())
 	}
 }
 
@@ -285,6 +309,16 @@ func TestSmokeBypassAuth(t *testing.T) {
 
 			if rr.Code != http.StatusOK {
 				t.Errorf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+			}
+			var body struct {
+				Data      json.RawMessage `json:"data"`
+				RequestID string          `json:"request_id"`
+			}
+			if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+				t.Fatalf("expected JSON envelope, got %v: %s", err, rr.Body.String())
+			}
+			if len(body.Data) == 0 {
+				t.Fatalf("expected wrapped data for %s, got %s", tt.path, rr.Body.String())
 			}
 		})
 	}

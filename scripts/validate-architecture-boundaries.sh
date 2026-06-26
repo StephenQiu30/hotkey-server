@@ -48,7 +48,18 @@ if [ -n "$env_refs" ]; then
   fi
 fi
 
+route_json_refs=$(rg -n 'c\.JSON\(' internal/platform/http --glob '*.go' || true)
+if [ -n "$route_json_refs" ]; then
+  invalid_route_json_refs=$(printf '%s\n' "$route_json_refs" | rg -v '^internal/platform/http/(errors|response|router)\.go:' || true)
+  if [ -n "$invalid_route_json_refs" ]; then
+    echo "FAIL: business HTTP routes must use unified responders instead of c.JSON"
+    printf '%s\n' "$invalid_route_json_refs"
+    exit 1
+  fi
+fi
+
 echo "OK: schema and migration boundaries are present"
 echo "OK: gorm references stay in repository/app composition layers"
 echo "OK: complex DB queries stay inside internal/database"
 echo "OK: environment access stays in approved wiring layers"
+echo "OK: business HTTP routes use unified responders"
