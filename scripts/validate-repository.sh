@@ -42,6 +42,7 @@ required_files=(
   "cmd/hotkey/main.go"
   "docs/openapi.json"
   "scripts/validate-openapi.sh"
+  "scripts/validate-architecture-boundaries.sh"
 )
 
 echo "=== Required files ==="
@@ -127,6 +128,11 @@ echo ""
 echo "=== OpenAPI validation ==="
 bash "$(dirname "$0")/validate-openapi.sh"
 echo "OK: OpenAPI validation passed"
+
+echo ""
+echo "=== Architecture boundary validation ==="
+bash "$(dirname "$0")/validate-architecture-boundaries.sh"
+echo "OK: architecture boundary validation passed"
 
 echo ""
 echo "=== Runtime API smoke ==="
