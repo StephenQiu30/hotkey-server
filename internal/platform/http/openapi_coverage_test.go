@@ -119,6 +119,51 @@ func TestOpenAPIErrorBodyIncludesRequestID(t *testing.T) {
 	}
 }
 
+func TestOpenAPIHealthUsesSuccessEnvelope(t *testing.T) {
+	spec := platformhttp.BuildOpenAPISpec()
+	paths, _ := spec["paths"].(map[string]any)
+	healthPath, _ := paths["/healthz"].(map[string]any)
+	getOp, _ := healthPath["get"].(map[string]any)
+	responses, _ := getOp["responses"].(map[string]any)
+	okResponse, _ := responses["200"].(map[string]any)
+	content, _ := okResponse["content"].(map[string]any)
+	applicationJSON, _ := content["application/json"].(map[string]any)
+	schema, _ := applicationJSON["schema"].(map[string]any)
+
+	if got := schema["$ref"]; got != "#/components/schemas/HealthEnvelope" {
+		t.Fatalf("expected health success envelope schema ref, got %#v", got)
+	}
+}
+
+func TestOpenAPIOperationsDeclareUnifiedErrorResponse(t *testing.T) {
+	spec := platformhttp.BuildOpenAPISpec()
+	paths, ok := spec["paths"].(map[string]any)
+	if !ok {
+		t.Fatal("expected paths in static OpenAPI spec")
+	}
+
+	for path, pathValue := range paths {
+		pathItem, ok := pathValue.(map[string]any)
+		if !ok {
+			t.Fatalf("expected path item for %s", path)
+		}
+		for method, opValue := range pathItem {
+			opMap, ok := opValue.(map[string]any)
+			if !ok {
+				continue
+			}
+			responses, _ := opMap["responses"].(map[string]any)
+			defaultResponse, _ := responses["default"].(map[string]any)
+			content, _ := defaultResponse["content"].(map[string]any)
+			applicationJSON, _ := content["application/json"].(map[string]any)
+			schema, _ := applicationJSON["schema"].(map[string]any)
+			if got := schema["$ref"]; got != "#/components/schemas/ErrorBody" {
+				t.Fatalf("%s %s missing default ErrorBody response, got %#v", method, path, got)
+			}
+		}
+	}
+}
+
 func TestOpenAPIPathCount(t *testing.T) {
 	specPath := filepath.Join("..", "..", "..", "docs", "openapi.json")
 	data, err := os.ReadFile(specPath)

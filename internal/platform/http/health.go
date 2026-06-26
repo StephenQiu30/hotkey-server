@@ -1,15 +1,11 @@
 package http
 
-import (
-	"net/http"
-
-	"github.com/gin-gonic/gin"
-)
+import "github.com/gin-gonic/gin"
 
 // RegisterHealthRoutes registers the /healthz endpoint.
 func RegisterHealthRoutes(r *gin.Engine) {
 	r.GET("/healthz", func(c *gin.Context) {
-		c.JSON(http.StatusOK, HealthBody{Status: "ok"})
+		RespondOK(c, HealthBody{Status: "ok"})
 	})
 }
 

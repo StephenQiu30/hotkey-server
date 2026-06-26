@@ -109,14 +109,27 @@ func newTestHandler() http.Handler {
 func TestHealthEndpoint(t *testing.T) {
 	handler := newTestHandler()
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("X-Request-Id", "req-health")
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
 	}
-	if !strings.Contains(rr.Body.String(), `"status"`) {
-		t.Fatalf("expected status field in response, got: %s", rr.Body.String())
+	var body struct {
+		Data struct {
+			Status string `json:"status"`
+		} `json:"data"`
+		RequestID string `json:"request_id"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected JSON body, got %v: %s", err, rr.Body.String())
+	}
+	if body.Data.Status != "ok" {
+		t.Fatalf("expected wrapped health status ok, got %q", body.Data.Status)
+	}
+	if body.RequestID != "req-health" {
+		t.Fatalf("expected request id req-health, got %q", body.RequestID)
 	}
 }
 

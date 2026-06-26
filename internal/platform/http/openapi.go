@@ -30,6 +30,21 @@ func BuildOpenAPISpec() map[string]any {
 					},
 					"required": []string{"error"},
 				},
+				"HealthBody": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"status": map[string]any{"type": "string"},
+					},
+					"required": []string{"status"},
+				},
+				"HealthEnvelope": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"data":       map[string]any{"$ref": "#/components/schemas/HealthBody"},
+						"request_id": map[string]any{"type": "string"},
+					},
+					"required": []string{"data"},
+				},
 				"UserResponse": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
@@ -70,7 +85,7 @@ func BuildOpenAPISpec() map[string]any {
 		},
 		"paths": map[string]any{
 			"/healthz": map[string]any{
-				"get": op("health-check", "Health check", []string{"health"}, nil, nil),
+				"get": op("health-check", "Health check", []string{"health"}, nil, schemaContent("#/components/schemas/HealthEnvelope")),
 			},
 			"/api/v1/auth/register": map[string]any{
 				"post": op("register", "Register a new user", []string{"auth"}, nil, jsonContent),
@@ -108,6 +123,14 @@ func BuildOpenAPISpec() map[string]any {
 	}
 }
 
+func schemaContent(ref string) map[string]any {
+	return map[string]any{
+		"application/json": map[string]any{
+			"schema": map[string]any{"$ref": ref},
+		},
+	}
+}
+
 func op(operationID, summary string, tags []string, security []map[string][]string, content map[string]any) map[string]any {
 	m := map[string]any{
 		"operationId": operationID,
@@ -119,12 +142,21 @@ func op(operationID, summary string, tags []string, security []map[string][]stri
 	}
 	if content != nil {
 		m["responses"] = map[string]any{
-			"200": map[string]any{"description": "OK", "content": content},
+			"200":     map[string]any{"description": "OK", "content": content},
+			"default": errorResponse(),
 		}
 	} else {
 		m["responses"] = map[string]any{
-			"200": map[string]any{"description": "OK"},
+			"200":     map[string]any{"description": "OK"},
+			"default": errorResponse(),
 		}
 	}
 	return m
+}
+
+func errorResponse() map[string]any {
+	return map[string]any{
+		"description": "Error",
+		"content":     schemaContent("#/components/schemas/ErrorBody"),
+	}
 }

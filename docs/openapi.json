@@ -18,6 +18,31 @@
         ],
         "type": "object"
       },
+      "HealthBody": {
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "HealthEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/HealthBody"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
       "LoginResponse": {
         "properties": {
           "token": {
@@ -116,6 +141,16 @@
               "application/json": {}
             },
             "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error"
           }
         },
         "summary": "Login with email and password",
@@ -133,6 +168,16 @@
               "application/json": {}
             },
             "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error"
           }
         },
         "summary": "Register a new user",
@@ -150,6 +195,16 @@
               "application/json": {}
             },
             "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error"
           }
         },
         "security": [
@@ -170,6 +225,16 @@
               "application/json": {}
             },
             "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error"
           }
         },
         "security": [
@@ -192,6 +257,16 @@
               "application/json": {}
             },
             "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error"
           }
         },
         "security": [
@@ -212,6 +287,16 @@
               "application/json": {}
             },
             "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error"
           }
         },
         "security": [
@@ -234,6 +319,16 @@
               "application/json": {}
             },
             "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error"
           }
         },
         "security": [
@@ -256,6 +351,16 @@
               "application/json": {}
             },
             "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error"
           }
         },
         "security": [
@@ -278,6 +383,16 @@
               "application/json": {}
             },
             "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error"
           }
         },
         "security": [
@@ -300,6 +415,16 @@
               "application/json": {}
             },
             "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error"
           }
         },
         "security": [
@@ -322,6 +447,16 @@
               "application/json": {}
             },
             "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error"
           }
         },
         "security": [
@@ -344,6 +479,16 @@
               "application/json": {}
             },
             "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error"
           }
         },
         "security": [
@@ -362,7 +507,24 @@
         "operationId": "health-check",
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthEnvelope"
+                }
+              }
+            },
             "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error"
           }
         },
         "summary": "Health check",
