@@ -135,6 +135,38 @@ func TestOpenAPIHealthUsesSuccessEnvelope(t *testing.T) {
 	}
 }
 
+func TestOpenAPIBusinessOperationsUseSuccessEnvelope(t *testing.T) {
+	spec := platformhttp.BuildOpenAPISpec()
+	paths, ok := spec["paths"].(map[string]any)
+	if !ok {
+		t.Fatal("expected paths in static OpenAPI spec")
+	}
+
+	for path, pathValue := range paths {
+		if path == "/healthz" {
+			continue
+		}
+		pathItem, ok := pathValue.(map[string]any)
+		if !ok {
+			t.Fatalf("expected path item for %s", path)
+		}
+		for method, opValue := range pathItem {
+			opMap, ok := opValue.(map[string]any)
+			if !ok {
+				continue
+			}
+			responses, _ := opMap["responses"].(map[string]any)
+			okResponse, _ := responses["200"].(map[string]any)
+			content, _ := okResponse["content"].(map[string]any)
+			applicationJSON, _ := content["application/json"].(map[string]any)
+			schema, _ := applicationJSON["schema"].(map[string]any)
+			if got := schema["$ref"]; got != "#/components/schemas/ResponseEnvelope" {
+				t.Fatalf("%s %s missing ResponseEnvelope success response, got %#v", method, path, got)
+			}
+		}
+	}
+}
+
 func TestOpenAPIOperationsDeclareUnifiedErrorResponse(t *testing.T) {
 	spec := platformhttp.BuildOpenAPISpec()
 	paths, ok := spec["paths"].(map[string]any)

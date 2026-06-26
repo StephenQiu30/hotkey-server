@@ -3,7 +3,7 @@ package http
 // BuildOpenAPISpec returns a static OpenAPI 3.1.0 document matching registered routes.
 func BuildOpenAPISpec() map[string]any {
 	bearerSecurity := []map[string][]string{{"bearer": {}}}
-	jsonContent := map[string]any{"application/json": map[string]any{}}
+	jsonContent := schemaContent("#/components/schemas/ResponseEnvelope")
 
 	return map[string]any{
 		"openapi": "3.1.0",
@@ -41,6 +41,14 @@ func BuildOpenAPISpec() map[string]any {
 					"type": "object",
 					"properties": map[string]any{
 						"data":       map[string]any{"$ref": "#/components/schemas/HealthBody"},
+						"request_id": map[string]any{"type": "string"},
+					},
+					"required": []string{"data"},
+				},
+				"ResponseEnvelope": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"data":       map[string]any{},
 						"request_id": map[string]any{"type": "string"},
 					},
 					"required": []string{"data"},

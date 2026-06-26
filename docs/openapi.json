@@ -101,6 +101,18 @@
         },
         "type": "object"
       },
+      "ResponseEnvelope": {
+        "properties": {
+          "data": {},
+          "request_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
       "UserResponse": {
         "properties": {
           "display_name": {
@@ -138,7 +150,11 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseEnvelope"
+                }
+              }
             },
             "description": "OK"
           },
@@ -165,7 +181,11 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseEnvelope"
+                }
+              }
             },
             "description": "OK"
           },
@@ -192,7 +212,11 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseEnvelope"
+                }
+              }
             },
             "description": "OK"
           },
@@ -222,7 +246,11 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseEnvelope"
+                }
+              }
             },
             "description": "OK"
           },
@@ -254,7 +282,11 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseEnvelope"
+                }
+              }
             },
             "description": "OK"
           },
@@ -284,7 +316,11 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseEnvelope"
+                }
+              }
             },
             "description": "OK"
           },
@@ -316,7 +352,11 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseEnvelope"
+                }
+              }
             },
             "description": "OK"
           },
@@ -348,7 +388,11 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseEnvelope"
+                }
+              }
             },
             "description": "OK"
           },
@@ -380,7 +424,11 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseEnvelope"
+                }
+              }
             },
             "description": "OK"
           },
@@ -412,7 +460,11 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseEnvelope"
+                }
+              }
             },
             "description": "OK"
           },
@@ -444,7 +496,11 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseEnvelope"
+                }
+              }
             },
             "description": "OK"
           },
@@ -476,7 +532,11 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseEnvelope"
+                }
+              }
             },
             "description": "OK"
           },
