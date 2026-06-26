@@ -12,6 +12,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+
+	platformruntime "github.com/StephenQiu30/hotkey-server/internal/platform/runtime"
 )
 
 type contextKey string
@@ -26,7 +28,28 @@ func RequestIDMiddleware() gin.HandlerFunc {
 		if reqID == "" {
 			reqID = generateRequestID()
 		}
+		traceID := c.GetHeader("X-Trace-Id")
+		if traceID == "" {
+			traceID = reqID
+		}
 		c.Header("X-Request-Id", reqID)
+		c.Header("X-Trace-Id", traceID)
+		c.Set("request_id", reqID)
+		c.Set("trace_id", traceID)
+		ctx := platformruntime.WithRequestID(c.Request.Context(), reqID)
+		ctx = platformruntime.WithTraceID(ctx, traceID)
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
+	}
+}
+
+// ContextMetadataMiddleware injects module and operator metadata into request context.
+func ContextMetadataMiddleware(module string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		operator := c.GetHeader("X-Operator")
+		ctx := platformruntime.WithModule(c.Request.Context(), module)
+		ctx = platformruntime.WithOperator(ctx, operator)
+		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 	}
 }
@@ -37,7 +60,7 @@ func RecoverMiddleware() gin.HandlerFunc {
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("panic recovered: %v", r)
-				body, err := json.Marshal(newInternalErrorBody())
+				body, err := json.Marshal(newInternalErrorBody(requestIDFromContext(c)))
 				if err != nil {
 					body = []byte(`{"error":"internal server error","code":"internal_error"}`)
 				}
@@ -54,6 +77,7 @@ func AuthMiddleware(jwtSecret string, smokeTest bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if smokeTest || isPublicPath(c.Request.URL.Path) {
 			ctx := context.WithValue(c.Request.Context(), UserIDKey, int64(1))
+			ctx = platformruntime.WithUserID(ctx, int64(1))
 			c.Request = c.Request.WithContext(ctx)
 			c.Next()
 			return
@@ -99,7 +123,9 @@ func validateJWT(c *gin.Context, jwtSecret string) (context.Context, error) {
 		return nil, &authError{"invalid user id in token"}
 	}
 
-	return context.WithValue(c.Request.Context(), UserIDKey, int64(sub)), nil
+	ctx := context.WithValue(c.Request.Context(), UserIDKey, int64(sub))
+	ctx = platformruntime.WithUserID(ctx, int64(sub))
+	return ctx, nil
 }
 
 type authError struct {
@@ -110,6 +136,15 @@ func (e *authError) Error() string { return e.msg }
 
 func generateRequestID() string {
 	return "req-" + randomHex(8)
+}
+
+func requestIDFromContext(c *gin.Context) string {
+	if value, ok := c.Get("request_id"); ok {
+		if requestID, ok := value.(string); ok {
+			return requestID
+		}
+	}
+	return c.GetHeader("X-Request-Id")
 }
 
 func isPublicPath(path string) bool {

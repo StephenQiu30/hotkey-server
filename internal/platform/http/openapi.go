@@ -24,8 +24,9 @@ func BuildOpenAPISpec() map[string]any {
 				"ErrorBody": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"error": map[string]any{"type": "string"},
-						"code":  map[string]any{"type": "string"},
+						"error":      map[string]any{"type": "string"},
+						"code":       map[string]any{"type": "string"},
+						"request_id": map[string]any{"type": "string"},
 					},
 					"required": []string{"error"},
 				},

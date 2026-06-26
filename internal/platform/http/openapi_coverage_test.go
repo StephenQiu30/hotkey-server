@@ -107,6 +107,18 @@ func TestOpenAPISecurityScheme(t *testing.T) {
 	}
 }
 
+func TestOpenAPIErrorBodyIncludesRequestID(t *testing.T) {
+	spec := platformhttp.BuildOpenAPISpec()
+	components, _ := spec["components"].(map[string]any)
+	schemas, _ := components["schemas"].(map[string]any)
+	errorBody, _ := schemas["ErrorBody"].(map[string]any)
+	properties, _ := errorBody["properties"].(map[string]any)
+
+	if _, ok := properties["request_id"]; !ok {
+		t.Fatal("static ErrorBody schema missing request_id")
+	}
+}
+
 func TestOpenAPIPathCount(t *testing.T) {
 	specPath := filepath.Join("..", "..", "..", "docs", "openapi.json")
 	data, err := os.ReadFile(specPath)

@@ -1,34 +1,113 @@
 package http
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
 
+// ErrorCode is a stable machine-readable application error code.
+type ErrorCode string
+
 // ErrorBody is the unified error response format for all API endpoints.
 type ErrorBody struct {
-	Error string `json:"error"`
-	Code  string `json:"code,omitempty"`
+	Error     string `json:"error"`
+	Code      string `json:"code,omitempty"`
+	RequestID string `json:"request_id,omitempty"`
 }
 
-const internalErrorCode = "internal_error"
+const (
+	// ErrorCodeInternal is the common internal server error code.
+	ErrorCodeInternal ErrorCode = "internal_error"
+	// ErrorCodeMonitorNotFound is returned when a monitor resource is missing.
+	ErrorCodeMonitorNotFound ErrorCode = "MONITOR_NOT_FOUND"
+)
 
-func newInternalErrorBody() ErrorBody {
+var errorStatusRegistry = map[ErrorCode]int{
+	ErrorCodeInternal:        http.StatusInternalServerError,
+	ErrorCodeMonitorNotFound: http.StatusNotFound,
+}
+
+// AppError carries the stable error metadata needed by the HTTP responder.
+type AppError struct {
+	Code       ErrorCode
+	Message    string
+	HTTPStatus int
+	Cause      error
+}
+
+func (e *AppError) Error() string {
+	if e == nil {
+		return ""
+	}
+	if e.Cause != nil {
+		return e.Message + ": " + e.Cause.Error()
+	}
+	return e.Message
+}
+
+func (e *AppError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
+}
+
+// NewAppError creates an application error with a stable external contract.
+func NewAppError(code ErrorCode, status int, message string, cause error) *AppError {
+	return &AppError{
+		Code:       code,
+		HTTPStatus: status,
+		Message:    message,
+		Cause:      cause,
+	}
+}
+
+func newRegisteredAppError(code ErrorCode, message string, cause error) *AppError {
+	status, ok := errorStatusRegistry[code]
+	if !ok {
+		status = http.StatusInternalServerError
+		code = ErrorCodeInternal
+	}
+	return NewAppError(code, status, message, cause)
+}
+
+func newInternalErrorBody(requestID string) ErrorBody {
 	return ErrorBody{
-		Error: "internal server error",
-		Code:  internalErrorCode,
+		Error:     "internal server error",
+		Code:      string(ErrorCodeInternal),
+		RequestID: requestID,
 	}
 }
 
 func respondError(c *gin.Context, status int, message string) {
-	body := ErrorBody{Error: message}
+	body := ErrorBody{Error: message, RequestID: requestIDFromContext(c)}
 	if status >= http.StatusInternalServerError {
-		body.Code = internalErrorCode
+		body.Code = string(ErrorCodeInternal)
 	}
 	c.JSON(status, body)
 }
 
 func respondInternalError(c *gin.Context) {
-	c.JSON(http.StatusInternalServerError, newInternalErrorBody())
+	c.JSON(http.StatusInternalServerError, newInternalErrorBody(requestIDFromContext(c)))
+}
+
+// RespondAppError writes an AppError using the unified error response contract.
+func RespondAppError(c *gin.Context, err error) {
+	var appErr *AppError
+	if errors.As(err, &appErr) {
+		c.JSON(appErr.HTTPStatus, ErrorBody{
+			Error:     appErr.Message,
+			Code:      string(appErr.Code),
+			RequestID: requestIDFromContext(c),
+		})
+		return
+	}
+	respondInternalError(c)
+}
+
+// RespondErrorCode writes a registered application error by stable code.
+func RespondErrorCode(c *gin.Context, code ErrorCode, message string, cause error) {
+	RespondAppError(c, newRegisteredAppError(code, message, cause))
 }
