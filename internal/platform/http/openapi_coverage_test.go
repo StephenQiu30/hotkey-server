@@ -156,13 +156,47 @@ func TestOpenAPIBusinessOperationsUseSuccessEnvelope(t *testing.T) {
 				continue
 			}
 			responses, _ := opMap["responses"].(map[string]any)
-			okResponse, _ := responses["200"].(map[string]any)
+			okResponse := successResponse(responses)
 			content, _ := okResponse["content"].(map[string]any)
 			applicationJSON, _ := content["application/json"].(map[string]any)
 			schema, _ := applicationJSON["schema"].(map[string]any)
 			if got := schema["$ref"]; got != "#/components/schemas/ResponseEnvelope" {
 				t.Fatalf("%s %s missing ResponseEnvelope success response, got %#v", method, path, got)
 			}
+		}
+	}
+}
+
+func successResponse(responses map[string]any) map[string]any {
+	for _, status := range []string{"200", "201", "204"} {
+		if response, ok := responses[status].(map[string]any); ok {
+			return response
+		}
+	}
+	return nil
+}
+
+func TestOpenAPICreatedOperationsDeclare201(t *testing.T) {
+	spec := platformhttp.BuildOpenAPISpec()
+	paths, _ := spec["paths"].(map[string]any)
+
+	tests := []struct {
+		path   string
+		method string
+	}{
+		{path: "/api/v1/auth/register", method: "post"},
+		{path: "/api/v1/monitors", method: "post"},
+	}
+
+	for _, tt := range tests {
+		pathItem, _ := paths[tt.path].(map[string]any)
+		opMap, _ := pathItem[tt.method].(map[string]any)
+		responses, _ := opMap["responses"].(map[string]any)
+		if _, ok := responses["201"]; !ok {
+			t.Fatalf("%s %s missing 201 created response", tt.method, tt.path)
+		}
+		if _, ok := responses["200"]; ok {
+			t.Fatalf("%s %s should not declare 200 for created response", tt.method, tt.path)
 		}
 	}
 }

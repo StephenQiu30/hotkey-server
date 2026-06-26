@@ -109,9 +109,20 @@ func (a *App) Shutdown(ctx context.Context) error {
 	if err := a.server.Shutdown(ctx); err != nil {
 		return err
 	}
-	a.wg.Wait()
-	if sqlDB, err := a.db.DB(); err == nil && sqlDB != nil {
-		sqlDB.Close()
+	done := make(chan struct{})
+	go func() {
+		a.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	if a.db != nil {
+		if sqlDB, err := a.db.DB(); err == nil && sqlDB != nil {
+			sqlDB.Close()
+		}
 	}
 	return nil
 }

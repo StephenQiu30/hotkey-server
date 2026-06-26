@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -52,12 +53,13 @@ func newJobRunner(cfg config.Config, db *gorm.DB) *jobs.Runner {
 		if err != nil {
 			return fmt.Errorf("list monitors: %w", err)
 		}
-		for _, monitorID := range monitorIDs {
+		return runMonitorJob(ctx, "poll_monitor", monitorIDs, func(ctx context.Context, monitorID int64) error {
 			if err := pollJob.Run(ctx, jobs.MonitorInfo{ID: monitorID, Platform: "x"}); err != nil {
 				log.Printf("poll_monitor: error for monitor %d: %v", monitorID, err)
+				return err
 			}
-		}
-		return nil
+			return nil
+		})
 	}, 1*time.Minute, minuteRunKey("poll_monitor"))
 	runner.Register("aggregate_topics", func(ctx context.Context) error {
 		log.Print(observability.RenderLog("worker", "aggregate_topics: running"))
@@ -65,12 +67,13 @@ func newJobRunner(cfg config.Config, db *gorm.DB) *jobs.Runner {
 		if err != nil {
 			return fmt.Errorf("list monitors: %w", err)
 		}
-		for _, monitorID := range monitorIDs {
+		return runMonitorJob(ctx, "aggregate_topics", monitorIDs, func(_ context.Context, monitorID int64) error {
 			if _, err := aggregateJob.Run(jobs.AggregateTopicsInput{MonitorID: monitorID, RunTime: time.Now()}); err != nil {
 				log.Printf("aggregate_topics: error for monitor %d: %v", monitorID, err)
+				return err
 			}
-		}
-		return nil
+			return nil
+		})
 	}, 5*time.Minute, minuteRunKey("aggregate_topics"))
 	runner.Register("build_snapshots", func(ctx context.Context) error {
 		log.Print(observability.RenderLog("worker", "build_snapshots: running"))
@@ -78,12 +81,13 @@ func newJobRunner(cfg config.Config, db *gorm.DB) *jobs.Runner {
 		if err != nil {
 			return fmt.Errorf("list monitors: %w", err)
 		}
-		for _, monitorID := range monitorIDs {
+		return runMonitorJob(ctx, "build_snapshots", monitorIDs, func(_ context.Context, monitorID int64) error {
 			if _, err := snapshotJob.Run(jobs.BuildSnapshotsInput{MonitorID: monitorID, SnapshotTime: time.Now()}); err != nil {
 				log.Printf("build_snapshots: error for monitor %d: %v", monitorID, err)
+				return err
 			}
-		}
-		return nil
+			return nil
+		})
 	}, 10*time.Minute, minuteRunKey("build_snapshots"))
 	runner.Register("dispatch_notifications", func(ctx context.Context) error {
 		log.Print(observability.RenderLog("worker", "dispatch_notifications: running"))
@@ -144,6 +148,20 @@ func minuteRunKey(name string) jobs.JobOption {
 	return jobs.WithRunKey(func(now time.Time) string {
 		return fmt.Sprintf("%s:%s", name, now.Format("2006-01-02T15:04"))
 	})
+}
+
+func runMonitorJob(ctx context.Context, jobName string, monitorIDs []int64, run func(context.Context, int64) error) error {
+	var errs []error
+	for _, monitorID := range monitorIDs {
+		if err := ctx.Err(); err != nil {
+			errs = append(errs, fmt.Errorf("%s monitor %d: %w", jobName, monitorID, err))
+			break
+		}
+		if err := run(ctx, monitorID); err != nil {
+			errs = append(errs, fmt.Errorf("%s monitor %d: %w", jobName, monitorID, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 type noopMailer struct{}

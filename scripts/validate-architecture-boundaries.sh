@@ -13,8 +13,22 @@ if [ ! -d db/migrations ]; then
   exit 1
 fi
 
+if [ ! -f db/migrations/000_schema.sql ]; then
+  echo "FAIL: db/migrations/000_schema.sql is required as the baseline schema migration"
+  exit 1
+fi
+
 if ! find db/migrations -type f -name '*.sql' | grep -q .; then
   echo "FAIL: db/migrations must contain at least one SQL migration"
+  exit 1
+fi
+
+schema_tables=$(rg '^create table ' db/schema.sql | sed -E 's/^create table ([a-z_]+).*/\1/' | sort)
+migration_tables=$(rg '^create table( if not exists)? ' db/migrations/*.sql | sed -E 's/^.*create table( if not exists)? ([a-z_]+).*/\2/' | sort -u)
+missing_tables=$(comm -23 <(printf '%s\n' "$schema_tables") <(printf '%s\n' "$migration_tables") || true)
+if [ -n "$missing_tables" ]; then
+  echo "FAIL: db/migrations does not cover schema tables"
+  printf '%s\n' "$missing_tables"
   exit 1
 fi
 

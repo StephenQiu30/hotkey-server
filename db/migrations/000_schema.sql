@@ -1,5 +1,5 @@
 -- hotkey-server PostgreSQL schema
--- Single source of truth for all table definitions (14 tables).
+-- Baseline migration for all table definitions (14 tables).
 
 -- users & monitors
 

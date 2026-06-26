@@ -188,6 +188,9 @@ func (r *Runner) RetryPolicy() RetryPolicy {
 
 // Run starts all registered jobs and blocks until ctx is cancelled.
 func (r *Runner) Run(ctx context.Context) {
+	if ctx.Err() != nil {
+		return
+	}
 	var wg sync.WaitGroup
 	for _, j := range r.jobs {
 		wg.Add(1)
@@ -202,6 +205,10 @@ func (r *Runner) Run(ctx context.Context) {
 
 func (r *Runner) loop(ctx context.Context, j registeredJob) {
 	log.Printf("job %s: started (interval %s)", j.name, j.interval)
+	if ctx.Err() != nil {
+		log.Printf("job %s: stopped", j.name)
+		return
+	}
 	if err := r.runOnce(ctx, j); err != nil {
 		log.Printf("job %s: error: %v", j.name, err)
 	}

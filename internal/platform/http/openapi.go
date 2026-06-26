@@ -96,14 +96,14 @@ func BuildOpenAPISpec() map[string]any {
 				"get": op("health-check", "Health check", []string{"health"}, nil, schemaContent("#/components/schemas/HealthEnvelope")),
 			},
 			"/api/v1/auth/register": map[string]any{
-				"post": op("register", "Register a new user", []string{"auth"}, nil, jsonContent),
+				"post": opCreated("register", "Register a new user", []string{"auth"}, nil, jsonContent),
 			},
 			"/api/v1/auth/login": map[string]any{
 				"post": op("login", "Login with email and password", []string{"auth"}, nil, jsonContent),
 			},
 			"/api/v1/monitors": map[string]any{
 				"get":  op("list-monitors", "List monitors", []string{"monitors"}, bearerSecurity, jsonContent),
-				"post": op("create-monitor", "Create a monitor", []string{"monitors"}, bearerSecurity, jsonContent),
+				"post": opCreated("create-monitor", "Create a monitor", []string{"monitors"}, bearerSecurity, jsonContent),
 			},
 			"/api/v1/monitors/{id}": map[string]any{
 				"get":   op("get-monitor", "Get a monitor", []string{"monitors"}, bearerSecurity, jsonContent),
@@ -140,6 +140,14 @@ func schemaContent(ref string) map[string]any {
 }
 
 func op(operationID, summary string, tags []string, security []map[string][]string, content map[string]any) map[string]any {
+	return opWithStatus(operationID, summary, tags, security, content, "200", "OK")
+}
+
+func opCreated(operationID, summary string, tags []string, security []map[string][]string, content map[string]any) map[string]any {
+	return opWithStatus(operationID, summary, tags, security, content, "201", "Created")
+}
+
+func opWithStatus(operationID, summary string, tags []string, security []map[string][]string, content map[string]any, successStatus, successDescription string) map[string]any {
 	m := map[string]any{
 		"operationId": operationID,
 		"summary":     summary,
@@ -150,13 +158,13 @@ func op(operationID, summary string, tags []string, security []map[string][]stri
 	}
 	if content != nil {
 		m["responses"] = map[string]any{
-			"200":     map[string]any{"description": "OK", "content": content},
-			"default": errorResponse(),
+			successStatus: map[string]any{"description": successDescription, "content": content},
+			"default":     errorResponse(),
 		}
 	} else {
 		m["responses"] = map[string]any{
-			"200":     map[string]any{"description": "OK"},
-			"default": errorResponse(),
+			successStatus: map[string]any{"description": successDescription},
+			"default":     errorResponse(),
 		}
 	}
 	return m

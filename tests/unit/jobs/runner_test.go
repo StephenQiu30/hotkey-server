@@ -201,6 +201,23 @@ func TestRunnerSkipsDuplicateSuccessfulRunKeyInSingleInstance(t *testing.T) {
 	}
 }
 
+func TestRunnerDoesNotStartJobWhenContextAlreadyCancelled(t *testing.T) {
+	var attempts atomic.Int32
+	r := jobs.NewRunner(jobs.WithRunRecorder(nil))
+	r.Register("cancelled-before-start", func(ctx context.Context) error {
+		attempts.Add(1)
+		return nil
+	}, time.Hour)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	r.Run(ctx)
+
+	if attempts.Load() != 0 {
+		t.Fatalf("expected no attempts after context cancellation, got %d", attempts.Load())
+	}
+}
+
 func TestLogRunRecorderWritesTraceableJSON(t *testing.T) {
 	var out bytes.Buffer
 	recorder := jobs.NewLogRunRecorder(&out)
