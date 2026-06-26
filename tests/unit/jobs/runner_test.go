@@ -1,7 +1,10 @@
 package jobs_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -72,5 +75,180 @@ func TestRunnerHandlesJobError(t *testing.T) {
 
 	if count.Load() < 1 {
 		t.Fatal("expected job to run despite errors")
+	}
+}
+
+func TestRunnerRecordsLifecycleWithRunKey(t *testing.T) {
+	recorder := &recordingRunRecorder{}
+	r := jobs.NewRunner(jobs.WithRunRecorder(recorder))
+	ctx, cancel := context.WithCancel(context.Background())
+	r.Register("audited-job", func(ctx context.Context) error {
+		cancel()
+		return nil
+	}, time.Hour, jobs.WithRunKey(func(_ time.Time) string {
+		return "audited-job:2026-06-26"
+	}))
+
+	r.Run(ctx)
+
+	if len(recorder.events) != 2 {
+		t.Fatalf("expected start and success audit events, got %d", len(recorder.events))
+	}
+	started := recorder.events[0]
+	if started.JobName != "audited-job" || started.RunKey != "audited-job:2026-06-26" || started.Status != jobs.RunStatusStarted {
+		t.Fatalf("unexpected start event: %+v", started)
+	}
+	succeeded := recorder.events[1]
+	if succeeded.Status != jobs.RunStatusSucceeded || succeeded.Attempt != 1 || succeeded.Error != "" {
+		t.Fatalf("unexpected success event: %+v", succeeded)
+	}
+}
+
+func TestRunnerRetriesFailuresAndAuditsFinalError(t *testing.T) {
+	recorder := &recordingRunRecorder{}
+	var attempts atomic.Int32
+	r := jobs.NewRunner(
+		jobs.WithRunRecorder(recorder),
+		jobs.WithRetryPolicy(jobs.RetryPolicy{MaxAttempts: 2}),
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	r.Register("retry-job", func(ctx context.Context) error {
+		if attempts.Add(1) == 2 {
+			cancel()
+		}
+		return errors.New("upstream unavailable")
+	}, time.Hour, jobs.WithRunKey(func(_ time.Time) string {
+		return "retry-job:fixed"
+	}))
+
+	r.Run(ctx)
+
+	if attempts.Load() != 2 {
+		t.Fatalf("expected 2 attempts, got %d", attempts.Load())
+	}
+	if len(recorder.events) != 2 {
+		t.Fatalf("expected start and final failure audit events, got %d", len(recorder.events))
+	}
+	failed := recorder.events[1]
+	if failed.Status != jobs.RunStatusFailed {
+		t.Fatalf("expected failed status, got %+v", failed)
+	}
+	if failed.Attempt != 2 {
+		t.Fatalf("expected failed audit to record final attempt 2, got %d", failed.Attempt)
+	}
+	if failed.Error != "upstream unavailable" {
+		t.Fatalf("expected failure reason, got %q", failed.Error)
+	}
+	if failed.RunKey != "retry-job:fixed" {
+		t.Fatalf("expected stable run key, got %q", failed.RunKey)
+	}
+}
+
+func TestRunnerAuditsCancellationDuringRetryBackoff(t *testing.T) {
+	recorder := &recordingRunRecorder{}
+	r := jobs.NewRunner(
+		jobs.WithRunRecorder(recorder),
+		jobs.WithRetryPolicy(jobs.RetryPolicy{MaxAttempts: 2, Backoff: time.Hour}),
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	r.Register("cancelled-retry-job", func(ctx context.Context) error {
+		cancel()
+		return errors.New("temporary failure")
+	}, time.Hour, jobs.WithRunKey(func(_ time.Time) string {
+		return "cancelled-retry-job:fixed"
+	}))
+
+	r.Run(ctx)
+
+	if len(recorder.events) != 2 {
+		t.Fatalf("expected start and cancelled failure audit events, got %d", len(recorder.events))
+	}
+	failed := recorder.events[1]
+	if failed.Status != jobs.RunStatusFailed {
+		t.Fatalf("expected failed status, got %+v", failed)
+	}
+	if failed.Attempt != 1 {
+		t.Fatalf("expected cancellation after first attempt, got attempt %d", failed.Attempt)
+	}
+	if failed.Error != context.Canceled.Error() {
+		t.Fatalf("expected context cancellation reason, got %q", failed.Error)
+	}
+}
+
+func TestRunnerSkipsDuplicateSuccessfulRunKeyInSingleInstance(t *testing.T) {
+	recorder := &recordingRunRecorder{}
+	var attempts atomic.Int32
+	r := jobs.NewRunner(jobs.WithRunRecorder(recorder))
+	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Millisecond)
+	defer cancel()
+	r.Register("daily-job", func(ctx context.Context) error {
+		attempts.Add(1)
+		return nil
+	}, 10*time.Millisecond, jobs.WithRunKey(func(_ time.Time) string {
+		return "daily-job:2026-06-26"
+	}))
+
+	r.Run(ctx)
+
+	if attempts.Load() != 1 {
+		t.Fatalf("expected duplicate successful run key to execute once, got %d", attempts.Load())
+	}
+	if len(recorder.events) < 3 {
+		t.Fatalf("expected start, success, and skipped audit events, got %d", len(recorder.events))
+	}
+	if recorder.events[2].Status != jobs.RunStatusSkipped {
+		t.Fatalf("expected duplicate run to be audited as skipped, got %+v", recorder.events[2])
+	}
+}
+
+func TestLogRunRecorderWritesTraceableJSON(t *testing.T) {
+	var out bytes.Buffer
+	recorder := jobs.NewLogRunRecorder(&out)
+
+	err := recorder.RecordJobRun(context.Background(), jobs.RunEvent{
+		JobName:    "publish_daily_topics",
+		RunKey:     "publish_daily_topics:2026-06-26",
+		Status:     jobs.RunStatusFailed,
+		Attempt:    3,
+		StartedAt:  time.Date(2026, 6, 26, 8, 0, 0, 0, time.UTC),
+		FinishedAt: time.Date(2026, 6, 26, 8, 0, 2, 0, time.UTC),
+		Duration:   2 * time.Second,
+		Error:      "llm timeout",
+	})
+	if err != nil {
+		t.Fatalf("record event: %v", err)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(out.Bytes(), &body); err != nil {
+		t.Fatalf("expected JSON audit log, got %v: %s", err, out.String())
+	}
+
+	assertJSONField(t, body, "module", "worker")
+	assertJSONField(t, body, "job", "publish_daily_topics")
+	assertJSONField(t, body, "run_key", "publish_daily_topics:2026-06-26")
+	assertJSONField(t, body, "status", "failed")
+	assertJSONField(t, body, "error", "llm timeout")
+	if got := body["attempt"]; got != float64(3) {
+		t.Fatalf("expected attempt 3, got %#v", got)
+	}
+	if got := body["duration_ms"]; got != float64(2000) {
+		t.Fatalf("expected duration_ms 2000, got %#v", got)
+	}
+}
+
+type recordingRunRecorder struct {
+	events []jobs.RunEvent
+}
+
+func (r *recordingRunRecorder) RecordJobRun(_ context.Context, event jobs.RunEvent) error {
+	r.events = append(r.events, event)
+	return nil
+}
+
+func assertJSONField(t *testing.T, body map[string]any, key, want string) {
+	t.Helper()
+	if got := body[key]; got != want {
+		t.Fatalf("expected %s=%q, got %#v", key, want, got)
 	}
 }

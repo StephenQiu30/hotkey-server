@@ -45,7 +45,7 @@ func newJobRunner(cfg config.Config, db *gorm.DB) *jobs.Runner {
 
 	monitorRepo := database.NewMonitorRepo(db)
 
-	runner := jobs.NewRunner()
+	runner := jobs.NewRunner(jobs.WithRetryPolicy(jobs.RetryPolicy{MaxAttempts: 3, Backoff: time.Second}))
 	runner.Register("poll_monitor", func(ctx context.Context) error {
 		log.Print(observability.RenderLog("worker", "poll_monitor: running"))
 		monitorIDs, err := monitorRepo.ListActiveIDs(ctx)
@@ -58,7 +58,7 @@ func newJobRunner(cfg config.Config, db *gorm.DB) *jobs.Runner {
 			}
 		}
 		return nil
-	}, 1*time.Minute)
+	}, 1*time.Minute, minuteRunKey("poll_monitor"))
 	runner.Register("aggregate_topics", func(ctx context.Context) error {
 		log.Print(observability.RenderLog("worker", "aggregate_topics: running"))
 		monitorIDs, err := monitorRepo.ListActiveIDs(ctx)
@@ -71,7 +71,7 @@ func newJobRunner(cfg config.Config, db *gorm.DB) *jobs.Runner {
 			}
 		}
 		return nil
-	}, 5*time.Minute)
+	}, 5*time.Minute, minuteRunKey("aggregate_topics"))
 	runner.Register("build_snapshots", func(ctx context.Context) error {
 		log.Print(observability.RenderLog("worker", "build_snapshots: running"))
 		monitorIDs, err := monitorRepo.ListActiveIDs(ctx)
@@ -84,11 +84,11 @@ func newJobRunner(cfg config.Config, db *gorm.DB) *jobs.Runner {
 			}
 		}
 		return nil
-	}, 10*time.Minute)
+	}, 10*time.Minute, minuteRunKey("build_snapshots"))
 	runner.Register("dispatch_notifications", func(ctx context.Context) error {
 		log.Print(observability.RenderLog("worker", "dispatch_notifications: running"))
 		return dispatchJob.Run(ctx, 0)
-	}, 1*time.Minute)
+	}, 1*time.Minute, minuteRunKey("dispatch_notifications"))
 
 	if cfg.ObsidianVaultPath != "" {
 		exporter := database.NewExporter(db)
@@ -124,7 +124,7 @@ func newJobRunner(cfg config.Config, db *gorm.DB) *jobs.Runner {
 					log.Print(observability.RenderLog("worker", "publish_daily_topics: running"))
 					_, err := publishJob.Run(ctx, time.Now(), cfg.DailyDigestTarget)
 					return err
-				}, 1*time.Minute)
+				}, 1*time.Minute, dailyRunKey(fmt.Sprintf("publish_daily_topics:%d", monitorID)))
 			}
 		}
 	} else {
@@ -132,6 +132,18 @@ func newJobRunner(cfg config.Config, db *gorm.DB) *jobs.Runner {
 	}
 
 	return runner
+}
+
+func dailyRunKey(name string) jobs.JobOption {
+	return jobs.WithRunKey(func(now time.Time) string {
+		return fmt.Sprintf("%s:%s", name, now.Format("2006-01-02"))
+	})
+}
+
+func minuteRunKey(name string) jobs.JobOption {
+	return jobs.WithRunKey(func(now time.Time) string {
+		return fmt.Sprintf("%s:%s", name, now.Format("2006-01-02T15:04"))
+	})
 }
 
 type noopMailer struct{}
