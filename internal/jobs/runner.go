@@ -88,6 +88,8 @@ type JobOption func(*registeredJob)
 // RunKeyFunc builds the idempotency key for one scheduled job execution.
 type RunKeyFunc func(now time.Time) string
 
+type runStartedAtContextKey struct{}
+
 // JobSpec exposes registered scheduler metadata for verification and ops.
 type JobSpec struct {
 	Name      string
@@ -119,6 +121,8 @@ type Runner struct {
 	retryPolicy RetryPolicy
 	mu          sync.Mutex
 	succeeded   map[string]struct{}
+	successKeys []string
+	successMax  int
 }
 
 // NewRunner creates a new Runner.
@@ -127,6 +131,7 @@ func NewRunner(opts ...RunnerOption) *Runner {
 		recorder:    NewLogRunRecorder(os.Stderr),
 		retryPolicy: RetryPolicy{MaxAttempts: 1},
 		succeeded:   make(map[string]struct{}),
+		successMax:  4096,
 	}
 	for _, opt := range opts {
 		opt(r)
@@ -135,6 +140,12 @@ func NewRunner(opts ...RunnerOption) *Runner {
 		r.retryPolicy.MaxAttempts = 1
 	}
 	return r
+}
+
+// RunStartedAtFromContext returns the timestamp shared by all attempts in one run.
+func RunStartedAtFromContext(ctx context.Context) (time.Time, bool) {
+	startedAt, ok := ctx.Value(runStartedAtContextKey{}).(time.Time)
+	return startedAt, ok
 }
 
 // WithRunRecorder configures job lifecycle audit recording.
@@ -148,6 +159,13 @@ func WithRunRecorder(recorder RunRecorder) RunnerOption {
 func WithRetryPolicy(policy RetryPolicy) RunnerOption {
 	return func(r *Runner) {
 		r.retryPolicy = policy
+	}
+}
+
+// WithSuccessCacheLimit bounds the in-memory successful run-key cache.
+func WithSuccessCacheLimit(limit int) RunnerOption {
+	return func(r *Runner) {
+		r.successMax = limit
 	}
 }
 
@@ -230,6 +248,7 @@ func (r *Runner) loop(ctx context.Context, j registeredJob) {
 
 func (r *Runner) runOnce(ctx context.Context, j registeredJob) error {
 	now := time.Now()
+	runCtx := context.WithValue(ctx, runStartedAtContextKey{}, now)
 	runKey := j.name + ":" + now.Format("20060102150405")
 	if j.runKey != nil {
 		runKey = j.runKey(now)
@@ -254,7 +273,7 @@ func (r *Runner) runOnce(ctx context.Context, j registeredJob) error {
 
 	var err error
 	for attempt := 1; attempt <= r.retryPolicy.MaxAttempts; attempt++ {
-		err = j.run(ctx)
+		err = j.run(runCtx)
 		if err == nil {
 			finished := time.Now()
 			r.record(ctx, RunEvent{
@@ -271,21 +290,18 @@ func (r *Runner) runOnce(ctx context.Context, j registeredJob) error {
 			}
 			return nil
 		}
+		if attempt < r.retryPolicy.MaxAttempts {
+			if err := ctx.Err(); err != nil {
+				r.recordCancelled(ctx, j.name, runKey, attempt, now, err)
+				return err
+			}
+		}
 		if attempt < r.retryPolicy.MaxAttempts && r.retryPolicy.Backoff > 0 {
 			select {
 			case <-ctx.Done():
-				finished := time.Now()
-				r.record(ctx, RunEvent{
-					JobName:    j.name,
-					RunKey:     runKey,
-					Status:     RunStatusFailed,
-					Attempt:    attempt,
-					StartedAt:  now,
-					FinishedAt: finished,
-					Duration:   finished.Sub(now),
-					Error:      ctx.Err().Error(),
-				})
-				return ctx.Err()
+				err := ctx.Err()
+				r.recordCancelled(ctx, j.name, runKey, attempt, now, err)
+				return err
 			case <-time.After(r.retryPolicy.Backoff):
 			}
 		}
@@ -303,6 +319,20 @@ func (r *Runner) runOnce(ctx context.Context, j registeredJob) error {
 		Error:      err.Error(),
 	})
 	return err
+}
+
+func (r *Runner) recordCancelled(ctx context.Context, jobName, runKey string, attempt int, startedAt time.Time, err error) {
+	finished := time.Now()
+	r.record(ctx, RunEvent{
+		JobName:    jobName,
+		RunKey:     runKey,
+		Status:     RunStatusFailed,
+		Attempt:    attempt,
+		StartedAt:  startedAt,
+		FinishedAt: finished,
+		Duration:   finished.Sub(startedAt),
+		Error:      err.Error(),
+	})
 }
 
 func (r *Runner) record(ctx context.Context, event RunEvent) {
@@ -324,7 +354,19 @@ func (r *Runner) hasSucceeded(runKey string) bool {
 func (r *Runner) markSucceeded(runKey string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.successMax <= 0 {
+		return
+	}
+	if _, ok := r.succeeded[runKey]; ok {
+		return
+	}
 	r.succeeded[runKey] = struct{}{}
+	r.successKeys = append(r.successKeys, runKey)
+	for len(r.successKeys) > r.successMax {
+		evicted := r.successKeys[0]
+		r.successKeys = r.successKeys[1:]
+		delete(r.succeeded, evicted)
+	}
 }
 
 func eventTime(event RunEvent) string {

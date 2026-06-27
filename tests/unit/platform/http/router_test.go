@@ -324,6 +324,33 @@ func TestSmokeBypassAuth(t *testing.T) {
 	}
 }
 
+func TestMarkNotificationReadReturnsUnifiedEnvelope(t *testing.T) {
+	handler := newTestHandler()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/notifications/1/read", nil)
+	req.Header.Set("X-Request-Id", "req-notify-read")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var body struct {
+		Data struct {
+			Read bool `json:"read"`
+		} `json:"data"`
+		RequestID string `json:"request_id"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected JSON envelope, got %v: %s", err, rr.Body.String())
+	}
+	if !body.Data.Read {
+		t.Fatalf("expected read=true, got %s", rr.Body.String())
+	}
+	if body.RequestID != "req-notify-read" {
+		t.Fatalf("expected request id req-notify-read, got %q", body.RequestID)
+	}
+}
+
 func TestRecoverMiddlewareReturnsUnifiedErrorBody(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

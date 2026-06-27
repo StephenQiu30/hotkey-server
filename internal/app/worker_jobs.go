@@ -77,12 +77,16 @@ func newJobRunner(cfg config.Config, db *gorm.DB) *jobs.Runner {
 	}, 5*time.Minute, minuteRunKey("aggregate_topics"))
 	runner.Register("build_snapshots", func(ctx context.Context) error {
 		log.Print(observability.RenderLog("worker", "build_snapshots: running"))
+		snapshotTime := time.Now()
+		if startedAt, ok := jobs.RunStartedAtFromContext(ctx); ok {
+			snapshotTime = startedAt
+		}
 		monitorIDs, err := monitorRepo.ListActiveIDs(ctx)
 		if err != nil {
 			return fmt.Errorf("list monitors: %w", err)
 		}
 		return runMonitorJob(ctx, "build_snapshots", monitorIDs, func(_ context.Context, monitorID int64) error {
-			if _, err := snapshotJob.Run(jobs.BuildSnapshotsInput{MonitorID: monitorID, SnapshotTime: time.Now()}); err != nil {
+			if _, err := snapshotJob.Run(jobs.BuildSnapshotsInput{MonitorID: monitorID, SnapshotTime: snapshotTime}); err != nil {
 				log.Printf("build_snapshots: error for monitor %d: %v", monitorID, err)
 				return err
 			}

@@ -55,7 +55,7 @@ func RegisterNotifyRoutes(r *gin.Engine, svc *notify.Service) {
 			return
 		}
 
-		c.Status(http.StatusNoContent)
+		RespondOK(c, gin.H{"read": true})
 	})
 }
 

@@ -145,7 +145,8 @@ create table topic_snapshots (
   unique_author_count integer not null default 0,
   engagement_sum integer not null default 0,
   heat_score numeric(10,4) not null default 0,
-  trend_velocity numeric(10,4) not null default 0
+  trend_velocity numeric(10,4) not null default 0,
+  unique(topic_id, snapshot_time)
 );
 
 create index idx_topic_snapshots_topic_id on topic_snapshots(topic_id, snapshot_time);
@@ -157,7 +158,8 @@ create table monitor_snapshots (
   new_post_count integer not null default 0,
   active_topic_count integer not null default 0,
   total_engagement integer not null default 0,
-  top_topic_id bigint references topics(id)
+  top_topic_id bigint references topics(id),
+  unique(monitor_id, snapshot_time)
 );
 
 create index idx_monitor_snapshots_monitor_id on monitor_snapshots(monitor_id, snapshot_time);

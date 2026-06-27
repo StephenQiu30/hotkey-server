@@ -47,8 +47,8 @@ if ! find db/migrations -type f -name '*.sql' | grep -q .; then
   exit 1
 fi
 
-schema_tables=$(search_files '^create table ' db/schema.sql | sed -E 's/^.*create table ([a-z_]+).*/\1/' | sort)
-migration_tables=$(find db/migrations -type f -name '*.sql' -print0 | xargs -0 grep -nE '^create table( if not exists)? ' 2>/dev/null | sed -E 's/^.*create table( if not exists)? ([a-z_]+).*/\2/' | sort -u)
+schema_tables=$(search_files '^create table( if not exists)? ' db/schema.sql | sed -E 's/^.*create table( if not exists)? ([a-z_]+).*/\2/' | sort)
+migration_tables=$(find db/migrations -type f -name '*.sql' -print0 | xargs -0 grep -nE '^create table( if not exists)? ' 2>/dev/null | sed -E 's/^.*create table( if not exists)? ([a-z_]+).*/\2/' | sort -u || true)
 missing_tables=$(comm -23 <(printf '%s\n' "$schema_tables") <(printf '%s\n' "$migration_tables") || true)
 if [ -n "$missing_tables" ]; then
   echo "FAIL: db/migrations does not cover schema tables"

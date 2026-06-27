@@ -175,6 +175,92 @@ func TestRunnerAuditsCancellationDuringRetryBackoff(t *testing.T) {
 	}
 }
 
+func TestRunnerHonorsCancellationBetweenZeroBackoffRetries(t *testing.T) {
+	recorder := &recordingRunRecorder{}
+	var attempts atomic.Int32
+	r := jobs.NewRunner(
+		jobs.WithRunRecorder(recorder),
+		jobs.WithRetryPolicy(jobs.RetryPolicy{MaxAttempts: 3}),
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	r.Register("cancelled-zero-backoff-job", func(ctx context.Context) error {
+		attempts.Add(1)
+		cancel()
+		return errors.New("temporary failure")
+	}, time.Hour, jobs.WithRunKey(func(_ time.Time) string {
+		return "cancelled-zero-backoff-job:fixed"
+	}))
+
+	r.Run(ctx)
+
+	if attempts.Load() != 1 {
+		t.Fatalf("expected cancellation to stop zero-backoff retries after 1 attempt, got %d", attempts.Load())
+	}
+	if len(recorder.events) != 2 {
+		t.Fatalf("expected start and cancelled failure audit events, got %d", len(recorder.events))
+	}
+	failed := recorder.events[1]
+	if failed.Status != jobs.RunStatusFailed || failed.Attempt != 1 || failed.Error != context.Canceled.Error() {
+		t.Fatalf("unexpected cancellation audit event: %+v", failed)
+	}
+}
+
+func TestRunnerBoundsSuccessfulRunKeyCache(t *testing.T) {
+	var attempts atomic.Int32
+	var keyCalls atomic.Int32
+	r := jobs.NewRunner(
+		jobs.WithRunRecorder(nil),
+		jobs.WithSuccessCacheLimit(1),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	defer cancel()
+	r.Register("bounded-key-job", func(ctx context.Context) error {
+		if attempts.Add(1) == 3 {
+			cancel()
+		}
+		return nil
+	}, time.Millisecond, jobs.WithRunKey(func(_ time.Time) string {
+		switch keyCalls.Add(1) {
+		case 1:
+			return "bounded-key-job:a"
+		case 2:
+			return "bounded-key-job:b"
+		default:
+			return "bounded-key-job:a"
+		}
+	}))
+
+	r.Run(ctx)
+
+	if attempts.Load() != 3 {
+		t.Fatalf("expected old successful run key to be evicted and run again, got %d attempts", attempts.Load())
+	}
+}
+
+func TestRunnerPropagatesStableRunStartedAtAcrossRetries(t *testing.T) {
+	var attempts atomic.Int32
+	var first time.Time
+	r := jobs.NewRunner(jobs.WithRetryPolicy(jobs.RetryPolicy{MaxAttempts: 2}))
+	ctx, cancel := context.WithCancel(context.Background())
+	r.Register("started-at-job", func(ctx context.Context) error {
+		startedAt, ok := jobs.RunStartedAtFromContext(ctx)
+		if !ok || startedAt.IsZero() {
+			t.Fatal("expected run started time in job context")
+		}
+		if attempts.Add(1) == 1 {
+			first = startedAt
+			return errors.New("retry me")
+		}
+		cancel()
+		if !startedAt.Equal(first) {
+			t.Fatalf("expected stable run started time across retries, got %s then %s", first, startedAt)
+		}
+		return nil
+	}, time.Hour)
+
+	r.Run(ctx)
+}
+
 func TestRunnerSkipsDuplicateSuccessfulRunKeyInSingleInstance(t *testing.T) {
 	recorder := &recordingRunRecorder{}
 	var attempts atomic.Int32
