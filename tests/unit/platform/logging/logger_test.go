@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -43,6 +45,45 @@ func TestLoggerWritesStructuredFields(t *testing.T) {
 	if got := body["duration_ms"]; got != float64(17) {
 		t.Fatalf("expected duration_ms 17, got %#v", got)
 	}
+}
+
+func TestLoggerSerializesConcurrentWrites(t *testing.T) {
+	writer := &concurrencyDetectingWriter{}
+	logger := platformlogging.New(writer)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 24; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			logger.Event(platformlogging.Event{RequestID: "req-concurrent"})
+		}()
+	}
+	wg.Wait()
+
+	if writer.maxConcurrent.Load() > 1 {
+		t.Fatalf("expected serialized log writes, saw %d concurrent writes", writer.maxConcurrent.Load())
+	}
+}
+
+type concurrencyDetectingWriter struct {
+	inFlight      atomic.Int64
+	maxConcurrent atomic.Int64
+}
+
+func (w *concurrencyDetectingWriter) Write(p []byte) (int, error) {
+	current := w.inFlight.Add(1)
+	defer w.inFlight.Add(-1)
+
+	for {
+		maxSeen := w.maxConcurrent.Load()
+		if current <= maxSeen || w.maxConcurrent.CompareAndSwap(maxSeen, current) {
+			break
+		}
+	}
+
+	time.Sleep(time.Millisecond)
+	return len(p), nil
 }
 
 func assertStringField(t *testing.T, body map[string]any, key, want string) {

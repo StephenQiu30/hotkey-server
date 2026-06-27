@@ -3,12 +3,14 @@ package logging
 import (
 	"encoding/json"
 	"io"
+	"sync"
 	"time"
 )
 
 // Logger writes structured log events.
 type Logger struct {
 	out io.Writer
+	mu  sync.Mutex
 }
 
 // Event is the common structured log field set for application events.
@@ -47,5 +49,7 @@ func (l *Logger) Event(event Event) {
 		body["error"] = event.Err.Error()
 	}
 
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	_ = json.NewEncoder(l.out).Encode(body)
 }

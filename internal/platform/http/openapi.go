@@ -156,16 +156,13 @@ func opWithStatus(operationID, summary string, tags []string, security []map[str
 	if security != nil {
 		m["security"] = security
 	}
+	successResponse := map[string]any{"description": successDescription}
 	if content != nil {
-		m["responses"] = map[string]any{
-			successStatus: map[string]any{"description": successDescription, "content": content},
-			"default":     errorResponse(),
-		}
-	} else {
-		m["responses"] = map[string]any{
-			successStatus: map[string]any{"description": successDescription},
-			"default":     errorResponse(),
-		}
+		successResponse["content"] = content
+	}
+	m["responses"] = map[string]any{
+		successStatus: successResponse,
+		"default":     errorResponse(),
 	}
 	return m
 }
