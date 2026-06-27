@@ -30,6 +30,7 @@ func NewRouter(cfg Config) *gin.Engine {
 
 	r.Use(RecoverMiddleware())
 	r.Use(RequestIDMiddleware())
+	r.Use(ContextMetadataMiddleware("http"))
 	r.Use(AuthMiddleware(cfg.JWTSecret, cfg.SmokeTest))
 
 	RegisterHealthRoutes(r)

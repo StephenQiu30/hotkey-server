@@ -32,6 +32,6 @@ func RegisterTopicRoutes(r *gin.Engine, svc topic.TopicQueryService) {
 			topics = []topic.TopicSummary{}
 		}
 
-		c.JSON(http.StatusOK, topics)
+		RespondOK(c, topics)
 	})
 }

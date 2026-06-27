@@ -34,7 +34,7 @@ func RegisterTrendRoutes(r *gin.Engine, svc trend.TrendQueryService) {
 			points = []trend.TrendPoint{}
 		}
 
-		c.JSON(http.StatusOK, points)
+		RespondOK(c, points)
 	})
 
 	r.GET("/api/v1/topics/:id/trends", func(c *gin.Context) {
@@ -59,7 +59,7 @@ func RegisterTrendRoutes(r *gin.Engine, svc trend.TrendQueryService) {
 			points = []trend.TrendPoint{}
 		}
 
-		c.JSON(http.StatusOK, points)
+		RespondOK(c, points)
 	})
 }
 

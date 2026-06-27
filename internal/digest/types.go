@@ -12,6 +12,16 @@ const (
 	StatusFailed    ExportStatus = "failed"
 )
 
+// IsValid reports whether the export status is one of the supported values.
+func (s ExportStatus) IsValid() bool {
+	switch s {
+	case StatusPending, StatusPublished, StatusFailed:
+		return true
+	default:
+		return false
+	}
+}
+
 // TopicDailyExport is the persisted record of a single topic's daily digest export.
 type TopicDailyExport struct {
 	ID           int64        `json:"id"`

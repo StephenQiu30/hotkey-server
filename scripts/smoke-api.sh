@@ -113,9 +113,9 @@ echo ""
 echo "=== Smoke: auth/register ==="
 assert_status "$BASE/api/v1/auth/register" POST 201 \
   '{"email":"smoke@example.com","password":"Passw0rd!","display_name":"SmokeUser"}'
-assert_json_field "$BASE/api/v1/auth/register" POST "id" \
+assert_json_field "$BASE/api/v1/auth/register" POST "data.id" \
   '{"email":"smoke2@example.com","password":"Passw0rd!","display_name":"SmokeUser2"}'
-assert_json_field "$BASE/api/v1/auth/register" POST "email" \
+assert_json_field "$BASE/api/v1/auth/register" POST "data.email" \
   '{"email":"smoke3@example.com","password":"Passw0rd!","display_name":"SmokeUser3"}'
 
 echo ""

@@ -40,7 +40,7 @@ func RegisterAuthRoutes(r *gin.Engine, svc *auth.Service, jwtSecret string) {
 			return
 		}
 
-		c.JSON(http.StatusCreated, UserResponse{
+		RespondCreated(c, UserResponse{
 			ID:          user.ID,
 			Email:       user.Email,
 			DisplayName: user.DisplayName,
@@ -82,7 +82,7 @@ func RegisterAuthRoutes(r *gin.Engine, svc *auth.Service, jwtSecret string) {
 			return
 		}
 
-		c.JSON(http.StatusOK, LoginResponse{
+		RespondOK(c, LoginResponse{
 			User: UserResponse{
 				ID:          user.ID,
 				Email:       user.Email,

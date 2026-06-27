@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -45,50 +46,57 @@ func newJobRunner(cfg config.Config, db *gorm.DB) *jobs.Runner {
 
 	monitorRepo := database.NewMonitorRepo(db)
 
-	runner := jobs.NewRunner()
+	runner := jobs.NewRunner(jobs.WithRetryPolicy(jobs.RetryPolicy{MaxAttempts: 3, Backoff: time.Second}))
 	runner.Register("poll_monitor", func(ctx context.Context) error {
 		log.Print(observability.RenderLog("worker", "poll_monitor: running"))
 		monitorIDs, err := monitorRepo.ListActiveIDs(ctx)
 		if err != nil {
 			return fmt.Errorf("list monitors: %w", err)
 		}
-		for _, monitorID := range monitorIDs {
+		return runMonitorJob(ctx, "poll_monitor", monitorIDs, func(ctx context.Context, monitorID int64) error {
 			if err := pollJob.Run(ctx, jobs.MonitorInfo{ID: monitorID, Platform: "x"}); err != nil {
 				log.Printf("poll_monitor: error for monitor %d: %v", monitorID, err)
+				return err
 			}
-		}
-		return nil
-	}, 1*time.Minute)
+			return nil
+		})
+	}, 1*time.Minute, minuteRunKey("poll_monitor"))
 	runner.Register("aggregate_topics", func(ctx context.Context) error {
 		log.Print(observability.RenderLog("worker", "aggregate_topics: running"))
 		monitorIDs, err := monitorRepo.ListActiveIDs(ctx)
 		if err != nil {
 			return fmt.Errorf("list monitors: %w", err)
 		}
-		for _, monitorID := range monitorIDs {
+		return runMonitorJob(ctx, "aggregate_topics", monitorIDs, func(_ context.Context, monitorID int64) error {
 			if _, err := aggregateJob.Run(jobs.AggregateTopicsInput{MonitorID: monitorID, RunTime: time.Now()}); err != nil {
 				log.Printf("aggregate_topics: error for monitor %d: %v", monitorID, err)
+				return err
 			}
-		}
-		return nil
-	}, 5*time.Minute)
+			return nil
+		})
+	}, 5*time.Minute, minuteRunKey("aggregate_topics"))
 	runner.Register("build_snapshots", func(ctx context.Context) error {
 		log.Print(observability.RenderLog("worker", "build_snapshots: running"))
+		snapshotTime := time.Now()
+		if startedAt, ok := jobs.RunStartedAtFromContext(ctx); ok {
+			snapshotTime = startedAt
+		}
 		monitorIDs, err := monitorRepo.ListActiveIDs(ctx)
 		if err != nil {
 			return fmt.Errorf("list monitors: %w", err)
 		}
-		for _, monitorID := range monitorIDs {
-			if _, err := snapshotJob.Run(jobs.BuildSnapshotsInput{MonitorID: monitorID, SnapshotTime: time.Now()}); err != nil {
+		return runMonitorJob(ctx, "build_snapshots", monitorIDs, func(_ context.Context, monitorID int64) error {
+			if _, err := snapshotJob.Run(jobs.BuildSnapshotsInput{MonitorID: monitorID, SnapshotTime: snapshotTime}); err != nil {
 				log.Printf("build_snapshots: error for monitor %d: %v", monitorID, err)
+				return err
 			}
-		}
-		return nil
-	}, 10*time.Minute)
+			return nil
+		})
+	}, 10*time.Minute, minuteRunKey("build_snapshots"))
 	runner.Register("dispatch_notifications", func(ctx context.Context) error {
 		log.Print(observability.RenderLog("worker", "dispatch_notifications: running"))
 		return dispatchJob.Run(ctx, 0)
-	}, 1*time.Minute)
+	}, 1*time.Minute, minuteRunKey("dispatch_notifications"))
 
 	if cfg.ObsidianVaultPath != "" {
 		exporter := database.NewExporter(db)
@@ -124,7 +132,7 @@ func newJobRunner(cfg config.Config, db *gorm.DB) *jobs.Runner {
 					log.Print(observability.RenderLog("worker", "publish_daily_topics: running"))
 					_, err := publishJob.Run(ctx, time.Now(), cfg.DailyDigestTarget)
 					return err
-				}, 1*time.Minute)
+				}, 1*time.Minute, dailyRunKey(fmt.Sprintf("publish_daily_topics:%d", monitorID)))
 			}
 		}
 	} else {
@@ -132,6 +140,32 @@ func newJobRunner(cfg config.Config, db *gorm.DB) *jobs.Runner {
 	}
 
 	return runner
+}
+
+func dailyRunKey(name string) jobs.JobOption {
+	return jobs.WithRunKey(func(now time.Time) string {
+		return fmt.Sprintf("%s:%s", name, now.Format("2006-01-02"))
+	})
+}
+
+func minuteRunKey(name string) jobs.JobOption {
+	return jobs.WithRunKey(func(now time.Time) string {
+		return fmt.Sprintf("%s:%s", name, now.Format("2006-01-02T15:04"))
+	})
+}
+
+func runMonitorJob(ctx context.Context, jobName string, monitorIDs []int64, run func(context.Context, int64) error) error {
+	var errs []error
+	for _, monitorID := range monitorIDs {
+		if err := ctx.Err(); err != nil {
+			errs = append(errs, fmt.Errorf("%s monitor %d: %w", jobName, monitorID, err))
+			break
+		}
+		if err := run(ctx, monitorID); err != nil {
+			errs = append(errs, fmt.Errorf("%s monitor %d: %w", jobName, monitorID, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 type noopMailer struct{}

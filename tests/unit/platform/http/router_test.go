@@ -17,6 +17,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	platformruntime "github.com/StephenQiu30/hotkey-server/internal/platform/runtime"
 	"github.com/StephenQiu30/hotkey-server/internal/topic"
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
 )
@@ -108,14 +109,27 @@ func newTestHandler() http.Handler {
 func TestHealthEndpoint(t *testing.T) {
 	handler := newTestHandler()
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("X-Request-Id", "req-health")
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
 	}
-	if !strings.Contains(rr.Body.String(), `"status"`) {
-		t.Fatalf("expected status field in response, got: %s", rr.Body.String())
+	var body struct {
+		Data struct {
+			Status string `json:"status"`
+		} `json:"data"`
+		RequestID string `json:"request_id"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected JSON body, got %v: %s", err, rr.Body.String())
+	}
+	if body.Data.Status != "ok" {
+		t.Fatalf("expected wrapped health status ok, got %q", body.Data.Status)
+	}
+	if body.RequestID != "req-health" {
+		t.Fatalf("expected request id req-health, got %q", body.RequestID)
 	}
 }
 
@@ -145,11 +159,27 @@ func TestRegisterReturns201(t *testing.T) {
 	body := `{"email":"test@example.com","password":"Passw0rd!","display_name":"Test"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Request-Id", "req-register")
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var resp struct {
+		Data struct {
+			Email string `json:"email"`
+		} `json:"data"`
+		RequestID string `json:"request_id"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode register response: %v", err)
+	}
+	if resp.Data.Email != "test@example.com" {
+		t.Fatalf("expected wrapped register email, got %q", resp.Data.Email)
+	}
+	if resp.RequestID != "req-register" {
+		t.Fatalf("expected request id req-register, got %q", resp.RequestID)
 	}
 }
 
@@ -174,8 +204,16 @@ func TestLoginReturns200(t *testing.T) {
 	if loginRR.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", loginRR.Code, loginRR.Body.String())
 	}
-	if !strings.Contains(loginRR.Body.String(), `"token"`) {
-		t.Fatalf("expected token in response, got: %s", loginRR.Body.String())
+	var resp struct {
+		Data struct {
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(loginRR.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode login response: %v", err)
+	}
+	if resp.Data.Token == "" {
+		t.Fatalf("expected token in wrapped response, got: %s", loginRR.Body.String())
 	}
 }
 
@@ -272,19 +310,58 @@ func TestSmokeBypassAuth(t *testing.T) {
 			if rr.Code != http.StatusOK {
 				t.Errorf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 			}
+			var body struct {
+				Data      json.RawMessage `json:"data"`
+				RequestID string          `json:"request_id"`
+			}
+			if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+				t.Fatalf("expected JSON envelope, got %v: %s", err, rr.Body.String())
+			}
+			if len(body.Data) == 0 {
+				t.Fatalf("expected wrapped data for %s, got %s", tt.path, rr.Body.String())
+			}
 		})
+	}
+}
+
+func TestMarkNotificationReadReturnsUnifiedEnvelope(t *testing.T) {
+	handler := newTestHandler()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/notifications/1/read", nil)
+	req.Header.Set("X-Request-Id", "req-notify-read")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var body struct {
+		Data struct {
+			Read bool `json:"read"`
+		} `json:"data"`
+		RequestID string `json:"request_id"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected JSON envelope, got %v: %s", err, rr.Body.String())
+	}
+	if !body.Data.Read {
+		t.Fatalf("expected read=true, got %s", rr.Body.String())
+	}
+	if body.RequestID != "req-notify-read" {
+		t.Fatalf("expected request id req-notify-read, got %q", body.RequestID)
 	}
 }
 
 func TestRecoverMiddlewareReturnsUnifiedErrorBody(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
+	r.Use(platformhttp.RequestIDMiddleware())
 	r.Use(platformhttp.RecoverMiddleware())
 	r.GET("/panic", func(c *gin.Context) {
 		panic("boom")
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/panic", nil)
+	req.Header.Set("X-Request-Id", "req-test-123")
 	rr := httptest.NewRecorder()
 	r.ServeHTTP(rr, req)
 
@@ -303,5 +380,244 @@ func TestRecoverMiddlewareReturnsUnifiedErrorBody(t *testing.T) {
 
 	if body.Code != "internal_error" {
 		t.Fatalf("expected unified error code, got %q", body.Code)
+	}
+
+	if body.RequestID != "req-test-123" {
+		t.Fatalf("expected request id in error body, got %q", body.RequestID)
+	}
+}
+
+func TestRespondAppErrorUsesCodeStatusMessageAndRequestID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(platformhttp.RequestIDMiddleware())
+	r.GET("/app-error", func(c *gin.Context) {
+		platformhttp.RespondAppError(c, platformhttp.NewAppError(
+			platformhttp.ErrorCode("MONITOR_NOT_FOUND"),
+			http.StatusNotFound,
+			"monitor not found",
+			nil,
+		))
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/app-error", nil)
+	req.Header.Set("X-Request-Id", "req-app-error")
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var body platformhttp.ErrorBody
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected JSON error body, got %v: %s", err, rr.Body.String())
+	}
+
+	if body.Code != "MONITOR_NOT_FOUND" {
+		t.Fatalf("expected error code MONITOR_NOT_FOUND, got %q", body.Code)
+	}
+	if body.Error != "monitor not found" {
+		t.Fatalf("expected message monitor not found, got %q", body.Error)
+	}
+	if body.RequestID != "req-app-error" {
+		t.Fatalf("expected request id req-app-error, got %q", body.RequestID)
+	}
+}
+
+func TestRespondErrorCodeUsesRegisteredHTTPStatus(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(platformhttp.RequestIDMiddleware())
+	r.GET("/registered-error", func(c *gin.Context) {
+		platformhttp.RespondErrorCode(c, platformhttp.ErrorCodeMonitorNotFound, "monitor not found", nil)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/registered-error", nil)
+	req.Header.Set("X-Request-Id", "req-registered")
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected registered 404, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var body platformhttp.ErrorBody
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected JSON error body, got %v: %s", err, rr.Body.String())
+	}
+	if body.Code != string(platformhttp.ErrorCodeMonitorNotFound) {
+		t.Fatalf("expected monitor not found code, got %q", body.Code)
+	}
+	if body.RequestID != "req-registered" {
+		t.Fatalf("expected request id req-registered, got %q", body.RequestID)
+	}
+}
+
+func TestRequestIDMiddlewareInjectsRequestAndTraceContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(platformhttp.RequestIDMiddleware())
+	r.GET("/context", func(c *gin.Context) {
+		requestID := platformruntime.RequestIDFromContext(c.Request.Context())
+		traceID := platformruntime.TraceIDFromContext(c.Request.Context())
+		c.JSON(http.StatusOK, gin.H{
+			"request_id": requestID,
+			"trace_id":   traceID,
+		})
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/context", nil)
+	req.Header.Set("X-Request-Id", "req-context")
+	req.Header.Set("X-Trace-Id", "trace-context")
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if got := rr.Header().Get("X-Request-Id"); got != "req-context" {
+		t.Fatalf("expected request header propagation, got %q", got)
+	}
+	if got := rr.Header().Get("X-Trace-Id"); got != "trace-context" {
+		t.Fatalf("expected trace header propagation, got %q", got)
+	}
+
+	var body struct {
+		RequestID string `json:"request_id"`
+		TraceID   string `json:"trace_id"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected JSON body, got %v: %s", err, rr.Body.String())
+	}
+	if body.RequestID != "req-context" {
+		t.Fatalf("expected request id in context, got %q", body.RequestID)
+	}
+	if body.TraceID != "trace-context" {
+		t.Fatalf("expected trace id in context, got %q", body.TraceID)
+	}
+}
+
+func TestContextMetadataMiddlewareInjectsModuleAndOperator(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(platformhttp.ContextMetadataMiddleware("monitor"))
+	r.GET("/metadata", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"module":   platformruntime.ModuleFromContext(c.Request.Context()),
+			"operator": platformruntime.OperatorFromContext(c.Request.Context()),
+		})
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/metadata", nil)
+	req.Header.Set("X-Operator", "alice@example.com")
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var body struct {
+		Module   string `json:"module"`
+		Operator string `json:"operator"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected JSON body, got %v: %s", err, rr.Body.String())
+	}
+	if body.Module != "monitor" {
+		t.Fatalf("expected module monitor, got %q", body.Module)
+	}
+	if body.Operator != "alice@example.com" {
+		t.Fatalf("expected operator alice@example.com, got %q", body.Operator)
+	}
+}
+
+func TestRuntimeContextStoresUserModuleAndOperator(t *testing.T) {
+	ctx := context.Background()
+	ctx = platformruntime.WithUserID(ctx, 42)
+	ctx = platformruntime.WithModule(ctx, "monitor")
+	ctx = platformruntime.WithOperator(ctx, "alice@example.com")
+
+	if got := platformruntime.UserIDFromContext(ctx); got != 42 {
+		t.Fatalf("expected user id 42, got %d", got)
+	}
+	if got := platformruntime.ModuleFromContext(ctx); got != "monitor" {
+		t.Fatalf("expected module monitor, got %q", got)
+	}
+	if got := platformruntime.OperatorFromContext(ctx); got != "alice@example.com" {
+		t.Fatalf("expected operator alice@example.com, got %q", got)
+	}
+}
+
+func TestRespondOKWrapsDataAndRequestID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(platformhttp.RequestIDMiddleware())
+	r.GET("/ok", func(c *gin.Context) {
+		platformhttp.RespondOK(c, gin.H{"name": "hotkey"})
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/ok", nil)
+	req.Header.Set("X-Request-Id", "req-ok")
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var body struct {
+		Data struct {
+			Name string `json:"name"`
+		} `json:"data"`
+		RequestID string `json:"request_id"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected JSON body, got %v: %s", err, rr.Body.String())
+	}
+	if body.Data.Name != "hotkey" {
+		t.Fatalf("expected wrapped data, got %q", body.Data.Name)
+	}
+	if body.RequestID != "req-ok" {
+		t.Fatalf("expected request id req-ok, got %q", body.RequestID)
+	}
+}
+
+func TestRespondPageWrapsPaginationAndRequestID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(platformhttp.RequestIDMiddleware())
+	r.GET("/page", func(c *gin.Context) {
+		platformhttp.RespondPage(c, []string{"a", "b"}, 2, 10, 42)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/page", nil)
+	req.Header.Set("X-Request-Id", "req-page")
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var body struct {
+		Data      []string `json:"data"`
+		Page      int      `json:"page"`
+		PageSize  int      `json:"page_size"`
+		Total     int      `json:"total"`
+		RequestID string   `json:"request_id"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected JSON body, got %v: %s", err, rr.Body.String())
+	}
+	if len(body.Data) != 2 || body.Data[0] != "a" || body.Data[1] != "b" {
+		t.Fatalf("expected wrapped page data, got %#v", body.Data)
+	}
+	if body.Page != 2 || body.PageSize != 10 || body.Total != 42 {
+		t.Fatalf("expected pagination metadata, got page=%d page_size=%d total=%d", body.Page, body.PageSize, body.Total)
+	}
+	if body.RequestID != "req-page" {
+		t.Fatalf("expected request id req-page, got %q", body.RequestID)
 	}
 }

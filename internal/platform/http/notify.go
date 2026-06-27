@@ -30,7 +30,7 @@ func RegisterNotifyRoutes(r *gin.Engine, svc *notify.Service) {
 			result[i] = toNotificationResponse(n)
 		}
 
-		c.JSON(http.StatusOK, result)
+		RespondOK(c, result)
 	})
 
 	r.POST("/api/v1/notifications/:id/read", func(c *gin.Context) {
@@ -55,7 +55,7 @@ func RegisterNotifyRoutes(r *gin.Engine, svc *notify.Service) {
 			return
 		}
 
-		c.Status(http.StatusNoContent)
+		RespondOK(c, gin.H{"read": true})
 	})
 }
 
