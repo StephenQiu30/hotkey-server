@@ -254,6 +254,66 @@ func TestMonitorsRequireAuth(t *testing.T) {
 	}
 }
 
+func TestUnauthorizedBusinessRouteIncludesStableErrorCode(t *testing.T) {
+	router := platformhttp.NewRouter(platformhttp.Config{
+		JWTSecret:     "test-secret",
+		SmokeTest:     false,
+		AuthService:   auth.NewService(&stubAuthRepo{}),
+		MonitorSvc:    monitor.NewService(&stubMonitorRepo{}),
+		NotifySvc:     notify.NewService(&stubNotifyRepo{}),
+		PostQuerySvc:  &stubPostQueryService{},
+		TopicQuerySvc: &stubTopicQueryService{},
+		TrendQuerySvc: &stubTrendQueryService{},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/monitors", nil)
+	req.Header.Set("X-Request-Id", "req-unauthorized")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var body platformhttp.ErrorBody
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected JSON error body, got %v: %s", err, rr.Body.String())
+	}
+	if body.Code != string(platformhttp.ErrorCodeUnauthorized) {
+		t.Fatalf("expected unauthorized code, got %q", body.Code)
+	}
+	if body.RequestID != "req-unauthorized" {
+		t.Fatalf("expected request id req-unauthorized, got %q", body.RequestID)
+	}
+}
+
+func TestPublicPathDoesNotInjectUserID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(platformhttp.AuthMiddleware("test-secret", false))
+	r.GET("/healthz", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"user_id": platformruntime.UserIDFromContext(c.Request.Context()),
+		})
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var body struct {
+		UserID int64 `json:"user_id"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected JSON body, got %v: %s", err, rr.Body.String())
+	}
+	if body.UserID != 0 {
+		t.Fatalf("expected anonymous public path, got user id %d", body.UserID)
+	}
+}
+
 func TestJWTAuthPropagatesUserID(t *testing.T) {
 	router := platformhttp.NewRouter(platformhttp.Config{
 		JWTSecret:     "test-secret",

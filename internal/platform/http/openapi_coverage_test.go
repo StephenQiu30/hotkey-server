@@ -135,7 +135,7 @@ func TestOpenAPIHealthUsesSuccessEnvelope(t *testing.T) {
 	}
 }
 
-func TestOpenAPIBusinessOperationsUseSuccessEnvelope(t *testing.T) {
+func TestOpenAPIBusinessOperationsUseTypedSuccessEnvelope(t *testing.T) {
 	spec := platformhttp.BuildOpenAPISpec()
 	paths, ok := spec["paths"].(map[string]any)
 	if !ok {
@@ -160,9 +160,41 @@ func TestOpenAPIBusinessOperationsUseSuccessEnvelope(t *testing.T) {
 			content, _ := okResponse["content"].(map[string]any)
 			applicationJSON, _ := content["application/json"].(map[string]any)
 			schema, _ := applicationJSON["schema"].(map[string]any)
-			if got := schema["$ref"]; got != "#/components/schemas/ResponseEnvelope" {
-				t.Fatalf("%s %s missing ResponseEnvelope success response, got %#v", method, path, got)
+			ref, _ := schema["$ref"].(string)
+			if ref == "" {
+				t.Fatalf("%s %s missing typed success envelope ref, got %#v", method, path, schema)
 			}
+			if ref == "#/components/schemas/ResponseEnvelope" {
+				t.Fatalf("%s %s uses generic ResponseEnvelope instead of a typed envelope", method, path)
+			}
+		}
+	}
+}
+
+func TestOpenAPITypedEnvelopeSchemasDeclareDataShape(t *testing.T) {
+	spec := platformhttp.BuildOpenAPISpec()
+	components, _ := spec["components"].(map[string]any)
+	schemas, _ := components["schemas"].(map[string]any)
+
+	for _, name := range []string{
+		"UserEnvelope",
+		"LoginEnvelope",
+		"MonitorEnvelope",
+		"MonitorListEnvelope",
+		"PostListEnvelope",
+		"TopicListEnvelope",
+		"TrendListEnvelope",
+		"NotificationListEnvelope",
+		"MarkNotificationReadEnvelope",
+	} {
+		schema, ok := schemas[name].(map[string]any)
+		if !ok {
+			t.Fatalf("missing typed envelope schema %s", name)
+		}
+		properties, _ := schema["properties"].(map[string]any)
+		data, ok := properties["data"].(map[string]any)
+		if !ok || len(data) == 0 {
+			t.Fatalf("%s must declare a concrete data schema, got %#v", name, properties["data"])
 		}
 	}
 }

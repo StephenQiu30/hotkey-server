@@ -43,6 +43,20 @@
         ],
         "type": "object"
       },
+      "LoginEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/LoginResponse"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
       "LoginResponse": {
         "properties": {
           "token": {
@@ -52,6 +66,62 @@
             "$ref": "#/components/schemas/UserResponse"
           }
         },
+        "type": "object"
+      },
+      "MarkNotificationReadEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MarkNotificationReadResponse"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "MarkNotificationReadResponse": {
+        "properties": {
+          "read": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "read"
+        ],
+        "type": "object"
+      },
+      "MonitorEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MonitorResponse"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "MonitorListEnvelope": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/MonitorResponse"
+            },
+            "type": "array"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
         "type": "object"
       },
       "MonitorResponse": {
@@ -82,8 +152,29 @@
         },
         "type": "object"
       },
+      "NotificationListEnvelope": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/NotificationResponse"
+            },
+            "type": "array"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
       "NotificationResponse": {
         "properties": {
+          "alert_id": {
+            "format": "int64",
+            "type": "integer"
+          },
           "channel": {
             "type": "string"
           },
@@ -97,6 +188,91 @@
           "id": {
             "format": "int64",
             "type": "integer"
+          },
+          "read_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "PostListEnvelope": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/PostSummary"
+            },
+            "type": "array"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "PostSummary": {
+        "properties": {
+          "author_handle": {
+            "type": "string"
+          },
+          "author_name": {
+            "type": "string"
+          },
+          "content_lang": {
+            "type": "string"
+          },
+          "content_text": {
+            "type": "string"
+          },
+          "final_score": {
+            "type": "number"
+          },
+          "freshness_score": {
+            "type": "number"
+          },
+          "heat_score": {
+            "type": "number"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "like_count": {
+            "type": "integer"
+          },
+          "matched_keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "platform_post_id": {
+            "type": "string"
+          },
+          "published_at": {
+            "type": "string"
+          },
+          "quote_count": {
+            "type": "integer"
+          },
+          "relevance_score": {
+            "type": "number"
+          },
+          "reply_count": {
+            "type": "integer"
+          },
+          "repost_count": {
+            "type": "integer"
+          },
+          "view_count": {
+            "type": "integer"
           }
         },
         "type": "object"
@@ -104,6 +280,96 @@
       "ResponseEnvelope": {
         "properties": {
           "data": {},
+          "request_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "TopicListEnvelope": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/TopicSummary"
+            },
+            "type": "array"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "TopicSummary": {
+        "properties": {
+          "current_heat": {
+            "type": "number"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "post_count": {
+            "type": "integer"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "trend_direction": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "TrendListEnvelope": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/TrendPoint"
+            },
+            "type": "array"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "TrendPoint": {
+        "properties": {
+          "heat_score": {
+            "type": "number"
+          },
+          "time": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "trend_direction": {
+            "type": "string"
+          },
+          "trend_velocity": {
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "UserEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/UserResponse"
+          },
           "request_id": {
             "type": "string"
           }
@@ -152,7 +418,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResponseEnvelope"
+                  "$ref": "#/components/schemas/LoginEnvelope"
                 }
               }
             },
@@ -183,7 +449,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResponseEnvelope"
+                  "$ref": "#/components/schemas/UserEnvelope"
                 }
               }
             },
@@ -214,7 +480,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResponseEnvelope"
+                  "$ref": "#/components/schemas/MonitorListEnvelope"
                 }
               }
             },
@@ -248,7 +514,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResponseEnvelope"
+                  "$ref": "#/components/schemas/MonitorEnvelope"
                 }
               }
             },
@@ -284,7 +550,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResponseEnvelope"
+                  "$ref": "#/components/schemas/MonitorEnvelope"
                 }
               }
             },
@@ -318,7 +584,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResponseEnvelope"
+                  "$ref": "#/components/schemas/MonitorEnvelope"
                 }
               }
             },
@@ -354,7 +620,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResponseEnvelope"
+                  "$ref": "#/components/schemas/PostListEnvelope"
                 }
               }
             },
@@ -390,7 +656,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResponseEnvelope"
+                  "$ref": "#/components/schemas/TopicListEnvelope"
                 }
               }
             },
@@ -426,7 +692,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResponseEnvelope"
+                  "$ref": "#/components/schemas/TrendListEnvelope"
                 }
               }
             },
@@ -462,7 +728,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResponseEnvelope"
+                  "$ref": "#/components/schemas/NotificationListEnvelope"
                 }
               }
             },
@@ -498,7 +764,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResponseEnvelope"
+                  "$ref": "#/components/schemas/MarkNotificationReadEnvelope"
                 }
               }
             },
@@ -534,7 +800,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResponseEnvelope"
+                  "$ref": "#/components/schemas/TrendListEnvelope"
                 }
               }
             },
