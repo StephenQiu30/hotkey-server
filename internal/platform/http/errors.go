@@ -20,11 +20,26 @@ type ErrorBody struct {
 const (
 	// ErrorCodeInternal is the common internal server error code.
 	ErrorCodeInternal ErrorCode = "internal_error"
+	// ErrorCodeBadRequest is returned for malformed or invalid requests.
+	ErrorCodeBadRequest ErrorCode = "bad_request"
+	// ErrorCodeUnauthorized is returned when authentication is missing or invalid.
+	ErrorCodeUnauthorized ErrorCode = "unauthorized"
+	// ErrorCodeForbidden is returned when the caller is not allowed to access a resource.
+	ErrorCodeForbidden ErrorCode = "forbidden"
+	// ErrorCodeNotFound is returned when a resource is missing.
+	ErrorCodeNotFound ErrorCode = "not_found"
+	// ErrorCodeConflict is returned when the request conflicts with existing state.
+	ErrorCodeConflict ErrorCode = "conflict"
 	// ErrorCodeMonitorNotFound is returned when a monitor resource is missing.
 	ErrorCodeMonitorNotFound ErrorCode = "MONITOR_NOT_FOUND"
 )
 
 var errorStatusRegistry = map[ErrorCode]int{
+	ErrorCodeBadRequest:      http.StatusBadRequest,
+	ErrorCodeUnauthorized:    http.StatusUnauthorized,
+	ErrorCodeForbidden:       http.StatusForbidden,
+	ErrorCodeNotFound:        http.StatusNotFound,
+	ErrorCodeConflict:        http.StatusConflict,
 	ErrorCodeInternal:        http.StatusInternalServerError,
 	ErrorCodeMonitorNotFound: http.StatusNotFound,
 }
@@ -82,9 +97,10 @@ func newInternalErrorBody(requestID string) ErrorBody {
 }
 
 func respondError(c *gin.Context, status int, message string) {
-	body := ErrorBody{Error: message, RequestID: requestIDFromContext(c)}
-	if status >= http.StatusInternalServerError {
-		body.Code = string(ErrorCodeInternal)
+	body := ErrorBody{
+		Error:     message,
+		Code:      string(errorCodeForHTTPStatus(status)),
+		RequestID: requestIDFromContext(c),
 	}
 	c.JSON(status, body)
 }
@@ -110,4 +126,24 @@ func RespondAppError(c *gin.Context, err error) {
 // RespondErrorCode writes a registered application error by stable code.
 func RespondErrorCode(c *gin.Context, code ErrorCode, message string, cause error) {
 	RespondAppError(c, newRegisteredAppError(code, message, cause))
+}
+
+func errorCodeForHTTPStatus(status int) ErrorCode {
+	switch status {
+	case http.StatusBadRequest:
+		return ErrorCodeBadRequest
+	case http.StatusUnauthorized:
+		return ErrorCodeUnauthorized
+	case http.StatusForbidden:
+		return ErrorCodeForbidden
+	case http.StatusNotFound:
+		return ErrorCodeNotFound
+	case http.StatusConflict:
+		return ErrorCodeConflict
+	default:
+		if status >= http.StatusInternalServerError {
+			return ErrorCodeInternal
+		}
+		return ErrorCodeInternal
+	}
 }

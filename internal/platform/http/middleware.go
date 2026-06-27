@@ -75,7 +75,11 @@ func RecoverMiddleware() gin.HandlerFunc {
 // AuthMiddleware validates JWT tokens and injects the user ID into context.
 func AuthMiddleware(jwtSecret string, smokeTest bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if smokeTest || isPublicPath(c.Request.URL.Path) {
+		if isPublicPath(c.Request.URL.Path) {
+			c.Next()
+			return
+		}
+		if smokeTest {
 			ctx := context.WithValue(c.Request.Context(), UserIDKey, int64(1))
 			ctx = platformruntime.WithUserID(ctx, int64(1))
 			c.Request = c.Request.WithContext(ctx)

@@ -42,6 +42,11 @@ if [ ! -f db/migrations/000_schema.sql ]; then
   exit 1
 fi
 
+if [ ! -f db/migrations/001_snapshot_upsert_constraints.sql ]; then
+  echo "FAIL: db/migrations/001_snapshot_upsert_constraints.sql is required for existing database snapshot upserts"
+  exit 1
+fi
+
 if ! find db/migrations -type f -name '*.sql' | grep -q .; then
   echo "FAIL: db/migrations must contain at least one SQL migration"
   exit 1
@@ -53,6 +58,16 @@ missing_tables=$(comm -23 <(printf '%s\n' "$schema_tables") <(printf '%s\n' "$mi
 if [ -n "$missing_tables" ]; then
   echo "FAIL: db/migrations does not cover schema tables"
   printf '%s\n' "$missing_tables"
+  exit 1
+fi
+
+if ! grep -q 'topic_id, snapshot_time' db/migrations/001_snapshot_upsert_constraints.sql; then
+  echo "FAIL: snapshot migration must add topic snapshot upsert constraint"
+  exit 1
+fi
+
+if ! grep -q 'monitor_id, snapshot_time' db/migrations/001_snapshot_upsert_constraints.sql; then
+  echo "FAIL: snapshot migration must add monitor snapshot upsert constraint"
   exit 1
 fi
 
