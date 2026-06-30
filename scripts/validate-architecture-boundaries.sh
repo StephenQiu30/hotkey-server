@@ -32,42 +32,31 @@ if [ ! -f db/schema.sql ]; then
   exit 1
 fi
 
-if [ ! -d db/migrations ]; then
-  echo "FAIL: db/migrations is required as the migration boundary"
-  exit 1
-fi
-
-if [ ! -f db/migrations/000_schema.sql ]; then
-  echo "FAIL: db/migrations/000_schema.sql is required as the baseline schema migration"
-  exit 1
-fi
-
-if [ ! -f db/migrations/001_snapshot_upsert_constraints.sql ]; then
-  echo "FAIL: db/migrations/001_snapshot_upsert_constraints.sql is required for existing database snapshot upserts"
-  exit 1
-fi
-
-if ! find db/migrations -type f -name '*.sql' | grep -q .; then
-  echo "FAIL: db/migrations must contain at least one SQL migration"
-  exit 1
-fi
-
 schema_tables=$(search_files '^create table( if not exists)? ' db/schema.sql | sed -E 's/^.*create table( if not exists)? ([a-z_]+).*/\2/' | sort)
-migration_tables=$(find db/migrations -type f -name '*.sql' -print0 | xargs -0 grep -nE '^create table( if not exists)? ' 2>/dev/null | sed -E 's/^.*create table( if not exists)? ([a-z_]+).*/\2/' | sort -u || true)
-missing_tables=$(comm -23 <(printf '%s\n' "$schema_tables") <(printf '%s\n' "$migration_tables") || true)
-if [ -n "$missing_tables" ]; then
-  echo "FAIL: db/migrations does not cover schema tables"
-  printf '%s\n' "$missing_tables"
+table_count=$(printf '%s\n' "$schema_tables" | sed '/^$/d' | wc -l | tr -d ' ')
+if [ "$table_count" -ne 14 ]; then
+  echo "FAIL: db/schema.sql must contain exactly 14 current tables, got $table_count"
+  printf '%s\n' "$schema_tables"
   exit 1
 fi
 
-if ! grep -q 'topic_id, snapshot_time' db/migrations/001_snapshot_upsert_constraints.sql; then
-  echo "FAIL: snapshot migration must add topic snapshot upsert constraint"
+if [ -d db/migrations ]; then
+  echo "FAIL: db/migrations must not be used; keep the complete schema in db/schema.sql"
   exit 1
 fi
 
-if ! grep -q 'monitor_id, snapshot_time' db/migrations/001_snapshot_upsert_constraints.sql; then
-  echo "FAIL: snapshot migration must add monitor snapshot upsert constraint"
+if ! grep -q 'topic_id, snapshot_time' db/schema.sql; then
+  echo "FAIL: db/schema.sql must include topic snapshot upsert constraint"
+  exit 1
+fi
+
+if ! grep -q 'monitor_id, snapshot_time' db/schema.sql; then
+  echo "FAIL: db/schema.sql must include monitor snapshot upsert constraint"
+  exit 1
+fi
+
+if ! grep -q 'notification_id bigint not null references user_notifications(id)' db/schema.sql; then
+  echo "FAIL: db/schema.sql must include the current email_deliveries shape"
   exit 1
 fi
 
@@ -111,7 +100,7 @@ if [ -n "$route_json_refs" ]; then
   fi
 fi
 
-echo "OK: schema and migration boundaries are present"
+echo "OK: single schema boundary is present"
 echo "OK: gorm references stay in repository/app composition layers"
 echo "OK: complex DB queries stay inside internal/database"
 echo "OK: environment access stays in approved wiring layers"

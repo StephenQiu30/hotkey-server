@@ -82,3 +82,22 @@ func (j *DispatchJob) Run(ctx context.Context, notificationID int64) error {
 
 	return nil
 }
+
+// RunPending sends delivery records that were already queued.
+func (j *DispatchJob) RunPending(ctx context.Context, limit int) error {
+	deliveries, err := j.repo.GetPendingDeliveries(ctx, limit)
+	if err != nil {
+		return fmt.Errorf("list pending deliveries: %w", err)
+	}
+	for _, delivery := range deliveries {
+		providerMsgID, err := j.mailer.Send(ctx, delivery.RecipientEmail, "Notification", "You have a new alert")
+		if err != nil {
+			_ = j.repo.UpdateDeliveryStatus(ctx, delivery.NotificationID, "failed", "", err.Error())
+			return fmt.Errorf("send email: %w", err)
+		}
+		if err := j.repo.UpdateDeliveryStatus(ctx, delivery.NotificationID, "sent", providerMsgID, ""); err != nil {
+			return fmt.Errorf("update delivery status: %w", err)
+		}
+	}
+	return nil
+}

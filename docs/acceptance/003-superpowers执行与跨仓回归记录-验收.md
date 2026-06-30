@@ -6,7 +6,7 @@ feature_area: Codex执行治理与跨仓同步
 purpose: 记录本轮 superpowers 执行、server 优先同步、browser 回归和代码审核的实际验收结果
 canonical_path: docs/acceptance/003-superpowers执行与跨仓回归记录-验收.md
 status: draft
-version: v1.0
+version: v1.1
 owner: Codex
 inputs:
   - docs/design/008-superpowers执行与跨仓同步设计.md
@@ -249,4 +249,87 @@ downstream: []
 
 | 版本 | 日期 | 作者 | 变更说明 |
 | --- | --- | --- | --- |
+| v1.1 | 2026-06-25 | Cursor | Gin/GORM 单轨合并后复跑计划 017：server 门禁全绿；记录 OpenAPI 契约缺口与 agent-browser 回归证据 |
 | v1.0 | 2026-06-25 | Codex | 记录本轮 superpowers 执行、server/web/miniapp 同步与回归结果 |
+
+---
+
+# v1.1 补充验收（Gin/GORM 单轨合并后）
+
+执行依据：`docs/plans/017-superpowers执行与跨仓同步计划.md`
+执行顺序：`server -> web -> miniapp -> agent-browser 回归`
+
+## Task 1：server 契约门禁 — 通过
+
+```bash
+cd hotkey-server
+make openapi && make openapi-validate && bash scripts/validate-repository.sh
+```
+
+结果：全部通过（OpenAPI 3.1.0、schema components: 5、runtime smoke 全绿）。
+
+## Task 2：server 工程化 — 通过
+
+- `internal/platform/http/openapi_coverage_test.go` 已存在且 `go test ./internal/platform/http` 通过
+- panic recover 统一错误体、`/healthz` 匿名访问已在先前提交中落地
+
+## Task 3/4：web / miniapp 客户端重新生成 — 阻塞
+
+对当前 `hotkey-server/docs/openapi.json`（静态 5-schema 精简版）执行 `npm run openapi:generate` 后：
+
+| 仓 | `openapi:generate` | `typecheck` | 说明 |
+|---|---|---|---|
+| hotkey-web | 成功 | **失败** | 生成 `monitors.ts` 等 M1 路由客户端，但缺少 `HotspotRead` / `EmailLoginRequest` 等 UI 契约类型 |
+| hotkey-miniapp | 成功 | **失败** | 同上 |
+
+**判定：** 不允许进入“已同步完成”状态。下游仍依赖仓内已提交的富客户端（`hotspots.ts`、`analytics.ts` 等），与当前 server OpenAPI 事实源不一致。
+
+**恢复基线（本轮验收用）：** 删除误生成的 `content.ts`/`monitors.ts`/`topics.ts`/`trends.ts`，保留 HEAD 已提交客户端后：
+
+- `hotkey-web`：`npm run typecheck` + `npm run test`（19 tests）通过
+- `hotkey-miniapp`：`npm run typecheck` + `npm run test`（9 tests）通过
+
+**后续必须项：** 扩充 `internal/platform/http/openapi.go`（或等价契约源），使 `docs/openapi.json` 覆盖 web/miniapp 已提交客户端所需的 schema 与 path 参数，再重新执行跨仓 `openapi:generate`。
+
+## Task 5：`agent-browser` 回归 — 部分通过
+
+### Server
+
+| 链路 | URL | 结果 |
+|---|---|---|
+| 健康检查 | `http://127.0.0.1:8080/healthz` | 200，`{"status":"ok"}` |
+
+启动方式：`SMOKE_TEST=1 HTTP_ADDR=:8080 go run ./cmd/hotkey`
+
+### Web（主链路 — 通过）
+
+| 步骤 | 操作 | 结果 |
+|---|---|---|
+| 1 | `agent-browser open http://localhost:3000` | 标题「HotKey 创作者工作台」 |
+| 2 | 点击「进入工作台」 | 进入工作台 |
+| 3 | 验证模块 | 可见「热点榜单」「快速理解」「内容选题」「收藏关注」「趋势分析」「通知配置」 |
+| 4 | 点击第二条热点 | 右侧详情切换为「搜索 API 聚合让小团队也能做热点雷达」 |
+
+截图：`docs/acceptance/evidence/2026-06-25-web-workbench.png`
+
+边界：登录仍为前端状态驱动 demo，未调用真实 `/api/v1/auth/login`。
+
+### Miniapp H5（部分 — 页面可加载）
+
+| 步骤 | URL | 结果 |
+|---|---|---|
+| 1 | `http://localhost:10086/#/pages/index/index` | 标题「HotKey」，页面文本可见「平台登录」「订阅消息提醒入口」 |
+| 2 | 交互探测 | `agent-browser` 仅暴露单一可点击节点，未能完成登录后榜单切换（需小程序端或更细粒度选择器） |
+
+截图：`docs/acceptance/evidence/2026-06-25-miniapp-h5-index.png`
+
+## v1.1 结论
+
+| 项 | 状态 |
+|---|---|
+| server 工程化门禁 | ✅ 通过 |
+| web/miniapp 自动化测试（保留已提交客户端） | ✅ 通过 |
+| 跨仓 OpenAPI 重新生成同步 | ❌ 阻塞（契约过薄） |
+| web agent-browser 主链路 | ✅ 通过 |
+| miniapp agent-browser 完整主链路 | ⚠️ 仅页面加载证据 |
+| 真实后端登录 E2E | ❌ 未覆盖 |

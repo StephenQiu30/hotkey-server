@@ -101,3 +101,42 @@ func TestDispatchFailsWhenEmailResolutionFails(t *testing.T) {
 		t.Errorf("expected no delivery record created, got email %q", repo.LastRecipientEmail)
 	}
 }
+
+func TestDispatchPendingNoopsWhenQueueIsEmpty(t *testing.T) {
+	repo := &fakejobs.DeliveryRepo{}
+	mailer := &fakejobs.Mailer{MessageID: "msg-never"}
+	resolver := &fakejobs.EmailResolver{Email: "user@example.com"}
+	job := jobs.NewDispatchJob(repo, mailer, resolver)
+	if err := job.RunPending(context.Background(), 100); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if mailer.LastTo != "" {
+		t.Fatalf("expected no email to be sent, got %q", mailer.LastTo)
+	}
+}
+
+func TestDispatchPendingMarksQueuedDeliverySent(t *testing.T) {
+	repo := &fakejobs.DeliveryRepo{
+		Deliveries: []jobs.EmailDelivery{{
+			NotificationID: 7,
+			RecipientEmail: "queued@example.com",
+			Provider:       "smtp",
+			Status:         "pending",
+		}},
+	}
+	mailer := &fakejobs.Mailer{MessageID: "msg-queued"}
+	resolver := &fakejobs.EmailResolver{Email: "user@example.com"}
+	job := jobs.NewDispatchJob(repo, mailer, resolver)
+	if err := job.RunPending(context.Background(), 100); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if mailer.LastTo != "queued@example.com" {
+		t.Fatalf("expected queued recipient, got %q", mailer.LastTo)
+	}
+	if repo.LastStatus != "sent" {
+		t.Fatalf("expected sent status, got %q", repo.LastStatus)
+	}
+	if repo.LastNotificationID != 7 {
+		t.Fatalf("expected notification id 7, got %d", repo.LastNotificationID)
+	}
+}

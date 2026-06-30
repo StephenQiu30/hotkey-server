@@ -2,8 +2,8 @@
 layer: Plan
 doc_no: 015
 audience: Dev, QA, Ops
-feature_area: GORM与数据库迁移
-purpose: 定义新 ORM 主线、migration 主线、核心 repository 迁移顺序与复杂查询约束
+feature_area: GORM与数据库 schema
+purpose: 定义新 ORM 主线、完整 schema 主线、核心 repository 迁移顺序与复杂查询约束
 canonical_path: docs/plans/015-GORM与数据库迁移计划.md
 status: completed
 version: v1.1
@@ -13,7 +13,7 @@ inputs:
   - docs/design/007-核心数据模型与数据库设计.md
 outputs:
   - GORM 数据库初始化主线
-  - migration 结构
+  - 完整 schema 结构
   - repository 迁移顺序
 triggers:
   - 应用骨架收敛后
@@ -30,7 +30,7 @@ downstream:
 # 目标
 
 1. 建立 GORM 为唯一 ORM 主链路。
-2. 建立 migration 为正式 schema 变更主线。
+2. 建立 `db/schema.sql` 为正式完整 schema 主线。
 3. 按业务域迁移 repository。
 4. 明确复杂查询封装边界，避免 ORM 化后性能和可维护性失控。
 
@@ -39,13 +39,13 @@ downstream:
 1. 本计划不直接完成所有旧路由清理。
 2. 本计划不把 `AutoMigrate` 当成生产正式方案。
 
-# Task 1: 建立 database 初始化与 migration 主线
+# Task 1: 建立 database 初始化与完整 schema 主线
 
 目标：
 
 1. 建立 `internal/platform/database` 初始化路径。
-2. 建立 `db/migrations/` 正式结构。
-3. 冻结 `db/schema.sql` 在过渡期的历史化角色。
+2. 建立 `db/schema.sql` 正式结构。
+3. 冻结 `db/schema.sql` 为唯一数据库结构事实源。
 
 验证门禁：
 
@@ -101,7 +101,7 @@ go test ./tests/unit/content ./tests/unit/topic ./tests/unit/trend ./tests/integ
 
 1. 旧 raw SQL 主路径不再作为未来目标架构。
 2. 旧生成代码或旧数据库主线降级为待删除遗留。
-3. schema 权威切换到 migration 主线。
+3. schema 权威切换到完整 `db/schema.sql` 主线。
 
 验证门禁：
 

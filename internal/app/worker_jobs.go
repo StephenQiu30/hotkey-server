@@ -95,7 +95,7 @@ func newJobRunner(cfg config.Config, db *gorm.DB) *jobs.Runner {
 	}, 10*time.Minute, minuteRunKey("build_snapshots"))
 	runner.Register("dispatch_notifications", func(ctx context.Context) error {
 		log.Print(observability.RenderLog("worker", "dispatch_notifications: running"))
-		return dispatchJob.Run(ctx, 0)
+		return dispatchJob.RunPending(ctx, 100)
 	}, 1*time.Minute, minuteRunKey("dispatch_notifications"))
 
 	if cfg.ObsidianVaultPath != "" {

@@ -154,6 +154,37 @@ func TestHealthEndpointDoesNotRequireAuth(t *testing.T) {
 	}
 }
 
+func TestAuthEndpointsDoNotRequireAuth(t *testing.T) {
+	router := platformhttp.NewRouter(platformhttp.Config{
+		JWTSecret:     "test-secret",
+		SmokeTest:     false,
+		AuthService:   auth.NewService(&stubAuthRepo{}),
+		MonitorSvc:    monitor.NewService(&stubMonitorRepo{}),
+		NotifySvc:     notify.NewService(&stubNotifyRepo{}),
+		PostQuerySvc:  &stubPostQueryService{},
+		TopicQuerySvc: &stubTopicQueryService{},
+		TrendQuerySvc: &stubTrendQueryService{},
+	})
+
+	registerBody := `{"email":"public-auth@example.com","password":"Passw0rd!","display_name":"Public Auth"}`
+	registerReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(registerBody))
+	registerReq.Header.Set("Content-Type", "application/json")
+	registerRR := httptest.NewRecorder()
+	router.ServeHTTP(registerRR, registerReq)
+	if registerRR.Code != http.StatusCreated {
+		t.Fatalf("expected register 201 without auth, got %d: %s", registerRR.Code, registerRR.Body.String())
+	}
+
+	loginBody := `{"email":"public-auth@example.com","password":"Passw0rd!"}`
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRR := httptest.NewRecorder()
+	router.ServeHTTP(loginRR, loginReq)
+	if loginRR.Code != http.StatusOK {
+		t.Fatalf("expected login 200 without auth, got %d: %s", loginRR.Code, loginRR.Body.String())
+	}
+}
+
 func TestRegisterReturns201(t *testing.T) {
 	handler := newTestHandler()
 	body := `{"email":"test@example.com","password":"Passw0rd!","display_name":"Test"}`
