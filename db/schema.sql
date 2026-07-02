@@ -1,5 +1,5 @@
 -- hotkey-server PostgreSQL schema
--- Single source of truth for all table definitions (14 tables).
+-- Single source of truth for all table definitions (18 tables).
 
 -- users & monitors
 
@@ -226,3 +226,52 @@ create table email_deliveries (
 );
 
 create index idx_email_deliveries_notification_id on email_deliveries(notification_id);
+
+-- knowledge writeback audit
+
+create table knowledge_writeback_logs (
+  id bigserial primary key,
+  object_type text not null,
+  object_id bigint not null,
+  field_name text not null,
+  field_value jsonb not null,
+  status text not null,
+  conflict_reason text not null default '',
+  source_path text not null default '',
+  created_at timestamptz not null default now()
+);
+
+create index idx_knowledge_writeback_logs_object on knowledge_writeback_logs(object_type, object_id);
+create index idx_knowledge_writeback_logs_status on knowledge_writeback_logs(status);
+
+-- knowledge sidecar tables for whitelisted writeback fields
+
+create table event_annotations (
+  id bigserial primary key,
+  event_id bigint not null,
+  manual_tags jsonb not null default '[]',
+  analyst_conclusion text not null default '',
+  check (jsonb_typeof(manual_tags) = 'array'),
+  unique(event_id)
+);
+
+create unique index idx_event_annotations_event_id on event_annotations(event_id);
+
+create table topic_annotations (
+  id bigserial primary key,
+  topic_id bigint not null references topics(id),
+  material_status text not null default 'draft' check (material_status in ('draft', 'review', 'final')),
+  unique(topic_id)
+);
+
+create unique index idx_topic_annotations_topic_id on topic_annotations(topic_id);
+
+create table theme_memberships (
+  id bigserial primary key,
+  object_type text not null,
+  object_id bigint not null,
+  theme_ref text not null default '',
+  unique(object_type, object_id)
+);
+
+create index idx_theme_memberships_object on theme_memberships(object_type, object_id);
