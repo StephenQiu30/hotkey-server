@@ -58,6 +58,7 @@ func cleanTables(t *testing.T, db *sql.DB) {
 	t.Helper()
 
 	tables := []string{
+		"knowledge_writeback_logs",
 		"email_deliveries",
 		"user_notifications",
 		"alerts",

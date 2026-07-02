@@ -1,5 +1,5 @@
 -- hotkey-server PostgreSQL schema
--- Single source of truth for all table definitions (14 tables).
+-- Single source of truth for all table definitions (15 tables).
 
 -- users & monitors
 
@@ -226,3 +226,20 @@ create table email_deliveries (
 );
 
 create index idx_email_deliveries_notification_id on email_deliveries(notification_id);
+
+-- knowledge writeback audit
+
+create table knowledge_writeback_logs (
+  id bigserial primary key,
+  object_type text not null,
+  object_id bigint not null,
+  field_name text not null,
+  field_value jsonb not null,
+  status text not null,
+  conflict_reason text not null default '',
+  source_path text not null default '',
+  created_at timestamptz not null default now()
+);
+
+create index idx_knowledge_writeback_logs_object on knowledge_writeback_logs(object_type, object_id);
+create index idx_knowledge_writeback_logs_status on knowledge_writeback_logs(status);
