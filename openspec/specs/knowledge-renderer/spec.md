@@ -121,8 +121,8 @@ type ThemeNoteInput struct {
 
 ### Requirement: Tags 字段
 
-Event 笔记 SHALL 包含 tags：`hotkey`、`event`、`monitor/{slug}`。
-Digest 笔记 SHALL 包含 tags：`hotkey`、`digest`、`daily`、`monitor/{slug}`。
+Event 笔记 SHALL 包含 tags：`hotkey`、`event`。
+Digest 笔记 SHALL 包含 tags：`hotkey`、`digest`、`daily`。
 Theme 笔记 SHALL 包含 tags：`hotkey`、`theme`。
 
 #### Scenario: Event tags
