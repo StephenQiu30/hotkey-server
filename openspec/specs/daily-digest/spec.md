@@ -28,9 +28,27 @@
 
 ### Requirement: Obsidian 目录与 Frontmatter
 
-笔记路径：`{OBSIDIAN_VAULT_PATH}/HotKey/topics/{monitor-slug}/{date}-topic-{id}-{title-slug}.md`
+笔记路径矩阵 SHALL 使用显式 switch-case 路径生成器 `BuildKnowledgePath`（位于 `internal/obsidian/pathing.go`）。
 
-每篇笔记 SHALL 包含 YAML frontmatter：`type`, `date`, `monitor`, `monitor_id`, `topic_id`, `topic_key`, `heat`, `trend`, `post_count`, `tags`。
+存放区域：
+
+| 知识类型 | 路径 | 文件命名 |
+|----------|------|---------|
+| Event | `{root}/HotKey/events/{slug}/` | `{date}-{id}-{title}.md` |
+| Topic | `{root}/HotKey/topics/{slug}/` | `{date}-topic-{id}-{slug}.md` |
+| DailyDigest | `{root}/HotKey/digests/daily/{slug}/` | `{date}-{id}.md` |
+| Theme | `{root}/HotKey/themes/` | `{id}-{slug}.md` |
+| Export | `{root}/HotKey/exports/{kind}/{slug}/` | `{date}-{id}.md` |
+
+每篇笔记 SHALL 包含 YAML frontmatter：
+
+- **Topic**: `type: hotkey-topic`, `date`, `monitor`, `monitor_id`, `topic_id`, `topic_key`, `heat`, `trend`, `post_count`, `tags`
+- **Event**: `type: hotkey-event`, `event_id`, `event_key`, `date`, `topic_ids`, `tags`
+- **DailyDigest**: `type: hotkey-digest`, `digest_id`, `date`, `monitor`, `monitor_id`, `topic_count`, `event_count`, `tags`
+- **Theme**: `type: hotkey-theme`, `theme_id`, `title`, `related_topics`, `event_count`, `tags`
+- **Export**: `type: hotkey-export`, `export_kind`, `title`, `tags`
+
+Topic 笔记仍使用 `BuildPath` 保持向后兼容。
 
 ### Requirement: LLM 摘要
 
