@@ -29,8 +29,11 @@ func NewEventAnnotationRepo(db *gorm.DB) *EventAnnotationRepo {
 
 // SetManualTags sets the manual_tags field for an event.
 func (r *EventAnnotationRepo) SetManualTags(ctx context.Context, eventID int64, tags []string) error {
-	b, _ := json.Marshal(tags)
-	return r.db.WithContext(ctx).Raw(
+	b, err := json.Marshal(tags)
+	if err != nil {
+		return err
+	}
+	return r.db.WithContext(ctx).Exec(
 		`INSERT INTO event_annotations (event_id, manual_tags, analyst_conclusion)
 		 VALUES (?, ?, '')
 		 ON CONFLICT (event_id) DO UPDATE SET manual_tags = EXCLUDED.manual_tags`,
@@ -38,9 +41,28 @@ func (r *EventAnnotationRepo) SetManualTags(ctx context.Context, eventID int64, 
 	).Error
 }
 
+// GetManualTags retrieves the manual_tags field for an event.
+func (r *EventAnnotationRepo) GetManualTags(ctx context.Context, eventID int64) ([]string, error) {
+	var raw string
+	err := r.db.WithContext(ctx).Raw(
+		`SELECT manual_tags::text FROM event_annotations WHERE event_id = ?`, eventID,
+	).Scan(&raw).Error
+	if err != nil {
+		return nil, err
+	}
+	if raw == "" {
+		return nil, nil
+	}
+	var tags []string
+	if err := json.Unmarshal([]byte(raw), &tags); err != nil {
+		return nil, err
+	}
+	return tags, nil
+}
+
 // SetAnalystConclusion sets the analyst_conclusion field for an event.
 func (r *EventAnnotationRepo) SetAnalystConclusion(ctx context.Context, eventID int64, conclusion string) error {
-	return r.db.WithContext(ctx).Raw(
+	return r.db.WithContext(ctx).Exec(
 		`INSERT INTO event_annotations (event_id, manual_tags, analyst_conclusion)
 		 VALUES (?, '[]', ?)
 		 ON CONFLICT (event_id) DO UPDATE SET analyst_conclusion = EXCLUDED.analyst_conclusion`,

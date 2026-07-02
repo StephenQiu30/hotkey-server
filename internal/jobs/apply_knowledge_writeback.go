@@ -19,10 +19,9 @@ type KnowledgeService interface {
 
 // WritebackResult reports the outcome of a writeback job run.
 type WritebackResult struct {
-	ScannedCount  int
-	AppliedCount  int
-	FailedCount   int
-	SkippedCount  int
+	ScannedCount int
+	AppliedCount int
+	FailedCount  int
 }
 
 // ApplyKnowledgeWritebackJob scans for pending writeback changes and applies them.

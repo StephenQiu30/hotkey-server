@@ -27,7 +27,7 @@ func NewTopicAnnotationRepo(db *gorm.DB) *TopicAnnotationRepo {
 
 // SetMaterialStatus sets the material_status field for a topic.
 func (r *TopicAnnotationRepo) SetMaterialStatus(ctx context.Context, topicID int64, status string) error {
-	return r.db.WithContext(ctx).Raw(
+	return r.db.WithContext(ctx).Exec(
 		`INSERT INTO topic_annotations (topic_id, material_status)
 		 VALUES (?, ?)
 		 ON CONFLICT (topic_id) DO UPDATE SET material_status = EXCLUDED.material_status`,

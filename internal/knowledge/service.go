@@ -3,6 +3,7 @@ package knowledge
 import (
 	"context"
 	"fmt"
+	"log"
 )
 
 // AuditRecorder records writeback attempts.
@@ -90,14 +91,14 @@ func (s *Service) applyToSidecar(ctx context.Context, change WritebackChange) er
 		if !ok {
 			return fmt.Errorf("theme_ref must be a string")
 		}
-		return s.sidecar.SetThemeRef(ctx, "topic", change.ObjectID, val)
+		return s.sidecar.SetThemeRef(ctx, change.ObjectType, change.ObjectID, val)
 	default:
 		return fmt.Errorf("unsupported field: %s", change.FieldName)
 	}
 }
 
 func (s *Service) recordFailed(ctx context.Context, change WritebackChange, status, reason string) {
-	_ = s.audit.RecordAttempt(ctx, RecordAttemptInput{
+	if err := s.audit.RecordAttempt(ctx, RecordAttemptInput{
 		ObjectType:     change.ObjectType,
 		ObjectID:       change.ObjectID,
 		FieldName:      change.FieldName,
@@ -105,16 +106,22 @@ func (s *Service) recordFailed(ctx context.Context, change WritebackChange, stat
 		Status:         status,
 		ConflictReason: reason,
 		SourcePath:     change.SourcePath,
-	})
+	}); err != nil {
+		log.Printf("writeback audit: record %s for %s/%s on %q: %v",
+			status, change.ObjectType, change.SourcePath, change.FieldName, err)
+	}
 }
 
 func (s *Service) recordSuccess(ctx context.Context, change WritebackChange) {
-	_ = s.audit.RecordAttempt(ctx, RecordAttemptInput{
+	if err := s.audit.RecordAttempt(ctx, RecordAttemptInput{
 		ObjectType: change.ObjectType,
 		ObjectID:   change.ObjectID,
 		FieldName:  change.FieldName,
 		FieldValue: change.Value,
 		Status:     "applied",
 		SourcePath: change.SourcePath,
-	})
+	}); err != nil {
+		log.Printf("writeback audit: record applied for %s/%s on %q: %v",
+			change.ObjectType, change.SourcePath, change.FieldName, err)
+	}
 }

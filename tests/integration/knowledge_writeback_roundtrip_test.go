@@ -90,24 +90,35 @@ func TestKnowledgeWritebackRoundtrip(t *testing.T) {
 		"---\nmanual_tags:\n  - ai监管\n", 1)
 
 	// --- step 3: parse the modified content ---
-	parsed, err := obsidian.ParseWritebackFields(modified)
+	changes, err := obsidian.ParseWritebackFields(modified)
 	if err != nil {
 		t.Fatalf("parse modified content: %v", err)
 	}
-	if parsed.FieldName != "manual_tags" {
-		t.Fatalf("expected field manual_tags, got %q", parsed.FieldName)
+	if len(changes) == 0 {
+		t.Fatal("expected at least one whitelisted field from modified content")
 	}
 
-	// --- step 4: apply through writeback service ---
-	err = svc.ApplyChange(context.Background(), knowledge.WritebackChange{
-		ObjectType: parsed.ObjectType,
-		ObjectID:   parsed.ObjectID,
-		FieldName:  parsed.FieldName,
-		Value:      parsed.FieldValue,
-		SourcePath: "HotKey/topics/ai-regulation/2026-07-02-topic-101.md",
-	}, knowledge.ConflictInput{})
+	// Apply each parsed change through the writeback service.
+	for _, ch := range changes {
+		err = svc.ApplyChange(context.Background(), knowledge.WritebackChange{
+			ObjectType: ch.ObjectType,
+			ObjectID:   ch.ObjectID,
+			FieldName:  ch.FieldName,
+			Value:      ch.FieldValue,
+			SourcePath: "HotKey/topics/ai-regulation/2026-07-02-topic-101.md",
+		}, knowledge.ConflictInput{})
+		if err != nil {
+			t.Fatalf("apply writeback change %q: %v", ch.FieldName, err)
+		}
+	}
+
+	// --- step 4: verify database persistence ---
+	readTags, err := eventRepo.GetManualTags(context.Background(), 101)
 	if err != nil {
-		t.Fatalf("apply writeback change: %v", err)
+		t.Fatalf("read back manual_tags from DB: %v", err)
+	}
+	if len(readTags) != 1 || readTags[0] != "ai监管" {
+		t.Fatalf("persisted manual_tags: got %v, want [ai监管]", readTags)
 	}
 
 	// --- step 5: re-render and verify machine fields unchanged ---

@@ -14,9 +14,10 @@ type WritebackChange struct {
 	FieldValue interface{}
 }
 
-// ParseWritebackFields extracts whitelisted writeback fields from Obsidian
-// Markdown content with YAML frontmatter.
-func ParseWritebackFields(content string) (*WritebackChange, error) {
+// ParseWritebackFields extracts all whitelisted writeback fields from Obsidian
+// Markdown content with YAML frontmatter. Returns all fields found, or nil slice
+// if no whitelisted field is present (caller should check length).
+func ParseWritebackFields(content string) ([]*WritebackChange, error) {
 	frontmatter, err := extractFrontmatter(content)
 	if err != nil {
 		return nil, err
@@ -24,43 +25,11 @@ func ParseWritebackFields(content string) (*WritebackChange, error) {
 
 	meta := parseKeyValues(frontmatter)
 
-	change := &WritebackChange{}
+	// Resolve object identity from frontmatter fields.
+	objectType := resolveObjectType(meta)
+	objectID := resolveObjectID(meta)
 
-	if v, ok := meta["type"]; ok {
-		parts := strings.SplitN(v, "-", 2)
-		if len(parts) == 2 && parts[0] == "hotkey" {
-			change.ObjectType = parts[1]
-		} else {
-			change.ObjectType = v
-		}
-	}
-
-	if v, ok := meta["topic_id"]; ok {
-		id, err := strconv.ParseInt(v, 10, 64)
-		if err == nil {
-			change.ObjectID = id
-		}
-	}
-
-	if change.ObjectID == 0 {
-		if v, ok := meta["theme_id"]; ok {
-			id, err := strconv.ParseInt(v, 10, 64)
-			if err == nil {
-				change.ObjectID = id
-			}
-		}
-	}
-
-	if change.ObjectID == 0 {
-		if v, ok := meta["monitor_id"]; ok {
-			id, err := strconv.ParseInt(v, 10, 64)
-			if err == nil {
-				change.ObjectID = id
-			}
-		}
-	}
-
-	// Scan for whitelisted fields
+	// Scan for whitelisted fields — collect ALL matches, not just the first.
 	allowedFields := map[string]bool{
 		"manual_tags":        true,
 		"analyst_conclusion": true,
@@ -68,22 +37,53 @@ func ParseWritebackFields(content string) (*WritebackChange, error) {
 		"material_status":    true,
 	}
 
+	var changes []*WritebackChange
 	for field, value := range meta {
-		if allowedFields[field] {
-			// Try to parse YAML list values
-			if strings.HasPrefix(value, "\n") || strings.Contains(value, "\n  - ") {
-				items := parseYAMLList(value)
-				change.FieldName = field
-				change.FieldValue = items
-				return change, nil
-			}
-			change.FieldName = field
-			change.FieldValue = value
-			return change, nil
+		if !allowedFields[field] {
+			continue
 		}
+		change := &WritebackChange{
+			ObjectType: objectType,
+			ObjectID:   objectID,
+			FieldName:  field,
+		}
+		// Try to parse YAML list values.
+		if strings.HasPrefix(value, "\n") || strings.Contains(value, "\n  - ") {
+			change.FieldValue = parseYAMLList(value)
+		} else {
+			change.FieldValue = value
+		}
+		changes = append(changes, change)
 	}
 
-	return nil, fmt.Errorf("no whitelisted writeback fields found")
+	return changes, nil
+}
+
+// resolveObjectType extracts the object type from frontmatter meta.
+func resolveObjectType(meta map[string]string) string {
+	v, ok := meta["type"]
+	if !ok {
+		return ""
+	}
+	parts := strings.SplitN(v, "-", 2)
+	if len(parts) == 2 && parts[0] == "hotkey" {
+		return parts[1]
+	}
+	return v
+}
+
+// resolveObjectID extracts the numeric object ID from frontmatter meta.
+// Priority: topic_id > theme_id > monitor_id.
+func resolveObjectID(meta map[string]string) int64 {
+	for _, key := range []string{"topic_id", "theme_id", "monitor_id"} {
+		if v, ok := meta[key]; ok {
+			id, err := strconv.ParseInt(v, 10, 64)
+			if err == nil {
+				return id
+			}
+		}
+	}
+	return 0
 }
 
 // extractFrontmatter extracts the YAML frontmatter block from Markdown content.
@@ -132,7 +132,7 @@ func parseKeyValues(frontmatter string) map[string]string {
 
 		// Flush any pending list
 		if len(listValues) > 0 {
-			result[currentKey] = "\n" + strings.Join(listValues, "\n  - ")
+			result[currentKey] = "\n  - " + strings.Join(listValues, "\n  - ")
 			listValues = nil
 			currentKey = ""
 		}
@@ -157,7 +157,7 @@ func parseKeyValues(frontmatter string) map[string]string {
 
 	// Flush trailing list
 	if len(listValues) > 0 {
-		result[currentKey] = "\n" + strings.Join(listValues, "\n  - ")
+		result[currentKey] = "\n  - " + strings.Join(listValues, "\n  - ")
 	}
 
 	return result

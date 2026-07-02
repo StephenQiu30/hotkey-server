@@ -28,7 +28,7 @@ func NewThemeMembershipRepo(db *gorm.DB) *ThemeMembershipRepo {
 
 // SetThemeRef sets the theme_ref field for an object.
 func (r *ThemeMembershipRepo) SetThemeRef(ctx context.Context, objectType string, objectID int64, themeRef string) error {
-	return r.db.WithContext(ctx).Raw(
+	return r.db.WithContext(ctx).Exec(
 		`INSERT INTO theme_memberships (object_type, object_id, theme_ref)
 		 VALUES (?, ?, ?)
 		 ON CONFLICT (object_type, object_id) DO UPDATE SET theme_ref = EXCLUDED.theme_ref`,
