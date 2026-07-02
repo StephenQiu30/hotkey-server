@@ -14,6 +14,11 @@
 - `DAILY_DIGEST_TARGET=yesterday` 时，`D` 为当前 CST 日期前一天
 - `DAILY_DIGEST_TARGET=today` 时，`D` 为当前 CST 日期
 
+### Requirement: 每日调度
+
+`daily_scheduler` 每分钟检查；CST 时间 ≥ `DAILY_DIGEST_TIME`（默认 `08:00`）且当日 batch 未执行时触发 `publish_daily_topics`。
+- `publish_daily_topics` SHALL 保留为历史兼容入口，内部委托给 `PublishKnowledgeSnapshotJob`
+
 ### Requirement: 主题筛选
 
 主题 `T` 进入 `export_date = D`，当且仅当：
@@ -63,10 +68,6 @@ LLM 仅用于摘要生成，不参与聚类。单 topic 失败时标记 `failed`
 ### Requirement: topic_daily_exports 幂等
 
 表 `topic_daily_exports` 以 `(monitor_id, topic_id, export_date)` 为幂等键；`status` 为 `pending` | `published` | `failed`。
-
-### Requirement: 每日调度
-
-`daily_scheduler` 每分钟检查；CST 时间 ≥ `DAILY_DIGEST_TIME`（默认 `08:00`）且当日 batch 未执行时触发 `publish_daily_topics`。
 
 ### Requirement: 原子写盘
 

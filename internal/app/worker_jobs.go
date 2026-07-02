@@ -119,7 +119,7 @@ func newJobRunner(cfg config.Config, db *gorm.DB) *jobs.Runner {
 				}
 
 				digestSvc := digest.NewService(nil)
-				publishJob := jobs.NewPublishDailyTopicsJob(
+				publishJob := jobs.NewPublishDailyTopicsJobWithDelegate(
 					digestSvc,
 					llmClient,
 					exporter,

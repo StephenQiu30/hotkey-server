@@ -1,5 +1,5 @@
 -- hotkey-server PostgreSQL schema
--- Single source of truth for all table definitions (18 tables).
+-- Single source of truth for all table definitions (24 tables).
 
 -- users & monitors
 
@@ -244,34 +244,114 @@ create table knowledge_writeback_logs (
 create index idx_knowledge_writeback_logs_object on knowledge_writeback_logs(object_type, object_id);
 create index idx_knowledge_writeback_logs_status on knowledge_writeback_logs(status);
 
--- knowledge sidecar tables for whitelisted writeback fields
+-- event & knowledge model (STE-356)
+
+create table events (
+  id bigserial primary key,
+  monitor_id bigint not null references keyword_monitors(id),
+  event_key text not null,
+  title text not null,
+  summary text not null default '',
+  machine_status text not null default 'active',
+  source_post_id bigint references platform_posts(id),
+  first_seen_at timestamptz not null,
+  last_active_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (monitor_id, event_key)
+);
+
+create index idx_events_monitor_id on events(monitor_id);
+
+create table topic_events (
+  id bigserial primary key,
+  topic_id bigint not null references topics(id),
+  event_id bigint not null references events(id),
+  relationship_type text not null default 'member',
+  created_at timestamptz not null default now(),
+  unique (topic_id, event_id)
+);
+
+create index idx_topic_events_topic_id on topic_events(topic_id);
+create index idx_topic_events_event_id on topic_events(event_id);
+
+create table knowledge_runs (
+  id bigserial primary key,
+  run_key text not null unique,
+  run_type text not null,
+  target_date date,
+  status text not null default 'pending',
+  error_message text not null default '',
+  started_at timestamptz,
+  finished_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create table themes (
+  id bigserial primary key,
+  monitor_id bigint not null references keyword_monitors(id),
+  theme_key text not null,
+  title text not null,
+  summary text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (monitor_id, theme_key)
+);
+
+create index idx_themes_monitor_id on themes(monitor_id);
+
+create table export_bundles (
+  id bigserial primary key,
+  monitor_id bigint not null references keyword_monitors(id),
+  bundle_key text not null,
+  bundle_kind text not null,
+  date_start date,
+  date_end date,
+  status text not null default 'pending',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (monitor_id, bundle_key)
+);
+
+create index idx_export_bundles_monitor_id on export_bundles(monitor_id);
 
 create table event_annotations (
   id bigserial primary key,
-  event_id bigint not null,
-  manual_tags jsonb not null default '[]',
+  event_id bigint not null references events(id) unique,
+  manual_tags jsonb not null default '[]'::jsonb,
   analyst_conclusion text not null default '',
-  check (jsonb_typeof(manual_tags) = 'array'),
-  unique(event_id)
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
-
-create unique index idx_event_annotations_event_id on event_annotations(event_id);
 
 create table topic_annotations (
   id bigserial primary key,
-  topic_id bigint not null references topics(id),
-  material_status text not null default 'draft' check (material_status in ('draft', 'review', 'final')),
-  unique(topic_id)
+  topic_id bigint not null references topics(id) unique,
+  material_status text not null default 'unreviewed',
+  manual_summary text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
-
-create unique index idx_topic_annotations_topic_id on topic_annotations(topic_id);
 
 create table theme_memberships (
   id bigserial primary key,
-  object_type text not null,
-  object_id bigint not null,
-  theme_ref text not null default '',
-  unique(object_type, object_id)
+  theme_id bigint not null references themes(id),
+  event_id bigint references events(id),
+  topic_id bigint references topics(id),
+  source_kind text not null,
+  created_at timestamptz not null default now()
 );
 
-create index idx_theme_memberships_object on theme_memberships(object_type, object_id);
+create index idx_theme_memberships_theme_id on theme_memberships(theme_id);
+create index idx_theme_memberships_event_id on theme_memberships(event_id);
+create index idx_theme_memberships_topic_id on theme_memberships(topic_id);
+
+create table knowledge_object_revisions (
+  id bigserial primary key,
+  object_type text not null,
+  object_id bigint not null,
+  revision text not null,
+  source_path text not null default '',
+  updated_at timestamptz not null default now(),
+  unique (object_type, object_id)
+);
