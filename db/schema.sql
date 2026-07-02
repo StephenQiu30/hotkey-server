@@ -1,5 +1,5 @@
 -- hotkey-server PostgreSQL schema
--- Single source of truth for all table definitions (14 tables).
+-- Single source of truth for all table definitions (23 tables).
 
 -- users & monitors
 
@@ -226,3 +226,115 @@ create table email_deliveries (
 );
 
 create index idx_email_deliveries_notification_id on email_deliveries(notification_id);
+
+-- event & knowledge model (STE-356)
+
+create table events (
+  id bigserial primary key,
+  monitor_id bigint not null references keyword_monitors(id),
+  event_key text not null,
+  title text not null,
+  summary text not null default '',
+  machine_status text not null default 'active',
+  source_post_id bigint references platform_posts(id),
+  first_seen_at timestamptz not null,
+  last_active_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (monitor_id, event_key)
+);
+
+create index idx_events_monitor_id on events(monitor_id);
+
+create table topic_events (
+  id bigserial primary key,
+  topic_id bigint not null references topics(id),
+  event_id bigint not null references events(id),
+  relationship_type text not null default 'member',
+  created_at timestamptz not null default now(),
+  unique (topic_id, event_id)
+);
+
+create index idx_topic_events_topic_id on topic_events(topic_id);
+create index idx_topic_events_event_id on topic_events(event_id);
+
+create table knowledge_runs (
+  id bigserial primary key,
+  run_key text not null unique,
+  run_type text not null,
+  target_date date,
+  status text not null default 'pending',
+  error_message text not null default '',
+  started_at timestamptz,
+  finished_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create table themes (
+  id bigserial primary key,
+  monitor_id bigint not null references keyword_monitors(id),
+  theme_key text not null,
+  title text not null,
+  summary text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (monitor_id, theme_key)
+);
+
+create index idx_themes_monitor_id on themes(monitor_id);
+
+create table export_bundles (
+  id bigserial primary key,
+  monitor_id bigint not null references keyword_monitors(id),
+  bundle_key text not null,
+  bundle_kind text not null,
+  date_start date,
+  date_end date,
+  status text not null default 'pending',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (monitor_id, bundle_key)
+);
+
+create index idx_export_bundles_monitor_id on export_bundles(monitor_id);
+
+create table event_annotations (
+  id bigserial primary key,
+  event_id bigint not null references events(id) unique,
+  manual_tags jsonb not null default '[]'::jsonb,
+  analyst_conclusion text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table topic_annotations (
+  id bigserial primary key,
+  topic_id bigint not null references topics(id) unique,
+  material_status text not null default 'unreviewed',
+  manual_summary text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table theme_memberships (
+  id bigserial primary key,
+  theme_id bigint not null references themes(id),
+  event_id bigint references events(id),
+  topic_id bigint references topics(id),
+  source_kind text not null,
+  created_at timestamptz not null default now()
+);
+
+create index idx_theme_memberships_theme_id on theme_memberships(theme_id);
+create index idx_theme_memberships_event_id on theme_memberships(event_id);
+create index idx_theme_memberships_topic_id on theme_memberships(topic_id);
+
+create table knowledge_object_revisions (
+  id bigserial primary key,
+  object_type text not null,
+  object_id bigint not null,
+  revision text not null,
+  source_path text not null default '',
+  updated_at timestamptz not null default now(),
+  unique (object_type, object_id)
+);

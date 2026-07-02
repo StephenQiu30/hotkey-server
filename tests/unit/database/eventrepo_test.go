@@ -6,6 +6,9 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/database"
 )
 
-func TestEventRepoImplementsInterface(t *testing.T) {
-	var _ interface{ CreateEvent } = (*database.EventRepo)(nil)
+func TestNewEventRepo(t *testing.T) {
+	repo := database.NewEventRepo(nil)
+	if repo == nil {
+		t.Fatal("expected non-nil EventRepo")
+	}
 }

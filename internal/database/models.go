@@ -82,3 +82,115 @@ type UserNotification struct {
 }
 
 func (UserNotification) TableName() string { return "user_notifications" }
+
+// STE-356: Event & knowledge model
+
+type Event struct {
+	ID            int64      `gorm:"column:id;primaryKey"`
+	MonitorID     int64      `gorm:"column:monitor_id"`
+	EventKey      string     `gorm:"column:event_key"`
+	Title         string     `gorm:"column:title"`
+	Summary       string     `gorm:"column:summary"`
+	MachineStatus string     `gorm:"column:machine_status"`
+	SourcePostID  *int64     `gorm:"column:source_post_id"`
+	FirstSeenAt   time.Time  `gorm:"column:first_seen_at"`
+	LastActiveAt  time.Time  `gorm:"column:last_active_at"`
+	CreatedAt     time.Time  `gorm:"column:created_at"`
+	UpdatedAt     time.Time  `gorm:"column:updated_at"`
+}
+
+func (Event) TableName() string { return "events" }
+
+type TopicEvent struct {
+	ID               int64     `gorm:"column:id;primaryKey"`
+	TopicID          int64     `gorm:"column:topic_id"`
+	EventID          int64     `gorm:"column:event_id"`
+	RelationshipType string    `gorm:"column:relationship_type"`
+	CreatedAt        time.Time `gorm:"column:created_at"`
+}
+
+func (TopicEvent) TableName() string { return "topic_events" }
+
+type KnowledgeRun struct {
+	ID           int64      `gorm:"column:id;primaryKey"`
+	RunKey       string     `gorm:"column:run_key"`
+	RunType      string     `gorm:"column:run_type"`
+	TargetDate   *time.Time `gorm:"column:target_date"`
+	Status       string     `gorm:"column:status"`
+	ErrorMessage string     `gorm:"column:error_message"`
+	StartedAt    *time.Time `gorm:"column:started_at"`
+	FinishedAt   *time.Time `gorm:"column:finished_at"`
+	CreatedAt    time.Time  `gorm:"column:created_at"`
+}
+
+func (KnowledgeRun) TableName() string { return "knowledge_runs" }
+
+type Theme struct {
+	ID        int64     `gorm:"column:id;primaryKey"`
+	MonitorID int64     `gorm:"column:monitor_id"`
+	ThemeKey  string    `gorm:"column:theme_key"`
+	Title     string    `gorm:"column:title"`
+	Summary   string    `gorm:"column:summary"`
+	CreatedAt time.Time `gorm:"column:created_at"`
+	UpdatedAt time.Time `gorm:"column:updated_at"`
+}
+
+func (Theme) TableName() string { return "themes" }
+
+type ExportBundle struct {
+	ID        int64      `gorm:"column:id;primaryKey"`
+	MonitorID int64      `gorm:"column:monitor_id"`
+	BundleKey string     `gorm:"column:bundle_key"`
+	BundleKind string    `gorm:"column:bundle_kind"`
+	DateStart *time.Time `gorm:"column:date_start"`
+	DateEnd   *time.Time `gorm:"column:date_end"`
+	Status    string     `gorm:"column:status"`
+	CreatedAt time.Time  `gorm:"column:created_at"`
+	UpdatedAt time.Time  `gorm:"column:updated_at"`
+}
+
+func (ExportBundle) TableName() string { return "export_bundles" }
+
+type EventAnnotation struct {
+	ID                int64     `gorm:"column:id;primaryKey"`
+	EventID           int64     `gorm:"column:event_id"`
+	ManualTags        []byte    `gorm:"column:manual_tags;type:jsonb"`
+	AnalystConclusion string    `gorm:"column:analyst_conclusion"`
+	CreatedAt         time.Time `gorm:"column:created_at"`
+	UpdatedAt         time.Time `gorm:"column:updated_at"`
+}
+
+func (EventAnnotation) TableName() string { return "event_annotations" }
+
+type TopicAnnotation struct {
+	ID            int64     `gorm:"column:id;primaryKey"`
+	TopicID       int64     `gorm:"column:topic_id"`
+	MaterialStatus string   `gorm:"column:material_status"`
+	ManualSummary string    `gorm:"column:manual_summary"`
+	CreatedAt     time.Time `gorm:"column:created_at"`
+	UpdatedAt     time.Time `gorm:"column:updated_at"`
+}
+
+func (TopicAnnotation) TableName() string { return "topic_annotations" }
+
+type ThemeMembership struct {
+	ID         int64     `gorm:"column:id;primaryKey"`
+	ThemeID    int64     `gorm:"column:theme_id"`
+	EventID    *int64    `gorm:"column:event_id"`
+	TopicID    *int64    `gorm:"column:topic_id"`
+	SourceKind string    `gorm:"column:source_kind"`
+	CreatedAt  time.Time `gorm:"column:created_at"`
+}
+
+func (ThemeMembership) TableName() string { return "theme_memberships" }
+
+type KnowledgeObjectRevision struct {
+	ID         int64     `gorm:"column:id;primaryKey"`
+	ObjectType string    `gorm:"column:object_type"`
+	ObjectID   int64     `gorm:"column:object_id"`
+	Revision   string    `gorm:"column:revision"`
+	SourcePath string    `gorm:"column:source_path"`
+	UpdatedAt  time.Time `gorm:"column:updated_at"`
+}
+
+func (KnowledgeObjectRevision) TableName() string { return "knowledge_object_revisions" }
