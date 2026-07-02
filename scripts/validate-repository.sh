@@ -103,6 +103,11 @@ go test ./...
 echo "OK: all Go tests pass"
 
 echo ""
+echo "=== Knowledge writeback roundtrip ==="
+go test ./tests/integration -run TestKnowledgeWritebackRoundtrip -v
+echo "OK: knowledge writeback roundtrip regression passed"
+
+echo ""
 echo "=== Go build ==="
 go build ./...
 echo "OK: Go code compiles"

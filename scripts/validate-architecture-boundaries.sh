@@ -34,8 +34,8 @@ fi
 
 schema_tables=$(search_files '^create table( if not exists)? ' db/schema.sql | sed -E 's/^.*create table( if not exists)? ([a-z_]+).*/\2/' | sort)
 table_count=$(printf '%s\n' "$schema_tables" | sed '/^$/d' | wc -l | tr -d ' ')
-if [ "$table_count" -ne 23 ]; then
-  echo "FAIL: db/schema.sql must contain exactly 23 current tables, got $table_count"
+if [ "$table_count" -ne 24 ]; then
+  echo "FAIL: db/schema.sql must contain exactly 24 current tables, got $table_count"
   printf '%s\n' "$schema_tables"
   exit 1
 fi
