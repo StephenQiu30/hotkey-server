@@ -47,6 +47,15 @@ func (r *EventRepo) CreateEvent(ctx context.Context, in CreateEventInput) (int64
 	return event.ID, nil
 }
 
+// GetEvent returns a single event by its ID.
+func (r *EventRepo) GetEvent(ctx context.Context, eventID int64) (*Event, error) {
+	var event Event
+	if err := r.db.WithContext(ctx).First(&event, eventID).Error; err != nil {
+		return nil, err
+	}
+	return &event, nil
+}
+
 // ListEventsByMonitor returns all events for a given monitor.
 func (r *EventRepo) ListEventsByMonitor(ctx context.Context, monitorID int64) ([]Event, error) {
 	var events []Event
