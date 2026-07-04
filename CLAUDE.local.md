@@ -13,7 +13,6 @@
 ### 职责
 
 - Go 后端（Gin + GORM）：账号、热点监控、内容采集、话题聚合、趋势、通知、Obsidian 日报。
-- Swagger 契约事实源：`docs/swagger.json`；服务通过 `/swagger/index.html` 暴露可视化文档页面。
 
 ### 常用命令
 
@@ -23,8 +22,6 @@ make lint              # 静态检查
 make build             # 构建 ./hotkey-server
 make dev               # 本地开发（go run ./cmd/hotkey）
 make up                # Docker Compose 全栈
-make swagger           # 根据 Gin handler 注释生成 Swagger 文档
-make swagger-validate  # 校验 docs/swagger.json
 ```
 
 ### 工程主线

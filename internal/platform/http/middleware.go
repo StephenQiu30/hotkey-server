@@ -156,7 +156,7 @@ func isPublicPath(path string) bool {
 	case "/healthz", "/api/v1/auth/register", "/api/v1/auth/login":
 		return true
 	default:
-		return strings.HasPrefix(path, "/schemas/") || strings.HasPrefix(path, "/swagger/")
+		return strings.HasPrefix(path, "/schemas/")
 	}
 }
 

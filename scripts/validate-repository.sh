@@ -40,9 +40,7 @@ required_files=(
   "docker-compose.yml"
   "Makefile"
   "cmd/hotkey/main.go"
-  "docs/docs.go"
-  "docs/swagger.json"
-  "scripts/validate-swagger.sh"
+  "scripts/validate-repository.sh"
   "scripts/validate-architecture-boundaries.sh"
 )
 
@@ -129,16 +127,6 @@ else
   echo "FAIL: whitespace errors detected"
   exit 1
 fi
-
-echo ""
-echo "=== Swagger generation ==="
-make swagger
-echo "OK: Swagger docs generated"
-
-echo ""
-echo "=== Swagger validation ==="
-bash "$(dirname "$0")/validate-swagger.sh"
-echo "OK: Swagger validation passed"
 
 echo ""
 echo "=== Architecture boundary validation ==="
