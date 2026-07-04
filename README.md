@@ -5,6 +5,15 @@ X 热点监控平台后端服务：API、采集、热点评分、主题聚合、
 ## 架构
 
 - `cmd/hotkey` — 唯一入口（启动 API + Worker）
+- ### 数据层
+- `internal/database` — GORM 持久化（API 与 Worker 共用）
+- `internal/digest` — 自然日窗口与摘要
+- `internal/event` — 事件系统
+- `internal/export` — 统一导出
+- `internal/knowledge` — 知识模型
+- `internal/llm` — LLM 摘要模块
+- `db/schema.sql` — PostgreSQL 数据库 schema
+- ### 业务模块
 - `internal/app` — 应用启动逻辑
 - `internal/auth` — 账号注册/登录
 - `internal/monitor` — 监控任务 CRUD
@@ -13,14 +22,16 @@ X 热点监控平台后端服务：API、采集、热点评分、主题聚合、
 - `internal/trend` — 趋势分析
 - `internal/alert` — 告警模型
 - `internal/notify` — 通知服务（站内 + 邮件）
-- `internal/platform/http` — Gin HTTP API（唯一 HTTP 主线）
-- `internal/database` — GORM 持久化（API 与 Worker 共用）
+- `internal/obsidian` — Obsidian 写盘与同步
 - `internal/jobs` — 后台任务（poll/aggregate/snapshot/dispatch）
 - `internal/scoring` — 热点评分
-- `internal/platform/x` — X 平台采集客户端
-- `internal/observability` — 结构化日志
+- ### 平台层
 - `internal/config` — 环境变量配置加载
-- `db/schema.sql` — PostgreSQL 数据库 schema
+- `internal/platform/http` — Gin HTTP API（唯一 HTTP 主线）
+- `internal/platform/logging` — 结构化日志
+- `internal/platform/runtime` — 运行时管理
+- `internal/platform/x` — X 平台采集客户端
+- `internal/observability` — 可观测性
 
 ## 本地开发
 
