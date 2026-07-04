@@ -22,13 +22,13 @@ downstream:
 
 # 背景
 
-如果 DTO、鉴权表达和错误响应不先按统一规则落地，`docs/openapi.json` 很容易沦为“有产物但不可信”的形式文档。
+如果 DTO、鉴权表达和错误响应不先按统一规则落地，`docs/swagger.json` 很容易沦为“有产物但不可信”的形式文档。
 
 # 目标
 
 1. 建立模块内 DTO 归位规则。
 2. 建立统一鉴权和错误响应在 OpenAPI 中的表达。
-3. 生成并校验 `docs/openapi.json`。
+3. 生成并校验 `docs/swagger.json`。
 
 # 非目标
 
@@ -66,13 +66,13 @@ go test ./internal/platform/http/... ./...
 
 目标：
 
-1. 生成 `docs/openapi.json`。
+1. 生成 `docs/swagger.json`。
 2. 验证产物可被下游客户端生成工具消费。
 
 验证门禁：
 
 ```bash
-test -f docs/openapi.json
+test -f docs/swagger.json
 ```
 
 # 风险与边界

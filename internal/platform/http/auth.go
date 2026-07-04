@@ -12,12 +12,38 @@ import (
 
 // RegisterAuthRoutes registers the auth endpoints (register, login).
 func RegisterAuthRoutes(r *gin.Engine, svc *auth.Service, jwtSecret string) {
-	r.POST("/api/v1/auth/register", func(c *gin.Context) {
-		var body struct {
-			Email       string `json:"email" binding:"required,email"`
-			Password    string `json:"password" binding:"required,min=8"`
-			DisplayName string `json:"display_name" binding:"required"`
-		}
+	r.POST("/api/v1/auth/register", registerHandler(svc))
+	r.POST("/api/v1/auth/login", loginHandler(svc, jwtSecret))
+}
+
+// UserResponse is the JSON representation of a user.
+type UserResponse struct {
+	ID          int64  `json:"id"`
+	Email       string `json:"email"`
+	DisplayName string `json:"display_name"`
+}
+
+// LoginResponse is the JSON representation of a login response.
+type LoginResponse struct {
+	User  UserResponse `json:"user"`
+	Token string       `json:"token"`
+}
+
+// registerHandler godoc
+// @Summary Register a new user
+// @ID register
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param body body RegisterRequest true "Register payload"
+// @Success 201 {object} UserEnvelope
+// @Failure 400 {object} ErrorBody
+// @Failure 409 {object} ErrorBody
+// @Failure 500 {object} ErrorBody
+// @Router /api/v1/auth/register [post]
+func registerHandler(svc *auth.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var body RegisterRequest
 		if err := c.ShouldBindJSON(&body); err != nil {
 			respondError(c, http.StatusBadRequest, "invalid input")
 			return
@@ -45,13 +71,24 @@ func RegisterAuthRoutes(r *gin.Engine, svc *auth.Service, jwtSecret string) {
 			Email:       user.Email,
 			DisplayName: user.DisplayName,
 		})
-	})
+	}
+}
 
-	r.POST("/api/v1/auth/login", func(c *gin.Context) {
-		var body struct {
-			Email    string `json:"email" binding:"required,email"`
-			Password string `json:"password" binding:"required"`
-		}
+// loginHandler godoc
+// @Summary Login with email and password
+// @ID login
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param body body LoginRequest true "Login payload"
+// @Success 200 {object} LoginEnvelope
+// @Failure 400 {object} ErrorBody
+// @Failure 401 {object} ErrorBody
+// @Failure 500 {object} ErrorBody
+// @Router /api/v1/auth/login [post]
+func loginHandler(svc *auth.Service, jwtSecret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var body LoginRequest
 		if err := c.ShouldBindJSON(&body); err != nil {
 			respondError(c, http.StatusBadRequest, "invalid input")
 			return
@@ -90,18 +127,5 @@ func RegisterAuthRoutes(r *gin.Engine, svc *auth.Service, jwtSecret string) {
 			},
 			Token: tokenStr,
 		})
-	})
-}
-
-// UserResponse is the JSON representation of a user.
-type UserResponse struct {
-	ID          int64  `json:"id"`
-	Email       string `json:"email"`
-	DisplayName string `json:"display_name"`
-}
-
-// LoginResponse is the JSON representation of a login response.
-type LoginResponse struct {
-	User  UserResponse `json:"user"`
-	Token string       `json:"token"`
+	}
 }

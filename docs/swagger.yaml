@@ -1,0 +1,740 @@
+basePath: /
+definitions:
+  content.PostSummary:
+    properties:
+      author_handle:
+        type: string
+      author_name:
+        type: string
+      content_lang:
+        type: string
+      content_text:
+        type: string
+      final_score:
+        type: number
+      freshness_score:
+        type: number
+      heat_score:
+        type: number
+      id:
+        type: integer
+      like_count:
+        type: integer
+      matched_keywords:
+        items:
+          type: string
+        type: array
+      platform_post_id:
+        type: string
+      published_at:
+        type: string
+      quote_count:
+        type: integer
+      relevance_score:
+        type: number
+      reply_count:
+        type: integer
+      repost_count:
+        type: integer
+      view_count:
+        type: integer
+    type: object
+  http.CreateMonitorRequest:
+    properties:
+      alert_enabled:
+        example: true
+        type: boolean
+      language:
+        example: en
+        type: string
+      name:
+        example: AI monitor
+        type: string
+      poll_interval_minutes:
+        example: 15
+        type: integer
+      query_text:
+        example: openai OR gpt
+        type: string
+      region:
+        example: US
+        type: string
+    type: object
+  http.ErrorBody:
+    properties:
+      code:
+        type: string
+      error:
+        type: string
+      request_id:
+        type: string
+    type: object
+  http.HealthBody:
+    properties:
+      status:
+        type: string
+    type: object
+  http.HealthEnvelope:
+    properties:
+      data:
+        $ref: '#/definitions/http.HealthBody'
+      request_id:
+        type: string
+    type: object
+  http.LoginEnvelope:
+    properties:
+      data:
+        $ref: '#/definitions/http.LoginResponse'
+      request_id:
+        type: string
+    type: object
+  http.LoginRequest:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+      password:
+        example: Passw0rd!
+        type: string
+    type: object
+  http.LoginResponse:
+    properties:
+      token:
+        type: string
+      user:
+        $ref: '#/definitions/http.UserResponse'
+    type: object
+  http.MarkNotificationReadEnvelope:
+    properties:
+      data:
+        $ref: '#/definitions/http.MarkNotificationReadResponse'
+      request_id:
+        type: string
+    type: object
+  http.MarkNotificationReadResponse:
+    properties:
+      read:
+        example: true
+        type: boolean
+    type: object
+  http.MonitorEnvelope:
+    properties:
+      data:
+        $ref: '#/definitions/http.MonitorResponse'
+      request_id:
+        type: string
+    type: object
+  http.MonitorListEnvelope:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/http.MonitorResponse'
+        type: array
+      request_id:
+        type: string
+    type: object
+  http.MonitorResponse:
+    properties:
+      alert_enabled:
+        type: boolean
+      id:
+        type: integer
+      language:
+        type: string
+      name:
+        type: string
+      poll_interval_minutes:
+        type: integer
+      query_text:
+        type: string
+      region:
+        type: string
+      status:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  http.NotificationListEnvelope:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/http.NotificationResponse'
+        type: array
+      request_id:
+        type: string
+    type: object
+  http.NotificationResponse:
+    properties:
+      alert_id:
+        type: integer
+      channel:
+        type: string
+      created_at:
+        type: string
+      delivery_status:
+        type: string
+      id:
+        type: integer
+      read_at:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  http.PostListEnvelope:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/content.PostSummary'
+        type: array
+      request_id:
+        type: string
+    type: object
+  http.RegisterRequest:
+    properties:
+      display_name:
+        example: Stephen
+        type: string
+      email:
+        example: user@example.com
+        type: string
+      password:
+        example: Passw0rd!
+        type: string
+    type: object
+  http.TopicListEnvelope:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/topic.TopicSummary'
+        type: array
+      request_id:
+        type: string
+    type: object
+  http.TrendListEnvelope:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/trend.TrendPoint'
+        type: array
+      request_id:
+        type: string
+    type: object
+  http.UpdateMonitorRequest:
+    properties:
+      alert_enabled:
+        example: true
+        type: boolean
+      language:
+        example: en
+        type: string
+      name:
+        example: AI monitor
+        type: string
+      poll_interval_minutes:
+        example: 15
+        type: integer
+      query_text:
+        example: openai OR gpt
+        type: string
+      region:
+        example: US
+        type: string
+      status:
+        example: active
+        type: string
+    type: object
+  http.UserEnvelope:
+    properties:
+      data:
+        $ref: '#/definitions/http.UserResponse'
+      request_id:
+        type: string
+    type: object
+  http.UserResponse:
+    properties:
+      display_name:
+        type: string
+      email:
+        type: string
+      id:
+        type: integer
+    type: object
+  topic.TopicSummary:
+    properties:
+      current_heat:
+        type: number
+      id:
+        type: integer
+      post_count:
+        type: integer
+      summary:
+        type: string
+      title:
+        type: string
+      trend_direction:
+        type: string
+    type: object
+  trend.TrendPoint:
+    properties:
+      heat_score:
+        type: number
+      time:
+        type: string
+      trend_direction:
+        type: string
+      trend_velocity:
+        type: number
+    type: object
+info:
+  contact: {}
+  description: HotKey server API documentation generated from Gin handlers.
+  title: HotKey Server API
+  version: "1.0"
+paths:
+  /api/v1/auth/login:
+    post:
+      consumes:
+      - application/json
+      operationId: login
+      parameters:
+      - description: Login payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/http.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.LoginEnvelope'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+      summary: Login with email and password
+      tags:
+      - auth
+  /api/v1/auth/register:
+    post:
+      consumes:
+      - application/json
+      operationId: register
+      parameters:
+      - description: Register payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/http.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/http.UserEnvelope'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+      summary: Register a new user
+      tags:
+      - auth
+  /api/v1/monitors:
+    get:
+      operationId: list-monitors
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.MonitorListEnvelope'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: List monitors
+      tags:
+      - monitors
+    post:
+      consumes:
+      - application/json
+      operationId: create-monitor
+      parameters:
+      - description: Monitor payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/http.CreateMonitorRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/http.MonitorEnvelope'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: Create monitor
+      tags:
+      - monitors
+  /api/v1/monitors/{id}:
+    get:
+      operationId: get-monitor
+      parameters:
+      - description: Monitor ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.MonitorEnvelope'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: Get monitor
+      tags:
+      - monitors
+    patch:
+      consumes:
+      - application/json
+      operationId: update-monitor
+      parameters:
+      - description: Monitor ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Monitor update payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/http.UpdateMonitorRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.MonitorEnvelope'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: Update monitor
+      tags:
+      - monitors
+  /api/v1/monitors/{id}/posts:
+    get:
+      operationId: list-posts
+      parameters:
+      - description: Monitor ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - default: 20
+        description: Limit
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.PostListEnvelope'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: List posts for a monitor
+      tags:
+      - content
+  /api/v1/monitors/{id}/topics:
+    get:
+      operationId: list-topics
+      parameters:
+      - description: Monitor ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.TopicListEnvelope'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: List topics for a monitor
+      tags:
+      - topics
+  /api/v1/monitors/{id}/trends:
+    get:
+      operationId: get-monitor-trends
+      parameters:
+      - description: Monitor ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: RFC3339 start time
+        in: query
+        name: since
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.TrendListEnvelope'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: Get monitor trends
+      tags:
+      - trends
+  /api/v1/notifications:
+    get:
+      operationId: list-notifications
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.NotificationListEnvelope'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: List unread notifications
+      tags:
+      - notifications
+  /api/v1/notifications/{id}/read:
+    post:
+      operationId: mark-notification-read
+      parameters:
+      - description: Notification ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.MarkNotificationReadEnvelope'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: Mark notification as read
+      tags:
+      - notifications
+  /api/v1/topics/{id}/trends:
+    get:
+      operationId: get-topic-trends
+      parameters:
+      - description: Topic ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: RFC3339 start time
+        in: query
+        name: since
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.TrendListEnvelope'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/http.ErrorBody'
+      security:
+      - BearerAuth: []
+      summary: Get topic trends
+      tags:
+      - trends
+  /healthz:
+    get:
+      operationId: health-check
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.HealthEnvelope'
+      summary: Health check
+      tags:
+      - health
+schemes:
+- http
+- https
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

@@ -110,6 +110,11 @@ echo "=== Smoke: /healthz ==="
 assert_status "$BASE/healthz" GET 200
 
 echo ""
+echo "=== Smoke: Swagger ==="
+assert_status "$BASE/swagger/index.html" GET 200
+assert_status "$BASE/swagger/doc.json" GET 200
+
+echo ""
 echo "=== Smoke: auth/register ==="
 assert_status "$BASE/api/v1/auth/register" POST 201 \
   '{"email":"smoke@example.com","password":"Passw0rd!","display_name":"SmokeUser"}'

@@ -13,7 +13,7 @@
 ### 职责
 
 - Go 后端（Gin + GORM）：账号、热点监控、内容采集、话题聚合、趋势、通知、Obsidian 日报。
-- OpenAPI 契约事实源：`docs/openapi.json`；`hotkey-web` 与 `hotkey-miniapp` 从本仓生成客户端。
+- Swagger 契约事实源：`docs/swagger.json`；服务通过 `/swagger/index.html` 暴露可视化文档页面。
 
 ### 常用命令
 
@@ -23,7 +23,8 @@ make lint              # 静态检查
 make build             # 构建 ./hotkey-server
 make dev               # 本地开发（go run ./cmd/hotkey）
 make up                # Docker Compose 全栈
-make openapi           # 生成 docs/openapi.json
+make swagger           # 根据 Gin handler 注释生成 Swagger 文档
+make swagger-validate  # 校验 docs/swagger.json
 ```
 
 ### 工程主线
@@ -40,4 +41,4 @@ make openapi           # 生成 docs/openapi.json
 
 ### 跨仓顺序
 
-接口、数据模型或 OpenAPI 变更默认顺序：`hotkey-server` -> `hotkey-web` -> `hotkey-miniapp` -> 回归。
+接口、数据模型或 Swagger 契约变更默认顺序：`hotkey-server` -> `hotkey-web` -> `hotkey-miniapp` -> 回归。

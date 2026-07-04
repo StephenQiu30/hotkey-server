@@ -1,4 +1,4 @@
-.PHONY: test lint build validate up down schema dev openapi openapi-validate
+.PHONY: test lint build validate up down schema dev swagger swagger-validate
 
 test:
 	go test ./...
@@ -24,8 +24,8 @@ schema:
 dev:
 	bash scripts/dev.sh
 
-openapi:
-	go run ./cmd/openapi
+swagger:
+	go run github.com/swaggo/swag/cmd/swag@latest init -g main.go -d cmd/hotkey,internal/platform/http,internal/content,internal/topic,internal/trend -o docs --parseInternal
 
-openapi-validate:
-	bash scripts/validate-openapi.sh
+swagger-validate:
+	bash scripts/validate-swagger.sh

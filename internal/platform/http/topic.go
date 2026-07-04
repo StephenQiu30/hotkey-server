@@ -11,7 +11,23 @@ import (
 
 // RegisterTopicRoutes registers the topic endpoints.
 func RegisterTopicRoutes(r *gin.Engine, svc topic.TopicQueryService) {
-	r.GET("/api/v1/monitors/:id/topics", func(c *gin.Context) {
+	r.GET("/api/v1/monitors/:id/topics", listMonitorTopicsHandler(svc))
+}
+
+// listMonitorTopicsHandler godoc
+// @Summary List topics for a monitor
+// @ID list-topics
+// @Tags topics
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Monitor ID"
+// @Success 200 {object} TopicListEnvelope
+// @Failure 400 {object} ErrorBody
+// @Failure 401 {object} ErrorBody
+// @Failure 500 {object} ErrorBody
+// @Router /api/v1/monitors/{id}/topics [get]
+func listMonitorTopicsHandler(svc topic.TopicQueryService) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		if _, ok := userIDFromCtx(c.Request.Context()); !ok {
 			respondError(c, http.StatusUnauthorized, "unauthorized")
 			return
@@ -33,5 +49,5 @@ func RegisterTopicRoutes(r *gin.Engine, svc topic.TopicQueryService) {
 		}
 
 		RespondOK(c, topics)
-	})
+	}
 }

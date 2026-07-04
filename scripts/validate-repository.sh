@@ -40,8 +40,9 @@ required_files=(
   "docker-compose.yml"
   "Makefile"
   "cmd/hotkey/main.go"
-  "docs/openapi.json"
-  "scripts/validate-openapi.sh"
+  "docs/docs.go"
+  "docs/swagger.json"
+  "scripts/validate-swagger.sh"
   "scripts/validate-architecture-boundaries.sh"
 )
 
@@ -130,9 +131,14 @@ else
 fi
 
 echo ""
-echo "=== OpenAPI validation ==="
-bash "$(dirname "$0")/validate-openapi.sh"
-echo "OK: OpenAPI validation passed"
+echo "=== Swagger generation ==="
+make swagger
+echo "OK: Swagger docs generated"
+
+echo ""
+echo "=== Swagger validation ==="
+bash "$(dirname "$0")/validate-swagger.sh"
+echo "OK: Swagger validation passed"
 
 echo ""
 echo "=== Architecture boundary validation ==="

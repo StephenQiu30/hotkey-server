@@ -11,7 +11,45 @@ import (
 
 // RegisterMonitorRoutes registers the monitor CRUD endpoints.
 func RegisterMonitorRoutes(r *gin.Engine, svc *monitor.Service) {
-	r.GET("/api/v1/monitors", func(c *gin.Context) {
+	r.GET("/api/v1/monitors", listMonitorsHandler(svc))
+	r.POST("/api/v1/monitors", createMonitorHandler(svc))
+	r.GET("/api/v1/monitors/:id", getMonitorHandler(svc))
+	r.PATCH("/api/v1/monitors/:id", updateMonitorHandler(svc))
+}
+
+type MonitorResponse struct {
+	ID                  int64  `json:"id"`
+	UserID              int64  `json:"user_id"`
+	Name                string `json:"name"`
+	QueryText           string `json:"query_text"`
+	Language            string `json:"language"`
+	Region              string `json:"region"`
+	Status              string `json:"status"`
+	PollIntervalMinutes int    `json:"poll_interval_minutes"`
+	AlertEnabled        bool   `json:"alert_enabled"`
+}
+
+func monitorToResponse(m monitor.Monitor) MonitorResponse {
+	return MonitorResponse{
+		ID: m.ID, UserID: m.UserID, Name: m.Name,
+		QueryText: m.QueryText, Language: m.Language, Region: m.Region,
+		Status: m.Status, PollIntervalMinutes: m.PollIntervalMinutes,
+		AlertEnabled: m.AlertEnabled,
+	}
+}
+
+// listMonitorsHandler godoc
+// @Summary List monitors
+// @ID list-monitors
+// @Tags monitors
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} MonitorListEnvelope
+// @Failure 401 {object} ErrorBody
+// @Failure 500 {object} ErrorBody
+// @Router /api/v1/monitors [get]
+func listMonitorsHandler(svc *monitor.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
 			respondError(c, http.StatusUnauthorized, "unauthorized")
@@ -29,23 +67,31 @@ func RegisterMonitorRoutes(r *gin.Engine, svc *monitor.Service) {
 			resp[i] = monitorToResponse(m)
 		}
 		RespondOK(c, resp)
-	})
+	}
+}
 
-	r.POST("/api/v1/monitors", func(c *gin.Context) {
+// createMonitorHandler godoc
+// @Summary Create monitor
+// @ID create-monitor
+// @Tags monitors
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body CreateMonitorRequest true "Monitor payload"
+// @Success 201 {object} MonitorEnvelope
+// @Failure 400 {object} ErrorBody
+// @Failure 401 {object} ErrorBody
+// @Failure 500 {object} ErrorBody
+// @Router /api/v1/monitors [post]
+func createMonitorHandler(svc *monitor.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
 			respondError(c, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 
-		var body struct {
-			Name                string `json:"name" binding:"required"`
-			QueryText           string `json:"query_text" binding:"required"`
-			Language            string `json:"language"`
-			Region              string `json:"region"`
-			PollIntervalMinutes int    `json:"poll_interval_minutes" binding:"min=1"`
-			AlertEnabled        bool   `json:"alert_enabled"`
-		}
+		var body CreateMonitorRequest
 		if err := c.ShouldBindJSON(&body); err != nil {
 			respondError(c, http.StatusBadRequest, err.Error())
 			return
@@ -70,9 +116,25 @@ func RegisterMonitorRoutes(r *gin.Engine, svc *monitor.Service) {
 		}
 
 		RespondCreated(c, monitorToResponse(m))
-	})
+	}
+}
 
-	r.GET("/api/v1/monitors/:id", func(c *gin.Context) {
+// getMonitorHandler godoc
+// @Summary Get monitor
+// @ID get-monitor
+// @Tags monitors
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Monitor ID"
+// @Success 200 {object} MonitorEnvelope
+// @Failure 400 {object} ErrorBody
+// @Failure 401 {object} ErrorBody
+// @Failure 403 {object} ErrorBody
+// @Failure 404 {object} ErrorBody
+// @Failure 500 {object} ErrorBody
+// @Router /api/v1/monitors/{id} [get]
+func getMonitorHandler(svc *monitor.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
 			respondError(c, http.StatusUnauthorized, "unauthorized")
@@ -101,9 +163,27 @@ func RegisterMonitorRoutes(r *gin.Engine, svc *monitor.Service) {
 		}
 
 		RespondOK(c, monitorToResponse(m))
-	})
+	}
+}
 
-	r.PATCH("/api/v1/monitors/:id", func(c *gin.Context) {
+// updateMonitorHandler godoc
+// @Summary Update monitor
+// @ID update-monitor
+// @Tags monitors
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Monitor ID"
+// @Param body body UpdateMonitorRequest true "Monitor update payload"
+// @Success 200 {object} MonitorEnvelope
+// @Failure 400 {object} ErrorBody
+// @Failure 401 {object} ErrorBody
+// @Failure 403 {object} ErrorBody
+// @Failure 404 {object} ErrorBody
+// @Failure 500 {object} ErrorBody
+// @Router /api/v1/monitors/{id} [patch]
+func updateMonitorHandler(svc *monitor.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
 			respondError(c, http.StatusUnauthorized, "unauthorized")
@@ -131,15 +211,7 @@ func RegisterMonitorRoutes(r *gin.Engine, svc *monitor.Service) {
 			return
 		}
 
-		var body struct {
-			Name                *string `json:"name"`
-			QueryText           *string `json:"query_text"`
-			Language            *string `json:"language"`
-			Region              *string `json:"region"`
-			PollIntervalMinutes *int    `json:"poll_interval_minutes"`
-			AlertEnabled        *bool   `json:"alert_enabled"`
-			Status              *string `json:"status"`
-		}
+		var body UpdateMonitorRequest
 		if err := c.ShouldBindJSON(&body); err != nil {
 			respondError(c, http.StatusBadRequest, err.Error())
 			return
@@ -165,26 +237,5 @@ func RegisterMonitorRoutes(r *gin.Engine, svc *monitor.Service) {
 		}
 
 		RespondOK(c, monitorToResponse(updated))
-	})
-}
-
-type MonitorResponse struct {
-	ID                  int64  `json:"id"`
-	UserID              int64  `json:"user_id"`
-	Name                string `json:"name"`
-	QueryText           string `json:"query_text"`
-	Language            string `json:"language"`
-	Region              string `json:"region"`
-	Status              string `json:"status"`
-	PollIntervalMinutes int    `json:"poll_interval_minutes"`
-	AlertEnabled        bool   `json:"alert_enabled"`
-}
-
-func monitorToResponse(m monitor.Monitor) MonitorResponse {
-	return MonitorResponse{
-		ID: m.ID, UserID: m.UserID, Name: m.Name,
-		QueryText: m.QueryText, Language: m.Language, Region: m.Region,
-		Status: m.Status, PollIntervalMinutes: m.PollIntervalMinutes,
-		AlertEnabled: m.AlertEnabled,
 	}
 }

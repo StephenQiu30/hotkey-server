@@ -30,7 +30,7 @@ downstream: []
 
 **Goal:** 将 HotKey 的任务执行固定为 `server -> web -> miniapp -> 回归`，并把工程化规范、`vercel:agent-browser` 回归、代码审核和提交要求落实为可执行流程。
 
-**Architecture:** 先在 `hotkey-server` 冻结契约事实源与工程化门禁，再基于 `docs/openapi.json` 驱动 `hotkey-web` 与 `hotkey-miniapp` 同步生成客户端和页面适配，最后做浏览器回归、代码审核和按仓提交。
+**Architecture:** 先在 `hotkey-server` 冻结契约事实源与工程化门禁，再基于 `docs/swagger.json` 驱动 `hotkey-web` 与 `hotkey-miniapp` 同步生成客户端和页面适配，最后做浏览器回归、代码审核和按仓提交。
 
 **Tech Stack:** Go, OpenAPI 3.1, Bash validation scripts, Next.js, Taro, @umijs/openapi, vercel:agent-browser, git
 
@@ -38,7 +38,7 @@ downstream: []
 
 - 必须遵循 `superpowers:brainstorming -> writing-plans -> executing-plans/subagent-driven-development -> verification-before-completion`。
 - 默认执行顺序固定为 `hotkey-server -> hotkey-web -> hotkey-miniapp -> 跨仓回归`。
-- `hotkey-server/docs/openapi.json` 是唯一契约事实源。
+- `hotkey-server/docs/swagger.json` 是唯一契约事实源。
 - 端侧不得绕过生成客户端手写漂移 API 类型。
 - 交付前必须同时完成工程化检查、`vercel:agent-browser` 回归和代码审核。
 - 提交信息必须使用项目允许的前缀：`test:`、`docs:`、`impl:`、`feat:`、`chore:`、`refactor:`。
@@ -51,10 +51,10 @@ downstream: []
 - Modify: `hotkey-server/docs/design/008-superpowers执行与跨仓同步设计.md`
 - Modify: `hotkey-server/docs/acceptance/002-superpowers执行与跨仓验收标准-验收.md`
 - Modify: `hotkey-server/docs/cross-repo-client-generation.md`
-- Test: `hotkey-server/scripts/validate-openapi.sh`
+- Test: `hotkey-server/scripts/validate-swagger.sh`
 
 **Interfaces:**
-- Consumes: `make openapi`, `make openapi-validate`, `bash scripts/validate-repository.sh`
+- Consumes: `make swagger`, `make swagger-validate`, `bash scripts/validate-repository.sh`
 - Produces: server 完成判定标准，供 Task 2、Task 3、Task 4 使用
 
 - [ ] **Step 1: 补一条失败用例说明，先证明 server 未冻结契约时不允许进入下游**
@@ -62,8 +62,8 @@ downstream: []
 ```text
 反例:
 - 仅修改 `internal/*/http.go` 或 `internal/platform/http/*.go`
-- 未运行 `make openapi`
-- 未更新 `docs/openapi.json`
+- 未运行 `make swagger`
+- 未更新 `docs/swagger.json`
 - 却尝试在 web / miniapp 先改页面
 
 预期:
@@ -74,17 +74,17 @@ downstream: []
 
 ```bash
 cd /Users/stephenqiu/Desktop/StephenQiu30/HotKey/hotkey-server
-make openapi
-make openapi-validate
+make swagger
+make swagger-validate
 bash scripts/validate-repository.sh
 ```
 
-Expected: `docs/openapi.json` 成功生成并通过校验；仓内验证脚本通过或给出明确失败原因
+Expected: `docs/swagger.json` 成功生成并通过校验；仓内验证脚本通过或给出明确失败原因
 
 - [ ] **Step 3: 若契约校验失败，先修复最小问题再重新验证**
 
 ```go
-// 例如在 cmd/openapi/main.go 或 internal/app/openapi.go 中
+// 例如在 cmd/hotkey/main.go 或 internal/platform/http/*.go 中
 // 保持导出的 spec 与当前 router/handler 注册一致
 func ExportOpenAPI() error {
     // 只保留当前真实启用的路由与组件
@@ -96,8 +96,8 @@ func ExportOpenAPI() error {
 
 ```bash
 cd /Users/stephenqiu/Desktop/StephenQiu30/HotKey/hotkey-server
-make openapi
-make openapi-validate
+make swagger
+make swagger-validate
 ```
 
 - [ ] **Step 5: 提交 server 契约门禁文档或修复**
@@ -107,7 +107,7 @@ cd /Users/stephenqiu/Desktop/StephenQiu30/HotKey/hotkey-server
 git add docs/design/008-superpowers执行与跨仓同步设计.md \
         docs/acceptance/002-superpowers执行与跨仓验收标准-验收.md \
         docs/cross-repo-client-generation.md \
-        docs/openapi.json cmd/openapi/main.go internal/app/openapi.go
+        docs/swagger.json cmd/hotkey/main.go internal/platform/http/*.go
 git commit -m "docs: 冻结server契约门禁与同步入口"
 ```
 
@@ -128,7 +128,7 @@ git commit -m "docs: 冻结server契约门禁与同步入口"
 
 ```go
 func TestOpenAPICoverageIncludesAllRegisteredRoutes(t *testing.T) {
-    spec := loadSpec(t, "docs/openapi.json")
+    spec := loadSpec(t, "docs/swagger.json")
     routes := registeredAPIRoutes()
     for _, route := range routes {
         if !spec.HasPath(route.Path) {
@@ -197,7 +197,7 @@ git commit -m "impl: 补齐server工程化校验与审核闭环"
 - Test: `hotkey-web/package.json`
 
 **Interfaces:**
-- Consumes: Task 1 产出的 `hotkey-server/docs/openapi.json`
+- Consumes: Task 1 产出的 `hotkey-server/docs/swagger.json`
 - Produces: Web 端契约同步与工程化通过状态，供 Task 5 浏览器回归使用
 
 - [ ] **Step 1: 先运行生成命令和现有验证，确认当前 web 基线**
@@ -267,7 +267,7 @@ git commit -m "impl: 同步web契约与端侧门禁"
 - Test: `hotkey-miniapp/package.json`
 
 **Interfaces:**
-- Consumes: Task 1 的 `hotkey-server/docs/openapi.json`
+- Consumes: Task 1 的 `hotkey-server/docs/swagger.json`
 - Produces: Miniapp 端契约同步与工程化通过状态，供 Task 5 汇总
 
 - [ ] **Step 1: 先运行生成命令和当前验证，确认 miniapp 基线**
@@ -395,4 +395,3 @@ git -C /Users/stephenqiu/Desktop/StephenQiu30/HotKey/hotkey-miniapp status --sho
 ```
 
 Expected: 每个仓只包含本次任务相关文件；提交信息遵守 `docs:` / `impl:` / `feat:` 等前缀
-

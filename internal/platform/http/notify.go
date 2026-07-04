@@ -12,51 +12,8 @@ import (
 
 // RegisterNotifyRoutes registers the notification endpoints.
 func RegisterNotifyRoutes(r *gin.Engine, svc *notify.Service) {
-	r.GET("/api/v1/notifications", func(c *gin.Context) {
-		userID, ok := userIDFromCtx(c.Request.Context())
-		if !ok {
-			respondError(c, http.StatusUnauthorized, "unauthorized")
-			return
-		}
-
-		items, err := svc.ListUnread(c.Request.Context(), userID)
-		if err != nil {
-			respondError(c, http.StatusInternalServerError, err.Error())
-			return
-		}
-
-		result := make([]NotificationResponse, len(items))
-		for i, n := range items {
-			result[i] = toNotificationResponse(n)
-		}
-
-		RespondOK(c, result)
-	})
-
-	r.POST("/api/v1/notifications/:id/read", func(c *gin.Context) {
-		userID, ok := userIDFromCtx(c.Request.Context())
-		if !ok {
-			respondError(c, http.StatusUnauthorized, "unauthorized")
-			return
-		}
-
-		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-		if err != nil {
-			respondError(c, http.StatusBadRequest, "invalid notification id")
-			return
-		}
-
-		if err := svc.MarkRead(c.Request.Context(), userID, id); err != nil {
-			if err == notify.ErrNotFound || err == notify.ErrNotOwned {
-				respondError(c, http.StatusNotFound, err.Error())
-				return
-			}
-			respondError(c, http.StatusInternalServerError, err.Error())
-			return
-		}
-
-		RespondOK(c, gin.H{"read": true})
-	})
+	r.GET("/api/v1/notifications", listNotificationsHandler(svc))
+	r.POST("/api/v1/notifications/:id/read", markNotificationReadHandler(svc))
 }
 
 type NotificationResponse struct {
@@ -80,4 +37,77 @@ func toNotificationResponse(n notify.Notification) NotificationResponse {
 		r.ReadAt = &s
 	}
 	return r
+}
+
+// listNotificationsHandler godoc
+// @Summary List unread notifications
+// @ID list-notifications
+// @Tags notifications
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} NotificationListEnvelope
+// @Failure 401 {object} ErrorBody
+// @Failure 500 {object} ErrorBody
+// @Router /api/v1/notifications [get]
+func listNotificationsHandler(svc *notify.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, ok := userIDFromCtx(c.Request.Context())
+		if !ok {
+			respondError(c, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+
+		items, err := svc.ListUnread(c.Request.Context(), userID)
+		if err != nil {
+			respondError(c, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		result := make([]NotificationResponse, len(items))
+		for i, n := range items {
+			result[i] = toNotificationResponse(n)
+		}
+
+		RespondOK(c, result)
+	}
+}
+
+// markNotificationReadHandler godoc
+// @Summary Mark notification as read
+// @ID mark-notification-read
+// @Tags notifications
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Notification ID"
+// @Success 200 {object} MarkNotificationReadEnvelope
+// @Failure 400 {object} ErrorBody
+// @Failure 401 {object} ErrorBody
+// @Failure 404 {object} ErrorBody
+// @Failure 500 {object} ErrorBody
+// @Router /api/v1/notifications/{id}/read [post]
+func markNotificationReadHandler(svc *notify.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, ok := userIDFromCtx(c.Request.Context())
+		if !ok {
+			respondError(c, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+
+		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil {
+			respondError(c, http.StatusBadRequest, "invalid notification id")
+			return
+		}
+
+		if err := svc.MarkRead(c.Request.Context(), userID, id); err != nil {
+			if err == notify.ErrNotFound || err == notify.ErrNotOwned {
+				respondError(c, http.StatusNotFound, err.Error())
+				return
+			}
+			respondError(c, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		RespondOK(c, MarkNotificationReadResponse{Read: true})
+	}
 }

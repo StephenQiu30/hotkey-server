@@ -85,13 +85,13 @@ bash scripts/smoke-api.sh
 
 1. 确定新契约生成工具。
 2. 保留单一事实源。
-3. 明确 `docs/openapi.json` 是否延续为正式输出路径。
+3. 明确 `docs/swagger.json` 是否延续为正式输出路径。
 
 验证门禁：
 
 ```bash
-test -f docs/openapi.json
-bash scripts/validate-openapi.sh
+test -f docs/swagger.json
+bash scripts/validate-swagger.sh
 ```
 
 # Task 4: 旧路由主线降级

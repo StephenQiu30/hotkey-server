@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -14,7 +13,6 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/config"
 	"github.com/StephenQiu30/hotkey-server/internal/database"
 	"github.com/StephenQiu30/hotkey-server/internal/observability"
-	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	"gorm.io/gorm"
 )
 
@@ -152,21 +150,4 @@ func runAPISmoke(cfg config.Config) {
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server error: %v", err)
 	}
-}
-
-// GenerateOpenAPI writes docs/openapi.json from static route definitions.
-func GenerateOpenAPI() {
-	data, err := json.MarshalIndent(platformhttp.BuildOpenAPISpec(), "", "  ")
-	if err != nil {
-		log.Fatalf("failed to marshal OpenAPI spec: %v", err)
-	}
-
-	if err := os.MkdirAll("docs", 0o755); err != nil {
-		log.Fatalf("failed to create docs directory: %v", err)
-	}
-	if err := os.WriteFile("docs/openapi.json", data, 0o644); err != nil {
-		log.Fatalf("failed to write openapi.json: %v", err)
-	}
-
-	log.Printf("wrote docs/openapi.json (%d bytes)", len(data))
 }

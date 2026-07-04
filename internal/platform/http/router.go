@@ -2,6 +2,8 @@ package http
 
 import (
 	"github.com/gin-gonic/gin"
+	swaggerfiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 
 	"github.com/StephenQiu30/hotkey-server/internal/auth"
 	"github.com/StephenQiu30/hotkey-server/internal/content"
@@ -41,9 +43,7 @@ func NewRouter(cfg Config) *gin.Engine {
 	RegisterTrendRoutes(r, cfg.TrendQuerySvc)
 	RegisterNotifyRoutes(r, cfg.NotifySvc)
 
-	r.GET("/openapi.json", func(c *gin.Context) {
-		c.JSON(200, BuildOpenAPISpec())
-	})
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
 
 	return r
 }

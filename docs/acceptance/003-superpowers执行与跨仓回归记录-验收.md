@@ -78,8 +78,8 @@ downstream: []
 
 ## A. 代码与脚本验证
 
-- [x] `make openapi`
-- [x] `make openapi-validate`
+- [x] `make swagger`
+- [x] `make swagger-validate`
 - [x] `bash scripts/validate-repository.sh`
 - [x] `go test ./tests/unit/platform/http -run 'TestHealthEndpoint|TestRecoverMiddlewareReturnsUnifiedErrorBody' -v`
 
@@ -104,7 +104,7 @@ downstream: []
 
 ## C. 契约事实源检查
 
-- [x] `docs/openapi.json` 已通过重新生成与校验
+- [x] `docs/swagger.json` 已通过重新生成与校验
 - [x] 已更新 `docs/cross-repo-client-generation.md` 为真实当前命令
 - [x] 已明确下游同步点为 `web` / `miniapp` 请求错误处理统一消费 `{ error, code }`
 
@@ -263,7 +263,7 @@ downstream: []
 
 ```bash
 cd hotkey-server
-make openapi && make openapi-validate && bash scripts/validate-repository.sh
+make swagger && make swagger-validate && bash scripts/validate-repository.sh
 ```
 
 结果：全部通过（OpenAPI 3.1.0、schema components: 5、runtime smoke 全绿）。
@@ -275,7 +275,7 @@ make openapi && make openapi-validate && bash scripts/validate-repository.sh
 
 ## Task 3/4：web / miniapp 客户端重新生成 — 阻塞
 
-对当前 `hotkey-server/docs/openapi.json`（静态 5-schema 精简版）执行 `npm run openapi:generate` 后：
+对当前 `hotkey-server/docs/swagger.json`（静态 5-schema 精简版）执行 `npm run openapi:generate` 后：
 
 | 仓 | `openapi:generate` | `typecheck` | 说明 |
 |---|---|---|---|
@@ -289,7 +289,7 @@ make openapi && make openapi-validate && bash scripts/validate-repository.sh
 - `hotkey-web`：`npm run typecheck` + `npm run test`（19 tests）通过
 - `hotkey-miniapp`：`npm run typecheck` + `npm run test`（9 tests）通过
 
-**后续必须项：** 扩充 `internal/platform/http/openapi.go`（或等价契约源），使 `docs/openapi.json` 覆盖 web/miniapp 已提交客户端所需的 schema 与 path 参数，再重新执行跨仓 `openapi:generate`。
+**后续必须项：** 扩充 `internal/platform/http/openapi.go`（或等价契约源），使 `docs/swagger.json` 覆盖 web/miniapp 已提交客户端所需的 schema 与 path 参数，再重新执行跨仓 `openapi:generate`。
 
 ## Task 5：`agent-browser` 回归 — 部分通过
 

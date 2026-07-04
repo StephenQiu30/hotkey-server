@@ -11,7 +11,25 @@ import (
 
 // RegisterContentRoutes registers the content (posts) endpoints.
 func RegisterContentRoutes(r *gin.Engine, svc content.PostQueryService) {
-	r.GET("/api/v1/monitors/:id/posts", func(c *gin.Context) {
+	r.GET("/api/v1/monitors/:id/posts", listMonitorPostsHandler(svc))
+}
+
+// listMonitorPostsHandler godoc
+// @Summary List posts for a monitor
+// @ID list-posts
+// @Tags content
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Monitor ID"
+// @Param limit query int false "Limit" default(20)
+// @Param offset query int false "Offset" default(0)
+// @Success 200 {object} PostListEnvelope
+// @Failure 400 {object} ErrorBody
+// @Failure 401 {object} ErrorBody
+// @Failure 500 {object} ErrorBody
+// @Router /api/v1/monitors/{id}/posts [get]
+func listMonitorPostsHandler(svc content.PostQueryService) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		if _, ok := userIDFromCtx(c.Request.Context()); !ok {
 			respondError(c, http.StatusUnauthorized, "unauthorized")
 			return
@@ -36,5 +54,5 @@ func RegisterContentRoutes(r *gin.Engine, svc content.PostQueryService) {
 		}
 
 		RespondOK(c, posts)
-	})
+	}
 }
