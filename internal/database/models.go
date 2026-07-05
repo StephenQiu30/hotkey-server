@@ -192,3 +192,35 @@ type KnowledgeObjectRevision struct {
 }
 
 func (KnowledgeObjectRevision) TableName() string { return "knowledge_object_revisions" }
+
+type HotEvent struct {
+	ID          int64      `gorm:"column:id;primaryKey"`
+	Name        string     `gorm:"column:name"`
+	HeatScore   float64    `gorm:"column:heat_score"`
+	Platform    string     `gorm:"column:platform"`
+	Trend       string     `gorm:"column:trend"`
+	FirstSeenAt time.Time  `gorm:"column:first_seen_at"`
+	LastSeenAt  time.Time  `gorm:"column:last_seen_at"`
+	PeakAt      *time.Time `gorm:"column:peak_at"`
+	TopicIDs    []byte     `gorm:"column:topic_ids;type:bigint[]"`
+	PostIDs     []byte     `gorm:"column:post_ids;type:bigint[]"`
+	Summary     string     `gorm:"column:summary"`
+	Category    string     `gorm:"column:category"`
+	Status      string     `gorm:"column:status"`
+	CreatedAt   time.Time  `gorm:"column:created_at"`
+	UpdatedAt   time.Time  `gorm:"column:updated_at"`
+}
+
+func (HotEvent) TableName() string { return "hot_events" }
+
+type HotEventPlatform struct {
+	HotEventID int64     `gorm:"column:hot_event_id;primaryKey"`
+	Platform   string    `gorm:"column:platform;primaryKey"`
+	Rank       int       `gorm:"column:rank"`
+	Title      string    `gorm:"column:title"`
+	URL        string    `gorm:"column:url"`
+	Heat       float64   `gorm:"column:heat"`
+	UpdatedAt  time.Time `gorm:"column:updated_at"`
+}
+
+func (HotEventPlatform) TableName() string { return "hot_event_platforms" }
