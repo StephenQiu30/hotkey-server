@@ -51,7 +51,7 @@ func (r *RunRepo) UpdateRun(_ context.Context, runID int64, run jobs.MonitorRun)
 	return nil
 }
 
-// Connector is a fake implementing jobs.PlatformConnector.
+// Connector is a fake implementing connector.Searcher.
 type Connector struct {
 	Posts      []jobs.PostResult
 	NextCursor string
@@ -64,6 +64,8 @@ func (c *Connector) SearchPosts(_ context.Context, _ string, _ string) ([]jobs.P
 	}
 	return c.Posts, c.NextCursor, nil
 }
+
+func (c *Connector) Name() string { return "x" }
 
 // PostRepo is a fake implementing jobs.PostRepository.
 type PostRepo struct {
