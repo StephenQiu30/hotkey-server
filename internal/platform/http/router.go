@@ -5,6 +5,7 @@ import (
 	swaggerfiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
+	_ "github.com/StephenQiu30/hotkey-server/docs"
 	"github.com/StephenQiu30/hotkey-server/internal/auth"
 	"github.com/StephenQiu30/hotkey-server/internal/content"
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
