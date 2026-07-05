@@ -27,9 +27,33 @@
 2. 存在关联帖，且 `monitor_post_hits.first_seen_at` 或 `platform_posts.published_at` ∈ 窗口
 3. 按 `topics.current_heat_score DESC` 排序，取 Top N（`DAILY_DIGEST_TOP_N`，默认 20）
 
+### Requirement: HotEvent 筛选
+
+HotEvent `E` 进入 `export_date = D`，当且仅当：
+
+1. `hot_events.status = 'active'`
+2. `hot_events.last_seen_at` ∈ 窗口 `[D 00:00 CST, D+1 00:00 CST)`
+3. 按 `hot_events.heat_score DESC` 排序，取 Top N（与 Topics 共享 `DAILY_DIGEST_TOP_N`）
+
+#### Scenario: HotEvent 进入日报
+- **WHEN** building the daily digest for export_date = D
+- **THEN** the system SHALL query active HotEvents whose last_seen_at falls within the time window [D 00:00 CST, D+1 00:00 CST)
+- **AND** HotEvents SHALL be sorted by heat_score DESC, limited to `DAILY_DIGEST_TOP_N`
+- **AND** tied Topics and HotEvents from the same monitor SHALL be deduplicated by content similarity
+
 ### Requirement: 代表帖
 
 每个入选主题 SHALL 取 Top 3 代表帖；字段含作者、摘录（最多 500 字）、`post_url`。
+
+### Requirement: HotEvent 笔记写入
+
+HotEvent SHALL 以独立笔记形式写入 Obsidian vault。
+
+#### Scenario: HotEvent 写入 Obsidian
+- **WHEN** a HotEvent is exported
+- **THEN** the note SHALL be written to `{root}/HotKey/events/{slug}/{date}-{id}-{title}.md`
+- **AND** the frontmatter SHALL include `type: hotkey-event`, `event_id`, `heat_score`, `platforms`, `trend`, `category`
+- **AND** the body SHALL contain the event summary and links to related posts from each platform
 
 ### Requirement: Obsidian 目录与 Frontmatter
 
@@ -48,8 +72,8 @@
 每篇笔记 SHALL 包含 YAML frontmatter：
 
 - **Topic**: `type: hotkey-topic`, `date`, `monitor`, `monitor_id`, `topic_id`, `topic_key`, `heat`, `trend`, `post_count`, `tags`
-- **Event**: `type: hotkey-event`, `event_id`, `event_key`, `date`, `topic_ids`, `tags`
-- **DailyDigest**: `type: hotkey-digest`, `digest_id`, `date`, `monitor`, `monitor_id`, `topic_count`, `event_count`, `tags`
+- **Event**: `type: hotkey-event`, `event_id`, `event_key`, `date`, `heat_score`, `platforms`, `trend`, `category`, `topic_ids`, `tags`
+- **DailyDigest**: `type: hotkey-digest`, `digest_id`, `date`, `monitor`, `monitor_id`, `topic_count`, `event_count`, `platforms`, `tags`
 - **Theme**: `type: hotkey-theme`, `theme_id`, `title`, `related_topics`, `event_count`, `tags`
 - **Export**: `type: hotkey-export`, `export_kind`, `title`, `tags`
 
@@ -65,9 +89,18 @@ type Client interface {
 
 LLM 仅用于摘要生成，不参与聚类。单 topic 失败时标记 `failed`，不影响其他 topic。
 
-### Requirement: topic_daily_exports 幂等
+### Requirement: 导出幂等
 
-表 `topic_daily_exports` 以 `(monitor_id, topic_id, export_date)` 为幂等键；`status` 为 `pending` | `published` | `failed`。
+Topic 导出使用表 `topic_daily_exports`，以 `(monitor_id, topic_id, export_date)` 为幂等键；HotEvent 导出使用 `(hot_event_id, export_date)` 为幂等键。`status` 均为 `pending` | `published` | `failed`。
+
+### Requirement: 多平台汇总
+
+每日日报 SHALL 包含多平台热点趋势汇总。
+
+#### Scenario: 日报包含多平台汇总
+- **WHEN** the daily digest is generated
+- **THEN** the note SHALL include a `## 各平台热点汇总` section listing the top HotEvents with per-platform heat breakdown
+- **AND** each HotEvent SHALL list which platforms it was observed on（X / 微博 / 知乎 / 百度）
 
 ### Requirement: 原子写盘
 

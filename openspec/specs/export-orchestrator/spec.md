@@ -42,6 +42,11 @@ type DateRange struct {
 - **WHEN** 调用 `BuildExportBundle(BuildExportBundleInput{Kind: "weekly", MonitorID: 1, DateRange: DateRange{Start: "2026-06-24", End: "2026-06-30"}})`
 - **THEN** 返回的 bundle 中 `Kind` 为 `"weekly"`，`DateRange.Start` 为 `"2026-06-24"`，`DateRange.End` 为 `"2026-06-30"`
 
+#### Scenario: 日报包含热点事件
+- **WHEN** the exporter runs for a daily digest
+- **THEN** `ExportBundle.EventIDs` SHALL be populated with HotEvent IDs from the target date range
+- **AND** the bundle SHALL include both TopicIDs and EventIDs when both are available
+
 ### Requirement: 周期报告渲染
 
 系统 SHALL 实现 `RenderPeriodicReport` 函数渲染周期报告：
@@ -77,6 +82,11 @@ type ReportTopicItem struct {
 #### Scenario: 周报包含周期汇总
 - **WHEN** 周报包含 `TopicCount: 10`、`EventCount: 3`、`Summary: "本周热点..."`
 - **THEN** 输出 SHALL 包含 `## 本周概览`、`热点主题数: 10`、`重要事件数: 3`、body 中 SHALL 包含 `本周热点...`
+
+#### Scenario: 日报中的热点事件板块
+- **WHEN** `PeriodicReportInput` contains `EventCount > 0`
+- **THEN** the rendered report SHALL include a `## 跨平台热点事件` section listing HotEvents with their HeatScore, Platform, and Trend
+- **AND** the frontmatter SHALL include `event_count` field
 
 ### Requirement: 专题报告渲染
 
@@ -117,3 +127,8 @@ func RenderMaterialList(input MaterialListInput) string
 #### Scenario: 导出使用 BuildKnowledgePath
 - **WHEN** 渲染导出并确定写入路径
 - **THEN** 调用 `BuildKnowledgePath` 且 Kind 参数与导出类型一致
+
+#### Scenario: HotEvent standalone export
+- **WHEN** exporting a HotEvent
+- **THEN** the file SHALL be written to `{root}/HotKey/events/{slug}/{date}-{id}-{title}.md`（与现有 Event 路径一致）
+- **AND** the frontmatter SHALL include `type: hotkey-event`, `event_id`, `platform`, `heat_score`, `related_topics`
