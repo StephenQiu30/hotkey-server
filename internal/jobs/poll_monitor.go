@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/StephenQiu30/hotkey-server/internal/connector"
 )
 
 type MonitorRun struct {
@@ -27,20 +29,9 @@ type MonitorInfo struct {
 	Keywords  []string
 }
 
-type PostResult struct {
-	ID           string
-	AuthorID     string
-	AuthorName   string
-	AuthorHandle string
-	Text         string
-	Language     string
-	PublishedAt  time.Time
-	LikeCount    int
-	ReplyCount   int
-	RepostCount  int
-	QuoteCount   int
-	ViewCount    int
-}
+// PostResult is a normalized post from any platform.
+// Deprecated: Use connector.PostResult instead.
+type PostResult = connector.PostResult
 
 type HitResult struct {
 	MonitorID      int64
@@ -61,23 +52,23 @@ type HitRepository interface {
 	UpsertHit(ctx context.Context, hit HitResult) error
 }
 
-type PlatformConnector interface {
-	SearchPosts(ctx context.Context, query string, cursor string) ([]PostResult, string, error)
-}
+// PlatformConnector is the search interface for a platform.
+// Deprecated: Use connector.Searcher instead.
+type PlatformConnector = connector.Searcher
 
 type HitScorer interface {
-	ScoreHit(hitID int64, post PostResult, matchedKeywords []string, totalKeywords int, publishedMinutesAgo float64) error
+	ScoreHit(hitID int64, post connector.PostResult, matchedKeywords []string, totalKeywords int, publishedMinutesAgo float64) error
 }
 
 type PollMonitorJob struct {
 	runRepo   RunRepository
 	postRepo  PostRepository
 	hitRepo   HitRepository
-	connector PlatformConnector
+	connector connector.Searcher
 	scorer    HitScorer
 }
 
-func NewPollMonitorJob(runRepo RunRepository, postRepo PostRepository, hitRepo HitRepository, connector PlatformConnector, scorer HitScorer) *PollMonitorJob {
+func NewPollMonitorJob(runRepo RunRepository, postRepo PostRepository, hitRepo HitRepository, connector connector.Searcher, scorer HitScorer) *PollMonitorJob {
 	return &PollMonitorJob{
 		runRepo:   runRepo,
 		postRepo:  postRepo,
