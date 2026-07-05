@@ -16,14 +16,14 @@ func RegisterAuthRoutes(r *gin.Engine, svc *auth.Service, jwtSecret string) {
 	r.POST("/api/v1/auth/login", loginHandler(svc, jwtSecret))
 }
 
-// UserData is the JSON representation of a user.
+// UserData is the JSON representation of a user (nested inside ResponseBody.Data).
 type UserData struct {
 	ID          int64  `json:"id"`
 	Email       string `json:"email"`
 	DisplayName string `json:"display_name"`
 }
 
-// LoginData is the JSON representation of a login response.
+// LoginData is the JSON representation of a login response (nested inside ResponseBody.Data).
 type LoginData struct {
 	User  UserData `json:"user"`
 	Token string   `json:"token"`
@@ -66,9 +66,7 @@ func registerHandler(svc *auth.Service) gin.HandlerFunc {
 			return
 		}
 
-		RespondCreated(c, ResponseBody{
-			Data: UserData{ID: user.ID, Email: user.Email, DisplayName: user.DisplayName},
-		})
+		RespondCreated(c, UserData{ID: user.ID, Email: user.Email, DisplayName: user.DisplayName})
 	}
 }
 
