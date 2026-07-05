@@ -6,10 +6,13 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/platform/x"
 	"github.com/StephenQiu30/hotkey-server/internal/scoring"
 )
+
+var xHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
 type XConnectorAdapter struct {
 	client *x.Client
@@ -33,7 +36,7 @@ func (a *XConnectorAdapter) SearchPosts(ctx context.Context, query string, curso
 	}
 	req.Header.Set("Authorization", "Bearer "+a.token)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := xHTTPClient.Do(req)
 	if err != nil {
 		return nil, "", fmt.Errorf("execute request: %w", err)
 	}

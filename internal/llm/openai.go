@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 type OpenAIConfig struct {
@@ -31,7 +32,9 @@ func NewOpenAIClient(cfg OpenAIConfig) *OpenAIClient {
 		apiKey:  cfg.APIKey,
 		baseURL: baseURL,
 		model:   cfg.Model,
-		http:    http.DefaultClient,
+		http: &http.Client{
+			Timeout: 30 * time.Second,
+		},
 	}
 }
 
@@ -90,7 +93,7 @@ func (c *OpenAIClient) SummarizeTopic(ctx context.Context, in TopicSummaryInput)
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1 MB limit
 	if err != nil {
 		return "", fmt.Errorf("llm: read response: %w", err)
 	}
