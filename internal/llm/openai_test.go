@@ -11,10 +11,6 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/llm"
 )
 
-// ---------------------------------------------------------------------------
-// MockClient tests
-// ---------------------------------------------------------------------------
-
 func TestMockClient_ReturnsFixedSummary(t *testing.T) {
 	mock := &llm.MockClient{Summary: "测试摘要"}
 	got, err := mock.SummarizeTopic(context.Background(), llm.TopicSummaryInput{
@@ -47,10 +43,6 @@ func TestMockClient_RecordsInput(t *testing.T) {
 		t.Fatalf("LastInput.Heat = %f, want 99.0", mock.LastInput.Heat)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Prompt truncation tests
-// ---------------------------------------------------------------------------
 
 func TestBuildPrompt_TruncatesLongPost(t *testing.T) {
 	longContent := strings.Repeat("这是一段很长的内容。", 100) // 600 chars
@@ -108,11 +100,6 @@ func TestBuildPrompt_ContainsTopicInfo(t *testing.T) {
 		}
 	}
 }
-
-// ---------------------------------------------------------------------------
-// OpenAI client tests (httptest)
-// ---------------------------------------------------------------------------
-
 func TestOpenAIClient_SummarizeTopic_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/chat/completions" {
