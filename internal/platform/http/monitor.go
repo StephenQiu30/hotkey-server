@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
@@ -8,6 +9,11 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 )
+
+// MonitorGetter fetches a monitor by ID for ownership checks.
+type MonitorGetter interface {
+	GetByID(ctx context.Context, id int64) (monitor.Monitor, error)
+}
 
 func RegisterMonitorRoutes(r *gin.Engine, svc *monitor.Service) {
 	r.GET("/api/v1/monitors", listMonitorsHandler(svc))
@@ -216,7 +222,7 @@ func updateMonitorHandler(svc *monitor.Service) gin.HandlerFunc {
 			return
 		}
 
-		updated, err := svc.Update(c.Request.Context(), id, monitor.UpdateMonitorInput{
+		updated, err := svc.Update(c.Request.Context(), id, userID, monitor.UpdateMonitorInput{
 			Name:                body.Name,
 			QueryText:           body.QueryText,
 			Language:            body.Language,

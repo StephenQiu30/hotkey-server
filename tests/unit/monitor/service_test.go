@@ -100,7 +100,7 @@ func TestUpdateMonitorStatus(t *testing.T) {
 	})
 
 	status := "paused"
-	updated, err := svc.Update(context.Background(), m.ID, monitor.UpdateMonitorInput{
+	updated, err := svc.Update(context.Background(), m.ID, 1, monitor.UpdateMonitorInput{
 		Status: &status,
 	})
 	if err != nil {
@@ -115,7 +115,7 @@ func TestUpdateMonitorNotFound(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
 	svc := monitor.NewService(repo)
 	status := "paused"
-	_, err := svc.Update(context.Background(), 999, monitor.UpdateMonitorInput{
+	_, err := svc.Update(context.Background(), 999, 1, monitor.UpdateMonitorInput{
 		Status: &status,
 	})
 	if !errors.Is(err, monitor.ErrNotFound) {

@@ -55,7 +55,7 @@ func (r *smokeMonitorRepo) ListByUser(_ context.Context, _ int64) ([]monitor.Mon
 	return nil, nil
 }
 
-func (r *smokeMonitorRepo) Update(_ context.Context, _ int64, _ monitor.UpdateMonitorInput) (monitor.Monitor, error) {
+func (r *smokeMonitorRepo) Update(_ context.Context, _ int64, _ int64, _ monitor.UpdateMonitorInput) (monitor.Monitor, error) {
 	return monitor.Monitor{}, monitor.ErrNotFound
 }
 
@@ -81,6 +81,9 @@ type smokeTopicQueryService struct{}
 
 func (s *smokeTopicQueryService) ListByMonitor(_ int64) ([]topic.TopicSummary, error) {
 	return nil, nil
+}
+func (s *smokeTopicQueryService) GetMonitorID(_ context.Context, topicID int64) (int64, error) {
+	return topicID, nil
 }
 
 type smokeTrendQueryService struct{}

@@ -103,7 +103,7 @@ func (r *MonitorRepo) ListActiveIDs(ctx context.Context) ([]int64, error) {
 	return ids, rows.Err()
 }
 
-func (r *MonitorRepo) Update(ctx context.Context, id int64, input monitor.UpdateMonitorInput) (monitor.Monitor, error) {
+func (r *MonitorRepo) Update(ctx context.Context, id int64, userID int64, input monitor.UpdateMonitorInput) (monitor.Monitor, error) {
 	sets := []string{}
 	args := []interface{}{}
 	argIdx := 1
@@ -157,6 +157,7 @@ func (r *MonitorRepo) Update(ctx context.Context, id int64, input monitor.Update
 
 	sets = append(sets, "updated_at = now()")
 	args = append(args, id)
+	args = append(args, userID)
 
 	query := "UPDATE keyword_monitors SET "
 	for i, s := range sets {
@@ -165,7 +166,7 @@ func (r *MonitorRepo) Update(ctx context.Context, id int64, input monitor.Update
 		}
 		query += s
 	}
-	query += " WHERE id = $" + itoa(argIdx) + " RETURNING id, user_id, name, query_text, language, region, status, poll_interval_minutes, alert_enabled, alert_threshold_config, last_polled_at, created_at, updated_at"
+	query += " WHERE id = $" + itoa(argIdx) + " AND user_id = $" + itoa(argIdx+1) + " RETURNING id, user_id, name, query_text, language, region, status, poll_interval_minutes, alert_enabled, alert_threshold_config, last_polled_at, created_at, updated_at"
 
 	var m monitor.Monitor
 	var configRaw []byte

@@ -34,6 +34,8 @@ func NewRouter(cfg Config) *gin.Engine {
 	r := gin.New()
 
 	r.Use(RecoverMiddleware())
+	r.Use(CORSMiddleware())
+	r.Use(SecurityHeadersMiddleware())
 	r.Use(RequestIDMiddleware())
 	r.Use(ContextMetadataMiddleware("http"))
 	r.Use(AuthMiddleware(cfg.JWTSecret, cfg.SmokeTest))
@@ -45,9 +47,9 @@ func NewRouter(cfg Config) *gin.Engine {
 	RegisterHealthRoutes(r)
 	RegisterAuthRoutes(r, cfg.AuthService, cfg.JWTSecret)
 	RegisterMonitorRoutes(r, cfg.MonitorSvc)
-	RegisterContentRoutes(r, cfg.PostQuerySvc)
-	RegisterTopicRoutes(r, cfg.TopicQuerySvc)
-	RegisterTrendRoutes(r, cfg.TrendQuerySvc)
+	RegisterContentRoutes(r, cfg.PostQuerySvc, cfg.MonitorSvc)
+	RegisterTopicRoutes(r, cfg.TopicQuerySvc, cfg.MonitorSvc)
+	RegisterTrendRoutes(r, cfg.TrendQuerySvc, cfg.MonitorSvc, cfg.TopicQuerySvc)
 	RegisterNotifyRoutes(r, cfg.NotifySvc)
 
 	return r

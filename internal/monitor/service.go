@@ -48,12 +48,12 @@ func (s *Service) ListByUser(ctx context.Context, userID int64) ([]Monitor, erro
 	return s.repo.ListByUser(ctx, userID)
 }
 
-// Update modifies an existing monitor.
-func (s *Service) Update(ctx context.Context, id int64, input UpdateMonitorInput) (Monitor, error) {
+// Update modifies an existing monitor owned by the given user.
+func (s *Service) Update(ctx context.Context, id int64, userID int64, input UpdateMonitorInput) (Monitor, error) {
 	if input.PollIntervalMinutes != nil {
 		if _, ok := AllowedIntervals[*input.PollIntervalMinutes]; !ok {
 			return Monitor{}, ErrInvalidInterval
 		}
 	}
-	return s.repo.Update(ctx, id, input)
+	return s.repo.Update(ctx, id, userID, input)
 }

@@ -53,9 +53,9 @@ func (r *Repo) ListByUser(_ context.Context, userID int64) ([]monitor.Monitor, e
 	return out, nil
 }
 
-func (r *Repo) Update(_ context.Context, id int64, input monitor.UpdateMonitorInput) (monitor.Monitor, error) {
+func (r *Repo) Update(_ context.Context, id int64, userID int64, input monitor.UpdateMonitorInput) (monitor.Monitor, error) {
 	for i := range r.Monitors {
-		if r.Monitors[i].ID == id {
+		if r.Monitors[i].ID == id && r.Monitors[i].UserID == userID {
 			if input.Name != nil {
 				r.Monitors[i].Name = *input.Name
 			}

@@ -1,18 +1,25 @@
 package http
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
 )
 
-func RegisterTrendRoutes(r *gin.Engine, svc trend.TrendQueryService) {
-	r.GET("/api/v1/monitors/:id/trends", monitorTrendsHandler(svc))
-	r.GET("/api/v1/topics/:id/trends", topicTrendsHandler(svc))
+// TopicMonitorIDGetter fetches the monitor ID that owns a topic.
+type TopicMonitorIDGetter interface {
+	GetMonitorID(ctx context.Context, topicID int64) (int64, error)
+}
+
+func RegisterTrendRoutes(r *gin.Engine, svc trend.TrendQueryService, monitorGetter MonitorGetter, topicMonitorGetter TopicMonitorIDGetter) {
+	r.GET("/api/v1/monitors/:id/trends", monitorTrendsHandler(svc, monitorGetter))
+	r.GET("/api/v1/topics/:id/trends", topicTrendsHandler(svc, monitorGetter, topicMonitorGetter))
 }
 
 func parseSince(s string) time.Time {
@@ -37,11 +44,15 @@ func parseSince(s string) time.Time {
 // @Success 200 {object} TrendListResponse
 // @Failure 400 {object} ErrorBody
 // @Failure 401 {object} ErrorBody
+// @Failure 403 {object} ErrorBody
+// @Failure 404 {object} ErrorBody
 // @Failure 500 {object} ErrorBody
 // @Router /api/v1/monitors/{id}/trends [get]
-func monitorTrendsHandler(svc trend.TrendQueryService) gin.HandlerFunc {
+func monitorTrendsHandler(svc trend.TrendQueryService, mgr MonitorGetter) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if _, ok := userIDFromCtx(c.Request.Context()); !ok {
+		ctx := c.Request.Context()
+		userID, ok := userIDFromCtx(ctx)
+		if !ok {
 			respondError(c, http.StatusUnauthorized, "unauthorized")
 			return
 		}
@@ -49,6 +60,21 @@ func monitorTrendsHandler(svc trend.TrendQueryService) gin.HandlerFunc {
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
 			respondError(c, http.StatusBadRequest, "invalid monitor id")
+			return
+		}
+
+		m, err := mgr.GetByID(ctx, id)
+		if err != nil {
+			switch {
+			case err == monitor.ErrNotFound:
+				respondError(c, http.StatusNotFound, "monitor not found")
+			default:
+				respondInternalError(c)
+			}
+			return
+		}
+		if m.UserID != userID {
+			respondError(c, http.StatusForbidden, "not authorized")
 			return
 		}
 
@@ -77,11 +103,15 @@ func monitorTrendsHandler(svc trend.TrendQueryService) gin.HandlerFunc {
 // @Success 200 {object} TrendListResponse
 // @Failure 400 {object} ErrorBody
 // @Failure 401 {object} ErrorBody
+// @Failure 403 {object} ErrorBody
+// @Failure 404 {object} ErrorBody
 // @Failure 500 {object} ErrorBody
 // @Router /api/v1/topics/{id}/trends [get]
-func topicTrendsHandler(svc trend.TrendQueryService) gin.HandlerFunc {
+func topicTrendsHandler(svc trend.TrendQueryService, monitorGetter MonitorGetter, topicMonitorGetter TopicMonitorIDGetter) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if _, ok := userIDFromCtx(c.Request.Context()); !ok {
+		ctx := c.Request.Context()
+		userID, ok := userIDFromCtx(ctx)
+		if !ok {
 			respondError(c, http.StatusUnauthorized, "unauthorized")
 			return
 		}
@@ -89,6 +119,27 @@ func topicTrendsHandler(svc trend.TrendQueryService) gin.HandlerFunc {
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
 			respondError(c, http.StatusBadRequest, "invalid topic id")
+			return
+		}
+
+		monitorID, err := topicMonitorGetter.GetMonitorID(ctx, id)
+		if err != nil {
+			respondError(c, http.StatusNotFound, "topic not found")
+			return
+		}
+
+		m, err := monitorGetter.GetByID(ctx, monitorID)
+		if err != nil {
+			switch {
+			case err == monitor.ErrNotFound:
+				respondError(c, http.StatusNotFound, "monitor not found")
+			default:
+				respondInternalError(c)
+			}
+			return
+		}
+		if m.UserID != userID {
+			respondError(c, http.StatusForbidden, "not authorized")
 			return
 		}
 

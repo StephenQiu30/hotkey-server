@@ -1,6 +1,9 @@
 package database
 
 import (
+	"context"
+	"errors"
+
 	"github.com/StephenQiu30/hotkey-server/internal/topic"
 	"gorm.io/gorm"
 )
@@ -39,4 +42,18 @@ func (s *TopicQueryService) ListByMonitor(monitorID int64) ([]topic.TopicSummary
 		summaries = append(summaries, ts)
 	}
 	return summaries, rows.Err()
+}
+
+func (s *TopicQueryService) GetMonitorID(ctx context.Context, topicID int64) (int64, error) {
+	var monitorID int64
+	err := s.db.WithContext(ctx).Raw(
+		`SELECT monitor_id FROM topics WHERE id = ?`, topicID,
+	).Scan(&monitorID).Error
+	if err != nil {
+		return 0, err
+	}
+	if monitorID == 0 {
+		return 0, errors.New("topic not found")
+	}
+	return monitorID, nil
 }

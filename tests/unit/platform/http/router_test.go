@@ -52,13 +52,16 @@ type stubMonitorRepo struct{}
 func (r *stubMonitorRepo) Create(_ context.Context, _ int64, _ monitor.CreateMonitorInput) (monitor.Monitor, error) {
 	return monitor.Monitor{ID: 1, UserID: 1, Name: "test", Status: "active"}, nil
 }
-func (r *stubMonitorRepo) GetByID(_ context.Context, _ int64) (*monitor.Monitor, error) {
-	return nil, monitor.ErrNotFound
+func (r *stubMonitorRepo) GetByID(_ context.Context, id int64) (*monitor.Monitor, error) {
+	if id == 999 {
+		return nil, monitor.ErrNotFound
+	}
+	return &monitor.Monitor{ID: id, UserID: 1}, nil
 }
 func (r *stubMonitorRepo) ListByUser(_ context.Context, _ int64) ([]monitor.Monitor, error) {
 	return nil, nil
 }
-func (r *stubMonitorRepo) Update(_ context.Context, _ int64, _ monitor.UpdateMonitorInput) (monitor.Monitor, error) {
+func (r *stubMonitorRepo) Update(_ context.Context, _ int64, _ int64, _ monitor.UpdateMonitorInput) (monitor.Monitor, error) {
 	return monitor.Monitor{}, monitor.ErrNotFound
 }
 
@@ -82,6 +85,9 @@ type stubTopicQueryService struct{}
 
 func (s *stubTopicQueryService) ListByMonitor(_ int64) ([]topic.TopicSummary, error) {
 	return nil, nil
+}
+func (s *stubTopicQueryService) GetMonitorID(_ context.Context, topicID int64) (int64, error) {
+	return topicID, nil
 }
 
 type stubTrendQueryService struct{}
@@ -710,5 +716,103 @@ func TestRespondPageWrapsPaginationAndRequestID(t *testing.T) {
 	}
 	if body.RequestID != "req-page" {
 		t.Fatalf("expected request id req-page, got %q", body.RequestID)
+	}
+}
+
+func TestMonitorScopedEndpointsRejectOtherUsers(t *testing.T) {
+	router := platformhttp.NewRouter(platformhttp.Config{
+		JWTSecret:     "test-secret",
+		SmokeTest:     false,
+		AuthService:   auth.NewService(&stubAuthRepo{}),
+		MonitorSvc:    monitor.NewService(&stubMonitorRepo{}),
+		NotifySvc:     notify.NewService(&stubNotifyRepo{}),
+		PostQuerySvc:  &stubPostQueryService{},
+		TopicQuerySvc: &stubTopicQueryService{},
+		TrendQuerySvc: &stubTrendQueryService{},
+	})
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": float64(2),
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	tokenStr, err := token.SignedString([]byte("test-secret"))
+	if err != nil {
+		t.Fatalf("failed to sign token: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		path string
+	}{
+		{"posts", "/api/v1/monitors/1/posts"},
+		{"topics", "/api/v1/monitors/1/topics"},
+		{"monitor trends", "/api/v1/monitors/1/trends"},
+		{"topic trends", "/api/v1/topics/1/trends"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			req.Header.Set("Authorization", "Bearer "+tokenStr)
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusForbidden {
+				t.Errorf("expected 403, got %d: %s", rr.Code, rr.Body.String())
+			}
+			var body platformhttp.ErrorBody
+			if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+				t.Fatalf("expected JSON error body, got %v: %s", err, rr.Body.String())
+			}
+		})
+	}
+}
+
+func TestMonitorScopedEndpointsReturn404ForNonexistentMonitor(t *testing.T) {
+	router := platformhttp.NewRouter(platformhttp.Config{
+		JWTSecret:     "test-secret",
+		SmokeTest:     false,
+		AuthService:   auth.NewService(&stubAuthRepo{}),
+		MonitorSvc:    monitor.NewService(&stubMonitorRepo{}),
+		NotifySvc:     notify.NewService(&stubNotifyRepo{}),
+		PostQuerySvc:  &stubPostQueryService{},
+		TopicQuerySvc: &stubTopicQueryService{},
+		TrendQuerySvc: &stubTrendQueryService{},
+	})
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": float64(1),
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	tokenStr, err := token.SignedString([]byte("test-secret"))
+	if err != nil {
+		t.Fatalf("failed to sign token: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		path string
+	}{
+		{"posts", "/api/v1/monitors/999/posts"},
+		{"topics", "/api/v1/monitors/999/topics"},
+		{"monitor trends", "/api/v1/monitors/999/trends"},
+		{"topic trends", "/api/v1/topics/999/trends"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			req.Header.Set("Authorization", "Bearer "+tokenStr)
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusNotFound {
+				t.Errorf("expected 404, got %d: %s", rr.Code, rr.Body.String())
+			}
+			var body platformhttp.ErrorBody
+			if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+				t.Fatalf("expected JSON error body, got %v: %s", err, rr.Body.String())
+			}
+		})
 	}
 }
