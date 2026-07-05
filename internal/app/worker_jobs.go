@@ -7,15 +7,23 @@ import (
 	"log"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/aggregator"
+	"github.com/StephenQiu30/hotkey-server/internal/cleanup"
+	"github.com/StephenQiu30/hotkey-server/internal/collector"
 	"github.com/StephenQiu30/hotkey-server/internal/config"
 	"github.com/StephenQiu30/hotkey-server/internal/database"
 	"github.com/StephenQiu30/hotkey-server/internal/digest"
+	"github.com/StephenQiu30/hotkey-server/internal/hotevent"
 	"github.com/StephenQiu30/hotkey-server/internal/jobs"
 	"github.com/StephenQiu30/hotkey-server/internal/llm"
 	"github.com/StephenQiu30/hotkey-server/internal/observability"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/baidu"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/weibo"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/x"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/zhihu"
 	"github.com/StephenQiu30/hotkey-server/internal/scoring"
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
+	"github.com/StephenQiu30/hotkey-server/internal/connector"
 	"gorm.io/gorm"
 )
 
@@ -31,11 +39,9 @@ func newJobRunner(cfg config.Config, db *gorm.DB) *jobs.Runner {
 	registerBuildSnapshots(runner, cfg, db)
 	registerDispatchNotifications(runner, cfg, db)
 	registerPublishDailyTopics(runner, cfg, db)
-
-	// Future registrations will be added here:
-	// registerTrendingCollector(runner, cfg, db)
-	// registerEventAggregator(runner, cfg, db)
-	// registerCleanup(runner, cfg, db)
+	registerTrendingCollector(runner, cfg, db)
+	registerEventAggregator(runner, cfg, db)
+	registerCleanup(runner, cfg, db)
 
 	return runner
 }
@@ -182,6 +188,37 @@ func registerPublishDailyTopics(runner *jobs.Runner, cfg config.Config, db *gorm
 			return err
 		}, 1*time.Minute, dailyRunKey(fmt.Sprintf("publish_daily_topics:%d", monitorID)))
 	}
+}
+
+// registerTrendingCollector registers the multi-platform trending collector job.
+func registerTrendingCollector(runner *jobs.Runner, cfg config.Config, db *gorm.DB) {
+	weiboClient := weibo.NewClient(10 * time.Second)
+	zhihuClient := zhihu.NewClient(10 * time.Second)
+	baiduClient := baidu.NewClient(15 * time.Second)
+
+	collectors := []connector.TrendingCollector{
+		weiboClient,
+		zhihuClient,
+		baiduClient,
+	}
+
+	collector.Register(runner, db, collectors)
+}
+
+// registerEventAggregator registers the hot event aggregation job.
+func registerEventAggregator(runner *jobs.Runner, cfg config.Config, db *gorm.DB) {
+	eventRepo := database.NewHotEventRepo(db)
+	eventSvc := hotevent.NewService(eventRepo)
+
+	aggregator.Register(runner, db, eventSvc)
+}
+
+// registerCleanup registers the data cleanup job.
+func registerCleanup(runner *jobs.Runner, cfg config.Config, db *gorm.DB) {
+	eventRepo := database.NewHotEventRepo(db)
+	eventSvc := hotevent.NewService(eventRepo)
+
+	cleanup.Register(runner, db, eventSvc)
 }
 
 // dailyRunKey returns a JobOption that scopes the run key to a day.
