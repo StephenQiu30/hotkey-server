@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/connector"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/x"
 	"github.com/StephenQiu30/hotkey-server/internal/scoring"
 )
@@ -24,7 +25,7 @@ func NewXConnectorAdapter(client *x.Client, token string) *XConnectorAdapter {
 }
 
 // SearchPosts fetches posts from the X search API.
-func (a *XConnectorAdapter) SearchPosts(ctx context.Context, query string, cursor string) ([]PostResult, string, error) {
+func (a *XConnectorAdapter) SearchPosts(ctx context.Context, query string, cursor string) ([]connector.PostResult, string, error) {
 	searchURL := fmt.Sprintf("https://api.x.com/2/tweets/search/recent?query=%s", url.QueryEscape(query))
 	if cursor != "" {
 		searchURL += "&next_token=" + url.QueryEscape(cursor)
@@ -56,9 +57,9 @@ func (a *XConnectorAdapter) SearchPosts(ctx context.Context, query string, curso
 		return nil, "", err
 	}
 
-	results := make([]PostResult, 0, len(posts))
+	results := make([]connector.PostResult, 0, len(posts))
 	for _, p := range posts {
-		results = append(results, PostResult{
+		results = append(results, connector.PostResult{
 			ID:           p.ID,
 			AuthorID:     p.AuthorID,
 			AuthorName:   p.AuthorName,
@@ -77,6 +78,9 @@ func (a *XConnectorAdapter) SearchPosts(ctx context.Context, query string, curso
 	return results, meta.NextCursor, nil
 }
 
+// Name returns the platform identifier.
+func (a *XConnectorAdapter) Name() string { return "x" }
+
 type ScorerAdapter struct {
 	svc *scoring.Service
 }
@@ -85,7 +89,7 @@ func NewScorerAdapter(svc *scoring.Service) *ScorerAdapter {
 	return &ScorerAdapter{svc: svc}
 }
 
-func (a *ScorerAdapter) ScoreHit(hitID int64, post PostResult, matchedKeywords []string, totalKeywords int, publishedMinutesAgo float64) error {
+func (a *ScorerAdapter) ScoreHit(hitID int64, post connector.PostResult, matchedKeywords []string, totalKeywords int, publishedMinutesAgo float64) error {
 	return a.svc.ScoreHit(scoring.ScoreHitInput{
 		HitID:               hitID,
 		LikeCount:           post.LikeCount,

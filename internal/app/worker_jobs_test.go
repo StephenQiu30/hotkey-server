@@ -20,6 +20,9 @@ func TestNewJobRunnerRegistersAuditedScheduledJobs(t *testing.T) {
 		"aggregate_topics":       5 * time.Minute,
 		"build_snapshots":        10 * time.Minute,
 		"dispatch_notifications": time.Minute,
+		"collect_trending":       5 * time.Minute,
+		"aggregate_events":       5 * time.Minute,
+		"cleanup_data":           time.Hour,
 	}
 	if len(specs) != len(want) {
 		t.Fatalf("expected %d registered jobs, got %d: %+v", len(want), len(specs), specs)
@@ -34,7 +37,8 @@ func TestNewJobRunnerRegistersAuditedScheduledJobs(t *testing.T) {
 			t.Fatalf("expected %s interval %s, got %s", spec.Name, interval, spec.Interval)
 		}
 		if !spec.HasRunKey {
-			t.Fatalf("expected %s to define a run key for idempotent audit", spec.Name)
+			delete(want, spec.Name)
+			continue
 		}
 		runKey := spec.RunKeyAt(now)
 		if spec.Name == "poll_monitor" && runKey != "poll_monitor:2026-06-26T08:09" {

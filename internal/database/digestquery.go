@@ -7,7 +7,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// DigestQueryService implements digest.TopicFilter using PostgreSQL via GORM.
+// DigestQueryService implements digest.TopicFilter and digest.EventFilter
+// using PostgreSQL via GORM.
 type DigestQueryService struct {
 	db *gorm.DB
 }
@@ -77,4 +78,30 @@ func (s *DigestQueryService) FetchRepresentativePosts(ctx context.Context, topic
 		posts = append(posts, p)
 	}
 	return posts, rows.Err()
+}
+
+func (s *DigestQueryService) ListEventsForDay(ctx context.Context, window digest.Window, topN int) ([]digest.EventEntry, error) {
+	rows, err := s.db.WithContext(ctx).Raw(
+		`SELECT id, name, heat_score, platform, summary
+		 FROM hot_events
+		 WHERE status = 'active'
+		   AND last_seen_at >= ? AND last_seen_at < ?
+		 ORDER BY heat_score DESC
+		 LIMIT ?`,
+		window.Start, window.End, topN,
+	).Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []digest.EventEntry
+	for rows.Next() {
+		var e digest.EventEntry
+		if err := rows.Scan(&e.ID, &e.Name, &e.HeatScore, &e.Platform, &e.Summary); err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+	}
+	return events, rows.Err()
 }

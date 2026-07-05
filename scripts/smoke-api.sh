@@ -140,6 +140,11 @@ echo ""
 echo "=== Smoke: monitors/{id}/trends ==="
 assert_status "$BASE/api/v1/monitors/1/trends" GET 200
 
+# New endpoints require a real database (DB-dependent, skipped in smoke mode).
+echo ""
+echo "=== Smoke: HotEvent endpoints (DB required — skip) ==="
+echo "  SKIP: /api/v1/trending, /api/v1/hot-events require real DB"
+
 # --- result -----------------------------------------------------------------
 
 echo ""

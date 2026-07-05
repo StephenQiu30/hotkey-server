@@ -9,6 +9,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/config"
 	"github.com/StephenQiu30/hotkey-server/internal/content"
 	"github.com/StephenQiu30/hotkey-server/internal/database"
+	"github.com/StephenQiu30/hotkey-server/internal/hotevent"
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
@@ -26,6 +27,7 @@ func newAPIServer(cfg config.Config, db *gorm.DB) (*http.Server, error) {
 	var postQuerySvc content.PostQueryService
 	var topicQuerySvc topic.TopicQueryService
 	var trendQuerySvc trend.TrendQueryService
+	var hotEventMgr platformhttp.HotEventManager
 
 	if smokeTest {
 		authRepo = &smokeAuthRepo{}
@@ -41,6 +43,9 @@ func newAPIServer(cfg config.Config, db *gorm.DB) (*http.Server, error) {
 		postQuerySvc = database.NewContentQueryService(db)
 		topicQuerySvc = database.NewTopicQueryService(db)
 		trendQuerySvc = database.NewTrendQueryService(db)
+
+		hotEventRepo := database.NewHotEventRepo(db)
+		hotEventMgr = hotevent.NewQueryService(hotEventRepo)
 	}
 
 	router := platformhttp.NewRouter(platformhttp.Config{
@@ -53,6 +58,7 @@ func newAPIServer(cfg config.Config, db *gorm.DB) (*http.Server, error) {
 		PostQuerySvc:  postQuerySvc,
 		TopicQuerySvc: topicQuerySvc,
 		TrendQuerySvc: trendQuerySvc,
+		HotEventManager: hotEventMgr,
 	})
 
 	return &http.Server{

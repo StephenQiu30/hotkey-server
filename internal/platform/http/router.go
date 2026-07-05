@@ -25,6 +25,7 @@ type Config struct {
 	PostQuerySvc    content.PostQueryService
 	TopicQuerySvc   topic.TopicQueryService
 	TrendQuerySvc   trend.TrendQueryService
+	HotEventManager HotEventManager
 }
 
 func NewRouter(cfg Config) *gin.Engine {
@@ -51,6 +52,11 @@ func NewRouter(cfg Config) *gin.Engine {
 	RegisterTopicRoutes(r, cfg.TopicQuerySvc, cfg.MonitorSvc)
 	RegisterTrendRoutes(r, cfg.TrendQuerySvc, cfg.MonitorSvc, cfg.TopicQuerySvc)
 	RegisterNotifyRoutes(r, cfg.NotifySvc)
+
+	// HotEvent routes (optional — nil-safe)
+	if cfg.HotEventManager != nil {
+		RegisterTrendingRoutes(r, cfg.HotEventManager)
+	}
 
 	return r
 }
