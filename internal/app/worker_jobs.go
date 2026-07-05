@@ -172,7 +172,10 @@ func registerPublishDailyTopics(runner *jobs.Runner, cfg config.Config, db *gorm
 			Slug: "monitor",
 		}
 
-		digestSvc := digest.NewService(database.NewDigestQueryService(db))
+		digestSvc := digest.NewServiceWithEvents(
+				database.NewDigestQueryService(db),
+				database.NewDigestQueryService(db),
+			)
 		publishJob := jobs.NewPublishDailyTopicsJobWithDelegate(
 			digestSvc,
 			llmClient,
