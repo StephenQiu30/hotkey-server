@@ -110,8 +110,11 @@ func validateJWT(c *gin.Context, jwtSecret string) (context.Context, error) {
 	}
 
 	token, err := jwt.Parse(parts[1], func(token *jwt.Token) (any, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
 		return []byte(jwtSecret), nil
-	})
+	}, jwt.WithValidMethods([]string{"HS256"}))
 	if err != nil || !token.Valid {
 		return nil, &authError{"invalid token"}
 	}
@@ -165,4 +168,28 @@ func randomHex(n int) string {
 		return fmt.Sprintf("%x", time.Now().UnixNano())
 	}
 	return fmt.Sprintf("%x", b)
+}
+
+// CORSMiddleware adds permissive CORS headers for web frontend access.
+func CORSMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization")
+		c.Header("Access-Control-Allow-Credentials", "true")
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+		c.Next()
+	}
+}
+
+// SecurityHeadersMiddleware adds recommended security response headers.
+func SecurityHeadersMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "DENY")
+		c.Next()
+	}
 }
