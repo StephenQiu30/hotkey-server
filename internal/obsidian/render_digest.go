@@ -37,7 +37,6 @@ type DigestEventItem struct {
 func RenderDigestNote(in DigestNoteInput) string {
 	var b strings.Builder
 
-	// Frontmatter
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "type: hotkey-digest\n")
 	if in.DigestID > 0 {
@@ -58,13 +57,11 @@ func RenderDigestNote(in DigestNoteInput) string {
 	b.WriteString("  - daily\n")
 	b.WriteString("---\n\n")
 
-	// Body: summary
 	if in.Summary != "" {
 		b.WriteString(in.Summary)
 		b.WriteString("\n\n")
 	}
 
-	// Topics section
 	if len(in.Topics) > 0 {
 		b.WriteString("## 热点主题\n\n")
 		for _, t := range in.Topics {
@@ -82,7 +79,6 @@ func RenderDigestNote(in DigestNoteInput) string {
 		b.WriteString("\n")
 	}
 
-	// Events section
 	if len(in.Events) > 0 {
 		b.WriteString("## 重要事件\n\n")
 		for _, e := range in.Events {
@@ -97,7 +93,6 @@ func RenderDigestNote(in DigestNoteInput) string {
 		b.WriteString("\n")
 	}
 
-	// Footnote
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "> 热点主题: %d | 重要事件: %d\n", in.TopicCount, in.EventCount)
 

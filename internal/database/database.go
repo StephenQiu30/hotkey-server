@@ -8,8 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// Open connects to PostgreSQL using the given DATABASE_URL.
-// It creates the database and applies db/schema.sql when they are missing.
+// Open connects to PostgreSQL and initializes the database if needed.
 func Open(databaseURL string) (*gorm.DB, error) {
 	if err := EnsureReady(context.Background(), databaseURL); err != nil {
 		return nil, fmt.Errorf("ensure database ready: %w", err)

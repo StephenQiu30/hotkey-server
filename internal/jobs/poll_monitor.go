@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-// MonitorRun represents a single execution of a monitor poll job.
 type MonitorRun struct {
 	ID           int64
 	MonitorID    int64
@@ -20,7 +19,7 @@ type MonitorRun struct {
 	ErrorMessage string
 }
 
-// MonitorInfo contains the configuration for a monitor to poll.
+// MonitorInfo describes a monitor to poll.
 type MonitorInfo struct {
 	ID        int64
 	Platform  string
@@ -28,7 +27,6 @@ type MonitorInfo struct {
 	Keywords  []string
 }
 
-// PostResult represents a post fetched from a platform connector.
 type PostResult struct {
 	ID           string
 	AuthorID     string
@@ -44,40 +42,33 @@ type PostResult struct {
 	ViewCount    int
 }
 
-// HitResult represents a monitor-post hit relationship.
 type HitResult struct {
 	MonitorID      int64
 	PostID         int64
 	MatchedKeywords []string
 }
 
-// RunRepository persists monitor run records.
 type RunRepository interface {
 	CreateRun(ctx context.Context, run MonitorRun) (int64, error)
 	UpdateRun(ctx context.Context, runID int64, run MonitorRun) error
 }
 
-// PostRepository persists platform posts.
 type PostRepository interface {
 	UpsertPost(ctx context.Context, post PostResult) (int64, error)
 }
 
-// HitRepository persists monitor-post hits.
 type HitRepository interface {
 	UpsertHit(ctx context.Context, hit HitResult) error
 }
 
-// PlatformConnector fetches posts from an external platform.
 type PlatformConnector interface {
 	SearchPosts(ctx context.Context, query string, cursor string) ([]PostResult, string, error)
 }
 
-// HitScorer computes and persists scores for a monitor-post hit.
 type HitScorer interface {
 	ScoreHit(hitID int64, post PostResult, matchedKeywords []string, totalKeywords int, publishedMinutesAgo float64) error
 }
 
-// PollMonitorJob orchestrates a single monitor poll cycle.
 type PollMonitorJob struct {
 	runRepo   RunRepository
 	postRepo  PostRepository
@@ -86,7 +77,6 @@ type PollMonitorJob struct {
 	scorer    HitScorer
 }
 
-// NewPollMonitorJob creates a new PollMonitorJob.
 func NewPollMonitorJob(runRepo RunRepository, postRepo PostRepository, hitRepo HitRepository, connector PlatformConnector, scorer HitScorer) *PollMonitorJob {
 	return &PollMonitorJob{
 		runRepo:   runRepo,
@@ -97,7 +87,7 @@ func NewPollMonitorJob(runRepo RunRepository, postRepo PostRepository, hitRepo H
 	}
 }
 
-// Run executes a single poll cycle for the given monitor.
+// Run executes a poll cycle for the given monitor.
 func (j *PollMonitorJob) Run(ctx context.Context, monitor MonitorInfo) error {
 	run := MonitorRun{
 		MonitorID: monitor.ID,
@@ -142,7 +132,6 @@ func (j *PollMonitorJob) Run(ctx context.Context, monitor MonitorInfo) error {
 			return fmt.Errorf("upsert hit for post %s: %w", post.ID, err)
 		}
 
-		// Score the hit if scorer is available
 		if j.scorer != nil {
 			publishedMinutesAgo := time.Since(post.PublishedAt).Minutes()
 			if err := j.scorer.ScoreHit(postID, post, monitor.Keywords, len(monitor.Keywords), publishedMinutesAgo); err != nil {

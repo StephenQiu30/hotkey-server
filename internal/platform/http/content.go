@@ -9,7 +9,6 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/content"
 )
 
-// RegisterContentRoutes registers the content (posts) endpoints.
 func RegisterContentRoutes(r *gin.Engine, svc content.PostQueryService) {
 	r.GET("/api/v1/monitors/:id/posts", listMonitorPostsHandler(svc))
 }

@@ -14,17 +14,14 @@ type Config struct {
 	XToken      string `mapstructure:"X_BEARER_TOKEN"`
 	XBaseURL    string `mapstructure:"X_BASE_URL"`
 
-	// Swagger
 	SwaggerEnabled bool `mapstructure:"SWAGGER_ENABLED"`
 
-	// Obsidian / daily digest
 	ObsidianVaultPath  string `mapstructure:"OBSIDIAN_VAULT_PATH"`
 	DailyDigestTime    string `mapstructure:"DAILY_DIGEST_TIME"`
 	DailyDigestTimezone string `mapstructure:"DAILY_DIGEST_TIMEZONE"`
 	DailyDigestTarget  string `mapstructure:"DAILY_DIGEST_TARGET"`
 	DailyDigestTopN    int    `mapstructure:"DAILY_DIGEST_TOP_N"`
 
-	// LLM
 	LLMProvider string `mapstructure:"LLM_PROVIDER"`
 	LLMAPIKey   string `mapstructure:"LLM_API_KEY"`
 	LLMBaseURL  string `mapstructure:"LLM_BASE_URL"`
@@ -38,7 +35,6 @@ func Load() (Config, error) {
 	v.SetConfigType("env")
 	v.AutomaticEnv()
 
-	// Set defaults
 	v.SetDefault("HTTP_ADDR", ":8080")
 	v.SetDefault("SWAGGER_ENABLED", true)
 	v.SetDefault("DAILY_DIGEST_TIME", "08:00")
@@ -49,10 +45,8 @@ func Load() (Config, error) {
 	v.SetDefault("LLM_BASE_URL", "https://api.openai.com/v1")
 	v.SetDefault("LLM_MODEL", "gpt-4o-mini")
 
-	// Try to read .env file (ignore if not found)
 	_ = v.ReadInConfig()
 
-	// Bind environment variables explicitly
 	_ = v.BindEnv("DATABASE_URL")
 	_ = v.BindEnv("JWT_SECRET")
 	_ = v.BindEnv("HTTP_ADDR")
@@ -73,7 +67,6 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
-	// Validate required fields
 	if cfg.DatabaseURL == "" {
 		return Config{}, errors.New("DATABASE_URL is required")
 	}
@@ -81,12 +74,10 @@ func Load() (Config, error) {
 		return Config{}, errors.New("JWT_SECRET is required")
 	}
 
-	// X config defaults
 	if cfg.XBaseURL == "" {
 		cfg.XBaseURL = "https://api.x.com"
 	}
 
-	// Daily digest defaults
 	if cfg.DailyDigestTime == "" {
 		cfg.DailyDigestTime = "08:00"
 	}

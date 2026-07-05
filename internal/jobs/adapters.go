@@ -11,18 +11,16 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/scoring"
 )
 
-// XConnectorAdapter wraps x.Client to implement PlatformConnector.
 type XConnectorAdapter struct {
 	client *x.Client
 	token  string
 }
 
-// NewXConnectorAdapter creates a new adapter wrapping an x.Client.
 func NewXConnectorAdapter(client *x.Client, token string) *XConnectorAdapter {
 	return &XConnectorAdapter{client: client, token: token}
 }
 
-// SearchPosts fetches posts from the X search API and normalizes them.
+// SearchPosts fetches posts from the X search API.
 func (a *XConnectorAdapter) SearchPosts(ctx context.Context, query string, cursor string) ([]PostResult, string, error) {
 	searchURL := fmt.Sprintf("https://api.x.com/2/tweets/search/recent?query=%s", url.QueryEscape(query))
 	if cursor != "" {
@@ -76,17 +74,14 @@ func (a *XConnectorAdapter) SearchPosts(ctx context.Context, query string, curso
 	return results, meta.NextCursor, nil
 }
 
-// ScorerAdapter wraps scoring.Service to implement HitScorer.
 type ScorerAdapter struct {
 	svc *scoring.Service
 }
 
-// NewScorerAdapter creates a new adapter wrapping a scoring.Service.
 func NewScorerAdapter(svc *scoring.Service) *ScorerAdapter {
 	return &ScorerAdapter{svc: svc}
 }
 
-// ScoreHit computes scores for a hit using the scoring service.
 func (a *ScorerAdapter) ScoreHit(hitID int64, post PostResult, matchedKeywords []string, totalKeywords int, publishedMinutesAgo float64) error {
 	return a.svc.ScoreHit(scoring.ScoreHitInput{
 		HitID:               hitID,
@@ -101,7 +96,6 @@ func (a *ScorerAdapter) ScoreHit(hitID int64, post PostResult, matchedKeywords [
 	})
 }
 
-// MonitorLister provides a list of active monitors for the worker to iterate.
 type MonitorLister interface {
 	ListActiveIDs(ctx context.Context) ([]int64, error)
 }

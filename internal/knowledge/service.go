@@ -19,7 +19,6 @@ type SidecarWriter interface {
 	SetThemeRef(ctx context.Context, objectType string, objectID int64, themeRef string) error
 }
 
-// RecordAttemptInput describes a writeback attempt to be recorded for audit.
 type RecordAttemptInput struct {
 	ObjectType     string
 	ObjectID       int64
@@ -30,38 +29,32 @@ type RecordAttemptInput struct {
 	SourcePath     string
 }
 
-// Service orchestrates writeback validation, conflict detection, and application.
 type Service struct {
 	audit    AuditRecorder
 	sidecar  SidecarWriter
 }
 
-// NewService creates a new writeback Service.
 func NewService(audit AuditRecorder, sidecar SidecarWriter) *Service {
 	return &Service{audit: audit, sidecar: sidecar}
 }
 
 // ApplyChange validates, checks conflicts, writes to sidecar, and records an audit log.
 func (s *Service) ApplyChange(ctx context.Context, change WritebackChange, conflict ConflictInput) error {
-	// 1. Validate field is in whitelist.
 	if err := ValidateWriteback(change); err != nil {
 		s.recordFailed(ctx, change, "rejected", err.Error())
 		return fmt.Errorf("validate: %w", err)
 	}
 
-	// 2. Check for revision conflict.
 	if err := DetectConflict(conflict); err != nil {
 		s.recordFailed(ctx, change, "conflicted", err.Error())
 		return fmt.Errorf("conflict: %w", err)
 	}
 
-	// 3. Apply to the correct sidecar table based on field name.
 	if err := s.applyToSidecar(ctx, change); err != nil {
 		s.recordFailed(ctx, change, "rejected", err.Error())
 		return fmt.Errorf("apply sidecar: %w", err)
 	}
 
-	// 4. Record success.
 	s.recordSuccess(ctx, change)
 	return nil
 }

@@ -10,10 +10,9 @@ import (
 	"time"
 )
 
-// JobFunc is a function executed by the runner on each tick.
+// JobFunc is executed by the runner on each tick.
 type JobFunc func(ctx context.Context) error
 
-// RunStatus is the audited lifecycle status for a job run.
 type RunStatus string
 
 const (
@@ -23,7 +22,6 @@ const (
 	RunStatusSkipped   RunStatus = "skipped"
 )
 
-// RunEvent records a traceable job lifecycle transition.
 type RunEvent struct {
 	JobName    string
 	RunKey     string
@@ -35,22 +33,18 @@ type RunEvent struct {
 	Error      string
 }
 
-// RunRecorder persists or emits job run audit events.
 type RunRecorder interface {
 	RecordJobRun(ctx context.Context, event RunEvent) error
 }
 
-// LogRunRecorder writes job audit events as JSON lines.
 type LogRunRecorder struct {
 	out io.Writer
 }
 
-// NewLogRunRecorder creates a JSON-line recorder for worker audit events.
 func NewLogRunRecorder(out io.Writer) *LogRunRecorder {
 	return &LogRunRecorder{out: out}
 }
 
-// RecordJobRun writes one traceable job audit event.
 func (r *LogRunRecorder) RecordJobRun(_ context.Context, event RunEvent) error {
 	body := map[string]any{
 		"time":        eventTime(event),
@@ -73,24 +67,20 @@ func (r *LogRunRecorder) RecordJobRun(_ context.Context, event RunEvent) error {
 	return json.NewEncoder(r.out).Encode(body)
 }
 
-// RetryPolicy controls how many times a runner invokes a failing job per tick.
 type RetryPolicy struct {
 	MaxAttempts int
 	Backoff     time.Duration
 }
 
-// RunnerOption customizes a Runner.
 type RunnerOption func(*Runner)
 
-// JobOption customizes one registered job.
 type JobOption func(*registeredJob)
 
-// RunKeyFunc builds the idempotency key for one scheduled job execution.
 type RunKeyFunc func(now time.Time) string
 
 type runStartedAtContextKey struct{}
 
-// JobSpec exposes registered scheduler metadata for verification and ops.
+// JobSpec exposes registered scheduler metadata.
 type JobSpec struct {
 	Name      string
 	Interval  time.Duration
@@ -98,7 +88,6 @@ type JobSpec struct {
 	runKey    RunKeyFunc
 }
 
-// RunKeyAt returns the idempotency key that would be used at now.
 func (s JobSpec) RunKeyAt(now time.Time) string {
 	if s.runKey == nil {
 		return ""
@@ -106,7 +95,6 @@ func (s JobSpec) RunKeyAt(now time.Time) string {
 	return s.runKey(now)
 }
 
-// registeredJob holds a job's execution function and interval.
 type registeredJob struct {
 	name     string
 	run      JobFunc
@@ -114,7 +102,6 @@ type registeredJob struct {
 	runKey   RunKeyFunc
 }
 
-// Runner periodically executes registered background jobs.
 type Runner struct {
 	jobs        []registeredJob
 	recorder    RunRecorder
@@ -125,7 +112,6 @@ type Runner struct {
 	successMax  int
 }
 
-// NewRunner creates a new Runner.
 func NewRunner(opts ...RunnerOption) *Runner {
 	r := &Runner{
 		recorder:    NewLogRunRecorder(os.Stderr),
@@ -142,41 +128,41 @@ func NewRunner(opts ...RunnerOption) *Runner {
 	return r
 }
 
-// RunStartedAtFromContext returns the timestamp shared by all attempts in one run.
+// RunStartedAtFromContext returns the shared timestamp for all attempts in one run.
 func RunStartedAtFromContext(ctx context.Context) (time.Time, bool) {
 	startedAt, ok := ctx.Value(runStartedAtContextKey{}).(time.Time)
 	return startedAt, ok
 }
 
-// WithRunRecorder configures job lifecycle audit recording.
+// WithRunRecorder configures a runner's audit recorder.
 func WithRunRecorder(recorder RunRecorder) RunnerOption {
 	return func(r *Runner) {
 		r.recorder = recorder
 	}
 }
 
-// WithRetryPolicy configures per-tick retry behavior for failing jobs.
+// WithRetryPolicy configures per-tick retry behavior.
 func WithRetryPolicy(policy RetryPolicy) RunnerOption {
 	return func(r *Runner) {
 		r.retryPolicy = policy
 	}
 }
 
-// WithSuccessCacheLimit bounds the in-memory successful run-key cache.
+// WithSuccessCacheLimit bounds the in-memory success cache.
 func WithSuccessCacheLimit(limit int) RunnerOption {
 	return func(r *Runner) {
 		r.successMax = limit
 	}
 }
 
-// WithRunKey configures a stable idempotency key for a registered job.
+// WithRunKey configures a stable idempotency key for a job.
 func WithRunKey(fn RunKeyFunc) JobOption {
 	return func(j *registeredJob) {
 		j.runKey = fn
 	}
 }
 
-// Register adds a job to be executed at the given interval.
+// Register adds a recurring job with the given interval.
 func (r *Runner) Register(name string, fn JobFunc, interval time.Duration, opts ...JobOption) {
 	j := registeredJob{name: name, run: fn, interval: interval}
 	for _, opt := range opts {
@@ -185,7 +171,7 @@ func (r *Runner) Register(name string, fn JobFunc, interval time.Duration, opts 
 	r.jobs = append(r.jobs, j)
 }
 
-// JobSpecs returns a read-only snapshot of registered scheduler metadata.
+// JobSpecs returns a snapshot of registered scheduler metadata.
 func (r *Runner) JobSpecs() []JobSpec {
 	specs := make([]JobSpec, 0, len(r.jobs))
 	for _, j := range r.jobs {

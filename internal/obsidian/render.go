@@ -32,7 +32,6 @@ type PostExcerpt struct {
 func RenderTopicNote(in TopicNoteInput) string {
 	var b strings.Builder
 
-	// Frontmatter
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "type: hotkey-topic\n")
 	fmt.Fprintf(&b, "date: %s\n", in.Date)
@@ -44,7 +43,6 @@ func RenderTopicNote(in TopicNoteInput) string {
 	fmt.Fprintf(&b, "trend: %s\n", in.Trend)
 	fmt.Fprintf(&b, "post_count: %d\n", in.PostCount)
 
-	// Tags
 	monitorSlug := Slugify(in.Monitor)
 	b.WriteString("tags:\n")
 	b.WriteString("  - hotkey\n")
@@ -53,13 +51,11 @@ func RenderTopicNote(in TopicNoteInput) string {
 
 	b.WriteString("---\n\n")
 
-	// Body: summary
 	if in.Summary != "" {
 		b.WriteString(in.Summary)
 		b.WriteString("\n\n")
 	}
 
-	// Body: representative posts
 	if len(in.Posts) > 0 {
 		b.WriteString("## 代表帖\n\n")
 		for i, p := range in.Posts {
@@ -68,7 +64,6 @@ func RenderTopicNote(in TopicNoteInput) string {
 		}
 	}
 
-	// Body: data footnote
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "> 热度: %g | 趋势: %s | 帖子数: %d\n", in.Heat, in.Trend, in.PostCount)
 

@@ -1,11 +1,8 @@
-// Package trend implements trend snapshot generation and velocity computation.
-// It produces point-in-time snapshots for topics and monitors, and calculates
-// trend velocity to determine rising/falling/flat direction.
+// Package trend produces point-in-time snapshots and computes velocity.
 package trend
 
 import "time"
 
-// TopicSnapshot represents a point-in-time snapshot of a topic.
 type TopicSnapshot struct {
 	TopicID          int64
 	SnapshotTime     time.Time
@@ -17,7 +14,6 @@ type TopicSnapshot struct {
 	TrendDirection   string
 }
 
-// MonitorSnapshot represents a point-in-time snapshot of a monitor.
 type MonitorSnapshot struct {
 	MonitorID        int64
 	SnapshotTime     time.Time
@@ -27,7 +23,6 @@ type MonitorSnapshot struct {
 	TopTopicID       int64
 }
 
-// TopicSnapshotInput holds inputs for building a topic snapshot.
 type TopicSnapshotInput struct {
 	TopicID          int64
 	PostCount        int
@@ -38,7 +33,6 @@ type TopicSnapshotInput struct {
 	SnapshotTime     time.Time
 }
 
-// MonitorSnapshotInput holds inputs for building a monitor snapshot.
 type MonitorSnapshotInput struct {
 	MonitorID        int64
 	NewPostCount     int
@@ -48,19 +42,16 @@ type MonitorSnapshotInput struct {
 	SnapshotTime     time.Time
 }
 
-// Repository abstracts persistence for snapshot tables.
 type Repository interface {
 	SaveTopicSnapshot(snap TopicSnapshot) error
 	SaveMonitorSnapshot(snap MonitorSnapshot) error
 	GetPreviousTopicHeat(topicID int64) (float64, error)
 }
 
-// Service provides trend computation operations.
 type Service struct {
 	repo Repository
 }
 
-// NewService creates a trend Service with the given repository.
 func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
@@ -89,7 +80,7 @@ func DetermineTrendDirection(velocity float64) string {
 	return "flat"
 }
 
-// BuildTopicSnapshot creates a topic snapshot with computed velocity and direction.
+// BuildTopicSnapshot computes velocity and direction before creating the snapshot.
 func (s *Service) BuildTopicSnapshot(in TopicSnapshotInput) TopicSnapshot {
 	velocity := ComputeVelocity(in.HeatScore, in.PreviousHeat)
 	direction := DetermineTrendDirection(velocity)
@@ -106,7 +97,6 @@ func (s *Service) BuildTopicSnapshot(in TopicSnapshotInput) TopicSnapshot {
 	}
 }
 
-// BuildMonitorSnapshot creates a monitor-level snapshot.
 func (s *Service) BuildMonitorSnapshot(in MonitorSnapshotInput) MonitorSnapshot {
 	return MonitorSnapshot{
 		MonitorID:        in.MonitorID,

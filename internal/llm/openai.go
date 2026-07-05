@@ -9,14 +9,12 @@ import (
 	"net/http"
 )
 
-// OpenAIConfig holds configuration for the OpenAI-compatible LLM client.
 type OpenAIConfig struct {
 	APIKey  string
 	BaseURL string // e.g. "https://api.openai.com/v1"
 	Model   string // e.g. "gpt-4o-mini"
 }
 
-// OpenAIClient implements Client using the OpenAI /chat/completions API.
 type OpenAIClient struct {
 	apiKey  string
 	baseURL string
@@ -24,7 +22,6 @@ type OpenAIClient struct {
 	http    *http.Client
 }
 
-// NewOpenAIClient creates a new OpenAI-compatible LLM client.
 func NewOpenAIClient(cfg OpenAIConfig) *OpenAIClient {
 	baseURL := cfg.BaseURL
 	if baseURL == "" {

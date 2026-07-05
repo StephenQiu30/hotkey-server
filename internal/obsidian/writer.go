@@ -21,7 +21,6 @@ func WriteAtomic(path, content string) error {
 	}
 
 	if err := os.Rename(tmp, path); err != nil {
-		// Clean up the tmp file on rename failure
 		_ = os.Remove(tmp)
 		return fmt.Errorf("obsidian: rename %s -> %s: %w", tmp, path, err)
 	}

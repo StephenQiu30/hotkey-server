@@ -2,8 +2,7 @@ package database
 
 import "time"
 
-// GORM models map database tables for ORM access and documentation.
-// Complex queries may still use Raw() in repositories.
+// GORM models — simple queries use ORM, complex ones still use Raw().
 
 type User struct {
 	ID           int64     `gorm:"column:id;primaryKey"`
@@ -83,7 +82,6 @@ type UserNotification struct {
 
 func (UserNotification) TableName() string { return "user_notifications" }
 
-// STE-356: Event & knowledge model
 
 type Event struct {
 	ID            int64      `gorm:"column:id;primaryKey"`

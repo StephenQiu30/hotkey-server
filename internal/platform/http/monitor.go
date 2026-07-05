@@ -9,7 +9,6 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 )
 
-// RegisterMonitorRoutes registers the monitor CRUD endpoints.
 func RegisterMonitorRoutes(r *gin.Engine, svc *monitor.Service) {
 	r.GET("/api/v1/monitors", listMonitorsHandler(svc))
 	r.POST("/api/v1/monitors", createMonitorHandler(svc))

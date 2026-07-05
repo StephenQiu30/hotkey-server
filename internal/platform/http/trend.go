@@ -10,7 +10,6 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
 )
 
-// RegisterTrendRoutes registers the trend endpoints.
 func RegisterTrendRoutes(r *gin.Engine, svc trend.TrendQueryService) {
 	r.GET("/api/v1/monitors/:id/trends", monitorTrendsHandler(svc))
 	r.GET("/api/v1/topics/:id/trends", topicTrendsHandler(svc))

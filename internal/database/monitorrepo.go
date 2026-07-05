@@ -11,12 +11,10 @@ import (
 	"gorm.io/gorm"
 )
 
-// MonitorRepo implements monitor.Repository using PostgreSQL via GORM.
 type MonitorRepo struct {
 	db *gorm.DB
 }
 
-// NewMonitorRepo creates a new Postgres-backed monitor repository.
 func NewMonitorRepo(db *gorm.DB) *MonitorRepo {
 	return &MonitorRepo{db: db}
 }
@@ -84,7 +82,7 @@ func (r *MonitorRepo) ListByUser(ctx context.Context, userID int64) ([]monitor.M
 	return monitors, rows.Err()
 }
 
-// ListActiveIDs returns IDs of all active monitors for worker iteration.
+// ListActiveIDs returns IDs of all active monitors.
 func (r *MonitorRepo) ListActiveIDs(ctx context.Context) ([]int64, error) {
 	rows, err := r.db.WithContext(ctx).Raw(
 		`SELECT id FROM keyword_monitors WHERE status = 'active' ORDER BY id`,

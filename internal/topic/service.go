@@ -1,5 +1,4 @@
-// Package topic implements topic aggregation by clustering similar posts
-// using token-based Jaccard similarity.
+// Package topic implements token-based Jaccard similarity clustering.
 package topic
 
 import (
@@ -7,13 +6,11 @@ import (
 	"strings"
 )
 
-// CandidatePost represents a post to be clustered into a topic.
 type CandidatePost struct {
 	PostID int64
 	Tokens []string
 }
 
-// Topic represents a cluster of similar posts.
 type Topic struct {
 	TopicKey  string
 	Title     string
@@ -21,14 +18,12 @@ type Topic struct {
 	Tokens    []string // merged token set for the cluster
 }
 
-// Repository abstracts persistence for topics and topic_posts.
 type Repository interface {
 	UpsertTopic(monitorID int64, t Topic) (topicID int64, err error)
 	AddPostToTopic(topicID, postID int64, membershipScore float64) error
 	ListByMonitor(monitorID int64) ([]TopicSummary, error)
 }
 
-// TopicSummary is the query response for topic list endpoints.
 type TopicSummary struct {
 	ID             int64   `json:"id"`
 	Title          string  `json:"title"`
@@ -38,20 +33,17 @@ type TopicSummary struct {
 	PostCount      int     `json:"post_count"`
 }
 
-// Service provides topic clustering operations.
 type Service struct {
 	repo Repository
 }
 
-// NewService creates a topic Service with the given repository.
 func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 
 const similarityThreshold = 0.3
 
-// Cluster groups candidate posts into topics using Jaccard similarity.
-// Posts with Jaccard similarity >= threshold are grouped into the same topic.
+// Cluster groups posts into topics using Jaccard similarity >= threshold.
 func (s *Service) Cluster(posts []CandidatePost) []Topic {
 	if len(posts) == 0 {
 		return nil
@@ -77,7 +69,6 @@ func (s *Service) Cluster(posts []CandidatePost) []Topic {
 		}
 	}
 
-	// Compare all pairs
 	for i := 0; i < len(posts); i++ {
 		for j := i + 1; j < len(posts); j++ {
 			sim := JaccardSimilarity(posts[i].Tokens, posts[j].Tokens)
@@ -87,14 +78,12 @@ func (s *Service) Cluster(posts []CandidatePost) []Topic {
 		}
 	}
 
-	// Group by root
 	groups := make(map[int][]int)
 	for i := range posts {
 		root := find(i)
 		groups[root] = append(groups[root], i)
 	}
 
-	// Build topics
 	topics := make([]Topic, 0, len(groups))
 	for _, indices := range groups {
 		postIDs := make([]int64, 0, len(indices))
@@ -124,7 +113,7 @@ func (s *Service) Cluster(posts []CandidatePost) []Topic {
 	return topics
 }
 
-// JaccardSimilarity computes the Jaccard similarity between two token sets.
+// JaccardSimilarity returns |intersection| / |union| of two token sets.
 func JaccardSimilarity(a, b []string) float64 {
 	setA := make(map[string]struct{}, len(a))
 	for _, t := range a {
@@ -161,7 +150,6 @@ func ExtractTokens(text string) []string {
 	return tokens
 }
 
-// generateTopicKey creates a deterministic key from sorted tokens.
 func generateTopicKey(tokens []string) string {
 	if len(tokens) == 0 {
 		return ""
@@ -173,7 +161,6 @@ func generateTopicKey(tokens []string) string {
 	return strings.Join(tokens[:limit], ":")
 }
 
-// generateTitle creates a human-readable title from tokens.
 func generateTitle(tokens []string) string {
 	if len(tokens) == 0 {
 		return "Untitled"

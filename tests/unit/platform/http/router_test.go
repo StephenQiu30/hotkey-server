@@ -95,15 +95,14 @@ func (s *stubTrendQueryService) GetMonitorTrends(_ int64, _ time.Time) ([]trend.
 
 func newTestHandler() http.Handler {
 	return platformhttp.NewRouter(platformhttp.Config{
-		JWTSecret:       "test-secret",
-		SmokeTest:       true,
-		SwaggerEnabled:  true,
-		AuthService:     auth.NewService(&stubAuthRepo{}),
-		MonitorSvc:      monitor.NewService(&stubMonitorRepo{}),
-		NotifySvc:       notify.NewService(&stubNotifyRepo{}),
-		PostQuerySvc:    &stubPostQueryService{},
-		TopicQuerySvc:   &stubTopicQueryService{},
-		TrendQuerySvc:   &stubTrendQueryService{},
+		JWTSecret:     "test-secret",
+		SmokeTest:     true,
+		AuthService:   auth.NewService(&stubAuthRepo{}),
+		MonitorSvc:    monitor.NewService(&stubMonitorRepo{}),
+		NotifySvc:     notify.NewService(&stubNotifyRepo{}),
+		PostQuerySvc:  &stubPostQueryService{},
+		TopicQuerySvc: &stubTopicQueryService{},
+		TrendQuerySvc: &stubTrendQueryService{},
 	})
 }
 

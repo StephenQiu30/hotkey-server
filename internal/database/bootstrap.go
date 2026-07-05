@@ -16,8 +16,8 @@ import (
 
 var dbNamePattern = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
-// EnsureReady creates the target database and applies schema.sql when needed.
-// Set DB_SKIP_INIT=1 to disable automatic local database initialization.
+// EnsureReady creates the database and applies schema.sql when needed.
+// Set DB_SKIP_INIT=1 to skip automatic initialization.
 func EnsureReady(ctx context.Context, databaseURL string) error {
 	if os.Getenv("DB_SKIP_INIT") == "1" {
 		return nil

@@ -64,7 +64,6 @@ func (c *Client) ParseSearchResponse(data []byte) ([]SearchPost, SearchMeta, err
 		return nil, SearchMeta{}, fmt.Errorf("parse search response: %w", err)
 	}
 
-	// Build lookup from includes.users
 	userMap := make(map[string]userRaw, len(resp.Includes.Users))
 	for _, u := range resp.Includes.Users {
 		userMap[u.ID] = u

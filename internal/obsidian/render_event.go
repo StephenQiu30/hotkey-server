@@ -19,7 +19,6 @@ type EventNoteInput struct {
 func RenderEventNote(in EventNoteInput) string {
 	var b strings.Builder
 
-	// Frontmatter
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "type: hotkey-event\n")
 	fmt.Fprintf(&b, "event_id: %d\n", in.EventID)
@@ -40,7 +39,6 @@ func RenderEventNote(in EventNoteInput) string {
 	b.WriteString("  - event\n")
 	b.WriteString("---\n\n")
 
-	// Body: title and summary
 	fmt.Fprintf(&b, "# %s\n\n", in.Title)
 	if in.Summary != "" {
 		b.WriteString(in.Summary)

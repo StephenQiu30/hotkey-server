@@ -7,10 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ErrorCode is a stable machine-readable application error code.
 type ErrorCode string
 
-// ErrorBody is the unified error response format for all API endpoints.
 type ErrorBody struct {
 	Error     string `json:"error"`
 	Code      string `json:"code,omitempty"`
@@ -20,7 +18,7 @@ type ErrorBody struct {
 const (
 	// ErrorCodeInternal is the common internal server error code.
 	ErrorCodeInternal ErrorCode = "internal_error"
-	// ErrorCodeBadRequest is returned for malformed or invalid requests.
+	// ErrorCodeBadRequest is for malformed or invalid requests.
 	ErrorCodeBadRequest ErrorCode = "bad_request"
 	// ErrorCodeUnauthorized is returned when authentication is missing or invalid.
 	ErrorCodeUnauthorized ErrorCode = "unauthorized"
@@ -30,7 +28,7 @@ const (
 	ErrorCodeNotFound ErrorCode = "not_found"
 	// ErrorCodeConflict is returned when the request conflicts with existing state.
 	ErrorCodeConflict ErrorCode = "conflict"
-	// ErrorCodeMonitorNotFound is returned when a monitor resource is missing.
+	// ErrorCodeMonitorNotFound is for monitor resource not found.
 	ErrorCodeMonitorNotFound ErrorCode = "MONITOR_NOT_FOUND"
 )
 
@@ -44,7 +42,7 @@ var errorStatusRegistry = map[ErrorCode]int{
 	ErrorCodeMonitorNotFound: http.StatusNotFound,
 }
 
-// AppError carries the stable error metadata needed by the HTTP responder.
+// AppError carries stable error metadata for the HTTP responder.
 type AppError struct {
 	Code       ErrorCode
 	Message    string
@@ -109,7 +107,7 @@ func respondInternalError(c *gin.Context) {
 	c.JSON(http.StatusInternalServerError, newInternalErrorBody(requestIDFromContext(c)))
 }
 
-// RespondAppError writes an AppError using the unified error response contract.
+// RespondAppError writes an AppError as a unified error response.
 func RespondAppError(c *gin.Context, err error) {
 	var appErr *AppError
 	if errors.As(err, &appErr) {

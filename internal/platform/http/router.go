@@ -26,7 +26,6 @@ type Config struct {
 	TrendQuerySvc   trend.TrendQueryService
 }
 
-// NewRouter creates a Gin engine with middleware and all routes registered.
 func NewRouter(cfg Config) *gin.Engine {
 	if !cfg.SmokeTest {
 		gin.SetMode(gin.ReleaseMode)
@@ -38,7 +37,6 @@ func NewRouter(cfg Config) *gin.Engine {
 	r.Use(ContextMetadataMiddleware("http"))
 	r.Use(AuthMiddleware(cfg.JWTSecret, cfg.SmokeTest))
 
-	// Swagger: only register when SwaggerEnabled is true
 	if cfg.SwaggerEnabled {
 		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
 	}

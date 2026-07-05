@@ -5,7 +5,6 @@ package scoring
 
 import "math"
 
-// HeatInput holds engagement metrics for heat score computation.
 type HeatInput struct {
 	LikeCount   int
 	ReplyCount  int
@@ -14,8 +13,7 @@ type HeatInput struct {
 	ViewCount   int
 }
 
-// ComputeHeatScore returns a weighted engagement score.
-// Formula: likes*1 + replies*3 + reposts*4 + quotes*4 + views*0.02
+// ComputeHeatScore is a weighted engagement sum: likes*1 + replies*3 + reposts*4 + quotes*4 + views*0.02.
 func ComputeHeatScore(in HeatInput) float64 {
 	return float64(in.LikeCount)*1.0 +
 		float64(in.ReplyCount)*3.0 +
@@ -24,15 +22,13 @@ func ComputeHeatScore(in HeatInput) float64 {
 		float64(in.ViewCount)*0.02
 }
 
-// RelevanceInput holds keyword match data for relevance computation.
 type RelevanceInput struct {
 	MatchedKeywords []string
 	TotalKeywords   int
 	ContentLength   int
 }
 
-// ComputeRelevanceScore returns a score in [0,1] based on keyword coverage.
-// Formula: matched/total, clamped to [0,1].
+// ComputeRelevanceScore returns matched/total keyword coverage, clamped to [0,1].
 func ComputeRelevanceScore(in RelevanceInput) float64 {
 	if in.TotalKeywords == 0 || len(in.MatchedKeywords) == 0 {
 		return 0
@@ -44,27 +40,22 @@ func ComputeRelevanceScore(in RelevanceInput) float64 {
 	return ratio
 }
 
-// FreshnessInput holds time-since-publish data.
 type FreshnessInput struct {
 	// PublishedAt is minutes since publication.
 	PublishedAt float64
 }
 
-// ComputeFreshnessScore returns a decay score in (0,1].
-// Uses exponential decay: e^(-minutes/1440) where 1440 = 24h.
+// ComputeFreshnessScore uses exponential decay e^(-minutes/1440), returns (0,1].
 func ComputeFreshnessScore(in FreshnessInput) float64 {
 	return math.Exp(-in.PublishedAt / 1440.0)
 }
 
-// AuthorInput holds author metadata for influence scoring.
 type AuthorInput struct {
 	FollowersCount int
 	Verified       bool
 }
 
-// ComputeAuthorInfluenceScore returns a score in (0,1] based on followers and verification.
-// Formula: min(1, log10(followers+1)/6) * verifiedBoost.
-// log10(1M)/6 = 1.0, so 1M followers = cap.
+// ComputeAuthorInfluenceScore: log10(followers+1)/6 clamped to [0,1] with 1.2x verified boost.
 func ComputeAuthorInfluenceScore(in AuthorInput) float64 {
 	base := math.Log10(float64(in.FollowersCount)+1.0) / 6.0
 	if base > 1.0 {
@@ -80,13 +71,11 @@ func ComputeAuthorInfluenceScore(in AuthorInput) float64 {
 	return base
 }
 
-// ComputeFinalScore combines all dimension scores into a weighted final score.
-// Weights: heat=0.4, relevance=0.3, freshness=0.2, authorInfluence=0.1.
+// ComputeFinalScore weights: heat=0.4, relevance=0.3, freshness=0.2, authorInfluence=0.1.
 func ComputeFinalScore(heat, relevance, freshness, authorInfluence float64) float64 {
 	return heat*0.4 + relevance*0.3 + freshness*0.2 + authorInfluence*0.1
 }
 
-// SavedScore holds the computed scores to persist on a monitor_post_hits row.
 type SavedScore struct {
 	HeatScore           float64
 	RelevanceScore      float64
@@ -95,12 +84,10 @@ type SavedScore struct {
 	FinalScore          float64
 }
 
-// HitRepository abstracts persistence for monitor_post_hits scoring columns.
 type HitRepository interface {
 	UpdateScores(hitID int64, score SavedScore) error
 }
 
-// ScoreHitInput aggregates all raw inputs needed to score a single hit.
 type ScoreHitInput struct {
 	HitID               int64
 	MonitorID           int64
@@ -117,17 +104,14 @@ type ScoreHitInput struct {
 	AuthorVerified      bool
 }
 
-// Service orchestrates scoring computation and persistence.
 type Service struct {
 	repo HitRepository
 }
 
-// NewService creates a scoring Service with the given repository.
 func NewService(repo HitRepository) *Service {
 	return &Service{repo: repo}
 }
 
-// ScoreHit computes all dimension scores for a hit and persists them.
 func (s *Service) ScoreHit(in ScoreHitInput) error {
 	heat := ComputeHeatScore(HeatInput{
 		LikeCount:   in.LikeCount,

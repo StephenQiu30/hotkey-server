@@ -1,5 +1,4 @@
-// Package jobs implements background job orchestration for the hotkey-server.
-// BuildSnapshotsJob coordinates topic and monitor snapshot generation.
+// Package jobs implements background job orchestration.
 package jobs
 
 import (
@@ -8,7 +7,6 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
 )
 
-// TopicData holds pre-aggregated data for a single topic snapshot.
 type TopicData struct {
 	TopicID           int64
 	PostCount         int
@@ -18,42 +16,36 @@ type TopicData struct {
 	PreviousHeat      float64
 }
 
-// TopicProvider abstracts fetching topic data for snapshot building.
 type TopicProvider interface {
 	GetTopicDataForMonitor(monitorID int64) ([]TopicData, error)
 }
 
-// TrendSnapshotter abstracts the trend service methods used by the job.
 type TrendSnapshotter interface {
 	BuildTopicSnapshot(in trend.TopicSnapshotInput) trend.TopicSnapshot
 	BuildMonitorSnapshot(in trend.MonitorSnapshotInput) trend.MonitorSnapshot
 }
 
-// BuildSnapshotsInput holds the parameters for a snapshot run.
 type BuildSnapshotsInput struct {
 	MonitorID    int64
 	SnapshotTime time.Time
 }
 
-// BuildSnapshotsResult holds the outcome of a snapshot run.
 type BuildSnapshotsResult struct {
 	TopicSnapshotCount   int
 	MonitorSnapshotCount int
 	TopTopicID           int64
 }
 
-// BuildSnapshotsJob orchestrates snapshot generation for a monitor.
 type BuildSnapshotsJob struct {
 	trend   TrendSnapshotter
 	topics  TopicProvider
 }
 
-// NewBuildSnapshotsJob creates a BuildSnapshotsJob.
 func NewBuildSnapshotsJob(trend TrendSnapshotter, topics TopicProvider) *BuildSnapshotsJob {
 	return &BuildSnapshotsJob{trend: trend, topics: topics}
 }
 
-// Run executes the snapshot job for the given monitor.
+// Run executes the snapshot job for a monitor.
 func (j *BuildSnapshotsJob) Run(in BuildSnapshotsInput) (BuildSnapshotsResult, error) {
 	topicData, err := j.topics.GetTopicDataForMonitor(in.MonitorID)
 	if err != nil {

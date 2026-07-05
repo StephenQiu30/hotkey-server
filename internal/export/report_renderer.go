@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// PeriodicReportInput holds data for rendering a periodic report (daily/weekly/monthly).
+// PeriodicReportInput is the data for rendering a periodic report.
 type PeriodicReportInput struct {
 	Title       string
 	PeriodLabel string
@@ -15,7 +15,6 @@ type PeriodicReportInput struct {
 	Summary     string
 }
 
-// ReportTopicItem represents a topic entry in a periodic report.
 type ReportTopicItem struct {
 	Rank      int
 	Title     string
@@ -23,7 +22,6 @@ type ReportTopicItem struct {
 	Trend     string
 }
 
-// ThematicReportInput holds data for rendering a thematic report.
 type ThematicReportInput struct {
 	Title   string
 	Summary string
@@ -31,13 +29,11 @@ type ThematicReportInput struct {
 	Events  []string
 }
 
-// MaterialListInput holds data for rendering a material list.
 type MaterialListInput struct {
 	ThemeTitle string
 	Items      []MaterialItem
 }
 
-// MaterialItem represents a single item in a material list.
 type MaterialItem struct {
 	Fact      string
 	SourceURL string
@@ -45,12 +41,10 @@ type MaterialItem struct {
 	Date      string
 }
 
-// frontmatterStart writes the YAML frontmatter opening delimiter.
 func frontmatterStart(b *strings.Builder) {
 	b.WriteString("---\n")
 }
 
-// frontmatterEnd writes the YAML frontmatter closing delimiter and a blank line.
 func frontmatterEnd(b *strings.Builder) {
 	b.WriteString("---\n\n")
 }
@@ -67,8 +61,7 @@ func writeExportFrontmatter(b *strings.Builder, kind ExportKind, title string) {
 	b.WriteString("  - export\n")
 }
 
-// RenderPeriodicReport renders a periodic report (daily, weekly, monthly)
-// as an Obsidian-compatible Markdown note.
+// RenderPeriodicReport renders a periodic report as an Obsidian Markdown note.
 func RenderPeriodicReport(bundle ExportBundle, input PeriodicReportInput) string {
 	var b strings.Builder
 
@@ -85,10 +78,8 @@ func RenderPeriodicReport(bundle ExportBundle, input PeriodicReportInput) string
 	fmt.Fprintf(&b, "event_count: %d\n", input.EventCount)
 	frontmatterEnd(&b)
 
-	// Title heading
 	fmt.Fprintf(&b, "# %s\n\n", input.Title)
 
-	// Overview section
 	b.WriteString("## 本周概览\n\n")
 	fmt.Fprintf(&b, "**周期**: %s\n\n", input.PeriodLabel)
 	fmt.Fprintf(&b, "- 热点主题数: %d\n", input.TopicCount)
@@ -98,7 +89,6 @@ func RenderPeriodicReport(bundle ExportBundle, input PeriodicReportInput) string
 		fmt.Fprintf(&b, "\n%s\n\n", input.Summary)
 	}
 
-	// Topic ranking
 	if len(input.Topics) > 0 {
 		b.WriteString("## 热点主题排行\n\n")
 		for _, t := range input.Topics {

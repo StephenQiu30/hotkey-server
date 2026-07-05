@@ -18,10 +18,9 @@ import (
 
 type contextKey string
 
-// UserIDKey is the context key for the authenticated user ID.
 const UserIDKey contextKey = "userID"
 
-// RequestIDMiddleware adds a request ID to the response header.
+// RequestIDMiddleware injects a request ID into the response header and context.
 func RequestIDMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		reqID := c.GetHeader("X-Request-Id")
@@ -43,7 +42,7 @@ func RequestIDMiddleware() gin.HandlerFunc {
 	}
 }
 
-// ContextMetadataMiddleware injects module and operator metadata into request context.
+// ContextMetadataMiddleware injects module and operator into request context.
 func ContextMetadataMiddleware(module string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		operator := c.GetHeader("X-Operator")
@@ -54,7 +53,7 @@ func ContextMetadataMiddleware(module string) gin.HandlerFunc {
 	}
 }
 
-// RecoverMiddleware recovers from panics and returns a 500 error.
+// RecoverMiddleware recovers from panics and returns a 500.
 func RecoverMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {

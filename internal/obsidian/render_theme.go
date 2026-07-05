@@ -18,7 +18,6 @@ type ThemeNoteInput struct {
 func RenderThemeNote(in ThemeNoteInput) string {
 	var b strings.Builder
 
-	// Frontmatter
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "type: hotkey-theme\n")
 	fmt.Fprintf(&b, "theme_id: %d\n", in.ThemeID)
@@ -37,14 +36,12 @@ func RenderThemeNote(in ThemeNoteInput) string {
 	b.WriteString("  - theme\n")
 	b.WriteString("---\n\n")
 
-	// Body: title and summary
 	fmt.Fprintf(&b, "# %s\n\n", in.Title)
 	if in.Summary != "" {
 		b.WriteString(in.Summary)
 		b.WriteString("\n\n")
 	}
 
-	// Related topics section
 	if len(in.RelatedTopics) > 0 {
 		b.WriteString("## 相关主题\n\n")
 		for _, t := range in.RelatedTopics {
@@ -53,7 +50,6 @@ func RenderThemeNote(in ThemeNoteInput) string {
 		b.WriteString("\n")
 	}
 
-	// Footnote
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "> 事件数: %d\n", in.EventCount)
 

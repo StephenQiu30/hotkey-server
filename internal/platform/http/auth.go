@@ -10,7 +10,6 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/auth"
 )
 
-// RegisterAuthRoutes registers the auth endpoints (register, login).
 func RegisterAuthRoutes(r *gin.Engine, svc *auth.Service, jwtSecret string) {
 	r.POST("/api/v1/auth/register", registerHandler(svc))
 	r.POST("/api/v1/auth/login", loginHandler(svc, jwtSecret))

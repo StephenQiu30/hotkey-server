@@ -25,7 +25,6 @@ func ParseWritebackFields(content string) ([]*WritebackChange, error) {
 
 	meta := parseKeyValues(frontmatter)
 
-	// Resolve object identity from frontmatter fields.
 	objectType := resolveObjectType(meta)
 	objectID := resolveObjectID(meta)
 
@@ -47,7 +46,6 @@ func ParseWritebackFields(content string) ([]*WritebackChange, error) {
 			ObjectID:   objectID,
 			FieldName:  field,
 		}
-		// Try to parse YAML list values.
 		if strings.HasPrefix(value, "\n") || strings.Contains(value, "\n  - ") {
 			change.FieldValue = parseYAMLList(value)
 		} else {

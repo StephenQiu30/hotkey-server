@@ -4,15 +4,13 @@ import (
 	"time"
 )
 
-// DailyScheduler gates job execution to once per day after a target CST time.
-// It prevents duplicate runs on the same calendar day.
+// DailyScheduler gates job execution to once per day after a target time.
 type DailyScheduler struct {
 	targetTime string // "HH:MM" in CST
 	timezone   string // IANA timezone, default "Asia/Shanghai"
 }
 
-// NewDailyScheduler creates a scheduler that gates execution.
-// targetTime is "HH:MM" in the given timezone.
+// NewDailyScheduler creates a daily gate; targetTime is "HH:MM" in timezone.
 func NewDailyScheduler(targetTime, timezone string) *DailyScheduler {
 	if timezone == "" {
 		timezone = "Asia/Shanghai"
@@ -23,13 +21,8 @@ func NewDailyScheduler(targetTime, timezone string) *DailyScheduler {
 	}
 }
 
-// ShouldRun reports whether the job should execute now.
-// It returns true only when:
-//  1. Current time in the configured timezone is >= targetTime
-//  2. The job has not already run for today's date in that timezone
-//
-// lastRunDate should be the "2006-01-02" string of the most recent successful
-// run, or "" if never run. The caller is responsible for persisting this value.
+// ShouldRun returns true when the current time >= targetTime and it hasn't run today.
+// lastRunDate is a "2006-01-02" string, or "" if never run.
 func (s *DailyScheduler) ShouldRun(now time.Time, lastRunDate string) bool {
 	loc, err := time.LoadLocation(s.timezone)
 	if err != nil {
@@ -39,12 +32,10 @@ func (s *DailyScheduler) ShouldRun(now time.Time, lastRunDate string) bool {
 	local := now.In(loc)
 	today := local.Format("2006-01-02")
 
-	// Already ran today
 	if lastRunDate == today {
 		return false
 	}
 
-	// Parse target hour and minute
 	parsed, err := time.Parse("15:04", s.targetTime)
 	if err != nil {
 		return false
@@ -52,7 +43,6 @@ func (s *DailyScheduler) ShouldRun(now time.Time, lastRunDate string) bool {
 
 	targetH, targetM := parsed.Hour(), parsed.Minute()
 
-	// Check if current time is past the target
 	if local.Hour() > targetH {
 		return true
 	}
@@ -63,8 +53,7 @@ func (s *DailyScheduler) ShouldRun(now time.Time, lastRunDate string) bool {
 	return false
 }
 
-// MarkRun records that a run completed for the given date.
-// Returns the date string to be persisted by the caller.
+// MarkRun returns the date string the caller should persist.
 func (s *DailyScheduler) MarkRun(now time.Time) string {
 	loc, err := time.LoadLocation(s.timezone)
 	if err != nil {

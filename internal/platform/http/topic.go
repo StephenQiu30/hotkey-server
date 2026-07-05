@@ -9,7 +9,6 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/topic"
 )
 
-// RegisterTopicRoutes registers the topic endpoints.
 func RegisterTopicRoutes(r *gin.Engine, svc topic.TopicQueryService) {
 	r.GET("/api/v1/monitors/:id/topics", listMonitorTopicsHandler(svc))
 }

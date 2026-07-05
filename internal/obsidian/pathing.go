@@ -7,11 +7,11 @@ import (
 
 // PathInput holds all data needed to generate a knowledge object file path.
 type PathInput struct {
-	Kind        string // 知识类型: event / topic / daily-digest / theme / *-export
-	MonitorSlug string // 监控 slug（可选，部分类型使用）
-	Date        string // 日期或周期标识（可选，部分类型使用）
-	StableID    string // 稳定 ID
-	TitleSlug   string // 标题 slug（可选，部分类型使用）
+	Kind        string
+	MonitorSlug string
+	Date        string
+	StableID    string
+	TitleSlug   string
 }
 
 // BuildKnowledgePath constructs the full file path for a knowledge object

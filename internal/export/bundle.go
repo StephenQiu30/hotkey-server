@@ -1,5 +1,4 @@
-// Package export orchestrates knowledge object exports into periodic reports,
-// thematic reports, and material lists that are written into the Obsidian vault.
+// Package export orchestrates knowledge exports into the Obsidian vault.
 package export
 
 import "time"
@@ -15,7 +14,6 @@ const (
 	ExportMaterial ExportKind = "material"
 )
 
-// DateRange represents a time range for periodic exports.
 type DateRange struct {
 	Start string // YYYY-MM-DD or ISO week
 	End   string
@@ -44,9 +42,7 @@ type BuildExportBundleInput struct {
 	ThemeIDs  []int64
 }
 
-// BuildExportBundle creates an ExportBundle from the given input parameters.
-// In a full implementation this would query the database for the actual
-// data; for now it creates the bundle skeleton with the IDs and metadata.
+// BuildExportBundle creates an ExportBundle from the given input.
 func BuildExportBundle(in BuildExportBundleInput) ExportBundle {
 	return ExportBundle{
 		Kind:        ExportKind(in.Kind),

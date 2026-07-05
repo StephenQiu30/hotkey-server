@@ -10,7 +10,6 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 )
 
-// RegisterNotifyRoutes registers the notification endpoints.
 func RegisterNotifyRoutes(r *gin.Engine, svc *notify.Service) {
 	r.GET("/api/v1/notifications", listNotificationsHandler(svc))
 	r.POST("/api/v1/notifications/:id/read", markNotificationReadHandler(svc))
