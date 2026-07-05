@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"log"
 
 	"github.com/spf13/viper"
 )
@@ -45,7 +46,9 @@ func Load() (Config, error) {
 	v.SetDefault("LLM_BASE_URL", "https://api.openai.com/v1")
 	v.SetDefault("LLM_MODEL", "gpt-4o-mini")
 
-	_ = v.ReadInConfig()
+	if err := v.ReadInConfig(); err != nil {
+		log.Printf("warning: failed to read .env config file: %v", err)
+	}
 
 	_ = v.BindEnv("DATABASE_URL")
 	_ = v.BindEnv("JWT_SECRET")
@@ -72,6 +75,9 @@ func Load() (Config, error) {
 	}
 	if cfg.JWTSecret == "" {
 		return Config{}, errors.New("JWT_SECRET is required")
+	}
+	if cfg.XToken == "" {
+		return Config{}, errors.New("X_BEARER_TOKEN is required")
 	}
 
 	if cfg.XBaseURL == "" {

@@ -9,6 +9,7 @@ func TestLoad_DailyDigestConfigDefaults(t *testing.T) {
 	// Ensure required fields are present so Load() succeeds.
 	t.Setenv("DATABASE_URL", "postgres://localhost/test")
 	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("X_BEARER_TOKEN", "test-token")
 
 	// Clear all digest-related env vars to test defaults.
 	for _, k := range []string{
