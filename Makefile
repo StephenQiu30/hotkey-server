@@ -36,3 +36,5 @@ dev:
 
 swagger:
 	swag init -g cmd/hotkey/main.go -o docs --parseInternal --ot go
+	# Remove LeftDelim/RightDelim from generated docs.go if present (CLI/lib version mismatch workaround)
+	sed -i '' '/LeftDelim:/d; /RightDelim:/d' docs/docs.go
