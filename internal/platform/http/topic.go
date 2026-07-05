@@ -21,7 +21,7 @@ func RegisterTopicRoutes(r *gin.Engine, svc topic.TopicQueryService) {
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "Monitor ID"
-// @Success 200 {object} TopicListEnvelope
+// @Success 200 {object} TopicListResponse
 // @Failure 400 {object} ErrorBody
 // @Failure 401 {object} ErrorBody
 // @Failure 500 {object} ErrorBody

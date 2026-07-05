@@ -16,17 +16,17 @@ func RegisterAuthRoutes(r *gin.Engine, svc *auth.Service, jwtSecret string) {
 	r.POST("/api/v1/auth/login", loginHandler(svc, jwtSecret))
 }
 
-// UserResponse is the JSON representation of a user.
-type UserResponse struct {
+// UserData is the JSON representation of a user.
+type UserData struct {
 	ID          int64  `json:"id"`
 	Email       string `json:"email"`
 	DisplayName string `json:"display_name"`
 }
 
-// LoginResponse is the JSON representation of a login response.
-type LoginResponse struct {
-	User  UserResponse `json:"user"`
-	Token string       `json:"token"`
+// LoginData is the JSON representation of a login response.
+type LoginData struct {
+	User  UserData `json:"user"`
+	Token string   `json:"token"`
 }
 
 // registerHandler godoc
@@ -36,7 +36,7 @@ type LoginResponse struct {
 // @Accept json
 // @Produce json
 // @Param body body RegisterRequest true "Register payload"
-// @Success 201 {object} UserEnvelope
+// @Success 201 {object} UserResponse
 // @Failure 400 {object} ErrorBody
 // @Failure 409 {object} ErrorBody
 // @Failure 500 {object} ErrorBody
@@ -66,10 +66,8 @@ func registerHandler(svc *auth.Service) gin.HandlerFunc {
 			return
 		}
 
-		RespondCreated(c, UserResponse{
-			ID:          user.ID,
-			Email:       user.Email,
-			DisplayName: user.DisplayName,
+		RespondCreated(c, ResponseBody{
+			Data: UserData{ID: user.ID, Email: user.Email, DisplayName: user.DisplayName},
 		})
 	}
 }
@@ -81,7 +79,7 @@ func registerHandler(svc *auth.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Param body body LoginRequest true "Login payload"
-// @Success 200 {object} LoginEnvelope
+// @Success 200 {object} LoginResponse
 // @Failure 400 {object} ErrorBody
 // @Failure 401 {object} ErrorBody
 // @Failure 500 {object} ErrorBody
@@ -119,12 +117,8 @@ func loginHandler(svc *auth.Service, jwtSecret string) gin.HandlerFunc {
 			return
 		}
 
-		RespondOK(c, LoginResponse{
-			User: UserResponse{
-				ID:          user.ID,
-				Email:       user.Email,
-				DisplayName: user.DisplayName,
-			},
+		RespondOK(c, LoginData{
+			User:  UserData{ID: user.ID, Email: user.Email, DisplayName: user.DisplayName},
 			Token: tokenStr,
 		})
 	}

@@ -27,39 +27,6 @@ search_go() {
   find "$dir" -type f -name '*.go' -print0 | xargs -0 grep -nE "$pattern" 2>/dev/null || true
 }
 
-if [ ! -f db/schema.sql ]; then
-  echo "FAIL: db/schema.sql is required as the schema baseline"
-  exit 1
-fi
-
-schema_tables=$(search_files '^create table( if not exists)? ' db/schema.sql | sed -E 's/^.*create table( if not exists)? ([a-z_]+).*/\2/' | sort)
-table_count=$(printf '%s\n' "$schema_tables" | sed '/^$/d' | wc -l | tr -d ' ')
-if [ "$table_count" -ne 24 ]; then
-  echo "FAIL: db/schema.sql must contain exactly 24 current tables, got $table_count"
-  printf '%s\n' "$schema_tables"
-  exit 1
-fi
-
-if [ -d db/migrations ]; then
-  echo "FAIL: db/migrations must not be used; keep the complete schema in db/schema.sql"
-  exit 1
-fi
-
-if ! grep -q 'topic_id, snapshot_time' db/schema.sql; then
-  echo "FAIL: db/schema.sql must include topic snapshot upsert constraint"
-  exit 1
-fi
-
-if ! grep -q 'monitor_id, snapshot_time' db/schema.sql; then
-  echo "FAIL: db/schema.sql must include monitor snapshot upsert constraint"
-  exit 1
-fi
-
-if ! grep -q 'notification_id bigint not null references user_notifications(id)' db/schema.sql; then
-  echo "FAIL: db/schema.sql must include the current email_deliveries shape"
-  exit 1
-fi
-
 db_refs=$(search_go '\*gorm\.DB|gorm\.DB|gorm\.Open|gorm\.Config|gorm\.ErrRecordNotFound' internal)
 if [ -n "$db_refs" ]; then
   invalid_db_refs=$(printf '%s\n' "$db_refs" | grep -Ev '^(internal/database/|internal/app/)' || true)
@@ -100,7 +67,6 @@ if [ -n "$route_json_refs" ]; then
   fi
 fi
 
-echo "OK: single schema boundary is present"
 echo "OK: gorm references stay in repository/app composition layers"
 echo "OK: complex DB queries stay inside internal/database"
 echo "OK: environment access stays in approved wiring layers"

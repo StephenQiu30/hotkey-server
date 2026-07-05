@@ -44,8 +44,9 @@ func newAPIServer(cfg config.Config, db *gorm.DB) (*http.Server, error) {
 	}
 
 	router := platformhttp.NewRouter(platformhttp.Config{
-		JWTSecret:     cfg.JWTSecret,
-		SmokeTest:     smokeTest,
+		JWTSecret:       cfg.JWTSecret,
+		SmokeTest:       smokeTest,
+		SwaggerEnabled:  cfg.SwaggerEnabled,
 		AuthService:   auth.NewService(authRepo),
 		MonitorSvc:    monitor.NewService(monitorRepo),
 		NotifySvc:     notify.NewService(notifyRepo),

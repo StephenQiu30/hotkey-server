@@ -16,7 +16,7 @@ func RegisterNotifyRoutes(r *gin.Engine, svc *notify.Service) {
 	r.POST("/api/v1/notifications/:id/read", markNotificationReadHandler(svc))
 }
 
-type NotificationResponse struct {
+type NotificationData struct {
 	ID             int64   `json:"id"`
 	UserID         int64   `json:"user_id"`
 	AlertID        int64   `json:"alert_id"`
@@ -26,8 +26,8 @@ type NotificationResponse struct {
 	CreatedAt      string  `json:"created_at"`
 }
 
-func toNotificationResponse(n notify.Notification) NotificationResponse {
-	r := NotificationResponse{
+func toNotificationResponse(n notify.Notification) NotificationData {
+	r := NotificationData{
 		ID: n.ID, UserID: n.UserID, AlertID: n.AlertID,
 		Channel: n.Channel, DeliveryStatus: n.DeliveryStatus,
 		CreatedAt: n.CreatedAt.Format(time.RFC3339),
@@ -45,7 +45,7 @@ func toNotificationResponse(n notify.Notification) NotificationResponse {
 // @Tags notifications
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} NotificationListEnvelope
+// @Success 200 {object} NotificationListResponse
 // @Failure 401 {object} ErrorBody
 // @Failure 500 {object} ErrorBody
 // @Router /api/v1/notifications [get]
@@ -63,7 +63,7 @@ func listNotificationsHandler(svc *notify.Service) gin.HandlerFunc {
 			return
 		}
 
-		result := make([]NotificationResponse, len(items))
+		result := make([]NotificationData, len(items))
 		for i, n := range items {
 			result[i] = toNotificationResponse(n)
 		}
@@ -79,7 +79,7 @@ func listNotificationsHandler(svc *notify.Service) gin.HandlerFunc {
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "Notification ID"
-// @Success 200 {object} MarkNotificationReadEnvelope
+// @Success 200 {object} MarkNotificationReadResponse
 // @Failure 400 {object} ErrorBody
 // @Failure 401 {object} ErrorBody
 // @Failure 404 {object} ErrorBody
@@ -108,6 +108,6 @@ func markNotificationReadHandler(svc *notify.Service) gin.HandlerFunc {
 			return
 		}
 
-		RespondOK(c, MarkNotificationReadResponse{Read: true})
+		RespondOK(c, MarkNotificationReadData{Read: true})
 	}
 }

@@ -35,7 +35,7 @@ func parseSince(s string) time.Time {
 // @Security BearerAuth
 // @Param id path int true "Monitor ID"
 // @Param since query string false "RFC3339 start time"
-// @Success 200 {object} TrendListEnvelope
+// @Success 200 {object} TrendListResponse
 // @Failure 400 {object} ErrorBody
 // @Failure 401 {object} ErrorBody
 // @Failure 500 {object} ErrorBody
@@ -75,7 +75,7 @@ func monitorTrendsHandler(svc trend.TrendQueryService) gin.HandlerFunc {
 // @Security BearerAuth
 // @Param id path int true "Topic ID"
 // @Param since query string false "RFC3339 start time"
-// @Success 200 {object} TrendListEnvelope
+// @Success 200 {object} TrendListResponse
 // @Failure 400 {object} ErrorBody
 // @Failure 401 {object} ErrorBody
 // @Failure 500 {object} ErrorBody

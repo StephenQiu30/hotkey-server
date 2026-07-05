@@ -17,7 +17,7 @@ func RegisterMonitorRoutes(r *gin.Engine, svc *monitor.Service) {
 	r.PATCH("/api/v1/monitors/:id", updateMonitorHandler(svc))
 }
 
-type MonitorResponse struct {
+type MonitorData struct {
 	ID                  int64  `json:"id"`
 	UserID              int64  `json:"user_id"`
 	Name                string `json:"name"`
@@ -29,8 +29,8 @@ type MonitorResponse struct {
 	AlertEnabled        bool   `json:"alert_enabled"`
 }
 
-func monitorToResponse(m monitor.Monitor) MonitorResponse {
-	return MonitorResponse{
+func monitorToResponse(m monitor.Monitor) MonitorData {
+	return MonitorData{
 		ID: m.ID, UserID: m.UserID, Name: m.Name,
 		QueryText: m.QueryText, Language: m.Language, Region: m.Region,
 		Status: m.Status, PollIntervalMinutes: m.PollIntervalMinutes,
@@ -44,7 +44,7 @@ func monitorToResponse(m monitor.Monitor) MonitorResponse {
 // @Tags monitors
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} MonitorListEnvelope
+// @Success 200 {object} MonitorListResponse
 // @Failure 401 {object} ErrorBody
 // @Failure 500 {object} ErrorBody
 // @Router /api/v1/monitors [get]
@@ -62,7 +62,7 @@ func listMonitorsHandler(svc *monitor.Service) gin.HandlerFunc {
 			return
 		}
 
-		resp := make([]MonitorResponse, len(monitors))
+		resp := make([]MonitorData, len(monitors))
 		for i, m := range monitors {
 			resp[i] = monitorToResponse(m)
 		}
@@ -78,7 +78,7 @@ func listMonitorsHandler(svc *monitor.Service) gin.HandlerFunc {
 // @Produce json
 // @Security BearerAuth
 // @Param body body CreateMonitorRequest true "Monitor payload"
-// @Success 201 {object} MonitorEnvelope
+// @Success 201 {object} MonitorResponse
 // @Failure 400 {object} ErrorBody
 // @Failure 401 {object} ErrorBody
 // @Failure 500 {object} ErrorBody
@@ -126,7 +126,7 @@ func createMonitorHandler(svc *monitor.Service) gin.HandlerFunc {
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "Monitor ID"
-// @Success 200 {object} MonitorEnvelope
+// @Success 200 {object} MonitorResponse
 // @Failure 400 {object} ErrorBody
 // @Failure 401 {object} ErrorBody
 // @Failure 403 {object} ErrorBody
@@ -175,7 +175,7 @@ func getMonitorHandler(svc *monitor.Service) gin.HandlerFunc {
 // @Security BearerAuth
 // @Param id path int true "Monitor ID"
 // @Param body body UpdateMonitorRequest true "Monitor update payload"
-// @Success 200 {object} MonitorEnvelope
+// @Success 200 {object} MonitorResponse
 // @Failure 400 {object} ErrorBody
 // @Failure 401 {object} ErrorBody
 // @Failure 403 {object} ErrorBody

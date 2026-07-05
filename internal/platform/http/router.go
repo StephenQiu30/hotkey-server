@@ -2,6 +2,8 @@ package http
 
 import (
 	"github.com/gin-gonic/gin"
+	swaggerfiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 
 	"github.com/StephenQiu30/hotkey-server/internal/auth"
 	"github.com/StephenQiu30/hotkey-server/internal/content"
@@ -13,25 +15,33 @@ import (
 
 // Config holds all dependencies for the Gin HTTP API.
 type Config struct {
-	JWTSecret     string
-	SmokeTest     bool
-	AuthService   *auth.Service
-	MonitorSvc    *monitor.Service
-	NotifySvc     *notify.Service
-	PostQuerySvc  content.PostQueryService
-	TopicQuerySvc topic.TopicQueryService
-	TrendQuerySvc trend.TrendQueryService
+	JWTSecret       string
+	SmokeTest       bool
+	SwaggerEnabled  bool
+	AuthService     *auth.Service
+	MonitorSvc      *monitor.Service
+	NotifySvc       *notify.Service
+	PostQuerySvc    content.PostQueryService
+	TopicQuerySvc   topic.TopicQueryService
+	TrendQuerySvc   trend.TrendQueryService
 }
 
 // NewRouter creates a Gin engine with middleware and all routes registered.
 func NewRouter(cfg Config) *gin.Engine {
-	gin.SetMode(gin.ReleaseMode)
+	if !cfg.SmokeTest {
+		gin.SetMode(gin.ReleaseMode)
+	}
 	r := gin.New()
 
 	r.Use(RecoverMiddleware())
 	r.Use(RequestIDMiddleware())
 	r.Use(ContextMetadataMiddleware("http"))
 	r.Use(AuthMiddleware(cfg.JWTSecret, cfg.SmokeTest))
+
+	// Swagger: only register when SwaggerEnabled is true
+	if cfg.SwaggerEnabled {
+		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
+	}
 
 	RegisterHealthRoutes(r)
 	RegisterAuthRoutes(r, cfg.AuthService, cfg.JWTSecret)

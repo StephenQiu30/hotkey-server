@@ -17,7 +17,7 @@ type HealthBody struct {
 // @ID health-check
 // @Tags health
 // @Produce json
-// @Success 200 {object} HealthEnvelope
+// @Success 200 {object} HealthResponse
 // @Router /healthz [get]
 func healthHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {

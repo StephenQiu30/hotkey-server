@@ -23,7 +23,7 @@ func RegisterContentRoutes(r *gin.Engine, svc content.PostQueryService) {
 // @Param id path int true "Monitor ID"
 // @Param limit query int false "Limit" default(20)
 // @Param offset query int false "Offset" default(0)
-// @Success 200 {object} PostListEnvelope
+// @Success 200 {object} PostListResponse
 // @Failure 400 {object} ErrorBody
 // @Failure 401 {object} ErrorBody
 // @Failure 500 {object} ErrorBody

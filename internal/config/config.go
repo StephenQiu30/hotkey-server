@@ -14,6 +14,9 @@ type Config struct {
 	XToken      string `mapstructure:"X_BEARER_TOKEN"`
 	XBaseURL    string `mapstructure:"X_BASE_URL"`
 
+	// Swagger
+	SwaggerEnabled bool `mapstructure:"SWAGGER_ENABLED"`
+
 	// Obsidian / daily digest
 	ObsidianVaultPath  string `mapstructure:"OBSIDIAN_VAULT_PATH"`
 	DailyDigestTime    string `mapstructure:"DAILY_DIGEST_TIME"`
@@ -37,6 +40,7 @@ func Load() (Config, error) {
 
 	// Set defaults
 	v.SetDefault("HTTP_ADDR", ":8080")
+	v.SetDefault("SWAGGER_ENABLED", true)
 	v.SetDefault("DAILY_DIGEST_TIME", "08:00")
 	v.SetDefault("DAILY_DIGEST_TIMEZONE", "Asia/Shanghai")
 	v.SetDefault("DAILY_DIGEST_TARGET", "yesterday")

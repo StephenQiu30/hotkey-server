@@ -6,6 +6,8 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
 )
 
+// Request types
+
 type RegisterRequest struct {
 	Email       string `json:"email" example:"user@example.com"`
 	Password    string `json:"password" example:"Passw0rd!"`
@@ -36,56 +38,58 @@ type UpdateMonitorRequest struct {
 	Status              *string `json:"status,omitempty" example:"active"`
 }
 
-type HealthEnvelope struct {
+// Response types
+
+type HealthResponse struct {
 	Data      HealthBody `json:"data"`
 	RequestID string     `json:"request_id,omitempty"`
 }
 
-type UserEnvelope struct {
-	Data      UserResponse `json:"data"`
-	RequestID string       `json:"request_id,omitempty"`
+type UserResponse struct {
+	Data      UserData `json:"data"`
+	RequestID string   `json:"request_id,omitempty"`
 }
 
-type LoginEnvelope struct {
-	Data      LoginResponse `json:"data"`
+type LoginResponse struct {
+	Data      LoginData `json:"data"`
+	RequestID string    `json:"request_id,omitempty"`
+}
+
+type MonitorResponse struct {
+	Data      MonitorData `json:"data"`
+	RequestID string      `json:"request_id,omitempty"`
+}
+
+type MonitorListResponse struct {
+	Data      []MonitorData `json:"data"`
 	RequestID string        `json:"request_id,omitempty"`
 }
 
-type MonitorEnvelope struct {
-	Data      MonitorResponse `json:"data"`
-	RequestID string          `json:"request_id,omitempty"`
-}
-
-type MonitorListEnvelope struct {
-	Data      []MonitorResponse `json:"data"`
-	RequestID string            `json:"request_id,omitempty"`
-}
-
-type PostListEnvelope struct {
+type PostListResponse struct {
 	Data      []content.PostSummary `json:"data"`
 	RequestID string                `json:"request_id,omitempty"`
 }
 
-type TopicListEnvelope struct {
+type TopicListResponse struct {
 	Data      []topic.TopicSummary `json:"data"`
 	RequestID string               `json:"request_id,omitempty"`
 }
 
-type TrendListEnvelope struct {
+type TrendListResponse struct {
 	Data      []trend.TrendPoint `json:"data"`
 	RequestID string             `json:"request_id,omitempty"`
 }
 
-type NotificationListEnvelope struct {
-	Data      []NotificationResponse `json:"data"`
-	RequestID string                 `json:"request_id,omitempty"`
+type NotificationListResponse struct {
+	Data      []NotificationData `json:"data"`
+	RequestID string             `json:"request_id,omitempty"`
 }
 
-type MarkNotificationReadResponse struct {
+type MarkNotificationReadData struct {
 	Read bool `json:"read" example:"true"`
 }
 
-type MarkNotificationReadEnvelope struct {
-	Data      MarkNotificationReadResponse `json:"data"`
-	RequestID string                       `json:"request_id,omitempty"`
+type MarkNotificationReadResponse struct {
+	Data      MarkNotificationReadData `json:"data"`
+	RequestID string                   `json:"request_id,omitempty"`
 }
