@@ -118,7 +118,7 @@ func newJobRunner(cfg config.Config, db *gorm.DB) *jobs.Runner {
 					Slug: "monitor",
 				}
 
-				digestSvc := digest.NewService(nil)
+				digestSvc := digest.NewService(database.NewDigestQueryService(db))
 				publishJob := jobs.NewPublishDailyTopicsJobWithDelegate(
 					digestSvc,
 					llmClient,

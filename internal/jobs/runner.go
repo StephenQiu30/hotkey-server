@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -200,6 +201,13 @@ func (r *Runner) Run(ctx context.Context) {
 		wg.Add(1)
 		go func(job registeredJob) {
 			defer wg.Done()
+			defer func() {
+				if rec := recover(); rec != nil {
+					buf := make([]byte, 4096)
+					n := runtime.Stack(buf, false)
+					log.Printf("job %s: panic recovered: %v\n%s", job.name, rec, buf[:n])
+				}
+			}()
 			r.loop(ctx, job)
 		}(j)
 	}
