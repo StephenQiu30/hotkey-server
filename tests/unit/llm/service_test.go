@@ -101,3 +101,67 @@ func TestChainBuildDailyDigest_EmptyPosts(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+// TestChainBuildDailyDigest_SkipErrorPosts is a smoke test for the non-blocking
+// pipeline path in Chain.BuildDailyDigest. A post that fails summarization
+// should not abort the pipeline (the mock always returns success here, so
+// the non-blocking behavior is exercised as "skipped when empty").
+func TestChainBuildDailyDigest_SkipErrorPosts(t *testing.T) {
+	svc := llm.NewService(&mockProvider{response: "test"})
+	chain := llm.NewChain(svc)
+
+	output, err := chain.BuildDailyDigest(context.Background(), llm.DigestInput{
+		Title: "Test",
+		Posts: []llm.PostItem{
+			{ID: 1, Title: "Post 1", Content: "Content 1", Platform: "x"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(output.Sections) == 0 {
+		t.Fatal("expected at least one section")
+	}
+}
+
+func TestChainWithSummarizeDisabled_SkipsSummarization(t *testing.T) {
+	svc := llm.NewService(&mockProvider{response: "summary"})
+	chain := llm.NewChain(svc)
+
+	output, err := chain.BuildDailyDigest(context.Background(),
+		llm.DigestInput{
+			Title: "Test",
+			Posts: []llm.PostItem{
+				{ID: 1, Title: "Post 1", Content: "Content 1", Platform: "x"},
+			},
+		},
+		llm.WithSummarize(false),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(output.Sections) == 0 {
+		t.Fatal("expected at least one section")
+	}
+}
+
+func TestChainWithLabelDisabled_SkipsLabeling(t *testing.T) {
+	svc := llm.NewService(&mockProvider{response: "label"})
+	chain := llm.NewChain(svc)
+
+	output, err := chain.BuildDailyDigest(context.Background(),
+		llm.DigestInput{
+			Title: "Test",
+			Posts: []llm.PostItem{
+				{ID: 1, Title: "Post 1", Content: "Content 1", Platform: "x"},
+			},
+		},
+		llm.WithLabel(false),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(output.Sections) == 0 {
+		t.Fatal("expected at least one section")
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // Service defines LLM-powered business operations.
@@ -189,6 +190,6 @@ func (s *serviceImpl) GenerateDigest(ctx context.Context, input DigestInput) (Di
 		Date:        input.Date,
 		Summary:     resp,
 		Sections:    sections,
-		GeneratedAt: "now",
+		GeneratedAt: time.Now().Format(time.RFC3339),
 	}, nil
 }
