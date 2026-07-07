@@ -28,20 +28,22 @@ func NewApp() *fx.App {
 	return fx.New(
 		module.Infra,
 
-		// Repository adapters (gormimpl bridges for existing service interfaces)
-		fx.Provide(gormimpl.NewAuthRepoAdapter),
-		fx.Provide(gormimpl.NewMonitorRepoAdapter),
-		fx.Provide(gormimpl.NewNotifyRepoAdapter),
-		fx.Provide(database.NewContentQueryService),
-		fx.Provide(database.NewTopicQueryService),
-		fx.Provide(database.NewTrendQueryService),
-		fx.Provide(database.NewHotEventRepo),
+		// Repository implementations (direct GORM implementations of domain interfaces)
+		fx.Provide(gormimpl.NewUserRepo),
+		fx.Provide(gormimpl.NewMonitorRepo),
+		fx.Provide(gormimpl.NewNotifyRepo),
+		fx.Provide(gormimpl.NewHotEventRepo),
+
+		// Query services — annotate concrete -> interface for DI
+		fx.Provide(fx.Annotate(database.NewContentQueryService, fx.As(new(content.PostQueryService)))),
+		fx.Provide(fx.Annotate(database.NewTopicQueryService, fx.As(new(topic.TopicQueryService)))),
+		fx.Provide(fx.Annotate(database.NewTrendQueryService, fx.As(new(trend.TrendQueryService)))),
 
 		// Business services
 		fx.Provide(auth.NewService),
 		fx.Provide(monitor.NewService),
 		fx.Provide(notify.NewService),
-		fx.Provide(hotevent.NewQueryService),
+		fx.Provide(fx.Annotate(hotevent.NewQueryService, fx.As(new(platformhttp.HotEventManager)))),
 
 		// HTTP server
 		fx.Provide(NewHTTPServer),
