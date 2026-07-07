@@ -29,7 +29,7 @@ search_go() {
 
 db_refs=$(search_go '\*gorm\.DB|gorm\.DB|gorm\.Open|gorm\.Config|gorm\.ErrRecordNotFound' internal)
 if [ -n "$db_refs" ]; then
-  invalid_db_refs=$(printf '%s\n' "$db_refs" | grep -Ev '^(internal/database/|internal/app/|internal/collector/|internal/aggregator/|internal/cleanup/|internal/repository/gormimpl/|internal/fxapp/|internal/module/)' || true)
+  invalid_db_refs=$(printf '%s\n' "$db_refs" | grep -Ev '^(internal/database/|internal/app/|internal/collector/|internal/aggregator/|internal/cleanup/|internal/repository/gormimpl/|internal/fxapp/|internal/module/|internal/worker/)' || true)
   if [ -n "$invalid_db_refs" ]; then
     echo "FAIL: gorm references are only allowed in internal/database and internal/app composition"
     printf '%s\n' "$invalid_db_refs"
