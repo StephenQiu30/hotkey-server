@@ -12,6 +12,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/content"
 	"github.com/StephenQiu30/hotkey-server/internal/database"
 	"github.com/StephenQiu30/hotkey-server/internal/hotevent"
+	"github.com/StephenQiu30/hotkey-server/internal/llm"
 	"github.com/StephenQiu30/hotkey-server/internal/module"
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
@@ -47,6 +48,11 @@ func NewApp() *fx.App {
 
 		// HTTP server
 		fx.Provide(NewHTTPServer),
+
+		// LLM 内容聚合
+		fx.Provide(fx.Annotate(llm.NewProvider, fx.As(new(llm.Provider)))),
+		fx.Provide(fx.Annotate(llm.NewService, fx.As(new(llm.Service)))),
+		fx.Provide(llm.NewChain),
 
 		// Lifecycle hooks
 		fx.Invoke(registerHooks),

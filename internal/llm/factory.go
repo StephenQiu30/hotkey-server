@@ -8,7 +8,7 @@ import (
 )
 
 // NewProvider creates a Provider from the given config.
-func NewProvider(cfg config.Config) (Provider, error) {
+func NewProvider(cfg *config.Config) (Provider, error) {
 	opts := Options{
 		MaxTokens:   cfg.LLMMaxTokens,
 		Temperature: cfg.LLMTemperature,
