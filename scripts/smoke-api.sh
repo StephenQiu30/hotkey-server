@@ -133,7 +133,7 @@ echo ""
 echo "=== Smoke: create monitor ==="
 MONITOR_ID=$(curl -s -X POST "$BASE/api/v1/monitors" \
   -H 'Content-Type: application/json' \
-  -d '{"name":"smoke-monitor","query_text":"test query","poll_interval_minutes":60}' \
+  -d '{"name":"smoke-monitor","query_text":"test query","poll_interval_minutes":30}' \
   | jq -r '.data.id // empty')
 if [ -z "$MONITOR_ID" ]; then
   fail "POST /api/v1/monitors — could not create monitor"

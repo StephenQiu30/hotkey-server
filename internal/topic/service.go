@@ -12,16 +12,10 @@ type CandidatePost struct {
 }
 
 type Topic struct {
-	TopicKey  string
-	Title     string
-	PostIDs   []int64
-	Tokens    []string // merged token set for the cluster
-}
-
-type Repository interface {
-	UpsertTopic(monitorID int64, t Topic) (topicID int64, err error)
-	AddPostToTopic(topicID, postID int64, membershipScore float64) error
-	ListByMonitor(monitorID int64) ([]TopicSummary, error)
+	TopicKey string
+	Title    string
+	PostIDs  []int64
+	Tokens   []string // merged token set for the cluster
 }
 
 type TopicSummary struct {
@@ -33,18 +27,10 @@ type TopicSummary struct {
 	PostCount      int     `json:"post_count"`
 }
 
-type Service struct {
-	repo Repository
-}
-
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
-}
-
 const similarityThreshold = 0.3
 
 // Cluster groups posts into topics using Jaccard similarity >= threshold.
-func (s *Service) Cluster(posts []CandidatePost) []Topic {
+func Cluster(posts []CandidatePost) []Topic {
 	if len(posts) == 0 {
 		return nil
 	}

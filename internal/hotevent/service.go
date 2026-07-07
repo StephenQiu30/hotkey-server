@@ -5,16 +5,6 @@ import (
 	"time"
 )
 
-// Service handles HotEvent business logic: heat score computation,
-// platform weight, and decay factor.
-type Service struct {
-	repo Repository
-}
-
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
-}
-
 // PlatformWeights defines the relative weight of each platform.
 var PlatformWeights = map[string]float64{
 	"x":     1.0,
@@ -54,9 +44,4 @@ func DetermineTrend(current, previous float64) string {
 		return TrendDeclining
 	}
 	return TrendStable
-}
-
-// Repo returns the underlying repository (for use by aggregator/cleanup jobs).
-func (s *Service) Repo() Repository {
-	return s.repo
 }

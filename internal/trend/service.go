@@ -4,14 +4,14 @@ package trend
 import "time"
 
 type TopicSnapshot struct {
-	TopicID          int64
-	SnapshotTime     time.Time
-	PostCount        int
+	TopicID           int64
+	SnapshotTime      time.Time
+	PostCount         int
 	UniqueAuthorCount int
-	EngagementSum    int
-	HeatScore        float64
-	TrendVelocity    float64
-	TrendDirection   string
+	EngagementSum     int
+	HeatScore         float64
+	TrendVelocity     float64
+	TrendDirection    string
 }
 
 type MonitorSnapshot struct {
@@ -24,13 +24,13 @@ type MonitorSnapshot struct {
 }
 
 type TopicSnapshotInput struct {
-	TopicID          int64
-	PostCount        int
+	TopicID           int64
+	PostCount         int
 	UniqueAuthorCount int
-	EngagementSum    int
-	HeatScore        float64
-	PreviousHeat     float64
-	SnapshotTime     time.Time
+	EngagementSum     int
+	HeatScore         float64
+	PreviousHeat      float64
+	SnapshotTime      time.Time
 }
 
 type MonitorSnapshotInput struct {
@@ -40,20 +40,6 @@ type MonitorSnapshotInput struct {
 	TotalEngagement  int
 	TopTopicID       int64
 	SnapshotTime     time.Time
-}
-
-type Repository interface {
-	SaveTopicSnapshot(snap TopicSnapshot) error
-	SaveMonitorSnapshot(snap MonitorSnapshot) error
-	GetPreviousTopicHeat(topicID int64) (float64, error)
-}
-
-type Service struct {
-	repo Repository
-}
-
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
 }
 
 // ComputeVelocity returns the rate of change between previous and current values.
@@ -80,13 +66,12 @@ func DetermineTrendDirection(velocity float64) string {
 	return "flat"
 }
 
-// BuildTopicSnapshot computes velocity and direction, then persists the snapshot.
-// BUG FIX #1: Previously returned the snapshot without saving it — callers never persisted it.
-func (s *Service) BuildTopicSnapshot(in TopicSnapshotInput) error {
+// BuildTopicSnapshot computes velocity and direction from input values.
+func BuildTopicSnapshot(in TopicSnapshotInput) TopicSnapshot {
 	velocity := ComputeVelocity(in.HeatScore, in.PreviousHeat)
 	direction := DetermineTrendDirection(velocity)
 
-	snap := TopicSnapshot{
+	return TopicSnapshot{
 		TopicID:           in.TopicID,
 		SnapshotTime:      in.SnapshotTime,
 		PostCount:         in.PostCount,
@@ -96,11 +81,11 @@ func (s *Service) BuildTopicSnapshot(in TopicSnapshotInput) error {
 		TrendVelocity:     velocity,
 		TrendDirection:    direction,
 	}
-	return s.repo.SaveTopicSnapshot(snap)
 }
 
-func (s *Service) BuildMonitorSnapshot(in MonitorSnapshotInput) error {
-	snap := MonitorSnapshot{
+// BuildMonitorSnapshot creates a monitor snapshot from input values.
+func BuildMonitorSnapshot(in MonitorSnapshotInput) MonitorSnapshot {
+	return MonitorSnapshot{
 		MonitorID:        in.MonitorID,
 		SnapshotTime:     in.SnapshotTime,
 		NewPostCount:     in.NewPostCount,
@@ -108,5 +93,4 @@ func (s *Service) BuildMonitorSnapshot(in MonitorSnapshotInput) error {
 		TotalEngagement:  in.TotalEngagement,
 		TopTopicID:       in.TopTopicID,
 	}
-	return s.repo.SaveMonitorSnapshot(snap)
 }

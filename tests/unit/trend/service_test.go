@@ -7,17 +7,6 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
 )
 
-// noopRepo implements trend.Repository as a no-op for unit tests.
-type noopRepo struct{}
-
-func (noopRepo) SaveTopicSnapshot(trend.TopicSnapshot) error { return nil }
-func (noopRepo) SaveMonitorSnapshot(trend.MonitorSnapshot) error { return nil }
-func (noopRepo) GetPreviousTopicHeat(int64) (float64, error) { return 0, nil }
-
-func newNoopService() *trend.Service {
-	return trend.NewService(noopRepo{})
-}
-
 func TestComputeVelocityPositiveGrowth(t *testing.T) {
 	velocity := trend.ComputeVelocity(160, 100)
 	if velocity <= 0 {
@@ -68,8 +57,7 @@ func TestDetermineTrendDirectionFlat(t *testing.T) {
 }
 
 func TestBuildTopicSnapshot(t *testing.T) {
-	svc := newNoopService()
-	if err := svc.BuildTopicSnapshot(trend.TopicSnapshotInput{
+	snap := trend.BuildTopicSnapshot(trend.TopicSnapshotInput{
 		TopicID:           1,
 		PostCount:         10,
 		UniqueAuthorCount: 5,
@@ -77,21 +65,28 @@ func TestBuildTopicSnapshot(t *testing.T) {
 		HeatScore:         120.5,
 		PreviousHeat:      100.0,
 		SnapshotTime:      time.Date(2026, 6, 12, 12, 0, 0, 0, time.UTC),
-	}); err != nil {
-		t.Fatalf("BuildTopicSnapshot failed: %v", err)
+	})
+	if snap.TopicID != 1 {
+		t.Fatalf("expected TopicID 1, got %d", snap.TopicID)
+	}
+	if snap.TrendDirection != "rising" {
+		t.Fatalf("expected 'rising', got '%s'", snap.TrendDirection)
 	}
 }
 
 func TestBuildMonitorSnapshot(t *testing.T) {
-	svc := newNoopService()
-	if err := svc.BuildMonitorSnapshot(trend.MonitorSnapshotInput{
+	snap := trend.BuildMonitorSnapshot(trend.MonitorSnapshotInput{
 		MonitorID:        10,
 		NewPostCount:     25,
 		ActiveTopicCount: 3,
 		TotalEngagement:  1500,
 		TopTopicID:       5,
 		SnapshotTime:     time.Date(2026, 6, 12, 12, 0, 0, 0, time.UTC),
-	}); err != nil {
-		t.Fatalf("BuildMonitorSnapshot failed: %v", err)
+	})
+	if snap.MonitorID != 10 {
+		t.Fatalf("expected MonitorID 10, got %d", snap.MonitorID)
+	}
+	if snap.NewPostCount != 25 {
+		t.Fatalf("expected NewPostCount 25, got %d", snap.NewPostCount)
 	}
 }

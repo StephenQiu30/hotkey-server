@@ -7,8 +7,7 @@ import (
 )
 
 func TestClusterPostsCreatesSingleTopicForSimilarPosts(t *testing.T) {
-	svc := topic.NewService(nil)
-	topics := svc.Cluster([]topic.CandidatePost{
+	topics := topic.Cluster([]topic.CandidatePost{
 		{PostID: 1, Tokens: []string{"openai", "agent", "launch"}},
 		{PostID: 2, Tokens: []string{"openai", "agent", "release"}},
 	})
@@ -18,8 +17,7 @@ func TestClusterPostsCreatesSingleTopicForSimilarPosts(t *testing.T) {
 }
 
 func TestClusterPostsCreatesSeparateTopicsForDissimilarPosts(t *testing.T) {
-	svc := topic.NewService(nil)
-	topics := svc.Cluster([]topic.CandidatePost{
+	topics := topic.Cluster([]topic.CandidatePost{
 		{PostID: 1, Tokens: []string{"openai", "agent", "launch"}},
 		{PostID: 2, Tokens: []string{"cooking", "recipe", "pasta"}},
 	})
@@ -29,16 +27,14 @@ func TestClusterPostsCreatesSeparateTopicsForDissimilarPosts(t *testing.T) {
 }
 
 func TestClusterPostsEmptyInput(t *testing.T) {
-	svc := topic.NewService(nil)
-	topics := svc.Cluster([]topic.CandidatePost{})
+	topics := topic.Cluster([]topic.CandidatePost{})
 	if len(topics) != 0 {
 		t.Fatalf("expected 0 topics, got %d", len(topics))
 	}
 }
 
 func TestClusterPostsSinglePost(t *testing.T) {
-	svc := topic.NewService(nil)
-	topics := svc.Cluster([]topic.CandidatePost{
+	topics := topic.Cluster([]topic.CandidatePost{
 		{PostID: 1, Tokens: []string{"ai", "ml"}},
 	})
 	if len(topics) != 1 {
@@ -53,8 +49,7 @@ func TestClusterPostsSinglePost(t *testing.T) {
 }
 
 func TestClusterPostsGroupsByOverlap(t *testing.T) {
-	svc := topic.NewService(nil)
-	topics := svc.Cluster([]topic.CandidatePost{
+	topics := topic.Cluster([]topic.CandidatePost{
 		{PostID: 1, Tokens: []string{"ai", "gpt", "openai"}},
 		{PostID: 2, Tokens: []string{"ai", "gpt", "launch"}},
 		{PostID: 3, Tokens: []string{"crypto", "bitcoin", "eth"}},
