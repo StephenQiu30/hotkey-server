@@ -9,6 +9,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"github.com/StephenQiu30/hotkey-server/internal/report"
 	"github.com/StephenQiu30/hotkey-server/internal/repository/gormimpl"
 	"gorm.io/gorm"
 )
@@ -27,6 +28,7 @@ func SetupTestRouter(t *testing.T, db *gorm.DB) http.Handler {
 		AuthService:   auth.NewService(gormimpl.NewUserRepo(db)),
 		MonitorSvc:    monitor.NewService(gormimpl.NewMonitorRepo(db)),
 		NotifySvc:     notify.NewService(gormimpl.NewNotifyRepo(db)),
+		ReportSvc:     report.NewService(gormimpl.NewReportRepo(db), nil),
 		PostQuerySvc:  database.NewContentQueryService(db),
 		TopicQuerySvc: database.NewTopicQueryService(db),
 		TrendQuerySvc: database.NewTrendQueryService(db),

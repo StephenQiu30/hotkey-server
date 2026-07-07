@@ -17,6 +17,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"github.com/StephenQiu30/hotkey-server/internal/report"
 	"github.com/StephenQiu30/hotkey-server/internal/repository/gormimpl"
 	"github.com/StephenQiu30/hotkey-server/internal/topic"
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
@@ -34,6 +35,7 @@ func NewApp() *fx.App {
 		fx.Provide(fx.Annotate(gormimpl.NewMonitorRepo, fx.As(new(monitor.Repository)))),
 		fx.Provide(fx.Annotate(gormimpl.NewNotifyRepo, fx.As(new(notify.Repository)))),
 		fx.Provide(fx.Annotate(gormimpl.NewHotEventRepo, fx.As(new(hotevent.Repository)))),
+		fx.Provide(fx.Annotate(gormimpl.NewReportRepo, fx.As(new(report.Repository)))),
 
 		// Query services — annotate concrete -> interface for DI
 		fx.Provide(fx.Annotate(database.NewContentQueryService, fx.As(new(content.PostQueryService)))),
@@ -44,6 +46,7 @@ func NewApp() *fx.App {
 		fx.Provide(auth.NewService),
 		fx.Provide(monitor.NewService),
 		fx.Provide(notify.NewService),
+		fx.Provide(newReportService),
 		fx.Provide(fx.Annotate(hotevent.NewQueryService, fx.As(new(platformhttp.HotEventManager)))),
 
 		// HTTP server
@@ -67,6 +70,7 @@ type HTTPServerIn struct {
 	AuthService *auth.Service
 	MonitorSvc  *monitor.Service
 	NotifySvc   *notify.Service
+	ReportSvc   *report.Service
 
 	PostQuerySvc  content.PostQueryService
 	TopicQuerySvc topic.TopicQueryService
@@ -84,6 +88,7 @@ func NewHTTPServer(in HTTPServerIn) *http.Server {
 		AuthService:     in.AuthService,
 		MonitorSvc:      in.MonitorSvc,
 		NotifySvc:       in.NotifySvc,
+		ReportSvc:       in.ReportSvc,
 		PostQuerySvc:    in.PostQuerySvc,
 		TopicQuerySvc:   in.TopicQuerySvc,
 		TrendQuerySvc:   in.TrendQuerySvc,
@@ -97,6 +102,10 @@ func NewHTTPServer(in HTTPServerIn) *http.Server {
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
+}
+
+func newReportService(repo report.Repository) *report.Service {
+	return report.NewService(repo, time.Now)
 }
 
 func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.Config) {

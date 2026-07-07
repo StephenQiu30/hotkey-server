@@ -22,6 +22,7 @@ type Config struct {
 	AuthService     *auth.Service
 	MonitorSvc      *monitor.Service
 	NotifySvc       *notify.Service
+	ReportSvc       ReportService
 	PostQuerySvc    content.PostQueryService
 	TopicQuerySvc   topic.TopicQueryService
 	TrendQuerySvc   trend.TrendQueryService
@@ -52,6 +53,7 @@ func NewRouter(cfg Config) *gin.Engine {
 	RegisterTopicRoutes(r, cfg.TopicQuerySvc, cfg.MonitorSvc)
 	RegisterTrendRoutes(r, cfg.TrendQuerySvc, cfg.MonitorSvc, cfg.TopicQuerySvc)
 	RegisterNotifyRoutes(r, cfg.NotifySvc)
+	RegisterReportRoutes(r, cfg.ReportSvc)
 
 	// HotEvent routes (optional — nil-safe)
 	if cfg.HotEventManager != nil {
