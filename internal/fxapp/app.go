@@ -29,10 +29,10 @@ func NewApp() *fx.App {
 		module.Infra,
 
 		// Repository implementations (direct GORM implementations of domain interfaces)
-		fx.Provide(gormimpl.NewUserRepo),
-		fx.Provide(gormimpl.NewMonitorRepo),
-		fx.Provide(gormimpl.NewNotifyRepo),
-		fx.Provide(gormimpl.NewHotEventRepo),
+		fx.Provide(fx.Annotate(gormimpl.NewUserRepo, fx.As(new(auth.Repository)))),
+		fx.Provide(fx.Annotate(gormimpl.NewMonitorRepo, fx.As(new(monitor.Repository)))),
+		fx.Provide(fx.Annotate(gormimpl.NewNotifyRepo, fx.As(new(notify.Repository)))),
+		fx.Provide(fx.Annotate(gormimpl.NewHotEventRepo, fx.As(new(hotevent.Repository)))),
 
 		// Query services — annotate concrete -> interface for DI
 		fx.Provide(fx.Annotate(database.NewContentQueryService, fx.As(new(content.PostQueryService)))),
