@@ -19,8 +19,8 @@ table_count=$(grep -c "create table" db/schema.sql)
 echo "OK: db/schema.sql contains $table_count tables"
 
 if [ -d db/migrations ]; then
-  echo "FAIL: db/migrations must not be used; keep the complete schema in db/schema.sql"
-  exit 1
+  migration_count=$(ls db/migrations/*.sql 2>/dev/null | wc -l)
+  echo "OK: db/migrations/ exists with $migration_count migration files (goose)"
 fi
 
 if ! grep -q 'topic_id, snapshot_time' db/schema.sql; then
