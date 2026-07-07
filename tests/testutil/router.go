@@ -9,6 +9,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"github.com/StephenQiu30/hotkey-server/internal/repository/gormimpl"
 	"gorm.io/gorm"
 )
 
@@ -23,9 +24,9 @@ func SetupTestRouter(t *testing.T, db *gorm.DB) http.Handler {
 	return platformhttp.NewRouter(platformhttp.Config{
 		JWTSecret:     TestJWTSecret,
 		SmokeTest:     false,
-		AuthService:   auth.NewService(database.NewAuthRepo(db)),
-		MonitorSvc:    monitor.NewService(database.NewMonitorRepo(db)),
-		NotifySvc:     notify.NewService(database.NewNotifyRepo(db)),
+		AuthService:   auth.NewService(gormimpl.NewAuthRepoAdapter(db)),
+		MonitorSvc:    monitor.NewService(gormimpl.NewMonitorRepoAdapter(db)),
+		NotifySvc:     notify.NewService(gormimpl.NewNotifyRepoAdapter(db)),
 		PostQuerySvc:  database.NewContentQueryService(db),
 		TopicQuerySvc: database.NewTopicQueryService(db),
 		TrendQuerySvc: database.NewTrendQueryService(db),

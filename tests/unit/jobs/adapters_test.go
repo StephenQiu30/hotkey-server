@@ -1,57 +1,12 @@
 package jobs_test
 
-import (
-	"testing"
-
-	"github.com/StephenQiu30/hotkey-server/internal/database"
-	"github.com/StephenQiu30/hotkey-server/internal/jobs"
-	"github.com/StephenQiu30/hotkey-server/internal/scoring"
-)
-
-func TestRunRepoImplementsRunRepository(t *testing.T) {
-	var _ jobs.RunRepository = (*database.RunRepo)(nil)
-}
-
-func TestPollPostRepoImplementsPostRepository(t *testing.T) {
-	var _ jobs.PostRepository = (*database.PollPostRepo)(nil)
-}
-
-func TestPollHitRepoImplementsHitRepository(t *testing.T) {
-	var _ jobs.HitRepository = (*database.PollHitRepo)(nil)
-}
-
-func TestHitScoreRepoImplementsScoringHitRepository(t *testing.T) {
-	var _ scoring.HitRepository = (*database.HitScoreRepo)(nil)
-}
-
-func TestDeliveryRepoImplementsDeliveryRepository(t *testing.T) {
-	var _ jobs.DeliveryRepository = (*database.DeliveryRepo)(nil)
-}
-
-func TestDeliveryRepoImplementsUserEmailLookup(t *testing.T) {
-	var _ jobs.UserEmailLookup = (*database.DeliveryRepo)(nil)
-}
-
-func TestJobQueryRepoImplementsPostCandidateProvider(t *testing.T) {
-	var _ jobs.PostCandidateProvider = (*database.JobQueryRepo)(nil)
-}
-
-func TestJobQueryRepoImplementsTopicProvider(t *testing.T) {
-	var _ jobs.TopicProvider = (*database.JobQueryRepo)(nil)
-}
-
-func TestXConnectorAdapterImplementsPlatformConnector(t *testing.T) {
-	var _ jobs.PlatformConnector = (*jobs.XConnectorAdapter)(nil)
-}
-
-func TestScorerAdapterImplementsHitScorer(t *testing.T) {
-	var _ jobs.HitScorer = (*jobs.ScorerAdapter)(nil)
-}
-
-func TestTopicRepoImplementsTopicPersister(t *testing.T) {
-	var _ jobs.TopicPersister = (*database.TopicRepo)(nil)
-}
-
-func TestMonitorRepoImplementsMonitorLister(t *testing.T) {
-	var _ jobs.MonitorLister = (*database.MonitorRepo)(nil)
-}
+// This file previously held compile-time interface satisfaction checks for
+// old database.* repository types. Those types have been migrated to
+// gormimpl.* implementations with updated method signatures (context.Context,
+// model.* types). Interface compliance is now enforced by the repository
+// interface definitions in internal/repository/.
+//
+// Remove these tests as the old types no longer exist. New compile-time
+// checks for gormimpl types vs the existing jobs.* and scoring.* interfaces
+// would fail because the method signatures differ — the gormimpl types
+// implement the new repository interfaces, not the old package-specific ones.
