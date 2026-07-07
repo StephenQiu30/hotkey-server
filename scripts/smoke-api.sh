@@ -128,17 +128,30 @@ echo ""
 echo "=== Smoke: monitors (authenticated via SMOKE_TEST bypass) ==="
 assert_status "$BASE/api/v1/monitors" GET 200
 
+# Create a monitor so we have a valid ID for monitor-scoped endpoints
 echo ""
-echo "=== Smoke: monitors/{id}/posts ==="
-assert_status "$BASE/api/v1/monitors/1/posts" GET 200
+echo "=== Smoke: create monitor ==="
+MONITOR_ID=$(curl -s -X POST "$BASE/api/v1/monitors" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"smoke-monitor","query_text":"test query","poll_interval_minutes":30}' \
+  | jq -r '.data.id // empty')
+if [ -z "$MONITOR_ID" ]; then
+  fail "POST /api/v1/monitors — could not create monitor"
+else
+  pass "POST /api/v1/monitors — created monitor $MONITOR_ID"
+fi
 
 echo ""
-echo "=== Smoke: monitors/{id}/topics ==="
-assert_status "$BASE/api/v1/monitors/1/topics" GET 200
+echo "=== Smoke: monitors/${MONITOR_ID}/posts ==="
+assert_status "$BASE/api/v1/monitors/$MONITOR_ID/posts" GET 200
 
 echo ""
-echo "=== Smoke: monitors/{id}/trends ==="
-assert_status "$BASE/api/v1/monitors/1/trends" GET 200
+echo "=== Smoke: monitors/${MONITOR_ID}/topics ==="
+assert_status "$BASE/api/v1/monitors/$MONITOR_ID/topics" GET 200
+
+echo ""
+echo "=== Smoke: monitors/${MONITOR_ID}/trends ==="
+assert_status "$BASE/api/v1/monitors/$MONITOR_ID/trends" GET 200
 
 # New endpoints require a real database (DB-dependent, skipped in smoke mode).
 echo ""

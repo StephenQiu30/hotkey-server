@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/StephenQiu30/hotkey-server/internal/app"
+	"github.com/StephenQiu30/hotkey-server/internal/fxapp"
 )
 
 // @title           HotKey API
@@ -15,5 +15,5 @@ import (
 // @license.name    MIT
 
 func main() {
-	app.Run()
+	fxapp.NewApp().Run()
 }

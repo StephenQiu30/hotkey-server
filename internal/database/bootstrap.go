@@ -10,13 +10,12 @@ import (
 	"regexp"
 	"strings"
 
-	dbassets "github.com/StephenQiu30/hotkey-server/db"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var dbNamePattern = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
-// EnsureReady creates the database and applies schema.sql when needed.
+// EnsureReady creates the database when it does not exist.
 // Set DB_SKIP_INIT=1 to skip automatic initialization.
 func EnsureReady(ctx context.Context, databaseURL string) error {
 	if os.Getenv("DB_SKIP_INIT") == "1" {
@@ -32,21 +31,6 @@ func EnsureReady(ctx context.Context, databaseURL string) error {
 		return err
 	}
 
-	db, err := sql.Open("pgx", databaseURL)
-	if err != nil {
-		return fmt.Errorf("open db for init: %w", err)
-	}
-	defer db.Close()
-
-	ready, err := schemaApplied(ctx, db)
-	if err != nil {
-		return err
-	}
-	if !ready {
-		if err := applySchema(ctx, db, dbassets.SchemaSQL); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -111,59 +95,4 @@ func pingOrCreateDatabase(ctx context.Context, databaseURL, adminURL, dbName str
 func isDatabaseMissing(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "3D000"
-}
-
-func schemaApplied(ctx context.Context, db *sql.DB) (bool, error) {
-	var exists bool
-	err := db.QueryRowContext(ctx, `
-		SELECT EXISTS (
-			SELECT 1
-			FROM information_schema.tables
-			WHERE table_schema = 'public' AND table_name = 'users'
-		)`).Scan(&exists)
-	if err != nil {
-		return false, fmt.Errorf("check schema: %w", err)
-	}
-	return exists, nil
-}
-
-func applySchema(ctx context.Context, db *sql.DB, schemaSQL string) error {
-	for _, stmt := range splitSQLStatements(schemaSQL) {
-		if _, err := db.ExecContext(ctx, stmt); err != nil {
-			return fmt.Errorf("apply schema statement: %w", err)
-		}
-	}
-	return nil
-}
-
-func splitSQLStatements(schemaSQL string) []string {
-	var (
-		stmts []string
-		buf   strings.Builder
-	)
-
-	flush := func() {
-		stmt := strings.TrimSpace(buf.String())
-		buf.Reset()
-		if stmt != "" {
-			stmts = append(stmts, stmt)
-		}
-	}
-
-	for _, line := range strings.Split(schemaSQL, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "--") {
-			continue
-		}
-		buf.WriteString(line)
-		buf.WriteByte('\n')
-		if strings.HasSuffix(trimmed, ";") {
-			flush()
-		}
-	}
-
-	if buf.Len() > 0 {
-		flush()
-	}
-	return stmts
 }

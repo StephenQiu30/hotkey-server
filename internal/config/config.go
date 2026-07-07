@@ -14,6 +14,7 @@ type Config struct {
 	JWTSecret   string `mapstructure:"JWT_SECRET"`
 	XToken      string `mapstructure:"X_BEARER_TOKEN"`
 	XBaseURL    string `mapstructure:"X_BASE_URL"`
+	RedisAddr   string `mapstructure:"REDIS_ADDR"`
 
 	SwaggerEnabled bool `mapstructure:"SWAGGER_ENABLED"`
 
@@ -45,6 +46,7 @@ func Load() (Config, error) {
 	v.SetDefault("LLM_PROVIDER", "openai")
 	v.SetDefault("LLM_BASE_URL", "https://api.openai.com/v1")
 	v.SetDefault("LLM_MODEL", "gpt-4o-mini")
+	v.SetDefault("REDIS_ADDR", "localhost:6379")
 
 	if err := v.ReadInConfig(); err != nil {
 		log.Printf("warning: failed to read .env config file: %v", err)

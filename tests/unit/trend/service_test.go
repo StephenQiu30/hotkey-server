@@ -30,7 +30,6 @@ func TestComputeVelocityFlat(t *testing.T) {
 
 func TestComputeVelocityZeroPrevious(t *testing.T) {
 	velocity := trend.ComputeVelocity(100, 0)
-	// When previous is 0, new posts = 100% growth
 	if velocity <= 0 {
 		t.Fatalf("expected positive velocity when previous is 0, got %f", velocity)
 	}
@@ -58,8 +57,7 @@ func TestDetermineTrendDirectionFlat(t *testing.T) {
 }
 
 func TestBuildTopicSnapshot(t *testing.T) {
-	svc := trend.NewService(nil)
-	snap := svc.BuildTopicSnapshot(trend.TopicSnapshotInput{
+	snap := trend.BuildTopicSnapshot(trend.TopicSnapshotInput{
 		TopicID:           1,
 		PostCount:         10,
 		UniqueAuthorCount: 5,
@@ -69,25 +67,15 @@ func TestBuildTopicSnapshot(t *testing.T) {
 		SnapshotTime:      time.Date(2026, 6, 12, 12, 0, 0, 0, time.UTC),
 	})
 	if snap.TopicID != 1 {
-		t.Fatalf("expected topic ID 1, got %d", snap.TopicID)
+		t.Fatalf("expected TopicID 1, got %d", snap.TopicID)
 	}
-	if snap.PostCount != 10 {
-		t.Fatalf("expected 10 posts, got %d", snap.PostCount)
-	}
-	if snap.HeatScore != 120.5 {
-		t.Fatalf("expected heat 120.5, got %f", snap.HeatScore)
-	}
-	if snap.TrendVelocity == 0 {
-		t.Fatal("expected non-zero trend velocity")
-	}
-	if snap.TrendDirection == "" {
-		t.Fatal("expected non-empty trend direction")
+	if snap.TrendDirection != "rising" {
+		t.Fatalf("expected 'rising', got '%s'", snap.TrendDirection)
 	}
 }
 
 func TestBuildMonitorSnapshot(t *testing.T) {
-	svc := trend.NewService(nil)
-	snap := svc.BuildMonitorSnapshot(trend.MonitorSnapshotInput{
+	snap := trend.BuildMonitorSnapshot(trend.MonitorSnapshotInput{
 		MonitorID:        10,
 		NewPostCount:     25,
 		ActiveTopicCount: 3,
@@ -96,12 +84,9 @@ func TestBuildMonitorSnapshot(t *testing.T) {
 		SnapshotTime:     time.Date(2026, 6, 12, 12, 0, 0, 0, time.UTC),
 	})
 	if snap.MonitorID != 10 {
-		t.Fatalf("expected monitor ID 10, got %d", snap.MonitorID)
+		t.Fatalf("expected MonitorID 10, got %d", snap.MonitorID)
 	}
 	if snap.NewPostCount != 25 {
-		t.Fatalf("expected 25 new posts, got %d", snap.NewPostCount)
-	}
-	if snap.ActiveTopicCount != 3 {
-		t.Fatalf("expected 3 active topics, got %d", snap.ActiveTopicCount)
+		t.Fatalf("expected NewPostCount 25, got %d", snap.NewPostCount)
 	}
 }

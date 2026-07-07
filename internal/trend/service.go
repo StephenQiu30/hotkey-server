@@ -4,14 +4,14 @@ package trend
 import "time"
 
 type TopicSnapshot struct {
-	TopicID          int64
-	SnapshotTime     time.Time
-	PostCount        int
+	TopicID           int64
+	SnapshotTime      time.Time
+	PostCount         int
 	UniqueAuthorCount int
-	EngagementSum    int
-	HeatScore        float64
-	TrendVelocity    float64
-	TrendDirection   string
+	EngagementSum     int
+	HeatScore         float64
+	TrendVelocity     float64
+	TrendDirection    string
 }
 
 type MonitorSnapshot struct {
@@ -24,13 +24,13 @@ type MonitorSnapshot struct {
 }
 
 type TopicSnapshotInput struct {
-	TopicID          int64
-	PostCount        int
+	TopicID           int64
+	PostCount         int
 	UniqueAuthorCount int
-	EngagementSum    int
-	HeatScore        float64
-	PreviousHeat     float64
-	SnapshotTime     time.Time
+	EngagementSum     int
+	HeatScore         float64
+	PreviousHeat      float64
+	SnapshotTime      time.Time
 }
 
 type MonitorSnapshotInput struct {
@@ -40,20 +40,6 @@ type MonitorSnapshotInput struct {
 	TotalEngagement  int
 	TopTopicID       int64
 	SnapshotTime     time.Time
-}
-
-type Repository interface {
-	SaveTopicSnapshot(snap TopicSnapshot) error
-	SaveMonitorSnapshot(snap MonitorSnapshot) error
-	GetPreviousTopicHeat(topicID int64) (float64, error)
-}
-
-type Service struct {
-	repo Repository
-}
-
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
 }
 
 // ComputeVelocity returns the rate of change between previous and current values.
@@ -80,8 +66,8 @@ func DetermineTrendDirection(velocity float64) string {
 	return "flat"
 }
 
-// BuildTopicSnapshot computes velocity and direction before creating the snapshot.
-func (s *Service) BuildTopicSnapshot(in TopicSnapshotInput) TopicSnapshot {
+// BuildTopicSnapshot computes velocity and direction from input values.
+func BuildTopicSnapshot(in TopicSnapshotInput) TopicSnapshot {
 	velocity := ComputeVelocity(in.HeatScore, in.PreviousHeat)
 	direction := DetermineTrendDirection(velocity)
 
@@ -97,7 +83,8 @@ func (s *Service) BuildTopicSnapshot(in TopicSnapshotInput) TopicSnapshot {
 	}
 }
 
-func (s *Service) BuildMonitorSnapshot(in MonitorSnapshotInput) MonitorSnapshot {
+// BuildMonitorSnapshot creates a monitor snapshot from input values.
+func BuildMonitorSnapshot(in MonitorSnapshotInput) MonitorSnapshot {
 	return MonitorSnapshot{
 		MonitorID:        in.MonitorID,
 		SnapshotTime:     in.SnapshotTime,

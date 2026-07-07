@@ -15,16 +15,16 @@ func NewQueryService(repo Repository) *QueryService {
 }
 
 func (s *QueryService) ListEvents(ctx context.Context, filter ListFilter) ([]*HotEvent, int64, error) {
-	return s.repo.List(filter)
+	return s.repo.List(ctx, filter)
 }
 
 func (s *QueryService) GetEventByID(ctx context.Context, id int64) (*HotEvent, error) {
-	return s.repo.GetByID(id)
+	return s.repo.GetByID(ctx, id)
 }
 
 func (s *QueryService) ListEventPosts(ctx context.Context, id int64) ([]PostBrief, error) {
 	// Check the event exists
-	ev, err := s.repo.GetByID(id)
+	ev, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func (s *QueryService) ListEventPosts(ctx context.Context, id int64) ([]PostBrie
 }
 
 func (s *QueryService) GetPlatforms(ctx context.Context, eventID int64) ([]*EventPlatform, error) {
-	return s.repo.GetPlatforms(eventID)
+	return s.repo.GetPlatforms(ctx, eventID)
 }
 
 // PostBrief is a lightweight post for API responses.

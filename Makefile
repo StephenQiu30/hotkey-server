@@ -1,4 +1,4 @@
-.PHONY: test lint build validate validate-schema validate-arch smoke up down schema dev swagger ci
+.PHONY: test lint build validate validate-schema validate-arch smoke up down schema dev ci
 
 test:
 	go test ./... -v -count=1
@@ -33,8 +33,3 @@ schema:
 
 dev:
 	bash scripts/dev.sh
-
-swagger:
-	swag init -g cmd/hotkey/main.go -o docs --parseInternal --ot go
-	# Remove LeftDelim/RightDelim from generated docs.go (CLI/lib version mismatch workaround)
-	sed -i '' '/LeftDelim:/d; /RightDelim:/d' docs/docs.go

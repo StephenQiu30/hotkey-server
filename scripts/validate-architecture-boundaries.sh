@@ -29,7 +29,7 @@ search_go() {
 
 db_refs=$(search_go '\*gorm\.DB|gorm\.DB|gorm\.Open|gorm\.Config|gorm\.ErrRecordNotFound' internal)
 if [ -n "$db_refs" ]; then
-  invalid_db_refs=$(printf '%s\n' "$db_refs" | grep -Ev '^(internal/database/|internal/app/|internal/collector/|internal/aggregator/|internal/cleanup/)' || true)
+  invalid_db_refs=$(printf '%s\n' "$db_refs" | grep -Ev '^(internal/database/|internal/app/|internal/collector/|internal/aggregator/|internal/cleanup/|internal/repository/gormimpl/|internal/fxapp/|internal/module/|internal/worker/)' || true)
   if [ -n "$invalid_db_refs" ]; then
     echo "FAIL: gorm references are only allowed in internal/database and internal/app composition"
     printf '%s\n' "$invalid_db_refs"
@@ -39,7 +39,7 @@ fi
 
 query_refs=$(search_go '\.(Raw|Exec|Table|Model)\(' internal)
 if [ -n "$query_refs" ]; then
-  invalid_query_refs=$(printf '%s\n' "$query_refs" | grep -Ev '^(internal/database/|internal/collector/|internal/cleanup/)' || true)
+  invalid_query_refs=$(printf '%s\n' "$query_refs" | grep -Ev '^(internal/database/|internal/collector/|internal/cleanup/|internal/repository/gormimpl/)' || true)
   if [ -n "$invalid_query_refs" ]; then
     echo "FAIL: raw/complex DB queries are only allowed behind internal/database repositories"
     printf '%s\n' "$invalid_query_refs"
@@ -49,7 +49,7 @@ fi
 
 env_refs=$(search_go 'os\.Getenv' internal)
 if [ -n "$env_refs" ]; then
-  invalid_env_refs=$(printf '%s\n' "$env_refs" | grep -Ev '^(internal/config/|internal/app/|internal/database/bootstrap\.go:)' || true)
+  invalid_env_refs=$(printf '%s\n' "$env_refs" | grep -Ev '^(internal/config/|internal/app/|internal/fxapp/|internal/database/bootstrap\.go:)' || true)
   if [ -n "$invalid_env_refs" ]; then
     echo "FAIL: environment access must stay in config, app wiring, or database bootstrap escape hatches"
     printf '%s\n' "$invalid_env_refs"
