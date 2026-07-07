@@ -12,12 +12,13 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/content"
 	"github.com/StephenQiu30/hotkey-server/internal/database"
 	"github.com/StephenQiu30/hotkey-server/internal/hotevent"
+	"github.com/StephenQiu30/hotkey-server/internal/module"
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"github.com/StephenQiu30/hotkey-server/internal/repository/gormimpl"
 	"github.com/StephenQiu30/hotkey-server/internal/topic"
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
-	"github.com/StephenQiu30/hotkey-server/internal/module"
 	"go.uber.org/fx"
 	"gorm.io/gorm"
 )
@@ -27,10 +28,10 @@ func NewApp() *fx.App {
 	return fx.New(
 		module.Infra,
 
-		// Wire existing repo constructors (will transition to gormimpl)
-		fx.Provide(database.NewAuthRepo),
-		fx.Provide(database.NewMonitorRepo),
-		fx.Provide(database.NewNotifyRepo),
+		// Repository adapters (gormimpl bridges for existing service interfaces)
+		fx.Provide(gormimpl.NewAuthRepoAdapter),
+		fx.Provide(gormimpl.NewMonitorRepoAdapter),
+		fx.Provide(gormimpl.NewNotifyRepoAdapter),
 		fx.Provide(database.NewContentQueryService),
 		fx.Provide(database.NewTopicQueryService),
 		fx.Provide(database.NewTrendQueryService),
