@@ -97,12 +97,23 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			if os.Getenv("SMOKE_TEST") == "1" {
+				// Smoke test: start HTTP server only, no worker
+				go func() {
+					if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+						log.Printf("http server error: %v", err)
+					}
+				}()
 				return nil
 			}
 			go func() {
 				log.Printf("worker: started")
 				<-ctx.Done()
 				log.Printf("worker: stopped")
+			}()
+			go func() {
+				if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+					log.Printf("http server error: %v", err)
+				}
 			}()
 			return nil
 		},
