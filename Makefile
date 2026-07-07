@@ -3,6 +3,14 @@
 test:
 	go test ./... -v -count=1
 
+test-unit:
+	go test ./internal/service/... ./internal/handler/... -v -count=1
+
+test-integration:
+	go test ./tests/integration/... -v -count=1 -tags=integration
+
+test-all: test-unit test-integration
+
 lint:
 	go vet ./...
 
