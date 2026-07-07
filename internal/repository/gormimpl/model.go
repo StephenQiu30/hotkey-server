@@ -100,7 +100,7 @@ type MonitorPostHit struct {
 	ID                  int64             `gorm:"column:id;primaryKey"`
 	MonitorID           int64             `gorm:"column:monitor_id"`
 	PostID              int64             `gorm:"column:post_id"`
-	MatchedKeywords     pkg.JSONB[string]  `gorm:"column:matched_keywords;type:jsonb"`
+	MatchedKeywords     pkg.JSONB[[]string]  `gorm:"column:matched_keywords;type:jsonb"`
 	RelevanceScore      float64           `gorm:"column:relevance_score"`
 	HeatScore           float64           `gorm:"column:heat_score"`
 	FreshnessScore      float64           `gorm:"column:freshness_score"`
