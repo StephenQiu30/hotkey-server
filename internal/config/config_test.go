@@ -11,7 +11,7 @@ func TestLoad_DailyDigestConfigDefaults(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret")
 	t.Setenv("X_BEARER_TOKEN", "test-token")
 
-	// Clear all digest-related env vars to test defaults.
+	// Clear all digest-related and LLM env vars to test defaults.
 	for _, k := range []string{
 		"OBSIDIAN_VAULT_PATH",
 		"DAILY_DIGEST_TIME",
@@ -22,6 +22,8 @@ func TestLoad_DailyDigestConfigDefaults(t *testing.T) {
 		"LLM_API_KEY",
 		"LLM_BASE_URL",
 		"LLM_MODEL",
+		"LLM_MAX_TOKENS",
+		"LLM_TEMPERATURE",
 	} {
 		os.Unsetenv(k)
 	}
@@ -66,5 +68,13 @@ func TestLoad_DailyDigestConfigDefaults(t *testing.T) {
 
 	if cfg.LLMModel != "gpt-4o-mini" {
 		t.Errorf("LLMModel = %q, want %q", cfg.LLMModel, "gpt-4o-mini")
+	}
+
+	if cfg.LLMMaxTokens != 4096 {
+		t.Errorf("LLMMaxTokens = %d, want %d", cfg.LLMMaxTokens, 4096)
+	}
+
+	if cfg.LLMTemperature != 0.7 {
+		t.Errorf("LLMTemperature = %f, want %f", cfg.LLMTemperature, 0.7)
 	}
 }

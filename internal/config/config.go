@@ -24,10 +24,12 @@ type Config struct {
 	DailyDigestTarget  string `mapstructure:"DAILY_DIGEST_TARGET"`
 	DailyDigestTopN    int    `mapstructure:"DAILY_DIGEST_TOP_N"`
 
-	LLMProvider string `mapstructure:"LLM_PROVIDER"`
-	LLMAPIKey   string `mapstructure:"LLM_API_KEY"`
-	LLMBaseURL  string `mapstructure:"LLM_BASE_URL"`
-	LLMModel    string `mapstructure:"LLM_MODEL"`
+	LLMProvider    string  `mapstructure:"LLM_PROVIDER"`
+	LLMAPIKey      string  `mapstructure:"LLM_API_KEY"`
+	LLMBaseURL     string  `mapstructure:"LLM_BASE_URL"`
+	LLMModel       string  `mapstructure:"LLM_MODEL"`
+	LLMMaxTokens   int     `mapstructure:"LLM_MAX_TOKENS"`
+	LLMTemperature float64 `mapstructure:"LLM_TEMPERATURE"`
 }
 
 // Load reads configuration from .env file and environment variables using Viper.
@@ -46,6 +48,8 @@ func Load() (Config, error) {
 	v.SetDefault("LLM_PROVIDER", "openai")
 	v.SetDefault("LLM_BASE_URL", "https://api.openai.com/v1")
 	v.SetDefault("LLM_MODEL", "gpt-4o-mini")
+	v.SetDefault("LLM_MAX_TOKENS", 4096)
+	v.SetDefault("LLM_TEMPERATURE", 0.7)
 	v.SetDefault("REDIS_ADDR", "localhost:6379")
 
 	if err := v.ReadInConfig(); err != nil {
@@ -66,6 +70,8 @@ func Load() (Config, error) {
 	_ = v.BindEnv("LLM_API_KEY")
 	_ = v.BindEnv("LLM_BASE_URL")
 	_ = v.BindEnv("LLM_MODEL")
+	_ = v.BindEnv("LLM_MAX_TOKENS")
+	_ = v.BindEnv("LLM_TEMPERATURE")
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
@@ -103,6 +109,12 @@ func Load() (Config, error) {
 	}
 	if cfg.LLMModel == "" {
 		cfg.LLMModel = "gpt-4o-mini"
+	}
+	if cfg.LLMMaxTokens <= 0 {
+		cfg.LLMMaxTokens = 4096
+	}
+	if cfg.LLMTemperature <= 0 {
+		cfg.LLMTemperature = 0.7
 	}
 
 	return cfg, nil
