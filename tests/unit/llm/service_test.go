@@ -66,3 +66,38 @@ func TestProviderError_Propagated(t *testing.T) {
 		t.Fatalf("expected ErrProviderError, got %v", err)
 	}
 }
+
+func TestChainBuildDailyDigest_CallsSummarizeAndLabel(t *testing.T) {
+	svc := llm.NewService(&mockProvider{response: "test summary"})
+	chain := llm.NewChain(svc)
+
+	output, err := chain.BuildDailyDigest(context.Background(), llm.DigestInput{
+		Title: "Test Digest",
+		Posts: []llm.PostItem{
+			{ID: 1, Title: "Post 1", Content: "Content 1", Platform: "x"},
+			{ID: 2, Title: "Post 2", Content: "Content 2", Platform: "weibo"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if output.Title != "Test Digest" {
+		t.Fatalf("expected 'Test Digest', got '%s'", output.Title)
+	}
+	if len(output.Sections) == 0 {
+		t.Fatal("expected at least one section")
+	}
+}
+
+func TestChainBuildDailyDigest_EmptyPosts(t *testing.T) {
+	svc := llm.NewService(&mockProvider{response: "empty digest"})
+	chain := llm.NewChain(svc)
+
+	_, err := chain.BuildDailyDigest(context.Background(), llm.DigestInput{
+		Title: "Empty Digest",
+		Posts: []llm.PostItem{},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
