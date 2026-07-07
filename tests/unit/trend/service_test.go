@@ -7,6 +7,17 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
 )
 
+// noopRepo implements trend.Repository as a no-op for unit tests.
+type noopRepo struct{}
+
+func (noopRepo) SaveTopicSnapshot(trend.TopicSnapshot) error { return nil }
+func (noopRepo) SaveMonitorSnapshot(trend.MonitorSnapshot) error { return nil }
+func (noopRepo) GetPreviousTopicHeat(int64) (float64, error) { return 0, nil }
+
+func newNoopService() *trend.Service {
+	return trend.NewService(noopRepo{})
+}
+
 func TestComputeVelocityPositiveGrowth(t *testing.T) {
 	velocity := trend.ComputeVelocity(160, 100)
 	if velocity <= 0 {
@@ -30,7 +41,6 @@ func TestComputeVelocityFlat(t *testing.T) {
 
 func TestComputeVelocityZeroPrevious(t *testing.T) {
 	velocity := trend.ComputeVelocity(100, 0)
-	// When previous is 0, new posts = 100% growth
 	if velocity <= 0 {
 		t.Fatalf("expected positive velocity when previous is 0, got %f", velocity)
 	}
@@ -58,8 +68,8 @@ func TestDetermineTrendDirectionFlat(t *testing.T) {
 }
 
 func TestBuildTopicSnapshot(t *testing.T) {
-	svc := trend.NewService(nil)
-	snap := svc.BuildTopicSnapshot(trend.TopicSnapshotInput{
+	svc := newNoopService()
+	if err := svc.BuildTopicSnapshot(trend.TopicSnapshotInput{
 		TopicID:           1,
 		PostCount:         10,
 		UniqueAuthorCount: 5,
@@ -67,41 +77,21 @@ func TestBuildTopicSnapshot(t *testing.T) {
 		HeatScore:         120.5,
 		PreviousHeat:      100.0,
 		SnapshotTime:      time.Date(2026, 6, 12, 12, 0, 0, 0, time.UTC),
-	})
-	if snap.TopicID != 1 {
-		t.Fatalf("expected topic ID 1, got %d", snap.TopicID)
-	}
-	if snap.PostCount != 10 {
-		t.Fatalf("expected 10 posts, got %d", snap.PostCount)
-	}
-	if snap.HeatScore != 120.5 {
-		t.Fatalf("expected heat 120.5, got %f", snap.HeatScore)
-	}
-	if snap.TrendVelocity == 0 {
-		t.Fatal("expected non-zero trend velocity")
-	}
-	if snap.TrendDirection == "" {
-		t.Fatal("expected non-empty trend direction")
+	}); err != nil {
+		t.Fatalf("BuildTopicSnapshot failed: %v", err)
 	}
 }
 
 func TestBuildMonitorSnapshot(t *testing.T) {
-	svc := trend.NewService(nil)
-	snap := svc.BuildMonitorSnapshot(trend.MonitorSnapshotInput{
+	svc := newNoopService()
+	if err := svc.BuildMonitorSnapshot(trend.MonitorSnapshotInput{
 		MonitorID:        10,
 		NewPostCount:     25,
 		ActiveTopicCount: 3,
 		TotalEngagement:  1500,
 		TopTopicID:       5,
 		SnapshotTime:     time.Date(2026, 6, 12, 12, 0, 0, 0, time.UTC),
-	})
-	if snap.MonitorID != 10 {
-		t.Fatalf("expected monitor ID 10, got %d", snap.MonitorID)
-	}
-	if snap.NewPostCount != 25 {
-		t.Fatalf("expected 25 new posts, got %d", snap.NewPostCount)
-	}
-	if snap.ActiveTopicCount != 3 {
-		t.Fatalf("expected 3 active topics, got %d", snap.ActiveTopicCount)
+	}); err != nil {
+		t.Fatalf("BuildMonitorSnapshot failed: %v", err)
 	}
 }

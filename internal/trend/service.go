@@ -80,12 +80,13 @@ func DetermineTrendDirection(velocity float64) string {
 	return "flat"
 }
 
-// BuildTopicSnapshot computes velocity and direction before creating the snapshot.
-func (s *Service) BuildTopicSnapshot(in TopicSnapshotInput) TopicSnapshot {
+// BuildTopicSnapshot computes velocity and direction, then persists the snapshot.
+// BUG FIX #1: Previously returned the snapshot without saving it — callers never persisted it.
+func (s *Service) BuildTopicSnapshot(in TopicSnapshotInput) error {
 	velocity := ComputeVelocity(in.HeatScore, in.PreviousHeat)
 	direction := DetermineTrendDirection(velocity)
 
-	return TopicSnapshot{
+	snap := TopicSnapshot{
 		TopicID:           in.TopicID,
 		SnapshotTime:      in.SnapshotTime,
 		PostCount:         in.PostCount,
@@ -95,10 +96,11 @@ func (s *Service) BuildTopicSnapshot(in TopicSnapshotInput) TopicSnapshot {
 		TrendVelocity:     velocity,
 		TrendDirection:    direction,
 	}
+	return s.repo.SaveTopicSnapshot(snap)
 }
 
-func (s *Service) BuildMonitorSnapshot(in MonitorSnapshotInput) MonitorSnapshot {
-	return MonitorSnapshot{
+func (s *Service) BuildMonitorSnapshot(in MonitorSnapshotInput) error {
+	snap := MonitorSnapshot{
 		MonitorID:        in.MonitorID,
 		SnapshotTime:     in.SnapshotTime,
 		NewPostCount:     in.NewPostCount,
@@ -106,4 +108,5 @@ func (s *Service) BuildMonitorSnapshot(in MonitorSnapshotInput) MonitorSnapshot 
 		TotalEngagement:  in.TotalEngagement,
 		TopTopicID:       in.TopTopicID,
 	}
+	return s.repo.SaveMonitorSnapshot(snap)
 }

@@ -21,8 +21,8 @@ type TopicProvider interface {
 }
 
 type TrendSnapshotter interface {
-	BuildTopicSnapshot(in trend.TopicSnapshotInput) trend.TopicSnapshot
-	BuildMonitorSnapshot(in trend.MonitorSnapshotInput) trend.MonitorSnapshot
+	BuildTopicSnapshot(in trend.TopicSnapshotInput) error
+	BuildMonitorSnapshot(in trend.MonitorSnapshotInput) error
 }
 
 type BuildSnapshotsInput struct {
@@ -37,8 +37,8 @@ type BuildSnapshotsResult struct {
 }
 
 type BuildSnapshotsJob struct {
-	trend   TrendSnapshotter
-	topics  TopicProvider
+	trend  TrendSnapshotter
+	topics TopicProvider
 }
 
 func NewBuildSnapshotsJob(trend TrendSnapshotter, topics TopicProvider) *BuildSnapshotsJob {
@@ -46,6 +46,8 @@ func NewBuildSnapshotsJob(trend TrendSnapshotter, topics TopicProvider) *BuildSn
 }
 
 // Run executes the snapshot job for a monitor.
+// BUG FIX #1: Previously discarded BuildTopicSnapshot/MonitorSnapshot return
+// values — now errors from persistence are propagated and snapshots are saved.
 func (j *BuildSnapshotsJob) Run(in BuildSnapshotsInput) (BuildSnapshotsResult, error) {
 	topicData, err := j.topics.GetTopicDataForMonitor(in.MonitorID)
 	if err != nil {
@@ -57,7 +59,7 @@ func (j *BuildSnapshotsJob) Run(in BuildSnapshotsInput) (BuildSnapshotsResult, e
 	totalEngagement := 0
 
 	for _, td := range topicData {
-		j.trend.BuildTopicSnapshot(trend.TopicSnapshotInput{
+		if err := j.trend.BuildTopicSnapshot(trend.TopicSnapshotInput{
 			TopicID:           td.TopicID,
 			PostCount:         td.PostCount,
 			UniqueAuthorCount: td.UniqueAuthorCount,
@@ -65,7 +67,9 @@ func (j *BuildSnapshotsJob) Run(in BuildSnapshotsInput) (BuildSnapshotsResult, e
 			HeatScore:         td.HeatScore,
 			PreviousHeat:      td.PreviousHeat,
 			SnapshotTime:      in.SnapshotTime,
-		})
+		}); err != nil {
+			return BuildSnapshotsResult{}, err
+		}
 		totalEngagement += td.EngagementSum
 		if td.HeatScore > maxHeat {
 			maxHeat = td.HeatScore
@@ -73,14 +77,16 @@ func (j *BuildSnapshotsJob) Run(in BuildSnapshotsInput) (BuildSnapshotsResult, e
 		}
 	}
 
-	j.trend.BuildMonitorSnapshot(trend.MonitorSnapshotInput{
+	if err := j.trend.BuildMonitorSnapshot(trend.MonitorSnapshotInput{
 		MonitorID:        in.MonitorID,
-		NewPostCount:     0, // filled by caller or upstream
+		NewPostCount:     0,
 		ActiveTopicCount: len(topicData),
 		TotalEngagement:  totalEngagement,
 		TopTopicID:       topTopicID,
 		SnapshotTime:     in.SnapshotTime,
-	})
+	}); err != nil {
+		return BuildSnapshotsResult{}, err
+	}
 
 	return BuildSnapshotsResult{
 		TopicSnapshotCount:   len(topicData),
