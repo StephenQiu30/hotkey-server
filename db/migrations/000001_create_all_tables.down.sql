@@ -1,0 +1,27 @@
+-- Down migration: drops all tables
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS keyword_monitors;
+DROP TABLE IF EXISTS monitor_runs;
+DROP TABLE IF EXISTS platform_posts;
+DROP TABLE IF EXISTS platform_authors;
+DROP TABLE IF EXISTS monitor_post_hits;
+DROP TABLE IF EXISTS topics;
+DROP TABLE IF EXISTS topic_posts;
+DROP TABLE IF EXISTS topic_snapshots;
+DROP TABLE IF EXISTS monitor_snapshots;
+DROP TABLE IF EXISTS topic_daily_exports;
+DROP TABLE IF EXISTS alerts;
+DROP TABLE IF EXISTS user_notifications;
+DROP TABLE IF EXISTS email_deliveries;
+DROP TABLE IF EXISTS knowledge_writeback_logs;
+DROP TABLE IF EXISTS events;
+DROP TABLE IF EXISTS topic_events;
+DROP TABLE IF EXISTS knowledge_runs;
+DROP TABLE IF EXISTS themes;
+DROP TABLE IF EXISTS export_bundles;
+DROP TABLE IF EXISTS event_annotations;
+DROP TABLE IF EXISTS topic_annotations;
+DROP TABLE IF EXISTS theme_memberships;
+DROP TABLE IF EXISTS knowledge_object_revisions;
+DROP TABLE IF EXISTS hot_events;
+DROP TABLE IF EXISTS hot_event_platforms;
