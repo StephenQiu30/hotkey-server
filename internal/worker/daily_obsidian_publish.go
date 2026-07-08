@@ -2,11 +2,13 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/obsidian"
+	"github.com/StephenQiu30/hotkey-server/internal/queue"
 	"github.com/StephenQiu30/hotkey-server/internal/report"
 )
 
@@ -37,6 +39,24 @@ func NewDailyObsidianPublishJob(deps DailyObsidianPublishDeps) *DailyObsidianPub
 	}
 	return &DailyObsidianPublishJob{deps: deps}
 }
+
+func (j *DailyObsidianPublishJob) Type() string { return "digest.run" }
+
+func (j *DailyObsidianPublishJob) Handle(ctx context.Context, msg queue.Message) error {
+	var payload struct {
+		TargetDate string `json:"target_date"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return err
+	}
+	targetDate, err := time.Parse("2006-01-02", payload.TargetDate)
+	if err != nil {
+		return err
+	}
+	return j.RunOnce(ctx, targetDate)
+}
+
+func (j *DailyObsidianPublishJob) DedupeEnabled() bool { return false }
 
 func (j *DailyObsidianPublishJob) RunOnce(ctx context.Context, targetDate time.Time) (runErr error) {
 	if j.deps.VaultRoot == "" {
