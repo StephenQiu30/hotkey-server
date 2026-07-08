@@ -1,4 +1,4 @@
-package gormimpl
+package repository
 
 import (
 	"context"

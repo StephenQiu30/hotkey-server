@@ -15,7 +15,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
-	"github.com/StephenQiu30/hotkey-server/internal/repository/gormimpl"
+	"github.com/StephenQiu30/hotkey-server/internal/repository"
 	"go.uber.org/zap"
 )
 
@@ -23,7 +23,7 @@ import (
 type Service struct {
 	client     *XClient
 	embedder   *embedding.Service
-	repo       *gormimpl.CollectRepo
+	repo       *repository.CollectRepo
 	threshold  float64
 	cancel     context.CancelFunc
 	wg         sync.WaitGroup
@@ -32,7 +32,7 @@ type Service struct {
 }
 
 // NewService creates a new collection service.
-func NewService(client *XClient, embedder *embedding.Service, repo *gormimpl.CollectRepo, threshold float64) *Service {
+func NewService(client *XClient, embedder *embedding.Service, repo *repository.CollectRepo, threshold float64) *Service {
 	if threshold <= 0 {
 		threshold = 0.7
 	}

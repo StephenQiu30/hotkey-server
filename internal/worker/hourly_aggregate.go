@@ -10,7 +10,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
-	"github.com/StephenQiu30/hotkey-server/internal/repository/gormimpl"
+	"github.com/StephenQiu30/hotkey-server/internal/repository"
 	"github.com/StephenQiu30/hotkey-server/internal/topic"
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
 	"go.uber.org/zap"
@@ -20,9 +20,9 @@ import (
 // HourlyAggregateDeps groups dependencies for the hourly aggregate job.
 type HourlyAggregateDeps struct {
 	DB             *gorm.DB
-	CollectRepo    *gormimpl.CollectRepo
-	TopicWriteRepo *gormimpl.TopicWriteRepo
-	SnapshotRepo   *gormimpl.SnapshotRepo
+	CollectRepo    *repository.CollectRepo
+	TopicWriteRepo *repository.TopicWriteRepo
+	SnapshotRepo   *repository.SnapshotRepo
 	RunRepo        RunRepository
 	Now            func() time.Time
 }

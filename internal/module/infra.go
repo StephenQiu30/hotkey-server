@@ -5,7 +5,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/StephenQiu30/hotkey-server/internal/config"
-	"github.com/StephenQiu30/hotkey-server/internal/database"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
 	"go.uber.org/fx"
 )
 

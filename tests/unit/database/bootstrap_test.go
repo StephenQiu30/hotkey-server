@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/StephenQiu30/hotkey-server/internal/database"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
 )
 
 func TestEnsureReadyInvalidDatabaseURL(t *testing.T) {

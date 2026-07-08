@@ -11,7 +11,6 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/auth"
 	"github.com/StephenQiu30/hotkey-server/internal/config"
 	"github.com/StephenQiu30/hotkey-server/internal/content"
-	"github.com/StephenQiu30/hotkey-server/internal/database"
 	"github.com/StephenQiu30/hotkey-server/internal/hotevent"
 	"github.com/StephenQiu30/hotkey-server/internal/llm"
 	"github.com/StephenQiu30/hotkey-server/internal/module"
@@ -21,7 +20,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
 	"github.com/StephenQiu30/hotkey-server/internal/report"
-	"github.com/StephenQiu30/hotkey-server/internal/repository/gormimpl"
+	"github.com/StephenQiu30/hotkey-server/internal/repository"
 	"github.com/StephenQiu30/hotkey-server/internal/topic"
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
 	"github.com/StephenQiu30/hotkey-server/internal/worker"
@@ -38,18 +37,18 @@ func NewApp() *fx.App {
 		module.Infra,
 
 		// Repository implementations (direct GORM implementations of domain interfaces)
-		fx.Provide(fx.Annotate(gormimpl.NewUserRepo, fx.As(new(auth.Repository)))),
-		fx.Provide(fx.Annotate(gormimpl.NewMonitorRepo, fx.As(new(monitor.Repository)))),
-		fx.Provide(fx.Annotate(gormimpl.NewNotifyRepo, fx.As(new(notify.Repository)))),
-		fx.Provide(fx.Annotate(gormimpl.NewHotEventRepo, fx.As(new(hotevent.Repository)))),
-		fx.Provide(fx.Annotate(gormimpl.NewReportRepo, fx.As(new(report.Repository)))),
-		fx.Provide(fx.Annotate(gormimpl.NewReportExportRepo, fx.As(new(report.ExportRepository)))),
-		fx.Provide(fx.Annotate(gormimpl.NewKnowledgeRunRepo, fx.As(new(worker.RunRepository)))),
+		fx.Provide(fx.Annotate(repository.NewUserRepo, fx.As(new(auth.Repository)))),
+		fx.Provide(fx.Annotate(repository.NewMonitorRepo, fx.As(new(monitor.Repository)))),
+		fx.Provide(fx.Annotate(repository.NewNotifyRepo, fx.As(new(notify.Repository)))),
+		fx.Provide(fx.Annotate(repository.NewHotEventRepo, fx.As(new(hotevent.Repository)))),
+		fx.Provide(fx.Annotate(repository.NewReportRepo, fx.As(new(report.Repository)))),
+		fx.Provide(fx.Annotate(repository.NewReportExportRepo, fx.As(new(report.ExportRepository)))),
+		fx.Provide(fx.Annotate(repository.NewKnowledgeRunRepo, fx.As(new(worker.RunRepository)))),
 
 		// Query services — annotate concrete -> interface for DI
-		fx.Provide(fx.Annotate(database.NewContentQueryService, fx.As(new(content.PostQueryService)))),
-		fx.Provide(fx.Annotate(database.NewTopicQueryService, fx.As(new(topic.TopicQueryService)))),
-		fx.Provide(fx.Annotate(database.NewTrendQueryService, fx.As(new(trend.TrendQueryService)))),
+		fx.Provide(fx.Annotate(repository.NewContentQueryService, fx.As(new(content.PostQueryService)))),
+		fx.Provide(fx.Annotate(repository.NewTopicQueryService, fx.As(new(topic.TopicQueryService)))),
+		fx.Provide(fx.Annotate(repository.NewTrendQueryService, fx.As(new(trend.TrendQueryService)))),
 
 		// Business services
 		fx.Provide(auth.NewService),
@@ -70,9 +69,9 @@ func NewApp() *fx.App {
 		fx.Provide(newDailyObsidianPublishJob),
 
 		// Collection and aggregation repositories
-		fx.Provide(gormimpl.NewCollectRepo),
-		fx.Provide(gormimpl.NewTopicWriteRepo),
-		fx.Provide(gormimpl.NewSnapshotRepo),
+		fx.Provide(repository.NewCollectRepo),
+		fx.Provide(repository.NewTopicWriteRepo),
+		fx.Provide(repository.NewSnapshotRepo),
 
 		// Hourly aggregate worker
 		fx.Provide(newHourlyAggregateJob),
@@ -132,7 +131,7 @@ func newMonitorService(repo monitor.Repository) *monitor.Service {
 	return monitor.NewService(repo, nil)
 }
 
-func newHourlyAggregateJob(db *gorm.DB, collectRepo *gormimpl.CollectRepo, topicWriteRepo *gormimpl.TopicWriteRepo, snapshotRepo *gormimpl.SnapshotRepo, runRepo worker.RunRepository) *worker.HourlyAggregateJob {
+func newHourlyAggregateJob(db *gorm.DB, collectRepo *repository.CollectRepo, topicWriteRepo *repository.TopicWriteRepo, snapshotRepo *repository.SnapshotRepo, runRepo worker.RunRepository) *worker.HourlyAggregateJob {
 	return worker.NewHourlyAggregateJob(worker.HourlyAggregateDeps{
 		DB:             db,
 		CollectRepo:    collectRepo,
