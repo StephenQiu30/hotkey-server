@@ -187,9 +187,12 @@ func (j *DailyObsidianPublishJob) exportOne(ctx context.Context, item report.Rep
 		return err
 	}
 	if result.Skipped {
-		_, err = j.deps.Exports.MarkSkipped(ctx, item.ID, string(kind), path, j.deps.Now())
-		log.Error("export skipped: atomic write already existed", zap.Error(err))
-		return err
+		if _, markErr := j.deps.Exports.MarkSkipped(ctx, item.ID, string(kind), path, j.deps.Now()); markErr != nil {
+			log.Error("export mark skipped failed", zap.Error(markErr))
+			return markErr
+		}
+		log.Info("export skipped: file already exists")
+		return nil
 	}
 	_, err = j.deps.Exports.MarkPublished(ctx, item.ID, string(kind), path, j.deps.Now())
 	if err != nil {

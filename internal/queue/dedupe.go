@@ -33,3 +33,14 @@ func (d *Dedupe) Seen(ctx context.Context, msgID string) (bool, error) {
 	}
 	return !ok, nil
 }
+
+// Mark unconditionally records the message ID as seen. Used to
+// record dedup state after a handler succeeds, keeping the check
+// and mark separate so retries work correctly.
+func (d *Dedupe) Mark(ctx context.Context, msgID string) error {
+	if d.client == nil {
+		return nil
+	}
+	key := dedupKeyPrefix + msgID
+	return d.client.Set(ctx, key, "1", d.ttl).Err()
+}

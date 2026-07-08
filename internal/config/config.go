@@ -2,7 +2,8 @@ package config
 
 import (
 	"errors"
-	"log"
+	"fmt"
+	"os"
 
 	"github.com/spf13/viper"
 )
@@ -64,7 +65,7 @@ func Load() (Config, error) {
 	v.SetDefault("KAFKA_CONSUMER_GROUP", "hotkey-workers")
 
 	if err := v.ReadInConfig(); err != nil {
-		log.Printf("warning: failed to read .env config file: %v", err)
+		fmt.Fprintf(os.Stderr, "warning: failed to read .env config file: %v\n", err)
 	}
 
 	_ = v.BindEnv("DATABASE_URL")

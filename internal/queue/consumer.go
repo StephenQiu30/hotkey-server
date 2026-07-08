@@ -57,7 +57,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 
 		// Dispatch
 		if err := c.dispatcher.Dispatch(ctx, msg); err != nil {
-			logging.L().Error("consumer dispatch error",
+			logging.Ctx(ctx).Error("consumer dispatch error",
 				zap.String("msg_type", msg.Type),
 				zap.String("msg_id", msg.ID),
 				zap.Error(err),

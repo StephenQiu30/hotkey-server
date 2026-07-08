@@ -82,8 +82,10 @@ func (d *Dispatcher) Dispatch(ctx context.Context, msg Message) error {
 	}
 
 	// Dedup check — skip if already processed
+	// Note: we only check dedup BEFORE the handler. Marking happens
+	// after successful execution (below) so retries work correctly.
 	if d.dedupe != nil && h.DedupeEnabled() {
-		seen, err := d.dedupe.Seen(ctx, msg.ID)
+		alreadySeen, err := d.dedupe.Seen(ctx, msg.ID)
 		if err != nil {
 			logging.Ctx(ctx).Error("dispatcher dedup error",
 				zap.String("msg_type", msg.Type),
@@ -91,7 +93,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, msg Message) error {
 				zap.Error(err),
 			)
 			// fall through
-		} else if seen {
+		} else if alreadySeen {
 			logging.Ctx(ctx).Info("dispatcher skipping duplicate",
 				zap.String("msg_type", msg.Type),
 				zap.String("msg_id", msg.ID),
@@ -102,6 +104,17 @@ func (d *Dispatcher) Dispatch(ctx context.Context, msg Message) error {
 
 	err := h.Handle(ctx, msg)
 	if err == nil {
+		// Mark as seen only after successful execution — ensures retries
+		// are not blocked by the dedup key for the same message ID.
+		if d.dedupe != nil && h.DedupeEnabled() {
+			if markErr := d.dedupe.Mark(ctx, msg.ID); markErr != nil {
+				logging.Ctx(ctx).Error("dispatcher dedup mark error",
+					zap.String("msg_type", msg.Type),
+					zap.String("msg_id", msg.ID),
+					zap.Error(markErr),
+				)
+			}
+		}
 		return nil
 	}
 

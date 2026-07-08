@@ -176,7 +176,7 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 			// --- DLQ recorder — persists exhausted-retry messages to DB ---
 			dispatcher.SetDLQRecorder(func(ctx context.Context, topic string, msg queue.Message, errMsg string) {
 				if db != nil {
-					db.WithContext(ctx).Create(&queue.DLQRecord{
+					if dberr := db.WithContext(ctx).Create(&queue.DLQRecord{
 						Topic:       topic,
 						MessageID:   msg.ID,
 						MessageType: msg.Type,
@@ -184,7 +184,13 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 						ErrorMsg:    errMsg,
 						RetryCount:  msg.RetryCount,
 						CreatedAt:   time.Now(),
-					})
+					}).Error; dberr != nil {
+						logging.L().Error("dlq record persist failed",
+							zap.String("topic", topic),
+							zap.String("msg_id", msg.ID),
+							zap.Error(dberr),
+						)
+					}
 				}
 			})
 

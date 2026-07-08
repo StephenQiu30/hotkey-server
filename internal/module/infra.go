@@ -1,11 +1,12 @@
 package module
 
 import (
+	"gorm.io/gorm"
+
 	"github.com/redis/go-redis/v9"
 	"github.com/StephenQiu30/hotkey-server/internal/config"
 	"github.com/StephenQiu30/hotkey-server/internal/database"
 	"go.uber.org/fx"
-	"gorm.io/gorm"
 )
 
 var Infra = fx.Module("infra",
