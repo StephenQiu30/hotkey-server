@@ -1,4 +1,5 @@
 -- Down migration: drops all tables
+DROP TABLE IF EXISTS report_exports;
 DROP TABLE IF EXISTS reports;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS keyword_monitors;
