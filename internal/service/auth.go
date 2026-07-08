@@ -10,8 +10,8 @@ import (
 
 // Sentinel errors for auth operations.
 var (
-	ErrEmailExists        = errors.New("email already registered")
-	ErrInvalidCredentials = errors.New("invalid email or password")
+	AuthErrEmailExists        = errors.New("email already registered")
+	AuthErrInvalidCredentials = errors.New("invalid email or password")
 	AuthErrInvalidInput   = errors.New("invalid input")
 )
 
@@ -43,7 +43,7 @@ func (s *AuthService) Register(ctx context.Context, input dto.RegisterInput) (dt
 	}
 
 	if s.repo.ExistsByEmail(ctx, input.Email) {
-		return dto.User{}, ErrEmailExists
+		return dto.User{}, AuthErrEmailExists
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
@@ -61,11 +61,11 @@ func (s *AuthService) Login(ctx context.Context, input dto.LoginInput) (dto.User
 		return dto.User{}, err
 	}
 	if user == nil {
-		return dto.User{}, ErrInvalidCredentials
+		return dto.User{}, AuthErrInvalidCredentials
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(input.Password)); err != nil {
-		return dto.User{}, ErrInvalidCredentials
+		return dto.User{}, AuthErrInvalidCredentials
 	}
 
 	return *user, nil

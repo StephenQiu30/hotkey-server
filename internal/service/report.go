@@ -26,9 +26,8 @@ const (
 // Report sentinel errors.
 var (
 	ReportErrInvalidInput    = errors.New("invalid report input")
-	ErrNoReportSources       = errors.New("no report sources")
-	ReportErrNotFound        = errors.New("report not found")
-	ErrUnsupportedType       = errors.New("unsupported report type")
+	ReportErrNoReportSources       = errors.New("no report sources")
+	ReportErrUnsupportedType       = errors.New("unsupported report type")
 )
 
 // ReportRepository defines the persistence interface for report operations.
@@ -80,7 +79,7 @@ func (s *ReportService) Create(ctx context.Context, userID int64, input dto.Crea
 		return dto.Report{}, err
 	}
 	if len(monitors) == 0 {
-		return dto.Report{}, ErrNoReportSources
+		return dto.Report{}, ReportErrNoReportSources
 	}
 	if input.MonitorID > 0 {
 		filtered := make([]dto.MonitorSource, 0, 1)
@@ -90,7 +89,7 @@ func (s *ReportService) Create(ctx context.Context, userID int64, input dto.Crea
 			}
 		}
 		if len(filtered) == 0 {
-			return dto.Report{}, ErrNoReportSources
+			return dto.Report{}, ReportErrNoReportSources
 		}
 		monitors = filtered
 	}
@@ -184,7 +183,7 @@ func (s *ReportService) resolvePeriod(reportType string, start, end *time.Time) 
 		}
 		return periodStart, periodEnd, nil
 	default:
-		return time.Time{}, time.Time{}, ErrUnsupportedType
+		return time.Time{}, time.Time{}, ReportErrUnsupportedType
 	}
 }
 

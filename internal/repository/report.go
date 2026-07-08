@@ -164,7 +164,7 @@ func (r *ReportRepo) GetByID(ctx context.Context, id, userID int64) (dto.Report,
 	var m entity.Report
 	if err := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, userID).First(&m).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return dto.Report{}, service.ReportErrNotFound
+			return dto.Report{}, dto.ReportErrNotFound
 		}
 		return dto.Report{}, err
 	}
@@ -183,7 +183,7 @@ func (r *ReportRepo) MarkSent(ctx context.Context, id, userID int64, sentAt time
 		return dto.Report{}, result.Error
 	}
 	if result.RowsAffected == 0 {
-					return dto.Report{}, service.ReportErrNotFound
+					return dto.Report{}, dto.ReportErrNotFound
 	}
 	return r.GetByID(ctx, id, userID)
 }

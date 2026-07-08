@@ -148,7 +148,7 @@ func getHotEventHandler(mgr HotEventManager) gin.HandlerFunc {
 
 		ev, err := mgr.GetEventByID(c.Request.Context(), id)
 		if err != nil {
-			if err == service.HotEventErrNotFound {
+			if err == dto.HotEventErrNotFound {
 				c.JSON(http.StatusNotFound, gin.H{"error": "hot event not found"})
 				return
 			}
@@ -190,7 +190,7 @@ func getHotEventPostsHandler(mgr HotEventManager) gin.HandlerFunc {
 
 		// Verify event exists
 		if _, err := mgr.GetEventByID(c.Request.Context(), id); err != nil {
-			if err == service.HotEventErrNotFound {
+			if err == dto.HotEventErrNotFound {
 				c.JSON(http.StatusNotFound, gin.H{"error": "hot event not found"})
 				return
 			}

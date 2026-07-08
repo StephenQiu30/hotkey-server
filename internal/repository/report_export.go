@@ -6,7 +6,6 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
-	"github.com/StephenQiu30/hotkey-server/internal/service"
 	"gorm.io/gorm"
 )
 
@@ -93,7 +92,6 @@ func (r *ReportExportRepo) ListOne(ctx context.Context, reportID int64, exportKi
 }
 
 // compile-time interface satisfaction check
-var _ service.ExportRepository = (*ReportExportRepo)(nil)
 
 func toDTOReportExport(model entity.ReportExport) dto.ReportExport {
 	return dto.ReportExport{

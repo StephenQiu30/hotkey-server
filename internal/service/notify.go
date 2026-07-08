@@ -10,7 +10,7 @@ import (
 // Notify sentinel errors.
 var (
 	NotifyErrNotFound = errors.New("notification not found")
-	ErrNotOwned       = errors.New("notification not owned by user")
+	NotifyErrNotOwned       = errors.New("notification not owned by user")
 )
 
 // NotifyRepository defines the persistence interface for notification operations.

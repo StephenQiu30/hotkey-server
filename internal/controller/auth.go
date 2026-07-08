@@ -25,9 +25,9 @@ func RegisterAuthRoutes(r *gin.Engine, svc *service.AuthService, jwtSecret strin
 // @Produce json
 // @Param body body RegisterRequest true "Register payload"
 // @Success 201 {object} UserResponse
-// @Failure 400 {object} ErrorBody
-// @Failure 409 {object} ErrorBody
-// @Failure 500 {object} ErrorBody
+// @Failure 400 {object} platformhttp.ErrorBody
+// @Failure 409 {object} platformhttp.ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
 // @Router /api/v1/auth/register [post]
 func registerHandler(svc *service.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -44,7 +44,7 @@ func registerHandler(svc *service.AuthService) gin.HandlerFunc {
 		})
 		if err != nil {
 			switch {
-			case err == service.ErrEmailExists:
+			case err == service.AuthErrEmailExists:
 				respondError(c, http.StatusConflict, "email already registered")
 			case err == service.AuthErrInvalidInput:
 				respondError(c, http.StatusBadRequest, "invalid input")
@@ -66,9 +66,9 @@ func registerHandler(svc *service.AuthService) gin.HandlerFunc {
 // @Produce json
 // @Param body body LoginRequest true "Login payload"
 // @Success 200 {object} LoginResponse
-// @Failure 400 {object} ErrorBody
-// @Failure 401 {object} ErrorBody
-// @Failure 500 {object} ErrorBody
+// @Failure 400 {object} platformhttp.ErrorBody
+// @Failure 401 {object} platformhttp.ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
 // @Router /api/v1/auth/login [post]
 func loginHandler(svc *service.AuthService, jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -84,7 +84,7 @@ func loginHandler(svc *service.AuthService, jwtSecret string) gin.HandlerFunc {
 		})
 		if err != nil {
 			switch {
-			case err == service.ErrInvalidCredentials:
+			case err == service.AuthErrInvalidCredentials:
 				respondError(c, http.StatusUnauthorized, "invalid credentials")
 			default:
 				respondInternalError(c)

@@ -18,7 +18,7 @@ func TestCreateMonitorRejectsInvalidInterval(t *testing.T) {
 		QueryText:           "openai agent",
 		PollIntervalMinutes: 7,
 	})
-	if !errors.Is(err, service.ErrInvalidInterval) {
+	if !errors.Is(err, service.MonitorErrInvalidInterval) {
 		t.Fatalf("expected ErrInvalidInterval, got %v", err)
 	}
 }

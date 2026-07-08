@@ -57,7 +57,7 @@ func (r *HotEventRepo) GetByID(ctx context.Context, id int64) (*dto.HotEvent, er
 	var m entity.HotEvent
 	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&m).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, service.HotEventErrNotFound
+			return nil, dto.HotEventErrNotFound
 		}
 		return nil, err
 	}

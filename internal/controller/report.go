@@ -193,11 +193,11 @@ func parseReportID(c *gin.Context) (int64, bool) {
 
 func respondReportError(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, service.ReportErrNotFound):
+	case errors.Is(err, dto.ReportErrNotFound):
 		respondError(c, http.StatusNotFound, "report not found")
-	case errors.Is(err, service.ErrNoReportSources):
+	case errors.Is(err, service.ReportErrNoReportSources):
 		respondError(c, http.StatusBadRequest, "no report sources")
-	case errors.Is(err, service.ErrUnsupportedType), errors.Is(err, service.ReportErrInvalidInput):
+	case errors.Is(err, service.ReportErrUnsupportedType), errors.Is(err, service.ReportErrInvalidInput):
 		respondError(c, http.StatusBadRequest, err.Error())
 	default:
 		respondInternalError(c)

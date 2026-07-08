@@ -52,7 +52,7 @@ func (s *stubReportService) GetByID(ctx context.Context, id, userID int64) (dto.
 			return item, nil
 		}
 	}
-	return dto.Report{}, service.ReportErrNotFound
+	return dto.Report{}, dto.ReportErrNotFound
 }
 
 func (s *stubReportService) HTML(ctx context.Context, id, userID int64) (string, error) {

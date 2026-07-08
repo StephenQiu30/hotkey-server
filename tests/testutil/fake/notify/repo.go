@@ -32,7 +32,7 @@ func (r *Repo) MarkRead(_ context.Context, userID, notificationID int64) error {
 	for i := range r.Notifications {
 		if r.Notifications[i].ID == notificationID {
 			if r.Notifications[i].UserID != userID {
-				return service.ErrNotOwned
+				return service.NotifyErrNotOwned
 			}
 			now := time.Now()
 			r.Notifications[i].ReadAt = &now

@@ -64,7 +64,7 @@ func (r *fakeReportRepo) GetByID(_ context.Context, id, userID int64) (dto.Repor
 			return item, nil
 		}
 	}
-	return dto.Report{}, service.ReportErrNotFound
+	return dto.Report{}, dto.ReportErrNotFound
 }
 
 func (r *fakeReportRepo) MarkSent(_ context.Context, id, userID int64, sentAt time.Time) (dto.Report, error) {
@@ -126,8 +126,8 @@ func TestServiceCreateWeeklyReportRejectsUserWithoutMonitors(t *testing.T) {
 	})
 
 	_, err := svc.Create(context.Background(), 7, dto.CreateInput{ReportType: service.TypeWeekly})
-	if err != service.ErrNoReportSources {
-		t.Fatalf("error = %v, want %v", err, service.ErrNoReportSources)
+	if err != service.ReportErrNoReportSources {
+		t.Fatalf("error = %v, want %v", err, service.ReportErrNoReportSources)
 	}
 }
 

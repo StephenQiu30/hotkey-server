@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"math"
 	"time"
 
@@ -24,7 +23,6 @@ const (
 
 // Sentinel errors for hotevent operations.
 var (
-	HotEventErrNotFound = errors.New("hot event not found")
 )
 
 // PlatformWeights defines the relative weight of each platform.

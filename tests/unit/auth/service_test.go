@@ -20,7 +20,7 @@ func TestRegisterRejectsDuplicateEmail(t *testing.T) {
 		Password:    "Passw0rd!",
 		DisplayName: "User",
 	})
-	if !errors.Is(err, service.ErrEmailExists) {
+	if !errors.Is(err, service.AuthErrEmailExists) {
 		t.Fatalf("expected ErrEmailExists, got %v", err)
 	}
 }
@@ -82,7 +82,7 @@ func TestLoginRejectsWrongPassword(t *testing.T) {
 		Email:    "user@example.com",
 		Password: "WrongPass!",
 	})
-	if !errors.Is(err, service.ErrInvalidCredentials) {
+	if !errors.Is(err, service.AuthErrInvalidCredentials) {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
 }
@@ -94,7 +94,7 @@ func TestLoginRejectsUnknownEmail(t *testing.T) {
 		Email:    "nobody@example.com",
 		Password: "Passw0rd!",
 	})
-	if !errors.Is(err, service.ErrInvalidCredentials) {
+	if !errors.Is(err, service.AuthErrInvalidCredentials) {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
 }

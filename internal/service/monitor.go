@@ -12,10 +12,10 @@ import (
 
 // Sentinel errors for monitor operations.
 var (
-	ErrInvalidInterval     = errors.New("poll interval must be one of: 5, 10, 15, 30 minutes")
+	MonitorErrInvalidInterval     = errors.New("poll interval must be one of: 5, 10, 15, 30 minutes")
 	MonitorErrInvalidInput = errors.New("invalid input")
 	MonitorErrNotFound     = errors.New("monitor not found")
-	ErrForbidden           = errors.New("not authorized")
+	MonitorErrForbidden           = errors.New("not authorized")
 )
 
 // AllowedIntervals defines valid poll interval values in minutes.
@@ -53,7 +53,7 @@ func (s *MonitorService) Create(ctx context.Context, userID int64, input dto.Cre
 		return dto.Monitor{}, MonitorErrInvalidInput
 	}
 	if _, ok := AllowedIntervals[input.PollIntervalMinutes]; !ok {
-		return dto.Monitor{}, ErrInvalidInterval
+		return dto.Monitor{}, MonitorErrInvalidInterval
 	}
 
 	if input.Language == "" {
@@ -117,7 +117,7 @@ func (s *MonitorService) ListByUser(ctx context.Context, userID int64) ([]dto.Mo
 func (s *MonitorService) Update(ctx context.Context, id int64, userID int64, input dto.UpdateMonitorInput) (dto.Monitor, error) {
 	if input.PollIntervalMinutes != nil {
 		if _, ok := AllowedIntervals[*input.PollIntervalMinutes]; !ok {
-			return dto.Monitor{}, ErrInvalidInterval
+			return dto.Monitor{}, MonitorErrInvalidInterval
 		}
 	}
 	m, err := s.repo.Update(ctx, id, userID, input)
