@@ -42,3 +42,19 @@ func TestLoadConfigSuccess(t *testing.T) {
 		t.Fatalf("expected DATABASE_URL, got %s", cfg.DatabaseURL)
 	}
 }
+
+func TestKafkaDefaults(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/test")
+	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("X_BEARER_TOKEN", "test-token")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.KafkaBrokers) == 0 || cfg.KafkaBrokers[0] != "localhost:9092" {
+		t.Fatalf("KafkaBrokers = %v, want [localhost:9092]", cfg.KafkaBrokers)
+	}
+	if cfg.KafkaConsumerGroup != "hotkey-workers" {
+		t.Fatalf("KafkaConsumerGroup = %q, want hotkey-workers", cfg.KafkaConsumerGroup)
+	}
+}
