@@ -444,3 +444,14 @@ create table dead_letter_records (
 );
 
 create index idx_dead_letter_created_at on dead_letter_records(created_at);
+
+-- pgvector extension for cosine similarity matching
+create extension if not exists vector;
+
+-- platform_posts: embedding vector for semantic matching
+alter table platform_posts add column if not exists embedding vector(384);
+create index if not exists idx_platform_posts_embedding on platform_posts
+  using ivfflat (embedding vector_cosine_ops) with (lists = 100);
+
+-- keyword_monitors: embedding vector for query text
+alter table keyword_monitors add column if not exists query_embedding vector(384);
