@@ -26,7 +26,7 @@ func SetupTestRouter(t *testing.T, db *gorm.DB) http.Handler {
 		JWTSecret:     TestJWTSecret,
 		SmokeTest:     false,
 		AuthService:   auth.NewService(gormimpl.NewUserRepo(db)),
-		MonitorSvc:    monitor.NewService(gormimpl.NewMonitorRepo(db)),
+		MonitorSvc:    monitor.NewService(gormimpl.NewMonitorRepo(db), nil),
 		NotifySvc:     notify.NewService(gormimpl.NewNotifyRepo(db)),
 		ReportSvc:     report.NewService(gormimpl.NewReportRepo(db), nil),
 		PostQuerySvc:  database.NewContentQueryService(db),

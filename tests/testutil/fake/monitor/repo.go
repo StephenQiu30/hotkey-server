@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
+	"github.com/StephenQiu30/hotkey-server/internal/pkg"
 )
 
 // Repo is an in-memory fake implementing monitor.Repository.
@@ -83,4 +84,13 @@ func (r *Repo) Update(_ context.Context, id int64, userID int64, input monitor.U
 		}
 	}
 	return monitor.Monitor{}, monitor.ErrNotFound
+}
+
+func (r *Repo) SetQueryEmbedding(_ context.Context, id int64, _ pkg.Vector384) error {
+	for i := range r.Monitors {
+		if r.Monitors[i].ID == id {
+			return nil
+		}
+	}
+	return monitor.ErrNotFound
 }

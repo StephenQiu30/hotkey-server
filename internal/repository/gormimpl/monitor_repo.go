@@ -113,6 +113,13 @@ func (r *MonitorRepo) Update(ctx context.Context, id int64, userID int64, input 
 	return *got, nil
 }
 
+// SetQueryEmbedding stores the embedding vector for a monitor's query text.
+func (r *MonitorRepo) SetQueryEmbedding(ctx context.Context, id int64, emb pkg.Vector384) error {
+	return r.db.WithContext(ctx).Model(&KeywordMonitor{}).
+		Where("id = ?", id).
+		Update("query_embedding", emb).Error
+}
+
 func toDomainMonitor(m KeywordMonitor) monitor.Monitor {
 	return monitor.Monitor{
 		ID:                   m.ID,

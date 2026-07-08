@@ -1,6 +1,10 @@
 package monitor
 
-import "context"
+import (
+	"context"
+
+	"github.com/StephenQiu30/hotkey-server/internal/pkg"
+)
 
 // Repository defines the persistence interface for monitor operations.
 type Repository interface {
@@ -18,4 +22,7 @@ type Repository interface {
 
 	// Update modifies an existing monitor owned by the given user.
 	Update(ctx context.Context, id int64, userID int64, input UpdateMonitorInput) (Monitor, error)
+
+	// SetQueryEmbedding stores the embedding vector for a monitor's query text.
+	SetQueryEmbedding(ctx context.Context, id int64, emb pkg.Vector384) error
 }

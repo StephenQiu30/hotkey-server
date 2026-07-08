@@ -132,7 +132,7 @@ func newTestHandlerWithReports(reports platformhttp.ReportService) http.Handler 
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
 		AuthService:   auth.NewService(&stubAuthRepo{}),
-		MonitorSvc:    monitor.NewService(&stubMonitorRepo{}),
+		MonitorSvc:    monitor.NewService(&stubMonitorRepo{}, nil),
 		NotifySvc:     notify.NewService(&stubNotifyRepo{}),
 		ReportSvc:     reports,
 		PostQuerySvc:  &stubPostQueryService{},

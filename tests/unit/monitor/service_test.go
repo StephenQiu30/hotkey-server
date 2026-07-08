@@ -11,7 +11,7 @@ import (
 
 func TestCreateMonitorRejectsInvalidInterval(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
-	svc := monitor.NewService(repo)
+	svc := monitor.NewService(repo, nil)
 	_, err := svc.Create(context.Background(), 1, monitor.CreateMonitorInput{
 		Name:                "AI",
 		QueryText:           "openai agent",
@@ -24,7 +24,7 @@ func TestCreateMonitorRejectsInvalidInterval(t *testing.T) {
 
 func TestCreateMonitorRejectsEmptyName(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
-	svc := monitor.NewService(repo)
+	svc := monitor.NewService(repo, nil)
 	_, err := svc.Create(context.Background(), 1, monitor.CreateMonitorInput{
 		Name:                "",
 		QueryText:           "openai",
@@ -37,7 +37,7 @@ func TestCreateMonitorRejectsEmptyName(t *testing.T) {
 
 func TestCreateMonitorRejectsEmptyQuery(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
-	svc := monitor.NewService(repo)
+	svc := monitor.NewService(repo, nil)
 	_, err := svc.Create(context.Background(), 1, monitor.CreateMonitorInput{
 		Name:                "AI",
 		QueryText:           "",
@@ -50,7 +50,7 @@ func TestCreateMonitorRejectsEmptyQuery(t *testing.T) {
 
 func TestCreateMonitorSuccess(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
-	svc := monitor.NewService(repo)
+	svc := monitor.NewService(repo, nil)
 	m, err := svc.Create(context.Background(), 1, monitor.CreateMonitorInput{
 		Name:                "AI News",
 		QueryText:           "openai agent",
@@ -72,7 +72,7 @@ func TestCreateMonitorSuccess(t *testing.T) {
 
 func TestListMonitorsByUser(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
-	svc := monitor.NewService(repo)
+	svc := monitor.NewService(repo, nil)
 	_, _ = svc.Create(context.Background(), 1, monitor.CreateMonitorInput{
 		Name: "M1", QueryText: "q1", PollIntervalMinutes: 5,
 	})
@@ -94,7 +94,7 @@ func TestListMonitorsByUser(t *testing.T) {
 
 func TestServiceListActive(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
-	svc := monitor.NewService(repo)
+	svc := monitor.NewService(repo, nil)
 	m1, _ := svc.Create(context.Background(), 1, monitor.CreateMonitorInput{
 		Name: "Active1", QueryText: "q1", PollIntervalMinutes: 5,
 	})
@@ -135,7 +135,7 @@ func TestServiceListActive(t *testing.T) {
 
 func TestUpdateMonitorStatus(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
-	svc := monitor.NewService(repo)
+	svc := monitor.NewService(repo, nil)
 	m, _ := svc.Create(context.Background(), 1, monitor.CreateMonitorInput{
 		Name: "AI", QueryText: "openai", PollIntervalMinutes: 10,
 	})
@@ -154,7 +154,7 @@ func TestUpdateMonitorStatus(t *testing.T) {
 
 func TestUpdateMonitorNotFound(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
-	svc := monitor.NewService(repo)
+	svc := monitor.NewService(repo, nil)
 	status := "paused"
 	_, err := svc.Update(context.Background(), 999, 1, monitor.UpdateMonitorInput{
 		Status: &status,

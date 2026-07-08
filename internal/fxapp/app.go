@@ -53,7 +53,7 @@ func NewApp() *fx.App {
 
 		// Business services
 		fx.Provide(auth.NewService),
-		fx.Provide(monitor.NewService),
+		fx.Provide(newMonitorService),
 		fx.Provide(notify.NewService),
 		fx.Provide(newReportService),
 		fx.Provide(fx.Annotate(hotevent.NewQueryService, fx.As(new(platformhttp.HotEventManager)))),
@@ -118,6 +118,10 @@ func NewHTTPServer(in HTTPServerIn) *http.Server {
 
 func newReportService(repo report.Repository) *report.Service {
 	return report.NewService(repo, time.Now)
+}
+
+func newMonitorService(repo monitor.Repository) *monitor.Service {
+	return monitor.NewService(repo, nil)
 }
 
 func newDailyObsidianPublishJob(cfg *config.Config, monitorSvc *monitor.Service, reportSvc *report.Service, exportRepo report.ExportRepository, runRepo worker.RunRepository) *worker.DailyObsidianPublishJob {
