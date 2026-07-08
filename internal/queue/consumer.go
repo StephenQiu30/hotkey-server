@@ -3,10 +3,12 @@ package queue
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"sync/atomic"
 
 	"github.com/segmentio/kafka-go"
+	"go.uber.org/zap"
+
+	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 )
 
 // Consumer reads messages from a Kafka topic and dispatches them.
@@ -40,27 +42,31 @@ func (c *Consumer) Run(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return nil // normal shutdown
 			}
-			log.Printf("consumer: fetch error: %v", err)
+			logging.L().Error("consumer fetch error", zap.Error(err))
 			continue
 		}
 
 		var msg Message
 		if err := json.Unmarshal(km.Value, &msg); err != nil {
-			log.Printf("consumer: unmarshal error (committing offset): %v", err)
+			logging.L().Error("consumer unmarshal error, committing offset", zap.Error(err))
 			if commitErr := c.reader.CommitMessages(ctx, km); commitErr != nil {
-				log.Printf("consumer: commit offset error after unmarshal failure: %v", commitErr)
+				logging.L().Error("consumer commit offset error after unmarshal failure", zap.Error(commitErr))
 			}
 			continue
 		}
 
 		// Dispatch
 		if err := c.dispatcher.Dispatch(ctx, msg); err != nil {
-			log.Printf("consumer: dispatch error for %s/%s: %v", msg.Type, msg.ID, err)
+			logging.L().Error("consumer dispatch error",
+				zap.String("msg_type", msg.Type),
+				zap.String("msg_id", msg.ID),
+				zap.Error(err),
+			)
 			// Still commit offset — already retried/DLQ'd inside dispatcher
 		}
 
 		if commitErr := c.reader.CommitMessages(ctx, km); commitErr != nil {
-			log.Printf("consumer: commit offset error: %v", commitErr)
+			logging.L().Error("consumer commit offset error", zap.Error(commitErr))
 		}
 	}
 }

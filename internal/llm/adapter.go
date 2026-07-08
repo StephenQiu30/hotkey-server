@@ -2,9 +2,11 @@ package llm
 
 import (
 	"context"
-	"log"
 
 	"github.com/tmc/langchaingo/llms"
+	"go.uber.org/zap"
+
+	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 )
 
 // langchainAdapter wraps a langchaingo llms.Model as a Provider.
@@ -33,7 +35,9 @@ func (a *langchainAdapter) Chat(ctx context.Context, prompt string, opts ...Opti
 
 	resp, err := llms.GenerateFromSinglePrompt(ctx, a.model, prompt, llmOpts...)
 	if err != nil {
-		log.Printf("llm provider error: %v", err)
+		logging.L().Error("llm provider error",
+			zap.Error(err),
+		)
 		return "", ErrProviderError
 	}
 	if resp == "" {

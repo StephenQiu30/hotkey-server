@@ -2,29 +2,31 @@ package config
 
 import (
 	"errors"
-	"log"
 
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
+
+	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 )
 
 // Config holds application configuration loaded from environment variables.
 type Config struct {
-	HTTPAddr    string `mapstructure:"HTTP_ADDR"`
-	DatabaseURL string `mapstructure:"DATABASE_URL"`
-	JWTSecret   string `mapstructure:"JWT_SECRET"`
-	XToken      string `mapstructure:"X_BEARER_TOKEN"`
-	XBaseURL    string `mapstructure:"X_BASE_URL"`
+	HTTPAddr           string   `mapstructure:"HTTP_ADDR"`
+	DatabaseURL        string   `mapstructure:"DATABASE_URL"`
+	JWTSecret          string   `mapstructure:"JWT_SECRET"`
+	XToken             string   `mapstructure:"X_BEARER_TOKEN"`
+	XBaseURL           string   `mapstructure:"X_BASE_URL"`
 	RedisAddr          string   `mapstructure:"REDIS_ADDR"`
 	KafkaBrokers       []string `mapstructure:"KAFKA_BROKERS"`
 	KafkaConsumerGroup string   `mapstructure:"KAFKA_CONSUMER_GROUP"`
 
 	SwaggerEnabled bool `mapstructure:"SWAGGER_ENABLED"`
 
-	ObsidianVaultPath  string `mapstructure:"OBSIDIAN_VAULT_PATH"`
-	DailyDigestTime    string `mapstructure:"DAILY_DIGEST_TIME"`
+	ObsidianVaultPath   string `mapstructure:"OBSIDIAN_VAULT_PATH"`
+	DailyDigestTime     string `mapstructure:"DAILY_DIGEST_TIME"`
 	DailyDigestTimezone string `mapstructure:"DAILY_DIGEST_TIMEZONE"`
-	DailyDigestTarget  string `mapstructure:"DAILY_DIGEST_TARGET"`
-	DailyDigestTopN    int    `mapstructure:"DAILY_DIGEST_TOP_N"`
+	DailyDigestTarget   string `mapstructure:"DAILY_DIGEST_TARGET"`
+	DailyDigestTopN     int    `mapstructure:"DAILY_DIGEST_TOP_N"`
 
 	LLMProvider    string  `mapstructure:"LLM_PROVIDER"`
 	LLMAPIKey      string  `mapstructure:"LLM_API_KEY"`
@@ -64,7 +66,9 @@ func Load() (Config, error) {
 	v.SetDefault("KAFKA_CONSUMER_GROUP", "hotkey-workers")
 
 	if err := v.ReadInConfig(); err != nil {
-		log.Printf("warning: failed to read .env config file: %v", err)
+		logging.L().Warn("failed to read .env config file",
+			zap.Error(err),
+		)
 	}
 
 	_ = v.BindEnv("DATABASE_URL")

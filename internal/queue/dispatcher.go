@@ -2,9 +2,12 @@ package queue
 
 import (
 	"context"
-	"log"
 	"sync"
 	"time"
+
+	"go.uber.org/zap"
+
+	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 )
 
 // Handler processes a single message. Each handler is registered for one message Type.
@@ -25,9 +28,9 @@ type HandlerFunc struct {
 	Fn      func(ctx context.Context, msg Message) error
 }
 
-func (h HandlerFunc) Type() string                           { return h.MsgType }
+func (h HandlerFunc) Type() string                                  { return h.MsgType }
 func (h HandlerFunc) Handle(ctx context.Context, msg Message) error { return h.Fn(ctx, msg) }
-func (h HandlerFunc) DedupeEnabled() bool                     { return false }
+func (h HandlerFunc) DedupeEnabled() bool                           { return false }
 
 // Dispatcher routes incoming messages to registered handlers.
 type Dispatcher struct {
@@ -56,7 +59,9 @@ func (d *Dispatcher) Register(h Handler) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if _, exists := d.handlers[h.Type()]; exists {
-		log.Panicf("dispatcher: handler for type %q already registered", h.Type())
+		logging.L().Panic("dispatcher handler already registered",
+			zap.String("type", h.Type()),
+		)
 	}
 	d.handlers[h.Type()] = h
 }
@@ -80,10 +85,17 @@ func (d *Dispatcher) Dispatch(ctx context.Context, msg Message) error {
 	if d.dedupe != nil && h.DedupeEnabled() {
 		seen, err := d.dedupe.Seen(ctx, msg.ID)
 		if err != nil {
-			log.Printf("dispatcher: dedup error for %s/%s: %v", msg.Type, msg.ID, err)
+			logging.Ctx(ctx).Error("dispatcher dedup error",
+				zap.String("msg_type", msg.Type),
+				zap.String("msg_id", msg.ID),
+				zap.Error(err),
+			)
 			// fall through
 		} else if seen {
-			log.Printf("dispatcher: skipping duplicate %s/%s", msg.Type, msg.ID)
+			logging.Ctx(ctx).Info("dispatcher skipping duplicate",
+				zap.String("msg_type", msg.Type),
+				zap.String("msg_id", msg.ID),
+			)
 			return nil
 		}
 	}
@@ -99,23 +111,43 @@ func (d *Dispatcher) Dispatch(ctx context.Context, msg Message) error {
 		// Re-publish to original topic for retry with delay
 		time.Sleep(1 * time.Second)
 		if d.producer == nil {
-			log.Printf("dispatcher: retry skipped for %s/%s (no producer configured)", msg.Type, msg.ID)
+			logging.Ctx(ctx).Warn("dispatcher retry skipped (no producer configured)",
+				zap.String("msg_type", msg.Type),
+				zap.String("msg_id", msg.ID),
+			)
 		} else if pubErr := d.producer.Publish(ctx, topicForType(msg.Type), msg); pubErr != nil {
-			log.Printf("dispatcher: retry publish failed for %s/%s: %v", msg.Type, msg.ID, pubErr)
+			logging.Ctx(ctx).Error("dispatcher retry publish failed",
+				zap.String("msg_type", msg.Type),
+				zap.String("msg_id", msg.ID),
+				zap.Error(pubErr),
+			)
 		}
 		return err
 	}
 
 	// Retries exhausted — publish to DLQ
 	dlqTopic := topicForDLQ(msg.Type)
-	log.Printf("dispatcher: routing %s/%s to DLQ %s after %d retries: %v", msg.Type, msg.ID, dlqTopic, msg.RetryCount, err)
+	logging.Ctx(ctx).Warn("dispatcher routing to DLQ",
+		zap.String("msg_type", msg.Type),
+		zap.String("msg_id", msg.ID),
+		zap.String("dlq_topic", dlqTopic),
+		zap.Int("retries", msg.RetryCount),
+		zap.Error(err),
+	)
 
 	if d.producer != nil {
 		if pubErr := d.producer.Publish(ctx, dlqTopic, msg); pubErr != nil {
-			log.Printf("dispatcher: DLQ publish failed for %s/%s: %v", msg.Type, msg.ID, pubErr)
+			logging.Ctx(ctx).Error("dispatcher DLQ publish failed",
+				zap.String("msg_type", msg.Type),
+				zap.String("msg_id", msg.ID),
+				zap.Error(pubErr),
+			)
 		}
 	} else {
-		log.Printf("dispatcher: DLQ publish skipped for %s/%s (no producer configured)", msg.Type, msg.ID)
+		logging.Ctx(ctx).Warn("dispatcher DLQ publish skipped (no producer configured)",
+			zap.String("msg_type", msg.Type),
+			zap.String("msg_id", msg.ID),
+		)
 	}
 
 	// Persist DLQ record to database

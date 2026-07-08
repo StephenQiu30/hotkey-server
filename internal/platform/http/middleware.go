@@ -5,15 +5,17 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"go.uber.org/zap"
 
 	platformruntime "github.com/StephenQiu30/hotkey-server/internal/platform/runtime"
+
+	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 )
 
 type contextKey string
@@ -58,7 +60,9 @@ func RecoverMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("panic recovered: %v", r)
+				logging.L().Error("panic recovered",
+					zap.Any("panic", r),
+				)
 				body, err := json.Marshal(newInternalErrorBody(requestIDFromContext(c)))
 				if err != nil {
 					body = []byte(`{"error":"internal server error","code":"internal_error"}`)
