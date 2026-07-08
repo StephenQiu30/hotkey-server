@@ -32,13 +32,11 @@ func WriteAtomicNoOverwrite(path string, content []byte) (WriteResult, error) {
 		return WriteResult{}, err
 	}
 
-	if _, err := os.Stat(path); err == nil {
-		return WriteResult{Path: path, Status: WriteStatusSkipped, Skipped: true}, nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return WriteResult{}, err
-	}
-
-	if err := os.Rename(tmpPath, path); err != nil {
+	// Use os.Link so that rename fails atomically when the target exists.
+	if err := os.Link(tmpPath, path); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return WriteResult{Path: path, Status: WriteStatusSkipped, Skipped: true}, nil
+		}
 		return WriteResult{}, err
 	}
 	return WriteResult{Path: path, Status: WriteStatusPublished}, nil

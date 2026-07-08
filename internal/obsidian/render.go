@@ -46,7 +46,7 @@ func frontmatter(kind string, input MarkdownInput, publishStatus string, tags []
 	b.WriteString(fmt.Sprintf("date: %s\n", input.Date.Format("2006-01-02")))
 	b.WriteString(fmt.Sprintf("report_id: %d\n", input.ReportID))
 	b.WriteString("report_type: daily\n")
-	b.WriteString(fmt.Sprintf("monitor: %s\n", input.MonitorName))
+	b.WriteString(fmt.Sprintf("monitor: %s\n", yamlQuote(input.MonitorName)))
 	b.WriteString(fmt.Sprintf("monitor_id: %d\n", input.MonitorID))
 	b.WriteString("source: hotkey-server\n")
 	b.WriteString(fmt.Sprintf("publish_status: %s\n", publishStatus))
@@ -62,4 +62,10 @@ func frontmatter(kind string, input MarkdownInput, publishStatus string, tags []
 	}
 	b.WriteString("---\n")
 	return b.String()
+}
+
+func yamlQuote(s string) string {
+	escaped := strings.ReplaceAll(s, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+	return `"` + escaped + `"`
 }

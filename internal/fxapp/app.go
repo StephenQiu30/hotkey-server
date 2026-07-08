@@ -162,7 +162,7 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 						if !shouldRun {
 							continue
 						}
-						if err := dailyJob.RunOnce(context.Background(), targetDate); err != nil {
+						if err := dailyJob.RunOnce(ctx, targetDate); err != nil {
 							log.Printf("daily obsidian publish failed: %v", err)
 						}
 					}
