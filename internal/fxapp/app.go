@@ -2,6 +2,8 @@ package fxapp
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -17,11 +19,14 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"github.com/StephenQiu30/hotkey-server/internal/queue"
 	"github.com/StephenQiu30/hotkey-server/internal/report"
 	"github.com/StephenQiu30/hotkey-server/internal/repository/gormimpl"
 	"github.com/StephenQiu30/hotkey-server/internal/topic"
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
 	"github.com/StephenQiu30/hotkey-server/internal/worker"
+	"github.com/redis/go-redis/v9"
+	"github.com/robfig/cron/v3"
 	"go.uber.org/fx"
 	"gorm.io/gorm"
 )
@@ -137,40 +142,61 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 				}()
 				return nil
 			}
+
+			// --- Kafka producer ---
+			producer := queue.NewProducer(cfg.KafkaBrokers)
+			lc.Append(fx.Hook{OnStop: func(context.Context) error { return producer.Close() }})
+
+			// --- Dispatcher ---
+			dispatcher := queue.NewDispatcher(producer)
+			dispatcher.Register(dailyJob)
+
+			// --- Redis dedupe ---
+			var dedupe *queue.Dedupe
+			if cfg.RedisAddr != "" {
+				rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+				_ = rdb.Ping(ctx).Err() // best-effort
+				dedupe = queue.NewDedupe(rdb)
+			}
+
+			// --- Kafka consumer ---
+			consumer := queue.NewConsumer(
+				cfg.KafkaBrokers,
+				queue.TopicDigestRun,
+				cfg.KafkaConsumerGroup,
+				dispatcher,
+				dedupe,
+			)
 			go func() {
-				log.Printf("worker: started")
-				<-ctx.Done()
-				log.Printf("worker: stopped")
-			}()
-			go func() {
-				ticker := time.NewTicker(time.Minute)
-				defer ticker.Stop()
-				var lastRun *time.Time
-				for {
-					select {
-					case <-ctx.Done():
-						return
-					case now := <-ticker.C:
-						shouldRun, targetDate, err := worker.ShouldRun(now, lastRun, worker.DailyScheduleConfig{
-							Time:     cfg.DailyDigestTime,
-							Timezone: cfg.DailyDigestTimezone,
-							Target:   cfg.DailyDigestTarget,
-						})
-						if err != nil {
-							log.Printf("daily obsidian scheduler error: %v", err)
-							continue
-						}
-						if !shouldRun {
-							continue
-						}
-						if err := dailyJob.RunOnce(ctx, targetDate); err != nil {
-							log.Printf("daily obsidian publish failed: %v", err)
-						} else {
-							lastRun = &targetDate
-						}
-					}
+				log.Printf("kafka consumer: starting on %s", queue.TopicDigestRun)
+				if err := consumer.Run(ctx); err != nil && err != queue.ErrConsumerClosed {
+					log.Printf("kafka consumer error: %v", err)
 				}
 			}()
+
+			// --- Cron scheduler ---
+			loc, err := time.LoadLocation(cfg.DailyDigestTimezone)
+			if err != nil {
+				return fmt.Errorf("cron: load location %q: %w", cfg.DailyDigestTimezone, err)
+			}
+			c := cron.New(cron.WithLocation(loc))
+			_, err = c.AddFunc("0 8 * * *", func() {
+				now := time.Now().In(loc)
+				payload, _ := json.Marshal(map[string]string{
+					"target_date": now.AddDate(0, 0, -1).Format("2006-01-02"),
+				})
+				if pubErr := producer.Publish(context.Background(), queue.TopicDigestRun, queue.NewMessage("digest.run", payload)); pubErr != nil {
+					log.Printf("cron: publish digest error: %v", pubErr)
+				}
+			})
+			if err != nil {
+				return fmt.Errorf("cron: add func: %w", err)
+			}
+			c.Start()
+			lc.Append(fx.Hook{OnStop: func(context.Context) error { c.Stop(); return nil }})
+
+			log.Printf("worker: started (cron + kafka)")
+
 			go func() {
 				if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 					log.Printf("http server error: %v", err)
