@@ -32,6 +32,10 @@ type Config struct {
 	LLMModel       string  `mapstructure:"LLM_MODEL"`
 	LLMMaxTokens   int     `mapstructure:"LLM_MAX_TOKENS"`
 	LLMTemperature float64 `mapstructure:"LLM_TEMPERATURE"`
+
+	LogLevel  string `mapstructure:"LOG_LEVEL"`
+	LogFormat string `mapstructure:"LOG_FORMAT"`
+	LogOutput string `mapstructure:"LOG_OUTPUT"`
 }
 
 // Load reads configuration from .env file and environment variables using Viper.
@@ -52,6 +56,9 @@ func Load() (Config, error) {
 	v.SetDefault("LLM_MODEL", "gpt-4o-mini")
 	v.SetDefault("LLM_MAX_TOKENS", 4096)
 	v.SetDefault("LLM_TEMPERATURE", 0.7)
+	v.SetDefault("LOG_LEVEL", "info")
+	v.SetDefault("LOG_FORMAT", "json")
+	v.SetDefault("LOG_OUTPUT", "stdout")
 	v.SetDefault("REDIS_ADDR", "localhost:6379")
 	v.SetDefault("KAFKA_BROKERS", []string{"localhost:9092"})
 	v.SetDefault("KAFKA_CONSUMER_GROUP", "hotkey-workers")
@@ -76,6 +83,9 @@ func Load() (Config, error) {
 	_ = v.BindEnv("LLM_MODEL")
 	_ = v.BindEnv("LLM_MAX_TOKENS")
 	_ = v.BindEnv("LLM_TEMPERATURE")
+	_ = v.BindEnv("LOG_LEVEL")
+	_ = v.BindEnv("LOG_FORMAT")
+	_ = v.BindEnv("LOG_OUTPUT")
 	_ = v.BindEnv("KAFKA_BROKERS")
 	_ = v.BindEnv("KAFKA_CONSUMER_GROUP")
 
