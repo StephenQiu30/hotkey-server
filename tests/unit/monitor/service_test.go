@@ -92,6 +92,47 @@ func TestListMonitorsByUser(t *testing.T) {
 	}
 }
 
+func TestServiceListActive(t *testing.T) {
+	repo := &fakemonitor.Repo{NextID: 1}
+	svc := monitor.NewService(repo)
+	m1, _ := svc.Create(context.Background(), 1, monitor.CreateMonitorInput{
+		Name: "Active1", QueryText: "q1", PollIntervalMinutes: 5,
+	})
+	_, _ = svc.Create(context.Background(), 1, monitor.CreateMonitorInput{
+		Name: "Active2", QueryText: "q2", PollIntervalMinutes: 10,
+	})
+	_, _ = svc.Create(context.Background(), 2, monitor.CreateMonitorInput{
+		Name: "OtherUser", QueryText: "q3", PollIntervalMinutes: 15,
+	})
+
+	got, err := svc.ListActive(context.Background())
+	if err != nil {
+		t.Fatalf("ListActive returned error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("expected 3 active monitors (all are active by default), got %d", len(got))
+	}
+
+	status := "paused"
+	_, _ = svc.Update(context.Background(), m1.ID, 1, monitor.UpdateMonitorInput{
+		Status: &status,
+	})
+
+	got, err = svc.ListActive(context.Background())
+	if err != nil {
+		t.Fatalf("ListActive returned error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 active monitors after pausing one, got %d", len(got))
+	}
+	if got[0].Name != "Active2" && got[1].Name != "Active2" {
+		t.Fatalf("expected Active2 to be among active monitors, got %+v", got)
+	}
+	if got[0].Name != "OtherUser" && got[1].Name != "OtherUser" {
+		t.Fatalf("expected OtherUser to be among active monitors, got %+v", got)
+	}
+}
+
 func TestUpdateMonitorStatus(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
 	svc := monitor.NewService(repo)

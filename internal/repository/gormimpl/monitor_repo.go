@@ -58,6 +58,18 @@ func (r *MonitorRepo) ListByUser(ctx context.Context, userID int64) ([]monitor.M
 	return result, nil
 }
 
+func (r *MonitorRepo) ListActive(ctx context.Context) ([]monitor.Monitor, error) {
+	var models []KeywordMonitor
+	if err := r.db.WithContext(ctx).Where("status = ?", "active").Order("id ASC").Find(&models).Error; err != nil {
+		return nil, err
+	}
+	out := make([]monitor.Monitor, len(models))
+	for i, model := range models {
+		out[i] = toDomainMonitor(model)
+	}
+	return out, nil
+}
+
 func (r *MonitorRepo) Update(ctx context.Context, id int64, userID int64, input monitor.UpdateMonitorInput) (monitor.Monitor, error) {
 	updates := make(map[string]any)
 	if input.Name != nil {

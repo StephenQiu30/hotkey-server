@@ -64,6 +64,9 @@ func (r *stubMonitorRepo) ListByUser(_ context.Context, _ int64) ([]monitor.Moni
 func (r *stubMonitorRepo) Update(_ context.Context, _ int64, _ int64, _ monitor.UpdateMonitorInput) (monitor.Monitor, error) {
 	return monitor.Monitor{}, monitor.ErrNotFound
 }
+func (r *stubMonitorRepo) ListActive(_ context.Context) ([]monitor.Monitor, error) {
+	return []monitor.Monitor{{ID: 1, UserID: 1, Name: "test", Status: "active"}}, nil
+}
 
 type stubNotifyRepo struct{}
 
