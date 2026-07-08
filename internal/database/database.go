@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -14,7 +15,9 @@ func Open(databaseURL string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("ensure database ready: %w", err)
 	}
 
-	db, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{
+		Logger: &ZapGormLogger{SlowThreshold: 200 * time.Millisecond},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("open gorm db: %w", err)
 	}
