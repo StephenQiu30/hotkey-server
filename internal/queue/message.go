@@ -18,11 +18,13 @@ const (
 	TopicDigestRun  = "hotkey.digest.run"
 	TopicCollectRun = "hotkey.collect.run"
 	TopicNotifyRun  = "hotkey.notify.run"
+	TopicHourlyRun  = "hotkey.hourly.run"
 
 	// DLQ topic names
 	TopicDigestRunDLQ  = "hotkey.digest.run.dlq"
 	TopicCollectRunDLQ = "hotkey.collect.run.dlq"
 	TopicNotifyRunDLQ  = "hotkey.notify.run.dlq"
+	TopicHourlyRunDLQ  = "hotkey.hourly.run.dlq"
 
 	// DLQ config
 	MaxRetries = 3

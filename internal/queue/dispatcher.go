@@ -174,6 +174,8 @@ func topicForType(msgType string) string {
 	switch msgType {
 	case "digest.run":
 		return TopicDigestRun
+	case "hourly.run":
+		return TopicHourlyRun
 	default:
 		return msgType
 	}
@@ -183,6 +185,8 @@ func topicForDLQ(msgType string) string {
 	switch msgType {
 	case "digest.run":
 		return TopicDigestRunDLQ
+	case "hourly.run":
+		return TopicHourlyRunDLQ
 	default:
 		return msgType + ".dlq"
 	}
