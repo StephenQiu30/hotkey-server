@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/StephenQiu30/hotkey-server/internal/embedding"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
 type mockModel struct{}
@@ -20,7 +20,7 @@ func (m *mockModel) Embed(tokenIDs []int64) ([384]float32, error) {
 func (m *mockModel) Close() error { return nil }
 
 func TestEmbeddingService(t *testing.T) {
-	svc := embedding.NewServiceWithTokenizer(&mockModel{})
+	svc := service.NewEmbeddingServiceWithTokenizer(&mockModel{})
 	v, err := svc.Embed(context.Background(), "hello world")
 	if err != nil {
 		t.Fatalf("Embed failed: %v", err)
@@ -28,7 +28,6 @@ func TestEmbeddingService(t *testing.T) {
 	if v.Dim() != 384 {
 		t.Errorf("expected dim 384, got %d", v.Dim())
 	}
-	// L2-normalized output should have unit norm
 	var sum float64
 	for _, f := range v {
 		sum += float64(f) * float64(f)
@@ -39,7 +38,7 @@ func TestEmbeddingService(t *testing.T) {
 }
 
 func TestEmbeddingBatch(t *testing.T) {
-	svc := embedding.NewServiceWithTokenizer(&mockModel{})
+	svc := service.NewEmbeddingServiceWithTokenizer(&mockModel{})
 	texts := []string{"a", "b", "c"}
 	vecs, err := svc.EmbedBatch(context.Background(), texts)
 	if err != nil {

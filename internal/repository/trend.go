@@ -3,11 +3,11 @@ package repository
 import (
 	"time"
 
-	"github.com/StephenQiu30/hotkey-server/internal/trend"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 	"gorm.io/gorm"
 )
 
-// TrendQueryService implements trend.TrendQueryService using PostgreSQL via GORM.
+// TrendQueryService implements service.TrendQueryService using PostgreSQL via GORM.
 type TrendQueryService struct {
 	db *gorm.DB
 }
@@ -17,7 +17,7 @@ func NewTrendQueryService(db *gorm.DB) *TrendQueryService {
 	return &TrendQueryService{db: db}
 }
 
-func (s *TrendQueryService) GetTopicTrends(topicID int64, since time.Time) ([]trend.TrendPoint, error) {
+func (s *TrendQueryService) GetTopicTrends(topicID int64, since time.Time) ([]service.TrendPoint, error) {
 	rows, err := s.db.Raw(
 		`SELECT snapshot_time, heat_score, trend_velocity,
 		        CASE WHEN trend_velocity > 0.05 THEN 'rising'
@@ -33,9 +33,9 @@ func (s *TrendQueryService) GetTopicTrends(topicID int64, since time.Time) ([]tr
 	}
 	defer rows.Close()
 
-	var points []trend.TrendPoint
+	var points []service.TrendPoint
 	for rows.Next() {
-		var p trend.TrendPoint
+		var p service.TrendPoint
 		if err := rows.Scan(&p.Time, &p.HeatScore, &p.TrendVelocity, &p.TrendDirection); err != nil {
 			return nil, err
 		}
@@ -44,7 +44,7 @@ func (s *TrendQueryService) GetTopicTrends(topicID int64, since time.Time) ([]tr
 	return points, rows.Err()
 }
 
-func (s *TrendQueryService) GetMonitorTrends(monitorID int64, since time.Time) ([]trend.TrendPoint, error) {
+func (s *TrendQueryService) GetMonitorTrends(monitorID int64, since time.Time) ([]service.TrendPoint, error) {
 	rows, err := s.db.Raw(
 		`SELECT snapshot_time, 0 AS heat_score, 0 AS trend_velocity, 'flat' AS trend_direction
 		 FROM monitor_snapshots
@@ -57,9 +57,9 @@ func (s *TrendQueryService) GetMonitorTrends(monitorID int64, since time.Time) (
 	}
 	defer rows.Close()
 
-	var points []trend.TrendPoint
+	var points []service.TrendPoint
 	for rows.Next() {
-		var p trend.TrendPoint
+		var p service.TrendPoint
 		if err := rows.Scan(&p.Time, &p.HeatScore, &p.TrendVelocity, &p.TrendDirection); err != nil {
 			return nil, err
 		}

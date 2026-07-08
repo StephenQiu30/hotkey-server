@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
-	"github.com/StephenQiu30/hotkey-server/internal/notify"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
-// Repo is an in-memory fake implementing notify.Repository.
+// Repo is an in-memory fake implementing service.NotifyRepository.
 type Repo struct {
 	Notifications []dto.Notification
 	nextID        int64
@@ -32,14 +32,14 @@ func (r *Repo) MarkRead(_ context.Context, userID, notificationID int64) error {
 	for i := range r.Notifications {
 		if r.Notifications[i].ID == notificationID {
 			if r.Notifications[i].UserID != userID {
-				return notify.ErrNotOwned
+				return service.ErrNotOwned
 			}
 			now := time.Now()
 			r.Notifications[i].ReadAt = &now
 			return nil
 		}
 	}
-	return notify.ErrNotFound
+	return service.NotifyErrNotFound
 }
 
 func (r *Repo) Create(_ context.Context, n dto.Notification) (dto.Notification, error) {

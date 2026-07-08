@@ -7,11 +7,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/StephenQiu30/hotkey-server/internal/auth"
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
-func RegisterAuthRoutes(r *gin.Engine, svc *auth.Service, jwtSecret string) {
+func RegisterAuthRoutes(r *gin.Engine, svc *service.AuthService, jwtSecret string) {
 	r.POST("/api/v1/auth/register", registerHandler(svc))
 	r.POST("/api/v1/auth/login", loginHandler(svc, jwtSecret))
 }
@@ -41,7 +41,7 @@ type LoginData struct {
 // @Failure 409 {object} ErrorBody
 // @Failure 500 {object} ErrorBody
 // @Router /api/v1/auth/register [post]
-func registerHandler(svc *auth.Service) gin.HandlerFunc {
+func registerHandler(svc *service.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body RegisterRequest
 		if err := c.ShouldBindJSON(&body); err != nil {
@@ -56,9 +56,9 @@ func registerHandler(svc *auth.Service) gin.HandlerFunc {
 		})
 		if err != nil {
 			switch {
-			case err == auth.ErrEmailExists:
+			case err == service.ErrEmailExists:
 				respondError(c, http.StatusConflict, "email already registered")
-			case err == auth.ErrInvalidInput:
+			case err == service.AuthErrInvalidInput:
 				respondError(c, http.StatusBadRequest, "invalid input")
 			default:
 				respondInternalError(c)
@@ -82,7 +82,7 @@ func registerHandler(svc *auth.Service) gin.HandlerFunc {
 // @Failure 401 {object} ErrorBody
 // @Failure 500 {object} ErrorBody
 // @Router /api/v1/auth/login [post]
-func loginHandler(svc *auth.Service, jwtSecret string) gin.HandlerFunc {
+func loginHandler(svc *service.AuthService, jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body LoginRequest
 		if err := c.ShouldBindJSON(&body); err != nil {
@@ -96,7 +96,7 @@ func loginHandler(svc *auth.Service, jwtSecret string) gin.HandlerFunc {
 		})
 		if err != nil {
 			switch {
-			case err == auth.ErrInvalidCredentials:
+			case err == service.ErrInvalidCredentials:
 				respondError(c, http.StatusUnauthorized, "invalid credentials")
 			default:
 				respondInternalError(c)

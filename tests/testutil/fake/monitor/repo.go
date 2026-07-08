@@ -5,11 +5,11 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
-	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/pkg"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
-// Repo is an in-memory fake implementing monitor.Repository.
+// Repo is an in-memory fake implementing service.MonitorRepository.
 type Repo struct {
 	Monitors []dto.Monitor
 	NextID   int64
@@ -84,7 +84,7 @@ func (r *Repo) Update(_ context.Context, id int64, userID int64, input dto.Updat
 			return r.Monitors[i], nil
 		}
 	}
-	return dto.Monitor{}, monitor.ErrNotFound
+	return dto.Monitor{}, service.MonitorErrNotFound
 }
 
 func (r *Repo) SetQueryEmbedding(_ context.Context, id int64, _ pkg.Vector384) error {
@@ -93,5 +93,5 @@ func (r *Repo) SetQueryEmbedding(_ context.Context, id int64, _ pkg.Vector384) e
 			return nil
 		}
 	}
-	return monitor.ErrNotFound
+	return service.MonitorErrNotFound
 }

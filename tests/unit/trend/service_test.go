@@ -4,60 +4,60 @@ import (
 	"testing"
 	"time"
 
-	"github.com/StephenQiu30/hotkey-server/internal/trend"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
 func TestComputeVelocityPositiveGrowth(t *testing.T) {
-	velocity := trend.ComputeVelocity(160, 100)
+	velocity := service.ComputeVelocity(160, 100)
 	if velocity <= 0 {
 		t.Fatalf("expected positive velocity for growth, got %f", velocity)
 	}
 }
 
 func TestComputeVelocityDecline(t *testing.T) {
-	velocity := trend.ComputeVelocity(50, 100)
+	velocity := service.ComputeVelocity(50, 100)
 	if velocity >= 0 {
 		t.Fatalf("expected negative velocity for decline, got %f", velocity)
 	}
 }
 
 func TestComputeVelocityFlat(t *testing.T) {
-	velocity := trend.ComputeVelocity(100, 100)
+	velocity := service.ComputeVelocity(100, 100)
 	if velocity != 0 {
 		t.Fatalf("expected zero velocity for flat, got %f", velocity)
 	}
 }
 
 func TestComputeVelocityZeroPrevious(t *testing.T) {
-	velocity := trend.ComputeVelocity(100, 0)
+	velocity := service.ComputeVelocity(100, 0)
 	if velocity <= 0 {
 		t.Fatalf("expected positive velocity when previous is 0, got %f", velocity)
 	}
 }
 
 func TestDetermineTrendDirectionRising(t *testing.T) {
-	dir := trend.DetermineTrendDirection(0.5)
+	dir := service.DetermineTrendDirection(0.5)
 	if dir != "rising" {
 		t.Fatalf("expected 'rising', got '%s'", dir)
 	}
 }
 
 func TestDetermineTrendDirectionFalling(t *testing.T) {
-	dir := trend.DetermineTrendDirection(-0.3)
+	dir := service.DetermineTrendDirection(-0.3)
 	if dir != "falling" {
 		t.Fatalf("expected 'falling', got '%s'", dir)
 	}
 }
 
 func TestDetermineTrendDirectionFlat(t *testing.T) {
-	dir := trend.DetermineTrendDirection(0.01)
+	dir := service.DetermineTrendDirection(0.01)
 	if dir != "flat" {
 		t.Fatalf("expected 'flat', got '%s'", dir)
 	}
 }
 
 func TestBuildTopicSnapshot(t *testing.T) {
-	snap := trend.BuildTopicSnapshot(trend.TopicSnapshotInput{
+	snap := service.BuildTopicSnapshot(service.TopicSnapshotInput{
 		TopicID:           1,
 		PostCount:         10,
 		UniqueAuthorCount: 5,
@@ -75,7 +75,7 @@ func TestBuildTopicSnapshot(t *testing.T) {
 }
 
 func TestBuildMonitorSnapshot(t *testing.T) {
-	snap := trend.BuildMonitorSnapshot(trend.MonitorSnapshotInput{
+	snap := service.BuildMonitorSnapshot(service.MonitorSnapshotInput{
 		MonitorID:        10,
 		NewPostCount:     25,
 		ActiveTopicCount: 3,

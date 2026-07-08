@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
-	"github.com/StephenQiu30/hotkey-server/internal/monitor"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
 // MonitorGetter fetches a monitor by ID for ownership checks.
@@ -16,7 +16,7 @@ type MonitorGetter interface {
 	GetByID(ctx context.Context, id int64) (dto.Monitor, error)
 }
 
-func RegisterMonitorRoutes(r *gin.Engine, svc *monitor.Service) {
+func RegisterMonitorRoutes(r *gin.Engine, svc *service.MonitorService) {
 	r.GET("/api/v1/monitors", listMonitorsHandler(svc))
 	r.POST("/api/v1/monitors", createMonitorHandler(svc))
 	r.GET("/api/v1/monitors/:id", getMonitorHandler(svc))
@@ -54,7 +54,7 @@ func monitorToResponse(m dto.Monitor) MonitorData {
 // @Failure 401 {object} ErrorBody
 // @Failure 500 {object} ErrorBody
 // @Router /api/v1/monitors [get]
-func listMonitorsHandler(svc *monitor.Service) gin.HandlerFunc {
+func listMonitorsHandler(svc *service.MonitorService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
@@ -89,7 +89,7 @@ func listMonitorsHandler(svc *monitor.Service) gin.HandlerFunc {
 // @Failure 401 {object} ErrorBody
 // @Failure 500 {object} ErrorBody
 // @Router /api/v1/monitors [post]
-func createMonitorHandler(svc *monitor.Service) gin.HandlerFunc {
+func createMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
@@ -113,7 +113,7 @@ func createMonitorHandler(svc *monitor.Service) gin.HandlerFunc {
 		})
 		if err != nil {
 			switch {
-			case err == monitor.ErrInvalidInterval || err == monitor.ErrInvalidInput:
+			case err == service.ErrInvalidInterval || err == service.MonitorErrInvalidInput:
 				respondError(c, http.StatusBadRequest, err.Error())
 			default:
 				respondInternalError(c)
@@ -139,7 +139,7 @@ func createMonitorHandler(svc *monitor.Service) gin.HandlerFunc {
 // @Failure 404 {object} ErrorBody
 // @Failure 500 {object} ErrorBody
 // @Router /api/v1/monitors/{id} [get]
-func getMonitorHandler(svc *monitor.Service) gin.HandlerFunc {
+func getMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
@@ -156,7 +156,7 @@ func getMonitorHandler(svc *monitor.Service) gin.HandlerFunc {
 		m, err := svc.GetByID(c.Request.Context(), id)
 		if err != nil {
 			switch {
-			case err == monitor.ErrNotFound:
+			case err == service.MonitorErrNotFound:
 				respondError(c, http.StatusNotFound, "monitor not found")
 			default:
 				respondInternalError(c)
@@ -188,7 +188,7 @@ func getMonitorHandler(svc *monitor.Service) gin.HandlerFunc {
 // @Failure 404 {object} ErrorBody
 // @Failure 500 {object} ErrorBody
 // @Router /api/v1/monitors/{id} [patch]
-func updateMonitorHandler(svc *monitor.Service) gin.HandlerFunc {
+func updateMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
@@ -205,7 +205,7 @@ func updateMonitorHandler(svc *monitor.Service) gin.HandlerFunc {
 		m, err := svc.GetByID(c.Request.Context(), id)
 		if err != nil {
 			switch {
-			case err == monitor.ErrNotFound:
+			case err == service.MonitorErrNotFound:
 				respondError(c, http.StatusNotFound, "monitor not found")
 			default:
 				respondInternalError(c)
@@ -234,7 +234,7 @@ func updateMonitorHandler(svc *monitor.Service) gin.HandlerFunc {
 		})
 		if err != nil {
 			switch {
-			case err == monitor.ErrInvalidInterval:
+			case err == service.ErrInvalidInterval:
 				respondError(c, http.StatusBadRequest, err.Error())
 			default:
 				respondInternalError(c)

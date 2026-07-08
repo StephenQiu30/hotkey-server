@@ -8,10 +8,10 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
-	"github.com/StephenQiu30/hotkey-server/internal/notify"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
-func RegisterNotifyRoutes(r *gin.Engine, svc *notify.Service) {
+func RegisterNotifyRoutes(r *gin.Engine, svc *service.NotifyService) {
 	r.GET("/api/v1/notifications", listNotificationsHandler(svc))
 	r.POST("/api/v1/notifications/:id/read", markNotificationReadHandler(svc))
 }
@@ -49,7 +49,7 @@ func toNotificationResponse(n dto.Notification) NotificationData {
 // @Failure 401 {object} ErrorBody
 // @Failure 500 {object} ErrorBody
 // @Router /api/v1/notifications [get]
-func listNotificationsHandler(svc *notify.Service) gin.HandlerFunc {
+func listNotificationsHandler(svc *service.NotifyService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
@@ -85,7 +85,7 @@ func listNotificationsHandler(svc *notify.Service) gin.HandlerFunc {
 // @Failure 404 {object} ErrorBody
 // @Failure 500 {object} ErrorBody
 // @Router /api/v1/notifications/{id}/read [post]
-func markNotificationReadHandler(svc *notify.Service) gin.HandlerFunc {
+func markNotificationReadHandler(svc *service.NotifyService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
@@ -100,7 +100,7 @@ func markNotificationReadHandler(svc *notify.Service) gin.HandlerFunc {
 		}
 
 		if err := svc.MarkRead(c.Request.Context(), userID, id); err != nil {
-			if err == notify.ErrNotFound || err == notify.ErrNotOwned {
+			if err == service.NotifyErrNotFound || err == service.ErrNotOwned {
 				respondError(c, http.StatusNotFound, err.Error())
 				return
 			}

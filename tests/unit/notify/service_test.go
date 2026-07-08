@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
-	"github.com/StephenQiu30/hotkey-server/internal/notify"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 	fakenotify "github.com/StephenQiu30/hotkey-server/tests/testutil/fake/notify"
 )
 
@@ -19,7 +19,7 @@ func TestListUnreadNotificationsReturnsNewestFirst(t *testing.T) {
 			{ID: 3, UserID: 1, AlertID: 12, Channel: "in_app", DeliveryStatus: "sent", CreatedAt: now},
 		},
 	}
-	svc := notify.NewService(repo)
+	svc := service.NewNotifyService(repo)
 	items, err := svc.ListUnread(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -45,7 +45,7 @@ func TestListUnreadExcludesReadNotifications(t *testing.T) {
 			{ID: 2, UserID: 1, AlertID: 11, Channel: "in_app", DeliveryStatus: "sent", ReadAt: &readAt, CreatedAt: now},
 		},
 	}
-	svc := notify.NewService(repo)
+	svc := service.NewNotifyService(repo)
 	items, err := svc.ListUnread(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -66,7 +66,7 @@ func TestListUnreadExcludesOtherUsers(t *testing.T) {
 			{ID: 2, UserID: 2, AlertID: 11, Channel: "in_app", DeliveryStatus: "sent", CreatedAt: now},
 		},
 	}
-	svc := notify.NewService(repo)
+	svc := service.NewNotifyService(repo)
 	items, err := svc.ListUnread(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -82,7 +82,7 @@ func TestMarkReadSetsReadAt(t *testing.T) {
 			{ID: 1, UserID: 1, AlertID: 10, Channel: "in_app", DeliveryStatus: "sent"},
 		},
 	}
-	svc := notify.NewService(repo)
+	svc := service.NewNotifyService(repo)
 	err := svc.MarkRead(context.Background(), 1, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -98,7 +98,7 @@ func TestMarkReadRejectsWrongUser(t *testing.T) {
 			{ID: 1, UserID: 1, AlertID: 10, Channel: "in_app", DeliveryStatus: "sent"},
 		},
 	}
-	svc := notify.NewService(repo)
+	svc := service.NewNotifyService(repo)
 	err := svc.MarkRead(context.Background(), 99, 1)
 	if err == nil {
 		t.Fatal("expected error for wrong user")

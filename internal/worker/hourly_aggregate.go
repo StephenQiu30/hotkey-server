@@ -6,13 +6,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/StephenQiu30/hotkey-server/internal/hotevent"
 	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
 	"github.com/StephenQiu30/hotkey-server/internal/repository"
-	"github.com/StephenQiu30/hotkey-server/internal/topic"
-	"github.com/StephenQiu30/hotkey-server/internal/trend"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -27,7 +25,7 @@ type HourlyAggregateDeps struct {
 	Now            func() time.Time
 }
 
-// HourlyAggregateJob runs topic clustering → hot event aggregation → snapshots hourly.
+// HourlyAggregateJob runs topic clustering -> hot event aggregation -> snapshots hourly.
 type HourlyAggregateJob struct {
 	deps HourlyAggregateDeps
 }
@@ -97,7 +95,6 @@ func (j *HourlyAggregateJob) clusterPosts(ctx context.Context, since time.Time) 
 		return nil
 	}
 
-	// Collect unique post IDs
 	postIDSet := make(map[int64]struct{})
 	monitorIDByPost := make(map[int64]int64)
 	for _, h := range hits {
@@ -109,7 +106,6 @@ func (j *HourlyAggregateJob) clusterPosts(ctx context.Context, since time.Time) 
 		postIDs = append(postIDs, id)
 	}
 
-	// Load post content text
 	type postRecord struct {
 		ID          int64
 		ContentText string
@@ -123,15 +119,15 @@ func (j *HourlyAggregateJob) clusterPosts(ctx context.Context, since time.Time) 
 		return fmt.Errorf("load posts: %w", err)
 	}
 
-	candidates := make([]topic.CandidatePost, len(posts))
+	candidates := make([]service.CandidatePost, len(posts))
 	for i, p := range posts {
-		candidates[i] = topic.CandidatePost{
+		candidates[i] = service.CandidatePost{
 			PostID: p.ID,
-			Tokens: topic.ExtractTokens(p.ContentText),
+			Tokens: service.ExtractTokens(p.ContentText),
 		}
 	}
 
-	clustered := topic.Cluster(candidates)
+	clustered := service.Cluster(candidates)
 	logging.L().Info("topic clustering completed", zap.Int("clusters", len(clustered)))
 
 	for _, c := range clustered {
@@ -180,8 +176,8 @@ func (j *HourlyAggregateJob) aggregateHotEvents(ctx context.Context) error {
 	}
 
 	for _, t := range topics {
-		heat := hotevent.ComputeHeatScore("x", []float64{t.CurrentHeatScore}, time.Now())
-		direction := hotevent.DetermineTrend(heat, t.CurrentHeatScore)
+		heat := service.ComputeHeatScore("x", []float64{t.CurrentHeatScore}, time.Now())
+		direction := service.DetermineTrend(heat, t.CurrentHeatScore)
 
 		event := entity.HotEvent{
 			Name:        t.Title,
@@ -190,7 +186,7 @@ func (j *HourlyAggregateJob) aggregateHotEvents(ctx context.Context) error {
 			Trend:       direction,
 			FirstSeenAt: time.Now(),
 			LastSeenAt:  time.Now(),
-			Status:      hotevent.StatusActive,
+			Status:      service.StatusActive,
 		}
 		if err := j.deps.DB.WithContext(ctx).Create(&event).Error; err != nil {
 			return fmt.Errorf("create hot event: %w", err)
@@ -224,7 +220,7 @@ func (j *HourlyAggregateJob) snapshotTrends(ctx context.Context) error {
 		if prev != nil {
 			prevHeat = prev.HeatScore
 		}
-		snap := trend.BuildTopicSnapshot(trend.TopicSnapshotInput{
+		snap := service.BuildTopicSnapshot(service.TopicSnapshotInput{
 			TopicID:      th.ID,
 			SnapshotTime: now,
 			HeatScore:    th.CurrentHeatScore,
@@ -249,7 +245,7 @@ func (j *HourlyAggregateJob) snapshotTrends(ctx context.Context) error {
 		return fmt.Errorf("list monitors for snapshot: %w", err)
 	}
 	for _, mid := range monitorIDs {
-		snap := trend.BuildMonitorSnapshot(trend.MonitorSnapshotInput{
+		snap := service.BuildMonitorSnapshot(service.MonitorSnapshotInput{
 			MonitorID:   mid,
 			SnapshotTime: now,
 		})

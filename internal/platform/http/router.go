@@ -6,12 +6,8 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 
 	_ "github.com/StephenQiu30/hotkey-server/docs"
-	"github.com/StephenQiu30/hotkey-server/internal/auth"
 	"github.com/StephenQiu30/hotkey-server/internal/content"
-	"github.com/StephenQiu30/hotkey-server/internal/monitor"
-	"github.com/StephenQiu30/hotkey-server/internal/notify"
-	"github.com/StephenQiu30/hotkey-server/internal/topic"
-	"github.com/StephenQiu30/hotkey-server/internal/trend"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
 // Config holds all dependencies for the Gin HTTP API.
@@ -19,13 +15,13 @@ type Config struct {
 	JWTSecret       string
 	SmokeTest       bool
 	SwaggerEnabled  bool
-	AuthService     *auth.Service
-	MonitorSvc      *monitor.Service
-	NotifySvc       *notify.Service
+	AuthService     *service.AuthService
+	MonitorSvc      *service.MonitorService
+	NotifySvc       *service.NotifyService
 	ReportSvc       ReportService
 	PostQuerySvc    content.PostQueryService
-	TopicQuerySvc   topic.TopicQueryService
-	TrendQuerySvc   trend.TrendQueryService
+	TopicQuerySvc   service.TopicQueryService
+	TrendQuerySvc   service.TrendQueryService
 	HotEventManager HotEventManager
 }
 

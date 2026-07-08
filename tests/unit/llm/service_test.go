@@ -5,21 +5,21 @@ import (
 	"context"
 	"testing"
 
-	"github.com/StephenQiu30/hotkey-server/internal/llm"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
-// mockProvider implements llm.Provider for testing.
+// mockProvider implements service.LLMProvider for testing.
 type mockProvider struct {
 	response string
 	err      error
 }
 
-func (m *mockProvider) Chat(_ context.Context, prompt string, opts ...llm.Option) (string, error) {
+func (m *mockProvider) Chat(_ context.Context, prompt string, opts ...service.LLMOption) (string, error) {
 	return m.response, m.err
 }
 
 func TestSummarize_ReturnsSummary(t *testing.T) {
-	svc := llm.NewService(&mockProvider{response: "这是一个测试摘要。"})
+	svc := service.NewLLMService(&mockProvider{response: "这是一个测试摘要。"})
 	result, err := svc.Summarize(context.Background(), "测试内容")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -30,7 +30,7 @@ func TestSummarize_ReturnsSummary(t *testing.T) {
 }
 
 func TestSummarize_EmptyInput_ReturnsError(t *testing.T) {
-	svc := llm.NewService(&mockProvider{response: ""})
+	svc := service.NewLLMService(&mockProvider{response: ""})
 	_, err := svc.Summarize(context.Background(), "")
 	if err == nil {
 		t.Fatal("expected error for empty input")
@@ -38,7 +38,7 @@ func TestSummarize_EmptyInput_ReturnsError(t *testing.T) {
 }
 
 func TestLabelTopics_ReturnsLabels(t *testing.T) {
-	svc := llm.NewService(&mockProvider{response: "AI, 科技, 创新"})
+	svc := service.NewLLMService(&mockProvider{response: "AI, 科技, 创新"})
 	labels, err := svc.LabelTopics(context.Background(), "AI technology content")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -49,7 +49,7 @@ func TestLabelTopics_ReturnsLabels(t *testing.T) {
 }
 
 func TestLabelTopics_EmptyContent_ReturnsEmpty(t *testing.T) {
-	svc := llm.NewService(&mockProvider{response: ""})
+	svc := service.NewLLMService(&mockProvider{response: ""})
 	labels, err := svc.LabelTopics(context.Background(), "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -60,20 +60,20 @@ func TestLabelTopics_EmptyContent_ReturnsEmpty(t *testing.T) {
 }
 
 func TestProviderError_Propagated(t *testing.T) {
-	svc := llm.NewService(&mockProvider{err: llm.ErrProviderError})
+	svc := service.NewLLMService(&mockProvider{err: service.ErrProviderError})
 	_, err := svc.Summarize(context.Background(), "test")
-	if err != llm.ErrProviderError {
+	if err != service.ErrProviderError {
 		t.Fatalf("expected ErrProviderError, got %v", err)
 	}
 }
 
 func TestChainBuildDailyDigest_CallsSummarizeAndLabel(t *testing.T) {
-	svc := llm.NewService(&mockProvider{response: "test summary"})
-	chain := llm.NewChain(svc)
+	svc := service.NewLLMService(&mockProvider{response: "test summary"})
+	chain := service.NewLLMChain(svc)
 
-	output, err := chain.BuildDailyDigest(context.Background(), llm.DigestInput{
+	output, err := chain.BuildDailyDigest(context.Background(), service.DigestInput{
 		Title: "Test Digest",
-		Posts: []llm.PostItem{
+		Posts: []service.PostItem{
 			{ID: 1, Title: "Post 1", Content: "Content 1", Platform: "x"},
 			{ID: 2, Title: "Post 2", Content: "Content 2", Platform: "weibo"},
 		},
@@ -90,29 +90,25 @@ func TestChainBuildDailyDigest_CallsSummarizeAndLabel(t *testing.T) {
 }
 
 func TestChainBuildDailyDigest_EmptyPosts(t *testing.T) {
-	svc := llm.NewService(&mockProvider{response: "empty digest"})
-	chain := llm.NewChain(svc)
+	svc := service.NewLLMService(&mockProvider{response: "empty digest"})
+	chain := service.NewLLMChain(svc)
 
-	_, err := chain.BuildDailyDigest(context.Background(), llm.DigestInput{
+	_, err := chain.BuildDailyDigest(context.Background(), service.DigestInput{
 		Title: "Empty Digest",
-		Posts: []llm.PostItem{},
+		Posts: []service.PostItem{},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-// TestChainBuildDailyDigest_SkipErrorPosts is a smoke test for the non-blocking
-// pipeline path in Chain.BuildDailyDigest. A post that fails summarization
-// should not abort the pipeline (the mock always returns success here, so
-// the non-blocking behavior is exercised as "skipped when empty").
 func TestChainBuildDailyDigest_SkipErrorPosts(t *testing.T) {
-	svc := llm.NewService(&mockProvider{response: "test"})
-	chain := llm.NewChain(svc)
+	svc := service.NewLLMService(&mockProvider{response: "test"})
+	chain := service.NewLLMChain(svc)
 
-	output, err := chain.BuildDailyDigest(context.Background(), llm.DigestInput{
+	output, err := chain.BuildDailyDigest(context.Background(), service.DigestInput{
 		Title: "Test",
-		Posts: []llm.PostItem{
+		Posts: []service.PostItem{
 			{ID: 1, Title: "Post 1", Content: "Content 1", Platform: "x"},
 		},
 	})
@@ -125,17 +121,17 @@ func TestChainBuildDailyDigest_SkipErrorPosts(t *testing.T) {
 }
 
 func TestChainWithSummarizeDisabled_SkipsSummarization(t *testing.T) {
-	svc := llm.NewService(&mockProvider{response: "summary"})
-	chain := llm.NewChain(svc)
+	svc := service.NewLLMService(&mockProvider{response: "summary"})
+	chain := service.NewLLMChain(svc)
 
 	output, err := chain.BuildDailyDigest(context.Background(),
-		llm.DigestInput{
+		service.DigestInput{
 			Title: "Test",
-			Posts: []llm.PostItem{
+			Posts: []service.PostItem{
 				{ID: 1, Title: "Post 1", Content: "Content 1", Platform: "x"},
 			},
 		},
-		llm.WithSummarize(false),
+		service.WithSummarize(false),
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -146,17 +142,17 @@ func TestChainWithSummarizeDisabled_SkipsSummarization(t *testing.T) {
 }
 
 func TestChainWithLabelDisabled_SkipsLabeling(t *testing.T) {
-	svc := llm.NewService(&mockProvider{response: "label"})
-	chain := llm.NewChain(svc)
+	svc := service.NewLLMService(&mockProvider{response: "label"})
+	chain := service.NewLLMChain(svc)
 
 	output, err := chain.BuildDailyDigest(context.Background(),
-		llm.DigestInput{
+		service.DigestInput{
 			Title: "Test",
-			Posts: []llm.PostItem{
+			Posts: []service.PostItem{
 				{ID: 1, Title: "Post 1", Content: "Content 1", Platform: "x"},
 			},
 		},
-		llm.WithLabel(false),
+		service.WithLabel(false),
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
-	"github.com/StephenQiu30/hotkey-server/internal/report"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
 type ReportService interface {
@@ -193,11 +193,11 @@ func parseReportID(c *gin.Context) (int64, bool) {
 
 func respondReportError(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, report.ErrNotFound):
+	case errors.Is(err, service.ReportErrNotFound):
 		respondError(c, http.StatusNotFound, "report not found")
-	case errors.Is(err, report.ErrNoReportSources):
+	case errors.Is(err, service.ErrNoReportSources):
 		respondError(c, http.StatusBadRequest, "no report sources")
-	case errors.Is(err, report.ErrUnsupportedType), errors.Is(err, report.ErrInvalidInput):
+	case errors.Is(err, service.ErrUnsupportedType), errors.Is(err, service.ReportErrInvalidInput):
 		respondError(c, http.StatusBadRequest, err.Error())
 	default:
 		respondInternalError(c)

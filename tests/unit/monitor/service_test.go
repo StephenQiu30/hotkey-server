@@ -6,52 +6,52 @@ import (
 	"testing"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
-	"github.com/StephenQiu30/hotkey-server/internal/monitor"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 	fakemonitor "github.com/StephenQiu30/hotkey-server/tests/testutil/fake/monitor"
 )
 
 func TestCreateMonitorRejectsInvalidInterval(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
-	svc := monitor.NewService(repo, nil)
+	svc := service.NewMonitorService(repo, nil)
 	_, err := svc.Create(context.Background(), 1, dto.CreateMonitorInput{
 		Name:                "AI",
 		QueryText:           "openai agent",
 		PollIntervalMinutes: 7,
 	})
-	if !errors.Is(err, monitor.ErrInvalidInterval) {
+	if !errors.Is(err, service.ErrInvalidInterval) {
 		t.Fatalf("expected ErrInvalidInterval, got %v", err)
 	}
 }
 
 func TestCreateMonitorRejectsEmptyName(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
-	svc := monitor.NewService(repo, nil)
+	svc := service.NewMonitorService(repo, nil)
 	_, err := svc.Create(context.Background(), 1, dto.CreateMonitorInput{
 		Name:                "",
 		QueryText:           "openai",
 		PollIntervalMinutes: 10,
 	})
-	if !errors.Is(err, monitor.ErrInvalidInput) {
-		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	if !errors.Is(err, service.MonitorErrInvalidInput) {
+		t.Fatalf("expected MonitorErrInvalidInput, got %v", err)
 	}
 }
 
 func TestCreateMonitorRejectsEmptyQuery(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
-	svc := monitor.NewService(repo, nil)
+	svc := service.NewMonitorService(repo, nil)
 	_, err := svc.Create(context.Background(), 1, dto.CreateMonitorInput{
 		Name:                "AI",
 		QueryText:           "",
 		PollIntervalMinutes: 10,
 	})
-	if !errors.Is(err, monitor.ErrInvalidInput) {
-		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	if !errors.Is(err, service.MonitorErrInvalidInput) {
+		t.Fatalf("expected MonitorErrInvalidInput, got %v", err)
 	}
 }
 
 func TestCreateMonitorSuccess(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
-	svc := monitor.NewService(repo, nil)
+	svc := service.NewMonitorService(repo, nil)
 	m, err := svc.Create(context.Background(), 1, dto.CreateMonitorInput{
 		Name:                "AI News",
 		QueryText:           "openai agent",
@@ -73,7 +73,7 @@ func TestCreateMonitorSuccess(t *testing.T) {
 
 func TestListMonitorsByUser(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
-	svc := monitor.NewService(repo, nil)
+	svc := service.NewMonitorService(repo, nil)
 	_, _ = svc.Create(context.Background(), 1, dto.CreateMonitorInput{
 		Name: "M1", QueryText: "q1", PollIntervalMinutes: 5,
 	})
@@ -95,7 +95,7 @@ func TestListMonitorsByUser(t *testing.T) {
 
 func TestServiceListActive(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
-	svc := monitor.NewService(repo, nil)
+	svc := service.NewMonitorService(repo, nil)
 	m1, _ := svc.Create(context.Background(), 1, dto.CreateMonitorInput{
 		Name: "Active1", QueryText: "q1", PollIntervalMinutes: 5,
 	})
@@ -136,7 +136,7 @@ func TestServiceListActive(t *testing.T) {
 
 func TestUpdateMonitorStatus(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
-	svc := monitor.NewService(repo, nil)
+	svc := service.NewMonitorService(repo, nil)
 	m, _ := svc.Create(context.Background(), 1, dto.CreateMonitorInput{
 		Name: "AI", QueryText: "openai", PollIntervalMinutes: 10,
 	})
@@ -155,12 +155,12 @@ func TestUpdateMonitorStatus(t *testing.T) {
 
 func TestUpdateMonitorNotFound(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
-	svc := monitor.NewService(repo, nil)
+	svc := service.NewMonitorService(repo, nil)
 	status := "paused"
 	_, err := svc.Update(context.Background(), 999, 1, dto.UpdateMonitorInput{
 		Status: &status,
 	})
-	if !errors.Is(err, monitor.ErrNotFound) {
-		t.Fatalf("expected ErrNotFound, got %v", err)
+	if !errors.Is(err, service.MonitorErrNotFound) {
+		t.Fatalf("expected MonitorErrNotFound, got %v", err)
 	}
 }

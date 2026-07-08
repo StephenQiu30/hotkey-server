@@ -2,8 +2,7 @@ package http
 
 import (
 	"github.com/StephenQiu30/hotkey-server/internal/content"
-	"github.com/StephenQiu30/hotkey-server/internal/topic"
-	"github.com/StephenQiu30/hotkey-server/internal/trend"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
 // Request types
@@ -71,13 +70,13 @@ type PostListResponse struct {
 }
 
 type TopicListResponse struct {
-	Data      []topic.TopicSummary `json:"data"`
-	RequestID string               `json:"request_id,omitempty"`
+	Data      []service.TopicSummary `json:"data"`
+	RequestID string                 `json:"request_id,omitempty"`
 }
 
 type TrendListResponse struct {
-	Data      []trend.TrendPoint `json:"data"`
-	RequestID string             `json:"request_id,omitempty"`
+	Data      []service.TrendPoint `json:"data"`
+	RequestID string               `json:"request_id,omitempty"`
 }
 
 type NotificationListResponse struct {

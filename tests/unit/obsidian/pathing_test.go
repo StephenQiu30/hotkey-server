@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
-	"github.com/StephenQiu30/hotkey-server/internal/obsidian"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
 func TestBuildPathDailyDigest(t *testing.T) {
-	got, err := obsidian.BuildPath("/vault", dto.PathInput{
+	got, err := service.BuildPath("/vault", dto.PathInput{
 		Kind:        dto.ExportDailyDigest,
 		Date:        time.Date(2026, 7, 8, 0, 0, 0, 0, time.UTC),
 		MonitorName: "AI Regulation",
@@ -25,7 +25,7 @@ func TestBuildPathDailyDigest(t *testing.T) {
 }
 
 func TestBuildPathPublishDraft(t *testing.T) {
-	got, err := obsidian.BuildPath("/vault", dto.PathInput{
+	got, err := service.BuildPath("/vault", dto.PathInput{
 		Kind:        dto.ExportPublishDraft,
 		Date:        time.Date(2026, 7, 8, 0, 0, 0, 0, time.UTC),
 		MonitorName: "AI Regulation",
@@ -40,12 +40,12 @@ func TestBuildPathPublishDraft(t *testing.T) {
 }
 
 func TestBuildPathRejectsMissingVault(t *testing.T) {
-	_, err := obsidian.BuildPath("", dto.PathInput{
+	_, err := service.BuildPath("", dto.PathInput{
 		Kind:        dto.ExportDailyDigest,
 		Date:        time.Date(2026, 7, 8, 0, 0, 0, 0, time.UTC),
 		MonitorName: "AI Regulation",
 	})
-	if err != obsidian.ErrMissingVaultRoot {
-		t.Fatalf("error = %v, want %v", err, obsidian.ErrMissingVaultRoot)
+	if err != service.ErrMissingVaultRoot {
+		t.Fatalf("error = %v, want %v", err, service.ErrMissingVaultRoot)
 	}
 }

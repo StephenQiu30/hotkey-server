@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/StephenQiu30/hotkey-server/internal/hotevent"
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"github.com/StephenQiu30/hotkey-server/internal/pkg"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 	"gorm.io/gorm"
 )
 
@@ -20,7 +20,7 @@ type HotEventFilter struct {
 	Offset   int
 }
 
-// HotEventRepo implements hotevent.Repository via GORM.
+// HotEventRepo implements service.HotEventRepository via GORM.
 type HotEventRepo struct {
 	db *gorm.DB
 }
@@ -57,14 +57,14 @@ func (r *HotEventRepo) GetByID(ctx context.Context, id int64) (*dto.HotEvent, er
 	var m entity.HotEvent
 	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&m).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, hotevent.ErrNotFound
+			return nil, service.HotEventErrNotFound
 		}
 		return nil, err
 	}
 	return toHotEvent(m), nil
 }
 
-func (r *HotEventRepo) List(ctx context.Context, filter hotevent.ListFilter) ([]*dto.HotEvent, int64, error) {
+func (r *HotEventRepo) List(ctx context.Context, filter service.HotEventListFilter) ([]*dto.HotEvent, int64, error) {
 	query := r.db.WithContext(ctx).Model(&entity.HotEvent{})
 	if filter.Status != "" {
 		query = query.Where("status = ?", filter.Status)

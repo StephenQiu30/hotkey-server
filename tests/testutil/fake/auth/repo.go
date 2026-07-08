@@ -7,7 +7,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 )
 
-// Repo is an in-memory fake implementing auth.Repository.
+// Repo is an in-memory fake implementing service.AuthRepository.
 type Repo struct {
 	Users  []dto.User
 	nextID int64

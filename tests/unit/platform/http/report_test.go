@@ -12,12 +12,9 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/StephenQiu30/hotkey-server/internal/auth"
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
-	"github.com/StephenQiu30/hotkey-server/internal/monitor"
-	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
-	"github.com/StephenQiu30/hotkey-server/internal/report"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
 type stubReportService struct {
@@ -36,7 +33,7 @@ func (s *stubReportService) Create(ctx context.Context, userID int64, input dto.
 		Summary:      "本期共跟踪 2 个热点。",
 		Content:      "# AI Regulation 周报\n\n## 本周概览\n\n## 热点主题\n",
 		HotspotCount: 2,
-		Status:       report.StatusDraft,
+		Status:       service.StatusDraft,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -54,7 +51,7 @@ func (s *stubReportService) GetByID(ctx context.Context, id, userID int64) (dto.
 			return item, nil
 		}
 	}
-	return dto.Report{}, report.ErrNotFound
+	return dto.Report{}, service.ReportErrNotFound
 }
 
 func (s *stubReportService) HTML(ctx context.Context, id, userID int64) (string, error) {
@@ -70,7 +67,7 @@ func (s *stubReportService) MarkSent(ctx context.Context, id, userID int64) (dto
 	if err != nil {
 		return dto.Report{}, err
 	}
-	item.Status = report.StatusSent
+	item.Status = service.StatusSent
 	s.items[id-1] = item
 	return item, nil
 }
@@ -96,7 +93,7 @@ func TestReportRoutesCreateReadHTMLAndSend(t *testing.T) {
 	if err := json.Unmarshal(createRR.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode create: %v", err)
 	}
-	if created.Data.ReportType != report.TypeWeekly {
+	if created.Data.ReportType != service.TypeWeekly {
 		t.Fatalf("created report type = %q", created.Data.ReportType)
 	}
 
@@ -132,9 +129,9 @@ func newTestHandlerWithReports(reports platformhttp.ReportService) http.Handler 
 	return platformhttp.NewRouter(platformhttp.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
-		AuthService:   auth.NewService(&stubAuthRepo{}),
-		MonitorSvc:    monitor.NewService(&stubMonitorRepo{}, nil),
-		NotifySvc:     notify.NewService(&stubNotifyRepo{}),
+		AuthService:   service.NewAuthService(&stubAuthRepo{}),
+		MonitorSvc:    service.NewMonitorService(&stubMonitorRepo{}, nil),
+		NotifySvc:     service.NewNotifyService(&stubNotifyRepo{}),
 		ReportSvc:     reports,
 		PostQuerySvc:  &stubPostQueryService{},
 		TopicQuerySvc: &stubTopicQueryService{},

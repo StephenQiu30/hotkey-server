@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
-	"github.com/StephenQiu30/hotkey-server/internal/obsidian"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
 func TestRenderMarkdownDailyDigest(t *testing.T) {
-	got, err := obsidian.RenderMarkdown(obsidian.MarkdownInput{
+	got, err := service.RenderMarkdown(service.MarkdownInput{
 		Kind:        dto.ExportDailyDigest,
 		Date:        time.Date(2026, 7, 8, 0, 0, 0, 0, time.UTC),
 		ReportID:    123,
@@ -37,7 +37,7 @@ func TestRenderMarkdownDailyDigest(t *testing.T) {
 }
 
 func TestRenderMarkdownPublishDraft(t *testing.T) {
-	got, err := obsidian.RenderMarkdown(obsidian.MarkdownInput{
+	got, err := service.RenderMarkdown(service.MarkdownInput{
 		Kind:        dto.ExportPublishDraft,
 		Date:        time.Date(2026, 7, 8, 0, 0, 0, 0, time.UTC),
 		ReportID:    123,

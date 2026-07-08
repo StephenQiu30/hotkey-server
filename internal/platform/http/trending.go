@@ -9,15 +9,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/StephenQiu30/hotkey-server/internal/hotevent"
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
 // HotEventManager defines the read operations needed for the hot event API.
 type HotEventManager interface {
-	ListEvents(ctx context.Context, filter hotevent.ListFilter) ([]*dto.HotEvent, int64, error)
+	ListEvents(ctx context.Context, filter service.HotEventListFilter) ([]*dto.HotEvent, int64, error)
 	GetEventByID(ctx context.Context, id int64) (*dto.HotEvent, error)
-	ListEventPosts(ctx context.Context, id int64) ([]hotevent.PostBrief, error)
+	ListEventPosts(ctx context.Context, id int64) ([]service.PostBrief, error)
 	GetPlatforms(ctx context.Context, eventID int64) ([]*dto.EventPlatform, error)
 }
 
@@ -47,8 +47,8 @@ func listTrendingHandler(mgr HotEventManager) gin.HandlerFunc {
 			limit = 20
 		}
 
-		filter := hotevent.ListFilter{
-			Status:   hotevent.StatusActive,
+		filter := service.HotEventListFilter{
+			Status:   service.StatusActive,
 			Platform: platform,
 			Sort:     "heat_score",
 			Limit:    limit,
@@ -89,8 +89,8 @@ func listHotEventsHandler(mgr HotEventManager) gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		filter := hotevent.ListFilter{
-			Status:   c.DefaultQuery("status", hotevent.StatusActive),
+		filter := service.HotEventListFilter{
+			Status:   c.DefaultQuery("status", service.StatusActive),
 			Platform: c.Query("platform"),
 			Sort:     c.DefaultQuery("sort", "heat_score"),
 			Limit:    20,
@@ -148,7 +148,7 @@ func getHotEventHandler(mgr HotEventManager) gin.HandlerFunc {
 
 		ev, err := mgr.GetEventByID(c.Request.Context(), id)
 		if err != nil {
-			if err == hotevent.ErrNotFound {
+			if err == service.HotEventErrNotFound {
 				c.JSON(http.StatusNotFound, gin.H{"error": "hot event not found"})
 				return
 			}
@@ -190,7 +190,7 @@ func getHotEventPostsHandler(mgr HotEventManager) gin.HandlerFunc {
 
 		// Verify event exists
 		if _, err := mgr.GetEventByID(c.Request.Context(), id); err != nil {
-			if err == hotevent.ErrNotFound {
+			if err == service.HotEventErrNotFound {
 				c.JSON(http.StatusNotFound, gin.H{"error": "hot event not found"})
 				return
 			}
@@ -207,7 +207,7 @@ func getHotEventPostsHandler(mgr HotEventManager) gin.HandlerFunc {
 		}
 
 		if posts == nil {
-			posts = []hotevent.PostBrief{}
+			posts = []service.PostBrief{}
 		}
 
 		c.JSON(http.StatusOK, gin.H{"data": posts})

@@ -2,6 +2,17 @@ package dto
 
 import "time"
 
+// Export status constants.
+const (
+	ExportStatusPending   = "pending"
+	ExportStatusPublished = "published"
+	ExportStatusSkipped   = "skipped"
+	ExportStatusFailed    = "failed"
+
+	ExportKindDailyDigest  = "daily-digest"
+	ExportKindPublishDraft = "publish-draft"
+)
+
 // Report represents a generated report.
 type Report struct {
 	ID           int64      `json:"id"`
@@ -76,4 +87,24 @@ type PostSource struct {
 	URL       string
 	Platform  string
 	HeatScore float64
+}
+
+// ReportExport represents a report export record.
+type ReportExport struct {
+	ID           int64      `json:"id"`
+	ReportID     int64      `json:"report_id"`
+	ExportKind   string     `json:"export_kind"`
+	TargetPath   string     `json:"target_path"`
+	Status       string     `json:"status"`
+	ErrorMessage string     `json:"error_message"`
+	PublishedAt  *time.Time `json:"published_at"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+// CreateReportExportInput holds input for creating a pending export.
+type CreateReportExportInput struct {
+	ReportID   int64
+	ExportKind string
+	TargetPath string
 }

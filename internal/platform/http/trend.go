@@ -8,8 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/StephenQiu30/hotkey-server/internal/monitor"
-	"github.com/StephenQiu30/hotkey-server/internal/trend"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
 // TopicMonitorIDGetter fetches the monitor ID that owns a topic.
@@ -17,7 +16,7 @@ type TopicMonitorIDGetter interface {
 	GetMonitorID(ctx context.Context, topicID int64) (int64, error)
 }
 
-func RegisterTrendRoutes(r *gin.Engine, svc trend.TrendQueryService, monitorGetter MonitorGetter, topicMonitorGetter TopicMonitorIDGetter) {
+func RegisterTrendRoutes(r *gin.Engine, svc service.TrendQueryService, monitorGetter MonitorGetter, topicMonitorGetter TopicMonitorIDGetter) {
 	r.GET("/api/v1/monitors/:id/trends", monitorTrendsHandler(svc, monitorGetter))
 	r.GET("/api/v1/topics/:id/trends", topicTrendsHandler(svc, monitorGetter, topicMonitorGetter))
 }
@@ -48,7 +47,7 @@ func parseSince(s string) time.Time {
 // @Failure 404 {object} ErrorBody
 // @Failure 500 {object} ErrorBody
 // @Router /api/v1/monitors/{id}/trends [get]
-func monitorTrendsHandler(svc trend.TrendQueryService, mgr MonitorGetter) gin.HandlerFunc {
+func monitorTrendsHandler(svc service.TrendQueryService, mgr MonitorGetter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		userID, ok := userIDFromCtx(ctx)
@@ -66,7 +65,7 @@ func monitorTrendsHandler(svc trend.TrendQueryService, mgr MonitorGetter) gin.Ha
 		m, err := mgr.GetByID(ctx, id)
 		if err != nil {
 			switch {
-			case err == monitor.ErrNotFound:
+			case err == service.MonitorErrNotFound:
 				respondError(c, http.StatusNotFound, "monitor not found")
 			default:
 				respondInternalError(c)
@@ -85,7 +84,7 @@ func monitorTrendsHandler(svc trend.TrendQueryService, mgr MonitorGetter) gin.Ha
 			return
 		}
 		if points == nil {
-			points = []trend.TrendPoint{}
+			points = []service.TrendPoint{}
 		}
 
 		RespondOK(c, points)
@@ -107,7 +106,7 @@ func monitorTrendsHandler(svc trend.TrendQueryService, mgr MonitorGetter) gin.Ha
 // @Failure 404 {object} ErrorBody
 // @Failure 500 {object} ErrorBody
 // @Router /api/v1/topics/{id}/trends [get]
-func topicTrendsHandler(svc trend.TrendQueryService, monitorGetter MonitorGetter, topicMonitorGetter TopicMonitorIDGetter) gin.HandlerFunc {
+func topicTrendsHandler(svc service.TrendQueryService, monitorGetter MonitorGetter, topicMonitorGetter TopicMonitorIDGetter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		userID, ok := userIDFromCtx(ctx)
@@ -131,7 +130,7 @@ func topicTrendsHandler(svc trend.TrendQueryService, monitorGetter MonitorGetter
 		m, err := monitorGetter.GetByID(ctx, monitorID)
 		if err != nil {
 			switch {
-			case err == monitor.ErrNotFound:
+			case err == service.MonitorErrNotFound:
 				respondError(c, http.StatusNotFound, "monitor not found")
 			default:
 				respondInternalError(c)
@@ -150,7 +149,7 @@ func topicTrendsHandler(svc trend.TrendQueryService, monitorGetter MonitorGetter
 			return
 		}
 		if points == nil {
-			points = []trend.TrendPoint{}
+			points = []service.TrendPoint{}
 		}
 
 		RespondOK(c, points)

@@ -1,23 +1,26 @@
-// Package topic implements token-based Jaccard similarity clustering.
-package topic
+package service
 
 import (
+	"context"
 	"sort"
 	"strings"
 )
 
+// CandidatePost represents a post for clustering.
 type CandidatePost struct {
 	PostID int64
 	Tokens []string
 }
 
+// Topic represents a clustered group of posts.
 type Topic struct {
 	TopicKey string
 	Title    string
 	PostIDs  []int64
-	Tokens   []string // merged token set for the cluster
+	Tokens   []string
 }
 
+// TopicSummary is the query response for topic endpoints.
 type TopicSummary struct {
 	ID             int64   `json:"id"`
 	Title          string  `json:"title"`
@@ -29,13 +32,18 @@ type TopicSummary struct {
 
 const similarityThreshold = 0.3
 
+// TopicQueryService abstracts the read side for topic queries.
+type TopicQueryService interface {
+	ListByMonitor(monitorID int64) ([]TopicSummary, error)
+	GetMonitorID(ctx context.Context, topicID int64) (int64, error)
+}
+
 // Cluster groups posts into topics using Jaccard similarity >= threshold.
 func Cluster(posts []CandidatePost) []Topic {
 	if len(posts) == 0 {
 		return nil
 	}
 
-	// Union-Find for clustering
 	parent := make([]int, len(posts))
 	for i := range parent {
 		parent[i] = i
@@ -87,7 +95,7 @@ func Cluster(posts []CandidatePost) []Topic {
 		sort.Strings(merged)
 		sort.Slice(postIDs, func(i, j int) bool { return postIDs[i] < postIDs[j] })
 
-		title := generateTitle(merged)
+		title := generateTopicTitle(merged)
 		topics = append(topics, Topic{
 			TopicKey: generateTopicKey(merged),
 			Title:    title,
@@ -147,7 +155,7 @@ func generateTopicKey(tokens []string) string {
 	return strings.Join(tokens[:limit], ":")
 }
 
-func generateTitle(tokens []string) string {
+func generateTopicTitle(tokens []string) string {
 	if len(tokens) == 0 {
 		return "Untitled"
 	}

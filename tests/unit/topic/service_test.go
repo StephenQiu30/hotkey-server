@@ -3,11 +3,11 @@ package topic_test
 import (
 	"testing"
 
-	"github.com/StephenQiu30/hotkey-server/internal/topic"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
 func TestClusterPostsCreatesSingleTopicForSimilarPosts(t *testing.T) {
-	topics := topic.Cluster([]topic.CandidatePost{
+	topics := service.Cluster([]service.CandidatePost{
 		{PostID: 1, Tokens: []string{"openai", "agent", "launch"}},
 		{PostID: 2, Tokens: []string{"openai", "agent", "release"}},
 	})
@@ -17,7 +17,7 @@ func TestClusterPostsCreatesSingleTopicForSimilarPosts(t *testing.T) {
 }
 
 func TestClusterPostsCreatesSeparateTopicsForDissimilarPosts(t *testing.T) {
-	topics := topic.Cluster([]topic.CandidatePost{
+	topics := service.Cluster([]service.CandidatePost{
 		{PostID: 1, Tokens: []string{"openai", "agent", "launch"}},
 		{PostID: 2, Tokens: []string{"cooking", "recipe", "pasta"}},
 	})
@@ -27,14 +27,14 @@ func TestClusterPostsCreatesSeparateTopicsForDissimilarPosts(t *testing.T) {
 }
 
 func TestClusterPostsEmptyInput(t *testing.T) {
-	topics := topic.Cluster([]topic.CandidatePost{})
+	topics := service.Cluster([]service.CandidatePost{})
 	if len(topics) != 0 {
 		t.Fatalf("expected 0 topics, got %d", len(topics))
 	}
 }
 
 func TestClusterPostsSinglePost(t *testing.T) {
-	topics := topic.Cluster([]topic.CandidatePost{
+	topics := service.Cluster([]service.CandidatePost{
 		{PostID: 1, Tokens: []string{"ai", "ml"}},
 	})
 	if len(topics) != 1 {
@@ -49,7 +49,7 @@ func TestClusterPostsSinglePost(t *testing.T) {
 }
 
 func TestClusterPostsGroupsByOverlap(t *testing.T) {
-	topics := topic.Cluster([]topic.CandidatePost{
+	topics := service.Cluster([]service.CandidatePost{
 		{PostID: 1, Tokens: []string{"ai", "gpt", "openai"}},
 		{PostID: 2, Tokens: []string{"ai", "gpt", "launch"}},
 		{PostID: 3, Tokens: []string{"crypto", "bitcoin", "eth"}},
@@ -63,8 +63,7 @@ func TestClusterPostsGroupsByOverlap(t *testing.T) {
 func TestComputeJaccardSimilarity(t *testing.T) {
 	a := []string{"ai", "gpt", "openai"}
 	b := []string{"ai", "gpt", "launch"}
-	sim := topic.JaccardSimilarity(a, b)
-	// intersection: {ai, gpt} = 2, union: {ai, gpt, openai, launch} = 4
+	sim := service.JaccardSimilarity(a, b)
 	expected := 2.0 / 4.0
 	if sim != expected {
 		t.Fatalf("expected %f, got %f", expected, sim)
@@ -74,7 +73,7 @@ func TestComputeJaccardSimilarity(t *testing.T) {
 func TestComputeJaccardSimilarityIdentical(t *testing.T) {
 	a := []string{"ai", "gpt"}
 	b := []string{"ai", "gpt"}
-	sim := topic.JaccardSimilarity(a, b)
+	sim := service.JaccardSimilarity(a, b)
 	if sim != 1.0 {
 		t.Fatalf("expected 1.0, got %f", sim)
 	}
@@ -83,15 +82,14 @@ func TestComputeJaccardSimilarityIdentical(t *testing.T) {
 func TestComputeJaccardSimilarityDisjoint(t *testing.T) {
 	a := []string{"ai"}
 	b := []string{"cooking"}
-	sim := topic.JaccardSimilarity(a, b)
+	sim := service.JaccardSimilarity(a, b)
 	if sim != 0 {
 		t.Fatalf("expected 0, got %f", sim)
 	}
 }
 
 func TestExtractTokens(t *testing.T) {
-	tokens := topic.ExtractTokens("OpenAI launches new Agent framework")
-	// Should lowercase and split
+	tokens := service.ExtractTokens("OpenAI launches new Agent framework")
 	if len(tokens) == 0 {
 		t.Fatal("expected non-empty tokens")
 	}

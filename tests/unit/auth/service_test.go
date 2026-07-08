@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
-	"github.com/StephenQiu30/hotkey-server/internal/auth"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 	"github.com/StephenQiu30/hotkey-server/tests/testutil/fake/auth"
 )
 
@@ -14,46 +14,46 @@ func TestRegisterRejectsDuplicateEmail(t *testing.T) {
 	repo := &fakeauth.Repo{
 		Users: []dto.User{{Email: "user@example.com", PasswordHash: "hash"}},
 	}
-	svc := auth.NewService(repo)
+	svc := service.NewAuthService(repo)
 	_, err := svc.Register(context.Background(), dto.RegisterInput{
 		Email:       "user@example.com",
 		Password:    "Passw0rd!",
 		DisplayName: "User",
 	})
-	if !errors.Is(err, auth.ErrEmailExists) {
+	if !errors.Is(err, service.ErrEmailExists) {
 		t.Fatalf("expected ErrEmailExists, got %v", err)
 	}
 }
 
 func TestRegisterRejectsEmptyEmail(t *testing.T) {
 	repo := &fakeauth.Repo{}
-	svc := auth.NewService(repo)
+	svc := service.NewAuthService(repo)
 	_, err := svc.Register(context.Background(), dto.RegisterInput{
 		Email:       "",
 		Password:    "Passw0rd!",
 		DisplayName: "User",
 	})
-	if !errors.Is(err, auth.ErrInvalidInput) {
-		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	if !errors.Is(err, service.AuthErrInvalidInput) {
+		t.Fatalf("expected AuthErrInvalidInput, got %v", err)
 	}
 }
 
 func TestRegisterRejectsShortPassword(t *testing.T) {
 	repo := &fakeauth.Repo{}
-	svc := auth.NewService(repo)
+	svc := service.NewAuthService(repo)
 	_, err := svc.Register(context.Background(), dto.RegisterInput{
 		Email:       "user@example.com",
 		Password:    "short",
 		DisplayName: "User",
 	})
-	if !errors.Is(err, auth.ErrInvalidInput) {
-		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	if !errors.Is(err, service.AuthErrInvalidInput) {
+		t.Fatalf("expected AuthErrInvalidInput, got %v", err)
 	}
 }
 
 func TestRegisterSuccess(t *testing.T) {
 	repo := &fakeauth.Repo{}
-	svc := auth.NewService(repo)
+	svc := service.NewAuthService(repo)
 	user, err := svc.Register(context.Background(), dto.RegisterInput{
 		Email:       "new@example.com",
 		Password:    "Passw0rd!",
@@ -72,38 +72,36 @@ func TestRegisterSuccess(t *testing.T) {
 
 func TestLoginRejectsWrongPassword(t *testing.T) {
 	repo := &fakeauth.Repo{}
-	svc := auth.NewService(repo)
-	// Register first
+	svc := service.NewAuthService(repo)
 	_, _ = svc.Register(context.Background(), dto.RegisterInput{
 		Email:       "user@example.com",
 		Password:    "Passw0rd!",
 		DisplayName: "User",
 	})
-	// Try login with wrong password
 	_, err := svc.Login(context.Background(), dto.LoginInput{
 		Email:    "user@example.com",
 		Password: "WrongPass!",
 	})
-	if !errors.Is(err, auth.ErrInvalidCredentials) {
+	if !errors.Is(err, service.ErrInvalidCredentials) {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
 }
 
 func TestLoginRejectsUnknownEmail(t *testing.T) {
 	repo := &fakeauth.Repo{}
-	svc := auth.NewService(repo)
+	svc := service.NewAuthService(repo)
 	_, err := svc.Login(context.Background(), dto.LoginInput{
 		Email:    "nobody@example.com",
 		Password: "Passw0rd!",
 	})
-	if !errors.Is(err, auth.ErrInvalidCredentials) {
+	if !errors.Is(err, service.ErrInvalidCredentials) {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
 }
 
 func TestLoginSuccess(t *testing.T) {
 	repo := &fakeauth.Repo{}
-	svc := auth.NewService(repo)
+	svc := service.NewAuthService(repo)
 	_, _ = svc.Register(context.Background(), dto.RegisterInput{
 		Email:       "user@example.com",
 		Password:    "Passw0rd!",

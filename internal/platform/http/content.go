@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/StephenQiu30/hotkey-server/internal/content"
-	"github.com/StephenQiu30/hotkey-server/internal/monitor"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
 func RegisterContentRoutes(r *gin.Engine, svc content.PostQueryService, mgr MonitorGetter) {
@@ -48,7 +48,7 @@ func listMonitorPostsHandler(svc content.PostQueryService, mgr MonitorGetter) gi
 		m, err := mgr.GetByID(ctx, id)
 		if err != nil {
 			switch {
-			case err == monitor.ErrNotFound:
+			case err == service.MonitorErrNotFound:
 				respondError(c, http.StatusNotFound, "monitor not found")
 			default:
 				respondInternalError(c)

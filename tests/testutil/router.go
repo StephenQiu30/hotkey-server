@@ -4,12 +4,9 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/StephenQiu30/hotkey-server/internal/auth"
 	"github.com/StephenQiu30/hotkey-server/internal/repository"
-	"github.com/StephenQiu30/hotkey-server/internal/monitor"
-	"github.com/StephenQiu30/hotkey-server/internal/notify"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
-	"github.com/StephenQiu30/hotkey-server/internal/report"
 	"gorm.io/gorm"
 )
 
@@ -24,10 +21,10 @@ func SetupTestRouter(t *testing.T, db *gorm.DB) http.Handler {
 	return platformhttp.NewRouter(platformhttp.Config{
 		JWTSecret:     TestJWTSecret,
 		SmokeTest:     false,
-		AuthService:   auth.NewService(repository.NewUserRepo(db)),
-		MonitorSvc:    monitor.NewService(repository.NewMonitorRepo(db), nil),
-		NotifySvc:     notify.NewService(repository.NewNotifyRepo(db)),
-		ReportSvc:     report.NewService(repository.NewReportRepo(db), nil),
+		AuthService:   service.NewAuthService(repository.NewUserRepo(db)),
+		MonitorSvc:    service.NewMonitorService(repository.NewMonitorRepo(db), nil),
+		NotifySvc:     service.NewNotifyService(repository.NewNotifyRepo(db)),
+		ReportSvc:     service.NewReportService(repository.NewReportRepo(db), nil),
 		PostQuerySvc:  repository.NewContentQueryService(db),
 		TopicQuerySvc: repository.NewTopicQueryService(db),
 		TrendQuerySvc: repository.NewTrendQueryService(db),

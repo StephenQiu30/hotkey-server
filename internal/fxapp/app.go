@@ -8,21 +8,14 @@ import (
 	"os"
 	"time"
 
-	"github.com/StephenQiu30/hotkey-server/internal/auth"
 	"github.com/StephenQiu30/hotkey-server/internal/config"
 	"github.com/StephenQiu30/hotkey-server/internal/content"
-	"github.com/StephenQiu30/hotkey-server/internal/hotevent"
-	"github.com/StephenQiu30/hotkey-server/internal/llm"
 	"github.com/StephenQiu30/hotkey-server/internal/module"
-	"github.com/StephenQiu30/hotkey-server/internal/monitor"
-	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
-	"github.com/StephenQiu30/hotkey-server/internal/report"
 	"github.com/StephenQiu30/hotkey-server/internal/repository"
-	"github.com/StephenQiu30/hotkey-server/internal/topic"
-	"github.com/StephenQiu30/hotkey-server/internal/trend"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 	"github.com/StephenQiu30/hotkey-server/internal/worker"
 	"github.com/redis/go-redis/v9"
 	"github.com/robfig/cron/v3"
@@ -37,33 +30,33 @@ func NewApp() *fx.App {
 		module.Infra,
 
 		// Repository implementations (direct GORM implementations of domain interfaces)
-		fx.Provide(fx.Annotate(repository.NewUserRepo, fx.As(new(auth.Repository)))),
-		fx.Provide(fx.Annotate(repository.NewMonitorRepo, fx.As(new(monitor.Repository)))),
-		fx.Provide(fx.Annotate(repository.NewNotifyRepo, fx.As(new(notify.Repository)))),
-		fx.Provide(fx.Annotate(repository.NewHotEventRepo, fx.As(new(hotevent.Repository)))),
-		fx.Provide(fx.Annotate(repository.NewReportRepo, fx.As(new(report.Repository)))),
-		fx.Provide(fx.Annotate(repository.NewReportExportRepo, fx.As(new(report.ExportRepository)))),
+		fx.Provide(fx.Annotate(repository.NewUserRepo, fx.As(new(service.AuthRepository)))),
+		fx.Provide(fx.Annotate(repository.NewMonitorRepo, fx.As(new(service.MonitorRepository)))),
+		fx.Provide(fx.Annotate(repository.NewNotifyRepo, fx.As(new(service.NotifyRepository)))),
+		fx.Provide(fx.Annotate(repository.NewHotEventRepo, fx.As(new(service.HotEventRepository)))),
+		fx.Provide(fx.Annotate(repository.NewReportRepo, fx.As(new(service.ReportRepository)))),
+		fx.Provide(fx.Annotate(repository.NewReportExportRepo, fx.As(new(service.ExportRepository)))),
 		fx.Provide(fx.Annotate(repository.NewKnowledgeRunRepo, fx.As(new(worker.RunRepository)))),
 
 		// Query services — annotate concrete -> interface for DI
 		fx.Provide(fx.Annotate(repository.NewContentQueryService, fx.As(new(content.PostQueryService)))),
-		fx.Provide(fx.Annotate(repository.NewTopicQueryService, fx.As(new(topic.TopicQueryService)))),
-		fx.Provide(fx.Annotate(repository.NewTrendQueryService, fx.As(new(trend.TrendQueryService)))),
+		fx.Provide(fx.Annotate(repository.NewTopicQueryService, fx.As(new(service.TopicQueryService)))),
+		fx.Provide(fx.Annotate(repository.NewTrendQueryService, fx.As(new(service.TrendQueryService)))),
 
 		// Business services
-		fx.Provide(auth.NewService),
+		fx.Provide(service.NewAuthService),
 		fx.Provide(newMonitorService),
-		fx.Provide(notify.NewService),
+		fx.Provide(service.NewNotifyService),
 		fx.Provide(newReportService),
-		fx.Provide(fx.Annotate(hotevent.NewQueryService, fx.As(new(platformhttp.HotEventManager)))),
+		fx.Provide(fx.Annotate(service.NewHotEventQueryService, fx.As(new(platformhttp.HotEventManager)))),
 
 		// HTTP server
 		fx.Provide(NewHTTPServer),
 
 		// LLM 内容聚合
-		fx.Provide(fx.Annotate(llm.NewProvider, fx.As(new(llm.Provider)))),
-		fx.Provide(fx.Annotate(llm.NewService, fx.As(new(llm.Service)))),
-		fx.Provide(llm.NewChain),
+		fx.Provide(fx.Annotate(service.NewLLMProvider, fx.As(new(service.LLMProvider)))),
+		fx.Provide(fx.Annotate(service.NewLLMService, fx.As(new(service.LLMService)))),
+		fx.Provide(service.NewLLMChain),
 
 		// Daily obsidian publish worker
 		fx.Provide(newDailyObsidianPublishJob),
@@ -86,14 +79,14 @@ type HTTPServerIn struct {
 	fx.In
 
 	Config      *config.Config
-	AuthService *auth.Service
-	MonitorSvc  *monitor.Service
-	NotifySvc   *notify.Service
-	ReportSvc   *report.Service
+	AuthService *service.AuthService
+	MonitorSvc  *service.MonitorService
+	NotifySvc   *service.NotifyService
+	ReportSvc   *service.ReportService
 
 	PostQuerySvc  content.PostQueryService
-	TopicQuerySvc topic.TopicQueryService
-	TrendQuerySvc trend.TrendQueryService
+	TopicQuerySvc service.TopicQueryService
+	TrendQuerySvc service.TrendQueryService
 	HotEventMgr   platformhttp.HotEventManager
 }
 
@@ -123,12 +116,12 @@ func NewHTTPServer(in HTTPServerIn) *http.Server {
 	}
 }
 
-func newReportService(repo report.Repository) *report.Service {
-	return report.NewService(repo, time.Now)
+func newReportService(repo service.ReportRepository) *service.ReportService {
+	return service.NewReportService(repo, time.Now)
 }
 
-func newMonitorService(repo monitor.Repository) *monitor.Service {
-	return monitor.NewService(repo, nil)
+func newMonitorService(repo service.MonitorRepository) *service.MonitorService {
+	return service.NewMonitorService(repo, nil)
 }
 
 func newHourlyAggregateJob(db *gorm.DB, collectRepo *repository.CollectRepo, topicWriteRepo *repository.TopicWriteRepo, snapshotRepo *repository.SnapshotRepo, runRepo worker.RunRepository) *worker.HourlyAggregateJob {
@@ -142,7 +135,7 @@ func newHourlyAggregateJob(db *gorm.DB, collectRepo *repository.CollectRepo, top
 	})
 }
 
-func newDailyObsidianPublishJob(cfg *config.Config, monitorSvc *monitor.Service, reportSvc *report.Service, exportRepo report.ExportRepository, runRepo worker.RunRepository) *worker.DailyObsidianPublishJob {
+func newDailyObsidianPublishJob(cfg *config.Config, monitorSvc *service.MonitorService, reportSvc *service.ReportService, exportRepo service.ExportRepository, runRepo worker.RunRepository) *worker.DailyObsidianPublishJob {
 	return worker.NewDailyObsidianPublishJob(worker.DailyObsidianPublishDeps{
 		VaultRoot: cfg.ObsidianVaultPath,
 		Monitors:  monitorSvc,
@@ -196,7 +189,7 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 			dispatcher.Register(dailyJob)
 			dispatcher.Register(hourlyJob)
 
-			// --- DLQ recorder — persists exhausted-retry messages to DB ---
+			// --- DLQ recorder ---
 			dispatcher.SetDLQRecorder(func(ctx context.Context, topic string, msg queue.Message, errMsg string) {
 				if db != nil {
 					if dberr := db.WithContext(ctx).Create(&queue.DLQRecord{

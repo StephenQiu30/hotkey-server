@@ -6,11 +6,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/StephenQiu30/hotkey-server/internal/monitor"
-	"github.com/StephenQiu30/hotkey-server/internal/topic"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
-func RegisterTopicRoutes(r *gin.Engine, svc topic.TopicQueryService, mgr MonitorGetter) {
+func RegisterTopicRoutes(r *gin.Engine, svc service.TopicQueryService, mgr MonitorGetter) {
 	r.GET("/api/v1/monitors/:id/topics", listMonitorTopicsHandler(svc, mgr))
 }
 
@@ -28,7 +27,7 @@ func RegisterTopicRoutes(r *gin.Engine, svc topic.TopicQueryService, mgr Monitor
 // @Failure 404 {object} ErrorBody
 // @Failure 500 {object} ErrorBody
 // @Router /api/v1/monitors/{id}/topics [get]
-func listMonitorTopicsHandler(svc topic.TopicQueryService, mgr MonitorGetter) gin.HandlerFunc {
+func listMonitorTopicsHandler(svc service.TopicQueryService, mgr MonitorGetter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		userID, ok := userIDFromCtx(ctx)
@@ -46,7 +45,7 @@ func listMonitorTopicsHandler(svc topic.TopicQueryService, mgr MonitorGetter) gi
 		m, err := mgr.GetByID(ctx, id)
 		if err != nil {
 			switch {
-			case err == monitor.ErrNotFound:
+			case err == service.MonitorErrNotFound:
 				respondError(c, http.StatusNotFound, "monitor not found")
 			default:
 				respondInternalError(c)
@@ -64,7 +63,7 @@ func listMonitorTopicsHandler(svc topic.TopicQueryService, mgr MonitorGetter) gi
 			return
 		}
 		if topics == nil {
-			topics = []topic.TopicSummary{}
+			topics = []service.TopicSummary{}
 		}
 
 		RespondOK(c, topics)

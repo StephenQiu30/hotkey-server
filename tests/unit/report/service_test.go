@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
-	"github.com/StephenQiu30/hotkey-server/internal/report"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
 type fakeReportRepo struct {
@@ -64,7 +64,7 @@ func (r *fakeReportRepo) GetByID(_ context.Context, id, userID int64) (dto.Repor
 			return item, nil
 		}
 	}
-	return dto.Report{}, report.ErrNotFound
+	return dto.Report{}, service.ReportErrNotFound
 }
 
 func (r *fakeReportRepo) MarkSent(_ context.Context, id, userID int64, sentAt time.Time) (dto.Report, error) {
@@ -72,7 +72,7 @@ func (r *fakeReportRepo) MarkSent(_ context.Context, id, userID int64, sentAt ti
 	if err != nil {
 		return dto.Report{}, err
 	}
-	item.Status = report.StatusSent
+	item.Status = service.StatusSent
 	item.SentAt = &sentAt
 	return item, nil
 }
@@ -89,20 +89,20 @@ func TestServiceCreateWeeklyReportAggregatesTopicsAndPosts(t *testing.T) {
 		}},
 	}
 
-	svc := report.NewService(repo, func() time.Time {
+	svc := service.NewReportService(repo, func() time.Time {
 		return time.Date(2026, 7, 8, 10, 0, 0, 0, time.UTC)
 	})
 
 	got, err := svc.Create(context.Background(), 7, dto.CreateInput{
-		ReportType:  report.TypeWeekly,
+		ReportType:  service.TypeWeekly,
 		PeriodStart: &start,
 	})
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
 
-	if got.ReportType != report.TypeWeekly {
-		t.Fatalf("ReportType = %q, want %q", got.ReportType, report.TypeWeekly)
+	if got.ReportType != service.TypeWeekly {
+		t.Fatalf("ReportType = %q, want %q", got.ReportType, service.TypeWeekly)
 	}
 	if got.PeriodEnd.Format("2006-01-02") != "2026-06-30" {
 		t.Fatalf("PeriodEnd = %s, want 2026-06-30", got.PeriodEnd.Format("2006-01-02"))
@@ -121,13 +121,13 @@ func TestServiceCreateWeeklyReportAggregatesTopicsAndPosts(t *testing.T) {
 }
 
 func TestServiceCreateWeeklyReportRejectsUserWithoutMonitors(t *testing.T) {
-	svc := report.NewService(&fakeReportRepo{}, func() time.Time {
+	svc := service.NewReportService(&fakeReportRepo{}, func() time.Time {
 		return time.Date(2026, 7, 8, 10, 0, 0, 0, time.UTC)
 	})
 
-	_, err := svc.Create(context.Background(), 7, dto.CreateInput{ReportType: report.TypeWeekly})
-	if err != report.ErrNoReportSources {
-		t.Fatalf("error = %v, want %v", err, report.ErrNoReportSources)
+	_, err := svc.Create(context.Background(), 7, dto.CreateInput{ReportType: service.TypeWeekly})
+	if err != service.ErrNoReportSources {
+		t.Fatalf("error = %v, want %v", err, service.ErrNoReportSources)
 	}
 }
 
@@ -146,12 +146,12 @@ func TestServiceCreateDailyReportWithMonitorID(t *testing.T) {
 		}},
 	}
 
-	svc := report.NewService(repo, func() time.Time {
+	svc := service.NewReportService(repo, func() time.Time {
 		return time.Date(2026, 7, 8, 10, 0, 0, 0, time.UTC)
 	})
 
 	got, err := svc.Create(context.Background(), 7, dto.CreateInput{
-		ReportType:  report.TypeDaily,
+		ReportType:  service.TypeDaily,
 		PeriodStart: &start,
 		MonitorID:   10,
 	})

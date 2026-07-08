@@ -1,4 +1,4 @@
-package monitor
+package service
 
 import (
 	"context"
@@ -12,35 +12,45 @@ import (
 
 // Sentinel errors for monitor operations.
 var (
-	ErrInvalidInterval = errors.New("poll interval must be one of: 5, 10, 15, 30 minutes")
-	ErrInvalidInput    = errors.New("invalid input")
-	ErrNotFound        = errors.New("monitor not found")
-	ErrForbidden       = errors.New("not authorized")
+	ErrInvalidInterval     = errors.New("poll interval must be one of: 5, 10, 15, 30 minutes")
+	MonitorErrInvalidInput = errors.New("invalid input")
+	MonitorErrNotFound     = errors.New("monitor not found")
+	ErrForbidden           = errors.New("not authorized")
 )
 
 // AllowedIntervals defines valid poll interval values in minutes.
 var AllowedIntervals = map[int]struct{}{5: {}, 10: {}, 15: {}, 30: {}}
 
-// EmbeddingService generates text embeddings for monitor query text.
-type EmbeddingService interface {
+// MonitorEmbeddingService generates text embeddings for monitor query text.
+type MonitorEmbeddingService interface {
 	Embed(ctx context.Context, text string) (pkg.Vector384, error)
 }
 
-// Service provides keyword monitor operations.
-type Service struct {
-	repo     Repository
-	embedder EmbeddingService
+// MonitorRepository defines the persistence interface for monitor operations.
+type MonitorRepository interface {
+	Create(ctx context.Context, userID int64, input dto.CreateMonitorInput) (dto.Monitor, error)
+	GetByID(ctx context.Context, id int64) (*dto.Monitor, error)
+	ListByUser(ctx context.Context, userID int64) ([]dto.Monitor, error)
+	ListActive(ctx context.Context) ([]dto.Monitor, error)
+	Update(ctx context.Context, id int64, userID int64, input dto.UpdateMonitorInput) (dto.Monitor, error)
+	SetQueryEmbedding(ctx context.Context, id int64, emb pkg.Vector384) error
 }
 
-// NewService creates a new monitor Service.
-func NewService(repo Repository, embedder EmbeddingService) *Service {
-	return &Service{repo: repo, embedder: embedder}
+// MonitorService provides keyword monitor operations.
+type MonitorService struct {
+	repo     MonitorRepository
+	embedder MonitorEmbeddingService
+}
+
+// NewMonitorService creates a new monitor Service.
+func NewMonitorService(repo MonitorRepository, embedder MonitorEmbeddingService) *MonitorService {
+	return &MonitorService{repo: repo, embedder: embedder}
 }
 
 // Create validates and creates a new keyword monitor.
-func (s *Service) Create(ctx context.Context, userID int64, input dto.CreateMonitorInput) (dto.Monitor, error) {
+func (s *MonitorService) Create(ctx context.Context, userID int64, input dto.CreateMonitorInput) (dto.Monitor, error) {
 	if input.Name == "" || input.QueryText == "" {
-		return dto.Monitor{}, ErrInvalidInput
+		return dto.Monitor{}, MonitorErrInvalidInput
 	}
 	if _, ok := AllowedIntervals[input.PollIntervalMinutes]; !ok {
 		return dto.Monitor{}, ErrInvalidInterval
@@ -82,29 +92,29 @@ func (s *Service) Create(ctx context.Context, userID int64, input dto.CreateMoni
 }
 
 // GetByID retrieves a monitor by ID.
-func (s *Service) GetByID(ctx context.Context, id int64) (dto.Monitor, error) {
+func (s *MonitorService) GetByID(ctx context.Context, id int64) (dto.Monitor, error) {
 	m, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return dto.Monitor{}, err
 	}
 	if m == nil {
-		return dto.Monitor{}, ErrNotFound
+		return dto.Monitor{}, MonitorErrNotFound
 	}
 	return *m, nil
 }
 
 // ListActive retrieves all active monitors regardless of user.
-func (s *Service) ListActive(ctx context.Context) ([]dto.Monitor, error) {
+func (s *MonitorService) ListActive(ctx context.Context) ([]dto.Monitor, error) {
 	return s.repo.ListActive(ctx)
 }
 
 // ListByUser retrieves all monitors for a user.
-func (s *Service) ListByUser(ctx context.Context, userID int64) ([]dto.Monitor, error) {
+func (s *MonitorService) ListByUser(ctx context.Context, userID int64) ([]dto.Monitor, error) {
 	return s.repo.ListByUser(ctx, userID)
 }
 
 // Update modifies an existing monitor owned by the given user.
-func (s *Service) Update(ctx context.Context, id int64, userID int64, input dto.UpdateMonitorInput) (dto.Monitor, error) {
+func (s *MonitorService) Update(ctx context.Context, id int64, userID int64, input dto.UpdateMonitorInput) (dto.Monitor, error) {
 	if input.PollIntervalMinutes != nil {
 		if _, ok := AllowedIntervals[*input.PollIntervalMinutes]; !ok {
 			return dto.Monitor{}, ErrInvalidInterval

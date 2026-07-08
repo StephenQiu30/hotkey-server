@@ -8,9 +8,8 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
-	"github.com/StephenQiu30/hotkey-server/internal/obsidian"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
-	"github.com/StephenQiu30/hotkey-server/internal/report"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 	"github.com/StephenQiu30/hotkey-server/internal/worker"
 )
 
@@ -35,13 +34,13 @@ func (f *fakeDailyReportService) Create(ctx context.Context, userID int64, input
 	item := dto.Report{
 		ID:          int64(len(f.reports) + 1),
 		UserID:      userID,
-		ReportType:  report.TypeDaily,
+		ReportType:  service.TypeDaily,
 		PeriodStart: *input.PeriodStart,
 		PeriodEnd:   *input.PeriodEnd,
 		Subject:     "AI Regulation 日报 2026-07-07",
 		Summary:     "今日热点",
 		Content:     "## 今日概览\n\n今日热点。\n\n## 热点主题\n\n- AI Regulation",
-		Status:      report.StatusDraft,
+		Status:      service.StatusDraft,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
@@ -50,30 +49,30 @@ func (f *fakeDailyReportService) Create(ctx context.Context, userID int64, input
 }
 
 type fakeExportRepo struct {
-	exports []report.ReportExport
+	exports []dto.ReportExport
 }
 
-func (f *fakeExportRepo) CreatePending(ctx context.Context, input report.CreateReportExportInput) (report.ReportExport, error) {
-	item := report.ReportExport{ID: int64(len(f.exports) + 1), ReportID: input.ReportID, ExportKind: input.ExportKind, TargetPath: input.TargetPath, Status: report.ExportStatusPending}
+func (f *fakeExportRepo) CreatePending(ctx context.Context, input dto.CreateReportExportInput) (dto.ReportExport, error) {
+	item := dto.ReportExport{ID: int64(len(f.exports) + 1), ReportID: input.ReportID, ExportKind: input.ExportKind, TargetPath: input.TargetPath, Status: dto.ExportStatusPending}
 	f.exports = append(f.exports, item)
 	return item, nil
 }
-func (f *fakeExportRepo) MarkPublished(ctx context.Context, reportID int64, exportKind string, path string, publishedAt time.Time) (report.ReportExport, error) {
-	item := report.ReportExport{ID: int64(len(f.exports) + 1), ReportID: reportID, ExportKind: exportKind, TargetPath: path, Status: report.ExportStatusPublished, PublishedAt: &publishedAt}
+func (f *fakeExportRepo) MarkPublished(ctx context.Context, reportID int64, exportKind string, path string, publishedAt time.Time) (dto.ReportExport, error) {
+	item := dto.ReportExport{ID: int64(len(f.exports) + 1), ReportID: reportID, ExportKind: exportKind, TargetPath: path, Status: dto.ExportStatusPublished, PublishedAt: &publishedAt}
 	f.exports = append(f.exports, item)
 	return item, nil
 }
-func (f *fakeExportRepo) MarkSkipped(ctx context.Context, reportID int64, exportKind string, path string, skippedAt time.Time) (report.ReportExport, error) {
-	item := report.ReportExport{ID: int64(len(f.exports) + 1), ReportID: reportID, ExportKind: exportKind, TargetPath: path, Status: report.ExportStatusSkipped, PublishedAt: &skippedAt}
+func (f *fakeExportRepo) MarkSkipped(ctx context.Context, reportID int64, exportKind string, path string, skippedAt time.Time) (dto.ReportExport, error) {
+	item := dto.ReportExport{ID: int64(len(f.exports) + 1), ReportID: reportID, ExportKind: exportKind, TargetPath: path, Status: dto.ExportStatusSkipped, PublishedAt: &skippedAt}
 	f.exports = append(f.exports, item)
 	return item, nil
 }
-func (f *fakeExportRepo) MarkFailed(ctx context.Context, reportID int64, exportKind string, path string, message string, failedAt time.Time) (report.ReportExport, error) {
-	item := report.ReportExport{ID: int64(len(f.exports) + 1), ReportID: reportID, ExportKind: exportKind, TargetPath: path, Status: report.ExportStatusFailed, ErrorMessage: message}
+func (f *fakeExportRepo) MarkFailed(ctx context.Context, reportID int64, exportKind string, path string, message string, failedAt time.Time) (dto.ReportExport, error) {
+	item := dto.ReportExport{ID: int64(len(f.exports) + 1), ReportID: reportID, ExportKind: exportKind, TargetPath: path, Status: dto.ExportStatusFailed, ErrorMessage: message}
 	f.exports = append(f.exports, item)
 	return item, nil
 }
-func (f *fakeExportRepo) ListByReport(ctx context.Context, reportID int64) ([]report.ReportExport, error) {
+func (f *fakeExportRepo) ListByReport(ctx context.Context, reportID int64) ([]dto.ReportExport, error) {
 	return f.exports, nil
 }
 
@@ -137,7 +136,7 @@ func TestDailyObsidianPublishJobSkipsExistingFiles(t *testing.T) {
 	}
 	foundSkipped := false
 	for _, item := range exports.exports {
-		if item.ExportKind == report.ExportKindDailyDigest && item.Status == report.ExportStatusSkipped {
+		if item.ExportKind == dto.ExportKindDailyDigest && item.Status == dto.ExportStatusSkipped {
 			foundSkipped = true
 		}
 	}
@@ -192,7 +191,7 @@ func TestDailyObsidianPublishJobMissingVaultRoot(t *testing.T) {
 		VaultRoot: "",
 	})
 	err := job.RunOnce(context.Background(), time.Date(2026, 7, 7, 0, 0, 0, 0, time.UTC))
-	if err != obsidian.ErrMissingVaultRoot {
-		t.Fatalf("error = %v, want %v", err, obsidian.ErrMissingVaultRoot)
+	if err != service.ErrMissingVaultRoot {
+		t.Fatalf("error = %v, want %v", err, service.ErrMissingVaultRoot)
 	}
 }

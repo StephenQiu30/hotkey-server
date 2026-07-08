@@ -1,8 +1,8 @@
-// Package trend produces point-in-time snapshots and computes velocity.
-package trend
+package service
 
 import "time"
 
+// TopicSnapshot represents a point-in-time snapshot of a topic's metrics.
 type TopicSnapshot struct {
 	TopicID           int64
 	SnapshotTime      time.Time
@@ -14,6 +14,7 @@ type TopicSnapshot struct {
 	TrendDirection    string
 }
 
+// MonitorSnapshot represents a point-in-time snapshot of a monitor's metrics.
 type MonitorSnapshot struct {
 	MonitorID        int64
 	SnapshotTime     time.Time
@@ -23,6 +24,7 @@ type MonitorSnapshot struct {
 	TopTopicID       int64
 }
 
+// TopicSnapshotInput groups inputs for BuildTopicSnapshot.
 type TopicSnapshotInput struct {
 	TopicID           int64
 	PostCount         int
@@ -33,6 +35,7 @@ type TopicSnapshotInput struct {
 	SnapshotTime      time.Time
 }
 
+// MonitorSnapshotInput groups inputs for BuildMonitorSnapshot.
 type MonitorSnapshotInput struct {
 	MonitorID        int64
 	NewPostCount     int
@@ -40,6 +43,20 @@ type MonitorSnapshotInput struct {
 	TotalEngagement  int
 	TopTopicID       int64
 	SnapshotTime     time.Time
+}
+
+// TrendPoint represents a single data point in a trend series.
+type TrendPoint struct {
+	Time           time.Time `json:"time"`
+	HeatScore      float64   `json:"heat_score"`
+	TrendVelocity  float64   `json:"trend_velocity"`
+	TrendDirection string    `json:"trend_direction"`
+}
+
+// TrendQueryService abstracts the read side for trend queries.
+type TrendQueryService interface {
+	GetTopicTrends(topicID int64, since time.Time) ([]TrendPoint, error)
+	GetMonitorTrends(monitorID int64, since time.Time) ([]TrendPoint, error)
 }
 
 // ComputeVelocity returns the rate of change between previous and current values.

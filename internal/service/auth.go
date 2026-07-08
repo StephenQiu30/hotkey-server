@@ -1,4 +1,4 @@
-package auth
+package service
 
 import (
 	"context"
@@ -12,26 +12,34 @@ import (
 var (
 	ErrEmailExists        = errors.New("email already registered")
 	ErrInvalidCredentials = errors.New("invalid email or password")
-	ErrInvalidInput       = errors.New("invalid input")
+	AuthErrInvalidInput   = errors.New("invalid input")
 )
 
-// Service provides authentication operations.
-type Service struct {
-	repo Repository
+// AuthRepository defines the persistence interface for auth operations.
+type AuthRepository interface {
+	ExistsByEmail(ctx context.Context, email string) bool
+	Create(ctx context.Context, email, passwordHash, displayName string) (dto.User, error)
+	GetByEmail(ctx context.Context, email string) (*dto.User, error)
+	GetByID(ctx context.Context, id int64) (*dto.User, error)
 }
 
-// NewService creates a new auth Service.
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+// AuthService provides authentication operations.
+type AuthService struct {
+	repo AuthRepository
+}
+
+// NewAuthService creates a new auth Service.
+func NewAuthService(repo AuthRepository) *AuthService {
+	return &AuthService{repo: repo}
 }
 
 // Register creates a new user account.
-func (s *Service) Register(ctx context.Context, input dto.RegisterInput) (dto.User, error) {
+func (s *AuthService) Register(ctx context.Context, input dto.RegisterInput) (dto.User, error) {
 	if input.Email == "" || input.Password == "" || input.DisplayName == "" {
-		return dto.User{}, ErrInvalidInput
+		return dto.User{}, AuthErrInvalidInput
 	}
 	if len(input.Password) < 8 {
-		return dto.User{}, ErrInvalidInput
+		return dto.User{}, AuthErrInvalidInput
 	}
 
 	if s.repo.ExistsByEmail(ctx, input.Email) {
@@ -47,7 +55,7 @@ func (s *Service) Register(ctx context.Context, input dto.RegisterInput) (dto.Us
 }
 
 // Login authenticates a user by email and password.
-func (s *Service) Login(ctx context.Context, input dto.LoginInput) (dto.User, error) {
+func (s *AuthService) Login(ctx context.Context, input dto.LoginInput) (dto.User, error) {
 	user, err := s.repo.GetByEmail(ctx, input.Email)
 	if err != nil {
 		return dto.User{}, err

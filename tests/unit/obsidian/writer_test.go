@@ -6,14 +6,14 @@ import (
 	"testing"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
-	"github.com/StephenQiu30/hotkey-server/internal/obsidian"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
 func TestWriteAtomicNoOverwriteCreatesFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "HotKey", "digests", "daily", "2026-07-08", "ai.md")
 
-	result, err := obsidian.WriteAtomicNoOverwrite(path, []byte("# Daily"))
+	result, err := service.WriteAtomicNoOverwrite(path, []byte("# Daily"))
 	if err != nil {
 		t.Fatalf("WriteAtomicNoOverwrite returned error: %v", err)
 	}
@@ -36,7 +36,7 @@ func TestWriteAtomicNoOverwriteSkipsExistingFile(t *testing.T) {
 		t.Fatalf("seed file: %v", err)
 	}
 
-	result, err := obsidian.WriteAtomicNoOverwrite(path, []byte("new generated content"))
+	result, err := service.WriteAtomicNoOverwrite(path, []byte("new generated content"))
 	if err != nil {
 		t.Fatalf("WriteAtomicNoOverwrite returned error: %v", err)
 	}

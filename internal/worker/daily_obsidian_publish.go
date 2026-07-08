@@ -8,10 +8,9 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
-	"github.com/StephenQiu30/hotkey-server/internal/obsidian"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
-	"github.com/StephenQiu30/hotkey-server/internal/report"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 	"go.uber.org/zap"
 )
 
@@ -27,7 +26,7 @@ type DailyObsidianPublishDeps struct {
 	VaultRoot string
 	Monitors  MonitorLister
 	Reports   DailyReportService
-	Exports   report.ExportRepository
+	Exports   service.ExportRepository
 	Runs      RunRepository
 	Now       func() time.Time
 }
@@ -86,7 +85,7 @@ func ResolveTargetDate(now time.Time, cfg struct {
 
 func (j *DailyObsidianPublishJob) RunOnce(ctx context.Context, targetDate time.Time) (runErr error) {
 	if j.deps.VaultRoot == "" {
-		return obsidian.ErrMissingVaultRoot
+		return service.ErrMissingVaultRoot
 	}
 	runKey := RunKeyForDate(targetDate)
 	log := logging.L().With(
@@ -118,7 +117,7 @@ func (j *DailyObsidianPublishJob) RunOnce(ctx context.Context, targetDate time.T
 		periodStart := targetDate
 		periodEnd := targetDate
 		item, err := j.deps.Reports.Create(ctx, m.UserID, dto.CreateInput{
-			ReportType:  report.TypeDaily,
+			ReportType:  service.TypeDaily,
 			PeriodStart: &periodStart,
 			PeriodEnd:   &periodEnd,
 			MonitorID:   m.ID,
@@ -146,7 +145,7 @@ func (j *DailyObsidianPublishJob) exportOne(ctx context.Context, item dto.Report
 		zap.String("export_kind", string(kind)),
 		zap.String("target_date", targetDate.Format("2006-01-02")),
 	)
-	path, err := obsidian.BuildPath(j.deps.VaultRoot, dto.PathInput{
+	path, err := service.BuildPath(j.deps.VaultRoot, dto.PathInput{
 		Kind:        kind,
 		Date:        targetDate,
 		MonitorName: m.Name,
@@ -156,7 +155,7 @@ func (j *DailyObsidianPublishJob) exportOne(ctx context.Context, item dto.Report
 		log.Error("export failed: build path", zap.Error(err))
 		return err
 	}
-	if _, err := j.deps.Exports.CreatePending(ctx, report.CreateReportExportInput{
+	if _, err := j.deps.Exports.CreatePending(ctx, dto.CreateReportExportInput{
 		ReportID:   item.ID,
 		ExportKind: string(kind),
 		TargetPath: path,
@@ -164,7 +163,7 @@ func (j *DailyObsidianPublishJob) exportOne(ctx context.Context, item dto.Report
 		log.Error("export failed: create pending", zap.Error(err))
 		return err
 	}
-	markdown, err := obsidian.RenderMarkdown(obsidian.MarkdownInput{
+	markdown, err := service.RenderMarkdown(service.MarkdownInput{
 		Kind:        kind,
 		Date:        targetDate,
 		ReportID:    item.ID,
@@ -178,7 +177,7 @@ func (j *DailyObsidianPublishJob) exportOne(ctx context.Context, item dto.Report
 		log.Error("export failed: render markdown", zap.Error(err))
 		return err
 	}
-	result, err := obsidian.WriteAtomicNoOverwrite(path, []byte(markdown))
+	result, err := service.WriteAtomicNoOverwrite(path, []byte(markdown))
 	if err != nil {
 		_, _ = j.deps.Exports.MarkFailed(ctx, item.ID, string(kind), path, err.Error(), j.deps.Now())
 		log.Error("export failed: write atomic", zap.Error(err))

@@ -7,7 +7,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
-	"github.com/StephenQiu30/hotkey-server/internal/report"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 	"gorm.io/gorm"
 )
 
@@ -164,7 +164,7 @@ func (r *ReportRepo) GetByID(ctx context.Context, id, userID int64) (dto.Report,
 	var m entity.Report
 	if err := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, userID).First(&m).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return dto.Report{}, report.ErrNotFound
+			return dto.Report{}, service.ReportErrNotFound
 		}
 		return dto.Report{}, err
 	}
@@ -175,7 +175,7 @@ func (r *ReportRepo) MarkSent(ctx context.Context, id, userID int64, sentAt time
 	result := r.db.WithContext(ctx).Model(&entity.Report{}).
 		Where("id = ? AND user_id = ?", id, userID).
 		Updates(map[string]any{
-			"status":     report.StatusSent,
+			"status":     service.StatusSent,
 			"sent_at":    sentAt,
 			"updated_at": sentAt,
 		})
@@ -183,7 +183,7 @@ func (r *ReportRepo) MarkSent(ctx context.Context, id, userID int64, sentAt time
 		return dto.Report{}, result.Error
 	}
 	if result.RowsAffected == 0 {
-		return dto.Report{}, report.ErrNotFound
+					return dto.Report{}, service.ReportErrNotFound
 	}
 	return r.GetByID(ctx, id, userID)
 }
@@ -206,4 +206,4 @@ func toReport(m entity.Report) dto.Report {
 	}
 }
 
-var _ report.Repository = (*ReportRepo)(nil)
+var _ service.ReportRepository = (*ReportRepo)(nil)

@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 
-	"github.com/StephenQiu30/hotkey-server/internal/topic"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 	"gorm.io/gorm"
 )
 
-// TopicQueryService implements topic.TopicQueryService using PostgreSQL via GORM.
+// TopicQueryService implements service.TopicQueryService using PostgreSQL via GORM.
 type TopicQueryService struct {
 	db *gorm.DB
 }
@@ -18,7 +18,7 @@ func NewTopicQueryService(db *gorm.DB) *TopicQueryService {
 	return &TopicQueryService{db: db}
 }
 
-func (s *TopicQueryService) ListByMonitor(monitorID int64) ([]topic.TopicSummary, error) {
+func (s *TopicQueryService) ListByMonitor(monitorID int64) ([]service.TopicSummary, error) {
 	rows, err := s.db.Raw(
 		`SELECT t.id, t.title, t.summary, t.current_heat_score, t.trend_direction,
 		        COUNT(tp.id) AS post_count
@@ -33,9 +33,9 @@ func (s *TopicQueryService) ListByMonitor(monitorID int64) ([]topic.TopicSummary
 	}
 	defer rows.Close()
 
-	var summaries []topic.TopicSummary
+	var summaries []service.TopicSummary
 	for rows.Next() {
-		var ts topic.TopicSummary
+		var ts service.TopicSummary
 		if err := rows.Scan(&ts.ID, &ts.Title, &ts.Summary, &ts.CurrentHeat, &ts.TrendDirection, &ts.PostCount); err != nil {
 			return nil, err
 		}

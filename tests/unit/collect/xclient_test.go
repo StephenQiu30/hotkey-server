@@ -3,12 +3,12 @@ package collect_test
 import (
 	"testing"
 
-	"github.com/StephenQiu30/hotkey-server/internal/collect"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
 func TestParseTweet(t *testing.T) {
 	raw := `{"data": {"id": "123", "text": "hello world", "author_id": "456"}, "includes": {"users": [{"id": "456", "name": "Test User", "username": "test"}]}}`
-	tweet, err := collect.ParseTweet([]byte(raw))
+	tweet, err := service.ParseTweet([]byte(raw))
 	if err != nil {
 		t.Fatalf("ParseTweet failed: %v", err)
 	}
@@ -31,7 +31,7 @@ func TestParseTweet(t *testing.T) {
 
 func TestParseTweetNoIncludes(t *testing.T) {
 	raw := `{"data": {"id": "789", "text": "no includes"}}`
-	tweet, err := collect.ParseTweet([]byte(raw))
+	tweet, err := service.ParseTweet([]byte(raw))
 	if err != nil {
 		t.Fatalf("ParseTweet failed: %v", err)
 	}
@@ -44,14 +44,14 @@ func TestParseTweetNoIncludes(t *testing.T) {
 }
 
 func TestParseTweetError(t *testing.T) {
-	_, err := collect.ParseTweet([]byte(`invalid json`))
+	_, err := service.ParseTweet([]byte(`invalid json`))
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
 	}
 }
 
 func TestParseTweetEmptyData(t *testing.T) {
-	_, err := collect.ParseTweet([]byte(`{"data": {}}`))
+	_, err := service.ParseTweet([]byte(`{"data": {}}`))
 	if err == nil {
 		t.Fatal("expected error for empty data")
 	}

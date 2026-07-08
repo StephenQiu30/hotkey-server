@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
-	"github.com/StephenQiu30/hotkey-server/internal/report"
 	"gorm.io/gorm"
 )
 
@@ -17,48 +17,48 @@ func NewReportExportRepo(db *gorm.DB) *ReportExportRepo {
 	return &ReportExportRepo{db: db}
 }
 
-func (r *ReportExportRepo) CreatePending(ctx context.Context, input report.CreateReportExportInput) (report.ReportExport, error) {
+func (r *ReportExportRepo) CreatePending(ctx context.Context, input dto.CreateReportExportInput) (dto.ReportExport, error) {
 	model := entity.ReportExport{
 		ReportID:   input.ReportID,
 		ExportKind: input.ExportKind,
 		TargetPath: input.TargetPath,
-		Status:     report.ExportStatusPending,
+		Status:     dto.ExportStatusPending,
 	}
 	err := r.db.WithContext(ctx).Where(entity.ReportExport{
 		ReportID:   input.ReportID,
 		ExportKind: input.ExportKind,
 	}).Attrs(model).FirstOrCreate(&model).Error
 	if err != nil {
-		return report.ReportExport{}, err
+		return dto.ReportExport{}, err
 	}
-	return toReportExport(model), nil
+	return toDTOReportExport(model), nil
 }
 
-func (r *ReportExportRepo) MarkPublished(ctx context.Context, reportID int64, exportKind string, path string, publishedAt time.Time) (report.ReportExport, error) {
-	return r.updateStatus(ctx, reportID, exportKind, path, report.ExportStatusPublished, "", &publishedAt, publishedAt)
+func (r *ReportExportRepo) MarkPublished(ctx context.Context, reportID int64, exportKind string, path string, publishedAt time.Time) (dto.ReportExport, error) {
+	return r.updateStatus(ctx, reportID, exportKind, path, dto.ExportStatusPublished, "", &publishedAt, publishedAt)
 }
 
-func (r *ReportExportRepo) MarkSkipped(ctx context.Context, reportID int64, exportKind string, path string, skippedAt time.Time) (report.ReportExport, error) {
-	return r.updateStatus(ctx, reportID, exportKind, path, report.ExportStatusSkipped, "", nil, skippedAt)
+func (r *ReportExportRepo) MarkSkipped(ctx context.Context, reportID int64, exportKind string, path string, skippedAt time.Time) (dto.ReportExport, error) {
+	return r.updateStatus(ctx, reportID, exportKind, path, dto.ExportStatusSkipped, "", nil, skippedAt)
 }
 
-func (r *ReportExportRepo) MarkFailed(ctx context.Context, reportID int64, exportKind string, path string, message string, failedAt time.Time) (report.ReportExport, error) {
-	return r.updateStatus(ctx, reportID, exportKind, path, report.ExportStatusFailed, message, nil, failedAt)
+func (r *ReportExportRepo) MarkFailed(ctx context.Context, reportID int64, exportKind string, path string, message string, failedAt time.Time) (dto.ReportExport, error) {
+	return r.updateStatus(ctx, reportID, exportKind, path, dto.ExportStatusFailed, message, nil, failedAt)
 }
 
-func (r *ReportExportRepo) ListByReport(ctx context.Context, reportID int64) ([]report.ReportExport, error) {
+func (r *ReportExportRepo) ListByReport(ctx context.Context, reportID int64) ([]dto.ReportExport, error) {
 	var models []entity.ReportExport
 	if err := r.db.WithContext(ctx).Where("report_id = ?", reportID).Order("export_kind ASC").Find(&models).Error; err != nil {
 		return nil, err
 	}
-	out := make([]report.ReportExport, len(models))
+	out := make([]dto.ReportExport, len(models))
 	for i, model := range models {
-		out[i] = toReportExport(model)
+		out[i] = toDTOReportExport(model)
 	}
 	return out, nil
 }
 
-func (r *ReportExportRepo) updateStatus(ctx context.Context, reportID int64, exportKind string, path string, status string, message string, publishedAt *time.Time, updatedAt time.Time) (report.ReportExport, error) {
+func (r *ReportExportRepo) updateStatus(ctx context.Context, reportID int64, exportKind string, path string, status string, message string, publishedAt *time.Time, updatedAt time.Time) (dto.ReportExport, error) {
 	model := entity.ReportExport{}
 	err := r.db.WithContext(ctx).Where(entity.ReportExport{
 		ReportID:   reportID,
@@ -67,7 +67,7 @@ func (r *ReportExportRepo) updateStatus(ctx context.Context, reportID int64, exp
 		TargetPath: path,
 	}).FirstOrCreate(&model).Error
 	if err != nil {
-		return report.ReportExport{}, err
+		return dto.ReportExport{}, err
 	}
 
 	updates := map[string]any{
@@ -78,21 +78,21 @@ func (r *ReportExportRepo) updateStatus(ctx context.Context, reportID int64, exp
 		"updated_at":    updatedAt,
 	}
 	if err := r.db.WithContext(ctx).Model(&model).Updates(updates).Error; err != nil {
-		return report.ReportExport{}, err
+		return dto.ReportExport{}, err
 	}
 	return r.ListOne(ctx, reportID, exportKind)
 }
 
-func (r *ReportExportRepo) ListOne(ctx context.Context, reportID int64, exportKind string) (report.ReportExport, error) {
+func (r *ReportExportRepo) ListOne(ctx context.Context, reportID int64, exportKind string) (dto.ReportExport, error) {
 	var model entity.ReportExport
 	if err := r.db.WithContext(ctx).Where("report_id = ? AND export_kind = ?", reportID, exportKind).First(&model).Error; err != nil {
-		return report.ReportExport{}, err
+		return dto.ReportExport{}, err
 	}
-	return toReportExport(model), nil
+	return toDTOReportExport(model), nil
 }
 
-func toReportExport(model entity.ReportExport) report.ReportExport {
-	return report.ReportExport{
+func toDTOReportExport(model entity.ReportExport) dto.ReportExport {
+	return dto.ReportExport{
 		ID:           model.ID,
 		ReportID:     model.ReportID,
 		ExportKind:   model.ExportKind,
@@ -104,5 +104,3 @@ func toReportExport(model entity.ReportExport) report.ReportExport {
 		UpdatedAt:    model.UpdatedAt,
 	}
 }
-
-var _ report.ExportRepository = (*ReportExportRepo)(nil)

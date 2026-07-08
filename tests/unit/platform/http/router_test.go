@@ -12,16 +12,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/StephenQiu30/hotkey-server/internal/auth"
 	"github.com/StephenQiu30/hotkey-server/internal/content"
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
-	"github.com/StephenQiu30/hotkey-server/internal/monitor"
-	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	"github.com/StephenQiu30/hotkey-server/internal/pkg"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	platformruntime "github.com/StephenQiu30/hotkey-server/internal/platform/runtime"
-	"github.com/StephenQiu30/hotkey-server/internal/topic"
-	"github.com/StephenQiu30/hotkey-server/internal/trend"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
 type stubAuthRepo struct{ users []dto.User }
@@ -56,7 +52,7 @@ func (r *stubMonitorRepo) Create(_ context.Context, _ int64, _ dto.CreateMonitor
 }
 func (r *stubMonitorRepo) GetByID(_ context.Context, id int64) (*dto.Monitor, error) {
 	if id == 999 {
-		return nil, monitor.ErrNotFound
+		return nil, service.MonitorErrNotFound
 	}
 	return &dto.Monitor{ID: id, UserID: 1}, nil
 }
@@ -64,7 +60,7 @@ func (r *stubMonitorRepo) ListByUser(_ context.Context, _ int64) ([]dto.Monitor,
 	return nil, nil
 }
 func (r *stubMonitorRepo) Update(_ context.Context, _ int64, _ int64, _ dto.UpdateMonitorInput) (dto.Monitor, error) {
-	return dto.Monitor{}, monitor.ErrNotFound
+	return dto.Monitor{}, service.MonitorErrNotFound
 }
 func (r *stubMonitorRepo) ListActive(_ context.Context) ([]dto.Monitor, error) {
 	return []dto.Monitor{{ID: 1, UserID: 1, Name: "test", Status: "active"}}, nil
@@ -91,7 +87,7 @@ func (s *stubPostQueryService) ListPostsByMonitor(_ int64, _, _ int) ([]content.
 
 type stubTopicQueryService struct{}
 
-func (s *stubTopicQueryService) ListByMonitor(_ int64) ([]topic.TopicSummary, error) {
+func (s *stubTopicQueryService) ListByMonitor(_ int64) ([]service.TopicSummary, error) {
 	return nil, nil
 }
 func (s *stubTopicQueryService) GetMonitorID(_ context.Context, topicID int64) (int64, error) {
@@ -100,10 +96,10 @@ func (s *stubTopicQueryService) GetMonitorID(_ context.Context, topicID int64) (
 
 type stubTrendQueryService struct{}
 
-func (s *stubTrendQueryService) GetTopicTrends(_ int64, _ time.Time) ([]trend.TrendPoint, error) {
+func (s *stubTrendQueryService) GetTopicTrends(_ int64, _ time.Time) ([]service.TrendPoint, error) {
 	return nil, nil
 }
-func (s *stubTrendQueryService) GetMonitorTrends(_ int64, _ time.Time) ([]trend.TrendPoint, error) {
+func (s *stubTrendQueryService) GetMonitorTrends(_ int64, _ time.Time) ([]service.TrendPoint, error) {
 	return nil, nil
 }
 
@@ -111,9 +107,9 @@ func newTestHandler() http.Handler {
 	return platformhttp.NewRouter(platformhttp.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     true,
-		AuthService:   auth.NewService(&stubAuthRepo{}),
-		MonitorSvc:    monitor.NewService(&stubMonitorRepo{}, nil),
-		NotifySvc:     notify.NewService(&stubNotifyRepo{}),
+		AuthService:   service.NewAuthService(&stubAuthRepo{}),
+		MonitorSvc:    service.NewMonitorService(&stubMonitorRepo{}, nil),
+		NotifySvc:     service.NewNotifyService(&stubNotifyRepo{}),
 		PostQuerySvc:  &stubPostQueryService{},
 		TopicQuerySvc: &stubTopicQueryService{},
 		TrendQuerySvc: &stubTrendQueryService{},
@@ -151,9 +147,9 @@ func TestHealthEndpointDoesNotRequireAuth(t *testing.T) {
 	router := platformhttp.NewRouter(platformhttp.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
-		AuthService:   auth.NewService(&stubAuthRepo{}),
-		MonitorSvc:    monitor.NewService(&stubMonitorRepo{}, nil),
-		NotifySvc:     notify.NewService(&stubNotifyRepo{}),
+		AuthService:   service.NewAuthService(&stubAuthRepo{}),
+		MonitorSvc:    service.NewMonitorService(&stubMonitorRepo{}, nil),
+		NotifySvc:     service.NewNotifyService(&stubNotifyRepo{}),
 		PostQuerySvc:  &stubPostQueryService{},
 		TopicQuerySvc: &stubTopicQueryService{},
 		TrendQuerySvc: &stubTrendQueryService{},
@@ -172,9 +168,9 @@ func TestAuthEndpointsDoNotRequireAuth(t *testing.T) {
 	router := platformhttp.NewRouter(platformhttp.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
-		AuthService:   auth.NewService(&stubAuthRepo{}),
-		MonitorSvc:    monitor.NewService(&stubMonitorRepo{}, nil),
-		NotifySvc:     notify.NewService(&stubNotifyRepo{}),
+		AuthService:   service.NewAuthService(&stubAuthRepo{}),
+		MonitorSvc:    service.NewMonitorService(&stubMonitorRepo{}, nil),
+		NotifySvc:     service.NewNotifyService(&stubNotifyRepo{}),
 		PostQuerySvc:  &stubPostQueryService{},
 		TopicQuerySvc: &stubTopicQueryService{},
 		TrendQuerySvc: &stubTrendQueryService{},
@@ -266,9 +262,9 @@ func TestMonitorsRequireAuth(t *testing.T) {
 	router := platformhttp.NewRouter(platformhttp.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
-		AuthService:   auth.NewService(&stubAuthRepo{}),
-		MonitorSvc:    monitor.NewService(&stubMonitorRepo{}, nil),
-		NotifySvc:     notify.NewService(&stubNotifyRepo{}),
+		AuthService:   service.NewAuthService(&stubAuthRepo{}),
+		MonitorSvc:    service.NewMonitorService(&stubMonitorRepo{}, nil),
+		NotifySvc:     service.NewNotifyService(&stubNotifyRepo{}),
 		PostQuerySvc:  &stubPostQueryService{},
 		TopicQuerySvc: &stubTopicQueryService{},
 		TrendQuerySvc: &stubTrendQueryService{},
@@ -303,9 +299,9 @@ func TestUnauthorizedBusinessRouteIncludesStableErrorCode(t *testing.T) {
 	router := platformhttp.NewRouter(platformhttp.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
-		AuthService:   auth.NewService(&stubAuthRepo{}),
-		MonitorSvc:    monitor.NewService(&stubMonitorRepo{}, nil),
-		NotifySvc:     notify.NewService(&stubNotifyRepo{}),
+		AuthService:   service.NewAuthService(&stubAuthRepo{}),
+		MonitorSvc:    service.NewMonitorService(&stubMonitorRepo{}, nil),
+		NotifySvc:     service.NewNotifyService(&stubNotifyRepo{}),
 		PostQuerySvc:  &stubPostQueryService{},
 		TopicQuerySvc: &stubTopicQueryService{},
 		TrendQuerySvc: &stubTrendQueryService{},
@@ -363,9 +359,9 @@ func TestJWTAuthPropagatesUserID(t *testing.T) {
 	router := platformhttp.NewRouter(platformhttp.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
-		AuthService:   auth.NewService(&stubAuthRepo{}),
-		MonitorSvc:    monitor.NewService(&stubMonitorRepo{}, nil),
-		NotifySvc:     notify.NewService(&stubNotifyRepo{}),
+		AuthService:   service.NewAuthService(&stubAuthRepo{}),
+		MonitorSvc:    service.NewMonitorService(&stubMonitorRepo{}, nil),
+		NotifySvc:     service.NewNotifyService(&stubNotifyRepo{}),
 		PostQuerySvc:  &stubPostQueryService{},
 		TopicQuerySvc: &stubTopicQueryService{},
 		TrendQuerySvc: &stubTrendQueryService{},
@@ -731,9 +727,9 @@ func TestMonitorScopedEndpointsRejectOtherUsers(t *testing.T) {
 	router := platformhttp.NewRouter(platformhttp.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
-		AuthService:   auth.NewService(&stubAuthRepo{}),
-		MonitorSvc:    monitor.NewService(&stubMonitorRepo{}, nil),
-		NotifySvc:     notify.NewService(&stubNotifyRepo{}),
+		AuthService:   service.NewAuthService(&stubAuthRepo{}),
+		MonitorSvc:    service.NewMonitorService(&stubMonitorRepo{}, nil),
+		NotifySvc:     service.NewNotifyService(&stubNotifyRepo{}),
 		PostQuerySvc:  &stubPostQueryService{},
 		TopicQuerySvc: &stubTopicQueryService{},
 		TrendQuerySvc: &stubTrendQueryService{},
@@ -780,9 +776,9 @@ func TestMonitorScopedEndpointsReturn404ForNonexistentMonitor(t *testing.T) {
 	router := platformhttp.NewRouter(platformhttp.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
-		AuthService:   auth.NewService(&stubAuthRepo{}),
-		MonitorSvc:    monitor.NewService(&stubMonitorRepo{}, nil),
-		NotifySvc:     notify.NewService(&stubNotifyRepo{}),
+		AuthService:   service.NewAuthService(&stubAuthRepo{}),
+		MonitorSvc:    service.NewMonitorService(&stubMonitorRepo{}, nil),
+		NotifySvc:     service.NewNotifyService(&stubNotifyRepo{}),
 		PostQuerySvc:  &stubPostQueryService{},
 		TopicQuerySvc: &stubTopicQueryService{},
 		TrendQuerySvc: &stubTrendQueryService{},

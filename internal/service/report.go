@@ -1,4 +1,4 @@
-package report
+package service
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 )
 
+// Report constants.
 const (
 	TypeDaily  = "daily"
 	TypeWeekly = "weekly"
@@ -19,29 +20,52 @@ const (
 	StatusDraft = "draft"
 	StatusSent  = "sent"
 
-	defaultLimit = 50
+	defaultReportLimit = 50
 )
 
+// Report sentinel errors.
 var (
-	ErrInvalidInput    = errors.New("invalid report input")
-	ErrNoReportSources = errors.New("no report sources")
-	ErrNotFound        = errors.New("report not found")
-	ErrUnsupportedType = errors.New("unsupported report type")
+	ReportErrInvalidInput    = errors.New("invalid report input")
+	ErrNoReportSources       = errors.New("no report sources")
+	ReportErrNotFound        = errors.New("report not found")
+	ErrUnsupportedType       = errors.New("unsupported report type")
 )
 
-type Service struct {
-	repo Repository
+// ReportRepository defines the persistence interface for report operations.
+type ReportRepository interface {
+	ListUserMonitors(ctx context.Context, userID int64) ([]dto.MonitorSource, error)
+	ListTopics(ctx context.Context, monitorIDs []int64, start, end time.Time, limit int) ([]dto.TopicSource, error)
+	ListPosts(ctx context.Context, monitorIDs []int64, start, end time.Time, limit int) ([]dto.PostSource, error)
+	Create(ctx context.Context, in dto.CreateReportRecord) (dto.Report, error)
+	List(ctx context.Context, filter dto.ListFilter) ([]dto.Report, int64, error)
+	GetByID(ctx context.Context, id, userID int64) (dto.Report, error)
+	MarkSent(ctx context.Context, id, userID int64, sentAt time.Time) (dto.Report, error)
+}
+
+// ExportRepository defines the persistence interface for report export operations.
+type ExportRepository interface {
+	CreatePending(ctx context.Context, input dto.CreateReportExportInput) (dto.ReportExport, error)
+	MarkPublished(ctx context.Context, reportID int64, exportKind string, path string, publishedAt time.Time) (dto.ReportExport, error)
+	MarkSkipped(ctx context.Context, reportID int64, exportKind string, path string, skippedAt time.Time) (dto.ReportExport, error)
+	MarkFailed(ctx context.Context, reportID int64, exportKind string, path string, message string, failedAt time.Time) (dto.ReportExport, error)
+	ListByReport(ctx context.Context, reportID int64) ([]dto.ReportExport, error)
+}
+
+// ReportService provides report creation and management.
+type ReportService struct {
+	repo ReportRepository
 	now  func() time.Time
 }
 
-func NewService(repo Repository, now func() time.Time) *Service {
+// NewReportService creates a new report Service.
+func NewReportService(repo ReportRepository, now func() time.Time) *ReportService {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{repo: repo, now: now}
+	return &ReportService{repo: repo, now: now}
 }
 
-func (s *Service) Create(ctx context.Context, userID int64, input dto.CreateInput) (dto.Report, error) {
+func (s *ReportService) Create(ctx context.Context, userID int64, input dto.CreateInput) (dto.Report, error) {
 	reportType := input.ReportType
 	if reportType == "" {
 		reportType = TypeDaily
@@ -76,18 +100,18 @@ func (s *Service) Create(ctx context.Context, userID int64, input dto.CreateInpu
 		monitorIDs = append(monitorIDs, m.ID)
 	}
 
-	topics, err := s.repo.ListTopics(ctx, monitorIDs, start, end, defaultLimit)
+	topics, err := s.repo.ListTopics(ctx, monitorIDs, start, end, defaultReportLimit)
 	if err != nil {
 		return dto.Report{}, err
 	}
-	posts, err := s.repo.ListPosts(ctx, monitorIDs, start, end, defaultLimit)
+	posts, err := s.repo.ListPosts(ctx, monitorIDs, start, end, defaultReportLimit)
 	if err != nil {
 		return dto.Report{}, err
 	}
 
-	subject := buildSubject(reportType, monitors, start, end)
-	summary := buildSummary(reportType, len(topics), len(posts))
-	content := renderMarkdown(subject, reportType, start, end, summary, monitors, topics, posts)
+	subject := buildReportSubject(reportType, monitors, start, end)
+	summary := buildReportSummary(reportType, len(topics), len(posts))
+	content := renderReportMarkdown(subject, reportType, start, end, summary, monitors, topics, posts)
 
 	rec := dto.CreateReportRecord{
 		UserID:       userID,
@@ -110,31 +134,31 @@ func (s *Service) Create(ctx context.Context, userID int64, input dto.CreateInpu
 	return created, nil
 }
 
-func (s *Service) List(ctx context.Context, userID int64, filter dto.ListFilter) ([]dto.Report, int64, error) {
+func (s *ReportService) List(ctx context.Context, userID int64, filter dto.ListFilter) ([]dto.Report, int64, error) {
 	filter.UserID = userID
 	if filter.Limit <= 0 || filter.Limit > 100 {
-		filter.Limit = defaultLimit
+		filter.Limit = defaultReportLimit
 	}
 	return s.repo.List(ctx, filter)
 }
 
-func (s *Service) GetByID(ctx context.Context, id, userID int64) (dto.Report, error) {
+func (s *ReportService) GetByID(ctx context.Context, id, userID int64) (dto.Report, error) {
 	return s.repo.GetByID(ctx, id, userID)
 }
 
-func (s *Service) HTML(ctx context.Context, id, userID int64) (string, error) {
+func (s *ReportService) HTML(ctx context.Context, id, userID int64) (string, error) {
 	item, err := s.GetByID(ctx, id, userID)
 	if err != nil {
 		return "", err
 	}
-	return markdownToHTML(item.Content), nil
+	return reportMarkdownToHTML(item.Content), nil
 }
 
-func (s *Service) MarkSent(ctx context.Context, id, userID int64) (dto.Report, error) {
+func (s *ReportService) MarkSent(ctx context.Context, id, userID int64) (dto.Report, error) {
 	return s.repo.MarkSent(ctx, id, userID, s.now())
 }
 
-func (s *Service) resolvePeriod(reportType string, start, end *time.Time) (time.Time, time.Time, error) {
+func (s *ReportService) resolvePeriod(reportType string, start, end *time.Time) (time.Time, time.Time, error) {
 	switch reportType {
 	case TypeDaily:
 		periodStart := startOfDay(s.now().AddDate(0, 0, -1))
@@ -156,7 +180,7 @@ func (s *Service) resolvePeriod(reportType string, start, end *time.Time) (time.
 			periodEnd = startOfDay(*end)
 		}
 		if periodEnd.Before(periodStart) {
-			return time.Time{}, time.Time{}, ErrInvalidInput
+			return time.Time{}, time.Time{}, ReportErrInvalidInput
 		}
 		return periodStart, periodEnd, nil
 	default:
@@ -168,7 +192,7 @@ func startOfDay(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 }
 
-func buildSubject(reportType string, monitors []dto.MonitorSource, start, end time.Time) string {
+func buildReportSubject(reportType string, monitors []dto.MonitorSource, start, end time.Time) string {
 	name := "HotKey"
 	if len(monitors) == 1 {
 		name = monitors[0].Name
@@ -180,7 +204,7 @@ func buildSubject(reportType string, monitors []dto.MonitorSource, start, end ti
 	return fmt.Sprintf("%s %s %s-%s", name, label, start.Format("2006-01-02"), end.Format("2006-01-02"))
 }
 
-func buildSummary(reportType string, topicCount, postCount int) string {
+func buildReportSummary(reportType string, topicCount, postCount int) string {
 	period := "本日"
 	if reportType == TypeWeekly {
 		period = "本周"
@@ -188,7 +212,7 @@ func buildSummary(reportType string, topicCount, postCount int) string {
 	return fmt.Sprintf("%s共跟踪 %d 个热点主题、%d 条代表内容。", period, topicCount, postCount)
 }
 
-func renderMarkdown(subject, reportType string, start, end time.Time, summary string, monitors []dto.MonitorSource, topics []dto.TopicSource, posts []dto.PostSource) string {
+func renderReportMarkdown(subject, reportType string, start, end time.Time, summary string, monitors []dto.MonitorSource, topics []dto.TopicSource, posts []dto.PostSource) string {
 	overviewTitle := "今日概览"
 	if reportType == TypeWeekly {
 		overviewTitle = "本周概览"
@@ -255,7 +279,7 @@ func snippet(value string, max int) string {
 	return string(runes[:max]) + "..."
 }
 
-func markdownToHTML(markdown string) string {
+func reportMarkdownToHTML(markdown string) string {
 	lines := strings.Split(markdown, "\n")
 	var b strings.Builder
 	for _, line := range lines {
@@ -270,7 +294,7 @@ func markdownToHTML(markdown string) string {
 			b.WriteString("<p>" + html.EscapeString(line) + "</p>\n")
 		case strings.TrimSpace(line) == "":
 		default:
-			b.WriteString("<p>" + html.EscapeString(linkify(line)) + "</p>\n")
+			b.WriteString("<p>" + html.EscapeString(reportLinkify(line)) + "</p>\n")
 		}
 	}
 	return b.String()
@@ -278,6 +302,6 @@ func markdownToHTML(markdown string) string {
 
 var markdownLinkPattern = regexp.MustCompile(`\[(.*?)\]\((.*?)\)`)
 
-func linkify(line string) string {
+func reportLinkify(line string) string {
 	return markdownLinkPattern.ReplaceAllString(line, "$1 ($2)")
 }
