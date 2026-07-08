@@ -1,4 +1,4 @@
-package http
+package controller
 
 import (
 	"net/http"
@@ -8,25 +8,13 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
+	"github.com/StephenQiu30/hotkey-server/internal/model/vo"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
 func RegisterAuthRoutes(r *gin.Engine, svc *service.AuthService, jwtSecret string) {
 	r.POST("/api/v1/auth/register", registerHandler(svc))
 	r.POST("/api/v1/auth/login", loginHandler(svc, jwtSecret))
-}
-
-// UserData is the JSON representation of a user (nested inside ResponseBody.Data).
-type UserData struct {
-	ID          int64  `json:"id"`
-	Email       string `json:"email"`
-	DisplayName string `json:"display_name"`
-}
-
-// LoginData is the JSON representation of a login response (nested inside ResponseBody.Data).
-type LoginData struct {
-	User  UserData `json:"user"`
-	Token string   `json:"token"`
 }
 
 // registerHandler godoc
@@ -66,7 +54,7 @@ func registerHandler(svc *service.AuthService) gin.HandlerFunc {
 			return
 		}
 
-		RespondCreated(c, UserData{ID: user.ID, Email: user.Email, DisplayName: user.DisplayName})
+		RespondCreated(c, vo.UserData{ID: user.ID, Email: user.Email, DisplayName: user.DisplayName})
 	}
 }
 
@@ -115,8 +103,8 @@ func loginHandler(svc *service.AuthService, jwtSecret string) gin.HandlerFunc {
 			return
 		}
 
-		RespondOK(c, LoginData{
-			User:  UserData{ID: user.ID, Email: user.Email, DisplayName: user.DisplayName},
+		RespondOK(c, vo.LoginData{
+			User:  vo.UserData{ID: user.ID, Email: user.Email, DisplayName: user.DisplayName},
 			Token: tokenStr,
 		})
 	}

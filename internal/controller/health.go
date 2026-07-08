@@ -1,13 +1,13 @@
-package http
+package controller
 
-import "github.com/gin-gonic/gin"
+import (
+	"github.com/gin-gonic/gin"
+
+	"github.com/StephenQiu30/hotkey-server/internal/model/vo"
+)
 
 func RegisterHealthRoutes(r *gin.Engine) {
 	r.GET("/healthz", healthHandler())
-}
-
-type HealthBody struct {
-	Status string `json:"status"`
 }
 
 // healthHandler godoc
@@ -19,6 +19,6 @@ type HealthBody struct {
 // @Router /healthz [get]
 func healthHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		RespondOK(c, HealthBody{Status: "ok"})
+		RespondOK(c, vo.HealthBody{Status: "ok"})
 	}
 }

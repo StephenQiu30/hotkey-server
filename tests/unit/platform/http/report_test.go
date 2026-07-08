@@ -1,3 +1,4 @@
+
 package platformhttp_test
 
 import (
@@ -13,7 +14,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
-	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"github.com/StephenQiu30/hotkey-server/internal/controller"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
@@ -125,8 +126,8 @@ func TestReportRoutesCreateReadHTMLAndSend(t *testing.T) {
 	}
 }
 
-func newTestHandlerWithReports(reports platformhttp.ReportService) http.Handler {
-	return platformhttp.NewRouter(platformhttp.Config{
+func newTestHandlerWithReports(reports controller.ReportService) http.Handler {
+	return controller.NewRouter(controller.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
 		AuthService:   service.NewAuthService(&stubAuthRepo{}),

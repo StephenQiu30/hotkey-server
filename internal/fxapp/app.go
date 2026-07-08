@@ -10,8 +10,8 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/config"
 	"github.com/StephenQiu30/hotkey-server/internal/content"
+	"github.com/StephenQiu30/hotkey-server/internal/controller"
 	"github.com/StephenQiu30/hotkey-server/internal/module"
-	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
 	"github.com/StephenQiu30/hotkey-server/internal/repository"
@@ -48,7 +48,7 @@ func NewApp() *fx.App {
 		fx.Provide(newMonitorService),
 		fx.Provide(service.NewNotifyService),
 		fx.Provide(newReportService),
-		fx.Provide(fx.Annotate(service.NewHotEventQueryService, fx.As(new(platformhttp.HotEventManager)))),
+		fx.Provide(fx.Annotate(service.NewHotEventQueryService, fx.As(new(controller.HotEventManager)))),
 
 		// HTTP server
 		fx.Provide(NewHTTPServer),
@@ -87,13 +87,13 @@ type HTTPServerIn struct {
 	PostQuerySvc  content.PostQueryService
 	TopicQuerySvc service.TopicQueryService
 	TrendQuerySvc service.TrendQueryService
-	HotEventMgr   platformhttp.HotEventManager
+	HotEventMgr   controller.HotEventManager
 }
 
 func NewHTTPServer(in HTTPServerIn) *http.Server {
 	smokeTest := os.Getenv("SMOKE_TEST") == "1"
 
-	router := platformhttp.NewRouter(platformhttp.Config{
+	router := controller.NewRouter(controller.Config{
 		JWTSecret:       in.Config.JWTSecret,
 		SmokeTest:       smokeTest,
 		SwaggerEnabled:  in.Config.SwaggerEnabled,

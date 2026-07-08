@@ -1,4 +1,4 @@
-package http
+package controller
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
+	"github.com/StephenQiu30/hotkey-server/internal/model/vo"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
@@ -23,20 +24,8 @@ func RegisterMonitorRoutes(r *gin.Engine, svc *service.MonitorService) {
 	r.PATCH("/api/v1/monitors/:id", updateMonitorHandler(svc))
 }
 
-type MonitorData struct {
-	ID                  int64  `json:"id"`
-	UserID              int64  `json:"user_id"`
-	Name                string `json:"name"`
-	QueryText           string `json:"query_text"`
-	Language            string `json:"language"`
-	Region              string `json:"region"`
-	Status              string `json:"status"`
-	PollIntervalMinutes int    `json:"poll_interval_minutes"`
-	AlertEnabled        bool   `json:"alert_enabled"`
-}
-
-func monitorToResponse(m dto.Monitor) MonitorData {
-	return MonitorData{
+func monitorToResponse(m dto.Monitor) vo.MonitorData {
+	return vo.MonitorData{
 		ID: m.ID, UserID: m.UserID, Name: m.Name,
 		QueryText: m.QueryText, Language: m.Language, Region: m.Region,
 		Status: m.Status, PollIntervalMinutes: m.PollIntervalMinutes,
@@ -68,7 +57,7 @@ func listMonitorsHandler(svc *service.MonitorService) gin.HandlerFunc {
 			return
 		}
 
-		resp := make([]MonitorData, len(monitors))
+		resp := make([]vo.MonitorData, len(monitors))
 		for i, m := range monitors {
 			resp[i] = monitorToResponse(m)
 		}

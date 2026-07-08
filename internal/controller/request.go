@@ -1,7 +1,8 @@
-package http
+package controller
 
 import (
 	"github.com/StephenQiu30/hotkey-server/internal/content"
+	"github.com/StephenQiu30/hotkey-server/internal/model/vo"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
@@ -37,31 +38,31 @@ type UpdateMonitorRequest struct {
 	Status              *string `json:"status,omitempty" example:"active"`
 }
 
-// Response types
+// Response types for swagger documentation
 
 type HealthResponse struct {
-	Data      HealthBody `json:"data"`
-	RequestID string     `json:"request_id,omitempty"`
+	Data      vo.HealthBody `json:"data"`
+	RequestID string        `json:"request_id,omitempty"`
 }
 
 type UserResponse struct {
-	Data      UserData `json:"data"`
-	RequestID string   `json:"request_id,omitempty"`
-}
-
-type LoginResponse struct {
-	Data      LoginData `json:"data"`
-	RequestID string    `json:"request_id,omitempty"`
-}
-
-type MonitorResponse struct {
-	Data      MonitorData `json:"data"`
+	Data      vo.UserData `json:"data"`
 	RequestID string      `json:"request_id,omitempty"`
 }
 
+type LoginResponse struct {
+	Data      vo.LoginData `json:"data"`
+	RequestID string       `json:"request_id,omitempty"`
+}
+
+type MonitorResponse struct {
+	Data      vo.MonitorData `json:"data"`
+	RequestID string         `json:"request_id,omitempty"`
+}
+
 type MonitorListResponse struct {
-	Data      []MonitorData `json:"data"`
-	RequestID string        `json:"request_id,omitempty"`
+	Data      []vo.MonitorData `json:"data"`
+	RequestID string           `json:"request_id,omitempty"`
 }
 
 type PostListResponse struct {
@@ -80,15 +81,11 @@ type TrendListResponse struct {
 }
 
 type NotificationListResponse struct {
-	Data      []NotificationData `json:"data"`
-	RequestID string             `json:"request_id,omitempty"`
-}
-
-type MarkNotificationReadData struct {
-	Read bool `json:"read" example:"true"`
+	Data      []vo.NotificationData `json:"data"`
+	RequestID string                `json:"request_id,omitempty"`
 }
 
 type MarkNotificationReadResponse struct {
-	Data      MarkNotificationReadData `json:"data"`
-	RequestID string                   `json:"request_id,omitempty"`
+	Data      vo.MarkNotificationReadData `json:"data"`
+	RequestID string                      `json:"request_id,omitempty"`
 }

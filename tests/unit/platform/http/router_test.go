@@ -13,6 +13,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/StephenQiu30/hotkey-server/internal/content"
+	"github.com/StephenQiu30/hotkey-server/internal/controller"
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/pkg"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
@@ -104,7 +105,7 @@ func (s *stubTrendQueryService) GetMonitorTrends(_ int64, _ time.Time) ([]servic
 }
 
 func newTestHandler() http.Handler {
-	return platformhttp.NewRouter(platformhttp.Config{
+	return controller.NewRouter(controller.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     true,
 		AuthService:   service.NewAuthService(&stubAuthRepo{}),
@@ -144,7 +145,7 @@ func TestHealthEndpoint(t *testing.T) {
 }
 
 func TestHealthEndpointDoesNotRequireAuth(t *testing.T) {
-	router := platformhttp.NewRouter(platformhttp.Config{
+	router := controller.NewRouter(controller.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
 		AuthService:   service.NewAuthService(&stubAuthRepo{}),
@@ -165,7 +166,7 @@ func TestHealthEndpointDoesNotRequireAuth(t *testing.T) {
 }
 
 func TestAuthEndpointsDoNotRequireAuth(t *testing.T) {
-	router := platformhttp.NewRouter(platformhttp.Config{
+	router := controller.NewRouter(controller.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
 		AuthService:   service.NewAuthService(&stubAuthRepo{}),
@@ -259,7 +260,7 @@ func TestLoginReturns200(t *testing.T) {
 }
 
 func TestMonitorsRequireAuth(t *testing.T) {
-	router := platformhttp.NewRouter(platformhttp.Config{
+	router := controller.NewRouter(controller.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
 		AuthService:   service.NewAuthService(&stubAuthRepo{}),
@@ -296,7 +297,7 @@ func TestMonitorsRequireAuth(t *testing.T) {
 }
 
 func TestUnauthorizedBusinessRouteIncludesStableErrorCode(t *testing.T) {
-	router := platformhttp.NewRouter(platformhttp.Config{
+	router := controller.NewRouter(controller.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
 		AuthService:   service.NewAuthService(&stubAuthRepo{}),
@@ -356,7 +357,7 @@ func TestPublicPathDoesNotInjectUserID(t *testing.T) {
 }
 
 func TestJWTAuthPropagatesUserID(t *testing.T) {
-	router := platformhttp.NewRouter(platformhttp.Config{
+	router := controller.NewRouter(controller.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
 		AuthService:   service.NewAuthService(&stubAuthRepo{}),
@@ -656,7 +657,7 @@ func TestRespondOKWrapsDataAndRequestID(t *testing.T) {
 	r := gin.New()
 	r.Use(platformhttp.RequestIDMiddleware())
 	r.GET("/ok", func(c *gin.Context) {
-		platformhttp.RespondOK(c, gin.H{"name": "hotkey"})
+		controller.RespondOK(c, gin.H{"name": "hotkey"})
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/ok", nil)
@@ -690,7 +691,7 @@ func TestRespondPageWrapsPaginationAndRequestID(t *testing.T) {
 	r := gin.New()
 	r.Use(platformhttp.RequestIDMiddleware())
 	r.GET("/page", func(c *gin.Context) {
-		platformhttp.RespondPage(c, []string{"a", "b"}, 2, 10, 42)
+		controller.RespondPage(c, []string{"a", "b"}, 2, 10, 42)
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/page", nil)
@@ -724,7 +725,7 @@ func TestRespondPageWrapsPaginationAndRequestID(t *testing.T) {
 }
 
 func TestMonitorScopedEndpointsRejectOtherUsers(t *testing.T) {
-	router := platformhttp.NewRouter(platformhttp.Config{
+	router := controller.NewRouter(controller.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
 		AuthService:   service.NewAuthService(&stubAuthRepo{}),
@@ -773,7 +774,7 @@ func TestMonitorScopedEndpointsRejectOtherUsers(t *testing.T) {
 }
 
 func TestMonitorScopedEndpointsReturn404ForNonexistentMonitor(t *testing.T) {
-	router := platformhttp.NewRouter(platformhttp.Config{
+	router := controller.NewRouter(controller.Config{
 		JWTSecret:     "test-secret",
 		SmokeTest:     false,
 		AuthService:   service.NewAuthService(&stubAuthRepo{}),

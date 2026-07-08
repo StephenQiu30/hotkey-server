@@ -1,4 +1,4 @@
-package http
+package controller
 
 import (
 	"net/http"
@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
+	"github.com/StephenQiu30/hotkey-server/internal/model/vo"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
@@ -16,18 +17,8 @@ func RegisterNotifyRoutes(r *gin.Engine, svc *service.NotifyService) {
 	r.POST("/api/v1/notifications/:id/read", markNotificationReadHandler(svc))
 }
 
-type NotificationData struct {
-	ID             int64   `json:"id"`
-	UserID         int64   `json:"user_id"`
-	AlertID        int64   `json:"alert_id"`
-	Channel        string  `json:"channel"`
-	DeliveryStatus string  `json:"delivery_status"`
-	ReadAt         *string `json:"read_at,omitempty"`
-	CreatedAt      string  `json:"created_at"`
-}
-
-func toNotificationResponse(n dto.Notification) NotificationData {
-	r := NotificationData{
+func toNotificationResponse(n dto.Notification) vo.NotificationData {
+	r := vo.NotificationData{
 		ID: n.ID, UserID: n.UserID, AlertID: n.AlertID,
 		Channel: n.Channel, DeliveryStatus: n.DeliveryStatus,
 		CreatedAt: n.CreatedAt.Format(time.RFC3339),
@@ -63,7 +54,7 @@ func listNotificationsHandler(svc *service.NotifyService) gin.HandlerFunc {
 			return
 		}
 
-		result := make([]NotificationData, len(items))
+		result := make([]vo.NotificationData, len(items))
 		for i, n := range items {
 			result[i] = toNotificationResponse(n)
 		}
@@ -108,6 +99,6 @@ func markNotificationReadHandler(svc *service.NotifyService) gin.HandlerFunc {
 			return
 		}
 
-		RespondOK(c, MarkNotificationReadData{Read: true})
+		RespondOK(c, vo.MarkNotificationReadData{Read: true})
 	}
 }

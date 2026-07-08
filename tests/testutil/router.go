@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/StephenQiu30/hotkey-server/internal/controller"
 	"github.com/StephenQiu30/hotkey-server/internal/repository"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
-	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	"gorm.io/gorm"
 )
 
@@ -18,7 +18,7 @@ const TestJWTSecret = "test-jwt-secret-for-integration"
 func SetupTestRouter(t *testing.T, db *gorm.DB) http.Handler {
 	t.Helper()
 
-	return platformhttp.NewRouter(platformhttp.Config{
+	return controller.NewRouter(controller.Config{
 		JWTSecret:     TestJWTSecret,
 		SmokeTest:     false,
 		AuthService:   service.NewAuthService(repository.NewUserRepo(db)),

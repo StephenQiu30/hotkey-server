@@ -1,4 +1,4 @@
-package http
+package controller
 
 import (
 	"github.com/gin-gonic/gin"
@@ -7,6 +7,7 @@ import (
 
 	_ "github.com/StephenQiu30/hotkey-server/docs"
 	"github.com/StephenQiu30/hotkey-server/internal/content"
+	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
@@ -31,13 +32,13 @@ func NewRouter(cfg Config) *gin.Engine {
 	}
 	r := gin.New()
 
-	r.Use(RecoverMiddleware())
-	r.Use(CORSMiddleware())
-	r.Use(SecurityHeadersMiddleware())
-	r.Use(RequestIDMiddleware())
-	r.Use(AccessLogMiddleware())
-	r.Use(ContextMetadataMiddleware("http"))
-	r.Use(AuthMiddleware(cfg.JWTSecret, cfg.SmokeTest))
+	r.Use(platformhttp.RecoverMiddleware())
+	r.Use(platformhttp.CORSMiddleware())
+	r.Use(platformhttp.SecurityHeadersMiddleware())
+	r.Use(platformhttp.RequestIDMiddleware())
+	r.Use(platformhttp.AccessLogMiddleware())
+	r.Use(platformhttp.ContextMetadataMiddleware("http"))
+	r.Use(platformhttp.AuthMiddleware(cfg.JWTSecret, cfg.SmokeTest))
 
 	if cfg.SwaggerEnabled {
 		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
