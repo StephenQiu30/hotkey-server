@@ -38,7 +38,7 @@ func (r *ReportExportRepo) MarkPublished(ctx context.Context, reportID int64, ex
 }
 
 func (r *ReportExportRepo) MarkSkipped(ctx context.Context, reportID int64, exportKind string, path string, skippedAt time.Time) (report.ReportExport, error) {
-	return r.updateStatus(ctx, reportID, exportKind, path, report.ExportStatusSkipped, "", &skippedAt, skippedAt)
+	return r.updateStatus(ctx, reportID, exportKind, path, report.ExportStatusSkipped, "", nil, skippedAt)
 }
 
 func (r *ReportExportRepo) MarkFailed(ctx context.Context, reportID int64, exportKind string, path string, message string, failedAt time.Time) (report.ReportExport, error) {
