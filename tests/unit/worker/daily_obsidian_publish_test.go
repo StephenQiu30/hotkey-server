@@ -9,9 +9,15 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/obsidian"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 	"github.com/StephenQiu30/hotkey-server/internal/report"
 	"github.com/StephenQiu30/hotkey-server/internal/worker"
 )
+
+func TestMain(m *testing.M) {
+	_ = logging.Init("info", "json")
+	os.Exit(m.Run())
+}
 
 type fakeMonitorLister struct {
 	monitors []monitor.Monitor

@@ -9,8 +9,10 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/obsidian"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
 	"github.com/StephenQiu30/hotkey-server/internal/report"
+	"go.uber.org/zap"
 )
 
 type MonitorLister interface {
@@ -89,6 +91,11 @@ func (j *DailyObsidianPublishJob) RunOnce(ctx context.Context, targetDate time.T
 		return obsidian.ErrMissingVaultRoot
 	}
 	runKey := RunKeyForDate(targetDate)
+	log := logging.L().With(
+		zap.String("run_key", runKey),
+		zap.String("target_date", targetDate.Format("2006-01-02")),
+	)
+	log.Info("starting daily obsidian publish run")
 	if j.deps.Runs != nil {
 		started, err := j.deps.Runs.TryStart(ctx, runKey, "daily-obsidian-publish", targetDate, j.deps.Now())
 		if err != nil {
@@ -125,10 +132,22 @@ func (j *DailyObsidianPublishJob) RunOnce(ctx context.Context, targetDate time.T
 		runErr = errors.Join(runErr, j.exportOne(ctx, item, m, obsidian.ExportDailyDigest, targetDate))
 		runErr = errors.Join(runErr, j.exportOne(ctx, item, m, obsidian.ExportPublishDraft, targetDate))
 	}
+	if runErr != nil {
+		log.Error("daily obsidian publish run finished with errors",
+			zap.Error(runErr),
+		)
+	} else {
+		log.Info("daily obsidian publish run completed successfully")
+	}
 	return runErr
 }
 
 func (j *DailyObsidianPublishJob) exportOne(ctx context.Context, item report.Report, m monitor.Monitor, kind obsidian.ExportKind, targetDate time.Time) error {
+	log := logging.L().With(
+		zap.Int64("report_id", item.ID),
+		zap.String("export_kind", string(kind)),
+		zap.String("target_date", targetDate.Format("2006-01-02")),
+	)
 	path, err := obsidian.BuildPath(j.deps.VaultRoot, obsidian.PathInput{
 		Kind:        kind,
 		Date:        targetDate,
@@ -136,6 +155,7 @@ func (j *DailyObsidianPublishJob) exportOne(ctx context.Context, item report.Rep
 	})
 	if err != nil {
 		_, _ = j.deps.Exports.MarkFailed(ctx, item.ID, string(kind), "", err.Error(), j.deps.Now())
+		log.Error("export failed: build path", zap.Error(err))
 		return err
 	}
 	if _, err := j.deps.Exports.CreatePending(ctx, report.CreateReportExportInput{
@@ -143,6 +163,7 @@ func (j *DailyObsidianPublishJob) exportOne(ctx context.Context, item report.Rep
 		ExportKind: string(kind),
 		TargetPath: path,
 	}); err != nil {
+		log.Error("export failed: create pending", zap.Error(err))
 		return err
 	}
 	markdown, err := obsidian.RenderMarkdown(obsidian.MarkdownInput{
@@ -156,17 +177,23 @@ func (j *DailyObsidianPublishJob) exportOne(ctx context.Context, item report.Rep
 	})
 	if err != nil {
 		_, _ = j.deps.Exports.MarkFailed(ctx, item.ID, string(kind), path, err.Error(), j.deps.Now())
+		log.Error("export failed: render markdown", zap.Error(err))
 		return err
 	}
 	result, err := obsidian.WriteAtomicNoOverwrite(path, []byte(markdown))
 	if err != nil {
 		_, _ = j.deps.Exports.MarkFailed(ctx, item.ID, string(kind), path, err.Error(), j.deps.Now())
+		log.Error("export failed: write atomic", zap.Error(err))
 		return err
 	}
 	if result.Skipped {
 		_, err = j.deps.Exports.MarkSkipped(ctx, item.ID, string(kind), path, j.deps.Now())
+		log.Error("export skipped: atomic write already existed", zap.Error(err))
 		return err
 	}
 	_, err = j.deps.Exports.MarkPublished(ctx, item.ID, string(kind), path, j.deps.Now())
+	if err != nil {
+		log.Error("export failed: mark published", zap.Error(err))
+	}
 	return err
 }
