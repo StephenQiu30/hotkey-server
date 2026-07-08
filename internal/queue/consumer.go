@@ -13,12 +13,11 @@ import (
 type Consumer struct {
 	reader     *kafka.Reader
 	dispatcher *Dispatcher
-	dedupe     *Dedupe
 	closed     atomic.Bool
 }
 
 // NewConsumer creates a Consumer for one topic with consumer-group coordination.
-func NewConsumer(brokers []string, topic string, groupID string, dispatcher *Dispatcher, dedupe *Dedupe) *Consumer {
+func NewConsumer(brokers []string, topic string, groupID string, dispatcher *Dispatcher) *Consumer {
 	r := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:     brokers,
 		Topic:       topic,
@@ -27,7 +26,7 @@ func NewConsumer(brokers []string, topic string, groupID string, dispatcher *Dis
 		MinBytes:    1,
 		MaxBytes:    1e6,
 	})
-	return &Consumer{reader: r, dispatcher: dispatcher, dedupe: dedupe}
+	return &Consumer{reader: r, dispatcher: dispatcher}
 }
 
 // Run starts the poll-dispatch loop. Blocks until ctx is cancelled or a fatal error.
@@ -48,21 +47,10 @@ func (c *Consumer) Run(ctx context.Context) error {
 		var msg Message
 		if err := json.Unmarshal(km.Value, &msg); err != nil {
 			log.Printf("consumer: unmarshal error (committing offset): %v", err)
-			c.reader.CommitMessages(ctx, km)
-			continue
-		}
-
-		// Dedup check
-		if c.dedupe != nil {
-			seen, err := c.dedupe.Seen(ctx, msg.ID)
-			if err != nil {
-				log.Printf("consumer: dedup error for %s/%s: %v", msg.Type, msg.ID, err)
-				// fall through — process anyway on dedup failure
-			} else if seen {
-				log.Printf("consumer: skipping duplicate %s/%s", msg.Type, msg.ID)
-				c.reader.CommitMessages(ctx, km)
-				continue
+			if commitErr := c.reader.CommitMessages(ctx, km); commitErr != nil {
+				log.Printf("consumer: commit offset error after unmarshal failure: %v", commitErr)
 			}
+			continue
 		}
 
 		// Dispatch
@@ -71,7 +59,9 @@ func (c *Consumer) Run(ctx context.Context) error {
 			// Still commit offset — already retried/DLQ'd inside dispatcher
 		}
 
-		c.reader.CommitMessages(ctx, km)
+		if commitErr := c.reader.CommitMessages(ctx, km); commitErr != nil {
+			log.Printf("consumer: commit offset error: %v", commitErr)
+		}
 	}
 }
 

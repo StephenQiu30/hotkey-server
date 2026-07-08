@@ -151,11 +151,7 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 			// --- Kafka producer ---
 			producer = queue.NewProducer(cfg.KafkaBrokers)
 
-			// --- Dispatcher ---
-			dispatcher := queue.NewDispatcher(producer)
-			dispatcher.Register(dailyJob)
-
-			// --- Redis dedupe ---
+			// --- Redis dedupe (needed by dispatcher) ---
 			var dedupe *queue.Dedupe
 			if cfg.RedisAddr != "" {
 				rdb = redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
@@ -165,13 +161,31 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 				dedupe = queue.NewDedupe(rdb)
 			}
 
+			// --- Dispatcher ---
+			dispatcher := queue.NewDispatcher(producer, dedupe)
+			dispatcher.Register(dailyJob)
+
+			// --- DLQ recorder — persists exhausted-retry messages to DB ---
+			dispatcher.SetDLQRecorder(func(ctx context.Context, topic string, msg queue.Message, errMsg string) {
+				if db != nil {
+					db.WithContext(ctx).Create(&queue.DLQRecord{
+						Topic:       topic,
+						MessageID:   msg.ID,
+						MessageType: msg.Type,
+						Payload:     string(msg.Payload),
+						ErrorMsg:    errMsg,
+						RetryCount:  msg.RetryCount,
+						CreatedAt:   time.Now(),
+					})
+				}
+			})
+
 			// --- Kafka consumer ---
 			consumer = queue.NewConsumer(
 				cfg.KafkaBrokers,
 				queue.TopicDigestRun,
 				cfg.KafkaConsumerGroup,
 				dispatcher,
-				dedupe,
 			)
 			go func() {
 				log.Printf("kafka consumer: starting on %s", queue.TopicDigestRun)
@@ -227,6 +241,9 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 					log.Printf("redis close error: %v", err)
 				}
 			}
+			if err := srv.Shutdown(ctx); err != nil {
+				log.Printf("http server shutdown error: %v", err)
+			}
 			if db != nil {
 				sqlDB, err := db.DB()
 				if err == nil && sqlDB != nil {
@@ -235,7 +252,7 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 					}
 				}
 			}
-			return srv.Shutdown(ctx)
+			return nil
 		},
 	})
 }

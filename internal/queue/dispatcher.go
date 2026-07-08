@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"sync"
+	"time"
 )
 
 // Handler processes a single message. Each handler is registered for one message Type.
@@ -30,16 +31,24 @@ func (h HandlerFunc) DedupeEnabled() bool                     { return false }
 
 // Dispatcher routes incoming messages to registered handlers.
 type Dispatcher struct {
-	mu       sync.RWMutex
-	handlers map[string]Handler
-	producer *Producer // used to publish to DLQ on retry exhaustion
+	mu        sync.RWMutex
+	handlers  map[string]Handler
+	producer  *Producer // used to publish to DLQ on retry exhaustion
+	dedupe    *Dedupe
+	recordDLQ func(ctx context.Context, topic string, msg Message, errMsg string)
 }
 
-func NewDispatcher(producer *Producer) *Dispatcher {
+func NewDispatcher(producer *Producer, dedupe *Dedupe) *Dispatcher {
 	return &Dispatcher{
 		handlers: make(map[string]Handler),
 		producer: producer,
+		dedupe:   dedupe,
 	}
+}
+
+// SetDLQRecorder sets a callback for persisting DLQ records to the database.
+func (d *Dispatcher) SetDLQRecorder(fn func(ctx context.Context, topic string, msg Message, errMsg string)) {
+	d.recordDLQ = fn
 }
 
 // Register adds a handler. Panics if a handler for the same type is already registered.
@@ -67,6 +76,18 @@ func (d *Dispatcher) Dispatch(ctx context.Context, msg Message) error {
 		return ErrHandlerNotFound
 	}
 
+	// Dedup check — skip if already processed
+	if d.dedupe != nil && h.DedupeEnabled() {
+		seen, err := d.dedupe.Seen(ctx, msg.ID)
+		if err != nil {
+			log.Printf("dispatcher: dedup error for %s/%s: %v", msg.Type, msg.ID, err)
+			// fall through
+		} else if seen {
+			log.Printf("dispatcher: skipping duplicate %s/%s", msg.Type, msg.ID)
+			return nil
+		}
+	}
+
 	err := h.Handle(ctx, msg)
 	if err == nil {
 		return nil
@@ -75,8 +96,11 @@ func (d *Dispatcher) Dispatch(ctx context.Context, msg Message) error {
 	// Handler failed — decide: retry or DLQ
 	msg.RetryCount++
 	if msg.RetryCount < MaxRetries {
-		// Re-publish to original topic for retry
-		if pubErr := d.producer.Publish(ctx, topicForType(msg.Type), msg); pubErr != nil {
+		// Re-publish to original topic for retry with delay
+		time.Sleep(1 * time.Second)
+		if d.producer == nil {
+			log.Printf("dispatcher: retry skipped for %s/%s (no producer configured)", msg.Type, msg.ID)
+		} else if pubErr := d.producer.Publish(ctx, topicForType(msg.Type), msg); pubErr != nil {
 			log.Printf("dispatcher: retry publish failed for %s/%s: %v", msg.Type, msg.ID, pubErr)
 		}
 		return err
@@ -85,8 +109,18 @@ func (d *Dispatcher) Dispatch(ctx context.Context, msg Message) error {
 	// Retries exhausted — publish to DLQ
 	dlqTopic := topicForDLQ(msg.Type)
 	log.Printf("dispatcher: routing %s/%s to DLQ %s after %d retries: %v", msg.Type, msg.ID, dlqTopic, msg.RetryCount, err)
-	if pubErr := d.producer.Publish(ctx, dlqTopic, msg); pubErr != nil {
-		log.Printf("dispatcher: DLQ publish failed for %s/%s: %v", msg.Type, msg.ID, pubErr)
+
+	if d.producer != nil {
+		if pubErr := d.producer.Publish(ctx, dlqTopic, msg); pubErr != nil {
+			log.Printf("dispatcher: DLQ publish failed for %s/%s: %v", msg.Type, msg.ID, pubErr)
+		}
+	} else {
+		log.Printf("dispatcher: DLQ publish skipped for %s/%s (no producer configured)", msg.Type, msg.ID)
+	}
+
+	// Persist DLQ record to database
+	if d.recordDLQ != nil {
+		d.recordDLQ(ctx, dlqTopic, msg, err.Error())
 	}
 	return err
 }
