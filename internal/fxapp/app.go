@@ -131,10 +131,15 @@ func newDailyObsidianPublishJob(cfg *config.Config, monitorSvc *monitor.Service,
 }
 
 func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.Config, dailyJob *worker.DailyObsidianPublishJob) {
+	var (
+		producer *queue.Producer
+		rdb      *redis.Client
+		consumer *queue.Consumer
+		cronS    *cron.Cron
+	)
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			if os.Getenv("SMOKE_TEST") == "1" {
-				// Smoke test: start HTTP server only, no worker
 				go func() {
 					if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 						log.Printf("http server error: %v", err)
@@ -144,8 +149,7 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 			}
 
 			// --- Kafka producer ---
-			producer := queue.NewProducer(cfg.KafkaBrokers)
-			lc.Append(fx.Hook{OnStop: func(context.Context) error { return producer.Close() }})
+			producer = queue.NewProducer(cfg.KafkaBrokers)
 
 			// --- Dispatcher ---
 			dispatcher := queue.NewDispatcher(producer)
@@ -154,13 +158,15 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 			// --- Redis dedupe ---
 			var dedupe *queue.Dedupe
 			if cfg.RedisAddr != "" {
-				rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
-				_ = rdb.Ping(ctx).Err() // best-effort
+				rdb = redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+				if err := rdb.Ping(ctx).Err(); err != nil {
+					log.Printf("redis: ping %q failed: %v (dedup degraded)", cfg.RedisAddr, err)
+				}
 				dedupe = queue.NewDedupe(rdb)
 			}
 
 			// --- Kafka consumer ---
-			consumer := queue.NewConsumer(
+			consumer = queue.NewConsumer(
 				cfg.KafkaBrokers,
 				queue.TopicDigestRun,
 				cfg.KafkaConsumerGroup,
@@ -179,8 +185,8 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 			if err != nil {
 				return fmt.Errorf("cron: load location %q: %w", cfg.DailyDigestTimezone, err)
 			}
-			c := cron.New(cron.WithLocation(loc))
-			_, err = c.AddFunc("0 8 * * *", func() {
+			cronS = cron.New(cron.WithLocation(loc))
+			_, err = cronS.AddFunc("0 8 * * *", func() {
 				now := time.Now().In(loc)
 				payload, _ := json.Marshal(map[string]string{
 					"target_date": now.AddDate(0, 0, -1).Format("2006-01-02"),
@@ -192,9 +198,7 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 			if err != nil {
 				return fmt.Errorf("cron: add func: %w", err)
 			}
-			c.Start()
-			lc.Append(fx.Hook{OnStop: func(context.Context) error { c.Stop(); return nil }})
-
+			cronS.Start()
 			log.Printf("worker: started (cron + kafka)")
 
 			go func() {
@@ -205,10 +209,30 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
+			if cronS != nil {
+				cronS.Stop()
+			}
+			if consumer != nil {
+				if err := consumer.Close(); err != nil {
+					log.Printf("consumer close error: %v", err)
+				}
+			}
+			if producer != nil {
+				if err := producer.Close(); err != nil {
+					log.Printf("producer close error: %v", err)
+				}
+			}
+			if rdb != nil {
+				if err := rdb.Close(); err != nil {
+					log.Printf("redis close error: %v", err)
+				}
+			}
 			if db != nil {
 				sqlDB, err := db.DB()
 				if err == nil && sqlDB != nil {
-					sqlDB.Close()
+					if err := sqlDB.Close(); err != nil {
+						log.Printf("db close error: %v", err)
+					}
 				}
 			}
 			return srv.Shutdown(ctx)
