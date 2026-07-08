@@ -67,5 +67,7 @@ func frontmatter(kind string, input MarkdownInput, publishStatus string, tags []
 func yamlQuote(s string) string {
 	escaped := strings.ReplaceAll(s, `\`, `\\`)
 	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+	escaped = strings.ReplaceAll(escaped, "\n", `\n`)
+	escaped = strings.ReplaceAll(escaped, "\r", `\r`)
 	return `"` + escaped + `"`
 }

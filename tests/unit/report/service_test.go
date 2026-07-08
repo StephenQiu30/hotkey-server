@@ -129,3 +129,41 @@ func TestServiceCreateWeeklyReportRejectsUserWithoutMonitors(t *testing.T) {
 		t.Fatalf("error = %v, want %v", err, report.ErrNoReportSources)
 	}
 }
+
+func TestServiceCreateDailyReportWithMonitorID(t *testing.T) {
+	start := time.Date(2026, 7, 7, 0, 0, 0, 0, time.UTC)
+	repo := &fakeReportRepo{
+		monitors: []report.MonitorSource{
+			{ID: 10, UserID: 7, Name: "AI Regulation"},
+			{ID: 20, UserID: 7, Name: "Tech Policy"},
+		},
+		topics: []report.TopicSource{{
+			ID: 1, MonitorID: 10, Title: "AI 监管新规", Summary: "监管框架更新", HeatScore: 92.5, Trend: "rising", PostCount: 4,
+		}},
+		posts: []report.PostSource{{
+			ID: 20, MonitorID: 10, Title: "监管机构发布 AI 指南", Content: "指南要求模型风险评估", URL: "https://example.com/ai", Platform: "x", HeatScore: 88,
+		}},
+	}
+
+	svc := report.NewService(repo, func() time.Time {
+		return time.Date(2026, 7, 8, 10, 0, 0, 0, time.UTC)
+	})
+
+	got, err := svc.Create(context.Background(), 7, report.CreateInput{
+		ReportType:  report.TypeDaily,
+		PeriodStart: &start,
+		MonitorID:   10,
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if got.HotspotCount != 2 {
+		t.Fatalf("HotspotCount = %d, want 2", got.HotspotCount)
+	}
+	if !strings.Contains(got.Content, "AI Regulation") {
+		t.Fatalf("Content should reference monitor 'AI Regulation':\n%s", got.Content)
+	}
+	if !strings.Contains(got.Subject, "AI Regulation") {
+		t.Fatalf("Subject should contain monitor name: %s", got.Subject)
+	}
+}

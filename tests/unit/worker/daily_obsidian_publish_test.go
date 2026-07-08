@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
+	"github.com/StephenQiu30/hotkey-server/internal/obsidian"
 	"github.com/StephenQiu30/hotkey-server/internal/report"
 	"github.com/StephenQiu30/hotkey-server/internal/worker"
 )
@@ -93,8 +94,8 @@ func TestDailyObsidianPublishJobWritesDigestAndDraft(t *testing.T) {
 			t.Fatalf("expected file %s: %v", path, err)
 		}
 	}
-	if len(exports.exports) < 4 {
-		t.Fatalf("expected pending and final export records, got %d", len(exports.exports))
+	if len(exports.exports) != 4 {
+		t.Fatalf("expected exactly 4 export records (2 pending + 2 published), got %d", len(exports.exports))
 	}
 }
 
@@ -177,5 +178,15 @@ func TestDailyObsidianPublishJobSkipsDuplicateRunKey(t *testing.T) {
 	}
 	if len(reportSvc.reports) != 1 {
 		t.Fatalf("reports generated = %d, want 1", len(reportSvc.reports))
+	}
+}
+
+func TestDailyObsidianPublishJobMissingVaultRoot(t *testing.T) {
+	job := worker.NewDailyObsidianPublishJob(worker.DailyObsidianPublishDeps{
+		VaultRoot: "",
+	})
+	err := job.RunOnce(context.Background(), time.Date(2026, 7, 7, 0, 0, 0, 0, time.UTC))
+	if err != obsidian.ErrMissingVaultRoot {
+		t.Fatalf("error = %v, want %v", err, obsidian.ErrMissingVaultRoot)
 	}
 }

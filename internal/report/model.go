@@ -41,6 +41,7 @@ type CreateInput struct {
 	PeriodStart *time.Time
 	PeriodEnd   *time.Time
 	Send        bool
+	MonitorID   int64
 }
 
 type ListFilter struct {

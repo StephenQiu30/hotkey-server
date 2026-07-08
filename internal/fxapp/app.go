@@ -145,12 +145,13 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 			go func() {
 				ticker := time.NewTicker(time.Minute)
 				defer ticker.Stop()
+				var lastRun *time.Time
 				for {
 					select {
 					case <-ctx.Done():
 						return
 					case now := <-ticker.C:
-						shouldRun, targetDate, err := worker.ShouldRun(now, nil, worker.DailyScheduleConfig{
+						shouldRun, targetDate, err := worker.ShouldRun(now, lastRun, worker.DailyScheduleConfig{
 							Time:     cfg.DailyDigestTime,
 							Timezone: cfg.DailyDigestTimezone,
 							Target:   cfg.DailyDigestTarget,
@@ -164,6 +165,8 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 						}
 						if err := dailyJob.RunOnce(ctx, targetDate); err != nil {
 							log.Printf("daily obsidian publish failed: %v", err)
+						} else {
+							lastRun = &targetDate
 						}
 					}
 				}

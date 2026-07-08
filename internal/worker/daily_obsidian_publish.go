@@ -70,6 +70,7 @@ func (j *DailyObsidianPublishJob) RunOnce(ctx context.Context, targetDate time.T
 			ReportType:  report.TypeDaily,
 			PeriodStart: &periodStart,
 			PeriodEnd:   &periodEnd,
+			MonitorID:   m.ID,
 		})
 		if err != nil {
 			runErr = errors.Join(runErr, err)
@@ -91,11 +92,13 @@ func (j *DailyObsidianPublishJob) exportOne(ctx context.Context, item report.Rep
 		_, _ = j.deps.Exports.MarkFailed(ctx, item.ID, string(kind), "", err.Error(), j.deps.Now())
 		return err
 	}
-	_, _ = j.deps.Exports.CreatePending(ctx, report.CreateReportExportInput{
+	if _, err := j.deps.Exports.CreatePending(ctx, report.CreateReportExportInput{
 		ReportID:   item.ID,
 		ExportKind: string(kind),
 		TargetPath: path,
-	})
+	}); err != nil {
+		return err
+	}
 	markdown, err := obsidian.RenderMarkdown(obsidian.MarkdownInput{
 		Kind:        kind,
 		Date:        targetDate,

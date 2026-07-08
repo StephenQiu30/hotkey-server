@@ -42,6 +42,18 @@ func (s *Service) Create(ctx context.Context, userID int64, input CreateInput) (
 	if len(monitors) == 0 {
 		return Report{}, ErrNoReportSources
 	}
+	if input.MonitorID > 0 {
+		filtered := make([]MonitorSource, 0, 1)
+		for _, m := range monitors {
+			if m.ID == input.MonitorID {
+				filtered = append(filtered, m)
+			}
+		}
+		if len(filtered) == 0 {
+			return Report{}, ErrNoReportSources
+		}
+		monitors = filtered
+	}
 
 	monitorIDs := make([]int64, 0, len(monitors))
 	for _, m := range monitors {
