@@ -429,3 +429,18 @@ create table hot_event_platforms (
 );
 
 create index idx_hot_event_platforms_event_id on hot_event_platforms(hot_event_id);
+
+-- dead letter queue records for task infrastructure
+
+create table dead_letter_records (
+  id              bigserial primary key,
+  topic           varchar(255) not null,
+  message_id      varchar(128) not null,
+  message_type    varchar(64)  not null,
+  payload         text,
+  error_message   text,
+  retry_count     int          not null default 0,
+  created_at      timestamptz  not null default now()
+);
+
+create index idx_dead_letter_created_at on dead_letter_records(created_at);
