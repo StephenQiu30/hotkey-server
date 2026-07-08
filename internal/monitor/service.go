@@ -43,6 +43,11 @@ func (s *Service) GetByID(ctx context.Context, id int64) (Monitor, error) {
 	return *m, nil
 }
 
+// ListActive retrieves all active monitors regardless of user.
+func (s *Service) ListActive(ctx context.Context) ([]Monitor, error) {
+	return s.repo.ListActive(ctx)
+}
+
 // ListByUser retrieves all monitors for a user.
 func (s *Service) ListByUser(ctx context.Context, userID int64) ([]Monitor, error) {
 	return s.repo.ListByUser(ctx, userID)

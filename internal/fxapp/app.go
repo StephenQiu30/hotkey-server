@@ -21,6 +21,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/repository/gormimpl"
 	"github.com/StephenQiu30/hotkey-server/internal/topic"
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
+	"github.com/StephenQiu30/hotkey-server/internal/worker"
 	"go.uber.org/fx"
 	"gorm.io/gorm"
 )
@@ -36,6 +37,8 @@ func NewApp() *fx.App {
 		fx.Provide(fx.Annotate(gormimpl.NewNotifyRepo, fx.As(new(notify.Repository)))),
 		fx.Provide(fx.Annotate(gormimpl.NewHotEventRepo, fx.As(new(hotevent.Repository)))),
 		fx.Provide(fx.Annotate(gormimpl.NewReportRepo, fx.As(new(report.Repository)))),
+		fx.Provide(fx.Annotate(gormimpl.NewReportExportRepo, fx.As(new(report.ExportRepository)))),
+		fx.Provide(fx.Annotate(gormimpl.NewKnowledgeRunRepo, fx.As(new(worker.RunRepository)))),
 
 		// Query services — annotate concrete -> interface for DI
 		fx.Provide(fx.Annotate(database.NewContentQueryService, fx.As(new(content.PostQueryService)))),
@@ -56,6 +59,9 @@ func NewApp() *fx.App {
 		fx.Provide(fx.Annotate(llm.NewProvider, fx.As(new(llm.Provider)))),
 		fx.Provide(fx.Annotate(llm.NewService, fx.As(new(llm.Service)))),
 		fx.Provide(llm.NewChain),
+
+		// Daily obsidian publish worker
+		fx.Provide(newDailyObsidianPublishJob),
 
 		// Lifecycle hooks
 		fx.Invoke(registerHooks),
@@ -108,7 +114,18 @@ func newReportService(repo report.Repository) *report.Service {
 	return report.NewService(repo, time.Now)
 }
 
-func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.Config) {
+func newDailyObsidianPublishJob(cfg *config.Config, monitorSvc *monitor.Service, reportSvc *report.Service, exportRepo report.ExportRepository, runRepo worker.RunRepository) *worker.DailyObsidianPublishJob {
+	return worker.NewDailyObsidianPublishJob(worker.DailyObsidianPublishDeps{
+		VaultRoot: cfg.ObsidianVaultPath,
+		Monitors:  monitorSvc,
+		Reports:   reportSvc,
+		Exports:   exportRepo,
+		Runs:      runRepo,
+		Now:       time.Now,
+	})
+}
+
+func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.Config, dailyJob *worker.DailyObsidianPublishJob) {
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			if os.Getenv("SMOKE_TEST") == "1" {
@@ -124,6 +141,32 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 				log.Printf("worker: started")
 				<-ctx.Done()
 				log.Printf("worker: stopped")
+			}()
+			go func() {
+				ticker := time.NewTicker(time.Minute)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case now := <-ticker.C:
+						shouldRun, targetDate, err := worker.ShouldRun(now, nil, worker.DailyScheduleConfig{
+							Time:     cfg.DailyDigestTime,
+							Timezone: cfg.DailyDigestTimezone,
+							Target:   cfg.DailyDigestTarget,
+						})
+						if err != nil {
+							log.Printf("daily obsidian scheduler error: %v", err)
+							continue
+						}
+						if !shouldRun {
+							continue
+						}
+						if err := dailyJob.RunOnce(ctx, targetDate); err != nil {
+							log.Printf("daily obsidian publish failed: %v", err)
+						}
+					}
+				}
 			}()
 			go func() {
 				if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

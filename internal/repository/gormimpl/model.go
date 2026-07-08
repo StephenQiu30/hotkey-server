@@ -319,6 +319,20 @@ type Report struct {
 
 func (Report) TableName() string { return "reports" }
 
+type ReportExport struct {
+	ID           int64      `gorm:"column:id;primaryKey"`
+	ReportID     int64      `gorm:"column:report_id"`
+	ExportKind   string     `gorm:"column:export_kind"`
+	TargetPath   string     `gorm:"column:target_path"`
+	Status       string     `gorm:"column:status"`
+	ErrorMessage string     `gorm:"column:error_message"`
+	PublishedAt  *time.Time `gorm:"column:published_at"`
+	CreatedAt    time.Time  `gorm:"column:created_at"`
+	UpdatedAt    time.Time  `gorm:"column:updated_at"`
+}
+
+func (ReportExport) TableName() string { return "report_exports" }
+
 type EventAnnotation struct {
 	ID                int64             `gorm:"column:id;primaryKey"`
 	EventID           int64             `gorm:"column:event_id"`
