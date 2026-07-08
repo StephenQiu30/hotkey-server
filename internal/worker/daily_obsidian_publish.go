@@ -2,11 +2,14 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/obsidian"
+	"github.com/StephenQiu30/hotkey-server/internal/queue"
 	"github.com/StephenQiu30/hotkey-server/internal/report"
 )
 
@@ -36,6 +39,49 @@ func NewDailyObsidianPublishJob(deps DailyObsidianPublishDeps) *DailyObsidianPub
 		deps.Now = time.Now
 	}
 	return &DailyObsidianPublishJob{deps: deps}
+}
+
+func (j *DailyObsidianPublishJob) Type() string { return "digest.run" }
+
+func (j *DailyObsidianPublishJob) Handle(ctx context.Context, msg queue.Message) error {
+	var payload struct {
+		TargetDate string `json:"target_date"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return err
+	}
+	targetDate, err := time.Parse("2006-01-02", payload.TargetDate)
+	if err != nil {
+		return err
+	}
+	return j.RunOnce(ctx, targetDate)
+}
+
+func (j *DailyObsidianPublishJob) DedupeEnabled() bool { return false }
+
+// RunKeyForDate constructs the deduplication key for a daily publish run.
+func RunKeyForDate(date time.Time) string {
+	return "daily-obsidian-publish:" + date.Format("2006-01-02")
+}
+
+// ResolveTargetDate computes the target date relative to now using the schedule config.
+func ResolveTargetDate(now time.Time, cfg struct {
+	Timezone string
+	Target   string
+}) (time.Time, error) {
+	loc, err := time.LoadLocation(cfg.Timezone)
+	if err != nil {
+		return time.Time{}, err
+	}
+	local := now.In(loc)
+	switch cfg.Target {
+	case "", "yesterday":
+		local = local.AddDate(0, 0, -1)
+	case "today":
+	default:
+		return time.Time{}, fmt.Errorf("invalid daily digest target: %s", cfg.Target)
+	}
+	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc), nil
 }
 
 func (j *DailyObsidianPublishJob) RunOnce(ctx context.Context, targetDate time.Time) (runErr error) {

@@ -14,7 +14,9 @@ type Config struct {
 	JWTSecret   string `mapstructure:"JWT_SECRET"`
 	XToken      string `mapstructure:"X_BEARER_TOKEN"`
 	XBaseURL    string `mapstructure:"X_BASE_URL"`
-	RedisAddr   string `mapstructure:"REDIS_ADDR"`
+	RedisAddr          string   `mapstructure:"REDIS_ADDR"`
+	KafkaBrokers       []string `mapstructure:"KAFKA_BROKERS"`
+	KafkaConsumerGroup string   `mapstructure:"KAFKA_CONSUMER_GROUP"`
 
 	SwaggerEnabled bool `mapstructure:"SWAGGER_ENABLED"`
 
@@ -51,6 +53,8 @@ func Load() (Config, error) {
 	v.SetDefault("LLM_MAX_TOKENS", 4096)
 	v.SetDefault("LLM_TEMPERATURE", 0.7)
 	v.SetDefault("REDIS_ADDR", "localhost:6379")
+	v.SetDefault("KAFKA_BROKERS", []string{"localhost:9092"})
+	v.SetDefault("KAFKA_CONSUMER_GROUP", "hotkey-workers")
 
 	if err := v.ReadInConfig(); err != nil {
 		log.Printf("warning: failed to read .env config file: %v", err)
@@ -72,6 +76,8 @@ func Load() (Config, error) {
 	_ = v.BindEnv("LLM_MODEL")
 	_ = v.BindEnv("LLM_MAX_TOKENS")
 	_ = v.BindEnv("LLM_TEMPERATURE")
+	_ = v.BindEnv("KAFKA_BROKERS")
+	_ = v.BindEnv("KAFKA_CONSUMER_GROUP")
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {

@@ -2,6 +2,8 @@ package fxapp
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -17,11 +19,14 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"github.com/StephenQiu30/hotkey-server/internal/queue"
 	"github.com/StephenQiu30/hotkey-server/internal/report"
 	"github.com/StephenQiu30/hotkey-server/internal/repository/gormimpl"
 	"github.com/StephenQiu30/hotkey-server/internal/topic"
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
 	"github.com/StephenQiu30/hotkey-server/internal/worker"
+	"github.com/redis/go-redis/v9"
+	"github.com/robfig/cron/v3"
 	"go.uber.org/fx"
 	"gorm.io/gorm"
 )
@@ -126,10 +131,15 @@ func newDailyObsidianPublishJob(cfg *config.Config, monitorSvc *monitor.Service,
 }
 
 func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.Config, dailyJob *worker.DailyObsidianPublishJob) {
+	var (
+		producer *queue.Producer
+		rdb      *redis.Client
+		consumer *queue.Consumer
+		cronS    *cron.Cron
+	)
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			if os.Getenv("SMOKE_TEST") == "1" {
-				// Smoke test: start HTTP server only, no worker
 				go func() {
 					if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 						log.Printf("http server error: %v", err)
@@ -137,40 +147,74 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 				}()
 				return nil
 			}
+
+			// --- Kafka producer ---
+			producer = queue.NewProducer(cfg.KafkaBrokers)
+
+			// --- Redis dedupe (needed by dispatcher) ---
+			var dedupe *queue.Dedupe
+			if cfg.RedisAddr != "" {
+				rdb = redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+				if err := rdb.Ping(ctx).Err(); err != nil {
+					log.Printf("redis: ping %q failed: %v (dedup degraded)", cfg.RedisAddr, err)
+				}
+				dedupe = queue.NewDedupe(rdb)
+			}
+
+			// --- Dispatcher ---
+			dispatcher := queue.NewDispatcher(producer, dedupe)
+			dispatcher.Register(dailyJob)
+
+			// --- DLQ recorder — persists exhausted-retry messages to DB ---
+			dispatcher.SetDLQRecorder(func(ctx context.Context, topic string, msg queue.Message, errMsg string) {
+				if db != nil {
+					db.WithContext(ctx).Create(&queue.DLQRecord{
+						Topic:       topic,
+						MessageID:   msg.ID,
+						MessageType: msg.Type,
+						Payload:     string(msg.Payload),
+						ErrorMsg:    errMsg,
+						RetryCount:  msg.RetryCount,
+						CreatedAt:   time.Now(),
+					})
+				}
+			})
+
+			// --- Kafka consumer ---
+			consumer = queue.NewConsumer(
+				cfg.KafkaBrokers,
+				queue.TopicDigestRun,
+				cfg.KafkaConsumerGroup,
+				dispatcher,
+			)
 			go func() {
-				log.Printf("worker: started")
-				<-ctx.Done()
-				log.Printf("worker: stopped")
-			}()
-			go func() {
-				ticker := time.NewTicker(time.Minute)
-				defer ticker.Stop()
-				var lastRun *time.Time
-				for {
-					select {
-					case <-ctx.Done():
-						return
-					case now := <-ticker.C:
-						shouldRun, targetDate, err := worker.ShouldRun(now, lastRun, worker.DailyScheduleConfig{
-							Time:     cfg.DailyDigestTime,
-							Timezone: cfg.DailyDigestTimezone,
-							Target:   cfg.DailyDigestTarget,
-						})
-						if err != nil {
-							log.Printf("daily obsidian scheduler error: %v", err)
-							continue
-						}
-						if !shouldRun {
-							continue
-						}
-						if err := dailyJob.RunOnce(ctx, targetDate); err != nil {
-							log.Printf("daily obsidian publish failed: %v", err)
-						} else {
-							lastRun = &targetDate
-						}
-					}
+				log.Printf("kafka consumer: starting on %s", queue.TopicDigestRun)
+				if err := consumer.Run(ctx); err != nil && err != queue.ErrConsumerClosed {
+					log.Printf("kafka consumer error: %v", err)
 				}
 			}()
+
+			// --- Cron scheduler ---
+			loc, err := time.LoadLocation(cfg.DailyDigestTimezone)
+			if err != nil {
+				return fmt.Errorf("cron: load location %q: %w", cfg.DailyDigestTimezone, err)
+			}
+			cronS = cron.New(cron.WithLocation(loc))
+			_, err = cronS.AddFunc("0 8 * * *", func() {
+				now := time.Now().In(loc)
+				payload, _ := json.Marshal(map[string]string{
+					"target_date": now.AddDate(0, 0, -1).Format("2006-01-02"),
+				})
+				if pubErr := producer.Publish(context.Background(), queue.TopicDigestRun, queue.NewMessage("digest.run", payload)); pubErr != nil {
+					log.Printf("cron: publish digest error: %v", pubErr)
+				}
+			})
+			if err != nil {
+				return fmt.Errorf("cron: add func: %w", err)
+			}
+			cronS.Start()
+			log.Printf("worker: started (cron + kafka)")
+
 			go func() {
 				if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 					log.Printf("http server error: %v", err)
@@ -179,13 +223,36 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
+			if cronS != nil {
+				cronS.Stop()
+			}
+			if consumer != nil {
+				if err := consumer.Close(); err != nil {
+					log.Printf("consumer close error: %v", err)
+				}
+			}
+			if producer != nil {
+				if err := producer.Close(); err != nil {
+					log.Printf("producer close error: %v", err)
+				}
+			}
+			if rdb != nil {
+				if err := rdb.Close(); err != nil {
+					log.Printf("redis close error: %v", err)
+				}
+			}
+			if err := srv.Shutdown(ctx); err != nil {
+				log.Printf("http server shutdown error: %v", err)
+			}
 			if db != nil {
 				sqlDB, err := db.DB()
 				if err == nil && sqlDB != nil {
-					sqlDB.Close()
+					if err := sqlDB.Close(); err != nil {
+						log.Printf("db close error: %v", err)
+					}
 				}
 			}
-			return srv.Shutdown(ctx)
+			return nil
 		},
 	})
 }

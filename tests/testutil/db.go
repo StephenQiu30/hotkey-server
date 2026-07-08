@@ -59,6 +59,7 @@ func cleanTables(t *testing.T, db *sql.DB) {
 
 	tables := []string{
 		"report_exports",
+		"dead_letter_records",
 		"knowledge_runs",
 		"reports",
 		"theme_memberships",
