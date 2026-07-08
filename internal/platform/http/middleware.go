@@ -60,7 +60,7 @@ func RecoverMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			if r := recover(); r != nil {
-				logging.L().Error("panic recovered",
+				logging.Ctx(c.Request.Context()).Error("panic recovered",
 					zap.Any("panic", r),
 				)
 				body, err := json.Marshal(newInternalErrorBody(requestIDFromContext(c)))

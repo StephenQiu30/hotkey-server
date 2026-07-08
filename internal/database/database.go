@@ -7,6 +7,7 @@ import (
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 // Open connects to PostgreSQL and initializes the database if needed.
@@ -16,7 +17,7 @@ func Open(databaseURL string) (*gorm.DB, error) {
 	}
 
 	db, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{
-		Logger: &ZapGormLogger{SlowThreshold: 200 * time.Millisecond},
+		Logger: &ZapGormLogger{LogLevel: logger.Info, SlowThreshold: 200 * time.Millisecond},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("open gorm db: %w", err)

@@ -140,7 +140,7 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 	)
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
-			if err := logging.Init(cfg.LogLevel, cfg.LogFormat); err != nil {
+			if err := logging.Init(cfg.LogLevel, cfg.LogFormat, cfg.LogOutput); err != nil {
 				return fmt.Errorf("logging init: %w", err)
 			}
 

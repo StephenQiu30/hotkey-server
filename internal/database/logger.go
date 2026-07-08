@@ -11,25 +11,36 @@ import (
 
 // ZapGormLogger adapts zap to GORM's logger.Interface.
 type ZapGormLogger struct {
+	LogLevel      logger.LogLevel
 	SlowThreshold time.Duration
 }
 
-// LogMode returns a logger that respects the given level — always returns self.
-func (l *ZapGormLogger) LogMode(level logger.LogLevel) logger.Interface { return l }
+// LogMode returns a copy of the logger with the requested level.
+func (l *ZapGormLogger) LogMode(level logger.LogLevel) logger.Interface {
+	newLogger := *l
+	newLogger.LogLevel = level
+	return &newLogger
+}
 
-// Info logs at zap Info level.
+// Info logs at zap Info level when LogLevel >= Info.
 func (l *ZapGormLogger) Info(ctx context.Context, msg string, args ...interface{}) {
-	logging.Ctx(ctx).Sugar().Infof(msg, args...)
+	if l.LogLevel >= logger.Info {
+		logging.Ctx(ctx).Sugar().Infof(msg, args...)
+	}
 }
 
-// Warn logs at zap Warn level.
+// Warn logs at zap Warn level when LogLevel >= Warn.
 func (l *ZapGormLogger) Warn(ctx context.Context, msg string, args ...interface{}) {
-	logging.Ctx(ctx).Sugar().Warnf(msg, args...)
+	if l.LogLevel >= logger.Warn {
+		logging.Ctx(ctx).Sugar().Warnf(msg, args...)
+	}
 }
 
-// Error logs at zap Error level.
+// Error logs at zap Error level when LogLevel >= Error.
 func (l *ZapGormLogger) Error(ctx context.Context, msg string, args ...interface{}) {
-	logging.Ctx(ctx).Sugar().Errorf(msg, args...)
+	if l.LogLevel >= logger.Error {
+		logging.Ctx(ctx).Sugar().Errorf(msg, args...)
+	}
 }
 
 // Trace records the SQL execution. On error, logs at Error level.
@@ -47,8 +58,12 @@ func (l *ZapGormLogger) Trace(ctx context.Context, begin time.Time, fc func() (s
 		return
 	}
 	if l.SlowThreshold > 0 && elapsed > l.SlowThreshold {
-		logging.Ctx(ctx).Warn("slow sql", fields...)
+		if l.LogLevel >= logger.Warn {
+			logging.Ctx(ctx).Warn("slow sql", fields...)
+		}
 		return
 	}
-	logging.Ctx(ctx).Debug("sql", fields...)
+	if l.LogLevel >= logger.Info {
+		logging.Ctx(ctx).Debug("sql", fields...)
+	}
 }

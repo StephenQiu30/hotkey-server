@@ -8,6 +8,6 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	_ = logging.Init("info", "json")
+	_ = logging.Init("info", "json", "stdout")
 	os.Exit(m.Run())
 }

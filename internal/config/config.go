@@ -2,11 +2,9 @@ package config
 
 import (
 	"errors"
+	"log"
 
 	"github.com/spf13/viper"
-	"go.uber.org/zap"
-
-	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 )
 
 // Config holds application configuration loaded from environment variables.
@@ -66,9 +64,7 @@ func Load() (Config, error) {
 	v.SetDefault("KAFKA_CONSUMER_GROUP", "hotkey-workers")
 
 	if err := v.ReadInConfig(); err != nil {
-		logging.L().Warn("failed to read .env config file",
-			zap.Error(err),
-		)
+		log.Printf("warning: failed to read .env config file: %v", err)
 	}
 
 	_ = v.BindEnv("DATABASE_URL")

@@ -9,9 +9,9 @@ import (
 
 var global *zap.Logger
 
-// Init initializes the global zap.Logger with the given level and format.
+// Init initializes the global zap.Logger with the given level, format, and output.
 // Called once at application startup.
-func Init(level, format string) error {
+func Init(level, format, output string) error {
 	var lvl zapcore.Level
 	switch level {
 	case "debug":
@@ -40,10 +40,15 @@ func Init(level, format string) error {
 		encoder = zapcore.NewJSONEncoder(encoderConfig)
 	}
 
-	// user could configure stderr, but default to stdout
-	output := zapcore.AddSync(os.Stdout)
+	var syncer zapcore.WriteSyncer
+	switch output {
+	case "stderr":
+		syncer = zapcore.AddSync(os.Stderr)
+	default:
+		syncer = zapcore.AddSync(os.Stdout)
+	}
 
-	core := zapcore.NewCore(encoder, output, zap.NewAtomicLevelAt(lvl))
+	core := zapcore.NewCore(encoder, syncer, zap.NewAtomicLevelAt(lvl))
 	logger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
 	global = logger
 	return nil

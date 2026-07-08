@@ -29,7 +29,7 @@ func TestFieldsFromContextAllFields(t *testing.T) {
 }
 
 func TestCtxReturnsNonNil(t *testing.T) {
-	logging.Init("info", "json")
+	logging.Init("info", "json", "stdout")
 	logger := logging.Ctx(context.Background())
 	if logger == nil {
 		t.Fatal("Ctx() returned nil")
