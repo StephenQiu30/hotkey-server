@@ -16,7 +16,6 @@ func TestFieldsFromContextEmpty(t *testing.T) {
 }
 
 func TestFieldsFromContextAllFields(t *testing.T) {
-	defer logging.Init("info", "json")
 	ctx := context.Background()
 	ctx = runtime.WithRequestID(ctx, "req-123")
 	ctx = runtime.WithTraceID(ctx, "trace-abc")
@@ -30,7 +29,7 @@ func TestFieldsFromContextAllFields(t *testing.T) {
 }
 
 func TestCtxReturnsNonNil(t *testing.T) {
-	defer logging.Init("info", "json")
+	logging.Init("info", "json")
 	logger := logging.Ctx(context.Background())
 	if logger == nil {
 		t.Fatal("Ctx() returned nil")

@@ -40,9 +40,8 @@ func Init(level, format string) error {
 		encoder = zapcore.NewJSONEncoder(encoderConfig)
 	}
 
-	var output zapcore.WriteSyncer
 	// user could configure stderr, but default to stdout
-	output = zapcore.AddSync(os.Stdout)
+	output := zapcore.AddSync(os.Stdout)
 
 	core := zapcore.NewCore(encoder, output, zap.NewAtomicLevelAt(lvl))
 	logger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
