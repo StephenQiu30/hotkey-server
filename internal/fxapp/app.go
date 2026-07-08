@@ -69,6 +69,14 @@ func NewApp() *fx.App {
 		// Daily obsidian publish worker
 		fx.Provide(newDailyObsidianPublishJob),
 
+		// Collection and aggregation repositories
+		fx.Provide(gormimpl.NewCollectRepo),
+		fx.Provide(gormimpl.NewTopicWriteRepo),
+		fx.Provide(gormimpl.NewSnapshotRepo),
+
+		// Hourly aggregate worker
+		fx.Provide(newHourlyAggregateJob),
+
 		// Lifecycle hooks
 		fx.Invoke(registerHooks),
 	)
@@ -124,6 +132,17 @@ func newMonitorService(repo monitor.Repository) *monitor.Service {
 	return monitor.NewService(repo, nil)
 }
 
+func newHourlyAggregateJob(db *gorm.DB, collectRepo *gormimpl.CollectRepo, topicWriteRepo *gormimpl.TopicWriteRepo, snapshotRepo *gormimpl.SnapshotRepo, runRepo worker.RunRepository) *worker.HourlyAggregateJob {
+	return worker.NewHourlyAggregateJob(worker.HourlyAggregateDeps{
+		DB:             db,
+		CollectRepo:    collectRepo,
+		TopicWriteRepo: topicWriteRepo,
+		SnapshotRepo:   snapshotRepo,
+		RunRepo:        runRepo,
+		Now:            time.Now,
+	})
+}
+
 func newDailyObsidianPublishJob(cfg *config.Config, monitorSvc *monitor.Service, reportSvc *report.Service, exportRepo report.ExportRepository, runRepo worker.RunRepository) *worker.DailyObsidianPublishJob {
 	return worker.NewDailyObsidianPublishJob(worker.DailyObsidianPublishDeps{
 		VaultRoot: cfg.ObsidianVaultPath,
@@ -135,7 +154,7 @@ func newDailyObsidianPublishJob(cfg *config.Config, monitorSvc *monitor.Service,
 	})
 }
 
-func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.Config, dailyJob *worker.DailyObsidianPublishJob) {
+func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.Config, dailyJob *worker.DailyObsidianPublishJob, hourlyJob *worker.HourlyAggregateJob) {
 	var (
 		producer *queue.Producer
 		rdb      *redis.Client
@@ -176,6 +195,7 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 			// --- Dispatcher ---
 			dispatcher := queue.NewDispatcher(producer, dedupe)
 			dispatcher.Register(dailyJob)
+			dispatcher.Register(hourlyJob)
 
 			// --- DLQ recorder — persists exhausted-retry messages to DB ---
 			dispatcher.SetDLQRecorder(func(ctx context.Context, topic string, msg queue.Message, errMsg string) {
@@ -231,6 +251,19 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 			})
 			if err != nil {
 				return fmt.Errorf("cron: add func: %w", err)
+			}
+			// Hourly aggregate cron
+			_, err = cronS.AddFunc("0 * * * *", func() {
+				now := time.Now().In(loc)
+				payload, _ := json.Marshal(map[string]string{
+					"target_hour": now.Format("2006-01-02T15:00"),
+				})
+				if pubErr := producer.Publish(context.Background(), queue.TopicHourlyRun, queue.NewMessage("hourly.run", payload)); pubErr != nil {
+					logging.L().Error("cron publish hourly error", zap.Error(pubErr))
+				}
+			})
+			if err != nil {
+				return fmt.Errorf("cron: add hourly func: %w", err)
 			}
 			cronS.Start()
 			logging.L().Info("worker started (cron + kafka)")

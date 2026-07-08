@@ -16,6 +16,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/content"
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
+	"github.com/StephenQiu30/hotkey-server/internal/pkg"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	platformruntime "github.com/StephenQiu30/hotkey-server/internal/platform/runtime"
 	"github.com/StephenQiu30/hotkey-server/internal/topic"
@@ -66,6 +67,9 @@ func (r *stubMonitorRepo) Update(_ context.Context, _ int64, _ int64, _ monitor.
 }
 func (r *stubMonitorRepo) ListActive(_ context.Context) ([]monitor.Monitor, error) {
 	return []monitor.Monitor{{ID: 1, UserID: 1, Name: "test", Status: "active"}}, nil
+}
+func (r *stubMonitorRepo) SetQueryEmbedding(_ context.Context, _ int64, _ pkg.Vector384) error {
+	return nil
 }
 
 type stubNotifyRepo struct{}
