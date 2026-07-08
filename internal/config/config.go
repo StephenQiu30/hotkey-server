@@ -9,32 +9,16 @@ import (
 )
 
 // Config holds application configuration loaded from environment variables.
+//
+// Domain-specific fields are declared in sub-files as embedded sub-configs
+// with mapstructure:",squash" so that cfg.HTTPAddr (promoted from ServerConfig)
+// works identically to a flat struct — no call-site changes needed.
 type Config struct {
-	HTTPAddr           string   `mapstructure:"HTTP_ADDR"`
-	DatabaseURL        string   `mapstructure:"DATABASE_URL"`
-	JWTSecret          string   `mapstructure:"JWT_SECRET"`
-	XToken             string   `mapstructure:"X_BEARER_TOKEN"`
-	XBaseURL           string   `mapstructure:"X_BASE_URL"`
-	RedisAddr          string   `mapstructure:"REDIS_ADDR"`
-	KafkaBrokers       []string `mapstructure:"KAFKA_BROKERS"`
-	KafkaConsumerGroup string   `mapstructure:"KAFKA_CONSUMER_GROUP"`
-
-	SwaggerEnabled bool `mapstructure:"SWAGGER_ENABLED"`
-
-	ObsidianVaultPath   string `mapstructure:"OBSIDIAN_VAULT_PATH"`
-	DailyDigestTime     string `mapstructure:"DAILY_DIGEST_TIME"`
-	DailyDigestTimezone string `mapstructure:"DAILY_DIGEST_TIMEZONE"`
-	DailyDigestTarget   string `mapstructure:"DAILY_DIGEST_TARGET"`
-	DailyDigestTopN     int    `mapstructure:"DAILY_DIGEST_TOP_N"`
-
-	LLMProvider    string  `mapstructure:"LLM_PROVIDER"`
-	LLMAPIKey      string  `mapstructure:"LLM_API_KEY"`
-	LLMBaseURL     string  `mapstructure:"LLM_BASE_URL"`
-	LLMModel       string  `mapstructure:"LLM_MODEL"`
-	LLMMaxTokens   int     `mapstructure:"LLM_MAX_TOKENS"`
-	LLMTemperature float64 `mapstructure:"LLM_TEMPERATURE"`
-
-	EmbeddingModelPath string `mapstructure:"EMBEDDING_MODEL_PATH"`
+	ServerConfig   `mapstructure:",squash"`
+	DatabaseConfig `mapstructure:",squash"`
+	KafkaConfig    `mapstructure:",squash"`
+	LLMConfig      `mapstructure:",squash"`
+	ObsidianConfig `mapstructure:",squash"`
 
 	LogLevel  string `mapstructure:"LOG_LEVEL"`
 	LogFormat string `mapstructure:"LOG_FORMAT"`

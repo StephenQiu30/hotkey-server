@@ -1,4 +1,7 @@
 package config
 
-// Database config fields are declared on Config in config.go:
-//   DatabaseURL, RedisAddr
+// DatabaseConfig groups database and cache related configuration fields.
+type DatabaseConfig struct {
+	DatabaseURL string `mapstructure:"DATABASE_URL"`
+	RedisAddr   string `mapstructure:"REDIS_ADDR"`
+}

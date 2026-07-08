@@ -9,24 +9,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 )
-
-// Tweet represents a parsed tweet from the X API stream.
-type Tweet struct {
-	ID           string `json:"id"`
-	Text         string `json:"text"`
-	AuthorID     string `json:"author_id"`
-	AuthorName   string `json:"author_name,omitempty"`
-	AuthorHandle string `json:"author_handle,omitempty"`
-	CreatedAt    string `json:"created_at,omitempty"`
-}
-
-// StreamRule represents a Filtered Stream rule.
-type StreamRule struct {
-	ID    string `json:"id,omitempty"`
-	Value string `json:"value"`
-	Tag   string `json:"tag,omitempty"`
-}
 
 // XClient manages the X API v2 Filtered Stream connection.
 type XClient struct {
@@ -45,7 +30,7 @@ func NewXClient(baseURL, token string) *XClient {
 }
 
 // SetRules replaces all Filtered Stream rules with the given ones.
-func (c *XClient) SetRules(ctx context.Context, rules []StreamRule) error {
+func (c *XClient) SetRules(ctx context.Context, rules []dto.StreamRule) error {
 	// Delete existing rules
 	existing, err := c.getRules(ctx)
 	if err != nil {
@@ -127,7 +112,7 @@ func (c *XClient) ConnectStream(ctx context.Context) (io.ReadCloser, error) {
 }
 
 // ParseTweet parses a single JSON line from the stream into a Tweet.
-func ParseTweet(data []byte) (*Tweet, error) {
+func ParseTweet(data []byte) (*dto.Tweet, error) {
 	var raw struct {
 		Data struct {
 			ID        string `json:"id"`
@@ -149,7 +134,7 @@ func ParseTweet(data []byte) (*Tweet, error) {
 	if raw.Data.ID == "" {
 		return nil, fmt.Errorf("empty tweet data")
 	}
-	tweet := &Tweet{
+	tweet := &dto.Tweet{
 		ID:        raw.Data.ID,
 		Text:      raw.Data.Text,
 		AuthorID:  raw.Data.AuthorID,
@@ -166,7 +151,7 @@ func ParseTweet(data []byte) (*Tweet, error) {
 }
 
 // ReadStream reads one tweet line from the scanner. Empty lines are keepalives.
-func ReadStream(scanner *bufio.Scanner) (*Tweet, error) {
+func ReadStream(scanner *bufio.Scanner) (*dto.Tweet, error) {
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
@@ -177,7 +162,7 @@ func ReadStream(scanner *bufio.Scanner) (*Tweet, error) {
 	return nil, scanner.Err()
 }
 
-func (c *XClient) getRules(ctx context.Context) ([]StreamRule, error) {
+func (c *XClient) getRules(ctx context.Context) ([]dto.StreamRule, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		c.baseURL+"/2/tweets/search/stream/rules", nil,
 	)
@@ -192,7 +177,7 @@ func (c *XClient) getRules(ctx context.Context) ([]StreamRule, error) {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	var result struct {
-		Data []StreamRule `json:"data"`
+		Data []dto.StreamRule `json:"data"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, nil

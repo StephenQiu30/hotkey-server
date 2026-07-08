@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/embedding"
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 	"github.com/StephenQiu30/hotkey-server/internal/repository/gormimpl"
@@ -59,9 +60,9 @@ func (s *Service) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("list active monitors: %w", err)
 	}
-	rules := make([]StreamRule, 0, len(monitors))
+	rules := make([]dto.StreamRule, 0, len(monitors))
 	for _, m := range monitors {
-		rules = append(rules, StreamRule{
+		rules = append(rules, dto.StreamRule{
 			Value: m.QueryText,
 			Tag:   fmt.Sprintf("monitor_%d", m.ID),
 		})
@@ -142,7 +143,7 @@ func (s *Service) runLoop(ctx context.Context) {
 	}
 }
 
-func (s *Service) processTweet(ctx context.Context, tweet *Tweet) {
+func (s *Service) processTweet(ctx context.Context, tweet *dto.Tweet) {
 	log := logging.L().With(zap.String("tweet_id", tweet.ID))
 
 	emb, err := s.embedder.Embed(ctx, tweet.Text)

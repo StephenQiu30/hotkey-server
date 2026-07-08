@@ -1,4 +1,7 @@
 package config
 
-// Kafka config fields are declared on Config in config.go:
-//   KafkaBrokers, KafkaConsumerGroup
+// KafkaConfig groups Kafka messaging related configuration fields.
+type KafkaConfig struct {
+	KafkaBrokers       []string `mapstructure:"KAFKA_BROKERS"`
+	KafkaConsumerGroup string   `mapstructure:"KAFKA_CONSUMER_GROUP"`
+}
