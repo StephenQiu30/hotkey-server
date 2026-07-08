@@ -23,6 +23,7 @@ type DailyObsidianPublishDeps struct {
 	Monitors  MonitorLister
 	Reports   DailyReportService
 	Exports   report.ExportRepository
+	Runs      RunRepository
 	Now       func() time.Time
 }
 
@@ -37,15 +38,31 @@ func NewDailyObsidianPublishJob(deps DailyObsidianPublishDeps) *DailyObsidianPub
 	return &DailyObsidianPublishJob{deps: deps}
 }
 
-func (j *DailyObsidianPublishJob) RunOnce(ctx context.Context, targetDate time.Time) error {
+func (j *DailyObsidianPublishJob) RunOnce(ctx context.Context, targetDate time.Time) (runErr error) {
 	if j.deps.VaultRoot == "" {
 		return obsidian.ErrMissingVaultRoot
+	}
+	runKey := RunKeyForDate(targetDate)
+	if j.deps.Runs != nil {
+		started, err := j.deps.Runs.TryStart(ctx, runKey, "daily-obsidian-publish", targetDate, j.deps.Now())
+		if err != nil {
+			return err
+		}
+		if !started {
+			return nil
+		}
+		defer func() {
+			if runErr != nil {
+				_ = j.deps.Runs.MarkFailed(context.Background(), runKey, runErr.Error(), j.deps.Now())
+				return
+			}
+			_ = j.deps.Runs.MarkFinished(context.Background(), runKey, j.deps.Now())
+		}()
 	}
 	monitors, err := j.deps.Monitors.ListActive(ctx)
 	if err != nil {
 		return err
 	}
-	var runErr error
 	for _, m := range monitors {
 		periodStart := targetDate
 		periodEnd := targetDate

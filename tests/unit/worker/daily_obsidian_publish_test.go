@@ -138,3 +138,44 @@ func TestDailyObsidianPublishJobSkipsExistingFiles(t *testing.T) {
 		t.Fatalf("expected skipped export record, got %+v", exports.exports)
 	}
 }
+
+type fakeRunRepo struct {
+	started map[string]bool
+}
+
+func (f *fakeRunRepo) TryStart(ctx context.Context, runKey string, runType string, targetDate time.Time, startedAt time.Time) (bool, error) {
+	if f.started == nil {
+		f.started = map[string]bool{}
+	}
+	if f.started[runKey] {
+		return false, nil
+	}
+	f.started[runKey] = true
+	return true, nil
+}
+func (f *fakeRunRepo) MarkFinished(ctx context.Context, runKey string, finishedAt time.Time) error { return nil }
+func (f *fakeRunRepo) MarkFailed(ctx context.Context, runKey string, message string, failedAt time.Time) error { return nil }
+
+func TestDailyObsidianPublishJobSkipsDuplicateRunKey(t *testing.T) {
+	vault := t.TempDir()
+	reportSvc := &fakeDailyReportService{}
+	runs := &fakeRunRepo{}
+	job := worker.NewDailyObsidianPublishJob(worker.DailyObsidianPublishDeps{
+		VaultRoot: vault,
+		Monitors: &fakeMonitorLister{monitors: []monitor.Monitor{{ID: 10, UserID: 7, Name: "AI Regulation", Status: "active"}}},
+		Reports:  reportSvc,
+		Exports:  &fakeExportRepo{},
+		Runs:     runs,
+		Now:      func() time.Time { return time.Date(2026, 7, 8, 8, 0, 0, 0, time.UTC) },
+	})
+	targetDate := time.Date(2026, 7, 7, 0, 0, 0, 0, time.UTC)
+	if err := job.RunOnce(context.Background(), targetDate); err != nil {
+		t.Fatalf("first RunOnce returned error: %v", err)
+	}
+	if err := job.RunOnce(context.Background(), targetDate); err != nil {
+		t.Fatalf("second RunOnce returned error: %v", err)
+	}
+	if len(reportSvc.reports) != 1 {
+		t.Fatalf("reports generated = %d, want 1", len(reportSvc.reports))
+	}
+}

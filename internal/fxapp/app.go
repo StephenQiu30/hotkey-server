@@ -38,6 +38,7 @@ func NewApp() *fx.App {
 		fx.Provide(fx.Annotate(gormimpl.NewHotEventRepo, fx.As(new(hotevent.Repository)))),
 		fx.Provide(fx.Annotate(gormimpl.NewReportRepo, fx.As(new(report.Repository)))),
 		fx.Provide(fx.Annotate(gormimpl.NewReportExportRepo, fx.As(new(report.ExportRepository)))),
+		fx.Provide(fx.Annotate(gormimpl.NewKnowledgeRunRepo, fx.As(new(worker.RunRepository)))),
 
 		// Query services — annotate concrete -> interface for DI
 		fx.Provide(fx.Annotate(database.NewContentQueryService, fx.As(new(content.PostQueryService)))),
@@ -113,12 +114,13 @@ func newReportService(repo report.Repository) *report.Service {
 	return report.NewService(repo, time.Now)
 }
 
-func newDailyObsidianPublishJob(cfg *config.Config, monitorSvc *monitor.Service, reportSvc *report.Service, exportRepo report.ExportRepository) *worker.DailyObsidianPublishJob {
+func newDailyObsidianPublishJob(cfg *config.Config, monitorSvc *monitor.Service, reportSvc *report.Service, exportRepo report.ExportRepository, runRepo worker.RunRepository) *worker.DailyObsidianPublishJob {
 	return worker.NewDailyObsidianPublishJob(worker.DailyObsidianPublishDeps{
 		VaultRoot: cfg.ObsidianVaultPath,
 		Monitors:  monitorSvc,
 		Reports:   reportSvc,
 		Exports:   exportRepo,
+		Runs:      runRepo,
 		Now:       time.Now,
 	})
 }
