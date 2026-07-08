@@ -39,6 +39,7 @@ func NewRouter(cfg Config) *gin.Engine {
 	r.Use(CORSMiddleware())
 	r.Use(SecurityHeadersMiddleware())
 	r.Use(RequestIDMiddleware())
+	r.Use(AccessLogMiddleware())
 	r.Use(ContextMetadataMiddleware("http"))
 	r.Use(AuthMiddleware(cfg.JWTSecret, cfg.SmokeTest))
 
