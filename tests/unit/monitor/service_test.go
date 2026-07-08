@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	fakemonitor "github.com/StephenQiu30/hotkey-server/tests/testutil/fake/monitor"
 )
@@ -12,7 +13,7 @@ import (
 func TestCreateMonitorRejectsInvalidInterval(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
 	svc := monitor.NewService(repo, nil)
-	_, err := svc.Create(context.Background(), 1, monitor.CreateMonitorInput{
+	_, err := svc.Create(context.Background(), 1, dto.CreateMonitorInput{
 		Name:                "AI",
 		QueryText:           "openai agent",
 		PollIntervalMinutes: 7,
@@ -25,7 +26,7 @@ func TestCreateMonitorRejectsInvalidInterval(t *testing.T) {
 func TestCreateMonitorRejectsEmptyName(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
 	svc := monitor.NewService(repo, nil)
-	_, err := svc.Create(context.Background(), 1, monitor.CreateMonitorInput{
+	_, err := svc.Create(context.Background(), 1, dto.CreateMonitorInput{
 		Name:                "",
 		QueryText:           "openai",
 		PollIntervalMinutes: 10,
@@ -38,7 +39,7 @@ func TestCreateMonitorRejectsEmptyName(t *testing.T) {
 func TestCreateMonitorRejectsEmptyQuery(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
 	svc := monitor.NewService(repo, nil)
-	_, err := svc.Create(context.Background(), 1, monitor.CreateMonitorInput{
+	_, err := svc.Create(context.Background(), 1, dto.CreateMonitorInput{
 		Name:                "AI",
 		QueryText:           "",
 		PollIntervalMinutes: 10,
@@ -51,7 +52,7 @@ func TestCreateMonitorRejectsEmptyQuery(t *testing.T) {
 func TestCreateMonitorSuccess(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
 	svc := monitor.NewService(repo, nil)
-	m, err := svc.Create(context.Background(), 1, monitor.CreateMonitorInput{
+	m, err := svc.Create(context.Background(), 1, dto.CreateMonitorInput{
 		Name:                "AI News",
 		QueryText:           "openai agent",
 		Language:            "en",
@@ -73,13 +74,13 @@ func TestCreateMonitorSuccess(t *testing.T) {
 func TestListMonitorsByUser(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
 	svc := monitor.NewService(repo, nil)
-	_, _ = svc.Create(context.Background(), 1, monitor.CreateMonitorInput{
+	_, _ = svc.Create(context.Background(), 1, dto.CreateMonitorInput{
 		Name: "M1", QueryText: "q1", PollIntervalMinutes: 5,
 	})
-	_, _ = svc.Create(context.Background(), 1, monitor.CreateMonitorInput{
+	_, _ = svc.Create(context.Background(), 1, dto.CreateMonitorInput{
 		Name: "M2", QueryText: "q2", PollIntervalMinutes: 10,
 	})
-	_, _ = svc.Create(context.Background(), 2, monitor.CreateMonitorInput{
+	_, _ = svc.Create(context.Background(), 2, dto.CreateMonitorInput{
 		Name: "M3", QueryText: "q3", PollIntervalMinutes: 15,
 	})
 
@@ -95,13 +96,13 @@ func TestListMonitorsByUser(t *testing.T) {
 func TestServiceListActive(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
 	svc := monitor.NewService(repo, nil)
-	m1, _ := svc.Create(context.Background(), 1, monitor.CreateMonitorInput{
+	m1, _ := svc.Create(context.Background(), 1, dto.CreateMonitorInput{
 		Name: "Active1", QueryText: "q1", PollIntervalMinutes: 5,
 	})
-	_, _ = svc.Create(context.Background(), 1, monitor.CreateMonitorInput{
+	_, _ = svc.Create(context.Background(), 1, dto.CreateMonitorInput{
 		Name: "Active2", QueryText: "q2", PollIntervalMinutes: 10,
 	})
-	_, _ = svc.Create(context.Background(), 2, monitor.CreateMonitorInput{
+	_, _ = svc.Create(context.Background(), 2, dto.CreateMonitorInput{
 		Name: "OtherUser", QueryText: "q3", PollIntervalMinutes: 15,
 	})
 
@@ -114,7 +115,7 @@ func TestServiceListActive(t *testing.T) {
 	}
 
 	status := "paused"
-	_, _ = svc.Update(context.Background(), m1.ID, 1, monitor.UpdateMonitorInput{
+	_, _ = svc.Update(context.Background(), m1.ID, 1, dto.UpdateMonitorInput{
 		Status: &status,
 	})
 
@@ -136,12 +137,12 @@ func TestServiceListActive(t *testing.T) {
 func TestUpdateMonitorStatus(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
 	svc := monitor.NewService(repo, nil)
-	m, _ := svc.Create(context.Background(), 1, monitor.CreateMonitorInput{
+	m, _ := svc.Create(context.Background(), 1, dto.CreateMonitorInput{
 		Name: "AI", QueryText: "openai", PollIntervalMinutes: 10,
 	})
 
 	status := "paused"
-	updated, err := svc.Update(context.Background(), m.ID, 1, monitor.UpdateMonitorInput{
+	updated, err := svc.Update(context.Background(), m.ID, 1, dto.UpdateMonitorInput{
 		Status: &status,
 	})
 	if err != nil {
@@ -156,7 +157,7 @@ func TestUpdateMonitorNotFound(t *testing.T) {
 	repo := &fakemonitor.Repo{NextID: 1}
 	svc := monitor.NewService(repo, nil)
 	status := "paused"
-	_, err := svc.Update(context.Background(), 999, 1, monitor.UpdateMonitorInput{
+	_, err := svc.Update(context.Background(), 999, 1, dto.UpdateMonitorInput{
 		Status: &status,
 	})
 	if !errors.Is(err, monitor.ErrNotFound) {

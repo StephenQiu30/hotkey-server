@@ -3,8 +3,8 @@ package gormimpl
 import (
 	"context"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
-	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	"gorm.io/gorm"
 )
 
@@ -17,13 +17,13 @@ func NewNotifyRepo(db *gorm.DB) *NotifyRepo {
 	return &NotifyRepo{db: db}
 }
 
-func (r *NotifyRepo) ListUnread(ctx context.Context, userID int64) ([]notify.Notification, error) {
+func (r *NotifyRepo) ListUnread(ctx context.Context, userID int64) ([]dto.Notification, error) {
 	var models []entity.UserNotification
 	if err := r.db.WithContext(ctx).Where("user_id = ? AND read_at IS NULL", userID).
 		Order("created_at DESC").Find(&models).Error; err != nil {
 		return nil, err
 	}
-	result := make([]notify.Notification, len(models))
+	result := make([]dto.Notification, len(models))
 	for i := range models {
 		result[i] = toDomainNotification(models[i])
 	}
@@ -40,7 +40,7 @@ func (r *NotifyRepo) MarkRead(ctx context.Context, userID, notificationID int64)
 	return result.Error
 }
 
-func (r *NotifyRepo) Create(ctx context.Context, n notify.Notification) (notify.Notification, error) {
+func (r *NotifyRepo) Create(ctx context.Context, n dto.Notification) (dto.Notification, error) {
 	m := entity.UserNotification{
 		UserID:         n.UserID,
 		AlertID:        n.AlertID,
@@ -48,15 +48,15 @@ func (r *NotifyRepo) Create(ctx context.Context, n notify.Notification) (notify.
 		DeliveryStatus: n.DeliveryStatus,
 	}
 	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
-		return notify.Notification{}, err
+		return dto.Notification{}, err
 	}
 	n.ID = m.ID
 	n.CreatedAt = m.CreatedAt
 	return n, nil
 }
 
-func toDomainNotification(m entity.UserNotification) notify.Notification {
-	return notify.Notification{
+func toDomainNotification(m entity.UserNotification) dto.Notification {
+	return dto.Notification{
 		ID:             m.ID,
 		UserID:         m.UserID,
 		AlertID:        m.AlertID,

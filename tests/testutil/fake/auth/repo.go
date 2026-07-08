@@ -4,12 +4,12 @@ import (
 	"context"
 	"time"
 
-	"github.com/StephenQiu30/hotkey-server/internal/auth"
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 )
 
 // Repo is an in-memory fake implementing auth.Repository.
 type Repo struct {
-	Users  []auth.User
+	Users  []dto.User
 	nextID int64
 }
 
@@ -22,10 +22,10 @@ func (r *Repo) ExistsByEmail(_ context.Context, email string) bool {
 	return false
 }
 
-func (r *Repo) Create(_ context.Context, email, passwordHash, displayName string) (auth.User, error) {
+func (r *Repo) Create(_ context.Context, email, passwordHash, displayName string) (dto.User, error) {
 	r.nextID++
 	now := time.Now()
-	u := auth.User{
+	u := dto.User{
 		ID:           r.nextID,
 		Email:        email,
 		PasswordHash: passwordHash,
@@ -38,7 +38,7 @@ func (r *Repo) Create(_ context.Context, email, passwordHash, displayName string
 	return u, nil
 }
 
-func (r *Repo) GetByEmail(_ context.Context, email string) (*auth.User, error) {
+func (r *Repo) GetByEmail(_ context.Context, email string) (*dto.User, error) {
 	for i := range r.Users {
 		if r.Users[i].Email == email {
 			return &r.Users[i], nil
@@ -47,7 +47,7 @@ func (r *Repo) GetByEmail(_ context.Context, email string) (*auth.User, error) {
 	return nil, nil
 }
 
-func (r *Repo) GetByID(_ context.Context, id int64) (*auth.User, error) {
+func (r *Repo) GetByID(_ context.Context, id int64) (*dto.User, error) {
 	for i := range r.Users {
 		if r.Users[i].ID == id {
 			return &r.Users[i], nil

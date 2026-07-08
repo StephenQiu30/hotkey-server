@@ -1,25 +1,8 @@
-package report
+package dto
 
-import (
-	"errors"
-	"time"
-)
+import "time"
 
-const (
-	TypeDaily  = "daily"
-	TypeWeekly = "weekly"
-
-	StatusDraft = "draft"
-	StatusSent  = "sent"
-)
-
-var (
-	ErrInvalidInput    = errors.New("invalid report input")
-	ErrNoReportSources = errors.New("no report sources")
-	ErrNotFound        = errors.New("report not found")
-	ErrUnsupportedType = errors.New("unsupported report type")
-)
-
+// Report represents a generated report.
 type Report struct {
 	ID           int64      `json:"id"`
 	UserID       int64      `json:"-"`
@@ -36,6 +19,7 @@ type Report struct {
 	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
+// CreateInput holds data for creating a report.
 type CreateInput struct {
 	ReportType  string
 	PeriodStart *time.Time
@@ -44,6 +28,7 @@ type CreateInput struct {
 	MonitorID   int64
 }
 
+// ListFilter defines filtering and pagination for report List queries.
 type ListFilter struct {
 	UserID     int64
 	ReportType string
@@ -51,6 +36,7 @@ type ListFilter struct {
 	Offset     int
 }
 
+// CreateReportRecord contains fields for persisting a new report.
 type CreateReportRecord struct {
 	UserID       int64
 	ReportType   string
@@ -63,12 +49,14 @@ type CreateReportRecord struct {
 	Status       string
 }
 
+// MonitorSource is a lightweight monitor reference for report generation.
 type MonitorSource struct {
 	ID     int64
 	UserID int64
 	Name   string
 }
 
+// TopicSource is a lightweight topic reference for report generation.
 type TopicSource struct {
 	ID        int64
 	MonitorID int64
@@ -79,6 +67,7 @@ type TopicSource struct {
 	PostCount int
 }
 
+// PostSource is a lightweight post reference for report generation.
 type PostSource struct {
 	ID        int64
 	MonitorID int64

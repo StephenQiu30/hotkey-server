@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"github.com/StephenQiu30/hotkey-server/internal/report"
 	"gorm.io/gorm"
@@ -18,7 +19,7 @@ func NewReportRepo(db *gorm.DB) *ReportRepo {
 	return &ReportRepo{db: db}
 }
 
-func (r *ReportRepo) ListUserMonitors(ctx context.Context, userID int64) ([]report.MonitorSource, error) {
+func (r *ReportRepo) ListUserMonitors(ctx context.Context, userID int64) ([]dto.MonitorSource, error) {
 	var rows []struct {
 		ID     int64
 		UserID int64
@@ -32,14 +33,14 @@ func (r *ReportRepo) ListUserMonitors(ctx context.Context, userID int64) ([]repo
 		Scan(&rows).Error; err != nil {
 		return nil, err
 	}
-	out := make([]report.MonitorSource, len(rows))
+	out := make([]dto.MonitorSource, len(rows))
 	for i, row := range rows {
-		out[i] = report.MonitorSource{ID: row.ID, UserID: row.UserID, Name: row.Name}
+		out[i] = dto.MonitorSource{ID: row.ID, UserID: row.UserID, Name: row.Name}
 	}
 	return out, nil
 }
 
-func (r *ReportRepo) ListTopics(ctx context.Context, monitorIDs []int64, start, end time.Time, limit int) ([]report.TopicSource, error) {
+func (r *ReportRepo) ListTopics(ctx context.Context, monitorIDs []int64, start, end time.Time, limit int) ([]dto.TopicSource, error) {
 	if len(monitorIDs) == 0 {
 		return nil, nil
 	}
@@ -69,9 +70,9 @@ func (r *ReportRepo) ListTopics(ctx context.Context, monitorIDs []int64, start, 
 	).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
-	out := make([]report.TopicSource, len(rows))
+	out := make([]dto.TopicSource, len(rows))
 	for i, row := range rows {
-		out[i] = report.TopicSource{
+		out[i] = dto.TopicSource{
 			ID: row.ID, MonitorID: row.MonitorID, Title: row.Title, Summary: row.Summary,
 			HeatScore: row.HeatScore, Trend: row.Trend, PostCount: row.PostCount,
 		}
@@ -79,7 +80,7 @@ func (r *ReportRepo) ListTopics(ctx context.Context, monitorIDs []int64, start, 
 	return out, nil
 }
 
-func (r *ReportRepo) ListPosts(ctx context.Context, monitorIDs []int64, start, end time.Time, limit int) ([]report.PostSource, error) {
+func (r *ReportRepo) ListPosts(ctx context.Context, monitorIDs []int64, start, end time.Time, limit int) ([]dto.PostSource, error) {
 	if len(monitorIDs) == 0 {
 		return nil, nil
 	}
@@ -108,9 +109,9 @@ func (r *ReportRepo) ListPosts(ctx context.Context, monitorIDs []int64, start, e
 	).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
-	out := make([]report.PostSource, len(rows))
+	out := make([]dto.PostSource, len(rows))
 	for i, row := range rows {
-		out[i] = report.PostSource{
+		out[i] = dto.PostSource{
 			ID: row.ID, MonitorID: row.MonitorID, Title: row.Content, Content: row.Content,
 			URL: row.URL, Platform: row.Platform, HeatScore: row.HeatScore,
 		}
@@ -118,7 +119,7 @@ func (r *ReportRepo) ListPosts(ctx context.Context, monitorIDs []int64, start, e
 	return out, nil
 }
 
-func (r *ReportRepo) Create(ctx context.Context, in report.CreateReportRecord) (report.Report, error) {
+func (r *ReportRepo) Create(ctx context.Context, in dto.CreateReportRecord) (dto.Report, error) {
 	m := entity.Report{
 		UserID:       in.UserID,
 		ReportType:   in.ReportType,
@@ -131,12 +132,12 @@ func (r *ReportRepo) Create(ctx context.Context, in report.CreateReportRecord) (
 		Status:       in.Status,
 	}
 	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
-		return report.Report{}, err
+		return dto.Report{}, err
 	}
 	return toReport(m), nil
 }
 
-func (r *ReportRepo) List(ctx context.Context, filter report.ListFilter) ([]report.Report, int64, error) {
+func (r *ReportRepo) List(ctx context.Context, filter dto.ListFilter) ([]dto.Report, int64, error) {
 	query := r.db.WithContext(ctx).Model(&entity.Report{}).Where("user_id = ?", filter.UserID)
 	if filter.ReportType != "" {
 		query = query.Where("report_type = ?", filter.ReportType)
@@ -152,25 +153,25 @@ func (r *ReportRepo) List(ctx context.Context, filter report.ListFilter) ([]repo
 		return nil, 0, err
 	}
 
-	out := make([]report.Report, len(models))
+	out := make([]dto.Report, len(models))
 	for i, m := range models {
 		out[i] = toReport(m)
 	}
 	return out, total, nil
 }
 
-func (r *ReportRepo) GetByID(ctx context.Context, id, userID int64) (report.Report, error) {
+func (r *ReportRepo) GetByID(ctx context.Context, id, userID int64) (dto.Report, error) {
 	var m entity.Report
 	if err := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, userID).First(&m).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return report.Report{}, report.ErrNotFound
+			return dto.Report{}, report.ErrNotFound
 		}
-		return report.Report{}, err
+		return dto.Report{}, err
 	}
 	return toReport(m), nil
 }
 
-func (r *ReportRepo) MarkSent(ctx context.Context, id, userID int64, sentAt time.Time) (report.Report, error) {
+func (r *ReportRepo) MarkSent(ctx context.Context, id, userID int64, sentAt time.Time) (dto.Report, error) {
 	result := r.db.WithContext(ctx).Model(&entity.Report{}).
 		Where("id = ? AND user_id = ?", id, userID).
 		Updates(map[string]any{
@@ -179,16 +180,16 @@ func (r *ReportRepo) MarkSent(ctx context.Context, id, userID int64, sentAt time
 			"updated_at": sentAt,
 		})
 	if result.Error != nil {
-		return report.Report{}, result.Error
+		return dto.Report{}, result.Error
 	}
 	if result.RowsAffected == 0 {
-		return report.Report{}, report.ErrNotFound
+		return dto.Report{}, report.ErrNotFound
 	}
 	return r.GetByID(ctx, id, userID)
 }
 
-func toReport(m entity.Report) report.Report {
-	return report.Report{
+func toReport(m entity.Report) dto.Report {
+	return dto.Report{
 		ID:           m.ID,
 		UserID:       m.UserID,
 		ReportType:   m.ReportType,

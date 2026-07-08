@@ -1,16 +1,6 @@
-// Package notify implements user notification management and delivery.
-package notify
+package dto
 
-import (
-	"errors"
-	"time"
-)
-
-// Sentinel errors for notify operations.
-var (
-	ErrNotFound = errors.New("notification not found")
-	ErrNotOwned = errors.New("notification not owned by user")
-)
+import "time"
 
 // Notification represents a user notification linked to an alert.
 type Notification struct {

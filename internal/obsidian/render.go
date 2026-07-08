@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 )
 
 type MarkdownInput struct {
-	Kind        ExportKind
+	Kind        dto.ExportKind
 	Date        time.Time
 	ReportID    int64
 	MonitorID   int64
@@ -18,9 +20,9 @@ type MarkdownInput struct {
 
 func RenderMarkdown(input MarkdownInput) (string, error) {
 	switch input.Kind {
-	case ExportDailyDigest:
+	case dto.ExportDailyDigest:
 		return renderDailyDigest(input), nil
-	case ExportPublishDraft:
+	case dto.ExportPublishDraft:
 		return renderPublishDraft(input), nil
 	default:
 		return "", ErrInvalidExportKind

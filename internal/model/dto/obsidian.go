@@ -1,10 +1,8 @@
-package obsidian
+package dto
 
-import (
-	"errors"
-	"time"
-)
+import "time"
 
+// ExportKind identifies the type of Obsidian export.
 type ExportKind string
 
 const (
@@ -17,17 +15,14 @@ const (
 	WriteStatusSkipped   = "skipped"
 )
 
-var (
-	ErrMissingVaultRoot = errors.New("missing obsidian vault root")
-	ErrInvalidExportKind = errors.New("invalid obsidian export kind")
-)
-
+// PathInput holds parameters for building an Obsidian export path.
 type PathInput struct {
 	Kind        ExportKind
 	Date        time.Time
 	MonitorName string
 }
 
+// WriteResult holds the result of an Obsidian file write operation.
 type WriteResult struct {
 	Path    string
 	Status  string

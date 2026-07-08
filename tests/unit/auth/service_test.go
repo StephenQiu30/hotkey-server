@@ -5,16 +5,17 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/auth"
 	"github.com/StephenQiu30/hotkey-server/tests/testutil/fake/auth"
 )
 
 func TestRegisterRejectsDuplicateEmail(t *testing.T) {
 	repo := &fakeauth.Repo{
-		Users: []auth.User{{Email: "user@example.com", PasswordHash: "hash"}},
+		Users: []dto.User{{Email: "user@example.com", PasswordHash: "hash"}},
 	}
 	svc := auth.NewService(repo)
-	_, err := svc.Register(context.Background(), auth.RegisterInput{
+	_, err := svc.Register(context.Background(), dto.RegisterInput{
 		Email:       "user@example.com",
 		Password:    "Passw0rd!",
 		DisplayName: "User",
@@ -27,7 +28,7 @@ func TestRegisterRejectsDuplicateEmail(t *testing.T) {
 func TestRegisterRejectsEmptyEmail(t *testing.T) {
 	repo := &fakeauth.Repo{}
 	svc := auth.NewService(repo)
-	_, err := svc.Register(context.Background(), auth.RegisterInput{
+	_, err := svc.Register(context.Background(), dto.RegisterInput{
 		Email:       "",
 		Password:    "Passw0rd!",
 		DisplayName: "User",
@@ -40,7 +41,7 @@ func TestRegisterRejectsEmptyEmail(t *testing.T) {
 func TestRegisterRejectsShortPassword(t *testing.T) {
 	repo := &fakeauth.Repo{}
 	svc := auth.NewService(repo)
-	_, err := svc.Register(context.Background(), auth.RegisterInput{
+	_, err := svc.Register(context.Background(), dto.RegisterInput{
 		Email:       "user@example.com",
 		Password:    "short",
 		DisplayName: "User",
@@ -53,7 +54,7 @@ func TestRegisterRejectsShortPassword(t *testing.T) {
 func TestRegisterSuccess(t *testing.T) {
 	repo := &fakeauth.Repo{}
 	svc := auth.NewService(repo)
-	user, err := svc.Register(context.Background(), auth.RegisterInput{
+	user, err := svc.Register(context.Background(), dto.RegisterInput{
 		Email:       "new@example.com",
 		Password:    "Passw0rd!",
 		DisplayName: "New User",
@@ -73,13 +74,13 @@ func TestLoginRejectsWrongPassword(t *testing.T) {
 	repo := &fakeauth.Repo{}
 	svc := auth.NewService(repo)
 	// Register first
-	_, _ = svc.Register(context.Background(), auth.RegisterInput{
+	_, _ = svc.Register(context.Background(), dto.RegisterInput{
 		Email:       "user@example.com",
 		Password:    "Passw0rd!",
 		DisplayName: "User",
 	})
 	// Try login with wrong password
-	_, err := svc.Login(context.Background(), auth.LoginInput{
+	_, err := svc.Login(context.Background(), dto.LoginInput{
 		Email:    "user@example.com",
 		Password: "WrongPass!",
 	})
@@ -91,7 +92,7 @@ func TestLoginRejectsWrongPassword(t *testing.T) {
 func TestLoginRejectsUnknownEmail(t *testing.T) {
 	repo := &fakeauth.Repo{}
 	svc := auth.NewService(repo)
-	_, err := svc.Login(context.Background(), auth.LoginInput{
+	_, err := svc.Login(context.Background(), dto.LoginInput{
 		Email:    "nobody@example.com",
 		Password: "Passw0rd!",
 	})
@@ -103,12 +104,12 @@ func TestLoginRejectsUnknownEmail(t *testing.T) {
 func TestLoginSuccess(t *testing.T) {
 	repo := &fakeauth.Repo{}
 	svc := auth.NewService(repo)
-	_, _ = svc.Register(context.Background(), auth.RegisterInput{
+	_, _ = svc.Register(context.Background(), dto.RegisterInput{
 		Email:       "user@example.com",
 		Password:    "Passw0rd!",
 		DisplayName: "User",
 	})
-	user, err := svc.Login(context.Background(), auth.LoginInput{
+	user, err := svc.Login(context.Background(), dto.LoginInput{
 		Email:    "user@example.com",
 		Password: "Passw0rd!",
 	})

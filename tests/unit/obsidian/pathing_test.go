@@ -5,12 +5,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/obsidian"
 )
 
 func TestBuildPathDailyDigest(t *testing.T) {
-	got, err := obsidian.BuildPath("/vault", obsidian.PathInput{
-		Kind:        obsidian.ExportDailyDigest,
+	got, err := obsidian.BuildPath("/vault", dto.PathInput{
+		Kind:        dto.ExportDailyDigest,
 		Date:        time.Date(2026, 7, 8, 0, 0, 0, 0, time.UTC),
 		MonitorName: "AI Regulation",
 	})
@@ -24,8 +25,8 @@ func TestBuildPathDailyDigest(t *testing.T) {
 }
 
 func TestBuildPathPublishDraft(t *testing.T) {
-	got, err := obsidian.BuildPath("/vault", obsidian.PathInput{
-		Kind:        obsidian.ExportPublishDraft,
+	got, err := obsidian.BuildPath("/vault", dto.PathInput{
+		Kind:        dto.ExportPublishDraft,
 		Date:        time.Date(2026, 7, 8, 0, 0, 0, 0, time.UTC),
 		MonitorName: "AI Regulation",
 	})
@@ -39,8 +40,8 @@ func TestBuildPathPublishDraft(t *testing.T) {
 }
 
 func TestBuildPathRejectsMissingVault(t *testing.T) {
-	_, err := obsidian.BuildPath("", obsidian.PathInput{
-		Kind:        obsidian.ExportDailyDigest,
+	_, err := obsidian.BuildPath("", dto.PathInput{
+		Kind:        dto.ExportDailyDigest,
 		Date:        time.Date(2026, 7, 8, 0, 0, 0, 0, time.UTC),
 		MonitorName: "AI Regulation",
 	})

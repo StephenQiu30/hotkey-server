@@ -2,15 +2,31 @@ package report
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 )
 
 const (
+	TypeDaily  = "daily"
+	TypeWeekly = "weekly"
+
+	StatusDraft = "draft"
+	StatusSent  = "sent"
+
 	defaultLimit = 50
+)
+
+var (
+	ErrInvalidInput    = errors.New("invalid report input")
+	ErrNoReportSources = errors.New("no report sources")
+	ErrNotFound        = errors.New("report not found")
+	ErrUnsupportedType = errors.New("unsupported report type")
 )
 
 type Service struct {
@@ -25,32 +41,32 @@ func NewService(repo Repository, now func() time.Time) *Service {
 	return &Service{repo: repo, now: now}
 }
 
-func (s *Service) Create(ctx context.Context, userID int64, input CreateInput) (Report, error) {
+func (s *Service) Create(ctx context.Context, userID int64, input dto.CreateInput) (dto.Report, error) {
 	reportType := input.ReportType
 	if reportType == "" {
 		reportType = TypeDaily
 	}
 	start, end, err := s.resolvePeriod(reportType, input.PeriodStart, input.PeriodEnd)
 	if err != nil {
-		return Report{}, err
+		return dto.Report{}, err
 	}
 
 	monitors, err := s.repo.ListUserMonitors(ctx, userID)
 	if err != nil {
-		return Report{}, err
+		return dto.Report{}, err
 	}
 	if len(monitors) == 0 {
-		return Report{}, ErrNoReportSources
+		return dto.Report{}, ErrNoReportSources
 	}
 	if input.MonitorID > 0 {
-		filtered := make([]MonitorSource, 0, 1)
+		filtered := make([]dto.MonitorSource, 0, 1)
 		for _, m := range monitors {
 			if m.ID == input.MonitorID {
 				filtered = append(filtered, m)
 			}
 		}
 		if len(filtered) == 0 {
-			return Report{}, ErrNoReportSources
+			return dto.Report{}, ErrNoReportSources
 		}
 		monitors = filtered
 	}
@@ -62,18 +78,18 @@ func (s *Service) Create(ctx context.Context, userID int64, input CreateInput) (
 
 	topics, err := s.repo.ListTopics(ctx, monitorIDs, start, end, defaultLimit)
 	if err != nil {
-		return Report{}, err
+		return dto.Report{}, err
 	}
 	posts, err := s.repo.ListPosts(ctx, monitorIDs, start, end, defaultLimit)
 	if err != nil {
-		return Report{}, err
+		return dto.Report{}, err
 	}
 
 	subject := buildSubject(reportType, monitors, start, end)
 	summary := buildSummary(reportType, len(topics), len(posts))
 	content := renderMarkdown(subject, reportType, start, end, summary, monitors, topics, posts)
 
-	rec := CreateReportRecord{
+	rec := dto.CreateReportRecord{
 		UserID:       userID,
 		ReportType:   reportType,
 		PeriodStart:  start,
@@ -86,7 +102,7 @@ func (s *Service) Create(ctx context.Context, userID int64, input CreateInput) (
 	}
 	created, err := s.repo.Create(ctx, rec)
 	if err != nil {
-		return Report{}, err
+		return dto.Report{}, err
 	}
 	if input.Send {
 		return s.repo.MarkSent(ctx, created.ID, userID, s.now())
@@ -94,7 +110,7 @@ func (s *Service) Create(ctx context.Context, userID int64, input CreateInput) (
 	return created, nil
 }
 
-func (s *Service) List(ctx context.Context, userID int64, filter ListFilter) ([]Report, int64, error) {
+func (s *Service) List(ctx context.Context, userID int64, filter dto.ListFilter) ([]dto.Report, int64, error) {
 	filter.UserID = userID
 	if filter.Limit <= 0 || filter.Limit > 100 {
 		filter.Limit = defaultLimit
@@ -102,7 +118,7 @@ func (s *Service) List(ctx context.Context, userID int64, filter ListFilter) ([]
 	return s.repo.List(ctx, filter)
 }
 
-func (s *Service) GetByID(ctx context.Context, id, userID int64) (Report, error) {
+func (s *Service) GetByID(ctx context.Context, id, userID int64) (dto.Report, error) {
 	return s.repo.GetByID(ctx, id, userID)
 }
 
@@ -114,7 +130,7 @@ func (s *Service) HTML(ctx context.Context, id, userID int64) (string, error) {
 	return markdownToHTML(item.Content), nil
 }
 
-func (s *Service) MarkSent(ctx context.Context, id, userID int64) (Report, error) {
+func (s *Service) MarkSent(ctx context.Context, id, userID int64) (dto.Report, error) {
 	return s.repo.MarkSent(ctx, id, userID, s.now())
 }
 
@@ -152,7 +168,7 @@ func startOfDay(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 }
 
-func buildSubject(reportType string, monitors []MonitorSource, start, end time.Time) string {
+func buildSubject(reportType string, monitors []dto.MonitorSource, start, end time.Time) string {
 	name := "HotKey"
 	if len(monitors) == 1 {
 		name = monitors[0].Name
@@ -172,7 +188,7 @@ func buildSummary(reportType string, topicCount, postCount int) string {
 	return fmt.Sprintf("%s共跟踪 %d 个热点主题、%d 条代表内容。", period, topicCount, postCount)
 }
 
-func renderMarkdown(subject, reportType string, start, end time.Time, summary string, monitors []MonitorSource, topics []TopicSource, posts []PostSource) string {
+func renderMarkdown(subject, reportType string, start, end time.Time, summary string, monitors []dto.MonitorSource, topics []dto.TopicSource, posts []dto.PostSource) string {
 	overviewTitle := "今日概览"
 	if reportType == TypeWeekly {
 		overviewTitle = "本周概览"

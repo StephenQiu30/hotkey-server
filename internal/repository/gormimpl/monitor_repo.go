@@ -3,8 +3,8 @@ package gormimpl
 import (
 	"context"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
-	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/pkg"
 	"gorm.io/gorm"
 )
@@ -18,7 +18,7 @@ func NewMonitorRepo(db *gorm.DB) *MonitorRepo {
 	return &MonitorRepo{db: db}
 }
 
-func (r *MonitorRepo) Create(ctx context.Context, userID int64, input monitor.CreateMonitorInput) (monitor.Monitor, error) {
+func (r *MonitorRepo) Create(ctx context.Context, userID int64, input dto.CreateMonitorInput) (dto.Monitor, error) {
 	m := entity.KeywordMonitor{
 		UserID:               userID,
 		Name:                 input.Name,
@@ -30,12 +30,12 @@ func (r *MonitorRepo) Create(ctx context.Context, userID int64, input monitor.Cr
 		AlertThresholdConfig: pkg.JSONB[map[string]any]{Data: make(map[string]any)},
 	}
 	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
-		return monitor.Monitor{}, err
+		return dto.Monitor{}, err
 	}
 	return toDomainMonitor(m), nil
 }
 
-func (r *MonitorRepo) GetByID(ctx context.Context, id int64) (*monitor.Monitor, error) {
+func (r *MonitorRepo) GetByID(ctx context.Context, id int64) (*dto.Monitor, error) {
 	var m entity.KeywordMonitor
 	if err := r.db.WithContext(ctx).First(&m, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -47,31 +47,31 @@ func (r *MonitorRepo) GetByID(ctx context.Context, id int64) (*monitor.Monitor, 
 	return &result, nil
 }
 
-func (r *MonitorRepo) ListByUser(ctx context.Context, userID int64) ([]monitor.Monitor, error) {
+func (r *MonitorRepo) ListByUser(ctx context.Context, userID int64) ([]dto.Monitor, error) {
 	var models []entity.KeywordMonitor
 	if err := r.db.WithContext(ctx).Where("user_id = ?", userID).Order("created_at DESC").Find(&models).Error; err != nil {
 		return nil, err
 	}
-	result := make([]monitor.Monitor, len(models))
+	result := make([]dto.Monitor, len(models))
 	for i := range models {
 		result[i] = toDomainMonitor(models[i])
 	}
 	return result, nil
 }
 
-func (r *MonitorRepo) ListActive(ctx context.Context) ([]monitor.Monitor, error) {
+func (r *MonitorRepo) ListActive(ctx context.Context) ([]dto.Monitor, error) {
 	var models []entity.KeywordMonitor
 	if err := r.db.WithContext(ctx).Where("status = ?", "active").Order("id ASC").Find(&models).Error; err != nil {
 		return nil, err
 	}
-	out := make([]monitor.Monitor, len(models))
+	out := make([]dto.Monitor, len(models))
 	for i, model := range models {
 		out[i] = toDomainMonitor(model)
 	}
 	return out, nil
 }
 
-func (r *MonitorRepo) Update(ctx context.Context, id int64, userID int64, input monitor.UpdateMonitorInput) (monitor.Monitor, error) {
+func (r *MonitorRepo) Update(ctx context.Context, id int64, userID int64, input dto.UpdateMonitorInput) (dto.Monitor, error) {
 	updates := make(map[string]any)
 	if input.Name != nil {
 		updates["name"] = *input.Name
@@ -97,7 +97,7 @@ func (r *MonitorRepo) Update(ctx context.Context, id int64, userID int64, input 
 	if len(updates) == 0 {
 		got, err := r.GetByID(ctx, id)
 		if err != nil || got == nil {
-			return monitor.Monitor{}, err
+			return dto.Monitor{}, err
 		}
 		return *got, nil
 	}
@@ -105,11 +105,11 @@ func (r *MonitorRepo) Update(ctx context.Context, id int64, userID int64, input 
 	if err := r.db.WithContext(ctx).Model(&entity.KeywordMonitor{}).
 		Where("id = ? AND user_id = ?", id, userID).
 		Updates(updates).Error; err != nil {
-		return monitor.Monitor{}, err
+		return dto.Monitor{}, err
 	}
 	got, err := r.GetByID(ctx, id)
 	if err != nil || got == nil {
-		return monitor.Monitor{}, err
+		return dto.Monitor{}, err
 	}
 	return *got, nil
 }
@@ -121,8 +121,8 @@ func (r *MonitorRepo) SetQueryEmbedding(ctx context.Context, id int64, emb pkg.V
 		Update("query_embedding", emb).Error
 }
 
-func toDomainMonitor(m entity.KeywordMonitor) monitor.Monitor {
-	return monitor.Monitor{
+func toDomainMonitor(m entity.KeywordMonitor) dto.Monitor {
+	return dto.Monitor{
 		ID:                   m.ID,
 		UserID:               m.UserID,
 		Name:                 m.Name,

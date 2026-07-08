@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/StephenQiu30/hotkey-server/internal/auth"
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"gorm.io/gorm"
 )
@@ -23,19 +23,19 @@ func (r *UserRepo) ExistsByEmail(ctx context.Context, email string) bool {
 	return err == nil && u != nil
 }
 
-func (r *UserRepo) Create(ctx context.Context, email, passwordHash, displayName string) (auth.User, error) {
+func (r *UserRepo) Create(ctx context.Context, email, passwordHash, displayName string) (dto.User, error) {
 	m := entity.User{
 		Email:        email,
 		PasswordHash: passwordHash,
 		DisplayName:  displayName,
 	}
 	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
-		return auth.User{}, err
+		return dto.User{}, err
 	}
 	return toAuthUser(m), nil
 }
 
-func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*auth.User, error) {
+func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*dto.User, error) {
 	var m entity.User
 	if err := r.db.WithContext(ctx).Where("email = ?", email).First(&m).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -47,7 +47,7 @@ func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*auth.User, er
 	return &result, nil
 }
 
-func (r *UserRepo) GetByID(ctx context.Context, id int64) (*auth.User, error) {
+func (r *UserRepo) GetByID(ctx context.Context, id int64) (*dto.User, error) {
 	var m entity.User
 	if err := r.db.WithContext(ctx).First(&m, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -59,8 +59,8 @@ func (r *UserRepo) GetByID(ctx context.Context, id int64) (*auth.User, error) {
 	return &result, nil
 }
 
-func toAuthUser(m entity.User) auth.User {
-	return auth.User{
+func toAuthUser(m entity.User) dto.User {
+	return dto.User{
 		ID:           m.ID,
 		Email:        m.Email,
 		PasswordHash: m.PasswordHash,

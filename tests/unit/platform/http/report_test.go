@@ -13,6 +13,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/StephenQiu30/hotkey-server/internal/auth"
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
@@ -20,12 +21,12 @@ import (
 )
 
 type stubReportService struct {
-	items []report.Report
+	items []dto.Report
 }
 
-func (s *stubReportService) Create(ctx context.Context, userID int64, input report.CreateInput) (report.Report, error) {
+func (s *stubReportService) Create(ctx context.Context, userID int64, input dto.CreateInput) (dto.Report, error) {
 	now := time.Date(2026, 7, 8, 10, 0, 0, 0, time.UTC)
-	item := report.Report{
+	item := dto.Report{
 		ID:           int64(len(s.items) + 1),
 		UserID:       userID,
 		ReportType:   input.ReportType,
@@ -43,17 +44,17 @@ func (s *stubReportService) Create(ctx context.Context, userID int64, input repo
 	return item, nil
 }
 
-func (s *stubReportService) List(ctx context.Context, userID int64, filter report.ListFilter) ([]report.Report, int64, error) {
+func (s *stubReportService) List(ctx context.Context, userID int64, filter dto.ListFilter) ([]dto.Report, int64, error) {
 	return s.items, int64(len(s.items)), nil
 }
 
-func (s *stubReportService) GetByID(ctx context.Context, id, userID int64) (report.Report, error) {
+func (s *stubReportService) GetByID(ctx context.Context, id, userID int64) (dto.Report, error) {
 	for _, item := range s.items {
 		if item.ID == id && item.UserID == userID {
 			return item, nil
 		}
 	}
-	return report.Report{}, report.ErrNotFound
+	return dto.Report{}, report.ErrNotFound
 }
 
 func (s *stubReportService) HTML(ctx context.Context, id, userID int64) (string, error) {
@@ -64,10 +65,10 @@ func (s *stubReportService) HTML(ctx context.Context, id, userID int64) (string,
 	return "<h1>" + item.Subject + "</h1>", nil
 }
 
-func (s *stubReportService) MarkSent(ctx context.Context, id, userID int64) (report.Report, error) {
+func (s *stubReportService) MarkSent(ctx context.Context, id, userID int64) (dto.Report, error) {
 	item, err := s.GetByID(ctx, id, userID)
 	if err != nil {
-		return report.Report{}, err
+		return dto.Report{}, err
 	}
 	item.Status = report.StatusSent
 	s.items[id-1] = item
@@ -90,7 +91,7 @@ func TestReportRoutesCreateReadHTMLAndSend(t *testing.T) {
 	}
 
 	var created struct {
-		Data report.Report `json:"data"`
+		Data dto.Report `json:"data"`
 	}
 	if err := json.Unmarshal(createRR.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode create: %v", err)

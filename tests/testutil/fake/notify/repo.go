@@ -5,17 +5,18 @@ import (
 	"sort"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 )
 
 // Repo is an in-memory fake implementing notify.Repository.
 type Repo struct {
-	Notifications []notify.Notification
+	Notifications []dto.Notification
 	nextID        int64
 }
 
-func (r *Repo) ListUnread(_ context.Context, userID int64) ([]notify.Notification, error) {
-	var out []notify.Notification
+func (r *Repo) ListUnread(_ context.Context, userID int64) ([]dto.Notification, error) {
+	var out []dto.Notification
 	for _, n := range r.Notifications {
 		if n.UserID == userID && n.ReadAt == nil {
 			out = append(out, n)
@@ -41,7 +42,7 @@ func (r *Repo) MarkRead(_ context.Context, userID, notificationID int64) error {
 	return notify.ErrNotFound
 }
 
-func (r *Repo) Create(_ context.Context, n notify.Notification) (notify.Notification, error) {
+func (r *Repo) Create(_ context.Context, n dto.Notification) (dto.Notification, error) {
 	if r.nextID == 0 {
 		for _, existing := range r.Notifications {
 			if existing.ID >= r.nextID {

@@ -5,6 +5,19 @@ import (
 	"time"
 )
 
+// Status constants for HotEvent lifecycle.
+const (
+	StatusActive   = "active"
+	StatusArchived = "archived"
+)
+
+// Trend direction constants.
+const (
+	TrendRising    = "rising"
+	TrendStable    = "stable"
+	TrendDeclining = "declining"
+)
+
 // PlatformWeights defines the relative weight of each platform.
 var PlatformWeights = map[string]float64{
 	"x":     1.0,
@@ -15,9 +28,6 @@ var PlatformWeights = map[string]float64{
 }
 
 // ComputeHeatScore calculates the composite heat score for a HotEvent.
-//
-// Formula: HeatScore = w_platform * Σ(post_heat * decay_factor)
-// where decay_factor follows an exponential decay based on hours since last_seen.
 func ComputeHeatScore(platform string, heats []float64, lastSeen time.Time) float64 {
 	w := PlatformWeights[platform]
 	if w == 0 {
@@ -25,7 +35,7 @@ func ComputeHeatScore(platform string, heats []float64, lastSeen time.Time) floa
 	}
 
 	hoursSinceUpdate := time.Since(lastSeen).Hours()
-	decay := math.Exp(-0.01 * hoursSinceUpdate) // ~50% decay after ~69 hours
+	decay := math.Exp(-0.01 * hoursSinceUpdate)
 
 	var sum float64
 	for _, h := range heats {

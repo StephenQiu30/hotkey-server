@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 )
 
@@ -25,7 +26,7 @@ type NotificationData struct {
 	CreatedAt      string  `json:"created_at"`
 }
 
-func toNotificationResponse(n notify.Notification) NotificationData {
+func toNotificationResponse(n dto.Notification) NotificationData {
 	r := NotificationData{
 		ID: n.ID, UserID: n.UserID, AlertID: n.AlertID,
 		Channel: n.Channel, DeliveryStatus: n.DeliveryStatus,

@@ -1,20 +1,6 @@
-package monitor
+package dto
 
-import (
-	"errors"
-	"time"
-)
-
-// Sentinel errors for monitor operations.
-var (
-	ErrInvalidInterval  = errors.New("poll interval must be one of: 5, 10, 15, 30 minutes")
-	ErrInvalidInput     = errors.New("invalid input")
-	ErrNotFound         = errors.New("monitor not found")
-	ErrForbidden        = errors.New("not authorized")
-)
-
-// AllowedIntervals defines valid poll interval values in minutes.
-var AllowedIntervals = map[int]struct{}{5: {}, 10: {}, 15: {}, 30: {}}
+import "time"
 
 // Monitor represents a keyword monitoring task.
 type Monitor struct {

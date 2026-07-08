@@ -6,18 +6,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/report"
 )
 
 type fakeReportRepo struct {
-	monitors []report.MonitorSource
-	topics   []report.TopicSource
-	posts    []report.PostSource
-	saved    []report.Report
+	monitors []dto.MonitorSource
+	topics   []dto.TopicSource
+	posts    []dto.PostSource
+	saved    []dto.Report
 }
 
-func (r *fakeReportRepo) ListUserMonitors(_ context.Context, userID int64) ([]report.MonitorSource, error) {
-	var out []report.MonitorSource
+func (r *fakeReportRepo) ListUserMonitors(_ context.Context, userID int64) ([]dto.MonitorSource, error) {
+	var out []dto.MonitorSource
 	for _, m := range r.monitors {
 		if m.UserID == userID {
 			out = append(out, m)
@@ -26,16 +27,16 @@ func (r *fakeReportRepo) ListUserMonitors(_ context.Context, userID int64) ([]re
 	return out, nil
 }
 
-func (r *fakeReportRepo) ListTopics(_ context.Context, monitorIDs []int64, start, end time.Time, limit int) ([]report.TopicSource, error) {
+func (r *fakeReportRepo) ListTopics(_ context.Context, monitorIDs []int64, start, end time.Time, limit int) ([]dto.TopicSource, error) {
 	return r.topics, nil
 }
 
-func (r *fakeReportRepo) ListPosts(_ context.Context, monitorIDs []int64, start, end time.Time, limit int) ([]report.PostSource, error) {
+func (r *fakeReportRepo) ListPosts(_ context.Context, monitorIDs []int64, start, end time.Time, limit int) ([]dto.PostSource, error) {
 	return r.posts, nil
 }
 
-func (r *fakeReportRepo) Create(_ context.Context, in report.CreateReportRecord) (report.Report, error) {
-	out := report.Report{
+func (r *fakeReportRepo) Create(_ context.Context, in dto.CreateReportRecord) (dto.Report, error) {
+	out := dto.Report{
 		ID:           int64(len(r.saved) + 1),
 		UserID:       in.UserID,
 		ReportType:   in.ReportType,
@@ -53,23 +54,23 @@ func (r *fakeReportRepo) Create(_ context.Context, in report.CreateReportRecord)
 	return out, nil
 }
 
-func (r *fakeReportRepo) List(_ context.Context, filter report.ListFilter) ([]report.Report, int64, error) {
+func (r *fakeReportRepo) List(_ context.Context, filter dto.ListFilter) ([]dto.Report, int64, error) {
 	return r.saved, int64(len(r.saved)), nil
 }
 
-func (r *fakeReportRepo) GetByID(_ context.Context, id, userID int64) (report.Report, error) {
+func (r *fakeReportRepo) GetByID(_ context.Context, id, userID int64) (dto.Report, error) {
 	for _, item := range r.saved {
 		if item.ID == id && item.UserID == userID {
 			return item, nil
 		}
 	}
-	return report.Report{}, report.ErrNotFound
+	return dto.Report{}, report.ErrNotFound
 }
 
-func (r *fakeReportRepo) MarkSent(_ context.Context, id, userID int64, sentAt time.Time) (report.Report, error) {
+func (r *fakeReportRepo) MarkSent(_ context.Context, id, userID int64, sentAt time.Time) (dto.Report, error) {
 	item, err := r.GetByID(context.Background(), id, userID)
 	if err != nil {
-		return report.Report{}, err
+		return dto.Report{}, err
 	}
 	item.Status = report.StatusSent
 	item.SentAt = &sentAt
@@ -79,11 +80,11 @@ func (r *fakeReportRepo) MarkSent(_ context.Context, id, userID int64, sentAt ti
 func TestServiceCreateWeeklyReportAggregatesTopicsAndPosts(t *testing.T) {
 	start := time.Date(2026, 6, 24, 0, 0, 0, 0, time.UTC)
 	repo := &fakeReportRepo{
-		monitors: []report.MonitorSource{{ID: 10, UserID: 7, Name: "AI Regulation"}},
-		topics: []report.TopicSource{{
+		monitors: []dto.MonitorSource{{ID: 10, UserID: 7, Name: "AI Regulation"}},
+		topics: []dto.TopicSource{{
 			ID: 1, MonitorID: 10, Title: "AI 监管新规", Summary: "监管框架更新", HeatScore: 92.5, Trend: "rising", PostCount: 4,
 		}},
-		posts: []report.PostSource{{
+		posts: []dto.PostSource{{
 			ID: 20, MonitorID: 10, Title: "监管机构发布 AI 指南", Content: "指南要求模型风险评估", URL: "https://example.com/ai", Platform: "x", HeatScore: 88,
 		}},
 	}
@@ -92,7 +93,7 @@ func TestServiceCreateWeeklyReportAggregatesTopicsAndPosts(t *testing.T) {
 		return time.Date(2026, 7, 8, 10, 0, 0, 0, time.UTC)
 	})
 
-	got, err := svc.Create(context.Background(), 7, report.CreateInput{
+	got, err := svc.Create(context.Background(), 7, dto.CreateInput{
 		ReportType:  report.TypeWeekly,
 		PeriodStart: &start,
 	})
@@ -124,7 +125,7 @@ func TestServiceCreateWeeklyReportRejectsUserWithoutMonitors(t *testing.T) {
 		return time.Date(2026, 7, 8, 10, 0, 0, 0, time.UTC)
 	})
 
-	_, err := svc.Create(context.Background(), 7, report.CreateInput{ReportType: report.TypeWeekly})
+	_, err := svc.Create(context.Background(), 7, dto.CreateInput{ReportType: report.TypeWeekly})
 	if err != report.ErrNoReportSources {
 		t.Fatalf("error = %v, want %v", err, report.ErrNoReportSources)
 	}
@@ -133,14 +134,14 @@ func TestServiceCreateWeeklyReportRejectsUserWithoutMonitors(t *testing.T) {
 func TestServiceCreateDailyReportWithMonitorID(t *testing.T) {
 	start := time.Date(2026, 7, 7, 0, 0, 0, 0, time.UTC)
 	repo := &fakeReportRepo{
-		monitors: []report.MonitorSource{
+		monitors: []dto.MonitorSource{
 			{ID: 10, UserID: 7, Name: "AI Regulation"},
 			{ID: 20, UserID: 7, Name: "Tech Policy"},
 		},
-		topics: []report.TopicSource{{
+		topics: []dto.TopicSource{{
 			ID: 1, MonitorID: 10, Title: "AI 监管新规", Summary: "监管框架更新", HeatScore: 92.5, Trend: "rising", PostCount: 4,
 		}},
-		posts: []report.PostSource{{
+		posts: []dto.PostSource{{
 			ID: 20, MonitorID: 10, Title: "监管机构发布 AI 指南", Content: "指南要求模型风险评估", URL: "https://example.com/ai", Platform: "x", HeatScore: 88,
 		}},
 	}
@@ -149,7 +150,7 @@ func TestServiceCreateDailyReportWithMonitorID(t *testing.T) {
 		return time.Date(2026, 7, 8, 10, 0, 0, 0, time.UTC)
 	})
 
-	got, err := svc.Create(context.Background(), 7, report.CreateInput{
+	got, err := svc.Create(context.Background(), 7, dto.CreateInput{
 		ReportType:  report.TypeDaily,
 		PeriodStart: &start,
 		MonitorID:   10,

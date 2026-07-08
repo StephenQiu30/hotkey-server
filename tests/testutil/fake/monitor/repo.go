@@ -4,20 +4,21 @@ import (
 	"context"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/pkg"
 )
 
 // Repo is an in-memory fake implementing monitor.Repository.
 type Repo struct {
-	Monitors []monitor.Monitor
+	Monitors []dto.Monitor
 	NextID   int64
 }
 
-func (r *Repo) Create(_ context.Context, userID int64, input monitor.CreateMonitorInput) (monitor.Monitor, error) {
+func (r *Repo) Create(_ context.Context, userID int64, input dto.CreateMonitorInput) (dto.Monitor, error) {
 	r.NextID++
 	now := time.Now()
-	m := monitor.Monitor{
+	m := dto.Monitor{
 		ID:                  r.NextID,
 		UserID:              userID,
 		Name:                input.Name,
@@ -34,7 +35,7 @@ func (r *Repo) Create(_ context.Context, userID int64, input monitor.CreateMonit
 	return m, nil
 }
 
-func (r *Repo) GetByID(_ context.Context, id int64) (*monitor.Monitor, error) {
+func (r *Repo) GetByID(_ context.Context, id int64) (*dto.Monitor, error) {
 	for i := range r.Monitors {
 		if r.Monitors[i].ID == id {
 			m := r.Monitors[i]
@@ -44,8 +45,8 @@ func (r *Repo) GetByID(_ context.Context, id int64) (*monitor.Monitor, error) {
 	return nil, nil
 }
 
-func (r *Repo) ListByUser(_ context.Context, userID int64) ([]monitor.Monitor, error) {
-	var out []monitor.Monitor
+func (r *Repo) ListByUser(_ context.Context, userID int64) ([]dto.Monitor, error) {
+	var out []dto.Monitor
 	for _, m := range r.Monitors {
 		if m.UserID == userID {
 			out = append(out, m)
@@ -54,8 +55,8 @@ func (r *Repo) ListByUser(_ context.Context, userID int64) ([]monitor.Monitor, e
 	return out, nil
 }
 
-func (r *Repo) ListActive(_ context.Context) ([]monitor.Monitor, error) {
-	var out []monitor.Monitor
+func (r *Repo) ListActive(_ context.Context) ([]dto.Monitor, error) {
+	var out []dto.Monitor
 	for _, m := range r.Monitors {
 		if m.Status == "active" {
 			out = append(out, m)
@@ -64,7 +65,7 @@ func (r *Repo) ListActive(_ context.Context) ([]monitor.Monitor, error) {
 	return out, nil
 }
 
-func (r *Repo) Update(_ context.Context, id int64, userID int64, input monitor.UpdateMonitorInput) (monitor.Monitor, error) {
+func (r *Repo) Update(_ context.Context, id int64, userID int64, input dto.UpdateMonitorInput) (dto.Monitor, error) {
 	for i := range r.Monitors {
 		if r.Monitors[i].ID == id && r.Monitors[i].UserID == userID {
 			if input.Name != nil {
@@ -83,7 +84,7 @@ func (r *Repo) Update(_ context.Context, id int64, userID int64, input monitor.U
 			return r.Monitors[i], nil
 		}
 	}
-	return monitor.Monitor{}, monitor.ErrNotFound
+	return dto.Monitor{}, monitor.ErrNotFound
 }
 
 func (r *Repo) SetQueryEmbedding(_ context.Context, id int64, _ pkg.Vector384) error {

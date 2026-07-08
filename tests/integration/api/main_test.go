@@ -9,7 +9,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/StephenQiu30/hotkey-server/internal/monitor"
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/tests/testutil"
 )
 
@@ -93,13 +93,13 @@ func TestIntegrationSmoke(t *testing.T) {
 		t.Fatalf("monitors: expected 200, got %d: %v", monResp.StatusCode, errBody)
 	}
 
-	var monitors []monitor.Monitor
+	var monitors []dto.Monitor
 	if err := decodeData(monResp, &monitors); err != nil {
 		t.Fatalf("monitors decode: %v", err)
 	}
 	// New user has no monitors, so empty list is expected.
 	if monitors == nil {
-		monitors = []monitor.Monitor{} // normalize nil to empty
+		monitors = []dto.Monitor{} // normalize nil to empty
 	}
 
 	// Step 4: Create a monitor, then list.
@@ -128,7 +128,7 @@ func TestIntegrationSmoke(t *testing.T) {
 	}
 	defer listResp.Body.Close()
 
-	var monitorsList []monitor.Monitor
+	var monitorsList []dto.Monitor
 	if err := decodeData(listResp, &monitorsList); err != nil {
 		t.Fatalf("list monitors decode: %v", err)
 	}

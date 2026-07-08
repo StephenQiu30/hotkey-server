@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/obsidian"
 )
 
@@ -16,7 +17,7 @@ func TestWriteAtomicNoOverwriteCreatesFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WriteAtomicNoOverwrite returned error: %v", err)
 	}
-	if result.Status != obsidian.WriteStatusPublished || result.Skipped {
+	if result.Status != dto.WriteStatusPublished || result.Skipped {
 		t.Fatalf("result = %+v, want published not skipped", result)
 	}
 	got, err := os.ReadFile(path)
@@ -39,7 +40,7 @@ func TestWriteAtomicNoOverwriteSkipsExistingFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WriteAtomicNoOverwrite returned error: %v", err)
 	}
-	if result.Status != obsidian.WriteStatusSkipped || !result.Skipped {
+	if result.Status != dto.WriteStatusSkipped || !result.Skipped {
 		t.Fatalf("result = %+v, want skipped", result)
 	}
 	got, err := os.ReadFile(path)

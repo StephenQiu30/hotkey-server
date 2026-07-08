@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	fakenotify "github.com/StephenQiu30/hotkey-server/tests/testutil/fake/notify"
 )
@@ -12,7 +13,7 @@ import (
 func TestListUnreadNotificationsReturnsNewestFirst(t *testing.T) {
 	now := time.Now()
 	repo := &fakenotify.Repo{
-		Notifications: []notify.Notification{
+		Notifications: []dto.Notification{
 			{ID: 1, UserID: 1, AlertID: 10, Channel: "in_app", DeliveryStatus: "sent", CreatedAt: now.Add(-2 * time.Hour)},
 			{ID: 2, UserID: 1, AlertID: 11, Channel: "in_app", DeliveryStatus: "sent", CreatedAt: now.Add(-1 * time.Hour)},
 			{ID: 3, UserID: 1, AlertID: 12, Channel: "in_app", DeliveryStatus: "sent", CreatedAt: now},
@@ -39,7 +40,7 @@ func TestListUnreadExcludesReadNotifications(t *testing.T) {
 	now := time.Now()
 	readAt := now.Add(-30 * time.Minute)
 	repo := &fakenotify.Repo{
-		Notifications: []notify.Notification{
+		Notifications: []dto.Notification{
 			{ID: 1, UserID: 1, AlertID: 10, Channel: "in_app", DeliveryStatus: "sent", CreatedAt: now},
 			{ID: 2, UserID: 1, AlertID: 11, Channel: "in_app", DeliveryStatus: "sent", ReadAt: &readAt, CreatedAt: now},
 		},
@@ -60,7 +61,7 @@ func TestListUnreadExcludesReadNotifications(t *testing.T) {
 func TestListUnreadExcludesOtherUsers(t *testing.T) {
 	now := time.Now()
 	repo := &fakenotify.Repo{
-		Notifications: []notify.Notification{
+		Notifications: []dto.Notification{
 			{ID: 1, UserID: 1, AlertID: 10, Channel: "in_app", DeliveryStatus: "sent", CreatedAt: now},
 			{ID: 2, UserID: 2, AlertID: 11, Channel: "in_app", DeliveryStatus: "sent", CreatedAt: now},
 		},
@@ -77,7 +78,7 @@ func TestListUnreadExcludesOtherUsers(t *testing.T) {
 
 func TestMarkReadSetsReadAt(t *testing.T) {
 	repo := &fakenotify.Repo{
-		Notifications: []notify.Notification{
+		Notifications: []dto.Notification{
 			{ID: 1, UserID: 1, AlertID: 10, Channel: "in_app", DeliveryStatus: "sent"},
 		},
 	}
@@ -93,7 +94,7 @@ func TestMarkReadSetsReadAt(t *testing.T) {
 
 func TestMarkReadRejectsWrongUser(t *testing.T) {
 	repo := &fakenotify.Repo{
-		Notifications: []notify.Notification{
+		Notifications: []dto.Notification{
 			{ID: 1, UserID: 1, AlertID: 10, Channel: "in_app", DeliveryStatus: "sent"},
 		},
 	}

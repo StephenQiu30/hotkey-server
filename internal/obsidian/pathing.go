@@ -4,20 +4,22 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 )
 
 var nonSlugChar = regexp.MustCompile(`[^a-z0-9]+`)
 
-func BuildPath(root string, input PathInput) (string, error) {
+func BuildPath(root string, input dto.PathInput) (string, error) {
 	if strings.TrimSpace(root) == "" {
 		return "", ErrMissingVaultRoot
 	}
 	date := input.Date.Format("2006-01-02")
 	slug := Slugify(input.MonitorName)
 	switch input.Kind {
-	case ExportDailyDigest:
+	case dto.ExportDailyDigest:
 		return filepath.Join(root, "HotKey", "digests", "daily", date, slug+".md"), nil
-	case ExportPublishDraft:
+	case dto.ExportPublishDraft:
 		return filepath.Join(root, "HotKey", "publish", "drafts", date, slug+".md"), nil
 	default:
 		return "", ErrInvalidExportKind

@@ -8,6 +8,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/StephenQiu30/hotkey-server/internal/auth"
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 )
 
 func RegisterAuthRoutes(r *gin.Engine, svc *auth.Service, jwtSecret string) {
@@ -48,7 +49,7 @@ func registerHandler(svc *auth.Service) gin.HandlerFunc {
 			return
 		}
 
-		user, err := svc.Register(c.Request.Context(), auth.RegisterInput{
+		user, err := svc.Register(c.Request.Context(), dto.RegisterInput{
 			Email:       body.Email,
 			Password:    body.Password,
 			DisplayName: body.DisplayName,
@@ -89,7 +90,7 @@ func loginHandler(svc *auth.Service, jwtSecret string) gin.HandlerFunc {
 			return
 		}
 
-		user, err := svc.Login(c.Request.Context(), auth.LoginInput{
+		user, err := svc.Login(c.Request.Context(), dto.LoginInput{
 			Email:    body.Email,
 			Password: body.Password,
 		})

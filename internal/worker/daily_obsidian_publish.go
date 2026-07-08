@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/StephenQiu30/hotkey-server/internal/monitor"
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/obsidian"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
@@ -16,11 +16,11 @@ import (
 )
 
 type MonitorLister interface {
-	ListActive(ctx context.Context) ([]monitor.Monitor, error)
+	ListActive(ctx context.Context) ([]dto.Monitor, error)
 }
 
 type DailyReportService interface {
-	Create(ctx context.Context, userID int64, input report.CreateInput) (report.Report, error)
+	Create(ctx context.Context, userID int64, input dto.CreateInput) (dto.Report, error)
 }
 
 type DailyObsidianPublishDeps struct {
@@ -61,12 +61,10 @@ func (j *DailyObsidianPublishJob) Handle(ctx context.Context, msg queue.Message)
 
 func (j *DailyObsidianPublishJob) DedupeEnabled() bool { return false }
 
-// RunKeyForDate constructs the deduplication key for a daily publish run.
 func RunKeyForDate(date time.Time) string {
 	return "daily-obsidian-publish:" + date.Format("2006-01-02")
 }
 
-// ResolveTargetDate computes the target date relative to now using the schedule config.
 func ResolveTargetDate(now time.Time, cfg struct {
 	Timezone string
 	Target   string
@@ -119,7 +117,7 @@ func (j *DailyObsidianPublishJob) RunOnce(ctx context.Context, targetDate time.T
 	for _, m := range monitors {
 		periodStart := targetDate
 		periodEnd := targetDate
-		item, err := j.deps.Reports.Create(ctx, m.UserID, report.CreateInput{
+		item, err := j.deps.Reports.Create(ctx, m.UserID, dto.CreateInput{
 			ReportType:  report.TypeDaily,
 			PeriodStart: &periodStart,
 			PeriodEnd:   &periodEnd,
@@ -129,8 +127,8 @@ func (j *DailyObsidianPublishJob) RunOnce(ctx context.Context, targetDate time.T
 			runErr = errors.Join(runErr, err)
 			continue
 		}
-		runErr = errors.Join(runErr, j.exportOne(ctx, item, m, obsidian.ExportDailyDigest, targetDate))
-		runErr = errors.Join(runErr, j.exportOne(ctx, item, m, obsidian.ExportPublishDraft, targetDate))
+		runErr = errors.Join(runErr, j.exportOne(ctx, item, m, dto.ExportDailyDigest, targetDate))
+		runErr = errors.Join(runErr, j.exportOne(ctx, item, m, dto.ExportPublishDraft, targetDate))
 	}
 	if runErr != nil {
 		log.Error("daily obsidian publish run finished with errors",
@@ -142,13 +140,13 @@ func (j *DailyObsidianPublishJob) RunOnce(ctx context.Context, targetDate time.T
 	return runErr
 }
 
-func (j *DailyObsidianPublishJob) exportOne(ctx context.Context, item report.Report, m monitor.Monitor, kind obsidian.ExportKind, targetDate time.Time) error {
+func (j *DailyObsidianPublishJob) exportOne(ctx context.Context, item dto.Report, m dto.Monitor, kind dto.ExportKind, targetDate time.Time) error {
 	log := logging.L().With(
 		zap.Int64("report_id", item.ID),
 		zap.String("export_kind", string(kind)),
 		zap.String("target_date", targetDate.Format("2006-01-02")),
 	)
-	path, err := obsidian.BuildPath(j.deps.VaultRoot, obsidian.PathInput{
+	path, err := obsidian.BuildPath(j.deps.VaultRoot, dto.PathInput{
 		Kind:        kind,
 		Date:        targetDate,
 		MonitorName: m.Name,

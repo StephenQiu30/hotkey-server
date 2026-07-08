@@ -9,15 +9,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/report"
 )
 
 type ReportService interface {
-	Create(ctx context.Context, userID int64, input report.CreateInput) (report.Report, error)
-	List(ctx context.Context, userID int64, filter report.ListFilter) ([]report.Report, int64, error)
-	GetByID(ctx context.Context, id, userID int64) (report.Report, error)
+	Create(ctx context.Context, userID int64, input dto.CreateInput) (dto.Report, error)
+	List(ctx context.Context, userID int64, filter dto.ListFilter) ([]dto.Report, int64, error)
+	GetByID(ctx context.Context, id, userID int64) (dto.Report, error)
 	HTML(ctx context.Context, id, userID int64) (string, error)
-	MarkSent(ctx context.Context, id, userID int64) (report.Report, error)
+	MarkSent(ctx context.Context, id, userID int64) (dto.Report, error)
 }
 
 type CreateReportRequest struct {
@@ -83,7 +84,7 @@ func listReportsHandler(svc ReportService) gin.HandlerFunc {
 		if offset < 0 {
 			offset = 0
 		}
-		items, total, err := svc.List(c.Request.Context(), userID, report.ListFilter{
+		items, total, err := svc.List(c.Request.Context(), userID, dto.ListFilter{
 			ReportType: c.Query("report_type"),
 			Limit:      limit,
 			Offset:     offset,
@@ -156,12 +157,12 @@ func sendReportHandler(svc ReportService) gin.HandlerFunc {
 	}
 }
 
-func (r CreateReportRequest) toInput() (report.CreateInput, error) {
+func (r CreateReportRequest) toInput() (dto.CreateInput, error) {
 	var start *time.Time
 	if r.PeriodStart != "" {
 		parsed, err := time.Parse("2006-01-02", r.PeriodStart)
 		if err != nil {
-			return report.CreateInput{}, errors.New("invalid period_start")
+			return dto.CreateInput{}, errors.New("invalid period_start")
 		}
 		start = &parsed
 	}
@@ -169,11 +170,11 @@ func (r CreateReportRequest) toInput() (report.CreateInput, error) {
 	if r.PeriodEnd != "" {
 		parsed, err := time.Parse("2006-01-02", r.PeriodEnd)
 		if err != nil {
-			return report.CreateInput{}, errors.New("invalid period_end")
+			return dto.CreateInput{}, errors.New("invalid period_end")
 		}
 		end = &parsed
 	}
-	return report.CreateInput{
+	return dto.CreateInput{
 		ReportType:  r.ReportType,
 		PeriodStart: start,
 		PeriodEnd:   end,

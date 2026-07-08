@@ -1,6 +1,10 @@
 package notify
 
-import "context"
+import (
+	"context"
+
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
+)
 
 // Service provides notification operations.
 type Service struct {
@@ -13,7 +17,7 @@ func NewService(repo Repository) *Service {
 }
 
 // ListUnread returns unread notifications for a user, newest first.
-func (s *Service) ListUnread(ctx context.Context, userID int64) ([]Notification, error) {
+func (s *Service) ListUnread(ctx context.Context, userID int64) ([]dto.Notification, error) {
 	return s.repo.ListUnread(ctx, userID)
 }
 

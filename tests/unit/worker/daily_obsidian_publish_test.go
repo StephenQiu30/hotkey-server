@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/StephenQiu30/hotkey-server/internal/monitor"
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/obsidian"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 	"github.com/StephenQiu30/hotkey-server/internal/report"
@@ -20,19 +20,19 @@ func TestMain(m *testing.M) {
 }
 
 type fakeMonitorLister struct {
-	monitors []monitor.Monitor
+	monitors []dto.Monitor
 }
 
-func (f *fakeMonitorLister) ListActive(ctx context.Context) ([]monitor.Monitor, error) {
+func (f *fakeMonitorLister) ListActive(ctx context.Context) ([]dto.Monitor, error) {
 	return f.monitors, nil
 }
 
 type fakeDailyReportService struct {
-	reports []report.Report
+	reports []dto.Report
 }
 
-func (f *fakeDailyReportService) Create(ctx context.Context, userID int64, input report.CreateInput) (report.Report, error) {
-	item := report.Report{
+func (f *fakeDailyReportService) Create(ctx context.Context, userID int64, input dto.CreateInput) (dto.Report, error) {
+	item := dto.Report{
 		ID:          int64(len(f.reports) + 1),
 		UserID:      userID,
 		ReportType:  report.TypeDaily,
@@ -82,7 +82,7 @@ func TestDailyObsidianPublishJobWritesDigestAndDraft(t *testing.T) {
 	exports := &fakeExportRepo{}
 	job := worker.NewDailyObsidianPublishJob(worker.DailyObsidianPublishDeps{
 		VaultRoot: vault,
-		Monitors: &fakeMonitorLister{monitors: []monitor.Monitor{{ID: 10, UserID: 7, Name: "AI Regulation", Status: "active"}}},
+		Monitors: &fakeMonitorLister{monitors: []dto.Monitor{{ID: 10, UserID: 7, Name: "AI Regulation", Status: "active"}}},
 		Reports:  &fakeDailyReportService{},
 		Exports:  exports,
 		Now:      func() time.Time { return time.Date(2026, 7, 8, 8, 0, 0, 0, time.UTC) },
@@ -118,7 +118,7 @@ func TestDailyObsidianPublishJobSkipsExistingFiles(t *testing.T) {
 	exports := &fakeExportRepo{}
 	job := worker.NewDailyObsidianPublishJob(worker.DailyObsidianPublishDeps{
 		VaultRoot: vault,
-		Monitors: &fakeMonitorLister{monitors: []monitor.Monitor{{ID: 10, UserID: 7, Name: "AI Regulation", Status: "active"}}},
+		Monitors: &fakeMonitorLister{monitors: []dto.Monitor{{ID: 10, UserID: 7, Name: "AI Regulation", Status: "active"}}},
 		Reports:  &fakeDailyReportService{},
 		Exports:  exports,
 		Now:      func() time.Time { return time.Date(2026, 7, 8, 8, 0, 0, 0, time.UTC) },
@@ -169,7 +169,7 @@ func TestDailyObsidianPublishJobSkipsDuplicateRunKey(t *testing.T) {
 	runs := &fakeRunRepo{}
 	job := worker.NewDailyObsidianPublishJob(worker.DailyObsidianPublishDeps{
 		VaultRoot: vault,
-		Monitors: &fakeMonitorLister{monitors: []monitor.Monitor{{ID: 10, UserID: 7, Name: "AI Regulation", Status: "active"}}},
+		Monitors: &fakeMonitorLister{monitors: []dto.Monitor{{ID: 10, UserID: 7, Name: "AI Regulation", Status: "active"}}},
 		Reports:  reportSvc,
 		Exports:  &fakeExportRepo{},
 		Runs:     runs,

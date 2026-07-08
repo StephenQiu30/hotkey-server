@@ -7,12 +7,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 )
 
 // MonitorGetter fetches a monitor by ID for ownership checks.
 type MonitorGetter interface {
-	GetByID(ctx context.Context, id int64) (monitor.Monitor, error)
+	GetByID(ctx context.Context, id int64) (dto.Monitor, error)
 }
 
 func RegisterMonitorRoutes(r *gin.Engine, svc *monitor.Service) {
@@ -34,7 +35,7 @@ type MonitorData struct {
 	AlertEnabled        bool   `json:"alert_enabled"`
 }
 
-func monitorToResponse(m monitor.Monitor) MonitorData {
+func monitorToResponse(m dto.Monitor) MonitorData {
 	return MonitorData{
 		ID: m.ID, UserID: m.UserID, Name: m.Name,
 		QueryText: m.QueryText, Language: m.Language, Region: m.Region,
@@ -102,7 +103,7 @@ func createMonitorHandler(svc *monitor.Service) gin.HandlerFunc {
 			return
 		}
 
-		m, err := svc.Create(c.Request.Context(), userID, monitor.CreateMonitorInput{
+		m, err := svc.Create(c.Request.Context(), userID, dto.CreateMonitorInput{
 			Name:                body.Name,
 			QueryText:           body.QueryText,
 			Language:            body.Language,
@@ -222,7 +223,7 @@ func updateMonitorHandler(svc *monitor.Service) gin.HandlerFunc {
 			return
 		}
 
-		updated, err := svc.Update(c.Request.Context(), id, userID, monitor.UpdateMonitorInput{
+		updated, err := svc.Update(c.Request.Context(), id, userID, dto.UpdateMonitorInput{
 			Name:                body.Name,
 			QueryText:           body.QueryText,
 			Language:            body.Language,

@@ -10,14 +10,15 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/StephenQiu30/hotkey-server/internal/hotevent"
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 )
 
 // HotEventManager defines the read operations needed for the hot event API.
 type HotEventManager interface {
-	ListEvents(ctx context.Context, filter hotevent.ListFilter) ([]*hotevent.HotEvent, int64, error)
-	GetEventByID(ctx context.Context, id int64) (*hotevent.HotEvent, error)
+	ListEvents(ctx context.Context, filter hotevent.ListFilter) ([]*dto.HotEvent, int64, error)
+	GetEventByID(ctx context.Context, id int64) (*dto.HotEvent, error)
 	ListEventPosts(ctx context.Context, id int64) ([]hotevent.PostBrief, error)
-	GetPlatforms(ctx context.Context, eventID int64) ([]*hotevent.EventPlatform, error)
+	GetPlatforms(ctx context.Context, eventID int64) ([]*dto.EventPlatform, error)
 }
 
 // RegisterTrendingRoutes registers the trending and hot event API endpoints.
@@ -135,7 +136,7 @@ func getHotEventHandler(mgr HotEventManager) gin.HandlerFunc {
 		Summary     string                    `json:"summary"`
 		Category    string                    `json:"category"`
 		Status      string                    `json:"status"`
-		Platforms   []*hotevent.EventPlatform `json:"platforms,omitempty"`
+		Platforms   []*dto.EventPlatform `json:"platforms,omitempty"`
 	}
 
 	return func(c *gin.Context) {

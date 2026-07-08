@@ -14,6 +14,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/auth"
 	"github.com/StephenQiu30/hotkey-server/internal/content"
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	"github.com/StephenQiu30/hotkey-server/internal/pkg"
@@ -23,7 +24,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/trend"
 )
 
-type stubAuthRepo struct{ users []auth.User }
+type stubAuthRepo struct{ users []dto.User }
 
 func (r *stubAuthRepo) ExistsByEmail(_ context.Context, email string) bool {
 	for _, u := range r.users {
@@ -33,12 +34,12 @@ func (r *stubAuthRepo) ExistsByEmail(_ context.Context, email string) bool {
 	}
 	return false
 }
-func (r *stubAuthRepo) Create(_ context.Context, email, passwordHash, displayName string) (auth.User, error) {
-	u := auth.User{ID: int64(len(r.users) + 1), Email: email, PasswordHash: passwordHash, DisplayName: displayName, Status: "active", PlanType: "free"}
+func (r *stubAuthRepo) Create(_ context.Context, email, passwordHash, displayName string) (dto.User, error) {
+	u := dto.User{ID: int64(len(r.users) + 1), Email: email, PasswordHash: passwordHash, DisplayName: displayName, Status: "active", PlanType: "free"}
 	r.users = append(r.users, u)
 	return u, nil
 }
-func (r *stubAuthRepo) GetByEmail(_ context.Context, email string) (*auth.User, error) {
+func (r *stubAuthRepo) GetByEmail(_ context.Context, email string) (*dto.User, error) {
 	for _, u := range r.users {
 		if u.Email == email {
 			return &u, nil
@@ -46,27 +47,27 @@ func (r *stubAuthRepo) GetByEmail(_ context.Context, email string) (*auth.User, 
 	}
 	return nil, nil
 }
-func (r *stubAuthRepo) GetByID(_ context.Context, _ int64) (*auth.User, error) { return nil, nil }
+func (r *stubAuthRepo) GetByID(_ context.Context, _ int64) (*dto.User, error) { return nil, nil }
 
 type stubMonitorRepo struct{}
 
-func (r *stubMonitorRepo) Create(_ context.Context, _ int64, _ monitor.CreateMonitorInput) (monitor.Monitor, error) {
-	return monitor.Monitor{ID: 1, UserID: 1, Name: "test", Status: "active"}, nil
+func (r *stubMonitorRepo) Create(_ context.Context, _ int64, _ dto.CreateMonitorInput) (dto.Monitor, error) {
+	return dto.Monitor{ID: 1, UserID: 1, Name: "test", Status: "active"}, nil
 }
-func (r *stubMonitorRepo) GetByID(_ context.Context, id int64) (*monitor.Monitor, error) {
+func (r *stubMonitorRepo) GetByID(_ context.Context, id int64) (*dto.Monitor, error) {
 	if id == 999 {
 		return nil, monitor.ErrNotFound
 	}
-	return &monitor.Monitor{ID: id, UserID: 1}, nil
+	return &dto.Monitor{ID: id, UserID: 1}, nil
 }
-func (r *stubMonitorRepo) ListByUser(_ context.Context, _ int64) ([]monitor.Monitor, error) {
+func (r *stubMonitorRepo) ListByUser(_ context.Context, _ int64) ([]dto.Monitor, error) {
 	return nil, nil
 }
-func (r *stubMonitorRepo) Update(_ context.Context, _ int64, _ int64, _ monitor.UpdateMonitorInput) (monitor.Monitor, error) {
-	return monitor.Monitor{}, monitor.ErrNotFound
+func (r *stubMonitorRepo) Update(_ context.Context, _ int64, _ int64, _ dto.UpdateMonitorInput) (dto.Monitor, error) {
+	return dto.Monitor{}, monitor.ErrNotFound
 }
-func (r *stubMonitorRepo) ListActive(_ context.Context) ([]monitor.Monitor, error) {
-	return []monitor.Monitor{{ID: 1, UserID: 1, Name: "test", Status: "active"}}, nil
+func (r *stubMonitorRepo) ListActive(_ context.Context) ([]dto.Monitor, error) {
+	return []dto.Monitor{{ID: 1, UserID: 1, Name: "test", Status: "active"}}, nil
 }
 func (r *stubMonitorRepo) SetQueryEmbedding(_ context.Context, _ int64, _ pkg.Vector384) error {
 	return nil
@@ -74,11 +75,11 @@ func (r *stubMonitorRepo) SetQueryEmbedding(_ context.Context, _ int64, _ pkg.Ve
 
 type stubNotifyRepo struct{}
 
-func (r *stubNotifyRepo) ListUnread(_ context.Context, _ int64) ([]notify.Notification, error) {
+func (r *stubNotifyRepo) ListUnread(_ context.Context, _ int64) ([]dto.Notification, error) {
 	return nil, nil
 }
 func (r *stubNotifyRepo) MarkRead(_ context.Context, _, _ int64) error { return nil }
-func (r *stubNotifyRepo) Create(_ context.Context, n notify.Notification) (notify.Notification, error) {
+func (r *stubNotifyRepo) Create(_ context.Context, n dto.Notification) (dto.Notification, error) {
 	return n, nil
 }
 

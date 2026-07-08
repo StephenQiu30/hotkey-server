@@ -1,18 +1,8 @@
-package auth
+package dto
 
-import (
-	"errors"
-	"time"
-)
+import "time"
 
-// Sentinel errors for auth operations.
-var (
-	ErrEmailExists    = errors.New("email already registered")
-	ErrInvalidCredentials = errors.New("invalid email or password")
-	ErrInvalidInput   = errors.New("invalid input")
-)
-
-// User represents a registered user.
+// User represents a registered user (domain model).
 type User struct {
 	ID           int64
 	Email        string
