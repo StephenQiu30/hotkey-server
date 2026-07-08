@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"time"
@@ -19,6 +18,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
 	"github.com/StephenQiu30/hotkey-server/internal/report"
 	"github.com/StephenQiu30/hotkey-server/internal/repository/gormimpl"
@@ -28,6 +28,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/robfig/cron/v3"
 	"go.uber.org/fx"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -139,10 +140,14 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 	)
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
+			if err := logging.Init(cfg.LogLevel, cfg.LogFormat); err != nil {
+				return fmt.Errorf("logging init: %w", err)
+			}
+
 			if os.Getenv("SMOKE_TEST") == "1" {
 				go func() {
 					if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-						log.Printf("http server error: %v", err)
+						logging.L().Error("http server error", zap.Error(err))
 					}
 				}()
 				return nil
@@ -156,7 +161,10 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 			if cfg.RedisAddr != "" {
 				rdb = redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
 				if err := rdb.Ping(ctx).Err(); err != nil {
-					log.Printf("redis: ping %q failed: %v (dedup degraded)", cfg.RedisAddr, err)
+					logging.L().Warn("redis ping failed, dedup degraded",
+						zap.String("addr", cfg.RedisAddr),
+						zap.Error(err),
+					)
 				}
 				dedupe = queue.NewDedupe(rdb)
 			}
@@ -188,9 +196,11 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 				dispatcher,
 			)
 			go func() {
-				log.Printf("kafka consumer: starting on %s", queue.TopicDigestRun)
+				logging.L().Info("kafka consumer starting",
+					zap.String("topic", queue.TopicDigestRun),
+				)
 				if err := consumer.Run(ctx); err != nil && err != queue.ErrConsumerClosed {
-					log.Printf("kafka consumer error: %v", err)
+					logging.L().Error("kafka consumer error", zap.Error(err))
 				}
 			}()
 
@@ -206,18 +216,18 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 					"target_date": now.AddDate(0, 0, -1).Format("2006-01-02"),
 				})
 				if pubErr := producer.Publish(context.Background(), queue.TopicDigestRun, queue.NewMessage("digest.run", payload)); pubErr != nil {
-					log.Printf("cron: publish digest error: %v", pubErr)
+					logging.L().Error("cron publish digest error", zap.Error(pubErr))
 				}
 			})
 			if err != nil {
 				return fmt.Errorf("cron: add func: %w", err)
 			}
 			cronS.Start()
-			log.Printf("worker: started (cron + kafka)")
+			logging.L().Info("worker started (cron + kafka)")
 
 			go func() {
 				if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-					log.Printf("http server error: %v", err)
+					logging.L().Error("http server error", zap.Error(err))
 				}
 			}()
 			return nil
@@ -228,27 +238,27 @@ func registerHooks(lc fx.Lifecycle, srv *http.Server, db *gorm.DB, cfg *config.C
 			}
 			if consumer != nil {
 				if err := consumer.Close(); err != nil {
-					log.Printf("consumer close error: %v", err)
+					logging.L().Error("consumer close error", zap.Error(err))
 				}
 			}
 			if producer != nil {
 				if err := producer.Close(); err != nil {
-					log.Printf("producer close error: %v", err)
+					logging.L().Error("producer close error", zap.Error(err))
 				}
 			}
 			if rdb != nil {
 				if err := rdb.Close(); err != nil {
-					log.Printf("redis close error: %v", err)
+					logging.L().Error("redis close error", zap.Error(err))
 				}
 			}
 			if err := srv.Shutdown(ctx); err != nil {
-				log.Printf("http server shutdown error: %v", err)
+				logging.L().Error("http server shutdown error", zap.Error(err))
 			}
 			if db != nil {
 				sqlDB, err := db.DB()
 				if err == nil && sqlDB != nil {
 					if err := sqlDB.Close(); err != nil {
-						log.Printf("db close error: %v", err)
+						logging.L().Error("db close error", zap.Error(err))
 					}
 				}
 			}
