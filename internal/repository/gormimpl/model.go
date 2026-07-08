@@ -35,6 +35,7 @@ type KeywordMonitor struct {
 	AlertEnabled         bool                      `gorm:"column:alert_enabled"`
 	AlertThresholdConfig pkg.JSONB[map[string]any] `gorm:"column:alert_threshold_config;type:jsonb"`
 	LastPolledAt         *time.Time                `gorm:"column:last_polled_at"`
+	QueryEmbedding       *pkg.Vector384            `gorm:"type:vector(384);column:query_embedding"`
 	CreatedAt            time.Time                 `gorm:"column:created_at"`
 	UpdatedAt            time.Time                 `gorm:"column:updated_at"`
 }
@@ -75,6 +76,7 @@ type PlatformPost struct {
 	ViewCount        int               `gorm:"column:view_count"`
 	RawPayload       pkg.JSONB[string] `gorm:"column:raw_payload;type:jsonb"`
 	NormalizedHash   string            `gorm:"column:normalized_hash"`
+	Embedding        *pkg.Vector384    `gorm:"type:vector(384);column:embedding"`
 	CreatedAt        time.Time         `gorm:"column:created_at"`
 	UpdatedAt        time.Time         `gorm:"column:updated_at"`
 }

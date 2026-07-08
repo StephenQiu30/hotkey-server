@@ -34,6 +34,8 @@ type Config struct {
 	LLMMaxTokens   int     `mapstructure:"LLM_MAX_TOKENS"`
 	LLMTemperature float64 `mapstructure:"LLM_TEMPERATURE"`
 
+	EmbeddingModelPath string `mapstructure:"EMBEDDING_MODEL_PATH"`
+
 	LogLevel  string `mapstructure:"LOG_LEVEL"`
 	LogFormat string `mapstructure:"LOG_FORMAT"`
 	LogOutput string `mapstructure:"LOG_OUTPUT"`
