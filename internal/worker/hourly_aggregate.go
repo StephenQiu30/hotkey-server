@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/hotevent"
+	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
 	"github.com/StephenQiu30/hotkey-server/internal/repository/gormimpl"
@@ -115,7 +116,7 @@ func (j *HourlyAggregateJob) clusterPosts(ctx context.Context, since time.Time) 
 	}
 	var posts []postRecord
 	if err := j.deps.DB.WithContext(ctx).
-		Model(&gormimpl.PlatformPost{}).
+		Model(&entity.PlatformPost{}).
 		Select("id, content_text").
 		Where("id IN ?", postIDs).
 		Find(&posts).Error; err != nil {
@@ -171,7 +172,7 @@ func (j *HourlyAggregateJob) aggregateHotEvents(ctx context.Context) error {
 	}
 	var topics []topicRecord
 	if err := j.deps.DB.WithContext(ctx).
-		Model(&gormimpl.Topic{}).
+		Model(&entity.Topic{}).
 		Select("id, monitor_id, title, current_heat_score").
 		Where("status = ?", "active").
 		Find(&topics).Error; err != nil {
@@ -182,7 +183,7 @@ func (j *HourlyAggregateJob) aggregateHotEvents(ctx context.Context) error {
 		heat := hotevent.ComputeHeatScore("x", []float64{t.CurrentHeatScore}, time.Now())
 		direction := hotevent.DetermineTrend(heat, t.CurrentHeatScore)
 
-		event := gormimpl.HotEvent{
+		event := entity.HotEvent{
 			Name:        t.Title,
 			HeatScore:   heat,
 			Platform:    "x",
@@ -207,7 +208,7 @@ func (j *HourlyAggregateJob) snapshotTrends(ctx context.Context) error {
 	}
 	var topicHeats []topicHeat
 	if err := j.deps.DB.WithContext(ctx).
-		Model(&gormimpl.Topic{}).
+		Model(&entity.Topic{}).
 		Select("id, current_heat_score").
 		Where("status = ?", "active").
 		Find(&topicHeats).Error; err != nil {
@@ -229,7 +230,7 @@ func (j *HourlyAggregateJob) snapshotTrends(ctx context.Context) error {
 			HeatScore:    th.CurrentHeatScore,
 			PreviousHeat: prevHeat,
 		})
-		gormSnap := &gormimpl.TopicSnapshot{
+		gormSnap := &entity.TopicSnapshot{
 			TopicID:       snap.TopicID,
 			SnapshotTime:  snap.SnapshotTime,
 			HeatScore:     snap.HeatScore,
@@ -242,7 +243,7 @@ func (j *HourlyAggregateJob) snapshotTrends(ctx context.Context) error {
 
 	var monitorIDs []int64
 	if err := j.deps.DB.WithContext(ctx).
-		Model(&gormimpl.KeywordMonitor{}).
+		Model(&entity.KeywordMonitor{}).
 		Where("status = ?", "active").
 		Pluck("id", &monitorIDs).Error; err != nil {
 		return fmt.Errorf("list monitors for snapshot: %w", err)
@@ -252,7 +253,7 @@ func (j *HourlyAggregateJob) snapshotTrends(ctx context.Context) error {
 			MonitorID:   mid,
 			SnapshotTime: now,
 		})
-		gormSnap := &gormimpl.MonitorSnapshot{
+		gormSnap := &entity.MonitorSnapshot{
 			MonitorID:    snap.MonitorID,
 			SnapshotTime: snap.SnapshotTime,
 		}

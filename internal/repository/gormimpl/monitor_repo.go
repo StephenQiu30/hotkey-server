@@ -3,6 +3,7 @@ package gormimpl
 import (
 	"context"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"github.com/StephenQiu30/hotkey-server/internal/monitor"
 	"github.com/StephenQiu30/hotkey-server/internal/pkg"
 	"gorm.io/gorm"
@@ -18,7 +19,7 @@ func NewMonitorRepo(db *gorm.DB) *MonitorRepo {
 }
 
 func (r *MonitorRepo) Create(ctx context.Context, userID int64, input monitor.CreateMonitorInput) (monitor.Monitor, error) {
-	m := KeywordMonitor{
+	m := entity.KeywordMonitor{
 		UserID:               userID,
 		Name:                 input.Name,
 		QueryText:            input.QueryText,
@@ -35,7 +36,7 @@ func (r *MonitorRepo) Create(ctx context.Context, userID int64, input monitor.Cr
 }
 
 func (r *MonitorRepo) GetByID(ctx context.Context, id int64) (*monitor.Monitor, error) {
-	var m KeywordMonitor
+	var m entity.KeywordMonitor
 	if err := r.db.WithContext(ctx).First(&m, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
@@ -47,7 +48,7 @@ func (r *MonitorRepo) GetByID(ctx context.Context, id int64) (*monitor.Monitor, 
 }
 
 func (r *MonitorRepo) ListByUser(ctx context.Context, userID int64) ([]monitor.Monitor, error) {
-	var models []KeywordMonitor
+	var models []entity.KeywordMonitor
 	if err := r.db.WithContext(ctx).Where("user_id = ?", userID).Order("created_at DESC").Find(&models).Error; err != nil {
 		return nil, err
 	}
@@ -59,7 +60,7 @@ func (r *MonitorRepo) ListByUser(ctx context.Context, userID int64) ([]monitor.M
 }
 
 func (r *MonitorRepo) ListActive(ctx context.Context) ([]monitor.Monitor, error) {
-	var models []KeywordMonitor
+	var models []entity.KeywordMonitor
 	if err := r.db.WithContext(ctx).Where("status = ?", "active").Order("id ASC").Find(&models).Error; err != nil {
 		return nil, err
 	}
@@ -101,7 +102,7 @@ func (r *MonitorRepo) Update(ctx context.Context, id int64, userID int64, input 
 		return *got, nil
 	}
 	updates["updated_at"] = "now()"
-	if err := r.db.WithContext(ctx).Model(&KeywordMonitor{}).
+	if err := r.db.WithContext(ctx).Model(&entity.KeywordMonitor{}).
 		Where("id = ? AND user_id = ?", id, userID).
 		Updates(updates).Error; err != nil {
 		return monitor.Monitor{}, err
@@ -115,12 +116,12 @@ func (r *MonitorRepo) Update(ctx context.Context, id int64, userID int64, input 
 
 // SetQueryEmbedding stores the embedding vector for a monitor's query text.
 func (r *MonitorRepo) SetQueryEmbedding(ctx context.Context, id int64, emb pkg.Vector384) error {
-	return r.db.WithContext(ctx).Model(&KeywordMonitor{}).
+	return r.db.WithContext(ctx).Model(&entity.KeywordMonitor{}).
 		Where("id = ?", id).
 		Update("query_embedding", emb).Error
 }
 
-func toDomainMonitor(m KeywordMonitor) monitor.Monitor {
+func toDomainMonitor(m entity.KeywordMonitor) monitor.Monitor {
 	return monitor.Monitor{
 		ID:                   m.ID,
 		UserID:               m.UserID,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -17,7 +18,7 @@ func NewKnowledgeRunRepo(db *gorm.DB) *KnowledgeRunRepo {
 }
 
 func (r *KnowledgeRunRepo) TryStart(ctx context.Context, runKey string, runType string, targetDate time.Time, startedAt time.Time) (bool, error) {
-	model := KnowledgeRun{
+	model := entity.KnowledgeRun{
 		RunKey:     runKey,
 		RunType:    runType,
 		TargetDate: &targetDate,
@@ -32,14 +33,14 @@ func (r *KnowledgeRunRepo) TryStart(ctx context.Context, runKey string, runType 
 }
 
 func (r *KnowledgeRunRepo) MarkFinished(ctx context.Context, runKey string, finishedAt time.Time) error {
-	return r.db.WithContext(ctx).Model(&KnowledgeRun{}).Where("run_key = ?", runKey).Updates(map[string]any{
+	return r.db.WithContext(ctx).Model(&entity.KnowledgeRun{}).Where("run_key = ?", runKey).Updates(map[string]any{
 		"status":      "finished",
 		"finished_at": finishedAt,
 	}).Error
 }
 
 func (r *KnowledgeRunRepo) MarkFailed(ctx context.Context, runKey string, message string, failedAt time.Time) error {
-	return r.db.WithContext(ctx).Model(&KnowledgeRun{}).Where("run_key = ?", runKey).Updates(map[string]any{
+	return r.db.WithContext(ctx).Model(&entity.KnowledgeRun{}).Where("run_key = ?", runKey).Updates(map[string]any{
 		"status":        "failed",
 		"error_message": message,
 		"finished_at":   failedAt,

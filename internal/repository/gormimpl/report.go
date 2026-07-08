@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"github.com/StephenQiu30/hotkey-server/internal/report"
 	"gorm.io/gorm"
 )
@@ -118,7 +119,7 @@ func (r *ReportRepo) ListPosts(ctx context.Context, monitorIDs []int64, start, e
 }
 
 func (r *ReportRepo) Create(ctx context.Context, in report.CreateReportRecord) (report.Report, error) {
-	m := Report{
+	m := entity.Report{
 		UserID:       in.UserID,
 		ReportType:   in.ReportType,
 		PeriodStart:  in.PeriodStart,
@@ -136,7 +137,7 @@ func (r *ReportRepo) Create(ctx context.Context, in report.CreateReportRecord) (
 }
 
 func (r *ReportRepo) List(ctx context.Context, filter report.ListFilter) ([]report.Report, int64, error) {
-	query := r.db.WithContext(ctx).Model(&Report{}).Where("user_id = ?", filter.UserID)
+	query := r.db.WithContext(ctx).Model(&entity.Report{}).Where("user_id = ?", filter.UserID)
 	if filter.ReportType != "" {
 		query = query.Where("report_type = ?", filter.ReportType)
 	}
@@ -146,7 +147,7 @@ func (r *ReportRepo) List(ctx context.Context, filter report.ListFilter) ([]repo
 		return nil, 0, err
 	}
 
-	var models []Report
+	var models []entity.Report
 	if err := query.Order("created_at DESC").Limit(filter.Limit).Offset(filter.Offset).Find(&models).Error; err != nil {
 		return nil, 0, err
 	}
@@ -159,7 +160,7 @@ func (r *ReportRepo) List(ctx context.Context, filter report.ListFilter) ([]repo
 }
 
 func (r *ReportRepo) GetByID(ctx context.Context, id, userID int64) (report.Report, error) {
-	var m Report
+	var m entity.Report
 	if err := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, userID).First(&m).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return report.Report{}, report.ErrNotFound
@@ -170,7 +171,7 @@ func (r *ReportRepo) GetByID(ctx context.Context, id, userID int64) (report.Repo
 }
 
 func (r *ReportRepo) MarkSent(ctx context.Context, id, userID int64, sentAt time.Time) (report.Report, error) {
-	result := r.db.WithContext(ctx).Model(&Report{}).
+	result := r.db.WithContext(ctx).Model(&entity.Report{}).
 		Where("id = ? AND user_id = ?", id, userID).
 		Updates(map[string]any{
 			"status":     report.StatusSent,
@@ -186,7 +187,7 @@ func (r *ReportRepo) MarkSent(ctx context.Context, id, userID int64, sentAt time
 	return r.GetByID(ctx, id, userID)
 }
 
-func toReport(m Report) report.Report {
+func toReport(m entity.Report) report.Report {
 	return report.Report{
 		ID:           m.ID,
 		UserID:       m.UserID,

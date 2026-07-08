@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"gorm.io/gorm"
 )
 
@@ -17,18 +18,18 @@ func NewSnapshotRepo(db *gorm.DB) *SnapshotRepo {
 }
 
 // CreateTopicSnapshot persists a topic snapshot.
-func (r *SnapshotRepo) CreateTopicSnapshot(ctx context.Context, snap *TopicSnapshot) error {
+func (r *SnapshotRepo) CreateTopicSnapshot(ctx context.Context, snap *entity.TopicSnapshot) error {
 	return r.db.WithContext(ctx).Create(snap).Error
 }
 
 // CreateMonitorSnapshot persists a monitor snapshot.
-func (r *SnapshotRepo) CreateMonitorSnapshot(ctx context.Context, snap *MonitorSnapshot) error {
+func (r *SnapshotRepo) CreateMonitorSnapshot(ctx context.Context, snap *entity.MonitorSnapshot) error {
 	return r.db.WithContext(ctx).Create(snap).Error
 }
 
 // GetTopicSnapshotBefore retrieves the most recent snapshot before a given time.
-func (r *SnapshotRepo) GetTopicSnapshotBefore(ctx context.Context, topicID int64, before time.Time) (*TopicSnapshot, error) {
-	var snap TopicSnapshot
+func (r *SnapshotRepo) GetTopicSnapshotBefore(ctx context.Context, topicID int64, before time.Time) (*entity.TopicSnapshot, error) {
+	var snap entity.TopicSnapshot
 	err := r.db.WithContext(ctx).
 		Where("topic_id = ? AND snapshot_time < ?", topicID, before).
 		Order("snapshot_time DESC").

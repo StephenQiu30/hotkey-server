@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/embedding"
+	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 	"github.com/StephenQiu30/hotkey-server/internal/repository/gormimpl"
 	"go.uber.org/zap"
@@ -149,7 +150,7 @@ func (s *Service) processTweet(ctx context.Context, tweet *Tweet) {
 		log.Warn("embedding failed, storing without vector", zap.Error(err))
 	}
 
-	post := &gormimpl.PlatformPost{
+	post := &entity.PlatformPost{
 		Platform:       "x",
 		PlatformPostID: tweet.ID,
 		AuthorName:     tweet.AuthorName,
@@ -181,7 +182,7 @@ func (s *Service) processTweet(ctx context.Context, tweet *Tweet) {
 		sim := cosineSimilarity(*post.Embedding, *m.QueryEmbedding)
 		if sim >= s.threshold {
 			now := time.Now()
-			hit := &gormimpl.MonitorPostHit{
+			hit := &entity.MonitorPostHit{
 				MonitorID:            m.ID,
 				PostID:               post.ID,
 				RelevanceScore:       sim,

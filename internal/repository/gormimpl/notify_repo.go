@@ -3,6 +3,7 @@ package gormimpl
 import (
 	"context"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"github.com/StephenQiu30/hotkey-server/internal/notify"
 	"gorm.io/gorm"
 )
@@ -17,7 +18,7 @@ func NewNotifyRepo(db *gorm.DB) *NotifyRepo {
 }
 
 func (r *NotifyRepo) ListUnread(ctx context.Context, userID int64) ([]notify.Notification, error) {
-	var models []UserNotification
+	var models []entity.UserNotification
 	if err := r.db.WithContext(ctx).Where("user_id = ? AND read_at IS NULL", userID).
 		Order("created_at DESC").Find(&models).Error; err != nil {
 		return nil, err
@@ -30,7 +31,7 @@ func (r *NotifyRepo) ListUnread(ctx context.Context, userID int64) ([]notify.Not
 }
 
 func (r *NotifyRepo) MarkRead(ctx context.Context, userID, notificationID int64) error {
-	result := r.db.WithContext(ctx).Model(&UserNotification{}).
+	result := r.db.WithContext(ctx).Model(&entity.UserNotification{}).
 		Where("id = ? AND user_id = ?", notificationID, userID).
 		Update("read_at", gorm.Expr("now()"))
 	if result.RowsAffected == 0 {
@@ -40,7 +41,7 @@ func (r *NotifyRepo) MarkRead(ctx context.Context, userID, notificationID int64)
 }
 
 func (r *NotifyRepo) Create(ctx context.Context, n notify.Notification) (notify.Notification, error) {
-	m := UserNotification{
+	m := entity.UserNotification{
 		UserID:         n.UserID,
 		AlertID:        n.AlertID,
 		Channel:        n.Channel,
@@ -54,7 +55,7 @@ func (r *NotifyRepo) Create(ctx context.Context, n notify.Notification) (notify.
 	return n, nil
 }
 
-func toDomainNotification(m UserNotification) notify.Notification {
+func toDomainNotification(m entity.UserNotification) notify.Notification {
 	return notify.Notification{
 		ID:             m.ID,
 		UserID:         m.UserID,

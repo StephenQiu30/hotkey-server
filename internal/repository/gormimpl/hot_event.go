@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/hotevent"
+	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"github.com/StephenQiu30/hotkey-server/internal/pkg"
 	"gorm.io/gorm"
 )
@@ -28,7 +29,7 @@ func NewHotEventRepo(db *gorm.DB) *HotEventRepo {
 }
 
 func (r *HotEventRepo) Create(ctx context.Context, event *hotevent.HotEvent) error {
-	m := HotEvent{
+	m := entity.HotEvent{
 		Name:        event.Name,
 		HeatScore:   event.HeatScore,
 		Platform:    event.Platform,
@@ -52,7 +53,7 @@ func (r *HotEventRepo) Create(ctx context.Context, event *hotevent.HotEvent) err
 }
 
 func (r *HotEventRepo) GetByID(ctx context.Context, id int64) (*hotevent.HotEvent, error) {
-	var m HotEvent
+	var m entity.HotEvent
 	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&m).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, hotevent.ErrNotFound
@@ -63,7 +64,7 @@ func (r *HotEventRepo) GetByID(ctx context.Context, id int64) (*hotevent.HotEven
 }
 
 func (r *HotEventRepo) List(ctx context.Context, filter hotevent.ListFilter) ([]*hotevent.HotEvent, int64, error) {
-	query := r.db.WithContext(ctx).Model(&HotEvent{})
+	query := r.db.WithContext(ctx).Model(&entity.HotEvent{})
 	if filter.Status != "" {
 		query = query.Where("status = ?", filter.Status)
 	}
@@ -86,7 +87,7 @@ func (r *HotEventRepo) List(ctx context.Context, filter hotevent.ListFilter) ([]
 		limit = 20
 	}
 
-	var models []HotEvent
+	var models []entity.HotEvent
 	if err := query.Order(order).Limit(limit).Offset(filter.Offset).Find(&models).Error; err != nil {
 		return nil, 0, err
 	}
@@ -99,7 +100,7 @@ func (r *HotEventRepo) List(ctx context.Context, filter hotevent.ListFilter) ([]
 }
 
 func (r *HotEventRepo) Update(ctx context.Context, event *hotevent.HotEvent) error {
-	return r.db.WithContext(ctx).Model(&HotEvent{}).Where("id = ?", event.ID).Updates(map[string]any{
+	return r.db.WithContext(ctx).Model(&entity.HotEvent{}).Where("id = ?", event.ID).Updates(map[string]any{
 		"name":         event.Name,
 		"heat_score":   event.HeatScore,
 		"platform":     event.Platform,
@@ -116,14 +117,14 @@ func (r *HotEventRepo) Update(ctx context.Context, event *hotevent.HotEvent) err
 }
 
 func (r *HotEventRepo) ArchiveOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
-	result := r.db.WithContext(ctx).Model(&HotEvent{}).
+	result := r.db.WithContext(ctx).Model(&entity.HotEvent{}).
 		Where("last_seen_at < ? AND status = 'active'", cutoff).
 		Update("status", "archived")
 	return result.RowsAffected, result.Error
 }
 
 func (r *HotEventRepo) AddPlatform(ctx context.Context, eventID int64, platform *hotevent.EventPlatform) error {
-	m := HotEventPlatform{
+	m := entity.HotEventPlatform{
 		HotEventID: eventID,
 		Platform:   platform.Platform,
 		Rank:       platform.Rank,
@@ -136,7 +137,7 @@ func (r *HotEventRepo) AddPlatform(ctx context.Context, eventID int64, platform 
 }
 
 func (r *HotEventRepo) GetPlatforms(ctx context.Context, eventID int64) ([]*hotevent.EventPlatform, error) {
-	var models []HotEventPlatform
+	var models []entity.HotEventPlatform
 	if err := r.db.WithContext(ctx).Where("hot_event_id = ?", eventID).Find(&models).Error; err != nil {
 		return nil, err
 	}
@@ -154,12 +155,12 @@ func (r *HotEventRepo) GetPlatforms(ctx context.Context, eventID int64) ([]*hote
 }
 
 func (r *HotEventRepo) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
-	result := r.db.WithContext(ctx).Where("last_seen_at < ?", cutoff).Delete(&HotEvent{})
+	result := r.db.WithContext(ctx).Where("last_seen_at < ?", cutoff).Delete(&entity.HotEvent{})
 	return result.RowsAffected, result.Error
 }
 
-// toHotEvent converts a GORM HotEvent to a domain HotEvent.
-func toHotEvent(m HotEvent) *hotevent.HotEvent {
+// toHotEvent converts a GORM entity.HotEvent to a domain entity.HotEvent.
+func toHotEvent(m entity.HotEvent) *hotevent.HotEvent {
 	return &hotevent.HotEvent{
 		ID:          m.ID,
 		Name:        m.Name,

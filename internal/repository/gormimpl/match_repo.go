@@ -3,13 +3,14 @@ package gormimpl
 import (
 	"context"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"github.com/StephenQiu30/hotkey-server/internal/pkg"
 	"gorm.io/gorm"
 )
 
 // PostMatch represents a post with its cosine similarity score.
 type PostMatch struct {
-	PlatformPost
+	entity.PlatformPost
 	Similarity float64 `gorm:"-:all" json:"similarity"`
 }
 
@@ -41,7 +42,7 @@ func (r *MatchRepo) FindMatchingPosts(ctx context.Context, monitorID int64, thre
 
 // UpdatePostEmbedding updates the embedding for an existing post.
 func (r *MatchRepo) UpdatePostEmbedding(ctx context.Context, postID int64, emb pkg.Vector384) error {
-	return r.db.WithContext(ctx).Model(&PlatformPost{}).
+	return r.db.WithContext(ctx).Model(&entity.PlatformPost{}).
 		Where("id = ?", postID).
 		Update("embedding", emb).Error
 }

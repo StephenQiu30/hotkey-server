@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"github.com/StephenQiu30/hotkey-server/internal/report"
 	"gorm.io/gorm"
 )
@@ -17,13 +18,13 @@ func NewReportExportRepo(db *gorm.DB) *ReportExportRepo {
 }
 
 func (r *ReportExportRepo) CreatePending(ctx context.Context, input report.CreateReportExportInput) (report.ReportExport, error) {
-	model := ReportExport{
+	model := entity.ReportExport{
 		ReportID:   input.ReportID,
 		ExportKind: input.ExportKind,
 		TargetPath: input.TargetPath,
 		Status:     report.ExportStatusPending,
 	}
-	err := r.db.WithContext(ctx).Where(ReportExport{
+	err := r.db.WithContext(ctx).Where(entity.ReportExport{
 		ReportID:   input.ReportID,
 		ExportKind: input.ExportKind,
 	}).Attrs(model).FirstOrCreate(&model).Error
@@ -46,7 +47,7 @@ func (r *ReportExportRepo) MarkFailed(ctx context.Context, reportID int64, expor
 }
 
 func (r *ReportExportRepo) ListByReport(ctx context.Context, reportID int64) ([]report.ReportExport, error) {
-	var models []ReportExport
+	var models []entity.ReportExport
 	if err := r.db.WithContext(ctx).Where("report_id = ?", reportID).Order("export_kind ASC").Find(&models).Error; err != nil {
 		return nil, err
 	}
@@ -58,11 +59,11 @@ func (r *ReportExportRepo) ListByReport(ctx context.Context, reportID int64) ([]
 }
 
 func (r *ReportExportRepo) updateStatus(ctx context.Context, reportID int64, exportKind string, path string, status string, message string, publishedAt *time.Time, updatedAt time.Time) (report.ReportExport, error) {
-	model := ReportExport{}
-	err := r.db.WithContext(ctx).Where(ReportExport{
+	model := entity.ReportExport{}
+	err := r.db.WithContext(ctx).Where(entity.ReportExport{
 		ReportID:   reportID,
 		ExportKind: exportKind,
-	}).Attrs(ReportExport{
+	}).Attrs(entity.ReportExport{
 		TargetPath: path,
 	}).FirstOrCreate(&model).Error
 	if err != nil {
@@ -83,14 +84,14 @@ func (r *ReportExportRepo) updateStatus(ctx context.Context, reportID int64, exp
 }
 
 func (r *ReportExportRepo) ListOne(ctx context.Context, reportID int64, exportKind string) (report.ReportExport, error) {
-	var model ReportExport
+	var model entity.ReportExport
 	if err := r.db.WithContext(ctx).Where("report_id = ? AND export_kind = ?", reportID, exportKind).First(&model).Error; err != nil {
 		return report.ReportExport{}, err
 	}
 	return toReportExport(model), nil
 }
 
-func toReportExport(model ReportExport) report.ReportExport {
+func toReportExport(model entity.ReportExport) report.ReportExport {
 	return report.ReportExport{
 		ID:           model.ID,
 		ReportID:     model.ReportID,

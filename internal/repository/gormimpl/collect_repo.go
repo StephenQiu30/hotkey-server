@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"gorm.io/gorm"
 )
 
@@ -17,12 +18,12 @@ func NewCollectRepo(db *gorm.DB) *CollectRepo {
 }
 
 // UpsertPost creates or updates a post by platform + platform_post_id.
-func (r *CollectRepo) UpsertPost(ctx context.Context, p *PlatformPost) error {
+func (r *CollectRepo) UpsertPost(ctx context.Context, p *entity.PlatformPost) error {
 	if p.Platform == "" || p.PlatformPostID == "" {
 		return nil
 	}
 	// Try to find existing
-	var existing PlatformPost
+	var existing entity.PlatformPost
 	err := r.db.WithContext(ctx).
 		Where("platform = ? AND platform_post_id = ?", p.Platform, p.PlatformPostID).
 		First(&existing).Error
@@ -51,13 +52,13 @@ func (r *CollectRepo) UpsertPost(ctx context.Context, p *PlatformPost) error {
 }
 
 // CreateHit records a monitor_post_hit entry.
-func (r *CollectRepo) CreateHit(ctx context.Context, hit *MonitorPostHit) error {
+func (r *CollectRepo) CreateHit(ctx context.Context, hit *entity.MonitorPostHit) error {
 	return r.db.WithContext(ctx).Create(hit).Error
 }
 
 // ListActiveMonitors retrieves all active monitors with their query embeddings.
-func (r *CollectRepo) ListActiveMonitors(ctx context.Context) ([]KeywordMonitor, error) {
-	var monitors []KeywordMonitor
+func (r *CollectRepo) ListActiveMonitors(ctx context.Context) ([]entity.KeywordMonitor, error) {
+	var monitors []entity.KeywordMonitor
 	if err := r.db.WithContext(ctx).
 		Where("status = ?", "active").
 		Find(&monitors).Error; err != nil {
@@ -67,8 +68,8 @@ func (r *CollectRepo) ListActiveMonitors(ctx context.Context) ([]KeywordMonitor,
 }
 
 // ListHitsSince retrieves monitor_post_hits created after a given time.
-func (r *CollectRepo) ListHitsSince(ctx context.Context, since time.Time) ([]MonitorPostHit, error) {
-	var hits []MonitorPostHit
+func (r *CollectRepo) ListHitsSince(ctx context.Context, since time.Time) ([]entity.MonitorPostHit, error) {
+	var hits []entity.MonitorPostHit
 	if err := r.db.WithContext(ctx).
 		Where("first_seen_at >= ?", since).
 		Find(&hits).Error; err != nil {

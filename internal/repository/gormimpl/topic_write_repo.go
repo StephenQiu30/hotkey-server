@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"gorm.io/gorm"
 )
 
@@ -18,7 +19,7 @@ func NewTopicWriteRepo(db *gorm.DB) *TopicWriteRepo {
 
 // CreateTopic inserts a new topic and returns its ID.
 func (r *TopicWriteRepo) CreateTopic(ctx context.Context, monitorID int64, topicKey, title, summary string) (int64, error) {
-	t := Topic{
+	t := entity.Topic{
 		MonitorID:       monitorID,
 		TopicKey:        topicKey,
 		Title:           title,
@@ -35,7 +36,7 @@ func (r *TopicWriteRepo) CreateTopic(ctx context.Context, monitorID int64, topic
 
 // AddTopicPost links a post to a topic.
 func (r *TopicWriteRepo) AddTopicPost(ctx context.Context, topicID, postID int64, score float64) error {
-	tp := TopicPost{
+	tp := entity.TopicPost{
 		TopicID:         topicID,
 		PostID:          postID,
 		MembershipScore: score,
@@ -47,7 +48,7 @@ func (r *TopicWriteRepo) AddTopicPost(ctx context.Context, topicID, postID int64
 
 // UpdateTopicHeat updates a topic's heat score and last active time.
 func (r *TopicWriteRepo) UpdateTopicHeat(ctx context.Context, topicID int64, heat float64, direction string) error {
-	return r.db.WithContext(ctx).Model(&Topic{}).
+	return r.db.WithContext(ctx).Model(&entity.Topic{}).
 		Where("id = ?", topicID).
 		Updates(map[string]interface{}{
 			"current_heat_score": heat,
