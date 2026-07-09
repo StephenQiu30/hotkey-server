@@ -1300,6 +1300,26 @@ const docTemplate = `{
                 }
             }
         },
+        "controller.EventPlatformItem": {
+            "type": "object",
+            "properties": {
+                "heat": {
+                    "type": "number"
+                },
+                "platform": {
+                    "type": "string"
+                },
+                "rank": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
         "controller.HealthResponse": {
             "type": "object",
             "properties": {
@@ -1311,20 +1331,110 @@ const docTemplate = `{
                 }
             }
         },
+        "controller.HotEventDetail": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string"
+                },
+                "first_seen_at": {
+                    "type": "string"
+                },
+                "heat_score": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "last_seen_at": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "platform": {
+                    "type": "string"
+                },
+                "platforms": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/controller.EventPlatformItem"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "trend": {
+                    "type": "string"
+                }
+            }
+        },
+        "controller.HotEventItem": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string"
+                },
+                "heat_score": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "platform": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "trend": {
+                    "type": "string"
+                }
+            }
+        },
         "controller.HotEventListResponse": {
             "type": "object",
             "properties": {
-                "data": {},
-                "meta": {},
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/controller.HotEventItem"
+                    }
+                },
+                "meta": {
+                    "$ref": "#/definitions/controller.HotEventMeta"
+                },
                 "request_id": {
                     "type": "string"
+                }
+            }
+        },
+        "controller.HotEventMeta": {
+            "type": "object",
+            "properties": {
+                "total": {
+                    "type": "integer"
                 }
             }
         },
         "controller.HotEventPostsResponse": {
             "type": "object",
             "properties": {
-                "data": {},
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/service.PostBrief"
+                    }
+                },
                 "request_id": {
                     "type": "string"
                 }
@@ -1333,7 +1443,9 @@ const docTemplate = `{
         "controller.HotEventResponse": {
             "type": "object",
             "properties": {
-                "data": {},
+                "data": {
+                    "$ref": "#/definitions/controller.HotEventDetail"
+                },
                 "request_id": {
                     "type": "string"
                 }
@@ -1417,7 +1529,12 @@ const docTemplate = `{
         "controller.ReportListResponse": {
             "type": "object",
             "properties": {
-                "data": {},
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.Report"
+                    }
+                },
                 "page": {
                     "type": "integer"
                 },
@@ -1435,7 +1552,9 @@ const docTemplate = `{
         "controller.ReportResponse": {
             "type": "object",
             "properties": {
-                "data": {},
+                "data": {
+                    "$ref": "#/definitions/dto.Report"
+                },
                 "request_id": {
                     "type": "string"
                 }
@@ -1469,10 +1588,35 @@ const docTemplate = `{
                 }
             }
         },
+        "controller.TrendingItem": {
+            "type": "object",
+            "properties": {
+                "heat": {
+                    "type": "number"
+                },
+                "platform": {
+                    "type": "string"
+                },
+                "rank": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
         "controller.TrendingListResponse": {
             "type": "object",
             "properties": {
-                "data": {},
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/controller.TrendingItem"
+                    }
+                },
                 "request_id": {
                     "type": "string"
                 }
@@ -1569,6 +1713,47 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.Report": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "hotspot_count": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "period_end": {
+                    "type": "string"
+                },
+                "period_start": {
+                    "type": "string"
+                },
+                "report_type": {
+                    "type": "string"
+                },
+                "sent_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "subject": {
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.UpdateMonitorRequest": {
             "type": "object",
             "properties": {
@@ -1599,6 +1784,29 @@ const docTemplate = `{
                 "status": {
                     "type": "string",
                     "example": "active"
+                }
+            }
+        },
+        "service.PostBrief": {
+            "type": "object",
+            "properties": {
+                "heat": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "platform": {
+                    "type": "string"
+                },
+                "seen_at": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
                 }
             }
         },

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -42,14 +41,6 @@ func RegisterTrendingRoutes(r *gin.Engine, mgr HotEventManager) {
 // @Failure 500 {object} ErrorBody
 // @Router /api/v1/trending [get]
 func listTrendingHandler(mgr HotEventManager) gin.HandlerFunc {
-	type trendingItem struct {
-		Platform string  `json:"platform"`
-		Title    string  `json:"title"`
-		Rank     int     `json:"rank"`
-		Heat     float64 `json:"heat"`
-		URL      string  `json:"url"`
-	}
-
 	return func(c *gin.Context) {
 		platform := c.Query("platform")
 		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
@@ -71,9 +62,9 @@ func listTrendingHandler(mgr HotEventManager) gin.HandlerFunc {
 			return
 		}
 
-		items := make([]trendingItem, 0, len(events))
+		items := make([]TrendingItem, 0, len(events))
 		for _, ev := range events {
-			items = append(items, trendingItem{
+			items = append(items, TrendingItem{
 				Platform: ev.Platform,
 				Title:    ev.Name,
 				Rank:     0,
@@ -99,17 +90,6 @@ func listTrendingHandler(mgr HotEventManager) gin.HandlerFunc {
 // @Failure 500 {object} ErrorBody
 // @Router /api/v1/hot-events [get]
 func listHotEventsHandler(mgr HotEventManager) gin.HandlerFunc {
-	type hotEventItem struct {
-		ID        int64   `json:"id"`
-		Name      string  `json:"name"`
-		HeatScore float64 `json:"heat_score"`
-		Platform  string  `json:"platform"`
-		Trend     string  `json:"trend"`
-		Summary   string  `json:"summary"`
-		Category  string  `json:"category"`
-		Status    string  `json:"status"`
-	}
-
 	return func(c *gin.Context) {
 		filter := service.HotEventListFilter{
 			Status:   c.DefaultQuery("status", service.StatusActive),
@@ -128,9 +108,9 @@ func listHotEventsHandler(mgr HotEventManager) gin.HandlerFunc {
 			return
 		}
 
-		items := make([]hotEventItem, 0, len(events))
+		items := make([]HotEventItem, 0, len(events))
 		for _, ev := range events {
-			items = append(items, hotEventItem{
+			items = append(items, HotEventItem{
 				ID:        ev.ID,
 				Name:      ev.Name,
 				HeatScore: ev.HeatScore,
@@ -158,20 +138,6 @@ func listHotEventsHandler(mgr HotEventManager) gin.HandlerFunc {
 // @Failure 500 {object} ErrorBody
 // @Router /api/v1/hot-events/{id} [get]
 func getHotEventHandler(mgr HotEventManager) gin.HandlerFunc {
-	type eventDetail struct {
-		ID          int64                `json:"id"`
-		Name        string               `json:"name"`
-		HeatScore   float64              `json:"heat_score"`
-		Platform    string               `json:"platform"`
-		Trend       string               `json:"trend"`
-		FirstSeenAt time.Time            `json:"first_seen_at"`
-		LastSeenAt  time.Time            `json:"last_seen_at"`
-		Summary     string               `json:"summary"`
-		Category    string               `json:"category"`
-		Status      string               `json:"status"`
-		Platforms   []*dto.EventPlatform `json:"platforms,omitempty"`
-	}
-
 	return func(c *gin.Context) {
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
@@ -190,7 +156,7 @@ func getHotEventHandler(mgr HotEventManager) gin.HandlerFunc {
 			return
 		}
 
-		detail := eventDetail{
+		detail := HotEventDetail{
 			ID:          ev.ID,
 			Name:        ev.Name,
 			HeatScore:   ev.HeatScore,
@@ -206,7 +172,16 @@ func getHotEventHandler(mgr HotEventManager) gin.HandlerFunc {
 		// Fetch platform details
 		platforms, err := mgr.GetPlatforms(c.Request.Context(), ev.ID)
 		if err == nil {
-			detail.Platforms = platforms
+			detail.Platforms = make([]EventPlatformItem, len(platforms))
+			for i, p := range platforms {
+				detail.Platforms[i] = EventPlatformItem{
+					Platform: p.Platform,
+					Rank:     p.Rank,
+					Title:    p.Title,
+					URL:      p.URL,
+					Heat:     p.Heat,
+				}
+			}
 		}
 
 		RespondOK(c, detail)
