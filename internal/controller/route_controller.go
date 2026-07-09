@@ -58,5 +58,8 @@ func NewRouter(cfg Config) *gin.Engine {
 		RegisterTrendingRoutes(r, cfg.HotEventManager)
 	}
 
+	// Global error handler catches unhandled AppError and panics.
+	r.Use(platformhttp.ErrorHandlerMiddleware())
+
 	return r
 }

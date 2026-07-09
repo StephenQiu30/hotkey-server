@@ -1,13 +1,16 @@
 package controller
 
 import (
-	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/StephenQiu30/hotkey-server/internal/service"
+	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"github.com/StephenQiu30/hotkey-server/internal/model/enum"
 )
+
+
 
 func RegisterTopicRoutes(r *gin.Engine, svc service.TopicQueryService, mgr MonitorGetter) {
 	r.GET("/api/v1/monitors/:id/topics", listMonitorTopicsHandler(svc, mgr))
@@ -32,13 +35,13 @@ func listMonitorTopicsHandler(svc service.TopicQueryService, mgr MonitorGetter) 
 		ctx := c.Request.Context()
 		userID, ok := userIDFromCtx(ctx)
 		if !ok {
-			respondError(c, http.StatusUnauthorized, "unauthorized")
+			platformhttp.RespondError(c, enum.ErrorCodeUnauthorized, "unauthorized")
 			return
 		}
 
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
-			respondError(c, http.StatusBadRequest, "invalid monitor id")
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid monitor id")
 			return
 		}
 
@@ -46,26 +49,26 @@ func listMonitorTopicsHandler(svc service.TopicQueryService, mgr MonitorGetter) 
 		if err != nil {
 			switch {
 			case err == service.MonitorErrNotFound:
-				respondError(c, http.StatusNotFound, "monitor not found")
+				platformhttp.RespondError(c, enum.ErrorCodeNotFound, "monitor not found")
 			default:
-				respondInternalError(c)
+				platformhttp.RespondInternalError(c)
 			}
 			return
 		}
 		if m.UserID != userID {
-			respondError(c, http.StatusForbidden, "not authorized")
+			platformhttp.RespondError(c, enum.ErrorCodeForbidden, "not authorized")
 			return
 		}
 
 		topics, err := svc.ListByMonitor(id)
 		if err != nil {
-			respondInternalError(c)
+			platformhttp.RespondInternalError(c)
 			return
 		}
 		if topics == nil {
 			topics = []service.TopicSummary{}
 		}
 
-		RespondOK(c, topics)
+		platformhttp.RespondOK(c, topics)
 	}
 }

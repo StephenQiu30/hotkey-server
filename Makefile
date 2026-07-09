@@ -17,6 +17,9 @@ validate-schema:
 validate-arch:
 	bash scripts/validate-architecture-boundaries.sh
 
+swagger:
+	swag init -g cmd/hotkey/main.go --output docs/ --parseInternal --parseDependency --parseDepth 2
+
 smoke:
 	bash scripts/smoke-api.sh
 

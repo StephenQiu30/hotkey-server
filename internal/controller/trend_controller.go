@@ -2,14 +2,17 @@ package controller
 
 import (
 	"context"
-	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/StephenQiu30/hotkey-server/internal/service"
+	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"github.com/StephenQiu30/hotkey-server/internal/model/enum"
 )
+
+
 
 // TopicMonitorIDGetter fetches the monitor ID that owns a topic.
 type TopicMonitorIDGetter interface {
@@ -52,13 +55,13 @@ func monitorTrendsHandler(svc service.TrendQueryService, mgr MonitorGetter) gin.
 		ctx := c.Request.Context()
 		userID, ok := userIDFromCtx(ctx)
 		if !ok {
-			respondError(c, http.StatusUnauthorized, "unauthorized")
+			platformhttp.RespondError(c, enum.ErrorCodeUnauthorized, "unauthorized")
 			return
 		}
 
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
-			respondError(c, http.StatusBadRequest, "invalid monitor id")
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid monitor id")
 			return
 		}
 
@@ -66,28 +69,28 @@ func monitorTrendsHandler(svc service.TrendQueryService, mgr MonitorGetter) gin.
 		if err != nil {
 			switch {
 			case err == service.MonitorErrNotFound:
-				respondError(c, http.StatusNotFound, "monitor not found")
+				platformhttp.RespondError(c, enum.ErrorCodeNotFound, "monitor not found")
 			default:
-				respondInternalError(c)
+				platformhttp.RespondInternalError(c)
 			}
 			return
 		}
 		if m.UserID != userID {
-			respondError(c, http.StatusForbidden, "not authorized")
+			platformhttp.RespondError(c, enum.ErrorCodeForbidden, "not authorized")
 			return
 		}
 
 		since := parseSince(c.Query("since"))
 		points, err := svc.GetMonitorTrends(id, since)
 		if err != nil {
-			respondInternalError(c)
+			platformhttp.RespondInternalError(c)
 			return
 		}
 		if points == nil {
 			points = []service.TrendPoint{}
 		}
 
-		RespondOK(c, points)
+		platformhttp.RespondOK(c, points)
 	}
 }
 
@@ -111,19 +114,19 @@ func topicTrendsHandler(svc service.TrendQueryService, monitorGetter MonitorGett
 		ctx := c.Request.Context()
 		userID, ok := userIDFromCtx(ctx)
 		if !ok {
-			respondError(c, http.StatusUnauthorized, "unauthorized")
+			platformhttp.RespondError(c, enum.ErrorCodeUnauthorized, "unauthorized")
 			return
 		}
 
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
-			respondError(c, http.StatusBadRequest, "invalid topic id")
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid topic id")
 			return
 		}
 
 		monitorID, err := topicMonitorGetter.GetMonitorID(ctx, id)
 		if err != nil {
-			respondError(c, http.StatusNotFound, "topic not found")
+			platformhttp.RespondError(c, enum.ErrorCodeNotFound, "topic not found")
 			return
 		}
 
@@ -131,27 +134,27 @@ func topicTrendsHandler(svc service.TrendQueryService, monitorGetter MonitorGett
 		if err != nil {
 			switch {
 			case err == service.MonitorErrNotFound:
-				respondError(c, http.StatusNotFound, "monitor not found")
+				platformhttp.RespondError(c, enum.ErrorCodeNotFound, "monitor not found")
 			default:
-				respondInternalError(c)
+				platformhttp.RespondInternalError(c)
 			}
 			return
 		}
 		if m.UserID != userID {
-			respondError(c, http.StatusForbidden, "not authorized")
+			platformhttp.RespondError(c, enum.ErrorCodeForbidden, "not authorized")
 			return
 		}
 
 		since := parseSince(c.Query("since"))
 		points, err := svc.GetTopicTrends(id, since)
 		if err != nil {
-			respondInternalError(c)
+			platformhttp.RespondInternalError(c)
 			return
 		}
 		if points == nil {
 			points = []service.TrendPoint{}
 		}
 
-		RespondOK(c, points)
+		platformhttp.RespondOK(c, points)
 	}
 }

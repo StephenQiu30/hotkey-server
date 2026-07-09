@@ -1,14 +1,17 @@
 package controller
 
 import (
-	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/StephenQiu30/hotkey-server/internal/content"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
+	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"github.com/StephenQiu30/hotkey-server/internal/model/enum"
 )
+
+
 
 func RegisterContentRoutes(r *gin.Engine, svc content.PostQueryService, mgr MonitorGetter) {
 	r.GET("/api/v1/monitors/:id/posts", listMonitorPostsHandler(svc, mgr))
@@ -35,13 +38,13 @@ func listMonitorPostsHandler(svc content.PostQueryService, mgr MonitorGetter) gi
 		ctx := c.Request.Context()
 		userID, ok := userIDFromCtx(ctx)
 		if !ok {
-			respondError(c, http.StatusUnauthorized, "unauthorized")
+			platformhttp.RespondError(c, enum.ErrorCodeUnauthorized, "unauthorized")
 			return
 		}
 
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
-			respondError(c, http.StatusBadRequest, "invalid monitor id")
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid monitor id")
 			return
 		}
 
@@ -49,14 +52,14 @@ func listMonitorPostsHandler(svc content.PostQueryService, mgr MonitorGetter) gi
 		if err != nil {
 			switch {
 			case err == service.MonitorErrNotFound:
-				respondError(c, http.StatusNotFound, "monitor not found")
+				platformhttp.RespondError(c, enum.ErrorCodeNotFound, "monitor not found")
 			default:
-				respondInternalError(c)
+				platformhttp.RespondInternalError(c)
 			}
 			return
 		}
 		if m.UserID != userID {
-			respondError(c, http.StatusForbidden, "not authorized")
+			platformhttp.RespondError(c, enum.ErrorCodeForbidden, "not authorized")
 			return
 		}
 
@@ -65,13 +68,13 @@ func listMonitorPostsHandler(svc content.PostQueryService, mgr MonitorGetter) gi
 
 		posts, err := svc.ListPostsByMonitor(id, limit, offset)
 		if err != nil {
-			respondInternalError(c)
+			platformhttp.RespondInternalError(c)
 			return
 		}
 		if posts == nil {
 			posts = []content.PostSummary{}
 		}
 
-		RespondOK(c, posts)
+		platformhttp.RespondOK(c, posts)
 	}
 }
