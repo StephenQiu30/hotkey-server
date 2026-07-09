@@ -31,23 +31,20 @@ make ci      # 完整验证
 ```
 cmd/hotkey/         入口
 internal/
-├── queue/          Kafka 消息队列（生产者/消费者/调度器/去重）
-├── worker/         后台任务（Obsidian 日报发布）
 ├── fxapp/          Fx 应用组装与生命周期
-├── config/         配置加载
-├── platform/http   Gin HTTP API
-├── auth/           账号
-├── monitor/        热点监控
-├── content/        内容检索
-├── topic/          主题聚类
-├── trend/          趋势分析
-├── hotevent/       热点事件
-├── notify/         通知推送
-├── llm/            LLM 内容聚合
-├── repository/     数据仓库实现
-└── database/       数据库连接与查询
+├── module/         基础设施 Module（DB / Redis / Config）
+├── config/         配置加载（Viper）
+├── controller/     Gin HTTP 处理器和路由
+├── service/        业务逻辑层（接口 + 实现）
+├── repository/     数据仓库（GORM 实现）
+├── content/        跨平台内容检索
+├── queue/          Kafka 消息队列
+├── worker/         后台定时任务
+├── model/          数据模型（entity / dto / vo）
+├── pkg/            共享工具类型（JSONB / Vector）
+└── platform/       基础设施层（http / database / logging）
 db/                 表结构与迁移
-tests/              测试
+tests/              测试（unit / integration / testutil）
 ```
 
 ## Agent 规范
