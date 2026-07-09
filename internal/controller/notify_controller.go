@@ -9,7 +9,11 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/convert"
 	"github.com/StephenQiu30/hotkey-server/internal/model/vo"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
+	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 )
+
+var _ platformhttp.ErrorBody
+
 
 func RegisterNotifyRoutes(r *gin.Engine, svc *service.NotifyService) {
 	r.GET("/api/v1/notifications", listNotificationsHandler(svc))
@@ -23,8 +27,8 @@ func RegisterNotifyRoutes(r *gin.Engine, svc *service.NotifyService) {
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} NotificationListResponse
-// @Failure 401 {object} ErrorBody
-// @Failure 500 {object} ErrorBody
+// @Failure 401 {object} platformhttp.ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
 // @Router /api/v1/notifications [get]
 func listNotificationsHandler(svc *service.NotifyService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -52,10 +56,10 @@ func listNotificationsHandler(svc *service.NotifyService) gin.HandlerFunc {
 // @Security BearerAuth
 // @Param id path int true "Notification ID"
 // @Success 200 {object} MarkNotificationReadResponse
-// @Failure 400 {object} ErrorBody
-// @Failure 401 {object} ErrorBody
-// @Failure 404 {object} ErrorBody
-// @Failure 500 {object} ErrorBody
+// @Failure 400 {object} platformhttp.ErrorBody
+// @Failure 401 {object} platformhttp.ErrorBody
+// @Failure 404 {object} platformhttp.ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
 // @Router /api/v1/notifications/{id}/read [post]
 func markNotificationReadHandler(svc *service.NotifyService) gin.HandlerFunc {
 	return func(c *gin.Context) {

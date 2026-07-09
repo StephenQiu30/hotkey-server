@@ -10,7 +10,11 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
+	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 )
+
+var _ platformhttp.ErrorBody
+
 
 type ReportService interface {
 	Create(ctx context.Context, userID int64, input dto.CreateInput) (dto.Report, error)
@@ -40,9 +44,9 @@ func RegisterReportRoutes(r *gin.Engine, svc ReportService) {
 // @Security BearerAuth
 // @Param body body dto.CreateReportRequest true "Report creation payload"
 // @Success 201 {object} ReportResponse
-// @Failure 400 {object} ErrorBody
-// @Failure 401 {object} ErrorBody
-// @Failure 500 {object} ErrorBody
+// @Failure 400 {object} platformhttp.ErrorBody
+// @Failure 401 {object} platformhttp.ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
 // @Router /api/v1/reports [post]
 func createReportHandler(svc ReportService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -83,8 +87,8 @@ func createReportHandler(svc ReportService) gin.HandlerFunc {
 // @Param offset query int false "Offset" default(0)
 // @Param report_type query string false "Filter by report type (daily|weekly)"
 // @Success 200 {object} ReportListResponse
-// @Failure 401 {object} ErrorBody
-// @Failure 500 {object} ErrorBody
+// @Failure 401 {object} platformhttp.ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
 // @Router /api/v1/reports [get]
 func listReportsHandler(svc ReportService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -123,10 +127,10 @@ func listReportsHandler(svc ReportService) gin.HandlerFunc {
 // @Security BearerAuth
 // @Param id path int true "Report ID"
 // @Success 200 {object} ReportResponse
-// @Failure 400 {object} ErrorBody
-// @Failure 401 {object} ErrorBody
-// @Failure 404 {object} ErrorBody
-// @Failure 500 {object} ErrorBody
+// @Failure 400 {object} platformhttp.ErrorBody
+// @Failure 401 {object} platformhttp.ErrorBody
+// @Failure 404 {object} platformhttp.ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
 // @Router /api/v1/reports/{id} [get]
 func getReportHandler(svc ReportService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -156,10 +160,10 @@ func getReportHandler(svc ReportService) gin.HandlerFunc {
 // @Security BearerAuth
 // @Param id path int true "Report ID"
 // @Success 200 {string} string "HTML content"
-// @Failure 400 {object} ErrorBody
-// @Failure 401 {object} ErrorBody
-// @Failure 404 {object} ErrorBody
-// @Failure 500 {object} ErrorBody
+// @Failure 400 {object} platformhttp.ErrorBody
+// @Failure 401 {object} platformhttp.ErrorBody
+// @Failure 404 {object} platformhttp.ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
 // @Router /api/v1/reports/{id}/html [get]
 func getReportHTMLHandler(svc ReportService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -189,10 +193,10 @@ func getReportHTMLHandler(svc ReportService) gin.HandlerFunc {
 // @Security BearerAuth
 // @Param id path int true "Report ID"
 // @Success 200 {object} ReportResponse
-// @Failure 400 {object} ErrorBody
-// @Failure 401 {object} ErrorBody
-// @Failure 404 {object} ErrorBody
-// @Failure 500 {object} ErrorBody
+// @Failure 400 {object} platformhttp.ErrorBody
+// @Failure 401 {object} platformhttp.ErrorBody
+// @Failure 404 {object} platformhttp.ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
 // @Router /api/v1/reports/{id}/send [post]
 func sendReportHandler(svc ReportService) gin.HandlerFunc {
 	return func(c *gin.Context) {

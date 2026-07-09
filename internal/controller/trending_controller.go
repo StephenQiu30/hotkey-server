@@ -10,7 +10,11 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
+	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 )
+
+var _ platformhttp.ErrorBody
+
 
 // HotEventManager defines the read operations needed for the hot event API.
 type HotEventManager interface {
@@ -38,7 +42,7 @@ func RegisterTrendingRoutes(r *gin.Engine, mgr HotEventManager) {
 // @Param platform query string false "Platform filter"
 // @Param limit query int false "Max results" default(20)
 // @Success 200 {object} TrendingListResponse
-// @Failure 500 {object} ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
 // @Router /api/v1/trending [get]
 func listTrendingHandler(mgr HotEventManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -87,7 +91,7 @@ func listTrendingHandler(mgr HotEventManager) gin.HandlerFunc {
 // @Param sort query string false "Sort field" default(heat_score)
 // @Param limit query int false "Max results" default(20)
 // @Success 200 {object} HotEventListResponse
-// @Failure 500 {object} ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
 // @Router /api/v1/hot-events [get]
 func listHotEventsHandler(mgr HotEventManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -133,9 +137,9 @@ func listHotEventsHandler(mgr HotEventManager) gin.HandlerFunc {
 // @Produce json
 // @Param id path int true "Hot Event ID"
 // @Success 200 {object} HotEventResponse
-// @Failure 400 {object} ErrorBody
-// @Failure 404 {object} ErrorBody
-// @Failure 500 {object} ErrorBody
+// @Failure 400 {object} platformhttp.ErrorBody
+// @Failure 404 {object} platformhttp.ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
 // @Router /api/v1/hot-events/{id} [get]
 func getHotEventHandler(mgr HotEventManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -195,9 +199,9 @@ func getHotEventHandler(mgr HotEventManager) gin.HandlerFunc {
 // @Produce json
 // @Param id path int true "Hot Event ID"
 // @Success 200 {object} HotEventPostsResponse
-// @Failure 400 {object} ErrorBody
-// @Failure 404 {object} ErrorBody
-// @Failure 500 {object} ErrorBody
+// @Failure 400 {object} platformhttp.ErrorBody
+// @Failure 404 {object} platformhttp.ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
 // @Router /api/v1/hot-events/{id}/posts [get]
 func getHotEventPostsHandler(mgr HotEventManager) gin.HandlerFunc {
 	return func(c *gin.Context) {

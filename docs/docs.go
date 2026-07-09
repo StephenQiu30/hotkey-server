@@ -36,7 +36,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/dto.LoginRequest"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_dto.LoginRequest"
                         }
                     }
                 ],
@@ -44,25 +44,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controller.LoginResponse"
+                            "$ref": "#/definitions/internal_controller.LoginResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     }
                 }
@@ -88,7 +88,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/dto.RegisterRequest"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_dto.RegisterRequest"
                         }
                     }
                 ],
@@ -96,25 +96,25 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/controller.UserResponse"
+                            "$ref": "#/definitions/internal_controller.UserResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     }
                 }
@@ -163,13 +163,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controller.HotEventListResponse"
+                            "$ref": "#/definitions/internal_controller.HotEventListResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     }
                 }
@@ -198,25 +198,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controller.HotEventResponse"
+                            "$ref": "#/definitions/internal_controller.HotEventResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     }
                 }
@@ -245,25 +245,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controller.HotEventPostsResponse"
+                            "$ref": "#/definitions/internal_controller.HotEventPostsResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     }
                 }
@@ -288,19 +288,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controller.MonitorListResponse"
+                            "$ref": "#/definitions/internal_controller.MonitorListResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     }
                 }
@@ -329,7 +329,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/dto.CreateMonitorRequest"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_dto.CreateMonitorRequest"
                         }
                     }
                 ],
@@ -337,25 +337,25 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/controller.MonitorResponse"
+                            "$ref": "#/definitions/internal_controller.MonitorResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     }
                 }
@@ -389,37 +389,37 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controller.MonitorResponse"
+                            "$ref": "#/definitions/internal_controller.MonitorResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     }
                 }
@@ -455,7 +455,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/dto.UpdateMonitorRequest"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_dto.UpdateMonitorRequest"
                         }
                     }
                 ],
@@ -463,37 +463,37 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controller.MonitorResponse"
+                            "$ref": "#/definitions/internal_controller.MonitorResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     }
                 }
@@ -541,37 +541,37 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controller.PostListResponse"
+                            "$ref": "#/definitions/internal_controller.PostListResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     }
                 }
@@ -605,37 +605,37 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controller.TopicListResponse"
+                            "$ref": "#/definitions/internal_controller.TopicListResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     }
                 }
@@ -675,37 +675,37 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controller.TrendListResponse"
+                            "$ref": "#/definitions/internal_controller.TrendListResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     }
                 }
@@ -730,19 +730,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controller.NotificationListResponse"
+                            "$ref": "#/definitions/internal_controller.NotificationListResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     }
                 }
@@ -776,31 +776,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controller.MarkNotificationReadResponse"
+                            "$ref": "#/definitions/internal_controller.MarkNotificationReadResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     }
                 }
@@ -847,19 +847,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controller.ReportListResponse"
+                            "$ref": "#/definitions/internal_controller.ReportListResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     }
                 }
@@ -888,7 +888,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/dto.CreateReportRequest"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_dto.CreateReportRequest"
                         }
                     }
                 ],
@@ -896,25 +896,25 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/controller.ReportResponse"
+                            "$ref": "#/definitions/internal_controller.ReportResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     }
                 }
@@ -948,31 +948,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controller.ReportResponse"
+                            "$ref": "#/definitions/internal_controller.ReportResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     }
                 }
@@ -1012,25 +1012,25 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     }
                 }
@@ -1064,31 +1064,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controller.ReportResponse"
+                            "$ref": "#/definitions/internal_controller.ReportResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     }
                 }
@@ -1128,37 +1128,37 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controller.TrendListResponse"
+                            "$ref": "#/definitions/internal_controller.TrendListResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     }
                 }
@@ -1193,13 +1193,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controller.TrendingListResponse"
+                            "$ref": "#/definitions/internal_controller.TrendingListResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/controller.ErrorBody"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
                     }
                 }
@@ -1219,7 +1219,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controller.HealthResponse"
+                            "$ref": "#/definitions/internal_controller.HealthResponse"
                         }
                     }
                 }
@@ -1227,7 +1227,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "content.PostSummary": {
+        "github_com_StephenQiu30_hotkey-server_internal_content.PostSummary": {
             "type": "object",
             "properties": {
                 "author_handle": {
@@ -1286,354 +1286,7 @@ const docTemplate = `{
                 }
             }
         },
-        "controller.ErrorBody": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "error": {
-                    "type": "string"
-                },
-                "request_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.EventPlatformItem": {
-            "type": "object",
-            "properties": {
-                "heat": {
-                    "type": "number"
-                },
-                "platform": {
-                    "type": "string"
-                },
-                "rank": {
-                    "type": "integer"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "url": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.HealthResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/vo.HealthBody"
-                },
-                "request_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.HotEventDetail": {
-            "type": "object",
-            "properties": {
-                "category": {
-                    "type": "string"
-                },
-                "first_seen_at": {
-                    "type": "string"
-                },
-                "heat_score": {
-                    "type": "number"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "last_seen_at": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "platform": {
-                    "type": "string"
-                },
-                "platforms": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/controller.EventPlatformItem"
-                    }
-                },
-                "status": {
-                    "type": "string"
-                },
-                "summary": {
-                    "type": "string"
-                },
-                "trend": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.HotEventItem": {
-            "type": "object",
-            "properties": {
-                "category": {
-                    "type": "string"
-                },
-                "heat_score": {
-                    "type": "number"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "platform": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "summary": {
-                    "type": "string"
-                },
-                "trend": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.HotEventListResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/controller.HotEventItem"
-                    }
-                },
-                "meta": {
-                    "$ref": "#/definitions/controller.HotEventMeta"
-                },
-                "request_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.HotEventMeta": {
-            "type": "object",
-            "properties": {
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "controller.HotEventPostsResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/service.PostBrief"
-                    }
-                },
-                "request_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.HotEventResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/controller.HotEventDetail"
-                },
-                "request_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.LoginResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/vo.LoginData"
-                },
-                "request_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.MarkNotificationReadResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/vo.MarkNotificationReadData"
-                },
-                "request_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.MonitorListResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/vo.MonitorData"
-                    }
-                },
-                "request_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.MonitorResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/vo.MonitorData"
-                },
-                "request_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.NotificationListResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/vo.NotificationData"
-                    }
-                },
-                "request_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.PostListResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/content.PostSummary"
-                    }
-                },
-                "request_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.ReportListResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.Report"
-                    }
-                },
-                "page": {
-                    "type": "integer"
-                },
-                "page_size": {
-                    "type": "integer"
-                },
-                "request_id": {
-                    "type": "string"
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "controller.ReportResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/dto.Report"
-                },
-                "request_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.TopicListResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/service.TopicSummary"
-                    }
-                },
-                "request_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.TrendListResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/service.TrendPoint"
-                    }
-                },
-                "request_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.TrendingItem": {
-            "type": "object",
-            "properties": {
-                "heat": {
-                    "type": "number"
-                },
-                "platform": {
-                    "type": "string"
-                },
-                "rank": {
-                    "type": "integer"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "url": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.TrendingListResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/controller.TrendingItem"
-                    }
-                },
-                "request_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.UserResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/vo.UserData"
-                },
-                "request_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "dto.CreateMonitorRequest": {
+        "github_com_StephenQiu30_hotkey-server_internal_model_dto.CreateMonitorRequest": {
             "type": "object",
             "properties": {
                 "alert_enabled": {
@@ -1662,7 +1315,7 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.CreateReportRequest": {
+        "github_com_StephenQiu30_hotkey-server_internal_model_dto.CreateReportRequest": {
             "type": "object",
             "properties": {
                 "period_end": {
@@ -1683,7 +1336,7 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.LoginRequest": {
+        "github_com_StephenQiu30_hotkey-server_internal_model_dto.LoginRequest": {
             "type": "object",
             "properties": {
                 "email": {
@@ -1696,7 +1349,7 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.RegisterRequest": {
+        "github_com_StephenQiu30_hotkey-server_internal_model_dto.RegisterRequest": {
             "type": "object",
             "properties": {
                 "display_name": {
@@ -1713,7 +1366,7 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.Report": {
+        "github_com_StephenQiu30_hotkey-server_internal_model_dto.Report": {
             "type": "object",
             "properties": {
                 "content": {
@@ -1754,7 +1407,7 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.UpdateMonitorRequest": {
+        "github_com_StephenQiu30_hotkey-server_internal_model_dto.UpdateMonitorRequest": {
             "type": "object",
             "properties": {
                 "alert_enabled": {
@@ -1787,70 +1440,7 @@ const docTemplate = `{
                 }
             }
         },
-        "service.PostBrief": {
-            "type": "object",
-            "properties": {
-                "heat": {
-                    "type": "number"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "platform": {
-                    "type": "string"
-                },
-                "seen_at": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "url": {
-                    "type": "string"
-                }
-            }
-        },
-        "service.TopicSummary": {
-            "type": "object",
-            "properties": {
-                "current_heat": {
-                    "type": "number"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "post_count": {
-                    "type": "integer"
-                },
-                "summary": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "trend_direction": {
-                    "type": "string"
-                }
-            }
-        },
-        "service.TrendPoint": {
-            "type": "object",
-            "properties": {
-                "heat_score": {
-                    "type": "number"
-                },
-                "time": {
-                    "type": "string"
-                },
-                "trend_direction": {
-                    "type": "string"
-                },
-                "trend_velocity": {
-                    "type": "number"
-                }
-            }
-        },
-        "vo.HealthBody": {
+        "github_com_StephenQiu30_hotkey-server_internal_model_vo.HealthBody": {
             "type": "object",
             "properties": {
                 "status": {
@@ -1858,18 +1448,18 @@ const docTemplate = `{
                 }
             }
         },
-        "vo.LoginData": {
+        "github_com_StephenQiu30_hotkey-server_internal_model_vo.LoginData": {
             "type": "object",
             "properties": {
                 "token": {
                     "type": "string"
                 },
                 "user": {
-                    "$ref": "#/definitions/vo.UserData"
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.UserData"
                 }
             }
         },
-        "vo.MarkNotificationReadData": {
+        "github_com_StephenQiu30_hotkey-server_internal_model_vo.MarkNotificationReadData": {
             "type": "object",
             "properties": {
                 "read": {
@@ -1878,7 +1468,7 @@ const docTemplate = `{
                 }
             }
         },
-        "vo.MonitorData": {
+        "github_com_StephenQiu30_hotkey-server_internal_model_vo.MonitorData": {
             "type": "object",
             "properties": {
                 "alert_enabled": {
@@ -1910,7 +1500,7 @@ const docTemplate = `{
                 }
             }
         },
-        "vo.NotificationData": {
+        "github_com_StephenQiu30_hotkey-server_internal_model_vo.NotificationData": {
             "type": "object",
             "properties": {
                 "alert_id": {
@@ -1936,7 +1526,7 @@ const docTemplate = `{
                 }
             }
         },
-        "vo.UserData": {
+        "github_com_StephenQiu30_hotkey-server_internal_model_vo.UserData": {
             "type": "object",
             "properties": {
                 "display_name": {
@@ -1947,6 +1537,416 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "integer"
+                }
+            }
+        },
+        "github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_StephenQiu30_hotkey-server_internal_service.PostBrief": {
+            "type": "object",
+            "properties": {
+                "heat": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "platform": {
+                    "type": "string"
+                },
+                "seen_at": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_StephenQiu30_hotkey-server_internal_service.TopicSummary": {
+            "type": "object",
+            "properties": {
+                "current_heat": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "post_count": {
+                    "type": "integer"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "trend_direction": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_StephenQiu30_hotkey-server_internal_service.TrendPoint": {
+            "type": "object",
+            "properties": {
+                "heat_score": {
+                    "type": "number"
+                },
+                "time": {
+                    "type": "string"
+                },
+                "trend_direction": {
+                    "type": "string"
+                },
+                "trend_velocity": {
+                    "type": "number"
+                }
+            }
+        },
+        "internal_controller.EventPlatformItem": {
+            "type": "object",
+            "properties": {
+                "heat": {
+                    "type": "number"
+                },
+                "platform": {
+                    "type": "string"
+                },
+                "rank": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_controller.HealthResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.HealthBody"
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_controller.HotEventDetail": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string"
+                },
+                "first_seen_at": {
+                    "type": "string"
+                },
+                "heat_score": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "last_seen_at": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "platform": {
+                    "type": "string"
+                },
+                "platforms": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_controller.EventPlatformItem"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "trend": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_controller.HotEventItem": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string"
+                },
+                "heat_score": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "platform": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "trend": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_controller.HotEventListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_controller.HotEventItem"
+                    }
+                },
+                "meta": {
+                    "$ref": "#/definitions/internal_controller.HotEventMeta"
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_controller.HotEventMeta": {
+            "type": "object",
+            "properties": {
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_controller.HotEventPostsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_service.PostBrief"
+                    }
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_controller.HotEventResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_controller.HotEventDetail"
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_controller.LoginResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.LoginData"
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_controller.MarkNotificationReadResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.MarkNotificationReadData"
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_controller.MonitorListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.MonitorData"
+                    }
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_controller.MonitorResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.MonitorData"
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_controller.NotificationListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.NotificationData"
+                    }
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_controller.PostListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_content.PostSummary"
+                    }
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_controller.ReportListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_dto.Report"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "request_id": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_controller.ReportResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_dto.Report"
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_controller.TopicListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_service.TopicSummary"
+                    }
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_controller.TrendListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_service.TrendPoint"
+                    }
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_controller.TrendingItem": {
+            "type": "object",
+            "properties": {
+                "heat": {
+                    "type": "number"
+                },
+                "platform": {
+                    "type": "string"
+                },
+                "rank": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_controller.TrendingListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_controller.TrendingItem"
+                    }
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_controller.UserResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.UserData"
+                },
+                "request_id": {
+                    "type": "string"
                 }
             }
         }

@@ -10,7 +10,11 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/convert"
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
+	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 )
+
+var _ platformhttp.ErrorBody
+
 
 func RegisterAuthRoutes(r *gin.Engine, svc *service.AuthService, jwtSecret string) {
 	r.POST("/api/v1/auth/register", registerHandler(svc))
@@ -25,9 +29,9 @@ func RegisterAuthRoutes(r *gin.Engine, svc *service.AuthService, jwtSecret strin
 // @Produce json
 // @Param body body dto.RegisterRequest true "Register payload"
 // @Success 201 {object} UserResponse
-// @Failure 400 {object} ErrorBody
-// @Failure 409 {object} ErrorBody
-// @Failure 500 {object} ErrorBody
+// @Failure 400 {object} platformhttp.ErrorBody
+// @Failure 409 {object} platformhttp.ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
 // @Router /api/v1/auth/register [post]
 func registerHandler(svc *service.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -66,9 +70,9 @@ func registerHandler(svc *service.AuthService) gin.HandlerFunc {
 // @Produce json
 // @Param body body dto.LoginRequest true "Login payload"
 // @Success 200 {object} LoginResponse
-// @Failure 400 {object} ErrorBody
-// @Failure 401 {object} ErrorBody
-// @Failure 500 {object} ErrorBody
+// @Failure 400 {object} platformhttp.ErrorBody
+// @Failure 401 {object} platformhttp.ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
 // @Router /api/v1/auth/login [post]
 func loginHandler(svc *service.AuthService, jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {

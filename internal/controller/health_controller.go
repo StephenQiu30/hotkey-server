@@ -4,7 +4,11 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/vo"
+	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+
 )
+
+var _ platformhttp.ErrorBody
 
 func RegisterHealthRoutes(r *gin.Engine) {
 	r.GET("/healthz", healthHandler())

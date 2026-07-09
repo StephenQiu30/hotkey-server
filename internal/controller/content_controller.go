@@ -8,7 +8,11 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/content"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
+	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 )
+
+var _ platformhttp.ErrorBody
+
 
 func RegisterContentRoutes(r *gin.Engine, svc content.PostQueryService, mgr MonitorGetter) {
 	r.GET("/api/v1/monitors/:id/posts", listMonitorPostsHandler(svc, mgr))
@@ -24,11 +28,11 @@ func RegisterContentRoutes(r *gin.Engine, svc content.PostQueryService, mgr Moni
 // @Param limit query int false "Limit" default(20)
 // @Param offset query int false "Offset" default(0)
 // @Success 200 {object} PostListResponse
-// @Failure 400 {object} ErrorBody
-// @Failure 401 {object} ErrorBody
-// @Failure 403 {object} ErrorBody
-// @Failure 404 {object} ErrorBody
-// @Failure 500 {object} ErrorBody
+// @Failure 400 {object} platformhttp.ErrorBody
+// @Failure 401 {object} platformhttp.ErrorBody
+// @Failure 403 {object} platformhttp.ErrorBody
+// @Failure 404 {object} platformhttp.ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
 // @Router /api/v1/monitors/{id}/posts [get]
 func listMonitorPostsHandler(svc content.PostQueryService, mgr MonitorGetter) gin.HandlerFunc {
 	return func(c *gin.Context) {
