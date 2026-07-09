@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 
+	"github.com/StephenQiu30/hotkey-server/internal/convert"
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"gorm.io/gorm"
@@ -25,7 +26,7 @@ func (r *NotifyRepo) ListUnread(ctx context.Context, userID int64) ([]dto.Notifi
 	}
 	result := make([]dto.Notification, len(models))
 	for i := range models {
-		result[i] = toDomainNotification(models[i])
+		result[i] = convert.NotificationEntityToDTO(models[i])
 	}
 	return result, nil
 }
@@ -53,17 +54,4 @@ func (r *NotifyRepo) Create(ctx context.Context, n dto.Notification) (dto.Notifi
 	n.ID = m.ID
 	n.CreatedAt = m.CreatedAt
 	return n, nil
-}
-
-func toDomainNotification(m entity.UserNotification) dto.Notification {
-	return dto.Notification{
-		ID:             m.ID,
-		UserID:         m.UserID,
-		AlertID:        m.AlertID,
-		Channel:        m.Channel,
-		DeliveryStatus: m.DeliveryStatus,
-		ReadAt:         m.ReadAt,
-		SentAt:         m.SentAt,
-		CreatedAt:      m.CreatedAt,
-	}
 }

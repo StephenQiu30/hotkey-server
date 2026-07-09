@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/convert"
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"gorm.io/gorm"
@@ -31,7 +32,7 @@ func (r *ReportExportRepo) CreatePending(ctx context.Context, input dto.CreateRe
 	if err != nil {
 		return dto.ReportExport{}, err
 	}
-	return toDTOReportExport(model), nil
+	return convert.ReportExportEntityToDTO(model), nil
 }
 
 func (r *ReportExportRepo) MarkPublished(ctx context.Context, reportID int64, exportKind string, path string, publishedAt time.Time) (dto.ReportExport, error) {
@@ -53,7 +54,7 @@ func (r *ReportExportRepo) ListByReport(ctx context.Context, reportID int64) ([]
 	}
 	out := make([]dto.ReportExport, len(models))
 	for i, model := range models {
-		out[i] = toDTOReportExport(model)
+		out[i] = convert.ReportExportEntityToDTO(model)
 	}
 	return out, nil
 }
@@ -88,21 +89,7 @@ func (r *ReportExportRepo) ListOne(ctx context.Context, reportID int64, exportKi
 	if err := r.db.WithContext(ctx).Where("report_id = ? AND export_kind = ?", reportID, exportKind).First(&model).Error; err != nil {
 		return dto.ReportExport{}, err
 	}
-	return toDTOReportExport(model), nil
+	return convert.ReportExportEntityToDTO(model), nil
 }
 
 // compile-time interface satisfaction check
-
-func toDTOReportExport(model entity.ReportExport) dto.ReportExport {
-	return dto.ReportExport{
-		ID:           model.ID,
-		ReportID:     model.ReportID,
-		ExportKind:   model.ExportKind,
-		TargetPath:   model.TargetPath,
-		Status:       model.Status,
-		ErrorMessage: model.ErrorMessage,
-		PublishedAt:  model.PublishedAt,
-		CreatedAt:    model.CreatedAt,
-		UpdatedAt:    model.UpdatedAt,
-	}
-}

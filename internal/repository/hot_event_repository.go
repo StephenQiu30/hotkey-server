@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/convert"
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"github.com/StephenQiu30/hotkey-server/internal/pkg"
@@ -61,7 +62,7 @@ func (r *HotEventRepo) GetByID(ctx context.Context, id int64) (*dto.HotEvent, er
 		}
 		return nil, err
 	}
-	return toHotEvent(m), nil
+	return convert.HotEventEntityToDTO(m), nil
 }
 
 func (r *HotEventRepo) List(ctx context.Context, filter service.HotEventListFilter) ([]*dto.HotEvent, int64, error) {
@@ -93,11 +94,7 @@ func (r *HotEventRepo) List(ctx context.Context, filter service.HotEventListFilt
 		return nil, 0, err
 	}
 
-	events := make([]*dto.HotEvent, len(models))
-	for i := range models {
-		events[i] = toHotEvent(models[i])
-	}
-	return events, total, nil
+	return convert.HotEventSliceEntityToDTO(models), total, nil
 }
 
 func (r *HotEventRepo) Update(ctx context.Context, event *dto.HotEvent) error {
@@ -160,26 +157,4 @@ func (r *HotEventRepo) DeleteOlderThan(ctx context.Context, cutoff time.Time) (i
 	return result.RowsAffected, result.Error
 }
 
-func toHotEvent(m entity.HotEvent) *dto.HotEvent {
-	return &dto.HotEvent{
-		ID:          m.ID,
-		Name:        m.Name,
-		HeatScore:   m.HeatScore,
-		Platform:    m.Platform,
-		Trend:       m.Trend,
-		FirstSeenAt: m.FirstSeenAt,
-		LastSeenAt:  m.LastSeenAt,
-		PeakAt:      m.PeakAt,
-		TopicIDs:    fromInt64Array(m.TopicIDs),
-		PostIDs:     fromInt64Array(m.PostIDs),
-		Summary:     m.Summary,
-		Category:    m.Category,
-		Status:      m.Status,
-		CreatedAt:   m.CreatedAt,
-		UpdatedAt:   m.UpdatedAt,
-		}
-}
-
 func toInt64Array(src []int64) pkg.Int64Array { return pkg.Int64Array(src) }
-
-func fromInt64Array(src pkg.Int64Array) []int64 { return []int64(src) }

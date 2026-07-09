@@ -3,11 +3,10 @@ package controller
 import (
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
+	"github.com/StephenQiu30/hotkey-server/internal/convert"
 	"github.com/StephenQiu30/hotkey-server/internal/model/vo"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
@@ -15,19 +14,6 @@ import (
 func RegisterNotifyRoutes(r *gin.Engine, svc *service.NotifyService) {
 	r.GET("/api/v1/notifications", listNotificationsHandler(svc))
 	r.POST("/api/v1/notifications/:id/read", markNotificationReadHandler(svc))
-}
-
-func toNotificationResponse(n dto.Notification) vo.NotificationData {
-	r := vo.NotificationData{
-		ID: n.ID, UserID: n.UserID, AlertID: n.AlertID,
-		Channel: n.Channel, DeliveryStatus: n.DeliveryStatus,
-		CreatedAt: n.CreatedAt.Format(time.RFC3339),
-	}
-	if n.ReadAt != nil {
-		s := n.ReadAt.Format(time.RFC3339)
-		r.ReadAt = &s
-	}
-	return r
 }
 
 // listNotificationsHandler godoc
@@ -54,12 +40,7 @@ func listNotificationsHandler(svc *service.NotifyService) gin.HandlerFunc {
 			return
 		}
 
-		result := make([]vo.NotificationData, len(items))
-		for i, n := range items {
-			result[i] = toNotificationResponse(n)
-		}
-
-		RespondOK(c, result)
+		RespondOK(c, convert.NotificationSliceDTOToVO(items))
 	}
 }
 
