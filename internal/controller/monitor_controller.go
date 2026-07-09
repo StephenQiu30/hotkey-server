@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -11,9 +10,9 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"github.com/StephenQiu30/hotkey-server/internal/model/enum"
 )
 
-var _ platformhttp.ErrorBody
 
 
 // MonitorGetter fetches a monitor by ID for ownership checks.
@@ -42,18 +41,18 @@ func listMonitorsHandler(svc *service.MonitorService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
-			respondError(c, http.StatusUnauthorized, "unauthorized")
+			platformhttp.RespondError(c, enum.ErrorCodeUnauthorized, "unauthorized")
 			return
 		}
 
 		monitors, err := svc.ListByUser(c.Request.Context(), userID)
 		if err != nil {
-			respondInternalError(c)
+			platformhttp.RespondInternalError(c)
 			return
 		}
 
 		resp := convert.MonitorSliceDTOToVO(monitors)
-		RespondOK(c, resp)
+		platformhttp.RespondOK(c, resp)
 	}
 }
 
@@ -74,13 +73,13 @@ func createMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
-			respondError(c, http.StatusUnauthorized, "unauthorized")
+			platformhttp.RespondError(c, enum.ErrorCodeUnauthorized, "unauthorized")
 			return
 		}
 
 		var body dto.CreateMonitorRequest
 		if err := c.ShouldBindJSON(&body); err != nil {
-			respondError(c, http.StatusBadRequest, err.Error())
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, err.Error())
 			return
 		}
 
@@ -95,14 +94,14 @@ func createMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 		if err != nil {
 			switch {
 			case err == service.MonitorErrInvalidInterval || err == service.MonitorErrInvalidInput:
-				respondError(c, http.StatusBadRequest, err.Error())
+				platformhttp.RespondError(c, enum.ErrorCodeBadRequest, err.Error())
 			default:
-				respondInternalError(c)
+				platformhttp.RespondInternalError(c)
 			}
 			return
 		}
 
-		RespondCreated(c, convert.MonitorDTOToVO(m))
+		platformhttp.RespondCreated(c, convert.MonitorDTOToVO(m))
 	}
 }
 
@@ -124,13 +123,13 @@ func getMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
-			respondError(c, http.StatusUnauthorized, "unauthorized")
+			platformhttp.RespondError(c, enum.ErrorCodeUnauthorized, "unauthorized")
 			return
 		}
 
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
-			respondError(c, http.StatusBadRequest, "invalid monitor id")
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid monitor id")
 			return
 		}
 
@@ -138,18 +137,18 @@ func getMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 		if err != nil {
 			switch {
 			case err == service.MonitorErrNotFound:
-				respondError(c, http.StatusNotFound, "monitor not found")
+				platformhttp.RespondError(c, enum.ErrorCodeNotFound, "monitor not found")
 			default:
-				respondInternalError(c)
+				platformhttp.RespondInternalError(c)
 			}
 			return
 		}
 		if m.UserID != userID {
-			respondError(c, http.StatusForbidden, "not authorized")
+			platformhttp.RespondError(c, enum.ErrorCodeForbidden, "not authorized")
 			return
 		}
 
-		RespondOK(c, convert.MonitorDTOToVO(m))
+		platformhttp.RespondOK(c, convert.MonitorDTOToVO(m))
 	}
 }
 
@@ -173,13 +172,13 @@ func updateMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
-			respondError(c, http.StatusUnauthorized, "unauthorized")
+			platformhttp.RespondError(c, enum.ErrorCodeUnauthorized, "unauthorized")
 			return
 		}
 
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
-			respondError(c, http.StatusBadRequest, "invalid monitor id")
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid monitor id")
 			return
 		}
 
@@ -187,20 +186,20 @@ func updateMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 		if err != nil {
 			switch {
 			case err == service.MonitorErrNotFound:
-				respondError(c, http.StatusNotFound, "monitor not found")
+				platformhttp.RespondError(c, enum.ErrorCodeNotFound, "monitor not found")
 			default:
-				respondInternalError(c)
+				platformhttp.RespondInternalError(c)
 			}
 			return
 		}
 		if m.UserID != userID {
-			respondError(c, http.StatusForbidden, "not authorized")
+			platformhttp.RespondError(c, enum.ErrorCodeForbidden, "not authorized")
 			return
 		}
 
 		var body dto.UpdateMonitorRequest
 		if err := c.ShouldBindJSON(&body); err != nil {
-			respondError(c, http.StatusBadRequest, err.Error())
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, err.Error())
 			return
 		}
 
@@ -216,13 +215,13 @@ func updateMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 		if err != nil {
 			switch {
 			case err == service.MonitorErrInvalidInterval:
-				respondError(c, http.StatusBadRequest, err.Error())
+				platformhttp.RespondError(c, enum.ErrorCodeBadRequest, err.Error())
 			default:
-				respondInternalError(c)
+				platformhttp.RespondInternalError(c)
 			}
 			return
 		}
 
-		RespondOK(c, convert.MonitorDTOToVO(updated))
+		platformhttp.RespondOK(c, convert.MonitorDTOToVO(updated))
 	}
 }

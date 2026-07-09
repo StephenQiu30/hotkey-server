@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -10,9 +9,9 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/model/vo"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"github.com/StephenQiu30/hotkey-server/internal/model/enum"
 )
 
-var _ platformhttp.ErrorBody
 
 
 func RegisterNotifyRoutes(r *gin.Engine, svc *service.NotifyService) {
@@ -34,17 +33,17 @@ func listNotificationsHandler(svc *service.NotifyService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
-			respondError(c, http.StatusUnauthorized, "unauthorized")
+			platformhttp.RespondError(c, enum.ErrorCodeUnauthorized, "unauthorized")
 			return
 		}
 
 		items, err := svc.ListUnread(c.Request.Context(), userID)
 		if err != nil {
-			respondError(c, http.StatusInternalServerError, err.Error())
+			platformhttp.RespondError(c, enum.ErrorCodeInternal, err.Error())
 			return
 		}
 
-		RespondOK(c, convert.NotificationSliceDTOToVO(items))
+		platformhttp.RespondOK(c, convert.NotificationSliceDTOToVO(items))
 	}
 }
 
@@ -65,25 +64,25 @@ func markNotificationReadHandler(svc *service.NotifyService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
-			respondError(c, http.StatusUnauthorized, "unauthorized")
+			platformhttp.RespondError(c, enum.ErrorCodeUnauthorized, "unauthorized")
 			return
 		}
 
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
-			respondError(c, http.StatusBadRequest, "invalid notification id")
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid notification id")
 			return
 		}
 
 		if err := svc.MarkRead(c.Request.Context(), userID, id); err != nil {
 			if err == service.NotifyErrNotFound || err == service.NotifyErrNotOwned {
-				respondError(c, http.StatusNotFound, err.Error())
+				platformhttp.RespondError(c, enum.ErrorCodeNotFound, err.Error())
 				return
 			}
-			respondError(c, http.StatusInternalServerError, err.Error())
+			platformhttp.RespondError(c, enum.ErrorCodeInternal, err.Error())
 			return
 		}
 
-		RespondOK(c, vo.MarkNotificationReadData{Read: true})
+		platformhttp.RespondOK(c, vo.MarkNotificationReadData{Read: true})
 	}
 }

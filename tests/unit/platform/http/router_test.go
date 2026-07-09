@@ -15,6 +15,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/content"
 	"github.com/StephenQiu30/hotkey-server/internal/controller"
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
+	"github.com/StephenQiu30/hotkey-server/internal/model/enum"
 	"github.com/StephenQiu30/hotkey-server/internal/pkg"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	platformruntime "github.com/StephenQiu30/hotkey-server/internal/platform/runtime"
@@ -320,7 +321,7 @@ func TestUnauthorizedBusinessRouteIncludesStableErrorCode(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
 		t.Fatalf("expected JSON error body, got %v: %s", err, rr.Body.String())
 	}
-	if body.Code != string(platformhttp.ErrorCodeUnauthorized) {
+	if body.Code != string(enum.ErrorCodeUnauthorized) {
 		t.Fatalf("expected unauthorized code, got %q", body.Code)
 	}
 	if body.RequestID != "req-unauthorized" {
@@ -480,7 +481,7 @@ func TestRecoverMiddlewareReturnsUnifiedErrorBody(t *testing.T) {
 		t.Fatalf("expected unified error message, got %q", body.Error)
 	}
 
-	if body.Code != "internal_error" {
+	if body.Code != "INTERNAL_ERROR" {
 		t.Fatalf("expected unified error code, got %q", body.Code)
 	}
 
@@ -495,7 +496,7 @@ func TestRespondAppErrorUsesCodeStatusMessageAndRequestID(t *testing.T) {
 	r.Use(platformhttp.RequestIDMiddleware())
 	r.GET("/app-error", func(c *gin.Context) {
 		platformhttp.RespondAppError(c, platformhttp.NewAppError(
-			platformhttp.ErrorCode("MONITOR_NOT_FOUND"),
+			enum.ErrorCodeNotFound,
 			http.StatusNotFound,
 			"monitor not found",
 			nil,
@@ -516,8 +517,8 @@ func TestRespondAppErrorUsesCodeStatusMessageAndRequestID(t *testing.T) {
 		t.Fatalf("expected JSON error body, got %v: %s", err, rr.Body.String())
 	}
 
-	if body.Code != "MONITOR_NOT_FOUND" {
-		t.Fatalf("expected error code MONITOR_NOT_FOUND, got %q", body.Code)
+	if body.Code != string(enum.ErrorCodeNotFound) {
+		t.Fatalf("expected error code NOT_FOUND, got %q", body.Code)
 	}
 	if body.Error != "monitor not found" {
 		t.Fatalf("expected message monitor not found, got %q", body.Error)
@@ -532,7 +533,7 @@ func TestRespondErrorCodeUsesRegisteredHTTPStatus(t *testing.T) {
 	r := gin.New()
 	r.Use(platformhttp.RequestIDMiddleware())
 	r.GET("/registered-error", func(c *gin.Context) {
-		platformhttp.RespondErrorCode(c, platformhttp.ErrorCodeMonitorNotFound, "monitor not found", nil)
+		platformhttp.RespondErrorCode(c, enum.ErrorCodeNotFound, "monitor not found", nil)
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/registered-error", nil)
@@ -548,8 +549,8 @@ func TestRespondErrorCodeUsesRegisteredHTTPStatus(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
 		t.Fatalf("expected JSON error body, got %v: %s", err, rr.Body.String())
 	}
-	if body.Code != string(platformhttp.ErrorCodeMonitorNotFound) {
-		t.Fatalf("expected monitor not found code, got %q", body.Code)
+	if body.Code != string(enum.ErrorCodeNotFound) {
+		t.Fatalf("expected NOT_FOUND, got %q", body.Code)
 	}
 	if body.RequestID != "req-registered" {
 		t.Fatalf("expected request id req-registered, got %q", body.RequestID)
@@ -657,7 +658,7 @@ func TestRespondOKWrapsDataAndRequestID(t *testing.T) {
 	r := gin.New()
 	r.Use(platformhttp.RequestIDMiddleware())
 	r.GET("/ok", func(c *gin.Context) {
-		controller.RespondOK(c, gin.H{"name": "hotkey"})
+		platformhttp.RespondOK(c, gin.H{"name": "hotkey"})
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/ok", nil)
@@ -691,7 +692,7 @@ func TestRespondPageWrapsPaginationAndRequestID(t *testing.T) {
 	r := gin.New()
 	r.Use(platformhttp.RequestIDMiddleware())
 	r.GET("/page", func(c *gin.Context) {
-		controller.RespondPage(c, []string{"a", "b"}, 2, 10, 42)
+		platformhttp.RespondPage(c, []string{"a", "b"}, 2, 10, 42)
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/page", nil)

@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -11,9 +10,9 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"github.com/StephenQiu30/hotkey-server/internal/model/enum"
 )
 
-var _ platformhttp.ErrorBody
 
 
 // HotEventManager defines the read operations needed for the hot event API.
@@ -62,7 +61,7 @@ func listTrendingHandler(mgr HotEventManager) gin.HandlerFunc {
 		events, _, err := mgr.ListEvents(c.Request.Context(), filter)
 		if err != nil {
 			_ = c.Error(fmt.Errorf("list trending: %w", err))
-			respondInternalError(c)
+			platformhttp.RespondInternalError(c)
 			return
 		}
 
@@ -77,7 +76,7 @@ func listTrendingHandler(mgr HotEventManager) gin.HandlerFunc {
 			})
 		}
 
-		RespondOK(c, items)
+		platformhttp.RespondOK(c, items)
 	}
 }
 
@@ -108,7 +107,7 @@ func listHotEventsHandler(mgr HotEventManager) gin.HandlerFunc {
 		events, total, err := mgr.ListEvents(c.Request.Context(), filter)
 		if err != nil {
 			_ = c.Error(fmt.Errorf("list hot events: %w", err))
-			respondInternalError(c)
+			platformhttp.RespondInternalError(c)
 			return
 		}
 
@@ -126,7 +125,7 @@ func listHotEventsHandler(mgr HotEventManager) gin.HandlerFunc {
 			})
 		}
 
-		RespondOK(c, map[string]interface{}{"items": items, "total": total})
+		platformhttp.RespondOK(c, map[string]interface{}{"items": items, "total": total})
 	}
 }
 
@@ -145,18 +144,18 @@ func getHotEventHandler(mgr HotEventManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
-			respondError(c, http.StatusBadRequest, "invalid event id")
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid event id")
 			return
 		}
 
 		ev, err := mgr.GetEventByID(c.Request.Context(), id)
 		if err != nil {
 			if err == dto.HotEventErrNotFound {
-				respondError(c, http.StatusNotFound, "hot event not found")
+				platformhttp.RespondError(c, enum.ErrorCodeNotFound, "hot event not found")
 				return
 			}
 			_ = c.Error(fmt.Errorf("get hot event %d: %w", id, err))
-			respondInternalError(c)
+			platformhttp.RespondInternalError(c)
 			return
 		}
 
@@ -188,7 +187,7 @@ func getHotEventHandler(mgr HotEventManager) gin.HandlerFunc {
 			}
 		}
 
-		RespondOK(c, detail)
+		platformhttp.RespondOK(c, detail)
 	}
 }
 
@@ -207,25 +206,25 @@ func getHotEventPostsHandler(mgr HotEventManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
-			respondError(c, http.StatusBadRequest, "invalid event id")
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid event id")
 			return
 		}
 
 		// Verify event exists
 		if _, err := mgr.GetEventByID(c.Request.Context(), id); err != nil {
 			if err == dto.HotEventErrNotFound {
-				respondError(c, http.StatusNotFound, "hot event not found")
+				platformhttp.RespondError(c, enum.ErrorCodeNotFound, "hot event not found")
 				return
 			}
 			_ = c.Error(fmt.Errorf("get hot event posts %d: %w", id, err))
-			respondInternalError(c)
+			platformhttp.RespondInternalError(c)
 			return
 		}
 
 		posts, err := mgr.ListEventPosts(c.Request.Context(), id)
 		if err != nil {
 			_ = c.Error(fmt.Errorf("list event posts %d: %w", id, err))
-			respondInternalError(c)
+			platformhttp.RespondInternalError(c)
 			return
 		}
 
@@ -233,6 +232,6 @@ func getHotEventPostsHandler(mgr HotEventManager) gin.HandlerFunc {
 			posts = []service.PostBrief{}
 		}
 
-		RespondOK(c, posts)
+		platformhttp.RespondOK(c, posts)
 	}
 }

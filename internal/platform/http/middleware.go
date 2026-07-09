@@ -3,9 +3,7 @@ package http
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -15,6 +13,7 @@ import (
 
 	platformruntime "github.com/StephenQiu30/hotkey-server/internal/platform/runtime"
 
+	"github.com/StephenQiu30/hotkey-server/internal/model/enum"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 )
 
@@ -63,11 +62,7 @@ func RecoverMiddleware() gin.HandlerFunc {
 				logging.Ctx(c.Request.Context()).Error("panic recovered",
 					zap.Any("panic", r),
 				)
-				body, err := json.Marshal(newInternalErrorBody(requestIDFromContext(c)))
-				if err != nil {
-					body = []byte(`{"error":"internal server error","code":"internal_error"}`)
-				}
-				c.Data(http.StatusInternalServerError, "application/json", body)
+				RespondInternalError(c)
 				c.Abort()
 			}
 		}()
@@ -92,7 +87,7 @@ func AuthMiddleware(jwtSecret string, smokeTest bool) gin.HandlerFunc {
 
 		newCtx, err := validateJWT(c, jwtSecret)
 		if err != nil {
-			respondError(c, http.StatusUnauthorized, err.Error())
+			RespondError(c, enum.ErrorCodeUnauthorized, err.Error())
 			c.Abort()
 			return
 		}
@@ -146,15 +141,6 @@ func (e *authError) Error() string { return e.msg }
 
 func generateRequestID() string {
 	return "req-" + randomHex(8)
-}
-
-func requestIDFromContext(c *gin.Context) string {
-	if value, ok := c.Get("request_id"); ok {
-		if requestID, ok := value.(string); ok {
-			return requestID
-		}
-	}
-	return c.GetHeader("X-Request-Id")
 }
 
 func isPublicPath(path string) bool {

@@ -11,9 +11,9 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"github.com/StephenQiu30/hotkey-server/internal/model/enum"
 )
 
-var _ platformhttp.ErrorBody
 
 
 type ReportService interface {
@@ -52,19 +52,19 @@ func createReportHandler(svc ReportService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
-			respondError(c, http.StatusUnauthorized, "unauthorized")
+			platformhttp.RespondError(c, enum.ErrorCodeUnauthorized, "unauthorized")
 			return
 		}
 
 		var req dto.CreateReportRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			respondError(c, http.StatusBadRequest, "invalid input")
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid input")
 			return
 		}
 
 		input, err := req.ToInput()
 		if err != nil {
-			respondError(c, http.StatusBadRequest, err.Error())
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, err.Error())
 			return
 		}
 
@@ -73,7 +73,7 @@ func createReportHandler(svc ReportService) gin.HandlerFunc {
 			respondReportError(c, err)
 			return
 		}
-		RespondCreated(c, item)
+		platformhttp.RespondCreated(c, item)
 	}
 }
 
@@ -94,7 +94,7 @@ func listReportsHandler(svc ReportService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
-			respondError(c, http.StatusUnauthorized, "unauthorized")
+			platformhttp.RespondError(c, enum.ErrorCodeUnauthorized, "unauthorized")
 			return
 		}
 
@@ -112,10 +112,10 @@ func listReportsHandler(svc ReportService) gin.HandlerFunc {
 			Offset:     offset,
 		})
 		if err != nil {
-			respondInternalError(c)
+			platformhttp.RespondInternalError(c)
 			return
 		}
-		RespondPage(c, items, offset/limit+1, limit, int(total))
+		platformhttp.RespondPage(c, items, offset/limit+1, limit, int(total))
 	}
 }
 
@@ -136,7 +136,7 @@ func getReportHandler(svc ReportService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
-			respondError(c, http.StatusUnauthorized, "unauthorized")
+			platformhttp.RespondError(c, enum.ErrorCodeUnauthorized, "unauthorized")
 			return
 		}
 		id, ok := parseReportID(c)
@@ -148,7 +148,7 @@ func getReportHandler(svc ReportService) gin.HandlerFunc {
 			respondReportError(c, err)
 			return
 		}
-		RespondOK(c, item)
+		platformhttp.RespondOK(c, item)
 	}
 }
 
@@ -169,7 +169,7 @@ func getReportHTMLHandler(svc ReportService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
-			respondError(c, http.StatusUnauthorized, "unauthorized")
+			platformhttp.RespondError(c, enum.ErrorCodeUnauthorized, "unauthorized")
 			return
 		}
 		id, ok := parseReportID(c)
@@ -202,7 +202,7 @@ func sendReportHandler(svc ReportService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
 		if !ok {
-			respondError(c, http.StatusUnauthorized, "unauthorized")
+			platformhttp.RespondError(c, enum.ErrorCodeUnauthorized, "unauthorized")
 			return
 		}
 		id, ok := parseReportID(c)
@@ -214,14 +214,14 @@ func sendReportHandler(svc ReportService) gin.HandlerFunc {
 			respondReportError(c, err)
 			return
 		}
-		RespondOK(c, item)
+		platformhttp.RespondOK(c, item)
 	}
 }
 
 func parseReportID(c *gin.Context) (int64, bool) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		respondError(c, http.StatusBadRequest, "invalid report id")
+		platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid report id")
 		return 0, false
 	}
 	return id, true
@@ -230,12 +230,12 @@ func parseReportID(c *gin.Context) (int64, bool) {
 func respondReportError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, dto.ReportErrNotFound):
-		respondError(c, http.StatusNotFound, "report not found")
+		platformhttp.RespondError(c, enum.ErrorCodeNotFound, "report not found")
 	case errors.Is(err, service.ReportErrNoReportSources):
-		respondError(c, http.StatusBadRequest, "no report sources")
+		platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "no report sources")
 	case errors.Is(err, service.ReportErrUnsupportedType), errors.Is(err, service.ReportErrInvalidInput):
-		respondError(c, http.StatusBadRequest, err.Error())
+		platformhttp.RespondError(c, enum.ErrorCodeBadRequest, err.Error())
 	default:
-		respondInternalError(c)
+		platformhttp.RespondInternalError(c)
 	}
 }

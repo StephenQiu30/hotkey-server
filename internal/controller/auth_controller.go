@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -11,9 +10,9 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"github.com/StephenQiu30/hotkey-server/internal/model/enum"
 )
 
-var _ platformhttp.ErrorBody
 
 
 func RegisterAuthRoutes(r *gin.Engine, svc *service.AuthService, jwtSecret string) {
@@ -37,7 +36,7 @@ func registerHandler(svc *service.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body dto.RegisterRequest
 		if err := c.ShouldBindJSON(&body); err != nil {
-			respondError(c, http.StatusBadRequest, "invalid input")
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid input")
 			return
 		}
 
@@ -49,16 +48,16 @@ func registerHandler(svc *service.AuthService) gin.HandlerFunc {
 		if err != nil {
 			switch {
 			case err == service.AuthErrEmailExists:
-				respondError(c, http.StatusConflict, "email already registered")
+				platformhttp.RespondError(c, enum.ErrorCodeConflict, "email already registered")
 			case err == service.AuthErrInvalidInput:
-				respondError(c, http.StatusBadRequest, "invalid input")
+				platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid input")
 			default:
-				respondInternalError(c)
+				platformhttp.RespondInternalError(c)
 			}
 			return
 		}
 
-		RespondCreated(c, convert.UserDTOToVO(user))
+		platformhttp.RespondCreated(c, convert.UserDTOToVO(user))
 	}
 }
 
@@ -78,7 +77,7 @@ func loginHandler(svc *service.AuthService, jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body dto.LoginRequest
 		if err := c.ShouldBindJSON(&body); err != nil {
-			respondError(c, http.StatusBadRequest, "invalid input")
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid input")
 			return
 		}
 
@@ -89,9 +88,9 @@ func loginHandler(svc *service.AuthService, jwtSecret string) gin.HandlerFunc {
 		if err != nil {
 			switch {
 			case err == service.AuthErrInvalidCredentials:
-				respondError(c, http.StatusUnauthorized, "invalid credentials")
+				platformhttp.RespondError(c, enum.ErrorCodeUnauthorized, "invalid credentials")
 			default:
-				respondInternalError(c)
+				platformhttp.RespondInternalError(c)
 			}
 			return
 		}
@@ -103,10 +102,10 @@ func loginHandler(svc *service.AuthService, jwtSecret string) gin.HandlerFunc {
 		})
 		tokenStr, err := token.SignedString([]byte(jwtSecret))
 		if err != nil {
-			respondInternalError(c)
+			platformhttp.RespondInternalError(c)
 			return
 		}
 
-		RespondOK(c, convert.LoginDTOToVO(user, tokenStr))
+		platformhttp.RespondOK(c, convert.LoginDTOToVO(user, tokenStr))
 	}
 }
