@@ -31,6 +31,16 @@ func RegisterTrendingRoutes(r *gin.Engine, mgr HotEventManager) {
 
 // --- Handlers ---
 
+// listTrendingHandler godoc
+// @Summary List trending hot events across platforms
+// @ID list-trending
+// @Tags trending
+// @Produce json
+// @Param platform query string false "Platform filter"
+// @Param limit query int false "Max results" default(20)
+// @Success 200 {object} TrendingListResponse
+// @Failure 500 {object} platformhttp.ErrorBody
+// @Router /api/v1/trending [get]
 func listTrendingHandler(mgr HotEventManager) gin.HandlerFunc {
 	type trendingItem struct {
 		Platform string  `json:"platform"`
@@ -57,7 +67,7 @@ func listTrendingHandler(mgr HotEventManager) gin.HandlerFunc {
 		events, _, err := mgr.ListEvents(c.Request.Context(), filter)
 		if err != nil {
 			_ = c.Error(fmt.Errorf("list trending: %w", err))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch trending data"})
+			respondInternalError(c)
 			return
 		}
 
@@ -72,10 +82,22 @@ func listTrendingHandler(mgr HotEventManager) gin.HandlerFunc {
 			})
 		}
 
-		c.JSON(http.StatusOK, gin.H{"data": items})
+		RespondOK(c, items)
 	}
 }
 
+// listHotEventsHandler godoc
+// @Summary List hot events with filter and pagination
+// @ID list-hot-events
+// @Tags hot-events
+// @Produce json
+// @Param status query string false "Status filter" default(active)
+// @Param platform query string false "Platform filter"
+// @Param sort query string false "Sort field" default(heat_score)
+// @Param limit query int false "Max results" default(20)
+// @Success 200 {object} HotEventListResponse
+// @Failure 500 {object} platformhttp.ErrorBody
+// @Router /api/v1/hot-events [get]
 func listHotEventsHandler(mgr HotEventManager) gin.HandlerFunc {
 	type hotEventItem struct {
 		ID        int64   `json:"id"`
@@ -102,7 +124,7 @@ func listHotEventsHandler(mgr HotEventManager) gin.HandlerFunc {
 		events, total, err := mgr.ListEvents(c.Request.Context(), filter)
 		if err != nil {
 			_ = c.Error(fmt.Errorf("list hot events: %w", err))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch hot events"})
+			respondInternalError(c)
 			return
 		}
 
@@ -120,40 +142,51 @@ func listHotEventsHandler(mgr HotEventManager) gin.HandlerFunc {
 			})
 		}
 
-		c.JSON(http.StatusOK, gin.H{"data": items, "meta": gin.H{"total": total}})
+		RespondOK(c, map[string]interface{}{"items": items, "total": total})
 	}
 }
 
+// getHotEventHandler godoc
+// @Summary Get a hot event by ID with platform details
+// @ID get-hot-event
+// @Tags hot-events
+// @Produce json
+// @Param id path int true "Hot Event ID"
+// @Success 200 {object} HotEventResponse
+// @Failure 400 {object} platformhttp.ErrorBody
+// @Failure 404 {object} platformhttp.ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
+// @Router /api/v1/hot-events/{id} [get]
 func getHotEventHandler(mgr HotEventManager) gin.HandlerFunc {
 	type eventDetail struct {
-		ID          int64                     `json:"id"`
-		Name        string                    `json:"name"`
-		HeatScore   float64                   `json:"heat_score"`
-		Platform    string                    `json:"platform"`
-		Trend       string                    `json:"trend"`
-		FirstSeenAt time.Time                 `json:"first_seen_at"`
-		LastSeenAt  time.Time                 `json:"last_seen_at"`
-		Summary     string                    `json:"summary"`
-		Category    string                    `json:"category"`
-		Status      string                    `json:"status"`
+		ID          int64                `json:"id"`
+		Name        string               `json:"name"`
+		HeatScore   float64              `json:"heat_score"`
+		Platform    string               `json:"platform"`
+		Trend       string               `json:"trend"`
+		FirstSeenAt time.Time            `json:"first_seen_at"`
+		LastSeenAt  time.Time            `json:"last_seen_at"`
+		Summary     string               `json:"summary"`
+		Category    string               `json:"category"`
+		Status      string               `json:"status"`
 		Platforms   []*dto.EventPlatform `json:"platforms,omitempty"`
 	}
 
 	return func(c *gin.Context) {
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid event id"})
+			respondError(c, http.StatusBadRequest, "invalid event id")
 			return
 		}
 
 		ev, err := mgr.GetEventByID(c.Request.Context(), id)
 		if err != nil {
 			if err == dto.HotEventErrNotFound {
-				c.JSON(http.StatusNotFound, gin.H{"error": "hot event not found"})
+				respondError(c, http.StatusNotFound, "hot event not found")
 				return
 			}
 			_ = c.Error(fmt.Errorf("get hot event %d: %w", id, err))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch hot event"})
+			respondInternalError(c)
 			return
 		}
 
@@ -176,33 +209,44 @@ func getHotEventHandler(mgr HotEventManager) gin.HandlerFunc {
 			detail.Platforms = platforms
 		}
 
-		c.JSON(http.StatusOK, gin.H{"data": detail})
+		RespondOK(c, detail)
 	}
 }
 
+// getHotEventPostsHandler godoc
+// @Summary Get posts for a hot event
+// @ID get-hot-event-posts
+// @Tags hot-events
+// @Produce json
+// @Param id path int true "Hot Event ID"
+// @Success 200 {object} HotEventPostsResponse
+// @Failure 400 {object} platformhttp.ErrorBody
+// @Failure 404 {object} platformhttp.ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
+// @Router /api/v1/hot-events/{id}/posts [get]
 func getHotEventPostsHandler(mgr HotEventManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid event id"})
+			respondError(c, http.StatusBadRequest, "invalid event id")
 			return
 		}
 
 		// Verify event exists
 		if _, err := mgr.GetEventByID(c.Request.Context(), id); err != nil {
 			if err == dto.HotEventErrNotFound {
-				c.JSON(http.StatusNotFound, gin.H{"error": "hot event not found"})
+				respondError(c, http.StatusNotFound, "hot event not found")
 				return
 			}
 			_ = c.Error(fmt.Errorf("get hot event posts %d: %w", id, err))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch posts"})
+			respondInternalError(c)
 			return
 		}
 
 		posts, err := mgr.ListEventPosts(c.Request.Context(), id)
 		if err != nil {
 			_ = c.Error(fmt.Errorf("list event posts %d: %w", id, err))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch posts"})
+			respondInternalError(c)
 			return
 		}
 
@@ -210,6 +254,6 @@ func getHotEventPostsHandler(mgr HotEventManager) gin.HandlerFunc {
 			posts = []service.PostBrief{}
 		}
 
-		c.JSON(http.StatusOK, gin.H{"data": posts})
+		RespondOK(c, posts)
 	}
 }
