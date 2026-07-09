@@ -41,11 +41,11 @@ func parseSince(s string) time.Time {
 // @Param id path int true "Monitor ID"
 // @Param since query string false "RFC3339 start time"
 // @Success 200 {object} TrendListResponse
-// @Failure 400 {object} platformhttp.ErrorBody
-// @Failure 401 {object} platformhttp.ErrorBody
-// @Failure 403 {object} platformhttp.ErrorBody
-// @Failure 404 {object} platformhttp.ErrorBody
-// @Failure 500 {object} platformhttp.ErrorBody
+// @Failure 400 {object} ErrorBody
+// @Failure 401 {object} ErrorBody
+// @Failure 403 {object} ErrorBody
+// @Failure 404 {object} ErrorBody
+// @Failure 500 {object} ErrorBody
 // @Router /api/v1/monitors/{id}/trends [get]
 func monitorTrendsHandler(svc service.TrendQueryService, mgr MonitorGetter) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -100,11 +100,11 @@ func monitorTrendsHandler(svc service.TrendQueryService, mgr MonitorGetter) gin.
 // @Param id path int true "Topic ID"
 // @Param since query string false "RFC3339 start time"
 // @Success 200 {object} TrendListResponse
-// @Failure 400 {object} platformhttp.ErrorBody
-// @Failure 401 {object} platformhttp.ErrorBody
-// @Failure 403 {object} platformhttp.ErrorBody
-// @Failure 404 {object} platformhttp.ErrorBody
-// @Failure 500 {object} platformhttp.ErrorBody
+// @Failure 400 {object} ErrorBody
+// @Failure 401 {object} ErrorBody
+// @Failure 403 {object} ErrorBody
+// @Failure 404 {object} ErrorBody
+// @Failure 500 {object} ErrorBody
 // @Router /api/v1/topics/{id}/trends [get]
 func topicTrendsHandler(svc service.TrendQueryService, monitorGetter MonitorGetter, topicMonitorGetter TopicMonitorIDGetter) gin.HandlerFunc {
 	return func(c *gin.Context) {

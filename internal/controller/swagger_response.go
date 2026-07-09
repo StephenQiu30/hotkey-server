@@ -6,6 +6,14 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
+// ErrorBody is a Swagger-visible copy of platformhttp.ErrorBody.
+// swaggo cannot resolve cross-package type aliases, so we duplicate the struct.
+type ErrorBody struct {
+	Error     string `json:"error"`
+	Code      string `json:"code,omitempty"`
+	RequestID string `json:"request_id,omitempty"`
+}
+
 // HealthResponse wraps vo.HealthBody for swagger documentation.
 type HealthResponse struct {
 	Data      vo.HealthBody `json:"data"`

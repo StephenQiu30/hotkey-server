@@ -21,11 +21,11 @@ func RegisterTopicRoutes(r *gin.Engine, svc service.TopicQueryService, mgr Monit
 // @Security BearerAuth
 // @Param id path int true "Monitor ID"
 // @Success 200 {object} TopicListResponse
-// @Failure 400 {object} platformhttp.ErrorBody
-// @Failure 401 {object} platformhttp.ErrorBody
-// @Failure 403 {object} platformhttp.ErrorBody
-// @Failure 404 {object} platformhttp.ErrorBody
-// @Failure 500 {object} platformhttp.ErrorBody
+// @Failure 400 {object} ErrorBody
+// @Failure 401 {object} ErrorBody
+// @Failure 403 {object} ErrorBody
+// @Failure 404 {object} ErrorBody
+// @Failure 500 {object} ErrorBody
 // @Router /api/v1/monitors/{id}/topics [get]
 func listMonitorTopicsHandler(svc service.TopicQueryService, mgr MonitorGetter) gin.HandlerFunc {
 	return func(c *gin.Context) {

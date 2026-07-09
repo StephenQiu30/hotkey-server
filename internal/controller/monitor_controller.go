@@ -31,8 +31,8 @@ func RegisterMonitorRoutes(r *gin.Engine, svc *service.MonitorService) {
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} MonitorListResponse
-// @Failure 401 {object} platformhttp.ErrorBody
-// @Failure 500 {object} platformhttp.ErrorBody
+// @Failure 401 {object} ErrorBody
+// @Failure 500 {object} ErrorBody
 // @Router /api/v1/monitors [get]
 func listMonitorsHandler(svc *service.MonitorService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -62,9 +62,9 @@ func listMonitorsHandler(svc *service.MonitorService) gin.HandlerFunc {
 // @Security BearerAuth
 // @Param body body dto.CreateMonitorRequest true "Monitor payload"
 // @Success 201 {object} MonitorResponse
-// @Failure 400 {object} platformhttp.ErrorBody
-// @Failure 401 {object} platformhttp.ErrorBody
-// @Failure 500 {object} platformhttp.ErrorBody
+// @Failure 400 {object} ErrorBody
+// @Failure 401 {object} ErrorBody
+// @Failure 500 {object} ErrorBody
 // @Router /api/v1/monitors [post]
 func createMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -110,11 +110,11 @@ func createMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 // @Security BearerAuth
 // @Param id path int true "Monitor ID"
 // @Success 200 {object} MonitorResponse
-// @Failure 400 {object} platformhttp.ErrorBody
-// @Failure 401 {object} platformhttp.ErrorBody
-// @Failure 403 {object} platformhttp.ErrorBody
-// @Failure 404 {object} platformhttp.ErrorBody
-// @Failure 500 {object} platformhttp.ErrorBody
+// @Failure 400 {object} ErrorBody
+// @Failure 401 {object} ErrorBody
+// @Failure 403 {object} ErrorBody
+// @Failure 404 {object} ErrorBody
+// @Failure 500 {object} ErrorBody
 // @Router /api/v1/monitors/{id} [get]
 func getMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -159,11 +159,11 @@ func getMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 // @Param id path int true "Monitor ID"
 // @Param body body dto.UpdateMonitorRequest true "Monitor update payload"
 // @Success 200 {object} MonitorResponse
-// @Failure 400 {object} platformhttp.ErrorBody
-// @Failure 401 {object} platformhttp.ErrorBody
-// @Failure 403 {object} platformhttp.ErrorBody
-// @Failure 404 {object} platformhttp.ErrorBody
-// @Failure 500 {object} platformhttp.ErrorBody
+// @Failure 400 {object} ErrorBody
+// @Failure 401 {object} ErrorBody
+// @Failure 403 {object} ErrorBody
+// @Failure 404 {object} ErrorBody
+// @Failure 500 {object} ErrorBody
 // @Router /api/v1/monitors/{id} [patch]
 func updateMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 	return func(c *gin.Context) {
