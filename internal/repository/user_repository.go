@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/StephenQiu30/hotkey-server/internal/convert"
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"gorm.io/gorm"
@@ -32,7 +33,7 @@ func (r *UserRepo) Create(ctx context.Context, email, passwordHash, displayName 
 	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
 		return dto.User{}, err
 	}
-	return toAuthUser(m), nil
+	return convert.UserEntityToDTO(m), nil
 }
 
 func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*dto.User, error) {
@@ -43,7 +44,7 @@ func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*dto.User, err
 		}
 		return nil, err
 	}
-	result := toAuthUser(m)
+	result := convert.UserEntityToDTO(m)
 	return &result, nil
 }
 
@@ -55,19 +56,6 @@ func (r *UserRepo) GetByID(ctx context.Context, id int64) (*dto.User, error) {
 		}
 		return nil, err
 	}
-	result := toAuthUser(m)
+	result := convert.UserEntityToDTO(m)
 	return &result, nil
-}
-
-func toAuthUser(m entity.User) dto.User {
-	return dto.User{
-		ID:           m.ID,
-		Email:        m.Email,
-		PasswordHash: m.PasswordHash,
-		DisplayName:  m.DisplayName,
-		Status:       m.Status,
-		PlanType:     m.PlanType,
-		CreatedAt:    m.CreatedAt,
-		UpdatedAt:    m.UpdatedAt,
-	}
 }

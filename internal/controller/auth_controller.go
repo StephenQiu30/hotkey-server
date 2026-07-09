@@ -7,8 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 
+	"github.com/StephenQiu30/hotkey-server/internal/convert"
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
-	"github.com/StephenQiu30/hotkey-server/internal/model/vo"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
@@ -54,7 +54,7 @@ func registerHandler(svc *service.AuthService) gin.HandlerFunc {
 			return
 		}
 
-		RespondCreated(c, vo.UserData{ID: user.ID, Email: user.Email, DisplayName: user.DisplayName})
+		RespondCreated(c, convert.UserDTOToVO(user))
 	}
 }
 
@@ -103,9 +103,6 @@ func loginHandler(svc *service.AuthService, jwtSecret string) gin.HandlerFunc {
 			return
 		}
 
-		RespondOK(c, vo.LoginData{
-			User:  vo.UserData{ID: user.ID, Email: user.Email, DisplayName: user.DisplayName},
-			Token: tokenStr,
-		})
+		RespondOK(c, convert.LoginDTOToVO(user, tokenStr))
 	}
 }
