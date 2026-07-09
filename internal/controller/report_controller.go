@@ -31,6 +31,19 @@ func RegisterReportRoutes(r *gin.Engine, svc ReportService) {
 	r.POST("/api/v1/reports/:id/send", sendReportHandler(svc))
 }
 
+// createReportHandler godoc
+// @Summary Create a report
+// @ID create-report
+// @Tags reports
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body dto.CreateReportRequest true "Report creation payload"
+// @Success 201 {object} ReportResponse
+// @Failure 400 {object} platformhttp.ErrorBody
+// @Failure 401 {object} platformhttp.ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
+// @Router /api/v1/reports [post]
 func createReportHandler(svc ReportService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
@@ -60,6 +73,19 @@ func createReportHandler(svc ReportService) gin.HandlerFunc {
 	}
 }
 
+// listReportsHandler godoc
+// @Summary List reports
+// @ID list-reports
+// @Tags reports
+// @Produce json
+// @Security BearerAuth
+// @Param limit query int false "Max results" default(50)
+// @Param offset query int false "Offset" default(0)
+// @Param report_type query string false "Filter by report type (daily|weekly)"
+// @Success 200 {object} ReportListResponse
+// @Failure 401 {object} platformhttp.ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
+// @Router /api/v1/reports [get]
 func listReportsHandler(svc ReportService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
@@ -89,6 +115,19 @@ func listReportsHandler(svc ReportService) gin.HandlerFunc {
 	}
 }
 
+// getReportHandler godoc
+// @Summary Get a report by ID
+// @ID get-report
+// @Tags reports
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Report ID"
+// @Success 200 {object} ReportResponse
+// @Failure 400 {object} platformhttp.ErrorBody
+// @Failure 401 {object} platformhttp.ErrorBody
+// @Failure 404 {object} platformhttp.ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
+// @Router /api/v1/reports/{id} [get]
 func getReportHandler(svc ReportService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
@@ -109,6 +148,19 @@ func getReportHandler(svc ReportService) gin.HandlerFunc {
 	}
 }
 
+// getReportHTMLHandler godoc
+// @Summary Get report as HTML
+// @ID get-report-html
+// @Tags reports
+// @Produce html
+// @Security BearerAuth
+// @Param id path int true "Report ID"
+// @Success 200 {string} string "HTML content"
+// @Failure 400 {object} platformhttp.ErrorBody
+// @Failure 401 {object} platformhttp.ErrorBody
+// @Failure 404 {object} platformhttp.ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
+// @Router /api/v1/reports/{id}/html [get]
 func getReportHTMLHandler(svc ReportService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
@@ -129,6 +181,19 @@ func getReportHTMLHandler(svc ReportService) gin.HandlerFunc {
 	}
 }
 
+// sendReportHandler godoc
+// @Summary Mark and send a report
+// @ID send-report
+// @Tags reports
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Report ID"
+// @Success 200 {object} ReportResponse
+// @Failure 400 {object} platformhttp.ErrorBody
+// @Failure 401 {object} platformhttp.ErrorBody
+// @Failure 404 {object} platformhttp.ErrorBody
+// @Failure 500 {object} platformhttp.ErrorBody
+// @Router /api/v1/reports/{id}/send [post]
 func sendReportHandler(svc ReportService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromCtx(c.Request.Context())
