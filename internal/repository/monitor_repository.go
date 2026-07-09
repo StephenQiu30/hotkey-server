@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 
+	"github.com/StephenQiu30/hotkey-server/internal/convert"
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
 	"github.com/StephenQiu30/hotkey-server/internal/pkg"
@@ -32,7 +33,7 @@ func (r *MonitorRepo) Create(ctx context.Context, userID int64, input dto.Create
 	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
 		return dto.Monitor{}, err
 	}
-	return toDomainMonitor(m), nil
+	return convert.MonitorEntityToDTO(m), nil
 }
 
 func (r *MonitorRepo) GetByID(ctx context.Context, id int64) (*dto.Monitor, error) {
@@ -43,7 +44,7 @@ func (r *MonitorRepo) GetByID(ctx context.Context, id int64) (*dto.Monitor, erro
 		}
 		return nil, err
 	}
-	result := toDomainMonitor(m)
+	result := convert.MonitorEntityToDTO(m)
 	return &result, nil
 }
 
@@ -54,7 +55,7 @@ func (r *MonitorRepo) ListByUser(ctx context.Context, userID int64) ([]dto.Monit
 	}
 	result := make([]dto.Monitor, len(models))
 	for i := range models {
-		result[i] = toDomainMonitor(models[i])
+		result[i] = convert.MonitorEntityToDTO(models[i])
 	}
 	return result, nil
 }
@@ -66,7 +67,7 @@ func (r *MonitorRepo) ListActive(ctx context.Context) ([]dto.Monitor, error) {
 	}
 	out := make([]dto.Monitor, len(models))
 	for i, model := range models {
-		out[i] = toDomainMonitor(model)
+		out[i] = convert.MonitorEntityToDTO(model)
 	}
 	return out, nil
 }
@@ -119,22 +120,4 @@ func (r *MonitorRepo) SetQueryEmbedding(ctx context.Context, id int64, emb pkg.V
 	return r.db.WithContext(ctx).Model(&entity.KeywordMonitor{}).
 		Where("id = ?", id).
 		Update("query_embedding", emb).Error
-}
-
-func toDomainMonitor(m entity.KeywordMonitor) dto.Monitor {
-	return dto.Monitor{
-		ID:                   m.ID,
-		UserID:               m.UserID,
-		Name:                 m.Name,
-		QueryText:            m.QueryText,
-		Language:             m.Language,
-		Region:               m.Region,
-		Status:               m.Status,
-		PollIntervalMinutes:  m.PollIntervalMinutes,
-		AlertEnabled:         m.AlertEnabled,
-		AlertThresholdConfig: m.AlertThresholdConfig.Data,
-		LastPolledAt:         m.LastPolledAt,
-		CreatedAt:            m.CreatedAt,
-		UpdatedAt:            m.UpdatedAt,
-	}
 }

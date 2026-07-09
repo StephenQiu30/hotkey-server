@@ -7,8 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/StephenQiu30/hotkey-server/internal/convert"
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
-	"github.com/StephenQiu30/hotkey-server/internal/model/vo"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
@@ -22,15 +22,6 @@ func RegisterMonitorRoutes(r *gin.Engine, svc *service.MonitorService) {
 	r.POST("/api/v1/monitors", createMonitorHandler(svc))
 	r.GET("/api/v1/monitors/:id", getMonitorHandler(svc))
 	r.PATCH("/api/v1/monitors/:id", updateMonitorHandler(svc))
-}
-
-func monitorToResponse(m dto.Monitor) vo.MonitorData {
-	return vo.MonitorData{
-		ID: m.ID, UserID: m.UserID, Name: m.Name,
-		QueryText: m.QueryText, Language: m.Language, Region: m.Region,
-		Status: m.Status, PollIntervalMinutes: m.PollIntervalMinutes,
-		AlertEnabled: m.AlertEnabled,
-	}
 }
 
 // listMonitorsHandler godoc
@@ -57,10 +48,7 @@ func listMonitorsHandler(svc *service.MonitorService) gin.HandlerFunc {
 			return
 		}
 
-		resp := make([]vo.MonitorData, len(monitors))
-		for i, m := range monitors {
-			resp[i] = monitorToResponse(m)
-		}
+		resp := convert.MonitorSliceDTOToVO(monitors)
 		RespondOK(c, resp)
 	}
 }
@@ -110,7 +98,7 @@ func createMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 			return
 		}
 
-		RespondCreated(c, monitorToResponse(m))
+		RespondCreated(c, convert.MonitorDTOToVO(m))
 	}
 }
 
@@ -157,7 +145,7 @@ func getMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 			return
 		}
 
-		RespondOK(c, monitorToResponse(m))
+		RespondOK(c, convert.MonitorDTOToVO(m))
 	}
 }
 
@@ -231,6 +219,6 @@ func updateMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 			return
 		}
 
-		RespondOK(c, monitorToResponse(updated))
+		RespondOK(c, convert.MonitorDTOToVO(updated))
 	}
 }
