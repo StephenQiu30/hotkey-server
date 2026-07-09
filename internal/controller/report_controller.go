@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -19,13 +18,6 @@ type ReportService interface {
 	GetByID(ctx context.Context, id, userID int64) (dto.Report, error)
 	HTML(ctx context.Context, id, userID int64) (string, error)
 	MarkSent(ctx context.Context, id, userID int64) (dto.Report, error)
-}
-
-type CreateReportRequest struct {
-	ReportType  string `json:"report_type" example:"weekly"`
-	PeriodStart string `json:"period_start,omitempty" example:"2026-06-24"`
-	PeriodEnd   string `json:"period_end,omitempty" example:"2026-06-30"`
-	Send        bool   `json:"send" example:"false"`
 }
 
 func RegisterReportRoutes(r *gin.Engine, svc ReportService) {
@@ -47,13 +39,13 @@ func createReportHandler(svc ReportService) gin.HandlerFunc {
 			return
 		}
 
-		var req CreateReportRequest
+		var req dto.CreateReportRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			respondError(c, http.StatusBadRequest, "invalid input")
 			return
 		}
 
-		input, err := req.toInput()
+		input, err := req.ToInput()
 		if err != nil {
 			respondError(c, http.StatusBadRequest, err.Error())
 			return
@@ -155,31 +147,6 @@ func sendReportHandler(svc ReportService) gin.HandlerFunc {
 		}
 		RespondOK(c, item)
 	}
-}
-
-func (r CreateReportRequest) toInput() (dto.CreateInput, error) {
-	var start *time.Time
-	if r.PeriodStart != "" {
-		parsed, err := time.Parse("2006-01-02", r.PeriodStart)
-		if err != nil {
-			return dto.CreateInput{}, errors.New("invalid period_start")
-		}
-		start = &parsed
-	}
-	var end *time.Time
-	if r.PeriodEnd != "" {
-		parsed, err := time.Parse("2006-01-02", r.PeriodEnd)
-		if err != nil {
-			return dto.CreateInput{}, errors.New("invalid period_end")
-		}
-		end = &parsed
-	}
-	return dto.CreateInput{
-		ReportType:  r.ReportType,
-		PeriodStart: start,
-		PeriodEnd:   end,
-		Send:        r.Send,
-	}, nil
 }
 
 func parseReportID(c *gin.Context) (int64, bool) {

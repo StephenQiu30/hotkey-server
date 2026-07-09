@@ -23,7 +23,7 @@ func RegisterAuthRoutes(r *gin.Engine, svc *service.AuthService, jwtSecret strin
 // @Tags auth
 // @Accept json
 // @Produce json
-// @Param body body RegisterRequest true "Register payload"
+// @Param body body dto.RegisterRequest true "Register payload"
 // @Success 201 {object} UserResponse
 // @Failure 400 {object} platformhttp.ErrorBody
 // @Failure 409 {object} platformhttp.ErrorBody
@@ -31,7 +31,7 @@ func RegisterAuthRoutes(r *gin.Engine, svc *service.AuthService, jwtSecret strin
 // @Router /api/v1/auth/register [post]
 func registerHandler(svc *service.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var body RegisterRequest
+		var body dto.RegisterRequest
 		if err := c.ShouldBindJSON(&body); err != nil {
 			respondError(c, http.StatusBadRequest, "invalid input")
 			return
@@ -64,7 +64,7 @@ func registerHandler(svc *service.AuthService) gin.HandlerFunc {
 // @Tags auth
 // @Accept json
 // @Produce json
-// @Param body body LoginRequest true "Login payload"
+// @Param body body dto.LoginRequest true "Login payload"
 // @Success 200 {object} LoginResponse
 // @Failure 400 {object} platformhttp.ErrorBody
 // @Failure 401 {object} platformhttp.ErrorBody
@@ -72,7 +72,7 @@ func registerHandler(svc *service.AuthService) gin.HandlerFunc {
 // @Router /api/v1/auth/login [post]
 func loginHandler(svc *service.AuthService, jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var body LoginRequest
+		var body dto.LoginRequest
 		if err := c.ShouldBindJSON(&body); err != nil {
 			respondError(c, http.StatusBadRequest, "invalid input")
 			return

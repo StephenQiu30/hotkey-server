@@ -60,7 +60,7 @@ func listMonitorsHandler(svc *service.MonitorService) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param body body CreateMonitorRequest true "Monitor payload"
+// @Param body body dto.CreateMonitorRequest true "Monitor payload"
 // @Success 201 {object} MonitorResponse
 // @Failure 400 {object} platformhttp.ErrorBody
 // @Failure 401 {object} platformhttp.ErrorBody
@@ -74,7 +74,7 @@ func createMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 			return
 		}
 
-		var body CreateMonitorRequest
+		var body dto.CreateMonitorRequest
 		if err := c.ShouldBindJSON(&body); err != nil {
 			respondError(c, http.StatusBadRequest, err.Error())
 			return
@@ -157,7 +157,7 @@ func getMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "Monitor ID"
-// @Param body body UpdateMonitorRequest true "Monitor update payload"
+// @Param body body dto.UpdateMonitorRequest true "Monitor update payload"
 // @Success 200 {object} MonitorResponse
 // @Failure 400 {object} platformhttp.ErrorBody
 // @Failure 401 {object} platformhttp.ErrorBody
@@ -194,7 +194,7 @@ func updateMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 			return
 		}
 
-		var body UpdateMonitorRequest
+		var body dto.UpdateMonitorRequest
 		if err := c.ShouldBindJSON(&body); err != nil {
 			respondError(c, http.StatusBadRequest, err.Error())
 			return
