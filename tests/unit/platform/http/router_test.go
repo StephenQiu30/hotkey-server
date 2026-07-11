@@ -19,6 +19,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/pkg"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	platformruntime "github.com/StephenQiu30/hotkey-server/internal/platform/runtime"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/security"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
@@ -404,11 +405,9 @@ func TestJWTAuthPropagatesUserID(t *testing.T) {
 		TrendQuerySvc: &stubTrendQueryService{},
 	})
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": float64(42),
-		"exp": time.Now().Add(time.Hour).Unix(),
-	})
-	tokenStr, err := token.SignedString([]byte("test-secret"))
+	tokenStr, err := security.SignAccessToken(security.AccessClaims{
+		RegisteredClaims: jwt.RegisteredClaims{Subject: "42"},
+	}, "test-secret")
 	if err != nil {
 		t.Fatalf("failed to sign token: %v", err)
 	}
@@ -828,11 +827,9 @@ func TestMonitorScopedEndpointsRejectOtherUsers(t *testing.T) {
 		TrendQuerySvc: &stubTrendQueryService{},
 	})
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": float64(2),
-		"exp": time.Now().Add(time.Hour).Unix(),
-	})
-	tokenStr, err := token.SignedString([]byte("test-secret"))
+	tokenStr, err := security.SignAccessToken(security.AccessClaims{
+		RegisteredClaims: jwt.RegisteredClaims{Subject: "2"},
+	}, "test-secret")
 	if err != nil {
 		t.Fatalf("failed to sign token: %v", err)
 	}
@@ -888,11 +885,9 @@ func TestMonitorScopedEndpointsReturn404ForNonexistentMonitor(t *testing.T) {
 		TrendQuerySvc: &stubTrendQueryService{},
 	})
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": float64(1),
-		"exp": time.Now().Add(time.Hour).Unix(),
-	})
-	tokenStr, err := token.SignedString([]byte("test-secret"))
+	tokenStr, err := security.SignAccessToken(security.AccessClaims{
+		RegisteredClaims: jwt.RegisteredClaims{Subject: "1"},
+	}, "test-secret")
 	if err != nil {
 		t.Fatalf("failed to sign token: %v", err)
 	}

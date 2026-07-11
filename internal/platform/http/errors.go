@@ -28,6 +28,7 @@ var errorSpecs = map[enum.ErrorCode]ErrorSpec{
 	enum.ErrorCodeInternal:           {HTTPStatus: http.StatusInternalServerError, Message: "服务器内部错误"},
 	enum.ErrorCodeRateLimited:        {HTTPStatus: http.StatusTooManyRequests, Message: "请求过于频繁，请稍后重试", Retryable: true},
 	enum.ErrorCodeServiceUnavailable: {HTTPStatus: http.StatusServiceUnavailable, Message: "服务暂时不可用", Retryable: true},
+	enum.ErrorCodeMethodNotAllowed:   {HTTPStatus: http.StatusMethodNotAllowed, Message: "请求方法不允许"},
 
 	// Auth
 	enum.ErrorCodeInvalidCredentials:      {HTTPStatus: http.StatusUnauthorized, Message: "邮箱或密码错误", SecurityEvent: true},

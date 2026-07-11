@@ -96,7 +96,8 @@ func NewHTTPServer(in HTTPServerIn) *http.Server {
 	router := controller.NewRouter(controller.Config{
 		JWTSecret:       in.Config.JWTSecret,
 		SmokeTest:       smokeTest,
-		SwaggerEnabled:  in.Config.SwaggerEnabled,
+		SwaggerEnabled:    in.Config.SwaggerEnabled,
+		WebAllowedOrigins: in.Config.WebAllowedOrigins,
 		AuthService:     in.AuthService,
 		MonitorSvc:      in.MonitorSvc,
 		NotifySvc:       in.NotifySvc,

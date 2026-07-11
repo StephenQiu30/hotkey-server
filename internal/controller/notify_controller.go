@@ -14,7 +14,7 @@ import (
 
 
 
-func RegisterNotifyRoutes(r *gin.Engine, svc *service.NotifyService) {
+func RegisterNotifyRoutes(r gin.IRouter, svc *service.NotifyService) {
 	r.GET("/api/v1/notifications", listNotificationsHandler(svc))
 	r.POST("/api/v1/notifications/:id/read", markNotificationReadHandler(svc))
 }

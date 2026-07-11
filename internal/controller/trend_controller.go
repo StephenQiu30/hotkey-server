@@ -19,7 +19,7 @@ type TopicMonitorIDGetter interface {
 	GetMonitorID(ctx context.Context, topicID int64) (int64, error)
 }
 
-func RegisterTrendRoutes(r *gin.Engine, svc service.TrendQueryService, monitorGetter MonitorGetter, topicMonitorGetter TopicMonitorIDGetter) {
+func RegisterTrendRoutes(r gin.IRouter, svc service.TrendQueryService, monitorGetter MonitorGetter, topicMonitorGetter TopicMonitorIDGetter) {
 	r.GET("/api/v1/monitors/:id/trends", monitorTrendsHandler(svc, monitorGetter))
 	r.GET("/api/v1/topics/:id/trends", topicTrendsHandler(svc, monitorGetter, topicMonitorGetter))
 }

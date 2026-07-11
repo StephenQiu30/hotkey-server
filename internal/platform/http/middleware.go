@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -11,9 +12,9 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"go.uber.org/zap"
 
-	platformruntime "github.com/StephenQiu30/hotkey-server/internal/platform/runtime"
-
 	"github.com/StephenQiu30/hotkey-server/internal/model/enum"
+	platformruntime "github.com/StephenQiu30/hotkey-server/internal/platform/runtime"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/security"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 )
 
@@ -54,7 +55,7 @@ func ContextMetadataMiddleware(module string) gin.HandlerFunc {
 	}
 }
 
-// RecoverMiddleware recovers from panics and returns a 500.
+// RecoverMiddleware recovers from panics and returns a 500 with unified envelope.
 func RecoverMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
@@ -70,14 +71,12 @@ func RecoverMiddleware() gin.HandlerFunc {
 	}
 }
 
-// AuthMiddleware validates JWT tokens and injects the user ID into context.
-func AuthMiddleware(jwtSecret string, smokeTest bool) gin.HandlerFunc {
+// AuthMiddleware validates JWT tokens using typed AccessClaims and injects the
+// user ID into context. It expects tokens signed and parsed by the security package,
+// which enforces HS256, the configured issuer, audience, exp, and nbf.
+func AuthMiddleware(jwtSecret string, isSmokeTest bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if isPublicPath(c.Request.URL.Path) {
-			c.Next()
-			return
-		}
-		if smokeTest {
+		if isSmokeTest {
 			ctx := context.WithValue(c.Request.Context(), UserIDKey, int64(1))
 			ctx = platformruntime.WithUserID(ctx, int64(1))
 			c.Request = c.Request.WithContext(ctx)
@@ -85,52 +84,153 @@ func AuthMiddleware(jwtSecret string, smokeTest bool) gin.HandlerFunc {
 			return
 		}
 
-		newCtx, err := validateJWT(c, jwtSecret)
-		if err != nil {
-			RespondError(c, enum.ErrorCodeUnauthorized, "")
+		// Public path bypass: these paths are registered unprotected at the
+		// routing level, but an extra check here keeps the middleware safe
+		// when used standalone (e.g. in unit tests).
+		if isPublicPath(c.Request.URL.Path) {
+			c.Next()
+			return
+		}
+
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			RespondError(c, enum.ErrorCodeUnauthorized, "缺少认证令牌")
 			c.Abort()
 			return
 		}
 
-		c.Request = c.Request.WithContext(newCtx)
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+			RespondError(c, enum.ErrorCodeUnauthorized, "认证令牌格式错误")
+			c.Abort()
+			return
+		}
+
+		claims, err := security.ParseAccessToken(parts[1], jwtSecret)
+		if err != nil {
+			// Map specific JWT error types to appropriate error codes.
+			if isTokenExpiredError(err) {
+				RespondError(c, enum.ErrorCodeTokenExpired, "")
+			} else {
+				RespondError(c, enum.ErrorCodeUnauthorized, "认证令牌无效")
+			}
+			c.Abort()
+			return
+		}
+
+		// Extract user ID from Subject claim.
+		userID := parseSubjectAsInt64(claims.Subject)
+		ctx := context.WithValue(c.Request.Context(), UserIDKey, userID)
+		ctx = platformruntime.WithUserID(ctx, userID)
+		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 	}
 }
 
-func validateJWT(c *gin.Context, jwtSecret string) (context.Context, error) {
-	authHeader := c.GetHeader("Authorization")
-	if authHeader == "" {
-		return nil, &authError{"missing authorization header"}
+// isTokenExpiredError checks if the error is specifically a token expiry error.
+func isTokenExpiredError(err error) bool {
+	if err == nil {
+		return false
 	}
+	// jwt.ErrTokenExpired is a sentinel from golang-jwt.
+	return strings.Contains(err.Error(), jwt.ErrTokenExpired.Error())
+}
 
-	parts := strings.SplitN(authHeader, " ", 2)
-	if len(parts) != 2 || parts[0] != "Bearer" {
-		return nil, &authError{"invalid authorization format"}
-	}
+// parseSubjectAsInt64 converts a JWT subject string to an int64.
+// Defaults to 0 if parsing fails.
+func parseSubjectAsInt64(subject string) int64 {
+	var id int64
+	fmt.Sscanf(subject, "%d", &id)
+	return id
+}
 
-	token, err := jwt.Parse(parts[1], func(token *jwt.Token) (any, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+// CORSMiddleware returns a Gin middleware that applies origin-allowlist checks.
+// It replaces the permissive wildcard approach with exact origin matching.
+// When the allowlist contains "*", all origins are allowed but the specific
+// origin is echoed (required for credentialed requests).
+// Credentialed requests are handled properly: Access-Control-Allow-Origin
+// echoes the request Origin when matched, and the Vary header is set.
+func CORSMiddleware(allowedOrigins []string) gin.HandlerFunc {
+	// Build a set for O(1) lookup and check for wildcard.
+	hasWildcard := false
+	originSet := make(map[string]struct{}, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		if o == "*" {
+			hasWildcard = true
 		}
-		return []byte(jwtSecret), nil
-	}, jwt.WithValidMethods([]string{"HS256"}))
-	if err != nil || !token.Valid {
-		return nil, &authError{"invalid token"}
+		originSet[o] = struct{}{}
 	}
 
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return nil, &authError{"invalid token claims"}
-	}
+	return func(c *gin.Context) {
+		origin := c.GetHeader("Origin")
 
-	sub, ok := claims["sub"].(float64)
-	if !ok {
-		return nil, &authError{"invalid user id in token"}
-	}
+		// Always set Vary: Origin so caches know the response varies on this header.
+		c.Header("Vary", "Origin")
 
-	ctx := context.WithValue(c.Request.Context(), UserIDKey, int64(sub))
-	ctx = platformruntime.WithUserID(ctx, int64(sub))
-	return ctx, nil
+		if origin == "" {
+			// Non-browser request (no Origin header) — skip CORS processing.
+			if c.Request.Method == http.MethodOptions {
+				c.AbortWithStatus(http.StatusNoContent)
+				return
+			}
+			c.Next()
+			return
+		}
+
+		// Determine if the origin is allowed.
+		originAllowed := hasWildcard
+		if !originAllowed {
+			_, originAllowed = originSet[origin]
+		}
+
+		if !originAllowed {
+			// Origin is not allowed. For preflight, return forbidden.
+			if c.Request.Method == http.MethodOptions {
+				c.AbortWithStatus(http.StatusForbidden)
+				return
+			}
+			// For actual requests, proceed without CORS headers (browser will reject).
+			c.Next()
+			return
+		}
+
+		// Echo the specific origin (never "*" with credentials).
+		c.Header("Access-Control-Allow-Origin", origin)
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization")
+		c.Header("Access-Control-Allow-Credentials", "true")
+		c.Header("Access-Control-Max-Age", "86400")
+
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// NoRouteHandler returns a 404 response using the unified envelope.
+func NoRouteHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		RespondError(c, enum.ErrorCodeNotFound, "")
+	}
+}
+
+// NoMethodHandler returns a 405 response using the unified envelope.
+func NoMethodHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		RespondError(c, enum.ErrorCodeMethodNotAllowed, "")
+	}
+}
+
+// SecurityHeadersMiddleware adds recommended security response headers.
+func SecurityHeadersMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "DENY")
+		c.Next()
+	}
 }
 
 type authError struct {
@@ -143,15 +243,6 @@ func generateRequestID() string {
 	return "req-" + randomHex(8)
 }
 
-func isPublicPath(path string) bool {
-	switch path {
-	case "/healthz", "/api/v1/auth/register", "/api/v1/auth/login":
-		return true
-	default:
-		return strings.HasPrefix(path, "/schemas/") || strings.HasPrefix(path, "/swagger/")
-	}
-}
-
 func randomHex(n int) string {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
@@ -160,26 +251,14 @@ func randomHex(n int) string {
 	return fmt.Sprintf("%x", b)
 }
 
-// CORSMiddleware adds permissive CORS headers for web frontend access.
-func CORSMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization")
-		c.Header("Access-Control-Allow-Credentials", "true")
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-		c.Next()
-	}
-}
-
-// SecurityHeadersMiddleware adds recommended security response headers.
-func SecurityHeadersMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Header("X-Content-Type-Options", "nosniff")
-		c.Header("X-Frame-Options", "DENY")
-		c.Next()
+// isPublicPath returns true if the request path does not require authentication.
+// The authoritative public-path list is at the routing level (route_controller.go),
+// but this helper provides defense-in-depth for standalone middleware usage.
+func isPublicPath(path string) bool {
+	switch path {
+	case "/healthz", "/api/v1/auth/register", "/api/v1/auth/login":
+		return true
+	default:
+		return strings.HasPrefix(path, "/schemas/") || strings.HasPrefix(path, "/swagger/")
 	}
 }

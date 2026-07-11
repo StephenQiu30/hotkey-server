@@ -24,7 +24,7 @@ type ReportService interface {
 	MarkSent(ctx context.Context, id, userID int64) (dto.Report, error)
 }
 
-func RegisterReportRoutes(r *gin.Engine, svc ReportService) {
+func RegisterReportRoutes(r gin.IRouter, svc ReportService) {
 	if svc == nil {
 		return
 	}

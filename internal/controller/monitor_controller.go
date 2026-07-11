@@ -20,7 +20,7 @@ type MonitorGetter interface {
 	GetByID(ctx context.Context, id int64) (dto.Monitor, error)
 }
 
-func RegisterMonitorRoutes(r *gin.Engine, svc *service.MonitorService) {
+func RegisterMonitorRoutes(r gin.IRouter, svc *service.MonitorService) {
 	r.GET("/api/v1/monitors", listMonitorsHandler(svc))
 	r.POST("/api/v1/monitors", createMonitorHandler(svc))
 	r.GET("/api/v1/monitors/:id", getMonitorHandler(svc))

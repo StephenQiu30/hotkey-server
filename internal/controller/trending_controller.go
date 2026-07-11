@@ -24,7 +24,7 @@ type HotEventManager interface {
 }
 
 // RegisterTrendingRoutes registers the trending and hot event API endpoints.
-func RegisterTrendingRoutes(r *gin.Engine, mgr HotEventManager) {
+func RegisterTrendingRoutes(r gin.IRouter, mgr HotEventManager) {
 	r.GET("/api/v1/trending", listTrendingHandler(mgr))
 	r.GET("/api/v1/hot-events", listHotEventsHandler(mgr))
 	r.GET("/api/v1/hot-events/:id", getHotEventHandler(mgr))

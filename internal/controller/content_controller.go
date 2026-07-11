@@ -13,7 +13,7 @@ import (
 
 
 
-func RegisterContentRoutes(r *gin.Engine, svc content.PostQueryService, mgr MonitorGetter) {
+func RegisterContentRoutes(r gin.IRouter, svc content.PostQueryService, mgr MonitorGetter) {
 	r.GET("/api/v1/monitors/:id/posts", listMonitorPostsHandler(svc, mgr))
 }
 

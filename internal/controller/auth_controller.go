@@ -1,21 +1,20 @@
 package controller
 
 import (
-	"time"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/StephenQiu30/hotkey-server/internal/convert"
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
+	"github.com/StephenQiu30/hotkey-server/internal/model/enum"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/security"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
-	"github.com/StephenQiu30/hotkey-server/internal/model/enum"
 )
 
-
-
-func RegisterAuthRoutes(r *gin.Engine, svc *service.AuthService, jwtSecret string) {
+func RegisterAuthRoutes(r gin.IRouter, svc *service.AuthService, jwtSecret string) {
 	r.POST("/api/v1/auth/register", registerHandler(svc))
 	r.POST("/api/v1/auth/login", loginHandler(svc, jwtSecret))
 }
@@ -95,12 +94,14 @@ func loginHandler(svc *service.AuthService, jwtSecret string) gin.HandlerFunc {
 			return
 		}
 
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-			"sub":   user.ID,
-			"email": user.Email,
-			"exp":   time.Now().Add(24 * time.Hour).Unix(),
-		})
-		tokenStr, err := token.SignedString([]byte(jwtSecret))
+		// Sign a typed JWT using the security package for consistent claims.
+		claims := security.AccessClaims{
+			SessionID: 0, // TODO: implement session management
+			RegisteredClaims: jwt.RegisteredClaims{
+				Subject: strconv.FormatInt(user.ID, 10),
+			},
+		}
+		tokenStr, err := security.SignAccessToken(claims, jwtSecret)
 		if err != nil {
 			platformhttp.RespondInternalError(c)
 			return

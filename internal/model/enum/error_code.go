@@ -16,6 +16,7 @@ const (
 	ErrorCodeInternal              ErrorCode = "INTERNAL_ERROR"
 	ErrorCodeRateLimited           ErrorCode = "RATE_LIMITED"
 	ErrorCodeServiceUnavailable    ErrorCode = "SERVICE_UNAVAILABLE"
+	ErrorCodeMethodNotAllowed     ErrorCode = "METHOD_NOT_ALLOWED"
 
 	// Auth
 	ErrorCodeInvalidCredentials        ErrorCode = "INVALID_CREDENTIALS"
