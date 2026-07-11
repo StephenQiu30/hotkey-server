@@ -386,7 +386,7 @@ func newSecurityRouter() *gin.Engine {
 	r.Use(gin.Recovery())
 
 	// CORS with an explicit allowlist (no wildcard).
-	r.Use(platformhttp.CORSMiddleware([]string{"https://example.com"}))
+	r.Use(platformhttp.CORSMiddleware([]string{"https://example.com"}, false))
 
 	r.Use(platformhttp.SecurityHeadersMiddleware())
 	r.Use(platformhttp.RequestIDMiddleware())

@@ -151,9 +151,9 @@ func parseSubjectAsInt64(subject string) int64 {
 // origin is echoed (required for credentialed requests).
 // Credentialed requests are handled properly: Access-Control-Allow-Origin
 // echoes the request Origin when matched, and the Vary header is set.
-func CORSMiddleware(allowedOrigins []string) gin.HandlerFunc {
+func CORSMiddleware(allowedOrigins []string, isSmokeTest bool) gin.HandlerFunc {
 	// Warn when the allowlist is empty and not running in smoke-test mode.
-	if len(allowedOrigins) == 0 && os.Getenv("SMOKE_TEST") != "1" {
+	if len(allowedOrigins) == 0 && !isSmokeTest {
 		fmt.Fprintf(os.Stderr, "[WARN] CORSMiddleware: WebAllowedOrigins is empty — all cross-origin requests will be blocked. Set WebAllowedOrigins in configuration to enable CORS.\n")
 	}
 

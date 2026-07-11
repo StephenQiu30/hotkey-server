@@ -1546,7 +1546,8 @@ const docTemplate = `{
                 "code": {
                     "type": "string"
                 },
-                "error": {
+                "data": {},
+                "message": {
                     "type": "string"
                 },
                 "request_id": {

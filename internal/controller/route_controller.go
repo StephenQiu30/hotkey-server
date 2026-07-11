@@ -36,7 +36,7 @@ func NewRouter(cfg Config) *gin.Engine {
 
 	// Global middleware stack (applied to all routes).
 	r.Use(platformhttp.RecoverMiddleware())
-	r.Use(platformhttp.CORSMiddleware(cfg.WebAllowedOrigins))
+	r.Use(platformhttp.CORSMiddleware(cfg.WebAllowedOrigins, cfg.SmokeTest))
 	r.Use(platformhttp.SecurityHeadersMiddleware())
 	r.Use(platformhttp.RequestIDMiddleware())
 	r.Use(platformhttp.AccessLogMiddleware())
