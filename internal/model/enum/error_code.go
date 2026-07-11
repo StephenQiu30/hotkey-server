@@ -6,10 +6,26 @@ package enum
 type ErrorCode string
 
 const (
-	ErrorCodeBadRequest    ErrorCode = "BAD_REQUEST"
-	ErrorCodeUnauthorized  ErrorCode = "UNAUTHORIZED"
-	ErrorCodeForbidden     ErrorCode = "FORBIDDEN"
-	ErrorCodeNotFound      ErrorCode = "NOT_FOUND"
-	ErrorCodeConflict      ErrorCode = "CONFLICT"
-	ErrorCodeInternal      ErrorCode = "INTERNAL_ERROR"
+	// Success / generic
+	ErrorCodeSuccess               ErrorCode = "SUCCESS"
+	ErrorCodeBadRequest            ErrorCode = "BAD_REQUEST"
+	ErrorCodeUnauthorized          ErrorCode = "UNAUTHORIZED"
+	ErrorCodeForbidden             ErrorCode = "FORBIDDEN"
+	ErrorCodeNotFound              ErrorCode = "NOT_FOUND"
+	ErrorCodeConflict              ErrorCode = "CONFLICT"
+	ErrorCodeInternal              ErrorCode = "INTERNAL_ERROR"
+	ErrorCodeRateLimited           ErrorCode = "RATE_LIMITED"
+	ErrorCodeServiceUnavailable    ErrorCode = "SERVICE_UNAVAILABLE"
+
+	// Auth
+	ErrorCodeInvalidCredentials        ErrorCode = "INVALID_CREDENTIALS"
+	ErrorCodeEmailExists               ErrorCode = "EMAIL_EXISTS"
+	ErrorCodeInvalidVerificationCode   ErrorCode = "INVALID_VERIFICATION_CODE"
+	ErrorCodeTokenExpired              ErrorCode = "TOKEN_EXPIRED"
+	ErrorCodeTokenRevoked              ErrorCode = "TOKEN_REVOKED"
+	ErrorCodeSessionExpired            ErrorCode = "SESSION_EXPIRED"
+	ErrorCodePasswordMismatch          ErrorCode = "PASSWORD_MISMATCH"
+	ErrorCodeEmailNotVerified          ErrorCode = "EMAIL_NOT_VERIFIED"
+	ErrorCodeAccountDisabled           ErrorCode = "ACCOUNT_DISABLED"
+	ErrorCodeInvalidResetToken         ErrorCode = "INVALID_RESET_TOKEN"
 )

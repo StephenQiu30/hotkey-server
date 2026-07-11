@@ -132,6 +132,8 @@ func TestHealthEndpoint(t *testing.T) {
 		Data struct {
 			Status string `json:"status"`
 		} `json:"data"`
+		Code      string `json:"code"`
+		Message   string `json:"message"`
 		RequestID string `json:"request_id"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
@@ -139,6 +141,12 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 	if body.Data.Status != "ok" {
 		t.Fatalf("expected wrapped health status ok, got %q", body.Data.Status)
+	}
+	if body.Code != "SUCCESS" {
+		t.Fatalf("expected code SUCCESS, got %q", body.Code)
+	}
+	if body.Message != "success" {
+		t.Fatalf("expected message success, got %q", body.Message)
 	}
 	if body.RequestID != "req-health" {
 		t.Fatalf("expected request id req-health, got %q", body.RequestID)
@@ -213,6 +221,8 @@ func TestRegisterReturns201(t *testing.T) {
 		Data struct {
 			Email string `json:"email"`
 		} `json:"data"`
+		Code      string `json:"code"`
+		Message   string `json:"message"`
 		RequestID string `json:"request_id"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
@@ -220,6 +230,12 @@ func TestRegisterReturns201(t *testing.T) {
 	}
 	if resp.Data.Email != "test@example.com" {
 		t.Fatalf("expected wrapped register email, got %q", resp.Data.Email)
+	}
+	if resp.Code != "SUCCESS" {
+		t.Fatalf("expected code SUCCESS, got %q", resp.Code)
+	}
+	if resp.Message != "success" {
+		t.Fatalf("expected message success, got %q", resp.Message)
 	}
 	if resp.RequestID != "req-register" {
 		t.Fatalf("expected request id req-register, got %q", resp.RequestID)
@@ -251,12 +267,20 @@ func TestLoginReturns200(t *testing.T) {
 		Data struct {
 			Token string `json:"token"`
 		} `json:"data"`
+		Code    string `json:"code"`
+		Message string `json:"message"`
 	}
 	if err := json.Unmarshal(loginRR.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode login response: %v", err)
 	}
 	if resp.Data.Token == "" {
 		t.Fatalf("expected token in wrapped response, got: %s", loginRR.Body.String())
+	}
+	if resp.Code != "SUCCESS" {
+		t.Fatalf("expected code SUCCESS, got %q", resp.Code)
+	}
+	if resp.Message != "success" {
+		t.Fatalf("expected message success, got %q", resp.Message)
 	}
 }
 
@@ -317,12 +341,23 @@ func TestUnauthorizedBusinessRouteIncludesStableErrorCode(t *testing.T) {
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d: %s", rr.Code, rr.Body.String())
 	}
-	var body platformhttp.ErrorBody
+	var body struct {
+		Code      string `json:"code"`
+		Message   string `json:"message"`
+		Data      json.RawMessage `json:"data"`
+		RequestID string `json:"request_id"`
+	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
-		t.Fatalf("expected JSON error body, got %v: %s", err, rr.Body.String())
+		t.Fatalf("expected JSON body, got %v: %s", err, rr.Body.String())
 	}
 	if body.Code != string(enum.ErrorCodeUnauthorized) {
 		t.Fatalf("expected unauthorized code, got %q", body.Code)
+	}
+	if body.Message == "" {
+		t.Fatal("expected non-empty error message")
+	}
+	if string(body.Data) != "null" {
+		t.Fatalf("expected null data on error, got %s", string(body.Data))
 	}
 	if body.RequestID != "req-unauthorized" {
 		t.Fatalf("expected request id req-unauthorized, got %q", body.RequestID)
@@ -414,11 +449,19 @@ func TestSmokeBypassAuth(t *testing.T) {
 				t.Errorf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 			}
 			var body struct {
+				Code      string          `json:"code"`
+				Message   string          `json:"message"`
 				Data      json.RawMessage `json:"data"`
 				RequestID string          `json:"request_id"`
 			}
 			if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
 				t.Fatalf("expected JSON envelope, got %v: %s", err, rr.Body.String())
+			}
+			if body.Code != "SUCCESS" {
+				t.Errorf("expected SUCCESS code, got %q", body.Code)
+			}
+			if body.Message != "success" {
+				t.Errorf("expected success message, got %q", body.Message)
 			}
 			if len(body.Data) == 0 {
 				t.Fatalf("expected wrapped data for %s, got %s", tt.path, rr.Body.String())
@@ -441,6 +484,8 @@ func TestMarkNotificationReadReturnsUnifiedEnvelope(t *testing.T) {
 		Data struct {
 			Read bool `json:"read"`
 		} `json:"data"`
+		Code      string `json:"code"`
+		Message   string `json:"message"`
 		RequestID string `json:"request_id"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
@@ -448,6 +493,12 @@ func TestMarkNotificationReadReturnsUnifiedEnvelope(t *testing.T) {
 	}
 	if !body.Data.Read {
 		t.Fatalf("expected read=true, got %s", rr.Body.String())
+	}
+	if body.Code != "SUCCESS" {
+		t.Fatalf("expected SUCCESS code, got %q", body.Code)
+	}
+	if body.Message != "success" {
+		t.Fatalf("expected message success, got %q", body.Message)
 	}
 	if body.RequestID != "req-notify-read" {
 		t.Fatalf("expected request id req-notify-read, got %q", body.RequestID)
@@ -472,19 +523,25 @@ func TestRecoverMiddlewareReturnsUnifiedErrorBody(t *testing.T) {
 		t.Fatalf("expected 500, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	var body platformhttp.ErrorBody
-	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
-		t.Fatalf("expected JSON error body, got %v: %s", err, rr.Body.String())
+	var body struct {
+		Code      string          `json:"code"`
+		Message   string          `json:"message"`
+		Data      json.RawMessage `json:"data"`
+		RequestID string          `json:"request_id"`
 	}
-
-	if body.Error != "internal server error" {
-		t.Fatalf("expected unified error message, got %q", body.Error)
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected JSON body, got %v: %s", err, rr.Body.String())
 	}
 
 	if body.Code != "INTERNAL_ERROR" {
-		t.Fatalf("expected unified error code, got %q", body.Code)
+		t.Fatalf("expected code INTERNAL_ERROR, got %q", body.Code)
 	}
-
+	if body.Message == "" {
+		t.Fatal("expected non-empty error message")
+	}
+	if string(body.Data) != "null" {
+		t.Fatalf("expected null data on error, got %s", string(body.Data))
+	}
 	if body.RequestID != "req-test-123" {
 		t.Fatalf("expected request id in error body, got %q", body.RequestID)
 	}
@@ -494,11 +551,10 @@ func TestRespondAppErrorUsesCodeStatusMessageAndRequestID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.Use(platformhttp.RequestIDMiddleware())
+	r.Use(platformhttp.ErrorHandlerMiddleware())
 	r.GET("/app-error", func(c *gin.Context) {
-		platformhttp.RespondAppError(c, platformhttp.NewAppError(
+		c.Error(platformhttp.NewAppError(
 			enum.ErrorCodeNotFound,
-			http.StatusNotFound,
-			"monitor not found",
 			nil,
 		))
 	})
@@ -512,16 +568,24 @@ func TestRespondAppErrorUsesCodeStatusMessageAndRequestID(t *testing.T) {
 		t.Fatalf("expected 404, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	var body platformhttp.ErrorBody
+	var body struct {
+		Code      string          `json:"code"`
+		Message   string          `json:"message"`
+		Data      json.RawMessage `json:"data"`
+		RequestID string          `json:"request_id"`
+	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
-		t.Fatalf("expected JSON error body, got %v: %s", err, rr.Body.String())
+		t.Fatalf("expected JSON body, got %v: %s", err, rr.Body.String())
 	}
 
 	if body.Code != string(enum.ErrorCodeNotFound) {
 		t.Fatalf("expected error code NOT_FOUND, got %q", body.Code)
 	}
-	if body.Error != "monitor not found" {
-		t.Fatalf("expected message monitor not found, got %q", body.Error)
+	if body.Message == "" {
+		t.Fatal("expected non-empty error message")
+	}
+	if string(body.Data) != "null" {
+		t.Fatalf("expected null data on error, got %s", string(body.Data))
 	}
 	if body.RequestID != "req-app-error" {
 		t.Fatalf("expected request id req-app-error, got %q", body.RequestID)
@@ -545,12 +609,23 @@ func TestRespondErrorCodeUsesRegisteredHTTPStatus(t *testing.T) {
 		t.Fatalf("expected registered 404, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	var body platformhttp.ErrorBody
+	var body struct {
+		Code      string          `json:"code"`
+		Message   string          `json:"message"`
+		Data      json.RawMessage `json:"data"`
+		RequestID string          `json:"request_id"`
+	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
-		t.Fatalf("expected JSON error body, got %v: %s", err, rr.Body.String())
+		t.Fatalf("expected JSON body, got %v: %s", err, rr.Body.String())
 	}
 	if body.Code != string(enum.ErrorCodeNotFound) {
 		t.Fatalf("expected NOT_FOUND, got %q", body.Code)
+	}
+	if body.Message == "" {
+		t.Fatal("expected non-empty error message")
+	}
+	if string(body.Data) != "null" {
+		t.Fatalf("expected null data on error, got %s", string(body.Data))
 	}
 	if body.RequestID != "req-registered" {
 		t.Fatalf("expected request id req-registered, got %q", body.RequestID)
@@ -674,6 +749,8 @@ func TestRespondOKWrapsDataAndRequestID(t *testing.T) {
 		Data struct {
 			Name string `json:"name"`
 		} `json:"data"`
+		Code      string `json:"code"`
+		Message   string `json:"message"`
 		RequestID string `json:"request_id"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
@@ -681,6 +758,12 @@ func TestRespondOKWrapsDataAndRequestID(t *testing.T) {
 	}
 	if body.Data.Name != "hotkey" {
 		t.Fatalf("expected wrapped data, got %q", body.Data.Name)
+	}
+	if body.Code != "SUCCESS" {
+		t.Fatalf("expected SUCCESS code, got %q", body.Code)
+	}
+	if body.Message != "success" {
+		t.Fatalf("expected message success, got %q", body.Message)
 	}
 	if body.RequestID != "req-ok" {
 		t.Fatalf("expected request id req-ok, got %q", body.RequestID)
@@ -709,6 +792,8 @@ func TestRespondPageWrapsPaginationAndRequestID(t *testing.T) {
 		Page      int      `json:"page"`
 		PageSize  int      `json:"page_size"`
 		Total     int      `json:"total"`
+		Code      string   `json:"code"`
+		Message   string   `json:"message"`
 		RequestID string   `json:"request_id"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
@@ -719,6 +804,12 @@ func TestRespondPageWrapsPaginationAndRequestID(t *testing.T) {
 	}
 	if body.Page != 2 || body.PageSize != 10 || body.Total != 42 {
 		t.Fatalf("expected pagination metadata, got page=%d page_size=%d total=%d", body.Page, body.PageSize, body.Total)
+	}
+	if body.Code != "SUCCESS" {
+		t.Fatalf("expected SUCCESS code, got %q", body.Code)
+	}
+	if body.Message != "success" {
+		t.Fatalf("expected message success, got %q", body.Message)
 	}
 	if body.RequestID != "req-page" {
 		t.Fatalf("expected request id req-page, got %q", body.RequestID)
@@ -766,9 +857,20 @@ func TestMonitorScopedEndpointsRejectOtherUsers(t *testing.T) {
 			if rr.Code != http.StatusForbidden {
 				t.Errorf("expected 403, got %d: %s", rr.Code, rr.Body.String())
 			}
-			var body platformhttp.ErrorBody
+			var body struct {
+				Code      string          `json:"code"`
+				Message   string          `json:"message"`
+				Data      json.RawMessage `json:"data"`
+				RequestID string          `json:"request_id"`
+			}
 			if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
-				t.Fatalf("expected JSON error body, got %v: %s", err, rr.Body.String())
+				t.Fatalf("expected JSON body, got %v: %s", err, rr.Body.String())
+			}
+			if body.Code != string(enum.ErrorCodeForbidden) {
+				t.Errorf("expected FORBIDDEN code, got %q", body.Code)
+			}
+			if body.Message == "" {
+				t.Error("expected non-empty error message")
 			}
 		})
 	}
@@ -815,9 +917,20 @@ func TestMonitorScopedEndpointsReturn404ForNonexistentMonitor(t *testing.T) {
 			if rr.Code != http.StatusNotFound {
 				t.Errorf("expected 404, got %d: %s", rr.Code, rr.Body.String())
 			}
-			var body platformhttp.ErrorBody
+			var body struct {
+				Code      string          `json:"code"`
+				Message   string          `json:"message"`
+				Data      json.RawMessage `json:"data"`
+				RequestID string          `json:"request_id"`
+			}
 			if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
-				t.Fatalf("expected JSON error body, got %v: %s", err, rr.Body.String())
+				t.Fatalf("expected JSON body, got %v: %s", err, rr.Body.String())
+			}
+			if body.Code != string(enum.ErrorCodeNotFound) {
+				t.Errorf("expected NOT_FOUND code, got %q", body.Code)
+			}
+			if body.Message == "" {
+				t.Error("expected non-empty error message")
 			}
 		})
 	}

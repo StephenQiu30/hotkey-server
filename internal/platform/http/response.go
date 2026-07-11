@@ -8,13 +8,13 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/enum"
 	"github.com/StephenQiu30/hotkey-server/internal/model/vo"
-	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
-	"go.uber.org/zap"
 )
 
 // RespondOK writes a 200 response with unified success body.
 func RespondOK(c *gin.Context, data any) {
 	c.JSON(http.StatusOK, vo.ResponseBody{
+		Code:      enum.ErrorCodeSuccess,
+		Message:   "success",
 		Data:      data,
 		RequestID: requestIDFromContext(c),
 	})
@@ -23,6 +23,8 @@ func RespondOK(c *gin.Context, data any) {
 // RespondCreated writes a 201 response with unified success body.
 func RespondCreated(c *gin.Context, data any) {
 	c.JSON(http.StatusCreated, vo.ResponseBody{
+		Code:      enum.ErrorCodeSuccess,
+		Message:   "success",
 		Data:      data,
 		RequestID: requestIDFromContext(c),
 	})
@@ -31,6 +33,8 @@ func RespondCreated(c *gin.Context, data any) {
 // RespondPage writes a 200 response with paginated body.
 func RespondPage(c *gin.Context, data any, page, pageSize, total int) {
 	c.JSON(http.StatusOK, vo.PageBody{
+		Code:      enum.ErrorCodeSuccess,
+		Message:   "success",
 		Data:      data,
 		Page:      page,
 		PageSize:  pageSize,
@@ -40,20 +44,27 @@ func RespondPage(c *gin.Context, data any, page, pageSize, total int) {
 }
 
 // RespondError writes a structured JSON error response.
-// The HTTP status is inferred from the error code via errorCodeToHTTPStatus.
+// The HTTP status and message are inferred from the error code via the spec registry.
 func RespondError(c *gin.Context, code enum.ErrorCode, message string) {
-	c.JSON(errorCodeToHTTPStatus(code), ErrorBody{
-		Error:     message,
-		Code:      string(code),
+	spec := GetErrorSpec(code)
+	if message == "" {
+		message = spec.Message
+	}
+	c.JSON(spec.HTTPStatus, vo.ResponseBody{
+		Code:      code,
+		Message:   message,
+		Data:      nil,
 		RequestID: requestIDFromContext(c),
 	})
 }
 
-// RespondInternalError writes a generic 500 error.
+// RespondInternalError writes a generic 500 error using the unified envelope.
 func RespondInternalError(c *gin.Context) {
-	c.JSON(http.StatusInternalServerError, ErrorBody{
-		Error:     "internal server error",
-		Code:      string(enum.ErrorCodeInternal),
+	spec := GetErrorSpec(enum.ErrorCodeInternal)
+	c.JSON(http.StatusInternalServerError, vo.ResponseBody{
+		Code:      enum.ErrorCodeInternal,
+		Message:   spec.Message,
+		Data:      nil,
 		RequestID: requestIDFromContext(c),
 	})
 }
@@ -62,9 +73,10 @@ func RespondInternalError(c *gin.Context) {
 func RespondAppError(c *gin.Context, err error) {
 	var appErr *AppError
 	if errors.As(err, &appErr) {
-		c.JSON(appErr.HTTPStatus, ErrorBody{
-			Error:     appErr.Message,
-			Code:      string(appErr.Code),
+		c.JSON(appErr.HTTPStatus, vo.ResponseBody{
+			Code:      appErr.Code,
+			Message:   appErr.Message,
+			Data:      nil,
 			RequestID: requestIDFromContext(c),
 		})
 		return
@@ -72,27 +84,10 @@ func RespondAppError(c *gin.Context, err error) {
 	RespondInternalError(c)
 }
 
-// errorCodeToHTTPStatus maps a stable ErrorCode to its HTTP status code.
-func errorCodeToHTTPStatus(code enum.ErrorCode) int {
-	switch code {
-	case enum.ErrorCodeBadRequest:
-		return http.StatusBadRequest
-	case enum.ErrorCodeUnauthorized:
-		return http.StatusUnauthorized
-	case enum.ErrorCodeForbidden:
-		return http.StatusForbidden
-	case enum.ErrorCodeNotFound:
-		return http.StatusNotFound
-	case enum.ErrorCodeConflict:
-		return http.StatusConflict
-	default:
-		return http.StatusInternalServerError
-	}
-}
-
 // ErrorHandlerMiddleware catches unhandled errors from c.Errors after the
-// handler executes and writes a unified error response. Register this
-// middleware after AuthMiddleware but before route registrations.
+// handler executes and writes a unified error response, including panics
+// caught by RecoverMiddleware. Register this middleware after AuthMiddleware
+// but before route registrations.
 func ErrorHandlerMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Next()
@@ -101,27 +96,21 @@ func ErrorHandlerMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		if len(c.Errors) > 0 {
-			var appErr *AppError
-			if errors.As(c.Errors.Last().Err, &appErr) {
-				RespondAppError(c, appErr)
-				c.Abort()
-				return
-			}
+		var appErr *AppError
+		if errors.As(c.Errors.Last().Err, &appErr) {
+			RespondAppError(c, appErr)
+			c.Abort()
+			return
 		}
 
-		logging.Ctx(c.Request.Context()).Warn("unhandled gin error",
-			zap.Any("errors", c.Errors),
-		)
-		RespondInternalError(c)
+		// Unknown error type - use internal error
+		spec := GetErrorSpec(enum.ErrorCodeInternal)
+		c.JSON(http.StatusInternalServerError, vo.ResponseBody{
+			Code:      enum.ErrorCodeInternal,
+			Message:   spec.Message,
+			Data:      nil,
+			RequestID: requestIDFromContext(c),
+		})
 		c.Abort()
 	}
-}
-func requestIDFromContext(c *gin.Context) string {
-	if value, ok := c.Get("request_id"); ok {
-		if requestID, ok := value.(string); ok {
-			return requestID
-		}
-	}
-	return c.GetHeader("X-Request-Id")
 }

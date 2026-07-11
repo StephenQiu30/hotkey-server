@@ -87,7 +87,7 @@ func AuthMiddleware(jwtSecret string, smokeTest bool) gin.HandlerFunc {
 
 		newCtx, err := validateJWT(c, jwtSecret)
 		if err != nil {
-			RespondError(c, enum.ErrorCodeUnauthorized, err.Error())
+			RespondError(c, enum.ErrorCodeUnauthorized, "")
 			c.Abort()
 			return
 		}
