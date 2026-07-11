@@ -29,4 +29,5 @@ const (
 	ErrorCodeEmailNotVerified          ErrorCode = "EMAIL_NOT_VERIFIED"
 	ErrorCodeAccountDisabled           ErrorCode = "ACCOUNT_DISABLED"
 	ErrorCodeInvalidResetToken         ErrorCode = "INVALID_RESET_TOKEN"
+	ErrorCodeTokenReused               ErrorCode = "AUTH_TOKEN_REUSED"
 )
