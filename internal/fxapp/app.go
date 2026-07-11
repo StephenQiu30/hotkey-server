@@ -30,7 +30,7 @@ func NewApp() *fx.App {
 		module.Infra,
 
 		// Repository implementations (direct GORM implementations of domain interfaces)
-		fx.Provide(fx.Annotate(repository.NewUserRepo, fx.As(new(service.AuthRepository)))),
+		fx.Provide(fx.Annotate(repository.NewUserRepo, fx.As(new(service.UserRepository)))),
 		fx.Provide(fx.Annotate(repository.NewMonitorRepo, fx.As(new(service.MonitorRepository)))),
 		fx.Provide(fx.Annotate(repository.NewNotifyRepo, fx.As(new(service.NotifyRepository)))),
 		fx.Provide(fx.Annotate(repository.NewHotEventRepo, fx.As(new(service.HotEventRepository)))),

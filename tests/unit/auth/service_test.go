@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
@@ -78,10 +79,9 @@ func TestLoginRejectsWrongPassword(t *testing.T) {
 		Password:    "Passw0rd!",
 		DisplayName: "User",
 	})
-	_, err := svc.Login(context.Background(), dto.LoginInput{
-		Email:    "user@example.com",
-		Password: "WrongPass!",
-	})
+	// Wait for bcrypt to finish, then login with wrong password
+	time.Sleep(50 * time.Millisecond)
+	_, err := svc.Login(context.Background(), "user@example.com", "WrongPass!", "", "")
 	if !errors.Is(err, service.AuthErrInvalidCredentials) {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
@@ -90,10 +90,7 @@ func TestLoginRejectsWrongPassword(t *testing.T) {
 func TestLoginRejectsUnknownEmail(t *testing.T) {
 	repo := &fakeauth.Repo{}
 	svc := service.NewAuthService(repo)
-	_, err := svc.Login(context.Background(), dto.LoginInput{
-		Email:    "nobody@example.com",
-		Password: "Passw0rd!",
-	})
+	_, err := svc.Login(context.Background(), "nobody@example.com", "Passw0rd!", "", "")
 	if !errors.Is(err, service.AuthErrInvalidCredentials) {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
@@ -107,14 +104,13 @@ func TestLoginSuccess(t *testing.T) {
 		Password:    "Passw0rd!",
 		DisplayName: "User",
 	})
-	user, err := svc.Login(context.Background(), dto.LoginInput{
-		Email:    "user@example.com",
-		Password: "Passw0rd!",
-	})
+	// Wait for bcrypt to finish
+	time.Sleep(50 * time.Millisecond)
+	result, err := svc.Login(context.Background(), "user@example.com", "Passw0rd!", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if user.Email != "user@example.com" {
-		t.Fatalf("expected email user@example.com, got %s", user.Email)
+	if result.User.Email != "user@example.com" {
+		t.Fatalf("expected email user@example.com, got %s", result.User.Email)
 	}
 }

@@ -21,8 +21,9 @@ type VerificationSendRequest struct {
 
 // VerificationConfirmRequest is the request body for confirming a verification code.
 type VerificationConfirmRequest struct {
-	Email string `json:"email" binding:"required,email"`
-	Code  string `json:"code" binding:"required,len=6"`
+	Email   string `json:"email" binding:"required,email"`
+	Code    string `json:"code" binding:"required,len=6"`
+	Purpose string `json:"purpose" binding:"required,oneof=register reset_password"`
 }
 
 // EmailRegisterRequest is the request body for email-based registration (after verification).

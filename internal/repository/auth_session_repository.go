@@ -38,6 +38,7 @@ func (r *AuthSessionRepo) CreateSession(
 	tokenHash, familyHash, ip, ua string,
 	expiresAt, absoluteExpiresAt time.Time,
 ) (AuthSession, error) {
+	now := time.Now()
 	session := entity.AuthSession{
 		UserID:            userID,
 		TokenHash:         tokenHash,
@@ -47,6 +48,7 @@ func (r *AuthSessionRepo) CreateSession(
 		UserAgent:         ua,
 		ExpiresAt:         expiresAt,
 		AbsoluteExpiresAt: absoluteExpiresAt,
+		LastRefreshedAt:   &now,
 	}
 	if err := r.db.WithContext(ctx).Create(&session).Error; err != nil {
 		return AuthSession{}, err

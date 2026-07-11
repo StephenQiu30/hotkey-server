@@ -47,6 +47,10 @@ func (r *stubAuthRepo) GetByEmail(_ context.Context, email string) (*dto.User, e
 	return nil, nil
 }
 func (r *stubAuthRepo) GetByID(_ context.Context, _ int64) (*dto.User, error) { return nil, nil }
+func (r *stubAuthRepo) UpdatePassword(_ context.Context, _ int64, _ string, _ time.Time) error { return nil }
+func (r *stubAuthRepo) UpdateLastLogin(_ context.Context, _ int64, _ time.Time) error { return nil }
+func (r *stubAuthRepo) SetEmailVerified(_ context.Context, _ int64, _ time.Time) error { return nil }
+func (r *stubAuthRepo) Transaction(_ context.Context, fn func(service.UserRepository) error) error { return fn(r) }
 
 type stubMonitorRepo struct{}
 

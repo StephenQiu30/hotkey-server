@@ -256,7 +256,14 @@ func randomHex(n int) string {
 // but this helper provides defense-in-depth for standalone middleware usage.
 func isPublicPath(path string) bool {
 	switch path {
-	case "/healthz", "/api/v1/auth/register", "/api/v1/auth/login":
+	case "/healthz",
+		"/api/v1/auth/register",
+		"/api/v1/auth/login",
+		"/api/v1/auth/verifications",
+		"/api/v1/auth/verifications/confirm",
+		"/api/v1/auth/token/refresh",
+		"/api/v1/auth/logout",
+		"/api/v1/auth/password/reset":
 		return true
 	default:
 		return strings.HasPrefix(path, "/schemas/") || strings.HasPrefix(path, "/swagger/")

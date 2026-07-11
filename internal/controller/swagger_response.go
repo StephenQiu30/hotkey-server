@@ -163,3 +163,32 @@ type HotEventPostsResponse struct {
 	Data      []service.PostBrief `json:"data"`
 	RequestID string              `json:"request_id,omitempty"`
 }
+
+// AuthTokenResponse wraps vo.AuthTokenData for swagger documentation.
+type AuthTokenResponse struct {
+	Data      vo.AuthTokenData `json:"data"`
+	RequestID string           `json:"request_id,omitempty"`
+}
+
+// AuthenticatedUserResponse wraps vo.AuthenticatedUserData for swagger documentation.
+type AuthenticatedUserResponse struct {
+	Data      vo.AuthenticatedUserData `json:"data"`
+	RequestID string                   `json:"request_id,omitempty"`
+}
+
+// VerificationSendResponse wraps a verification code send response for swagger documentation.
+type VerificationSendResponse struct {
+	Data      struct {
+		Email   string `json:"email"`
+		Message string `json:"message"`
+	} `json:"data"`
+	RequestID string `json:"request_id,omitempty"`
+}
+
+// VerificationTicketResponse wraps a verification ticket response for swagger documentation.
+type VerificationTicketResponse struct {
+	Data      struct {
+		Ticket string `json:"ticket"`
+	} `json:"data"`
+	RequestID string `json:"request_id,omitempty"`
+}
