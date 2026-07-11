@@ -3,8 +3,10 @@ package http
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -127,13 +129,12 @@ func AuthMiddleware(jwtSecret string, isSmokeTest bool) gin.HandlerFunc {
 	}
 }
 
-// isTokenExpiredError checks if the error is specifically a token expiry error.
+// isTokenExpiredError checks if the error chain contains the token expiry sentinel.
 func isTokenExpiredError(err error) bool {
 	if err == nil {
 		return false
 	}
-	// jwt.ErrTokenExpired is a sentinel from golang-jwt.
-	return strings.Contains(err.Error(), jwt.ErrTokenExpired.Error())
+	return errors.Is(err, jwt.ErrTokenExpired)
 }
 
 // parseSubjectAsInt64 converts a JWT subject string to an int64.
@@ -151,6 +152,11 @@ func parseSubjectAsInt64(subject string) int64 {
 // Credentialed requests are handled properly: Access-Control-Allow-Origin
 // echoes the request Origin when matched, and the Vary header is set.
 func CORSMiddleware(allowedOrigins []string) gin.HandlerFunc {
+	// Warn when the allowlist is empty and not running in smoke-test mode.
+	if len(allowedOrigins) == 0 && os.Getenv("SMOKE_TEST") != "1" {
+		fmt.Fprintf(os.Stderr, "[WARN] CORSMiddleware: WebAllowedOrigins is empty — all cross-origin requests will be blocked. Set WebAllowedOrigins in configuration to enable CORS.\n")
+	}
+
 	// Build a set for O(1) lookup and check for wildcard.
 	hasWildcard := false
 	originSet := make(map[string]struct{}, len(allowedOrigins))
@@ -232,12 +238,6 @@ func SecurityHeadersMiddleware() gin.HandlerFunc {
 		c.Next()
 	}
 }
-
-type authError struct {
-	msg string
-}
-
-func (e *authError) Error() string { return e.msg }
 
 func generateRequestID() string {
 	return "req-" + randomHex(8)

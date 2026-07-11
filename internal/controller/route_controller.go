@@ -13,18 +13,18 @@ import (
 
 // Config holds all dependencies for the Gin HTTP API.
 type Config struct {
-	JWTSecret       string
-	SmokeTest       bool
-	SwaggerEnabled  bool
-	WebAllowedOrigins []string
-	AuthService     *service.AuthService
-	MonitorSvc      *service.MonitorService
-	NotifySvc       *service.NotifyService
-	ReportSvc       ReportService
-	PostQuerySvc    content.PostQueryService
-	TopicQuerySvc   service.TopicQueryService
-	TrendQuerySvc   service.TrendQueryService
-	HotEventManager HotEventManager
+	JWTSecret          string
+	SmokeTest          bool
+	SwaggerEnabled     bool
+	WebAllowedOrigins  []string
+	AuthService       *service.AuthService
+	MonitorSvc        *service.MonitorService
+	NotifySvc         *service.NotifyService
+	ReportSvc         ReportService
+	PostQuerySvc      content.PostQueryService
+	TopicQuerySvc     service.TopicQueryService
+	TrendQuerySvc     service.TrendQueryService
+	HotEventManager   HotEventManager
 }
 
 func NewRouter(cfg Config) *gin.Engine {
@@ -32,6 +32,7 @@ func NewRouter(cfg Config) *gin.Engine {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
+	r.HandleMethodNotAllowed = true
 
 	// Global middleware stack (applied to all routes).
 	r.Use(platformhttp.RecoverMiddleware())
