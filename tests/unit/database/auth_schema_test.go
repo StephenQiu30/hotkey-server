@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/StephenQiu30/hotkey-server/internal/model/vo"
 )
 
 // TestSchemaHasAuthSessions checks that db/schema.sql defines the auth_sessions table.
@@ -103,14 +105,8 @@ func readSchema(t *testing.T) string {
 
 // TestAuthVOHidesSecrets proves that VO JSON marshalling excludes secret fields.
 func TestAuthVOHidesSecrets(t *testing.T) {
-	// AuthenticatedUserData must not expose password_hash.
-	userData := struct {
-		ID    int64  `json:"id"`
-		Email string `json:"email"`
-	}{
-		ID: 1, Email: "u@example.com",
-	}
-	raw, err := json.Marshal(userData)
+	// AuthenticatedUserData must not expose password_hash, token_hash, family_id.
+	raw, err := json.Marshal(vo.AuthenticatedUserData{ID: 1, Email: "u@example.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
