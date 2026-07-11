@@ -78,6 +78,7 @@ func cleanTables(t *testing.T, db *sql.DB) {
 		"platform_authors",
 		"monitor_runs",
 		"keyword_monitors",
+		"auth_sessions",
 		"users",
 	}
 
