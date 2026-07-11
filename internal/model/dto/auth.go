@@ -35,12 +35,14 @@ type LoginInput struct {
 type VerificationSendInput struct {
 	Email   string
 	Purpose string
+	IP      string
 }
 
 // VerificationConfirmInput holds data for confirming a verification code.
 type VerificationConfirmInput struct {
-	Email string
-	Code  string
+	Email   string
+	Purpose string
+	Code    string
 }
 
 // TokenRefreshInput holds data for refreshing a session token.
