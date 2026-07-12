@@ -20,7 +20,7 @@ import (
 type fakeTokenManager struct{}
 
 func (f *fakeTokenManager) SignAccessToken(sessionID int64) (string, error) {
-	return security.SignAccessToken(security.AccessClaims{SessionID: sessionID}, "test-secret")
+	return security.SignAccessToken(security.AccessClaims{SessionID: sessionID}, "test-secret", "hotkey-server", "hotkey-web")
 }
 
 func (f *fakeTokenManager) NewRefreshToken() (string, string) {
@@ -117,7 +117,7 @@ func TestCreateReturnsValidTokens(t *testing.T) {
 	}
 
 	// Access token should be a valid JWT.
-	claims, err := security.ParseAccessToken(tokens.AccessToken, "test-secret")
+	claims, err := security.ParseAccessToken(tokens.AccessToken, "test-secret", "hotkey-server", "hotkey-web")
 	if err != nil {
 		t.Fatalf("ParseAccessToken: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestRotationCreatesNewToken(t *testing.T) {
 
 	tokens1 := createSession(t, h, 1, "127.0.0.1", "test-agent")
 
-	claims, err := security.ParseAccessToken(tokens1.AccessToken, "test-secret")
+	claims, err := security.ParseAccessToken(tokens1.AccessToken, "test-secret", "hotkey-server", "hotkey-web")
 	if err != nil {
 		t.Fatalf("ParseAccessToken: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestRotationCreatesNewToken(t *testing.T) {
 	}
 
 	// Access token should have the same session ID (same session, re-signed).
-	claims2, err := security.ParseAccessToken(tokens2.AccessToken, "test-secret")
+	claims2, err := security.ParseAccessToken(tokens2.AccessToken, "test-secret", "hotkey-server", "hotkey-web")
 	if err != nil {
 		t.Fatalf("ParseAccessToken after refresh: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestLogoutIdempotent(t *testing.T) {
 
 	tokens := createSession(t, h, 1, "127.0.0.1", "test-agent")
 
-	claims, err := security.ParseAccessToken(tokens.AccessToken, "test-secret")
+	claims, err := security.ParseAccessToken(tokens.AccessToken, "test-secret", "hotkey-server", "hotkey-web")
 	if err != nil {
 		t.Fatalf("ParseAccessToken: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestExpiredSessionRejected(t *testing.T) {
 
 	tokens := createSession(t, h, 1, "127.0.0.1", "test-agent")
 
-	claims, err := security.ParseAccessToken(tokens.AccessToken, "test-secret")
+	claims, err := security.ParseAccessToken(tokens.AccessToken, "test-secret", "hotkey-server", "hotkey-web")
 	if err != nil {
 		t.Fatalf("ParseAccessToken: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestRevokedSessionRejected(t *testing.T) {
 
 	tokens := createSession(t, h, 1, "127.0.0.1", "test-agent")
 
-	claims, err := security.ParseAccessToken(tokens.AccessToken, "test-secret")
+	claims, err := security.ParseAccessToken(tokens.AccessToken, "test-secret", "hotkey-server", "hotkey-web")
 	if err != nil {
 		t.Fatalf("ParseAccessToken: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestOldTokenReuseRevokesFamily(t *testing.T) {
 
 	tokens := createSession(t, h, 1, "127.0.0.1", "test-agent")
 
-	claims, err := security.ParseAccessToken(tokens.AccessToken, "test-secret")
+	claims, err := security.ParseAccessToken(tokens.AccessToken, "test-secret", "hotkey-server", "hotkey-web")
 	if err != nil {
 		t.Fatalf("ParseAccessToken: %v", err)
 	}
@@ -281,7 +281,7 @@ func TestNoExtensionPastAbsoluteExpiry(t *testing.T) {
 
 	tokens := createSession(t, h, 1, "127.0.0.1", "test-agent")
 
-	claims, err := security.ParseAccessToken(tokens.AccessToken, "test-secret")
+	claims, err := security.ParseAccessToken(tokens.AccessToken, "test-secret", "hotkey-server", "hotkey-web")
 	if err != nil {
 		t.Fatalf("ParseAccessToken: %v", err)
 	}
@@ -298,7 +298,7 @@ func TestNoExtensionPastAbsoluteExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	shortClaims, err := security.ParseAccessToken(shortTokens.AccessToken, "test-secret")
+	shortClaims, err := security.ParseAccessToken(shortTokens.AccessToken, "test-secret", "hotkey-server", "hotkey-web")
 	if err != nil {
 		t.Fatalf("ParseAccessToken: %v", err)
 	}
@@ -330,7 +330,7 @@ func TestNoExtensionPastAbsoluteExpiryAfterRefresh(t *testing.T) {
 
 	tokens := createSession(t, h, 1, "127.0.0.1", "test-agent")
 
-	claims, err := security.ParseAccessToken(tokens.AccessToken, "test-secret")
+	claims, err := security.ParseAccessToken(tokens.AccessToken, "test-secret", "hotkey-server", "hotkey-web")
 	if err != nil {
 		t.Fatalf("ParseAccessToken: %v", err)
 	}
@@ -374,8 +374,8 @@ func TestRevokeAllUserSessions(t *testing.T) {
 	tokens1 := createSession(t, h, 1, "127.0.0.1", "test-agent")
 	tokens2 := createSession(t, h, 1, "127.0.0.2", "test-agent-2")
 
-	claims1, _ := security.ParseAccessToken(tokens1.AccessToken, "test-secret")
-	claims2, _ := security.ParseAccessToken(tokens2.AccessToken, "test-secret")
+	claims1, _ := security.ParseAccessToken(tokens1.AccessToken, "test-secret", "hotkey-server", "hotkey-web")
+	claims2, _ := security.ParseAccessToken(tokens2.AccessToken, "test-secret", "hotkey-server", "hotkey-web")
 
 	// Revoke all sessions for user 1.
 	if err := h.svc.RevokeAll(context.Background(), 1); err != nil {
@@ -404,7 +404,7 @@ func TestRaceFreeRotation(t *testing.T) {
 
 	tokens := createSession(t, h, 1, "127.0.0.1", "test-agent")
 
-	claims, err := security.ParseAccessToken(tokens.AccessToken, "test-secret")
+	claims, err := security.ParseAccessToken(tokens.AccessToken, "test-secret", "hotkey-server", "hotkey-web")
 	if err != nil {
 		t.Fatalf("ParseAccessToken: %v", err)
 	}

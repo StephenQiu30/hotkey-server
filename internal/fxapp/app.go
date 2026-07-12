@@ -12,6 +12,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/content"
 	"github.com/StephenQiu30/hotkey-server/internal/controller"
 	"github.com/StephenQiu30/hotkey-server/internal/module"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/email"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 	"github.com/StephenQiu30/hotkey-server/internal/queue"
 	"github.com/StephenQiu30/hotkey-server/internal/repository"
@@ -30,7 +31,10 @@ func NewApp() *fx.App {
 		module.Infra,
 
 		// Repository implementations (direct GORM implementations of domain interfaces)
-		fx.Provide(fx.Annotate(repository.NewUserRepo, fx.As(new(service.UserRepository)))),
+		fx.Provide(fx.Annotate(repository.NewUserRepo,
+			fx.As(new(service.UserRepository)),
+			fx.As(new(service.UserLookup)),
+		)),
 		fx.Provide(fx.Annotate(repository.NewMonitorRepo, fx.As(new(service.MonitorRepository)))),
 		fx.Provide(fx.Annotate(repository.NewNotifyRepo, fx.As(new(service.NotifyRepository)))),
 		fx.Provide(fx.Annotate(repository.NewHotEventRepo, fx.As(new(service.HotEventRepository)))),
@@ -43,8 +47,37 @@ func NewApp() *fx.App {
 		fx.Provide(fx.Annotate(repository.NewTopicQueryService, fx.As(new(service.TopicQueryService)))),
 		fx.Provide(fx.Annotate(repository.NewTrendQueryService, fx.As(new(service.TrendQueryService)))),
 
+		// Auth session repository
+		fx.Provide(fx.Annotate(repository.NewAuthSessionRepo, fx.As(new(service.AuthSessionRepository)))),
+
+		// Auth dependencies
+		fx.Provide(func(cfg *config.Config) service.TokenManager {
+			return service.NewTokenManager(cfg.JWTSecret, cfg.JWTIssuer, cfg.JWTAudience)
+		}),
+		fx.Provide(fx.Annotate(service.NewSessionService, fx.As(new(service.SessionManager)))),
+		fx.Provide(func(cfg *config.Config) email.Mailer {
+			if cfg.SMTPHost == "" {
+				return nil
+			}
+			return email.NewSMTPMailer(email.SMTPConfig{
+				Host:     cfg.SMTPHost,
+				Port:     cfg.SMTPPort,
+				Username: cfg.SMTPUsername,
+				AuthCode: cfg.SMTPAuthCode,
+				From:     cfg.SMTPFromEmail,
+				FromName: cfg.SMTPFromName,
+			})
+		}),
+		fx.Provide(service.NewEmailMailerAdapter),
+		fx.Provide(func() service.Clock { return service.RealClock{} }),
+		fx.Provide(func() service.CodeGenerator { return service.RealCodeGenerator{} }),
+		fx.Provide(fx.Annotate(service.NewVerificationService,
+			fx.As(new(service.VerificationManager)),
+			fx.As(new(service.TicketVerifier)),
+		)),
+
 		// Business services
-		fx.Provide(service.NewAuthService),
+		fx.Provide(service.NewAuthServiceV2),
 		fx.Provide(newMonitorService),
 		fx.Provide(service.NewNotifyService),
 		fx.Provide(newReportService),
@@ -94,18 +127,22 @@ func NewHTTPServer(in HTTPServerIn) *http.Server {
 	smokeTest := os.Getenv("SMOKE_TEST") == "1"
 
 	router := controller.NewRouter(controller.Config{
-		JWTSecret:       in.Config.JWTSecret,
-		SmokeTest:       smokeTest,
-		SwaggerEnabled:    in.Config.SwaggerEnabled,
-		WebAllowedOrigins: in.Config.WebAllowedOrigins,
-		AuthService:     in.AuthService,
-		MonitorSvc:      in.MonitorSvc,
-		NotifySvc:       in.NotifySvc,
-		ReportSvc:       in.ReportSvc,
-		PostQuerySvc:    in.PostQuerySvc,
-		TopicQuerySvc:   in.TopicQuerySvc,
-		TrendQuerySvc:   in.TrendQuerySvc,
-		HotEventManager: in.HotEventMgr,
+		JWTSecret:          in.Config.JWTSecret,
+		JWTIssuer:          in.Config.JWTIssuer,
+		JWTAudience:        in.Config.JWTAudience,
+		SmokeTest:          smokeTest,
+		SwaggerEnabled:     in.Config.SwaggerEnabled,
+		WebAllowedOrigins:  in.Config.WebAllowedOrigins,
+		AuthService:        in.AuthService,
+		MonitorSvc:         in.MonitorSvc,
+		NotifySvc:          in.NotifySvc,
+		ReportSvc:          in.ReportSvc,
+		PostQuerySvc:       in.PostQuerySvc,
+		TopicQuerySvc:      in.TopicQuerySvc,
+		TrendQuerySvc:      in.TrendQuerySvc,
+		HotEventManager:    in.HotEventMgr,
+		CookieDomain:       in.Config.CookieDomain,
+		CookieSecure:       in.Config.CookieSecure,
 	})
 
 	return &http.Server{

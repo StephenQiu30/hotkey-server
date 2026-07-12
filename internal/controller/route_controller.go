@@ -14,10 +14,14 @@ import (
 // Config holds all dependencies for the Gin HTTP API.
 type Config struct {
 	JWTSecret          string
+	JWTIssuer          string
+	JWTAudience        string
 	SmokeTest          bool
 	SwaggerEnabled     bool
 	WebAllowedOrigins  []string
 	AuthService       *service.AuthService
+	CookieDomain       string
+	CookieSecure       bool
 	MonitorSvc        *service.MonitorService
 	NotifySvc         *service.NotifyService
 	ReportSvc         ReportService
@@ -41,17 +45,18 @@ func NewRouter(cfg Config) *gin.Engine {
 	r.Use(platformhttp.RequestIDMiddleware())
 	r.Use(platformhttp.AccessLogMiddleware())
 	r.Use(platformhttp.ContextMetadataMiddleware("http"))
+	r.Use(platformhttp.ErrorHandlerMiddleware())
 
 	// Public routes (no auth required).
 	RegisterHealthRoutes(r)
-	RegisterAuthRoutes(r, cfg.AuthService, cfg.JWTSecret)
+	RegisterAuthRoutes(r, cfg.AuthService, cfg.JWTSecret, cfg.JWTIssuer, cfg.JWTAudience, cfg.CookieDomain, cfg.CookieSecure)
 	if cfg.SwaggerEnabled {
 		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
 	}
 
 	// Protected routes (auth required).
 	protected := r.Group("")
-	protected.Use(platformhttp.AuthMiddleware(cfg.JWTSecret, cfg.SmokeTest))
+	protected.Use(platformhttp.AuthMiddleware(cfg.JWTSecret, cfg.JWTIssuer, cfg.JWTAudience, cfg.SmokeTest))
 
 	RegisterMonitorRoutes(protected, cfg.MonitorSvc)
 	RegisterContentRoutes(protected, cfg.PostQuerySvc, cfg.MonitorSvc)
@@ -70,7 +75,6 @@ func NewRouter(cfg Config) *gin.Engine {
 	r.NoMethod(platformhttp.NoMethodHandler())
 
 	// Global error handler catches unhandled AppError and panics.
-	r.Use(platformhttp.ErrorHandlerMiddleware())
 
 	return r
 }

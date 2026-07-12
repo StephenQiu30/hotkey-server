@@ -10,14 +10,18 @@ import (
 // UserEntityToDTO converts a User entity to a User DTO.
 func UserEntityToDTO(u entity.User) dto.User {
 	return dto.User{
-		ID:           u.ID,
-		Email:        u.Email,
-		PasswordHash: u.PasswordHash,
-		DisplayName:  u.DisplayName,
-		Status:       u.Status,
-		PlanType:     u.PlanType,
-		CreatedAt:    u.CreatedAt,
-		UpdatedAt:    u.UpdatedAt,
+		ID:                 u.ID,
+		Email:              u.Email,
+		PasswordHash:       u.PasswordHash,
+		DisplayName:        u.DisplayName,
+		Status:             u.Status,
+		PlanType:           u.PlanType,
+		VerificationStatus: u.VerificationStatus,
+		EmailVerifiedAt:    u.EmailVerifiedAt,
+		PasswordChangedAt:  u.PasswordChangedAt,
+		LastLoginAt:        u.LastLoginAt,
+		CreatedAt:          u.CreatedAt,
+		UpdatedAt:          u.UpdatedAt,
 	}
 }
 

@@ -6,7 +6,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/enum"
-	"github.com/StephenQiu30/hotkey-server/internal/model/vo"
 )
 
 // ErrorSpec defines the stable contract for an error code.
@@ -95,32 +94,7 @@ func NewAppError(code enum.ErrorCode, cause error) *AppError {
 	}
 }
 
-// oldNewAppError is preserved for callers that have not yet migrated to the
-// spec-based NewAppError signature. It allows direct control over status and
-// message for transitional use.
-func oldNewAppError(code enum.ErrorCode, status int, message string, cause error) *AppError {
-	return &AppError{
-		Code:       code,
-		HTTPStatus: status,
-		Message:    message,
-		Cause:      cause,
-	}
-}
-
-// RespondErrorCode writes a registered application error by stable code.
-func RespondErrorCode(c *gin.Context, code enum.ErrorCode, message string, cause error) {
-	appErr := NewAppError(code, cause)
-	// Override message if caller provided a custom one (for transitional use).
-	if message != "" {
-		appErr.Message = message
-	}
-	c.JSON(appErr.HTTPStatus, vo.ResponseBody{
-		Code:      appErr.Code,
-		Message:   appErr.Message,
-		Data:      nil,
-		RequestID: requestIDFromContext(c),
-	})
-}
+// Deprecated: oldNewAppError has been removed. Use NewAppError instead.
 
 // errorCodeToHTTPStatus maps a stable ErrorCode to its HTTP status code via the spec registry.
 func errorCodeToHTTPStatus(code enum.ErrorCode) int {

@@ -12,7 +12,7 @@ create table users (
   plan_type text not null default 'free',
   verification_status text not null default 'unverified',
   email_verified_at timestamptz,
-  password_changed_at timestamptz,
+  password_changed_at timestamptz not null default now(),
   last_login_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

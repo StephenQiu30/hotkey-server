@@ -399,7 +399,7 @@ func newSecurityRouter() *gin.Engine {
 
 	// Protected routes.
 	protected := r.Group("")
-	protected.Use(platformhttp.AuthMiddleware("test-secret", false))
+	protected.Use(platformhttp.AuthMiddleware("test-secret", "hotkey-server", "hotkey-web", false))
 	protected.GET("/api/v1/monitors", func(c *gin.Context) {
 		platformhttp.RespondOK(c, gin.H{"data": "ok"})
 	})

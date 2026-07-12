@@ -19,9 +19,43 @@ import (
 )
 
 const (
-	refreshCookieName = "refresh_token"
+	refreshCookieName = "hk_refresh"
 	refreshCookiePath = "/api/v1/auth"
 )
+
+// refreshCookieConfig carries secure-cookie settings threaded from config.
+type refreshCookieConfig struct {
+	domain string
+	secure bool
+}
+
+// setRefreshCookie writes the refresh token as an httpOnly cookie.
+func setRefreshCookie(c *gin.Context, refreshToken string, expiresAt time.Time, cookieCfg refreshCookieConfig) {
+	maxAge := int(time.Until(expiresAt).Seconds())
+	if maxAge < 0 {
+		maxAge = 0
+	}
+	c.SetCookie(refreshCookieName, refreshToken, maxAge, refreshCookiePath, cookieCfg.domain, cookieCfg.secure, true)
+}
+
+// clearRefreshCookie removes the refresh token cookie.
+func clearRefreshCookie(c *gin.Context, cookieCfg refreshCookieConfig) {
+	c.SetCookie(refreshCookieName, "", -1, refreshCookiePath, cookieCfg.domain, cookieCfg.secure, true)
+}
+
+// parseRefreshCookie extracts the session ID and raw refresh token from a
+// cookie value formatted as "sessionID:refreshToken".
+func parseRefreshCookie(cookieValue string) (sessionID int64, refreshToken string, ok bool) {
+	parts := strings.SplitN(cookieValue, ":", 2)
+	if len(parts) != 2 {
+		return 0, "", false
+	}
+	id, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || id == 0 {
+		return 0, "", false
+	}
+	return id, parts[1], true
+}
 
 // ---------------------------------------------------------------------------
 // Registration — supports both legacy (email) and ticket-based flows.
@@ -39,7 +73,7 @@ const (
 // @Failure 409 {object} platformhttp.ErrorBody
 // @Failure 500 {object} platformhttp.ErrorBody
 // @Router /api/v1/auth/register [post]
-func registerHandler(svc *service.AuthService) gin.HandlerFunc {
+func registerHandler(svc *service.AuthService, cookieCfg refreshCookieConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		bodyBytes, err := io.ReadAll(c.Request.Body)
 		if err != nil {
@@ -80,7 +114,7 @@ func registerHandler(svc *service.AuthService) gin.HandlerFunc {
 				return
 			}
 
-			setRefreshCookie(c, result.Tokens.RefreshToken, result.Tokens.RefreshExpiresAt)
+			setRefreshCookie(c, result.Tokens.RefreshToken, result.Tokens.RefreshExpiresAt, cookieCfg)
 			platformhttp.RespondCreated(c, convert.AuthResultToLoginVO(result))
 		} else {
 			// ——— Legacy direct registration ———
@@ -128,7 +162,7 @@ func registerHandler(svc *service.AuthService) gin.HandlerFunc {
 // @Failure 401 {object} platformhttp.ErrorBody
 // @Failure 500 {object} platformhttp.ErrorBody
 // @Router /api/v1/auth/login [post]
-func loginHandler(svc *service.AuthService, jwtSecret string) gin.HandlerFunc {
+func loginHandler(svc *service.AuthService, jwtSecret, jwtIssuer, jwtAudience string, cookieCfg refreshCookieConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body dto.LoginRequest
 		if err := c.ShouldBindJSON(&body); err != nil {
@@ -151,7 +185,7 @@ func loginHandler(svc *service.AuthService, jwtSecret string) gin.HandlerFunc {
 
 		// Set refresh token as httpOnly cookie.
 		if result.Tokens != nil {
-			setRefreshCookie(c, result.Tokens.RefreshToken, result.Tokens.RefreshExpiresAt)
+			setRefreshCookie(c, result.Tokens.RefreshToken, result.Tokens.RefreshExpiresAt, cookieCfg)
 
 			platformhttp.RespondOK(c, convert.AuthResultToLoginVO(result))
 			return
@@ -162,7 +196,7 @@ func loginHandler(svc *service.AuthService, jwtSecret string) gin.HandlerFunc {
 			RegisteredClaims: security.AccessClaims{}.RegisteredClaims,
 		}
 		claims.Subject = strconv.FormatInt(result.User.ID, 10)
-		tokenStr, err := security.SignAccessToken(claims, jwtSecret)
+		tokenStr, err := security.SignAccessToken(claims, jwtSecret, jwtIssuer, jwtAudience)
 		if err != nil {
 			platformhttp.RespondInternalError(c)
 			return
@@ -185,7 +219,7 @@ func loginHandler(svc *service.AuthService, jwtSecret string) gin.HandlerFunc {
 // @Failure 400 {object} platformhttp.ErrorBody
 // @Failure 401 {object} platformhttp.ErrorBody
 // @Router /api/v1/auth/token/refresh [post]
-func refreshTokenHandler(svc *service.AuthService) gin.HandlerFunc {
+func refreshTokenHandler(svc *service.AuthService, cookieCfg refreshCookieConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cookieValue, err := c.Cookie(refreshCookieName)
 		if err != nil || cookieValue == "" {
@@ -214,7 +248,7 @@ func refreshTokenHandler(svc *service.AuthService) gin.HandlerFunc {
 			return
 		}
 
-		setRefreshCookie(c, tokens.RefreshToken, tokens.RefreshExpiresAt)
+		setRefreshCookie(c, tokens.RefreshToken, tokens.RefreshExpiresAt, cookieCfg)
 		platformhttp.RespondOK(c, convert.TokensToAuthTokenData(tokens))
 	}
 }
@@ -231,7 +265,7 @@ func refreshTokenHandler(svc *service.AuthService) gin.HandlerFunc {
 // @Success 200 {object} platformhttp.ErrorBody
 // @Failure 400 {object} platformhttp.ErrorBody
 // @Router /api/v1/auth/logout [post]
-func logoutHandler(svc *service.AuthService) gin.HandlerFunc {
+func logoutHandler(svc *service.AuthService, cookieCfg refreshCookieConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cookieValue, err := c.Cookie(refreshCookieName)
 		if err != nil || cookieValue == "" {
@@ -254,7 +288,7 @@ func logoutHandler(svc *service.AuthService) gin.HandlerFunc {
 			return
 		}
 
-		clearRefreshCookie(c)
+		clearRefreshCookie(c, cookieCfg)
 		platformhttp.RespondOK(c, gin.H{"success": true})
 	}
 }
@@ -424,51 +458,21 @@ func resetPasswordHandler(svc *service.AuthService) gin.HandlerFunc {
 }
 
 // ---------------------------------------------------------------------------
-// Cookie helpers
-// ---------------------------------------------------------------------------
-
-// setRefreshCookie writes the refresh token as an httpOnly secure cookie.
-func setRefreshCookie(c *gin.Context, refreshToken string, expiresAt time.Time) {
-	maxAge := int(time.Until(expiresAt).Seconds())
-	if maxAge < 0 {
-		maxAge = 0
-	}
-	c.SetCookie(refreshCookieName, refreshToken, maxAge, refreshCookiePath, "", true, true)
-}
-
-// clearRefreshCookie removes the refresh token cookie.
-func clearRefreshCookie(c *gin.Context) {
-	c.SetCookie(refreshCookieName, "", -1, refreshCookiePath, "", true, true)
-}
-
-// parseRefreshCookie extracts the session ID and raw refresh token from a
-// cookie value formatted as "sessionID:refreshToken".
-func parseRefreshCookie(cookieValue string) (sessionID int64, refreshToken string, ok bool) {
-	parts := strings.SplitN(cookieValue, ":", 2)
-	if len(parts) != 2 {
-		return 0, "", false
-	}
-	id, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil || id == 0 {
-		return 0, "", false
-	}
-	return id, parts[1], true
-}
-
-// ---------------------------------------------------------------------------
 // Route registration
 // ---------------------------------------------------------------------------
 
-func RegisterAuthRoutes(r gin.IRouter, svc *service.AuthService, jwtSecret string) {
+func RegisterAuthRoutes(r gin.IRouter, svc *service.AuthService, jwtSecret, jwtIssuer, jwtAudience, cookieDomain string, cookieSecure bool) {
+	cookieCfg := refreshCookieConfig{domain: cookieDomain, secure: cookieSecure}
+
 	// Public auth endpoints.
 	r.POST("/api/v1/auth/verifications", sendVerificationHandler(svc))
 	r.POST("/api/v1/auth/verifications/confirm", confirmVerificationHandler(svc))
-	r.POST("/api/v1/auth/register", registerHandler(svc))
-	r.POST("/api/v1/auth/login", loginHandler(svc, jwtSecret))
-	r.POST("/api/v1/auth/token/refresh", refreshTokenHandler(svc))
-	r.POST("/api/v1/auth/logout", logoutHandler(svc))
+	r.POST("/api/v1/auth/register", registerHandler(svc, cookieCfg))
+	r.POST("/api/v1/auth/login", loginHandler(svc, jwtSecret, jwtIssuer, jwtAudience, cookieCfg))
+	r.POST("/api/v1/auth/token/refresh", refreshTokenHandler(svc, cookieCfg))
+	r.POST("/api/v1/auth/logout", logoutHandler(svc, cookieCfg))
 	r.POST("/api/v1/auth/password/reset", resetPasswordHandler(svc))
 
 	// /me requires authentication — apply auth middleware per-route.
-	r.GET("/api/v1/auth/me", platformhttp.AuthMiddleware(jwtSecret, false), meHandler(svc))
+	r.GET("/api/v1/auth/me", platformhttp.AuthMiddleware(jwtSecret, jwtIssuer, jwtAudience, false), meHandler(svc))
 }

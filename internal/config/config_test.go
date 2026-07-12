@@ -214,7 +214,7 @@ func TestLoad_AuthDefaults(t *testing.T) {
 	if cfg.CookieDomain != "" {
 		t.Errorf("CookieDomain = %q, want empty", cfg.CookieDomain)
 	}
-	if cfg.SMTPPort != 587 {
-		t.Errorf("SMTPPort = %d, want %d", cfg.SMTPPort, 587)
+	if cfg.SMTPPort != 465 {
+		t.Errorf("SMTPPort = %d, want %d", cfg.SMTPPort, 465)
 	}
 }

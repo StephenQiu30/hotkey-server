@@ -21,10 +21,10 @@ type AccessClaims struct {
 
 // SignAccessToken creates a signed JWT access token for the given claims.
 // The token is signed with HMAC-SHA256 and includes a 15-minute expiry.
-func SignAccessToken(claims AccessClaims, secret string) (string, error) {
+func SignAccessToken(claims AccessClaims, secret, issuer, audience string) (string, error) {
 	now := time.Now()
-	claims.Issuer = accessTokenIssuer
-	claims.Audience = jwt.ClaimStrings{accessTokenAudience}
+	claims.Issuer = issuer
+	claims.Audience = jwt.ClaimStrings{audience}
 	claims.IssuedAt = jwt.NewNumericDate(now)
 	claims.ExpiresAt = jwt.NewNumericDate(now.Add(accessTokenTTL))
 	claims.NotBefore = jwt.NewNumericDate(now)
@@ -35,7 +35,7 @@ func SignAccessToken(claims AccessClaims, secret string) (string, error) {
 
 // ParseAccessToken parses and validates a JWT access token string.
 // It verifies the issuer, audience, signing method, expiry, and not-before time.
-func ParseAccessToken(tokenStr, secret string) (*AccessClaims, error) {
+func ParseAccessToken(tokenStr, secret, issuer, audience string) (*AccessClaims, error) {
 	claims := &AccessClaims{}
 	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -43,8 +43,8 @@ func ParseAccessToken(tokenStr, secret string) (*AccessClaims, error) {
 		}
 		return []byte(secret), nil
 	},
-		jwt.WithIssuer(accessTokenIssuer),
-		jwt.WithAudience(accessTokenAudience),
+		jwt.WithIssuer(issuer),
+		jwt.WithAudience(audience),
 		jwt.WithValidMethods([]string{"HS256"}),
 		jwt.WithLeeway(0),
 	)

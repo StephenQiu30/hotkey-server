@@ -321,16 +321,17 @@ func (s *VerificationService) SendVerificationCode(ctx context.Context, input dt
 		return nil
 	}
 
-	// --- Store code ---
+	// --- Store HMAC of code (never store plaintext codes in Redis) ---
 	code := s.codeGen.Generate()
+	codeHash := security.HMACDigest(normalized+code, s.pepper)
 	codeKey := CodeKey(purpose, hmac)
-	if err := s.rdb.Set(ctx, codeKey, code, codeTTL).Err(); err != nil {
+	if err := s.rdb.Set(ctx, codeKey, codeHash, codeTTL).Err(); err != nil {
 		log.Printf("verification: failed to store code: %v", err)
 		return VerificationErrRedisDown
 	}
 
 	// --- Set resend lock (store unix timestamp, use same TTL for safety) ---
-	if err := s.rdb.Set(ctx, lockKey, now.Unix(), codeTTL).Err(); err != nil {
+	if err := s.rdb.Set(ctx, lockKey, now.Unix(), lockDuration).Err(); err != nil {
 		log.Printf("verification: failed to set lock: %v", err)
 	}
 
@@ -371,8 +372,8 @@ func (s *VerificationService) ConfirmCode(ctx context.Context, input dto.Verific
 	codeKey := CodeKey(input.Purpose, hmac)
 	failKey := FailCountKey(input.Purpose, hmac)
 
-	// Retrieve stored code for comparison.
-	storedCode, err := s.rdb.Get(ctx, codeKey).Result()
+	// Retrieve stored HMAC for comparison.
+	storedDigest, err := s.rdb.Get(ctx, codeKey).Result()
 	if err == redis.Nil {
 		return "", VerificationErrNotFound
 	}
@@ -381,7 +382,9 @@ func (s *VerificationService) ConfirmCode(ctx context.Context, input dto.Verific
 		return "", VerificationErrRedisDown
 	}
 
-	if storedCode != input.Code {
+	// Compare HMAC of input code against stored HMAC (codes are never stored in plaintext).
+	expectedDigest := security.HMACDigest(normalized+input.Code, s.pepper)
+	if storedDigest != expectedDigest {
 		// Wrong code: atomically increment fail count, delete code on >= 5.
 		res, scriptErr := scriptResult(scriptFailedAttempt.Run(ctx, s.rdb, []string{failKey, codeKey}))
 		if scriptErr != nil {

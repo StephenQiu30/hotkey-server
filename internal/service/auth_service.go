@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -279,7 +280,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, ticket, newPassword str
 		subject := "[HotKey] Your password has been reset"
 		body := "Your HotKey account password was successfully reset. If you did not request this change, please contact support immediately."
 		if _, sendErr := s.mailer.Send(notifyCtx, userEmail, subject, body); sendErr != nil {
-			log.Printf("auth: failed to send password-reset notification to %s: %v", userEmail, sendErr)
+			log.Printf("auth: failed to send password-reset notification to %s: %v", userEmail[:3] + "***@" + userEmail[strings.LastIndex(userEmail, "@")+1:], sendErr)
 		}
 	}()
 
@@ -292,8 +293,8 @@ func (s *AuthService) CurrentUser(ctx context.Context, userID int64) (*dto.User,
 }
 
 // ParseAccessToken parses and validates a JWT access token string.
-func (s *AuthService) ParseAccessToken(tokenStr, secret string) (*security.AccessClaims, error) {
-	return security.ParseAccessToken(tokenStr, secret)
+func (s *AuthService) ParseAccessToken(tokenStr, secret, issuer, audience string) (*security.AccessClaims, error) {
+	return security.ParseAccessToken(tokenStr, secret, issuer, audience)
 }
 
 // RefreshSession delegates to the underlying session manager.

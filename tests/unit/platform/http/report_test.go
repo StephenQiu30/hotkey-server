@@ -131,6 +131,8 @@ func TestReportRoutesCreateReadHTMLAndSend(t *testing.T) {
 func newTestHandlerWithReports(reports controller.ReportService) http.Handler {
 	return controller.NewRouter(controller.Config{
 		JWTSecret:     "test-secret",
+		JWTIssuer:     "hotkey-server",
+		JWTAudience:   "hotkey-web",
 		SmokeTest:     false,
 		AuthService:   service.NewAuthService(&stubAuthRepo{}),
 		MonitorSvc:    service.NewMonitorService(&stubMonitorRepo{}, nil),
@@ -146,7 +148,7 @@ func testToken(t *testing.T, userID int64) string {
 	t.Helper()
 	tokenStr, err := security.SignAccessToken(security.AccessClaims{
 		RegisteredClaims: jwt.RegisteredClaims{Subject: fmt.Sprintf("%d", userID)},
-	}, "test-secret")
+	}, "test-secret", "hotkey-server", "hotkey-web")
 	if err != nil {
 		t.Fatalf("failed to sign token: %v", err)
 	}

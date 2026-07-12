@@ -46,15 +46,21 @@ type TokenManager interface {
 
 type tokenManager struct {
 	jwtSecret string
+	jwtIssuer string
+	jwtAudience string
 }
 
 // NewTokenManager creates a TokenManager backed by real crypto/JWT.
-func NewTokenManager(jwtSecret string) TokenManager {
-	return &tokenManager{jwtSecret: jwtSecret}
+func NewTokenManager(jwtSecret, jwtIssuer, jwtAudience string) TokenManager {
+	return &tokenManager{
+		jwtSecret:   jwtSecret,
+		jwtIssuer:   jwtIssuer,
+		jwtAudience: jwtAudience,
+	}
 }
 
 func (m *tokenManager) SignAccessToken(sessionID int64) (string, error) {
-	return security.SignAccessToken(security.AccessClaims{SessionID: sessionID}, m.jwtSecret)
+	return security.SignAccessToken(security.AccessClaims{SessionID: sessionID}, m.jwtSecret, m.jwtIssuer, m.jwtAudience)
 }
 
 func (m *tokenManager) NewRefreshToken() (string, string) {

@@ -76,7 +76,7 @@ func RecoverMiddleware() gin.HandlerFunc {
 // AuthMiddleware validates JWT tokens using typed AccessClaims and injects the
 // user ID into context. It expects tokens signed and parsed by the security package,
 // which enforces HS256, the configured issuer, audience, exp, and nbf.
-func AuthMiddleware(jwtSecret string, isSmokeTest bool) gin.HandlerFunc {
+func AuthMiddleware(jwtSecret, jwtIssuer, jwtAudience string, isSmokeTest bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if isSmokeTest {
 			ctx := context.WithValue(c.Request.Context(), UserIDKey, int64(1))
@@ -108,7 +108,7 @@ func AuthMiddleware(jwtSecret string, isSmokeTest bool) gin.HandlerFunc {
 			return
 		}
 
-		claims, err := security.ParseAccessToken(parts[1], jwtSecret)
+		claims, err := security.ParseAccessToken(parts[1], jwtSecret, jwtIssuer, jwtAudience)
 		if err != nil {
 			// Map specific JWT error types to appropriate error codes.
 			if isTokenExpiredError(err) {

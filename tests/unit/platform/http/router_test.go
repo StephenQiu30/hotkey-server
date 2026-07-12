@@ -113,6 +113,8 @@ func (s *stubTrendQueryService) GetMonitorTrends(_ int64, _ time.Time) ([]servic
 func newTestHandler() http.Handler {
 	return controller.NewRouter(controller.Config{
 		JWTSecret:     "test-secret",
+		JWTIssuer:     "hotkey-server",
+		JWTAudience:   "hotkey-web",
 		SmokeTest:     true,
 		AuthService:   service.NewAuthService(&stubAuthRepo{}),
 		MonitorSvc:    service.NewMonitorService(&stubMonitorRepo{}, nil),
@@ -161,6 +163,8 @@ func TestHealthEndpoint(t *testing.T) {
 func TestHealthEndpointDoesNotRequireAuth(t *testing.T) {
 	router := controller.NewRouter(controller.Config{
 		JWTSecret:     "test-secret",
+		JWTIssuer:     "hotkey-server",
+		JWTAudience:   "hotkey-web",
 		SmokeTest:     false,
 		AuthService:   service.NewAuthService(&stubAuthRepo{}),
 		MonitorSvc:    service.NewMonitorService(&stubMonitorRepo{}, nil),
@@ -182,6 +186,8 @@ func TestHealthEndpointDoesNotRequireAuth(t *testing.T) {
 func TestAuthEndpointsDoNotRequireAuth(t *testing.T) {
 	router := controller.NewRouter(controller.Config{
 		JWTSecret:     "test-secret",
+		JWTIssuer:     "hotkey-server",
+		JWTAudience:   "hotkey-web",
 		SmokeTest:     false,
 		AuthService:   service.NewAuthService(&stubAuthRepo{}),
 		MonitorSvc:    service.NewMonitorService(&stubMonitorRepo{}, nil),
@@ -292,6 +298,8 @@ func TestLoginReturns200(t *testing.T) {
 func TestMonitorsRequireAuth(t *testing.T) {
 	router := controller.NewRouter(controller.Config{
 		JWTSecret:     "test-secret",
+		JWTIssuer:     "hotkey-server",
+		JWTAudience:   "hotkey-web",
 		SmokeTest:     false,
 		AuthService:   service.NewAuthService(&stubAuthRepo{}),
 		MonitorSvc:    service.NewMonitorService(&stubMonitorRepo{}, nil),
@@ -329,6 +337,8 @@ func TestMonitorsRequireAuth(t *testing.T) {
 func TestUnauthorizedBusinessRouteIncludesStableErrorCode(t *testing.T) {
 	router := controller.NewRouter(controller.Config{
 		JWTSecret:     "test-secret",
+		JWTIssuer:     "hotkey-server",
+		JWTAudience:   "hotkey-web",
 		SmokeTest:     false,
 		AuthService:   service.NewAuthService(&stubAuthRepo{}),
 		MonitorSvc:    service.NewMonitorService(&stubMonitorRepo{}, nil),
@@ -372,7 +382,7 @@ func TestUnauthorizedBusinessRouteIncludesStableErrorCode(t *testing.T) {
 func TestPublicPathDoesNotInjectUserID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.Use(platformhttp.AuthMiddleware("test-secret", false))
+	r.Use(platformhttp.AuthMiddleware("test-secret", "hotkey-server", "hotkey-web", false))
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"user_id": platformruntime.UserIDFromContext(c.Request.Context()),
@@ -400,6 +410,8 @@ func TestPublicPathDoesNotInjectUserID(t *testing.T) {
 func TestJWTAuthPropagatesUserID(t *testing.T) {
 	router := controller.NewRouter(controller.Config{
 		JWTSecret:     "test-secret",
+		JWTIssuer:     "hotkey-server",
+		JWTAudience:   "hotkey-web",
 		SmokeTest:     false,
 		AuthService:   service.NewAuthService(&stubAuthRepo{}),
 		MonitorSvc:    service.NewMonitorService(&stubMonitorRepo{}, nil),
@@ -411,7 +423,7 @@ func TestJWTAuthPropagatesUserID(t *testing.T) {
 
 	tokenStr, err := security.SignAccessToken(security.AccessClaims{
 		RegisteredClaims: jwt.RegisteredClaims{Subject: "42"},
-	}, "test-secret")
+	}, "test-secret", "hotkey-server", "hotkey-web")
 	if err != nil {
 		t.Fatalf("failed to sign token: %v", err)
 	}
@@ -600,7 +612,7 @@ func TestRespondErrorCodeUsesRegisteredHTTPStatus(t *testing.T) {
 	r := gin.New()
 	r.Use(platformhttp.RequestIDMiddleware())
 	r.GET("/registered-error", func(c *gin.Context) {
-		platformhttp.RespondErrorCode(c, enum.ErrorCodeNotFound, "monitor not found", nil)
+		platformhttp.RespondError(c, enum.ErrorCodeNotFound, "monitor not found")
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/registered-error", nil)
@@ -822,6 +834,8 @@ func TestRespondPageWrapsPaginationAndRequestID(t *testing.T) {
 func TestMonitorScopedEndpointsRejectOtherUsers(t *testing.T) {
 	router := controller.NewRouter(controller.Config{
 		JWTSecret:     "test-secret",
+		JWTIssuer:     "hotkey-server",
+		JWTAudience:   "hotkey-web",
 		SmokeTest:     false,
 		AuthService:   service.NewAuthService(&stubAuthRepo{}),
 		MonitorSvc:    service.NewMonitorService(&stubMonitorRepo{}, nil),
@@ -833,7 +847,7 @@ func TestMonitorScopedEndpointsRejectOtherUsers(t *testing.T) {
 
 	tokenStr, err := security.SignAccessToken(security.AccessClaims{
 		RegisteredClaims: jwt.RegisteredClaims{Subject: "2"},
-	}, "test-secret")
+	}, "test-secret", "hotkey-server", "hotkey-web")
 	if err != nil {
 		t.Fatalf("failed to sign token: %v", err)
 	}
@@ -880,6 +894,8 @@ func TestMonitorScopedEndpointsRejectOtherUsers(t *testing.T) {
 func TestMonitorScopedEndpointsReturn404ForNonexistentMonitor(t *testing.T) {
 	router := controller.NewRouter(controller.Config{
 		JWTSecret:     "test-secret",
+		JWTIssuer:     "hotkey-server",
+		JWTAudience:   "hotkey-web",
 		SmokeTest:     false,
 		AuthService:   service.NewAuthService(&stubAuthRepo{}),
 		MonitorSvc:    service.NewMonitorService(&stubMonitorRepo{}, nil),
@@ -891,7 +907,7 @@ func TestMonitorScopedEndpointsReturn404ForNonexistentMonitor(t *testing.T) {
 
 	tokenStr, err := security.SignAccessToken(security.AccessClaims{
 		RegisteredClaims: jwt.RegisteredClaims{Subject: "1"},
-	}, "test-secret")
+	}, "test-secret", "hotkey-server", "hotkey-web")
 	if err != nil {
 		t.Fatalf("failed to sign token: %v", err)
 	}
