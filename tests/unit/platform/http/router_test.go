@@ -199,8 +199,8 @@ func TestAuthEndpointsDoNotRequireAuth(t *testing.T) {
 	registerReq.Header.Set("Content-Type", "application/json")
 	registerRR := httptest.NewRecorder()
 	router.ServeHTTP(registerRR, registerReq)
-	if registerRR.Code != http.StatusCreated {
-		t.Fatalf("expected register 201 without auth, got %d: %s", registerRR.Code, registerRR.Body.String())
+	if registerRR.Code != http.StatusBadRequest {
+		t.Fatalf("expected public register validation response, got %d: %s", registerRR.Code, registerRR.Body.String())
 	}
 
 	loginBody := `{"email":"public-auth@example.com","password":"Passw0rd!"}`
@@ -208,52 +208,33 @@ func TestAuthEndpointsDoNotRequireAuth(t *testing.T) {
 	loginReq.Header.Set("Content-Type", "application/json")
 	loginRR := httptest.NewRecorder()
 	router.ServeHTTP(loginRR, loginReq)
-	if loginRR.Code != http.StatusOK {
-		t.Fatalf("expected login 200 without auth, got %d: %s", loginRR.Code, loginRR.Body.String())
+	if loginRR.Code != http.StatusUnauthorized {
+		t.Fatalf("expected public login business response, got %d: %s", loginRR.Code, loginRR.Body.String())
 	}
 }
 
-func TestRegisterReturns201(t *testing.T) {
-	handler := newTestHandler()
-	body := `{"email":"test@example.com","password":"Passw0rd!","display_name":"Test"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(body))
+func TestRegisterRejectsDirectEmailPayload(t *testing.T) {
+	router := controller.NewRouter(controller.Config{
+		AuthService: service.NewAuthService(&stubAuthRepo{}),
+		JWTSecret:   "test-secret",
+		JWTIssuer:   "hotkey-server",
+		JWTAudience: "hotkey-web",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{"email":"bypass@example.com","password":"Passw0rd!","display_name":"Bypass"}`))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Request-Id", "req-register")
 	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
+	router.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
-	}
-	var resp struct {
-		Data struct {
-			Email string `json:"email"`
-		} `json:"data"`
-		Code      int    `json:"code"`
-		RequestID string `json:"request_id"`
-	}
-	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("decode register response: %v", err)
-	}
-	if resp.Data.Email != "test@example.com" {
-		t.Fatalf("expected wrapped register email, got %q", resp.Data.Email)
-	}
-	if resp.Code != rr.Code {
-		t.Fatalf("expected code SUCCESS, got %d", resp.Code)
-	}
+	assertExactEnvelope(t, rr, http.StatusBadRequest, enum.ErrorCodeAuthInvalidInput, "null")
 }
 
 func TestLoginReturns200(t *testing.T) {
-	handler := newTestHandler()
-	regBody := `{"email":"login@example.com","password":"Passw0rd!","display_name":"Login"}`
-	regReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(regBody))
-	regReq.Header.Set("Content-Type", "application/json")
-	regRR := httptest.NewRecorder()
-	handler.ServeHTTP(regRR, regReq)
-
-	if regRR.Code != http.StatusCreated {
-		t.Fatalf("register failed: %d", regRR.Code)
+	passwordHash, err := security.HashPassword("Passw0rd!")
+	if err != nil {
+		t.Fatal(err)
 	}
+	repo := &stubAuthRepo{users: []dto.User{{ID: 1, Email: "login@example.com", PasswordHash: passwordHash, Status: "active"}}}
+	handler := controller.NewRouter(controller.Config{AuthService: service.NewAuthService(repo), JWTSecret: "test-secret", JWTIssuer: "hotkey-server", JWTAudience: "hotkey-web"})
 
 	loginBody := `{"email":"login@example.com","password":"Passw0rd!"}`
 	loginReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(loginBody))
