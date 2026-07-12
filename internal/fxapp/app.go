@@ -71,10 +71,9 @@ func NewApp() *fx.App {
 		fx.Provide(service.NewEmailMailerAdapter),
 		fx.Provide(func() service.Clock { return service.RealClock{} }),
 		fx.Provide(func() service.CodeGenerator { return service.RealCodeGenerator{} }),
-		fx.Provide(fx.Annotate(service.NewVerificationService,
-			fx.As(new(service.VerificationManager)),
-			fx.As(new(service.TicketVerifier)),
-		)),
+		fx.Provide(fx.Annotate(func(cfg *config.Config, rdb *redis.Client, mailer service.Mailer, clock service.Clock, codeGen service.CodeGenerator, userLook service.UserLookup) *service.VerificationService {
+			return service.NewVerificationService(rdb, cfg.VerificationPepper, mailer, clock, codeGen, userLook)
+		}, fx.As(new(service.VerificationManager)), fx.As(new(service.TicketVerifier)))),
 
 		// Business services
 		fx.Provide(service.NewAuthServiceV2),
