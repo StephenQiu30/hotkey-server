@@ -13,7 +13,7 @@ import (
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 )
 
-func assertExactEnvelope(t *testing.T, rr *httptest.ResponseRecorder, status int, errorCode enum.ErrorCode, data string) {
+func assertExactEnvelope(t *testing.T, rr *httptest.ResponseRecorder, status int, wantMessage string, data string) {
 	t.Helper()
 	if rr.Code != status {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
@@ -28,15 +28,18 @@ func assertExactEnvelope(t *testing.T, rr *httptest.ResponseRecorder, status int
 	if string(body["code"]) != strconv.Itoa(status) {
 		t.Fatalf("code=%s", body["code"])
 	}
-	wantErrorCode, _ := json.Marshal(errorCode)
-	if string(body["error_code"]) != string(wantErrorCode) {
-		t.Fatalf("error_code=%s", body["error_code"])
+	var msg string
+	if err := json.Unmarshal(body["message"], &msg); err != nil {
+		t.Fatalf("message parse error: %v (raw=%s)", err, body["message"])
+	}
+	if msg != wantMessage {
+		t.Fatalf("message=%q, want %q", msg, wantMessage)
 	}
 	if string(body["data"]) != data {
 		t.Fatalf("data=%s", body["data"])
 	}
-	if _, exists := body["message"]; exists {
-		t.Fatal("message must be absent")
+	if _, exists := body["error_code"]; exists {
+		t.Fatal("error_code must be absent")
 	}
 	if _, exists := body["request_id"]; exists {
 		t.Fatal("request_id must be absent")
@@ -55,16 +58,16 @@ func TestUnifiedResponseContract(t *testing.T) {
 	r.GET("/internal", func(c *gin.Context) { platformhttp.RespondInternalError(c) })
 
 	tests := []struct {
-		method    string
-		path      string
-		status    int
-		errorCode enum.ErrorCode
-		data      string
+		method  string
+		path    string
+		status  int
+		message string
+		data    string
 	}{
-		{http.MethodGet, "/ok", http.StatusOK, enum.ErrorCodeSuccess, `{"ok":true}`},
-		{http.MethodPost, "/created", http.StatusCreated, enum.ErrorCodeSuccess, `{"id":1}`},
-		{http.MethodGet, "/unauthorized", http.StatusUnauthorized, enum.ErrorCodeInvalidCredentials, `null`},
-		{http.MethodGet, "/internal", http.StatusInternalServerError, enum.ErrorCodeInternal, `null`},
+		{http.MethodGet, "/ok", http.StatusOK, "success", `{"ok":true}`},
+		{http.MethodPost, "/created", http.StatusCreated, "success", `{"id":1}`},
+		{http.MethodGet, "/unauthorized", http.StatusUnauthorized, "邮箱或密码错误", `null`},
+		{http.MethodGet, "/internal", http.StatusInternalServerError, "服务器内部错误", `null`},
 	}
 
 	for _, tt := range tests {
@@ -73,7 +76,7 @@ func TestUnifiedResponseContract(t *testing.T) {
 			req.Header.Set("X-Request-Id", "req-contract")
 			rr := httptest.NewRecorder()
 			r.ServeHTTP(rr, req)
-			assertExactEnvelope(t, rr, tt.status, tt.errorCode, tt.data)
+			assertExactEnvelope(t, rr, tt.status, tt.message, tt.data)
 			if rr.Header().Get("X-Request-Id") != "req-contract" {
 				t.Fatalf("response header request id=%q", rr.Header().Get("X-Request-Id"))
 			}
@@ -92,12 +95,18 @@ func TestUnifiedPageResponseContract(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"code", "error_code", "data", "page", "page_size", "total"} {
+	for _, key := range []string{"code", "message", "data", "page", "page_size", "total"} {
 		if _, exists := body[key]; !exists {
 			t.Fatalf("missing %s: %s", key, rr.Body.String())
 		}
 	}
 	if len(body) != 6 {
 		t.Fatalf("unexpected page envelope keys: %v", body)
+	}
+	if _, exists := body["error_code"]; exists {
+		t.Fatal("error_code must be absent")
+	}
+	if _, exists := body["request_id"]; exists {
+		t.Fatal("request_id must be absent")
 	}
 }

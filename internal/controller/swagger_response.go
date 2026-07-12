@@ -5,7 +5,6 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/content"
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
-	"github.com/StephenQiu30/hotkey-server/internal/model/enum"
 	"github.com/StephenQiu30/hotkey-server/internal/model/vo"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
@@ -19,77 +18,77 @@ var _ = platformhttp.ErrorBody{}
 type HealthResponse struct {
 	Data      vo.HealthBody  `json:"data"`
 	Code      int            `json:"code"`
-	ErrorCode enum.ErrorCode `json:"error_code"`
+	Message string `json:"message"`
 }
 
 // UserResponse wraps vo.UserData for swagger documentation.
 type UserResponse struct {
 	Data      vo.UserData    `json:"data"`
 	Code      int            `json:"code"`
-	ErrorCode enum.ErrorCode `json:"error_code"`
+	Message string `json:"message"`
 }
 
 // LoginResponse wraps vo.LoginData for swagger documentation.
 type LoginResponse struct {
 	Data      vo.LoginData   `json:"data"`
 	Code      int            `json:"code"`
-	ErrorCode enum.ErrorCode `json:"error_code"`
+	Message string `json:"message"`
 }
 
 // MonitorResponse wraps vo.MonitorData for swagger documentation.
 type MonitorResponse struct {
 	Data      vo.MonitorData `json:"data"`
 	Code      int            `json:"code"`
-	ErrorCode enum.ErrorCode `json:"error_code"`
+	Message string `json:"message"`
 }
 
 // MonitorListResponse wraps a list of MonitorData for swagger documentation.
 type MonitorListResponse struct {
 	Data      []vo.MonitorData `json:"data"`
 	Code      int              `json:"code"`
-	ErrorCode enum.ErrorCode   `json:"error_code"`
+	Message string   `json:"message"`
 }
 
 // PostListResponse wraps content.PostSummary for swagger documentation.
 type PostListResponse struct {
 	Data      []content.PostSummary `json:"data"`
 	Code      int                   `json:"code"`
-	ErrorCode enum.ErrorCode        `json:"error_code"`
+	Message string        `json:"message"`
 }
 
 // TopicListResponse wraps service.TopicSummary for swagger documentation.
 type TopicListResponse struct {
 	Data      []service.TopicSummary `json:"data"`
 	Code      int                    `json:"code"`
-	ErrorCode enum.ErrorCode         `json:"error_code"`
+	Message string         `json:"message"`
 }
 
 // TrendListResponse wraps service.TrendPoint for swagger documentation.
 type TrendListResponse struct {
 	Data      []service.TrendPoint `json:"data"`
 	Code      int                  `json:"code"`
-	ErrorCode enum.ErrorCode       `json:"error_code"`
+	Message string       `json:"message"`
 }
 
 // NotificationListResponse wraps vo.NotificationData for swagger documentation.
 type NotificationListResponse struct {
 	Data      []vo.NotificationData `json:"data"`
 	Code      int                   `json:"code"`
-	ErrorCode enum.ErrorCode        `json:"error_code"`
+	Message string        `json:"message"`
 }
 
 // MarkNotificationReadResponse wraps vo.MarkNotificationReadData for swagger documentation.
 type MarkNotificationReadResponse struct {
 	Data      vo.MarkNotificationReadData `json:"data"`
 	Code      int                         `json:"code"`
-	ErrorCode enum.ErrorCode              `json:"error_code"`
+	Message string              `json:"message"`
 }
 
 // ReportResponse wraps a report for swagger documentation.
 type ReportResponse struct {
 	Data      dto.Report     `json:"data"`
 	Code      int            `json:"code"`
-	ErrorCode enum.ErrorCode `json:"error_code"`
+	Message string `json:"message"`
 }
 
 // ReportListResponse wraps a paginated list of reports for swagger documentation.
@@ -115,7 +114,7 @@ type TrendingItem struct {
 type TrendingListResponse struct {
 	Data      []TrendingItem `json:"data"`
 	Code      int            `json:"code"`
-	ErrorCode enum.ErrorCode `json:"error_code"`
+	Message string `json:"message"`
 }
 
 // HotEventItem is a hot event list entry.
@@ -140,7 +139,7 @@ type HotEventListResponse struct {
 	Data      []HotEventItem `json:"data"`
 	Meta      HotEventMeta   `json:"meta"`
 	Code      int            `json:"code"`
-	ErrorCode enum.ErrorCode `json:"error_code"`
+	Message string `json:"message"`
 }
 
 // EventPlatformItem is a hot event platform entry.
@@ -171,28 +170,28 @@ type HotEventDetail struct {
 type HotEventResponse struct {
 	Data      HotEventDetail `json:"data"`
 	Code      int            `json:"code"`
-	ErrorCode enum.ErrorCode `json:"error_code"`
+	Message string `json:"message"`
 }
 
 // HotEventPostsResponse wraps event posts for swagger documentation.
 type HotEventPostsResponse struct {
 	Data      []service.PostBrief `json:"data"`
 	Code      int                 `json:"code"`
-	ErrorCode enum.ErrorCode      `json:"error_code"`
+	Message string      `json:"message"`
 }
 
 // AuthTokenResponse wraps vo.AuthTokenData for swagger documentation.
 type AuthTokenResponse struct {
 	Data      vo.AuthTokenData `json:"data"`
 	Code      int              `json:"code"`
-	ErrorCode enum.ErrorCode   `json:"error_code"`
+	Message string   `json:"message"`
 }
 
 // AuthenticatedUserResponse wraps vo.AuthenticatedUserData for swagger documentation.
 type AuthenticatedUserResponse struct {
 	Data      vo.AuthenticatedUserData `json:"data"`
 	Code      int                      `json:"code"`
-	ErrorCode enum.ErrorCode           `json:"error_code"`
+	Message string           `json:"message"`
 }
 
 // VerificationSendResponse wraps a verification code send response for swagger documentation.
@@ -201,7 +200,7 @@ type VerificationSendResponse struct {
 		Email string `json:"email"`
 	} `json:"data"`
 	Code      int            `json:"code"`
-	ErrorCode enum.ErrorCode `json:"error_code"`
+	Message string `json:"message"`
 }
 
 // VerificationTicketResponse wraps a verification ticket response for swagger documentation.
@@ -210,5 +209,5 @@ type VerificationTicketResponse struct {
 		Ticket string `json:"ticket"`
 	} `json:"data"`
 	Code      int            `json:"code"`
-	ErrorCode enum.ErrorCode `json:"error_code"`
+	Message string `json:"message"`
 }

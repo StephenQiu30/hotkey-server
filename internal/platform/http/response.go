@@ -10,33 +10,33 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/model/vo"
 )
 
-// RespondOK writes a 200 response with unified success body.
+// RespondOK writes a 200 response with unified body.
 func RespondOK(c *gin.Context, data any) {
 	c.JSON(http.StatusOK, vo.ResponseBody{
-		Code:      http.StatusOK,
-		ErrorCode: enum.ErrorCodeSuccess,
-		Data:      data,
+		Code:    http.StatusOK,
+		Message: "success",
+		Data:    data,
 	})
 }
 
-// RespondCreated writes a 201 response with unified success body.
+// RespondCreated writes a 201 response with unified body.
 func RespondCreated(c *gin.Context, data any) {
 	c.JSON(http.StatusCreated, vo.ResponseBody{
-		Code:      http.StatusCreated,
-		ErrorCode: enum.ErrorCodeSuccess,
-		Data:      data,
+		Code:    http.StatusCreated,
+		Message: "success",
+		Data:    data,
 	})
 }
 
 // RespondPage writes a 200 response with paginated body.
 func RespondPage(c *gin.Context, data any, page, pageSize, total int) {
 	c.JSON(http.StatusOK, vo.PageBody{
-		Code:      http.StatusOK,
-		ErrorCode: enum.ErrorCodeSuccess,
-		Data:      data,
-		Page:      page,
-		PageSize:  pageSize,
-		Total:     total,
+		Code:     http.StatusOK,
+		Message:  "success",
+		Data:     data,
+		Page:     page,
+		PageSize: pageSize,
+		Total:    total,
 	})
 }
 
@@ -46,18 +46,18 @@ func RespondError(c *gin.Context, code enum.ErrorCode, message string) {
 	spec := GetErrorSpec(code)
 	_ = message // Kept until callers migrate; public responses never expose text.
 	c.JSON(spec.HTTPStatus, vo.ResponseBody{
-		Code:      spec.HTTPStatus,
-		ErrorCode: code,
-		Data:      nil,
+		Code:    spec.HTTPStatus,
+		Message: spec.Message,
+		Data:    nil,
 	})
 }
 
 // RespondInternalError writes a generic 500 error using the unified envelope.
 func RespondInternalError(c *gin.Context) {
 	c.JSON(http.StatusInternalServerError, vo.ResponseBody{
-		Code:      http.StatusInternalServerError,
-		ErrorCode: enum.ErrorCodeInternal,
-		Data:      nil,
+		Code:    http.StatusInternalServerError,
+		Message: "服务器内部错误",
+		Data:    nil,
 	})
 }
 
@@ -67,15 +67,15 @@ func RespondAppError(c *gin.Context, err error) {
 	if errors.As(err, &coded) {
 		code := coded.ErrorCode()
 		spec := GetErrorSpec(code)
-		c.JSON(spec.HTTPStatus, vo.ResponseBody{Code: spec.HTTPStatus, ErrorCode: code, Data: nil})
+		c.JSON(spec.HTTPStatus, vo.ResponseBody{Code: spec.HTTPStatus, Message: spec.Message, Data: nil})
 		return
 	}
 	var appErr *AppError
 	if errors.As(err, &appErr) {
 		c.JSON(appErr.HTTPStatus, vo.ResponseBody{
-			Code:      appErr.HTTPStatus,
-			ErrorCode: appErr.Code,
-			Data:      nil,
+			Code:    appErr.HTTPStatus,
+			Message: appErr.Message,
+			Data:    nil,
 		})
 		return
 	}
@@ -104,9 +104,9 @@ func ErrorHandlerMiddleware() gin.HandlerFunc {
 
 		// Unknown error type - use internal error
 		c.JSON(http.StatusInternalServerError, vo.ResponseBody{
-			Code:      http.StatusInternalServerError,
-			ErrorCode: enum.ErrorCodeInternal,
-			Data:      nil,
+			Code:    http.StatusInternalServerError,
+			Message: "服务器内部错误",
+			Data:    nil,
 		})
 		c.Abort()
 	}

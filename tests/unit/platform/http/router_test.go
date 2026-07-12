@@ -144,7 +144,7 @@ func TestHealthEndpoint(t *testing.T) {
 			Status string `json:"status"`
 		} `json:"data"`
 		Code      int    `json:"code"`
-		RequestID string `json:"request_id"`
+		Message string `json:"message"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
 		t.Fatalf("expected JSON body, got %v: %s", err, rr.Body.String())
@@ -225,7 +225,7 @@ func TestRegisterRejectsDirectEmailPayload(t *testing.T) {
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 
-	assertExactEnvelope(t, rr, http.StatusBadRequest, enum.ErrorCodeAuthInvalidInput, "null")
+	assertExactEnvelope(t, rr, http.StatusBadRequest, "认证输入无效", "null")
 }
 
 func TestLoginReturns200(t *testing.T) {
@@ -326,7 +326,7 @@ func TestUnauthorizedBusinessRouteIncludesStableErrorCode(t *testing.T) {
 	var body struct {
 		Code      int             `json:"code"`
 		Data      json.RawMessage `json:"data"`
-		RequestID string          `json:"request_id"`
+		Message string `json:"message"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
 		t.Fatalf("expected JSON body, got %v: %s", err, rr.Body.String())
@@ -426,7 +426,7 @@ func TestSmokeBypassAuth(t *testing.T) {
 			var body struct {
 				Code      int             `json:"code"`
 				Data      json.RawMessage `json:"data"`
-				RequestID string          `json:"request_id"`
+				Message string `json:"message"`
 			}
 			if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
 				t.Fatalf("expected JSON envelope, got %v: %s", err, rr.Body.String())
@@ -456,7 +456,7 @@ func TestMarkNotificationReadReturnsUnifiedEnvelope(t *testing.T) {
 			Read bool `json:"read"`
 		} `json:"data"`
 		Code      int    `json:"code"`
-		RequestID string `json:"request_id"`
+		Message string `json:"message"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
 		t.Fatalf("expected JSON envelope, got %v: %s", err, rr.Body.String())
@@ -490,7 +490,7 @@ func TestRecoverMiddlewareReturnsUnifiedErrorBody(t *testing.T) {
 	var body struct {
 		Code      int             `json:"code"`
 		Data      json.RawMessage `json:"data"`
-		RequestID string          `json:"request_id"`
+		Message string `json:"message"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
 		t.Fatalf("expected JSON body, got %v: %s", err, rr.Body.String())
@@ -528,7 +528,7 @@ func TestRespondAppErrorUsesCodeStatusMessageAndRequestID(t *testing.T) {
 	var body struct {
 		Code      int             `json:"code"`
 		Data      json.RawMessage `json:"data"`
-		RequestID string          `json:"request_id"`
+		Message string `json:"message"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
 		t.Fatalf("expected JSON body, got %v: %s", err, rr.Body.String())
@@ -562,7 +562,7 @@ func TestRespondErrorCodeUsesRegisteredHTTPStatus(t *testing.T) {
 	var body struct {
 		Code      int             `json:"code"`
 		Data      json.RawMessage `json:"data"`
-		RequestID string          `json:"request_id"`
+		Message string `json:"message"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
 		t.Fatalf("expected JSON body, got %v: %s", err, rr.Body.String())
@@ -605,7 +605,7 @@ func TestRequestIDMiddlewareInjectsRequestAndTraceContext(t *testing.T) {
 	}
 
 	var body struct {
-		RequestID string `json:"request_id"`
+		Message string `json:"message"`
 		TraceID   string `json:"trace_id"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
@@ -735,7 +735,7 @@ func TestRespondPageWrapsPaginationAndRequestID(t *testing.T) {
 		PageSize  int      `json:"page_size"`
 		Total     int      `json:"total"`
 		Code      int      `json:"code"`
-		RequestID string   `json:"request_id"`
+		Message string `json:"message"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
 		t.Fatalf("expected JSON body, got %v: %s", err, rr.Body.String())
@@ -795,7 +795,7 @@ func TestMonitorScopedEndpointsRejectOtherUsers(t *testing.T) {
 			var body struct {
 				Code      int             `json:"code"`
 				Data      json.RawMessage `json:"data"`
-				RequestID string          `json:"request_id"`
+				Message string `json:"message"`
 			}
 			if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
 				t.Fatalf("expected JSON body, got %v: %s", err, rr.Body.String())
@@ -851,7 +851,7 @@ func TestMonitorScopedEndpointsReturn404ForNonexistentMonitor(t *testing.T) {
 			var body struct {
 				Code      int             `json:"code"`
 				Data      json.RawMessage `json:"data"`
-				RequestID string          `json:"request_id"`
+				Message string `json:"message"`
 			}
 			if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
 				t.Fatalf("expected JSON body, got %v: %s", err, rr.Body.String())

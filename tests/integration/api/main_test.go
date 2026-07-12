@@ -210,12 +210,11 @@ func TestIntegrationRegisterRejectsLegacyPayload(t *testing.T) {
 }
 
 // decodeData extracts the data payload from the unified response envelope.
-// It now also handles the new envelope with code/message fields.
 func decodeData(resp *http.Response, out any) error {
 	var envelope struct {
-		Code      int             `json:"code"`
-		Data      json.RawMessage `json:"data"`
-		RequestID string          `json:"request_id"`
+		Code    int             `json:"code"`
+		Data    json.RawMessage `json:"data"`
+		Message string          `json:"message"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		return err
@@ -245,7 +244,7 @@ func TestIntegrationProtectedEndpointRejectsNoToken(t *testing.T) {
 	var body struct {
 		Code      int             `json:"code"`
 		Data      json.RawMessage `json:"data"`
-		RequestID string          `json:"request_id"`
+		Message string          `json:"message"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode error body: %v", err)
@@ -256,7 +255,7 @@ func TestIntegrationProtectedEndpointRejectsNoToken(t *testing.T) {
 }
 
 // TestUnifiedEnvelope verifies all API responses use the unified envelope
-// with code, message, data, and request_id fields.
+// with code, message, data fields.
 func TestUnifiedEnvelope(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -287,7 +286,7 @@ func TestUnifiedEnvelope(t *testing.T) {
 		var body struct {
 			Code      int             `json:"code"`
 			Data      json.RawMessage `json:"data"`
-			RequestID string          `json:"request_id"`
+			Message string          `json:"message"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 			t.Fatalf("decode ok: %v", err)
@@ -314,7 +313,7 @@ func TestUnifiedEnvelope(t *testing.T) {
 			Page      int             `json:"page"`
 			PageSize  int             `json:"page_size"`
 			Total     int             `json:"total"`
-			RequestID string          `json:"request_id"`
+			Message string          `json:"message"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 			t.Fatalf("decode page: %v", err)
@@ -342,7 +341,7 @@ func TestUnifiedEnvelope(t *testing.T) {
 		var body struct {
 			Code      int             `json:"code"`
 			Data      json.RawMessage `json:"data"`
-			RequestID string          `json:"request_id"`
+			Message string          `json:"message"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 			t.Fatalf("decode error: %v", err)
@@ -531,7 +530,7 @@ func TestJWTMissing(t *testing.T) {
 	var body struct {
 		Code      int             `json:"code"`
 		Data      json.RawMessage `json:"data"`
-		RequestID string          `json:"request_id"`
+		Message string          `json:"message"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode error body: %v", err)
@@ -570,7 +569,7 @@ func TestJWTInvalid(t *testing.T) {
 	var body struct {
 		Code      int             `json:"code"`
 		Data      json.RawMessage `json:"data"`
-		RequestID string          `json:"request_id"`
+		Message string          `json:"message"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode error body: %v", err)
@@ -623,7 +622,7 @@ func TestJWTWrongAudience(t *testing.T) {
 	var body struct {
 		Code      int             `json:"code"`
 		Data      json.RawMessage `json:"data"`
-		RequestID string          `json:"request_id"`
+		Message string          `json:"message"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode error body: %v", err)
@@ -653,7 +652,7 @@ func TestNotFoundHandler(t *testing.T) {
 	var body struct {
 		Code      int             `json:"code"`
 		Data      json.RawMessage `json:"data"`
-		RequestID string          `json:"request_id"`
+		Message string          `json:"message"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode error body: %v", err)
@@ -696,7 +695,7 @@ func TestMethodNotAllowedHandler(t *testing.T) {
 	var body struct {
 		Code      int             `json:"code"`
 		Data      json.RawMessage `json:"data"`
-		RequestID string          `json:"request_id"`
+		Message string          `json:"message"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode error body: %v", err)
@@ -742,7 +741,7 @@ func TestRecoveryMiddleware(t *testing.T) {
 	var body struct {
 		Code      int             `json:"code"`
 		Data      json.RawMessage `json:"data"`
-		RequestID string          `json:"request_id"`
+		Message string          `json:"message"`
 	}
 	if err := json.Unmarshal(bodyBytes.Bytes(), &body); err != nil {
 		t.Fatalf("decode error body: %v (body: %s)", err, bodyStr)

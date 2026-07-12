@@ -114,10 +114,10 @@ func requestIDFromContext(c *gin.Context) string {
 	return c.GetHeader("X-Request-Id")
 }
 
-// ErrorBody is the deprecated error response type kept for swagger doc compatibility.
+// ErrorBody is the error response type used for swagger documentation.
 // New code should use vo.ResponseBody directly.
 type ErrorBody struct {
-	Code      int            `json:"code"`
-	ErrorCode enum.ErrorCode `json:"error_code"`
-	Data      any            `json:"data"`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    any    `json:"data"`
 }
