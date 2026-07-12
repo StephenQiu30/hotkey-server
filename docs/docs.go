@@ -192,12 +192,12 @@ const docTemplate = `{
                 "operationId": "register",
                 "parameters": [
                     {
-                        "description": "Register payload (legacy) or VerificationTicket payload",
+                        "description": "Verified registration payload",
                         "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_dto.RegisterRequest"
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_dto.EmailRegisterRequest"
                         }
                     }
                 ],
@@ -205,7 +205,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/internal_controller.UserResponse"
+                            "$ref": "#/definitions/internal_controller.LoginResponse"
                         }
                     },
                     "400": {
@@ -1569,8 +1569,34 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_StephenQiu30_hotkey-server_internal_model_dto.EmailRegisterRequest": {
+            "type": "object",
+            "required": [
+                "display_name",
+                "password",
+                "verification_ticket"
+            ],
+            "properties": {
+                "display_name": {
+                    "type": "string",
+                    "maxLength": 80
+                },
+                "password": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "minLength": 8
+                },
+                "verification_ticket": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_StephenQiu30_hotkey-server_internal_model_dto.LoginRequest": {
             "type": "object",
+            "required": [
+                "email",
+                "password"
+            ],
             "properties": {
                 "email": {
                     "type": "string",
@@ -1596,23 +1622,6 @@ const docTemplate = `{
                 },
                 "reset_token": {
                     "type": "string"
-                }
-            }
-        },
-        "github_com_StephenQiu30_hotkey-server_internal_model_dto.RegisterRequest": {
-            "type": "object",
-            "properties": {
-                "display_name": {
-                    "type": "string",
-                    "example": "Stephen"
-                },
-                "email": {
-                    "type": "string",
-                    "example": "user@example.com"
-                },
-                "password": {
-                    "type": "string",
-                    "example": "Passw0rd!"
                 }
             }
         },
@@ -1731,6 +1740,73 @@ const docTemplate = `{
                     ]
                 }
             }
+        },
+        "github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode": {
+            "type": "string",
+            "enum": [
+                "SUCCESS",
+                "BAD_REQUEST",
+                "UNAUTHORIZED",
+                "FORBIDDEN",
+                "NOT_FOUND",
+                "CONFLICT",
+                "INTERNAL_ERROR",
+                "RATE_LIMITED",
+                "SERVICE_UNAVAILABLE",
+                "METHOD_NOT_ALLOWED",
+                "AUTH_INVALID_INPUT",
+                "AUTH_INVALID_CREDENTIALS",
+                "AUTH_EMAIL_ALREADY_REGISTERED",
+                "AUTH_VERIFICATION_INVALID",
+                "AUTH_VERIFICATION_EXPIRED",
+                "AUTH_VERIFICATION_TOO_MANY_ATTEMPTS",
+                "AUTH_VERIFICATION_SEND_TOO_FREQUENT",
+                "AUTH_SESSION_EXPIRED",
+                "AUTH_SESSION_REVOKED",
+                "AUTH_TOKEN_INVALID",
+                "AUTH_TOKEN_REUSED",
+                "AUTH_ACCOUNT_DISABLED",
+                "AUTH_PASSWORD_POLICY_VIOLATION",
+                "AUTH_EMAIL_ALREADY_REGISTERED",
+                "AUTH_VERIFICATION_INVALID",
+                "AUTH_SESSION_EXPIRED",
+                "AUTH_SESSION_REVOKED",
+                "AUTH_PASSWORD_POLICY_VIOLATION",
+                "AUTH_INVALID_INPUT",
+                "AUTH_VERIFICATION_INVALID"
+            ],
+            "x-enum-varnames": [
+                "ErrorCodeSuccess",
+                "ErrorCodeBadRequest",
+                "ErrorCodeUnauthorized",
+                "ErrorCodeForbidden",
+                "ErrorCodeNotFound",
+                "ErrorCodeConflict",
+                "ErrorCodeInternal",
+                "ErrorCodeRateLimited",
+                "ErrorCodeServiceUnavailable",
+                "ErrorCodeMethodNotAllowed",
+                "ErrorCodeAuthInvalidInput",
+                "ErrorCodeInvalidCredentials",
+                "ErrorCodeEmailAlreadyRegistered",
+                "ErrorCodeVerificationInvalid",
+                "ErrorCodeVerificationExpired",
+                "ErrorCodeVerificationTooManyAttempts",
+                "ErrorCodeVerificationSendTooFrequent",
+                "ErrorCodeSessionExpired",
+                "ErrorCodeSessionRevoked",
+                "ErrorCodeTokenInvalid",
+                "ErrorCodeTokenReused",
+                "ErrorCodeAccountDisabled",
+                "ErrorCodePasswordPolicyViolation",
+                "ErrorCodeEmailExists",
+                "ErrorCodeInvalidVerificationCode",
+                "ErrorCodeTokenExpired",
+                "ErrorCodeTokenRevoked",
+                "ErrorCodePasswordMismatch",
+                "ErrorCodeEmailNotVerified",
+                "ErrorCodeInvalidResetToken"
+            ]
         },
         "github_com_StephenQiu30_hotkey-server_internal_model_vo.AuthTokenData": {
             "type": "object",
@@ -1879,14 +1955,11 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "code": {
-                    "type": "string"
+                    "type": "integer"
                 },
                 "data": {},
-                "message": {
-                    "type": "string"
-                },
-                "request_id": {
-                    "type": "string"
+                "error_code": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
                 }
             }
         },
@@ -1956,22 +2029,28 @@ const docTemplate = `{
         "internal_controller.AuthTokenResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "integer"
+                },
                 "data": {
                     "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.AuthTokenData"
                 },
-                "request_id": {
-                    "type": "string"
+                "error_code": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
                 }
             }
         },
         "internal_controller.AuthenticatedUserResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "integer"
+                },
                 "data": {
                     "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.AuthenticatedUserData"
                 },
-                "request_id": {
-                    "type": "string"
+                "error_code": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
                 }
             }
         },
@@ -1998,11 +2077,14 @@ const docTemplate = `{
         "internal_controller.HealthResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "integer"
+                },
                 "data": {
                     "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.HealthBody"
                 },
-                "request_id": {
-                    "type": "string"
+                "error_code": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
                 }
             }
         },
@@ -2079,17 +2161,20 @@ const docTemplate = `{
         "internal_controller.HotEventListResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "integer"
+                },
                 "data": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/internal_controller.HotEventItem"
                     }
                 },
+                "error_code": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
+                },
                 "meta": {
                     "$ref": "#/definitions/internal_controller.HotEventMeta"
-                },
-                "request_id": {
-                    "type": "string"
                 }
             }
         },
@@ -2104,120 +2189,147 @@ const docTemplate = `{
         "internal_controller.HotEventPostsResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "integer"
+                },
                 "data": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_service.PostBrief"
                     }
                 },
-                "request_id": {
-                    "type": "string"
+                "error_code": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
                 }
             }
         },
         "internal_controller.HotEventResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "integer"
+                },
                 "data": {
                     "$ref": "#/definitions/internal_controller.HotEventDetail"
                 },
-                "request_id": {
-                    "type": "string"
+                "error_code": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
                 }
             }
         },
         "internal_controller.LoginResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "integer"
+                },
                 "data": {
                     "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.LoginData"
                 },
-                "request_id": {
-                    "type": "string"
+                "error_code": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
                 }
             }
         },
         "internal_controller.MarkNotificationReadResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "integer"
+                },
                 "data": {
                     "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.MarkNotificationReadData"
                 },
-                "request_id": {
-                    "type": "string"
+                "error_code": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
                 }
             }
         },
         "internal_controller.MonitorListResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "integer"
+                },
                 "data": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.MonitorData"
                     }
                 },
-                "request_id": {
-                    "type": "string"
+                "error_code": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
                 }
             }
         },
         "internal_controller.MonitorResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "integer"
+                },
                 "data": {
                     "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.MonitorData"
                 },
-                "request_id": {
-                    "type": "string"
+                "error_code": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
                 }
             }
         },
         "internal_controller.NotificationListResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "integer"
+                },
                 "data": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.NotificationData"
                     }
                 },
-                "request_id": {
-                    "type": "string"
+                "error_code": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
                 }
             }
         },
         "internal_controller.PostListResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "integer"
+                },
                 "data": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_content.PostSummary"
                     }
                 },
-                "request_id": {
-                    "type": "string"
+                "error_code": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
                 }
             }
         },
         "internal_controller.ReportListResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "integer"
+                },
                 "data": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_dto.Report"
                     }
                 },
+                "message": {
+                    "type": "string"
+                },
                 "page": {
                     "type": "integer"
                 },
                 "page_size": {
                     "type": "integer"
-                },
-                "request_id": {
-                    "type": "string"
                 },
                 "total": {
                     "type": "integer"
@@ -2227,39 +2339,48 @@ const docTemplate = `{
         "internal_controller.ReportResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "integer"
+                },
                 "data": {
                     "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_dto.Report"
                 },
-                "request_id": {
-                    "type": "string"
+                "error_code": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
                 }
             }
         },
         "internal_controller.TopicListResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "integer"
+                },
                 "data": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_service.TopicSummary"
                     }
                 },
-                "request_id": {
-                    "type": "string"
+                "error_code": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
                 }
             }
         },
         "internal_controller.TrendListResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "integer"
+                },
                 "data": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_service.TrendPoint"
                     }
                 },
-                "request_id": {
-                    "type": "string"
+                "error_code": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
                 }
             }
         },
@@ -2286,50 +2407,45 @@ const docTemplate = `{
         "internal_controller.TrendingListResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "integer"
+                },
                 "data": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/internal_controller.TrendingItem"
                     }
                 },
-                "request_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_controller.UserResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.UserData"
-                },
-                "request_id": {
-                    "type": "string"
+                "error_code": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
                 }
             }
         },
         "internal_controller.VerificationSendResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "integer"
+                },
                 "data": {
                     "type": "object",
                     "properties": {
                         "email": {
                             "type": "string"
-                        },
-                        "message": {
-                            "type": "string"
                         }
                     }
                 },
-                "request_id": {
-                    "type": "string"
+                "error_code": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
                 }
             }
         },
         "internal_controller.VerificationTicketResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "integer"
+                },
                 "data": {
                     "type": "object",
                     "properties": {
@@ -2338,8 +2454,8 @@ const docTemplate = `{
                         }
                     }
                 },
-                "request_id": {
-                    "type": "string"
+                "error_code": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
                 }
             }
         }

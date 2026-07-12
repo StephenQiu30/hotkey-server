@@ -1,4 +1,4 @@
-.PHONY: test lint build validate validate-schema validate-arch smoke up down schema schema-rebuild dev ci
+.PHONY: test lint build validate validate-schema validate-arch openapi openapi-validate smoke up down schema schema-rebuild dev ci
 
 test:
 	go test ./... -v -count=1
@@ -18,7 +18,13 @@ validate-arch:
 	bash scripts/validate-architecture-boundaries.sh
 
 swagger:
-	swag init -g cmd/hotkey/main.go --output docs/ --parseInternal --parseDependency --parseDepth 2
+	$(MAKE) openapi
+
+openapi:
+	go run github.com/swaggo/swag/cmd/swag@v1.8.12 init -g cmd/hotkey/main.go --output docs/ --parseInternal --parseDependency --parseDepth 2
+
+openapi-validate:
+	bash scripts/validate-openapi.sh
 
 smoke:
 	bash scripts/smoke-api.sh
