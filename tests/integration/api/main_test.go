@@ -16,8 +16,8 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/model/enum"
-	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/security"
 	"github.com/StephenQiu30/hotkey-server/tests/testutil"
 )
@@ -211,8 +211,7 @@ func TestIntegrationRegisterReturnsRealFields(t *testing.T) {
 // It now also handles the new envelope with code/message fields.
 func decodeData(resp *http.Response, out any) error {
 	var envelope struct {
-		Code      string          `json:"code"`
-		Message   string          `json:"message"`
+		Code      int             `json:"code"`
 		Data      json.RawMessage `json:"data"`
 		RequestID string          `json:"request_id"`
 	}
@@ -242,19 +241,15 @@ func TestIntegrationProtectedEndpointRejectsNoToken(t *testing.T) {
 
 	// Verify error uses unified envelope
 	var body struct {
-		Code      string          `json:"code"`
-		Message   string          `json:"message"`
+		Code      int             `json:"code"`
 		Data      json.RawMessage `json:"data"`
 		RequestID string          `json:"request_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode error body: %v", err)
 	}
-	if body.Code != string(enum.ErrorCodeUnauthorized) {
-		t.Fatalf("expected UNAUTHORIZED code, got %q", body.Code)
-	}
-	if body.Message == "" {
-		t.Fatal("expected non-empty error message")
+	if body.Code != http.StatusUnauthorized {
+		t.Fatalf("expected UNAUTHORIZED code, got %d", body.Code)
 	}
 }
 
@@ -288,22 +283,15 @@ func TestUnifiedEnvelope(t *testing.T) {
 		defer resp.Body.Close()
 
 		var body struct {
-			Code      string          `json:"code"`
-			Message   string          `json:"message"`
+			Code      int             `json:"code"`
 			Data      json.RawMessage `json:"data"`
 			RequestID string          `json:"request_id"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 			t.Fatalf("decode ok: %v", err)
 		}
-		if body.Code != "SUCCESS" {
-			t.Fatalf("expected SUCCESS code, got %q", body.Code)
-		}
-		if body.Message != "success" {
-			t.Fatalf("expected success message, got %q", body.Message)
-		}
-		if body.RequestID == "" {
-			t.Fatal("expected non-empty request_id")
+		if body.Code != http.StatusOK {
+			t.Fatalf("expected SUCCESS code, got %d", body.Code)
 		}
 		if len(body.Data) == 0 {
 			t.Fatal("expected non-empty data")
@@ -319,8 +307,7 @@ func TestUnifiedEnvelope(t *testing.T) {
 		defer resp.Body.Close()
 
 		var body struct {
-			Code      string          `json:"code"`
-			Message   string          `json:"message"`
+			Code      int             `json:"code"`
 			Data      json.RawMessage `json:"data"`
 			Page      int             `json:"page"`
 			PageSize  int             `json:"page_size"`
@@ -330,11 +317,8 @@ func TestUnifiedEnvelope(t *testing.T) {
 		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 			t.Fatalf("decode page: %v", err)
 		}
-		if body.Code != "SUCCESS" {
-			t.Fatalf("expected SUCCESS code, got %q", body.Code)
-		}
-		if body.Message != "success" {
-			t.Fatalf("expected success message, got %q", body.Message)
+		if body.Code != http.StatusOK {
+			t.Fatalf("expected SUCCESS code, got %d", body.Code)
 		}
 		if body.Page != 1 || body.PageSize != 10 || body.Total != 2 {
 			t.Fatalf("unexpected pagination: page=%d page_size=%d total=%d", body.Page, body.PageSize, body.Total)
@@ -354,19 +338,15 @@ func TestUnifiedEnvelope(t *testing.T) {
 		}
 
 		var body struct {
-			Code      string          `json:"code"`
-			Message   string          `json:"message"`
+			Code      int             `json:"code"`
 			Data      json.RawMessage `json:"data"`
 			RequestID string          `json:"request_id"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 			t.Fatalf("decode error: %v", err)
 		}
-		if body.Code != "NOT_FOUND" {
-			t.Fatalf("expected NOT_FOUND code, got %q", body.Code)
-		}
-		if body.Message == "" {
-			t.Fatal("expected non-empty error message")
+		if body.Code != http.StatusNotFound {
+			t.Fatalf("expected NOT_FOUND code, got %d", body.Code)
 		}
 		if string(body.Data) != "null" {
 			t.Fatalf("expected null data on error, got %s", string(body.Data))
@@ -547,16 +527,15 @@ func TestJWTMissing(t *testing.T) {
 	}
 
 	var body struct {
-		Code      string          `json:"code"`
-		Message   string          `json:"message"`
+		Code      int             `json:"code"`
 		Data      json.RawMessage `json:"data"`
 		RequestID string          `json:"request_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode error body: %v", err)
 	}
-	if body.Code != string(enum.ErrorCodeUnauthorized) {
-		t.Errorf("expected UNAUTHORIZED code, got %q", body.Code)
+	if body.Code != http.StatusUnauthorized {
+		t.Errorf("expected UNAUTHORIZED code, got %d", body.Code)
 	}
 	if body.Data != nil && string(body.Data) != "null" {
 		t.Errorf("expected null data on error, got %s", string(body.Data))
@@ -587,16 +566,15 @@ func TestJWTInvalid(t *testing.T) {
 	}
 
 	var body struct {
-		Code      string          `json:"code"`
-		Message   string          `json:"message"`
+		Code      int             `json:"code"`
 		Data      json.RawMessage `json:"data"`
 		RequestID string          `json:"request_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode error body: %v", err)
 	}
-	if body.Code != string(enum.ErrorCodeUnauthorized) {
-		t.Errorf("expected UNAUTHORIZED code, got %q", body.Code)
+	if body.Code != http.StatusUnauthorized {
+		t.Errorf("expected UNAUTHORIZED code, got %d", body.Code)
 	}
 }
 
@@ -641,16 +619,15 @@ func TestJWTWrongAudience(t *testing.T) {
 	}
 
 	var body struct {
-		Code      string          `json:"code"`
-		Message   string          `json:"message"`
+		Code      int             `json:"code"`
 		Data      json.RawMessage `json:"data"`
 		RequestID string          `json:"request_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode error body: %v", err)
 	}
-	if body.Code != string(enum.ErrorCodeUnauthorized) {
-		t.Errorf("expected UNAUTHORIZED code, got %q", body.Code)
+	if body.Code != http.StatusUnauthorized {
+		t.Errorf("expected UNAUTHORIZED code, got %d", body.Code)
 	}
 }
 
@@ -672,19 +649,15 @@ func TestNotFoundHandler(t *testing.T) {
 	}
 
 	var body struct {
-		Code      string          `json:"code"`
-		Message   string          `json:"message"`
+		Code      int             `json:"code"`
 		Data      json.RawMessage `json:"data"`
 		RequestID string          `json:"request_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode error body: %v", err)
 	}
-	if body.Code != string(enum.ErrorCodeNotFound) {
-		t.Errorf("expected NOT_FOUND code, got %q", body.Code)
-	}
-	if body.Message == "" {
-		t.Error("expected non-empty error message")
+	if body.Code != http.StatusNotFound {
+		t.Errorf("expected NOT_FOUND code, got %d", body.Code)
 	}
 	if string(body.Data) != "null" {
 		t.Errorf("expected null data, got %s", string(body.Data))
@@ -719,19 +692,15 @@ func TestMethodNotAllowedHandler(t *testing.T) {
 	}
 
 	var body struct {
-		Code      string          `json:"code"`
-		Message   string          `json:"message"`
+		Code      int             `json:"code"`
 		Data      json.RawMessage `json:"data"`
 		RequestID string          `json:"request_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode error body: %v", err)
 	}
-	if body.Code != string(enum.ErrorCodeMethodNotAllowed) {
-		t.Errorf("expected METHOD_NOT_ALLOWED code, got %q", body.Code)
-	}
-	if body.Message == "" {
-		t.Error("expected non-empty error message")
+	if body.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected METHOD_NOT_ALLOWED code, got %d", body.Code)
 	}
 	if string(body.Data) != "null" {
 		t.Errorf("expected null data, got %s", string(body.Data))
@@ -769,19 +738,15 @@ func TestRecoveryMiddleware(t *testing.T) {
 	bodyStr := bodyBytes.String()
 
 	var body struct {
-		Code      string          `json:"code"`
-		Message   string          `json:"message"`
+		Code      int             `json:"code"`
 		Data      json.RawMessage `json:"data"`
 		RequestID string          `json:"request_id"`
 	}
 	if err := json.Unmarshal(bodyBytes.Bytes(), &body); err != nil {
 		t.Fatalf("decode error body: %v (body: %s)", err, bodyStr)
 	}
-	if body.Code != string(enum.ErrorCodeInternal) {
-		t.Errorf("expected INTERNAL_ERROR code, got %q", body.Code)
-	}
-	if body.Message == "" {
-		t.Error("expected non-empty error message")
+	if body.Code != http.StatusInternalServerError {
+		t.Errorf("expected INTERNAL_ERROR code, got %d", body.Code)
 	}
 	if string(body.Data) != "null" {
 		t.Errorf("expected null data, got %s", string(body.Data))
