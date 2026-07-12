@@ -2,15 +2,15 @@ package dto
 
 // RegisterRequest is the request body for POST /api/v1/auth/register.
 type RegisterRequest struct {
-	Email       string `json:"email" example:"user@example.com"`
-	Password    string `json:"password" example:"Passw0rd!"`
-	DisplayName string `json:"display_name" example:"Stephen"`
+	Email       string `json:"email" binding:"required,email" example:"user@example.com"`
+	Password    string `json:"password" binding:"required,min=8,max=128" example:"Passw0rd!"`
+	DisplayName string `json:"display_name" binding:"required,max=80" example:"Stephen"`
 }
 
 // LoginRequest is the request body for POST /api/v1/auth/login.
 type LoginRequest struct {
-	Email    string `json:"email" example:"user@example.com"`
-	Password string `json:"password" example:"Passw0rd!"`
+	Email    string `json:"email" binding:"required,email" example:"user@example.com"`
+	Password string `json:"password" binding:"required" example:"Passw0rd!"`
 }
 
 // VerificationSendRequest is the request body for sending a verification code.

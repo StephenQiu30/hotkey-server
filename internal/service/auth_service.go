@@ -97,6 +97,7 @@ func NewAuthServiceV2(repo UserRepository, verifier TicketVerifier, sessions Ses
 func (s *AuthService) RegisterVerified(ctx context.Context, ticket, password, displayName string, ip, ua string) (*AuthResult, error) {
 	// Validate password
 	if err := security.ValidatePassword(password); err != nil {
+		log.Printf("[auth] RegisterVerified: password validation failed: %v", err)
 		return nil, AuthErrInvalidInput
 	}
 
@@ -107,12 +108,14 @@ func (s *AuthService) RegisterVerified(ctx context.Context, ticket, password, di
 	}
 	if ticketData.Purpose != enum.VerificationPurposeRegister {
 		s.verifier.ReleaseTicket(ctx, ticket)
+		log.Printf("[auth] RegisterVerified: ticket purpose mismatch: expected %s, got %s", enum.VerificationPurposeRegister, ticketData.Purpose)
 		return nil, AuthErrInvalidInput
 	}
 
 	normalizedEmail, err := security.NormalizeEmail(ticketData.Email)
 	if err != nil {
 		s.verifier.ReleaseTicket(ctx, ticket)
+		log.Printf("[auth] RegisterVerified: email normalization failed for ticket %s: %v", ticket[:8]+"...", err)
 		return nil, AuthErrInvalidInput
 	}
 
@@ -135,6 +138,7 @@ func (s *AuthService) RegisterVerified(ctx context.Context, ticket, password, di
 		user, err := tx.Create(ctx, normalizedEmail, passwordHash, displayName)
 		if err != nil {
 			// Likely unique constraint violation
+			log.Printf("[auth] RegisterVerified: create user failed: %v", err)
 			return AuthErrEmailExists
 		}
 
@@ -171,6 +175,7 @@ func (s *AuthService) RegisterVerified(ctx context.Context, ticket, password, di
 func (s *AuthService) Login(ctx context.Context, email, password, ip, ua string) (*AuthResult, error) {
 	normalized, err := security.NormalizeEmail(email)
 	if err != nil {
+		log.Printf("[auth] Login: email normalization failed for %q: %v", email, err)
 		return nil, AuthErrInvalidCredentials
 	}
 
@@ -178,16 +183,19 @@ func (s *AuthService) Login(ctx context.Context, email, password, ip, ua string)
 	if err != nil || user == nil {
 		// Dummy bcrypt compare to prevent user enumeration (constant-time)
 		security.ComparePassword("$2a$10$invalidhash0000000000000000000000000000000000000000000", password)
+		log.Printf("[auth] Login: user %q not found", normalized)
 		return nil, AuthErrInvalidCredentials
 	}
 
 	// Constant-time password comparison
 	if err := security.ComparePassword(user.PasswordHash, password); err != nil {
+		log.Printf("[auth] Login: password mismatch for user %d", user.ID)
 		return nil, AuthErrInvalidCredentials
 	}
 
 	// Verify account status
 	if user.Status == string(enum.AccountStatusDisabled) {
+		log.Printf("[auth] Login: account disabled for user %d", user.ID)
 		return nil, AuthErrAccountDisabled
 	}
 
@@ -343,11 +351,13 @@ func NewAuthService(repo UserRepository) *AuthService {
 // RegisterVerified.
 func (s *AuthService) Register(ctx context.Context, input dto.RegisterInput) (dto.User, error) {
 	if err := security.ValidatePassword(input.Password); err != nil {
+		log.Printf("[auth] Register: password validation failed for %q: %v", input.Email, err)
 		return dto.User{}, AuthErrInvalidInput
 	}
 
 	normalizedEmail, err := security.NormalizeEmail(input.Email)
 	if err != nil {
+		log.Printf("[auth] Register: email normalization failed for %q: %v", input.Email, err)
 		return dto.User{}, AuthErrInvalidInput
 	}
 

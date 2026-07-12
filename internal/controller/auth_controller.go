@@ -2,12 +2,16 @@ package controller
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
+	"log"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
+	"github.com/go-playground/validator/v10"
 
 	"github.com/StephenQiu30/hotkey-server/internal/convert"
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
@@ -58,6 +62,45 @@ func parseRefreshCookie(cookieValue string) (sessionID int64, refreshToken strin
 }
 
 // ---------------------------------------------------------------------------
+// Validation helpers
+// ---------------------------------------------------------------------------
+
+// formatBindingError translates a JSON binding/validation error into a
+// human-readable message with the failing field name.
+func formatBindingError(err error) string {
+	var vErr validator.ValidationErrors
+	if errors.As(err, &vErr) && len(vErr) > 0 {
+		field := vErr[0].Field()
+		tag := vErr[0].ActualTag()
+		param := vErr[0].Param()
+
+		switch tag {
+		case "required":
+			return field + " is required"
+		case "email":
+			return field + " must be a valid email address"
+		case "min":
+			return field + " must be at least " + param + " characters"
+		case "max":
+			return field + " must be at most " + param + " characters"
+		case "len":
+			return field + " must be exactly " + param + " characters"
+		case "oneof":
+			return field + " must be one of: " + param
+		default:
+			return field + ": " + tag + " validation failed"
+		}
+	}
+
+	// Non-validation binding error — e.g. malformed JSON, wrong type.
+	msg := err.Error()
+	if strings.Contains(msg, "cannot unmarshal") || strings.Contains(msg, "unmarshal") {
+		return "invalid request body format"
+	}
+	return msg
+}
+
+// ---------------------------------------------------------------------------
 // Registration — supports both legacy (email) and ticket-based flows.
 // ---------------------------------------------------------------------------
 
@@ -77,6 +120,7 @@ func registerHandler(svc *service.AuthService, cookieCfg refreshCookieConfig) gi
 	return func(c *gin.Context) {
 		bodyBytes, err := io.ReadAll(c.Request.Body)
 		if err != nil {
+			log.Printf("[auth] register: failed to read body: %v", err)
 			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid request body")
 			return
 		}
@@ -85,6 +129,7 @@ func registerHandler(svc *service.AuthService, cookieCfg refreshCookieConfig) gi
 		// or an email field (legacy flow).
 		var raw map[string]interface{}
 		if err := json.Unmarshal(bodyBytes, &raw); err != nil {
+			log.Printf("[auth] register: invalid JSON: %v", err)
 			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid JSON")
 			return
 		}
@@ -92,8 +137,10 @@ func registerHandler(svc *service.AuthService, cookieCfg refreshCookieConfig) gi
 		if ticket, ok := raw["verification_ticket"].(string); ok && ticket != "" {
 			// ——— New ticket-based registration ———
 			var body dto.EmailRegisterRequest
-			if err := json.Unmarshal(bodyBytes, &body); err != nil {
-				platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid input")
+			if err := binding.JSON.BindBody(bodyBytes, &body); err != nil {
+				msg := formatBindingError(err)
+				log.Printf("[auth] register: ticket body validation failed: %v", err)
+				platformhttp.RespondError(c, enum.ErrorCodeBadRequest, msg)
 				return
 			}
 
@@ -108,6 +155,8 @@ func registerHandler(svc *service.AuthService, cookieCfg refreshCookieConfig) gi
 					platformhttp.RespondError(c, enum.ErrorCodeNotFound, "ticket not found")
 				case err == service.VerificationErrTicketClaimed:
 					platformhttp.RespondError(c, enum.ErrorCodeConflict, "ticket already claimed")
+				case err == service.VerificationErrInvalidCode:
+					platformhttp.RespondError(c, enum.ErrorCodeInvalidVerificationCode, "invalid verification code")
 				default:
 					platformhttp.RespondInternalError(c)
 				}
@@ -119,8 +168,10 @@ func registerHandler(svc *service.AuthService, cookieCfg refreshCookieConfig) gi
 		} else {
 			// ——— Legacy direct registration ———
 			var body dto.RegisterRequest
-			if err := json.Unmarshal(bodyBytes, &body); err != nil {
-				platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid input")
+			if err := binding.JSON.BindBody(bodyBytes, &body); err != nil {
+				msg := formatBindingError(err)
+				log.Printf("[auth] register: legacy body validation failed: %v", err)
+				platformhttp.RespondError(c, enum.ErrorCodeBadRequest, msg)
 				return
 			}
 
@@ -166,7 +217,9 @@ func loginHandler(svc *service.AuthService, jwtSecret, jwtIssuer, jwtAudience st
 	return func(c *gin.Context) {
 		var body dto.LoginRequest
 		if err := c.ShouldBindJSON(&body); err != nil {
-			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid input")
+			msg := formatBindingError(err)
+			log.Printf("[auth] login: body validation failed: %v", err)
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, msg)
 			return
 		}
 
@@ -344,7 +397,9 @@ func sendVerificationHandler(svc *service.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body dto.VerificationSendRequest
 		if err := c.ShouldBindJSON(&body); err != nil {
-			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid input")
+			msg := formatBindingError(err)
+			log.Printf("[auth] sendVerification: body validation failed: %v", err)
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, msg)
 			return
 		}
 
@@ -390,7 +445,9 @@ func confirmVerificationHandler(svc *service.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body dto.VerificationConfirmRequest
 		if err := c.ShouldBindJSON(&body); err != nil {
-			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid input")
+			msg := formatBindingError(err)
+			log.Printf("[auth] confirmVerification: body validation failed: %v", err)
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, msg)
 			return
 		}
 
@@ -434,7 +491,9 @@ func resetPasswordHandler(svc *service.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body dto.PasswordResetRequest
 		if err := c.ShouldBindJSON(&body); err != nil {
-			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid input")
+			msg := formatBindingError(err)
+			log.Printf("[auth] resetPassword: body validation failed: %v", err)
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, msg)
 			return
 		}
 
