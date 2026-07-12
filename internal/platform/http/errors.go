@@ -30,16 +30,19 @@ var errorSpecs = map[enum.ErrorCode]ErrorSpec{
 	enum.ErrorCodeMethodNotAllowed:   {HTTPStatus: http.StatusMethodNotAllowed, Message: "请求方法不允许"},
 
 	// Auth
-	enum.ErrorCodeInvalidCredentials:      {HTTPStatus: http.StatusUnauthorized, Message: "邮箱或密码错误", SecurityEvent: true},
-	enum.ErrorCodeEmailExists:             {HTTPStatus: http.StatusConflict, Message: "该邮箱已被注册"},
-	enum.ErrorCodeInvalidVerificationCode: {HTTPStatus: http.StatusBadRequest, Message: "验证码错误或已过期"},
-	enum.ErrorCodeTokenExpired:            {HTTPStatus: http.StatusUnauthorized, Message: "令牌已过期，请重新登录", SecurityEvent: true},
-	enum.ErrorCodeTokenRevoked:            {HTTPStatus: http.StatusUnauthorized, Message: "令牌已被撤销", SecurityEvent: true},
-	enum.ErrorCodeSessionExpired:          {HTTPStatus: http.StatusUnauthorized, Message: "会话已过期，请重新登录"},
-	enum.ErrorCodePasswordMismatch:        {HTTPStatus: http.StatusBadRequest, Message: "密码不匹配"},
-	enum.ErrorCodeEmailNotVerified:        {HTTPStatus: http.StatusForbidden, Message: "邮箱未验证"},
-	enum.ErrorCodeAccountDisabled:         {HTTPStatus: http.StatusForbidden, Message: "账户已被禁用", SecurityEvent: true},
-	enum.ErrorCodeInvalidResetToken:       {HTTPStatus: http.StatusBadRequest, Message: "重置令牌无效或已过期"},
+	enum.ErrorCodeAuthInvalidInput:            {HTTPStatus: http.StatusBadRequest, Message: "认证输入无效"},
+	enum.ErrorCodeInvalidCredentials:          {HTTPStatus: http.StatusUnauthorized, Message: "邮箱或密码错误", SecurityEvent: true},
+	enum.ErrorCodeEmailAlreadyRegistered:      {HTTPStatus: http.StatusConflict, Message: "该邮箱已被注册"},
+	enum.ErrorCodeVerificationInvalid:         {HTTPStatus: http.StatusBadRequest, Message: "验证码或票据无效"},
+	enum.ErrorCodeVerificationExpired:         {HTTPStatus: http.StatusBadRequest, Message: "验证码或票据已过期"},
+	enum.ErrorCodeVerificationTooManyAttempts: {HTTPStatus: http.StatusTooManyRequests, Message: "验证码错误次数过多", Retryable: true},
+	enum.ErrorCodeVerificationSendTooFrequent: {HTTPStatus: http.StatusTooManyRequests, Message: "验证码发送过于频繁", Retryable: true},
+	enum.ErrorCodeSessionExpired:              {HTTPStatus: http.StatusUnauthorized, Message: "会话已过期，请重新登录", SecurityEvent: true},
+	enum.ErrorCodeSessionRevoked:              {HTTPStatus: http.StatusUnauthorized, Message: "会话已撤销", SecurityEvent: true},
+	enum.ErrorCodeTokenInvalid:                {HTTPStatus: http.StatusUnauthorized, Message: "令牌无效", SecurityEvent: true},
+	enum.ErrorCodeTokenReused:                 {HTTPStatus: http.StatusUnauthorized, Message: "令牌已被重复使用", SecurityEvent: true},
+	enum.ErrorCodeAccountDisabled:             {HTTPStatus: http.StatusForbidden, Message: "账户已被禁用", SecurityEvent: true},
+	enum.ErrorCodePasswordPolicyViolation:     {HTTPStatus: http.StatusBadRequest, Message: "密码不符合安全策略"},
 }
 
 // GetErrorSpec returns the ErrorSpec for the given code, or a generic fallback.
@@ -114,8 +117,7 @@ func requestIDFromContext(c *gin.Context) string {
 // ErrorBody is the deprecated error response type kept for swagger doc compatibility.
 // New code should use vo.ResponseBody directly.
 type ErrorBody struct {
-	Code      string `json:"code"`
-	Message   string `json:"message"`
-	Data      any    `json:"data"`
-	RequestID string `json:"request_id"`
+	Code      int            `json:"code"`
+	ErrorCode enum.ErrorCode `json:"error_code"`
+	Data      any            `json:"data"`
 }
