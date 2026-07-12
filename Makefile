@@ -1,4 +1,4 @@
-.PHONY: test lint build validate validate-schema validate-arch smoke up down schema dev ci
+.PHONY: test lint build validate validate-schema validate-arch smoke up down schema schema-rebuild dev ci
 
 test:
 	go test ./... -v -count=1
@@ -33,6 +33,9 @@ down:
 
 schema:
 	bash scripts/apply-schema.sh
+
+schema-rebuild:
+	bash db/tables/build.sh
 
 dev:
 	bash scripts/dev.sh

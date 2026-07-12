@@ -1,7 +1,12 @@
--- hotkey-server PostgreSQL schema
--- Single source of truth for all table definitions (24 tables).
 
--- users & monitors
+-- hotkey-server PostgreSQL schema
+-- ----
+-- Auto-generated from db/tables/*.sql — do not edit directly.
+-- Regenerate: make schema-rebuild  (bash db/tables/build.sh)
+-- ----
+-- Single source of truth for all table definitions (30 tables).
+
+create extension if not exists vector;
 
 create table users (
   id bigserial primary key,
@@ -18,6 +23,12 @@ create table users (
   updated_at timestamptz not null default now()
 );
 
+
+alter table users add column if not exists verification_status text not null default 'unverified';
+alter table users add column if not exists email_verified_at timestamptz;
+alter table users add column if not exists password_changed_at timestamptz;
+alter table users add column if not exists last_login_at timestamptz;
+
 create table auth_sessions (
   id bigserial primary key,
   user_id bigint not null references users(id) on delete cascade,
@@ -32,6 +43,8 @@ create table auth_sessions (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+
 
 create index idx_auth_sessions_user_id on auth_sessions(user_id);
 create index idx_auth_sessions_family_hash on auth_sessions(family_hash);
@@ -53,6 +66,10 @@ create table keyword_monitors (
   updated_at timestamptz not null default now()
 );
 
+
+
+alter table keyword_monitors add column if not exists query_embedding vector(384);
+
 create index idx_keyword_monitors_user_id on keyword_monitors(user_id);
 create index idx_keyword_monitors_status on keyword_monitors(status);
 
@@ -70,9 +87,11 @@ create table monitor_runs (
   cursor_snapshot jsonb not null default '{}'
 );
 
-create index idx_monitor_runs_monitor_id on monitor_runs(monitor_id);
 
 -- platform content & hits
+
+
+create index idx_monitor_runs_monitor_id on monitor_runs(monitor_id);
 
 create table platform_posts (
   id bigserial primary key,
@@ -97,6 +116,11 @@ create table platform_posts (
   unique(platform, platform_post_id)
 );
 
+
+alter table platform_posts add column if not exists embedding vector(384);
+
+create index if not exists idx_platform_posts_embedding on platform_posts
+
 create table platform_authors (
   id bigserial primary key,
   platform text not null default 'x',
@@ -109,6 +133,7 @@ create table platform_authors (
   updated_at timestamptz not null default now(),
   unique(platform, platform_author_id)
 );
+
 
 create table monitor_post_hits (
   id bigserial primary key,
@@ -126,10 +151,12 @@ create table monitor_post_hits (
   unique(monitor_id, post_id)
 );
 
-create index idx_monitor_post_hits_monitor_id on monitor_post_hits(monitor_id);
-create index idx_monitor_post_hits_post_id on monitor_post_hits(post_id);
 
 -- topics & trends
+
+
+create index idx_monitor_post_hits_monitor_id on monitor_post_hits(monitor_id);
+create index idx_monitor_post_hits_post_id on monitor_post_hits(post_id);
 
 create table topics (
   id bigserial primary key,
@@ -148,6 +175,8 @@ create table topics (
   unique(monitor_id, topic_key)
 );
 
+
+
 create index idx_topics_monitor_id on topics(monitor_id);
 
 create table topic_posts (
@@ -160,6 +189,7 @@ create table topic_posts (
   unique(topic_id, post_id)
 );
 
+
 create table topic_snapshots (
   id bigserial primary key,
   topic_id bigint not null references topics(id),
@@ -171,6 +201,8 @@ create table topic_snapshots (
   trend_velocity numeric(10,4) not null default 0,
   unique(topic_id, snapshot_time)
 );
+
+
 
 create index idx_topic_snapshots_topic_id on topic_snapshots(topic_id, snapshot_time);
 
@@ -185,9 +217,11 @@ create table monitor_snapshots (
   unique(monitor_id, snapshot_time)
 );
 
-create index idx_monitor_snapshots_monitor_id on monitor_snapshots(monitor_id, snapshot_time);
 
 -- daily digest exports
+
+
+create index idx_monitor_snapshots_monitor_id on monitor_snapshots(monitor_id, snapshot_time);
 
 create table topic_daily_exports (
   id bigserial primary key,
@@ -203,11 +237,13 @@ create table topic_daily_exports (
   unique(monitor_id, topic_id, export_date)
 );
 
+
+-- alerts & notifications
+
+
 create index idx_topic_daily_exports_monitor_id on topic_daily_exports(monitor_id);
 create index idx_topic_daily_exports_topic_id on topic_daily_exports(topic_id);
 create index idx_topic_daily_exports_monitor_date on topic_daily_exports(monitor_id, export_date);
-
--- alerts & notifications
 
 create table alerts (
   id bigserial primary key,
@@ -222,6 +258,8 @@ create table alerts (
   created_at timestamptz not null default now()
 );
 
+
+
 create index idx_alerts_monitor_id on alerts(monitor_id);
 
 create table user_notifications (
@@ -234,6 +272,8 @@ create table user_notifications (
   sent_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+
 
 create index idx_user_notifications_user_id on user_notifications(user_id);
 
@@ -248,9 +288,11 @@ create table email_deliveries (
   sent_at timestamptz
 );
 
-create index idx_email_deliveries_notification_id on email_deliveries(notification_id);
 
 -- knowledge writeback audit
+
+
+create index idx_email_deliveries_notification_id on email_deliveries(notification_id);
 
 create table knowledge_writeback_logs (
   id bigserial primary key,
@@ -264,10 +306,12 @@ create table knowledge_writeback_logs (
   created_at timestamptz not null default now()
 );
 
-create index idx_knowledge_writeback_logs_object on knowledge_writeback_logs(object_type, object_id);
-create index idx_knowledge_writeback_logs_status on knowledge_writeback_logs(status);
 
 -- event & knowledge model (STE-356)
+
+
+create index idx_knowledge_writeback_logs_object on knowledge_writeback_logs(object_type, object_id);
+create index idx_knowledge_writeback_logs_status on knowledge_writeback_logs(status);
 
 create table events (
   id bigserial primary key,
@@ -284,6 +328,8 @@ create table events (
   unique (monitor_id, event_key)
 );
 
+
+
 create index idx_events_monitor_id on events(monitor_id);
 
 create table topic_events (
@@ -294,6 +340,8 @@ create table topic_events (
   created_at timestamptz not null default now(),
   unique (topic_id, event_id)
 );
+
+
 
 create index idx_topic_events_topic_id on topic_events(topic_id);
 create index idx_topic_events_event_id on topic_events(event_id);
@@ -310,6 +358,7 @@ create table knowledge_runs (
   created_at timestamptz not null default now()
 );
 
+
 create table themes (
   id bigserial primary key,
   monitor_id bigint not null references keyword_monitors(id),
@@ -320,6 +369,8 @@ create table themes (
   updated_at timestamptz not null default now(),
   unique (monitor_id, theme_key)
 );
+
+
 
 create index idx_themes_monitor_id on themes(monitor_id);
 
@@ -335,6 +386,8 @@ create table export_bundles (
   updated_at timestamptz not null default now(),
   unique (monitor_id, bundle_key)
 );
+
+
 
 create index idx_export_bundles_monitor_id on export_bundles(monitor_id);
 
@@ -354,9 +407,11 @@ create table reports (
   updated_at timestamptz not null default now()
 );
 
-create index idx_reports_user_type_created on reports(user_id, report_type, created_at desc);
 
 -- report exports (Obsidian daily digest)
+
+
+create index idx_reports_user_type_created on reports(user_id, report_type, created_at desc);
 
 create table report_exports (
   id bigserial primary key,
@@ -371,6 +426,8 @@ create table report_exports (
   unique (report_id, export_kind)
 );
 
+
+
 create index idx_report_exports_report_id on report_exports(report_id);
 create index idx_report_exports_status on report_exports(status);
 
@@ -383,6 +440,7 @@ create table event_annotations (
   updated_at timestamptz not null default now()
 );
 
+
 create table topic_annotations (
   id bigserial primary key,
   topic_id bigint not null references topics(id) unique,
@@ -392,6 +450,7 @@ create table topic_annotations (
   updated_at timestamptz not null default now()
 );
 
+
 create table theme_memberships (
   id bigserial primary key,
   theme_id bigint not null references themes(id),
@@ -400,6 +459,8 @@ create table theme_memberships (
   source_kind text not null,
   created_at timestamptz not null default now()
 );
+
+
 
 create index idx_theme_memberships_theme_id on theme_memberships(theme_id);
 create index idx_theme_memberships_event_id on theme_memberships(event_id);
@@ -416,6 +477,7 @@ create table knowledge_object_revisions (
 );
 
 -- hot event model for multi-platform hot events
+
 
 create table hot_events (
   id bigserial primary key,
@@ -435,6 +497,8 @@ create table hot_events (
   updated_at timestamptz not null default now()
 );
 
+
+
 create index idx_hot_events_heat_score on hot_events(heat_score desc);
 create index idx_hot_events_status on hot_events(status);
 create index idx_hot_events_platform on hot_events(platform);
@@ -451,9 +515,11 @@ create table hot_event_platforms (
   primary key (hot_event_id, platform)
 );
 
-create index idx_hot_event_platforms_event_id on hot_event_platforms(hot_event_id);
 
 -- dead letter queue records for task infrastructure
+
+
+create index idx_hot_event_platforms_event_id on hot_event_platforms(hot_event_id);
 
 create table dead_letter_records (
   id              bigserial primary key,
@@ -466,15 +532,15 @@ create table dead_letter_records (
   created_at      timestamptz  not null default now()
 );
 
-create index idx_dead_letter_created_at on dead_letter_records(created_at);
 
 -- pgvector extension for cosine similarity matching
-create extension if not exists vector;
 
 -- platform_posts: embedding vector for semantic matching
-alter table platform_posts add column if not exists embedding vector(384);
-create index if not exists idx_platform_posts_embedding on platform_posts
   using ivfflat (embedding vector_cosine_ops) with (lists = 100);
 
 -- keyword_monitors: embedding vector for query text
-alter table keyword_monitors add column if not exists query_embedding vector(384);
+
+-- users: auth columns added after initial migration
+
+
+create index idx_dead_letter_created_at on dead_letter_records(created_at);
