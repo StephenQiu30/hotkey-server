@@ -155,7 +155,7 @@ func loginHandler(svc *service.AuthService, jwtSecret, jwtIssuer, jwtAudience st
 		if err := c.ShouldBindJSON(&body); err != nil {
 			msg := formatBindingError(err)
 			log.Printf("[auth] login: body validation failed: %v", err)
-			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, msg)
+			platformhttp.RespondError(c, enum.ErrorCodeAuthInvalidInput, msg)
 			return
 		}
 
@@ -205,13 +205,13 @@ func refreshTokenHandler(svc *service.AuthService, cookieCfg refreshCookieConfig
 	return func(c *gin.Context) {
 		cookieValue, err := c.Cookie(refreshCookieName)
 		if err != nil || cookieValue == "" {
-			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "missing refresh token")
+			platformhttp.RespondError(c, enum.ErrorCodeSessionExpired, "")
 			return
 		}
 
 		sessionID, refreshToken, ok := parseRefreshCookie(cookieValue)
 		if !ok {
-			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid refresh token")
+			platformhttp.RespondError(c, enum.ErrorCodeTokenInvalid, "")
 			return
 		}
 
@@ -242,13 +242,14 @@ func logoutHandler(svc *service.AuthService, cookieCfg refreshCookieConfig) gin.
 	return func(c *gin.Context) {
 		cookieValue, err := c.Cookie(refreshCookieName)
 		if err != nil || cookieValue == "" {
-			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "missing refresh token")
+			clearRefreshCookie(c, cookieCfg)
+			platformhttp.RespondOK(c, gin.H{"success": true})
 			return
 		}
 
 		sessionID, _, ok := parseRefreshCookie(cookieValue)
 		if !ok {
-			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "invalid refresh token")
+			platformhttp.RespondError(c, enum.ErrorCodeTokenInvalid, "")
 			return
 		}
 
@@ -280,13 +281,13 @@ func meHandler(svc *service.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := runtime.UserIDFromContext(c.Request.Context())
 		if id == 0 {
-			platformhttp.RespondError(c, enum.ErrorCodeUnauthorized, "not authenticated")
+			platformhttp.RespondError(c, enum.ErrorCodeTokenInvalid, "")
 			return
 		}
 
 		user, err := svc.CurrentUser(c.Request.Context(), id)
 		if err != nil || user == nil {
-			platformhttp.RespondError(c, enum.ErrorCodeNotFound, "user not found")
+			platformhttp.RespondError(c, enum.ErrorCodeTokenInvalid, "")
 			return
 		}
 
@@ -315,7 +316,7 @@ func sendVerificationHandler(svc *service.AuthService) gin.HandlerFunc {
 		if err := c.ShouldBindJSON(&body); err != nil {
 			msg := formatBindingError(err)
 			log.Printf("[auth] sendVerification: body validation failed: %v", err)
-			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, msg)
+			platformhttp.RespondError(c, enum.ErrorCodeAuthInvalidInput, msg)
 			return
 		}
 
@@ -354,7 +355,7 @@ func confirmVerificationHandler(svc *service.AuthService) gin.HandlerFunc {
 		if err := c.ShouldBindJSON(&body); err != nil {
 			msg := formatBindingError(err)
 			log.Printf("[auth] confirmVerification: body validation failed: %v", err)
-			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, msg)
+			platformhttp.RespondError(c, enum.ErrorCodeAuthInvalidInput, msg)
 			return
 		}
 
@@ -393,7 +394,7 @@ func resetPasswordHandler(svc *service.AuthService) gin.HandlerFunc {
 		if err := c.ShouldBindJSON(&body); err != nil {
 			msg := formatBindingError(err)
 			log.Printf("[auth] resetPassword: body validation failed: %v", err)
-			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, msg)
+			platformhttp.RespondError(c, enum.ErrorCodeAuthInvalidInput, msg)
 			return
 		}
 
