@@ -1741,73 +1741,6 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode": {
-            "type": "string",
-            "enum": [
-                "SUCCESS",
-                "BAD_REQUEST",
-                "UNAUTHORIZED",
-                "FORBIDDEN",
-                "NOT_FOUND",
-                "CONFLICT",
-                "INTERNAL_ERROR",
-                "RATE_LIMITED",
-                "SERVICE_UNAVAILABLE",
-                "METHOD_NOT_ALLOWED",
-                "AUTH_INVALID_INPUT",
-                "AUTH_INVALID_CREDENTIALS",
-                "AUTH_EMAIL_ALREADY_REGISTERED",
-                "AUTH_VERIFICATION_INVALID",
-                "AUTH_VERIFICATION_EXPIRED",
-                "AUTH_VERIFICATION_TOO_MANY_ATTEMPTS",
-                "AUTH_VERIFICATION_SEND_TOO_FREQUENT",
-                "AUTH_SESSION_EXPIRED",
-                "AUTH_SESSION_REVOKED",
-                "AUTH_TOKEN_INVALID",
-                "AUTH_TOKEN_REUSED",
-                "AUTH_ACCOUNT_DISABLED",
-                "AUTH_PASSWORD_POLICY_VIOLATION",
-                "AUTH_EMAIL_ALREADY_REGISTERED",
-                "AUTH_VERIFICATION_INVALID",
-                "AUTH_SESSION_EXPIRED",
-                "AUTH_SESSION_REVOKED",
-                "AUTH_PASSWORD_POLICY_VIOLATION",
-                "AUTH_INVALID_INPUT",
-                "AUTH_VERIFICATION_INVALID"
-            ],
-            "x-enum-varnames": [
-                "ErrorCodeSuccess",
-                "ErrorCodeBadRequest",
-                "ErrorCodeUnauthorized",
-                "ErrorCodeForbidden",
-                "ErrorCodeNotFound",
-                "ErrorCodeConflict",
-                "ErrorCodeInternal",
-                "ErrorCodeRateLimited",
-                "ErrorCodeServiceUnavailable",
-                "ErrorCodeMethodNotAllowed",
-                "ErrorCodeAuthInvalidInput",
-                "ErrorCodeInvalidCredentials",
-                "ErrorCodeEmailAlreadyRegistered",
-                "ErrorCodeVerificationInvalid",
-                "ErrorCodeVerificationExpired",
-                "ErrorCodeVerificationTooManyAttempts",
-                "ErrorCodeVerificationSendTooFrequent",
-                "ErrorCodeSessionExpired",
-                "ErrorCodeSessionRevoked",
-                "ErrorCodeTokenInvalid",
-                "ErrorCodeTokenReused",
-                "ErrorCodeAccountDisabled",
-                "ErrorCodePasswordPolicyViolation",
-                "ErrorCodeEmailExists",
-                "ErrorCodeInvalidVerificationCode",
-                "ErrorCodeTokenExpired",
-                "ErrorCodeTokenRevoked",
-                "ErrorCodePasswordMismatch",
-                "ErrorCodeEmailNotVerified",
-                "ErrorCodeInvalidResetToken"
-            ]
-        },
         "github_com_StephenQiu30_hotkey-server_internal_model_vo.AuthTokenData": {
             "type": "object",
             "properties": {
@@ -1958,8 +1891,8 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "data": {},
-                "error_code": {
-                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -2035,8 +1968,8 @@ const docTemplate = `{
                 "data": {
                     "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.AuthTokenData"
                 },
-                "error_code": {
-                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -2049,8 +1982,8 @@ const docTemplate = `{
                 "data": {
                     "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.AuthenticatedUserData"
                 },
-                "error_code": {
-                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -2083,8 +2016,8 @@ const docTemplate = `{
                 "data": {
                     "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.HealthBody"
                 },
-                "error_code": {
-                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -2170,8 +2103,8 @@ const docTemplate = `{
                         "$ref": "#/definitions/internal_controller.HotEventItem"
                     }
                 },
-                "error_code": {
-                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
+                "message": {
+                    "type": "string"
                 },
                 "meta": {
                     "$ref": "#/definitions/internal_controller.HotEventMeta"
@@ -2198,8 +2131,8 @@ const docTemplate = `{
                         "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_service.PostBrief"
                     }
                 },
-                "error_code": {
-                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -2212,8 +2145,8 @@ const docTemplate = `{
                 "data": {
                     "$ref": "#/definitions/internal_controller.HotEventDetail"
                 },
-                "error_code": {
-                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -2226,8 +2159,8 @@ const docTemplate = `{
                 "data": {
                     "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.LoginData"
                 },
-                "error_code": {
-                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -2240,8 +2173,8 @@ const docTemplate = `{
                 "data": {
                     "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.MarkNotificationReadData"
                 },
-                "error_code": {
-                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -2257,8 +2190,8 @@ const docTemplate = `{
                         "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.MonitorData"
                     }
                 },
-                "error_code": {
-                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -2271,8 +2204,8 @@ const docTemplate = `{
                 "data": {
                     "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.MonitorData"
                 },
-                "error_code": {
-                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -2288,8 +2221,8 @@ const docTemplate = `{
                         "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.NotificationData"
                     }
                 },
-                "error_code": {
-                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -2305,8 +2238,8 @@ const docTemplate = `{
                         "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_content.PostSummary"
                     }
                 },
-                "error_code": {
-                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -2345,8 +2278,8 @@ const docTemplate = `{
                 "data": {
                     "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_dto.Report"
                 },
-                "error_code": {
-                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -2362,8 +2295,8 @@ const docTemplate = `{
                         "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_service.TopicSummary"
                     }
                 },
-                "error_code": {
-                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -2379,8 +2312,8 @@ const docTemplate = `{
                         "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_service.TrendPoint"
                     }
                 },
-                "error_code": {
-                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -2416,8 +2349,8 @@ const docTemplate = `{
                         "$ref": "#/definitions/internal_controller.TrendingItem"
                     }
                 },
-                "error_code": {
-                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -2435,8 +2368,8 @@ const docTemplate = `{
                         }
                     }
                 },
-                "error_code": {
-                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -2454,8 +2387,8 @@ const docTemplate = `{
                         }
                     }
                 },
-                "error_code": {
-                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_enum.ErrorCode"
+                "message": {
+                    "type": "string"
                 }
             }
         }

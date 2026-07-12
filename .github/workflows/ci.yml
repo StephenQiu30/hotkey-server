@@ -91,3 +91,5 @@ jobs:
 
       - name: Runtime API smoke
         run: bash scripts/smoke-api.sh
+        env:
+          DATABASE_URL: postgres://dummy:dummy@localhost:5432/hotkey?sslmode=disable
