@@ -13,17 +13,22 @@ import (
 
 // Config holds all dependencies for the Gin HTTP API.
 type Config struct {
-	JWTSecret       string
-	SmokeTest       bool
-	SwaggerEnabled  bool
-	AuthService     *service.AuthService
-	MonitorSvc      *service.MonitorService
-	NotifySvc       *service.NotifyService
-	ReportSvc       ReportService
-	PostQuerySvc    content.PostQueryService
-	TopicQuerySvc   service.TopicQueryService
-	TrendQuerySvc   service.TrendQueryService
-	HotEventManager HotEventManager
+	JWTSecret          string
+	JWTIssuer          string
+	JWTAudience        string
+	SmokeTest          bool
+	SwaggerEnabled     bool
+	WebAllowedOrigins  []string
+	AuthService       *service.AuthService
+	CookieDomain       string
+	CookieSecure       bool
+	MonitorSvc        *service.MonitorService
+	NotifySvc         *service.NotifyService
+	ReportSvc         ReportService
+	PostQuerySvc      content.PostQueryService
+	TopicQuerySvc     service.TopicQueryService
+	TrendQuerySvc     service.TrendQueryService
+	HotEventManager   HotEventManager
 }
 
 func NewRouter(cfg Config) *gin.Engine {
@@ -31,35 +36,45 @@ func NewRouter(cfg Config) *gin.Engine {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
+	r.HandleMethodNotAllowed = true
 
+	// Global middleware stack (applied to all routes).
 	r.Use(platformhttp.RecoverMiddleware())
-	r.Use(platformhttp.CORSMiddleware())
+	r.Use(platformhttp.CORSMiddleware(cfg.WebAllowedOrigins, cfg.SmokeTest))
 	r.Use(platformhttp.SecurityHeadersMiddleware())
 	r.Use(platformhttp.RequestIDMiddleware())
 	r.Use(platformhttp.AccessLogMiddleware())
 	r.Use(platformhttp.ContextMetadataMiddleware("http"))
-	r.Use(platformhttp.AuthMiddleware(cfg.JWTSecret, cfg.SmokeTest))
+	r.Use(platformhttp.ErrorHandlerMiddleware())
 
+	// Public routes (no auth required).
+	RegisterHealthRoutes(r)
+	RegisterAuthRoutes(r, cfg.AuthService, cfg.JWTSecret, cfg.JWTIssuer, cfg.JWTAudience, cfg.CookieDomain, cfg.CookieSecure)
 	if cfg.SwaggerEnabled {
 		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
 	}
 
-	RegisterHealthRoutes(r)
-	RegisterAuthRoutes(r, cfg.AuthService, cfg.JWTSecret)
-	RegisterMonitorRoutes(r, cfg.MonitorSvc)
-	RegisterContentRoutes(r, cfg.PostQuerySvc, cfg.MonitorSvc)
-	RegisterTopicRoutes(r, cfg.TopicQuerySvc, cfg.MonitorSvc)
-	RegisterTrendRoutes(r, cfg.TrendQuerySvc, cfg.MonitorSvc, cfg.TopicQuerySvc)
-	RegisterNotifyRoutes(r, cfg.NotifySvc)
-	RegisterReportRoutes(r, cfg.ReportSvc)
+	// Protected routes (auth required).
+	protected := r.Group("")
+	protected.Use(platformhttp.AuthMiddleware(cfg.JWTSecret, cfg.JWTIssuer, cfg.JWTAudience, cfg.SmokeTest))
 
-	// HotEvent routes (optional — nil-safe)
+	RegisterMonitorRoutes(protected, cfg.MonitorSvc)
+	RegisterContentRoutes(protected, cfg.PostQuerySvc, cfg.MonitorSvc)
+	RegisterTopicRoutes(protected, cfg.TopicQuerySvc, cfg.MonitorSvc)
+	RegisterTrendRoutes(protected, cfg.TrendQuerySvc, cfg.MonitorSvc, cfg.TopicQuerySvc)
+	RegisterNotifyRoutes(protected, cfg.NotifySvc)
+	RegisterReportRoutes(protected, cfg.ReportSvc)
+
+	// HotEvent routes (optional — nil-safe).
 	if cfg.HotEventManager != nil {
-		RegisterTrendingRoutes(r, cfg.HotEventManager)
+		RegisterTrendingRoutes(protected, cfg.HotEventManager)
 	}
 
+	// NoRoute / NoMethod handlers return unified envelope.
+	r.NoRoute(platformhttp.NoRouteHandler())
+	r.NoMethod(platformhttp.NoMethodHandler())
+
 	// Global error handler catches unhandled AppError and panics.
-	r.Use(platformhttp.ErrorHandlerMiddleware())
 
 	return r
 }

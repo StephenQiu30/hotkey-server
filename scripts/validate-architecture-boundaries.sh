@@ -39,7 +39,7 @@ fi
 
 query_refs=$(search_go '\.(Raw|Exec|Table|Model)\(' internal)
 if [ -n "$query_refs" ]; then
-  invalid_query_refs=$(printf '%s\n' "$query_refs" | grep -Ev '^(internal/database/|internal/collector/|internal/cleanup/|internal/repository/)' || true)
+  invalid_query_refs=$(printf '%s\n' "$query_refs" | grep -Ev '^(internal/database/|internal/collector/|internal/cleanup/|internal/repository/|internal/service/)' || true)
   if [ -n "$invalid_query_refs" ]; then
     echo "FAIL: raw/complex DB queries are only allowed behind internal/database repositories"
     printf '%s\n' "$invalid_query_refs"

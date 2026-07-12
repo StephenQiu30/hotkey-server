@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,8 +14,9 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/controller"
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/security"
 	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
@@ -129,6 +131,8 @@ func TestReportRoutesCreateReadHTMLAndSend(t *testing.T) {
 func newTestHandlerWithReports(reports controller.ReportService) http.Handler {
 	return controller.NewRouter(controller.Config{
 		JWTSecret:     "test-secret",
+		JWTIssuer:     "hotkey-server",
+		JWTAudience:   "hotkey-web",
 		SmokeTest:     false,
 		AuthService:   service.NewAuthService(&stubAuthRepo{}),
 		MonitorSvc:    service.NewMonitorService(&stubMonitorRepo{}, nil),
@@ -142,11 +146,9 @@ func newTestHandlerWithReports(reports controller.ReportService) http.Handler {
 
 func testToken(t *testing.T, userID int64) string {
 	t.Helper()
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": float64(userID),
-		"exp": time.Now().Add(time.Hour).Unix(),
-	})
-	tokenStr, err := token.SignedString([]byte("test-secret"))
+	tokenStr, err := security.SignAccessToken(security.AccessClaims{
+		RegisteredClaims: jwt.RegisteredClaims{Subject: fmt.Sprintf("%d", userID)},
+	}, "test-secret", "hotkey-server", "hotkey-web")
 	if err != nil {
 		t.Fatalf("failed to sign token: %v", err)
 	}

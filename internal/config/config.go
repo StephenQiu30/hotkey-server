@@ -14,11 +14,15 @@ import (
 // with mapstructure:",squash" so that cfg.HTTPAddr (promoted from ServerConfig)
 // works identically to a flat struct — no call-site changes needed.
 type Config struct {
+	AppEnv string `mapstructure:"APP_ENV"`
+
 	ServerConfig   `mapstructure:",squash"`
 	DatabaseConfig `mapstructure:",squash"`
 	KafkaConfig    `mapstructure:",squash"`
 	LLMConfig      `mapstructure:",squash"`
 	ObsidianConfig `mapstructure:",squash"`
+	AuthConfig     `mapstructure:",squash"`
+	SMTPConfig     `mapstructure:",squash"`
 
 	LogLevel  string `mapstructure:"LOG_LEVEL"`
 	LogFormat string `mapstructure:"LOG_FORMAT"`
@@ -49,13 +53,31 @@ func Load() (Config, error) {
 	v.SetDefault("REDIS_ADDR", "localhost:6379")
 	v.SetDefault("KAFKA_BROKERS", []string{"localhost:9092"})
 	v.SetDefault("KAFKA_CONSUMER_GROUP", "hotkey-workers")
+	v.SetDefault("APP_ENV", "development")
+	v.SetDefault("JWT_ISSUER", "hotkey-server")
+	v.SetDefault("JWT_AUDIENCE", "hotkey-web")
+	v.SetDefault("AUTH_COOKIE_SECURE", false)
+	v.SetDefault("SMTP_PORT", 465)
 
 	if err := v.ReadInConfig(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to read .env config file: %v\n", err)
 	}
 
+	_ = v.BindEnv("APP_ENV")
 	_ = v.BindEnv("DATABASE_URL")
 	_ = v.BindEnv("JWT_SECRET")
+	_ = v.BindEnv("JWT_ISSUER")
+	_ = v.BindEnv("JWT_AUDIENCE")
+	_ = v.BindEnv("AUTH_VERIFICATION_PEPPER")
+	_ = v.BindEnv("WEB_ALLOWED_ORIGINS")
+	_ = v.BindEnv("AUTH_COOKIE_SECURE")
+	_ = v.BindEnv("AUTH_COOKIE_DOMAIN")
+	_ = v.BindEnv("SMTP_HOST")
+	_ = v.BindEnv("SMTP_PORT")
+	_ = v.BindEnv("SMTP_USERNAME")
+	_ = v.BindEnv("SMTP_AUTH_CODE")
+	_ = v.BindEnv("SMTP_FROM_EMAIL")
+	_ = v.BindEnv("SMTP_FROM_NAME")
 	_ = v.BindEnv("HTTP_ADDR")
 	_ = v.BindEnv("X_BEARER_TOKEN")
 	_ = v.BindEnv("X_BASE_URL")
@@ -87,8 +109,22 @@ func Load() (Config, error) {
 	if cfg.JWTSecret == "" {
 		return Config{}, errors.New("JWT_SECRET is required")
 	}
+	if cfg.AppEnv == "production" && len(cfg.JWTSecret) < 32 {
+		return Config{}, errors.New("JWT_SECRET must be at least 32 characters in production")
+	}
 	if cfg.XToken == "" {
 		return Config{}, errors.New("X_BEARER_TOKEN is required")
+	}
+	if cfg.AppEnv == "production" && cfg.VerificationPepper == "" {
+		return Config{}, errors.New("AUTH_VERIFICATION_PEPPER is required in production environment")
+	}
+	if cfg.SMTPHost != "" && cfg.SMTPAuthCode == "" {
+		return Config{}, errors.New("SMTP_AUTH_CODE is required when SMTP_HOST is set")
+	}
+	for _, origin := range cfg.WebAllowedOrigins {
+		if origin == "*" && !cfg.CookieSecure {
+			return Config{}, errors.New("WEB_ALLOWED_ORIGINS cannot include wildcard origin when AUTH_COOKIE_SECURE is false")
+		}
 	}
 
 	if cfg.XBaseURL == "" {

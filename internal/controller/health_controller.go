@@ -7,7 +7,7 @@ import (
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 )
 
-func RegisterHealthRoutes(r *gin.Engine) {
+func RegisterHealthRoutes(r gin.IRouter) {
 	r.GET("/healthz", healthHandler())
 }
 

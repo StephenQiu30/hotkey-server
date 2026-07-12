@@ -7,11 +7,25 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
+	"github.com/StephenQiu30/hotkey-server/internal/model/enum"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
+	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/security"
 	"github.com/StephenQiu30/hotkey-server/tests/testutil"
 )
+
+func TestMain(m *testing.M) {
+	_ = logging.Init("error", "json", "stdout")
+	os.Exit(m.Run())
+}
 
 // TestIntegrationSmoke verifies the full wiring: register -> login -> protected endpoint.
 func TestIntegrationSmoke(t *testing.T) {
@@ -193,9 +207,14 @@ func TestIntegrationRegisterReturnsRealFields(t *testing.T) {
 	}
 }
 
+// decodeData extracts the data payload from the unified response envelope.
+// It now also handles the new envelope with code/message fields.
 func decodeData(resp *http.Response, out any) error {
 	var envelope struct {
-		Data json.RawMessage `json:"data"`
+		Code      string          `json:"code"`
+		Message   string          `json:"message"`
+		Data      json.RawMessage `json:"data"`
+		RequestID string          `json:"request_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		return err
@@ -219,5 +238,556 @@ func TestIntegrationProtectedEndpointRejectsNoToken(t *testing.T) {
 
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", resp.StatusCode)
+	}
+
+	// Verify error uses unified envelope
+	var body struct {
+		Code      string          `json:"code"`
+		Message   string          `json:"message"`
+		Data      json.RawMessage `json:"data"`
+		RequestID string          `json:"request_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if body.Code != string(enum.ErrorCodeUnauthorized) {
+		t.Fatalf("expected UNAUTHORIZED code, got %q", body.Code)
+	}
+	if body.Message == "" {
+		t.Fatal("expected non-empty error message")
+	}
+}
+
+// TestUnifiedEnvelope verifies all API responses use the unified envelope
+// with code, message, data, and request_id fields.
+func TestUnifiedEnvelope(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(platformhttp.RequestIDMiddleware())
+	r.Use(platformhttp.ErrorHandlerMiddleware())
+
+	r.GET("/api/v1/test/ok", func(c *gin.Context) {
+		platformhttp.RespondOK(c, gin.H{"key": "value"})
+	})
+	r.GET("/api/v1/test/page", func(c *gin.Context) {
+		platformhttp.RespondPage(c, []string{"a", "b"}, 1, 10, 2)
+	})
+	r.GET("/api/v1/test/error", func(c *gin.Context) {
+		c.Error(platformhttp.NewAppError(enum.ErrorCodeNotFound, nil))
+	})
+
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	// Test OK response
+	t.Run("success", func(t *testing.T) {
+		resp, err := http.Get(ts.URL + "/api/v1/test/ok")
+		if err != nil {
+			t.Fatalf("ok request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		var body struct {
+			Code      string          `json:"code"`
+			Message   string          `json:"message"`
+			Data      json.RawMessage `json:"data"`
+			RequestID string          `json:"request_id"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatalf("decode ok: %v", err)
+		}
+		if body.Code != "SUCCESS" {
+			t.Fatalf("expected SUCCESS code, got %q", body.Code)
+		}
+		if body.Message != "success" {
+			t.Fatalf("expected success message, got %q", body.Message)
+		}
+		if body.RequestID == "" {
+			t.Fatal("expected non-empty request_id")
+		}
+		if len(body.Data) == 0 {
+			t.Fatal("expected non-empty data")
+		}
+	})
+
+	// Test Page response
+	t.Run("page", func(t *testing.T) {
+		resp, err := http.Get(ts.URL + "/api/v1/test/page")
+		if err != nil {
+			t.Fatalf("page request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		var body struct {
+			Code      string          `json:"code"`
+			Message   string          `json:"message"`
+			Data      json.RawMessage `json:"data"`
+			Page      int             `json:"page"`
+			PageSize  int             `json:"page_size"`
+			Total     int             `json:"total"`
+			RequestID string          `json:"request_id"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatalf("decode page: %v", err)
+		}
+		if body.Code != "SUCCESS" {
+			t.Fatalf("expected SUCCESS code, got %q", body.Code)
+		}
+		if body.Message != "success" {
+			t.Fatalf("expected success message, got %q", body.Message)
+		}
+		if body.Page != 1 || body.PageSize != 10 || body.Total != 2 {
+			t.Fatalf("unexpected pagination: page=%d page_size=%d total=%d", body.Page, body.PageSize, body.Total)
+		}
+	})
+
+	// Test Error response (via c.Error + ErrorHandlerMiddleware)
+	t.Run("error", func(t *testing.T) {
+		resp, err := http.Get(ts.URL + "/api/v1/test/error")
+		if err != nil {
+			t.Fatalf("error request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("expected 404, got %d", resp.StatusCode)
+		}
+
+		var body struct {
+			Code      string          `json:"code"`
+			Message   string          `json:"message"`
+			Data      json.RawMessage `json:"data"`
+			RequestID string          `json:"request_id"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatalf("decode error: %v", err)
+		}
+		if body.Code != "NOT_FOUND" {
+			t.Fatalf("expected NOT_FOUND code, got %q", body.Code)
+		}
+		if body.Message == "" {
+			t.Fatal("expected non-empty error message")
+		}
+		if string(body.Data) != "null" {
+			t.Fatalf("expected null data on error, got %s", string(body.Data))
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Security integration tests (no DB required).
+// ---------------------------------------------------------------------------
+
+// newSecurityRouter builds a minimal Gin engine with the production middleware
+// stack needed to test CORS, JWT auth, 404, 405, and panic recovery.
+func newSecurityRouter() *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(gin.Recovery())
+
+	// CORS with an explicit allowlist (no wildcard).
+	r.Use(platformhttp.CORSMiddleware([]string{"https://example.com"}, false))
+
+	r.Use(platformhttp.SecurityHeadersMiddleware())
+	r.Use(platformhttp.RequestIDMiddleware())
+	r.Use(platformhttp.ContextMetadataMiddleware("test"))
+
+	// Public routes.
+	r.GET("/healthz", func(c *gin.Context) {
+		platformhttp.RespondOK(c, gin.H{"status": "ok"})
+	})
+
+	// Protected routes.
+	protected := r.Group("")
+	protected.Use(platformhttp.AuthMiddleware("test-secret", "hotkey-server", "hotkey-web", false))
+	protected.GET("/api/v1/monitors", func(c *gin.Context) {
+		platformhttp.RespondOK(c, gin.H{"data": "ok"})
+	})
+
+	// 404 / 405 handlers.
+	r.NoRoute(platformhttp.NoRouteHandler())
+	r.NoMethod(platformhttp.NoMethodHandler())
+
+	// Error handler.
+	r.Use(platformhttp.ErrorHandlerMiddleware())
+
+	return r
+}
+
+// TestCORSMiddlewareAllowedOrigin verifies that a request from an allowed
+// origin receives the expected CORS headers.
+func TestCORSMiddlewareAllowedOrigin(t *testing.T) {
+	router := newSecurityRouter()
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/healthz", nil)
+	if err != nil {
+		t.Fatalf("request creation failed: %v", err)
+	}
+	req.Header.Set("Origin", "https://example.com")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if origin := resp.Header.Get("Access-Control-Allow-Origin"); origin != "https://example.com" {
+		t.Errorf("expected Access-Control-Allow-Origin = https://example.com, got %q", origin)
+	}
+	if creds := resp.Header.Get("Access-Control-Allow-Credentials"); creds != "true" {
+		t.Errorf("expected Access-Control-Allow-Credentials = true, got %q", creds)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	// Vary: Origin must be set.
+	vary := resp.Header.Get("Vary")
+	if !strings.Contains(vary, "Origin") {
+		t.Errorf("expected Vary to contain Origin, got %q", vary)
+	}
+}
+
+// TestCORSMiddlewareDeniedOrigin verifies that a request from a disallowed
+// origin does NOT receive CORS headers.
+func TestCORSMiddlewareDeniedOrigin(t *testing.T) {
+	router := newSecurityRouter()
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/healthz", nil)
+	if err != nil {
+		t.Fatalf("request creation failed: %v", err)
+	}
+	req.Header.Set("Origin", "https://evil.com")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Access-Control-Allow-Origin header should not be present for denied origins.
+	if origin := resp.Header.Get("Access-Control-Allow-Origin"); origin != "" {
+		t.Errorf("expected no Access-Control-Allow-Origin for denied origin, got %q", origin)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 (denied origin still serves the resource), got %d", resp.StatusCode)
+	}
+}
+
+// TestCORSMiddlewarePreflightAllowed verifies OPTIONS preflight with an allowed
+// origin produces the correct status and headers.
+func TestCORSMiddlewarePreflightAllowed(t *testing.T) {
+	router := newSecurityRouter()
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+
+	req, err := http.NewRequest(http.MethodOptions, ts.URL+"/healthz", nil)
+	if err != nil {
+		t.Fatalf("request creation failed: %v", err)
+	}
+	req.Header.Set("Origin", "https://example.com")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		t.Errorf("expected 204 for preflight, got %d", resp.StatusCode)
+	}
+	if origin := resp.Header.Get("Access-Control-Allow-Origin"); origin != "https://example.com" {
+		t.Errorf("expected Access-Control-Allow-Origin = https://example.com, got %q", origin)
+	}
+}
+
+// TestCORSMiddlewarePreflightDenied verifies OPTIONS preflight with a denied
+// origin returns 403.
+func TestCORSMiddlewarePreflightDenied(t *testing.T) {
+	router := newSecurityRouter()
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+
+	req, err := http.NewRequest(http.MethodOptions, ts.URL+"/healthz", nil)
+	if err != nil {
+		t.Fatalf("request creation failed: %v", err)
+	}
+	req.Header.Set("Origin", "https://evil.com")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403 for denied preflight, got %d", resp.StatusCode)
+	}
+}
+
+// TestJWTMissing verifies that a protected endpoint without auth header
+// returns 401 with the unified envelope.
+func TestJWTMissing(t *testing.T) {
+	router := newSecurityRouter()
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/v1/monitors")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", resp.StatusCode)
+	}
+
+	var body struct {
+		Code      string          `json:"code"`
+		Message   string          `json:"message"`
+		Data      json.RawMessage `json:"data"`
+		RequestID string          `json:"request_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if body.Code != string(enum.ErrorCodeUnauthorized) {
+		t.Errorf("expected UNAUTHORIZED code, got %q", body.Code)
+	}
+	if body.Data != nil && string(body.Data) != "null" {
+		t.Errorf("expected null data on error, got %s", string(body.Data))
+	}
+}
+
+// TestJWTInvalid verifies that a protected endpoint with a garbage token
+// returns 401 with the unified envelope.
+func TestJWTInvalid(t *testing.T) {
+	router := newSecurityRouter()
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/monitors", nil)
+	if err != nil {
+		t.Fatalf("request creation failed: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer this.is.garbage")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", resp.StatusCode)
+	}
+
+	var body struct {
+		Code      string          `json:"code"`
+		Message   string          `json:"message"`
+		Data      json.RawMessage `json:"data"`
+		RequestID string          `json:"request_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if body.Code != string(enum.ErrorCodeUnauthorized) {
+		t.Errorf("expected UNAUTHORIZED code, got %q", body.Code)
+	}
+}
+
+// TestJWTWrongAudience verifies that a token with an incorrect audience is
+// rejected with 401.
+func TestJWTWrongAudience(t *testing.T) {
+	router := newSecurityRouter()
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+
+	// Create a token with wrong audience using custom claims.
+	claims := security.AccessClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   "1",
+			Issuer:    "hotkey-server",
+			Audience:  jwt.ClaimStrings{"wrong-audience"},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			NotBefore: jwt.NewNumericDate(time.Now().Add(-time.Minute)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenStr, err := token.SignedString([]byte("test-secret"))
+	if err != nil {
+		t.Fatalf("failed to sign token: %v", err)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/monitors", nil)
+	if err != nil {
+		t.Fatalf("request creation failed: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", resp.StatusCode)
+	}
+
+	var body struct {
+		Code      string          `json:"code"`
+		Message   string          `json:"message"`
+		Data      json.RawMessage `json:"data"`
+		RequestID string          `json:"request_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if body.Code != string(enum.ErrorCodeUnauthorized) {
+		t.Errorf("expected UNAUTHORIZED code, got %q", body.Code)
+	}
+}
+
+// TestNotFoundHandler verifies that hitting an undefined route returns 404
+// with the unified envelope.
+func TestNotFoundHandler(t *testing.T) {
+	router := newSecurityRouter()
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/v1/nonexistent")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", resp.StatusCode)
+	}
+
+	var body struct {
+		Code      string          `json:"code"`
+		Message   string          `json:"message"`
+		Data      json.RawMessage `json:"data"`
+		RequestID string          `json:"request_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if body.Code != string(enum.ErrorCodeNotFound) {
+		t.Errorf("expected NOT_FOUND code, got %q", body.Code)
+	}
+	if body.Message == "" {
+		t.Error("expected non-empty error message")
+	}
+	if string(body.Data) != "null" {
+		t.Errorf("expected null data, got %s", string(body.Data))
+	}
+}
+
+// TestMethodNotAllowedHandler verifies that a route with the wrong HTTP method
+// returns 405 with the unified envelope.
+func TestMethodNotAllowedHandler(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.HandleMethodNotAllowed = true
+	r.Use(platformhttp.RequestIDMiddleware())
+	r.Use(platformhttp.ErrorHandlerMiddleware())
+	r.POST("/api/v1/test", func(c *gin.Context) {
+		platformhttp.RespondOK(c, gin.H{"ok": true})
+	})
+	r.NoMethod(platformhttp.NoMethodHandler())
+
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	// GET a POST-only endpoint.
+	resp, err := http.Get(ts.URL + "/api/v1/test")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", resp.StatusCode)
+	}
+
+	var body struct {
+		Code      string          `json:"code"`
+		Message   string          `json:"message"`
+		Data      json.RawMessage `json:"data"`
+		RequestID string          `json:"request_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if body.Code != string(enum.ErrorCodeMethodNotAllowed) {
+		t.Errorf("expected METHOD_NOT_ALLOWED code, got %q", body.Code)
+	}
+	if body.Message == "" {
+		t.Error("expected non-empty error message")
+	}
+	if string(body.Data) != "null" {
+		t.Errorf("expected null data, got %s", string(body.Data))
+	}
+}
+
+// TestRecoveryMiddleware verifies that a handler that panics returns 500
+// with the unified INTERNAL_ERROR envelope and no internal details leak.
+func TestRecoveryMiddleware(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(platformhttp.RecoverMiddleware())
+	r.Use(platformhttp.RequestIDMiddleware())
+	r.Use(platformhttp.ErrorHandlerMiddleware())
+
+	r.GET("/api/v1/panic", func(c *gin.Context) {
+		panic("test panic")
+	})
+
+	// Use httptest.NewRecorder directly so panics are caught by
+	// RecoverMiddleware before reaching the net/http server goroutine.
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/panic", nil)
+	r.ServeHTTP(w, req)
+
+	result := w.Result()
+	defer result.Body.Close()
+
+	if result.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", result.StatusCode)
+	}
+
+	bodyBytes := new(bytes.Buffer)
+	_, _ = bodyBytes.ReadFrom(result.Body)
+	bodyStr := bodyBytes.String()
+
+	var body struct {
+		Code      string          `json:"code"`
+		Message   string          `json:"message"`
+		Data      json.RawMessage `json:"data"`
+		RequestID string          `json:"request_id"`
+	}
+	if err := json.Unmarshal(bodyBytes.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body: %v (body: %s)", err, bodyStr)
+	}
+	if body.Code != string(enum.ErrorCodeInternal) {
+		t.Errorf("expected INTERNAL_ERROR code, got %q", body.Code)
+	}
+	if body.Message == "" {
+		t.Error("expected non-empty error message")
+	}
+	if string(body.Data) != "null" {
+		t.Errorf("expected null data, got %s", string(body.Data))
+	}
+	// The panic message must never appear in the response body.
+	if strings.Contains(bodyStr, "test panic") {
+		t.Error("panic message leaked in response body")
 	}
 }

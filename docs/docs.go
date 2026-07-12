@@ -68,6 +68,115 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/auth/logout": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Logout and revoke session",
+                "operationId": "logout",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/me": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Get current user profile",
+                "operationId": "me",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_controller.AuthenticatedUserResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/password/reset": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Reset password with verification ticket",
+                "operationId": "reset-password",
+                "parameters": [
+                    {
+                        "description": "Password reset payload",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_dto.PasswordResetRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/auth/register": {
             "post": {
                 "consumes": [
@@ -83,7 +192,7 @@ const docTemplate = `{
                 "operationId": "register",
                 "parameters": [
                     {
-                        "description": "Register payload",
+                        "description": "Register payload (legacy) or VerificationTicket payload",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -107,6 +216,130 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/token/refresh": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Refresh access token",
+                "operationId": "refresh-token",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_controller.AuthTokenResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/verifications": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Send a verification code",
+                "operationId": "send-verification",
+                "parameters": [
+                    {
+                        "description": "Verification send payload",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_dto.VerificationSendRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_controller.VerificationSendResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/verifications/confirm": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Confirm a verification code",
+                "operationId": "confirm-verification",
+                "parameters": [
+                    {
+                        "description": "Verification confirm payload",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_dto.VerificationConfirmRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_controller.VerificationTicketResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_platform_http.ErrorBody"
                         }
@@ -1349,6 +1582,23 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_StephenQiu30_hotkey-server_internal_model_dto.PasswordResetRequest": {
+            "type": "object",
+            "required": [
+                "new_password",
+                "reset_token"
+            ],
+            "properties": {
+                "new_password": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "minLength": 8
+                },
+                "reset_token": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_StephenQiu30_hotkey-server_internal_model_dto.RegisterRequest": {
             "type": "object",
             "properties": {
@@ -1437,6 +1687,91 @@ const docTemplate = `{
                 "status": {
                     "type": "string",
                     "example": "active"
+                }
+            }
+        },
+        "github_com_StephenQiu30_hotkey-server_internal_model_dto.VerificationConfirmRequest": {
+            "type": "object",
+            "required": [
+                "code",
+                "email",
+                "purpose"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "purpose": {
+                    "type": "string",
+                    "enum": [
+                        "register",
+                        "reset_password"
+                    ]
+                }
+            }
+        },
+        "github_com_StephenQiu30_hotkey-server_internal_model_dto.VerificationSendRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "purpose"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "purpose": {
+                    "type": "string",
+                    "enum": [
+                        "register",
+                        "reset_password"
+                    ]
+                }
+            }
+        },
+        "github_com_StephenQiu30_hotkey-server_internal_model_vo.AuthTokenData": {
+            "type": "object",
+            "properties": {
+                "access_token": {
+                    "type": "string"
+                },
+                "expires_in": {
+                    "type": "integer"
+                },
+                "refresh_token": {
+                    "type": "string"
+                },
+                "token_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_StephenQiu30_hotkey-server_internal_model_vo.AuthenticatedUserData": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "email_verified_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "plan_type": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
                 }
             }
         },
@@ -1546,7 +1881,8 @@ const docTemplate = `{
                 "code": {
                     "type": "string"
                 },
-                "error": {
+                "data": {},
+                "message": {
                     "type": "string"
                 },
                 "request_id": {
@@ -1614,6 +1950,28 @@ const docTemplate = `{
                 },
                 "trend_velocity": {
                     "type": "number"
+                }
+            }
+        },
+        "internal_controller.AuthTokenResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.AuthTokenData"
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_controller.AuthenticatedUserResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.AuthenticatedUserData"
+                },
+                "request_id": {
+                    "type": "string"
                 }
             }
         },
@@ -1944,6 +2302,41 @@ const docTemplate = `{
             "properties": {
                 "data": {
                     "$ref": "#/definitions/github_com_StephenQiu30_hotkey-server_internal_model_vo.UserData"
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_controller.VerificationSendResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "email": {
+                            "type": "string"
+                        },
+                        "message": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_controller.VerificationTicketResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "ticket": {
+                            "type": "string"
+                        }
+                    }
                 },
                 "request_id": {
                     "type": "string"

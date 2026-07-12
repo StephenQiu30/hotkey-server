@@ -19,14 +19,16 @@ func SetupTestRouter(t *testing.T, db *gorm.DB) http.Handler {
 	t.Helper()
 
 	return controller.NewRouter(controller.Config{
-		JWTSecret:     TestJWTSecret,
-		SmokeTest:     false,
-		AuthService:   service.NewAuthService(repository.NewUserRepo(db)),
-		MonitorSvc:    service.NewMonitorService(repository.NewMonitorRepo(db), nil),
-		NotifySvc:     service.NewNotifyService(repository.NewNotifyRepo(db)),
-		ReportSvc:     service.NewReportService(repository.NewReportRepo(db), nil),
-		PostQuerySvc:  repository.NewContentQueryService(db),
-		TopicQuerySvc: repository.NewTopicQueryService(db),
-		TrendQuerySvc: repository.NewTrendQueryService(db),
+		JWTSecret:          TestJWTSecret,
+		JWTIssuer:          "hotkey-server",
+		JWTAudience:        "hotkey-web",
+		SmokeTest:          false,
+		AuthService:        service.NewAuthService(repository.NewUserRepo(db)),
+		MonitorSvc:         service.NewMonitorService(repository.NewMonitorRepo(db), nil),
+		NotifySvc:          service.NewNotifyService(repository.NewNotifyRepo(db)),
+		ReportSvc:          service.NewReportService(repository.NewReportRepo(db), nil),
+		PostQuerySvc:       repository.NewContentQueryService(db),
+		TopicQuerySvc:      repository.NewTopicQueryService(db),
+		TrendQuerySvc:      repository.NewTrendQueryService(db),
 	})
 }

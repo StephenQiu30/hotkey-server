@@ -12,7 +12,7 @@ import (
 
 
 
-func RegisterTopicRoutes(r *gin.Engine, svc service.TopicQueryService, mgr MonitorGetter) {
+func RegisterTopicRoutes(r gin.IRouter, svc service.TopicQueryService, mgr MonitorGetter) {
 	r.GET("/api/v1/monitors/:id/topics", listMonitorTopicsHandler(svc, mgr))
 }
 

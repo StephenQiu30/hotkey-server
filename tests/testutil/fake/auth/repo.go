@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
+	"github.com/StephenQiu30/hotkey-server/internal/service"
 )
 
 // Repo is an in-memory fake implementing service.AuthRepository.
@@ -54,4 +55,33 @@ func (r *Repo) GetByID(_ context.Context, id int64) (*dto.User, error) {
 		}
 	}
 	return nil, nil
+}
+
+func (r *Repo) UpdatePassword(_ context.Context, userID int64, newPasswordHash string, now time.Time) error {
+	for i := range r.Users {
+		if r.Users[i].ID == userID {
+			r.Users[i].PasswordHash = newPasswordHash
+			r.Users[i].PasswordChangedAt = &now
+			return nil
+		}
+	}
+	return nil
+}
+
+func (r *Repo) UpdateLastLogin(_ context.Context, userID int64, now time.Time) error {
+	for i := range r.Users {
+		if r.Users[i].ID == userID {
+			r.Users[i].LastLoginAt = &now
+			return nil
+		}
+	}
+	return nil
+}
+
+func (r *Repo) SetEmailVerified(_ context.Context, userID int64, now time.Time) error {
+	return nil
+}
+
+func (r *Repo) Transaction(_ context.Context, fn func(tx service.UserRepository) error) error {
+	return fn(r)
 }
