@@ -79,7 +79,7 @@ func createMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 
 		var body dto.CreateMonitorRequest
 		if err := c.ShouldBindJSON(&body); err != nil {
-			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, err.Error())
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "")
 			return
 		}
 
@@ -94,7 +94,7 @@ func createMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 		if err != nil {
 			switch {
 			case err == service.MonitorErrInvalidInterval || err == service.MonitorErrInvalidInput:
-				platformhttp.RespondError(c, enum.ErrorCodeBadRequest, err.Error())
+				platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "")
 			default:
 				platformhttp.RespondInternalError(c)
 			}
@@ -199,7 +199,7 @@ func updateMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 
 		var body dto.UpdateMonitorRequest
 		if err := c.ShouldBindJSON(&body); err != nil {
-			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, err.Error())
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "")
 			return
 		}
 
@@ -215,7 +215,7 @@ func updateMonitorHandler(svc *service.MonitorService) gin.HandlerFunc {
 		if err != nil {
 			switch {
 			case err == service.MonitorErrInvalidInterval:
-				platformhttp.RespondError(c, enum.ErrorCodeBadRequest, err.Error())
+				platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "")
 			default:
 				platformhttp.RespondInternalError(c)
 			}

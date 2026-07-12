@@ -39,7 +39,7 @@ func listNotificationsHandler(svc *service.NotifyService) gin.HandlerFunc {
 
 		items, err := svc.ListUnread(c.Request.Context(), userID)
 		if err != nil {
-			platformhttp.RespondError(c, enum.ErrorCodeInternal, err.Error())
+			platformhttp.RespondError(c, enum.ErrorCodeInternal, "")
 			return
 		}
 
@@ -76,10 +76,10 @@ func markNotificationReadHandler(svc *service.NotifyService) gin.HandlerFunc {
 
 		if err := svc.MarkRead(c.Request.Context(), userID, id); err != nil {
 			if err == service.NotifyErrNotFound || err == service.NotifyErrNotOwned {
-				platformhttp.RespondError(c, enum.ErrorCodeNotFound, err.Error())
+				platformhttp.RespondError(c, enum.ErrorCodeNotFound, "")
 				return
 			}
-			platformhttp.RespondError(c, enum.ErrorCodeInternal, err.Error())
+			platformhttp.RespondError(c, enum.ErrorCodeInternal, "")
 			return
 		}
 

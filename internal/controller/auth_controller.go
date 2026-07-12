@@ -31,12 +31,15 @@ type refreshCookieConfig struct {
 }
 
 // setRefreshCookie writes the refresh token as an httpOnly cookie.
-func setRefreshCookie(c *gin.Context, refreshToken string, expiresAt time.Time, cookieCfg refreshCookieConfig) {
+// The cookie value is formatted as "sessionID:refreshToken" so that
+// parseRefreshCookie can extract the session ID on subsequent requests.
+func setRefreshCookie(c *gin.Context, sessionID int64, refreshToken string, expiresAt time.Time, cookieCfg refreshCookieConfig) {
 	maxAge := int(time.Until(expiresAt).Seconds())
 	if maxAge < 0 {
 		maxAge = 0
 	}
-	c.SetCookie(refreshCookieName, refreshToken, maxAge, refreshCookiePath, cookieCfg.domain, cookieCfg.secure, true)
+	cookieValue := strconv.FormatInt(sessionID, 10) + ":" + refreshToken
+	c.SetCookie(refreshCookieName, cookieValue, maxAge, refreshCookiePath, cookieCfg.domain, cookieCfg.secure, true)
 }
 
 // clearRefreshCookie removes the refresh token cookie.
@@ -128,7 +131,7 @@ func registerHandler(svc *service.AuthService, cookieCfg refreshCookieConfig) gi
 			return
 		}
 
-		setRefreshCookie(c, result.Tokens.RefreshToken, result.Tokens.RefreshExpiresAt, cookieCfg)
+		setRefreshCookie(c, result.Tokens.SessionID, result.Tokens.RefreshToken, result.Tokens.RefreshExpiresAt, cookieCfg)
 		platformhttp.RespondCreated(c, convert.AuthResultToLoginVO(result))
 	}
 }
@@ -167,7 +170,7 @@ func loginHandler(svc *service.AuthService, jwtSecret, jwtIssuer, jwtAudience st
 
 		// Set refresh token as httpOnly cookie.
 		if result.Tokens != nil {
-			setRefreshCookie(c, result.Tokens.RefreshToken, result.Tokens.RefreshExpiresAt, cookieCfg)
+			setRefreshCookie(c, result.Tokens.SessionID, result.Tokens.RefreshToken, result.Tokens.RefreshExpiresAt, cookieCfg)
 
 			platformhttp.RespondOK(c, convert.AuthResultToLoginVO(result))
 			return
@@ -221,7 +224,7 @@ func refreshTokenHandler(svc *service.AuthService, cookieCfg refreshCookieConfig
 			return
 		}
 
-		setRefreshCookie(c, tokens.RefreshToken, tokens.RefreshExpiresAt, cookieCfg)
+		setRefreshCookie(c, tokens.SessionID, tokens.RefreshToken, tokens.RefreshExpiresAt, cookieCfg)
 		platformhttp.RespondOK(c, convert.TokensToAuthTokenData(tokens))
 	}
 }

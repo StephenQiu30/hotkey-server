@@ -80,6 +80,7 @@ func (m *tokenManager) SHA256Digest(data string) string {
 
 // SessionTokens carries the result of a create or refresh operation.
 type SessionTokens struct {
+	SessionID        int64
 	AccessToken      string
 	AccessExpiresAt  time.Time
 	RefreshToken     string
@@ -160,6 +161,7 @@ func (s *SessionService) Create(ctx context.Context, userID int64, ip, ua string
 	}
 
 	return &SessionTokens{
+		SessionID:        session.ID,
 		AccessToken:      accessToken,
 		AccessExpiresAt:  now.Add(15 * time.Minute),
 		RefreshToken:     rawRefresh,
@@ -204,6 +206,7 @@ func (s *SessionService) Refresh(ctx context.Context, sessionID int64, currentRe
 	}
 
 	return &SessionTokens{
+		SessionID:        session.ID,
 		AccessToken:      accessToken,
 		AccessExpiresAt:  now.Add(15 * time.Minute),
 		RefreshToken:     newRaw,

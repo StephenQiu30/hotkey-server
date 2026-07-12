@@ -64,7 +64,7 @@ func createReportHandler(svc ReportService) gin.HandlerFunc {
 
 		input, err := req.ToInput()
 		if err != nil {
-			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, err.Error())
+			platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "")
 			return
 		}
 
@@ -234,7 +234,7 @@ func respondReportError(c *gin.Context, err error) {
 	case errors.Is(err, service.ReportErrNoReportSources):
 		platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "no report sources")
 	case errors.Is(err, service.ReportErrUnsupportedType), errors.Is(err, service.ReportErrInvalidInput):
-		platformhttp.RespondError(c, enum.ErrorCodeBadRequest, err.Error())
+		platformhttp.RespondError(c, enum.ErrorCodeBadRequest, "")
 	default:
 		platformhttp.RespondInternalError(c)
 	}
