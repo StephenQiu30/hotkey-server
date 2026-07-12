@@ -185,7 +185,7 @@ func loginHandler(svc *service.AuthService, jwtSecret string) gin.HandlerFunc {
 // @Failure 400 {object} platformhttp.ErrorBody
 // @Failure 401 {object} platformhttp.ErrorBody
 // @Router /api/v1/auth/token/refresh [post]
-func refreshTokenHandler(svc *service.AuthService, jwtSecret string) gin.HandlerFunc {
+func refreshTokenHandler(svc *service.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cookieValue, err := c.Cookie(refreshCookieName)
 		if err != nil || cookieValue == "" {
@@ -231,7 +231,7 @@ func refreshTokenHandler(svc *service.AuthService, jwtSecret string) gin.Handler
 // @Success 200 {object} platformhttp.ErrorBody
 // @Failure 400 {object} platformhttp.ErrorBody
 // @Router /api/v1/auth/logout [post]
-func logoutHandler(svc *service.AuthService, jwtSecret string) gin.HandlerFunc {
+func logoutHandler(svc *service.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cookieValue, err := c.Cookie(refreshCookieName)
 		if err != nil || cookieValue == "" {
@@ -465,8 +465,8 @@ func RegisterAuthRoutes(r gin.IRouter, svc *service.AuthService, jwtSecret strin
 	r.POST("/api/v1/auth/verifications/confirm", confirmVerificationHandler(svc))
 	r.POST("/api/v1/auth/register", registerHandler(svc))
 	r.POST("/api/v1/auth/login", loginHandler(svc, jwtSecret))
-	r.POST("/api/v1/auth/token/refresh", refreshTokenHandler(svc, jwtSecret))
-	r.POST("/api/v1/auth/logout", logoutHandler(svc, jwtSecret))
+	r.POST("/api/v1/auth/token/refresh", refreshTokenHandler(svc))
+	r.POST("/api/v1/auth/logout", logoutHandler(svc))
 	r.POST("/api/v1/auth/password/reset", resetPasswordHandler(svc))
 
 	// /me requires authentication — apply auth middleware per-route.

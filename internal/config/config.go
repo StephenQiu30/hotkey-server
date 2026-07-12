@@ -57,7 +57,7 @@ func Load() (Config, error) {
 	v.SetDefault("JWT_ISSUER", "hotkey-server")
 	v.SetDefault("JWT_AUDIENCE", "hotkey-web")
 	v.SetDefault("AUTH_COOKIE_SECURE", false)
-	v.SetDefault("SMTP_PORT", 587)
+	v.SetDefault("SMTP_PORT", 465)
 
 	if err := v.ReadInConfig(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to read .env config file: %v\n", err)
