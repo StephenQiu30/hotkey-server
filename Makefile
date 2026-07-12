@@ -1,4 +1,7 @@
-.PHONY: test lint build validate validate-schema validate-arch openapi openapi-validate smoke up down schema schema-rebuild dev ci
+.PHONY: test lint build validate validate-schema validate-arch openapi openapi-validate smoke up down schema schema-rebuild dev ci precommit
+
+precommit:
+	bash .githooks/pre-commit
 
 test:
 	go test ./... -v -count=1
