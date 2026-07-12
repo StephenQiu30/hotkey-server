@@ -126,7 +126,7 @@ func (s *AuthService) RegisterVerified(ctx context.Context, ticket, password, di
 		return nil, err
 	}
 
-	var result *AuthResult
+	var registeredUser dto.User
 
 	// 2. DB transaction
 	err = s.repo.Transaction(ctx, func(tx UserRepository) error {
@@ -146,15 +146,7 @@ func (s *AuthService) RegisterVerified(ctx context.Context, ticket, password, di
 			return err
 		}
 
-		sessionTokens, err := s.sessions.Create(ctx, user.ID, ip, ua)
-		if err != nil {
-			return err
-		}
-
-		result = &AuthResult{
-			User:   user,
-			Tokens: sessionTokens,
-		}
+		registeredUser = user
 		return nil
 	})
 	if err != nil {
@@ -162,6 +154,15 @@ func (s *AuthService) RegisterVerified(ctx context.Context, ticket, password, di
 		s.verifier.ReleaseTicket(ctx, ticket)
 		return nil, err
 	}
+
+	// The user transaction must commit before the session repository can
+	// satisfy its foreign key through its independently injected DB handle.
+	sessionTokens, err := s.sessions.Create(ctx, registeredUser.ID, ip, ua)
+	if err != nil {
+		s.verifier.ReleaseTicket(ctx, ticket)
+		return nil, err
+	}
+	result := &AuthResult{User: registeredUser, Tokens: sessionTokens}
 
 	// 3. Commit -> complete ticket
 	if completeErr := s.verifier.CompleteTicket(ctx, ticket); completeErr != nil {
@@ -288,7 +289,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, ticket, newPassword str
 		subject := "[HotKey] Your password has been reset"
 		body := "Your HotKey account password was successfully reset. If you did not request this change, please contact support immediately."
 		if _, sendErr := s.mailer.Send(notifyCtx, userEmail, subject, body); sendErr != nil {
-			log.Printf("auth: failed to send password-reset notification to %s: %v", userEmail[:3] + "***@" + userEmail[strings.LastIndex(userEmail, "@")+1:], sendErr)
+			log.Printf("auth: failed to send password-reset notification to %s: %v", userEmail[:3]+"***@"+userEmail[strings.LastIndex(userEmail, "@")+1:], sendErr)
 		}
 	}()
 

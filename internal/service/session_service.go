@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/model/entity"
@@ -14,10 +15,10 @@ import (
 // ---------------------------------------------------------------------------
 
 var (
-	ErrSessionNotFound  = errors.New("session not found")
-	ErrSessionRevoked   = errors.New("session is revoked")
-	ErrSessionExpired   = errors.New("session has expired")
-	ErrTokenReused      = errors.New("token reuse detected — family revoked")
+	ErrSessionNotFound = errors.New("session not found")
+	ErrSessionRevoked  = errors.New("session is revoked")
+	ErrSessionExpired  = errors.New("session has expired")
+	ErrTokenReused     = errors.New("token reuse detected — family revoked")
 )
 
 // ---------------------------------------------------------------------------
@@ -35,7 +36,7 @@ type AuthSessionRepository interface {
 
 // TokenManager abstracts JWT signing and refresh-token generation for testability.
 type TokenManager interface {
-	SignAccessToken(sessionID int64) (string, error)
+	SignAccessToken(userID, sessionID int64) (string, error)
 	NewRefreshToken() (token string, hash string)
 	SHA256Digest(data string) string
 }
@@ -45,8 +46,8 @@ type TokenManager interface {
 // ---------------------------------------------------------------------------
 
 type tokenManager struct {
-	jwtSecret string
-	jwtIssuer string
+	jwtSecret   string
+	jwtIssuer   string
 	jwtAudience string
 }
 
@@ -59,8 +60,10 @@ func NewTokenManager(jwtSecret, jwtIssuer, jwtAudience string) TokenManager {
 	}
 }
 
-func (m *tokenManager) SignAccessToken(sessionID int64) (string, error) {
-	return security.SignAccessToken(security.AccessClaims{SessionID: sessionID}, m.jwtSecret, m.jwtIssuer, m.jwtAudience)
+func (m *tokenManager) SignAccessToken(userID, sessionID int64) (string, error) {
+	claims := security.AccessClaims{SessionID: sessionID}
+	claims.Subject = strconv.FormatInt(userID, 10)
+	return security.SignAccessToken(claims, m.jwtSecret, m.jwtIssuer, m.jwtAudience)
 }
 
 func (m *tokenManager) NewRefreshToken() (string, string) {
@@ -141,7 +144,7 @@ func (s *SessionService) Create(ctx context.Context, userID int64, ip, ua string
 	_, familyHash := s.tokens.NewRefreshToken()
 
 	// Calculate expiry windows.
-	idleExpiry := now.Add(7 * 24 * time.Hour)     // 7-day idle timeout
+	idleExpiry := now.Add(7 * 24 * time.Hour)      // 7-day idle timeout
 	absoluteExpiry := now.Add(30 * 24 * time.Hour) // 30-day absolute timeout
 
 	// Persist the session.
@@ -151,7 +154,7 @@ func (s *SessionService) Create(ctx context.Context, userID int64, ip, ua string
 	}
 
 	// Sign an access token bound to this session.
-	accessToken, err := s.tokens.SignAccessToken(session.ID)
+	accessToken, err := s.tokens.SignAccessToken(userID, session.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +198,7 @@ func (s *SessionService) Refresh(ctx context.Context, sessionID int64, currentRe
 	}
 
 	// Sign a new access token.
-	accessToken, err := s.tokens.SignAccessToken(session.ID)
+	accessToken, err := s.tokens.SignAccessToken(session.UserID, session.ID)
 	if err != nil {
 		return nil, err
 	}
