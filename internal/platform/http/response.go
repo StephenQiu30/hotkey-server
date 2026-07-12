@@ -63,6 +63,13 @@ func RespondInternalError(c *gin.Context) {
 
 // RespondAppError writes an *AppError as a unified JSON error response.
 func RespondAppError(c *gin.Context, err error) {
+	var coded interface{ ErrorCode() enum.ErrorCode }
+	if errors.As(err, &coded) {
+		code := coded.ErrorCode()
+		spec := GetErrorSpec(code)
+		c.JSON(spec.HTTPStatus, vo.ResponseBody{Code: spec.HTTPStatus, ErrorCode: code, Data: nil})
+		return
+	}
 	var appErr *AppError
 	if errors.As(err, &appErr) {
 		c.JSON(appErr.HTTPStatus, vo.ResponseBody{
@@ -88,8 +95,9 @@ func ErrorHandlerMiddleware() gin.HandlerFunc {
 		}
 
 		var appErr *AppError
-		if errors.As(c.Errors.Last().Err, &appErr) {
-			RespondAppError(c, appErr)
+		var coded interface{ ErrorCode() enum.ErrorCode }
+		if errors.As(c.Errors.Last().Err, &appErr) || errors.As(c.Errors.Last().Err, &coded) {
+			RespondAppError(c, c.Errors.Last().Err)
 			c.Abort()
 			return
 		}
