@@ -3,6 +3,7 @@ package session_test
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -19,8 +20,10 @@ import (
 
 type fakeTokenManager struct{}
 
-func (f *fakeTokenManager) SignAccessToken(sessionID int64) (string, error) {
-	return security.SignAccessToken(security.AccessClaims{SessionID: sessionID}, "test-secret", "hotkey-server", "hotkey-web")
+func (f *fakeTokenManager) SignAccessToken(userID, sessionID int64) (string, error) {
+	claims := security.AccessClaims{SessionID: sessionID}
+	claims.Subject = strconv.FormatInt(userID, 10)
+	return security.SignAccessToken(claims, "test-secret", "hotkey-server", "hotkey-web")
 }
 
 func (f *fakeTokenManager) NewRefreshToken() (string, string) {

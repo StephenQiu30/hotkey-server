@@ -35,8 +35,28 @@ func TestIntegrationSmoke(t *testing.T) {
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	// Step 1: Register a user.
-	regBody := `{"email":"smoke@example.com","password":"Passw0rd!","display_name":"Smoke Test"}`
+	// Step 1: Verify email and register with the one-time ticket.
+	sendBody := `{"email":"smoke@example.com","purpose":"register"}`
+	sendResp, err := http.Post(ts.URL+"/api/v1/auth/verifications", "application/json", bytes.NewBufferString(sendBody))
+	if err != nil || sendResp.StatusCode != http.StatusOK {
+		t.Fatalf("send verification: status=%v err=%v", sendResp.StatusCode, err)
+	}
+	_ = sendResp.Body.Close()
+
+	confirmBody := `{"email":"smoke@example.com","purpose":"register","code":"` + testutil.TestVerificationCode + `"}`
+	confirmResp, err := http.Post(ts.URL+"/api/v1/auth/verifications/confirm", "application/json", bytes.NewBufferString(confirmBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ticketData struct {
+		Ticket string `json:"ticket"`
+	}
+	if err := decodeData(confirmResp, &ticketData); err != nil {
+		t.Fatal(err)
+	}
+	_ = confirmResp.Body.Close()
+
+	regBody := fmt.Sprintf(`{"verification_ticket":%q,"password":"Passw0rd!","display_name":"Smoke Test"}`, ticketData.Ticket)
 	regResp, err := http.Post(ts.URL+"/api/v1/auth/register", "application/json", bytes.NewBufferString(regBody))
 	if err != nil {
 		t.Fatalf("register request failed: %v", err)
@@ -49,22 +69,25 @@ func TestIntegrationSmoke(t *testing.T) {
 		t.Fatalf("register: expected 201, got %d: %v", regResp.StatusCode, errBody)
 	}
 
-	var regUser struct {
-		ID          int64  `json:"id"`
-		Email       string `json:"email"`
-		DisplayName string `json:"display_name"`
+	var regResult struct {
+		User struct {
+			ID          int64  `json:"id"`
+			Email       string `json:"email"`
+			DisplayName string `json:"display_name"`
+		} `json:"user"`
+		Token string `json:"token"`
 	}
-	if err := decodeData(regResp, &regUser); err != nil {
+	if err := decodeData(regResp, &regResult); err != nil {
 		t.Fatalf("register decode: %v", err)
 	}
-	if regUser.ID == 0 {
+	if regResult.User.ID == 0 || regResult.Token == "" {
 		t.Fatal("register: expected non-zero user ID")
 	}
-	if regUser.Email != "smoke@example.com" {
-		t.Fatalf("register: expected email smoke@example.com, got %s", regUser.Email)
+	if regResult.User.Email != "smoke@example.com" {
+		t.Fatalf("register: expected email smoke@example.com, got %s", regResult.User.Email)
 	}
-	if regUser.DisplayName != "Smoke Test" {
-		t.Fatalf("register: expected display_name Smoke Test, got %s", regUser.DisplayName)
+	if regResult.User.DisplayName != "Smoke Test" {
+		t.Fatalf("register: expected display_name Smoke Test, got %s", regResult.User.DisplayName)
 	}
 
 	// Step 2: Login and get token.
@@ -167,43 +190,22 @@ func TestIntegrationSmoke(t *testing.T) {
 	}
 }
 
-// TestIntegrationRegisterReturnsRealFields verifies register returns non-empty user fields.
-func TestIntegrationRegisterReturnsRealFields(t *testing.T) {
+func TestIntegrationRegisterRejectsLegacyPayload(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 
 	router := testutil.SetupTestRouter(t, db)
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	email := fmt.Sprintf("user-%d@example.com", os.Getpid())
-	body := fmt.Sprintf(`{"email":"%s","password":"Passw0rd!","display_name":"Real User"}`, email)
+	body := `{"email":"legacy@example.com","password":"Passw0rd!","display_name":"Legacy"}`
 	resp, err := http.Post(ts.URL+"/api/v1/auth/register", "application/json", bytes.NewBufferString(body))
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("expected 201, got %d", resp.StatusCode)
-	}
-
-	var result struct {
-		ID          int64  `json:"id"`
-		Email       string `json:"email"`
-		DisplayName string `json:"display_name"`
-	}
-	if err := decodeData(resp, &result); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-
-	if result.ID == 0 {
-		t.Error("expected non-zero user ID")
-	}
-	if result.Email == "" {
-		t.Error("expected non-empty email")
-	}
-	if result.DisplayName == "" {
-		t.Error("expected non-empty display_name")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
 	}
 }
 
