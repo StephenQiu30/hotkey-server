@@ -99,6 +99,5 @@ go test ./tests/unit/monitor/... -v -count=1
 3. **分层引用方向**：controller → service → repository，反向引用通过接口 + Fx DI 解耦。
 4. **pgvector** — 所有 embedding 向量使用 `pkg.Vector384` 类型，数据库 schema 通过 `CREATE EXTENSION vector` + `ALTER TABLE ... ADD COLUMN ... vector(384)` 管理。
 5. **消息队列** — 使用 Kafka，消息路由通过 `queue.Dispatcher` + `Queue.Register(job)` 模式，失败消息写入 DLQ 表。
-6. **OpenSpec** — 当前活跃 change 在 `openspec/changes/`，已归档在 `openspec/changes/archive/`，已有基线规范在 `openspec/specs/`。涉及架构、数据模型、接口变更时先更新 OpenSpec。
-7. **PR 准备** — 提交前跑 `make ci`（lint + build + test + validate + smoke），确保 CI 通过。
-8. **CLAUDE.local.md** 不重复 CLAUDE.md 内容，只存本地环境特有配置。
+6. **PR 准备** — 提交前跑 `make ci`（lint + build + test + validate + smoke），确保 CI 通过。
+7. **CLAUDE.local.md** 不重复 CLAUDE.md 内容，只存本地环境特有配置。
