@@ -2,6 +2,7 @@ package controller
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	swaggerfiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
@@ -20,6 +21,8 @@ type Config struct {
 	SwaggerEnabled     bool
 	WebAllowedOrigins  []string
 	AuthService       *service.AuthService
+	UserRepo          service.UserRepository
+	Rdb               *redis.Client
 	CookieDomain       string
 	CookieSecure       bool
 	MonitorSvc        *service.MonitorService
@@ -49,7 +52,7 @@ func NewRouter(cfg Config) *gin.Engine {
 
 	// Public routes (no auth required).
 	RegisterHealthRoutes(r)
-	RegisterAuthRoutes(r, cfg.AuthService, cfg.JWTSecret, cfg.JWTIssuer, cfg.JWTAudience, cfg.CookieDomain, cfg.CookieSecure)
+	RegisterAuthRoutes(r, cfg.AuthService, cfg.JWTSecret, cfg.JWTIssuer, cfg.JWTAudience, cfg.CookieDomain, cfg.CookieSecure, cfg.UserRepo, cfg.Rdb)
 	if cfg.SwaggerEnabled {
 		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
 	}

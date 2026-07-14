@@ -9,10 +9,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/StephenQiu30/hotkey-server/internal/convert"
 	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
 	"github.com/StephenQiu30/hotkey-server/internal/model/enum"
+	"github.com/StephenQiu30/hotkey-server/internal/model/vo"
 	platformhttp "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/runtime"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/security"
@@ -282,19 +284,20 @@ func logoutHandler(svc *service.AuthService, cookieCfg refreshCookieConfig) gin.
 // @Router /api/v1/auth/me [get]
 func meHandler(svc *service.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id := runtime.UserIDFromContext(c.Request.Context())
-		if id == 0 {
+		uc := runtime.UserFromContext(c.Request.Context())
+		if uc == nil {
 			platformhttp.RespondError(c, enum.ErrorCodeTokenInvalid, "")
 			return
 		}
-
-		user, err := svc.CurrentUser(c.Request.Context(), id)
-		if err != nil || user == nil {
-			platformhttp.RespondError(c, enum.ErrorCodeTokenInvalid, "")
-			return
+		data := vo.AuthenticatedUserData{
+			ID:          uc.UserID,
+			Email:       uc.Email,
+			DisplayName: uc.DisplayName,
+			Status:      uc.Status,
+			PlanType:    uc.PlanType,
+			CreatedAt:   uc.CreatedAt,
 		}
-
-		platformhttp.RespondOK(c, convert.UserDTOToAuthenticatedUserVO(*user))
+		platformhttp.RespondOK(c, data)
 	}
 }
 
@@ -415,7 +418,14 @@ func resetPasswordHandler(svc *service.AuthService) gin.HandlerFunc {
 // Route registration
 // ---------------------------------------------------------------------------
 
-func RegisterAuthRoutes(r gin.IRouter, svc *service.AuthService, jwtSecret, jwtIssuer, jwtAudience, cookieDomain string, cookieSecure bool) {
+func RegisterAuthRoutes(
+	r gin.IRouter,
+	svc *service.AuthService,
+	jwtSecret, jwtIssuer, jwtAudience, cookieDomain string,
+	cookieSecure bool,
+	userRepo service.UserRepository,
+	rdb *redis.Client,
+) {
 	cookieCfg := refreshCookieConfig{domain: cookieDomain, secure: cookieSecure}
 
 	// Public auth endpoints.
@@ -427,6 +437,9 @@ func RegisterAuthRoutes(r gin.IRouter, svc *service.AuthService, jwtSecret, jwtI
 	r.POST("/api/v1/auth/logout", logoutHandler(svc, cookieCfg))
 	r.POST("/api/v1/auth/password/reset", resetPasswordHandler(svc))
 
-	// /me requires authentication — apply auth middleware per-route.
-	r.GET("/api/v1/auth/me", platformhttp.AuthMiddleware(jwtSecret, jwtIssuer, jwtAudience, false), meHandler(svc))
+	// /me route with AuthMiddleware + UserContextMiddleware.
+	r.GET("/api/v1/auth/me",
+		platformhttp.AuthMiddleware(jwtSecret, jwtIssuer, jwtAudience, false),
+		platformhttp.UserContextMiddleware(userRepo, rdb),
+		meHandler(svc))
 }

@@ -48,7 +48,7 @@ func NewApp() *fx.App {
 		fx.Provide(fx.Annotate(repository.NewTrendQueryService, fx.As(new(service.TrendQueryService)))),
 
 		// Auth session repository
-		fx.Provide(fx.Annotate(repository.NewAuthSessionRepo, fx.As(new(service.AuthSessionRepository)))),
+		fx.Provide(fx.Annotate(repository.NewRedisAuthSessionRepository, fx.As(new(service.AuthSessionRepository)))),
 
 		// Auth dependencies
 		fx.Provide(func(cfg *config.Config) service.TokenManager {
@@ -112,6 +112,8 @@ type HTTPServerIn struct {
 
 	Config      *config.Config
 	AuthService *service.AuthService
+	UserRepo    service.UserRepository
+	Rdb         *redis.Client
 	MonitorSvc  *service.MonitorService
 	NotifySvc   *service.NotifyService
 	ReportSvc   *service.ReportService

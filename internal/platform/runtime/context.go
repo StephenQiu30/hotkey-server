@@ -1,6 +1,10 @@
 package runtime
 
-import "context"
+import (
+	"context"
+
+	"github.com/StephenQiu30/hotkey-server/internal/model/dto"
+)
 
 type contextKey string
 
@@ -49,6 +53,22 @@ func UserIDFromContext(ctx context.Context) int64 {
 		return value
 	}
 	return 0
+}
+
+const userContextKey contextKey = "user_context"
+
+// WithUserContext stores the UserContext in context.
+func WithUserContext(ctx context.Context, uc *dto.UserContext) context.Context {
+	return context.WithValue(ctx, userContextKey, uc)
+}
+
+// UserFromContext returns the UserContext stored in context.
+// Returns nil when no authenticated user context exists.
+func UserFromContext(ctx context.Context) *dto.UserContext {
+	if uc, ok := ctx.Value(userContextKey).(*dto.UserContext); ok {
+		return uc
+	}
+	return nil
 }
 
 // WithModule stores the current application module in context.
