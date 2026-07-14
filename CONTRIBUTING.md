@@ -4,7 +4,7 @@
 
 ## 贡献范围
 
-1. 修正或补充 `CLAUDE.md`、`CLAUDE.local.md` 中的协作规范。
+1. 修正或补充 `AGENTS.md` 中的项目规范和 `CLAUDE.local.md` 中的本地约定。
 2. 优化 `.claude/agents/` 中的角色职责。
 3. 优化 `.claude/skills/` 中的 harness、Linear 和 Git 收口流程。
    > 注意：此目录中的部分 skill 是 superpowers 仓库的 vendored 副本，直接修改会被覆盖。如需自定义，请复制到 `.claude/skills-local/`。
