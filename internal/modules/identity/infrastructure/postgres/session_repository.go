@@ -13,11 +13,6 @@ import (
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
-var (
-	ErrRefreshReplay  = errors.New("refresh token replay detected")
-	ErrRefreshInvalid = errors.New("refresh token is invalid")
-)
-
 type SessionRepository struct {
 	runtime *database.Runtime
 }
@@ -47,7 +42,7 @@ func (repository *SessionRepository) FindByRefreshTokenHash(ctx context.Context,
 	if strings.TrimSpace(hash) == "" {
 		return nil, nil, fmt.Errorf("%w: refresh token hash is required", sharedrepository.ErrInvalidInput)
 	}
-	session, token, err := findSessionAndToken(ctx, transactionSQL(ctx, repository.runtime), hash, false)
+	session, token, _, err := findSessionAndToken(ctx, transactionSQL(ctx, repository.runtime), hash, false)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -56,7 +51,7 @@ func (repository *SessionRepository) FindByRefreshTokenHash(ctx context.Context,
 
 // Rotate serializes consumption on the current refresh-token row. A second
 // consumer observes used_at while holding that row lock, revokes the complete
-// session family in the same transaction, and receives ErrRefreshReplay.
+// session family in the same transaction, and receives domain.ErrRefreshReplay.
 func (repository *SessionRepository) Rotate(ctx context.Context, currentHash string, replacement *domain.RefreshToken, now time.Time) (*domain.Session, *domain.RefreshToken, error) {
 	if repository == nil || repository.runtime == nil {
 		return nil, nil, sharedrepository.ErrUnavailable
@@ -67,13 +62,14 @@ func (repository *SessionRepository) Rotate(ctx context.Context, currentHash str
 	now = now.UTC()
 	var session domain.Session
 	var token domain.RefreshToken
+	var user domain.User
 	var replayDetected bool
 	err := useTransaction(ctx, repository.runtime, func(ctx context.Context, transaction database.Transaction) error {
 		var err error
-		session, token, err = findSessionAndToken(ctx, transaction.SQL, currentHash, true)
+		session, token, user, err = findSessionAndToken(ctx, transaction.SQL, currentHash, true)
 		if err != nil {
 			if errors.Is(err, sharedrepository.ErrNotFound) {
-				return ErrRefreshInvalid
+				return domain.ErrRefreshInvalid
 			}
 			return err
 		}
@@ -84,8 +80,8 @@ func (repository *SessionRepository) Rotate(ctx context.Context, currentHash str
 			replayDetected = true
 			return nil
 		}
-		if token.RevokedAt != nil || !token.ExpiresAt.After(now) || session.RevokedAt != nil || !session.AbsoluteExpiresAt.After(now) {
-			return ErrRefreshInvalid
+		if !user.Active() || token.RevokedAt != nil || !token.ExpiresAt.After(now) || session.RevokedAt != nil || !session.AbsoluteExpiresAt.After(now) {
+			return domain.ErrRefreshInvalid
 		}
 		if replacement.ExpiresAt.After(session.AbsoluteExpiresAt) || !replacement.ExpiresAt.After(now) {
 			return fmt.Errorf("%w: replacement expiry is outside the session lifetime", sharedrepository.ErrInvalidInput)
@@ -115,7 +111,7 @@ RETURNING id, session_id, token_hash, expires_at, used_at, revoked_at, created_a
 		return nil, nil, err
 	}
 	if replayDetected {
-		return nil, nil, ErrRefreshReplay
+		return nil, nil, domain.ErrRefreshReplay
 	}
 	return &session, replacement, nil
 }
@@ -196,26 +192,30 @@ type rowQueryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
-func findSessionAndToken(ctx context.Context, queryer rowQueryer, hash string, lock bool) (domain.Session, domain.RefreshToken, error) {
+func findSessionAndToken(ctx context.Context, queryer rowQueryer, hash string, lock bool) (domain.Session, domain.RefreshToken, domain.User, error) {
 	query := `
 SELECT session.id, session.user_id, session.family_id, session.absolute_expires_at, session.last_seen_at, session.revoked_at, session.revoke_reason, session.created_at,
-       token.id, token.session_id, token.token_hash, token.expires_at, token.used_at, token.revoked_at, token.created_at
+       token.id, token.session_id, token.token_hash, token.expires_at, token.used_at, token.revoked_at, token.created_at,
+       "user".id, "user".email, "user".password_hash, "user".display_name, "user".role, "user".status, "user".last_login_at, "user".created_at, "user".updated_at, "user".deleted_at
 FROM auth_refresh_tokens AS token
 JOIN auth_sessions AS session ON session.id = token.session_id
+JOIN users AS "user" ON "user".id = session.user_id
 WHERE token.token_hash = $1`
 	if lock {
-		query += ` FOR UPDATE OF token, session`
+		query += ` FOR UPDATE OF token, session, "user"`
 	}
 	var sessionRecord sessionRecord
 	var tokenRecord refreshTokenRecord
+	var userRecord userRecord
 	err := queryer.QueryRowContext(ctx, query, hash).Scan(
 		&sessionRecord.ID, &sessionRecord.UserID, &sessionRecord.FamilyID, &sessionRecord.AbsoluteExpiresAt, &sessionRecord.LastSeenAt, &sessionRecord.RevokedAt, &sessionRecord.RevokeReason, &sessionRecord.CreatedAt,
 		&tokenRecord.ID, &tokenRecord.SessionID, &tokenRecord.TokenHash, &tokenRecord.ExpiresAt, &tokenRecord.UsedAt, &tokenRecord.RevokedAt, &tokenRecord.CreatedAt,
+		&userRecord.ID, &userRecord.Email, &userRecord.PasswordHash, &userRecord.DisplayName, &userRecord.Role, &userRecord.Status, &userRecord.LastLoginAt, &userRecord.CreatedAt, &userRecord.UpdatedAt, &userRecord.DeletedAt,
 	)
 	if err != nil {
-		return domain.Session{}, domain.RefreshToken{}, mapRepositoryError(err)
+		return domain.Session{}, domain.RefreshToken{}, domain.User{}, mapRepositoryError(err)
 	}
-	return sessionRecord.domainSession(), tokenRecord.domainRefreshToken(), nil
+	return sessionRecord.domainSession(), tokenRecord.domainRefreshToken(), userRecord.domainUser(), nil
 }
 
 func revokeSession(ctx context.Context, transaction database.Transaction, sessionID int64, reason string, now time.Time) error {

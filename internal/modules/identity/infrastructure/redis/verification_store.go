@@ -29,7 +29,7 @@ var (
 if redis.call('EXISTS', KEYS[2]) == 1 then
   return 0
 end
-redis.call('HSET', KEYS[1], 'email', ARGV[1], 'purpose', ARGV[2], 'code_hash', ARGV[3], 'attempts', '0')
+redis.call('HSET', KEYS[1], 'purpose', ARGV[1], 'email_hash', ARGV[2], 'code_hash', ARGV[3], 'attempts', '0')
 redis.call('PEXPIRE', KEYS[1], ARGV[4])
 redis.call('SET', KEYS[2], '1', 'PX', ARGV[5])
 return 1`)
@@ -37,12 +37,12 @@ return 1`)
 if redis.call('EXISTS', KEYS[1]) == 0 then
   return 0
 end
-if redis.call('HGET', KEYS[1], 'purpose') ~= ARGV[1] or redis.call('HGET', KEYS[1], 'email') ~= ARGV[2] then
+if redis.call('HGET', KEYS[1], 'purpose') ~= ARGV[1] or redis.call('HGET', KEYS[1], 'email_hash') ~= ARGV[2] then
   return 0
 end
-if redis.call('HGET', KEYS[1], 'code_hash') ~= ARGV[3] then
+if redis.call('HGET', KEYS[1], 'code_hash') ~= ARGV[4] then
   local attempts = redis.call('HINCRBY', KEYS[1], 'attempts', 1)
-  if attempts >= tonumber(ARGV[4]) then
+  if attempts >= tonumber(ARGV[5]) then
     redis.call('DEL', KEYS[1])
   end
   return 0
@@ -51,8 +51,10 @@ local ttl = redis.call('PTTL', KEYS[1])
 if ttl <= 0 then
   return 0
 end
-local ticket_ttl = math.min(ttl, tonumber(ARGV[5]))
-redis.call('HSET', KEYS[2], 'email', ARGV[2], 'purpose', ARGV[1])
+local ticket_ttl = math.min(ttl, tonumber(ARGV[6]))
+-- The ticket is consumed later using only its opaque value, so it retains the
+-- verified email; the short-lived code state above retains only its hash.
+redis.call('HSET', KEYS[2], 'email', ARGV[3], 'email_hash', ARGV[2], 'purpose', ARGV[1])
 redis.call('PEXPIRE', KEYS[2], ticket_ttl)
 redis.call('DEL', KEYS[1])
 return ticket_ttl`)
@@ -111,7 +113,7 @@ func (store *VerificationStore) CreateCode(ctx context.Context, purpose domain.V
 		return unavailable()
 	}
 
-	result, err := createCodeScript.Run(ctx, store.client, []string{store.codeKey(purpose, normalizedEmail), store.cooldownKey(purpose, normalizedEmail)}, normalizedEmail, string(purpose), hashString(code), ttl.Milliseconds(), verificationCooldown.Milliseconds()).Int64()
+	result, err := createCodeScript.Run(ctx, store.client, []string{store.codeKey(purpose, normalizedEmail), store.cooldownKey(purpose, normalizedEmail)}, string(purpose), hashString(normalizedEmail), hashString(code), ttl.Milliseconds(), verificationCooldown.Milliseconds()).Int64()
 	if err != nil {
 		return unavailable()
 	}
@@ -136,7 +138,7 @@ func (store *VerificationStore) ConsumeCode(ctx context.Context, purpose domain.
 	if err != nil {
 		return domain.VerificationTicket{}, unavailable()
 	}
-	result, err := consumeCodeScript.Run(ctx, store.client, []string{store.codeKey(purpose, normalizedEmail), store.ticketKey(token)}, string(purpose), normalizedEmail, hashString(code), verificationMaxAttempts, verificationTicketTTL.Milliseconds()).Int64()
+	result, err := consumeCodeScript.Run(ctx, store.client, []string{store.codeKey(purpose, normalizedEmail), store.ticketKey(token)}, string(purpose), hashString(normalizedEmail), normalizedEmail, hashString(code), verificationMaxAttempts, verificationTicketTTL.Milliseconds()).Int64()
 	if err != nil {
 		return domain.VerificationTicket{}, unavailable()
 	}

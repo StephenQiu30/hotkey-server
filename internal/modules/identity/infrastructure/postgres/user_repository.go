@@ -53,6 +53,31 @@ FROM users
 WHERE id = $1 AND deleted_at IS NULL`, id)
 }
 
+// LockByID includes soft-deleted users so lifecycle restore operations can
+// make their conflict and last-admin checks while holding the target row.
+func (repository *UserRepository) LockByID(ctx context.Context, id int64) (*domain.User, error) {
+	if id <= 0 {
+		return nil, fmt.Errorf("%w: user ID must be positive", sharedrepository.ErrInvalidInput)
+	}
+	if repository == nil || repository.runtime == nil {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	var user domain.User
+	err := useTransaction(ctx, repository.runtime, func(ctx context.Context, transaction database.Transaction) error {
+		var err error
+		user, err = scanUser(transaction.SQL.QueryRowContext(ctx, `
+SELECT id, email, password_hash, display_name, role, status, last_login_at, created_at, updated_at, deleted_at
+FROM users
+WHERE id = $1
+FOR UPDATE`, id))
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
 func (repository *UserRepository) Create(ctx context.Context, user *domain.User) error {
 	if repository == nil || repository.runtime == nil {
 		return sharedrepository.ErrUnavailable
@@ -109,31 +134,36 @@ func (repository *UserRepository) BootstrapAdmin(ctx context.Context, email, pas
 // LockActiveAdmins is deliberately transaction-scoped. The application layer
 // uses this together with the target user lock before changing any admin's
 // role, status, or deletion state.
-func (repository *UserRepository) LockActiveAdmins(ctx context.Context, transaction database.Transaction) ([]domain.User, error) {
-	if transaction.SQL == nil {
+func (repository *UserRepository) LockActiveAdmins(ctx context.Context) ([]domain.User, error) {
+	if repository == nil || repository.runtime == nil {
 		return nil, sharedrepository.ErrUnavailable
 	}
-	rows, err := transaction.SQL.QueryContext(ctx, `
+	admins := make([]domain.User, 0)
+	err := useTransaction(ctx, repository.runtime, func(ctx context.Context, transaction database.Transaction) error {
+		rows, err := transaction.SQL.QueryContext(ctx, `
 SELECT id, email, password_hash, display_name, role, status, last_login_at, created_at, updated_at, deleted_at
 FROM users
 WHERE role = 'admin' AND status = 'active' AND deleted_at IS NULL
 ORDER BY id
 FOR UPDATE`)
-	if err != nil {
-		return nil, mapRepositoryError(err)
-	}
-	defer rows.Close()
-
-	admins := make([]domain.User, 0)
-	for rows.Next() {
-		user, err := scanUser(rows)
 		if err != nil {
-			return nil, err
+			return mapRepositoryError(err)
 		}
-		admins = append(admins, user)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, mapRepositoryError(err)
+		defer rows.Close()
+		for rows.Next() {
+			user, err := scanUser(rows)
+			if err != nil {
+				return err
+			}
+			admins = append(admins, user)
+		}
+		if err := rows.Err(); err != nil {
+			return mapRepositoryError(err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return admins, nil
 }

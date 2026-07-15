@@ -4,12 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	stdhttp "net/http"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/identity/domain"
 	sharederrors "github.com/StephenQiu30/hotkey-server/internal/shared/errors"
+	goredis "github.com/redis/go-redis/v9"
 )
 
 func TestVerificationStoreUsesAtomicCodeAndTicketConsumption(t *testing.T) {
@@ -50,6 +54,53 @@ func TestVerificationStoreUsesAtomicCodeAndTicketConsumption(t *testing.T) {
 	}
 }
 
+func TestVerificationStoreHashesEmailInCodeStateAndKeepsTicketAssociationMinimal(t *testing.T) {
+	store, err := NewVerificationStoreFromURL(testRedisURL(t))
+	if err != nil {
+		t.Fatalf("NewVerificationStoreFromURL(): %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	ctx := context.Background()
+	email := fmt.Sprintf("  Hash-Only-%d@Example.Test ", time.Now().UnixNano())
+	normalized, err := domain.NormalizeEmail(email)
+	if err != nil {
+		t.Fatalf("NormalizeEmail(): %v", err)
+	}
+	if err := store.CreateCode(ctx, domain.VerificationPurposeRegistration, email, "135790", time.Now().Add(2*time.Minute)); err != nil {
+		t.Fatalf("CreateCode(): %v", err)
+	}
+	state, err := store.client.HGetAll(ctx, store.codeKey(domain.VerificationPurposeRegistration, normalized)).Result()
+	if err != nil {
+		t.Fatalf("inspect Redis code state: %v", err)
+	}
+	if state["email_hash"] != hashString(normalized) || state["email"] != "" {
+		t.Fatalf("code state = %#v, want only normalized email hash", state)
+	}
+	for _, value := range state {
+		if strings.Contains(value, normalized) {
+			t.Fatalf("code state leaked normalized email in %q", value)
+		}
+	}
+	ticket, err := store.ConsumeCode(ctx, domain.VerificationPurposeRegistration, email, "135790")
+	if err != nil {
+		t.Fatalf("ConsumeCode(): %v", err)
+	}
+	if ticket.Email != normalized {
+		t.Fatalf("ticket email = %q, want normalized email", ticket.Email)
+	}
+	// A ticket must retain the normalized email because registration consumes
+	// only the opaque ticket and needs the verified address; the code record
+	// itself never needs plaintext email and therefore does not retain it.
+	ticketState, err := store.client.HGetAll(ctx, store.ticketKey(ticket.Token)).Result()
+	if err != nil {
+		t.Fatalf("inspect Redis ticket state: %v", err)
+	}
+	if ticketState["email"] != normalized || ticketState["email_hash"] != hashString(normalized) {
+		t.Fatalf("ticket state = %#v, want necessary email association plus hash", ticketState)
+	}
+}
+
 func TestVerificationStoreCountsFailedCodesAndAllowsOnlyOneConcurrentConsumption(t *testing.T) {
 	store, err := NewVerificationStoreFromURL(testRedisURL(t))
 	if err != nil {
@@ -74,9 +125,113 @@ func TestVerificationStoreCountsFailedCodesAndAllowsOnlyOneConcurrentConsumption
 
 func TestVerificationStoreReportsUnavailableForNilClient(t *testing.T) {
 	store := NewVerificationStore(nil)
-	err := store.CreateCode(context.Background(), domain.VerificationPurposeRegistration, "unavailable@example.test", "123456", time.Now().Add(time.Minute))
-	if appErrorCode(err) != sharederrors.CodeUnavailable {
+	assertVerificationStoreUnavailable(t, store)
+}
+
+func TestVerificationStoreReportsUnavailableForClosedRedisClientOnEveryOperation(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve closed Redis address: %v", err)
+	}
+	address := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatalf("close reserved Redis address: %v", err)
+	}
+	store := NewVerificationStore(goredis.NewClient(&goredis.Options{Addr: address, DB: 15, DialTimeout: 25 * time.Millisecond, MaxRetries: 0}))
+	t.Cleanup(func() { _ = store.Close() })
+	assertVerificationStoreUnavailable(t, store)
+}
+
+func TestVerificationStoreConcurrentCodeAndTicketConsumptionHaveOneWinner(t *testing.T) {
+	store, err := NewVerificationStoreFromURL(testRedisURL(t))
+	if err != nil {
+		t.Fatalf("NewVerificationStoreFromURL(): %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	ctx := context.Background()
+	email := uniqueVerificationEmail("concurrent")
+	if err := store.CreateCode(ctx, domain.VerificationPurposeRegistration, email, "246810", time.Now().Add(2*time.Minute)); err != nil {
+		t.Fatalf("CreateCode(): %v", err)
+	}
+	start := make(chan struct{})
+	type codeOutcome struct {
+		ticket domain.VerificationTicket
+		err    error
+	}
+	codeResults := make(chan codeOutcome, 2)
+	var group sync.WaitGroup
+	for range 2 {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			<-start
+			ticket, err := store.ConsumeCode(ctx, domain.VerificationPurposeRegistration, email, "246810")
+			codeResults <- codeOutcome{ticket: ticket, err: err}
+		}()
+	}
+	close(start)
+	group.Wait()
+	close(codeResults)
+
+	var ticket domain.VerificationTicket
+	var codeSuccesses, codeInvalid int
+	for result := range codeResults {
+		if result.err == nil {
+			codeSuccesses++
+			ticket = result.ticket
+			continue
+		}
+		if appErrorCode(result.err) != sharederrors.CodeVerificationInvalid {
+			t.Fatalf("concurrent ConsumeCode() error = %v", result.err)
+		}
+		codeInvalid++
+	}
+	if codeSuccesses != 1 || codeInvalid != 1 {
+		t.Fatalf("code outcomes = %d success %d invalid, want 1 each", codeSuccesses, codeInvalid)
+	}
+
+	start = make(chan struct{})
+	ticketResults := make(chan error, 2)
+	for range 2 {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			<-start
+			_, err := store.ConsumeTicket(ctx, domain.VerificationPurposeRegistration, ticket.Token)
+			ticketResults <- err
+		}()
+	}
+	close(start)
+	group.Wait()
+	close(ticketResults)
+	var ticketSuccesses, ticketInvalid int
+	for err := range ticketResults {
+		if err == nil {
+			ticketSuccesses++
+			continue
+		}
+		if appErrorCode(err) != sharederrors.CodeVerificationInvalid {
+			t.Fatalf("concurrent ConsumeTicket() error = %v", err)
+		}
+		ticketInvalid++
+	}
+	if ticketSuccesses != 1 || ticketInvalid != 1 {
+		t.Fatalf("ticket outcomes = %d success %d invalid, want 1 each", ticketSuccesses, ticketInvalid)
+	}
+}
+
+func assertVerificationStoreUnavailable(t *testing.T, store *VerificationStore) {
+	t.Helper()
+	ctx := context.Background()
+	if err := store.CreateCode(ctx, domain.VerificationPurposeRegistration, uniqueVerificationEmail("unavailable"), "123456", time.Now().Add(time.Minute)); appErrorCode(err) != sharederrors.CodeUnavailable {
 		t.Fatalf("CreateCode() error = %v, want CodeUnavailable", err)
+	}
+	if _, err := store.ConsumeCode(ctx, domain.VerificationPurposeRegistration, uniqueVerificationEmail("unavailable-consume"), "123456"); appErrorCode(err) != sharederrors.CodeUnavailable {
+		t.Fatalf("ConsumeCode() error = %v, want CodeUnavailable", err)
+	}
+	if _, err := store.ConsumeTicket(ctx, domain.VerificationPurposeRegistration, "opaque-ticket"); appErrorCode(err) != sharederrors.CodeUnavailable {
+		t.Fatalf("ConsumeTicket() error = %v, want CodeUnavailable", err)
 	}
 }
 

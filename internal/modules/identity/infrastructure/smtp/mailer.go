@@ -71,17 +71,18 @@ func (mailer *Mailer) sendSMTP(ctx context.Context, message Message) error {
 	}
 	address := net.JoinHostPort(mailer.config.Host, fmt.Sprintf("%d", mailer.config.Port))
 	dialer := &net.Dialer{}
-	var connection net.Conn
-	var err error
-	if mailer.config.TLSMode == "tls" {
-		connection, err = tls.DialWithDialer(dialer, "tcp", address, &tls.Config{ServerName: mailer.config.Host, MinVersion: tls.VersionTLS12})
-	} else {
-		connection, err = dialer.DialContext(ctx, "tcp", address)
-	}
+	connection, err := dialer.DialContext(ctx, "tcp", address)
 	if err != nil {
 		return err
 	}
 	defer connection.Close()
+	if mailer.config.TLSMode == "tls" {
+		tlsConnection := tls.Client(connection, &tls.Config{ServerName: mailer.config.Host, MinVersion: tls.VersionTLS12})
+		if err := tlsConnection.HandshakeContext(ctx); err != nil {
+			return err
+		}
+		connection = tlsConnection
+	}
 
 	client, err := stdsmtp.NewClient(connection, mailer.config.Host)
 	if err != nil {

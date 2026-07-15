@@ -97,14 +97,34 @@ func TestUserRepositoryLocksActiveAdminsForLifecycleChecks(t *testing.T) {
 	}
 
 	var locked []domain.User
-	if err := runtime.WithinTransaction(context.Background(), func(ctx context.Context, tx database.Transaction) error {
+	if err := runtime.WithinTransaction(context.Background(), func(ctx context.Context, _ database.Transaction) error {
 		var err error
-		locked, err = repository.LockActiveAdmins(ctx, tx)
+		locked, err = repository.LockActiveAdmins(ctx)
 		return err
 	}); err != nil {
 		t.Fatalf("LockActiveAdmins(): %v", err)
 	}
 	if len(locked) != 1 || locked[0].ID != admin.ID {
 		t.Fatalf("locked admins = %#v, want bootstrap admin", locked)
+	}
+}
+
+func TestUserRepositoryLocksTargetIncludingSoftDeletedLifecycleUser(t *testing.T) {
+	runtime := newIdentityRuntime(t)
+	repository := NewUserRepository(runtime)
+	user := createIdentityUser(t, repository, "lock-target")
+	if _, err := runtime.SQL.Exec(`UPDATE users SET deleted_at = now() WHERE id = $1`, user.ID); err != nil {
+		t.Fatalf("delete user: %v", err)
+	}
+	var locked *domain.User
+	if err := runtime.WithinTransaction(context.Background(), func(ctx context.Context, _ database.Transaction) error {
+		var err error
+		locked, err = repository.LockByID(ctx, user.ID)
+		return err
+	}); err != nil {
+		t.Fatalf("LockByID(): %v", err)
+	}
+	if locked == nil || locked.ID != user.ID || locked.DeletedAt == nil {
+		t.Fatalf("locked user = %#v, want soft-deleted target", locked)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/identity/domain"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
 )
 
 func TestSessionRepositoryRotatesLockedRefreshTokenAndRevokesSessionOnReplay(t *testing.T) {
@@ -31,8 +32,8 @@ func TestSessionRepositoryRotatesLockedRefreshTokenAndRevokesSessionOnReplay(t *
 		t.Fatalf("Rotate() = session %#v token %#v, want persisted replacement", rotatedSession, rotatedToken)
 	}
 
-	if _, _, err := sessions.Rotate(context.Background(), initial.TokenHash, &domain.RefreshToken{TokenHash: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", ExpiresAt: session.RefreshExpiry(now.Add(2 * time.Minute)), CreatedAt: now.Add(2 * time.Minute)}, now.Add(2*time.Minute)); !errors.Is(err, ErrRefreshReplay) {
-		t.Fatalf("replay Rotate() error = %v, want ErrRefreshReplay", err)
+	if _, _, err := sessions.Rotate(context.Background(), initial.TokenHash, &domain.RefreshToken{TokenHash: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", ExpiresAt: session.RefreshExpiry(now.Add(2 * time.Minute)), CreatedAt: now.Add(2 * time.Minute)}, now.Add(2*time.Minute)); !errors.Is(err, domain.ErrRefreshReplay) {
+		t.Fatalf("replay Rotate() error = %v, want domain.ErrRefreshReplay", err)
 	}
 
 	var revokedAt *time.Time
@@ -87,7 +88,7 @@ func TestSessionRepositoryConcurrentConsumptionAllowsOnlyOneRotationThenRevokesR
 		switch {
 		case err == nil:
 			successes++
-		case errors.Is(err, ErrRefreshReplay):
+		case errors.Is(err, domain.ErrRefreshReplay):
 			replays++
 		default:
 			t.Fatalf("concurrent Rotate() error = %v", err)
@@ -95,6 +96,61 @@ func TestSessionRepositoryConcurrentConsumptionAllowsOnlyOneRotationThenRevokesR
 	}
 	if successes != 1 || replays != 1 {
 		t.Fatalf("concurrent rotation outcomes = %d success %d replay, want 1 each", successes, replays)
+	}
+}
+
+func TestSessionRepositoryRejectsDisabledOrDeletedUserBeforeRefreshConsumption(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		mutate func(*testing.T, *database.Runtime, int64)
+	}{
+		{
+			name: "disabled",
+			mutate: func(t *testing.T, runtime *database.Runtime, userID int64) {
+				t.Helper()
+				if _, err := runtime.SQL.Exec(`UPDATE users SET status = 'disabled' WHERE id = $1`, userID); err != nil {
+					t.Fatalf("disable user: %v", err)
+				}
+			},
+		},
+		{
+			name: "soft deleted",
+			mutate: func(t *testing.T, runtime *database.Runtime, userID int64) {
+				t.Helper()
+				if _, err := runtime.SQL.Exec(`UPDATE users SET deleted_at = now() WHERE id = $1`, userID); err != nil {
+					t.Fatalf("delete user: %v", err)
+				}
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			runtime := newIdentityRuntime(t)
+			users := NewUserRepository(runtime)
+			sessions := NewSessionRepository(runtime)
+			user := createIdentityUser(t, users, tt.name)
+			now := time.Now().UTC().Truncate(time.Microsecond)
+			session := newIdentitySession(user.ID, now)
+			initial := &domain.RefreshToken{TokenHash: "3333333333333333333333333333333333333333333333333333333333333333", ExpiresAt: session.RefreshExpiry(now), CreatedAt: now}
+			if err := sessions.Create(context.Background(), &session, initial); err != nil {
+				t.Fatalf("Create(): %v", err)
+			}
+			tt.mutate(t, runtime, user.ID)
+
+			replacementHash := "4444444444444444444444444444444444444444444444444444444444444444"
+			if _, _, err := sessions.Rotate(context.Background(), initial.TokenHash, &domain.RefreshToken{TokenHash: replacementHash, ExpiresAt: session.RefreshExpiry(now.Add(time.Minute)), CreatedAt: now.Add(time.Minute)}, now.Add(time.Minute)); !errors.Is(err, domain.ErrRefreshInvalid) {
+				t.Fatalf("Rotate() error = %v, want domain.ErrRefreshInvalid", err)
+			}
+			var replacements, consumed int
+			if err := runtime.SQL.QueryRow(`SELECT count(*) FROM auth_refresh_tokens WHERE token_hash = $1`, replacementHash).Scan(&replacements); err != nil {
+				t.Fatalf("count replacement tokens: %v", err)
+			}
+			if err := runtime.SQL.QueryRow(`SELECT count(*) FROM auth_refresh_tokens WHERE id = $1 AND used_at IS NOT NULL`, initial.ID).Scan(&consumed); err != nil {
+				t.Fatalf("read initial refresh token: %v", err)
+			}
+			if replacements != 0 || consumed != 0 {
+				t.Fatalf("disabled/deleted rotation created=%d consumed=%d, want both 0", replacements, consumed)
+			}
+		})
 	}
 }
 

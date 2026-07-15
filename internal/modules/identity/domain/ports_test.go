@@ -1,6 +1,11 @@
 package domain
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+)
 
 func TestVerificationPurposeIsLimitedToRegistrationAndPasswordReset(t *testing.T) {
 	t.Parallel()
@@ -15,6 +20,27 @@ func TestVerificationPurposeIsLimitedToRegistrationAndPasswordReset(t *testing.T
 	}
 }
 
+func TestPersistenceContractsExposeIdentityWorkflowOperations(t *testing.T) {
+	t.Parallel()
+
+	var _ interface {
+		Rotate(context.Context, string, *RefreshToken, time.Time) (*Session, *RefreshToken, error)
+		RevokeSession(context.Context, int64, string, time.Time) error
+		RevokeAllForUser(context.Context, int64, string, time.Time) error
+	} = (SessionRepository)(nil)
+	var _ interface {
+		LockByID(context.Context, int64) (*User, error)
+		LockActiveAdmins(context.Context) ([]User, error)
+	} = (UserRepository)(nil)
+	var _ interface {
+		Create(context.Context, AuditEntry) error
+	} = (AuditRepository)(nil)
+
+	if errors.Is(ErrRefreshReplay, ErrRefreshInvalid) {
+		t.Fatal("refresh replay and invalid sentinels must remain distinct")
+	}
+}
+
 var (
 	_ UserRepository
 	_ SessionRepository
@@ -22,5 +48,6 @@ var (
 	_ TokenIssuer
 	_ VerificationStore
 	_ Mailer
+	_ AuditRepository
 	_ Clock
 )

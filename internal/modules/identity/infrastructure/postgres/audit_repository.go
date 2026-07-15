@@ -7,27 +7,18 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/StephenQiu30/hotkey-server/internal/modules/identity/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
-type AuditEntry struct {
-	ActorType    string
-	ActorID      int64
-	Action       string
-	ResourceType string
-	ResourceID   int64
-	RequestID    string
-	TraceID      string
-	BeforeData   map[string]any
-	AfterData    map[string]any
-	Result       string
-	IPHash       string
-}
+type AuditEntry = domain.AuditEntry
 
 type AuditRepository struct {
 	runtime *database.Runtime
 }
+
+var _ domain.AuditRepository = (*AuditRepository)(nil)
 
 func NewAuditRepository(runtime *database.Runtime) *AuditRepository {
 	return &AuditRepository{runtime: runtime}

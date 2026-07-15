@@ -26,12 +26,37 @@ type VerificationTicket struct {
 type UserRepository interface {
 	FindByEmail(context.Context, string) (*User, error)
 	FindByID(context.Context, int64) (*User, error)
+	LockByID(context.Context, int64) (*User, error)
+	LockActiveAdmins(context.Context) ([]User, error)
 	Create(context.Context, *User) error
 }
 
 type SessionRepository interface {
 	Create(context.Context, *Session, *RefreshToken) error
 	FindByRefreshTokenHash(context.Context, string) (*Session, *RefreshToken, error)
+	Rotate(context.Context, string, *RefreshToken, time.Time) (*Session, *RefreshToken, error)
+	RevokeSession(context.Context, int64, string, time.Time) error
+	RevokeAllForUser(context.Context, int64, string, time.Time) error
+}
+
+// AuditEntry contains only safe actor/resource facts and a caller-supplied
+// state delta. Infrastructure applies a final allowlist before persistence.
+type AuditEntry struct {
+	ActorType    string
+	ActorID      int64
+	Action       string
+	ResourceType string
+	ResourceID   int64
+	RequestID    string
+	TraceID      string
+	BeforeData   map[string]any
+	AfterData    map[string]any
+	Result       string
+	IPHash       string
+}
+
+type AuditRepository interface {
+	Create(context.Context, AuditEntry) error
 }
 
 type PasswordHasher interface {
