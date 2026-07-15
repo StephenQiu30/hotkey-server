@@ -39,6 +39,7 @@ agent:
     reviewer:cursor: cursor
 codex:
   command: codex --config shell_environment_policy.inherit=all --config 'model="gpt-5.6-sol"' --config model_reasoning_effort=xhigh app-server
+  read_timeout_ms: 30000
   approval_policy: never
   thread_sandbox: danger-full-access
   turn_sandbox_policy:
