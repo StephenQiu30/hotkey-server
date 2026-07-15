@@ -8,8 +8,8 @@ feature_area: 数据库平台
 purpose: 定义既有完整Schema之上的数据库运行时、事务、兼容性与Repository实现边界
 phase: F0
 priority: P0
-status: accepted
-execution_status: in_progress
+status: archived
+execution_status: done
 version: v2.1
 owner: HotKey Server Team
 depends_on: [PRD-001]

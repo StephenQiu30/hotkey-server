@@ -5,8 +5,8 @@ audience: [Dev, QA, Ops]
 feature_area: 数据库运行时
 purpose: 在既有Schema基线上建立数据库运行时、事务、兼容性和Repository实现
 canonical_path: docs/plans/002-单一Schema与数据库平台计划.md
-status: accepted
-execution_status: in_progress
+status: archived
+execution_status: done
 review_status: approved
 version: v2.1
 owner: HotKey Server Team
