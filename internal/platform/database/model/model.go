@@ -189,8 +189,18 @@ type RetentionPolicy struct {
 }
 type AuthSession struct {
 	OperationalRecord
-	UserID    int64
+	UserID            int64
+	FamilyID          string
+	AbsoluteExpiresAt time.Time
+	RevokedAt         *time.Time
+}
+type AuthRefreshToken struct {
+	OperationalRecord
+	SessionID int64
 	TokenHash string
+	ExpiresAt time.Time
+	UsedAt    *time.Time
+	RevokedAt *time.Time
 }
 type SourceCheckpoint struct {
 	OperationalRecord
@@ -288,7 +298,8 @@ var specs = []Spec{
 	{"report_subscriptions", LifecycleBusiness, []string{"id", "user_id", "channel", "deleted_at"}},
 	{"ai_model_profiles", LifecycleBusiness, []string{"id", "name", "task_type", "deleted_at"}},
 	{"retention_policies", LifecycleBusiness, []string{"id", "data_class", "retention_days", "action"}},
-	{"auth_sessions", LifecycleOperational, []string{"id", "user_id", "token_hash", "expires_at"}},
+	{"auth_sessions", LifecycleOperational, []string{"id", "user_id", "family_id", "absolute_expires_at", "revoked_at"}},
+	{"auth_refresh_tokens", LifecycleOperational, []string{"id", "session_id", "token_hash", "expires_at", "used_at", "revoked_at"}},
 	{"source_checkpoints", LifecycleOperational, []string{"id", "monitor_source_id", "next_poll_at"}},
 	{"collection_runs", LifecycleOperational, []string{"id", "monitor_source_id", "idempotency_key", "status"}},
 	{"collection_run_items", LifecycleOperational, []string{"id", "run_id", "external_id", "outcome"}},

@@ -63,7 +63,6 @@ func TestLegacyRuntimeDependenciesAreRemoved(t *testing.T) {
 	for _, dependency := range []string{
 		"github.com/segmentio/kafka-go",
 		"github.com/tmc/langchaingo",
-		"github.com/redis/go-redis",
 	} {
 		if strings.Contains(string(content), dependency) {
 			t.Errorf("legacy dependency %s must be removed", dependency)

@@ -26,6 +26,17 @@ func TestCompleteSchemaCoversMappedRecords(t *testing.T) {
 			}
 		}
 	}
+	for table, columns := range map[string][]string{
+		"auth_sessions":       {"family_id", "absolute_expires_at", "revoked_at"},
+		"auth_refresh_tokens": {"session_id", "token_hash", "expires_at", "used_at", "revoked_at"},
+	} {
+		block := tableBlock(t, schema, table)
+		for _, column := range columns {
+			if !regexp.MustCompile(`\b` + regexp.QuoteMeta(column) + `\b`).MatchString(block) {
+				t.Errorf("schema does not contain required authentication column %s.%s", table, column)
+			}
+		}
+	}
 }
 
 func tableBlock(t *testing.T, schema, table string) string {
