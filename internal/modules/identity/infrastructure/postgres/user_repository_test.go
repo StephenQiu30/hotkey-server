@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/identity/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	sharederrors "github.com/StephenQiu30/hotkey-server/internal/shared/errors"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -126,5 +128,163 @@ func TestUserRepositoryLocksTargetIncludingSoftDeletedLifecycleUser(t *testing.T
 	}
 	if locked == nil || locked.ID != user.ID || locked.DeletedAt == nil {
 		t.Fatalf("locked user = %#v, want soft-deleted target", locked)
+	}
+}
+
+func TestUserRepositoryUpdatesPasswordAndLastLoginWithinCallerTransaction(t *testing.T) {
+	runtime := newIdentityRuntime(t)
+	repository := NewUserRepository(runtime)
+	user := createIdentityUser(t, repository, "credentials")
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	if err := runtime.WithinTransaction(context.Background(), func(ctx context.Context, _ database.Transaction) error {
+		if err := repository.UpdatePassword(ctx, user.ID, "new-bcrypt-hash", now); err != nil {
+			return err
+		}
+		return repository.TouchLogin(ctx, user.ID, now.Add(time.Minute))
+	}); err != nil {
+		t.Fatalf("credential updates inside Runtime.WithinTransaction: %v", err)
+	}
+
+	var passwordHash string
+	var lastLoginAt time.Time
+	if err := runtime.SQL.QueryRow(`SELECT password_hash, last_login_at FROM users WHERE id = $1`, user.ID).Scan(&passwordHash, &lastLoginAt); err != nil {
+		t.Fatalf("read updated credentials: %v", err)
+	}
+	if passwordHash != "new-bcrypt-hash" || !lastLoginAt.UTC().Equal(now.Add(time.Minute)) {
+		t.Fatalf("credentials = password %q login %s, want updated password and login %s", passwordHash, lastLoginAt.UTC(), now.Add(time.Minute))
+	}
+}
+
+func TestUserRepositoryChangesRoleAndStatus(t *testing.T) {
+	runtime := newIdentityRuntime(t)
+	repository := NewUserRepository(runtime)
+	user := createIdentityUser(t, repository, "lifecycle-updates")
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	changedRole, err := repository.ChangeRole(context.Background(), user.ID, domain.RoleEditor, now)
+	if err != nil {
+		t.Fatalf("ChangeRole(): %v", err)
+	}
+	if changedRole.Role != domain.RoleEditor || changedRole.Status != domain.UserStatusActive {
+		t.Fatalf("ChangeRole() = %#v, want active editor", changedRole)
+	}
+	changedStatus, err := repository.ChangeStatus(context.Background(), user.ID, domain.UserStatusDisabled, now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("ChangeStatus(): %v", err)
+	}
+	if changedStatus.Role != domain.RoleEditor || changedStatus.Status != domain.UserStatusDisabled {
+		t.Fatalf("ChangeStatus() = %#v, want disabled editor", changedStatus)
+	}
+}
+
+func TestUserRepositoryPreventsRemovingLastActiveAdmin(t *testing.T) {
+	runtime := newIdentityRuntime(t)
+	repository := NewUserRepository(runtime)
+	admin, err := repository.BootstrapAdmin(context.Background(), "last-admin@example.test", "bcrypt-hash")
+	if err != nil {
+		t.Fatalf("BootstrapAdmin(): %v", err)
+	}
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	for _, operation := range []struct {
+		name string
+		run  func() error
+	}{
+		{name: "role", run: func() error {
+			_, err := repository.ChangeRole(context.Background(), admin.ID, domain.RoleViewer, now)
+			return err
+		}},
+		{name: "status", run: func() error {
+			_, err := repository.ChangeStatus(context.Background(), admin.ID, domain.UserStatusDisabled, now)
+			return err
+		}},
+		{name: "delete", run: func() error { _, err := repository.SoftDelete(context.Background(), admin.ID, now); return err }},
+	} {
+		t.Run(operation.name, func(t *testing.T) {
+			err := operation.run()
+			var appError *sharederrors.AppError
+			if !errors.As(err, &appError) || appError.Code != sharederrors.CodeLastActiveAdmin {
+				t.Fatalf("last-admin %s error = %v, want CodeLastActiveAdmin", operation.name, err)
+			}
+			locked, err := repository.LockByID(context.Background(), admin.ID)
+			if err != nil {
+				t.Fatalf("LockByID(): %v", err)
+			}
+			if locked.Role != domain.RoleAdmin || locked.Status != domain.UserStatusActive || locked.DeletedAt != nil {
+				t.Fatalf("last admin after %s = %#v, want unchanged active admin", operation.name, locked)
+			}
+		})
+	}
+}
+
+func TestUserRepositorySoftDeletesAndRestoresDisabledUser(t *testing.T) {
+	runtime := newIdentityRuntime(t)
+	repository := NewUserRepository(runtime)
+	user := createIdentityUser(t, repository, "restore")
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	deleted, err := repository.SoftDelete(context.Background(), user.ID, now)
+	if err != nil {
+		t.Fatalf("SoftDelete(): %v", err)
+	}
+	if deleted.DeletedAt == nil {
+		t.Fatalf("SoftDelete() = %#v, want deleted user", deleted)
+	}
+	if _, err := repository.FindByEmail(context.Background(), user.Email); !errors.Is(err, sharedrepository.ErrNotFound) {
+		t.Fatalf("FindByEmail() after delete error = %v, want not found", err)
+	}
+
+	restored, err := repository.RestoreDisabled(context.Background(), user.ID, now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("RestoreDisabled(): %v", err)
+	}
+	if restored.DeletedAt != nil || restored.Status != domain.UserStatusDisabled {
+		t.Fatalf("RestoreDisabled() = %#v, want non-deleted disabled user", restored)
+	}
+	found, err := repository.FindByEmail(context.Background(), user.Email)
+	if err != nil {
+		t.Fatalf("FindByEmail() after restore: %v", err)
+	}
+	if found.ID != user.ID || found.Status != domain.UserStatusDisabled {
+		t.Fatalf("restored user = %#v, want disabled original user", found)
+	}
+}
+
+func TestUserRepositoryRestoreConflictingActiveEmailLeavesDeletedUserUnchanged(t *testing.T) {
+	runtime := newIdentityRuntime(t)
+	repository := NewUserRepository(runtime)
+	original := createIdentityUser(t, repository, "restore-conflict")
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	if _, err := repository.SoftDelete(context.Background(), original.ID, now); err != nil {
+		t.Fatalf("SoftDelete(): %v", err)
+	}
+	replacement := &domain.User{
+		Email:        original.Email,
+		PasswordHash: "replacement-bcrypt-hash",
+		DisplayName:  "Replacement User",
+		Role:         domain.RoleViewer,
+		Status:       domain.UserStatusActive,
+	}
+	if err := repository.Create(context.Background(), replacement); err != nil {
+		t.Fatalf("Create replacement user: %v", err)
+	}
+
+	if _, err := repository.RestoreDisabled(context.Background(), original.ID, now.Add(time.Minute)); !errors.Is(err, sharedrepository.ErrConflict) {
+		t.Fatalf("RestoreDisabled() error = %v, want repository conflict", err)
+	}
+	lockedOriginal, err := repository.LockByID(context.Background(), original.ID)
+	if err != nil {
+		t.Fatalf("LockByID(original): %v", err)
+	}
+	if lockedOriginal.DeletedAt == nil || lockedOriginal.Role != domain.RoleViewer || lockedOriginal.Status != domain.UserStatusActive {
+		t.Fatalf("original after restore conflict = %#v, want unchanged deleted lifecycle state", lockedOriginal)
+	}
+	foundReplacement, err := repository.FindByEmail(context.Background(), original.Email)
+	if err != nil {
+		t.Fatalf("FindByEmail(replacement): %v", err)
+	}
+	if foundReplacement.ID != replacement.ID || foundReplacement.Status != domain.UserStatusActive {
+		t.Fatalf("replacement after restore conflict = %#v, want unchanged active replacement", foundReplacement)
 	}
 }

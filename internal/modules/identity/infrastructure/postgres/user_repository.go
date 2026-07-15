@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/identity/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
@@ -65,11 +66,7 @@ func (repository *UserRepository) LockByID(ctx context.Context, id int64) (*doma
 	var user domain.User
 	err := useTransaction(ctx, repository.runtime, func(ctx context.Context, transaction database.Transaction) error {
 		var err error
-		user, err = scanUser(transaction.SQL.QueryRowContext(ctx, `
-SELECT id, email, password_hash, display_name, role, status, last_login_at, created_at, updated_at, deleted_at
-FROM users
-WHERE id = $1
-FOR UPDATE`, id))
+		user, err = lockUserByID(ctx, transaction.SQL, id)
 		return err
 	})
 	if err != nil {
@@ -88,6 +85,207 @@ func (repository *UserRepository) Create(ctx context.Context, user *domain.User)
 	return useTransaction(ctx, repository.runtime, func(ctx context.Context, transaction database.Transaction) error {
 		return repository.createWithPreference(ctx, transaction, user)
 	})
+}
+
+func (repository *UserRepository) UpdatePassword(ctx context.Context, id int64, passwordHash string, now time.Time) error {
+	if repository == nil || repository.runtime == nil {
+		return sharedrepository.ErrUnavailable
+	}
+	if id <= 0 || strings.TrimSpace(passwordHash) == "" || now.IsZero() {
+		return fmt.Errorf("%w: user ID, password hash, and update time are required", sharedrepository.ErrInvalidInput)
+	}
+	return useTransaction(ctx, repository.runtime, func(ctx context.Context, transaction database.Transaction) error {
+		user, err := lockUserByID(ctx, transaction.SQL, id)
+		if err != nil {
+			return err
+		}
+		if !user.Active() {
+			return inactiveUser()
+		}
+		if _, err := transaction.SQL.ExecContext(ctx, `
+UPDATE users
+SET password_hash = $1, updated_at = $2
+WHERE id = $3`, passwordHash, now.UTC(), id); err != nil {
+			return mapRepositoryError(err)
+		}
+		return nil
+	})
+}
+
+func (repository *UserRepository) TouchLogin(ctx context.Context, id int64, now time.Time) error {
+	if repository == nil || repository.runtime == nil {
+		return sharedrepository.ErrUnavailable
+	}
+	if id <= 0 || now.IsZero() {
+		return fmt.Errorf("%w: user ID and login time are required", sharedrepository.ErrInvalidInput)
+	}
+	return useTransaction(ctx, repository.runtime, func(ctx context.Context, transaction database.Transaction) error {
+		user, err := lockUserByID(ctx, transaction.SQL, id)
+		if err != nil {
+			return err
+		}
+		if !user.Active() {
+			return inactiveUser()
+		}
+		if _, err := transaction.SQL.ExecContext(ctx, `
+UPDATE users
+SET last_login_at = $1, updated_at = $1
+WHERE id = $2`, now.UTC(), id); err != nil {
+			return mapRepositoryError(err)
+		}
+		return nil
+	})
+}
+
+// ChangeRole locks every active administrator before the target row. This
+// stable ordering serializes concurrent lifecycle changes and preserves the
+// required last-active-admin invariant without exposing transactions to the
+// application layer.
+func (repository *UserRepository) ChangeRole(ctx context.Context, id int64, role domain.Role, now time.Time) (*domain.User, error) {
+	if repository == nil || repository.runtime == nil {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	if id <= 0 || !role.Valid() || now.IsZero() {
+		return nil, fmt.Errorf("%w: user ID, role, and update time are required", sharedrepository.ErrInvalidInput)
+	}
+	var changed domain.User
+	err := useTransaction(ctx, repository.runtime, func(ctx context.Context, transaction database.Transaction) error {
+		admins, err := lockActiveAdmins(ctx, transaction.SQL)
+		if err != nil {
+			return err
+		}
+		user, err := lockUserByID(ctx, transaction.SQL, id)
+		if err != nil {
+			return err
+		}
+		if user.DeletedAt != nil {
+			return inactiveUser()
+		}
+		if removesLastActiveAdmin(user, len(admins), role, user.Status, false) {
+			return domain.LastActiveAdmin()
+		}
+		if _, err := transaction.SQL.ExecContext(ctx, `
+UPDATE users
+SET role = $1, updated_at = $2
+WHERE id = $3`, string(role), now.UTC(), id); err != nil {
+			return mapRepositoryError(err)
+		}
+		changed, err = lockUserByID(ctx, transaction.SQL, id)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &changed, nil
+}
+
+// ChangeStatus takes the same active-admin lock as ChangeRole so a disable
+// cannot race another lifecycle operation into removing the final admin.
+func (repository *UserRepository) ChangeStatus(ctx context.Context, id int64, status domain.UserStatus, now time.Time) (*domain.User, error) {
+	if repository == nil || repository.runtime == nil {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	if id <= 0 || !status.Valid() || now.IsZero() {
+		return nil, fmt.Errorf("%w: user ID, status, and update time are required", sharedrepository.ErrInvalidInput)
+	}
+	var changed domain.User
+	err := useTransaction(ctx, repository.runtime, func(ctx context.Context, transaction database.Transaction) error {
+		admins, err := lockActiveAdmins(ctx, transaction.SQL)
+		if err != nil {
+			return err
+		}
+		user, err := lockUserByID(ctx, transaction.SQL, id)
+		if err != nil {
+			return err
+		}
+		if user.DeletedAt != nil {
+			return inactiveUser()
+		}
+		if removesLastActiveAdmin(user, len(admins), user.Role, status, false) {
+			return domain.LastActiveAdmin()
+		}
+		if _, err := transaction.SQL.ExecContext(ctx, `
+UPDATE users
+SET status = $1, updated_at = $2
+WHERE id = $3`, string(status), now.UTC(), id); err != nil {
+			return mapRepositoryError(err)
+		}
+		changed, err = lockUserByID(ctx, transaction.SQL, id)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &changed, nil
+}
+
+func (repository *UserRepository) SoftDelete(ctx context.Context, id int64, now time.Time) (*domain.User, error) {
+	if repository == nil || repository.runtime == nil {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	if id <= 0 || now.IsZero() {
+		return nil, fmt.Errorf("%w: user ID and deletion time are required", sharedrepository.ErrInvalidInput)
+	}
+	var deleted domain.User
+	err := useTransaction(ctx, repository.runtime, func(ctx context.Context, transaction database.Transaction) error {
+		admins, err := lockActiveAdmins(ctx, transaction.SQL)
+		if err != nil {
+			return err
+		}
+		user, err := lockUserByID(ctx, transaction.SQL, id)
+		if err != nil {
+			return err
+		}
+		if user.DeletedAt != nil {
+			return fmt.Errorf("%w: user is already deleted", sharedrepository.ErrConflict)
+		}
+		if removesLastActiveAdmin(user, len(admins), user.Role, user.Status, true) {
+			return domain.LastActiveAdmin()
+		}
+		if _, err := transaction.SQL.ExecContext(ctx, `
+UPDATE users
+SET deleted_at = $1, updated_at = $1
+WHERE id = $2`, now.UTC(), id); err != nil {
+			return mapRepositoryError(err)
+		}
+		deleted, err = lockUserByID(ctx, transaction.SQL, id)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &deleted, nil
+}
+
+func (repository *UserRepository) RestoreDisabled(ctx context.Context, id int64, now time.Time) (*domain.User, error) {
+	if repository == nil || repository.runtime == nil {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	if id <= 0 || now.IsZero() {
+		return nil, fmt.Errorf("%w: user ID and restore time are required", sharedrepository.ErrInvalidInput)
+	}
+	var restored domain.User
+	err := useTransaction(ctx, repository.runtime, func(ctx context.Context, transaction database.Transaction) error {
+		user, err := lockUserByID(ctx, transaction.SQL, id)
+		if err != nil {
+			return err
+		}
+		if user.DeletedAt == nil {
+			return fmt.Errorf("%w: user is not deleted", sharedrepository.ErrConflict)
+		}
+		if _, err := transaction.SQL.ExecContext(ctx, `
+UPDATE users
+SET deleted_at = NULL, status = 'disabled', updated_at = $1
+WHERE id = $2`, now.UTC(), id); err != nil {
+			return mapRepositoryError(err)
+		}
+		restored, err = lockUserByID(ctx, transaction.SQL, id)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &restored, nil
 }
 
 // BootstrapAdmin creates exactly one initial administrator while a transaction
@@ -140,32 +338,63 @@ func (repository *UserRepository) LockActiveAdmins(ctx context.Context) ([]domai
 	}
 	admins := make([]domain.User, 0)
 	err := useTransaction(ctx, repository.runtime, func(ctx context.Context, transaction database.Transaction) error {
-		rows, err := transaction.SQL.QueryContext(ctx, `
-SELECT id, email, password_hash, display_name, role, status, last_login_at, created_at, updated_at, deleted_at
-FROM users
-WHERE role = 'admin' AND status = 'active' AND deleted_at IS NULL
-ORDER BY id
-FOR UPDATE`)
-		if err != nil {
-			return mapRepositoryError(err)
-		}
-		defer rows.Close()
-		for rows.Next() {
-			user, err := scanUser(rows)
-			if err != nil {
-				return err
-			}
-			admins = append(admins, user)
-		}
-		if err := rows.Err(); err != nil {
-			return mapRepositoryError(err)
-		}
-		return nil
+		var err error
+		admins, err = lockActiveAdmins(ctx, transaction.SQL)
+		return err
 	})
 	if err != nil {
 		return nil, err
 	}
 	return admins, nil
+}
+
+type rowLocker interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+type rowsLocker interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func lockUserByID(ctx context.Context, queryer rowLocker, id int64) (domain.User, error) {
+	return scanUser(queryer.QueryRowContext(ctx, `
+SELECT id, email, password_hash, display_name, role, status, last_login_at, created_at, updated_at, deleted_at
+FROM users
+WHERE id = $1
+FOR UPDATE`, id))
+}
+
+func lockActiveAdmins(ctx context.Context, queryer rowsLocker) ([]domain.User, error) {
+	rows, err := queryer.QueryContext(ctx, `
+SELECT id, email, password_hash, display_name, role, status, last_login_at, created_at, updated_at, deleted_at
+FROM users
+WHERE role = 'admin' AND status = 'active' AND deleted_at IS NULL
+ORDER BY id
+FOR UPDATE`)
+	if err != nil {
+		return nil, mapRepositoryError(err)
+	}
+	defer rows.Close()
+	admins := make([]domain.User, 0)
+	for rows.Next() {
+		user, err := scanUser(rows)
+		if err != nil {
+			return nil, err
+		}
+		admins = append(admins, user)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, mapRepositoryError(err)
+	}
+	return admins, nil
+}
+
+func removesLastActiveAdmin(user domain.User, activeAdminCount int, role domain.Role, status domain.UserStatus, deleted bool) bool {
+	return user.Active() && user.Role == domain.RoleAdmin && activeAdminCount == 1 && (deleted || role != domain.RoleAdmin || status != domain.UserStatusActive)
+}
+
+func inactiveUser() error {
+	return fmt.Errorf("%w: user is not active", sharedrepository.ErrNotFound)
 }
 
 func (repository *UserRepository) createWithPreference(ctx context.Context, transaction database.Transaction, user *domain.User) error {

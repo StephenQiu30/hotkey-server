@@ -31,6 +31,12 @@ func TestPersistenceContractsExposeIdentityWorkflowOperations(t *testing.T) {
 	var _ interface {
 		LockByID(context.Context, int64) (*User, error)
 		LockActiveAdmins(context.Context) ([]User, error)
+		UpdatePassword(context.Context, int64, string, time.Time) error
+		TouchLogin(context.Context, int64, time.Time) error
+		ChangeRole(context.Context, int64, Role, time.Time) (*User, error)
+		ChangeStatus(context.Context, int64, UserStatus, time.Time) (*User, error)
+		SoftDelete(context.Context, int64, time.Time) (*User, error)
+		RestoreDisabled(context.Context, int64, time.Time) (*User, error)
 	} = (UserRepository)(nil)
 	var _ interface {
 		Create(context.Context, AuditEntry) error
