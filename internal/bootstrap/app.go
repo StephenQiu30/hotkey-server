@@ -14,6 +14,12 @@ import (
 )
 
 func NewApp(cfg config.Config, logger *zap.Logger) (*fx.App, error) {
+	return NewAppWithReadiness(cfg, logger, httptransport.ReadinessFunc(func(context.Context) error { return nil }))
+}
+
+// NewAppWithReadiness makes the aggregate lifecycle check injectable. Runtime
+// packages register their required dependencies here as they are introduced.
+func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptransport.Readiness, extra ...fx.Option) (*fx.App, error) {
 	role, err := ParseRole(cfg.Role)
 	if err != nil {
 		return nil, err
@@ -27,11 +33,12 @@ func NewApp(cfg config.Config, logger *zap.Logger) (*fx.App, error) {
 		fx.WithLogger(func() fxevent.Logger { return &fxevent.ZapLogger{Logger: logger} }),
 	}
 	if role.StartsAPI() {
+		if readiness == nil {
+			return nil, fmt.Errorf("api readiness check is required")
+		}
 		options = append(options,
 			fx.Provide(
-				func() httptransport.Readiness {
-					return httptransport.ReadinessFunc(func(context.Context) error { return nil })
-				},
+				func() httptransport.Readiness { return readiness },
 				httptransport.NewRouter,
 				httptransport.NewServer,
 			),
@@ -41,6 +48,7 @@ func NewApp(cfg config.Config, logger *zap.Logger) (*fx.App, error) {
 	if role.StartsWorker() {
 		options = append(options, fx.Invoke(registerWorkerLifecycle))
 	}
+	options = append(options, extra...)
 
 	return fx.New(options...), nil
 }
@@ -70,15 +78,18 @@ func Run(ctx context.Context, args []string) error {
 
 	startCtx, cancelStart := context.WithTimeout(ctx, cfg.ShutdownTimeout)
 	defer cancelStart()
-	if err := app.Start(startCtx); err != nil {
-		return fmt.Errorf("start application: %w", err)
+	if err := startApp(startCtx, app); err != nil {
+		cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+		defer cancelCleanup()
+		_ = stopApp(cleanupCtx, app)
+		return err
 	}
 
 	<-ctx.Done()
 	stopCtx, cancelStop := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancelStop()
-	if err := app.Stop(stopCtx); err != nil {
-		return fmt.Errorf("stop application: %w", err)
+	if err := stopApp(stopCtx, app); err != nil {
+		return err
 	}
 	return nil
 }

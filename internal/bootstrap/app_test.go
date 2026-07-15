@@ -2,10 +2,15 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
+	"net"
+	stdhttp "net/http"
 	"testing"
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/platform/config"
+	httptransport "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
 
@@ -48,5 +53,142 @@ func TestNewAppRejectsInvalidRole(t *testing.T) {
 	cfg.Role = "scheduler"
 	if _, err := NewApp(cfg, zap.NewNop()); err == nil {
 		t.Fatal("NewApp() error = nil, want an error")
+	}
+}
+
+func TestNewAppWithReadinessRejectsMissingAPICheck(t *testing.T) {
+	cfg := config.Default()
+	cfg.HTTPAddr = "127.0.0.1:0"
+	if _, err := NewAppWithReadiness(cfg, zap.NewNop(), nil); err == nil {
+		t.Fatal("NewAppWithReadiness() error = nil, want missing readiness error")
+	}
+}
+
+func TestRunningAppUsesInjectedFailingReadiness(t *testing.T) {
+	cfg := config.Default()
+	cfg.Role = string(RoleAPI)
+	cfg.HTTPAddr = "127.0.0.1:0"
+	var server *httptransport.Server
+	app, err := NewAppWithReadiness(cfg, zap.NewNop(), httptransport.ReadinessFunc(func(context.Context) error {
+		return errors.New("required dependency unavailable")
+	}), fx.Populate(&server))
+	if err != nil {
+		t.Fatalf("NewAppWithReadiness() error = %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := app.Start(ctx); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	defer func() { _ = app.Stop(ctx) }()
+
+	response, err := stdhttp.Get("http://" + server.Address() + "/readyz")
+	if err != nil {
+		t.Fatalf("GET readyz: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != stdhttp.StatusServiceUnavailable {
+		t.Fatalf("readyz status = %d, want %d", response.StatusCode, stdhttp.StatusServiceUnavailable)
+	}
+}
+
+func TestAPIPortConflictRollsBackAndCanRestart(t *testing.T) {
+	address := availableAddress(t)
+	cfg := config.Default()
+	cfg.Role = string(RoleAPI)
+	cfg.HTTPAddr = address
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	first, err := NewApp(cfg, zap.NewNop())
+	if err != nil {
+		t.Fatalf("first NewApp() error = %v", err)
+	}
+	if err := first.Start(ctx); err != nil {
+		t.Fatalf("first Start() error = %v", err)
+	}
+
+	second, err := NewApp(cfg, zap.NewNop())
+	if err != nil {
+		t.Fatalf("second NewApp() error = %v", err)
+	}
+	if err := second.Start(ctx); err == nil {
+		t.Fatal("second Start() error = nil, want port conflict")
+	}
+	if err := first.Stop(ctx); err != nil {
+		t.Fatalf("first Stop() error = %v", err)
+	}
+
+	restarted, err := NewApp(cfg, zap.NewNop())
+	if err != nil {
+		t.Fatalf("restart NewApp() error = %v", err)
+	}
+	if err := restarted.Start(ctx); err != nil {
+		t.Fatalf("restart Start() error = %v", err)
+	}
+	if err := restarted.Stop(ctx); err != nil {
+		t.Fatalf("restart Stop() error = %v", err)
+	}
+}
+
+func TestLifecycleStartFailureRollsBackStartedServer(t *testing.T) {
+	address := availableAddress(t)
+	cfg := config.Default()
+	cfg.Role = string(RoleAPI)
+	cfg.HTTPAddr = address
+	app, err := NewAppWithReadiness(cfg, zap.NewNop(), httptransport.ReadinessFunc(func(context.Context) error { return nil }), fx.Invoke(func(lifecycle fx.Lifecycle) {
+		lifecycle.Append(fx.Hook{OnStart: func(context.Context) error { return errors.New("intentional lifecycle failure") }})
+	}))
+	if err != nil {
+		t.Fatalf("NewAppWithReadiness() error = %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := app.Start(ctx); err == nil {
+		t.Fatal("Start() error = nil, want lifecycle failure")
+	}
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		t.Fatalf("listener remained after failed start: %v", err)
+	}
+	if err := listener.Close(); err != nil {
+		t.Fatalf("close replacement listener: %v", err)
+	}
+}
+
+func availableAddress(t *testing.T) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve test address: %v", err)
+	}
+	address := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatalf("release test address: %v", err)
+	}
+	return address
+}
+
+func TestRunStopsWorkerOnContextCancellation(t *testing.T) {
+	t.Setenv("HOTKEY_ROLE", "worker")
+	t.Setenv("HOTKEY_HTTP_ADDR", "")
+	t.Setenv("HOTKEY_SHUTDOWN_TIMEOUT", "1s")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(20*time.Millisecond, cancel)
+	defer cancel()
+
+	if err := Run(ctx, []string{"serve"}); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+}
+
+func TestApplyCommandLineRejectsUnknownCommandAndArguments(t *testing.T) {
+	cfg := config.Default()
+	if err := applyCommandLine(&cfg, []string{"db", "verify"}); err == nil {
+		t.Fatal("applyCommandLine() error = nil, want unknown command error")
+	}
+	if err := applyCommandLine(&cfg, []string{"serve", "unexpected"}); err == nil {
+		t.Fatal("applyCommandLine() error = nil, want unexpected argument error")
 	}
 }

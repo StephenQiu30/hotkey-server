@@ -8,9 +8,9 @@ feature_area: HTTP与可观测
 purpose: 定义统一 HTTP 契约、安全中间件和可观测基础
 phase: F0
 priority: P0
-status: review
+status: accepted
 execution_status: backlog
-version: v1.0
+version: v1.1
 owner: HotKey Server Team
 depends_on: [PRD-001, PRD-002]
 design_refs:
@@ -43,6 +43,7 @@ downstream:
 - 接入结构化 Zap、OpenTelemetry 和 Prometheus 基础能力。
 - 建立 Swaggo 生成与 OpenAPI 契约校验入口。
 - 定义分页数据、校验错误和外部依赖错误的稳定响应。
+- 为 `/healthz` 与 `/readyz` 建立安全 Result 契约；它们是非 `/api/v1` 运维探针，不作为公共 OpenAPI 操作发布。
 
 ## 非范围
 
@@ -57,14 +58,15 @@ downstream:
 3. 400、401、403、404、409、429、500、502、503、504 有稳定错误码。
 4. X-Request-ID 同时进入响应头、日志和 trace 属性。
 5. 指标至少覆盖请求量、延迟、状态、panic 和依赖健康。
-6. OpenAPI 中所有 JSON 响应声明具体 Result 数据类型。
+6. OpenAPI 中所有 `/api/v1` JSON 响应声明具体 Result 数据类型。
 7. 日志默认脱敏 Authorization、Cookie、来源凭据和正文。
+8. `/healthz` 与 `/readyz` 使用统一 Result、错误脱敏和 Request ID，但生成的 OpenAPI 必须不包含两条路径。
 
 ## 交付物
 
 - HTTP Result、错误处理、中间件和分页实现。
 - 日志、指标、链路基础装配及测试。
-- OpenAPI 生成、校验命令和最小契约文件。
+- OpenAPI 生成、校验命令和最小契约文件，以及运维探针排除断言。
 - 错误码注册表及防重复测试。
 
 ## 验收标准
@@ -73,6 +75,7 @@ downstream:
 - panic 被恢复为安全 500，日志保留关联 ID 但不泄露内部详情。
 - data 在成功和失败响应中始终存在。
 - OpenAPI 生成前后无非确定性漂移，契约校验通过。
+- 契约校验同时证明 `/api/v1` 路由被生成，而 `/healthz`、`/readyz` 未被生成。
 - 未经统一 Handler 的直接 JSON 输出被架构测试阻止。
 
 ## 完成定义

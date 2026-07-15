@@ -25,7 +25,7 @@
 - 不得把目标设计描述成已经实现的能力
 - 不得依据旧代码复制 `topic`、`event`、`hot_event` 等重复模型
 - 未达到 ready 状态的 PRD 不得进入实施，不得依据临时计划批量重写现有代码
-- 实施任务必须同时更新代码、完整 `db/schema.sql`、OpenAPI、测试和架构校验
+- 实施任务必须同步受影响的代码、完整 `db/schema.sql`、记录模型、OpenAPI、测试和架构校验；仅非 `/api/v1` 的运维探针可不进入生成的 OpenAPI，但仍须使用安全 Result 并由契约测试证明其排除
 - `docs/design/README.md` 是详细设计索引
 - `docs/prd/README.md` 是执行任务、依赖关系和状态索引
 - `docs/plans/README.md` 是文件级执行步骤、验证命令和提交边界索引

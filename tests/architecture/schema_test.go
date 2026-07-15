@@ -1,67 +1,58 @@
 package architecture_test
 
 import (
-	"bufio"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/StephenQiu30/hotkey-server/internal/platform/database/model"
 )
 
-func TestPerTableSchemaFilesCoverDesignedTables(t *testing.T) {
-	root := repositoryRoot(t)
-	schemaRoot := filepath.Join(root, "db", "schema")
-	for _, table := range append(businessTables(), operationalTables()...) {
-		file := filepath.Join(schemaRoot, table+".sql")
-		content, err := os.ReadFile(file)
-		if err != nil {
-			t.Errorf("read schema for %s: %v", table, err)
+func TestCompleteSchemaCoversMappedRecords(t *testing.T) {
+	schema := readSchemaText(t)
+	for _, spec := range model.All() {
+		create := regexp.MustCompile(`(?s)create\s+table\s+if\s+not\s+exists\s+` + regexp.QuoteMeta(spec.Table) + `\s*\(`)
+		if !create.MatchString(schema) {
+			t.Errorf("complete schema does not create %s", spec.Table)
 			continue
 		}
-		text := strings.ToLower(string(content))
-		pattern := regexp.MustCompile(`create\s+table\s+(?:if\s+not\s+exists\s+)?` + regexp.QuoteMeta(table) + `\b`)
-		if !pattern.MatchString(text) {
-			t.Errorf("%s does not create table %s", filepath.Base(file), table)
+		block := tableBlock(t, schema, spec.Table)
+		for _, column := range spec.Columns {
+			if !regexp.MustCompile(`\b` + regexp.QuoteMeta(column) + `\b`).MatchString(block) {
+				t.Errorf("schema does not contain mapped column %s.%s", spec.Table, column)
+			}
 		}
 	}
 }
 
-func TestSchemaManifestContainsEveryTableOnce(t *testing.T) {
-	root := repositoryRoot(t)
-	file, err := os.Open(filepath.Join(root, "db", "schema", "manifest.txt"))
-	if err != nil {
-		t.Fatal(err)
+func tableBlock(t *testing.T, schema, table string) string {
+	t.Helper()
+	start := strings.Index(schema, "create table if not exists "+table+" (")
+	if start < 0 {
+		t.Fatalf("missing table block for %s", table)
 	}
-	defer file.Close()
+	end := strings.Index(schema[start:], "\n);")
+	if end < 0 {
+		t.Fatalf("unterminated table block for %s", table)
+	}
+	return schema[start : start+end+3]
+}
 
-	want := append(businessTables(), operationalTables()...)
-	wantSet := make(map[string]bool, len(want))
-	for _, table := range want {
-		wantSet[table+".sql"] = true
+func TestSchemaHasNoSecondFactSource(t *testing.T) {
+	root := repositoryRoot(t)
+	if _, err := os.Stat(filepath.Join(root, "db", "schema")); err == nil {
+		t.Error("legacy split schema directory db/schema must not exist")
 	}
-	seen := make(map[string]int, len(want))
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		entry := strings.TrimSpace(scanner.Text())
-		if entry == "" || strings.HasPrefix(entry, "#") || entry == "extensions.sql" || entry == "indexes.sql" {
-			continue
-		}
-		seen[entry]++
-	}
-	if err := scanner.Err(); err != nil {
-		t.Fatal(err)
-	}
-	for entry := range wantSet {
-		if seen[entry] != 1 {
-			t.Errorf("manifest entry %s count = %d, want 1", entry, seen[entry])
-		}
+	if _, err := os.Stat(filepath.Join(root, "db", "migrations")); err == nil {
+		t.Error("parallel migration directory db/migrations must not exist")
 	}
 }
 
 func TestGreenfieldSchemaEnforcesCriticalConstraints(t *testing.T) {
-	all := readSchemaText(t)
-
+	schema := readSchemaText(t)
 	checks := map[string]string{
 		"knowledge document has one target": "num_nonnulls(event_id, topic_id, report_id) = 1",
 		"monitor score range":               "relevance_threshold between 0 and 100",
@@ -69,10 +60,12 @@ func TestGreenfieldSchemaEnforcesCriticalConstraints(t *testing.T) {
 		"monitor source idempotency":        "unique (monitor_id, source_connection_id)",
 		"collection run idempotency":        "idempotency_key varchar(128) not null unique",
 		"delivery idempotency":              "idempotency_key varchar(128) not null unique",
-		"non-negative content metrics":      "view_count >= 0",
+		"non-negative content metrics":      "view_count bigint not null default 0 check (view_count >= 0)",
+		"vector extension":                  "create extension if not exists vector",
+		"fixed embedding dimension":         "halfvec(1024)",
 	}
 	for name, snippet := range checks {
-		if !strings.Contains(all, snippet) {
+		if !strings.Contains(schema, snippet) {
 			t.Errorf("missing %s constraint: %q", name, snippet)
 		}
 	}
@@ -103,43 +96,26 @@ func TestApplicationDoesNotUseAutoMigrate(t *testing.T) {
 	}
 }
 
+func TestSchemaIsIdempotentWhenTestDatabaseIsConfigured(t *testing.T) {
+	dsn := os.Getenv("HOTKEY_TEST_DSN")
+	if dsn == "" {
+		t.Skip("HOTKEY_TEST_DSN is not configured")
+	}
+	root := repositoryRoot(t)
+	for run := 1; run <= 2; run++ {
+		command := exec.Command("psql", dsn, "-v", "ON_ERROR_STOP=1", "-f", filepath.Join(root, "db", "schema.sql"))
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("schema run %d failed: %v\n%s", run, err, output)
+		}
+	}
+}
+
 func readSchemaText(t *testing.T) string {
 	t.Helper()
 	root := repositoryRoot(t)
-	files, err := filepath.Glob(filepath.Join(root, "db", "schema", "*.sql"))
+	content, err := os.ReadFile(filepath.Join(root, "db", "schema.sql"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var combined strings.Builder
-	for _, file := range files {
-		content, err := os.ReadFile(file)
-		if err != nil {
-			t.Fatal(err)
-		}
-		combined.WriteString(strings.ToLower(string(content)))
-		combined.WriteByte('\n')
-	}
-	return combined.String()
-}
-
-func businessTables() []string {
-	return []string{
-		"users", "user_preferences", "source_connections", "monitors", "monitor_rules",
-		"monitor_sources", "source_authors", "contents", "content_assets", "monitor_matches",
-		"events", "event_contents", "monitor_events", "entities", "entity_aliases",
-		"event_entities", "event_claims", "claim_evidences", "topics", "topic_events",
-		"topic_entities", "topic_relations", "entity_relations", "knowledge_documents",
-		"knowledge_change_proposals", "knowledge_annotations", "reports", "report_items",
-		"report_subscriptions", "ai_model_profiles", "retention_policies",
-	}
-}
-
-func operationalTables() []string {
-	return []string{
-		"auth_sessions", "source_checkpoints", "collection_runs", "collection_run_items",
-		"content_metric_snapshots", "event_metric_snapshots", "ai_runs", "ai_run_evidences",
-		"content_embeddings", "monitor_embeddings", "event_embeddings", "topic_embeddings",
-		"knowledge_revisions", "vault_sync_runs", "report_deliveries", "delivery_attempts",
-		"audit_logs",
-	}
+	return strings.ToLower(string(content))
 }

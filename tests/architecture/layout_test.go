@@ -24,13 +24,18 @@ func TestGreenfieldLayout(t *testing.T) {
 		"internal/platform",
 		"internal/shared",
 		"internal/modules",
-		"db/schema",
 	}
 	for _, relative := range required {
 		info, err := os.Stat(filepath.Join(root, relative))
 		if err != nil || !info.IsDir() {
 			t.Errorf("required directory %s is missing", relative)
 		}
+	}
+	if info, err := os.Stat(filepath.Join(root, "db", "schema.sql")); err != nil || info.IsDir() {
+		t.Errorf("required complete schema db/schema.sql is missing")
+	}
+	if _, err := os.Stat(filepath.Join(root, "db", "schema")); err == nil {
+		t.Error("legacy split schema directory db/schema must not exist")
 	}
 
 	forbidden := []string{

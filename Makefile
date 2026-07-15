@@ -1,4 +1,4 @@
-.PHONY: test lint build validate validate-arch validate-repository ci clean
+.PHONY: test lint build validate validate-arch validate-repository ci clean schema-verify
 
 GO ?= go
 
@@ -9,17 +9,20 @@ lint:
 	$(GO) vet ./...
 
 build:
-	$(GO) build -o hotkey-server ./cmd/hotkey
+	$(GO) build -o hotkey ./cmd/hotkey
 
 validate: validate-arch validate-repository
 
 validate-arch:
-	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate_architecture.ps1
+	sh scripts/validate-architecture.sh
 
 validate-repository:
-	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate_repository.ps1
+	sh scripts/validate-repository.sh
 
-ci: lint test build validate
+schema-verify:
+	sh scripts/verify-schema.sh
+
+ci: lint test build validate schema-verify
 
 clean:
-	powershell -NoProfile -Command "Remove-Item -LiteralPath hotkey-server -Force -ErrorAction SilentlyContinue"
+	rm -f hotkey

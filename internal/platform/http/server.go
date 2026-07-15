@@ -14,8 +14,16 @@ import (
 )
 
 type Server struct {
-	server *stdhttp.Server
-	logger *zap.Logger
+	server   *stdhttp.Server
+	logger   *zap.Logger
+	listener net.Listener
+}
+
+func (s *Server) Address() string {
+	if s.listener == nil {
+		return ""
+	}
+	return s.listener.Addr().String()
 }
 
 func NewServer(cfg config.Config, handler *gin.Engine, logger *zap.Logger) *Server {
@@ -31,14 +39,14 @@ func NewServer(cfg config.Config, handler *gin.Engine, logger *zap.Logger) *Serv
 }
 
 func RegisterServer(lifecycle fx.Lifecycle, server *Server) {
-	var listener net.Listener
 	lifecycle.Append(fx.Hook{
 		OnStart: func(context.Context) error {
 			var err error
-			listener, err = net.Listen("tcp", server.server.Addr)
+			listener, err := net.Listen("tcp", server.server.Addr)
 			if err != nil {
 				return err
 			}
+			server.listener = listener
 			server.logger.Info("HTTP server started", zap.String("address", listener.Addr().String()))
 			go func() {
 				if err := server.server.Serve(listener); err != nil && !errors.Is(err, stdhttp.ErrServerClosed) {
@@ -49,7 +57,15 @@ func RegisterServer(lifecycle fx.Lifecycle, server *Server) {
 		},
 		OnStop: func(ctx context.Context) error {
 			server.logger.Info("HTTP server stopping")
-			return server.server.Shutdown(ctx)
+			shutdownErr := server.server.Shutdown(ctx)
+			if server.listener != nil {
+				closeErr := server.listener.Close()
+				if closeErr != nil && !errors.Is(closeErr, net.ErrClosed) && shutdownErr == nil {
+					shutdownErr = closeErr
+				}
+				server.listener = nil
+			}
+			return shutdownErr
 		},
 	})
 }
