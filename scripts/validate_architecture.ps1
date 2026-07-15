@@ -8,7 +8,7 @@ $requiredDirectories = @(
     "internal/platform",
     "internal/shared",
     "internal/modules",
-    "db/migrations"
+    "db/schema"
 )
 
 $forbiddenDirectories = @(

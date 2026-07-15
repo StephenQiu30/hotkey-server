@@ -24,7 +24,7 @@ func TestGreenfieldLayout(t *testing.T) {
 		"internal/platform",
 		"internal/shared",
 		"internal/modules",
-		"db/migrations",
+		"db/schema",
 	}
 	for _, relative := range required {
 		info, err := os.Stat(filepath.Join(root, relative))

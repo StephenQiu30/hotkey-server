@@ -1,6 +1,7 @@
 package architecture_test
 
 import (
+	"bufio"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -8,41 +9,58 @@ import (
 	"testing"
 )
 
-func TestGreenfieldMigrationsCoverDesignedTables(t *testing.T) {
+func TestPerTableSchemaFilesCoverDesignedTables(t *testing.T) {
 	root := repositoryRoot(t)
-	files, err := filepath.Glob(filepath.Join(root, "db", "migrations", "*.sql"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(files) != 7 {
-		t.Fatalf("migration file count = %d, want 7", len(files))
-	}
-
-	var migrations strings.Builder
-	for _, file := range files {
+	schemaRoot := filepath.Join(root, "db", "schema")
+	for _, table := range append(businessTables(), operationalTables()...) {
+		file := filepath.Join(schemaRoot, table+".sql")
 		content, err := os.ReadFile(file)
 		if err != nil {
-			t.Fatal(err)
+			t.Errorf("read schema for %s: %v", table, err)
+			continue
 		}
 		text := strings.ToLower(string(content))
-		if !strings.Contains(text, "-- +goose up") || !strings.Contains(text, "-- +goose down") {
-			t.Errorf("%s must contain Goose Up and Down sections", filepath.Base(file))
-		}
-		migrations.WriteString(text)
-		migrations.WriteByte('\n')
-	}
-
-	all := migrations.String()
-	for _, table := range append(businessTables(), operationalTables()...) {
 		pattern := regexp.MustCompile(`create\s+table\s+(?:if\s+not\s+exists\s+)?` + regexp.QuoteMeta(table) + `\b`)
-		if !pattern.MatchString(all) {
-			t.Errorf("migration does not create table %s", table)
+		if !pattern.MatchString(text) {
+			t.Errorf("%s does not create table %s", filepath.Base(file), table)
 		}
 	}
 }
 
-func TestGreenfieldMigrationsEnforceCriticalConstraints(t *testing.T) {
-	all := readMigrationText(t)
+func TestSchemaManifestContainsEveryTableOnce(t *testing.T) {
+	root := repositoryRoot(t)
+	file, err := os.Open(filepath.Join(root, "db", "schema", "manifest.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+
+	want := append(businessTables(), operationalTables()...)
+	wantSet := make(map[string]bool, len(want))
+	for _, table := range want {
+		wantSet[table+".sql"] = true
+	}
+	seen := make(map[string]int, len(want))
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		entry := strings.TrimSpace(scanner.Text())
+		if entry == "" || strings.HasPrefix(entry, "#") || entry == "extensions.sql" || entry == "indexes.sql" {
+			continue
+		}
+		seen[entry]++
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatal(err)
+	}
+	for entry := range wantSet {
+		if seen[entry] != 1 {
+			t.Errorf("manifest entry %s count = %d, want 1", entry, seen[entry])
+		}
+	}
+}
+
+func TestGreenfieldSchemaEnforcesCriticalConstraints(t *testing.T) {
+	all := readSchemaText(t)
 
 	checks := map[string]string{
 		"knowledge document has one target": "num_nonnulls(event_id, topic_id, report_id) = 1",
@@ -85,10 +103,10 @@ func TestApplicationDoesNotUseAutoMigrate(t *testing.T) {
 	}
 }
 
-func readMigrationText(t *testing.T) string {
+func readSchemaText(t *testing.T) string {
 	t.Helper()
 	root := repositoryRoot(t)
-	files, err := filepath.Glob(filepath.Join(root, "db", "migrations", "*.sql"))
+	files, err := filepath.Glob(filepath.Join(root, "db", "schema", "*.sql"))
 	if err != nil {
 		t.Fatal(err)
 	}
