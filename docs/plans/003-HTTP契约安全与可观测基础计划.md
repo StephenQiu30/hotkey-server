@@ -5,8 +5,8 @@ audience: [Dev, QA, Ops]
 feature_area: HTTP与可观测
 purpose: 实施统一 Result、错误、安全中间件、指标与 OpenAPI 基础
 canonical_path: docs/plans/003-HTTP契约安全与可观测基础计划.md
-status: accepted
-execution_status: in_progress
+status: archived
+execution_status: done
 review_status: approved
 version: v1.2
 owner: HotKey Server Team
@@ -236,3 +236,4 @@ openapi-check: openapi openapi-validate
 - 2026-07-16：独立 Reviewer 要求修改。原计划没有实际 `/api/v1` 契约对象、OpenAPI 生成/漂移门禁、Prometheus/OTel Fx 装配、认证边界和当前 `HOTKEY_TEST_DSN` CI 命令。本次修订明确唯一 capabilities 契约、`/metrics`、provider 生命周期、错误码和测试矩阵；审核状态为 `changes_requested`，待独立复核。
 - 2026-07-16：复核发现中间件顺序、认证延后和错误出口不能仅在 PRD/Plan 改写。先将同一最终契约写入 Design-004 v1.2，再同步本计划的 passthrough 扩展位与 `Wrap` GlobalErrorHandler，待最终独立审核。
 - 2026-07-16：独立 Reviewer 最终批准。Design-004 v1.2、PRD-003 与本计划的中间件、认证边界、OpenAPI 与 metrics 契约一致；Plan 进入 `ready`。
+- 2026-07-16：实现完成后的独立 Reviewer 最终验收批准。AST 门禁覆盖任意 `*gin.Context` 参数、JSON 输出方法与赋值别名；访问和 panic 日志均有 `module`，当前平台默认 `platform`，未来模块可调用 `SetModule`。无 P0/P1。
