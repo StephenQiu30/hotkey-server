@@ -31,7 +31,7 @@ downstream:
 - 设计文档、AGENTS.md 和完整 db/schema.sql 仍是架构与数据库事实源，PRD 不复制或修改设计结论。
 - `status` 表示文档成熟度，只使用 draft、review、accepted、archived。
 - `execution_status` 表示实现进度，只使用 backlog、ready、in_progress、blocked、done、superseded。
-- PRD 只有 status accepted 且 execution_status ready 才能开工。
+- PRD 只有 `status: accepted` 且 `execution_status: ready` 才能进入开工候选；对应 Plan 还必须满足 `status: accepted`、`review_status: approved` 与 `execution_status: ready`，任一条件不满足均不得写代码。
 - 实施中发现设计缺口时先更新 docs/design，再更新受影响 PRD，不得在代码中隐式决定新架构。
 - PRD 只记录稳定范围、依赖、交付物和验收条件，不记录日报、调试流水或人员工时。
 - 每个任务必须同步其涉及的代码、完整 db/schema.sql、数据库记录模型、OpenAPI、测试和架构校验；不涉及的事实源应在 PR 说明中明确标记。

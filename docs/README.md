@@ -58,7 +58,7 @@ downstream:
 12. `triggers`：何时必须阅读或更新
 13. `downstream`：受本文档约束的下游文档
 
-PRD 和 Plan 额外使用 `execution_status`：backlog、ready、in_progress、blocked、done、superseded。文档成熟度与代码执行状态不能共用一个字段。
+PRD 和 Plan 额外使用 `execution_status`：backlog、ready、in_progress、blocked、done、superseded。Plan 还必须使用 `review_status`：pending、in_review、approved、changes_requested。文档成熟度、计划审核和代码执行状态不能共用一个字段。
 
 ## 关联规则
 
@@ -84,7 +84,8 @@ PRD 和 Plan 额外使用 `execution_status`：backlog、ready、in_progress、b
 1. Design
 2. PRD
 3. Plan
-4. 代码、完整 Schema、记录模型、OpenAPI 和测试
-5. Acceptance
-6. 必要的 Operations
+4. 独立 Plan Review 与验收标准复核
+5. 代码、完整 Schema、记录模型、OpenAPI 和测试
+6. Acceptance
+7. 必要的 Operations
 - 旧编号文档不作为历史兼容方案保留；替代设计确认后直接从仓库清除。

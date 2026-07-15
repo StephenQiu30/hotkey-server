@@ -7,6 +7,7 @@ purpose: 实施 AI Provider、模型配置、运行记录与 Embedding 基础
 canonical_path: docs/plans/008-AIProvider与Embedding基础计划.md
 status: review
 execution_status: backlog
+review_status: pending
 version: v1.0
 owner: HotKey Server Team
 inputs:
@@ -31,6 +32,7 @@ depends_on: [PLAN-002, PLAN-007]
 
 ## 开工条件
 
+- 当前 Plan 的 status 为 accepted、review_status 为 approved、execution_status 为 ready
 - 对应 PRD 的 status 为 accepted，execution_status 为 ready
 - frontmatter 中 depends_on 列出的 Plan 全部为 done
 - main 已同步，工作区只包含当前任务相关文件

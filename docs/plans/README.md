@@ -6,6 +6,7 @@ feature_area: 文档治理
 purpose: 定义 HotKey Server 执行计划的结构、状态和验收映射
 canonical_path: docs/plans/README.md
 status: review
+review_status: pending
 version: v1.0
 owner: HotKey Server Team
 inputs:
@@ -40,10 +41,27 @@ Plan 把一个 PRD 转换为可直接实施的文件级步骤。执行者只读 
 
 ## 状态门禁
 
-- `status: accepted` 且 `execution_status: ready` 才能开工
+- `status: accepted`、`review_status: approved` 且 `execution_status: ready` 才能开工
 - 前置 Plan 未 done 时，下游 Plan 只能 backlog 或 blocked
 - 开工后只更新 ticket 或 Workpad 的过程状态，Plan 正文仅在执行契约变化时更新
 - 完成全部验收并生成 Acceptance 后，execution_status 才能改为 done
+- approved Plan 的目标、范围、文件、步骤、依赖或验收发生变化时，review_status 必须重置为 pending
+
+## Plan Review 门禁
+
+Plan 必须由非本计划主要编写者的 Reviewer 再次审核。Reviewer 可以是独立 Agent 或人工，但审核结论必须保存在 PR、ticket 或 Workpad 中并可追溯。
+
+审核至少覆盖：
+
+1. 目标是否完整映射 PRD，且没有遗漏用户价值或扩大非目标。
+2. 依赖是否完整、无环，并且不会要求尚未实现的下游能力。
+3. 创建、修改、删除文件是否明确，模块所有权与依赖方向是否符合 Design。
+4. Schema、记录模型、Repository、OpenAPI、错误码和文档是否同步。
+5. 正常路径、失败路径、权限、并发、幂等、删除、恢复和降级是否有验收。
+6. 每项验收是否对应可执行红灯、绿灯或替代证据。
+7. 提交边界和回滚是否不会恢复旧双轨或隐藏兼容路径。
+
+存在未解决的高风险问题、循环依赖、不可执行命令或不可验证验收时，review_status 必须为 changes_requested。
 
 ## 执行纪律
 
@@ -58,22 +76,22 @@ Plan 把一个 PRD 转换为可直接实施的文件级步骤。执行者只读 
 
 001–017 与 [PRD 索引](../prd/README.md) 一一对应。计划依赖顺序与 PRD DAG 相同。
 
-| 编号 | PRD | Plan | 前置 Plan | 执行状态 |
-|---|---|---|---|---|
-| 001 | [模块化单体启动与工程门禁](../prd/001-模块化单体启动与工程门禁.md) | [执行计划](001-模块化单体启动与工程门禁计划.md) | 无 | backlog |
-| 002 | [单一Schema与数据库平台](../prd/002-单一Schema与数据库平台.md) | [执行计划](002-单一Schema与数据库平台计划.md) | 001 | backlog |
-| 003 | [HTTP契约安全与可观测基础](../prd/003-HTTP契约安全与可观测基础.md) | [执行计划](003-HTTP契约安全与可观测基础计划.md) | 001, 002 | backlog |
-| 004 | [身份认证会话与权限](../prd/004-身份认证会话与权限.md) | [执行计划](004-身份认证会话与权限计划.md) | 002, 003 | backlog |
-| 005 | [监控主题规则与来源配置](../prd/005-监控主题规则与来源配置.md) | [执行计划](005-监控主题规则与来源配置计划.md) | 002, 003, 004 | backlog |
-| 006 | [查询规划与RSS-HN采集](../prd/006-查询规划与RSS-HN采集.md) | [执行计划](006-查询规划与RSS-HN采集计划.md) | 005 | backlog |
-| 007 | [内容标准化去重与MinIO证据](../prd/007-内容标准化去重与MinIO证据.md) | [执行计划](007-内容标准化去重与MinIO证据计划.md) | 002, 006 | backlog |
-| 008 | [AIProvider与Embedding基础](../prd/008-AIProvider与Embedding基础.md) | [执行计划](008-AIProvider与Embedding基础计划.md) | 002, 007 | backlog |
-| 009 | [多语言相关性匹配与反馈](../prd/009-多语言相关性匹配与反馈.md) | [执行计划](009-多语言相关性匹配与反馈计划.md) | 005, 007, 008 | backlog |
-| 010 | [事件聚类生命周期与人工治理](../prd/010-事件聚类生命周期与人工治理.md) | [执行计划](010-事件聚类生命周期与人工治理计划.md) | 009 | backlog |
-| 011 | [热度趋势与监控排序](../prd/011-热度趋势与监控排序.md) | [执行计划](011-热度趋势与监控排序计划.md) | 010 | backlog |
-| 012 | [证据化事件摘要实体与主张](../prd/012-证据化事件摘要实体与主张.md) | [执行计划](012-证据化事件摘要实体与主张计划.md) | 008, 010 | backlog |
-| 013 | [Cron与River主链路编排](../prd/013-Cron与River主链路编排.md) | [执行计划](013-Cron与River主链路编排计划.md) | 006–012 | backlog |
-| 014 | [Obsidian知识提案修订与对账](../prd/014-Obsidian知识提案修订与对账.md) | [执行计划](014-Obsidian知识提案修订与对账计划.md) | 010, 012, 013 | backlog |
-| 015 | [日报周报与发布快照](../prd/015-日报周报与发布快照.md) | [执行计划](015-日报周报与发布快照计划.md) | 011, 012, 013 | backlog |
-| 016 | [邮件与RSS-Atom订阅交付](../prd/016-邮件与RSS-Atom订阅交付.md) | [执行计划](016-邮件与RSS-Atom订阅交付计划.md) | 014, 015 | backlog |
-| 017 | [运行治理容量与端到端验收](../prd/017-运行治理容量与端到端验收.md) | [执行计划](017-运行治理容量与端到端验收计划.md) | 001–016 | backlog |
+| 编号 | PRD | Plan | 前置 Plan | 执行状态 | 审核状态 |
+|---|---|---|---|---|---|
+| 001 | [模块化单体启动与工程门禁](../prd/001-模块化单体启动与工程门禁.md) | [执行计划](001-模块化单体启动与工程门禁计划.md) | 无 | backlog | pending |
+| 002 | [单一Schema与数据库平台](../prd/002-单一Schema与数据库平台.md) | [执行计划](002-单一Schema与数据库平台计划.md) | 001 | backlog | pending |
+| 003 | [HTTP契约安全与可观测基础](../prd/003-HTTP契约安全与可观测基础.md) | [执行计划](003-HTTP契约安全与可观测基础计划.md) | 001, 002 | backlog | pending |
+| 004 | [身份认证会话与权限](../prd/004-身份认证会话与权限.md) | [执行计划](004-身份认证会话与权限计划.md) | 002, 003 | backlog | pending |
+| 005 | [监控主题规则与来源配置](../prd/005-监控主题规则与来源配置.md) | [执行计划](005-监控主题规则与来源配置计划.md) | 002, 003, 004 | backlog | pending |
+| 006 | [查询规划与RSS-HN采集](../prd/006-查询规划与RSS-HN采集.md) | [执行计划](006-查询规划与RSS-HN采集计划.md) | 005 | backlog | pending |
+| 007 | [内容标准化去重与MinIO证据](../prd/007-内容标准化去重与MinIO证据.md) | [执行计划](007-内容标准化去重与MinIO证据计划.md) | 002, 006 | backlog | pending |
+| 008 | [AIProvider与Embedding基础](../prd/008-AIProvider与Embedding基础.md) | [执行计划](008-AIProvider与Embedding基础计划.md) | 002, 007 | backlog | pending |
+| 009 | [多语言相关性匹配与反馈](../prd/009-多语言相关性匹配与反馈.md) | [执行计划](009-多语言相关性匹配与反馈计划.md) | 005, 007, 008 | backlog | pending |
+| 010 | [事件聚类生命周期与人工治理](../prd/010-事件聚类生命周期与人工治理.md) | [执行计划](010-事件聚类生命周期与人工治理计划.md) | 009 | backlog | pending |
+| 011 | [热度趋势与监控排序](../prd/011-热度趋势与监控排序.md) | [执行计划](011-热度趋势与监控排序计划.md) | 010 | backlog | pending |
+| 012 | [证据化事件摘要实体与主张](../prd/012-证据化事件摘要实体与主张.md) | [执行计划](012-证据化事件摘要实体与主张计划.md) | 008, 010 | backlog | pending |
+| 013 | [Cron与River主链路编排](../prd/013-Cron与River主链路编排.md) | [执行计划](013-Cron与River主链路编排计划.md) | 006–012 | backlog | pending |
+| 014 | [Obsidian知识提案修订与对账](../prd/014-Obsidian知识提案修订与对账.md) | [执行计划](014-Obsidian知识提案修订与对账计划.md) | 010, 012, 013 | backlog | pending |
+| 015 | [日报周报与发布快照](../prd/015-日报周报与发布快照.md) | [执行计划](015-日报周报与发布快照计划.md) | 011, 012, 013 | backlog | pending |
+| 016 | [邮件与RSS-Atom订阅交付](../prd/016-邮件与RSS-Atom订阅交付.md) | [执行计划](016-邮件与RSS-Atom订阅交付计划.md) | 014, 015 | backlog | pending |
+| 017 | [运行治理容量与端到端验收](../prd/017-运行治理容量与端到端验收.md) | [执行计划](017-运行治理容量与端到端验收计划.md) | 001–016 | backlog | pending |

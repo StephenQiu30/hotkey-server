@@ -7,6 +7,7 @@ purpose: 收敛单一 Schema 并建立数据库、事务和 Repository 基础
 canonical_path: docs/plans/002-单一Schema与数据库平台计划.md
 status: review
 execution_status: backlog
+review_status: pending
 version: v1.0
 owner: HotKey Server Team
 inputs:
@@ -33,6 +34,7 @@ depends_on: [PLAN-001]
 
 ## 开工条件
 
+- 当前 Plan 的 status 为 accepted、review_status 为 approved、execution_status 为 ready
 - PLAN-001 execution_status 为 done
 - 本地 PostgreSQL 16+ 可创建空测试库
 - PRD-002 与设计 003 已 accepted
@@ -47,6 +49,7 @@ depends_on: [PLAN-001]
 | 创建 | internal/platform/database/gorm.go | GORM 装配 |
 | 创建 | internal/platform/database/schema.go | 初始化与兼容性检查 |
 | 创建 | internal/platform/database/transaction.go | 显式事务边界 |
+| 创建 | cmd/hotkey/db.go | db init 与 db verify 命令 |
 | 创建 | internal/shared/repository/crud.go | 统一 CRUD 契约 |
 | 创建 | internal/shared/repository/errors.go | 数据库错误映射 |
 | 创建 | internal/shared/pagination/cursor.go | 游标分页 |
@@ -61,7 +64,8 @@ depends_on: [PLAN-001]
 3. 按设计顺序合并完整 Schema，删除分片文件。
 4. 接入 pgx、GORM、事务和启动兼容性检查，禁止 AutoMigrate。
 5. 建立 CRUD、乐观锁、错误映射和游标分页契约。
-6. 在本地 PostgreSQL 执行空库、重复初始化和关键约束验证。
+6. 实现 db init --empty-only 与 db verify，禁止隐式迁移。
+7. 在本地 PostgreSQL 执行空库、重复初始化和关键约束验证。
 
 ## 验收命令
 
@@ -70,6 +74,7 @@ depends_on: [PLAN-001]
 | 红灯 | go test ./tests/architecture ./internal/platform/database -count=1 | 因单一 Schema 或数据库平台缺失失败 |
 | Schema | psql "$HOTKEY_TEST_DSN" -v ON_ERROR_STOP=1 -f db/schema.sql | 空库执行成功 |
 | 幂等 | psql "$HOTKEY_TEST_DSN" -v ON_ERROR_STOP=1 -f db/schema.sql | 第二次执行成功 |
+| 命令 | go run ./cmd/hotkey db verify | Schema 兼容时返回 0 |
 | 绿灯 | go test ./internal/platform/database ./internal/shared/... ./tests/architecture -count=1 | 全部通过 |
 | 全量 | make lint && make test && make build && make validate | 全部通过 |
 

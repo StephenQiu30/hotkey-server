@@ -34,6 +34,16 @@
 
 本文件与 `docs/design/README.md` 共同构成目标架构基线。PRD 定义任务必须交付什么，Plan 定义具体文件和验证步骤，Acceptance 保存完成证据；后三者不得改变 Design 事实。
 
+任何代码任务开工前，必须满足：
+
+1. 对应 PRD 和 Plan 的文档状态均为 accepted
+2. Plan 已由独立 Reviewer 复核，review_status 为 approved
+3. 前置 Plan 均为 done，当前任务 execution_status 为 ready
+4. 验收标准已覆盖正常、失败、权限、并发、幂等、删除、恢复和降级中的适用边界
+5. 每项验收已有红灯命令、绿灯命令或明确的替代证据
+
+Plan 发生实质变化后必须重新审核，不得沿用旧批准状态。
+
 ## 基础技术栈
 
 新架构使用以下技术：
