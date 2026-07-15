@@ -10,6 +10,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
 	httptransport "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/observability"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
 	"go.uber.org/zap"
@@ -55,8 +56,8 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 		}
 		options = append(options,
 			readinessProvider,
-			fx.Provide(httptransport.NewRouter, httptransport.NewServer),
-			fx.Invoke(httptransport.RegisterServer),
+			fx.Provide(observability.NewMetrics, observability.NewTelemetry, httptransport.NewRouter, httptransport.NewServer),
+			fx.Invoke(observability.RegisterLifecycle, httptransport.RegisterServer),
 		)
 	}
 	if role.StartsWorker() {

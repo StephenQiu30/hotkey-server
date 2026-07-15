@@ -6,7 +6,7 @@ feature_area: HTTP与可观测
 purpose: 实施统一 Result、错误、安全中间件、指标与 OpenAPI 基础
 canonical_path: docs/plans/003-HTTP契约安全与可观测基础计划.md
 status: accepted
-execution_status: ready
+execution_status: in_progress
 review_status: approved
 version: v1.2
 owner: HotKey Server Team

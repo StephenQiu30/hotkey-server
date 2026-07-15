@@ -2,10 +2,12 @@ package http
 
 import (
 	"context"
-	stdhttp "net/http"
 
+	"github.com/StephenQiu30/hotkey-server/internal/platform/config"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/observability"
+	sharederrors "github.com/StephenQiu30/hotkey-server/internal/shared/errors"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 type Readiness interface {
@@ -22,35 +24,31 @@ type healthData struct {
 	Status string `json:"status"`
 }
 
-func NewRouter(readiness Readiness) *gin.Engine {
+func NewRouter(readiness Readiness, metrics *observability.Metrics, telemetry *observability.Telemetry, logger *zap.Logger, cfg config.Config) *gin.Engine {
 	router := gin.New()
-	router.Use(requestID(), recovery())
-	router.GET("/healthz", func(c *gin.Context) {
+	router.Use(
+		requestID(),
+		traceContext(telemetry),
+		accessLog(logger, metrics),
+		recovery(logger, metrics),
+		cors(),
+		requestContextTimeout(cfg.RequestTimeout),
+		authenticationPassthrough(),
+		authorizationPassthrough(),
+	)
+	router.GET("/healthz", Wrap(func(c *gin.Context) error {
 		OK(c, healthData{Status: "ok"})
-	})
-	router.GET("/readyz", func(c *gin.Context) {
+		return nil
+	}))
+	router.GET("/readyz", Wrap(func(c *gin.Context) error {
 		if err := readiness.Check(c.Request.Context()); err != nil {
-			Fail(c, stdhttp.StatusServiceUnavailable, 90001, "service not ready")
-			return
+			metrics.SetDependencyHealth("runtime", 0)
+			return sharederrors.Wrap(sharederrors.CodeUnavailable, 503, "service not ready", err)
 		}
+		metrics.SetDependencyHealth("runtime", 1)
 		OK(c, healthData{Status: "ok"})
-	})
+		return nil
+	}))
+	router.GET("/metrics", gin.WrapH(metrics.Handler()))
 	return router
-}
-
-func requestID() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		requestID := c.GetHeader("X-Request-ID")
-		if requestID == "" {
-			requestID = uuid.NewString()
-		}
-		c.Header("X-Request-ID", requestID)
-		c.Next()
-	}
-}
-
-func recovery() gin.HandlerFunc {
-	return gin.CustomRecovery(func(c *gin.Context, _ any) {
-		Fail(c, stdhttp.StatusInternalServerError, 90000, "internal server error")
-	})
 }

@@ -12,13 +12,15 @@ import (
 )
 
 type Config struct {
-	Environment     string
-	Role            string
-	HTTPAddr        string
-	ShutdownTimeout time.Duration
-	DatabaseURL     string
-	MinIO           MinIOConfig
-	VaultPath       string
+	Environment      string
+	Role             string
+	HTTPAddr         string
+	RequestTimeout   time.Duration
+	ShutdownTimeout  time.Duration
+	DatabaseURL      string
+	OTLPHTTPEndpoint string
+	MinIO            MinIOConfig
+	VaultPath        string
 }
 
 type MinIOConfig struct {
@@ -34,6 +36,7 @@ func Default() Config {
 		Environment:     "development",
 		Role:            "all",
 		HTTPAddr:        ":8080",
+		RequestTimeout:  15 * time.Second,
 		ShutdownTimeout: 15 * time.Second,
 		VaultPath:       "./var/vault",
 		MinIO: MinIOConfig{
@@ -67,12 +70,14 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		Environment:     v.GetString("env"),
-		Role:            v.GetString("role"),
-		HTTPAddr:        v.GetString("http_addr"),
-		ShutdownTimeout: v.GetDuration("shutdown_timeout"),
-		DatabaseURL:     v.GetString("database_url"),
-		VaultPath:       v.GetString("vault_path"),
+		Environment:      v.GetString("env"),
+		Role:             v.GetString("role"),
+		HTTPAddr:         v.GetString("http_addr"),
+		RequestTimeout:   v.GetDuration("request_timeout"),
+		ShutdownTimeout:  v.GetDuration("shutdown_timeout"),
+		DatabaseURL:      v.GetString("database_url"),
+		OTLPHTTPEndpoint: v.GetString("otlp_http_endpoint"),
+		VaultPath:        v.GetString("vault_path"),
 		MinIO: MinIOConfig{
 			Endpoint:  v.GetString("minio_endpoint"),
 			AccessKey: v.GetString("minio_access_key"),
@@ -100,6 +105,9 @@ func (c Config) Validate() error {
 		if _, _, err := net.SplitHostPort(c.HTTPAddr); err != nil {
 			return fmt.Errorf("invalid HTTP address %q: %w", c.HTTPAddr, err)
 		}
+		if c.RequestTimeout <= 0 {
+			return errors.New("request timeout must be positive")
+		}
 	}
 	return nil
 }
@@ -121,6 +129,7 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("env", cfg.Environment)
 	v.SetDefault("role", cfg.Role)
 	v.SetDefault("http_addr", cfg.HTTPAddr)
+	v.SetDefault("request_timeout", cfg.RequestTimeout)
 	v.SetDefault("shutdown_timeout", cfg.ShutdownTimeout)
 	v.SetDefault("vault_path", cfg.VaultPath)
 	v.SetDefault("minio_endpoint", cfg.MinIO.Endpoint)
@@ -129,7 +138,7 @@ func setDefaults(v *viper.Viper, cfg Config) {
 
 func configKeys() []string {
 	return []string{
-		"env", "role", "http_addr", "shutdown_timeout", "database_url",
+		"env", "role", "http_addr", "request_timeout", "shutdown_timeout", "database_url", "otlp_http_endpoint",
 		"minio_endpoint", "minio_access_key", "minio_secret_key", "minio_bucket",
 		"minio_use_ssl", "vault_path",
 	}

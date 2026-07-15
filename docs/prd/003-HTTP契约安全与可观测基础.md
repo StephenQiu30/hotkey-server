@@ -9,7 +9,7 @@ purpose: 定义统一 HTTP 契约、安全中间件和可观测基础
 phase: F0
 priority: P0
 status: accepted
-execution_status: ready
+execution_status: in_progress
 version: v1.2
 owner: HotKey Server Team
 depends_on: [PRD-001, PRD-002]

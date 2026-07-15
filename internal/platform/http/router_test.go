@@ -7,12 +7,18 @@ import (
 	stdhttp "net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/StephenQiu30/hotkey-server/internal/platform/config"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/observability"
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 func TestHealthEndpointsUseResultContract(t *testing.T) {
 	t.Parallel()
 
-	router := NewRouter(ReadinessFunc(func(context.Context) error { return nil }))
+	router, telemetry := newRouterForTest(t, ReadinessFunc(func(context.Context) error { return nil }))
+	defer func() { _ = telemetry.Shutdown(context.Background()) }()
 
 	for _, path := range []string{"/healthz", "/readyz"} {
 		path := path
@@ -37,9 +43,10 @@ func TestHealthEndpointsUseResultContract(t *testing.T) {
 func TestReadyDoesNotExposeInternalFailure(t *testing.T) {
 	t.Parallel()
 
-	router := NewRouter(ReadinessFunc(func(context.Context) error {
+	router, telemetry := newRouterForTest(t, ReadinessFunc(func(context.Context) error {
 		return errors.New("postgres password=secret is unavailable")
 	}))
+	defer func() { _ = telemetry.Shutdown(context.Background()) }()
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(stdhttp.MethodGet, "/readyz", nil)
 
@@ -75,4 +82,17 @@ func assertResult(t *testing.T, response *httptest.ResponseRecorder, code int, m
 	if string(actual) != string(want) {
 		t.Errorf("data = %s, want %s", actual, want)
 	}
+}
+
+func newRouterForTest(t *testing.T, readiness Readiness) (*gin.Engine, *observability.Telemetry) {
+	t.Helper()
+	metrics, err := observability.NewMetrics()
+	if err != nil {
+		t.Fatalf("NewMetrics() error = %v", err)
+	}
+	telemetry, err := observability.NewTelemetry(config.Default())
+	if err != nil {
+		t.Fatalf("NewTelemetry() error = %v", err)
+	}
+	return NewRouter(readiness, metrics, telemetry, zap.NewNop(), config.Default()), telemetry
 }
