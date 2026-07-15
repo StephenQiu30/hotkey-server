@@ -16,7 +16,11 @@ import (
 	"go.uber.org/zap"
 )
 
-const requestIDContextKey = "hotkey.request_id"
+const (
+	requestIDContextKey = "hotkey.request_id"
+	moduleContextKey    = "hotkey.module"
+	platformModule      = "platform"
+)
 
 func requestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -25,6 +29,7 @@ func requestID() gin.HandlerFunc {
 			value = uuid.NewString()
 		}
 		c.Set(requestIDContextKey, value)
+		c.Set(moduleContextKey, platformModule)
 		c.Header("X-Request-ID", value)
 		c.Next()
 	}
@@ -60,6 +65,7 @@ func accessLog(logger *zap.Logger, metrics *observability.Metrics) gin.HandlerFu
 		metrics.RecordHTTPRequest(c.Request.Method, route, status, duration)
 		logger.Info("HTTP request completed",
 			zap.String("request_id", RequestID(c)),
+			zap.String("module", Module(c)),
 			zap.String("method", c.Request.Method),
 			zap.String("route", route),
 			zap.Int("status", status),
@@ -78,6 +84,7 @@ func recovery(logger *zap.Logger, metrics *observability.Metrics) gin.HandlerFun
 			metrics.RecordPanic(route)
 			logger.Error("HTTP panic recovered",
 				zap.String("request_id", RequestID(c)),
+				zap.String("module", Module(c)),
 				zap.String("route", route),
 				zap.ByteString("stack", debug.Stack()),
 			)
@@ -123,6 +130,23 @@ func RequestID(c *gin.Context) string {
 	value, _ := c.Get(requestIDContextKey)
 	requestID, _ := value.(string)
 	return requestID
+}
+
+// SetModule lets a module transport identify itself for logs and tracing.
+// Platform routes retain the default "platform" module value.
+func SetModule(c *gin.Context, module string) {
+	if module = strings.TrimSpace(module); module != "" {
+		c.Set(moduleContextKey, module)
+	}
+}
+
+func Module(c *gin.Context) string {
+	value, _ := c.Get(moduleContextKey)
+	module, _ := value.(string)
+	if module == "" {
+		return platformModule
+	}
+	return module
 }
 
 func requestRoute(c *gin.Context) string {

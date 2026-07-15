@@ -23,7 +23,7 @@ func TestArchitectureValidationRejectsDirectGinResponsesInModuleTransport(t *tes
 		}
 	})
 	path := filepath.Join(directory, "direct_response.go")
-	contents := []byte("package http\n\nimport \"github.com/gin-gonic/gin\"\n\nfunc directResponse(c *gin.Context) { c.JSON(200, nil) }\n")
+	contents := []byte("package http\n\nimport \"github.com/gin-gonic/gin\"\n\nfunc directJSON(ctx *gin.Context) { ctx.JSON(200, nil) }\nfunc directAbort(ctx *gin.Context) { ctx.AbortWithStatusJSON(400, nil) }\nfunc directString(ctx *gin.Context) { alias := ctx; alias.String(200, \"forbidden\") }\n")
 	if err := os.WriteFile(path, contents, 0o644); err != nil {
 		t.Fatalf("write temporary transport file: %v", err)
 	}

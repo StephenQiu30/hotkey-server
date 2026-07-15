@@ -58,6 +58,9 @@ func TestMiddlewarePreservesOrCreatesRequestIDAndRedactsLogs(t *testing.T) {
 		if strings.Contains(string(encoded), "top-secret") {
 			t.Fatalf("log leaked secret: %s", encoded)
 		}
+		if got := entry.ContextMap()["module"]; got != "platform" {
+			t.Errorf("log module = %#v, want platform", got)
+		}
 	}
 }
 
