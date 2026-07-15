@@ -47,7 +47,7 @@ func TestSessionSchemaEnforcesIdentityConstraints(t *testing.T) {
 	runtime := openTestRuntime(t)
 	defer func() { _ = runtime.Close() }()
 
-	now := time.Now().UTC().Round(0)
+	now := time.Now().UTC().Truncate(time.Microsecond)
 	var userID int64
 	if err := runtime.SQL.QueryRow(`
 INSERT INTO users (email, password_hash, display_name, role)
@@ -81,6 +81,27 @@ VALUES ($1, '87654321-4321-4321-4321-cba987654321', $2, $3)`, userID, now, now.A
 INSERT INTO auth_refresh_tokens (session_id, token_hash, expires_at)
 VALUES ($1, $2, $3)`, sessionID, tokenHash, now.Add(7*24*time.Hour)); err != nil {
 		t.Fatalf("create refresh token: %v", err)
+	}
+
+	_, err = runtime.SQL.Exec(`
+UPDATE auth_sessions
+SET absolute_expires_at = $1
+WHERE id = $2`, sessionExpiry.Add(time.Hour), sessionID)
+	assertPostgreSQLState(t, err, "23514")
+
+	var actualSessionExpiry, actualTokenExpiry time.Time
+	if err := runtime.SQL.QueryRow(`
+SELECT session.absolute_expires_at, token.expires_at
+FROM auth_sessions AS session
+JOIN auth_refresh_tokens AS token ON token.session_id = session.id
+WHERE session.id = $1 AND token.token_hash = $2`, sessionID, tokenHash).Scan(&actualSessionExpiry, &actualTokenExpiry); err != nil {
+		t.Fatalf("read session and refresh token after rejected expiry update: %v", err)
+	}
+	if !actualSessionExpiry.Equal(sessionExpiry) {
+		t.Errorf("session absolute expiry after rejected update = %s, want %s", actualSessionExpiry, sessionExpiry)
+	}
+	if want := now.Add(7 * 24 * time.Hour); !actualTokenExpiry.Equal(want) {
+		t.Errorf("refresh token expiry after rejected session update = %s, want %s", actualTokenExpiry, want)
 	}
 
 	_, err = runtime.SQL.Exec(`

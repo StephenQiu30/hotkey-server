@@ -70,6 +70,7 @@ BEGIN
     identity_session_id bigint;
     identity_session_expires_at timestamptz;
     identity_family_id uuid := md5(clock_timestamp()::text || random()::text)::uuid;
+    identity_token_hash text := repeat(md5(clock_timestamp()::text || random()::text), 2);
   BEGIN
     INSERT INTO users (email, password_hash, display_name, role)
       VALUES ('schema-auth-constraint@example.test', 'x', 'schema auth', 'viewer')
@@ -96,11 +97,27 @@ BEGIN
     END;
 
     INSERT INTO auth_refresh_tokens (session_id, token_hash, expires_at)
-      VALUES (identity_session_id, repeat('a', 64), now() + interval '7 days');
+      VALUES (identity_session_id, identity_token_hash, now() + interval '7 days');
+
+    BEGIN
+      UPDATE auth_sessions
+      SET absolute_expires_at = identity_session_expires_at + interval '1 day'
+      WHERE id = identity_session_id;
+      RAISE EXCEPTION 'auth session absolute expiry must be immutable';
+    EXCEPTION WHEN check_violation THEN
+      NULL;
+    END;
+
+    IF (SELECT absolute_expires_at FROM auth_sessions WHERE id = identity_session_id) IS DISTINCT FROM identity_session_expires_at THEN
+      RAISE EXCEPTION 'auth session absolute expiry changed after rejected update';
+    END IF;
+    IF (SELECT expires_at FROM auth_refresh_tokens WHERE session_id = identity_session_id AND token_hash = identity_token_hash) IS DISTINCT FROM now() + interval '7 days' THEN
+      RAISE EXCEPTION 'auth refresh token changed after rejected session update';
+    END IF;
 
     BEGIN
       INSERT INTO auth_refresh_tokens (session_id, token_hash, expires_at)
-        VALUES (identity_session_id, repeat('a', 64), now() + interval '6 days');
+        VALUES (identity_session_id, identity_token_hash, now() + interval '6 days');
       RAISE EXCEPTION 'missing auth refresh token hash uniqueness constraint';
     EXCEPTION WHEN unique_violation THEN
       NULL;
