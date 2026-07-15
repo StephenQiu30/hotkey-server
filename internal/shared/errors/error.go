@@ -7,17 +7,21 @@ import (
 )
 
 const (
-	CodeInvalidRequest   = 10000
-	CodeValidation       = 10001
-	CodeConflict         = 10002
-	CodeNotFound         = 10003
-	CodeRateLimited      = 10004
-	CodeUnauthenticated  = 20000
-	CodeForbidden        = 20001
-	CodeInternal         = 90000
-	CodeUnavailable      = 90001
-	CodeBadGateway       = 90002
-	CodeDeadlineExceeded = 90003
+	CodeInvalidRequest      = 10000
+	CodeValidation          = 10001
+	CodeConflict            = 10002
+	CodeNotFound            = 10003
+	CodeRateLimited         = 10004
+	CodeUnauthenticated     = 20000
+	CodeForbidden           = 20001
+	CodeInvalidCredentials  = 20002
+	CodeSessionInvalid      = 20003
+	CodeVerificationInvalid = 20004
+	CodeLastActiveAdmin     = 20005
+	CodeInternal            = 90000
+	CodeUnavailable         = 90001
+	CodeBadGateway          = 90002
+	CodeDeadlineExceeded    = 90003
 )
 
 type CodeDefinition struct {
@@ -41,6 +45,10 @@ func init() {
 		{Code: CodeRateLimited, HTTPStatus: stdhttp.StatusTooManyRequests, Message: "rate limited", Retryable: true},
 		{Code: CodeUnauthenticated, HTTPStatus: stdhttp.StatusUnauthorized, Message: "unauthenticated"},
 		{Code: CodeForbidden, HTTPStatus: stdhttp.StatusForbidden, Message: "forbidden"},
+		{Code: CodeInvalidCredentials, HTTPStatus: stdhttp.StatusUnauthorized, Message: "invalid credentials"},
+		{Code: CodeSessionInvalid, HTTPStatus: stdhttp.StatusUnauthorized, Message: "session invalid"},
+		{Code: CodeVerificationInvalid, HTTPStatus: stdhttp.StatusBadRequest, Message: "verification invalid"},
+		{Code: CodeLastActiveAdmin, HTTPStatus: stdhttp.StatusConflict, Message: "last active admin"},
 		{Code: CodeInternal, HTTPStatus: stdhttp.StatusInternalServerError, Message: "internal server error"},
 		{Code: CodeUnavailable, HTTPStatus: stdhttp.StatusServiceUnavailable, Message: "service unavailable", Retryable: true},
 		{Code: CodeBadGateway, HTTPStatus: stdhttp.StatusBadGateway, Message: "bad gateway", Retryable: true},

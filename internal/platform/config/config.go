@@ -21,6 +21,7 @@ type Config struct {
 	OTLPHTTPEndpoint string
 	MinIO            MinIOConfig
 	VaultPath        string
+	Authentication   AuthenticationConfig
 }
 
 type MinIOConfig struct {
@@ -29,6 +30,29 @@ type MinIOConfig struct {
 	SecretKey string
 	Bucket    string
 	UseSSL    bool
+}
+
+type AuthenticationConfig struct {
+	JWTSecret              string
+	JWTIssuer              string
+	JWTAudience            string
+	RedisURL               string
+	SMTP                   SMTPConfig
+	AllowedOrigins         []string
+	RefreshCookieSecure    bool
+	BootstrapAdminEmail    string
+	BootstrapAdminPassword string
+}
+
+type SMTPConfig struct {
+	Enabled   bool
+	Host      string
+	Port      int
+	TLSMode   string
+	Username  string
+	Password  string
+	FromEmail string
+	FromName  string
 }
 
 func Default() Config {
@@ -42,6 +66,14 @@ func Default() Config {
 		MinIO: MinIOConfig{
 			Endpoint: "localhost:9000",
 			Bucket:   "hotkey-evidence",
+		},
+		Authentication: AuthenticationConfig{
+			JWTIssuer:   "hotkey",
+			JWTAudience: "hotkey-web",
+			SMTP: SMTPConfig{
+				Port:    465,
+				TLSMode: "tls",
+			},
 		},
 	}
 }
@@ -85,6 +117,26 @@ func Load() (Config, error) {
 			Bucket:    v.GetString("minio_bucket"),
 			UseSSL:    v.GetBool("minio_use_ssl"),
 		},
+		Authentication: AuthenticationConfig{
+			JWTSecret:              v.GetString("jwt_secret"),
+			JWTIssuer:              v.GetString("jwt_issuer"),
+			JWTAudience:            v.GetString("jwt_audience"),
+			RedisURL:               v.GetString("redis_url"),
+			AllowedOrigins:         parseCSV(v.GetString("cors_allowed_origins")),
+			RefreshCookieSecure:    v.GetBool("refresh_cookie_secure"),
+			BootstrapAdminEmail:    v.GetString("bootstrap_admin_email"),
+			BootstrapAdminPassword: v.GetString("bootstrap_admin_password"),
+			SMTP: SMTPConfig{
+				Enabled:   v.GetBool("smtp_enabled"),
+				Host:      v.GetString("smtp_host"),
+				Port:      v.GetInt("smtp_port"),
+				TLSMode:   v.GetString("smtp_tls_mode"),
+				Username:  v.GetString("smtp_username"),
+				Password:  v.GetString("smtp_password"),
+				FromEmail: v.GetString("smtp_from_email"),
+				FromName:  v.GetString("smtp_from_name"),
+			},
+		},
 	}
 	return cfg, cfg.Validate()
 }
@@ -125,6 +177,38 @@ func (c Config) ValidateRuntime() error {
 	return nil
 }
 
+// ValidateAuthenticationRuntime is intentionally separate from ValidateRuntime:
+// database commands do not need email authentication, while an API runtime that
+// serves identity endpoints must reject unsafe credential and credentialed CORS
+// configuration before wiring those endpoints.
+func (c Config) ValidateAuthenticationRuntime() error {
+	if err := c.Validate(); err != nil {
+		return err
+	}
+	auth := c.Authentication
+	if len([]byte(strings.TrimSpace(auth.JWTSecret))) < 32 {
+		return errors.New("JWT secret must be at least 32 bytes")
+	}
+	if strings.TrimSpace(auth.JWTIssuer) == "" {
+		return errors.New("JWT issuer is required")
+	}
+	if strings.TrimSpace(auth.JWTAudience) == "" {
+		return errors.New("JWT audience is required")
+	}
+	if len(auth.AllowedOrigins) == 0 {
+		return errors.New("at least one allowed CORS origin is required for authentication")
+	}
+	for _, origin := range auth.AllowedOrigins {
+		if strings.TrimSpace(origin) == "" || origin == "*" {
+			return errors.New("authentication CORS origins must be explicit")
+		}
+	}
+	if c.Environment == "production" && !auth.RefreshCookieSecure {
+		return errors.New("production refresh cookie must be secure")
+	}
+	return nil
+}
+
 func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("env", cfg.Environment)
 	v.SetDefault("role", cfg.Role)
@@ -134,6 +218,11 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("vault_path", cfg.VaultPath)
 	v.SetDefault("minio_endpoint", cfg.MinIO.Endpoint)
 	v.SetDefault("minio_bucket", cfg.MinIO.Bucket)
+	v.SetDefault("jwt_issuer", cfg.Authentication.JWTIssuer)
+	v.SetDefault("jwt_audience", cfg.Authentication.JWTAudience)
+	v.SetDefault("smtp_port", cfg.Authentication.SMTP.Port)
+	v.SetDefault("smtp_tls_mode", cfg.Authentication.SMTP.TLSMode)
+	v.SetDefault("smtp_from_name", "HotKey")
 }
 
 func configKeys() []string {
@@ -141,5 +230,20 @@ func configKeys() []string {
 		"env", "role", "http_addr", "request_timeout", "shutdown_timeout", "database_url", "otlp_http_endpoint",
 		"minio_endpoint", "minio_access_key", "minio_secret_key", "minio_bucket",
 		"minio_use_ssl", "vault_path",
+		"jwt_secret", "jwt_issuer", "jwt_audience", "redis_url", "smtp_enabled", "smtp_host", "smtp_port", "smtp_tls_mode", "smtp_username", "smtp_password", "smtp_from_email", "smtp_from_name", "cors_allowed_origins", "refresh_cookie_secure", "bootstrap_admin_email", "bootstrap_admin_password",
 	}
+}
+
+func parseCSV(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	items := strings.Split(value, ",")
+	values := make([]string, 0, len(items))
+	for _, item := range items {
+		if item = strings.TrimSpace(item); item != "" {
+			values = append(values, item)
+		}
+	}
+	return values
 }
