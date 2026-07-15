@@ -51,3 +51,20 @@ func TestValidateAcceptsWorkerWithoutListeningAddress(t *testing.T) {
 		t.Fatalf("Validate() error = %v", err)
 	}
 }
+
+func TestLoadUsesEnvironmentOverrides(t *testing.T) {
+	t.Setenv("HOTKEY_ROLE", "worker")
+	t.Setenv("HOTKEY_HTTP_ADDR", "")
+	t.Setenv("HOTKEY_SHUTDOWN_TIMEOUT", "3s")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Role != "worker" {
+		t.Errorf("Role = %q, want worker", cfg.Role)
+	}
+	if cfg.ShutdownTimeout != 3*time.Second {
+		t.Errorf("ShutdownTimeout = %s, want 3s", cfg.ShutdownTimeout)
+	}
+}
