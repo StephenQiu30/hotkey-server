@@ -1,5 +1,7 @@
 # HotKey Server 全量重建实施计划
 
+> 状态：已失效，禁止继续按本文执行。本计划只依赖旧的 `001`–`008` 设计，且其 Goose Migration 与当前确认的单一 `db/schema.sql` 事实源冲突。必须在 `001`–`012` 完成复核后使用新计划替代。
+
 日期：2026-07-15
 
 分支：`refactor/hotkey-greenfield-rebuild`
