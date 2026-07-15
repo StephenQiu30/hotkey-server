@@ -11,7 +11,6 @@ owner: Codex
 inputs:
   - docs/design/001-x热点监控平台设计.md
   - docs/plans/004-热点评分主题聚合趋势计划.md
-  - docs/superpowers/specs/2026-06-14-daily-obsidian-design.md
 outputs:
   - 日报模块架构
   - topic_daily_exports 数据模型
@@ -22,7 +21,6 @@ triggers:
   - 调整日报时间窗口、Vault 结构或 LLM 策略
 downstream:
   - docs/plans/011-热点日报Obsidian知识库计划.md
-  - openspec/changes/2026-06-14-daily-obsidian-digest/
 linear:
   epic: STE-301
 ---
@@ -53,7 +51,7 @@ MVP（仅 hotkey-server）必须实现：
 
 # 与 001 设计的关系
 
-[`001-x热点监控平台设计.md`](001-x热点监控平台设计.md) 规定主题聚合不依赖 LLM。本功能作为**独立的日报沉淀层**引入 LLM，不改变 `internal/topic.Cluster()` 行为。OpenSpec change 中须记录此范围扩展。
+[`001-x热点监控平台设计.md`](001-x热点监控平台设计.md) 规定主题聚合不依赖 LLM。本功能作为**独立的日报沉淀层**引入 LLM，不改变 `internal/topic.Cluster()` 行为。
 
 # 系统架构
 

@@ -1,13 +1,12 @@
 # Contributing
 
-感谢你愿意改进 Claude Agent 规范模板。
+感谢你愿意改进 Codex Agent 规范模板。
 
 ## 贡献范围
 
-1. 修正或补充 `CLAUDE.md`、`CLAUDE.local.md` 中的协作规范。
-2. 优化 `.claude/agents/` 中的角色职责。
-3. 优化 `.claude/skills/` 中的 harness、Linear 和 Git 收口流程。
-   > 注意：此目录中的部分 skill 是 superpowers 仓库的 vendored 副本，直接修改会被覆盖。如需自定义，请复制到 `.claude/skills-local/`。
+1. 修正或补充 `AGENTS.md` 中的协作规范。
+2. 优化 `.codex/agents/` 中的角色职责。
+3. 优化 `.codex/skills/` 中的 harness、Linear 和 Git 收口流程。
 4. 改进 README、WORKFLOW 或 CI 结构检查。
 
 ## 贡献原则
