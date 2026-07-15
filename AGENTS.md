@@ -25,7 +25,7 @@
 - 不得把目标设计描述成已经实现的能力
 - 不得依据旧代码复制 `topic`、`event`、`hot_event` 等重复模型
 - 未经批准的实施计划，不得批量重写现有代码
-- 实施任务必须同时更新代码、`db/migrations/`、生成Schema快照、OpenAPI、测试和架构校验
+- 实施任务必须同时更新代码、完整 `db/schema.sql`、OpenAPI、测试和架构校验
 - `docs/design/README.md` 是详细设计索引
 
 本文件与 `docs/design/README.md` 共同构成目标架构基线。
@@ -42,7 +42,6 @@
 - PostgreSQL 16+ 和 pgvector
 - pgx v5 和 River PostgreSQL Job Queue
 - MinIO Go Client
-- Goose SQL Migration
 - robfig/cron
 - Zap
 - OpenTelemetry 和 Prometheus
@@ -86,7 +85,7 @@ internal/
     ├── report/
     ├── delivery/
     └── operations/
-db/migrations/
+db/schema.sql
 docs/design/
 ```
 
@@ -144,7 +143,7 @@ Service 返回领域错误。全局错误处理器负责将领域错误、参数
 
 ## 数据库规则
 
-`db/migrations/` 中的 Goose SQL Migration 是唯一数据库结构事实源。`db/schema.sql` 如保留，只能由 Migration 生成作为快照，不得手工修改。
+`db/schema.sql` 是唯一数据库结构事实源，使用可重入的完整 SQL 在空库建立目标结构。不维护 `db/migrations/`、分表 Schema 目录或第二套手工快照。
 
 - 每张业务表必须有统一 Repository CRUD；公共 API 只开放安全业务操作
 - 普通 CRUD 使用 GORM，事务和连接由 Platform 统一管理
@@ -155,7 +154,7 @@ Service 返回领域错误。全局错误处理器负责将领域错误、参数
 - 时间统一使用 `timestamptz` 和 UTC
 - 分数统一归一化为 `0-100` 并增加 CHECK 约束
 - Embedding 必须保存模型和版本，不得混用向量空间
-- V1 向量存储契约为 `halfvec(1024)`；改变维度必须使用新 Migration 和重建流程
+- V1 向量存储契约为 `halfvec(1024)`；改变维度必须更新完整 Schema 并执行明确的数据重建流程
 - 新增表必须对应明确的查询、约束或数据生命周期需求
 - 应用启动只检查 Schema 兼容性，禁止 GORM AutoMigrate 静默修改结构
 
@@ -257,7 +256,7 @@ git diff --check
 提交前必须：
 
 - 运行与改动风险相称的测试
-- 验证Migration、生成Schema快照与数据库记录模型一致
+- 验证完整 `db/schema.sql` 与数据库记录模型一致
 - 验证架构边界和 OpenAPI
 - 检查仓库根目录没有构建产物
 - 保持 staging 仅包含当前任务文件
@@ -270,7 +269,7 @@ git diff --check
 1. `AGENTS.md` 中的强制约束
 2. `docs/design/` 中的详细设计
 3. `docs/design/README.md` 中的权威索引
-4. 实施任务中的 `db/migrations/`、生成 Schema 快照和 OpenAPI 等可执行事实源
+4. 实施任务中的完整 `db/schema.sql`、数据库记录模型和 OpenAPI 等可执行事实源
 
 纯设计任务不得把目标模型直接写入当前运行 Schema并伪装为已实现；实施任务必须同步设计和可执行事实源。
 
