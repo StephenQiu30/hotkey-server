@@ -111,9 +111,8 @@ func TestWriteErrorStatusMatrix(t *testing.T) {
 }
 
 func TestWrapRecoversPanic(t *testing.T) {
-	t.Parallel()
-
-	router := gin.New()
+	router, telemetry := newRouterForTest(t, ReadinessFunc(func(context.Context) error { return nil }))
+	defer func() { _ = telemetry.Shutdown(context.Background()) }()
 	router.GET("/panic", Wrap(func(*gin.Context) error {
 		panic("postgres password=secret")
 	}))

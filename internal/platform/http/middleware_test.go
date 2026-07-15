@@ -66,7 +66,7 @@ func TestMiddlewareMapsPanicAndDeadline(t *testing.T) {
 	cfg.RequestTimeout = time.Millisecond
 	router, metrics, telemetry := newTestRouter(t, zap.NewNop(), cfg)
 	defer func() { _ = telemetry.Shutdown(context.Background()) }()
-	router.GET("/panic", func(*gin.Context) { panic("postgres password=secret") })
+	router.GET("/panic", Wrap(func(*gin.Context) error { panic("postgres password=secret") }))
 	router.GET("/deadline", Wrap(func(c *gin.Context) error {
 		<-c.Request.Context().Done()
 		return c.Request.Context().Err()
