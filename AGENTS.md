@@ -24,11 +24,15 @@
 
 - 不得把目标设计描述成已经实现的能力
 - 不得依据旧代码复制 `topic`、`event`、`hot_event` 等重复模型
-- 未经批准的实施计划，不得批量重写现有代码
+- 未达到 ready 状态的 PRD 不得进入实施，不得依据临时计划批量重写现有代码
 - 实施任务必须同时更新代码、完整 `db/schema.sql`、OpenAPI、测试和架构校验
 - `docs/design/README.md` 是详细设计索引
+- `docs/prd/README.md` 是执行任务、依赖关系和状态索引
+- `docs/plans/README.md` 是文件级执行步骤、验证命令和提交边界索引
+- `docs/acceptance/README.md` 定义长期验收证据
+- `docs/operations/README.md` 定义发布、运行与回滚手册
 
-本文件与 `docs/design/README.md` 共同构成目标架构基线。
+本文件与 `docs/design/README.md` 共同构成目标架构基线。PRD 定义任务必须交付什么，Plan 定义具体文件和验证步骤，Acceptance 保存完成证据；后三者不得改变 Design 事实。
 
 ## 基础技术栈
 
@@ -87,6 +91,10 @@ internal/
     └── operations/
 db/schema.sql
 docs/design/
+docs/prd/
+docs/plans/
+docs/acceptance/
+docs/operations/
 ```
 
 每个业务模块统一使用 `domain/`、`application/`、`infrastructure/` 和 `transport/http/`。不要为没有对应职责的文件创建空壳。
@@ -269,11 +277,14 @@ git diff --check
 1. `AGENTS.md` 中的强制约束
 2. `docs/design/` 中的详细设计
 3. `docs/design/README.md` 中的权威索引
-4. 实施任务中的完整 `db/schema.sql`、数据库记录模型和 OpenAPI 等可执行事实源
+4. `docs/prd/` 中受影响任务的范围、依赖、交付物和首版门禁
+5. `docs/plans/` 中对应任务的执行文件、步骤、验证命令和提交边界
+6. 实施任务中的完整 `db/schema.sql`、数据库记录模型和 OpenAPI 等可执行事实源
+7. `docs/acceptance/` 中与准确提交关联的长期验收证据
 
 纯设计任务不得把目标模型直接写入当前运行 Schema并伪装为已实现；实施任务必须同步设计和可执行事实源。
 
-聊天记录、临时计划和一次性排查过程不能替代仓库文档。
+聊天记录、临时计划和一次性排查过程不能替代仓库文档。PRD 只保存稳定执行契约，不记录工时、日报或调试流水。
 
 ## Codex 协作配置
 

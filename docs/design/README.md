@@ -1,3 +1,25 @@
+---
+layer: Design
+doc_no: "000"
+audience: [PM, Dev, QA, Ops]
+feature_area: AI热点事件监控平台
+purpose: 管理 HotKey Server 权威设计文档及其状态
+canonical_path: docs/design/README.md
+status: review
+version: v1.0
+owner: HotKey Server Team
+inputs:
+  - docs/README.md
+outputs:
+  - 设计文档索引
+triggers:
+  - 新增、替换或归档设计
+  - 设计状态或下游任务变化
+downstream:
+  - docs/prd/README.md
+  - docs/plans/README.md
+---
+
 # 后端设计索引
 
 本目录记录 AI 热点事件监控平台后端的长期设计决策。`AGENTS.md` 定义所有开发必须遵守的架构约束，本目录解释需求、模型、流程和技术取舍。
@@ -6,9 +28,10 @@
 
 - 每份文档只解决一个清晰的设计问题
 - 所有文档必须包含完整 YAML frontmatter
-- `status: review` 表示设计已形成，等待最终文档复核
+- 文档成熟度只使用 draft、review、accepted、archived
 - 实施进度、临时任务和排查记录不得写入本目录
 - 架构设计变更必须同步更新 `AGENTS.md` 和相关设计；实施时再同步完整 `db/schema.sql`、数据库记录模型和 OpenAPI
+- Design 只定义长期技术决策，不写执行文件清单、提交拆分或测试结果
 
 ## 当前权威文档
 

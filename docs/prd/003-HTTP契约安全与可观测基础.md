@@ -1,0 +1,80 @@
+---
+layer: PRD
+prd_no: "003"
+doc_no: "003"
+title: HTTP契约安全与可观测基础
+audience: [PM, Dev, QA, Ops]
+feature_area: HTTP与可观测
+purpose: 定义统一 HTTP 契约、安全中间件和可观测基础
+phase: F0
+priority: P0
+status: review
+execution_status: backlog
+version: v1.0
+owner: HotKey Server Team
+depends_on: [PRD-001, PRD-002]
+design_refs:
+  - docs/design/002-后端单体架构设计.md
+  - docs/design/004-Result响应与全局异常设计.md
+canonical_path: docs/prd/003-HTTP契约安全与可观测基础.md
+inputs:
+  - docs/design/002-后端单体架构设计.md
+  - docs/design/004-Result响应与全局异常设计.md
+outputs:
+  - HTTP 契约与可观测基础需求
+triggers:
+  - Result、错误码、中间件或观测契约变化
+downstream:
+  - docs/plans/003-HTTP契约安全与可观测基础计划.md
+  - docs/acceptance/003-HTTP契约安全与可观测基础验收.md
+---
+
+# HTTP 契约、安全与可观测基础
+
+## 目标
+
+建立所有业务模块共享的 HTTP、错误、安全、日志、指标和链路基础，防止后续 API 各自定义响应与中间件。
+
+## 范围
+
+- 实现泛型 Result，顶层只包含 code、message、data，且 data 始终存在。
+- 建立 AppError、领域错误到 HTTP/业务码映射和统一 Handler 包装。
+- 固化 request ID、panic recovery、访问日志、认证上下文、超时和 CORS 等中间件顺序。
+- 接入结构化 Zap、OpenTelemetry 和 Prometheus 基础能力。
+- 建立 Swaggo 生成与 OpenAPI 契约校验入口。
+- 定义分页数据、校验错误和外部依赖错误的稳定响应。
+
+## 非范围
+
+- 不实现具体业务资源 API。
+- 不把 request_id、堆栈、SQL、密钥或第三方原始错误放入业务 JSON。
+- 不要求客户端依赖 message 文案。
+
+## 功能要求
+
+1. 成功业务码固定为 0，HTTP 状态保留协议语义。
+2. Controller 不得直接调用 Gin JSON 输出。
+3. 400、401、403、404、409、429、500、502、503、504 有稳定错误码。
+4. X-Request-ID 同时进入响应头、日志和 trace 属性。
+5. 指标至少覆盖请求量、延迟、状态、panic 和依赖健康。
+6. OpenAPI 中所有 JSON 响应声明具体 Result 数据类型。
+7. 日志默认脱敏 Authorization、Cookie、来源凭据和正文。
+
+## 交付物
+
+- HTTP Result、错误处理、中间件和分页实现。
+- 日志、指标、链路基础装配及测试。
+- OpenAPI 生成、校验命令和最小契约文件。
+- 错误码注册表及防重复测试。
+
+## 验收标准
+
+- 集成测试覆盖 200、201、空数据、分页及所有标准错误状态。
+- panic 被恢复为安全 500，日志保留关联 ID 但不泄露内部详情。
+- data 在成功和失败响应中始终存在。
+- OpenAPI 生成前后无非确定性漂移，契约校验通过。
+- 未经统一 Handler 的直接 JSON 输出被架构测试阻止。
+
+## 完成定义
+
+后续模块只注册业务路由、DTO 和错误映射，不再创建第二套响应、日志或指标机制。

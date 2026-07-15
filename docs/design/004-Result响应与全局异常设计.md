@@ -1,6 +1,6 @@
 ---
 layer: Design
-doc_no: 004
+doc_no: "004"
 audience: Dev, QA
 feature_area: API响应与异常
 purpose: 定义所有JSON接口统一使用的Result响应和全局异常转换规则
