@@ -1,6 +1,6 @@
 ---
 layer: Design
-doc_no: 008
+doc_no: "008"
 audience: [PM, Dev, QA, Ops]
 feature_area: Obsidian知识库治理与报告交付
 purpose: 定义本地Vault知识投影、AI变更审核、日报周报、邮件和RSS/Atom交付契约

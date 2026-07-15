@@ -1,6 +1,6 @@
 ---
 layer: Design
-doc_no: 012
+doc_no: "012"
 audience: [Dev, QA, Ops]
 feature_area: 监控调度与可靠任务
 purpose: 定义Monitor调度、River任务图、幂等、检查点、重试、取消与恢复契约
