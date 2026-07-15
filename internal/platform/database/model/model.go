@@ -19,14 +19,43 @@ type Record struct {
 	UpdatedAt time.Time
 }
 
+func (r *Record) GetID() int64       { return r.ID }
+func (r *Record) GetVersion() int64  { return r.Version }
+func (r *Record) SetVersion(v int64) { r.Version = v }
+
 type OperationalRecord struct {
 	ID int64
 }
+
+func (r *OperationalRecord) GetID() int64 { return r.ID }
 
 type Spec struct {
 	Table     string
 	Lifecycle Lifecycle
 	Columns   []string
+}
+
+// DeletionPolicy describes the only generic delete operation safe for a
+// table. State archival is intentionally left to the owning module because a
+// blanket repository cannot safely infer its domain transition.
+type DeletionPolicy string
+
+const (
+	DeletionSoft     DeletionPolicy = "soft"
+	DeletionHard     DeletionPolicy = "hard"
+	DeletionRetained DeletionPolicy = "retained"
+)
+
+// Persistence is the database-specific metadata consumed by repository
+// adapters. It is derived from the authoritative record mapping rather than a
+// second per-table manifest.
+type Persistence struct {
+	Table         string
+	KeyColumn     string
+	VersionColumn string
+	Deletion      DeletionPolicy
+	AllowedSort   []string
+	CursorFields  []string
 }
 
 // The strongly named records make table ownership explicit before GORM is
@@ -279,3 +308,42 @@ var specs = []Spec{
 }
 
 func All() []Spec { return append([]Spec(nil), specs...) }
+
+// PersistenceFor returns the table metadata needed by controlled generic
+// CRUD. It intentionally authorizes only the stable id ordering until a
+// module supplies a use-case-specific query and index.
+func PersistenceFor(table string) (Persistence, bool) {
+	for _, spec := range specs {
+		if spec.Table != table {
+			continue
+		}
+		persistence := Persistence{
+			Table:        spec.Table,
+			KeyColumn:    "id",
+			AllowedSort:  []string{"id"},
+			CursorFields: []string{"id"},
+		}
+		if spec.Lifecycle == LifecycleBusiness {
+			persistence.VersionColumn = "version"
+		}
+		switch {
+		case spec.Lifecycle == LifecycleOperational:
+			persistence.Deletion = DeletionRetained
+		case hasColumn(spec.Columns, "deleted_at"):
+			persistence.Deletion = DeletionSoft
+		default:
+			persistence.Deletion = DeletionHard
+		}
+		return persistence, true
+	}
+	return Persistence{}, false
+}
+
+func hasColumn(columns []string, wanted string) bool {
+	for _, column := range columns {
+		if column == wanted {
+			return true
+		}
+	}
+	return false
+}

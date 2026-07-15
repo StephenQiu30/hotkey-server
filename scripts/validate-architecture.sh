@@ -18,6 +18,11 @@ for path in db/schema db/migrations internal/controller internal/service interna
   test ! -e "$root/$path" || report "forbidden legacy path: $path"
 done
 
+auto_migrate_matches=$(find "$root/cmd" "$root/internal" -name '*.go' -type f ! -name '*_test.go' -exec grep -n 'AutoMigrate(' {} + 2>/dev/null || true)
+if test -n "$auto_migrate_matches"; then
+  report "GORM AutoMigrate is forbidden; db/schema.sql is the only structure source"
+fi
+
 for module in github.com/segmentio/kafka-go github.com/tmc/langchaingo github.com/redis/go-redis; do
   if grep -Fq "$module" "$root/go.mod"; then
     report "forbidden legacy dependency: $module"

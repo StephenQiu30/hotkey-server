@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	stdhttp "net/http"
+	"os"
 	"testing"
 	"time"
 
@@ -169,17 +170,37 @@ func availableAddress(t *testing.T) string {
 	return address
 }
 
-func TestRunStopsWorkerOnContextCancellation(t *testing.T) {
+func TestRunRejectsMissingDatabaseURL(t *testing.T) {
 	t.Setenv("HOTKEY_ROLE", "worker")
 	t.Setenv("HOTKEY_HTTP_ADDR", "")
 	t.Setenv("HOTKEY_SHUTDOWN_TIMEOUT", "1s")
+	t.Setenv("HOTKEY_DATABASE_URL", "")
 
-	ctx, cancel := context.WithCancel(context.Background())
-	time.AfterFunc(20*time.Millisecond, cancel)
+	if err := Run(context.Background(), []string{"serve"}); err == nil {
+		t.Fatal("Run() error = nil, want missing database URL")
+	}
+}
+
+func TestConfiguredWorkerVerifiesDatabaseOnStart(t *testing.T) {
+	dsn := os.Getenv("HOTKEY_TEST_DSN")
+	if dsn == "" {
+		t.Fatal("HOTKEY_TEST_DSN is required for database lifecycle integration")
+	}
+	cfg := config.Default()
+	cfg.Role = string(RoleWorker)
+	cfg.HTTPAddr = ""
+	cfg.DatabaseURL = dsn
+	app, err := NewApp(cfg, zap.NewNop())
+	if err != nil {
+		t.Fatalf("NewApp() error = %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-
-	if err := Run(ctx, []string{"serve"}); err != nil {
-		t.Fatalf("Run() error = %v", err)
+	if err := app.Start(ctx); err != nil {
+		t.Fatalf("configured app Start() error = %v", err)
+	}
+	if err := app.Stop(ctx); err != nil {
+		t.Fatalf("configured app Stop() error = %v", err)
 	}
 }
 

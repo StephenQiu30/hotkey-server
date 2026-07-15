@@ -175,6 +175,8 @@ Service 返回领域错误。全局错误处理器负责将领域错误、参数
 - V1 向量存储契约为 `halfvec(1024)`；改变维度必须更新完整 Schema 并执行明确的数据重建流程
 - 新增表必须对应明确的查询、约束或数据生命周期需求
 - 应用启动只检查 Schema 兼容性，禁止 GORM AutoMigrate 静默修改结构
+- 每个进程只能创建一个 `*pgxpool.Pool`；GORM 必须使用由该 pool 派生的 `database/sql` facade，River 在接入时复用同一 pool
+- `db init --empty-only --confirm-empty` 只允许初始化显式配置的空测试/新库；`db verify` 必须只读，服务运行角色必须提供 `HOTKEY_DATABASE_URL`
 
 核心业务表使用软删除或状态归档；纯关系表可硬删除。运行日志、修订、快照和审计表使用符合生命周期的受限 Repository，不得为了形式统一篡改历史。
 

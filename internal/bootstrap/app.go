@@ -4,8 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"strings"
 
 	"github.com/StephenQiu30/hotkey-server/internal/platform/config"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
 	httptransport "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 	"go.uber.org/fx"
@@ -32,16 +34,28 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 		fx.Supply(cfg, logger),
 		fx.WithLogger(func() fxevent.Logger { return &fxevent.ZapLogger{Logger: logger} }),
 	}
+	usesDatabase := strings.TrimSpace(cfg.DatabaseURL) != ""
+	if usesDatabase {
+		options = append(options, fx.Provide(database.NewRuntime), fx.Invoke(database.RegisterLifecycle))
+	}
 	if role.StartsAPI() {
 		if readiness == nil {
 			return nil, fmt.Errorf("api readiness check is required")
 		}
+		readinessProvider := fx.Provide(func() httptransport.Readiness { return readiness })
+		if usesDatabase {
+			readinessProvider = fx.Provide(func(runtime *database.Runtime) httptransport.Readiness {
+				return httptransport.ReadinessFunc(func(ctx context.Context) error {
+					if err := readiness.Check(ctx); err != nil {
+						return err
+					}
+					return runtime.Ping(ctx)
+				})
+			})
+		}
 		options = append(options,
-			fx.Provide(
-				func() httptransport.Readiness { return readiness },
-				httptransport.NewRouter,
-				httptransport.NewServer,
-			),
+			readinessProvider,
+			fx.Provide(httptransport.NewRouter, httptransport.NewServer),
 			fx.Invoke(httptransport.RegisterServer),
 		)
 	}
@@ -58,10 +72,13 @@ func Run(ctx context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("load configuration: %w", err)
 	}
+	if len(args) > 0 && args[0] == "db" {
+		return runDatabaseCommand(ctx, cfg, args[1:])
+	}
 	if err := applyCommandLine(&cfg, args); err != nil {
 		return err
 	}
-	if err := cfg.Validate(); err != nil {
+	if err := cfg.ValidateRuntime(); err != nil {
 		return fmt.Errorf("validate configuration: %w", err)
 	}
 

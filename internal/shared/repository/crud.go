@@ -4,10 +4,11 @@ package repository
 import "context"
 
 type PageQuery struct {
-	Cursor     string
-	Limit      int
-	Sort       string
-	Descending bool
+	Cursor            string
+	Limit             int
+	Sort              string
+	Descending        bool
+	FilterFingerprint string
 }
 
 type PageResult[T any] struct {

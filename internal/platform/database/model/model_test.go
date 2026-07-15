@@ -17,3 +17,18 @@ func TestSpecsHaveUniqueTablesAndColumns(t *testing.T) {
 		t.Fatalf("mapped table count = %d, want %d", got, want)
 	}
 }
+
+func TestPersistenceMetadataMakesEveryBusinessTableVersioned(t *testing.T) {
+	for _, spec := range All() {
+		metadata, found := PersistenceFor(spec.Table)
+		if !found {
+			t.Fatalf("PersistenceFor(%q) did not return metadata", spec.Table)
+		}
+		if spec.Lifecycle == LifecycleBusiness && metadata.VersionColumn != "version" {
+			t.Errorf("business table %s VersionColumn = %q, want version", spec.Table, metadata.VersionColumn)
+		}
+		if spec.Lifecycle == LifecycleOperational && metadata.VersionColumn != "" {
+			t.Errorf("operational table %s VersionColumn = %q, want empty", spec.Table, metadata.VersionColumn)
+		}
+	}
+}

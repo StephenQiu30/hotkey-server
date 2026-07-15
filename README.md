@@ -33,16 +33,24 @@ make lint
 make test
 make build
 make validate
+make database-runtime-verify
 make ci
 ```
 
 完整 Schema 的空库验证使用可丢弃的 PostgreSQL 16+ 与 pgvector 数据库：
 
 ```bash
-HOTKEY_TEST_DSN='postgres://hotkey:hotkey@localhost:5432/hotkey_test?sslmode=disable' make schema-verify
+HOTKEY_TEST_DSN='postgres://hotkey:hotkey@localhost:5432/hotkey_test?sslmode=disable' make database-runtime-verify
 ```
 
-`make ci` 也会执行该验证，因此 CI 必须提供指向可丢弃 PostgreSQL 16+ 与 pgvector 测试库的 `HOTKEY_TEST_DSN`。
+该命令会重建目标测试库的 `public` schema，再执行嵌入 Schema 的空库初始化、只读兼容性检查、真实 PostgreSQL 集成测试与游标计划验证。每个 Go 集成测试与容量 fixture 都会创建并删除自己的数据库，因此 `HOTKEY_TEST_DSN` 必须是可丢弃的 PostgreSQL URL，且其角色需要 `CREATE DATABASE` / `DROP DATABASE` 权限；容量 fixture 不与命令或测试共享数据库。运行服务时则使用 `HOTKEY_DATABASE_URL`：
+
+```bash
+HOTKEY_DATABASE_URL='postgres://hotkey:hotkey@localhost:5432/hotkey?sslmode=disable' go run ./cmd/hotkey db verify
+HOTKEY_DATABASE_URL='postgres://hotkey:hotkey@localhost:5432/hotkey_new?sslmode=disable' go run ./cmd/hotkey db init --empty-only --confirm-empty
+```
+
+`make ci` 也会执行该验证，因此 CI 必须提供 `HOTKEY_TEST_DSN`。
 
 本地 Go 工具链可以放在未跟踪的 `.tools/go` 目录，或直接使用系统中的 Go 1.26+。
 

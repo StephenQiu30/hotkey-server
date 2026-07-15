@@ -1,8 +1,9 @@
-.PHONY: test lint build validate validate-arch validate-repository ci clean schema-verify
+.PHONY: test lint build validate validate-arch validate-repository ci clean schema-verify database-runtime-verify
 
 GO ?= go
 
 test:
+	test -n "$$HOTKEY_TEST_DSN"
 	$(GO) test ./... -count=1
 
 lint:
@@ -22,7 +23,10 @@ validate-repository:
 schema-verify:
 	sh scripts/verify-schema.sh
 
-ci: lint test build validate schema-verify
+database-runtime-verify:
+	sh scripts/verify-database-runtime.sh
+
+ci: lint database-runtime-verify test build validate schema-verify
 
 clean:
 	rm -f hotkey

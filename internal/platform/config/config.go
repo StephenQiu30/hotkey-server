@@ -104,6 +104,19 @@ func (c Config) Validate() error {
 	return nil
 }
 
+// ValidateRuntime adds the production requirement that every running role has
+// an explicit database URL. Validate stays usable for lightweight constructor
+// tests that intentionally do not start a database lifecycle.
+func (c Config) ValidateRuntime() error {
+	if err := c.Validate(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(c.DatabaseURL) == "" {
+		return errors.New("database URL is required for a running role")
+	}
+	return nil
+}
+
 func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("env", cfg.Environment)
 	v.SetDefault("role", cfg.Role)
