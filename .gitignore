@@ -13,6 +13,7 @@ playwright-report/
 tmp/
 temp/
 .tmp/
+.tools/
 .env
 .env.*
 !.env.example
