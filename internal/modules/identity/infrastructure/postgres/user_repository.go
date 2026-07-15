@@ -1,0 +1,197 @@
+package postgres
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/StephenQiu30/hotkey-server/internal/modules/identity/domain"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
+)
+
+var ErrBootstrapUnavailable = errors.New("bootstrap admin is unavailable after users exist")
+
+const bootstrapAdminLock = "hotkey-identity-bootstrap-admin-v1"
+
+type UserRepository struct {
+	runtime *database.Runtime
+}
+
+var _ domain.UserRepository = (*UserRepository)(nil)
+
+func NewUserRepository(runtime *database.Runtime) *UserRepository {
+	return &UserRepository{runtime: runtime}
+}
+
+func (repository *UserRepository) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
+	normalized, err := domain.NormalizeEmail(email)
+	if err != nil {
+		return nil, fmt.Errorf("normalize email: %w", err)
+	}
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	return findUser(ctx, transactionSQL(ctx, repository.runtime), `
+SELECT id, email, password_hash, display_name, role, status, last_login_at, created_at, updated_at, deleted_at
+FROM users
+WHERE lower(email) = lower($1) AND deleted_at IS NULL`, normalized)
+}
+
+func (repository *UserRepository) FindByID(ctx context.Context, id int64) (*domain.User, error) {
+	if id <= 0 {
+		return nil, fmt.Errorf("%w: user ID must be positive", sharedrepository.ErrInvalidInput)
+	}
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	return findUser(ctx, transactionSQL(ctx, repository.runtime), `
+SELECT id, email, password_hash, display_name, role, status, last_login_at, created_at, updated_at, deleted_at
+FROM users
+WHERE id = $1 AND deleted_at IS NULL`, id)
+}
+
+func (repository *UserRepository) Create(ctx context.Context, user *domain.User) error {
+	if repository == nil || repository.runtime == nil {
+		return sharedrepository.ErrUnavailable
+	}
+	if user == nil {
+		return fmt.Errorf("%w: user is required", sharedrepository.ErrInvalidInput)
+	}
+	return useTransaction(ctx, repository.runtime, func(ctx context.Context, transaction database.Transaction) error {
+		return repository.createWithPreference(ctx, transaction, user)
+	})
+}
+
+// BootstrapAdmin creates exactly one initial administrator while a transaction
+// advisory lock serializes concurrent local command invocations. It never
+// accepts a caller-provided role or status.
+func (repository *UserRepository) BootstrapAdmin(ctx context.Context, email, passwordHash string) (*domain.User, error) {
+	if repository == nil || repository.runtime == nil {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	normalized, err := domain.NormalizeEmail(email)
+	if err != nil {
+		return nil, fmt.Errorf("normalize bootstrap email: %w", err)
+	}
+	if strings.TrimSpace(passwordHash) == "" {
+		return nil, fmt.Errorf("%w: password hash is required", sharedrepository.ErrInvalidInput)
+	}
+
+	admin := &domain.User{
+		Email:        normalized,
+		PasswordHash: passwordHash,
+		DisplayName:  "Administrator",
+		Role:         domain.RoleAdmin,
+		Status:       domain.UserStatusActive,
+	}
+	err = useTransaction(ctx, repository.runtime, func(ctx context.Context, transaction database.Transaction) error {
+		if _, err := transaction.SQL.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, bootstrapAdminLock); err != nil {
+			return mapRepositoryError(err)
+		}
+		var userCount int
+		if err := transaction.SQL.QueryRowContext(ctx, `SELECT count(*) FROM users WHERE deleted_at IS NULL`).Scan(&userCount); err != nil {
+			return mapRepositoryError(err)
+		}
+		if userCount != 0 {
+			return ErrBootstrapUnavailable
+		}
+		return repository.createWithPreference(ctx, transaction, admin)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return admin, nil
+}
+
+// LockActiveAdmins is deliberately transaction-scoped. The application layer
+// uses this together with the target user lock before changing any admin's
+// role, status, or deletion state.
+func (repository *UserRepository) LockActiveAdmins(ctx context.Context, transaction database.Transaction) ([]domain.User, error) {
+	if transaction.SQL == nil {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	rows, err := transaction.SQL.QueryContext(ctx, `
+SELECT id, email, password_hash, display_name, role, status, last_login_at, created_at, updated_at, deleted_at
+FROM users
+WHERE role = 'admin' AND status = 'active' AND deleted_at IS NULL
+ORDER BY id
+FOR UPDATE`)
+	if err != nil {
+		return nil, mapRepositoryError(err)
+	}
+	defer rows.Close()
+
+	admins := make([]domain.User, 0)
+	for rows.Next() {
+		user, err := scanUser(rows)
+		if err != nil {
+			return nil, err
+		}
+		admins = append(admins, user)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, mapRepositoryError(err)
+	}
+	return admins, nil
+}
+
+func (repository *UserRepository) createWithPreference(ctx context.Context, transaction database.Transaction, user *domain.User) error {
+	if transaction.SQL == nil {
+		return sharedrepository.ErrUnavailable
+	}
+	normalized, err := domain.NormalizeEmail(user.Email)
+	if err != nil {
+		return fmt.Errorf("normalize email: %w", err)
+	}
+	if strings.TrimSpace(user.PasswordHash) == "" || strings.TrimSpace(user.DisplayName) == "" || !user.Role.Valid() || !user.Status.Valid() {
+		return fmt.Errorf("%w: user fields are invalid", sharedrepository.ErrInvalidInput)
+	}
+
+	var record userRecord
+	err = transaction.SQL.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, display_name, role, status)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, email, password_hash, display_name, role, status, last_login_at, created_at, updated_at, deleted_at`,
+		normalized, user.PasswordHash, user.DisplayName, string(user.Role), string(user.Status),
+	).Scan(&record.ID, &record.Email, &record.PasswordHash, &record.DisplayName, &record.Role, &record.Status, &record.LastLoginAt, &record.CreatedAt, &record.UpdatedAt, &record.DeletedAt)
+	if err != nil {
+		return mapRepositoryError(err)
+	}
+	if _, err := transaction.SQL.ExecContext(ctx, `INSERT INTO user_preferences (user_id) VALUES ($1)`, record.ID); err != nil {
+		return mapRepositoryError(err)
+	}
+	*user = record.domainUser()
+	return nil
+}
+
+type rowScanner interface {
+	Scan(...any) error
+}
+
+func findUser(ctx context.Context, queryer interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, query string, arguments ...any) (*domain.User, error) {
+	user, err := scanUser(queryer.QueryRowContext(ctx, query, arguments...))
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func scanUser(scanner rowScanner) (domain.User, error) {
+	var record userRecord
+	if err := scanner.Scan(&record.ID, &record.Email, &record.PasswordHash, &record.DisplayName, &record.Role, &record.Status, &record.LastLoginAt, &record.CreatedAt, &record.UpdatedAt, &record.DeletedAt); err != nil {
+		return domain.User{}, mapRepositoryError(err)
+	}
+	return record.domainUser(), nil
+}
+
+func mapRepositoryError(err error) error {
+	if errors.Is(err, sql.ErrNoRows) {
+		return sharedrepository.ErrNotFound
+	}
+	return sharedrepository.MapError(err)
+}

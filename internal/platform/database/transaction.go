@@ -20,6 +20,18 @@ type Transaction struct {
 	GORM *gorm.DB
 }
 
+// TransactionFromContext returns the current Runtime transaction when a
+// repository is called from a WithinTransaction callback. It lets adapters
+// reuse the caller's SQL/GORM handle instead of silently opening a nested
+// transaction or escaping the caller's atomic boundary.
+func TransactionFromContext(ctx context.Context) (Transaction, bool) {
+	if ctx == nil {
+		return Transaction{}, false
+	}
+	transaction, ok := ctx.Value(transactionContextKey{}).(Transaction)
+	return transaction, ok && transaction.SQL != nil && transaction.GORM != nil
+}
+
 // WithinTransaction executes fn exactly once in a transaction. Re-entering
 // with the callback context is rejected instead of creating a savepoint; a
 // separately supplied parent context deliberately starts an independent
@@ -36,9 +48,7 @@ func (r *Runtime) WithinTransaction(ctx context.Context, fn func(context.Context
 	if ctx.Value(transactionContextKey{}) != nil {
 		return ErrNestedTransaction
 	}
-	transactionCtx := context.WithValue(ctx, transactionContextKey{}, struct{}{})
-
-	tx, err := r.SQL.BeginTx(transactionCtx, nil)
+	tx, err := r.SQL.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
@@ -50,9 +60,13 @@ func (r *Runtime) WithinTransaction(ctx context.Context, fn func(context.Context
 		}
 	}()
 
+	transaction := Transaction{SQL: tx}
+	transactionCtx := context.WithValue(ctx, transactionContextKey{}, transaction)
 	gormTx := r.GORM.Session(&gorm.Session{Context: transactionCtx, NewDB: true})
 	gormTx.Statement.ConnPool = tx
-	if err := fn(transactionCtx, Transaction{SQL: tx, GORM: gormTx}); err != nil {
+	transaction.GORM = gormTx
+	transactionCtx = context.WithValue(ctx, transactionContextKey{}, transaction)
+	if err := fn(transactionCtx, transaction); err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil && rollbackErr != sql.ErrTxDone {
 			return fmt.Errorf("transaction failed: %w (rollback: %v)", err, rollbackErr)
 		}

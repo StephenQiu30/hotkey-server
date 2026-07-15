@@ -76,6 +76,9 @@ func Run(ctx context.Context, args []string) error {
 	if len(args) > 0 && args[0] == "db" {
 		return runDatabaseCommand(ctx, cfg, args[1:])
 	}
+	if len(args) > 0 && args[0] == "user" {
+		return runUserCommand(ctx, cfg, args[1:])
+	}
 	if err := applyCommandLine(&cfg, args); err != nil {
 		return err
 	}

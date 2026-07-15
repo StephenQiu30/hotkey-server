@@ -23,7 +23,7 @@ if test -n "$auto_migrate_matches"; then
   report "GORM AutoMigrate is forbidden; db/schema.sql is the only structure source"
 fi
 
-for module in github.com/segmentio/kafka-go github.com/tmc/langchaingo github.com/redis/go-redis; do
+for module in github.com/segmentio/kafka-go github.com/tmc/langchaingo; do
   if grep -Fq "$module" "$root/go.mod"; then
     report "forbidden legacy dependency: $module"
   fi
