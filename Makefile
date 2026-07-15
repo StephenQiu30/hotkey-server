@@ -1,4 +1,4 @@
-.PHONY: test lint build validate validate-arch validate-repository ci clean schema-verify database-runtime-verify
+.PHONY: test lint build validate validate-arch validate-repository ci clean schema-verify database-runtime-verify openapi openapi-validate openapi-check
 
 GO ?= go
 
@@ -26,7 +26,16 @@ schema-verify:
 database-runtime-verify:
 	sh scripts/verify-database-runtime.sh
 
-ci: lint database-runtime-verify test build validate schema-verify
+openapi:
+	$(GO) run github.com/swaggo/swag/cmd/swag init --generalInfo cmd/hotkey/main.go --parseInternal --output docs/openapi --outputTypes json
+
+openapi-validate:
+	$(GO) test ./tests/architecture -run TestOpenAPIContract -count=1
+
+openapi-check: openapi openapi-validate
+	git diff --exit-code -- docs/openapi/swagger.json
+
+ci: openapi-check lint database-runtime-verify test build validate schema-verify
 
 clean:
 	rm -f hotkey

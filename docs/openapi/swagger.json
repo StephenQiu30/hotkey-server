@@ -1,0 +1,59 @@
+{
+    "schemes": [
+        "http",
+        "https"
+    ],
+    "swagger": "2.0",
+    "info": {
+        "description": "Public HTTP contract for the HotKey server.",
+        "title": "HotKey API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "basePath": "/",
+    "paths": {
+        "/api/v1/capabilities": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "platform"
+                ],
+                "summary": "Get API capabilities",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.Result-http_Capabilities"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "http.Capabilities": {
+            "type": "object",
+            "properties": {
+                "api_version": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.Result-http_Capabilities": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.Capabilities"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

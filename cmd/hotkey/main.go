@@ -1,3 +1,8 @@
+// @title HotKey API
+// @version 1.0
+// @description Public HTTP contract for the HotKey server.
+// @BasePath /
+// @schemes http https
 package main
 
 import (
