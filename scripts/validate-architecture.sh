@@ -34,5 +34,11 @@ if test -n "$domain_matches"; then
   report "domain code imports infrastructure package"
 fi
 
+direct_response_matches=$(find "$root/internal/modules" -type f -name '*.go' ! -name '*_test.go' -path '*/transport/http/*.go' -exec grep -nE '(^|[^[:alnum:]_])c\.(JSON|AbortWithStatusJSON|String)\(' {} + 2>/dev/null || true)
+if test -n "$direct_response_matches"; then
+  report "direct Gin response output is forbidden in module transport; use internal/platform/http Result helpers and Wrap"
+  printf '%s\n' "$direct_response_matches" >&2
+fi
+
 test "$errors" -eq 0 || exit 1
 printf '%s\n' 'Architecture validation passed.'
