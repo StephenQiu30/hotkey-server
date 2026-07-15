@@ -1,50 +1,25 @@
-.PHONY: test lint build validate validate-schema validate-arch openapi openapi-validate smoke up down schema schema-rebuild dev ci precommit
+.PHONY: test lint build validate validate-arch validate-repository ci clean
 
-precommit:
-	bash .githooks/pre-commit
+GO ?= go
 
 test:
-	go test ./... -v -count=1
+	$(GO) test ./... -count=1
 
 lint:
-	go vet ./...
+	$(GO) vet ./...
 
 build:
-	go build -o hotkey-server ./cmd/hotkey
+	$(GO) build -o hotkey-server ./cmd/hotkey
 
-validate: validate-schema validate-arch
-
-validate-schema:
-	bash scripts/validate-schema.sh
+validate: validate-arch validate-repository
 
 validate-arch:
-	bash scripts/validate-architecture-boundaries.sh
+	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate_architecture.ps1
 
-swagger:
-	$(MAKE) openapi
+validate-repository:
+	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate_repository.ps1
 
-openapi:
-	go run github.com/swaggo/swag/cmd/swag@v1.8.12 init -g cmd/hotkey/main.go --output docs/ --parseInternal --parseDependency --parseDepth 2
+ci: lint test build validate
 
-openapi-validate:
-	bash scripts/validate-openapi.sh
-
-smoke:
-	bash scripts/smoke-api.sh
-
-ci: lint build test validate-schema validate-arch smoke
-
-up:
-	bash scripts/start-local.sh
-
-down:
-	docker compose down
-
-schema:
-	bash scripts/apply-schema.sh
-
-schema-rebuild:
-	bash db/tables/build.sh
-
-dev:
-	bash scripts/dev.sh
+clean:
+	powershell -NoProfile -Command "Remove-Item -LiteralPath hotkey-server -Force -ErrorAction SilentlyContinue"

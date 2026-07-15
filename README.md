@@ -1,54 +1,43 @@
-# hotkey-server
+# HotKey Server
 
-X 热点监控平台后端服务。自动采集热点内容、聚类主题、分析趋势，并通过邮件与 Obsidian 推送日报。
+HotKey Server 是一个本地优先、面向个人与小团队的 AI 热点事件监控和 Obsidian 知识库治理后端。
 
-## 技术栈
+项目当前正在按 `docs/design/001`–`008` 进行绿色重建。旧的 Kafka、Redis 核心任务、Topic/Event/HotEvent 重复模型、Git 知识库提交链路及旧数据库结构已经移除，不提供兼容运行路径。
 
-| 组件 | 选型 |
-|------|------|
-| 语言 | Go 1.26 |
-| HTTP | Gin |
-| ORM  | GORM v2 |
-| DI   | go.uber.org/fx |
-| 数据库 | PostgreSQL 16 + Redis |
-| 消息队列 | Kafka |
-| 定时任务 | robfig/cron/v3 |
-| LLM 聚合 | langchaingo |
+## 目标能力
 
-## 本地开发
+- 通过 RSS/Atom、GDELT/新闻 API、Reddit、Hacker News、YouTube 和 X 官方 API 采集候选内容
+- 完成标准化、去重、多语言相关性判断、事件聚类、热度与趋势分析
+- 将原始证据写入 MinIO，将可阅读知识投影写入本地 Obsidian Vault
+- 生成日报、周报，并通过邮件和 RSS/Atom 交付
+- 使用 PostgreSQL 保存业务事实和 River 后台任务状态
+- 使用同一个 Go 二进制以 `all`、`api` 或 `worker` 角色运行
 
-```bash
-make test    # 运行测试
-make lint    # 静态检查
-make build   # 构建
-make dev     # 本地开发
-make up      # Docker 全栈启动
-make ci      # 完整验证
+## 架构约束
+
+- 模块化单体，不拆分微服务
+- PostgreSQL 是唯一业务事实源
+- 业务模块采用 `domain -> application -> transport/infrastructure` 边界
+- 每张业务表提供统一 Repository CRUD，公共 API 仅开放安全业务操作
+- 知识库运行链路不依赖 Git
+- 当前阶段不提供 Docker 或线上部署编排
+
+## 开发状态
+
+当前分支正在先建立可编译骨架、数据库迁移和统一 Repository，再按监控、采集、事件、AI、知识、报告和投递顺序实现业务能力。已确认的完整设计从 [设计索引](docs/design/README.md) 开始阅读。
+
+常用验证命令：
+
+```powershell
+make lint
+make test
+make build
+make validate
+make ci
 ```
 
-## 项目结构
+本地 Go 工具链可以放在未跟踪的 `.tools/go` 目录，或直接使用系统中的 Go 1.26+。
 
-```
-cmd/hotkey/         入口
-internal/
-├── fxapp/          Fx 应用组装与生命周期
-├── module/         基础设施 Module（DB / Redis / Config）
-├── config/         配置加载（Viper）
-├── controller/     Gin HTTP 处理器和路由
-├── service/        业务逻辑层（接口 + 实现）
-├── repository/     数据仓库（GORM 实现）
-├── content/        跨平台内容检索
-├── queue/          Kafka 消息队列
-├── worker/         后台定时任务
-├── model/          数据模型（entity / dto / vo）
-├── pkg/            共享工具类型（JSONB / Vector）
-└── platform/       基础设施层（http / database / logging）
-db/                 表结构与迁移
-tests/              测试（unit / integration / testutil）
-```
+## 许可证
 
-## Agent 规范
-
-- `AGENTS.md` — Codex 协作规范与项目配置
-- `.codex/agents/` — 项目代理定义
-- `.codex/skills/` — 可复用工作流
+[MIT](LICENSE)
