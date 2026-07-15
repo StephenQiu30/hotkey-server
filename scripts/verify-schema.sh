@@ -64,6 +64,71 @@ BEGIN
   EXCEPTION WHEN unique_violation THEN
     NULL;
   END;
+
+  DECLARE
+    identity_user_id bigint;
+    identity_session_id bigint;
+    identity_session_expires_at timestamptz;
+    identity_family_id uuid := md5(clock_timestamp()::text || random()::text)::uuid;
+  BEGIN
+    INSERT INTO users (email, password_hash, display_name, role)
+      VALUES ('schema-auth-constraint@example.test', 'x', 'schema auth', 'viewer')
+      ON CONFLICT DO NOTHING;
+    SELECT id INTO identity_user_id FROM users WHERE email = 'schema-auth-constraint@example.test' AND deleted_at IS NULL;
+    INSERT INTO auth_sessions (user_id, family_id, absolute_expires_at)
+      VALUES (identity_user_id, identity_family_id, now() + interval '30 days')
+      RETURNING id, absolute_expires_at INTO identity_session_id, identity_session_expires_at;
+
+    BEGIN
+      INSERT INTO auth_sessions (user_id, family_id, absolute_expires_at)
+        VALUES (identity_user_id, identity_family_id, now() + interval '30 days');
+      RAISE EXCEPTION 'missing auth session family uniqueness constraint';
+    EXCEPTION WHEN unique_violation THEN
+      NULL;
+    END;
+
+    BEGIN
+      INSERT INTO auth_sessions (user_id, family_id, absolute_expires_at, created_at)
+        VALUES (identity_user_id, md5(clock_timestamp()::text || random()::text)::uuid, now(), now() + interval '1 second');
+      RAISE EXCEPTION 'missing auth session absolute expiry constraint';
+    EXCEPTION WHEN check_violation THEN
+      NULL;
+    END;
+
+    INSERT INTO auth_refresh_tokens (session_id, token_hash, expires_at)
+      VALUES (identity_session_id, repeat('a', 64), now() + interval '7 days');
+
+    BEGIN
+      INSERT INTO auth_refresh_tokens (session_id, token_hash, expires_at)
+        VALUES (identity_session_id, repeat('a', 64), now() + interval '6 days');
+      RAISE EXCEPTION 'missing auth refresh token hash uniqueness constraint';
+    EXCEPTION WHEN unique_violation THEN
+      NULL;
+    END;
+
+    BEGIN
+      INSERT INTO auth_refresh_tokens (session_id, token_hash, expires_at)
+        VALUES (identity_session_id + 1000000, repeat('b', 64), now() + interval '7 days');
+      RAISE EXCEPTION 'missing auth refresh token session foreign key';
+    EXCEPTION WHEN foreign_key_violation THEN
+      NULL;
+    END;
+
+    BEGIN
+      INSERT INTO auth_refresh_tokens (session_id, token_hash, expires_at)
+        VALUES (identity_session_id, repeat('c', 64), identity_session_expires_at + interval '1 second');
+      RAISE EXCEPTION 'missing auth refresh token parent session expiry constraint';
+    EXCEPTION WHEN check_violation THEN
+      NULL;
+    END;
+
+    IF to_regclass('public.auth_sessions_active_user_idx') IS NULL THEN
+      RAISE EXCEPTION 'missing auth session access-path index';
+    END IF;
+    IF to_regclass('public.auth_refresh_tokens_session_expiry_idx') IS NULL THEN
+      RAISE EXCEPTION 'missing auth refresh token access-path index';
+    END IF;
+  END;
 END
 $$;
 SQL

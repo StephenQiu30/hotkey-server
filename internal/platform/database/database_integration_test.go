@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/tests/postgresfixture"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestEmbeddedSchemaCatalogIsComplete(t *testing.T) {
@@ -39,6 +40,89 @@ func TestRuntimeUsesSharedPoolAndVerifiesCatalog(t *testing.T) {
 	}
 	if err := runtime.Ping(context.Background()); err != nil {
 		t.Fatalf("Pool ping: %v", err)
+	}
+}
+
+func TestSessionSchemaEnforcesIdentityConstraints(t *testing.T) {
+	runtime := openTestRuntime(t)
+	defer func() { _ = runtime.Close() }()
+
+	now := time.Now().UTC().Round(0)
+	var userID int64
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO users (email, password_hash, display_name, role)
+VALUES ($1, 'hash', 'identity schema', 'viewer')
+RETURNING id`, fmt.Sprintf("identity-schema-%d@example.test", now.UnixNano())).Scan(&userID); err != nil {
+		t.Fatalf("create identity schema user: %v", err)
+	}
+
+	sessionExpiry := now.Add(30 * 24 * time.Hour)
+	const familyID = "12345678-1234-1234-1234-123456789abc"
+	var sessionID int64
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO auth_sessions (user_id, family_id, absolute_expires_at)
+VALUES ($1, $2, $3)
+RETURNING id`, userID, familyID, sessionExpiry).Scan(&sessionID); err != nil {
+		t.Fatalf("create logical auth session: %v", err)
+	}
+
+	_, err := runtime.SQL.Exec(`
+INSERT INTO auth_sessions (user_id, family_id, absolute_expires_at)
+VALUES ($1, $2, $3)`, userID, familyID, sessionExpiry)
+	assertPostgreSQLState(t, err, "23505")
+
+	_, err = runtime.SQL.Exec(`
+INSERT INTO auth_sessions (user_id, family_id, absolute_expires_at, created_at)
+VALUES ($1, '87654321-4321-4321-4321-cba987654321', $2, $3)`, userID, now, now.Add(time.Second))
+	assertPostgreSQLState(t, err, "23514")
+
+	const tokenHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO auth_refresh_tokens (session_id, token_hash, expires_at)
+VALUES ($1, $2, $3)`, sessionID, tokenHash, now.Add(7*24*time.Hour)); err != nil {
+		t.Fatalf("create refresh token: %v", err)
+	}
+
+	_, err = runtime.SQL.Exec(`
+INSERT INTO auth_refresh_tokens (session_id, token_hash, expires_at)
+VALUES ($1, $2, $3)`, sessionID, tokenHash, now.Add(6*24*time.Hour))
+	assertPostgreSQLState(t, err, "23505")
+
+	_, err = runtime.SQL.Exec(`
+INSERT INTO auth_refresh_tokens (session_id, token_hash, expires_at)
+VALUES ($1, $2, $3)`, sessionID+1_000_000, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", now.Add(7*24*time.Hour))
+	assertPostgreSQLState(t, err, "23503")
+
+	_, err = runtime.SQL.Exec(`
+INSERT INTO auth_refresh_tokens (session_id, token_hash, expires_at)
+VALUES ($1, $2, $3)`, sessionID, "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", sessionExpiry.Add(time.Second))
+	assertPostgreSQLState(t, err, "23514")
+
+	for _, indexName := range []string{
+		"auth_sessions_active_user_idx",
+		"auth_refresh_tokens_session_expiry_idx",
+	} {
+		var exists bool
+		if err := runtime.SQL.QueryRow("SELECT to_regclass($1) IS NOT NULL", "public."+indexName).Scan(&exists); err != nil {
+			t.Fatalf("check index %s: %v", indexName, err)
+		}
+		if !exists {
+			t.Errorf("required auth access-path index %s does not exist", indexName)
+		}
+	}
+}
+
+func assertPostgreSQLState(t *testing.T, err error, want string) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("database error = nil, want SQLSTATE %s", want)
+	}
+	var postgresError *pgconn.PgError
+	if !errors.As(err, &postgresError) {
+		t.Fatalf("database error = %T %v, want PostgreSQL SQLSTATE %s", err, err, want)
+	}
+	if postgresError.Code != want {
+		t.Fatalf("database SQLSTATE = %s, want %s: %v", postgresError.Code, want, err)
 	}
 }
 
