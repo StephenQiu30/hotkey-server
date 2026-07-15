@@ -256,3 +256,9 @@ git diff --check
 4. `db/schema.sql` 和 OpenAPI 等可执行事实源
 
 聊天记录、临时计划和一次性排查过程不能替代仓库文档。
+
+## Codex 协作配置
+
+- 项目代理：`.codex/agents/`
+- 可复用技能：`.codex/skills/`
+- Symphony 调度：`WORKFLOW.md`

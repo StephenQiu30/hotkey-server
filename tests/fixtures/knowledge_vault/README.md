@@ -25,4 +25,4 @@ When the integration test runs, it creates the following structure under a temp 
   themes/{id}-{slug}.md
 ```
 
-Each `.md` file follows the frontmatter contract defined in the OpenSpec specs.
+Each `.md` file follows the frontmatter contract used by the knowledge-vault exporter.

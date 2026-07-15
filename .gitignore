@@ -1,7 +1,5 @@
 .DS_Store
 .idea/
-.claude/settings.local.json
-.agents/
 skills-lock.json
 node_modules/
 npm-debug.log*
@@ -23,11 +21,10 @@ temp/
 /hotkey-server
 
 # Symphony runtime artifacts
-.symphony-claude-prompt.*
+.symphony-codex-prompt.*
 .symphony-workspaces/
 
 # Swagger generated output (JSON/YAML not needed at runtime)
 docs/swagger.json
 docs/swagger.yaml
-.claude/worktrees/
 hotkey

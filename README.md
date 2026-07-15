@@ -49,7 +49,6 @@ tests/              测试（unit / integration / testutil）
 
 ## Agent 规范
 
-- `AGENTS.md` — 项目架构与工程约束
-- `CLAUDE.local.md` — 本项目配置
-- `.claude/agents/` — 角色定义
-- `.claude/skills/` — 可复用工作流
+- `AGENTS.md` — Codex 协作规范与项目配置
+- `.codex/agents/` — 项目代理定义
+- `.codex/skills/` — 可复用工作流
