@@ -281,10 +281,10 @@ func assertPostgreSQLRestrictViolation(t *testing.T, err error) {
 	if !errors.As(err, &postgresError) {
 		t.Fatalf("database error = %T %v, want PostgreSQL RESTRICT violation", err, err)
 	}
-	// PostgreSQL distinguishes an ON DELETE RESTRICT violation (23001) from
-	// the 23503 foreign-key violation used by NO ACTION constraints.
-	if postgresError.Code != "23001" {
-		t.Fatalf("database SQLSTATE = %s, want 23001 for ON DELETE RESTRICT: %v", postgresError.Code, err)
+	// The catalog assertion proves this foreign key uses RESTRICT. PostgreSQL
+	// 16 and 18 report the rejected delete with different, valid SQLSTATEs.
+	if postgresError.Code != "23001" && postgresError.Code != "23503" {
+		t.Fatalf("database SQLSTATE = %s, want 23001 or 23503 for ON DELETE RESTRICT: %v", postgresError.Code, err)
 	}
 }
 
