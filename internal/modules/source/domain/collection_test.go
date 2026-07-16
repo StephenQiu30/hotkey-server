@@ -50,7 +50,7 @@ func TestCollectionSourceItemRequiresStableExternalIDAndCapturePolicyRedacts(t *
 		URL:         "https://feeds.example.test/posts/42",
 		Author:      "Example Author",
 		ObservedAt:  observedAt,
-		Metrics:     SourceMetrics{ViewCount: 12, CommentCount: 3},
+		Metrics:     SourceMetrics{ViewCount: int64Pointer(12), CommentCount: int64Pointer(3)},
 		RawPayload:  []byte(`{"authorization":"must-never-persist"}`),
 	})
 	if err != nil {
@@ -63,20 +63,59 @@ func TestCollectionSourceItemRequiresStableExternalIDAndCapturePolicyRedacts(t *
 		t.Fatal("NormalizeSourceItem() = nil error without a stable external ID")
 	}
 
-	captured, err := (CapturePolicy{Version: CapturedItemVersionV1, AllowBodyStorage: false, RawPayloadDisposition: RawPayloadDiscarded}).Capture(item)
+	captured, err := (CapturePolicy{Version: CapturedItemVersionV2, AllowBodyStorage: false, RawPayloadDisposition: RawPayloadDiscarded}).Capture(item)
 	if err != nil {
 		t.Fatalf("Capture(): %v", err)
 	}
-	if captured.Version != CapturedItemVersionV1 || captured.Body != "" || captured.RawPayloadDisposition != RawPayloadDiscarded {
+	if captured.Version != CapturedItemVersionV2 || captured.Body != "" || captured.RawPayloadDisposition != RawPayloadDiscarded {
 		t.Fatalf("captured item = %#v, want versioned body-redacted discarded payload", captured)
 	}
-	if captured.Metrics != (SourceMetrics{ViewCount: 12, CommentCount: 3}) {
+	if captured.Metrics.ViewCount == nil || *captured.Metrics.ViewCount != 12 || captured.Metrics.CommentCount == nil || *captured.Metrics.CommentCount != 3 || captured.Metrics.LikeCount != nil || captured.Metrics.ShareCount != nil {
 		t.Fatalf("captured metrics = %#v, want safe normalized metrics", captured.Metrics)
 	}
 	if string(captured.RawPayload) != "" {
 		t.Fatalf("captured raw payload = %q, want no transient source bytes", captured.RawPayload)
 	}
 }
+
+func TestCapturePolicyV2PreservesUnknownAndExplicitZeroMetrics(t *testing.T) {
+	t.Parallel()
+
+	zero := int64(0)
+	observedAt := time.Date(2026, time.July, 16, 9, 0, 0, 0, time.UTC)
+	captured, err := (CapturePolicy{
+		Version:               CapturedItemVersionV2,
+		RawPayloadDisposition: RawPayloadDiscarded,
+	}).Capture(SourceItem{
+		SourceCode:  "rss",
+		ExternalID:  "metric-presence",
+		ContentType: "article",
+		Title:       "Metric presence",
+		URL:         "https://feeds.example.test/metric-presence",
+		ObservedAt:  observedAt,
+		Metrics: SourceMetrics{
+			ViewCount:    &zero,
+			CommentCount: int64Pointer(7),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Capture(): %v", err)
+	}
+	if captured.Version != CapturedItemVersionV2 {
+		t.Fatalf("captured version = %q, want %q", captured.Version, CapturedItemVersionV2)
+	}
+	if captured.Metrics.ViewCount == nil || *captured.Metrics.ViewCount != 0 {
+		t.Fatalf("captured explicit zero view count = %#v, want pointer to 0", captured.Metrics.ViewCount)
+	}
+	if captured.Metrics.LikeCount != nil || captured.Metrics.ShareCount != nil {
+		t.Fatalf("captured unknown metrics = %#v, want nil", captured.Metrics)
+	}
+	if captured.Metrics.CommentCount == nil || *captured.Metrics.CommentCount != 7 {
+		t.Fatalf("captured comment count = %#v, want pointer to 7", captured.Metrics.CommentCount)
+	}
+}
+
+func int64Pointer(value int64) *int64 { return &value }
 
 func TestPublishedCollectionTargetBindsCheckpointToImmutableConfiguration(t *testing.T) {
 	t.Parallel()

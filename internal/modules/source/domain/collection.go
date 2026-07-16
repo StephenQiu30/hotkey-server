@@ -6,7 +6,13 @@ import (
 	"time"
 )
 
-const CapturedItemVersionV1 = "v1"
+const (
+	// CapturedItemVersionV1 is the legacy PLAN-006 envelope. Its integer
+	// metrics cannot distinguish an omitted value from an explicit zero.
+	CapturedItemVersionV1 = "v1"
+	// CapturedItemVersionV2 preserves metric presence with nullable values.
+	CapturedItemVersionV2 = "v2"
+)
 
 type RawPayloadDisposition string
 
@@ -72,15 +78,21 @@ type SourceItem struct {
 }
 
 type SourceMetrics struct {
-	ViewCount    int64
-	LikeCount    int64
-	CommentCount int64
-	ShareCount   int64
+	ViewCount    *int64
+	LikeCount    *int64
+	CommentCount *int64
+	ShareCount   *int64
 }
 
+// KnownMetric marks a metric as supplied by a source. A nil metric remains
+// unknown; callers must not replace it with a pointer to zero.
+func KnownMetric(value int64) *int64 { return &value }
+
 func (metrics SourceMetrics) Validate() error {
-	if metrics.ViewCount < 0 || metrics.LikeCount < 0 || metrics.CommentCount < 0 || metrics.ShareCount < 0 {
-		return fmt.Errorf("source metrics cannot be negative")
+	for _, metric := range []*int64{metrics.ViewCount, metrics.LikeCount, metrics.CommentCount, metrics.ShareCount} {
+		if metric != nil && *metric < 0 {
+			return fmt.Errorf("source metrics cannot be negative")
+		}
 	}
 	return nil
 }
@@ -129,7 +141,7 @@ type CapturePolicy struct {
 }
 
 func (policy CapturePolicy) Validate() error {
-	if policy.Version != CapturedItemVersionV1 {
+	if policy.Version != CapturedItemVersionV2 {
 		return fmt.Errorf("unsupported captured item version %q", policy.Version)
 	}
 	if !policy.RawPayloadDisposition.Valid() {
@@ -318,6 +330,66 @@ type CollectionRunListQuery struct {
 type CollectionRunPage struct {
 	Items      []CollectionRunSummary
 	NextCursor string
+}
+
+// CapturedItemQuery is the fixed-shape Source-owned reader input used by
+// ingestion. It permits retrying classified ingestion failures only when the
+// caller explicitly requests them; normal readers consume pending captures.
+type CapturedItemQuery struct {
+	RunID         int64
+	Cursor        string
+	Limit         int
+	IncludeFailed bool
+}
+
+func (query CapturedItemQuery) Validate() error {
+	if query.RunID <= 0 {
+		return fmt.Errorf("captured item run id is required")
+	}
+	if query.Limit < 0 || query.Limit > 200 {
+		return fmt.Errorf("captured item limit must be 0 (default) or 1-200")
+	}
+	return nil
+}
+
+// CapturedCollectionItem is the durable capture projection handed to
+// ingestion. It never carries a connector, raw upstream response, target
+// outcome, or any Monitor-owned state.
+type CapturedCollectionItem struct {
+	ID, RunID, SourceConnectionID int64
+	Item                          CapturedItem
+}
+
+type CapturedItemPage struct {
+	Items      []CapturedCollectionItem
+	NextCursor string
+}
+
+type CapturedContentBinding struct {
+	CollectionItemID, RunID, SourceConnectionID, ContentID int64
+}
+
+func (binding CapturedContentBinding) Validate() error {
+	if binding.CollectionItemID <= 0 || binding.RunID <= 0 || binding.SourceConnectionID <= 0 || binding.ContentID <= 0 {
+		return fmt.Errorf("captured content binding is incomplete")
+	}
+	return nil
+}
+
+type CapturedIngestionFailure struct {
+	CollectionItemID, RunID, SourceConnectionID int64
+	Code                                        string
+}
+
+func (failure CapturedIngestionFailure) Validate() error {
+	if failure.CollectionItemID <= 0 || failure.RunID <= 0 || failure.SourceConnectionID <= 0 {
+		return fmt.Errorf("captured ingestion failure is incomplete")
+	}
+	failure.Code = strings.TrimSpace(failure.Code)
+	if failure.Code == "" || len(failure.Code) > 64 {
+		return fmt.Errorf("captured ingestion failure code is invalid")
+	}
+	return nil
 }
 
 // SourceHealth is the safe result of an administrator-triggered Connector

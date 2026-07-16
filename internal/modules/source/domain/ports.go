@@ -133,6 +133,17 @@ type CollectionRepository interface {
 	PersistFailure(context.Context, CollectionRunFailure) (CollectionRun, error)
 	ListRuns(context.Context, CollectionRunListQuery) (CollectionRunPage, error)
 	RetryRun(context.Context, int64) (CollectionRunSummary, error)
+	ListUnboundCaptured(context.Context, CapturedItemQuery) (CapturedItemPage, error)
+	BindContent(context.Context, CapturedContentBinding) error
+	MarkIngestionFailure(context.Context, CapturedIngestionFailure) error
+}
+
+// CapturedItemReader is Source's narrow application boundary for ingestion.
+// It deliberately exposes no Source repository or connector implementation.
+type CapturedItemReader interface {
+	ListUnboundCaptured(context.Context, CapturedItemQuery) (CapturedItemPage, error)
+	BindContent(context.Context, CapturedContentBinding) error
+	MarkIngestionFailure(context.Context, CapturedIngestionFailure) error
 }
 
 // CollectionConnectorRegistry resolves a connector only from the Source-owned

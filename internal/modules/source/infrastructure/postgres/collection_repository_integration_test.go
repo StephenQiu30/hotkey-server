@@ -105,7 +105,7 @@ FOR EACH ROW EXECUTE FUNCTION reject_collection_rollback_item();`); err != nil {
 		_, _ = runtime.SQL.Exec(`DROP TRIGGER IF EXISTS collection_run_items_rollback_test ON collection_run_items; DROP FUNCTION IF EXISTS reject_collection_rollback_item();`)
 	}()
 
-	policy := domain.CapturePolicy{Version: domain.CapturedItemVersionV1, RawPayloadDisposition: domain.RawPayloadDiscarded}
+	policy := domain.CapturePolicy{Version: domain.CapturedItemVersionV2, RawPayloadDisposition: domain.RawPayloadDiscarded}
 	items := make([]domain.CapturedItem, 0, 2)
 	for _, externalID := range []string{"first-item", "rollback-item"} {
 		item, err := policy.Capture(domain.SourceItem{SourceCode: "rss", ExternalID: externalID, ContentType: "article", ObservedAt: request.WindowStart})
@@ -153,7 +153,7 @@ func TestCollectionRepositoryMakesCapturedItemPersistenceIdempotent(t *testing.T
 	if _, started, err := repository.StartRun(context.Background(), run.ID, time.Time{}); err != nil || !started {
 		t.Fatalf("StartRun() started/error = %t / %v", started, err)
 	}
-	captured, err := (domain.CapturePolicy{Version: domain.CapturedItemVersionV1, RawPayloadDisposition: domain.RawPayloadDiscarded}).Capture(domain.SourceItem{
+	captured, err := (domain.CapturePolicy{Version: domain.CapturedItemVersionV2, RawPayloadDisposition: domain.RawPayloadDiscarded}).Capture(domain.SourceItem{
 		SourceCode: "rss", ExternalID: "retry-safe-item", ContentType: "article", ObservedAt: request.WindowStart,
 	})
 	if err != nil {
@@ -177,6 +177,154 @@ func TestCollectionRepositoryMakesCapturedItemPersistenceIdempotent(t *testing.T
 	}
 	if items != 1 || reconciled != 1 {
 		t.Fatalf("replayed items/reconciliation = %d/%d, want 1/1", items, reconciled)
+	}
+}
+
+func TestCollectionRepositoryReadsAndBindsCapturedItemsWithSourceOwnership(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	repository := sourcepostgres.NewCollectionRepository(runtime)
+	request := collectionRequestForRepository(t, runtime, "ingestion-boundary", 1)
+	run, created, err := repository.CreateOrReuseRun(context.Background(), request)
+	if err != nil || !created {
+		t.Fatalf("CreateOrReuseRun() run/created/error = %#v / %t / %v", run, created, err)
+	}
+	if _, started, err := repository.StartRun(context.Background(), run.ID, time.Time{}); err != nil || !started {
+		t.Fatalf("StartRun() started/error = %t / %v", started, err)
+	}
+	captured, err := (domain.CapturePolicy{Version: domain.CapturedItemVersionV2, RawPayloadDisposition: domain.RawPayloadDiscarded}).Capture(domain.SourceItem{
+		SourceCode: "rss", ExternalID: "ingestion-boundary-item", ContentType: "article", Title: "Capture boundary", URL: "https://example.test/capture-boundary", ObservedAt: request.WindowStart,
+	})
+	if err != nil {
+		t.Fatalf("Capture(): %v", err)
+	}
+	if _, err := repository.PersistSuccess(context.Background(), domain.CollectionRunSuccess{
+		RunID: run.ID, Targets: request.Targets, Items: []domain.CapturedItem{captured}, CompletedAt: request.WindowEnd,
+	}); err != nil {
+		t.Fatalf("PersistSuccess(): %v", err)
+	}
+
+	page, err := repository.ListUnboundCaptured(context.Background(), domain.CapturedItemQuery{RunID: run.ID, Limit: 1})
+	if err != nil || len(page.Items) != 1 {
+		t.Fatalf("ListUnboundCaptured() page/error = %#v / %v, want one pending capture", page, err)
+	}
+	item := page.Items[0]
+	if item.RunID != run.ID || item.SourceConnectionID != request.SourceConnectionID || item.Item.Version != domain.CapturedItemVersionV2 {
+		t.Fatalf("captured item = %#v, want source-owned v2 run item", item)
+	}
+
+	var wrongSourceID, wrongContentID, contentID int64
+	if err := runtime.SQL.QueryRow(`INSERT INTO source_connections (source_type, name, endpoint) VALUES ('rss', 'ingestion-wrong-source', 'https://example.test/wrong') RETURNING id`).Scan(&wrongSourceID); err != nil {
+		t.Fatalf("create mismatched source: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO contents (source_connection_id, external_id, content_type, canonical_url, published_at, fetched_at, dedupe_key)
+VALUES ($1, 'wrong-content', 'article', 'https://example.test/wrong-content', $2, $2, $3)
+RETURNING id`, wrongSourceID, request.WindowStart, strings.Repeat("b", 64)).Scan(&wrongContentID); err != nil {
+		t.Fatalf("create mismatched content: %v", err)
+	}
+	if err := repository.BindContent(context.Background(), domain.CapturedContentBinding{
+		CollectionItemID: item.ID, RunID: run.ID, SourceConnectionID: request.SourceConnectionID, ContentID: wrongContentID,
+	}); err == nil {
+		t.Fatal("BindContent(mismatched source) error = nil, want foreign-key rejection")
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO contents (source_connection_id, external_id, content_type, canonical_url, published_at, fetched_at, dedupe_key)
+VALUES ($1, 'bound-content', 'article', 'https://example.test/bound-content', $2, $2, $3)
+RETURNING id`, request.SourceConnectionID, request.WindowStart, strings.Repeat("c", 64)).Scan(&contentID); err != nil {
+		t.Fatalf("create matching content: %v", err)
+	}
+	for _, outcome := range []string{"skipped", "failed"} {
+		var nonCapturedItemID int64
+		if err := runtime.SQL.QueryRow(`
+INSERT INTO collection_run_items (
+    run_id, source_connection_id, source_code, external_id, content_type, captured_item_version, captured_item,
+    payload_hash, raw_payload_disposition, outcome, observed_at
+)
+VALUES ($1, $2, 'rss', $3, 'article', 'v1', '{"title":"not-ingestable"}'::jsonb, $4, 'discarded', $5, $6)
+RETURNING id`, run.ID, request.SourceConnectionID, "non-captured-"+outcome, strings.Repeat(outcome[:1], 64), outcome, request.WindowStart).Scan(&nonCapturedItemID); err != nil {
+			t.Fatalf("insert %s collection item: %v", outcome, err)
+		}
+		if err := repository.BindContent(context.Background(), domain.CapturedContentBinding{
+			CollectionItemID: nonCapturedItemID, RunID: run.ID, SourceConnectionID: request.SourceConnectionID, ContentID: contentID,
+		}); !errors.Is(err, sharedrepository.ErrConflict) {
+			t.Fatalf("BindContent(%s item) error = %v, want conflict", outcome, err)
+		}
+		if err := repository.MarkIngestionFailure(context.Background(), domain.CapturedIngestionFailure{
+			CollectionItemID: nonCapturedItemID, RunID: run.ID, SourceConnectionID: request.SourceConnectionID, Code: "not_ingestable",
+		}); !errors.Is(err, sharedrepository.ErrConflict) {
+			t.Fatalf("MarkIngestionFailure(%s item) error = %v, want conflict", outcome, err)
+		}
+		var nonCapturedContentID any
+		var nonCapturedStatus, nonCapturedError string
+		if err := runtime.SQL.QueryRow(`
+SELECT content_id, ingestion_status, COALESCE(ingestion_error_code, '')
+FROM collection_run_items
+WHERE id = $1`, nonCapturedItemID).Scan(&nonCapturedContentID, &nonCapturedStatus, &nonCapturedError); err != nil {
+			t.Fatalf("read %s collection item after ingestion calls: %v", outcome, err)
+		}
+		if nonCapturedContentID != nil || nonCapturedStatus != "pending" || nonCapturedError != "" {
+			t.Fatalf("%s collection item state = %#v/%q/%q, want nil/pending/empty", outcome, nonCapturedContentID, nonCapturedStatus, nonCapturedError)
+		}
+	}
+	if err := repository.MarkIngestionFailure(context.Background(), domain.CapturedIngestionFailure{
+		CollectionItemID: item.ID, RunID: run.ID, SourceConnectionID: request.SourceConnectionID, Code: "normalize_invalid",
+	}); err != nil {
+		t.Fatalf("MarkIngestionFailure(): %v", err)
+	}
+	if page, err := repository.ListUnboundCaptured(context.Background(), domain.CapturedItemQuery{RunID: run.ID, Limit: 1}); err != nil || len(page.Items) != 0 {
+		t.Fatalf("ListUnboundCaptured(default) page/error = %#v / %v, want failed item excluded", page, err)
+	}
+	if page, err := repository.ListUnboundCaptured(context.Background(), domain.CapturedItemQuery{RunID: run.ID, Limit: 1, IncludeFailed: true}); err != nil || len(page.Items) != 1 {
+		t.Fatalf("ListUnboundCaptured(retry) page/error = %#v / %v, want failed item", page, err)
+	}
+	if err := repository.BindContent(context.Background(), domain.CapturedContentBinding{
+		CollectionItemID: item.ID, RunID: run.ID, SourceConnectionID: request.SourceConnectionID, ContentID: contentID,
+	}); err != nil {
+		t.Fatalf("BindContent(): %v", err)
+	}
+	var status, errorCode, outcome string
+	if err := runtime.SQL.QueryRow(`SELECT ingestion_status, COALESCE(ingestion_error_code, ''), outcome FROM collection_run_items WHERE id = $1`, item.ID).Scan(&status, &errorCode, &outcome); err != nil {
+		t.Fatalf("read bound capture: %v", err)
+	}
+	if status != "succeeded" || errorCode != "" || outcome != "captured" {
+		t.Fatalf("bound capture status/error/outcome = %q/%q/%q, want succeeded/empty/captured", status, errorCode, outcome)
+	}
+	if err := repository.BindContent(context.Background(), domain.CapturedContentBinding{
+		CollectionItemID: item.ID, RunID: run.ID, SourceConnectionID: request.SourceConnectionID, ContentID: contentID,
+	}); !errors.Is(err, sharedrepository.ErrConflict) {
+		t.Fatalf("BindContent(replay) error = %v, want conflict", err)
+	}
+}
+
+func TestCollectionRepositoryMapsLegacyCaptureZeroMetricsToUnknown(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	repository := sourcepostgres.NewCollectionRepository(runtime)
+	request := collectionRequestForRepository(t, runtime, "legacy-metrics", 1)
+	run, created, err := repository.CreateOrReuseRun(context.Background(), request)
+	if err != nil || !created {
+		t.Fatalf("CreateOrReuseRun() run/created/error = %#v / %t / %v", run, created, err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO collection_run_items
+    (run_id, source_connection_id, source_code, external_id, content_type, captured_item_version,
+     captured_item, payload_hash, raw_payload_disposition, outcome, observed_at)
+VALUES ($1, $2, 'rss', 'legacy-metrics', 'article', 'v1',
+        '{"version":"v1","source_code":"rss","external_id":"legacy-metrics","content_type":"article","title":"legacy","url":"https://example.test/legacy","observed_at":"2026-07-16T08:00:00Z","metrics":{"ViewCount":0,"LikeCount":9,"CommentCount":0,"ShareCount":4},"raw_payload_disposition":"discarded"}'::jsonb,
+        $3, 'discarded', 'captured', $4)`, run.ID, request.SourceConnectionID, strings.Repeat("d", 64), request.WindowStart); err != nil {
+		t.Fatalf("insert legacy captured item: %v", err)
+	}
+	page, err := repository.ListUnboundCaptured(context.Background(), domain.CapturedItemQuery{RunID: run.ID, Limit: 1})
+	if err != nil || len(page.Items) != 1 {
+		t.Fatalf("ListUnboundCaptured() page/error = %#v / %v, want one legacy item", page, err)
+	}
+	metrics := page.Items[0].Item.Metrics
+	if metrics.ViewCount != nil || metrics.CommentCount != nil {
+		t.Fatalf("legacy zero metrics = %#v, want unknown nil values", metrics)
+	}
+	if metrics.LikeCount == nil || *metrics.LikeCount != 9 || metrics.ShareCount == nil || *metrics.ShareCount != 4 {
+		t.Fatalf("legacy positive metrics = %#v, want 9/4", metrics)
 	}
 }
 
@@ -254,7 +402,7 @@ func TestCollectionRepositoryRetryRepairsCheckpointConflictTargetReconciliation(
 	if _, err := runtime.SQL.Exec(`UPDATE source_checkpoints SET version = version + 1 WHERE id = $1`, request.Targets[0].Checkpoint.ID); err != nil {
 		t.Fatalf("make checkpoint stale: %v", err)
 	}
-	item, err := (domain.CapturePolicy{Version: domain.CapturedItemVersionV1, RawPayloadDisposition: domain.RawPayloadDiscarded}).Capture(domain.SourceItem{
+	item, err := (domain.CapturePolicy{Version: domain.CapturedItemVersionV2, RawPayloadDisposition: domain.RawPayloadDiscarded}).Capture(domain.SourceItem{
 		SourceCode: "rss", ExternalID: "retry-reconciliation-item", ContentType: "article", ObservedAt: request.WindowStart,
 	})
 	if err != nil {

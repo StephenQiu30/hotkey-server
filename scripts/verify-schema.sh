@@ -103,10 +103,10 @@ BEGIN
     VALUES (collection_run_id, monitor_source_id, first_config_id)
     RETURNING id INTO collection_run_target_id;
   INSERT INTO collection_run_items (
-      run_id, source_code, external_id, content_type, captured_item_version, captured_item,
+      run_id, source_connection_id, source_code, external_id, content_type, captured_item_version, captured_item,
       payload_hash, raw_payload_disposition, outcome, observed_at
   ) VALUES (
-      collection_run_id, 'rss', 'schema-item-' || suffix, 'article', 'v1', '{"title":"safe"}'::jsonb,
+      collection_run_id, source_id, 'rss', 'schema-item-' || suffix, 'article', 'v1', '{"title":"safe"}'::jsonb,
       repeat('d', 64), 'discarded', 'captured', now()
   ) RETURNING id INTO collection_run_item_id;
   INSERT INTO collection_run_target_items (collection_run_id, collection_run_target_id, collection_run_item_id, outcome)
@@ -122,10 +122,10 @@ BEGIN
   END;
   BEGIN
     INSERT INTO collection_run_items (
-        run_id, source_code, external_id, content_type, captured_item_version, captured_item,
+        run_id, source_connection_id, source_code, external_id, content_type, captured_item_version, captured_item,
         payload_hash, raw_payload_disposition, outcome, observed_at
     ) VALUES (
-        collection_run_id, 'rss', 'schema-invalid-item-' || suffix, 'article', 'v1', '{"title":"safe"}'::jsonb,
+        collection_run_id, source_id, 'rss', 'schema-invalid-item-' || suffix, 'article', 'v1', '{"title":"safe"}'::jsonb,
         repeat('f', 64), 'raw_response', 'captured', now()
     );
     RAISE EXCEPTION 'missing raw payload disposition check';

@@ -11,6 +11,7 @@ func TestSourcePortsExposeOnlyDomainReadAndWriteContracts(t *testing.T) {
 	var _ MonitorUsageReader = (*monitorUsageReaderFake)(nil)
 	var _ MonitorPublishedReferenceReader = (*monitorPublishedReferenceReaderFake)(nil)
 	var _ CollectionRepository = (*collectionRepositoryFake)(nil)
+	var _ CapturedItemReader = (*collectionRepositoryFake)(nil)
 	var _ PublishedCollectionTargetReader = (*publishedCollectionTargetReaderFake)(nil)
 }
 
@@ -59,6 +60,15 @@ func (*collectionRepositoryFake) ListRuns(context.Context, CollectionRunListQuer
 }
 func (*collectionRepositoryFake) RetryRun(context.Context, int64) (CollectionRunSummary, error) {
 	return CollectionRunSummary{}, nil
+}
+func (*collectionRepositoryFake) ListUnboundCaptured(context.Context, CapturedItemQuery) (CapturedItemPage, error) {
+	return CapturedItemPage{}, nil
+}
+func (*collectionRepositoryFake) BindContent(context.Context, CapturedContentBinding) error {
+	return nil
+}
+func (*collectionRepositoryFake) MarkIngestionFailure(context.Context, CapturedIngestionFailure) error {
+	return nil
 }
 
 type publishedCollectionTargetReaderFake struct{}

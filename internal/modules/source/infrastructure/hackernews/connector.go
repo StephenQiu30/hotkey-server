@@ -279,7 +279,7 @@ func (connector *Connector) fetchItem(ctx context.Context, id int64) itemOutcome
 	normalized, err := domain.NormalizeSourceItem(domain.SourceItem{
 		SourceCode: sourceCode, ExternalID: strconv.FormatInt(id, 10), ContentType: contentType,
 		Title: item.Title, Body: item.Text, URL: itemURL, Author: item.By, PublishedAt: publishedAt,
-		ObservedAt: connector.client.now(), Metrics: domain.SourceMetrics{LikeCount: item.Score, CommentCount: item.Descendants},
+		ObservedAt: connector.client.now(), Metrics: domain.SourceMetrics{LikeCount: domain.KnownMetric(item.Score), CommentCount: domain.KnownMetric(item.Descendants)},
 	})
 	if err != nil {
 		return itemOutcome{id: id, diagnostic: &domain.FetchDiagnostic{Code: "invalid_item", SourceExternalID: strconv.FormatInt(id, 10)}}

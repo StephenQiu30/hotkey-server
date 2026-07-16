@@ -6,9 +6,9 @@ feature_area: 内容与证据
 purpose: 以 durable capture 实施 Content 标准化、确定性去重、MinIO 证据与删除同步
 canonical_path: docs/plans/007-内容标准化去重与MinIO证据计划.md
 status: accepted
-execution_status: ready
+execution_status: in_progress
 review_status: approved
-version: v1.4
+version: v1.5
 owner: HotKey Server Team
 inputs:
   - docs/prd/007-内容标准化去重与MinIO证据.md
@@ -285,3 +285,4 @@ func (s *Service) IngestRun(context.Context, IngestRunInput) (IngestRunResult, e
 | v1.2 | 2026-07-16 | 按独立复核收紧：补齐标准化结果与快照 nullable 契约、同来源 near-text、复合来源归属/状态机绑定，以及真实 PostgreSQL + MinIO 补偿与对账验收。 |
 | v1.3 | 2026-07-16 | 补齐既有库升级/回退与 PLAN-006 legacy-zero 策略，并提供不引入新环境文件的仓库受控 MinIO fixture、唯一前缀隔离和 teardown。 |
 | v1.4 | 2026-07-16 | 三轮独立复核通过，状态转为 accepted/approved/ready，可按 Task 1 开工。 |
+| v1.5 | 2026-07-16 | PLAN-007 已激活为 in_progress；逐 Task 的执行流水保留在 Workpad、提交和最终 Acceptance，不改变已批准的实施契约。 |

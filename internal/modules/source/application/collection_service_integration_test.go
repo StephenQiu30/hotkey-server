@@ -24,7 +24,7 @@ func TestCollectionServiceFetchesOnceAndDurablyReconcilesEveryTarget(t *testing.
 		Items: []domain.SourceItem{{
 			SourceCode: "rss", ExternalID: "post-42", ContentType: "article", Title: "Safe title",
 			Body: "body must be redacted by the default policy", ObservedAt: time.Date(2026, time.July, 16, 8, 5, 0, 0, time.UTC),
-			Metrics: domain.SourceMetrics{ViewCount: 12, CommentCount: 3}, RawPayload: []byte(`{"authorization":"never-persist"}`),
+			Metrics: domain.SourceMetrics{ViewCount: domain.KnownMetric(12), CommentCount: domain.KnownMetric(3)}, RawPayload: []byte(`{"authorization":"never-persist"}`),
 		}}, NextCursor: "cursor-42", ETag: "etag-42", LastModified: "Wed, 16 Jul 2026 08:05:00 GMT",
 	}}
 	service, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{

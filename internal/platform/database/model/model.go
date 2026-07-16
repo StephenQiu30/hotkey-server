@@ -101,8 +101,10 @@ type SourceAuthor struct {
 }
 type Content struct {
 	Record
-	SourceConnectionID    int64
-	ExternalID, DedupeKey string
+	SourceConnectionID                             int64
+	ExternalID, DedupeKey                          string
+	DedupeReason, DedupeVersion                    *string
+	ViewCount, LikeCount, CommentCount, ShareCount *int64
 }
 type ContentAsset struct {
 	Record
@@ -251,14 +253,14 @@ type CollectionRunTarget struct {
 }
 type CollectionRunItem struct {
 	OperationalRecord
-	RunID                               int64
-	SourceCode, ExternalID, ContentType string
-	CapturedItemVersion, PayloadHash    string
-	CapturedItem                        json.RawMessage
-	RawPayloadDisposition, Outcome      string
-	ContentID                           *int64
-	ReasonCode                          *string
-	ObservedAt, CreatedAt               time.Time
+	RunID, SourceConnectionID                       int64
+	SourceCode, ExternalID, ContentType             string
+	CapturedItemVersion, PayloadHash                string
+	CapturedItem                                    json.RawMessage
+	RawPayloadDisposition, Outcome, IngestionStatus string
+	ContentID                                       *int64
+	ReasonCode, IngestionErrorCode                  *string
+	ObservedAt, CreatedAt                           time.Time
 }
 type CollectionRunTargetItem struct {
 	OperationalRecord
@@ -269,7 +271,8 @@ type CollectionRunTargetItem struct {
 }
 type ContentMetricSnapshot struct {
 	OperationalRecord
-	ContentID int64
+	ContentID                                      int64
+	ViewCount, LikeCount, CommentCount, ShareCount *int64
 }
 type EventMetricSnapshot struct {
 	OperationalRecord
@@ -327,7 +330,7 @@ var specs = []Spec{
 	{"monitor_rules", LifecycleBusiness, []string{"id", "version", "config_version_id", "rule_type", "value"}},
 	{"monitor_sources", LifecycleBusiness, []string{"id", "version", "config_version_id", "source_connection_id", "query_signature"}},
 	{"source_authors", LifecycleBusiness, []string{"id", "source_connection_id", "external_id"}},
-	{"contents", LifecycleBusiness, []string{"id", "source_connection_id", "external_id", "dedupe_key", "deleted_at"}},
+	{"contents", LifecycleBusiness, []string{"id", "source_connection_id", "external_id", "dedupe_key", "dedupe_reason", "dedupe_version", "view_count", "like_count", "comment_count", "share_count", "deleted_at"}},
 	{"content_assets", LifecycleBusiness, []string{"id", "content_id", "object_key", "object_status"}},
 	{"monitor_matches", LifecycleBusiness, []string{"id", "monitor_id", "monitor_config_version_id", "content_id", "final_score"}},
 	{"events", LifecycleBusiness, []string{"id", "event_key", "lifecycle_status", "deleted_at"}},
@@ -356,9 +359,9 @@ var specs = []Spec{
 	{"source_checkpoints", LifecycleOperational, []string{"id", "monitor_source_id", "last_successful_run_id", "last_fetched_at", "next_poll_at"}},
 	{"collection_runs", LifecycleOperational, []string{"id", "source_connection_id", "query_signature", "request_cursor", "next_cursor", "etag", "last_modified", "retry_after", "page_count", "window_start", "window_end", "status", "updated_at"}},
 	{"collection_run_targets", LifecycleOperational, []string{"id", "collection_run_id", "monitor_source_id", "monitor_config_version_id", "target_status", "updated_at"}},
-	{"collection_run_items", LifecycleOperational, []string{"id", "run_id", "source_code", "external_id", "content_type", "captured_item_version", "captured_item", "payload_hash", "raw_payload_disposition", "outcome", "observed_at"}},
+	{"collection_run_items", LifecycleOperational, []string{"id", "run_id", "source_connection_id", "source_code", "external_id", "content_type", "captured_item_version", "captured_item", "payload_hash", "raw_payload_disposition", "content_id", "ingestion_status", "ingestion_error_code", "outcome", "observed_at"}},
 	{"collection_run_target_items", LifecycleOperational, []string{"id", "collection_run_id", "collection_run_target_id", "collection_run_item_id", "outcome"}},
-	{"content_metric_snapshots", LifecycleOperational, []string{"id", "content_id", "captured_at"}},
+	{"content_metric_snapshots", LifecycleOperational, []string{"id", "content_id", "captured_at", "view_count", "like_count", "comment_count", "share_count"}},
 	{"event_metric_snapshots", LifecycleOperational, []string{"id", "event_id", "captured_at"}},
 	{"ai_runs", LifecycleOperational, []string{"id", "task_type", "target_id", "input_hash", "status"}},
 	{"ai_run_evidences", LifecycleOperational, []string{"id", "ai_run_id", "content_id"}},

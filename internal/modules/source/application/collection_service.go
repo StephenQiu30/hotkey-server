@@ -130,7 +130,7 @@ func (service *CollectionService) fail(ctx context.Context, run domain.Collectio
 
 func capturePolicy(connection domain.SourceConnection) domain.CapturePolicy {
 	return domain.CapturePolicy{
-		Version: domain.CapturedItemVersionV1, AllowBodyStorage: connection.Config.AllowBodyStorage,
+		Version: domain.CapturedItemVersionV2, AllowBodyStorage: connection.Config.AllowBodyStorage,
 		RawPayloadDisposition: domain.RawPayloadDiscarded,
 	}
 }

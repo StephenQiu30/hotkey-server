@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
@@ -28,6 +29,9 @@ const (
 	collectionRunListDefaultLimit = 50
 	collectionRunListMaximumLimit = 200
 	collectionRunListFingerprint  = "collection-runs"
+	collectionCaptureDefaultLimit = 100
+	collectionCaptureMaximumLimit = 200
+	collectionCaptureFingerprint  = "captured-items"
 )
 
 func NewCollectionRepository(runtime *database.Runtime) *CollectionRepository {
@@ -194,6 +198,135 @@ LIMIT $2`, cursorID, limit+1)
 	return page, nil
 }
 
+// ListUnboundCaptured returns only Source-owned, durable capture facts. A
+// stable item-ID cursor lets ingestion resume safely without seeing bound
+// items or changing collection/target outcomes.
+func (repository *CollectionRepository) ListUnboundCaptured(ctx context.Context, query domain.CapturedItemQuery) (domain.CapturedItemPage, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return domain.CapturedItemPage{}, sharedrepository.ErrUnavailable
+	}
+	if err := query.Validate(); err != nil {
+		return domain.CapturedItemPage{}, fmt.Errorf("%w: captured item query: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	limit, cursorID, err := capturedItemListParameters(query)
+	if err != nil {
+		return domain.CapturedItemPage{}, err
+	}
+	statuses := []string{"pending"}
+	if query.IncludeFailed {
+		statuses = append(statuses, "failed")
+	}
+	rows, err := repository.queryRows(ctx, `
+SELECT id, run_id, source_connection_id, captured_item
+FROM collection_run_items
+WHERE run_id = $1
+  AND outcome = 'captured'
+  AND content_id IS NULL
+  AND ingestion_status = ANY($2)
+  AND id > $3
+ORDER BY id ASC
+LIMIT $4`, query.RunID, statuses, cursorID, limit+1)
+	if err != nil {
+		return domain.CapturedItemPage{}, sharedrepository.MapError(err)
+	}
+	defer rows.Close()
+	items := make([]domain.CapturedCollectionItem, 0, limit+1)
+	for rows.Next() {
+		var item domain.CapturedCollectionItem
+		var payload []byte
+		if err := rows.Scan(&item.ID, &item.RunID, &item.SourceConnectionID, &payload); err != nil {
+			return domain.CapturedItemPage{}, sharedrepository.MapError(err)
+		}
+		captured, err := decodeCapturedItem(payload)
+		if err != nil {
+			return domain.CapturedItemPage{}, fmt.Errorf("%w: decode captured item: %v", sharedrepository.ErrConstraint, err)
+		}
+		item.Item = captured
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return domain.CapturedItemPage{}, sharedrepository.MapError(err)
+	}
+	page := domain.CapturedItemPage{Items: items}
+	if len(page.Items) <= limit {
+		return page, nil
+	}
+	page.Items = page.Items[:limit]
+	page.NextCursor, err = pagination.Encode("id", false, collectionCaptureFingerprint, page.Items[len(page.Items)-1].ID)
+	if err != nil {
+		return domain.CapturedItemPage{}, fmt.Errorf("%w: encode captured item cursor: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	return page, nil
+}
+
+// BindContent moves a pending or explicitly retried failed capture to
+// succeeded. The source/content composite foreign key proves ownership
+// without allowing Source SQL to query Content-owned tables.
+func (repository *CollectionRepository) BindContent(ctx context.Context, binding domain.CapturedContentBinding) error {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return sharedrepository.ErrUnavailable
+	}
+	if err := binding.Validate(); err != nil {
+		return fmt.Errorf("%w: captured content binding: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	return repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+		result, err := transaction.SQL.ExecContext(ctx, `
+UPDATE collection_run_items
+SET content_id = $1, ingestion_status = 'succeeded', ingestion_error_code = NULL
+WHERE id = $2
+  AND run_id = $3
+  AND source_connection_id = $4
+  AND outcome = 'captured'
+  AND content_id IS NULL
+  AND ingestion_status IN ('pending', 'failed')`, binding.ContentID, binding.CollectionItemID, binding.RunID, binding.SourceConnectionID)
+		if err != nil {
+			return sharedrepository.MapError(err)
+		}
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return sharedrepository.MapError(err)
+		}
+		if rowsAffected != 1 {
+			return fmt.Errorf("%w: captured item was bound or changed", sharedrepository.ErrConflict)
+		}
+		return nil
+	})
+}
+
+// MarkIngestionFailure records a stable ingestion failure without changing
+// capture outcome or target reconciliation. Failed captures are visible only
+// through the explicit IncludeFailed retry query.
+func (repository *CollectionRepository) MarkIngestionFailure(ctx context.Context, failure domain.CapturedIngestionFailure) error {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return sharedrepository.ErrUnavailable
+	}
+	if err := failure.Validate(); err != nil {
+		return fmt.Errorf("%w: captured ingestion failure: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	return repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+		result, err := transaction.SQL.ExecContext(ctx, `
+UPDATE collection_run_items
+SET ingestion_status = 'failed', ingestion_error_code = $1
+WHERE id = $2
+  AND run_id = $3
+  AND source_connection_id = $4
+  AND outcome = 'captured'
+  AND content_id IS NULL
+  AND ingestion_status IN ('pending', 'failed')`, strings.TrimSpace(failure.Code), failure.CollectionItemID, failure.RunID, failure.SourceConnectionID)
+		if err != nil {
+			return sharedrepository.MapError(err)
+		}
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return sharedrepository.MapError(err)
+		}
+		if rowsAffected != 1 {
+			return fmt.Errorf("%w: captured item was bound or changed", sharedrepository.ErrConflict)
+		}
+		return nil
+	})
+}
+
 // RetryRun only requeues a terminal failed/cancelled run. It never performs
 // external I/O and therefore cannot create a duplicate fetch from an HTTP
 // request; the ordinary collection scheduler claims the queued run later.
@@ -270,7 +403,7 @@ func (repository *CollectionRepository) PersistSuccess(ctx context.Context, succ
 		if err != nil {
 			return err
 		}
-		itemIDs, err := repository.persistCapturedItems(ctx, transaction, success.RunID, success.Items)
+		itemIDs, err := repository.persistCapturedItems(ctx, transaction, run, success.Items)
 		if err != nil {
 			return err
 		}
@@ -450,7 +583,7 @@ FOR UPDATE`, runID)
 	return targets, nil
 }
 
-func (repository *CollectionRepository) persistCapturedItems(ctx context.Context, transaction database.Transaction, runID int64, items []domain.CapturedItem) ([]int64, error) {
+func (repository *CollectionRepository) persistCapturedItems(ctx context.Context, transaction database.Transaction, run domain.CollectionRun, items []domain.CapturedItem) ([]int64, error) {
 	itemIDs := make([]int64, 0, len(items))
 	seen := make(map[string]struct{}, len(items))
 	for _, item := range items {
@@ -465,13 +598,13 @@ func (repository *CollectionRepository) persistCapturedItems(ctx context.Context
 		var itemID int64
 		if err := transaction.SQL.QueryRowContext(ctx, `
 INSERT INTO collection_run_items
-    (run_id, source_code, external_id, content_type, captured_item_version,
+    (run_id, source_connection_id, source_code, external_id, content_type, captured_item_version,
      captured_item, payload_hash, raw_payload_disposition, outcome, observed_at)
-VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, 'captured', $9)
+VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, 'captured', $10)
 ON CONFLICT (run_id, external_id) DO UPDATE
 SET external_id = collection_run_items.external_id
 RETURNING id`,
-			runID, item.SourceCode, item.ExternalID, item.ContentType, item.Version, string(payload), hash,
+			run.ID, run.SourceConnectionID, item.SourceCode, item.ExternalID, item.ContentType, item.Version, string(payload), hash,
 			string(item.RawPayloadDisposition), item.ObservedAt.UTC()).Scan(&itemID); err != nil {
 			return nil, sharedrepository.MapError(err)
 		}
@@ -542,7 +675,7 @@ type capturedItemPayload struct {
 }
 
 func encodedCapturedItem(item domain.CapturedItem) ([]byte, string, error) {
-	if item.Version != domain.CapturedItemVersionV1 || item.SourceCode == "" || item.ExternalID == "" || item.ContentType == "" || item.ObservedAt.IsZero() || !item.RawPayloadDisposition.Valid() {
+	if item.Version != domain.CapturedItemVersionV2 || item.SourceCode == "" || item.ExternalID == "" || item.ContentType == "" || item.ObservedAt.IsZero() || !item.RawPayloadDisposition.Valid() {
 		return nil, "", errors.New("captured item is incomplete")
 	}
 	if err := item.Metrics.Validate(); err != nil {
@@ -559,6 +692,53 @@ func encodedCapturedItem(item domain.CapturedItem) ([]byte, string, error) {
 	}
 	digest := sha256.Sum256(payload)
 	return payload, hex.EncodeToString(digest[:]), nil
+}
+
+func decodeCapturedItem(payload []byte) (domain.CapturedItem, error) {
+	var persisted capturedItemPayload
+	if err := json.Unmarshal(payload, &persisted); err != nil {
+		return domain.CapturedItem{}, err
+	}
+	if persisted.Version != domain.CapturedItemVersionV1 && persisted.Version != domain.CapturedItemVersionV2 {
+		return domain.CapturedItem{}, fmt.Errorf("unsupported captured item version %q", persisted.Version)
+	}
+	if persisted.SourceCode == "" || persisted.ExternalID == "" || persisted.ContentType == "" || persisted.ObservedAt.IsZero() || !persisted.RawPayloadDisposition.Valid() {
+		return domain.CapturedItem{}, errors.New("captured item is incomplete")
+	}
+	if err := persisted.Metrics.Validate(); err != nil {
+		return domain.CapturedItem{}, err
+	}
+	metrics := persisted.Metrics
+	if persisted.Version == domain.CapturedItemVersionV1 {
+		metrics = legacyCapturedMetrics(metrics)
+	}
+	item := domain.CapturedItem{
+		Version: persisted.Version, SourceCode: persisted.SourceCode, ExternalID: persisted.ExternalID,
+		ContentType: persisted.ContentType, Title: persisted.Title, Body: persisted.Body, Language: persisted.Language,
+		URL: persisted.URL, Author: persisted.Author, ObservedAt: persisted.ObservedAt.UTC(), Metrics: metrics,
+		RawPayloadDisposition: persisted.RawPayloadDisposition,
+	}
+	if persisted.PublishedAt != nil {
+		publishedAt := persisted.PublishedAt.UTC()
+		item.PublishedAt = &publishedAt
+	}
+	return item, nil
+}
+
+func legacyCapturedMetrics(metrics domain.SourceMetrics) domain.SourceMetrics {
+	return domain.SourceMetrics{
+		ViewCount:    legacyMetric(metrics.ViewCount),
+		LikeCount:    legacyMetric(metrics.LikeCount),
+		CommentCount: legacyMetric(metrics.CommentCount),
+		ShareCount:   legacyMetric(metrics.ShareCount),
+	}
+}
+
+func legacyMetric(metric *int64) *int64 {
+	if metric == nil || *metric == 0 {
+		return nil
+	}
+	return domain.KnownMetric(*metric)
 }
 
 func advanceCheckpoint(ctx context.Context, transaction database.Transaction, target domain.PublishedCollectionTarget, runID int64, run domain.CollectionRun, result domain.FetchResult, completedAt time.Time) error {
@@ -627,6 +807,13 @@ func (repository *CollectionRepository) withTransaction(ctx context.Context, fn 
 	return repository.runtime.WithinTransaction(ctx, fn)
 }
 
+func (repository *CollectionRepository) queryRows(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	if transaction, found := database.TransactionFromContext(ctx); found {
+		return transaction.SQL.QueryContext(ctx, query, args...)
+	}
+	return repository.runtime.SQL.QueryContext(ctx, query, args...)
+}
+
 type collectionRowsQuerier interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
@@ -669,6 +856,21 @@ func collectionRunListParameters(query domain.CollectionRunListQuery) (int, int6
 	cursor, err := pagination.Decode(query.Cursor, "id", false, collectionRunListFingerprint)
 	if err != nil {
 		return 0, 0, fmt.Errorf("%w: collection run cursor: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	return limit, cursor.ID, nil
+}
+
+func capturedItemListParameters(query domain.CapturedItemQuery) (int, int64, error) {
+	limit := query.Limit
+	if limit == 0 {
+		limit = collectionCaptureDefaultLimit
+	}
+	if limit < 1 || limit > collectionCaptureMaximumLimit {
+		return 0, 0, fmt.Errorf("%w: captured item limit must be from 1 to %d", sharedrepository.ErrInvalidInput, collectionCaptureMaximumLimit)
+	}
+	cursor, err := pagination.Decode(query.Cursor, "id", false, collectionCaptureFingerprint)
+	if err != nil {
+		return 0, 0, fmt.Errorf("%w: captured item cursor: %v", sharedrepository.ErrInvalidInput, err)
 	}
 	return limit, cursor.ID, nil
 }

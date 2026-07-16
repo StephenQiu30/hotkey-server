@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -302,11 +304,11 @@ RETURNING id`, runID, monitorSourceID, configID).Scan(&targetID); err != nil {
 	}
 	if err := runtime.SQL.QueryRow(`
 INSERT INTO collection_run_items (
-    run_id, source_code, external_id, content_type, captured_item_version, captured_item,
+    run_id, source_connection_id, source_code, external_id, content_type, captured_item_version, captured_item,
     payload_hash, raw_payload_disposition, outcome, observed_at
 )
-VALUES ($1, 'rss', 'item-1', 'article', 'v1', '{"title":"safe"}'::jsonb, $2, 'discarded', 'captured', $3)
-RETURNING id`, runID, strings.Repeat("e", 64), now).Scan(&itemID); err != nil {
+VALUES ($1, $2, 'rss', 'item-1', 'article', 'v1', '{"title":"safe"}'::jsonb, $3, 'discarded', 'captured', $4)
+RETURNING id`, runID, sourceID, strings.Repeat("e", 64), now).Scan(&itemID); err != nil {
 		t.Fatalf("write durable captured collection item: %v", err)
 	}
 	if _, err := runtime.SQL.Exec(`
@@ -334,11 +336,11 @@ RETURNING id`, otherRunID, monitorSourceID, configID).Scan(&otherTargetID); err 
 	}
 	if err := runtime.SQL.QueryRow(`
 INSERT INTO collection_run_items (
-    run_id, source_code, external_id, content_type, captured_item_version, captured_item,
+    run_id, source_connection_id, source_code, external_id, content_type, captured_item_version, captured_item,
     payload_hash, raw_payload_disposition, outcome, observed_at
 )
-VALUES ($1, 'rss', 'item-2', 'article', 'v1', '{"title":"other"}'::jsonb, $2, 'discarded', 'captured', $3)
-RETURNING id`, otherRunID, strings.Repeat("c", 64), now).Scan(&otherItemID); err != nil {
+VALUES ($1, $2, 'rss', 'item-2', 'article', 'v1', '{"title":"other"}'::jsonb, $3, 'discarded', 'captured', $4)
+RETURNING id`, otherRunID, sourceID, strings.Repeat("c", 64), now).Scan(&otherItemID); err != nil {
 		t.Fatalf("write second collection item: %v", err)
 	}
 	if _, err := runtime.SQL.Exec(`
@@ -354,10 +356,10 @@ VALUES ($1, $2, $3, 'captured')`, otherRunID, otherTargetID, itemID); err == nil
 
 	if _, err := runtime.SQL.Exec(`
 INSERT INTO collection_run_items (
-    run_id, source_code, external_id, content_type, captured_item_version, captured_item,
+    run_id, source_connection_id, source_code, external_id, content_type, captured_item_version, captured_item,
     payload_hash, raw_payload_disposition, outcome, observed_at
 )
-VALUES ($1, 'rss', 'item-1', 'article', 'v1', '{"title":"safe"}'::jsonb, $2, 'discarded', 'captured', $3)`, runID, strings.Repeat("e", 64), now); err == nil {
+VALUES ($1, $2, 'rss', 'item-1', 'article', 'v1', '{"title":"safe"}'::jsonb, $3, 'discarded', 'captured', $4)`, runID, sourceID, strings.Repeat("e", 64), now); err == nil {
 		t.Fatal("duplicate run item = nil error, want unique reconciliation key rejection")
 	} else {
 		assertPostgreSQLState(t, err, "23505")
@@ -371,14 +373,143 @@ VALUES ($1, $2, $3, 'captured')`, runID, targetID, itemID); err == nil {
 	}
 	if _, err := runtime.SQL.Exec(`
 INSERT INTO collection_run_items (
-    run_id, source_code, external_id, content_type, captured_item_version, captured_item,
+    run_id, source_connection_id, source_code, external_id, content_type, captured_item_version, captured_item,
     payload_hash, raw_payload_disposition, outcome, observed_at
 )
-VALUES ($1, 'rss', 'item-invalid', 'article', 'v1', '{"title":"safe"}'::jsonb, $2, 'raw_response', 'captured', $3)`, runID, strings.Repeat("a", 64), now); err == nil {
+VALUES ($1, $2, 'rss', 'item-invalid', 'article', 'v1', '{"title":"safe"}'::jsonb, $3, 'raw_response', 'captured', $4)`, runID, sourceID, strings.Repeat("a", 64), now); err == nil {
 		t.Fatal("unapproved raw payload disposition = nil error, want CHECK rejection")
 	} else {
 		assertPostgreSQLState(t, err, "23514")
 	}
+}
+
+func TestPlan007SchemaUpgradeBackfillsCaptureSourceAndPreservesMetricPolicy(t *testing.T) {
+	runtime := openEmptyTestRuntime(t)
+	defer func() { _ = runtime.Close() }()
+
+	if _, err := runtime.SQL.Exec(`
+CREATE TABLE source_connections (id bigint PRIMARY KEY);
+CREATE TABLE contents (
+    id bigint PRIMARY KEY,
+    source_connection_id bigint NOT NULL REFERENCES source_connections(id),
+    content_status varchar(16) NOT NULL,
+    duplicate_of_id bigint,
+    view_count bigint NOT NULL DEFAULT 0,
+    like_count bigint NOT NULL DEFAULT 0,
+    comment_count bigint NOT NULL DEFAULT 0,
+    share_count bigint NOT NULL DEFAULT 0
+);
+CREATE TABLE content_metric_snapshots (
+    id bigint PRIMARY KEY,
+    content_id bigint NOT NULL REFERENCES contents(id),
+    view_count bigint NOT NULL DEFAULT 0,
+    like_count bigint NOT NULL DEFAULT 0,
+    comment_count bigint NOT NULL DEFAULT 0,
+    share_count bigint NOT NULL DEFAULT 0
+);
+CREATE TABLE collection_runs (
+    id bigint PRIMARY KEY,
+    source_connection_id bigint NOT NULL REFERENCES source_connections(id)
+);
+CREATE TABLE collection_run_items (
+    id bigint PRIMARY KEY,
+    run_id bigint NOT NULL REFERENCES collection_runs(id),
+    content_id bigint REFERENCES contents(id),
+    outcome varchar(16) NOT NULL
+);`); err != nil {
+		t.Fatalf("create PLAN-006 legacy fixture: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO source_connections (id) VALUES (10);
+INSERT INTO contents (id, source_connection_id, content_status, view_count, like_count, comment_count, share_count)
+VALUES (20, 10, 'active', 0, 12, 0, 4);
+INSERT INTO content_metric_snapshots (id, content_id, view_count, like_count, comment_count, share_count)
+VALUES (30, 20, 0, 8, 0, 2);
+INSERT INTO collection_runs (id, source_connection_id) VALUES (40, 10);
+INSERT INTO collection_run_items (id, run_id, outcome) VALUES (50, 40, 'captured');
+INSERT INTO collection_run_items (id, run_id, content_id, outcome) VALUES (51, 40, 20, 'captured');`); err != nil {
+		t.Fatalf("seed PLAN-006 legacy fixture: %v", err)
+	}
+
+	if _, err := runtime.SQL.Exec(plan007UpgradeSQL(t)); err != nil {
+		t.Fatalf("apply PLAN-007 upgrade runbook: %v", err)
+	}
+
+	var itemSourceID int64
+	if err := runtime.SQL.QueryRow(`SELECT source_connection_id FROM collection_run_items WHERE id = 50`).Scan(&itemSourceID); err != nil {
+		t.Fatalf("read upgraded collection item source: %v", err)
+	}
+	if itemSourceID != 10 {
+		t.Fatalf("upgraded collection item source = %d, want 10", itemSourceID)
+	}
+	var boundStatus, boundError string
+	if err := runtime.SQL.QueryRow(`
+SELECT ingestion_status, COALESCE(ingestion_error_code, '')
+FROM collection_run_items
+WHERE id = 51`).Scan(&boundStatus, &boundError); err != nil {
+		t.Fatalf("read upgraded bound collection item state: %v", err)
+	}
+	if boundStatus != "succeeded" || boundError != "" {
+		t.Fatalf("upgraded bound collection item state = %q/%q, want succeeded/empty", boundStatus, boundError)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE collection_run_items SET ingestion_status = 'succeeded' WHERE id = 50`); err == nil {
+		t.Fatal("unbound captured item updated to succeeded = nil error, want ingestion state CHECK rejection")
+	} else {
+		assertPostgreSQLState(t, err, "23514")
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE collection_run_items SET ingestion_status = 'failed', ingestion_error_code = NULL WHERE id = 50`); err == nil {
+		t.Fatal("failed captured item without stable error code = nil error, want ingestion state CHECK rejection")
+	} else {
+		assertPostgreSQLState(t, err, "23514")
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE collection_run_items SET ingestion_status = 'pending' WHERE id = 51`); err == nil {
+		t.Fatal("bound captured item updated to pending = nil error, want ingestion state CHECK rejection")
+	} else {
+		assertPostgreSQLState(t, err, "23514")
+	}
+	var contentView, contentLike, contentComment, contentShare any
+	if err := runtime.SQL.QueryRow(`SELECT view_count, like_count, comment_count, share_count FROM contents WHERE id = 20`).Scan(&contentView, &contentLike, &contentComment, &contentShare); err != nil {
+		t.Fatalf("read upgraded content metrics: %v", err)
+	}
+	if contentView != nil || contentLike != int64(12) || contentComment != nil || contentShare != int64(4) {
+		t.Fatalf("upgraded content metrics = %#v/%#v/%#v/%#v, want nil/12/nil/4", contentView, contentLike, contentComment, contentShare)
+	}
+	var snapshotView, snapshotLike, snapshotComment, snapshotShare any
+	if err := runtime.SQL.QueryRow(`SELECT view_count, like_count, comment_count, share_count FROM content_metric_snapshots WHERE id = 30`).Scan(&snapshotView, &snapshotLike, &snapshotComment, &snapshotShare); err != nil {
+		t.Fatalf("read upgraded snapshot metrics: %v", err)
+	}
+	if snapshotView != nil || snapshotLike != int64(8) || snapshotComment != nil || snapshotShare != int64(2) {
+		t.Fatalf("upgraded snapshot metrics = %#v/%#v/%#v/%#v, want nil/8/nil/2", snapshotView, snapshotLike, snapshotComment, snapshotShare)
+	}
+	var defaultSnapshotView, defaultSnapshotLike, defaultSnapshotComment, defaultSnapshotShare any
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO content_metric_snapshots (id, content_id)
+VALUES (31, 20)
+RETURNING view_count, like_count, comment_count, share_count`).Scan(&defaultSnapshotView, &defaultSnapshotLike, &defaultSnapshotComment, &defaultSnapshotShare); err != nil {
+		t.Fatalf("insert upgraded snapshot without metrics: %v", err)
+	}
+	if defaultSnapshotView != nil || defaultSnapshotLike != nil || defaultSnapshotComment != nil || defaultSnapshotShare != nil {
+		t.Fatalf("upgraded snapshot defaults = %#v/%#v/%#v/%#v, want all nil", defaultSnapshotView, defaultSnapshotLike, defaultSnapshotComment, defaultSnapshotShare)
+	}
+}
+
+func plan007UpgradeSQL(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join("..", "..", "..", "docs", "operations", "plan007-schema-upgrade.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read PLAN-007 upgrade runbook: %v", err)
+	}
+	text := string(content)
+	start := strings.Index(text, "BEGIN;\n")
+	if start < 0 {
+		t.Fatal("PLAN-007 upgrade runbook has no transaction block")
+	}
+	end := strings.Index(text[start:], "\nCOMMIT;")
+	if end < 0 {
+		t.Fatal("PLAN-007 upgrade runbook has no COMMIT")
+	}
+	return text[start : start+end+len("\nCOMMIT;")]
 }
 
 func assertMonitorPointerForeignKey(t *testing.T, runtime *Runtime, name string) {

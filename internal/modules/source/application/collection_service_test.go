@@ -15,8 +15,8 @@ func TestCapturePolicyAppliesIdenticalRedactionToRSSAndHackerNews(t *testing.T) 
 		{SourceType: domain.SourceTypeHackerNews, Config: domain.DefaultSourceConfig()},
 	}
 	items := []domain.SourceItem{
-		{SourceCode: "rss", ExternalID: "rss-1", ContentType: "article", Body: "must not persist", ObservedAt: observedAt, Metrics: domain.SourceMetrics{ViewCount: 7, CommentCount: 2}, RawPayload: []byte(`{"secret":"rss"}`)},
-		{SourceCode: "hacker_news", ExternalID: "hn-1", ContentType: "article", Body: "must not persist", ObservedAt: observedAt, Metrics: domain.SourceMetrics{ViewCount: 7, CommentCount: 2}, RawPayload: []byte(`{"secret":"hn"}`)},
+		{SourceCode: "rss", ExternalID: "rss-1", ContentType: "article", Body: "must not persist", ObservedAt: observedAt, Metrics: domain.SourceMetrics{ViewCount: domain.KnownMetric(7), CommentCount: domain.KnownMetric(2)}, RawPayload: []byte(`{"secret":"rss"}`)},
+		{SourceCode: "hacker_news", ExternalID: "hn-1", ContentType: "article", Body: "must not persist", ObservedAt: observedAt, Metrics: domain.SourceMetrics{ViewCount: domain.KnownMetric(7), CommentCount: domain.KnownMetric(2)}, RawPayload: []byte(`{"secret":"hn"}`)},
 	}
 	var captures []domain.CapturedItem
 	for index, connection := range connections {
