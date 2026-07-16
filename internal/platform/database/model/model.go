@@ -3,7 +3,10 @@
 // dependency; PLAN-002 supplies the database runtime and repository adapters.
 package model
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type Lifecycle string
 
@@ -212,21 +215,57 @@ type AuthRefreshToken struct {
 }
 type SourceCheckpoint struct {
 	OperationalRecord
-	MonitorSourceID int64
+	MonitorSourceID     int64
+	QueryHash           string
+	CursorValue         *string
+	ETag                *string
+	LastModified        *string
+	HighWatermark       *time.Time
+	LastSuccessfulRunID *int64
+	LastFetchedAt       *time.Time
+	NextPollAt          time.Time
+	ConsecutiveFailures int
+	Version             int64
+	UpdatedAt           time.Time
 }
 type CollectionRun struct {
 	OperationalRecord
-	SourceConnectionID     int64
-	QuerySignature         string
-	WindowStart, WindowEnd time.Time
+	SourceConnectionID                             int64
+	QuerySignature, TriggerType, Status            string
+	RequestCursor, NextCursor, ETag, LastModified  *string
+	RetryAfter                                     *time.Time
+	PageCount                                      int
+	WindowStart, WindowEnd, ScheduledAt, CreatedAt time.Time
+	StartedAt, FinishedAt                          *time.Time
+	CandidateCount, AcceptedCount, RejectedCount   int64
+	ErrorCode                                      *string
+	UpdatedAt                                      time.Time
 }
 type CollectionRunTarget struct {
 	OperationalRecord
 	CollectionRunID, MonitorSourceID, MonitorConfigVersionID int64
+	TargetStatus                                             string
+	CandidateCount, AcceptedCount, RejectedCount             int64
+	ErrorCode                                                *string
+	CreatedAt, UpdatedAt                                     time.Time
 }
 type CollectionRunItem struct {
 	OperationalRecord
-	RunID int64
+	RunID                               int64
+	SourceCode, ExternalID, ContentType string
+	CapturedItemVersion, PayloadHash    string
+	CapturedItem                        json.RawMessage
+	RawPayloadDisposition, Outcome      string
+	ContentID                           *int64
+	ReasonCode                          *string
+	ObservedAt, CreatedAt               time.Time
+}
+type CollectionRunTargetItem struct {
+	OperationalRecord
+	CollectionRunTargetID, CollectionRunItemID int64
+	Outcome                                    string
+	ReasonCode                                 *string
+	CreatedAt                                  time.Time
 }
 type ContentMetricSnapshot struct {
 	OperationalRecord
@@ -314,10 +353,11 @@ var specs = []Spec{
 	{"retention_policies", LifecycleBusiness, []string{"id", "data_class", "retention_days", "action"}},
 	{"auth_sessions", LifecycleOperational, []string{"id", "user_id", "family_id", "absolute_expires_at", "revoked_at"}},
 	{"auth_refresh_tokens", LifecycleOperational, []string{"id", "session_id", "token_hash", "expires_at", "used_at", "revoked_at"}},
-	{"source_checkpoints", LifecycleOperational, []string{"id", "monitor_source_id", "next_poll_at"}},
-	{"collection_runs", LifecycleOperational, []string{"id", "source_connection_id", "query_signature", "window_start", "window_end", "status"}},
-	{"collection_run_targets", LifecycleOperational, []string{"id", "collection_run_id", "monitor_source_id", "monitor_config_version_id", "target_status"}},
-	{"collection_run_items", LifecycleOperational, []string{"id", "run_id", "external_id", "outcome"}},
+	{"source_checkpoints", LifecycleOperational, []string{"id", "monitor_source_id", "last_successful_run_id", "last_fetched_at", "next_poll_at"}},
+	{"collection_runs", LifecycleOperational, []string{"id", "source_connection_id", "query_signature", "request_cursor", "next_cursor", "etag", "last_modified", "retry_after", "page_count", "window_start", "window_end", "status", "updated_at"}},
+	{"collection_run_targets", LifecycleOperational, []string{"id", "collection_run_id", "monitor_source_id", "monitor_config_version_id", "target_status", "updated_at"}},
+	{"collection_run_items", LifecycleOperational, []string{"id", "run_id", "source_code", "external_id", "content_type", "captured_item_version", "captured_item", "payload_hash", "raw_payload_disposition", "outcome", "observed_at"}},
+	{"collection_run_target_items", LifecycleOperational, []string{"id", "collection_run_target_id", "collection_run_item_id", "outcome"}},
 	{"content_metric_snapshots", LifecycleOperational, []string{"id", "content_id", "captured_at"}},
 	{"event_metric_snapshots", LifecycleOperational, []string{"id", "event_id", "captured_at"}},
 	{"ai_runs", LifecycleOperational, []string{"id", "task_type", "target_id", "input_hash", "status"}},

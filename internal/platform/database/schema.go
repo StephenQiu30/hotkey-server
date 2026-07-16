@@ -19,7 +19,7 @@ const schemaInitLock = "hotkey-schema-init-v1"
 
 var createTablePattern = regexp.MustCompile(`(?im)^\s*CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+([a-z_][a-z0-9_]*)\s*\(`)
 var createIndexPattern = regexp.MustCompile(`(?im)^\s*CREATE\s+(?:UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\s+([a-z_][a-z0-9_]*)\s+ON\s+`)
-var alterTableAddForeignKeyPattern = regexp.MustCompile(`(?is)\bALTER\s+TABLE\s+([a-z_][a-z0-9_]*)\s+ADD\s+CONSTRAINT\s+([a-z_][a-z0-9_]*)\s+(FOREIGN\s+KEY\s*\([^)]+\)\s+REFERENCES\s+[a-z_][a-z0-9_]*\s*\([^)]+\)\s+ON\s+DELETE\s+[a-z_]+)\s*$`)
+var alterTableAddForeignKeyPattern = regexp.MustCompile(`(?is)\bALTER\s+TABLE\s+([a-z_][a-z0-9_]*)\s+ADD\s+CONSTRAINT\s+([a-z_][a-z0-9_]*)\s+(FOREIGN\s+KEY\s*\([^)]+\)\s+REFERENCES\s+[a-z_][a-z0-9_]*\s*\([^)]+\)\s+ON\s+DELETE\s+[a-z_]+(?:\s+[a-z_]+)?)\s*$`)
 var uniqueWordPattern = regexp.MustCompile(`\bunique\b`)
 var checkWordPattern = regexp.MustCompile(`\bcheck\b`)
 var referencesWordPattern = regexp.MustCompile(`\breferences\b`)

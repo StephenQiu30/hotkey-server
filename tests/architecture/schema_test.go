@@ -33,8 +33,11 @@ func TestCompleteSchemaCoversMappedRecords(t *testing.T) {
 		"monitor_config_versions": {"monitor_id", "revision", "state", "config_hash", "published_at"},
 		"monitor_rules":           {"config_version_id"},
 		"monitor_sources":         {"config_version_id", "query_signature"},
-		"collection_runs":         {"source_connection_id", "query_signature", "window_start", "window_end"},
-		"collection_run_targets":  {"collection_run_id", "monitor_source_id", "monitor_config_version_id"},
+		"source_checkpoints":      {"monitor_source_id", "last_successful_run_id", "last_fetched_at", "next_poll_at"},
+		"collection_runs":         {"source_connection_id", "query_signature", "request_cursor", "next_cursor", "etag", "last_modified", "retry_after", "page_count", "window_start", "window_end", "updated_at"},
+		"collection_run_targets":  {"collection_run_id", "monitor_source_id", "monitor_config_version_id", "updated_at"},
+		"collection_run_items":    {"run_id", "source_code", "external_id", "content_type", "captured_item_version", "captured_item", "payload_hash", "raw_payload_disposition", "observed_at"},
+		"collection_run_target_items": {"collection_run_target_id", "collection_run_item_id", "outcome"},
 	} {
 		block := tableBlock(t, schema, table)
 		for _, column := range columns {
@@ -88,6 +91,10 @@ func TestGreenfieldSchemaEnforcesCriticalConstraints(t *testing.T) {
 		"match score range":                     "final_score between 0 and 100",
 		"monitor source idempotency":            "unique (config_version_id, source_connection_id)",
 		"shared collection run idempotency":     "unique (source_connection_id, query_signature, window_start, window_end)",
+		"collection item capture payload":        "captured_item jsonb not null",
+		"collection item payload disposition":    "raw_payload_disposition varchar(32) not null check (raw_payload_disposition in ('discarded', 'captured_item_only'))",
+		"collection target item reconciliation":  "unique (collection_run_target_id, collection_run_item_id)",
+		"checkpoint successful run foreign key":  "foreign key (last_successful_run_id) references collection_runs(id) on delete set null",
 		"delivery idempotency":                  "idempotency_key varchar(128) not null unique",
 		"non-negative content metrics":          "view_count bigint not null default 0 check (view_count >= 0)",
 		"vector extension":                      "create extension if not exists vector",

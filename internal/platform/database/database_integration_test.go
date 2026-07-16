@@ -14,7 +14,7 @@ import (
 
 func TestEmbeddedSchemaCatalogIsComplete(t *testing.T) {
 	tables := EmbeddedSchemaTableNames()
-	if got, want := len(tables), 56; got != want {
+	if got, want := len(tables), 57; got != want {
 		t.Fatalf("embedded table count = %d, want %d", got, want)
 	}
 	if !EmbeddedSchemaContains("CREATE EXTENSION IF NOT EXISTS vector") {
@@ -30,7 +30,7 @@ func TestRuntimeUsesSharedPoolAndVerifiesCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Verify() error = %v", err)
 	}
-	if got, want := len(verification.Tables), 56; got != want {
+	if got, want := len(verification.Tables), 57; got != want {
 		t.Fatalf("verified table count = %d, want %d", got, want)
 	}
 	if verification.CatalogFingerprint == "" {
@@ -254,6 +254,98 @@ VALUES ($1, $2, $3)`, runID, firstMonitorSourceID, secondConfigID); err == nil {
 		t.Fatal("wrong monitor source/config run target = nil error, want composite foreign key rejection")
 	} else {
 		assertPostgreSQLState(t, err, "23503")
+	}
+}
+
+func TestCollectionCaptureSchemaEnforcesDurableReconciliation(t *testing.T) {
+	runtime := openTestRuntime(t)
+	defer func() { _ = runtime.Close() }()
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	suffix := fmt.Sprintf("%d", now.UnixNano())
+	var sourceID, monitorID, configID, monitorSourceID, runID, targetID, itemID int64
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO source_connections (source_type, name, endpoint)
+VALUES ('rss', $1, 'https://example.test/capture')
+RETURNING id`, "collection-capture-source-"+suffix).Scan(&sourceID); err != nil {
+		t.Fatalf("create collection source: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`INSERT INTO monitors (name) VALUES ($1) RETURNING id`, "collection-capture-monitor-"+suffix).Scan(&monitorID); err != nil {
+		t.Fatalf("create collection monitor: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO monitor_config_versions (monitor_id, revision)
+VALUES ($1, 1)
+RETURNING id`, monitorID).Scan(&configID); err != nil {
+		t.Fatalf("create collection monitor config: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO monitor_sources (config_version_id, source_connection_id)
+VALUES ($1, $2)
+RETURNING id`, configID, sourceID).Scan(&monitorSourceID); err != nil {
+		t.Fatalf("create collection monitor source: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO collection_runs (
+    source_connection_id, query_signature, request_cursor, next_cursor, etag, last_modified,
+    retry_after, page_count, window_start, window_end, trigger_type, scheduled_at
+)
+VALUES ($1, $2, 'before', 'after', 'etag', 'last-modified', $3, 1, $3, $4, 'manual', $3)
+RETURNING id`, sourceID, strings.Repeat("d", 64), now, now.Add(time.Minute)).Scan(&runID); err != nil {
+		t.Fatalf("create detailed collection run: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO collection_run_targets (collection_run_id, monitor_source_id, monitor_config_version_id)
+VALUES ($1, $2, $3)
+RETURNING id`, runID, monitorSourceID, configID).Scan(&targetID); err != nil {
+		t.Fatalf("create collection target: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO collection_run_items (
+    run_id, source_code, external_id, content_type, captured_item_version, captured_item,
+    payload_hash, raw_payload_disposition, outcome, observed_at
+)
+VALUES ($1, 'rss', 'item-1', 'article', 'v1', '{"title":"safe"}'::jsonb, $2, 'discarded', 'captured', $3)
+RETURNING id`, runID, strings.Repeat("e", 64), now).Scan(&itemID); err != nil {
+		t.Fatalf("write durable captured collection item: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO collection_run_target_items (collection_run_target_id, collection_run_item_id, outcome)
+VALUES ($1, $2, 'captured')`, targetID, itemID); err != nil {
+		t.Fatalf("write target-item reconciliation: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO source_checkpoints (monitor_source_id, query_hash, last_successful_run_id, last_fetched_at, next_poll_at)
+VALUES ($1, $2, $3, $4, $5)`, monitorSourceID, strings.Repeat("f", 64), runID, now, now.Add(5*time.Minute)); err != nil {
+		t.Fatalf("write successful capture checkpoint: %v", err)
+	}
+
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO collection_run_items (
+    run_id, source_code, external_id, content_type, captured_item_version, captured_item,
+    payload_hash, raw_payload_disposition, outcome, observed_at
+)
+VALUES ($1, 'rss', 'item-1', 'article', 'v1', '{"title":"safe"}'::jsonb, $2, 'discarded', 'captured', $3)`, runID, strings.Repeat("e", 64), now); err == nil {
+		t.Fatal("duplicate run item = nil error, want unique reconciliation key rejection")
+	} else {
+		assertPostgreSQLState(t, err, "23505")
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO collection_run_target_items (collection_run_target_id, collection_run_item_id, outcome)
+VALUES ($1, $2, 'captured')`, targetID, itemID); err == nil {
+		t.Fatal("duplicate target-item reconciliation = nil error, want unique rejection")
+	} else {
+		assertPostgreSQLState(t, err, "23505")
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO collection_run_items (
+    run_id, source_code, external_id, content_type, captured_item_version, captured_item,
+    payload_hash, raw_payload_disposition, outcome, observed_at
+)
+VALUES ($1, 'rss', 'item-invalid', 'article', 'v1', '{"title":"safe"}'::jsonb, $2, 'raw_response', 'captured', $3)`, runID, strings.Repeat("a", 64), now); err == nil {
+		t.Fatal("unapproved raw payload disposition = nil error, want CHECK rejection")
+	} else {
+		assertPostgreSQLState(t, err, "23514")
 	}
 }
 

@@ -24,6 +24,8 @@ DECLARE
   monitor_source_id bigint;
   content_id bigint;
   collection_run_id bigint;
+  collection_run_target_id bigint;
+  collection_run_item_id bigint;
 BEGIN
   INSERT INTO source_connections (source_type, name, endpoint)
     VALUES ('rss', 'schema-source-' || suffix, 'https://example.test/schema')
@@ -94,6 +96,40 @@ BEGIN
       VALUES (collection_run_id, monitor_source_id, second_config_id);
     RAISE EXCEPTION 'missing monitor source/config composite foreign key';
   EXCEPTION WHEN foreign_key_violation THEN
+    NULL;
+  END;
+
+  INSERT INTO collection_run_targets (collection_run_id, monitor_source_id, monitor_config_version_id)
+    VALUES (collection_run_id, monitor_source_id, first_config_id)
+    RETURNING id INTO collection_run_target_id;
+  INSERT INTO collection_run_items (
+      run_id, source_code, external_id, content_type, captured_item_version, captured_item,
+      payload_hash, raw_payload_disposition, outcome, observed_at
+  ) VALUES (
+      collection_run_id, 'rss', 'schema-item-' || suffix, 'article', 'v1', '{"title":"safe"}'::jsonb,
+      repeat('d', 64), 'discarded', 'captured', now()
+  ) RETURNING id INTO collection_run_item_id;
+  INSERT INTO collection_run_target_items (collection_run_target_id, collection_run_item_id, outcome)
+    VALUES (collection_run_target_id, collection_run_item_id, 'captured');
+  INSERT INTO source_checkpoints (monitor_source_id, query_hash, last_successful_run_id, last_fetched_at, next_poll_at)
+    VALUES (monitor_source_id, repeat('e', 64), collection_run_id, now(), now() + interval '5 minutes');
+  BEGIN
+    INSERT INTO collection_run_target_items (collection_run_target_id, collection_run_item_id, outcome)
+      VALUES (collection_run_target_id, collection_run_item_id, 'captured');
+    RAISE EXCEPTION 'missing collection target-item reconciliation uniqueness';
+  EXCEPTION WHEN unique_violation THEN
+    NULL;
+  END;
+  BEGIN
+    INSERT INTO collection_run_items (
+        run_id, source_code, external_id, content_type, captured_item_version, captured_item,
+        payload_hash, raw_payload_disposition, outcome, observed_at
+    ) VALUES (
+        collection_run_id, 'rss', 'schema-invalid-item-' || suffix, 'article', 'v1', '{"title":"safe"}'::jsonb,
+        repeat('f', 64), 'raw_response', 'captured', now()
+    );
+    RAISE EXCEPTION 'missing raw payload disposition check';
+  EXCEPTION WHEN check_violation THEN
     NULL;
   END;
 
@@ -198,8 +234,8 @@ $$;
 SQL
 
 application_tables=$(psql "$dsn" -Atqc "SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tablename NOT LIKE 'river_%'")
-if test "$application_tables" -ne 51; then
-  printf 'application table count = %s, want 51\n' "$application_tables" >&2
+if test "$application_tables" -ne 52; then
+  printf 'application table count = %s, want 52\n' "$application_tables" >&2
   exit 1
 fi
 
