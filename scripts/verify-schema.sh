@@ -109,13 +109,13 @@ BEGIN
       collection_run_id, 'rss', 'schema-item-' || suffix, 'article', 'v1', '{"title":"safe"}'::jsonb,
       repeat('d', 64), 'discarded', 'captured', now()
   ) RETURNING id INTO collection_run_item_id;
-  INSERT INTO collection_run_target_items (collection_run_target_id, collection_run_item_id, outcome)
-    VALUES (collection_run_target_id, collection_run_item_id, 'captured');
+  INSERT INTO collection_run_target_items (collection_run_id, collection_run_target_id, collection_run_item_id, outcome)
+    VALUES (collection_run_id, collection_run_target_id, collection_run_item_id, 'captured');
   INSERT INTO source_checkpoints (monitor_source_id, query_hash, last_successful_run_id, last_fetched_at, next_poll_at)
     VALUES (monitor_source_id, repeat('e', 64), collection_run_id, now(), now() + interval '5 minutes');
   BEGIN
-    INSERT INTO collection_run_target_items (collection_run_target_id, collection_run_item_id, outcome)
-      VALUES (collection_run_target_id, collection_run_item_id, 'captured');
+    INSERT INTO collection_run_target_items (collection_run_id, collection_run_target_id, collection_run_item_id, outcome)
+      VALUES (collection_run_id, collection_run_target_id, collection_run_item_id, 'captured');
     RAISE EXCEPTION 'missing collection target-item reconciliation uniqueness';
   EXCEPTION WHEN unique_violation THEN
     NULL;

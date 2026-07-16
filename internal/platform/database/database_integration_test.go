@@ -310,14 +310,46 @@ RETURNING id`, runID, strings.Repeat("e", 64), now).Scan(&itemID); err != nil {
 		t.Fatalf("write durable captured collection item: %v", err)
 	}
 	if _, err := runtime.SQL.Exec(`
-INSERT INTO collection_run_target_items (collection_run_target_id, collection_run_item_id, outcome)
-VALUES ($1, $2, 'captured')`, targetID, itemID); err != nil {
+INSERT INTO collection_run_target_items (collection_run_id, collection_run_target_id, collection_run_item_id, outcome)
+VALUES ($1, $2, $3, 'captured')`, runID, targetID, itemID); err != nil {
 		t.Fatalf("write target-item reconciliation: %v", err)
 	}
 	if _, err := runtime.SQL.Exec(`
 INSERT INTO source_checkpoints (monitor_source_id, query_hash, last_successful_run_id, last_fetched_at, next_poll_at)
 VALUES ($1, $2, $3, $4, $5)`, monitorSourceID, strings.Repeat("f", 64), runID, now, now.Add(5*time.Minute)); err != nil {
 		t.Fatalf("write successful capture checkpoint: %v", err)
+	}
+	var otherRunID, otherTargetID, otherItemID int64
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO collection_runs (source_connection_id, query_signature, window_start, window_end, trigger_type, scheduled_at)
+VALUES ($1, $2, $3, $4, 'manual', $3)
+RETURNING id`, sourceID, strings.Repeat("b", 64), now, now.Add(time.Minute)).Scan(&otherRunID); err != nil {
+		t.Fatalf("create second collection run: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO collection_run_targets (collection_run_id, monitor_source_id, monitor_config_version_id)
+VALUES ($1, $2, $3)
+RETURNING id`, otherRunID, monitorSourceID, configID).Scan(&otherTargetID); err != nil {
+		t.Fatalf("create second collection target: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO collection_run_items (
+    run_id, source_code, external_id, content_type, captured_item_version, captured_item,
+    payload_hash, raw_payload_disposition, outcome, observed_at
+)
+VALUES ($1, 'rss', 'item-2', 'article', 'v1', '{"title":"other"}'::jsonb, $2, 'discarded', 'captured', $3)
+RETURNING id`, otherRunID, strings.Repeat("c", 64), now).Scan(&otherItemID); err != nil {
+		t.Fatalf("write second collection item: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO collection_run_target_items (collection_run_id, collection_run_target_id, collection_run_item_id, outcome)
+VALUES ($1, $2, $3, 'captured')`, runID, targetID, otherItemID); err == nil {
+		t.Fatal("cross-run target-item reconciliation = nil error, want run-alignment foreign key rejection")
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO collection_run_target_items (collection_run_id, collection_run_target_id, collection_run_item_id, outcome)
+VALUES ($1, $2, $3, 'captured')`, otherRunID, otherTargetID, itemID); err == nil {
+		t.Fatal("reverse cross-run target-item reconciliation = nil error, want run-alignment foreign key rejection")
 	}
 
 	if _, err := runtime.SQL.Exec(`
@@ -331,8 +363,8 @@ VALUES ($1, 'rss', 'item-1', 'article', 'v1', '{"title":"safe"}'::jsonb, $2, 'di
 		assertPostgreSQLState(t, err, "23505")
 	}
 	if _, err := runtime.SQL.Exec(`
-INSERT INTO collection_run_target_items (collection_run_target_id, collection_run_item_id, outcome)
-VALUES ($1, $2, 'captured')`, targetID, itemID); err == nil {
+INSERT INTO collection_run_target_items (collection_run_id, collection_run_target_id, collection_run_item_id, outcome)
+VALUES ($1, $2, $3, 'captured')`, runID, targetID, itemID); err == nil {
 		t.Fatal("duplicate target-item reconciliation = nil error, want unique rejection")
 	} else {
 		assertPostgreSQLState(t, err, "23505")

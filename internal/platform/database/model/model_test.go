@@ -15,7 +15,7 @@ func TestSpecsHaveUniqueTablesAndColumns(t *testing.T) {
 		"collection_runs":             {"id", "source_connection_id", "query_signature", "request_cursor", "next_cursor", "etag", "last_modified", "retry_after", "page_count", "window_start", "window_end", "status", "updated_at"},
 		"collection_run_targets":      {"id", "collection_run_id", "monitor_source_id", "monitor_config_version_id", "target_status", "updated_at"},
 		"collection_run_items":        {"id", "run_id", "source_code", "external_id", "content_type", "captured_item_version", "captured_item", "payload_hash", "raw_payload_disposition", "outcome", "observed_at"},
-		"collection_run_target_items": {"id", "collection_run_target_id", "collection_run_item_id", "outcome"},
+		"collection_run_target_items": {"id", "collection_run_id", "collection_run_target_id", "collection_run_item_id", "outcome"},
 	}
 	for _, spec := range All() {
 		if spec.Table == "" || seen[spec.Table] {
@@ -45,7 +45,7 @@ func TestCollectionCaptureSpecsCoverDurableRunFacts(t *testing.T) {
 		"collection_runs":             {"id", "source_connection_id", "query_signature", "request_cursor", "next_cursor", "etag", "last_modified", "retry_after", "page_count", "window_start", "window_end", "status", "updated_at"},
 		"collection_run_targets":      {"id", "collection_run_id", "monitor_source_id", "monitor_config_version_id", "target_status", "updated_at"},
 		"collection_run_items":        {"id", "run_id", "source_code", "external_id", "content_type", "captured_item_version", "captured_item", "payload_hash", "raw_payload_disposition", "outcome", "observed_at"},
-		"collection_run_target_items": {"id", "collection_run_target_id", "collection_run_item_id", "outcome"},
+		"collection_run_target_items": {"id", "collection_run_id", "collection_run_target_id", "collection_run_item_id", "outcome"},
 	}
 	gotColumns := make(map[string][]string, len(wantColumns))
 	for _, spec := range All() {

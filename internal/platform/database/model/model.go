@@ -262,10 +262,10 @@ type CollectionRunItem struct {
 }
 type CollectionRunTargetItem struct {
 	OperationalRecord
-	CollectionRunTargetID, CollectionRunItemID int64
-	Outcome                                    string
-	ReasonCode                                 *string
-	CreatedAt                                  time.Time
+	CollectionRunID, CollectionRunTargetID, CollectionRunItemID int64
+	Outcome                                                     string
+	ReasonCode                                                  *string
+	CreatedAt                                                   time.Time
 }
 type ContentMetricSnapshot struct {
 	OperationalRecord
@@ -357,7 +357,7 @@ var specs = []Spec{
 	{"collection_runs", LifecycleOperational, []string{"id", "source_connection_id", "query_signature", "request_cursor", "next_cursor", "etag", "last_modified", "retry_after", "page_count", "window_start", "window_end", "status", "updated_at"}},
 	{"collection_run_targets", LifecycleOperational, []string{"id", "collection_run_id", "monitor_source_id", "monitor_config_version_id", "target_status", "updated_at"}},
 	{"collection_run_items", LifecycleOperational, []string{"id", "run_id", "source_code", "external_id", "content_type", "captured_item_version", "captured_item", "payload_hash", "raw_payload_disposition", "outcome", "observed_at"}},
-	{"collection_run_target_items", LifecycleOperational, []string{"id", "collection_run_target_id", "collection_run_item_id", "outcome"}},
+	{"collection_run_target_items", LifecycleOperational, []string{"id", "collection_run_id", "collection_run_target_id", "collection_run_item_id", "outcome"}},
 	{"content_metric_snapshots", LifecycleOperational, []string{"id", "content_id", "captured_at"}},
 	{"event_metric_snapshots", LifecycleOperational, []string{"id", "event_id", "captured_at"}},
 	{"ai_runs", LifecycleOperational, []string{"id", "task_type", "target_id", "input_hash", "status"}},

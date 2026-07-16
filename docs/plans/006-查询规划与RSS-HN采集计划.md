@@ -8,7 +8,7 @@ canonical_path: docs/plans/006-查询规划与RSS-HN采集计划.md
 status: accepted
 execution_status: in_progress
 review_status: approved
-version: v1.9
+version: v1.10
 owner: HotKey Server Team
 inputs:
   - docs/prd/006-查询规划与RSS-HN采集.md
@@ -76,13 +76,13 @@ depends_on: [PLAN-005]
 
 **Consumes：** Design-003 的 Schema/生命周期契约、Design-005/012 的 shared request、target capture 与 checkpoint 规则；现有 PLAN-005 已建的基础表。
 
-**Produces：** `collection_runs` 保存 request/response cursor、ETag、Last-Modified、page count、retry-after、错误分类和更新时间；target 保存捕获状态/计数/更新时间；item 保存 source code、content type、captured item version、可重放且脱敏的 `captured_item` JSON、payload hash、raw payload disposition、捕获结果和去重唯一键；`collection_run_target_items` 保存每个 target 对每个 item 的 capture reconciliation；checkpoint 保存最后成功 run 与最后 fetch 时间。
+**Produces：** `collection_runs` 保存 request/response cursor、ETag、Last-Modified、page count、retry-after、错误分类和更新时间；target 保存捕获状态/计数/更新时间；item 保存 source code、content type、captured item version、可重放且脱敏的 `captured_item` JSON、payload hash、raw payload disposition、捕获结果和去重唯一键；`collection_run_target_items` 保存每个 target 对每个 item 的 capture reconciliation，并以 run ID 和两条复合外键拒绝 target/item 跨 shared run 关联；checkpoint 保存最后成功 run 与最后 fetch 时间。
 
 **Files：** Modify `docs/design/003-数据库与数据生命周期设计.md`, `db/schema.sql`, `internal/platform/database/model/model.go`, `internal/platform/database/model/model_test.go`, `internal/platform/database/database_integration_test.go`, `tests/architecture/schema_test.go`, `scripts/verify-schema.sh`.
 
-- [ ] **RED：** 添加记录映射与真实 PostgreSQL 测试，要求上述 fields、`source_connection_id + query_signature + window` 唯一键、`run_id + external_id` 唯一键、captured item version/JSON/raw disposition、`collection_run_target_items` 的 target/item 唯一键、target immutable config 外键和 checkpoint 乐观版本；现有 Schema 必须因字段/约束缺失失败。
+- [ ] **RED：** 添加记录映射与真实 PostgreSQL 测试，要求上述 fields、`source_connection_id + query_signature + window` 唯一键、`run_id + external_id` 唯一键、captured item version/JSON/raw disposition、`collection_run_target_items` 的 target/item 唯一键及同 run 复合外键、target immutable config 外键和 checkpoint 乐观版本；现有 Schema 必须因字段/约束缺失失败。
 - [ ] **运行 RED：** `HOTKEY_TEST_DSN='postgres://hotkey:hotkey@127.0.0.1:5432/hotkey_test?sslmode=disable' go test ./internal/platform/database/model ./internal/platform/database ./tests/architecture -run 'TestCollection|TestCompleteSchemaCoversMappedRecords|TestGreenfieldSchemaEnforcesCriticalConstraints' -count=1`。
-- [ ] **GREEN：** 只修改完整 `db/schema.sql` 与对应 records/`All()`/表数断言；capture payload 只保存已规范化的 SourceItem envelope，原始第三方响应字节不进 PostgreSQL；空库二次执行后验证同一 run 复用、跨 target 隔离、item 幂等、target-item 对账和失败 target 不推进 checkpoint。
+- [ ] **GREEN：** 只修改完整 `db/schema.sql` 与对应 records/`All()`/表数断言；capture payload 只保存已规范化的 SourceItem envelope，原始第三方响应字节不进 PostgreSQL；空库二次执行后验证同一 run 唯一、跨 target 隔离、item 幂等、target-item 对账只可连接同 run 的 target/item；target 成败与 checkpoint 推进的应用状态机由 Task 6 实现。
 - [ ] **重构：** 把 collection record mapping 与业务状态转换保持在 Source 模块，模型只保存列映射；不创建 migration、AutoMigrate 或临时 Schema。
 - [ ] **回归：** `HOTKEY_TEST_DSN='postgres://hotkey:hotkey@127.0.0.1:5432/hotkey_test?sslmode=disable' sh scripts/verify-schema.sh`、`HOTKEY_TEST_DSN='postgres://hotkey:hotkey@127.0.0.1:5432/hotkey_test?sslmode=disable' sh scripts/verify-database-runtime.sh`。
 - [ ] **提交：** `git add docs/design/003-数据库与数据生命周期设计.md db/schema.sql internal/platform/database/model internal/platform/database/database_integration_test.go tests/architecture/schema_test.go scripts/verify-schema.sh && git commit -m "feat: add collection capture schema"`。
@@ -236,3 +236,4 @@ depends_on: [PLAN-005]
 | v1.7 | 2026-07-16 | 按独立评审把 Design-003 的 Schema/生命周期事实纳入输入、Task 1 文件范围与提交边界。 |
 | v1.8 | 2026-07-16 | 独立审核通过，切换为 accepted/approved/ready。 |
 | v1.9 | 2026-07-16 | 启动 PLAN-006 实施，当前执行 Task 1。 |
+| v1.10 | 2026-07-16 | Task 1 独立复核补充同 run target-item 对账的复合外键与 PostgreSQL 负例。 |

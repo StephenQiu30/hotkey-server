@@ -37,7 +37,7 @@ func TestCompleteSchemaCoversMappedRecords(t *testing.T) {
 		"collection_runs":         {"source_connection_id", "query_signature", "request_cursor", "next_cursor", "etag", "last_modified", "retry_after", "page_count", "window_start", "window_end", "updated_at"},
 		"collection_run_targets":  {"collection_run_id", "monitor_source_id", "monitor_config_version_id", "updated_at"},
 		"collection_run_items":    {"run_id", "source_code", "external_id", "content_type", "captured_item_version", "captured_item", "payload_hash", "raw_payload_disposition", "observed_at"},
-		"collection_run_target_items": {"collection_run_target_id", "collection_run_item_id", "outcome"},
+		"collection_run_target_items": {"collection_run_id", "collection_run_target_id", "collection_run_item_id", "outcome"},
 	} {
 		block := tableBlock(t, schema, table)
 		for _, column := range columns {
@@ -94,6 +94,10 @@ func TestGreenfieldSchemaEnforcesCriticalConstraints(t *testing.T) {
 		"collection item capture payload":        "captured_item jsonb not null",
 		"collection item payload disposition":    "raw_payload_disposition varchar(32) not null check (raw_payload_disposition in ('discarded', 'captured_item_only'))",
 		"collection target item reconciliation":  "unique (collection_run_target_id, collection_run_item_id)",
+		"collection target run alignment key":    "unique (id, collection_run_id)",
+		"collection item run alignment key":      "unique (id, run_id)",
+		"collection target item target run key":  "foreign key (collection_run_target_id, collection_run_id) references collection_run_targets(id, collection_run_id) on delete cascade",
+		"collection target item item run key":     "foreign key (collection_run_item_id, collection_run_id) references collection_run_items(id, run_id) on delete cascade",
 		"checkpoint successful run foreign key":  "foreign key (last_successful_run_id) references collection_runs(id) on delete set null",
 		"delivery idempotency":                  "idempotency_key varchar(128) not null unique",
 		"non-negative content metrics":          "view_count bigint not null default 0 check (view_count >= 0)",
