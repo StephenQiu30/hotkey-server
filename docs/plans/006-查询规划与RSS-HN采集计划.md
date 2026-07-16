@@ -8,7 +8,7 @@ canonical_path: docs/plans/006-查询规划与RSS-HN采集计划.md
 status: accepted
 execution_status: in_progress
 review_status: approved
-version: v1.12
+version: v1.13
 owner: HotKey Server Team
 inputs:
   - docs/prd/006-查询规划与RSS-HN采集.md
@@ -99,7 +99,7 @@ depends_on: [PLAN-005]
 
 - [ ] **RED：** 覆盖 Fetch request 必填 window/limit、SourceItem stable external ID、CapturedItem body/metrics 脱敏和 version、raw disposition、错误分类、target 与 published config 归属、draft/paused/disabled source 排除，以及 source 不直接查询 Monitor 表的架构断言。
 - [ ] **运行 RED：** `go test ./internal/modules/source/domain ./internal/modules/monitor/infrastructure/postgres ./tests/architecture -run 'TestCollection|TestPublishedCollection|TestSource' -count=1` 必须因契约或 adapter 缺失失败。
-- [ ] **GREEN：** 定义纯 domain values/ports；Monitor PostgreSQL adapter 只读取 active published Monitor、published config、enabled MonitorSource 和安全的 SourceConnection ID/签名/词项/locale/interval/checkpoint，不创建或更新任何事实。
+- [ ] **GREEN：** 定义纯 domain values/ports；Monitor PostgreSQL adapter 只读取 active published Monitor、published config、enabled MonitorSource、enabled/non-deleted SourceConnection 的资格谓词和安全的 SourceConnection ID/签名/词项/locale/interval/checkpoint，不创建或更新任何事实，也不投影 endpoint/config/credential。
 - [ ] **重构：** 让 Source application 依赖自己的 port interface，Bootstrap 才连接 Monitor adapter；禁止 Source infrastructure 导入 Monitor PostgreSQL record。
 - [ ] **回归：** `go test -race ./internal/modules/source/domain ./internal/modules/monitor/infrastructure/postgres ./tests/architecture -count=1`。
 - [ ] **提交：** `git add internal/modules/source/domain internal/modules/monitor/domain internal/modules/monitor/infrastructure/postgres tests/architecture && git commit -m "feat: define collection source contracts"`。
@@ -240,3 +240,4 @@ depends_on: [PLAN-005]
 | v1.10 | 2026-07-16 | Task 1 独立复核补充同 run target-item 对账的复合外键与 PostgreSQL 负例。 |
 | v1.11 | 2026-07-16 | 记录 Task 1 的 RED/GREEN、完整回归、提交与独立复核通过证据。 |
 | v1.12 | 2026-07-16 | Task 2 实施前收紧文件边界：删除无消费者的 Monitor domain 端口变更，保持 Source 拥有 published target reader 契约。 |
+| v1.13 | 2026-07-16 | Task 2 复审补齐 SourceConnection 启用/归档资格谓词，明确 adapter 仅为过滤 join 该表且不投影敏感字段。 |

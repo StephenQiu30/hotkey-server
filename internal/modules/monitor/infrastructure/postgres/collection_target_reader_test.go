@@ -16,11 +16,13 @@ func TestPublishedCollectionTargetReaderReturnsOnlyDueActivePublishedEnabledTarg
 	defer func() { _ = runtime.Close() }()
 	now := time.Date(2026, time.July, 16, 8, 0, 0, 0, time.UTC)
 
-	due := seedCollectionTarget(t, runtime.SQL, "due", "active", true, true, now.Add(-time.Minute))
-	_ = seedCollectionTarget(t, runtime.SQL, "paused", "paused", true, true, now.Add(-time.Minute))
-	_ = seedCollectionTarget(t, runtime.SQL, "disabled", "active", true, false, now.Add(-time.Minute))
-	_ = seedCollectionTarget(t, runtime.SQL, "draft", "draft", false, true, now.Add(-time.Minute))
-	_ = seedCollectionTarget(t, runtime.SQL, "future", "active", true, true, now.Add(time.Minute))
+	due := seedCollectionTarget(t, runtime.SQL, "due", "active", true, true, true, false, now.Add(-time.Minute))
+	_ = seedCollectionTarget(t, runtime.SQL, "paused", "paused", true, true, true, false, now.Add(-time.Minute))
+	_ = seedCollectionTarget(t, runtime.SQL, "disabled-association", "active", true, false, true, false, now.Add(-time.Minute))
+	_ = seedCollectionTarget(t, runtime.SQL, "draft", "draft", false, true, true, false, now.Add(-time.Minute))
+	_ = seedCollectionTarget(t, runtime.SQL, "future", "active", true, true, true, false, now.Add(time.Minute))
+	_ = seedCollectionTarget(t, runtime.SQL, "disabled-connection", "active", true, true, false, false, now.Add(-time.Minute))
+	_ = seedCollectionTarget(t, runtime.SQL, "archived-connection", "active", true, true, true, true, now.Add(-time.Minute))
 
 	var before int
 	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM collection_runs`).Scan(&before); err != nil {
@@ -62,11 +64,16 @@ type seededCollectionTarget struct {
 func seedCollectionTarget(t *testing.T, runtime interface {
 	QueryRow(string, ...any) *sql.Row
 	Exec(string, ...any) (sql.Result, error)
-}, suffix, monitorStatus string, published, sourceEnabled bool, nextPollAt time.Time) seededCollectionTarget {
+}, suffix, monitorStatus string, published, monitorSourceEnabled, sourceConnectionEnabled, sourceConnectionDeleted bool, nextPollAt time.Time) seededCollectionTarget {
 	t.Helper()
 	var result seededCollectionTarget
-	if err := runtime.QueryRow(`INSERT INTO source_connections (source_type, name, endpoint, auth_type, config, enabled, health_status) VALUES ('rss', $1, 'https://feeds.example.test/collection', 'none', '{}'::jsonb, true, 'unknown') RETURNING id`, "collection source "+suffix).Scan(&result.sourceID); err != nil {
+	if err := runtime.QueryRow(`INSERT INTO source_connections (source_type, name, endpoint, auth_type, config, enabled, health_status) VALUES ('rss', $1, 'https://feeds.example.test/collection', 'none', '{}'::jsonb, $2, 'unknown') RETURNING id`, "collection source "+suffix, sourceConnectionEnabled).Scan(&result.sourceID); err != nil {
 		t.Fatalf("seed %s source: %v", suffix, err)
+	}
+	if sourceConnectionDeleted {
+		if _, err := runtime.Exec(`UPDATE source_connections SET enabled = false, deleted_at = now() WHERE id = $1`, result.sourceID); err != nil {
+			t.Fatalf("archive %s source: %v", suffix, err)
+		}
 	}
 	var monitorID int64
 	if err := runtime.QueryRow(`INSERT INTO monitors (name, status) VALUES ($1, 'draft') RETURNING id`, "collection monitor "+suffix).Scan(&monitorID); err != nil {
@@ -78,7 +85,7 @@ func seedCollectionTarget(t *testing.T, runtime interface {
 	if _, err := runtime.Exec(`UPDATE monitors SET draft_config_version_id = $1 WHERE id = $2`, result.configID, monitorID); err != nil {
 		t.Fatalf("set %s draft pointer: %v", suffix, err)
 	}
-	if err := runtime.QueryRow(`INSERT INTO monitor_sources (config_version_id, source_connection_id, query_signature, enabled) VALUES ($1, $2, $3, $4) RETURNING id`, result.configID, result.sourceID, strings.Repeat("a", 64), sourceEnabled).Scan(&result.monitorSourceID); err != nil {
+	if err := runtime.QueryRow(`INSERT INTO monitor_sources (config_version_id, source_connection_id, query_signature, enabled) VALUES ($1, $2, $3, $4) RETURNING id`, result.configID, result.sourceID, strings.Repeat("a", 64), monitorSourceEnabled).Scan(&result.monitorSourceID); err != nil {
 		t.Fatalf("seed %s monitor source: %v", suffix, err)
 	}
 	for _, rule := range []struct {

@@ -14,7 +14,9 @@ import (
 
 // PublishedCollectionTargetReader is the Monitor-owned read adapter for
 // Source collection planning. It reads only immutable published configuration,
-// enabled Monitor associations and their checkpoints; it neither exposes
+// enabled Monitor associations and their checkpoints. The SourceConnection
+// join is eligibility-only (enabled and not archived); no SourceConnection
+// fields other than the association's ID are projected. It neither exposes
 // Monitor records nor creates or changes collection facts.
 type PublishedCollectionTargetReader struct{ runtime *database.Runtime }
 
@@ -60,6 +62,8 @@ JOIN monitor_config_versions AS config_version
   ON config_version.id = monitor.published_config_version_id
 JOIN monitor_sources AS monitor_source
   ON monitor_source.config_version_id = config_version.id
+JOIN source_connections AS source_connection
+  ON source_connection.id = monitor_source.source_connection_id
 JOIN source_checkpoints AS checkpoint
   ON checkpoint.monitor_source_id = monitor_source.id
 LEFT JOIN monitor_rules AS rule
@@ -69,6 +73,8 @@ LEFT JOIN monitor_rules AS rule
 WHERE monitor.status = 'active'
   AND config_version.state = 'published'
   AND monitor_source.enabled
+  AND source_connection.enabled
+  AND source_connection.deleted_at IS NULL
   AND monitor_source.query_signature IS NOT NULL
   AND checkpoint.next_poll_at <= $1
 ORDER BY monitor_source.id ASC, rule.priority DESC, rule.id ASC`, now.UTC())
