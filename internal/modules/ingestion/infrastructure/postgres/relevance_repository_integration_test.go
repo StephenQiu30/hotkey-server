@@ -186,7 +186,7 @@ func TestPlan009FeedbackRepositoryUsesOwnVersion(t *testing.T) {
 	if err != nil || createdSuggestion || updatedSuggestion.ID != suggestion.ID || updatedSuggestion.Version != 2 || updatedSuggestion.SupportCount != 3 {
 		t.Fatalf("UpsertPendingSuggestion(update) suggestion/created/error = %#v / %t / %v", updatedSuggestion, createdSuggestion, err)
 	}
-	reviewed, err := repository.ReviewSuggestion(context.Background(), suggestion.ID, fixture.reviewerID, updatedSuggestion.Version, ingestiondomain.SuggestionStatusApproved)
+	reviewed, err := repository.ReviewSuggestion(context.Background(), fixture.monitorID, suggestion.ID, fixture.reviewerID, updatedSuggestion.Version, ingestiondomain.SuggestionStatusApproved)
 	if err != nil || reviewed.Version != 3 || reviewed.Status != ingestiondomain.SuggestionStatusApproved {
 		t.Fatalf("ReviewSuggestion() suggestion/error = %#v / %v", reviewed, err)
 	}
@@ -200,6 +200,54 @@ func TestPlan009FeedbackRepositoryUsesOwnVersion(t *testing.T) {
 	suggestionInput.SupportCount = 1
 	if _, _, err := repository.UpsertPendingSuggestion(context.Background(), suggestionInput); !errors.Is(err, sharedrepository.ErrInvalidInput) {
 		t.Fatalf("UpsertPendingSuggestion(insufficient support) error = %v, want invalid input", err)
+	}
+}
+
+func TestPlan009FeedbackRefreshAndEvaluationStayMonitorLocal(t *testing.T) {
+	runtime, fixture := openRelevanceRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	repository := ingestionpostgres.NewRelevanceRepository(runtime)
+
+	first, _, err := repository.UpsertSnapshot(context.Background(), relevanceSnapshotInput(fixture, strings.Repeat("1", 64)))
+	if err != nil {
+		t.Fatalf("create first snapshot: %v", err)
+	}
+	secondContentID := createRelevanceContent(t, runtime, fixture.sourceID, "refresh-second")
+	secondInput := relevanceSnapshotInput(fixture, strings.Repeat("2", 64))
+	secondInput.ContentID = secondContentID
+	secondInput.RuleScore, secondInput.FinalScore, secondInput.SemanticScore = 80, 80, float64Pointer(80)
+	secondInput.Explanation = relevanceExplanation(80)
+	second, _, err := repository.UpsertSnapshot(context.Background(), secondInput)
+	if err != nil {
+		t.Fatalf("create second snapshot: %v", err)
+	}
+	for _, snapshot := range []ingestiondomain.RelevanceSnapshot{first, second} {
+		if _, err := repository.UpsertFeedback(context.Background(), ingestiondomain.RelevanceFeedbackInput{
+			MonitorID: fixture.monitorID, MonitorConfigVersionID: fixture.configID, ContentID: snapshot.ContentID,
+			MonitorMatchID: &snapshot.ID, ActorUserID: fixture.actorID, FeedbackType: ingestiondomain.FeedbackTypeRelevant,
+		}); err != nil {
+			t.Fatalf("create feedback for snapshot %d: %v", snapshot.ID, err)
+		}
+	}
+
+	refreshed, err := repository.RefreshSuggestions(context.Background(), fixture.monitorID)
+	if err != nil || refreshed != 1 {
+		t.Fatalf("RefreshSuggestions() count/error = %d / %v, want 1/nil", refreshed, err)
+	}
+	suggestions, err := repository.ListSuggestions(context.Background(), fixture.monitorID, ingestiondomain.RelevanceSuggestionListQuery{Limit: 10})
+	if err != nil || len(suggestions.Items) != 1 || suggestions.Items[0].SuggestionType != ingestiondomain.SuggestionTypeAddTerm || suggestions.Items[0].Value != "OpenAI" || suggestions.Items[0].SupportCount != 2 {
+		t.Fatalf("ListSuggestions() page/error = %#v / %v", suggestions, err)
+	}
+	evaluations, err := repository.FeedbackEvaluations(context.Background(), fixture.monitorID)
+	if err != nil || len(evaluations) != 1 || evaluations[0].ScoringVersion != "relevance-v1" || evaluations[0].PrecisionAt20 != 100 || evaluations[0].ExclusionFalsePositiveRate != 0 || evaluations[0].EvaluatedCount != 2 {
+		t.Fatalf("FeedbackEvaluations() values/error = %#v / %v", evaluations, err)
+	}
+	var ruleCount int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM monitor_rules WHERE config_version_id = $1`, fixture.configID).Scan(&ruleCount); err != nil {
+		t.Fatalf("count rules after refresh: %v", err)
+	}
+	if ruleCount != 0 {
+		t.Fatalf("RefreshSuggestions() wrote monitor rules = %d", ruleCount)
 	}
 }
 

@@ -133,6 +133,16 @@ type RelevanceSnapshotPage struct {
 	Next  *RelevanceSnapshotCursor
 }
 
+// RelevanceEvaluation is a monitor-local, read-only aggregate. It contains
+// no user identity or raw feedback text, keeping it safe for the
+// administrator-only evaluation endpoint.
+type RelevanceEvaluation struct {
+	ScoringVersion             string
+	PrecisionAt20              float64
+	ExclusionFalsePositiveRate float64
+	EvaluatedCount             int64
+}
+
 // SuccessfulReviewInput is separate from snapshot creation because the AI
 // run needs the persisted monitor_match ID as its target before its successful
 // provenance can be attached. It never changes the deterministic rule score.
@@ -246,6 +256,30 @@ type RelevanceSuggestion struct {
 	Status                                         SuggestionStatus
 	ReviewedByUserID                               *int64
 	CreatedAt, UpdatedAt                           time.Time
+}
+
+type RelevanceSuggestionCursor struct {
+	UpdatedAt time.Time
+	ID        int64
+}
+
+type RelevanceSuggestionListQuery struct {
+	Limit  int
+	Status *SuggestionStatus
+	Cursor *RelevanceSuggestionCursor
+}
+
+type RelevanceSuggestionPage struct {
+	Items []RelevanceSuggestion
+	Next  *RelevanceSuggestionCursor
+}
+
+func (query RelevanceSuggestionListQuery) Validate() error {
+	if query.Limit < 1 || query.Limit > 100 || query.Status != nil && !query.Status.Valid() ||
+		query.Cursor != nil && (query.Cursor.ID <= 0 || query.Cursor.UpdatedAt.IsZero()) {
+		return fmt.Errorf("invalid relevance suggestion list query")
+	}
+	return nil
 }
 
 func validRelevanceScore(score float64) bool {

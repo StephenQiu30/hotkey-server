@@ -241,6 +241,51 @@ LIMIT $5`, monitorID, decision, cursorScore, cursorID, query.Limit+1)
 	return page, nil
 }
 
+func (repository *RelevanceRepository) GetActiveSnapshot(ctx context.Context, monitorID, snapshotID int64) (ingestiondomain.RelevanceSnapshot, error) {
+	if !repository.available() {
+		return ingestiondomain.RelevanceSnapshot{}, sharedrepository.ErrUnavailable
+	}
+	if monitorID <= 0 || snapshotID <= 0 {
+		return ingestiondomain.RelevanceSnapshot{}, fmt.Errorf("%w: relevance snapshot reference", sharedrepository.ErrInvalidInput)
+	}
+	snapshot, err := scanSnapshot(repository.queryRow(ctx, `
+SELECT `+snapshotColumns("match")+`
+FROM monitor_matches AS match
+JOIN contents AS content ON content.id = match.content_id
+WHERE match.monitor_id = $1 AND match.id = $2
+  AND content.content_status = 'active' AND content.deleted_at IS NULL`, monitorID, snapshotID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return ingestiondomain.RelevanceSnapshot{}, fmt.Errorf("%w: active relevance snapshot", sharedrepository.ErrNotFound)
+	}
+	if err != nil {
+		return ingestiondomain.RelevanceSnapshot{}, sharedrepository.MapError(err)
+	}
+	return snapshot, nil
+}
+
+func (repository *RelevanceRepository) CurrentPublishedMonitorConfig(ctx context.Context, monitorID int64) (int64, error) {
+	if !repository.available() {
+		return 0, sharedrepository.ErrUnavailable
+	}
+	if monitorID <= 0 {
+		return 0, fmt.Errorf("%w: monitor id", sharedrepository.ErrInvalidInput)
+	}
+	var configID int64
+	err := repository.queryRow(ctx, `
+SELECT config.id
+FROM monitors AS monitor
+JOIN monitor_config_versions AS config ON config.id = monitor.published_config_version_id
+WHERE monitor.id = $1 AND monitor.status = 'active' AND monitor.deleted_at IS NULL
+  AND config.state = 'published' AND config.monitor_id = monitor.id`, monitorID).Scan(&configID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, fmt.Errorf("%w: active published monitor", sharedrepository.ErrNotFound)
+	}
+	if err != nil {
+		return 0, sharedrepository.MapError(err)
+	}
+	return configID, nil
+}
+
 func (repository *RelevanceRepository) UpsertFeedback(ctx context.Context, input ingestiondomain.RelevanceFeedbackInput) (ingestiondomain.RelevanceFeedback, error) {
 	if !repository.available() {
 		return ingestiondomain.RelevanceFeedback{}, sharedrepository.ErrUnavailable
@@ -328,11 +373,122 @@ RETURNING id, version, monitor_id, monitor_config_version_id, suggestion_type, v
 	return stored, created, nil
 }
 
-func (repository *RelevanceRepository) ReviewSuggestion(ctx context.Context, suggestionID, reviewerID, expectedVersion int64, status ingestiondomain.SuggestionStatus) (ingestiondomain.RelevanceSuggestion, error) {
+// RefreshSuggestions derives only pending, reviewable terms from existing
+// feedback explanations. It never creates or updates monitor_rules.
+func (repository *RelevanceRepository) RefreshSuggestions(ctx context.Context, monitorID int64) (int, error) {
+	if !repository.available() {
+		return 0, sharedrepository.ErrUnavailable
+	}
+	configID, err := repository.CurrentPublishedMonitorConfig(ctx, monitorID)
+	if err != nil {
+		return 0, err
+	}
+	rows, err := repository.queryRows(ctx, `
+WITH feedback_terms AS (
+    SELECT feedback.monitor_config_version_id, 'add_term'::varchar AS suggestion_type, term.value
+    FROM monitor_match_feedbacks AS feedback
+    JOIN monitor_matches AS match ON match.id = feedback.monitor_match_id
+    CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(match.explanation->'matched_terms', '[]'::jsonb)) AS term(value)
+    WHERE feedback.monitor_id = $1 AND feedback.monitor_config_version_id = $2
+      AND feedback.feedback_type IN ('relevant')
+    UNION ALL
+    SELECT feedback.monitor_config_version_id, 'add_exclude'::varchar AS suggestion_type, term.value
+    FROM monitor_match_feedbacks AS feedback
+    JOIN monitor_matches AS match ON match.id = feedback.monitor_match_id
+    CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(match.explanation->'matched_terms', '[]'::jsonb)) AS term(value)
+    WHERE feedback.monitor_id = $1 AND feedback.monitor_config_version_id = $2
+      AND feedback.feedback_type IN ('irrelevant','false_positive')
+    UNION ALL
+    SELECT feedback.monitor_config_version_id, 'add_entity'::varchar AS suggestion_type, entity.value
+    FROM monitor_match_feedbacks AS feedback
+    JOIN monitor_matches AS match ON match.id = feedback.monitor_match_id
+    CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(match.explanation->'matched_entities', '[]'::jsonb)) AS entity(value)
+    WHERE feedback.monitor_id = $1 AND feedback.monitor_config_version_id = $2
+      AND feedback.feedback_type IN ('relevant')
+), candidates AS (
+    SELECT monitor_config_version_id, suggestion_type, btrim(value) AS value, count(*)::integer AS support_count
+    FROM feedback_terms
+    WHERE btrim(value) <> '' AND char_length(btrim(value)) <= 500
+    GROUP BY monitor_config_version_id, suggestion_type, btrim(value)
+    HAVING count(*) >= 2
+)
+INSERT INTO monitor_feedback_suggestions (
+    monitor_id, monitor_config_version_id, suggestion_type, value, support_count
+)
+SELECT $1, monitor_config_version_id, suggestion_type, value, support_count
+FROM candidates
+ON CONFLICT (monitor_config_version_id, suggestion_type, value) WHERE status = 'pending' DO UPDATE
+SET support_count = EXCLUDED.support_count, version = monitor_feedback_suggestions.version + 1, updated_at = now()
+RETURNING id`, monitorID, configID)
+	if err != nil {
+		return 0, sharedrepository.MapError(err)
+	}
+	defer rows.Close()
+	count := 0
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return 0, sharedrepository.MapError(err)
+		}
+		count++
+	}
+	if err := rows.Err(); err != nil {
+		return 0, sharedrepository.MapError(err)
+	}
+	return count, nil
+}
+
+func (repository *RelevanceRepository) ListSuggestions(ctx context.Context, monitorID int64, query ingestiondomain.RelevanceSuggestionListQuery) (ingestiondomain.RelevanceSuggestionPage, error) {
+	if !repository.available() {
+		return ingestiondomain.RelevanceSuggestionPage{}, sharedrepository.ErrUnavailable
+	}
+	if monitorID <= 0 || query.Validate() != nil {
+		return ingestiondomain.RelevanceSuggestionPage{}, fmt.Errorf("%w: relevance suggestion list", sharedrepository.ErrInvalidInput)
+	}
+	var status, updatedAt any
+	var cursorID int64
+	if query.Status != nil {
+		status = string(*query.Status)
+	}
+	if query.Cursor != nil {
+		updatedAt, cursorID = query.Cursor.UpdatedAt.UTC(), query.Cursor.ID
+	}
+	rows, err := repository.queryRows(ctx, `
+SELECT id, version, monitor_id, monitor_config_version_id, suggestion_type, value,
+       support_count, status, reviewed_by_user_id, created_at, updated_at
+FROM monitor_feedback_suggestions
+WHERE monitor_id = $1 AND ($2::varchar IS NULL OR status = $2)
+  AND ($3::timestamptz IS NULL OR (updated_at, id) < ($3, $4))
+ORDER BY updated_at DESC, id DESC
+LIMIT $5`, monitorID, status, updatedAt, cursorID, query.Limit+1)
+	if err != nil {
+		return ingestiondomain.RelevanceSuggestionPage{}, sharedrepository.MapError(err)
+	}
+	defer rows.Close()
+	page := ingestiondomain.RelevanceSuggestionPage{Items: make([]ingestiondomain.RelevanceSuggestion, 0, query.Limit)}
+	for rows.Next() {
+		suggestion, err := scanSuggestion(rows)
+		if err != nil {
+			return ingestiondomain.RelevanceSuggestionPage{}, sharedrepository.MapError(err)
+		}
+		if len(page.Items) == query.Limit {
+			last := page.Items[len(page.Items)-1]
+			page.Next = &ingestiondomain.RelevanceSuggestionCursor{UpdatedAt: last.UpdatedAt, ID: last.ID}
+			break
+		}
+		page.Items = append(page.Items, suggestion)
+	}
+	if err := rows.Err(); err != nil {
+		return ingestiondomain.RelevanceSuggestionPage{}, sharedrepository.MapError(err)
+	}
+	return page, nil
+}
+
+func (repository *RelevanceRepository) ReviewSuggestion(ctx context.Context, monitorID, suggestionID, reviewerID, expectedVersion int64, status ingestiondomain.SuggestionStatus) (ingestiondomain.RelevanceSuggestion, error) {
 	if !repository.available() {
 		return ingestiondomain.RelevanceSuggestion{}, sharedrepository.ErrUnavailable
 	}
-	if suggestionID <= 0 || reviewerID <= 0 || expectedVersion <= 0 || (status != ingestiondomain.SuggestionStatusApproved && status != ingestiondomain.SuggestionStatusRejected) {
+	if monitorID <= 0 || suggestionID <= 0 || reviewerID <= 0 || expectedVersion <= 0 || (status != ingestiondomain.SuggestionStatusApproved && status != ingestiondomain.SuggestionStatusRejected) {
 		return ingestiondomain.RelevanceSuggestion{}, fmt.Errorf("%w: relevance suggestion review", sharedrepository.ErrInvalidInput)
 	}
 	var stored ingestiondomain.RelevanceSuggestion
@@ -345,14 +501,22 @@ SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND status = 'active' AND delete
 		if !active {
 			return fmt.Errorf("%w: active reviewer %d", sharedrepository.ErrNotFound, reviewerID)
 		}
+		var exists bool
+		if err := transaction.SQL.QueryRowContext(ctx, `
+SELECT EXISTS(SELECT 1 FROM monitor_feedback_suggestions WHERE id = $1 AND monitor_id = $2)`, suggestionID, monitorID).Scan(&exists); err != nil {
+			return sharedrepository.MapError(err)
+		}
+		if !exists {
+			return fmt.Errorf("%w: relevance suggestion", sharedrepository.ErrNotFound)
+		}
 		var reviewedByUserID sql.NullInt64
 		err := transaction.SQL.QueryRowContext(ctx, `
 UPDATE monitor_feedback_suggestions
 SET status = $1, reviewed_by_user_id = $2, version = version + 1, updated_at = now()
-WHERE id = $3 AND version = $4 AND status = 'pending'
+WHERE id = $3 AND monitor_id = $4 AND version = $5 AND status = 'pending'
 RETURNING id, version, monitor_id, monitor_config_version_id, suggestion_type, value,
           support_count, status, reviewed_by_user_id, created_at, updated_at`,
-			string(status), reviewerID, suggestionID, expectedVersion,
+			string(status), reviewerID, suggestionID, monitorID, expectedVersion,
 		).Scan(
 			&stored.ID, &stored.Version, &stored.MonitorID, &stored.MonitorConfigVersionID, &stored.SuggestionType, &stored.Value,
 			&stored.SupportCount, &stored.Status, &reviewedByUserID, &stored.CreatedAt, &stored.UpdatedAt,
@@ -372,6 +536,59 @@ RETURNING id, version, monitor_id, monitor_config_version_id, suggestion_type, v
 		return ingestiondomain.RelevanceSuggestion{}, err
 	}
 	return stored, nil
+}
+
+func (repository *RelevanceRepository) FeedbackEvaluations(ctx context.Context, monitorID int64) ([]ingestiondomain.RelevanceEvaluation, error) {
+	if !repository.available() {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	if monitorID <= 0 {
+		return nil, fmt.Errorf("%w: monitor id", sharedrepository.ErrInvalidInput)
+	}
+	rows, err := repository.queryRows(ctx, `
+WITH latest AS (
+    SELECT DISTINCT ON (match.monitor_config_version_id, match.content_id) match.*
+    FROM monitor_matches AS match
+    JOIN contents AS content ON content.id = match.content_id
+    WHERE match.monitor_id = $1 AND content.content_status = 'active' AND content.deleted_at IS NULL
+    ORDER BY match.monitor_config_version_id, match.content_id, match.created_at DESC, match.id DESC
+), ranked AS (
+    SELECT latest.*, row_number() OVER (PARTITION BY scoring_version ORDER BY final_score DESC, id DESC) AS rank_no
+    FROM latest
+), feedback AS (
+    SELECT monitor_config_version_id, content_id,
+           bool_or(feedback_type IN ('relevant','false_negative')) AS relevant,
+           bool_or(feedback_type IN ('irrelevant','false_positive')) AS false_positive
+    FROM monitor_match_feedbacks
+    WHERE monitor_id = $1
+    GROUP BY monitor_config_version_id, content_id
+)
+SELECT ranked.scoring_version,
+       COALESCE(100.0 * count(*) FILTER (WHERE ranked.rank_no <= 20 AND feedback.relevant)
+         / NULLIF(count(*) FILTER (WHERE ranked.rank_no <= 20), 0), 0)::float8 AS precision_at_20,
+       COALESCE(100.0 * count(*) FILTER (WHERE ranked.rank_no <= 20 AND feedback.false_positive)
+         / NULLIF(count(*) FILTER (WHERE ranked.rank_no <= 20), 0), 0)::float8 AS exclusion_false_positive_rate,
+       count(*) FILTER (WHERE ranked.rank_no <= 20) AS evaluated_count
+FROM ranked
+LEFT JOIN feedback ON feedback.monitor_config_version_id = ranked.monitor_config_version_id AND feedback.content_id = ranked.content_id
+GROUP BY ranked.scoring_version
+ORDER BY ranked.scoring_version ASC`, monitorID)
+	if err != nil {
+		return nil, sharedrepository.MapError(err)
+	}
+	defer rows.Close()
+	values := []ingestiondomain.RelevanceEvaluation{}
+	for rows.Next() {
+		var value ingestiondomain.RelevanceEvaluation
+		if err := rows.Scan(&value.ScoringVersion, &value.PrecisionAt20, &value.ExclusionFalsePositiveRate, &value.EvaluatedCount); err != nil {
+			return nil, sharedrepository.MapError(err)
+		}
+		values = append(values, value)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, sharedrepository.MapError(err)
+	}
+	return values, nil
 }
 
 func ensureSnapshotReferences(ctx context.Context, executor queryRowExecutor, input ingestiondomain.RelevanceSnapshotInput) error {
@@ -643,6 +860,24 @@ func scanFeedback(scanner interface{ Scan(...any) error }) (ingestiondomain.Rele
 	return feedback, nil
 }
 
+func scanSuggestion(scanner interface{ Scan(...any) error }) (ingestiondomain.RelevanceSuggestion, error) {
+	var suggestion ingestiondomain.RelevanceSuggestion
+	var suggestionType, status string
+	var reviewedBy sql.NullInt64
+	if err := scanner.Scan(
+		&suggestion.ID, &suggestion.Version, &suggestion.MonitorID, &suggestion.MonitorConfigVersionID, &suggestionType, &suggestion.Value,
+		&suggestion.SupportCount, &status, &reviewedBy, &suggestion.CreatedAt, &suggestion.UpdatedAt,
+	); err != nil {
+		return ingestiondomain.RelevanceSuggestion{}, err
+	}
+	suggestion.SuggestionType = ingestiondomain.SuggestionType(suggestionType)
+	suggestion.Status = ingestiondomain.SuggestionStatus(status)
+	suggestion.ReviewedByUserID = optionalInt64Value(reviewedBy)
+	suggestion.CreatedAt = suggestion.CreatedAt.UTC()
+	suggestion.UpdatedAt = suggestion.UpdatedAt.UTC()
+	return suggestion, nil
+}
+
 func (repository *RelevanceRepository) withTransaction(ctx context.Context, fn func(context.Context, database.Transaction) error) error {
 	if transaction, found := database.TransactionFromContext(ctx); found {
 		return fn(ctx, transaction)
@@ -655,6 +890,13 @@ func (repository *RelevanceRepository) queryRows(ctx context.Context, query stri
 		return transaction.SQL.QueryContext(ctx, query, args...)
 	}
 	return repository.runtime.SQL.QueryContext(ctx, query, args...)
+}
+
+func (repository *RelevanceRepository) queryRow(ctx context.Context, query string, args ...any) *sql.Row {
+	if transaction, found := database.TransactionFromContext(ctx); found {
+		return transaction.SQL.QueryRowContext(ctx, query, args...)
+	}
+	return repository.runtime.SQL.QueryRowContext(ctx, query, args...)
 }
 
 func (repository *RelevanceRepository) available() bool {

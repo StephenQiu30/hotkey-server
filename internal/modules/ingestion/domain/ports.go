@@ -31,9 +31,14 @@ type RelevanceRepository interface {
 	ApplySuccessfulReview(context.Context, SuccessfulReviewInput) (RelevanceSnapshot, error)
 	MarkReviewUnavailable(context.Context, int64, int64, string) (RelevanceSnapshot, error)
 	ListLatestSnapshots(context.Context, int64, RelevanceSnapshotListQuery) (RelevanceSnapshotPage, error)
+	GetActiveSnapshot(context.Context, int64, int64) (RelevanceSnapshot, error)
+	CurrentPublishedMonitorConfig(context.Context, int64) (int64, error)
 	UpsertFeedback(context.Context, RelevanceFeedbackInput) (RelevanceFeedback, error)
 	UpsertPendingSuggestion(context.Context, RelevanceSuggestionInput) (RelevanceSuggestion, bool, error)
-	ReviewSuggestion(context.Context, int64, int64, int64, SuggestionStatus) (RelevanceSuggestion, error)
+	RefreshSuggestions(context.Context, int64) (int, error)
+	ListSuggestions(context.Context, int64, RelevanceSuggestionListQuery) (RelevanceSuggestionPage, error)
+	ReviewSuggestion(context.Context, int64, int64, int64, int64, SuggestionStatus) (RelevanceSuggestion, error)
+	FeedbackEvaluations(context.Context, int64) ([]RelevanceEvaluation, error)
 }
 
 // RelevanceCandidateReader is the bounded read side of relevance matching.

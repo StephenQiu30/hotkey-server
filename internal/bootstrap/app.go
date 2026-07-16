@@ -75,6 +75,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				intelligenceapplication.NewRunLeaseReclaimer,
 				ingestionpostgres.NewContentRepository,
 				ingestionpostgres.NewRelevanceRepository,
+				ingestionpostgres.NewRelevanceCandidateReader,
 				newIngestionRelevanceReviewService,
 				newIngestionEvidenceStore,
 				sourcepostgres.NewCollectionRepository,
@@ -123,6 +124,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					monitorpostgres.NewRepository,
 					newMonitorService,
 					newIngestionContentQueryService,
+					newIngestionRelevanceAPIService,
 				),
 				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes),
 			)
@@ -177,8 +179,9 @@ func registerMonitorRoutes(router *gin.Engine, service *monitorapplication.Servi
 	monitortransport.RegisterRoutes(router, service, authenticator)
 }
 
-func registerIngestionRoutes(router *gin.Engine, service *ingestionapplication.ContentQueryService, _ *ingestionapplication.RelevanceReviewService, authenticator httptransport.Authenticator, metrics *observability.Metrics) {
+func registerIngestionRoutes(router *gin.Engine, service *ingestionapplication.ContentQueryService, relevance *ingestionapplication.RelevanceAPIService, authenticator httptransport.Authenticator, metrics *observability.Metrics) {
 	ingestiontransport.RegisterRoutes(router, service, authenticator, metrics)
+	ingestiontransport.RegisterRelevanceRoutes(router, relevance, authenticator)
 }
 
 func registerIntelligenceRoutes(router *gin.Engine, service *intelligenceapplication.ModelProfileService, authenticator httptransport.Authenticator) {
@@ -213,6 +216,10 @@ func newIngestionRelevanceReviewService(snapshots *ingestionpostgres.RelevanceRe
 
 func newIngestionContentQueryService(contents *ingestionpostgres.ContentRepository, sources *sourceapplication.Service) (*ingestionapplication.ContentQueryService, error) {
 	return ingestionapplication.NewContentQueryService(ingestionapplication.ContentQueryDependencies{Contents: contents, Sources: sources})
+}
+
+func newIngestionRelevanceAPIService(snapshots *ingestionpostgres.RelevanceRepository, contents *ingestionpostgres.ContentRepository, candidates *ingestionpostgres.RelevanceCandidateReader) (*ingestionapplication.RelevanceAPIService, error) {
+	return ingestionapplication.NewRelevanceAPIService(ingestionapplication.RelevanceAPIServiceDependencies{Snapshots: snapshots, Contents: contents, Candidates: candidates})
 }
 
 func newMonitorService(runtime *database.Runtime, monitors *monitorpostgres.Repository, sources *sourceapplication.Service, audit *operationspostgres.AuditWriter) (*monitorapplication.Service, error) {
