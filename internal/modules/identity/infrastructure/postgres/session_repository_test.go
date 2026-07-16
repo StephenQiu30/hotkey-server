@@ -97,6 +97,76 @@ func TestSessionRepositoryTreatsExpiredConsumedRefreshAsInvalidWithoutRevokingLi
 	}
 }
 
+func TestSessionRepositoryTreatsRevokedConsumedRefreshAsInvalidWithoutRevokingLaterToken(t *testing.T) {
+	runtime := newIdentityRuntime(t)
+	users := NewUserRepository(runtime)
+	sessions := NewSessionRepository(runtime)
+	user := createIdentityUser(t, users, "revoked-consumed-refresh")
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	session := newIdentitySession(user.ID, now)
+	original := &domain.RefreshToken{
+		TokenHash: "5656565656565656565656565656565656565656565656565656565656565656",
+		ExpiresAt: session.RefreshExpiry(now),
+		CreatedAt: now,
+	}
+	if err := sessions.Create(context.Background(), &session, original); err != nil {
+		t.Fatalf("Create(): %v", err)
+	}
+
+	firstRefreshAt := now.Add(time.Minute)
+	_, later, err := sessions.Rotate(context.Background(), original.TokenHash, &domain.RefreshToken{
+		TokenHash: "7878787878787878787878787878787878787878787878787878787878787878",
+		ExpiresAt: session.RefreshExpiry(firstRefreshAt),
+		CreatedAt: firstRefreshAt,
+	}, firstRefreshAt)
+	if err != nil {
+		t.Fatalf("first Rotate(): %v", err)
+	}
+	if later.ID <= 0 || later.UsedAt != nil || later.RevokedAt != nil {
+		t.Fatalf("later refresh token = %#v, want one active persisted token", later)
+	}
+
+	revokedAt := firstRefreshAt.Add(time.Minute)
+	if _, err := runtime.SQL.Exec(`UPDATE auth_refresh_tokens SET revoked_at = $1 WHERE id = $2`, revokedAt, original.ID); err != nil {
+		t.Fatalf("mark consumed original token revoked: %v", err)
+	}
+	var usedAt, persistedRevokedAt *time.Time
+	if err := runtime.SQL.QueryRow(`SELECT used_at, revoked_at FROM auth_refresh_tokens WHERE id = $1`, original.ID).Scan(&usedAt, &persistedRevokedAt); err != nil {
+		t.Fatalf("read revoked consumed original token: %v", err)
+	}
+	if usedAt == nil || persistedRevokedAt == nil {
+		t.Fatalf("original refresh token used_at=%v revoked_at=%v, want both facts", usedAt, persistedRevokedAt)
+	}
+
+	rejectedHash := "9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a"
+	_, _, err = sessions.Rotate(context.Background(), original.TokenHash, &domain.RefreshToken{
+		TokenHash: rejectedHash,
+		ExpiresAt: session.RefreshExpiry(revokedAt),
+		CreatedAt: revokedAt,
+	}, revokedAt)
+	if !errors.Is(err, domain.ErrRefreshInvalid) {
+		t.Fatalf("Rotate(revoked consumed token) error = %v, want domain.ErrRefreshInvalid", err)
+	}
+
+	var sessionRevokedAt, laterRevokedAt *time.Time
+	if err := runtime.SQL.QueryRow(`SELECT revoked_at FROM auth_sessions WHERE id = $1`, session.ID).Scan(&sessionRevokedAt); err != nil {
+		t.Fatalf("read parent session after revoked token rejection: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT revoked_at FROM auth_refresh_tokens WHERE id = $1`, later.ID).Scan(&laterRevokedAt); err != nil {
+		t.Fatalf("read later token after revoked token rejection: %v", err)
+	}
+	if sessionRevokedAt != nil || laterRevokedAt != nil {
+		t.Fatalf("revoked old token changed live state: session revoked_at=%v later token revoked_at=%v", sessionRevokedAt, laterRevokedAt)
+	}
+	var replacements int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM auth_refresh_tokens WHERE token_hash = $1`, rejectedHash).Scan(&replacements); err != nil {
+		t.Fatalf("count rejected replacement token: %v", err)
+	}
+	if replacements != 0 {
+		t.Fatalf("revoked consumed token created %d replacements, want 0", replacements)
+	}
+}
+
 func TestSessionRepositoryConcurrentConsumptionAllowsOnlyOneRotationThenRevokesReplay(t *testing.T) {
 	runtime := newIdentityRuntime(t)
 	users := NewUserRepository(runtime)
