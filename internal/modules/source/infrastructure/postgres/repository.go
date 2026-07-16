@@ -10,12 +10,19 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	"github.com/StephenQiu30/hotkey-server/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
 const sourceConnectionColumns = `
 id, version, source_type, name, endpoint, auth_type, credential_ref, config,
 enabled, health_status, terms_policy_url, created_at, updated_at, deleted_at`
+
+const (
+	sourceListDefaultLimit = 50
+	sourceListMaximumLimit = 200
+	sourceListFingerprint  = "source-connections"
+)
 
 // Repository owns only source_connections. The Monitor module supplies its
 // own usage reader in Task 4 instead of allowing this adapter to join tables
@@ -65,6 +72,54 @@ func (repository *Repository) FindByID(ctx context.Context, id int64) (*domain.S
 
 func (repository *Repository) LockByID(ctx context.Context, id int64) (*domain.SourceConnection, error) {
 	return repository.find(ctx, id, true)
+}
+
+// List is a source-owned, fixed-shape read: it has no user-controlled sort,
+// SQL fragments, or joins. Deleted records remain present because the safe
+// DTO explicitly exposes their lifecycle state for shared-team management.
+func (repository *Repository) List(ctx context.Context, query domain.SourceConnectionListQuery) ([]domain.SourceConnection, string, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return nil, "", sharedrepository.ErrUnavailable
+	}
+	limit, cursorID, err := sourceListParameters(query)
+	if err != nil {
+		return nil, "", err
+	}
+	rows, err := repository.queryRows(ctx, `
+SELECT `+sourceConnectionColumns+`
+FROM source_connections
+WHERE id > $1
+ORDER BY id ASC
+LIMIT $2`, cursorID, limit+1)
+	if err != nil {
+		return nil, "", sharedrepository.MapError(err)
+	}
+	defer rows.Close()
+
+	connections := make([]domain.SourceConnection, 0, limit+1)
+	for rows.Next() {
+		record, err := scanSourceConnection(rows)
+		if err != nil {
+			return nil, "", err
+		}
+		connection, err := record.sourceConnection()
+		if err != nil {
+			return nil, "", fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+		}
+		connections = append(connections, connection)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", sharedrepository.MapError(err)
+	}
+	if len(connections) <= limit {
+		return connections, "", nil
+	}
+	connections = connections[:limit]
+	nextCursor, err := pagination.Encode("id", false, sourceListFingerprint, connections[len(connections)-1].ID)
+	if err != nil {
+		return nil, "", fmt.Errorf("%w: encode source cursor: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	return connections, nextCursor, nil
 }
 
 func (repository *Repository) Update(ctx context.Context, connection *domain.SourceConnection) error {
@@ -180,11 +235,7 @@ func (repository *Repository) find(ctx context.Context, id int64, lock bool) (*d
 		query += " FOR UPDATE"
 	}
 	var record sourceConnectionRecord
-	if err := repository.queryRow(ctx, query, id).Scan(
-		&record.ID, &record.Version, &record.SourceType, &record.Name, &record.Endpoint, &record.AuthType,
-		&record.CredentialRef, &record.Config, &record.Enabled, &record.HealthStatus, &record.TermsPolicyURL,
-		&record.CreatedAt, &record.UpdatedAt, &record.DeletedAt,
-	); err != nil {
+	if err := repository.queryRow(ctx, query, id).Scan(sourceConnectionScanTargets(&record)...); err != nil {
 		return nil, sharedrepository.MapError(err)
 	}
 	connection, err := record.sourceConnection()
@@ -199,6 +250,13 @@ func (repository *Repository) queryRow(ctx context.Context, query string, args .
 		return transaction.SQL.QueryRowContext(ctx, query, args...)
 	}
 	return repository.runtime.SQL.QueryRowContext(ctx, query, args...)
+}
+
+func (repository *Repository) queryRows(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	if transaction, found := database.TransactionFromContext(ctx); found {
+		return transaction.SQL.QueryContext(ctx, query, args...)
+	}
+	return repository.runtime.SQL.QueryContext(ctx, query, args...)
 }
 
 func (repository *Repository) withTransaction(ctx context.Context, fn func(context.Context, database.Transaction) error) error {
@@ -233,3 +291,34 @@ func encodeConfig(config domain.SourceConfig) (string, error) {
 // timeNowUTC is a variable solely so deterministic repository tests can
 // exercise archival without sharing application clock state.
 var timeNowUTC = func() time.Time { return time.Now().UTC() }
+
+func sourceListParameters(query domain.SourceConnectionListQuery) (int, int64, error) {
+	limit := query.Limit
+	if limit == 0 {
+		limit = sourceListDefaultLimit
+	}
+	if limit < 1 || limit > sourceListMaximumLimit {
+		return 0, 0, fmt.Errorf("%w: source list limit must be from 1 to %d", sharedrepository.ErrInvalidInput, sourceListMaximumLimit)
+	}
+	cursor, err := pagination.Decode(query.Cursor, "id", false, sourceListFingerprint)
+	if err != nil {
+		return 0, 0, fmt.Errorf("%w: source list cursor: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	return limit, cursor.ID, nil
+}
+
+func scanSourceConnection(scanner interface{ Scan(...any) error }) (sourceConnectionRecord, error) {
+	var record sourceConnectionRecord
+	if err := scanner.Scan(sourceConnectionScanTargets(&record)...); err != nil {
+		return sourceConnectionRecord{}, sharedrepository.MapError(err)
+	}
+	return record, nil
+}
+
+func sourceConnectionScanTargets(record *sourceConnectionRecord) []any {
+	return []any{
+		&record.ID, &record.Version, &record.SourceType, &record.Name, &record.Endpoint, &record.AuthType,
+		&record.CredentialRef, &record.Config, &record.Enabled, &record.HealthStatus, &record.TermsPolicyURL,
+		&record.CreatedAt, &record.UpdatedAt, &record.DeletedAt,
+	}
+}

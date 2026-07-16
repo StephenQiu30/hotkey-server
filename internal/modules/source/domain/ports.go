@@ -8,8 +8,17 @@ type SourceConnectionRepository interface {
 	Create(context.Context, *SourceConnection) error
 	FindByID(context.Context, int64) (*SourceConnection, error)
 	LockByID(context.Context, int64) (*SourceConnection, error)
+	List(context.Context, SourceConnectionListQuery) ([]SourceConnection, string, error)
 	Update(context.Context, *SourceConnection) error
 	HasPublishedReference(context.Context, int64) (bool, error)
+}
+
+// SourceConnectionListQuery is intentionally narrow: Source lists are always
+// ordered by ID ascending and use a fixed filter shape. This prevents a future
+// HTTP transport from passing arbitrary sort/filter SQL into the repository.
+type SourceConnectionListQuery struct {
+	Cursor string
+	Limit  int
 }
 
 // PublicSourceConnection is the only Source fact available to ordinary
@@ -34,6 +43,16 @@ type ManagementSourceConnection struct {
 	PublicSourceConnection
 	Endpoint string
 	Config   SourceConfig
+}
+
+type PublicSourceConnectionPage struct {
+	Items      []PublicSourceConnection
+	NextCursor string
+}
+
+type ManagementSourceConnectionPage struct {
+	Items      []ManagementSourceConnection
+	NextCursor string
 }
 
 // MonitorSourceConnection is the source-owned input a Monitor use case may

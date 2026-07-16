@@ -65,6 +65,9 @@ func (sourceRepositoryFake) FindByID(context.Context, int64) (*domain.SourceConn
 func (sourceRepositoryFake) LockByID(context.Context, int64) (*domain.SourceConnection, error) {
 	return nil, nil
 }
+func (sourceRepositoryFake) List(context.Context, domain.SourceConnectionListQuery) ([]domain.SourceConnection, string, error) {
+	return nil, "", nil
+}
 func (sourceRepositoryFake) Update(context.Context, *domain.SourceConnection) error { return nil }
 func (sourceRepositoryFake) HasPublishedReference(context.Context, int64) (bool, error) {
 	return false, nil

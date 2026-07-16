@@ -74,6 +74,11 @@ type LifecycleInput struct {
 	ExpectedVersion int64
 }
 
+type ListInput struct {
+	Subject identitydomain.Subject
+	Query   domain.SourceConnectionListQuery
+}
+
 func (service *Service) Create(ctx context.Context, input CreateInput) (*domain.ManagementSourceConnection, error) {
 	if err := requireAdmin(input.Subject); err != nil {
 		return nil, err
@@ -328,6 +333,41 @@ func (service *Service) GetManagement(ctx context.Context, subject identitydomai
 	return managementProjection(*connection), nil
 }
 
+// ListPublic exposes the same deliberately safe view as GetPublic. It is
+// authenticated rather than owner-scoped because SourceConnection is a shared
+// team resource by design.
+func (service *Service) ListPublic(ctx context.Context, input ListInput) (domain.PublicSourceConnectionPage, error) {
+	if err := requireAuthenticated(input.Subject); err != nil {
+		return domain.PublicSourceConnectionPage{}, err
+	}
+	connections, nextCursor, err := service.sources.List(ctx, input.Query)
+	if err != nil {
+		return domain.PublicSourceConnectionPage{}, sourceReadError(err)
+	}
+	items := make([]domain.PublicSourceConnection, 0, len(connections))
+	for _, connection := range connections {
+		items = append(items, publicProjection(connection))
+	}
+	return domain.PublicSourceConnectionPage{Items: items, NextCursor: nextCursor}, nil
+}
+
+// ListManagement retains endpoint and validated non-secret configuration only
+// for administrators; the credential reference is absent from every item.
+func (service *Service) ListManagement(ctx context.Context, input ListInput) (domain.ManagementSourceConnectionPage, error) {
+	if err := requireAdmin(input.Subject); err != nil {
+		return domain.ManagementSourceConnectionPage{}, err
+	}
+	connections, nextCursor, err := service.sources.List(ctx, input.Query)
+	if err != nil {
+		return domain.ManagementSourceConnectionPage{}, sourceReadError(err)
+	}
+	items := make([]domain.ManagementSourceConnection, 0, len(connections))
+	for _, connection := range connections {
+		items = append(items, managementProjection(connection))
+	}
+	return domain.ManagementSourceConnectionPage{Items: items, NextCursor: nextCursor}, nil
+}
+
 func (service *Service) FindForMonitor(ctx context.Context, id int64) (domain.MonitorSourceConnection, error) {
 	connection, err := service.sources.FindByID(ctx, id)
 	if err != nil {
@@ -374,6 +414,10 @@ func normalizeCreate(connection domain.SourceConnection) (domain.SourceConnectio
 	if connection.SourceType != domain.SourceTypeRSS && connection.SourceType != domain.SourceTypeHackerNews {
 		return domain.SourceConnection{}, domain.UnsupportedSourceType()
 	}
+	// A new connection cannot be created already archived. `enabled` remains
+	// the requested valid state, while lifecycle archive/restore is the sole
+	// route that may change `Deleted` after creation.
+	connection.Deleted = false
 	connection.HealthStatus = domain.HealthStatusUnknown
 	normalized, err := domain.NormalizeSourceConnection(connection)
 	if err != nil {
@@ -447,6 +491,9 @@ func sourceReadError(err error) error {
 	var appError *sharederrors.AppError
 	if errors.As(err, &appError) {
 		return appError
+	}
+	if errors.Is(err, sharedrepository.ErrInvalidInput) {
+		return sharederrors.New(sharederrors.CodeInvalidRequest, 400, "")
 	}
 	return domain.SourceConnectionUnavailable()
 }

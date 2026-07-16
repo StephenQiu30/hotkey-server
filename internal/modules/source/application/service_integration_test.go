@@ -143,6 +143,83 @@ func TestSourceServiceUsageAndAuditFailureRollback(t *testing.T) {
 	}
 }
 
+func TestSourceServiceListsSafeCursorPagesAndNormalizesCreateState(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	admin := seedAdmin(t, runtime)
+	service := newService(t, runtime, usageReader{})
+	ctx := context.Background()
+
+	for index := 1; index <= 3; index++ {
+		connection := sourceConnection(fmt.Sprintf("list-source-%d", index))
+		if index == 1 {
+			connection.AuthType = domain.AuthTypeBearer
+			connection.CredentialRef = "env:LIST_SOURCE_TOKEN"
+		}
+		if _, err := service.Create(ctx, sourceapplication.CreateInput{Subject: admin, Connection: connection}); err != nil {
+			t.Fatalf("Create(list source %d) error = %v", index, err)
+		}
+	}
+	createdDeleted := sourceConnection("create-deleted-normalized")
+	createdDeleted.Deleted = true
+	normalized, err := service.Create(ctx, sourceapplication.CreateInput{Subject: admin, Connection: createdDeleted})
+	if err != nil {
+		t.Fatalf("Create(deleted input) error = %v", err)
+	}
+	if normalized.Deleted {
+		t.Fatal("Create(deleted input) returned archived state, want forced active lifecycle state")
+	}
+	var deletedAt any
+	var auditDeleted string
+	if err := runtime.SQL.QueryRow(`SELECT deleted_at, after_data->>'deleted' FROM source_connections JOIN audit_logs ON audit_logs.resource_id = source_connections.id WHERE source_connections.id = $1 AND audit_logs.action = 'source.created'`, normalized.ID).Scan(&deletedAt, &auditDeleted); err != nil {
+		t.Fatalf("read normalized create state and audit: %v", err)
+	}
+	if deletedAt != nil || auditDeleted != "false" {
+		t.Fatalf("normalized create DB/audit state = deleted_at=%v audit=%q, want NULL/false", deletedAt, auditDeleted)
+	}
+
+	viewer := identitydomain.Subject{UserID: admin.UserID, SessionID: 2, Role: identitydomain.RoleViewer}
+	first, err := service.ListPublic(ctx, sourceapplication.ListInput{Subject: viewer, Query: domain.SourceConnectionListQuery{Limit: 2}})
+	if err != nil {
+		t.Fatalf("ListPublic(first page) error = %v", err)
+	}
+	if len(first.Items) != 2 || first.NextCursor == "" || first.Items[0].ID >= first.Items[1].ID {
+		t.Fatalf("first public page = %#v, want stable two-item id-ascending page with cursor", first)
+	}
+	if !first.Items[0].CredentialConfigured {
+		t.Fatalf("first public item = %#v, want configured credential flag", first.Items[0])
+	}
+	if _, found := reflect.TypeOf(first.Items[0]).FieldByName("CredentialRef"); found {
+		t.Fatal("public list item exposes credential reference")
+	}
+	second, err := service.ListPublic(ctx, sourceapplication.ListInput{Subject: viewer, Query: domain.SourceConnectionListQuery{Cursor: first.NextCursor, Limit: 2}})
+	if err != nil {
+		t.Fatalf("ListPublic(second page) error = %v", err)
+	}
+	if len(second.Items) != 2 || second.Items[0].ID <= first.Items[1].ID || second.NextCursor != "" {
+		t.Fatalf("second public page = %#v, want remaining id-ascending items and no cursor", second)
+	}
+	management, err := service.ListManagement(ctx, sourceapplication.ListInput{Subject: admin, Query: domain.SourceConnectionListQuery{Limit: 1}})
+	if err != nil {
+		t.Fatalf("ListManagement() error = %v", err)
+	}
+	if len(management.Items) != 1 || management.Items[0].Endpoint == "" || management.Items[0].Config.RequestTimeoutSeconds != 30 {
+		t.Fatalf("management list = %#v, want one safe management item", management)
+	}
+	if _, err := service.ListManagement(ctx, sourceapplication.ListInput{Subject: viewer, Query: domain.SourceConnectionListQuery{Limit: 1}}); appCode(err) != sharederrors.CodeForbidden {
+		t.Fatalf("viewer ListManagement() code = %d, want forbidden", appCode(err))
+	}
+	if _, err := service.ListPublic(ctx, sourceapplication.ListInput{Subject: identitydomain.Subject{}, Query: domain.SourceConnectionListQuery{Limit: 1}}); appCode(err) != sharederrors.CodeUnauthenticated {
+		t.Fatalf("anonymous ListPublic() code = %d, want unauthenticated", appCode(err))
+	}
+	if _, err := service.ListPublic(ctx, sourceapplication.ListInput{Subject: viewer, Query: domain.SourceConnectionListQuery{Cursor: "bad", Limit: 1}}); appCode(err) != sharederrors.CodeInvalidRequest {
+		t.Fatalf("invalid cursor ListPublic() code = %d, want invalid request", appCode(err))
+	}
+	if _, err := service.ListPublic(ctx, sourceapplication.ListInput{Subject: viewer, Query: domain.SourceConnectionListQuery{Limit: 201}}); appCode(err) != sharederrors.CodeInvalidRequest {
+		t.Fatalf("oversized ListPublic() code = %d, want invalid request", appCode(err))
+	}
+}
+
 func openRuntime(t *testing.T) *database.Runtime {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
