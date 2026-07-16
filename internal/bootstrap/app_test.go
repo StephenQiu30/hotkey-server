@@ -234,6 +234,40 @@ func TestConfiguredWorkerVerifiesDatabaseOnStart(t *testing.T) {
 	}
 }
 
+// TestConfiguredAPIWiresMonitorAndSourceControlPlane verifies the exact Fx
+// graph used by the real API role. A 401 from each route proves the routers
+// are mounted while avoiding any mutation or identity fixture setup.
+func TestConfiguredAPIWiresMonitorAndSourceControlPlane(t *testing.T) {
+	dsn := os.Getenv("HOTKEY_TEST_DSN")
+	if dsn == "" {
+		t.Fatal("HOTKEY_TEST_DSN is required for database lifecycle integration")
+	}
+	cfg := apiTestConfig()
+	cfg.Role, cfg.HTTPAddr, cfg.DatabaseURL = string(RoleAPI), "127.0.0.1:0", dsn
+	var server *httptransport.Server
+	app, err := NewAppWithReadiness(cfg, zap.NewNop(), httptransport.ReadinessFunc(func(context.Context) error { return nil }), fx.Populate(&server))
+	if err != nil {
+		t.Fatalf("NewAppWithReadiness() error = %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := app.Start(ctx); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	defer func() { _ = app.Stop(ctx) }()
+	for _, path := range []string{"/api/v1/monitors", "/api/v1/source-connections"} {
+		response, err := stdhttp.Get("http://" + server.Address() + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		if response.StatusCode != stdhttp.StatusUnauthorized {
+			response.Body.Close()
+			t.Fatalf("%s status = %d, want %d", path, response.StatusCode, stdhttp.StatusUnauthorized)
+		}
+		response.Body.Close()
+	}
+}
+
 func TestApplyCommandLineRejectsUnknownCommandAndArguments(t *testing.T) {
 	cfg := config.Default()
 	if err := applyCommandLine(&cfg, []string{"db", "verify"}); err == nil {

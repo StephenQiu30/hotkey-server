@@ -39,25 +39,25 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "429": {
                         "description": "Too Many Requests",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "503": {
                         "description": "Service Unavailable",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     }
                 }
@@ -96,19 +96,19 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "429": {
                         "description": "Too Many Requests",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "503": {
                         "description": "Service Unavailable",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     }
                 }
@@ -147,19 +147,19 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "503": {
                         "description": "Service Unavailable",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     }
                 }
@@ -178,19 +178,19 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "503": {
                         "description": "Service Unavailable",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     }
                 }
@@ -220,7 +220,7 @@
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     }
                 }
@@ -258,25 +258,25 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "503": {
                         "description": "Service Unavailable",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     }
                 }
@@ -309,19 +309,19 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "503": {
                         "description": "Service Unavailable",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     }
                 }
@@ -346,19 +346,19 @@
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "503": {
                         "description": "Service Unavailable",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     }
                 }
@@ -397,19 +397,19 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "503": {
                         "description": "Service Unavailable",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     }
                 }
@@ -429,6 +429,1293 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/http.Result-http_Capabilities"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/monitors": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitors"
+                ],
+                "summary": "List published monitors",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_MonitorPageResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitors"
+                ],
+                "summary": "Create a monitor draft",
+                "parameters": [
+                    {
+                        "description": "monitor draft",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.CreateMonitorRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_MonitorResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/monitors/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitors"
+                ],
+                "summary": "Get a published monitor",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_MonitorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/monitors/{id}/archive": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitors"
+                ],
+                "summary": "Archive a monitor",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "expected monitor version",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.LifecycleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_MonitorResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/monitors/{id}/draft": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitors"
+                ],
+                "summary": "Replace a monitor draft",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "full draft replacement",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.ReplaceDraftRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_MonitorResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/monitors/{id}/draft/ai-candidates": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitors"
+                ],
+                "summary": "Add a pending AI rule candidate",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "AI candidate",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.AICandidateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_MonitorRuleResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/monitors/{id}/draft/rules/{rule_id}/approval": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitors"
+                ],
+                "summary": "Approve or reject an AI rule candidate",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "rule ID",
+                        "name": "rule_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "approval",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.ApprovalRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/monitors/{id}/pause": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitors"
+                ],
+                "summary": "Pause a monitor",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "expected monitor version",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.LifecycleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_MonitorResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/monitors/{id}/preview": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitors"
+                ],
+                "summary": "Preview a monitor draft without persistence",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_PreviewResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/monitors/{id}/publish": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitors"
+                ],
+                "summary": "Publish a monitor draft",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "expected versions",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.PublishRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_MonitorResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/monitors/{id}/restore": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitors"
+                ],
+                "summary": "Restore a monitor",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "expected monitor version",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.LifecycleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_MonitorResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/monitors/{id}/resume": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitors"
+                ],
+                "summary": "Resume a monitor",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "expected monitor version",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.LifecycleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_MonitorResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/source-connections": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sources"
+                ],
+                "summary": "List source connections",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-http_SourcePageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sources"
+                ],
+                "summary": "Create a source connection",
+                "parameters": [
+                    {
+                        "description": "source connection",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.CreateSourceRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-http_ManagementSourceResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/source-connections/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sources"
+                ],
+                "summary": "Get a source connection",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "source connection ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-http_SourceResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sources"
+                ],
+                "summary": "Update a source connection",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "source connection ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "source update",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.UpdateSourceRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-http_ManagementSourceResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/source-connections/{id}/archive": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sources"
+                ],
+                "summary": "Archive a source connection",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "source connection ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "expected source version",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceLifecycleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-http_ManagementSourceResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/source-connections/{id}/disable": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sources"
+                ],
+                "summary": "Disable a source connection",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "source connection ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "expected source version",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceLifecycleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-http_ManagementSourceResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/source-connections/{id}/enable": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sources"
+                ],
+                "summary": "Enable a source connection",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "source connection ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "expected source version",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceLifecycleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-http_ManagementSourceResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/source-connections/{id}/restore": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sources"
+                ],
+                "summary": "Restore a source connection",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "source connection ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "expected source version",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceLifecycleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-http_ManagementSourceResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
                         }
                     }
                 }
@@ -458,19 +1745,19 @@
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "503": {
                         "description": "Service Unavailable",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     }
                 }
@@ -509,25 +1796,25 @@
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "503": {
                         "description": "Service Unavailable",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     }
                 }
@@ -576,31 +1863,31 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "503": {
                         "description": "Service Unavailable",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     }
                 }
@@ -639,25 +1926,25 @@
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "503": {
                         "description": "Service Unavailable",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-http_EmptyResponse"
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     }
                 }
@@ -665,6 +1952,60 @@
         }
     },
     "definitions": {
+        "http.AICandidateRequest": {
+            "type": "object",
+            "required": [
+                "expected_monitor_version",
+                "operator",
+                "rule_type",
+                "value"
+            ],
+            "properties": {
+                "expected_draft_version": {
+                    "type": "integer"
+                },
+                "expected_monitor_version": {
+                    "type": "integer"
+                },
+                "operator": {
+                    "type": "string"
+                },
+                "priority": {
+                    "type": "integer"
+                },
+                "rule_type": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                },
+                "weight": {
+                    "type": "number"
+                }
+            }
+        },
+        "http.ApprovalRequest": {
+            "type": "object",
+            "required": [
+                "approval",
+                "expected_monitor_version"
+            ],
+            "properties": {
+                "approval": {
+                    "type": "string",
+                    "enum": [
+                        "approved",
+                        "rejected"
+                    ]
+                },
+                "expected_draft_version": {
+                    "type": "integer"
+                },
+                "expected_monitor_version": {
+                    "type": "integer"
+                }
+            }
+        },
         "http.AuthenticationResponse": {
             "type": "object",
             "properties": {
@@ -750,8 +2091,85 @@
                 }
             }
         },
-        "http.EmptyResponse": {
-            "type": "object"
+        "http.CreateMonitorRequest": {
+            "type": "object",
+            "required": [
+                "config",
+                "name",
+                "rules",
+                "sources"
+            ],
+            "properties": {
+                "config": {
+                    "$ref": "#/definitions/http.MonitorConfigRequest"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "AI releases"
+                },
+                "rules": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/http.MonitorRuleRequest"
+                    }
+                },
+                "sources": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/http.MonitorSourceRequest"
+                    }
+                }
+            }
+        },
+        "http.CreateSourceRequest": {
+            "type": "object",
+            "required": [
+                "auth_type",
+                "endpoint",
+                "name",
+                "source_type"
+            ],
+            "properties": {
+                "auth_type": {
+                    "type": "string",
+                    "enum": [
+                        "none",
+                        "api_key",
+                        "oauth2",
+                        "bearer"
+                    ]
+                },
+                "config": {
+                    "$ref": "#/definitions/http.SourceConfigRequest"
+                },
+                "credential_ref": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "endpoint": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "source_type": {
+                    "type": "string",
+                    "enum": [
+                        "rss",
+                        "hacker_news"
+                    ]
+                },
+                "terms_policy_url": {
+                    "type": "string"
+                }
+            }
         },
         "http.IdentityResult-array_http_UserResponse": {
             "type": "object",
@@ -798,20 +2216,6 @@
                 }
             }
         },
-        "http.IdentityResult-http_EmptyResponse": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "integer"
-                },
-                "data": {
-                    "$ref": "#/definitions/http.EmptyResponse"
-                },
-                "message": {
-                    "type": "string"
-                }
-            }
-        },
         "http.IdentityResult-http_UserResponse": {
             "type": "object",
             "properties": {
@@ -823,6 +2227,31 @@
                 },
                 "message": {
                     "type": "string"
+                }
+            }
+        },
+        "http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/internal_modules_identity_transport_http.EmptyResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.LifecycleRequest": {
+            "type": "object",
+            "required": [
+                "expected_monitor_version"
+            ],
+            "properties": {
+                "expected_monitor_version": {
+                    "type": "integer"
                 }
             }
         },
@@ -839,6 +2268,434 @@
                 },
                 "password": {
                     "type": "string"
+                }
+            }
+        },
+        "http.ManagementSourceResponse": {
+            "type": "object",
+            "properties": {
+                "config": {
+                    "$ref": "#/definitions/http.SourceConfigDTO"
+                },
+                "credential_configured": {
+                    "type": "boolean"
+                },
+                "deleted": {
+                    "type": "boolean"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "endpoint": {
+                    "type": "string"
+                },
+                "health_status": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "source_type": {
+                    "type": "string"
+                },
+                "terms_policy_url": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.MonitorConfigRequest": {
+            "type": "object",
+            "required": [
+                "collection_interval_seconds",
+                "event_threshold",
+                "languages",
+                "relevance_threshold",
+                "retention_days",
+                "timezone"
+            ],
+            "properties": {
+                "collection_interval_seconds": {
+                    "type": "integer",
+                    "example": 900
+                },
+                "event_threshold": {
+                    "type": "number",
+                    "example": 40
+                },
+                "languages": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "en"
+                    ]
+                },
+                "regions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "relevance_threshold": {
+                    "type": "number",
+                    "example": 75
+                },
+                "retention_days": {
+                    "type": "integer",
+                    "example": 30
+                },
+                "timezone": {
+                    "type": "string",
+                    "example": "Asia/Shanghai"
+                }
+            }
+        },
+        "http.MonitorConfigResponse": {
+            "type": "object",
+            "properties": {
+                "collection_interval_seconds": {
+                    "type": "integer"
+                },
+                "event_threshold": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "languages": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "regions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "relevance_threshold": {
+                    "type": "number"
+                },
+                "retention_days": {
+                    "type": "integer"
+                },
+                "revision": {
+                    "type": "integer"
+                },
+                "rules": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.MonitorRuleResponse"
+                    }
+                },
+                "sources": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.MonitorSourceResponse"
+                    }
+                },
+                "timezone": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.MonitorPageResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.MonitorResponse"
+                    }
+                },
+                "next_cursor": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.MonitorResponse": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "draft": {
+                    "$ref": "#/definitions/http.MonitorConfigResponse"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "published": {
+                    "$ref": "#/definitions/http.MonitorConfigResponse"
+                },
+                "published_revision": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.MonitorResult-http_MonitorPageResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.MonitorPageResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.MonitorResult-http_MonitorResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.MonitorResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.MonitorResult-http_MonitorRuleResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.MonitorRuleResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.MonitorResult-http_PreviewResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.PreviewResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/internal_modules_monitor_transport_http.EmptyResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.MonitorRuleRequest": {
+            "type": "object",
+            "required": [
+                "operator",
+                "rule_type",
+                "value"
+            ],
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "operator": {
+                    "type": "string",
+                    "example": "contains"
+                },
+                "priority": {
+                    "type": "integer"
+                },
+                "rule_type": {
+                    "type": "string",
+                    "example": "keyword"
+                },
+                "value": {
+                    "type": "string",
+                    "example": "OpenAI"
+                },
+                "weight": {
+                    "type": "number"
+                }
+            }
+        },
+        "http.MonitorRuleResponse": {
+            "type": "object",
+            "properties": {
+                "approval_status": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "operator": {
+                    "type": "string"
+                },
+                "origin": {
+                    "type": "string"
+                },
+                "priority": {
+                    "type": "integer"
+                },
+                "rule_type": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                },
+                "weight": {
+                    "type": "number"
+                }
+            }
+        },
+        "http.MonitorSourceRequest": {
+            "type": "object",
+            "required": [
+                "source_connection_id"
+            ],
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "priority": {
+                    "type": "integer"
+                },
+                "query_override": {
+                    "type": "string"
+                },
+                "source_connection_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.MonitorSourceResponse": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "priority": {
+                    "type": "integer"
+                },
+                "query_override": {
+                    "type": "string"
+                },
+                "source_connection_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.PreviewResponse": {
+            "type": "object",
+            "properties": {
+                "config_hash": {
+                    "type": "string"
+                },
+                "eligible": {
+                    "type": "boolean"
+                },
+                "estimated_requests": {
+                    "type": "integer"
+                },
+                "sources": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.PreviewSourceResponse"
+                    }
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "http.PreviewSourceResponse": {
+            "type": "object",
+            "properties": {
+                "estimated_requests": {
+                    "type": "integer"
+                },
+                "excluded_rule_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "included_rule_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "query_signature": {
+                    "type": "string"
+                },
+                "source_connection_id": {
+                    "type": "integer"
+                },
+                "unapproved_rule_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "http.PublishRequest": {
+            "type": "object",
+            "required": [
+                "expected_monitor_version"
+            ],
+            "properties": {
+                "expected_draft_version": {
+                    "type": "integer"
+                },
+                "expected_monitor_version": {
+                    "type": "integer"
                 }
             }
         },
@@ -859,6 +2716,47 @@
                 },
                 "verification_ticket": {
                     "type": "string"
+                }
+            }
+        },
+        "http.ReplaceDraftRequest": {
+            "type": "object",
+            "required": [
+                "config",
+                "expected_monitor_version",
+                "name",
+                "rules",
+                "sources"
+            ],
+            "properties": {
+                "config": {
+                    "$ref": "#/definitions/http.MonitorConfigRequest"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "expected_draft_version": {
+                    "type": "integer"
+                },
+                "expected_monitor_version": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "rules": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/http.MonitorRuleRequest"
+                    }
+                },
+                "sources": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/http.MonitorSourceRequest"
+                    }
                 }
             }
         },
@@ -893,6 +2791,243 @@
                     "$ref": "#/definitions/http.Capabilities"
                 },
                 "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.SourceConfigDTO": {
+            "type": "object",
+            "properties": {
+                "allow_body_storage": {
+                    "type": "boolean"
+                },
+                "allowed_languages": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "allowed_regions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "content_retention_days": {
+                    "type": "integer"
+                },
+                "max_pages_per_run": {
+                    "type": "integer"
+                },
+                "metrics_retention_days": {
+                    "type": "integer"
+                },
+                "rate_limit_per_minute": {
+                    "type": "integer"
+                },
+                "request_timeout_seconds": {
+                    "type": "integer"
+                },
+                "requires_attribution": {
+                    "type": "boolean"
+                },
+                "requires_deletion_sync": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "http.SourceConfigRequest": {
+            "type": "object",
+            "properties": {
+                "allow_body_storage": {
+                    "type": "boolean"
+                },
+                "allowed_languages": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "allowed_regions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "content_retention_days": {
+                    "type": "integer"
+                },
+                "max_pages_per_run": {
+                    "type": "integer"
+                },
+                "metrics_retention_days": {
+                    "type": "integer"
+                },
+                "rate_limit_per_minute": {
+                    "type": "integer"
+                },
+                "request_timeout_seconds": {
+                    "type": "integer"
+                },
+                "requires_attribution": {
+                    "type": "boolean"
+                },
+                "requires_deletion_sync": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "http.SourceLifecycleRequest": {
+            "type": "object",
+            "required": [
+                "expected_source_version"
+            ],
+            "properties": {
+                "expected_source_version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.SourcePageResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.SourceResponse"
+                    }
+                },
+                "next_cursor": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.SourceResponse": {
+            "type": "object",
+            "properties": {
+                "credential_configured": {
+                    "type": "boolean"
+                },
+                "deleted": {
+                    "type": "boolean"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "health_status": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "source_type": {
+                    "type": "string"
+                },
+                "terms_policy_url": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.SourceResult-http_ManagementSourceResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.ManagementSourceResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.SourceResult-http_SourcePageResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.SourcePageResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.SourceResult-http_SourceResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.SourceResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.SourceResult-internal_modules_source_transport_http_EmptyResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/internal_modules_source_transport_http.EmptyResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.UpdateSourceRequest": {
+            "type": "object",
+            "required": [
+                "expected_source_version"
+            ],
+            "properties": {
+                "auth_type": {
+                    "type": "string",
+                    "enum": [
+                        "none",
+                        "api_key",
+                        "oauth2",
+                        "bearer"
+                    ]
+                },
+                "config": {
+                    "$ref": "#/definitions/http.SourceConfigRequest"
+                },
+                "credential_ref": {
+                    "type": "string"
+                },
+                "endpoint": {
+                    "type": "string"
+                },
+                "expected_source_version": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "source_type": {
+                    "type": "string",
+                    "enum": [
+                        "rss",
+                        "hacker_news"
+                    ]
+                },
+                "terms_policy_url": {
                     "type": "string"
                 }
             }
@@ -960,6 +3095,15 @@
                     "type": "string"
                 }
             }
+        },
+        "internal_modules_identity_transport_http.EmptyResponse": {
+            "type": "object"
+        },
+        "internal_modules_monitor_transport_http.EmptyResponse": {
+            "type": "object"
+        },
+        "internal_modules_source_transport_http.EmptyResponse": {
+            "type": "object"
         }
     },
     "securityDefinitions": {

@@ -12,6 +12,13 @@ import (
 	identitysecurity "github.com/StephenQiu30/hotkey-server/internal/modules/identity/infrastructure/security"
 	identitysmtp "github.com/StephenQiu30/hotkey-server/internal/modules/identity/infrastructure/smtp"
 	identitytransport "github.com/StephenQiu30/hotkey-server/internal/modules/identity/transport/http"
+	monitorapplication "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/application"
+	monitorpostgres "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/infrastructure/postgres"
+	monitortransport "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/transport/http"
+	operationspostgres "github.com/StephenQiu30/hotkey-server/internal/modules/operations/infrastructure/postgres"
+	sourceapplication "github.com/StephenQiu30/hotkey-server/internal/modules/source/application"
+	sourcepostgres "github.com/StephenQiu30/hotkey-server/internal/modules/source/infrastructure/postgres"
+	sourcetransport "github.com/StephenQiu30/hotkey-server/internal/modules/source/transport/http"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/config"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
 	httptransport "github.com/StephenQiu30/hotkey-server/internal/platform/http"
@@ -72,8 +79,18 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 		}
 		if usesDatabase {
 			apiOptions = append(apiOptions,
-				fx.Provide(newIdentityVerificationStore, newIdentityService, newIdentityAuthenticator),
-				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes),
+				fx.Provide(
+					newIdentityVerificationStore,
+					newIdentityService,
+					newIdentityAuthenticator,
+					operationspostgres.NewAuditWriter,
+					monitorpostgres.NewSourceUsageReader,
+					sourcepostgres.NewRepository,
+					newSourceService,
+					monitorpostgres.NewRepository,
+					newMonitorService,
+				),
+				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerMonitorRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -90,6 +107,22 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 
 func registerIdentityRoutes(router *gin.Engine, service *identityapplication.Service, authenticator httptransport.Authenticator, cfg config.Config) {
 	identitytransport.RegisterRoutes(router, service, authenticator, cfg)
+}
+
+func registerSourceRoutes(router *gin.Engine, service *sourceapplication.Service, authenticator httptransport.Authenticator) {
+	sourcetransport.RegisterRoutes(router, service, authenticator)
+}
+
+func registerMonitorRoutes(router *gin.Engine, service *monitorapplication.Service, authenticator httptransport.Authenticator) {
+	monitortransport.RegisterRoutes(router, service, authenticator)
+}
+
+func newSourceService(runtime *database.Runtime, sources *sourcepostgres.Repository, usage *monitorpostgres.SourceUsageReader, audit *operationspostgres.AuditWriter) (*sourceapplication.Service, error) {
+	return sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sources, MonitorUsage: usage, Audit: audit})
+}
+
+func newMonitorService(runtime *database.Runtime, monitors *monitorpostgres.Repository, sources *sourceapplication.Service, audit *operationspostgres.AuditWriter) (*monitorapplication.Service, error) {
+	return monitorapplication.NewService(monitorapplication.Dependencies{Runtime: runtime, Monitors: monitors, Sources: sources, Audit: audit})
 }
 
 func newIdentityService(runtime *database.Runtime, cfg config.Config, verification *identityredis.VerificationStore) (*identityapplication.Service, error) {
