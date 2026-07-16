@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -11,6 +12,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
 	sourcepostgres "github.com/StephenQiu30/hotkey-server/internal/modules/source/infrastructure/postgres"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
 func TestCollectionRepositoryCreateOrReuseRunIsRaceSafeAndCreatesAllTargets(t *testing.T) {
@@ -175,6 +177,126 @@ func TestCollectionRepositoryMakesCapturedItemPersistenceIdempotent(t *testing.T
 	}
 	if items != 1 || reconciled != 1 {
 		t.Fatalf("replayed items/reconciliation = %d/%d, want 1/1", items, reconciled)
+	}
+}
+
+func TestCollectionRepositoryListsSafeSummariesAndRequeuesOnlyTerminalFailures(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	repository := sourcepostgres.NewCollectionRepository(runtime)
+	request := collectionRequestForRepository(t, runtime, "admin-retry", 2)
+	run, created, err := repository.CreateOrReuseRun(context.Background(), request)
+	if err != nil || !created {
+		t.Fatalf("CreateOrReuseRun() run/created/error = %#v / %t / %v", run, created, err)
+	}
+	if _, started, err := repository.StartRun(context.Background(), run.ID, time.Time{}); err != nil || !started {
+		t.Fatalf("StartRun() started/error = %t / %v", started, err)
+	}
+	if _, err := repository.PersistFailure(context.Background(), domain.CollectionRunFailure{
+		RunID: run.ID, Targets: request.Targets, ErrorKind: domain.CollectionErrorTemporary, CompletedAt: request.WindowEnd,
+	}); err != nil {
+		t.Fatalf("PersistFailure(): %v", err)
+	}
+
+	page, err := repository.ListRuns(context.Background(), domain.CollectionRunListQuery{Limit: 1})
+	if err != nil {
+		t.Fatalf("ListRuns(): %v", err)
+	}
+	if len(page.Items) != 1 || page.Items[0].ID != run.ID || page.Items[0].Status != domain.CollectionRunFailed || page.Items[0].ErrorCode != string(domain.CollectionErrorTemporary) || len(page.Items[0].Targets) != 2 {
+		t.Fatalf("safe run page = %#v, want one failed run with two target summaries", page)
+	}
+	for _, target := range page.Items[0].Targets {
+		if target.Status != domain.CollectionRunFailed || target.ErrorCode != string(domain.CollectionErrorTemporary) {
+			t.Fatalf("failed target summary = %#v", target)
+		}
+	}
+	if _, err := repository.ListRuns(context.Background(), domain.CollectionRunListQuery{Cursor: "not-a-cursor"}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("ListRuns(invalid cursor) error = %v, want invalid input", err)
+	}
+
+	retried, err := repository.RetryRun(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("RetryRun(): %v", err)
+	}
+	if retried.Status != domain.CollectionRunQueued || retried.ErrorCode != "" || retried.StartedAt != nil || retried.FinishedAt != nil || len(retried.Targets) != 2 {
+		t.Fatalf("retried summary = %#v, want reset queued run", retried)
+	}
+	for _, target := range retried.Targets {
+		if target.Status != domain.CollectionRunQueued || target.ErrorCode != "" || target.CandidateCount != 0 || target.AcceptedCount != 0 || target.RejectedCount != 0 {
+			t.Fatalf("retried target = %#v, want reset queued target", target)
+		}
+	}
+	var triggerType, status string
+	var retryAfter, startedAt, finishedAt any
+	if err := runtime.SQL.QueryRow(`SELECT trigger_type, status, retry_after, started_at, finished_at FROM collection_runs WHERE id = $1`, run.ID).Scan(&triggerType, &status, &retryAfter, &startedAt, &finishedAt); err != nil {
+		t.Fatalf("read requeued run: %v", err)
+	}
+	if triggerType != "retry" || status != "queued" || retryAfter != nil || startedAt != nil || finishedAt != nil {
+		t.Fatalf("requeued database state = trigger=%q status=%q retry=%v started=%v finished=%v", triggerType, status, retryAfter, startedAt, finishedAt)
+	}
+	if _, err := repository.RetryRun(context.Background(), run.ID); !errors.Is(err, sharedrepository.ErrConflict) {
+		t.Fatalf("RetryRun(queued) error = %v, want conflict", err)
+	}
+}
+
+func TestCollectionRepositoryRetryRepairsCheckpointConflictTargetReconciliation(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	repository := sourcepostgres.NewCollectionRepository(runtime)
+	request := collectionRequestForRepository(t, runtime, "retry-reconciliation", 1)
+	run, _, err := repository.CreateOrReuseRun(context.Background(), request)
+	if err != nil {
+		t.Fatalf("CreateOrReuseRun(): %v", err)
+	}
+	if _, started, err := repository.StartRun(context.Background(), run.ID, time.Time{}); err != nil || !started {
+		t.Fatalf("StartRun(first) started/error = %t / %v", started, err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE source_checkpoints SET version = version + 1 WHERE id = $1`, request.Targets[0].Checkpoint.ID); err != nil {
+		t.Fatalf("make checkpoint stale: %v", err)
+	}
+	item, err := (domain.CapturePolicy{Version: domain.CapturedItemVersionV1, RawPayloadDisposition: domain.RawPayloadDiscarded}).Capture(domain.SourceItem{
+		SourceCode: "rss", ExternalID: "retry-reconciliation-item", ContentType: "article", ObservedAt: request.WindowStart,
+	})
+	if err != nil {
+		t.Fatalf("Capture(): %v", err)
+	}
+	failed, err := repository.PersistSuccess(context.Background(), domain.CollectionRunSuccess{
+		RunID: run.ID, Targets: request.Targets, Items: []domain.CapturedItem{item}, CompletedAt: request.WindowEnd,
+	})
+	if err != nil || failed.Status != domain.CollectionRunFailed {
+		t.Fatalf("PersistSuccess(stale checkpoint) run/error = %#v / %v, want target capture failed run", failed, err)
+	}
+	var outcome, reason string
+	if err := runtime.SQL.QueryRow(`SELECT outcome, COALESCE(reason_code, '') FROM collection_run_target_items WHERE collection_run_id = $1`, run.ID).Scan(&outcome, &reason); err != nil {
+		t.Fatalf("read failed reconciliation: %v", err)
+	}
+	if outcome != "failed" || reason != "checkpoint_conflict" {
+		t.Fatalf("failed reconciliation = outcome=%q reason=%q", outcome, reason)
+	}
+
+	if _, err := repository.RetryRun(context.Background(), run.ID); err != nil {
+		t.Fatalf("RetryRun(): %v", err)
+	}
+	if _, started, err := repository.StartRun(context.Background(), run.ID, time.Time{}); err != nil || !started {
+		t.Fatalf("StartRun(retry) started/error = %t / %v", started, err)
+	}
+	var checkpointVersion int64
+	if err := runtime.SQL.QueryRow(`SELECT version FROM source_checkpoints WHERE id = $1`, request.Targets[0].Checkpoint.ID).Scan(&checkpointVersion); err != nil {
+		t.Fatalf("read refreshed checkpoint version: %v", err)
+	}
+	retryTargets := append([]domain.PublishedCollectionTarget(nil), request.Targets...)
+	retryTargets[0].Checkpoint.Version = checkpointVersion
+	succeeded, err := repository.PersistSuccess(context.Background(), domain.CollectionRunSuccess{
+		RunID: run.ID, Targets: retryTargets, Items: []domain.CapturedItem{item}, CompletedAt: request.WindowEnd.Add(time.Minute),
+	})
+	if err != nil || succeeded.Status != domain.CollectionRunSucceeded {
+		t.Fatalf("PersistSuccess(retry) run/error = %#v / %v, want succeeded retry", succeeded, err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT outcome, COALESCE(reason_code, '') FROM collection_run_target_items WHERE collection_run_id = $1`, run.ID).Scan(&outcome, &reason); err != nil {
+		t.Fatalf("read repaired reconciliation: %v", err)
+	}
+	if outcome != "captured" || reason != "" {
+		t.Fatalf("repaired reconciliation = outcome=%q reason=%q, want captured with no reason", outcome, reason)
 	}
 }
 

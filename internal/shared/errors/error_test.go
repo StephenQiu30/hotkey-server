@@ -72,6 +72,9 @@ func TestMonitorAndSourceCodesAreRegisteredWithStableHTTPStatus(t *testing.T) {
 		{CodeSourceConnectionRequired, stdhttp.StatusConflict},
 		{CodeUnsupportedSourceType, stdhttp.StatusBadRequest},
 		{CodeSourceConnectionUnavailable, stdhttp.StatusConflict},
+		{CodeCollectionRunNotFound, stdhttp.StatusNotFound},
+		{CodeCollectionRunConflict, stdhttp.StatusConflict},
+		{CodeInvalidCollectionRequest, stdhttp.StatusBadRequest},
 	}
 	for _, test := range tests {
 		definition, ok := Lookup(test.code)

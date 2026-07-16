@@ -21,3 +21,15 @@ func UnsupportedSourceType() *sharederrors.AppError {
 func SourceConnectionUnavailable() *sharederrors.AppError {
 	return sharederrors.New(sharederrors.CodeSourceConnectionUnavailable, stdhttp.StatusConflict, "")
 }
+
+func CollectionRunNotFound() *sharederrors.AppError {
+	return sharederrors.New(sharederrors.CodeCollectionRunNotFound, stdhttp.StatusNotFound, "")
+}
+
+func CollectionRunConflict() *sharederrors.AppError {
+	return sharederrors.New(sharederrors.CodeCollectionRunConflict, stdhttp.StatusConflict, "")
+}
+
+func InvalidCollectionRequest() *sharederrors.AppError {
+	return sharederrors.New(sharederrors.CodeInvalidCollectionRequest, stdhttp.StatusBadRequest, "")
+}

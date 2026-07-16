@@ -15,6 +15,7 @@ type Metrics struct {
 	httpDuration     *prometheus.HistogramVec
 	httpPanics       *prometheus.CounterVec
 	dependencyHealth *prometheus.GaugeVec
+	collectionOps    *prometheus.CounterVec
 }
 
 func NewMetrics() (*Metrics, error) {
@@ -36,6 +37,10 @@ func NewMetrics() (*Metrics, error) {
 			Name: "hotkey_dependency_health",
 			Help: "Health of a HotKey dependency, where 1 is healthy and 0 is unhealthy.",
 		}, []string{"dependency"}),
+		collectionOps: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "hotkey_collection_operations_total",
+			Help: "Total collection administration operations by stable operation and outcome.",
+		}, []string{"operation", "outcome"}),
 	}
 	if err := metrics.Registry.Register(metrics.httpRequests); err != nil {
 		return nil, err
@@ -47,6 +52,9 @@ func NewMetrics() (*Metrics, error) {
 		return nil, err
 	}
 	if err := metrics.Registry.Register(metrics.dependencyHealth); err != nil {
+		return nil, err
+	}
+	if err := metrics.Registry.Register(metrics.collectionOps); err != nil {
 		return nil, err
 	}
 	return metrics, nil
@@ -68,4 +76,11 @@ func (metrics *Metrics) RecordPanic(route string) {
 
 func (metrics *Metrics) SetDependencyHealth(dependency string, healthy float64) {
 	metrics.dependencyHealth.WithLabelValues(dependency).Set(healthy)
+}
+
+// RecordCollectionOperation intentionally accepts only application-owned,
+// low-cardinality labels. Callers must never supply source IDs, query text,
+// endpoint values or arbitrary upstream diagnostics.
+func (metrics *Metrics) RecordCollectionOperation(operation, outcome string) {
+	metrics.collectionOps.WithLabelValues(operation, outcome).Inc()
 }

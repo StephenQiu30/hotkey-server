@@ -18,6 +18,37 @@ type collectionRunRecord struct {
 	status                    string
 }
 
+type collectionRunSummaryRecord struct {
+	id                                           int64
+	status                                       string
+	candidateCount, acceptedCount, rejectedCount int64
+	errorCode                                    sql.NullString
+	startedAt, finishedAt                        sql.NullTime
+}
+
+func scanCollectionRunSummary(scanner interface{ Scan(...any) error }) (domain.CollectionRunSummary, error) {
+	var record collectionRunSummaryRecord
+	if err := scanner.Scan(
+		&record.id, &record.status, &record.candidateCount, &record.acceptedCount, &record.rejectedCount,
+		&record.errorCode, &record.startedAt, &record.finishedAt,
+	); err != nil {
+		return domain.CollectionRunSummary{}, err
+	}
+	summary := domain.CollectionRunSummary{
+		ID: record.id, Status: domain.CollectionRunStatus(record.status), CandidateCount: record.candidateCount,
+		AcceptedCount: record.acceptedCount, RejectedCount: record.rejectedCount, ErrorCode: record.errorCode.String,
+	}
+	if record.startedAt.Valid {
+		value := record.startedAt.Time.UTC()
+		summary.StartedAt = &value
+	}
+	if record.finishedAt.Valid {
+		value := record.finishedAt.Time.UTC()
+		summary.FinishedAt = &value
+	}
+	return summary, nil
+}
+
 func scanCollectionRun(scanner interface{ Scan(...any) error }) (domain.CollectionRun, error) {
 	var record collectionRunRecord
 	if err := scanner.Scan(
@@ -43,3 +74,6 @@ func scanCollectionRun(scanner interface{ Scan(...any) error }) (domain.Collecti
 const collectionRunColumns = `
 id, source_connection_id, query_signature, request_cursor, next_cursor, etag,
 last_modified, retry_after, page_count, window_start, window_end, status`
+
+const collectionRunSummaryColumns = `
+id, status, candidate_count, accepted_count, rejected_count, error_code, started_at, finished_at`

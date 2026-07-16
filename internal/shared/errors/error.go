@@ -29,6 +29,9 @@ const (
 	CodeSourceConnectionRequired    = 40001
 	CodeUnsupportedSourceType       = 40002
 	CodeSourceConnectionUnavailable = 40003
+	CodeCollectionRunNotFound       = 40004
+	CodeCollectionRunConflict       = 40005
+	CodeInvalidCollectionRequest    = 40006
 	CodeInternal                    = 90000
 	CodeUnavailable                 = 90001
 	CodeBadGateway                  = 90002
@@ -69,6 +72,9 @@ func init() {
 		{Code: CodeSourceConnectionRequired, HTTPStatus: stdhttp.StatusConflict, Message: "source connection required"},
 		{Code: CodeUnsupportedSourceType, HTTPStatus: stdhttp.StatusBadRequest, Message: "unsupported source type"},
 		{Code: CodeSourceConnectionUnavailable, HTTPStatus: stdhttp.StatusConflict, Message: "source connection unavailable"},
+		{Code: CodeCollectionRunNotFound, HTTPStatus: stdhttp.StatusNotFound, Message: "collection run not found"},
+		{Code: CodeCollectionRunConflict, HTTPStatus: stdhttp.StatusConflict, Message: "collection run conflict"},
+		{Code: CodeInvalidCollectionRequest, HTTPStatus: stdhttp.StatusBadRequest, Message: "invalid collection request"},
 		{Code: CodeInternal, HTTPStatus: stdhttp.StatusInternalServerError, Message: "internal server error"},
 		{Code: CodeUnavailable, HTTPStatus: stdhttp.StatusServiceUnavailable, Message: "service unavailable", Retryable: true},
 		{Code: CodeBadGateway, HTTPStatus: stdhttp.StatusBadGateway, Message: "bad gateway", Retryable: true},

@@ -13,6 +13,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	"github.com/StephenQiu30/hotkey-server/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -22,6 +23,12 @@ import (
 type CollectionRepository struct{ runtime *database.Runtime }
 
 var _ domain.CollectionRepository = (*CollectionRepository)(nil)
+
+const (
+	collectionRunListDefaultLimit = 50
+	collectionRunListMaximumLimit = 200
+	collectionRunListFingerprint  = "collection-runs"
+)
 
 func NewCollectionRepository(runtime *database.Runtime) *CollectionRepository {
 	return &CollectionRepository{runtime: runtime}
@@ -121,6 +128,119 @@ RETURNING `+collectionRunColumns, runID, staleAt))
 		return domain.CollectionRun{}, false, err
 	}
 	return run, started, nil
+}
+
+// ListRuns returns only operations-safe run and target facts. In particular,
+// neither this query nor its domain projection includes request state, source
+// identity, query signature or any upstream connection detail.
+func (repository *CollectionRepository) ListRuns(ctx context.Context, query domain.CollectionRunListQuery) (domain.CollectionRunPage, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return domain.CollectionRunPage{}, sharedrepository.ErrUnavailable
+	}
+	limit, cursorID, err := collectionRunListParameters(query)
+	if err != nil {
+		return domain.CollectionRunPage{}, err
+	}
+	rows, err := repository.runtime.SQL.QueryContext(ctx, `
+SELECT `+collectionRunSummaryColumns+`
+FROM collection_runs
+WHERE id > $1
+ORDER BY id ASC
+LIMIT $2`, cursorID, limit+1)
+	if err != nil {
+		return domain.CollectionRunPage{}, sharedrepository.MapError(err)
+	}
+
+	items := make([]domain.CollectionRunSummary, 0, limit+1)
+	for rows.Next() {
+		summary, err := scanCollectionRunSummary(rows)
+		if err != nil {
+			_ = rows.Close()
+			return domain.CollectionRunPage{}, sharedrepository.MapError(err)
+		}
+		items = append(items, summary)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return domain.CollectionRunPage{}, sharedrepository.MapError(err)
+	}
+	if err := rows.Close(); err != nil {
+		return domain.CollectionRunPage{}, sharedrepository.MapError(err)
+	}
+	page := domain.CollectionRunPage{Items: items}
+	if len(page.Items) <= limit {
+		for index := range page.Items {
+			targets, err := collectionRunTargetSummaries(ctx, repository.runtime.SQL, page.Items[index].ID)
+			if err != nil {
+				return domain.CollectionRunPage{}, err
+			}
+			page.Items[index].Targets = targets
+		}
+		return page, nil
+	}
+	page.Items = page.Items[:limit]
+	nextCursor, err := pagination.Encode("id", false, collectionRunListFingerprint, page.Items[len(page.Items)-1].ID)
+	if err != nil {
+		return domain.CollectionRunPage{}, fmt.Errorf("%w: encode collection run cursor: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	page.NextCursor = nextCursor
+	for index := range page.Items {
+		targets, err := collectionRunTargetSummaries(ctx, repository.runtime.SQL, page.Items[index].ID)
+		if err != nil {
+			return domain.CollectionRunPage{}, err
+		}
+		page.Items[index].Targets = targets
+	}
+	return page, nil
+}
+
+// RetryRun only requeues a terminal failed/cancelled run. It never performs
+// external I/O and therefore cannot create a duplicate fetch from an HTTP
+// request; the ordinary collection scheduler claims the queued run later.
+func (repository *CollectionRepository) RetryRun(ctx context.Context, runID int64) (domain.CollectionRunSummary, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return domain.CollectionRunSummary{}, sharedrepository.ErrUnavailable
+	}
+	if runID <= 0 {
+		return domain.CollectionRunSummary{}, fmt.Errorf("%w: collection run id is required", sharedrepository.ErrInvalidInput)
+	}
+	var summary domain.CollectionRunSummary
+	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+		run, err := collectionRunForUpdate(ctx, transaction, runID)
+		if err != nil {
+			return err
+		}
+		if run.Status != domain.CollectionRunFailed && run.Status != domain.CollectionRunCancelled {
+			return fmt.Errorf("%w: collection run status cannot be retried", sharedrepository.ErrConflict)
+		}
+		if _, err := transaction.SQL.ExecContext(ctx, `
+UPDATE collection_run_targets
+SET target_status = 'queued', candidate_count = 0, accepted_count = 0, rejected_count = 0,
+    error_code = NULL, updated_at = now()
+WHERE collection_run_id = $1`, runID); err != nil {
+			return sharedrepository.MapError(err)
+		}
+		summary, err = scanCollectionRunSummary(transaction.SQL.QueryRowContext(ctx, `
+UPDATE collection_runs
+SET status = 'queued', trigger_type = 'retry', scheduled_at = now(), retry_after = NULL,
+    started_at = NULL, finished_at = NULL, candidate_count = 0, accepted_count = 0,
+    rejected_count = 0, error_code = NULL, updated_at = now()
+WHERE id = $1
+RETURNING `+collectionRunSummaryColumns, runID))
+		if err != nil {
+			return sharedrepository.MapError(err)
+		}
+		targets, err := collectionRunTargetSummaries(ctx, transaction.SQL, runID)
+		if err != nil {
+			return err
+		}
+		summary.Targets = targets
+		return nil
+	})
+	if err != nil {
+		return domain.CollectionRunSummary{}, err
+	}
+	return summary, nil
 }
 
 // PersistSuccess makes captured source facts, per-target reconciliation and
@@ -366,7 +486,8 @@ func persistTargetSuccess(ctx context.Context, transaction database.Transaction,
 INSERT INTO collection_run_target_items
     (collection_run_id, collection_run_target_id, collection_run_item_id, outcome)
 VALUES ($1, $2, $3, 'captured')
-ON CONFLICT (collection_run_target_id, collection_run_item_id) DO NOTHING`, runID, target.ID, itemID); err != nil {
+ON CONFLICT (collection_run_target_id, collection_run_item_id) DO UPDATE
+SET outcome = 'captured', reason_code = NULL`, runID, target.ID, itemID); err != nil {
 			return sharedrepository.MapError(err)
 		}
 	}
@@ -504,6 +625,52 @@ func (repository *CollectionRepository) withTransaction(ctx context.Context, fn 
 		return fn(ctx, transaction)
 	}
 	return repository.runtime.WithinTransaction(ctx, fn)
+}
+
+type collectionRowsQuerier interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func collectionRunTargetSummaries(ctx context.Context, querier collectionRowsQuerier, runID int64) ([]domain.CollectionRunTargetSummary, error) {
+	rows, err := querier.QueryContext(ctx, `
+SELECT id, target_status, candidate_count, accepted_count, rejected_count, error_code
+FROM collection_run_targets
+WHERE collection_run_id = $1
+ORDER BY id ASC`, runID)
+	if err != nil {
+		return nil, sharedrepository.MapError(err)
+	}
+	defer rows.Close()
+	targets := make([]domain.CollectionRunTargetSummary, 0)
+	for rows.Next() {
+		var target domain.CollectionRunTargetSummary
+		var status string
+		var errorCode sql.NullString
+		if err := rows.Scan(&target.ID, &status, &target.CandidateCount, &target.AcceptedCount, &target.RejectedCount, &errorCode); err != nil {
+			return nil, sharedrepository.MapError(err)
+		}
+		target.Status, target.ErrorCode = domain.CollectionRunStatus(status), errorCode.String
+		targets = append(targets, target)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, sharedrepository.MapError(err)
+	}
+	return targets, nil
+}
+
+func collectionRunListParameters(query domain.CollectionRunListQuery) (int, int64, error) {
+	limit := query.Limit
+	if limit == 0 {
+		limit = collectionRunListDefaultLimit
+	}
+	if limit < 1 || limit > collectionRunListMaximumLimit {
+		return 0, 0, fmt.Errorf("%w: collection run limit must be 1-%d", sharedrepository.ErrInvalidInput, collectionRunListMaximumLimit)
+	}
+	cursor, err := pagination.Decode(query.Cursor, "id", false, collectionRunListFingerprint)
+	if err != nil {
+		return 0, 0, fmt.Errorf("%w: collection run cursor: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	return limit, cursor.ID, nil
 }
 
 // initialRequestState selects an explicit checkpoint-equivalence group. A

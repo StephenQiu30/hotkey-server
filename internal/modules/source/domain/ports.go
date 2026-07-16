@@ -131,6 +131,8 @@ type CollectionRepository interface {
 	StartRun(context.Context, int64, time.Time) (CollectionRun, bool, error)
 	PersistSuccess(context.Context, CollectionRunSuccess) (CollectionRun, error)
 	PersistFailure(context.Context, CollectionRunFailure) (CollectionRun, error)
+	ListRuns(context.Context, CollectionRunListQuery) (CollectionRunPage, error)
+	RetryRun(context.Context, int64) (CollectionRunSummary, error)
 }
 
 // CollectionConnectorRegistry resolves a connector only from the Source-owned

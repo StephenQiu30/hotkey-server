@@ -2,6 +2,7 @@ package http
 
 import (
 	"fmt"
+	"time"
 
 	sourceapplication "github.com/StephenQiu30/hotkey-server/internal/modules/source/application"
 	"github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
@@ -16,6 +17,46 @@ type SourceResult[T any] struct {
 }
 
 type EmptyResponse struct{}
+
+// CollectionResult mirrors Result for collection-control Swagger declarations.
+// Runtime responses still use the shared transport helpers.
+type CollectionResult[T any] struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    T      `json:"data"`
+}
+
+type CollectionRunTargetResponse struct {
+	ID             int64  `json:"id"`
+	Status         string `json:"status"`
+	CandidateCount int64  `json:"candidate_count"`
+	AcceptedCount  int64  `json:"accepted_count"`
+	RejectedCount  int64  `json:"rejected_count"`
+	ErrorCode      string `json:"error_code,omitempty"`
+}
+
+type CollectionRunResponse struct {
+	ID             int64                         `json:"id"`
+	Status         string                        `json:"status"`
+	CandidateCount int64                         `json:"candidate_count"`
+	AcceptedCount  int64                         `json:"accepted_count"`
+	RejectedCount  int64                         `json:"rejected_count"`
+	ErrorCode      string                        `json:"error_code,omitempty"`
+	StartedAt      *time.Time                    `json:"started_at,omitempty"`
+	FinishedAt     *time.Time                    `json:"finished_at,omitempty"`
+	Targets        []CollectionRunTargetResponse `json:"targets"`
+}
+
+type CollectionRunPageResponse struct {
+	Items      []CollectionRunResponse `json:"items"`
+	NextCursor string                  `json:"next_cursor,omitempty"`
+}
+
+type SourceHealthResponse struct {
+	Healthy   bool      `json:"healthy"`
+	CheckedAt time.Time `json:"checked_at"`
+	ErrorCode string    `json:"error_code,omitempty"`
+}
 
 // SourceConfigRequest is a fixed whitelist. It deliberately has no generic
 // map and no credential-shaped field, so management DTOs cannot become a
@@ -204,4 +245,32 @@ func managementReadResponse(source domain.ManagementSourceConnection) SourceRead
 }
 func configResponse(config domain.SourceConfig) SourceConfigDTO {
 	return SourceConfigDTO{AllowBodyStorage: config.AllowBodyStorage, RequiresAttribution: config.RequiresAttribution, RequiresDeletionSync: config.RequiresDeletionSync, ContentRetentionDays: config.ContentRetentionDays, MetricsRetentionDays: config.MetricsRetentionDays, AllowedLanguages: config.AllowedLanguages, AllowedRegions: config.AllowedRegions, RateLimitPerMinute: config.RateLimitPerMinute, RequestTimeoutSeconds: config.RequestTimeoutSeconds, MaxPagesPerRun: config.MaxPagesPerRun}
+}
+
+func collectionRunPageResponse(page domain.CollectionRunPage) CollectionRunPageResponse {
+	response := CollectionRunPageResponse{Items: make([]CollectionRunResponse, 0, len(page.Items)), NextCursor: page.NextCursor}
+	for _, item := range page.Items {
+		response.Items = append(response.Items, collectionRunResponse(item))
+	}
+	return response
+}
+
+func collectionRunResponse(summary domain.CollectionRunSummary) CollectionRunResponse {
+	response := CollectionRunResponse{
+		ID: summary.ID, Status: string(summary.Status), CandidateCount: summary.CandidateCount,
+		AcceptedCount: summary.AcceptedCount, RejectedCount: summary.RejectedCount, ErrorCode: summary.ErrorCode,
+		StartedAt: summary.StartedAt, FinishedAt: summary.FinishedAt,
+		Targets: make([]CollectionRunTargetResponse, 0, len(summary.Targets)),
+	}
+	for _, target := range summary.Targets {
+		response.Targets = append(response.Targets, CollectionRunTargetResponse{
+			ID: target.ID, Status: string(target.Status), CandidateCount: target.CandidateCount,
+			AcceptedCount: target.AcceptedCount, RejectedCount: target.RejectedCount, ErrorCode: target.ErrorCode,
+		})
+	}
+	return response
+}
+
+func sourceHealthResponse(health domain.SourceHealth) SourceHealthResponse {
+	return SourceHealthResponse{Healthy: health.Healthy, CheckedAt: health.CheckedAt, ErrorCode: health.ErrorCode}
 }

@@ -8,7 +8,7 @@ canonical_path: docs/plans/006-查询规划与RSS-HN采集计划.md
 status: accepted
 execution_status: in_progress
 review_status: approved
-version: v1.18
+version: v1.19
 owner: HotKey Server Team
 inputs:
   - docs/prd/006-查询规划与RSS-HN采集.md
@@ -180,13 +180,13 @@ depends_on: [PLAN-005]
 
 **Produces：** `GET /api/v1/collection-runs`、`POST /api/v1/collection-runs/{id}/retry`、`POST /api/v1/source-connections/{id}/health`；viewer/editor 拒绝写操作，安全 DTO 只返回 run/target 状态、计数、时间、错误码和 health；新增固定 `40004` collection run not found、`40005` collection run conflict、`40006` invalid collection request。
 
-**Files：** Modify `docs/design/014-监控配置发布与预览设计.md`, `internal/shared/errors/error.go`, `internal/shared/errors/error_test.go`, `internal/bootstrap/app.go`, `internal/platform/http/router.go`, `docs/openapi/swagger.json`, `tests/architecture/openapi_test.go`; Create `internal/modules/source/transport/http/{collection_dto,collection_handler,collection_routes,collection_handler_test,collection_handler_integration_test}.go`, `internal/modules/source/application/collection_metrics.go`.
+**Files：** Modify `docs/design/014-监控配置发布与预览设计.md`, `internal/shared/errors/{error,error_test}.go`, `internal/bootstrap/app.go`, `internal/platform/observability/{metrics,metrics_test}.go`, `internal/modules/source/{domain/{collection,errors,ports},infrastructure/postgres/{collection_record,collection_repository,collection_repository_integration_test},transport/http/dto}.go`, `docs/openapi/swagger.json`, `tests/architecture/openapi_test.go`; Create `internal/modules/source/application/{collection_control,collection_metrics}.go`, `internal/modules/source/transport/http/{collection_handler,collection_routes,collection_handler_test,collection_handler_integration_test}.go`.
 
-- [ ] **RED：** 添加 Handler/HTTP 集成测试，覆盖 admin 成功、viewer/editor 403、未认证 401、无 run 404、冲突 retry 409、invalid request 400、Result `code`、无 secret JSON、OpenAPI route/response 和 `/metrics` collection counter。
-- [ ] **运行 RED：** `go test ./internal/modules/source/transport/http ./tests/architecture -run 'TestCollection|TestOpenAPIContract' -count=1`。
-- [ ] **GREEN：** 先更新 Design-014 错误码范围，再注册错误码；Handler 仅调用 application service，不暴露 endpoint/config/credential/raw source errors，retry 不启动 Cron/River。
-- [ ] **重构：** 抽取 safe run DTO 与 role check，确保 transport 不导入 PostgreSQL adapter，metrics 不含 source ID 或 query 文本标签。
-- [ ] **回归：** `HOTKEY_TEST_DSN='postgres://hotkey:hotkey@127.0.0.1:5432/hotkey_test?sslmode=disable' HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' go test -race ./internal/modules/source/transport/http ./tests/architecture -count=1`、`make openapi-check`。
+- [x] **RED：** Handler/HTTP 集成测试覆盖 admin 成功、viewer/editor 403、未认证 401、无 run 404、冲突 retry 409、invalid request 400、Result `code`、无 secret JSON；初始运行因安全 run 投影、application 输入和路由均未定义而编译失败。另以真实 PostgreSQL 复现 checkpoint conflict 写入 failed target-item 后 retry 成功仍保留 failed reconciliation 的 P1。
+- [x] **运行 RED：** 已运行 `go test ./internal/modules/source/transport/http -run 'TestCollectionAdminRoutes' -count=1`，得到缺失 collection control 类型/路由的预期失败；P1 测试整改前得到 `outcome="failed" reason="checkpoint_conflict"`。
+- [x] **GREEN：** 先更新 Design-014 错误码范围，再注册 `40004..40006`；Handler 仅调用 application service，不暴露 endpoint/config/credential/raw source errors，retry 只在事务内把 failed/cancelled run 和 targets 重新入队，不启动 Fetch/Cron/River。成功 target-item 对账会覆盖旧 failed outcome 并清空 reason，避免 checkpoint conflict 的历史失败事实污染成功重放。
+- [x] **重构：** 抽取 safe run/health DTO、CollectionControlService、role check 与低基数 collection metrics；transport 不导入 PostgreSQL adapter，metrics 标签仅为受控 operation/outcome，不含 source ID 或 query 文本。运行列表先关闭 run rows 再读取 target 摘要，避免小连接池下的嵌套读取占用。
+- [x] **回归：** 已在可丢弃环境执行 `HOTKEY_TEST_DSN='postgres:///hotkey_plan006_test?sslmode=disable' HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' go test -race ./internal/modules/source/... ./tests/architecture -count=1`，并在暂存生成的 OpenAPI 后执行完整 `make ci`；全部通过，最后已 `make clean` 与 `git diff --check`。
 - [ ] **提交：** `git add docs/design/014-监控配置发布与预览设计.md internal/shared/errors internal/modules/source/transport/http internal/modules/source/application/collection_metrics.go internal/bootstrap/app.go internal/platform/http/router.go docs/openapi/swagger.json tests/architecture && git commit -m "feat: expose collection run administration"`。
 
 ## Task 8：受控验收、独立复核与归档
@@ -227,6 +227,7 @@ depends_on: [PLAN-005]
 - 2026-07-16：非主要编写者复核 Task 4 提交 `a04bcb0..57e29a7`，随后确认覆盖补充 `2cc15d4`；先发现公开跨 host redirect/cursor/pagination Link 未受 immutable endpoint host 约束，以及 continuation 错误复用并污染根 feed validators。整改后复核通过，无 Critical、Important 或 Minor；确认 client 仍只输出安全 SourceItem/metadata，且无生产代码变更的 credential-shaped redirect 测试已纳入关闭范围。
 - 2026-07-16：非主要编写者复核 Task 5 提交 `f8db02c..6794c4a`；先发现 maxitem 后 parent cancellation 可将未抓取 ID 标为已处理（Critical），以及并发 429 可能被 cancellation temporary 错误掩盖（Important）。整改后复核通过，无 Critical、Important 或 Minor；确认 cursor 仅在完整范围完成后推进，且 rate-limited/Retry-After 保留原始分类。
 - 2026-07-16：非主要编写者复核 Task 6 提交 `f611f00`，先发现 queued/running shared run 重启后无法重领（P1），以及不同 checkpoint target 会继承按 monitor source ID 任取的 cursor/ETag（P1）。整改 `5b53888` 后复核通过；确认 queued/超过五分钟 running 可原子重领、fresh running 不重复 fetch，且不匹配 request checkpoint state 的 target 保持原状态并留待下一轮。
+- 2026-07-16：非主要编写者复核 Task 7，先发现 retry 后成功 target-item reconciliation 会被旧 checkpoint conflict 的 failed 行保留（Important）；整改为 captured upsert 覆盖失败 outcome 并清空 reason，真实 PostgreSQL conflict→retry→success 测试通过后批准。其余 retry 无 Fetch/Cron/River、health 并发保护与脱敏、授权、OpenAPI 和架构边界均无 Critical/Important。
 
 ## 变更记录
 
@@ -251,3 +252,4 @@ depends_on: [PLAN-005]
 | v1.16 | 2026-07-16 | 记录 Task 4 的 RSS/Atom Connector、SSRF/continuation 整改、完整回归及独立复核通过证据。 |
 | v1.17 | 2026-07-16 | 记录 Task 5 的 HN high-watermark Connector、取消/429 整改、完整回归及独立复核通过证据。 |
 | v1.18 | 2026-07-16 | 记录 Task 6 shared run 持久化、target 隔离、重领/异 checkpoint P1 整改、完整回归及独立复核通过证据。 |
+| v1.19 | 2026-07-16 | 记录 Task 7 管理员 run/health API、安全 DTO、错误码和低基数指标的 RED/GREEN，以及 checkpoint-conflict retry reconciliation 整改、独立复核和全量 CI；等待实现提交。 |

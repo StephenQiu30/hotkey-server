@@ -17,6 +17,7 @@ import (
 	monitortransport "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/transport/http"
 	operationspostgres "github.com/StephenQiu30/hotkey-server/internal/modules/operations/infrastructure/postgres"
 	sourceapplication "github.com/StephenQiu30/hotkey-server/internal/modules/source/application"
+	sourceinfrastructure "github.com/StephenQiu30/hotkey-server/internal/modules/source/infrastructure"
 	sourcepostgres "github.com/StephenQiu30/hotkey-server/internal/modules/source/infrastructure/postgres"
 	sourcetransport "github.com/StephenQiu30/hotkey-server/internal/modules/source/transport/http"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/config"
@@ -88,10 +89,13 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					monitorpostgres.NewPublishedReferenceReader,
 					sourcepostgres.NewRepository,
 					newSourceService,
+					sourcepostgres.NewCollectionRepository,
+					sourceinfrastructure.NewConnectorRegistry,
+					newCollectionControlService,
 					monitorpostgres.NewRepository,
 					newMonitorService,
 				),
-				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerMonitorRoutes),
+				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerCollectionRoutes, registerMonitorRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -114,12 +118,20 @@ func registerSourceRoutes(router *gin.Engine, service *sourceapplication.Service
 	sourcetransport.RegisterRoutes(router, service, authenticator)
 }
 
+func registerCollectionRoutes(router *gin.Engine, service *sourceapplication.CollectionControlService, authenticator httptransport.Authenticator) {
+	sourcetransport.RegisterCollectionRoutes(router, service, authenticator)
+}
+
 func registerMonitorRoutes(router *gin.Engine, service *monitorapplication.Service, authenticator httptransport.Authenticator) {
 	monitortransport.RegisterRoutes(router, service, authenticator)
 }
 
 func newSourceService(runtime *database.Runtime, sources *sourcepostgres.Repository, usage *monitorpostgres.SourceUsageReader, references *monitorpostgres.PublishedReferenceReader, audit *operationspostgres.AuditWriter) (*sourceapplication.Service, error) {
 	return sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sources, MonitorUsage: usage, PublishedReferences: references, Audit: audit})
+}
+
+func newCollectionControlService(runtime *database.Runtime, sources *sourcepostgres.Repository, runs *sourcepostgres.CollectionRepository, connectors *sourceinfrastructure.ConnectorRegistry, metrics *observability.Metrics) (*sourceapplication.CollectionControlService, error) {
+	return sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{Runtime: runtime, Sources: sources, Runs: runs, Connectors: connectors, Metrics: metrics})
 }
 
 func newMonitorService(runtime *database.Runtime, monitors *monitorpostgres.Repository, sources *sourceapplication.Service, audit *operationspostgres.AuditWriter) (*monitorapplication.Service, error) {

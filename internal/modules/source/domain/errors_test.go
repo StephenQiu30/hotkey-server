@@ -19,6 +19,9 @@ func TestSourceDomainErrorsUseRegisteredStableCodes(t *testing.T) {
 		{SourceConnectionRequired(), sharederrors.CodeSourceConnectionRequired, stdhttp.StatusConflict},
 		{UnsupportedSourceType(), sharederrors.CodeUnsupportedSourceType, stdhttp.StatusBadRequest},
 		{SourceConnectionUnavailable(), sharederrors.CodeSourceConnectionUnavailable, stdhttp.StatusConflict},
+		{CollectionRunNotFound(), sharederrors.CodeCollectionRunNotFound, stdhttp.StatusNotFound},
+		{CollectionRunConflict(), sharederrors.CodeCollectionRunConflict, stdhttp.StatusConflict},
+		{InvalidCollectionRequest(), sharederrors.CodeInvalidCollectionRequest, stdhttp.StatusBadRequest},
 	}
 	for _, test := range tests {
 		if test.err.Code != test.code || test.err.HTTPStatus != test.status {

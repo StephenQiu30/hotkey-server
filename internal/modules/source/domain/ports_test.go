@@ -54,6 +54,12 @@ func (*collectionRepositoryFake) PersistSuccess(context.Context, CollectionRunSu
 func (*collectionRepositoryFake) PersistFailure(context.Context, CollectionRunFailure) (CollectionRun, error) {
 	return CollectionRun{}, nil
 }
+func (*collectionRepositoryFake) ListRuns(context.Context, CollectionRunListQuery) (CollectionRunPage, error) {
+	return CollectionRunPage{}, nil
+}
+func (*collectionRepositoryFake) RetryRun(context.Context, int64) (CollectionRunSummary, error) {
+	return CollectionRunSummary{}, nil
+}
 
 type publishedCollectionTargetReaderFake struct{}
 

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	identitydomain "github.com/StephenQiu30/hotkey-server/internal/modules/identity/domain"
 	sourceapplication "github.com/StephenQiu30/hotkey-server/internal/modules/source/application"
 	"github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
 	sourcepostgres "github.com/StephenQiu30/hotkey-server/internal/modules/source/infrastructure/postgres"
@@ -260,6 +261,58 @@ func TestCollectionServiceIsolatesOneTargetCheckpointConflict(t *testing.T) {
 	}
 }
 
+func TestCollectionControlListsRetriesAndPersistsSafeHealth(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	request := collectionRequestForService(t, runtime, "admin-control", 1)
+	runs := sourcepostgres.NewCollectionRepository(runtime)
+	run, _, err := runs.CreateOrReuseRun(context.Background(), request)
+	if err != nil {
+		t.Fatalf("CreateOrReuseRun(): %v", err)
+	}
+	if _, started, err := runs.StartRun(context.Background(), run.ID, time.Time{}); err != nil || !started {
+		t.Fatalf("StartRun() started/error = %t / %v", started, err)
+	}
+	if _, err := runs.PersistFailure(context.Background(), domain.CollectionRunFailure{
+		RunID: run.ID, Targets: request.Targets, ErrorKind: domain.CollectionErrorTemporary, CompletedAt: request.WindowEnd,
+	}); err != nil {
+		t.Fatalf("PersistFailure(): %v", err)
+	}
+	checkedAt := time.Date(2026, time.July, 16, 13, 0, 0, 0, time.UTC)
+	metrics := &collectionMetricsFake{}
+	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
+		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs,
+		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{health: domain.HealthResult{CheckedAt: checkedAt, ErrorKind: domain.CollectionErrorTemporary, DiagnosticCode: "request_failed"}}},
+		Metrics:    metrics, Now: func() time.Time { return checkedAt },
+	})
+	if err != nil {
+		t.Fatalf("NewCollectionControlService(): %v", err)
+	}
+	admin := identitydomain.Subject{UserID: 1, SessionID: 1, Role: identitydomain.RoleAdmin}
+	page, err := control.List(context.Background(), sourceapplication.CollectionRunListInput{Subject: admin, Query: domain.CollectionRunListQuery{Limit: 10}})
+	if err != nil || len(page.Items) != 1 || page.Items[0].ID != run.ID || page.Items[0].Status != domain.CollectionRunFailed {
+		t.Fatalf("List() page/error = %#v / %v, want failed run summary", page, err)
+	}
+	retried, err := control.Retry(context.Background(), sourceapplication.CollectionRunRetryInput{Subject: admin, ID: run.ID})
+	if err != nil || retried.Status != domain.CollectionRunQueued || len(retried.Targets) != 1 || retried.Targets[0].Status != domain.CollectionRunQueued {
+		t.Fatalf("Retry() summary/error = %#v / %v, want queued run and target", retried, err)
+	}
+	health, err := control.Health(context.Background(), sourceapplication.SourceHealthInput{Subject: admin, ID: request.SourceConnectionID})
+	if err != nil || health.Healthy || !health.CheckedAt.Equal(checkedAt) || health.ErrorCode != "request_failed" {
+		t.Fatalf("Health() result/error = %#v / %v, want safe unhealthy temporary result", health, err)
+	}
+	var status string
+	if err := runtime.SQL.QueryRow(`SELECT health_status FROM source_connections WHERE id = $1`, request.SourceConnectionID).Scan(&status); err != nil {
+		t.Fatalf("read persisted source health: %v", err)
+	}
+	if status != string(domain.HealthStatusDegraded) {
+		t.Fatalf("persisted health status = %q, want %q", status, domain.HealthStatusDegraded)
+	}
+	if !metrics.recorded("list", "success") || !metrics.recorded("retry", "success") || !metrics.recorded("health", "unhealthy") {
+		t.Fatalf("collection metrics = %#v, want list/retry/health observations", metrics.values)
+	}
+}
+
 func TestCollectionServiceReclaimsQueuedAndStaleRunningRuns(t *testing.T) {
 	for _, test := range []struct {
 		name       string
@@ -394,6 +447,7 @@ type collectionConnectorFake struct {
 	mu       sync.Mutex
 	result   domain.FetchResult
 	err      error
+	health   domain.HealthResult
 }
 
 func (connector *collectionConnectorFake) Validate(context.Context, domain.SourceConnection) error {
@@ -409,7 +463,22 @@ func (connector *collectionConnectorFake) Fetch(_ context.Context, request domai
 }
 
 func (connector *collectionConnectorFake) Health(context.Context, domain.SourceConnection) domain.HealthResult {
-	return domain.HealthResult{}
+	return connector.health
+}
+
+type collectionMetricsFake struct{ values [][2]string }
+
+func (metrics *collectionMetricsFake) RecordCollectionOperation(operation, outcome string) {
+	metrics.values = append(metrics.values, [2]string{operation, outcome})
+}
+
+func (metrics *collectionMetricsFake) recorded(operation, outcome string) bool {
+	for _, value := range metrics.values {
+		if value == [2]string{operation, outcome} {
+			return true
+		}
+	}
+	return false
 }
 
 func (connector *collectionConnectorFake) fetchRequests() []domain.FetchRequest {

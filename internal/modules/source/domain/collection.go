@@ -286,6 +286,49 @@ type CollectionRun struct {
 	Status             CollectionRunStatus
 }
 
+// CollectionRunSummary is the deliberately safe operations projection. It
+// excludes the source identity, query signature and all upstream request
+// state, which remain internal collection execution facts.
+type CollectionRunSummary struct {
+	ID             int64
+	Status         CollectionRunStatus
+	CandidateCount int64
+	AcceptedCount  int64
+	RejectedCount  int64
+	ErrorCode      string
+	StartedAt      *time.Time
+	FinishedAt     *time.Time
+	Targets        []CollectionRunTargetSummary
+}
+
+type CollectionRunTargetSummary struct {
+	ID             int64
+	Status         CollectionRunStatus
+	CandidateCount int64
+	AcceptedCount  int64
+	RejectedCount  int64
+	ErrorCode      string
+}
+
+type CollectionRunListQuery struct {
+	Cursor string
+	Limit  int
+}
+
+type CollectionRunPage struct {
+	Items      []CollectionRunSummary
+	NextCursor string
+}
+
+// SourceHealth is the safe result of an administrator-triggered Connector
+// probe. Diagnostic codes are controlled Connector vocabulary, never upstream
+// response text, endpoint values or credential facts.
+type SourceHealth struct {
+	Healthy   bool
+	CheckedAt time.Time
+	ErrorCode string
+}
+
 type CollectionTarget struct {
 	ID                     int64
 	CollectionRunID        int64
