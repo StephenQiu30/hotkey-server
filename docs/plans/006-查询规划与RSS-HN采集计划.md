@@ -8,7 +8,7 @@ canonical_path: docs/plans/006-查询规划与RSS-HN采集计划.md
 status: accepted
 execution_status: in_progress
 review_status: approved
-version: v1.16
+version: v1.17
 owner: HotKey Server Team
 inputs:
   - docs/prd/006-查询规划与RSS-HN采集.md
@@ -148,12 +148,12 @@ depends_on: [PLAN-005]
 
 **Files：** Create `internal/modules/source/infrastructure/hackernews/connector.go`, `internal/modules/source/infrastructure/hackernews/connector_test.go`, `internal/modules/source/infrastructure/hackernews/client.go`, `internal/modules/source/infrastructure/hackernews/testdata/*.json`; Modify `internal/modules/source/domain/connector.go`.
 
-- [ ] **RED：** 使用 `httptest` 覆盖 first/newest ID、已见 cursor、空增量、缺失 item、429、5xx、timeout、乱序 JSON 和最大 item/page 上限。
-- [ ] **运行 RED：** `go test ./internal/modules/source/infrastructure/hackernews -count=1`。
-- [ ] **GREEN：** 实现官方 endpoint 校验、有限 worker、context 取消、稳定 ID cursor 与 SourceItem 映射；单条坏 item 隔离，整页失败不生成 next cursor。
-- [ ] **重构：** 将 API DTO 与 SourceItem mapper 分离，禁止 HN client 输出 raw JSON 或写数据库。
-- [ ] **回归：** `go test -race ./internal/modules/source/infrastructure/hackernews -count=1`。
-- [ ] **提交：** `git add internal/modules/source/infrastructure/hackernews internal/modules/source/domain/connector.go && git commit -m "feat: collect Hacker News items"`。
+- [x] **RED：** 已使用 `httptest`/JSON fixture 覆盖 first/newest ID、已见 cursor、空增量、缺失/死 item、429、5xx、timeout、字段乱序 JSON、最大 item/page 上限和非官方 endpoint；初始因 Connector/client/worker 缺失而编译失败。独立复审另复现了 maxitem 成功后 parent cancellation 可错误推进 cursor，以及并发 429 被低 ID cancellation 掩盖的两条 RED。
+- [x] **运行 RED：** 已运行 `go test ./internal/modules/source/infrastructure/hackernews -count=1`，先因缺失实现失败；整改时运行 `go test ./internal/modules/source/infrastructure/hackernews -run 'TestFetchItemsTreatsParentCancellationAsPageFailure|TestConnectorPreservesRateLimitWhenConcurrentWorkerCancellationRaces' -count=1`，先因 worker 无失败返回能力而失败。
+- [x] **GREEN：** 已实现官方 endpoint 校验、四个上限 worker、context 取消、稳定 high-watermark ID cursor 与 SourceItem 映射。首次请求只读取最新 `Limit` 个 ID，后续请求只读取 cursor 后的连续有界范围；单条 null/dead/deleted/无效 item 形成安全 diagnostic 并隔离，任何网络/429/5xx/cancellation/不完整 page 都不生成 next cursor。触发取消的原始错误被保留，并优先保留 rate-limited 与 Retry-After。
+- [x] **重构：** 已将官方 HTTP client、API DTO、范围/游标计算、有限 worker 汇聚和 SourceItem mapper 分离；HN client 不输出 raw JSON、不写数据库。
+- [x] **回归：** 已运行 `go test ./internal/modules/source/infrastructure/hackernews -count=1`、`go test -race ./internal/modules/source/infrastructure/hackernews -count=1`、`go vet ./internal/modules/source/infrastructure/hackernews`、可丢弃 PostgreSQL/Redis 上的 `go test ./internal/modules/source/... ./tests/architecture -count=1` 与完整 `make ci`，均通过。
+- [x] **提交：** 已提交 `f8db02c feat: collect Hacker News items` 与复审修复 `6794c4a fix: preserve Hacker News collection failures`。
 
 ## Task 6：共享 run、target、captured item 与 fetch checkpoint 持久化
 
@@ -225,6 +225,7 @@ depends_on: [PLAN-005]
 - 2026-07-16：非主要编写者复核 Task 2 提交 `9e21861..c9cf04c` 及 Plan-006 v1.13；先发现并确认 disabled/deleted SourceConnection 未被资格过滤，整改后复核通过。无 Critical、Important 或 Minor；确认 adapter 只为资格过滤 join `source_connections`，不投影 endpoint/config/credential。
 - 2026-07-16：非主要编写者复核 Task 3 提交 `f1d8bd3..6c55aa4`；先发现 `GroupRequests` 可接受与 immutable target 不一致的 query/language/region 外层请求，整改后按每个 target 回推预期值并复核通过。无 Critical、Important 或 Minor；确认保存的 signature 未被重算。
 - 2026-07-16：非主要编写者复核 Task 4 提交 `a04bcb0..57e29a7`，随后确认覆盖补充 `2cc15d4`；先发现公开跨 host redirect/cursor/pagination Link 未受 immutable endpoint host 约束，以及 continuation 错误复用并污染根 feed validators。整改后复核通过，无 Critical、Important 或 Minor；确认 client 仍只输出安全 SourceItem/metadata，且无生产代码变更的 credential-shaped redirect 测试已纳入关闭范围。
+- 2026-07-16：非主要编写者复核 Task 5 提交 `f8db02c..6794c4a`；先发现 maxitem 后 parent cancellation 可将未抓取 ID 标为已处理（Critical），以及并发 429 可能被 cancellation temporary 错误掩盖（Important）。整改后复核通过，无 Critical、Important 或 Minor；确认 cursor 仅在完整范围完成后推进，且 rate-limited/Retry-After 保留原始分类。
 
 ## 变更记录
 
@@ -247,3 +248,4 @@ depends_on: [PLAN-005]
 | v1.14 | 2026-07-16 | 记录 Task 2 的两阶段 RED、GREEN、完整回归、提交与整改复审通过证据。 |
 | v1.15 | 2026-07-16 | 记录 Task 3 的 RED/GREEN、完整回归、query/locale/region 篡改整改及独立复核通过证据。 |
 | v1.16 | 2026-07-16 | 记录 Task 4 的 RSS/Atom Connector、SSRF/continuation 整改、完整回归及独立复核通过证据。 |
+| v1.17 | 2026-07-16 | 记录 Task 5 的 HN high-watermark Connector、取消/429 整改、完整回归及独立复核通过证据。 |
