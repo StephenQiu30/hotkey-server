@@ -183,6 +183,17 @@ SET state = 'published', config_hash = $1, published_at = $2
 WHERE id = $3`, strings.Repeat("a", 64), now, firstConfigID); err != nil {
 		t.Fatalf("publish configuration: %v", err)
 	}
+	if _, err := runtime.SQL.Exec(`UPDATE monitors SET published_config_version_id = $1 WHERE id = $2`, firstConfigID, firstMonitorID); err != nil {
+		t.Fatalf("set published configuration pointer: %v", err)
+	}
+	for _, constraint := range []string{"monitors_draft_config_version_fkey", "monitors_published_config_version_fkey"} {
+		assertMonitorPointerForeignKey(t, runtime, constraint)
+	}
+	if _, err := runtime.SQL.Exec(`DELETE FROM monitor_config_versions WHERE id = $1`, firstConfigID); err == nil {
+		t.Fatal("delete monitor configuration referenced by a pointer = nil error, want ON DELETE RESTRICT")
+	} else {
+		assertPostgreSQLRestrictViolation(t, err)
+	}
 	if _, err := runtime.SQL.Exec(`UPDATE monitor_config_versions SET timezone = 'Asia/Shanghai' WHERE id = $1`, firstConfigID); err == nil {
 		t.Fatal("published configuration update = nil error, want immutable trigger rejection")
 	} else {
@@ -243,6 +254,37 @@ VALUES ($1, $2, $3)`, runID, firstMonitorSourceID, secondConfigID); err == nil {
 		t.Fatal("wrong monitor source/config run target = nil error, want composite foreign key rejection")
 	} else {
 		assertPostgreSQLState(t, err, "23503")
+	}
+}
+
+func assertMonitorPointerForeignKey(t *testing.T, runtime *Runtime, name string) {
+	t.Helper()
+	var deleteAction string
+	err := runtime.SQL.QueryRow(`
+SELECT con.confdeltype::text
+FROM pg_constraint AS con
+WHERE con.conname = $1
+  AND con.conrelid = 'monitors'::regclass
+  AND con.confrelid = 'monitor_config_versions'::regclass
+  AND con.contype = 'f'`, name).Scan(&deleteAction)
+	if err != nil {
+		t.Fatalf("read %s: %v", name, err)
+	}
+	if deleteAction != "r" {
+		t.Fatalf("%s delete action = %q, want r (RESTRICT)", name, deleteAction)
+	}
+}
+
+func assertPostgreSQLRestrictViolation(t *testing.T, err error) {
+	t.Helper()
+	var postgresError *pgconn.PgError
+	if !errors.As(err, &postgresError) {
+		t.Fatalf("database error = %T %v, want PostgreSQL RESTRICT violation", err, err)
+	}
+	// PostgreSQL distinguishes an ON DELETE RESTRICT violation (23001) from
+	// the 23503 foreign-key violation used by NO ACTION constraints.
+	if postgresError.Code != "23001" {
+		t.Fatalf("database SQLSTATE = %s, want 23001 for ON DELETE RESTRICT: %v", postgresError.Code, err)
 	}
 }
 

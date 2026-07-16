@@ -19,6 +19,7 @@ const schemaInitLock = "hotkey-schema-init-v1"
 
 var createTablePattern = regexp.MustCompile(`(?im)^\s*CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+([a-z_][a-z0-9_]*)\s*\(`)
 var createIndexPattern = regexp.MustCompile(`(?im)^\s*CREATE\s+(?:UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\s+([a-z_][a-z0-9_]*)\s+ON\s+`)
+var alterTableAddForeignKeyPattern = regexp.MustCompile(`(?is)\bALTER\s+TABLE\s+([a-z_][a-z0-9_]*)\s+ADD\s+CONSTRAINT\s+([a-z_][a-z0-9_]*)\s+(FOREIGN\s+KEY\s*\([^)]+\)\s+REFERENCES\s+[a-z_][a-z0-9_]*\s*\([^)]+\)\s+ON\s+DELETE\s+[a-z_]+)\s*$`)
 var uniqueWordPattern = regexp.MustCompile(`\bunique\b`)
 var checkWordPattern = regexp.MustCompile(`\bcheck\b`)
 var referencesWordPattern = regexp.MustCompile(`\breferences\b`)
@@ -306,6 +307,24 @@ func canonicalCatalogContract() (catalogContract, error) {
 		if indexMatch := createIndexPattern.FindStringSubmatchIndex(statement); indexMatch != nil {
 			name := statement[indexMatch[2]:indexMatch[3]]
 			contract.Indexes = append(contract.Indexes, indexSignature(name, statement))
+		}
+		if alterMatch := alterTableAddForeignKeyPattern.FindStringSubmatch(statement); alterMatch != nil {
+			table := alterMatch[1]
+			existing, found := contract.Tables[table]
+			if !found {
+				return catalogContract{}, fmt.Errorf("altered table %s is not defined before its constraint", table)
+			}
+			_, constraints, definitions, err := parseTableDefinition(alterMatch[3])
+			if err != nil {
+				return catalogContract{}, fmt.Errorf("parse altered table %s constraint %s: %w", table, alterMatch[2], err)
+			}
+			existing.Constraints.Primary += constraints.Primary
+			existing.Constraints.Unique += constraints.Unique
+			existing.Constraints.Foreign += constraints.Foreign
+			existing.Constraints.Check += constraints.Check
+			existing.Definitions = append(existing.Definitions, definitions...)
+			slices.Sort(existing.Definitions)
+			contract.Tables[table] = existing
 		}
 		match := createTablePattern.FindStringSubmatchIndex(statement)
 		if match == nil {

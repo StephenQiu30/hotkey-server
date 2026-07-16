@@ -27,14 +27,14 @@ func TestCompleteSchemaCoversMappedRecords(t *testing.T) {
 		}
 	}
 	for table, columns := range map[string][]string{
-		"auth_sessions":       {"family_id", "absolute_expires_at", "revoked_at"},
-		"auth_refresh_tokens": {"session_id", "token_hash", "expires_at", "used_at", "revoked_at"},
-		"monitors":            {"draft_config_version_id", "published_config_version_id"},
+		"auth_sessions":           {"family_id", "absolute_expires_at", "revoked_at"},
+		"auth_refresh_tokens":     {"session_id", "token_hash", "expires_at", "used_at", "revoked_at"},
+		"monitors":                {"draft_config_version_id", "published_config_version_id"},
 		"monitor_config_versions": {"monitor_id", "revision", "state", "config_hash", "published_at"},
-		"monitor_rules":       {"config_version_id"},
-		"monitor_sources":     {"config_version_id", "query_signature"},
-		"collection_runs":     {"source_connection_id", "query_signature", "window_start", "window_end"},
-		"collection_run_targets": {"collection_run_id", "monitor_source_id", "monitor_config_version_id"},
+		"monitor_rules":           {"config_version_id"},
+		"monitor_sources":         {"config_version_id", "query_signature"},
+		"collection_runs":         {"source_connection_id", "query_signature", "window_start", "window_end"},
+		"collection_run_targets":  {"collection_run_id", "monitor_source_id", "monitor_config_version_id"},
 	} {
 		block := tableBlock(t, schema, table)
 		for _, column := range columns {
@@ -71,31 +71,44 @@ func TestSchemaHasNoSecondFactSource(t *testing.T) {
 func TestGreenfieldSchemaEnforcesCriticalConstraints(t *testing.T) {
 	schema := readSchemaText(t)
 	checks := map[string]string{
-		"knowledge document has one target": "num_nonnulls(event_id, topic_id, report_id) = 1",
-		"monitor config draft uniqueness":   "where state = 'draft'",
-		"monitor config published uniqueness": "where state = 'published'",
-		"monitor active name uniqueness":    "where deleted_at is null and status <> 'archived'",
-		"monitor config published timestamp": "published_at timestamptz",
-		"monitor config historical key":     "unique (id, monitor_id)",
-		"monitor match historical key":      "foreign key (monitor_config_version_id, monitor_id) references monitor_config_versions(id, monitor_id)",
-		"monitor source historical key":     "unique (id, config_version_id)",
-		"run target historical key":         "foreign key (monitor_source_id, monitor_config_version_id) references monitor_sources(id, config_version_id)",
+		"knowledge document has one target":     "num_nonnulls(event_id, topic_id, report_id) = 1",
+		"monitor config draft uniqueness":       "where state = 'draft'",
+		"monitor config published uniqueness":   "where state = 'published'",
+		"monitor active name uniqueness":        "where deleted_at is null and status <> 'archived'",
+		"monitor config published timestamp":    "published_at timestamptz",
+		"monitor config historical key":         "unique (id, monitor_id)",
+		"monitor match historical key":          "foreign key (monitor_config_version_id, monitor_id) references monitor_config_versions(id, monitor_id)",
+		"monitor source historical key":         "unique (id, config_version_id)",
+		"run target historical key":             "foreign key (monitor_source_id, monitor_config_version_id) references monitor_sources(id, config_version_id)",
 		"published config immutability trigger": "create trigger monitor_config_versions_immutable",
-		"published rule immutability trigger": "create trigger monitor_rules_immutable",
+		"published rule immutability trigger":   "create trigger monitor_rules_immutable",
 		"published source immutability trigger": "create trigger monitor_sources_immutable",
-		"source semantic immutability trigger": "create trigger source_connections_semantic_immutable",
-		"source query signature":            "query_signature char(64)",
-		"match score range":                 "final_score between 0 and 100",
-		"monitor source idempotency":        "unique (config_version_id, source_connection_id)",
-		"shared collection run idempotency": "unique (source_connection_id, query_signature, window_start, window_end)",
-		"delivery idempotency":              "idempotency_key varchar(128) not null unique",
-		"non-negative content metrics":      "view_count bigint not null default 0 check (view_count >= 0)",
-		"vector extension":                  "create extension if not exists vector",
-		"fixed embedding dimension":         "halfvec(1024)",
+		"source semantic immutability trigger":  "create trigger source_connections_semantic_immutable",
+		"source query signature":                "query_signature char(64)",
+		"match score range":                     "final_score between 0 and 100",
+		"monitor source idempotency":            "unique (config_version_id, source_connection_id)",
+		"shared collection run idempotency":     "unique (source_connection_id, query_signature, window_start, window_end)",
+		"delivery idempotency":                  "idempotency_key varchar(128) not null unique",
+		"non-negative content metrics":          "view_count bigint not null default 0 check (view_count >= 0)",
+		"vector extension":                      "create extension if not exists vector",
+		"fixed embedding dimension":             "halfvec(1024)",
 	}
 	for name, snippet := range checks {
 		if !strings.Contains(schema, snippet) {
 			t.Errorf("missing %s constraint: %q", name, snippet)
+		}
+	}
+}
+
+func TestSchemaHasVersionPointerForeignKeys(t *testing.T) {
+	schema := readSchemaText(t)
+	for name, column := range map[string]string{
+		"monitors_draft_config_version_fkey":     "draft_config_version_id",
+		"monitors_published_config_version_fkey": "published_config_version_id",
+	} {
+		pattern := regexp.MustCompile(`(?s)add\s+constraint\s+` + regexp.QuoteMeta(name) + `\s+foreign\s+key\s*\(` + regexp.QuoteMeta(column) + `\)\s+references\s+monitor_config_versions\s*\(id\)\s+on\s+delete\s+restrict`)
+		if !pattern.MatchString(schema) {
+			t.Errorf("schema does not define %s as ON DELETE RESTRICT monitor configuration foreign key", name)
 		}
 	}
 }
