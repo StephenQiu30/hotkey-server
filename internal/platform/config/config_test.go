@@ -55,34 +55,48 @@ func TestValidateAcceptsWorkerWithoutListeningAddress(t *testing.T) {
 	}
 }
 
-func TestValidateRuntimeRequiresCompleteMinIOConfigurationWithoutLeakingSecret(t *testing.T) {
+func TestValidateRuntimeAllowsDatabaseOnlyCommandWithoutMinIOConfiguration(t *testing.T) {
+	t.Parallel()
+
+	config := Default()
+	config.Role = "worker"
+	config.DatabaseURL = "postgres://fixture"
+	config.MinIO = MinIOConfig{}
+
+	if err := config.ValidateRuntime(); err != nil {
+		t.Fatalf("ValidateRuntime() error = %v, want database-only command configuration to pass", err)
+	}
+}
+
+func TestMinIOConfigValidateRuntimeRequiresCompleteConfigurationWithoutLeakingSecret(t *testing.T) {
 	t.Parallel()
 
 	for _, test := range []struct {
 		name   string
-		mutate func(*Config)
+		mutate func(*MinIOConfig)
 	}{
-		{name: "endpoint", mutate: func(config *Config) { config.MinIO.Endpoint = "" }},
-		{name: "bucket", mutate: func(config *Config) { config.MinIO.Bucket = "" }},
-		{name: "access key", mutate: func(config *Config) { config.MinIO.AccessKey = "" }},
-		{name: "secret key", mutate: func(config *Config) { config.MinIO.SecretKey = "" }},
+		{name: "endpoint", mutate: func(config *MinIOConfig) { config.Endpoint = "" }},
+		{name: "bucket", mutate: func(config *MinIOConfig) { config.Bucket = "" }},
+		{name: "access key", mutate: func(config *MinIOConfig) { config.AccessKey = "" }},
+		{name: "secret key", mutate: func(config *MinIOConfig) { config.SecretKey = "" }},
 	} {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			config := Default()
-			config.Role = "worker"
-			config.DatabaseURL = "postgres://fixture"
-			config.MinIO.AccessKey = "fixture-access"
-			config.MinIO.SecretKey = "fixture-secret-must-not-appear"
+			config := MinIOConfig{
+				Endpoint:  "127.0.0.1:9000",
+				Bucket:    "fixture-bucket",
+				AccessKey: "fixture-access",
+				SecretKey: "fixture-secret-must-not-appear",
+			}
 			test.mutate(&config)
 
 			err := config.ValidateRuntime()
 			if err == nil {
-				t.Fatal("ValidateRuntime() error = nil, want incomplete MinIO rejection")
+				t.Fatal("MinIOConfig.ValidateRuntime() error = nil, want incomplete MinIO rejection")
 			}
 			if strings.Contains(err.Error(), "fixture-secret-must-not-appear") {
-				t.Fatalf("ValidateRuntime() leaked MinIO secret: %v", err)
+				t.Fatalf("MinIOConfig.ValidateRuntime() leaked secret: %v", err)
 			}
 		})
 	}

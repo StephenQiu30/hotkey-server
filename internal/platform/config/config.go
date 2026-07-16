@@ -228,9 +228,6 @@ func (c Config) ValidateRuntime() error {
 	if strings.TrimSpace(c.DatabaseURL) == "" {
 		return errors.New("database URL is required for a running role")
 	}
-	if err := c.MinIO.ValidateRuntime(); err != nil {
-		return err
-	}
 	return nil
 }
 
