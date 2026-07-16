@@ -6,7 +6,7 @@ feature_area: 文档治理
 purpose: 定义 HotKey Server 正式文档的分类、元数据、关联和维护规则
 canonical_path: docs/README.md
 status: review
-version: v1.5
+version: v1.6
 owner: HotKey Server Team
 inputs:
   - https://github.com/StephenQiu30/stephen-codex
@@ -32,7 +32,7 @@ downstream:
 
 ## 当前交付状态
 
-目标设计不能代替当前实现状态。任务进度只在 [PRD 索引](prd/README.md) 和 [Plan 索引](plans/README.md) 维护：001–008 已完成并由 [Acceptance](acceptance/README.md) 保存长期证据；治理任务 018 已审核为非阻塞 `ready` 支线；产品任务 007 与 008 均已归档为 `archived` / `done`，其 [Acceptance-007](acceptance/007-内容标准化去重与MinIO证据验收.md) 和 [Acceptance-008](acceptance/008-AIProvider与Embedding基础验收.md) 均为 `accepted`；009–017 仍处于 `review` / `backlog`。本地启动、GitHub CI、发布和故障处置等可重复运行流程归入 [Operations](operations/README.md)。
+目标设计不能代替当前实现状态。任务进度只在 [PRD 索引](prd/README.md) 和 [Plan 索引](plans/README.md) 维护：001–008 已完成并由 [Acceptance](acceptance/README.md) 保存长期证据；治理任务 018 已审核为非阻塞 `ready` 支线；产品任务 007 与 008 均已归档为 `archived` / `done`，其 [Acceptance-007](acceptance/007-内容标准化去重与MinIO证据验收.md) 和 [Acceptance-008](acceptance/008-AIProvider与Embedding基础验收.md) 均为 `accepted`；009 已独立复核为 `accepted` / `ready`，010–017 仍处于 `review` / `backlog`。本地启动、GitHub CI、发布和故障处置等可重复运行流程归入 [Operations](operations/README.md)。
 
 ## 文档层级
 
