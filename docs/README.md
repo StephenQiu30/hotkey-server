@@ -32,7 +32,7 @@ downstream:
 
 ## 当前交付状态
 
-目标设计不能代替当前实现状态。任务进度只在 [PRD 索引](prd/README.md) 和 [Plan 索引](plans/README.md) 维护：001–008 已完成并由 [Acceptance](acceptance/README.md) 保存长期证据；治理任务 018 已审核为非阻塞 `ready` 支线；产品任务 007 与 008 均已归档为 `archived` / `done`，其 [Acceptance-007](acceptance/007-内容标准化去重与MinIO证据验收.md) 和 [Acceptance-008](acceptance/008-AIProvider与Embedding基础验收.md) 均为 `accepted`；009 的 Task 1–6、两项 P1 整改和 relevance-review 序列化修复已在 `d4efda5` 通过完整门禁，独立复审仍待完成（`accepted` / `in_progress`），010–017 仍处于 `review` / `backlog`。本地启动、GitHub CI、发布和故障处置等可重复运行流程归入 [Operations](operations/README.md)。
+目标设计不能代替当前实现状态。任务进度只在 [PRD 索引](prd/README.md) 和 [Plan 索引](plans/README.md) 维护：001–009 已完成并由 [Acceptance](acceptance/README.md) 保存长期证据；治理任务 018 已审核为非阻塞 `ready` 支线；PLAN-009 已在 `d4efda5` 通过完整门禁并经非主要编写者 APPROVED，当前为 `archived` / `done`；010–017 仍处于 `review` / `backlog`，必须各自完成文档评审和 ready 门禁。本地启动、GitHub CI、发布和故障处置等可重复运行流程归入 [Operations](operations/README.md)。
 
 ## 文档层级
 

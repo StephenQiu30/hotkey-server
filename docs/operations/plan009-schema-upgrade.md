@@ -5,8 +5,8 @@ audience: [Dev, QA, Ops]
 feature_area: 数据库升级
 purpose: 将 PLAN-008 的模型 Profile 与监控匹配关系升级为可审计的相关性快照、反馈、建议和有界召回索引
 canonical_path: docs/operations/plan009-schema-upgrade.md
-status: in_progress
-version: v0.3
+status: accepted
+version: v0.4
 owner: HotKey Server Team
 inputs:
   - db/schema.sql
@@ -20,6 +20,10 @@ downstream:
 ---
 
 # PLAN-009 Schema 升级
+
+## 最终状态
+
+PLAN-009 的 Schema 升级、回退和最终 integration race 已由 Acceptance-009 在 `d4efda5` 基线验收并经独立复审 APPROVED；本手册为已接受的可重复升级流程，不代表任何生产库已执行升级。
 
 ## 范围与停止条件
 
@@ -247,3 +251,9 @@ cmp /secure-backups/hotkey-before-plan009-monitor-matches.csv \
 ```
 
 `cmp` 必须成功；否则历史 `monitor_matches` 没有按 backup 精确恢复，保持服务停止。演练证据由 `TestPlan009SchemaUpgradeAndRollbackUsesPinnedPlan008Worktree` 保存：它真实初始化固定 PLAN-008 worktree、写入非空历史、运行本文 transaction、验证目标 catalog 与 backfill，再还原 backup 并用同一历史 verifier 和历史行复核。
+
+## 变更记录
+
+| 版本 | 日期 | 变更 |
+|---|---|---|
+| v0.4 | 2026-07-17 | Acceptance-009 在 `d4efda5` 完成自动门禁并经独立复审 APPROVED；升级手册标记 accepted。 |
