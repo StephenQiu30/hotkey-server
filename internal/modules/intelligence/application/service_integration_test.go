@@ -125,7 +125,13 @@ func TestPlan009RelevanceReviewFacadeKeepsSingleOwnerAndProfileScopedReuse(t *te
 			err    error
 		}{result: result, err: err}
 	}()
-	<-provider.started
+	select {
+	case <-provider.started:
+	case first := <-firstDone:
+		t.Fatalf("Review(first) returned before provider started: %#v / %v", first.result, first.err)
+	case <-time.After(15 * time.Second):
+		t.Fatal("Review(first) did not reach the provider within 15s")
+	}
 	inflight, err := service.Review(context.Background(), input)
 	if err != nil || inflight.Status != "degraded" || inflight.ReasonCode != "ai_in_progress" || provider.structuredCalls() != 1 {
 		t.Fatalf("Review(in-flight) = %#v / %v calls=%d, want one owner", inflight, err, provider.structuredCalls())

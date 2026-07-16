@@ -36,7 +36,11 @@ type RelevanceReviewRequest struct {
 // RelevanceReviewScores keeps the five deterministic factors explicit. It is
 // not the final decision and never accepts an arbitrary score field map.
 type RelevanceReviewScores struct {
-	Semantic, Lexical, Entity, Title, Preference float64
+	Semantic   float64 `json:"semantic"`
+	Lexical    float64 `json:"lexical"`
+	Entity     float64 `json:"entity"`
+	Title      float64 `json:"title"`
+	Preference float64 `json:"preference"`
 }
 
 // RelevanceReviewResult exposes only schema-validated business fields and an
