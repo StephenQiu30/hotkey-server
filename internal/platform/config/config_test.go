@@ -1,9 +1,13 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/spf13/viper"
 )
 
 func TestDefaultIsValid(t *testing.T) {
@@ -149,6 +153,64 @@ func TestLoadReadsNamedAuthenticationSettings(t *testing.T) {
 	}
 	if got, want := strings.Join(cfg.Authentication.AllowedOrigins, ","), "https://app.example.test,https://admin.example.test"; got != want {
 		t.Errorf("AllowedOrigins = %q, want %q", got, want)
+	}
+}
+
+func TestLoadEnvironmentFilesPrefersHotkeyLocalValuesAndProcessOverrides(t *testing.T) {
+	directory := t.TempDir()
+	base := filepath.Join(directory, ".env")
+	local := filepath.Join(directory, ".env.local")
+	if err := os.WriteFile(base, []byte("JWT_SECRET=legacy-but-long-enough-secret-value\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(local, []byte("HOTKEY_JWT_SECRET=local-development-secret-with-more-than-32-bytes\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	v := viper.New()
+	v.SetEnvPrefix("HOTKEY")
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
+	for _, key := range configKeys() {
+		if err := v.BindEnv(key); err != nil {
+			t.Fatalf("BindEnv(%q): %v", key, err)
+		}
+	}
+	if err := loadEnvironmentFiles(v, []string{base, local}); err != nil {
+		t.Fatalf("loadEnvironmentFiles(): %v", err)
+	}
+	if got, want := configString(v, "jwt_secret"), "local-development-secret-with-more-than-32-bytes"; got != want {
+		t.Fatalf("local HOTKEY_JWT_SECRET = %q, want %q", got, want)
+	}
+
+	t.Setenv("HOTKEY_JWT_SECRET", "process-environment-secret-with-more-than-32-bytes")
+	if got, want := configString(v, "jwt_secret"), "process-environment-secret-with-more-than-32-bytes"; got != want {
+		t.Fatalf("process HOTKEY_JWT_SECRET = %q, want %q", got, want)
+	}
+}
+
+func TestLoadFindsModuleLocalConfigurationFromWorkspaceRoot(t *testing.T) {
+	workspace := t.TempDir()
+	module := filepath.Join(workspace, "hotkey-server")
+	if err := os.Mkdir(module, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(module, ".env.local"), []byte(strings.Join([]string{
+		"HOTKEY_ROLE=worker",
+		"HOTKEY_JWT_SECRET=workspace-root-development-secret-with-more-than-32-bytes",
+		"HOTKEY_VERIFICATION_HMAC_SECRET=workspace-root-hmac-secret-with-more-than-32-bytes",
+		"HOTKEY_CORS_ALLOWED_ORIGINS=http://localhost:3000",
+	}, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(workspace)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() from workspace root: %v", err)
+	}
+	if cfg.Role != "worker" || cfg.Authentication.JWTSecret != "workspace-root-development-secret-with-more-than-32-bytes" {
+		t.Fatalf("Load() from workspace root = %#v", cfg)
 	}
 }
 

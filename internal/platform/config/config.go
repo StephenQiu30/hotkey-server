@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -92,55 +93,115 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("bind environment key %s: %w", key, err)
 		}
 	}
-	if _, err := os.Stat(".env"); err == nil {
-		v.SetConfigFile(".env")
-		v.SetConfigType("env")
-		if err := v.ReadInConfig(); err != nil {
-			return Config{}, fmt.Errorf("read .env: %w", err)
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return Config{}, fmt.Errorf("inspect .env: %w", err)
+	paths, err := environmentFilePaths()
+	if err != nil {
+		return Config{}, err
+	}
+	if err := loadEnvironmentFiles(v, paths); err != nil {
+		return Config{}, err
 	}
 
 	cfg := Config{
-		Environment:      v.GetString("env"),
-		Role:             v.GetString("role"),
-		HTTPAddr:         v.GetString("http_addr"),
-		RequestTimeout:   v.GetDuration("request_timeout"),
-		ShutdownTimeout:  v.GetDuration("shutdown_timeout"),
-		DatabaseURL:      v.GetString("database_url"),
-		OTLPHTTPEndpoint: v.GetString("otlp_http_endpoint"),
-		VaultPath:        v.GetString("vault_path"),
+		Environment:      configString(v, "env"),
+		Role:             configString(v, "role"),
+		HTTPAddr:         configString(v, "http_addr"),
+		RequestTimeout:   configDuration(v, "request_timeout"),
+		ShutdownTimeout:  configDuration(v, "shutdown_timeout"),
+		DatabaseURL:      configString(v, "database_url"),
+		OTLPHTTPEndpoint: configString(v, "otlp_http_endpoint"),
+		VaultPath:        configString(v, "vault_path"),
 		MinIO: MinIOConfig{
-			Endpoint:  v.GetString("minio_endpoint"),
-			AccessKey: v.GetString("minio_access_key"),
-			SecretKey: v.GetString("minio_secret_key"),
-			Bucket:    v.GetString("minio_bucket"),
-			UseSSL:    v.GetBool("minio_use_ssl"),
+			Endpoint:  configString(v, "minio_endpoint"),
+			AccessKey: configString(v, "minio_access_key"),
+			SecretKey: configString(v, "minio_secret_key"),
+			Bucket:    configString(v, "minio_bucket"),
+			UseSSL:    configBool(v, "minio_use_ssl"),
 		},
 		Authentication: AuthenticationConfig{
-			JWTSecret:              v.GetString("jwt_secret"),
-			JWTIssuer:              v.GetString("jwt_issuer"),
-			JWTAudience:            v.GetString("jwt_audience"),
-			VerificationHMACSecret: v.GetString("verification_hmac_secret"),
-			RedisURL:               v.GetString("redis_url"),
-			AllowedOrigins:         parseCSV(v.GetString("cors_allowed_origins")),
-			RefreshCookieSecure:    v.GetBool("refresh_cookie_secure"),
-			BootstrapAdminEmail:    v.GetString("bootstrap_admin_email"),
-			BootstrapAdminPassword: v.GetString("bootstrap_admin_password"),
+			JWTSecret:              configString(v, "jwt_secret"),
+			JWTIssuer:              configString(v, "jwt_issuer"),
+			JWTAudience:            configString(v, "jwt_audience"),
+			VerificationHMACSecret: configString(v, "verification_hmac_secret"),
+			RedisURL:               configString(v, "redis_url"),
+			AllowedOrigins:         parseCSV(configString(v, "cors_allowed_origins")),
+			RefreshCookieSecure:    configBool(v, "refresh_cookie_secure"),
+			BootstrapAdminEmail:    configString(v, "bootstrap_admin_email"),
+			BootstrapAdminPassword: configString(v, "bootstrap_admin_password"),
 			SMTP: SMTPConfig{
-				Enabled:   v.GetBool("smtp_enabled"),
-				Host:      v.GetString("smtp_host"),
-				Port:      v.GetInt("smtp_port"),
-				TLSMode:   v.GetString("smtp_tls_mode"),
-				Username:  v.GetString("smtp_username"),
-				Password:  v.GetString("smtp_password"),
-				FromEmail: v.GetString("smtp_from_email"),
-				FromName:  v.GetString("smtp_from_name"),
+				Enabled:   configBool(v, "smtp_enabled"),
+				Host:      configString(v, "smtp_host"),
+				Port:      configInt(v, "smtp_port"),
+				TLSMode:   configString(v, "smtp_tls_mode"),
+				Username:  configString(v, "smtp_username"),
+				Password:  configString(v, "smtp_password"),
+				FromEmail: configString(v, "smtp_from_email"),
+				FromName:  configString(v, "smtp_from_name"),
 			},
 		},
 	}
 	return cfg, cfg.Validate()
+}
+
+// environmentFilePaths lets a developer run the server from either the Go
+// module or its workspace root. .env.local intentionally loads after .env so
+// an ignored, machine-local configuration can safely override shared defaults.
+func environmentFilePaths() ([]string, error) {
+	if path := strings.TrimSpace(os.Getenv("HOTKEY_ENV_FILE")); path != "" {
+		return []string{path}, nil
+	}
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("get working directory for environment files: %w", err)
+	}
+	paths := []string{
+		filepath.Join(workingDirectory, ".env"),
+		filepath.Join(workingDirectory, ".env.local"),
+	}
+	if filepath.Base(workingDirectory) != "hotkey-server" {
+		moduleDirectory := filepath.Join(workingDirectory, "hotkey-server")
+		paths = append(paths, filepath.Join(moduleDirectory, ".env"), filepath.Join(moduleDirectory, ".env.local"))
+	}
+	return paths, nil
+}
+
+func loadEnvironmentFiles(v *viper.Viper, paths []string) error {
+	seen := make(map[string]struct{}, len(paths))
+	for _, path := range paths {
+		path = filepath.Clean(path)
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+			continue
+		} else if err != nil {
+			return fmt.Errorf("inspect environment file %s: %w", path, err)
+		}
+		v.SetConfigFile(path)
+		v.SetConfigType("env")
+		if err := v.MergeInConfig(); err != nil {
+			return fmt.Errorf("read environment file %s: %w", path, err)
+		}
+	}
+	return nil
+}
+
+func configKey(v *viper.Viper, key string) string {
+	if _, present := os.LookupEnv("HOTKEY_" + strings.ToUpper(key)); present {
+		return key
+	}
+	prefixedKey := "hotkey_" + key
+	if v.InConfig(prefixedKey) {
+		return prefixedKey
+	}
+	return key
+}
+
+func configString(v *viper.Viper, key string) string { return v.GetString(configKey(v, key)) }
+func configBool(v *viper.Viper, key string) bool     { return v.GetBool(configKey(v, key)) }
+func configInt(v *viper.Viper, key string) int       { return v.GetInt(configKey(v, key)) }
+func configDuration(v *viper.Viper, key string) time.Duration {
+	return v.GetDuration(configKey(v, key))
 }
 
 func (c Config) Validate() error {
