@@ -81,7 +81,7 @@ func TestCollectionRepositoryRollsBackCaptureBeforeCheckpointAdvance(t *testing.
 	if err != nil || !created {
 		t.Fatalf("CreateOrReuseRun() run/created/error = %#v / %t / %v", run, created, err)
 	}
-	if _, started, err := repository.StartRun(context.Background(), run.ID); err != nil || !started {
+	if _, started, err := repository.StartRun(context.Background(), run.ID, time.Time{}); err != nil || !started {
 		t.Fatalf("StartRun() started/error = %t / %v", started, err)
 	}
 	if _, err := runtime.SQL.Exec(`
@@ -148,7 +148,7 @@ func TestCollectionRepositoryMakesCapturedItemPersistenceIdempotent(t *testing.T
 	if err != nil {
 		t.Fatalf("CreateOrReuseRun(): %v", err)
 	}
-	if _, started, err := repository.StartRun(context.Background(), run.ID); err != nil || !started {
+	if _, started, err := repository.StartRun(context.Background(), run.ID, time.Time{}); err != nil || !started {
 		t.Fatalf("StartRun() started/error = %t / %v", started, err)
 	}
 	captured, err := (domain.CapturePolicy{Version: domain.CapturedItemVersionV1, RawPayloadDisposition: domain.RawPayloadDiscarded}).Capture(domain.SourceItem{

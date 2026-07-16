@@ -128,7 +128,7 @@ type PublishedCollectionTargetReader interface {
 // Task 6 adds its transactional write operations beside the implementation.
 type CollectionRepository interface {
 	CreateOrReuseRun(context.Context, CollectionRequest) (CollectionRun, bool, error)
-	StartRun(context.Context, int64) (CollectionRun, bool, error)
+	StartRun(context.Context, int64, time.Time) (CollectionRun, bool, error)
 	PersistSuccess(context.Context, CollectionRunSuccess) (CollectionRun, error)
 	PersistFailure(context.Context, CollectionRunFailure) (CollectionRun, error)
 }

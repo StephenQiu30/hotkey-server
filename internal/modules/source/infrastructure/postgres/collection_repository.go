@@ -79,10 +79,10 @@ WHERE source_connection_id = $1 AND query_signature = $2 AND window_start = $3 A
 	return run, created, nil
 }
 
-// StartRun atomically claims a newly-created run before the application
-// starts I/O. A caller that observes an existing running or completed run
-// must reuse its durable state instead of issuing another upstream request.
-func (repository *CollectionRepository) StartRun(ctx context.Context, runID int64) (domain.CollectionRun, bool, error) {
+// StartRun atomically claims a queued run or a bounded stale running run
+// before the application starts I/O. A caller that observes a fresh running or
+// completed run must reuse its durable state instead of issuing another fetch.
+func (repository *CollectionRepository) StartRun(ctx context.Context, runID int64, staleBefore time.Time) (domain.CollectionRun, bool, error) {
 	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
 		return domain.CollectionRun{}, false, sharedrepository.ErrUnavailable
 	}
@@ -92,11 +92,18 @@ func (repository *CollectionRepository) StartRun(ctx context.Context, runID int6
 	var run domain.CollectionRun
 	started := false
 	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+		var staleAt any
+		if !staleBefore.IsZero() {
+			staleAt = staleBefore.UTC()
+		}
 		candidate, err := scanCollectionRun(transaction.SQL.QueryRowContext(ctx, `
 UPDATE collection_runs
-SET status = 'running', started_at = COALESCE(started_at, now()), updated_at = now()
-WHERE id = $1 AND status = 'queued'
-RETURNING `+collectionRunColumns, runID))
+SET status = 'running', started_at = now(), updated_at = now()
+WHERE id = $1
+  AND (status = 'queued'
+       OR (status = 'running' AND $2::timestamptz IS NOT NULL
+           AND (started_at IS NULL OR started_at <= $2)))
+RETURNING `+collectionRunColumns, runID, staleAt))
 		if err == nil {
 			run, started = candidate, true
 			return nil
@@ -151,6 +158,12 @@ func (repository *CollectionRepository) PersistSuccess(ctx context.Context, succ
 		candidateCount := int64(len(itemIDs))
 		succeededTargets := 0
 		for index, target := range targets {
+			if !checkpointMatchesRunRequest(target.Checkpoint, run) {
+				if err := persistTargetCaptureFailure(ctx, transaction, success.RunID, target, itemIDs, candidateCount, len(success.Result.Diagnostics), "checkpoint_state_mismatch"); err != nil {
+					return err
+				}
+				continue
+			}
 			savepoint := fmt.Sprintf("collection_target_%d", index)
 			if _, err := transaction.SQL.ExecContext(ctx, "SAVEPOINT "+savepoint); err != nil {
 				return sharedrepository.MapError(err)
@@ -172,7 +185,7 @@ func (repository *CollectionRepository) PersistSuccess(ctx context.Context, succ
 			if !errors.Is(err, sharedrepository.ErrConflict) {
 				return err
 			}
-			if failureErr := persistTargetCaptureFailure(ctx, transaction, success.RunID, target, itemIDs, candidateCount, len(success.Result.Diagnostics)); failureErr != nil {
+			if failureErr := persistTargetCaptureFailure(ctx, transaction, success.RunID, target, itemIDs, candidateCount, len(success.Result.Diagnostics), "checkpoint_conflict"); failureErr != nil {
 				return failureErr
 			}
 		}
@@ -367,25 +380,25 @@ WHERE id = $3 AND collection_run_id = $4`, candidateCount, int64(len(result.Diag
 	return advanceCheckpoint(ctx, transaction, target.PublishedCollectionTarget, runID, run, result, completedAt)
 }
 
-// A checkpoint conflict is target-local: the source item is still durable and
-// another target can reconcile it safely. Failed reconciliation is recorded
-// explicitly so a later retry can identify exactly which target was skipped.
-func persistTargetCaptureFailure(ctx context.Context, transaction database.Transaction, runID int64, target collectionPersistedTarget, itemIDs []int64, candidateCount int64, diagnosticCount int) error {
+// A target-local failure is recorded explicitly so another target can still
+// reconcile the durable source item and the skipped target can retry from its
+// own unchanged checkpoint state.
+func persistTargetCaptureFailure(ctx context.Context, transaction database.Transaction, runID int64, target collectionPersistedTarget, itemIDs []int64, candidateCount int64, diagnosticCount int, reasonCode string) error {
 	for _, itemID := range itemIDs {
 		if _, err := transaction.SQL.ExecContext(ctx, `
 INSERT INTO collection_run_target_items
     (collection_run_id, collection_run_target_id, collection_run_item_id, outcome, reason_code)
-VALUES ($1, $2, $3, 'failed', 'checkpoint_conflict')
+VALUES ($1, $2, $3, 'failed', $4)
 ON CONFLICT (collection_run_target_id, collection_run_item_id) DO UPDATE
-SET outcome = 'failed', reason_code = 'checkpoint_conflict'`, runID, target.ID, itemID); err != nil {
+SET outcome = 'failed', reason_code = $4`, runID, target.ID, itemID, reasonCode); err != nil {
 			return sharedrepository.MapError(err)
 		}
 	}
 	if _, err := transaction.SQL.ExecContext(ctx, `
 UPDATE collection_run_targets
 SET target_status = 'failed', candidate_count = $1, accepted_count = 0,
-    rejected_count = $2, error_code = 'checkpoint_conflict', updated_at = now()
-WHERE id = $3 AND collection_run_id = $4`, candidateCount, candidateCount+int64(diagnosticCount), target.ID, runID); err != nil {
+    rejected_count = $2, error_code = $3, updated_at = now()
+WHERE id = $4 AND collection_run_id = $5`, candidateCount, candidateCount+int64(diagnosticCount), reasonCode, target.ID, runID); err != nil {
 		return sharedrepository.MapError(err)
 	}
 	return nil
@@ -493,13 +506,49 @@ func (repository *CollectionRepository) withTransaction(ctx context.Context, fn 
 	return repository.runtime.WithinTransaction(ctx, fn)
 }
 
+// initialRequestState selects an explicit checkpoint-equivalence group. A
+// blank checkpoint is always safest for newly published targets because it
+// cannot apply an older target's conditional validators; otherwise the largest
+// equivalence group wins with a lexical tie break. Targets in other groups are
+// kept pending and never inherit this run's cursor or validators.
 func initialRequestState(targets []domain.PublishedCollectionTarget) (string, string, string) {
-	ordered := sortedCollectionTargets(targets)
-	if len(ordered) == 0 {
-		return "", "", ""
+	counts := make(map[collectionCheckpointState]int, len(targets))
+	for _, target := range targets {
+		state := checkpointState(target.Checkpoint)
+		counts[state]++
 	}
-	checkpoint := ordered[0].Checkpoint
-	return checkpoint.CursorValue, checkpoint.ETag, checkpoint.LastModified
+	best := collectionCheckpointState{}
+	bestCount := -1
+	for state, count := range counts {
+		if state.blank() {
+			return "", "", ""
+		}
+		if count > bestCount || (count == bestCount && state.key() < best.key()) {
+			best, bestCount = state, count
+		}
+	}
+	return best.cursor, best.etag, best.lastModified
+}
+
+type collectionCheckpointState struct {
+	cursor, etag, lastModified string
+}
+
+func checkpointState(checkpoint domain.CollectionCheckpoint) collectionCheckpointState {
+	return collectionCheckpointState{cursor: checkpoint.CursorValue, etag: checkpoint.ETag, lastModified: checkpoint.LastModified}
+}
+
+func (state collectionCheckpointState) blank() bool {
+	return state.cursor == "" && state.etag == "" && state.lastModified == ""
+}
+
+func (state collectionCheckpointState) key() string {
+	return state.cursor + "\x00" + state.etag + "\x00" + state.lastModified
+}
+
+func checkpointMatchesRunRequest(checkpoint domain.CollectionCheckpoint, run domain.CollectionRun) bool {
+	state := checkpointState(checkpoint)
+	return state.cursor == run.RequestCursor && state.etag == run.ETag && state.lastModified == run.LastModified
 }
 
 func sortedCollectionTargets(targets []domain.PublishedCollectionTarget) []domain.PublishedCollectionTarget {

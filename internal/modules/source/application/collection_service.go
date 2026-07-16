@@ -10,7 +10,10 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
 )
 
-const collectionFetchLimit = 100
+const (
+	collectionFetchLimit      = 100
+	collectionRunReclaimAfter = 5 * time.Minute
+)
 
 // CollectionDependencies are intentionally separate from the administrative
 // Source Service dependencies. Collection runs do not need authorization or
@@ -56,14 +59,11 @@ func (service *CollectionService) Collect(ctx context.Context, request domain.Co
 	if err := request.Validate(); err != nil {
 		return domain.CollectionRun{}, domain.NewCollectionError(domain.CollectionErrorPermanent, err)
 	}
-	run, created, err := service.runs.CreateOrReuseRun(ctx, request)
+	run, _, err := service.runs.CreateOrReuseRun(ctx, request)
 	if err != nil {
 		return domain.CollectionRun{}, err
 	}
-	if !created {
-		return run, nil
-	}
-	run, started, err := service.runs.StartRun(ctx, run.ID)
+	run, started, err := service.runs.StartRun(ctx, run.ID, service.now().UTC().Add(-collectionRunReclaimAfter))
 	if err != nil {
 		return domain.CollectionRun{}, err
 	}

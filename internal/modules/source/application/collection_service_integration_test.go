@@ -260,6 +260,93 @@ func TestCollectionServiceIsolatesOneTargetCheckpointConflict(t *testing.T) {
 	}
 }
 
+func TestCollectionServiceReclaimsQueuedAndStaleRunningRuns(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		start      bool
+		startedAt  time.Time
+		wantCursor string
+	}{
+		{name: "queued", wantCursor: "reclaimed-queued"},
+		{name: "stale-running", start: true, startedAt: time.Date(2026, time.July, 16, 11, 0, 0, 0, time.UTC), wantCursor: "reclaimed-running"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			runtime := openRuntime(t)
+			defer func() { _ = runtime.Close() }()
+			request := collectionRequestForService(t, runtime, "reclaim-"+test.name, 1)
+			repository := sourcepostgres.NewCollectionRepository(runtime)
+			run, created, err := repository.CreateOrReuseRun(context.Background(), request)
+			if err != nil || !created {
+				t.Fatalf("CreateOrReuseRun() run/created/error = %#v / %t / %v", run, created, err)
+			}
+			now := time.Date(2026, time.July, 16, 11, 10, 0, 0, time.UTC)
+			if test.start {
+				if _, started, err := repository.StartRun(context.Background(), run.ID, time.Time{}); err != nil || !started {
+					t.Fatalf("StartRun() started/error = %t / %v", started, err)
+				}
+				if _, err := runtime.SQL.Exec(`UPDATE collection_runs SET started_at = $1 WHERE id = $2`, test.startedAt, run.ID); err != nil {
+					t.Fatalf("age running run: %v", err)
+				}
+			}
+			connector := &collectionConnectorFake{result: domain.FetchResult{NextCursor: test.wantCursor}}
+			service, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+				Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: repository,
+				Connectors: collectionConnectorRegistryFake{connector: connector}, Now: func() time.Time { return now },
+			})
+			if err != nil {
+				t.Fatalf("NewCollectionService(): %v", err)
+			}
+			completed, err := service.Collect(context.Background(), request)
+			if err != nil || completed.Status != domain.CollectionRunSucceeded || connector.calls.Load() != 1 {
+				t.Fatalf("Collect() run/error/fetches = %#v / %v / %d, want reclaimed succeeded run", completed, err, connector.calls.Load())
+			}
+		})
+	}
+}
+
+func TestCollectionServiceDoesNotAdvanceTargetWithDifferentCheckpointState(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	request := collectionRequestForService(t, runtime, "checkpoint-state", 2)
+	request.Targets[0].Checkpoint.CursorValue = "old-cursor"
+	request.Targets[0].Checkpoint.ETag = "old-etag"
+	if _, err := runtime.SQL.Exec(`UPDATE source_checkpoints SET cursor_value = $1, etag = $2 WHERE id = $3`, "old-cursor", "old-etag", request.Targets[0].Checkpoint.ID); err != nil {
+		t.Fatalf("seed old checkpoint state: %v", err)
+	}
+	connector := &collectionConnectorFake{result: domain.FetchResult{}}
+	service, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
+		Connectors: collectionConnectorRegistryFake{connector: connector}, Now: func() time.Time { return request.WindowEnd },
+	})
+	if err != nil {
+		t.Fatalf("NewCollectionService(): %v", err)
+	}
+	run, err := service.Collect(context.Background(), request)
+	if err != nil || run.Status != domain.CollectionRunSucceeded {
+		t.Fatalf("Collect() run/error = %#v / %v, want successful run for the fresh checkpoint group", run, err)
+	}
+	requests := connector.fetchRequests()
+	if len(requests) != 1 || requests[0].RequestCursor != "" || requests[0].ETag != "" {
+		t.Fatalf("shared request = %#v, want unconditioned fresh-checkpoint fetch", requests)
+	}
+	var oldStatus, freshStatus, oldCursor, oldETag, freshCursor, freshETag string
+	if err := runtime.SQL.QueryRow(`SELECT target_status FROM collection_run_targets WHERE collection_run_id = $1 AND monitor_source_id = $2`, run.ID, request.Targets[0].MonitorSourceID).Scan(&oldStatus); err != nil {
+		t.Fatalf("read old target status: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT target_status FROM collection_run_targets WHERE collection_run_id = $1 AND monitor_source_id = $2`, run.ID, request.Targets[1].MonitorSourceID).Scan(&freshStatus); err != nil {
+		t.Fatalf("read fresh target status: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT COALESCE(cursor_value, ''), COALESCE(etag, '') FROM source_checkpoints WHERE id = $1`, request.Targets[0].Checkpoint.ID).Scan(&oldCursor, &oldETag); err != nil {
+		t.Fatalf("read old checkpoint: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT COALESCE(cursor_value, ''), COALESCE(etag, '') FROM source_checkpoints WHERE id = $1`, request.Targets[1].Checkpoint.ID).Scan(&freshCursor, &freshETag); err != nil {
+		t.Fatalf("read fresh checkpoint: %v", err)
+	}
+	if oldStatus != "failed" || freshStatus != "succeeded" || oldCursor != "old-cursor" || oldETag != "old-etag" || freshCursor != "" || freshETag != "" {
+		t.Fatalf("checkpoint isolation = old=%q/%q/%q fresh=%q/%q/%q", oldStatus, oldCursor, oldETag, freshStatus, freshCursor, freshETag)
+	}
+}
+
 func collectionRequestForService(t *testing.T, runtime *database.Runtime, name string, targetCount int) domain.CollectionRequest {
 	t.Helper()
 	connection := sourceConnection("collection-service-" + name)
