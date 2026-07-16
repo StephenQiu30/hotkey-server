@@ -17,7 +17,7 @@ import (
 
 func TestEmbeddedSchemaCatalogIsComplete(t *testing.T) {
 	tables := EmbeddedSchemaTableNames()
-	if got, want := len(tables), 58; got != want {
+	if got, want := len(tables), 60; got != want {
 		t.Fatalf("embedded table count = %d, want %d", got, want)
 	}
 	if !EmbeddedSchemaContains("CREATE EXTENSION IF NOT EXISTS vector") {
@@ -33,7 +33,7 @@ func TestRuntimeUsesSharedPoolAndVerifiesCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Verify() error = %v", err)
 	}
-	if got, want := len(verification.Tables), 58; got != want {
+	if got, want := len(verification.Tables), 60; got != want {
 		t.Fatalf("verified table count = %d, want %d", got, want)
 	}
 	if verification.CatalogFingerprint == "" {
@@ -353,8 +353,11 @@ RETURNING id`, sourceID, "monitor-schema-content-"+suffix, now, strings.Repeat("
 		t.Fatalf("create content for monitor history: %v", err)
 	}
 	if _, err := runtime.SQL.Exec(`
-INSERT INTO monitor_matches (monitor_id, monitor_config_version_id, content_id, rule_score, final_score, decision, algorithm_version)
-VALUES ($1, $2, $3, 10, 10, 'accepted', 'schema-test')`, secondMonitorID, firstConfigID, contentID); err == nil {
+INSERT INTO monitor_matches (
+  monitor_id, monitor_config_version_id, content_id, rule_score, final_score, decision, algorithm_version,
+  input_hash, scoring_version
+)
+VALUES ($1, $2, $3, 10, 10, 'accepted', 'schema-test', $4, 'schema-v1')`, secondMonitorID, firstConfigID, contentID, strings.Repeat("c", 64)); err == nil {
 		t.Fatal("wrong monitor/config historical match = nil error, want composite foreign key rejection")
 	} else {
 		assertPostgreSQLState(t, err, "23503")
@@ -757,6 +760,27 @@ func TestPlan009SchemaUpgradeAndRollbackUsesPinnedPlan008Worktree(t *testing.T) 
 		_ = current.Close()
 		t.Fatalf("upgraded historical monitor matches = %d, want 1", historicalMatches)
 	}
+	var inputHash, scoringVersion, decisionOrigin string
+	var degraded, recallPathsEmpty, legacyBackfill, deterministicHash bool
+	if err := current.SQL.QueryRow(`
+SELECT input_hash, scoring_version, decision_origin, degraded,
+       recall_paths = ARRAY[]::text[],
+       COALESCE((explanation->'provenance'->>'legacy_backfill')::boolean, false),
+       input_hash = encode(
+         sha256(convert_to(concat_ws(':', 'legacy-monitor-match-v1', id, monitor_config_version_id, content_id, algorithm_version), 'UTF8')),
+         'hex'
+       )
+FROM monitor_matches
+WHERE algorithm_version = 'plan009-upgrade-fixture'`).Scan(
+		&inputHash, &scoringVersion, &decisionOrigin, &degraded, &recallPathsEmpty, &legacyBackfill, &deterministicHash,
+	); err != nil {
+		_ = current.Close()
+		t.Fatalf("read upgraded historical monitor-match provenance: %v", err)
+	}
+	if len(inputHash) != 64 || scoringVersion != "legacy-v1" || decisionOrigin != "rule" || !degraded || !recallPathsEmpty || !legacyBackfill || !deterministicHash {
+		_ = current.Close()
+		t.Fatalf("upgraded historical monitor-match provenance = hash=%q version=%q origin=%q degraded=%t empty_paths=%t legacy=%t deterministic=%t", inputHash, scoringVersion, decisionOrigin, degraded, recallPathsEmpty, legacyBackfill, deterministicHash)
+	}
 	if _, err := current.SQL.Exec(`
 INSERT INTO ai_model_profiles (
   name, task_type, provider, model_name, credential_ref, model_version,
@@ -785,6 +809,9 @@ INSERT INTO ai_model_profiles (
 		t.Fatalf("close upgraded PLAN-009 database: %v", err)
 	}
 
+	if output, err := runPostgreSQLTool(t, "psql", dsn, "-v", "ON_ERROR_STOP=1", "-c", plan009RollbackPreparationSQL(t)); err != nil {
+		t.Fatalf("apply exact PLAN-009 rollback preparation: %v\n%s", err, output)
+	}
 	if output, err := runPostgreSQLTool(t, "pg_restore", "--single-transaction", "--clean", "--if-exists", "--no-owner", "--dbname="+dsn, backup); err != nil {
 		t.Fatalf("restore PLAN-008 backup after PLAN-009 upgrade: %v\n%s", err, output)
 	}
@@ -813,6 +840,29 @@ WHERE algorithm_version = 'plan009-upgrade-fixture'
 	}
 	if restoredMatches != 1 {
 		t.Fatalf("restored historical monitor matches = %d, want 1", restoredMatches)
+	}
+}
+
+func TestPlan009SchemaUpgradeRejectsLegacyScalarProvenance(t *testing.T) {
+	worktree := plan008Worktree(t)
+	dsn := postgresfixture.New(t)
+
+	if output, err := runHistoricalDatabaseCommand(worktree, dsn, "init", "--empty-only", "--confirm-empty"); err != nil {
+		t.Fatalf("initialize detached PLAN-008 worktree database: %v\n%s", err, output)
+	}
+	if output, err := runPostgreSQLTool(t, "psql", dsn, "-v", "ON_ERROR_STOP=1", "-c", plan009MonitorMatchFixtureSQL); err != nil {
+		t.Fatalf("seed PLAN-008 monitor-match history: %v\n%s", err, output)
+	}
+	if output, err := runPostgreSQLTool(t, "psql", dsn, "-v", "ON_ERROR_STOP=1", "-c", `UPDATE monitor_matches SET explanation = '{"provenance":"legacy"}'::jsonb`); err != nil {
+		t.Fatalf("seed scalar legacy provenance: %v\n%s", err, output)
+	}
+	if output, err := runPostgreSQLTool(t, "psql", dsn, "-v", "ON_ERROR_STOP=1", "-c", plan009UpgradeSQL(t)); err == nil {
+		t.Fatal("upgrade with scalar legacy provenance succeeded, want preflight rejection")
+	} else if !strings.Contains(output, "requires monitor_matches explanation and provenance to be JSON objects") {
+		t.Fatalf("upgrade with scalar legacy provenance failed without expected diagnostic: %s", output)
+	}
+	if output, err := runHistoricalDatabaseCommand(worktree, dsn, "verify"); err != nil {
+		t.Fatalf("failed PLAN-009 preflight must leave the PLAN-008 catalog unchanged: %v\n%s", err, output)
 	}
 }
 
@@ -1049,6 +1099,25 @@ func plan009RollbackNormalizationSQL(t *testing.T) string {
 	end := strings.Index(text[start:], "\nCOMMIT;")
 	if end < 0 {
 		t.Fatal("PLAN-009 rollback normalization transaction has no COMMIT")
+	}
+	return text[start : start+end+len("\nCOMMIT;")]
+}
+
+func plan009RollbackPreparationSQL(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join("..", "..", "..", "docs", "operations", "plan009-schema-upgrade.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read PLAN-009 rollback runbook: %v", err)
+	}
+	text := string(content)
+	start := strings.Index(text, "BEGIN;\n\nDROP TABLE IF EXISTS monitor_match_feedbacks")
+	if start < 0 {
+		t.Fatal("PLAN-009 rollback preparation transaction is missing")
+	}
+	end := strings.Index(text[start:], "\nCOMMIT;")
+	if end < 0 {
+		t.Fatal("PLAN-009 rollback preparation transaction has no COMMIT")
 	}
 	return text[start : start+end+len("\nCOMMIT;")]
 }

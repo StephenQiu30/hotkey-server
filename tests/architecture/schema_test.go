@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database/model"
+	"github.com/StephenQiu30/hotkey-server/tests/postgresfixture"
 )
 
 func TestCompleteSchemaCoversMappedRecords(t *testing.T) {
@@ -110,7 +111,7 @@ func TestGreenfieldSchemaEnforcesCriticalConstraints(t *testing.T) {
 		"collection item ingestion state":             "outcome = 'captured' and (",
 		"vector extension":                            "create extension if not exists vector",
 		"fixed embedding dimension":                   "halfvec(1024)",
-		"AI task type whitelist":                      "task_type varchar(24) not null check (task_type in ('embedding','term_expansion'))",
+		"AI task type whitelist":                      "task_type varchar(24) not null check (task_type in ('embedding','term_expansion','relevance_review'))",
 		"AI provider whitelist":                       "provider varchar(120) not null check (provider in ('openai','onnx'))",
 		"AI profile single-call budget":               "max_cost numeric(12,4) not null check (max_cost > 0)",
 		"AI run object keys stay null":                "check (request_object_key is null and response_object_key is null)",
@@ -136,7 +137,7 @@ func TestEmbeddingSchemaRequiresRunProvenanceImmediatelyAfterProfileVersion(t *t
 	}
 }
 
-func TestAIModelSchemaHasOnlyPlan008Contracts(t *testing.T) {
+func TestAIModelSchemaHasOnlyPlan009Contracts(t *testing.T) {
 	schema := readSchemaText(t)
 	profile := tableBlock(t, schema, "ai_model_profiles")
 	run := tableBlock(t, schema, "ai_runs")
@@ -198,10 +199,7 @@ func TestApplicationDoesNotUseAutoMigrate(t *testing.T) {
 }
 
 func TestSchemaIsIdempotentWhenTestDatabaseIsConfigured(t *testing.T) {
-	dsn := os.Getenv("HOTKEY_TEST_DSN")
-	if dsn == "" {
-		t.Skip("HOTKEY_TEST_DSN is not configured")
-	}
+	dsn := postgresfixture.New(t)
 	root := repositoryRoot(t)
 	for run := 1; run <= 2; run++ {
 		command := exec.Command("psql", dsn, "-v", "ON_ERROR_STOP=1", "-f", filepath.Join(root, "db", "schema.sql"))

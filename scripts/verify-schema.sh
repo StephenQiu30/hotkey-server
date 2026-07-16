@@ -74,8 +74,12 @@ BEGIN
     VALUES (source_id, 'schema-content-' || suffix, 'article', 'https://example.test/content', now(), now(), repeat('b', 64))
     RETURNING id INTO content_id;
   BEGIN
-    INSERT INTO monitor_matches (monitor_id, monitor_config_version_id, content_id, rule_score, final_score, decision, algorithm_version)
-      VALUES (second_monitor_id, first_config_id, content_id, 10, 10, 'accepted', 'schema');
+    INSERT INTO monitor_matches (
+      monitor_id, monitor_config_version_id, content_id, rule_score, final_score, decision, algorithm_version,
+      input_hash, scoring_version
+    ) VALUES (
+      second_monitor_id, first_config_id, content_id, 10, 10, 'accepted', 'schema', repeat('c', 64), 'schema-v1'
+    );
     RAISE EXCEPTION 'missing monitor/config composite foreign key';
   EXCEPTION WHEN foreign_key_violation THEN
     NULL;
@@ -234,8 +238,8 @@ $$;
 SQL
 
 application_tables=$(psql "$dsn" -Atqc "SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tablename NOT LIKE 'river_%'")
-if test "$application_tables" -ne 53; then
-  printf 'application table count = %s, want 53\n' "$application_tables" >&2
+if test "$application_tables" -ne 55; then
+  printf 'application table count = %s, want 55\n' "$application_tables" >&2
   exit 1
 fi
 

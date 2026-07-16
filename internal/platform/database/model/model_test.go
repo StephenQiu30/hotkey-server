@@ -5,26 +5,29 @@ import "testing"
 func TestSpecsHaveUniqueTablesAndColumns(t *testing.T) {
 	seen := map[string]bool{}
 	wantColumns := map[string][]string{
-		"ai_model_profiles":           {"id", "version", "name", "task_type", "provider", "model_name", "model_version", "credential_ref", "embedding_dimensions", "timeout_seconds", "max_attempts", "max_cost", "daily_budget", "fallback_priority", "enabled", "deleted_at"},
-		"ai_runs":                     {"id", "task_type", "target_type", "target_id", "model_profile_id", "model_profile_version", "model_version", "prompt_version", "input_schema_version", "schema_version", "parameters_version", "input_hash", "evidence_set_hash", "reuse_key", "attempt", "max_attempts", "repair_attempted", "retry_after", "error_code", "budget_day", "reserved_cost", "lease_expires_at", "status"},
-		"ai_budget_ledgers":           {"id", "model_profile_id", "budget_day", "reserved_cost", "settled_cost", "overage_blocked", "updated_at"},
-		"content_embeddings":          {"id", "content_id", "model_profile_id", "model_profile_version", "ai_run_id", "model_version", "input_hash", "embedding", "active"},
-		"monitor_embeddings":          {"id", "monitor_id", "model_profile_id", "model_profile_version", "ai_run_id", "model_version", "input_hash", "query_text", "embedding", "active"},
-		"event_embeddings":            {"id", "event_id", "model_profile_id", "model_profile_version", "ai_run_id", "model_version", "input_hash", "embedding", "active"},
-		"topic_embeddings":            {"id", "topic_id", "model_profile_id", "model_profile_version", "ai_run_id", "model_version", "input_hash", "embedding", "active"},
-		"auth_sessions":               {"id", "user_id", "family_id", "absolute_expires_at", "revoked_at"},
-		"auth_refresh_tokens":         {"id", "session_id", "token_hash", "expires_at", "used_at", "revoked_at"},
-		"monitors":                    {"id", "version", "name", "status", "draft_config_version_id", "published_config_version_id", "deleted_at"},
-		"monitor_config_versions":     {"id", "version", "monitor_id", "revision", "state", "config_hash", "published_at"},
-		"monitor_rules":               {"id", "version", "config_version_id", "rule_type", "value"},
-		"monitor_sources":             {"id", "version", "config_version_id", "source_connection_id", "query_signature"},
-		"source_checkpoints":          {"id", "monitor_source_id", "last_successful_run_id", "last_fetched_at", "next_poll_at"},
-		"collection_runs":             {"id", "source_connection_id", "query_signature", "request_cursor", "next_cursor", "etag", "last_modified", "retry_after", "page_count", "window_start", "window_end", "status", "updated_at"},
-		"collection_run_targets":      {"id", "collection_run_id", "monitor_source_id", "monitor_config_version_id", "target_status", "updated_at"},
-		"contents":                    {"id", "source_connection_id", "external_id", "dedupe_key", "dedupe_reason", "dedupe_version", "view_count", "like_count", "comment_count", "share_count", "deleted_at"},
-		"collection_run_items":        {"id", "run_id", "source_connection_id", "source_code", "external_id", "content_type", "captured_item_version", "captured_item", "payload_hash", "raw_payload_disposition", "content_id", "ingestion_status", "ingestion_error_code", "outcome", "observed_at"},
-		"collection_run_target_items": {"id", "collection_run_id", "collection_run_target_id", "collection_run_item_id", "outcome"},
-		"content_metric_snapshots":    {"id", "content_id", "captured_at", "view_count", "like_count", "comment_count", "share_count"},
+		"ai_model_profiles":            {"id", "version", "name", "task_type", "provider", "model_name", "model_version", "credential_ref", "embedding_dimensions", "timeout_seconds", "max_attempts", "max_cost", "daily_budget", "fallback_priority", "enabled", "deleted_at"},
+		"ai_runs":                      {"id", "task_type", "target_type", "target_id", "model_profile_id", "model_profile_version", "model_version", "prompt_version", "input_schema_version", "schema_version", "parameters_version", "input_hash", "evidence_set_hash", "reuse_key", "attempt", "max_attempts", "repair_attempted", "retry_after", "error_code", "budget_day", "reserved_cost", "lease_expires_at", "status"},
+		"ai_budget_ledgers":            {"id", "model_profile_id", "budget_day", "reserved_cost", "settled_cost", "overage_blocked", "updated_at"},
+		"content_embeddings":           {"id", "content_id", "model_profile_id", "model_profile_version", "ai_run_id", "model_version", "input_hash", "embedding", "active"},
+		"monitor_embeddings":           {"id", "monitor_id", "model_profile_id", "model_profile_version", "ai_run_id", "model_version", "input_hash", "query_text", "embedding", "active"},
+		"event_embeddings":             {"id", "event_id", "model_profile_id", "model_profile_version", "ai_run_id", "model_version", "input_hash", "embedding", "active"},
+		"topic_embeddings":             {"id", "topic_id", "model_profile_id", "model_profile_version", "ai_run_id", "model_version", "input_hash", "embedding", "active"},
+		"auth_sessions":                {"id", "user_id", "family_id", "absolute_expires_at", "revoked_at"},
+		"auth_refresh_tokens":          {"id", "session_id", "token_hash", "expires_at", "used_at", "revoked_at"},
+		"monitors":                     {"id", "version", "name", "status", "draft_config_version_id", "published_config_version_id", "deleted_at"},
+		"monitor_config_versions":      {"id", "version", "monitor_id", "revision", "state", "config_hash", "published_at"},
+		"monitor_rules":                {"id", "version", "config_version_id", "rule_type", "value"},
+		"monitor_sources":              {"id", "version", "config_version_id", "source_connection_id", "query_signature"},
+		"source_checkpoints":           {"id", "monitor_source_id", "last_successful_run_id", "last_fetched_at", "next_poll_at"},
+		"collection_runs":              {"id", "source_connection_id", "query_signature", "request_cursor", "next_cursor", "etag", "last_modified", "retry_after", "page_count", "window_start", "window_end", "status", "updated_at"},
+		"collection_run_targets":       {"id", "collection_run_id", "monitor_source_id", "monitor_config_version_id", "target_status", "updated_at"},
+		"contents":                     {"id", "source_connection_id", "external_id", "dedupe_key", "dedupe_reason", "dedupe_version", "view_count", "like_count", "comment_count", "share_count", "deleted_at"},
+		"monitor_matches":              {"id", "version", "monitor_id", "monitor_config_version_id", "content_id", "input_hash", "scoring_version", "final_score", "decision", "decision_origin", "embedding_model_profile_id", "embedding_model_profile_version", "embedding_model_version", "review_ai_run_id"},
+		"monitor_match_feedbacks":      {"id", "version", "monitor_id", "monitor_config_version_id", "content_id", "monitor_match_id", "actor_user_id", "feedback_type"},
+		"monitor_feedback_suggestions": {"id", "version", "monitor_id", "monitor_config_version_id", "suggestion_type", "value", "support_count", "status", "reviewed_by_user_id"},
+		"collection_run_items":         {"id", "run_id", "source_connection_id", "source_code", "external_id", "content_type", "captured_item_version", "captured_item", "payload_hash", "raw_payload_disposition", "content_id", "ingestion_status", "ingestion_error_code", "outcome", "observed_at"},
+		"collection_run_target_items":  {"id", "collection_run_id", "collection_run_target_id", "collection_run_item_id", "outcome"},
+		"content_metric_snapshots":     {"id", "content_id", "captured_at", "view_count", "like_count", "comment_count", "share_count"},
 	}
 	for _, spec := range All() {
 		if spec.Table == "" || seen[spec.Table] {
@@ -43,7 +46,7 @@ func TestSpecsHaveUniqueTablesAndColumns(t *testing.T) {
 			t.Errorf("missing mapped table %s", table)
 		}
 	}
-	if got, want := len(seen), 53; got != want {
+	if got, want := len(seen), 55; got != want {
 		t.Errorf("mapped table count = %d, want %d", got, want)
 	}
 }

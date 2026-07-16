@@ -23,6 +23,18 @@ type ContentRepository interface {
 	ExpireBefore(ctx context.Context, before time.Time) (int, error)
 }
 
+// RelevanceRepository keeps auditable match snapshots and feedback facts in
+// ingestion. It owns the cross-table validation needed for Content and Monitor
+// references, without exposing the AI module's tables as a general query API.
+type RelevanceRepository interface {
+	UpsertSnapshot(context.Context, RelevanceSnapshotInput) (RelevanceSnapshot, bool, error)
+	ApplySuccessfulReview(context.Context, SuccessfulReviewInput) (RelevanceSnapshot, error)
+	ListLatestSnapshots(context.Context, int64, RelevanceSnapshotListQuery) (RelevanceSnapshotPage, error)
+	UpsertFeedback(context.Context, RelevanceFeedbackInput) (RelevanceFeedback, error)
+	UpsertPendingSuggestion(context.Context, RelevanceSuggestionInput) (RelevanceSuggestion, bool, error)
+	ReviewSuggestion(context.Context, int64, int64, int64, SuggestionStatus) (RelevanceSuggestion, error)
+}
+
 // EvidenceStore is ingestion's only object-storage boundary. Implementations
 // must not leak provider SDK types into application or domain code.
 type EvidenceStore interface {

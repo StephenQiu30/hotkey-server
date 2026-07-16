@@ -114,6 +114,22 @@ type ContentAsset struct {
 type MonitorMatch struct {
 	Record
 	MonitorID, MonitorConfigVersionID, ContentID int64
+	InputHash, ScoringVersion                    string
+	EmbeddingModelProfileID                      *int64
+	EmbeddingModelProfileVersion                 *int64
+	EmbeddingModelVersion                        *string
+	ReviewAIRunID                                *int64
+}
+type MonitorMatchFeedback struct {
+	Record
+	MonitorID, MonitorConfigVersionID, ContentID, ActorUserID int64
+	MonitorMatchID                                            *int64
+}
+type MonitorFeedbackSuggestion struct {
+	Record
+	MonitorID, MonitorConfigVersionID int64
+	SuggestionType, Status            string
+	ReviewedByUserID                  *int64
 }
 type Event struct {
 	Record
@@ -353,7 +369,9 @@ var specs = []Spec{
 	{"source_authors", LifecycleBusiness, []string{"id", "source_connection_id", "external_id"}},
 	{"contents", LifecycleBusiness, []string{"id", "source_connection_id", "external_id", "dedupe_key", "dedupe_reason", "dedupe_version", "view_count", "like_count", "comment_count", "share_count", "deleted_at"}},
 	{"content_assets", LifecycleBusiness, []string{"id", "content_id", "object_key", "object_status"}},
-	{"monitor_matches", LifecycleBusiness, []string{"id", "monitor_id", "monitor_config_version_id", "content_id", "final_score"}},
+	{"monitor_matches", LifecycleBusiness, []string{"id", "version", "monitor_id", "monitor_config_version_id", "content_id", "input_hash", "scoring_version", "final_score", "decision", "decision_origin", "embedding_model_profile_id", "embedding_model_profile_version", "embedding_model_version", "review_ai_run_id"}},
+	{"monitor_match_feedbacks", LifecycleBusiness, []string{"id", "version", "monitor_id", "monitor_config_version_id", "content_id", "monitor_match_id", "actor_user_id", "feedback_type"}},
+	{"monitor_feedback_suggestions", LifecycleBusiness, []string{"id", "version", "monitor_id", "monitor_config_version_id", "suggestion_type", "value", "support_count", "status", "reviewed_by_user_id"}},
 	{"events", LifecycleBusiness, []string{"id", "event_key", "lifecycle_status", "deleted_at"}},
 	{"event_contents", LifecycleBusiness, []string{"id", "event_id", "content_id", "membership_score"}},
 	{"monitor_events", LifecycleBusiness, []string{"id", "monitor_id", "event_id", "final_score"}},
