@@ -161,6 +161,32 @@ func TestConnectorBoundsPaginationAndRejectsUnsafeDestinations(t *testing.T) {
 		}
 	})
 
+	t.Run("continuation_cursor_keeps_root_validators_without_sending_them", func(t *testing.T) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			if request.URL.Path != "/page-2" {
+				t.Errorf("unexpected continuation path %q", request.URL.Path)
+			}
+			if request.Header.Get("If-None-Match") != "" || request.Header.Get("If-Modified-Since") != "" {
+				t.Errorf("continuation request reused root conditional validators")
+			}
+			writer.Header().Set("ETag", `"continuation-etag"`)
+			writer.Header().Set("Last-Modified", "Wed, 16 Jul 2026 08:30:00 GMT")
+			_, _ = writer.Write([]byte(`<?xml version="1.0"?><rss><channel><item><guid>page-2</guid><title>Page</title></item></channel></rss>`))
+		}))
+		defer server.Close()
+
+		connector := newTestConnector(t, server, 2, publicResolver())
+		request := testFetchRequest()
+		request.RequestCursor = "https://feeds.example.test/page-2"
+		result, err := connector.Fetch(context.Background(), request)
+		if err != nil {
+			t.Fatalf("Fetch(): %v", err)
+		}
+		if result.ETag != request.ETag || result.LastModified != request.LastModified {
+			t.Fatalf("continuation validators = %#v, want preserved root validators", result)
+		}
+	})
+
 	t.Run("pagination_limit", func(t *testing.T) {
 		var requests int
 		server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -179,6 +205,36 @@ func TestConnectorBoundsPaginationAndRejectsUnsafeDestinations(t *testing.T) {
 		}
 		if requests != 1 || !result.HasMore || result.NextCursor != "https://feeds.example.test/page-2" {
 			t.Fatalf("requests/result = %d, %#v; want one page and safe next cursor", requests, result)
+		}
+	})
+
+	t.Run("cross_host_redirect_cursor_and_link", func(t *testing.T) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			switch request.URL.Path {
+			case "/redirect":
+				http.Redirect(writer, request, "https://other.example.test/feed", http.StatusFound)
+			case "/link":
+				writer.Header().Set("Link", `<https://other.example.test/page-2>; rel="next"`)
+				_, _ = writer.Write([]byte(`<?xml version="1.0"?><rss><channel><item><guid>link</guid><title>Link</title></item></channel></rss>`))
+			default:
+				_, _ = writer.Write([]byte(`<?xml version="1.0"?><rss><channel><item><guid>cursor</guid><title>Cursor</title></item></channel></rss>`))
+			}
+		}))
+		defer server.Close()
+		connector := newTestConnector(t, server, 1, publicResolver())
+		for _, test := range []struct {
+			name    string
+			request domain.FetchRequest
+		}{
+			{"redirect", requestWithCursor("https://feeds.example.test/redirect")},
+			{"cursor", requestWithCursor("https://other.example.test/page-2")},
+			{"link", requestWithCursor("https://feeds.example.test/link")},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				if _, err := connector.Fetch(context.Background(), test.request); err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorPermanent {
+					t.Fatalf("cross-host %s error = %v, class = %q; want permanent", test.name, err, domain.ClassifyCollectionError(err))
+				}
+			})
 		}
 	})
 
@@ -238,6 +294,12 @@ func testFetchRequest() domain.FetchRequest {
 		WindowStart: time.Date(2026, time.July, 16, 8, 0, 0, 0, time.UTC), WindowEnd: time.Date(2026, time.July, 16, 9, 0, 0, 0, time.UTC),
 		ETag: `"prior-etag"`, LastModified: "Wed, 16 Jul 2026 07:00:00 GMT", Limit: 100,
 	}
+}
+
+func requestWithCursor(cursor string) domain.FetchRequest {
+	request := testFetchRequest()
+	request.RequestCursor = cursor
+	return request
 }
 
 func readFixture(t *testing.T, path string) []byte {

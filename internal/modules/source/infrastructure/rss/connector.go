@@ -95,7 +95,7 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 			if len(via) >= maxRedirects {
 				return errRedirectLimit
 			}
-			if _, err := validatedRSSURL(request.URL.String()); err != nil {
+			if _, err := validatedRSSURLForEndpoint(endpoint, request.URL.String()); err != nil {
 				return errUnsafeDestination
 			}
 			return nil
@@ -123,18 +123,30 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 	if err != nil {
 		return domain.FetchResult{}, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid RSS request cursor"))
 	}
-	result := domain.FetchResult{Items: []domain.SourceItem{}, Diagnostics: []domain.FetchDiagnostic{}}
+	rootFeedRequest := strings.TrimSpace(request.RequestCursor) == ""
+	result := domain.FetchResult{
+		Items:        []domain.SourceItem{},
+		ETag:         request.ETag,
+		LastModified: request.LastModified,
+		Diagnostics:  []domain.FetchDiagnostic{},
+	}
 	for page := 0; page < connector.maxPages; page++ {
 		etag, lastModified := "", ""
-		if page == 0 {
+		if rootFeedRequest && page == 0 {
 			etag, lastModified = request.ETag, request.LastModified
 		}
 		response, err := connector.get(ctx, current, etag, lastModified)
 		if err != nil {
 			return result, connector.requestError(err)
 		}
-		result.ETag = response.Header.Get("ETag")
-		result.LastModified = response.Header.Get("Last-Modified")
+		if rootFeedRequest && page == 0 {
+			if etag := response.Header.Get("ETag"); etag != "" {
+				result.ETag = etag
+			}
+			if lastModified := response.Header.Get("Last-Modified"); lastModified != "" {
+				result.LastModified = lastModified
+			}
+		}
 		if response.StatusCode == http.StatusNotModified {
 			closeResponse(response)
 			return result, nil
@@ -200,7 +212,7 @@ func (connector *Connector) fetchURL(cursor string) (*url.URL, error) {
 		copy := *connector.endpoint
 		return &copy, nil
 	}
-	return validatedRSSURL(cursor)
+	return validatedRSSURLForEndpoint(connector.endpoint, cursor)
 }
 
 func (connector *Connector) nextURL(current *url.URL, linkHeader, atomNext string) (*url.URL, error) {
@@ -215,7 +227,7 @@ func (connector *Connector) nextURL(current *url.URL, linkHeader, atomNext strin
 	if err != nil {
 		return nil, err
 	}
-	return validatedRSSURL(next.String())
+	return validatedRSSURLForEndpoint(connector.endpoint, next.String())
 }
 
 func (connector *Connector) get(ctx context.Context, target *url.URL, etag, lastModified string) (*http.Response, error) {
@@ -282,6 +294,17 @@ func validatedRSSURL(value string) (*url.URL, error) {
 	parsed, err := url.Parse(normalized)
 	if err != nil || parsed.Hostname() == "" {
 		return nil, fmt.Errorf("invalid RSS URL")
+	}
+	return parsed, nil
+}
+
+func validatedRSSURLForEndpoint(endpoint *url.URL, value string) (*url.URL, error) {
+	parsed, err := validatedRSSURL(value)
+	if err != nil {
+		return nil, err
+	}
+	if endpoint == nil || !strings.EqualFold(parsed.Hostname(), endpoint.Hostname()) {
+		return nil, fmt.Errorf("RSS URL host does not match source endpoint")
 	}
 	return parsed, nil
 }
