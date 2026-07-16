@@ -52,6 +52,16 @@ HOTKEY_DATABASE_URL='postgres://hotkey:hotkey@localhost:5432/hotkey_new?sslmode=
 
 `make ci` 也会执行该验证，因此 CI 必须提供 `HOTKEY_TEST_DSN`。
 
+身份认证的完整 CI 还会运行真实 Redis 验证流程。为避免污染开发验证码状态，请显式使用可丢弃的 Redis DB，并同时传入两个测试连接：
+
+```bash
+HOTKEY_TEST_DSN='postgres://hotkey:hotkey@localhost:5432/hotkey_test?sslmode=disable' \
+HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' \
+make ci
+```
+
+Redis 只承载验证码、验证票据和限流测试状态；用户、会话与刷新凭据的事实仍在 PostgreSQL。
+
 本地 Go 工具链可以放在未跟踪的 `.tools/go` 目录，或直接使用系统中的 Go 1.26+。
 
 ## 许可证
