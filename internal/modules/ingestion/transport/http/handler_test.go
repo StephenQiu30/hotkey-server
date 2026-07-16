@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	ingestionapplication "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/application"
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/domain"
 	sourcedomain "github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
 	httptransport "github.com/StephenQiu30/hotkey-server/internal/platform/http"
@@ -115,6 +116,31 @@ func TestContentRoutes(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("list skips a deleted source but preserves the safe live content", func(t *testing.T) {
+		deletedSourceContent := content
+		deletedSourceContent.ID, deletedSourceContent.SourceConnectionID = 8, 4
+		deletedSourceContent.Excerpt = "private-deleted-source-body"
+		service, err := ingestionapplication.NewContentQueryService(ingestionapplication.ContentQueryDependencies{
+			Contents: &contentTransportRepository{page: ingestiondomain.ContentPage{Items: []ingestiondomain.Content{content, deletedSourceContent}, NextCursor: "opaque-repository-cursor"}},
+			Sources: contentTransportSourceReader{references: map[int64]sourcedomain.ContentSourceReference{
+				3: {Name: "Live RSS", SourceType: sourcedomain.SourceTypeRSS},
+				4: {Name: "Removed RSS", SourceType: sourcedomain.SourceTypeRSS, Deleted: true},
+			}},
+		})
+		if err != nil {
+			t.Fatalf("NewContentQueryService() error = %v", err)
+		}
+		router := newContentRouter(t, service, httptransport.RoleViewer)
+		response := performContentRequest(router, stdhttp.MethodGet, "/api/v1/contents", "viewer")
+		if response.Code != stdhttp.StatusOK {
+			t.Fatalf("status = %d, want 200: %s", response.Code, response.Body.String())
+		}
+		assertContentSuccessResponse(t, response)
+		if strings.Contains(response.Body.String(), "private-deleted-source-body") || strings.Contains(response.Body.String(), "Removed RSS") {
+			t.Fatalf("skipped source leaked unsafe content: %s", response.Body.String())
+		}
+	})
 }
 
 type contentQueryServiceStub struct {
@@ -147,7 +173,7 @@ func (authenticator contentAuthenticator) Authenticate(_ context.Context, _ stri
 	return httptransport.Subject{UserID: 1, SessionID: 2, Role: authenticator.role}, nil
 }
 
-func newContentRouter(t *testing.T, service *contentQueryServiceStub, role httptransport.Role) *gin.Engine {
+func newContentRouter(t *testing.T, service contentQueryService, role httptransport.Role) *gin.Engine {
 	t.Helper()
 	metrics, err := observability.NewMetrics()
 	if err != nil {
@@ -156,6 +182,25 @@ func newContentRouter(t *testing.T, service *contentQueryServiceStub, role httpt
 	router := gin.New()
 	RegisterRoutes(router, service, contentAuthenticator{role: role}, metrics)
 	return router
+}
+
+type contentTransportSourceReader struct {
+	references map[int64]sourcedomain.ContentSourceReference
+}
+
+func (reader contentTransportSourceReader) FindForContent(_ context.Context, id int64) (sourcedomain.ContentSourceReference, error) {
+	return reader.references[id], nil
+}
+
+// contentTransportRepository embeds the full domain port so this focused
+// handler test supplies only the active-list behavior it exercises.
+type contentTransportRepository struct {
+	ingestiondomain.ContentRepository
+	page ingestiondomain.ContentPage
+}
+
+func (repository *contentTransportRepository) ListActive(context.Context, ingestiondomain.ContentListQuery) (ingestiondomain.ContentPage, error) {
+	return repository.page, nil
 }
 
 func performContentRequest(router *gin.Engine, method, path, token string) *httptest.ResponseRecorder {

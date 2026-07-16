@@ -77,6 +77,51 @@ func TestContentQueryServiceDoesNotReturnContentForDeletedOrUnavailableSource(t 
 	}
 }
 
+func TestContentQueryServiceListSkipsDeletedOrUnavailableSourceAndKeepsCursor(t *testing.T) {
+	t.Parallel()
+	live := queryTestContent(7, 3)
+	deleted := queryTestContent(8, 4)
+	for _, test := range []struct {
+		name       string
+		references map[int64]sourcedomain.ContentSourceReference
+		errors     map[int64]error
+	}{
+		{
+			name: "deleted source",
+			references: map[int64]sourcedomain.ContentSourceReference{
+				3: {Name: "live RSS", SourceType: sourcedomain.SourceTypeRSS},
+				4: {Name: "removed RSS", SourceType: sourcedomain.SourceTypeRSS, Deleted: true},
+			},
+		},
+		{
+			name: "unavailable source",
+			references: map[int64]sourcedomain.ContentSourceReference{
+				3: {Name: "live RSS", SourceType: sourcedomain.SourceTypeRSS},
+			},
+			errors: map[int64]error{
+				4: sharederrors.Wrap(sharederrors.CodeUnavailable, stdhttp.StatusServiceUnavailable, "", errors.New("private source diagnostic")),
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			service, err := NewContentQueryService(ContentQueryDependencies{
+				Contents: &contentQueryRepositoryStub{page: ingestiondomain.ContentPage{Items: []ingestiondomain.Content{live, deleted}, NextCursor: "repository-cursor"}},
+				Sources:  &contentSourceReaderStub{references: test.references, errors: test.errors},
+			})
+			if err != nil {
+				t.Fatalf("NewContentQueryService() error = %v", err)
+			}
+			page, err := service.ListActive(context.Background(), ingestiondomain.ContentListQuery{Limit: 2})
+			if err != nil {
+				t.Fatalf("ListActive() error = %v, want live item", err)
+			}
+			if len(page.Items) != 1 || page.Items[0].ID != live.ID || page.Items[0].SourceName != "live RSS" || page.NextCursor != "repository-cursor" {
+				t.Fatalf("ListActive() page = %#v, want only live item and unchanged cursor", page)
+			}
+		})
+	}
+}
+
 type contentQueryRepositoryStub struct {
 	page      ingestiondomain.ContentPage
 	content   ingestiondomain.Content
@@ -118,9 +163,13 @@ func (repository *contentQueryRepositoryStub) ExpireBefore(context.Context, time
 type contentSourceReaderStub struct {
 	references map[int64]sourcedomain.ContentSourceReference
 	err        error
+	errors     map[int64]error
 }
 
 func (reader *contentSourceReaderStub) FindForContent(_ context.Context, id int64) (sourcedomain.ContentSourceReference, error) {
+	if err := reader.errors[id]; err != nil {
+		return sourcedomain.ContentSourceReference{}, err
+	}
 	if reader.err != nil {
 		return sourcedomain.ContentSourceReference{}, reader.err
 	}

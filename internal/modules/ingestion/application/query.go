@@ -42,7 +42,7 @@ func (service *ContentQueryService) ListActive(ctx context.Context, query ingest
 	if err != nil {
 		return ingestiondomain.ContentPage{}, contentQueryReadError(err)
 	}
-	items, err := service.withSources(ctx, page.Items)
+	items, err := service.withSources(ctx, page.Items, true)
 	if err != nil {
 		return ingestiondomain.ContentPage{}, err
 	}
@@ -58,33 +58,54 @@ func (service *ContentQueryService) GetActive(ctx context.Context, contentID int
 	if err != nil {
 		return ingestiondomain.Content{}, contentQueryReadError(err)
 	}
-	items, err := service.withSources(ctx, []ingestiondomain.Content{content})
+	items, err := service.withSources(ctx, []ingestiondomain.Content{content}, false)
 	if err != nil {
 		return ingestiondomain.Content{}, err
 	}
 	return items[0], nil
 }
 
-func (service *ContentQueryService) withSources(ctx context.Context, contents []ingestiondomain.Content) ([]ingestiondomain.Content, error) {
-	items := make([]ingestiondomain.Content, len(contents))
+// withSources enriches Content through Source's safe application port. List
+// reads skip a source that was deleted or cannot be read, so one stale source
+// cannot turn an otherwise valid cursor page into a 404/503. A detail read
+// instead preserves a not-found/unavailable result for that exact Content.
+func (service *ContentQueryService) withSources(ctx context.Context, contents []ingestiondomain.Content, skipUnavailable bool) ([]ingestiondomain.Content, error) {
+	items := make([]ingestiondomain.Content, 0, len(contents))
 	references := make(map[int64]sourcedomain.ContentSourceReference, len(contents))
-	for index, content := range contents {
+	for _, content := range contents {
 		reference, found := references[content.SourceConnectionID]
 		if !found {
 			var err error
 			reference, err = service.sources.FindForContent(ctx, content.SourceConnectionID)
 			if err != nil {
-				return nil, contentQueryReadError(err)
+				readErr := contentQueryReadError(err)
+				if skipUnavailable && skippableSourceReadError(readErr) {
+					continue
+				}
+				return nil, readErr
 			}
 			references[content.SourceConnectionID] = reference
 		}
 		if reference.Deleted {
+			if skipUnavailable {
+				continue
+			}
 			return nil, sharederrors.New(sharederrors.CodeNotFound, 404, "")
 		}
 		content.SourceType, content.SourceName = reference.SourceType, reference.Name
-		items[index] = content
+		items = append(items, content)
 	}
 	return items, nil
+}
+
+func skippableSourceReadError(err error) bool {
+	var appError *sharederrors.AppError
+	if !errors.As(err, &appError) {
+		return false
+	}
+	return appError.Code == sharederrors.CodeNotFound ||
+		appError.Code == sharederrors.CodeUnavailable ||
+		appError.Code == sharederrors.CodeSourceConnectionUnavailable
 }
 
 func contentQueryReadError(err error) error {
