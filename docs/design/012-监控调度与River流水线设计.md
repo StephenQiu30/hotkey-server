@@ -5,8 +5,8 @@ audience: [Dev, QA, Ops]
 feature_area: 监控调度与可靠任务
 purpose: 定义Monitor调度、River任务图、幂等、检查点、重试、取消与恢复契约
 canonical_path: docs/design/012-监控调度与River流水线设计.md
-status: review
-version: v1.2
+status: accepted
+version: v1.3
 owner: HotKey Server Team
 inputs:
   - docs/design/002-后端单体架构设计.md
@@ -194,3 +194,4 @@ RSS/HN -> Content -> MonitorMatch -> Event
 | v1.0 | 2026-07-15 | 建立P0/P1任务图、载荷、幂等、事务入队、检查点、取消、重算和验收契约 |
 | v1.1 | 2026-07-16 | 将 P0 配置状态与预览委托给 Design-014，并同步 immutable published config 与共享 run/target/checkpoint 事实。 |
 | v1.2 | 2026-07-16 | 将 `collect_source` River 键和 checkpoint 规则与 shared run/target 模型统一。 |
+| v1.3 | 2026-07-16 | 架构审核确认调度、事务入队、幂等、检查点、重试、取消和恢复契约完整；River具体版本与并发数保留为实施容量参数。 |
