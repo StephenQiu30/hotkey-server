@@ -1334,7 +1334,7 @@
                 "tags": [
                     "relevance"
                 ],
-                "summary": "Upsert feedback for active content",
+                "summary": "Record unmatched-content false-negative feedback",
                 "parameters": [
                     {
                         "type": "integer",
@@ -1351,12 +1351,12 @@
                         "required": true
                     },
                     {
-                        "description": "feedback and expected version",
+                        "description": "expected version; feedback type is fixed to false_negative",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/http.RelevanceFeedbackRequest"
+                            "$ref": "#/definitions/http.RelevanceFalseNegativeFeedbackRequest"
                         }
                     }
                 ],
@@ -4893,6 +4893,15 @@
                 },
                 "title": {
                     "type": "number"
+                }
+            }
+        },
+        "http.RelevanceFalseNegativeFeedbackRequest": {
+            "type": "object",
+            "properties": {
+                "expected_feedback_version": {
+                    "type": "integer",
+                    "x-nullable": true
                 }
             }
         },

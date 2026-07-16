@@ -30,6 +30,7 @@ type relevanceAPISnapshotRepository interface {
 	GetActiveSnapshot(context.Context, int64, int64) (ingestiondomain.RelevanceSnapshot, error)
 	CurrentPublishedMonitorConfig(context.Context, int64) (int64, error)
 	UpsertFeedback(context.Context, ingestiondomain.RelevanceFeedbackInput) (ingestiondomain.RelevanceFeedback, error)
+	UpsertFalseNegativeFeedback(context.Context, ingestiondomain.RelevanceFeedbackInput) (ingestiondomain.RelevanceFeedback, error)
 	RefreshSuggestions(context.Context, int64) (int, error)
 	ListSuggestions(context.Context, int64, ingestiondomain.RelevanceSuggestionListQuery) (ingestiondomain.RelevanceSuggestionPage, error)
 	ReviewSuggestion(context.Context, int64, int64, int64, int64, ingestiondomain.SuggestionStatus) (ingestiondomain.RelevanceSuggestion, error)
@@ -150,7 +151,11 @@ func (service *RelevanceAPIService) UpsertMatchFeedback(ctx context.Context, act
 	return feedback, nil
 }
 
-func (service *RelevanceAPIService) UpsertContentFeedback(ctx context.Context, actorUserID, monitorID, contentID int64, feedbackType ingestiondomain.FeedbackType, expectedVersion *int64) (ingestiondomain.RelevanceFeedback, error) {
+// UpsertFalseNegativeContentFeedback records the only feedback accepted for a
+// Content that has no relevance snapshot in the current published config.
+// Keeping the feedback type out of this public use case prevents a caller from
+// turning the unmatched-content route into a general match-feedback endpoint.
+func (service *RelevanceAPIService) UpsertFalseNegativeContentFeedback(ctx context.Context, actorUserID, monitorID, contentID int64, expectedVersion *int64) (ingestiondomain.RelevanceFeedback, error) {
 	if service == nil || service.snapshots == nil || service.contents == nil {
 		return ingestiondomain.RelevanceFeedback{}, relevanceUnavailable()
 	}
@@ -161,9 +166,9 @@ func (service *RelevanceAPIService) UpsertContentFeedback(ctx context.Context, a
 	if _, err := service.contents.GetActive(ctx, contentID); err != nil {
 		return ingestiondomain.RelevanceFeedback{}, relevanceError(err)
 	}
-	feedback, err := service.snapshots.UpsertFeedback(ctx, ingestiondomain.RelevanceFeedbackInput{
+	feedback, err := service.snapshots.UpsertFalseNegativeFeedback(ctx, ingestiondomain.RelevanceFeedbackInput{
 		MonitorID: monitorID, MonitorConfigVersionID: configID, ContentID: contentID,
-		ActorUserID: actorUserID, ExpectedVersion: expectedVersion, FeedbackType: feedbackType,
+		ActorUserID: actorUserID, ExpectedVersion: expectedVersion, FeedbackType: ingestiondomain.FeedbackTypeFalseNegative,
 	})
 	if err != nil {
 		return ingestiondomain.RelevanceFeedback{}, relevanceError(err)

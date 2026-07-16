@@ -203,6 +203,116 @@ func TestPlan009FeedbackRepositoryUsesOwnVersion(t *testing.T) {
 	}
 }
 
+func TestPlan009FalseNegativeFeedbackRequiresNoSnapshot(t *testing.T) {
+	runtime, fixture := openRelevanceRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	repository := ingestionpostgres.NewRelevanceRepository(runtime)
+
+	input := ingestiondomain.RelevanceFeedbackInput{
+		MonitorID: fixture.monitorID, MonitorConfigVersionID: fixture.configID, ContentID: fixture.contentID,
+		ActorUserID: fixture.actorID, FeedbackType: ingestiondomain.FeedbackTypeFalseNegative,
+	}
+	created, err := repository.UpsertFalseNegativeFeedback(context.Background(), input)
+	if err != nil || created.MonitorMatchID != nil || created.FeedbackType != ingestiondomain.FeedbackTypeFalseNegative {
+		t.Fatalf("UpsertFalseNegativeFeedback(unmatched) feedback/error = %#v / %v", created, err)
+	}
+
+	for _, feedbackType := range []ingestiondomain.FeedbackType{
+		ingestiondomain.FeedbackTypeRelevant,
+		ingestiondomain.FeedbackTypeIrrelevant,
+		ingestiondomain.FeedbackTypeFalsePositive,
+	} {
+		invalid := input
+		invalid.ContentID = createRelevanceContent(t, runtime, fixture.sourceID, "invalid-"+string(feedbackType))
+		invalid.FeedbackType = feedbackType
+		if _, err := repository.UpsertFalseNegativeFeedback(context.Background(), invalid); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+			t.Fatalf("UpsertFalseNegativeFeedback(%s) error = %v, want invalid input", feedbackType, err)
+		}
+	}
+
+	matchedContentID := createRelevanceContent(t, runtime, fixture.sourceID, "already-matched")
+	matched := relevanceSnapshotInput(fixture, strings.Repeat("f", 64))
+	matched.ContentID = matchedContentID
+	if _, _, err := repository.UpsertSnapshot(context.Background(), matched); err != nil {
+		t.Fatalf("create matched snapshot: %v", err)
+	}
+	input.ContentID = matchedContentID
+	if _, err := repository.UpsertFalseNegativeFeedback(context.Background(), input); !errors.Is(err, sharedrepository.ErrConflict) {
+		t.Fatalf("UpsertFalseNegativeFeedback(existing snapshot) error = %v, want conflict", err)
+	}
+	var count int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM monitor_match_feedbacks WHERE monitor_id = $1 AND content_id = $2 AND monitor_match_id IS NULL`, fixture.monitorID, matchedContentID).Scan(&count); err != nil {
+		t.Fatalf("count false-negative feedback after matched rejection: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("false-negative feedback after snapshot exists = %d, want 0", count)
+	}
+
+	concurrentContentID := createRelevanceContent(t, runtime, fixture.sourceID, "concurrent-snapshot")
+	lock, err := runtime.SQL.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("begin concurrent content lock: %v", err)
+	}
+	defer func() { _ = lock.Rollback() }()
+	if _, err := lock.ExecContext(context.Background(), `SELECT id FROM contents WHERE id = $1 FOR UPDATE`, concurrentContentID); err != nil {
+		t.Fatalf("lock concurrent content: %v", err)
+	}
+	snapshotInput := relevanceSnapshotInput(fixture, strings.Repeat("e", 64))
+	snapshotInput.ContentID = concurrentContentID
+	snapshotDone := make(chan error, 1)
+	go func() {
+		_, _, err := repository.UpsertSnapshot(context.Background(), snapshotInput)
+		snapshotDone <- err
+	}()
+	waitForRelevanceContentLock(t, runtime, concurrentContentID)
+	feedbackDone := make(chan error, 1)
+	go func() {
+		_, err := repository.UpsertFalseNegativeFeedback(context.Background(), ingestiondomain.RelevanceFeedbackInput{
+			MonitorID: fixture.monitorID, MonitorConfigVersionID: fixture.configID, ContentID: concurrentContentID,
+			ActorUserID: fixture.actorID, FeedbackType: ingestiondomain.FeedbackTypeFalseNegative,
+		})
+		feedbackDone <- err
+	}()
+	if err := lock.Commit(); err != nil {
+		t.Fatalf("release concurrent content lock: %v", err)
+	}
+	if err := <-snapshotDone; err != nil {
+		t.Fatalf("concurrent UpsertSnapshot(): %v", err)
+	}
+	if err := <-feedbackDone; !errors.Is(err, sharedrepository.ErrConflict) {
+		t.Fatalf("concurrent UpsertFalseNegativeFeedback() error = %v, want conflict", err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM monitor_match_feedbacks WHERE monitor_id = $1 AND content_id = $2 AND monitor_match_id IS NULL`, fixture.monitorID, concurrentContentID).Scan(&count); err != nil {
+		t.Fatalf("count false-negative feedback after concurrent snapshot: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("false-negative feedback after concurrent snapshot = %d, want 0", count)
+	}
+}
+
+func waitForRelevanceContentLock(t *testing.T, runtime *database.Runtime, contentID int64) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		var waiting int
+		err := runtime.SQL.QueryRow(`
+SELECT count(*)
+FROM pg_stat_activity
+WHERE datname = current_database()
+  AND state = 'active'
+  AND wait_event_type = 'Lock'
+  AND query LIKE '%SELECT id FROM contents%'`).Scan(&waiting)
+		if err != nil {
+			t.Fatalf("inspect concurrent relevance lock: %v", err)
+		}
+		if waiting > 0 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("snapshot creation did not wait for content %d lock", contentID)
+}
+
 func TestPlan009FeedbackRefreshAndEvaluationStayMonitorLocal(t *testing.T) {
 	runtime, fixture := openRelevanceRuntime(t)
 	defer func() { _ = runtime.Close() }()

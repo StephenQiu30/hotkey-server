@@ -34,6 +34,7 @@ type RelevanceRepository interface {
 	GetActiveSnapshot(context.Context, int64, int64) (RelevanceSnapshot, error)
 	CurrentPublishedMonitorConfig(context.Context, int64) (int64, error)
 	UpsertFeedback(context.Context, RelevanceFeedbackInput) (RelevanceFeedback, error)
+	UpsertFalseNegativeFeedback(context.Context, RelevanceFeedbackInput) (RelevanceFeedback, error)
 	UpsertPendingSuggestion(context.Context, RelevanceSuggestionInput) (RelevanceSuggestion, bool, error)
 	RefreshSuggestions(context.Context, int64) (int, error)
 	ListSuggestions(context.Context, int64, RelevanceSuggestionListQuery) (RelevanceSuggestionPage, error)

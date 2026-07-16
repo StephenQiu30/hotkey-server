@@ -21,7 +21,7 @@ type relevanceHTTPService interface {
 	GetMatch(context.Context, int64, int64) (ingestionapplication.RelevanceMatchDetail, error)
 	Preview(context.Context, int64) ([]ingestionapplication.RelevancePreviewItem, error)
 	UpsertMatchFeedback(context.Context, int64, int64, int64, ingestiondomain.FeedbackType, *int64) (ingestiondomain.RelevanceFeedback, error)
-	UpsertContentFeedback(context.Context, int64, int64, int64, ingestiondomain.FeedbackType, *int64) (ingestiondomain.RelevanceFeedback, error)
+	UpsertFalseNegativeContentFeedback(context.Context, int64, int64, int64, *int64) (ingestiondomain.RelevanceFeedback, error)
 	Evaluations(context.Context, int64) ([]ingestiondomain.RelevanceEvaluation, error)
 	RefreshSuggestions(context.Context, int64) (int, error)
 	ListSuggestions(context.Context, int64, ingestiondomain.RelevanceSuggestionListQuery) (ingestiondomain.RelevanceSuggestionPage, error)
@@ -180,15 +180,16 @@ func (handler *RelevanceHandler) UpsertMatchFeedback(c *gin.Context) error {
 	return nil
 }
 
-// UpsertContentFeedback records monitor-local feedback for an active Content.
-// @Summary Upsert feedback for active content
+// UpsertContentFeedback records a false-negative fact for an active Content
+// that has no relevance snapshot in the monitor's current published config.
+// @Summary Record unmatched-content false-negative feedback
 // @Tags relevance
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "monitor ID"
 // @Param content_id path int true "content ID"
-// @Param request body RelevanceFeedbackRequest true "feedback and expected version"
+// @Param request body RelevanceFalseNegativeFeedbackRequest true "expected version; feedback type is fixed to false_negative"
 // @Success 200 {object} ContentResult[RelevanceFeedbackResponse]
 // @Failure 400 {object} ContentResult[EmptyResponse]
 // @Failure 401 {object} ContentResult[EmptyResponse]
@@ -211,11 +212,11 @@ func (handler *RelevanceHandler) UpsertContentFeedback(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	feedbackType, expectedVersion, err := relevanceFeedbackRequest(c)
+	expectedVersion, err := relevanceFalseNegativeFeedbackRequest(c)
 	if err != nil {
 		return err
 	}
-	feedback, err := handler.service.UpsertContentFeedback(c.Request.Context(), actorID, monitorID, contentID, feedbackType, expectedVersion)
+	feedback, err := handler.service.UpsertFalseNegativeContentFeedback(c.Request.Context(), actorID, monitorID, contentID, expectedVersion)
 	if err != nil {
 		return err
 	}
@@ -392,6 +393,20 @@ func relevanceFeedbackRequest(c *gin.Context) (ingestiondomain.FeedbackType, *in
 		return "", nil, invalidRequest(fmt.Errorf("invalid expected feedback version"))
 	}
 	return feedbackType, request.ExpectedFeedbackVersion, nil
+}
+
+func relevanceFalseNegativeFeedbackRequest(c *gin.Context) (*int64, error) {
+	var request RelevanceFalseNegativeFeedbackRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		return nil, invalidRequest(err)
+	}
+	if !request.expectedVersionSet {
+		return nil, invalidRequest(fmt.Errorf("expected feedback version is required"))
+	}
+	if request.ExpectedFeedbackVersion != nil && *request.ExpectedFeedbackVersion <= 0 {
+		return nil, invalidRequest(fmt.Errorf("invalid expected feedback version"))
+	}
+	return request.ExpectedFeedbackVersion, nil
 }
 
 func (request *RelevanceFeedbackRequest) UnmarshalJSON(data []byte) error {

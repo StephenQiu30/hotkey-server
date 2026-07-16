@@ -47,6 +47,9 @@ func (repository *RelevanceRepository) UpsertSnapshot(ctx context.Context, input
 		if err := ensureSnapshotReferences(ctx, transaction.SQL, input); err != nil {
 			return err
 		}
+		if err := lockRelevanceContent(ctx, transaction.SQL, input.ContentID); err != nil {
+			return err
+		}
 
 		var snapshotID int64
 		err := transaction.SQL.QueryRowContext(ctx, `
@@ -297,6 +300,66 @@ func (repository *RelevanceRepository) UpsertFeedback(ctx context.Context, input
 	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
 		if err := ensureFeedbackReferences(ctx, transaction.SQL, input); err != nil {
 			return err
+		}
+
+		var existingID, existingVersion int64
+		err := transaction.SQL.QueryRowContext(ctx, `
+SELECT id, version
+FROM monitor_match_feedbacks
+WHERE monitor_config_version_id = $1 AND content_id = $2 AND actor_user_id = $3
+FOR UPDATE`, input.MonitorConfigVersionID, input.ContentID, input.ActorUserID).Scan(&existingID, &existingVersion)
+		switch {
+		case err == nil:
+			if input.ExpectedVersion == nil || *input.ExpectedVersion != existingVersion {
+				return fmt.Errorf("%w: relevance feedback version", sharedrepository.ErrConflict)
+			}
+			stored, err = updateFeedback(ctx, transaction.SQL, existingID, existingVersion, input)
+			return err
+		case errors.Is(err, sql.ErrNoRows):
+			if input.ExpectedVersion != nil {
+				return fmt.Errorf("%w: relevance feedback does not exist", sharedrepository.ErrConflict)
+			}
+			stored, err = insertFeedback(ctx, transaction.SQL, input)
+			return err
+		default:
+			return sharedrepository.MapError(err)
+		}
+	})
+	if err != nil {
+		return ingestiondomain.RelevanceFeedback{}, err
+	}
+	return stored, nil
+}
+
+// UpsertFalseNegativeFeedback is intentionally narrower than UpsertFeedback:
+// an unmatched Content can only submit a false-negative fact. It takes the
+// same Content row lock as UpsertSnapshot before checking monitor_matches, so
+// a snapshot committed first is observed before a feedback row can be written.
+func (repository *RelevanceRepository) UpsertFalseNegativeFeedback(ctx context.Context, input ingestiondomain.RelevanceFeedbackInput) (ingestiondomain.RelevanceFeedback, error) {
+	if !repository.available() {
+		return ingestiondomain.RelevanceFeedback{}, sharedrepository.ErrUnavailable
+	}
+	if input.FeedbackType != ingestiondomain.FeedbackTypeFalseNegative || input.MonitorMatchID != nil || input.Validate() != nil {
+		return ingestiondomain.RelevanceFeedback{}, fmt.Errorf("%w: false-negative relevance feedback", sharedrepository.ErrInvalidInput)
+	}
+	var stored ingestiondomain.RelevanceFeedback
+	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+		if err := ensureFeedbackReferences(ctx, transaction.SQL, input); err != nil {
+			return err
+		}
+		if err := lockRelevanceContent(ctx, transaction.SQL, input.ContentID); err != nil {
+			return err
+		}
+		var snapshotExists bool
+		if err := transaction.SQL.QueryRowContext(ctx, `
+SELECT EXISTS(
+    SELECT 1 FROM monitor_matches
+    WHERE monitor_id = $1 AND monitor_config_version_id = $2 AND content_id = $3
+)`, input.MonitorID, input.MonitorConfigVersionID, input.ContentID).Scan(&snapshotExists); err != nil {
+			return sharedrepository.MapError(err)
+		}
+		if snapshotExists {
+			return fmt.Errorf("%w: relevance snapshot already exists", sharedrepository.ErrConflict)
 		}
 
 		var existingID, existingVersion int64
@@ -670,6 +733,24 @@ SELECT EXISTS(
 	}
 	if !matching {
 		return fmt.Errorf("%w: relevance snapshot", sharedrepository.ErrNotFound)
+	}
+	return nil
+}
+
+// lockRelevanceContent serializes snapshot creation and unmatched-content
+// feedback for the same Content. The row lock is scoped to this transaction;
+// it does not introduce a global lock or a second persistence mechanism.
+func lockRelevanceContent(ctx context.Context, executor queryRowExecutor, contentID int64) error {
+	var lockedID int64
+	err := executor.QueryRowContext(ctx, `
+SELECT id FROM contents
+WHERE id = $1 AND content_status = 'active' AND deleted_at IS NULL
+FOR UPDATE`, contentID).Scan(&lockedID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: active content %d", sharedrepository.ErrNotFound, contentID)
+	}
+	if err != nil {
+		return sharedrepository.MapError(err)
 	}
 	return nil
 }

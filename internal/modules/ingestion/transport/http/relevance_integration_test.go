@@ -93,6 +93,33 @@ func TestPlan009RelevanceRoutesPostgresIntegration(t *testing.T) {
 		t.Fatalf("preview writes = matches %d->%d, ai runs %d->%d", matchesBefore, matchesAfter, runsBefore, runsAfter)
 	}
 
+	unmatchedInput := contentHTTPInput(sourceID, "relevance-http-unmatched", time.Date(2026, time.July, 17, 10, 0, 0, 0, time.UTC))
+	unmatched, _, err := contents.Upsert(context.Background(), unmatchedInput, ingestiondomain.DedupeDecision{Status: ingestiondomain.ContentStatusActive})
+	if err != nil {
+		t.Fatalf("create unmatched active content: %v", err)
+	}
+	for _, feedbackType := range []string{"relevant", "irrelevant", "false_positive", "false_negative"} {
+		invalidType := performRelevanceRequest(router, stdhttp.MethodPut, fmt.Sprintf("/api/v1/monitors/%d/contents/%d/feedback", monitorID, unmatched.ID), `{"feedback_type":"`+feedbackType+`","expected_feedback_version":null}`, "admin")
+		if invalidType.Code != stdhttp.StatusBadRequest {
+			t.Fatalf("content feedback type %q status = %d, want 400: %s", feedbackType, invalidType.Code, invalidType.Body.String())
+		}
+	}
+	falseNegative := performRelevanceRequest(router, stdhttp.MethodPut, fmt.Sprintf("/api/v1/monitors/%d/contents/%d/feedback", monitorID, unmatched.ID), `{"expected_feedback_version":null}`, "admin")
+	if falseNegative.Code != stdhttp.StatusOK {
+		t.Fatalf("unmatched false-negative status = %d: %s", falseNegative.Code, falseNegative.Body.String())
+	}
+	matchedFalseNegative := performRelevanceRequest(router, stdhttp.MethodPut, fmt.Sprintf("/api/v1/monitors/%d/contents/%d/feedback", monitorID, content.ID), `{"expected_feedback_version":null}`, "admin")
+	if matchedFalseNegative.Code != stdhttp.StatusConflict {
+		t.Fatalf("matched false-negative status = %d, want 409: %s", matchedFalseNegative.Code, matchedFalseNegative.Body.String())
+	}
+	var matchedFalseNegativeCount int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM monitor_match_feedbacks WHERE monitor_id = $1 AND content_id = $2 AND monitor_match_id IS NULL`, monitorID, content.ID).Scan(&matchedFalseNegativeCount); err != nil {
+		t.Fatalf("count matched false-negative feedback: %v", err)
+	}
+	if matchedFalseNegativeCount != 0 {
+		t.Fatalf("matched false-negative feedback rows = %d, want 0", matchedFalseNegativeCount)
+	}
+
 	feedback := performRelevanceRequest(router, stdhttp.MethodPut, fmt.Sprintf("/api/v1/monitors/%d/matches/%d/feedback", monitorID, snapshot.ID), `{"feedback_type":"relevant","expected_feedback_version":null}`, "admin")
 	if feedback.Code != stdhttp.StatusOK {
 		t.Fatalf("match feedback status = %d: %s", feedback.Code, feedback.Body.String())

@@ -9,7 +9,13 @@ import (
 )
 
 type openAPIOperation struct {
-	Security  []map[string][]string `json:"security"`
+	Security   []map[string][]string `json:"security"`
+	Parameters []struct {
+		In     string `json:"in"`
+		Schema struct {
+			Ref string `json:"$ref"`
+		} `json:"schema"`
+	} `json:"parameters"`
 	Responses map[string]struct {
 		Schema struct {
 			Ref string `json:"$ref"`
@@ -150,9 +156,29 @@ func TestOpenAPIContract(t *testing.T) {
 	assertSafeCollectionOpenAPIDefinitions(t, document.Definitions)
 	assertSafeContentOpenAPIDefinitions(t, document.Definitions)
 	assertSafeRelevanceOpenAPIDefinitions(t, document.Definitions)
+	assertFalseNegativeContentFeedbackOpenAPI(t, document.Paths)
 	assertSafeModelProfileOpenAPIDefinitions(t, document.Definitions)
 	assertDraftExpectedVersionOpenAPI(t, document.Definitions)
 	assertMonitorDraftDefaultsOpenAPI(t, document.Definitions)
+}
+
+func assertFalseNegativeContentFeedbackOpenAPI(t *testing.T, paths map[string]json.RawMessage) {
+	t.Helper()
+	const route = "/api/v1/monitors/{id}/contents/{content_id}/feedback"
+	var operations map[string]openAPIOperation
+	if err := json.Unmarshal(paths[route], &operations); err != nil {
+		t.Fatalf("decode false-negative content feedback path: %v", err)
+	}
+	operation, ok := operations["put"]
+	if !ok {
+		t.Fatalf("missing PUT %s", route)
+	}
+	for _, parameter := range operation.Parameters {
+		if parameter.In == "body" && parameter.Schema.Ref == "#/definitions/http.RelevanceFalseNegativeFeedbackRequest" {
+			return
+		}
+	}
+	t.Fatalf("%s body must use the false-negative-only request schema", route)
 }
 
 func assertSafeRelevanceOpenAPIDefinitions(t *testing.T, definitions map[string]struct {
@@ -191,6 +217,9 @@ func assertSafeRelevanceOpenAPIDefinitions(t *testing.T, definitions map[string]
 	})
 	assertAllowlist("http.RelevanceFeedbackResponse", map[string]bool{
 		"id": true, "version": true, "content_id": true, "match_id": true, "feedback_type": true, "updated_at": true,
+	})
+	assertAllowlist("http.RelevanceFalseNegativeFeedbackRequest", map[string]bool{
+		"expected_feedback_version": true,
 	})
 	assertAllowlist("http.RelevancePreviewCandidateResponse", map[string]bool{
 		"monitor_config_version_id": true, "scoring_version": true, "recall_paths": true, "reason_codes": true,

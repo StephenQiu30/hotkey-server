@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/application"
@@ -93,6 +94,36 @@ type RelevanceFeedbackResponse struct {
 	MatchID      *int64    `json:"match_id" extensions:"x-nullable"`
 	FeedbackType string    `json:"feedback_type"`
 	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// RelevanceFalseNegativeFeedbackRequest deliberately has no feedback_type:
+// this endpoint records only an unmatched-content false negative. The custom
+// decoder rejects general feedback fields so the generated OpenAPI contract
+// and the runtime boundary remain equally narrow.
+type RelevanceFalseNegativeFeedbackRequest struct {
+	ExpectedFeedbackVersion *int64 `json:"expected_feedback_version" extensions:"x-nullable"`
+	expectedVersionSet      bool
+}
+
+func (request *RelevanceFalseNegativeFeedbackRequest) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	for key := range raw {
+		if key != "expected_feedback_version" {
+			return fmt.Errorf("unknown false-negative feedback field %q", key)
+		}
+	}
+	value, exists := raw["expected_feedback_version"]
+	if !exists {
+		return nil
+	}
+	if err := json.Unmarshal(value, &request.ExpectedFeedbackVersion); err != nil {
+		return err
+	}
+	request.expectedVersionSet = true
+	return nil
 }
 
 type RelevanceEvaluationResponse struct {

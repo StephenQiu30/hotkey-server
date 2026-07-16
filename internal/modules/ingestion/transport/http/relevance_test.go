@@ -38,7 +38,7 @@ func TestPlan009RelevanceRoutes(t *testing.T) {
 		{name: "admin reads suggestions", method: stdhttp.MethodGet, path: "/api/v1/monitors/1/feedback/suggestions?limit=1", role: httptransport.RoleAdmin, status: stdhttp.StatusOK},
 		{name: "editor previews with no side effects", method: stdhttp.MethodPost, path: "/api/v1/monitors/1/relevance-preview", role: httptransport.RoleEditor, status: stdhttp.StatusOK},
 		{name: "editor writes match feedback", method: stdhttp.MethodPut, path: "/api/v1/monitors/1/matches/7/feedback", body: `{"feedback_type":"relevant","expected_feedback_version":null}`, role: httptransport.RoleEditor, status: stdhttp.StatusOK},
-		{name: "editor writes content feedback", method: stdhttp.MethodPut, path: "/api/v1/monitors/1/contents/3/feedback", body: `{"feedback_type":"false_negative","expected_feedback_version":null}`, role: httptransport.RoleEditor, status: stdhttp.StatusOK},
+		{name: "editor writes false-negative content feedback", method: stdhttp.MethodPut, path: "/api/v1/monitors/1/contents/3/feedback", body: `{"expected_feedback_version":null}`, role: httptransport.RoleEditor, status: stdhttp.StatusOK},
 		{name: "admin reads evaluation", method: stdhttp.MethodGet, path: "/api/v1/monitors/1/feedback/evaluation", role: httptransport.RoleAdmin, status: stdhttp.StatusOK},
 		{name: "admin refreshes suggestions", method: stdhttp.MethodPost, path: "/api/v1/monitors/1/feedback/suggestions/refresh", role: httptransport.RoleAdmin, status: stdhttp.StatusOK},
 		{name: "admin reviews suggestion", method: stdhttp.MethodPost, path: "/api/v1/monitors/1/feedback/suggestions/9/review", body: `{"expected_version":1,"status":"approved"}`, role: httptransport.RoleAdmin, status: stdhttp.StatusOK},
@@ -61,6 +61,19 @@ func TestPlan009RelevanceRoutes(t *testing.T) {
 			assertRelevanceSuccess(t, response)
 		})
 	}
+
+	t.Run("content feedback rejects every general feedback type", func(t *testing.T) {
+		router := newRelevanceRouter(stub, httptransport.RoleEditor)
+		for _, feedbackType := range []string{"relevant", "irrelevant", "false_positive", "false_negative"} {
+			t.Run(feedbackType, func(t *testing.T) {
+				response := performRelevanceRequest(router, stdhttp.MethodPut, "/api/v1/monitors/1/contents/3/feedback", `{"feedback_type":"`+feedbackType+`","expected_feedback_version":null}`, "editor")
+				if response.Code != stdhttp.StatusBadRequest {
+					t.Fatalf("content feedback type %q status = %d, want 400: %s", feedbackType, response.Code, response.Body.String())
+				}
+				assertRelevanceError(t, response, sharederrors.CodeInvalidRequest)
+			})
+		}
+	})
 
 	t.Run("invalid list and suggestion cursors are bad requests", func(t *testing.T) {
 		for _, test := range []struct {
@@ -143,7 +156,7 @@ func (stub *relevanceHTTPStub) UpsertMatchFeedback(_ context.Context, _ int64, _
 	}
 	return ingestiondomain.RelevanceFeedback{RelevanceFeedbackInput: ingestiondomain.RelevanceFeedbackInput{FeedbackType: ingestiondomain.FeedbackTypeRelevant}, ID: 8, Version: 1}, nil
 }
-func (stub *relevanceHTTPStub) UpsertContentFeedback(_ context.Context, _ int64, _ int64, _ int64, _ ingestiondomain.FeedbackType, _ *int64) (ingestiondomain.RelevanceFeedback, error) {
+func (stub *relevanceHTTPStub) UpsertFalseNegativeContentFeedback(_ context.Context, _ int64, _ int64, _ int64, _ *int64) (ingestiondomain.RelevanceFeedback, error) {
 	return ingestiondomain.RelevanceFeedback{RelevanceFeedbackInput: ingestiondomain.RelevanceFeedbackInput{FeedbackType: ingestiondomain.FeedbackTypeFalseNegative}, ID: 8, Version: 1}, nil
 }
 func (stub *relevanceHTTPStub) Evaluations(context.Context, int64) ([]ingestiondomain.RelevanceEvaluation, error) {
