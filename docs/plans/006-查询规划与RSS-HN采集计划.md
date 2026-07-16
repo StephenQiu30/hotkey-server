@@ -8,7 +8,7 @@ canonical_path: docs/plans/006-查询规划与RSS-HN采集计划.md
 status: accepted
 execution_status: in_progress
 review_status: approved
-version: v1.17
+version: v1.18
 owner: HotKey Server Team
 inputs:
   - docs/prd/006-查询规划与RSS-HN采集.md
@@ -165,12 +165,12 @@ depends_on: [PLAN-005]
 
 **Files：** Create `internal/modules/source/infrastructure/postgres/{collection_record,collection_repository,collection_repository_integration_test}.go`, `internal/modules/source/application/{collection_service,collection_service_test,collection_service_integration_test}.go`; Modify `internal/modules/source/domain/ports.go`, `internal/modules/source/application/service.go`.
 
-- [ ] **RED：** 真实 PostgreSQL 测试覆盖 create-or-reuse race、两个 target 共用一次 fake Connector、由同一 CapturePolicy 对 RSS/HN SourceItem 产生相同的 body/metrics 脱敏与 raw disposition、captured item replay、每个 target-item 对账、item retry 幂等、successful/failed target checkpoint、304/no-content、429 Retry-After、auth/permanent failure、transaction rollback 和 restart from persisted cursor。
-- [ ] **运行 RED：** `HOTKEY_TEST_DSN='postgres://hotkey:hotkey@127.0.0.1:5432/hotkey_test?sslmode=disable' go test ./internal/modules/source/application ./internal/modules/source/infrastructure/postgres -run 'TestCollection|TestRun' -count=1`。
-- [ ] **GREEN：** 由 Source application 在 Fetch 返回后、写入前调用唯一 `CapturePolicy`，再使用 `database.Runtime.WithinTransaction` 保存 run/target/item/target-item/checkpoint；fetch 在事务外执行且以 run status/lock 防重，写入回到单一事务。只在每个 item durable capture 和 target-item reconciliation 完成后推进该 target 的 fetch cursor；不创建 Content、MinIO object、River Job 或跨模块 SQL。
-- [ ] **重构：** 分离 Connector registry、run lock、item writer 和 error classifier；Source repository 仅访问 source-owned collection tables，Monitor 数据只来自 Task 2 port。
-- [ ] **回归：** `HOTKEY_TEST_DSN='postgres://hotkey:hotkey@127.0.0.1:5432/hotkey_test?sslmode=disable' go test -race ./internal/modules/source/... -count=1`。
-- [ ] **提交：** `git add internal/modules/source/application internal/modules/source/infrastructure/postgres internal/modules/source/domain && git commit -m "feat: persist shared collection runs"`。
+- [x] **RED：** 真实 PostgreSQL 测试覆盖 create-or-reuse race、两个 target 共用一次 fake Connector、由同一 CapturePolicy 对 RSS/HN SourceItem 产生相同的 body/metrics 脱敏与 raw disposition、captured item replay、每个 target-item 对账、item retry 幂等、successful/failed target checkpoint、304/no-content、429 Retry-After、auth/permanent failure、transaction rollback 和 restart from persisted cursor；独立复审另复现 queued/stale-running run 永久卡住，以及不同 cursor/ETag target 错误继承同一请求状态的两条 P1。
+- [x] **运行 RED：** 已使用可丢弃 PostgreSQL 运行 `HOTKEY_TEST_DSN='postgres:///hotkey_plan006_test?sslmode=disable' go test ./internal/modules/source/application ./internal/modules/source/infrastructure/postgres -run 'TestCollection|TestRun' -count=1`；重领与 checkpoint state isolation 两条新增集成测试在整改前分别返回旧 queued/running run 与错误的旧 cursor/ETag。
+- [x] **GREEN：** Source application 在 Fetch 返回后、写入前调用唯一 `CapturePolicy`，通过 Runtime 事务持久化 run/target/item/target-item/checkpoint；fetch 始终在事务外。run 以 queued 或超过五分钟的 running 原子重领，fresh running/completed run 不重复 fetch；request 选择空 checkpoint 优先、其后按等价 checkpoint group 的最大成员数和稳定 tie-break，只有与 run request cursor/ETag/Last-Modified 一致的 target 才可推进。每个 item durable capture 和 target-item reconciliation 完成后才推进该 target cursor；checkpoint conflict/state mismatch 以 target 级失败对账隔离，不创建 Content、MinIO object、River Job 或跨模块 SQL。
+- [x] **重构：** 已分离 Connector registry、run claim、item writer、target savepoint 隔离和错误分类；Source repository 仅访问 source-owned collection tables，Monitor 数据只来自 Task 2 port。
+- [x] **回归：** 已运行 `HOTKEY_TEST_DSN='postgres:///hotkey_plan006_test?sslmode=disable' HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' go test -race ./internal/modules/source/... -count=1` 与完整 `make ci`，均通过。
+- [x] **提交：** 已提交 `f611f00 feat: persist shared collection runs` 与复审整改 `5b53888 fix: recover shared collection runs safely`。
 
 ## Task 7：管理员运行 API、健康探测与可观测性
 
@@ -226,6 +226,7 @@ depends_on: [PLAN-005]
 - 2026-07-16：非主要编写者复核 Task 3 提交 `f1d8bd3..6c55aa4`；先发现 `GroupRequests` 可接受与 immutable target 不一致的 query/language/region 外层请求，整改后按每个 target 回推预期值并复核通过。无 Critical、Important 或 Minor；确认保存的 signature 未被重算。
 - 2026-07-16：非主要编写者复核 Task 4 提交 `a04bcb0..57e29a7`，随后确认覆盖补充 `2cc15d4`；先发现公开跨 host redirect/cursor/pagination Link 未受 immutable endpoint host 约束，以及 continuation 错误复用并污染根 feed validators。整改后复核通过，无 Critical、Important 或 Minor；确认 client 仍只输出安全 SourceItem/metadata，且无生产代码变更的 credential-shaped redirect 测试已纳入关闭范围。
 - 2026-07-16：非主要编写者复核 Task 5 提交 `f8db02c..6794c4a`；先发现 maxitem 后 parent cancellation 可将未抓取 ID 标为已处理（Critical），以及并发 429 可能被 cancellation temporary 错误掩盖（Important）。整改后复核通过，无 Critical、Important 或 Minor；确认 cursor 仅在完整范围完成后推进，且 rate-limited/Retry-After 保留原始分类。
+- 2026-07-16：非主要编写者复核 Task 6 提交 `f611f00`，先发现 queued/running shared run 重启后无法重领（P1），以及不同 checkpoint target 会继承按 monitor source ID 任取的 cursor/ETag（P1）。整改 `5b53888` 后复核通过；确认 queued/超过五分钟 running 可原子重领、fresh running 不重复 fetch，且不匹配 request checkpoint state 的 target 保持原状态并留待下一轮。
 
 ## 变更记录
 
@@ -249,3 +250,4 @@ depends_on: [PLAN-005]
 | v1.15 | 2026-07-16 | 记录 Task 3 的 RED/GREEN、完整回归、query/locale/region 篡改整改及独立复核通过证据。 |
 | v1.16 | 2026-07-16 | 记录 Task 4 的 RSS/Atom Connector、SSRF/continuation 整改、完整回归及独立复核通过证据。 |
 | v1.17 | 2026-07-16 | 记录 Task 5 的 HN high-watermark Connector、取消/429 整改、完整回归及独立复核通过证据。 |
+| v1.18 | 2026-07-16 | 记录 Task 6 shared run 持久化、target 隔离、重领/异 checkpoint P1 整改、完整回归及独立复核通过证据。 |
