@@ -5,12 +5,12 @@ doc_no: "008"
 title: AI Provider与Embedding基础
 audience: [PM, Dev, QA, Ops]
 feature_area: AI运行基础
-purpose: 定义 AI Provider、模型配置、运行记录与 Embedding 基础
+purpose: 定义首批可替换 AI Provider、1024 维向量、模型运行审计和安全降级的可验收范围
 phase: P0
 priority: P0
 status: review
 execution_status: backlog
-version: v1.0
+version: v1.1
 owner: HotKey Server Team
 depends_on: [PRD-002, PRD-007]
 design_refs:
@@ -23,11 +23,12 @@ inputs:
   - docs/design/007-多语言匹配与相关性设计.md
   - docs/design/011-AI任务证据与模型运行设计.md
 outputs:
-  - AI Provider 与 Embedding 基础需求
+  - intelligence 模块的 Provider、模型配置、运行和向量基础
 triggers:
-  - Provider、模型、向量或预算契约变化
+  - Provider、模型、向量空间、Schema、预算或回退契约变化
 downstream:
   - docs/plans/008-AIProvider与Embedding基础计划.md
+  - docs/operations/plan008-schema-upgrade.md
   - docs/acceptance/008-AIProvider与Embedding基础验收.md
 ---
 
@@ -35,48 +36,80 @@ downstream:
 
 ## 目标
 
-建立可替换、可限流、可审计的 AI Provider 与 1024 维 Embedding 基础，为匹配和后续事件智能提供统一运行能力。
+建立可替换、可限额、可审计的 AI 基础能力，让后续 PLAN-009 可从稳定 Application 端口取得 1024 维多语言向量和受约束的扩词结果；采集、Content 查询和非 AI 规则链路在没有可用 AI 模型时继续工作。
 
-## 范围
+## 首版范围与固定决策
 
-- 实现 intelligence 模块的模型配置、Provider 端口、运行包和基础设施适配器。
-- 实现 ai_model_profiles、ai_runs、内容/Monitor/Event/Topic Embedding 的持久化契约。
-- 支持官方 LLM SDK 和可选 ONNX 本地多语言 Embedding，第三方类型不得穿透模块边界。
-- 建立静态版本化 JSON Schema 注册、输入哈希、reuse_key、预算、超时、重试和回退选择。
-- 首批任务覆盖 embedding 与 term_expansion；事件摘要和主张留给 PRD-012。
-- 提供无可用模型时的显式降级结果。
-
-## 非范围
-
-- 不让 LLM 负责采集、基础去重、热度或唯一事实判定。
-- 不实现在线训练、自动 Prompt 自优化或独立向量数据库。
-- 不在本任务写入 Event 摘要、Claim 或 Vault。
+1. 仅注册 `embedding` 与 `term_expansion` 两个任务类型。事件摘要、相关性复核、聚类、实体、Claim、知识提案、报告和任务调度均不属于本 PRD。
+2. 第一个远程适配器是官方 `github.com/openai/openai-go/v3@v3.32.0`。生产请求只使用官方默认 HTTPS 端点；本任务不接受、保存或暴露自定义 Provider URL。
+3. 模型名不是代码默认值。管理员创建 profile 时显式提供 `model_name` 与不可变 `model_version`；Embedding profile 必须声明 `embedding_dimensions=1024`。实际 Provider 返回的向量长度、每个元素有限性和 profile 维度均须验证。
+4. ONNX 只实现为 `onnx` build tag 下的可选本地 Embedding adapter，使用 `github.com/yalue/onnxruntime_go@v1.31.0`、`CGO_ENABLED=1`、`HOTKEY_ONNX_RUNTIME_LIBRARY` 和 `HOTKEY_ONNX_MODEL_PATH`。默认构建不链接原生库；缺少 tag、库或模型时只返回安全的“模型不可用”降级，不阻塞主链路。
+5. 凭据只支持 write-only 数据库引用 `env:OPENAI_API_KEY`。它只能由 `config.AI.OpenAIAPIKey` 解析；不得直接读取任意环境变量、不得返回该引用、不得记录 key、Prompt、完整 Content、Provider 原始响应或对象存储键。`.env` 是默认环境，`.env.prod` 仅在 `HOTKEY_ENV=production` 时加载。
+6. AI 请求和响应对象不写入 MinIO。本任务保留既有 `ai_runs.request_object_key` 与 `response_object_key` 为 `NULL`，只保存版本、哈希、受限结构化结果、稳定错误码、用量与耗时；后续要保存受控 payload 必须另立 PRD/Plan。
+7. Provider SDK、ONNX 类型和 HTTP 响应类型不得越过 Infrastructure/Transport 边界。Domain/Application 只使用本模块定义的值对象和端口。
 
 ## 功能要求
 
-1. 每个 Embedding 保存模型配置、模型版本、输入哈希和 active 标记。
-2. 不同模型版本和向量空间不可混合检索。
-3. 相同 reuse_key 的成功运行只复用一次；输入、Schema、Prompt 或模型变化产生新运行。
-4. Provider 超时、429、5xx、非法 JSON 和部分结果有稳定状态与重试分类。
-5. 凭据只通过配置引用进入基础设施，不写日志或 API。
-6. 日预算和单次预算超限时降级，不阻塞非 AI 主链路。
-7. 输出必须先通过 JSON Schema，最多执行一次结构化修复。
+### 1. Provider、Schema 与安全结果
+
+- `Provider` 端口必须分别接收最小化的 `EmbeddingRequest` 与 `StructuredRequest`，并返回不带 SDK 类型的 `EmbeddingResponse` 与 `StructuredResponse`。
+- 任务、输入和输出 Schema 均为仓库内静态版本化 JSON Schema。首版必须提供 `embedding-input-v1`、`embedding-output-v1`、`term-expansion-input-v1`、`term-expansion-output-v1`；Schema 使用 `additionalProperties: false`，限制数组数量、字符串长度、语言标签和枚举。
+- Application 在调用前校验输入，调用后校验输出。输出校验失败时仅把安全的字段级错误发送给 Provider 做一次结构化修复；第二次失败使用 `70006 ai_output_invalid`，不得写入业务事实。
+- Provider outcome 映射为稳定业务码：`70000 ai_model_profile_invalid` (400)、`70001 ai_model_unavailable` (503, retryable)、`70002 ai_budget_exhausted` (429, retryable)、`70003 ai_provider_rate_limited` (429, retryable)、`70004 ai_provider_transient` (502, retryable)、`70005 ai_provider_timeout` (504, retryable)、`70006 ai_output_invalid` (502)、`70007 ai_run_in_progress` (409, retryable) 和 `70008 ai_embedding_invalid` (400)。HTTP 消费者只依据 numeric `code`，不依赖 Provider 原文。
+
+### 2. 模型 Profile 与管理员 API
+
+- `ai_model_profiles` 是业务配置。`provider` 仅允许 `openai` 和 `onnx`；`task_type` 首版仅允许 `embedding` 和 `term_expansion`；ONNX 只能用于 embedding，OpenAI 可用于两个任务。
+- `provider`、`model_name`、`model_version`、`credential_ref`、`embedding_dimensions` 和任务类型在创建后不可修改；语义变化必须 archive 原 profile 并创建新 profile，不能覆写旧向量空间或旧运行的出处。可修改项只有 `enabled`、`timeout_seconds`、`max_attempts`、`max_cost`、`daily_budget`、`fallback_priority`，且使用业务 `version` 乐观锁。
+- 管理 API 是 `/api/v1/ai/model-profiles` 的管理员专用 CRUD：`GET /`、`GET /:id`、`POST /`、`PATCH /:id`、`DELETE /:id`、`POST /:id/restore`。Create/Patch 请求可接受 `credential_ref`，但任何响应、审计详情、日志、指标和 OpenAPI example 均不得包含 `credential_ref`、API key、endpoint 或原始参数。
+- profile 选择顺序固定为：任务类型匹配、未删除、enabled、credentials/build 可用、单次和当日预算可预留、`fallback_priority ASC, id ASC`。没有候选时返回可观测的降级结果而非 panic 或隐式默认模型。
+
+### 3. 运行复用、重试与预算
+
+- `reuse_key` 必须是 `sha256(task_type, target_type, target_id, model_profile_id, model_profile_version, model_version, prompt_version, input_schema_version, schema_version, parameters_version, input_hash, evidence_set_hash)` 的稳定序列化结果。
+- 只有 `succeeded` 且所有上述版本仍匹配的运行可复用。profile 语义变更只能新建 profile；输入、证据、Prompt、输入/输出 Schema、parameters 或 model version 任一变化均创建新运行。
+- 对相同 `reuse_key`，PostgreSQL 事务先取得 `pg_advisory_xact_lock(hashtext('ai-run:' || reuse_key))`，再检查成功运行和 in-flight 运行。成功运行直接返回；in-flight 返回 `70007`，绝不第二次调用 Provider；否则创建 queued 运行并在提交后调用 Provider。
+- 状态只能按 `queued -> running -> validating -> succeeded`、`running|validating -> retry_wait -> running`、`queued|running|validating|retry_wait -> failed|cancelled` 转换。429、超时和临时 5xx 在 `max_attempts` 内按确定性指数退避重试；配置、预算、输入、Schema 和证据错误不重试。`attempt`、`retry_after`、`error_code` 和 `repair_attempted` 必须持久化。
+- 每次调用前按 UTC 日桶预留 `max_cost`；`ai_budget_ledgers` 在同一事务内以 profile+date advisory lock 更新。预算不足不调用 Provider；失败/取消释放预留；成功结算实际 cost，若实际 cost 超过预留则运行失败并保留安全错误码，不能超额透支。并发请求不得突破日预算或重复调用。
+
+### 4. 向量空间与查询
+
+- 每个 Content、Monitor、Event、Topic 向量记录 profile、profile version、model version、输入哈希、`halfvec(1024)` 和 `active`。长度不是 1024、存在 `NaN`/`Inf` 或 Provider model version 与 profile 不同的向量必须在写库前被拒绝。
+- 写入新版本在一个 PostgreSQL 事务内取得 `ai-embedding:<target-type>:<target-id>:<profile-id>` advisory lock，先停用同 target/profile 的旧 active 向量再插入新行；每张 embedding 表使用 partial unique index 保证同 target/profile 至多一条 active 行。
+- 近邻查询必须同时过滤 `active=true`、`model_profile_id` 和 `model_version`，使用余弦 `<=>`，且只将同一 profile/version 的结果交给下游。HNSW 只服务 active 集；验收须以 `EXPLAIN (COSTS OFF)` 证明 active 查询使用对应 `*_active_hnsw_idx`。
+- 模型升级不是 update。管理员先创建新 profile，后续 PLAN-009/010 以新 profile 批量重算并在完整覆盖后切换读取 profile；PLAN-008 不批量重算 Event/Topic，也不让新旧空间混合检索。
+
+## 非范围
+
+- 不默认启用真实模型、不提交 API key、不调用用户未配置的远程服务。
+- 不引入任意环境变量 SecretResolver、自定义 Provider endpoint、独立向量数据库、在线训练、自动 Prompt 优化或 Prompt 管理 UI。
+- 不写入 Event 摘要、Claim、Vault、报告、调度 Job、跨语言匹配评分或用户反馈事实。
+- 不把 AI 可用性作为 ingestion、Content 查询、规则匹配、基础聚类或热度计算的前提。
 
 ## 交付物
 
-- AI Provider、Embedding、模型选择和运行记录实现。
-- 版本化 Schema 资源、模型配置管理 API 和安全凭据边界。
-- pgvector Repository、HNSW 查询和模型空间隔离测试。
-- Provider 契约测试、预算/限流测试和 ONNX 可选适配验证。
+- `intelligence` 模块的 Profile、Provider、运行、Schema、Embedding 与 PostgreSQL Repository。
+- OpenAI SDK 适配器、默认构建的 ONNX unavailable adapter 与 `onnx` tag 下的本地 adapter。
+- 管理员 profile API、统一错误码、OpenAPI、无密钥 fixture 和安全日志/指标。
+- 完整 `db/schema.sql`、记录模型、PLAN-008 既有库升级/回退手册和长期 Acceptance 模板。
 
 ## 验收标准
 
-- 成功、超时、429、5xx、非法 JSON 和修复失败均可追踪。
-- 相同输入不重复调用，模型版本切换后不复用旧向量。
-- 无 LLM Provider 时 embedding 可按配置降级，采集与内容查询仍可运行。
-- halfvec(1024) 写入、搜索和失效符合完整 Schema。
-- 运行记录不保存不必要的完整敏感正文或 Provider 原始响应。
+1. 用零真实密钥的 `httptest` Provider fixture 验证成功、429、5xx、deadline、非法 JSON、一次修复成功和修复失败；SDK/原生错误不出现在 Result、日志或指标标签。
+2. 同一个 `reuse_key` 的并发请求只产生一次 Provider 调用；成功运行可复用，任何版本或证据哈希变化都不能复用。
+3. 并发预算预留不能超过 `daily_budget`，失败释放，成功结算；预算不足和无可用 Provider 均不影响 ingestion 或 Content read API。
+4. 1024 个有限值可以写入并经 HNSW 查回；1023/1025、`NaN`、`Inf`、不同 model version 和被停用的向量均不能混入结果。
+5. 默认 `go test ./...` 不需要 ONNX 原生库；只在明确安装运行时/模型、设置两个 ONNX 环境变量并以 `-tags=onnx` 测试时启用 ONNX adapter。
+6. API 认证、管理员授权、write-only `credential_ref`、乐观锁、软删除/恢复、Result 和 OpenAPI 全部有契约测试。
+7. PLAN-007 数据库可在备份、preflight、受控升级、`hotkey db verify` 和精确 `pg_restore` 回退后恢复；不得通过 `DROP SCHEMA`、运行时 DDL 或全量重置实现。
 
 ## 完成定义
 
-PRD-009 可通过稳定端口获取多语言向量和扩展词，不依赖具体模型厂商。
+PRD-009 可以只依赖 `intelligence` 的公开 Application 端口取得同一 1024 维向量空间及 `term_expansion` 结果；实现不暴露 Provider SDK、密钥、Prompt、原始响应或旧向量空间，并已由 Acceptance-008 保存可复现证据。
+
+## 变更记录
+
+| 版本 | 日期 | 变更 |
+|---|---|---|
+| v1.0 | 2026-07-15 | 建立 AI Provider、Embedding、复用、预算与降级范围。 |
+| v1.1 | 2026-07-17 | 补齐首个 SDK/ONNX 构建、最小凭据边界、稳定错误码、profile API、并发复用/预算、向量隔离、升级回退和可执行验收契约。 |

@@ -3,20 +3,23 @@ layer: Plan
 doc_no: "008"
 audience: [Dev, QA, Ops]
 feature_area: AI运行基础
-purpose: 实施 AI Provider、模型配置、运行记录与 Embedding 基础
+purpose: 以可独立验证和提交的任务实施 AI Provider、模型运行与 1024 维 Embedding 基础
 canonical_path: docs/plans/008-AIProvider与Embedding基础计划.md
 status: review
 execution_status: backlog
 review_status: pending
-version: v1.0
+version: v1.1
 owner: HotKey Server Team
 inputs:
   - docs/prd/008-AIProvider与Embedding基础.md
-  - docs/plans/002-单一Schema与数据库平台计划.md
-  - docs/plans/007-内容标准化去重与MinIO证据计划.md
+  - docs/design/003-数据库与数据生命周期设计.md
+  - docs/design/007-多语言匹配与相关性设计.md
+  - docs/design/011-AI任务证据与模型运行设计.md
+  - docs/operations/plan007-schema-upgrade.md
 outputs:
   - intelligence 运行基础
   - 1024 维 Embedding 存储与检索
+  - 可恢复的 PLAN-008 Schema 升级与验收证据
 triggers:
   - PRD-008 accepted 且 ready
 downstream:
@@ -24,71 +27,342 @@ downstream:
 depends_on: [PLAN-002, PLAN-007]
 ---
 
-# AI Provider 与 Embedding 基础计划
+# AI Provider 与 Embedding 基础执行计划
 
-## 计划目标
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-交付可替换、可预算、可审计的 Provider 和版本化 Embedding 能力，不让 AI 成为 P0 非 AI 事实的依赖。
+**Goal:** 交付不泄露密钥或 Provider 类型、能安全降级的模型 profile、运行复用、预算与 1024 维向量基础。
+
+**Architecture:** `intelligence/domain` 定义不依赖第三方的 Provider/Repository 值对象和稳定错误；Application 负责静态 Schema、profile 选择、事务性预算/复用与降级；PostgreSQL、OpenAI SDK 和 ONNX 均留在 Infrastructure。Profile 的语义字段不可变，模型升级创建新 profile；向量读取以 profile+model version 隔离，并不在本计划实施匹配或事件任务。
+
+**Tech Stack:** Go 1.26、Gin、Fx、Viper、PostgreSQL 16+/pgvector、pgx v5、`github.com/openai/openai-go/v3@v3.32.0`、`github.com/santhosh-tekuri/jsonschema/v6@v6.0.2`；可选 `onnx` tag 下的 `github.com/yalue/onnxruntime_go@v1.31.0`。
+
+## 全局约束
+
+- 仅 `.env` 与 `.env.prod`；新增配置只能通过 `config.Config` 和 `configKeys()` 读取。不得读取任意环境变量，也不得新增 config 文件或 Secret 服务。
+- 仅 `embedding`、`term_expansion`；不实现 PLAN-009 相关性评分或 PLAN-012 事件摘要/Claim。
+- OpenAI production adapter 不接受 endpoint；profile 的 `credential_ref` 仅 `env:OPENAI_API_KEY`，永不出现在响应、OpenAPI example、日志、指标或审计详情。
+- 默认构建不需要 ONNX Runtime 或模型。`-tags=onnx` 只在 `CGO_ENABLED=1`、`HOTKEY_ONNX_RUNTIME_LIBRARY` 与 `HOTKEY_ONNX_MODEL_PATH` 都设置时可用。
+- `ai_runs` 不存 Prompt、完整 Content、Provider 原始请求/响应或对象键；既有对象键列在本计划始终为 `NULL`。
+- `db/schema.sql` 是唯一执行 Schema。既有库升级仅使用 `docs/operations/plan008-schema-upgrade.md`，先备份和演练；绝不运行时 DDL、`DROP SCHEMA` 或不受控 reset。
+- 任何 API 变动都同步 DTO、权限、bootstrap、`docs/openapi/swagger.json` 和 `make openapi-check`；错误必须使用 70000–79999 的稳定 numeric code。
+- 每个任务完成后运行本任务 GREEN、`git diff --check`，只暂存该任务文件并提交。`make ci` 之后必须 `make clean`。
 
 ## 开工条件
 
-- 当前 Plan 的 status 为 accepted、review_status 为 approved、execution_status 为 ready
-- 对应 PRD 的 status 为 accepted，execution_status 为 ready
-- frontmatter 中 depends_on 列出的 Plan 全部为 done
-- main 已同步，工作区只包含当前任务相关文件
+- 本 Plan `status: accepted`、`review_status: approved`、`execution_status: ready`。
+- PRD-008 `status: accepted`、`execution_status: ready`；Design-003、Design-007、Design-011 的本次 AI/向量契约均已独立复核为 accepted。
+- PLAN-002、PLAN-007 为 done，工作区干净，且从当时 `main` 创建/同步当前工作分支。
+- PostgreSQL 16+ with pgvector、Redis 已可用于以下 fixture；任何命令均不得指向生产 DSN。
 
-## 执行文件
+## 文件结构与职责
 
-| 动作 | 路径 | 目的 |
+| 动作 | 路径 | 责任 |
 |---|---|---|
-| 创建 | internal/modules/intelligence/domain/provider.go | Provider 端口 |
-| 创建 | internal/modules/intelligence/domain/run.go | AI 运行与复用键 |
-| 创建 | internal/modules/intelligence/domain/embedding.go | 向量空间契约 |
-| 创建 | internal/modules/intelligence/application/model_selector.go | 模型、预算与回退 |
-| 创建 | internal/modules/intelligence/application/embedding_service.go | 生成、复用与失效 |
-| 创建 | internal/modules/intelligence/infrastructure/provider/*.go | 官方 SDK 适配 |
-| 创建 | internal/modules/intelligence/infrastructure/onnx/*.go | 可选本地 Embedding |
-| 创建 | internal/modules/intelligence/infrastructure/postgres/*.go | 运行与向量 Repository |
-| 创建 | internal/modules/intelligence/schemas/*.json | 版本化 JSON Schema |
-| 修改 | db/schema.sql | model profiles、ai_runs、embeddings |
-| 创建 | internal/modules/intelligence/**/*_test.go | Provider、预算和向量测试 |
+| 修改 | `go.mod`, `go.sum` | 固定 OpenAI、JSON Schema、pgvector 和可选 ONNX 依赖版本。 |
+| 修改 | `internal/platform/config/config.go`, `internal/platform/config/config_test.go`, `.env.example` | 仅解析 OpenAI key 与 ONNX runtime/model path，建立 write-only 凭据解析边界。 |
+| 创建 | `internal/modules/intelligence/domain/{provider,profile,run,embedding,errors}.go` | Provider/Repository 端口、不可变 profile、运行/向量值对象、稳定错误。 |
+| 创建 | `internal/modules/intelligence/application/{schema_registry,model_profile_service,run_service,embedding_service}.go` | 静态 Schema、profile CRUD、复用/预算/重试、向量生成与显式降级。 |
+| 创建 | `internal/modules/intelligence/schemas/v1/{embedding-input,embedding-output,term-expansion-input,term-expansion-output}.schema.json` | 禁止未知字段的版本化输入输出契约。 |
+| 创建 | `internal/modules/intelligence/infrastructure/postgres/{model_profile_repository,run_repository,budget_ledger_repository,embedding_repository}.go` | PostgreSQL 事务、锁、profile CRUD、run/ledger/向量持久化与检索。 |
+| 创建 | `internal/modules/intelligence/infrastructure/provider/{openai,onnx_disabled,onnx_enabled}.go` | OpenAI SDK adapter；默认 unavailable ONNX adapter；tag 下 native ONNX adapter。 |
+| 创建 | `internal/modules/intelligence/transport/http/{dto,handler,routes}.go` | 管理员 profile API 与 write-only DTO。 |
+| 修改 | `internal/shared/errors/error.go`, `internal/shared/errors/error_test.go` | 注册 70000–70008 的稳定错误码。 |
+| 修改 | `internal/platform/database/model/{model,model_test}.go`, `db/schema.sql` | 完整 Schema、记录映射、catalog contract 和物理列顺序。 |
+| 修改 | `internal/bootstrap/app.go`, `docs/openapi/swagger.json` | Fx 装配、路由和生成的 API 契约。 |
+| 创建/修改 | `docs/operations/plan008-schema-upgrade.md`, `docs/acceptance/008-AIProvider与Embedding基础验收.md` | 可演练升级/回退与最终长期证据。 |
 
-## 执行步骤
+## 数据与接口契约
 
-1. 先写 Provider 成功、超时、429、5xx、非法 JSON 与预算红灯测试。
-2. 同步 AI 运行和 halfvec(1024) Schema。
-3. 实现 Provider 端口、模型选择和凭据引用。
-4. 实现 reuse_key、一次结构修复、重试和失效。
-5. 实现内容与 Monitor Embedding 的版本隔离和 HNSW 查询。
-6. 接入可选 ONNX，实现无 Provider 的显式降级。
+### Domain 端口
 
-## 验收命令
+Task 2 创建如下不泄露 SDK 类型的最小边界；后续任务只能消费这些类型：
 
-| 阶段 | 命令 | 通过标准 |
+```go
+type Provider interface {
+    Embed(context.Context, EmbeddingRequest) (EmbeddingResponse, error)
+    GenerateStructured(context.Context, StructuredRequest) (StructuredResponse, error)
+}
+
+type EmbeddingRequest struct {
+    ModelName, ModelVersion string
+    Dimensions               int
+    Inputs                   []string
+}
+type EmbeddingResponse struct { ModelVersion string; Vectors [][]float32 }
+type StructuredRequest struct { ModelName, ModelVersion, SchemaName, SchemaVersion string; Input json.RawMessage }
+type StructuredResponse struct { ModelVersion string; JSON json.RawMessage }
+```
+
+`Embedding.Validate()` 只接受恰好 1024 个非 `NaN`、非 `Inf` 的元素。`Provider` 的错误在 Infrastructure 内转换为 Task 2 的 domain 错误，Application 从不检查 SDK HTTP/status 类型。
+
+### Profile 与 API
+
+`POST /api/v1/ai/model-profiles` 的管理员请求字段为 `name`、`task_type`、`provider`、`model_name`、`model_version`、`credential_ref`、`embedding_dimensions`、`timeout_seconds`、`max_attempts`、`max_cost`、`daily_budget`、`fallback_priority`、`enabled`。`PATCH /:id` 仅接收 `version` 加可变字段；任何语义字段出现即为 `70000`。所有成功响应只包含 `id`、`version`、`name`、`task_type`、`provider`、`model_name`、`model_version`、`embedding_dimensions`、timeout/budget/fallback/enabled、timestamps 和 deleted state。
+
+### 完整 Schema 目标
+
+- `ai_model_profiles` 在保留当前列的基础上、且**仅在当前 `deleted_at` 之后**增加 `model_version varchar(64) NOT NULL`、`embedding_dimensions smallint`、`max_attempts smallint NOT NULL DEFAULT 1`、`max_cost numeric(12,4)`；task check 加 `term_expansion`，provider check 为 `openai|onnx`，endpoint 必为 NULL，embedding 必为 1024，budget/attempt 均为正数，credential/provider 组合只允许 OpenAI 的 `env:OPENAI_API_KEY` 或 ONNX 的 NULL。
+- `ai_runs` 删除旧自由文本 `error`，保留原有列相对顺序后、且**仅在 `finished_at` 之后**增加 `model_profile_version`、`model_version`、`parameters_version`、`input_schema_version`、`evidence_set_hash`、`reuse_key`、`attempt`、`max_attempts`、`repair_attempted`、`retry_after`、`error_code`、`budget_day`、`reserved_cost`；status check 使用 `queued/running/validating/retry_wait/succeeded/failed/cancelled`。`request_object_key` 和 `response_object_key` 有 `CHECK (... IS NULL)`。
+- 新建 operational `ai_budget_ledgers(id, model_profile_id, budget_day, reserved_cost, settled_cost, updated_at)`，对 `(model_profile_id, budget_day)` 唯一；`reserved_cost` 与 `settled_cost` 非负。
+- 四张 embedding 表都在当前 `created_at` 之后增加 `model_profile_version`；每张增加 `(target_id, model_profile_id) WHERE active` partial unique index。近邻查询固定为 `WHERE active AND model_profile_id=$1 AND model_version=$2 ORDER BY embedding <=> $3::halfvec LIMIT $4`。
+- 替换旧 ai_runs 普通 unique 为 `ai_runs_reuse_succeeded_uq(reuse_key) WHERE status='succeeded'` 与 `ai_runs_reuse_inflight_uq(reuse_key) WHERE status IN ('queued','running','validating','retry_wait')`。实现前必须同步记录模型和 catalog integration test；禁止为迁移重排列物理列。
+
+## Task 1：配置、错误码、完整 Schema 与可恢复升级
+
+**Files:**
+- Modify: `go.mod`, `go.sum`, `.env.example`, `internal/platform/config/config.go`, `internal/platform/config/config_test.go`, `internal/shared/errors/error.go`, `internal/shared/errors/error_test.go`, `db/schema.sql`, `internal/platform/database/model/model.go`, `internal/platform/database/model/model_test.go`, `internal/platform/database/database_integration_test.go`
+- Create: `docs/operations/plan008-schema-upgrade.md`
+- Test: `internal/platform/config/config_test.go`, `internal/platform/database/database_integration_test.go`, `internal/platform/database/model/model_test.go`, `tests/architecture/schema_contract_test.go`
+
+**Consumes:** PLAN-007 canonical catalog and `Config.Load`; **Produces:** fixed dependency/config/error/schema contract for every later task.
+
+- [ ] **Step 1: Write failing configuration and catalog tests.** Assert `HOTKEY_OPENAI_API_KEY`, `HOTKEY_ONNX_RUNTIME_LIBRARY` and `HOTKEY_ONNX_MODEL_PATH` are bound by `configKeys()` and `.env`/`.env.prod` loading; assert generic `HOTKEY_LLM_*` has no effect. Assert each new 70000–70008 code maps to its specified HTTP/retryability. Extend schema tests to require `term_expansion`, `ai_budget_ledgers`, new ai_runs fields, no `ai_runs.error`, the four partial unique indexes and the exact physical add-only order.
+
+- [ ] **Step 2: Run RED.**
+
+  Run: `go test ./internal/platform/config ./internal/shared/errors ./internal/platform/database ./internal/platform/database/model ./tests/architecture -count=1`
+
+  Expected: FAIL because AI config keys, AI code catalog, ledger/constraints and target catalog are absent.
+
+- [ ] **Step 3: Implement the smallest complete contract.** Add `AIConfig` to `config.Config`, bind only the three keys, remove the unbound `HOTKEY_LLM_API_KEY`, `HOTKEY_LLM_BASE_URL`, `HOTKEY_LLM_MODEL` sample entries, and leave runtime AI credentials optional. Register the nine codes in `shared/errors`. Update the full Schema and record metadata exactly as “完整 Schema 目标” specifies; add no migration runtime. Pin OpenAI `v3.32.0`, JSON Schema `v6.0.2`, pgvector `v0.4.0`, and ONNX `v1.31.0` in `go.mod`.
+
+- [ ] **Step 4: Write the upgrade/rollback runbook and its real integration rehearsal.** The new Operations document must back up with custom `pg_dump`, require every existing `ai_model_profiles`, `ai_runs`, `ai_run_evidences` and embedding table count to be zero, then run a single `psql -v ON_ERROR_STOP=1` transaction. It must drop only the old ai_runs unique constraint discovered from `pg_constraint`, drop `ai_runs.error`, add columns in the physical order above, create ledger/indexes/constraints, run `hotkey db verify`, and assert the new empty counts. Rollback must stop services, drop only PLAN-008’s two ai_runs indexes, four active-vector indexes, ledger and added constraints/columns, restore the custom backup with `pg_restore --clean --if-exists --no-owner`, then invoke the historical PLAN-007 release `hotkey db verify`. Add an integration test that proves unprepared restore fails, prepared restore passes, and the old release verifier passes.
+
+- [ ] **Step 5: Run GREEN.**
+
+  Run: `HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable' go test -tags=integration ./internal/platform/database ./tests/architecture -count=1`
+
+  Expected: PASS; it exercises PLAN-007 backup -> exact PLAN-008 upgrade -> current verifier -> prepared restore -> PLAN-007 verifier. Then run `go test ./internal/platform/config ./internal/shared/errors ./internal/platform/database/model -count=1` and `make schema-verify` successfully.
+
+- [ ] **Step 6: Commit.**
+
+  ```bash
+  git add go.mod go.sum .env.example internal/platform/config internal/shared/errors \
+    internal/platform/database/model internal/platform/database db/schema.sql \
+    docs/operations/plan008-schema-upgrade.md tests/architecture
+  git commit -m "feat: define AI runtime schema and configuration"
+  ```
+
+## Task 2：领域值对象、静态 Schema 与可控错误分类
+
+**Files:**
+- Create: `internal/modules/intelligence/domain/{provider,profile,run,embedding,errors}.go`, `internal/modules/intelligence/domain/{provider,profile,run,embedding,errors}_test.go`
+- Create: `internal/modules/intelligence/application/schema_registry.go`, `internal/modules/intelligence/application/schema_registry_test.go`
+- Create: `internal/modules/intelligence/schemas/v1/{embedding-input,embedding-output,term-expansion-input,term-expansion-output}.schema.json`
+
+**Consumes:** Task 1 codes/config; **Produces:** provider-neutral values and the static schemas consumed by repositories/adapters/services.
+
+- [ ] **Step 1: Write failing unit tests.** Cover `env:OPENAI_API_KEY` as the only valid OpenAI reference, NULL as only valid ONNX reference, immutable semantic profile fields, 1024 finite-vector validation, exact reuse-key canonicalization, and malformed/unknown/oversized JSON. Include one output repaired once successfully and a second invalid output that yields `CodeAIOutputInvalid`.
+
+- [ ] **Step 2: Run RED.**
+
+  Run: `go test ./internal/modules/intelligence/domain ./internal/modules/intelligence/application -count=1`
+
+  Expected: FAIL because the domain package and Schema registry do not exist.
+
+- [ ] **Step 3: Implement smallest values and schemas.** Implement the Domain interface shown above, task/profile validation, canonical JSON hashing, and error classification. Embed four JSON files with `go:embed`; compile them once with `jsonschema/v6`; require `additionalProperties:false`, max 32 expanded terms, max 120 characters per term, `zh|en|und` language enum, and no raw evidence/object fields. The repair API accepts only schema error paths and the original structured JSON, not Provider errors, prompt or secret.
+
+- [ ] **Step 4: Run GREEN.**
+
+  Run: `go test ./internal/modules/intelligence/domain ./internal/modules/intelligence/application -count=1`
+
+  Expected: PASS; 1023/1025, `NaN`, `Inf`, unknown JSON fields and the second repair are rejected deterministically.
+
+- [ ] **Step 5: Commit.**
+
+  ```bash
+  git add internal/modules/intelligence/domain internal/modules/intelligence/application/schema_registry.go \
+    internal/modules/intelligence/application/schema_registry_test.go internal/modules/intelligence/schemas
+  git commit -m "feat: add AI provider domain contracts"
+  ```
+
+## Task 3：PostgreSQL Profile、运行复用、预算与向量 Repository
+
+**Files:**
+- Create: `internal/modules/intelligence/infrastructure/postgres/{model_profile_repository,run_repository,budget_ledger_repository,embedding_repository}.go`
+- Create: `internal/modules/intelligence/infrastructure/postgres/{model_profile_repository,run_repository,budget_ledger_repository,embedding_repository}_test.go`
+- Create: `internal/modules/intelligence/infrastructure/postgres/repository_integration_test.go`
+
+**Consumes:** Tasks 1–2 schema/domain; **Produces:** transaction-safe persistence ports for Tasks 4–6.
+
+- [ ] **Step 1: Write failing PostgreSQL integration tests.** In one disposable database, assert admin profile optimistic conflict/soft delete/restore, semantic-field rejection, successful-only reuse, one in-flight row for concurrent same key, daily reserve/settle/release under concurrent transactions, and each target type’s atomic deactivate/insert. Assert profile/version filter excludes stale vectors and `EXPLAIN (COSTS OFF)` contains the target HNSW index after `SET LOCAL enable_seqscan = off`.
+
+- [ ] **Step 2: Run RED.**
+
+  Run: `HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable' go test -tags=integration ./internal/modules/intelligence/infrastructure/postgres -count=1`
+
+  Expected: FAIL because no intelligence PostgreSQL Repository exists.
+
+- [ ] **Step 3: Implement transactions, never Provider calls.** Use `pg_advisory_xact_lock(hashtext('ai-run:' || reuse_key))` before query/create, and `pg_advisory_xact_lock(hashtext('ai-budget:' || profile_id || ':' || budget_day))` before ledger upsert. Commit the queued run and reservation before Application performs any network call. For each embedding table use `pg_advisory_xact_lock(hashtext('ai-embedding:' || target_type || ':' || target_id || ':' || profile_id))`, `UPDATE ... SET active=false`, then insert. Repository methods must accept a caller transaction where reserve/run state must be atomic and must not query unrelated module tables.
+
+- [ ] **Step 4: Run GREEN.**
+
+  Run: `HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable' go test -race -tags=integration ./internal/modules/intelligence/infrastructure/postgres -count=1`
+
+  Expected: PASS; at most one Provider work claim and no budget/vector invariant violation under the deterministic interleavings.
+
+- [ ] **Step 5: Commit.**
+
+  ```bash
+  git add internal/modules/intelligence/infrastructure/postgres
+  git commit -m "feat: persist AI runs budgets and embeddings"
+  ```
+
+## Task 4：OpenAI 与可选 ONNX Infrastructure 适配器
+
+**Files:**
+- Create: `internal/modules/intelligence/infrastructure/provider/openai.go`, `internal/modules/intelligence/infrastructure/provider/openai_test.go`
+- Create: `internal/modules/intelligence/infrastructure/provider/onnx_disabled.go`, `internal/modules/intelligence/infrastructure/provider/onnx_enabled.go`, `internal/modules/intelligence/infrastructure/provider/onnx_test.go`
+- Modify: `internal/platform/config/config.go`, `internal/platform/config/config_test.go`
+
+**Consumes:** Task 2 Provider port and Task 1 AIConfig; **Produces:** selectable OpenAI and build-gated ONNX providers without SDK leakage.
+
+- [ ] **Step 1: Write failing fixture tests.** Use `httptest.Server` plus an SDK test-only `http.Client`/base URL option and `env:OPENAI_API_KEY=dummy-test-key`; assert the request uses model/version/dimensions but no key appears in logs. Simulate timeout, 429, 503 and invalid structured JSON; assert Task 2 codes. In a default build, assert ONNX returns `CodeAIModelUnavailable` without loading a library. In the tag suite, assert missing runtime/model path fails safely before inference and a fixture model produces exactly 1024 finite values.
+
+- [ ] **Step 2: Run RED.**
+
+  Run: `go test ./internal/modules/intelligence/infrastructure/provider -count=1`
+
+  Expected: FAIL because neither provider adapter exists.
+
+- [ ] **Step 3: Implement adapters.** Construct OpenAI clients only with the resolved key and the official `openai-go/v3` client; convert SDK errors to domain error categories at this boundary and discard raw bodies. `onnx_disabled.go` must have `//go:build !onnx` and compile without CGO; `onnx_enabled.go` must have `//go:build onnx`, require the two config paths and initialize `onnxruntime_go` only for embedding. No adapter writes MinIO, SQL or HTTP Result values.
+
+- [ ] **Step 4: Run GREEN and optional matrix.**
+
+  Run: `go test ./internal/modules/intelligence/infrastructure/provider -count=1`
+
+  Expected: PASS with no real credential, network call or ONNX native dependency. On a disposable host with both native inputs installed, run:
+
+  ```bash
+  CGO_ENABLED=1 HOTKEY_ONNX_RUNTIME_LIBRARY=/opt/onnxruntime/lib/libonnxruntime.dylib \
+  HOTKEY_ONNX_MODEL_PATH=/secure-fixtures/bge-m3-1024.onnx \
+  go test -tags=onnx ./internal/modules/intelligence/infrastructure/provider \
+    -run TestONNXProvider -count=1
+  ```
+
+  Expected optional result: PASS with 1024 finite elements; otherwise the default suite remains the supported CI path.
+
+- [ ] **Step 5: Commit.**
+
+  ```bash
+  git add go.mod go.sum internal/platform/config internal/modules/intelligence/infrastructure/provider
+  git commit -m "feat: add AI provider adapters"
+  ```
+
+## Task 5：Application 编排、重试、降级与 bootstrap
+
+**Files:**
+- Create: `internal/modules/intelligence/application/{model_profile_service,run_service,embedding_service}.go`
+- Create: `internal/modules/intelligence/application/{model_profile_service,run_service,embedding_service}_test.go`, `internal/modules/intelligence/application/service_integration_test.go`
+- Modify: `internal/bootstrap/app.go`
+
+**Consumes:** Tasks 2–4 ports/adapters; **Produces:** public Application service used by PLAN-009 and HTTP transport.
+
+- [ ] **Step 1: Write failing tests.** Cover selection ordering, absent config/provider degradation, identical concurrent requests, success reuse, model/schema/input/evidence invalidation, 429/5xx/deadline retry count/backoff, no retry for configuration/budget/schema errors, one repair, budget release, and successful response write. Assert capture/Content query services can be constructed and queried while AI returns degraded.
+
+- [ ] **Step 2: Run RED.**
+
+  Run: `go test ./internal/modules/intelligence/application -count=1`
+
+  Expected: FAIL because no orchestration service or Fx wiring exists.
+
+- [ ] **Step 3: Implement smallest orchestration.** `RunService` obtains a DB claim before network work; it reserves, calls one provider, validates/repairs once, settles or releases, and writes only safe structured results. It returns `EmbeddingResult{Status:"degraded", ReasonCode:"ai_model_unavailable"}` on no candidate/build/credential availability rather than a nil vector or panic. `EmbeddingService` invokes the validated provider then the atomic repository writer. Fx registers repositories, resolver, providers and services only when a database runtime exists; API startup remains valid with an empty AI key because no profile is selected implicitly.
+
+- [ ] **Step 4: Run GREEN.**
+
+  Run: `HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable' go test -race -tags=integration ./internal/modules/intelligence/application ./internal/bootstrap -count=1`
+
+  Expected: PASS; retry/repair never exceeds its bound, only one call owns a reuse key, and AI absence leaves non-AI services available.
+
+- [ ] **Step 5: Commit.**
+
+  ```bash
+  git add internal/modules/intelligence/application internal/bootstrap/app.go
+  git commit -m "feat: orchestrate AI runs and safe degradation"
+  ```
+
+## Task 6：管理员模型 API、OpenAPI 与敏感边界
+
+**Files:**
+- Create: `internal/modules/intelligence/transport/http/{dto,handler,routes}.go`, `internal/modules/intelligence/transport/http/{handler,routes}_test.go`, `internal/modules/intelligence/transport/http/handler_integration_test.go`
+- Modify: `internal/bootstrap/app.go`, `docs/openapi/swagger.json`
+
+**Consumes:** Task 5 model profile service and Task 1 codes; **Produces:** fully documented administrator-only model profile control plane.
+
+- [ ] **Step 1: Write failing handler and contract tests.** Assert unauthenticated = 401, viewer/editor = 403, admin CRUD/restore works, stale `version` = 409, malformed semantic Patch = `70000`, and every JSON body/OpenAPI schema lacks `credential_ref`, `api_key`, `endpoint`, `parameters`, Prompt and raw response fields. Assert all route annotations produce the six required paths and numeric Result codes.
+
+- [ ] **Step 2: Run RED.**
+
+  Run: `go test ./internal/modules/intelligence/transport/http -count=1 && make openapi-check`
+
+  Expected: FAIL because routes/DTOs/OpenAPI paths are absent.
+
+- [ ] **Step 3: Implement routes and DTOs.** Mount `/api/v1/ai/model-profiles` with `RequireAuthentication` and `RequireRoles(RoleAdmin)`. Use a write-only input DTO for `credential_ref`; response mapper deliberately has no equivalent field. Add Swag annotations, Result/error conversion and Fx route registration. The handler never resolves credentials itself and never returns an internal cause.
+
+- [ ] **Step 4: Run GREEN.**
+
+  Run: `HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable' go test -tags=integration ./internal/modules/intelligence/transport/http -count=1 && make openapi-check`
+
+  Expected: PASS; generated `docs/openapi/swagger.json` is clean and the route/role/redaction matrix passes.
+
+- [ ] **Step 5: Commit.**
+
+  ```bash
+  git add internal/modules/intelligence/transport/http internal/bootstrap/app.go docs/openapi/swagger.json
+  git commit -m "feat: expose AI model profile administration"
+  ```
+
+## Task 7：完整验收、运行手册演练与归档
+
+**Files:**
+- Modify: `docs/acceptance/008-AIProvider与Embedding基础验收.md`, `docs/operations/README.md`, `docs/acceptance/README.md`, `docs/prd/008-AIProvider与Embedding基础.md`, `docs/plans/008-AIProvider与Embedding基础计划.md`, `docs/prd/README.md`, `docs/plans/README.md`, `docs/README.md`, `README.md`
+- Test: `internal/modules/intelligence/...`, `internal/platform/database/...`, `tests/architecture/...`
+
+**Consumes:** Tasks 1–6; **Produces:** independently reviewable Acceptance-008 and only then archived/done task metadata.
+
+- [ ] **Step 1: Capture deliberate RED evidence before accepting.** Preserve named tests showing missing provider/config becomes degraded, a second same-key request is in flight, budget is exhausted, 1023/`NaN` vectors are refused, stale model-version query returns no old vector, and non-admin/write-only API checks fail. Do not manufacture a regression by weakening production code.
+
+- [ ] **Step 2: Execute real dependency evidence.** On a disposable PostgreSQL/Redis fixture, run the exact Task 1 legacy PLAN-007 upgrade/current verify/prepared rollback/legacy verify rehearsal; run Task 3 HNSW `EXPLAIN`; use only an `httptest` OpenAI fixture with a dummy key. Record commands, commit range, fixtures, result summaries and unexecuted ONNX-host matrix in Acceptance-008. No live OpenAI request or real credential is permitted.
+
+- [ ] **Step 3: Run final GREEN gates.**
+
+  ```bash
+  HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable' \
+  HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' \
+  make ci
+  HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable' \
+  go test -race -tags=integration ./internal/modules/intelligence/... \
+    ./internal/platform/database/... ./tests/architecture -count=1
+  make clean
+  git diff --check
+  git status --short
+  ```
+
+  Expected: all commands pass, no generated binary/diff/fixture remains, and Acceptance documents unsupported optional ONNX evidence as a residual risk rather than a pass.
+
+- [ ] **Step 4: Obtain independent final review and archive.** A non-author reviews code, docs, upgrade/rollback, SDK fixture, security boundaries, concurrency tests, OpenAPI and final worktree. Only an `APPROVED` review changes Acceptance result to `accepted`, PRD/Plan to `archived/done`, and indexes/README from 008 `review/backlog` to complete. PLAN-009 readiness is a separate gate.
+
+- [ ] **Step 5: Commit.**
+
+  ```bash
+  git add docs/acceptance/008-AIProvider与Embedding基础验收.md docs/operations/README.md \
+    docs/acceptance/README.md docs/prd docs/plans docs/README.md README.md
+  git commit -m "docs: archive AI provider and embedding plan"
+  ```
+
+## 提交边界与禁止合并
+
+Task 1–6 每项必须是一个可回滚、通过其 GREEN 命令的提交，禁止把 SDK、Schema、API 与验收揉成不可审查的大提交。Task 7 只能在完整证据与独立最终复核后提交。遇到契约缺口、新任务类型、需要自定义 endpoint、非 1024 向量或保存 AI 原始 payload 时立即停止，先修订 Design → PRD → Plan 并重新审核；不要以兼容分支、默认模型或运行时 DDL 绕过本计划。
+
+## 自检
+
+- PRD 中所有可交付项分别映射到 Task 1–7；Provider/配置、Schema/记录、静态 JSON、复用/预算、ONNX、向量、API、升级/回退与 Acceptance 均有独立任务。
+- 每个实现 Task 明确了路径、输入输出、RED、GREEN 和提交；不存在占位项、泛化文件范围或未定义接口。
+
+## 变更记录
+
+| 版本 | 日期 | 变更 |
 |---|---|---|
-| 红灯 | go test ./internal/modules/intelligence/... -count=1 | Provider 与向量测试失败 |
-| 绿灯 | go test ./internal/modules/intelligence/... -count=1 | 全部通过 |
-| 集成 | go test -tags=integration ./internal/modules/intelligence/... | pgvector 写入与检索通过 |
-| Schema | make validate | 模型、向量和 Repository 一致 |
-| 全量 | make ci | 全部通过 |
-
-## 验收清单
-
-- 相同 reuse_key 不重复调用
-- 模型版本切换后不混用向量空间
-- 预算、429 和 5xx 分类与回退正确
-- 凭据和 Provider 原始响应不泄露
-- 无 LLM 时采集和 Content 查询保持可用
-
-## 提交边界
-
-- test: 定义 Provider 与 Embedding 契约
-- impl: 实现 intelligence 运行基础
-- feat: 接入首个 Provider 与可选 ONNX
-
-
-## 风险与回滚
-
-- 实现需要改变 Design 或 PRD 契约时立即停止，先更新正式文档并重新复核
-- 下游 Plan 开工前，可整体回退本任务提交并同步恢复 Schema、OpenAPI 和测试
-- 下游 Plan 已开工后，使用新的前向修复 Plan，不恢复旧双轨或兼容实现
+| v1.0 | 2026-07-15 | 初始六步 AI Provider 与 Embedding 计划。 |
+| v1.1 | 2026-07-17 | 重写为七个可独立验收/提交任务，冻结 SDK、ONNX、凭据、Schema、并发预算、API、升级回退与最终验收边界；仍待独立审核。 |
