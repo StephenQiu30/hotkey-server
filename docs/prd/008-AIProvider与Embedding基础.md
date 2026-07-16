@@ -8,9 +8,9 @@ feature_area: AI运行基础
 purpose: 定义首批可替换 AI Provider、1024 维向量、模型运行审计和安全降级的可验收范围
 phase: P0
 priority: P0
-status: review
-execution_status: backlog
-version: v1.2
+status: accepted
+execution_status: ready
+version: v1.5
 owner: HotKey Server Team
 depends_on: [PRD-002, PRD-007]
 design_refs:
@@ -119,3 +119,4 @@ PRD-009 可以只依赖 `intelligence` 的公开 Application 端口取得同一 
 | v1.2 | 2026-07-17 | 收紧任务类型；补齐 static structured request、ONNX bundle、max/daily/overage ledger 方程、worker lease 回收与固定历史 verifier。 |
 | v1.3 | 2026-07-17 | 统一 budget→run 锁序，定义 profile+UTC-day overage 封账、重试 lease 刷新和 `onnx && cgo` 双向 build tag。 |
 | v1.4 | 2026-07-17 | 收紧 credential_ref 为创建时只写；明确 OpenAI 的 model ID 校验与本地 model_version 元数据边界。 |
+| v1.5 | 2026-07-17 | 独立复审通过，状态提升为 accepted/ready。 |

@@ -6,7 +6,7 @@ feature_area: AI热点事件监控平台
 purpose: 管理 HotKey Server 权威设计文档及其状态
 canonical_path: docs/design/README.md
 status: review
-version: v1.1
+version: v1.2
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -39,15 +39,15 @@ downstream:
 |---|---|---|
 | [`001-AI热点事件监控平台需求分析.md`](001-AI热点事件监控平台需求分析.md) | 本地热点监控、MinIO证据、Obsidian治理、报告与订阅需求基线 | accepted |
 | [`002-后端单体架构设计.md`](002-后端单体架构设计.md) | 模块化单体、API/Worker角色、River、存储端口和统一CRUD边界 | accepted |
-| [`003-数据库与数据生命周期设计.md`](003-数据库与数据生命周期设计.md) | 完整业务/运行表、Repository、约束、索引、保留和单一Schema事实源 | review |
+| [`003-数据库与数据生命周期设计.md`](003-数据库与数据生命周期设计.md) | 完整业务/运行表、Repository、约束、索引、保留和单一Schema事实源 | accepted |
 | [`004-Result响应与全局异常设计.md`](004-Result响应与全局异常设计.md) | Result 契约、业务码和全局错误转换 | accepted |
 | [`005-数据来源查询规划与采集设计.md`](005-数据来源查询规划与采集设计.md) | Connector、共享查询、调度、限流与合规 | accepted |
 | [`006-内容标准化去重与证据设计.md`](006-内容标准化去重与证据设计.md) | 统一内容、三层去重、证据和删除同步 | accepted |
-| [`007-多语言匹配与相关性设计.md`](007-多语言匹配与相关性设计.md) | 双语检索、混合评分、解释和模型版本 | review |
+| [`007-多语言匹配与相关性设计.md`](007-多语言匹配与相关性设计.md) | 双语检索、混合评分、解释和模型版本 | accepted |
 | [`008-Obsidian知识库治理与报告交付设计.md`](008-Obsidian知识库治理与报告交付设计.md) | 本地Vault、知识提案、冲突修订、日报周报、邮件和RSS/Atom | review |
 | [`009-事件发现聚类与生命周期设计.md`](009-事件发现聚类与生命周期设计.md) | 候选召回、跨语言聚类、事件键、生命周期、合并拆分和人工锁 | review |
 | [`010-热度趋势与排序设计.md`](010-热度趋势与排序设计.md) | 跨来源归一化、事件热度、趋势、Monitor排序、防刷和重算 | review |
-| [`011-AI任务证据与模型运行设计.md`](011-AI任务证据与模型运行设计.md) | AI任务目录、JSON Schema、证据引用、幂等复用、预算和降级 | review |
+| [`011-AI任务证据与模型运行设计.md`](011-AI任务证据与模型运行设计.md) | AI任务目录、JSON Schema、证据引用、幂等复用、预算和降级 | accepted |
 | [`012-监控调度与River流水线设计.md`](012-监控调度与River流水线设计.md) | Monitor调度、River任务图、事务入队、检查点、重试、取消和恢复 | accepted |
 | [`013-身份认证会话与权限设计.md`](013-身份认证会话与权限设计.md) | 邮箱验证、密码、可撤销会话、刷新轮换和最小角色授权；服务端验收见 Acceptance 004 | accepted |
 | [`014-监控配置发布与预览设计.md`](014-监控配置发布与预览设计.md) | 版本化 Monitor 发布、来源引用安全、纯配置预览、签名、权限与审计契约 | accepted |
