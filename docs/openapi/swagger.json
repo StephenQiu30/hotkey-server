@@ -12,6 +12,386 @@
     },
     "basePath": "/",
     "paths": {
+        "/api/v1/ai/model-profiles": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ai"
+                ],
+                "summary": "List AI model profiles",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-http_ModelProfileListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ai"
+                ],
+                "summary": "Create an AI model profile",
+                "parameters": [
+                    {
+                        "description": "model profile",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.CreateModelProfileRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-http_ModelProfileResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/ai/model-profiles/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ai"
+                ],
+                "summary": "Get an AI model profile",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "model profile ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-http_ModelProfileResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ai"
+                ],
+                "summary": "Archive an AI model profile",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "model profile ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "expected profile version",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileVersionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-http_ModelProfileResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ai"
+                ],
+                "summary": "Update AI model profile operational settings",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "model profile ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "operational profile update",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.UpdateModelProfileRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-http_ModelProfileResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/ai/model-profiles/{id}/restore": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ai"
+                ],
+                "summary": "Restore an AI model profile",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "model profile ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "expected profile version",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileVersionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-http_ModelProfileResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/auth/email-verifications": {
             "post": {
                 "consumes": [
@@ -2791,6 +3171,67 @@
                 }
             }
         },
+        "http.CreateModelProfileRequest": {
+            "type": "object",
+            "properties": {
+                "credential_ref": {
+                    "type": "string"
+                },
+                "daily_budget": {
+                    "type": "string",
+                    "example": "10.0000"
+                },
+                "embedding_dimensions": {
+                    "type": "integer",
+                    "example": 1024
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fallback_priority": {
+                    "type": "integer",
+                    "example": 100
+                },
+                "max_attempts": {
+                    "type": "integer",
+                    "example": 2
+                },
+                "max_cost": {
+                    "type": "string",
+                    "example": "0.1000"
+                },
+                "model_name": {
+                    "type": "string",
+                    "example": "text-embedding-3-large"
+                },
+                "model_version": {
+                    "type": "string",
+                    "example": "2026-07"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "embedding-primary"
+                },
+                "provider": {
+                    "type": "string",
+                    "enum": [
+                        "openai",
+                        "onnx"
+                    ]
+                },
+                "task_type": {
+                    "type": "string",
+                    "enum": [
+                        "embedding",
+                        "term_expansion"
+                    ]
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "example": 30
+                }
+            }
+        },
         "http.CreateMonitorRequest": {
             "type": "object",
             "required": [
@@ -3006,6 +3447,137 @@
                 },
                 "version": {
                     "type": "integer"
+                }
+            }
+        },
+        "http.ModelProfileListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.ModelProfileResponse"
+                    }
+                }
+            }
+        },
+        "http.ModelProfileResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "daily_budget": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "deleted": {
+                    "type": "boolean"
+                },
+                "embedding_dimensions": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fallback_priority": {
+                    "type": "integer",
+                    "example": 100
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 7
+                },
+                "max_attempts": {
+                    "type": "integer",
+                    "example": 2
+                },
+                "max_cost": {
+                    "type": "string",
+                    "example": "0.1000"
+                },
+                "model_name": {
+                    "type": "string",
+                    "example": "text-embedding-3-large"
+                },
+                "model_version": {
+                    "type": "string",
+                    "example": "2026-07"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "embedding-primary"
+                },
+                "provider": {
+                    "type": "string",
+                    "example": "openai"
+                },
+                "task_type": {
+                    "type": "string",
+                    "example": "embedding"
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "example": 30
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
+        "http.ModelProfileResult-http_ModelProfileListResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.ModelProfileListResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ModelProfileResult-http_ModelProfileResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.ModelProfileResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/internal_modules_intelligence_transport_http.EmptyResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ModelProfileVersionRequest": {
+            "type": "object",
+            "properties": {
+                "version": {
+                    "type": "integer",
+                    "example": 1
                 }
             }
         },
@@ -3726,6 +4298,38 @@
                 }
             }
         },
+        "http.UpdateModelProfileRequest": {
+            "type": "object",
+            "properties": {
+                "daily_budget": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fallback_priority": {
+                    "type": "integer",
+                    "example": 100
+                },
+                "max_attempts": {
+                    "type": "integer",
+                    "example": 2
+                },
+                "max_cost": {
+                    "type": "string",
+                    "example": "0.1000"
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "example": 30
+                },
+                "version": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
         "http.UpdateSourceRequest": {
             "type": "object",
             "required": [
@@ -3836,6 +4440,9 @@
             "type": "object"
         },
         "internal_modules_ingestion_transport_http.EmptyResponse": {
+            "type": "object"
+        },
+        "internal_modules_intelligence_transport_http.EmptyResponse": {
             "type": "object"
         },
         "internal_modules_monitor_transport_http.EmptyResponse": {

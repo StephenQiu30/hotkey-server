@@ -79,6 +79,9 @@ func TestOpenAPIContract(t *testing.T) {
 		"/api/v1/source-connections/{id}/health":               {"post": {"200", "400", "401", "403", "409", "503"}},
 		"/api/v1/contents":                                     {"get": {"200", "400", "401", "404", "503"}},
 		"/api/v1/contents/{id}":                                {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/ai/model-profiles":                            {"get": {"200", "401", "403", "503"}, "post": {"201", "400", "401", "403", "503"}},
+		"/api/v1/ai/model-profiles/{id}":                       {"get": {"200", "400", "401", "403", "503"}, "patch": {"200", "400", "401", "403", "409", "503"}, "delete": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/ai/model-profiles/{id}/restore":               {"post": {"200", "400", "401", "403", "409", "503"}},
 	}
 	if len(document.Paths) != len(required) {
 		t.Fatalf("public path count = %d, want %d (%v)", len(document.Paths), len(required), document.Paths)
@@ -116,7 +119,7 @@ func TestOpenAPIContract(t *testing.T) {
 		}
 	}
 
-	for _, route := range []string{"/api/v1/auth/me", "/api/v1/auth/password", "/api/v1/users", "/api/v1/users/{id}", "/api/v1/users/{id}/restore", "/api/v1/monitors", "/api/v1/monitors/{id}", "/api/v1/monitors/{id}/draft", "/api/v1/monitors/{id}/draft/ai-candidates", "/api/v1/monitors/{id}/draft/rules/{rule_id}/approval", "/api/v1/monitors/{id}/preview", "/api/v1/monitors/{id}/publish", "/api/v1/monitors/{id}/pause", "/api/v1/monitors/{id}/resume", "/api/v1/monitors/{id}/archive", "/api/v1/monitors/{id}/restore", "/api/v1/source-connections", "/api/v1/source-connections/{id}", "/api/v1/source-connections/{id}/enable", "/api/v1/source-connections/{id}/disable", "/api/v1/source-connections/{id}/archive", "/api/v1/source-connections/{id}/restore", "/api/v1/collection-runs", "/api/v1/collection-runs/{id}/retry", "/api/v1/source-connections/{id}/health", "/api/v1/contents", "/api/v1/contents/{id}"} {
+	for _, route := range []string{"/api/v1/auth/me", "/api/v1/auth/password", "/api/v1/users", "/api/v1/users/{id}", "/api/v1/users/{id}/restore", "/api/v1/monitors", "/api/v1/monitors/{id}", "/api/v1/monitors/{id}/draft", "/api/v1/monitors/{id}/draft/ai-candidates", "/api/v1/monitors/{id}/draft/rules/{rule_id}/approval", "/api/v1/monitors/{id}/preview", "/api/v1/monitors/{id}/publish", "/api/v1/monitors/{id}/pause", "/api/v1/monitors/{id}/resume", "/api/v1/monitors/{id}/archive", "/api/v1/monitors/{id}/restore", "/api/v1/source-connections", "/api/v1/source-connections/{id}", "/api/v1/source-connections/{id}/enable", "/api/v1/source-connections/{id}/disable", "/api/v1/source-connections/{id}/archive", "/api/v1/source-connections/{id}/restore", "/api/v1/collection-runs", "/api/v1/collection-runs/{id}/retry", "/api/v1/source-connections/{id}/health", "/api/v1/contents", "/api/v1/contents/{id}", "/api/v1/ai/model-profiles", "/api/v1/ai/model-profiles/{id}", "/api/v1/ai/model-profiles/{id}/restore"} {
 		var operations map[string]openAPIOperation
 		if err := json.Unmarshal(document.Paths[route], &operations); err != nil {
 			t.Fatalf("decode protected path %s: %v", route, err)
@@ -137,6 +140,7 @@ func TestOpenAPIContract(t *testing.T) {
 	assertSafeMonitorSourceOpenAPIDefinitions(t, document.Definitions)
 	assertSafeCollectionOpenAPIDefinitions(t, document.Definitions)
 	assertSafeContentOpenAPIDefinitions(t, document.Definitions)
+	assertSafeModelProfileOpenAPIDefinitions(t, document.Definitions)
 	assertDraftExpectedVersionOpenAPI(t, document.Definitions)
 	assertMonitorDraftDefaultsOpenAPI(t, document.Definitions)
 }
@@ -178,6 +182,64 @@ func assertSafeContentOpenAPIDefinitions(t *testing.T, definitions map[string]st
 	for _, forbidden := range []string{"excerpt", "body", "object_key", "asset", "minio", "endpoint", "credential", "stack", "error"} {
 		if _, exists := content.Properties[forbidden]; exists {
 			t.Errorf("safe Content response exposes forbidden %q", forbidden)
+		}
+	}
+}
+
+func assertSafeModelProfileOpenAPIDefinitions(t *testing.T, definitions map[string]struct {
+	Properties map[string]json.RawMessage `json:"properties"`
+	Required   []string                   `json:"required"`
+}) {
+	t.Helper()
+	response, ok := definitions["http.ModelProfileResponse"]
+	if !ok {
+		t.Fatal("missing http.ModelProfileResponse")
+	}
+	allowedResponse := map[string]bool{
+		"id": true, "version": true, "name": true, "task_type": true, "provider": true,
+		"model_name": true, "model_version": true, "embedding_dimensions": true,
+		"timeout_seconds": true, "max_attempts": true, "max_cost": true, "daily_budget": true,
+		"fallback_priority": true, "enabled": true, "deleted": true, "created_at": true, "updated_at": true,
+	}
+	for field := range response.Properties {
+		if !allowedResponse[field] {
+			t.Errorf("safe model profile response exposes %q", field)
+		}
+	}
+	for field := range allowedResponse {
+		if _, exists := response.Properties[field]; !exists {
+			t.Errorf("safe model profile response misses %q", field)
+		}
+	}
+
+	update, ok := definitions["http.UpdateModelProfileRequest"]
+	if !ok {
+		t.Fatal("missing http.UpdateModelProfileRequest")
+	}
+	for _, forbidden := range []string{"task_type", "provider", "model_name", "model_version", "credential_ref", "embedding_dimensions", "endpoint", "parameters", "prompt", "raw_response", "api_key"} {
+		if _, exists := update.Properties[forbidden]; exists {
+			t.Errorf("model profile PATCH schema exposes immutable or sensitive %q", forbidden)
+		}
+	}
+	for _, required := range []string{"version", "timeout_seconds", "max_attempts", "max_cost", "daily_budget", "fallback_priority", "enabled"} {
+		if _, exists := update.Properties[required]; !exists {
+			t.Errorf("model profile PATCH schema misses %q", required)
+		}
+	}
+
+	create, ok := definitions["http.CreateModelProfileRequest"]
+	if !ok {
+		t.Fatal("missing http.CreateModelProfileRequest")
+	}
+	credential, exists := create.Properties["credential_ref"]
+	if !exists {
+		t.Error("model profile create schema must accept write-only credential_ref")
+	} else if strings.Contains(string(credential), "example") {
+		t.Error("model profile credential_ref must not have an OpenAPI example")
+	}
+	for _, forbidden := range []string{"endpoint", "parameters", "prompt", "raw_response", "api_key"} {
+		if _, exists := create.Properties[forbidden]; exists {
+			t.Errorf("model profile create schema exposes %q", forbidden)
 		}
 	}
 }

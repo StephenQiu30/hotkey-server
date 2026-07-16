@@ -6,6 +6,7 @@ import (
 
 	intelligencedomain "github.com/StephenQiu30/hotkey-server/internal/modules/intelligence/domain"
 	intelligencepostgres "github.com/StephenQiu30/hotkey-server/internal/modules/intelligence/infrastructure/postgres"
+	sharederrors "github.com/StephenQiu30/hotkey-server/internal/shared/errors"
 )
 
 func TestModelProfileRepositoryUsesOptimisticOperationalUpdatesAndSoftLifecycle(t *testing.T) {
@@ -27,6 +28,8 @@ func TestModelProfileRepositoryUsesOptimisticOperationalUpdatesAndSoftLifecycle(
 	}
 	if _, err := repository.UpdateProfile(context.Background(), profile, profile.Version); err == nil {
 		t.Fatal("UpdateProfile(stale) error = nil, want optimistic conflict")
+	} else if appCode, ok := err.(*sharederrors.AppError); !ok || appCode.Code != sharederrors.CodeConflict {
+		t.Fatalf("UpdateProfile(stale) error = %#v, want stable conflict", err)
 	}
 
 	semanticChange := updated

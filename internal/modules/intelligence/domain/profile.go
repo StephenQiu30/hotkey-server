@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"time"
 )
 
 // ModelProfile contains immutable provider/semantic identity plus the few
@@ -22,6 +23,8 @@ type ModelProfile struct {
 	MaxCost                                       string
 	DailyBudget                                   *string
 	Enabled                                       bool
+	Deleted                                       bool
+	CreatedAt, UpdatedAt                          time.Time
 }
 
 func (profile ModelProfile) Validate() error {

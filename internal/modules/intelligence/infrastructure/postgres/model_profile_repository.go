@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	stdhttp "net/http"
 
 	intelligencedomain "github.com/StephenQiu30/hotkey-server/internal/modules/intelligence/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	sharederrors "github.com/StephenQiu30/hotkey-server/internal/shared/errors"
 )
 
 // UpdateProfile changes only operational settings on an existing profile. A
@@ -25,8 +27,11 @@ func (repository *Repository) UpdateProfile(ctx context.Context, profile intelli
 		if err != nil {
 			return err
 		}
-		if deleted || current.Version != expectedVersion || !current.SameSemanticIdentity(profile) {
+		if deleted || !current.SameSemanticIdentity(profile) {
 			return intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+		}
+		if current.Version != expectedVersion {
+			return profileVersionConflict()
 		}
 		if err := transaction.SQL.QueryRowContext(ctx, `
 UPDATE ai_model_profiles
@@ -34,12 +39,12 @@ SET name=$1, timeout_seconds=$2, max_attempts=$3, max_cost=$4::numeric,
     daily_budget=$5::numeric, fallback_priority=$6, enabled=$7,
     version=version+1, updated_at=now()
 WHERE id=$8 AND version=$9 AND deleted_at IS NULL
-RETURNING version`,
+RETURNING version, updated_at`,
 			profile.Name, profile.TimeoutSeconds, profile.MaxAttempts, profile.MaxCost, nullableCost(profile.DailyBudget),
 			profile.FallbackPriority, profile.Enabled, profile.ID, expectedVersion,
-		).Scan(&profile.Version); err != nil {
+		).Scan(&profile.Version, &profile.UpdatedAt); err != nil {
 			if err == sql.ErrNoRows {
-				return intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+				return profileVersionConflict()
 			}
 			return fmt.Errorf("update AI profile: %w", err)
 		}
@@ -75,7 +80,7 @@ func (repository *Repository) setProfileDeleted(ctx context.Context, id, expecte
 WHERE id=$1 AND version=$2 AND deleted_at ` + whereDeleted + ` RETURNING version`
 		if err := transaction.SQL.QueryRowContext(ctx, query, id, expectedVersion).Scan(&profile.Version); err != nil {
 			if err == sql.ErrNoRows {
-				return intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+				return profileVersionConflict()
 			}
 			return fmt.Errorf("change AI profile lifecycle: %w", err)
 		}
@@ -90,6 +95,46 @@ WHERE id=$1 AND version=$2 AND deleted_at ` + whereDeleted + ` RETURNING version
 	return profile, err
 }
 
+// GetProfile returns an administrative profile projection. Callers must map
+// it to a safe DTO; credential references never cross the HTTP boundary.
+func (repository *Repository) GetProfile(ctx context.Context, id int64) (intelligencedomain.ModelProfile, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil || id <= 0 {
+		return intelligencedomain.ModelProfile{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
+	profile, _, err := readProfile(ctx, repository.runtime.SQL, id, false)
+	return profile, err
+}
+
+// ListProfiles returns active and soft-deleted profiles in deterministic id
+// order. Candidate selection remains the separate EligibleProfiles boundary.
+func (repository *Repository) ListProfiles(ctx context.Context) ([]intelligencedomain.ModelProfile, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return nil, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
+	rows, err := repository.queryRows(ctx, `
+SELECT id,version,name,task_type,provider,model_name,model_version,credential_ref,embedding_dimensions,
+       timeout_seconds,max_attempts,max_cost::text,daily_budget::text,fallback_priority,enabled,created_at,updated_at,deleted_at IS NOT NULL
+FROM ai_model_profiles
+ORDER BY id ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("list AI profiles: %w", err)
+	}
+	defer rows.Close()
+
+	profiles := make([]intelligencedomain.ModelProfile, 0)
+	for rows.Next() {
+		profile, _, err := scanProfile(rows)
+		if err != nil {
+			return nil, err
+		}
+		profiles = append(profiles, profile)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate AI profiles: %w", err)
+	}
+	return profiles, nil
+}
+
 // EligibleProfiles returns the enabled, non-deleted candidates in the one
 // deterministic order used by application services. Provider construction is
 // intentionally not performed here: a profile can be administratively valid
@@ -100,7 +145,7 @@ func (repository *Repository) EligibleProfiles(ctx context.Context, taskType int
 	}
 	rows, err := repository.queryRows(ctx, `
 SELECT id,version,name,task_type,provider,model_name,model_version,credential_ref,embedding_dimensions,
-       timeout_seconds,max_attempts,max_cost::text,daily_budget::text,fallback_priority,enabled,deleted_at IS NOT NULL
+       timeout_seconds,max_attempts,max_cost::text,daily_budget::text,fallback_priority,enabled,created_at,updated_at,deleted_at IS NOT NULL
 FROM ai_model_profiles
 WHERE task_type=$1 AND enabled AND deleted_at IS NULL
 ORDER BY fallback_priority ASC,id ASC`, string(taskType))
@@ -127,7 +172,7 @@ func readProfile(ctx context.Context, queryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }, id int64, lock bool) (intelligencedomain.ModelProfile, bool, error) {
 	query := `SELECT id,version,name,task_type,provider,model_name,model_version,credential_ref,embedding_dimensions,
-       timeout_seconds,max_attempts,max_cost::text,daily_budget::text,fallback_priority,enabled,deleted_at IS NOT NULL
+       timeout_seconds,max_attempts,max_cost::text,daily_budget::text,fallback_priority,enabled,created_at,updated_at,deleted_at IS NOT NULL
 FROM ai_model_profiles WHERE id=$1`
 	if lock {
 		query += " FOR UPDATE"
@@ -153,7 +198,7 @@ func scanProfile(scanner profileScanner) (intelligencedomain.ModelProfile, bool,
 	if err := scanner.Scan(
 		&profile.ID, &profile.Version, &profile.Name, &profile.TaskType, &profile.Provider, &profile.ModelName, &profile.ModelVersion,
 		&credential, &dimensions, &profile.TimeoutSeconds, &profile.MaxAttempts, &profile.MaxCost, &dailyBudget,
-		&profile.FallbackPriority, &profile.Enabled, &deleted,
+		&profile.FallbackPriority, &profile.Enabled, &profile.CreatedAt, &profile.UpdatedAt, &deleted,
 	); err != nil {
 		return intelligencedomain.ModelProfile{}, false, err
 	}
@@ -167,7 +212,12 @@ func scanProfile(scanner profileScanner) (intelligencedomain.ModelProfile, bool,
 	if dailyBudget.Valid {
 		profile.DailyBudget = &dailyBudget.String
 	}
+	profile.Deleted = deleted
 	return profile, deleted, nil
+}
+
+func profileVersionConflict() error {
+	return sharederrors.New(sharederrors.CodeConflict, stdhttp.StatusConflict, "")
 }
 
 func nullableCost(value *string) any {

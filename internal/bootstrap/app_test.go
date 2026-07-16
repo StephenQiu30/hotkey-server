@@ -233,10 +233,10 @@ func TestConfiguredWorkerVerifiesDatabaseOnStart(t *testing.T) {
 	}
 }
 
-// TestConfiguredAPIWiresMonitorAndSourceControlPlane verifies the exact Fx
+// TestConfiguredAPIWiresControlPlanes verifies the exact Fx
 // graph used by the real API role. A 401 from each route proves the routers
 // are mounted while avoiding any mutation or identity fixture setup.
-func TestConfiguredAPIWiresMonitorAndSourceControlPlane(t *testing.T) {
+func TestConfiguredAPIWiresControlPlanes(t *testing.T) {
 	dsn := initializedBootstrapDatabase(t)
 	cfg := apiTestConfig()
 	cfg.Role, cfg.HTTPAddr, cfg.DatabaseURL = string(RoleAPI), "127.0.0.1:0", dsn
@@ -251,7 +251,7 @@ func TestConfiguredAPIWiresMonitorAndSourceControlPlane(t *testing.T) {
 		t.Fatalf("Start() error = %v", err)
 	}
 	defer func() { _ = app.Stop(ctx) }()
-	for _, path := range []string{"/api/v1/monitors", "/api/v1/source-connections", "/api/v1/contents"} {
+	for _, path := range []string{"/api/v1/monitors", "/api/v1/source-connections", "/api/v1/contents", "/api/v1/ai/model-profiles"} {
 		response, err := stdhttp.Get("http://" + server.Address() + path)
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)

@@ -57,6 +57,24 @@ func (service *ModelProfileService) Create(ctx context.Context, profile domain.M
 	return profile, nil
 }
 
+// List returns every profile, including archived ones, for the administrator
+// control plane. HTTP maps this value to a DTO that excludes credentials.
+func (service *ModelProfileService) List(ctx context.Context) ([]domain.ModelProfile, error) {
+	if service == nil || service.profiles == nil {
+		return nil, fmt.Errorf("AI model profile service is unavailable")
+	}
+	return service.profiles.ListProfiles(ctx)
+}
+
+// Get includes the deletion state so an administrator can restore a profile.
+// The HTTP transport deliberately does not expose CredentialRef.
+func (service *ModelProfileService) Get(ctx context.Context, id int64) (domain.ModelProfile, error) {
+	if service == nil || service.profiles == nil {
+		return domain.ModelProfile{}, fmt.Errorf("AI model profile service is unavailable")
+	}
+	return service.profiles.GetProfile(ctx, id)
+}
+
 func (service *ModelProfileService) Update(ctx context.Context, profile domain.ModelProfile, expectedVersion int64) (domain.ModelProfile, error) {
 	if service == nil || service.profiles == nil {
 		return domain.ModelProfile{}, fmt.Errorf("AI model profile service is unavailable")

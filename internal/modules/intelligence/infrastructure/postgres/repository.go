@@ -36,10 +36,10 @@ INSERT INTO ai_model_profiles (
   embedding_dimensions, timeout_seconds, max_attempts, max_cost, daily_budget,
   fallback_priority, enabled
 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-RETURNING id, version`,
+RETURNING id, version, created_at, updated_at`,
 		profile.Name, string(profile.TaskType), string(profile.Provider), profile.ModelName, profile.CredentialRef, profile.ModelVersion,
 		profile.EmbeddingDimensions, profile.TimeoutSeconds, profile.MaxAttempts, profile.MaxCost, dailyBudget, profile.FallbackPriority, profile.Enabled,
-	).Scan(&profile.ID, &profile.Version); err != nil {
+	).Scan(&profile.ID, &profile.Version, &profile.CreatedAt, &profile.UpdatedAt); err != nil {
 		return fmt.Errorf("create AI profile: %w", err)
 	}
 	return nil
