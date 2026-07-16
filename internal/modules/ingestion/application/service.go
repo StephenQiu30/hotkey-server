@@ -270,49 +270,6 @@ func (service *Service) compensateEvidence(ctx context.Context, sourceConnection
 	})
 }
 
-// ReconcileObjects removes unreferenced evidence objects for one source while
-// preserving every non-deleted durable asset reference. It intentionally does
-// not change Content or asset lifecycle state; the follow-on lifecycle slice
-// owns those commands.
-func (service *Service) ReconcileObjects(ctx context.Context, sourceConnectionID int64) (int, error) {
-	if service == nil || service.evidence == nil || service.contents == nil || sourceConnectionID <= 0 {
-		return 0, errors.New("content repository, evidence store, and source connection id are required")
-	}
-	deleted := 0
-	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
-		if err := lockSourceEvidenceTransaction(transactionCtx, transaction, sourceConnectionID); err != nil {
-			return err
-		}
-		prefix := fmt.Sprintf("evidence/v1/%d/", sourceConnectionID)
-		keys, err := service.contents.ListAssetObjectKeys(transactionCtx, sourceConnectionID)
-		if err != nil {
-			return fmt.Errorf("list durable evidence assets: %w", err)
-		}
-		known := make(map[string]struct{}, len(keys))
-		for _, key := range keys {
-			known[key] = struct{}{}
-		}
-		receipts, err := service.evidence.ListPrefix(transactionCtx, prefix)
-		if err != nil {
-			return fmt.Errorf("list evidence objects: %w", err)
-		}
-		for _, receipt := range receipts {
-			if _, found := known[receipt.ObjectKey]; found {
-				continue
-			}
-			if err := service.evidence.Delete(transactionCtx, receipt.ObjectKey); err != nil {
-				return fmt.Errorf("delete orphan evidence %q: %w", receipt.ObjectKey, err)
-			}
-			deleted++
-		}
-		return nil
-	})
-	if err != nil {
-		return deleted, err
-	}
-	return deleted, nil
-}
-
 func (service *Service) receiptAvailable(ctx context.Context, sourceConnectionID int64, receipt ingestiondomain.EvidenceReceipt) (bool, error) {
 	receipts, err := service.evidence.ListPrefix(ctx, fmt.Sprintf("evidence/v1/%d/", sourceConnectionID))
 	if err != nil {

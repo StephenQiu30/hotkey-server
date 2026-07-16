@@ -198,6 +198,45 @@ WHERE object_key = $2 AND version = $3 AND object_status = $4`, status, objectKe
 	})
 }
 
+// ListEvidenceAssets returns the undeleted, source-scoped assets that can be
+// operated through ingestion's EvidenceStore. Other content asset types never
+// cross this storage boundary.
+func (repository *ContentRepository) ListEvidenceAssets(ctx context.Context, sourceConnectionID, contentID int64) ([]ingestiondomain.ContentAsset, error) {
+	if !repository.available() {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	if sourceConnectionID <= 0 || contentID <= 0 {
+		return nil, fmt.Errorf("%w: source connection id and content id are required", sharedrepository.ErrInvalidInput)
+	}
+	rows, err := repository.queryRows(ctx, `
+SELECT asset.id, asset.version, asset.content_id, asset.asset_type,
+       asset.object_key, asset.original_url, asset.mime_type, asset.sha256,
+       asset.size_bytes, asset.captured_at, asset.object_status
+FROM content_assets AS asset
+JOIN contents AS content ON content.id = asset.content_id
+WHERE content.source_connection_id = $1
+  AND content.id = $2
+  AND asset.object_status <> 'deleted'
+  AND asset.object_key LIKE $3
+ORDER BY asset.object_key ASC`, sourceConnectionID, contentID, evidencePrefixPattern(sourceConnectionID))
+	if err != nil {
+		return nil, sharedrepository.MapError(err)
+	}
+	defer rows.Close()
+	assets := make([]ingestiondomain.ContentAsset, 0)
+	for rows.Next() {
+		asset, err := scanContentAsset(rows)
+		if err != nil {
+			return nil, sharedrepository.MapError(err)
+		}
+		assets = append(assets, asset)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, sharedrepository.MapError(err)
+	}
+	return assets, nil
+}
+
 // ListAssetObjectKeys returns the ingestion evidence references that must be
 // preserved during source-scoped object reconciliation. A lifecycle-deleted
 // asset deliberately stops protecting its object; all other durable asset
@@ -215,7 +254,8 @@ FROM content_assets AS asset
 JOIN contents AS content ON content.id = asset.content_id
 WHERE content.source_connection_id = $1
   AND asset.object_status <> 'deleted'
-ORDER BY asset.object_key ASC`, sourceConnectionID)
+  AND asset.object_key LIKE $2
+ORDER BY asset.object_key ASC`, sourceConnectionID, evidencePrefixPattern(sourceConnectionID))
 	if err != nil {
 		return nil, sharedrepository.MapError(err)
 	}
@@ -321,6 +361,40 @@ RETURNING id`, sourceConnectionID, externalID).Scan(&contentID)
 		return ingestiondomain.Content{}, false, err
 	}
 	return content, changed, nil
+}
+
+// ExpireBefore changes only currently active ingestion Content facts. It
+// deliberately leaves assets and every downstream module untouched; expiry is
+// immediately reflected by ListActive's active-status boundary.
+func (repository *ContentRepository) ExpireBefore(ctx context.Context, before time.Time) (int, error) {
+	if !repository.available() {
+		return 0, sharedrepository.ErrUnavailable
+	}
+	if before.IsZero() {
+		return 0, fmt.Errorf("%w: expiry time is required", sharedrepository.ErrInvalidInput)
+	}
+	expired := 0
+	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+		result, err := transaction.SQL.ExecContext(ctx, `
+UPDATE contents
+SET content_status = 'expired', version = version + 1, updated_at = now()
+WHERE content_status = 'active'
+  AND deleted_at IS NULL
+  AND published_at < $1`, before.UTC())
+		if err != nil {
+			return sharedrepository.MapError(err)
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return sharedrepository.MapError(err)
+		}
+		expired = int(affected)
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return expired, nil
 }
 
 func upsertAuthor(ctx context.Context, executor queryRowExecutor, content ingestiondomain.NormalizedContent) (any, error) {
@@ -438,6 +512,30 @@ func metricArgument(metric *int64) any {
 		return nil
 	}
 	return *metric
+}
+
+func evidencePrefixPattern(sourceConnectionID int64) string {
+	return fmt.Sprintf("evidence/v1/%d/%%", sourceConnectionID)
+}
+
+func scanContentAsset(scanner interface{ Scan(...any) error }) (ingestiondomain.ContentAsset, error) {
+	var asset ingestiondomain.ContentAsset
+	var originalURL sql.NullString
+	var status string
+	if err := scanner.Scan(
+		&asset.ID, &asset.Version, &asset.ContentID, &asset.AssetType,
+		&asset.ObjectKey, &originalURL, &asset.MIMEType, &asset.SHA256,
+		&asset.SizeBytes, &asset.CapturedAt, &status,
+	); err != nil {
+		return ingestiondomain.ContentAsset{}, err
+	}
+	asset.CapturedAt = asset.CapturedAt.UTC()
+	asset.OriginalURL = originalURL.String
+	asset.Status = ingestiondomain.AssetStatus(status)
+	if !validAssetStatus(asset.Status) {
+		return ingestiondomain.ContentAsset{}, fmt.Errorf("invalid persisted asset status %q", status)
+	}
+	return asset, nil
 }
 
 func nullableString(value string) any {
