@@ -22,3 +22,12 @@ func transactionSQL(ctx context.Context, runtime *database.Runtime) interface {
 	}
 	return runtime.SQL
 }
+
+func transactionRows(ctx context.Context, runtime *database.Runtime) interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+} {
+	if transaction, found := database.TransactionFromContext(ctx); found {
+		return transaction.SQL
+	}
+	return runtime.SQL
+}

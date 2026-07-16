@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -113,6 +114,25 @@ func TestLoginDoesNotTurnRepositoryOutageIntoInvalidCredentials(t *testing.T) {
 
 	_, err := service.Login(context.Background(), Credentials{Email: "member@example.test", Password: "password"})
 	requireAppCode(t, err, sharederrors.CodeUnavailable)
+}
+
+func TestListUsersDelegatesToTheDomainPortWithoutAuthorization(t *testing.T) {
+	service, users, _ := newFakeService(t)
+	users.listUsers = []domain.User{
+		{ID: 2, Email: "deleted@example.test", Role: domain.RoleViewer, Status: domain.UserStatusDisabled, DeletedAt: pointerToTime(time.Date(2026, time.July, 16, 9, 0, 0, 0, time.UTC))},
+		{ID: 3, Email: "active@example.test", Role: domain.RoleEditor, Status: domain.UserStatusActive},
+	}
+
+	listed, err := service.ListUsers(context.Background())
+	if err != nil {
+		t.Fatalf("ListUsers(): %v", err)
+	}
+	if users.listCalls != 1 {
+		t.Fatalf("ListUsers() repository calls = %d, want 1", users.listCalls)
+	}
+	if !reflect.DeepEqual(listed, users.listUsers) {
+		t.Fatalf("ListUsers() = %#v, want unmodified domain users %#v", listed, users.listUsers)
+	}
 }
 
 func TestAuthenticatorUsesCurrentDatabaseSubjectAndRejectsClaimMismatch(t *testing.T) {
@@ -324,6 +344,8 @@ func pointerToRole(role domain.Role) *domain.Role { return &role }
 
 func pointerToStatus(status domain.UserStatus) *domain.UserStatus { return &status }
 
+func pointerToTime(value time.Time) *time.Time { return &value }
+
 func requireAppCode(t *testing.T, err error, want int) {
 	t.Helper()
 	var appError *sharederrors.AppError
@@ -466,6 +488,8 @@ type userRepositoryFake struct {
 	nextID                   int64
 	lastWriteUsedTransaction bool
 	findByEmailErr           error
+	listUsers                []domain.User
+	listCalls                int
 }
 
 func newUserRepositoryFake() *userRepositoryFake {
@@ -515,6 +539,13 @@ func (repository *userRepositoryFake) FindByID(_ context.Context, id int64) (*do
 	}
 	copy := user
 	return &copy, nil
+}
+
+func (repository *userRepositoryFake) ListUsers(context.Context) ([]domain.User, error) {
+	repository.mu.Lock()
+	defer repository.mu.Unlock()
+	repository.listCalls++
+	return append([]domain.User(nil), repository.listUsers...), nil
 }
 
 func (repository *userRepositoryFake) LockByID(ctx context.Context, id int64) (*domain.User, error) {

@@ -30,6 +30,7 @@ func TestPersistenceContractsExposeIdentityWorkflowOperations(t *testing.T) {
 		RevokeAllForUser(context.Context, int64, string, time.Time) error
 	} = (SessionRepository)(nil)
 	var _ interface {
+		ListUsers(context.Context) ([]User, error)
 		LockByID(context.Context, int64) (*User, error)
 		LockActiveAdmins(context.Context) ([]User, error)
 		UpdatePassword(context.Context, int64, string, time.Time) error

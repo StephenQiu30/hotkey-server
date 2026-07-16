@@ -54,6 +54,35 @@ FROM users
 WHERE id = $1 AND deleted_at IS NULL`, id)
 }
 
+// ListUsers returns every user record in stable identifier order. Soft-deleted
+// records stay visible because restore administration needs that domain fact.
+func (repository *UserRepository) ListUsers(ctx context.Context) ([]domain.User, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	rows, err := transactionRows(ctx, repository.runtime).QueryContext(ctx, `
+SELECT id, email, password_hash, display_name, role, status, last_login_at, created_at, updated_at, deleted_at
+FROM users
+ORDER BY id ASC`)
+	if err != nil {
+		return nil, mapRepositoryError(err)
+	}
+	defer rows.Close()
+
+	users := make([]domain.User, 0)
+	for rows.Next() {
+		user, err := scanUser(rows)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, mapRepositoryError(err)
+	}
+	return users, nil
+}
+
 // LockByID includes soft-deleted users so lifecycle restore operations can
 // make their conflict and last-admin checks while holding the target row.
 func (repository *UserRepository) LockByID(ctx context.Context, id int64) (*domain.User, error) {

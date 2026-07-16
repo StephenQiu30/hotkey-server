@@ -54,6 +54,33 @@ func TestUserRepositoryCreatesPreferenceAndEnforcesNormalizedEmailUniqueness(t *
 	}
 }
 
+func TestUserRepositoryListsUsersByIDAndIncludesSoftDeletedFacts(t *testing.T) {
+	runtime := newIdentityRuntime(t)
+	repository := NewUserRepository(runtime)
+
+	first := createIdentityUser(t, repository, "list-first")
+	second := createIdentityUser(t, repository, "list-second")
+	third := createIdentityUser(t, repository, "list-third")
+	deletedAt := time.Date(2026, time.July, 16, 9, 0, 0, 0, time.UTC)
+	if _, err := repository.SoftDelete(context.Background(), second.ID, deletedAt); err != nil {
+		t.Fatalf("SoftDelete(): %v", err)
+	}
+
+	users, err := repository.ListUsers(context.Background())
+	if err != nil {
+		t.Fatalf("ListUsers(): %v", err)
+	}
+	if len(users) != 3 {
+		t.Fatalf("ListUsers() returned %d users, want 3", len(users))
+	}
+	if users[0].ID != first.ID || users[1].ID != second.ID || users[2].ID != third.ID {
+		t.Fatalf("ListUsers() IDs = [%d %d %d], want [%d %d %d] in ascending ID order", users[0].ID, users[1].ID, users[2].ID, first.ID, second.ID, third.ID)
+	}
+	if users[1].DeletedAt == nil || !users[1].DeletedAt.Equal(deletedAt) {
+		t.Fatalf("ListUsers() deleted user = %#v, want persisted deleted_at %s", users[1], deletedAt)
+	}
+}
+
 func TestUserRepositoryReusesAnExistingRuntimeTransaction(t *testing.T) {
 	runtime := newIdentityRuntime(t)
 	repository := NewUserRepository(runtime)
