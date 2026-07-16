@@ -15,6 +15,7 @@ type ContentRepository interface {
 	AppendMetricSnapshot(ctx context.Context, contentID int64, capturedAt time.Time, metrics sourcedomain.SourceMetrics) error
 	CreateAsset(ctx context.Context, asset ContentAsset) error
 	MarkAssetStatus(ctx context.Context, objectKey string, status AssetStatus) error
+	ListAssetObjectKeys(ctx context.Context, sourceConnectionID int64) ([]string, error)
 	ListActive(ctx context.Context, query ContentListQuery) (ContentPage, error)
 	MarkDeleted(ctx context.Context, sourceConnectionID int64, externalID string) (Content, bool, error)
 }

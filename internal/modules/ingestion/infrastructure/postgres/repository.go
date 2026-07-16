@@ -198,6 +198,42 @@ WHERE object_key = $2 AND version = $3 AND object_status = $4`, status, objectKe
 	})
 }
 
+// ListAssetObjectKeys returns the ingestion evidence references that must be
+// preserved during source-scoped object reconciliation. A lifecycle-deleted
+// asset deliberately stops protecting its object; all other durable asset
+// states remain references until the lifecycle command resolves them.
+func (repository *ContentRepository) ListAssetObjectKeys(ctx context.Context, sourceConnectionID int64) ([]string, error) {
+	if !repository.available() {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	if sourceConnectionID <= 0 {
+		return nil, fmt.Errorf("%w: source connection id is required", sharedrepository.ErrInvalidInput)
+	}
+	rows, err := repository.queryRows(ctx, `
+SELECT asset.object_key
+FROM content_assets AS asset
+JOIN contents AS content ON content.id = asset.content_id
+WHERE content.source_connection_id = $1
+  AND asset.object_status <> 'deleted'
+ORDER BY asset.object_key ASC`, sourceConnectionID)
+	if err != nil {
+		return nil, sharedrepository.MapError(err)
+	}
+	defer rows.Close()
+	keys := make([]string, 0)
+	for rows.Next() {
+		var objectKey string
+		if err := rows.Scan(&objectKey); err != nil {
+			return nil, sharedrepository.MapError(err)
+		}
+		keys = append(keys, objectKey)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, sharedrepository.MapError(err)
+	}
+	return keys, nil
+}
+
 func (repository *ContentRepository) ListActive(ctx context.Context, query ingestiondomain.ContentListQuery) (ingestiondomain.ContentPage, error) {
 	if !repository.available() {
 		return ingestiondomain.ContentPage{}, sharedrepository.ErrUnavailable

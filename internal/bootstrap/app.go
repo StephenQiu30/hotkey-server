@@ -12,6 +12,9 @@ import (
 	identitysecurity "github.com/StephenQiu30/hotkey-server/internal/modules/identity/infrastructure/security"
 	identitysmtp "github.com/StephenQiu30/hotkey-server/internal/modules/identity/infrastructure/smtp"
 	identitytransport "github.com/StephenQiu30/hotkey-server/internal/modules/identity/transport/http"
+	ingestionapplication "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/application"
+	ingestionminio "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/infrastructure/minio"
+	ingestionpostgres "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/infrastructure/postgres"
 	monitorapplication "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/application"
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/infrastructure/postgres"
 	monitortransport "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/transport/http"
@@ -53,7 +56,17 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 	}
 	usesDatabase := strings.TrimSpace(cfg.DatabaseURL) != ""
 	if usesDatabase {
-		options = append(options, fx.Provide(database.NewRuntime), fx.Invoke(database.RegisterLifecycle))
+		options = append(options,
+			fx.Provide(
+				database.NewRuntime,
+				ingestionpostgres.NewContentRepository,
+				newIngestionEvidenceStore,
+				sourcepostgres.NewCollectionRepository,
+				newIngestionCapturedItemReader,
+				newIngestionService,
+			),
+			fx.Invoke(database.RegisterLifecycle),
+		)
 	}
 	if role.StartsAPI() {
 		if err := cfg.ValidateAuthenticationRuntime(); err != nil {
@@ -89,7 +102,6 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					monitorpostgres.NewPublishedReferenceReader,
 					sourcepostgres.NewRepository,
 					newSourceService,
-					sourcepostgres.NewCollectionRepository,
 					sourceinfrastructure.NewConnectorRegistry,
 					newCollectionControlService,
 					monitorpostgres.NewRepository,
@@ -132,6 +144,20 @@ func newSourceService(runtime *database.Runtime, sources *sourcepostgres.Reposit
 
 func newCollectionControlService(runtime *database.Runtime, sources *sourcepostgres.Repository, runs *sourcepostgres.CollectionRepository, connectors *sourceinfrastructure.ConnectorRegistry, metrics *observability.Metrics) (*sourceapplication.CollectionControlService, error) {
 	return sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{Runtime: runtime, Sources: sources, Runs: runs, Connectors: connectors, Metrics: metrics})
+}
+
+func newIngestionEvidenceStore(cfg config.Config) (*ingestionminio.Store, error) {
+	return ingestionminio.NewStore(cfg.MinIO)
+}
+
+func newIngestionCapturedItemReader(runs *sourcepostgres.CollectionRepository) (*sourceapplication.CapturedItemReader, error) {
+	return sourceapplication.NewCapturedItemReader(sourceapplication.CapturedItemReaderDependencies{Runs: runs})
+}
+
+func newIngestionService(runtime *database.Runtime, captures *sourceapplication.CapturedItemReader, contents *ingestionpostgres.ContentRepository, evidence *ingestionminio.Store) (*ingestionapplication.Service, error) {
+	return ingestionapplication.NewService(ingestionapplication.Dependencies{
+		Runtime: runtime, Captures: captures, Contents: contents, Evidence: evidence,
+	})
 }
 
 func newMonitorService(runtime *database.Runtime, monitors *monitorpostgres.Repository, sources *sourceapplication.Service, audit *operationspostgres.AuditWriter) (*monitorapplication.Service, error) {
