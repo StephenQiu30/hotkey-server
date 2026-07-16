@@ -1,7 +1,6 @@
 package http
 
 import (
-	monitorapplication "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/application"
 	httptransport "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	"github.com/gin-gonic/gin"
 )
@@ -9,7 +8,7 @@ import (
 // RegisterRoutes mounts the fixed Monitor control-plane routes. Authorization
 // is explicit at the boundary; application services repeat the rule so calls
 // outside HTTP remain safe.
-func RegisterRoutes(router *gin.Engine, service *monitorapplication.Service, authenticator httptransport.Authenticator) {
+func RegisterRoutes(router *gin.Engine, service monitorService, authenticator httptransport.Authenticator) {
 	if router == nil {
 		return
 	}

@@ -11,7 +11,6 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/modules/monitor/domain"
 	httptransport "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	sharederrors "github.com/StephenQiu30/hotkey-server/internal/shared/errors"
-	"github.com/StephenQiu30/hotkey-server/internal/shared/pagination"
 	"github.com/gin-gonic/gin"
 )
 
@@ -26,23 +25,24 @@ type monitorService interface {
 	Resume(context.Context, monitorapplication.LifecycleInput) (*domain.Monitor, error)
 	Archive(context.Context, monitorapplication.LifecycleInput) (*domain.Monitor, error)
 	Restore(context.Context, monitorapplication.LifecycleInput) (*domain.Monitor, error)
-	ActivePublished(context.Context, identitydomain.Subject) ([]domain.PublishedMonitor, error)
+	Get(context.Context, identitydomain.Subject, int64) (monitorapplication.MonitorView, error)
+	List(context.Context, monitorapplication.ListInput) (monitorapplication.MonitorPage, error)
 }
 
 type Handler struct{ service monitorService }
 
 func NewHandler(service monitorService) *Handler { return &Handler{service: service} }
 
-// List returns the published-safe monitor projections in fixed id-ascending
-// cursor order. Draft-only configurations are intentionally never included in
-// this viewer-safe read path.
-// @Summary List published monitors
+// List returns the viewer-safe active/paused published view or, for
+// collaborators, the same view plus safe draft metadata where it exists.
+// @Summary List monitors
 // @Tags monitors
 // @Produce json
 // @Security BearerAuth
 // @Param cursor query string false "cursor"
 // @Param limit query int false "page size"
 // @Success 200 {object} MonitorResult[MonitorPageResponse]
+// @Failure 400 {object} MonitorResult[EmptyResponse]
 // @Failure 401 {object} MonitorResult[EmptyResponse]
 // @Failure 503 {object} MonitorResult[EmptyResponse]
 // @Router /api/v1/monitors [get]
@@ -52,45 +52,30 @@ func (handler *Handler) List(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	items, err := handler.service.ActivePublished(c.Request.Context(), subject)
+	limit, err := monitorPageLimit(c)
 	if err != nil {
 		return err
 	}
-	limit, afterID, err := monitorPageParameters(c)
+	page, err := handler.service.List(c.Request.Context(), monitorapplication.ListInput{Subject: subject, Cursor: c.Query("cursor"), Limit: limit})
 	if err != nil {
 		return err
 	}
-	page := make([]domain.PublishedMonitor, 0, limit+1)
-	for _, item := range items {
-		if item.Monitor.ID > afterID {
-			page = append(page, item)
-		}
-	}
-	response := MonitorPageResponse{Items: make([]MonitorResponse, 0, min(limit, len(page))), NextCursor: ""}
-	if len(page) > limit {
-		cursor, err := pagination.Encode("id", false, "monitors-published", page[limit-1].Monitor.ID)
-		if err != nil {
-			return err
-		}
-		response.NextCursor, page = cursor, page[:limit]
-	}
-	for _, item := range page {
-		config := item.Config
-		response.Items = append(response.Items, monitorResponse(item.Monitor, &config, item.Rules, item.Sources, false))
+	response := MonitorPageResponse{Items: make([]MonitorResponse, 0, len(page.Items)), NextCursor: page.NextCursor}
+	for _, item := range page.Items {
+		response.Items = append(response.Items, monitorResponse(item))
 	}
 	httptransport.OK(c, response)
 	return nil
 }
 
-// Get returns one published-safe Monitor. A missing or non-published monitor
-// deliberately maps to the stable application error instead of leaking
-// configuration pointers.
-// @Summary Get a published monitor
+// Get returns the role-appropriate safe Monitor projection.
+// @Summary Get a monitor
 // @Tags monitors
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "monitor ID"
 // @Success 200 {object} MonitorResult[MonitorResponse]
+// @Failure 400 {object} MonitorResult[EmptyResponse]
 // @Failure 401 {object} MonitorResult[EmptyResponse]
 // @Failure 409 {object} MonitorResult[EmptyResponse]
 // @Failure 503 {object} MonitorResult[EmptyResponse]
@@ -105,18 +90,12 @@ func (handler *Handler) Get(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	items, err := handler.service.ActivePublished(c.Request.Context(), subject)
+	view, err := handler.service.Get(c.Request.Context(), subject, id)
 	if err != nil {
 		return err
 	}
-	for _, item := range items {
-		if item.Monitor.ID == id {
-			config := item.Config
-			httptransport.OK(c, monitorResponse(item.Monitor, &config, item.Rules, item.Sources, false))
-			return nil
-		}
-	}
-	return domain.MonitorDraftUnavailable()
+	httptransport.OK(c, monitorResponse(view))
+	return nil
 }
 
 // Create creates a Monitor and its first draft. The request cannot control
@@ -132,6 +111,7 @@ func (handler *Handler) Get(c *gin.Context) error {
 // @Failure 401 {object} MonitorResult[EmptyResponse]
 // @Failure 403 {object} MonitorResult[EmptyResponse]
 // @Failure 409 {object} MonitorResult[EmptyResponse]
+// @Failure 503 {object} MonitorResult[EmptyResponse]
 // @Router /api/v1/monitors [post]
 func (handler *Handler) Create(c *gin.Context) error {
 	httptransport.SetModule(c, "monitor")
@@ -143,11 +123,15 @@ func (handler *Handler) Create(c *gin.Context) error {
 	if err := c.ShouldBindJSON(&request); err != nil {
 		return invalidRequest(err)
 	}
-	monitor, config, err := handler.service.Create(c.Request.Context(), monitorapplication.CreateInput{Subject: subject, Draft: monitorDraft(request)})
+	monitor, _, err := handler.service.Create(c.Request.Context(), monitorapplication.CreateInput{Subject: subject, Draft: monitorDraft(request)})
 	if err != nil {
 		return err
 	}
-	httptransport.Created(c, monitorResponse(*monitor, config, monitorRules(request.Rules), monitorSources(request.Sources), true))
+	view, err := handler.service.Get(c.Request.Context(), subject, monitor.ID)
+	if err != nil {
+		return err
+	}
+	httptransport.Created(c, monitorResponse(view))
 	return nil
 }
 
@@ -164,6 +148,7 @@ func (handler *Handler) Create(c *gin.Context) error {
 // @Failure 401 {object} MonitorResult[EmptyResponse]
 // @Failure 403 {object} MonitorResult[EmptyResponse]
 // @Failure 409 {object} MonitorResult[EmptyResponse]
+// @Failure 503 {object} MonitorResult[EmptyResponse]
 // @Router /api/v1/monitors/{id}/draft [put]
 func (handler *Handler) ReplaceDraft(c *gin.Context) error { return handler.replaceDraft(c) }
 
@@ -185,11 +170,15 @@ func (handler *Handler) replaceDraft(c *gin.Context) error {
 	if err != nil {
 		return invalidRequest(err)
 	}
-	monitor, config, err := handler.service.ReplaceDraft(c.Request.Context(), monitorapplication.ReplaceDraftInput{Subject: subject, MonitorID: id, Expected: expected, Draft: replaceMonitorDraft(request)})
+	monitor, _, err := handler.service.ReplaceDraft(c.Request.Context(), monitorapplication.ReplaceDraftInput{Subject: subject, MonitorID: id, Expected: expected, Draft: replaceMonitorDraft(request)})
 	if err != nil {
 		return err
 	}
-	httptransport.OK(c, monitorResponse(*monitor, config, monitorRules(request.Rules), monitorSources(request.Sources), true))
+	view, err := handler.service.Get(c.Request.Context(), subject, monitor.ID)
+	if err != nil {
+		return err
+	}
+	httptransport.OK(c, monitorResponse(view))
 	return nil
 }
 
@@ -206,6 +195,7 @@ func (handler *Handler) replaceDraft(c *gin.Context) error {
 // @Failure 401 {object} MonitorResult[EmptyResponse]
 // @Failure 403 {object} MonitorResult[EmptyResponse]
 // @Failure 409 {object} MonitorResult[EmptyResponse]
+// @Failure 503 {object} MonitorResult[EmptyResponse]
 // @Router /api/v1/monitors/{id}/draft/ai-candidates [post]
 func (handler *Handler) AddAICandidate(c *gin.Context) error {
 	httptransport.SetModule(c, "monitor")
@@ -248,6 +238,7 @@ func (handler *Handler) AddAICandidate(c *gin.Context) error {
 // @Failure 401 {object} MonitorResult[EmptyResponse]
 // @Failure 403 {object} MonitorResult[EmptyResponse]
 // @Failure 409 {object} MonitorResult[EmptyResponse]
+// @Failure 503 {object} MonitorResult[EmptyResponse]
 // @Router /api/v1/monitors/{id}/draft/rules/{rule_id}/approval [post]
 func (handler *Handler) ApproveAICandidate(c *gin.Context) error {
 	httptransport.SetModule(c, "monitor")
@@ -285,9 +276,11 @@ func (handler *Handler) ApproveAICandidate(c *gin.Context) error {
 // @Security BearerAuth
 // @Param id path int true "monitor ID"
 // @Success 200 {object} MonitorResult[PreviewResponse]
+// @Failure 400 {object} MonitorResult[EmptyResponse]
 // @Failure 401 {object} MonitorResult[EmptyResponse]
 // @Failure 403 {object} MonitorResult[EmptyResponse]
 // @Failure 409 {object} MonitorResult[EmptyResponse]
+// @Failure 503 {object} MonitorResult[EmptyResponse]
 // @Router /api/v1/monitors/{id}/preview [post]
 func (handler *Handler) Preview(c *gin.Context) error {
 	httptransport.SetModule(c, "monitor")
@@ -320,6 +313,7 @@ func (handler *Handler) Preview(c *gin.Context) error {
 // @Failure 401 {object} MonitorResult[EmptyResponse]
 // @Failure 403 {object} MonitorResult[EmptyResponse]
 // @Failure 409 {object} MonitorResult[EmptyResponse]
+// @Failure 503 {object} MonitorResult[EmptyResponse]
 // @Router /api/v1/monitors/{id}/publish [post]
 func (handler *Handler) Publish(c *gin.Context) error {
 	httptransport.SetModule(c, "monitor")
@@ -339,11 +333,15 @@ func (handler *Handler) Publish(c *gin.Context) error {
 	if err != nil {
 		return invalidRequest(err)
 	}
-	monitor, config, err := handler.service.Publish(c.Request.Context(), monitorapplication.PublishInput{Subject: subject, MonitorID: id, Expected: expected})
+	monitor, _, err := handler.service.Publish(c.Request.Context(), monitorapplication.PublishInput{Subject: subject, MonitorID: id, Expected: expected})
 	if err != nil {
 		return err
 	}
-	httptransport.OK(c, monitorResponse(*monitor, config, nil, nil, false))
+	view, err := handler.service.Get(c.Request.Context(), subject, monitor.ID)
+	if err != nil {
+		return err
+	}
+	httptransport.OK(c, monitorResponse(view))
 	return nil
 }
 
@@ -360,6 +358,7 @@ func (handler *Handler) Publish(c *gin.Context) error {
 // @Failure 401 {object} MonitorResult[EmptyResponse]
 // @Failure 403 {object} MonitorResult[EmptyResponse]
 // @Failure 409 {object} MonitorResult[EmptyResponse]
+// @Failure 503 {object} MonitorResult[EmptyResponse]
 // @Router /api/v1/monitors/{id}/pause [post]
 func (handler *Handler) Pause(c *gin.Context) error {
 	return handler.lifecycle(c, handler.service.Pause)
@@ -378,6 +377,7 @@ func (handler *Handler) Pause(c *gin.Context) error {
 // @Failure 401 {object} MonitorResult[EmptyResponse]
 // @Failure 403 {object} MonitorResult[EmptyResponse]
 // @Failure 409 {object} MonitorResult[EmptyResponse]
+// @Failure 503 {object} MonitorResult[EmptyResponse]
 // @Router /api/v1/monitors/{id}/resume [post]
 func (handler *Handler) Resume(c *gin.Context) error {
 	return handler.lifecycle(c, handler.service.Resume)
@@ -396,6 +396,7 @@ func (handler *Handler) Resume(c *gin.Context) error {
 // @Failure 401 {object} MonitorResult[EmptyResponse]
 // @Failure 403 {object} MonitorResult[EmptyResponse]
 // @Failure 409 {object} MonitorResult[EmptyResponse]
+// @Failure 503 {object} MonitorResult[EmptyResponse]
 // @Router /api/v1/monitors/{id}/archive [post]
 func (handler *Handler) Archive(c *gin.Context) error {
 	return handler.lifecycle(c, handler.service.Archive)
@@ -414,6 +415,7 @@ func (handler *Handler) Archive(c *gin.Context) error {
 // @Failure 401 {object} MonitorResult[EmptyResponse]
 // @Failure 403 {object} MonitorResult[EmptyResponse]
 // @Failure 409 {object} MonitorResult[EmptyResponse]
+// @Failure 503 {object} MonitorResult[EmptyResponse]
 // @Router /api/v1/monitors/{id}/restore [post]
 func (handler *Handler) Restore(c *gin.Context) error {
 	return handler.lifecycle(c, handler.service.Restore)
@@ -437,7 +439,11 @@ func (handler *Handler) lifecycle(c *gin.Context, operation func(context.Context
 	if err != nil {
 		return err
 	}
-	httptransport.OK(c, monitorResponse(*monitor, nil, nil, nil, false))
+	view, err := handler.service.Get(c.Request.Context(), subject, monitor.ID)
+	if err != nil {
+		return err
+	}
+	httptransport.OK(c, monitorResponse(view))
 	return nil
 }
 
@@ -457,27 +463,17 @@ func positivePathID(c *gin.Context, name string) (int64, error) {
 	}
 	return value, nil
 }
-func monitorPageParameters(c *gin.Context) (int, int64, error) {
+func monitorPageLimit(c *gin.Context) (int, error) {
 	const defaultLimit, maximumLimit = 50, 200
 	limit := defaultLimit
 	if raw := c.Query("limit"); raw != "" {
 		value, err := strconv.Atoi(raw)
 		if err != nil || value < 1 || value > maximumLimit {
-			return 0, 0, invalidRequest(fmt.Errorf("limit must be 1-%d", maximumLimit))
+			return 0, invalidRequest(fmt.Errorf("limit must be 1-%d", maximumLimit))
 		}
 		limit = value
 	}
-	cursor, err := pagination.Decode(c.Query("cursor"), "id", false, "monitors-published")
-	if err != nil {
-		return 0, 0, invalidRequest(err)
-	}
-	return limit, cursor.ID, nil
-}
-func min(left, right int) int {
-	if left < right {
-		return left
-	}
-	return right
+	return limit, nil
 }
 func invalidRequest(cause error) error {
 	return sharederrors.Wrap(sharederrors.CodeInvalidRequest, stdhttp.StatusBadRequest, "", cause)

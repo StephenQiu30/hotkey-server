@@ -33,6 +33,9 @@ func (*monitorRepositoryFake) SaveMonitor(context.Context, *Monitor) error { ret
 func (*monitorRepositoryFake) Publish(context.Context, *Monitor, *MonitorConfigVersion, *MonitorConfigVersion, []MonitorSource) error {
 	return nil
 }
+func (*monitorRepositoryFake) List(context.Context, MonitorListQuery) ([]Monitor, string, error) {
+	return nil, "", nil
+}
 func (*monitorRepositoryFake) ListActivePublished(context.Context) ([]PublishedMonitor, error) {
 	return nil, nil
 }

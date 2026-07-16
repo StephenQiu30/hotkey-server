@@ -10,6 +10,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/monitor/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	"github.com/StephenQiu30/hotkey-server/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -17,6 +18,12 @@ const monitorColumns = `id, version, name, description, status, draft_config_ver
 const configColumns = `id, version, monitor_id, revision, state, timezone, array_to_json(languages), array_to_json(regions), collection_interval_seconds, relevance_threshold, event_threshold, retention_days, coalesce(config_hash, ''), published_at, created_at, updated_at`
 const ruleColumns = `id, version, config_version_id, rule_type, operator, value, weight, priority, origin, approval_status, enabled`
 const monitorSourceColumns = `id, version, config_version_id, source_connection_id, query_override, query_signature, priority, enabled`
+
+const (
+	monitorListDefaultLimit = 50
+	monitorListMaximumLimit = 200
+	monitorListFingerprint  = "monitors"
+)
 
 type Repository struct{ runtime *database.Runtime }
 
@@ -57,6 +64,53 @@ func (repository *Repository) FindByID(ctx context.Context, id int64) (*domain.M
 }
 func (repository *Repository) LockByID(ctx context.Context, id int64) (*domain.Monitor, error) {
 	return repository.findMonitor(ctx, id, true)
+}
+
+// List has a deliberately fixed id-ascending shape. The application selects
+// PublishedOnly for viewer reads; editors/admins receive all Monitor metadata
+// and decide which safe configuration projection to expose.
+func (repository *Repository) List(ctx context.Context, query domain.MonitorListQuery) ([]domain.Monitor, string, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return nil, "", sharedrepository.ErrUnavailable
+	}
+	limit, cursorID, err := monitorListParameters(query)
+	if err != nil {
+		return nil, "", err
+	}
+	statement := `SELECT ` + monitorColumns + ` FROM monitors WHERE id > $1`
+	if query.PublishedOnly {
+		statement += ` AND status IN ('active', 'paused') AND published_config_version_id IS NOT NULL`
+	}
+	statement += ` ORDER BY id ASC LIMIT $2`
+	rows, err := repository.runtime.SQL.QueryContext(ctx, statement, cursorID, limit+1)
+	if err != nil {
+		return nil, "", sharedrepository.MapError(err)
+	}
+	defer rows.Close()
+	monitors := make([]domain.Monitor, 0, limit+1)
+	for rows.Next() {
+		var monitor domain.Monitor
+		if err := rows.Scan(monitorScanTargets(&monitor)...); err != nil {
+			return nil, "", sharedrepository.MapError(err)
+		}
+		monitors = append(monitors, monitor)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", sharedrepository.MapError(err)
+	}
+	if len(monitors) <= limit {
+		return monitors, "", nil
+	}
+	monitors = monitors[:limit]
+	fingerprint := monitorListFingerprint
+	if query.PublishedOnly {
+		fingerprint += "-published"
+	}
+	nextCursor, err := pagination.Encode("id", false, fingerprint, monitors[len(monitors)-1].ID)
+	if err != nil {
+		return nil, "", fmt.Errorf("%w: encode monitor cursor: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	return monitors, nextCursor, nil
 }
 
 func (repository *Repository) findMonitor(ctx context.Context, id int64, lock bool) (*domain.Monitor, error) {
@@ -230,6 +284,25 @@ func (repository *Repository) ListActivePublished(ctx context.Context) ([]domain
 		result = append(result, domain.PublishedMonitor{Monitor: monitor, Config: *config, Rules: rules, Sources: sources})
 	}
 	return result, nil
+}
+
+func monitorListParameters(query domain.MonitorListQuery) (int, int64, error) {
+	limit := query.Limit
+	if limit == 0 {
+		limit = monitorListDefaultLimit
+	}
+	if limit < 1 || limit > monitorListMaximumLimit {
+		return 0, 0, fmt.Errorf("%w: monitor list limit must be 1-%d", sharedrepository.ErrInvalidInput, monitorListMaximumLimit)
+	}
+	fingerprint := monitorListFingerprint
+	if query.PublishedOnly {
+		fingerprint += "-published"
+	}
+	cursor, err := pagination.Decode(query.Cursor, "id", false, fingerprint)
+	if err != nil {
+		return 0, 0, fmt.Errorf("%w: monitor cursor: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	return limit, cursor.ID, nil
 }
 
 func (repository *Repository) insertConfig(ctx context.Context, queryer interface {

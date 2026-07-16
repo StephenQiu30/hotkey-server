@@ -1,7 +1,6 @@
 package http
 
 import (
-	sourceapplication "github.com/StephenQiu30/hotkey-server/internal/modules/source/application"
 	httptransport "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	"github.com/gin-gonic/gin"
 )
@@ -9,7 +8,7 @@ import (
 // RegisterRoutes mounts every SourceConnection control-plane route at its
 // stable API v1 path. Public reads still require a bearer-authenticated team
 // member; writes are restricted to administrators.
-func RegisterRoutes(router *gin.Engine, service *sourceapplication.Service, authenticator httptransport.Authenticator) {
+func RegisterRoutes(router *gin.Engine, service sourceService, authenticator httptransport.Authenticator) {
 	if router == nil {
 		return
 	}

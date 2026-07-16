@@ -56,8 +56,12 @@ type CreateMonitorRequest struct {
 // distinct meanings. This is essential for the first-draft concurrency
 // protocol; a missing field is never silently interpreted as null.
 type ExpectedDraftRequest struct {
-	ExpectedMonitorVersion int64                        `json:"expected_monitor_version" binding:"required,gt=0"`
-	ExpectedDraftVersion   NullableExpectedDraftVersion `json:"expected_draft_version" swaggertype:"integer"`
+	ExpectedMonitorVersion int64 `json:"expected_monitor_version" binding:"required,gt=0"`
+	// Gin must not apply required directly to this nullable wrapper: both an
+	// explicit JSON null and a positive integer are valid. The application
+	// helper below enforces presence/value at runtime; validate keeps Swagger's
+	// required property without making explicit null impossible to bind.
+	ExpectedDraftVersion NullableExpectedDraftVersion `json:"expected_draft_version" validate:"required" swaggertype:"integer" extensions:"x-nullable"`
 }
 
 // NullableExpectedDraftVersion retains both required JSON states: an explicit
@@ -126,6 +130,8 @@ type MonitorRuleResponse struct {
 type MonitorSourceResponse struct {
 	ID                 int64  `json:"id"`
 	SourceConnectionID int64  `json:"source_connection_id"`
+	Name               string `json:"name"`
+	SourceType         string `json:"source_type"`
 	QueryOverride      string `json:"query_override"`
 	Priority           int16  `json:"priority"`
 	Enabled            bool   `json:"enabled"`
@@ -229,29 +235,29 @@ func monitorSources(requests []MonitorSourceRequest) []domain.MonitorSource {
 	return sources
 }
 
-func monitorResponse(monitor domain.Monitor, config *domain.MonitorConfigVersion, rules []domain.MonitorRule, sources []domain.MonitorSource, draft bool) MonitorResponse {
-	response := MonitorResponse{ID: monitor.ID, Version: monitor.Version, Name: monitor.Name, Description: monitor.Description, Status: string(monitor.Status)}
-	if config == nil {
-		return response
-	}
-	view := monitorConfigResponse(*config, rules, sources)
-	if draft {
-		response.Draft = &view
-	} else {
-		response.Published = &view
-		revision := config.Revision
+func monitorResponse(view monitorapplication.MonitorView) MonitorResponse {
+	response := MonitorResponse{ID: view.Monitor.ID, Version: view.Monitor.Version, Name: view.Monitor.Name, Description: view.Monitor.Description, Status: string(view.Monitor.Status)}
+	if view.Published != nil {
+		published := monitorConfigResponse(*view.Published)
+		response.Published = &published
+		revision := view.Published.Config.Revision
 		response.PublishedRevision = &revision
+	}
+	if view.Draft != nil {
+		draft := monitorConfigResponse(*view.Draft)
+		response.Draft = &draft
 	}
 	return response
 }
 
-func monitorConfigResponse(config domain.MonitorConfigVersion, rules []domain.MonitorRule, sources []domain.MonitorSource) MonitorConfigResponse {
+func monitorConfigResponse(view monitorapplication.ConfigurationView) MonitorConfigResponse {
+	config, rules, sources := view.Config, view.Rules, view.Sources
 	response := MonitorConfigResponse{ID: config.ID, Version: config.Version, Revision: config.Revision, Timezone: config.Config.Timezone, Languages: config.Config.Languages, Regions: config.Config.Regions, CollectionIntervalSeconds: config.Config.CollectionIntervalSeconds, RelevanceThreshold: config.Config.RelevanceThreshold, EventThreshold: config.Config.EventThreshold, RetentionDays: config.Config.RetentionDays, Rules: make([]MonitorRuleResponse, 0, len(rules)), Sources: make([]MonitorSourceResponse, 0, len(sources))}
 	for _, rule := range rules {
 		response.Rules = append(response.Rules, MonitorRuleResponse{ID: rule.ID, RuleType: string(rule.RuleType), Operator: string(rule.Operator), Value: rule.Value, Weight: rule.Weight, Priority: rule.Priority, Origin: string(rule.Origin), ApprovalStatus: string(rule.ApprovalStatus), Enabled: rule.Enabled})
 	}
 	for _, source := range sources {
-		response.Sources = append(response.Sources, MonitorSourceResponse{ID: source.ID, SourceConnectionID: source.SourceConnectionID, QueryOverride: source.QueryOverride, Priority: source.Priority, Enabled: source.Enabled})
+		response.Sources = append(response.Sources, MonitorSourceResponse{ID: source.MonitorSource.ID, SourceConnectionID: source.MonitorSource.SourceConnectionID, Name: source.SourceName, SourceType: source.SourceType, QueryOverride: source.MonitorSource.QueryOverride, Priority: source.MonitorSource.Priority, Enabled: source.MonitorSource.Enabled})
 	}
 	return response
 }

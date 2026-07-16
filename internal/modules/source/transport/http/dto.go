@@ -80,6 +80,16 @@ type ManagementSourceResponse struct {
 	Config   SourceConfigDTO `json:"config"`
 }
 
+// SourceReadResponse documents the role-dependent GET/List union. Every
+// authenticated caller receives the public SourceResponse fields; endpoint and
+// allowlisted config are present only for administrators. Neither branch ever
+// contains credential references or health diagnostics.
+type SourceReadResponse struct {
+	SourceResponse
+	Endpoint *string          `json:"endpoint,omitempty"`
+	Config   *SourceConfigDTO `json:"config,omitempty"`
+}
+
 type SourceConfigDTO struct {
 	AllowBodyStorage      bool     `json:"allow_body_storage"`
 	RequiresAttribution   bool     `json:"requires_attribution"`
@@ -101,6 +111,11 @@ type SourcePageResponse struct {
 type ManagementSourcePageResponse struct {
 	Items      []ManagementSourceResponse `json:"items"`
 	NextCursor string                     `json:"next_cursor"`
+}
+
+type SourceReadPageResponse struct {
+	Items      []SourceReadResponse `json:"items"`
+	NextCursor string               `json:"next_cursor"`
 }
 
 func sourceConfig(request SourceConfigRequest) (domain.SourceConfig, error) {
@@ -179,6 +194,13 @@ func sourceResponse(source domain.PublicSourceConnection) SourceResponse {
 }
 func managementResponse(source domain.ManagementSourceConnection) ManagementSourceResponse {
 	return ManagementSourceResponse{SourceResponse: sourceResponse(source.PublicSourceConnection), Endpoint: source.Endpoint, Config: configResponse(source.Config)}
+}
+func sourceReadResponse(source domain.PublicSourceConnection) SourceReadResponse {
+	return SourceReadResponse{SourceResponse: sourceResponse(source)}
+}
+func managementReadResponse(source domain.ManagementSourceConnection) SourceReadResponse {
+	endpoint, config := source.Endpoint, configResponse(source.Config)
+	return SourceReadResponse{SourceResponse: sourceResponse(source.PublicSourceConnection), Endpoint: &endpoint, Config: &config}
 }
 func configResponse(config domain.SourceConfig) SourceConfigDTO {
 	return SourceConfigDTO{AllowBodyStorage: config.AllowBodyStorage, RequiresAttribution: config.RequiresAttribution, RequiresDeletionSync: config.RequiresDeletionSync, ContentRetentionDays: config.ContentRetentionDays, MetricsRetentionDays: config.MetricsRetentionDays, AllowedLanguages: config.AllowedLanguages, AllowedRegions: config.AllowedRegions, RateLimitPerMinute: config.RateLimitPerMinute, RequestTimeoutSeconds: config.RequestTimeoutSeconds, MaxPagesPerRun: config.MaxPagesPerRun}

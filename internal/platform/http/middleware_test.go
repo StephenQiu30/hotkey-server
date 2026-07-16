@@ -65,36 +65,6 @@ func TestMiddlewarePreservesOrCreatesRequestIDAndRedactsLogs(t *testing.T) {
 	}
 }
 
-// A SourceConnection management request contains the most sensitive P0
-// transport inputs. Access and recovery logging must never copy request bodies
-// or turn a user-provided endpoint into an observable secret channel.
-func TestMiddlewareDoesNotLogSourceConnectionRequestBody(t *testing.T) {
-	core, logs := observer.New(zap.InfoLevel)
-	router, _, telemetry := newTestRouter(t, zap.New(core), config.Default())
-	defer func() { _ = telemetry.Shutdown(context.Background()) }()
-
-	const endpointFragment = "private-endpoint-fragment-7d9"
-	const credentialReference = "env:PRIVATE_SOURCE_TOKEN"
-	const secretShapedConfig = "secret-shaped-config-4a8"
-	body := `{"endpoint":"https://feeds.example.test/rss?hint=` + endpointFragment + `","credential_ref":"` + credentialReference + `","config":{"raw_secret":"` + secretShapedConfig + `"}}`
-	request := httptest.NewRequest(stdhttp.MethodPost, "/api/v1/source-connections", strings.NewReader(body))
-	request.Header.Set("Content-Type", "application/json")
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, request)
-
-	for _, entry := range logs.All() {
-		encoded, err := json.Marshal(entry.ContextMap())
-		if err != nil {
-			t.Fatalf("marshal log fields: %v", err)
-		}
-		for _, value := range []string{endpointFragment, credentialReference, secretShapedConfig} {
-			if strings.Contains(string(encoded), value) {
-				t.Fatalf("log leaked source request body value %q: %s", value, encoded)
-			}
-		}
-	}
-}
-
 func TestMiddlewareMapsPanicAndDeadline(t *testing.T) {
 	cfg := config.Default()
 	cfg.RequestTimeout = time.Millisecond

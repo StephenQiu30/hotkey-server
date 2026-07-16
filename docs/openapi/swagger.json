@@ -447,7 +447,7 @@
                 "tags": [
                     "monitors"
                 ],
-                "summary": "List published monitors",
+                "summary": "List monitors",
                 "parameters": [
                     {
                         "type": "string",
@@ -467,6 +467,12 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/http.MonitorResult-http_MonitorPageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
                         }
                     },
                     "401": {
@@ -540,6 +546,12 @@
                         "schema": {
                             "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
                     }
                 }
             }
@@ -557,7 +569,7 @@
                 "tags": [
                     "monitors"
                 ],
-                "summary": "Get a published monitor",
+                "summary": "Get a monitor",
                 "parameters": [
                     {
                         "type": "integer",
@@ -572,6 +584,12 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/http.MonitorResult-http_MonitorResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
                         }
                     },
                     "401": {
@@ -660,6 +678,12 @@
                         "schema": {
                             "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
                     }
                 }
             }
@@ -729,6 +753,12 @@
                         "schema": {
                             "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
                     }
                 }
             }
@@ -795,6 +825,12 @@
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
                         }
@@ -874,6 +910,12 @@
                         "schema": {
                             "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
                     }
                 }
             }
@@ -943,6 +985,12 @@
                         "schema": {
                             "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
                     }
                 }
             }
@@ -977,6 +1025,12 @@
                             "$ref": "#/definitions/http.MonitorResult-http_PreviewResponse"
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
@@ -991,6 +1045,12 @@
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
                         }
@@ -1063,6 +1123,12 @@
                         "schema": {
                             "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
                     }
                 }
             }
@@ -1129,6 +1195,12 @@
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
                         }
@@ -1201,6 +1273,12 @@
                         "schema": {
                             "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
                     }
                 }
             }
@@ -1237,7 +1315,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/http.SourceResult-http_SourcePageResponse"
+                            "$ref": "#/definitions/http.SourceResult-http_SourceReadPageResponse"
                         }
                     },
                     "400": {
@@ -1348,7 +1426,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/http.SourceResult-http_SourceResponse"
+                            "$ref": "#/definitions/http.SourceResult-http_SourceReadResponse"
                         }
                     },
                     "400": {
@@ -1955,6 +2033,7 @@
         "http.AICandidateRequest": {
             "type": "object",
             "required": [
+                "expected_draft_version",
                 "expected_monitor_version",
                 "operator",
                 "rule_type",
@@ -1962,7 +2041,9 @@
             ],
             "properties": {
                 "expected_draft_version": {
-                    "type": "integer"
+                    "description": "Gin must not apply required directly to this nullable wrapper: both an\nexplicit JSON null and a positive integer are valid. The application\nhelper below enforces presence/value at runtime; validate keeps Swagger's\nrequired property without making explicit null impossible to bind.",
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "expected_monitor_version": {
                     "type": "integer"
@@ -1988,6 +2069,7 @@
             "type": "object",
             "required": [
                 "approval",
+                "expected_draft_version",
                 "expected_monitor_version"
             ],
             "properties": {
@@ -1999,7 +2081,9 @@
                     ]
                 },
                 "expected_draft_version": {
-                    "type": "integer"
+                    "description": "Gin must not apply required directly to this nullable wrapper: both an\nexplicit JSON null and a positive integer are valid. The application\nhelper below enforces presence/value at runtime; validate keeps Swagger's\nrequired property without making explicit null impossible to bind.",
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "expected_monitor_version": {
                     "type": "integer"
@@ -2616,6 +2700,9 @@
                 "id": {
                     "type": "integer"
                 },
+                "name": {
+                    "type": "string"
+                },
                 "priority": {
                     "type": "integer"
                 },
@@ -2624,6 +2711,9 @@
                 },
                 "source_connection_id": {
                     "type": "integer"
+                },
+                "source_type": {
+                    "type": "string"
                 }
             }
         },
@@ -2688,11 +2778,14 @@
         "http.PublishRequest": {
             "type": "object",
             "required": [
+                "expected_draft_version",
                 "expected_monitor_version"
             ],
             "properties": {
                 "expected_draft_version": {
-                    "type": "integer"
+                    "description": "Gin must not apply required directly to this nullable wrapper: both an\nexplicit JSON null and a positive integer are valid. The application\nhelper below enforces presence/value at runtime; validate keeps Swagger's\nrequired property without making explicit null impossible to bind.",
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "expected_monitor_version": {
                     "type": "integer"
@@ -2723,6 +2816,7 @@
             "type": "object",
             "required": [
                 "config",
+                "expected_draft_version",
                 "expected_monitor_version",
                 "name",
                 "rules",
@@ -2736,7 +2830,9 @@
                     "type": "string"
                 },
                 "expected_draft_version": {
-                    "type": "integer"
+                    "description": "Gin must not apply required directly to this nullable wrapper: both an\nexplicit JSON null and a positive integer are valid. The application\nhelper below enforces presence/value at runtime; validate keeps Swagger's\nrequired property without making explicit null impossible to bind.",
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "expected_monitor_version": {
                     "type": "integer"
@@ -2888,13 +2984,13 @@
                 }
             }
         },
-        "http.SourcePageResponse": {
+        "http.SourceReadPageResponse": {
             "type": "object",
             "properties": {
                 "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/http.SourceResponse"
+                        "$ref": "#/definitions/http.SourceReadResponse"
                     }
                 },
                 "next_cursor": {
@@ -2902,9 +2998,12 @@
                 }
             }
         },
-        "http.SourceResponse": {
+        "http.SourceReadResponse": {
             "type": "object",
             "properties": {
+                "config": {
+                    "$ref": "#/definitions/http.SourceConfigDTO"
+                },
                 "credential_configured": {
                     "type": "boolean"
                 },
@@ -2913,6 +3012,9 @@
                 },
                 "enabled": {
                     "type": "boolean"
+                },
+                "endpoint": {
+                    "type": "string"
                 },
                 "health_status": {
                     "type": "string"
@@ -2948,28 +3050,28 @@
                 }
             }
         },
-        "http.SourceResult-http_SourcePageResponse": {
+        "http.SourceResult-http_SourceReadPageResponse": {
             "type": "object",
             "properties": {
                 "code": {
                     "type": "integer"
                 },
                 "data": {
-                    "$ref": "#/definitions/http.SourcePageResponse"
+                    "$ref": "#/definitions/http.SourceReadPageResponse"
                 },
                 "message": {
                     "type": "string"
                 }
             }
         },
-        "http.SourceResult-http_SourceResponse": {
+        "http.SourceResult-http_SourceReadResponse": {
             "type": "object",
             "properties": {
                 "code": {
                     "type": "integer"
                 },
                 "data": {
-                    "$ref": "#/definitions/http.SourceResponse"
+                    "$ref": "#/definitions/http.SourceReadResponse"
                 },
                 "message": {
                     "type": "string"

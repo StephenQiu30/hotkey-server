@@ -77,6 +77,9 @@ func (repository *previewRepository) Publish(context.Context, *domain.Monitor, *
 	repository.writes++
 	return nil
 }
+func (repository *previewRepository) List(context.Context, domain.MonitorListQuery) ([]domain.Monitor, string, error) {
+	return nil, "", nil
+}
 func (repository *previewRepository) ListActivePublished(context.Context) ([]domain.PublishedMonitor, error) {
 	return nil, nil
 }

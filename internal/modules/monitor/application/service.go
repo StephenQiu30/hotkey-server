@@ -821,6 +821,12 @@ func monitorReadError(err error) error {
 	if errors.As(err, &app) {
 		return app
 	}
+	if errors.Is(err, sharedrepository.ErrInvalidInput) {
+		return sharederrors.New(sharederrors.CodeInvalidRequest, 400, "")
+	}
+	if errors.Is(err, sharedrepository.ErrUnavailable) {
+		return sharederrors.New(sharederrors.CodeUnavailable, 503, "")
+	}
 	return domain.MonitorDraftUnavailable()
 }
 func monitorWriteError(err error) error {

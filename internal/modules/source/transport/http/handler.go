@@ -33,15 +33,16 @@ type Handler struct{ service sourceService }
 
 func NewHandler(service sourceService) *Handler { return &Handler{service: service} }
 
-// List exposes an immutable safe view to viewers/editors and only the
-// allowlisted management projection to administrators.
+// List exposes the public Source fields to viewers/editors. Administrators
+// additionally receive endpoint and fixed allowlisted configuration fields,
+// represented by SourceReadPageResponse's optional management branch.
 // @Summary List source connections
 // @Tags sources
 // @Produce json
 // @Security BearerAuth
 // @Param cursor query string false "cursor"
 // @Param limit query int false "page size"
-// @Success 200 {object} SourceResult[SourcePageResponse]
+// @Success 200 {object} SourceResult[SourceReadPageResponse]
 // @Failure 400 {object} SourceResult[EmptyResponse]
 // @Failure 401 {object} SourceResult[EmptyResponse]
 // @Failure 503 {object} SourceResult[EmptyResponse]
@@ -61,9 +62,9 @@ func (handler *Handler) List(c *gin.Context) error {
 		if err != nil {
 			return err
 		}
-		response := ManagementSourcePageResponse{Items: make([]ManagementSourceResponse, 0, len(page.Items)), NextCursor: page.NextCursor}
+		response := SourceReadPageResponse{Items: make([]SourceReadResponse, 0, len(page.Items)), NextCursor: page.NextCursor}
 		for _, item := range page.Items {
-			response.Items = append(response.Items, managementResponse(item))
+			response.Items = append(response.Items, managementReadResponse(item))
 		}
 		httptransport.OK(c, response)
 		return nil
@@ -72,21 +73,22 @@ func (handler *Handler) List(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	response := SourcePageResponse{Items: make([]SourceResponse, 0, len(page.Items)), NextCursor: page.NextCursor}
+	response := SourceReadPageResponse{Items: make([]SourceReadResponse, 0, len(page.Items)), NextCursor: page.NextCursor}
 	for _, item := range page.Items {
-		response.Items = append(response.Items, sourceResponse(item))
+		response.Items = append(response.Items, sourceReadResponse(item))
 	}
 	httptransport.OK(c, response)
 	return nil
 }
 
-// Get returns only the role-appropriate safe projection.
+// Get returns the public Source shape, with optional endpoint/config only for
+// administrators as documented by SourceReadResponse.
 // @Summary Get a source connection
 // @Tags sources
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "source connection ID"
-// @Success 200 {object} SourceResult[SourceResponse]
+// @Success 200 {object} SourceResult[SourceReadResponse]
 // @Failure 400 {object} SourceResult[EmptyResponse]
 // @Failure 401 {object} SourceResult[EmptyResponse]
 // @Failure 409 {object} SourceResult[EmptyResponse]
@@ -107,14 +109,14 @@ func (handler *Handler) Get(c *gin.Context) error {
 		if err != nil {
 			return err
 		}
-		httptransport.OK(c, managementResponse(item))
+		httptransport.OK(c, managementReadResponse(item))
 		return nil
 	}
 	item, err := handler.service.GetPublic(c.Request.Context(), subject, id)
 	if err != nil {
 		return err
 	}
-	httptransport.OK(c, sourceResponse(item))
+	httptransport.OK(c, sourceReadResponse(item))
 	return nil
 }
 

@@ -30,6 +30,7 @@ func TestOpenAPIContract(t *testing.T) {
 		Paths               map[string]json.RawMessage `json:"paths"`
 		Definitions         map[string]struct {
 			Properties map[string]json.RawMessage `json:"properties"`
+			Required   []string                   `json:"required"`
 		} `json:"definitions"`
 	}
 	if err := json.Unmarshal(contents, &document); err != nil {
@@ -56,17 +57,17 @@ func TestOpenAPIContract(t *testing.T) {
 		"/api/v1/users":                                        {"get": {"200", "401", "403", "503"}},
 		"/api/v1/users/{id}":                                   {"patch": {"200", "400", "401", "403", "409", "503"}, "delete": {"200", "401", "403", "409", "503"}},
 		"/api/v1/users/{id}/restore":                           {"post": {"200", "401", "403", "409", "503"}},
-		"/api/v1/monitors":                                     {"get": {"200", "401", "503"}, "post": {"201", "400", "401", "403", "409"}},
-		"/api/v1/monitors/{id}":                                {"get": {"200", "401", "409", "503"}},
-		"/api/v1/monitors/{id}/draft":                          {"put": {"200", "400", "401", "403", "409"}},
-		"/api/v1/monitors/{id}/draft/ai-candidates":            {"post": {"200", "400", "401", "403", "409"}},
-		"/api/v1/monitors/{id}/draft/rules/{rule_id}/approval": {"post": {"200", "400", "401", "403", "409"}},
-		"/api/v1/monitors/{id}/preview":                        {"post": {"200", "401", "403", "409"}},
-		"/api/v1/monitors/{id}/publish":                        {"post": {"200", "400", "401", "403", "409"}},
-		"/api/v1/monitors/{id}/pause":                          {"post": {"200", "400", "401", "403", "409"}},
-		"/api/v1/monitors/{id}/resume":                         {"post": {"200", "400", "401", "403", "409"}},
-		"/api/v1/monitors/{id}/archive":                        {"post": {"200", "400", "401", "403", "409"}},
-		"/api/v1/monitors/{id}/restore":                        {"post": {"200", "400", "401", "403", "409"}},
+		"/api/v1/monitors":                                     {"get": {"200", "400", "401", "503"}, "post": {"201", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}":                                {"get": {"200", "400", "401", "409", "503"}},
+		"/api/v1/monitors/{id}/draft":                          {"put": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}/draft/ai-candidates":            {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}/draft/rules/{rule_id}/approval": {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}/preview":                        {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}/publish":                        {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}/pause":                          {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}/resume":                         {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}/archive":                        {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}/restore":                        {"post": {"200", "400", "401", "403", "409", "503"}},
 		"/api/v1/source-connections":                           {"get": {"200", "400", "401", "503"}, "post": {"201", "400", "401", "403", "409"}},
 		"/api/v1/source-connections/{id}":                      {"get": {"200", "400", "401", "409", "503"}, "patch": {"200", "400", "401", "403", "409"}},
 		"/api/v1/source-connections/{id}/enable":               {"post": {"200", "400", "401", "403", "409"}},
@@ -129,13 +130,15 @@ func TestOpenAPIContract(t *testing.T) {
 	}
 	assertSafeIdentityOpenAPIDefinitions(t, document.Definitions)
 	assertSafeMonitorSourceOpenAPIDefinitions(t, document.Definitions)
+	assertDraftExpectedVersionOpenAPI(t, document.Definitions)
 }
 
 func assertSafeMonitorSourceOpenAPIDefinitions(t *testing.T, definitions map[string]struct {
 	Properties map[string]json.RawMessage `json:"properties"`
+	Required   []string                   `json:"required"`
 }) {
 	t.Helper()
-	for _, name := range []string{"http.MonitorResponse", "http.MonitorConfigResponse", "http.MonitorRuleResponse", "http.MonitorSourceResponse", "http.PreviewResponse", "http.PreviewSourceResponse", "http.SourceResponse"} {
+	for _, name := range []string{"http.MonitorResponse", "http.MonitorConfigResponse", "http.MonitorRuleResponse", "http.MonitorSourceResponse", "http.PreviewResponse", "http.PreviewSourceResponse"} {
 		definition, ok := definitions[name]
 		if !ok {
 			t.Errorf("missing safe response definition %s", name)
@@ -147,6 +150,12 @@ func assertSafeMonitorSourceOpenAPIDefinitions(t *testing.T, definitions map[str
 			}
 		}
 	}
+	monitorSource := definitions["http.MonitorSourceResponse"]
+	for _, field := range []string{"name", "source_type"} {
+		if _, exists := monitorSource.Properties[field]; !exists {
+			t.Errorf("monitor source response misses %q", field)
+		}
+	}
 	management, ok := definitions["http.ManagementSourceResponse"]
 	if !ok {
 		t.Error("missing admin source management response definition")
@@ -155,6 +164,21 @@ func assertSafeMonitorSourceOpenAPIDefinitions(t *testing.T, definitions map[str
 	for _, field := range []string{"credential_ref", "credential_reference", "health_diagnostic", "raw_secret", "secret"} {
 		if _, exists := management.Properties[field]; exists {
 			t.Errorf("management source response exposes %q", field)
+		}
+	}
+	read, ok := definitions["http.SourceReadResponse"]
+	if !ok {
+		t.Error("missing role-dependent source read union definition")
+	} else {
+		for _, field := range []string{"credential_ref", "credential_reference", "health_diagnostic", "raw_secret", "secret"} {
+			if _, exists := read.Properties[field]; exists {
+				t.Errorf("source read union exposes %q", field)
+			}
+		}
+		for _, field := range []string{"endpoint", "config"} {
+			if _, exists := read.Properties[field]; !exists {
+				t.Errorf("source read union misses optional admin %q", field)
+			}
 		}
 	}
 	config, ok := definitions["http.SourceConfigDTO"]
@@ -169,6 +193,50 @@ func assertSafeMonitorSourceOpenAPIDefinitions(t *testing.T, definitions map[str
 	}
 }
 
+func assertDraftExpectedVersionOpenAPI(t *testing.T, definitions map[string]struct {
+	Properties map[string]json.RawMessage `json:"properties"`
+	Required   []string                   `json:"required"`
+}) {
+	t.Helper()
+	for _, name := range []string{"http.ReplaceDraftRequest", "http.AICandidateRequest", "http.ApprovalRequest", "http.PublishRequest"} {
+		definition, ok := definitions[name]
+		if !ok {
+			t.Errorf("missing %s", name)
+			continue
+		}
+		if !contains(definition.Required, "expected_draft_version") {
+			t.Errorf("%s must require expected_draft_version", name)
+		}
+		raw, ok := definition.Properties["expected_draft_version"]
+		if !ok {
+			t.Errorf("%s misses expected_draft_version", name)
+			continue
+		}
+		var property map[string]any
+		if err := json.Unmarshal(raw, &property); err != nil {
+			t.Errorf("decode %s expected draft version: %v", name, err)
+			continue
+		}
+		if property["type"] != "integer" || property["x-nullable"] != true {
+			t.Errorf("%s expected_draft_version = %#v, want required nullable integer", name, property)
+		}
+	}
+	if lifecycle, ok := definitions["http.LifecycleRequest"]; ok {
+		if _, exists := lifecycle.Properties["expected_draft_version"]; exists {
+			t.Error("lifecycle request must not expose expected_draft_version")
+		}
+	}
+}
+
+func contains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
 func usesBearerAuth(requirements []map[string][]string) bool {
 	for _, requirement := range requirements {
 		if _, ok := requirement["BearerAuth"]; ok {
@@ -180,6 +248,7 @@ func usesBearerAuth(requirements []map[string][]string) bool {
 
 func assertSafeIdentityOpenAPIDefinitions(t *testing.T, definitions map[string]struct {
 	Properties map[string]json.RawMessage `json:"properties"`
+	Required   []string                   `json:"required"`
 }) {
 	t.Helper()
 	for name, definition := range definitions {

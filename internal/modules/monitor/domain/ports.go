@@ -15,7 +15,17 @@ type MonitorRepository interface {
 	SaveDraft(context.Context, *MonitorConfigVersion, []MonitorRule, []MonitorSource) error
 	SaveMonitor(context.Context, *Monitor) error
 	Publish(context.Context, *Monitor, *MonitorConfigVersion, *MonitorConfigVersion, []MonitorSource) error
+	List(context.Context, MonitorListQuery) ([]Monitor, string, error)
 	ListActivePublished(context.Context) ([]PublishedMonitor, error)
+}
+
+// MonitorListQuery is the only Monitor list shape exposed to infrastructure.
+// It fixes id-ascending cursor pagination and lets the application select the
+// viewer-safe published predicate without leaking transport query syntax.
+type MonitorListQuery struct {
+	Cursor        string
+	Limit         int
+	PublishedOnly bool
 }
 
 // PublishedMonitor is the downstream-safe read model for PLAN-006. It is
