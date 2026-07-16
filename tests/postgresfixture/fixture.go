@@ -41,7 +41,7 @@ func New(t testing.TB) string {
 		t.Fatalf("ping fixture administrator pool: %v", err)
 	}
 
-	databaseName := fmt.Sprintf("hotkey_it_%d_%d", time.Now().UnixNano(), sequence.Add(1))
+	databaseName := databaseName(os.Getpid(), time.Now().UnixNano(), sequence.Add(1))
 	if _, err := admin.Exec(ctx, "CREATE DATABASE "+databaseName+" TEMPLATE template0"); err != nil {
 		admin.Close()
 		t.Fatalf("create disposable database: %v", err)
@@ -57,6 +57,10 @@ func New(t testing.TB) string {
 		admin.Close()
 	})
 	return childDSN
+}
+
+func databaseName(processID int, timestamp int64, ordinal uint64) string {
+	return fmt.Sprintf("hotkey_it_%d_%d_%d", processID, timestamp, ordinal)
 }
 
 func withDatabase(dsn, databaseName string) (string, error) {
