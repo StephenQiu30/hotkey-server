@@ -9,8 +9,23 @@ type MonitorRepository interface {
 	Create(context.Context, *Monitor, *MonitorConfigVersion, []MonitorRule, []MonitorSource) error
 	FindByID(context.Context, int64) (*Monitor, error)
 	LockByID(context.Context, int64) (*Monitor, error)
-	FindConfigVersion(context.Context, int64) (*MonitorConfigVersion, error)
-	SaveDraft(context.Context, *Monitor, *MonitorConfigVersion, []MonitorRule, []MonitorSource) error
+	FindConfig(context.Context, int64) (*MonitorConfigVersion, []MonitorRule, []MonitorSource, error)
+	LockConfig(context.Context, int64) (*MonitorConfigVersion, []MonitorRule, []MonitorSource, error)
+	CreateDraft(context.Context, *MonitorConfigVersion, []MonitorRule, []MonitorSource) error
+	SaveDraft(context.Context, *MonitorConfigVersion, []MonitorRule, []MonitorSource) error
+	SaveMonitor(context.Context, *Monitor) error
+	Publish(context.Context, *Monitor, *MonitorConfigVersion, *MonitorConfigVersion, []MonitorSource) error
+	ListActivePublished(context.Context) ([]PublishedMonitor, error)
+}
+
+// PublishedMonitor is the downstream-safe read model for PLAN-006. It is
+// deliberately limited to an active Monitor and its immutable published
+// configuration; draft facts never leave this repository method.
+type PublishedMonitor struct {
+	Monitor Monitor
+	Config  MonitorConfigVersion
+	Rules   []MonitorRule
+	Sources []MonitorSource
 }
 
 // SourceConnectionSummary is deliberately a safe, source-owned read model.

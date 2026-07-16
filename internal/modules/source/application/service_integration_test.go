@@ -9,6 +9,9 @@ import (
 	"time"
 
 	identitydomain "github.com/StephenQiu30/hotkey-server/internal/modules/identity/domain"
+	monitorapplication "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/application"
+	monitordomain "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/domain"
+	monitorpostgres "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/infrastructure/postgres"
 	operationsapplication "github.com/StephenQiu30/hotkey-server/internal/modules/operations/application"
 	operationsdomain "github.com/StephenQiu30/hotkey-server/internal/modules/operations/domain"
 	operationspostgres "github.com/StephenQiu30/hotkey-server/internal/modules/operations/infrastructure/postgres"
@@ -140,6 +143,55 @@ func TestSourceServiceUsageAndAuditFailureRollback(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("audit-failed source count = %d, want 0", count)
+	}
+}
+
+// TestSourceServiceDisableUsesRealMonitorUsageAdapter proves the production boundary:
+// Source service owns lifecycle writes, while the Monitor-owned adapter reads
+// the published relation in the same transaction and configuration lock.
+func TestSourceServiceDisableUsesRealMonitorUsageAdapter(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	admin := seedAdmin(t, runtime)
+	ctx := context.Background()
+	usage := monitorpostgres.NewSourceUsageReader(runtime)
+	sources, err := sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usage, Audit: operationspostgres.NewAuditWriter(runtime)})
+	if err != nil {
+		t.Fatalf("NewSourceService(): %v", err)
+	}
+	connection, err := sources.Create(ctx, sourceapplication.CreateInput{Subject: admin, Connection: sourceConnection("real-monitor-usage")})
+	if err != nil {
+		t.Fatalf("Create source: %v", err)
+	}
+	monitors, err := monitorapplication.NewService(monitorapplication.Dependencies{Runtime: runtime, Monitors: monitorpostgres.NewRepository(runtime), Sources: sources, Audit: operationspostgres.NewAuditWriter(runtime)})
+	if err != nil {
+		t.Fatalf("NewMonitorService(): %v", err)
+	}
+	draft := monitorapplication.DraftInput{Name: "source lifecycle monitor", Config: monitordomain.MonitorConfig{Timezone: "UTC", Languages: []string{"en"}, CollectionIntervalSeconds: 300, RelevanceThreshold: 60, EventThreshold: 0, RetentionDays: 30}, Rules: []monitordomain.MonitorRule{{RuleType: monitordomain.RuleTypeKeyword, Operator: monitordomain.RuleOperatorContains, Value: "monitor", Weight: 100, Priority: 1, Enabled: true}}, Sources: []monitordomain.MonitorSource{{SourceConnectionID: connection.ID, Priority: 1, Enabled: true}}}
+	monitor, config, err := monitors.Create(ctx, monitorapplication.CreateInput{Subject: identitydomain.Subject{UserID: admin.UserID, Role: identitydomain.RoleEditor}, Draft: draft})
+	if err != nil {
+		t.Fatalf("Create monitor: %v", err)
+	}
+	published, _, err := monitors.Publish(ctx, monitorapplication.PublishInput{Subject: admin, MonitorID: monitor.ID, Expected: monitordomain.ExpectedVersions{MonitorVersion: monitor.Version, DraftVersion: &config.Version}})
+	if err != nil {
+		t.Fatalf("Publish monitor: %v", err)
+	}
+	if _, err := sources.Disable(ctx, sourceapplication.LifecycleInput{Subject: admin, ID: connection.ID, ExpectedVersion: connection.Version}); appCode(err) != sharederrors.CodeSourceConnectionRequired {
+		t.Fatalf("Disable sole active source code=%d", appCode(err))
+	}
+	paused, err := monitors.Pause(ctx, monitorapplication.LifecycleInput{Subject: admin, MonitorID: monitor.ID, ExpectedMonitorVersion: published.Version})
+	if err != nil {
+		t.Fatalf("Pause monitor: %v", err)
+	}
+	disabled, err := sources.Disable(ctx, sourceapplication.LifecycleInput{Subject: admin, ID: connection.ID, ExpectedVersion: connection.Version})
+	if err != nil {
+		t.Fatalf("Disable paused source: %v", err)
+	}
+	if _, err := sources.Archive(ctx, sourceapplication.LifecycleInput{Subject: admin, ID: connection.ID, ExpectedVersion: disabled.Version}); err != nil {
+		t.Fatalf("Archive paused source: %v", err)
+	}
+	if paused.Status != monitordomain.MonitorStatusPaused {
+		t.Fatalf("paused monitor=%#v", paused)
 	}
 }
 
