@@ -127,6 +127,116 @@ func TestIngestRunMinIOPostgresReconcileDeletesOrphan(t *testing.T) {
 	}
 }
 
+func TestIngestRunMinIOPostgresReconcileWaitsForInFlightAssetReference(t *testing.T) {
+	runtimeA := openIngestionRuntime(t)
+	defer func() { _ = runtimeA.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	runtimeB, err := database.Open(ctx, runtimeA.Pool.Config().ConnString())
+	if err != nil {
+		t.Fatalf("open independent runtime: %v", err)
+	}
+	defer func() { _ = runtimeB.Close() }()
+
+	body := fmt.Sprintf("in-flight evidence %d", time.Now().UnixNano())
+	runID, sourceID := seedCapturedRun(t, runtimeA, []sourcedomain.CapturedItem{
+		capturedItem("in-flight", "article", "In-flight evidence", body),
+	})
+	store, client, cfg := integrationEvidenceStore(t)
+	cleanupEvidencePrefix(t, store, sourceID)
+	t.Cleanup(func() { cleanupEvidencePrefix(t, store, sourceID) })
+
+	blockingStore := newBlockingAfterPutStore(store)
+	serviceA, err := ingestionapplication.NewService(ingestionapplication.Dependencies{
+		Runtime: runtimeA, Captures: newCapturedItemReader(t, runtimeA), Contents: ingestionpostgres.NewContentRepository(runtimeA), Evidence: blockingStore,
+	})
+	if err != nil {
+		t.Fatalf("NewService(A): %v", err)
+	}
+	serviceB, err := ingestionapplication.NewService(ingestionapplication.Dependencies{
+		Runtime: runtimeB, Captures: newCapturedItemReader(t, runtimeB), Contents: ingestionpostgres.NewContentRepository(runtimeB), Evidence: store,
+	})
+	if err != nil {
+		t.Fatalf("NewService(B): %v", err)
+	}
+
+	ingestResult := make(chan struct {
+		result ingestionapplication.IngestRunResult
+		err    error
+	}, 1)
+	go func() {
+		result, err := serviceA.IngestRun(context.Background(), ingestionapplication.IngestRunInput{RunID: runID, Limit: 1})
+		ingestResult <- struct {
+			result ingestionapplication.IngestRunResult
+			err    error
+		}{result, err}
+	}()
+	blockingStore.waitWritten(t)
+	t.Cleanup(blockingStore.releasePut)
+
+	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(body)))
+	objectKey := ingestionminio.EvidenceObjectKey(sourceID, digest)
+	if _, err := client.StatObject(context.Background(), cfg.Bucket, objectKey, miniosdk.StatObjectOptions{}); err != nil {
+		t.Fatalf("Head in-flight object before DB reference: %v", err)
+	}
+
+	reconcileStarted := make(chan struct{})
+	reconcileResult := make(chan struct {
+		deleted int
+		err     error
+	}, 1)
+	go func() {
+		close(reconcileStarted)
+		deleted, err := serviceB.ReconcileObjects(context.Background(), sourceID)
+		reconcileResult <- struct {
+			deleted int
+			err     error
+		}{deleted, err}
+	}()
+	<-reconcileStarted
+	waitForReconcileToAcquireSession(t, runtimeB, reconcileResult)
+
+	// A's object is intentionally visible but has no committed asset row. B
+	// must be waiting on the same source lock, not deleting that object from a
+	// stale asset-key snapshot.
+	select {
+	case result := <-reconcileResult:
+		t.Fatalf("ReconcileObjects completed while ingestion was blocked before asset/bind: deleted=%d err=%v", result.deleted, result.err)
+	default:
+	}
+
+	blockingStore.releasePut()
+	select {
+	case result := <-ingestResult:
+		if result.err != nil || result.result.Bound != 1 || result.result.Failed != 0 {
+			t.Fatalf("IngestRun(A) result/error = %#v / %v, want committed binding", result.result, result.err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("IngestRun(A) did not commit after releasing evidence PutText")
+	}
+	select {
+	case result := <-reconcileResult:
+		if result.err != nil || result.deleted != 0 {
+			t.Fatalf("ReconcileObjects(B) result/error = %d / %v, want zero deletion after asset commit", result.deleted, result.err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("ReconcileObjects(B) did not continue after ingestion committed")
+	}
+	if _, err := client.StatObject(context.Background(), cfg.Bucket, objectKey, miniosdk.StatObjectOptions{}); err != nil {
+		t.Fatalf("Head committed object after reconciliation: %v", err)
+	}
+	var assets, succeeded int
+	if err := runtimeA.SQL.QueryRow(`SELECT count(*) FROM content_assets WHERE object_key = $1`, objectKey).Scan(&assets); err != nil {
+		t.Fatalf("read committed asset: %v", err)
+	}
+	if err := runtimeA.SQL.QueryRow(`SELECT count(*) FROM collection_run_items WHERE run_id = $1 AND ingestion_status = 'succeeded'`, runID).Scan(&succeeded); err != nil {
+		t.Fatalf("read committed Source binding: %v", err)
+	}
+	if assets != 1 || succeeded != 1 {
+		t.Fatalf("committed state after interleaving = assets=%d bindings=%d, want 1/1", assets, succeeded)
+	}
+}
+
 type failingBindReader struct {
 	sourcedomain.CapturedItemReader
 	err       error
@@ -142,6 +252,72 @@ type failFirstDeleteStore struct {
 	ingestiondomain.EvidenceStore
 	mu          sync.Mutex
 	deleteCalls int
+}
+
+type blockingAfterPutStore struct {
+	ingestiondomain.EvidenceStore
+	written chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func newBlockingAfterPutStore(store ingestiondomain.EvidenceStore) *blockingAfterPutStore {
+	return &blockingAfterPutStore{EvidenceStore: store, written: make(chan struct{}), release: make(chan struct{})}
+}
+
+func (store *blockingAfterPutStore) PutText(ctx context.Context, object ingestiondomain.EvidenceObject) (ingestiondomain.EvidenceReceipt, error) {
+	receipt, err := store.EvidenceStore.PutText(ctx, object)
+	if err != nil {
+		return ingestiondomain.EvidenceReceipt{}, err
+	}
+	store.once.Do(func() { close(store.written) })
+	select {
+	case <-store.release:
+		return receipt, nil
+	case <-ctx.Done():
+		return ingestiondomain.EvidenceReceipt{}, ctx.Err()
+	}
+}
+
+func (store *blockingAfterPutStore) waitWritten(t *testing.T) {
+	t.Helper()
+	select {
+	case <-store.written:
+	case <-time.After(5 * time.Second):
+		t.Fatal("ingestion did not write the object before its asset transaction")
+	}
+}
+
+func (store *blockingAfterPutStore) releasePut() {
+	store.once.Do(func() {})
+	select {
+	case <-store.release:
+	default:
+		close(store.release)
+	}
+}
+
+func waitForReconcileToAcquireSession(t *testing.T, runtime *database.Runtime, result <-chan struct {
+	deleted int
+	err     error
+}) {
+	t.Helper()
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case completed := <-result:
+			t.Fatalf("ReconcileObjects completed before it could wait for the in-flight source lock: deleted=%d err=%v", completed.deleted, completed.err)
+		case <-deadline.C:
+			t.Fatal("ReconcileObjects did not acquire a session while ingestion held the source lock")
+		case <-ticker.C:
+			if runtime.Pool.Stat().AcquiredConns() > 0 {
+				return
+			}
+		}
+	}
 }
 
 func (store *failFirstDeleteStore) Delete(ctx context.Context, objectKey string) error {

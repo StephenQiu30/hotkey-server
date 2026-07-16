@@ -17,6 +17,7 @@ const (
 	defaultIngestRunLimit = 50
 	maximumIngestRunLimit = 200
 	unknownIngestionCode  = "ingestion_failed"
+	evidenceLockNamespace = "hotkey.ingestion.evidence/v1"
 )
 
 // Dependencies contains only the persisted Source capture boundary and
@@ -117,6 +118,22 @@ func (service *Service) ingestCaptured(ctx context.Context, captured sourcedomai
 	if err != nil {
 		return false, err
 	}
+	if content.Body == "" {
+		return service.persistCaptured(ctx, captured, content, decision)
+	}
+	var uploaded bool
+	err = service.withSourceEvidenceLock(ctx, content.SourceConnectionID, func(lockedCtx context.Context) error {
+		var persistErr error
+		uploaded, persistErr = service.persistCaptured(lockedCtx, captured, content, decision)
+		return persistErr
+	})
+	if err != nil {
+		return false, err
+	}
+	return uploaded, nil
+}
+
+func (service *Service) persistCaptured(ctx context.Context, captured sourcedomain.CapturedCollectionItem, content ingestiondomain.NormalizedContent, decision ingestiondomain.DedupeDecision) (bool, error) {
 
 	var receipt ingestiondomain.EvidenceReceipt
 	hasEvidence := content.Body != ""
@@ -134,7 +151,7 @@ func (service *Service) ingestCaptured(ctx context.Context, captured sourcedomai
 		createEvidenceAsset = !known
 	}
 
-	err = service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error {
+	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error {
 		stored, _, err := service.contents.Upsert(transactionCtx, content, decision)
 		if err != nil {
 			return fmt.Errorf("upsert normalized content: %w", err)
@@ -250,28 +267,69 @@ func (service *Service) ReconcileObjects(ctx context.Context, sourceConnectionID
 	if service == nil || service.evidence == nil || service.contents == nil || sourceConnectionID <= 0 {
 		return 0, errors.New("content repository, evidence store, and source connection id are required")
 	}
-	prefix := fmt.Sprintf("evidence/v1/%d/", sourceConnectionID)
-	keys, err := service.contents.ListAssetObjectKeys(ctx, sourceConnectionID)
-	if err != nil {
-		return 0, fmt.Errorf("list durable evidence assets: %w", err)
-	}
-	known := make(map[string]struct{}, len(keys))
-	for _, key := range keys {
-		known[key] = struct{}{}
-	}
-	receipts, err := service.evidence.ListPrefix(ctx, prefix)
-	if err != nil {
-		return 0, fmt.Errorf("list evidence objects: %w", err)
-	}
 	deleted := 0
-	for _, receipt := range receipts {
-		if _, found := known[receipt.ObjectKey]; found {
-			continue
+	err := service.withSourceEvidenceLock(ctx, sourceConnectionID, func(lockedCtx context.Context) error {
+		prefix := fmt.Sprintf("evidence/v1/%d/", sourceConnectionID)
+		keys, err := service.contents.ListAssetObjectKeys(lockedCtx, sourceConnectionID)
+		if err != nil {
+			return fmt.Errorf("list durable evidence assets: %w", err)
 		}
-		if err := service.evidence.Delete(ctx, receipt.ObjectKey); err != nil {
-			return deleted, fmt.Errorf("delete orphan evidence %q: %w", receipt.ObjectKey, err)
+		known := make(map[string]struct{}, len(keys))
+		for _, key := range keys {
+			known[key] = struct{}{}
 		}
-		deleted++
+		receipts, err := service.evidence.ListPrefix(lockedCtx, prefix)
+		if err != nil {
+			return fmt.Errorf("list evidence objects: %w", err)
+		}
+		for _, receipt := range receipts {
+			if _, found := known[receipt.ObjectKey]; found {
+				continue
+			}
+			if err := service.evidence.Delete(lockedCtx, receipt.ObjectKey); err != nil {
+				return fmt.Errorf("delete orphan evidence %q: %w", receipt.ObjectKey, err)
+			}
+			deleted++
+		}
+		return nil
+	})
+	if err != nil {
+		return deleted, err
 	}
 	return deleted, nil
+}
+
+// withSourceEvidenceLock serializes source-scoped object writes with object
+// reconciliation. The lock is session-scoped, so it is held by a dedicated
+// acquired pool connection while the ordinary Runtime transaction remains
+// free to use its existing SQL callback context.
+func (service *Service) withSourceEvidenceLock(ctx context.Context, sourceConnectionID int64, fn func(context.Context) error) (returned error) {
+	if service == nil || service.runtime == nil || service.runtime.Pool == nil || sourceConnectionID <= 0 || fn == nil {
+		return errors.New("database runtime, source connection id, and lock callback are required")
+	}
+	connection, err := service.runtime.Pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire evidence advisory-lock session: %w", err)
+	}
+	lockName := fmt.Sprintf("%s/%d", evidenceLockNamespace, sourceConnectionID)
+	if _, err := connection.Exec(ctx, `SELECT pg_advisory_lock(hashtextextended($1, 0::bigint))`, lockName); err != nil {
+		connection.Release()
+		return fmt.Errorf("acquire source evidence advisory lock: %w", err)
+	}
+	defer func() {
+		var unlocked bool
+		unlockErr := connection.QueryRow(context.Background(), `SELECT pg_advisory_unlock(hashtextextended($1, 0::bigint))`, lockName).Scan(&unlocked)
+		if unlockErr != nil || !unlocked {
+			_ = connection.Conn().Close(context.Background())
+			if returned == nil {
+				if unlockErr != nil {
+					returned = fmt.Errorf("release source evidence advisory lock: %w", unlockErr)
+				} else {
+					returned = errors.New("release source evidence advisory lock: lock was not held")
+				}
+			}
+		}
+		connection.Release()
+	}()
+	return fn(ctx)
 }
