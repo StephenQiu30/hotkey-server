@@ -43,7 +43,7 @@ downstream:
 1. `ai_model_profiles.task_type` 的完整 Schema 与 Application 都只接受 `embedding` 和 `term_expansion` 两个任务类型。事件摘要、相关性复核、聚类、实体、Claim、知识提案、报告和任务调度均不属于本 PRD；它们必须由拥有 PRD 先扩展 Schema、静态 Schema 和测试后才可创建 profile。
 2. 第一个远程适配器是官方 `github.com/openai/openai-go/v3@v3.32.0`。生产请求只使用官方默认 HTTPS 端点；本任务不接受、保存或暴露自定义 Provider URL。
 3. 模型名不是代码默认值。管理员创建 profile 时显式提供 `model_name` 与不可变 `model_version`；Embedding profile 必须声明 `embedding_dimensions=1024`。实际 Provider 返回的向量长度、每个元素有限性和 profile 维度均须验证。
-4. ONNX 只实现为 `onnx` build tag 下的可选本地 Embedding adapter，使用 `github.com/yalue/onnxruntime_go@v1.31.0`、`CGO_ENABLED=1`、`HOTKEY_ONNX_RUNTIME_LIBRARY`、`HOTKEY_ONNX_MODEL_PATH`、`HOTKEY_ONNX_TOKENIZER_PATH` 和 `HOTKEY_ONNX_MANIFEST_PATH`。manifest 固定 model/tokenizer SHA-256、profile model version、1024 dimensions、输入 tensor 名、`cls_l2` pooling、NFC 规范化和最大 token 数；adapter 校验四个 artifact 后才推理。默认构建不链接原生库；缺少 tag、库、模型、tokenizer 或 manifest 时只返回安全的“模型不可用”降级，不阻塞主链路。
+4. ONNX 只实现为 `onnx && cgo` build tag 下的可选本地 Embedding adapter，使用 `github.com/yalue/onnxruntime_go@v1.31.0`、`CGO_ENABLED=1`、`HOTKEY_ONNX_RUNTIME_LIBRARY`、`HOTKEY_ONNX_MODEL_PATH`、`HOTKEY_ONNX_TOKENIZER_PATH` 和 `HOTKEY_ONNX_MANIFEST_PATH`。manifest 固定 model/tokenizer SHA-256、profile model version、1024 dimensions、输入 tensor 名、`cls_l2` pooling、NFC 规范化和最大 token 数；adapter 校验四个 artifact 后才推理。默认构建或 `-tags=onnx` 但 `CGO_ENABLED=0` 时均不链接原生库；缺少 tag、CGO、库、模型、tokenizer 或 manifest 时只返回安全的“模型不可用”降级，不阻塞主链路。
 5. 凭据只支持 write-only 数据库引用 `env:OPENAI_API_KEY`。它只能由 `config.AI.OpenAIAPIKey` 解析；不得直接读取任意环境变量、不得返回该引用、不得记录 key、Prompt、完整 Content、Provider 原始响应或对象存储键。`.env` 是默认环境，`.env.prod` 仅在 `HOTKEY_ENV=production` 时加载。
 6. AI 请求和响应对象不写入 MinIO。本任务保留既有 `ai_runs.request_object_key` 与 `response_object_key` 为 `NULL`，只保存版本、哈希、受限结构化结果、稳定错误码、用量与耗时；后续要保存受控 payload 必须另立 PRD/Plan。
 7. Provider SDK、ONNX 类型和 HTTP 响应类型不得越过 Infrastructure/Transport 边界。Domain/Application 只使用本模块定义的值对象和端口。
@@ -69,11 +69,11 @@ downstream:
 
 - `reuse_key` 必须是 `sha256(task_type, target_type, target_id, model_profile_id, model_profile_version, model_version, prompt_version, input_schema_version, schema_version, parameters_version, input_hash, evidence_set_hash)` 的稳定序列化结果。
 - 只有 `succeeded` 且所有上述版本仍匹配的运行可复用。profile 语义变更只能新建 profile；输入、证据、Prompt、输入/输出 Schema、parameters 或 model version 任一变化均创建新运行。
-- 对相同 `reuse_key`，PostgreSQL 事务先取得 `pg_advisory_xact_lock(hashtext('ai-run:' || reuse_key))`，再检查成功运行和 in-flight 运行。成功运行直接返回；in-flight 返回 `70007`，绝不第二次调用 Provider；否则创建 queued 运行并在提交后调用 Provider。
-- 状态只能按 `queued -> running -> validating -> succeeded`、`running|validating -> retry_wait -> running`、`queued|running|validating|retry_wait -> failed|cancelled` 转换。429、超时和临时 5xx 在 `max_attempts` 内按确定性指数退避重试；配置、预算、输入、Schema 和证据错误不重试。`attempt`、`retry_after`、`error_code` 和 `repair_attempted` 必须持久化。
-- 每个 profile 必须有正数 `max_cost`，它既是每次调用的硬预留额度也是 Provider 请求的输出/token 上限来源；`daily_budget` 可以为 NULL，表示没有每日上限但仍记账。对于非 NULL 日预算，reserve 条件固定为 `settled_cost + reserved_cost + max_cost <= daily_budget`；reserve 令 `reserved_cost += max_cost`，失败/取消/lease 回收令 `reserved_cost -= reserved_cost_of_run`，成功令 `reserved_cost -= reserved_cost_of_run` 且 `settled_cost += actual_cost`。
-- 实际 cost 大于预留时不得伪造更小数值：运行以 `failed/70002` 终止，记录真实 `cost=actual_cost`，释放预留并将真实成本加入 `settled_cost`，使后续 reserve 被日预算拒绝；因此 `ai_runs.cost` 允许大于 `reserved_cost`。预算不足不调用 Provider。并发请求不得突破预留上限或重复调用。
-- queued、running、validating 与 retry_wait 运行都拥有 `lease_expires_at`。worker-only `RunLeaseReclaimer` 每 30 秒按固定 `ai-budget(profile,day) -> ai-run(reuse_key)` 锁顺序回收过期运行：标记 `failed`、写 `70009 ai_run_lease_expired` 并释放该运行 reservation；不会重放外呼。下一次请求可获得新 claim，进程崩溃不能永久产生 `70007` 或冻结预算。
+- 对相同 `reuse_key` 的**所有** claim、retry、settle、cancel 与 reclaim 事务，一律先取得 `pg_advisory_xact_lock(hashtext('ai-budget:' || profile_id || ':' || utc_day))`，再取得 `pg_advisory_xact_lock(hashtext('ai-run:' || reuse_key))`；不得存在反向路径。claim 再检查成功运行和 in-flight 运行。成功运行直接返回；in-flight 返回 `70007`，绝不第二次调用 Provider；否则 reserve 并创建 queued 运行，在提交后调用 Provider。
+- 状态只能按 `queued -> running -> validating -> succeeded`、`running|validating -> retry_wait -> running`、`queued|running|validating|retry_wait -> failed|cancelled` 转换。429、超时和临时 5xx 在 `max_attempts` 内以 `min(2^(attempt-1), 4)` 秒确定性退避；配置、预算、输入、Schema 和证据错误不重试。创建 queued、`queued -> running`、`running -> validating` 与 `retry_wait -> running` 都在同一锁定事务将 lease 刷新为 `now + timeout_seconds + 30s`；`running|validating -> retry_wait` 原子地写入 `retry_after=now+backoff` 与 `lease_expires_at=retry_after+timeout_seconds+30s`。`attempt`、`retry_after`、`lease_expires_at`、`error_code` 和 `repair_attempted` 必须持久化。
+- 每个 profile 必须有正数 `max_cost`，它既是每次调用的硬预留额度也是 Provider 请求的输出/token 上限来源；`daily_budget` 可以为 NULL，表示没有每日上限但仍记账。每个 profile+UTC 日 ledger 还有 `overage_blocked=false` 初始状态；reserve 前置条件固定为 `overage_blocked=false` 且（daily 为空或 `settled_cost + reserved_cost + max_cost <= daily_budget`）。reserve 令 `reserved_cost += max_cost`，失败/取消/lease 回收令 `reserved_cost -= reserved_cost_of_run`，成功令 `reserved_cost -= reserved_cost_of_run` 且 `settled_cost += actual_cost`。
+- 实际 cost 大于预留时不得伪造更小数值：运行以 `failed/70002` 终止，记录真实 `cost=actual_cost`，释放预留、将真实成本加入 `settled_cost` 并原子写 `overage_blocked=true`。这会封锁**该 profile 的该 UTC 日**后续 reserve，即使 `daily_budget` 为 NULL 或仍有余额；新 UTC 日创建新的 `overage_blocked=false` ledger，是唯一自动重置规则。因此 `ai_runs.cost` 允许大于 `reserved_cost`。预算不足不调用 Provider。并发请求不得突破预留上限或重复调用。
+- queued、running、validating 与 retry_wait 运行都拥有 `lease_expires_at`。worker-only `RunLeaseReclaimer` 每 30 秒按同一固定 `ai-budget(profile,day) -> ai-run(reuse_key)` 锁顺序回收过期运行：标记 `failed`、写 `70009 ai_run_lease_expired` 并释放该运行 reservation；不会重放外呼。测试必须证明未到期的 retry_wait 不会被回收，而进程崩溃后过期的 retry_wait 会被回收。下一次请求可获得新 claim，进程崩溃不能永久产生 `70007` 或冻结预算。
 
 ### 4. 向量空间与查询
 
@@ -100,9 +100,9 @@ downstream:
 
 1. 用零真实密钥的 `httptest` Provider fixture 验证成功、429、5xx、deadline、非法 JSON、一次修复成功和修复失败；fixture 断言 adapter 收到静态 instruction/JSON Schema 与受限 repair violations，SDK/原生错误不出现在 Result、日志或指标标签。
 2. 同一个 `reuse_key` 的并发请求只产生一次 Provider 调用；成功运行可复用，任何版本或证据哈希变化都不能复用。
-3. 并发预算预留满足 `settled + reserved + max <= daily`，失败释放、成功精确结算、overage 记录真实成本并封锁后续 reserve；崩溃/lease expiry 被 worker 回收。预算不足和无可用 Provider 均不影响 ingestion 或 Content read API。
+3. 并发预算预留满足 `overage_blocked=false` 且（daily 为空或 `settled + reserved + max <= daily`），失败释放、成功精确结算；overage 记录真实成本并封锁同 profile+UTC 日后续 reserve，即使日预算为空或仍有余额。崩溃/lease expiry 被 worker 回收，未到期的 retry 不得被回收。预算不足和无可用 Provider 均不影响 ingestion 或 Content read API。
 4. 1024 个有限值可以写入并经 HNSW 查回；1023/1025、`NaN`、`Inf`、不同 model version 和被停用的向量均不能混入结果。
-5. 默认 `go test ./...` 不需要 ONNX 原生库；`onnx && cgo` matrix 分别验证缺 runtime、模型、tokenizer、manifest 的安全降级，以及已校验完整 bundle 的 1024 输出。
+5. 默认 `go test ./...` 和 `CGO_ENABLED=0 go test -tags=onnx ./...` 都不需要 ONNX 原生库；`onnx && cgo` matrix 分别验证缺 runtime、模型、tokenizer、manifest 的安全降级，以及已校验完整 bundle 的 1024 输出。
 6. API 认证、管理员授权、write-only `credential_ref`、乐观锁、软删除/恢复、Result 和 OpenAPI 全部有契约测试。
 7. PLAN-007 数据库可在备份、preflight、受控升级、`hotkey db verify` 和精确 `pg_restore` 回退后恢复；不得通过 `DROP SCHEMA`、运行时 DDL 或全量重置实现。
 
@@ -117,3 +117,4 @@ PRD-009 可以只依赖 `intelligence` 的公开 Application 端口取得同一 
 | v1.0 | 2026-07-15 | 建立 AI Provider、Embedding、复用、预算与降级范围。 |
 | v1.1 | 2026-07-17 | 补齐首个 SDK/ONNX 构建、最小凭据边界、稳定错误码、profile API、并发复用/预算、向量隔离、升级回退和可执行验收契约。 |
 | v1.2 | 2026-07-17 | 收紧任务类型；补齐 static structured request、ONNX bundle、max/daily/overage ledger 方程、worker lease 回收与固定历史 verifier。 |
+| v1.3 | 2026-07-17 | 统一 budget→run 锁序，定义 profile+UTC-day overage 封账、重试 lease 刷新和 `onnx && cgo` 双向 build tag。 |

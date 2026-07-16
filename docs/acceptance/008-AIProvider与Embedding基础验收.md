@@ -44,7 +44,7 @@ result: pending
 
 1. 不存在可用 profile、默认 build 下 ONNX profile、缺少 OpenAI key 都产生安全降级，ingestion 与 Content read 仍成功。
 2. 第二个同 `reuse_key` 并发请求观察到 `70007 ai_run_in_progress`，Provider fixture 只收到一次调用。
-3. 每 profile 的 max_cost 必填；非 NULL 日预算满足 `settled+reserved+max<=daily`，失败/取消/lease recovery 释放 reservation，超额 settlement 记录真实 cost、标记 70002 并封锁后续 reserve。
+3. 每 profile 的 max_cost 必填；reserve 必须满足 `overage_blocked=false` 且（daily 为 NULL 或 `settled+reserved+max<=daily`），失败/取消/lease recovery 释放 reservation。超额 settlement 记录真实 cost、标记 70002，并封锁同 profile+UTC 日后续 reserve；必须分别验证 NULL daily 和仍有余额的 daily，两者只在新 UTC 日自动解封。
 4. 1023、1025、`NaN`、`Inf` 向量被拒绝；不同 profile/model version 或 inactive 行不出现在近邻结果。
 5. 429、5xx、deadline、非法 JSON、第二次修复失败均映射为稳定 numeric code；响应、日志、指标与 OpenAPI 不含 key、credential_ref、Prompt、raw response、endpoint 或 object key。
 6. 未认证、非管理员、stale version、语义 profile PATCH 的 HTTP Result 与 OpenAPI 契约都失败且安全。
@@ -54,7 +54,7 @@ result: pending
 
 ### Provider、Schema、复用和预算
 
-记录命令和命名测试，至少覆盖 OpenAI `httptest` 成功/429/5xx/timeout/invalid JSON/repair，且 fixture 断言静态 instruction/schema/bounded repair payload；还须覆盖静态 JSON Schema、一次修复、两种 task type/reject future types、profile 选择、same-key claim、success-only reuse、版本失效、profile+UTC-day reserve/settle/release/overage 并发与 lease reclaim。
+记录命令和命名测试，至少覆盖 OpenAI `httptest` 成功/429/5xx/timeout/invalid JSON/repair，且 fixture 断言静态 instruction/schema/bounded repair payload；还须覆盖静态 JSON Schema、一次修复、两种 task type/reject future types、profile 选择、same-key claim、success-only reuse、版本失效、profile+UTC-day reserve/settle/release/overage 并发（含 NULL/剩余 daily）、统一 `budget→run` 锁序、未到期 retry_wait 不被回收与崩溃后过期 retry_wait 的 lease reclaim；`CGO_ENABLED=0 -tags=onnx` 也必须命中 safe unavailable adapter。
 
 ```bash
 HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable' \
@@ -86,3 +86,4 @@ git status --short
 |---|---|---|
 | v0.1 | 2026-07-17 | 创建实施前验收模板，固定 Provider fixture、预算/并发、向量/HNSW、upgrade/rollback、HTTP/OpenAPI 和独立复核证据；尚未执行。 |
 | v0.2 | 2026-07-17 | 补齐 task-type 拒绝、max/daily/overage、lease recovery、ONNX bundle 和固定 historical verifier 证据；尚未执行。 |
+| v0.3 | 2026-07-17 | 补齐 overage 封账、重试 lease 刷新、统一锁序与无 CGO ONNX 安全降级证据；尚未执行。 |
