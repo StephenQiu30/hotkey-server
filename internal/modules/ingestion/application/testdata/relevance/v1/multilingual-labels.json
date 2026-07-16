@@ -1,0 +1,26 @@
+{
+  "version": "relevance-v1-fixture-2026-07",
+  "labels": [
+    {"monitor_id": 1, "relevant": true, "must_reject": false, "scenario": "english_primary_intent_without_vector"},
+    {"monitor_id": 2, "relevant": false, "must_reject": true, "scenario": "explicit_exclusion_phrase"},
+    {"monitor_id": 3, "relevant": false, "must_reject": true, "scenario": "apple_homonym_entity_conflict"},
+    {"monitor_id": 4, "relevant": true, "must_reject": false, "scenario": "approved_ai_term"},
+    {"monitor_id": 5, "relevant": true, "must_reject": false, "scenario": "chinese_phrase_match"},
+    {"monitor_id": 6, "relevant": true, "must_reject": false, "scenario": "degraded_keyword_recall"},
+    {"monitor_id": 7, "relevant": true, "must_reject": false, "scenario": "cross_language_independent_report"},
+    {"monitor_id": 8, "relevant": true, "must_reject": false, "scenario": "same_source_bounded_candidate"},
+    {"monitor_id": 9, "relevant": true, "must_reject": false, "scenario": "lexical_vector_union_candidate"},
+    {"monitor_id": 10, "relevant": true, "must_reject": false, "scenario": "same_profile_vector_space"},
+    {"monitor_id": 11, "relevant": true, "must_reject": false, "scenario": "model_profile_isolation_neighbor"},
+    {"monitor_id": 12, "relevant": true, "must_reject": false, "scenario": "stable_rank_after_dedupe"},
+    {"monitor_id": 13, "relevant": true, "must_reject": false, "scenario": "english_followup"},
+    {"monitor_id": 14, "relevant": true, "must_reject": false, "scenario": "chinese_followup"},
+    {"monitor_id": 15, "relevant": true, "must_reject": false, "scenario": "source_candidate"},
+    {"monitor_id": 16, "relevant": true, "must_reject": false, "scenario": "lexical_candidate"},
+    {"monitor_id": 17, "relevant": true, "must_reject": false, "scenario": "vector_candidate"},
+    {"monitor_id": 18, "relevant": true, "must_reject": false, "scenario": "bounded_union_candidate"},
+    {"monitor_id": 19, "relevant": true, "must_reject": false, "scenario": "ranked_relevant_candidate"},
+    {"monitor_id": 20, "relevant": true, "must_reject": false, "scenario": "ranked_relevant_tail"},
+    {"monitor_id": 21, "relevant": false, "must_reject": true, "scenario": "over_limit_non_relevant_candidate"}
+  ]
+}

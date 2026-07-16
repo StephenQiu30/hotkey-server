@@ -2,7 +2,10 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"math"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -216,27 +219,89 @@ func contains(values []string, wanted string) bool {
 	return false
 }
 
+type plan009RelevanceFixture struct {
+	Version string                         `json:"version"`
+	Labels  []plan009RelevanceFixtureLabel `json:"labels"`
+}
+
+type plan009RelevanceFixtureLabel struct {
+	MonitorID  int64  `json:"monitor_id"`
+	Relevant   bool   `json:"relevant"`
+	MustReject bool   `json:"must_reject"`
+	Scenario   string `json:"scenario"`
+}
+
 func assertPlan009FixtureQuality(t *testing.T, values []ScoredRelevanceCandidate) {
 	t.Helper()
 	if len(values) != 20 {
 		t.Fatalf("fixed relevance fixture size = %d, want 20", len(values))
 	}
+	fixture := loadPlan009RelevanceFixture(t)
+	labels := make(map[int64]plan009RelevanceFixtureLabel, len(fixture.Labels))
+	for _, label := range fixture.Labels {
+		if label.MonitorID <= 0 || label.Scenario == "" {
+			t.Fatalf("invalid relevance label %#v", label)
+		}
+		if _, exists := labels[label.MonitorID]; exists {
+			t.Fatalf("duplicate relevance label for monitor %d", label.MonitorID)
+		}
+		labels[label.MonitorID] = label
+	}
 	relevant := 0
+	exclusionCases := 0
 	falsePositiveExclusions := 0
 	for _, value := range values {
-		if value.Decision != ingestiondomain.MatchDecisionRejected {
+		label, exists := labels[value.MonitorID]
+		if !exists {
+			t.Fatalf("top-20 candidate %d has no independent relevance label", value.MonitorID)
+		}
+		if label.Relevant {
 			relevant++
 		}
-		if len(value.ExcludedTerms) > 0 && value.Decision != ingestiondomain.MatchDecisionRejected {
-			falsePositiveExclusions++
+		if label.MustReject {
+			exclusionCases++
+			if value.Decision != ingestiondomain.MatchDecisionRejected {
+				falsePositiveExclusions++
+			}
+		} else if value.Decision == ingestiondomain.MatchDecisionRejected {
+			t.Fatalf("fixture positive %q (monitor %d) was rejected", label.Scenario, value.MonitorID)
+		}
+		if label.MustReject && value.Decision == ingestiondomain.MatchDecisionRejected && len(value.ReasonCodes) == 0 {
+			t.Fatalf("fixture exclusion %q (monitor %d) lost its rejection explanation", label.Scenario, value.MonitorID)
+		}
+		if label.Relevant && label.MustReject {
+			t.Fatalf("fixture label %q cannot be both relevant and must_reject", label.Scenario)
+		}
+		if !label.Relevant && !label.MustReject {
+			t.Fatalf("fixture negative %q must declare must_reject", label.Scenario)
 		}
 	}
 	precisionAt20 := float64(relevant) / float64(len(values)) * 100
-	falsePositiveExclusionRate := float64(falsePositiveExclusions) / float64(len(values)) * 100
+	falsePositiveExclusionRate := float64(falsePositiveExclusions) / float64(exclusionCases) * 100
 	if precisionAt20 < 80 {
-		t.Fatalf("fixed fixture P@20 = %.2f%%, want >= 80%%", precisionAt20)
+		t.Fatalf("independently labelled fixture P@20 = %.2f%%, want >= 80%%", precisionAt20)
 	}
 	if falsePositiveExclusionRate >= 2 {
-		t.Fatalf("fixed fixture exclusion false-positive rate = %.2f%%, want < 2%%", falsePositiveExclusionRate)
+		t.Fatalf("independently labelled fixture exclusion false-positive rate = %.2f%%, want < 2%%", falsePositiveExclusionRate)
 	}
+}
+
+func loadPlan009RelevanceFixture(t *testing.T) plan009RelevanceFixture {
+	t.Helper()
+	path := filepath.Join("testdata", "relevance", "v1", "multilingual-labels.json")
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read independently labelled relevance fixture %s: %v", path, err)
+	}
+	var fixture plan009RelevanceFixture
+	if err := json.Unmarshal(contents, &fixture); err != nil {
+		t.Fatalf("decode independently labelled relevance fixture: %v", err)
+	}
+	if fixture.Version != "relevance-v1-fixture-2026-07" {
+		t.Fatalf("relevance fixture version = %q, want relevance-v1-fixture-2026-07", fixture.Version)
+	}
+	if len(fixture.Labels) != 21 {
+		t.Fatalf("relevance fixture labels = %d, want 21", len(fixture.Labels))
+	}
+	return fixture
 }
