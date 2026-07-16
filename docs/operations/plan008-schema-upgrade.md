@@ -6,7 +6,7 @@ feature_area: 数据库升级
 purpose: 将空 AI 运行历史的 PLAN-007 数据库受控升级至 PLAN-008 AI Provider 与 Embedding Schema，并可精确回退
 canonical_path: docs/operations/plan008-schema-upgrade.md
 status: review
-version: v0.1
+version: v0.2
 owner: HotKey Server Team
 inputs:
   - db/schema.sql
@@ -26,7 +26,7 @@ downstream:
 
 ## 适用范围、停止条件和前置版本
 
-本手册只适用于已经由 PLAN-007 或更早的完整 Schema 初始化、且尚未写入任何 AI profile、运行、证据或向量的 PostgreSQL 16+ / pgvector 数据库。新环境仍使用目标 release 的 `go run ./cmd/hotkey db init --empty-only --confirm-empty`，不能执行本手册。
+本手册的唯一历史基线是 commit `53d7f01`（PLAN-007 archived/done）。它只适用于已经由该 release 的完整 Schema 初始化、且尚未写入任何 AI profile、运行、证据或向量的 PostgreSQL 16+ / pgvector 数据库。新环境仍使用目标 release 的 `go run ./cmd/hotkey db init --empty-only --confirm-empty`，不能执行本手册。
 
 此文档描述 PLAN-008 Task 1 目标 Schema，不能在 Task 1 未合入、`db/schema.sql` 未包含对应 catalog contract 时提前执行。服务启动绝不自动执行本手册。操作前停止 API/worker 中所有可能写 AI profile、run、ledger 或 embedding 的进程；任何 backup、preflight、DDL、verify 或 restore 失败时立即停止，不启动服务，并进入“回退”。
 
@@ -34,7 +34,14 @@ downstream:
 
 ## 备份与只读 preflight
 
-`HOTKEY_DATABASE_URL` 必须指向维护窗口中的目标库，操作者须具备 `pg_dump`、`pg_restore` 和 DDL 权限。dump 放在受保护且可恢复的位置，绝不提交到仓库。
+`HOTKEY_DATABASE_URL` 必须指向维护窗口中的目标库，操作者须具备 `pg_dump`、`pg_restore`、Git worktree 和 DDL 权限。dump 放在受保护且可恢复的位置，绝不提交到仓库。演练/回退必须从固定基线创建临时 worktree，不能在当前 checkout 假装运行历史 verifier：
+
+```bash
+export PLAN007_BASELINE=53d7f01
+export PLAN007_WORKTREE="$(mktemp -d /tmp/hotkey-plan008-plan007.XXXXXX)"
+git worktree add --detach "$PLAN007_WORKTREE" "$PLAN007_BASELINE"
+trap 'git worktree remove --force "$PLAN007_WORKTREE"' EXIT
+```
 
 ```bash
 pg_dump "$HOTKEY_DATABASE_URL" --format=custom --file=/secure-backups/hotkey-before-plan008.dump
@@ -54,7 +61,14 @@ SELECT
   (SELECT count(*) FROM topic_embeddings) AS other_vectors;
 ```
 
-在从该 custom backup 恢复的可丢弃数据库完整演练以下升级、目标 `hotkey db verify`、预备回退和历史 release verify 后，才能在目标库执行。
+可丢弃演练库必须由固定 worktree 的真实 release 创建并验证，随后才可从其 custom backup 演练升级、目标 verify、预备回退和历史 verifier：
+
+```bash
+HOTKEY_DATABASE_URL="$HOTKEY_DATABASE_URL" \
+  go -C "$PLAN007_WORKTREE" run ./cmd/hotkey db init --empty-only --confirm-empty
+HOTKEY_DATABASE_URL="$HOTKEY_DATABASE_URL" \
+  go -C "$PLAN007_WORKTREE" run ./cmd/hotkey db verify
+```
 
 ## 受控升级
 
@@ -67,11 +81,11 @@ BEGIN;
 ALTER TABLE ai_model_profiles
   DROP CONSTRAINT IF EXISTS ai_model_profiles_task_type_check,
   ADD CONSTRAINT ai_model_profiles_task_type_check
-    CHECK (task_type IN ('classification','clustering','extraction','summarization','report','embedding','term_expansion')),
+    CHECK (task_type IN ('embedding','term_expansion')),
   ADD COLUMN model_version varchar(64) NOT NULL,
   ADD COLUMN embedding_dimensions smallint,
   ADD COLUMN max_attempts smallint NOT NULL DEFAULT 1 CHECK (max_attempts BETWEEN 1 AND 3),
-  ADD COLUMN max_cost numeric(12,4) CHECK (max_cost IS NULL OR max_cost > 0),
+  ADD COLUMN max_cost numeric(12,4) NOT NULL CHECK (max_cost > 0),
   ADD CONSTRAINT ai_model_profiles_provider_check CHECK (provider IN ('openai','onnx')),
   ADD CONSTRAINT ai_model_profiles_endpoint_check CHECK (endpoint IS NULL),
   ADD CONSTRAINT ai_model_profiles_parameters_check CHECK (parameters = '{}'::jsonb),
@@ -87,11 +101,9 @@ ALTER TABLE ai_model_profiles
     (provider = 'onnx' AND task_type = 'embedding')
     OR provider = 'openai'
   ),
-  ADD CONSTRAINT ai_model_profiles_budget_check CHECK (
-    daily_budget IS NULL OR daily_budget > 0
-  ),
+  ADD CONSTRAINT ai_model_profiles_budget_check CHECK (daily_budget IS NULL OR daily_budget > 0),
   ADD CONSTRAINT ai_model_profiles_budget_order_check CHECK (
-    daily_budget IS NULL OR max_cost IS NULL OR daily_budget >= max_cost
+    daily_budget IS NULL OR daily_budget >= max_cost
   );
 
 DO $$
@@ -129,10 +141,14 @@ ALTER TABLE ai_runs
   ADD COLUMN error_code integer,
   ADD COLUMN budget_day date NOT NULL,
   ADD COLUMN reserved_cost numeric(12,4) NOT NULL DEFAULT 0 CHECK (reserved_cost >= 0),
+  ADD COLUMN lease_expires_at timestamptz,
   ADD CONSTRAINT ai_runs_status_check CHECK (status IN ('queued','running','validating','retry_wait','succeeded','failed','cancelled')),
   ADD CONSTRAINT ai_runs_object_keys_null_check CHECK (request_object_key IS NULL AND response_object_key IS NULL),
   ADD CONSTRAINT ai_runs_attempt_order_check CHECK (attempt <= max_attempts),
-  ADD CONSTRAINT ai_runs_cost_check CHECK (cost <= reserved_cost);
+  ADD CONSTRAINT ai_runs_lease_check CHECK (
+    (status IN ('queued','running','validating','retry_wait') AND lease_expires_at IS NOT NULL)
+    OR (status IN ('succeeded','failed','cancelled') AND lease_expires_at IS NULL)
+  );
 
 CREATE UNIQUE INDEX ai_runs_reuse_succeeded_uq
   ON ai_runs(reuse_key) WHERE status = 'succeeded';
@@ -169,11 +185,19 @@ SQL
 go run ./cmd/hotkey db verify
 ```
 
-`db verify` 必须通过。再重新执行 preflight：五个计数仍为零，并额外确认新 table 存在、两个 ai_runs reuse index 与四个 `one_active_per_profile` index 存在。任何失败都不接受部分修复，直接转入回退。
+`db verify` 必须通过。再重新执行 preflight：五个计数仍为零，并额外确认新 table、lease column、两个 ai_runs reuse index 与四个 `one_active_per_profile` index 存在。运行时预算语义是：非 NULL daily profile 只在 `settled_cost + reserved_cost + max_cost <= daily_budget` 时 reserve；success/overage 都写真实 cost 到 settled，failed/cancelled/lease reclaim 只释放本 run 的 reservation。任何失败都不接受部分修复，直接转入回退。
 
 ## 回退
 
-回退只在目标服务仍停止时进行。先在副本上演练以下顺序；**故意不准备**的 `pg_restore --clean --if-exists --no-owner` 应失败，因为新 `ai_budget_ledgers` 外键仍引用 `ai_model_profiles`。该失败是未跳过清理步骤的证据，不是可忽略的警告。
+回退只在目标服务仍停止时进行。先在副本上演练以下顺序；**故意不准备**的 restore 必须以非零退出，因为新 `ai_budget_ledgers` 外键仍引用 `ai_model_profiles`。该失败是未跳过清理步骤的证据，不是可忽略的警告：
+
+```bash
+if pg_restore --single-transaction --clean --if-exists --no-owner \
+  --dbname="$HOTKEY_DATABASE_URL" /secure-backups/hotkey-before-plan008.dump; then
+  echo "unexpected PLAN-008 restore success without ledger preparation" >&2
+  exit 1
+fi
+```
 
 准备恢复只删除 PLAN-008 新增对象；不删除 Schema、不触及 Content/Source/MinIO，也不清空任何业务表：
 
@@ -190,24 +214,26 @@ DROP TABLE IF EXISTS ai_budget_ledgers;
 COMMIT;
 SQL
 
-pg_restore --clean --if-exists --no-owner \
+pg_restore --single-transaction --clean --if-exists --no-owner \
   --dbname="$HOTKEY_DATABASE_URL" /secure-backups/hotkey-before-plan008.dump
 ```
 
-`pg_restore` 重建 backup 中的 PLAN-007 ai 表，因而自动移除 PLAN-008 新增 columns/constraints；禁止手工保留其中任一列。最后切换到创建 backup 的 PLAN-007 release 并运行其 verifier：
+`pg_restore` 重建 backup 中的 PLAN-007 ai 表，因而自动移除 PLAN-008 新增 columns/constraints；禁止手工保留其中任一列。最后用创建 backup 的固定 PLAN-007 worktree 运行其 verifier，不能从当前 checkout 运行：
 
 ```bash
-go run ./cmd/hotkey db verify
+HOTKEY_DATABASE_URL="$HOTKEY_DATABASE_URL" \
+  go -C "$PLAN007_WORKTREE" run ./cmd/hotkey db verify
 ```
 
 该命令必须成功，且 preflight table 不含 `ai_budget_ledgers`、`model_version`、`reuse_key`、`model_profile_version` 和 PLAN-008 index。回退成功前不得恢复服务。
 
 ## 演练与证据
 
-PLAN-008 的 database integration test 必须从真实 PLAN-007 release Schema 创建 disposable database，生成 custom dump，执行本手册的 exact upgrade，运行当前 verifier，记录新 catalog/index，先断言未准备 restore 的受控失败，再执行准备步骤与 restore，最后用 historical PLAN-007 verifier 通过。Acceptance-008 只记录命令、fixture、commit 和结果摘要，不记录 DSN、dump 路径或任何凭据。
+PLAN-008 的 database integration test 必须创建 `53d7f01` detached worktree、用该 worktree 的 `db init` 建立 disposable database、以该 DB 生成 custom dump，执行本手册的 exact upgrade，运行当前 verifier，记录新 catalog/index，先断言未准备 restore 的受控失败，再执行准备步骤与 restore，最后以 `go -C "$PLAN007_WORKTREE" run ./cmd/hotkey db verify` 通过。测试结束必须删除 worktree/dump/临时 DB；不能只通过手工拼装的旧 Schema。Acceptance-008 只记录命令、fixture、commit 和结果摘要，不记录 DSN、dump 路径或任何凭据。
 
 ## 变更记录
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
 | v0.1 | 2026-07-17 | 定义空 AI 历史库的 PLAN-007 -> PLAN-008 备份、严格 preflight、add-only physical order、目标 verify、受控 restore 与历史 verifier 演练；待实现和独立复核。 |
+| v0.2 | 2026-07-17 | 固定 `53d7f01` historical verifier/worktree、收紧 task type、补齐 max/daily/overage/lease Schema 与可执行的未准备/准备 restore 证据。 |

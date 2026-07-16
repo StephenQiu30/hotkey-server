@@ -6,7 +6,7 @@ feature_area: AI运行基础
 purpose: 保存 PLAN-008 AI Provider、运行、预算和向量隔离的长期验收证据
 canonical_path: docs/acceptance/008-AIProvider与Embedding基础验收.md
 status: review
-version: v0.1
+version: v0.2
 owner: HotKey Server Team
 inputs:
   - docs/prd/008-AIProvider与Embedding基础.md
@@ -36,7 +36,7 @@ result: pending
 - 实现基线 commit、审核范围和每个 Task 的提交。
 - `HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable'`、`HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15'` 等可丢弃 fixture；不记录真实 DSN、API key、dump 路径或本机绝对路径。
 - OpenAI adapter 仅允许 `httptest` fixture 与 dummy key；不得以真实 Provider 调用作为验收证据。
-- ONNX default build 必须在无 native library/模型下通过；可选 `onnx` matrix 只有在受控 host 执行时记录 runtime 版本、模型 hash 和结果，未执行必须列为残余风险，不能伪装为通过。
+- ONNX default build 必须在无 native library/model/tokenizer/manifest 下通过；可选 `onnx && cgo` matrix 只有在受控 host 执行时记录 runtime、model/tokenizer/manifest hash 和结果，未执行必须列为残余风险，不能伪装为通过。
 
 ## 必须保留的 RED 证据
 
@@ -44,17 +44,17 @@ result: pending
 
 1. 不存在可用 profile、默认 build 下 ONNX profile、缺少 OpenAI key 都产生安全降级，ingestion 与 Content read 仍成功。
 2. 第二个同 `reuse_key` 并发请求观察到 `70007 ai_run_in_progress`，Provider fixture 只收到一次调用。
-3. 单次/日预算耗尽不外呼；失败/取消后 reservation 释放；超额 settlement 失败且不透支。
+3. 每 profile 的 max_cost 必填；非 NULL 日预算满足 `settled+reserved+max<=daily`，失败/取消/lease recovery 释放 reservation，超额 settlement 记录真实 cost、标记 70002 并封锁后续 reserve。
 4. 1023、1025、`NaN`、`Inf` 向量被拒绝；不同 profile/model version 或 inactive 行不出现在近邻结果。
 5. 429、5xx、deadline、非法 JSON、第二次修复失败均映射为稳定 numeric code；响应、日志、指标与 OpenAPI 不含 key、credential_ref、Prompt、raw response、endpoint 或 object key。
 6. 未认证、非管理员、stale version、语义 profile PATCH 的 HTTP Result 与 OpenAPI 契约都失败且安全。
-7. 未执行准备步骤的 legacy `pg_restore` 按手册失败；准备后恢复和 historical PLAN-007 verifier 通过。
+7. queued/running/retry_wait crash 后 worker-only lease reclaimer 标记 70009 并释放预算；未执行准备步骤的 legacy `pg_restore` 按手册失败，准备后恢复并用固定 `53d7f01` detached-worktree verifier 通过。
 
 ## 必须保留的 GREEN 证据
 
 ### Provider、Schema、复用和预算
 
-记录命令和命名测试，至少覆盖 OpenAI `httptest` 成功/429/5xx/timeout/invalid JSON/repair、静态 JSON Schema、一次修复、profile 选择、same-key claim、success-only reuse、版本失效和 profile+UTC-day reserve/settle/release 并发。
+记录命令和命名测试，至少覆盖 OpenAI `httptest` 成功/429/5xx/timeout/invalid JSON/repair，且 fixture 断言静态 instruction/schema/bounded repair payload；还须覆盖静态 JSON Schema、一次修复、两种 task type/reject future types、profile 选择、same-key claim、success-only reuse、版本失效、profile+UTC-day reserve/settle/release/overage 并发与 lease reclaim。
 
 ```bash
 HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable' \
@@ -63,7 +63,7 @@ go test -race -tags=integration ./internal/modules/intelligence/... -count=1
 
 ### 向量、HNSW、升级和 HTTP
 
-记录四类 target 的 atomic deactivate/insert、profile+model-version-filtered search 和每个 active HNSW index 的 `EXPLAIN (COSTS OFF)` 摘要。执行 PLAN-007 legacy backup -> PLAN-008 exact upgrade -> current `db verify` -> prepared `pg_restore` -> historical PLAN-007 `db verify` 的真实演练。使用 Gin/管理员 login fixture 验证六个 profile API 路由、角色矩阵、write-only 输出与生成 OpenAPI。
+记录四类 target 的 atomic deactivate/insert、profile+model-version-filtered search 和每个 active HNSW index 的 `EXPLAIN (COSTS OFF)` 摘要。执行固定 `53d7f01` worktree 的 PLAN-007 init/backup -> PLAN-008 exact upgrade -> current `db verify` -> deliberate unprepared restore failure -> prepared `pg_restore` -> 同一 worktree 的 historical `db verify`。使用 Gin/管理员 login fixture 验证六个 profile API 路由、角色矩阵、write-only 输出与生成 OpenAPI。
 
 ```bash
 HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable' \
@@ -85,3 +85,4 @@ git status --short
 | 版本 | 日期 | 变更 |
 |---|---|---|
 | v0.1 | 2026-07-17 | 创建实施前验收模板，固定 Provider fixture、预算/并发、向量/HNSW、upgrade/rollback、HTTP/OpenAPI 和独立复核证据；尚未执行。 |
+| v0.2 | 2026-07-17 | 补齐 task-type 拒绝、max/daily/overage、lease recovery、ONNX bundle 和固定 historical verifier 证据；尚未执行。 |
