@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 
 func TestEmbeddedSchemaCatalogIsComplete(t *testing.T) {
 	tables := EmbeddedSchemaTableNames()
-	if got, want := len(tables), 54; got != want {
+	if got, want := len(tables), 56; got != want {
 		t.Fatalf("embedded table count = %d, want %d", got, want)
 	}
 	if !EmbeddedSchemaContains("CREATE EXTENSION IF NOT EXISTS vector") {
@@ -29,7 +30,7 @@ func TestRuntimeUsesSharedPoolAndVerifiesCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Verify() error = %v", err)
 	}
-	if got, want := len(verification.Tables), 54; got != want {
+	if got, want := len(verification.Tables), 56; got != want {
 		t.Fatalf("verified table count = %d, want %d", got, want)
 	}
 	if verification.CatalogFingerprint == "" {
@@ -130,6 +131,118 @@ VALUES ($1, $2, $3)`, sessionID, "cccccccccccccccccccccccccccccccccccccccccccccc
 		if !exists {
 			t.Errorf("required auth access-path index %s does not exist", indexName)
 		}
+	}
+}
+
+func TestMonitorConfigurationSchemaEnforcesHistoricalConstraints(t *testing.T) {
+	runtime := openTestRuntime(t)
+	defer func() { _ = runtime.Close() }()
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	suffix := fmt.Sprintf("%d", now.UnixNano())
+	var sourceID, firstMonitorID, secondMonitorID, firstConfigID, secondConfigID, firstMonitorSourceID int64
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO source_connections (source_type, name, endpoint)
+VALUES ('rss', $1, 'https://example.test/feed')
+RETURNING id`, "monitor-schema-source-"+suffix).Scan(&sourceID); err != nil {
+		t.Fatalf("create source connection: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO source_connections (source_type, name, endpoint, config)
+VALUES ('rss', $1, 'https://example.test/invalid', '{"secret":"forbidden"}'::jsonb)`, "monitor-schema-invalid-source-"+suffix); err == nil {
+		t.Fatal("unknown source config key = nil error, want whitelist rejection")
+	} else {
+		assertPostgreSQLState(t, err, "23514")
+	}
+	if err := runtime.SQL.QueryRow(`INSERT INTO monitors (name) VALUES ($1) RETURNING id`, "monitor-schema-first-"+suffix).Scan(&firstMonitorID); err != nil {
+		t.Fatalf("create first monitor: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`INSERT INTO monitors (name) VALUES ($1) RETURNING id`, "monitor-schema-second-"+suffix).Scan(&secondMonitorID); err != nil {
+		t.Fatalf("create second monitor: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO monitor_config_versions (monitor_id, revision)
+VALUES ($1, 1)
+RETURNING id`, firstMonitorID).Scan(&firstConfigID); err != nil {
+		t.Fatalf("create first draft configuration: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO monitor_rules (config_version_id, rule_type, operator, value, weight, approval_status)
+VALUES ($1, 'keyword', 'contains', 'schema history', 10, 'approved')`, firstConfigID); err != nil {
+		t.Fatalf("create draft rule: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO monitor_sources (config_version_id, source_connection_id)
+VALUES ($1, $2)
+RETURNING id`, firstConfigID, sourceID).Scan(&firstMonitorSourceID); err != nil {
+		t.Fatalf("create draft monitor source: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`
+UPDATE monitor_config_versions
+SET state = 'published', config_hash = $1, published_at = $2
+WHERE id = $3`, strings.Repeat("a", 64), now, firstConfigID); err != nil {
+		t.Fatalf("publish configuration: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE monitor_config_versions SET timezone = 'Asia/Shanghai' WHERE id = $1`, firstConfigID); err == nil {
+		t.Fatal("published configuration update = nil error, want immutable trigger rejection")
+	} else {
+		assertPostgreSQLState(t, err, "23514")
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE monitor_rules SET value = 'changed' WHERE config_version_id = $1`, firstConfigID); err == nil {
+		t.Fatal("published rule update = nil error, want immutable trigger rejection")
+	} else {
+		assertPostgreSQLState(t, err, "23514")
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE monitor_sources SET priority = 1 WHERE id = $1`, firstMonitorSourceID); err == nil {
+		t.Fatal("published monitor source update = nil error, want immutable trigger rejection")
+	} else {
+		assertPostgreSQLState(t, err, "23514")
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE source_connections SET endpoint = 'https://example.test/changed' WHERE id = $1`, sourceID); err == nil {
+		t.Fatal("published source semantic update = nil error, want immutable trigger rejection")
+	} else {
+		assertPostgreSQLState(t, err, "23514")
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO monitor_config_versions (monitor_id, revision)
+VALUES ($1, 1)
+RETURNING id`, secondMonitorID).Scan(&secondConfigID); err != nil {
+		t.Fatalf("create second draft configuration: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE monitors SET published_config_version_id = $1 WHERE id = $2`, firstConfigID, secondMonitorID); err == nil {
+		t.Fatal("wrong monitor configuration pointer = nil error, want owner rejection")
+	} else {
+		assertPostgreSQLState(t, err, "23514")
+	}
+
+	var contentID int64
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO contents (source_connection_id, external_id, content_type, canonical_url, published_at, fetched_at, dedupe_key)
+VALUES ($1, $2, 'article', 'https://example.test/article', $3, $3, $4)
+RETURNING id`, sourceID, "monitor-schema-content-"+suffix, now, strings.Repeat("b", 64)).Scan(&contentID); err != nil {
+		t.Fatalf("create content for monitor history: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO monitor_matches (monitor_id, monitor_config_version_id, content_id, rule_score, final_score, decision, algorithm_version)
+VALUES ($1, $2, $3, 10, 10, 'accepted', 'schema-test')`, secondMonitorID, firstConfigID, contentID); err == nil {
+		t.Fatal("wrong monitor/config historical match = nil error, want composite foreign key rejection")
+	} else {
+		assertPostgreSQLState(t, err, "23503")
+	}
+
+	var runID int64
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO collection_runs (source_connection_id, query_signature, window_start, window_end, trigger_type, scheduled_at)
+VALUES ($1, $2, $3, $4, 'manual', $3)
+RETURNING id`, sourceID, strings.Repeat("c", 64), now, now.Add(time.Minute)).Scan(&runID); err != nil {
+		t.Fatalf("create shared collection run: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO collection_run_targets (collection_run_id, monitor_source_id, monitor_config_version_id)
+VALUES ($1, $2, $3)`, runID, firstMonitorSourceID, secondConfigID); err == nil {
+		t.Fatal("wrong monitor source/config run target = nil error, want composite foreign key rejection")
+	} else {
+		assertPostgreSQLState(t, err, "23503")
 	}
 }
 
@@ -341,12 +454,12 @@ func TestVerifyRejectsMissingCheckConstraint(t *testing.T) {
 	defer func() { _ = runtime.Close() }()
 	defer func() {
 		_, _ = runtime.SQL.Exec(`
-ALTER TABLE monitors
-ADD CONSTRAINT monitors_relevance_threshold_check
-CHECK (relevance_threshold BETWEEN 0 AND 100)`)
+ALTER TABLE monitor_config_versions
+ADD CONSTRAINT monitor_config_versions_relevance_threshold_check
+CHECK (relevance_threshold BETWEEN 60 AND 100)`)
 	}()
 
-	if _, err := runtime.SQL.Exec("ALTER TABLE monitors DROP CONSTRAINT monitors_relevance_threshold_check"); err != nil {
+	if _, err := runtime.SQL.Exec("ALTER TABLE monitor_config_versions DROP CONSTRAINT monitor_config_versions_relevance_threshold_check"); err != nil {
 		t.Fatalf("drop check constraint: %v", err)
 	}
 	if _, err := Verify(context.Background(), runtime.Pool); err == nil {
@@ -358,8 +471,8 @@ func TestVerifyRejectsChangedCheckConstraintDefinition(t *testing.T) {
 	runtime := openTestRuntime(t)
 	defer func() { _ = runtime.Close() }()
 	if _, err := runtime.SQL.Exec(`
-ALTER TABLE monitors DROP CONSTRAINT monitors_relevance_threshold_check;
-ALTER TABLE monitors ADD CONSTRAINT monitors_relevance_threshold_check
+ALTER TABLE monitor_config_versions DROP CONSTRAINT monitor_config_versions_relevance_threshold_check;
+ALTER TABLE monitor_config_versions ADD CONSTRAINT monitor_config_versions_relevance_threshold_check
 CHECK (relevance_threshold BETWEEN -100 AND 100)`); err != nil {
 		t.Fatalf("replace check constraint: %v", err)
 	}
@@ -399,7 +512,7 @@ CREATE INDEX contents_source_published_idx ON contents(source_connection_id, id)
 func TestVerifyRejectsChangedColumnDefault(t *testing.T) {
 	runtime := openTestRuntime(t)
 	defer func() { _ = runtime.Close() }()
-	if _, err := runtime.SQL.Exec("ALTER TABLE monitors ALTER COLUMN retention_days SET DEFAULT 365"); err != nil {
+	if _, err := runtime.SQL.Exec("ALTER TABLE monitor_config_versions ALTER COLUMN retention_days SET DEFAULT 365"); err != nil {
 		t.Fatalf("replace column default: %v", err)
 	}
 	if _, err := Verify(context.Background(), runtime.Pool); err == nil {

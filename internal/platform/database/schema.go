@@ -585,6 +585,11 @@ func stripRedundantParentheses(value string) string {
 				continue
 			}
 			inner := value[index+1 : end]
+			if strings.HasSuffix(value[:index], "and") || strings.HasSuffix(value[:index], "or") {
+				value = value[:index] + inner + value[end+1:]
+				changed = true
+				break
+			}
 			if isSimpleIdentifier(inner) {
 				value = value[:index] + inner + value[end+1:]
 				changed = true

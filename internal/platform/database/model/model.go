@@ -74,15 +74,23 @@ type SourceConnection struct {
 }
 type Monitor struct {
 	Record
-	Name, Status string
+	Name, Description, Status                      string
+	DraftConfigVersionID, PublishedConfigVersionID *int64
+}
+type MonitorConfigVersion struct {
+	Record
+	MonitorID, Revision         int64
+	State, Timezone, ConfigHash string
+	PublishedAt                 *time.Time
 }
 type MonitorRule struct {
 	Record
-	MonitorID int64
+	ConfigVersionID int64
 }
 type MonitorSource struct {
 	Record
-	MonitorID, SourceConnectionID int64
+	ConfigVersionID, SourceConnectionID int64
+	QuerySignature                      string
 }
 type SourceAuthor struct {
 	Record
@@ -100,7 +108,7 @@ type ContentAsset struct {
 }
 type MonitorMatch struct {
 	Record
-	MonitorID, ContentID int64
+	MonitorID, MonitorConfigVersionID, ContentID int64
 }
 type Event struct {
 	Record
@@ -208,8 +216,13 @@ type SourceCheckpoint struct {
 }
 type CollectionRun struct {
 	OperationalRecord
-	MonitorSourceID int64
-	IdempotencyKey  string
+	SourceConnectionID     int64
+	QuerySignature         string
+	WindowStart, WindowEnd time.Time
+}
+type CollectionRunTarget struct {
+	OperationalRecord
+	CollectionRunID, MonitorSourceID, MonitorConfigVersionID int64
 }
 type CollectionRunItem struct {
 	OperationalRecord
@@ -270,13 +283,14 @@ var specs = []Spec{
 	{"users", LifecycleBusiness, []string{"id", "version", "email", "password_hash", "role", "status", "deleted_at"}},
 	{"user_preferences", LifecycleBusiness, []string{"id", "user_id", "timezone", "preferences"}},
 	{"source_connections", LifecycleBusiness, []string{"id", "source_type", "name", "endpoint", "deleted_at"}},
-	{"monitors", LifecycleBusiness, []string{"id", "name", "status", "relevance_threshold", "deleted_at"}},
-	{"monitor_rules", LifecycleBusiness, []string{"id", "monitor_id", "rule_type", "value", "deleted_at"}},
-	{"monitor_sources", LifecycleBusiness, []string{"id", "monitor_id", "source_connection_id"}},
+	{"monitors", LifecycleBusiness, []string{"id", "version", "name", "status", "draft_config_version_id", "published_config_version_id", "deleted_at"}},
+	{"monitor_config_versions", LifecycleBusiness, []string{"id", "version", "monitor_id", "revision", "state", "config_hash", "published_at"}},
+	{"monitor_rules", LifecycleBusiness, []string{"id", "version", "config_version_id", "rule_type", "value"}},
+	{"monitor_sources", LifecycleBusiness, []string{"id", "version", "config_version_id", "source_connection_id", "query_signature"}},
 	{"source_authors", LifecycleBusiness, []string{"id", "source_connection_id", "external_id"}},
 	{"contents", LifecycleBusiness, []string{"id", "source_connection_id", "external_id", "dedupe_key", "deleted_at"}},
 	{"content_assets", LifecycleBusiness, []string{"id", "content_id", "object_key", "object_status"}},
-	{"monitor_matches", LifecycleBusiness, []string{"id", "monitor_id", "content_id", "final_score"}},
+	{"monitor_matches", LifecycleBusiness, []string{"id", "monitor_id", "monitor_config_version_id", "content_id", "final_score"}},
 	{"events", LifecycleBusiness, []string{"id", "event_key", "lifecycle_status", "deleted_at"}},
 	{"event_contents", LifecycleBusiness, []string{"id", "event_id", "content_id", "membership_score"}},
 	{"monitor_events", LifecycleBusiness, []string{"id", "monitor_id", "event_id", "final_score"}},
@@ -301,7 +315,8 @@ var specs = []Spec{
 	{"auth_sessions", LifecycleOperational, []string{"id", "user_id", "family_id", "absolute_expires_at", "revoked_at"}},
 	{"auth_refresh_tokens", LifecycleOperational, []string{"id", "session_id", "token_hash", "expires_at", "used_at", "revoked_at"}},
 	{"source_checkpoints", LifecycleOperational, []string{"id", "monitor_source_id", "next_poll_at"}},
-	{"collection_runs", LifecycleOperational, []string{"id", "monitor_source_id", "idempotency_key", "status"}},
+	{"collection_runs", LifecycleOperational, []string{"id", "source_connection_id", "query_signature", "window_start", "window_end", "status"}},
+	{"collection_run_targets", LifecycleOperational, []string{"id", "collection_run_id", "monitor_source_id", "monitor_config_version_id", "target_status"}},
 	{"collection_run_items", LifecycleOperational, []string{"id", "run_id", "external_id", "outcome"}},
 	{"content_metric_snapshots", LifecycleOperational, []string{"id", "content_id", "captured_at"}},
 	{"event_metric_snapshots", LifecycleOperational, []string{"id", "event_id", "captured_at"}},
@@ -338,6 +353,12 @@ func PersistenceFor(table string) (Persistence, bool) {
 			persistence.VersionColumn = "version"
 		}
 		switch {
+		case spec.Table == "monitor_config_versions" || spec.Table == "monitor_rules" || spec.Table == "monitor_sources":
+			persistence.Deletion = DeletionRetained
+			if spec.Table == "monitor_config_versions" {
+				persistence.AllowedSort = []string{"revision", "id"}
+				persistence.CursorFields = []string{"revision", "id"}
+			}
 		case spec.Lifecycle == LifecycleOperational:
 			persistence.Deletion = DeletionRetained
 		case hasColumn(spec.Columns, "deleted_at"):

@@ -14,24 +14,85 @@ done
 
 psql "$dsn" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
 DO $$
+DECLARE
+  suffix text := md5(clock_timestamp()::text || random()::text);
+  source_id bigint;
+  first_monitor_id bigint;
+  second_monitor_id bigint;
+  first_config_id bigint;
+  second_config_id bigint;
+  monitor_source_id bigint;
+  content_id bigint;
+  collection_run_id bigint;
 BEGIN
+  INSERT INTO source_connections (source_type, name, endpoint)
+    VALUES ('rss', 'schema-source-' || suffix, 'https://example.test/schema')
+    RETURNING id INTO source_id;
+  INSERT INTO monitors (name) VALUES ('schema-monitor-first-' || suffix) RETURNING id INTO first_monitor_id;
+  INSERT INTO monitors (name) VALUES ('schema-monitor-second-' || suffix) RETURNING id INTO second_monitor_id;
+  INSERT INTO monitor_config_versions (monitor_id, revision) VALUES (first_monitor_id, 1) RETURNING id INTO first_config_id;
+  INSERT INTO monitor_rules (config_version_id, rule_type, operator, value, weight, approval_status)
+    VALUES (first_config_id, 'keyword', 'contains', 'schema', 10, 'approved');
+  INSERT INTO monitor_sources (config_version_id, source_connection_id)
+    VALUES (first_config_id, source_id) RETURNING id INTO monitor_source_id;
+  UPDATE monitor_config_versions
+    SET state = 'published', config_hash = repeat('a', 64), published_at = now()
+    WHERE id = first_config_id;
+
   BEGIN
-    INSERT INTO monitors (name, relevance_threshold) VALUES ('schema-invalid-score', -1);
-    RAISE EXCEPTION 'missing monitor score constraint';
+    UPDATE monitor_rules SET value = 'mutated' WHERE config_version_id = first_config_id;
+    RAISE EXCEPTION 'missing published monitor rule immutability trigger';
   EXCEPTION WHEN check_violation THEN
     NULL;
   END;
 
   BEGIN
-    INSERT INTO source_connections (source_type, name, endpoint) VALUES ('invalid-source', 'invalid-source', 'https://example.test');
-    RAISE EXCEPTION 'missing source status constraint';
+    UPDATE monitor_sources SET priority = 1 WHERE id = monitor_source_id;
+    RAISE EXCEPTION 'missing published monitor source immutability trigger';
   EXCEPTION WHEN check_violation THEN
     NULL;
   END;
 
   BEGIN
-    INSERT INTO monitor_sources (monitor_id, source_connection_id) VALUES (999999, 999999);
-    RAISE EXCEPTION 'missing monitor source foreign keys';
+    UPDATE source_connections SET endpoint = 'https://example.test/changed' WHERE id = source_id;
+    RAISE EXCEPTION 'missing published source semantic immutability trigger';
+  EXCEPTION WHEN check_violation THEN
+    NULL;
+  END;
+
+  INSERT INTO monitor_config_versions (monitor_id, revision) VALUES (second_monitor_id, 1) RETURNING id INTO second_config_id;
+  BEGIN
+    UPDATE monitors SET published_config_version_id = first_config_id WHERE id = second_monitor_id;
+    RAISE EXCEPTION 'missing monitor config ownership trigger';
+  EXCEPTION WHEN check_violation THEN
+    NULL;
+  END;
+
+  INSERT INTO contents (source_connection_id, external_id, content_type, canonical_url, published_at, fetched_at, dedupe_key)
+    VALUES (source_id, 'schema-content-' || suffix, 'article', 'https://example.test/content', now(), now(), repeat('b', 64))
+    RETURNING id INTO content_id;
+  BEGIN
+    INSERT INTO monitor_matches (monitor_id, monitor_config_version_id, content_id, rule_score, final_score, decision, algorithm_version)
+      VALUES (second_monitor_id, first_config_id, content_id, 10, 10, 'accepted', 'schema');
+    RAISE EXCEPTION 'missing monitor/config composite foreign key';
+  EXCEPTION WHEN foreign_key_violation THEN
+    NULL;
+  END;
+
+  INSERT INTO collection_runs (source_connection_id, query_signature, window_start, window_end, trigger_type, scheduled_at)
+    VALUES (source_id, repeat('c', 64), now(), now() + interval '1 minute', 'manual', now())
+    RETURNING id INTO collection_run_id;
+  BEGIN
+    INSERT INTO collection_runs (source_connection_id, query_signature, window_start, window_end, trigger_type, scheduled_at)
+      VALUES (source_id, repeat('c', 64), now(), now() + interval '1 minute', 'manual', now());
+    RAISE EXCEPTION 'missing shared collection run four-tuple uniqueness';
+  EXCEPTION WHEN unique_violation THEN
+    NULL;
+  END;
+  BEGIN
+    INSERT INTO collection_run_targets (collection_run_id, monitor_source_id, monitor_config_version_id)
+      VALUES (collection_run_id, monitor_source_id, second_config_id);
+    RAISE EXCEPTION 'missing monitor source/config composite foreign key';
   EXCEPTION WHEN foreign_key_violation THEN
     NULL;
   END;
@@ -47,20 +108,6 @@ BEGIN
     INSERT INTO users (email, password_hash, display_name, role) VALUES ('schema-duplicate@example.test', 'x', 'schema', 'viewer');
     INSERT INTO users (email, password_hash, display_name, role) VALUES ('SCHEMA-DUPLICATE@example.test', 'x', 'schema', 'viewer');
     RAISE EXCEPTION 'missing active email uniqueness constraint';
-  EXCEPTION WHEN unique_violation THEN
-    NULL;
-  END;
-
-  BEGIN
-    INSERT INTO source_connections (source_type, name, endpoint) VALUES ('rss', 'schema-idempotency-source', 'https://example.test/rss');
-    INSERT INTO monitors (name) VALUES ('schema-idempotency-monitor');
-    INSERT INTO monitor_sources (monitor_id, source_connection_id)
-      VALUES ((SELECT id FROM monitors WHERE name = 'schema-idempotency-monitor'), (SELECT id FROM source_connections WHERE name = 'schema-idempotency-source'));
-    INSERT INTO collection_runs (monitor_source_id, idempotency_key, trigger_type, scheduled_at)
-      VALUES ((SELECT id FROM monitor_sources ORDER BY id DESC LIMIT 1), 'schema-idempotency-key', 'manual', now());
-    INSERT INTO collection_runs (monitor_source_id, idempotency_key, trigger_type, scheduled_at)
-      VALUES ((SELECT id FROM monitor_sources ORDER BY id DESC LIMIT 1), 'schema-idempotency-key', 'manual', now());
-    RAISE EXCEPTION 'missing collection run idempotency constraint';
   EXCEPTION WHEN unique_violation THEN
     NULL;
   END;
@@ -151,8 +198,8 @@ $$;
 SQL
 
 application_tables=$(psql "$dsn" -Atqc "SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tablename NOT LIKE 'river_%'")
-if test "$application_tables" -ne 49; then
-  printf 'application table count = %s, want 49\n' "$application_tables" >&2
+if test "$application_tables" -ne 51; then
+  printf 'application table count = %s, want 51\n' "$application_tables" >&2
   exit 1
 fi
 

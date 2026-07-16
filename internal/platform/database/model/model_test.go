@@ -5,8 +5,14 @@ import "testing"
 func TestSpecsHaveUniqueTablesAndColumns(t *testing.T) {
 	seen := map[string]bool{}
 	wantColumns := map[string][]string{
-		"auth_sessions":       {"id", "user_id", "family_id", "absolute_expires_at", "revoked_at"},
-		"auth_refresh_tokens": {"id", "session_id", "token_hash", "expires_at", "used_at", "revoked_at"},
+		"auth_sessions":           {"id", "user_id", "family_id", "absolute_expires_at", "revoked_at"},
+		"auth_refresh_tokens":     {"id", "session_id", "token_hash", "expires_at", "used_at", "revoked_at"},
+		"monitors":                {"id", "version", "name", "status", "draft_config_version_id", "published_config_version_id", "deleted_at"},
+		"monitor_config_versions": {"id", "version", "monitor_id", "revision", "state", "config_hash", "published_at"},
+		"monitor_rules":           {"id", "version", "config_version_id", "rule_type", "value"},
+		"monitor_sources":         {"id", "version", "config_version_id", "source_connection_id", "query_signature"},
+		"collection_runs":         {"id", "source_connection_id", "query_signature", "window_start", "window_end", "status"},
+		"collection_run_targets":  {"id", "collection_run_id", "monitor_source_id", "monitor_config_version_id", "target_status"},
 	}
 	for _, spec := range All() {
 		if spec.Table == "" || seen[spec.Table] {
@@ -25,7 +31,7 @@ func TestSpecsHaveUniqueTablesAndColumns(t *testing.T) {
 			t.Errorf("missing mapped table %s", table)
 		}
 	}
-	if got, want := len(seen), 49; got != want {
+	if got, want := len(seen), 51; got != want {
 		t.Errorf("mapped table count = %d, want %d", got, want)
 	}
 }
