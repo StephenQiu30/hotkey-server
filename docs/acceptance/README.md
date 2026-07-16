@@ -6,7 +6,7 @@ feature_area: 文档治理
 purpose: 定义长期验收证据的结构、结论和归档边界
 canonical_path: docs/acceptance/README.md
 status: review
-version: v1.0
+version: v1.1
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -57,3 +57,16 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 - 可收录稳定测试结果、回归基线、截图索引、性能基线和故障恢复结论
 - 不收录重复日志、临时命令输出、会议讨论或无法关联提交的结果
 - PR 中的短期 CI 结果只有形成长期质量门禁时才进入本目录
+
+## 已验收交付
+
+| 编号 | 验收 | 结论 |
+|---|---|---|
+| 005 | [监控主题规则与来源配置](005-监控主题规则与来源配置验收.md) | accepted |
+| 006 | [查询规划与 RSS/HN 采集](006-查询规划与RSS-HN采集验收.md) | accepted |
+
+## 变更记录
+
+| 版本 | 日期 | 变更 |
+|---|---|---|
+| v1.1 | 2026-07-16 | 收录已 accepted 的 Acceptance-006。 |

@@ -5,10 +5,10 @@ audience: [Dev, QA, Ops]
 feature_area: 来源采集
 purpose: 以测试先行实施查询规划及 RSS、Atom、Hacker News 的共享捕获运行
 canonical_path: docs/plans/006-查询规划与RSS-HN采集计划.md
-status: accepted
-execution_status: in_progress
+status: archived
+execution_status: done
 review_status: approved
-version: v1.20
+version: v1.21
 owner: HotKey Server Team
 inputs:
   - docs/prd/006-查询规划与RSS-HN采集.md
@@ -38,7 +38,7 @@ depends_on: [PLAN-005]
 
 ## 开工条件
 
-- 当前 Plan 为 `status: accepted`、`review_status: approved`、`execution_status: in_progress`，对应 PRD 为 `accepted/in_progress`；Task 1 已完成，后续 Task 继续按本计划执行。
+- 实施开始时 Plan 为 `accepted/approved/in_progress`，对应 PRD 为 `accepted/in_progress`；全部 Task、受控 Acceptance 和最终独立复核完成后，本 Plan 于 2026-07-16 归档为 `archived/done`。
 - PLAN-005 为 `archived/done`；Design-003、Design-005、Design-012 和 Design-014 均为 accepted。
 - 开工时 Git 基线已同步且工作树只包含本计划文件；`HOTKEY_TEST_DSN` 与 `HOTKEY_TEST_REDIS_URL` 始终指向可丢弃 PostgreSQL+pgvector 与 Redis。
 - 新增/修改公共 HTTP 契约前，先更新 Design-014、错误码、OpenAPI 与对应 transport 测试。
@@ -195,11 +195,11 @@ depends_on: [PLAN-005]
 
 **Files：** Create `docs/acceptance/006-查询规划与RSS-HN采集验收.md`; Modify `docs/acceptance/README.md`, `docs/prd/006-查询规划与RSS-HN采集.md`, `docs/plans/006-查询规划与RSS-HN采集计划.md`, `docs/prd/README.md`, `docs/plans/README.md`, `docs/README.md`, `README.md`.
 
-- [ ] **RED：** 保存 Tasks 1–7 的实际缺失字段、失败 Connector、裸 retry 或权限拒绝信号；不得事后伪造红灯。
-- [ ] **GREEN：** 在可丢弃服务运行 `HOTKEY_TEST_DSN='postgres://hotkey:hotkey@127.0.0.1:5432/hotkey_test?sslmode=disable' HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' make ci`；以 fixture service 发起 admin HTTP run/health/retry，确认 status、`code:0`、权限、ETag/429/失败 target 和 checkpoint 证据；随后 `make clean` 与 `git diff --check`。
-- [ ] **独立复核：** 非主要编写者复核全部 006 提交、schema/records、Monitor→Source 边界、Connector fixture、事务/竞态、HTTP/OpenAPI、日志脱敏、Acceptance 与工作树；Critical/Important 发现必须修复并重跑。
-- [ ] **归档：** 复核通过后创建 accepted Acceptance-006，PRD/Plan-006 改为 `archived/done`，索引同步；PLAN-007 才可进入 ready 候选。
-- [ ] **提交：** `git add docs && git commit -m "docs: archive collection plan"`。
+- [x] **RED：** 已在 Acceptance-006 保存 Tasks 1–7 的实际缺失字段、失败 Connector、裸 retry 或权限拒绝信号；未事后伪造红灯。
+- [x] **GREEN：** 已在可丢弃服务运行 `HOTKEY_TEST_DSN='postgres:///hotkey_plan006_test?sslmode=disable' HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' make ci`；该 fixture 维护 DSN 具备创建/删除临时数据库权限。fixture service 的 admin HTTP run/health/retry 证据确认 status、`code:0`、权限、ETag/429/失败 target 和 checkpoint；随后已运行 `make clean` 与 `git diff --check`。
+- [x] **独立复核：** 非主要编写者复核全部 006 提交、schema/records、Monitor→Source 边界、Connector fixture、事务/竞态、HTTP/OpenAPI、日志脱敏、Acceptance 与工作树；初次发现不可复现 DSN 的 Important，前向修正并重跑后无 Critical、Important 或 Minor，结论 `APPROVED`。
+- [x] **归档：** 已创建 accepted Acceptance-006，PRD/Plan-006 改为 `archived/done`，索引同步；PLAN-007 成为进入自身审核后的 ready 候选。
+- [x] **提交：** 本归档文件集由 `docs: archive collection plan` 提交。
 
 ## 验收命令
 
@@ -207,9 +207,9 @@ depends_on: [PLAN-005]
 |---|---|---|
 | Domain/planner | `go test ./internal/modules/source/domain ./internal/modules/source/application -count=1` | 稳定 SourceItem、query request、分组和错误分类通过 |
 | Connector | `go test ./internal/modules/source/infrastructure/rss ./internal/modules/source/infrastructure/hackernews -count=1` | RSS/Atom/HN fixture、条件请求、cursor、429/5xx/timeout 通过 |
-| 集成 | `HOTKEY_TEST_DSN='postgres://hotkey:hotkey@127.0.0.1:5432/hotkey_test?sslmode=disable' go test -race ./internal/modules/source/... -count=1` | shared run、target 隔离、item capture 和 checkpoint 通过 |
-| HTTP/OpenAPI | `HOTKEY_TEST_DSN='postgres://hotkey:hotkey@127.0.0.1:5432/hotkey_test?sslmode=disable' HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' go test ./internal/modules/source/transport/http ./tests/architecture -count=1` | Result、权限、错误码、脱敏和 OpenAPI 一致 |
-| 全量 | `HOTKEY_TEST_DSN='postgres://hotkey:hotkey@127.0.0.1:5432/hotkey_test?sslmode=disable' HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' make ci` | 全部质量门禁通过 |
+| 集成 | `HOTKEY_TEST_DSN='postgres:///hotkey_plan006_test?sslmode=disable' go test -race ./internal/modules/source/... -count=1` | shared run、target 隔离、item capture 和 checkpoint 通过 |
+| HTTP/OpenAPI | `HOTKEY_TEST_DSN='postgres:///hotkey_plan006_test?sslmode=disable' HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' go test ./internal/modules/source/transport/http ./tests/architecture -count=1` | Result、权限、错误码、脱敏和 OpenAPI 一致 |
+| 全量 | `HOTKEY_TEST_DSN='postgres:///hotkey_plan006_test?sslmode=disable' HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' make ci` | 全部质量门禁通过 |
 
 ## 风险与回滚
 
@@ -228,6 +228,7 @@ depends_on: [PLAN-005]
 - 2026-07-16：非主要编写者复核 Task 5 提交 `f8db02c..6794c4a`；先发现 maxitem 后 parent cancellation 可将未抓取 ID 标为已处理（Critical），以及并发 429 可能被 cancellation temporary 错误掩盖（Important）。整改后复核通过，无 Critical、Important 或 Minor；确认 cursor 仅在完整范围完成后推进，且 rate-limited/Retry-After 保留原始分类。
 - 2026-07-16：非主要编写者复核 Task 6 提交 `f611f00`，先发现 queued/running shared run 重启后无法重领（P1），以及不同 checkpoint target 会继承按 monitor source ID 任取的 cursor/ETag（P1）。整改 `5b53888` 后复核通过；确认 queued/超过五分钟 running 可原子重领、fresh running 不重复 fetch，且不匹配 request checkpoint state 的 target 保持原状态并留待下一轮。
 - 2026-07-16：非主要编写者复核 Task 7，先发现 retry 后成功 target-item reconciliation 会被旧 checkpoint conflict 的 failed 行保留（Important）；整改为 captured upsert 覆盖失败 outcome 并清空 reason，真实 PostgreSQL conflict→retry→success 测试通过后批准。其余 retry 无 Fetch/Cron/River、health 并发保护与脱敏、授权、OpenAPI 和架构边界均无 Critical/Important。
+- 2026-07-16：非主要编写者最终复核 Task 1–8 与 Acceptance-006；先发现 host DSN 不可复现（Important），改为可建删 fixture 数据库的 local-socket DSN 并重跑后通过。无 Critical、Important 或 Minor，批准归档。
 
 ## 变更记录
 
@@ -254,3 +255,4 @@ depends_on: [PLAN-005]
 | v1.18 | 2026-07-16 | 记录 Task 6 shared run 持久化、target 隔离、重领/异 checkpoint P1 整改、完整回归及独立复核通过证据。 |
 | v1.19 | 2026-07-16 | 记录 Task 7 管理员 run/health API、安全 DTO、错误码和低基数指标的 RED/GREEN，以及 checkpoint-conflict retry reconciliation 整改、独立复核和全量 CI；等待实现提交。 |
 | v1.20 | 2026-07-16 | 记录 Task 7 实现提交 `d157d75`；Task 8 受控验收、独立复核与归档仍待执行。 |
+| v1.21 | 2026-07-16 | 完成 Task 8：以可复现 fixture DSN 通过全量门禁与独立最终复核，Acceptance-006 accepted，归档为 archived/done。 |
