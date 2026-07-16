@@ -121,6 +121,13 @@ CREATE TABLE IF NOT EXISTS monitor_sources (
     enabled boolean NOT NULL DEFAULT true, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (config_version_id, source_connection_id), UNIQUE (id, config_version_id)
 );
+CREATE INDEX IF NOT EXISTS monitor_sources_relevance_active_source_idx
+    ON monitor_sources(source_connection_id, priority, config_version_id)
+    WHERE enabled;
+CREATE INDEX IF NOT EXISTS monitor_rules_relevance_approved_lexical_idx
+    ON monitor_rules(lower(value), config_version_id, origin, weight DESC, id)
+    WHERE enabled AND approval_status = 'approved'
+      AND rule_type IN ('keyword','phrase','entity','exclude_keyword');
 
 CREATE OR REPLACE FUNCTION enforce_monitor_config_version_immutability()
 RETURNS trigger

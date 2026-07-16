@@ -86,6 +86,36 @@ type RelevanceSnapshot struct {
 	CreatedAt, UpdatedAt time.Time
 }
 
+// RelevanceCandidateHit is a deliberately small result from one bounded
+// recall path. It does not expose a Monitor configuration until the caller has
+// formed the capped union and performs its single batch load.
+type RelevanceCandidateHit struct {
+	MonitorID    int64
+	LexicalScore float64
+}
+
+// RelevanceRule is the immutable, approved subset of a published Monitor
+// configuration needed by the deterministic scorer. String fields mirror the
+// Monitor contract without making ingestion depend on another module's
+// persistence representation.
+type RelevanceRule struct {
+	ID                                int64
+	RuleType, Operator, Value, Origin string
+	Weight                            float64
+	Priority                          int16
+}
+
+// RelevanceCandidate is one active Monitor pinned to its current published
+// configuration. Rules are loaded only after all recall paths are capped and
+// de-duplicated.
+type RelevanceCandidate struct {
+	MonitorID, MonitorConfigVersionID int64
+	ConfigHash                        string
+	RelevanceThreshold                float64
+	Languages, Regions                []string
+	Rules                             []RelevanceRule
+}
+
 type RelevanceSnapshotCursor struct {
 	FinalScore float64
 	ID         int64

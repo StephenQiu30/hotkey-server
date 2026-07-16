@@ -152,11 +152,40 @@ WHERE e.active AND e.`+specification.targetColumn+`=$1 AND e.ai_run_id=$2 AND r.
 	return append([]float32(nil), vector.Slice()...), nil
 }
 
-// NearestEmbeddings only serves vectors for an enabled, non-deleted profile
-// and the caller-selected semantic model version. Stale vectors cannot leak
-// into an otherwise valid similarity response.
-func (repository *Repository) NearestEmbeddings(ctx context.Context, target EmbeddingTarget, profileID int64, modelVersion string, vector []float32, limit int) ([]EmbeddingMatch, error) {
-	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil || profileID <= 0 || strings.TrimSpace(modelVersion) == "" || limit < 1 || limit > 100 {
+// ActiveEmbedding returns only the current vector from the exact profile
+// revision and model space selected by the caller. It is a read-only serving
+// primitive; callers cannot use it to bypass embedding run provenance.
+func (repository *Repository) ActiveEmbedding(ctx context.Context, target EmbeddingTarget, targetID, profileID, profileVersion int64, modelVersion string) ([]float32, bool, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil || targetID <= 0 || profileID <= 0 || profileVersion <= 0 || strings.TrimSpace(modelVersion) == "" {
+		return nil, false, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
+	specification, ok := embeddingSpecificationFor(target)
+	if !ok {
+		return nil, false, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
+	var vector pgvector.HalfVector
+	err := repository.queryer(ctx).QueryRowContext(ctx, `
+SELECT e.embedding
+FROM `+specification.table+` e
+JOIN ai_model_profiles p ON p.id=e.model_profile_id
+WHERE e.active AND e.`+specification.targetColumn+`=$1
+  AND e.model_profile_id=$2 AND e.model_profile_version=$3 AND e.model_version=$4
+  AND p.enabled AND p.deleted_at IS NULL AND p.version=$3`,
+		targetID, profileID, profileVersion, modelVersion).Scan(&vector)
+	if err == sql.ErrNoRows {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("read active %s embedding: %w", target, err)
+	}
+	return append([]float32(nil), vector.Slice()...), true, nil
+}
+
+// NearestEmbeddings only serves vectors from the exact enabled profile
+// revision and semantic model version selected by the caller. Stale vectors
+// cannot leak into an otherwise valid similarity response.
+func (repository *Repository) NearestEmbeddings(ctx context.Context, target EmbeddingTarget, profileID, profileVersion int64, modelVersion string, vector []float32, limit int) ([]EmbeddingMatch, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil || profileID <= 0 || profileVersion <= 0 || strings.TrimSpace(modelVersion) == "" || limit < 1 || limit > 100 {
 		return nil, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
 	}
 	if err := intelligencedomain.ValidateEmbedding(vector); err != nil {
@@ -171,9 +200,10 @@ SELECT e.`+specification.targetColumn+`,e.model_profile_version,e.model_version,
 FROM `+specification.table+` e
 JOIN ai_model_profiles p ON p.id=e.model_profile_id
 WHERE e.active AND e.model_profile_id=$2 AND e.model_version=$3
-  AND p.enabled AND p.deleted_at IS NULL
+  AND e.model_profile_version=$4
+  AND p.enabled AND p.deleted_at IS NULL AND p.version=$4
 ORDER BY e.embedding <=> $1::halfvec
-LIMIT $4`, pgvector.NewVector(vector), profileID, modelVersion, limit)
+LIMIT $5`, pgvector.NewVector(vector), profileID, modelVersion, profileVersion, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query nearest %s embeddings: %w", target, err)
 	}
@@ -188,6 +218,46 @@ LIMIT $4`, pgvector.NewVector(vector), profileID, modelVersion, limit)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate nearest %s embeddings: %w", target, err)
+	}
+	return matches, nil
+}
+
+// NearestPublishedMonitorEmbeddings is the serving query used by relevance
+// recall. Unlike the generic repository primitive, it filters Monitor
+// eligibility before applying the 12-neighbor limit so paused, archived, or
+// superseded configurations cannot consume the bounded candidate budget.
+func (repository *Repository) NearestPublishedMonitorEmbeddings(ctx context.Context, profileID, profileVersion int64, modelVersion string, vector []float32, limit int) ([]EmbeddingMatch, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil || profileID <= 0 || profileVersion <= 0 || strings.TrimSpace(modelVersion) == "" || limit < 1 || limit > 12 {
+		return nil, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
+	if err := intelligencedomain.ValidateEmbedding(vector); err != nil {
+		return nil, err
+	}
+	rows, err := repository.queryRows(ctx, `
+SELECT e.monitor_id,e.model_profile_version,e.model_version,e.embedding <=> $1::halfvec
+FROM monitor_embeddings e
+JOIN ai_model_profiles p ON p.id=e.model_profile_id
+JOIN monitors m ON m.id=e.monitor_id
+JOIN monitor_config_versions c ON c.id=m.published_config_version_id
+WHERE e.active AND e.model_profile_id=$2 AND e.model_version=$3 AND e.model_profile_version=$4
+  AND p.enabled AND p.deleted_at IS NULL AND p.version=$4
+  AND m.status='active' AND m.deleted_at IS NULL AND c.state='published'
+ORDER BY e.embedding <=> $1::halfvec
+LIMIT $5`, pgvector.NewVector(vector), profileID, modelVersion, profileVersion, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query nearest published monitor embeddings: %w", err)
+	}
+	defer rows.Close()
+	matches := []EmbeddingMatch{}
+	for rows.Next() {
+		var match EmbeddingMatch
+		if err := rows.Scan(&match.TargetID, &match.ModelProfileVersion, &match.ModelVersion, &match.Distance); err != nil {
+			return nil, fmt.Errorf("scan nearest published monitor embedding: %w", err)
+		}
+		matches = append(matches, match)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate nearest published monitor embeddings: %w", err)
 	}
 	return matches, nil
 }

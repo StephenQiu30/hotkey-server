@@ -71,7 +71,7 @@ func TestEmbeddingRepositoryUsesFilteredHNSWForEveryTarget(t *testing.T) {
 				InputHash: fmt.Sprintf("%064x", index+1), Vector: embeddingVector(float32(index + 1)), QueryText: "hnsw query",
 			})
 		}
-		matches, err := repository.NearestEmbeddings(context.Background(), intelligencepostgres.EmbeddingTarget(target.kind), profile.ID, profile.ModelVersion, embeddingVector(1), 5)
+		matches, err := repository.NearestEmbeddings(context.Background(), intelligencepostgres.EmbeddingTarget(target.kind), profile.ID, profile.Version, profile.ModelVersion, embeddingVector(1), 5)
 		if err != nil || len(matches) != 5 {
 			t.Fatalf("NearestEmbeddings(%s) matches/error = %d / %v, want 5/nil", target.kind, len(matches), err)
 		}
@@ -97,11 +97,11 @@ func TestEmbeddingRepositoryFiltersCurrentActiveModelAndUsesHNSW(t *testing.T) {
 	if _, err := completeEmbedding(t, repository, profile, input); err != nil {
 		t.Fatalf("CompleteEmbedding() error = %v", err)
 	}
-	matches, err := repository.NearestEmbeddings(context.Background(), intelligencepostgres.EmbeddingTargetContent, profile.ID, profile.ModelVersion, embeddingVector(1), 5)
+	matches, err := repository.NearestEmbeddings(context.Background(), intelligencepostgres.EmbeddingTargetContent, profile.ID, profile.Version, profile.ModelVersion, embeddingVector(1), 5)
 	if err != nil || len(matches) != 1 || matches[0].TargetID != targets[0].id {
 		t.Fatalf("NearestEmbeddings(current model) = %#v / %v", matches, err)
 	}
-	stale, err := repository.NearestEmbeddings(context.Background(), intelligencepostgres.EmbeddingTargetContent, profile.ID, "stale-model", embeddingVector(1), 5)
+	stale, err := repository.NearestEmbeddings(context.Background(), intelligencepostgres.EmbeddingTargetContent, profile.ID, profile.Version, "stale-model", embeddingVector(1), 5)
 	if err != nil || len(stale) != 0 {
 		t.Fatalf("NearestEmbeddings(stale model) = %#v / %v, want no match", stale, err)
 	}
@@ -109,7 +109,7 @@ func TestEmbeddingRepositoryFiltersCurrentActiveModelAndUsesHNSW(t *testing.T) {
 	if _, err := repository.UpdateProfile(context.Background(), profile, profile.Version); err != nil {
 		t.Fatalf("UpdateProfile(disable) error = %v", err)
 	}
-	disabled, err := repository.NearestEmbeddings(context.Background(), intelligencepostgres.EmbeddingTargetContent, profile.ID, profile.ModelVersion, embeddingVector(1), 5)
+	disabled, err := repository.NearestEmbeddings(context.Background(), intelligencepostgres.EmbeddingTargetContent, profile.ID, profile.Version, profile.ModelVersion, embeddingVector(1), 5)
 	if err != nil || len(disabled) != 0 {
 		t.Fatalf("NearestEmbeddings(disabled profile) = %#v / %v, want no match", disabled, err)
 	}
@@ -300,10 +300,10 @@ EXPLAIN (COSTS OFF)
 SELECT e.`+target.column+`
 FROM `+target.table+` e
 JOIN ai_model_profiles p ON p.id=e.model_profile_id
-WHERE e.active AND e.model_profile_id=$2 AND e.model_version=$3
-  AND p.enabled AND p.deleted_at IS NULL
+WHERE e.active AND e.model_profile_id=$2 AND e.model_version=$3 AND e.model_profile_version=$4
+  AND p.enabled AND p.deleted_at IS NULL AND p.version=$4
 ORDER BY e.embedding <=> $1::halfvec
-LIMIT 5`, pgvector.NewVector(embeddingVector(1)), profile.ID, profile.ModelVersion)
+LIMIT 5`, pgvector.NewVector(embeddingVector(1)), profile.ID, profile.ModelVersion, profile.Version)
 		if err != nil {
 			return fmt.Errorf("EXPLAIN %s HNSW: %w", target.kind, err)
 		}

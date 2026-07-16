@@ -35,6 +35,15 @@ type RelevanceRepository interface {
 	ReviewSuggestion(context.Context, int64, int64, int64, SuggestionStatus) (RelevanceSuggestion, error)
 }
 
+// RelevanceCandidateReader is the bounded read side of relevance matching.
+// Implementations must return only active Monitors whose current config is
+// published and must never turn these calls into an unrestricted Monitor list.
+type RelevanceCandidateReader interface {
+	SourceCandidates(context.Context, int64, int) ([]RelevanceCandidateHit, error)
+	LexicalCandidates(context.Context, []string, int) ([]RelevanceCandidateHit, error)
+	LoadRelevanceCandidates(context.Context, []int64) ([]RelevanceCandidate, error)
+}
+
 // EvidenceStore is ingestion's only object-storage boundary. Implementations
 // must not leak provider SDK types into application or domain code.
 type EvidenceStore interface {
