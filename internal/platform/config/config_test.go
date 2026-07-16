@@ -55,6 +55,39 @@ func TestValidateAcceptsWorkerWithoutListeningAddress(t *testing.T) {
 	}
 }
 
+func TestValidateRuntimeRequiresCompleteMinIOConfigurationWithoutLeakingSecret(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name   string
+		mutate func(*Config)
+	}{
+		{name: "endpoint", mutate: func(config *Config) { config.MinIO.Endpoint = "" }},
+		{name: "bucket", mutate: func(config *Config) { config.MinIO.Bucket = "" }},
+		{name: "access key", mutate: func(config *Config) { config.MinIO.AccessKey = "" }},
+		{name: "secret key", mutate: func(config *Config) { config.MinIO.SecretKey = "" }},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			config := Default()
+			config.Role = "worker"
+			config.DatabaseURL = "postgres://fixture"
+			config.MinIO.AccessKey = "fixture-access"
+			config.MinIO.SecretKey = "fixture-secret-must-not-appear"
+			test.mutate(&config)
+
+			err := config.ValidateRuntime()
+			if err == nil {
+				t.Fatal("ValidateRuntime() error = nil, want incomplete MinIO rejection")
+			}
+			if strings.Contains(err.Error(), "fixture-secret-must-not-appear") {
+				t.Fatalf("ValidateRuntime() leaked MinIO secret: %v", err)
+			}
+		})
+	}
+}
+
 func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("HOTKEY_ROLE", "worker")
 	t.Setenv("HOTKEY_HTTP_ADDR", "")

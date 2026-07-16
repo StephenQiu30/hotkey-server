@@ -197,9 +197,10 @@ type ContentPage struct {
 }
 
 type EvidenceObject struct {
-	ObjectKey string
-	Text      string
-	SHA256    string
+	SourceConnectionID int64
+	ObjectKey          string
+	Text               string
+	SHA256             string
 }
 
 type EvidenceReceipt struct {

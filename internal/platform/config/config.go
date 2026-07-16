@@ -32,6 +32,24 @@ type MinIOConfig struct {
 	UseSSL    bool
 }
 
+// ValidateRuntime verifies the minimum credentials required to construct the
+// single MinIO client used by a running process. It intentionally names only
+// missing fields so an error can never echo a configured secret.
+func (c MinIOConfig) ValidateRuntime() error {
+	switch {
+	case strings.TrimSpace(c.Endpoint) == "":
+		return errors.New("MinIO endpoint is required")
+	case strings.TrimSpace(c.Bucket) == "":
+		return errors.New("MinIO bucket is required")
+	case strings.TrimSpace(c.AccessKey) == "":
+		return errors.New("MinIO access key is required")
+	case strings.TrimSpace(c.SecretKey) == "":
+		return errors.New("MinIO secret key is required")
+	default:
+		return nil
+	}
+}
+
 type AuthenticationConfig struct {
 	JWTSecret              string
 	JWTIssuer              string
@@ -209,6 +227,9 @@ func (c Config) ValidateRuntime() error {
 	}
 	if strings.TrimSpace(c.DatabaseURL) == "" {
 		return errors.New("database URL is required for a running role")
+	}
+	if err := c.MinIO.ValidateRuntime(); err != nil {
+		return err
 	}
 	return nil
 }
