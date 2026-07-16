@@ -150,6 +150,198 @@ func TestServiceIntegrationUsesPostgresTransactionsForRefreshReplayAndUserRestor
 	}
 }
 
+func TestChangePasswordRevokesEveryRealPostgresSessionAndAccessJWT(t *testing.T) {
+	fixture := newApplicationIntegrationFixture(t)
+	user := fixture.register(t, "change-password@example.test", "current password")
+	first, second := fixture.loginTwice(t, user.Email, "current password")
+	subject := fixture.authenticate(t, first.AccessToken)
+
+	if err := fixture.service.ChangePassword(context.Background(), subject, "current password", "next password"); err != nil {
+		t.Fatalf("ChangePassword() error = %v", err)
+	}
+	fixture.assertAccessRejected(t, first.AccessToken)
+	fixture.assertAccessRejected(t, second.AccessToken)
+	fixture.assertAllUserSessionsRevoked(t, user.ID, 2)
+	fixture.assertAudit(t, "identity.password_change", user.ID, "success")
+}
+
+func TestConfirmPasswordResetRevokesEveryRealPostgresSessionAndAccessJWT(t *testing.T) {
+	fixture := newApplicationIntegrationFixture(t)
+	user := fixture.register(t, "password-reset@example.test", "current password")
+	first, second := fixture.loginTwice(t, user.Email, "current password")
+	fixture.store.ticket = domain.VerificationTicket{
+		Token:   "password-reset-ticket",
+		Email:   user.Email,
+		Purpose: domain.VerificationPurposePasswordReset,
+	}
+
+	if err := fixture.service.ConfirmPasswordReset(context.Background(), "password-reset-ticket", "next password"); err != nil {
+		t.Fatalf("ConfirmPasswordReset() error = %v", err)
+	}
+	fixture.assertAccessRejected(t, first.AccessToken)
+	fixture.assertAccessRejected(t, second.AccessToken)
+	fixture.assertAllUserSessionsRevoked(t, user.ID, 2)
+	fixture.assertAudit(t, "identity.password_reset", user.ID, "success")
+}
+
+func TestAdminDisableRevokesTargetRealPostgresSessionsAndAccessJWT(t *testing.T) {
+	fixture := newApplicationIntegrationFixture(t)
+	target := fixture.register(t, "disable-target@example.test", "target password")
+	first, second := fixture.loginTwice(t, target.Email, "target password")
+	admin := fixture.createAdminSubject(t, "disable-admin@example.test", "admin password")
+
+	if _, err := fixture.service.UpdateUser(context.Background(), admin, target.ID, UserUpdate{Status: pointerToStatus(domain.UserStatusDisabled)}); err != nil {
+		t.Fatalf("UpdateUser(disable) error = %v", err)
+	}
+	fixture.assertAccessRejected(t, first.AccessToken)
+	fixture.assertAccessRejected(t, second.AccessToken)
+	fixture.assertAllUserSessionsRevoked(t, target.ID, 2)
+	fixture.assertAudit(t, "identity.user_update", target.ID, "success")
+}
+
+func TestAdminSoftDeleteRevokesTargetRealPostgresSessionsAndAccessJWT(t *testing.T) {
+	fixture := newApplicationIntegrationFixture(t)
+	target := fixture.register(t, "delete-target@example.test", "target password")
+	first, second := fixture.loginTwice(t, target.Email, "target password")
+	admin := fixture.createAdminSubject(t, "delete-admin@example.test", "admin password")
+
+	if _, err := fixture.service.DeleteUser(context.Background(), admin, target.ID); err != nil {
+		t.Fatalf("DeleteUser() error = %v", err)
+	}
+	fixture.assertAccessRejected(t, first.AccessToken)
+	fixture.assertAccessRejected(t, second.AccessToken)
+	fixture.assertAllUserSessionsRevoked(t, target.ID, 2)
+	fixture.assertAudit(t, "identity.user_delete", target.ID, "success")
+	var deleted bool
+	if err := fixture.runtime.SQL.QueryRow(`SELECT deleted_at IS NOT NULL FROM users WHERE id = $1`, target.ID).Scan(&deleted); err != nil {
+		t.Fatalf("read soft-deleted target: %v", err)
+	}
+	if !deleted {
+		t.Fatal("DeleteUser() left target active in PostgreSQL")
+	}
+}
+
+type applicationIntegrationFixture struct {
+	runtime *database.Runtime
+	service *Service
+	store   *verificationStoreFake
+}
+
+func newApplicationIntegrationFixture(t *testing.T) applicationIntegrationFixture {
+	t.Helper()
+	runtime := openApplicationIntegrationRuntime(t)
+	now := time.Date(2026, time.July, 16, 8, 0, 0, 0, time.UTC)
+	issuer, err := security.NewJWT(security.JWTConfig{
+		Secret:   "0123456789abcdef0123456789abcdef",
+		Issuer:   "hotkey-test",
+		Audience: "hotkey-web",
+		Now:      func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("NewJWT() error = %v", err)
+	}
+	store := &verificationStoreFake{}
+	service, err := NewService(Dependencies{
+		Runtime:      runtime,
+		Users:        identitypostgres.NewUserRepository(runtime),
+		Sessions:     identitypostgres.NewSessionRepository(runtime),
+		Audit:        identitypostgres.NewAuditRepository(runtime),
+		Passwords:    security.NewPasswordHasher(),
+		Tokens:       issuer,
+		Verification: store,
+		Mailer:       mailerFake{},
+		Clock:        fixedClock{now: now},
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	return applicationIntegrationFixture{runtime: runtime, service: service, store: store}
+}
+
+func (fixture applicationIntegrationFixture) register(t *testing.T, email, password string) *domain.User {
+	t.Helper()
+	fixture.store.ticket = domain.VerificationTicket{Token: "registration-" + email, Email: email, Purpose: domain.VerificationPurposeRegistration}
+	user, err := fixture.service.Register(context.Background(), RegisterInput{VerificationTicket: fixture.store.ticket.Token, Password: password, DisplayName: "Integration User"})
+	if err != nil {
+		t.Fatalf("Register(%q) error = %v", email, err)
+	}
+	return user
+}
+
+func (fixture applicationIntegrationFixture) loginTwice(t *testing.T, email, password string) (Authentication, Authentication) {
+	t.Helper()
+	first, err := fixture.service.Login(context.Background(), Credentials{Email: email, Password: password})
+	if err != nil {
+		t.Fatalf("first Login(%q) error = %v", email, err)
+	}
+	second, err := fixture.service.Login(context.Background(), Credentials{Email: email, Password: password})
+	if err != nil {
+		t.Fatalf("second Login(%q) error = %v", email, err)
+	}
+	return first, second
+}
+
+func (fixture applicationIntegrationFixture) authenticate(t *testing.T, accessToken string) domain.Subject {
+	t.Helper()
+	subject, err := fixture.service.Authenticator().Authenticate(context.Background(), accessToken)
+	if err != nil {
+		t.Fatalf("Authenticate() error = %v", err)
+	}
+	return subject
+}
+
+func (fixture applicationIntegrationFixture) createAdminSubject(t *testing.T, email, password string) domain.Subject {
+	t.Helper()
+	hasher := security.NewPasswordHasher()
+	hash, err := hasher.Hash(password)
+	if err != nil {
+		t.Fatalf("Hash(admin password) error = %v", err)
+	}
+	admin := &domain.User{Email: email, PasswordHash: hash, DisplayName: "Administrator", Role: domain.RoleAdmin, Status: domain.UserStatusActive}
+	if err := identitypostgres.NewUserRepository(fixture.runtime).Create(context.Background(), admin); err != nil {
+		t.Fatalf("Create(admin) error = %v", err)
+	}
+	login, err := fixture.service.Login(context.Background(), Credentials{Email: email, Password: password})
+	if err != nil {
+		t.Fatalf("Login(admin) error = %v", err)
+	}
+	return fixture.authenticate(t, login.AccessToken)
+}
+
+func (fixture applicationIntegrationFixture) assertAccessRejected(t *testing.T, accessToken string) {
+	t.Helper()
+	if _, err := fixture.service.Authenticator().Authenticate(context.Background(), accessToken); err == nil {
+		t.Fatalf("Authenticator accepted revoked access token %q", accessToken)
+	} else {
+		requireAppCode(t, err, sharederrors.CodeSessionInvalid)
+	}
+}
+
+func (fixture applicationIntegrationFixture) assertAllUserSessionsRevoked(t *testing.T, userID int64, wantTotal int) {
+	t.Helper()
+	var total, revoked, active int
+	if err := fixture.runtime.SQL.QueryRow(`
+SELECT count(*), count(*) FILTER (WHERE revoked_at IS NOT NULL), count(*) FILTER (WHERE revoked_at IS NULL)
+FROM auth_sessions
+WHERE user_id = $1`, userID).Scan(&total, &revoked, &active); err != nil {
+		t.Fatalf("count auth sessions: %v", err)
+	}
+	if total != wantTotal || revoked != wantTotal || active != 0 {
+		t.Fatalf("auth sessions total=%d revoked=%d active=%d, want %d/%d/0", total, revoked, active, wantTotal, wantTotal)
+	}
+}
+
+func (fixture applicationIntegrationFixture) assertAudit(t *testing.T, action string, resourceID int64, result string) {
+	t.Helper()
+	var count int
+	if err := fixture.runtime.SQL.QueryRow(`SELECT count(*) FROM audit_logs WHERE action = $1 AND resource_id = $2 AND result = $3`, action, resourceID, result).Scan(&count); err != nil {
+		t.Fatalf("count audit events: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("audit action %q resource=%d result=%q count=%d, want 1", action, resourceID, result, count)
+	}
+}
+
 func openApplicationIntegrationRuntime(t *testing.T) *database.Runtime {
 	t.Helper()
 	runtime, err := database.Open(context.Background(), postgresfixture.New(t))
