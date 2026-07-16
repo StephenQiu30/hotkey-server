@@ -249,6 +249,17 @@ func TestConnectorBoundsPaginationAndRejectsUnsafeDestinations(t *testing.T) {
 		}
 	})
 
+	t.Run("credential_shaped_redirect", func(t *testing.T) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			http.Redirect(writer, request, "https://feeds.example.test/next?token=secret", http.StatusFound)
+		}))
+		defer server.Close()
+		connector := newTestConnector(t, server, 1, publicResolver())
+		if _, err := connector.Fetch(context.Background(), testFetchRequest()); err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorPermanent {
+			t.Fatalf("credential-shaped redirect error = %v, class = %q; want permanent", err, domain.ClassifyCollectionError(err))
+		}
+	})
+
 	t.Run("private_dns", func(t *testing.T) {
 		server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 		defer server.Close()
