@@ -8,7 +8,7 @@ canonical_path: docs/plans/006-查询规划与RSS-HN采集计划.md
 status: accepted
 execution_status: in_progress
 review_status: approved
-version: v1.10
+version: v1.11
 owner: HotKey Server Team
 inputs:
   - docs/prd/006-查询规划与RSS-HN采集.md
@@ -38,9 +38,9 @@ depends_on: [PLAN-005]
 
 ## 开工条件
 
-- 当前 Plan 为 `status: accepted`、`review_status: approved`、`execution_status: ready`，对应 PRD 为 `accepted/ready`。
+- 当前 Plan 为 `status: accepted`、`review_status: approved`、`execution_status: in_progress`，对应 PRD 为 `accepted/in_progress`；Task 1 已完成，后续 Task 继续按本计划执行。
 - PLAN-005 为 `archived/done`；Design-003、Design-005、Design-012 和 Design-014 均为 accepted。
-- Git 基线同步，工作树只包含本计划文件；`HOTKEY_TEST_DSN` 与 `HOTKEY_TEST_REDIS_URL` 指向可丢弃 PostgreSQL+pgvector 与 Redis。
+- 开工时 Git 基线已同步且工作树只包含本计划文件；`HOTKEY_TEST_DSN` 与 `HOTKEY_TEST_REDIS_URL` 始终指向可丢弃 PostgreSQL+pgvector 与 Redis。
 - 新增/修改公共 HTTP 契约前，先更新 Design-014、错误码、OpenAPI 与对应 transport 测试。
 
 ## 稳定接口与边界
@@ -80,12 +80,12 @@ depends_on: [PLAN-005]
 
 **Files：** Modify `docs/design/003-数据库与数据生命周期设计.md`, `db/schema.sql`, `internal/platform/database/model/model.go`, `internal/platform/database/model/model_test.go`, `internal/platform/database/database_integration_test.go`, `tests/architecture/schema_test.go`, `scripts/verify-schema.sh`.
 
-- [ ] **RED：** 添加记录映射与真实 PostgreSQL 测试，要求上述 fields、`source_connection_id + query_signature + window` 唯一键、`run_id + external_id` 唯一键、captured item version/JSON/raw disposition、`collection_run_target_items` 的 target/item 唯一键及同 run 复合外键、target immutable config 外键和 checkpoint 乐观版本；现有 Schema 必须因字段/约束缺失失败。
-- [ ] **运行 RED：** `HOTKEY_TEST_DSN='postgres://hotkey:hotkey@127.0.0.1:5432/hotkey_test?sslmode=disable' go test ./internal/platform/database/model ./internal/platform/database ./tests/architecture -run 'TestCollection|TestCompleteSchemaCoversMappedRecords|TestGreenfieldSchemaEnforcesCriticalConstraints' -count=1`。
-- [ ] **GREEN：** 只修改完整 `db/schema.sql` 与对应 records/`All()`/表数断言；capture payload 只保存已规范化的 SourceItem envelope，原始第三方响应字节不进 PostgreSQL；空库二次执行后验证同一 run 唯一、跨 target 隔离、item 幂等、target-item 对账只可连接同 run 的 target/item；target 成败与 checkpoint 推进的应用状态机由 Task 6 实现。
-- [ ] **重构：** 把 collection record mapping 与业务状态转换保持在 Source 模块，模型只保存列映射；不创建 migration、AutoMigrate 或临时 Schema。
-- [ ] **回归：** `HOTKEY_TEST_DSN='postgres://hotkey:hotkey@127.0.0.1:5432/hotkey_test?sslmode=disable' sh scripts/verify-schema.sh`、`HOTKEY_TEST_DSN='postgres://hotkey:hotkey@127.0.0.1:5432/hotkey_test?sslmode=disable' sh scripts/verify-database-runtime.sh`。
-- [ ] **提交：** `git add docs/design/003-数据库与数据生命周期设计.md db/schema.sql internal/platform/database/model internal/platform/database/database_integration_test.go tests/architecture/schema_test.go scripts/verify-schema.sh && git commit -m "feat: add collection capture schema"`。
+- [x] **RED：** 已添加记录映射与真实 PostgreSQL 测试，覆盖上述 fields、`source_connection_id + query_signature + window` 唯一键、`run_id + external_id` 唯一键、captured item version/JSON/raw disposition、`collection_run_target_items` 的 target/item 唯一键及同 run 复合外键、target immutable config 外键和 checkpoint 乐观版本；旧 Schema 已因字段/约束缺失失败。
+- [x] **运行 RED：** 已使用可丢弃本地 PostgreSQL 执行 `HOTKEY_TEST_DSN='postgres:///hotkey_plan006_test?sslmode=disable' go test ./internal/platform/database/model ./internal/platform/database ./tests/architecture -run 'TestCollection|TestCompleteSchemaCoversMappedRecords|TestGreenfieldSchemaEnforcesCriticalConstraints' -count=1`，先红后绿。
+- [x] **GREEN：** 已只修改完整 `db/schema.sql` 与对应 records/`All()`/表数断言；capture payload 只保存已规范化的 SourceItem envelope，原始第三方响应字节不进 PostgreSQL；空库二次执行已验证同一 run 唯一、跨 target 隔离、item 幂等、target-item 对账只可连接同 run 的 target/item；target 成败与 checkpoint 推进的应用状态机仍由 Task 6 实现。
+- [x] **重构：** collection record mapping 保持为平台列映射，业务状态转换仍留待 Source 模块；未创建 migration、AutoMigrate 或临时 Schema。
+- [x] **回归：** 已在可丢弃本地 PostgreSQL 运行 `sh scripts/verify-schema.sh`、`sh scripts/verify-database-runtime.sh`、`go test -race ./internal/platform/database/... ./tests/architecture -count=1` 与完整 `make ci`。
+- [x] **提交：** 已提交 `8cf8d56 feat: add collection capture schema` 与复审修复 `2d0059b fix: enforce collection target item run alignment`。
 
 ## Task 2：采集领域契约与 published target 读取边界
 
@@ -221,6 +221,7 @@ depends_on: [PLAN-005]
 ## 独立审核
 
 - 2026-07-16：非主要编写者已审核 PLAN-006 v1.7 及其 Design-003/005/012、PRD-006 关联；无 Critical、Important 或 Minor。批准进入 `accepted/ready`，后续每个 Task 仍须测试先行与任务级复核。
+- 2026-07-16：非主要编写者复核 Task 1 提交 `8cf8d56..2d0059b` 及 Design-003 v2.9、PRD-006 v1.8、Plan-006 v1.10；无阻塞、重要或建议问题，确认同 run 复合外键和 PostgreSQL 双向跨 run 负例完整封堵。
 
 ## 变更记录
 
@@ -237,3 +238,4 @@ depends_on: [PLAN-005]
 | v1.8 | 2026-07-16 | 独立审核通过，切换为 accepted/approved/ready。 |
 | v1.9 | 2026-07-16 | 启动 PLAN-006 实施，当前执行 Task 1。 |
 | v1.10 | 2026-07-16 | Task 1 独立复核补充同 run target-item 对账的复合外键与 PostgreSQL 负例。 |
+| v1.11 | 2026-07-16 | 记录 Task 1 的 RED/GREEN、完整回归、提交与独立复核通过证据。 |
