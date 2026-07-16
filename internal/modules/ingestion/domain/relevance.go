@@ -82,6 +82,7 @@ func (input RelevanceSnapshotInput) Validate() error {
 type RelevanceSnapshot struct {
 	RelevanceSnapshotInput
 	ID, Version          int64
+	ManualLocked         bool
 	ReviewAIRunID        *int64
 	CreatedAt, UpdatedAt time.Time
 }

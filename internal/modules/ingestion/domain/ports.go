@@ -29,6 +29,7 @@ type ContentRepository interface {
 type RelevanceRepository interface {
 	UpsertSnapshot(context.Context, RelevanceSnapshotInput) (RelevanceSnapshot, bool, error)
 	ApplySuccessfulReview(context.Context, SuccessfulReviewInput) (RelevanceSnapshot, error)
+	MarkReviewUnavailable(context.Context, int64, int64, string) (RelevanceSnapshot, error)
 	ListLatestSnapshots(context.Context, int64, RelevanceSnapshotListQuery) (RelevanceSnapshotPage, error)
 	UpsertFeedback(context.Context, RelevanceFeedbackInput) (RelevanceFeedback, error)
 	UpsertPendingSuggestion(context.Context, RelevanceSuggestionInput) (RelevanceSuggestion, bool, error)

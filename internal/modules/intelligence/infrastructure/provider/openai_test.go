@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -197,6 +198,36 @@ func TestOpenAIProviderStructuredRequestUsesStrictSchemaAndBoundedRepair(t *test
 	assertDoesNotContain(t, body, "term-expansion-v3")
 }
 
+func TestOpenAIProviderRelevanceReviewDummyFixture(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost || request.URL.Path != "/v1/responses" {
+			t.Errorf("request = %s %s, want POST /v1/responses", request.Method, request.URL.Path)
+			writer.WriteHeader(http.StatusNotFound)
+			return
+		}
+		body := map[string]any{}
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if body["store"] != false || strings.Contains(fmt.Sprint(body), "credential") || strings.Contains(fmt.Sprint(body), "object_key") {
+			t.Errorf("relevance review request leaked unsafe field: %#v", body)
+		}
+		input, ok := body["input"].(string)
+		if !ok || !strings.Contains(input, "content_excerpt") || strings.Contains(input, "full_body") {
+			t.Errorf("relevance review input = %#v, want bounded excerpt only", body["input"])
+		}
+		writeJSON(writer, structuredAPIResponse("gpt-5.6sol", `{"decision":"review","score":70,"reason_codes":["ambiguous_context"]}`))
+	}))
+	t.Cleanup(server.Close)
+
+	response, err := newOpenAIProvider(t, server.URL).GenerateStructured(context.Background(), relevanceReviewStructuredRequest())
+	if err != nil || response.ModelVersion != "2026-07" || string(response.JSON) != `{"decision":"review","score":70,"reason_codes":["ambiguous_context"]}` {
+		t.Fatalf("GenerateStructured(relevance_review) = %#v / %v", response, err)
+	}
+}
+
 func TestOpenAIProviderRejectsStructuredModelMismatchAndInvalidJSON(t *testing.T) {
 	t.Run("model mismatch", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
@@ -300,6 +331,15 @@ func structuredRequest() intelligencedomain.StructuredRequest {
 			PreviousOutput: json.RawMessage(`{"terms":"bad"}`),
 			Violations:     []intelligencedomain.SchemaViolation{{InstancePath: "/terms", Keyword: "type"}},
 		},
+	}
+}
+
+func relevanceReviewStructuredRequest() intelligencedomain.StructuredRequest {
+	return intelligencedomain.StructuredRequest{
+		ModelName: "gpt-5.6sol", ModelVersion: "2026-07", TaskType: intelligencedomain.TaskTypeRelevanceReview,
+		SchemaName: "relevance_review_output", SchemaVersion: "v1", Instruction: "Return only the bounded relevance decision.",
+		Schema: json.RawMessage(`{"type":"object","additionalProperties":false,"required":["decision","score","reason_codes"],"properties":{"decision":{"type":"string","enum":["accepted","review","rejected"]},"score":{"type":"number","minimum":0,"maximum":100},"reason_codes":{"type":"array","maxItems":8}}}`),
+		Input:  json.RawMessage(`{"content_excerpt":"A verified OpenAI product announcement.","content_language":"en","monitor_intent":"Track OpenAI product releases.","scoring_version":"relevance-v1","scores":{"semantic":70,"lexical":80,"entity":60,"title":70,"preference":50},"recall_paths":["lexical","vector"],"reason_codes":["lexical_candidate"],"evidence_terms":["OpenAI"]}`),
 	}
 }
 

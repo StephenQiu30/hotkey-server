@@ -203,6 +203,35 @@ func TestPlan009FeedbackRepositoryUsesOwnVersion(t *testing.T) {
 	}
 }
 
+func TestPlan009RelevanceReviewUnavailablePersistence(t *testing.T) {
+	runtime, fixture := openRelevanceRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	repository := ingestionpostgres.NewRelevanceRepository(runtime)
+
+	pending, created, err := repository.UpsertSnapshot(context.Background(), relevanceSnapshotInput(fixture, strings.Repeat("9", 64)))
+	if err != nil || !created || pending.ManualLocked {
+		t.Fatalf("UpsertSnapshot(pending review) = %#v / %t / %v", pending, created, err)
+	}
+	unavailable, err := repository.MarkReviewUnavailable(context.Background(), pending.ID, pending.Version, "ai_unavailable")
+	if err != nil || unavailable.Version != pending.Version+1 || !unavailable.Degraded || unavailable.Decision != ingestiondomain.MatchDecisionReview ||
+		unavailable.DecisionOrigin != ingestiondomain.DecisionOriginRule || !relevanceReasonPresent(unavailable.ReasonCodes, "ai_unavailable") {
+		t.Fatalf("MarkReviewUnavailable() = %#v / %v", unavailable, err)
+	}
+	if _, err := repository.MarkReviewUnavailable(context.Background(), pending.ID, pending.Version, "ai_unavailable"); !errors.Is(err, sharedrepository.ErrConflict) {
+		t.Fatalf("MarkReviewUnavailable(stale) error = %v, want conflict", err)
+	}
+
+	runID := createSuccessfulRelevanceReviewRun(t, runtime, unavailable.ID, unavailable.InputHash)
+	reviewed, err := repository.ApplySuccessfulReview(context.Background(), ingestiondomain.SuccessfulReviewInput{
+		SnapshotID: unavailable.ID, ExpectedVersion: unavailable.Version, ReviewAIRunID: runID,
+		LLMScore: 72, FinalScore: 72, Decision: ingestiondomain.MatchDecisionReview, ReasonCodes: []string{"ambiguous_context"},
+	})
+	if err != nil || reviewed.Version != unavailable.Version+1 || reviewed.DecisionOrigin != ingestiondomain.DecisionOriginAI ||
+		reviewed.ReviewAIRunID == nil || *reviewed.ReviewAIRunID != runID {
+		t.Fatalf("ApplySuccessfulReview(after unavailable) = %#v / %v", reviewed, err)
+	}
+}
+
 type relevanceFixture struct {
 	sourceID, monitorID, configID, contentID, actorID, reviewerID int64
 	contentExternalID                                             string
@@ -326,3 +355,12 @@ func relevanceExplanation(score float64) []byte {
 }
 
 func float64Pointer(value float64) *float64 { return &value }
+
+func relevanceReasonPresent(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
+}

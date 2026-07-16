@@ -70,9 +70,12 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newAIProviderRegistry,
 				intelligenceapplication.NewModelProfileService,
 				newAIRunService,
+				intelligenceapplication.NewRelevanceReviewService,
 				newAIEmbeddingService,
 				intelligenceapplication.NewRunLeaseReclaimer,
 				ingestionpostgres.NewContentRepository,
+				ingestionpostgres.NewRelevanceRepository,
+				newIngestionRelevanceReviewService,
 				newIngestionEvidenceStore,
 				sourcepostgres.NewCollectionRepository,
 				newIngestionCapturedItemReader,
@@ -174,7 +177,7 @@ func registerMonitorRoutes(router *gin.Engine, service *monitorapplication.Servi
 	monitortransport.RegisterRoutes(router, service, authenticator)
 }
 
-func registerIngestionRoutes(router *gin.Engine, service *ingestionapplication.ContentQueryService, authenticator httptransport.Authenticator, metrics *observability.Metrics) {
+func registerIngestionRoutes(router *gin.Engine, service *ingestionapplication.ContentQueryService, _ *ingestionapplication.RelevanceReviewService, authenticator httptransport.Authenticator, metrics *observability.Metrics) {
 	ingestiontransport.RegisterRoutes(router, service, authenticator, metrics)
 }
 
@@ -202,6 +205,10 @@ func newIngestionService(runtime *database.Runtime, captures *sourceapplication.
 	return ingestionapplication.NewService(ingestionapplication.Dependencies{
 		Runtime: runtime, Captures: captures, Contents: contents, Evidence: evidence,
 	})
+}
+
+func newIngestionRelevanceReviewService(snapshots *ingestionpostgres.RelevanceRepository, reviews *intelligenceapplication.RelevanceReviewService) (*ingestionapplication.RelevanceReviewService, error) {
+	return ingestionapplication.NewRelevanceReviewService(ingestionapplication.RelevanceReviewServiceDependencies{Snapshots: snapshots, Reviews: reviews})
 }
 
 func newIngestionContentQueryService(contents *ingestionpostgres.ContentRepository, sources *sourceapplication.Service) (*ingestionapplication.ContentQueryService, error) {

@@ -94,6 +94,120 @@ func TestPlan009RelevanceReviewContract(t *testing.T) {
 	}
 }
 
+func TestPlan009RelevanceReviewFacadeKeepsSingleOwnerAndProfileScopedReuse(t *testing.T) {
+	runtime := openApplicationRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	runs := intelligencepostgres.NewRepository(runtime)
+	profile := applicationRelevanceReviewProfile()
+	if err := runs.CreateProfile(context.Background(), &profile); err != nil {
+		t.Fatalf("CreateProfile(relevance_review): %v", err)
+	}
+	provider := &blockingStructuredProvider{
+		started: make(chan struct{}), release: make(chan struct{}),
+		response: domain.StructuredResponse{ModelVersion: profile.ModelVersion, JSON: json.RawMessage(`{"decision":"accepted","score":80,"reason_codes":["relevant_evidence"]}`)},
+	}
+	clock := &applicationClock{value: time.Date(2026, time.July, 17, 13, 30, 0, 0, time.UTC)}
+	runService := newApplicationRunService(t, runs, provider, clock)
+	service, err := NewRelevanceReviewService(runService)
+	if err != nil {
+		t.Fatalf("NewRelevanceReviewService(): %v", err)
+	}
+	input := applicationRelevanceReviewFacadeInput()
+
+	firstDone := make(chan struct {
+		result RelevanceReviewResult
+		err    error
+	}, 1)
+	go func() {
+		result, err := service.Review(context.Background(), input)
+		firstDone <- struct {
+			result RelevanceReviewResult
+			err    error
+		}{result: result, err: err}
+	}()
+	<-provider.started
+	inflight, err := service.Review(context.Background(), input)
+	if err != nil || inflight.Status != "degraded" || inflight.ReasonCode != "ai_in_progress" || provider.structuredCalls() != 1 {
+		t.Fatalf("Review(in-flight) = %#v / %v calls=%d, want one owner", inflight, err, provider.structuredCalls())
+	}
+	close(provider.release)
+	first := <-firstDone
+	if first.err != nil || first.result.Status != "succeeded" || first.result.Reused || first.result.RunID <= 0 || first.result.Decision != "accepted" || first.result.Score != 80 {
+		t.Fatalf("Review(first) = %#v / %v", first.result, first.err)
+	}
+	reused, err := service.Review(context.Background(), input)
+	if err != nil || reused.Status != "succeeded" || !reused.Reused || reused.RunID != first.result.RunID || provider.structuredCalls() != 1 {
+		t.Fatalf("Review(reuse) = %#v / %v calls=%d", reused, err, provider.structuredCalls())
+	}
+
+	profile.TimeoutSeconds = 11
+	if _, err := runs.UpdateProfile(context.Background(), profile, profile.Version); err != nil {
+		t.Fatalf("UpdateProfile(): %v", err)
+	}
+	updated, err := service.Review(context.Background(), input)
+	if err != nil || updated.Status != "succeeded" || updated.Reused || updated.RunID == first.result.RunID || provider.structuredCalls() != 2 {
+		t.Fatalf("Review(profile revision) = %#v / %v calls=%d, want fresh run", updated, err, provider.structuredCalls())
+	}
+}
+
+func TestPlan009RelevanceReviewFacadeDegradesWithoutProviderOrBudget(t *testing.T) {
+	t.Run("provider unavailable", func(t *testing.T) {
+		runtime := openApplicationRuntime(t)
+		defer func() { _ = runtime.Close() }()
+		runs := intelligencepostgres.NewRepository(runtime)
+		profile := applicationRelevanceReviewProfile()
+		if err := runs.CreateProfile(context.Background(), &profile); err != nil {
+			t.Fatalf("CreateProfile(): %v", err)
+		}
+		schemas, err := NewSchemaRegistry()
+		if err != nil {
+			t.Fatalf("NewSchemaRegistry(): %v", err)
+		}
+		runService, err := NewRunService(RunServiceDependencies{Runs: runs, Providers: NewProviderRegistry(nil), Schemas: schemas, Clock: &applicationClock{value: time.Date(2026, time.July, 17, 14, 0, 0, 0, time.UTC)}})
+		if err != nil {
+			t.Fatalf("NewRunService(): %v", err)
+		}
+		service, err := NewRelevanceReviewService(runService)
+		if err != nil {
+			t.Fatalf("NewRelevanceReviewService(): %v", err)
+		}
+		result, err := service.Review(context.Background(), applicationRelevanceReviewFacadeInput())
+		if err != nil || result.Status != "degraded" || result.ReasonCode != "ai_unavailable" {
+			t.Fatalf("Review(without provider) = %#v / %v", result, err)
+		}
+	})
+
+	t.Run("budget exhausted", func(t *testing.T) {
+		runtime := openApplicationRuntime(t)
+		defer func() { _ = runtime.Close() }()
+		runs := intelligencepostgres.NewRepository(runtime)
+		profile := applicationRelevanceReviewProfile()
+		daily := "1.0000"
+		profile.DailyBudget = &daily
+		if err := runs.CreateProfile(context.Background(), &profile); err != nil {
+			t.Fatalf("CreateProfile(): %v", err)
+		}
+		clock := &applicationClock{value: time.Date(2026, time.July, 17, 14, 0, 0, 0, time.UTC)}
+		if _, err := runs.Claim(context.Background(), intelligencepostgres.ClaimInput{
+			TaskType: domain.TaskTypeRelevanceReview, TargetType: "monitor_match", TargetID: 100, ModelProfileID: profile.ID,
+			PromptVersion: relevanceReviewPromptVersion, InputSchemaVersion: relevanceReviewInputSchemaVersion, SchemaVersion: relevanceReviewSchemaVersion,
+			ParametersVersion: relevanceReviewParametersVersion, InputHash: strings.Repeat("1", 64), EvidenceSetHash: strings.Repeat("2", 64), Now: clock.Now(),
+		}); err != nil {
+			t.Fatalf("Claim(reserve budget): %v", err)
+		}
+		provider := &applicationFakeProvider{}
+		runService := newApplicationRunService(t, runs, provider, clock)
+		service, err := NewRelevanceReviewService(runService)
+		if err != nil {
+			t.Fatalf("NewRelevanceReviewService(): %v", err)
+		}
+		result, err := service.Review(context.Background(), applicationRelevanceReviewFacadeInput())
+		if err != nil || result.Status != "degraded" || result.ReasonCode != "ai_unavailable" || provider.structuredCalls() != 0 {
+			t.Fatalf("Review(budget exhausted) = %#v / %v calls=%d", result, err, provider.structuredCalls())
+		}
+	})
+}
+
 func TestRunServiceRetriesOnlyTransientProviderFailures(t *testing.T) {
 	for _, testCase := range []struct {
 		name, hash string
@@ -366,6 +480,13 @@ func applicationRelevanceReviewInput() StructuredExecutionInput {
 		InputHash: strings.Repeat("c", 64), EvidenceSetHash: strings.Repeat("d", 64), Input: json.RawMessage(`{"content_excerpt":"A verified OpenAI product announcement.","content_language":"en","monitor_intent":"Track OpenAI product releases.","scoring_version":"relevance-v1","scores":{"semantic":70,"lexical":80,"entity":60,"title":70,"preference":50},"recall_paths":["lexical","vector"],"reason_codes":["lexical_candidate"],"evidence_terms":["OpenAI"]}`)}
 }
 
+func applicationRelevanceReviewFacadeInput() RelevanceReviewRequest {
+	return RelevanceReviewRequest{TargetID: 99, InputHash: strings.Repeat("c", 64),
+		ContentExcerpt: "A verified OpenAI product announcement.", ContentLanguage: "en", MonitorIntent: "Track OpenAI product releases.", ScoringVersion: "relevance-v1",
+		Scores: RelevanceReviewScores{Semantic: 70, Lexical: 80, Entity: 60, Title: 70, Preference: 50}, RecallPaths: []string{"lexical", "vector"},
+		ReasonCodes: []string{"lexical_candidate", "vector_candidate", "low_confidence"}, EvidenceTerms: []string{"OpenAI"}}
+}
+
 func applicationEmbeddingInput(targetID int64) EmbeddingExecutionInput {
 	return EmbeddingExecutionInput{Target: intelligencepostgres.EmbeddingTargetMonitor, TargetID: targetID,
 		PromptVersion: "prompt-v1", InputSchemaVersion: "v1", SchemaVersion: "v1", ParametersVersion: "params-v1",
@@ -409,9 +530,14 @@ type blockingStructuredProvider struct {
 	release  chan struct{}
 	response domain.StructuredResponse
 	once     sync.Once
+	mu       sync.Mutex
+	calls    int
 }
 
 func (provider *blockingStructuredProvider) GenerateStructured(ctx context.Context, _ domain.StructuredRequest) (domain.StructuredResponse, error) {
+	provider.mu.Lock()
+	provider.calls++
+	provider.mu.Unlock()
 	provider.once.Do(func() { close(provider.started) })
 	select {
 	case <-ctx.Done():
@@ -419,6 +545,12 @@ func (provider *blockingStructuredProvider) GenerateStructured(ctx context.Conte
 	case <-provider.release:
 		return provider.response, nil
 	}
+}
+
+func (provider *blockingStructuredProvider) structuredCalls() int {
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	return provider.calls
 }
 
 func (provider *blockingStructuredProvider) Embed(context.Context, domain.EmbeddingRequest) (domain.EmbeddingResponse, error) {

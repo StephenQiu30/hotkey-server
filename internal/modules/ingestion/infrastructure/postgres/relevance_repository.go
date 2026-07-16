@@ -147,6 +147,43 @@ RETURNING `+snapshotColumns("monitor_matches"),
 	return stored, nil
 }
 
+// MarkReviewUnavailable records only a safe, retryable degradation outcome.
+// It never changes the rule score or decision and is deliberately restricted
+// to a pending rule-review snapshot, so a provider failure cannot overwrite a
+// completed AI result or a manual lock.
+func (repository *RelevanceRepository) MarkReviewUnavailable(ctx context.Context, snapshotID, expectedVersion int64, reasonCode string) (ingestiondomain.RelevanceSnapshot, error) {
+	if !repository.available() {
+		return ingestiondomain.RelevanceSnapshot{}, sharedrepository.ErrUnavailable
+	}
+	if snapshotID <= 0 || expectedVersion <= 0 || (reasonCode != "ai_unavailable" && reasonCode != "ai_in_progress") {
+		return ingestiondomain.RelevanceSnapshot{}, fmt.Errorf("%w: relevance review degradation", sharedrepository.ErrInvalidInput)
+	}
+	var stored ingestiondomain.RelevanceSnapshot
+	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+		var err error
+		stored, err = scanSnapshot(transaction.SQL.QueryRowContext(ctx, `
+UPDATE monitor_matches
+SET degraded = true,
+    reason_codes = CASE WHEN $1::text = ANY(reason_codes) THEN reason_codes ELSE array_append(reason_codes, $1::text) END,
+    version = version + 1,
+    updated_at = now()
+WHERE id = $2 AND version = $3 AND manual_locked = false
+  AND decision = 'review' AND decision_origin = 'rule' AND review_ai_run_id IS NULL
+RETURNING `+snapshotColumns("monitor_matches"), reasonCode, snapshotID, expectedVersion))
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: relevance snapshot changed or is not eligible for AI review", sharedrepository.ErrConflict)
+		}
+		if err != nil {
+			return sharedrepository.MapError(err)
+		}
+		return nil
+	})
+	if err != nil {
+		return ingestiondomain.RelevanceSnapshot{}, err
+	}
+	return stored, nil
+}
+
 func (repository *RelevanceRepository) ListLatestSnapshots(ctx context.Context, monitorID int64, query ingestiondomain.RelevanceSnapshotListQuery) (ingestiondomain.RelevanceSnapshotPage, error) {
 	if !repository.available() {
 		return ingestiondomain.RelevanceSnapshotPage{}, sharedrepository.ErrUnavailable
@@ -545,7 +582,7 @@ const snapshotColumnsTemplate = `
 %[1]s.input_hash, %[1]s.scoring_version, to_json(%[1]s.recall_paths)::text,
 %[1]s.rule_score, %[1]s.semantic_score, %[1]s.llm_score, %[1]s.final_score,
 %[1]s.decision, to_json(%[1]s.reason_codes)::text, %[1]s.explanation::text,
-%[1]s.degraded, %[1]s.decision_origin,
+%[1]s.degraded, %[1]s.decision_origin, %[1]s.manual_locked,
 %[1]s.embedding_model_profile_id, %[1]s.embedding_model_profile_version, %[1]s.embedding_model_version, %[1]s.review_ai_run_id,
 %[1]s.created_at, %[1]s.updated_at`
 
@@ -563,7 +600,7 @@ func scanSnapshot(scanner interface{ Scan(...any) error }) (ingestiondomain.Rele
 		&snapshot.InputHash, &snapshot.ScoringVersion, &recallPaths,
 		&snapshot.RuleScore, &semanticScore, &llmScore, &snapshot.FinalScore,
 		&decision, &reasonCodes, &explanation,
-		&snapshot.Degraded, &origin,
+		&snapshot.Degraded, &origin, &snapshot.ManualLocked,
 		&embeddingID, &embeddingVersion, &embeddingModelVersion, &reviewRunID,
 		&snapshot.CreatedAt, &snapshot.UpdatedAt,
 	); err != nil {
