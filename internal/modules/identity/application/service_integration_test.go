@@ -154,7 +154,7 @@ func TestChangePasswordRevokesEveryRealPostgresSessionAndAccessJWT(t *testing.T)
 	fixture := newApplicationIntegrationFixture(t)
 	user := fixture.register(t, "change-password@example.test", "current password")
 	first, second := fixture.loginTwice(t, user.Email, "current password")
-	subject := fixture.authenticate(t, first.AccessToken)
+	subject, _ := fixture.assertTargetAccessAccepted(t, user, first.AccessToken, second.AccessToken)
 
 	if err := fixture.service.ChangePassword(context.Background(), subject, "current password", "next password"); err != nil {
 		t.Fatalf("ChangePassword() error = %v", err)
@@ -169,6 +169,7 @@ func TestConfirmPasswordResetRevokesEveryRealPostgresSessionAndAccessJWT(t *test
 	fixture := newApplicationIntegrationFixture(t)
 	user := fixture.register(t, "password-reset@example.test", "current password")
 	first, second := fixture.loginTwice(t, user.Email, "current password")
+	fixture.assertTargetAccessAccepted(t, user, first.AccessToken, second.AccessToken)
 	fixture.store.ticket = domain.VerificationTicket{
 		Token:   "password-reset-ticket",
 		Email:   user.Email,
@@ -188,6 +189,7 @@ func TestAdminDisableRevokesTargetRealPostgresSessionsAndAccessJWT(t *testing.T)
 	fixture := newApplicationIntegrationFixture(t)
 	target := fixture.register(t, "disable-target@example.test", "target password")
 	first, second := fixture.loginTwice(t, target.Email, "target password")
+	fixture.assertTargetAccessAccepted(t, target, first.AccessToken, second.AccessToken)
 	admin := fixture.createAdminSubject(t, "disable-admin@example.test", "admin password")
 
 	if _, err := fixture.service.UpdateUser(context.Background(), admin, target.ID, UserUpdate{Status: pointerToStatus(domain.UserStatusDisabled)}); err != nil {
@@ -203,6 +205,7 @@ func TestAdminSoftDeleteRevokesTargetRealPostgresSessionsAndAccessJWT(t *testing
 	fixture := newApplicationIntegrationFixture(t)
 	target := fixture.register(t, "delete-target@example.test", "target password")
 	first, second := fixture.loginTwice(t, target.Email, "target password")
+	fixture.assertTargetAccessAccepted(t, target, first.AccessToken, second.AccessToken)
 	admin := fixture.createAdminSubject(t, "delete-admin@example.test", "admin password")
 
 	if _, err := fixture.service.DeleteUser(context.Background(), admin, target.ID); err != nil {
@@ -288,6 +291,21 @@ func (fixture applicationIntegrationFixture) authenticate(t *testing.T, accessTo
 		t.Fatalf("Authenticate() error = %v", err)
 	}
 	return subject
+}
+
+func (fixture applicationIntegrationFixture) assertTargetAccessAccepted(t *testing.T, target *domain.User, firstAccessToken, secondAccessToken string) (domain.Subject, domain.Subject) {
+	t.Helper()
+	first := fixture.authenticate(t, firstAccessToken)
+	second := fixture.authenticate(t, secondAccessToken)
+	for index, subject := range []domain.Subject{first, second} {
+		if subject.UserID != target.ID || subject.Role != target.Role || subject.SessionID <= 0 {
+			t.Fatalf("target access subject %d = %#v, want active user %d with role %q and a session", index+1, subject, target.ID, target.Role)
+		}
+	}
+	if first.SessionID == second.SessionID {
+		t.Fatalf("target access subjects share session ID %d, want independently created sessions", first.SessionID)
+	}
+	return first, second
 }
 
 func (fixture applicationIntegrationFixture) createAdminSubject(t *testing.T, email, password string) domain.Subject {
