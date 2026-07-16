@@ -322,6 +322,32 @@ LIMIT $2`, cursorID, limit+1)
 	return page, nil
 }
 
+// GetActive returns one currently visible Content fact. Deleted, expired,
+// invalid and duplicate rows intentionally share the external not-found
+// result so callers cannot use this reader to inspect non-active state.
+func (repository *ContentRepository) GetActive(ctx context.Context, contentID int64) (ingestiondomain.Content, error) {
+	if !repository.available() {
+		return ingestiondomain.Content{}, sharedrepository.ErrUnavailable
+	}
+	if contentID <= 0 {
+		return ingestiondomain.Content{}, fmt.Errorf("%w: positive content id is required", sharedrepository.ErrInvalidInput)
+	}
+	content, err := scanContent(repository.queryRow(ctx, `
+SELECT `+contentColumns+`
+FROM contents AS c
+LEFT JOIN source_authors AS author ON author.id = c.author_id
+WHERE c.id = $1
+  AND c.content_status = 'active'
+  AND c.deleted_at IS NULL`, contentID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return ingestiondomain.Content{}, fmt.Errorf("%w: active content %d", sharedrepository.ErrNotFound, contentID)
+	}
+	if err != nil {
+		return ingestiondomain.Content{}, sharedrepository.MapError(err)
+	}
+	return content, nil
+}
+
 func (repository *ContentRepository) MarkDeleted(ctx context.Context, sourceConnectionID int64, externalID string) (ingestiondomain.Content, bool, error) {
 	if !repository.available() {
 		return ingestiondomain.Content{}, false, sharedrepository.ErrUnavailable
@@ -482,6 +508,13 @@ func (repository *ContentRepository) queryRows(ctx context.Context, query string
 		return transaction.SQL.QueryContext(ctx, query, args...)
 	}
 	return repository.runtime.SQL.QueryContext(ctx, query, args...)
+}
+
+func (repository *ContentRepository) queryRow(ctx context.Context, query string, args ...any) *sql.Row {
+	if transaction, found := database.TransactionFromContext(ctx); found {
+		return transaction.SQL.QueryRowContext(ctx, query, args...)
+	}
+	return repository.runtime.SQL.QueryRowContext(ctx, query, args...)
 }
 
 func (repository *ContentRepository) available() bool {

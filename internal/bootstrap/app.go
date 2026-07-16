@@ -15,6 +15,7 @@ import (
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/application"
 	ingestionminio "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/infrastructure/minio"
 	ingestionpostgres "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/infrastructure/postgres"
+	ingestiontransport "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/transport/http"
 	monitorapplication "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/application"
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/infrastructure/postgres"
 	monitortransport "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/transport/http"
@@ -106,8 +107,9 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newCollectionControlService,
 					monitorpostgres.NewRepository,
 					newMonitorService,
+					newIngestionContentQueryService,
 				),
-				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerCollectionRoutes, registerMonitorRoutes),
+				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -138,6 +140,10 @@ func registerMonitorRoutes(router *gin.Engine, service *monitorapplication.Servi
 	monitortransport.RegisterRoutes(router, service, authenticator)
 }
 
+func registerIngestionRoutes(router *gin.Engine, service *ingestionapplication.ContentQueryService, authenticator httptransport.Authenticator, metrics *observability.Metrics) {
+	ingestiontransport.RegisterRoutes(router, service, authenticator, metrics)
+}
+
 func newSourceService(runtime *database.Runtime, sources *sourcepostgres.Repository, usage *monitorpostgres.SourceUsageReader, references *monitorpostgres.PublishedReferenceReader, audit *operationspostgres.AuditWriter) (*sourceapplication.Service, error) {
 	return sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sources, MonitorUsage: usage, PublishedReferences: references, Audit: audit})
 }
@@ -158,6 +164,10 @@ func newIngestionService(runtime *database.Runtime, captures *sourceapplication.
 	return ingestionapplication.NewService(ingestionapplication.Dependencies{
 		Runtime: runtime, Captures: captures, Contents: contents, Evidence: evidence,
 	})
+}
+
+func newIngestionContentQueryService(contents *ingestionpostgres.ContentRepository, sources *sourceapplication.Service) (*ingestionapplication.ContentQueryService, error) {
+	return ingestionapplication.NewContentQueryService(ingestionapplication.ContentQueryDependencies{Contents: contents, Sources: sources})
 }
 
 func newMonitorService(runtime *database.Runtime, monitors *monitorpostgres.Repository, sources *sourceapplication.Service, audit *operationspostgres.AuditWriter) (*monitorapplication.Service, error) {

@@ -37,7 +37,10 @@ type Service struct {
 	audit               operationsapplication.AuditWriter
 }
 
-var _ domain.MonitorSourceReader = (*Service)(nil)
+var (
+	_ domain.MonitorSourceReader = (*Service)(nil)
+	_ domain.ContentSourceReader = (*Service)(nil)
+)
 
 func NewService(dependencies Dependencies) (*Service, error) {
 	if dependencies.Runtime == nil || dependencies.Sources == nil || dependencies.MonitorUsage == nil || dependencies.PublishedReferences == nil || dependencies.Audit == nil {
@@ -385,6 +388,18 @@ func (service *Service) LockForMonitor(ctx context.Context, id int64) (domain.Mo
 		return domain.MonitorSourceConnection{}, sourceReadError(err)
 	}
 	return monitorProjection(*connection), nil
+}
+
+// FindForContent is the credential-free Source application boundary for
+// ingestion's safe Content read model. A deleted source is returned as a
+// tombstone flag so the consuming application can suppress stale Content
+// rather than infer Source lifecycle state from a database table.
+func (service *Service) FindForContent(ctx context.Context, id int64) (domain.ContentSourceReference, error) {
+	connection, err := service.sources.FindByID(ctx, id)
+	if err != nil {
+		return domain.ContentSourceReference{}, sourceReadError(err)
+	}
+	return domain.ContentSourceReference{Name: connection.Name, SourceType: connection.SourceType, Deleted: connection.Deleted}, nil
 }
 
 func (service *Service) ensureCanRemoveSchedulableSource(ctx context.Context, sourceID int64) error {

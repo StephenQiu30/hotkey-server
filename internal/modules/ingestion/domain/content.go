@@ -168,22 +168,26 @@ type Content struct {
 	ID                 int64
 	Version            int64
 	SourceConnectionID int64
-	ExternalID         string
-	Author             NormalizedAuthor
-	ContentType        string
-	Title              string
-	Excerpt            string
-	CanonicalURL       string
-	Language           string
-	PublishedAt        time.Time
-	FetchedAt          time.Time
-	ContentHash        string
-	Metrics            domain.SourceMetrics
-	Status             ContentStatus
-	DuplicateOfID      *int64
-	DedupeReason       string
-	DedupeVersion      string
-	DeletedAt          *time.Time
+	// SourceType and SourceName are a safe, application-enriched read
+	// projection. They are never persisted by ingestion or supplied by HTTP.
+	SourceType    domain.SourceType
+	SourceName    string
+	ExternalID    string
+	Author        NormalizedAuthor
+	ContentType   string
+	Title         string
+	Excerpt       string
+	CanonicalURL  string
+	Language      string
+	PublishedAt   time.Time
+	FetchedAt     time.Time
+	ContentHash   string
+	Metrics       domain.SourceMetrics
+	Status        ContentStatus
+	DuplicateOfID *int64
+	DedupeReason  string
+	DedupeVersion string
+	DeletedAt     *time.Time
 }
 
 type ContentListQuery struct {

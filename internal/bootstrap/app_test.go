@@ -255,7 +255,7 @@ func TestConfiguredAPIWiresMonitorAndSourceControlPlane(t *testing.T) {
 		t.Fatalf("Start() error = %v", err)
 	}
 	defer func() { _ = app.Stop(ctx) }()
-	for _, path := range []string{"/api/v1/monitors", "/api/v1/source-connections"} {
+	for _, path := range []string{"/api/v1/monitors", "/api/v1/source-connections", "/api/v1/contents"} {
 		response, err := stdhttp.Get("http://" + server.Address() + path)
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)

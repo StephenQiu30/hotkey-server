@@ -80,6 +80,22 @@ type MonitorSourceReader interface {
 	LockForMonitor(context.Context, int64) (MonitorSourceConnection, error)
 }
 
+// ContentSourceReference is the minimal source-owned projection that the
+// ingestion Content query may use. It deliberately omits endpoint,
+// credential, config and diagnostics.
+type ContentSourceReference struct {
+	Name       string
+	SourceType SourceType
+	Deleted    bool
+}
+
+// ContentSourceReader is implemented by the Source application service. It
+// keeps ingestion from reading Source-owned tables while letting its safe read
+// model state the human-readable source type and name.
+type ContentSourceReader interface {
+	FindForContent(context.Context, int64) (ContentSourceReference, error)
+}
+
 // MonitorUsageGroup is a Monitor-owned published configuration relation. It
 // intentionally identifies only the associated SourceConnection IDs and the
 // Monitor-side association state. Source application remains responsible for

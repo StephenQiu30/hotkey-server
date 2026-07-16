@@ -565,6 +565,125 @@
                 }
             }
         },
+        "/api/v1/contents": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "contents"
+                ],
+                "summary": "List active content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-http_ContentPageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/contents/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "contents"
+                ],
+                "summary": "Get active content",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "content ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-http_ContentResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/monitors": {
             "get": {
                 "security": [
@@ -2534,6 +2653,144 @@
                 }
             }
         },
+        "http.ContentMetricsResponse": {
+            "type": "object",
+            "properties": {
+                "comment_count": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "like_count": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "share_count": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "view_count": {
+                    "type": "integer",
+                    "x-nullable": true
+                }
+            }
+        },
+        "http.ContentPageResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.ContentResponse"
+                    }
+                },
+                "next_cursor": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ContentResponse": {
+            "type": "object",
+            "properties": {
+                "canonical_url": {
+                    "type": "string",
+                    "example": "https://example.test/items/123"
+                },
+                "content_type": {
+                    "type": "string",
+                    "example": "article"
+                },
+                "dedupe_reason": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "dedupe_status": {
+                    "type": "string",
+                    "enum": [
+                        "active",
+                        "duplicate"
+                    ]
+                },
+                "dedupe_version": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "external_id": {
+                    "type": "string",
+                    "example": "item-123"
+                },
+                "fetched_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 7
+                },
+                "language": {
+                    "type": "string",
+                    "example": "en"
+                },
+                "metrics": {
+                    "$ref": "#/definitions/http.ContentMetricsResponse"
+                },
+                "published_at": {
+                    "type": "string"
+                },
+                "source_name": {
+                    "type": "string",
+                    "example": "Product feed"
+                },
+                "source_type": {
+                    "type": "string",
+                    "example": "rss"
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Release notes"
+                }
+            }
+        },
+        "http.ContentResult-http_ContentPageResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.ContentPageResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ContentResult-http_ContentResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.ContentResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/internal_modules_ingestion_transport_http.EmptyResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "http.CreateMonitorRequest": {
             "type": "object",
             "required": [
@@ -3576,6 +3833,9 @@
             }
         },
         "internal_modules_identity_transport_http.EmptyResponse": {
+            "type": "object"
+        },
+        "internal_modules_ingestion_transport_http.EmptyResponse": {
             "type": "object"
         },
         "internal_modules_monitor_transport_http.EmptyResponse": {

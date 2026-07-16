@@ -18,6 +18,7 @@ type ContentRepository interface {
 	ListEvidenceAssets(ctx context.Context, sourceConnectionID, contentID int64) ([]ContentAsset, error)
 	ListAssetObjectKeys(ctx context.Context, sourceConnectionID int64) ([]string, error)
 	ListActive(ctx context.Context, query ContentListQuery) (ContentPage, error)
+	GetActive(ctx context.Context, contentID int64) (Content, error)
 	MarkDeleted(ctx context.Context, sourceConnectionID int64, externalID string) (Content, bool, error)
 	ExpireBefore(ctx context.Context, before time.Time) (int, error)
 }

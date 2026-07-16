@@ -77,6 +77,8 @@ func TestOpenAPIContract(t *testing.T) {
 		"/api/v1/collection-runs":                              {"get": {"200", "400", "401", "403", "503"}},
 		"/api/v1/collection-runs/{id}/retry":                   {"post": {"200", "400", "401", "403", "404", "409", "503"}},
 		"/api/v1/source-connections/{id}/health":               {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/contents":                                     {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/contents/{id}":                                {"get": {"200", "400", "401", "404", "503"}},
 	}
 	if len(document.Paths) != len(required) {
 		t.Fatalf("public path count = %d, want %d (%v)", len(document.Paths), len(required), document.Paths)
@@ -114,7 +116,7 @@ func TestOpenAPIContract(t *testing.T) {
 		}
 	}
 
-	for _, route := range []string{"/api/v1/auth/me", "/api/v1/auth/password", "/api/v1/users", "/api/v1/users/{id}", "/api/v1/users/{id}/restore", "/api/v1/monitors", "/api/v1/monitors/{id}", "/api/v1/monitors/{id}/draft", "/api/v1/monitors/{id}/draft/ai-candidates", "/api/v1/monitors/{id}/draft/rules/{rule_id}/approval", "/api/v1/monitors/{id}/preview", "/api/v1/monitors/{id}/publish", "/api/v1/monitors/{id}/pause", "/api/v1/monitors/{id}/resume", "/api/v1/monitors/{id}/archive", "/api/v1/monitors/{id}/restore", "/api/v1/source-connections", "/api/v1/source-connections/{id}", "/api/v1/source-connections/{id}/enable", "/api/v1/source-connections/{id}/disable", "/api/v1/source-connections/{id}/archive", "/api/v1/source-connections/{id}/restore", "/api/v1/collection-runs", "/api/v1/collection-runs/{id}/retry", "/api/v1/source-connections/{id}/health"} {
+	for _, route := range []string{"/api/v1/auth/me", "/api/v1/auth/password", "/api/v1/users", "/api/v1/users/{id}", "/api/v1/users/{id}/restore", "/api/v1/monitors", "/api/v1/monitors/{id}", "/api/v1/monitors/{id}/draft", "/api/v1/monitors/{id}/draft/ai-candidates", "/api/v1/monitors/{id}/draft/rules/{rule_id}/approval", "/api/v1/monitors/{id}/preview", "/api/v1/monitors/{id}/publish", "/api/v1/monitors/{id}/pause", "/api/v1/monitors/{id}/resume", "/api/v1/monitors/{id}/archive", "/api/v1/monitors/{id}/restore", "/api/v1/source-connections", "/api/v1/source-connections/{id}", "/api/v1/source-connections/{id}/enable", "/api/v1/source-connections/{id}/disable", "/api/v1/source-connections/{id}/archive", "/api/v1/source-connections/{id}/restore", "/api/v1/collection-runs", "/api/v1/collection-runs/{id}/retry", "/api/v1/source-connections/{id}/health", "/api/v1/contents", "/api/v1/contents/{id}"} {
 		var operations map[string]openAPIOperation
 		if err := json.Unmarshal(document.Paths[route], &operations); err != nil {
 			t.Fatalf("decode protected path %s: %v", route, err)
@@ -134,8 +136,50 @@ func TestOpenAPIContract(t *testing.T) {
 	assertSafeIdentityOpenAPIDefinitions(t, document.Definitions)
 	assertSafeMonitorSourceOpenAPIDefinitions(t, document.Definitions)
 	assertSafeCollectionOpenAPIDefinitions(t, document.Definitions)
+	assertSafeContentOpenAPIDefinitions(t, document.Definitions)
 	assertDraftExpectedVersionOpenAPI(t, document.Definitions)
 	assertMonitorDraftDefaultsOpenAPI(t, document.Definitions)
+}
+
+func assertSafeContentOpenAPIDefinitions(t *testing.T, definitions map[string]struct {
+	Properties map[string]json.RawMessage `json:"properties"`
+	Required   []string                   `json:"required"`
+}) {
+	t.Helper()
+	content, ok := definitions["http.ContentResponse"]
+	if !ok {
+		t.Fatal("missing http.ContentResponse")
+	}
+	allowed := map[string]bool{
+		"id": true, "source_type": true, "source_name": true, "external_id": true,
+		"content_type": true, "title": true, "canonical_url": true, "language": true,
+		"published_at": true, "fetched_at": true, "metrics": true, "dedupe_status": true,
+		"dedupe_reason": true, "dedupe_version": true,
+	}
+	for field := range content.Properties {
+		if !allowed[field] {
+			t.Errorf("safe Content response exposes %q", field)
+		}
+	}
+	for field := range allowed {
+		if _, exists := content.Properties[field]; !exists {
+			t.Errorf("safe Content response misses %q", field)
+		}
+	}
+	metrics, ok := definitions["http.ContentMetricsResponse"]
+	if !ok {
+		t.Fatal("missing http.ContentMetricsResponse")
+	}
+	for field := range metrics.Properties {
+		if field != "view_count" && field != "like_count" && field != "comment_count" && field != "share_count" {
+			t.Errorf("safe Content metrics exposes %q", field)
+		}
+	}
+	for _, forbidden := range []string{"excerpt", "body", "object_key", "asset", "minio", "endpoint", "credential", "stack", "error"} {
+		if _, exists := content.Properties[forbidden]; exists {
+			t.Errorf("safe Content response exposes forbidden %q", forbidden)
+		}
+	}
 }
 
 func assertSafeCollectionOpenAPIDefinitions(t *testing.T, definitions map[string]struct {

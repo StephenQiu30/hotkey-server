@@ -16,6 +16,7 @@ type Metrics struct {
 	httpPanics       *prometheus.CounterVec
 	dependencyHealth *prometheus.GaugeVec
 	collectionOps    *prometheus.CounterVec
+	contentQueries   *prometheus.CounterVec
 }
 
 func NewMetrics() (*Metrics, error) {
@@ -41,6 +42,10 @@ func NewMetrics() (*Metrics, error) {
 			Name: "hotkey_collection_operations_total",
 			Help: "Total collection administration operations by stable operation and outcome.",
 		}, []string{"operation", "outcome"}),
+		contentQueries: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "hotkey_content_query_operations_total",
+			Help: "Total safe Content query operations by stable operation and outcome.",
+		}, []string{"operation", "outcome"}),
 	}
 	if err := metrics.Registry.Register(metrics.httpRequests); err != nil {
 		return nil, err
@@ -55,6 +60,9 @@ func NewMetrics() (*Metrics, error) {
 		return nil, err
 	}
 	if err := metrics.Registry.Register(metrics.collectionOps); err != nil {
+		return nil, err
+	}
+	if err := metrics.Registry.Register(metrics.contentQueries); err != nil {
 		return nil, err
 	}
 	return metrics, nil
@@ -83,4 +91,10 @@ func (metrics *Metrics) SetDependencyHealth(dependency string, healthy float64) 
 // endpoint values or arbitrary upstream diagnostics.
 func (metrics *Metrics) RecordCollectionOperation(operation, outcome string) {
 	metrics.collectionOps.WithLabelValues(operation, outcome).Inc()
+}
+
+// RecordContentQuery accepts only stable operation/outcome labels. Content
+// IDs, source names, URL fragments and error text are deliberately excluded.
+func (metrics *Metrics) RecordContentQuery(operation, outcome string) {
+	metrics.contentQueries.WithLabelValues(operation, outcome).Inc()
 }
