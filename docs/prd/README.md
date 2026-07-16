@@ -83,7 +83,7 @@ downstream:
                                       014 + 015 → 016
                                       001–016 → 017
 
-PLAN-008 已由 Acceptance-008 独立验收并归档为 `archived/done`；PLAN-009 已通过开工审核，Task 1–6 自动门禁已验证，其中 Task 3 已获独立复核；独立最终复核仍待完成，因此保持 `accepted/in_progress`，010–017 仍为 `review/backlog`，不得自动开工。
+PLAN-008 已由 Acceptance-008 独立验收并归档为 `archived/done`；PLAN-009 的 Task 1–6、两项 P1 整改和 `d4efda5` relevance-review 序列化修复已通过完整门禁。独立最终复审仍待完成，因此保持 `accepted/in_progress`，010–017 仍为 `review/backlog`，不得自动开工。
 
 ## 每个 PRD 的完成要求
 

@@ -6,7 +6,7 @@ feature_area: 文档治理
 purpose: 定义长期验收证据的结构、结论和归档边界
 canonical_path: docs/acceptance/README.md
 status: review
-version: v1.7
+version: v1.9
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -79,3 +79,5 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | v1.5 | 2026-07-17 | 创建 PLAN-009 实施前验收模板，结论仍为 pending。 |
 | v1.6 | 2026-07-17 | 同步 PLAN-009 Task 1–5 已验证、Task 6 最终验收待执行的状态；结论保持 pending。 |
 | v1.7 | 2026-07-17 | 同步 PLAN-009 Task 1–6 自动门禁通过、独立最终复核待执行的状态；结论保持 pending。 |
+| v1.8 | 2026-07-17 | 同步 PLAN-009 独立最终复核提出的两项 P1 已完成定向整改；完整门禁与复审仍待完成，结论保持 pending。 |
+| v1.9 | 2026-07-17 | 记录 `d4efda5` 的 relevance-review 序列化修复及完整 `make ci`、PostgreSQL/Redis/MinIO integration race 通过；独立复审仍待完成，结论保持 pending。 |
