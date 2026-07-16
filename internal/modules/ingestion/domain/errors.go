@@ -16,6 +16,7 @@ const (
 	ErrorCodeInvalidNormalizedContent ErrorCode = "invalid_normalized_content"
 	ErrorCodeInvalidContentCandidate  ErrorCode = "invalid_content_candidate"
 	ErrorCodeInvalidDedupeDecision    ErrorCode = "invalid_dedupe_decision"
+	ErrorCodeContentDeleted           ErrorCode = "content_deleted"
 )
 
 // Error contains only the stable code. Concrete parsing and persistence

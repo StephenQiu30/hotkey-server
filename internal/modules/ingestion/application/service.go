@@ -148,11 +148,14 @@ func (service *Service) persistCaptured(ctx context.Context, captured sourcedoma
 
 func (service *Service) persistContent(ctx context.Context, captured sourcedomain.CapturedCollectionItem, content ingestiondomain.NormalizedContent, decision ingestiondomain.DedupeDecision, receipt ingestiondomain.EvidenceReceipt, hasEvidence bool) error {
 	return service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
+		// The same source-scoped lock serializes a delete tombstone with every
+		// Content upsert, asset write, and Source bind. It is required even for
+		// title-only captures, which have no EvidenceStore operation.
+		if err := lockSourceEvidenceTransaction(transactionCtx, transaction, content.SourceConnectionID); err != nil {
+			return err
+		}
 		createEvidenceAsset := false
 		if hasEvidence {
-			if err := lockSourceEvidenceTransaction(transactionCtx, transaction, content.SourceConnectionID); err != nil {
-				return err
-			}
 			available, err := service.receiptAvailable(transactionCtx, content.SourceConnectionID, receipt)
 			if err != nil {
 				return err
@@ -169,6 +172,9 @@ func (service *Service) persistContent(ctx context.Context, captured sourcedomai
 		stored, _, err := service.contents.Upsert(transactionCtx, content, decision)
 		if err != nil {
 			return fmt.Errorf("upsert normalized content: %w", err)
+		}
+		if stored.Status == ingestiondomain.ContentStatusDeleted || stored.DeletedAt != nil {
+			return ingestiondomain.NewError(ingestiondomain.ErrorCodeContentDeleted)
 		}
 		if createEvidenceAsset {
 			asset := ingestiondomain.ContentAsset{

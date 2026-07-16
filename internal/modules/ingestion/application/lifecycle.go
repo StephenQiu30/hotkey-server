@@ -32,19 +32,20 @@ func (service *Service) DeleteBySourceItem(ctx context.Context, sourceConnection
 		return DeleteBySourceItemResult{}, errors.New("source connection id and external id are required")
 	}
 
-	content, changed, err := service.contents.MarkDeleted(ctx, sourceConnectionID, externalID)
-	if err != nil {
-		return DeleteBySourceItemResult{}, fmt.Errorf("mark content deleted: %w", err)
-	}
-	result := DeleteBySourceItemResult{Content: content, ContentChanged: changed}
-	if content.ID == 0 {
-		return result, nil
-	}
-
+	result := DeleteBySourceItemResult{}
 	deleteFailures := make([]error, 0)
-	err = service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
+	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
 		if err := lockSourceEvidenceTransaction(transactionCtx, transaction, sourceConnectionID); err != nil {
 			return err
+		}
+		content, changed, err := service.contents.MarkDeleted(transactionCtx, sourceConnectionID, externalID)
+		if err != nil {
+			return fmt.Errorf("mark content deleted: %w", err)
+		}
+		result.Content = content
+		result.ContentChanged = changed
+		if content.ID == 0 {
+			return nil
 		}
 		assets, err := service.contents.ListEvidenceAssets(transactionCtx, sourceConnectionID, content.ID)
 		if err != nil {
