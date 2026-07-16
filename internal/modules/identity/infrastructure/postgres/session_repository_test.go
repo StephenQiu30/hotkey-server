@@ -281,3 +281,64 @@ func TestSessionRepositoryValidateAccessSessionRejectsInvalidStateWithoutSubject
 		})
 	}
 }
+
+func TestSessionRepositoryValidateAccessSessionRejectsNonexistentSessionWithoutLeak(t *testing.T) {
+	runtime := newIdentityRuntime(t)
+	sessions := NewSessionRepository(runtime)
+
+	subject, err := sessions.ValidateAccessSession(context.Background(), 999999, time.Now().UTC())
+	requireSessionInvalid(t, subject, err)
+}
+
+func TestSessionRepositoryValidateAccessSessionRejectsRefreshReplayRevocation(t *testing.T) {
+	runtime := newIdentityRuntime(t)
+	users := NewUserRepository(runtime)
+	sessions := NewSessionRepository(runtime)
+	user := createIdentityUser(t, users, "access-replay")
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	session := newIdentitySession(user.ID, now)
+	original := &domain.RefreshToken{
+		TokenHash: "edededededededededededededededededededededededededededededededed",
+		ExpiresAt: session.RefreshExpiry(now),
+		CreatedAt: now,
+	}
+	if err := sessions.Create(context.Background(), &session, original); err != nil {
+		t.Fatalf("Create(): %v", err)
+	}
+
+	firstRefreshAt := now.Add(time.Minute)
+	rotatedSession, replacement, err := sessions.Rotate(context.Background(), original.TokenHash, &domain.RefreshToken{
+		TokenHash: "fefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefe",
+		ExpiresAt: session.RefreshExpiry(firstRefreshAt),
+		CreatedAt: firstRefreshAt,
+	}, firstRefreshAt)
+	if err != nil {
+		t.Fatalf("first Rotate(): %v", err)
+	}
+	if rotatedSession.ID != session.ID || replacement.SessionID != session.ID {
+		t.Fatalf("first Rotate() = session %#v token %#v, want persisted replacement", rotatedSession, replacement)
+	}
+
+	if _, _, err := sessions.Rotate(context.Background(), original.TokenHash, &domain.RefreshToken{
+		TokenHash: "ababcdcdababcdcdababcdcdababcdcdababcdcdababcdcdababcdcdababcdcd",
+		ExpiresAt: session.RefreshExpiry(firstRefreshAt.Add(time.Minute)),
+		CreatedAt: firstRefreshAt.Add(time.Minute),
+	}, firstRefreshAt.Add(time.Minute)); !errors.Is(err, domain.ErrRefreshReplay) {
+		t.Fatalf("replay Rotate() error = %v, want domain.ErrRefreshReplay", err)
+	}
+
+	subject, err := sessions.ValidateAccessSession(context.Background(), session.ID, firstRefreshAt.Add(time.Minute))
+	requireSessionInvalid(t, subject, err)
+}
+
+func requireSessionInvalid(t *testing.T, subject domain.Subject, err error) {
+	t.Helper()
+	if subject != (domain.Subject{}) {
+		t.Fatalf("ValidateAccessSession() subject = %#v, want no subject", subject)
+	}
+	want := domain.SessionInvalid()
+	var appError *sharederrors.AppError
+	if !errors.As(err, &appError) || appError.Code != want.Code || appError.HTTPStatus != want.HTTPStatus || appError.Message != want.Message || appError.Cause != nil {
+		t.Fatalf("ValidateAccessSession() error = %v, want exact safe session-invalid error", err)
+	}
+}
