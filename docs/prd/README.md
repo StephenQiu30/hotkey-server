@@ -57,8 +57,8 @@ downstream:
 | [003](003-HTTP契约安全与可观测基础.md) | HTTP 契约、安全与可观测基础 | F0 | P0 | 001, 002 | archived | done |
 | [004](004-身份认证会话与权限.md) | 身份、认证、会话与权限 | F0 | P0 | 002, 003 | archived | done |
 | [005](005-监控主题规则与来源配置.md) | 监控主题、规则与来源配置 | P0 | P0 | 002, 003, 004 | archived | done |
-| [018](018-任务执行与计划归档治理.md) | 任务执行与计划归档治理 | Governance | P0 | 005 | accepted | in_progress |
-| [006](006-查询规划与RSS-HN采集.md) | 查询规划与 RSS/HN 采集 | P0 | P0 | 005, 018 | review | backlog |
+| [018](018-任务执行与计划归档治理.md) | 任务执行与计划归档治理 | Governance | P0 | 005 | accepted | ready |
+| [006](006-查询规划与RSS-HN采集.md) | 查询规划与 RSS/HN 采集 | P0 | P0 | 005 | review | backlog |
 | [007](007-内容标准化去重与MinIO证据.md) | 内容标准化、去重与 MinIO 证据 | P0 | P0 | 002, 006 | review | backlog |
 | [008](008-AIProvider与Embedding基础.md) | AI Provider 与 Embedding 基础 | P0 | P0 | 002, 007 | review | backlog |
 | [009](009-多语言相关性匹配与反馈.md) | 多语言相关性匹配与反馈 | P0 | P0 | 005, 007, 008 | review | backlog |
@@ -73,7 +73,8 @@ downstream:
 
 ## 主链路
 
-    001 → 002 → 003 → 004 → 005 → 018 → 006 → 007 → 008
+    001 → 002 → 003 → 004 → 005 → 006 → 007 → 008
+                                      005 → 018（非阻塞治理支线）
                                       007 + 008 → 009 → 010 → 011
                                                    008 + 010 → 012
                                       006–012 → 013

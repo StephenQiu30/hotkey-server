@@ -8,14 +8,12 @@ canonical_path: docs/plans/006-查询规划与RSS-HN采集计划.md
 status: review
 execution_status: backlog
 review_status: pending
-version: v1.2
+version: v1.3
 owner: HotKey Server Team
 inputs:
   - docs/prd/006-查询规划与RSS-HN采集.md
   - docs/plans/005-监控主题规则与来源配置计划.md
-  - docs/plans/018-任务执行与计划归档治理计划.md
   - docs/design/014-监控配置发布与预览设计.md
-  - docs/design/015-任务执行与计划归档治理设计.md
 outputs:
   - Connector 契约
   - RSS、Atom、Hacker News 适配器
@@ -24,7 +22,7 @@ triggers:
   - PRD-006 accepted 且 ready
 downstream:
   - docs/acceptance/006-查询规划与RSS-HN采集验收.md
-depends_on: [PLAN-005, PLAN-018]
+depends_on: [PLAN-005]
 ---
 
 # 查询规划与 RSS/HN 采集计划
@@ -104,3 +102,4 @@ depends_on: [PLAN-005, PLAN-018]
 | v1.0 | 2026-07-16 | 初始查询规划与 RSS/HN 采集计划。 |
 | v1.1 | 2026-07-16 | 对齐 Design-014 的 immutable published config、shared run/target、checkpoint 和来源安全契约；计划仍待完整独立审核。 |
 | v1.2 | 2026-07-16 | 将 PLAN-018 治理归档加入前置条件；完整 Task 拆解仍由 PLAN-018 执行，当前保持 review/backlog/pending。 |
+| v1.3 | 2026-07-16 | 按产品主链优先级移除 PLAN-018 前置；完整 Task 拆解改由本 Plan 直接完成。 |
