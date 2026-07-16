@@ -116,6 +116,41 @@ RETURNING id, session_id, token_hash, expires_at, used_at, revoked_at, created_a
 	return &session, replacement, nil
 }
 
+// ValidateAccessSession returns only current PostgreSQL session and user facts
+// suitable for matching against parsed JWT claims. Every inactive or missing
+// state intentionally has the same safe SessionInvalid result.
+func (repository *SessionRepository) ValidateAccessSession(ctx context.Context, sessionID int64, now time.Time) (domain.Subject, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return domain.Subject{}, sharedrepository.ErrUnavailable
+	}
+	if sessionID <= 0 || now.IsZero() {
+		return domain.Subject{}, fmt.Errorf("%w: session ID and validation time are required", sharedrepository.ErrInvalidInput)
+	}
+
+	var subject domain.Subject
+	var role string
+	err := transactionSQL(ctx, repository.runtime).QueryRowContext(ctx, `
+SELECT "user".id, session.id, "user".role
+FROM auth_sessions AS session
+JOIN users AS "user" ON "user".id = session.user_id
+WHERE session.id = $1
+  AND session.revoked_at IS NULL
+  AND session.absolute_expires_at > $2
+  AND "user".status = 'active'
+  AND "user".deleted_at IS NULL`, sessionID, now.UTC()).Scan(&subject.UserID, &subject.SessionID, &role)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.Subject{}, domain.SessionInvalid()
+		}
+		return domain.Subject{}, mapRepositoryError(err)
+	}
+	subject.Role = domain.Role(role)
+	if !subject.Role.Valid() {
+		return domain.Subject{}, domain.SessionInvalid()
+	}
+	return subject, nil
+}
+
 func (repository *SessionRepository) RevokeSession(ctx context.Context, sessionID int64, reason string, now time.Time) error {
 	if repository == nil || repository.runtime == nil {
 		return sharedrepository.ErrUnavailable

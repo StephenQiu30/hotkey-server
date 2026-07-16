@@ -25,6 +25,7 @@ func TestPersistenceContractsExposeIdentityWorkflowOperations(t *testing.T) {
 
 	var _ interface {
 		Rotate(context.Context, string, *RefreshToken, time.Time) (*Session, *RefreshToken, error)
+		ValidateAccessSession(context.Context, int64, time.Time) (Subject, error)
 		RevokeSession(context.Context, int64, string, time.Time) error
 		RevokeAllForUser(context.Context, int64, string, time.Time) error
 	} = (SessionRepository)(nil)

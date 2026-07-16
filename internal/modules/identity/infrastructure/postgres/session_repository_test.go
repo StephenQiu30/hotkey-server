@@ -9,6 +9,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/identity/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	sharederrors "github.com/StephenQiu30/hotkey-server/internal/shared/errors"
 )
 
 func TestSessionRepositoryRotatesLockedRefreshTokenAndRevokesSessionOnReplay(t *testing.T) {
@@ -179,5 +180,104 @@ func TestSessionRepositoryRevokesEverySessionForUser(t *testing.T) {
 	}
 	if active != 0 {
 		t.Fatalf("active sessions = %d, want 0", active)
+	}
+}
+
+func TestSessionRepositoryValidateAccessSessionReturnsCurrentDatabaseSubject(t *testing.T) {
+	runtime := newIdentityRuntime(t)
+	users := NewUserRepository(runtime)
+	sessions := NewSessionRepository(runtime)
+	user := createIdentityUser(t, users, "access-subject")
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	session := newIdentitySession(user.ID, now)
+	token := &domain.RefreshToken{
+		TokenHash: "abababababababababababababababababababababababababababababababab",
+		ExpiresAt: session.RefreshExpiry(now),
+		CreatedAt: now,
+	}
+	if err := sessions.Create(context.Background(), &session, token); err != nil {
+		t.Fatalf("Create(): %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE users SET role = 'editor' WHERE id = $1`, user.ID); err != nil {
+		t.Fatalf("change user role directly: %v", err)
+	}
+
+	subject, err := sessions.ValidateAccessSession(context.Background(), session.ID, now)
+	if err != nil {
+		t.Fatalf("ValidateAccessSession(): %v", err)
+	}
+	if subject.UserID != user.ID || subject.SessionID != session.ID || subject.Role != domain.RoleEditor {
+		t.Fatalf("ValidateAccessSession() = %#v, want current database identity subject", subject)
+	}
+}
+
+func TestSessionRepositoryValidateAccessSessionRejectsInvalidStateWithoutSubject(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		createdAt time.Time
+		mutate    func(*testing.T, *database.Runtime, *SessionRepository, int64, int64, time.Time)
+	}{
+		{
+			name:      "revoked session",
+			createdAt: time.Now().UTC().Truncate(time.Microsecond),
+			mutate: func(t *testing.T, _ *database.Runtime, sessions *SessionRepository, _ int64, sessionID int64, now time.Time) {
+				t.Helper()
+				if err := sessions.RevokeSession(context.Background(), sessionID, "logout", now); err != nil {
+					t.Fatalf("RevokeSession(): %v", err)
+				}
+			},
+		},
+		{
+			name:      "absolute expiry",
+			createdAt: time.Now().UTC().Add(-31 * 24 * time.Hour).Truncate(time.Microsecond),
+			mutate:    func(*testing.T, *database.Runtime, *SessionRepository, int64, int64, time.Time) {},
+		},
+		{
+			name:      "disabled user",
+			createdAt: time.Now().UTC().Truncate(time.Microsecond),
+			mutate: func(t *testing.T, runtime *database.Runtime, _ *SessionRepository, userID int64, _ int64, _ time.Time) {
+				t.Helper()
+				if _, err := runtime.SQL.Exec(`UPDATE users SET status = 'disabled' WHERE id = $1`, userID); err != nil {
+					t.Fatalf("disable user: %v", err)
+				}
+			},
+		},
+		{
+			name:      "soft deleted user",
+			createdAt: time.Now().UTC().Truncate(time.Microsecond),
+			mutate: func(t *testing.T, runtime *database.Runtime, _ *SessionRepository, userID int64, _ int64, _ time.Time) {
+				t.Helper()
+				if _, err := runtime.SQL.Exec(`UPDATE users SET deleted_at = now() WHERE id = $1`, userID); err != nil {
+					t.Fatalf("soft delete user: %v", err)
+				}
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			runtime := newIdentityRuntime(t)
+			users := NewUserRepository(runtime)
+			sessions := NewSessionRepository(runtime)
+			user := createIdentityUser(t, users, "invalid-access-"+tt.name)
+			now := time.Now().UTC().Truncate(time.Microsecond)
+			session := newIdentitySession(user.ID, tt.createdAt)
+			token := &domain.RefreshToken{
+				TokenHash: "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+				ExpiresAt: session.RefreshExpiry(tt.createdAt),
+				CreatedAt: tt.createdAt,
+			}
+			if err := sessions.Create(context.Background(), &session, token); err != nil {
+				t.Fatalf("Create(): %v", err)
+			}
+			tt.mutate(t, runtime, sessions, user.ID, session.ID, now)
+
+			subject, err := sessions.ValidateAccessSession(context.Background(), session.ID, now)
+			if subject != (domain.Subject{}) {
+				t.Fatalf("ValidateAccessSession() subject = %#v, want no subject", subject)
+			}
+			var appError *sharederrors.AppError
+			if !errors.As(err, &appError) || appError.Code != sharederrors.CodeSessionInvalid || appError.Message != "session invalid" {
+				t.Fatalf("ValidateAccessSession() error = %v, want safe session-invalid error", err)
+			}
+		})
 	}
 }

@@ -41,6 +41,7 @@ type SessionRepository interface {
 	Create(context.Context, *Session, *RefreshToken) error
 	FindByRefreshTokenHash(context.Context, string) (*Session, *RefreshToken, error)
 	Rotate(context.Context, string, *RefreshToken, time.Time) (*Session, *RefreshToken, error)
+	ValidateAccessSession(context.Context, int64, time.Time) (Subject, error)
 	RevokeSession(context.Context, int64, string, time.Time) error
 	RevokeAllForUser(context.Context, int64, string, time.Time) error
 }
