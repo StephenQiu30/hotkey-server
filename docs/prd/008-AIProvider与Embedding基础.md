@@ -10,7 +10,7 @@ phase: P0
 priority: P0
 status: accepted
 execution_status: in_progress
-version: v1.9
+version: v1.13
 owner: HotKey Server Team
 depends_on: [PRD-002, PRD-007]
 design_refs:
@@ -68,18 +68,18 @@ downstream:
 ### 3. 运行复用、重试与预算
 
 - `reuse_key` 必须是 `sha256(task_type, target_type, target_id, model_profile_id, model_profile_version, model_version, prompt_version, input_schema_version, schema_version, parameters_version, input_hash, evidence_set_hash)` 的稳定序列化结果。
-- 只有 `succeeded` 且所有上述版本仍匹配的运行可复用。profile 语义变更只能新建 profile；输入、证据、Prompt、输入/输出 Schema、parameters 或 model version 任一变化均创建新运行。
+- 只有 `succeeded` 且所有上述版本仍匹配的运行可复用。复用结构化任务时返回该 run 已验证的安全 `structured_result`；每条 Embedding 必须保存生成它的 `ai_run_id`，复用 Embedding 时只读取该成功 run ID 的 active 向量，缺少该向量即安全失败且绝不再次外呼。profile 语义变更只能新建 profile；输入、证据、Prompt、输入/输出 Schema、parameters 或 model version 任一变化均创建新运行。
 - 对相同 `reuse_key` 的**所有** claim、retry、settle、cancel 与 reclaim 事务，一律先取得 `pg_advisory_xact_lock(hashtext('ai-budget:' || profile_id || ':' || utc_day))`，再取得 `pg_advisory_xact_lock(hashtext('ai-run:' || reuse_key))`；不得存在反向路径。claim 再检查成功运行和 in-flight 运行。成功运行直接返回；in-flight 返回 `70007`，绝不第二次调用 Provider；否则 reserve 并创建 queued 运行，在提交后调用 Provider。
 - 状态只能按 `queued -> running -> validating -> succeeded`、`running|validating -> retry_wait -> running`、`queued|running|validating|retry_wait -> failed|cancelled` 转换。429、超时和临时 5xx 在 `max_attempts` 内以 `min(2^(attempt-1), 4)` 秒确定性退避；配置、预算、输入、Schema 和证据错误不重试。创建 queued、`queued -> running`、`running -> validating` 与 `retry_wait -> running` 都在同一锁定事务将 lease 刷新为 `now + timeout_seconds + 30s`；`running|validating -> retry_wait` 原子地写入 `retry_after=now+backoff` 与 `lease_expires_at=retry_after+timeout_seconds+30s`。`attempt`、`retry_after`、`lease_expires_at`、`error_code` 和 `repair_attempted` 必须持久化。
 - 每个 profile 必须有正数 `max_cost`，它是每次调用的硬预留额度和内部预算计费单位；它不代表由模型名或公开价格表推导的供应商发票。`daily_budget` 可以为 NULL，表示没有每日上限但仍记账。每个 profile+UTC 日 ledger 还有 `overage_blocked=false` 初始状态；reserve 前置条件固定为 `overage_blocked=false` 且（daily 为空或 `settled_cost + reserved_cost + max_cost <= daily_budget`）。reserve 令 `reserved_cost += max_cost`，失败/取消/lease 回收令 `reserved_cost -= reserved_cost_of_run`，PLAN-008 成功调用令 `reserved_cost -= reserved_cost_of_run` 且 `settled_cost += reserved_cost_of_run`。Application 保存 Provider 返回的 token 数，但不得将其换算成金额。
 - `actual_cost > reserved_cost` 仍是仓储必须正确处理的受信任未来计费输入：运行以 `failed/70002` 终止，记录该值、释放预留、将该值加入 `settled_cost` 并原子写 `overage_blocked=true`。这会封锁**该 profile 的该 UTC 日**后续 reserve，即使 `daily_budget` 为 NULL 或仍有余额；新 UTC 日创建新的 `overage_blocked=false` ledger，是唯一自动重置规则。因此 `ai_runs.cost` 允许大于 `reserved_cost`。首批 OpenAI/ONNX adapter 不生成这一输入；新增供应商账单或费率计算必须先修订 Design、PRD 与 Plan。预算不足不调用 Provider。并发请求不得突破预留上限或重复调用。
-- 已验证的结构化输出、token 数、延迟与上述成功结算必须使用同一 budget -> run 锁序原子终态写入；Embedding 的向量仍只由其目标/profile 锁保护的替换写入。任何原始 Prompt、Provider 响应或对象键都不得写入该终态。
+- 已验证的结构化输出、token 数、延迟与上述成功结算必须使用同一 `budget -> run` 锁序原子终态写入；Embedding 的向量和结算必须只由 `CompleteEmbedding` 使用同一 `budget -> run -> embedding` 锁序在一个事务中完成。任何原始 Prompt、Provider 响应或对象键都不得写入该终态。
 - queued、running、validating 与 retry_wait 运行都拥有 `lease_expires_at`。worker-only `RunLeaseReclaimer` 每 30 秒按同一固定 `ai-budget(profile,day) -> ai-run(reuse_key)` 锁顺序回收过期运行：标记 `failed`、写 `70009 ai_run_lease_expired` 并释放该运行 reservation；不会重放外呼。测试必须证明未到期的 retry_wait 不会被回收，而进程崩溃后过期的 retry_wait 会被回收。下一次请求可获得新 claim，进程崩溃不能永久产生 `70007` 或冻结预算。
 
 ### 4. 向量空间与查询
 
-- 每个 Content、Monitor、Event、Topic 向量记录 profile、profile version、model version、输入哈希、`halfvec(1024)` 和 `active`。长度不是 1024、存在 `NaN`/`Inf`、已验证的 Provider model ID 与 `model_name` 不同，或 Application 回传的本地 `model_version` 与 profile 不同的向量必须在写库前以 `70000` 拒绝。
-- 写入新版本在一个 PostgreSQL 事务内取得 `ai-embedding:<target-type>:<target-id>:<profile-id>` advisory lock，先停用同 target/profile 的旧 active 向量再插入新行；每张 embedding 表使用 partial unique index 保证同 target/profile 至多一条 active 行。
+- 每个 Content、Monitor、Event、Topic 向量记录产生它的 `ai_run_id`、profile、profile version、model version、输入哈希、`halfvec(1024)` 和 `active`。长度不是 1024、存在 `NaN`/`Inf`、已验证的 Provider model ID 与 `model_name` 不同，或 Application 回传的本地 `model_version` 与 profile 不同的向量必须在写库前以 `70000` 拒绝。
+- `CompleteEmbedding` 先取得该 run 的 `ai-budget:<profile-id>:<UTC-day>`、再取得 `ai-run:<reuse_key>`、最后取得 `ai-embedding:<target-type>:<target-id>:<profile-id>` advisory lock；它验证 validating run、target/profile/version/input provenance 后，先停用同 target/profile 的旧 active 向量再插入新行，并在同一事务中结算成功。每张 embedding 表使用 partial unique index 保证同 target/profile 至多一条 active 行；不得存在独立的 Embedding 成功写入路径。
 - 近邻查询必须同时过滤 `active=true`、`model_profile_id` 和 `model_version`，使用余弦 `<=>`，且只将同一 profile/version 的结果交给下游。HNSW 只服务 active 集；验收须以 `EXPLAIN (COSTS OFF)` 证明 active 查询使用对应 `*_active_hnsw_idx`。
 - 模型升级不是 update。管理员先创建新 profile，后续 PLAN-009/010 以新 profile 批量重算并在完整覆盖后切换读取 profile；PLAN-008 不批量重算 Event/Topic，也不让新旧空间混合检索。
 
@@ -125,3 +125,7 @@ PRD-009 可以只依赖 `intelligence` 的公开 Application 端口取得同一 
 | v1.7 | 2026-07-17 | 重新打开复核：补齐最小 token usage 端口，并将 PLAN-008 成本固定为 profile 的内部预算计费单位；供应商账单/费率计算不在本次范围，overage 仅保留为受信任未来输入的仓储安全契约。 |
 | v1.8 | 2026-07-17 | 定义 OpenAI Embeddings/Responses 的精确 Usage 映射、非法总数安全失败与 ONNX 零 Usage，供 adapter 契约测试和运行终态写入使用。 |
 | v1.9 | 2026-07-17 | 独立复核通过 v1.7–v1.8 的 token usage、内部预算计费和安全终态补充，恢复 accepted/in_progress。 |
+| v1.10 | 2026-07-17 | 重新打开复核：明确成功复用必须返回已验证结构化结果或同 provenance active 向量，缺失持久化结果不得通过第二次 Provider 调用弥补。 |
+| v1.11 | 2026-07-17 | 将 Embedding 复用 provenance 固化为 `ai_run_id`，使 Prompt、Schema、parameters 与 evidence 的 reuse 维度不能被仅有 profile/input 的向量查询绕过。 |
+| v1.12 | 2026-07-17 | 统一 Embedding 结算与写入为 `CompleteEmbedding` 的 budget -> run -> embedding 单事务锁序，移除独立 target/profile writer 的歧义。 |
+| v1.13 | 2026-07-17 | 独立复核通过 `ai_run_id` provenance、Schema/升级演练和 CompleteEmbedding 锁序，恢复 accepted/in_progress。 |
