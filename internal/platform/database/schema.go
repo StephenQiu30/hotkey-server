@@ -566,6 +566,7 @@ func normalizeCatalogExpression(value string) string {
 	value = quotedNumberPattern.ReplaceAllString(value, "$1")
 	value = spacePattern.ReplaceAllString(value, "")
 	value = normalizeInExpression(value)
+	value = normalizeAnyArrayParentheses(value)
 	value = stripRedundantParentheses(value)
 	return value
 }
@@ -592,6 +593,24 @@ func normalizeInExpression(value string) string {
 	}
 }
 
+// PostgreSQL serializes some partial-index predicates as = ANY ((ARRAY[...])),
+// while the canonical SQL uses IN (...). Remove only the redundant inner pair
+// around ARRAY so equivalent predicates produce the same catalog signature.
+func normalizeAnyArrayParentheses(value string) string {
+	for {
+		start := strings.Index(value, "=any((array[")
+		if start < 0 {
+			return value
+		}
+		innerOpen := start + len("=any(")
+		innerClose := matchingParenthesis(value, innerOpen)
+		if innerClose < 0 {
+			return value
+		}
+		value = value[:innerOpen] + value[innerOpen+1:innerClose] + value[innerClose+1:]
+	}
+}
+
 func stripRedundantParentheses(value string) string {
 	for {
 		changed := false
@@ -610,6 +629,11 @@ func stripRedundantParentheses(value string) string {
 				break
 			}
 			if isSimpleIdentifier(inner) {
+				value = value[:index] + inner + value[end+1:]
+				changed = true
+				break
+			}
+			if strings.Contains(inner, "=any(array[") && !strings.Contains(inner, "and") && !strings.Contains(inner, "or") {
 				value = value[:index] + inner + value[end+1:]
 				changed = true
 				break

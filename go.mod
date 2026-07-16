@@ -8,10 +8,14 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.1
 	github.com/minio/minio-go/v7 v7.0.100
+	github.com/openai/openai-go/v3 v3.32.0
+	github.com/pgvector/pgvector-go v0.4.0
 	github.com/prometheus/client_golang v1.23.2
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/spf13/viper v1.21.0
 	github.com/swaggo/swag v1.16.6
+	github.com/yalue/onnxruntime_go v1.31.0
 	go.opentelemetry.io/otel v1.43.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.43.0
 	go.opentelemetry.io/otel/sdk v1.43.0
@@ -90,6 +94,10 @@ require (
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
+	github.com/tidwall/gjson v1.18.0 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.1 // indirect
+	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/tinylib/msgp v1.6.1 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect

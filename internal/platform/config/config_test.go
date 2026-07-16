@@ -201,11 +201,74 @@ func TestLoadReadsNamedAuthenticationSettings(t *testing.T) {
 	}
 }
 
+func TestAIConfigUsesOnlyExplicitProviderAndArtifactKeys(t *testing.T) {
+	t.Setenv("HOTKEY_OPENAI_API_KEY", "test-openai-key")
+	t.Setenv("HOTKEY_ONNX_RUNTIME_LIBRARY", "/fixtures/libonnxruntime.dylib")
+	t.Setenv("HOTKEY_ONNX_MODEL_PATH", "/fixtures/model.onnx")
+	t.Setenv("HOTKEY_ONNX_TOKENIZER_PATH", "/fixtures/tokenizer.json")
+	t.Setenv("HOTKEY_ONNX_MANIFEST_PATH", "/fixtures/manifest.json")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got, want := cfg.AI.OpenAIAPIKey, "test-openai-key"; got != want {
+		t.Errorf("AI.OpenAIAPIKey = %q, want %q", got, want)
+	}
+	if got, want := cfg.AI.ONNXManifestPath, "/fixtures/manifest.json"; got != want {
+		t.Errorf("AI.ONNXManifestPath = %q, want %q", got, want)
+	}
+
+	keys := strings.Join(configKeys(), ",")
+	for _, key := range []string{
+		"openai_api_key",
+		"onnx_runtime_library",
+		"onnx_model_path",
+		"onnx_tokenizer_path",
+		"onnx_manifest_path",
+	} {
+		if !strings.Contains(keys, key) {
+			t.Errorf("configKeys() does not bind %q", key)
+		}
+	}
+	for _, key := range []string{"llm_api_key", "llm_base_url", "llm_model"} {
+		if strings.Contains(keys, key) {
+			t.Errorf("configKeys() must not bind legacy generic %q", key)
+		}
+	}
+
+	example, err := os.ReadFile(filepath.Join("..", "..", "..", ".env.example"))
+	if err != nil {
+		t.Fatalf("read .env.example: %v", err)
+	}
+	for _, key := range []string{
+		"HOTKEY_OPENAI_API_KEY=",
+		"HOTKEY_ONNX_RUNTIME_LIBRARY=",
+		"HOTKEY_ONNX_MODEL_PATH=",
+		"HOTKEY_ONNX_TOKENIZER_PATH=",
+		"HOTKEY_ONNX_MANIFEST_PATH=",
+	} {
+		if !strings.Contains(string(example), key) {
+			t.Errorf(".env.example does not document %q", key)
+		}
+	}
+	for _, key := range []string{"HOTKEY_LLM_API_KEY=", "HOTKEY_LLM_BASE_URL=", "HOTKEY_LLM_MODEL="} {
+		if strings.Contains(string(example), key) {
+			t.Errorf(".env.example retains forbidden generic %q", key)
+		}
+	}
+}
+
 func TestLoadUsesDefaultEnvironmentFileAndProcessOverrides(t *testing.T) {
 	directory := t.TempDir()
 	if err := os.WriteFile(filepath.Join(directory, ".env"), []byte(strings.Join([]string{
 		"HOTKEY_ROLE=worker",
 		"HOTKEY_JWT_SECRET=default-development-secret-with-more-than-32-bytes",
+		"HOTKEY_OPENAI_API_KEY=default-openai-key",
+		"HOTKEY_ONNX_RUNTIME_LIBRARY=/default/libonnxruntime.dylib",
+		"HOTKEY_ONNX_MODEL_PATH=/default/model.onnx",
+		"HOTKEY_ONNX_TOKENIZER_PATH=/default/tokenizer.json",
+		"HOTKEY_ONNX_MANIFEST_PATH=/default/manifest.json",
 	}, "\n")+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +278,8 @@ func TestLoadUsesDefaultEnvironmentFileAndProcessOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() default environment: %v", err)
 	}
-	if cfg.Role != "worker" || cfg.Authentication.JWTSecret != "default-development-secret-with-more-than-32-bytes" {
+	if cfg.Role != "worker" || cfg.Authentication.JWTSecret != "default-development-secret-with-more-than-32-bytes" ||
+		cfg.AI.OpenAIAPIKey != "default-openai-key" || cfg.AI.ONNXManifestPath != "/default/manifest.json" {
 		t.Fatalf("Load() default environment = %#v", cfg)
 	}
 
@@ -243,6 +307,11 @@ func TestLoadUsesProductionEnvironmentFile(t *testing.T) {
 		"HOTKEY_VERIFICATION_HMAC_SECRET=production-hmac-secret-with-more-than-32-bytes",
 		"HOTKEY_CORS_ALLOWED_ORIGINS=https://app.example.test",
 		"HOTKEY_REFRESH_COOKIE_SECURE=true",
+		"HOTKEY_OPENAI_API_KEY=production-openai-key",
+		"HOTKEY_ONNX_RUNTIME_LIBRARY=/production/libonnxruntime.dylib",
+		"HOTKEY_ONNX_MODEL_PATH=/production/model.onnx",
+		"HOTKEY_ONNX_TOKENIZER_PATH=/production/tokenizer.json",
+		"HOTKEY_ONNX_MANIFEST_PATH=/production/manifest.json",
 	}, "\n")+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +321,10 @@ func TestLoadUsesProductionEnvironmentFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() production environment: %v", err)
 	}
-	if cfg.Environment != "production" || cfg.Authentication.JWTSecret != "production-secret-with-more-than-32-bytes" || !cfg.Authentication.RefreshCookieSecure {
+	if cfg.Environment != "production" || cfg.Authentication.JWTSecret != "production-secret-with-more-than-32-bytes" ||
+		!cfg.Authentication.RefreshCookieSecure || cfg.AI.OpenAIAPIKey != "production-openai-key" ||
+		cfg.AI.ONNXRuntimeLibrary != "/production/libonnxruntime.dylib" || cfg.AI.ONNXModelPath != "/production/model.onnx" ||
+		cfg.AI.ONNXTokenizerPath != "/production/tokenizer.json" || cfg.AI.ONNXManifestPath != "/production/manifest.json" {
 		t.Fatalf("Load() production environment = %#v", cfg)
 	}
 }

@@ -32,6 +32,16 @@ const (
 	CodeCollectionRunNotFound       = 40004
 	CodeCollectionRunConflict       = 40005
 	CodeInvalidCollectionRequest    = 40006
+	CodeAIModelProfileInvalid       = 70000
+	CodeAIModelUnavailable          = 70001
+	CodeAIBudgetExhausted           = 70002
+	CodeAIProviderRateLimited       = 70003
+	CodeAIProviderTransient         = 70004
+	CodeAIProviderTimeout           = 70005
+	CodeAIOutputInvalid             = 70006
+	CodeAIRunInProgress             = 70007
+	CodeAIEmbeddingInvalid          = 70008
+	CodeAIRunLeaseExpired           = 70009
 	CodeInternal                    = 90000
 	CodeUnavailable                 = 90001
 	CodeBadGateway                  = 90002
@@ -75,6 +85,16 @@ func init() {
 		{Code: CodeCollectionRunNotFound, HTTPStatus: stdhttp.StatusNotFound, Message: "collection run not found"},
 		{Code: CodeCollectionRunConflict, HTTPStatus: stdhttp.StatusConflict, Message: "collection run conflict"},
 		{Code: CodeInvalidCollectionRequest, HTTPStatus: stdhttp.StatusBadRequest, Message: "invalid collection request"},
+		{Code: CodeAIModelProfileInvalid, HTTPStatus: stdhttp.StatusBadRequest, Message: "AI model profile invalid"},
+		{Code: CodeAIModelUnavailable, HTTPStatus: stdhttp.StatusServiceUnavailable, Message: "AI model unavailable", Retryable: true},
+		{Code: CodeAIBudgetExhausted, HTTPStatus: stdhttp.StatusTooManyRequests, Message: "AI budget exhausted", Retryable: true},
+		{Code: CodeAIProviderRateLimited, HTTPStatus: stdhttp.StatusTooManyRequests, Message: "AI provider rate limited", Retryable: true},
+		{Code: CodeAIProviderTransient, HTTPStatus: stdhttp.StatusBadGateway, Message: "AI provider transient failure", Retryable: true},
+		{Code: CodeAIProviderTimeout, HTTPStatus: stdhttp.StatusGatewayTimeout, Message: "AI provider timeout", Retryable: true},
+		{Code: CodeAIOutputInvalid, HTTPStatus: stdhttp.StatusBadGateway, Message: "AI output invalid"},
+		{Code: CodeAIRunInProgress, HTTPStatus: stdhttp.StatusConflict, Message: "AI run in progress", Retryable: true},
+		{Code: CodeAIEmbeddingInvalid, HTTPStatus: stdhttp.StatusBadRequest, Message: "AI embedding invalid"},
+		{Code: CodeAIRunLeaseExpired, HTTPStatus: stdhttp.StatusServiceUnavailable, Message: "AI run lease expired", Retryable: true},
 		{Code: CodeInternal, HTTPStatus: stdhttp.StatusInternalServerError, Message: "internal server error"},
 		{Code: CodeUnavailable, HTTPStatus: stdhttp.StatusServiceUnavailable, Message: "service unavailable", Retryable: true},
 		{Code: CodeBadGateway, HTTPStatus: stdhttp.StatusBadGateway, Message: "bad gateway", Retryable: true},

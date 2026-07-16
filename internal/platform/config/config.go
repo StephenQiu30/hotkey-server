@@ -22,6 +22,7 @@ type Config struct {
 	MinIO            MinIOConfig
 	VaultPath        string
 	Authentication   AuthenticationConfig
+	AI               AIConfig
 }
 
 type MinIOConfig struct {
@@ -72,6 +73,17 @@ type SMTPConfig struct {
 	Password  string
 	FromEmail string
 	FromName  string
+}
+
+// AIConfig contains only the explicit provider credentials and local ONNX
+// artifact locations required by the PLAN-008 adapters. All values remain
+// optional at process startup because no profile is selected implicitly.
+type AIConfig struct {
+	OpenAIAPIKey       string
+	ONNXRuntimeLibrary string
+	ONNXModelPath      string
+	ONNXTokenizerPath  string
+	ONNXManifestPath   string
 }
 
 func Default() Config {
@@ -155,6 +167,13 @@ func Load() (Config, error) {
 				FromEmail: configString(v, "smtp_from_email"),
 				FromName:  configString(v, "smtp_from_name"),
 			},
+		},
+		AI: AIConfig{
+			OpenAIAPIKey:       configString(v, "openai_api_key"),
+			ONNXRuntimeLibrary: configString(v, "onnx_runtime_library"),
+			ONNXModelPath:      configString(v, "onnx_model_path"),
+			ONNXTokenizerPath:  configString(v, "onnx_tokenizer_path"),
+			ONNXManifestPath:   configString(v, "onnx_manifest_path"),
 		},
 	}
 	return cfg, cfg.Validate()
@@ -288,6 +307,7 @@ func configKeys() []string {
 		"minio_endpoint", "minio_access_key", "minio_secret_key", "minio_bucket",
 		"minio_use_ssl", "vault_path",
 		"jwt_secret", "jwt_issuer", "jwt_audience", "verification_hmac_secret", "redis_url", "smtp_enabled", "smtp_host", "smtp_port", "smtp_tls_mode", "smtp_username", "smtp_password", "smtp_from_email", "smtp_from_name", "cors_allowed_origins", "refresh_cookie_secure", "bootstrap_admin_email", "bootstrap_admin_password",
+		"openai_api_key", "onnx_runtime_library", "onnx_model_path", "onnx_tokenizer_path", "onnx_manifest_path",
 	}
 }
 

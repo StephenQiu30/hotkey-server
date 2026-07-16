@@ -194,7 +194,14 @@ type ReportSubscription struct {
 }
 type AIModelProfile struct {
 	Record
-	Name string
+	Name, TaskType, Provider, ModelName, ModelVersion string
+	CredentialRef                                     *string
+	EmbeddingDimensions                               *int16
+	TimeoutSeconds                                    int
+	MaxAttempts                                       int16
+	FallbackPriority                                  int16
+	Enabled                                           bool
+	DeletedAt                                         *time.Time
 }
 type RetentionPolicy struct {
 	Record
@@ -280,7 +287,21 @@ type EventMetricSnapshot struct {
 }
 type AIRun struct {
 	OperationalRecord
-	TargetID int64
+	TaskType, TargetType, PromptVersion, SchemaVersion, ModelVersion, ParametersVersion, InputSchemaVersion string
+	TargetID, ModelProfileID, ModelProfileVersion                                                           int64
+	InputHash, EvidenceSetHash, ReuseKey                                                                    string
+	Attempt, MaxAttempts                                                                                    int16
+	RepairAttempted                                                                                         bool
+	RetryAfter, LeaseExpiresAt                                                                              *time.Time
+	ErrorCode                                                                                               *int
+	BudgetDay                                                                                               time.Time
+}
+type AIBudgetLedger struct {
+	OperationalRecord
+	ModelProfileID int64
+	BudgetDay      time.Time
+	OverageBlocked bool
+	UpdatedAt      time.Time
 }
 type AIRunEvidence struct {
 	OperationalRecord
@@ -352,7 +373,7 @@ var specs = []Spec{
 	{"reports", LifecycleBusiness, []string{"id", "report_type", "period_start", "status", "deleted_at"}},
 	{"report_items", LifecycleBusiness, []string{"id", "report_id", "event_id", "rank"}},
 	{"report_subscriptions", LifecycleBusiness, []string{"id", "user_id", "channel", "deleted_at"}},
-	{"ai_model_profiles", LifecycleBusiness, []string{"id", "name", "task_type", "deleted_at"}},
+	{"ai_model_profiles", LifecycleBusiness, []string{"id", "version", "name", "task_type", "provider", "model_name", "model_version", "credential_ref", "embedding_dimensions", "timeout_seconds", "max_attempts", "max_cost", "daily_budget", "fallback_priority", "enabled", "deleted_at"}},
 	{"retention_policies", LifecycleBusiness, []string{"id", "data_class", "retention_days", "action"}},
 	{"auth_sessions", LifecycleOperational, []string{"id", "user_id", "family_id", "absolute_expires_at", "revoked_at"}},
 	{"auth_refresh_tokens", LifecycleOperational, []string{"id", "session_id", "token_hash", "expires_at", "used_at", "revoked_at"}},
@@ -363,12 +384,13 @@ var specs = []Spec{
 	{"collection_run_target_items", LifecycleOperational, []string{"id", "collection_run_id", "collection_run_target_id", "collection_run_item_id", "outcome"}},
 	{"content_metric_snapshots", LifecycleOperational, []string{"id", "content_id", "captured_at", "view_count", "like_count", "comment_count", "share_count"}},
 	{"event_metric_snapshots", LifecycleOperational, []string{"id", "event_id", "captured_at"}},
-	{"ai_runs", LifecycleOperational, []string{"id", "task_type", "target_id", "input_hash", "status"}},
+	{"ai_runs", LifecycleOperational, []string{"id", "task_type", "target_type", "target_id", "model_profile_id", "model_profile_version", "model_version", "prompt_version", "input_schema_version", "schema_version", "parameters_version", "input_hash", "evidence_set_hash", "reuse_key", "attempt", "max_attempts", "repair_attempted", "retry_after", "error_code", "budget_day", "reserved_cost", "lease_expires_at", "status"}},
 	{"ai_run_evidences", LifecycleOperational, []string{"id", "ai_run_id", "content_id"}},
-	{"content_embeddings", LifecycleOperational, []string{"id", "content_id", "embedding", "active"}},
-	{"monitor_embeddings", LifecycleOperational, []string{"id", "monitor_id", "embedding", "active"}},
-	{"event_embeddings", LifecycleOperational, []string{"id", "event_id", "embedding", "active"}},
-	{"topic_embeddings", LifecycleOperational, []string{"id", "topic_id", "embedding", "active"}},
+	{"ai_budget_ledgers", LifecycleOperational, []string{"id", "model_profile_id", "budget_day", "reserved_cost", "settled_cost", "overage_blocked", "updated_at"}},
+	{"content_embeddings", LifecycleOperational, []string{"id", "content_id", "model_profile_id", "model_profile_version", "model_version", "input_hash", "embedding", "active"}},
+	{"monitor_embeddings", LifecycleOperational, []string{"id", "monitor_id", "model_profile_id", "model_profile_version", "model_version", "input_hash", "query_text", "embedding", "active"}},
+	{"event_embeddings", LifecycleOperational, []string{"id", "event_id", "model_profile_id", "model_profile_version", "model_version", "input_hash", "embedding", "active"}},
+	{"topic_embeddings", LifecycleOperational, []string{"id", "topic_id", "model_profile_id", "model_profile_version", "model_version", "input_hash", "embedding", "active"}},
 	{"knowledge_revisions", LifecycleOperational, []string{"id", "document_id", "revision_no"}},
 	{"vault_sync_runs", LifecycleOperational, []string{"id", "run_type", "status"}},
 	{"report_deliveries", LifecycleOperational, []string{"id", "report_id", "subscription_id", "idempotency_key", "status"}},

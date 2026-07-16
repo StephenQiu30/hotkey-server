@@ -8,7 +8,7 @@ canonical_path: docs/plans/008-AIProvider与Embedding基础计划.md
 status: accepted
 execution_status: in_progress
 review_status: approved
-version: v1.6
+version: v1.7
 owner: HotKey Server Team
 inputs:
   - docs/prd/008-AIProvider与Embedding基础.md
@@ -131,25 +131,25 @@ ONNX profile 只在完整 bundle 校验后可选。`HOTKEY_ONNX_MANIFEST_PATH` �
 
 **Consumes:** PLAN-007 canonical catalog and `Config.Load`; **Produces:** fixed dependency/config/error/schema contract for every later task.
 
-- [ ] **Step 1: Write failing configuration and catalog tests.** Assert `HOTKEY_OPENAI_API_KEY`, all four ONNX artifact keys and no generic `HOTKEY_LLM_*` are bound by `configKeys()`/`.env`/`.env.prod`. Assert 70000–70009 status/retryability. Extend schema tests to reject every task type except `embedding|term_expansion`, require non-null positive max_cost, NULL-or-at-least-max daily budget, ledger `overage_blocked`, lease, no `ai_runs.error`, four partial unique indexes and exact physical add-only order.
+- [x] **Step 1: Write failing configuration and catalog tests.** Assert `HOTKEY_OPENAI_API_KEY`, all four ONNX artifact keys and no generic `HOTKEY_LLM_*` are bound by `configKeys()`/`.env`/`.env.prod`. Assert 70000–70009 status/retryability. Extend schema tests to reject every task type except `embedding|term_expansion`, require non-null positive max_cost, NULL-or-at-least-max daily budget, ledger `overage_blocked`, lease, no `ai_runs.error`, four partial unique indexes and exact physical add-only order.
 
-- [ ] **Step 2: Run RED.**
+- [x] **Step 2: Run RED.**
 
   Run: `go test ./internal/platform/config ./internal/shared/errors ./internal/platform/database ./internal/platform/database/model ./tests/architecture -count=1`
 
   Expected: FAIL because AI config keys, AI code catalog, ledger/constraints and target catalog are absent.
 
-- [ ] **Step 3: Implement the smallest complete contract.** Add `AIConfig` to `config.Config`, bind OpenAI plus four ONNX artifact keys, remove unbound `HOTKEY_LLM_API_KEY`, `HOTKEY_LLM_BASE_URL`, `HOTKEY_LLM_MODEL`, and leave runtime AI credentials optional. Register ten codes in `shared/errors`. Update full Schema/record metadata exactly as “完整 Schema 目标” specifies; add no migration runtime. Pin OpenAI `v3.32.0`, JSON Schema `v6.0.2`, pgvector `v0.4.0`, and ONNX `v1.31.0` in `go.mod`.
+- [x] **Step 3: Implement the smallest complete contract.** Add `AIConfig` to `config.Config`, bind OpenAI plus four ONNX artifact keys, remove unbound `HOTKEY_LLM_API_KEY`, `HOTKEY_LLM_BASE_URL`, `HOTKEY_LLM_MODEL`, and leave runtime AI credentials optional. Register ten codes in `shared/errors`. Update full Schema/record metadata exactly as “完整 Schema 目标” specifies; add no migration runtime. Pin OpenAI `v3.32.0`, JSON Schema `v6.0.2`, pgvector `v0.4.0`, and ONNX `v1.31.0` in `go.mod`.
 
-- [ ] **Step 4: Write the upgrade/rollback runbook and its real integration rehearsal.** The Operations document must pin PLAN-007 baseline `53d7f01`, create a disposable detached worktree from it, run its `db init`/verifier, and retain its custom `pg_dump`. It must require every existing AI table count to be zero, then run one `psql -v ON_ERROR_STOP=1` transaction that drops only the old ai_runs unique, drops `ai_runs.error`, adds columns in physical order, creates ledger/indexes/constraints, runs current `db verify`, and asserts empty counts. Rollback stops services, first proves unprepared `pg_restore --single-transaction` fails atomically, drops only PLAN-008 indexes/ledger, restores the custom backup in one transaction, then invokes `go -C "$PLAN007_WORKTREE" run ./cmd/hotkey db verify`. The integration test must invoke this exact detached-worktree verifier, not recreate a hand-built legacy Schema.
+- [x] **Step 4: Write the upgrade/rollback runbook and its real integration rehearsal.** The Operations document must pin PLAN-007 baseline `53d7f01`, create a disposable detached worktree from it, run its `db init`/verifier, and retain its custom `pg_dump`. It must require every existing AI table count to be zero, then run one `psql -v ON_ERROR_STOP=1` transaction that drops only the old ai_runs unique, drops `ai_runs.error`, adds columns in physical order, creates ledger/indexes/constraints, runs current `db verify`, and asserts empty counts. Rollback stops services, first proves unprepared `pg_restore --single-transaction` fails atomically, drops only PLAN-008 indexes/ledger, restores the custom backup in one transaction, then invokes `go -C "$PLAN007_WORKTREE" run ./cmd/hotkey db verify`. The integration test must invoke this exact detached-worktree verifier, not recreate a hand-built legacy Schema.
 
-- [ ] **Step 5: Run GREEN.**
+- [x] **Step 5: Run GREEN.**
 
   Run: `HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable' go test -tags=integration ./internal/platform/database ./tests/architecture -count=1`
 
   Expected: PASS; it exercises PLAN-007 backup -> exact PLAN-008 upgrade -> current verifier -> prepared restore -> PLAN-007 verifier. Then run `go test ./internal/platform/config ./internal/shared/errors ./internal/platform/database/model -count=1` and `make schema-verify` successfully.
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
   ```bash
   git add go.mod go.sum .env.example internal/platform/config internal/shared/errors \
@@ -411,3 +411,4 @@ Task 1–6 每项必须是一个可回滚、通过其 GREEN 命令的提交，�
 | v1.4 | 2026-07-17 | 固化 create-only credential_ref，并定义 OpenAI model ID 严格校验与本地 ModelVersion 的 fixture 契约。 |
 | v1.5 | 2026-07-17 | 独立 Plan Review 通过，状态提升为 accepted/approved/ready。 |
 | v1.6 | 2026-07-17 | 已开始实现，执行状态更新为 in_progress。 |
+| v1.7 | 2026-07-17 | Task 1 已完成并通过固定 PLAN-007 worktree 的升级/回退演练、完整 Schema 校验和 `make ci`；PLAN-008 整体仍在实施中。 |

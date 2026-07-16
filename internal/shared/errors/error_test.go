@@ -88,6 +88,37 @@ func TestMonitorAndSourceCodesAreRegisteredWithStableHTTPStatus(t *testing.T) {
 	}
 }
 
+func TestAICodesAreRegisteredWithStableContracts(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		code       int
+		httpStatus int
+		retryable  bool
+	}{
+		{CodeAIModelProfileInvalid, stdhttp.StatusBadRequest, false},
+		{CodeAIModelUnavailable, stdhttp.StatusServiceUnavailable, true},
+		{CodeAIBudgetExhausted, stdhttp.StatusTooManyRequests, true},
+		{CodeAIProviderRateLimited, stdhttp.StatusTooManyRequests, true},
+		{CodeAIProviderTransient, stdhttp.StatusBadGateway, true},
+		{CodeAIProviderTimeout, stdhttp.StatusGatewayTimeout, true},
+		{CodeAIOutputInvalid, stdhttp.StatusBadGateway, false},
+		{CodeAIRunInProgress, stdhttp.StatusConflict, true},
+		{CodeAIEmbeddingInvalid, stdhttp.StatusBadRequest, false},
+		{CodeAIRunLeaseExpired, stdhttp.StatusServiceUnavailable, true},
+	}
+	for _, test := range tests {
+		definition, ok := Lookup(test.code)
+		if !ok {
+			t.Errorf("code %d is not registered", test.code)
+			continue
+		}
+		if definition.HTTPStatus != test.httpStatus || definition.Retryable != test.retryable {
+			t.Errorf("code %d = %#v, want HTTP %d retryable=%t", test.code, definition, test.httpStatus, test.retryable)
+		}
+	}
+}
+
 func TestRegisterCodeRejectsDuplicate(t *testing.T) {
 	definition := CodeDefinition{Code: 19999, HTTPStatus: stdhttp.StatusBadRequest, Message: "test code"}
 	if err := RegisterCode(definition); err != nil {

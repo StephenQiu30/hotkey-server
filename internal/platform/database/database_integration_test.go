@@ -17,7 +17,7 @@ import (
 
 func TestEmbeddedSchemaCatalogIsComplete(t *testing.T) {
 	tables := EmbeddedSchemaTableNames()
-	if got, want := len(tables), 57; got != want {
+	if got, want := len(tables), 58; got != want {
 		t.Fatalf("embedded table count = %d, want %d", got, want)
 	}
 	if !EmbeddedSchemaContains("CREATE EXTENSION IF NOT EXISTS vector") {
@@ -33,7 +33,7 @@ func TestRuntimeUsesSharedPoolAndVerifiesCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Verify() error = %v", err)
 	}
-	if got, want := len(verification.Tables), 57; got != want {
+	if got, want := len(verification.Tables), 58; got != want {
 		t.Fatalf("verified table count = %d, want %d", got, want)
 	}
 	if verification.CatalogFingerprint == "" {
@@ -44,6 +44,122 @@ func TestRuntimeUsesSharedPoolAndVerifiesCatalog(t *testing.T) {
 	}
 	if err := runtime.Ping(context.Background()); err != nil {
 		t.Fatalf("Pool ping: %v", err)
+	}
+}
+
+func TestAIBaseSchemaEnforcesProfileRunAndLedgerContracts(t *testing.T) {
+	runtime := openTestRuntime(t)
+	defer func() { _ = runtime.Close() }()
+
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	profileSQL := `
+INSERT INTO ai_model_profiles (
+    name, task_type, provider, model_name, credential_ref, model_version,
+    embedding_dimensions, max_attempts, max_cost, daily_budget
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
+
+	for _, test := range []struct {
+		name       string
+		taskType   string
+		provider   string
+		credential any
+		dimension  any
+		maxCost    string
+		daily      any
+	}{
+		{"future task", "classification", "openai", "env:OPENAI_API_KEY", 1024, "1.0000", "10.0000"},
+		{"onnx term expansion", "term_expansion", "onnx", nil, nil, "1.0000", "10.0000"},
+		{"non-positive max cost", "embedding", "openai", "env:OPENAI_API_KEY", 1024, "0.0000", "10.0000"},
+		{"daily budget below max", "embedding", "openai", "env:OPENAI_API_KEY", 1024, "2.0000", "1.0000"},
+	} {
+		if _, err := runtime.SQL.Exec(profileSQL,
+			"plan008-invalid-"+test.name+"-"+suffix, test.taskType, test.provider,
+			"fixture-model", test.credential, "profile-v1", test.dimension, 1, test.maxCost, test.daily,
+		); err == nil {
+			t.Errorf("insert profile with %s error = nil, want CHECK rejection", test.name)
+		} else {
+			assertPostgreSQLState(t, err, "23514")
+		}
+	}
+
+	var profileID int64
+	if err := runtime.SQL.QueryRow(profileSQL+" RETURNING id",
+		"plan008-valid-"+suffix, "embedding", "openai", "fixture-model", "env:OPENAI_API_KEY", "profile-v1", 1024, 2, "1.0000", "10.0000",
+	).Scan(&profileID); err != nil {
+		t.Fatalf("insert valid AI profile: %v", err)
+	}
+
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO ai_budget_ledgers (model_profile_id, budget_day, reserved_cost, settled_cost)
+VALUES ($1, current_date, 0, 0)`, profileID); err != nil {
+		t.Fatalf("insert AI budget ledger: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO ai_budget_ledgers (model_profile_id, budget_day, reserved_cost, settled_cost)
+VALUES ($1, current_date, -1, 0)`, profileID); err == nil {
+		t.Fatal("negative AI budget reservation error = nil, want CHECK rejection")
+	} else {
+		assertPostgreSQLState(t, err, "23514")
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO ai_budget_ledgers (model_profile_id, budget_day, reserved_cost, settled_cost)
+VALUES ($1, current_date, 0, 0)`, profileID); err == nil {
+		t.Fatal("duplicate AI budget ledger error = nil, want unique rejection")
+	} else {
+		assertPostgreSQLState(t, err, "23505")
+	}
+
+	const runSQL = `
+INSERT INTO ai_runs (
+    task_type, target_type, target_id, model_profile_id, prompt_version, schema_version,
+    input_hash, status, model_profile_version, model_version, parameters_version,
+    input_schema_version, evidence_set_hash, reuse_key, attempt, max_attempts,
+    budget_day, reserved_cost, lease_expires_at
+) VALUES (
+    'embedding', 'content', 1, $1, 'prompt-v1', 'output-v1', $2, $3, 1,
+    'profile-v1', 'parameters-v1', 'input-v1', $4, $5, 1, 2, current_date, 0, $6
+)`
+	inputHash := strings.Repeat("a", 64)
+	evidenceHash := strings.Repeat("b", 64)
+	successReuseKey := strings.Repeat("c", 64)
+	if _, err := runtime.SQL.Exec(runSQL, profileID, inputHash, "succeeded", evidenceHash, successReuseKey, nil); err != nil {
+		t.Fatalf("insert succeeded AI run: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(runSQL, profileID, inputHash, "succeeded", evidenceHash, successReuseKey, nil); err == nil {
+		t.Fatal("duplicate succeeded AI run error = nil, want unique rejection")
+	} else {
+		assertPostgreSQLState(t, err, "23505")
+	}
+	inflightReuseKey := strings.Repeat("d", 64)
+	if _, err := runtime.SQL.Exec(runSQL, profileID, inputHash, "queued", evidenceHash, inflightReuseKey, time.Now().UTC().Add(time.Minute)); err != nil {
+		t.Fatalf("insert queued AI run: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(runSQL, profileID, inputHash, "queued", evidenceHash, inflightReuseKey, time.Now().UTC().Add(time.Minute)); err == nil {
+		t.Fatal("duplicate in-flight AI run error = nil, want unique rejection")
+	} else {
+		assertPostgreSQLState(t, err, "23505")
+	}
+	if _, err := runtime.SQL.Exec(runSQL, profileID, inputHash, "queued", evidenceHash, strings.Repeat("e", 64), nil); err == nil {
+		t.Fatal("queued AI run without lease error = nil, want CHECK rejection")
+	} else {
+		assertPostgreSQLState(t, err, "23514")
+	}
+
+	for _, indexName := range []string{
+		"ai_runs_reuse_succeeded_uq",
+		"ai_runs_reuse_inflight_uq",
+		"content_embeddings_one_active_per_profile_uq",
+		"monitor_embeddings_one_active_per_profile_uq",
+		"event_embeddings_one_active_per_profile_uq",
+		"topic_embeddings_one_active_per_profile_uq",
+	} {
+		var exists bool
+		if err := runtime.SQL.QueryRow("SELECT to_regclass($1) IS NOT NULL", "public."+indexName).Scan(&exists); err != nil {
+			t.Fatalf("check AI index %s: %v", indexName, err)
+		}
+		if !exists {
+			t.Errorf("required AI index %s does not exist", indexName)
+		}
 	}
 }
 
@@ -533,6 +649,83 @@ func TestPlan007SchemaUpgradeRollbackRestoresLegacyBackup(t *testing.T) {
 	})
 }
 
+func TestPlan008SchemaUpgradeAndRollbackUsesPinnedPlan007Worktree(t *testing.T) {
+	worktree := plan007Worktree(t)
+	dsn := postgresfixture.New(t)
+
+	if output, err := runHistoricalDatabaseCommand(worktree, dsn, "init", "--empty-only", "--confirm-empty"); err != nil {
+		t.Fatalf("initialize detached PLAN-007 worktree database: %v\n%s", err, output)
+	}
+	if output, err := runHistoricalDatabaseCommand(worktree, dsn, "verify"); err != nil {
+		t.Fatalf("verify detached PLAN-007 worktree database: %v\n%s", err, output)
+	}
+
+	backup := filepath.Join(t.TempDir(), "plan008-plan007-before-upgrade.dump")
+	if output, err := runPostgreSQLTool(t, "pg_dump", dsn, "--format=custom", "--file="+backup); err != nil {
+		t.Fatalf("dump PLAN-007 database: %v\n%s", err, output)
+	}
+	if output, err := runPostgreSQLTool(t, "psql", dsn, "-v", "ON_ERROR_STOP=1", "-c", plan008UpgradeSQL(t)); err != nil {
+		t.Fatalf("apply exact PLAN-008 upgrade runbook: %v\n%s", err, output)
+	}
+
+	current, err := Open(context.Background(), dsn)
+	if err != nil {
+		t.Fatalf("open upgraded PLAN-008 database: %v", err)
+	}
+	if _, err := Verify(context.Background(), current.Pool); err != nil {
+		_ = current.Close()
+		t.Fatalf("verify upgraded PLAN-008 catalog: %v", err)
+	}
+	var aiRows int
+	if err := current.SQL.QueryRow(`
+SELECT
+  (SELECT count(*) FROM ai_model_profiles) +
+  (SELECT count(*) FROM ai_runs) +
+  (SELECT count(*) FROM ai_run_evidences) +
+  (SELECT count(*) FROM content_embeddings) +
+  (SELECT count(*) FROM monitor_embeddings) +
+  (SELECT count(*) FROM event_embeddings) +
+  (SELECT count(*) FROM topic_embeddings)`).Scan(&aiRows); err != nil {
+		_ = current.Close()
+		t.Fatalf("count upgraded AI rows: %v", err)
+	}
+	if aiRows != 0 {
+		_ = current.Close()
+		t.Fatalf("upgraded PLAN-008 database has %d legacy AI rows, want 0", aiRows)
+	}
+	if err := current.Close(); err != nil {
+		t.Fatalf("close upgraded PLAN-008 database: %v", err)
+	}
+
+	if output, err := runPostgreSQLTool(t, "pg_restore", "--single-transaction", "--clean", "--if-exists", "--no-owner", "--dbname="+dsn, backup); err == nil {
+		t.Fatal("unprepared PLAN-008 restore succeeded, want the documented ledger dependency failure")
+	} else if output == "" {
+		t.Fatal("unprepared PLAN-008 restore failed without diagnostic output")
+	}
+
+	current, err = Open(context.Background(), dsn)
+	if err != nil {
+		t.Fatalf("reopen database after failed unprepared restore: %v", err)
+	}
+	if _, err := Verify(context.Background(), current.Pool); err != nil {
+		_ = current.Close()
+		t.Fatalf("unprepared restore was not atomic: %v", err)
+	}
+	if err := current.Close(); err != nil {
+		t.Fatalf("close database before prepared restore: %v", err)
+	}
+
+	if output, err := runPostgreSQLTool(t, "psql", dsn, "-v", "ON_ERROR_STOP=1", "-c", plan008RollbackPreparationSQL(t)); err != nil {
+		t.Fatalf("apply exact PLAN-008 rollback preparation: %v\n%s", err, output)
+	}
+	if output, err := runPostgreSQLTool(t, "pg_restore", "--single-transaction", "--clean", "--if-exists", "--no-owner", "--dbname="+dsn, backup); err != nil {
+		t.Fatalf("restore PLAN-007 backup after PLAN-008 preparation: %v\n%s", err, output)
+	}
+	if output, err := runHistoricalDatabaseCommand(worktree, dsn, "verify"); err != nil {
+		t.Fatalf("verify restored database with detached PLAN-007 worktree: %v\n%s", err, output)
+	}
+}
+
 func plan007UpgradedLegacyRuntime(t *testing.T) (*Runtime, string) {
 	t.Helper()
 	runtime := openTestRuntime(t)
@@ -599,6 +792,30 @@ func runPostgreSQLTool(t *testing.T, name string, args ...string) (string, error
 		t.Skipf("%s is required for PLAN-007 rollback integration: %v", name, err)
 	}
 	output, err := exec.Command(name, args...).CombinedOutput()
+	return string(output), err
+}
+
+func plan007Worktree(t *testing.T) string {
+	t.Helper()
+	root := filepath.Clean(filepath.Join("..", "..", ".."))
+	worktree := filepath.Join(t.TempDir(), "plan007-worktree")
+	command := exec.Command("git", "-C", root, "worktree", "add", "--detach", worktree, "53d7f01")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("create detached PLAN-007 worktree: %v\n%s", err, output)
+	}
+	t.Cleanup(func() {
+		output, err := exec.Command("git", "-C", root, "worktree", "remove", "--force", worktree).CombinedOutput()
+		if err != nil {
+			t.Errorf("remove detached PLAN-007 worktree: %v\n%s", err, output)
+		}
+	})
+	return worktree
+}
+
+func runHistoricalDatabaseCommand(worktree, dsn string, args ...string) (string, error) {
+	command := exec.Command("go", append([]string{"-C", worktree, "run", "./cmd/hotkey", "db"}, args...)...)
+	command.Env = append(os.Environ(), "HOTKEY_DATABASE_URL="+dsn)
+	output, err := command.CombinedOutput()
 	return string(output), err
 }
 
@@ -682,6 +899,35 @@ func plan007UpgradeSQL(t *testing.T) string {
 	end := strings.Index(text[start:], "\nCOMMIT;")
 	if end < 0 {
 		t.Fatal("PLAN-007 upgrade runbook has no COMMIT")
+	}
+	return text[start : start+end+len("\nCOMMIT;")]
+}
+
+func plan008UpgradeSQL(t *testing.T) string {
+	t.Helper()
+	return plan008RunbookTransaction(t, "BEGIN;\n\nALTER TABLE ai_model_profiles", "PLAN-008 upgrade")
+}
+
+func plan008RollbackPreparationSQL(t *testing.T) string {
+	t.Helper()
+	return plan008RunbookTransaction(t, "BEGIN;\nDROP INDEX IF EXISTS ai_runs_reuse_succeeded_uq", "PLAN-008 rollback preparation")
+}
+
+func plan008RunbookTransaction(t *testing.T, opening, description string) string {
+	t.Helper()
+	path := filepath.Join("..", "..", "..", "docs", "operations", "plan008-schema-upgrade.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s runbook: %v", description, err)
+	}
+	text := string(content)
+	start := strings.Index(text, opening)
+	if start < 0 {
+		t.Fatalf("%s runbook transaction is missing", description)
+	}
+	end := strings.Index(text[start:], "\nCOMMIT;")
+	if end < 0 {
+		t.Fatalf("%s runbook transaction has no COMMIT", description)
 	}
 	return text[start : start+end+len("\nCOMMIT;")]
 }
