@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -493,6 +494,179 @@ RETURNING view_count, like_count, comment_count, share_count`).Scan(&defaultSnap
 	}
 }
 
+func TestPlan007SchemaUpgradeRestoresCanonicalCatalogFromLegacyLayout(t *testing.T) {
+	runtime := openTestRuntime(t)
+	defer func() { _ = runtime.Close() }()
+
+	if _, err := runtime.SQL.Exec(plan007LegacyLayoutSQL); err != nil {
+		t.Fatalf("restore PLAN-006 catalog layout: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(plan007UpgradeSQL(t)); err != nil {
+		t.Fatalf("apply PLAN-007 upgrade runbook to legacy layout: %v", err)
+	}
+	if _, err := Verify(context.Background(), runtime.Pool); err != nil {
+		t.Fatalf("verify upgraded PLAN-006 catalog against canonical schema: %v", err)
+	}
+}
+
+func TestPlan007SchemaUpgradeRollbackRestoresLegacyBackup(t *testing.T) {
+	t.Run("legacy restore fails before PLAN-007 foreign-key cleanup", func(t *testing.T) {
+		runtime, backup := plan007UpgradedLegacyRuntime(t)
+		output, err := runPostgreSQLTool(t, "pg_restore", "--clean", "--if-exists", "--no-owner", "--dbname="+runtime.Pool.Config().ConnString(), backup)
+		if err == nil {
+			t.Fatal("restore legacy backup without PLAN-007 foreign-key cleanup = nil error, want dependency failure")
+		}
+		if !strings.Contains(output, "cannot drop table") || !strings.Contains(output, "collection_run_items_content_source_connection_fkey") {
+			t.Fatalf("restore legacy backup failure did not identify the PLAN-007 content foreign key: %s", output)
+		}
+	})
+
+	t.Run("runbook foreign-key cleanup restores legacy schema and rows", func(t *testing.T) {
+		runtime, backup := plan007UpgradedLegacyRuntime(t)
+		if _, err := runtime.SQL.Exec(plan007RollbackForeignKeyCleanupSQL(t)); err != nil {
+			t.Fatalf("run PLAN-007 rollback foreign-key cleanup: %v", err)
+		}
+		if output, err := runPostgreSQLTool(t, "pg_restore", "--clean", "--if-exists", "--no-owner", "--dbname="+runtime.Pool.Config().ConnString(), backup); err != nil {
+			t.Fatalf("restore legacy backup after PLAN-007 foreign-key cleanup: %v\n%s", err, output)
+		}
+		assertPlan007LegacyBackupRestored(t, runtime)
+	})
+}
+
+func plan007UpgradedLegacyRuntime(t *testing.T) (*Runtime, string) {
+	t.Helper()
+	runtime := openTestRuntime(t)
+	t.Cleanup(func() { _ = runtime.Close() })
+
+	if _, err := runtime.SQL.Exec(plan007LegacyLayoutSQL); err != nil {
+		t.Fatalf("restore PLAN-006 catalog layout: %v", err)
+	}
+	var sourceID, contentID int64
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO source_connections (source_type, name, endpoint)
+VALUES ('rss', 'plan007-rollback-source', 'https://rollback.example.test/feed')
+RETURNING id`).Scan(&sourceID); err != nil {
+		t.Fatalf("seed PLAN-006 source: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO contents (
+    source_connection_id, external_id, content_type, title, canonical_url, language,
+    published_at, fetched_at, dedupe_key, view_count, like_count, comment_count, share_count
+)
+VALUES ($1, 'plan007-rollback-content', 'article', 'Legacy rollback content',
+        'https://rollback.example.test/content', 'en', now(), now(), $2, 0, 12, 0, 4)
+RETURNING id`, sourceID, strings.Repeat("a", 64)).Scan(&contentID); err != nil {
+		t.Fatalf("seed PLAN-006 content: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO content_metric_snapshots (content_id, captured_at, view_count, like_count, comment_count, share_count)
+VALUES ($1, now(), 0, 8, 0, 2)`, contentID); err != nil {
+		t.Fatalf("seed PLAN-006 metric snapshot: %v", err)
+	}
+	var runID int64
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO collection_runs (source_connection_id, query_signature, window_start, window_end, trigger_type, scheduled_at)
+VALUES ($1, $2, now(), now() + interval '1 minute', 'manual', now())
+RETURNING id`, sourceID, strings.Repeat("b", 64)).Scan(&runID); err != nil {
+		t.Fatalf("seed PLAN-006 collection run: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO collection_run_items (
+    run_id, source_code, external_id, content_type, captured_item_version, captured_item,
+    payload_hash, raw_payload_disposition, outcome, observed_at
+)
+VALUES ($1, 'rss', 'plan007-rollback-item', 'article', 'v1', '{"title":"legacy"}'::jsonb,
+        $2, 'discarded', 'captured', now())`, runID, strings.Repeat("c", 64)); err != nil {
+		t.Fatalf("seed PLAN-006 captured item: %v", err)
+	}
+
+	backup := filepath.Join(t.TempDir(), "plan007-legacy.dump")
+	if output, err := runPostgreSQLTool(t, "pg_dump", runtime.Pool.Config().ConnString(), "--format=custom", "--file="+backup); err != nil {
+		t.Fatalf("dump PLAN-006 legacy database: %v\n%s", err, output)
+	}
+	if _, err := runtime.SQL.Exec(plan007UpgradeSQL(t)); err != nil {
+		t.Fatalf("apply PLAN-007 upgrade runbook: %v", err)
+	}
+	if _, err := Verify(context.Background(), runtime.Pool); err != nil {
+		t.Fatalf("verify upgraded PLAN-006 catalog against canonical schema: %v", err)
+	}
+	return runtime, backup
+}
+
+func runPostgreSQLTool(t *testing.T, name string, args ...string) (string, error) {
+	t.Helper()
+	if _, err := exec.LookPath(name); err != nil {
+		t.Skipf("%s is required for PLAN-007 rollback integration: %v", name, err)
+	}
+	output, err := exec.Command(name, args...).CombinedOutput()
+	return string(output), err
+}
+
+func assertPlan007LegacyBackupRestored(t *testing.T, runtime *Runtime) {
+	t.Helper()
+	var legacyContent, legacySnapshot, dedupeColumns, sourceColumns, plan007ForeignKeys int
+	if err := runtime.SQL.QueryRow(`
+SELECT
+  (SELECT count(*) FROM contents
+   WHERE external_id = 'plan007-rollback-content'
+     AND view_count = 0 AND like_count = 12 AND comment_count = 0 AND share_count = 4),
+  (SELECT count(*) FROM content_metric_snapshots
+   WHERE view_count = 0 AND like_count = 8 AND comment_count = 0 AND share_count = 2),
+  (SELECT count(*) FROM information_schema.columns
+   WHERE table_schema = 'public' AND table_name = 'contents'
+     AND column_name IN ('dedupe_reason', 'dedupe_version')),
+  (SELECT count(*) FROM information_schema.columns
+   WHERE table_schema = 'public' AND table_name = 'collection_run_items'
+     AND column_name = 'source_connection_id'),
+  (SELECT count(*) FROM pg_constraint
+   WHERE conname IN ('collection_run_items_run_source_connection_fkey', 'collection_run_items_content_source_connection_fkey'))`).
+		Scan(&legacyContent, &legacySnapshot, &dedupeColumns, &sourceColumns, &plan007ForeignKeys); err != nil {
+		t.Fatalf("read restored PLAN-006 facts: %v", err)
+	}
+	if legacyContent != 1 || legacySnapshot != 1 || dedupeColumns != 0 || sourceColumns != 0 || plan007ForeignKeys != 0 {
+		t.Fatalf("restored PLAN-006 facts = content=%d snapshot=%d dedupe-columns=%d source-columns=%d plan007-foreign-keys=%d, want 1/1/0/0/0", legacyContent, legacySnapshot, dedupeColumns, sourceColumns, plan007ForeignKeys)
+	}
+}
+
+const plan007LegacyLayoutSQL = `
+ALTER TABLE collection_run_items
+  DROP CONSTRAINT collection_run_items_run_id_source_connection_id_fkey,
+  DROP CONSTRAINT collection_run_items_content_id_source_connection_id_fkey,
+  DROP CONSTRAINT collection_run_items_check,
+  DROP COLUMN source_connection_id,
+  DROP COLUMN ingestion_status,
+  DROP COLUMN ingestion_error_code,
+  ADD CONSTRAINT collection_run_items_content_id_fkey
+    FOREIGN KEY (content_id) REFERENCES contents(id) ON DELETE SET NULL;
+
+ALTER TABLE contents
+  DROP CONSTRAINT contents_check,
+  DROP CONSTRAINT contents_id_source_connection_id_key,
+  DROP COLUMN dedupe_reason,
+  DROP COLUMN dedupe_version,
+  ALTER COLUMN view_count SET DEFAULT 0,
+  ALTER COLUMN view_count SET NOT NULL,
+  ALTER COLUMN like_count SET DEFAULT 0,
+  ALTER COLUMN like_count SET NOT NULL,
+  ALTER COLUMN comment_count SET DEFAULT 0,
+  ALTER COLUMN comment_count SET NOT NULL,
+  ALTER COLUMN share_count SET DEFAULT 0,
+  ALTER COLUMN share_count SET NOT NULL;
+
+ALTER TABLE content_metric_snapshots
+  ALTER COLUMN view_count SET DEFAULT 0,
+  ALTER COLUMN view_count SET NOT NULL,
+  ALTER COLUMN like_count SET DEFAULT 0,
+  ALTER COLUMN like_count SET NOT NULL,
+  ALTER COLUMN comment_count SET DEFAULT 0,
+  ALTER COLUMN comment_count SET NOT NULL,
+  ALTER COLUMN share_count SET DEFAULT 0,
+  ALTER COLUMN share_count SET NOT NULL;
+
+ALTER TABLE collection_runs
+  DROP CONSTRAINT collection_runs_id_source_connection_id_key;
+`
+
 func plan007UpgradeSQL(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join("..", "..", "..", "docs", "operations", "plan007-schema-upgrade.md")
@@ -510,6 +684,25 @@ func plan007UpgradeSQL(t *testing.T) string {
 		t.Fatal("PLAN-007 upgrade runbook has no COMMIT")
 	}
 	return text[start : start+end+len("\nCOMMIT;")]
+}
+
+func plan007RollbackForeignKeyCleanupSQL(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join("..", "..", "..", "docs", "operations", "plan007-schema-upgrade.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read PLAN-007 upgrade runbook: %v", err)
+	}
+	text := string(content)
+	start := strings.Index(text, "ALTER TABLE collection_run_items\n  DROP CONSTRAINT IF EXISTS collection_run_items_run_source_connection_fkey")
+	if start < 0 {
+		t.Fatal("PLAN-007 upgrade runbook has no pre-restore PLAN-007 foreign-key cleanup")
+	}
+	end := strings.Index(text[start:], ";\n")
+	if end < 0 {
+		t.Fatal("PLAN-007 upgrade runbook foreign-key cleanup has no statement terminator")
+	}
+	return text[start : start+end+1]
 }
 
 func assertMonitorPointerForeignKey(t *testing.T, runtime *Runtime, name string) {

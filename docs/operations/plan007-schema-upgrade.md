@@ -181,11 +181,16 @@ HOTKEY_TEST_DSN='postgres:///hotkey_plan007_test?sslmode=disable' \
 
 ## 回退
 
-若转换未提交，`psql` 会退出并回滚当前 transaction；不要继续重试或手工修正。若转换已提交但验证失败，保持服务停止并从已验证 backup 恢复：
+若转换未提交，`psql` 会退出并回滚当前 transaction；不要继续重试或手工修正。若转换已提交但验证失败，保持服务停止并从已验证 backup 恢复。`collection_run_items` 的以下两个复合外键只在 PLAN-007 转换后存在，旧 backup 不包含它们；先仅删除这两个新外键，避免 `pg_restore --clean` 因无法删除 `contents` 或 `collection_runs` 而留下混合 Schema。不得使用 `DROP SCHEMA ... CASCADE` 或其他宽泛重置。
 
 ```bash
+psql "$HOTKEY_DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+ALTER TABLE collection_run_items
+  DROP CONSTRAINT IF EXISTS collection_run_items_run_source_connection_fkey,
+  DROP CONSTRAINT IF EXISTS collection_run_items_content_source_connection_fkey;
+SQL
+
 pg_restore --clean --if-exists --no-owner --dbname="$HOTKEY_DATABASE_URL" /secure-backups/hotkey-before-plan007.dump
-HOTKEY_DATABASE_URL="$HOTKEY_DATABASE_URL" go run ./cmd/hotkey db verify
 ```
 
-确认恢复校验通过后，记录失败原因并创建新的前向修复计划；不得在未恢复的目标库上继续写入。
+恢复后必须同时回退到创建该 backup 的 release，并使用该 release 的 `hotkey db verify` 校验其 legacy Schema；当前 PLAN-007 二进制的 verifier 故意要求新 catalog，不能拿它验证已恢复的旧库。确认恢复校验通过后，记录失败原因并创建新的前向修复计划；不得在未恢复的目标库上继续写入。
