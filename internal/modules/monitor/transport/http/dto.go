@@ -24,7 +24,7 @@ type MonitorConfigRequest struct {
 	Regions                   []string `json:"regions"`
 	CollectionIntervalSeconds int      `json:"collection_interval_seconds" binding:"required" example:"900"`
 	RelevanceThreshold        float64  `json:"relevance_threshold" binding:"required" example:"75"`
-	EventThreshold            float64  `json:"event_threshold" binding:"required" example:"40"`
+	EventThreshold            *float64 `json:"event_threshold" binding:"required,gte=0,lte=100" minimum:"0" example:"40"`
 	RetentionDays             int      `json:"retention_days" binding:"required" example:"30"`
 }
 
@@ -33,14 +33,14 @@ type MonitorRuleRequest struct {
 	Operator string  `json:"operator" binding:"required" example:"contains"`
 	Value    string  `json:"value" binding:"required" example:"OpenAI"`
 	Weight   float64 `json:"weight"`
-	Priority int16   `json:"priority"`
+	Priority *int16  `json:"priority,omitempty" default:"100"`
 	Enabled  *bool   `json:"enabled,omitempty"`
 }
 
 type MonitorSourceRequest struct {
 	SourceConnectionID int64  `json:"source_connection_id" binding:"required,gt=0"`
 	QueryOverride      string `json:"query_override"`
-	Priority           int16  `json:"priority"`
+	Priority           *int16 `json:"priority,omitempty" default:"100"`
 	Enabled            *bool  `json:"enabled,omitempty"`
 }
 
@@ -208,17 +208,25 @@ func replaceMonitorDraft(request ReplaceDraftRequest) monitorapplication.DraftIn
 }
 
 func monitorConfig(request MonitorConfigRequest) domain.MonitorConfig {
-	return domain.MonitorConfig{Timezone: request.Timezone, Languages: request.Languages, Regions: request.Regions, CollectionIntervalSeconds: request.CollectionIntervalSeconds, RelevanceThreshold: request.RelevanceThreshold, EventThreshold: request.EventThreshold, RetentionDays: request.RetentionDays}
+	eventThreshold := float64(0)
+	if request.EventThreshold != nil {
+		eventThreshold = *request.EventThreshold
+	}
+	return domain.MonitorConfig{Timezone: request.Timezone, Languages: request.Languages, Regions: request.Regions, CollectionIntervalSeconds: request.CollectionIntervalSeconds, RelevanceThreshold: request.RelevanceThreshold, EventThreshold: eventThreshold, RetentionDays: request.RetentionDays}
 }
 
 func monitorRules(requests []MonitorRuleRequest) []domain.MonitorRule {
 	rules := make([]domain.MonitorRule, 0, len(requests))
 	for _, request := range requests {
+		priority := int16(100)
+		if request.Priority != nil {
+			priority = *request.Priority
+		}
 		enabled := true
 		if request.Enabled != nil {
 			enabled = *request.Enabled
 		}
-		rules = append(rules, domain.MonitorRule{RuleType: domain.RuleType(request.RuleType), Operator: domain.RuleOperator(request.Operator), Value: request.Value, Weight: request.Weight, Priority: request.Priority, Origin: domain.RuleOriginUser, ApprovalStatus: domain.RuleApprovalApproved, Enabled: enabled})
+		rules = append(rules, domain.MonitorRule{RuleType: domain.RuleType(request.RuleType), Operator: domain.RuleOperator(request.Operator), Value: request.Value, Weight: request.Weight, Priority: priority, Origin: domain.RuleOriginUser, ApprovalStatus: domain.RuleApprovalApproved, Enabled: enabled})
 	}
 	return rules
 }
@@ -226,11 +234,15 @@ func monitorRules(requests []MonitorRuleRequest) []domain.MonitorRule {
 func monitorSources(requests []MonitorSourceRequest) []domain.MonitorSource {
 	sources := make([]domain.MonitorSource, 0, len(requests))
 	for _, request := range requests {
+		priority := int16(100)
+		if request.Priority != nil {
+			priority = *request.Priority
+		}
 		enabled := true
 		if request.Enabled != nil {
 			enabled = *request.Enabled
 		}
-		sources = append(sources, domain.MonitorSource{SourceConnectionID: request.SourceConnectionID, QueryOverride: request.QueryOverride, Priority: request.Priority, Enabled: enabled})
+		sources = append(sources, domain.MonitorSource{SourceConnectionID: request.SourceConnectionID, QueryOverride: request.QueryOverride, Priority: priority, Enabled: enabled})
 	}
 	return sources
 }

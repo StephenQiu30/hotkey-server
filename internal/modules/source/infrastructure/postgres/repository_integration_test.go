@@ -81,10 +81,6 @@ func TestRepositorySourceSemanticUpdateIsRejectedAfterPublishedReference(t *test
 	if _, err := runtime.SQL.Exec(`UPDATE monitor_config_versions SET state = 'published', config_hash = $1, published_at = now() WHERE id = $2`, strings.Repeat("b", 64), configID); err != nil {
 		t.Fatalf("publish config: %v", err)
 	}
-	referenced, err := repository.HasPublishedReference(ctx, connection.ID)
-	if err != nil || !referenced {
-		t.Fatalf("HasPublishedReference() = %v, %v; want true, nil", referenced, err)
-	}
 	connection.Endpoint = "https://feeds.example.test/changed"
 	if err := repository.Update(ctx, &connection); !errors.Is(err, sharedrepository.ErrConstraint) {
 		t.Fatalf("published semantic Update() error = %v, want source trigger constraint", err)

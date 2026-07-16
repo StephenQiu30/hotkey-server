@@ -130,7 +130,7 @@ func TestSourceServiceUsageAndAuditFailureRollback(t *testing.T) {
 		t.Fatalf("Disable(paused usage) error = %v, want historical paused usage to remain valid", err)
 	}
 
-	failing, err := sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usageReader{}, Audit: failingAudit{err: errors.New("audit unavailable")}})
+	failing, err := sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usageReader{}, PublishedReferences: referenceReader{}, Audit: failingAudit{err: errors.New("audit unavailable")}})
 	if err != nil {
 		t.Fatalf("NewService(failing audit) error = %v", err)
 	}
@@ -175,7 +175,7 @@ func TestSourceServiceDisableUsesRealMonitorUsageAdapter(t *testing.T) {
 	admin := seedAdmin(t, runtime)
 	ctx := context.Background()
 	usage := monitorpostgres.NewSourceUsageReader(runtime)
-	sources, err := sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usage, Audit: operationspostgres.NewAuditWriter(runtime)})
+	sources, err := sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usage, PublishedReferences: monitorpostgres.NewPublishedReferenceReader(runtime), Audit: operationspostgres.NewAuditWriter(runtime)})
 	if err != nil {
 		t.Fatalf("NewSourceService(): %v", err)
 	}
@@ -195,6 +195,10 @@ func TestSourceServiceDisableUsesRealMonitorUsageAdapter(t *testing.T) {
 	published, _, err := monitors.Publish(ctx, monitorapplication.PublishInput{Subject: admin, MonitorID: monitor.ID, Expected: monitordomain.ExpectedVersions{MonitorVersion: monitor.Version, DraftVersion: &config.Version}})
 	if err != nil {
 		t.Fatalf("Publish monitor: %v", err)
+	}
+	changedEndpoint := "https://feeds.example.test/changed-after-publish"
+	if _, err := sources.Update(ctx, sourceapplication.UpdateInput{Subject: admin, ID: connection.ID, ExpectedVersion: connection.Version, Endpoint: &changedEndpoint}); appCode(err) != sharederrors.CodeSourceConnectionUnavailable {
+		t.Fatalf("semantic Update with published reference code=%d, want source unavailable", appCode(err))
 	}
 	if _, err := sources.Disable(ctx, sourceapplication.LifecycleInput{Subject: admin, ID: connection.ID, ExpectedVersion: connection.Version}); appCode(err) != sharederrors.CodeSourceConnectionRequired {
 		t.Fatalf("Disable sole active source code=%d", appCode(err))
@@ -221,7 +225,7 @@ func TestSourceServiceArchiveRejectsActiveSoleSourceWithRealMonitorUsage(t *test
 	admin := seedAdmin(t, runtime)
 	ctx := context.Background()
 	usage := monitorpostgres.NewSourceUsageReader(runtime)
-	sources, err := sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usage, Audit: operationspostgres.NewAuditWriter(runtime)})
+	sources, err := sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usage, PublishedReferences: monitorpostgres.NewPublishedReferenceReader(runtime), Audit: operationspostgres.NewAuditWriter(runtime)})
 	if err != nil {
 		t.Fatalf("NewSourceService(): %v", err)
 	}
@@ -352,7 +356,7 @@ VALUES ($1, 'hash', 'Source Admin', 'admin', 'active') RETURNING id`, name).Scan
 
 func newService(t *testing.T, runtime *database.Runtime, usage usageReader) *sourceapplication.Service {
 	t.Helper()
-	service, err := sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usage, Audit: operationspostgres.NewAuditWriter(runtime)})
+	service, err := sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usage, PublishedReferences: referenceReader{}, Audit: operationspostgres.NewAuditWriter(runtime)})
 	if err != nil {
 		t.Fatalf("NewService(): %v", err)
 	}
@@ -379,6 +383,15 @@ type usageReader struct {
 	activeSole      bool
 	pausedReference bool
 	alternatives    []int64
+}
+
+type referenceReader struct {
+	referenced bool
+	err        error
+}
+
+func (reader referenceReader) HasPublishedReference(context.Context, int64) (bool, error) {
+	return reader.referenced, reader.err
 }
 
 func (reader usageReader) UsageForSource(_ context.Context, sourceID int64) (domain.SourceUsage, error) {

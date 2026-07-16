@@ -14,7 +14,7 @@ import (
 )
 
 func TestSourceWritesRequireAdministratorBeforeOpeningTransaction(t *testing.T) {
-	service, err := NewService(Dependencies{Runtime: &database.Runtime{}, Sources: sourceRepositoryFake{}, MonitorUsage: usageFake{}, Audit: auditFake{}})
+	service, err := NewService(Dependencies{Runtime: &database.Runtime{}, Sources: sourceRepositoryFake{}, MonitorUsage: usageFake{}, PublishedReferences: referenceFake{}, Audit: auditFake{}})
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
@@ -69,14 +69,17 @@ func (sourceRepositoryFake) List(context.Context, domain.SourceConnectionListQue
 	return nil, "", nil
 }
 func (sourceRepositoryFake) Update(context.Context, *domain.SourceConnection) error { return nil }
-func (sourceRepositoryFake) HasPublishedReference(context.Context, int64) (bool, error) {
-	return false, nil
-}
 
 type usageFake struct{ usage domain.SourceUsage }
 
 func (fake usageFake) UsageForSource(context.Context, int64) (domain.SourceUsage, error) {
 	return fake.usage, nil
+}
+
+type referenceFake struct{ referenced bool }
+
+func (fake referenceFake) HasPublishedReference(context.Context, int64) (bool, error) {
+	return fake.referenced, nil
 }
 
 type auditFake struct{ err error }

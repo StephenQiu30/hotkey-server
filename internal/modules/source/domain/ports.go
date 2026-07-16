@@ -10,7 +10,6 @@ type SourceConnectionRepository interface {
 	LockByID(context.Context, int64) (*SourceConnection, error)
 	List(context.Context, SourceConnectionListQuery) ([]SourceConnection, string, error)
 	Update(context.Context, *SourceConnection) error
-	HasPublishedReference(context.Context, int64) (bool, error)
 }
 
 // SourceConnectionListQuery is intentionally narrow: Source lists are always
@@ -102,4 +101,13 @@ type SourceUsage struct {
 
 type MonitorUsageReader interface {
 	UsageForSource(context.Context, int64) (SourceUsage, error)
+}
+
+// MonitorPublishedReferenceReader is the narrow Monitor-owned history query
+// used before changing SourceConnection execution semantics. Its production
+// adapter requires the Source application transaction and configuration lock,
+// so the check is serialized with publish while remaining outside the Source
+// repository's table ownership.
+type MonitorPublishedReferenceReader interface {
+	HasPublishedReference(context.Context, int64) (bool, error)
 }

@@ -170,27 +170,6 @@ WHERE id = $11 AND version = $12`,
 	})
 }
 
-func (repository *Repository) HasPublishedReference(ctx context.Context, id int64) (bool, error) {
-	if id <= 0 {
-		return false, fmt.Errorf("%w: source connection id is required", sharedrepository.ErrInvalidInput)
-	}
-	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
-		return false, sharedrepository.ErrUnavailable
-	}
-	var referenced bool
-	if err := repository.queryRow(ctx, `
-SELECT EXISTS (
-    SELECT 1
-    FROM monitor_sources AS monitor_source
-    JOIN monitor_config_versions AS config_version ON config_version.id = monitor_source.config_version_id
-    WHERE monitor_source.source_connection_id = $1
-      AND config_version.state IN ('published', 'superseded')
-)`, id).Scan(&referenced); err != nil {
-		return false, sharedrepository.MapError(err)
-	}
-	return referenced, nil
-}
-
 func (repository *Repository) FindPublicByID(ctx context.Context, id int64) (domain.PublicSourceConnection, error) {
 	connection, err := repository.FindByID(ctx, id)
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 func TestSourcePortsExposeOnlyDomainReadAndWriteContracts(t *testing.T) {
 	var _ SourceConnectionRepository = (*sourceConnectionRepositoryFake)(nil)
 	var _ MonitorUsageReader = (*monitorUsageReaderFake)(nil)
+	var _ MonitorPublishedReferenceReader = (*monitorPublishedReferenceReaderFake)(nil)
 }
 
 type sourceConnectionRepositoryFake struct{}
@@ -23,12 +24,15 @@ func (*sourceConnectionRepositoryFake) List(context.Context, SourceConnectionLis
 	return nil, "", nil
 }
 func (*sourceConnectionRepositoryFake) Update(context.Context, *SourceConnection) error { return nil }
-func (*sourceConnectionRepositoryFake) HasPublishedReference(context.Context, int64) (bool, error) {
-	return false, nil
-}
 
 type monitorUsageReaderFake struct{}
 
 func (*monitorUsageReaderFake) UsageForSource(context.Context, int64) (SourceUsage, error) {
 	return SourceUsage{}, nil
+}
+
+type monitorPublishedReferenceReaderFake struct{}
+
+func (*monitorPublishedReferenceReaderFake) HasPublishedReference(context.Context, int64) (bool, error) {
+	return false, nil
 }

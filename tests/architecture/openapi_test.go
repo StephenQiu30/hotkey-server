@@ -131,6 +131,48 @@ func TestOpenAPIContract(t *testing.T) {
 	assertSafeIdentityOpenAPIDefinitions(t, document.Definitions)
 	assertSafeMonitorSourceOpenAPIDefinitions(t, document.Definitions)
 	assertDraftExpectedVersionOpenAPI(t, document.Definitions)
+	assertMonitorDraftDefaultsOpenAPI(t, document.Definitions)
+}
+
+func assertMonitorDraftDefaultsOpenAPI(t *testing.T, definitions map[string]struct {
+	Properties map[string]json.RawMessage `json:"properties"`
+	Required   []string                   `json:"required"`
+}) {
+	t.Helper()
+	config, ok := definitions["http.MonitorConfigRequest"]
+	if !ok {
+		t.Fatal("missing http.MonitorConfigRequest")
+	}
+	if !contains(config.Required, "event_threshold") {
+		t.Error("http.MonitorConfigRequest must require event_threshold")
+	}
+	var threshold struct {
+		Minimum *float64 `json:"minimum"`
+	}
+	if err := json.Unmarshal(config.Properties["event_threshold"], &threshold); err != nil {
+		t.Fatalf("decode event_threshold contract: %v", err)
+	}
+	if threshold.Minimum == nil || *threshold.Minimum != 0 {
+		t.Errorf("event_threshold minimum = %v, want explicit 0", threshold.Minimum)
+	}
+
+	for _, name := range []string{"http.MonitorRuleRequest", "http.MonitorSourceRequest"} {
+		definition, ok := definitions[name]
+		if !ok {
+			t.Errorf("missing %s", name)
+			continue
+		}
+		var priority struct {
+			Default *int16 `json:"default"`
+		}
+		if err := json.Unmarshal(definition.Properties["priority"], &priority); err != nil {
+			t.Errorf("decode %s priority: %v", name, err)
+			continue
+		}
+		if priority.Default == nil || *priority.Default != 100 {
+			t.Errorf("%s priority default = %v, want 100", name, priority.Default)
+		}
+	}
 }
 
 func assertSafeMonitorSourceOpenAPIDefinitions(t *testing.T, definitions map[string]struct {

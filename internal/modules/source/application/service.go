@@ -22,28 +22,31 @@ import (
 const configurationAdvisoryLock = "hotkey.monitor_source_configuration"
 
 type Dependencies struct {
-	Runtime      *database.Runtime
-	Sources      domain.SourceConnectionRepository
-	MonitorUsage domain.MonitorUsageReader
-	Audit        operationsapplication.AuditWriter
+	Runtime             *database.Runtime
+	Sources             domain.SourceConnectionRepository
+	MonitorUsage        domain.MonitorUsageReader
+	PublishedReferences domain.MonitorPublishedReferenceReader
+	Audit               operationsapplication.AuditWriter
 }
 
 type Service struct {
-	runtime      *database.Runtime
-	sources      domain.SourceConnectionRepository
-	monitorUsage domain.MonitorUsageReader
-	audit        operationsapplication.AuditWriter
+	runtime             *database.Runtime
+	sources             domain.SourceConnectionRepository
+	monitorUsage        domain.MonitorUsageReader
+	publishedReferences domain.MonitorPublishedReferenceReader
+	audit               operationsapplication.AuditWriter
 }
 
 var _ domain.MonitorSourceReader = (*Service)(nil)
 
 func NewService(dependencies Dependencies) (*Service, error) {
-	if dependencies.Runtime == nil || dependencies.Sources == nil || dependencies.MonitorUsage == nil || dependencies.Audit == nil {
+	if dependencies.Runtime == nil || dependencies.Sources == nil || dependencies.MonitorUsage == nil || dependencies.PublishedReferences == nil || dependencies.Audit == nil {
 		return nil, errors.New("source application dependencies are required")
 	}
 	return &Service{
 		runtime: dependencies.Runtime, sources: dependencies.Sources,
-		monitorUsage: dependencies.MonitorUsage, audit: dependencies.Audit,
+		monitorUsage: dependencies.MonitorUsage, publishedReferences: dependencies.PublishedReferences,
+		audit: dependencies.Audit,
 	}, nil
 }
 
@@ -132,7 +135,7 @@ func (service *Service) Update(ctx context.Context, input UpdateInput) (*domain.
 			return err
 		}
 		if semanticChanged {
-			referenced, err := service.sources.HasPublishedReference(ctx, current.ID)
+			referenced, err := service.publishedReferences.HasPublishedReference(ctx, current.ID)
 			if err != nil {
 				return sourceReadError(err)
 			}

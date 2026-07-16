@@ -34,7 +34,7 @@ func TestMonitorServicePublishesImmutableConfigurationAndCoordinatesSourceLifecy
 	admin := monitorAdmin(t, runtime)
 	ctx := context.Background()
 	usage := monitorpostgres.NewSourceUsageReader(runtime)
-	sources, err := sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usage, Audit: operationspostgres.NewAuditWriter(runtime)})
+	sources, err := sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usage, PublishedReferences: monitorpostgres.NewPublishedReferenceReader(runtime), Audit: operationspostgres.NewAuditWriter(runtime)})
 	if err != nil {
 		t.Fatalf("NewSourceService(): %v", err)
 	}
@@ -177,7 +177,7 @@ func TestMonitorServiceFirstDraftAndPublishConcurrencyAndAuditRollback(t *testin
 	admin := monitorAdmin(t, runtime)
 	ctx := context.Background()
 	usage := monitorpostgres.NewSourceUsageReader(runtime)
-	sources, err := sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usage, Audit: operationspostgres.NewAuditWriter(runtime)})
+	sources, err := sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usage, PublishedReferences: monitorpostgres.NewPublishedReferenceReader(runtime), Audit: operationspostgres.NewAuditWriter(runtime)})
 	if err != nil {
 		t.Fatalf("NewSourceService(): %v", err)
 	}
@@ -280,7 +280,7 @@ func TestMonitorServiceDisableAndResumeSerializeThroughConfigurationLock(t *test
 	admin := monitorAdmin(t, runtime)
 	ctx := context.Background()
 	usage := monitorpostgres.NewSourceUsageReader(runtime)
-	sources, err := sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usage, Audit: operationspostgres.NewAuditWriter(runtime)})
+	sources, err := sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usage, PublishedReferences: monitorpostgres.NewPublishedReferenceReader(runtime), Audit: operationspostgres.NewAuditWriter(runtime)})
 	if err != nil {
 		t.Fatalf("NewSourceService(): %v", err)
 	}
@@ -335,7 +335,7 @@ func TestMonitorServicePublishAndSourceDisableSerializeThroughConfigurationLock(
 	admin := monitorAdmin(t, runtime)
 	ctx := context.Background()
 	usage := monitorpostgres.NewSourceUsageReader(runtime)
-	sources, err := sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usage, Audit: operationspostgres.NewAuditWriter(runtime)})
+	sources, err := sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usage, PublishedReferences: monitorpostgres.NewPublishedReferenceReader(runtime), Audit: operationspostgres.NewAuditWriter(runtime)})
 	if err != nil {
 		t.Fatalf("NewSourceService(): %v", err)
 	}

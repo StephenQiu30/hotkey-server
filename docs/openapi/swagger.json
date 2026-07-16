@@ -2446,6 +2446,8 @@
                 },
                 "event_threshold": {
                     "type": "number",
+                    "maximum": 100,
+                    "minimum": 0,
                     "example": 40
                 },
                 "languages": {
@@ -2660,7 +2662,8 @@
                     "example": "contains"
                 },
                 "priority": {
-                    "type": "integer"
+                    "type": "integer",
+                    "default": 100
                 },
                 "rule_type": {
                     "type": "string",
@@ -2717,7 +2720,8 @@
                     "type": "boolean"
                 },
                 "priority": {
-                    "type": "integer"
+                    "type": "integer",
+                    "default": 100
                 },
                 "query_override": {
                     "type": "string"

@@ -85,6 +85,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newIdentityAuthenticator,
 					operationspostgres.NewAuditWriter,
 					monitorpostgres.NewSourceUsageReader,
+					monitorpostgres.NewPublishedReferenceReader,
 					sourcepostgres.NewRepository,
 					newSourceService,
 					monitorpostgres.NewRepository,
@@ -117,8 +118,8 @@ func registerMonitorRoutes(router *gin.Engine, service *monitorapplication.Servi
 	monitortransport.RegisterRoutes(router, service, authenticator)
 }
 
-func newSourceService(runtime *database.Runtime, sources *sourcepostgres.Repository, usage *monitorpostgres.SourceUsageReader, audit *operationspostgres.AuditWriter) (*sourceapplication.Service, error) {
-	return sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sources, MonitorUsage: usage, Audit: audit})
+func newSourceService(runtime *database.Runtime, sources *sourcepostgres.Repository, usage *monitorpostgres.SourceUsageReader, references *monitorpostgres.PublishedReferenceReader, audit *operationspostgres.AuditWriter) (*sourceapplication.Service, error) {
+	return sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sources, MonitorUsage: usage, PublishedReferences: references, Audit: audit})
 }
 
 func newMonitorService(runtime *database.Runtime, monitors *monitorpostgres.Repository, sources *sourceapplication.Service, audit *operationspostgres.AuditWriter) (*monitorapplication.Service, error) {
