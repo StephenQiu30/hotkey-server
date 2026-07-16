@@ -5,6 +5,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"strings"
@@ -177,7 +178,7 @@ func findReusableRun(ctx context.Context, queryer interface {
 	var run intelligencedomain.Run
 	err := queryer.QueryRowContext(ctx, `
 SELECT id,task_type,target_type,target_id,model_profile_id,model_profile_version,model_version,reuse_key,status,
-       reserved_cost::text,cost::text,error_code,lease_expires_at
+	   structured_result,tokens,latency_ms,reserved_cost::text,cost::text,error_code,lease_expires_at
 FROM ai_runs WHERE reuse_key = $1 AND status = 'succeeded'`, reuseKey).Scan(
 		runScanTargets(&run)...,
 	)
@@ -195,9 +196,36 @@ FROM ai_runs WHERE reuse_key = $1 AND status = 'succeeded'`, reuseKey).Scan(
 func runScanTargets(run *intelligencedomain.Run) []any {
 	return []any{
 		&run.ID, &run.TaskType, &run.TargetType, &run.TargetID, &run.ModelProfileID, &run.ModelProfileVersion,
-		&run.ModelVersion, &run.ReuseKey, &run.Status, &run.ReservedCost, &run.Cost,
+		&run.ModelVersion, &run.ReuseKey, &run.Status, newRunStructuredResult(run), &run.Tokens, &run.LatencyMS, &run.ReservedCost, &run.Cost,
 		newRunErrorCode(run), newRunLease(run),
 	}
+}
+
+type runStructuredResultScanner struct{ run *intelligencedomain.Run }
+
+func newRunStructuredResult(run *intelligencedomain.Run) *runStructuredResultScanner {
+	return &runStructuredResultScanner{run: run}
+}
+
+func (scanner *runStructuredResultScanner) Scan(value any) error {
+	if value == nil {
+		scanner.run.StructuredResult = nil
+		return nil
+	}
+	var raw []byte
+	switch value := value.(type) {
+	case []byte:
+		raw = value
+	case string:
+		raw = []byte(value)
+	default:
+		return fmt.Errorf("scan structured result: unsupported type %T", value)
+	}
+	if !json.Valid(raw) {
+		return fmt.Errorf("scan structured result: invalid JSON")
+	}
+	scanner.run.StructuredResult = append(scanner.run.StructuredResult[:0], raw...)
+	return nil
 }
 
 // sql.Scanner targets cannot directly populate optional domain fields, so the
@@ -301,7 +329,7 @@ SET status = $1, cost = $2::numeric, reserved_cost = 0, error_code = $3,
     lease_expires_at = NULL, finished_at = $4
 WHERE id = $5
 RETURNING id,task_type,target_type,target_id,model_profile_id,model_profile_version,model_version,reuse_key,status,
-          reserved_cost::text,cost::text,error_code,lease_expires_at`,
+		  structured_result,tokens,latency_ms,reserved_cost::text,cost::text,error_code,lease_expires_at`,
 			string(status), actualCost, errorCode, now, runID,
 		).Scan(runScanTargets(&settled)...); err != nil {
 			return fmt.Errorf("settle AI run: %w", err)
@@ -309,6 +337,93 @@ RETURNING id,task_type,target_type,target_id,model_profile_id,model_profile_vers
 		return nil
 	})
 	return settled, err
+}
+
+// StructuredCompletion contains the only safe terminal payload accepted from
+// application code. Provider-specific response objects and price data never
+// cross this boundary.
+type StructuredCompletion struct {
+	RunID      int64
+	Result     json.RawMessage
+	Usage      intelligencedomain.Usage
+	LatencyMS  int64
+	FinishedAt time.Time
+}
+
+// CompleteStructured atomically stores a schema-validated result and settles
+// the exact budget unit claimed for the run. The adapter intentionally does
+// not infer a monetary amount from token use or model names.
+func (repository *Repository) CompleteStructured(ctx context.Context, completion StructuredCompletion) (intelligencedomain.Run, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil || completion.RunID <= 0 ||
+		!json.Valid(completion.Result) || completion.LatencyMS < 0 {
+		return intelligencedomain.Run{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
+	tokens, err := completion.Usage.TotalTokens()
+	if err != nil {
+		return intelligencedomain.Run{}, err
+	}
+	if completion.FinishedAt.IsZero() {
+		completion.FinishedAt = time.Now().UTC()
+	} else {
+		completion.FinishedAt = completion.FinishedAt.UTC()
+	}
+	reference, err := repository.runReference(ctx, repository.queryer(ctx), completion.RunID, false)
+	if err != nil {
+		return intelligencedomain.Run{}, err
+	}
+	var completed intelligencedomain.Run
+	err = repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+		if err := lockBudget(ctx, transaction.SQL, reference.ModelProfileID, reference.BudgetDay); err != nil {
+			return err
+		}
+		if err := lockRun(ctx, transaction.SQL, reference.ReuseKey); err != nil {
+			return err
+		}
+		locked, err := repository.runReference(ctx, transaction.SQL, completion.RunID, true)
+		if err != nil {
+			return err
+		}
+		if locked != reference || locked.Status != intelligencedomain.RunStatusValidating {
+			return intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+		}
+		if err := settleReservedBudget(ctx, transaction.SQL, locked, locked.ReservedCost); err != nil {
+			return err
+		}
+		if err := transaction.SQL.QueryRowContext(ctx, `
+UPDATE ai_runs
+SET status='succeeded',structured_result=$1::jsonb,tokens=$2,cost=$3::numeric,
+    latency_ms=$4,reserved_cost=0,error_code=NULL,lease_expires_at=NULL,finished_at=$5
+WHERE id=$6
+RETURNING id,task_type,target_type,target_id,model_profile_id,model_profile_version,model_version,reuse_key,status,
+          structured_result,tokens,latency_ms,reserved_cost::text,cost::text,error_code,lease_expires_at`,
+			completion.Result, tokens, locked.ReservedCost, completion.LatencyMS, completion.FinishedAt, completion.RunID,
+		).Scan(runScanTargets(&completed)...); err != nil {
+			return fmt.Errorf("complete structured AI run: %w", err)
+		}
+		return nil
+	})
+	return completed, err
+}
+
+func settleReservedBudget(ctx context.Context, queryer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}, reference runReference, cost string) error {
+	result, err := queryer.ExecContext(ctx, `
+UPDATE ai_budget_ledgers
+SET reserved_cost=reserved_cost-$1::numeric,settled_cost=settled_cost+$2::numeric,updated_at=now()
+WHERE model_profile_id=$3 AND budget_day=$4 AND reserved_cost >= $1::numeric`,
+		reference.ReservedCost, cost, reference.ModelProfileID, reference.BudgetDay)
+	if err != nil {
+		return fmt.Errorf("settle AI budget: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read AI budget settlement result: %w", err)
+	}
+	if affected != 1 {
+		return fmt.Errorf("AI budget reservation is inconsistent")
+	}
+	return nil
 }
 
 func (repository *Repository) withTransaction(ctx context.Context, fn func(context.Context, database.Transaction) error) error {

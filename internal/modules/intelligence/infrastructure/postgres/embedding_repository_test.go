@@ -2,11 +2,14 @@ package postgres_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"strings"
 	"testing"
+	"time"
 
 	intelligencedomain "github.com/StephenQiu30/hotkey-server/internal/modules/intelligence/domain"
 	intelligencepostgres "github.com/StephenQiu30/hotkey-server/internal/modules/intelligence/infrastructure/postgres"
@@ -19,6 +22,7 @@ func TestEmbeddingRepositoryAtomicallyReplacesEachTargetEmbedding(t *testing.T) 
 	defer func() { _ = runtime.Close() }()
 	repository := intelligencepostgres.NewRepository(runtime)
 	profile := testEmbeddingProfile()
+	profile.DailyBudget = nil
 	if err := repository.CreateProfile(context.Background(), &profile); err != nil {
 		t.Fatalf("CreateProfile() error = %v", err)
 	}
@@ -29,13 +33,13 @@ func TestEmbeddingRepositoryAtomicallyReplacesEachTargetEmbedding(t *testing.T) 
 			ModelProfileID: profile.ID, ModelProfileVersion: profile.Version, ModelVersion: profile.ModelVersion,
 			InputHash: strings.Repeat("a", 64), Vector: embeddingVector(1), QueryText: "hotkey query",
 		}
-		if _, err := repository.ReplaceEmbedding(context.Background(), input); err != nil {
-			t.Fatalf("ReplaceEmbedding(%s first) error = %v", target.kind, err)
+		if _, err := completeEmbedding(t, repository, profile, input); err != nil {
+			t.Fatalf("CompleteEmbedding(%s first) error = %v", target.kind, err)
 		}
 		input.InputHash = strings.Repeat("b", 64)
 		input.Vector = embeddingVector(2)
-		if _, err := repository.ReplaceEmbedding(context.Background(), input); err != nil {
-			t.Fatalf("ReplaceEmbedding(%s second) error = %v", target.kind, err)
+		if _, err := completeEmbedding(t, repository, profile, input); err != nil {
+			t.Fatalf("CompleteEmbedding(%s second) error = %v", target.kind, err)
 		}
 		var total, active int
 		query := "SELECT count(*),count(*) FILTER (WHERE active) FROM " + target.table + " WHERE " + target.column + "=$1 AND model_profile_id=$2"
@@ -53,6 +57,7 @@ func TestEmbeddingRepositoryUsesFilteredHNSWForEveryTarget(t *testing.T) {
 	defer func() { _ = runtime.Close() }()
 	repository := intelligencepostgres.NewRepository(runtime)
 	profile := testEmbeddingProfile()
+	profile.DailyBudget = nil
 	profile.Name = "hnsw-filtered-profile"
 	if err := repository.CreateProfile(context.Background(), &profile); err != nil {
 		t.Fatalf("CreateProfile() error = %v", err)
@@ -60,14 +65,11 @@ func TestEmbeddingRepositoryUsesFilteredHNSWForEveryTarget(t *testing.T) {
 	targets := seedHNSWTargets(t, runtime.SQL, 512)
 	for _, target := range targets {
 		for index, targetID := range target.ids {
-			input := intelligencepostgres.EmbeddingWrite{
+			seedActiveEmbedding(t, runtime.SQL, profile, intelligencepostgres.EmbeddingWrite{
 				Target: intelligencepostgres.EmbeddingTarget(target.kind), TargetID: targetID,
 				ModelProfileID: profile.ID, ModelProfileVersion: profile.Version, ModelVersion: profile.ModelVersion,
 				InputHash: fmt.Sprintf("%064x", index+1), Vector: embeddingVector(float32(index + 1)), QueryText: "hnsw query",
-			}
-			if _, err := repository.ReplaceEmbedding(context.Background(), input); err != nil {
-				t.Fatalf("ReplaceEmbedding(%s/%d) error = %v", target.kind, index, err)
-			}
+			})
 		}
 		matches, err := repository.NearestEmbeddings(context.Background(), intelligencepostgres.EmbeddingTarget(target.kind), profile.ID, profile.ModelVersion, embeddingVector(1), 5)
 		if err != nil || len(matches) != 5 {
@@ -82,6 +84,7 @@ func TestEmbeddingRepositoryFiltersCurrentActiveModelAndUsesHNSW(t *testing.T) {
 	defer func() { _ = runtime.Close() }()
 	repository := intelligencepostgres.NewRepository(runtime)
 	profile := testEmbeddingProfile()
+	profile.DailyBudget = nil
 	if err := repository.CreateProfile(context.Background(), &profile); err != nil {
 		t.Fatalf("CreateProfile() error = %v", err)
 	}
@@ -91,8 +94,8 @@ func TestEmbeddingRepositoryFiltersCurrentActiveModelAndUsesHNSW(t *testing.T) {
 		ModelProfileID: profile.ID, ModelProfileVersion: profile.Version, ModelVersion: profile.ModelVersion,
 		InputHash: strings.Repeat("a", 64), Vector: embeddingVector(1),
 	}
-	if _, err := repository.ReplaceEmbedding(context.Background(), input); err != nil {
-		t.Fatalf("ReplaceEmbedding() error = %v", err)
+	if _, err := completeEmbedding(t, repository, profile, input); err != nil {
+		t.Fatalf("CompleteEmbedding() error = %v", err)
 	}
 	matches, err := repository.NearestEmbeddings(context.Background(), intelligencepostgres.EmbeddingTargetContent, profile.ID, profile.ModelVersion, embeddingVector(1), 5)
 	if err != nil || len(matches) != 1 || matches[0].TargetID != targets[0].id {
@@ -118,21 +121,92 @@ func TestEmbeddingRepositoryRefusesWrongDimensionsAndNonFiniteValues(t *testing.
 	defer func() { _ = runtime.Close() }()
 	repository := intelligencepostgres.NewRepository(runtime)
 	profile := testEmbeddingProfile()
+	profile.DailyBudget = nil
 	if err := repository.CreateProfile(context.Background(), &profile); err != nil {
 		t.Fatalf("CreateProfile() error = %v", err)
 	}
 	targets := seedEmbeddingTargets(t, runtime.SQL)
 	input := intelligencepostgres.EmbeddingWrite{Target: intelligencepostgres.EmbeddingTargetContent, TargetID: targets[0].id, ModelProfileID: profile.ID, ModelProfileVersion: profile.Version, ModelVersion: profile.ModelVersion, InputHash: strings.Repeat("a", 64), Vector: make([]float32, intelligencedomain.EmbeddingDimensions-1)}
-	if _, err := repository.ReplaceEmbedding(context.Background(), input); err == nil {
-		t.Fatal("ReplaceEmbedding(1023 values) error = nil, want 70008")
+	if _, err := completeEmbedding(t, repository, profile, input); err == nil {
+		t.Fatal("CompleteEmbedding(1023 values) error = nil, want 70008")
 	} else if code, ok := intelligencedomain.CodeOf(err); !ok || code != intelligencedomain.CodeAIEmbeddingInvalid {
-		t.Fatalf("ReplaceEmbedding(1023 values) code = %d/%t, want 70008", code, ok)
+		t.Fatalf("CompleteEmbedding(1023 values) code = %d/%t, want 70008", code, ok)
 	}
+	input.InputHash = strings.Repeat("b", 64)
 	input.Vector = embeddingVector(1)
 	input.Vector[4] = float32(math.NaN())
-	if _, err := repository.ReplaceEmbedding(context.Background(), input); err == nil {
-		t.Fatal("ReplaceEmbedding(NaN) error = nil, want 70008")
+	if _, err := completeEmbedding(t, repository, profile, input); err == nil {
+		t.Fatal("CompleteEmbedding(NaN) error = nil, want 70008")
 	}
+}
+
+func completeEmbedding(t *testing.T, repository *intelligencepostgres.Repository, profile intelligencedomain.ModelProfile, input intelligencepostgres.EmbeddingWrite) (int64, error) {
+	t.Helper()
+	now := time.Date(2026, time.July, 17, 10, 0, 0, 0, time.UTC)
+	claimed, err := repository.Claim(context.Background(), intelligencepostgres.ClaimInput{
+		TaskType: intelligencedomain.TaskTypeEmbedding, TargetType: string(input.Target), TargetID: input.TargetID, ModelProfileID: profile.ID,
+		PromptVersion: "embedding-prompt-v1", InputSchemaVersion: "v1", SchemaVersion: "v1", ParametersVersion: "parameters-v1",
+		InputHash: input.InputHash, EvidenceSetHash: strings.Repeat("e", 64), Now: now,
+	})
+	if err != nil {
+		return 0, err
+	}
+	if _, err := repository.Transition(context.Background(), claimed.Run.ID, intelligencedomain.RunStatusRunning, now.Add(time.Second)); err != nil {
+		return 0, err
+	}
+	if _, err := repository.Transition(context.Background(), claimed.Run.ID, intelligencedomain.RunStatusValidating, now.Add(2*time.Second)); err != nil {
+		return 0, err
+	}
+	return repository.CompleteEmbedding(context.Background(), intelligencepostgres.EmbeddingCompletion{
+		RunID: claimed.Run.ID, Write: input, Usage: intelligencedomain.Usage{}, LatencyMS: 10, FinishedAt: now.Add(3 * time.Second),
+	})
+}
+
+// seedActiveEmbedding is deliberately fixture-only: public production writes
+// go through CompleteEmbedding so the vector, run and ledger settle together.
+func seedActiveEmbedding(t *testing.T, runtime interface{ QueryRow(string, ...any) *sql.Row }, profile intelligencedomain.ModelProfile, input intelligencepostgres.EmbeddingWrite) {
+	t.Helper()
+	var runID int64
+	if err := runtime.QueryRow(`
+INSERT INTO ai_runs (
+ task_type,target_type,target_id,model_profile_id,prompt_version,schema_version,input_hash,status,
+ model_profile_version,model_version,parameters_version,input_schema_version,evidence_set_hash,reuse_key,
+ attempt,max_attempts,budget_day,cost
+) VALUES ('embedding',$1,$2,$3,'fixture','v1',$4,'succeeded',$5,$6,'fixture','v1',$7,$8,1,1,DATE '2026-07-17',1)
+RETURNING id`, string(input.Target), input.TargetID, profile.ID, input.InputHash, profile.Version, profile.ModelVersion,
+		strings.Repeat("f", 64), fixtureReuseKey(input.Target, input.TargetID, input.InputHash),
+	).Scan(&runID); err != nil {
+		t.Fatalf("seed succeeded AI run: %v", err)
+	}
+	specifications := map[intelligencepostgres.EmbeddingTarget]struct{ table, column string }{
+		intelligencepostgres.EmbeddingTargetContent: {"content_embeddings", "content_id"},
+		intelligencepostgres.EmbeddingTargetMonitor: {"monitor_embeddings", "monitor_id"},
+		intelligencepostgres.EmbeddingTargetEvent:   {"event_embeddings", "event_id"},
+		intelligencepostgres.EmbeddingTargetTopic:   {"topic_embeddings", "topic_id"},
+	}
+	specification := specifications[input.Target]
+	query := `INSERT INTO ` + specification.table + ` (` + specification.column + `,model_profile_id,model_version,input_hash,embedding,model_profile_version,ai_run_id)`
+	arguments := []any{input.TargetID, profile.ID, profile.ModelVersion, input.InputHash, pgvector.NewHalfVector(input.Vector), profile.Version, runID}
+	if input.Target == intelligencepostgres.EmbeddingTargetMonitor {
+		query = `INSERT INTO monitor_embeddings (monitor_id,model_profile_id,model_version,input_hash,query_text,embedding,model_profile_version,ai_run_id)`
+		arguments = []any{input.TargetID, profile.ID, profile.ModelVersion, input.InputHash, input.QueryText, pgvector.NewHalfVector(input.Vector), profile.Version, runID}
+	}
+	query += ` VALUES (`
+	for index := range arguments {
+		if index > 0 {
+			query += ","
+		}
+		query += fmt.Sprintf("$%d", index+1)
+	}
+	query += `)`
+	if err := runtime.QueryRow(query+` RETURNING id`, arguments...).Scan(new(int64)); err != nil {
+		t.Fatalf("seed active %s embedding: %v", input.Target, err)
+	}
+}
+
+func fixtureReuseKey(target intelligencepostgres.EmbeddingTarget, targetID int64, inputHash string) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%s", target, targetID, inputHash)))
+	return hex.EncodeToString(sum[:])
 }
 
 type embeddingTargetSeed struct {

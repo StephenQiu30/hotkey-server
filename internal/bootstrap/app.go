@@ -16,6 +16,10 @@ import (
 	ingestionminio "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/infrastructure/minio"
 	ingestionpostgres "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/infrastructure/postgres"
 	ingestiontransport "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/transport/http"
+	intelligenceapplication "github.com/StephenQiu30/hotkey-server/internal/modules/intelligence/application"
+	intelligencedomain "github.com/StephenQiu30/hotkey-server/internal/modules/intelligence/domain"
+	intelligencepostgres "github.com/StephenQiu30/hotkey-server/internal/modules/intelligence/infrastructure/postgres"
+	intelligenceprovider "github.com/StephenQiu30/hotkey-server/internal/modules/intelligence/infrastructure/provider"
 	monitorapplication "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/application"
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/infrastructure/postgres"
 	monitortransport "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/transport/http"
@@ -60,6 +64,13 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 		options = append(options,
 			fx.Provide(
 				database.NewRuntime,
+				intelligencepostgres.NewRepository,
+				intelligenceapplication.NewSchemaRegistry,
+				newAIProviderRegistry,
+				intelligenceapplication.NewModelProfileService,
+				newAIRunService,
+				newAIEmbeddingService,
+				intelligenceapplication.NewRunLeaseReclaimer,
 				ingestionpostgres.NewContentRepository,
 				newIngestionEvidenceStore,
 				sourcepostgres.NewCollectionRepository,
@@ -118,10 +129,32 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 	}
 	if role.StartsWorker() {
 		options = append(options, fx.Invoke(registerWorkerLifecycle))
+		if usesDatabase {
+			options = append(options, fx.Invoke(intelligenceapplication.RegisterRunLeaseReclaimerLifecycle))
+		}
 	}
 	options = append(options, extra...)
 
 	return fx.New(options...), nil
+}
+
+func newAIProviderRegistry(cfg config.Config) *intelligenceapplication.ProviderRegistry {
+	providers := make(map[intelligencedomain.ProviderName]intelligencedomain.Provider, 2)
+	if provider, err := intelligenceprovider.NewOpenAIProvider(cfg.AI); err == nil {
+		providers[intelligencedomain.ProviderOpenAI] = provider
+	}
+	if provider, err := intelligenceprovider.NewONNXProvider(cfg.AI); err == nil {
+		providers[intelligencedomain.ProviderONNX] = provider
+	}
+	return intelligenceapplication.NewProviderRegistry(providers)
+}
+
+func newAIRunService(runs *intelligencepostgres.Repository, providers *intelligenceapplication.ProviderRegistry, schemas *intelligenceapplication.SchemaRegistry) (*intelligenceapplication.RunService, error) {
+	return intelligenceapplication.NewRunService(intelligenceapplication.RunServiceDependencies{Runs: runs, Providers: providers, Schemas: schemas, Clock: sharedclock.System{}})
+}
+
+func newAIEmbeddingService(runs *intelligencepostgres.Repository, providers *intelligenceapplication.ProviderRegistry, runService *intelligenceapplication.RunService) (*intelligenceapplication.EmbeddingService, error) {
+	return intelligenceapplication.NewEmbeddingService(intelligenceapplication.EmbeddingServiceDependencies{Runs: runs, Providers: providers, RunService: runService})
 }
 
 func registerIdentityRoutes(router *gin.Engine, service *identityapplication.Service, authenticator httptransport.Authenticator, cfg config.Config) {

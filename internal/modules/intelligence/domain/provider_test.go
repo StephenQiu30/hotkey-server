@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"strings"
 	"testing"
 )
@@ -55,6 +56,18 @@ func TestProviderRequestsKeepOnlyProviderNeutralContract(t *testing.T) {
 	embedding.Dimensions = EmbeddingDimensions - 1
 	if err := embedding.Validate(); err == nil {
 		t.Fatal("EmbeddingRequest.Validate() with non-1024 dimension error = nil, want rejection")
+	}
+}
+
+func TestUsageAddsOnlyFiniteNonNegativeTokenFacts(t *testing.T) {
+	combined, err := (Usage{InputTokens: 2, OutputTokens: 3}).Add(Usage{InputTokens: 4, OutputTokens: 5})
+	if err != nil || combined != (Usage{InputTokens: 6, OutputTokens: 8}) {
+		t.Fatalf("Usage.Add() = %#v / %v, want 6/8", combined, err)
+	}
+	if _, err := (Usage{InputTokens: math.MaxInt64}).Add(Usage{InputTokens: 1}); err == nil {
+		t.Fatal("Usage.Add() overflow error = nil, want 70000")
+	} else if code, ok := CodeOf(err); !ok || code != CodeAIModelProfileInvalid {
+		t.Fatalf("Usage.Add() overflow code = %d/%t, want 70000", code, ok)
 	}
 }
 

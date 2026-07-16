@@ -910,7 +910,7 @@ func plan008UpgradeSQL(t *testing.T) string {
 
 func plan008RollbackPreparationSQL(t *testing.T) string {
 	t.Helper()
-	return plan008RunbookTransaction(t, "BEGIN;\nDROP INDEX IF EXISTS ai_runs_reuse_succeeded_uq", "PLAN-008 rollback preparation")
+	return plan008RunbookTransaction(t, "BEGIN;\nALTER TABLE content_embeddings DROP CONSTRAINT IF EXISTS content_embeddings_ai_run_id_fkey", "PLAN-008 rollback preparation")
 }
 
 func plan008RunbookTransaction(t *testing.T, opening, description string) string {

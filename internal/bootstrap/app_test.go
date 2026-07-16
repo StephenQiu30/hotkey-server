@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/platform/config"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
 	httptransport "github.com/StephenQiu30/hotkey-server/internal/platform/http"
+	"github.com/StephenQiu30/hotkey-server/tests/postgresfixture"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
@@ -212,10 +214,7 @@ func TestRunRejectsMissingDatabaseURL(t *testing.T) {
 }
 
 func TestConfiguredWorkerVerifiesDatabaseOnStart(t *testing.T) {
-	dsn := os.Getenv("HOTKEY_TEST_DSN")
-	if dsn == "" {
-		t.Fatal("HOTKEY_TEST_DSN is required for database lifecycle integration")
-	}
+	dsn := initializedBootstrapDatabase(t)
 	cfg := config.Default()
 	cfg.Role = string(RoleWorker)
 	cfg.HTTPAddr = ""
@@ -238,10 +237,7 @@ func TestConfiguredWorkerVerifiesDatabaseOnStart(t *testing.T) {
 // graph used by the real API role. A 401 from each route proves the routers
 // are mounted while avoiding any mutation or identity fixture setup.
 func TestConfiguredAPIWiresMonitorAndSourceControlPlane(t *testing.T) {
-	dsn := os.Getenv("HOTKEY_TEST_DSN")
-	if dsn == "" {
-		t.Fatal("HOTKEY_TEST_DSN is required for database lifecycle integration")
-	}
+	dsn := initializedBootstrapDatabase(t)
 	cfg := apiTestConfig()
 	cfg.Role, cfg.HTTPAddr, cfg.DatabaseURL = string(RoleAPI), "127.0.0.1:0", dsn
 	var server *httptransport.Server
@@ -266,6 +262,29 @@ func TestConfiguredAPIWiresMonitorAndSourceControlPlane(t *testing.T) {
 		}
 		response.Body.Close()
 	}
+}
+
+// initializedBootstrapDatabase keeps lifecycle tests independent from the
+// disposable administrator database. Other packages intentionally rebuild
+// that base fixture in parallel, so sharing it makes the catalog verifier see
+// a partially recreated schema instead of the application under test.
+func initializedBootstrapDatabase(t *testing.T) string {
+	t.Helper()
+	if os.Getenv("HOTKEY_TEST_DSN") == "" {
+		t.Fatal("HOTKEY_TEST_DSN is required for database lifecycle integration")
+	}
+	dsn := postgresfixture.New(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	runtime, err := database.Open(ctx, dsn)
+	if err != nil {
+		t.Fatalf("open bootstrap fixture database: %v", err)
+	}
+	defer func() { _ = runtime.Close() }()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatalf("initialize bootstrap fixture database: %v", err)
+	}
+	return dsn
 }
 
 func TestApplyCommandLineRejectsUnknownCommandAndArguments(t *testing.T) {

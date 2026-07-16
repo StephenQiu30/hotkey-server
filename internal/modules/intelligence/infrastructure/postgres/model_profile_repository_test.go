@@ -57,3 +57,31 @@ func TestModelProfileRepositoryUsesOptimisticOperationalUpdatesAndSoftLifecycle(
 		t.Fatalf("RestoreProfile() version = %d, want 4", restored.Version)
 	}
 }
+
+func TestModelProfileRepositoryOrdersOnlyEligibleProfiles(t *testing.T) {
+	runtime := openIntelligenceRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	repository := intelligencepostgres.NewRepository(runtime)
+	first := testEmbeddingProfile()
+	first.Name, first.FallbackPriority = "eligible-second", 20
+	if err := repository.CreateProfile(context.Background(), &first); err != nil {
+		t.Fatalf("CreateProfile(first): %v", err)
+	}
+	second := testEmbeddingProfile()
+	second.Name, second.FallbackPriority = "eligible-first", 10
+	if err := repository.CreateProfile(context.Background(), &second); err != nil {
+		t.Fatalf("CreateProfile(second): %v", err)
+	}
+	disabled := testEmbeddingProfile()
+	disabled.Name, disabled.Enabled, disabled.FallbackPriority = "disabled-profile", false, 0
+	if err := repository.CreateProfile(context.Background(), &disabled); err != nil {
+		t.Fatalf("CreateProfile(disabled): %v", err)
+	}
+	profiles, err := repository.EligibleProfiles(context.Background(), intelligencedomain.TaskTypeEmbedding)
+	if err != nil {
+		t.Fatalf("EligibleProfiles(): %v", err)
+	}
+	if len(profiles) != 2 || profiles[0].ID != second.ID || profiles[1].ID != first.ID {
+		t.Fatalf("EligibleProfiles() = %#v, want ordered enabled profiles %d,%d", profiles, second.ID, first.ID)
+	}
+}

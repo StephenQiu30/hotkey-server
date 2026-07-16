@@ -47,6 +47,9 @@ func TestOpenAIProviderEmbedUsesModelNameAndReturnsLocalVersion(t *testing.T) {
 	if response.ModelVersion != "local-embedding-v7" || len(response.Vectors) != 2 || len(response.Vectors[0]) != intelligencedomain.EmbeddingDimensions || len(response.Vectors[1]) != intelligencedomain.EmbeddingDimensions {
 		t.Fatalf("Embed() response = %#v, want local version and two 1024-vectors", response)
 	}
+	if response.Usage != (intelligencedomain.Usage{InputTokens: 1, OutputTokens: 0}) {
+		t.Fatalf("Embed() usage = %#v, want prompt/total mapping 1/0", response.Usage)
+	}
 	if got, want := requestBody["model"], "text-embedding-3-large"; got != want {
 		t.Errorf("request model = %#v, want %q", got, want)
 	}
@@ -57,6 +60,49 @@ func TestOpenAIProviderEmbedUsesModelNameAndReturnsLocalVersion(t *testing.T) {
 		t.Errorf("request input = %#v, want %#v", got, want)
 	}
 	assertDoesNotContain(t, requestBody, "local-embedding-v7")
+}
+
+func TestOpenAIProviderMapsUsageAndRejectsInconsistentTotals(t *testing.T) {
+	t.Run("structured usage", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			payload := structuredAPIResponse("gpt-test", `{"terms":["hotkey"]}`)
+			payload["usage"] = map[string]any{"input_tokens": 3, "output_tokens": 5, "total_tokens": 8}
+			writeJSON(writer, payload)
+		}))
+		t.Cleanup(server.Close)
+
+		response, err := newOpenAIProvider(t, server.URL).GenerateStructured(context.Background(), structuredRequest())
+		if err != nil {
+			t.Fatalf("GenerateStructured() error = %v", err)
+		}
+		if response.Usage != (intelligencedomain.Usage{InputTokens: 3, OutputTokens: 5}) {
+			t.Fatalf("GenerateStructured() usage = %#v, want 3/5", response.Usage)
+		}
+	})
+
+	t.Run("embedding total below prompt", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			payload := embeddingAPIResponse("text-embedding-3-large")
+			payload["usage"] = map[string]any{"prompt_tokens": 4, "total_tokens": 3}
+			writeJSON(writer, payload)
+		}))
+		t.Cleanup(server.Close)
+
+		_, err := newOpenAIProvider(t, server.URL).Embed(context.Background(), embeddingRequest())
+		assertCode(t, err, intelligencedomain.CodeAIModelProfileInvalid)
+	})
+
+	t.Run("structured total mismatch", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			payload := structuredAPIResponse("gpt-test", `{"terms":["hotkey"]}`)
+			payload["usage"] = map[string]any{"input_tokens": 2, "output_tokens": 3, "total_tokens": 4}
+			writeJSON(writer, payload)
+		}))
+		t.Cleanup(server.Close)
+
+		_, err := newOpenAIProvider(t, server.URL).GenerateStructured(context.Background(), structuredRequest())
+		assertCode(t, err, intelligencedomain.CodeAIModelProfileInvalid)
+	})
 }
 
 func TestOpenAIProviderRejectsEmbeddingModelMismatch(t *testing.T) {

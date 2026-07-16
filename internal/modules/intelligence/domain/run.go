@@ -29,6 +29,8 @@ type Run struct {
 	TargetType, ModelVersion, ReuseKey                string
 	Status                                            RunStatus
 	ReservedCost, Cost                                string
+	StructuredResult                                  json.RawMessage
+	Tokens, LatencyMS                                 int64
 	ErrorCode                                         *int
 	LeaseExpiresAt                                    *time.Time
 }

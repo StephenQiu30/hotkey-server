@@ -116,11 +116,22 @@ func TestGreenfieldSchemaEnforcesCriticalConstraints(t *testing.T) {
 		"AI run object keys stay null":                "check (request_object_key is null and response_object_key is null)",
 		"AI run lease state":                          "lease_expires_at timestamptz",
 		"AI budget overage block":                     "overage_blocked boolean not null default false",
+		"content embedding run provenance":            "ai_run_id bigint not null references ai_runs(id) on delete restrict",
 		"active content embedding profile uniqueness": "create unique index if not exists content_embeddings_one_active_per_profile_uq on content_embeddings(content_id, model_profile_id) where active",
 	}
 	for name, snippet := range checks {
 		if !strings.Contains(schema, snippet) {
 			t.Errorf("missing %s constraint: %q", name, snippet)
+		}
+	}
+}
+
+func TestEmbeddingSchemaRequiresRunProvenanceImmediatelyAfterProfileVersion(t *testing.T) {
+	schema := readSchemaText(t)
+	for _, table := range []string{"content_embeddings", "monitor_embeddings", "event_embeddings", "topic_embeddings"} {
+		block := tableBlock(t, schema, table)
+		if !strings.Contains(block, "model_profile_version bigint not null,\n    ai_run_id bigint not null references ai_runs(id) on delete restrict") {
+			t.Errorf("%s must retain ordered non-null ai_run_id provenance after model_profile_version", table)
 		}
 	}
 }

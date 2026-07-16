@@ -86,7 +86,11 @@ func (provider *OpenAIProvider) Embed(ctx context.Context, request intelligenced
 		}
 	}
 
-	return intelligencedomain.EmbeddingResponse{ModelVersion: request.ModelVersion, Vectors: vectors}, nil
+	usage, err := embeddingUsage(response.Usage.PromptTokens, response.Usage.TotalTokens)
+	if err != nil {
+		return intelligencedomain.EmbeddingResponse{}, err
+	}
+	return intelligencedomain.EmbeddingResponse{ModelVersion: request.ModelVersion, Vectors: vectors, Usage: usage}, nil
 }
 
 func (provider *OpenAIProvider) GenerateStructured(ctx context.Context, request intelligencedomain.StructuredRequest) (intelligencedomain.StructuredResponse, error) {
@@ -125,7 +129,31 @@ func (provider *OpenAIProvider) GenerateStructured(ctx context.Context, request 
 	if !json.Valid(output) {
 		return intelligencedomain.StructuredResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIOutputInvalid)
 	}
-	return intelligencedomain.StructuredResponse{ModelVersion: request.ModelVersion, JSON: output}, nil
+	usage, err := structuredUsage(response.Usage.InputTokens, response.Usage.OutputTokens, response.Usage.TotalTokens)
+	if err != nil {
+		return intelligencedomain.StructuredResponse{}, err
+	}
+	return intelligencedomain.StructuredResponse{ModelVersion: request.ModelVersion, JSON: output, Usage: usage}, nil
+}
+
+func embeddingUsage(promptTokens, totalTokens int64) (intelligencedomain.Usage, error) {
+	if promptTokens < 0 || totalTokens < promptTokens {
+		return intelligencedomain.Usage{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
+	usage := intelligencedomain.Usage{InputTokens: promptTokens, OutputTokens: totalTokens - promptTokens}
+	if _, err := usage.TotalTokens(); err != nil {
+		return intelligencedomain.Usage{}, err
+	}
+	return usage, nil
+}
+
+func structuredUsage(inputTokens, outputTokens, totalTokens int64) (intelligencedomain.Usage, error) {
+	usage := intelligencedomain.Usage{InputTokens: inputTokens, OutputTokens: outputTokens}
+	total, err := usage.TotalTokens()
+	if err != nil || total != totalTokens {
+		return intelligencedomain.Usage{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
+	return usage, nil
 }
 
 func structuredInput(request intelligencedomain.StructuredRequest) ([]byte, error) {

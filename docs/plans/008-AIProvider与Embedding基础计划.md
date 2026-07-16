@@ -8,7 +8,7 @@ canonical_path: docs/plans/008-AIProvider与Embedding基础计划.md
 status: accepted
 execution_status: in_progress
 review_status: approved
-version: v1.19
+version: v1.20
 owner: HotKey Server Team
 inputs:
   - docs/prd/008-AIProvider与Embedding基础.md
@@ -306,23 +306,23 @@ PLAN-008 不实现供应商账单或模型费率表。每次成功调用以已 c
 
 **Consumes:** Tasks 2–4 ports/adapters; **Produces:** public Application service used by PLAN-009 and HTTP transport.
 
-- [ ] **Step 1: Write failing tests.** First extend catalog/model/upgrade tests for four non-null `ai_run_id` embedding foreign keys after `model_profile_version`; then cover selection ordering, absent config/provider degradation, identical concurrent requests, success reuse that returns the prior validated structured result or the active vector linked to exactly that succeeded `ai_run_id` without a second provider call, model/schema/input/evidence invalidation, 429/5xx/deadline retry count/backoff, no retry for configuration/budget/schema errors, one repair, token usage propagation, exact `max_cost` budget-charge settle, and successful safe response write. Provider fixtures must assert both OpenAI Usage mappings and safe failure for negative/inconsistent totals; the signed ONNX-host matrix must assert zero Usage in Task 7. Exercise the existing repository overage invariant separately with a trusted test input; do not invent a Provider price calculator. Use a controllable clock to prove retry_wait refreshes its lease through `retry_after+timeout+30s`, cannot be reclaimed before it expires, and is reclaimed after a simulated process crash. Assert capture/Content query services remain available.
+- [x] **Step 1: Write failing tests.** First extend catalog/model/upgrade tests for four non-null `ai_run_id` embedding foreign keys after `model_profile_version`; then cover selection ordering, absent config/provider degradation, identical concurrent requests, success reuse that returns the prior validated structured result or the active vector linked to exactly that succeeded `ai_run_id` without a second provider call, model/schema/input/evidence invalidation, 429/5xx/deadline retry count/backoff, no retry for configuration/budget/schema errors, one repair, token usage propagation, exact `max_cost` budget-charge settle, and successful safe response write. Provider fixtures must assert both OpenAI Usage mappings and safe failure for negative/inconsistent totals; the signed ONNX-host matrix must assert zero Usage in Task 7. Exercise the existing repository overage invariant separately with a trusted test input; do not invent a Provider price calculator. Use a controllable clock to prove retry_wait refreshes its lease through `retry_after+timeout+30s`, cannot be reclaimed before it expires, and is reclaimed after a simulated process crash. Assert capture/Content query services remain available.
 
-- [ ] **Step 2: Run RED.**
+- [x] **Step 2: Run RED.**
 
   Run: `HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable' go test -tags=integration ./internal/platform/database ./internal/platform/database/model ./tests/architecture ./internal/modules/intelligence/application -count=1`
 
   Expected: FAIL because the four `ai_run_id` catalog/upgrade contracts and orchestration service do not yet exist.
 
-- [ ] **Step 3: Implement smallest orchestration.** Add the four additive `ai_run_id` columns and foreign keys before application code. Extend the Provider response with validated token usage and make the existing PostgreSQL adapter expose ordered eligible profile reads, safe successful run results, active Embedding reads by exact `ai_run_id`, and one terminal write that atomically records a safe structured result, token total, latency and the claimed `max_cost` budget charge. Every new Embedding write records the validating run ID and only `CompleteEmbedding` may atomically write that vector and settle the matching run in the fixed `ai-budget -> ai-run -> ai-embedding` lock order. `RunService` obtains a DB claim/lease before network work; it reserves, calls one provider, validates/repairs once, settles/releases and writes only safe structured results. A success reuse returns that persisted result and never calls Provider. Every state transition that remains in-flight calls the Task 3 atomic lease refresh rule; it never invents a second lock order. `RunLeaseReclaimer` is a worker-only Fx lifecycle goroutine with a 30-second ticker; it calls the Task 3 reclaimer but never replays Provider calls. It returns `EmbeddingResult{Status:"degraded", ReasonCode:"ai_model_unavailable"}` on no candidate/build/credential availability. `EmbeddingService` invokes the validated provider then atomic writer. Fx registers services/reclaimer only with a database runtime; API startup remains valid with an empty key because no profile is selected implicitly.
+- [x] **Step 3: Implement smallest orchestration.** Add the four additive `ai_run_id` columns and foreign keys before application code. Extend the Provider response with validated token usage and make the existing PostgreSQL adapter expose ordered eligible profile reads, safe successful run results, active Embedding reads by exact `ai_run_id`, and one terminal write that atomically records a safe structured result, token total, latency and the claimed `max_cost` budget charge. Every new Embedding write records the validating run ID and only `CompleteEmbedding` may atomically write that vector and settle the matching run in the fixed `ai-budget -> ai-run -> ai-embedding` lock order. `RunService` obtains a DB claim/lease before network work; it reserves, calls one provider, validates/repairs once, settles/releases and writes only safe structured results. A success reuse returns that persisted result and never calls Provider. Every state transition that remains in-flight calls the Task 3 atomic lease refresh rule; it never invents a second lock order. `RunLeaseReclaimer` is a worker-only Fx lifecycle goroutine with a 30-second ticker; it calls the Task 3 reclaimer but never replays Provider calls. It returns `EmbeddingResult{Status:"degraded", ReasonCode:"ai_model_unavailable"}` on no candidate/build/credential availability. `EmbeddingService` invokes the validated provider then atomic writer. Fx registers services/reclaimer only with a database runtime; API startup remains valid with an empty key because no profile is selected implicitly.
 
-- [ ] **Step 4: Run GREEN.**
+- [x] **Step 4: Run GREEN.**
 
   Run: `HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable' go test -race -tags=integration ./internal/modules/intelligence/application ./internal/bootstrap ./internal/modules/intelligence/infrastructure/postgres ./internal/platform/database ./internal/platform/database/model ./tests/architecture -count=1 && go test ./internal/modules/intelligence/infrastructure/provider -count=1`
 
   Expected: PASS; retry/repair never exceeds its bound, only one call owns a reuse key, and AI absence leaves non-AI services available.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
   ```bash
   git add internal/modules/intelligence/application internal/modules/intelligence/domain/provider.go \
@@ -436,3 +436,4 @@ Task 1–6 每项必须是一个可回滚、通过其 GREEN 命令的提交，�
 | v1.17 | 2026-07-17 | 统一 PRD/Plan 的 Embedding 完成锁序，并将 `ai_run_id` 的 catalog、model、历史升级与 PostgreSQL 集成验证纳入 Task 5 GREEN。 |
 | v1.18 | 2026-07-17 | 将实际 PLAN-007 -> PLAN-008 升级演练入口 `database_integration_test.go` 纳入 Task 5 文件、RED 与提交范围，确保四个 `ai_run_id` 外键由历史路径验证。 |
 | v1.19 | 2026-07-17 | 独立复核通过 v1.15–v1.18 的精确 Embedding provenance、三段锁序和历史升级验证，恢复 accepted/approved/in_progress。 |
+| v1.20 | 2026-07-17 | Task 5 已完成实现与 GREEN：Provider token 映射、精确内部预算结算、结构化结果/Embedding provenance reuse、有序 profile、受控重试、worker-only lease reclaimer、空配置降级及历史升级回退验证均已覆盖；整体仍等待后续 Task 6–7。 |

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -58,6 +59,31 @@ func (request EmbeddingRequest) Validate() error {
 type EmbeddingResponse struct {
 	ModelVersion string
 	Vectors      [][]float32
+	Usage        Usage
+}
+
+// Usage is the provider-reported token count. It deliberately contains no
+// pricing or billing detail; PLAN-008 charges the claimed profile budget unit.
+type Usage struct{ InputTokens, OutputTokens int64 }
+
+func (usage Usage) TotalTokens() (int64, error) {
+	if usage.InputTokens < 0 || usage.OutputTokens < 0 || usage.InputTokens > math.MaxInt64-usage.OutputTokens {
+		return 0, NewError(CodeAIModelProfileInvalid)
+	}
+	return usage.InputTokens + usage.OutputTokens, nil
+}
+
+// Add preserves the complete token fact across a bounded structured repair.
+// The persistence boundary stores only aggregate token integers, never either
+// raw provider response, so overflow is a stable configuration failure.
+func (usage Usage) Add(other Usage) (Usage, error) {
+	if _, err := usage.TotalTokens(); err != nil {
+		return Usage{}, err
+	}
+	if _, err := other.TotalTokens(); err != nil || usage.InputTokens > math.MaxInt64-other.InputTokens || usage.OutputTokens > math.MaxInt64-other.OutputTokens {
+		return Usage{}, NewError(CodeAIModelProfileInvalid)
+	}
+	return Usage{InputTokens: usage.InputTokens + other.InputTokens, OutputTokens: usage.OutputTokens + other.OutputTokens}, nil
 }
 
 type SchemaViolation struct {
@@ -114,4 +140,5 @@ func (request StructuredRequest) Validate() error {
 type StructuredResponse struct {
 	ModelVersion string
 	JSON         json.RawMessage
+	Usage        Usage
 }

@@ -66,7 +66,7 @@ SET status=$1::varchar, attempt=$2, retry_after=$3, lease_expires_at=$4,
 	started_at=CASE WHEN $1::varchar='running' THEN COALESCE(started_at,$5) ELSE started_at END
 WHERE id=$6
 RETURNING id,task_type,target_type,target_id,model_profile_id,model_profile_version,model_version,reuse_key,status,
-          reserved_cost::text,cost::text,error_code,lease_expires_at`,
+		  structured_result,tokens,latency_ms,reserved_cost::text,cost::text,error_code,lease_expires_at`,
 			string(target), attempt, retryAfter, lease, now, runID,
 		).Scan(runScanTargets(&transitioned)...); err != nil {
 			return fmt.Errorf("transition AI run: %w", err)
@@ -195,7 +195,7 @@ UPDATE ai_runs
 SET status=$1,reserved_cost=0,error_code=$2,lease_expires_at=NULL,finished_at=$3
 WHERE id=$4
 RETURNING id,task_type,target_type,target_id,model_profile_id,model_profile_version,model_version,reuse_key,status,
-          reserved_cost::text,cost::text,error_code,lease_expires_at`,
+		  structured_result,tokens,latency_ms,reserved_cost::text,cost::text,error_code,lease_expires_at`,
 			string(terminal), code, now, runID,
 		).Scan(runScanTargets(&released)...); err != nil {
 			return fmt.Errorf("release AI run reservation: %w", err)
@@ -209,6 +209,7 @@ type runLifecycle struct {
 	runReference
 	TimeoutSeconds, Attempt, MaxAttempts int64
 	RetryAfter                           sql.NullTime
+	RepairAttempted                      bool
 	LeaseExpiresAt                       *time.Time
 }
 
@@ -222,7 +223,7 @@ func readRunLifecycle(ctx context.Context, queryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }, runID int64, lock bool) (runLifecycle, error) {
 	query := `SELECT r.model_profile_id,r.budget_day::text,r.reuse_key,r.reserved_cost::text,r.status,
-       p.timeout_seconds,r.attempt,r.max_attempts,r.retry_after,r.lease_expires_at
+       p.timeout_seconds,r.attempt,r.max_attempts,r.retry_after,r.repair_attempted,r.lease_expires_at
 FROM ai_runs r JOIN ai_model_profiles p ON p.id=r.model_profile_id WHERE r.id=$1`
 	if lock {
 		query += " FOR UPDATE OF r"
@@ -231,7 +232,7 @@ FROM ai_runs r JOIN ai_model_profiles p ON p.id=r.model_profile_id WHERE r.id=$1
 	var lease sql.NullTime
 	if err := queryer.QueryRowContext(ctx, query, runID).Scan(
 		&lifecycle.ModelProfileID, &lifecycle.BudgetDay, &lifecycle.ReuseKey, &lifecycle.ReservedCost, &lifecycle.Status,
-		&lifecycle.TimeoutSeconds, &lifecycle.Attempt, &lifecycle.MaxAttempts, &lifecycle.RetryAfter, &lease,
+		&lifecycle.TimeoutSeconds, &lifecycle.Attempt, &lifecycle.MaxAttempts, &lifecycle.RetryAfter, &lifecycle.RepairAttempted, &lease,
 	); err != nil {
 		if err == sql.ErrNoRows {
 			return runLifecycle{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
@@ -243,6 +244,56 @@ FROM ai_runs r JOIN ai_model_profiles p ON p.id=r.model_profile_id WHERE r.id=$1
 		lifecycle.LeaseExpiresAt = &value
 	}
 	return lifecycle, nil
+}
+
+// BeginRepair records the one permitted structured-output repair before a
+// second provider request. It refreshes the validating lease under the same
+// budget -> run advisory order and refuses a second repair after a retry or
+// process restart.
+func (repository *Repository) BeginRepair(ctx context.Context, runID int64, now time.Time) error {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil || runID <= 0 {
+		return intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	} else {
+		now = now.UTC()
+	}
+	initial, err := repository.runLifecycle(ctx, repository.queryer(ctx), runID, false)
+	if err != nil {
+		return err
+	}
+	return repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+		if err := lockBudget(ctx, transaction.SQL, initial.ModelProfileID, initial.BudgetDay); err != nil {
+			return err
+		}
+		if err := lockRun(ctx, transaction.SQL, initial.ReuseKey); err != nil {
+			return err
+		}
+		locked, err := repository.runLifecycle(ctx, transaction.SQL, runID, true)
+		if err != nil {
+			return err
+		}
+		if locked.runReference != initial.runReference || locked.Status != intelligencedomain.RunStatusValidating || locked.RepairAttempted {
+			return intelligencedomain.NewError(intelligencedomain.CodeAIOutputInvalid)
+		}
+		lease := now.Add(time.Duration(locked.TimeoutSeconds+30) * time.Second)
+		result, err := transaction.SQL.ExecContext(ctx, `
+UPDATE ai_runs
+SET repair_attempted=true,lease_expires_at=$1
+WHERE id=$2 AND repair_attempted=false`, lease, runID)
+		if err != nil {
+			return fmt.Errorf("record AI output repair: %w", err)
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("read AI output repair result: %w", err)
+		}
+		if affected != 1 {
+			return intelligencedomain.NewError(intelligencedomain.CodeAIOutputInvalid)
+		}
+		return nil
+	})
 }
 
 func releaseBudget(ctx context.Context, queryer interface {

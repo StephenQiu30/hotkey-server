@@ -90,6 +90,39 @@ WHERE id=$1 AND version=$2 AND deleted_at ` + whereDeleted + ` RETURNING version
 	return profile, err
 }
 
+// EligibleProfiles returns the enabled, non-deleted candidates in the one
+// deterministic order used by application services. Provider construction is
+// intentionally not performed here: a profile can be administratively valid
+// while its optional runtime credential or native bundle is unavailable.
+func (repository *Repository) EligibleProfiles(ctx context.Context, taskType intelligencedomain.TaskType) ([]intelligencedomain.ModelProfile, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil || !taskType.Valid() {
+		return nil, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
+	rows, err := repository.queryRows(ctx, `
+SELECT id,version,name,task_type,provider,model_name,model_version,credential_ref,embedding_dimensions,
+       timeout_seconds,max_attempts,max_cost::text,daily_budget::text,fallback_priority,enabled,deleted_at IS NOT NULL
+FROM ai_model_profiles
+WHERE task_type=$1 AND enabled AND deleted_at IS NULL
+ORDER BY fallback_priority ASC,id ASC`, string(taskType))
+	if err != nil {
+		return nil, fmt.Errorf("list eligible AI profiles: %w", err)
+	}
+	defer rows.Close()
+
+	profiles := make([]intelligencedomain.ModelProfile, 0)
+	for rows.Next() {
+		profile, _, err := scanProfile(rows)
+		if err != nil {
+			return nil, err
+		}
+		profiles = append(profiles, profile)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate eligible AI profiles: %w", err)
+	}
+	return profiles, nil
+}
+
 func readProfile(ctx context.Context, queryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }, id int64, lock bool) (intelligencedomain.ModelProfile, bool, error) {
@@ -99,20 +132,30 @@ FROM ai_model_profiles WHERE id=$1`
 	if lock {
 		query += " FOR UPDATE"
 	}
+	profile, deleted, err := scanProfile(queryer.QueryRowContext(ctx, query, id))
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return intelligencedomain.ModelProfile{}, false, intelligencedomain.NewError(intelligencedomain.CodeAIModelUnavailable)
+		}
+		return intelligencedomain.ModelProfile{}, false, fmt.Errorf("read AI profile: %w", err)
+	}
+	return profile, deleted, nil
+}
+
+type profileScanner interface{ Scan(...any) error }
+
+func scanProfile(scanner profileScanner) (intelligencedomain.ModelProfile, bool, error) {
 	var profile intelligencedomain.ModelProfile
 	var credential sql.NullString
 	var dimensions sql.NullInt64
 	var dailyBudget sql.NullString
 	var deleted bool
-	if err := queryer.QueryRowContext(ctx, query, id).Scan(
+	if err := scanner.Scan(
 		&profile.ID, &profile.Version, &profile.Name, &profile.TaskType, &profile.Provider, &profile.ModelName, &profile.ModelVersion,
 		&credential, &dimensions, &profile.TimeoutSeconds, &profile.MaxAttempts, &profile.MaxCost, &dailyBudget,
 		&profile.FallbackPriority, &profile.Enabled, &deleted,
 	); err != nil {
-		if err == sql.ErrNoRows {
-			return intelligencedomain.ModelProfile{}, false, intelligencedomain.NewError(intelligencedomain.CodeAIModelUnavailable)
-		}
-		return intelligencedomain.ModelProfile{}, false, fmt.Errorf("read AI profile: %w", err)
+		return intelligencedomain.ModelProfile{}, false, err
 	}
 	if credential.Valid {
 		profile.CredentialRef = &credential.String
