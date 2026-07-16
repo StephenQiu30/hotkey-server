@@ -20,7 +20,7 @@ import (
 // Content facts. It never calls a connector and it does not retain an upstream
 // response beyond the capture fields Source has already allowed to persist.
 func NormalizeCapturedItem(item sourcedomain.CapturedItem, sourceConnectionID int64) (ingestiondomain.NormalizedContent, error) {
-	externalID := strings.TrimSpace(norm.NFC.String(item.ExternalID))
+	externalID := ingestiondomain.NormalizeExternalID(item.ExternalID)
 	if sourceConnectionID <= 0 || (item.Version != sourcedomain.CapturedItemVersionV1 && item.Version != sourcedomain.CapturedItemVersionV2) || strings.TrimSpace(item.SourceCode) == "" || externalID == "" || item.ObservedAt.IsZero() {
 		return ingestiondomain.NormalizedContent{}, ingestiondomain.NewError(ingestiondomain.ErrorCodeInvalidCapturedItem)
 	}

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
+	"golang.org/x/text/unicode/norm"
 )
 
 type ContentStatus string
@@ -77,6 +78,13 @@ func validDedupeReasonVersion(reason, version string) bool {
 type NormalizedAuthor struct {
 	ExternalID  string
 	DisplayName string
+}
+
+// NormalizeExternalID is the one opaque source-item identity canonicalization
+// shared by capture normalization and Content persistence. It deliberately
+// does not lowercase, parse, or otherwise reinterpret an upstream ID.
+func NormalizeExternalID(value string) string {
+	return strings.TrimSpace(norm.NFC.String(value))
 }
 
 // NormalizedContent is the pure projection from one persisted CapturedItem.

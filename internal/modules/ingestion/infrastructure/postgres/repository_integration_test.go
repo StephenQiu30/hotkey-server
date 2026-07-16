@@ -120,6 +120,65 @@ func TestContentRepositoryPersistsStableSourceAuthorAndDuplicateMetadata(t *test
 	}
 }
 
+func TestContentRepositoryRetryDoesNotCreateAnUnusedAuthor(t *testing.T) {
+	runtime := openContentRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	repository := ingestionpostgres.NewContentRepository(runtime)
+	sourceID := createContentSource(t, runtime, "retry-author")
+	firstInput := normalizedContent(sourceID, "stable-author-item", time.Date(2026, time.July, 16, 9, 0, 0, 0, time.UTC))
+	first, created, err := repository.Upsert(context.Background(), firstInput, activeDecision())
+	if err != nil || !created {
+		t.Fatalf("Upsert(first) content/created/error = %#v / %t / %v", first, created, err)
+	}
+
+	retryInput := firstInput
+	retryInput.FetchedAt = firstInput.FetchedAt.Add(time.Minute)
+	retryInput.Author = ingestiondomain.NormalizedAuthor{ExternalID: strings.Repeat("d", 64), DisplayName: "Changed Author"}
+	retried, created, err := repository.Upsert(context.Background(), retryInput, activeDecision())
+	if err != nil || created {
+		t.Fatalf("Upsert(retry) content/created/error = %#v / %t / %v", retried, created, err)
+	}
+	if retried.ID != first.ID || retried.Author != first.Author || retried.Version != first.Version+1 {
+		t.Fatalf("retry result = %#v, want original author and versioned Content retry", retried)
+	}
+
+	var authors, unusedAuthors int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM source_authors WHERE source_connection_id = $1`, sourceID).Scan(&authors); err != nil {
+		t.Fatalf("count source authors: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`
+SELECT count(*)
+FROM source_authors AS author
+LEFT JOIN contents AS content ON content.author_id = author.id
+WHERE author.source_connection_id = $1 AND content.id IS NULL`, sourceID).Scan(&unusedAuthors); err != nil {
+		t.Fatalf("count unused source authors: %v", err)
+	}
+	if authors != 1 || unusedAuthors != 0 {
+		t.Fatalf("authors/unused authors = %d/%d, want 1/0", authors, unusedAuthors)
+	}
+}
+
+func TestContentRepositoryNormalizesExternalIDForPersistenceAndDeletion(t *testing.T) {
+	runtime := openContentRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	repository := ingestionpostgres.NewContentRepository(runtime)
+	sourceID := createContentSource(t, runtime, "external-id-nfc")
+	const nfdExternalID = "Cafe\u0301"
+	const nfcExternalID = "Café"
+	input := normalizedContent(sourceID, nfdExternalID, time.Date(2026, time.July, 16, 9, 0, 0, 0, time.UTC))
+	stored, _, err := repository.Upsert(context.Background(), input, activeDecision())
+	if err != nil {
+		t.Fatalf("Upsert() error = %v", err)
+	}
+	deleted, changed, err := repository.MarkDeleted(context.Background(), sourceID, "  "+nfcExternalID+"  ")
+	if err != nil || !changed {
+		t.Fatalf("MarkDeleted(NFC equivalent) content/changed/error = %#v / %t / %v", deleted, changed, err)
+	}
+	if deleted.ID != stored.ID || deleted.ExternalID != nfcExternalID || deleted.Status != ingestiondomain.ContentStatusDeleted {
+		t.Fatalf("deleted normalized content = %#v, want NFC tombstone for id %d", deleted, stored.ID)
+	}
+}
+
 func TestContentRepositoryPreservesUnknownAndExplicitZeroMetrics(t *testing.T) {
 	runtime := openContentRuntime(t)
 	defer func() { _ = runtime.Close() }()
@@ -269,6 +328,37 @@ FOR EACH ROW EXECUTE FUNCTION content_asset_status_conflict_test();`); err != ni
 	}
 	if successes != 1 || conflicts != 1 {
 		t.Fatalf("versioned status outcomes = %d success / %d conflicts, want 1 / 1", successes, conflicts)
+	}
+}
+
+func TestContentRepositoryRejectsCredentialBearingAssetOriginalURL(t *testing.T) {
+	runtime := openContentRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	repository := ingestionpostgres.NewContentRepository(runtime)
+	sourceID := createContentSource(t, runtime, "asset-credentials")
+	content, _, err := repository.Upsert(context.Background(), normalizedContent(sourceID, "asset-credential-content", time.Date(2026, time.July, 16, 9, 0, 0, 0, time.UTC)), activeDecision())
+	if err != nil {
+		t.Fatalf("Upsert() error = %v", err)
+	}
+
+	for index, rawURL := range []string{
+		"https://objects.example.test/evidence?api_key=opaque",
+		"https://objects.example.test/evidence?X-AmZ-SiGnAtUrE=opaque",
+		"https://objects.example.test/evidence?SiG=opaque",
+		"https://objects.example.test/evidence#access_token=opaque",
+	} {
+		asset := contentAsset(content.ID, fmt.Sprintf("evidence/v1/credential/%d/%s.txt", index, strings.Repeat("a", 64)))
+		asset.OriginalURL = rawURL
+		if err := repository.CreateAsset(context.Background(), asset); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+			t.Fatalf("CreateAsset(%q) error = %v, want invalid input", rawURL, err)
+		}
+	}
+	var assets int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM content_assets WHERE content_id = $1`, content.ID).Scan(&assets); err != nil {
+		t.Fatalf("count rejected assets: %v", err)
+	}
+	if assets != 0 {
+		t.Fatalf("credential-bearing asset count = %d, want 0", assets)
 	}
 }
 

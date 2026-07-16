@@ -42,6 +42,7 @@ func (repository *ContentRepository) Upsert(ctx context.Context, content ingesti
 	if !repository.available() {
 		return ingestiondomain.Content{}, false, sharedrepository.ErrUnavailable
 	}
+	content.ExternalID = ingestiondomain.NormalizeExternalID(content.ExternalID)
 	if err := content.Validate(); err != nil {
 		return ingestiondomain.Content{}, false, fmt.Errorf("%w: normalized content: %v", sharedrepository.ErrInvalidInput, err)
 	}
@@ -55,13 +56,9 @@ func (repository *ContentRepository) Upsert(ctx context.Context, content ingesti
 	var stored ingestiondomain.Content
 	created := false
 	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
-		authorID, err := upsertAuthor(ctx, transaction.SQL, content)
-		if err != nil {
-			return err
-		}
 		var contentID int64
 		arguments := []any{
-			content.SourceConnectionID, content.ExternalID, authorID, content.ContentType, content.Title, content.Excerpt,
+			content.SourceConnectionID, content.ExternalID, content.ContentType, content.Title, content.Excerpt,
 			content.CanonicalURL, content.Language, content.PublishedAt.UTC(), content.FetchedAt.UTC(), content.ContentHash,
 			decision.DuplicateOfID, nullableString(decision.Reason), nullableString(decision.Version),
 		}
@@ -69,14 +66,14 @@ func (repository *ContentRepository) Upsert(ctx context.Context, content ingesti
 		arguments = append(arguments, string(decision.Status))
 		if err := transaction.SQL.QueryRowContext(ctx, `
 INSERT INTO contents (
-    source_connection_id, external_id, author_id, content_type, title, excerpt,
+    source_connection_id, external_id, content_type, title, excerpt,
     canonical_url, language, published_at, fetched_at, dedupe_key,
     duplicate_of_id, dedupe_reason, dedupe_version, view_count, like_count,
     comment_count, share_count, content_status
 )
 VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-    $12, $13, $14, $15, $16, $17, $18, $19
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+    $11, $12, $13, $14, $15, $16, $17, $18
 )
 ON CONFLICT (source_connection_id, external_id) DO UPDATE
 SET fetched_at = EXCLUDED.fetched_at,
@@ -90,11 +87,26 @@ RETURNING id, (xmax = 0)`,
 			arguments...).Scan(&contentID, &created); err != nil {
 			return sharedrepository.MapError(err)
 		}
+		if created {
+			authorID, err := upsertAuthor(ctx, transaction.SQL, content)
+			if err != nil {
+				return err
+			}
+			if authorID != nil {
+				if _, err := transaction.SQL.ExecContext(ctx, `UPDATE contents SET author_id = $1 WHERE id = $2`, authorID, contentID); err != nil {
+					return sharedrepository.MapError(err)
+				}
+			}
+		}
 		if err := appendMetricSnapshot(ctx, transaction.SQL, contentID, content.FetchedAt, content.Metrics); err != nil {
 			return err
 		}
-		stored, err = selectContentByID(ctx, transaction.SQL, contentID)
-		return err
+		selected, err := selectContentByID(ctx, transaction.SQL, contentID)
+		if err != nil {
+			return err
+		}
+		stored = selected
+		return nil
 	})
 	if err != nil {
 		return ingestiondomain.Content{}, false, err
@@ -238,7 +250,8 @@ func (repository *ContentRepository) MarkDeleted(ctx context.Context, sourceConn
 	if !repository.available() {
 		return ingestiondomain.Content{}, false, sharedrepository.ErrUnavailable
 	}
-	if sourceConnectionID <= 0 || strings.TrimSpace(externalID) == "" {
+	externalID = ingestiondomain.NormalizeExternalID(externalID)
+	if sourceConnectionID <= 0 || externalID == "" {
 		return ingestiondomain.Content{}, false, fmt.Errorf("%w: source connection id and external id are required", sharedrepository.ErrInvalidInput)
 	}
 	var content ingestiondomain.Content
@@ -253,7 +266,7 @@ SET content_status = 'deleted', deleted_at = now(),
 WHERE source_connection_id = $1
   AND external_id = $2
   AND (content_status <> 'deleted' OR deleted_at IS NULL)
-RETURNING id`, sourceConnectionID, strings.TrimSpace(externalID)).Scan(&contentID)
+RETURNING id`, sourceConnectionID, externalID).Scan(&contentID)
 		if err == nil {
 			changed = true
 			content, err = selectContentByID(ctx, transaction.SQL, contentID)
@@ -262,7 +275,7 @@ RETURNING id`, sourceConnectionID, strings.TrimSpace(externalID)).Scan(&contentI
 		if !errors.Is(err, sql.ErrNoRows) {
 			return sharedrepository.MapError(err)
 		}
-		content, err = selectContentBySourceExternalID(ctx, transaction.SQL, sourceConnectionID, strings.TrimSpace(externalID))
+		content, err = selectContentBySourceExternalID(ctx, transaction.SQL, sourceConnectionID, externalID)
 		if errors.Is(err, sharedrepository.ErrNotFound) {
 			return nil
 		}
@@ -423,15 +436,29 @@ func safeOriginalURL(raw string) (any, error) {
 	if err != nil || parsed.User != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
 		return nil, errors.New("original URL must be a credential-free HTTP(S) URL")
 	}
+	if parsed.Fragment != "" {
+		return nil, errors.New("original URL fragments are not persisted")
+	}
 	for key := range parsed.Query() {
-		lowered := strings.ToLower(strings.TrimSpace(key))
-		for _, sensitive := range []string{"access_key", "accesskey", "api_key", "apikey", "authorization", "credential", "password", "secret", "token"} {
-			if strings.Contains(lowered, sensitive) {
-				return nil, errors.New("original URL contains a credential-like query key")
-			}
+		if credentialLikeQueryKey(key) {
+			return nil, errors.New("original URL contains a credential-like query key")
 		}
 	}
-	return raw, nil
+	return parsed.String(), nil
+}
+
+func credentialLikeQueryKey(key string) bool {
+	canonical := strings.ToLower(strings.TrimSpace(key))
+	canonical = strings.NewReplacer("-", "", "_", "").Replace(canonical)
+	if canonical == "sig" || canonical == "xamzsignature" {
+		return true
+	}
+	for _, sensitive := range []string{"accesskey", "apikey", "authorization", "credential", "password", "secret", "signature", "token"} {
+		if strings.Contains(canonical, sensitive) {
+			return true
+		}
+	}
+	return false
 }
 
 func validSHA256(value string) bool {
