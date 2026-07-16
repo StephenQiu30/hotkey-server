@@ -31,10 +31,8 @@ func NewRouter(readiness Readiness, metrics *observability.Metrics, telemetry *o
 		traceContext(telemetry),
 		accessLog(logger, metrics),
 		recovery(logger, metrics),
-		cors(),
+		cors(cfg.Authentication.AllowedOrigins),
 		requestContextTimeout(cfg.RequestTimeout),
-		authenticationPassthrough(),
-		authorizationPassthrough(),
 	)
 	router.GET("/healthz", Wrap(func(c *gin.Context) error {
 		OK(c, healthData{Status: "ok"})

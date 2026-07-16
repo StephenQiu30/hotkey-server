@@ -96,11 +96,15 @@ func recovery(logger *zap.Logger, metrics *observability.Metrics) gin.HandlerFun
 	}
 }
 
-func cors() gin.HandlerFunc {
+func cors(allowedOrigins []string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Request-ID")
+		if originAllowed(c.GetHeader("Origin"), allowedOrigins) {
+			c.Header("Access-Control-Allow-Origin", c.GetHeader("Origin"))
+			c.Header("Access-Control-Allow-Credentials", "true")
+			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Request-ID")
+			c.Header("Vary", "Origin")
+		}
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
 			return
@@ -116,14 +120,6 @@ func requestContextTimeout(timeout time.Duration) gin.HandlerFunc {
 		c.Request = c.Request.WithContext(requestContext)
 		c.Next()
 	}
-}
-
-func authenticationPassthrough() gin.HandlerFunc {
-	return func(c *gin.Context) { c.Next() }
-}
-
-func authorizationPassthrough() gin.HandlerFunc {
-	return func(c *gin.Context) { c.Next() }
 }
 
 func RequestID(c *gin.Context) string {

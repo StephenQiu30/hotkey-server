@@ -23,7 +23,7 @@ func TestApplicationRolesStartAndStopIndependently(t *testing.T) {
 		t.Run(string(role), func(t *testing.T) {
 			t.Parallel()
 
-			cfg := config.Default()
+			cfg := apiTestConfig()
 			cfg.Role = string(role)
 			if role.StartsAPI() {
 				cfg.HTTPAddr = "127.0.0.1:0"
@@ -58,15 +58,36 @@ func TestNewAppRejectsInvalidRole(t *testing.T) {
 }
 
 func TestNewAppWithReadinessRejectsMissingAPICheck(t *testing.T) {
-	cfg := config.Default()
+	cfg := apiTestConfig()
 	cfg.HTTPAddr = "127.0.0.1:0"
 	if _, err := NewAppWithReadiness(cfg, zap.NewNop(), nil); err == nil {
 		t.Fatal("NewAppWithReadiness() error = nil, want missing readiness error")
 	}
 }
 
-func TestRunningAppUsesInjectedFailingReadiness(t *testing.T) {
+func TestIdentityAPIRoleValidatesAuthenticationRuntimeBeforeServing(t *testing.T) {
 	cfg := config.Default()
+	cfg.Role = string(RoleAPI)
+	cfg.HTTPAddr = "127.0.0.1:0"
+
+	if _, err := NewApp(cfg, zap.NewNop()); err == nil {
+		t.Fatal("NewApp() error = nil, want unsafe authentication runtime rejection")
+	}
+}
+
+func TestIdentityWorkerDoesNotConstructAuthenticationDependencies(t *testing.T) {
+	cfg := config.Default()
+	cfg.Role = string(RoleWorker)
+	cfg.HTTPAddr = ""
+	cfg.Authentication.RedisURL = "://not-a-redis-url"
+
+	if _, err := NewApp(cfg, zap.NewNop()); err != nil {
+		t.Fatalf("NewApp(worker) error = %v, want worker independent of API authentication dependencies", err)
+	}
+}
+
+func TestRunningAppUsesInjectedFailingReadiness(t *testing.T) {
+	cfg := apiTestConfig()
 	cfg.Role = string(RoleAPI)
 	cfg.HTTPAddr = "127.0.0.1:0"
 	var server *httptransport.Server
@@ -95,7 +116,7 @@ func TestRunningAppUsesInjectedFailingReadiness(t *testing.T) {
 
 func TestAPIPortConflictRollsBackAndCanRestart(t *testing.T) {
 	address := availableAddress(t)
-	cfg := config.Default()
+	cfg := apiTestConfig()
 	cfg.Role = string(RoleAPI)
 	cfg.HTTPAddr = address
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -134,7 +155,7 @@ func TestAPIPortConflictRollsBackAndCanRestart(t *testing.T) {
 
 func TestLifecycleStartFailureRollsBackStartedServer(t *testing.T) {
 	address := availableAddress(t)
-	cfg := config.Default()
+	cfg := apiTestConfig()
 	cfg.Role = string(RoleAPI)
 	cfg.HTTPAddr = address
 	app, err := NewAppWithReadiness(cfg, zap.NewNop(), httptransport.ReadinessFunc(func(context.Context) error { return nil }), fx.Invoke(func(lifecycle fx.Lifecycle) {
@@ -155,6 +176,13 @@ func TestLifecycleStartFailureRollsBackStartedServer(t *testing.T) {
 	if err := listener.Close(); err != nil {
 		t.Fatalf("close replacement listener: %v", err)
 	}
+}
+
+func apiTestConfig() config.Config {
+	cfg := config.Default()
+	cfg.Authentication.JWTSecret = "0123456789abcdef0123456789abcdef"
+	cfg.Authentication.AllowedOrigins = []string{"http://localhost:3000"}
+	return cfg
 }
 
 func availableAddress(t *testing.T) string {

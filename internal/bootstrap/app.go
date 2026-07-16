@@ -6,11 +6,17 @@ import (
 	"fmt"
 	"strings"
 
+	identityapplication "github.com/StephenQiu30/hotkey-server/internal/modules/identity/application"
+	identitypostgres "github.com/StephenQiu30/hotkey-server/internal/modules/identity/infrastructure/postgres"
+	identityredis "github.com/StephenQiu30/hotkey-server/internal/modules/identity/infrastructure/redis"
+	identitysecurity "github.com/StephenQiu30/hotkey-server/internal/modules/identity/infrastructure/security"
+	identitysmtp "github.com/StephenQiu30/hotkey-server/internal/modules/identity/infrastructure/smtp"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/config"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
 	httptransport "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/observability"
+	sharedclock "github.com/StephenQiu30/hotkey-server/internal/shared/clock"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
 	"go.uber.org/zap"
@@ -40,6 +46,9 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 		options = append(options, fx.Provide(database.NewRuntime), fx.Invoke(database.RegisterLifecycle))
 	}
 	if role.StartsAPI() {
+		if err := cfg.ValidateAuthenticationRuntime(); err != nil {
+			return nil, fmt.Errorf("validate API authentication configuration: %w", err)
+		}
 		if readiness == nil {
 			return nil, fmt.Errorf("api readiness check is required")
 		}
@@ -54,11 +63,20 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				})
 			})
 		}
-		options = append(options,
+		apiOptions := []fx.Option{
 			readinessProvider,
 			fx.Provide(observability.NewMetrics, observability.NewTelemetry, httptransport.NewRouter, httptransport.NewServer),
 			fx.Invoke(observability.RegisterLifecycle, httptransport.RegisterServer),
-		)
+		}
+		if usesDatabase {
+			apiOptions = append(apiOptions,
+				fx.Provide(newIdentityVerificationStore, newIdentityService, newIdentityAuthenticator),
+				fx.Invoke(registerIdentityVerificationStoreLifecycle, func(httptransport.Authenticator) {}),
+			)
+		} else {
+			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
+		}
+		options = append(options, apiOptions...)
 	}
 	if role.StartsWorker() {
 		options = append(options, fx.Invoke(registerWorkerLifecycle))
@@ -66,6 +84,63 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 	options = append(options, extra...)
 
 	return fx.New(options...), nil
+}
+
+func newIdentityService(runtime *database.Runtime, cfg config.Config, verification *identityredis.VerificationStore) (*identityapplication.Service, error) {
+	tokens, err := identitysecurity.NewJWT(identitysecurity.JWTConfig{
+		Secret:   cfg.Authentication.JWTSecret,
+		Issuer:   cfg.Authentication.JWTIssuer,
+		Audience: cfg.Authentication.JWTAudience,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return identityapplication.NewService(identityapplication.Dependencies{
+		Runtime:      runtime,
+		Users:        identitypostgres.NewUserRepository(runtime),
+		Sessions:     identitypostgres.NewSessionRepository(runtime),
+		Audit:        identitypostgres.NewAuditRepository(runtime),
+		Passwords:    identitysecurity.NewPasswordHasher(),
+		Tokens:       tokens,
+		Verification: verification,
+		Mailer: identitysmtp.NewMailer(identitysmtp.Config{
+			Host:      cfg.Authentication.SMTP.Host,
+			Port:      cfg.Authentication.SMTP.Port,
+			TLSMode:   cfg.Authentication.SMTP.TLSMode,
+			Username:  cfg.Authentication.SMTP.Username,
+			Password:  cfg.Authentication.SMTP.Password,
+			FromEmail: cfg.Authentication.SMTP.FromEmail,
+			FromName:  cfg.Authentication.SMTP.FromName,
+		}),
+		Clock: sharedclock.System{},
+	})
+}
+
+func newIdentityVerificationStore(cfg config.Config) (*identityredis.VerificationStore, error) {
+	if strings.TrimSpace(cfg.Authentication.RedisURL) == "" {
+		return identityredis.NewVerificationStore(nil), nil
+	}
+	return identityredis.NewVerificationStoreFromURL(cfg.Authentication.RedisURL)
+}
+
+func registerIdentityVerificationStoreLifecycle(lifecycle fx.Lifecycle, verification *identityredis.VerificationStore) {
+	lifecycle.Append(fx.Hook{OnStop: func(context.Context) error { return verification.Close() }})
+}
+
+func newIdentityAuthenticator(service *identityapplication.Service) httptransport.Authenticator {
+	return identityAuthenticator{authenticator: service.Authenticator()}
+}
+
+type identityAuthenticator struct {
+	authenticator *identityapplication.Authenticator
+}
+
+func (adapter identityAuthenticator) Authenticate(ctx context.Context, token string) (httptransport.Subject, error) {
+	subject, err := adapter.authenticator.Authenticate(ctx, token)
+	if err != nil {
+		return httptransport.Subject{}, err
+	}
+	return httptransport.Subject{UserID: subject.UserID, SessionID: subject.SessionID, Role: httptransport.Role(subject.Role)}, nil
 }
 
 func Run(ctx context.Context, args []string) error {
