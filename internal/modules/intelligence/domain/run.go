@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 )
 
 type RunStatus string
@@ -19,6 +20,18 @@ const (
 	RunStatusFailed     RunStatus = "failed"
 	RunStatusCancelled  RunStatus = "cancelled"
 )
+
+// Run is the persistence-neutral execution fact returned by repository and
+// application contracts. It intentionally excludes provider SDK payloads.
+type Run struct {
+	ID, ModelProfileID, ModelProfileVersion, TargetID int64
+	TaskType                                          TaskType
+	TargetType, ModelVersion, ReuseKey                string
+	Status                                            RunStatus
+	ReservedCost, Cost                                string
+	ErrorCode                                         *int
+	LeaseExpiresAt                                    *time.Time
+}
 
 func (status RunStatus) Valid() bool {
 	switch status {

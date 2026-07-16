@@ -8,7 +8,7 @@ canonical_path: docs/plans/008-AIProvider与Embedding基础计划.md
 status: accepted
 execution_status: in_progress
 review_status: approved
-version: v1.8
+version: v1.9
 owner: HotKey Server Team
 inputs:
   - docs/prd/008-AIProvider与Embedding基础.md
@@ -200,23 +200,23 @@ ONNX profile 只在完整 bundle 校验后可选。`HOTKEY_ONNX_MANIFEST_PATH` �
 
 **Consumes:** Tasks 1–2 schema/domain; **Produces:** transaction-safe persistence ports for Tasks 4–6.
 
-- [ ] **Step 1: Write failing PostgreSQL integration tests.** In one disposable database, assert profile task/max/daily constraints, admin optimistic conflict/soft delete/restore, semantic-field rejection, success-only reuse, one in-flight row for concurrent same key, `overage_blocked=false` plus `settled+reserved+max` daily reserve, release, real overage recording and later reserve rejection. Cover both a NULL daily budget and a daily budget with remaining balance: both must reject after overage, then a next-UTC-day ledger must allow reserve. Simulate process death at queued/running/retry_wait and assert worker reclaimer marks 70009/release in `ai-budget -> ai-run` order. With a controllable clock, assert a valid retry_wait before its refreshed lease is not reclaimed while a crashed retry_wait after its lease is reclaimed. Assert each target’s atomic deactivate/insert and HNSW `EXPLAIN (COSTS OFF)` after `SET LOCAL enable_seqscan = off`.
+- [x] **Step 1: Write failing PostgreSQL integration tests.** In one disposable database, assert profile task/max/daily constraints, admin optimistic conflict/soft delete/restore, semantic-field rejection, success-only reuse, one in-flight row for concurrent same key, `overage_blocked=false` plus `settled+reserved+max` daily reserve, release, real overage recording and later reserve rejection. Cover both a NULL daily budget and a daily budget with remaining balance: both must reject after overage, then a next-UTC-day ledger must allow reserve. Simulate process death at queued/running/retry_wait and assert worker reclaimer marks 70009/release in `ai-budget -> ai-run` order. With a controllable clock, assert a valid retry_wait before its refreshed lease is not reclaimed while a crashed retry_wait after its lease is reclaimed. Assert each target’s atomic deactivate/insert and HNSW `EXPLAIN (COSTS OFF)` after `SET LOCAL enable_seqscan = off`.
 
-- [ ] **Step 2: Run RED.**
+- [x] **Step 2: Run RED.**
 
   Run: `HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable' go test -tags=integration ./internal/modules/intelligence/infrastructure/postgres -count=1`
 
   Expected: FAIL because no intelligence PostgreSQL Repository exists.
 
-- [ ] **Step 3: Implement transactions, never Provider calls.** Every claim, retry, settle, cancellation and reclaim takes `ai-budget:<profile>:<UTC-day>` before `ai-run:<reuse_key>`; no inverse lock path exists. In that transaction reclaim expired runs for the profile/day, reject `overage_blocked` ledgers, reserve by the stated equation, then create queued with `lease_expires_at=now+timeout+30s`. Atomically refresh the lease on queued→running, running→validating and retry_wait→running; for running|validating→retry_wait write `retry_after=now+min(2^(attempt-1),4)s` and `lease_expires_at=retry_after+timeout+30s`. A worker reclaimer uses the same lock order every 30 seconds, marks only expired in-flight rows `failed/70009`, and releases their reservation without calling Provider. Commit claim/reserve before Application network work. For each embedding table use its target/profile lock, deactivate then insert. Repository methods accept caller transactions and never query unrelated module tables.
+- [x] **Step 3: Implement transactions, never Provider calls.** Every claim, retry, settle, cancellation and reclaim takes `ai-budget:<profile>:<UTC-day>` before `ai-run:<reuse_key>`; no inverse lock path exists. In that transaction reclaim expired runs for the profile/day, reject `overage_blocked` ledgers, reserve by the stated equation, then create queued with `lease_expires_at=now+timeout+30s`. Atomically refresh the lease on queued→running, running→validating and retry_wait→running; for running|validating→retry_wait write `retry_after=now+min(2^(attempt-1),4)s` and `lease_expires_at=retry_after+timeout+30s`. A worker reclaimer uses the same lock order every 30 seconds, marks only expired in-flight rows `failed/70009`, and releases their reservation without calling Provider. Commit claim/reserve before Application network work. For each embedding table use its target/profile lock, deactivate then insert. Repository methods accept caller transactions and never query unrelated module tables.
 
-- [ ] **Step 4: Run GREEN.**
+- [x] **Step 4: Run GREEN.**
 
   Run: `HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable' go test -race -tags=integration ./internal/modules/intelligence/infrastructure/postgres -count=1`
 
   Expected: PASS; at most one Provider work claim and no budget/vector invariant violation under the deterministic interleavings.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
   ```bash
   git add internal/modules/intelligence/infrastructure/postgres
@@ -413,3 +413,4 @@ Task 1–6 每项必须是一个可回滚、通过其 GREEN 命令的提交，�
 | v1.6 | 2026-07-17 | 已开始实现，执行状态更新为 in_progress。 |
 | v1.7 | 2026-07-17 | Task 1 已完成并通过固定 PLAN-007 worktree 的升级/回退演练、完整 Schema 校验和 `make ci`；PLAN-008 整体仍在实施中。 |
 | v1.8 | 2026-07-17 | Task 2 已完成：provider-neutral 领域合同、严格 profile/reuse/vector 校验、嵌入式版本化 JSON Schema 与一次受限 repair 已通过完整 CI；PLAN-008 整体仍在实施中。 |
+| v1.9 | 2026-07-17 | Task 3 已完成：PostgreSQL Profile 乐观锁与软删除、运行复用/预算/结算/租约回收、四类 1024 维向量的原子替换与 HNSW 检索均已通过 PostgreSQL race 测试和完整 CI；PLAN-008 整体仍在实施中。 |
