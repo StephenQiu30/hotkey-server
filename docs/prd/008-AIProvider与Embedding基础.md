@@ -10,7 +10,7 @@ phase: P0
 priority: P0
 status: accepted
 execution_status: in_progress
-version: v1.6
+version: v1.9
 owner: HotKey Server Team
 depends_on: [PRD-002, PRD-007]
 design_refs:
@@ -52,7 +52,7 @@ downstream:
 
 ### 1. Provider、Schema 与安全结果
 
-- `Provider` 端口必须分别接收最小化的 `EmbeddingRequest` 与 `StructuredRequest`，并返回不带 SDK 类型的 `EmbeddingResponse` 与 `StructuredResponse`。
+- `Provider` 端口必须分别接收最小化的 `EmbeddingRequest` 与 `StructuredRequest`，并返回不带 SDK 类型的 `EmbeddingResponse` 与 `StructuredResponse`；两种响应都只包含可累加的 `Usage{input_tokens, output_tokens}`，不得夹带 SDK、原始账单或价格表。OpenAI Embeddings 固定映射 `input_tokens=prompt_tokens`、`output_tokens=total_tokens-prompt_tokens`；OpenAI Responses 固定映射同名字段并要求 `total_tokens=input_tokens+output_tokens`。任何负数、`total<prompt`、总数不等或加法溢出都安全失败；ONNX 成功 Embedding 固定返回零 Usage。
 - 任务、输入和输出 Schema 均为仓库内静态版本化 JSON Schema。首版必须提供 `embedding-input-v1`、`embedding-output-v1`、`term-expansion-input-v1`、`term-expansion-output-v1`；Schema 使用 `additionalProperties: false`，限制数组数量、字符串长度、语言标签和枚举。
 - Application 在调用前校验输入，调用后校验输出。输出校验失败时仅把安全的字段级错误发送给 Provider 做一次结构化修复；第二次失败使用 `70006 ai_output_invalid`，不得写入业务事实。
 - Provider outcome 映射为稳定业务码：`70000 ai_model_profile_invalid` (400)、`70001 ai_model_unavailable` (503, retryable)、`70002 ai_budget_exhausted` (429, retryable)、`70003 ai_provider_rate_limited` (429, retryable)、`70004 ai_provider_transient` (502, retryable)、`70005 ai_provider_timeout` (504, retryable)、`70006 ai_output_invalid` (502)、`70007 ai_run_in_progress` (409, retryable)、`70008 ai_embedding_invalid` (400) 和 `70009 ai_run_lease_expired` (503, retryable)。HTTP 消费者只依据 numeric `code`，不依赖 Provider 原文。
@@ -71,8 +71,9 @@ downstream:
 - 只有 `succeeded` 且所有上述版本仍匹配的运行可复用。profile 语义变更只能新建 profile；输入、证据、Prompt、输入/输出 Schema、parameters 或 model version 任一变化均创建新运行。
 - 对相同 `reuse_key` 的**所有** claim、retry、settle、cancel 与 reclaim 事务，一律先取得 `pg_advisory_xact_lock(hashtext('ai-budget:' || profile_id || ':' || utc_day))`，再取得 `pg_advisory_xact_lock(hashtext('ai-run:' || reuse_key))`；不得存在反向路径。claim 再检查成功运行和 in-flight 运行。成功运行直接返回；in-flight 返回 `70007`，绝不第二次调用 Provider；否则 reserve 并创建 queued 运行，在提交后调用 Provider。
 - 状态只能按 `queued -> running -> validating -> succeeded`、`running|validating -> retry_wait -> running`、`queued|running|validating|retry_wait -> failed|cancelled` 转换。429、超时和临时 5xx 在 `max_attempts` 内以 `min(2^(attempt-1), 4)` 秒确定性退避；配置、预算、输入、Schema 和证据错误不重试。创建 queued、`queued -> running`、`running -> validating` 与 `retry_wait -> running` 都在同一锁定事务将 lease 刷新为 `now + timeout_seconds + 30s`；`running|validating -> retry_wait` 原子地写入 `retry_after=now+backoff` 与 `lease_expires_at=retry_after+timeout_seconds+30s`。`attempt`、`retry_after`、`lease_expires_at`、`error_code` 和 `repair_attempted` 必须持久化。
-- 每个 profile 必须有正数 `max_cost`，它既是每次调用的硬预留额度也是 Provider 请求的输出/token 上限来源；`daily_budget` 可以为 NULL，表示没有每日上限但仍记账。每个 profile+UTC 日 ledger 还有 `overage_blocked=false` 初始状态；reserve 前置条件固定为 `overage_blocked=false` 且（daily 为空或 `settled_cost + reserved_cost + max_cost <= daily_budget`）。reserve 令 `reserved_cost += max_cost`，失败/取消/lease 回收令 `reserved_cost -= reserved_cost_of_run`，成功令 `reserved_cost -= reserved_cost_of_run` 且 `settled_cost += actual_cost`。
-- 实际 cost 大于预留时不得伪造更小数值：运行以 `failed/70002` 终止，记录真实 `cost=actual_cost`，释放预留、将真实成本加入 `settled_cost` 并原子写 `overage_blocked=true`。这会封锁**该 profile 的该 UTC 日**后续 reserve，即使 `daily_budget` 为 NULL 或仍有余额；新 UTC 日创建新的 `overage_blocked=false` ledger，是唯一自动重置规则。因此 `ai_runs.cost` 允许大于 `reserved_cost`。预算不足不调用 Provider。并发请求不得突破预留上限或重复调用。
+- 每个 profile 必须有正数 `max_cost`，它是每次调用的硬预留额度和内部预算计费单位；它不代表由模型名或公开价格表推导的供应商发票。`daily_budget` 可以为 NULL，表示没有每日上限但仍记账。每个 profile+UTC 日 ledger 还有 `overage_blocked=false` 初始状态；reserve 前置条件固定为 `overage_blocked=false` 且（daily 为空或 `settled_cost + reserved_cost + max_cost <= daily_budget`）。reserve 令 `reserved_cost += max_cost`，失败/取消/lease 回收令 `reserved_cost -= reserved_cost_of_run`，PLAN-008 成功调用令 `reserved_cost -= reserved_cost_of_run` 且 `settled_cost += reserved_cost_of_run`。Application 保存 Provider 返回的 token 数，但不得将其换算成金额。
+- `actual_cost > reserved_cost` 仍是仓储必须正确处理的受信任未来计费输入：运行以 `failed/70002` 终止，记录该值、释放预留、将该值加入 `settled_cost` 并原子写 `overage_blocked=true`。这会封锁**该 profile 的该 UTC 日**后续 reserve，即使 `daily_budget` 为 NULL 或仍有余额；新 UTC 日创建新的 `overage_blocked=false` ledger，是唯一自动重置规则。因此 `ai_runs.cost` 允许大于 `reserved_cost`。首批 OpenAI/ONNX adapter 不生成这一输入；新增供应商账单或费率计算必须先修订 Design、PRD 与 Plan。预算不足不调用 Provider。并发请求不得突破预留上限或重复调用。
+- 已验证的结构化输出、token 数、延迟与上述成功结算必须使用同一 budget -> run 锁序原子终态写入；Embedding 的向量仍只由其目标/profile 锁保护的替换写入。任何原始 Prompt、Provider 响应或对象键都不得写入该终态。
 - queued、running、validating 与 retry_wait 运行都拥有 `lease_expires_at`。worker-only `RunLeaseReclaimer` 每 30 秒按同一固定 `ai-budget(profile,day) -> ai-run(reuse_key)` 锁顺序回收过期运行：标记 `failed`、写 `70009 ai_run_lease_expired` 并释放该运行 reservation；不会重放外呼。测试必须证明未到期的 retry_wait 不会被回收，而进程崩溃后过期的 retry_wait 会被回收。下一次请求可获得新 claim，进程崩溃不能永久产生 `70007` 或冻结预算。
 
 ### 4. 向量空间与查询
@@ -100,7 +101,7 @@ downstream:
 
 1. 用零真实密钥的 `httptest` Provider fixture 验证成功、429、5xx、deadline、非法 JSON、一次修复成功和修复失败；fixture 断言 adapter 收到静态 instruction/JSON Schema 与受限 repair violations，SDK/原生错误不出现在 Result、日志或指标标签。
 2. 同一个 `reuse_key` 的并发请求只产生一次 Provider 调用；成功运行可复用，任何版本或证据哈希变化都不能复用。
-3. 并发预算预留满足 `overage_blocked=false` 且（daily 为空或 `settled + reserved + max <= daily`），失败释放、成功精确结算；overage 记录真实成本并封锁同 profile+UTC 日后续 reserve，即使日预算为空或仍有余额。崩溃/lease expiry 被 worker 回收，未到期的 retry 不得被回收。预算不足和无可用 Provider 均不影响 ingestion 或 Content read API。
+3. 并发预算预留满足 `overage_blocked=false` 且（daily 为空或 `settled + reserved + max <= daily`），失败释放、成功精确转入已预留的内部预算计费单位；仓储对未来受信任 overage 输入记录其值并封锁同 profile+UTC 日后续 reserve，即使日预算为空或仍有余额。崩溃/lease expiry 被 worker 回收，未到期的 retry 不得被回收。预算不足和无可用 Provider 均不影响 ingestion 或 Content read API。
 4. 1024 个有限值可以写入并经 HNSW 查回；1023/1025、`NaN`、`Inf`、不同 model version 和被停用的向量均不能混入结果。
 5. 默认 `go test ./...` 和 `CGO_ENABLED=0 go test -tags=onnx ./...` 都不需要 ONNX 原生库；`onnx && cgo` matrix 分别验证缺 runtime、模型、tokenizer、manifest 的安全降级，以及已校验完整 bundle 的 1024 输出。
 6. API 认证、管理员授权、write-only `credential_ref`、乐观锁、软删除/恢复、Result 和 OpenAPI 全部有契约测试。
@@ -121,3 +122,6 @@ PRD-009 可以只依赖 `intelligence` 的公开 Application 端口取得同一 
 | v1.4 | 2026-07-17 | 收紧 credential_ref 为创建时只写；明确 OpenAI 的 model ID 校验与本地 model_version 元数据边界。 |
 | v1.5 | 2026-07-17 | 独立复审通过，状态提升为 accepted/ready。 |
 | v1.6 | 2026-07-17 | 已开始实现，执行状态更新为 in_progress。 |
+| v1.7 | 2026-07-17 | 重新打开复核：补齐最小 token usage 端口，并将 PLAN-008 成本固定为 profile 的内部预算计费单位；供应商账单/费率计算不在本次范围，overage 仅保留为受信任未来输入的仓储安全契约。 |
+| v1.8 | 2026-07-17 | 定义 OpenAI Embeddings/Responses 的精确 Usage 映射、非法总数安全失败与 ONNX 零 Usage，供 adapter 契约测试和运行终态写入使用。 |
+| v1.9 | 2026-07-17 | 独立复核通过 v1.7–v1.8 的 token usage、内部预算计费和安全终态补充，恢复 accepted/in_progress。 |
