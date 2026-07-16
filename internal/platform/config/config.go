@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -93,12 +92,13 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("bind environment key %s: %w", key, err)
 		}
 	}
-	paths, err := environmentFilePaths()
-	if err != nil {
+	if err := loadEnvironmentFile(v, ".env"); err != nil {
 		return Config{}, err
 	}
-	if err := loadEnvironmentFiles(v, paths); err != nil {
-		return Config{}, err
+	if configString(v, "env") == "production" {
+		if err := loadEnvironmentFile(v, ".env.prod"); err != nil {
+			return Config{}, err
+		}
 	}
 
 	cfg := Config{
@@ -142,46 +142,19 @@ func Load() (Config, error) {
 	return cfg, cfg.Validate()
 }
 
-// environmentFilePaths lets a developer run the server from either the Go
-// module or its workspace root. .env.local intentionally loads after .env so
-// an ignored, machine-local configuration can safely override shared defaults.
-func environmentFilePaths() ([]string, error) {
-	if path := strings.TrimSpace(os.Getenv("HOTKEY_ENV_FILE")); path != "" {
-		return []string{path}, nil
+// loadEnvironmentFile reads one conventional dotenv file when it exists.
+// .env is the default development configuration; .env.prod is loaded only
+// when the resolved environment is production.
+func loadEnvironmentFile(v *viper.Viper, path string) error {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("inspect environment file %s: %w", path, err)
 	}
-	workingDirectory, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("get working directory for environment files: %w", err)
-	}
-	paths := []string{
-		filepath.Join(workingDirectory, ".env"),
-		filepath.Join(workingDirectory, ".env.local"),
-	}
-	if filepath.Base(workingDirectory) != "hotkey-server" {
-		moduleDirectory := filepath.Join(workingDirectory, "hotkey-server")
-		paths = append(paths, filepath.Join(moduleDirectory, ".env"), filepath.Join(moduleDirectory, ".env.local"))
-	}
-	return paths, nil
-}
-
-func loadEnvironmentFiles(v *viper.Viper, paths []string) error {
-	seen := make(map[string]struct{}, len(paths))
-	for _, path := range paths {
-		path = filepath.Clean(path)
-		if _, ok := seen[path]; ok {
-			continue
-		}
-		seen[path] = struct{}{}
-		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-			continue
-		} else if err != nil {
-			return fmt.Errorf("inspect environment file %s: %w", path, err)
-		}
-		v.SetConfigFile(path)
-		v.SetConfigType("env")
-		if err := v.MergeInConfig(); err != nil {
-			return fmt.Errorf("read environment file %s: %w", path, err)
-		}
+	v.SetConfigFile(path)
+	v.SetConfigType("env")
+	if err := v.MergeInConfig(); err != nil {
+		return fmt.Errorf("read environment file %s: %w", path, err)
 	}
 	return nil
 }

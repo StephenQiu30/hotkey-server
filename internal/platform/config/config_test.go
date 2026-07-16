@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/spf13/viper"
 )
 
 func TestDefaultIsValid(t *testing.T) {
@@ -156,61 +154,59 @@ func TestLoadReadsNamedAuthenticationSettings(t *testing.T) {
 	}
 }
 
-func TestLoadEnvironmentFilesPrefersHotkeyLocalValuesAndProcessOverrides(t *testing.T) {
+func TestLoadUsesDefaultEnvironmentFileAndProcessOverrides(t *testing.T) {
 	directory := t.TempDir()
-	base := filepath.Join(directory, ".env")
-	local := filepath.Join(directory, ".env.local")
-	if err := os.WriteFile(base, []byte("JWT_SECRET=legacy-but-long-enough-secret-value\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(local, []byte("HOTKEY_JWT_SECRET=local-development-secret-with-more-than-32-bytes\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	v := viper.New()
-	v.SetEnvPrefix("HOTKEY")
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	v.AutomaticEnv()
-	for _, key := range configKeys() {
-		if err := v.BindEnv(key); err != nil {
-			t.Fatalf("BindEnv(%q): %v", key, err)
-		}
-	}
-	if err := loadEnvironmentFiles(v, []string{base, local}); err != nil {
-		t.Fatalf("loadEnvironmentFiles(): %v", err)
-	}
-	if got, want := configString(v, "jwt_secret"), "local-development-secret-with-more-than-32-bytes"; got != want {
-		t.Fatalf("local HOTKEY_JWT_SECRET = %q, want %q", got, want)
-	}
-
-	t.Setenv("HOTKEY_JWT_SECRET", "process-environment-secret-with-more-than-32-bytes")
-	if got, want := configString(v, "jwt_secret"), "process-environment-secret-with-more-than-32-bytes"; got != want {
-		t.Fatalf("process HOTKEY_JWT_SECRET = %q, want %q", got, want)
-	}
-}
-
-func TestLoadFindsModuleLocalConfigurationFromWorkspaceRoot(t *testing.T) {
-	workspace := t.TempDir()
-	module := filepath.Join(workspace, "hotkey-server")
-	if err := os.Mkdir(module, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(module, ".env.local"), []byte(strings.Join([]string{
+	if err := os.WriteFile(filepath.Join(directory, ".env"), []byte(strings.Join([]string{
 		"HOTKEY_ROLE=worker",
-		"HOTKEY_JWT_SECRET=workspace-root-development-secret-with-more-than-32-bytes",
-		"HOTKEY_VERIFICATION_HMAC_SECRET=workspace-root-hmac-secret-with-more-than-32-bytes",
-		"HOTKEY_CORS_ALLOWED_ORIGINS=http://localhost:3000",
+		"HOTKEY_JWT_SECRET=default-development-secret-with-more-than-32-bytes",
 	}, "\n")+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Chdir(workspace)
+	t.Chdir(directory)
 
 	cfg, err := Load()
 	if err != nil {
-		t.Fatalf("Load() from workspace root: %v", err)
+		t.Fatalf("Load() default environment: %v", err)
 	}
-	if cfg.Role != "worker" || cfg.Authentication.JWTSecret != "workspace-root-development-secret-with-more-than-32-bytes" {
-		t.Fatalf("Load() from workspace root = %#v", cfg)
+	if cfg.Role != "worker" || cfg.Authentication.JWTSecret != "default-development-secret-with-more-than-32-bytes" {
+		t.Fatalf("Load() default environment = %#v", cfg)
+	}
+
+	t.Setenv("HOTKEY_ROLE", "api")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load() process override: %v", err)
+	}
+	if cfg.Role != "api" {
+		t.Fatalf("Load() process role = %q, want api", cfg.Role)
+	}
+}
+
+func TestLoadUsesProductionEnvironmentFile(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, ".env"), []byte(strings.Join([]string{
+		"HOTKEY_ENV=production",
+		"HOTKEY_ROLE=worker",
+		"HOTKEY_JWT_SECRET=default-development-secret-with-more-than-32-bytes",
+	}, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, ".env.prod"), []byte(strings.Join([]string{
+		"HOTKEY_JWT_SECRET=production-secret-with-more-than-32-bytes",
+		"HOTKEY_VERIFICATION_HMAC_SECRET=production-hmac-secret-with-more-than-32-bytes",
+		"HOTKEY_CORS_ALLOWED_ORIGINS=https://app.example.test",
+		"HOTKEY_REFRESH_COOKIE_SECURE=true",
+	}, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(directory)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() production environment: %v", err)
+	}
+	if cfg.Environment != "production" || cfg.Authentication.JWTSecret != "production-secret-with-more-than-32-bytes" || !cfg.Authentication.RefreshCookieSecure {
+		t.Fatalf("Load() production environment = %#v", cfg)
 	}
 }
 
