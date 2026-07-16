@@ -439,7 +439,11 @@ func safeOriginalURL(raw string) (any, error) {
 	if parsed.Fragment != "" {
 		return nil, errors.New("original URL fragments are not persisted")
 	}
-	for key := range parsed.Query() {
+	query, err := url.ParseQuery(parsed.RawQuery)
+	if err != nil {
+		return nil, errors.New("original URL query is malformed")
+	}
+	for key := range query {
 		if credentialLikeQueryKey(key) {
 			return nil, errors.New("original URL contains a credential-like query key")
 		}

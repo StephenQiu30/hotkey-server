@@ -163,14 +163,14 @@ func TestContentRepositoryNormalizesExternalIDForPersistenceAndDeletion(t *testi
 	defer func() { _ = runtime.Close() }()
 	repository := ingestionpostgres.NewContentRepository(runtime)
 	sourceID := createContentSource(t, runtime, "external-id-nfc")
-	const nfdExternalID = "Cafe\u0301"
 	const nfcExternalID = "Café"
-	input := normalizedContent(sourceID, nfdExternalID, time.Date(2026, time.July, 16, 9, 0, 0, 0, time.UTC))
+	const nfdExternalID = "Cafe\u0301"
+	input := normalizedContent(sourceID, nfcExternalID, time.Date(2026, time.July, 16, 9, 0, 0, 0, time.UTC))
 	stored, _, err := repository.Upsert(context.Background(), input, activeDecision())
 	if err != nil {
 		t.Fatalf("Upsert() error = %v", err)
 	}
-	deleted, changed, err := repository.MarkDeleted(context.Background(), sourceID, "  "+nfcExternalID+"  ")
+	deleted, changed, err := repository.MarkDeleted(context.Background(), sourceID, "  "+nfdExternalID+"  ")
 	if err != nil || !changed {
 		t.Fatalf("MarkDeleted(NFC equivalent) content/changed/error = %#v / %t / %v", deleted, changed, err)
 	}
@@ -345,6 +345,7 @@ func TestContentRepositoryRejectsCredentialBearingAssetOriginalURL(t *testing.T)
 		"https://objects.example.test/evidence?api_key=opaque",
 		"https://objects.example.test/evidence?X-AmZ-SiGnAtUrE=opaque",
 		"https://objects.example.test/evidence?SiG=opaque",
+		"https://objects.example.test/evidence?x=1;X-Amz-Signature=opaque",
 		"https://objects.example.test/evidence#access_token=opaque",
 	} {
 		asset := contentAsset(content.ID, fmt.Sprintf("evidence/v1/credential/%d/%s.txt", index, strings.Repeat("a", 64)))
