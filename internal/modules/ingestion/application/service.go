@@ -14,11 +14,13 @@ import (
 )
 
 const (
-	defaultIngestRunLimit = 50
-	maximumIngestRunLimit = 200
-	unknownIngestionCode  = "ingestion_failed"
-	evidenceLockNamespace = "hotkey.ingestion.evidence/v1"
+	defaultIngestRunLimit  = 50
+	maximumIngestRunLimit  = 200
+	unknownIngestionCode   = "ingestion_failed"
+	evidenceReceiptRetries = 2
 )
+
+var errEvidenceReceiptMissing = errors.New("evidence receipt disappeared before asset transaction")
 
 // Dependencies contains only the persisted Source capture boundary and
 // ingestion-owned persistence/object-store ports. In particular, Service has
@@ -118,40 +120,52 @@ func (service *Service) ingestCaptured(ctx context.Context, captured sourcedomai
 	if err != nil {
 		return false, err
 	}
-	if content.Body == "" {
-		return service.persistCaptured(ctx, captured, content, decision)
-	}
-	var uploaded bool
-	err = service.withSourceEvidenceLock(ctx, content.SourceConnectionID, func(lockedCtx context.Context) error {
-		var persistErr error
-		uploaded, persistErr = service.persistCaptured(lockedCtx, captured, content, decision)
-		return persistErr
-	})
-	if err != nil {
-		return false, err
-	}
-	return uploaded, nil
+	return service.persistCaptured(ctx, captured, content, decision)
 }
 
 func (service *Service) persistCaptured(ctx context.Context, captured sourcedomain.CapturedCollectionItem, content ingestiondomain.NormalizedContent, decision ingestiondomain.DedupeDecision) (bool, error) {
-
-	var receipt ingestiondomain.EvidenceReceipt
-	hasEvidence := content.Body != ""
-	createEvidenceAsset := false
-	if hasEvidence {
-		object := evidenceObject(content)
-		known, err := service.assetObjectKnown(ctx, content.SourceConnectionID, object.ObjectKey)
-		if err != nil {
-			return false, err
-		}
-		receipt, err = service.evidence.PutText(ctx, object)
+	if content.Body == "" {
+		return false, service.persistContent(ctx, captured, content, decision, ingestiondomain.EvidenceReceipt{}, false)
+	}
+	object := evidenceObject(content)
+	for attempt := 0; attempt < evidenceReceiptRetries; attempt++ {
+		receipt, err := service.evidence.PutText(ctx, object)
 		if err != nil {
 			return false, fmt.Errorf("put evidence: %w", err)
 		}
-		createEvidenceAsset = !known
+		err = service.persistContent(ctx, captured, content, decision, receipt, true)
+		if errors.Is(err, errEvidenceReceiptMissing) {
+			continue
+		}
+		if err != nil {
+			service.compensateEvidence(ctx, content.SourceConnectionID, receipt.ObjectKey)
+			return false, err
+		}
+		return true, nil
 	}
+	return false, fmt.Errorf("evidence receipt remained unavailable after %d object writes: %w", evidenceReceiptRetries, errEvidenceReceiptMissing)
+}
 
-	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error {
+func (service *Service) persistContent(ctx context.Context, captured sourcedomain.CapturedCollectionItem, content ingestiondomain.NormalizedContent, decision ingestiondomain.DedupeDecision, receipt ingestiondomain.EvidenceReceipt, hasEvidence bool) error {
+	return service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
+		createEvidenceAsset := false
+		if hasEvidence {
+			if err := lockSourceEvidenceTransaction(transactionCtx, transaction, content.SourceConnectionID); err != nil {
+				return err
+			}
+			available, err := service.receiptAvailable(transactionCtx, content.SourceConnectionID, receipt)
+			if err != nil {
+				return err
+			}
+			if !available {
+				return errEvidenceReceiptMissing
+			}
+			known, err := service.assetObjectKnown(transactionCtx, content.SourceConnectionID, receipt.ObjectKey)
+			if err != nil {
+				return err
+			}
+			createEvidenceAsset = !known
+		}
 		stored, _, err := service.contents.Upsert(transactionCtx, content, decision)
 		if err != nil {
 			return fmt.Errorf("upsert normalized content: %w", err)
@@ -174,13 +188,6 @@ func (service *Service) persistCaptured(ctx context.Context, captured sourcedoma
 		}
 		return nil
 	})
-	if err != nil {
-		if createEvidenceAsset && service.shouldCompensateEvidence(ctx, content.SourceConnectionID, receipt.ObjectKey) {
-			service.compensateEvidence(ctx, receipt.ObjectKey)
-		}
-		return false, err
-	}
-	return hasEvidence, nil
 }
 
 func (service *Service) assetObjectKnown(ctx context.Context, sourceConnectionID int64, objectKey string) (bool, error) {
@@ -194,11 +201,6 @@ func (service *Service) assetObjectKnown(ctx context.Context, sourceConnectionID
 		}
 	}
 	return false, nil
-}
-
-func (service *Service) shouldCompensateEvidence(ctx context.Context, sourceConnectionID int64, objectKey string) bool {
-	known, err := service.assetObjectKnown(ctx, sourceConnectionID, objectKey)
-	return err == nil && !known
 }
 
 func (service *Service) contentCandidates(ctx context.Context) ([]ingestiondomain.ContentCandidate, error) {
@@ -252,11 +254,20 @@ func ingestionFailureCode(err error) string {
 	return unknownIngestionCode
 }
 
-// compensateEvidence immediately removes an object whose database reference
-// rolled back. A temporary delete outage intentionally leaves an unreferenced
-// object; ReconcileObjects derives durable asset references before deleting it.
-func (service *Service) compensateEvidence(ctx context.Context, objectKey string) {
-	_ = service.evidence.Delete(ctx, objectKey)
+// compensateEvidence serializes the no-reference check with reconciliation
+// before deleting an object from a failed Content/asset/bind transaction.
+// Delete failures intentionally leave an orphan for ReconcileObjects.
+func (service *Service) compensateEvidence(ctx context.Context, sourceConnectionID int64, objectKey string) {
+	_ = service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
+		if err := lockSourceEvidenceTransaction(transactionCtx, transaction, sourceConnectionID); err != nil {
+			return err
+		}
+		known, err := service.assetObjectKnown(transactionCtx, sourceConnectionID, objectKey)
+		if err != nil || known {
+			return err
+		}
+		return service.evidence.Delete(transactionCtx, objectKey)
+	})
 }
 
 // ReconcileObjects removes unreferenced evidence objects for one source while
@@ -268,9 +279,12 @@ func (service *Service) ReconcileObjects(ctx context.Context, sourceConnectionID
 		return 0, errors.New("content repository, evidence store, and source connection id are required")
 	}
 	deleted := 0
-	err := service.withSourceEvidenceLock(ctx, sourceConnectionID, func(lockedCtx context.Context) error {
+	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
+		if err := lockSourceEvidenceTransaction(transactionCtx, transaction, sourceConnectionID); err != nil {
+			return err
+		}
 		prefix := fmt.Sprintf("evidence/v1/%d/", sourceConnectionID)
-		keys, err := service.contents.ListAssetObjectKeys(lockedCtx, sourceConnectionID)
+		keys, err := service.contents.ListAssetObjectKeys(transactionCtx, sourceConnectionID)
 		if err != nil {
 			return fmt.Errorf("list durable evidence assets: %w", err)
 		}
@@ -278,7 +292,7 @@ func (service *Service) ReconcileObjects(ctx context.Context, sourceConnectionID
 		for _, key := range keys {
 			known[key] = struct{}{}
 		}
-		receipts, err := service.evidence.ListPrefix(lockedCtx, prefix)
+		receipts, err := service.evidence.ListPrefix(transactionCtx, prefix)
 		if err != nil {
 			return fmt.Errorf("list evidence objects: %w", err)
 		}
@@ -286,7 +300,7 @@ func (service *Service) ReconcileObjects(ctx context.Context, sourceConnectionID
 			if _, found := known[receipt.ObjectKey]; found {
 				continue
 			}
-			if err := service.evidence.Delete(lockedCtx, receipt.ObjectKey); err != nil {
+			if err := service.evidence.Delete(transactionCtx, receipt.ObjectKey); err != nil {
 				return fmt.Errorf("delete orphan evidence %q: %w", receipt.ObjectKey, err)
 			}
 			deleted++
@@ -299,37 +313,25 @@ func (service *Service) ReconcileObjects(ctx context.Context, sourceConnectionID
 	return deleted, nil
 }
 
-// withSourceEvidenceLock serializes source-scoped object writes with object
-// reconciliation. The lock is session-scoped, so it is held by a dedicated
-// acquired pool connection while the ordinary Runtime transaction remains
-// free to use its existing SQL callback context.
-func (service *Service) withSourceEvidenceLock(ctx context.Context, sourceConnectionID int64, fn func(context.Context) error) (returned error) {
-	if service == nil || service.runtime == nil || service.runtime.Pool == nil || sourceConnectionID <= 0 || fn == nil {
-		return errors.New("database runtime, source connection id, and lock callback are required")
-	}
-	connection, err := service.runtime.Pool.Acquire(ctx)
+func (service *Service) receiptAvailable(ctx context.Context, sourceConnectionID int64, receipt ingestiondomain.EvidenceReceipt) (bool, error) {
+	receipts, err := service.evidence.ListPrefix(ctx, fmt.Sprintf("evidence/v1/%d/", sourceConnectionID))
 	if err != nil {
-		return fmt.Errorf("acquire evidence advisory-lock session: %w", err)
+		return false, fmt.Errorf("list evidence receipts: %w", err)
 	}
-	lockName := fmt.Sprintf("%s/%d", evidenceLockNamespace, sourceConnectionID)
-	if _, err := connection.Exec(ctx, `SELECT pg_advisory_lock(hashtextextended($1, 0::bigint))`, lockName); err != nil {
-		connection.Release()
-		return fmt.Errorf("acquire source evidence advisory lock: %w", err)
-	}
-	defer func() {
-		var unlocked bool
-		unlockErr := connection.QueryRow(context.Background(), `SELECT pg_advisory_unlock(hashtextextended($1, 0::bigint))`, lockName).Scan(&unlocked)
-		if unlockErr != nil || !unlocked {
-			_ = connection.Conn().Close(context.Background())
-			if returned == nil {
-				if unlockErr != nil {
-					returned = fmt.Errorf("release source evidence advisory lock: %w", unlockErr)
-				} else {
-					returned = errors.New("release source evidence advisory lock: lock was not held")
-				}
-			}
+	for _, current := range receipts {
+		if current == receipt {
+			return true, nil
 		}
-		connection.Release()
-	}()
-	return fn(ctx)
+	}
+	return false, nil
+}
+
+func lockSourceEvidenceTransaction(ctx context.Context, transaction database.Transaction, sourceConnectionID int64) error {
+	if transaction.SQL == nil || sourceConnectionID <= 0 {
+		return errors.New("transaction and source connection id are required for evidence lock")
+	}
+	if _, err := transaction.SQL.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0::bigint))`, fmt.Sprintf("hotkey.ingestion.evidence/v1/%d", sourceConnectionID)); err != nil {
+		return fmt.Errorf("acquire source evidence transaction lock: %w", err)
+	}
+	return nil
 }

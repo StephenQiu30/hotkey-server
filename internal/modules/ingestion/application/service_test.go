@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -148,6 +149,26 @@ func TestIngestRunReusesOneEvidenceAssetForSameSourceBody(t *testing.T) {
 	}
 }
 
+func TestIngestRunCompletesWithSingleConnectionPool(t *testing.T) {
+	runtime := openSingleConnectionIngestionRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	runID, _ := seedCapturedRun(t, runtime, []sourcedomain.CapturedItem{
+		capturedItem("single-pool", "article", "Single pool", "evidence must not deadlock"),
+	})
+	service, err := ingestionapplication.NewService(ingestionapplication.Dependencies{
+		Runtime: runtime, Captures: newCapturedItemReader(t, runtime), Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: newEvidenceStoreFake(),
+	})
+	if err != nil {
+		t.Fatalf("NewService(): %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	result, err := service.IngestRun(ctx, ingestionapplication.IngestRunInput{RunID: runID, Limit: 1})
+	if err != nil || result.Bound != 1 || result.Failed != 0 {
+		t.Fatalf("IngestRun(single connection pool) result/error = %#v / %v, want successful bounded completion", result, err)
+	}
+}
+
 type transactionObservingReader struct {
 	sourcedomain.CapturedItemReader
 	bindInTransaction bool
@@ -232,6 +253,28 @@ func openIngestionRuntime(t *testing.T) *database.Runtime {
 	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
 		_ = runtime.Close()
 		t.Fatalf("database.InitializeEmpty(): %v", err)
+	}
+	return runtime
+}
+
+func openSingleConnectionIngestionRuntime(t *testing.T) *database.Runtime {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	dsn, err := url.Parse(postgresfixture.New(t))
+	if err != nil {
+		t.Fatalf("parse PostgreSQL fixture DSN: %v", err)
+	}
+	query := dsn.Query()
+	query.Set("pool_max_conns", "1")
+	dsn.RawQuery = query.Encode()
+	runtime, err := database.Open(ctx, dsn.String())
+	if err != nil {
+		t.Fatalf("database.Open(single connection): %v", err)
+	}
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		_ = runtime.Close()
+		t.Fatalf("database.InitializeEmpty(single connection): %v", err)
 	}
 	return runtime
 }
