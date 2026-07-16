@@ -101,6 +101,18 @@ func TestValidateAuthenticationRuntimeRejectsUnsafeConfiguration(t *testing.T) {
 	}
 }
 
+func TestValidateAuthenticationRuntimeRequiresVerificationHMACSecret(t *testing.T) {
+	t.Parallel()
+
+	for _, secret := range []string{"", "too-short"} {
+		cfg := validAuthenticationConfig()
+		cfg.Authentication.VerificationHMACSecret = secret
+		if err := cfg.ValidateAuthenticationRuntime(); err == nil {
+			t.Fatalf("ValidateAuthenticationRuntime() with HMAC secret %q error = nil, want rejection", secret)
+		}
+	}
+}
+
 func TestValidateAuthenticationRuntimeAcceptsExplicitSafeConfiguration(t *testing.T) {
 	t.Parallel()
 
@@ -114,6 +126,7 @@ func TestLoadReadsNamedAuthenticationSettings(t *testing.T) {
 	t.Setenv("HOTKEY_JWT_SECRET", "0123456789abcdef0123456789abcdef")
 	t.Setenv("HOTKEY_JWT_ISSUER", "hotkey-test")
 	t.Setenv("HOTKEY_JWT_AUDIENCE", "hotkey-web")
+	t.Setenv("HOTKEY_VERIFICATION_HMAC_SECRET", "verification-hmac-secret-for-tests-32-bytes")
 	t.Setenv("HOTKEY_REDIS_URL", "redis://127.0.0.1:6379/15")
 	t.Setenv("HOTKEY_SMTP_HOST", "smtp.163.com")
 	t.Setenv("HOTKEY_SMTP_PORT", "465")
@@ -131,7 +144,7 @@ func TestLoadReadsNamedAuthenticationSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.Authentication.JWTIssuer != "hotkey-test" || cfg.Authentication.SMTP.Host != "smtp.163.com" {
+	if cfg.Authentication.JWTIssuer != "hotkey-test" || cfg.Authentication.VerificationHMACSecret != "verification-hmac-secret-for-tests-32-bytes" || cfg.Authentication.SMTP.Host != "smtp.163.com" {
 		t.Errorf("Load() authentication = %#v, want named values", cfg.Authentication)
 	}
 	if got, want := strings.Join(cfg.Authentication.AllowedOrigins, ","), "https://app.example.test,https://admin.example.test"; got != want {
@@ -142,11 +155,12 @@ func TestLoadReadsNamedAuthenticationSettings(t *testing.T) {
 func validAuthenticationConfig() Config {
 	cfg := Default()
 	cfg.Authentication = AuthenticationConfig{
-		JWTSecret:           "0123456789abcdef0123456789abcdef",
-		JWTIssuer:           "hotkey",
-		JWTAudience:         "hotkey-web",
-		AllowedOrigins:      []string{"http://localhost:3000"},
-		RefreshCookieSecure: false,
+		JWTSecret:              "0123456789abcdef0123456789abcdef",
+		JWTIssuer:              "hotkey",
+		JWTAudience:            "hotkey-web",
+		VerificationHMACSecret: "verification-hmac-secret-for-tests-32-bytes",
+		AllowedOrigins:         []string{"http://localhost:3000"},
+		RefreshCookieSecure:    false,
 	}
 	return cfg
 }

@@ -49,9 +49,11 @@ func (repository *SessionRepository) FindByRefreshTokenHash(ctx context.Context,
 	return &session, &token, nil
 }
 
-// Rotate serializes consumption on the current refresh-token row. A second
-// consumer observes used_at while holding that row lock, revokes the complete
-// session family in the same transaction, and receives domain.ErrRefreshReplay.
+// Rotate serializes consumption on the current refresh-token row. An active,
+// unrevoked second consumer observes used_at while holding that row lock,
+// revokes the complete session family in the same transaction, and receives
+// domain.ErrRefreshReplay. Expired or revoked credentials are invalid first
+// and never trigger replay revocation.
 func (repository *SessionRepository) Rotate(ctx context.Context, currentHash string, replacement *domain.RefreshToken, now time.Time) (*domain.Session, *domain.RefreshToken, error) {
 	if repository == nil || repository.runtime == nil {
 		return nil, nil, sharedrepository.ErrUnavailable
@@ -73,15 +75,15 @@ func (repository *SessionRepository) Rotate(ctx context.Context, currentHash str
 			}
 			return err
 		}
+		if !user.Active() || token.RevokedAt != nil || !token.ExpiresAt.After(now) || session.RevokedAt != nil || !session.AbsoluteExpiresAt.After(now) {
+			return domain.ErrRefreshInvalid
+		}
 		if token.UsedAt != nil {
 			if err := revokeSession(ctx, transaction, session.ID, "refresh_replay", now); err != nil {
 				return err
 			}
 			replayDetected = true
 			return nil
-		}
-		if !user.Active() || token.RevokedAt != nil || !token.ExpiresAt.After(now) || session.RevokedAt != nil || !session.AbsoluteExpiresAt.After(now) {
-			return domain.ErrRefreshInvalid
 		}
 		if replacement.ExpiresAt.After(session.AbsoluteExpiresAt) || !replacement.ExpiresAt.After(now) {
 			return fmt.Errorf("%w: replacement expiry is outside the session lifetime", sharedrepository.ErrInvalidInput)

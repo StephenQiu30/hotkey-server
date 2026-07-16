@@ -110,6 +110,7 @@ func newIdentityService(runtime *database.Runtime, cfg config.Config, verificati
 		Tokens:       tokens,
 		Verification: verification,
 		Mailer: identitysmtp.NewMailer(identitysmtp.Config{
+			Enabled:   cfg.Authentication.SMTP.Enabled,
 			Host:      cfg.Authentication.SMTP.Host,
 			Port:      cfg.Authentication.SMTP.Port,
 			TLSMode:   cfg.Authentication.SMTP.TLSMode,
@@ -124,9 +125,9 @@ func newIdentityService(runtime *database.Runtime, cfg config.Config, verificati
 
 func newIdentityVerificationStore(cfg config.Config) (*identityredis.VerificationStore, error) {
 	if strings.TrimSpace(cfg.Authentication.RedisURL) == "" {
-		return identityredis.NewVerificationStore(nil), nil
+		return identityredis.NewVerificationStore(nil, cfg.Authentication.VerificationHMACSecret), nil
 	}
-	return identityredis.NewVerificationStoreFromURL(cfg.Authentication.RedisURL)
+	return identityredis.NewVerificationStoreFromURL(cfg.Authentication.RedisURL, cfg.Authentication.VerificationHMACSecret)
 }
 
 func registerIdentityVerificationStoreLifecycle(lifecycle fx.Lifecycle, verification *identityredis.VerificationStore) {

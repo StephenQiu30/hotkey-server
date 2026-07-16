@@ -14,6 +14,7 @@ import (
 
 func TestMailerSanitizesSMTPFailuresAndNeverExposesVerificationCode(t *testing.T) {
 	mailer := NewMailer(Config{
+		Enabled:   true,
 		Host:      "smtp.163.com",
 		Port:      465,
 		TLSMode:   "tls",
@@ -33,6 +34,28 @@ func TestMailerSanitizesSMTPFailuresAndNeverExposesVerificationCode(t *testing.T
 		if strings.Contains(err.Error(), sensitive) {
 			t.Fatalf("SendVerificationCode() leaked %q in %q", sensitive, err)
 		}
+	}
+}
+
+func TestMailerDisabledDoesNotSendVerificationCode(t *testing.T) {
+	var sends int
+	mailer := NewMailer(Config{
+		Host:      "smtp.163.com",
+		Port:      465,
+		TLSMode:   "tls",
+		FromEmail: "sender@163.com",
+	}, func(context.Context, Message) error {
+		sends++
+		return nil
+	})
+
+	err := mailer.SendVerificationCode(context.Background(), domain.VerificationPurposeRegistration, "receiver@example.test", "123456")
+	var appError *sharederrors.AppError
+	if !errors.As(err, &appError) || appError.Code != sharederrors.CodeUnavailable {
+		t.Fatalf("disabled SendVerificationCode() error = %v, want CodeUnavailable", err)
+	}
+	if sends != 0 {
+		t.Fatalf("disabled mailer sends = %d, want 0", sends)
 	}
 }
 
@@ -58,7 +81,7 @@ func TestMailerCancelsDirectTLSHandshakeWithCallerContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse listener port: %v", err)
 	}
-	mailer := NewMailer(Config{Host: host, Port: port, TLSMode: "tls", FromEmail: "sender@example.test"})
+	mailer := NewMailer(Config{Enabled: true, Host: host, Port: port, TLSMode: "tls", FromEmail: "sender@example.test"})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	result := make(chan error, 1)

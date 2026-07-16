@@ -15,7 +15,7 @@ import (
 
 var ErrBootstrapUnavailable = errors.New("bootstrap admin is unavailable after users exist")
 
-const bootstrapAdminLock = "hotkey-identity-bootstrap-admin-v1"
+const userCreationLock = "hotkey-identity-user-creation-v1"
 
 type UserRepository struct {
 	runtime *database.Runtime
@@ -112,6 +112,9 @@ func (repository *UserRepository) Create(ctx context.Context, user *domain.User)
 		return fmt.Errorf("%w: user is required", sharedrepository.ErrInvalidInput)
 	}
 	return useTransaction(ctx, repository.runtime, func(ctx context.Context, transaction database.Transaction) error {
+		if err := lockUserCreation(ctx, transaction); err != nil {
+			return err
+		}
 		return repository.createWithPreference(ctx, transaction, user)
 	})
 }
@@ -317,9 +320,10 @@ WHERE id = $2`, now.UTC(), id); err != nil {
 	return &restored, nil
 }
 
-// BootstrapAdmin creates exactly one initial administrator while a transaction
-// advisory lock serializes concurrent local command invocations. It never
-// accepts a caller-provided role or status.
+// BootstrapAdmin creates exactly one initial administrator while the same
+// transaction advisory lock used by ordinary user creation serializes the
+// empty-table check and first insert. It never accepts a caller-provided role
+// or status.
 func (repository *UserRepository) BootstrapAdmin(ctx context.Context, email, passwordHash string) (*domain.User, error) {
 	if repository == nil || repository.runtime == nil {
 		return nil, sharedrepository.ErrUnavailable
@@ -340,8 +344,8 @@ func (repository *UserRepository) BootstrapAdmin(ctx context.Context, email, pas
 		Status:       domain.UserStatusActive,
 	}
 	err = useTransaction(ctx, repository.runtime, func(ctx context.Context, transaction database.Transaction) error {
-		if _, err := transaction.SQL.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, bootstrapAdminLock); err != nil {
-			return mapRepositoryError(err)
+		if err := lockUserCreation(ctx, transaction); err != nil {
+			return err
 		}
 		var userCount int
 		if err := transaction.SQL.QueryRowContext(ctx, `SELECT count(*) FROM users WHERE deleted_at IS NULL`).Scan(&userCount); err != nil {
@@ -356,6 +360,16 @@ func (repository *UserRepository) BootstrapAdmin(ctx context.Context, email, pas
 		return nil, err
 	}
 	return admin, nil
+}
+
+func lockUserCreation(ctx context.Context, transaction database.Transaction) error {
+	if transaction.SQL == nil {
+		return sharedrepository.ErrUnavailable
+	}
+	if _, err := transaction.SQL.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, userCreationLock); err != nil {
+		return mapRepositoryError(err)
+	}
+	return nil
 }
 
 // LockActiveAdmins is deliberately transaction-scoped. The application layer

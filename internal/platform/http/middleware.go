@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/platform/observability"
+	"github.com/StephenQiu30/hotkey-server/internal/shared/requestcontext"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
@@ -30,6 +31,7 @@ func requestID() gin.HandlerFunc {
 		}
 		c.Set(requestIDContextKey, value)
 		c.Set(moduleContextKey, platformModule)
+		c.Request = c.Request.WithContext(requestcontext.WithRequestID(c.Request.Context(), value))
 		c.Header("X-Request-ID", value)
 		c.Next()
 	}
@@ -43,6 +45,11 @@ func traceContext(telemetry *observability.Telemetry) gin.HandlerFunc {
 			tracer = telemetry.TracerProvider.Tracer("hotkey-server/http")
 		}
 		requestContext, span := tracer.Start(requestContext, c.Request.Method)
+		traceID := ""
+		if spanContext := span.SpanContext(); spanContext.IsValid() {
+			traceID = spanContext.TraceID().String()
+		}
+		requestContext = requestcontext.WithTraceID(requestContext, traceID)
 		c.Request = c.Request.WithContext(requestContext)
 		c.Next()
 		span.SetAttributes(

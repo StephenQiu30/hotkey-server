@@ -16,8 +16,10 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 )
 
+const testVerificationHMACSecret = "verification-hmac-secret-for-tests-32-bytes"
+
 func TestVerificationStoreUsesAtomicCodeAndTicketConsumption(t *testing.T) {
-	store, err := NewVerificationStoreFromURL(testRedisURL(t))
+	store, err := NewVerificationStoreFromURL(testRedisURL(t), testVerificationHMACSecret)
 	if err != nil {
 		t.Fatalf("NewVerificationStoreFromURL(): %v", err)
 	}
@@ -55,7 +57,7 @@ func TestVerificationStoreUsesAtomicCodeAndTicketConsumption(t *testing.T) {
 }
 
 func TestVerificationStoreHashesEmailInCodeStateAndKeepsTicketAssociationMinimal(t *testing.T) {
-	store, err := NewVerificationStoreFromURL(testRedisURL(t))
+	store, err := NewVerificationStoreFromURL(testRedisURL(t), testVerificationHMACSecret)
 	if err != nil {
 		t.Fatalf("NewVerificationStoreFromURL(): %v", err)
 	}
@@ -101,8 +103,36 @@ func TestVerificationStoreHashesEmailInCodeStateAndKeepsTicketAssociationMinimal
 	}
 }
 
+func TestVerificationStoreDoesNotPersistUnkeyedVerificationCodeHash(t *testing.T) {
+	store, err := NewVerificationStoreFromURL(testRedisURL(t), testVerificationHMACSecret)
+	if err != nil {
+		t.Fatalf("NewVerificationStoreFromURL(): %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	ctx := context.Background()
+	email := uniqueVerificationEmail("hmac")
+	const code = "482913"
+	if err := store.CreateCode(ctx, domain.VerificationPurposeRegistration, email, code, time.Now().Add(2*time.Minute)); err != nil {
+		t.Fatalf("CreateCode(): %v", err)
+	}
+	state, err := store.client.HGetAll(ctx, store.codeKey(domain.VerificationPurposeRegistration, email)).Result()
+	if err != nil {
+		t.Fatalf("inspect Redis code state: %v", err)
+	}
+	if state["code_hash"] == hashString(code) {
+		t.Fatalf("Redis code_hash = unkeyed SHA-256(%q), want purpose/email-bound HMAC", code)
+	}
+	if state["code_hash"] != store.codeHMAC(domain.VerificationPurposeRegistration, email, code) {
+		t.Fatalf("Redis code_hash = %q, want purpose/email-bound HMAC", state["code_hash"])
+	}
+	if _, err := store.ConsumeCode(ctx, domain.VerificationPurposeRegistration, email, code); err != nil {
+		t.Fatalf("ConsumeCode() with correct code after state inspection: %v", err)
+	}
+}
+
 func TestVerificationStoreCountsFailedCodesAndAllowsOnlyOneConcurrentConsumption(t *testing.T) {
-	store, err := NewVerificationStoreFromURL(testRedisURL(t))
+	store, err := NewVerificationStoreFromURL(testRedisURL(t), testVerificationHMACSecret)
 	if err != nil {
 		t.Fatalf("NewVerificationStoreFromURL(): %v", err)
 	}
@@ -124,7 +154,7 @@ func TestVerificationStoreCountsFailedCodesAndAllowsOnlyOneConcurrentConsumption
 }
 
 func TestVerificationStoreReportsUnavailableForNilClient(t *testing.T) {
-	store := NewVerificationStore(nil)
+	store := NewVerificationStore(nil, testVerificationHMACSecret)
 	assertVerificationStoreUnavailable(t, store)
 }
 
@@ -137,13 +167,13 @@ func TestVerificationStoreReportsUnavailableForClosedRedisClientOnEveryOperation
 	if err := listener.Close(); err != nil {
 		t.Fatalf("close reserved Redis address: %v", err)
 	}
-	store := NewVerificationStore(goredis.NewClient(&goredis.Options{Addr: address, DB: 15, DialTimeout: 25 * time.Millisecond, MaxRetries: 0}))
+	store := NewVerificationStore(goredis.NewClient(&goredis.Options{Addr: address, DB: 15, DialTimeout: 25 * time.Millisecond, MaxRetries: 0}), testVerificationHMACSecret)
 	t.Cleanup(func() { _ = store.Close() })
 	assertVerificationStoreUnavailable(t, store)
 }
 
 func TestVerificationStoreConcurrentCodeAndTicketConsumptionHaveOneWinner(t *testing.T) {
-	store, err := NewVerificationStoreFromURL(testRedisURL(t))
+	store, err := NewVerificationStoreFromURL(testRedisURL(t), testVerificationHMACSecret)
 	if err != nil {
 		t.Fatalf("NewVerificationStoreFromURL(): %v", err)
 	}

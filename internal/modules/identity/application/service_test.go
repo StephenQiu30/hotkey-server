@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/identity/domain"
+	identitysmtp "github.com/StephenQiu30/hotkey-server/internal/modules/identity/infrastructure/smtp"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
 	sharederrors "github.com/StephenQiu30/hotkey-server/internal/shared/errors"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
@@ -28,11 +29,40 @@ func TestRequestVerificationDoesNotPersistCodeWhenSMTPFails(t *testing.T) {
 
 	err := service.RequestVerification(context.Background(), domain.VerificationPurposeRegistration, "member@example.test")
 	var appError *sharederrors.AppError
-	if !errors.As(err, &appError) || appError.Code != sharederrors.CodeUnavailable {
+	if !errors.As(err, &appError) || appError.Code != sharederrors.CodeUnavailable || appError.HTTPStatus != 503 {
 		t.Fatalf("RequestVerification() error = %v, want CodeUnavailable", err)
 	}
 	if store.createCalls != 0 {
 		t.Fatalf("CreateCode calls = %d, want 0 when SMTP delivery fails", store.createCalls)
+	}
+}
+
+func TestRequestVerificationDoesNotPersistCodeWhenSMTPIsDisabled(t *testing.T) {
+	t.Parallel()
+
+	store := &verificationStoreFake{}
+	var sends int
+	service := &Service{
+		verification: store,
+		mailer: identitysmtp.NewMailer(identitysmtp.Config{
+			Host:      "smtp.163.com",
+			Port:      465,
+			TLSMode:   "tls",
+			FromEmail: "sender@163.com",
+		}, func(context.Context, identitysmtp.Message) error {
+			sends++
+			return nil
+		}),
+		clock: fixedClock{now: time.Date(2026, time.July, 16, 8, 0, 0, 0, time.UTC)},
+	}
+
+	err := service.RequestVerification(context.Background(), domain.VerificationPurposeRegistration, "member@example.test")
+	var appError *sharederrors.AppError
+	if !errors.As(err, &appError) || appError.Code != sharederrors.CodeUnavailable || appError.HTTPStatus != 503 {
+		t.Fatalf("RequestVerification() error = %v, want CodeUnavailable", err)
+	}
+	if sends != 0 || store.createCalls != 0 {
+		t.Fatalf("disabled SMTP sends=%d CreateCode calls=%d, want neither", sends, store.createCalls)
 	}
 }
 

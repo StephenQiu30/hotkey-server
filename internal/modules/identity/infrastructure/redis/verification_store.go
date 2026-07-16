@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -71,22 +72,23 @@ return email`)
 )
 
 type VerificationStore struct {
-	client goredis.UniversalClient
-	now    func() time.Time
+	client     goredis.UniversalClient
+	hmacSecret []byte
+	now        func() time.Time
 }
 
 var _ domain.VerificationStore = (*VerificationStore)(nil)
 
-func NewVerificationStore(client goredis.UniversalClient) *VerificationStore {
-	return &VerificationStore{client: client, now: time.Now}
+func NewVerificationStore(client goredis.UniversalClient, verificationHMACSecret string) *VerificationStore {
+	return &VerificationStore{client: client, hmacSecret: []byte(verificationHMACSecret), now: time.Now}
 }
 
-func NewVerificationStoreFromURL(rawURL string) (*VerificationStore, error) {
+func NewVerificationStoreFromURL(rawURL, verificationHMACSecret string) (*VerificationStore, error) {
 	options, err := goredis.ParseURL(strings.TrimSpace(rawURL))
 	if err != nil {
 		return nil, fmt.Errorf("parse Redis URL: %w", err)
 	}
-	return NewVerificationStore(goredis.NewClient(options)), nil
+	return NewVerificationStore(goredis.NewClient(options), verificationHMACSecret), nil
 }
 
 func (store *VerificationStore) Close() error {
@@ -113,7 +115,7 @@ func (store *VerificationStore) CreateCode(ctx context.Context, purpose domain.V
 		return unavailable()
 	}
 
-	result, err := createCodeScript.Run(ctx, store.client, []string{store.codeKey(purpose, normalizedEmail), store.cooldownKey(purpose, normalizedEmail)}, string(purpose), hashString(normalizedEmail), hashString(code), ttl.Milliseconds(), verificationCooldown.Milliseconds()).Int64()
+	result, err := createCodeScript.Run(ctx, store.client, []string{store.codeKey(purpose, normalizedEmail), store.cooldownKey(purpose, normalizedEmail)}, string(purpose), hashString(normalizedEmail), store.codeHMAC(purpose, normalizedEmail, code), ttl.Milliseconds(), verificationCooldown.Milliseconds()).Int64()
 	if err != nil {
 		return unavailable()
 	}
@@ -138,7 +140,7 @@ func (store *VerificationStore) ConsumeCode(ctx context.Context, purpose domain.
 	if err != nil {
 		return domain.VerificationTicket{}, unavailable()
 	}
-	result, err := consumeCodeScript.Run(ctx, store.client, []string{store.codeKey(purpose, normalizedEmail), store.ticketKey(token)}, string(purpose), hashString(normalizedEmail), normalizedEmail, hashString(code), verificationMaxAttempts, verificationTicketTTL.Milliseconds()).Int64()
+	result, err := consumeCodeScript.Run(ctx, store.client, []string{store.codeKey(purpose, normalizedEmail), store.ticketKey(token)}, string(purpose), hashString(normalizedEmail), normalizedEmail, store.codeHMAC(purpose, normalizedEmail, code), verificationMaxAttempts, verificationTicketTTL.Milliseconds()).Int64()
 	if err != nil {
 		return domain.VerificationTicket{}, unavailable()
 	}
@@ -174,7 +176,7 @@ func (store *VerificationStore) ConsumeTicket(ctx context.Context, purpose domai
 }
 
 func (store *VerificationStore) available() bool {
-	return store != nil && store.client != nil
+	return store != nil && store.client != nil && len(store.hmacSecret) >= 32
 }
 
 func (store *VerificationStore) currentTime() time.Time {
@@ -194,6 +196,16 @@ func (store *VerificationStore) cooldownKey(purpose domain.VerificationPurpose, 
 
 func (store *VerificationStore) ticketKey(token string) string {
 	return verificationPrefix + ":ticket:" + hashString(token)
+}
+
+func (store *VerificationStore) codeHMAC(purpose domain.VerificationPurpose, email, code string) string {
+	mac := hmac.New(sha256.New, store.hmacSecret)
+	_, _ = mac.Write([]byte(code))
+	_, _ = mac.Write([]byte{0})
+	_, _ = mac.Write([]byte(purpose))
+	_, _ = mac.Write([]byte{0})
+	_, _ = mac.Write([]byte(email))
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 func validVerificationInput(purpose domain.VerificationPurpose, email string) (string, error) {

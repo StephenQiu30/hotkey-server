@@ -65,13 +65,14 @@ func TestNewAppWithReadinessRejectsMissingAPICheck(t *testing.T) {
 	}
 }
 
-func TestIdentityAPIRoleValidatesAuthenticationRuntimeBeforeServing(t *testing.T) {
-	cfg := config.Default()
+func TestIdentityAPIRoleRejectsMissingVerificationHMACSecretBeforeServing(t *testing.T) {
+	cfg := apiTestConfig()
 	cfg.Role = string(RoleAPI)
 	cfg.HTTPAddr = "127.0.0.1:0"
+	cfg.Authentication.VerificationHMACSecret = ""
 
 	if _, err := NewApp(cfg, zap.NewNop()); err == nil {
-		t.Fatal("NewApp() error = nil, want unsafe authentication runtime rejection")
+		t.Fatal("NewApp() error = nil, want missing verification HMAC rejection")
 	}
 }
 
@@ -181,6 +182,7 @@ func TestLifecycleStartFailureRollsBackStartedServer(t *testing.T) {
 func apiTestConfig() config.Config {
 	cfg := config.Default()
 	cfg.Authentication.JWTSecret = "0123456789abcdef0123456789abcdef"
+	cfg.Authentication.VerificationHMACSecret = "verification-hmac-secret-for-tests-32-bytes"
 	cfg.Authentication.AllowedOrigins = []string{"http://localhost:3000"}
 	return cfg
 }

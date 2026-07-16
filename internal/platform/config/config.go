@@ -36,6 +36,7 @@ type AuthenticationConfig struct {
 	JWTSecret              string
 	JWTIssuer              string
 	JWTAudience            string
+	VerificationHMACSecret string
 	RedisURL               string
 	SMTP                   SMTPConfig
 	AllowedOrigins         []string
@@ -121,6 +122,7 @@ func Load() (Config, error) {
 			JWTSecret:              v.GetString("jwt_secret"),
 			JWTIssuer:              v.GetString("jwt_issuer"),
 			JWTAudience:            v.GetString("jwt_audience"),
+			VerificationHMACSecret: v.GetString("verification_hmac_secret"),
 			RedisURL:               v.GetString("redis_url"),
 			AllowedOrigins:         parseCSV(v.GetString("cors_allowed_origins")),
 			RefreshCookieSecure:    v.GetBool("refresh_cookie_secure"),
@@ -195,6 +197,9 @@ func (c Config) ValidateAuthenticationRuntime() error {
 	if strings.TrimSpace(auth.JWTAudience) == "" {
 		return errors.New("JWT audience is required")
 	}
+	if len([]byte(strings.TrimSpace(auth.VerificationHMACSecret))) < 32 {
+		return errors.New("verification HMAC secret must be at least 32 bytes")
+	}
 	if len(auth.AllowedOrigins) == 0 {
 		return errors.New("at least one allowed CORS origin is required for authentication")
 	}
@@ -230,7 +235,7 @@ func configKeys() []string {
 		"env", "role", "http_addr", "request_timeout", "shutdown_timeout", "database_url", "otlp_http_endpoint",
 		"minio_endpoint", "minio_access_key", "minio_secret_key", "minio_bucket",
 		"minio_use_ssl", "vault_path",
-		"jwt_secret", "jwt_issuer", "jwt_audience", "redis_url", "smtp_enabled", "smtp_host", "smtp_port", "smtp_tls_mode", "smtp_username", "smtp_password", "smtp_from_email", "smtp_from_name", "cors_allowed_origins", "refresh_cookie_secure", "bootstrap_admin_email", "bootstrap_admin_password",
+		"jwt_secret", "jwt_issuer", "jwt_audience", "verification_hmac_secret", "redis_url", "smtp_enabled", "smtp_host", "smtp_port", "smtp_tls_mode", "smtp_username", "smtp_password", "smtp_from_email", "smtp_from_name", "cors_allowed_origins", "refresh_cookie_secure", "bootstrap_admin_email", "bootstrap_admin_password",
 	}
 }
 

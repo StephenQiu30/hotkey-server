@@ -12,6 +12,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/platform/config"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/observability"
 	sharederrors "github.com/StephenQiu30/hotkey-server/internal/shared/errors"
+	"github.com/StephenQiu30/hotkey-server/internal/shared/requestcontext"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
@@ -128,6 +129,38 @@ func TestTraceContextExtractsInboundParentAndSetsRequestID(t *testing.T) {
 	}
 	if !hasAttribute(spans[0].Attributes, "http.request_id", requestID) {
 		t.Fatal("span is missing http.request_id")
+	}
+}
+
+func TestMiddlewareWritesRequestAndTraceIdentifiersToSharedContext(t *testing.T) {
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	exporter := tracetest.NewInMemoryExporter()
+	provider := trace.NewTracerProvider(trace.WithSyncer(exporter))
+	telemetry := &observability.Telemetry{TracerProvider: provider}
+	defer func() { _ = telemetry.Shutdown(context.Background()) }()
+	metrics, err := observability.NewMetrics()
+	if err != nil {
+		t.Fatalf("NewMetrics(): %v", err)
+	}
+	router := NewRouter(ReadinessFunc(func(context.Context) error { return nil }), metrics, telemetry, zap.NewNop(), config.Default())
+	var requestID, traceID string
+	router.GET("/shared-context", Wrap(func(c *gin.Context) error {
+		requestID = requestcontext.RequestID(c.Request.Context())
+		traceID = requestcontext.TraceID(c.Request.Context())
+		OK[any](c, nil)
+		return nil
+	}))
+
+	request := httptest.NewRequest(stdhttp.MethodGet, "/shared-context", nil)
+	request.Header.Set("X-Request-ID", "audit-request-77")
+	request.Header.Set("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+	router.ServeHTTP(httptest.NewRecorder(), request)
+
+	if requestID != "audit-request-77" {
+		t.Fatalf("shared request ID = %q, want audit-request-77", requestID)
+	}
+	if traceID != "4bf92f3577b34da6a3ce929d0e0e4736" {
+		t.Fatalf("shared trace ID = %q, want inbound trace ID", traceID)
 	}
 }
 

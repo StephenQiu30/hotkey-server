@@ -61,6 +61,7 @@ make ci
 ```
 
 Redis 只承载验证码、验证票据和限流测试状态；用户、会话与刷新凭据的事实仍在 PostgreSQL。
+身份 API 还要求设置不少于 32 字节的 `HOTKEY_VERIFICATION_HMAC_SECRET`；验证码状态使用该密钥绑定验证码、用途和规范化邮箱的 HMAC。`HOTKEY_SMTP_ENABLED=false` 时，新的邮箱验证流程会安全地返回 503，且不会投递邮件或写入验证码状态。
 
 本地 Go 工具链可以放在未跟踪的 `.tools/go` 目录，或直接使用系统中的 Go 1.26+。
 

@@ -16,6 +16,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
 	sharederrors "github.com/StephenQiu30/hotkey-server/internal/shared/errors"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
+	"github.com/StephenQiu30/hotkey-server/internal/shared/requestcontext"
 	"github.com/google/uuid"
 )
 
@@ -220,7 +221,7 @@ func (service *Service) Register(ctx context.Context, input RegisterInput) (*dom
 		if err := service.users.Create(ctx, &user); err != nil {
 			return err
 		}
-		return service.audit.Create(ctx, auditEntry("system", 0, "identity.registration", "user", user.ID, "success", nil, map[string]any{"role": string(user.Role), "status": string(user.Status)}))
+		return service.audit.Create(ctx, auditEntry(ctx, "system", 0, "identity.registration", "user", user.ID, "success", nil, map[string]any{"role": string(user.Role), "status": string(user.Status)}))
 	})
 	if err != nil {
 		return nil, registrationError(err)
@@ -242,11 +243,11 @@ func (service *Service) Login(ctx context.Context, credentials Credentials) (Aut
 				return err
 			}
 			credentialFailure = true
-			return service.audit.Create(ctx, auditEntry("anonymous", 0, "identity.login", "identity", 0, "failure", nil, nil))
+			return service.audit.Create(ctx, auditEntry(ctx, "anonymous", 0, "identity.login", "identity", 0, "failure", nil, nil))
 		}
 		if !user.Active() || service.passwords.Compare(user.PasswordHash, credentials.Password) != nil {
 			credentialFailure = true
-			return service.audit.Create(ctx, auditEntry("anonymous", 0, "identity.login", "identity", 0, "failure", nil, nil))
+			return service.audit.Create(ctx, auditEntry(ctx, "anonymous", 0, "identity.login", "identity", 0, "failure", nil, nil))
 		}
 		now := service.now()
 		session := domain.NewSession(user.ID, uuid.NewString(), now)
@@ -265,7 +266,7 @@ func (service *Service) Login(ctx context.Context, credentials Credentials) (Aut
 		if err := service.users.TouchLogin(ctx, user.ID, now); err != nil {
 			return err
 		}
-		if err := service.audit.Create(ctx, auditEntry("user", user.ID, "identity.login", "session", session.ID, "success", nil, nil)); err != nil {
+		if err := service.audit.Create(ctx, auditEntry(ctx, "user", user.ID, "identity.login", "session", session.ID, "success", nil, nil)); err != nil {
 			return err
 		}
 		result = Authentication{AccessToken: accessToken, RefreshToken: rawRefresh, User: *user}
@@ -311,7 +312,7 @@ func (service *Service) Refresh(ctx context.Context, rawRefreshToken string) (Au
 		session, _, err := service.sessions.Rotate(ctx, hashRefreshToken(rawRefreshToken), replacement, now)
 		if errors.Is(err, domain.ErrRefreshReplay) {
 			replay = true
-			return service.audit.Create(ctx, auditEntry("anonymous", 0, "identity.refresh_replay", "session", currentSession.ID, "failure", nil, nil))
+			return service.audit.Create(ctx, auditEntry(ctx, "anonymous", 0, "identity.refresh_replay", "session", currentSession.ID, "failure", nil, nil))
 		}
 		if err != nil {
 			if errors.Is(err, domain.ErrRefreshInvalid) {
@@ -333,7 +334,7 @@ func (service *Service) Refresh(ctx context.Context, rawRefreshToken string) (Au
 		if err != nil {
 			return err
 		}
-		if err := service.audit.Create(ctx, auditEntry("user", user.ID, "identity.refresh", "session", session.ID, "success", nil, nil)); err != nil {
+		if err := service.audit.Create(ctx, auditEntry(ctx, "user", user.ID, "identity.refresh", "session", session.ID, "success", nil, nil)); err != nil {
 			return err
 		}
 		result = Authentication{AccessToken: accessToken, RefreshToken: rawReplacement, User: *user}
@@ -361,32 +362,32 @@ func (service *Service) Logout(ctx context.Context, subject *domain.Subject, raw
 			if err := service.sessions.RevokeSession(ctx, subject.SessionID, "logout", now); err != nil {
 				return err
 			}
-			return service.audit.Create(ctx, auditEntry("user", subject.UserID, "identity.logout", "session", subject.SessionID, "success", nil, nil))
+			return service.audit.Create(ctx, auditEntry(ctx, "user", subject.UserID, "identity.logout", "session", subject.SessionID, "success", nil, nil))
 		}
 		if strings.TrimSpace(rawRefreshToken) == "" {
-			return service.audit.Create(ctx, auditEntry("anonymous", 0, "identity.logout", "identity", 0, "failure", nil, nil))
+			return service.audit.Create(ctx, auditEntry(ctx, "anonymous", 0, "identity.logout", "identity", 0, "failure", nil, nil))
 		}
 		session, token, err := service.sessions.FindByRefreshTokenHash(ctx, hashRefreshToken(rawRefreshToken))
 		if err != nil {
 			if !errors.Is(err, sharedrepository.ErrNotFound) {
 				return err
 			}
-			return service.audit.Create(ctx, auditEntry("anonymous", 0, "identity.logout", "identity", 0, "failure", nil, nil))
+			return service.audit.Create(ctx, auditEntry(ctx, "anonymous", 0, "identity.logout", "identity", 0, "failure", nil, nil))
 		}
 		if token.UsedAt != nil || token.RevokedAt != nil || !token.ExpiresAt.After(now) {
-			return service.audit.Create(ctx, auditEntry("anonymous", 0, "identity.logout", "identity", 0, "failure", nil, nil))
+			return service.audit.Create(ctx, auditEntry(ctx, "anonymous", 0, "identity.logout", "identity", 0, "failure", nil, nil))
 		}
 		validated, err := service.sessions.ValidateAccessSession(ctx, session.ID, now)
 		if err != nil {
 			if errors.Is(err, sharedrepository.ErrUnavailable) {
 				return err
 			}
-			return service.audit.Create(ctx, auditEntry("anonymous", 0, "identity.logout", "identity", 0, "failure", nil, nil))
+			return service.audit.Create(ctx, auditEntry(ctx, "anonymous", 0, "identity.logout", "identity", 0, "failure", nil, nil))
 		}
 		if err := service.sessions.RevokeSession(ctx, validated.SessionID, "logout", now); err != nil {
 			return err
 		}
-		return service.audit.Create(ctx, auditEntry("user", validated.UserID, "identity.logout", "session", validated.SessionID, "success", nil, nil))
+		return service.audit.Create(ctx, auditEntry(ctx, "user", validated.UserID, "identity.logout", "session", validated.SessionID, "success", nil, nil))
 	})
 	return serviceError(err)
 }
@@ -424,11 +425,11 @@ func (service *Service) ChangePassword(ctx context.Context, subject domain.Subje
 				return err
 			}
 			credentialFailure = true
-			return service.audit.Create(ctx, auditEntry("user", subject.UserID, "identity.password_change", "user", subject.UserID, "failure", nil, nil))
+			return service.audit.Create(ctx, auditEntry(ctx, "user", subject.UserID, "identity.password_change", "user", subject.UserID, "failure", nil, nil))
 		}
 		if !user.Active() || service.passwords.Compare(user.PasswordHash, currentPassword) != nil {
 			credentialFailure = true
-			return service.audit.Create(ctx, auditEntry("user", subject.UserID, "identity.password_change", "user", subject.UserID, "failure", nil, nil))
+			return service.audit.Create(ctx, auditEntry(ctx, "user", subject.UserID, "identity.password_change", "user", subject.UserID, "failure", nil, nil))
 		}
 		now := service.now()
 		if err := service.users.UpdatePassword(ctx, user.ID, newHash, now); err != nil {
@@ -437,7 +438,7 @@ func (service *Service) ChangePassword(ctx context.Context, subject domain.Subje
 		if err := service.sessions.RevokeAllForUser(ctx, user.ID, "password_changed", now); err != nil {
 			return err
 		}
-		return service.audit.Create(ctx, auditEntry("user", user.ID, "identity.password_change", "user", user.ID, "success", nil, nil))
+		return service.audit.Create(ctx, auditEntry(ctx, "user", user.ID, "identity.password_change", "user", user.ID, "success", nil, nil))
 	})
 	if err != nil {
 		return serviceError(err)
@@ -465,11 +466,11 @@ func (service *Service) ConfirmPasswordReset(ctx context.Context, verificationTi
 				return appError
 			}
 			resetFailure = true
-			return service.audit.Create(ctx, auditEntry("anonymous", 0, "identity.password_reset", "identity", 0, "failure", nil, nil))
+			return service.audit.Create(ctx, auditEntry(ctx, "anonymous", 0, "identity.password_reset", "identity", 0, "failure", nil, nil))
 		}
 		if ticket.Purpose != domain.VerificationPurposePasswordReset {
 			resetFailure = true
-			return service.audit.Create(ctx, auditEntry("anonymous", 0, "identity.password_reset", "identity", 0, "failure", nil, nil))
+			return service.audit.Create(ctx, auditEntry(ctx, "anonymous", 0, "identity.password_reset", "identity", 0, "failure", nil, nil))
 		}
 		user, err := service.users.FindByEmail(ctx, ticket.Email)
 		if err != nil {
@@ -477,11 +478,11 @@ func (service *Service) ConfirmPasswordReset(ctx context.Context, verificationTi
 				return err
 			}
 			resetFailure = true
-			return service.audit.Create(ctx, auditEntry("anonymous", 0, "identity.password_reset", "identity", 0, "failure", nil, nil))
+			return service.audit.Create(ctx, auditEntry(ctx, "anonymous", 0, "identity.password_reset", "identity", 0, "failure", nil, nil))
 		}
 		if !user.Active() {
 			resetFailure = true
-			return service.audit.Create(ctx, auditEntry("anonymous", 0, "identity.password_reset", "identity", 0, "failure", nil, nil))
+			return service.audit.Create(ctx, auditEntry(ctx, "anonymous", 0, "identity.password_reset", "identity", 0, "failure", nil, nil))
 		}
 		now := service.now()
 		if err := service.users.UpdatePassword(ctx, user.ID, newHash, now); err != nil {
@@ -489,12 +490,12 @@ func (service *Service) ConfirmPasswordReset(ctx context.Context, verificationTi
 				return err
 			}
 			resetFailure = true
-			return service.audit.Create(ctx, auditEntry("user", user.ID, "identity.password_reset", "user", user.ID, "failure", nil, nil))
+			return service.audit.Create(ctx, auditEntry(ctx, "user", user.ID, "identity.password_reset", "user", user.ID, "failure", nil, nil))
 		}
 		if err := service.sessions.RevokeAllForUser(ctx, user.ID, "password_reset", now); err != nil {
 			return err
 		}
-		return service.audit.Create(ctx, auditEntry("user", user.ID, "identity.password_reset", "user", user.ID, "success", nil, nil))
+		return service.audit.Create(ctx, auditEntry(ctx, "user", user.ID, "identity.password_reset", "user", user.ID, "success", nil, nil))
 	})
 	if err != nil {
 		return verificationError(err)
@@ -540,7 +541,7 @@ func (service *Service) UpdateUser(ctx context.Context, actor domain.Subject, us
 		if changed == nil {
 			return validationError(nil)
 		}
-		return service.audit.Create(ctx, auditEntry("user", actor.UserID, "identity.user_update", "user", changed.ID, "success", nil, map[string]any{"role": string(changed.Role), "status": string(changed.Status)}))
+		return service.audit.Create(ctx, auditEntry(ctx, "user", actor.UserID, "identity.user_update", "user", changed.ID, "success", nil, map[string]any{"role": string(changed.Role), "status": string(changed.Status)}))
 	})
 	if err != nil {
 		if auditErr := service.auditLifecycleFailure(ctx, actor, "identity.user_update", userID); auditErr != nil {
@@ -566,7 +567,7 @@ func (service *Service) DeleteUser(ctx context.Context, actor domain.Subject, us
 		if err := service.sessions.RevokeAllForUser(ctx, userID, "user_deleted", now); err != nil {
 			return err
 		}
-		return service.audit.Create(ctx, auditEntry("user", actor.UserID, "identity.user_delete", "user", userID, "success", map[string]any{"role": string(deleted.Role), "status": string(deleted.Status)}, map[string]any{"deleted_at": "set"}))
+		return service.audit.Create(ctx, auditEntry(ctx, "user", actor.UserID, "identity.user_delete", "user", userID, "success", map[string]any{"role": string(deleted.Role), "status": string(deleted.Status)}, map[string]any{"deleted_at": "set"}))
 	})
 	if err != nil {
 		if auditErr := service.auditLifecycleFailure(ctx, actor, "identity.user_delete", userID); auditErr != nil {
@@ -592,7 +593,7 @@ func (service *Service) RestoreUser(ctx context.Context, actor domain.Subject, u
 		if err := service.sessions.RevokeAllForUser(ctx, userID, "user_restored", now); err != nil {
 			return err
 		}
-		return service.audit.Create(ctx, auditEntry("user", actor.UserID, "identity.user_restore", "user", userID, "success", map[string]any{"deleted_at": "set"}, map[string]any{"status": string(restored.Status), "deleted_at": nil}))
+		return service.audit.Create(ctx, auditEntry(ctx, "user", actor.UserID, "identity.user_restore", "user", userID, "success", map[string]any{"deleted_at": "set"}, map[string]any{"status": string(restored.Status), "deleted_at": nil}))
 	})
 	if err != nil {
 		if auditErr := service.auditLifecycleFailure(ctx, actor, "identity.user_restore", userID); auditErr != nil {
@@ -639,7 +640,7 @@ func (service *Service) requireAdmin(ctx context.Context, actor domain.Subject, 
 		return nil
 	}
 	if err := service.withTransaction(ctx, func(ctx context.Context, _ database.Transaction) error {
-		return service.audit.Create(ctx, auditEntry("user", actor.UserID, action, "user", resourceID, "denied", nil, nil))
+		return service.audit.Create(ctx, auditEntry(ctx, "user", actor.UserID, action, "user", resourceID, "denied", nil, nil))
 	}); err != nil {
 		return serviceError(err)
 	}
@@ -651,17 +652,19 @@ func (service *Service) requireAdmin(ctx context.Context, actor domain.Subject, 
 // commit a partial role/status mutation merely to preserve an audit record.
 func (service *Service) auditLifecycleFailure(ctx context.Context, actor domain.Subject, action string, resourceID int64) error {
 	return service.withTransaction(ctx, func(ctx context.Context, _ database.Transaction) error {
-		return service.audit.Create(ctx, auditEntry("user", actor.UserID, action, "user", resourceID, "failure", nil, nil))
+		return service.audit.Create(ctx, auditEntry(ctx, "user", actor.UserID, action, "user", resourceID, "failure", nil, nil))
 	})
 }
 
-func auditEntry(actorType string, actorID int64, action, resourceType string, resourceID int64, result string, before, after map[string]any) domain.AuditEntry {
+func auditEntry(ctx context.Context, actorType string, actorID int64, action, resourceType string, resourceID int64, result string, before, after map[string]any) domain.AuditEntry {
 	return domain.AuditEntry{
 		ActorType:    actorType,
 		ActorID:      actorID,
 		Action:       action,
 		ResourceType: resourceType,
 		ResourceID:   resourceID,
+		RequestID:    requestcontext.RequestID(ctx),
+		TraceID:      requestcontext.TraceID(ctx),
 		Result:       result,
 		BeforeData:   before,
 		AfterData:    after,

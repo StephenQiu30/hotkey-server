@@ -53,6 +53,50 @@ func TestSessionRepositoryRotatesLockedRefreshTokenAndRevokesSessionOnReplay(t *
 	}
 }
 
+func TestSessionRepositoryTreatsExpiredConsumedRefreshAsInvalidWithoutRevokingLiveSession(t *testing.T) {
+	runtime := newIdentityRuntime(t)
+	users := NewUserRepository(runtime)
+	sessions := NewSessionRepository(runtime)
+	user := createIdentityUser(t, users, "expired-consumed-refresh")
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	session := newIdentitySession(user.ID, now.Add(-10*time.Minute))
+	expired := &domain.RefreshToken{
+		TokenHash: "1212121212121212121212121212121212121212121212121212121212121212",
+		ExpiresAt: session.CreatedAt.Add(5 * time.Minute),
+		CreatedAt: session.CreatedAt,
+	}
+	if err := sessions.Create(context.Background(), &session, expired); err != nil {
+		t.Fatalf("Create(): %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE auth_refresh_tokens SET used_at = $1 WHERE id = $2`, now.Add(-2*time.Minute), expired.ID); err != nil {
+		t.Fatalf("mark expired token consumed: %v", err)
+	}
+
+	_, _, err := sessions.Rotate(context.Background(), expired.TokenHash, &domain.RefreshToken{
+		TokenHash: "3434343434343434343434343434343434343434343434343434343434343434",
+		ExpiresAt: session.RefreshExpiry(now),
+		CreatedAt: now,
+	}, now)
+	if !errors.Is(err, domain.ErrRefreshInvalid) {
+		t.Fatalf("Rotate(expired consumed token) error = %v, want domain.ErrRefreshInvalid", err)
+	}
+
+	var revokedAt *time.Time
+	if err := runtime.SQL.QueryRow(`SELECT revoked_at FROM auth_sessions WHERE id = $1`, session.ID).Scan(&revokedAt); err != nil {
+		t.Fatalf("read live session: %v", err)
+	}
+	if revokedAt != nil {
+		t.Fatalf("expired consumed token revoked live session at %s", revokedAt)
+	}
+	var replacements int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM auth_refresh_tokens WHERE token_hash = $1`, "3434343434343434343434343434343434343434343434343434343434343434").Scan(&replacements); err != nil {
+		t.Fatalf("count replacement token: %v", err)
+	}
+	if replacements != 0 {
+		t.Fatalf("expired token rotation created %d replacements, want 0", replacements)
+	}
+}
+
 func TestSessionRepositoryConcurrentConsumptionAllowsOnlyOneRotationThenRevokesReplay(t *testing.T) {
 	runtime := newIdentityRuntime(t)
 	users := NewUserRepository(runtime)

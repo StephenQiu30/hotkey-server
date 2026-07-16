@@ -14,6 +14,7 @@ import (
 )
 
 type Config struct {
+	Enabled   bool
 	Host      string
 	Port      int
 	TLSMode   string
@@ -50,7 +51,7 @@ func NewMailer(config Config, send ...SendFunc) *Mailer {
 }
 
 func (mailer *Mailer) SendVerificationCode(ctx context.Context, purpose domain.VerificationPurpose, email, code string) error {
-	if mailer == nil || !purpose.Valid() || strings.TrimSpace(email) == "" || strings.TrimSpace(code) == "" || !mailer.config.valid() {
+	if mailer == nil || !mailer.config.Enabled || !purpose.Valid() || strings.TrimSpace(email) == "" || strings.TrimSpace(code) == "" || !mailer.config.valid() {
 		return unavailable()
 	}
 	message := Message{

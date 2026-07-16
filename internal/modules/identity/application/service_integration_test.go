@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/modules/identity/infrastructure/security"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
 	sharederrors "github.com/StephenQiu30/hotkey-server/internal/shared/errors"
+	"github.com/StephenQiu30/hotkey-server/internal/shared/requestcontext"
 	"github.com/StephenQiu30/hotkey-server/tests/postgresfixture"
 )
 
@@ -221,6 +223,31 @@ func TestAdminSoftDeleteRevokesTargetRealPostgresSessionsAndAccessJWT(t *testing
 	}
 	if !deleted {
 		t.Fatal("DeleteUser() left target active in PostgreSQL")
+	}
+}
+
+func TestServiceWritesSharedRequestAndTraceContextToRealAuditLog(t *testing.T) {
+	fixture := newApplicationIntegrationFixture(t)
+	user := fixture.register(t, "audit-context@example.test", "current password")
+	ctx := requestcontext.WithTraceID(
+		requestcontext.WithRequestID(context.Background(), "request-audit-77"),
+		"4bf92f3577b34da6a3ce929d0e0e4736",
+	)
+	if _, err := fixture.service.Login(ctx, Credentials{Email: user.Email, Password: "current password"}); err != nil {
+		t.Fatalf("Login(): %v", err)
+	}
+
+	var requestID, traceID sql.NullString
+	if err := fixture.runtime.SQL.QueryRow(`
+SELECT request_id, trace_id
+FROM audit_logs
+WHERE action = 'identity.login' AND actor_id = $1 AND result = 'success'
+ORDER BY id DESC
+LIMIT 1`, user.ID).Scan(&requestID, &traceID); err != nil {
+		t.Fatalf("read identity login audit correlation: %v", err)
+	}
+	if !requestID.Valid || requestID.String != "request-audit-77" || !traceID.Valid || traceID.String != "4bf92f3577b34da6a3ce929d0e0e4736" {
+		t.Fatalf("audit correlation request=%#v trace=%#v, want shared context values", requestID, traceID)
 	}
 }
 

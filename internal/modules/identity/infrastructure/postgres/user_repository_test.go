@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -114,6 +115,128 @@ func TestUserRepositoryBootstrapAdminUsesTransactionLockAndRejectsNonemptyUsers(
 	}
 	if _, err := repository.BootstrapAdmin(context.Background(), "second-admin@example.test", "bcrypt-hash"); !errors.Is(err, ErrBootstrapUnavailable) {
 		t.Fatalf("second BootstrapAdmin() error = %v, want ErrBootstrapUnavailable", err)
+	}
+}
+
+func TestUserRepositorySerializesFirstRegistrationBeforeBootstrapAdmin(t *testing.T) {
+	runtime := newIdentityRuntime(t)
+	repository := NewUserRepository(runtime)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Two session-scoped test gates make the race deterministic while the
+	// application work itself still uses real PostgreSQL transactions. The
+	// registration is queued first for the same lock BootstrapAdmin must use;
+	// after it wins that lock, the trigger holds its INSERT until bootstrap is
+	// visibly waiting behind it.
+	holder, err := runtime.Pool.Acquire(ctx)
+	if err != nil {
+		t.Fatalf("acquire advisory-lock holder: %v", err)
+	}
+	const registrationGate = "hotkey-identity-registration-gate-test"
+	defer func() {
+		for _, lockName := range []string{registrationGate, userCreationLock} {
+			_, _ = holder.Exec(context.Background(), `SELECT pg_advisory_unlock(hashtext($1))`, lockName)
+		}
+		holder.Release()
+	}()
+	for _, lockName := range []string{userCreationLock, registrationGate} {
+		if _, err := holder.Exec(ctx, `SELECT pg_advisory_lock(hashtext($1))`, lockName); err != nil {
+			t.Fatalf("hold %s advisory lock: %v", lockName, err)
+		}
+	}
+
+	if _, err := runtime.SQL.Exec(fmt.Sprintf(`
+CREATE FUNCTION pause_registration_insert_for_bootstrap_test() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.email = 'registration-wins@example.test' THEN
+        PERFORM pg_advisory_xact_lock(hashtext('%s'));
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER pause_registration_insert_for_bootstrap_test
+BEFORE INSERT ON users
+FOR EACH ROW EXECUTE FUNCTION pause_registration_insert_for_bootstrap_test();`, registrationGate)); err != nil {
+		t.Fatalf("install real PostgreSQL registration barrier: %v", err)
+	}
+
+	registered := make(chan error, 1)
+	go func() {
+		registered <- repository.Create(ctx, &domain.User{
+			Email:        "registration-wins@example.test",
+			PasswordHash: "bcrypt-hash",
+			DisplayName:  "Registered First",
+			Role:         domain.RoleViewer,
+			Status:       domain.UserStatusActive,
+		})
+	}()
+	waitForAdvisoryWaiter(t, runtime, ctx)
+
+	bootstrapped := make(chan error, 1)
+	go func() {
+		_, bootstrapErr := repository.BootstrapAdmin(ctx, "bootstrap-loses@example.test", "bcrypt-hash")
+		bootstrapped <- bootstrapErr
+	}()
+
+	if _, err := holder.Exec(ctx, `SELECT pg_advisory_unlock(hashtext($1))`, userCreationLock); err != nil {
+		t.Fatalf("release user-creation lock: %v", err)
+	}
+	select {
+	case err := <-bootstrapped:
+		t.Fatalf("BootstrapAdmin() completed before the queued registration committed: %v", err)
+	case <-time.After(250 * time.Millisecond):
+	}
+	if _, err := holder.Exec(ctx, `SELECT pg_advisory_unlock(hashtext($1))`, registrationGate); err != nil {
+		t.Fatalf("release registration insert barrier: %v", err)
+	}
+
+	select {
+	case err := <-registered:
+		if err != nil {
+			t.Fatalf("Create(first registration): %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatalf("first registration did not complete: %v", ctx.Err())
+	}
+	select {
+	case err := <-bootstrapped:
+		if !errors.Is(err, ErrBootstrapUnavailable) {
+			t.Fatalf("BootstrapAdmin() error = %v, want ErrBootstrapUnavailable after first registration", err)
+		}
+	case <-ctx.Done():
+		t.Fatalf("BootstrapAdmin() did not finish: %v", ctx.Err())
+	}
+
+	var viewers, admins int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FILTER (WHERE role = 'viewer'), count(*) FILTER (WHERE role = 'admin') FROM users WHERE deleted_at IS NULL`).Scan(&viewers, &admins); err != nil {
+		t.Fatalf("count serialized users: %v", err)
+	}
+	if viewers != 1 || admins != 0 {
+		t.Fatalf("serialized first-user result viewers=%d admins=%d, want one viewer and no bootstrap admin", viewers, admins)
+	}
+}
+
+func waitForAdvisoryWaiter(t *testing.T, runtime *database.Runtime, ctx context.Context) {
+	t.Helper()
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	poll := time.NewTicker(10 * time.Millisecond)
+	defer poll.Stop()
+	for {
+		var waiting bool
+		if err := runtime.SQL.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND NOT granted)`).Scan(&waiting); err != nil {
+			t.Fatalf("inspect PostgreSQL advisory waiters: %v", err)
+		}
+		if waiting {
+			return
+		}
+		select {
+		case <-deadline.C:
+			t.Fatal("registration did not reach deterministic PostgreSQL advisory-lock barrier")
+		case <-poll.C:
+		}
 	}
 }
 
