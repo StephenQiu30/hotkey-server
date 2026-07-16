@@ -228,6 +228,46 @@ func TestConnectorHonorsContextTimeoutAndOfficialEndpoint(t *testing.T) {
 	})
 }
 
+func TestFetchItemsTreatsParentCancellationAsPageFailure(t *testing.T) {
+	t.Parallel()
+
+	connector := newTestConnector(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("canceled parent must not issue an item request")
+	}))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, failure := connector.fetchItems(ctx, 101, 101); failure == nil || domain.ClassifyCollectionError(failure.err) != domain.CollectionErrorTemporary {
+		t.Fatalf("fetchItems(canceled parent) failure = %#v, want temporary page failure", failure)
+	}
+}
+
+func TestConnectorPreservesRateLimitWhenConcurrentWorkerCancellationRaces(t *testing.T) {
+	t.Parallel()
+
+	startedFirst := make(chan struct{})
+	connector := newTestConnector(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/v0/maxitem.json":
+			_, _ = writer.Write([]byte("102"))
+		case "/v0/item/101.json":
+			close(startedFirst)
+			<-request.Context().Done()
+		case "/v0/item/102.json":
+			<-startedFirst
+			writer.Header().Set("Retry-After", "90")
+			writer.WriteHeader(http.StatusTooManyRequests)
+		default:
+			t.Errorf("unexpected request path %q", request.URL.Path)
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+
+	result, err := connector.Fetch(context.Background(), testFetchRequest(2, "100"))
+	if err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorRateLimited || result.RateLimit.RetryAfter == nil || result.NextCursor != "" {
+		t.Fatalf("concurrent 429 result/error = %#v, %v; want rate-limited failure without cursor", result, err)
+	}
+}
+
 func newTestConnector(t *testing.T, handler http.Handler) *Connector {
 	t.Helper()
 	server := httptest.NewTLSServer(handler)

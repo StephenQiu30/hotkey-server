@@ -103,12 +103,10 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 		}
 		return result, nil
 	}
-	outcomes := connector.fetchItems(ctx, start, end)
-	for _, outcome := range outcomes {
-		if outcome.err != nil {
-			result.RateLimit.RetryAfter = outcome.retryAfter
-			return domain.FetchResult{RateLimit: result.RateLimit}, outcome.err
-		}
+	outcomes, failure := connector.fetchItems(ctx, start, end)
+	if failure != nil {
+		result.RateLimit.RetryAfter = failure.retryAfter
+		return domain.FetchResult{RateLimit: result.RateLimit}, failure.err
 	}
 	for _, outcome := range outcomes {
 		if outcome.diagnostic != nil {
@@ -159,7 +157,10 @@ func itemRange(cursor, newest, limit int64, initial bool) (int64, int64) {
 	return cursor + 1, end
 }
 
-func (connector *Connector) fetchItems(parent context.Context, start, end int64) []itemOutcome {
+func (connector *Connector) fetchItems(parent context.Context, start, end int64) ([]itemOutcome, *itemOutcome) {
+	if err := parent.Err(); err != nil {
+		return nil, canceledPageFailure(err)
+	}
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	jobs := make(chan int64)
@@ -169,6 +170,16 @@ func (connector *Connector) fetchItems(parent context.Context, start, end int64)
 		workers = remaining
 	}
 	var group sync.WaitGroup
+	var failureMu sync.Mutex
+	var failure *itemOutcome
+	recordFailure := func(outcome itemOutcome) {
+		failureMu.Lock()
+		defer failureMu.Unlock()
+		if failure == nil || preferredPageFailure(outcome, *failure) {
+			candidate := outcome
+			failure = &candidate
+		}
+	}
 	for range workers {
 		group.Add(1)
 		go func() {
@@ -177,6 +188,7 @@ func (connector *Connector) fetchItems(parent context.Context, start, end int64)
 				outcome := connector.fetchItem(ctx, id)
 				outcomes <- outcome
 				if outcome.err != nil {
+					recordFailure(outcome)
 					cancel()
 				}
 			}
@@ -201,7 +213,31 @@ func (connector *Connector) fetchItems(parent context.Context, start, end int64)
 		collected = append(collected, outcome)
 	}
 	sort.Slice(collected, func(left, right int) bool { return collected[left].id < collected[right].id })
-	return collected
+	if err := parent.Err(); err != nil {
+		return collected, canceledPageFailure(err)
+	}
+	failureMu.Lock()
+	defer failureMu.Unlock()
+	if failure != nil {
+		return collected, failure
+	}
+	if len(collected) != int(end-start+1) {
+		return collected, &itemOutcome{err: domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("Hacker News item page was interrupted"))}
+	}
+	return collected, nil
+}
+
+func canceledPageFailure(_ error) *itemOutcome {
+	return &itemOutcome{err: domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("Hacker News item page canceled"))}
+}
+
+func preferredPageFailure(candidate, current itemOutcome) bool {
+	candidateKind := domain.ClassifyCollectionError(candidate.err)
+	currentKind := domain.ClassifyCollectionError(current.err)
+	if candidateKind == domain.CollectionErrorRateLimited && currentKind != domain.CollectionErrorRateLimited {
+		return true
+	}
+	return candidate.retryAfter != nil && current.retryAfter == nil
 }
 
 func (connector *Connector) fetchItem(ctx context.Context, id int64) itemOutcome {
