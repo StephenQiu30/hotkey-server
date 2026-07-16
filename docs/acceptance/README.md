@@ -6,7 +6,7 @@ feature_area: 文档治理
 purpose: 定义长期验收证据的结构、结论和归档边界
 canonical_path: docs/acceptance/README.md
 status: review
-version: v1.2
+version: v1.4
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -65,7 +65,7 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | 005 | [监控主题规则与来源配置](005-监控主题规则与来源配置验收.md) | accepted |
 | 006 | [查询规划与 RSS/HN 采集](006-查询规划与RSS-HN采集验收.md) | accepted |
 | 007 | [内容标准化、去重与 MinIO 证据](007-内容标准化去重与MinIO证据验收.md) | accepted |
-| 008 | [AI Provider 与 Embedding 基础](008-AIProvider与Embedding基础验收.md) | pending |
+| 008 | [AI Provider 与 Embedding 基础](008-AIProvider与Embedding基础验收.md) | accepted |
 
 ## 变更记录
 
@@ -74,3 +74,4 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | v1.1 | 2026-07-16 | 收录已 accepted 的 Acceptance-006。 |
 | v1.2 | 2026-07-17 | 收录独立最终复核通过的 Acceptance-007。 |
 | v1.3 | 2026-07-17 | 创建 PLAN-008 实施前验收模板，结论仍为 pending。 |
+| v1.4 | 2026-07-17 | 收录独立最终复核通过的 Acceptance-008。 |

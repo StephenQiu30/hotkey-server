@@ -8,9 +8,9 @@ feature_area: AI运行基础
 purpose: 定义首批可替换 AI Provider、1024 维向量、模型运行审计和安全降级的可验收范围
 phase: P0
 priority: P0
-status: accepted
-execution_status: in_progress
-version: v1.13
+status: archived
+execution_status: done
+version: v1.14
 owner: HotKey Server Team
 depends_on: [PRD-002, PRD-007]
 design_refs:
@@ -129,3 +129,4 @@ PRD-009 可以只依赖 `intelligence` 的公开 Application 端口取得同一 
 | v1.11 | 2026-07-17 | 将 Embedding 复用 provenance 固化为 `ai_run_id`，使 Prompt、Schema、parameters 与 evidence 的 reuse 维度不能被仅有 profile/input 的向量查询绕过。 |
 | v1.12 | 2026-07-17 | 统一 Embedding 结算与写入为 `CompleteEmbedding` 的 budget -> run -> embedding 单事务锁序，移除独立 target/profile writer 的歧义。 |
 | v1.13 | 2026-07-17 | 独立复核通过 `ai_run_id` provenance、Schema/升级演练和 CompleteEmbedding 锁序，恢复 accepted/in_progress。 |
+| v1.14 | 2026-07-17 | Acceptance-008 已 accepted：真实升级/回退、HNSW、Provider fixture、ONNX 默认降级、API/OpenAPI、完整 CI 与 race 门禁均已复核，PRD 归档为 done。 |

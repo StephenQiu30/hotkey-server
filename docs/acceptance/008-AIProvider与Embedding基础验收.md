@@ -5,8 +5,8 @@ audience: [Dev, QA, Ops]
 feature_area: AI运行基础
 purpose: 保存 PLAN-008 AI Provider、运行、预算和向量隔离的长期验收证据
 canonical_path: docs/acceptance/008-AIProvider与Embedding基础验收.md
-status: review
-version: v0.2
+status: accepted
+version: v1.0
 owner: HotKey Server Team
 inputs:
   - docs/prd/008-AIProvider与Embedding基础.md
@@ -22,63 +22,105 @@ triggers:
 downstream:
   - docs/prd/008-AIProvider与Embedding基础.md
   - docs/plans/008-AIProvider与Embedding基础计划.md
-result: pending
+result: accepted
 ---
 
 # AI Provider 与 Embedding 基础验收
 
-## 当前状态
+## 验收结论与提交范围
 
-本文件是实施前已审核的验收模板，不表示任何 AI 能力已经交付。只有 PLAN-008 全部任务完成、真实 disposable PostgreSQL/Redis evidence 保存、独立最终复核通过后，才能将 `result` 和 `status` 改为 accepted，并同步 PRD/Plan 与索引状态。
+PLAN-008 的实现基线为 `fafede8`，独立复核范围为 `b46f73b..fafede8`。真实 disposable fixture、定向负向测试和最终 GREEN 门禁均已通过；非主要编写者已给出 `APPROVED`，因此本文件结论为 `accepted`，PRD/Plan 可归档为 `archived/done`。
 
-## 必须记录的范围与环境
+| 能力 | 提交 |
+|---|---|
+| 配置 Schema、catalog、升级/回退 | `b46f73b` |
+| Provider-neutral 合同、运行/预算/向量持久化 | `6f35c57`、`0910c27`、`34f315e` |
+| OpenAI/ONNX adapter 与计量契约 | `0dcd6b8`、`3fffe76` |
+| 运行编排、精确 Embedding provenance | `f19091e`、`2aad0d1` |
+| 管理员 model profile API 与 OpenAPI | `fafede8` |
 
-- 实现基线 commit、审核范围和每个 Task 的提交。
-- `HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable'`、`HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15'` 等可丢弃 fixture；不记录真实 DSN、API key、dump 路径或本机绝对路径。
-- OpenAI adapter 仅允许 `httptest` fixture 与 dummy key；不得以真实 Provider 调用作为验收证据。
-- ONNX default build 必须在无 native library/model/tokenizer/manifest 下通过；可选 `onnx && cgo` matrix 只有在受控 host 执行时记录 runtime、model/tokenizer/manifest hash 和结果，未执行必须列为残余风险，不能伪装为通过。
+## 验收环境与禁止项
 
-## 必须保留的 RED 证据
+- PostgreSQL/Redis fixture：`HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable'`、`HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15'`。该库和 Redis DB 仅用于可丢弃验收，不记录真实 DSN、API key、dump 路径或本机绝对路径。
+- 历史升级/回退固定使用提交 `53d7f01` 的 detached worktree verifier；它不依赖当前工作树的 schema 作为历史正确性来源。
+- OpenAI 仅使用 `httptest` fixture 和 dummy key。没有发起真实 Provider 请求，也没有把密钥、Prompt、raw response、endpoint 或 object key 写入证据。
 
-实施完成前在测试中可重放以下负向信号；不得为截图临时破坏实现：
+## 受控负向证据
 
-1. 不存在可用 profile、默认 build 下 ONNX profile、缺少 OpenAI key 都产生安全降级，ingestion 与 Content read 仍成功。
-2. 第二个同 `reuse_key` 并发请求观察到 `70007 ai_run_in_progress`，Provider fixture 只收到一次调用。
-3. 每 profile 的 max_cost 必填；reserve 必须满足 `overage_blocked=false` 且（daily 为 NULL 或 `settled+reserved+max<=daily`），失败/取消/lease recovery 释放 reservation。超额 settlement 记录真实 cost、标记 70002，并封锁同 profile+UTC 日后续 reserve；必须分别验证 NULL daily 和仍有余额的 daily，两者只在新 UTC 日自动解封。
-4. 1023、1025、`NaN`、`Inf` 向量被拒绝；不同 profile/model version 或 inactive 行不出现在近邻结果。
-5. 429、5xx、deadline、非法 JSON、第二次修复失败均映射为稳定 numeric code；OpenAI fixture 必须验证 SDK `model` 与 profile `model_name` 精确一致，ID 不符返回 70000，local `model_version` 不写入 SDK 请求。仅 POST 可接收 write-only `credential_ref`，PATCH 带该字段返回 70000；响应、日志、指标与 OpenAPI 不含 key、credential_ref、Prompt、raw response、endpoint 或 object key。
-6. 未认证、非管理员、stale version、语义 profile PATCH 的 HTTP Result 与 OpenAPI 契约都失败且安全。
-7. queued/running/retry_wait crash 后 worker-only lease reclaimer 标记 70009 并释放预算；未执行准备步骤的 legacy `pg_restore` 按手册失败，准备后恢复并用固定 `53d7f01` detached-worktree verifier 通过。
+以下均由保留的自动化测试产生，未通过临时破坏生产实现制造回归：
 
-## 必须保留的 GREEN 证据
+| 风险边界 | 命名测试与结果 |
+|---|---|
+| 无配置/无密钥安全降级与 exact reuse | `TestEmbeddingServiceDegradesWithoutProviderAndReusesExactRunVector` PASS |
+| 同 reuse key 并发仅一个 Provider owner | `TestRunServiceConcurrentIdenticalRequestKeepsSingleProviderOwner` PASS；第二调用得到 `70007 ai_run_in_progress` |
+| 预算不足、overage 与 UTC 日封账 | `TestRepositoryRecordsActualOverageAndBlocksTheProfileDay`、`TestRunRepositoryBlocksOverageForUnlimitedBudgetButAllowsNextUTCDay` PASS |
+| crash/过期租约回收 | `TestRunRepositoryRefreshesRetryLeaseAndReclaimsOnlyExpiredRuns`、`TestRunRepositoryReclaimsQueuedRunningAndRetryWaitAfterProcessDeath` PASS |
+| 非 1024/非有限向量及旧模型隔离 | `TestEmbeddingRepositoryRefusesWrongDimensionsAndNonFiniteValues`、`TestEmbeddingRepositoryFiltersCurrentActiveModelAndUsesHNSW` PASS |
+| Provider 错误、JSON/repair 约束 | `TestOpenAIProviderMapsTransportFailuresWithoutLeakingProviderBodies`、`TestOpenAIProviderStructuredRequestUsesStrictSchemaAndBoundedRepair` PASS |
+| 管理员、write-only、stale version | `TestModelProfileRoutesEnforceAdminControlPlaneAndRedactCredentials`、`TestModelProfileHTTPPostgresLifecyclePreservesWriteOnlyCredentialBoundary` PASS：未认证 401、非管理员 403、语义 PATCH `credential_ref` 为 70000、stale update 为 409 |
 
-### Provider、Schema、复用和预算
+## 真实依赖演练
 
-记录命令和命名测试，至少覆盖 OpenAI `httptest` 成功/429/5xx/timeout/invalid JSON/repair，且 fixture 断言静态 instruction/schema/bounded repair payload；还须覆盖静态 JSON Schema、一次修复、两种 task type/reject future types、profile 选择、same-key claim、success-only reuse、版本失效、profile+UTC-day reserve/settle/release/overage 并发（含 NULL/剩余 daily）、统一 `budget→run` 锁序、未到期 retry_wait 不被回收与崩溃后过期 retry_wait 的 lease reclaim；`CGO_ENABLED=0 -tags=onnx` 也必须命中 safe unavailable adapter。
+固定历史 worktree 的 PLAN-007 初始化、备份、PLAN-008 精确升级、当前 `db verify`、未准备 restore 失败、准备后 `pg_restore`、历史 verifier 的链路已由下列命令覆盖并通过：
 
 ```bash
 HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable' \
-go test -race -tags=integration ./internal/modules/intelligence/... -count=1
+HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' \
+go test -tags=integration ./internal/platform/database \
+  -run '^TestPlan008SchemaUpgradeAndRollbackUsesPinnedPlan007Worktree$' -count=1 -v
 ```
 
-### 向量、HNSW、升级和 HTTP
+四类 target 的原子 deactivate/insert、只检索 active 的 profile/model-version 向量以及每个 active HNSW index 的 `EXPLAIN (COSTS OFF)` 已由下列测试通过：
 
-记录四类 target 的 atomic deactivate/insert、profile+model-version-filtered search 和每个 active HNSW index 的 `EXPLAIN (COSTS OFF)` 摘要。执行固定 `53d7f01` worktree 的 PLAN-007 init/backup -> PLAN-008 exact upgrade -> current `db verify` -> deliberate unprepared restore failure -> prepared `pg_restore` -> 同一 worktree 的 historical `db verify`。使用 Gin/管理员 login fixture 验证六个 profile API 路由、角色矩阵、write-only 输出与生成 OpenAPI。
+```bash
+HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable' \
+go test -tags=integration ./internal/modules/intelligence/infrastructure/postgres \
+  -run '^(TestEmbeddingRepositoryUsesFilteredHNSWForEveryTarget|TestEmbeddingRepositoryFiltersCurrentActiveModelAndUsesHNSW|TestEmbeddingRepositoryRefusesWrongDimensionsAndNonFiniteValues)$' \
+  -count=1 -v
+```
+
+## 已完成的 GREEN 证据
+
+应用/HTTP/Provider fixture 已在上述 disposable 环境通过，覆盖同 key 互斥、预算不可用时回退、exact provenance reuse、管理员 CRUD/restore、OpenAI SDK `model` 精确等于 profile `model_name`、local `model_version` 不进入 SDK 请求、429/5xx/deadline/非法 JSON 的安全 numeric code 映射及一次受限 repair：
+
+```bash
+HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable' \
+HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' \
+go test -tags=integration ./internal/modules/intelligence/application \
+  ./internal/modules/intelligence/transport/http -count=1
+
+go test ./internal/modules/intelligence/infrastructure/provider \
+  -run '^(TestOpenAIProviderEmbedUsesModelNameAndReturnsLocalVersion|TestOpenAIProviderMapsTransportFailuresWithoutLeakingProviderBodies|TestOpenAIProviderStructuredRequestUsesStrictSchemaAndBoundedRepair)$' \
+  -count=1
+
+HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable' \
+HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' \
+CGO_ENABLED=0 go test -tags=onnx ./... -count=1
+```
+
+代码基线完成后及 Task 7 文档收口后，完整 `make ci` 均已通过（包含 Swagger、vet、build、全量测试、schema/architecture/repository 校验与数据库 runtime verify）；下列最终门禁亦已通过并纳入归档提交前检查：
 
 ```bash
 HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable' \
 HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' \
 make ci
+
+HOTKEY_TEST_DSN='postgres:///hotkey_plan008_test?sslmode=disable' \
+go test -race -tags=integration ./internal/modules/intelligence/... \
+  ./internal/platform/database/... ./tests/architecture -count=1
+
 make clean
 git diff --check
 git status --short
 ```
 
+## 残余风险
+
+默认构建和 `CGO_ENABLED=0 -tags=onnx` 均已全树通过，缺少 native runtime/model/tokenizer/manifest 时会安全降级。受控主机上的完整签名 `onnx && cgo` bundle 推理矩阵尚未执行：当前没有可审计的 native runtime、模型、tokenizer 与 manifest hash 组合。因此它保留为上线前的显式运行环境验收项，不能被描述为已经通过，也不影响默认安全降级契约。
+
 ## 独立最终复核与发布决定
 
-非主要编写者必须审阅实现、Schema/record/catalog、真实升级/回退、SDK fixture、ONNX 默认降级、JSON Schema、并发锁/预算、向量 HNSW、API/OpenAPI、日志/指标脱敏、完整命令和干净 worktree。未解决 Critical/Important、未执行的必需 fixture 或未解释的 optional ONNX 结果均不得 accepted。
-
-结论 accepted 后才允许将 PRD/Plan-008 改为 `archived/done`，并在 README/PRD/Plan/Acceptance/Operations 索引同步完成状态。PLAN-009 仍须独立满足它自己的 accepted/approved/ready 门禁。
+非主要编写者已审阅实现、Schema/record/catalog、历史升级/回退、SDK fixture、ONNX 默认降级、JSON Schema、并发锁/预算、向量 HNSW、API/OpenAPI、日志/指标脱敏、完整命令及最终 worktree，结论为 `APPROVED`，没有未解决 Critical/Important 问题。PRD/Plan 与索引已同步为 `archived/done`；PLAN-009 仍须独立满足自己的 accepted/approved/ready 门禁。
 
 ## 变更记录
 
@@ -88,3 +130,6 @@ git status --short
 | v0.2 | 2026-07-17 | 补齐 task-type 拒绝、max/daily/overage、lease recovery、ONNX bundle 和固定 historical verifier 证据；尚未执行。 |
 | v0.3 | 2026-07-17 | 补齐 overage 封账、重试 lease 刷新、统一锁序与无 CGO ONNX 安全降级证据；尚未执行。 |
 | v0.4 | 2026-07-17 | 增加 create-only credential_ref 与 OpenAI model ID/local version 边界的验收证据；尚未执行。 |
+| v0.5 | 2026-07-17 | 记录 `b46f73b..fafede8` 的真实 fixture、负向测试、升级/HNSW/SDK/ONNX GREEN 证据；等待独立最终复核与最终门禁。 |
+| v0.6 | 2026-07-17 | 按独立复核补齐 ONNX 全树命令的 PostgreSQL/Redis fixture，并重新执行该矩阵；仍待最终复核。 |
+| v1.0 | 2026-07-17 | 最终 make ci、integration race 和带 fixture 的 ONNX 全树矩阵通过；独立最终复核 APPROVED，验收结论 accepted。 |
