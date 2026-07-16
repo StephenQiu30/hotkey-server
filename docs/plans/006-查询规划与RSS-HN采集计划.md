@@ -8,7 +8,7 @@ canonical_path: docs/plans/006-查询规划与RSS-HN采集计划.md
 status: accepted
 execution_status: in_progress
 review_status: approved
-version: v1.14
+version: v1.15
 owner: HotKey Server Team
 inputs:
   - docs/prd/006-查询规划与RSS-HN采集.md
@@ -114,12 +114,12 @@ depends_on: [PLAN-005]
 
 **Files：** Create `internal/modules/source/application/query_planner.go`, `internal/modules/source/application/query_planner_test.go`; Modify `internal/modules/source/domain/collection.go`.
 
-- [ ] **RED：** 添加相同 signature 归并、不同 source/window 不归并、排序稳定、override、空词项、paused/draft 排除和 target 不可变 config ID 的测试。
-- [ ] **运行 RED：** `go test ./internal/modules/source/application -run TestQueryPlanner -count=1` 必须因 planner 缺失失败。
-- [ ] **GREEN：** 实现纯函数 planner，只消费 Task 2 port 返回的值；使用 canonical signature 作为身份，不生成持久化 QueryPlan、动态 DSL 或外部请求。
-- [ ] **重构：** 将 query token 规范化与 request grouping 分开，错误保持 typed/可映射，不在日志包含规则全文。
-- [ ] **回归：** `go test -race ./internal/modules/source/application -run TestQueryPlanner -count=1`、`go vet ./internal/modules/source/application`。
-- [ ] **提交：** `git add internal/modules/source/application/query_planner.go internal/modules/source/application/query_planner_test.go internal/modules/source/domain/collection.go && git commit -m "feat: plan shared collection requests"`。
+- [x] **RED：** 已覆盖相同 signature 归并、不同 source/window 不归并、target 排序、override、空有效词项、target immutable config ID、词项顺序规范化，以及单请求的 query/language/region 篡改；初始实现缺失时因 `QueryPlanner` 未定义失败，复审新增三类篡改负例也在修复前稳定失败。
+- [x] **运行 RED：** 已运行 `go test ./internal/modules/source/application -run TestQueryPlanner -count=1`，先因 planner 缺失失败；整改时运行 `go test ./internal/modules/source/application -run TestQueryPlannerGroupRequestsRejectsDriftFromPublishedTarget -count=1`，三个篡改子用例在修复前均因错误地返回 nil 而失败。
+- [x] **GREEN：** 已实现纯函数 planner，只消费 Task 2 已发布 target 的 immutable 值；以已保存的 signature 作为身份，不生成持久化 QueryPlan、动态 DSL 或外部请求。`GroupRequests` 会按每个 target 重建预期请求并比对 query、语言、地区、source 与已保存 signature，不重算或替换 signature。
+- [x] **重构：** 已将词项 token 规范化、单 target 规划、per-target 回推校验和 request grouping 分离；错误保持 typed/可映射，不在日志包含规则全文。
+- [x] **回归：** 已运行 `go test ./internal/modules/source/application -run TestQueryPlanner -count=1`、`go test -race ./internal/modules/source/application -run TestQueryPlanner -count=1`、`go vet ./internal/modules/source/application` 与可丢弃 PostgreSQL/Redis 上的完整 `make ci`，均通过。
+- [x] **提交：** 已提交 `f1d8bd3 feat: plan shared collection requests` 与复审修复 `6c55aa4 fix: validate planned collection requests`。
 
 ## Task 4：RSS/Atom 条件请求 Connector
 
@@ -223,6 +223,7 @@ depends_on: [PLAN-005]
 - 2026-07-16：非主要编写者已审核 PLAN-006 v1.7 及其 Design-003/005/012、PRD-006 关联；无 Critical、Important 或 Minor。批准进入 `accepted/ready`，后续每个 Task 仍须测试先行与任务级复核。
 - 2026-07-16：非主要编写者复核 Task 1 提交 `8cf8d56..2d0059b` 及 Design-003 v2.9、PRD-006 v1.8、Plan-006 v1.10；无阻塞、重要或建议问题，确认同 run 复合外键和 PostgreSQL 双向跨 run 负例完整封堵。
 - 2026-07-16：非主要编写者复核 Task 2 提交 `9e21861..c9cf04c` 及 Plan-006 v1.13；先发现并确认 disabled/deleted SourceConnection 未被资格过滤，整改后复核通过。无 Critical、Important 或 Minor；确认 adapter 只为资格过滤 join `source_connections`，不投影 endpoint/config/credential。
+- 2026-07-16：非主要编写者复核 Task 3 提交 `f1d8bd3..6c55aa4`；先发现 `GroupRequests` 可接受与 immutable target 不一致的 query/language/region 外层请求，整改后按每个 target 回推预期值并复核通过。无 Critical、Important 或 Minor；确认保存的 signature 未被重算。
 
 ## 变更记录
 
@@ -243,3 +244,4 @@ depends_on: [PLAN-005]
 | v1.12 | 2026-07-16 | Task 2 实施前收紧文件边界：删除无消费者的 Monitor domain 端口变更，保持 Source 拥有 published target reader 契约。 |
 | v1.13 | 2026-07-16 | Task 2 复审补齐 SourceConnection 启用/归档资格谓词，明确 adapter 仅为过滤 join 该表且不投影敏感字段。 |
 | v1.14 | 2026-07-16 | 记录 Task 2 的两阶段 RED、GREEN、完整回归、提交与整改复审通过证据。 |
+| v1.15 | 2026-07-16 | 记录 Task 3 的 RED/GREEN、完整回归、query/locale/region 篡改整改及独立复核通过证据。 |
