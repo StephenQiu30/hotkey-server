@@ -30,6 +30,10 @@ downstream:
 
 本规范基于 [stephen-codex](https://github.com/StephenQiu30/stephen-codex/tree/66f1fadc4999c7bcd646e25dddff5aad67215007/docs) 文档骨架，并按 HotKey Server 的模块化单体、后端边界、完整 Schema 和 OpenAPI 事实源进行了项目化调整。
 
+## 当前交付状态
+
+目标设计不能代替当前实现状态。任务进度只在 [PRD 索引](prd/README.md) 和 [Plan 索引](plans/README.md) 维护：001–005 已完成并由 [Acceptance](acceptance/README.md) 保存长期证据；006–017 仍处于 `review` / `backlog`。本地启动、GitHub CI、发布和故障处置等可重复运行流程归入 [Operations](operations/README.md)。
+
 ## 文档层级
 
 | 目录 | 回答的问题 | 内容 |
@@ -38,7 +42,7 @@ downstream:
 | [prd](prd/README.md) | 任务必须交付什么 | 目标、范围、非目标、功能要求和首版验收门禁 |
 | [plans](plans/README.md) | 任务具体如何执行 | 开工条件、文件清单、步骤、验证命令和提交边界 |
 | [acceptance](acceptance/README.md) | 如何证明任务完成 | 红绿证据、测试记录、验收结论和残余风险 |
-| [operations](operations/README.md) | 如何发布与运行 | Git/PR、发布、部署、运行、回滚和故障手册 |
+| [operations](operations/README.md) | 如何发布与运行 | Git/PR、GitHub CI、发布、部署、运行、回滚和故障手册 |
 
 ## 必需 frontmatter
 

@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Quality gate
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: hotkey_test
+          POSTGRES_USER: hotkey
+          POSTGRES_PASSWORD: hotkey
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hotkey -d hotkey_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      HOTKEY_TEST_DSN: postgres://hotkey:hotkey@localhost:5432/hotkey_test?sslmode=disable
+      HOTKEY_TEST_REDIS_URL: redis://127.0.0.1:6379/15
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run repository quality gate
+        run: make ci

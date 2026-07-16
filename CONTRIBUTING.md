@@ -1,6 +1,6 @@
 # Contributing
 
-感谢参与 HotKey Server。代码、数据库迁移、测试和设计文档必须保持一致，不接受只修改其中一层的功能提交。
+感谢参与 HotKey Server。代码、数据库结构、测试和设计文档必须保持一致，不接受只修改其中一层的功能提交。
 
 ## 开发原则
 
@@ -25,6 +25,17 @@ make validate
 git diff --check
 ```
 
+涉及 Go 代码、Schema、OpenAPI、依赖或 CI 时，必须复现完整质量门禁。`HOTKEY_TEST_DSN` 必须是可丢弃且具备 `CREATE DATABASE` / `DROP DATABASE` 权限的 PostgreSQL URL；认证测试还需要独立的 Redis DB：
+
+```bash
+HOTKEY_TEST_DSN='postgres://USER@localhost:5432/hotkey_test?sslmode=disable' \
+HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' \
+make ci
+make clean
+```
+
+GitHub Actions 在推送到 `main` 和面向 `main` 的 Pull Request 中执行同一个 `make ci` 门禁。工作流、服务依赖或该命令的前置条件变更时，必须同步更新 [CI 运维手册](docs/operations/001-本地与GitHub%20CI质量门禁.md)、README 和本文档。
+
 推荐按职责拆分提交：
 
 - `test:` 测试、fixture 和验收门禁
@@ -33,4 +44,4 @@ git diff --check
 - `docs:` 设计和使用说明
 - `chore:` 工具链与维护配置
 
-数据库结构只通过 `db/migrations/` 中的 Goose SQL Migration 修改。API 契约变更必须同步 OpenAPI、Transport 测试和相关设计文档。
+数据库结构只通过完整 `db/schema.sql` 修改；不得引入 `db/migrations/`、Goose 或 GORM AutoMigrate。API 契约变更必须同步 OpenAPI、Transport 测试和相关设计文档。

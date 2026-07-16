@@ -47,4 +47,4 @@ Agent-generated:
 - [ ] Implementation is minimal
 - [ ] No unrelated changes
 - [ ] Agent code reviewed
-- [ ] CI passed
+- [ ] GitHub Actions CI passed
