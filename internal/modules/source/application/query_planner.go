@@ -43,7 +43,7 @@ func (QueryPlanner) Plan(target domain.PublishedCollectionTarget, windowStart, w
 // GroupRequests keeps the request identity fixed at source/signature/window.
 // Locale and query text are already represented by the published signature;
 // if corrupted inputs disagree they are rejected rather than silently merged.
-func (QueryPlanner) GroupRequests(requests []domain.CollectionRequest) ([]domain.CollectionRequest, error) {
+func (planner QueryPlanner) GroupRequests(requests []domain.CollectionRequest) ([]domain.CollectionRequest, error) {
 	if len(requests) == 0 {
 		return []domain.CollectionRequest{}, nil
 	}
@@ -59,6 +59,9 @@ func (QueryPlanner) GroupRequests(requests []domain.CollectionRequest) ([]domain
 		request.Languages = append([]string(nil), request.Languages...)
 		request.Regions = append([]string(nil), request.Regions...)
 		request.Targets = cloneCollectionTargets(request.Targets)
+		if err := planner.validateRequestMatchesPublishedTargets(request); err != nil {
+			return nil, err
+		}
 		ordered = append(ordered, request)
 	}
 	sort.Slice(ordered, func(i, j int) bool { return collectionRequestLess(ordered[i], ordered[j]) })
@@ -89,6 +92,19 @@ func (QueryPlanner) GroupRequests(requests []domain.CollectionRequest) ([]domain
 		}
 	}
 	return groups, nil
+}
+
+func (planner QueryPlanner) validateRequestMatchesPublishedTargets(request domain.CollectionRequest) error {
+	for _, target := range request.Targets {
+		expected, err := planner.Plan(target, request.WindowStart, request.WindowEnd)
+		if err != nil {
+			return err
+		}
+		if request.SourceConnectionID != expected.SourceConnectionID || request.QuerySignature != expected.QuerySignature || request.Query != expected.Query || !reflect.DeepEqual(request.Languages, expected.Languages) || !reflect.DeepEqual(request.Regions, expected.Regions) {
+			return invalidCollectionPlan(fmt.Errorf("collection request differs from its published target"))
+		}
+	}
+	return nil
 }
 
 func queryFromTerms(terms []domain.CollectionTerm) string {

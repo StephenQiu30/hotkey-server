@@ -115,6 +115,36 @@ func TestQueryPlannerGroupRequestsUsesPublishedIdentityAndStableTargetOrder(t *t
 	}
 }
 
+func TestQueryPlannerGroupRequestsRejectsDriftFromPublishedTarget(t *testing.T) {
+	t.Parallel()
+
+	planner := QueryPlanner{}
+	windowStart := time.Date(2026, time.July, 16, 8, 0, 0, 0, time.UTC)
+	request, err := planner.Plan(plannerTarget(20, 200, 2, strings.Repeat("a", 64)), windowStart, windowStart.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("Plan(): %v", err)
+	}
+	for _, mutate := range []struct {
+		name  string
+		apply func(*domain.CollectionRequest)
+	}{
+		{"query", func(request *domain.CollectionRequest) { request.Query = "different query" }},
+		{"languages", func(request *domain.CollectionRequest) { request.Languages = []string{"fr"} }},
+		{"regions", func(request *domain.CollectionRequest) { request.Regions = []string{"US"} }},
+	} {
+		t.Run(mutate.name, func(t *testing.T) {
+			candidate := request
+			candidate.Languages = append([]string(nil), request.Languages...)
+			candidate.Regions = append([]string(nil), request.Regions...)
+			candidate.Targets = append([]domain.PublishedCollectionTarget(nil), request.Targets...)
+			mutate.apply(&candidate)
+			if _, err := planner.GroupRequests([]domain.CollectionRequest{candidate}); err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorPermanent {
+				t.Fatalf("GroupRequests(%s drift) error = %v, class = %q; want permanent error", mutate.name, err, domain.ClassifyCollectionError(err))
+			}
+		})
+	}
+}
+
 func plannerTarget(monitorSourceID, configVersionID, sourceConnectionID int64, signature string) domain.PublishedCollectionTarget {
 	return domain.PublishedCollectionTarget{
 		MonitorSourceID: monitorSourceID, MonitorConfigVersionID: configVersionID, SourceConnectionID: sourceConnectionID,
