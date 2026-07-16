@@ -45,6 +45,15 @@ type collectionRepositoryFake struct{}
 func (*collectionRepositoryFake) CreateOrReuseRun(context.Context, CollectionRequest) (CollectionRun, bool, error) {
 	return CollectionRun{}, false, nil
 }
+func (*collectionRepositoryFake) StartRun(context.Context, int64) (CollectionRun, bool, error) {
+	return CollectionRun{}, false, nil
+}
+func (*collectionRepositoryFake) PersistSuccess(context.Context, CollectionRunSuccess) (CollectionRun, error) {
+	return CollectionRun{}, nil
+}
+func (*collectionRepositoryFake) PersistFailure(context.Context, CollectionRunFailure) (CollectionRun, error) {
+	return CollectionRun{}, nil
+}
 
 type publishedCollectionTargetReaderFake struct{}
 

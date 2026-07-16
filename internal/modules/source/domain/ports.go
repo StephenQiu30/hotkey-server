@@ -128,4 +128,14 @@ type PublishedCollectionTargetReader interface {
 // Task 6 adds its transactional write operations beside the implementation.
 type CollectionRepository interface {
 	CreateOrReuseRun(context.Context, CollectionRequest) (CollectionRun, bool, error)
+	StartRun(context.Context, int64) (CollectionRun, bool, error)
+	PersistSuccess(context.Context, CollectionRunSuccess) (CollectionRun, error)
+	PersistFailure(context.Context, CollectionRunFailure) (CollectionRun, error)
+}
+
+// CollectionConnectorRegistry resolves a connector only from the Source-owned
+// connection record. Callers never select an endpoint, credential, or a
+// transport implementation from collection request input.
+type CollectionConnectorRegistry interface {
+	Resolve(context.Context, SourceConnection) (Connector, error)
 }

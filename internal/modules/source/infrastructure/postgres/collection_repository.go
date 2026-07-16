@@ -1,0 +1,518 @@
+package postgres
+
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"sort"
+	"time"
+
+	"github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
+)
+
+// CollectionRepository owns Source's collection run, capture and checkpoint
+// tables. It deliberately has no Monitor joins: immutable target inputs are
+// supplied by Source's PublishedCollectionTargetReader port.
+type CollectionRepository struct{ runtime *database.Runtime }
+
+var _ domain.CollectionRepository = (*CollectionRepository)(nil)
+
+func NewCollectionRepository(runtime *database.Runtime) *CollectionRepository {
+	return &CollectionRepository{runtime: runtime}
+}
+
+func (repository *CollectionRepository) CreateOrReuseRun(ctx context.Context, request domain.CollectionRequest) (domain.CollectionRun, bool, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return domain.CollectionRun{}, false, sharedrepository.ErrUnavailable
+	}
+	if err := request.Validate(); err != nil {
+		return domain.CollectionRun{}, false, fmt.Errorf("%w: collection request: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	var run domain.CollectionRun
+	created := false
+	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+		requestCursor, etag, lastModified := initialRequestState(request.Targets)
+		candidate, err := scanCollectionRun(transaction.SQL.QueryRowContext(ctx, `
+INSERT INTO collection_runs
+    (source_connection_id, query_signature, request_cursor, etag, last_modified,
+     window_start, window_end, trigger_type, scheduled_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, 'schedule', now())
+ON CONFLICT (source_connection_id, query_signature, window_start, window_end) DO NOTHING
+RETURNING `+collectionRunColumns,
+			request.SourceConnectionID, request.QuerySignature, nullableString(requestCursor), nullableString(etag), nullableString(lastModified),
+			request.WindowStart.UTC(), request.WindowEnd.UTC()))
+		if err == nil {
+			run = candidate
+			created = true
+			for _, target := range sortedCollectionTargets(request.Targets) {
+				if _, err := transaction.SQL.ExecContext(ctx, `
+INSERT INTO collection_run_targets
+    (collection_run_id, monitor_source_id, monitor_config_version_id)
+VALUES ($1, $2, $3)`, run.ID, target.MonitorSourceID, target.MonitorConfigVersionID); err != nil {
+					return sharedrepository.MapError(err)
+				}
+			}
+			return nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return sharedrepository.MapError(err)
+		}
+		run, err = scanCollectionRun(transaction.SQL.QueryRowContext(ctx, `
+SELECT `+collectionRunColumns+`
+FROM collection_runs
+WHERE source_connection_id = $1 AND query_signature = $2 AND window_start = $3 AND window_end = $4`,
+			request.SourceConnectionID, request.QuerySignature, request.WindowStart.UTC(), request.WindowEnd.UTC()))
+		if err != nil {
+			return sharedrepository.MapError(err)
+		}
+		return nil
+	})
+	if err != nil {
+		return domain.CollectionRun{}, false, err
+	}
+	return run, created, nil
+}
+
+// StartRun atomically claims a newly-created run before the application
+// starts I/O. A caller that observes an existing running or completed run
+// must reuse its durable state instead of issuing another upstream request.
+func (repository *CollectionRepository) StartRun(ctx context.Context, runID int64) (domain.CollectionRun, bool, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return domain.CollectionRun{}, false, sharedrepository.ErrUnavailable
+	}
+	if runID <= 0 {
+		return domain.CollectionRun{}, false, fmt.Errorf("%w: collection run id is required", sharedrepository.ErrInvalidInput)
+	}
+	var run domain.CollectionRun
+	started := false
+	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+		candidate, err := scanCollectionRun(transaction.SQL.QueryRowContext(ctx, `
+UPDATE collection_runs
+SET status = 'running', started_at = COALESCE(started_at, now()), updated_at = now()
+WHERE id = $1 AND status = 'queued'
+RETURNING `+collectionRunColumns, runID))
+		if err == nil {
+			run, started = candidate, true
+			return nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return sharedrepository.MapError(err)
+		}
+		run, err = scanCollectionRun(transaction.SQL.QueryRowContext(ctx, `SELECT `+collectionRunColumns+` FROM collection_runs WHERE id = $1`, runID))
+		if err != nil {
+			return sharedrepository.MapError(err)
+		}
+		return nil
+	})
+	if err != nil {
+		return domain.CollectionRun{}, false, err
+	}
+	return run, started, nil
+}
+
+// PersistSuccess makes captured source facts, per-target reconciliation and
+// target checkpoints durable in one PostgreSQL transaction. Checkpoints move
+// only after every captured item and target-item relation has been written.
+func (repository *CollectionRepository) PersistSuccess(ctx context.Context, success domain.CollectionRunSuccess) (domain.CollectionRun, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return domain.CollectionRun{}, sharedrepository.ErrUnavailable
+	}
+	if success.RunID <= 0 || len(success.Targets) == 0 || success.CompletedAt.IsZero() {
+		return domain.CollectionRun{}, fmt.Errorf("%w: collection success is incomplete", sharedrepository.ErrInvalidInput)
+	}
+	var completed domain.CollectionRun
+	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+		run, err := collectionRunForUpdate(ctx, transaction, success.RunID)
+		if err != nil {
+			return err
+		}
+		if run.Status == domain.CollectionRunSucceeded {
+			completed = run
+			return nil
+		}
+		if run.Status != domain.CollectionRunRunning {
+			return fmt.Errorf("%w: collection run is not running", sharedrepository.ErrConflict)
+		}
+		targets, err := collectionTargetsForUpdate(ctx, transaction, success.RunID, success.Targets)
+		if err != nil {
+			return err
+		}
+		itemIDs, err := repository.persistCapturedItems(ctx, transaction, success.RunID, success.Items)
+		if err != nil {
+			return err
+		}
+		completedAt := success.CompletedAt.UTC()
+		candidateCount := int64(len(itemIDs))
+		succeededTargets := 0
+		for index, target := range targets {
+			savepoint := fmt.Sprintf("collection_target_%d", index)
+			if _, err := transaction.SQL.ExecContext(ctx, "SAVEPOINT "+savepoint); err != nil {
+				return sharedrepository.MapError(err)
+			}
+			err := persistTargetSuccess(ctx, transaction, success.RunID, target, itemIDs, candidateCount, success.Result, run, completedAt)
+			if err == nil {
+				if _, releaseErr := transaction.SQL.ExecContext(ctx, "RELEASE SAVEPOINT "+savepoint); releaseErr != nil {
+					return sharedrepository.MapError(releaseErr)
+				}
+				succeededTargets++
+				continue
+			}
+			if _, rollbackErr := transaction.SQL.ExecContext(ctx, "ROLLBACK TO SAVEPOINT "+savepoint); rollbackErr != nil {
+				return sharedrepository.MapError(rollbackErr)
+			}
+			if _, releaseErr := transaction.SQL.ExecContext(ctx, "RELEASE SAVEPOINT "+savepoint); releaseErr != nil {
+				return sharedrepository.MapError(releaseErr)
+			}
+			if !errors.Is(err, sharedrepository.ErrConflict) {
+				return err
+			}
+			if failureErr := persistTargetCaptureFailure(ctx, transaction, success.RunID, target, itemIDs, candidateCount, len(success.Result.Diagnostics)); failureErr != nil {
+				return failureErr
+			}
+		}
+		nextCursor := firstNonEmpty(success.Result.NextCursor, run.RequestCursor)
+		etag := firstNonEmpty(success.Result.ETag, run.ETag)
+		lastModified := firstNonEmpty(success.Result.LastModified, run.LastModified)
+		status := domain.CollectionRunSucceeded
+		var errorCode any
+		acceptedCount := candidateCount
+		if succeededTargets == 0 {
+			status = domain.CollectionRunFailed
+			errorCode = "target_capture_failed"
+			acceptedCount = 0
+		}
+		completed, err = scanCollectionRun(transaction.SQL.QueryRowContext(ctx, `
+UPDATE collection_runs
+SET status = $1, next_cursor = $2, etag = $3, last_modified = $4,
+    retry_after = NULL, page_count = page_count + 1, finished_at = $5,
+    candidate_count = $6, accepted_count = $7, rejected_count = $8,
+    error_code = $9, updated_at = now()
+WHERE id = $10
+RETURNING `+collectionRunColumns,
+			string(status), nullableString(nextCursor), nullableString(etag), nullableString(lastModified), completedAt,
+			candidateCount, acceptedCount, int64(len(success.Result.Diagnostics)), errorCode, success.RunID))
+		if err != nil {
+			return sharedrepository.MapError(err)
+		}
+		return nil
+	})
+	if err != nil {
+		return domain.CollectionRun{}, err
+	}
+	return completed, nil
+}
+
+// PersistFailure retains retry metadata and target failure state while leaving
+// the successful cursor untouched. It is deliberately a separate transaction
+// from Fetch and from a failed success write, so no partial capture can move a
+// checkpoint forward.
+func (repository *CollectionRepository) PersistFailure(ctx context.Context, failure domain.CollectionRunFailure) (domain.CollectionRun, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return domain.CollectionRun{}, sharedrepository.ErrUnavailable
+	}
+	if failure.RunID <= 0 || len(failure.Targets) == 0 || failure.CompletedAt.IsZero() || !failure.ErrorKind.Valid() {
+		return domain.CollectionRun{}, fmt.Errorf("%w: collection failure is incomplete", sharedrepository.ErrInvalidInput)
+	}
+	var failed domain.CollectionRun
+	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+		run, err := collectionRunForUpdate(ctx, transaction, failure.RunID)
+		if err != nil {
+			return err
+		}
+		if run.Status != domain.CollectionRunRunning {
+			return fmt.Errorf("%w: collection run is not running", sharedrepository.ErrConflict)
+		}
+		targets, err := collectionTargetsForUpdate(ctx, transaction, failure.RunID, failure.Targets)
+		if err != nil {
+			return err
+		}
+		completedAt := failure.CompletedAt.UTC()
+		for _, target := range targets {
+			if _, err := transaction.SQL.ExecContext(ctx, `
+UPDATE collection_run_targets
+SET target_status = 'failed', error_code = $1, updated_at = now()
+WHERE id = $2 AND collection_run_id = $3`, string(failure.ErrorKind), target.ID, failure.RunID); err != nil {
+				return sharedrepository.MapError(err)
+			}
+			if err := failCheckpoint(ctx, transaction, target.PublishedCollectionTarget, failure.Result.RateLimit.RetryAfter, completedAt); err != nil {
+				return err
+			}
+		}
+		failed, err = scanCollectionRun(transaction.SQL.QueryRowContext(ctx, `
+UPDATE collection_runs
+SET status = 'failed', retry_after = $1, finished_at = $2, error_code = $3,
+    updated_at = now()
+WHERE id = $4
+RETURNING `+collectionRunColumns,
+			failure.Result.RateLimit.RetryAfter, completedAt, string(failure.ErrorKind), failure.RunID))
+		if err != nil {
+			return sharedrepository.MapError(err)
+		}
+		return nil
+	})
+	if err != nil {
+		return domain.CollectionRun{}, err
+	}
+	return failed, nil
+}
+
+type collectionPersistedTarget struct {
+	domain.PublishedCollectionTarget
+	ID int64
+}
+
+func collectionRunForUpdate(ctx context.Context, transaction database.Transaction, runID int64) (domain.CollectionRun, error) {
+	run, err := scanCollectionRun(transaction.SQL.QueryRowContext(ctx, `SELECT `+collectionRunColumns+` FROM collection_runs WHERE id = $1 FOR UPDATE`, runID))
+	if err != nil {
+		return domain.CollectionRun{}, sharedrepository.MapError(err)
+	}
+	return run, nil
+}
+
+func collectionTargetsForUpdate(ctx context.Context, transaction database.Transaction, runID int64, supplied []domain.PublishedCollectionTarget) ([]collectionPersistedTarget, error) {
+	byMonitorSource := make(map[int64]domain.PublishedCollectionTarget, len(supplied))
+	for _, target := range supplied {
+		if err := target.Validate(); err != nil {
+			return nil, fmt.Errorf("%w: collection target: %v", sharedrepository.ErrInvalidInput, err)
+		}
+		if _, found := byMonitorSource[target.MonitorSourceID]; found {
+			return nil, fmt.Errorf("%w: duplicate collection target", sharedrepository.ErrInvalidInput)
+		}
+		byMonitorSource[target.MonitorSourceID] = target
+	}
+	rows, err := transaction.SQL.QueryContext(ctx, `
+SELECT id, monitor_source_id, monitor_config_version_id
+FROM collection_run_targets
+WHERE collection_run_id = $1
+ORDER BY monitor_source_id ASC
+FOR UPDATE`, runID)
+	if err != nil {
+		return nil, sharedrepository.MapError(err)
+	}
+	defer rows.Close()
+	targets := make([]collectionPersistedTarget, 0, len(supplied))
+	for rows.Next() {
+		var id, monitorSourceID, configVersionID int64
+		if err := rows.Scan(&id, &monitorSourceID, &configVersionID); err != nil {
+			return nil, sharedrepository.MapError(err)
+		}
+		target, found := byMonitorSource[monitorSourceID]
+		if !found || target.MonitorConfigVersionID != configVersionID {
+			return nil, fmt.Errorf("%w: collection run target does not match immutable request", sharedrepository.ErrConflict)
+		}
+		targets = append(targets, collectionPersistedTarget{PublishedCollectionTarget: target, ID: id})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, sharedrepository.MapError(err)
+	}
+	if len(targets) != len(supplied) {
+		return nil, fmt.Errorf("%w: collection run target set changed", sharedrepository.ErrConflict)
+	}
+	return targets, nil
+}
+
+func (repository *CollectionRepository) persistCapturedItems(ctx context.Context, transaction database.Transaction, runID int64, items []domain.CapturedItem) ([]int64, error) {
+	itemIDs := make([]int64, 0, len(items))
+	seen := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		payload, hash, err := encodedCapturedItem(item)
+		if err != nil {
+			return nil, fmt.Errorf("%w: captured item: %v", sharedrepository.ErrInvalidInput, err)
+		}
+		if _, found := seen[item.ExternalID]; found {
+			continue
+		}
+		seen[item.ExternalID] = struct{}{}
+		var itemID int64
+		if err := transaction.SQL.QueryRowContext(ctx, `
+INSERT INTO collection_run_items
+    (run_id, source_code, external_id, content_type, captured_item_version,
+     captured_item, payload_hash, raw_payload_disposition, outcome, observed_at)
+VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, 'captured', $9)
+ON CONFLICT (run_id, external_id) DO UPDATE
+SET external_id = collection_run_items.external_id
+RETURNING id`,
+			runID, item.SourceCode, item.ExternalID, item.ContentType, item.Version, string(payload), hash,
+			string(item.RawPayloadDisposition), item.ObservedAt.UTC()).Scan(&itemID); err != nil {
+			return nil, sharedrepository.MapError(err)
+		}
+		itemIDs = append(itemIDs, itemID)
+	}
+	return itemIDs, nil
+}
+
+func persistTargetSuccess(ctx context.Context, transaction database.Transaction, runID int64, target collectionPersistedTarget, itemIDs []int64, candidateCount int64, result domain.FetchResult, run domain.CollectionRun, completedAt time.Time) error {
+	for _, itemID := range itemIDs {
+		if _, err := transaction.SQL.ExecContext(ctx, `
+INSERT INTO collection_run_target_items
+    (collection_run_id, collection_run_target_id, collection_run_item_id, outcome)
+VALUES ($1, $2, $3, 'captured')
+ON CONFLICT (collection_run_target_id, collection_run_item_id) DO NOTHING`, runID, target.ID, itemID); err != nil {
+			return sharedrepository.MapError(err)
+		}
+	}
+	if _, err := transaction.SQL.ExecContext(ctx, `
+UPDATE collection_run_targets
+SET target_status = 'succeeded', candidate_count = $1, accepted_count = $1,
+    rejected_count = $2, error_code = NULL, updated_at = now()
+WHERE id = $3 AND collection_run_id = $4`, candidateCount, int64(len(result.Diagnostics)), target.ID, runID); err != nil {
+		return sharedrepository.MapError(err)
+	}
+	return advanceCheckpoint(ctx, transaction, target.PublishedCollectionTarget, runID, run, result, completedAt)
+}
+
+// A checkpoint conflict is target-local: the source item is still durable and
+// another target can reconcile it safely. Failed reconciliation is recorded
+// explicitly so a later retry can identify exactly which target was skipped.
+func persistTargetCaptureFailure(ctx context.Context, transaction database.Transaction, runID int64, target collectionPersistedTarget, itemIDs []int64, candidateCount int64, diagnosticCount int) error {
+	for _, itemID := range itemIDs {
+		if _, err := transaction.SQL.ExecContext(ctx, `
+INSERT INTO collection_run_target_items
+    (collection_run_id, collection_run_target_id, collection_run_item_id, outcome, reason_code)
+VALUES ($1, $2, $3, 'failed', 'checkpoint_conflict')
+ON CONFLICT (collection_run_target_id, collection_run_item_id) DO UPDATE
+SET outcome = 'failed', reason_code = 'checkpoint_conflict'`, runID, target.ID, itemID); err != nil {
+			return sharedrepository.MapError(err)
+		}
+	}
+	if _, err := transaction.SQL.ExecContext(ctx, `
+UPDATE collection_run_targets
+SET target_status = 'failed', candidate_count = $1, accepted_count = 0,
+    rejected_count = $2, error_code = 'checkpoint_conflict', updated_at = now()
+WHERE id = $3 AND collection_run_id = $4`, candidateCount, candidateCount+int64(diagnosticCount), target.ID, runID); err != nil {
+		return sharedrepository.MapError(err)
+	}
+	return nil
+}
+
+type capturedItemPayload struct {
+	Version               string                       `json:"version"`
+	SourceCode            string                       `json:"source_code"`
+	ExternalID            string                       `json:"external_id"`
+	ContentType           string                       `json:"content_type"`
+	Title                 string                       `json:"title"`
+	Body                  string                       `json:"body,omitempty"`
+	Language              string                       `json:"language,omitempty"`
+	URL                   string                       `json:"url,omitempty"`
+	Author                string                       `json:"author,omitempty"`
+	PublishedAt           *time.Time                   `json:"published_at,omitempty"`
+	ObservedAt            time.Time                    `json:"observed_at"`
+	Metrics               domain.SourceMetrics         `json:"metrics"`
+	RawPayloadDisposition domain.RawPayloadDisposition `json:"raw_payload_disposition"`
+}
+
+func encodedCapturedItem(item domain.CapturedItem) ([]byte, string, error) {
+	if item.Version != domain.CapturedItemVersionV1 || item.SourceCode == "" || item.ExternalID == "" || item.ContentType == "" || item.ObservedAt.IsZero() || !item.RawPayloadDisposition.Valid() {
+		return nil, "", errors.New("captured item is incomplete")
+	}
+	if err := item.Metrics.Validate(); err != nil {
+		return nil, "", err
+	}
+	payload, err := json.Marshal(capturedItemPayload{
+		Version: item.Version, SourceCode: item.SourceCode, ExternalID: item.ExternalID, ContentType: item.ContentType,
+		Title: item.Title, Body: item.Body, Language: item.Language, URL: item.URL, Author: item.Author,
+		PublishedAt: item.PublishedAt, ObservedAt: item.ObservedAt.UTC(), Metrics: item.Metrics,
+		RawPayloadDisposition: item.RawPayloadDisposition,
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	digest := sha256.Sum256(payload)
+	return payload, hex.EncodeToString(digest[:]), nil
+}
+
+func advanceCheckpoint(ctx context.Context, transaction database.Transaction, target domain.PublishedCollectionTarget, runID int64, run domain.CollectionRun, result domain.FetchResult, completedAt time.Time) error {
+	checkpoint := target.Checkpoint
+	nextCursor := firstNonEmpty(result.NextCursor, run.RequestCursor)
+	etag := firstNonEmpty(result.ETag, run.ETag)
+	lastModified := firstNonEmpty(result.LastModified, run.LastModified)
+	nextPollAt := completedAt.Add(target.CollectionInterval).UTC()
+	update, err := transaction.SQL.ExecContext(ctx, `
+UPDATE source_checkpoints
+SET cursor_value = $1, etag = $2, last_modified = $3, last_successful_run_id = $4,
+    last_fetched_at = $5, next_poll_at = $6, consecutive_failures = 0,
+    version = version + 1, updated_at = now()
+WHERE id = $7 AND monitor_source_id = $8 AND query_hash = $9 AND version = $10`,
+		nullableString(nextCursor), nullableString(etag), nullableString(lastModified), runID, completedAt, nextPollAt,
+		checkpoint.ID, target.MonitorSourceID, target.QuerySignature, checkpoint.Version)
+	if err != nil {
+		return sharedrepository.MapError(err)
+	}
+	count, err := update.RowsAffected()
+	if err != nil {
+		return sharedrepository.MapError(err)
+	}
+	if count != 1 {
+		return fmt.Errorf("%w: collection checkpoint changed", sharedrepository.ErrConflict)
+	}
+	return nil
+}
+
+func failCheckpoint(ctx context.Context, transaction database.Transaction, target domain.PublishedCollectionTarget, retryAfter *time.Time, completedAt time.Time) error {
+	checkpoint := target.Checkpoint
+	nextPollAt := completedAt.Add(target.CollectionInterval).UTC()
+	if retryAfter != nil && retryAfter.After(completedAt) {
+		nextPollAt = retryAfter.UTC()
+	}
+	update, err := transaction.SQL.ExecContext(ctx, `
+UPDATE source_checkpoints
+SET next_poll_at = $1, consecutive_failures = consecutive_failures + 1,
+    version = version + 1, updated_at = now()
+WHERE id = $2 AND monitor_source_id = $3 AND query_hash = $4 AND version = $5`,
+		nextPollAt, checkpoint.ID, target.MonitorSourceID, target.QuerySignature, checkpoint.Version)
+	if err != nil {
+		return sharedrepository.MapError(err)
+	}
+	count, err := update.RowsAffected()
+	if err != nil {
+		return sharedrepository.MapError(err)
+	}
+	if count != 1 {
+		return fmt.Errorf("%w: collection checkpoint changed", sharedrepository.ErrConflict)
+	}
+	return nil
+}
+
+func firstNonEmpty(value, fallback string) string {
+	if value != "" {
+		return value
+	}
+	return fallback
+}
+
+func (repository *CollectionRepository) withTransaction(ctx context.Context, fn func(context.Context, database.Transaction) error) error {
+	if transaction, found := database.TransactionFromContext(ctx); found {
+		return fn(ctx, transaction)
+	}
+	return repository.runtime.WithinTransaction(ctx, fn)
+}
+
+func initialRequestState(targets []domain.PublishedCollectionTarget) (string, string, string) {
+	ordered := sortedCollectionTargets(targets)
+	if len(ordered) == 0 {
+		return "", "", ""
+	}
+	checkpoint := ordered[0].Checkpoint
+	return checkpoint.CursorValue, checkpoint.ETag, checkpoint.LastModified
+}
+
+func sortedCollectionTargets(targets []domain.PublishedCollectionTarget) []domain.PublishedCollectionTarget {
+	ordered := append([]domain.PublishedCollectionTarget(nil), targets...)
+	sort.Slice(ordered, func(left, right int) bool {
+		return ordered[left].MonitorSourceID < ordered[right].MonitorSourceID
+	})
+	return ordered
+}
+
+func nullableString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
+}

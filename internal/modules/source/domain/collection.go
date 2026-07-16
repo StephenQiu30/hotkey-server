@@ -310,6 +310,27 @@ type CollectionTargetItem struct {
 	ReasonCode            string
 }
 
+// CollectionRunSuccess contains only already-captured safe items. The
+// application invokes CapturePolicy before creating this command, so Source
+// persistence never receives raw upstream response bytes.
+type CollectionRunSuccess struct {
+	RunID       int64
+	Targets     []PublishedCollectionTarget
+	Items       []CapturedItem
+	Result      FetchResult
+	CompletedAt time.Time
+}
+
+// CollectionRunFailure records a classified upstream failure without copying
+// transport error strings into durable collection facts.
+type CollectionRunFailure struct {
+	RunID       int64
+	Targets     []PublishedCollectionTarget
+	Result      FetchResult
+	ErrorKind   CollectionErrorKind
+	CompletedAt time.Time
+}
+
 type CollectionCheckpoint struct {
 	ID                  int64
 	Version             int64
