@@ -42,7 +42,7 @@ downstream:
 
 1. `ai_model_profiles.task_type` 的完整 Schema 与 Application 都只接受 `embedding` 和 `term_expansion` 两个任务类型。事件摘要、相关性复核、聚类、实体、Claim、知识提案、报告和任务调度均不属于本 PRD；它们必须由拥有 PRD 先扩展 Schema、静态 Schema 和测试后才可创建 profile。
 2. 第一个远程适配器是官方 `github.com/openai/openai-go/v3@v3.32.0`。生产请求只使用官方默认 HTTPS 端点；本任务不接受、保存或暴露自定义 Provider URL。
-3. 模型名不是代码默认值。管理员创建 profile 时显式提供 `model_name` 与不可变 `model_version`；Embedding profile 必须声明 `embedding_dimensions=1024`。实际 Provider 返回的向量长度、每个元素有限性和 profile 维度均须验证。
+3. 模型名不是代码默认值。管理员创建 profile 时显式提供 `model_name` 与不可变 `model_version`；Embedding profile 必须声明 `embedding_dimensions=1024`。对 OpenAI，`model_name` 是唯一写入官方 SDK `model` 请求字段、且必须与 SDK 响应 `model` 严格相等的 provider model ID；不相等即安全失败 `70000 ai_model_profile_invalid`。`model_version` 是本地不可变的语义/reuse 元数据，绝不伪造为 SDK 请求字段；adapter 仅在 model ID 已验证后将原请求的 `model_version` 回传给 Application。实际 Provider 返回的向量长度、每个元素有限性和 profile 维度均须验证。
 4. ONNX 只实现为 `onnx && cgo` build tag 下的可选本地 Embedding adapter，使用 `github.com/yalue/onnxruntime_go@v1.31.0`、`CGO_ENABLED=1`、`HOTKEY_ONNX_RUNTIME_LIBRARY`、`HOTKEY_ONNX_MODEL_PATH`、`HOTKEY_ONNX_TOKENIZER_PATH` 和 `HOTKEY_ONNX_MANIFEST_PATH`。manifest 固定 model/tokenizer SHA-256、profile model version、1024 dimensions、输入 tensor 名、`cls_l2` pooling、NFC 规范化和最大 token 数；adapter 校验四个 artifact 后才推理。默认构建或 `-tags=onnx` 但 `CGO_ENABLED=0` 时均不链接原生库；缺少 tag、CGO、库、模型、tokenizer 或 manifest 时只返回安全的“模型不可用”降级，不阻塞主链路。
 5. 凭据只支持 write-only 数据库引用 `env:OPENAI_API_KEY`。它只能由 `config.AI.OpenAIAPIKey` 解析；不得直接读取任意环境变量、不得返回该引用、不得记录 key、Prompt、完整 Content、Provider 原始响应或对象存储键。`.env` 是默认环境，`.env.prod` 仅在 `HOTKEY_ENV=production` 时加载。
 6. AI 请求和响应对象不写入 MinIO。本任务保留既有 `ai_runs.request_object_key` 与 `response_object_key` 为 `NULL`，只保存版本、哈希、受限结构化结果、稳定错误码、用量与耗时；后续要保存受控 payload 必须另立 PRD/Plan。
@@ -62,7 +62,7 @@ downstream:
 
 - `ai_model_profiles` 是业务配置。`provider` 仅允许 `openai` 和 `onnx`；`task_type` 首版仅允许 `embedding` 和 `term_expansion`；ONNX 只能用于 embedding，OpenAI 可用于两个任务。
 - `provider`、`model_name`、`model_version`、`credential_ref`、`embedding_dimensions` 和任务类型在创建后不可修改；语义变化必须 archive 原 profile 并创建新 profile，不能覆写旧向量空间或旧运行的出处。可修改项只有 `enabled`、`timeout_seconds`、`max_attempts`、`max_cost`、`daily_budget`、`fallback_priority`，且使用业务 `version` 乐观锁。
-- 管理 API 是 `/api/v1/ai/model-profiles` 的管理员专用 CRUD：`GET /`、`GET /:id`、`POST /`、`PATCH /:id`、`DELETE /:id`、`POST /:id/restore`。Create/Patch 请求可接受 `credential_ref`，但任何响应、审计详情、日志、指标和 OpenAPI example 均不得包含 `credential_ref`、API key、endpoint 或原始参数。
+- 管理 API 是 `/api/v1/ai/model-profiles` 的管理员专用 CRUD：`GET /`、`GET /:id`、`POST /`、`PATCH /:id`、`DELETE /:id`、`POST /:id/restore`。仅 Create 请求可接受 write-only `credential_ref`；PATCH 出现该字段必须返回 `70000 ai_model_profile_invalid`，不得静默忽略或旋转凭据。任何响应、审计详情、日志、指标和 OpenAPI example 均不得包含 `credential_ref`、API key、endpoint 或原始参数。
 - profile 选择顺序固定为：任务类型匹配、未删除、enabled、credentials/build 可用、单次和当日预算可预留、`fallback_priority ASC, id ASC`。没有候选时返回可观测的降级结果而非 panic 或隐式默认模型。
 
 ### 3. 运行复用、重试与预算
@@ -77,7 +77,7 @@ downstream:
 
 ### 4. 向量空间与查询
 
-- 每个 Content、Monitor、Event、Topic 向量记录 profile、profile version、model version、输入哈希、`halfvec(1024)` 和 `active`。长度不是 1024、存在 `NaN`/`Inf` 或 Provider model version 与 profile 不同的向量必须在写库前被拒绝。
+- 每个 Content、Monitor、Event、Topic 向量记录 profile、profile version、model version、输入哈希、`halfvec(1024)` 和 `active`。长度不是 1024、存在 `NaN`/`Inf`、已验证的 Provider model ID 与 `model_name` 不同，或 Application 回传的本地 `model_version` 与 profile 不同的向量必须在写库前以 `70000` 拒绝。
 - 写入新版本在一个 PostgreSQL 事务内取得 `ai-embedding:<target-type>:<target-id>:<profile-id>` advisory lock，先停用同 target/profile 的旧 active 向量再插入新行；每张 embedding 表使用 partial unique index 保证同 target/profile 至多一条 active 行。
 - 近邻查询必须同时过滤 `active=true`、`model_profile_id` 和 `model_version`，使用余弦 `<=>`，且只将同一 profile/version 的结果交给下游。HNSW 只服务 active 集；验收须以 `EXPLAIN (COSTS OFF)` 证明 active 查询使用对应 `*_active_hnsw_idx`。
 - 模型升级不是 update。管理员先创建新 profile，后续 PLAN-009/010 以新 profile 批量重算并在完整覆盖后切换读取 profile；PLAN-008 不批量重算 Event/Topic，也不让新旧空间混合检索。
@@ -118,3 +118,4 @@ PRD-009 可以只依赖 `intelligence` 的公开 Application 端口取得同一 
 | v1.1 | 2026-07-17 | 补齐首个 SDK/ONNX 构建、最小凭据边界、稳定错误码、profile API、并发复用/预算、向量隔离、升级回退和可执行验收契约。 |
 | v1.2 | 2026-07-17 | 收紧任务类型；补齐 static structured request、ONNX bundle、max/daily/overage ledger 方程、worker lease 回收与固定历史 verifier。 |
 | v1.3 | 2026-07-17 | 统一 budget→run 锁序，定义 profile+UTC-day overage 封账、重试 lease 刷新和 `onnx && cgo` 双向 build tag。 |
+| v1.4 | 2026-07-17 | 收紧 credential_ref 为创建时只写；明确 OpenAI 的 model ID 校验与本地 model_version 元数据边界。 |

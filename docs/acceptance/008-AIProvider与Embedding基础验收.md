@@ -46,7 +46,7 @@ result: pending
 2. 第二个同 `reuse_key` 并发请求观察到 `70007 ai_run_in_progress`，Provider fixture 只收到一次调用。
 3. 每 profile 的 max_cost 必填；reserve 必须满足 `overage_blocked=false` 且（daily 为 NULL 或 `settled+reserved+max<=daily`），失败/取消/lease recovery 释放 reservation。超额 settlement 记录真实 cost、标记 70002，并封锁同 profile+UTC 日后续 reserve；必须分别验证 NULL daily 和仍有余额的 daily，两者只在新 UTC 日自动解封。
 4. 1023、1025、`NaN`、`Inf` 向量被拒绝；不同 profile/model version 或 inactive 行不出现在近邻结果。
-5. 429、5xx、deadline、非法 JSON、第二次修复失败均映射为稳定 numeric code；响应、日志、指标与 OpenAPI 不含 key、credential_ref、Prompt、raw response、endpoint 或 object key。
+5. 429、5xx、deadline、非法 JSON、第二次修复失败均映射为稳定 numeric code；OpenAI fixture 必须验证 SDK `model` 与 profile `model_name` 精确一致，ID 不符返回 70000，local `model_version` 不写入 SDK 请求。仅 POST 可接收 write-only `credential_ref`，PATCH 带该字段返回 70000；响应、日志、指标与 OpenAPI 不含 key、credential_ref、Prompt、raw response、endpoint 或 object key。
 6. 未认证、非管理员、stale version、语义 profile PATCH 的 HTTP Result 与 OpenAPI 契约都失败且安全。
 7. queued/running/retry_wait crash 后 worker-only lease reclaimer 标记 70009 并释放预算；未执行准备步骤的 legacy `pg_restore` 按手册失败，准备后恢复并用固定 `53d7f01` detached-worktree verifier 通过。
 
@@ -87,3 +87,4 @@ git status --short
 | v0.1 | 2026-07-17 | 创建实施前验收模板，固定 Provider fixture、预算/并发、向量/HNSW、upgrade/rollback、HTTP/OpenAPI 和独立复核证据；尚未执行。 |
 | v0.2 | 2026-07-17 | 补齐 task-type 拒绝、max/daily/overage、lease recovery、ONNX bundle 和固定 historical verifier 证据；尚未执行。 |
 | v0.3 | 2026-07-17 | 补齐 overage 封账、重试 lease 刷新、统一锁序与无 CGO ONNX 安全降级证据；尚未执行。 |
+| v0.4 | 2026-07-17 | 增加 create-only credential_ref 与 OpenAI model ID/local version 边界的验收证据；尚未执行。 |
