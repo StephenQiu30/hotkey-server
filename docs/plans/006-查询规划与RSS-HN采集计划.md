@@ -8,7 +8,7 @@ canonical_path: docs/plans/006-查询规划与RSS-HN采集计划.md
 status: accepted
 execution_status: in_progress
 review_status: approved
-version: v1.13
+version: v1.14
 owner: HotKey Server Team
 inputs:
   - docs/prd/006-查询规划与RSS-HN采集.md
@@ -97,12 +97,12 @@ depends_on: [PLAN-005]
 
 **Files：** Create `internal/modules/source/domain/{collection,connector,collection_errors}.go`, `internal/modules/source/domain/{collection,connector,collection_errors}_test.go`, `internal/modules/monitor/infrastructure/postgres/collection_target_reader.go`, `internal/modules/monitor/infrastructure/postgres/collection_target_reader_test.go`; Modify `internal/modules/source/domain/ports.go`, `tests/architecture/platform_identity_boundary_test.go`. Monitor domain 不新增只为传递 Source 契约而存在的空端口；Source 保持 Reader 端口所有权，Monitor PostgreSQL adapter 直接实现它。
 
-- [ ] **RED：** 覆盖 Fetch request 必填 window/limit、SourceItem stable external ID、CapturedItem body/metrics 脱敏和 version、raw disposition、错误分类、target 与 published config 归属、draft/paused/disabled source 排除，以及 source 不直接查询 Monitor 表的架构断言。
-- [ ] **运行 RED：** `go test ./internal/modules/source/domain ./internal/modules/monitor/infrastructure/postgres ./tests/architecture -run 'TestCollection|TestPublishedCollection|TestSource' -count=1` 必须因契约或 adapter 缺失失败。
-- [ ] **GREEN：** 定义纯 domain values/ports；Monitor PostgreSQL adapter 只读取 active published Monitor、published config、enabled MonitorSource、enabled/non-deleted SourceConnection 的资格谓词和安全的 SourceConnection ID/签名/词项/locale/interval/checkpoint，不创建或更新任何事实，也不投影 endpoint/config/credential。
-- [ ] **重构：** 让 Source application 依赖自己的 port interface，Bootstrap 才连接 Monitor adapter；禁止 Source infrastructure 导入 Monitor PostgreSQL record。
-- [ ] **回归：** `go test -race ./internal/modules/source/domain ./internal/modules/monitor/infrastructure/postgres ./tests/architecture -count=1`。
-- [ ] **提交：** `git add internal/modules/source/domain internal/modules/monitor/domain internal/modules/monitor/infrastructure/postgres tests/architecture && git commit -m "feat: define collection source contracts"`。
+- [x] **RED：** 已覆盖 Fetch request 必填 window/limit、SourceItem stable external ID、CapturedItem body/metrics 脱敏和 version、raw disposition、错误分类、target 与 published config 归属、draft/paused/disabled association、disabled/deleted SourceConnection 排除，以及 Source 不直接查询 Monitor 表的架构断言；实现前因契约或 adapter 缺失失败，整改前也错误返回 disabled/deleted SourceConnection。
+- [x] **运行 RED：** 已使用可丢弃本地 PostgreSQL 运行 `HOTKEY_TEST_DSN='postgres:///hotkey_plan006_test?sslmode=disable' go test ./internal/modules/source/domain ./internal/modules/monitor/infrastructure/postgres ./tests/architecture -run 'TestCollection|TestPublishedCollection|TestSource' -count=1`，先因缺失契约/adapter 失败，再因两类 unavailable SourceConnection 负例失败，随后转绿。
+- [x] **GREEN：** 已定义纯 domain values/ports；Monitor PostgreSQL adapter 只读取 active published Monitor、published config、enabled MonitorSource、enabled/non-deleted SourceConnection 的资格谓词和安全的 SourceConnection ID/签名/词项/locale/interval/checkpoint，不创建或更新任何事实，也不投影 endpoint/config/credential。
+- [x] **重构：** Source 通过自己的 port interface 依赖 published targets；无消费者的 Monitor domain 空端口未创建，Source infrastructure 也不导入 Monitor PostgreSQL record。后续 Collection application 在实际消费该 port 时由 Bootstrap 装配 adapter。
+- [x] **回归：** 已在可丢弃本地 PostgreSQL 运行 `go test -race ./internal/modules/source/domain ./internal/modules/monitor/infrastructure/postgres ./tests/architecture -count=1` 与完整 `make ci`。
+- [x] **提交：** 已提交 `9e21861 feat: define collection source contracts` 与复审修复 `c9cf04c fix: filter unavailable collection sources`。
 
 ## Task 3：稳定查询规划与 shared request 归并
 
@@ -222,6 +222,7 @@ depends_on: [PLAN-005]
 
 - 2026-07-16：非主要编写者已审核 PLAN-006 v1.7 及其 Design-003/005/012、PRD-006 关联；无 Critical、Important 或 Minor。批准进入 `accepted/ready`，后续每个 Task 仍须测试先行与任务级复核。
 - 2026-07-16：非主要编写者复核 Task 1 提交 `8cf8d56..2d0059b` 及 Design-003 v2.9、PRD-006 v1.8、Plan-006 v1.10；无阻塞、重要或建议问题，确认同 run 复合外键和 PostgreSQL 双向跨 run 负例完整封堵。
+- 2026-07-16：非主要编写者复核 Task 2 提交 `9e21861..c9cf04c` 及 Plan-006 v1.13；先发现并确认 disabled/deleted SourceConnection 未被资格过滤，整改后复核通过。无 Critical、Important 或 Minor；确认 adapter 只为资格过滤 join `source_connections`，不投影 endpoint/config/credential。
 
 ## 变更记录
 
@@ -241,3 +242,4 @@ depends_on: [PLAN-005]
 | v1.11 | 2026-07-16 | 记录 Task 1 的 RED/GREEN、完整回归、提交与独立复核通过证据。 |
 | v1.12 | 2026-07-16 | Task 2 实施前收紧文件边界：删除无消费者的 Monitor domain 端口变更，保持 Source 拥有 published target reader 契约。 |
 | v1.13 | 2026-07-16 | Task 2 复审补齐 SourceConnection 启用/归档资格谓词，明确 adapter 仅为过滤 join 该表且不投影敏感字段。 |
+| v1.14 | 2026-07-16 | 记录 Task 2 的两阶段 RED、GREEN、完整回归、提交与整改复审通过证据。 |
