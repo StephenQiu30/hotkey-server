@@ -56,7 +56,7 @@ downstream:
 | [002](002-单一Schema与数据库平台.md) | 数据库运行时、事务与兼容性平台 | F0 | P0 | 001 | archived | done |
 | [003](003-HTTP契约安全与可观测基础.md) | HTTP 契约、安全与可观测基础 | F0 | P0 | 001, 002 | archived | done |
 | [004](004-身份认证会话与权限.md) | 身份、认证、会话与权限 | F0 | P0 | 002, 003 | archived | done |
-| [005](005-监控主题规则与来源配置.md) | 监控主题、规则与来源配置 | P0 | P0 | 002, 003, 004 | archived | done |
+| [005](005-监控主题规则与来源配置.md) | 监控主题、规则与来源配置 | P0 | P0 | 002, 003, 004 | accepted | ready |
 | [006](006-查询规划与RSS-HN采集.md) | 查询规划与 RSS/HN 采集 | P0 | P0 | 005 | review | backlog |
 | [007](007-内容标准化去重与MinIO证据.md) | 内容标准化、去重与 MinIO 证据 | P0 | P0 | 002, 006 | review | backlog |
 | [008](008-AIProvider与Embedding基础.md) | AI Provider 与 Embedding 基础 | P0 | P0 | 002, 007 | review | backlog |
