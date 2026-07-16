@@ -3,6 +3,10 @@
 // @description Public HTTP contract for the HotKey server.
 // @BasePath /
 // @schemes http https
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Use a database-backed access token as `Bearer {access_token}`.
 package main
 
 import (

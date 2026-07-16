@@ -11,12 +11,14 @@ import (
 	identityredis "github.com/StephenQiu30/hotkey-server/internal/modules/identity/infrastructure/redis"
 	identitysecurity "github.com/StephenQiu30/hotkey-server/internal/modules/identity/infrastructure/security"
 	identitysmtp "github.com/StephenQiu30/hotkey-server/internal/modules/identity/infrastructure/smtp"
+	identitytransport "github.com/StephenQiu30/hotkey-server/internal/modules/identity/transport/http"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/config"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
 	httptransport "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/observability"
 	sharedclock "github.com/StephenQiu30/hotkey-server/internal/shared/clock"
+	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
 	"go.uber.org/zap"
@@ -71,7 +73,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 		if usesDatabase {
 			apiOptions = append(apiOptions,
 				fx.Provide(newIdentityVerificationStore, newIdentityService, newIdentityAuthenticator),
-				fx.Invoke(registerIdentityVerificationStoreLifecycle, func(httptransport.Authenticator) {}),
+				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -84,6 +86,10 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 	options = append(options, extra...)
 
 	return fx.New(options...), nil
+}
+
+func registerIdentityRoutes(router *gin.Engine, service *identityapplication.Service, authenticator httptransport.Authenticator, cfg config.Config) {
+	identitytransport.RegisterRoutes(router, service, authenticator, cfg)
 }
 
 func newIdentityService(runtime *database.Runtime, cfg config.Config, verification *identityredis.VerificationStore) (*identityapplication.Service, error) {
