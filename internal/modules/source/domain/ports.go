@@ -78,14 +78,26 @@ type MonitorSourceReader interface {
 	LockForMonitor(context.Context, int64) (MonitorSourceConnection, error)
 }
 
-// SourceUsage is a minimal Monitor-owned fact used by Source lifecycle
-// commands. Task 4 supplies the PostgreSQL adapter in the Monitor module.
+// MonitorUsageGroup is a Monitor-owned published configuration relation. It
+// intentionally identifies only the associated SourceConnection IDs and the
+// Monitor-side association state. Source application remains responsible for
+// looking up whether those SourceConnections are enabled or archived.
+type MonitorUsageGroup struct {
+	MonitorID int64
+	Sources   []MonitorUsageSource
+}
+
+type MonitorUsageSource struct {
+	SourceConnectionID int64
+	Enabled            bool
+}
+
+// SourceUsage is a narrow Monitor-owned fact used by Source lifecycle
+// commands. It contains no SourceConnection availability result and lets the
+// Source application evaluate that predicate with its own repository.
 type SourceUsage struct {
-	ReferencedByActiveMonitor bool
-	ReferencedByPausedMonitor bool
-	ActiveMonitorCount        int
-	PausedMonitorCount        int
-	SoleSchedulableForActive  bool
+	ActiveMonitorGroups []MonitorUsageGroup
+	PausedMonitorGroups []MonitorUsageGroup
 }
 
 type MonitorUsageReader interface {

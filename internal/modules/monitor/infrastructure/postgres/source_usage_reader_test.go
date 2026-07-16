@@ -10,7 +10,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
 )
 
-func TestSourceUsageReaderFindsSoleActivePublishedSourceWithoutWrites(t *testing.T) {
+func TestSourceUsageReaderReturnsMonitorOwnedActiveAssociationGroupWithoutWrites(t *testing.T) {
 	runtime := monitorRepositoryRuntime(t)
 	defer func() { _ = runtime.Close() }()
 	ctx := context.Background()
@@ -45,7 +45,7 @@ func TestSourceUsageReaderFindsSoleActivePublishedSourceWithoutWrites(t *testing
 	}); err != nil {
 		t.Fatalf("UsageForSource(): %v", err)
 	}
-	if !usage.ReferencedByActiveMonitor || usage.ActiveMonitorCount != 1 || !usage.SoleSchedulableForActive || usage.ReferencedByPausedMonitor {
+	if len(usage.ActiveMonitorGroups) != 1 || len(usage.PausedMonitorGroups) != 0 || usage.ActiveMonitorGroups[0].MonitorID != monitorID || len(usage.ActiveMonitorGroups[0].Sources) != 1 || usage.ActiveMonitorGroups[0].Sources[0].SourceConnectionID != sourceID || !usage.ActiveMonitorGroups[0].Sources[0].Enabled {
 		t.Fatalf("usage=%#v", usage)
 	}
 }

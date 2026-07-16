@@ -329,6 +329,53 @@ func TestMonitorServiceDisableAndResumeSerializeThroughConfigurationLock(t *test
 	}
 }
 
+func TestMonitorServicePublishAndSourceDisableSerializeThroughConfigurationLock(t *testing.T) {
+	runtime := monitorRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	admin := monitorAdmin(t, runtime)
+	ctx := context.Background()
+	usage := monitorpostgres.NewSourceUsageReader(runtime)
+	sources, err := sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usage, Audit: operationspostgres.NewAuditWriter(runtime)})
+	if err != nil {
+		t.Fatalf("NewSourceService(): %v", err)
+	}
+	connection, err := sources.Create(ctx, sourceapplication.CreateInput{Subject: admin, Connection: monitorSourceConnection("monitor-publish-disable-source")})
+	if err != nil {
+		t.Fatalf("Create source: %v", err)
+	}
+	monitors, err := monitorapplication.NewService(monitorapplication.Dependencies{Runtime: runtime, Monitors: monitorpostgres.NewRepository(runtime), Sources: sources, Audit: operationspostgres.NewAuditWriter(runtime)})
+	if err != nil {
+		t.Fatalf("NewMonitorService(): %v", err)
+	}
+	monitor, draft, err := monitors.Create(ctx, monitorapplication.CreateInput{Subject: monitorEditor(admin.UserID), Draft: monitorDraft(connection.ID)})
+	if err != nil {
+		t.Fatalf("Create monitor: %v", err)
+	}
+	errorsOut := make(chan error, 2)
+	go func() {
+		_, _, err := monitors.Publish(context.Background(), monitorapplication.PublishInput{Subject: admin, MonitorID: monitor.ID, Expected: monitordomain.ExpectedVersions{MonitorVersion: monitor.Version, DraftVersion: int64Value(draft.Version)}})
+		errorsOut <- err
+	}()
+	go func() {
+		_, err := sources.Disable(context.Background(), sourceapplication.LifecycleInput{Subject: admin, ID: connection.ID, ExpectedVersion: connection.Version})
+		errorsOut <- err
+	}()
+	first, second := <-errorsOut, <-errorsOut
+	successes, required := 0, 0
+	for _, err := range []error{first, second} {
+		if err == nil {
+			successes++
+		} else if appCode(err) == sharederrors.CodeSourceConnectionRequired {
+			required++
+		} else {
+			t.Fatalf("publish/disable interleaving error=%v", err)
+		}
+	}
+	if successes != 1 || required != 1 {
+		t.Fatalf("publish/disable serial outcome successes=%d required=%d", successes, required)
+	}
+}
+
 func monitorRuntime(t *testing.T) *database.Runtime {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

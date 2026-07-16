@@ -10,10 +10,9 @@ import (
 )
 
 // SourceUsageReader is a Monitor-owned, read-only adapter supplied to Source
-// lifecycle commands. Source never imports Monitor SQL or tables. The caller
-// already owns the global configuration advisory lock; this adapter locks the
-// affected monitor/config/source relation rows in that same transaction before
-// calculating the sole-schedulable predicate.
+// lifecycle commands. It queries and locks only Monitor-owned tables; Source
+// application evaluates SourceConnection availability using its own repository
+// while retaining the same transaction and global configuration lock.
 type SourceUsageReader struct{ runtime *database.Runtime }
 
 var _ sourcedomain.MonitorUsageReader = (*SourceUsageReader)(nil)
@@ -33,56 +32,63 @@ func (reader *SourceUsageReader) UsageForSource(ctx context.Context, sourceID in
 	if !inTransaction {
 		return sourcedomain.SourceUsage{}, fmt.Errorf("%w: monitor source usage requires caller transaction", sharedrepository.ErrUnavailable)
 	}
-	// Lock every published relation that references this SourceConnection. The
-	// explicit rows prevent a concurrent publish/resume from changing the set
-	// after Source has acquired the configuration lock.
-	locked, err := transaction.SQL.QueryContext(ctx, `
-SELECT monitor_source.id
-FROM monitor_sources AS monitor_source
-JOIN monitor_config_versions AS config_version ON config_version.id = monitor_source.config_version_id
-JOIN monitors AS monitor ON monitor.published_config_version_id = config_version.id
-WHERE monitor_source.source_connection_id = $1
+
+	// `target` narrows the affected published Monitor configurations. `member`
+	// then returns their Monitor-owned association facts, not SourceConnection
+	// state. Locking all three tables stabilizes those groups after the caller
+	// has acquired hotkey.monitor_source_configuration.
+	rows, err := transaction.SQL.QueryContext(ctx, `
+SELECT monitor.id, monitor.status, member.source_connection_id, member.enabled
+FROM monitors AS monitor
+JOIN monitor_config_versions AS config_version ON config_version.id = monitor.published_config_version_id
+JOIN monitor_sources AS target ON target.config_version_id = config_version.id
+JOIN monitor_sources AS member ON member.config_version_id = config_version.id
+WHERE target.source_connection_id = $1
+  AND target.enabled
   AND monitor.status IN ('active', 'paused')
-FOR UPDATE OF monitor_source, config_version, monitor`, sourceID)
+ORDER BY monitor.id ASC, member.id ASC
+FOR UPDATE OF monitor, config_version, target, member`, sourceID)
 	if err != nil {
 		return sourcedomain.SourceUsage{}, sharedrepository.MapError(err)
 	}
-	if err := locked.Close(); err != nil {
+	defer rows.Close()
+
+	type grouped struct {
+		status string
+		group  sourcedomain.MonitorUsageGroup
+	}
+	groups := map[int64]*grouped{}
+	order := []int64{}
+	for rows.Next() {
+		var monitorID, memberID int64
+		var status string
+		var enabled bool
+		if err := rows.Scan(&monitorID, &status, &memberID, &enabled); err != nil {
+			return sourcedomain.SourceUsage{}, sharedrepository.MapError(err)
+		}
+		item, found := groups[monitorID]
+		if !found {
+			item = &grouped{status: status, group: sourcedomain.MonitorUsageGroup{MonitorID: monitorID, Sources: []sourcedomain.MonitorUsageSource{}}}
+			groups[monitorID] = item
+			order = append(order, monitorID)
+		}
+		item.group.Sources = append(item.group.Sources, sourcedomain.MonitorUsageSource{SourceConnectionID: memberID, Enabled: enabled})
+	}
+	if err := rows.Err(); err != nil {
 		return sourcedomain.SourceUsage{}, sharedrepository.MapError(err)
 	}
 
-	var usage sourcedomain.SourceUsage
-	err = transaction.SQL.QueryRowContext(ctx, `
-WITH referenced AS (
-    SELECT monitor.id AS monitor_id, monitor.status
-    FROM monitors AS monitor
-    JOIN monitor_config_versions AS config_version ON config_version.id = monitor.published_config_version_id
-    JOIN monitor_sources AS monitor_source ON monitor_source.config_version_id = config_version.id
-    WHERE monitor_source.source_connection_id = $1
-      AND monitor_source.enabled
-      AND monitor.status IN ('active', 'paused')
-), schedulable AS (
-    SELECT monitor.id AS monitor_id, count(*)::integer AS source_count
-    FROM monitors AS monitor
-    JOIN monitor_config_versions AS config_version ON config_version.id = monitor.published_config_version_id
-    JOIN monitor_sources AS monitor_source ON monitor_source.config_version_id = config_version.id
-    JOIN source_connections AS connection ON connection.id = monitor_source.source_connection_id
-    WHERE monitor.status = 'active'
-      AND monitor_source.enabled
-      AND connection.enabled
-      AND connection.deleted_at IS NULL
-    GROUP BY monitor.id
-)
-SELECT
-    COALESCE(bool_or(referenced.status = 'active'), false),
-    COALESCE(bool_or(referenced.status = 'paused'), false),
-    count(*) FILTER (WHERE referenced.status = 'active')::integer,
-    count(*) FILTER (WHERE referenced.status = 'paused')::integer,
-    COALESCE(bool_or(referenced.status = 'active' AND schedulable.source_count = 1), false)
-FROM referenced
-LEFT JOIN schedulable ON schedulable.monitor_id = referenced.monitor_id`, sourceID).Scan(&usage.ReferencedByActiveMonitor, &usage.ReferencedByPausedMonitor, &usage.ActiveMonitorCount, &usage.PausedMonitorCount, &usage.SoleSchedulableForActive)
-	if err != nil {
-		return sourcedomain.SourceUsage{}, sharedrepository.MapError(err)
+	usage := sourcedomain.SourceUsage{ActiveMonitorGroups: []sourcedomain.MonitorUsageGroup{}, PausedMonitorGroups: []sourcedomain.MonitorUsageGroup{}}
+	for _, monitorID := range order {
+		item := groups[monitorID]
+		switch item.status {
+		case "active":
+			usage.ActiveMonitorGroups = append(usage.ActiveMonitorGroups, item.group)
+		case "paused":
+			usage.PausedMonitorGroups = append(usage.PausedMonitorGroups, item.group)
+		default:
+			return sourcedomain.SourceUsage{}, fmt.Errorf("%w: unexpected monitor status", sharedrepository.ErrConstraint)
+		}
 	}
 	return usage, nil
 }

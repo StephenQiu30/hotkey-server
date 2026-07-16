@@ -113,7 +113,7 @@ func TestSourceServiceUsageAndAuditFailureRollback(t *testing.T) {
 	defer func() { _ = runtime.Close() }()
 	admin := seedAdmin(t, runtime)
 	ctx := context.Background()
-	service := newService(t, runtime, usageReader{usage: domain.SourceUsage{SoleSchedulableForActive: true}})
+	service := newService(t, runtime, usageReader{activeSole: true})
 	created, err := service.Create(ctx, sourceapplication.CreateInput{Subject: admin, Connection: sourceConnection("usage-protected")})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -121,7 +121,7 @@ func TestSourceServiceUsageAndAuditFailureRollback(t *testing.T) {
 	if _, err := service.Disable(ctx, sourceapplication.LifecycleInput{Subject: admin, ID: created.ID, ExpectedVersion: created.Version}); appCode(err) != sharederrors.CodeSourceConnectionRequired {
 		t.Fatalf("active sole source Disable() code = %d, want source required", appCode(err))
 	}
-	pausedUsageService := newService(t, runtime, usageReader{usage: domain.SourceUsage{ReferencedByPausedMonitor: true, PausedMonitorCount: 1}})
+	pausedUsageService := newService(t, runtime, usageReader{pausedReference: true})
 	pausedSource, err := pausedUsageService.Create(ctx, sourceapplication.CreateInput{Subject: admin, Connection: sourceConnection("paused-usage")})
 	if err != nil {
 		t.Fatalf("Create(paused usage) error = %v", err)
@@ -143,6 +143,26 @@ func TestSourceServiceUsageAndAuditFailureRollback(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("audit-failed source count = %d, want 0", count)
+	}
+}
+
+func TestSourceServiceUsesSourceOwnedAvailabilityForActiveMonitorGroup(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	admin := seedAdmin(t, runtime)
+	ctx := context.Background()
+	setup := newService(t, runtime, usageReader{})
+	primary, err := setup.Create(ctx, sourceapplication.CreateInput{Subject: admin, Connection: sourceConnection("availability-primary")})
+	if err != nil {
+		t.Fatalf("Create primary source: %v", err)
+	}
+	alternative, err := setup.Create(ctx, sourceapplication.CreateInput{Subject: admin, Connection: sourceConnection("availability-alternative")})
+	if err != nil {
+		t.Fatalf("Create alternative source: %v", err)
+	}
+	service := newService(t, runtime, usageReader{activeSole: true, alternatives: []int64{alternative.ID}})
+	if _, err := service.Disable(ctx, sourceapplication.LifecycleInput{Subject: admin, ID: primary.ID, ExpectedVersion: primary.Version}); err != nil {
+		t.Fatalf("Disable with enabled source-owned alternative: %v", err)
 	}
 }
 
@@ -192,6 +212,37 @@ func TestSourceServiceDisableUsesRealMonitorUsageAdapter(t *testing.T) {
 	}
 	if paused.Status != monitordomain.MonitorStatusPaused {
 		t.Fatalf("paused monitor=%#v", paused)
+	}
+}
+
+func TestSourceServiceArchiveRejectsActiveSoleSourceWithRealMonitorUsage(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	admin := seedAdmin(t, runtime)
+	ctx := context.Background()
+	usage := monitorpostgres.NewSourceUsageReader(runtime)
+	sources, err := sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usage, Audit: operationspostgres.NewAuditWriter(runtime)})
+	if err != nil {
+		t.Fatalf("NewSourceService(): %v", err)
+	}
+	connection, err := sources.Create(ctx, sourceapplication.CreateInput{Subject: admin, Connection: sourceConnection("real-monitor-archive")})
+	if err != nil {
+		t.Fatalf("Create source: %v", err)
+	}
+	monitors, err := monitorapplication.NewService(monitorapplication.Dependencies{Runtime: runtime, Monitors: monitorpostgres.NewRepository(runtime), Sources: sources, Audit: operationspostgres.NewAuditWriter(runtime)})
+	if err != nil {
+		t.Fatalf("NewMonitorService(): %v", err)
+	}
+	draft := monitorDraftForSource(connection.ID, "source archive monitor")
+	monitor, config, err := monitors.Create(ctx, monitorapplication.CreateInput{Subject: identitydomain.Subject{UserID: admin.UserID, Role: identitydomain.RoleEditor}, Draft: draft})
+	if err != nil {
+		t.Fatalf("Create monitor: %v", err)
+	}
+	if _, _, err := monitors.Publish(ctx, monitorapplication.PublishInput{Subject: admin, MonitorID: monitor.ID, Expected: monitordomain.ExpectedVersions{MonitorVersion: monitor.Version, DraftVersion: &config.Version}}); err != nil {
+		t.Fatalf("Publish monitor: %v", err)
+	}
+	if _, err := sources.Archive(ctx, sourceapplication.LifecycleInput{Subject: admin, ID: connection.ID, ExpectedVersion: connection.Version}); appCode(err) != sharederrors.CodeSourceConnectionRequired {
+		t.Fatalf("Archive sole active source code=%d", appCode(err))
 	}
 }
 
@@ -312,6 +363,10 @@ func sourceConnection(name string) domain.SourceConnection {
 	return domain.SourceConnection{SourceType: domain.SourceTypeRSS, Name: name, Endpoint: "https://feeds.example.test/rss", AuthType: domain.AuthTypeNone, Config: domain.DefaultSourceConfig(), Enabled: true}
 }
 
+func monitorDraftForSource(sourceID int64, name string) monitorapplication.DraftInput {
+	return monitorapplication.DraftInput{Name: name, Config: monitordomain.MonitorConfig{Timezone: "UTC", Languages: []string{"en"}, CollectionIntervalSeconds: 300, RelevanceThreshold: 60, EventThreshold: 0, RetentionDays: 30}, Rules: []monitordomain.MonitorRule{{RuleType: monitordomain.RuleTypeKeyword, Operator: monitordomain.RuleOperatorContains, Value: "monitor", Weight: 100, Priority: 1, Enabled: true}}, Sources: []monitordomain.MonitorSource{{SourceConnectionID: sourceID, Priority: 1, Enabled: true}}}
+}
+
 func appCode(err error) int {
 	var appError *sharederrors.AppError
 	if errors.As(err, &appError) {
@@ -320,10 +375,25 @@ func appCode(err error) int {
 	return 0
 }
 
-type usageReader struct{ usage domain.SourceUsage }
+type usageReader struct {
+	activeSole      bool
+	pausedReference bool
+	alternatives    []int64
+}
 
-func (reader usageReader) UsageForSource(context.Context, int64) (domain.SourceUsage, error) {
-	return reader.usage, nil
+func (reader usageReader) UsageForSource(_ context.Context, sourceID int64) (domain.SourceUsage, error) {
+	usage := domain.SourceUsage{ActiveMonitorGroups: []domain.MonitorUsageGroup{}, PausedMonitorGroups: []domain.MonitorUsageGroup{}}
+	group := domain.MonitorUsageGroup{MonitorID: 1, Sources: []domain.MonitorUsageSource{{SourceConnectionID: sourceID, Enabled: true}}}
+	if reader.activeSole {
+		for _, alternativeID := range reader.alternatives {
+			group.Sources = append(group.Sources, domain.MonitorUsageSource{SourceConnectionID: alternativeID, Enabled: true})
+		}
+		usage.ActiveMonitorGroups = append(usage.ActiveMonitorGroups, group)
+	}
+	if reader.pausedReference {
+		usage.PausedMonitorGroups = append(usage.PausedMonitorGroups, group)
+	}
+	return usage, nil
 }
 
 type failingAudit struct{ err error }

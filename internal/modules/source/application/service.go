@@ -389,8 +389,27 @@ func (service *Service) ensureCanRemoveSchedulableSource(ctx context.Context, so
 	if err != nil {
 		return sourceReadError(err)
 	}
-	if usage.SoleSchedulableForActive {
-		return domain.SourceConnectionRequired()
+	// Monitor owns the association groups, but it must not decide whether a
+	// different SourceConnection is currently executable. Resolve that narrow
+	// Source-owned predicate under this same transaction and advisory lock.
+	for _, group := range usage.ActiveMonitorGroups {
+		hasAlternative := false
+		for _, association := range group.Sources {
+			if !association.Enabled || association.SourceConnectionID == sourceID {
+				continue
+			}
+			connection, err := service.sources.LockByID(ctx, association.SourceConnectionID)
+			if err != nil {
+				return sourceReadError(err)
+			}
+			if connection.Enabled && !connection.Deleted {
+				hasAlternative = true
+				break
+			}
+		}
+		if !hasAlternative {
+			return domain.SourceConnectionRequired()
+		}
 	}
 	return nil
 }

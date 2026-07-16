@@ -693,20 +693,22 @@ func querySignature(source domain.MonitorSource, connection sourcedomain.Monitor
 	if err != nil {
 		return "", err
 	}
-	include, exclude := []signatureRule{}, []signatureRule{}
+	include, exclude := []includeSignatureRule{}, []excludeSignatureRule{}
 	for _, rule := range rules {
 		if !rule.Enabled || rule.ApprovalStatus != domain.RuleApprovalApproved {
 			continue
 		}
-		candidate := signatureRule{Type: rule.RuleType, Operator: rule.Operator, Value: rule.Value, Weight: rule.Weight, Priority: rule.Priority, ID: rule.ID}
+		// Rules reach this function only after the Monitor draft normalizer or a
+		// persisted immutable config has established their canonical values.
+		normalized := rule
 		if rule.RuleType == domain.RuleTypeExcludeKeyword || rule.Operator == domain.RuleOperatorNotEquals {
-			exclude = append(exclude, candidate)
+			exclude = append(exclude, excludeSignatureRule{Type: normalized.RuleType, Operator: normalized.Operator, Value: normalized.Value})
 		} else {
-			include = append(include, candidate)
+			include = append(include, includeSignatureRule{Type: normalized.RuleType, Operator: normalized.Operator, Value: normalized.Value, Weight: normalized.Weight, Priority: normalized.Priority})
 		}
 	}
-	sort.Slice(include, func(i, j int) bool { return signatureRuleLess(include[i], include[j]) })
-	sort.Slice(exclude, func(i, j int) bool { return signatureRuleLess(exclude[i], exclude[j]) })
+	sort.Slice(include, func(i, j int) bool { return includeSignatureRuleLess(include[i], include[j]) })
+	sort.Slice(exclude, func(i, j int) bool { return excludeSignatureRuleLess(exclude[i], exclude[j]) })
 	override, err := domain.NormalizeQueryOverride(source.QueryOverride)
 	if err != nil {
 		return "", err
@@ -719,8 +721,8 @@ func querySignature(source domain.MonitorSource, connection sourcedomain.Monitor
 		Override           string                  `json:"normalized_query_override"`
 		Languages          []string                `json:"languages"`
 		Regions            []string                `json:"regions"`
-		Include            []signatureRule         `json:"include_rules"`
-		Exclude            []signatureRule         `json:"exclude_rules"`
+		Include            []includeSignatureRule  `json:"include_rules"`
+		Exclude            []excludeSignatureRule  `json:"exclude_rules"`
 		Window             string                  `json:"query_window_kind"`
 	}{1, connection.ID, connection.SourceType, connection.Endpoint, override, config.Languages, config.Regions, include, exclude, "scheduled_interval"}
 	encoded, err := json.Marshal(payload)
@@ -731,16 +733,21 @@ func querySignature(source domain.MonitorSource, connection sourcedomain.Monitor
 	return hex.EncodeToString(sum[:]), nil
 }
 
-type signatureRule struct {
+type includeSignatureRule struct {
 	Type     domain.RuleType     `json:"type"`
 	Operator domain.RuleOperator `json:"operator"`
 	Value    string              `json:"value"`
 	Weight   float64             `json:"weight"`
 	Priority int16               `json:"priority"`
-	ID       int64               `json:"id"`
 }
 
-func signatureRuleLess(left, right signatureRule) bool {
+type excludeSignatureRule struct {
+	Type     domain.RuleType     `json:"type"`
+	Operator domain.RuleOperator `json:"operator"`
+	Value    string              `json:"value"`
+}
+
+func includeSignatureRuleLess(left, right includeSignatureRule) bool {
 	if left.Type != right.Type {
 		return left.Type < right.Type
 	}
@@ -756,7 +763,17 @@ func signatureRuleLess(left, right signatureRule) bool {
 	if left.Priority != right.Priority {
 		return left.Priority < right.Priority
 	}
-	return left.ID < right.ID
+	return false
+}
+
+func excludeSignatureRuleLess(left, right excludeSignatureRule) bool {
+	if left.Type != right.Type {
+		return left.Type < right.Type
+	}
+	if left.Operator != right.Operator {
+		return left.Operator < right.Operator
+	}
+	return left.Value < right.Value
 }
 
 func requireAuthenticated(subject identitydomain.Subject) error {
