@@ -8,7 +8,7 @@ canonical_path: docs/plans/006-查询规划与RSS-HN采集计划.md
 status: accepted
 execution_status: in_progress
 review_status: approved
-version: v1.15
+version: v1.16
 owner: HotKey Server Team
 inputs:
   - docs/prd/006-查询规划与RSS-HN采集.md
@@ -131,12 +131,12 @@ depends_on: [PLAN-005]
 
 **Files：** Create `internal/modules/source/infrastructure/rss/connector.go`, `internal/modules/source/infrastructure/rss/connector_test.go`, `internal/modules/source/infrastructure/rss/feed.go`, `internal/modules/source/infrastructure/rss/feed_test.go`, `internal/modules/source/infrastructure/rss/testdata/{rss,atom}/*.xml`; Modify `internal/modules/source/domain/connector.go`.
 
-- [ ] **RED：** 以 `httptest` 覆盖 RSS、Atom、304、429 Retry-After、5xx、超时、非法 XML、缺 external ID、重复链接和带 credential-shaped redirect；实现前测试必须失败。
-- [ ] **运行 RED：** `go test ./internal/modules/source/infrastructure/rss -count=1`。
-- [ ] **GREEN：** 实现仅 HTTPS 的固定 client，禁止跨 host/私网 redirect；只解析为 SourceItem，不持久化原始 response bytes、不写 Content、不记录 Authorization/header。Source config 的 CapturePolicy 由 Task 6 统一应用。
-- [ ] **重构：** 共享 RSS/Atom 时间、URL、external ID 正规化帮助函数，保持协议结构与 Connector 业务错误分离。
-- [ ] **回归：** `go test -race ./internal/modules/source/infrastructure/rss -count=1`。
-- [ ] **提交：** `git add internal/modules/source/infrastructure/rss internal/modules/source/domain/connector.go && git commit -m "feat: collect RSS and Atom feeds"`。
+- [x] **RED：** 已以 `httptest`/fixture 覆盖 RSS、Atom、304、429 Retry-After、401、5xx、超时、非法 XML、缺 external ID、重复 external ID、分页上限、跨 host/私网/credential-shaped redirect、跨 host request cursor 与分页 Link；初始因 `parseFeed`、Connector 和安全 client 均缺失而编译失败。独立复审还新增并复现了跨 host 续页及被截断分页错误复用根 ETag/Last-Modified 的两项 RED。
+- [x] **运行 RED：** 已运行 `go test ./internal/modules/source/infrastructure/rss -run TestParseFeed -count=1` 与 `go test ./internal/modules/source/infrastructure/rss -run TestConnector -count=1`，先因实现缺失失败；整改时运行 `go test ./internal/modules/source/infrastructure/rss -run TestConnectorBoundsPaginationAndRejectsUnsafeDestinations -count=1`，四条跨 host/continuation 子路径均在修复前失败。
+- [x] **GREEN：** 已实现仅 HTTPS/443 的固定 client，构造时绑定 immutable SourceConnection，并在每次新连接重新解析 DNS、拒绝 loopback/private/link-local/multicast/unspecified/reserved IP。重定向最多三跳，且重定向、cursor 和分页 Link 均必须保持 endpoint host；根 feed 的 validators 只用于根请求，continuation 不发送也不覆盖。Connector 只输出 SourceItem 和安全 metadata，不持久化原始 response bytes、不写 Content、不记录 Authorization/header。Source config 的 CapturePolicy 仍由 Task 6 统一应用。
+- [x] **重构：** 已分离 RSS/Atom XML 映射、时间/URL/external ID 规范化、分页 Link 解析、DNS dial 防护与 HTTP 状态分类；协议结构和 Connector 业务错误保持分离。
+- [x] **回归：** 已运行 `go test ./internal/modules/source/infrastructure/rss -count=1`、`go test -race ./internal/modules/source/infrastructure/rss -count=1`、`go vet ./internal/modules/source/infrastructure/rss`、可丢弃 PostgreSQL/Redis 上的 `go test ./internal/modules/source/... ./tests/architecture -count=1` 与完整 `make ci`，均通过。
+- [x] **提交：** 已提交 `a04bcb0 feat: collect RSS and Atom feeds`、复审修复 `57e29a7 fix: constrain RSS continuation requests`，以及覆盖补充 `2cc15d4 test: cover credential-shaped RSS redirect`。
 
 ## Task 5：Hacker News 增量 Connector
 
@@ -224,6 +224,7 @@ depends_on: [PLAN-005]
 - 2026-07-16：非主要编写者复核 Task 1 提交 `8cf8d56..2d0059b` 及 Design-003 v2.9、PRD-006 v1.8、Plan-006 v1.10；无阻塞、重要或建议问题，确认同 run 复合外键和 PostgreSQL 双向跨 run 负例完整封堵。
 - 2026-07-16：非主要编写者复核 Task 2 提交 `9e21861..c9cf04c` 及 Plan-006 v1.13；先发现并确认 disabled/deleted SourceConnection 未被资格过滤，整改后复核通过。无 Critical、Important 或 Minor；确认 adapter 只为资格过滤 join `source_connections`，不投影 endpoint/config/credential。
 - 2026-07-16：非主要编写者复核 Task 3 提交 `f1d8bd3..6c55aa4`；先发现 `GroupRequests` 可接受与 immutable target 不一致的 query/language/region 外层请求，整改后按每个 target 回推预期值并复核通过。无 Critical、Important 或 Minor；确认保存的 signature 未被重算。
+- 2026-07-16：非主要编写者复核 Task 4 提交 `a04bcb0..57e29a7`，随后确认覆盖补充 `2cc15d4`；先发现公开跨 host redirect/cursor/pagination Link 未受 immutable endpoint host 约束，以及 continuation 错误复用并污染根 feed validators。整改后复核通过，无 Critical、Important 或 Minor；确认 client 仍只输出安全 SourceItem/metadata，且无生产代码变更的 credential-shaped redirect 测试已纳入关闭范围。
 
 ## 变更记录
 
@@ -245,3 +246,4 @@ depends_on: [PLAN-005]
 | v1.13 | 2026-07-16 | Task 2 复审补齐 SourceConnection 启用/归档资格谓词，明确 adapter 仅为过滤 join 该表且不投影敏感字段。 |
 | v1.14 | 2026-07-16 | 记录 Task 2 的两阶段 RED、GREEN、完整回归、提交与整改复审通过证据。 |
 | v1.15 | 2026-07-16 | 记录 Task 3 的 RED/GREEN、完整回归、query/locale/region 篡改整改及独立复核通过证据。 |
+| v1.16 | 2026-07-16 | 记录 Task 4 的 RSS/Atom Connector、SSRF/continuation 整改、完整回归及独立复核通过证据。 |
