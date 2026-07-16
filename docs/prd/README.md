@@ -6,7 +6,7 @@ feature_area: AI热点事件监控平台
 purpose: 管理从权威设计拆分出的后端执行任务需求
 canonical_path: docs/prd/README.md
 status: review
-version: v2.3
+version: v2.4
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -60,7 +60,7 @@ downstream:
 | [018](018-任务执行与计划归档治理.md) | 任务执行与计划归档治理 | Governance | P0 | 005 | accepted | ready |
 | [006](006-查询规划与RSS-HN采集.md) | 查询规划与 RSS/HN 采集 | P0 | P0 | 005 | archived | done |
 | [007](007-内容标准化去重与MinIO证据.md) | 内容标准化、去重与 MinIO 证据 | P0 | P0 | 002, 006 | archived | done |
-| [008](008-AIProvider与Embedding基础.md) | AI Provider 与 Embedding 基础 | P0 | P0 | 002, 007 | accepted | ready |
+| [008](008-AIProvider与Embedding基础.md) | AI Provider 与 Embedding 基础 | P0 | P0 | 002, 007 | accepted | in_progress |
 | [009](009-多语言相关性匹配与反馈.md) | 多语言相关性匹配与反馈 | P0 | P0 | 005, 007, 008 | review | backlog |
 | [010](010-事件聚类生命周期与人工治理.md) | 事件聚类、生命周期与人工治理 | P0 | P0 | 009 | review | backlog |
 | [011](011-热度趋势与监控排序.md) | 热度、趋势与监控排序 | P0 | P0 | 010 | review | backlog |
@@ -83,7 +83,7 @@ downstream:
                                       014 + 015 → 016
                                       001–016 → 017
 
-PLAN-008 已在独立复审后满足 `accepted/ready` 门禁，是当前唯一可开工的产品任务；009–017 仍为 `review/backlog`，不得因 008 ready 而自动开工。
+PLAN-008 已通过独立复审并正在实现；009–017 仍为 `review/backlog`，不得因 008 开工而自动开工。
 
 ## 每个 PRD 的完成要求
 

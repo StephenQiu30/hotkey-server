@@ -9,8 +9,8 @@ purpose: 定义首批可替换 AI Provider、1024 维向量、模型运行审计
 phase: P0
 priority: P0
 status: accepted
-execution_status: ready
-version: v1.5
+execution_status: in_progress
+version: v1.6
 owner: HotKey Server Team
 depends_on: [PRD-002, PRD-007]
 design_refs:
@@ -120,3 +120,4 @@ PRD-009 可以只依赖 `intelligence` 的公开 Application 端口取得同一 
 | v1.3 | 2026-07-17 | 统一 budget→run 锁序，定义 profile+UTC-day overage 封账、重试 lease 刷新和 `onnx && cgo` 双向 build tag。 |
 | v1.4 | 2026-07-17 | 收紧 credential_ref 为创建时只写；明确 OpenAI 的 model ID 校验与本地 model_version 元数据边界。 |
 | v1.5 | 2026-07-17 | 独立复审通过，状态提升为 accepted/ready。 |
+| v1.6 | 2026-07-17 | 已开始实现，执行状态更新为 in_progress。 |
