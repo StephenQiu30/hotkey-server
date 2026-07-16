@@ -10,16 +10,19 @@ phase: P0
 priority: P0
 status: review
 execution_status: backlog
-version: v1.0
+version: v1.1
 owner: HotKey Server Team
-depends_on: [PRD-005]
+depends_on: [PRD-005, PRD-018]
 design_refs:
   - docs/design/005-数据来源查询规划与采集设计.md
   - docs/design/012-监控调度与River流水线设计.md
+  - docs/design/015-任务执行与计划归档治理设计.md
 canonical_path: docs/prd/006-查询规划与RSS-HN采集.md
 inputs:
   - docs/design/005-数据来源查询规划与采集设计.md
   - docs/design/012-监控调度与River流水线设计.md
+  - docs/design/015-任务执行与计划归档治理设计.md
+  - docs/prd/018-任务执行与计划归档治理.md
 outputs:
   - 首批合规来源采集需求
 triggers:
@@ -78,3 +81,12 @@ downstream:
 ## 完成定义
 
 下游只消费 SourceItem 和持久化运行项，不依赖具体 RSS/HN 客户端。
+
+PLAN-006 只有在 PRD-018/PLAN-018 已归档、Design-005 与 Design-012 已接受、本文档已接受且对应 Plan 经独立审核后，才可从 backlog 进入 ready。
+
+## 变更记录
+
+| 版本 | 日期 | 变更 |
+|---|---|---|
+| v1.0 | 2026-07-16 | 初始查询规划与 RSS/HN 采集需求拆分。 |
+| v1.1 | 2026-07-16 | 将任务执行与计划归档治理设为显式前置条件，补充 PLAN-006 的完整开工门禁。 |
