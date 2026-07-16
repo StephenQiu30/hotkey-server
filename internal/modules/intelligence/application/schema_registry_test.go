@@ -1,6 +1,8 @@
 package application
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -32,6 +34,46 @@ func TestSchemaRegistryEmbedsAndCompilesVersionedContracts(t *testing.T) {
 	if err := registry.ValidateOutput(domain.TaskTypeEmbedding, "v1", []byte(`{"model_version":"2026-07","vectors":[[`+vector+`]]}`)); err != nil {
 		t.Fatalf("ValidateOutput() embedding error = %v", err)
 	}
+}
+
+func TestRelevanceReviewSchemaRegistryContract(t *testing.T) {
+	registry, err := NewSchemaRegistry()
+	if err != nil {
+		t.Fatalf("NewSchemaRegistry() error = %v", err)
+	}
+	contract, err := registry.Structured(domain.TaskTypeRelevanceReview, "v1")
+	if err != nil {
+		t.Fatalf("Structured(relevance_review) error = %v", err)
+	}
+	if contract.SchemaName != "relevance-review-output-v1" || len(contract.OutputSchema) == 0 || strings.TrimSpace(contract.Instruction) == "" {
+		t.Fatalf("Structured(relevance_review) = %#v, want embedded contract", contract)
+	}
+	input := relevanceFixture(t, "input.json")
+	if err := registry.ValidateInput(domain.TaskTypeRelevanceReview, "v1", input); err != nil {
+		t.Fatalf("ValidateInput(relevance_review) error = %v", err)
+	}
+	if err := registry.ValidateOutput(domain.TaskTypeRelevanceReview, "v1", relevanceFixture(t, "output.json")); err != nil {
+		t.Fatalf("ValidateOutput(relevance_review) error = %v", err)
+	}
+	if err := registry.ValidateOutput(domain.TaskTypeRelevanceReview, "v1", []byte(`{"decision":"review","score":70,"reason":"free text"}`)); err == nil {
+		t.Fatal("ValidateOutput(relevance_review) with free text error = nil, want rejection")
+	}
+	if err := registry.ValidateInput(domain.TaskTypeRelevanceReview, "v1", []byte(`{"content_excerpt":"safe","content_language":"en","monitor_intent":"intent","scoring_version":"relevance-v1","scores":{"semantic":70,"lexical":80,"entity":60,"title":70,"preference":50},"recall_paths":["lexical"],"reason_codes":[],"evidence_terms":[],"provider_url":"forbidden"}`)); err == nil {
+		t.Fatal("ValidateInput(relevance_review) with unknown field error = nil, want rejection")
+	}
+	overlong := `{"content_excerpt":"` + strings.Repeat("a", 1201) + `","content_language":"en","monitor_intent":"intent","scoring_version":"relevance-v1","scores":{"semantic":70,"lexical":80,"entity":60,"title":70,"preference":50},"recall_paths":["lexical"],"reason_codes":[],"evidence_terms":[]}`
+	if err := registry.ValidateInput(domain.TaskTypeRelevanceReview, "v1", []byte(overlong)); err == nil {
+		t.Fatal("ValidateInput(relevance_review) with overlong excerpt error = nil, want rejection")
+	}
+}
+
+func relevanceFixture(t *testing.T, name string) []byte {
+	t.Helper()
+	payload, err := os.ReadFile(filepath.Join("testdata", "relevance", name))
+	if err != nil {
+		t.Fatalf("read relevance fixture %s: %v", name, err)
+	}
+	return payload
 }
 
 func TestSchemaRegistryRejectsUnknownOversizedAndSecondInvalidRepair(t *testing.T) {

@@ -54,7 +54,7 @@ func NewSchemaRegistry() (*SchemaRegistry, error) {
 }
 
 func buildSchemaRegistry() (*SchemaRegistry, error) {
-	contracts := make(map[schemaKey]schemaContract, 2)
+	contracts := make(map[schemaKey]schemaContract, 3)
 	for _, specification := range []struct {
 		taskType        domain.TaskType
 		inputName       string
@@ -64,6 +64,7 @@ func buildSchemaRegistry() (*SchemaRegistry, error) {
 	}{
 		{domain.TaskTypeEmbedding, "embedding-input.schema.json", "embedding-output.schema.json", "embedding-output-v1", ""},
 		{domain.TaskTypeTermExpansion, "term-expansion-input.schema.json", "term-expansion-output.schema.json", "term-expansion-output-v1", "term-expansion-instruction-v1.md"},
+		{domain.TaskTypeRelevanceReview, "relevance-review-input.schema.json", "relevance-review-output.schema.json", "relevance-review-output-v1", "relevance-review-instruction-v1.md"},
 	} {
 		input, err := readSchemaAsset(specification.inputName)
 		if err != nil {

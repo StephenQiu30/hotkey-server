@@ -101,6 +101,33 @@ func TestModelProfileHTTPPostgresLifecyclePreservesWriteOnlyCredentialBoundary(t
 	assertNoModelProfileSecret(t, response.Body.String())
 }
 
+func TestPlan009ModelProfileHTTPContract(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	runtime := openModelProfileHTTPRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	service, err := intelligenceapplication.NewModelProfileService(intelligencepostgres.NewRepository(runtime))
+	if err != nil {
+		t.Fatalf("NewModelProfileService(): %v", err)
+	}
+	router := newModelProfileRouter(service, httptransport.RoleAdmin)
+
+	create := `{"name":"integration-relevance-review","task_type":"relevance_review","provider":"openai","model_name":"gpt-5.6sol","model_version":"2026-07","credential_ref":"env:OPENAI_API_KEY","timeout_seconds":30,"max_attempts":2,"max_cost":"0.1000","daily_budget":"10.0000","fallback_priority":100,"enabled":true}`
+	response := modelProfileRequest(router, stdhttp.MethodPost, "/api/v1/ai/model-profiles", create, "admin")
+	if response.Code != stdhttp.StatusCreated {
+		t.Fatalf("create relevance-review profile status = %d, want 201: %s", response.Code, response.Body.String())
+	}
+	var created struct {
+		Data ModelProfileResponse `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode relevance-review profile: %v", err)
+	}
+	if created.Data.TaskType != "relevance_review" || created.Data.EmbeddingDimensions != nil || created.Data.ModelName != "gpt-5.6sol" {
+		t.Fatalf("created relevance-review profile = %#v", created.Data)
+	}
+	assertNoModelProfileSecret(t, response.Body.String())
+}
+
 func openModelProfileHTTPRuntime(t *testing.T) *database.Runtime {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

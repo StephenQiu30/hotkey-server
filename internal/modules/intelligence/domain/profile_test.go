@@ -49,6 +49,38 @@ func TestModelProfileSemanticIdentityExcludesOnlyOperationalFields(t *testing.T)
 	}
 }
 
+func TestPlan009RelevanceReviewContract(t *testing.T) {
+	profile := validOpenAIEmbeddingProfile()
+	profile.Name = "relevance-review-primary"
+	profile.TaskType = TaskTypeRelevanceReview
+	profile.ModelName = "gpt-5.6sol"
+	profile.EmbeddingDimensions = nil
+	if err := profile.Validate(); err != nil {
+		t.Fatalf("relevance-review profile Validate() error = %v", err)
+	}
+
+	for _, test := range []struct {
+		name   string
+		mutate func(*ModelProfile)
+	}{
+		{"onnx is unavailable", func(profile *ModelProfile) {
+			profile.Provider, profile.CredentialRef = ProviderONNX, nil
+		}},
+		{"embedding dimensions are forbidden", func(profile *ModelProfile) {
+			dimensions := EmbeddingDimensions
+			profile.EmbeddingDimensions = &dimensions
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := profile
+			test.mutate(&candidate)
+			if err := candidate.Validate(); err == nil {
+				t.Fatal("relevance-review profile Validate() error = nil, want rejection")
+			}
+		})
+	}
+}
+
 func validOpenAIEmbeddingProfile() ModelProfile {
 	credential := OpenAICredentialReference
 	dimension := EmbeddingDimensions

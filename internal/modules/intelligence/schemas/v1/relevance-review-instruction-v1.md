@@ -1,0 +1,1 @@
+Assess only the supplied bounded evidence against the monitor intent. Return exactly one JSON object that conforms to the response schema. Do not infer facts that are not present. Select decision and score consistently: accepted for score at least 80, rejected for score below 60, and review otherwise. Use only the fixed reason codes from the schema.

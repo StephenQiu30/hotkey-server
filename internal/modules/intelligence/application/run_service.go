@@ -65,7 +65,7 @@ type StructuredExecutionResult struct {
 
 func (service *RunService) ExecuteStructured(ctx context.Context, input StructuredExecutionInput) (StructuredExecutionResult, error) {
 	if service == nil || service.runs == nil || service.providers == nil || service.schemas == nil ||
-		input.TaskType != domain.TaskTypeTermExpansion || strings.TrimSpace(input.TargetType) == "" || input.TargetID <= 0 {
+		!structuredExecutionTargetValid(input.TaskType, input.TargetType) || input.TargetID <= 0 {
 		return StructuredExecutionResult{}, domain.NewError(domain.CodeAIModelProfileInvalid)
 	}
 	if err := service.schemas.ValidateInput(input.TaskType, input.InputSchemaVersion, input.Input); err != nil {
@@ -156,6 +156,20 @@ func (service *RunService) ExecuteStructured(ctx context.Context, input Structur
 		return StructuredExecutionResult{}, budgetError
 	}
 	return StructuredExecutionResult{Status: "degraded", ReasonCode: degradedReasonModelUnavailable}, nil
+}
+
+func structuredExecutionTargetValid(taskType domain.TaskType, targetType string) bool {
+	if strings.TrimSpace(targetType) == "" {
+		return false
+	}
+	switch taskType {
+	case domain.TaskTypeTermExpansion:
+		return true
+	case domain.TaskTypeRelevanceReview:
+		return targetType == "monitor_match"
+	default:
+		return false
+	}
 }
 
 func (service *RunService) generateStructured(ctx context.Context, runID int64, profile domain.ModelProfile, provider domain.Provider, request domain.StructuredRequest, alreadyValidating bool) (domain.StructuredResponse, error) {

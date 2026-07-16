@@ -3223,7 +3223,8 @@
                     "type": "string",
                     "enum": [
                         "embedding",
-                        "term_expansion"
+                        "term_expansion",
+                        "relevance_review"
                     ]
                 },
                 "timeout_seconds": {

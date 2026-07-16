@@ -651,6 +651,7 @@ func TestPlan007SchemaUpgradeRollbackRestoresLegacyBackup(t *testing.T) {
 
 func TestPlan008SchemaUpgradeAndRollbackUsesPinnedPlan007Worktree(t *testing.T) {
 	worktree := plan007Worktree(t)
+	targetWorktree := plan008Worktree(t)
 	dsn := postgresfixture.New(t)
 
 	if output, err := runHistoricalDatabaseCommand(worktree, dsn, "init", "--empty-only", "--confirm-empty"); err != nil {
@@ -668,13 +669,12 @@ func TestPlan008SchemaUpgradeAndRollbackUsesPinnedPlan007Worktree(t *testing.T) 
 		t.Fatalf("apply exact PLAN-008 upgrade runbook: %v\n%s", err, output)
 	}
 
+	if output, err := runHistoricalDatabaseCommand(targetWorktree, dsn, "verify"); err != nil {
+		t.Fatalf("verify upgraded database with detached PLAN-008 worktree: %v\n%s", err, output)
+	}
 	current, err := Open(context.Background(), dsn)
 	if err != nil {
 		t.Fatalf("open upgraded PLAN-008 database: %v", err)
-	}
-	if _, err := Verify(context.Background(), current.Pool); err != nil {
-		_ = current.Close()
-		t.Fatalf("verify upgraded PLAN-008 catalog: %v", err)
 	}
 	var aiRows int
 	if err := current.SQL.QueryRow(`
@@ -703,16 +703,8 @@ SELECT
 		t.Fatal("unprepared PLAN-008 restore failed without diagnostic output")
 	}
 
-	current, err = Open(context.Background(), dsn)
-	if err != nil {
-		t.Fatalf("reopen database after failed unprepared restore: %v", err)
-	}
-	if _, err := Verify(context.Background(), current.Pool); err != nil {
-		_ = current.Close()
-		t.Fatalf("unprepared restore was not atomic: %v", err)
-	}
-	if err := current.Close(); err != nil {
-		t.Fatalf("close database before prepared restore: %v", err)
+	if output, err := runHistoricalDatabaseCommand(targetWorktree, dsn, "verify"); err != nil {
+		t.Fatalf("unprepared restore was not atomic: %v\n%s", err, output)
 	}
 
 	if output, err := runPostgreSQLTool(t, "psql", dsn, "-v", "ON_ERROR_STOP=1", "-c", plan008RollbackPreparationSQL(t)); err != nil {
@@ -723,6 +715,104 @@ SELECT
 	}
 	if output, err := runHistoricalDatabaseCommand(worktree, dsn, "verify"); err != nil {
 		t.Fatalf("verify restored database with detached PLAN-007 worktree: %v\n%s", err, output)
+	}
+}
+
+func TestPlan009SchemaUpgradeAndRollbackUsesPinnedPlan008Worktree(t *testing.T) {
+	worktree := plan008Worktree(t)
+	dsn := postgresfixture.New(t)
+
+	if output, err := runHistoricalDatabaseCommand(worktree, dsn, "init", "--empty-only", "--confirm-empty"); err != nil {
+		t.Fatalf("initialize detached PLAN-008 worktree database: %v\n%s", err, output)
+	}
+	if output, err := runHistoricalDatabaseCommand(worktree, dsn, "verify"); err != nil {
+		t.Fatalf("verify detached PLAN-008 worktree database: %v\n%s", err, output)
+	}
+	if output, err := runPostgreSQLTool(t, "psql", dsn, "-v", "ON_ERROR_STOP=1", "-c", plan009MonitorMatchFixtureSQL); err != nil {
+		t.Fatalf("seed non-empty PLAN-008 monitor-match history: %v\n%s", err, output)
+	}
+
+	backup := filepath.Join(t.TempDir(), "plan009-plan008-before-upgrade.dump")
+	if output, err := runPostgreSQLTool(t, "pg_dump", dsn, "--format=custom", "--file="+backup); err != nil {
+		t.Fatalf("dump PLAN-008 database: %v\n%s", err, output)
+	}
+	if output, err := runPostgreSQLTool(t, "psql", dsn, "-v", "ON_ERROR_STOP=1", "-c", plan009UpgradeSQL(t)); err != nil {
+		t.Fatalf("apply exact PLAN-009 upgrade runbook: %v\n%s", err, output)
+	}
+
+	current, err := Open(context.Background(), dsn)
+	if err != nil {
+		t.Fatalf("open upgraded PLAN-009 database: %v", err)
+	}
+	if _, err := Verify(context.Background(), current.Pool); err != nil {
+		_ = current.Close()
+		t.Fatalf("verify upgraded PLAN-009 catalog: %v", err)
+	}
+	var historicalMatches int
+	if err := current.SQL.QueryRow(`SELECT count(*) FROM monitor_matches WHERE algorithm_version = 'plan009-upgrade-fixture'`).Scan(&historicalMatches); err != nil {
+		_ = current.Close()
+		t.Fatalf("count upgraded historical monitor matches: %v", err)
+	}
+	if historicalMatches != 1 {
+		_ = current.Close()
+		t.Fatalf("upgraded historical monitor matches = %d, want 1", historicalMatches)
+	}
+	if _, err := current.SQL.Exec(`
+INSERT INTO ai_model_profiles (
+  name, task_type, provider, model_name, credential_ref, model_version,
+  max_attempts, max_cost, daily_budget
+) VALUES (
+  'plan009-relevance-review', 'relevance_review', 'openai', 'gpt-5.6sol', 'env:OPENAI_API_KEY', '2026-07',
+  2, 0.1000, 1.0000
+)`); err != nil {
+		_ = current.Close()
+		t.Fatalf("insert upgraded relevance-review profile: %v", err)
+	}
+	if _, err := current.SQL.Exec(`
+INSERT INTO ai_model_profiles (
+  name, task_type, provider, model_name, credential_ref, model_version,
+  embedding_dimensions, max_attempts, max_cost
+) VALUES (
+  'plan009-invalid-relevance-review', 'relevance_review', 'openai', 'gpt-5.6sol', 'env:OPENAI_API_KEY', '2026-07',
+  1024, 2, 0.1000
+)`); err == nil {
+		_ = current.Close()
+		t.Fatal("insert relevance-review profile with embedding dimensions error = nil, want CHECK rejection")
+	} else {
+		assertPostgreSQLState(t, err, "23514")
+	}
+	if err := current.Close(); err != nil {
+		t.Fatalf("close upgraded PLAN-009 database: %v", err)
+	}
+
+	if output, err := runPostgreSQLTool(t, "pg_restore", "--single-transaction", "--clean", "--if-exists", "--no-owner", "--dbname="+dsn, backup); err != nil {
+		t.Fatalf("restore PLAN-008 backup after PLAN-009 upgrade: %v\n%s", err, output)
+	}
+	if output, err := runPostgreSQLTool(t, "psql", dsn, "-v", "ON_ERROR_STOP=1", "-c", plan009RollbackNormalizationSQL(t)); err != nil {
+		t.Fatalf("normalize restored PLAN-008 index catalog: %v\n%s", err, output)
+	}
+	if output, err := runHistoricalDatabaseCommand(worktree, dsn, "verify"); err != nil {
+		t.Fatalf("verify restored database with detached PLAN-008 worktree: %v\n%s", err, output)
+	}
+	restored, err := Open(context.Background(), dsn)
+	if err != nil {
+		t.Fatalf("open restored PLAN-008 database: %v", err)
+	}
+	var restoredMatches int
+	if err := restored.SQL.QueryRow(`
+SELECT count(*)
+FROM monitor_matches
+WHERE algorithm_version = 'plan009-upgrade-fixture'
+  AND rule_score = 70 AND final_score = 70 AND decision = 'review'
+  AND reason_codes = ARRAY['fixture']::text[]`).Scan(&restoredMatches); err != nil {
+		_ = restored.Close()
+		t.Fatalf("verify restored monitor-match history: %v", err)
+	}
+	if err := restored.Close(); err != nil {
+		t.Fatalf("close restored PLAN-008 database: %v", err)
+	}
+	if restoredMatches != 1 {
+		t.Fatalf("restored historical monitor matches = %d, want 1", restoredMatches)
 	}
 }
 
@@ -807,6 +897,23 @@ func plan007Worktree(t *testing.T) string {
 		output, err := exec.Command("git", "-C", root, "worktree", "remove", "--force", worktree).CombinedOutput()
 		if err != nil {
 			t.Errorf("remove detached PLAN-007 worktree: %v\n%s", err, output)
+		}
+	})
+	return worktree
+}
+
+func plan008Worktree(t *testing.T) string {
+	t.Helper()
+	root := filepath.Clean(filepath.Join("..", "..", ".."))
+	worktree := filepath.Join(t.TempDir(), "plan008-worktree")
+	command := exec.Command("git", "-C", root, "worktree", "add", "--detach", worktree, "a7fc805")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("create detached PLAN-008 worktree: %v\n%s", err, output)
+	}
+	t.Cleanup(func() {
+		output, err := exec.Command("git", "-C", root, "worktree", "remove", "--force", worktree).CombinedOutput()
+		if err != nil {
+			t.Errorf("remove detached PLAN-008 worktree: %v\n%s", err, output)
 		}
 	})
 	return worktree
@@ -907,6 +1014,72 @@ func plan008UpgradeSQL(t *testing.T) string {
 	t.Helper()
 	return plan008RunbookTransaction(t, "BEGIN;\n\nALTER TABLE ai_model_profiles", "PLAN-008 upgrade")
 }
+
+func plan009UpgradeSQL(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join("..", "..", "..", "docs", "operations", "plan009-schema-upgrade.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read PLAN-009 upgrade runbook: %v", err)
+	}
+	text := string(content)
+	start := strings.Index(text, "BEGIN;\n\nALTER TABLE ai_model_profiles")
+	if start < 0 {
+		t.Fatal("PLAN-009 upgrade runbook transaction is missing")
+	}
+	end := strings.Index(text[start:], "\nCOMMIT;")
+	if end < 0 {
+		t.Fatal("PLAN-009 upgrade runbook transaction has no COMMIT")
+	}
+	return text[start : start+end+len("\nCOMMIT;")]
+}
+
+func plan009RollbackNormalizationSQL(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join("..", "..", "..", "docs", "operations", "plan009-schema-upgrade.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read PLAN-009 rollback runbook: %v", err)
+	}
+	text := string(content)
+	start := strings.Index(text, "BEGIN;\n\nDROP INDEX IF EXISTS ai_runs_reuse_inflight_uq")
+	if start < 0 {
+		t.Fatal("PLAN-009 rollback normalization transaction is missing")
+	}
+	end := strings.Index(text[start:], "\nCOMMIT;")
+	if end < 0 {
+		t.Fatal("PLAN-009 rollback normalization transaction has no COMMIT")
+	}
+	return text[start : start+end+len("\nCOMMIT;")]
+}
+
+const plan009MonitorMatchFixtureSQL = `
+WITH source AS (
+  INSERT INTO source_connections (source_type, name, endpoint)
+  VALUES ('rss', 'plan009-upgrade-source', 'https://plan009.example.test/feed')
+  RETURNING id
+), monitor AS (
+  INSERT INTO monitors (name)
+  VALUES ('plan009-upgrade-monitor')
+  RETURNING id
+), config AS (
+  INSERT INTO monitor_config_versions (monitor_id, revision)
+  SELECT id, 1 FROM monitor
+  RETURNING id, monitor_id
+), content AS (
+  INSERT INTO contents (
+    source_connection_id, external_id, content_type, title, canonical_url, published_at, fetched_at, dedupe_key
+  )
+  SELECT id, 'plan009-upgrade-content', 'article', 'Historical relevance fixture',
+         'https://plan009.example.test/content', now(), now(), repeat('a', 64)
+  FROM source
+  RETURNING id
+)
+INSERT INTO monitor_matches (
+  monitor_id, monitor_config_version_id, content_id, rule_score, final_score, decision, reason_codes, algorithm_version
+)
+SELECT monitor.id, config.id, content.id, 70, 70, 'review', ARRAY['fixture'], 'plan009-upgrade-fixture'
+FROM monitor, config, content;`
 
 func plan008RollbackPreparationSQL(t *testing.T) string {
 	t.Helper()

@@ -52,6 +52,48 @@ func TestRunServiceSettlesSafeStructuredResultAndReusesIt(t *testing.T) {
 	}
 }
 
+func TestPlan009RelevanceReviewContract(t *testing.T) {
+	runtime := openApplicationRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	runs := intelligencepostgres.NewRepository(runtime)
+	profile := applicationRelevanceReviewProfile()
+	if err := runs.CreateProfile(context.Background(), &profile); err != nil {
+		t.Fatalf("CreateProfile(relevance_review): %v", err)
+	}
+	provider := &applicationFakeProvider{structured: []domain.StructuredResponse{{
+		ModelVersion: profile.ModelVersion,
+		JSON:         json.RawMessage(`{"decision":"review","score":70,"reason_codes":["ambiguous_context"]}`),
+		Usage:        domain.Usage{InputTokens: 3, OutputTokens: 2},
+	}}}
+	clock := &applicationClock{value: time.Date(2026, time.July, 17, 11, 0, 0, 0, time.UTC)}
+	service := newApplicationRunService(t, runs, provider, clock)
+	invalidTarget := applicationRelevanceReviewInput()
+	invalidTarget.TargetType = "content"
+	if _, err := service.ExecuteStructured(context.Background(), invalidTarget); err == nil {
+		t.Fatal("ExecuteStructured(relevance_review content target) error = nil, want rejection")
+	} else if code, ok := domain.CodeOf(err); !ok || code != domain.CodeAIModelProfileInvalid {
+		t.Fatalf("ExecuteStructured(relevance_review content target) code = %d/%t, want %d", code, ok, domain.CodeAIModelProfileInvalid)
+	}
+	if calls := provider.structuredCalls(); calls != 0 {
+		t.Fatalf("provider calls after rejected relevance target = %d, want 0", calls)
+	}
+	result, err := service.ExecuteStructured(context.Background(), applicationRelevanceReviewInput())
+	if err != nil {
+		t.Fatalf("ExecuteStructured(relevance_review): %v", err)
+	}
+	var response struct {
+		Decision    string   `json:"decision"`
+		Score       float64  `json:"score"`
+		ReasonCodes []string `json:"reason_codes"`
+	}
+	if err := json.Unmarshal(result.Result, &response); err != nil {
+		t.Fatalf("decode relevance-review result: %v", err)
+	}
+	if result.Status != "succeeded" || result.Run.TaskType != domain.TaskTypeRelevanceReview || response.Decision != "review" || response.Score != 70 || len(response.ReasonCodes) != 1 || response.ReasonCodes[0] != "ambiguous_context" {
+		t.Fatalf("relevance-review result = %#v", result)
+	}
+}
+
 func TestRunServiceRetriesOnlyTransientProviderFailures(t *testing.T) {
 	for _, testCase := range []struct {
 		name, hash string
@@ -296,6 +338,14 @@ func applicationTermProfile() domain.ModelProfile {
 		MaxCost: "1.0000", DailyBudget: &daily, FallbackPriority: 10, Enabled: true}
 }
 
+func applicationRelevanceReviewProfile() domain.ModelProfile {
+	credential := domain.OpenAICredentialReference
+	daily := "5.0000"
+	return domain.ModelProfile{Name: "application-relevance-review-profile", TaskType: domain.TaskTypeRelevanceReview, Provider: domain.ProviderOpenAI,
+		ModelName: "gpt-5.6sol", ModelVersion: "2026-07", CredentialRef: &credential, TimeoutSeconds: 10, MaxAttempts: 2,
+		MaxCost: "1.0000", DailyBudget: &daily, FallbackPriority: 10, Enabled: true}
+}
+
 func applicationEmbeddingProfile() domain.ModelProfile {
 	credential := domain.OpenAICredentialReference
 	dimensions := domain.EmbeddingDimensions
@@ -308,6 +358,12 @@ func applicationStructuredInput() StructuredExecutionInput {
 	return StructuredExecutionInput{TaskType: domain.TaskTypeTermExpansion, TargetType: "monitor", TargetID: 99,
 		PromptVersion: "prompt-v1", InputSchemaVersion: "v1", SchemaVersion: "v1", ParametersVersion: "params-v1",
 		InputHash: strings.Repeat("a", 64), EvidenceSetHash: strings.Repeat("b", 64), Input: json.RawMessage(`{"intent":"hotkey","terms":["hotkey"],"language":"en"}`)}
+}
+
+func applicationRelevanceReviewInput() StructuredExecutionInput {
+	return StructuredExecutionInput{TaskType: domain.TaskTypeRelevanceReview, TargetType: "monitor_match", TargetID: 99,
+		PromptVersion: "relevance-review-v1", InputSchemaVersion: "v1", SchemaVersion: "v1", ParametersVersion: "relevance-v1",
+		InputHash: strings.Repeat("c", 64), EvidenceSetHash: strings.Repeat("d", 64), Input: json.RawMessage(`{"content_excerpt":"A verified OpenAI product announcement.","content_language":"en","monitor_intent":"Track OpenAI product releases.","scoring_version":"relevance-v1","scores":{"semantic":70,"lexical":80,"entity":60,"title":70,"preference":50},"recall_paths":["lexical","vector"],"reason_codes":["lexical_candidate"],"evidence_terms":["OpenAI"]}`)}
 }
 
 func applicationEmbeddingInput(targetID int64) EmbeddingExecutionInput {

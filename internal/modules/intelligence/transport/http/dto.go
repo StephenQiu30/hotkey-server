@@ -23,7 +23,7 @@ type EmptyResponse struct{}
 // value is validated as a reference, not resolved by this transport.
 type CreateModelProfileRequest struct {
 	Name                string  `json:"name" example:"embedding-primary"`
-	TaskType            string  `json:"task_type" enums:"embedding,term_expansion"`
+	TaskType            string  `json:"task_type" enums:"embedding,term_expansion,relevance_review"`
 	Provider            string  `json:"provider" enums:"openai,onnx"`
 	ModelName           string  `json:"model_name" example:"text-embedding-3-large"`
 	ModelVersion        string  `json:"model_version" example:"2026-07"`

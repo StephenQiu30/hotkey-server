@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["content_excerpt", "content_language", "monitor_intent", "scoring_version", "scores", "recall_paths", "reason_codes", "evidence_terms"],
+  "properties": {
+    "content_excerpt": {"type": "string", "minLength": 1, "maxLength": 1200},
+    "content_language": {"type": "string", "enum": ["zh", "en", "und"]},
+    "monitor_intent": {"type": "string", "minLength": 1, "maxLength": 500},
+    "scoring_version": {"type": "string", "enum": ["relevance-v1", "relevance-v1-degraded"]},
+    "scores": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["semantic", "lexical", "entity", "title", "preference"],
+      "properties": {
+        "semantic": {"type": "number", "minimum": 0, "maximum": 100},
+        "lexical": {"type": "number", "minimum": 0, "maximum": 100},
+        "entity": {"type": "number", "minimum": 0, "maximum": 100},
+        "title": {"type": "number", "minimum": 0, "maximum": 100},
+        "preference": {"type": "number", "minimum": 0, "maximum": 100}
+      }
+    },
+    "recall_paths": {
+      "type": "array", "minItems": 1, "maxItems": 3, "uniqueItems": true,
+      "items": {"type": "string", "enum": ["source", "lexical", "vector"]}
+    },
+    "reason_codes": {
+      "type": "array", "maxItems": 12, "uniqueItems": true,
+      "items": {"type": "string", "enum": ["source_candidate", "lexical_candidate", "vector_candidate", "low_confidence", "degraded_vector"]}
+    },
+    "evidence_terms": {
+      "type": "array", "maxItems": 16, "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 120}
+    }
+  }
+}

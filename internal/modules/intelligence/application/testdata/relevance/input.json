@@ -1,0 +1,1 @@
+{"content_excerpt":"A verified OpenAI product announcement.","content_language":"en","monitor_intent":"Track OpenAI product releases.","scoring_version":"relevance-v1","scores":{"semantic":70,"lexical":80,"entity":60,"title":70,"preference":50},"recall_paths":["lexical","vector"],"reason_codes":["lexical_candidate"],"evidence_terms":["OpenAI"]}

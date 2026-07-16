@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["decision", "score", "reason_codes"],
+  "properties": {
+    "decision": {"type": "string", "enum": ["accepted", "review", "rejected"]},
+    "score": {"type": "number", "minimum": 0, "maximum": 100},
+    "reason_codes": {
+      "type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true,
+      "items": {"type": "string", "enum": ["relevant_evidence", "insufficient_evidence", "ambiguous_context", "conflicting_signals"]}
+    }
+  }
+}
