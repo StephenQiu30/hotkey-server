@@ -3,30 +3,25 @@ package application
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"html"
 	"net"
 	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
 
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/domain"
 	sourcedomain "github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
+	"golang.org/x/net/html"
+	"golang.org/x/net/idna"
 	"golang.org/x/text/unicode/norm"
-)
-
-var (
-	scriptOrStylePattern = regexp.MustCompile(`(?is)<\s*(?:script|style)\b[^>]*>.*?<\s*/\s*(?:script|style)\s*>`)
-	htmlCommentPattern   = regexp.MustCompile(`(?s)<!--.*?-->`)
-	htmlTagPattern       = regexp.MustCompile(`(?s)<[^>]*>`)
 )
 
 // NormalizeCapturedItem converts a Source-owned, already-persisted capture to
 // Content facts. It never calls a connector and it does not retain an upstream
 // response beyond the capture fields Source has already allowed to persist.
 func NormalizeCapturedItem(item sourcedomain.CapturedItem, sourceConnectionID int64) (ingestiondomain.NormalizedContent, error) {
-	if sourceConnectionID <= 0 || (item.Version != sourcedomain.CapturedItemVersionV1 && item.Version != sourcedomain.CapturedItemVersionV2) || strings.TrimSpace(item.SourceCode) == "" || strings.TrimSpace(item.ExternalID) == "" || item.ObservedAt.IsZero() {
+	externalID := strings.TrimSpace(norm.NFC.String(item.ExternalID))
+	if sourceConnectionID <= 0 || (item.Version != sourcedomain.CapturedItemVersionV1 && item.Version != sourcedomain.CapturedItemVersionV2) || strings.TrimSpace(item.SourceCode) == "" || externalID == "" || item.ObservedAt.IsZero() {
 		return ingestiondomain.NormalizedContent{}, ingestiondomain.NewError(ingestiondomain.ErrorCodeInvalidCapturedItem)
 	}
 
@@ -57,7 +52,7 @@ func NormalizeCapturedItem(item sourcedomain.CapturedItem, sourceConnectionID in
 	}
 	content := ingestiondomain.NormalizedContent{
 		SourceConnectionID: sourceConnectionID,
-		ExternalID:         normalizeText(item.ExternalID),
+		ExternalID:         externalID,
 		ContentType:        contentType,
 		Title:              title,
 		Excerpt:            body,
@@ -96,7 +91,16 @@ func normalizeCanonicalURL(rawURL string) (string, error) {
 		return "", ingestiondomain.NewError(ingestiondomain.ErrorCodeInvalidCanonicalURL)
 	}
 	scheme := strings.ToLower(parsed.Scheme)
-	hostname := strings.ToLower(parsed.Hostname())
+	hostname := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
+	if hostname == "" {
+		return "", ingestiondomain.NewError(ingestiondomain.ErrorCodeInvalidCanonicalURL)
+	}
+	if net.ParseIP(hostname) == nil {
+		hostname, err = idna.Lookup.ToASCII(hostname)
+		if err != nil || hostname == "" {
+			return "", ingestiondomain.NewError(ingestiondomain.ErrorCodeInvalidCanonicalURL)
+		}
+	}
 	port := parsed.Port()
 	if (scheme == "http" && port == "80") || (scheme == "https" && port == "443") {
 		port = ""
@@ -150,13 +154,51 @@ func isTrackingQueryKey(key string) bool {
 }
 
 func normalizeText(raw string) string {
-	withoutMarkup := scriptOrStylePattern.ReplaceAllString(norm.NFC.String(raw), " ")
-	withoutMarkup = htmlCommentPattern.ReplaceAllString(withoutMarkup, " ")
-	withoutMarkup = htmlTagPattern.ReplaceAllStringFunc(withoutMarkup, htmlTagSeparator)
-	decoded := html.UnescapeString(withoutMarkup)
+	tokenizer := html.NewTokenizer(strings.NewReader(raw))
+	var text strings.Builder
+	discardedTag := ""
+	for {
+		switch tokenizer.Next() {
+		case html.ErrorToken:
+			return normalizeVisibleText(text.String())
+		case html.TextToken:
+			if discardedTag == "" {
+				text.Write(tokenizer.Text())
+			}
+		case html.StartTagToken:
+			name, _ := tokenizer.TagName()
+			tag := strings.ToLower(string(name))
+			if discardedTag != "" {
+				continue
+			}
+			if tag == "script" || tag == "style" {
+				discardedTag = tag
+				continue
+			}
+			if isBlockHTMLTag(tag) {
+				text.WriteByte(' ')
+			}
+		case html.EndTagToken:
+			name, _ := tokenizer.TagName()
+			tag := strings.ToLower(string(name))
+			if discardedTag != "" {
+				if tag == discardedTag {
+					discardedTag = ""
+				}
+				continue
+			}
+			if isBlockHTMLTag(tag) {
+				text.WriteByte(' ')
+			}
+		}
+	}
+}
+
+func normalizeVisibleText(value string) string {
+	value = norm.NFC.String(value)
 	var cleaned strings.Builder
-	cleaned.Grow(len(decoded))
-	for _, character := range decoded {
+	cleaned.Grow(len(value))
+	for _, character := range value {
 		if unicode.IsControl(character) || unicode.Is(unicode.Cf, character) {
 			cleaned.WriteByte(' ')
 			continue
@@ -166,18 +208,12 @@ func normalizeText(raw string) string {
 	return strings.Join(strings.Fields(cleaned.String()), " ")
 }
 
-func htmlTagSeparator(tag string) string {
-	name := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(tag, "<"), ">"))
-	name = strings.TrimLeft(name, "/")
-	if index := strings.IndexFunc(name, unicode.IsSpace); index >= 0 {
-		name = name[:index]
-	}
-	name = strings.TrimRight(strings.ToLower(name), "/")
-	switch name {
+func isBlockHTMLTag(tag string) bool {
+	switch tag {
 	case "address", "article", "blockquote", "br", "div", "figcaption", "figure", "footer", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "li", "main", "ol", "p", "pre", "section", "table", "td", "th", "tr", "ul":
-		return " "
+		return true
 	default:
-		return ""
+		return false
 	}
 }
 

@@ -109,20 +109,24 @@ func (content NormalizedContent) Validate() error {
 }
 
 // ContentCandidate is the bounded, already-normalized fact needed for a
-// deterministic duplicate decision. It is intentionally not a repository or
-// cross-module database projection.
+// deterministic duplicate decision. Completeness is the repository-derived
+// count of non-empty presentation facts; SourceExternalIDStable records that
+// the source's external ID is a stable publisher/item identifier. They let a
+// duplicate target be selected without touching another module's tables.
 type ContentCandidate struct {
-	ID                 int64
-	SourceConnectionID int64
-	PublishedAt        time.Time
-	TitleTokens        []string
-	BodyTokens         []string
-	CanonicalURL       string
-	DedupeKey          string
+	ID                     int64
+	SourceConnectionID     int64
+	PublishedAt            time.Time
+	TitleTokens            []string
+	BodyTokens             []string
+	CanonicalURL           string
+	DedupeKey              string
+	Completeness           int
+	SourceExternalIDStable bool
 }
 
 func (candidate ContentCandidate) Validate() error {
-	if candidate.ID <= 0 || candidate.SourceConnectionID <= 0 || candidate.PublishedAt.IsZero() {
+	if candidate.ID <= 0 || candidate.SourceConnectionID <= 0 || candidate.PublishedAt.IsZero() || candidate.Completeness < 0 {
 		return NewError(ErrorCodeInvalidContentCandidate)
 	}
 	return nil

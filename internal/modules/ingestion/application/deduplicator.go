@@ -23,12 +23,12 @@ func DecideDuplicate(content ingestiondomain.NormalizedContent, candidates []ing
 			return ingestiondomain.DedupeDecision{}, err
 		}
 	}
-	if candidate, ok := lowestMatchingCandidate(candidates, func(candidate ingestiondomain.ContentCandidate) bool {
+	if candidate, ok := preferredMatchingCandidate(candidates, func(candidate ingestiondomain.ContentCandidate) bool {
 		return candidate.CanonicalURL != "" && candidate.CanonicalURL == content.CanonicalURL
 	}); ok {
 		return duplicateDecision(candidate.ID, ingestiondomain.DedupeReasonExactURL, ingestiondomain.DedupeVersionExactURL), nil
 	}
-	if candidate, ok := lowestMatchingCandidate(candidates, func(candidate ingestiondomain.ContentCandidate) bool {
+	if candidate, ok := preferredMatchingCandidate(candidates, func(candidate ingestiondomain.ContentCandidate) bool {
 		return candidate.DedupeKey != "" && candidate.DedupeKey == content.ContentHash
 	}); ok {
 		return duplicateDecision(candidate.ID, ingestiondomain.DedupeReasonExactHash, ingestiondomain.DedupeVersionExactHash), nil
@@ -38,7 +38,7 @@ func DecideDuplicate(content ingestiondomain.NormalizedContent, candidates []ing
 	if len(titleTokens) == 0 || len(bodyTokens) == 0 {
 		return ingestiondomain.DedupeDecision{Status: ingestiondomain.ContentStatusActive}, nil
 	}
-	if candidate, ok := lowestMatchingCandidate(candidates, func(candidate ingestiondomain.ContentCandidate) bool {
+	if candidate, ok := preferredMatchingCandidate(candidates, func(candidate ingestiondomain.ContentCandidate) bool {
 		if candidate.SourceConnectionID != content.SourceConnectionID || absDuration(candidate.PublishedAt.Sub(content.PublishedAt)) > nearTextWindow {
 			return false
 		}
@@ -55,17 +55,30 @@ func duplicateDecision(id int64, reason, version string) ingestiondomain.DedupeD
 	return ingestiondomain.DedupeDecision{Status: ingestiondomain.ContentStatusDuplicate, DuplicateOfID: &id, Reason: reason, Version: version}
 }
 
-func lowestMatchingCandidate(candidates []ingestiondomain.ContentCandidate, matches func(ingestiondomain.ContentCandidate) bool) (ingestiondomain.ContentCandidate, bool) {
+func preferredMatchingCandidate(candidates []ingestiondomain.ContentCandidate, matches func(ingestiondomain.ContentCandidate) bool) (ingestiondomain.ContentCandidate, bool) {
 	var selected ingestiondomain.ContentCandidate
 	found := false
 	for _, candidate := range candidates {
-		if !matches(candidate) || (found && candidate.ID >= selected.ID) {
+		if !matches(candidate) || (found && !candidatePreferred(candidate, selected)) {
 			continue
 		}
 		selected = candidate
 		found = true
 	}
 	return selected, found
+}
+
+func candidatePreferred(candidate, selected ingestiondomain.ContentCandidate) bool {
+	if candidate.Completeness != selected.Completeness {
+		return candidate.Completeness > selected.Completeness
+	}
+	if !candidate.PublishedAt.Equal(selected.PublishedAt) {
+		return candidate.PublishedAt.Before(selected.PublishedAt)
+	}
+	if candidate.SourceExternalIDStable != selected.SourceExternalIDStable {
+		return candidate.SourceExternalIDStable
+	}
+	return candidate.ID < selected.ID
 }
 
 func tokenize(value string) []string {

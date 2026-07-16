@@ -105,6 +105,67 @@ func TestNormalizeCapturedItemCanonicalizesIPv6Host(t *testing.T) {
 	}
 }
 
+func TestNormalizeCapturedItemPreservesOpaqueExternalID(t *testing.T) {
+	t.Parallel()
+
+	firstItem := capturedItemForNormalization("https://example.test/opaque-one", "first", "")
+	firstItem.ExternalID = "  a<b>  "
+	secondItem := capturedItemForNormalization("https://example.test/opaque-two", "second", "")
+	secondItem.ExternalID = "a"
+
+	first, err := NormalizeCapturedItem(firstItem, 3)
+	if err != nil {
+		t.Fatalf("NormalizeCapturedItem(first) error = %v", err)
+	}
+	second, err := NormalizeCapturedItem(secondItem, 3)
+	if err != nil {
+		t.Fatalf("NormalizeCapturedItem(second) error = %v", err)
+	}
+	if first.ExternalID != "a<b>" || second.ExternalID != "a" || first.ExternalID == second.ExternalID {
+		t.Fatalf("opaque external IDs = %q / %q, want distinct trim-only source identities", first.ExternalID, second.ExternalID)
+	}
+}
+
+func TestNormalizeCapturedItemTokenizesHTMLWithoutDiscardingComparisonText(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		body     string
+		wantBody string
+	}{
+		{name: "ordinary_comparison_and_entity", body: "A < B > C<p>visible&nbsp;text</p>", wantBody: "A < B > C visible text"},
+		{name: "unclosed_script", body: "before<script>discard <b>all remaining", wantBody: "before"},
+		{name: "nested_script_subtree", body: "before<script><style>discard</style></script><p>after</p>", wantBody: "before after"},
+		{name: "unclosed_style", body: "before<style>discard <script>all remaining", wantBody: "before"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			item := capturedItemForNormalization("https://example.test/html-"+test.name, "Cafe&#x301;", "")
+			item.Body = test.body + "\x00"
+			content, err := NormalizeCapturedItem(item, 4)
+			if err != nil {
+				t.Fatalf("NormalizeCapturedItem() error = %v", err)
+			}
+			if content.Title != "Café" || content.Body != test.wantBody {
+				t.Fatalf("normalized title/body = %q / %q, want NFC title and %q", content.Title, content.Body, test.wantBody)
+			}
+		})
+	}
+}
+
+func TestNormalizeCapturedItemCanonicalizesIDNAndTrailingHostDot(t *testing.T) {
+	t.Parallel()
+
+	content, err := NormalizeCapturedItem(capturedItemForNormalization("https://BÜCHER.example./story", "IDN", ""), 8)
+	if err != nil {
+		t.Fatalf("NormalizeCapturedItem() error = %v", err)
+	}
+	if content.CanonicalURL != "https://xn--bcher-kva.example/story" {
+		t.Fatalf("canonical IDN URL = %q", content.CanonicalURL)
+	}
+}
+
 func TestNormalizeCapturedItemRejectsInvalidCapturedFactsWithStableCodes(t *testing.T) {
 	t.Parallel()
 

@@ -33,6 +33,59 @@ func TestDecideDuplicatePrioritizesExactURLAndHashAcrossSources(t *testing.T) {
 	}
 }
 
+func TestDecideDuplicateChoosesExactTargetByCompletenessPublicationAndStableIdentity(t *testing.T) {
+	t.Parallel()
+
+	content := mustNormalize(t, 31, "https://example.test/duplicate", "A distinct title", "A distinct body")
+	lessCompleteEarlier := candidateFor(t, 90, 99, content.CanonicalURL, strings.Repeat("a", 64), "old title", "old body", content.PublishedAt.Add(-time.Hour))
+	lessCompleteEarlier.Completeness = 2
+	lessCompleteEarlier.SourceExternalIDStable = true
+	moreCompleteLater := candidateFor(t, 5, 100, content.CanonicalURL, strings.Repeat("b", 64), "better title", "better body", content.PublishedAt.Add(time.Hour))
+	moreCompleteLater.Completeness = 3
+	decision, err := DecideDuplicate(content, []ingestiondomain.ContentCandidate{lessCompleteEarlier, moreCompleteLater})
+	if err != nil {
+		t.Fatalf("DecideDuplicate(URL completeness) error = %v", err)
+	}
+	if decision.DuplicateOfID == nil || *decision.DuplicateOfID != moreCompleteLater.ID {
+		t.Fatalf("URL decision target = %#v, want more complete candidate ID %d", decision, moreCompleteLater.ID)
+	}
+
+	earlierLargerID := candidateFor(t, 101, 101, "https://other.example.test/old", content.ContentHash, "old title", "old body", content.PublishedAt.Add(-time.Hour))
+	earlierLargerID.Completeness = 3
+	laterSmallerID := candidateFor(t, 1, 102, "https://other.example.test/new", content.ContentHash, "new title", "new body", content.PublishedAt)
+	laterSmallerID.Completeness = 3
+	decision, err = DecideDuplicate(content, []ingestiondomain.ContentCandidate{laterSmallerID, earlierLargerID})
+	if err != nil {
+		t.Fatalf("DecideDuplicate(hash publication) error = %v", err)
+	}
+	if decision.DuplicateOfID == nil || *decision.DuplicateOfID != earlierLargerID.ID {
+		t.Fatalf("hash decision target = %#v, want earlier candidate ID %d despite larger ID", decision, earlierLargerID.ID)
+	}
+
+	lessStable := candidateFor(t, 2, 103, content.CanonicalURL, strings.Repeat("c", 64), "title", "body", content.PublishedAt)
+	lessStable.Completeness = 3
+	stableLargerID := candidateFor(t, 77, 104, content.CanonicalURL, strings.Repeat("d", 64), "title", "body", content.PublishedAt)
+	stableLargerID.Completeness = 3
+	stableLargerID.SourceExternalIDStable = true
+	decision, err = DecideDuplicate(content, []ingestiondomain.ContentCandidate{lessStable, stableLargerID})
+	if err != nil {
+		t.Fatalf("DecideDuplicate(URL source identity) error = %v", err)
+	}
+	if decision.DuplicateOfID == nil || *decision.DuplicateOfID != stableLargerID.ID {
+		t.Fatalf("stable-source decision target = %#v, want stable source ID %d", decision, stableLargerID.ID)
+	}
+
+	stableSmallerID := stableLargerID
+	stableSmallerID.ID = 7
+	decision, err = DecideDuplicate(content, []ingestiondomain.ContentCandidate{stableLargerID, stableSmallerID})
+	if err != nil {
+		t.Fatalf("DecideDuplicate(URL tiebreaker) error = %v", err)
+	}
+	if decision.DuplicateOfID == nil || *decision.DuplicateOfID != stableSmallerID.ID {
+		t.Fatalf("tiebreaker decision target = %#v, want stable lower ID %d", decision, stableSmallerID.ID)
+	}
+}
+
 func TestDecideDuplicateNearTextRequiresSameSourceWindowAndStrictSimilarity(t *testing.T) {
 	t.Parallel()
 
