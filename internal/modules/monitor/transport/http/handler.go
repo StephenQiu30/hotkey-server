@@ -215,7 +215,7 @@ func (handler *Handler) AddAICandidate(c *gin.Context) error {
 	if err != nil {
 		return invalidRequest(err)
 	}
-	_, rule, err := handler.service.AddAICandidate(c.Request.Context(), monitorapplication.AICandidateInput{Subject: subject, MonitorID: id, Expected: expected, Rule: domain.MonitorRule{RuleType: domain.RuleType(request.RuleType), Operator: domain.RuleOperator(request.Operator), Value: request.Value, Weight: request.Weight, Priority: request.Priority}})
+	_, rule, err := handler.service.AddAICandidate(c.Request.Context(), monitorapplication.AICandidateInput{Subject: subject, MonitorID: id, Expected: expected, Rule: aiCandidateRule(request)})
 	if err != nil {
 		return err
 	}

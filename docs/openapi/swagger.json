@@ -2088,7 +2088,8 @@
                     "type": "string"
                 },
                 "priority": {
-                    "type": "integer"
+                    "type": "integer",
+                    "default": 100
                 },
                 "rule_type": {
                     "type": "string"

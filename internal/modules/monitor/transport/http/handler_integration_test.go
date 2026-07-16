@@ -103,6 +103,51 @@ func TestMonitorDraftHTTPDefaultsPersistAndPublishCanonicalHashesAndSignatures(t
 	}
 	publishedMonitor, publishedConfig = monitorHTTPPublish(t, router, repository, zeroMonitor, zeroDraft, zeroSignature)
 	assertMonitorHTTPCanonicalHash(t, publishedMonitor.ID, publishedConfig, repository)
+
+	candidateDraftRequest := fmt.Sprintf(`{"expected_monitor_version":%d,"expected_draft_version":null,"name":"HTTP priority monitor","config":{"timezone":"UTC","languages":["en"],"collection_interval_seconds":300,"relevance_threshold":60,"event_threshold":0,"retention_days":30},"rules":[{"rule_type":"keyword","operator":"contains","value":"OpenAI","weight":100,"priority":100}],"sources":[{"source_connection_id":%d,"priority":100}]}`, publishedMonitor.Version, connection.ID)
+	monitorHTTPJSON(t, router, http.MethodPut, fmt.Sprintf("/api/v1/monitors/%d/draft", monitorID), candidateDraftRequest, http.StatusOK, nil)
+	candidateMonitor, _ := repository.FindByID(context.Background(), monitorID)
+	candidateDraft, _, _, err := repository.FindConfig(context.Background(), *candidateMonitor.DraftConfigVersionID)
+	if err != nil {
+		t.Fatalf("load AI candidate draft: %v", err)
+	}
+	pendingSignature := monitorHTTPPreviewSignature(t, router, monitorID)
+	var candidateResult struct {
+		Code int                 `json:"code"`
+		Data MonitorRuleResponse `json:"data"`
+	}
+	candidateBody := fmt.Sprintf(`{"expected_monitor_version":%d,"expected_draft_version":%d,"rule_type":"keyword","operator":"contains","value":"candidate","weight":10}`, candidateMonitor.Version, candidateDraft.Version)
+	monitorHTTPJSON(t, router, http.MethodPost, fmt.Sprintf("/api/v1/monitors/%d/draft/ai-candidates", monitorID), candidateBody, http.StatusOK, &candidateResult)
+	if candidateResult.Code != 0 || candidateResult.Data.ID <= 0 || candidateResult.Data.Priority != 100 {
+		t.Fatalf("omitted-priority AI candidate response = %#v, want persisted default 100", candidateResult)
+	}
+	pendingMonitor, _ := repository.FindByID(context.Background(), monitorID)
+	pendingConfig, pendingRules, _, err := repository.FindConfig(context.Background(), *pendingMonitor.DraftConfigVersionID)
+	if err != nil {
+		t.Fatalf("load pending AI candidate: %v", err)
+	}
+	if len(pendingRules) != 2 || pendingRules[1].Priority != 100 || pendingRules[1].ApprovalStatus != domain.RuleApprovalPending {
+		t.Fatalf("persisted AI candidate rules = %#v, want pending priority 100", pendingRules)
+	}
+	if signature := monitorHTTPPreviewSignature(t, router, monitorID); signature != pendingSignature {
+		t.Fatalf("pending AI candidate changed signature: before=%s after=%s", pendingSignature, signature)
+	}
+	approvalBody := fmt.Sprintf(`{"expected_monitor_version":%d,"expected_draft_version":%d,"approval":"approved"}`, pendingMonitor.Version, pendingConfig.Version)
+	monitorHTTPJSON(t, router, http.MethodPost, fmt.Sprintf("/api/v1/monitors/%d/draft/rules/%d/approval", monitorID, candidateResult.Data.ID), approvalBody, http.StatusOK, nil)
+	approvedMonitor, _ := repository.FindByID(context.Background(), monitorID)
+	approvedConfig, approvedRules, _, err := repository.FindConfig(context.Background(), *approvedMonitor.DraftConfigVersionID)
+	if err != nil {
+		t.Fatalf("load approved AI candidate: %v", err)
+	}
+	if len(approvedRules) != 2 || approvedRules[1].Priority != 100 || approvedRules[1].ApprovalStatus != domain.RuleApprovalApproved {
+		t.Fatalf("approved AI candidate rules = %#v, want approved priority 100", approvedRules)
+	}
+	approvedSignature := monitorHTTPPreviewSignature(t, router, monitorID)
+	if approvedSignature == pendingSignature {
+		t.Fatal("approved omitted-priority AI candidate did not change query signature")
+	}
+	publishedMonitor, publishedConfig = monitorHTTPPublish(t, router, repository, approvedMonitor, approvedConfig, approvedSignature)
+	assertMonitorHTTPCanonicalHash(t, publishedMonitor.ID, publishedConfig, repository)
 }
 
 func monitorHTTPRuntime(t *testing.T) *database.Runtime {

@@ -156,7 +156,7 @@ func assertMonitorDraftDefaultsOpenAPI(t *testing.T, definitions map[string]stru
 		t.Errorf("event_threshold minimum = %v, want explicit 0", threshold.Minimum)
 	}
 
-	for _, name := range []string{"http.MonitorRuleRequest", "http.MonitorSourceRequest"} {
+	for _, name := range []string{"http.MonitorRuleRequest", "http.MonitorSourceRequest", "http.AICandidateRequest"} {
 		definition, ok := definitions[name]
 		if !ok {
 			t.Errorf("missing %s", name)

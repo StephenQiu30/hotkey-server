@@ -204,6 +204,39 @@ func TestMonitorDraftRequestPriorityPresenceKeepsExplicitZeroAndHashesLikeExplic
 	}
 }
 
+func TestAICandidateRequestDefaultsOmittedPriorityAndPreservesExplicitZero(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &captureMonitorService{readMonitorService: readMonitorService{view: monitorapplication.MonitorView{Monitor: domain.Monitor{ID: 1, Version: 4, Name: "monitor", Status: domain.MonitorStatusDraft}}}}
+	router := gin.New()
+	RegisterRoutes(router, service, testAuthenticator{subject: httptransport.Subject{UserID: 2, SessionID: 2, Role: httptransport.RoleAdmin}})
+
+	for _, test := range []struct {
+		name string
+		body string
+	}{
+		{name: "omitted", body: `{"expected_monitor_version":4,"expected_draft_version":3,"rule_type":"keyword","operator":"contains","value":"OpenAI","weight":100}`},
+		{name: "explicit zero", body: `{"expected_monitor_version":4,"expected_draft_version":3,"rule_type":"keyword","operator":"contains","value":"OpenAI","weight":100,"priority":0}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/monitors/1/draft/ai-candidates", strings.NewReader(test.body))
+			request.Header.Set("Authorization", "Bearer admin")
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
+			}
+		})
+	}
+
+	if len(service.candidates) != 2 {
+		t.Fatalf("AI candidate calls = %d, want 2", len(service.candidates))
+	}
+	if service.candidates[0].Rule.Priority != 100 || service.candidates[1].Rule.Priority != 0 {
+		t.Fatalf("AI candidate priorities = %d/%d, want omitted 100 and explicit 0", service.candidates[0].Rule.Priority, service.candidates[1].Rule.Priority)
+	}
+}
+
 func TestMonitorResponseNeverContainsSourceExecutionFields(t *testing.T) {
 	t.Parallel()
 	encoded, err := json.Marshal(monitorResponse(monitorapplication.MonitorView{Monitor: domain.Monitor{ID: 1, Version: 1, Name: "monitor", Status: domain.MonitorStatusDraft}}))
@@ -267,6 +300,7 @@ type captureMonitorService struct {
 	readMonitorService
 	creates      []monitorapplication.CreateInput
 	replacements []monitorapplication.ReplaceDraftInput
+	candidates   []monitorapplication.AICandidateInput
 }
 
 func (service *captureMonitorService) Create(_ context.Context, input monitorapplication.CreateInput) (*domain.Monitor, *domain.MonitorConfigVersion, error) {
@@ -277,6 +311,11 @@ func (service *captureMonitorService) Create(_ context.Context, input monitorapp
 func (service *captureMonitorService) ReplaceDraft(_ context.Context, input monitorapplication.ReplaceDraftInput) (*domain.Monitor, *domain.MonitorConfigVersion, error) {
 	service.replacements = append(service.replacements, input)
 	return &domain.Monitor{ID: input.MonitorID}, &domain.MonitorConfigVersion{}, nil
+}
+
+func (service *captureMonitorService) AddAICandidate(_ context.Context, input monitorapplication.AICandidateInput) (*domain.MonitorConfigVersion, *domain.MonitorRule, error) {
+	service.candidates = append(service.candidates, input)
+	return &domain.MonitorConfigVersion{}, &input.Rule, nil
 }
 
 func (service *draftVersionMonitorService) ReplaceDraft(_ context.Context, input monitorapplication.ReplaceDraftInput) (*domain.Monitor, *domain.MonitorConfigVersion, error) {

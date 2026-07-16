@@ -101,7 +101,7 @@ type AICandidateRequest struct {
 	Operator string  `json:"operator" binding:"required"`
 	Value    string  `json:"value" binding:"required"`
 	Weight   float64 `json:"weight"`
-	Priority int16   `json:"priority"`
+	Priority *int16  `json:"priority,omitempty" default:"100"`
 }
 
 type ApprovalRequest struct {
@@ -218,15 +218,11 @@ func monitorConfig(request MonitorConfigRequest) domain.MonitorConfig {
 func monitorRules(requests []MonitorRuleRequest) []domain.MonitorRule {
 	rules := make([]domain.MonitorRule, 0, len(requests))
 	for _, request := range requests {
-		priority := int16(100)
-		if request.Priority != nil {
-			priority = *request.Priority
-		}
 		enabled := true
 		if request.Enabled != nil {
 			enabled = *request.Enabled
 		}
-		rules = append(rules, domain.MonitorRule{RuleType: domain.RuleType(request.RuleType), Operator: domain.RuleOperator(request.Operator), Value: request.Value, Weight: request.Weight, Priority: priority, Origin: domain.RuleOriginUser, ApprovalStatus: domain.RuleApprovalApproved, Enabled: enabled})
+		rules = append(rules, domain.MonitorRule{RuleType: domain.RuleType(request.RuleType), Operator: domain.RuleOperator(request.Operator), Value: request.Value, Weight: request.Weight, Priority: monitorPriority(request.Priority), Origin: domain.RuleOriginUser, ApprovalStatus: domain.RuleApprovalApproved, Enabled: enabled})
 	}
 	return rules
 }
@@ -234,17 +230,24 @@ func monitorRules(requests []MonitorRuleRequest) []domain.MonitorRule {
 func monitorSources(requests []MonitorSourceRequest) []domain.MonitorSource {
 	sources := make([]domain.MonitorSource, 0, len(requests))
 	for _, request := range requests {
-		priority := int16(100)
-		if request.Priority != nil {
-			priority = *request.Priority
-		}
 		enabled := true
 		if request.Enabled != nil {
 			enabled = *request.Enabled
 		}
-		sources = append(sources, domain.MonitorSource{SourceConnectionID: request.SourceConnectionID, QueryOverride: request.QueryOverride, Priority: priority, Enabled: enabled})
+		sources = append(sources, domain.MonitorSource{SourceConnectionID: request.SourceConnectionID, QueryOverride: request.QueryOverride, Priority: monitorPriority(request.Priority), Enabled: enabled})
 	}
 	return sources
+}
+
+func aiCandidateRule(request AICandidateRequest) domain.MonitorRule {
+	return domain.MonitorRule{RuleType: domain.RuleType(request.RuleType), Operator: domain.RuleOperator(request.Operator), Value: request.Value, Weight: request.Weight, Priority: monitorPriority(request.Priority)}
+}
+
+func monitorPriority(priority *int16) int16 {
+	if priority == nil {
+		return 100
+	}
+	return *priority
 }
 
 func monitorResponse(view monitorapplication.MonitorView) MonitorResponse {
