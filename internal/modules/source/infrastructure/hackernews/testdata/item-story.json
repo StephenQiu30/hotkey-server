@@ -1,0 +1,10 @@
+{
+  "url": "https://example.test/story/101",
+  "score": 17,
+  "descendants": 4,
+  "title": "HN story",
+  "time": 1784192400,
+  "by": "story_author",
+  "type": "story",
+  "id": 101
+}
