@@ -6,9 +6,9 @@ feature_area: 来源采集
 purpose: 以测试先行实施查询规划及 RSS、Atom、Hacker News 的共享捕获运行
 canonical_path: docs/plans/006-查询规划与RSS-HN采集计划.md
 status: accepted
-execution_status: ready
+execution_status: in_progress
 review_status: approved
-version: v1.8
+version: v1.9
 owner: HotKey Server Team
 inputs:
   - docs/prd/006-查询规划与RSS-HN采集.md
@@ -235,3 +235,4 @@ depends_on: [PLAN-005]
 | v1.6 | 2026-07-16 | 按独立评审将 CapturedItem 脱敏/版本策略集中到 Source application，Connector 保持只输出 SourceItem。 |
 | v1.7 | 2026-07-16 | 按独立评审把 Design-003 的 Schema/生命周期事实纳入输入、Task 1 文件范围与提交边界。 |
 | v1.8 | 2026-07-16 | 独立审核通过，切换为 accepted/approved/ready。 |
+| v1.9 | 2026-07-16 | 启动 PLAN-006 实施，当前执行 Task 1。 |

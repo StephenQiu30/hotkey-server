@@ -58,7 +58,7 @@ downstream:
 | [004](004-身份认证会话与权限.md) | 身份、认证、会话与权限 | F0 | P0 | 002, 003 | archived | done |
 | [005](005-监控主题规则与来源配置.md) | 监控主题、规则与来源配置 | P0 | P0 | 002, 003, 004 | archived | done |
 | [018](018-任务执行与计划归档治理.md) | 任务执行与计划归档治理 | Governance | P0 | 005 | accepted | ready |
-| [006](006-查询规划与RSS-HN采集.md) | 查询规划与 RSS/HN 采集 | P0 | P0 | 005 | accepted | ready |
+| [006](006-查询规划与RSS-HN采集.md) | 查询规划与 RSS/HN 采集 | P0 | P0 | 005 | accepted | in_progress |
 | [007](007-内容标准化去重与MinIO证据.md) | 内容标准化、去重与 MinIO 证据 | P0 | P0 | 002, 006 | review | backlog |
 | [008](008-AIProvider与Embedding基础.md) | AI Provider 与 Embedding 基础 | P0 | P0 | 002, 007 | review | backlog |
 | [009](009-多语言相关性匹配与反馈.md) | 多语言相关性匹配与反馈 | P0 | P0 | 005, 007, 008 | review | backlog |
