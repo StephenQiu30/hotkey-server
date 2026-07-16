@@ -68,12 +68,12 @@ func TestOpenAPIContract(t *testing.T) {
 		"/api/v1/monitors/{id}/resume":                         {"post": {"200", "400", "401", "403", "409", "503"}},
 		"/api/v1/monitors/{id}/archive":                        {"post": {"200", "400", "401", "403", "409", "503"}},
 		"/api/v1/monitors/{id}/restore":                        {"post": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/source-connections":                           {"get": {"200", "400", "401", "503"}, "post": {"201", "400", "401", "403", "409"}},
-		"/api/v1/source-connections/{id}":                      {"get": {"200", "400", "401", "409", "503"}, "patch": {"200", "400", "401", "403", "409"}},
-		"/api/v1/source-connections/{id}/enable":               {"post": {"200", "400", "401", "403", "409"}},
-		"/api/v1/source-connections/{id}/disable":              {"post": {"200", "400", "401", "403", "409"}},
-		"/api/v1/source-connections/{id}/archive":              {"post": {"200", "400", "401", "403", "409"}},
-		"/api/v1/source-connections/{id}/restore":              {"post": {"200", "400", "401", "403", "409"}},
+		"/api/v1/source-connections":                           {"get": {"200", "400", "401", "503"}, "post": {"201", "400", "401", "403", "409", "503"}},
+		"/api/v1/source-connections/{id}":                      {"get": {"200", "400", "401", "409", "503"}, "patch": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/source-connections/{id}/enable":               {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/source-connections/{id}/disable":              {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/source-connections/{id}/archive":              {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/source-connections/{id}/restore":              {"post": {"200", "400", "401", "403", "409", "503"}},
 	}
 	if len(document.Paths) != len(required) {
 		t.Fatalf("public path count = %d, want %d (%v)", len(document.Paths), len(required), document.Paths)

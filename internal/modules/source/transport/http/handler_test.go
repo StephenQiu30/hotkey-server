@@ -14,6 +14,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/platform/config"
 	httptransport "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/observability"
+	sharederrors "github.com/StephenQiu30/hotkey-server/internal/shared/errors"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
@@ -64,6 +65,32 @@ func TestSourceTransportRejectsUnknownConfigKeysBeforeApplication(t *testing.T) 
 	}
 	if strings.Contains(response.Body.String(), "must-be-rejected") {
 		t.Fatalf("error echoed rejected secret-shaped input: %s", response.Body.String())
+	}
+}
+
+func TestSourceCreateReturnsUnavailableResultForUnavailableApplicationRuntime(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	// The concrete Source application service reaches its own availability
+	// guard before any persistence access when its runtime dependency is down.
+	RegisterRoutes(router, &sourceapplication.Service{}, testAuthenticator{subject: httptransport.Subject{UserID: 1, SessionID: 1, Role: httptransport.RoleAdmin}})
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/source-connections", strings.NewReader(`{"source_type":"rss","name":"RSS","endpoint":"https://feeds.example.test/rss","auth_type":"none"}`))
+	request.Header.Set("Authorization", "Bearer admin")
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusServiceUnavailable, response.Body.String())
+	}
+	var result struct {
+		Code int             `json:"code"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatalf("decode unavailable result: %v", err)
+	}
+	if result.Code != sharederrors.CodeUnavailable || string(result.Data) != "null" {
+		t.Fatalf("unavailable result = %#v, want code %d and data null", result, sharederrors.CodeUnavailable)
 	}
 }
 

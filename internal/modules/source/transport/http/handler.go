@@ -132,6 +132,7 @@ func (handler *Handler) Get(c *gin.Context) error {
 // @Failure 401 {object} SourceResult[EmptyResponse]
 // @Failure 403 {object} SourceResult[EmptyResponse]
 // @Failure 409 {object} SourceResult[EmptyResponse]
+// @Failure 503 {object} SourceResult[EmptyResponse]
 // @Router /api/v1/source-connections [post]
 func (handler *Handler) Create(c *gin.Context) error {
 	httptransport.SetModule(c, "source")
@@ -168,6 +169,7 @@ func (handler *Handler) Create(c *gin.Context) error {
 // @Failure 401 {object} SourceResult[EmptyResponse]
 // @Failure 403 {object} SourceResult[EmptyResponse]
 // @Failure 409 {object} SourceResult[EmptyResponse]
+// @Failure 503 {object} SourceResult[EmptyResponse]
 // @Router /api/v1/source-connections/{id} [patch]
 func (handler *Handler) Update(c *gin.Context) error {
 	httptransport.SetModule(c, "source")
@@ -209,6 +211,7 @@ func (handler *Handler) Update(c *gin.Context) error {
 // @Failure 401 {object} SourceResult[EmptyResponse]
 // @Failure 403 {object} SourceResult[EmptyResponse]
 // @Failure 409 {object} SourceResult[EmptyResponse]
+// @Failure 503 {object} SourceResult[EmptyResponse]
 // @Router /api/v1/source-connections/{id}/enable [post]
 func (handler *Handler) Enable(c *gin.Context) error {
 	return handler.lifecycle(c, handler.service.Enable)
@@ -227,6 +230,7 @@ func (handler *Handler) Enable(c *gin.Context) error {
 // @Failure 401 {object} SourceResult[EmptyResponse]
 // @Failure 403 {object} SourceResult[EmptyResponse]
 // @Failure 409 {object} SourceResult[EmptyResponse]
+// @Failure 503 {object} SourceResult[EmptyResponse]
 // @Router /api/v1/source-connections/{id}/disable [post]
 func (handler *Handler) Disable(c *gin.Context) error {
 	return handler.lifecycle(c, handler.service.Disable)
@@ -245,6 +249,7 @@ func (handler *Handler) Disable(c *gin.Context) error {
 // @Failure 401 {object} SourceResult[EmptyResponse]
 // @Failure 403 {object} SourceResult[EmptyResponse]
 // @Failure 409 {object} SourceResult[EmptyResponse]
+// @Failure 503 {object} SourceResult[EmptyResponse]
 // @Router /api/v1/source-connections/{id}/archive [post]
 func (handler *Handler) Archive(c *gin.Context) error {
 	return handler.lifecycle(c, handler.service.Archive)
@@ -263,6 +268,7 @@ func (handler *Handler) Archive(c *gin.Context) error {
 // @Failure 401 {object} SourceResult[EmptyResponse]
 // @Failure 403 {object} SourceResult[EmptyResponse]
 // @Failure 409 {object} SourceResult[EmptyResponse]
+// @Failure 503 {object} SourceResult[EmptyResponse]
 // @Router /api/v1/source-connections/{id}/restore [post]
 func (handler *Handler) Restore(c *gin.Context) error {
 	return handler.lifecycle(c, handler.service.Restore)

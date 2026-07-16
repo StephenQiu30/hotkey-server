@@ -1395,6 +1395,12 @@
                         "schema": {
                             "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
                     }
                 }
             }
@@ -1519,6 +1525,12 @@
                         "schema": {
                             "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
                     }
                 }
             }
@@ -1585,6 +1597,12 @@
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
                         }
@@ -1657,6 +1675,12 @@
                         "schema": {
                             "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
                     }
                 }
             }
@@ -1726,6 +1750,12 @@
                         "schema": {
                             "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
                     }
                 }
             }
@@ -1792,6 +1822,12 @@
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
                         }
