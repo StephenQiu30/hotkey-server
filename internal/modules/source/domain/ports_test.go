@@ -1,0 +1,31 @@
+package domain
+
+import (
+	"context"
+	"testing"
+)
+
+func TestSourcePortsExposeOnlyDomainReadAndWriteContracts(t *testing.T) {
+	var _ SourceConnectionRepository = (*sourceConnectionRepositoryFake)(nil)
+	var _ MonitorUsageReader = (*monitorUsageReaderFake)(nil)
+}
+
+type sourceConnectionRepositoryFake struct{}
+
+func (*sourceConnectionRepositoryFake) Create(context.Context, *SourceConnection) error { return nil }
+func (*sourceConnectionRepositoryFake) FindByID(context.Context, int64) (*SourceConnection, error) {
+	return nil, nil
+}
+func (*sourceConnectionRepositoryFake) LockByID(context.Context, int64) (*SourceConnection, error) {
+	return nil, nil
+}
+func (*sourceConnectionRepositoryFake) Update(context.Context, *SourceConnection) error { return nil }
+func (*sourceConnectionRepositoryFake) HasPublishedReference(context.Context, int64) (bool, error) {
+	return false, nil
+}
+
+type monitorUsageReaderFake struct{}
+
+func (*monitorUsageReaderFake) UsageForSource(context.Context, int64) (SourceUsage, error) {
+	return SourceUsage{}, nil
+}

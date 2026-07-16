@@ -18,10 +18,21 @@ const (
 	CodeSessionInvalid      = 20003
 	CodeVerificationInvalid = 20004
 	CodeLastActiveAdmin     = 20005
-	CodeInternal            = 90000
-	CodeUnavailable         = 90001
-	CodeBadGateway          = 90002
-	CodeDeadlineExceeded    = 90003
+	// Monitor/source configuration errors are stable control-plane outcomes;
+	// callers must key behavior on these values rather than error messages.
+	CodeInvalidMonitorState         = 30000
+	CodeMonitorVersionConflict      = 30001
+	CodeInvalidMonitorConfiguration = 30002
+	CodeMonitorDraftUnavailable     = 30003
+	CodeMonitorNameConflict         = 30004
+	CodeInvalidSourceConfiguration  = 40000
+	CodeSourceConnectionRequired    = 40001
+	CodeUnsupportedSourceType       = 40002
+	CodeSourceConnectionUnavailable = 40003
+	CodeInternal                    = 90000
+	CodeUnavailable                 = 90001
+	CodeBadGateway                  = 90002
+	CodeDeadlineExceeded            = 90003
 )
 
 type CodeDefinition struct {
@@ -49,6 +60,15 @@ func init() {
 		{Code: CodeSessionInvalid, HTTPStatus: stdhttp.StatusUnauthorized, Message: "session invalid"},
 		{Code: CodeVerificationInvalid, HTTPStatus: stdhttp.StatusBadRequest, Message: "verification invalid"},
 		{Code: CodeLastActiveAdmin, HTTPStatus: stdhttp.StatusConflict, Message: "last active admin"},
+		{Code: CodeInvalidMonitorState, HTTPStatus: stdhttp.StatusConflict, Message: "invalid monitor state"},
+		{Code: CodeMonitorVersionConflict, HTTPStatus: stdhttp.StatusConflict, Message: "monitor version conflict"},
+		{Code: CodeInvalidMonitorConfiguration, HTTPStatus: stdhttp.StatusBadRequest, Message: "invalid monitor configuration"},
+		{Code: CodeMonitorDraftUnavailable, HTTPStatus: stdhttp.StatusConflict, Message: "monitor draft unavailable"},
+		{Code: CodeMonitorNameConflict, HTTPStatus: stdhttp.StatusConflict, Message: "monitor name conflict"},
+		{Code: CodeInvalidSourceConfiguration, HTTPStatus: stdhttp.StatusBadRequest, Message: "invalid source configuration"},
+		{Code: CodeSourceConnectionRequired, HTTPStatus: stdhttp.StatusConflict, Message: "source connection required"},
+		{Code: CodeUnsupportedSourceType, HTTPStatus: stdhttp.StatusBadRequest, Message: "unsupported source type"},
+		{Code: CodeSourceConnectionUnavailable, HTTPStatus: stdhttp.StatusConflict, Message: "source connection unavailable"},
 		{Code: CodeInternal, HTTPStatus: stdhttp.StatusInternalServerError, Message: "internal server error"},
 		{Code: CodeUnavailable, HTTPStatus: stdhttp.StatusServiceUnavailable, Message: "service unavailable", Retryable: true},
 		{Code: CodeBadGateway, HTTPStatus: stdhttp.StatusBadGateway, Message: "bad gateway", Retryable: true},

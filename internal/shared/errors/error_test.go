@@ -56,6 +56,35 @@ func TestIdentityCodesAreRegisteredWithStableHTTPStatus(t *testing.T) {
 	}
 }
 
+func TestMonitorAndSourceCodesAreRegisteredWithStableHTTPStatus(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		code       int
+		httpStatus int
+	}{
+		{CodeInvalidMonitorState, stdhttp.StatusConflict},
+		{CodeMonitorVersionConflict, stdhttp.StatusConflict},
+		{CodeInvalidMonitorConfiguration, stdhttp.StatusBadRequest},
+		{CodeMonitorDraftUnavailable, stdhttp.StatusConflict},
+		{CodeMonitorNameConflict, stdhttp.StatusConflict},
+		{CodeInvalidSourceConfiguration, stdhttp.StatusBadRequest},
+		{CodeSourceConnectionRequired, stdhttp.StatusConflict},
+		{CodeUnsupportedSourceType, stdhttp.StatusBadRequest},
+		{CodeSourceConnectionUnavailable, stdhttp.StatusConflict},
+	}
+	for _, test := range tests {
+		definition, ok := Lookup(test.code)
+		if !ok {
+			t.Errorf("code %d is not registered", test.code)
+			continue
+		}
+		if definition.HTTPStatus != test.httpStatus {
+			t.Errorf("code %d HTTP status = %d, want %d", test.code, definition.HTTPStatus, test.httpStatus)
+		}
+	}
+}
+
 func TestRegisterCodeRejectsDuplicate(t *testing.T) {
 	definition := CodeDefinition{Code: 19999, HTTPStatus: stdhttp.StatusBadRequest, Message: "test code"}
 	if err := RegisterCode(definition); err != nil {
