@@ -8,9 +8,9 @@ feature_area: 内容与证据
 purpose: 定义内容标准化、去重、MinIO 证据和删除同步任务
 phase: P0
 priority: P0
-status: accepted
-execution_status: in_progress
-version: v1.5
+status: archived
+execution_status: done
+version: v1.6
 owner: HotKey Server Team
 depends_on: [PRD-002, PRD-006]
 design_refs:
@@ -92,3 +92,4 @@ PLAN-007 只有在 Design-003 v3.2 和 Design-006 v1.4 经独立 Reviewer 接受
 | v1.3 | 2026-07-16 | 补齐既有数据升级和可重复 MinIO fixture 的验收要求。 |
 | v1.4 | 2026-07-16 | Design-003 v3.2、Design-006 v1.4 与本 PRD 经独立复核接受，允许进入已批准 PLAN-007 的实施队列。 |
 | v1.5 | 2026-07-16 | PLAN-007 已启动执行；逐 Task 的实施证据保留在 Workpad、提交与最终 Acceptance，本文档不记录临时流水。 |
+| v1.6 | 2026-07-17 | Acceptance-007 与独立最终复核均通过，归档为 archived/done。 |
