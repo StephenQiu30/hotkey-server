@@ -4,7 +4,9 @@ package domain
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
+	"time"
 )
 
 type AuditAction string
@@ -39,6 +41,12 @@ var allowedActions = map[AuditAction]struct{}{
 	ActionSourceCreated: {}, ActionSourceUpdated: {}, ActionSourceEnabled: {}, ActionSourceDisabled: {}, ActionSourceArchived: {}, ActionSourceRestored: {},
 }
 
+var (
+	requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+	lowerHex32       = regexp.MustCompile(`^[0-9a-f]{32}$`)
+	lowerHex64       = regexp.MustCompile(`^[0-9a-f]{64}$`)
+)
+
 // AuditEntry intentionally contains no free-form payload field. Before and
 // After may only use the small safe-metadata whitelist validated below.
 type AuditEntry struct {
@@ -65,14 +73,17 @@ func (result AuditResult) Valid() bool {
 }
 
 func (entry AuditEntry) Validate() error {
-	if strings.TrimSpace(entry.ActorType) == "" || strings.TrimSpace(entry.ResourceType) == "" {
-		return fmt.Errorf("audit actor type and resource type are required")
+	if !validActorType(entry.ActorType) || !validResourceType(entry.ResourceType) {
+		return fmt.Errorf("audit actor type or resource type is invalid")
 	}
 	if !entry.Action.Valid() {
 		return fmt.Errorf("audit action %q is not allowed", entry.Action)
 	}
 	if !entry.Result.Valid() {
 		return fmt.Errorf("audit result %q is invalid", entry.Result)
+	}
+	if !validRequestID(entry.RequestID) || !validTraceID(entry.TraceID) || !validIPHash(entry.IPHash) {
+		return fmt.Errorf("audit correlation identifiers are invalid")
 	}
 	if err := ValidateMetadata(entry.Before); err != nil {
 		return fmt.Errorf("invalid before audit metadata: %w", err)
@@ -89,12 +100,23 @@ var safeMetadataKeys = map[string]struct{}{
 	"enabled": {}, "deleted": {}, "credential_configured": {},
 }
 
+var allowedMonitorStates = map[string]struct{}{
+	"draft": {}, "active": {}, "paused": {}, "archived": {},
+}
+
+var allowedApprovalStates = map[string]struct{}{
+	"pending": {}, "approved": {}, "rejected": {},
+}
+
 // ValidateMetadata rejects rather than silently redacts unknown data. This
 // makes accidental endpoint/config/rule/credential leakage visible in tests
 // and prevents audit rows from becoming a secret side channel.
 func ValidateMetadata(metadata map[string]any) error {
 	for key, value := range metadata {
 		normalized := strings.ToLower(strings.TrimSpace(key))
+		if key != normalized {
+			return fmt.Errorf("audit metadata key %q is not canonical", key)
+		}
 		if _, ok := safeMetadataKeys[normalized]; !ok {
 			if sensitiveKey(normalized) {
 				return fmt.Errorf("sensitive audit metadata key %q", key)
@@ -137,10 +159,47 @@ func validMetadataValue(key string, value any) bool {
 	case "enabled", "deleted", "credential_configured":
 		_, ok := value.(bool)
 		return ok
+	case "status", "previous_status":
+		state, ok := value.(string)
+		_, allowed := allowedMonitorStates[state]
+		return ok && allowed
+	case "approval_status":
+		state, ok := value.(string)
+		_, allowed := allowedApprovalStates[state]
+		return ok && allowed
+	case "config_hash":
+		hash, ok := value.(string)
+		return ok && lowerHex64.MatchString(hash)
+	case "published_at":
+		timestamp, ok := value.(string)
+		if !ok {
+			return false
+		}
+		parsed, err := time.Parse(time.RFC3339Nano, timestamp)
+		return err == nil && parsed.UTC().Format(time.RFC3339Nano) == timestamp
 	default:
-		_, ok := value.(string)
-		return ok
+		return false
 	}
+}
+
+func validActorType(value string) bool {
+	return value == "user" || value == "system"
+}
+
+func validResourceType(value string) bool {
+	return value == "monitor" || value == "source_connection"
+}
+
+func validRequestID(value string) bool {
+	return value == "" || requestIDPattern.MatchString(value)
+}
+
+func validTraceID(value string) bool {
+	return value == "" || lowerHex32.MatchString(value)
+}
+
+func validIPHash(value string) bool {
+	return value == "" || lowerHex64.MatchString(value)
 }
 
 func sensitiveKey(key string) bool {

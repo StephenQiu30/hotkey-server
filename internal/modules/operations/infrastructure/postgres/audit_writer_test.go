@@ -33,6 +33,9 @@ func TestAuditWriterUsesCallerTransactionAndPersistsOnlySafeMetadata(t *testing.
 
 	entry.Before = map[string]any{"status": "draft", "monitor_version": int64(3)}
 	entry.After = map[string]any{"status": "active", "config_hash": strings.Repeat("a", 64), "source_count": int64(2)}
+	entry.RequestID = "request-audit-77"
+	entry.TraceID = "4bf92f3577b34da6a3ce929d0e0e4736"
+	entry.IPHash = strings.Repeat("b", 64)
 	if err := runtime.WithinTransaction(context.Background(), func(ctx context.Context, _ database.Transaction) error {
 		return writer.Write(ctx, entry)
 	}); err != nil {
@@ -53,6 +56,71 @@ func TestAuditWriterUsesCallerTransactionAndPersistsOnlySafeMetadata(t *testing.
 	}
 	if err := writer.Write(context.Background(), entry); !errors.Is(err, ErrTransactionRequired) {
 		t.Fatalf("Write() outside transaction error = %v, want ErrTransactionRequired", err)
+	}
+}
+
+func TestAuditWriterRejectsSensitiveValuesInEveryPermittedStringFieldWithoutPersistence(t *testing.T) {
+	runtime := newOperationsRuntime(t)
+	writer := NewAuditWriter(runtime)
+	stringKeys := []string{"status", "previous_status", "approval_status", "config_hash", "published_at"}
+	sensitiveValues := []string{
+		"https://private.example.test/feed?token=secret",
+		"env:HOTKEY_SOURCE_TOKEN",
+		"raw rule phrase that must not be audited",
+		`{"config":{"secret":"do-not-persist"}}`,
+		"SELECT endpoint, credential_ref FROM source_connections",
+	}
+	for _, key := range stringKeys {
+		for _, value := range sensitiveValues {
+			entry := safeAuditEntry()
+			entry.After = map[string]any{key: value}
+			if err := runtime.WithinTransaction(context.Background(), func(ctx context.Context, _ database.Transaction) error {
+				return writer.Write(ctx, entry)
+			}); err == nil {
+				t.Errorf("Write() accepted sensitive value under permitted key %q: %q", key, value)
+			}
+		}
+	}
+
+	var count int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM audit_logs`).Scan(&count); err != nil {
+		t.Fatalf("count rejected audit rows: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("rejected string metadata wrote %d audit rows, want 0", count)
+	}
+}
+
+func TestAuditEntryRejectsUnboundedCorrelationAndIdentityStrings(t *testing.T) {
+	t.Parallel()
+
+	valid := safeAuditEntry()
+	valid.Before = map[string]any{"status": "draft"}
+	valid.After = map[string]any{
+		"status":          "active",
+		"approval_status": "approved",
+		"config_hash":     strings.Repeat("a", 64),
+		"published_at":    "2026-07-16T08:00:00Z",
+	}
+	valid.RequestID = "request-audit-77"
+	valid.TraceID = "4bf92f3577b34da6a3ce929d0e0e4736"
+	valid.IPHash = strings.Repeat("b", 64)
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("safe AuditEntry.Validate() error = %v", err)
+	}
+
+	for _, mutate := range []func(*operationsdomain.AuditEntry){
+		func(entry *operationsdomain.AuditEntry) { entry.ActorType = "https://private.example.test" },
+		func(entry *operationsdomain.AuditEntry) { entry.ResourceType = "source endpoint" },
+		func(entry *operationsdomain.AuditEntry) { entry.RequestID = "env:HOTKEY_TOKEN" },
+		func(entry *operationsdomain.AuditEntry) { entry.TraceID = "SELECT secret FROM audit_logs" },
+		func(entry *operationsdomain.AuditEntry) { entry.IPHash = "127.0.0.1" },
+	} {
+		entry := valid
+		mutate(&entry)
+		if err := entry.Validate(); err == nil {
+			t.Error("AuditEntry.Validate() accepted an unbounded correlation or identity string")
+		}
 	}
 }
 
@@ -102,6 +170,13 @@ func TestAuditActionWhitelistIsClosed(t *testing.T) {
 	}
 	if operationsdomain.AuditAction("monitor.previewed").Valid() {
 		t.Fatal("unapproved action was accepted")
+	}
+}
+
+func safeAuditEntry() operationsdomain.AuditEntry {
+	return operationsdomain.AuditEntry{
+		ActorType: "user", ActorID: 42, Action: operationsdomain.ActionMonitorPublished,
+		ResourceType: "monitor", ResourceID: 7, Result: operationsdomain.AuditResultSuccess,
 	}
 }
 
