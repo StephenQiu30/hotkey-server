@@ -211,6 +211,16 @@ func assertFilteredHNSWPlan(t *testing.T, runtime *database.Runtime, target embe
 		if _, err := transaction.SQL.ExecContext(ctx, `SET LOCAL enable_seqscan = off`); err != nil {
 			return fmt.Errorf("set local enable_seqscan: %w", err)
 		}
+		// A profile-specific unique index can be cheaper than HNSW at fixture
+		// cardinalities, then sort the filtered rows. Disable that alternative
+		// only for this EXPLAIN so the assertion deterministically verifies the
+		// intended filtered nearest-neighbour index path.
+		if _, err := transaction.SQL.ExecContext(ctx, `SET LOCAL enable_bitmapscan = off`); err != nil {
+			return fmt.Errorf("set local enable_bitmapscan: %w", err)
+		}
+		if _, err := transaction.SQL.ExecContext(ctx, `SET LOCAL enable_sort = off`); err != nil {
+			return fmt.Errorf("set local enable_sort: %w", err)
+		}
 		rows, err := transaction.SQL.QueryContext(ctx, `
 EXPLAIN (COSTS OFF)
 SELECT e.`+target.column+`
