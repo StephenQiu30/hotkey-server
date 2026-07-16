@@ -241,6 +241,9 @@ func (request CollectionRequest) Validate() error {
 	if request.SourceConnectionID <= 0 || !validSHA256(request.QuerySignature) {
 		return fmt.Errorf("collection request source and query signature are required")
 	}
+	if strings.TrimSpace(request.Query) == "" {
+		return fmt.Errorf("collection request query is required")
+	}
 	if request.WindowStart.IsZero() || request.WindowEnd.IsZero() || !request.WindowEnd.After(request.WindowStart) {
 		return fmt.Errorf("collection request window is invalid")
 	}
