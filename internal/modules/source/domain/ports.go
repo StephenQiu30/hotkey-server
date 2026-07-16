@@ -1,6 +1,9 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // SourceConnectionRepository owns source_connections only. Monitor usage is
 // obtained through MonitorUsageReader, never by a Source repository query.
@@ -110,4 +113,19 @@ type MonitorUsageReader interface {
 // repository's table ownership.
 type MonitorPublishedReferenceReader interface {
 	HasPublishedReference(context.Context, int64) (bool, error)
+}
+
+// PublishedCollectionTargetReader is Source's own narrow read port for
+// immutable collection inputs. Its Monitor-owned adapter returns only the
+// values required to plan a shared request; it never exposes a Monitor record
+// or a draft configuration.
+type PublishedCollectionTargetReader interface {
+	ListDue(context.Context, time.Time) ([]PublishedCollectionTarget, error)
+}
+
+// CollectionRepository owns durable collection runs, targets, captured items
+// and checkpoints. Task 2 defines only the create-or-reuse identity boundary;
+// Task 6 adds its transactional write operations beside the implementation.
+type CollectionRepository interface {
+	CreateOrReuseRun(context.Context, CollectionRequest) (CollectionRun, bool, error)
 }

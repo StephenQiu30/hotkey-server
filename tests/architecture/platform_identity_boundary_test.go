@@ -85,3 +85,31 @@ func TestSourceInfrastructureDoesNotReadMonitorOwnedTables(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSourceDoesNotReadMonitorOwnedTablesOrAdapters(t *testing.T) {
+	root := repositoryRoot(t)
+	forbidden := []string{
+		"monitor_sources",
+		"monitor_config_versions",
+		"internal/modules/monitor/domain",
+		"internal/modules/monitor/infrastructure",
+	}
+	err := filepath.WalkDir(filepath.Join(root, "internal", "modules", "source"), func(path string, entry os.DirEntry, err error) error {
+		if err != nil || entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			return err
+		}
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, value := range forbidden {
+			if strings.Contains(string(contents), value) {
+				t.Errorf("%s depends on Monitor implementation %q; use the Source-owned published target port", path, value)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

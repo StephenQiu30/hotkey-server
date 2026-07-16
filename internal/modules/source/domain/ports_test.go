@@ -3,12 +3,15 @@ package domain
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 func TestSourcePortsExposeOnlyDomainReadAndWriteContracts(t *testing.T) {
 	var _ SourceConnectionRepository = (*sourceConnectionRepositoryFake)(nil)
 	var _ MonitorUsageReader = (*monitorUsageReaderFake)(nil)
 	var _ MonitorPublishedReferenceReader = (*monitorPublishedReferenceReaderFake)(nil)
+	var _ CollectionRepository = (*collectionRepositoryFake)(nil)
+	var _ PublishedCollectionTargetReader = (*publishedCollectionTargetReaderFake)(nil)
 }
 
 type sourceConnectionRepositoryFake struct{}
@@ -35,4 +38,16 @@ type monitorPublishedReferenceReaderFake struct{}
 
 func (*monitorPublishedReferenceReaderFake) HasPublishedReference(context.Context, int64) (bool, error) {
 	return false, nil
+}
+
+type collectionRepositoryFake struct{}
+
+func (*collectionRepositoryFake) CreateOrReuseRun(context.Context, CollectionRequest) (CollectionRun, bool, error) {
+	return CollectionRun{}, false, nil
+}
+
+type publishedCollectionTargetReaderFake struct{}
+
+func (*publishedCollectionTargetReaderFake) ListDue(context.Context, time.Time) ([]PublishedCollectionTarget, error) {
+	return nil, nil
 }

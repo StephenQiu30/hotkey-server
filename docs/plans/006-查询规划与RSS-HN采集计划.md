@@ -8,7 +8,7 @@ canonical_path: docs/plans/006-查询规划与RSS-HN采集计划.md
 status: accepted
 execution_status: in_progress
 review_status: approved
-version: v1.11
+version: v1.12
 owner: HotKey Server Team
 inputs:
   - docs/prd/006-查询规划与RSS-HN采集.md
@@ -95,7 +95,7 @@ depends_on: [PLAN-005]
 
 **Produces：** `FetchRequest`、`FetchResult`、`SourceItem`、`CapturedItem`、`CapturePolicy`、`CollectionRequest`、`CollectionRun`、`CollectionTarget`、`CollectionTargetItem`、`CollectionCheckpoint`、`Connector`、`CollectionRepository` 与 `PublishedCollectionTargetReader`；Connector 始终只返回 SourceItem，`CapturePolicy` 在 application 写入前统一构造 payload version、safe SourceItem fields 与 raw disposition，Monitor adapter 只输出 Source 所需的 immutable 值，不暴露 Monitor record 或 draft。
 
-**Files：** Create `internal/modules/source/domain/{collection,connector,collection_errors}.go`, `internal/modules/source/domain/{collection,connector,collection_errors}_test.go`, `internal/modules/monitor/infrastructure/postgres/collection_target_reader.go`, `internal/modules/monitor/infrastructure/postgres/collection_target_reader_test.go`; Modify `internal/modules/source/domain/ports.go`, `internal/modules/monitor/domain/ports.go`, `tests/architecture/platform_identity_boundary_test.go`.
+**Files：** Create `internal/modules/source/domain/{collection,connector,collection_errors}.go`, `internal/modules/source/domain/{collection,connector,collection_errors}_test.go`, `internal/modules/monitor/infrastructure/postgres/collection_target_reader.go`, `internal/modules/monitor/infrastructure/postgres/collection_target_reader_test.go`; Modify `internal/modules/source/domain/ports.go`, `tests/architecture/platform_identity_boundary_test.go`. Monitor domain 不新增只为传递 Source 契约而存在的空端口；Source 保持 Reader 端口所有权，Monitor PostgreSQL adapter 直接实现它。
 
 - [ ] **RED：** 覆盖 Fetch request 必填 window/limit、SourceItem stable external ID、CapturedItem body/metrics 脱敏和 version、raw disposition、错误分类、target 与 published config 归属、draft/paused/disabled source 排除，以及 source 不直接查询 Monitor 表的架构断言。
 - [ ] **运行 RED：** `go test ./internal/modules/source/domain ./internal/modules/monitor/infrastructure/postgres ./tests/architecture -run 'TestCollection|TestPublishedCollection|TestSource' -count=1` 必须因契约或 adapter 缺失失败。
@@ -239,3 +239,4 @@ depends_on: [PLAN-005]
 | v1.9 | 2026-07-16 | 启动 PLAN-006 实施，当前执行 Task 1。 |
 | v1.10 | 2026-07-16 | Task 1 独立复核补充同 run target-item 对账的复合外键与 PostgreSQL 负例。 |
 | v1.11 | 2026-07-16 | 记录 Task 1 的 RED/GREEN、完整回归、提交与独立复核通过证据。 |
+| v1.12 | 2026-07-16 | Task 2 实施前收紧文件边界：删除无消费者的 Monitor domain 端口变更，保持 Source 拥有 published target reader 契约。 |
