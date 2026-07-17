@@ -76,11 +76,11 @@ depends_on: [PLAN-006, PLAN-007, PLAN-008, PLAN-009, PLAN-010, PLAN-011, PLAN-01
 
 **文件：** 修改 `internal/bootstrap/{app,lifecycle}.go`、`internal/platform/{config,queue/worker}.go`；创建 `internal/bootstrap/worker.go` 与相关测试。
 
-- [ ] **RED：** `worker`/`all` 未启动处理循环、停机未取消、过期 running Job 不能重领时失败。
-- [ ] **GREEN：** Worker 按配置并发和轮询间隔启动，停机传播 context，启动时回收过期 lease；`api` 角色不启动 Worker。
-- [ ] **重构：** 生命周期只在 Bootstrap 装配，Queue 保持无业务模块依赖。
-- [ ] **回归：** `go run ./test/runner test ./internal/bootstrap ./internal/platform/queue -count=1`。
-- [ ] **提交：** `feat: run recoverable worker lifecycle`。
+- [x] **RED：** `worker`/`all` 未启动处理循环、停机未取消、过期 running Job 不能重领时失败。
+- [x] **GREEN：** Worker 按配置并发和轮询间隔启动，停机传播 context，启动时回收过期 lease；`api` 角色不启动 Worker。
+- [x] **重构：** 生命周期只在 Bootstrap 装配，Queue 保持无业务模块依赖。
+- [x] **回归：** `go run ./test/runner test ./internal/bootstrap ./internal/platform/config -count=1`；`HOTKEY_TEST_DSN='postgres:///hotkey_server_dev?sslmode=disable' go run ./test/runner test ./internal/bootstrap -run 'TestConfiguredWorkerVerifiesDatabaseOnStart' -count=1`；`HOTKEY_TEST_DSN='postgres:///hotkey_server_dev?sslmode=disable' go run ./test/runner test -tags=integration ./internal/platform/queue -run 'TestWorkerReclaimsExpiredRunningJobs' -count=1`；`HOTKEY_TEST_DSN='postgres:///hotkey_server_dev?sslmode=disable' HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' make ci && make clean`。
+- [x] **提交：** `2ea981f feat: run recoverable worker lifecycle`。
 
 ### Task 3：扫描已发布配置并提交唯一采集任务
 
