@@ -14,7 +14,7 @@ inputs:
   - docs/design/archive/003-数据库与数据生命周期设计.md
   - docs/design/archive/007-多语言匹配与相关性设计.md
   - docs/design/archive/011-AI任务证据与模型运行设计.md
-  - docs/operations/plan008-schema-upgrade.md
+  - docs/operations/plan008-ai-provider-embedding-upgrade.md
 outputs:
   - PLAN-008 验收结论与可复现证据
 triggers:

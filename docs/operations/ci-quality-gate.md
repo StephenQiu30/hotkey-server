@@ -4,7 +4,7 @@ doc_no: "001"
 audience: [Dev, QA, Ops]
 feature_area: 工程质量门禁
 purpose: 定义本地复现与 GitHub Actions 持续集成的唯一质量门禁
-canonical_path: docs/operations/001-本地与GitHub CI质量门禁.md
+canonical_path: docs/operations/ci-quality-gate.md
 status: accepted
 version: v1.0
 owner: HotKey Server Team

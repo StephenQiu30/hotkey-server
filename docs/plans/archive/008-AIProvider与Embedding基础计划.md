@@ -15,7 +15,7 @@ inputs:
   - docs/design/archive/003-数据库与数据生命周期设计.md
   - docs/design/archive/007-多语言匹配与相关性设计.md
   - docs/design/archive/011-AI任务证据与模型运行设计.md
-  - docs/operations/plan007-schema-upgrade.md
+  - docs/operations/plan007-content-normalization-minio-evidence-upgrade.md
 outputs:
   - intelligence 运行基础
   - 1024 维 Embedding 存储与检索
@@ -44,7 +44,7 @@ depends_on: [PLAN-002, PLAN-007]
 - OpenAI production adapter 不接受 endpoint；profile 的 `credential_ref` 仅 `env:OPENAI_API_KEY`，永不出现在响应、OpenAPI example、日志、指标或审计详情。
 - 默认构建不需要 ONNX Runtime 或模型。原生 adapter 仅在 `onnx && cgo` 且 `CGO_ENABLED=1`、`HOTKEY_ONNX_RUNTIME_LIBRARY`、`HOTKEY_ONNX_MODEL_PATH`、`HOTKEY_ONNX_TOKENIZER_PATH` 与 `HOTKEY_ONNX_MANIFEST_PATH` 都设置且 manifest hash 校验通过时可用；`-tags=onnx` 但无 CGO 必须仍命中 safe unavailable adapter。
 - `ai_runs` 不存 Prompt、完整 Content、Provider 原始请求/响应或对象键；既有对象键列在本计划始终为 `NULL`。
-- `db/schema.sql` 是唯一执行 Schema。既有库升级仅使用 `docs/operations/plan008-schema-upgrade.md`，先备份和演练；绝不运行时 DDL、`DROP SCHEMA` 或不受控 reset。
+- `db/schema.sql` 是唯一执行 Schema。既有库升级仅使用 `docs/operations/plan008-ai-provider-embedding-upgrade.md`，先备份和演练；绝不运行时 DDL、`DROP SCHEMA` 或不受控 reset。
 - 任何 API 变动都同步 DTO、权限、bootstrap、`docs/openapi/swagger.json` 和 `make openapi-check`；错误必须使用 70000–79999 的稳定 numeric code。
 - 每个任务完成后运行本任务 GREEN、`git diff --check`，只暂存该任务文件并提交。`make ci` 之后必须 `make clean`。
 
@@ -70,7 +70,7 @@ depends_on: [PLAN-002, PLAN-007]
 | 修改 | `internal/shared/errors/error.go`, `internal/shared/errors/error_test.go` | 注册 70000–70009 的稳定错误码。 |
 | 修改 | `internal/platform/database/model/{model,model_test}.go`, `db/schema.sql` | 完整 Schema、记录映射、catalog contract、Embedding `ai_run_id` provenance 与物理列顺序。 |
 | 修改 | `internal/bootstrap/app.go`, `docs/openapi/swagger.json` | Fx 装配、路由和生成的 API 契约。 |
-| 创建/修改 | `docs/operations/plan008-schema-upgrade.md`, `docs/acceptance/archive/008-AIProvider与Embedding基础验收.md` | 可演练升级/回退与最终长期证据。 |
+| 创建/修改 | `docs/operations/plan008-ai-provider-embedding-upgrade.md`, `docs/acceptance/archive/008-AIProvider与Embedding基础验收.md` | 可演练升级/回退与最终长期证据。 |
 
 ## 数据与接口契约
 
@@ -131,7 +131,7 @@ PLAN-008 不实现供应商账单或模型费率表。每次成功调用以已 c
 
 **Files:**
 - Modify: `go.mod`, `go.sum`, `.env.example`, `internal/platform/config/config.go`, `internal/platform/config/config_test.go`, `internal/shared/errors/error.go`, `internal/shared/errors/error_test.go`, `db/schema.sql`, `internal/platform/database/model/model.go`, `internal/platform/database/model/model_test.go`, `internal/platform/database/database_integration_test.go`
-- Create: `docs/operations/plan008-schema-upgrade.md`
+- Create: `docs/operations/plan008-ai-provider-embedding-upgrade.md`
 - Test: `internal/platform/config/config_test.go`, `internal/platform/database/database_integration_test.go`, `internal/platform/database/model/model_test.go`, `test/architecture/schema_contract_test.go`
 
 **Consumes:** PLAN-007 canonical catalog and `Config.Load`; **Produces:** fixed dependency/config/error/schema contract for every later task.
@@ -159,7 +159,7 @@ PLAN-008 不实现供应商账单或模型费率表。每次成功调用以已 c
   ```bash
   git add go.mod go.sum .env.example internal/platform/config internal/shared/errors \
     internal/platform/database/model internal/platform/database db/schema.sql \
-    docs/operations/plan008-schema-upgrade.md test/architecture
+    docs/operations/plan008-ai-provider-embedding-upgrade.md test/architecture
   git commit -m "feat: define AI runtime schema and configuration"
   ```
 
@@ -302,7 +302,7 @@ PLAN-008 不实现供应商账单或模型费率表。每次成功调用以已 c
 **Files:**
 - Create: `internal/modules/intelligence/application/{model_profile_service,run_service,embedding_service}.go`
 - Create: `internal/modules/intelligence/application/{model_profile_service,run_service,embedding_service}_test.go`, `internal/modules/intelligence/application/service_integration_test.go`
-- Modify: `internal/modules/intelligence/domain/{provider,run}.go`, `internal/modules/intelligence/infrastructure/provider/{openai,openai_test,onnx_enabled,onnx_enabled_internal_test}.go`, `internal/modules/intelligence/infrastructure/postgres/{model_profile_repository,run_repository,embedding_repository,repository}.go`, `internal/platform/database/{database_integration_test.go,schema_contract_test.go,model/{model,model_test}.go}`, `db/schema.sql`, `test/architecture/schema_test.go`, `docs/operations/plan008-schema-upgrade.md`, `internal/bootstrap/app.go`
+- Modify: `internal/modules/intelligence/domain/{provider,run}.go`, `internal/modules/intelligence/infrastructure/provider/{openai,openai_test,onnx_enabled,onnx_enabled_internal_test}.go`, `internal/modules/intelligence/infrastructure/postgres/{model_profile_repository,run_repository,embedding_repository,repository}.go`, `internal/platform/database/{database_integration_test.go,schema_contract_test.go,model/{model,model_test}.go}`, `db/schema.sql`, `test/architecture/schema_test.go`, `docs/operations/plan008-ai-provider-embedding-upgrade.md`, `internal/bootstrap/app.go`
 
 **Consumes:** Tasks 2–4 ports/adapters; **Produces:** public Application service used by PLAN-009 and HTTP transport.
 
@@ -330,7 +330,7 @@ PLAN-008 不实现供应商账单或模型费率表。每次成功调用以已 c
     internal/modules/intelligence/infrastructure/provider internal/modules/intelligence/infrastructure/postgres \
     internal/platform/database/database_integration_test.go internal/platform/database/model internal/platform/database/schema_contract_test.go \
     db/schema.sql test/architecture/schema_test.go \
-    docs/operations/plan008-schema-upgrade.md internal/bootstrap/app.go
+    docs/operations/plan008-ai-provider-embedding-upgrade.md internal/bootstrap/app.go
   git commit -m "feat: orchestrate AI runs and safe degradation"
   ```
 

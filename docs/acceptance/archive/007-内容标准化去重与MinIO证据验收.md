@@ -13,7 +13,7 @@ inputs:
   - docs/plans/archive/007-内容标准化去重与MinIO证据计划.md
   - docs/design/archive/003-数据库与数据生命周期设计.md
   - docs/design/archive/006-内容标准化去重与证据设计.md
-  - docs/operations/plan007-schema-upgrade.md
+  - docs/operations/plan007-content-normalization-minio-evidence-upgrade.md
 outputs:
   - PLAN-007 验收结论与可复现证据
 triggers:
@@ -84,7 +84,7 @@ go test -tags=integration ./internal/modules/ingestion/application \
 
 ### 既有库升级、验证与回退
 
-在完整 legacy Schema 的可恢复副本上，执行 custom `pg_dump`、`pg_restore --list`、`docs/operations/plan007-schema-upgrade.md` 的整个 transaction、当前 release `hotkey db verify`、手册中的精确外键清理与 `pg_restore`；最后切换到创建 backup 的 legacy release 再运行其 `hotkey db verify`。真实演练结果为：
+在完整 legacy Schema 的可恢复副本上，执行 custom `pg_dump`、`pg_restore --list`、`docs/operations/plan007-content-normalization-minio-evidence-upgrade.md` 的整个 transaction、当前 release `hotkey db verify`、手册中的精确外键清理与 `pg_restore`；最后切换到创建 backup 的 legacy release 再运行其 `hotkey db verify`。真实演练结果为：
 
 ```text
 backup-list=498

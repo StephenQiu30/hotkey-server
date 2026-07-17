@@ -1170,7 +1170,7 @@ ALTER TABLE collection_runs
 
 func plan007UpgradeSQL(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "docs", "operations", "plan007-schema-upgrade.md")
+	path := filepath.Join("..", "..", "..", "docs", "operations", "plan007-content-normalization-minio-evidence-upgrade.md")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read PLAN-007 upgrade runbook: %v", err)
@@ -1194,7 +1194,7 @@ func plan008UpgradeSQL(t *testing.T) string {
 
 func plan009UpgradeSQL(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "docs", "operations", "plan009-schema-upgrade.md")
+	path := filepath.Join("..", "..", "..", "docs", "operations", "plan009-relevance-review-upgrade.md")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read PLAN-009 upgrade runbook: %v", err)
@@ -1213,7 +1213,7 @@ func plan009UpgradeSQL(t *testing.T) string {
 
 func plan010UpgradeSQL(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "docs", "operations", "plan010-schema-upgrade.md")
+	path := filepath.Join("..", "..", "..", "docs", "operations", "plan010-event-governance-upgrade.md")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read PLAN-010 upgrade runbook: %v", err)
@@ -1232,7 +1232,7 @@ func plan010UpgradeSQL(t *testing.T) string {
 
 func plan010RollbackPreparationSQL(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "docs", "operations", "plan010-schema-upgrade.md")
+	path := filepath.Join("..", "..", "..", "docs", "operations", "plan010-event-governance-upgrade.md")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read PLAN-010 rollback runbook: %v", err)
@@ -1251,7 +1251,7 @@ func plan010RollbackPreparationSQL(t *testing.T) string {
 
 func plan010RollbackNormalizationSQL(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "docs", "operations", "plan010-schema-upgrade.md")
+	path := filepath.Join("..", "..", "..", "docs", "operations", "plan010-event-governance-upgrade.md")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read PLAN-010 rollback normalization: %v", err)
@@ -1270,7 +1270,7 @@ func plan010RollbackNormalizationSQL(t *testing.T) string {
 
 func plan009RollbackNormalizationSQL(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "docs", "operations", "plan009-schema-upgrade.md")
+	path := filepath.Join("..", "..", "..", "docs", "operations", "plan009-relevance-review-upgrade.md")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read PLAN-009 rollback runbook: %v", err)
@@ -1289,7 +1289,7 @@ func plan009RollbackNormalizationSQL(t *testing.T) string {
 
 func plan009RollbackPreparationSQL(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "docs", "operations", "plan009-schema-upgrade.md")
+	path := filepath.Join("..", "..", "..", "docs", "operations", "plan009-relevance-review-upgrade.md")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read PLAN-009 rollback runbook: %v", err)
@@ -1362,7 +1362,7 @@ func plan008RollbackPreparationSQL(t *testing.T) string {
 
 func plan008RunbookTransaction(t *testing.T, opening, description string) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "docs", "operations", "plan008-schema-upgrade.md")
+	path := filepath.Join("..", "..", "..", "docs", "operations", "plan008-ai-provider-embedding-upgrade.md")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s runbook: %v", description, err)
@@ -1381,7 +1381,7 @@ func plan008RunbookTransaction(t *testing.T, opening, description string) string
 
 func plan007RollbackForeignKeyCleanupSQL(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "docs", "operations", "plan007-schema-upgrade.md")
+	path := filepath.Join("..", "..", "..", "docs", "operations", "plan007-content-normalization-minio-evidence-upgrade.md")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read PLAN-007 upgrade runbook: %v", err)

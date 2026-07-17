@@ -4,7 +4,7 @@ doc_no: "010"
 audience: [Dev, QA, Ops]
 feature_area: 数据库升级
 purpose: 为 PLAN-010 事件决策与治理审计表提供可恢复的升级和回退流程
-canonical_path: docs/operations/plan010-schema-upgrade.md
+canonical_path: docs/operations/plan010-event-governance-upgrade.md
 status: review
 version: v0.3
 owner: HotKey Server Team

@@ -4,7 +4,7 @@ doc_no: "009"
 audience: [Dev, QA, Ops]
 feature_area: 数据库升级
 purpose: 将 PLAN-008 的模型 Profile 与监控匹配关系升级为可审计的相关性快照、反馈、建议和有界召回索引
-canonical_path: docs/operations/plan009-schema-upgrade.md
+canonical_path: docs/operations/plan009-relevance-review-upgrade.md
 status: accepted
 version: v0.4
 owner: HotKey Server Team
