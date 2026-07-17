@@ -101,7 +101,13 @@ func (decision Decision) Validate() error {
 	} else if decision.CandidateEventID == nil || *decision.CandidateEventID <= 0 || strings.TrimSpace(decision.CandidateEventKey) == "" {
 		return fmt.Errorf("candidate event is required")
 	}
-	return decision.Scores.Validate()
+	if err := decision.Scores.Validate(); err != nil {
+		return err
+	}
+	if math.Abs(decision.MembershipScore-decision.Scores.MembershipScore()) > 0.01 && decision.Decision != DecisionNewEvent {
+		return fmt.Errorf("membership score does not match score breakdown")
+	}
+	return nil
 }
 
 func (decision Decision) IdempotencyKey() string {

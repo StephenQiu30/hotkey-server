@@ -52,5 +52,8 @@ func (audit GovernanceAudit) Validate() error {
 	if audit.SourceEventID != nil && *audit.SourceEventID <= 0 || audit.TargetEventID != nil && *audit.TargetEventID <= 0 {
 		return fmt.Errorf("invalid audit event reference")
 	}
+	if audit.SourceEventID != nil && audit.TargetEventID != nil && *audit.SourceEventID == *audit.TargetEventID {
+		return fmt.Errorf("audit source and target must differ")
+	}
 	return nil
 }

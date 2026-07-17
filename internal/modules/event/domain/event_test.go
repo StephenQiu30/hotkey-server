@@ -77,7 +77,8 @@ func TestDecisionIdempotencyAndAuditValidation(t *testing.T) {
 		t.Fatal("IdempotencyKey() is not stable")
 	}
 	created := time.Now().UTC()
-	audit := GovernanceAudit{EventID: 7, Action: AuditMerge, ReasonCode: "manual_confirmed", SourceEventID: &id, TargetEventID: &id, CreatedAt: created}
+	targetID := int64(8)
+	audit := GovernanceAudit{EventID: 7, Action: AuditMerge, ReasonCode: "manual_confirmed", SourceEventID: &id, TargetEventID: &targetID, CreatedAt: created}
 	if err := audit.Validate(); err != nil {
 		t.Fatalf("GovernanceAudit.Validate() error = %v", err)
 	}
