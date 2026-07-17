@@ -4,10 +4,10 @@ GO ?= go
 
 test:
 	test -n "$$HOTKEY_TEST_DSN"
-	$(GO) test ./... -count=1
+	GO=$(GO) sh scripts/with-test-suite.sh test ./... -count=1
 
 lint:
-	$(GO) vet ./...
+	GO=$(GO) sh scripts/with-test-suite.sh vet ./...
 
 build:
 	$(GO) build -o hotkey ./cmd/hotkey

@@ -14,7 +14,7 @@ report() {
 test -f "$crud" || report "missing shared CRUD contract: internal/shared/repository/crud.go"
 test -f "$model" || report "missing database record mapping: internal/platform/database/model/model.go"
 grep -Fq 'func PersistenceFor(' "$model" 2>/dev/null || report "missing database persistence metadata: internal/platform/database/model/model.go"
-if ! (cd "$root" && go test ./internal/platform/database/model -run TestPersistenceMetadataMakesEveryBusinessTableVersioned -count=1); then
+if ! (cd "$root" && sh scripts/with-test-suite.sh test ./internal/platform/database/model -run TestPersistenceMetadataMakesEveryBusinessTableVersioned -count=1); then
   report "business table persistence metadata is incomplete"
 fi
 for method in 'Create(' 'GetByID(' 'List(' 'Update(' 'Delete('; do

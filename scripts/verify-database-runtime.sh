@@ -44,7 +44,7 @@ SQL
   cd "$root"
   HOTKEY_DATABASE_URL="$dsn" go run ./cmd/hotkey db init --empty-only --confirm-empty
   HOTKEY_DATABASE_URL="$dsn" go run ./cmd/hotkey db verify
-  HOTKEY_TEST_DSN="$dsn" go test ./internal/platform/database ./internal/shared/repository -count=1
+  HOTKEY_TEST_DSN="$dsn" sh scripts/with-test-suite.sh test ./internal/platform/database ./internal/shared/repository -count=1
   createdb --maintenance-db="$dsn" --template=template0 "$capacity_database"
   HOTKEY_DATABASE_URL="$capacity_dsn" go run ./cmd/hotkey db init --empty-only --confirm-empty
   HOTKEY_TEST_DSN="$capacity_dsn" sh scripts/generate-capacity-fixture.sh

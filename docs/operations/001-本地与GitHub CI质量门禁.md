@@ -25,6 +25,8 @@ downstream: []
 
 唯一的仓库质量门禁是 `make ci`。它依次校验 OpenAPI 生成无漂移、`go vet`、真实 PostgreSQL 运行时验证、全量 Go 测试、构建、架构/仓库校验和 Schema 重复执行。不得在 GitHub Actions 中维护另一套与本地不一致的检查命令。
 
+测试源码统一存放于 `tests/`，其中 `tests/_suite/` 按业务包镜像保存同包单元测试与集成测试。`make test`、`make lint` 和需要指定业务包的 `sh scripts/with-test-suite.sh test <package>` 会在进程内临时映射这些文件至被测包，随后自动删除映射；不得把 `*_test.go` 直接提交到 `internal/`。
+
 该工作流只提供测试服务，不代表 Docker 或生产部署编排。
 
 ## GitHub Actions

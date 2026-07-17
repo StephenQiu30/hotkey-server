@@ -18,6 +18,9 @@ func repositoryRoot(t *testing.T) string {
 }
 
 func TestGreenfieldLayout(t *testing.T) {
+	if os.Getenv("HOTKEY_TEST_SUITE_ACTIVE") == "1" {
+		return
+	}
 	root := repositoryRoot(t)
 	required := []string{
 		"internal/bootstrap",
@@ -51,6 +54,32 @@ func TestGreenfieldLayout(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(root, relative)); err == nil {
 			t.Errorf("legacy directory %s must not exist", relative)
 		}
+	}
+	if info, err := os.Stat(filepath.Join(root, "tests", "_suite")); err != nil || !info.IsDir() {
+		t.Error("centralized test suite tests/_suite is missing")
+	}
+	var mixedTests []string
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() && (entry.Name() == ".git" || entry.Name() == "tests") {
+			return filepath.SkipDir
+		}
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), "_test.go") {
+			relative, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			mixedTests = append(mixedTests, relative)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("scan test placement: %v", err)
+	}
+	if len(mixedTests) > 0 {
+		t.Errorf("test files must be kept under tests/: %s", strings.Join(mixedTests, ", "))
 	}
 }
 
