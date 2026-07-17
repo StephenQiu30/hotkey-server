@@ -66,11 +66,11 @@ depends_on: [PLAN-006, PLAN-007, PLAN-008, PLAN-009, PLAN-010, PLAN-011, PLAN-01
 
 **文件：** 修改 `internal/platform/queue/{job_types,queue,worker}.go`；创建 `test/_suite/internal/platform/queue/*_test.go`。
 
-- [ ] **RED：** 未知 Job、缺少版本/关联 ID、无界 payload、重复唯一键、事务回滚和永久/临时错误分类失败。
-- [ ] **GREEN：** 所有 P0 Job 使用版本化、小型 ID 信封；`river_job` 入队与调用方事务一致，唯一键重复返回同一执行。
-- [ ] **重构：** 统一重试、隔离和取消结果，不让业务 Handler 直接操作 River 表。
-- [ ] **回归：** `go run ./test/runner test -tags=integration ./internal/platform/queue -count=1`。
-- [ ] **提交：** `feat: harden durable job envelope`。
+- [x] **RED：** 未知 Job、缺少版本/关联 ID、无界 payload、重复唯一键、事务回滚和永久/临时错误分类失败。
+- [x] **GREEN：** 所有 P0 Job 使用版本化、小型 ID 信封；`river_job` 入队与调用方事务一致，唯一键重复返回同一执行。
+- [x] **重构：** 统一重试、隔离和取消结果，不让业务 Handler 直接操作 River 表。
+- [x] **回归：** `go run ./test/runner test ./internal/platform/queue -run 'Test(Payload|Job|ErrorClassification)' -count=1`；`HOTKEY_TEST_DSN='postgres:///hotkey_server_dev?sslmode=disable' go run ./test/runner test -tags=integration ./internal/platform/queue -run 'Test(Enqueue|Worker)' -count=1`。
+- [x] **提交：** `3c53744 feat: harden durable job envelope`。
 
 ### Task 2：装配可取消、可恢复的 Worker 生命周期
 

@@ -13,12 +13,12 @@ result: pending
 
 # Cron 与 River 主链路编排验收
 
-当前已实现 PostgreSQL job 唯一键、稳定 ID/version 载荷、到期判断和调度键、Cron 只入队决策，以及固定 P0/P1 job kind；并支持在调用方事务中原子入队。Worker 已提供 SKIP LOCKED claim、完成、重试和达到上限隔离（提交 `1819b61`）。River 表幂等、事务回滚与 Worker integration test 已通过。
+已完成 PLAN-013 Task 1（提交 `3c53744`）：队列只接受已登记 kind，载荷要求正数实体版本、合法时间窗，并限制 JSON 载荷为 4096 字节、唯一键为 256 字节；Worker 保留完整任务信封，统一记录可重试、永久失败和取消状态。PostgreSQL 证据覆盖唯一键幂等、调用方事务回滚、SKIP LOCKED claim、成功完成、达到上限隔离和永久/取消分类。
 
-尚未完成：六类业务 Job handler、Worker Fx 生命周期、持久化 Cron 扫描、取消 API、P0 RSS/HN 端到端和恢复故障注入；保持 `pending`。
+尚未完成：Worker Fx 生命周期、持久化 Cron 扫描、六类业务 Job handler、取消 API、P0 RSS/HN 端到端和恢复故障注入；保持 `pending`。
 
 ```bash
-HOTKEY_TEST_DSN='postgres:///hotkey_plan010_test?sslmode=disable' go test -tags=integration ./internal/platform/queue -run 'Test(Enqueue|Worker)' -count=1
-go test ./internal/platform/scheduler ./internal/platform/queue -count=1
-go test ./internal/platform/scheduler -run TestEnqueueDueUsesStableJobEnvelope -count=1
+go run ./test/runner test ./internal/platform/queue -run 'Test(Payload|Job|ErrorClassification)' -count=1
+HOTKEY_TEST_DSN='postgres:///hotkey_server_dev?sslmode=disable' go run ./test/runner test -tags=integration ./internal/platform/queue -run 'Test(Enqueue|Worker)' -count=1
+go run ./test/runner test ./internal/platform/scheduler ./internal/platform/queue -count=1
 ```
