@@ -309,7 +309,11 @@ type ContentMetricSnapshot struct {
 }
 type EventMetricSnapshot struct {
 	OperationalRecord
-	EventID int64
+	EventID                      int64
+	CapturedAt                   time.Time
+	HeatScore, TrendScore        float64
+	SourceCount, ContentCount    int64
+	HeatVersion, EvidenceSetHash string
 }
 type AIRun struct {
 	OperationalRecord
