@@ -14,6 +14,16 @@ type lifecycleStoreFake struct {
 	audit domain.GovernanceAudit
 }
 
+type evidenceStoreFake struct {
+	command EvidenceRecomputeCommand
+	event   domain.Event
+}
+
+func (store *evidenceStoreFake) RecomputeEventEvidence(_ context.Context, command EvidenceRecomputeCommand) (domain.Event, error) {
+	store.command = command
+	return store.event, nil
+}
+
 func (store *lifecycleStoreFake) Get(context.Context, int64) (domain.Event, error) {
 	return store.event, nil
 }
@@ -61,5 +71,27 @@ func TestRecomputeEvidenceKeepsManualLockAndSelectsStableRepresentative(t *testi
 	status, contentID, err = RecomputeEvidence(EvidenceInput{Event: event})
 	if err != nil || status != domain.LifecycleRejected || contentID != nil {
 		t.Fatalf("empty RecomputeEvidence() = %q/%v/%v", status, contentID, err)
+	}
+	event.LifecycleStatus = domain.LifecycleActive
+	status, contentID, err = RecomputeEvidence(EvidenceInput{Event: event, ValidMembers: members, IndependentSourceIDs: []int64{1}})
+	if err != nil || status != domain.LifecycleCooling || contentID == nil || *contentID != 10 {
+		t.Fatalf("single-source active RecomputeEvidence() = %q/%v/%v", status, contentID, err)
+	}
+	members[0].ManualLocked = true
+	status, contentID, err = RecomputeEvidence(EvidenceInput{Event: event, ValidMembers: members, IndependentSourceIDs: []int64{1, 2}})
+	if err != nil || status != domain.LifecycleActive || contentID == nil || *contentID != 20 {
+		t.Fatalf("manual member RecomputeEvidence() = %q/%v/%v", status, contentID, err)
+	}
+}
+
+func TestEvidenceServiceDelegatesValidatedCommands(t *testing.T) {
+	store := &evidenceStoreFake{event: lifecycleEvent()}
+	service := NewEvidenceService(store)
+	result, err := service.Recompute(context.Background(), EvidenceRecomputeCommand{EventID: 1, ReasonCode: "content_deleted"})
+	if err != nil || result.ID != 1 || store.command.EventID != 1 {
+		t.Fatalf("Recompute() = %#v/%v command=%#v", result, err, store.command)
+	}
+	if _, err := service.Recompute(context.Background(), EvidenceRecomputeCommand{}); err == nil {
+		t.Fatal("Recompute() accepted invalid command")
 	}
 }
