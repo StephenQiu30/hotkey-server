@@ -1,4 +1,4 @@
-name: CI
+name: Test acceptance
 
 on:
   push:
@@ -10,10 +10,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  verify:
-    name: Quality gate
+  acceptance:
+    name: Server test acceptance
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -54,5 +59,27 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Run repository quality gate
-        run: make ci
+      - name: OpenAPI contract acceptance
+        run: make openapi-check
+
+      - name: Static analysis acceptance
+        run: make lint
+
+      - name: Database runtime acceptance
+        run: make database-runtime-verify
+
+      - name: Unit and integration test acceptance
+        run: make test
+
+      - name: Build acceptance
+        run: make build
+
+      - name: Architecture and repository acceptance
+        run: make validate
+
+      - name: Schema acceptance
+        run: make schema-verify
+
+      - name: Clean generated artifacts
+        if: always()
+        run: make clean
