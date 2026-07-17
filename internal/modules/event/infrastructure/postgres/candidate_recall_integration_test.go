@@ -244,7 +244,7 @@ func assertCandidateRecallVectorHNSW(t *testing.T, runtime *database.Runtime, co
 		}
 		rows, err := transaction.SQL.QueryContext(ctx, `
 EXPLAIN (COSTS OFF)
-SELECT e.id
+SELECT e.id, e.event_key, 'vector', (100 - LEAST(100, $1::halfvec <=> ee.embedding) * 100), e.representative_content_id
 FROM event_embeddings ee
 JOIN ai_model_profiles p ON p.id = ee.model_profile_id
 JOIN events e ON e.id = ee.event_id
