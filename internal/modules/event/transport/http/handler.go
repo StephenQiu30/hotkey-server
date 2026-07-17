@@ -16,10 +16,43 @@ type Handler struct {
 	read       *application.ReadService
 	lifecycle  *application.LifecycleService
 	governance *application.GovernanceService
+	heat       *application.HeatService
 }
 
 func NewHandler(read *application.ReadService, lifecycle *application.LifecycleService, governance *application.GovernanceService) *Handler {
 	return &Handler{read: read, lifecycle: lifecycle, governance: governance}
+}
+
+func NewHandlerWithHeat(read *application.ReadService, lifecycle *application.LifecycleService, governance *application.GovernanceService, heat *application.HeatService) *Handler {
+	handler := NewHandler(read, lifecycle, governance)
+	handler.heat = heat
+	return handler
+}
+
+// GetHeat returns the latest versioned heat snapshot and its evidence-set hash.
+// @Summary Get latest event heat
+// @Tags events
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "event ID"
+// @Success 200 {object} EventResult[HeatResponse]
+// @Failure 401 {object} EventResult[EmptyResponse]
+// @Failure 404 {object} EventResult[EmptyResponse]
+// @Router /api/v1/events/{id}/heat [get]
+func (handler *Handler) GetHeat(c *gin.Context) error {
+	if handler == nil || handler.heat == nil {
+		return sharederrors.New(sharederrors.CodeUnavailable, http.StatusServiceUnavailable, "")
+	}
+	eventID, err := pathID(c, "id")
+	if err != nil {
+		return err
+	}
+	result, err := handler.heat.Latest(c.Request.Context(), eventID)
+	if err != nil {
+		return err
+	}
+	httptransport.OK(c, HeatResponse{EventID: result.EventID, HeatScore: result.HeatScore, TrendScore: result.TrendScore, SourceCount: result.SourceCount, ContentCount: result.ContentCount, HeatVersion: result.HeatVersion, EvidenceSetHash: result.EvidenceSetHash, CapturedAt: result.WindowEnd})
+	return nil
 }
 
 // List returns safe Event projections for authenticated users.

@@ -38,6 +38,16 @@ func (service *HeatService) CalculateAndSave(ctx context.Context, input domain.H
 	return result, nil
 }
 
+func (service *HeatService) Latest(ctx context.Context, eventID int64) (domain.HeatResult, error) {
+	if service == nil || service.snapshots == nil {
+		return domain.HeatResult{}, fmt.Errorf("heat snapshot store is required")
+	}
+	if eventID <= 0 {
+		return domain.HeatResult{}, fmt.Errorf("event id is required")
+	}
+	return service.snapshots.LatestHeatSnapshot(ctx, eventID)
+}
+
 type HeatSnapshotQuery struct {
 	EventID int64
 	At      time.Time

@@ -7,14 +7,25 @@ import (
 )
 
 func RegisterRoutes(router *gin.Engine, read *application.ReadService, lifecycle *application.LifecycleService, governance *application.GovernanceService, authenticator httptransport.Authenticator) {
+	registerRoutes(router, read, lifecycle, governance, nil, authenticator)
+}
+
+func RegisterRoutesWithHeat(router *gin.Engine, read *application.ReadService, lifecycle *application.LifecycleService, governance *application.GovernanceService, heat *application.HeatService, authenticator httptransport.Authenticator) {
+	registerRoutes(router, read, lifecycle, governance, heat, authenticator)
+}
+
+func registerRoutes(router *gin.Engine, read *application.ReadService, lifecycle *application.LifecycleService, governance *application.GovernanceService, heat *application.HeatService, authenticator httptransport.Authenticator) {
 	if router == nil {
 		return
 	}
-	handler := NewHandler(read, lifecycle, governance)
+	handler := NewHandlerWithHeat(read, lifecycle, governance, heat)
 	api := router.Group("/api/v1/events", httptransport.RequireAuthentication(authenticator))
 	api.GET("", httptransport.Wrap(handler.List))
 	api.GET("/:id", httptransport.Wrap(handler.Get))
 	api.GET("/:id/contents", httptransport.Wrap(handler.ListMembers))
+	if heat != nil {
+		api.GET("/:id/heat", httptransport.Wrap(handler.GetHeat))
+	}
 	editor := api.Group("", httptransport.RequireRoles(httptransport.RoleEditor, httptransport.RoleAdmin))
 	editor.POST("/:id/contents/:content_id/lock", httptransport.Wrap(handler.SetMemberLock))
 	admin := api.Group("", httptransport.RequireRoles(httptransport.RoleAdmin))

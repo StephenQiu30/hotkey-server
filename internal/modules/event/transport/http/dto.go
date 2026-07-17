@@ -52,6 +52,17 @@ type EventMemberPageResponse struct {
 	Items []EventMemberResponse `json:"items"`
 }
 
+type HeatResponse struct {
+	EventID         int64     `json:"event_id"`
+	HeatScore       float64   `json:"heat_score"`
+	TrendScore      float64   `json:"trend_score"`
+	SourceCount     int       `json:"source_count"`
+	ContentCount    int       `json:"content_count"`
+	HeatVersion     string    `json:"heat_version"`
+	EvidenceSetHash string    `json:"evidence_set_hash"`
+	CapturedAt      time.Time `json:"captured_at"`
+}
+
 type LifecycleRequest struct {
 	ExpectedVersion int64  `json:"expected_version" binding:"required"`
 	To              string `json:"to" binding:"required"`

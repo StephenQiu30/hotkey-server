@@ -1304,6 +1304,51 @@
                 }
             }
         },
+        "/api/v1/events/{id}/heat": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "Get latest event heat",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "event ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-http_HeatResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/events/{id}/lifecycle": {
             "post": {
                 "security": [
@@ -4705,6 +4750,20 @@
                 }
             }
         },
+        "http.EventResult-http_HeatResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.HeatResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "http.EventResult-internal_modules_event_transport_http_EmptyResponse": {
             "type": "object",
             "properties": {
@@ -4716,6 +4775,35 @@
                 },
                 "message": {
                     "type": "string"
+                }
+            }
+        },
+        "http.HeatResponse": {
+            "type": "object",
+            "properties": {
+                "captured_at": {
+                    "type": "string"
+                },
+                "content_count": {
+                    "type": "integer"
+                },
+                "event_id": {
+                    "type": "integer"
+                },
+                "evidence_set_hash": {
+                    "type": "string"
+                },
+                "heat_score": {
+                    "type": "number"
+                },
+                "heat_version": {
+                    "type": "string"
+                },
+                "source_count": {
+                    "type": "integer"
+                },
+                "trend_score": {
+                    "type": "number"
                 }
             }
         },
