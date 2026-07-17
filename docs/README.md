@@ -32,7 +32,7 @@ downstream:
 
 ## 当前交付状态
 
-目标设计不能代替当前实现状态。任务进度只在 [PRD 索引](prd/README.md) 和 [Plan 索引](plans/README.md) 维护：001–009 已完成并由 [Acceptance](acceptance/README.md) 保存长期证据；治理任务 018 已审核为非阻塞 `ready` 支线；PLAN-010 的事件治理代码已通过事件/数据库集成门禁，Acceptance-010 与实现复核仍待收口；011–017 已开始实现核心契约，但完整持久化、Worker/API、故障验收与独立复核仍未完成，不能标记 done。本地启动、GitHub CI、发布和故障处置等可重复运行流程归入 [Operations](operations/README.md)。
+目标设计不能代替当前实现状态。任务进度只在 [PRD 索引](prd/README.md) 和 [Plan 索引](plans/README.md) 维护：001–009 已完成并由 [Acceptance](acceptance/README.md) 保存长期证据；治理任务 018 已审核为非阻塞 `ready` 支线；PLAN-010 的事件治理代码已通过事件/数据库集成门禁，Acceptance-010 与实现复核仍待收口；011–017 已补齐一批核心 API、持久化和清理适配器，但完整 Worker、对账、外部投递、故障验收与独立复核仍未完成，不能标记 done。本地启动、GitHub CI、发布和故障处置等可重复运行流程归入 [Operations](operations/README.md)。
 
 ## 文档层级
 

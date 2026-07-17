@@ -43,8 +43,10 @@ func NewHandlerWithHeatAndClaims(read *application.ReadService, lifecycle *appli
 // @Security BearerAuth
 // @Param id path int true "event ID"
 // @Success 200 {object} EventResult[HeatResponse]
+// @Failure 400 {object} EventResult[EmptyResponse]
 // @Failure 401 {object} EventResult[EmptyResponse]
 // @Failure 404 {object} EventResult[EmptyResponse]
+// @Failure 503 {object} EventResult[EmptyResponse]
 // @Router /api/v1/events/{id}/heat [get]
 func (handler *Handler) GetHeat(c *gin.Context) error {
 	if handler == nil || handler.heat == nil {
@@ -76,6 +78,7 @@ func (handler *Handler) GetHeat(c *gin.Context) error {
 // @Failure 401 {object} EventResult[EmptyResponse]
 // @Failure 403 {object} EventResult[EmptyResponse]
 // @Failure 409 {object} EventResult[EmptyResponse]
+// @Failure 503 {object} EventResult[EmptyResponse]
 // @Router /api/v1/events/{id}/claims [post]
 func (handler *Handler) SaveClaim(c *gin.Context) error {
 	if handler == nil || handler.claims == nil {
