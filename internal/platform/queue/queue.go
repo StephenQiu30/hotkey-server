@@ -62,8 +62,12 @@ func (store *Store) Enqueue(ctx context.Context, job Job) (int64, bool, error) {
 	if err != nil {
 		return 0, false, err
 	}
+	var executor sqlQueryer = store.runtime.SQL
+	if transaction, ok := database.TransactionFromContext(ctx); ok {
+		executor = transaction.SQL
+	}
 	var id int64
-	err = store.runtime.SQL.QueryRowContext(ctx, `
+	err = executor.QueryRowContext(ctx, `
 INSERT INTO river_job (kind, args, state, max_attempts, priority, scheduled_at, unique_key)
 VALUES ($1, $2, 'available', $3, $4, $5, $6)
 ON CONFLICT (kind, unique_key) DO NOTHING RETURNING id`, job.Kind, args, job.MaxAttempts, job.Priority, job.ScheduledAt.UTC(), []byte(job.UniqueKey)).Scan(&id)
@@ -73,6 +77,10 @@ ON CONFLICT (kind, unique_key) DO NOTHING RETURNING id`, job.Kind, args, job.Max
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return 0, false, sharedrepository.MapError(err)
 	}
-	err = store.runtime.SQL.QueryRowContext(ctx, `SELECT id FROM river_job WHERE kind = $1 AND unique_key = $2`, job.Kind, []byte(job.UniqueKey)).Scan(&id)
+	err = executor.QueryRowContext(ctx, `SELECT id FROM river_job WHERE kind = $1 AND unique_key = $2`, job.Kind, []byte(job.UniqueKey)).Scan(&id)
 	return id, false, sharedrepository.MapError(err)
+}
+
+type sqlQueryer interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
