@@ -17,6 +17,8 @@ result: pending
 
 已完成 PLAN-013 Task 2（提交 `2ea981f`）：`worker`/`all` 角色在 Bootstrap 中按 `worker_poll_interval`、`worker_concurrency` 和 `worker_lease_timeout` 启动受限循环，启动前回收过期租约，停机传播取消并等待循环退出；`api` 角色不提供 Worker。Fx 生命周期、配置、数据库启动和过期 running Job 回收测试通过，完整 `make ci` 在 PostgreSQL 与 Redis 可用时通过。
 
+已完成 PLAN-013 Task 3（提交 `8cc7e88`）：复用 Monitor 的只读 `ListDue` 适配器，排除 draft/paused/disabled/deleted/future checkpoint，只将 immutable published target 转成 source/signature/window 任务；`worker`/`all` 按 `cron_interval` 启动扫描，`source_connection_id + query_signature + UTC window` 生成稳定 key。重复扫描只返回已存在 job，不写 `collection_runs`、Connector 或 checkpoint。真实 PostgreSQL 测试和完整质量门禁通过。
+
 尚未完成：Worker Fx 生命周期、持久化 Cron 扫描、六类业务 Job handler、取消 API、P0 RSS/HN 端到端和恢复故障注入；保持 `pending`。
 
 ```bash

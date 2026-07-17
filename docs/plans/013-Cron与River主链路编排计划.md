@@ -86,11 +86,11 @@ depends_on: [PLAN-006, PLAN-007, PLAN-008, PLAN-009, PLAN-010, PLAN-011, PLAN-01
 
 **文件：** 创建 `internal/platform/scheduler/source_due_reader.go`；修改 `internal/platform/scheduler/cron.go`、`internal/modules/source/infrastructure/postgres/*`、Bootstrap 装配；创建 scheduler/PostgreSQL 测试。
 
-- [ ] **RED：** draft、paused、archived、disabled source 或未来 checkpoint 被调度，以及重复扫描产生重复 Job 时失败。
-- [ ] **GREEN：** Cron 仅消费 active Monitor 的 immutable published target，按 UTC 时间片提交 `collect_source` 唯一任务。
-- [ ] **重构：** 调度器只扫描和入队，不调用 Connector 或推进 checkpoint。
-- [ ] **回归：** `go run ./test/runner test -tags=integration ./internal/platform/scheduler ./internal/modules/source/infrastructure/postgres -count=1`。
-- [ ] **提交：** `feat: schedule due source collection`。
+- [x] **RED：** draft、paused、archived、disabled source 或未来 checkpoint 被调度，以及重复扫描产生重复 Job 时失败。
+- [x] **GREEN：** Cron 仅消费 active Monitor 的 immutable published target，按 UTC 时间片提交 `collect_source` 唯一任务。
+- [x] **重构：** 调度器只扫描和入队，不调用 Connector 或推进 checkpoint。
+- [x] **回归：** `go run ./test/runner test ./internal/platform/scheduler -run 'TestCollectionScheduler' -count=1`；`HOTKEY_TEST_DSN='postgres:///hotkey_server_dev?sslmode=disable' go run ./test/runner test -tags=integration ./internal/modules/monitor/infrastructure/postgres -run 'Test(CollectionScheduler|PublishedCollectionTargetReader)' -count=1`；`HOTKEY_TEST_DSN='postgres:///hotkey_server_dev?sslmode=disable' HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' make ci && make clean`。
+- [x] **提交：** `8cc7e88 feat: schedule due source collection`。
 
 ### Task 4：实现 P0 Job 链路与事务下游入队
 
