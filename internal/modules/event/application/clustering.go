@@ -62,6 +62,9 @@ func (service *ClusteringService) Evaluate(_ context.Context, input ClusteringIn
 			ClusteringVersion: input.ClusteringVersion, FeatureInputHash: input.FeatureInputHash,
 			Channel: candidate.Channel, CandidateRank: rank + 1, Scores: scores, MembershipScore: score,
 			Decision: persistedDecision, DecisionOrigin: domain.DecisionOriginRule,
+			ReasonCodes:        candidateReasonCodes(persistedDecision, hardConflict, candidate),
+			EvidenceContentIDs: candidateEvidence(input.ContentID, candidate.EvidenceContentIDs),
+			FeatureSnapshot:    candidateFeatureSnapshot(candidate, hardConflict),
 		})
 	}
 	winner := -1
@@ -91,6 +94,8 @@ func (service *ClusteringService) Evaluate(_ context.Context, input ClusteringIn
 			ContentID: input.ContentID, CandidateEventKey: "__new_event__", ClusteringVersion: input.ClusteringVersion,
 			FeatureInputHash: input.FeatureInputHash, Channel: domain.ChannelFingerprint, CandidateRank: 0,
 			Decision: domain.DecisionNewEvent, DecisionOrigin: domain.DecisionOriginRule,
+			ReasonCodes: []string{"no_candidate_accepted"}, EvidenceContentIDs: []int64{input.ContentID},
+			FeatureSnapshot: map[string]any{"candidate_count": len(candidates), "recall_channels": []string{}},
 		})
 	}
 	sort.SliceStable(decisions, func(i, j int) bool {
@@ -100,4 +105,52 @@ func (service *ClusteringService) Evaluate(_ context.Context, input ClusteringIn
 		return decisions[i].CandidateEventKey < decisions[j].CandidateEventKey
 	})
 	return decisions, nil
+}
+
+func candidateReasonCodes(decision domain.MembershipDecision, hardConflict bool, candidate domain.Candidate) []string {
+	reasons := make([]string, 0, len(candidate.Sources())+2)
+	for _, source := range candidate.Sources() {
+		reasons = append(reasons, "recalled_"+string(source.Channel))
+	}
+	if hardConflict {
+		reasons = append(reasons, "hard_conflict")
+		return reasons
+	}
+	switch decision {
+	case domain.DecisionAccept:
+		return append(reasons, "membership_threshold_accepted")
+	case domain.DecisionReview:
+		return append(reasons, "membership_threshold_review")
+	default:
+		return append(reasons, "membership_threshold_rejected")
+	}
+}
+
+func candidateEvidence(contentID int64, candidateEvidence []int64) []int64 {
+	seen := map[int64]struct{}{contentID: {}}
+	for _, evidenceID := range candidateEvidence {
+		if evidenceID > 0 {
+			seen[evidenceID] = struct{}{}
+		}
+	}
+	evidence := make([]int64, 0, len(seen))
+	for evidenceID := range seen {
+		evidence = append(evidence, evidenceID)
+	}
+	sort.Slice(evidence, func(left, right int) bool { return evidence[left] < evidence[right] })
+	return evidence
+}
+
+func candidateFeatureSnapshot(candidate domain.Candidate, hardConflict bool) map[string]any {
+	channels := make([]string, 0, len(candidate.Sources()))
+	scores := make(map[string]float64, len(candidate.Sources()))
+	for _, source := range candidate.Sources() {
+		channels = append(channels, string(source.Channel))
+		scores[string(source.Channel)] = source.Score
+	}
+	return map[string]any{
+		"recall_channels": channels,
+		"recall_scores":   scores,
+		"hard_conflict":   hardConflict,
+	}
 }

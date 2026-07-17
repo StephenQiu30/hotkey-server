@@ -17,7 +17,7 @@ func (repository *Repository) Lexical(ctx context.Context, contentID int64, limi
 SELECT e.id, e.event_key, 'lexical', LEAST(100, GREATEST(
   similarity(lower(e.title_zh), lower(c.title)),
   similarity(lower(COALESCE(e.title_en, '')), lower(c.title)),
-  similarity(lower(e.summary), lower(c.excerpt))) * 100)
+  similarity(lower(e.summary), lower(c.excerpt))) * 100), e.representative_content_id
 FROM contents c
 JOIN monitor_matches mm ON mm.content_id = c.id AND mm.decision = 'accepted'
 JOIN monitor_events me ON me.monitor_id = mm.monitor_id
@@ -29,7 +29,7 @@ ORDER BY 4 DESC, e.event_key ASC LIMIT $2`, contentID, limit)
 
 func (repository *Repository) Temporal(ctx context.Context, contentID int64, limit int) ([]domain.Candidate, error) {
 	return repository.queryCandidates(ctx, `
-SELECT e.id, e.event_key, 'temporal', GREATEST(0, 100 - LEAST(100, ABS(EXTRACT(EPOCH FROM (e.last_seen_at - c.published_at))) / 86400.0 * 100 / 30))
+SELECT e.id, e.event_key, 'temporal', GREATEST(0, 100 - LEAST(100, ABS(EXTRACT(EPOCH FROM (e.last_seen_at - c.published_at))) / 86400.0 * 100 / 30)), e.representative_content_id
 FROM contents c
 JOIN monitor_matches mm ON mm.content_id = c.id AND mm.decision = 'accepted'
 JOIN monitor_events me ON me.monitor_id = mm.monitor_id
@@ -43,7 +43,7 @@ ORDER BY 4 DESC, e.event_key ASC LIMIT $2`, contentID, limit)
 
 func (repository *Repository) Fingerprint(ctx context.Context, contentID int64, limit int) ([]domain.Candidate, error) {
 	return repository.queryCandidates(ctx, `
-SELECT e.id, e.event_key, 'fingerprint', CASE WHEN e.event_fingerprint IS NOT NULL AND left(e.event_fingerprint, 8) = left(c.dedupe_key, 8) THEN 100 ELSE 0 END
+SELECT e.id, e.event_key, 'fingerprint', CASE WHEN e.event_fingerprint IS NOT NULL AND left(e.event_fingerprint, 8) = left(c.dedupe_key, 8) THEN 100 ELSE 0 END, e.representative_content_id
 FROM contents c
 JOIN monitor_matches mm ON mm.content_id = c.id AND mm.decision = 'accepted'
 JOIN monitor_events me ON me.monitor_id = mm.monitor_id
@@ -88,7 +88,7 @@ SELECT EXISTS (
 		return nil, sharedrepository.ErrUnavailable
 	}
 	rows, err := repository.runtime.SQL.QueryContext(ctx, `
-SELECT e.id, e.event_key, 'vector', (100 - LEAST(100, $1::halfvec <=> ee.embedding) * 100)
+SELECT e.id, e.event_key, 'vector', (100 - LEAST(100, $1::halfvec <=> ee.embedding) * 100), e.representative_content_id
 FROM event_embeddings ee
 JOIN ai_model_profiles p ON p.id = ee.model_profile_id
 JOIN events e ON e.id = ee.event_id
@@ -126,10 +126,14 @@ func scanCandidates(rows *sql.Rows) ([]domain.Candidate, error) {
 	for rows.Next() {
 		var candidate domain.Candidate
 		var channel string
-		if err := rows.Scan(&candidate.EventID, &candidate.EventKey, &channel, &candidate.Score); err != nil {
+		var representativeContentID sql.NullInt64
+		if err := rows.Scan(&candidate.EventID, &candidate.EventKey, &channel, &candidate.Score, &representativeContentID); err != nil {
 			return nil, sharedrepository.MapError(err)
 		}
 		candidate.Channel = domain.CandidateChannel(channel)
+		if representativeContentID.Valid {
+			candidate.EvidenceContentIDs = []int64{representativeContentID.Int64}
+		}
 		result = append(result, candidate)
 	}
 	if err := rows.Err(); err != nil {

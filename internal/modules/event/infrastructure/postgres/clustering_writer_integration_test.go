@@ -73,7 +73,7 @@ func TestApplyClusteringAttachesAcceptedDecisionAndRetainsReview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	accepted := domain.Decision{ContentID: contentID, CandidateEventID: &target.ID, CandidateEventKey: target.EventKey, ClusteringVersion: "v1", FeatureInputHash: strings.Repeat("b", 64), Channel: domain.ChannelLexical, CandidateRank: 1, Scores: domain.ScoreBreakdown{EntityAction: 90, Semantic: 90, Temporal: 90, Location: 90, SourceContext: 90}, MembershipScore: 90, Decision: domain.DecisionAccept, DecisionOrigin: domain.DecisionOriginRule}
+	accepted := domain.Decision{ContentID: contentID, CandidateEventID: &target.ID, CandidateEventKey: target.EventKey, ClusteringVersion: "v1", FeatureInputHash: strings.Repeat("b", 64), Channel: domain.ChannelLexical, CandidateRank: 1, Scores: domain.ScoreBreakdown{EntityAction: 90, Semantic: 90, Temporal: 90, Location: 90, SourceContext: 90}, MembershipScore: 90, Decision: domain.DecisionAccept, DecisionOrigin: domain.DecisionOriginRule, ReasonCodes: []string{"recalled_lexical", "recalled_vector", "membership_threshold_accepted"}, FeatureSnapshot: map[string]any{"recall_channels": []string{"lexical", "vector"}, "hard_conflict": false}, EvidenceContentIDs: []int64{contentID, fixture.sourceContentID}}
 	result, err := repository.ApplyClustering(ctx, []domain.Decision{accepted})
 	if err != nil {
 		t.Fatalf("ApplyClustering(accepted) error = %v", err)
@@ -87,6 +87,14 @@ func TestApplyClusteringAttachesAcceptedDecisionAndRetainsReview(t *testing.T) {
 	}
 	if members != 1 {
 		t.Fatalf("target members = %d, want 1", members)
+	}
+	var hardConflict string
+	var channelCount, reasonCount, evidenceCount int
+	if err := runtime.SQL.QueryRow(`SELECT feature_snapshot->>'hard_conflict', jsonb_array_length(feature_snapshot->'recall_channels'), cardinality(reason_codes), cardinality(evidence_content_ids) FROM event_clustering_decisions WHERE content_id = $1`, contentID).Scan(&hardConflict, &channelCount, &reasonCount, &evidenceCount); err != nil {
+		t.Fatal(err)
+	}
+	if hardConflict != "false" || channelCount != 2 || reasonCount != 3 || evidenceCount != 2 {
+		t.Fatalf("persisted audit provenance = hard_conflict=%q channels=%d reasons=%d evidence=%d", hardConflict, channelCount, reasonCount, evidenceCount)
 	}
 	reviewContentID := seedUnassignedEventContent(t, runtime)
 	review := accepted

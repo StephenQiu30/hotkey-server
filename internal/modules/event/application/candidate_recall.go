@@ -3,6 +3,7 @@ package application
 
 import (
 	"context"
+	"sort"
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/event/domain"
 )
@@ -68,18 +69,48 @@ func (service *RecallService) Recall(ctx context.Context, input RecallInput) (Re
 		all = append(all, vectors...)
 	}
 
-	byKey := make(map[string]domain.Candidate, len(all))
+	type candidateAggregate struct {
+		candidate domain.Candidate
+		sources   map[domain.CandidateChannel]float64
+		evidence  map[int64]struct{}
+	}
+	byKey := make(map[string]candidateAggregate, len(all))
 	for _, candidate := range all {
 		if err := candidate.Validate(); err != nil {
 			return RecallResult{}, err
 		}
-		if existing, ok := byKey[candidate.EventKey]; !ok || candidate.Score > existing.Score || candidate.Score == existing.Score && candidate.Channel < existing.Channel {
-			byKey[candidate.EventKey] = candidate
+		aggregate, exists := byKey[candidate.EventKey]
+		if !exists {
+			aggregate = candidateAggregate{candidate: candidate, sources: make(map[domain.CandidateChannel]float64), evidence: make(map[int64]struct{})}
 		}
+		for _, source := range candidate.Sources() {
+			if score, exists := aggregate.sources[source.Channel]; !exists || source.Score > score {
+				aggregate.sources[source.Channel] = source.Score
+			}
+		}
+		for _, contentID := range candidate.EvidenceContentIDs {
+			aggregate.evidence[contentID] = struct{}{}
+		}
+		if !exists || candidate.Score > aggregate.candidate.Score || candidate.Score == aggregate.candidate.Score && candidate.Channel < aggregate.candidate.Channel {
+			aggregate.candidate = candidate
+		}
+		byKey[candidate.EventKey] = aggregate
 	}
 	unique := make([]domain.Candidate, 0, len(byKey))
-	for _, candidate := range byKey {
-		unique = append(unique, candidate)
+	for _, aggregate := range byKey {
+		sources := make([]domain.CandidateRecall, 0, len(aggregate.sources))
+		for channel, score := range aggregate.sources {
+			sources = append(sources, domain.CandidateRecall{Channel: channel, Score: score})
+		}
+		sort.Slice(sources, func(left, right int) bool { return sources[left].Channel < sources[right].Channel })
+		evidence := make([]int64, 0, len(aggregate.evidence))
+		for contentID := range aggregate.evidence {
+			evidence = append(evidence, contentID)
+		}
+		sort.Slice(evidence, func(left, right int) bool { return evidence[left] < evidence[right] })
+		aggregate.candidate.RecallSources = sources
+		aggregate.candidate.EvidenceContentIDs = evidence
+		unique = append(unique, aggregate.candidate)
 	}
 	return RecallResult{Candidates: domain.CompareCandidates(unique), VectorUnavailable: vectorUnavailable}, nil
 }

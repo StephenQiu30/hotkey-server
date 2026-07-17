@@ -60,18 +60,53 @@ func (origin DecisionOrigin) Valid() bool {
 }
 
 type Candidate struct {
-	EventID      int64
-	EventKey     string
-	Channel      CandidateChannel
-	Score        float64
-	HardConflict bool
+	EventID            int64
+	EventKey           string
+	Channel            CandidateChannel
+	Score              float64
+	HardConflict       bool
+	RecallSources      []CandidateRecall
+	EvidenceContentIDs []int64
+}
+
+// CandidateRecall preserves the bounded recall paths that yielded a
+// candidate. Channel remains the primary ranking path for compatibility;
+// RecallSources records every path without widening the candidate set.
+type CandidateRecall struct {
+	Channel CandidateChannel
+	Score   float64
 }
 
 func (candidate Candidate) Validate() error {
 	if candidate.EventID <= 0 || strings.TrimSpace(candidate.EventKey) == "" || !candidate.Channel.Valid() || candidate.Score < 0 || candidate.Score > 100 {
 		return fmt.Errorf("invalid event candidate")
 	}
+	for _, source := range candidate.RecallSources {
+		if !source.Channel.Valid() || source.Score < 0 || source.Score > 100 {
+			return fmt.Errorf("invalid candidate recall source")
+		}
+	}
+	for _, contentID := range candidate.EvidenceContentIDs {
+		if contentID <= 0 {
+			return fmt.Errorf("invalid candidate evidence content")
+		}
+	}
 	return nil
+}
+
+func (candidate Candidate) Sources() []CandidateRecall {
+	byChannel := map[CandidateChannel]float64{candidate.Channel: candidate.Score}
+	for _, source := range candidate.RecallSources {
+		if score, exists := byChannel[source.Channel]; !exists || source.Score > score {
+			byChannel[source.Channel] = source.Score
+		}
+	}
+	sources := make([]CandidateRecall, 0, len(byChannel))
+	for channel, score := range byChannel {
+		sources = append(sources, CandidateRecall{Channel: channel, Score: score})
+	}
+	sort.Slice(sources, func(left, right int) bool { return sources[left].Channel < sources[right].Channel })
+	return sources
 }
 
 type Decision struct {

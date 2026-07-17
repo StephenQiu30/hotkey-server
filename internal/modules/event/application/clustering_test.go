@@ -74,3 +74,35 @@ func TestClusteringAcceptsOnlyTheHighestScoringCandidate(t *testing.T) {
 		t.Fatalf("accepted decisions = %d, want 1: %#v", accepted, decisions)
 	}
 }
+
+func TestClusteringPersistsCandidateAuditInputs(t *testing.T) {
+	candidateID := int64(9)
+	decisions, err := NewClusteringService().Evaluate(context.Background(), ClusteringInput{
+		ContentID: 10, ClusteringVersion: "v1", FeatureInputHash: domain.FeatureInputHash("content", "audit"),
+		Candidates: []domain.Candidate{{
+			EventID: candidateID, EventKey: "evt_audit", Channel: domain.ChannelVector, Score: 95,
+			RecallSources:      []domain.CandidateRecall{{Channel: domain.ChannelLexical, Score: 82}, {Channel: domain.ChannelVector, Score: 95}},
+			EvidenceContentIDs: []int64{7, 8},
+		}},
+		Scores: map[string]domain.ScoreBreakdown{
+			"evt_audit": {EntityAction: 90, Semantic: 95, Temporal: 85, Location: 80, SourceContext: 75},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if len(decisions) != 1 || decisions[0].Decision != domain.DecisionAccept {
+		t.Fatalf("decisions = %#v", decisions)
+	}
+	decision := decisions[0]
+	channels, ok := decision.FeatureSnapshot["recall_channels"].([]string)
+	if !ok || len(channels) != 2 || channels[0] != "lexical" || channels[1] != "vector" {
+		t.Fatalf("recall channels = %#v", decision.FeatureSnapshot)
+	}
+	if len(decision.ReasonCodes) != 3 || decision.ReasonCodes[2] != "membership_threshold_accepted" {
+		t.Fatalf("reason codes = %#v", decision.ReasonCodes)
+	}
+	if got := decision.EvidenceContentIDs; len(got) != 3 || got[0] != 7 || got[1] != 8 || got[2] != 10 {
+		t.Fatalf("evidence content IDs = %#v", got)
+	}
+}
