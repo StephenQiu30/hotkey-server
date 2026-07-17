@@ -22,13 +22,22 @@ func (repository *Repository) SaveDecisions(ctx context.Context, decisions []dom
 			if err != nil {
 				return err
 			}
+			if string(feature) == "null" {
+				feature = []byte(`{}`)
+			}
 			reasons, err := json.Marshal(decision.ReasonCodes)
 			if err != nil {
 				return err
 			}
+			if string(reasons) == "null" {
+				reasons = []byte(`[]`)
+			}
 			evidence, err := json.Marshal(decision.EvidenceContentIDs)
 			if err != nil {
 				return err
+			}
+			if string(evidence) == "null" {
+				evidence = []byte(`[]`)
 			}
 			var candidateID any
 			if decision.CandidateEventID != nil {
