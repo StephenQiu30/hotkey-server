@@ -6,7 +6,7 @@ feature_area: 知识库治理
 purpose: 实施 Obsidian 提案、审核、修订、原子写入与跨存储对账
 canonical_path: docs/plans/014-Obsidian知识提案修订与对账计划.md
 status: review
-execution_status: in_progress
+execution_status: backlog
 review_status: pending
 version: v1.0
 owner: HotKey Server Team

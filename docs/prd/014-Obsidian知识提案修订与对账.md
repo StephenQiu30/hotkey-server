@@ -9,7 +9,7 @@ purpose: 定义 Obsidian 提案、审核、修订、冲突与对账任务
 phase: P1
 priority: P1
 status: review
-execution_status: in_progress
+execution_status: backlog
 version: v1.0
 owner: HotKey Server Team
 depends_on: [PRD-010, PRD-012, PRD-013]

@@ -6,7 +6,7 @@ feature_area: 订阅与交付
 purpose: 实施邮件投递及 RSS、Atom 私有订阅
 canonical_path: docs/plans/016-邮件与RSS-Atom订阅交付计划.md
 status: review
-execution_status: in_progress
+execution_status: backlog
 review_status: pending
 version: v1.0
 owner: HotKey Server Team

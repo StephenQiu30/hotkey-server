@@ -6,7 +6,7 @@ feature_area: 可靠任务编排
 purpose: 用 Cron 与 River 编排 P0 热点事件主链路
 canonical_path: docs/plans/013-Cron与River主链路编排计划.md
 status: review
-execution_status: in_progress
+execution_status: backlog
 review_status: pending
 version: v1.0
 owner: HotKey Server Team

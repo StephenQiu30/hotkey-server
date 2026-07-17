@@ -9,7 +9,7 @@ purpose: 定义邮件及 RSS、Atom 订阅交付任务
 phase: P1
 priority: P1
 status: review
-execution_status: in_progress
+execution_status: backlog
 version: v1.0
 owner: HotKey Server Team
 depends_on: [PRD-014, PRD-015]
