@@ -81,3 +81,33 @@ func TestPersistentWorkerLifecycleReclaimsStartsAndStopsWorkers(t *testing.T) {
 		t.Fatalf("worker lifecycle calls = reclaim %d/run %d, want 1/2", fake.reclaimCalls, fake.runCalls)
 	}
 }
+
+func TestCollectionSchedulerLifecycleStartsAndStopsRunner(t *testing.T) {
+	fake := &lifecycleWorkerFake{runStarted: make(chan struct{}, 1), workerStopped: make(chan struct{})}
+	cfg := config.Default()
+	cfg.Role = string(RoleWorker)
+	cfg.CronInterval = time.Millisecond
+	app := fx.New(
+		fx.Supply(cfg, zap.NewNop()),
+		fx.Provide(func() collectionSchedulerRunner { return fake }),
+		fx.Invoke(registerCollectionSchedulerLifecycle),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := app.Start(ctx); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	select {
+	case <-fake.runStarted:
+	case <-ctx.Done():
+		t.Fatal("collection scheduler did not start")
+	}
+	if err := app.Stop(ctx); err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+	select {
+	case <-fake.workerStopped:
+	case <-ctx.Done():
+		t.Fatal("collection scheduler did not stop")
+	}
+}

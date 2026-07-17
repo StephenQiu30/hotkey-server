@@ -9,6 +9,8 @@ import (
 
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/infrastructure/postgres"
 	sourcedomain "github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/queue"
+	platformscheduler "github.com/StephenQiu30/hotkey-server/internal/platform/scheduler"
 )
 
 func TestPublishedCollectionTargetReaderReturnsOnlyDueActivePublishedEnabledTargets(t *testing.T) {
@@ -54,6 +56,34 @@ func TestPublishedCollectionTargetReaderReturnsOnlyDueActivePublishedEnabledTarg
 	}
 	if len(target.Terms) != 2 || target.Terms[0] != (sourcedomain.CollectionTerm{Value: "climate"}) || target.Terms[1] != (sourcedomain.CollectionTerm{Value: "spam", Excluded: true}) {
 		t.Fatalf("target terms = %#v, want approved immutable include/exclude terms only", target.Terms)
+	}
+}
+
+func TestCollectionSchedulerEnqueuesDueSourceWithoutWritingCollectionFacts(t *testing.T) {
+	runtime := monitorRepositoryRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	now := time.Date(2026, time.July, 16, 8, 0, 0, 0, time.UTC)
+	seedCollectionTarget(t, runtime.SQL, "scheduler", "active", true, true, true, false, now.Add(-5*time.Minute))
+	reader := monitorpostgres.NewPublishedCollectionTargetReader(runtime)
+	store := queue.NewStore(runtime)
+	collectionScheduler := platformscheduler.NewCollectionScheduler(reader, store)
+	first, err := collectionScheduler.RunOnce(context.Background(), now)
+	if err != nil || first != 1 {
+		t.Fatalf("first scheduler scan = %d/%v, want one new job", first, err)
+	}
+	second, err := collectionScheduler.RunOnce(context.Background(), now)
+	if err != nil || second != 0 {
+		t.Fatalf("second scheduler scan = %d/%v, want duplicate suppression", second, err)
+	}
+	var jobs, runs int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM river_job WHERE kind = 'collect_source'`).Scan(&jobs); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM collection_runs`).Scan(&runs); err != nil {
+		t.Fatal(err)
+	}
+	if jobs != 1 || runs != 0 {
+		t.Fatalf("scheduler facts = jobs=%d collection_runs=%d, want 1/0", jobs, runs)
 	}
 }
 

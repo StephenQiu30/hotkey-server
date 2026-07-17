@@ -5,10 +5,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"time"
 
 	sourcedomain "github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	platformscheduler "github.com/StephenQiu30/hotkey-server/internal/platform/scheduler"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -116,6 +118,45 @@ ORDER BY monitor_source.id ASC, rule.priority DESC, rule.id ASC`, now.UTC())
 		}
 	}
 	return targets, nil
+}
+
+// ListDueCollections converts the immutable Monitor-owned target projection
+// into the scheduler's small source/signature/window envelope. Multiple
+// Monitor targets sharing one source and signature become one collect job;
+// the worker re-reads all target facts before executing the collection.
+func (reader *PublishedCollectionTargetReader) ListDueCollections(ctx context.Context, now time.Time) ([]platformscheduler.CollectionDueSource, error) {
+	targets, err := reader.ListDue(ctx, now)
+	if err != nil {
+		return nil, err
+	}
+	type collectionKey struct {
+		sourceID, windowStart, windowEnd int64
+		signature                        string
+	}
+	byKey := make(map[collectionKey]platformscheduler.CollectionDueSource, len(targets))
+	for _, target := range targets {
+		windowStart := target.Checkpoint.NextPollAt.UTC()
+		windowEnd := windowStart.Add(target.CollectionInterval)
+		key := collectionKey{sourceID: target.SourceConnectionID, signature: target.QuerySignature, windowStart: windowStart.UnixNano(), windowEnd: windowEnd.UnixNano()}
+		candidate := platformscheduler.CollectionDueSource{SourceConnectionID: target.SourceConnectionID, ConfigVersionID: target.MonitorConfigVersionID, QuerySignature: target.QuerySignature, NextPollAt: windowStart, CollectionInterval: target.CollectionInterval}
+		if existing, ok := byKey[key]; !ok || candidate.ConfigVersionID < existing.ConfigVersionID {
+			byKey[key] = candidate
+		}
+	}
+	result := make([]platformscheduler.CollectionDueSource, 0, len(byKey))
+	for _, source := range byKey {
+		result = append(result, source)
+	}
+	sort.Slice(result, func(left, right int) bool {
+		if result[left].SourceConnectionID != result[right].SourceConnectionID {
+			return result[left].SourceConnectionID < result[right].SourceConnectionID
+		}
+		if result[left].QuerySignature != result[right].QuerySignature {
+			return result[left].QuerySignature < result[right].QuerySignature
+		}
+		return result[left].NextPollAt.Before(result[right].NextPollAt)
+	})
+	return result, nil
 }
 
 type publishedCollectionTargetRow struct {

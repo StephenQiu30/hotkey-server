@@ -20,6 +20,7 @@ type Config struct {
 	WorkerPollInterval time.Duration
 	WorkerConcurrency  int
 	WorkerLeaseTimeout time.Duration
+	CronInterval       time.Duration
 	DatabaseURL        string
 	OTLPHTTPEndpoint   string
 	MinIO              MinIOConfig
@@ -99,6 +100,7 @@ func Default() Config {
 		WorkerPollInterval: time.Second,
 		WorkerConcurrency:  1,
 		WorkerLeaseTimeout: 5 * time.Minute,
+		CronInterval:       time.Minute,
 		VaultPath:          "./var/vault",
 		MinIO: MinIOConfig{
 			Endpoint: "localhost:9000",
@@ -146,6 +148,7 @@ func Load() (Config, error) {
 		WorkerPollInterval: configDuration(v, "worker_poll_interval"),
 		WorkerConcurrency:  configInt(v, "worker_concurrency"),
 		WorkerLeaseTimeout: configDuration(v, "worker_lease_timeout"),
+		CronInterval:       configDuration(v, "cron_interval"),
 		DatabaseURL:        configString(v, "database_url"),
 		OTLPHTTPEndpoint:   configString(v, "otlp_http_endpoint"),
 		VaultPath:          configString(v, "vault_path"),
@@ -232,7 +235,7 @@ func (c Config) Validate() error {
 	if c.ShutdownTimeout <= 0 {
 		return errors.New("shutdown timeout must be positive")
 	}
-	if c.WorkerPollInterval < 0 || c.WorkerConcurrency < 0 || c.WorkerLeaseTimeout < 0 {
+	if c.WorkerPollInterval < 0 || c.WorkerConcurrency < 0 || c.WorkerLeaseTimeout < 0 || c.CronInterval < 0 {
 		return errors.New("worker runtime settings cannot be negative")
 	}
 	if c.WorkerConcurrency > 64 {
@@ -309,6 +312,7 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("worker_poll_interval", cfg.WorkerPollInterval)
 	v.SetDefault("worker_concurrency", cfg.WorkerConcurrency)
 	v.SetDefault("worker_lease_timeout", cfg.WorkerLeaseTimeout)
+	v.SetDefault("cron_interval", cfg.CronInterval)
 	v.SetDefault("vault_path", cfg.VaultPath)
 	v.SetDefault("minio_endpoint", cfg.MinIO.Endpoint)
 	v.SetDefault("minio_bucket", cfg.MinIO.Bucket)
@@ -321,7 +325,7 @@ func setDefaults(v *viper.Viper, cfg Config) {
 
 func configKeys() []string {
 	return []string{
-		"env", "role", "http_addr", "request_timeout", "shutdown_timeout", "worker_poll_interval", "worker_concurrency", "worker_lease_timeout", "database_url", "otlp_http_endpoint",
+		"env", "role", "http_addr", "request_timeout", "shutdown_timeout", "worker_poll_interval", "worker_concurrency", "worker_lease_timeout", "cron_interval", "database_url", "otlp_http_endpoint",
 		"minio_endpoint", "minio_access_key", "minio_secret_key", "minio_bucket",
 		"minio_use_ssl", "vault_path",
 		"jwt_secret", "jwt_issuer", "jwt_audience", "verification_hmac_secret", "redis_url", "smtp_enabled", "smtp_host", "smtp_port", "smtp_tls_mode", "smtp_username", "smtp_password", "smtp_from_email", "smtp_from_name", "cors_allowed_origins", "refresh_cookie_secure", "bootstrap_admin_email", "bootstrap_admin_password",

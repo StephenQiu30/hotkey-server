@@ -105,6 +105,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newEventIntelligenceReadService,
 				newEventSummaryService,
 				newEventClaimExtractionService,
+				monitorpostgres.NewPublishedCollectionTargetReader,
 			),
 			fx.Invoke(database.RegisterLifecycle),
 		)
@@ -161,7 +162,10 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 	}
 	if role.StartsWorker() {
 		if usesDatabase {
-			options = append(options, fx.Provide(newQueueWorker, exposeWorkerRunner), fx.Invoke(registerPersistentWorkerLifecycle))
+			options = append(options,
+				fx.Provide(newQueueWorker, exposeWorkerRunner, newQueueStore, exposeCollectionDueReader, newCollectionScheduler, exposeCollectionSchedulerRunner),
+				fx.Invoke(registerPersistentWorkerLifecycle, registerCollectionSchedulerLifecycle),
+			)
 			options = append(options, fx.Invoke(intelligenceapplication.RegisterRunLeaseReclaimerLifecycle))
 		} else {
 			options = append(options, fx.Invoke(registerWorkerLifecycle))
