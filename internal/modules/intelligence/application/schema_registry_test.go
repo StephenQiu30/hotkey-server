@@ -67,6 +67,48 @@ func TestRelevanceReviewSchemaRegistryContract(t *testing.T) {
 	}
 }
 
+func TestEventIntelligenceSchemaRegistryContracts(t *testing.T) {
+	registry, err := NewSchemaRegistry()
+	if err != nil {
+		t.Fatalf("NewSchemaRegistry() error = %v", err)
+	}
+	for _, fixture := range []struct {
+		taskType domain.TaskType
+		input    string
+		output   string
+	}{
+		{
+			taskType: domain.TaskTypeEventSummary,
+			input:    `{"event_id":7,"event_key":"evt_7","evidence":[{"content_id":11,"locator":"title","excerpt":"verified report"}]}`,
+			output:   `{"title_zh":"事件","title_en":"Event","sentences":[{"text":"事实","evidence":[{"content_id":11,"locator":"title","excerpt":"verified report"}]}]}`,
+		},
+		{
+			taskType: domain.TaskTypeEntityClaimExtraction,
+			input:    `{"event_id":7,"event_key":"evt_7","evidence":[{"content_id":11,"locator":"title","excerpt":"verified report"}]}`,
+			output:   `{"entities":[{"entity_key":"acme","entity_type":"organization","canonical_name":"Acme"}],"claims":[{"claim":"Acme announced a release.","evidence":[{"content_id":11,"locator":"title","excerpt":"verified report"}]}]}`,
+		},
+	} {
+		t.Run(string(fixture.taskType), func(t *testing.T) {
+			contract, err := registry.Structured(fixture.taskType, "v1")
+			if err != nil || contract.SchemaVersion != "v1" || strings.TrimSpace(contract.Instruction) == "" {
+				t.Fatalf("Structured(%s) = %#v / %v, want embedded contract", fixture.taskType, contract, err)
+			}
+			if err := registry.ValidateInput(fixture.taskType, "v1", []byte(fixture.input)); err != nil {
+				t.Fatalf("ValidateInput(%s) error = %v", fixture.taskType, err)
+			}
+			if err := registry.ValidateInput(fixture.taskType, "v1", []byte(fixture.input[:len(fixture.input)-1]+`,"raw_content":"forbidden"}`)); err == nil {
+				t.Fatalf("ValidateInput(%s) with unknown field error = nil, want rejection", fixture.taskType)
+			}
+			if err := registry.ValidateOutput(fixture.taskType, "v1", []byte(fixture.output)); err != nil {
+				t.Fatalf("ValidateOutput(%s) error = %v", fixture.taskType, err)
+			}
+			if err := registry.ValidateOutput(fixture.taskType, "v1", []byte(fixture.output[:len(fixture.output)-1]+`,"raw_response":"forbidden"}`)); err == nil {
+				t.Fatalf("ValidateOutput(%s) with unknown field error = nil, want rejection", fixture.taskType)
+			}
+		})
+	}
+}
+
 func relevanceFixture(t *testing.T, name string) []byte {
 	t.Helper()
 	payload, err := os.ReadFile(filepath.Join("testdata", "relevance", name))

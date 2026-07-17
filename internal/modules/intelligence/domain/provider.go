@@ -11,13 +11,16 @@ import (
 type TaskType string
 
 const (
-	TaskTypeEmbedding       TaskType = "embedding"
-	TaskTypeTermExpansion   TaskType = "term_expansion"
-	TaskTypeRelevanceReview TaskType = "relevance_review"
+	TaskTypeEmbedding             TaskType = "embedding"
+	TaskTypeTermExpansion         TaskType = "term_expansion"
+	TaskTypeRelevanceReview       TaskType = "relevance_review"
+	TaskTypeEventSummary          TaskType = "event_summary"
+	TaskTypeEntityClaimExtraction TaskType = "entity_claim_extraction"
 )
 
 func (taskType TaskType) Valid() bool {
-	return taskType == TaskTypeEmbedding || taskType == TaskTypeTermExpansion || taskType == TaskTypeRelevanceReview
+	return taskType == TaskTypeEmbedding || taskType == TaskTypeTermExpansion || taskType == TaskTypeRelevanceReview ||
+		taskType == TaskTypeEventSummary || taskType == TaskTypeEntityClaimExtraction
 }
 
 type ProviderName string

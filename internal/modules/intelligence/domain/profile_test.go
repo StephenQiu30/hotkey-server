@@ -81,6 +81,23 @@ func TestPlan009RelevanceReviewContract(t *testing.T) {
 	}
 }
 
+func TestPlan012EventIntelligenceProfileContracts(t *testing.T) {
+	for _, taskType := range []TaskType{TaskTypeEventSummary, TaskTypeEntityClaimExtraction} {
+		profile := validOpenAIEmbeddingProfile()
+		profile.Name = string(taskType) + "-primary"
+		profile.TaskType = taskType
+		profile.ModelName = "gpt-5.6sol"
+		profile.EmbeddingDimensions = nil
+		if err := profile.Validate(); err != nil {
+			t.Fatalf("%s profile Validate() error = %v", taskType, err)
+		}
+		profile.Provider, profile.CredentialRef = ProviderONNX, nil
+		if err := profile.Validate(); err == nil {
+			t.Fatalf("%s ONNX profile Validate() error = nil, want rejection", taskType)
+		}
+	}
+}
+
 func validOpenAIEmbeddingProfile() ModelProfile {
 	credential := OpenAICredentialReference
 	dimension := EmbeddingDimensions

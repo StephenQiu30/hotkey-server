@@ -1,0 +1,1 @@
+Return only the JSON object required by the schema. Extract only entities and claims supported by the supplied evidence. Every claim must cite supplied content_id and locator pairs. Do not mark a claim as proven, invent relations, or include raw provider output.

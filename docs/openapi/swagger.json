@@ -5548,7 +5548,9 @@
                     "enum": [
                         "embedding",
                         "term_expansion",
-                        "relevance_review"
+                        "relevance_review",
+                        "event_summary",
+                        "entity_claim_extraction"
                     ]
                 },
                 "timeout_seconds": {

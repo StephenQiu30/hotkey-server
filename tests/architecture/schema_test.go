@@ -115,7 +115,7 @@ func TestGreenfieldSchemaEnforcesCriticalConstraints(t *testing.T) {
 		"collection item ingestion state":             "outcome = 'captured' and (",
 		"vector extension":                            "create extension if not exists vector",
 		"fixed embedding dimension":                   "halfvec(1024)",
-		"AI task type whitelist":                      "task_type varchar(24) not null check (task_type in ('embedding','term_expansion','relevance_review'))",
+		"AI task type whitelist":                      "task_type varchar(32) not null check (task_type in ('embedding','term_expansion','relevance_review','event_summary','entity_claim_extraction'))",
 		"AI provider whitelist":                       "provider varchar(120) not null check (provider in ('openai','onnx'))",
 		"AI profile single-call budget":               "max_cost numeric(12,4) not null check (max_cost > 0)",
 		"AI run object keys stay null":                "check (request_object_key is null and response_object_key is null)",
@@ -145,12 +145,12 @@ func TestEmbeddingSchemaRequiresRunProvenanceImmediatelyAfterProfileVersion(t *t
 	}
 }
 
-func TestAIModelSchemaHasOnlyPlan009Contracts(t *testing.T) {
+func TestAIModelSchemaHasPlan012TaskContracts(t *testing.T) {
 	schema := readSchemaText(t)
 	profile := tableBlock(t, schema, "ai_model_profiles")
 	run := tableBlock(t, schema, "ai_runs")
 
-	for _, disallowed := range []string{"'classification'", "'clustering'", "'extraction'", "'summarization'", "'report'"} {
+	for _, disallowed := range []string{"'classification'", "'cluster_review'", "'summarization'", "'report'"} {
 		if strings.Contains(profile, disallowed) {
 			t.Errorf("ai_model_profiles retains unsupported task type %s", disallowed)
 		}

@@ -88,3 +88,30 @@ func TestModelProfileRepositoryOrdersOnlyEligibleProfiles(t *testing.T) {
 		t.Fatalf("EligibleProfiles() = %#v, want ordered enabled profiles %d,%d", profiles, second.ID, first.ID)
 	}
 }
+
+func TestModelProfileRepositoryPersistsEventIntelligenceProfiles(t *testing.T) {
+	runtime := openIntelligenceRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	repository := intelligencepostgres.NewRepository(runtime)
+
+	for _, taskType := range []intelligencedomain.TaskType{
+		intelligencedomain.TaskTypeEventSummary,
+		intelligencedomain.TaskTypeEntityClaimExtraction,
+	} {
+		profile := testEmbeddingProfile()
+		profile.Name = string(taskType) + "-profile"
+		profile.TaskType = taskType
+		profile.ModelName = "gpt-5.6sol"
+		profile.EmbeddingDimensions = nil
+		if err := repository.CreateProfile(context.Background(), &profile); err != nil {
+			t.Fatalf("CreateProfile(%s) error = %v", taskType, err)
+		}
+		profiles, err := repository.EligibleProfiles(context.Background(), taskType)
+		if err != nil {
+			t.Fatalf("EligibleProfiles(%s) error = %v", taskType, err)
+		}
+		if len(profiles) != 1 || profiles[0].ID != profile.ID || profiles[0].TaskType != taskType {
+			t.Fatalf("EligibleProfiles(%s) = %#v, want persisted profile %d", taskType, profiles, profile.ID)
+		}
+	}
+}

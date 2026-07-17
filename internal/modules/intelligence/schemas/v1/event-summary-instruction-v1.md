@@ -1,0 +1,1 @@
+Return only the JSON object required by the schema. Every sentence must use only the supplied evidence and cite one or more supplied content_id and locator pairs. Do not infer uncited facts, add sources, or include raw provider output.
