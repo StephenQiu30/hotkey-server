@@ -1171,6 +1171,75 @@
                 }
             }
         },
+        "/api/v1/events/{id}/claims": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "Save an event claim",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "event ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "claim request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.ClaimRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-http_ClaimResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/events/{id}/contents": {
             "get": {
                 "security": [
@@ -4020,6 +4089,98 @@
                 }
             }
         },
+        "http.ClaimEvidenceRequest": {
+            "type": "object",
+            "required": [
+                "content_id",
+                "locator",
+                "stance"
+            ],
+            "properties": {
+                "confidence": {
+                    "type": "number"
+                },
+                "content_id": {
+                    "type": "integer"
+                },
+                "excerpt": {
+                    "type": "string"
+                },
+                "locator": {
+                    "type": "string"
+                },
+                "stance": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ClaimRequest": {
+            "type": "object",
+            "required": [
+                "claim_hash",
+                "evidence",
+                "id",
+                "normalized_claim",
+                "status",
+                "version"
+            ],
+            "properties": {
+                "claim_hash": {
+                    "type": "string"
+                },
+                "confidence": {
+                    "type": "number"
+                },
+                "evidence": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/http.ClaimEvidenceRequest"
+                    }
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "manual_locked": {
+                    "type": "boolean"
+                },
+                "normalized_claim": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.ClaimResponse": {
+            "type": "object",
+            "properties": {
+                "claim_hash": {
+                    "type": "string"
+                },
+                "confidence": {
+                    "type": "number"
+                },
+                "event_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "normalized_claim": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
         "http.CollectionResult-http_CollectionRunPageResponse": {
             "type": "object",
             "properties": {
@@ -4691,6 +4852,20 @@
                 },
                 "version": {
                     "type": "integer"
+                }
+            }
+        },
+        "http.EventResult-http_ClaimResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.ClaimResponse"
+                },
+                "message": {
+                    "type": "string"
                 }
             }
         },

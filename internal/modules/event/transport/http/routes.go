@@ -7,24 +7,32 @@ import (
 )
 
 func RegisterRoutes(router *gin.Engine, read *application.ReadService, lifecycle *application.LifecycleService, governance *application.GovernanceService, authenticator httptransport.Authenticator) {
-	registerRoutes(router, read, lifecycle, governance, nil, authenticator)
+	registerRoutes(router, read, lifecycle, governance, nil, nil, authenticator)
 }
 
 func RegisterRoutesWithHeat(router *gin.Engine, read *application.ReadService, lifecycle *application.LifecycleService, governance *application.GovernanceService, heat *application.HeatService, authenticator httptransport.Authenticator) {
-	registerRoutes(router, read, lifecycle, governance, heat, authenticator)
+	registerRoutes(router, read, lifecycle, governance, heat, nil, authenticator)
 }
 
-func registerRoutes(router *gin.Engine, read *application.ReadService, lifecycle *application.LifecycleService, governance *application.GovernanceService, heat *application.HeatService, authenticator httptransport.Authenticator) {
+func RegisterRoutesWithHeatAndClaims(router *gin.Engine, read *application.ReadService, lifecycle *application.LifecycleService, governance *application.GovernanceService, heat *application.HeatService, claims *application.ClaimService, authenticator httptransport.Authenticator) {
+	registerRoutes(router, read, lifecycle, governance, heat, claims, authenticator)
+}
+
+func registerRoutes(router *gin.Engine, read *application.ReadService, lifecycle *application.LifecycleService, governance *application.GovernanceService, heat *application.HeatService, claims *application.ClaimService, authenticator httptransport.Authenticator) {
 	if router == nil {
 		return
 	}
-	handler := NewHandlerWithHeat(read, lifecycle, governance, heat)
+	handler := NewHandlerWithHeatAndClaims(read, lifecycle, governance, heat, claims)
 	api := router.Group("/api/v1/events", httptransport.RequireAuthentication(authenticator))
 	api.GET("", httptransport.Wrap(handler.List))
 	api.GET("/:id", httptransport.Wrap(handler.Get))
 	api.GET("/:id/contents", httptransport.Wrap(handler.ListMembers))
 	if heat != nil {
 		api.GET("/:id/heat", httptransport.Wrap(handler.GetHeat))
+	}
+	if claims != nil {
+		claimAdmin := api.Group("", httptransport.RequireRoles(httptransport.RoleAdmin, httptransport.RoleEditor))
+		claimAdmin.POST("/:id/claims", httptransport.Wrap(handler.SaveClaim))
 	}
 	editor := api.Group("", httptransport.RequireRoles(httptransport.RoleEditor, httptransport.RoleAdmin))
 	editor.POST("/:id/contents/:content_id/lock", httptransport.Wrap(handler.SetMemberLock))

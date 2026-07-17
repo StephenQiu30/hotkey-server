@@ -89,6 +89,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newEventLifecycleService,
 				newEventGovernanceService,
 				newEventHeatService,
+				newEventClaimService,
 			),
 			fx.Invoke(database.RegisterLifecycle),
 		)
@@ -196,8 +197,8 @@ func registerIntelligenceRoutes(router *gin.Engine, service *intelligenceapplica
 	intelligencetransport.RegisterRoutes(router, service, authenticator)
 }
 
-func registerEventRoutes(router *gin.Engine, read *eventapplication.ReadService, lifecycle *eventapplication.LifecycleService, governance *eventapplication.GovernanceService, heat *eventapplication.HeatService, authenticator httptransport.Authenticator) {
-	eventtransport.RegisterRoutesWithHeat(router, read, lifecycle, governance, heat, authenticator)
+func registerEventRoutes(router *gin.Engine, read *eventapplication.ReadService, lifecycle *eventapplication.LifecycleService, governance *eventapplication.GovernanceService, heat *eventapplication.HeatService, claims *eventapplication.ClaimService, authenticator httptransport.Authenticator) {
+	eventtransport.RegisterRoutesWithHeatAndClaims(router, read, lifecycle, governance, heat, claims, authenticator)
 }
 
 // Fx does not infer interface bindings from a concrete repository. Keep the
@@ -217,6 +218,10 @@ func newEventGovernanceService(repository *eventpostgres.Repository) *eventappli
 
 func newEventHeatService(repository *eventpostgres.Repository) *eventapplication.HeatService {
 	return eventapplication.NewHeatService(repository)
+}
+
+func newEventClaimService(repository *eventpostgres.Repository) *eventapplication.ClaimService {
+	return eventapplication.NewClaimService(repository)
 }
 
 func newSourceService(runtime *database.Runtime, sources *sourcepostgres.Repository, usage *monitorpostgres.SourceUsageReader, references *monitorpostgres.PublishedReferenceReader, audit *operationspostgres.AuditWriter) (*sourceapplication.Service, error) {

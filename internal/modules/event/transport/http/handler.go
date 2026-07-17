@@ -17,6 +17,7 @@ type Handler struct {
 	lifecycle  *application.LifecycleService
 	governance *application.GovernanceService
 	heat       *application.HeatService
+	claims     *application.ClaimService
 }
 
 func NewHandler(read *application.ReadService, lifecycle *application.LifecycleService, governance *application.GovernanceService) *Handler {
@@ -26,6 +27,12 @@ func NewHandler(read *application.ReadService, lifecycle *application.LifecycleS
 func NewHandlerWithHeat(read *application.ReadService, lifecycle *application.LifecycleService, governance *application.GovernanceService, heat *application.HeatService) *Handler {
 	handler := NewHandler(read, lifecycle, governance)
 	handler.heat = heat
+	return handler
+}
+
+func NewHandlerWithHeatAndClaims(read *application.ReadService, lifecycle *application.LifecycleService, governance *application.GovernanceService, heat *application.HeatService, claims *application.ClaimService) *Handler {
+	handler := NewHandlerWithHeat(read, lifecycle, governance, heat)
+	handler.claims = claims
 	return handler
 }
 
@@ -52,6 +59,45 @@ func (handler *Handler) GetHeat(c *gin.Context) error {
 		return err
 	}
 	httptransport.OK(c, HeatResponse{EventID: result.EventID, HeatScore: result.HeatScore, TrendScore: result.TrendScore, SourceCount: result.SourceCount, ContentCount: result.ContentCount, HeatVersion: result.HeatVersion, EvidenceSetHash: result.EvidenceSetHash, CapturedAt: result.WindowEnd})
+	return nil
+}
+
+// SaveClaim records an evidence-backed claim after the repository verifies
+// that every referenced content item is still active in the event.
+// @Summary Save an event claim
+// @Tags events
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "event ID"
+// @Param request body ClaimRequest true "claim request"
+// @Success 200 {object} EventResult[ClaimResponse]
+// @Failure 400 {object} EventResult[EmptyResponse]
+// @Failure 401 {object} EventResult[EmptyResponse]
+// @Failure 403 {object} EventResult[EmptyResponse]
+// @Failure 409 {object} EventResult[EmptyResponse]
+// @Router /api/v1/events/{id}/claims [post]
+func (handler *Handler) SaveClaim(c *gin.Context) error {
+	if handler == nil || handler.claims == nil {
+		return sharederrors.New(sharederrors.CodeUnavailable, http.StatusServiceUnavailable, "")
+	}
+	eventID, err := pathID(c, "id")
+	if err != nil {
+		return err
+	}
+	var request ClaimRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		return invalidRequest(err)
+	}
+	evidence := make([]domain.ClaimEvidence, 0, len(request.Evidence))
+	for _, item := range request.Evidence {
+		evidence = append(evidence, domain.ClaimEvidence{EvidenceRef: domain.EvidenceRef{ContentID: item.ContentID, Locator: item.Locator, Excerpt: item.Excerpt}, Stance: item.Stance, Confidence: item.Confidence})
+	}
+	claim, err := handler.claims.Save(c.Request.Context(), domain.Claim{ID: request.ID, Version: request.Version, EventID: eventID, NormalizedClaim: request.NormalizedClaim, ClaimHash: request.ClaimHash, Status: domain.ClaimStatus(request.Status), Confidence: request.Confidence, ManualLocked: request.ManualLocked, Evidence: evidence})
+	if err != nil {
+		return err
+	}
+	httptransport.OK(c, ClaimResponse{ID: claim.ID, Version: claim.Version, EventID: claim.EventID, NormalizedClaim: claim.NormalizedClaim, ClaimHash: claim.ClaimHash, Status: string(claim.Status), Confidence: claim.Confidence})
 	return nil
 }
 

@@ -63,6 +63,35 @@ type HeatResponse struct {
 	CapturedAt      time.Time `json:"captured_at"`
 }
 
+type ClaimEvidenceRequest struct {
+	ContentID  int64   `json:"content_id" binding:"required"`
+	Locator    string  `json:"locator" binding:"required"`
+	Excerpt    string  `json:"excerpt"`
+	Stance     string  `json:"stance" binding:"required"`
+	Confidence float64 `json:"confidence"`
+}
+
+type ClaimRequest struct {
+	ID              int64                  `json:"id" binding:"required"`
+	Version         int64                  `json:"version" binding:"required"`
+	NormalizedClaim string                 `json:"normalized_claim" binding:"required"`
+	ClaimHash       string                 `json:"claim_hash" binding:"required"`
+	Status          string                 `json:"status" binding:"required"`
+	Confidence      float64                `json:"confidence"`
+	ManualLocked    bool                   `json:"manual_locked"`
+	Evidence        []ClaimEvidenceRequest `json:"evidence" binding:"required,min=1"`
+}
+
+type ClaimResponse struct {
+	ID              int64   `json:"id"`
+	Version         int64   `json:"version"`
+	EventID         int64   `json:"event_id"`
+	NormalizedClaim string  `json:"normalized_claim"`
+	ClaimHash       string  `json:"claim_hash"`
+	Status          string  `json:"status"`
+	Confidence      float64 `json:"confidence"`
+}
+
 type LifecycleRequest struct {
 	ExpectedVersion int64  `json:"expected_version" binding:"required"`
 	To              string `json:"to" binding:"required"`
