@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -30,6 +31,7 @@ const (
 type Repository struct{ runtime *database.Runtime }
 
 var _ domain.SourceConnectionRepository = (*Repository)(nil)
+var _ domain.MetricSourceContextRepository = (*Repository)(nil)
 
 func NewRepository(runtime *database.Runtime) *Repository { return &Repository{runtime: runtime} }
 
@@ -72,6 +74,40 @@ func (repository *Repository) FindByID(ctx context.Context, id int64) (*domain.S
 
 func (repository *Repository) LockByID(ctx context.Context, id int64) (*domain.SourceConnection, error) {
 	return repository.find(ctx, id, true)
+}
+
+func (repository *Repository) ListMetricSourceContexts(ctx context.Context, ids []int64) ([]domain.MetricSourceContext, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	unique := uniqueSourceConnectionIDs(ids)
+	if len(unique) == 0 {
+		return []domain.MetricSourceContext{}, nil
+	}
+	rows, err := repository.queryRows(ctx, `
+SELECT id, source_type
+FROM source_connections
+WHERE id = ANY($1::bigint[])
+ORDER BY id ASC`, unique)
+	if err != nil {
+		return nil, sharedrepository.MapError(err)
+	}
+	defer rows.Close()
+	contexts := make([]domain.MetricSourceContext, 0, len(unique))
+	for rows.Next() {
+		var context domain.MetricSourceContext
+		if err := rows.Scan(&context.SourceConnectionID, &context.SourceType); err != nil {
+			return nil, sharedrepository.MapError(err)
+		}
+		contexts = append(contexts, context)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, sharedrepository.MapError(err)
+	}
+	if len(contexts) != len(unique) {
+		return nil, sharedrepository.ErrNotFound
+	}
+	return contexts, nil
 }
 
 // List is a source-owned, fixed-shape read: it has no user-controlled sort,
@@ -243,6 +279,21 @@ func (repository *Repository) withTransaction(ctx context.Context, fn func(conte
 		return fn(ctx, transaction)
 	}
 	return repository.runtime.WithinTransaction(ctx, fn)
+}
+
+func uniqueSourceConnectionIDs(values []int64) []int64 {
+	seen := make(map[int64]struct{}, len(values))
+	result := make([]int64, 0, len(values))
+	for _, value := range values {
+		if value > 0 {
+			if _, exists := seen[value]; !exists {
+				seen[value] = struct{}{}
+				result = append(result, value)
+			}
+		}
+	}
+	sort.Slice(result, func(left, right int) bool { return result[left] < result[right] })
+	return result
 }
 
 func encodeConfig(config domain.SourceConfig) (string, error) {

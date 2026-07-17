@@ -28,11 +28,32 @@ type MetricCapabilityProfileRepository interface {
 	Archive(context.Context, *MetricCapabilityProfile) error
 }
 
-// MetricCapabilityReader is the credential-free Source boundary consumed by
-// Event metric recomputation. A missing published profile is a normal source
-// capability fact, not permission for Event to read Source tables.
+// MetricSourceContextRepository owns the credential-free source fact needed
+// to select a capability profile. Event code never reads source_connections
+// directly.
+type MetricSourceContextRepository interface {
+	ListMetricSourceContexts(context.Context, []int64) ([]MetricSourceContext, error)
+}
+
+type MetricSourceContext struct {
+	SourceConnectionID int64
+	SourceType         SourceType
+}
+
+// MetricSourceCapability is the complete credential-free Source projection
+// consumed by Event metric recomputation.
+type MetricSourceCapability struct {
+	MetricSourceContext
+	Profile MetricCapabilityProfile
+}
+
+// MetricCapabilityReader is the credential-free Source application boundary
+// consumed by Event metric recomputation. A missing published profile is a
+// normal source capability fact, not permission for Event to read Source
+// tables.
 type MetricCapabilityReader interface {
 	FindPublishedMetricCapability(context.Context, SourceType) (MetricCapabilityProfile, error)
+	ResolveMetricSourceCapabilities(context.Context, []int64) ([]MetricSourceCapability, error)
 }
 
 // SourceConnectionListQuery is intentionally narrow: Source lists are always

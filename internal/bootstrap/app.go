@@ -256,8 +256,8 @@ func newSourceService(runtime *database.Runtime, sources *sourcepostgres.Reposit
 	return sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sources, MonitorUsage: usage, PublishedReferences: references, Audit: audit})
 }
 
-func newMetricCapabilityService(runtime *database.Runtime, profiles *sourcepostgres.MetricCapabilityRepository, audit *operationspostgres.AuditWriter) (*sourceapplication.MetricCapabilityService, error) {
-	return sourceapplication.NewMetricCapabilityService(sourceapplication.MetricCapabilityDependencies{Runtime: runtime, Profiles: profiles, Audit: audit})
+func newMetricCapabilityService(runtime *database.Runtime, profiles *sourcepostgres.MetricCapabilityRepository, sources *sourcepostgres.Repository, audit *operationspostgres.AuditWriter) (*sourceapplication.MetricCapabilityService, error) {
+	return sourceapplication.NewMetricCapabilityService(sourceapplication.MetricCapabilityDependencies{Runtime: runtime, Profiles: profiles, SourceContexts: sources, Audit: audit})
 }
 
 func newCollectionControlService(runtime *database.Runtime, sources *sourcepostgres.Repository, runs *sourcepostgres.CollectionRepository, connectors *sourceinfrastructure.ConnectorRegistry, metrics *observability.Metrics) (*sourceapplication.CollectionControlService, error) {

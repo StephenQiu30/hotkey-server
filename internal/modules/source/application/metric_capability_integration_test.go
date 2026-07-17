@@ -19,7 +19,7 @@ func TestMetricCapabilityServicePublishesVersionedProfilesAndAudits(t *testing.T
 	defer func() { _ = runtime.Close() }()
 	admin := seedAdmin(t, runtime)
 	service, err := sourceapplication.NewMetricCapabilityService(sourceapplication.MetricCapabilityDependencies{
-		Runtime: runtime, Profiles: sourcepostgres.NewMetricCapabilityRepository(runtime), Audit: operationspostgres.NewAuditWriter(runtime),
+		Runtime: runtime, Profiles: sourcepostgres.NewMetricCapabilityRepository(runtime), SourceContexts: sourcepostgres.NewRepository(runtime), Audit: operationspostgres.NewAuditWriter(runtime),
 	})
 	if err != nil {
 		t.Fatalf("NewMetricCapabilityService() error = %v", err)
@@ -38,6 +38,15 @@ func TestMetricCapabilityServicePublishesVersionedProfilesAndAudits(t *testing.T
 	}
 	if publishedV1.Status != domain.MetricCapabilityPublished || publishedV1.Version != v1.Version+1 {
 		t.Fatalf("published v1 = %#v", publishedV1)
+	}
+	connection := sourceConnection("metric-capability-context")
+	connection.HealthStatus = domain.HealthStatusUnknown
+	if err := sourcepostgres.NewRepository(runtime).Create(ctx, &connection); err != nil {
+		t.Fatalf("Create(metric source connection) error = %v", err)
+	}
+	capabilities, err := service.ResolveMetricSourceCapabilities(ctx, []int64{connection.ID})
+	if err != nil || len(capabilities) != 1 || capabilities[0].SourceConnectionID != connection.ID || capabilities[0].Profile.ID != publishedV1.ID {
+		t.Fatalf("ResolveMetricSourceCapabilities() = %#v/%v, want source context and published v1", capabilities, err)
 	}
 	v2, err := service.CreateDraft(ctx, sourceapplication.CreateMetricCapabilityInput{Subject: admin, Profile: applicationMetricCapability("v2")})
 	if err != nil {

@@ -19,24 +19,26 @@ import (
 var metricCapabilityReasonPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 
 type MetricCapabilityDependencies struct {
-	Runtime  *database.Runtime
-	Profiles domain.MetricCapabilityProfileRepository
-	Audit    operationsapplication.AuditWriter
+	Runtime        *database.Runtime
+	Profiles       domain.MetricCapabilityProfileRepository
+	SourceContexts domain.MetricSourceContextRepository
+	Audit          operationsapplication.AuditWriter
 }
 
 type MetricCapabilityService struct {
-	runtime  *database.Runtime
-	profiles domain.MetricCapabilityProfileRepository
-	audit    operationsapplication.AuditWriter
+	runtime        *database.Runtime
+	profiles       domain.MetricCapabilityProfileRepository
+	sourceContexts domain.MetricSourceContextRepository
+	audit          operationsapplication.AuditWriter
 }
 
 var _ domain.MetricCapabilityReader = (*MetricCapabilityService)(nil)
 
 func NewMetricCapabilityService(dependencies MetricCapabilityDependencies) (*MetricCapabilityService, error) {
-	if dependencies.Runtime == nil || dependencies.Profiles == nil || dependencies.Audit == nil {
+	if dependencies.Runtime == nil || dependencies.Profiles == nil || dependencies.SourceContexts == nil || dependencies.Audit == nil {
 		return nil, errors.New("metric capability dependencies are required")
 	}
-	return &MetricCapabilityService{runtime: dependencies.Runtime, profiles: dependencies.Profiles, audit: dependencies.Audit}, nil
+	return &MetricCapabilityService{runtime: dependencies.Runtime, profiles: dependencies.Profiles, sourceContexts: dependencies.SourceContexts, audit: dependencies.Audit}, nil
 }
 
 type CreateMetricCapabilityInput struct {
@@ -161,6 +163,34 @@ func (service *MetricCapabilityService) FindPublishedMetricCapability(ctx contex
 		return domain.MetricCapabilityProfile{}, metricCapabilityReadError(err)
 	}
 	return *profile, nil
+}
+
+func (service *MetricCapabilityService) ResolveMetricSourceCapabilities(ctx context.Context, sourceConnectionIDs []int64) ([]domain.MetricSourceCapability, error) {
+	if service == nil || service.sourceContexts == nil || service.profiles == nil {
+		return nil, sharederrors.New(sharederrors.CodeUnavailable, 503, "")
+	}
+	contexts, err := service.sourceContexts.ListMetricSourceContexts(ctx, sourceConnectionIDs)
+	if err != nil {
+		return nil, metricCapabilityReadError(err)
+	}
+	profiles := make(map[domain.SourceType]domain.MetricCapabilityProfile)
+	capabilities := make([]domain.MetricSourceCapability, 0, len(contexts))
+	for _, context := range contexts {
+		profile, found := profiles[context.SourceType]
+		if !found {
+			profile, err = service.FindPublishedMetricCapability(ctx, context.SourceType)
+			if err != nil {
+				var applicationError *sharederrors.AppError
+				if errors.As(err, &applicationError) && applicationError.Code == sharederrors.CodeNotFound {
+					continue
+				}
+				return nil, err
+			}
+			profiles[context.SourceType] = profile
+		}
+		capabilities = append(capabilities, domain.MetricSourceCapability{MetricSourceContext: context, Profile: profile})
+	}
+	return capabilities, nil
 }
 
 func (service *MetricCapabilityService) withTransaction(ctx context.Context, fn func(context.Context, database.Transaction) error) error {
