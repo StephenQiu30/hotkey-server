@@ -233,6 +233,24 @@ func TestConfiguredWorkerVerifiesDatabaseOnStart(t *testing.T) {
 	}
 }
 
+func TestConfiguredAllRoleBuildsOneSharedDependencyGraph(t *testing.T) {
+	dsn := initializedBootstrapDatabase(t)
+	cfg := apiTestConfig()
+	cfg.Role, cfg.HTTPAddr, cfg.DatabaseURL = string(RoleAll), "127.0.0.1:0", dsn
+	app, err := NewApp(cfg, zap.NewNop())
+	if err != nil {
+		t.Fatalf("NewApp() error = %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := app.Start(ctx); err != nil {
+		t.Fatalf("configured all-role app Start() error = %v", err)
+	}
+	if err := app.Stop(ctx); err != nil {
+		t.Fatalf("configured all-role app Stop() error = %v", err)
+	}
+}
+
 // TestConfiguredAPIWiresControlPlanes verifies the exact Fx
 // graph used by the real API role. A 401 from each route proves the routers
 // are mounted while avoiding any mutation or identity fixture setup.
