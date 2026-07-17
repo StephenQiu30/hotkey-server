@@ -5,6 +5,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"time"
@@ -28,6 +29,7 @@ type rowQuery interface {
 var _ application.EventStore = (*Repository)(nil)
 var _ application.GovernanceRepository = (*Repository)(nil)
 var _ application.ReadRepository = (*Repository)(nil)
+var _ application.DecisionStore = (*Repository)(nil)
 
 func NewRepository(runtime *database.Runtime) *Repository {
 	return &Repository{runtime: runtime, ids: id.UUID{}}
@@ -159,14 +161,29 @@ FROM events WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, eventID))
 		}
 		source := locked[command.SourceEventID]
 		target = locked[command.TargetEventID]
-		if source.Version != command.SourceExpectedVersion || target.Version != command.TargetExpectedVersion {
+		if source.Version != command.SourceExpectedVersion {
 			return fmt.Errorf("event version conflict")
 		}
-		if source.ManualLocked || target.ManualLocked || source.LifecycleStatus == domain.LifecycleArchived || source.LifecycleStatus == domain.LifecycleRejected || target.LifecycleStatus == domain.LifecycleArchived || target.LifecycleStatus == domain.LifecycleRejected {
+		if source.ManualLocked || source.LifecycleStatus == domain.LifecycleMerged || source.LifecycleStatus == domain.LifecycleArchived || source.LifecycleStatus == domain.LifecycleRejected {
 			return fmt.Errorf("event merge is locked or unavailable")
 		}
-		if target.LifecycleStatus == domain.LifecycleMerged || target.MergedIntoID != nil {
-			return fmt.Errorf("merge target must be canonical")
+		seen := map[int64]bool{target.ID: true}
+		for target.MergedIntoID != nil {
+			if seen[*target.MergedIntoID] {
+				return fmt.Errorf("merge target contains a cycle")
+			}
+			seen[*target.MergedIntoID] = true
+			canonical, err := scanEvent(transaction.SQL.QueryRowContext(ctx, `
+SELECT id, version, event_key, COALESCE(event_fingerprint, ''), COALESCE(fingerprint_version, ''), title_zh, COALESCE(title_en, ''), summary,
+       lifecycle_status, first_seen_at, last_seen_at, representative_content_id, merged_into_id, manual_locked
+FROM events WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, *target.MergedIntoID))
+			if err != nil {
+				return err
+			}
+			target = canonical
+		}
+		if target.ID == source.ID || target.Version != command.TargetExpectedVersion || target.ManualLocked || target.LifecycleStatus == domain.LifecycleArchived || target.LifecycleStatus == domain.LifecycleRejected {
+			return fmt.Errorf("event merge target is locked or version-conflicted")
 		}
 		if err := mergeMembers(ctx, transaction.SQL, source.ID, target.ID, command.ActorUserID); err != nil {
 			return err
@@ -213,7 +230,7 @@ FROM events WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, command.SourceEven
 		if err != nil {
 			return err
 		}
-		if source.Version != command.SourceExpectedVersion || source.ManualLocked || source.LifecycleStatus == domain.LifecycleMerged {
+		if source.Version != command.SourceExpectedVersion || source.ManualLocked || source.LifecycleStatus == domain.LifecycleMerged || source.LifecycleStatus == domain.LifecycleArchived || source.LifecycleStatus == domain.LifecycleRejected {
 			return fmt.Errorf("event version conflict or source is locked")
 		}
 		members := make(map[int64]domain.EventMember, len(command.Members))
@@ -403,7 +420,15 @@ func insertAudit(ctx context.Context, query *sql.Tx, audit domain.GovernanceAudi
 	if err := audit.Validate(); err != nil {
 		return err
 	}
-	_, err := query.ExecContext(ctx, `INSERT INTO event_governance_audits (event_id, action, actor_user_id, reason_code, from_status, to_status, source_event_id, target_event_id, expected_version, metadata, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, audit.EventID, audit.Action, nullableInt64(audit.ActorUserID), audit.ReasonCode, nullableStatus(audit.FromStatus), nullableStatus(audit.ToStatus), nullableInt64(audit.SourceEventID), nullableInt64(audit.TargetEventID), nullableInt64(audit.ExpectedVersion), []byte(`{}`), audit.CreatedAt)
+	metadata := []byte(`{}`)
+	if audit.Metadata != nil {
+		encoded, err := json.Marshal(audit.Metadata)
+		if err != nil {
+			return err
+		}
+		metadata = encoded
+	}
+	_, err := query.ExecContext(ctx, `INSERT INTO event_governance_audits (event_id, action, actor_user_id, reason_code, from_status, to_status, source_event_id, target_event_id, expected_version, metadata, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, audit.EventID, audit.Action, nullableInt64(audit.ActorUserID), audit.ReasonCode, nullableStatus(audit.FromStatus), nullableStatus(audit.ToStatus), nullableInt64(audit.SourceEventID), nullableInt64(audit.TargetEventID), nullableInt64(audit.ExpectedVersion), metadata, audit.CreatedAt)
 	return err
 }
 

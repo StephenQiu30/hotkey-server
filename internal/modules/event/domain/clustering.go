@@ -3,6 +3,7 @@ package domain
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
@@ -88,6 +89,7 @@ type Decision struct {
 	ReasonCodes        []string
 	EvidenceContentIDs []int64
 	ActorUserID        *int64
+	FeatureSnapshot    map[string]any
 }
 
 func (decision Decision) Validate() error {
@@ -103,6 +105,11 @@ func (decision Decision) Validate() error {
 	}
 	if err := decision.Scores.Validate(); err != nil {
 		return err
+	}
+	if decision.FeatureSnapshot != nil {
+		if _, err := json.Marshal(decision.FeatureSnapshot); err != nil {
+			return fmt.Errorf("invalid feature snapshot: %w", err)
+		}
 	}
 	if math.Abs(decision.MembershipScore-decision.Scores.MembershipScore()) > 0.01 && decision.Decision != DecisionNewEvent {
 		return fmt.Errorf("membership score does not match score breakdown")
