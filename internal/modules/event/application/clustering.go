@@ -45,7 +45,6 @@ func (service *ClusteringService) Evaluate(_ context.Context, input ClusteringIn
 	}
 	candidates := domain.CompareCandidates(input.Candidates)
 	decisions := make([]domain.Decision, 0, len(candidates)+1)
-	hasJoinDecision := false
 	for rank, candidate := range candidates {
 		scores := input.Scores[candidate.EventKey]
 		hardConflict := input.HardConflicts[candidate.EventKey] || candidate.HardConflict
@@ -58,15 +57,34 @@ func (service *ClusteringService) Evaluate(_ context.Context, input ClusteringIn
 		if decision == domain.DecisionNewEvent {
 			persistedDecision = domain.DecisionReject
 		}
-		if persistedDecision == domain.DecisionAccept || persistedDecision == domain.DecisionReview {
-			hasJoinDecision = true
-		}
 		decisions = append(decisions, domain.Decision{
 			ContentID: input.ContentID, CandidateEventID: &candidateID, CandidateEventKey: candidate.EventKey,
 			ClusteringVersion: input.ClusteringVersion, FeatureInputHash: input.FeatureInputHash,
 			Channel: candidate.Channel, CandidateRank: rank + 1, Scores: scores, MembershipScore: score,
 			Decision: persistedDecision, DecisionOrigin: domain.DecisionOriginRule,
 		})
+	}
+	winner := -1
+	for index := range decisions {
+		if decisions[index].Decision != domain.DecisionAccept {
+			continue
+		}
+		if winner == -1 || decisions[index].MembershipScore > decisions[winner].MembershipScore || decisions[index].MembershipScore == decisions[winner].MembershipScore && decisions[index].CandidateEventKey < decisions[winner].CandidateEventKey {
+			winner = index
+		}
+	}
+	for index := range decisions {
+		if decisions[index].Decision == domain.DecisionAccept && index != winner {
+			decisions[index].Decision = domain.DecisionReject
+			decisions[index].ReasonCodes = append(decisions[index].ReasonCodes, "competing_candidate_selected")
+		}
+	}
+	hasJoinDecision := false
+	for _, decision := range decisions {
+		if decision.Decision == domain.DecisionAccept || decision.Decision == domain.DecisionReview {
+			hasJoinDecision = true
+			break
+		}
 	}
 	if len(decisions) == 0 || !hasJoinDecision {
 		decisions = append(decisions, domain.Decision{

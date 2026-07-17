@@ -44,3 +44,33 @@ func TestClusteringCreatesNewEventDecisionWhenNoCandidates(t *testing.T) {
 		t.Fatalf("Evaluate() = %#v, want new-event decision", decisions)
 	}
 }
+
+func TestClusteringAcceptsOnlyTheHighestScoringCandidate(t *testing.T) {
+	first, second := int64(1), int64(2)
+	decisions, err := NewClusteringService().Evaluate(context.Background(), ClusteringInput{
+		ContentID: 10, ClusteringVersion: "v1", FeatureInputHash: domain.FeatureInputHash("content", "10"),
+		Candidates: []domain.Candidate{
+			{EventID: first, EventKey: "evt_a", Channel: domain.ChannelLexical, Score: 90},
+			{EventID: second, EventKey: "evt_b", Channel: domain.ChannelTemporal, Score: 80},
+		},
+		Scores: map[string]domain.ScoreBreakdown{
+			"evt_a": {EntityAction: 100, Semantic: 100, Temporal: 100, Location: 100, SourceContext: 100},
+			"evt_b": {EntityAction: 90, Semantic: 90, Temporal: 90, Location: 90, SourceContext: 90},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	accepted := 0
+	for _, decision := range decisions {
+		if decision.Decision == domain.DecisionAccept {
+			accepted++
+			if decision.CandidateEventKey != "evt_a" {
+				t.Fatalf("accepted candidate = %q, want evt_a", decision.CandidateEventKey)
+			}
+		}
+	}
+	if accepted != 1 {
+		t.Fatalf("accepted decisions = %d, want 1: %#v", accepted, decisions)
+	}
+}
