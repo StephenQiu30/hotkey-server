@@ -49,10 +49,15 @@ type ClusteringExecutionService struct {
 	recall     *RecallService
 	clustering *ClusteringService
 	writer     ClusteringWriter
+	recompute  MetricRecomputer
 }
 
-func NewClusteringExecutionService(recall *RecallService, clustering *ClusteringService, writer ClusteringWriter) *ClusteringExecutionService {
-	return &ClusteringExecutionService{recall: recall, clustering: clustering, writer: writer}
+func NewClusteringExecutionService(recall *RecallService, clustering *ClusteringService, writer ClusteringWriter, recomputers ...MetricRecomputer) *ClusteringExecutionService {
+	service := &ClusteringExecutionService{recall: recall, clustering: clustering, writer: writer}
+	if len(recomputers) > 0 {
+		service.recompute = recomputers[0]
+	}
+	return service
 }
 
 // Execute keeps candidate recall, deterministic scoring and the membership
@@ -84,6 +89,11 @@ func (service *ClusteringExecutionService) Execute(ctx context.Context, input Cl
 	applied, err := service.writer.ApplyClustering(ctx, decisions)
 	if err != nil {
 		return ClusteringExecutionResult{}, err
+	}
+	if applied.Event != nil {
+		if err := recomputeCurrentEventMetrics(ctx, service.recompute, applied.Event.ID); err != nil {
+			return ClusteringExecutionResult{}, err
+		}
 	}
 	return ClusteringExecutionResult{
 		Decisions:         decisions,

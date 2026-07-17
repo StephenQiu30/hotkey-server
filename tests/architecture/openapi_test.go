@@ -178,9 +178,37 @@ func TestOpenAPIContract(t *testing.T) {
 	assertFalseNegativeContentFeedbackOpenAPI(t, document.Paths)
 	assertSafeModelProfileOpenAPIDefinitions(t, document.Definitions)
 	assertMetricCapabilityOpenAPI(t, document.Paths, document.Definitions)
+	assertHeatOpenAPIDefinitions(t, document.Definitions)
 	assertSafeDeliveryOpenAPIDefinitions(t, document.Definitions)
 	assertDraftExpectedVersionOpenAPI(t, document.Definitions)
 	assertMonitorDraftDefaultsOpenAPI(t, document.Definitions)
+}
+
+func assertHeatOpenAPIDefinitions(t *testing.T, definitions map[string]struct {
+	Properties map[string]json.RawMessage `json:"properties"`
+	Required   []string                   `json:"required"`
+}) {
+	t.Helper()
+	for name, required := range map[string][]string{
+		"http.EventResponse": {"heat_score", "trend_score", "trend_status", "window_hours", "heat_version", "reason_codes", "capability_profile_set_hash", "calculated_at"},
+		"http.HeatResponse":  {"heat_score", "trend_score", "trend_status", "source_count", "content_count", "window_hours", "heat_version", "evidence_set_hash", "capability_profile_set_hash", "reason_codes", "captured_at"},
+	} {
+		definition, ok := definitions[name]
+		if !ok {
+			t.Errorf("missing %s", name)
+			continue
+		}
+		for _, field := range required {
+			if _, ok := definition.Properties[field]; !ok {
+				t.Errorf("%s misses %q", name, field)
+			}
+		}
+		for field := range definition.Properties {
+			if strings.Contains(field, "weight") || strings.Contains(field, "threshold") || strings.Contains(field, "normalization") || strings.Contains(field, "independence") {
+				t.Errorf("%s exposes internal heat configuration %q", name, field)
+			}
+		}
+	}
 }
 
 func assertMetricCapabilityOpenAPI(t *testing.T, paths map[string]json.RawMessage, definitions map[string]struct {

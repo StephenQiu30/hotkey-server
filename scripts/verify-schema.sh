@@ -238,8 +238,8 @@ $$;
 SQL
 
 application_tables=$(psql "$dsn" -Atqc "SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tablename NOT LIKE 'river_%'")
-if test "$application_tables" -ne 57; then
-  printf 'application table count = %s, want 57\n' "$application_tables" >&2
+if test "$application_tables" -ne 58; then
+  printf 'application table count = %s, want 58\n' "$application_tables" >&2
   exit 1
 fi
 

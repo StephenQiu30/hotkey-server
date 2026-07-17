@@ -5799,10 +5799,22 @@
         "http.EventResponse": {
             "type": "object",
             "properties": {
+                "calculated_at": {
+                    "type": "string"
+                },
+                "capability_profile_set_hash": {
+                    "type": "string"
+                },
                 "event_key": {
                     "type": "string"
                 },
                 "first_seen_at": {
+                    "type": "string"
+                },
+                "heat_score": {
+                    "type": "number"
+                },
+                "heat_version": {
                     "type": "string"
                 },
                 "id": {
@@ -5820,6 +5832,12 @@
                 "merged_into_id": {
                     "type": "integer"
                 },
+                "reason_codes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "representative_content_id": {
                     "type": "integer"
                 },
@@ -5832,7 +5850,16 @@
                 "title_zh": {
                     "type": "string"
                 },
+                "trend_score": {
+                    "type": "number"
+                },
+                "trend_status": {
+                    "type": "string"
+                },
                 "version": {
+                    "type": "integer"
+                },
+                "window_hours": {
                     "type": "integer"
                 }
             }
@@ -5938,6 +5965,9 @@
         "http.HeatResponse": {
             "type": "object",
             "properties": {
+                "capability_profile_set_hash": {
+                    "type": "string"
+                },
                 "captured_at": {
                     "type": "string"
                 },
@@ -5956,11 +5986,23 @@
                 "heat_version": {
                     "type": "string"
                 },
+                "reason_codes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "source_count": {
                     "type": "integer"
                 },
                 "trend_score": {
                     "type": "number"
+                },
+                "trend_status": {
+                    "type": "string"
+                },
+                "window_hours": {
+                    "type": "integer"
                 }
             }
         },

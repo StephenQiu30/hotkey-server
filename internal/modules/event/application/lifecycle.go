@@ -22,11 +22,16 @@ type LifecycleInput struct {
 }
 
 type LifecycleService struct {
-	store EventStore
+	store     EventStore
+	recompute MetricRecomputer
 }
 
-func NewLifecycleService(store EventStore) *LifecycleService {
-	return &LifecycleService{store: store}
+func NewLifecycleService(store EventStore, recomputers ...MetricRecomputer) *LifecycleService {
+	service := &LifecycleService{store: store}
+	if len(recomputers) > 0 {
+		service.recompute = recomputers[0]
+	}
+	return service
 }
 
 func (service *LifecycleService) Transition(ctx context.Context, input LifecycleInput) (domain.Event, error) {
@@ -56,6 +61,9 @@ func (service *LifecycleService) Transition(ctx context.Context, input Lifecycle
 	}
 	audit := domain.GovernanceAudit{EventID: event.ID, Action: domain.AuditLifecycleTransition, ActorUserID: input.ActorUserID, ReasonCode: input.ReasonCode, FromStatus: &from, ToStatus: &input.To, ExpectedVersion: &input.ExpectedVersion}
 	if err := service.store.Save(ctx, event, input.ExpectedVersion, audit); err != nil {
+		return domain.Event{}, err
+	}
+	if err := recomputeCurrentEventMetrics(ctx, service.recompute, event.ID); err != nil {
 		return domain.Event{}, err
 	}
 	return event, nil

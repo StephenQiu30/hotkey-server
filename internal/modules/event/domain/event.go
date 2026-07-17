@@ -53,18 +53,26 @@ func CanTransition(from, to LifecycleStatus) bool {
 }
 
 type Event struct {
-	ID                      int64
-	Version                 int64
-	EventKey                string
-	EventFingerprint        string
-	FingerprintVersion      string
-	TitleZH, TitleEN        string
-	Summary                 string
-	LifecycleStatus         LifecycleStatus
-	FirstSeenAt, LastSeenAt time.Time
-	RepresentativeContentID *int64
-	MergedIntoID            *int64
-	ManualLocked            bool
+	ID                             int64
+	Version                        int64
+	EventKey                       string
+	EventFingerprint               string
+	FingerprintVersion             string
+	TitleZH, TitleEN               string
+	Summary                        string
+	LifecycleStatus                LifecycleStatus
+	FirstSeenAt, LastSeenAt        time.Time
+	HeatScore                      float64
+	TrendScore                     float64
+	TrendStatus                    TrendStatus
+	HeatWindowHours                int
+	HeatVersion                    string
+	HeatReasonCodes                []string
+	MetricCapabilityProfileSetHash string
+	HeatCalculatedAt               *time.Time
+	RepresentativeContentID        *int64
+	MergedIntoID                   *int64
+	ManualLocked                   bool
 }
 
 func (event Event) Validate() error {

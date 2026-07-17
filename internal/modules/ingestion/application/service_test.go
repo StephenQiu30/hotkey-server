@@ -116,6 +116,27 @@ func TestIngestRunDoesNotUploadWhenCaptureBodyWasNotPermitted(t *testing.T) {
 	}
 }
 
+func TestIngestRunRefreshesEventMetricsAfterContentCommit(t *testing.T) {
+	runtime := openIngestionRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	runID, _ := seedCapturedRun(t, runtime, []sourcedomain.CapturedItem{
+		capturedItem("metric-refresh", "article", "Refresh metrics", ""),
+	})
+	refresh := &contentMetricRefreshFake{}
+	service, err := ingestionapplication.NewService(ingestionapplication.Dependencies{
+		Runtime: runtime, Captures: newCapturedItemReader(t, runtime), Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: newEvidenceStoreFake(), MetricRefresh: refresh,
+	})
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	if result, err := service.IngestRun(context.Background(), ingestionapplication.IngestRunInput{RunID: runID, Limit: 1}); err != nil || result.Bound != 1 {
+		t.Fatalf("IngestRun() = %#v/%v", result, err)
+	}
+	if len(refresh.contentIDs) != 1 || refresh.contentIDs[0] <= 0 {
+		t.Fatalf("metric refresh content ids = %#v", refresh.contentIDs)
+	}
+}
+
 func TestIngestRunReusesOneEvidenceAssetForSameSourceBody(t *testing.T) {
 	runtime := openIngestionRuntime(t)
 	defer func() { _ = runtime.Close() }()
@@ -208,6 +229,13 @@ type evidenceStoreFake struct {
 	mu      sync.Mutex
 	puts    int
 	objects map[string]ingestiondomain.EvidenceReceipt
+}
+
+type contentMetricRefreshFake struct{ contentIDs []int64 }
+
+func (fake *contentMetricRefreshFake) RecomputeMetricsForContent(_ context.Context, contentID int64) error {
+	fake.contentIDs = append(fake.contentIDs, contentID)
+	return nil
 }
 
 func newEvidenceStoreFake() *evidenceStoreFake {

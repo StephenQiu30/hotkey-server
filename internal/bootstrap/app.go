@@ -74,6 +74,10 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 		options = append(options,
 			fx.Provide(
 				database.NewRuntime,
+				operationspostgres.NewAuditWriter,
+				sourcepostgres.NewRepository,
+				sourcepostgres.NewMetricCapabilityRepository,
+				newMetricCapabilityService,
 				intelligencepostgres.NewRepository,
 				intelligenceapplication.NewSchemaRegistry,
 				newAIProviderRegistry,
@@ -95,6 +99,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newEventLifecycleService,
 				newEventGovernanceService,
 				newEventHeatService,
+				newEventContentMetricRefreshService,
 				newEventClaimService,
 			),
 			fx.Invoke(database.RegisterLifecycle),
@@ -129,13 +134,9 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newIdentityVerificationStore,
 					newIdentityService,
 					newIdentityAuthenticator,
-					operationspostgres.NewAuditWriter,
 					monitorpostgres.NewSourceUsageReader,
 					monitorpostgres.NewPublishedReferenceReader,
-					sourcepostgres.NewRepository,
-					sourcepostgres.NewMetricCapabilityRepository,
 					newSourceService,
-					newMetricCapabilityService,
 					sourceinfrastructure.NewConnectorRegistry,
 					newCollectionControlService,
 					monitorpostgres.NewRepository,
@@ -236,16 +237,20 @@ func newEventReadService(repository *eventpostgres.Repository) *eventapplication
 	return eventapplication.NewReadService(repository)
 }
 
-func newEventLifecycleService(repository *eventpostgres.Repository) *eventapplication.LifecycleService {
-	return eventapplication.NewLifecycleService(repository)
+func newEventLifecycleService(repository *eventpostgres.Repository, heat *eventapplication.HeatService) *eventapplication.LifecycleService {
+	return eventapplication.NewLifecycleService(repository, heat)
 }
 
-func newEventGovernanceService(repository *eventpostgres.Repository) *eventapplication.GovernanceService {
-	return eventapplication.NewGovernanceService(repository)
+func newEventGovernanceService(repository *eventpostgres.Repository, heat *eventapplication.HeatService) *eventapplication.GovernanceService {
+	return eventapplication.NewGovernanceService(repository, heat)
 }
 
-func newEventHeatService(repository *eventpostgres.Repository) *eventapplication.HeatService {
-	return eventapplication.NewHeatService(repository)
+func newEventHeatService(repository *eventpostgres.Repository, capabilities *sourceapplication.MetricCapabilityService) (*eventapplication.HeatService, error) {
+	return eventapplication.NewHeatService(eventapplication.HeatServiceDependencies{Snapshots: repository, Capabilities: capabilities})
+}
+
+func newEventContentMetricRefreshService(repository *eventpostgres.Repository, heat *eventapplication.HeatService) (*eventapplication.ContentMetricRefreshService, error) {
+	return eventapplication.NewContentMetricRefreshService(repository, heat)
 }
 
 func newEventClaimService(repository *eventpostgres.Repository) *eventapplication.ClaimService {
@@ -272,9 +277,9 @@ func newIngestionCapturedItemReader(runs *sourcepostgres.CollectionRepository) (
 	return sourceapplication.NewCapturedItemReader(sourceapplication.CapturedItemReaderDependencies{Runs: runs})
 }
 
-func newIngestionService(runtime *database.Runtime, captures *sourceapplication.CapturedItemReader, contents *ingestionpostgres.ContentRepository, evidence *ingestionminio.Store) (*ingestionapplication.Service, error) {
+func newIngestionService(runtime *database.Runtime, captures *sourceapplication.CapturedItemReader, contents *ingestionpostgres.ContentRepository, evidence *ingestionminio.Store, metrics *eventapplication.ContentMetricRefreshService) (*ingestionapplication.Service, error) {
 	return ingestionapplication.NewService(ingestionapplication.Dependencies{
-		Runtime: runtime, Captures: captures, Contents: contents, Evidence: evidence,
+		Runtime: runtime, Captures: captures, Contents: contents, Evidence: evidence, MetricRefresh: metrics,
 	})
 }
 

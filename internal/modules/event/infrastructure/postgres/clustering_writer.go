@@ -237,16 +237,12 @@ FOR UPDATE`, contentID).Scan(&eventID)
 }
 
 func lockedEvent(ctx context.Context, transaction *sql.Tx, eventID int64) (domain.Event, error) {
-	return scanEvent(transaction.QueryRowContext(ctx, `
-SELECT id, version, event_key, COALESCE(event_fingerprint, ''), COALESCE(fingerprint_version, ''), title_zh, COALESCE(title_en, ''), summary,
-       lifecycle_status, first_seen_at, last_seen_at, representative_content_id, merged_into_id, manual_locked
+	return scanEvent(transaction.QueryRowContext(ctx, `SELECT `+eventReadColumns+`
 FROM events WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, eventID))
 }
 
 func lockedEventByKey(ctx context.Context, transaction *sql.Tx, eventKey string) (domain.Event, error) {
-	return scanEvent(transaction.QueryRowContext(ctx, `
-SELECT id, version, event_key, COALESCE(event_fingerprint, ''), COALESCE(fingerprint_version, ''), title_zh, COALESCE(title_en, ''), summary,
-       lifecycle_status, first_seen_at, last_seen_at, representative_content_id, merged_into_id, manual_locked
+	return scanEvent(transaction.QueryRowContext(ctx, `SELECT `+eventReadColumns+`
 FROM events WHERE event_key = $1 AND deleted_at IS NULL FOR UPDATE`, eventKey))
 }
 

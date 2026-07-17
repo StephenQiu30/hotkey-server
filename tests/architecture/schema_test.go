@@ -90,6 +90,8 @@ func TestGreenfieldSchemaEnforcesCriticalConstraints(t *testing.T) {
 		"source semantic immutability trigger":        "create trigger source_connections_semantic_immutable",
 		"metric capability published uniqueness":      "where status = 'published'",
 		"metric capability immutability trigger":      "create trigger metric_capability_profiles_immutable",
+		"metric snapshot capability identity":         "capability_profile_set_hash",
+		"metric snapshot window identity":             "window_hours, heat_version, evidence_set_hash, capability_profile_set_hash",
 		"source query signature":                      "query_signature char(64)",
 		"match score range":                           "final_score between 0 and 100",
 		"monitor source idempotency":                  "unique (config_version_id, source_connection_id)",

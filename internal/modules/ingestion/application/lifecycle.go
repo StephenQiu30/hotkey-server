@@ -70,6 +70,11 @@ func (service *Service) DeleteBySourceItem(ctx context.Context, sourceConnection
 	if err != nil {
 		return result, err
 	}
+	if result.ContentChanged && service.metrics != nil {
+		if err := service.metrics.RecomputeMetricsForContent(ctx, result.Content.ID); err != nil {
+			return result, fmt.Errorf("recompute event metrics: %w", err)
+		}
+	}
 	if len(deleteFailures) != 0 {
 		return result, errors.Join(deleteFailures...)
 	}

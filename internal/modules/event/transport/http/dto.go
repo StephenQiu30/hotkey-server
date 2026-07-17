@@ -17,18 +17,26 @@ type EventResult[T any] struct {
 type EmptyResponse struct{}
 
 type EventResponse struct {
-	ID                      int64     `json:"id"`
-	Version                 int64     `json:"version"`
-	EventKey                string    `json:"event_key"`
-	TitleZH                 string    `json:"title_zh"`
-	TitleEN                 string    `json:"title_en,omitempty"`
-	Summary                 string    `json:"summary"`
-	LifecycleStatus         string    `json:"lifecycle_status"`
-	FirstSeenAt             time.Time `json:"first_seen_at"`
-	LastSeenAt              time.Time `json:"last_seen_at"`
-	RepresentativeContentID *int64    `json:"representative_content_id,omitempty"`
-	MergedIntoID            *int64    `json:"merged_into_id,omitempty"`
-	ManualLocked            bool      `json:"manual_locked"`
+	ID                       int64      `json:"id"`
+	Version                  int64      `json:"version"`
+	EventKey                 string     `json:"event_key"`
+	TitleZH                  string     `json:"title_zh"`
+	TitleEN                  string     `json:"title_en,omitempty"`
+	Summary                  string     `json:"summary"`
+	LifecycleStatus          string     `json:"lifecycle_status"`
+	FirstSeenAt              time.Time  `json:"first_seen_at"`
+	LastSeenAt               time.Time  `json:"last_seen_at"`
+	RepresentativeContentID  *int64     `json:"representative_content_id,omitempty"`
+	MergedIntoID             *int64     `json:"merged_into_id,omitempty"`
+	ManualLocked             bool       `json:"manual_locked"`
+	HeatScore                float64    `json:"heat_score"`
+	TrendScore               float64    `json:"trend_score"`
+	TrendStatus              string     `json:"trend_status"`
+	WindowHours              int        `json:"window_hours"`
+	HeatVersion              string     `json:"heat_version"`
+	ReasonCodes              []string   `json:"reason_codes"`
+	CapabilityProfileSetHash string     `json:"capability_profile_set_hash"`
+	CalculatedAt             *time.Time `json:"calculated_at,omitempty"`
 }
 
 type EventPageResponse struct {
@@ -53,14 +61,18 @@ type EventMemberPageResponse struct {
 }
 
 type HeatResponse struct {
-	EventID         int64     `json:"event_id"`
-	HeatScore       float64   `json:"heat_score"`
-	TrendScore      float64   `json:"trend_score"`
-	SourceCount     int       `json:"source_count"`
-	ContentCount    int       `json:"content_count"`
-	HeatVersion     string    `json:"heat_version"`
-	EvidenceSetHash string    `json:"evidence_set_hash"`
-	CapturedAt      time.Time `json:"captured_at"`
+	EventID                  int64     `json:"event_id"`
+	HeatScore                float64   `json:"heat_score"`
+	TrendScore               float64   `json:"trend_score"`
+	TrendStatus              string    `json:"trend_status"`
+	SourceCount              int       `json:"source_count"`
+	ContentCount             int       `json:"content_count"`
+	WindowHours              int       `json:"window_hours"`
+	HeatVersion              string    `json:"heat_version"`
+	EvidenceSetHash          string    `json:"evidence_set_hash"`
+	CapabilityProfileSetHash string    `json:"capability_profile_set_hash"`
+	ReasonCodes              []string  `json:"reason_codes"`
+	CapturedAt               time.Time `json:"captured_at"`
 }
 
 type ClaimEvidenceRequest struct {
@@ -123,7 +135,7 @@ type SplitRequest struct {
 }
 
 func eventResponse(event domain.Event) EventResponse {
-	return EventResponse{ID: event.ID, Version: event.Version, EventKey: event.EventKey, TitleZH: event.TitleZH, TitleEN: event.TitleEN, Summary: event.Summary, LifecycleStatus: string(event.LifecycleStatus), FirstSeenAt: event.FirstSeenAt, LastSeenAt: event.LastSeenAt, RepresentativeContentID: event.RepresentativeContentID, MergedIntoID: event.MergedIntoID, ManualLocked: event.ManualLocked}
+	return EventResponse{ID: event.ID, Version: event.Version, EventKey: event.EventKey, TitleZH: event.TitleZH, TitleEN: event.TitleEN, Summary: event.Summary, LifecycleStatus: string(event.LifecycleStatus), FirstSeenAt: event.FirstSeenAt, LastSeenAt: event.LastSeenAt, RepresentativeContentID: event.RepresentativeContentID, MergedIntoID: event.MergedIntoID, ManualLocked: event.ManualLocked, HeatScore: event.HeatScore, TrendScore: event.TrendScore, TrendStatus: string(event.TrendStatus), WindowHours: event.HeatWindowHours, HeatVersion: event.HeatVersion, ReasonCodes: event.HeatReasonCodes, CapabilityProfileSetHash: event.MetricCapabilityProfileSetHash, CalculatedAt: event.HeatCalculatedAt}
 }
 
 func memberResponse(member domain.EventMember) EventMemberResponse {

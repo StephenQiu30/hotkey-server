@@ -34,10 +34,15 @@ type EvidenceRepository interface {
 
 type EvidenceService struct {
 	repository EvidenceRepository
+	recompute  MetricRecomputer
 }
 
-func NewEvidenceService(repository EvidenceRepository) *EvidenceService {
-	return &EvidenceService{repository: repository}
+func NewEvidenceService(repository EvidenceRepository, recomputers ...MetricRecomputer) *EvidenceService {
+	service := &EvidenceService{repository: repository}
+	if len(recomputers) > 0 {
+		service.recompute = recomputers[0]
+	}
+	return service
 }
 
 func (service *EvidenceService) Recompute(ctx context.Context, command EvidenceRecomputeCommand) (domain.Event, error) {
@@ -47,7 +52,14 @@ func (service *EvidenceService) Recompute(ctx context.Context, command EvidenceR
 	if err := command.Validate(); err != nil {
 		return domain.Event{}, err
 	}
-	return service.repository.RecomputeEventEvidence(ctx, command)
+	event, err := service.repository.RecomputeEventEvidence(ctx, command)
+	if err != nil {
+		return domain.Event{}, err
+	}
+	if err := recomputeCurrentEventMetrics(ctx, service.recompute, event.ID); err != nil {
+		return domain.Event{}, err
+	}
+	return event, nil
 }
 
 func RecomputeEvidence(input EvidenceInput) (domain.LifecycleStatus, *int64, error) {

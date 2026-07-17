@@ -26,10 +26,17 @@ var errEvidenceReceiptMissing = errors.New("evidence receipt disappeared before 
 // ingestion-owned persistence/object-store ports. In particular, Service has
 // no Connector dependency and cannot initiate another upstream fetch.
 type Dependencies struct {
-	Runtime  *database.Runtime
-	Captures sourcedomain.CapturedItemReader
-	Contents ingestiondomain.ContentRepository
-	Evidence ingestiondomain.EvidenceStore
+	Runtime       *database.Runtime
+	Captures      sourcedomain.CapturedItemReader
+	Contents      ingestiondomain.ContentRepository
+	Evidence      ingestiondomain.EvidenceStore
+	MetricRefresh ContentMetricRefresher
+}
+
+// ContentMetricRefresher is an Event-owned use case exposed as a narrow port.
+// Ingestion calls it only after its own Content transaction has committed.
+type ContentMetricRefresher interface {
+	RecomputeMetricsForContent(context.Context, int64) error
 }
 
 // Service independently processes durable captured items. Object bytes are
@@ -40,13 +47,14 @@ type Service struct {
 	captures sourcedomain.CapturedItemReader
 	contents ingestiondomain.ContentRepository
 	evidence ingestiondomain.EvidenceStore
+	metrics  ContentMetricRefresher
 }
 
 func NewService(dependencies Dependencies) (*Service, error) {
 	if dependencies.Runtime == nil || dependencies.Captures == nil || dependencies.Contents == nil || dependencies.Evidence == nil {
 		return nil, errors.New("ingestion application dependencies are required")
 	}
-	return &Service{runtime: dependencies.Runtime, captures: dependencies.Captures, contents: dependencies.Contents, evidence: dependencies.Evidence}, nil
+	return &Service{runtime: dependencies.Runtime, captures: dependencies.Captures, contents: dependencies.Contents, evidence: dependencies.Evidence, metrics: dependencies.MetricRefresh}, nil
 }
 
 // IngestRun processes one bounded page of Source-owned captures. A failed
@@ -147,7 +155,8 @@ func (service *Service) persistCaptured(ctx context.Context, captured sourcedoma
 }
 
 func (service *Service) persistContent(ctx context.Context, captured sourcedomain.CapturedCollectionItem, content ingestiondomain.NormalizedContent, decision ingestiondomain.DedupeDecision, receipt ingestiondomain.EvidenceReceipt, hasEvidence bool) error {
-	return service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
+	var contentID int64
+	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
 		// The same source-scoped lock serializes a delete tombstone with every
 		// Content upsert, asset write, and Source bind. It is required even for
 		// title-only captures, which have no EvidenceStore operation.
@@ -176,6 +185,7 @@ func (service *Service) persistContent(ctx context.Context, captured sourcedomai
 		if stored.Status == ingestiondomain.ContentStatusDeleted || stored.DeletedAt != nil {
 			return ingestiondomain.NewError(ingestiondomain.ErrorCodeContentDeleted)
 		}
+		contentID = stored.ID
 		if createEvidenceAsset {
 			asset := ingestiondomain.ContentAsset{
 				ContentID: stored.ID, AssetType: "text", ObjectKey: receipt.ObjectKey, OriginalURL: content.CanonicalURL,
@@ -194,6 +204,15 @@ func (service *Service) persistContent(ctx context.Context, captured sourcedomai
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	if service.metrics != nil {
+		if err := service.metrics.RecomputeMetricsForContent(ctx, contentID); err != nil {
+			return fmt.Errorf("recompute event metrics: %w", err)
+		}
+	}
+	return nil
 }
 
 func (service *Service) assetObjectKnown(ctx context.Context, sourceConnectionID int64, objectKey string) (bool, error) {

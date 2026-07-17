@@ -62,7 +62,7 @@ func (handler *Handler) GetHeat(c *gin.Context) error {
 	if err != nil {
 		return eventError(err)
 	}
-	httptransport.OK(c, HeatResponse{EventID: result.EventID, HeatScore: result.HeatScore, TrendScore: result.TrendScore, SourceCount: result.SourceCount, ContentCount: result.ContentCount, HeatVersion: result.HeatVersion, EvidenceSetHash: result.EvidenceSetHash, CapturedAt: result.WindowEnd})
+	httptransport.OK(c, HeatResponse{EventID: result.EventID, HeatScore: result.HeatScore, TrendScore: result.TrendScore, TrendStatus: string(result.TrendStatus), SourceCount: result.SourceCount, ContentCount: result.ContentCount, WindowHours: result.WindowHours, HeatVersion: result.HeatVersion, EvidenceSetHash: result.EvidenceSetHash, CapabilityProfileSetHash: result.CapabilityProfileSetHash, ReasonCodes: result.ReasonCodes, CapturedAt: result.WindowEnd})
 	return nil
 }
 

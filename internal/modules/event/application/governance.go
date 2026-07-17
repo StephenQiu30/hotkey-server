@@ -75,10 +75,15 @@ type GovernanceRepository interface {
 
 type GovernanceService struct {
 	repository GovernanceRepository
+	recompute  MetricRecomputer
 }
 
-func NewGovernanceService(repository GovernanceRepository) *GovernanceService {
-	return &GovernanceService{repository: repository}
+func NewGovernanceService(repository GovernanceRepository, recomputers ...MetricRecomputer) *GovernanceService {
+	service := &GovernanceService{repository: repository}
+	if len(recomputers) > 0 {
+		service.recompute = recomputers[0]
+	}
+	return service
 }
 
 func (service *GovernanceService) Merge(ctx context.Context, command MergeCommand) (domain.Event, error) {
@@ -88,7 +93,17 @@ func (service *GovernanceService) Merge(ctx context.Context, command MergeComman
 	if err := command.Validate(); err != nil {
 		return domain.Event{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
 	}
-	return service.repository.Merge(ctx, command)
+	event, err := service.repository.Merge(ctx, command)
+	if err != nil {
+		return domain.Event{}, err
+	}
+	if err := recomputeCurrentEventMetrics(ctx, service.recompute, command.TargetEventID); err != nil {
+		return domain.Event{}, err
+	}
+	if err := recomputeCurrentEventMetrics(ctx, service.recompute, command.SourceEventID); err != nil {
+		return domain.Event{}, err
+	}
+	return event, nil
 }
 
 func (service *GovernanceService) Split(ctx context.Context, command SplitCommand) (domain.Event, error) {
@@ -98,7 +113,17 @@ func (service *GovernanceService) Split(ctx context.Context, command SplitComman
 	if err := command.Validate(); err != nil {
 		return domain.Event{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
 	}
-	return service.repository.Split(ctx, command)
+	event, err := service.repository.Split(ctx, command)
+	if err != nil {
+		return domain.Event{}, err
+	}
+	if err := recomputeCurrentEventMetrics(ctx, service.recompute, command.SourceEventID); err != nil {
+		return domain.Event{}, err
+	}
+	if err := recomputeCurrentEventMetrics(ctx, service.recompute, event.ID); err != nil {
+		return domain.Event{}, err
+	}
+	return event, nil
 }
 
 func (service *GovernanceService) SetMemberLock(ctx context.Context, command MemberLockCommand) (domain.EventMember, error) {
@@ -108,5 +133,12 @@ func (service *GovernanceService) SetMemberLock(ctx context.Context, command Mem
 	if err := command.Validate(); err != nil {
 		return domain.EventMember{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
 	}
-	return service.repository.SetMemberLock(ctx, command)
+	member, err := service.repository.SetMemberLock(ctx, command)
+	if err != nil {
+		return domain.EventMember{}, err
+	}
+	if err := recomputeCurrentEventMetrics(ctx, service.recompute, member.EventID); err != nil {
+		return domain.EventMember{}, err
+	}
+	return member, nil
 }

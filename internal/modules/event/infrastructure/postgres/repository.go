@@ -26,10 +26,20 @@ type rowQuery interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
+type rowScanner interface {
+	Scan(...any) error
+}
+
+const eventReadColumns = `id, version, event_key, COALESCE(event_fingerprint, ''), COALESCE(fingerprint_version, ''), title_zh, COALESCE(title_en, ''), summary,
+       lifecycle_status, first_seen_at, last_seen_at, representative_content_id, merged_into_id, manual_locked,
+       heat_score, trend_score, trend_status, heat_window_hours, heat_version, array_to_json(heat_reason_codes),
+       metric_capability_profile_set_hash, heat_calculated_at`
+
 var _ application.EventStore = (*Repository)(nil)
 var _ application.GovernanceRepository = (*Repository)(nil)
 var _ application.ReadRepository = (*Repository)(nil)
 var _ application.DecisionStore = (*Repository)(nil)
+var _ application.ContentEventReader = (*Repository)(nil)
 
 func NewRepository(runtime *database.Runtime) *Repository {
 	return &Repository{runtime: runtime, ids: id.UUID{}}
@@ -43,9 +53,7 @@ func (repository *Repository) Get(ctx context.Context, eventID int64) (domain.Ev
 	if transaction, ok := database.TransactionFromContext(ctx); ok {
 		query = transaction.SQL
 	}
-	return scanEvent(query.QueryRowContext(ctx, `
-SELECT id, version, event_key, COALESCE(event_fingerprint, ''), COALESCE(fingerprint_version, ''), title_zh, COALESCE(title_en, ''), summary,
-       lifecycle_status, first_seen_at, last_seen_at, representative_content_id, merged_into_id, manual_locked
+	return scanEvent(query.QueryRowContext(ctx, `SELECT `+eventReadColumns+`
 FROM events WHERE id = $1 AND deleted_at IS NULL`, eventID))
 }
 
@@ -53,9 +61,7 @@ func (repository *Repository) List(ctx context.Context, query domain.EventListQu
 	if !repository.available() || query.Limit < 1 || query.Limit > 100 || query.Cursor < 0 {
 		return domain.EventPage{}, sharedrepository.ErrUnavailable
 	}
-	rows, err := repository.runtime.SQL.QueryContext(ctx, `
-SELECT id, version, event_key, COALESCE(event_fingerprint, ''), COALESCE(fingerprint_version, ''), title_zh, COALESCE(title_en, ''), summary,
-       lifecycle_status, first_seen_at, last_seen_at, representative_content_id, merged_into_id, manual_locked
+	rows, err := repository.runtime.SQL.QueryContext(ctx, `SELECT `+eventReadColumns+`
 FROM events WHERE deleted_at IS NULL AND id > $1 AND lifecycle_status <> 'archived'
 ORDER BY id ASC LIMIT $2`, query.Cursor, query.Limit+1)
 	if err != nil {
@@ -64,18 +70,9 @@ ORDER BY id ASC LIMIT $2`, query.Cursor, query.Limit+1)
 	defer rows.Close()
 	items := make([]domain.Event, 0, query.Limit)
 	for rows.Next() {
-		var event domain.Event
-		var fingerprint, fingerprintVersion, titleEN string
-		var representative, merged sql.NullInt64
-		if err := rows.Scan(&event.ID, &event.Version, &event.EventKey, &fingerprint, &fingerprintVersion, &event.TitleZH, &titleEN, &event.Summary, &event.LifecycleStatus, &event.FirstSeenAt, &event.LastSeenAt, &representative, &merged, &event.ManualLocked); err != nil {
-			return domain.EventPage{}, sharedrepository.MapError(err)
-		}
-		event.EventFingerprint, event.FingerprintVersion, event.TitleEN = fingerprint, fingerprintVersion, titleEN
-		if representative.Valid {
-			event.RepresentativeContentID = &representative.Int64
-		}
-		if merged.Valid {
-			event.MergedIntoID = &merged.Int64
+		event, err := scanEvent(rows)
+		if err != nil {
+			return domain.EventPage{}, err
 		}
 		items = append(items, event)
 	}
@@ -118,6 +115,36 @@ FROM event_contents WHERE event_id = $1 ORDER BY membership_score DESC, content_
 		return domain.EventMemberPage{}, sharedrepository.MapError(err)
 	}
 	return domain.EventMemberPage{Items: items}, nil
+}
+
+func (repository *Repository) ListMetricEventIDsForContent(ctx context.Context, contentID int64) ([]int64, error) {
+	if !repository.available() || contentID <= 0 {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	rows, err := repository.metricQuery(ctx).QueryContext(ctx, `
+SELECT event.id
+FROM event_contents membership
+JOIN events event ON event.id = membership.event_id
+WHERE membership.content_id = $1
+  AND membership.evidence_role <> 'duplicate'
+  AND event.deleted_at IS NULL
+ORDER BY event.id ASC`, contentID)
+	if err != nil {
+		return nil, sharedrepository.MapError(err)
+	}
+	defer rows.Close()
+	eventIDs := make([]int64, 0)
+	for rows.Next() {
+		var eventID int64
+		if err := rows.Scan(&eventID); err != nil {
+			return nil, sharedrepository.MapError(err)
+		}
+		eventIDs = append(eventIDs, eventID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, sharedrepository.MapError(err)
+	}
+	return eventIDs, nil
 }
 
 func (repository *Repository) Save(ctx context.Context, event domain.Event, expectedVersion int64, audit domain.GovernanceAudit) error {
@@ -227,9 +254,7 @@ func (repository *Repository) Merge(ctx context.Context, command application.Mer
 }
 
 func readEvent(ctx context.Context, query rowQuery, eventID int64) (domain.Event, error) {
-	return scanEvent(query.QueryRowContext(ctx, `
-SELECT id, version, event_key, COALESCE(event_fingerprint, ''), COALESCE(fingerprint_version, ''), title_zh, COALESCE(title_en, ''), summary,
-       lifecycle_status, first_seen_at, last_seen_at, representative_content_id, merged_into_id, manual_locked
+	return scanEvent(query.QueryRowContext(ctx, `SELECT `+eventReadColumns+`
 FROM events WHERE id = $1 AND deleted_at IS NULL`, eventID))
 }
 
@@ -265,9 +290,7 @@ func lockEventsByStableKey(ctx context.Context, query *sql.Tx, events []domain.E
 	sort.Slice(ordered, func(left, right int) bool { return ordered[left].EventKey < ordered[right].EventKey })
 	locked := make(map[int64]domain.Event, len(ordered))
 	for _, event := range ordered {
-		current, err := scanEvent(query.QueryRowContext(ctx, `
-SELECT id, version, event_key, COALESCE(event_fingerprint, ''), COALESCE(fingerprint_version, ''), title_zh, COALESCE(title_en, ''), summary,
-       lifecycle_status, first_seen_at, last_seen_at, representative_content_id, merged_into_id, manual_locked
+		current, err := scanEvent(query.QueryRowContext(ctx, `SELECT `+eventReadColumns+`
 FROM events WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, event.ID))
 		if err != nil {
 			return nil, err
@@ -286,9 +309,7 @@ func (repository *Repository) Split(ctx context.Context, command application.Spl
 	}
 	var created domain.Event
 	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
-		source, err := scanEvent(transaction.SQL.QueryRowContext(ctx, `
-SELECT id, version, event_key, COALESCE(event_fingerprint, ''), COALESCE(fingerprint_version, ''), title_zh, COALESCE(title_en, ''), summary,
-       lifecycle_status, first_seen_at, last_seen_at, representative_content_id, merged_into_id, manual_locked
+		source, err := scanEvent(transaction.SQL.QueryRowContext(ctx, `SELECT `+eventReadColumns+`
 FROM events WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, command.SourceEventID))
 		if err != nil {
 			return err
@@ -573,11 +594,13 @@ func insertAudit(ctx context.Context, query *sql.Tx, audit domain.GovernanceAudi
 	return err
 }
 
-func scanEvent(row *sql.Row) (domain.Event, error) {
+func scanEvent(row rowScanner) (domain.Event, error) {
 	var event domain.Event
 	var fingerprint, fingerprintVersion, titleEN string
 	var representative, merged sql.NullInt64
-	if err := row.Scan(&event.ID, &event.Version, &event.EventKey, &fingerprint, &fingerprintVersion, &event.TitleZH, &titleEN, &event.Summary, &event.LifecycleStatus, &event.FirstSeenAt, &event.LastSeenAt, &representative, &merged, &event.ManualLocked); err != nil {
+	var reasons []byte
+	var calculatedAt sql.NullTime
+	if err := row.Scan(&event.ID, &event.Version, &event.EventKey, &fingerprint, &fingerprintVersion, &event.TitleZH, &titleEN, &event.Summary, &event.LifecycleStatus, &event.FirstSeenAt, &event.LastSeenAt, &representative, &merged, &event.ManualLocked, &event.HeatScore, &event.TrendScore, &event.TrendStatus, &event.HeatWindowHours, &event.HeatVersion, &reasons, &event.MetricCapabilityProfileSetHash, &calculatedAt); err != nil {
 		if err == sql.ErrNoRows {
 			return domain.Event{}, fmt.Errorf("%w: event", sharedrepository.ErrNotFound)
 		}
@@ -589,6 +612,16 @@ func scanEvent(row *sql.Row) (domain.Event, error) {
 	}
 	if merged.Valid {
 		event.MergedIntoID = &merged.Int64
+	}
+	if err := json.Unmarshal(reasons, &event.HeatReasonCodes); err != nil {
+		return domain.Event{}, sharedrepository.MapError(err)
+	}
+	if event.HeatReasonCodes == nil {
+		event.HeatReasonCodes = []string{}
+	}
+	if calculatedAt.Valid {
+		value := calculatedAt.Time
+		event.HeatCalculatedAt = &value
 	}
 	return event, nil
 }
