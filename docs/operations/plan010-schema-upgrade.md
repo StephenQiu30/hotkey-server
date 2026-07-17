@@ -10,13 +10,13 @@ version: v0.3
 owner: HotKey Server Team
 inputs:
   - db/schema.sql
-  - docs/plans/010-事件聚类生命周期与人工治理计划.md
+  - docs/plans/archive/010-事件聚类生命周期与人工治理计划.md
 outputs:
   - 可演练的事件决策/治理审计 Schema 升级流程
 triggers:
   - PLAN-009 accepted 数据库进入 PLAN-010 实施
 downstream:
-  - docs/acceptance/010-事件聚类生命周期与人工治理验收.md
+  - docs/acceptance/archive/010-事件聚类生命周期与人工治理验收.md
 ---
 
 # PLAN-010 Schema 升级

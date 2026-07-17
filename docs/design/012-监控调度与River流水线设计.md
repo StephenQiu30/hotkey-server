@@ -9,12 +9,12 @@ status: accepted
 version: v1.5
 owner: HotKey Server Team
 inputs:
-  - docs/design/002-后端单体架构设计.md
-  - docs/design/005-数据来源查询规划与采集设计.md
+  - docs/design/archive/002-后端单体架构设计.md
+  - docs/design/archive/005-数据来源查询规划与采集设计.md
   - docs/design/009-事件发现聚类与生命周期设计.md
   - docs/design/010-热度趋势与排序设计.md
-  - docs/design/011-AI任务证据与模型运行设计.md
-  - docs/design/014-监控配置发布与预览设计.md
+  - docs/design/archive/011-AI任务证据与模型运行设计.md
+  - docs/design/archive/014-监控配置发布与预览设计.md
 outputs:
   - P0热点主链路和P1交付链路任务图
   - 任务载荷、幂等键、状态和重试分类
@@ -42,7 +42,7 @@ Cron 只执行“查询到期对象并提交唯一任务”，不执行采集或
 
 ## 3. Monitor 状态与配置发布
 
-Monitor 的 `draft/active/paused/archived` 状态、版本化发布、权限、来源引用和纯配置预览以 [Design-014](014-监控配置发布与预览设计.md) 为权威契约。本设计只消费其 published 结果：active Monitor 按当前 published version 调度，paused/archived 不提交新任务，draft 绝不进入调度。
+Monitor 的 `draft/active/paused/archived` 状态、版本化发布、权限、来源引用和纯配置预览以 [Design-014](archive/014-监控配置发布与预览设计.md) 为权威契约。本设计只消费其 published 结果：active Monitor 按当前 published version 调度，paused/archived 不提交新任务，draft 绝不进入调度。
 
 计划 006 必须把 `collection_runs` 作为共享的 `source_connection_id + query_signature + window` 执行事实，并以 `collection_run_targets` 关联 immutable `monitor_source_id + monitor_config_version_id`。每个新 published source 以该 version 的 `published_at` 建空 checkpoint，不继承旧 revision cursor；共享 run 成功且对应 target 成功后才推进该 target checkpoint。发布新版本不改写历史匹配、Event 或报告；需要时由管理员显式提交重算。
 
@@ -176,12 +176,12 @@ RSS/HN -> Content -> MonitorMatch -> Event
 
 ## 16. 关联文档
 
-- [后端单体架构设计](002-后端单体架构设计.md)
-- [数据来源、查询规划与采集设计](005-数据来源查询规划与采集设计.md)
+- [后端单体架构设计](archive/002-后端单体架构设计.md)
+- [数据来源、查询规划与采集设计](archive/005-数据来源查询规划与采集设计.md)
 - [事件发现、聚类与生命周期设计](009-事件发现聚类与生命周期设计.md)
 - [热度、趋势与排序设计](010-热度趋势与排序设计.md)
-- [AI任务、证据与模型运行设计](011-AI任务证据与模型运行设计.md)
-- [监控配置发布与预览设计](014-监控配置发布与预览设计.md)
+- [AI任务、证据与模型运行设计](archive/011-AI任务证据与模型运行设计.md)
+- [监控配置发布与预览设计](archive/014-监控配置发布与预览设计.md)
 
 ## 17. 待确认问题
 

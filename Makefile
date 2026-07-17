@@ -4,10 +4,10 @@ GO ?= go
 
 test:
 	test -n "$$HOTKEY_TEST_DSN"
-	GO=$(GO) sh scripts/with-test-suite.sh test ./... -count=1
+	GO=$(GO) $(GO) run ./test/runner test ./... -count=1
 
 lint:
-	GO=$(GO) sh scripts/with-test-suite.sh vet ./...
+	GO=$(GO) $(GO) run ./test/runner vet ./...
 
 build:
 	$(GO) build -o hotkey ./cmd/hotkey
@@ -15,22 +15,22 @@ build:
 validate: validate-arch validate-repository
 
 validate-arch:
-	sh scripts/validate-architecture.sh
+	sh test/tools/validate-architecture.sh
 
 validate-repository:
-	sh scripts/validate-repository.sh
+	sh test/tools/validate-repository.sh
 
 schema-verify:
-	sh scripts/verify-schema.sh
+	sh test/tools/verify-schema.sh
 
 database-runtime-verify:
-	sh scripts/verify-database-runtime.sh
+	sh test/tools/verify-database-runtime.sh
 
 openapi:
 	$(GO) run github.com/swaggo/swag/cmd/swag init --generalInfo cmd/hotkey/main.go --parseInternal --output docs/openapi --outputTypes json
 
 openapi-validate:
-	$(GO) test ./tests/architecture -run TestOpenAPIContract -count=1
+	$(GO) test ./test/architecture -run TestOpenAPIContract -count=1
 
 openapi-check: openapi openapi-validate
 	git diff --exit-code -- docs/openapi/swagger.json

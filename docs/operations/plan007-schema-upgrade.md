@@ -10,15 +10,15 @@ version: v1.0
 owner: HotKey Server Team
 inputs:
   - db/schema.sql
-  - docs/design/003-数据库与数据生命周期设计.md
-  - docs/design/006-内容标准化去重与证据设计.md
-  - docs/plans/007-内容标准化去重与MinIO证据计划.md
+  - docs/design/archive/003-数据库与数据生命周期设计.md
+  - docs/design/archive/006-内容标准化去重与证据设计.md
+  - docs/plans/archive/007-内容标准化去重与MinIO证据计划.md
 outputs:
   - 可恢复的 PLAN-007 结构升级流程
 triggers:
   - 已有 PLAN-006 collection_run_items 或旧 Content 数据库需要进入 PLAN-007
 downstream:
-  - docs/acceptance/007-内容标准化去重与MinIO证据验收.md
+  - docs/acceptance/archive/007-内容标准化去重与MinIO证据验收.md
 ---
 
 # PLAN-007 既有数据库受控升级

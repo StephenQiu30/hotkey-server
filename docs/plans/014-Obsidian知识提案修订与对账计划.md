@@ -12,8 +12,8 @@ version: v1.0
 owner: HotKey Server Team
 inputs:
   - docs/prd/014-Obsidian知识提案修订与对账.md
-  - docs/plans/010-事件聚类生命周期与人工治理计划.md
-  - docs/plans/012-证据化事件摘要实体与主张计划.md
+  - docs/plans/archive/010-事件聚类生命周期与人工治理计划.md
+  - docs/plans/archive/012-证据化事件摘要实体与主张计划.md
   - docs/plans/013-Cron与River主链路编排计划.md
 outputs:
   - knowledge 模块

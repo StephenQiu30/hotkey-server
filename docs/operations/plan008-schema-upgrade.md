@@ -10,16 +10,16 @@ version: v0.9
 owner: HotKey Server Team
 inputs:
   - db/schema.sql
-  - docs/design/003-数据库与数据生命周期设计.md
-  - docs/design/007-多语言匹配与相关性设计.md
-  - docs/design/011-AI任务证据与模型运行设计.md
-  - docs/plans/008-AIProvider与Embedding基础计划.md
+  - docs/design/archive/003-数据库与数据生命周期设计.md
+  - docs/design/archive/007-多语言匹配与相关性设计.md
+  - docs/design/archive/011-AI任务证据与模型运行设计.md
+  - docs/plans/archive/008-AIProvider与Embedding基础计划.md
 outputs:
   - 可恢复的 PLAN-008 结构升级流程
 triggers:
   - 已由 PLAN-007 Schema 初始化且尚无 AI 历史的数据库进入 PLAN-008
 downstream:
-  - docs/acceptance/008-AIProvider与Embedding基础验收.md
+  - docs/acceptance/archive/008-AIProvider与Embedding基础验收.md
 ---
 
 # PLAN-008 既有数据库受控升级

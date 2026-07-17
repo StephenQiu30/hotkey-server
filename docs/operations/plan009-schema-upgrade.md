@@ -10,13 +10,13 @@ version: v0.4
 owner: HotKey Server Team
 inputs:
   - db/schema.sql
-  - docs/plans/009-多语言相关性匹配与反馈计划.md
+  - docs/plans/archive/009-多语言相关性匹配与反馈计划.md
 outputs:
   - 可恢复的 relevance_review 与相关性持久化 Schema 升级流程
 triggers:
   - 已由 PLAN-008 Schema 初始化的数据库进入 PLAN-009 Task 1、Task 2 或 Task 3
 downstream:
-  - docs/acceptance/009-多语言相关性匹配与反馈验收.md
+  - docs/acceptance/archive/009-多语言相关性匹配与反馈验收.md
 ---
 
 # PLAN-009 Schema 升级

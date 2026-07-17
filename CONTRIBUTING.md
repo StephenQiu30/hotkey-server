@@ -12,7 +12,7 @@
 6. 公共 HTTP API 只开放安全业务操作，禁止通用表 CRUD API。
 7. 禁止重新引入 Kafka、核心 Redis 依赖、微服务或 Git 知识库工作流。
 8. 不提交密钥、Vault 内容、MinIO 对象、数据库数据和 `.tools/`。
-9. 测试源码只放在 `tests/`；业务目录不得提交 `*_test.go`。执行包级测试必须通过 `sh scripts/with-test-suite.sh test <package>`，全量测试使用 `make test`。
+9. 测试源码只放在 `test/`；业务目录不得提交 `*_test.go`。执行包级测试必须通过 `go run ./test/runner test <package>`，全量测试使用 `make test`。
 
 ## 提交流程
 

@@ -2,11 +2,11 @@
 layer: Acceptance
 doc_no: "000"
 audience: [Dev, QA, Ops]
-feature_area: 文档治理
+feature_area: 验收记录
 purpose: 定义长期验收证据的结构、结论和归档边界
 canonical_path: docs/acceptance/README.md
 status: review
-version: v2.3
+version: v2.4
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -58,18 +58,14 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 - 不收录重复日志、临时命令输出、会议讨论或无法关联提交的结果
 - PR 中的短期 CI 结果只有形成长期质量门禁时才进入本目录
 
-## 验收记录
+## 已归档验收
+
+001–012 的验收结论均为 `accepted`，正文已移入 [`archive/`](archive/README.md)。
+
+## 当前待验收任务
 
 | 编号 | 验收 | 结论 |
 |---|---|---|
-| 005 | [监控主题规则与来源配置](005-监控主题规则与来源配置验收.md) | accepted |
-| 006 | [查询规划与 RSS/HN 采集](006-查询规划与RSS-HN采集验收.md) | accepted |
-| 007 | [内容标准化、去重与 MinIO 证据](007-内容标准化去重与MinIO证据验收.md) | accepted |
-| 008 | [AI Provider 与 Embedding 基础](008-AIProvider与Embedding基础验收.md) | accepted |
-| 009 | [多语言相关性匹配与反馈](009-多语言相关性匹配与反馈验收.md) | accepted |
-| 010 | [事件聚类生命周期与人工治理](010-事件聚类生命周期与人工治理验收.md) | accepted |
-| 011 | [热度趋势与监控排序](011-热度趋势与监控排序验收.md) | accepted |
-| 012 | [证据化事件摘要实体与主张](012-证据化事件摘要实体与主张验收.md) | accepted |
 | 013 | [Cron与River主链路编排](013-Cron与River主链路编排验收.md) | pending |
 | 014 | [Obsidian知识提案修订与对账](014-Obsidian知识提案修订与对账验收.md) | pending |
 | 015 | [日报周报与发布快照](015-日报周报与发布快照验收.md) | pending |
