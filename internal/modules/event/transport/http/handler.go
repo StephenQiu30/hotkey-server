@@ -317,6 +317,7 @@ func (handler *Handler) Merge(c *gin.Context) error {
 // @Failure 400 {object} EventResult[EmptyResponse]
 // @Failure 401 {object} EventResult[EmptyResponse]
 // @Failure 403 {object} EventResult[EmptyResponse]
+// @Failure 404 {object} EventResult[EmptyResponse]
 // @Failure 409 {object} EventResult[EmptyResponse]
 // @Router /api/v1/events/{id}/split [post]
 func (handler *Handler) Split(c *gin.Context) error {

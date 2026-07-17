@@ -1652,6 +1652,12 @@
                             "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
                         }
                     },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
                     "409": {
                         "description": "Conflict",
                         "schema": {

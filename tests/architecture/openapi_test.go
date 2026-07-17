@@ -105,7 +105,7 @@ func TestOpenAPIContract(t *testing.T) {
 		"/api/v1/events/{id}/contents/{content_id}/lock":                    {"post": {"200", "400", "401", "403", "404", "409"}},
 		"/api/v1/events/{id}/lifecycle":                                     {"post": {"200", "400", "401", "403", "409"}},
 		"/api/v1/events/{id}/merge":                                         {"post": {"200", "400", "401", "403", "409"}},
-		"/api/v1/events/{id}/split":                                         {"post": {"200", "400", "401", "403", "409"}},
+		"/api/v1/events/{id}/split":                                         {"post": {"200", "400", "401", "403", "404", "409"}},
 		"/api/v1/reports":                                                   {"get": {"200", "400", "401", "503"}},
 		"/api/v1/reports/{id}":                                              {"get": {"200", "400", "401", "404", "503"}},
 		"/api/v1/reports/{id}/preview":                                      {"post": {"200", "400", "401", "404", "503"}},
