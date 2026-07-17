@@ -33,12 +33,19 @@ func TestDeliveryRepositoryIsIdempotentAndAppendsAttempts(t *testing.T) {
 	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO reports (id, report_type, period_start, period_end, timezone, title, status, version_no) VALUES (8101, 'daily', $1, $2, 'UTC', 'Delivery report', 'published', 1)`, now, now.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO report_items (report_id, event_id, rank, section, title_snapshot, summary_snapshot, heat_score_snapshot) VALUES (8101, $1, 1, 'events', 'Delivery event', 'Snapshot', 90)`, eventID); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO report_subscriptions (id, user_id, report_type, channel, recipient, timezone, schedule) VALUES (8201, $1, 'daily', 'email', 'delivery@example.test', 'UTC', '0 8 * * *')`, userID); err != nil {
 		t.Fatal(err)
 	}
 	repository := NewRepository(runtime)
 	subscription := domain.Subscription{ID: 8201, Version: 1, UserID: userID, ReportType: "daily", Channel: domain.ChannelEmail, Recipient: "delivery@example.test", Timezone: "UTC", Schedule: "0 8 * * *", Enabled: true}
 	if err := repository.SaveSubscription(ctx, subscription); err != nil {
+		t.Fatal(err)
+	}
+	rssSubscription := domain.Subscription{ID: 8202, Version: 1, UserID: userID, ReportType: "daily", Channel: domain.ChannelRSS, TokenHash: domain.TokenHash("secret"), Timezone: "UTC", Schedule: "0 8 * * *", Enabled: true}
+	if err := repository.SaveSubscription(ctx, rssSubscription); err != nil {
 		t.Fatal(err)
 	}
 	delivery := domain.Delivery{ID: 8301, ReportID: 8101, SubscriptionID: 8201, IdempotencyKey: "delivery-8101-8201", Status: domain.DeliveryQueued, NextAttemptAt: &now}
@@ -60,5 +67,9 @@ func TestDeliveryRepositoryIsIdempotentAndAppendsAttempts(t *testing.T) {
 	}
 	if attempts != 1 {
 		t.Fatalf("attempts = %d, want 1", attempts)
+	}
+	feed, err := repository.ReadFeed(ctx, rssSubscription.TokenHash)
+	if err != nil || feed.Title != "Delivery report" || len(feed.Items) != 1 {
+		t.Fatalf("ReadFeed() = %#v/%v", feed, err)
 	}
 }
