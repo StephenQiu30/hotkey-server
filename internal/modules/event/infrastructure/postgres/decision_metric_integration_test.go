@@ -55,3 +55,32 @@ func TestDecisionAndMetricPersistenceAreIdempotent(t *testing.T) {
 		t.Fatalf("metric rows = %d, want 1", snapshots)
 	}
 }
+
+func TestVerifiedClaimPersistsOnlyActiveEventEvidence(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	repository := NewRepository(runtime)
+	fixture := seedEventFixture(t, runtime)
+	claim := domain.Claim{ID: 1, Version: 1, EventID: fixture.sourceID, NormalizedClaim: "the event happened", ClaimHash: strings.Repeat("b", 64), Status: domain.ClaimSingleSource, Confidence: 80, Evidence: []domain.ClaimEvidence{{EvidenceRef: domain.EvidenceRef{ContentID: fixture.sourceContentID, Locator: "title", Excerpt: "Event content"}, Stance: "supports", Confidence: 90}}}
+	active := map[int64]bool{fixture.sourceContentID: true}
+	if _, err := application.SaveVerifiedClaim(ctx, repository, claim, active); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := application.SaveVerifiedClaim(ctx, repository, claim, map[int64]bool{}); err == nil {
+		t.Fatal("inactive evidence accepted")
+	}
+	var count int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM claim_evidences WHERE content_id = $1`, fixture.sourceContentID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("claim evidence rows = %d, want 1", count)
+	}
+}
