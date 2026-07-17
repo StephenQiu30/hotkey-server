@@ -1,9 +1,0 @@
-{
-  "version": "v1",
-  "groups": [
-    {"id": "evt-space-launch", "content_ids": ["zh-1", "en-1"]},
-    {"id": "evt-space-policy", "content_ids": ["zh-2"]},
-    {"id": "evt-product-recall", "content_ids": ["en-2"]}
-  ],
-  "notes": "Acceptance fixture keeps same-entity different-time and cross-language cases separate."
-}

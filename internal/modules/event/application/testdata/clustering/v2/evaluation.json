@@ -1,0 +1,251 @@
+{
+  "dataset": "event-clustering-acceptance",
+  "dataset_version": "v2",
+  "algorithm_version": "v1",
+  "time_range": {
+    "start": "2023-09-22T00:00:00Z",
+    "end": "2024-08-05T00:00:00Z"
+  },
+  "labeling": {
+    "protocol": "Each row is metadata for one publicly published report. Annotators assign a single real-world event group from the reported incident, not from organization names or overlapping keywords. Full article bodies are intentionally excluded.",
+    "conflict_rule": "When a report names an earlier incident but its primary fact is a distinct oversight, policy, or later incident, retain it as a separate group or review outcome; record the reason in annotation_note and conflict_outcome."
+  },
+  "cases": [
+    {
+      "name": "annular_eclipse_2023_is_not_total_eclipse_2024",
+      "content_id": 1001,
+      "sample": {
+        "event_group": "eclipse-annular-2023",
+        "split": "calibration",
+        "language": "en",
+        "published_at": "2023-09-22T00:00:00Z",
+        "source_name": "NASA",
+        "source_url": "https://www.nasa.gov/news-release/nasa-scientists-to-discuss-oct-14-ring-of-fire-solar-eclipse/",
+        "title": "NASA Scientists to Discuss Oct. 14 Ring of Fire Solar Eclipse",
+        "annotation_note": "The report is about the October 2023 annular eclipse, a different astronomical event from the April 2024 total eclipse."
+      },
+      "coverage": ["same_entity_different_time"],
+      "candidates": [],
+      "scores": {},
+      "expected": "__new_event__"
+    },
+    {
+      "name": "alaska_1282_initial_faa_grounding",
+      "content_id": 1002,
+      "sample": {
+        "event_group": "alaska-1282-door-plug-2024",
+        "split": "calibration",
+        "language": "en",
+        "published_at": "2024-01-06T00:00:00Z",
+        "source_name": "FAA",
+        "source_url": "https://www.faa.gov/newsroom/updates-boeing-737-9-max-aircraft",
+        "title": "Updates on Boeing 737-9 MAX Aircraft",
+        "annotation_note": "The first report establishes the Alaska Airlines Flight 1282 door-plug incident group."
+      },
+      "coverage": [],
+      "candidates": [],
+      "scores": {},
+      "expected": "__new_event__"
+    },
+    {
+      "name": "alaska_1282_chinese_followup",
+      "content_id": 1003,
+      "sample": {
+        "event_group": "alaska-1282-door-plug-2024",
+        "split": "calibration",
+        "language": "zh",
+        "published_at": "2024-01-07T20:33:55Z",
+        "source_name": "Xinhua",
+        "source_url": "https://www.news.cn/world/20240107/380f64f26aaa4db6bb9d19ada7531000/c.html",
+        "title": "惊魂一刻 美客机空中敞门紧急折返",
+        "annotation_note": "The report identifies Alaska Airlines Flight 1282 and the same in-flight door-plug separation."
+      },
+      "coverage": ["cross_language"],
+      "candidates": [{"event_id": 201, "event_key": "evt_alaska_1282", "channel": "lexical", "score": 95}],
+      "scores": {"evt_alaska_1282": {"entity_action": 96, "semantic": 91, "temporal": 98, "location": 94, "source_context": 87}},
+      "expected": "evt_alaska_1282"
+    },
+    {
+      "name": "alaska_1282_preliminary_report",
+      "content_id": 1004,
+      "sample": {
+        "event_group": "alaska-1282-door-plug-2024",
+        "split": "calibration",
+        "language": "zh",
+        "published_at": "2024-02-07T10:52:30Z",
+        "source_name": "Xinhua",
+        "source_url": "https://www.news.cn/world/20240207/f1f3c5e310a34145a7499211b18d600a/c.html",
+        "title": "初步调查 掉门波音客机出厂时缺固定螺栓",
+        "annotation_note": "This is a preliminary investigation update about the same Flight 1282 door-plug incident."
+      },
+      "coverage": [],
+      "candidates": [{"event_id": 201, "event_key": "evt_alaska_1282", "channel": "fingerprint", "score": 94}],
+      "scores": {"evt_alaska_1282": {"entity_action": 97, "semantic": 93, "temporal": 91, "location": 92, "source_context": 82}},
+      "expected": "evt_alaska_1282"
+    },
+    {
+      "name": "alaska_1282_late_hearing_update",
+      "content_id": 1005,
+      "sample": {
+        "event_group": "alaska-1282-door-plug-2024",
+        "split": "calibration",
+        "language": "en",
+        "published_at": "2024-08-05T00:00:00Z",
+        "source_name": "NTSB",
+        "source_url": "https://www.ntsb.gov/news/press-releases/Pages/MA20240801.aspx",
+        "title": "NTSB Releases Witness Lineup and Agenda for Alaska Airlines Flight 1282 Investigative Hearing",
+        "annotation_note": "The late investigative-hearing report concerns the same flight and door-plug occurrence."
+      },
+      "coverage": ["late_update"],
+      "candidates": [{"event_id": 201, "event_key": "evt_alaska_1282", "channel": "vector", "score": 91}],
+      "scores": {"evt_alaska_1282": {"entity_action": 95, "semantic": 96, "temporal": 66, "location": 90, "source_context": 82}},
+      "expected": "evt_alaska_1282"
+    },
+    {
+      "name": "total_eclipse_2024_initial_does_not_join_annular_2023",
+      "content_id": 1006,
+      "sample": {
+        "event_group": "eclipse-total-2024",
+        "split": "acceptance",
+        "language": "en",
+        "published_at": "2024-02-28T00:00:00Z",
+        "source_name": "NASA",
+        "source_url": "https://www.nasa.gov/news-release/nasa-invites-media-public-to-solar-eclipse-events-in-april/",
+        "title": "NASA Invites Media, Public to Solar Eclipse Events in April",
+        "annotation_note": "The report announces the April 2024 total eclipse; it must not join the October 2023 annular eclipse despite shared solar-eclipse terms."
+      },
+      "coverage": ["same_entity_different_time"],
+      "candidates": [{"event_id": 200, "event_key": "evt_annular_2023", "channel": "lexical", "score": 95, "hard_conflict": true}],
+      "scores": {"evt_annular_2023": {"entity_action": 94, "semantic": 93, "temporal": 12, "location": 70, "source_context": 85}},
+      "hard_conflicts": {"evt_annular_2023": true},
+      "expected": "__new_event__"
+    },
+    {
+      "name": "total_eclipse_2024_nasa_science_followup",
+      "content_id": 1007,
+      "sample": {
+        "event_group": "eclipse-total-2024",
+        "split": "acceptance",
+        "language": "en",
+        "published_at": "2024-03-11T00:00:00Z",
+        "source_name": "NASA",
+        "source_url": "https://science.nasa.gov/solar-system/skywatching/eclipses/solar-eclipses/2024-solar-eclipse/total-solar-eclipse-2024-the-moons-moment-in-the-sun/",
+        "title": "Total Solar Eclipse 2024 The Moon's Moment in the Sun",
+        "annotation_note": "This NASA science report describes the same April 8 total eclipse across North America."
+      },
+      "coverage": [],
+      "candidates": [{"event_id": 202, "event_key": "evt_eclipse_2024", "channel": "lexical", "score": 94}],
+      "scores": {"evt_eclipse_2024": {"entity_action": 91, "semantic": 94, "temporal": 93, "location": 89, "source_context": 84}},
+      "expected": "evt_eclipse_2024"
+    },
+    {
+      "name": "total_eclipse_2024_observation_day",
+      "content_id": 1008,
+      "sample": {
+        "event_group": "eclipse-total-2024",
+        "split": "acceptance",
+        "language": "en",
+        "published_at": "2024-04-08T00:00:00Z",
+        "source_name": "NASA Science",
+        "source_url": "https://science.nasa.gov/eclipses/future-eclipses/eclipse-2024/",
+        "title": "2024 Total Solar Eclipse",
+        "annotation_note": "The observation-day material is the same April 8 total eclipse event."
+      },
+      "coverage": [],
+      "candidates": [{"event_id": 202, "event_key": "evt_eclipse_2024", "channel": "temporal", "score": 97}],
+      "scores": {"evt_eclipse_2024": {"entity_action": 94, "semantic": 91, "temporal": 99, "location": 92, "source_context": 82}},
+      "expected": "evt_eclipse_2024"
+    },
+    {
+      "name": "total_eclipse_2024_chinese_observation",
+      "content_id": 1009,
+      "sample": {
+        "event_group": "eclipse-total-2024",
+        "split": "acceptance",
+        "language": "zh",
+        "published_at": "2024-04-10T00:00:00Z",
+        "source_name": "Guangdong Provincial Overseas Chinese Affairs Office",
+        "source_url": "https://www.qb.gd.gov.cn/qsxw/content/post_1237838.html",
+        "title": "北美上演日全食 华人结伴记录分享天文奇观",
+        "annotation_note": "The Chinese report identifies the April 8 North American total eclipse and is independently published in another language."
+      },
+      "coverage": ["cross_language"],
+      "candidates": [{"event_id": 202, "event_key": "evt_eclipse_2024", "channel": "vector", "score": 90}],
+      "scores": {"evt_eclipse_2024": {"entity_action": 86, "semantic": 94, "temporal": 95, "location": 88, "source_context": 78}},
+      "expected": "evt_eclipse_2024"
+    },
+    {
+      "name": "dali_bridge_initial_report",
+      "content_id": 1010,
+      "sample": {
+        "event_group": "dali-key-bridge-2024",
+        "split": "acceptance",
+        "language": "en",
+        "published_at": "2024-03-26T00:00:00Z",
+        "source_name": "NTSB",
+        "source_url": "https://www.ntsb.gov/investigations/Documents/DCA24MM031_PreliminaryReport%203.pdf",
+        "title": "Contact of Containership Dali with the Francis Scott Key Bridge",
+        "annotation_note": "The preliminary report establishes the Dali and Francis Scott Key Bridge collapse event."
+      },
+      "coverage": [],
+      "candidates": [],
+      "scores": {},
+      "expected": "__new_event__"
+    },
+    {
+      "name": "dali_bridge_investigative_update",
+      "content_id": 1011,
+      "sample": {
+        "event_group": "dali-key-bridge-2024",
+        "split": "acceptance",
+        "language": "en",
+        "published_at": "2024-06-24T00:00:00Z",
+        "source_name": "NTSB",
+        "source_url": "https://www.ntsb.gov/news/press-releases/Pages/NR20240624.aspx",
+        "title": "NTSB Issues Investigative Update for Baltimore Bridge Collapse",
+        "annotation_note": "The investigative update explicitly concerns the March 26 Dali contact and bridge collapse."
+      },
+      "coverage": ["late_update"],
+      "candidates": [{"event_id": 203, "event_key": "evt_dali_bridge", "channel": "fingerprint", "score": 96}],
+      "scores": {"evt_dali_bridge": {"entity_action": 97, "semantic": 93, "temporal": 73, "location": 96, "source_context": 85}},
+      "expected": "evt_dali_bridge"
+    },
+    {
+      "name": "boeing_oversight_requires_human_review",
+      "content_id": 1012,
+      "sample": {
+        "event_group": "boeing-quality-oversight-2024",
+        "split": "acceptance",
+        "language": "zh",
+        "published_at": "2024-04-18T20:49:50Z",
+        "source_name": "Xinhua",
+        "source_url": "https://www.news.cn/world/20240418/5041d5f52867407b9c57dbbf5649df07/c.html",
+        "title": "吹哨人作证 波音安全文化接受拷问",
+        "annotation_note": "The report references Flight 1282 but its primary fact is a separate congressional safety-culture oversight event.",
+        "conflict_outcome": "Manual review is required before deciding whether the oversight event remains separate from the underlying door-plug incident."
+      },
+      "coverage": ["same_entity_different_incident", "ambiguous_human_review"],
+      "candidates": [{"event_id": 201, "event_key": "evt_alaska_1282", "channel": "lexical", "score": 76}],
+      "scores": {"evt_alaska_1282": {"entity_action": 72, "semantic": 74, "temporal": 73, "location": 62, "source_context": 64}},
+      "expected": "__review__"
+    },
+    {
+      "name": "boeing_oversight_followup_stays_separate",
+      "content_id": 1013,
+      "sample": {
+        "event_group": "boeing-quality-oversight-2024",
+        "split": "acceptance",
+        "language": "zh",
+        "published_at": "2024-06-28T13:19:42Z",
+        "source_name": "Xinhua",
+        "source_url": "https://www.news.cn/world/20240628/363df779920c40759f1392c55a4ffa76/c.html",
+        "title": "波音公司擅自公布调查信息被限制",
+        "annotation_note": "The report continues the separate NTSB oversight and disclosure process, not the physical door-plug occurrence itself."
+      },
+      "coverage": ["same_entity_different_incident"],
+      "candidates": [{"event_id": 204, "event_key": "evt_boeing_oversight", "channel": "lexical", "score": 90}],
+      "scores": {"evt_boeing_oversight": {"entity_action": 89, "semantic": 92, "temporal": 86, "location": 70, "source_context": 80}},
+      "expected": "evt_boeing_oversight"
+    }
+  ]
+}
