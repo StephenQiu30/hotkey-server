@@ -68,10 +68,37 @@ type Report struct {
 	Status                 ReportStatus
 	Items                  []Item
 	Frozen                 bool
+	GeneratedAt            *time.Time
+	PublishedAt            *time.Time
+}
+
+type ListQuery struct {
+	Cursor int64
+	Limit  int
+	Type   *ReportType
+	Status *ReportStatus
+}
+
+type Page struct {
+	Items      []Report
+	NextCursor int64
+}
+
+func (query ListQuery) Validate() error {
+	if query.Cursor < 0 || query.Limit < 1 || query.Limit > 100 {
+		return fmt.Errorf("invalid report list query")
+	}
+	if query.Type != nil && *query.Type != ReportDaily && *query.Type != ReportWeekly {
+		return fmt.Errorf("invalid report type")
+	}
+	if query.Status != nil && !validStatus(*query.Status) {
+		return fmt.Errorf("invalid report status")
+	}
+	return nil
 }
 
 func (report Report) Validate() error {
-	if report.ID <= 0 || report.Version <= 0 || report.VersionNo <= 0 || (report.Type != ReportDaily && report.Type != ReportWeekly) || report.Status == "" {
+	if report.ID <= 0 || report.Version <= 0 || report.VersionNo <= 0 || (report.Type != ReportDaily && report.Type != ReportWeekly) || !validStatus(report.Status) {
 		return fmt.Errorf("invalid report")
 	}
 	if err := report.Period.Validate(); err != nil {
@@ -86,6 +113,15 @@ func (report Report) Validate() error {
 		}
 	}
 	return nil
+}
+
+func validStatus(status ReportStatus) bool {
+	switch status {
+	case ReportDraft, ReportPublished, ReportFailed, ReportArchived:
+		return true
+	default:
+		return false
+	}
 }
 
 func SortItems(items []Item) []Item {

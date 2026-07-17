@@ -56,7 +56,21 @@ func TestReportRepositoryPersistsItemsAndFreezesPublishedVersion(t *testing.T) {
 	if err := repository.Save(ctx, published); err != nil {
 		t.Fatal(err)
 	}
+	if err := repository.Save(ctx, published); !errors.Is(err, sharedrepository.ErrImmutable) {
+		t.Fatalf("save published report error = %v, want ErrImmutable", err)
+	}
 	if err := repository.Save(ctx, report); !errors.Is(err, sharedrepository.ErrImmutable) {
 		t.Fatalf("save stale draft error = %v, want ErrImmutable", err)
+	}
+	loaded, err := repository.Get(ctx, report.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Status != domain.ReportPublished || !loaded.Frozen || len(loaded.Items) != 1 || loaded.PublishedAt == nil {
+		t.Fatalf("loaded report = %#v", loaded)
+	}
+	page, err := repository.List(ctx, domain.ListQuery{Limit: 10})
+	if err != nil || len(page.Items) != 1 || page.Items[0].ID != report.ID {
+		t.Fatalf("list reports = %#v/%v", page, err)
 	}
 }

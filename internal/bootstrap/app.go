@@ -30,6 +30,9 @@ import (
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/infrastructure/postgres"
 	monitortransport "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/transport/http"
 	operationspostgres "github.com/StephenQiu30/hotkey-server/internal/modules/operations/infrastructure/postgres"
+	reportapplication "github.com/StephenQiu30/hotkey-server/internal/modules/report/application"
+	reportpostgres "github.com/StephenQiu30/hotkey-server/internal/modules/report/infrastructure/postgres"
+	reporttransport "github.com/StephenQiu30/hotkey-server/internal/modules/report/transport/http"
 	sourceapplication "github.com/StephenQiu30/hotkey-server/internal/modules/source/application"
 	sourceinfrastructure "github.com/StephenQiu30/hotkey-server/internal/modules/source/infrastructure"
 	sourcepostgres "github.com/StephenQiu30/hotkey-server/internal/modules/source/infrastructure/postgres"
@@ -137,8 +140,10 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newIngestionContentQueryService,
 					newIngestionRelevanceAPIService,
 					deliverypostgres.NewRepository,
+					reportpostgres.NewRepository,
+					newReportService,
 				),
-				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerDeliveryRoutes),
+				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerDeliveryRoutes, registerReportRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -208,6 +213,10 @@ func registerDeliveryRoutes(router *gin.Engine, repository *deliverypostgres.Rep
 	deliverytransport.RegisterRoutes(router, repository)
 }
 
+func registerReportRoutes(router *gin.Engine, service *reportapplication.Service, authenticator httptransport.Authenticator) {
+	reporttransport.RegisterRoutes(router, service, authenticator)
+}
+
 // Fx does not infer interface bindings from a concrete repository. Keep the
 // adapters at the composition root so event application services remain
 // decoupled from the PostgreSQL implementation.
@@ -267,6 +276,10 @@ func newIngestionRelevanceAPIService(snapshots *ingestionpostgres.RelevanceRepos
 
 func newMonitorService(runtime *database.Runtime, monitors *monitorpostgres.Repository, sources *sourceapplication.Service, audit *operationspostgres.AuditWriter) (*monitorapplication.Service, error) {
 	return monitorapplication.NewService(monitorapplication.Dependencies{Runtime: runtime, Monitors: monitors, Sources: sources, Audit: audit})
+}
+
+func newReportService(repository *reportpostgres.Repository) (*reportapplication.Service, error) {
+	return reportapplication.NewService(repository)
 }
 
 func newIdentityService(runtime *database.Runtime, cfg config.Config, verification *identityredis.VerificationStore) (*identityapplication.Service, error) {
