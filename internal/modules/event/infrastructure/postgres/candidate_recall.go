@@ -57,6 +57,21 @@ func (repository *Repository) Vector(ctx context.Context, contentID int64, limit
 	if !repository.available() || contentID <= 0 {
 		return nil, sharedrepository.ErrUnavailable
 	}
+	var available bool
+	if err := repository.runtime.SQL.QueryRowContext(ctx, `
+SELECT EXISTS (
+  SELECT 1
+  FROM content_embeddings ce
+  JOIN event_embeddings ee ON ee.model_profile_id = ce.model_profile_id AND ee.model_version = ce.model_version AND ee.active
+  JOIN events e ON e.id = ee.event_id
+  WHERE ce.content_id = $1 AND ce.active
+    AND e.lifecycle_status IN ('detected','active','cooling','closed') AND e.deleted_at IS NULL
+)`, contentID).Scan(&available); err != nil {
+		return nil, sharedrepository.MapError(err)
+	}
+	if !available {
+		return nil, sharedrepository.ErrUnavailable
+	}
 	rows, err := repository.runtime.SQL.QueryContext(ctx, `
 SELECT e.id, e.event_key, 'vector', (100 - LEAST(100, ce.embedding <=> ee.embedding) * 100)
 FROM contents c
