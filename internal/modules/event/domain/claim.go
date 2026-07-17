@@ -35,6 +35,21 @@ type ClaimEvidence struct {
 	Confidence float64
 }
 
+func (evidence ClaimEvidence) Validate() error {
+	if err := evidence.EvidenceRef.Validate(); err != nil {
+		return err
+	}
+	if evidence.Confidence < 0 || evidence.Confidence > 100 {
+		return fmt.Errorf("invalid claim evidence confidence")
+	}
+	switch evidence.Stance {
+	case "supports", "contradicts", "mentions":
+		return nil
+	default:
+		return fmt.Errorf("invalid claim evidence stance")
+	}
+}
+
 type Claim struct {
 	ID, Version, EventID       int64
 	NormalizedClaim, ClaimHash string

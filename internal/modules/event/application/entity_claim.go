@@ -8,7 +8,54 @@ import (
 
 type EntityClaimStore interface {
 	SaveEntity(context.Context, domain.Entity) (domain.Entity, error)
+	SaveEntityAlias(context.Context, domain.EntityAlias) (domain.EntityAlias, error)
+	SaveEventEntity(context.Context, domain.EventEntity) (domain.EventEntity, error)
+	SaveEntityRelation(context.Context, domain.EntityRelation) (domain.EntityRelation, error)
 	SaveClaim(context.Context, domain.Claim) (domain.Claim, error)
+}
+
+type EntityService struct{ store EntityClaimStore }
+
+func NewEntityService(store EntityClaimStore) *EntityService { return &EntityService{store: store} }
+
+func (service *EntityService) Save(ctx context.Context, entity domain.Entity) (domain.Entity, error) {
+	if service == nil || service.store == nil {
+		return domain.Entity{}, fmt.Errorf("entity store is required")
+	}
+	if err := entity.Validate(); err != nil {
+		return domain.Entity{}, err
+	}
+	return service.store.SaveEntity(ctx, entity)
+}
+
+func (service *EntityService) SaveAlias(ctx context.Context, alias domain.EntityAlias) (domain.EntityAlias, error) {
+	if service == nil || service.store == nil {
+		return domain.EntityAlias{}, fmt.Errorf("entity store is required")
+	}
+	if err := alias.Validate(); err != nil {
+		return domain.EntityAlias{}, err
+	}
+	return service.store.SaveEntityAlias(ctx, alias)
+}
+
+func (service *EntityService) SaveEventEntity(ctx context.Context, entity domain.EventEntity) (domain.EventEntity, error) {
+	if service == nil || service.store == nil {
+		return domain.EventEntity{}, fmt.Errorf("entity store is required")
+	}
+	if err := entity.Validate(); err != nil {
+		return domain.EventEntity{}, err
+	}
+	return service.store.SaveEventEntity(ctx, entity)
+}
+
+func (service *EntityService) SaveRelation(ctx context.Context, relation domain.EntityRelation) (domain.EntityRelation, error) {
+	if service == nil || service.store == nil {
+		return domain.EntityRelation{}, fmt.Errorf("entity store is required")
+	}
+	if err := relation.Validate(); err != nil {
+		return domain.EntityRelation{}, err
+	}
+	return service.store.SaveEntityRelation(ctx, relation)
 }
 
 type ClaimService struct{ store EntityClaimStore }

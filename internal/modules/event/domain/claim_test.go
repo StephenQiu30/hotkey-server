@@ -18,3 +18,10 @@ func TestClaimValidationRejectsUnknownStatus(t *testing.T) {
 		t.Fatal("unknown status accepted")
 	}
 }
+
+func TestClaimValidationRejectsUnknownEvidenceStance(t *testing.T) {
+	claim := Claim{ID: 1, Version: 1, EventID: 1, NormalizedClaim: "claim", ClaimHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Status: ClaimUnverified, Evidence: []ClaimEvidence{{EvidenceRef: EvidenceRef{ContentID: 2, Locator: "title"}, Stance: "unknown"}}}
+	if err := claim.Validate(); err == nil {
+		t.Fatal("unknown evidence stance accepted")
+	}
+}
