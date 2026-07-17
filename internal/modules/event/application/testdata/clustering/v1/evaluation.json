@@ -1,0 +1,54 @@
+{
+  "version": "v1",
+  "cases": [
+    {
+      "name": "cross_language_same_event",
+      "content_id": 1,
+      "candidates": [{"event_id": 101, "event_key": "evt_typhoon", "channel": "lexical", "score": 92}],
+      "scores": {"evt_typhoon": {"entity_action": 95, "semantic": 90, "temporal": 88, "location": 85, "source_context": 80}},
+      "expected": "evt_typhoon"
+    },
+    {
+      "name": "english_update_same_event",
+      "content_id": 2,
+      "candidates": [{"event_id": 101, "event_key": "evt_typhoon", "channel": "vector", "score": 89}],
+      "scores": {"evt_typhoon": {"entity_action": 88, "semantic": 92, "temporal": 84, "location": 78, "source_context": 76}},
+      "expected": "evt_typhoon"
+    },
+    {
+      "name": "same_entity_different_incident",
+      "content_id": 3,
+      "candidates": [{"event_id": 102, "event_key": "evt_old_fire", "channel": "lexical", "score": 96}],
+      "scores": {"evt_old_fire": {"entity_action": 96, "semantic": 90, "temporal": 20, "location": 90, "source_context": 90}},
+      "hard_conflicts": {"evt_old_fire": true},
+      "expected": "__new_event__"
+    },
+    {
+      "name": "late_unrelated_content",
+      "content_id": 4,
+      "candidates": [{"event_id": 103, "event_key": "evt_election", "channel": "temporal", "score": 50}],
+      "scores": {"evt_election": {"entity_action": 30, "semantic": 35, "temporal": 30, "location": 20, "source_context": 20}},
+      "expected": "__new_event__"
+    },
+    {
+      "name": "best_candidate_wins",
+      "content_id": 5,
+      "candidates": [
+        {"event_id": 104, "event_key": "evt_market", "channel": "lexical", "score": 91},
+        {"event_id": 105, "event_key": "evt_market_followup", "channel": "temporal", "score": 85}
+      ],
+      "scores": {
+        "evt_market": {"entity_action": 96, "semantic": 95, "temporal": 94, "location": 90, "source_context": 88},
+        "evt_market_followup": {"entity_action": 85, "semantic": 85, "temporal": 85, "location": 85, "source_context": 85}
+      },
+      "expected": "evt_market"
+    },
+    {
+      "name": "ambiguous_candidate_requires_review",
+      "content_id": 6,
+      "candidates": [{"event_id": 106, "event_key": "evt_policy", "channel": "fingerprint", "score": 72}],
+      "scores": {"evt_policy": {"entity_action": 70, "semantic": 70, "temporal": 70, "location": 70, "source_context": 70}},
+      "expected": "__review__"
+    }
+  ]
+}
