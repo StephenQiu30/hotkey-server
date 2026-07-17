@@ -1,0 +1,85 @@
+{
+  "version": "event-intelligence-evaluation-v1",
+  "source": {
+    "event_id": 7,
+    "event_key": "evt-7",
+    "title_zh": "Acme 事件",
+    "title_en": "Acme event",
+    "representative_content_id": 2,
+    "evidence": [
+      {"content_id": 2, "locator": "excerpt", "excerpt": "Acme announced a release."},
+      {"content_id": 9, "locator": "title", "excerpt": "Independent coverage of the release."}
+    ]
+  },
+  "summary_cases": [
+    {
+      "name": "verified_summary",
+      "status": "succeeded",
+      "run_id": 71,
+      "want": "verified",
+      "result": {"title_zh": "Acme 发布公告", "title_en": "Acme release announcement", "sentences": [{"text": "Acme 宣布发布。", "evidence": [{"content_id": 2, "locator": "excerpt", "excerpt": "untrusted model text"}]}]}
+    },
+    {
+      "name": "uncited_conclusion",
+      "status": "succeeded",
+      "run_id": 72,
+      "want": "rejected",
+      "result": {"title_zh": "无依据结论", "sentences": [{"text": "没有任何引用的结论。", "evidence": []}]}
+    },
+    {
+      "name": "outside_snapshot_citation",
+      "status": "succeeded",
+      "run_id": 73,
+      "want": "rejected",
+      "result": {"title_zh": "虚构来源", "sentences": [{"text": "引用不存在内容。", "evidence": [{"content_id": 999, "locator": "excerpt"}]}]}
+    },
+    {
+      "name": "withdrawn_evidence",
+      "status": "succeeded",
+      "run_id": 74,
+      "want": "rejected",
+      "evidence": [
+        {"content_id": 2, "locator": "excerpt", "excerpt": "Acme announced a release."}
+      ],
+      "result": {"title_zh": "旧证据结论", "sentences": [{"text": "引用已撤回内容。", "evidence": [{"content_id": 9, "locator": "title"}]}]}
+    },
+    {
+      "name": "provider_unavailable",
+      "status": "degraded",
+      "reason_code": "ai_model_unavailable",
+      "want": "degraded"
+    }
+  ],
+  "extraction_cases": [
+    {
+      "name": "verified_facts",
+      "status": "succeeded",
+      "run_id": 81,
+      "want": "verified",
+      "result": {"entities": [{"entity_key": "acme", "entity_type": "organization", "canonical_name": "Acme"}], "claims": [{"claim": "Acme announced a release.", "evidence": [{"content_id": 2, "locator": "excerpt", "stance": "supports", "confidence": 90}]}]}
+    },
+    {
+      "name": "uncited_claim",
+      "status": "succeeded",
+      "run_id": 82,
+      "want": "rejected",
+      "result": {"entities": [], "claims": [{"claim": "Uncited conclusion.", "evidence": []}]}
+    },
+    {
+      "name": "withdrawn_claim_evidence",
+      "status": "succeeded",
+      "run_id": 83,
+      "want": "rejected",
+      "evidence": [
+        {"content_id": 2, "locator": "excerpt", "excerpt": "Acme announced a release."}
+      ],
+      "result": {"entities": [], "claims": [{"claim": "Claim based on withdrawn content.", "evidence": [{"content_id": 9, "locator": "title", "stance": "supports", "confidence": 90}]}]}
+    },
+    {
+      "name": "provider_unavailable",
+      "status": "degraded",
+      "reason_code": "ai_model_unavailable",
+      "want": "degraded"
+    }
+  ]
+}

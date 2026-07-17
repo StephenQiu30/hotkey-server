@@ -143,6 +143,9 @@ func extractedEventFacts(eventID int64, raw json.RawMessage, evidence []domain.E
 		})
 	}
 	for _, item := range output.Claims {
+		if len(item.Evidence) == 0 {
+			return ExtractedEventFacts{}, fmt.Errorf("claim requires evidence")
+		}
 		claimText := strings.TrimSpace(item.Claim)
 		claim := domain.Claim{ID: 1, Version: 1, EventID: eventID, NormalizedClaim: normalizedFactText(claimText), ClaimHash: factHash(normalizedFactText(claimText)), Confidence: 0, Evidence: make([]domain.ClaimEvidence, 0, len(item.Evidence))}
 		for _, citation := range item.Evidence {
