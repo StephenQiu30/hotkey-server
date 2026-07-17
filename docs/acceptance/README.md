@@ -67,6 +67,7 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | 007 | [内容标准化、去重与 MinIO 证据](007-内容标准化去重与MinIO证据验收.md) | accepted |
 | 008 | [AI Provider 与 Embedding 基础](008-AIProvider与Embedding基础验收.md) | accepted |
 | 009 | [多语言相关性匹配与反馈](009-多语言相关性匹配与反馈验收.md) | accepted |
+| 010 | [事件聚类生命周期与人工治理](010-事件聚类生命周期与人工治理验收.md) | pending |
 
 ## 变更记录
 
@@ -82,3 +83,4 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | v1.8 | 2026-07-17 | 同步 PLAN-009 独立最终复核提出的两项 P1 已完成定向整改；完整门禁与复审仍待完成，结论保持 pending。 |
 | v1.9 | 2026-07-17 | 记录 `d4efda5` 的 relevance-review 序列化修复及完整 `make ci`、PostgreSQL/Redis/MinIO integration race 通过；独立复审仍待完成，结论保持 pending。 |
 | v2.0 | 2026-07-17 | Acceptance-009 在 `d4efda5` 经非主要编写者 APPROVED 并归档为 accepted；PLAN-010 仍须独立完成自身 readiness。 |
+| v2.1 | 2026-07-17 | 创建 PLAN-010 实施前验收模板，固定候选上限、跨语言 F1、生命周期、事务回滚、人工锁、API 安全和独立复审门禁；结论保持 pending。 |
