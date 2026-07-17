@@ -7,10 +7,48 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/internal/modules/event/application"
 	"github.com/StephenQiu30/hotkey-server/internal/modules/event/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
+
+func (repository *Repository) PersistExtractedFacts(ctx context.Context, facts application.ExtractedEventFacts) (application.PersistedEventFacts, error) {
+	if !repository.available() {
+		return application.PersistedEventFacts{}, sharedrepository.ErrUnavailable
+	}
+	if err := facts.Validate(); err != nil {
+		return application.PersistedEventFacts{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	stored := application.PersistedEventFacts{Entities: make([]domain.Entity, 0, len(facts.Entities)), Claims: make([]domain.Claim, 0, len(facts.Claims))}
+	err := repository.withTransaction(ctx, func(ctx context.Context, _ database.Transaction) error {
+		for _, input := range facts.Entities {
+			entity, err := repository.SaveEntity(ctx, input.Entity)
+			if err != nil {
+				return err
+			}
+			if _, err := repository.SaveEntityAlias(ctx, domain.EntityAlias{EntityID: entity.ID, Alias: input.Alias, NormalizedAlias: input.NormalizedAlias, Language: input.Language, Origin: domain.FactOriginModel}); err != nil {
+				return err
+			}
+			if _, err := repository.SaveEventEntity(ctx, domain.EventEntity{EventID: facts.EventID, EntityID: entity.ID, Role: input.Role, Confidence: input.Confidence, Origin: domain.FactOriginModel}); err != nil {
+				return err
+			}
+			stored.Entities = append(stored.Entities, entity)
+		}
+		for _, input := range facts.Claims {
+			claim, err := repository.SaveClaim(ctx, input)
+			if err != nil {
+				return err
+			}
+			stored.Claims = append(stored.Claims, claim)
+		}
+		return nil
+	})
+	if err != nil {
+		return application.PersistedEventFacts{}, sharedrepository.MapError(err)
+	}
+	return stored, nil
+}
 
 func (repository *Repository) SaveEntity(ctx context.Context, entity domain.Entity) (domain.Entity, error) {
 	if !repository.available() {
@@ -43,6 +81,9 @@ RETURNING id, version, entity_key, entity_type, canonical_name, description, man
 				return nil
 			}
 			return fmt.Errorf("%w: entity is manually locked", sharedrepository.ErrConflict)
+		}
+		if stored.Name == entity.Name && stored.Description == entity.Description && stored.ManualLocked == entity.ManualLocked {
+			return nil
 		}
 		return transaction.SQL.QueryRowContext(ctx, `
 UPDATE entities SET canonical_name = $1, description = $2, manual_locked = $3, version = version + 1, updated_at = now()

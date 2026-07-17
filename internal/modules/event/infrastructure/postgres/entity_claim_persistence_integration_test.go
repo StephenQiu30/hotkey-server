@@ -74,6 +74,9 @@ func TestEntityFactPersistenceProtectsConfirmedAndLockedValues(t *testing.T) {
 	if _, err := repository.SaveEntityRelation(ctx, relation); !errors.Is(err, sharedrepository.ErrConflict) {
 		t.Fatalf("SaveEntityRelation(overwrite confirmed) error = %v, want conflict", err)
 	}
+	if _, err := runtime.SQL.Exec(`INSERT INTO entity_relations (from_entity_id, to_entity_id, relation_type, confidence, origin) VALUES ($1,$2,'invented',50,'model')`, first.ID, second.ID); err == nil {
+		t.Fatal("database accepted an uncontrolled entity relation type")
+	}
 	if _, err := runtime.SQL.Exec(`UPDATE entities SET manual_locked = true WHERE id = $1`, first.ID); err != nil {
 		t.Fatal(err)
 	}
