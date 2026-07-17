@@ -255,12 +255,16 @@ FROM event_contents WHERE event_id = $1 AND content_id = $2 FOR UPDATE`, source.
 			members = append(members, member)
 		}
 		newKey := "evt_" + repository.ids.New()
+		var fingerprint string
+		if err := transaction.SQL.QueryRowContext(ctx, `SELECT dedupe_key FROM contents WHERE id = $1`, members[0].ContentID).Scan(&fingerprint); err != nil {
+			return sharedrepository.MapError(err)
+		}
 		if err := transaction.SQL.QueryRowContext(ctx, `
-INSERT INTO events (event_key, title_zh, title_en, summary, lifecycle_status, first_seen_at, last_seen_at, representative_content_id)
-VALUES ($1, $2, $3, $4, 'detected', $5, $6, NULL) RETURNING id, version, created_at, updated_at`, newKey, source.TitleZH, source.TitleEN, source.Summary, source.FirstSeenAt, source.LastSeenAt).Scan(&created.ID, &created.Version, &created.FirstSeenAt, &created.LastSeenAt); err != nil {
+INSERT INTO events (event_key, event_fingerprint, fingerprint_version, title_zh, title_en, summary, lifecycle_status, first_seen_at, last_seen_at, representative_content_id)
+VALUES ($1, $2, 'content_dedupe_v1', $3, $4, $5, 'detected', $6, $7, NULL) RETURNING id, version, created_at, updated_at`, newKey, fingerprint, source.TitleZH, source.TitleEN, source.Summary, source.FirstSeenAt, source.LastSeenAt).Scan(&created.ID, &created.Version, &created.FirstSeenAt, &created.LastSeenAt); err != nil {
 			return err
 		}
-		created.EventKey, created.TitleZH, created.TitleEN, created.Summary, created.LifecycleStatus = newKey, source.TitleZH, source.TitleEN, source.Summary, domain.LifecycleDetected
+		created.EventKey, created.EventFingerprint, created.FingerprintVersion, created.TitleZH, created.TitleEN, created.Summary, created.LifecycleStatus = newKey, fingerprint, "content_dedupe_v1", source.TitleZH, source.TitleEN, source.Summary, domain.LifecycleDetected
 		created.FirstSeenAt, created.LastSeenAt = source.FirstSeenAt, source.LastSeenAt
 		contentIDs := make([]int64, 0, len(members))
 		for _, member := range members {
