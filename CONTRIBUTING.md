@@ -35,7 +35,7 @@ make ci
 make clean
 ```
 
-GitHub Actions 在推送到 `main` 和面向 `main` 的 Pull Request 中执行同一个 `make ci` 门禁。工作流、服务依赖或该命令的前置条件变更时，必须同步更新 [CI 运维手册](docs/operations/ci-quality-gate.md)、README 和本文档。
+GitHub Actions 在推送到 `main` 和面向 `main` 的 Pull Request 中执行同一个 `make ci` 门禁。工作流、服务依赖或该命令的前置条件变更时，必须同步更新 [CI 运维手册](docs/operations/001-本地与GitHub-CI质量门禁.md)、README 和本文档。
 
 推荐按职责拆分提交：
 

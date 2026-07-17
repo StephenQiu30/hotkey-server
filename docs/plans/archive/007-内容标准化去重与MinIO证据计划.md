@@ -51,7 +51,7 @@ depends_on: [PLAN-002, PLAN-006]
 | 动作 | 路径 | 职责 |
 |---|---|---|
 | 修改 | `docs/design/archive/003-数据库与数据生命周期设计.md`, `docs/design/archive/006-内容标准化去重与证据设计.md`, `docs/prd/archive/007-内容标准化去重与MinIO证据.md` | durable capture、未知指标、去重和证据边界 |
-| 创建 | `docs/operations/plan007-content-normalization-minio-evidence-upgrade.md` | 既有库的备份、受控回填、legacy-zero、验证和回退运行手册；不构成第二份 Schema |
+| 创建 | `docs/operations/002-内容标准化去重与MinIO证据升级.md` | 既有库的备份、受控回填、legacy-zero、验证和回退运行手册；不构成第二份 Schema |
 | 修改 | `db/schema.sql`, `internal/platform/database/model/{model,model_test}.go`, `internal/platform/database/database_integration_test.go`, `test/architecture/schema_test.go`, `test/tools/verify-schema.sh` | nullable metrics、dedupe metadata、ingestion status 和记录映射 |
 | 修改 | `internal/modules/source/domain/{collection,ports}.go`, `internal/modules/source/application/captured_item_reader.go`, `internal/modules/source/infrastructure/postgres/{collection_record,collection_repository}.go` | Source-owned capture read/bind/failure port |
 | 创建 | `internal/modules/ingestion/domain/{content,ports,errors}.go` | Content、去重结果、EvidenceStore、Repository 与生命周期契约 |
@@ -69,7 +69,7 @@ depends_on: [PLAN-002, PLAN-006]
 
 **Produces:** nullable Content/metric-snapshot 指标、`dedupe_reason`/`dedupe_version`、capture ingestion 状态及来源归属约束，以及 Source application 的窄 `CapturedItemReader`。
 
-**Files:** Modify `db/schema.sql`, `internal/platform/database/model/{model,model_test}.go`, `internal/platform/database/database_integration_test.go`, `test/architecture/schema_test.go`, `test/tools/verify-schema.sh`, `internal/modules/source/domain/{collection,ports}.go`, `internal/modules/source/application/captured_item_reader.go`, `internal/modules/source/infrastructure/postgres/{collection_record,collection_repository,collection_repository_integration_test}.go`, `internal/modules/source/{domain,application}/*_test.go`, `docs/operations/README.md`; Create `docs/operations/plan007-content-normalization-minio-evidence-upgrade.md`.
+**Files:** Modify `db/schema.sql`, `internal/platform/database/model/{model,model_test}.go`, `internal/platform/database/database_integration_test.go`, `test/architecture/schema_test.go`, `test/tools/verify-schema.sh`, `internal/modules/source/domain/{collection,ports}.go`, `internal/modules/source/application/captured_item_reader.go`, `internal/modules/source/infrastructure/postgres/{collection_record,collection_repository,collection_repository_integration_test}.go`, `internal/modules/source/{domain,application}/*_test.go`, `docs/operations/README.md`; Create `docs/operations/002-内容标准化去重与MinIO证据升级.md`.
 
 **Interfaces:**
 
@@ -253,7 +253,7 @@ func (s *Service) IngestRun(context.Context, IngestRunInput) (IngestRunResult, e
 **Files:** Create `docs/acceptance/archive/007-内容标准化去重与MinIO证据验收.md`; Modify `docs/acceptance/README.md`, `docs/operations/README.md`, `docs/prd/archive/007-内容标准化去重与MinIO证据.md`, `docs/plans/archive/007-内容标准化去重与MinIO证据计划.md`, indexes, `docs/README.md`, `README.md`.
 
 - [x] **RED:** 保存 Tasks 1–7 实际缺失 schema/metric/capture/object/permission 信号；禁止事后伪造。
-- [x] **GREEN:** 先执行 `外部 disposable MinIO fixture 已启动`，用可丢弃 PostgreSQL、Redis 与该 repo fixture 运行所有 Task 回归、`make ci`、schema/OpenAPI 验证和 Gin runtime HTTP；明确运行 `HOTKEY_TEST_DSN='postgres:///hotkey_plan007_test?sslmode=disable' HOTKEY_TEST_MINIO_ENDPOINT=127.0.0.1:19007 HOTKEY_TEST_MINIO_ACCESS_KEY=hotkey-plan007 HOTKEY_TEST_MINIO_SECRET_KEY=hotkey-plan007-secret HOTKEY_TEST_MINIO_BUCKET=hotkey-plan007 go test -tags=integration ./internal/modules/ingestion/application -run 'TestIngestRun(MinIOPostgresRollbackDeletesObject|MinIOPostgresReconcileDeletesOrphan)' -count=1`，并保存真实 `Head`/ListPrefix、无 asset/bind 与对账删除证据；结束时无论成功或失败都运行 `外部 disposable MinIO fixture 已停止`。在可恢复副本上按 `docs/operations/plan007-content-normalization-minio-evidence-upgrade.md` 完整演练，并保存 backup-list、回填/legacy-zero/正值聚合与 `db verify` 证据。确认 no-refetch、Content/snapshot unknown-vs-zero、跨来源临界 independent-report、object compensation、同来源/状态机绑定、deletion/idempotency、safe DTO。
+- [x] **GREEN:** 先执行 `外部 disposable MinIO fixture 已启动`，用可丢弃 PostgreSQL、Redis 与该 repo fixture 运行所有 Task 回归、`make ci`、schema/OpenAPI 验证和 Gin runtime HTTP；明确运行 `HOTKEY_TEST_DSN='postgres:///hotkey_plan007_test?sslmode=disable' HOTKEY_TEST_MINIO_ENDPOINT=127.0.0.1:19007 HOTKEY_TEST_MINIO_ACCESS_KEY=hotkey-plan007 HOTKEY_TEST_MINIO_SECRET_KEY=hotkey-plan007-secret HOTKEY_TEST_MINIO_BUCKET=hotkey-plan007 go test -tags=integration ./internal/modules/ingestion/application -run 'TestIngestRun(MinIOPostgresRollbackDeletesObject|MinIOPostgresReconcileDeletesOrphan)' -count=1`，并保存真实 `Head`/ListPrefix、无 asset/bind 与对账删除证据；结束时无论成功或失败都运行 `外部 disposable MinIO fixture 已停止`。在可恢复副本上按 `docs/operations/002-内容标准化去重与MinIO证据升级.md` 完整演练，并保存 backup-list、回填/legacy-zero/正值聚合与 `db verify` 证据。确认 no-refetch、Content/snapshot unknown-vs-zero、跨来源临界 independent-report、object compensation、同来源/状态机绑定、deletion/idempotency、safe DTO。
 - [x] **独立复核:** 非主要编写者检查设计/PRD/Plan、所有 007 提交、Source→Ingestion 边界、Schema/records、MinIO 故障、事务竞态、HTTP/OpenAPI、日志/指标脱敏、Acceptance 与 clean worktree。Critical/Important 必须修复并重跑。
 - [x] **归档:** 复核通过后 Acceptance-007 为 accepted，PRD/Plan-007 改 `archived/done`；PLAN-008 才成为自身审核后的 ready 候选。
 - [x] **提交:** `git add docs README.md && git commit -m "docs: archive ingestion plan"`。

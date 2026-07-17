@@ -4,7 +4,7 @@ doc_no: "002"
 audience: [Dev, QA, Ops]
 feature_area: 数据库升级
 purpose: 在不引入 migration 或运行时 DDL 的前提下，将既有 PLAN-006 数据库受控升级到 PLAN-007 Schema
-canonical_path: docs/operations/plan007-content-normalization-minio-evidence-upgrade.md
+canonical_path: docs/operations/002-内容标准化去重与MinIO证据升级.md
 status: accepted
 version: v1.0
 owner: HotKey Server Team

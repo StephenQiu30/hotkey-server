@@ -1,10 +1,10 @@
 ---
 layer: Operations
-doc_no: "008"
+doc_no: "003"
 audience: [Dev, QA, Ops]
 feature_area: 数据库升级
 purpose: 将空 AI 运行历史的 PLAN-007 数据库受控升级至 PLAN-008 AI Provider 与 Embedding Schema，并可精确回退
-canonical_path: docs/operations/plan008-ai-provider-embedding-upgrade.md
+canonical_path: docs/operations/003-AIProvider与Embedding升级.md
 status: accepted
 version: v0.9
 owner: HotKey Server Team

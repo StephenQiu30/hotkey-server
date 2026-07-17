@@ -28,7 +28,7 @@ triggers:
   - Provider、模型、向量空间、Schema、预算或回退契约变化
 downstream:
   - docs/plans/archive/008-AIProvider与Embedding基础计划.md
-  - docs/operations/plan008-ai-provider-embedding-upgrade.md
+  - docs/operations/003-AIProvider与Embedding升级.md
   - docs/acceptance/archive/008-AIProvider与Embedding基础验收.md
 ---
 
