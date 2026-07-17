@@ -84,6 +84,115 @@ func TestCandidateRecallRepositoryUsesHNSWVectorPath(t *testing.T) {
 	assertCandidateRecallVectorHNSW(t, runtime, fixture.contentID)
 }
 
+func TestCandidateRecallFingerprintRequiresCurrentVersionAndDailyBucket(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	fixture := seedCandidateRecallFixture(t, runtime, 1)
+	var fingerprint, version string
+	var seenAt time.Time
+	if err := runtime.SQL.QueryRow(`SELECT event_fingerprint, fingerprint_version, first_seen_at FROM events WHERE id = $1`, fixture.eventIDs[0]).Scan(&fingerprint, &version, &seenAt); err != nil {
+		t.Fatal(err)
+	}
+	for _, variant := range []struct {
+		name, fingerprintVersion string
+		firstSeenAt              time.Time
+	}{
+		{name: "old version", fingerprintVersion: "event_facts_v0", firstSeenAt: seenAt},
+		{name: "next bucket", fingerprintVersion: version, firstSeenAt: seenAt.Add(24 * time.Hour)},
+	} {
+		if _, err := runtime.SQL.Exec(`INSERT INTO events (event_key, event_fingerprint, fingerprint_version, title_zh, summary, lifecycle_status, first_seen_at, last_seen_at) VALUES ('evt-fingerprint-' || md5(random()::text), $1, $2, $3, '', 'active', $4, $4)`, fingerprint, variant.fingerprintVersion, variant.name, variant.firstSeenAt); err != nil {
+			t.Fatalf("insert %s candidate: %v", variant.name, err)
+		}
+	}
+	candidates, err := NewRepository(runtime).Fingerprint(ctx, fixture.contentID, application.FingerprintLimit)
+	if err != nil || len(candidates) != 1 || candidates[0].EventID != fixture.eventIDs[0] {
+		t.Fatalf("Fingerprint() = %#v/%v, want only current-version same-bucket candidate %d", candidates, err, fixture.eventIDs[0])
+	}
+}
+
+func TestCandidateRecallLexicalRequiresAcceptedMonitorRuleTerms(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	fixture := seedCandidateRecallFixture(t, runtime, 1, false)
+	candidates, err := NewRepository(runtime).Lexical(ctx, fixture.contentID, application.LexicalLimit)
+	if err != nil || len(candidates) != 0 {
+		t.Fatalf("Lexical() = %#v/%v, want no candidates without accepted Monitor rule terms", candidates, err)
+	}
+}
+
+func TestCandidateRecallTemporalUsesSharedSourceOrRegion(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	fixture := seedCandidateRecallFixture(t, runtime, 1)
+	now := time.Now().UTC()
+	sourceContentID := seedCandidateRepresentativeEvidence(t, runtime, fixture.sourceID)
+	var sourceCandidateID int64
+	if err := runtime.SQL.QueryRow(`INSERT INTO events (event_key, title_zh, summary, lifecycle_status, first_seen_at, last_seen_at) VALUES ('evt-source-scope-' || md5(random()::text), '同来源事件', '', 'active', $1, $1) RETURNING id`, now).Scan(&sourceCandidateID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`INSERT INTO event_contents (event_id, content_id, membership_score, evidence_role, origin) VALUES ($1,$2,80,'supporting','rule')`, sourceCandidateID, sourceContentID); err != nil {
+		t.Fatal(err)
+	}
+	regionCandidateID := seedTemporalRegionCandidate(t, runtime, now, "cn")
+	candidates, err := NewRepository(runtime).Temporal(ctx, fixture.contentID, application.TemporalLimit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := make(map[int64]bool, len(candidates))
+	for _, candidate := range candidates {
+		seen[candidate.EventID] = true
+	}
+	for _, eventID := range []int64{fixture.eventIDs[0], sourceCandidateID, regionCandidateID} {
+		if !seen[eventID] {
+			t.Fatalf("Temporal() omitted source/region eligible event %d: %#v", eventID, candidates)
+		}
+	}
+}
+
+func TestClusteringWriterCreatesVersionedFingerprintFromAcceptedFacts(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	fixture := seedCandidateRecallFixture(t, runtime, 0)
+	result, err := NewRepository(runtime).ApplyClustering(ctx, []domain.Decision{{
+		ContentID: fixture.contentID, CandidateEventKey: "__new_event__", ClusteringVersion: "v1", FeatureInputHash: strings.Repeat("f", 64),
+		Channel: domain.ChannelFingerprint, Decision: domain.DecisionNewEvent, DecisionOrigin: domain.DecisionOriginRule,
+	}})
+	if err != nil || result.Event == nil || !result.Created {
+		t.Fatalf("ApplyClustering() = %#v/%v", result, err)
+	}
+	if result.Event.FingerprintVersion != domain.EventFingerprintVersion || len(result.Event.EventFingerprint) != 64 {
+		t.Fatalf("created event fingerprint = %q/%q", result.Event.EventFingerprint, result.Event.FingerprintVersion)
+	}
+}
+
 func TestClusteringExecutionPersistsRecalledCandidateProvenance(t *testing.T) {
 	ctx := context.Background()
 	runtime, err := database.Open(ctx, postgresfixture.New(t))
@@ -130,8 +239,12 @@ func TestClusteringExecutionPersistsRecalledCandidateProvenance(t *testing.T) {
 	}
 }
 
-func seedCandidateRecallFixture(t *testing.T, runtime *database.Runtime, eventCount int) candidateRecallFixture {
+func seedCandidateRecallFixture(t *testing.T, runtime *database.Runtime, eventCount int, ruleTerms ...bool) candidateRecallFixture {
 	t.Helper()
+	includeRuleTerms := true
+	if len(ruleTerms) > 0 {
+		includeRuleTerms = ruleTerms[0]
+	}
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	var fixture candidateRecallFixture
 	var monitorID, configID int64
@@ -144,8 +257,15 @@ func seedCandidateRecallFixture(t *testing.T, runtime *database.Runtime, eventCo
 	if err := runtime.SQL.QueryRow(`INSERT INTO monitors (name, status) VALUES ('event-recall-' || md5(random()::text), 'draft') RETURNING id`).Scan(&monitorID); err != nil {
 		t.Fatalf("insert monitor: %v", err)
 	}
-	if err := runtime.SQL.QueryRow(`INSERT INTO monitor_config_versions (monitor_id, revision) VALUES ($1, 1) RETURNING id`, monitorID).Scan(&configID); err != nil {
+	if err := runtime.SQL.QueryRow(`INSERT INTO monitor_config_versions (monitor_id, revision, regions) VALUES ($1, 1, ARRAY['cn']) RETURNING id`, monitorID).Scan(&configID); err != nil {
 		t.Fatalf("insert monitor config: %v", err)
+	}
+	if includeRuleTerms {
+		for _, rule := range []struct{ ruleType, value string }{{ruleType: "entity", value: "shared"}, {ruleType: "keyword", value: "event"}} {
+			if _, err := runtime.SQL.Exec(`INSERT INTO monitor_rules (config_version_id, rule_type, operator, value, approval_status) VALUES ($1,$2,'contains',$3,'approved')`, configID, rule.ruleType, rule.value); err != nil {
+				t.Fatalf("insert %s rule: %v", rule.ruleType, err)
+			}
+		}
 	}
 	if _, err := runtime.SQL.Exec(`UPDATE monitors SET draft_config_version_id = $1 WHERE id = $2`, configID, monitorID); err != nil {
 		t.Fatalf("set monitor draft config: %v", err)
@@ -159,10 +279,18 @@ func seedCandidateRecallFixture(t *testing.T, runtime *database.Runtime, eventCo
 	if _, err := runtime.SQL.Exec(`INSERT INTO monitor_matches (monitor_id, monitor_config_version_id, content_id, rule_score, final_score, decision, algorithm_version, input_hash, scoring_version) VALUES ($1,$2,$3,90,90,'accepted','event-recall-v1',repeat('b',64),'event-recall-v1')`, monitorID, configID, fixture.contentID); err != nil {
 		t.Fatalf("insert accepted match: %v", err)
 	}
+	var fingerprintValue, fingerprintVersion any
+	if includeRuleTerms {
+		fingerprint, ok := domain.BuildEventFingerprint(domain.EventFingerprintFacts{EntityTerms: []string{"shared"}, ActionTerms: []string{"event"}, Regions: []string{"cn"}, PublishedAt: now})
+		if !ok {
+			t.Fatal("build fixture fingerprint")
+		}
+		fingerprintValue, fingerprintVersion = fingerprint.Value, fingerprint.Version
+	}
 	for index := 0; index < eventCount; index++ {
 		var eventID int64
-		seenAt := now.Add(-time.Duration(index) * time.Hour)
-		if err := runtime.SQL.QueryRow(`INSERT INTO events (event_key, event_fingerprint, fingerprint_version, title_zh, title_en, summary, lifecycle_status, first_seen_at, last_seen_at) VALUES ($1,repeat('d',64),'content_dedupe_v1','共享事件','Shared event','shared event evidence','active',$2,$2) RETURNING id`, fmt.Sprintf("evt-recall-%02d", index), seenAt).Scan(&eventID); err != nil {
+		seenAt := now
+		if err := runtime.SQL.QueryRow(`INSERT INTO events (event_key, event_fingerprint, fingerprint_version, title_zh, title_en, summary, lifecycle_status, first_seen_at, last_seen_at) VALUES ($1,$2,$3,'共享事件','Shared event','shared event evidence','active',$4,$4) RETURNING id`, fmt.Sprintf("evt-recall-%02d", index), fingerprintValue, fingerprintVersion, seenAt).Scan(&eventID); err != nil {
 			t.Fatalf("insert event %d: %v", index, err)
 		}
 		if _, err := runtime.SQL.Exec(`INSERT INTO monitor_events (monitor_id, event_id, relevance_score, final_score, first_matched_at, last_matched_at) VALUES ($1,$2,90,90,$3,$3)`, monitorID, eventID, seenAt); err != nil {
@@ -171,6 +299,30 @@ func seedCandidateRecallFixture(t *testing.T, runtime *database.Runtime, eventCo
 		fixture.eventIDs = append(fixture.eventIDs, eventID)
 	}
 	return fixture
+}
+
+func seedTemporalRegionCandidate(t *testing.T, runtime *database.Runtime, seenAt time.Time, region string) int64 {
+	t.Helper()
+	var monitorID, configID, eventID int64
+	if err := runtime.SQL.QueryRow(`INSERT INTO monitors (name) VALUES ('temporal-region-' || md5(random()::text)) RETURNING id`).Scan(&monitorID); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`INSERT INTO monitor_config_versions (monitor_id, revision, regions) VALUES ($1,1,ARRAY[$2]::text[]) RETURNING id`, monitorID, region).Scan(&configID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE monitor_config_versions SET state = 'published', config_hash = repeat('e',64), published_at = now() WHERE id = $1`, configID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE monitors SET status = 'active', published_config_version_id = $1 WHERE id = $2`, configID, monitorID); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`INSERT INTO events (event_key, title_zh, summary, lifecycle_status, first_seen_at, last_seen_at) VALUES ('evt-region-scope-' || md5(random()::text), '同区域事件', '', 'active', $1, $1) RETURNING id`, seenAt).Scan(&eventID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`INSERT INTO monitor_events (monitor_id, event_id, relevance_score, final_score, first_matched_at, last_matched_at) VALUES ($1,$2,80,80,$3,$3)`, monitorID, eventID, seenAt); err != nil {
+		t.Fatal(err)
+	}
+	return eventID
 }
 
 func seedCandidateRepresentativeEvidence(t *testing.T, runtime *database.Runtime, sourceID int64) int64 {

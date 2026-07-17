@@ -190,9 +190,17 @@ func (repository *Repository) createEventForContent(ctx context.Context, transac
 		return event, false, err
 	}
 	eventKey := "evt_" + repository.ids.New()
+	fingerprint, hasFingerprint, err := repository.fingerprintForContent(ctx, transaction, content.ID)
+	if err != nil {
+		return domain.Event{}, false, err
+	}
+	var fingerprintValue, fingerprintVersion any
+	if hasFingerprint {
+		fingerprintValue, fingerprintVersion = fingerprint.Value, fingerprint.Version
+	}
 	if _, err := transaction.ExecContext(ctx, `
 INSERT INTO events (event_key, event_fingerprint, fingerprint_version, title_zh, summary, lifecycle_status, first_seen_at, last_seen_at, representative_content_id)
-VALUES ($1,$2,'content_dedupe_v1',$3,'','detected',$4,$4,$5)`, eventKey, content.DedupeKey, clusteringTitle(content), content.PublishedAt, content.ID); err != nil {
+VALUES ($1,$2,$3,$4,'','detected',$5,$5,$6)`, eventKey, fingerprintValue, fingerprintVersion, clusteringTitle(content), content.PublishedAt, content.ID); err != nil {
 		return domain.Event{}, false, sharedrepository.MapError(err)
 	}
 	if _, err := transaction.ExecContext(ctx, `

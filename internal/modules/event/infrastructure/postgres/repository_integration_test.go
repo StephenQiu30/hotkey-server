@@ -179,8 +179,8 @@ func TestGovernanceRepositorySplitsWithMemberVersion(t *testing.T) {
 	if err != nil || created.ID == 0 || created.LifecycleStatus != domain.LifecycleDetected {
 		t.Fatalf("Split() = %#v/%v", created, err)
 	}
-	if created.EventFingerprint != "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" || created.FingerprintVersion != "content_dedupe_v1" {
-		t.Fatalf("Split() fingerprint = %q/%q, want moved content fingerprint/content_dedupe_v1", created.EventFingerprint, created.FingerprintVersion)
+	if created.EventFingerprint != "" || created.FingerprintVersion != "" {
+		t.Fatalf("Split() fingerprint = %q/%q, want none without accepted entity/action facts", created.EventFingerprint, created.FingerprintVersion)
 	}
 	if got, err := repository.Get(ctx, fixture.sourceID); err != nil {
 		t.Fatalf("Get(source) error = %v", err)
