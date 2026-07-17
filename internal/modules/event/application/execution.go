@@ -76,6 +76,7 @@ func (service *ClusteringExecutionService) Execute(ctx context.Context, input Cl
 		Candidates:        recall.Candidates,
 		Scores:            input.Scores,
 		HardConflicts:     input.HardConflicts,
+		VectorUnavailable: recall.VectorUnavailable,
 	})
 	if err != nil {
 		return ClusteringExecutionResult{}, err

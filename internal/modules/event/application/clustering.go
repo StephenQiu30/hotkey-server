@@ -15,6 +15,7 @@ type ClusteringInput struct {
 	Candidates        []domain.Candidate
 	Scores            map[string]domain.ScoreBreakdown
 	HardConflicts     map[string]bool
+	VectorUnavailable bool
 }
 
 func (input ClusteringInput) Validate() error {
@@ -64,7 +65,7 @@ func (service *ClusteringService) Evaluate(_ context.Context, input ClusteringIn
 			Decision: persistedDecision, DecisionOrigin: domain.DecisionOriginRule,
 			ReasonCodes:        candidateReasonCodes(persistedDecision, hardConflict, candidate),
 			EvidenceContentIDs: candidateEvidence(input.ContentID, candidate.EvidenceContentIDs),
-			FeatureSnapshot:    candidateFeatureSnapshot(candidate, hardConflict),
+			FeatureSnapshot:    candidateFeatureSnapshot(candidate, hardConflict, input.VectorUnavailable),
 		})
 	}
 	winner := -1
@@ -95,7 +96,7 @@ func (service *ClusteringService) Evaluate(_ context.Context, input ClusteringIn
 			FeatureInputHash: input.FeatureInputHash, Channel: domain.ChannelFingerprint, CandidateRank: 0,
 			Decision: domain.DecisionNewEvent, DecisionOrigin: domain.DecisionOriginRule,
 			ReasonCodes: []string{"no_candidate_accepted"}, EvidenceContentIDs: []int64{input.ContentID},
-			FeatureSnapshot: map[string]any{"candidate_count": len(candidates), "recall_channels": []string{}},
+			FeatureSnapshot: map[string]any{"candidate_count": len(candidates), "recall_channels": []string{}, "vector_unavailable": input.VectorUnavailable},
 		})
 	}
 	sort.SliceStable(decisions, func(i, j int) bool {
@@ -141,7 +142,7 @@ func candidateEvidence(contentID int64, candidateEvidence []int64) []int64 {
 	return evidence
 }
 
-func candidateFeatureSnapshot(candidate domain.Candidate, hardConflict bool) map[string]any {
+func candidateFeatureSnapshot(candidate domain.Candidate, hardConflict, vectorUnavailable bool) map[string]any {
 	channels := make([]string, 0, len(candidate.Sources()))
 	scores := make(map[string]float64, len(candidate.Sources()))
 	for _, source := range candidate.Sources() {
@@ -149,8 +150,9 @@ func candidateFeatureSnapshot(candidate domain.Candidate, hardConflict bool) map
 		scores[string(source.Channel)] = source.Score
 	}
 	return map[string]any{
-		"recall_channels": channels,
-		"recall_scores":   scores,
-		"hard_conflict":   hardConflict,
+		"recall_channels":    channels,
+		"recall_scores":      scores,
+		"hard_conflict":      hardConflict,
+		"vector_unavailable": vectorUnavailable,
 	}
 }

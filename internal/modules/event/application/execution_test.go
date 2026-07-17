@@ -47,4 +47,7 @@ func TestClusteringExecutionRetainsReviewWithoutMembership(t *testing.T) {
 	if !result.PendingReview || !result.VectorUnavailable || result.Event != nil || len(writer.decisions) != 1 || writer.decisions[0].Decision != domain.DecisionReview {
 		t.Fatalf("Execute() = %#v, decisions = %#v", result, writer.decisions)
 	}
+	if unavailable, ok := writer.decisions[0].FeatureSnapshot["vector_unavailable"].(bool); !ok || !unavailable {
+		t.Fatalf("decision snapshot must persist vector downgrade: %#v", writer.decisions[0].FeatureSnapshot)
+	}
 }

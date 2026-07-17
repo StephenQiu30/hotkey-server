@@ -106,3 +106,16 @@ func TestClusteringPersistsCandidateAuditInputs(t *testing.T) {
 		t.Fatalf("evidence content IDs = %#v", got)
 	}
 }
+
+func TestClusteringPersistsVectorDowngradeForNewEventDecision(t *testing.T) {
+	decisions, err := NewClusteringService().Evaluate(context.Background(), ClusteringInput{ContentID: 1, ClusteringVersion: "v1", FeatureInputHash: domain.FeatureInputHash("vector-downgrade"), Scores: map[string]domain.ScoreBreakdown{}, VectorUnavailable: true})
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if len(decisions) != 1 {
+		t.Fatalf("decisions = %#v", decisions)
+	}
+	if unavailable, ok := decisions[0].FeatureSnapshot["vector_unavailable"].(bool); !ok || !unavailable {
+		t.Fatalf("new event snapshot must persist vector downgrade: %#v", decisions[0].FeatureSnapshot)
+	}
+}

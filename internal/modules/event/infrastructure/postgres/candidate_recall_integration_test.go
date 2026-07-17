@@ -121,11 +121,12 @@ func TestClusteringExecutionPersistsRecalledCandidateProvenance(t *testing.T) {
 		t.Fatalf("Execute() = %#v", result)
 	}
 	var channelCount, reasonCount, evidenceCount int
-	if err := runtime.SQL.QueryRow(`SELECT jsonb_array_length(feature_snapshot->'recall_channels'), cardinality(reason_codes), cardinality(evidence_content_ids) FROM event_clustering_decisions WHERE content_id = $1 AND candidate_event_id = $2`, fixture.contentID, target.ID).Scan(&channelCount, &reasonCount, &evidenceCount); err != nil {
+	var vectorUnavailable bool
+	if err := runtime.SQL.QueryRow(`SELECT jsonb_array_length(feature_snapshot->'recall_channels'), cardinality(reason_codes), cardinality(evidence_content_ids), COALESCE((feature_snapshot->>'vector_unavailable')::boolean, false) FROM event_clustering_decisions WHERE content_id = $1 AND candidate_event_id = $2`, fixture.contentID, target.ID).Scan(&channelCount, &reasonCount, &evidenceCount, &vectorUnavailable); err != nil {
 		t.Fatal(err)
 	}
-	if channelCount != 3 || reasonCount != 4 || evidenceCount != 2 {
-		t.Fatalf("persisted recalled provenance = channels=%d reasons=%d evidence=%d", channelCount, reasonCount, evidenceCount)
+	if channelCount != 3 || reasonCount != 4 || evidenceCount != 2 || !vectorUnavailable {
+		t.Fatalf("persisted recalled provenance = channels=%d reasons=%d evidence=%d vector_unavailable=%t", channelCount, reasonCount, evidenceCount, vectorUnavailable)
 	}
 }
 
