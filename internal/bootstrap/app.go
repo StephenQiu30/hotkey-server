@@ -31,6 +31,10 @@ import (
 	intelligencepostgres "github.com/StephenQiu30/hotkey-server/internal/modules/intelligence/infrastructure/postgres"
 	intelligenceprovider "github.com/StephenQiu30/hotkey-server/internal/modules/intelligence/infrastructure/provider"
 	intelligencetransport "github.com/StephenQiu30/hotkey-server/internal/modules/intelligence/transport/http"
+	knowledgeapplication "github.com/StephenQiu30/hotkey-server/internal/modules/knowledge/application"
+	knowledgepostgres "github.com/StephenQiu30/hotkey-server/internal/modules/knowledge/infrastructure/postgres"
+	knowledgevault "github.com/StephenQiu30/hotkey-server/internal/modules/knowledge/infrastructure/vault"
+	knowledgetransport "github.com/StephenQiu30/hotkey-server/internal/modules/knowledge/transport/http"
 	monitorapplication "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/application"
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/infrastructure/postgres"
 	monitortransport "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/transport/http"
@@ -115,6 +119,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newEventSummaryService,
 				newEventClaimExtractionService,
 				monitorpostgres.NewPublishedCollectionTargetReader,
+				knowledgepostgres.NewRepository,
 			),
 			fx.Invoke(database.RegisterLifecycle),
 		)
@@ -161,9 +166,13 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newDeliverySubscriptionService,
 					reportpostgres.NewRepository,
 					newReportService,
+					newKnowledgeVaultWriter,
+					newKnowledgeProposalService,
+					newKnowledgeReconciler,
+					newKnowledgeHandler,
 					newJobService,
 				),
-				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes, registerJobRoutes),
+				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes, registerKnowledgeRoutes, registerJobRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -264,6 +273,10 @@ func registerDeliverySubscriptionRoutes(router *gin.Engine, service *deliveryapp
 
 func registerReportRoutes(router *gin.Engine, service *reportapplication.Service, authenticator httptransport.Authenticator) {
 	reporttransport.RegisterRoutes(router, service, authenticator)
+}
+
+func registerKnowledgeRoutes(router *gin.Engine, handler *knowledgetransport.Handler, authenticator httptransport.Authenticator) {
+	knowledgetransport.RegisterRoutes(router, handler, authenticator)
 }
 
 func registerJobRoutes(router *gin.Engine, service *operationsapplication.JobService, authenticator httptransport.Authenticator) {
@@ -417,6 +430,22 @@ func newMonitorService(runtime *database.Runtime, monitors *monitorpostgres.Repo
 
 func newReportService(repository *reportpostgres.Repository) (*reportapplication.Service, error) {
 	return reportapplication.NewService(repository)
+}
+
+func newKnowledgeProposalService(repository *knowledgepostgres.Repository) *knowledgeapplication.ProposalService {
+	return knowledgeapplication.NewProposalService(repository, repository)
+}
+
+func newKnowledgeReconciler(repository *knowledgepostgres.Repository, writer *knowledgevault.Writer) *knowledgeapplication.Reconciler {
+	return knowledgeapplication.NewReconciler(repository, writer)
+}
+
+func newKnowledgeVaultWriter(cfg config.Config) *knowledgevault.Writer {
+	return knowledgevault.NewWriter(cfg.VaultPath)
+}
+
+func newKnowledgeHandler(proposals *knowledgeapplication.ProposalService, repository *knowledgepostgres.Repository, reconcile *knowledgeapplication.Reconciler, writer *knowledgevault.Writer) *knowledgetransport.Handler {
+	return knowledgetransport.NewHandler(proposals, repository, reconcile, writer)
 }
 
 func newJobService(repository *operationspostgres.JobRepository, audit *operationspostgres.AuditWriter) (*operationsapplication.JobService, error) {

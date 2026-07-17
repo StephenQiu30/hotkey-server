@@ -8,6 +8,11 @@ import (
 	"strings"
 )
 
+const (
+	AutomaticRegionBegin = "<!-- HOTKEY:AUTO:BEGIN -->"
+	AutomaticRegionEnd   = "<!-- HOTKEY:AUTO:END -->"
+)
+
 type DocumentType string
 
 const (
@@ -64,6 +69,39 @@ type Proposal struct {
 	Status                                                           ProposalStatus
 }
 
+type Revision struct {
+	ID, DocumentID, RevisionNo, ProposalID   int64
+	Source                                   string
+	PreviousHash, NewHash, SnapshotObjectKey string
+	Frontmatter                              string
+}
+
+func (revision Revision) Validate() error {
+	if revision.DocumentID <= 0 || revision.RevisionNo < 0 || strings.TrimSpace(revision.Source) == "" || len(revision.NewHash) != 64 {
+		return fmt.Errorf("invalid knowledge revision")
+	}
+	switch revision.Source {
+	case "user", "proposal", "reconcile":
+	default:
+		return fmt.Errorf("invalid knowledge revision source")
+	}
+	return nil
+}
+
+type ReconciliationIssue struct {
+	Path, Kind, ExpectedHash, ActualHash string
+}
+
+type ReconciliationReport struct {
+	Scanned, Changed, Conflict int
+	Issues                     []ReconciliationIssue
+}
+
+type VaultFile struct {
+	Path string
+	Hash string
+}
+
 func (proposal Proposal) Validate() error {
 	if proposal.ID <= 0 || proposal.Version <= 0 || proposal.DocumentID <= 0 || proposal.BaseRevisionNo < 0 || len(proposal.BaseHash) != 64 || proposal.Status == "" {
 		return fmt.Errorf("invalid knowledge proposal")
@@ -87,4 +125,27 @@ func StablePath(root, kind, key string) (string, error) {
 		return "", fmt.Errorf("vault path escapes root")
 	}
 	return path, nil
+}
+
+// MergeAutomaticRegion changes only the generated region. Existing human
+// notes outside the markers are retained byte-for-byte. When a document has
+// no generated region yet, the region is appended instead of replacing it.
+func MergeAutomaticRegion(existing, generated string) (string, error) {
+	if strings.Contains(generated, AutomaticRegionBegin) || strings.Contains(generated, AutomaticRegionEnd) {
+		return "", fmt.Errorf("generated content must not contain automatic markers")
+	}
+	auto := AutomaticRegionBegin + "\n" + generated + "\n" + AutomaticRegionEnd
+	start := strings.Index(existing, AutomaticRegionBegin)
+	end := strings.Index(existing, AutomaticRegionEnd)
+	if start >= 0 || end >= 0 {
+		if start < 0 || end < start {
+			return "", fmt.Errorf("knowledge automatic region is malformed")
+		}
+		end += len(AutomaticRegionEnd)
+		return existing[:start] + auto + existing[end:], nil
+	}
+	if strings.TrimSpace(existing) == "" {
+		return auto + "\n", nil
+	}
+	return strings.TrimRight(existing, "\n") + "\n\n" + auto + "\n", nil
 }
