@@ -26,7 +26,7 @@ func (reader recallReaderFake) Vector(context.Context, int64, int) ([]domain.Can
 	return nil, reader.vectorErr
 }
 
-func TestRecallBoundDeduplicatesAndCapsTheUnion(t *testing.T) {
+func TestRecallCandidateLimitDeduplicatesAndCapsTheUnion(t *testing.T) {
 	candidates := make([]domain.Candidate, 0, domain.MaxCandidates+4)
 	for i := 0; i < domain.MaxCandidates+4; i++ {
 		candidates = append(candidates, domain.Candidate{EventID: int64(i + 1), EventKey: "evt_" + string(rune('a'+i)), Channel: domain.ChannelLexical, Score: float64(i)})
