@@ -14,7 +14,7 @@ inputs:
   - docs/prd/014-Obsidian知识提案修订与对账.md
   - docs/plans/archive/010-事件聚类生命周期与人工治理计划.md
   - docs/plans/archive/012-证据化事件摘要实体与主张计划.md
-  - docs/plans/013-Cron与River主链路编排计划.md
+  - docs/plans/archive/013-Cron与River主链路编排计划.md
 outputs:
   - knowledge 模块
   - Vault 原子投影与对账

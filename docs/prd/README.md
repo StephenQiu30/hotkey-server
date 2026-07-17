@@ -64,7 +64,7 @@ downstream:
 | [010](archive/010-事件聚类生命周期与人工治理.md) | 事件聚类、生命周期与人工治理 | P0 | P0 | 009 | archived | done |
 | [011](archive/011-热度趋势与监控排序.md) | 热度、趋势与监控排序 | P0 | P0 | 010 | archived | done |
 | [012](archive/012-证据化事件摘要实体与主张.md) | 证据化事件摘要、实体与主张 | P0 | P0 | 008, 010 | archived | done |
-| [013](013-Cron与River主链路编排.md) | Cron 与 River 主链路编排 | P0 | P0 | 006–012 | review | backlog |
+| [013](archive/013-Cron与River主链路编排.md) | Cron 与 River 主链路编排 | P0 | P0 | 006–012 | archived | done |
 | [014](014-Obsidian知识提案修订与对账.md) | Obsidian 知识提案、修订与对账 | P1 | P1 | 010, 012, 013 | review | backlog |
 | [015](015-日报周报与发布快照.md) | 日报、周报与发布快照 | P1 | P1 | 011, 012, 013 | review | backlog |
 | [016](016-邮件与RSS-Atom订阅交付.md) | 邮件与 RSS/Atom 订阅交付 | P1 | P1 | 014, 015 | review | backlog |
@@ -81,7 +81,7 @@ downstream:
                                       014 + 015 → 016
                                       001–016 → 017
 
-PRD-001–012 已移入 [`archive/`](archive/README.md)，均有对应 accepted 验收证据。PLAN-012 的事件智能闭环已通过离线评测与完整质量门禁；实际采集到长期线上质量的编排由 PLAN-013/017 验收。PLAN-013–017 保持 `backlog`，不得描述为正在实施。
+PRD-001–013 已移入 [`archive/`](archive/README.md)，均有对应 accepted 验收证据。PLAN-012 的事件智能闭环与 PLAN-013 的可恢复 P0 编排均通过离线评测和完整质量门禁；014–017 仍保持 `backlog`，不得描述为正在实施。
 
 ## 每个 PRD 的完成要求
 

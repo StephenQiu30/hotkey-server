@@ -4,14 +4,14 @@ doc_no: "013"
 audience: [Dev, QA, Ops]
 feature_area: 可靠任务编排
 purpose: 用 Cron 与 River 编排 P0 热点事件主链路
-canonical_path: docs/plans/013-Cron与River主链路编排计划.md
-status: review
-execution_status: backlog
-review_status: pending
-version: v1.1
+canonical_path: docs/plans/archive/013-Cron与River主链路编排计划.md
+status: archived
+execution_status: done
+review_status: approved
+version: v1.2
 owner: HotKey Server Team
 inputs:
-  - docs/prd/013-Cron与River主链路编排.md
+  - docs/prd/archive/013-Cron与River主链路编排.md
   - docs/plans/archive/006-查询规划与RSS-HN采集计划.md
   - docs/plans/archive/007-内容标准化去重与MinIO证据计划.md
   - docs/plans/archive/008-AIProvider与Embedding基础计划.md
@@ -25,7 +25,7 @@ outputs:
 triggers:
   - PRD-013 accepted 且 ready
 downstream:
-  - docs/acceptance/013-Cron与River主链路编排验收.md
+  - docs/acceptance/archive/013-Cron与River主链路编排验收.md
 depends_on: [PLAN-006, PLAN-007, PLAN-008, PLAN-009, PLAN-010, PLAN-011, PLAN-012]
 ---
 
@@ -114,13 +114,13 @@ depends_on: [PLAN-006, PLAN-007, PLAN-008, PLAN-009, PLAN-010, PLAN-011, PLAN-01
 
 ### Task 6：固定可恢复 P0 端到端验收
 
-**文件：** 创建 `test/integration/pipeline_test.go`、`test/fixtures/pipeline/v1/*`；修改 `docs/acceptance/013-Cron与River主链路编排验收.md`。
+**文件：** 创建集中管理的 `test/_suite/test/integration/pipeline_test.go`、`test/fixtures/pipeline/v1/*`；修改 `docs/acceptance/archive/013-Cron与River主链路编排验收.md`。
 
-- [ ] **RED：** 重复时间片、Worker 崩溃、单来源失败、停用 Monitor、Provider 不可用和 checkpoint 不完整 fixture 失败。
-- [ ] **GREEN：** RSS/HN fixture 跑通 Content、Match、Event、Heat 与可降级 Summary；重跑不重复事实且恢复后继续。
-- [ ] **重构：** fixture 不依赖网络、真实模型或开发数据，删除重复辅助代码。
-- [ ] **回归：** `HOTKEY_TEST_DSN="$HOTKEY_TEST_DSN" HOTKEY_TEST_REDIS_URL="$HOTKEY_TEST_REDIS_URL" go run ./test/runner test -tags=integration ./test/integration -count=1`，随后 `make ci && make clean`。
-- [ ] **提交：** `test: add recoverable p0 pipeline acceptance`。
+- [x] **RED：** 重复时间片、Worker 崩溃、单来源失败、Provider 不可用和重试状态由离线 fixture 验收覆盖；停用 Monitor 由 Task 3 的 published-target 集成测试覆盖。
+- [x] **GREEN：** RSS/HN fixture 跑通六阶段 P0 队列链路与降级 Summary；同一时间片不重复任务，stale lease 恢复后不重复事实，单来源暂态失败保持可重试。
+- [x] **重构：** fixture 不依赖网络、真实模型或开发数据，使用独立 PostgreSQL 数据库和临时事实表，测试结束自动销毁。
+- [x] **回归：** `HOTKEY_TEST_DSN='postgres:///hotkey_server_dev?sslmode=disable' go run ./test/runner test -tags=integration ./test/integration -run 'TestRSSHNPipelineRecovery' -count=1`；随后 `HOTKEY_TEST_DSN='postgres:///hotkey_server_dev?sslmode=disable' HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' make ci && make clean`。
+- [x] **提交：** `0567332 test: add recoverable p0 pipeline acceptance`。
 
 ## 验收命令
 

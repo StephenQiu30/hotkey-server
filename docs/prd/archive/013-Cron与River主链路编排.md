@@ -8,8 +8,8 @@ feature_area: 可靠任务编排
 purpose: 定义 Cron 调度与 River P0 主链路编排任务
 phase: P0
 priority: P0
-status: review
-execution_status: backlog
+status: archived
+execution_status: done
 version: v1.0
 owner: HotKey Server Team
 depends_on: [PRD-006, PRD-007, PRD-008, PRD-009, PRD-010, PRD-011, PRD-012]
@@ -17,7 +17,7 @@ design_refs:
   - docs/design/archive/002-后端单体架构设计.md
   - docs/design/archive/005-数据来源查询规划与采集设计.md
   - docs/design/012-监控调度与River流水线设计.md
-canonical_path: docs/prd/013-Cron与River主链路编排.md
+canonical_path: docs/prd/archive/013-Cron与River主链路编排.md
 inputs:
   - docs/design/archive/002-后端单体架构设计.md
   - docs/design/archive/005-数据来源查询规划与采集设计.md
@@ -27,8 +27,8 @@ outputs:
 triggers:
   - Job、幂等、检查点、重试或调度规则变化
 downstream:
-  - docs/plans/013-Cron与River主链路编排计划.md
-  - docs/acceptance/013-Cron与River主链路编排验收.md
+  - docs/plans/archive/013-Cron与River主链路编排计划.md
+  - docs/acceptance/archive/013-Cron与River主链路编排验收.md
 ---
 
 # Cron 与 River 主链路编排
