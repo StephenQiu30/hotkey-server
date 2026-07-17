@@ -137,6 +137,74 @@ func TestGovernanceRepositorySplitRejectsStaleMemberWithoutPartialMove(t *testin
 	}
 }
 
+func TestGovernanceRepositoryRollsBackMergeAndSplitOnMemberMoveFailure(t *testing.T) {
+	ctx := context.Background()
+	for _, operation := range []struct {
+		name string
+		run  func(*Repository, struct{ sourceID, targetID, sourceContentID int64 }) error
+	}{
+		{
+			name: "merge",
+			run: func(repository *Repository, fixture struct{ sourceID, targetID, sourceContentID int64 }) error {
+				_, err := repository.Merge(ctx, application.MergeCommand{SourceEventID: fixture.sourceID, TargetEventID: fixture.targetID, SourceExpectedVersion: 1, TargetExpectedVersion: 1, ReasonCode: "fault_injection"})
+				return err
+			},
+		},
+		{
+			name: "split",
+			run: func(repository *Repository, fixture struct{ sourceID, targetID, sourceContentID int64 }) error {
+				_, err := repository.Split(ctx, application.SplitCommand{SourceEventID: fixture.sourceID, SourceExpectedVersion: 1, Members: []application.SplitMember{{ContentID: fixture.sourceContentID, ExpectedVersion: 1}}, ReasonCode: "fault_injection"})
+				return err
+			},
+		},
+	} {
+		t.Run(operation.name, func(t *testing.T) {
+			runtime, err := database.Open(ctx, postgresfixture.New(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer runtime.Close()
+			if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+				t.Fatal(err)
+			}
+			repository := NewRepository(runtime)
+			fixture := seedEventFixture(t, runtime)
+			if _, err := runtime.SQL.Exec(`
+CREATE FUNCTION fail_event_member_move() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.event_id <> OLD.event_id THEN
+    RAISE EXCEPTION 'injected event member move failure';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER fail_event_member_move BEFORE UPDATE OF event_id ON event_contents
+FOR EACH ROW EXECUTE FUNCTION fail_event_member_move();`); err != nil {
+				t.Fatalf("install failure trigger: %v", err)
+			}
+			if err := operation.run(repository, fixture); err == nil {
+				t.Fatal("governance operation unexpectedly succeeded")
+			}
+			var sourceMembers, targetMembers, events, audits int
+			if err := runtime.SQL.QueryRow(`SELECT count(*) FROM event_contents WHERE event_id = $1`, fixture.sourceID).Scan(&sourceMembers); err != nil {
+				t.Fatal(err)
+			}
+			if err := runtime.SQL.QueryRow(`SELECT count(*) FROM event_contents WHERE event_id = $1`, fixture.targetID).Scan(&targetMembers); err != nil {
+				t.Fatal(err)
+			}
+			if err := runtime.SQL.QueryRow(`SELECT count(*) FROM events`).Scan(&events); err != nil {
+				t.Fatal(err)
+			}
+			if err := runtime.SQL.QueryRow(`SELECT count(*) FROM event_governance_audits`).Scan(&audits); err != nil {
+				t.Fatal(err)
+			}
+			if sourceMembers != 1 || targetMembers != 0 || events != 2 || audits != 0 {
+				t.Fatalf("members/events/audits = %d/%d/%d/%d, want 1/0/2/0 after rollback", sourceMembers, targetMembers, events, audits)
+			}
+		})
+	}
+}
+
 func seedEventFixture(t *testing.T, runtime *database.Runtime) struct{ sourceID, targetID, sourceContentID int64 } {
 	t.Helper()
 	var fixture struct{ sourceID, targetID, sourceContentID int64 }
