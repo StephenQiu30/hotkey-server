@@ -29,6 +29,9 @@ const (
 	ActionSourceDisabled             AuditAction = "source.disabled"
 	ActionSourceArchived             AuditAction = "source.archived"
 	ActionSourceRestored             AuditAction = "source.restored"
+	ActionSubscriptionCreated        AuditAction = "subscription.created"
+	ActionSubscriptionUpdated        AuditAction = "subscription.updated"
+	ActionSubscriptionTokenRotated   AuditAction = "subscription.token_rotated"
 
 	AuditResultSuccess AuditResult = "success"
 	AuditResultFailure AuditResult = "failure"
@@ -39,6 +42,7 @@ var allowedActions = map[AuditAction]struct{}{
 	ActionMonitorCreated: {}, ActionMonitorDraftUpdated: {}, ActionMonitorAICandidateCreated: {}, ActionMonitorAICandidateApproved: {}, ActionMonitorAICandidateRejected: {},
 	ActionMonitorPublished: {}, ActionMonitorPaused: {}, ActionMonitorResumed: {}, ActionMonitorArchived: {}, ActionMonitorRestored: {},
 	ActionSourceCreated: {}, ActionSourceUpdated: {}, ActionSourceEnabled: {}, ActionSourceDisabled: {}, ActionSourceArchived: {}, ActionSourceRestored: {},
+	ActionSubscriptionCreated: {}, ActionSubscriptionUpdated: {}, ActionSubscriptionTokenRotated: {},
 }
 
 var (
@@ -95,7 +99,7 @@ func (entry AuditEntry) Validate() error {
 }
 
 var safeMetadataKeys = map[string]struct{}{
-	"monitor_version": {}, "draft_version": {}, "source_version": {}, "config_version": {}, "revision": {}, "rule_count": {}, "source_count": {},
+	"monitor_version": {}, "draft_version": {}, "source_version": {}, "subscription_version": {}, "config_version": {}, "revision": {}, "rule_count": {}, "source_count": {},
 	"status": {}, "previous_status": {}, "approval_status": {}, "config_hash": {}, "published_at": {},
 	"enabled": {}, "deleted": {}, "credential_configured": {},
 }
@@ -149,7 +153,7 @@ func SanitizeMetadata(metadata map[string]any) map[string]any {
 
 func validMetadataValue(key string, value any) bool {
 	switch key {
-	case "monitor_version", "draft_version", "source_version", "config_version", "revision", "rule_count", "source_count":
+	case "monitor_version", "draft_version", "source_version", "subscription_version", "config_version", "revision", "rule_count", "source_count":
 		switch value.(type) {
 		case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 			return true
@@ -187,7 +191,7 @@ func validActorType(value string) bool {
 }
 
 func validResourceType(value string) bool {
-	return value == "monitor" || value == "source_connection"
+	return value == "monitor" || value == "source_connection" || value == "report_subscription"
 }
 
 func validRequestID(value string) bool {

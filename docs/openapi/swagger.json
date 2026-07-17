@@ -3165,6 +3165,307 @@
                 }
             }
         },
+        "/api/v1/report-subscriptions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "delivery"
+                ],
+                "summary": "List the current user's report subscriptions",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-array_http_SubscriptionResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "delivery"
+                ],
+                "summary": "Create a report subscription",
+                "parameters": [
+                    {
+                        "description": "subscription",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.CreateSubscriptionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_SubscriptionSecretResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/report-subscriptions/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "delivery"
+                ],
+                "summary": "Get a report subscription",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "subscription ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_SubscriptionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "delivery"
+                ],
+                "summary": "Update a report subscription",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "subscription ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "mutable subscription fields",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.UpdateSubscriptionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_SubscriptionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/report-subscriptions/{id}/rss-token/rotate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "delivery"
+                ],
+                "summary": "Rotate a private RSS token",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "subscription ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "expected version",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.RotateRSSTokenRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_SubscriptionSecretResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/reports": {
             "get": {
                 "security": [
@@ -5026,6 +5327,108 @@
                 }
             }
         },
+        "http.CreateSubscriptionRequest": {
+            "type": "object",
+            "required": [
+                "channel",
+                "report_type",
+                "schedule",
+                "timezone"
+            ],
+            "properties": {
+                "channel": {
+                    "type": "string",
+                    "enum": [
+                        "email",
+                        "rss"
+                    ]
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "monitor_id": {
+                    "type": "integer"
+                },
+                "recipient": {
+                    "type": "string"
+                },
+                "report_type": {
+                    "type": "string",
+                    "enum": [
+                        "daily",
+                        "weekly"
+                    ]
+                },
+                "schedule": {
+                    "type": "string"
+                },
+                "timezone": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.DeliveryEmptyResponse": {
+            "type": "object"
+        },
+        "http.DeliveryResult-array_http_SubscriptionResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.SubscriptionResponse"
+                    }
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.DeliveryResult-http_DeliveryEmptyResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.DeliveryEmptyResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.DeliveryResult-http_SubscriptionResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.SubscriptionResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.DeliveryResult-http_SubscriptionSecretResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.SubscriptionSecretResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "http.EventMemberPageResponse": {
             "type": "object",
             "properties": {
@@ -6587,6 +6990,17 @@
                 }
             }
         },
+        "http.RotateRSSTokenRequest": {
+            "type": "object",
+            "required": [
+                "expected_version"
+            ],
+            "properties": {
+                "expected_version": {
+                    "type": "integer"
+                }
+            }
+        },
         "http.SourceConfigDTO": {
             "type": "object",
             "properties": {
@@ -6840,6 +7254,49 @@
                 }
             }
         },
+        "http.SubscriptionResponse": {
+            "type": "object",
+            "properties": {
+                "channel": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "monitor_id": {
+                    "type": "integer"
+                },
+                "recipient": {
+                    "type": "string"
+                },
+                "report_type": {
+                    "type": "string"
+                },
+                "schedule": {
+                    "type": "string"
+                },
+                "timezone": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.SubscriptionSecretResponse": {
+            "type": "object",
+            "properties": {
+                "rss_token": {
+                    "type": "string"
+                },
+                "subscription": {
+                    "$ref": "#/definitions/http.SubscriptionResponse"
+                }
+            }
+        },
         "http.UpdateModelProfileRequest": {
             "type": "object",
             "properties": {
@@ -6910,6 +7367,29 @@
                     ]
                 },
                 "terms_policy_url": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.UpdateSubscriptionRequest": {
+            "type": "object",
+            "required": [
+                "expected_version"
+            ],
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "expected_version": {
+                    "type": "integer"
+                },
+                "recipient": {
+                    "type": "string"
+                },
+                "schedule": {
+                    "type": "string"
+                },
+                "timezone": {
                     "type": "string"
                 }
             }

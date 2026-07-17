@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	deliveryapplication "github.com/StephenQiu30/hotkey-server/internal/modules/delivery/application"
 	deliverypostgres "github.com/StephenQiu30/hotkey-server/internal/modules/delivery/infrastructure/postgres"
 	deliverytransport "github.com/StephenQiu30/hotkey-server/internal/modules/delivery/transport/http"
 	eventapplication "github.com/StephenQiu30/hotkey-server/internal/modules/event/application"
@@ -140,10 +141,11 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newIngestionContentQueryService,
 					newIngestionRelevanceAPIService,
 					deliverypostgres.NewRepository,
+					newDeliverySubscriptionService,
 					reportpostgres.NewRepository,
 					newReportService,
 				),
-				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerDeliveryRoutes, registerReportRoutes),
+				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -213,6 +215,10 @@ func registerDeliveryRoutes(router *gin.Engine, repository *deliverypostgres.Rep
 	deliverytransport.RegisterRoutes(router, repository)
 }
 
+func registerDeliverySubscriptionRoutes(router *gin.Engine, service *deliveryapplication.SubscriptionService, authenticator httptransport.Authenticator) {
+	deliverytransport.RegisterSubscriptionRoutes(router, service, authenticator)
+}
+
 func registerReportRoutes(router *gin.Engine, service *reportapplication.Service, authenticator httptransport.Authenticator) {
 	reporttransport.RegisterRoutes(router, service, authenticator)
 }
@@ -280,6 +286,10 @@ func newMonitorService(runtime *database.Runtime, monitors *monitorpostgres.Repo
 
 func newReportService(repository *reportpostgres.Repository) (*reportapplication.Service, error) {
 	return reportapplication.NewService(repository)
+}
+
+func newDeliverySubscriptionService(runtime *database.Runtime, repository *deliverypostgres.Repository, audit *operationspostgres.AuditWriter) (*deliveryapplication.SubscriptionService, error) {
+	return deliveryapplication.NewSubscriptionService(deliveryapplication.SubscriptionDependencies{Runtime: runtime, Store: repository, Audit: audit})
 }
 
 func newIdentityService(runtime *database.Runtime, cfg config.Config, verification *identityredis.VerificationStore) (*identityapplication.Service, error) {

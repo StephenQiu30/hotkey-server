@@ -110,6 +110,9 @@ func TestOpenAPIContract(t *testing.T) {
 		"/api/v1/reports/{id}":                                              {"get": {"200", "400", "401", "404", "503"}},
 		"/api/v1/reports/{id}/preview":                                      {"post": {"200", "400", "401", "404", "503"}},
 		"/api/v1/reports/{id}/publish":                                      {"post": {"200", "400", "401", "403", "404", "409", "503"}},
+		"/api/v1/report-subscriptions":                                     {"get": {"200", "401", "503"}, "post": {"201", "400", "401", "409", "503"}},
+		"/api/v1/report-subscriptions/{id}":                                {"get": {"200", "400", "401", "404", "503"}, "patch": {"200", "400", "401", "404", "409", "503"}},
+		"/api/v1/report-subscriptions/{id}/rss-token/rotate":               {"post": {"200", "400", "401", "404", "409", "503"}},
 	}
 	if len(document.Paths) != len(required) {
 		t.Fatalf("public path count = %d, want %d (%v)", len(document.Paths), len(required), document.Paths)
@@ -147,7 +150,7 @@ func TestOpenAPIContract(t *testing.T) {
 		}
 	}
 
-	for _, route := range []string{"/api/v1/auth/me", "/api/v1/auth/password", "/api/v1/users", "/api/v1/users/{id}", "/api/v1/users/{id}/restore", "/api/v1/monitors", "/api/v1/monitors/{id}", "/api/v1/monitors/{id}/draft", "/api/v1/monitors/{id}/draft/ai-candidates", "/api/v1/monitors/{id}/draft/rules/{rule_id}/approval", "/api/v1/monitors/{id}/preview", "/api/v1/monitors/{id}/publish", "/api/v1/monitors/{id}/pause", "/api/v1/monitors/{id}/resume", "/api/v1/monitors/{id}/archive", "/api/v1/monitors/{id}/restore", "/api/v1/source-connections", "/api/v1/source-connections/{id}", "/api/v1/source-connections/{id}/enable", "/api/v1/source-connections/{id}/disable", "/api/v1/source-connections/{id}/archive", "/api/v1/source-connections/{id}/restore", "/api/v1/collection-runs", "/api/v1/collection-runs/{id}/retry", "/api/v1/source-connections/{id}/health", "/api/v1/contents", "/api/v1/contents/{id}", "/api/v1/monitors/{id}/matches", "/api/v1/monitors/{id}/matches/{match_id}", "/api/v1/monitors/{id}/relevance-preview", "/api/v1/monitors/{id}/matches/{match_id}/feedback", "/api/v1/monitors/{id}/contents/{content_id}/feedback", "/api/v1/monitors/{id}/feedback/evaluation", "/api/v1/monitors/{id}/feedback/suggestions/refresh", "/api/v1/monitors/{id}/feedback/suggestions", "/api/v1/monitors/{id}/feedback/suggestions/{suggestion_id}/review", "/api/v1/ai/model-profiles", "/api/v1/ai/model-profiles/{id}", "/api/v1/ai/model-profiles/{id}/restore", "/api/v1/events", "/api/v1/events/{id}", "/api/v1/events/{id}/contents", "/api/v1/events/{id}/heat", "/api/v1/events/{id}/claims", "/api/v1/events/{id}/contents/{content_id}/lock", "/api/v1/events/{id}/lifecycle", "/api/v1/events/{id}/merge", "/api/v1/events/{id}/split", "/api/v1/reports", "/api/v1/reports/{id}", "/api/v1/reports/{id}/preview", "/api/v1/reports/{id}/publish"} {
+	for _, route := range []string{"/api/v1/auth/me", "/api/v1/auth/password", "/api/v1/users", "/api/v1/users/{id}", "/api/v1/users/{id}/restore", "/api/v1/monitors", "/api/v1/monitors/{id}", "/api/v1/monitors/{id}/draft", "/api/v1/monitors/{id}/draft/ai-candidates", "/api/v1/monitors/{id}/draft/rules/{rule_id}/approval", "/api/v1/monitors/{id}/preview", "/api/v1/monitors/{id}/publish", "/api/v1/monitors/{id}/pause", "/api/v1/monitors/{id}/resume", "/api/v1/monitors/{id}/archive", "/api/v1/monitors/{id}/restore", "/api/v1/source-connections", "/api/v1/source-connections/{id}", "/api/v1/source-connections/{id}/enable", "/api/v1/source-connections/{id}/disable", "/api/v1/source-connections/{id}/archive", "/api/v1/source-connections/{id}/restore", "/api/v1/collection-runs", "/api/v1/collection-runs/{id}/retry", "/api/v1/source-connections/{id}/health", "/api/v1/contents", "/api/v1/contents/{id}", "/api/v1/monitors/{id}/matches", "/api/v1/monitors/{id}/matches/{match_id}", "/api/v1/monitors/{id}/relevance-preview", "/api/v1/monitors/{id}/matches/{match_id}/feedback", "/api/v1/monitors/{id}/contents/{content_id}/feedback", "/api/v1/monitors/{id}/feedback/evaluation", "/api/v1/monitors/{id}/feedback/suggestions/refresh", "/api/v1/monitors/{id}/feedback/suggestions", "/api/v1/monitors/{id}/feedback/suggestions/{suggestion_id}/review", "/api/v1/ai/model-profiles", "/api/v1/ai/model-profiles/{id}", "/api/v1/ai/model-profiles/{id}/restore", "/api/v1/events", "/api/v1/events/{id}", "/api/v1/events/{id}/contents", "/api/v1/events/{id}/heat", "/api/v1/events/{id}/claims", "/api/v1/events/{id}/contents/{content_id}/lock", "/api/v1/events/{id}/lifecycle", "/api/v1/events/{id}/merge", "/api/v1/events/{id}/split", "/api/v1/reports", "/api/v1/reports/{id}", "/api/v1/reports/{id}/preview", "/api/v1/reports/{id}/publish", "/api/v1/report-subscriptions", "/api/v1/report-subscriptions/{id}", "/api/v1/report-subscriptions/{id}/rss-token/rotate"} {
 		var operations map[string]openAPIOperation
 		if err := json.Unmarshal(document.Paths[route], &operations); err != nil {
 			t.Fatalf("decode protected path %s: %v", route, err)
@@ -171,8 +174,30 @@ func TestOpenAPIContract(t *testing.T) {
 	assertSafeRelevanceOpenAPIDefinitions(t, document.Definitions)
 	assertFalseNegativeContentFeedbackOpenAPI(t, document.Paths)
 	assertSafeModelProfileOpenAPIDefinitions(t, document.Definitions)
+	assertSafeDeliveryOpenAPIDefinitions(t, document.Definitions)
 	assertDraftExpectedVersionOpenAPI(t, document.Definitions)
 	assertMonitorDraftDefaultsOpenAPI(t, document.Definitions)
+}
+
+func assertSafeDeliveryOpenAPIDefinitions(t *testing.T, definitions map[string]struct {
+	Properties map[string]json.RawMessage `json:"properties"`
+	Required   []string                   `json:"required"`
+}) {
+	t.Helper()
+	response, ok := definitions["http.SubscriptionResponse"]
+	if !ok {
+		t.Fatal("missing http.SubscriptionResponse")
+	}
+	allowed := map[string]bool{"id": true, "version": true, "monitor_id": true, "report_type": true, "channel": true, "recipient": true, "timezone": true, "schedule": true, "enabled": true}
+	for field := range response.Properties {
+		if !allowed[field] {
+			t.Errorf("http.SubscriptionResponse exposes %q", field)
+		}
+	}
+	secret, ok := definitions["http.SubscriptionSecretResponse"]
+	if !ok || secret.Properties["rss_token"] == nil || secret.Properties["subscription"] == nil {
+		t.Fatal("subscription secret response must contain subscription and one-time rss_token")
+	}
 }
 
 func assertFalseNegativeContentFeedbackOpenAPI(t *testing.T, paths map[string]json.RawMessage) {

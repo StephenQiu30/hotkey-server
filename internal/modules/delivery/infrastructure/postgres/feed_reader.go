@@ -21,10 +21,10 @@ func (repository *Repository) ReadFeed(ctx context.Context, tokenHash string) (d
 	rows, err := repository.runtime.SQL.QueryContext(ctx, `
 SELECT r.title, r.period_end, ri.event_id, ri.title_snapshot, ri.summary_snapshot
 FROM report_subscriptions s
-JOIN reports r ON r.report_type = s.report_type AND r.status = 'published'
+JOIN reports r ON r.report_type = s.report_type AND r.monitor_id IS NOT DISTINCT FROM s.monitor_id AND r.status = 'published'
 JOIN report_items ri ON ri.report_id = r.id
 WHERE s.rss_token_hash = $1 AND s.channel = 'rss' AND s.enabled = true
-  AND r.period_end = (SELECT max(r2.period_end) FROM reports r2 WHERE r2.report_type = s.report_type AND r2.status = 'published')
+  AND r.period_end = (SELECT max(r2.period_end) FROM reports r2 WHERE r2.report_type = s.report_type AND r2.monitor_id IS NOT DISTINCT FROM s.monitor_id AND r2.status = 'published')
 ORDER BY ri.rank, ri.event_id`, tokenHash)
 	if err != nil {
 		return deliveryapplication.Feed{}, sharedrepository.MapError(err)

@@ -22,7 +22,7 @@ func TestDeliveryRepositoryIsIdempotentAndAppendsAttempts(t *testing.T) {
 	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
 		t.Fatal(err)
 	}
-	var userID, eventID int64
+	var userID, eventID, monitorID int64
 	if err := runtime.SQL.QueryRowContext(ctx, `INSERT INTO users (email, password_hash, display_name, role) VALUES ('delivery-' || md5(random()::text) || '@example.test', 'hash', 'delivery', 'viewer') RETURNING id`).Scan(&userID); err != nil {
 		t.Fatal(err)
 	}
@@ -36,6 +36,15 @@ func TestDeliveryRepositoryIsIdempotentAndAppendsAttempts(t *testing.T) {
 	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO report_items (report_id, event_id, rank, section, title_snapshot, summary_snapshot, heat_score_snapshot) VALUES (8101, $1, 1, 'events', 'Delivery event', 'Snapshot', 90)`, eventID); err != nil {
 		t.Fatal(err)
 	}
+	if err := runtime.SQL.QueryRowContext(ctx, `INSERT INTO monitors (name, status) VALUES ('delivery-scope-' || md5(random()::text), 'active') RETURNING id`).Scan(&monitorID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO reports (id, monitor_id, report_type, period_start, period_end, timezone, title, status, version_no) VALUES (8102, $1, 'daily', $2, $3, 'UTC', 'Scoped report', 'published', 1)`, monitorID, now.Add(time.Hour), now.Add(2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO report_items (report_id, event_id, rank, section, title_snapshot, summary_snapshot, heat_score_snapshot) VALUES (8102, $1, 1, 'events', 'Scoped event', 'Scoped snapshot', 95)`, eventID); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO report_subscriptions (id, user_id, report_type, channel, recipient, timezone, schedule) VALUES (8201, $1, 'daily', 'email', 'delivery@example.test', 'UTC', '0 8 * * *')`, userID); err != nil {
 		t.Fatal(err)
 	}
@@ -47,6 +56,22 @@ func TestDeliveryRepositoryIsIdempotentAndAppendsAttempts(t *testing.T) {
 	rssSubscription := domain.Subscription{ID: 8202, Version: 1, UserID: userID, ReportType: "daily", Channel: domain.ChannelRSS, TokenHash: domain.TokenHash("secret"), Timezone: "UTC", Schedule: "0 8 * * *", Enabled: true}
 	if err := repository.SaveSubscription(ctx, rssSubscription); err != nil {
 		t.Fatal(err)
+	}
+	scopedRSSSubscription := domain.Subscription{ID: 8203, Version: 1, UserID: userID, MonitorID: &monitorID, ReportType: "daily", Channel: domain.ChannelRSS, TokenHash: domain.TokenHash("scoped"), Timezone: "UTC", Schedule: "0 8 * * *", Enabled: true}
+	if err := repository.SaveSubscription(ctx, scopedRSSSubscription); err != nil {
+		t.Fatal(err)
+	}
+	createdSubscription, err := repository.CreateSubscription(ctx, domain.Subscription{UserID: userID, ReportType: "weekly", Channel: domain.ChannelRSS, TokenHash: domain.TokenHash("rotated"), Timezone: "Asia/Shanghai", Schedule: "0 9 * * 1", Enabled: true})
+	if err != nil || createdSubscription.ID <= 0 || createdSubscription.Version != 1 {
+		t.Fatalf("CreateSubscription() = %#v/%v", createdSubscription, err)
+	}
+	rotatedSubscription, err := repository.RotateRSSToken(ctx, createdSubscription.ID, userID, createdSubscription.Version, domain.TokenHash("rotated-again"))
+	if err != nil || rotatedSubscription.Version != 2 || rotatedSubscription.TokenHash != domain.TokenHash("rotated-again") {
+		t.Fatalf("RotateRSSToken() = %#v/%v", rotatedSubscription, err)
+	}
+	subscriptions, err := repository.ListSubscriptions(ctx, userID)
+	if err != nil || len(subscriptions) != 4 {
+		t.Fatalf("ListSubscriptions() = %#v/%v", subscriptions, err)
 	}
 	delivery := domain.Delivery{ID: 8301, ReportID: 8101, SubscriptionID: 8201, IdempotencyKey: "delivery-8101-8201", Status: domain.DeliveryQueued, NextAttemptAt: &now}
 	created, err := repository.CreateDelivery(ctx, delivery)
@@ -71,5 +96,9 @@ func TestDeliveryRepositoryIsIdempotentAndAppendsAttempts(t *testing.T) {
 	feed, err := repository.ReadFeed(ctx, rssSubscription.TokenHash)
 	if err != nil || feed.Title != "Delivery report" || len(feed.Items) != 1 {
 		t.Fatalf("ReadFeed() = %#v/%v", feed, err)
+	}
+	scopedFeed, err := repository.ReadFeed(ctx, scopedRSSSubscription.TokenHash)
+	if err != nil || scopedFeed.Title != "Scoped report" || len(scopedFeed.Items) != 1 {
+		t.Fatalf("Read scoped feed() = %#v/%v", scopedFeed, err)
 	}
 }

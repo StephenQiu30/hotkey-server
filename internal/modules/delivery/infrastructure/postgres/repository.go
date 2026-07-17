@@ -15,6 +15,11 @@ type Repository struct{ runtime *database.Runtime }
 
 var _ interface {
 	SaveSubscription(context.Context, domain.Subscription) error
+	CreateSubscription(context.Context, domain.Subscription) (domain.Subscription, error)
+	GetSubscription(context.Context, int64, int64) (domain.Subscription, error)
+	ListSubscriptions(context.Context, int64) ([]domain.Subscription, error)
+	UpdateSubscription(context.Context, domain.Subscription, int64) (domain.Subscription, error)
+	RotateRSSToken(context.Context, int64, int64, int64, string) (domain.Subscription, error)
 	CreateDelivery(context.Context, domain.Delivery) (bool, error)
 	UpdateDelivery(context.Context, domain.Delivery) error
 	AppendAttempt(context.Context, int64, int, string, int, string) error
@@ -29,15 +34,97 @@ func (repository *Repository) SaveSubscription(ctx context.Context, subscription
 	if err := subscription.Validate(); err != nil {
 		return fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
 	}
-	_, err := repository.runtime.SQL.ExecContext(ctx, `
-INSERT INTO report_subscriptions (id, version, user_id, report_type, channel, recipient, rss_token_hash, timezone, schedule, enabled)
-VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''), NULLIF($7, ''), $8, $9, $10)
+	_, err := deliveryQueryerFor(ctx, repository.runtime).ExecContext(ctx, `
+INSERT INTO report_subscriptions (id, version, user_id, monitor_id, report_type, channel, recipient, rss_token_hash, timezone, schedule, enabled)
+VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''), NULLIF($8, ''), $9, $10, $11)
 ON CONFLICT (id) DO UPDATE SET version = EXCLUDED.version, report_type = EXCLUDED.report_type,
-channel = EXCLUDED.channel, recipient = EXCLUDED.recipient, rss_token_hash = EXCLUDED.rss_token_hash,
+monitor_id = EXCLUDED.monitor_id, channel = EXCLUDED.channel, recipient = EXCLUDED.recipient, rss_token_hash = EXCLUDED.rss_token_hash,
 timezone = EXCLUDED.timezone, schedule = EXCLUDED.schedule, enabled = EXCLUDED.enabled, updated_at = now()`,
-		subscription.ID, subscription.Version, subscription.UserID, subscription.ReportType, subscription.Channel,
+		subscription.ID, subscription.Version, subscription.UserID, subscription.MonitorID, subscription.ReportType, subscription.Channel,
 		subscription.Recipient, subscription.TokenHash, subscription.Timezone, subscription.Schedule, subscription.Enabled)
 	return sharedrepository.MapError(err)
+}
+
+func (repository *Repository) CreateSubscription(ctx context.Context, subscription domain.Subscription) (domain.Subscription, error) {
+	if repository == nil || repository.runtime == nil {
+		return domain.Subscription{}, sharedrepository.ErrUnavailable
+	}
+	if err := subscription.ValidateCreate(); err != nil {
+		return domain.Subscription{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	return scanSubscription(deliveryQueryerFor(ctx, repository.runtime).QueryRowContext(ctx, `
+INSERT INTO report_subscriptions (user_id, monitor_id, report_type, channel, recipient, rss_token_hash, timezone, schedule, enabled)
+VALUES ($1, $2, $3, $4, NULLIF($5, ''), NULLIF($6, ''), $7, $8, $9)
+RETURNING `+subscriptionColumns,
+		subscription.UserID, subscription.MonitorID, subscription.ReportType, subscription.Channel, subscription.Recipient,
+		subscription.TokenHash, subscription.Timezone, subscription.Schedule, subscription.Enabled))
+}
+
+func (repository *Repository) GetSubscription(ctx context.Context, subscriptionID, userID int64) (domain.Subscription, error) {
+	if repository == nil || repository.runtime == nil || subscriptionID <= 0 || userID <= 0 {
+		return domain.Subscription{}, sharedrepository.ErrInvalidInput
+	}
+	return scanSubscription(deliveryQueryerFor(ctx, repository.runtime).QueryRowContext(ctx, `SELECT `+subscriptionColumns+` FROM report_subscriptions WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`, subscriptionID, userID))
+}
+
+func (repository *Repository) ListSubscriptions(ctx context.Context, userID int64) ([]domain.Subscription, error) {
+	if repository == nil || repository.runtime == nil || userID <= 0 {
+		return nil, sharedrepository.ErrInvalidInput
+	}
+	rows, err := deliveryQueryerFor(ctx, repository.runtime).QueryContext(ctx, `SELECT `+subscriptionColumns+` FROM report_subscriptions WHERE user_id = $1 AND deleted_at IS NULL ORDER BY id DESC`, userID)
+	if err != nil {
+		return nil, sharedrepository.MapError(err)
+	}
+	defer rows.Close()
+	items := make([]domain.Subscription, 0)
+	for rows.Next() {
+		subscription, err := scanSubscription(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, subscription)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, sharedrepository.MapError(err)
+	}
+	return items, nil
+}
+
+func (repository *Repository) UpdateSubscription(ctx context.Context, subscription domain.Subscription, expectedVersion int64) (domain.Subscription, error) {
+	if repository == nil || repository.runtime == nil || expectedVersion <= 0 {
+		return domain.Subscription{}, sharedrepository.ErrInvalidInput
+	}
+	if err := subscription.Validate(); err != nil {
+		return domain.Subscription{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	next, err := scanSubscription(deliveryQueryerFor(ctx, repository.runtime).QueryRowContext(ctx, `
+UPDATE report_subscriptions
+SET recipient = NULLIF($1, ''), timezone = $2, schedule = $3, enabled = $4, version = version + 1, updated_at = now()
+WHERE id = $5 AND user_id = $6 AND version = $7 AND deleted_at IS NULL
+RETURNING `+subscriptionColumns, subscription.Recipient, subscription.Timezone, subscription.Schedule, subscription.Enabled, subscription.ID, subscription.UserID, expectedVersion))
+	if errors.Is(err, sharedrepository.ErrNotFound) {
+		return domain.Subscription{}, sharedrepository.ErrConflict
+	}
+	return next, err
+}
+
+func (repository *Repository) RotateRSSToken(ctx context.Context, subscriptionID, userID, expectedVersion int64, tokenHash string) (domain.Subscription, error) {
+	if repository == nil || repository.runtime == nil || subscriptionID <= 0 || userID <= 0 || expectedVersion <= 0 {
+		return domain.Subscription{}, sharedrepository.ErrInvalidInput
+	}
+	candidate := domain.Subscription{ID: subscriptionID, Version: expectedVersion, UserID: userID, ReportType: "daily", Channel: domain.ChannelRSS, TokenHash: tokenHash, Timezone: "UTC", Schedule: "0 0 * * *"}
+	if err := candidate.Validate(); err != nil {
+		return domain.Subscription{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	next, err := scanSubscription(deliveryQueryerFor(ctx, repository.runtime).QueryRowContext(ctx, `
+UPDATE report_subscriptions
+SET rss_token_hash = $1, version = version + 1, updated_at = now()
+WHERE id = $2 AND user_id = $3 AND version = $4 AND channel = 'rss' AND deleted_at IS NULL
+RETURNING `+subscriptionColumns, tokenHash, subscriptionID, userID, expectedVersion))
+	if errors.Is(err, sharedrepository.ErrNotFound) {
+		return domain.Subscription{}, sharedrepository.ErrConflict
+	}
+	return next, err
 }
 
 func (repository *Repository) CreateDelivery(ctx context.Context, delivery domain.Delivery) (bool, error) {
@@ -96,4 +183,41 @@ func (repository *Repository) AppendAttempt(ctx context.Context, deliveryID int6
 INSERT INTO delivery_attempts (delivery_id, attempt_no, started_at, finished_at, status, response_code, error)
 VALUES ($1, $2, now(), now(), $3, NULLIF($4, 0), NULLIF($5, ''))`, deliveryID, attemptNo, status, responseCode, message)
 	return sharedrepository.MapError(err)
+}
+
+const subscriptionColumns = `id, version, user_id, monitor_id, report_type, channel, COALESCE(recipient, ''), COALESCE(rss_token_hash, ''), timezone, schedule, enabled`
+
+type deliveryRow interface {
+	Scan(...any) error
+}
+
+type deliveryQueryer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func deliveryQueryerFor(ctx context.Context, runtime *database.Runtime) deliveryQueryer {
+	if transaction, ok := database.TransactionFromContext(ctx); ok {
+		return transaction.SQL
+	}
+	return runtime.SQL
+}
+
+func scanSubscription(row deliveryRow) (domain.Subscription, error) {
+	var subscription domain.Subscription
+	var monitorID sql.NullInt64
+	var channel string
+	if err := row.Scan(&subscription.ID, &subscription.Version, &subscription.UserID, &monitorID, &subscription.ReportType, &channel, &subscription.Recipient, &subscription.TokenHash, &subscription.Timezone, &subscription.Schedule, &subscription.Enabled); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.Subscription{}, sharedrepository.ErrNotFound
+		}
+		return domain.Subscription{}, sharedrepository.MapError(err)
+	}
+	subscription.Channel = domain.Channel(channel)
+	if monitorID.Valid {
+		value := monitorID.Int64
+		subscription.MonitorID = &value
+	}
+	return subscription, nil
 }
