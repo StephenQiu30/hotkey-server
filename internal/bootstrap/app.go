@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	deliverypostgres "github.com/StephenQiu30/hotkey-server/internal/modules/delivery/infrastructure/postgres"
+	deliverytransport "github.com/StephenQiu30/hotkey-server/internal/modules/delivery/transport/http"
 	eventapplication "github.com/StephenQiu30/hotkey-server/internal/modules/event/application"
 	eventpostgres "github.com/StephenQiu30/hotkey-server/internal/modules/event/infrastructure/postgres"
 	eventtransport "github.com/StephenQiu30/hotkey-server/internal/modules/event/transport/http"
@@ -134,8 +136,9 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newMonitorService,
 					newIngestionContentQueryService,
 					newIngestionRelevanceAPIService,
+					deliverypostgres.NewRepository,
 				),
-				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes),
+				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerDeliveryRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -199,6 +202,10 @@ func registerIntelligenceRoutes(router *gin.Engine, service *intelligenceapplica
 
 func registerEventRoutes(router *gin.Engine, read *eventapplication.ReadService, lifecycle *eventapplication.LifecycleService, governance *eventapplication.GovernanceService, heat *eventapplication.HeatService, claims *eventapplication.ClaimService, authenticator httptransport.Authenticator) {
 	eventtransport.RegisterRoutesWithHeatAndClaims(router, read, lifecycle, governance, heat, claims, authenticator)
+}
+
+func registerDeliveryRoutes(router *gin.Engine, repository *deliverypostgres.Repository) {
+	deliverytransport.RegisterRoutes(router, repository)
 }
 
 // Fx does not infer interface bindings from a concrete repository. Keep the
