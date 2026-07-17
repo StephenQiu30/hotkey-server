@@ -63,7 +63,7 @@ downstream:
 | [008](008-AIProvider与Embedding基础.md) | AI Provider 与 Embedding 基础 | P0 | P0 | 002, 007 | archived | done |
 | [009](009-多语言相关性匹配与反馈.md) | 多语言相关性匹配与反馈 | P0 | P0 | 005, 007, 008 | archived | done |
 | [010](010-事件聚类生命周期与人工治理.md) | 事件聚类、生命周期与人工治理 | P0 | P0 | 009 | archived | done |
-| [011](011-热度趋势与监控排序.md) | 热度、趋势与监控排序 | P0 | P0 | 010 | accepted | in_progress |
+| [011](011-热度趋势与监控排序.md) | 热度、趋势与监控排序 | P0 | P0 | 010 | archived | done |
 | [012](012-证据化事件摘要实体与主张.md) | 证据化事件摘要、实体与主张 | P0 | P0 | 008, 010 | review | backlog |
 | [013](013-Cron与River主链路编排.md) | Cron 与 River 主链路编排 | P0 | P0 | 006–012 | review | backlog |
 | [014](014-Obsidian知识提案修订与对账.md) | Obsidian 知识提案、修订与对账 | P1 | P1 | 010, 012, 013 | review | backlog |
@@ -83,7 +83,7 @@ downstream:
                                       014 + 015 → 016
                                       001–016 → 017
 
-PLAN-008/009/010 已归档为 `archived/done`。PLAN-011 已完成独立准入复审并开始实施同步热度重算；实际采集到长期线上质量的编排由 PLAN-013/017 验收。PLAN-012–017 尚未通过各自的 Plan Review 和依赖准入，保持 `backlog`，不得描述为正在实施。
+PLAN-008–011 已归档为 `archived/done`。PLAN-011 已完成同步热度重算、版本化快照与排序验收；实际采集到长期线上质量的编排由 PLAN-013/017 验收。PLAN-012–017 尚未通过各自的 Plan Review 和依赖准入，保持 `backlog`，不得描述为正在实施。
 
 ## 每个 PRD 的完成要求
 
