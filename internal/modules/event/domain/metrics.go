@@ -167,27 +167,28 @@ func CalculateTrend(current, previous float64) (TrendResult, error) {
 }
 
 type RankingInput struct {
-	RelevanceScore float64
-	HeatScore      float64
-	TrendScore     float64
-	FreshnessHours float64
-	FeedbackScore  *float64
+	RelevanceScore   float64
+	MinimumRelevance float64
+	HeatScore        float64
+	TrendScore       float64
+	FreshnessHours   float64
 }
 
 func RankMonitorEvent(input RankingInput) (float64, []string, error) {
-	if input.RelevanceScore < 0 || input.RelevanceScore > 100 || input.HeatScore < 0 || input.HeatScore > 100 || input.TrendScore < -100 || input.TrendScore > 100 || input.FreshnessHours < 0 {
+	if input.RelevanceScore < 0 || input.RelevanceScore > 100 || input.MinimumRelevance < 0 || input.MinimumRelevance > 100 || input.HeatScore < 0 || input.HeatScore > 100 || input.TrendScore < -100 || input.TrendScore > 100 || input.FreshnessHours < 0 || math.IsNaN(input.FreshnessHours) || math.IsInf(input.FreshnessHours, 0) {
 		return 0, nil, fmt.Errorf("invalid ranking input")
 	}
-	if input.FeedbackScore != nil && (*input.FeedbackScore < 0 || *input.FeedbackScore > 100) {
-		return 0, nil, fmt.Errorf("invalid feedback score")
+	if input.RelevanceScore < input.MinimumRelevance {
+		// A global heat spike must never promote content that did not meet the
+		// Monitor's relevance contract. Keep the relevance-only projection so
+		// callers can preserve a deterministic order among rejected records.
+		return roundScore(input.RelevanceScore), []string{"below_relevance_threshold"}, nil
 	}
-	freshness := math.Max(0, 100-math.Min(100, input.FreshnessHours/24*10))
+	// V1 uses the Design-010 24-hour half-life. Algorithm/version changes
+	// produce new snapshots rather than silently rewriting prior scores.
+	freshness := 100 * math.Exp(-math.Ln2*input.FreshnessHours/24)
 	trend := math.Max(0, input.TrendScore+100) / 2
-	feedback := 50.0
-	if input.FeedbackScore != nil {
-		feedback = *input.FeedbackScore
-	}
-	score := input.RelevanceScore*0.50 + input.HeatScore*0.20 + trend*0.15 + freshness*0.10 + feedback*0.05
+	score := input.RelevanceScore*0.55 + input.HeatScore*0.25 + trend*0.15 + freshness*0.05
 	reasons := []string{"relevance"}
 	if input.HeatScore >= 70 {
 		reasons = append(reasons, "heat")

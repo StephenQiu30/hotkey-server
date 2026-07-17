@@ -1,0 +1,33 @@
+{
+  "version": "ranking-v1",
+  "minimum_relevance": 60,
+  "minimum_rising_recall": 0.80,
+  "maximum_rising_false_positive_rate": 0.25,
+  "expected_top_20": [
+    "rise-01", "rise-02", "rise-03", "rise-04", "rise-05", "rise-06", "rise-07", "rise-08", "rise-09", "rise-10",
+    "stable-11", "stable-12", "stable-13", "stable-14", "stable-15", "stable-16", "stable-17", "stable-18", "stable-19", "stable-20"
+  ],
+  "items": [
+    {"id":"rise-01","relevance_score":100,"heat_score":80,"trend_score":20,"freshness_hours":1,"human_rising":true,"expected_rank":1,"expected_reason_codes":["relevance","heat","rising","fresh"]},
+    {"id":"rise-02","relevance_score":99,"heat_score":80,"trend_score":20,"freshness_hours":1,"human_rising":true,"expected_rank":2,"expected_reason_codes":["relevance","heat","rising","fresh"]},
+    {"id":"rise-03","relevance_score":98,"heat_score":80,"trend_score":20,"freshness_hours":1,"human_rising":true,"expected_rank":3,"expected_reason_codes":["relevance","heat","rising","fresh"]},
+    {"id":"rise-04","relevance_score":97,"heat_score":80,"trend_score":20,"freshness_hours":1,"human_rising":true,"expected_rank":4,"expected_reason_codes":["relevance","heat","rising","fresh"]},
+    {"id":"rise-05","relevance_score":96,"heat_score":80,"trend_score":20,"freshness_hours":1,"human_rising":true,"expected_rank":5,"expected_reason_codes":["relevance","heat","rising","fresh"]},
+    {"id":"rise-06","relevance_score":95,"heat_score":80,"trend_score":20,"freshness_hours":1,"human_rising":true,"expected_rank":6,"expected_reason_codes":["relevance","heat","rising","fresh"]},
+    {"id":"rise-07","relevance_score":94,"heat_score":80,"trend_score":20,"freshness_hours":1,"human_rising":true,"expected_rank":7,"expected_reason_codes":["relevance","heat","rising","fresh"]},
+    {"id":"rise-08","relevance_score":93,"heat_score":80,"trend_score":20,"freshness_hours":1,"human_rising":true,"expected_rank":8,"expected_reason_codes":["relevance","heat","rising","fresh"]},
+    {"id":"rise-09","relevance_score":92,"heat_score":80,"trend_score":20,"freshness_hours":1,"human_rising":false,"expected_rank":9,"expected_reason_codes":["relevance","heat","rising","fresh"]},
+    {"id":"rise-10","relevance_score":91,"heat_score":80,"trend_score":20,"freshness_hours":1,"human_rising":false,"expected_rank":10,"expected_reason_codes":["relevance","heat","rising","fresh"]},
+    {"id":"stable-11","relevance_score":80,"heat_score":80,"trend_score":0,"freshness_hours":1,"human_rising":false,"expected_rank":11,"expected_reason_codes":["relevance","heat","fresh"]},
+    {"id":"stable-12","relevance_score":79,"heat_score":80,"trend_score":0,"freshness_hours":1,"human_rising":false,"expected_rank":12,"expected_reason_codes":["relevance","heat","fresh"]},
+    {"id":"stable-13","relevance_score":78,"heat_score":80,"trend_score":0,"freshness_hours":1,"human_rising":false,"expected_rank":13,"expected_reason_codes":["relevance","heat","fresh"]},
+    {"id":"stable-14","relevance_score":77,"heat_score":80,"trend_score":0,"freshness_hours":1,"human_rising":false,"expected_rank":14,"expected_reason_codes":["relevance","heat","fresh"]},
+    {"id":"stable-15","relevance_score":76,"heat_score":80,"trend_score":0,"freshness_hours":1,"human_rising":false,"expected_rank":15,"expected_reason_codes":["relevance","heat","fresh"]},
+    {"id":"stable-16","relevance_score":75,"heat_score":80,"trend_score":0,"freshness_hours":1,"human_rising":false,"expected_rank":16,"expected_reason_codes":["relevance","heat","fresh"]},
+    {"id":"stable-17","relevance_score":74,"heat_score":80,"trend_score":0,"freshness_hours":1,"human_rising":false,"expected_rank":17,"expected_reason_codes":["relevance","heat","fresh"]},
+    {"id":"stable-18","relevance_score":73,"heat_score":80,"trend_score":0,"freshness_hours":1,"human_rising":false,"expected_rank":18,"expected_reason_codes":["relevance","heat","fresh"]},
+    {"id":"stable-19","relevance_score":72,"heat_score":80,"trend_score":0,"freshness_hours":1,"human_rising":false,"expected_rank":19,"expected_reason_codes":["relevance","heat","fresh"]},
+    {"id":"stable-20","relevance_score":71,"heat_score":80,"trend_score":0,"freshness_hours":1,"human_rising":false,"expected_rank":20,"expected_reason_codes":["relevance","heat","fresh"]},
+    {"id":"below-threshold","relevance_score":50,"heat_score":100,"trend_score":100,"freshness_hours":0,"human_rising":false,"expected_rank":21,"expected_reason_codes":["below_relevance_threshold"]}
+  ]
+}
