@@ -272,6 +272,24 @@ func TestConnectorBoundsPaginationAndRejectsUnsafeDestinations(t *testing.T) {
 	})
 }
 
+func TestConnectorHealthReportsBlockedDestination(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer server.Close()
+	connector := newTestConnector(t, server, 1, func(context.Context, string) ([]net.IPAddr, error) {
+		return []net.IPAddr{{IP: net.ParseIP("198.18.0.23")}}, nil
+	})
+
+	result := connector.Health(context.Background(), domain.SourceConnection{
+		ID: 7, SourceType: domain.SourceTypeRSS, Name: "Fixture RSS", Endpoint: "https://feeds.example.test/rss",
+		AuthType: domain.AuthTypeNone, Config: domain.DefaultSourceConfig(), Enabled: true,
+	})
+	if result.Healthy || result.DiagnosticCode != "destination_not_permitted" || result.ErrorKind != domain.CollectionErrorPermanent {
+		t.Fatalf("Health() = %#v, want permanent destination_not_permitted", result)
+	}
+}
+
 func newTestConnector(t *testing.T, server *httptest.Server, maxPages int, resolver lookupIPAddrFunc) *Connector {
 	t.Helper()
 	config := domain.DefaultSourceConfig()
