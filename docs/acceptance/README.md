@@ -6,7 +6,7 @@ feature_area: 文档治理
 purpose: 定义长期验收证据的结构、结论和归档边界
 canonical_path: docs/acceptance/README.md
 status: review
-version: v1.9
+version: v2.3
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -67,7 +67,7 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | 007 | [内容标准化、去重与 MinIO 证据](007-内容标准化去重与MinIO证据验收.md) | accepted |
 | 008 | [AI Provider 与 Embedding 基础](008-AIProvider与Embedding基础验收.md) | accepted |
 | 009 | [多语言相关性匹配与反馈](009-多语言相关性匹配与反馈验收.md) | accepted |
-| 010 | [事件聚类生命周期与人工治理](010-事件聚类生命周期与人工治理验收.md) | pending |
+| 010 | [事件聚类生命周期与人工治理](010-事件聚类生命周期与人工治理验收.md) | accepted |
 | 011 | [热度趋势与监控排序](011-热度趋势与监控排序验收.md) | pending |
 | 012 | [证据化事件摘要实体与主张](012-证据化事件摘要实体与主张验收.md) | pending |
 | 013 | [Cron与River主链路编排](013-Cron与River主链路编排验收.md) | pending |
@@ -92,3 +92,4 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | v2.0 | 2026-07-17 | Acceptance-009 在 `d4efda5` 经非主要编写者 APPROVED 并归档为 accepted；PLAN-010 仍须独立完成自身 readiness。 |
 | v2.1 | 2026-07-17 | 创建 PLAN-010 实施前验收模板，固定候选上限、跨语言 F1、生命周期、事务回滚、人工锁、API 安全和独立复审门禁；结论保持 pending。 |
 | v2.2 | 2026-07-17 | PLAN-010 文档经非主要编写者复核 APPROVED 并进入 `accepted/ready`；Acceptance-010 仍保持实施前 pending。 |
+| v2.3 | 2026-07-17 | `804cac2` 通过全量门禁及独立实现复审，Acceptance-010 归档为 accepted；长期流水线质量由 PLAN-013/017 验收。 |
