@@ -35,7 +35,7 @@ type Subscription struct {
 }
 
 func (subscription Subscription) Validate() error {
-	if subscription.ID <= 0 || subscription.Version <= 0 || subscription.UserID <= 0 || strings.TrimSpace(subscription.Timezone) == "" || strings.TrimSpace(subscription.Schedule) == "" {
+	if subscription.ID <= 0 || subscription.Version <= 0 || subscription.UserID <= 0 || (subscription.ReportType != "daily" && subscription.ReportType != "weekly") || strings.TrimSpace(subscription.Timezone) == "" || strings.TrimSpace(subscription.Schedule) == "" {
 		return fmt.Errorf("invalid subscription")
 	}
 	if subscription.Channel == ChannelEmail && (strings.TrimSpace(subscription.Recipient) == "" || subscription.TokenHash != "") {
@@ -61,6 +61,11 @@ type Delivery struct {
 func (delivery Delivery) Validate() error {
 	if delivery.ID <= 0 || delivery.ReportID <= 0 || delivery.SubscriptionID <= 0 || strings.TrimSpace(delivery.IdempotencyKey) == "" {
 		return fmt.Errorf("invalid delivery")
+	}
+	switch delivery.Status {
+	case DeliveryQueued, DeliveryClaimed, DeliverySucceeded, DeliveryRetrying, DeliveryFailed, DeliveryCancelled:
+	default:
+		return fmt.Errorf("invalid delivery status")
 	}
 	return nil
 }
