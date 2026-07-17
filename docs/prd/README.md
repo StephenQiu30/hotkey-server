@@ -62,7 +62,7 @@ downstream:
 | [007](007-内容标准化去重与MinIO证据.md) | 内容标准化、去重与 MinIO 证据 | P0 | P0 | 002, 006 | archived | done |
 | [008](008-AIProvider与Embedding基础.md) | AI Provider 与 Embedding 基础 | P0 | P0 | 002, 007 | archived | done |
 | [009](009-多语言相关性匹配与反馈.md) | 多语言相关性匹配与反馈 | P0 | P0 | 005, 007, 008 | archived | done |
-| [010](010-事件聚类生命周期与人工治理.md) | 事件聚类、生命周期与人工治理 | P0 | P0 | 009 | review | backlog |
+| [010](010-事件聚类生命周期与人工治理.md) | 事件聚类、生命周期与人工治理 | P0 | P0 | 009 | accepted | ready |
 | [011](011-热度趋势与监控排序.md) | 热度、趋势与监控排序 | P0 | P0 | 010 | review | backlog |
 | [012](012-证据化事件摘要实体与主张.md) | 证据化事件摘要、实体与主张 | P0 | P0 | 008, 010 | review | backlog |
 | [013](013-Cron与River主链路编排.md) | Cron 与 River 主链路编排 | P0 | P0 | 006–012 | review | backlog |
@@ -83,7 +83,7 @@ downstream:
                                       014 + 015 → 016
                                       001–016 → 017
 
-PLAN-008 已由 Acceptance-008 独立验收并归档为 `archived/done`；PLAN-009 的 Task 1–6、两项 P1 整改和 `d4efda5` relevance-review 序列化修复已通过完整门禁并经非主要编写者 APPROVED，现为 `archived/done`。PLAN-010–017 仍为 `review/backlog`，必须逐项完成自己的 Plan Review 和 ready 门禁。
+PLAN-008 已由 Acceptance-008 独立验收并归档为 `archived/done`；PLAN-009 的 Task 1–6、两项 P1 整改和 `d4efda5` relevance-review 序列化修复已通过完整门禁并经非主要编写者 APPROVED，现为 `archived/done`。PLAN-010 已完成独立 Plan Review 并进入 `accepted/ready`，Acceptance-010 仍为实施前 pending；PLAN-011–017 仍为 `review/backlog`，必须逐项完成自己的 Plan Review 和 ready 门禁。
 
 ## 每个 PRD 的完成要求
 

@@ -84,3 +84,4 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | v1.9 | 2026-07-17 | 记录 `d4efda5` 的 relevance-review 序列化修复及完整 `make ci`、PostgreSQL/Redis/MinIO integration race 通过；独立复审仍待完成，结论保持 pending。 |
 | v2.0 | 2026-07-17 | Acceptance-009 在 `d4efda5` 经非主要编写者 APPROVED 并归档为 accepted；PLAN-010 仍须独立完成自身 readiness。 |
 | v2.1 | 2026-07-17 | 创建 PLAN-010 实施前验收模板，固定候选上限、跨语言 F1、生命周期、事务回滚、人工锁、API 安全和独立复审门禁；结论保持 pending。 |
+| v2.2 | 2026-07-17 | PLAN-010 文档经非主要编写者复核 APPROVED 并进入 `accepted/ready`；Acceptance-010 仍保持实施前 pending。 |
