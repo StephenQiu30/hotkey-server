@@ -403,15 +403,19 @@ FROM event_contents WHERE event_id = $1 AND content_id = $2 FOR UPDATE`, command
 }
 
 func mergeMembers(ctx context.Context, query *sql.Tx, sourceID, targetID int64, actor *int64) error {
-	rows, err := query.QueryContext(ctx, `SELECT id, version, event_id, content_id, membership_score, evidence_role, is_representative, origin, manual_locked FROM event_contents WHERE event_id = $1 ORDER BY content_id FOR UPDATE`, sourceID)
+	rows, err := query.QueryContext(ctx, `SELECT id, version, event_id, content_id, membership_score, evidence_role, is_representative, origin, manual_locked, created_at FROM event_contents WHERE event_id = $1 ORDER BY content_id FOR UPDATE`, sourceID)
 	if err != nil {
 		return err
 	}
-	members := make([]domain.EventMember, 0)
+	type persistedMember struct {
+		domain.EventMember
+		createdAt time.Time
+	}
+	members := make([]persistedMember, 0)
 	for rows.Next() {
-		var member domain.EventMember
+		var member persistedMember
 		var role, origin string
-		if err := rows.Scan(&member.ID, &member.Version, &member.EventID, &member.ContentID, &member.MembershipScore, &role, &member.Representative, &origin, &member.ManualLocked); err != nil {
+		if err := rows.Scan(&member.ID, &member.Version, &member.EventID, &member.ContentID, &member.MembershipScore, &role, &member.Representative, &origin, &member.ManualLocked, &member.createdAt); err != nil {
 			return err
 		}
 		member.EvidenceRole, member.Origin = domain.EvidenceRole(role), domain.MemberOrigin(origin)
@@ -431,7 +435,8 @@ func mergeMembers(ctx context.Context, query *sql.Tx, sourceID, targetID int64, 
 		var targetIDValue int64
 		var targetScore float64
 		var targetVersion int64
-		err := query.QueryRowContext(ctx, `SELECT id, membership_score, version FROM event_contents WHERE event_id = $1 AND content_id = $2 FOR UPDATE`, targetID, member.ContentID).Scan(&targetIDValue, &targetScore, &targetVersion)
+		var targetCreatedAt time.Time
+		err := query.QueryRowContext(ctx, `SELECT id, membership_score, version, created_at FROM event_contents WHERE event_id = $1 AND content_id = $2 FOR UPDATE`, targetID, member.ContentID).Scan(&targetIDValue, &targetScore, &targetVersion, &targetCreatedAt)
 		if err == sql.ErrNoRows {
 			if _, err := query.ExecContext(ctx, `UPDATE event_contents SET event_id = $1, version = version + 1, updated_at = now() WHERE id = $2 AND version = $3`, targetID, member.ID, member.Version); err != nil {
 				return err
@@ -445,8 +450,8 @@ func mergeMembers(ctx context.Context, query *sql.Tx, sourceID, targetID int64, 
 		if err != nil {
 			return err
 		}
-		if member.MembershipScore > targetScore {
-			if _, err := query.ExecContext(ctx, `UPDATE event_contents SET membership_score = $1, version = version + 1, updated_at = now() WHERE id = $2 AND version = $3`, member.MembershipScore, targetIDValue, targetVersion); err != nil {
+		if member.MembershipScore > targetScore || member.createdAt.Before(targetCreatedAt) {
+			if _, err := query.ExecContext(ctx, `UPDATE event_contents SET membership_score = GREATEST(membership_score, $1), created_at = LEAST(created_at, $2), version = version + 1, updated_at = now() WHERE id = $3 AND version = $4`, member.MembershipScore, member.createdAt, targetIDValue, targetVersion); err != nil {
 				return err
 			}
 		}
@@ -462,7 +467,7 @@ func mergeMembers(ctx context.Context, query *sql.Tx, sourceID, targetID int64, 
 }
 
 func mergeMonitorEvents(ctx context.Context, query *sql.Tx, sourceID, targetID int64, actor *int64) error {
-	rows, err := query.QueryContext(ctx, `SELECT monitor_id, relevance_score, final_score, first_matched_at, last_matched_at, status FROM monitor_events WHERE event_id = $1 ORDER BY monitor_id FOR UPDATE`, sourceID)
+	rows, err := query.QueryContext(ctx, `SELECT monitor_id, relevance_score, final_score, first_matched_at, last_matched_at, status, created_at FROM monitor_events WHERE event_id = $1 ORDER BY monitor_id FOR UPDATE`, sourceID)
 	if err != nil {
 		return err
 	}
@@ -470,12 +475,13 @@ func mergeMonitorEvents(ctx context.Context, query *sql.Tx, sourceID, targetID i
 		monitorID        int64
 		relevance, final float64
 		first, last      time.Time
+		createdAt        time.Time
 		status           string
 	}
 	items := make([]monitorEvent, 0)
 	for rows.Next() {
 		var item monitorEvent
-		if err := rows.Scan(&item.monitorID, &item.relevance, &item.final, &item.first, &item.last, &item.status); err != nil {
+		if err := rows.Scan(&item.monitorID, &item.relevance, &item.final, &item.first, &item.last, &item.status, &item.createdAt); err != nil {
 			return err
 		}
 		items = append(items, item)
@@ -495,9 +501,9 @@ func mergeMonitorEvents(ctx context.Context, query *sql.Tx, sourceID, targetID i
 			return err
 		}
 		if _, err := query.ExecContext(ctx, `
-INSERT INTO monitor_events (monitor_id, event_id, relevance_score, final_score, first_matched_at, last_matched_at, status)
-VALUES ($1,$2,$3,$4,$5,$6,$7)
-ON CONFLICT (monitor_id, event_id) DO UPDATE SET relevance_score = GREATEST(monitor_events.relevance_score, EXCLUDED.relevance_score), final_score = GREATEST(monitor_events.final_score, EXCLUDED.final_score), first_matched_at = LEAST(monitor_events.first_matched_at, EXCLUDED.first_matched_at), last_matched_at = GREATEST(monitor_events.last_matched_at, EXCLUDED.last_matched_at), updated_at = now()`, item.monitorID, targetID, item.relevance, item.final, item.first, item.last, item.status); err != nil {
+INSERT INTO monitor_events (monitor_id, event_id, relevance_score, final_score, first_matched_at, last_matched_at, status, created_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+ON CONFLICT (monitor_id, event_id) DO UPDATE SET relevance_score = GREATEST(monitor_events.relevance_score, EXCLUDED.relevance_score), final_score = GREATEST(monitor_events.final_score, EXCLUDED.final_score), first_matched_at = LEAST(monitor_events.first_matched_at, EXCLUDED.first_matched_at), last_matched_at = GREATEST(monitor_events.last_matched_at, EXCLUDED.last_matched_at), created_at = LEAST(monitor_events.created_at, EXCLUDED.created_at), updated_at = now()`, item.monitorID, targetID, item.relevance, item.final, item.first, item.last, item.status, item.createdAt); err != nil {
 			return err
 		}
 		action, reason := domain.AuditMemberMove, "merge_monitor_moved"

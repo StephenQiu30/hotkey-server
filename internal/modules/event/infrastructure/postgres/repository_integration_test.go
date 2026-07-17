@@ -212,9 +212,14 @@ func TestGovernanceRepositoryAuditsMonitorDeduplication(t *testing.T) {
 	if err := runtime.SQL.QueryRow(`INSERT INTO monitors (name) VALUES ('governance-monitor-' || md5(random()::text)) RETURNING id`).Scan(&monitorID); err != nil {
 		t.Fatalf("insert monitor: %v", err)
 	}
-	now := time.Now().UTC()
-	for _, eventID := range []int64{fixture.sourceID, fixture.targetID} {
-		if _, err := runtime.SQL.Exec(`INSERT INTO monitor_events (monitor_id, event_id, relevance_score, final_score, first_matched_at, last_matched_at) VALUES ($1,$2,80,80,$3,$3)`, monitorID, eventID, now); err != nil {
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	sourceCreatedAt := now.Add(-2 * time.Hour)
+	targetCreatedAt := now.Add(-time.Hour)
+	for _, item := range []struct {
+		eventID   int64
+		createdAt time.Time
+	}{{fixture.sourceID, sourceCreatedAt}, {fixture.targetID, targetCreatedAt}} {
+		if _, err := runtime.SQL.Exec(`INSERT INTO monitor_events (monitor_id, event_id, relevance_score, final_score, first_matched_at, last_matched_at, created_at) VALUES ($1,$2,80,80,$3,$3,$4)`, monitorID, item.eventID, now, item.createdAt); err != nil {
 			t.Fatalf("insert monitor event: %v", err)
 		}
 	}
@@ -227,6 +232,57 @@ func TestGovernanceRepositoryAuditsMonitorDeduplication(t *testing.T) {
 	}
 	if auditedMonitorID != monitorID {
 		t.Fatalf("deduplicated monitor = %d, want %d", auditedMonitorID, monitorID)
+	}
+	var retainedCreatedAt time.Time
+	if err := runtime.SQL.QueryRow(`SELECT created_at FROM monitor_events WHERE monitor_id = $1 AND event_id = $2`, monitorID, fixture.targetID).Scan(&retainedCreatedAt); err != nil {
+		t.Fatalf("read retained monitor relationship: %v", err)
+	}
+	if !retainedCreatedAt.Equal(sourceCreatedAt) {
+		t.Fatalf("retained monitor relationship created_at = %s, want earliest %s", retainedCreatedAt, sourceCreatedAt)
+	}
+}
+
+func TestGovernanceRepositoryPreservesDuplicateMemberScoreAndCreatedAt(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	repository := NewRepository(runtime)
+	fixture := seedEventFixture(t, runtime)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	sourceCreatedAt := now.Add(-2 * time.Hour)
+	targetCreatedAt := now.Add(-time.Hour)
+	if _, err := runtime.SQL.Exec(`UPDATE event_contents SET evidence_role = 'duplicate', membership_score = 90, created_at = $1 WHERE event_id = $2 AND content_id = $3`, sourceCreatedAt, fixture.sourceID, fixture.sourceContentID); err != nil {
+		t.Fatalf("prepare source duplicate member: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`INSERT INTO event_contents (event_id, content_id, membership_score, evidence_role, origin, created_at) VALUES ($1,$2,80,'supporting','rule',$3)`, fixture.targetID, fixture.sourceContentID, targetCreatedAt); err != nil {
+		t.Fatalf("insert target duplicate member: %v", err)
+	}
+	if _, err := repository.Merge(ctx, application.MergeCommand{SourceEventID: fixture.sourceID, TargetEventID: fixture.targetID, SourceExpectedVersion: 1, TargetExpectedVersion: 1, ReasonCode: "merge"}); err != nil {
+		t.Fatalf("Merge() error = %v", err)
+	}
+	var retainedScore float64
+	var retainedCreatedAt time.Time
+	if err := runtime.SQL.QueryRow(`SELECT membership_score, created_at FROM event_contents WHERE event_id = $1 AND content_id = $2`, fixture.targetID, fixture.sourceContentID).Scan(&retainedScore, &retainedCreatedAt); err != nil {
+		t.Fatalf("read retained member: %v", err)
+	}
+	if retainedScore != 90 {
+		t.Fatalf("retained member score = %v, want highest 90", retainedScore)
+	}
+	if !retainedCreatedAt.Equal(sourceCreatedAt) {
+		t.Fatalf("retained member created_at = %s, want earliest %s", retainedCreatedAt, sourceCreatedAt)
+	}
+	var sourceMembers int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM event_contents WHERE event_id = $1`, fixture.sourceID).Scan(&sourceMembers); err != nil {
+		t.Fatalf("count source members: %v", err)
+	}
+	if sourceMembers != 0 {
+		t.Fatalf("source members after duplicate merge = %d, want 0", sourceMembers)
 	}
 }
 
