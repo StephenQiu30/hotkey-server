@@ -867,6 +867,100 @@ func TestPlan009SchemaUpgradeRejectsLegacyScalarProvenance(t *testing.T) {
 	}
 }
 
+func TestPlan010SchemaUpgradeAndRollbackUsesPinnedPlan009Worktree(t *testing.T) {
+	baselineWorktree := plan009Worktree(t)
+	targetWorktree := plan010Worktree(t)
+	dsn := postgresfixture.New(t)
+
+	if output, err := runHistoricalDatabaseCommand(baselineWorktree, dsn, "init", "--empty-only", "--confirm-empty"); err != nil {
+		t.Fatalf("initialize detached PLAN-009 worktree database: %v\n%s", err, output)
+	}
+	if output, err := runHistoricalDatabaseCommand(baselineWorktree, dsn, "verify"); err != nil {
+		t.Fatalf("verify detached PLAN-009 worktree database: %v\n%s", err, output)
+	}
+	if output, err := runPostgreSQLTool(t, "psql", dsn, "-v", "ON_ERROR_STOP=1", "-c", plan010EventFixtureSQL); err != nil {
+		t.Fatalf("seed non-empty PLAN-009 event history: %v\n%s", err, output)
+	}
+
+	backup := filepath.Join(t.TempDir(), "plan010-plan009-before-upgrade.dump")
+	if output, err := runPostgreSQLTool(t, "pg_dump", dsn, "--format=custom", "--file="+backup); err != nil {
+		t.Fatalf("dump PLAN-009 database: %v\n%s", err, output)
+	}
+	if output, err := runPostgreSQLTool(t, "psql", dsn, "-v", "ON_ERROR_STOP=1", "-c", plan010UpgradeSQL(t)); err != nil {
+		t.Fatalf("apply exact PLAN-010 upgrade runbook: %v\n%s", err, output)
+	}
+	if output, err := runHistoricalDatabaseCommand(targetWorktree, dsn, "verify"); err != nil {
+		t.Fatalf("verify upgraded PLAN-010 catalog with pinned worktree: %v\n%s", err, output)
+	}
+
+	upgraded, err := Open(context.Background(), dsn)
+	if err != nil {
+		t.Fatalf("open upgraded PLAN-010 database: %v", err)
+	}
+	if _, err := upgraded.SQL.Exec(`
+INSERT INTO event_clustering_decisions (
+ content_id,candidate_event_key,clustering_version,feature_input_hash,channel,candidate_rank,
+ entity_action_score,semantic_score,temporal_score,location_score,source_context_score,membership_score,
+ decision,decision_origin
+) SELECT content_id,'__new_event__','plan010-v1',repeat('b',64),'lexical',51,0,0,0,0,0,0,'new_event','rule'
+FROM event_contents LIMIT 1`); err == nil {
+		_ = upgraded.Close()
+		t.Fatal("PLAN-010 upgrade accepted a candidate rank above 50")
+	} else {
+		assertPostgreSQLState(t, err, "23514")
+	}
+	if _, err := upgraded.SQL.Exec(`
+INSERT INTO event_clustering_decisions (
+ content_id,candidate_event_key,clustering_version,feature_input_hash,channel,candidate_rank,
+ entity_action_score,semantic_score,temporal_score,location_score,source_context_score,membership_score,
+ decision,decision_origin
+) SELECT content_id,'__new_event__','plan010-v1',repeat('c',64),'lexical',0,0,0,0,0,0,0,'new_event','rule'
+FROM event_contents LIMIT 1`); err != nil {
+		_ = upgraded.Close()
+		t.Fatalf("write PLAN-010 decision: %v", err)
+	}
+	if _, err := upgraded.SQL.Exec(`INSERT INTO event_governance_audits (event_id,action,reason_code) SELECT event_id,'evidence_recompute','plan010_upgrade_fixture' FROM event_contents LIMIT 1`); err != nil {
+		_ = upgraded.Close()
+		t.Fatalf("write PLAN-010 governance audit: %v", err)
+	}
+	if err := upgraded.Close(); err != nil {
+		t.Fatalf("close upgraded PLAN-010 database: %v", err)
+	}
+
+	if output, err := runPostgreSQLTool(t, "pg_restore", "--single-transaction", "--clean", "--if-exists", "--no-owner", "--dbname="+dsn, backup); err == nil {
+		t.Fatal("unprepared PLAN-010 restore succeeded, want dependency failure")
+	} else if output == "" {
+		t.Fatal("unprepared PLAN-010 restore failed without diagnostic output")
+	}
+	if output, err := runHistoricalDatabaseCommand(targetWorktree, dsn, "verify"); err != nil {
+		t.Fatalf("unprepared PLAN-010 restore was not atomic: %v\n%s", err, output)
+	}
+	if output, err := runPostgreSQLTool(t, "psql", dsn, "-v", "ON_ERROR_STOP=1", "-c", plan010RollbackPreparationSQL(t)); err != nil {
+		t.Fatalf("apply exact PLAN-010 rollback preparation: %v\n%s", err, output)
+	}
+	if output, err := runPostgreSQLTool(t, "pg_restore", "--single-transaction", "--clean", "--if-exists", "--no-owner", "--dbname="+dsn, backup); err != nil {
+		t.Fatalf("restore PLAN-009 backup after PLAN-010 preparation: %v\n%s", err, output)
+	}
+	if output, err := runPostgreSQLTool(t, "psql", dsn, "-v", "ON_ERROR_STOP=1", "-c", plan010RollbackNormalizationSQL(t)); err != nil {
+		t.Fatalf("normalize restored PLAN-009 index catalog: %v\n%s", err, output)
+	}
+	if output, err := runHistoricalDatabaseCommand(baselineWorktree, dsn, "verify"); err != nil {
+		t.Fatalf("verify restored database with detached PLAN-009 worktree: %v\n%s", err, output)
+	}
+	restored, err := Open(context.Background(), dsn)
+	if err != nil {
+		t.Fatalf("open restored PLAN-009 database: %v", err)
+	}
+	defer restored.Close()
+	var members int
+	if err := restored.SQL.QueryRow(`SELECT count(*) FROM event_contents ec JOIN events e ON e.id = ec.event_id WHERE e.event_key = 'evt-plan010-upgrade'`).Scan(&members); err != nil {
+		t.Fatalf("read restored PLAN-009 event history: %v", err)
+	}
+	if members != 1 {
+		t.Fatalf("restored PLAN-009 event members = %d, want 1", members)
+	}
+}
+
 func plan007UpgradedLegacyRuntime(t *testing.T) (*Runtime, string) {
 	t.Helper()
 	runtime := openTestRuntime(t)
@@ -981,6 +1075,22 @@ func plan009Worktree(t *testing.T) string {
 	t.Cleanup(func() {
 		if output, err := exec.Command("git", "-C", root, "worktree", "remove", "--force", worktree).CombinedOutput(); err != nil {
 			t.Errorf("remove detached PLAN-009 worktree: %v\n%s", err, output)
+		}
+	})
+	return worktree
+}
+
+func plan010Worktree(t *testing.T) string {
+	t.Helper()
+	root := filepath.Clean(filepath.Join("..", "..", ".."))
+	worktree := filepath.Join(t.TempDir(), "plan010-worktree")
+	command := exec.Command("git", "-C", root, "worktree", "add", "--detach", worktree, "4d5fba5")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("create detached PLAN-010 worktree: %v\n%s", err, output)
+	}
+	t.Cleanup(func() {
+		if output, err := exec.Command("git", "-C", root, "worktree", "remove", "--force", worktree).CombinedOutput(); err != nil {
+			t.Errorf("remove detached PLAN-010 worktree: %v\n%s", err, output)
 		}
 	})
 	return worktree
@@ -1101,6 +1211,63 @@ func plan009UpgradeSQL(t *testing.T) string {
 	return text[start : start+end+len("\nCOMMIT;")]
 }
 
+func plan010UpgradeSQL(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join("..", "..", "..", "docs", "operations", "plan010-schema-upgrade.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read PLAN-010 upgrade runbook: %v", err)
+	}
+	text := string(content)
+	start := strings.Index(text, "BEGIN;\n\nCREATE UNIQUE INDEX event_contents_one_current_event_uq")
+	if start < 0 {
+		t.Fatal("PLAN-010 upgrade runbook transaction is missing")
+	}
+	end := strings.Index(text[start:], "\nCOMMIT;")
+	if end < 0 {
+		t.Fatal("PLAN-010 upgrade runbook transaction has no COMMIT")
+	}
+	return text[start : start+end+len("\nCOMMIT;")]
+}
+
+func plan010RollbackPreparationSQL(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join("..", "..", "..", "docs", "operations", "plan010-schema-upgrade.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read PLAN-010 rollback runbook: %v", err)
+	}
+	text := string(content)
+	start := strings.Index(text, "BEGIN;\n\nDROP TABLE IF EXISTS event_clustering_decisions")
+	if start < 0 {
+		t.Fatal("PLAN-010 rollback preparation transaction is missing")
+	}
+	end := strings.Index(text[start:], "\nCOMMIT;")
+	if end < 0 {
+		t.Fatal("PLAN-010 rollback preparation transaction has no COMMIT")
+	}
+	return text[start : start+end+len("\nCOMMIT;")]
+}
+
+func plan010RollbackNormalizationSQL(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join("..", "..", "..", "docs", "operations", "plan010-schema-upgrade.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read PLAN-010 rollback normalization: %v", err)
+	}
+	text := string(content)
+	start := strings.Index(text, "BEGIN;\n\nDROP INDEX IF EXISTS ai_runs_reuse_inflight_uq")
+	if start < 0 {
+		t.Fatal("PLAN-010 rollback normalization transaction is missing")
+	}
+	end := strings.Index(text[start:], "\nCOMMIT;")
+	if end < 0 {
+		t.Fatal("PLAN-010 rollback normalization transaction has no COMMIT")
+	}
+	return text[start : start+end+len("\nCOMMIT;")]
+}
+
 func plan009RollbackNormalizationSQL(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join("..", "..", "..", "docs", "operations", "plan009-schema-upgrade.md")
@@ -1166,6 +1333,27 @@ INSERT INTO monitor_matches (
 )
 SELECT monitor.id, config.id, content.id, 70, 70, 'review', ARRAY['fixture'], 'plan009-upgrade-fixture'
 FROM monitor, config, content;`
+
+const plan010EventFixtureSQL = `
+WITH source AS (
+  INSERT INTO source_connections (source_type, name, endpoint)
+  VALUES ('rss', 'plan010-upgrade-source', 'https://plan010.example.test/feed')
+  RETURNING id
+), content AS (
+  INSERT INTO contents (
+    source_connection_id, external_id, content_type, title, canonical_url, published_at, fetched_at, dedupe_key
+  )
+  SELECT id, 'plan010-upgrade-content', 'article', 'Historical event fixture',
+         'https://plan010.example.test/content', now(), now(), repeat('d', 64)
+  FROM source
+  RETURNING id
+), event AS (
+  INSERT INTO events (event_key, title_zh, summary, lifecycle_status, first_seen_at, last_seen_at)
+  VALUES ('evt-plan010-upgrade', '历史事件', '', 'detected', now(), now())
+  RETURNING id
+)
+INSERT INTO event_contents (event_id, content_id, membership_score, evidence_role, origin)
+SELECT event.id, content.id, 90, 'primary', 'rule' FROM event, content;`
 
 func plan008RollbackPreparationSQL(t *testing.T) string {
 	t.Helper()
