@@ -21,6 +21,8 @@ var _ interface {
 	UpdateSubscription(context.Context, domain.Subscription, int64) (domain.Subscription, error)
 	RotateRSSToken(context.Context, int64, int64, int64, string) (domain.Subscription, error)
 	CreateDelivery(context.Context, domain.Delivery) (bool, error)
+	GetDelivery(context.Context, int64) (domain.Delivery, error)
+	ClaimDelivery(context.Context, int64) (domain.Delivery, error)
 	UpdateDelivery(context.Context, domain.Delivery) error
 	AppendAttempt(context.Context, int64, int, string, int, string) error
 } = (*Repository)(nil)
@@ -131,15 +133,23 @@ func (repository *Repository) CreateDelivery(ctx context.Context, delivery domai
 	if repository == nil || repository.runtime == nil {
 		return false, sharedrepository.ErrUnavailable
 	}
-	if err := delivery.Validate(); err != nil {
+	validation := delivery
+	if validation.ID <= 0 {
+		validation.ID = 1
+	}
+	if err := validation.Validate(); err != nil {
 		return false, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
 	}
 	var id int64
+	insertID := delivery.ID
+	if insertID <= 0 {
+		insertID = 0
+	}
 	err := repository.runtime.SQL.QueryRowContext(ctx, `
 INSERT INTO report_deliveries (id, report_id, subscription_id, idempotency_key, status, next_attempt_at, succeeded_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+VALUES (NULLIF($1, 0), $2, $3, $4, $5, $6, $7)
 ON CONFLICT (report_id, subscription_id) DO NOTHING RETURNING id`,
-		delivery.ID, delivery.ReportID, delivery.SubscriptionID, delivery.IdempotencyKey, delivery.Status,
+		insertID, delivery.ReportID, delivery.SubscriptionID, delivery.IdempotencyKey, delivery.Status,
 		delivery.NextAttemptAt, delivery.SucceededAt).Scan(&id)
 	if err == nil {
 		return true, nil
@@ -148,6 +158,57 @@ ON CONFLICT (report_id, subscription_id) DO NOTHING RETURNING id`,
 		return false, sharedrepository.MapError(err)
 	}
 	return false, nil
+}
+
+func (repository *Repository) GetDelivery(ctx context.Context, deliveryID int64) (domain.Delivery, error) {
+	if repository == nil || repository.runtime == nil || deliveryID <= 0 {
+		return domain.Delivery{}, sharedrepository.ErrInvalidInput
+	}
+	var delivery domain.Delivery
+	var next, succeeded sql.NullTime
+	err := repository.runtime.SQL.QueryRowContext(ctx, `SELECT id, report_id, subscription_id, idempotency_key, status, next_attempt_at, succeeded_at FROM report_deliveries WHERE id = $1`, deliveryID).Scan(&delivery.ID, &delivery.ReportID, &delivery.SubscriptionID, &delivery.IdempotencyKey, &delivery.Status, &next, &succeeded)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.Delivery{}, sharedrepository.ErrNotFound
+		}
+		return domain.Delivery{}, sharedrepository.MapError(err)
+	}
+	if next.Valid {
+		value := next.Time.UTC()
+		delivery.NextAttemptAt = &value
+	}
+	if succeeded.Valid {
+		value := succeeded.Time.UTC()
+		delivery.SucceededAt = &value
+	}
+	return delivery, nil
+}
+
+func (repository *Repository) ClaimDelivery(ctx context.Context, deliveryID int64) (domain.Delivery, error) {
+	if repository == nil || repository.runtime == nil || deliveryID <= 0 {
+		return domain.Delivery{}, sharedrepository.ErrInvalidInput
+	}
+	var delivery domain.Delivery
+	var next, succeeded sql.NullTime
+	err := repository.runtime.SQL.QueryRowContext(ctx, `
+UPDATE report_deliveries SET status = 'claimed', updated_at = now()
+WHERE id = $1 AND status IN ('queued','retrying') AND (next_attempt_at IS NULL OR next_attempt_at <= now())
+RETURNING id, report_id, subscription_id, idempotency_key, status, next_attempt_at, succeeded_at`, deliveryID).Scan(&delivery.ID, &delivery.ReportID, &delivery.SubscriptionID, &delivery.IdempotencyKey, &delivery.Status, &next, &succeeded)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.Delivery{}, sharedrepository.ErrConflict
+		}
+		return domain.Delivery{}, sharedrepository.MapError(err)
+	}
+	if next.Valid {
+		value := next.Time.UTC()
+		delivery.NextAttemptAt = &value
+	}
+	if succeeded.Valid {
+		value := succeeded.Time.UTC()
+		delivery.SucceededAt = &value
+	}
+	return delivery, nil
 }
 
 func (repository *Repository) UpdateDelivery(ctx context.Context, delivery domain.Delivery) error {
