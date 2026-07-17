@@ -96,3 +96,34 @@ func TestWorkerClassifiesPermanentAndCancelledFailures(t *testing.T) {
 		}
 	}
 }
+
+func TestWorkerReclaimsExpiredRunningJobs(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	store := NewStore(runtime)
+	if _, _, err := store.Enqueue(ctx, Job{Kind: KindRunRetention, UniqueKey: "worker-stale", Payload: Payload{EntityID: 1, EntityVersion: 1}, ScheduledAt: time.Now().UTC(), MaxAttempts: 3, Priority: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE river_job SET state = 'running', attempt = 1, attempted_at = now() - interval '2 minutes' WHERE unique_key = $1`, []byte("worker-stale")); err != nil {
+		t.Fatal(err)
+	}
+	worker := NewWorker(runtime, nil)
+	reclaimed, err := worker.ReclaimStale(ctx, time.Minute)
+	if err != nil || reclaimed != 1 {
+		t.Fatalf("ReclaimStale() = %d/%v, want 1/nil", reclaimed, err)
+	}
+	var state string
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT state FROM river_job WHERE unique_key = $1`, []byte("worker-stale")).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != "available" {
+		t.Fatalf("reclaimed state = %q, want available", state)
+	}
+}

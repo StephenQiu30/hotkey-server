@@ -160,9 +160,11 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 		options = append(options, apiOptions...)
 	}
 	if role.StartsWorker() {
-		options = append(options, fx.Invoke(registerWorkerLifecycle))
 		if usesDatabase {
+			options = append(options, fx.Provide(newQueueWorker, exposeWorkerRunner), fx.Invoke(registerPersistentWorkerLifecycle))
 			options = append(options, fx.Invoke(intelligenceapplication.RegisterRunLeaseReclaimerLifecycle))
+		} else {
+			options = append(options, fx.Invoke(registerWorkerLifecycle))
 		}
 	}
 	options = append(options, extra...)

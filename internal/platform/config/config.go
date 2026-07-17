@@ -12,17 +12,20 @@ import (
 )
 
 type Config struct {
-	Environment      string
-	Role             string
-	HTTPAddr         string
-	RequestTimeout   time.Duration
-	ShutdownTimeout  time.Duration
-	DatabaseURL      string
-	OTLPHTTPEndpoint string
-	MinIO            MinIOConfig
-	VaultPath        string
-	Authentication   AuthenticationConfig
-	AI               AIConfig
+	Environment        string
+	Role               string
+	HTTPAddr           string
+	RequestTimeout     time.Duration
+	ShutdownTimeout    time.Duration
+	WorkerPollInterval time.Duration
+	WorkerConcurrency  int
+	WorkerLeaseTimeout time.Duration
+	DatabaseURL        string
+	OTLPHTTPEndpoint   string
+	MinIO              MinIOConfig
+	VaultPath          string
+	Authentication     AuthenticationConfig
+	AI                 AIConfig
 }
 
 type MinIOConfig struct {
@@ -88,12 +91,15 @@ type AIConfig struct {
 
 func Default() Config {
 	return Config{
-		Environment:     "development",
-		Role:            "all",
-		HTTPAddr:        ":8080",
-		RequestTimeout:  15 * time.Second,
-		ShutdownTimeout: 15 * time.Second,
-		VaultPath:       "./var/vault",
+		Environment:        "development",
+		Role:               "all",
+		HTTPAddr:           ":8080",
+		RequestTimeout:     15 * time.Second,
+		ShutdownTimeout:    15 * time.Second,
+		WorkerPollInterval: time.Second,
+		WorkerConcurrency:  1,
+		WorkerLeaseTimeout: 5 * time.Minute,
+		VaultPath:          "./var/vault",
 		MinIO: MinIOConfig{
 			Endpoint: "localhost:9000",
 			Bucket:   "hotkey-evidence",
@@ -132,14 +138,17 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		Environment:      configString(v, "env"),
-		Role:             configString(v, "role"),
-		HTTPAddr:         configString(v, "http_addr"),
-		RequestTimeout:   configDuration(v, "request_timeout"),
-		ShutdownTimeout:  configDuration(v, "shutdown_timeout"),
-		DatabaseURL:      configString(v, "database_url"),
-		OTLPHTTPEndpoint: configString(v, "otlp_http_endpoint"),
-		VaultPath:        configString(v, "vault_path"),
+		Environment:        configString(v, "env"),
+		Role:               configString(v, "role"),
+		HTTPAddr:           configString(v, "http_addr"),
+		RequestTimeout:     configDuration(v, "request_timeout"),
+		ShutdownTimeout:    configDuration(v, "shutdown_timeout"),
+		WorkerPollInterval: configDuration(v, "worker_poll_interval"),
+		WorkerConcurrency:  configInt(v, "worker_concurrency"),
+		WorkerLeaseTimeout: configDuration(v, "worker_lease_timeout"),
+		DatabaseURL:        configString(v, "database_url"),
+		OTLPHTTPEndpoint:   configString(v, "otlp_http_endpoint"),
+		VaultPath:          configString(v, "vault_path"),
 		MinIO: MinIOConfig{
 			Endpoint:  configString(v, "minio_endpoint"),
 			AccessKey: configString(v, "minio_access_key"),
@@ -223,6 +232,12 @@ func (c Config) Validate() error {
 	if c.ShutdownTimeout <= 0 {
 		return errors.New("shutdown timeout must be positive")
 	}
+	if c.WorkerPollInterval < 0 || c.WorkerConcurrency < 0 || c.WorkerLeaseTimeout < 0 {
+		return errors.New("worker runtime settings cannot be negative")
+	}
+	if c.WorkerConcurrency > 64 {
+		return errors.New("worker concurrency must not exceed 64")
+	}
 	if c.Role != "worker" {
 		if strings.TrimSpace(c.HTTPAddr) == "" {
 			return errors.New("HTTP address is required for all and api roles")
@@ -291,6 +306,9 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("http_addr", cfg.HTTPAddr)
 	v.SetDefault("request_timeout", cfg.RequestTimeout)
 	v.SetDefault("shutdown_timeout", cfg.ShutdownTimeout)
+	v.SetDefault("worker_poll_interval", cfg.WorkerPollInterval)
+	v.SetDefault("worker_concurrency", cfg.WorkerConcurrency)
+	v.SetDefault("worker_lease_timeout", cfg.WorkerLeaseTimeout)
 	v.SetDefault("vault_path", cfg.VaultPath)
 	v.SetDefault("minio_endpoint", cfg.MinIO.Endpoint)
 	v.SetDefault("minio_bucket", cfg.MinIO.Bucket)
@@ -303,7 +321,7 @@ func setDefaults(v *viper.Viper, cfg Config) {
 
 func configKeys() []string {
 	return []string{
-		"env", "role", "http_addr", "request_timeout", "shutdown_timeout", "database_url", "otlp_http_endpoint",
+		"env", "role", "http_addr", "request_timeout", "shutdown_timeout", "worker_poll_interval", "worker_concurrency", "worker_lease_timeout", "database_url", "otlp_http_endpoint",
 		"minio_endpoint", "minio_access_key", "minio_secret_key", "minio_bucket",
 		"minio_use_ssl", "vault_path",
 		"jwt_secret", "jwt_issuer", "jwt_audience", "verification_hmac_secret", "redis_url", "smtp_enabled", "smtp_host", "smtp_port", "smtp_tls_mode", "smtp_username", "smtp_password", "smtp_from_email", "smtp_from_name", "cors_allowed_origins", "refresh_cookie_secure", "bootstrap_admin_email", "bootstrap_admin_password",
