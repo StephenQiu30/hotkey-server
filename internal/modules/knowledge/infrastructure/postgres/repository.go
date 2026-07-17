@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 
@@ -26,6 +27,9 @@ func (repository *Repository) GetDocument(id int64) (domain.Document, error) {
 SELECT id, version, revision_no, document_type, vault_path, coalesce(content_hash, ''), coalesce(generated_hash, ''), status, event_id, topic_id, report_id
 FROM knowledge_documents WHERE id = $1`, id).Scan(&document.ID, &document.Version, &document.RevisionNo, &document.Type, &document.VaultPath, &document.ContentHash, &document.GeneratedHash, &document.Status, &document.EventID, &document.TopicID, &document.ReportID)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return domain.Document{}, sharedrepository.ErrNotFound
+		}
 		return domain.Document{}, sharedrepository.MapError(err)
 	}
 	return document, nil
