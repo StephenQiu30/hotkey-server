@@ -24,6 +24,7 @@ type Document struct {
 	ExecutionStatus string
 	ReviewStatus    string
 	Result          string
+	DependsOn       []string
 	Links           []Reference
 }
 

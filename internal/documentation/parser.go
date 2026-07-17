@@ -29,6 +29,7 @@ type documentHeader struct {
 	ExecutionStatus string   `yaml:"execution_status"`
 	ReviewStatus    string   `yaml:"review_status"`
 	Result          string   `yaml:"result"`
+	DependsOn       []string `yaml:"depends_on"`
 }
 
 func parseDocument(path string, contents []byte) (Document, map[string]any, string, error) {
@@ -54,7 +55,7 @@ func parseDocument(path string, contents []byte) (Document, map[string]any, stri
 		CanonicalPath: header.CanonicalPath, Status: header.Status, Version: header.Version,
 		Owner: header.Owner, Inputs: header.Inputs, Outputs: header.Outputs,
 		Triggers: header.Triggers, Downstream: header.Downstream,
-		ExecutionStatus: header.ExecutionStatus, ReviewStatus: header.ReviewStatus, Result: header.Result,
+		ExecutionStatus: header.ExecutionStatus, ReviewStatus: header.ReviewStatus, Result: header.Result, DependsOn: header.DependsOn,
 	}, fields, body, nil
 }
 
