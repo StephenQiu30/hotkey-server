@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/event/domain"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
 type MergeCommand struct {
@@ -82,30 +83,30 @@ func NewGovernanceService(repository GovernanceRepository) *GovernanceService {
 
 func (service *GovernanceService) Merge(ctx context.Context, command MergeCommand) (domain.Event, error) {
 	if service == nil || service.repository == nil {
-		return domain.Event{}, fmt.Errorf("event governance repository is required")
+		return domain.Event{}, fmt.Errorf("%w: event governance repository is required", sharedrepository.ErrUnavailable)
 	}
 	if err := command.Validate(); err != nil {
-		return domain.Event{}, err
+		return domain.Event{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
 	}
 	return service.repository.Merge(ctx, command)
 }
 
 func (service *GovernanceService) Split(ctx context.Context, command SplitCommand) (domain.Event, error) {
 	if service == nil || service.repository == nil {
-		return domain.Event{}, fmt.Errorf("event governance repository is required")
+		return domain.Event{}, fmt.Errorf("%w: event governance repository is required", sharedrepository.ErrUnavailable)
 	}
 	if err := command.Validate(); err != nil {
-		return domain.Event{}, err
+		return domain.Event{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
 	}
 	return service.repository.Split(ctx, command)
 }
 
 func (service *GovernanceService) SetMemberLock(ctx context.Context, command MemberLockCommand) (domain.EventMember, error) {
 	if service == nil || service.repository == nil {
-		return domain.EventMember{}, fmt.Errorf("event governance repository is required")
+		return domain.EventMember{}, fmt.Errorf("%w: event governance repository is required", sharedrepository.ErrUnavailable)
 	}
 	if err := command.Validate(); err != nil {
-		return domain.EventMember{}, err
+		return domain.EventMember{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
 	}
 	return service.repository.SetMemberLock(ctx, command)
 }

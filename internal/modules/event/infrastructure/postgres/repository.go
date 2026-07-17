@@ -130,7 +130,7 @@ WHERE id = $4 AND version = $5`, event.LifecycleStatus, nullableInt64(event.Merg
 			return sharedrepository.MapError(err)
 		}
 		if rows, _ := result.RowsAffected(); rows != 1 {
-			return fmt.Errorf("event version conflict")
+			return fmt.Errorf("%w: event version conflict", sharedrepository.ErrConflict)
 		}
 		audit.EventID = event.ID
 		return insertAudit(ctx, transaction.SQL, audit)
@@ -162,15 +162,15 @@ FROM events WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, eventID))
 		source := locked[command.SourceEventID]
 		target = locked[command.TargetEventID]
 		if source.Version != command.SourceExpectedVersion || target.Version != command.TargetExpectedVersion {
-			return fmt.Errorf("event version conflict")
+			return fmt.Errorf("%w: event version conflict", sharedrepository.ErrConflict)
 		}
 		if source.ManualLocked || source.LifecycleStatus == domain.LifecycleMerged || source.LifecycleStatus == domain.LifecycleArchived || source.LifecycleStatus == domain.LifecycleRejected {
-			return fmt.Errorf("event merge is locked or unavailable")
+			return fmt.Errorf("%w: event merge is locked or unavailable", sharedrepository.ErrConflict)
 		}
 		seen := map[int64]bool{target.ID: true}
 		for target.MergedIntoID != nil {
 			if seen[*target.MergedIntoID] {
-				return fmt.Errorf("merge target contains a cycle")
+				return fmt.Errorf("%w: merge target contains a cycle", sharedrepository.ErrConflict)
 			}
 			seen[*target.MergedIntoID] = true
 			canonical, err := scanEvent(transaction.SQL.QueryRowContext(ctx, `
@@ -183,7 +183,7 @@ FROM events WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, *target.MergedInto
 			target = canonical
 		}
 		if target.ID == source.ID || target.ManualLocked || target.LifecycleStatus == domain.LifecycleArchived || target.LifecycleStatus == domain.LifecycleRejected {
-			return fmt.Errorf("event merge target is locked or version-conflicted")
+			return fmt.Errorf("%w: event merge target is locked or version-conflicted", sharedrepository.ErrConflict)
 		}
 		if err := mergeMembers(ctx, transaction.SQL, source.ID, target.ID, command.ActorUserID); err != nil {
 			return err
@@ -231,7 +231,7 @@ FROM events WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, command.SourceEven
 			return err
 		}
 		if source.Version != command.SourceExpectedVersion || source.ManualLocked || source.LifecycleStatus == domain.LifecycleMerged || source.LifecycleStatus == domain.LifecycleArchived || source.LifecycleStatus == domain.LifecycleRejected {
-			return fmt.Errorf("event version conflict or source is locked")
+			return fmt.Errorf("%w: event version conflict or source is locked", sharedrepository.ErrConflict)
 		}
 		requestedMembers := append([]application.SplitMember(nil), command.Members...)
 		sort.Slice(requestedMembers, func(left, right int) bool {
@@ -246,7 +246,7 @@ FROM event_contents WHERE event_id = $1 AND content_id = $2 FOR UPDATE`, source.
 				return err
 			}
 			if member.Version != requested.ExpectedVersion || member.ManualLocked || member.EvidenceRole == domain.EvidenceDuplicate {
-				return fmt.Errorf("member version conflict or member is locked")
+				return fmt.Errorf("%w: member version conflict or member is locked", sharedrepository.ErrConflict)
 			}
 			members = append(members, member)
 		}
@@ -301,7 +301,7 @@ FROM event_contents WHERE event_id = $1 AND content_id = $2 FOR UPDATE`, command
 			return err
 		}
 		if member.Version != command.ExpectedVersion {
-			return fmt.Errorf("member version conflict")
+			return fmt.Errorf("%w: member version conflict", sharedrepository.ErrConflict)
 		}
 		if _, err := transaction.SQL.ExecContext(ctx, `UPDATE event_contents SET manual_locked = $1, origin = 'user', version = version + 1, updated_at = now() WHERE id = $2 AND version = $3`, command.Locked, member.ID, command.ExpectedVersion); err != nil {
 			return err
@@ -343,7 +343,7 @@ func mergeMembers(ctx context.Context, query *sql.Tx, sourceID, targetID int64, 
 	}
 	for _, member := range members {
 		if member.ManualLocked {
-			return fmt.Errorf("locked member conflict")
+			return fmt.Errorf("%w: locked member conflict", sharedrepository.ErrConflict)
 		}
 		var targetIDValue int64
 		var targetScore float64
@@ -440,6 +440,9 @@ func scanEvent(row *sql.Row) (domain.Event, error) {
 	var fingerprint, fingerprintVersion, titleEN string
 	var representative, merged sql.NullInt64
 	if err := row.Scan(&event.ID, &event.Version, &event.EventKey, &fingerprint, &fingerprintVersion, &event.TitleZH, &titleEN, &event.Summary, &event.LifecycleStatus, &event.FirstSeenAt, &event.LastSeenAt, &representative, &merged, &event.ManualLocked); err != nil {
+		if err == sql.ErrNoRows {
+			return domain.Event{}, fmt.Errorf("%w: event", sharedrepository.ErrNotFound)
+		}
 		return domain.Event{}, sharedrepository.MapError(err)
 	}
 	event.EventFingerprint, event.FingerprintVersion, event.TitleEN = fingerprint, fingerprintVersion, titleEN
@@ -456,6 +459,9 @@ func scanMember(row *sql.Row) (domain.EventMember, error) {
 	var member domain.EventMember
 	var role, origin string
 	if err := row.Scan(&member.ID, &member.Version, &member.EventID, &member.ContentID, &member.MembershipScore, &role, &member.Representative, &origin, &member.ManualLocked); err != nil {
+		if err == sql.ErrNoRows {
+			return domain.EventMember{}, fmt.Errorf("%w: event member", sharedrepository.ErrNotFound)
+		}
 		return domain.EventMember{}, sharedrepository.MapError(err)
 	}
 	member.EvidenceRole, member.Origin = domain.EvidenceRole(role), domain.MemberOrigin(origin)

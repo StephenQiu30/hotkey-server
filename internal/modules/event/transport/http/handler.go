@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/modules/event/domain"
 	httptransport "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	sharederrors "github.com/StephenQiu30/hotkey-server/internal/shared/errors"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 	"github.com/gin-gonic/gin"
 )
 
@@ -58,7 +60,7 @@ func (handler *Handler) GetHeat(c *gin.Context) error {
 	}
 	result, err := handler.heat.Latest(c.Request.Context(), eventID)
 	if err != nil {
-		return err
+		return eventError(err)
 	}
 	httptransport.OK(c, HeatResponse{EventID: result.EventID, HeatScore: result.HeatScore, TrendScore: result.TrendScore, SourceCount: result.SourceCount, ContentCount: result.ContentCount, HeatVersion: result.HeatVersion, EvidenceSetHash: result.EvidenceSetHash, CapturedAt: result.WindowEnd})
 	return nil
@@ -98,7 +100,7 @@ func (handler *Handler) SaveClaim(c *gin.Context) error {
 	}
 	claim, err := handler.claims.Save(c.Request.Context(), domain.Claim{ID: request.ID, Version: request.Version, EventID: eventID, NormalizedClaim: request.NormalizedClaim, ClaimHash: request.ClaimHash, Status: domain.ClaimStatus(request.Status), Confidence: request.Confidence, ManualLocked: request.ManualLocked, Evidence: evidence})
 	if err != nil {
-		return err
+		return eventError(err)
 	}
 	httptransport.OK(c, ClaimResponse{ID: claim.ID, Version: claim.Version, EventID: claim.EventID, NormalizedClaim: claim.NormalizedClaim, ClaimHash: claim.ClaimHash, Status: string(claim.Status), Confidence: claim.Confidence})
 	return nil
@@ -127,7 +129,7 @@ func (handler *Handler) List(c *gin.Context) error {
 	}
 	page, err := handler.read.List(c.Request.Context(), domain.EventListQuery{Limit: limit, Cursor: cursor})
 	if err != nil {
-		return err
+		return eventError(err)
 	}
 	response := EventPageResponse{Items: make([]EventResponse, 0, len(page.Items)), NextCursor: page.NextCursor}
 	for _, event := range page.Items {
@@ -155,7 +157,7 @@ func (handler *Handler) Get(c *gin.Context) error {
 	}
 	event, err := handler.read.Get(c.Request.Context(), eventID)
 	if err != nil {
-		return err
+		return eventError(err)
 	}
 	httptransport.OK(c, eventResponse(event))
 	return nil
@@ -179,7 +181,7 @@ func (handler *Handler) ListMembers(c *gin.Context) error {
 	}
 	page, err := handler.read.ListMembers(c.Request.Context(), eventID)
 	if err != nil {
-		return err
+		return eventError(err)
 	}
 	response := EventMemberPageResponse{Items: make([]EventMemberResponse, 0, len(page.Items))}
 	for _, member := range page.Items {
@@ -224,7 +226,7 @@ func (handler *Handler) SetMemberLock(c *gin.Context) error {
 	}
 	member, err := handler.governance.SetMemberLock(c.Request.Context(), application.MemberLockCommand{EventID: eventID, ContentID: contentID, ExpectedVersion: request.ExpectedVersion, Locked: request.Locked, ActorUserID: &subject.UserID, ReasonCode: request.Reason})
 	if err != nil {
-		return err
+		return eventError(err)
 	}
 	httptransport.OK(c, memberResponse(member))
 	return nil
@@ -259,7 +261,7 @@ func (handler *Handler) Transition(c *gin.Context) error {
 	}
 	event, err := handler.lifecycle.Transition(c.Request.Context(), application.LifecycleInput{EventID: eventID, ExpectedVersion: request.ExpectedVersion, To: domain.LifecycleStatus(request.To), ActorUserID: &subject.UserID, ReasonCode: request.Reason})
 	if err != nil {
-		return err
+		return eventError(err)
 	}
 	httptransport.OK(c, eventResponse(event))
 	return nil
@@ -294,7 +296,7 @@ func (handler *Handler) Merge(c *gin.Context) error {
 	}
 	event, err := handler.governance.Merge(c.Request.Context(), application.MergeCommand{SourceEventID: sourceID, TargetEventID: request.TargetEventID, SourceExpectedVersion: request.SourceExpectedVersion, TargetExpectedVersion: request.TargetExpectedVersion, ActorUserID: &subject.UserID, ReasonCode: request.Reason})
 	if err != nil {
-		return err
+		return eventError(err)
 	}
 	httptransport.OK(c, eventResponse(event))
 	return nil
@@ -333,7 +335,7 @@ func (handler *Handler) Split(c *gin.Context) error {
 	}
 	event, err := handler.governance.Split(c.Request.Context(), application.SplitCommand{SourceEventID: sourceID, SourceExpectedVersion: request.SourceExpectedVersion, Members: members, ActorUserID: &subject.UserID, ReasonCode: request.Reason})
 	if err != nil {
-		return err
+		return eventError(err)
 	}
 	httptransport.OK(c, eventResponse(event))
 	return nil
@@ -371,4 +373,23 @@ func queryCursor(raw string) (int64, error) {
 
 func invalidRequest(cause error) error {
 	return sharederrors.Wrap(sharederrors.CodeInvalidRequest, http.StatusBadRequest, "", cause)
+}
+
+func eventError(err error) error {
+	var appError *sharederrors.AppError
+	if errors.As(err, &appError) {
+		return appError
+	}
+	switch {
+	case errors.Is(err, sharedrepository.ErrNotFound):
+		return sharederrors.Wrap(sharederrors.CodeNotFound, http.StatusNotFound, "", err)
+	case errors.Is(err, sharedrepository.ErrConflict), errors.Is(err, sharedrepository.ErrImmutable):
+		return sharederrors.Wrap(sharederrors.CodeConflict, http.StatusConflict, "", err)
+	case errors.Is(err, sharedrepository.ErrInvalidInput), errors.Is(err, sharedrepository.ErrConstraint):
+		return sharederrors.Wrap(sharederrors.CodeInvalidRequest, http.StatusBadRequest, "", err)
+	case errors.Is(err, sharedrepository.ErrUnavailable):
+		return sharederrors.Wrap(sharederrors.CodeUnavailable, http.StatusServiceUnavailable, "", err)
+	default:
+		return sharederrors.Wrap(sharederrors.CodeInternal, http.StatusInternalServerError, "", err)
+	}
 }

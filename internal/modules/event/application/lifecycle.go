@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/event/domain"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
 type EventStore interface {
@@ -30,23 +31,23 @@ func NewLifecycleService(store EventStore) *LifecycleService {
 
 func (service *LifecycleService) Transition(ctx context.Context, input LifecycleInput) (domain.Event, error) {
 	if service == nil || service.store == nil || input.EventID <= 0 || input.ExpectedVersion <= 0 || !input.To.Valid() || input.ReasonCode == "" {
-		return domain.Event{}, fmt.Errorf("invalid lifecycle input")
+		return domain.Event{}, fmt.Errorf("%w: invalid lifecycle input", sharedrepository.ErrInvalidInput)
 	}
 	event, err := service.store.Get(ctx, input.EventID)
 	if err != nil {
 		return domain.Event{}, err
 	}
 	if event.Version != input.ExpectedVersion {
-		return domain.Event{}, fmt.Errorf("event version conflict")
+		return domain.Event{}, fmt.Errorf("%w: event version conflict", sharedrepository.ErrConflict)
 	}
 	if event.ManualLocked && input.To != event.LifecycleStatus {
-		return domain.Event{}, fmt.Errorf("event is manually locked")
+		return domain.Event{}, fmt.Errorf("%w: event is manually locked", sharedrepository.ErrConflict)
 	}
 	if event.LifecycleStatus == input.To {
 		return event, nil
 	}
 	if !domain.CanTransition(event.LifecycleStatus, input.To) {
-		return domain.Event{}, fmt.Errorf("invalid lifecycle transition %s -> %s", event.LifecycleStatus, input.To)
+		return domain.Event{}, fmt.Errorf("%w: invalid lifecycle transition %s -> %s", sharedrepository.ErrConflict, event.LifecycleStatus, input.To)
 	}
 	from := event.LifecycleStatus
 	event.LifecycleStatus = input.To
