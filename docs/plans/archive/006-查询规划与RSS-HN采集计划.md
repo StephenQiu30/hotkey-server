@@ -15,7 +15,7 @@ inputs:
   - docs/plans/archive/005-监控主题规则与来源配置计划.md
   - docs/design/archive/003-数据库与数据生命周期设计.md
   - docs/design/archive/005-数据来源查询规划与采集设计.md
-  - docs/design/012-监控调度与River流水线设计.md
+  - docs/design/archive/012-监控调度与River流水线设计.md
   - docs/design/archive/014-监控配置发布与预览设计.md
 outputs:
   - Connector 契约
@@ -58,7 +58,7 @@ depends_on: [PLAN-005]
 
 | 动作 | 路径 | 目的 |
 |---|---|---|
-| 修改 | `docs/design/archive/003-数据库与数据生命周期设计.md`, `docs/design/archive/005-数据来源查询规划与采集设计.md`, `docs/design/012-监控调度与River流水线设计.md`, `docs/design/archive/014-监控配置发布与预览设计.md` | 固化 Schema、capture/checkpoint、运行 API 和错误码边界 |
+| 修改 | `docs/design/archive/003-数据库与数据生命周期设计.md`, `docs/design/archive/005-数据来源查询规划与采集设计.md`, `docs/design/archive/012-监控调度与River流水线设计.md`, `docs/design/archive/014-监控配置发布与预览设计.md` | 固化 Schema、capture/checkpoint、运行 API 和错误码边界 |
 | 修改 | `db/schema.sql`, `internal/platform/database/model/model.go`, `internal/platform/database/model/model_test.go`, `internal/platform/database/database_integration_test.go`, `test/architecture/schema_test.go`, `test/tools/verify-schema.sh` | shared run、target、item、checkpoint 的完整 Schema/记录/门禁 |
 | 创建 | `internal/modules/source/domain/{collection,connector,collection_errors}.go` 及 `*_test.go` | SourceItem、Connector、run/checkpoint 与 port 契约 |
 | 创建 | `internal/modules/source/application/{query_planner,collection_service}_test.go` 及 `.go` | 查询规划、run 编排、重试分类与 target 隔离 |

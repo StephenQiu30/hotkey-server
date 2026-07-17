@@ -15,12 +15,12 @@ owner: HotKey Server Team
 depends_on: [PRD-010, PRD-012, PRD-013]
 design_refs:
   - docs/design/archive/003-数据库与数据生命周期设计.md
-  - docs/design/008-Obsidian知识库治理与报告交付设计.md
+  - docs/design/archive/008-Obsidian知识库治理与报告交付设计.md
   - docs/design/archive/011-AI任务证据与模型运行设计.md
 canonical_path: docs/prd/archive/014-Obsidian知识提案修订与对账.md
 inputs:
   - docs/design/archive/003-数据库与数据生命周期设计.md
-  - docs/design/008-Obsidian知识库治理与报告交付设计.md
+  - docs/design/archive/008-Obsidian知识库治理与报告交付设计.md
   - docs/design/archive/011-AI任务证据与模型运行设计.md
 outputs:
   - Obsidian 知识治理需求

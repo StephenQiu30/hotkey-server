@@ -4,18 +4,18 @@ doc_no: "008"
 audience: [PM, Dev, QA, Ops]
 feature_area: Obsidian知识库治理与报告交付
 purpose: 定义本地Vault知识投影、AI变更审核、日报周报、邮件和RSS/Atom交付契约
-canonical_path: docs/design/008-Obsidian知识库治理与报告交付设计.md
-status: review
-version: v1.0
+canonical_path: docs/design/archive/008-Obsidian知识库治理与报告交付设计.md
+status: accepted
+version: v1.1
 owner: HotKey Server Team
 inputs:
   - docs/design/archive/001-AI热点事件监控平台需求分析.md
   - docs/design/archive/002-后端单体架构设计.md
   - docs/design/archive/003-数据库与数据生命周期设计.md
-  - docs/design/009-事件发现聚类与生命周期设计.md
-  - docs/design/010-热度趋势与排序设计.md
+  - docs/design/archive/009-事件发现聚类与生命周期设计.md
+  - docs/design/archive/010-热度趋势与排序设计.md
   - docs/design/archive/011-AI任务证据与模型运行设计.md
-  - docs/design/012-监控调度与River流水线设计.md
+  - docs/design/archive/012-监控调度与River流水线设计.md
 outputs:
   - Vault目录和Markdown契约
   - 知识变更提案、冲突和修订流程
@@ -468,13 +468,13 @@ Atom和RSS内容来源相同，只在序列化格式上不同。
 
 ## 22. 关联文档
 
-- [需求分析](archive/001-AI热点事件监控平台需求分析.md)
-- [后端单体架构设计](archive/002-后端单体架构设计.md)
-- [数据库与数据生命周期设计](archive/003-数据库与数据生命周期设计.md)
-- [内容标准化去重与证据设计](archive/006-内容标准化去重与证据设计.md)
+- [需求分析](001-AI热点事件监控平台需求分析.md)
+- [后端单体架构设计](002-后端单体架构设计.md)
+- [数据库与数据生命周期设计](003-数据库与数据生命周期设计.md)
+- [内容标准化去重与证据设计](006-内容标准化去重与证据设计.md)
 - [事件发现、聚类与生命周期设计](009-事件发现聚类与生命周期设计.md)
 - [热度、趋势与排序设计](010-热度趋势与排序设计.md)
-- [AI任务、证据与模型运行设计](archive/011-AI任务证据与模型运行设计.md)
+- [AI任务、证据与模型运行设计](011-AI任务证据与模型运行设计.md)
 - [监控调度与 River 流水线设计](012-监控调度与River流水线设计.md)
 
 ## 23. 变更记录
@@ -482,3 +482,4 @@ Atom和RSS内容来源相同，只在序列化格式上不同。
 | 版本 | 日期 | 变更 |
 |---|---|---|
 | v1.0 | 2026-07-15 | 建立本地Vault、审核式长期知识治理、日报周报、邮件和RSS/Atom交付契约 |
+| v1.1 | 2026-07-17 | 对应 PLAN-014–016 已完成并通过长期验收，设计转为 accepted 并归档。 |

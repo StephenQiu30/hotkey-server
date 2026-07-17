@@ -16,12 +16,12 @@ depends_on: [PRD-006, PRD-007, PRD-008, PRD-009, PRD-010, PRD-011, PRD-012]
 design_refs:
   - docs/design/archive/002-后端单体架构设计.md
   - docs/design/archive/005-数据来源查询规划与采集设计.md
-  - docs/design/012-监控调度与River流水线设计.md
+  - docs/design/archive/012-监控调度与River流水线设计.md
 canonical_path: docs/prd/archive/013-Cron与River主链路编排.md
 inputs:
   - docs/design/archive/002-后端单体架构设计.md
   - docs/design/archive/005-数据来源查询规划与采集设计.md
-  - docs/design/012-监控调度与River流水线设计.md
+  - docs/design/archive/012-监控调度与River流水线设计.md
 outputs:
   - P0 Cron 与 River 编排需求
 triggers:

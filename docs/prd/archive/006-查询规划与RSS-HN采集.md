@@ -16,12 +16,12 @@ depends_on: [PRD-005]
 design_refs:
   - docs/design/archive/003-数据库与数据生命周期设计.md
   - docs/design/archive/005-数据来源查询规划与采集设计.md
-  - docs/design/012-监控调度与River流水线设计.md
+  - docs/design/archive/012-监控调度与River流水线设计.md
 canonical_path: docs/prd/archive/006-查询规划与RSS-HN采集.md
 inputs:
   - docs/design/archive/003-数据库与数据生命周期设计.md
   - docs/design/archive/005-数据来源查询规划与采集设计.md
-  - docs/design/012-监控调度与River流水线设计.md
+  - docs/design/archive/012-监控调度与River流水线设计.md
 outputs:
   - 首批合规来源采集需求
 triggers:

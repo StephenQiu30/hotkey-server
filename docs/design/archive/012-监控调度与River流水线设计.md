@@ -4,15 +4,15 @@ doc_no: "012"
 audience: [Dev, QA, Ops]
 feature_area: 监控调度与可靠任务
 purpose: 定义Monitor调度、River任务图、幂等、检查点、重试、取消与恢复契约
-canonical_path: docs/design/012-监控调度与River流水线设计.md
+canonical_path: docs/design/archive/012-监控调度与River流水线设计.md
 status: accepted
-version: v1.5
+version: v1.6
 owner: HotKey Server Team
 inputs:
   - docs/design/archive/002-后端单体架构设计.md
   - docs/design/archive/005-数据来源查询规划与采集设计.md
-  - docs/design/009-事件发现聚类与生命周期设计.md
-  - docs/design/010-热度趋势与排序设计.md
+  - docs/design/archive/009-事件发现聚类与生命周期设计.md
+  - docs/design/archive/010-热度趋势与排序设计.md
   - docs/design/archive/011-AI任务证据与模型运行设计.md
   - docs/design/archive/014-监控配置发布与预览设计.md
 outputs:
@@ -42,7 +42,7 @@ Cron 只执行“查询到期对象并提交唯一任务”，不执行采集或
 
 ## 3. Monitor 状态与配置发布
 
-Monitor 的 `draft/active/paused/archived` 状态、版本化发布、权限、来源引用和纯配置预览以 [Design-014](archive/014-监控配置发布与预览设计.md) 为权威契约。本设计只消费其 published 结果：active Monitor 按当前 published version 调度，paused/archived 不提交新任务，draft 绝不进入调度。
+Monitor 的 `draft/active/paused/archived` 状态、版本化发布、权限、来源引用和纯配置预览以 [Design-014](014-监控配置发布与预览设计.md) 为权威契约。本设计只消费其 published 结果：active Monitor 按当前 published version 调度，paused/archived 不提交新任务，draft 绝不进入调度。
 
 计划 006 必须把 `collection_runs` 作为共享的 `source_connection_id + query_signature + window` 执行事实，并以 `collection_run_targets` 关联 immutable `monitor_source_id + monitor_config_version_id`。每个新 published source 以该 version 的 `published_at` 建空 checkpoint，不继承旧 revision cursor；共享 run 成功且对应 target 成功后才推进该 target checkpoint。发布新版本不改写历史匹配、Event 或报告；需要时由管理员显式提交重算。
 
@@ -176,12 +176,12 @@ RSS/HN -> Content -> MonitorMatch -> Event
 
 ## 16. 关联文档
 
-- [后端单体架构设计](archive/002-后端单体架构设计.md)
-- [数据来源、查询规划与采集设计](archive/005-数据来源查询规划与采集设计.md)
+- [后端单体架构设计](002-后端单体架构设计.md)
+- [数据来源、查询规划与采集设计](005-数据来源查询规划与采集设计.md)
 - [事件发现、聚类与生命周期设计](009-事件发现聚类与生命周期设计.md)
 - [热度、趋势与排序设计](010-热度趋势与排序设计.md)
-- [AI任务、证据与模型运行设计](archive/011-AI任务证据与模型运行设计.md)
-- [监控配置发布与预览设计](archive/014-监控配置发布与预览设计.md)
+- [AI任务、证据与模型运行设计](011-AI任务证据与模型运行设计.md)
+- [监控配置发布与预览设计](014-监控配置发布与预览设计.md)
 
 ## 17. 待确认问题
 
@@ -197,3 +197,4 @@ RSS/HN -> Content -> MonitorMatch -> Event
 | v1.3 | 2026-07-16 | 架构审核确认调度、事务入队、幂等、检查点、重试、取消和恢复契约完整；River具体版本与并发数保留为实施容量参数。 |
 | v1.4 | 2026-07-16 | 将 fetch checkpoint 固定为 durable collection_run_items 捕获完成，Content/证据化交给 PLAN-007 的可恢复后续处理。 |
 | v1.5 | 2026-07-16 | 要求 captured_item 可重放且以 target-item 对账证明每个 immutable target 的捕获完整。 |
+| v1.6 | 2026-07-17 | 对应 PLAN-006、PLAN-013 与后续交付链路均已完成并通过长期验收，设计归档。 |

@@ -13,7 +13,7 @@ inputs:
   - docs/plans/archive/006-查询规划与RSS-HN采集计划.md
   - docs/design/archive/003-数据库与数据生命周期设计.md
   - docs/design/archive/005-数据来源查询规划与采集设计.md
-  - docs/design/012-监控调度与River流水线设计.md
+  - docs/design/archive/012-监控调度与River流水线设计.md
   - docs/design/archive/014-监控配置发布与预览设计.md
 outputs:
   - PLAN-006 验收结论与可复现证据

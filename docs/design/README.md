@@ -6,7 +6,7 @@ feature_area: AI热点事件监控平台
 purpose: 管理 HotKey Server 权威设计文档及其状态
 canonical_path: docs/design/README.md
 status: review
-version: v1.2
+version: v1.3
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -44,12 +44,12 @@ downstream:
 | [`archive/005-数据来源查询规划与采集设计.md`](archive/005-数据来源查询规划与采集设计.md) | Connector、共享查询、调度、限流与合规 | accepted |
 | [`archive/006-内容标准化去重与证据设计.md`](archive/006-内容标准化去重与证据设计.md) | 统一内容、三层去重、证据和删除同步 | accepted |
 | [`archive/007-多语言匹配与相关性设计.md`](archive/007-多语言匹配与相关性设计.md) | 双语检索、混合评分、解释和模型版本 | accepted |
-| [`008-Obsidian知识库治理与报告交付设计.md`](008-Obsidian知识库治理与报告交付设计.md) | 本地Vault、知识提案、冲突修订、日报周报、邮件和RSS/Atom | review |
-| [`009-事件发现聚类与生命周期设计.md`](009-事件发现聚类与生命周期设计.md) | 候选召回、跨语言聚类、事件键、生命周期、合并拆分和人工锁 | review |
-| [`010-热度趋势与排序设计.md`](010-热度趋势与排序设计.md) | 跨来源归一化、事件热度、趋势、Monitor排序、防刷和重算 | review |
+| [`archive/008-Obsidian知识库治理与报告交付设计.md`](archive/008-Obsidian知识库治理与报告交付设计.md) | 本地Vault、知识提案、冲突修订、日报周报、邮件和RSS/Atom | accepted |
+| [`archive/009-事件发现聚类与生命周期设计.md`](archive/009-事件发现聚类与生命周期设计.md) | 候选召回、跨语言聚类、事件键、生命周期、合并拆分和人工锁 | accepted |
+| [`archive/010-热度趋势与排序设计.md`](archive/010-热度趋势与排序设计.md) | 跨来源归一化、事件热度、趋势、Monitor排序、防刷和重算 | accepted |
 | [`archive/011-AI任务证据与模型运行设计.md`](archive/011-AI任务证据与模型运行设计.md) | AI任务目录、JSON Schema、证据引用、幂等复用、预算和降级 | accepted |
-| [`012-监控调度与River流水线设计.md`](012-监控调度与River流水线设计.md) | Monitor调度、River任务图、事务入队、检查点、重试、取消和恢复 | accepted |
+| [`archive/012-监控调度与River流水线设计.md`](archive/012-监控调度与River流水线设计.md) | Monitor调度、River任务图、事务入队、检查点、重试、取消和恢复 | accepted |
 | [`archive/013-身份认证会话与权限设计.md`](archive/013-身份认证会话与权限设计.md) | 邮箱验证、密码、可撤销会话、刷新轮换和最小角色授权；服务端验收见 Acceptance 004 | accepted |
 | [`archive/014-监控配置发布与预览设计.md`](archive/014-监控配置发布与预览设计.md) | 版本化 Monitor 发布、来源引用安全、纯配置预览、签名、权限与审计契约 | accepted |
 
-当前仍影响后续实现的设计 008、009、010、012 保留在本目录；后续模块只有在设计完成后才加入本索引。已落地设计见 [`archive/`](archive/README.md)。
+001–014 的现有设计均已随对应实施与长期验收证据归档；新模块只有在设计完成后才加入本索引。已落地设计见 [`archive/`](archive/README.md)。
