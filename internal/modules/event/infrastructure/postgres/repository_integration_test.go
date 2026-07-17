@@ -72,6 +72,38 @@ func TestGovernanceRepositorySplitsWithMemberVersion(t *testing.T) {
 	}
 }
 
+func TestGovernanceRepositorySplitRejectsStaleMemberWithoutPartialMove(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatalf("database.Open() error = %v", err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatalf("database.InitializeEmpty() error = %v", err)
+	}
+	repository := NewRepository(runtime)
+	fixture := seedEventFixture(t, runtime)
+	secondContentID := seedUnassignedEventContent(t, runtime)
+	if _, err := runtime.SQL.Exec(`INSERT INTO event_contents (event_id, content_id, membership_score, evidence_role, origin) VALUES ($1,$2,80,'supporting','rule')`, fixture.sourceID, secondContentID); err != nil {
+		t.Fatalf("insert second member: %v", err)
+	}
+	_, err = repository.Split(ctx, application.SplitCommand{SourceEventID: fixture.sourceID, SourceExpectedVersion: 1, Members: []application.SplitMember{{ContentID: secondContentID, ExpectedVersion: 1}, {ContentID: fixture.sourceContentID, ExpectedVersion: 2}}, ReasonCode: "separate"})
+	if err == nil {
+		t.Fatal("Split() accepted stale member version")
+	}
+	var sourceMembers, createdEvents int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM event_contents WHERE event_id = $1`, fixture.sourceID).Scan(&sourceMembers); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM events WHERE event_key LIKE 'evt_%'`).Scan(&createdEvents); err != nil {
+		t.Fatal(err)
+	}
+	if sourceMembers != 2 || createdEvents != 2 {
+		t.Fatalf("source members/events = %d/%d, want 2/2 after rollback", sourceMembers, createdEvents)
+	}
+}
+
 func seedEventFixture(t *testing.T, runtime *database.Runtime) struct{ sourceID, targetID, sourceContentID int64 } {
 	t.Helper()
 	var fixture struct{ sourceID, targetID, sourceContentID int64 }

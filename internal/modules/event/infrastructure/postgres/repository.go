@@ -233,8 +233,12 @@ FROM events WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, command.SourceEven
 		if source.Version != command.SourceExpectedVersion || source.ManualLocked || source.LifecycleStatus == domain.LifecycleMerged || source.LifecycleStatus == domain.LifecycleArchived || source.LifecycleStatus == domain.LifecycleRejected {
 			return fmt.Errorf("event version conflict or source is locked")
 		}
-		members := make(map[int64]domain.EventMember, len(command.Members))
-		for _, requested := range command.Members {
+		requestedMembers := append([]application.SplitMember(nil), command.Members...)
+		sort.Slice(requestedMembers, func(left, right int) bool {
+			return requestedMembers[left].ContentID < requestedMembers[right].ContentID
+		})
+		members := make([]domain.EventMember, 0, len(requestedMembers))
+		for _, requested := range requestedMembers {
 			member, err := scanMember(transaction.SQL.QueryRowContext(ctx, `
 SELECT id, version, event_id, content_id, membership_score, evidence_role, is_representative, origin, manual_locked
 FROM event_contents WHERE event_id = $1 AND content_id = $2 FOR UPDATE`, source.ID, requested.ContentID))
@@ -244,7 +248,7 @@ FROM event_contents WHERE event_id = $1 AND content_id = $2 FOR UPDATE`, source.
 			if member.Version != requested.ExpectedVersion || member.ManualLocked || member.EvidenceRole == domain.EvidenceDuplicate {
 				return fmt.Errorf("member version conflict or member is locked")
 			}
-			members[requested.ContentID] = member
+			members = append(members, member)
 		}
 		newKey := "evt_" + repository.ids.New()
 		if err := transaction.SQL.QueryRowContext(ctx, `
@@ -255,13 +259,12 @@ VALUES ($1, $2, $3, $4, 'detected', $5, $6, NULL) RETURNING id, version, created
 		created.EventKey, created.TitleZH, created.TitleEN, created.Summary, created.LifecycleStatus = newKey, source.TitleZH, source.TitleEN, source.Summary, domain.LifecycleDetected
 		created.FirstSeenAt, created.LastSeenAt = source.FirstSeenAt, source.LastSeenAt
 		contentIDs := make([]int64, 0, len(members))
-		for contentID, member := range members {
+		for _, member := range members {
 			if _, err := transaction.SQL.ExecContext(ctx, `UPDATE event_contents SET event_id = $1, version = version + 1, updated_at = now() WHERE id = $2 AND version = $3`, created.ID, member.ID, member.Version); err != nil {
 				return err
 			}
-			contentIDs = append(contentIDs, contentID)
+			contentIDs = append(contentIDs, member.ContentID)
 		}
-		sort.Slice(contentIDs, func(i, j int) bool { return contentIDs[i] < contentIDs[j] })
 		if err := copyMonitorEvents(ctx, transaction.SQL, source.ID, created.ID); err != nil {
 			return err
 		}
