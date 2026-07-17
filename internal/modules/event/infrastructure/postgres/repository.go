@@ -191,10 +191,15 @@ FROM events WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, *target.MergedInto
 		if err := mergeMonitorEvents(ctx, transaction.SQL, source.ID, target.ID); err != nil {
 			return err
 		}
-		if _, err := transaction.SQL.ExecContext(ctx, `UPDATE events SET lifecycle_status = 'merged', merged_into_id = $1, version = version + 1, updated_at = now() WHERE id = $2 AND version = $3`, target.ID, source.ID, source.Version); err != nil {
+		result, err := transaction.SQL.ExecContext(ctx, `UPDATE events SET lifecycle_status = 'merged', merged_into_id = $1, version = version + 1, updated_at = now() WHERE id = $2 AND version = $3`, target.ID, source.ID, source.Version)
+		if err != nil {
 			return err
 		}
-		if _, err := transaction.SQL.ExecContext(ctx, `UPDATE events SET version = version + 1, updated_at = now() WHERE id = $1 AND version = $2`, target.ID, target.Version); err != nil {
+		if rows, _ := result.RowsAffected(); rows != 1 {
+			return fmt.Errorf("%w: source event version conflict", sharedrepository.ErrConflict)
+		}
+		target, err = repository.RecomputeEventEvidence(ctx, application.EvidenceRecomputeCommand{EventID: target.ID, ReasonCode: "merge_evidence_recompute", ActorUserID: command.ActorUserID})
+		if err != nil {
 			return err
 		}
 		from, to := source.LifecycleStatus, domain.LifecycleMerged
@@ -205,7 +210,6 @@ FROM events WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, *target.MergedInto
 		if err := insertAudit(ctx, transaction.SQL, domain.GovernanceAudit{EventID: target.ID, Action: domain.AuditDownstreamReconcile, ActorUserID: command.ActorUserID, ReasonCode: "merge_downstream_reconcile", SourceEventID: &source.ID, TargetEventID: &target.ID}); err != nil {
 			return err
 		}
-		target.Version++
 		return nil
 	})
 	if err != nil {

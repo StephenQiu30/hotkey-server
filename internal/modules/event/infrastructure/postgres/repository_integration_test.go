@@ -49,6 +49,42 @@ func TestGovernanceRepositoryMergesAndLocksAtomically(t *testing.T) {
 	}
 }
 
+func TestGovernanceRepositoryMergeRecomputesTargetProjection(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	repository := NewRepository(runtime)
+	fixture := seedEventFixture(t, runtime)
+	targetContentID := seedUnassignedEventContent(t, runtime)
+	if _, err := runtime.SQL.Exec(`INSERT INTO event_contents (event_id, content_id, membership_score, evidence_role, is_representative, origin) VALUES ($1,$2,80,'primary',true,'rule')`, fixture.targetID, targetContentID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE events SET representative_content_id = $1 WHERE id = $2`, targetContentID, fixture.targetID); err != nil {
+		t.Fatal(err)
+	}
+
+	merged, err := repository.Merge(ctx, application.MergeCommand{SourceEventID: fixture.sourceID, TargetEventID: fixture.targetID, SourceExpectedVersion: 1, TargetExpectedVersion: 1, ReasonCode: "merge"})
+	if err != nil {
+		t.Fatalf("Merge() error = %v", err)
+	}
+	if merged.LifecycleStatus != domain.LifecycleActive || merged.RepresentativeContentID == nil || *merged.RepresentativeContentID != fixture.sourceContentID {
+		t.Fatalf("merged target = %#v, want active event represented by higher-score source content", merged)
+	}
+	var recomputes int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM event_governance_audits WHERE event_id = $1 AND action = 'evidence_recompute'`, fixture.targetID).Scan(&recomputes); err != nil {
+		t.Fatal(err)
+	}
+	if recomputes != 1 {
+		t.Fatalf("target evidence recompute audits = %d, want 1", recomputes)
+	}
+}
+
 func TestGovernanceRepositoryMergesThroughCanonicalTarget(t *testing.T) {
 	ctx := context.Background()
 	runtime, err := database.Open(ctx, postgresfixture.New(t))
