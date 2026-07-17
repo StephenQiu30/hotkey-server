@@ -69,6 +69,12 @@ type Proposal struct {
 	Status                                                           ProposalStatus
 }
 
+func (proposal Proposal) ValidateCreate() error {
+	copy := proposal
+	copy.ID = 1
+	return copy.Validate()
+}
+
 type Revision struct {
 	ID, DocumentID, RevisionNo, ProposalID   int64
 	Source                                   string

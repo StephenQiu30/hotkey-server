@@ -5,11 +5,58 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"html"
+	"strings"
 
+	deliveryapplication "github.com/StephenQiu30/hotkey-server/internal/modules/delivery/application"
 	"github.com/StephenQiu30/hotkey-server/internal/modules/delivery/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
+
+// Message materializes a published report snapshot for the email Job. It
+// joins only delivery-owned facts and never returns token hashes or SMTP
+// credentials.
+func (repository *Repository) Message(ctx context.Context, deliveryID int64) (deliveryapplication.MailMessage, int, error) {
+	if repository == nil || repository.runtime == nil || deliveryID <= 0 {
+		return deliveryapplication.MailMessage{}, 0, sharedrepository.ErrInvalidInput
+	}
+	var recipient, title, summary, body string
+	var attempts int
+	err := repository.runtime.SQL.QueryRowContext(ctx, `
+SELECT COALESCE(s.recipient, ''), r.title, COALESCE(r.summary, ''),
+       COALESCE(string_agg(ri.title_snapshot || E'\\n' || COALESCE(ri.summary_snapshot, ''), E'\\n\\n' ORDER BY ri.rank, ri.event_id), ''),
+       (SELECT count(*) FROM delivery_attempts WHERE delivery_id = d.id)
+FROM report_deliveries d
+JOIN report_subscriptions s ON s.id = d.subscription_id
+JOIN reports r ON r.id = d.report_id AND r.status = 'published'
+LEFT JOIN report_items ri ON ri.report_id = r.id
+WHERE d.id = $1
+GROUP BY d.id, s.recipient, r.title, r.summary`, deliveryID).Scan(&recipient, &title, &summary, &body, &attempts)
+	if errors.Is(err, sql.ErrNoRows) {
+		return deliveryapplication.MailMessage{}, 0, sharedrepository.ErrNotFound
+	}
+	if err != nil {
+		return deliveryapplication.MailMessage{}, 0, sharedrepository.MapError(err)
+	}
+	if strings.TrimSpace(recipient) == "" {
+		return deliveryapplication.MailMessage{}, 0, fmt.Errorf("%w: email recipient is missing", sharedrepository.ErrConstraint)
+	}
+	if attempts < 1 {
+		attempts = 1
+	} else {
+		attempts++
+	}
+	text := strings.TrimSpace(summary)
+	if body != "" {
+		if text != "" {
+			text += "\n\n"
+		}
+		text += body
+	}
+	paragraphs := strings.ReplaceAll(html.EscapeString(text), "\n", "<br>\n")
+	return deliveryapplication.MailMessage{To: recipient, Subject: title, Text: text, HTML: "<html><body>" + paragraphs + "</body></html>"}, attempts, nil
+}
 
 type Repository struct{ runtime *database.Runtime }
 
@@ -25,6 +72,7 @@ var _ interface {
 	ClaimDelivery(context.Context, int64) (domain.Delivery, error)
 	UpdateDelivery(context.Context, domain.Delivery) error
 	AppendAttempt(context.Context, int64, int, string, int, string) error
+	Message(context.Context, int64) (deliveryapplication.MailMessage, int, error)
 } = (*Repository)(nil)
 
 func NewRepository(runtime *database.Runtime) *Repository { return &Repository{runtime: runtime} }

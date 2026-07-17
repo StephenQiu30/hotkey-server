@@ -14,6 +14,13 @@ type JobResult[T any] struct {
 
 type EmptyResponse struct{}
 
+// OverviewResult mirrors the shared Result envelope for Swagger only.
+type OverviewResult[T any] struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    T      `json:"data"`
+}
+
 type JobResponse struct {
 	ID          int64      `json:"id"`
 	Kind        string     `json:"kind"`

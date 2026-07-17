@@ -112,6 +112,38 @@ func (repository *Repository) SaveProposalContext(ctx context.Context, proposal 
 	return repository.saveProposal(ctx, proposal)
 }
 
+func (repository *Repository) CreateProposalContext(ctx context.Context, proposal domain.Proposal) (domain.Proposal, error) {
+	if repository == nil || repository.runtime == nil {
+		return domain.Proposal{}, sharedrepository.ErrUnavailable
+	}
+	if proposal.ID != 0 {
+		return domain.Proposal{}, fmt.Errorf("proposal id must be zero for creation")
+	}
+	if err := proposal.ValidateCreate(); err != nil {
+		return domain.Proposal{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	frontmatter := proposal.ProposedFrontmatter
+	if frontmatter == "" {
+		frontmatter = "{}"
+	}
+	var raw json.RawMessage
+	if err := json.Unmarshal([]byte(frontmatter), &raw); err != nil {
+		return domain.Proposal{}, fmt.Errorf("%w: invalid proposal frontmatter: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	var created domain.Proposal
+	var storedFrontmatter []byte
+	err := knowledgeQueryerFor(ctx, repository.runtime).QueryRowContext(ctx, `
+INSERT INTO knowledge_change_proposals (version, document_id, change_type, base_revision_no, base_hash, proposed_frontmatter, proposed_body, diff_summary, reason, status)
+VALUES ($1, $2, 'update', $3, NULLIF($4, ''), $5, $6, $7, $8, $9)
+RETURNING id, version, document_id, base_revision_no, coalesce(base_hash, ''), proposed_frontmatter, proposed_body, diff_summary, reason, status`, proposal.Version, proposal.DocumentID, proposal.BaseRevisionNo, proposal.BaseHash, raw, proposal.ProposedBody, proposal.DiffSummary, proposal.Reason, proposal.Status).Scan(
+		&created.ID, &created.Version, &created.DocumentID, &created.BaseRevisionNo, &created.BaseHash, &storedFrontmatter, &created.ProposedBody, &created.DiffSummary, &created.Reason, &created.Status)
+	if err != nil {
+		return domain.Proposal{}, sharedrepository.MapError(err)
+	}
+	created.ProposedFrontmatter = string(storedFrontmatter)
+	return created, nil
+}
+
 func (repository *Repository) UpdateProposalStatus(ctx context.Context, proposalID, expectedVersion int64, status domain.ProposalStatus) (domain.Proposal, error) {
 	if repository == nil || repository.runtime == nil || proposalID <= 0 || expectedVersion <= 0 {
 		return domain.Proposal{}, sharedrepository.ErrInvalidInput

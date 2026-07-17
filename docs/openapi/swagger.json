@@ -4119,6 +4119,48 @@
                 }
             }
         },
+        "/api/v1/operations/overview": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "operations"
+                ],
+                "summary": "Get runtime overview",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.OverviewResult-domain_RuntimeOverview"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.OverviewResult-internal_modules_operations_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.OverviewResult-internal_modules_operations_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.OverviewResult-internal_modules_operations_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/report-subscriptions": {
             "get": {
                 "security": [
@@ -4532,6 +4574,75 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/reports/{id}/build": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Build a report draft",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-http_ReportResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
                         }
@@ -5682,6 +5793,32 @@
                     }
                 },
                 "scanned": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.RuntimeOverview": {
+            "type": "object",
+            "properties": {
+                "available_jobs": {
+                    "type": "integer"
+                },
+                "cancelled_jobs": {
+                    "type": "integer"
+                },
+                "completed_jobs": {
+                    "type": "integer"
+                },
+                "discarded_jobs": {
+                    "type": "integer"
+                },
+                "generated_at": {
+                    "type": "string"
+                },
+                "oldest_available_at": {
+                    "type": "string"
+                },
+                "running_jobs": {
                     "type": "integer"
                 }
             }
@@ -7863,6 +8000,34 @@
                     "type": "integer"
                 },
                 "source_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.OverviewResult-domain_RuntimeOverview": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/domain.RuntimeOverview"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.OverviewResult-internal_modules_operations_transport_http_EmptyResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/internal_modules_operations_transport_http.EmptyResponse"
+                },
+                "message": {
                     "type": "string"
                 }
             }

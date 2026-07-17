@@ -1,4 +1,4 @@
-.PHONY: test lint build validate validate-arch validate-repository ci clean schema-verify database-runtime-verify openapi openapi-validate openapi-check
+.PHONY: test lint build validate validate-arch validate-repository ci smoke clean schema-verify database-runtime-verify openapi openapi-validate openapi-check
 
 GO ?= go
 
@@ -36,6 +36,9 @@ openapi-check: openapi openapi-validate
 	git diff --exit-code -- docs/openapi/swagger.json
 
 ci: openapi-check lint database-runtime-verify test build validate schema-verify
+
+smoke: openapi-validate build
+	$(MAKE) clean
 
 clean:
 	rm -f hotkey

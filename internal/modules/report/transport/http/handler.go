@@ -22,6 +22,41 @@ type reportService interface {
 	Publish(context.Context, int64) (domain.Report, error)
 }
 
+// Build creates or refreshes a deterministic draft from the current event
+// projection. Published reports remain immutable and return a conflict.
+// @Summary Build a report draft
+// @Tags reports
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "report ID"
+// @Success 200 {object} ReportResult[ReportResponse]
+// @Failure 400 {object} ReportResult[EmptyResponse]
+// @Failure 401 {object} ReportResult[EmptyResponse]
+// @Failure 403 {object} ReportResult[EmptyResponse]
+// @Failure 404 {object} ReportResult[EmptyResponse]
+// @Failure 409 {object} ReportResult[EmptyResponse]
+// @Failure 503 {object} ReportResult[EmptyResponse]
+// @Router /api/v1/reports/{id}/build [post]
+func (handler *Handler) Build(c *gin.Context) error {
+	httptransport.SetModule(c, "report")
+	reportID, err := reportID(c)
+	if err != nil {
+		return err
+	}
+	builder, ok := handler.service.(interface {
+		BuildByID(context.Context, int64) (domain.Report, error)
+	})
+	if !ok {
+		return reportError(sharedrepository.ErrUnavailable)
+	}
+	report, err := builder.BuildByID(c.Request.Context(), reportID)
+	if err != nil {
+		return reportError(err)
+	}
+	httptransport.OK(c, reportResponse(report))
+	return nil
+}
+
 var _ reportService = (*reportapplication.Service)(nil)
 
 type Handler struct{ service reportService }

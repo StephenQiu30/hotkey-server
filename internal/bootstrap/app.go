@@ -7,7 +7,9 @@ import (
 	"strings"
 
 	deliveryapplication "github.com/StephenQiu30/hotkey-server/internal/modules/delivery/application"
+	deliveryjobs "github.com/StephenQiu30/hotkey-server/internal/modules/delivery/infrastructure/jobs"
 	deliverypostgres "github.com/StephenQiu30/hotkey-server/internal/modules/delivery/infrastructure/postgres"
+	deliverysmtp "github.com/StephenQiu30/hotkey-server/internal/modules/delivery/infrastructure/smtp"
 	deliverytransport "github.com/StephenQiu30/hotkey-server/internal/modules/delivery/transport/http"
 	eventapplication "github.com/StephenQiu30/hotkey-server/internal/modules/event/application"
 	eventjobs "github.com/StephenQiu30/hotkey-server/internal/modules/event/infrastructure/jobs"
@@ -32,6 +34,8 @@ import (
 	intelligenceprovider "github.com/StephenQiu30/hotkey-server/internal/modules/intelligence/infrastructure/provider"
 	intelligencetransport "github.com/StephenQiu30/hotkey-server/internal/modules/intelligence/transport/http"
 	knowledgeapplication "github.com/StephenQiu30/hotkey-server/internal/modules/knowledge/application"
+	knowledgejobs "github.com/StephenQiu30/hotkey-server/internal/modules/knowledge/infrastructure/jobs"
+	knowledgeminio "github.com/StephenQiu30/hotkey-server/internal/modules/knowledge/infrastructure/minio"
 	knowledgepostgres "github.com/StephenQiu30/hotkey-server/internal/modules/knowledge/infrastructure/postgres"
 	knowledgevault "github.com/StephenQiu30/hotkey-server/internal/modules/knowledge/infrastructure/vault"
 	knowledgetransport "github.com/StephenQiu30/hotkey-server/internal/modules/knowledge/transport/http"
@@ -42,7 +46,9 @@ import (
 	operationspostgres "github.com/StephenQiu30/hotkey-server/internal/modules/operations/infrastructure/postgres"
 	operationstransport "github.com/StephenQiu30/hotkey-server/internal/modules/operations/transport/http"
 	reportapplication "github.com/StephenQiu30/hotkey-server/internal/modules/report/application"
+	reportjobs "github.com/StephenQiu30/hotkey-server/internal/modules/report/infrastructure/jobs"
 	reportpostgres "github.com/StephenQiu30/hotkey-server/internal/modules/report/infrastructure/postgres"
+	reportvault "github.com/StephenQiu30/hotkey-server/internal/modules/report/infrastructure/vault"
 	reporttransport "github.com/StephenQiu30/hotkey-server/internal/modules/report/transport/http"
 	sourceapplication "github.com/StephenQiu30/hotkey-server/internal/modules/source/application"
 	sourceinfrastructure "github.com/StephenQiu30/hotkey-server/internal/modules/source/infrastructure"
@@ -170,9 +176,10 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newKnowledgeProposalService,
 					newKnowledgeReconciler,
 					newKnowledgeHandler,
+					newOperationsOverviewService,
 					newJobService,
 				),
-				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes, registerKnowledgeRoutes, registerJobRoutes),
+				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes, registerKnowledgeRoutes, registerJobRoutes, registerOverviewRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -184,6 +191,12 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 			options = append(options,
 				fx.Provide(
 					sourceinfrastructure.NewConnectorRegistry,
+					newKnowledgeVaultWriter,
+					newKnowledgeProposalService,
+					newKnowledgeReconciler,
+					deliverypostgres.NewRepository,
+					reportpostgres.NewRepository,
+					newReportService,
 					newCollectionService,
 					newCandidateRecallService,
 					newClusteringExecutionService,
@@ -196,6 +209,11 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					eventjobs.NewClusterHandler,
 					eventjobs.NewHeatHandler,
 					newSummaryHandler,
+					newKnowledgeProjectHandler,
+					newKnowledgeReconcileHandler,
+					newReportBuildHandler,
+					newDeliveryEmailService,
+					newDeliverEmailHandler,
 					newP0Handlers,
 					newQueueWorker, exposeWorkerRunner, newQueueStore, exposeCollectionDueReader, newCollectionScheduler, exposeCollectionSchedulerRunner,
 				),
@@ -281,6 +299,10 @@ func registerKnowledgeRoutes(router *gin.Engine, handler *knowledgetransport.Han
 
 func registerJobRoutes(router *gin.Engine, service *operationsapplication.JobService, authenticator httptransport.Authenticator) {
 	operationstransport.RegisterJobRoutes(router, service, authenticator)
+}
+
+func registerOverviewRoutes(router *gin.Engine, service *operationsapplication.OverviewService, authenticator httptransport.Authenticator) {
+	operationstransport.RegisterOverviewRoutes(router, service, authenticator)
 }
 
 // Fx does not infer interface bindings from a concrete repository. Keep the
@@ -369,7 +391,7 @@ func newSummaryHandler(service *eventapplication.EventSummaryService) (*intellig
 	})
 }
 
-func newP0Handlers(collect *sourcejobs.CollectHandler, normalize *ingestionjobs.NormalizeHandler, evaluate *ingestionjobs.EvaluateHandler, cluster *eventjobs.ClusterHandler, heat *eventjobs.HeatHandler, summary *intelligencejobs.SummaryHandler) map[string]queue.Handler {
+func newP0Handlers(collect *sourcejobs.CollectHandler, normalize *ingestionjobs.NormalizeHandler, evaluate *ingestionjobs.EvaluateHandler, cluster *eventjobs.ClusterHandler, heat *eventjobs.HeatHandler, summary *intelligencejobs.SummaryHandler, projectKnowledge *projectKnowledgeHandler, reconcileKnowledge *reconcileKnowledgeHandler, buildReport *reportjobs.BuildHandler, deliverEmail *deliveryjobs.DeliverEmailHandler) map[string]queue.Handler {
 	return map[string]queue.Handler{
 		queue.KindCollectSource:        collect.Handle,
 		queue.KindNormalizeContent:     normalize.Handle,
@@ -377,6 +399,10 @@ func newP0Handlers(collect *sourcejobs.CollectHandler, normalize *ingestionjobs.
 		queue.KindClusterContent:       cluster.Handle,
 		queue.KindRecomputeEventHeat:   heat.Handle,
 		queue.KindGenerateEventSummary: summary.Handle,
+		queue.KindProjectKnowledge:     projectKnowledge.Handle,
+		queue.KindReconcileKnowledge:   reconcileKnowledge.Handle,
+		queue.KindBuildReport:          buildReport.Handle,
+		queue.KindDeliverEmail:         deliverEmail.Handle,
 	}
 }
 
@@ -428,11 +454,21 @@ func newMonitorService(runtime *database.Runtime, monitors *monitorpostgres.Repo
 	return monitorapplication.NewService(monitorapplication.Dependencies{Runtime: runtime, Monitors: monitors, Sources: sources, Audit: audit})
 }
 
-func newReportService(repository *reportpostgres.Repository) (*reportapplication.Service, error) {
-	return reportapplication.NewService(repository)
+func newReportService(repository *reportpostgres.Repository, events *eventapplication.ReadService, cfg config.Config) (*reportapplication.Service, error) {
+	service, err := reportapplication.NewService(repository, events)
+	if err != nil {
+		return nil, err
+	}
+	service.SetPublisher(reportvault.NewPublisher(cfg.VaultPath))
+	return service, nil
 }
 
-func newKnowledgeProposalService(repository *knowledgepostgres.Repository) *knowledgeapplication.ProposalService {
+func newKnowledgeProposalService(repository *knowledgepostgres.Repository, cfg config.Config) *knowledgeapplication.ProposalService {
+	if snapshots, err := knowledgeminio.NewStore(cfg.MinIO); err == nil {
+		return knowledgeapplication.NewProposalService(repository, repository, snapshots)
+	}
+	// MinIO remains optional for local P0 operation; when configured, every
+	// successful proposal application receives an immutable object snapshot.
 	return knowledgeapplication.NewProposalService(repository, repository)
 }
 
@@ -448,8 +484,67 @@ func newKnowledgeHandler(proposals *knowledgeapplication.ProposalService, reposi
 	return knowledgetransport.NewHandler(proposals, repository, reconcile, writer)
 }
 
+type projectKnowledgeHandler struct{ handler *knowledgejobs.Handler }
+
+func (handler *projectKnowledgeHandler) Handle(ctx context.Context, job queue.Job) error {
+	return handler.handler.Handle(ctx, job)
+}
+
+func newKnowledgeProjectHandler(proposals *knowledgeapplication.ProposalService, writer *knowledgevault.Writer) (*projectKnowledgeHandler, error) {
+	handler, err := knowledgejobs.NewHandler(queue.KindProjectKnowledge, func(ctx context.Context, id int64) error {
+		_, err := proposals.ApplyByID(ctx, id, writer)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &projectKnowledgeHandler{handler: handler}, nil
+}
+
+type reconcileKnowledgeHandler struct{ handler *knowledgejobs.Handler }
+
+func (handler *reconcileKnowledgeHandler) Handle(ctx context.Context, job queue.Job) error {
+	return handler.handler.Handle(ctx, job)
+}
+
+func newKnowledgeReconcileHandler(reconcile *knowledgeapplication.Reconciler) (*reconcileKnowledgeHandler, error) {
+	handler, err := knowledgejobs.NewHandler(queue.KindReconcileKnowledge, func(ctx context.Context, _ int64) error {
+		_, err := reconcile.Reconcile(ctx)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &reconcileKnowledgeHandler{handler: handler}, nil
+}
+
+func newReportBuildHandler(service *reportapplication.Service) (*reportjobs.BuildHandler, error) {
+	return reportjobs.NewBuildHandler(func(ctx context.Context, id int64) error {
+		_, err := service.BuildByID(ctx, id)
+		return err
+	})
+}
+
+type deliveryMailSender struct{ mailer *deliverysmtp.Mailer }
+
+func (sender deliveryMailSender) Send(ctx context.Context, message deliveryapplication.MailMessage) error {
+	return sender.mailer.Send(ctx, deliverysmtp.Message{To: message.To, Subject: message.Subject, HTML: message.HTML, Text: message.Text})
+}
+
+func newDeliveryEmailService(repository *deliverypostgres.Repository, cfg config.Config) (*deliveryapplication.EmailService, error) {
+	return deliveryapplication.NewEmailService(repository, deliveryMailSender{mailer: deliverysmtp.NewMailer(cfg.Authentication.SMTP)}, nil)
+}
+
+func newDeliverEmailHandler(service *deliveryapplication.EmailService, repository *deliverypostgres.Repository) (*deliveryjobs.DeliverEmailHandler, error) {
+	return deliveryjobs.NewDeliverEmailHandler(service, repository)
+}
+
 func newJobService(repository *operationspostgres.JobRepository, audit *operationspostgres.AuditWriter) (*operationsapplication.JobService, error) {
 	return operationsapplication.NewJobService(repository, audit)
+}
+
+func newOperationsOverviewService(repository *operationspostgres.JobRepository) (*operationsapplication.OverviewService, error) {
+	return operationsapplication.NewOverviewService(repository)
 }
 
 func newDeliverySubscriptionService(runtime *database.Runtime, repository *deliverypostgres.Repository, audit *operationspostgres.AuditWriter) (*deliveryapplication.SubscriptionService, error) {

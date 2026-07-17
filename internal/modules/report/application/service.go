@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	eventdomain "github.com/StephenQiu30/hotkey-server/internal/modules/event/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/modules/report/domain"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
@@ -15,6 +16,16 @@ import (
 type Service struct {
 	store   Store
 	builder *Builder
+	events  EventReader
+	publish Publisher
+}
+
+type Publisher interface {
+	Publish(context.Context, domain.Report) error
+}
+
+type EventReader interface {
+	List(context.Context, eventdomain.EventListQuery) (eventdomain.EventPage, error)
 }
 
 type BuildInput struct {
@@ -26,11 +37,42 @@ type BuildInput struct {
 	Events    []EventSnapshot
 }
 
-func NewService(store Store) (*Service, error) {
+func NewService(store Store, readers ...EventReader) (*Service, error) {
 	if store == nil {
 		return nil, fmt.Errorf("report store is required")
 	}
-	return &Service{store: store, builder: NewBuilder()}, nil
+	service := &Service{store: store, builder: NewBuilder()}
+	if len(readers) > 0 {
+		service.events = readers[0]
+	}
+	return service, nil
+}
+
+func (service *Service) SetPublisher(publisher Publisher) { service.publish = publisher }
+
+// BuildByID is the durable queue entry point. It rereads the current report
+// definition and a bounded event page; the queue payload contains only ID.
+func (service *Service) BuildByID(ctx context.Context, reportID int64) (domain.Report, error) {
+	if service == nil || service.events == nil || reportID <= 0 {
+		return domain.Report{}, sharedrepository.ErrUnavailable
+	}
+	current, err := service.Get(ctx, reportID)
+	if err != nil {
+		return domain.Report{}, err
+	}
+	page, err := service.events.List(ctx, eventdomain.EventListQuery{Limit: 100})
+	if err != nil {
+		return domain.Report{}, err
+	}
+	events := make([]EventSnapshot, 0, len(page.Items))
+	for _, event := range page.Items {
+		events = append(events, EventSnapshot{EventID: event.ID, Title: event.TitleZH, Summary: event.Summary, HeatScore: event.HeatScore})
+	}
+	timezone := "UTC"
+	if current.Period.Location != nil {
+		timezone = current.Period.Location.String()
+	}
+	return service.Build(ctx, BuildInput{ID: reportID, Type: current.Type, At: time.Now().UTC(), Timezone: timezone, MonitorID: current.MonitorID, Events: events})
 }
 
 func (service *Service) List(ctx context.Context, query domain.ListQuery) (domain.Page, error) {
@@ -65,6 +107,11 @@ func (service *Service) Publish(ctx context.Context, reportID int64) (domain.Rep
 	published, err := service.builder.Publish(report)
 	if err != nil {
 		return domain.Report{}, err
+	}
+	if service.publish != nil {
+		if err := service.publish.Publish(ctx, published); err != nil {
+			return domain.Report{}, err
+		}
 	}
 	if err := service.store.Save(ctx, published); err != nil {
 		return domain.Report{}, err
