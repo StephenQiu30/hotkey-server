@@ -31,6 +31,7 @@ type Document struct {
 	Type                                  DocumentType
 	VaultPath, ContentHash, GeneratedHash string
 	Status                                DocumentStatus
+	EventID, TopicID, ReportID            *int64
 }
 
 func (document Document) Validate() error {
