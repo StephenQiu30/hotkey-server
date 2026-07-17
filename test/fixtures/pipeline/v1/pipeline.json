@@ -1,0 +1,31 @@
+{
+  "version": "p0-pipeline-v1",
+  "sources": [
+    {
+      "id": 41,
+      "kind": "rss",
+      "query_signature": "fixture-rss-v1",
+      "content_id": 401,
+      "event_id": 4001
+    },
+    {
+      "id": 42,
+      "kind": "hn",
+      "query_signature": "fixture-hn-v1",
+      "content_id": 402,
+      "event_id": 4002
+    },
+    {
+      "id": 43,
+      "kind": "rss",
+      "query_signature": "fixture-failing-source-v1",
+      "content_id": 403,
+      "event_id": 4003,
+      "failure": "temporary_source_unavailable"
+    }
+  ],
+  "summary": {
+    "status": "degraded",
+    "reason_code": "ai_model_unavailable"
+  }
+}
