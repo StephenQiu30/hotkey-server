@@ -28,6 +28,7 @@ func TestSpecsHaveUniqueTablesAndColumns(t *testing.T) {
 		"collection_run_items":         {"id", "run_id", "source_connection_id", "source_code", "external_id", "content_type", "captured_item_version", "captured_item", "payload_hash", "raw_payload_disposition", "content_id", "ingestion_status", "ingestion_error_code", "outcome", "observed_at"},
 		"collection_run_target_items":  {"id", "collection_run_id", "collection_run_target_id", "collection_run_item_id", "outcome"},
 		"content_metric_snapshots":     {"id", "content_id", "captured_at", "view_count", "like_count", "comment_count", "share_count"},
+		"metric_capability_profiles":   {"id", "version", "source_type", "profile_version", "status", "published_at", "archived_at"},
 	}
 	for _, spec := range All() {
 		if spec.Table == "" || seen[spec.Table] {
@@ -46,7 +47,7 @@ func TestSpecsHaveUniqueTablesAndColumns(t *testing.T) {
 			t.Errorf("missing mapped table %s", table)
 		}
 	}
-	if got, want := len(seen), 57; got != want {
+	if got, want := len(seen), 58; got != want {
 		t.Errorf("mapped table count = %d, want %d", got, want)
 	}
 }

@@ -29,6 +29,9 @@ const (
 	ActionSourceDisabled             AuditAction = "source.disabled"
 	ActionSourceArchived             AuditAction = "source.archived"
 	ActionSourceRestored             AuditAction = "source.restored"
+	ActionMetricCapabilityDrafted    AuditAction = "metric_capability.drafted"
+	ActionMetricCapabilityPublished  AuditAction = "metric_capability.published"
+	ActionMetricCapabilityArchived   AuditAction = "metric_capability.archived"
 	ActionSubscriptionCreated        AuditAction = "subscription.created"
 	ActionSubscriptionUpdated        AuditAction = "subscription.updated"
 	ActionSubscriptionTokenRotated   AuditAction = "subscription.token_rotated"
@@ -42,13 +45,16 @@ var allowedActions = map[AuditAction]struct{}{
 	ActionMonitorCreated: {}, ActionMonitorDraftUpdated: {}, ActionMonitorAICandidateCreated: {}, ActionMonitorAICandidateApproved: {}, ActionMonitorAICandidateRejected: {},
 	ActionMonitorPublished: {}, ActionMonitorPaused: {}, ActionMonitorResumed: {}, ActionMonitorArchived: {}, ActionMonitorRestored: {},
 	ActionSourceCreated: {}, ActionSourceUpdated: {}, ActionSourceEnabled: {}, ActionSourceDisabled: {}, ActionSourceArchived: {}, ActionSourceRestored: {},
+	ActionMetricCapabilityDrafted: {}, ActionMetricCapabilityPublished: {}, ActionMetricCapabilityArchived: {},
 	ActionSubscriptionCreated: {}, ActionSubscriptionUpdated: {}, ActionSubscriptionTokenRotated: {},
 }
 
 var (
-	requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
-	lowerHex32       = regexp.MustCompile(`^[0-9a-f]{32}$`)
-	lowerHex64       = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	requestIDPattern                    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+	lowerHex32                          = regexp.MustCompile(`^[0-9a-f]{32}$`)
+	lowerHex64                          = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	metricCapabilityProfileVersionRegex = regexp.MustCompile(`^[a-z][a-z0-9._-]{0,63}$`)
+	reasonCodePattern                   = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 )
 
 // AuditEntry intentionally contains no free-form payload field. Before and
@@ -102,6 +108,7 @@ var safeMetadataKeys = map[string]struct{}{
 	"monitor_version": {}, "draft_version": {}, "source_version": {}, "subscription_version": {}, "config_version": {}, "revision": {}, "rule_count": {}, "source_count": {},
 	"status": {}, "previous_status": {}, "approval_status": {}, "config_hash": {}, "published_at": {},
 	"enabled": {}, "deleted": {}, "credential_configured": {},
+	"capability_source_type": {}, "capability_profile_version": {}, "capability_status": {}, "capability_profile_record_version": {}, "reason_code": {},
 }
 
 var allowedMonitorStates = map[string]struct{}{
@@ -163,6 +170,25 @@ func validMetadataValue(key string, value any) bool {
 	case "enabled", "deleted", "credential_configured":
 		_, ok := value.(bool)
 		return ok
+	case "capability_source_type":
+		value, ok := value.(string)
+		return ok && (value == "rss" || value == "hacker_news")
+	case "capability_profile_version":
+		value, ok := value.(string)
+		return ok && metricCapabilityProfileVersionRegex.MatchString(value)
+	case "capability_status":
+		value, ok := value.(string)
+		return ok && (value == "draft" || value == "published" || value == "archived")
+	case "capability_profile_record_version":
+		switch value.(type) {
+		case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+			return true
+		default:
+			return false
+		}
+	case "reason_code":
+		value, ok := value.(string)
+		return ok && reasonCodePattern.MatchString(value)
 	case "status", "previous_status":
 		state, ok := value.(string)
 		_, allowed := allowedMonitorStates[state]
@@ -191,7 +217,7 @@ func validActorType(value string) bool {
 }
 
 func validResourceType(value string) bool {
-	return value == "monitor" || value == "source_connection" || value == "report_subscription"
+	return value == "monitor" || value == "source_connection" || value == "metric_capability_profile" || value == "report_subscription"
 }
 
 func validRequestID(value string) bool {

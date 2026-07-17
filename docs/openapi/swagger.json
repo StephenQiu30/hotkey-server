@@ -1667,6 +1667,236 @@
                 }
             }
         },
+        "/api/v1/metric-capability-profiles": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "source metric capabilities"
+                ],
+                "summary": "Create a metric capability profile draft",
+                "parameters": [
+                    {
+                        "description": "metric capability profile",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.CreateMetricCapabilityProfileRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-http_MetricCapabilityProfileResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/metric-capability-profiles/{id}/archive": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "source metric capabilities"
+                ],
+                "summary": "Archive a metric capability profile",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "metric capability profile ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "expected version and reason",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.MetricCapabilityLifecycleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-http_MetricCapabilityProfileResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/metric-capability-profiles/{id}/publish": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "source metric capabilities"
+                ],
+                "summary": "Publish a metric capability profile",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "metric capability profile ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "expected version and reason",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.MetricCapabilityLifecycleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-http_MetricCapabilityProfileResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/monitors": {
             "get": {
                 "security": [
@@ -5209,6 +5439,62 @@
                 }
             }
         },
+        "http.CreateMetricCapabilityProfileRequest": {
+            "type": "object",
+            "required": [
+                "independence_strategy",
+                "max_single_item_contribution",
+                "normalization_window_hours",
+                "profile_version",
+                "source_type"
+            ],
+            "properties": {
+                "credibility_weight": {
+                    "type": "number",
+                    "maximum": 1,
+                    "minimum": 0
+                },
+                "independence_strategy": {
+                    "type": "string",
+                    "enum": [
+                        "source_connection",
+                        "author"
+                    ]
+                },
+                "max_single_item_contribution": {
+                    "type": "number",
+                    "maximum": 100
+                },
+                "normalization_window_hours": {
+                    "type": "integer",
+                    "maximum": 720,
+                    "minimum": 1
+                },
+                "profile_version": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "source_type": {
+                    "type": "string",
+                    "enum": [
+                        "rss",
+                        "hacker_news"
+                    ]
+                },
+                "supports_comments": {
+                    "type": "boolean"
+                },
+                "supports_likes": {
+                    "type": "boolean"
+                },
+                "supports_shares": {
+                    "type": "boolean"
+                },
+                "supports_views": {
+                    "type": "boolean"
+                }
+            }
+        },
         "http.CreateModelProfileRequest": {
             "type": "object",
             "properties": {
@@ -5844,6 +6130,72 @@
                     "type": "integer"
                 },
                 "target_expected_version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.MetricCapabilityLifecycleRequest": {
+            "type": "object",
+            "required": [
+                "expected_version",
+                "reason_code"
+            ],
+            "properties": {
+                "expected_version": {
+                    "type": "integer"
+                },
+                "reason_code": {
+                    "type": "string",
+                    "maxLength": 64
+                }
+            }
+        },
+        "http.MetricCapabilityProfileResponse": {
+            "type": "object",
+            "properties": {
+                "archived_at": {
+                    "type": "string"
+                },
+                "credibility_weight": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "independence_strategy": {
+                    "type": "string"
+                },
+                "max_single_item_contribution": {
+                    "type": "number"
+                },
+                "normalization_window_hours": {
+                    "type": "integer"
+                },
+                "profile_version": {
+                    "type": "string"
+                },
+                "published_at": {
+                    "type": "string"
+                },
+                "source_type": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "supports_comments": {
+                    "type": "boolean"
+                },
+                "supports_likes": {
+                    "type": "boolean"
+                },
+                "supports_shares": {
+                    "type": "boolean"
+                },
+                "supports_views": {
+                    "type": "boolean"
+                },
+                "version": {
                     "type": "integer"
                 }
             }
@@ -7194,6 +7546,20 @@
                 },
                 "data": {
                     "$ref": "#/definitions/http.ManagementSourceResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.SourceResult-http_MetricCapabilityProfileResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.MetricCapabilityProfileResponse"
                 },
                 "message": {
                     "type": "string"

@@ -18,6 +18,42 @@ type SourceResult[T any] struct {
 
 type EmptyResponse struct{}
 
+type MetricCapabilityProfileResponse struct {
+	ID                        int64      `json:"id"`
+	Version                   int64      `json:"version"`
+	SourceType                string     `json:"source_type"`
+	ProfileVersion            string     `json:"profile_version"`
+	SupportsViews             bool       `json:"supports_views"`
+	SupportsLikes             bool       `json:"supports_likes"`
+	SupportsComments          bool       `json:"supports_comments"`
+	SupportsShares            bool       `json:"supports_shares"`
+	IndependenceStrategy      string     `json:"independence_strategy"`
+	NormalizationWindowHours  int        `json:"normalization_window_hours"`
+	CredibilityWeight         float64    `json:"credibility_weight"`
+	MaxSingleItemContribution float64    `json:"max_single_item_contribution"`
+	Status                    string     `json:"status"`
+	PublishedAt               *time.Time `json:"published_at,omitempty"`
+	ArchivedAt                *time.Time `json:"archived_at,omitempty"`
+}
+
+type CreateMetricCapabilityProfileRequest struct {
+	SourceType                string  `json:"source_type" binding:"required,oneof=rss hacker_news"`
+	ProfileVersion            string  `json:"profile_version" binding:"required,max=64"`
+	SupportsViews             bool    `json:"supports_views"`
+	SupportsLikes             bool    `json:"supports_likes"`
+	SupportsComments          bool    `json:"supports_comments"`
+	SupportsShares            bool    `json:"supports_shares"`
+	IndependenceStrategy      string  `json:"independence_strategy" binding:"required,oneof=source_connection author"`
+	NormalizationWindowHours  int     `json:"normalization_window_hours" binding:"required,gte=1,lte=720"`
+	CredibilityWeight         float64 `json:"credibility_weight" binding:"gte=0,lte=1"`
+	MaxSingleItemContribution float64 `json:"max_single_item_contribution" binding:"required,gt=0,lte=100"`
+}
+
+type MetricCapabilityLifecycleRequest struct {
+	ExpectedVersion int64  `json:"expected_version" binding:"required,gt=0"`
+	ReasonCode      string `json:"reason_code" binding:"required,max=64"`
+}
+
 // CollectionResult mirrors Result for collection-control Swagger declarations.
 // Runtime responses still use the shared transport helpers.
 type CollectionResult[T any] struct {
@@ -245,6 +281,17 @@ func managementReadResponse(source domain.ManagementSourceConnection) SourceRead
 }
 func configResponse(config domain.SourceConfig) SourceConfigDTO {
 	return SourceConfigDTO{AllowBodyStorage: config.AllowBodyStorage, RequiresAttribution: config.RequiresAttribution, RequiresDeletionSync: config.RequiresDeletionSync, ContentRetentionDays: config.ContentRetentionDays, MetricsRetentionDays: config.MetricsRetentionDays, AllowedLanguages: config.AllowedLanguages, AllowedRegions: config.AllowedRegions, RateLimitPerMinute: config.RateLimitPerMinute, RequestTimeoutSeconds: config.RequestTimeoutSeconds, MaxPagesPerRun: config.MaxPagesPerRun}
+}
+
+func metricCapabilityProfileResponse(profile domain.MetricCapabilityProfile) MetricCapabilityProfileResponse {
+	return MetricCapabilityProfileResponse{
+		ID: profile.ID, Version: profile.Version, SourceType: string(profile.SourceType), ProfileVersion: profile.ProfileVersion,
+		SupportsViews: profile.SupportsViews, SupportsLikes: profile.SupportsLikes, SupportsComments: profile.SupportsComments,
+		SupportsShares: profile.SupportsShares, IndependenceStrategy: string(profile.IndependenceStrategy),
+		NormalizationWindowHours: profile.NormalizationWindowHours, CredibilityWeight: profile.CredibilityWeight,
+		MaxSingleItemContribution: profile.MaxSingleItemContribution, Status: string(profile.Status),
+		PublishedAt: profile.PublishedAt, ArchivedAt: profile.ArchivedAt,
+	}
 }
 
 func collectionRunPageResponse(page domain.CollectionRunPage) CollectionRunPageResponse {

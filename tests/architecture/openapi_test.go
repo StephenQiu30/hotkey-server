@@ -80,6 +80,9 @@ func TestOpenAPIContract(t *testing.T) {
 		"/api/v1/source-connections/{id}/disable":                           {"post": {"200", "400", "401", "403", "409", "503"}},
 		"/api/v1/source-connections/{id}/archive":                           {"post": {"200", "400", "401", "403", "409", "503"}},
 		"/api/v1/source-connections/{id}/restore":                           {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/metric-capability-profiles":                                {"post": {"201", "400", "401", "403", "409", "503"}},
+		"/api/v1/metric-capability-profiles/{id}/publish":                   {"post": {"200", "400", "401", "403", "404", "409", "503"}},
+		"/api/v1/metric-capability-profiles/{id}/archive":                   {"post": {"200", "400", "401", "403", "404", "409", "503"}},
 		"/api/v1/collection-runs":                                           {"get": {"200", "400", "401", "403", "503"}},
 		"/api/v1/collection-runs/{id}/retry":                                {"post": {"200", "400", "401", "403", "404", "409", "503"}},
 		"/api/v1/source-connections/{id}/health":                            {"post": {"200", "400", "401", "403", "409", "503"}},
@@ -110,9 +113,9 @@ func TestOpenAPIContract(t *testing.T) {
 		"/api/v1/reports/{id}":                                              {"get": {"200", "400", "401", "404", "503"}},
 		"/api/v1/reports/{id}/preview":                                      {"post": {"200", "400", "401", "404", "503"}},
 		"/api/v1/reports/{id}/publish":                                      {"post": {"200", "400", "401", "403", "404", "409", "503"}},
-		"/api/v1/report-subscriptions":                                     {"get": {"200", "401", "503"}, "post": {"201", "400", "401", "409", "503"}},
-		"/api/v1/report-subscriptions/{id}":                                {"get": {"200", "400", "401", "404", "503"}, "patch": {"200", "400", "401", "404", "409", "503"}},
-		"/api/v1/report-subscriptions/{id}/rss-token/rotate":               {"post": {"200", "400", "401", "404", "409", "503"}},
+		"/api/v1/report-subscriptions":                                      {"get": {"200", "401", "503"}, "post": {"201", "400", "401", "409", "503"}},
+		"/api/v1/report-subscriptions/{id}":                                 {"get": {"200", "400", "401", "404", "503"}, "patch": {"200", "400", "401", "404", "409", "503"}},
+		"/api/v1/report-subscriptions/{id}/rss-token/rotate":                {"post": {"200", "400", "401", "404", "409", "503"}},
 	}
 	if len(document.Paths) != len(required) {
 		t.Fatalf("public path count = %d, want %d (%v)", len(document.Paths), len(required), document.Paths)
@@ -150,7 +153,7 @@ func TestOpenAPIContract(t *testing.T) {
 		}
 	}
 
-	for _, route := range []string{"/api/v1/auth/me", "/api/v1/auth/password", "/api/v1/users", "/api/v1/users/{id}", "/api/v1/users/{id}/restore", "/api/v1/monitors", "/api/v1/monitors/{id}", "/api/v1/monitors/{id}/draft", "/api/v1/monitors/{id}/draft/ai-candidates", "/api/v1/monitors/{id}/draft/rules/{rule_id}/approval", "/api/v1/monitors/{id}/preview", "/api/v1/monitors/{id}/publish", "/api/v1/monitors/{id}/pause", "/api/v1/monitors/{id}/resume", "/api/v1/monitors/{id}/archive", "/api/v1/monitors/{id}/restore", "/api/v1/source-connections", "/api/v1/source-connections/{id}", "/api/v1/source-connections/{id}/enable", "/api/v1/source-connections/{id}/disable", "/api/v1/source-connections/{id}/archive", "/api/v1/source-connections/{id}/restore", "/api/v1/collection-runs", "/api/v1/collection-runs/{id}/retry", "/api/v1/source-connections/{id}/health", "/api/v1/contents", "/api/v1/contents/{id}", "/api/v1/monitors/{id}/matches", "/api/v1/monitors/{id}/matches/{match_id}", "/api/v1/monitors/{id}/relevance-preview", "/api/v1/monitors/{id}/matches/{match_id}/feedback", "/api/v1/monitors/{id}/contents/{content_id}/feedback", "/api/v1/monitors/{id}/feedback/evaluation", "/api/v1/monitors/{id}/feedback/suggestions/refresh", "/api/v1/monitors/{id}/feedback/suggestions", "/api/v1/monitors/{id}/feedback/suggestions/{suggestion_id}/review", "/api/v1/ai/model-profiles", "/api/v1/ai/model-profiles/{id}", "/api/v1/ai/model-profiles/{id}/restore", "/api/v1/events", "/api/v1/events/{id}", "/api/v1/events/{id}/contents", "/api/v1/events/{id}/heat", "/api/v1/events/{id}/claims", "/api/v1/events/{id}/contents/{content_id}/lock", "/api/v1/events/{id}/lifecycle", "/api/v1/events/{id}/merge", "/api/v1/events/{id}/split", "/api/v1/reports", "/api/v1/reports/{id}", "/api/v1/reports/{id}/preview", "/api/v1/reports/{id}/publish", "/api/v1/report-subscriptions", "/api/v1/report-subscriptions/{id}", "/api/v1/report-subscriptions/{id}/rss-token/rotate"} {
+	for _, route := range []string{"/api/v1/auth/me", "/api/v1/auth/password", "/api/v1/users", "/api/v1/users/{id}", "/api/v1/users/{id}/restore", "/api/v1/monitors", "/api/v1/monitors/{id}", "/api/v1/monitors/{id}/draft", "/api/v1/monitors/{id}/draft/ai-candidates", "/api/v1/monitors/{id}/draft/rules/{rule_id}/approval", "/api/v1/monitors/{id}/preview", "/api/v1/monitors/{id}/publish", "/api/v1/monitors/{id}/pause", "/api/v1/monitors/{id}/resume", "/api/v1/monitors/{id}/archive", "/api/v1/monitors/{id}/restore", "/api/v1/source-connections", "/api/v1/source-connections/{id}", "/api/v1/source-connections/{id}/enable", "/api/v1/source-connections/{id}/disable", "/api/v1/source-connections/{id}/archive", "/api/v1/source-connections/{id}/restore", "/api/v1/metric-capability-profiles", "/api/v1/metric-capability-profiles/{id}/publish", "/api/v1/metric-capability-profiles/{id}/archive", "/api/v1/collection-runs", "/api/v1/collection-runs/{id}/retry", "/api/v1/source-connections/{id}/health", "/api/v1/contents", "/api/v1/contents/{id}", "/api/v1/monitors/{id}/matches", "/api/v1/monitors/{id}/matches/{match_id}", "/api/v1/monitors/{id}/relevance-preview", "/api/v1/monitors/{id}/matches/{match_id}/feedback", "/api/v1/monitors/{id}/contents/{content_id}/feedback", "/api/v1/monitors/{id}/feedback/evaluation", "/api/v1/monitors/{id}/feedback/suggestions/refresh", "/api/v1/monitors/{id}/feedback/suggestions", "/api/v1/monitors/{id}/feedback/suggestions/{suggestion_id}/review", "/api/v1/ai/model-profiles", "/api/v1/ai/model-profiles/{id}", "/api/v1/ai/model-profiles/{id}/restore", "/api/v1/events", "/api/v1/events/{id}", "/api/v1/events/{id}/contents", "/api/v1/events/{id}/heat", "/api/v1/events/{id}/claims", "/api/v1/events/{id}/contents/{content_id}/lock", "/api/v1/events/{id}/lifecycle", "/api/v1/events/{id}/merge", "/api/v1/events/{id}/split", "/api/v1/reports", "/api/v1/reports/{id}", "/api/v1/reports/{id}/preview", "/api/v1/reports/{id}/publish", "/api/v1/report-subscriptions", "/api/v1/report-subscriptions/{id}", "/api/v1/report-subscriptions/{id}/rss-token/rotate"} {
 		var operations map[string]openAPIOperation
 		if err := json.Unmarshal(document.Paths[route], &operations); err != nil {
 			t.Fatalf("decode protected path %s: %v", route, err)
@@ -174,9 +177,55 @@ func TestOpenAPIContract(t *testing.T) {
 	assertSafeRelevanceOpenAPIDefinitions(t, document.Definitions)
 	assertFalseNegativeContentFeedbackOpenAPI(t, document.Paths)
 	assertSafeModelProfileOpenAPIDefinitions(t, document.Definitions)
+	assertMetricCapabilityOpenAPI(t, document.Paths, document.Definitions)
 	assertSafeDeliveryOpenAPIDefinitions(t, document.Definitions)
 	assertDraftExpectedVersionOpenAPI(t, document.Definitions)
 	assertMonitorDraftDefaultsOpenAPI(t, document.Definitions)
+}
+
+func assertMetricCapabilityOpenAPI(t *testing.T, paths map[string]json.RawMessage, definitions map[string]struct {
+	Properties map[string]json.RawMessage `json:"properties"`
+	Required   []string                   `json:"required"`
+}) {
+	t.Helper()
+	response, ok := definitions["http.MetricCapabilityProfileResponse"]
+	if !ok {
+		t.Fatal("missing metric capability profile response definition")
+	}
+	allowedResponse := map[string]bool{
+		"id": true, "version": true, "source_type": true, "profile_version": true, "supports_views": true,
+		"supports_likes": true, "supports_comments": true, "supports_shares": true, "independence_strategy": true,
+		"normalization_window_hours": true, "credibility_weight": true, "max_single_item_contribution": true,
+		"status": true, "published_at": true, "archived_at": true,
+	}
+	for field := range response.Properties {
+		if !allowedResponse[field] {
+			t.Errorf("metric capability response exposes %q", field)
+		}
+	}
+	for field := range allowedResponse {
+		if _, ok := response.Properties[field]; !ok {
+			t.Errorf("metric capability response misses %q", field)
+		}
+	}
+
+	expectBody := func(route, method, reference string) {
+		t.Helper()
+		var operations map[string]openAPIOperation
+		if err := json.Unmarshal(paths[route], &operations); err != nil {
+			t.Fatalf("decode %s: %v", route, err)
+		}
+		for _, parameter := range operations[method].Parameters {
+			if parameter.In == "body" && parameter.Schema.Ref == reference {
+				return
+			}
+		}
+		t.Errorf("%s %s body must use %s", strings.ToUpper(method), route, reference)
+	}
+	expectBody("/api/v1/metric-capability-profiles", "post", "#/definitions/http.CreateMetricCapabilityProfileRequest")
+	for _, route := range []string{"/api/v1/metric-capability-profiles/{id}/publish", "/api/v1/metric-capability-profiles/{id}/archive"} {
+		expectBody(route, "post", "#/definitions/http.MetricCapabilityLifecycleRequest")
+	}
 }
 
 func assertSafeDeliveryOpenAPIDefinitions(t *testing.T, definitions map[string]struct {

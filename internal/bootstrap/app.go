@@ -133,7 +133,9 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					monitorpostgres.NewSourceUsageReader,
 					monitorpostgres.NewPublishedReferenceReader,
 					sourcepostgres.NewRepository,
+					sourcepostgres.NewMetricCapabilityRepository,
 					newSourceService,
+					newMetricCapabilityService,
 					sourceinfrastructure.NewConnectorRegistry,
 					newCollectionControlService,
 					monitorpostgres.NewRepository,
@@ -145,7 +147,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					reportpostgres.NewRepository,
 					newReportService,
 				),
-				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes),
+				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -188,6 +190,10 @@ func registerIdentityRoutes(router *gin.Engine, service *identityapplication.Ser
 
 func registerSourceRoutes(router *gin.Engine, service *sourceapplication.Service, authenticator httptransport.Authenticator) {
 	sourcetransport.RegisterRoutes(router, service, authenticator)
+}
+
+func registerMetricCapabilityRoutes(router *gin.Engine, service *sourceapplication.MetricCapabilityService, authenticator httptransport.Authenticator) {
+	sourcetransport.RegisterMetricCapabilityRoutes(router, service, authenticator)
 }
 
 func registerCollectionRoutes(router *gin.Engine, service *sourceapplication.CollectionControlService, authenticator httptransport.Authenticator) {
@@ -248,6 +254,10 @@ func newEventClaimService(repository *eventpostgres.Repository) *eventapplicatio
 
 func newSourceService(runtime *database.Runtime, sources *sourcepostgres.Repository, usage *monitorpostgres.SourceUsageReader, references *monitorpostgres.PublishedReferenceReader, audit *operationspostgres.AuditWriter) (*sourceapplication.Service, error) {
 	return sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sources, MonitorUsage: usage, PublishedReferences: references, Audit: audit})
+}
+
+func newMetricCapabilityService(runtime *database.Runtime, profiles *sourcepostgres.MetricCapabilityRepository, audit *operationspostgres.AuditWriter) (*sourceapplication.MetricCapabilityService, error) {
+	return sourceapplication.NewMetricCapabilityService(sourceapplication.MetricCapabilityDependencies{Runtime: runtime, Profiles: profiles, Audit: audit})
 }
 
 func newCollectionControlService(runtime *database.Runtime, sources *sourcepostgres.Repository, runs *sourcepostgres.CollectionRepository, connectors *sourceinfrastructure.ConnectorRegistry, metrics *observability.Metrics) (*sourceapplication.CollectionControlService, error) {

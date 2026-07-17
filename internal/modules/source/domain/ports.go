@@ -15,6 +15,26 @@ type SourceConnectionRepository interface {
 	Update(context.Context, *SourceConnection) error
 }
 
+// MetricCapabilityProfileRepository owns only the source-type capability
+// configuration. Event code consumes the published profile through the narrow
+// reader below and never reads this table directly.
+type MetricCapabilityProfileRepository interface {
+	CreateDraft(context.Context, *MetricCapabilityProfile) error
+	FindByID(context.Context, int64) (*MetricCapabilityProfile, error)
+	LockByID(context.Context, int64) (*MetricCapabilityProfile, error)
+	FindPublished(context.Context, SourceType) (*MetricCapabilityProfile, error)
+	LockPublished(context.Context, SourceType) (*MetricCapabilityProfile, error)
+	Publish(context.Context, *MetricCapabilityProfile) error
+	Archive(context.Context, *MetricCapabilityProfile) error
+}
+
+// MetricCapabilityReader is the credential-free Source boundary consumed by
+// Event metric recomputation. A missing published profile is a normal source
+// capability fact, not permission for Event to read Source tables.
+type MetricCapabilityReader interface {
+	FindPublishedMetricCapability(context.Context, SourceType) (MetricCapabilityProfile, error)
+}
+
 // SourceConnectionListQuery is intentionally narrow: Source lists are always
 // ordered by ID ascending and use a fixed filter shape. This prevents a future
 // HTTP transport from passing arbitrary sort/filter SQL into the repository.
