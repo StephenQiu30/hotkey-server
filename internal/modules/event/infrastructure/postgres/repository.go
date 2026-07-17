@@ -268,10 +268,16 @@ VALUES ($1, $2, $3, $4, 'detected', $5, $6, NULL) RETURNING id, version, created
 		if err := copyMonitorEvents(ctx, transaction.SQL, source.ID, created.ID); err != nil {
 			return err
 		}
-		if _, err := transaction.SQL.ExecContext(ctx, `UPDATE events SET version = version + 1, updated_at = now() WHERE id = $1 AND version = $2`, source.ID, source.Version); err != nil {
+		source, err = repository.RecomputeEventEvidence(ctx, application.EvidenceRecomputeCommand{EventID: source.ID, ReasonCode: "split_evidence_recompute", ActorUserID: command.ActorUserID})
+		if err != nil {
 			return err
 		}
-		if err := insertAudit(ctx, transaction.SQL, domain.GovernanceAudit{EventID: source.ID, Action: domain.AuditSplit, ActorUserID: command.ActorUserID, ReasonCode: command.ReasonCode, SourceEventID: &source.ID, TargetEventID: &created.ID}); err != nil {
+		created, err = repository.RecomputeEventEvidence(ctx, application.EvidenceRecomputeCommand{EventID: created.ID, ReasonCode: "split_evidence_recompute", ActorUserID: command.ActorUserID})
+		if err != nil {
+			return err
+		}
+		expected := command.SourceExpectedVersion
+		if err := insertAudit(ctx, transaction.SQL, domain.GovernanceAudit{EventID: source.ID, Action: domain.AuditSplit, ActorUserID: command.ActorUserID, ReasonCode: command.ReasonCode, SourceEventID: &source.ID, TargetEventID: &created.ID, ExpectedVersion: &expected}); err != nil {
 			return err
 		}
 		if err := insertAudit(ctx, transaction.SQL, domain.GovernanceAudit{EventID: created.ID, Action: domain.AuditDownstreamReconcile, ActorUserID: command.ActorUserID, ReasonCode: "split_downstream_reconcile", SourceEventID: &source.ID, TargetEventID: &created.ID, Metadata: map[string]any{"content_ids": contentIDs}}); err != nil {

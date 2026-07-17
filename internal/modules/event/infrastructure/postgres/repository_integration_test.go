@@ -105,6 +105,52 @@ func TestGovernanceRepositorySplitsWithMemberVersion(t *testing.T) {
 	}
 }
 
+func TestGovernanceRepositorySplitRecomputesBothEventProjections(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	repository := NewRepository(runtime)
+	fixture := seedEventFixture(t, runtime)
+	remainingContentID := seedUnassignedEventContent(t, runtime)
+	if _, err := runtime.SQL.Exec(`INSERT INTO event_contents (event_id, content_id, membership_score, evidence_role, origin) VALUES ($1,$2,80,'supporting','rule')`, fixture.sourceID, remainingContentID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE event_contents SET is_representative = (content_id = $1) WHERE event_id = $2`, fixture.sourceContentID, fixture.sourceID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE events SET lifecycle_status = 'active', representative_content_id = $1 WHERE id = $2`, fixture.sourceContentID, fixture.sourceID); err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := repository.Split(ctx, application.SplitCommand{SourceEventID: fixture.sourceID, SourceExpectedVersion: 1, Members: []application.SplitMember{{ContentID: fixture.sourceContentID, ExpectedVersion: 1}}, ReasonCode: "separate"})
+	if err != nil {
+		t.Fatalf("Split() error = %v", err)
+	}
+	if created.LifecycleStatus != domain.LifecycleDetected || created.RepresentativeContentID == nil || *created.RepresentativeContentID != fixture.sourceContentID {
+		t.Fatalf("created event = %#v, want detected event represented by moved content", created)
+	}
+	source, err := repository.Get(ctx, fixture.sourceID)
+	if err != nil {
+		t.Fatalf("Get(source) error = %v", err)
+	}
+	if source.LifecycleStatus != domain.LifecycleCooling || source.RepresentativeContentID == nil || *source.RepresentativeContentID != remainingContentID {
+		t.Fatalf("source event = %#v, want cooling event represented by remaining content", source)
+	}
+	var recomputes int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM event_governance_audits WHERE action = 'evidence_recompute' AND event_id IN ($1,$2)`, fixture.sourceID, created.ID).Scan(&recomputes); err != nil {
+		t.Fatal(err)
+	}
+	if recomputes != 2 {
+		t.Fatalf("evidence recompute audits = %d, want 2", recomputes)
+	}
+}
+
 func TestGovernanceRepositorySplitRejectsStaleMemberWithoutPartialMove(t *testing.T) {
 	ctx := context.Background()
 	runtime, err := database.Open(ctx, postgresfixture.New(t))
