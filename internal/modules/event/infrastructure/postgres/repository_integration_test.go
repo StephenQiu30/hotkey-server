@@ -49,6 +49,39 @@ func TestGovernanceRepositoryMergesAndLocksAtomically(t *testing.T) {
 	}
 }
 
+func TestGovernanceRepositoryMergesThroughCanonicalTarget(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatalf("database.Open() error = %v", err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatalf("database.InitializeEmpty() error = %v", err)
+	}
+	repository := NewRepository(runtime)
+	fixture := seedEventFixture(t, runtime)
+	if _, err := runtime.SQL.Exec(`UPDATE events SET version = 2 WHERE id = $1`, fixture.targetID); err != nil {
+		t.Fatalf("bump canonical target version: %v", err)
+	}
+	var historicalTargetID int64
+	if err := runtime.SQL.QueryRow(`INSERT INTO events (event_key, title_zh, summary, lifecycle_status, first_seen_at, last_seen_at, merged_into_id) SELECT 'evt-history-' || md5(random()::text), '历史事件', '', 'merged', first_seen_at, last_seen_at, $1 FROM events WHERE id = $1 RETURNING id`, fixture.targetID).Scan(&historicalTargetID); err != nil {
+		t.Fatalf("insert merged target: %v", err)
+	}
+	merged, err := repository.Merge(ctx, application.MergeCommand{SourceEventID: fixture.sourceID, TargetEventID: historicalTargetID, SourceExpectedVersion: 1, TargetExpectedVersion: 1, ReasonCode: "canonical_merge"})
+	if err != nil {
+		t.Fatalf("Merge() error = %v", err)
+	}
+	if merged.ID != fixture.targetID || merged.Version != 3 {
+		t.Fatalf("Merge() = %#v, want canonical target version 3", merged)
+	}
+	if source, err := repository.Get(ctx, fixture.sourceID); err != nil {
+		t.Fatalf("Get(source) error = %v", err)
+	} else if source.LifecycleStatus != domain.LifecycleMerged || source.MergedIntoID == nil || *source.MergedIntoID != fixture.targetID {
+		t.Fatalf("source after canonical merge = %#v", source)
+	}
+}
+
 func TestGovernanceRepositorySplitsWithMemberVersion(t *testing.T) {
 	ctx := context.Background()
 	runtime, err := database.Open(ctx, postgresfixture.New(t))

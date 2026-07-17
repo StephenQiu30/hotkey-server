@@ -161,7 +161,7 @@ FROM events WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, eventID))
 		}
 		source := locked[command.SourceEventID]
 		target = locked[command.TargetEventID]
-		if source.Version != command.SourceExpectedVersion {
+		if source.Version != command.SourceExpectedVersion || target.Version != command.TargetExpectedVersion {
 			return fmt.Errorf("event version conflict")
 		}
 		if source.ManualLocked || source.LifecycleStatus == domain.LifecycleMerged || source.LifecycleStatus == domain.LifecycleArchived || source.LifecycleStatus == domain.LifecycleRejected {
@@ -182,7 +182,7 @@ FROM events WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, *target.MergedInto
 			}
 			target = canonical
 		}
-		if target.ID == source.ID || target.Version != command.TargetExpectedVersion || target.ManualLocked || target.LifecycleStatus == domain.LifecycleArchived || target.LifecycleStatus == domain.LifecycleRejected {
+		if target.ID == source.ID || target.ManualLocked || target.LifecycleStatus == domain.LifecycleArchived || target.LifecycleStatus == domain.LifecycleRejected {
 			return fmt.Errorf("event merge target is locked or version-conflicted")
 		}
 		if err := mergeMembers(ctx, transaction.SQL, source.ID, target.ID, command.ActorUserID); err != nil {
