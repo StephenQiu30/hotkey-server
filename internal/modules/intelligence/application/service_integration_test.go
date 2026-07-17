@@ -94,6 +94,64 @@ func TestPlan009RelevanceReviewContract(t *testing.T) {
 	}
 }
 
+func TestPlan012EventIntelligenceRunReusesOnlyExactEvidence(t *testing.T) {
+	runtime := openApplicationRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	runs := intelligencepostgres.NewRepository(runtime)
+	profile := applicationEventSummaryProfile()
+	if err := runs.CreateProfile(context.Background(), &profile); err != nil {
+		t.Fatalf("CreateProfile(event_summary): %v", err)
+	}
+	provider := &applicationFakeProvider{structured: []domain.StructuredResponse{
+		{ModelVersion: profile.ModelVersion, JSON: json.RawMessage(`{"title_zh":"事件","sentences":[{"text":"事实","evidence":[{"content_id":2,"locator":"title"}]}]}`), Usage: domain.Usage{InputTokens: 3, OutputTokens: 2}},
+		{ModelVersion: profile.ModelVersion, JSON: json.RawMessage(`{"title_zh":"事件","sentences":[{"text":"新事实","evidence":[{"content_id":3,"locator":"title"}]}]}`), Usage: domain.Usage{InputTokens: 3, OutputTokens: 2}},
+	}}
+	clock := &applicationClock{value: time.Date(2026, time.July, 17, 14, 0, 0, 0, time.UTC)}
+	service := NewEventIntelligenceService(newApplicationRunService(t, runs, provider, clock))
+	input := EventIntelligenceInput{TaskType: domain.TaskTypeEventSummary, EventID: 7, EventKey: "evt-7", Evidence: []EventIntelligenceEvidence{{ContentID: 2, Locator: "title", Excerpt: "trusted"}}}
+	first, err := service.Execute(context.Background(), input)
+	if err != nil || first.Status != "succeeded" || first.Reused || first.Run.ID <= 0 {
+		t.Fatalf("Execute(first) = %#v / %v", first, err)
+	}
+	second, err := service.Execute(context.Background(), input)
+	if err != nil || second.Status != "succeeded" || !second.Reused || second.Run.ID != first.Run.ID || provider.structuredCalls() != 1 {
+		t.Fatalf("Execute(reuse) = %#v / %v calls=%d", second, err, provider.structuredCalls())
+	}
+	input.Evidence = []EventIntelligenceEvidence{{ContentID: 3, Locator: "title", Excerpt: "changed evidence"}}
+	updated, err := service.Execute(context.Background(), input)
+	if err != nil || updated.Status != "succeeded" || updated.Reused || updated.Run.ID == first.Run.ID || provider.structuredCalls() != 2 {
+		t.Fatalf("Execute(changed evidence) = %#v / %v calls=%d", updated, err, provider.structuredCalls())
+	}
+}
+
+func TestPlan012EventIntelligenceRunRepairsInvalidResult(t *testing.T) {
+	runtime := openApplicationRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	runs := intelligencepostgres.NewRepository(runtime)
+	profile := applicationEventSummaryProfile()
+	profile.Name = "application-event-summary-repair-profile"
+	if err := runs.CreateProfile(context.Background(), &profile); err != nil {
+		t.Fatalf("CreateProfile(event_summary): %v", err)
+	}
+	provider := &applicationFakeProvider{structured: []domain.StructuredResponse{
+		{ModelVersion: profile.ModelVersion, JSON: json.RawMessage(`{"title_zh":42}`), Usage: domain.Usage{InputTokens: 2, OutputTokens: 3}},
+		{ModelVersion: profile.ModelVersion, JSON: json.RawMessage(`{"title_zh":"事件","sentences":[]}`), Usage: domain.Usage{InputTokens: 4, OutputTokens: 5}},
+	}}
+	clock := &applicationClock{value: time.Date(2026, time.July, 17, 14, 15, 0, 0, time.UTC)}
+	service := NewEventIntelligenceService(newApplicationRunService(t, runs, provider, clock))
+	result, err := service.Execute(context.Background(), EventIntelligenceInput{TaskType: domain.TaskTypeEventSummary, EventID: 7, EventKey: "evt-7", Evidence: []EventIntelligenceEvidence{{ContentID: 2, Locator: "title", Excerpt: "trusted"}}})
+	if err != nil || result.Status != "succeeded" || provider.structuredCalls() != 2 || result.Run.Tokens != 14 {
+		t.Fatalf("Execute(repair) = %#v / %v calls=%d", result, err, provider.structuredCalls())
+	}
+	var repairAttempted bool
+	if err := runtime.SQL.QueryRow(`SELECT repair_attempted FROM ai_runs WHERE id = $1`, result.Run.ID).Scan(&repairAttempted); err != nil {
+		t.Fatalf("read repair state: %v", err)
+	}
+	if !repairAttempted {
+		t.Fatal("repair_attempted = false, want persisted repair")
+	}
+}
+
 func TestPlan009RelevanceReviewFacadeKeepsSingleOwnerAndProfileScopedReuse(t *testing.T) {
 	runtime := openApplicationRuntime(t)
 	defer func() { _ = runtime.Close() }()
@@ -462,6 +520,14 @@ func applicationRelevanceReviewProfile() domain.ModelProfile {
 	credential := domain.OpenAICredentialReference
 	daily := "5.0000"
 	return domain.ModelProfile{Name: "application-relevance-review-profile", TaskType: domain.TaskTypeRelevanceReview, Provider: domain.ProviderOpenAI,
+		ModelName: "gpt-5.6sol", ModelVersion: "2026-07", CredentialRef: &credential, TimeoutSeconds: 10, MaxAttempts: 2,
+		MaxCost: "1.0000", DailyBudget: &daily, FallbackPriority: 10, Enabled: true}
+}
+
+func applicationEventSummaryProfile() domain.ModelProfile {
+	credential := domain.OpenAICredentialReference
+	daily := "5.0000"
+	return domain.ModelProfile{Name: "application-event-summary-profile", TaskType: domain.TaskTypeEventSummary, Provider: domain.ProviderOpenAI,
 		ModelName: "gpt-5.6sol", ModelVersion: "2026-07", CredentialRef: &credential, TimeoutSeconds: 10, MaxAttempts: 2,
 		MaxCost: "1.0000", DailyBudget: &daily, FallbackPriority: 10, Enabled: true}
 }

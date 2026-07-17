@@ -26,6 +26,10 @@ type rowQuery interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
+type rowsQuery interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
 type rowScanner interface {
 	Scan(...any) error
 }
@@ -40,6 +44,7 @@ var _ application.GovernanceRepository = (*Repository)(nil)
 var _ application.ReadRepository = (*Repository)(nil)
 var _ application.DecisionStore = (*Repository)(nil)
 var _ application.ContentEventReader = (*Repository)(nil)
+var _ application.EventIntelligenceReader = (*Repository)(nil)
 
 func NewRepository(runtime *database.Runtime) *Repository {
 	return &Repository{runtime: runtime, ids: id.UUID{}}
@@ -115,6 +120,47 @@ FROM event_contents WHERE event_id = $1 ORDER BY membership_score DESC, content_
 		return domain.EventMemberPage{}, sharedrepository.MapError(err)
 	}
 	return domain.EventMemberPage{Items: items}, nil
+}
+
+func (repository *Repository) LoadEventIntelligenceSource(ctx context.Context, eventID int64) (application.EventIntelligenceSource, error) {
+	if !repository.available() || eventID <= 0 {
+		return application.EventIntelligenceSource{}, sharedrepository.ErrUnavailable
+	}
+	event, err := repository.Get(ctx, eventID)
+	if err != nil {
+		return application.EventIntelligenceSource{}, err
+	}
+	var query rowsQuery = repository.runtime.SQL
+	if transaction, ok := database.TransactionFromContext(ctx); ok {
+		query = transaction.SQL
+	}
+	rows, err := query.QueryContext(ctx, `
+SELECT membership.content_id,
+       CASE WHEN COALESCE(content.excerpt, '') <> '' THEN 'excerpt' ELSE 'title' END,
+       LEFT(CASE WHEN COALESCE(content.excerpt, '') <> '' THEN content.excerpt ELSE content.title END, 500)
+FROM event_contents membership
+JOIN contents content ON content.id = membership.content_id
+WHERE membership.event_id = $1
+  AND membership.evidence_role <> 'duplicate'
+  AND content.content_status = 'active'
+  AND content.deleted_at IS NULL
+ORDER BY membership.is_representative DESC, membership.membership_score DESC, membership.content_id ASC`, eventID)
+	if err != nil {
+		return application.EventIntelligenceSource{}, sharedrepository.MapError(err)
+	}
+	defer rows.Close()
+	evidence := make([]domain.EvidenceRef, 0)
+	for rows.Next() {
+		var item domain.EvidenceRef
+		if err := rows.Scan(&item.ContentID, &item.Locator, &item.Excerpt); err != nil {
+			return application.EventIntelligenceSource{}, sharedrepository.MapError(err)
+		}
+		evidence = append(evidence, item)
+	}
+	if err := rows.Err(); err != nil {
+		return application.EventIntelligenceSource{}, sharedrepository.MapError(err)
+	}
+	return application.EventIntelligenceSource{Event: event, Evidence: evidence}, nil
 }
 
 func (repository *Repository) ListMetricEventIDsForContent(ctx context.Context, contentID int64) ([]int64, error) {
