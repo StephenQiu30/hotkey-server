@@ -102,3 +102,17 @@ func (worker *Worker) Run(ctx context.Context, interval time.Duration) error {
 		}
 	}
 }
+
+func (worker *Worker) ReclaimStale(ctx context.Context, timeout time.Duration) (int64, error) {
+	if worker == nil || worker.runtime == nil {
+		return 0, sharedrepository.ErrUnavailable
+	}
+	if timeout <= 0 {
+		return 0, fmt.Errorf("reclaim timeout must be positive")
+	}
+	result, err := worker.runtime.SQL.ExecContext(ctx, `UPDATE river_job SET state = 'available', scheduled_at = now() WHERE state = 'running' AND attempted_at < now() - $1::interval AND attempt < max_attempts`, timeout.String())
+	if err != nil {
+		return 0, sharedrepository.MapError(err)
+	}
+	return result.RowsAffected()
+}
