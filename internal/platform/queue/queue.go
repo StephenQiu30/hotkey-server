@@ -24,8 +24,11 @@ type Payload struct {
 }
 
 func (payload Payload) Validate() error {
-	if payload.EntityID <= 0 || payload.EntityVersion < 0 || len(payload.InputHash) > 128 {
+	if payload.EntityID <= 0 || payload.EntityVersion < 1 || len(payload.InputHash) > 128 {
 		return fmt.Errorf("invalid job payload")
+	}
+	if payload.WindowStart.IsZero() != payload.WindowEnd.IsZero() || (!payload.WindowStart.IsZero() && payload.WindowEnd.Before(payload.WindowStart)) {
+		return fmt.Errorf("invalid job window")
 	}
 	return nil
 }
@@ -41,10 +44,20 @@ type Job struct {
 }
 
 func (job Job) Validate() error {
-	if job.Kind == "" || job.UniqueKey == "" || job.ScheduledAt.IsZero() || job.MaxAttempts < 1 || job.MaxAttempts > 25 || job.Priority < 1 || job.Priority > 100 {
+	if !IsKnownKind(job.Kind) || len(job.Kind) > 64 || len(job.UniqueKey) == 0 || len(job.UniqueKey) > MaxUniqueKeyBytes || job.ScheduledAt.IsZero() || job.MaxAttempts < 1 || job.MaxAttempts > 25 || job.Priority < 1 || job.Priority > 100 {
 		return fmt.Errorf("invalid job")
 	}
-	return job.Payload.Validate()
+	if err := job.Payload.Validate(); err != nil {
+		return err
+	}
+	encoded, err := json.Marshal(job.Payload)
+	if err != nil {
+		return fmt.Errorf("marshal job payload: %w", err)
+	}
+	if len(encoded) > MaxPayloadBytes {
+		return fmt.Errorf("job payload exceeds %d bytes", MaxPayloadBytes)
+	}
+	return nil
 }
 
 type Store struct{ runtime *database.Runtime }
@@ -61,6 +74,9 @@ func (store *Store) Enqueue(ctx context.Context, job Job) (int64, bool, error) {
 	args, err := json.Marshal(job.Payload)
 	if err != nil {
 		return 0, false, err
+	}
+	if len(args) > MaxPayloadBytes {
+		return 0, false, fmt.Errorf("job payload exceeds %d bytes", MaxPayloadBytes)
 	}
 	var executor sqlQueryer = store.runtime.SQL
 	if transaction, ok := database.TransactionFromContext(ctx); ok {

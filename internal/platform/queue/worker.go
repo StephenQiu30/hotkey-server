@@ -37,10 +37,13 @@ func (worker *Worker) RunOnce(ctx context.Context) (bool, error) {
 	var id int64
 	var kind string
 	var args []byte
+	var uniqueKey []byte
+	var scheduledAt time.Time
 	var attempt, maxAttempts int
+	var priority int
 	err := worker.runtime.WithinTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
-		row := transaction.SQL.QueryRowContext(ctx, `SELECT id, kind, args, attempt, max_attempts FROM river_job WHERE state = 'available' AND scheduled_at <= now() ORDER BY priority, id FOR UPDATE SKIP LOCKED LIMIT 1`)
-		if err := row.Scan(&id, &kind, &args, &attempt, &maxAttempts); err != nil {
+		row := transaction.SQL.QueryRowContext(ctx, `SELECT id, kind, args, attempt, max_attempts, priority, scheduled_at, unique_key FROM river_job WHERE state = 'available' AND scheduled_at <= now() ORDER BY priority, id FOR UPDATE SKIP LOCKED LIMIT 1`)
+		if err := row.Scan(&id, &kind, &args, &attempt, &maxAttempts, &priority, &scheduledAt, &uniqueKey); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return sql.ErrNoRows
 			}
@@ -57,12 +60,15 @@ func (worker *Worker) RunOnce(ctx context.Context) (bool, error) {
 	}
 	var payload Payload
 	if err := json.Unmarshal(args, &payload); err != nil {
-		return true, worker.finish(ctx, id, kind, attempt+1, maxAttempts, fmt.Errorf("decode job payload: %w", err))
+		return true, worker.finish(ctx, id, kind, attempt+1, maxAttempts, NewPermanentError(fmt.Errorf("decode job payload: %w", err)))
 	}
-	job := Job{ID: id, Kind: kind, Payload: payload, ScheduledAt: worker.now()}
+	job := Job{ID: id, Kind: kind, UniqueKey: string(uniqueKey), Payload: payload, ScheduledAt: scheduledAt, MaxAttempts: maxAttempts, Priority: priority}
+	if err := job.Validate(); err != nil {
+		return true, worker.finish(ctx, id, kind, attempt+1, maxAttempts, NewPermanentError(err))
+	}
 	handler := worker.handlers[kind]
 	if handler == nil {
-		return true, worker.finish(ctx, id, kind, attempt+1, maxAttempts, fmt.Errorf("no handler registered for %q", kind))
+		return true, worker.finish(ctx, id, kind, attempt+1, maxAttempts, NewPermanentError(fmt.Errorf("no handler registered for %q", kind)))
 	}
 	return true, worker.finish(ctx, id, kind, attempt+1, maxAttempts, handler(ctx, job))
 }
@@ -73,14 +79,18 @@ func (worker *Worker) finish(ctx context.Context, id int64, kind string, attempt
 			_, err := transaction.SQL.ExecContext(ctx, `UPDATE river_job SET state = 'completed', finalized_at = now() WHERE id = $1`, id)
 			return sharedrepository.MapError(err)
 		}
-		state := "available"
-		if attempt >= maxAttempts {
-			state = "discarded"
-		}
 		if _, err := transaction.SQL.ExecContext(ctx, `INSERT INTO river_job_attempt (job_id, attempt, error) VALUES ($1, $2, $3) ON CONFLICT (job_id, attempt) DO NOTHING`, id, attempt, handlerErr.Error()); err != nil {
 			return sharedrepository.MapError(err)
 		}
-		_, err := transaction.SQL.ExecContext(ctx, `UPDATE river_job SET state = $1, scheduled_at = now() + interval '1 minute', finalized_at = CASE WHEN $1 = 'discarded' THEN now() ELSE NULL END WHERE id = $2`, state, id)
+		if IsCancelled(handlerErr) {
+			_, err := transaction.SQL.ExecContext(ctx, `UPDATE river_job SET state = 'cancelled', finalized_at = now() WHERE id = $1`, id)
+			return sharedrepository.MapError(err)
+		}
+		if IsPermanent(handlerErr) || attempt >= maxAttempts {
+			_, err := transaction.SQL.ExecContext(ctx, `UPDATE river_job SET state = 'discarded', finalized_at = now() WHERE id = $1`, id)
+			return sharedrepository.MapError(err)
+		}
+		_, err := transaction.SQL.ExecContext(ctx, `UPDATE river_job SET state = 'available', scheduled_at = now() + interval '1 minute', finalized_at = NULL WHERE id = $1`, id)
 		return sharedrepository.MapError(err)
 	})
 }
