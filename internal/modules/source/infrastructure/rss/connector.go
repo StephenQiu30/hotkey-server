@@ -197,7 +197,11 @@ func (connector *Connector) Health(ctx context.Context, connection domain.Source
 	}
 	response, err := connector.get(ctx, connector.endpoint, "", "")
 	if err != nil {
-		return domain.HealthResult{CheckedAt: checkedAt, ErrorKind: domain.ClassifyCollectionError(connector.requestError(err)), DiagnosticCode: "request_failed"}
+		diagnosticCode := "request_failed"
+		if errors.Is(err, errUnsafeDestination) || errors.Is(err, errRedirectLimit) {
+			diagnosticCode = "destination_not_permitted"
+		}
+		return domain.HealthResult{CheckedAt: checkedAt, ErrorKind: domain.ClassifyCollectionError(connector.requestError(err)), DiagnosticCode: diagnosticCode}
 	}
 	status := response.StatusCode
 	closeResponse(response)
