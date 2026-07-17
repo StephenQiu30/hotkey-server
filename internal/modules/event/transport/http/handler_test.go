@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,6 +31,12 @@ type missingEventReadFake struct{ readFake }
 
 func (missingEventReadFake) Get(context.Context, int64) (domain.Event, error) {
 	return domain.Event{}, sharedrepository.ErrNotFound
+}
+
+type missingMemberEventReadFake struct{ readFake }
+
+func (missingMemberEventReadFake) ListMembers(context.Context, int64) (domain.EventMemberPage, error) {
+	return domain.EventMemberPage{}, sharedrepository.ErrNotFound
 }
 
 type staleLifecycleStore struct{ event domain.Event }
@@ -86,6 +93,41 @@ func TestEventRoutesMapInvalidNotFoundAndConflictToStableResults(t *testing.T) {
 		{name: "invalid identifier", method: http.MethodGet, target: "/api/v1/events/0", wantStatus: http.StatusBadRequest, wantCode: 10000},
 		{name: "missing event", method: http.MethodGet, target: "/api/v1/events/9", wantStatus: http.StatusNotFound, wantCode: 10003},
 		{name: "stale lifecycle", method: http.MethodPost, target: "/api/v1/events/1/lifecycle", body: `{"expected_version":1,"to":"active","reason":"reviewed"}`, wantStatus: http.StatusConflict, wantCode: 10002},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(testCase.method, testCase.target, bytes.NewBufferString(testCase.body))
+			request.Header.Set("Authorization", "Bearer test-token")
+			request.Header.Set("Content-Type", "application/json")
+			router.ServeHTTP(recorder, request)
+			if recorder.Code != testCase.wantStatus {
+				t.Fatalf("status = %d, want %d body=%s", recorder.Code, testCase.wantStatus, recorder.Body.String())
+			}
+			var result struct {
+				Code int `json:"code"`
+			}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+				t.Fatalf("decode result: %v", err)
+			}
+			if result.Code != testCase.wantCode {
+				t.Fatalf("business code = %d, want %d body=%s", result.Code, testCase.wantCode, recorder.Body.String())
+			}
+		})
+	}
+}
+
+func TestEventRoutesReturnNotFoundForMissingMembersAndBadRequestForLongReason(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	now := time.Now().UTC()
+	router := gin.New()
+	RegisterRoutes(router, application.NewReadService(missingMemberEventReadFake{}), application.NewLifecycleService(staleLifecycleStore{event: domain.Event{ID: 1, Version: 1, EventKey: "evt_1", TitleZH: "事件", LifecycleStatus: domain.LifecycleDetected, FirstSeenAt: now, LastSeenAt: now}}), application.NewGovernanceService(governanceStub{}), adminAuthenticator{})
+	cases := []struct {
+		name, method, target, body string
+		wantStatus, wantCode       int
+	}{
+		{name: "missing member event", method: http.MethodGet, target: "/api/v1/events/9/contents", wantStatus: http.StatusNotFound, wantCode: 10003},
+		{name: "long lifecycle reason", method: http.MethodPost, target: "/api/v1/events/1/lifecycle", body: `{"expected_version":1,"to":"active","reason":"` + strings.Repeat("a", domain.MaxReasonCodeLength+1) + `"}`, wantStatus: http.StatusBadRequest, wantCode: 10000},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {

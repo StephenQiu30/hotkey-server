@@ -1231,6 +1231,12 @@
                             "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
                         }
                     },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
                     "409": {
                         "description": "Conflict",
                         "schema": {
@@ -1496,6 +1502,12 @@
                             "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
                         }
                     },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
                     "409": {
                         "description": "Conflict",
                         "schema": {
@@ -1561,6 +1573,12 @@
                     },
                     "403": {
                         "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
                         }
@@ -5795,7 +5813,8 @@
                     "type": "boolean"
                 },
                 "reason": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 64
                 }
             }
         },
@@ -5809,7 +5828,8 @@
             ],
             "properties": {
                 "reason": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 64
                 },
                 "source_expected_version": {
                     "type": "integer"
@@ -7247,7 +7267,8 @@
                     }
                 },
                 "reason": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 64
                 },
                 "source_expected_version": {
                     "type": "integer"
@@ -7473,7 +7494,8 @@
                     "type": "integer"
                 },
                 "reason": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 64
                 },
                 "to": {
                     "type": "string"

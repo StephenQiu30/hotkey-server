@@ -17,7 +17,7 @@ type MergeCommand struct {
 }
 
 func (command MergeCommand) Validate() error {
-	if command.SourceEventID <= 0 || command.TargetEventID <= 0 || command.SourceEventID == command.TargetEventID || command.SourceExpectedVersion <= 0 || command.TargetExpectedVersion <= 0 || command.ReasonCode == "" {
+	if command.SourceEventID <= 0 || command.TargetEventID <= 0 || command.SourceEventID == command.TargetEventID || command.SourceExpectedVersion <= 0 || command.TargetExpectedVersion <= 0 || !domain.ValidReasonCode(command.ReasonCode) {
 		return fmt.Errorf("invalid merge command")
 	}
 	return nil
@@ -37,7 +37,7 @@ type SplitCommand struct {
 }
 
 func (command SplitCommand) Validate() error {
-	if command.SourceEventID <= 0 || command.SourceExpectedVersion <= 0 || len(command.Members) == 0 || command.ReasonCode == "" {
+	if command.SourceEventID <= 0 || command.SourceExpectedVersion <= 0 || len(command.Members) == 0 || !domain.ValidReasonCode(command.ReasonCode) {
 		return fmt.Errorf("invalid split command")
 	}
 	seen := make(map[int64]struct{}, len(command.Members))
@@ -61,7 +61,7 @@ type MemberLockCommand struct {
 }
 
 func (command MemberLockCommand) Validate() error {
-	if command.EventID <= 0 || command.ContentID <= 0 || command.ExpectedVersion <= 0 || command.ReasonCode == "" {
+	if command.EventID <= 0 || command.ContentID <= 0 || command.ExpectedVersion <= 0 || !domain.ValidReasonCode(command.ReasonCode) {
 		return fmt.Errorf("invalid member lock command")
 	}
 	return nil

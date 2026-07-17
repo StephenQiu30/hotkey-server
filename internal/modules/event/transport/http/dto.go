@@ -95,20 +95,20 @@ type ClaimResponse struct {
 type LifecycleRequest struct {
 	ExpectedVersion int64  `json:"expected_version" binding:"required"`
 	To              string `json:"to" binding:"required"`
-	Reason          string `json:"reason" binding:"required"`
+	Reason          string `json:"reason" binding:"required,max=64"`
 }
 
 type MemberLockRequest struct {
 	ExpectedVersion int64  `json:"expected_version" binding:"required"`
 	Locked          bool   `json:"locked"`
-	Reason          string `json:"reason" binding:"required"`
+	Reason          string `json:"reason" binding:"required,max=64"`
 }
 
 type MergeRequest struct {
 	TargetEventID         int64  `json:"target_event_id" binding:"required"`
 	SourceExpectedVersion int64  `json:"source_expected_version" binding:"required"`
 	TargetExpectedVersion int64  `json:"target_expected_version" binding:"required"`
-	Reason                string `json:"reason" binding:"required"`
+	Reason                string `json:"reason" binding:"required,max=64"`
 }
 
 type SplitMemberRequest struct {
@@ -119,7 +119,7 @@ type SplitMemberRequest struct {
 type SplitRequest struct {
 	SourceExpectedVersion int64                `json:"source_expected_version" binding:"required"`
 	Members               []SplitMemberRequest `json:"members" binding:"required,min=1"`
-	Reason                string               `json:"reason" binding:"required"`
+	Reason                string               `json:"reason" binding:"required,max=64"`
 }
 
 func eventResponse(event domain.Event) EventResponse {

@@ -22,7 +22,7 @@ type EvidenceRecomputeCommand struct {
 }
 
 func (command EvidenceRecomputeCommand) Validate() error {
-	if command.EventID <= 0 || command.ReasonCode == "" || len(command.ReasonCode) > 64 {
+	if command.EventID <= 0 || !domain.ValidReasonCode(command.ReasonCode) {
 		return fmt.Errorf("invalid evidence recompute command")
 	}
 	return nil

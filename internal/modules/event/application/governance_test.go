@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/event/domain"
@@ -53,5 +54,16 @@ func TestGovernanceRejectsDuplicateSplitMembers(t *testing.T) {
 	_, err := NewGovernanceService(&governanceFake{}).Split(context.Background(), SplitCommand{SourceEventID: 1, SourceExpectedVersion: 1, Members: []SplitMember{{ContentID: 10, ExpectedVersion: 1}, {ContentID: 10, ExpectedVersion: 2}}, ReasonCode: "bad"})
 	if err == nil {
 		t.Fatal("Split() accepted duplicate content IDs")
+	}
+}
+
+func TestGovernanceRejectsReasonCodesOutsideAuditContract(t *testing.T) {
+	service := NewGovernanceService(&governanceFake{})
+	longReason := strings.Repeat("a", domain.MaxReasonCodeLength+1)
+	if _, err := service.Merge(context.Background(), MergeCommand{SourceEventID: 1, TargetEventID: 2, SourceExpectedVersion: 1, TargetExpectedVersion: 1, ReasonCode: longReason}); err == nil {
+		t.Fatal("Merge() accepted a reason that cannot be persisted in audit")
+	}
+	if _, err := service.SetMemberLock(context.Background(), MemberLockCommand{EventID: 1, ContentID: 2, ExpectedVersion: 1, ReasonCode: "   "}); err == nil {
+		t.Fatal("SetMemberLock() accepted a blank reason")
 	}
 }

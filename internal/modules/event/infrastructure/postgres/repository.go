@@ -94,6 +94,9 @@ func (repository *Repository) ListMembers(ctx context.Context, eventID int64) (d
 	if !repository.available() || eventID <= 0 {
 		return domain.EventMemberPage{}, sharedrepository.ErrUnavailable
 	}
+	if _, err := repository.Get(ctx, eventID); err != nil {
+		return domain.EventMemberPage{}, err
+	}
 	rows, err := repository.runtime.SQL.QueryContext(ctx, `
 SELECT id, version, event_id, content_id, membership_score, evidence_role, is_representative, origin, manual_locked
 FROM event_contents WHERE event_id = $1 ORDER BY membership_score DESC, content_id ASC`, eventID)

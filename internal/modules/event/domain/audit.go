@@ -8,6 +8,8 @@ import (
 
 type AuditAction string
 
+const MaxReasonCodeLength = 64
+
 const (
 	AuditLifecycleTransition AuditAction = "lifecycle_transition"
 	AuditMerge               AuditAction = "merge"
@@ -43,7 +45,7 @@ type GovernanceAudit struct {
 }
 
 func (audit GovernanceAudit) Validate() error {
-	if audit.EventID <= 0 || !audit.Action.Valid() || strings.TrimSpace(audit.ReasonCode) == "" || len(audit.ReasonCode) > 64 || audit.CreatedAt.IsZero() {
+	if audit.EventID <= 0 || !audit.Action.Valid() || !ValidReasonCode(audit.ReasonCode) || audit.CreatedAt.IsZero() {
 		return fmt.Errorf("invalid event governance audit")
 	}
 	if audit.FromStatus != nil && !audit.FromStatus.Valid() || audit.ToStatus != nil && !audit.ToStatus.Valid() {
@@ -56,4 +58,11 @@ func (audit GovernanceAudit) Validate() error {
 		return fmt.Errorf("audit source and target must differ")
 	}
 	return nil
+}
+
+// ValidReasonCode keeps every governance entry within the persisted contract.
+// Command validation uses the same rule so invalid input is a stable 400,
+// never an audit insertion failure after a transaction has started.
+func ValidReasonCode(value string) bool {
+	return strings.TrimSpace(value) != "" && len(value) <= MaxReasonCodeLength
 }

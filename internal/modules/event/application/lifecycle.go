@@ -30,7 +30,7 @@ func NewLifecycleService(store EventStore) *LifecycleService {
 }
 
 func (service *LifecycleService) Transition(ctx context.Context, input LifecycleInput) (domain.Event, error) {
-	if service == nil || service.store == nil || input.EventID <= 0 || input.ExpectedVersion <= 0 || !input.To.Valid() || input.ReasonCode == "" {
+	if service == nil || service.store == nil || input.EventID <= 0 || input.ExpectedVersion <= 0 || !input.To.Valid() || !domain.ValidReasonCode(input.ReasonCode) {
 		return domain.Event{}, fmt.Errorf("%w: invalid lifecycle input", sharedrepository.ErrInvalidInput)
 	}
 	event, err := service.store.Get(ctx, input.EventID)

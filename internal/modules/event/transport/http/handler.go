@@ -79,6 +79,7 @@ func (handler *Handler) GetHeat(c *gin.Context) error {
 // @Failure 400 {object} EventResult[EmptyResponse]
 // @Failure 401 {object} EventResult[EmptyResponse]
 // @Failure 403 {object} EventResult[EmptyResponse]
+// @Failure 404 {object} EventResult[EmptyResponse]
 // @Failure 409 {object} EventResult[EmptyResponse]
 // @Failure 503 {object} EventResult[EmptyResponse]
 // @Router /api/v1/events/{id}/claims [post]
@@ -244,6 +245,7 @@ func (handler *Handler) SetMemberLock(c *gin.Context) error {
 // @Failure 400 {object} EventResult[EmptyResponse]
 // @Failure 401 {object} EventResult[EmptyResponse]
 // @Failure 403 {object} EventResult[EmptyResponse]
+// @Failure 404 {object} EventResult[EmptyResponse]
 // @Failure 409 {object} EventResult[EmptyResponse]
 // @Router /api/v1/events/{id}/lifecycle [post]
 func (handler *Handler) Transition(c *gin.Context) error {
@@ -279,6 +281,7 @@ func (handler *Handler) Transition(c *gin.Context) error {
 // @Failure 400 {object} EventResult[EmptyResponse]
 // @Failure 401 {object} EventResult[EmptyResponse]
 // @Failure 403 {object} EventResult[EmptyResponse]
+// @Failure 404 {object} EventResult[EmptyResponse]
 // @Failure 409 {object} EventResult[EmptyResponse]
 // @Router /api/v1/events/{id}/merge [post]
 func (handler *Handler) Merge(c *gin.Context) error {
