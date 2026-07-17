@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/report/domain"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
@@ -14,6 +15,15 @@ import (
 type Service struct {
 	store   Store
 	builder *Builder
+}
+
+type BuildInput struct {
+	ID        int64
+	Type      domain.ReportType
+	At        time.Time
+	Timezone  string
+	MonitorID *int64
+	Events    []EventSnapshot
 }
 
 func NewService(store Store) (*Service, error) {
@@ -60,4 +70,34 @@ func (service *Service) Publish(ctx context.Context, reportID int64) (domain.Rep
 		return domain.Report{}, err
 	}
 	return service.store.Get(ctx, reportID)
+}
+
+// Build creates or replaces only a draft for the deterministic report key.
+// EventSnapshot values are copied into report_items, so subsequent Event or
+// heat updates cannot mutate a published report.
+func (service *Service) Build(ctx context.Context, input BuildInput) (domain.Report, error) {
+	if service == nil || service.store == nil || input.ID <= 0 || input.At.IsZero() {
+		return domain.Report{}, sharedrepository.ErrInvalidInput
+	}
+	location, err := time.LoadLocation(input.Timezone)
+	if err != nil {
+		return domain.Report{}, fmt.Errorf("invalid report timezone: %w", err)
+	}
+	report, err := service.builder.Build(input.ID, input.Type, input.At, location, input.Events)
+	if err != nil {
+		return domain.Report{}, err
+	}
+	report.MonitorID = input.MonitorID
+	report.Summary = fallbackSummary(report.Items)
+	if err := service.store.Save(ctx, report); err != nil {
+		return domain.Report{}, err
+	}
+	return service.store.Get(ctx, report.ID)
+}
+
+func fallbackSummary(items []domain.Item) string {
+	if len(items) == 0 {
+		return "No events matched the requested period."
+	}
+	return fmt.Sprintf("%d frozen event snapshots selected for this report.", len(items))
 }

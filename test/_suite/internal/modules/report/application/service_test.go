@@ -52,3 +52,18 @@ func TestServicePublishFreezesDraftAndRejectsRepeat(t *testing.T) {
 		t.Fatalf("repeat publish error = %v, want ErrImmutable", err)
 	}
 }
+
+func TestServiceBuildUsesTimezoneAndDeterministicFallback(t *testing.T) {
+	store := &serviceStoreFake{reports: make(map[int64]domain.Report)}
+	service, err := NewService(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := service.Build(context.Background(), BuildInput{ID: 8, Type: domain.ReportWeekly, At: time.Date(2026, 7, 17, 1, 0, 0, 0, time.UTC), Timezone: "Asia/Shanghai", Events: []EventSnapshot{{EventID: 2, Title: "event", Summary: "snapshot", HeatScore: 91}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Status != domain.ReportDraft || report.Summary == "" || report.Period.Location.String() != "Asia/Shanghai" || report.Items[0].InclusionReason == "" {
+		t.Fatalf("built report = %#v", report)
+	}
+}

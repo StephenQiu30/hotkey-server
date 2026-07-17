@@ -25,7 +25,7 @@ func (builder *Builder) Build(id int64, reportType domain.ReportType, at time.Ti
 	}
 	items := make([]domain.Item, 0, len(events))
 	for _, event := range events {
-		items = append(items, domain.Item{EventID: event.EventID, Title: event.Title, Summary: event.Summary, HeatScore: event.HeatScore})
+		items = append(items, domain.Item{EventID: event.EventID, Title: event.Title, Summary: event.Summary, InclusionReason: "deterministic_heat_snapshot", HeatScore: event.HeatScore})
 	}
 	items = domain.SortItems(items)
 	report := domain.Report{ID: id, Version: 1, VersionNo: 1, Type: reportType, Period: period, Title: fmt.Sprintf("%s report", reportType), Status: domain.ReportDraft, Items: items}
