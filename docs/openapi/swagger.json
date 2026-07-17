@@ -1442,6 +1442,201 @@
                 }
             }
         },
+        "/api/v1/events/{id}/intelligence": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "Get verified event intelligence",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "event ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-http_EventIntelligenceResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/events/{id}/intelligence/extract": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "Regenerate event entities and claims",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "event ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-http_ExtractionRegenerationResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/events/{id}/intelligence/summary/regenerate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "Regenerate event summary",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "event ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-http_SummaryRegenerationResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/events/{id}/lifecycle": {
             "post": {
                 "security": [
@@ -5741,6 +5936,26 @@
                 }
             }
         },
+        "http.EventIntelligenceResponse": {
+            "type": "object",
+            "properties": {
+                "claims": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.IntelligenceClaimResponse"
+                    }
+                },
+                "entities": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.IntelligenceEntityResponse"
+                    }
+                },
+                "event_id": {
+                    "type": "integer"
+                }
+            }
+        },
         "http.EventMemberPageResponse": {
             "type": "object",
             "properties": {
@@ -5880,6 +6095,20 @@
                 }
             }
         },
+        "http.EventResult-http_EventIntelligenceResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.EventIntelligenceResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "http.EventResult-http_EventMemberPageResponse": {
             "type": "object",
             "properties": {
@@ -5936,6 +6165,20 @@
                 }
             }
         },
+        "http.EventResult-http_ExtractionRegenerationResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.ExtractionRegenerationResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "http.EventResult-http_HeatResponse": {
             "type": "object",
             "properties": {
@@ -5944,6 +6187,20 @@
                 },
                 "data": {
                     "$ref": "#/definitions/http.HeatResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.EventResult-http_SummaryRegenerationResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.SummaryRegenerationResponse"
                 },
                 "message": {
                     "type": "string"
@@ -5960,6 +6217,55 @@
                     "$ref": "#/definitions/internal_modules_event_transport_http.EmptyResponse"
                 },
                 "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.EventSummaryResponse": {
+            "type": "object",
+            "properties": {
+                "degraded": {
+                    "type": "boolean"
+                },
+                "sentences": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.SummarySentenceResponse"
+                    }
+                },
+                "title_en": {
+                    "type": "string"
+                },
+                "title_zh": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ExtractionRegenerationResponse": {
+            "type": "object",
+            "properties": {
+                "claim_count": {
+                    "type": "integer"
+                },
+                "entity_count": {
+                    "type": "integer"
+                },
+                "event_id": {
+                    "type": "integer"
+                },
+                "reason_code": {
+                    "type": "string"
+                },
+                "reused": {
+                    "type": "boolean"
+                },
+                "run_id": {
+                    "type": "integer"
+                },
+                "status": {
                     "type": "string"
                 }
             }
@@ -6077,6 +6383,99 @@
                     "$ref": "#/definitions/internal_modules_identity_transport_http.EmptyResponse"
                 },
                 "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.IntelligenceClaimResponse": {
+            "type": "object",
+            "properties": {
+                "claim_hash": {
+                    "type": "string"
+                },
+                "confidence": {
+                    "type": "number"
+                },
+                "evidence": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.IntelligenceEvidenceResponse"
+                    }
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "manual_locked": {
+                    "type": "boolean"
+                },
+                "normalized_claim": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.IntelligenceEntityResponse": {
+            "type": "object",
+            "properties": {
+                "canonical_name": {
+                    "type": "string"
+                },
+                "confidence": {
+                    "type": "number"
+                },
+                "confirmed": {
+                    "type": "boolean"
+                },
+                "entity_id": {
+                    "type": "integer"
+                },
+                "entity_key": {
+                    "type": "string"
+                },
+                "entity_locked": {
+                    "type": "boolean"
+                },
+                "entity_type": {
+                    "type": "string"
+                },
+                "entity_version": {
+                    "type": "integer"
+                },
+                "origin": {
+                    "type": "string"
+                },
+                "relation_id": {
+                    "type": "integer"
+                },
+                "relation_version": {
+                    "type": "integer"
+                },
+                "role": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.IntelligenceEvidenceResponse": {
+            "type": "object",
+            "properties": {
+                "confidence": {
+                    "type": "number"
+                },
+                "content_id": {
+                    "type": "integer"
+                },
+                "excerpt": {
+                    "type": "string"
+                },
+                "locator": {
+                    "type": "string"
+                },
+                "stance": {
                     "type": "string"
                 }
             }
@@ -7731,6 +8130,43 @@
                 },
                 "subscription": {
                     "$ref": "#/definitions/http.SubscriptionResponse"
+                }
+            }
+        },
+        "http.SummaryRegenerationResponse": {
+            "type": "object",
+            "properties": {
+                "event_id": {
+                    "type": "integer"
+                },
+                "reason_code": {
+                    "type": "string"
+                },
+                "reused": {
+                    "type": "boolean"
+                },
+                "run_id": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "summary": {
+                    "$ref": "#/definitions/http.EventSummaryResponse"
+                }
+            }
+        },
+        "http.SummarySentenceResponse": {
+            "type": "object",
+            "properties": {
+                "evidence": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.IntelligenceEvidenceResponse"
+                    }
+                },
+                "text": {
+                    "type": "string"
                 }
             }
         },

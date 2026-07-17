@@ -66,6 +66,39 @@ func (adminAuthenticator) Authenticate(context.Context, string) (httptransport.S
 	return httptransport.Subject{UserID: 1, SessionID: 1, Role: httptransport.RoleAdmin}, nil
 }
 
+type viewerAuthenticator struct{}
+
+func (viewerAuthenticator) Authenticate(context.Context, string) (httptransport.Subject, error) {
+	return httptransport.Subject{UserID: 1, SessionID: 1, Role: httptransport.RoleViewer}, nil
+}
+
+type intelligenceReadStub struct {
+	result application.EventIntelligenceReadResult
+	err    error
+}
+
+func (stub intelligenceReadStub) Read(context.Context, int64) (application.EventIntelligenceReadResult, error) {
+	return stub.result, stub.err
+}
+
+type summaryGeneratorStub struct {
+	result application.EventSummaryGenerationResult
+	err    error
+}
+
+func (stub summaryGeneratorStub) Generate(context.Context, int64) (application.EventSummaryGenerationResult, error) {
+	return stub.result, stub.err
+}
+
+type extractionGeneratorStub struct {
+	result application.EventClaimExtractionResult
+	err    error
+}
+
+func (stub extractionGeneratorStub) Extract(context.Context, int64) (application.EventClaimExtractionResult, error) {
+	return stub.result, stub.err
+}
+
 func TestEventRoutesRequireAuthenticationAndExposeMemberLockPath(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -136,6 +169,86 @@ func TestEventRoutesReturnNotFoundForMissingMembersAndBadRequestForLongReason(t 
 			request.Header.Set("Authorization", "Bearer test-token")
 			request.Header.Set("Content-Type", "application/json")
 			router.ServeHTTP(recorder, request)
+			if recorder.Code != testCase.wantStatus {
+				t.Fatalf("status = %d, want %d body=%s", recorder.Code, testCase.wantStatus, recorder.Body.String())
+			}
+			var result struct {
+				Code int `json:"code"`
+			}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+				t.Fatalf("decode result: %v", err)
+			}
+			if result.Code != testCase.wantCode {
+				t.Fatalf("business code = %d, want %d body=%s", result.Code, testCase.wantCode, recorder.Body.String())
+			}
+		})
+	}
+}
+
+func TestEventIntelligenceHandlersExposeOnlySafeFactsAndRegenerationResults(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	reader := intelligenceReadStub{result: application.EventIntelligenceReadResult{EventID: 7,
+		Entities: []application.EventIntelligenceEntity{{Entity: domain.Entity{ID: 11, Version: 2, Key: "acme", Name: "Acme", Type: domain.EntityOrganization}, EventEntity: domain.EventEntity{ID: 12, Version: 3, EventID: 7, EntityID: 11, Role: "mentioned", Confidence: 50, Origin: domain.FactOriginModel}}},
+		Claims:   []domain.Claim{{ID: 13, Version: 4, EventID: 7, NormalizedClaim: "acme announced", ClaimHash: strings.Repeat("a", 64), Status: domain.ClaimSingleSource, Confidence: 90, Evidence: []domain.ClaimEvidence{{EvidenceRef: domain.EvidenceRef{ContentID: 2, Locator: "title", Excerpt: "trusted"}, Stance: "supports", Confidence: 90}}}},
+	}}
+	summary := summaryGeneratorStub{result: application.EventSummaryGenerationResult{RunID: 21, Summary: domain.EventSummary{Version: "event-summary-v1", TitleZH: "事件", Sentences: []domain.EvidenceSentence{{Text: "事实", Evidence: []domain.EvidenceRef{{ContentID: 2, Locator: "title", Excerpt: "trusted"}}}}}}}
+	extraction := extractionGeneratorStub{result: application.EventClaimExtractionResult{Status: "succeeded", RunID: 22, Facts: application.PersistedEventFacts{Entities: []domain.Entity{{ID: 11}}, Claims: []domain.Claim{{ID: 13}}}}}
+	handler := NewHandlerWithIntelligence(nil, nil, nil, nil, nil, reader, summary, extraction)
+	router := gin.New()
+	api := router.Group("/api/v1/events", httptransport.RequireAuthentication(adminAuthenticator{}))
+	api.GET("/:id/intelligence", httptransport.Wrap(handler.GetIntelligence))
+	editor := api.Group("", httptransport.RequireRoles(httptransport.RoleEditor, httptransport.RoleAdmin))
+	editor.POST("/:id/intelligence/summary/regenerate", httptransport.Wrap(handler.RegenerateSummary))
+	editor.POST("/:id/intelligence/extract", httptransport.Wrap(handler.RegenerateExtraction))
+
+	for _, testCase := range []struct {
+		method, target string
+		want           string
+	}{
+		{method: http.MethodGet, target: "/api/v1/events/7/intelligence", want: `"entity_key":"acme"`},
+		{method: http.MethodPost, target: "/api/v1/events/7/intelligence/summary/regenerate", want: `"run_id":21`},
+		{method: http.MethodPost, target: "/api/v1/events/7/intelligence/extract", want: `"claim_count":1`},
+	} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(testCase.method, testCase.target, nil)
+		request.Header.Set("Authorization", "Bearer test-token")
+		router.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), testCase.want) || strings.Contains(recorder.Body.String(), "provider") || strings.Contains(recorder.Body.String(), "prompt") {
+			t.Fatalf("%s %s status/body = %d/%s", testCase.method, testCase.target, recorder.Code, recorder.Body.String())
+		}
+	}
+}
+
+func TestEventIntelligenceHandlersKeepAuthenticationRoleAndErrorBoundaries(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	newRouter := func(authenticator httptransport.Authenticator, reader intelligenceReadStub, summary summaryGeneratorStub) *gin.Engine {
+		handler := NewHandlerWithIntelligence(nil, nil, nil, nil, nil, reader, summary, extractionGeneratorStub{})
+		router := gin.New()
+		api := router.Group("/api/v1/events", httptransport.RequireAuthentication(authenticator))
+		api.GET("/:id/intelligence", httptransport.Wrap(handler.GetIntelligence))
+		editor := api.Group("", httptransport.RequireRoles(httptransport.RoleEditor, httptransport.RoleAdmin))
+		editor.POST("/:id/intelligence/summary/regenerate", httptransport.Wrap(handler.RegenerateSummary))
+		return router
+	}
+	for _, testCase := range []struct {
+		name, method, target string
+		router                *gin.Engine
+		withToken             bool
+		wantStatus, wantCode  int
+	}{
+		{name: "unauthenticated read", method: http.MethodGet, target: "/api/v1/events/7/intelligence", router: newRouter(adminAuthenticator{}, intelligenceReadStub{}, summaryGeneratorStub{}), wantStatus: http.StatusUnauthorized, wantCode: 20000},
+		{name: "viewer cannot regenerate", method: http.MethodPost, target: "/api/v1/events/7/intelligence/summary/regenerate", router: newRouter(viewerAuthenticator{}, intelligenceReadStub{}, summaryGeneratorStub{}), withToken: true, wantStatus: http.StatusForbidden, wantCode: 20001},
+		{name: "invalid identifier", method: http.MethodGet, target: "/api/v1/events/0/intelligence", router: newRouter(adminAuthenticator{}, intelligenceReadStub{}, summaryGeneratorStub{}), withToken: true, wantStatus: http.StatusBadRequest, wantCode: 10000},
+		{name: "unknown event", method: http.MethodGet, target: "/api/v1/events/7/intelligence", router: newRouter(adminAuthenticator{}, intelligenceReadStub{err: sharedrepository.ErrNotFound}, summaryGeneratorStub{}), withToken: true, wantStatus: http.StatusNotFound, wantCode: 10003},
+		{name: "locked fact conflict", method: http.MethodPost, target: "/api/v1/events/7/intelligence/summary/regenerate", router: newRouter(adminAuthenticator{}, intelligenceReadStub{}, summaryGeneratorStub{err: sharedrepository.ErrConflict}), withToken: true, wantStatus: http.StatusConflict, wantCode: 10002},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(testCase.method, testCase.target, nil)
+			if testCase.withToken {
+				request.Header.Set("Authorization", "Bearer test-token")
+			}
+			testCase.router.ServeHTTP(recorder, request)
 			if recorder.Code != testCase.wantStatus {
 				t.Fatalf("status = %d, want %d body=%s", recorder.Code, testCase.wantStatus, recorder.Body.String())
 			}

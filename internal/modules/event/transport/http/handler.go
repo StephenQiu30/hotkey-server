@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -15,11 +16,26 @@ import (
 )
 
 type Handler struct {
-	read       *application.ReadService
-	lifecycle  *application.LifecycleService
-	governance *application.GovernanceService
-	heat       *application.HeatService
-	claims     *application.ClaimService
+	read         *application.ReadService
+	lifecycle    *application.LifecycleService
+	governance   *application.GovernanceService
+	heat         *application.HeatService
+	claims       *application.ClaimService
+	intelligence eventIntelligenceReader
+	summaries    eventSummaryGenerator
+	extractions  eventClaimExtractor
+}
+
+type eventIntelligenceReader interface {
+	Read(context.Context, int64) (application.EventIntelligenceReadResult, error)
+}
+
+type eventSummaryGenerator interface {
+	Generate(context.Context, int64) (application.EventSummaryGenerationResult, error)
+}
+
+type eventClaimExtractor interface {
+	Extract(context.Context, int64) (application.EventClaimExtractionResult, error)
 }
 
 func NewHandler(read *application.ReadService, lifecycle *application.LifecycleService, governance *application.GovernanceService) *Handler {
@@ -36,6 +52,111 @@ func NewHandlerWithHeatAndClaims(read *application.ReadService, lifecycle *appli
 	handler := NewHandlerWithHeat(read, lifecycle, governance, heat)
 	handler.claims = claims
 	return handler
+}
+
+func NewHandlerWithIntelligence(read *application.ReadService, lifecycle *application.LifecycleService, governance *application.GovernanceService, heat *application.HeatService, claims *application.ClaimService, intelligence eventIntelligenceReader, summaries eventSummaryGenerator, extractions eventClaimExtractor) *Handler {
+	handler := NewHandlerWithHeatAndClaims(read, lifecycle, governance, heat, claims)
+	handler.intelligence, handler.summaries, handler.extractions = intelligence, summaries, extractions
+	return handler
+}
+
+// GetIntelligence returns only the Event-owned, evidence-backed entity and
+// claim projection. It never exposes model prompts, provider payloads, or AI
+// run implementation details.
+// @Summary Get verified event intelligence
+// @Tags events
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "event ID"
+// @Success 200 {object} EventResult[EventIntelligenceResponse]
+// @Failure 400 {object} EventResult[EmptyResponse]
+// @Failure 401 {object} EventResult[EmptyResponse]
+// @Failure 404 {object} EventResult[EmptyResponse]
+// @Failure 503 {object} EventResult[EmptyResponse]
+// @Router /api/v1/events/{id}/intelligence [get]
+func (handler *Handler) GetIntelligence(c *gin.Context) error {
+	if handler == nil || handler.intelligence == nil {
+		return sharederrors.New(sharederrors.CodeUnavailable, http.StatusServiceUnavailable, "")
+	}
+	eventID, err := pathID(c, "id")
+	if err != nil {
+		return err
+	}
+	result, err := handler.intelligence.Read(c.Request.Context(), eventID)
+	if err != nil {
+		return eventError(err)
+	}
+	response := EventIntelligenceResponse{EventID: result.EventID, Entities: make([]IntelligenceEntityResponse, 0, len(result.Entities)), Claims: make([]IntelligenceClaimResponse, 0, len(result.Claims))}
+	for _, item := range result.Entities {
+		response.Entities = append(response.Entities, IntelligenceEntityResponse{EntityID: item.Entity.ID, EntityVersion: item.Entity.Version, EntityKey: item.Entity.Key, EntityType: string(item.Entity.Type), CanonicalName: item.Entity.Name, EntityLocked: item.Entity.ManualLocked, RelationID: item.EventEntity.ID, RelationVersion: item.EventEntity.Version, Role: item.EventEntity.Role, Confidence: item.EventEntity.Confidence, Origin: string(item.EventEntity.Origin), Confirmed: item.EventEntity.Confirmed})
+	}
+	for _, claim := range result.Claims {
+		response.Claims = append(response.Claims, intelligenceClaimResponse(claim))
+	}
+	httptransport.OK(c, response)
+	return nil
+}
+
+// RegenerateSummary creates an evidence-bound summary or returns a safe
+// representative-content fallback when model execution is unavailable.
+// @Summary Regenerate event summary
+// @Tags events
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "event ID"
+// @Success 200 {object} EventResult[SummaryRegenerationResponse]
+// @Failure 400 {object} EventResult[EmptyResponse]
+// @Failure 401 {object} EventResult[EmptyResponse]
+// @Failure 403 {object} EventResult[EmptyResponse]
+// @Failure 404 {object} EventResult[EmptyResponse]
+// @Failure 409 {object} EventResult[EmptyResponse]
+// @Failure 503 {object} EventResult[EmptyResponse]
+// @Router /api/v1/events/{id}/intelligence/summary/regenerate [post]
+func (handler *Handler) RegenerateSummary(c *gin.Context) error {
+	if handler == nil || handler.summaries == nil {
+		return sharederrors.New(sharederrors.CodeUnavailable, http.StatusServiceUnavailable, "")
+	}
+	eventID, err := pathID(c, "id")
+	if err != nil {
+		return err
+	}
+	result, err := handler.summaries.Generate(c.Request.Context(), eventID)
+	if err != nil {
+		return eventError(err)
+	}
+	httptransport.OK(c, SummaryRegenerationResponse{EventID: eventID, Status: regenerationStatus(result.Summary.Degraded), ReasonCode: result.ReasonCode, RunID: result.RunID, Reused: result.Reused, Summary: eventSummaryResponse(result.Summary)})
+	return nil
+}
+
+// RegenerateExtraction creates only unconfirmed, evidence-backed Event facts.
+// Provider unavailability returns a degradation result without mutating facts.
+// @Summary Regenerate event entities and claims
+// @Tags events
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "event ID"
+// @Success 200 {object} EventResult[ExtractionRegenerationResponse]
+// @Failure 400 {object} EventResult[EmptyResponse]
+// @Failure 401 {object} EventResult[EmptyResponse]
+// @Failure 403 {object} EventResult[EmptyResponse]
+// @Failure 404 {object} EventResult[EmptyResponse]
+// @Failure 409 {object} EventResult[EmptyResponse]
+// @Failure 503 {object} EventResult[EmptyResponse]
+// @Router /api/v1/events/{id}/intelligence/extract [post]
+func (handler *Handler) RegenerateExtraction(c *gin.Context) error {
+	if handler == nil || handler.extractions == nil {
+		return sharederrors.New(sharederrors.CodeUnavailable, http.StatusServiceUnavailable, "")
+	}
+	eventID, err := pathID(c, "id")
+	if err != nil {
+		return err
+	}
+	result, err := handler.extractions.Extract(c.Request.Context(), eventID)
+	if err != nil {
+		return eventError(err)
+	}
+	httptransport.OK(c, ExtractionRegenerationResponse{EventID: eventID, Status: result.Status, ReasonCode: result.ReasonCode, RunID: result.RunID, Reused: result.Reused, EntityCount: len(result.Facts.Entities), ClaimCount: len(result.Facts.Claims)})
+	return nil
 }
 
 // GetHeat returns the latest versioned heat snapshot and its evidence-set hash.
@@ -396,4 +517,31 @@ func eventError(err error) error {
 	default:
 		return sharederrors.Wrap(sharederrors.CodeInternal, http.StatusInternalServerError, "", err)
 	}
+}
+
+func intelligenceClaimResponse(claim domain.Claim) IntelligenceClaimResponse {
+	response := IntelligenceClaimResponse{ID: claim.ID, Version: claim.Version, NormalizedClaim: claim.NormalizedClaim, ClaimHash: claim.ClaimHash, Status: string(claim.Status), Confidence: claim.Confidence, ManualLocked: claim.ManualLocked, Evidence: make([]IntelligenceEvidenceResponse, 0, len(claim.Evidence))}
+	for _, item := range claim.Evidence {
+		response.Evidence = append(response.Evidence, IntelligenceEvidenceResponse{ContentID: item.ContentID, Locator: item.Locator, Excerpt: item.Excerpt, Stance: item.Stance, Confidence: item.Confidence})
+	}
+	return response
+}
+
+func eventSummaryResponse(summary domain.EventSummary) EventSummaryResponse {
+	response := EventSummaryResponse{Version: summary.Version, TitleZH: summary.TitleZH, TitleEN: summary.TitleEN, Degraded: summary.Degraded, Sentences: make([]SummarySentenceResponse, 0, len(summary.Sentences))}
+	for _, sentence := range summary.Sentences {
+		item := SummarySentenceResponse{Text: sentence.Text, Evidence: make([]IntelligenceEvidenceResponse, 0, len(sentence.Evidence))}
+		for _, evidence := range sentence.Evidence {
+			item.Evidence = append(item.Evidence, IntelligenceEvidenceResponse{ContentID: evidence.ContentID, Locator: evidence.Locator, Excerpt: evidence.Excerpt})
+		}
+		response.Sentences = append(response.Sentences, item)
+	}
+	return response
+}
+
+func regenerationStatus(degraded bool) string {
+	if degraded {
+		return "degraded"
+	}
+	return "succeeded"
 }

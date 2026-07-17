@@ -101,6 +101,10 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newEventHeatService,
 				newEventContentMetricRefreshService,
 				newEventClaimService,
+				newEventIntelligenceRunner,
+				newEventIntelligenceReadService,
+				newEventSummaryService,
+				newEventClaimExtractionService,
 			),
 			fx.Invoke(database.RegisterLifecycle),
 		)
@@ -214,8 +218,8 @@ func registerIntelligenceRoutes(router *gin.Engine, service *intelligenceapplica
 	intelligencetransport.RegisterRoutes(router, service, authenticator)
 }
 
-func registerEventRoutes(router *gin.Engine, read *eventapplication.ReadService, lifecycle *eventapplication.LifecycleService, governance *eventapplication.GovernanceService, heat *eventapplication.HeatService, claims *eventapplication.ClaimService, authenticator httptransport.Authenticator) {
-	eventtransport.RegisterRoutesWithHeatAndClaims(router, read, lifecycle, governance, heat, claims, authenticator)
+func registerEventRoutes(router *gin.Engine, read *eventapplication.ReadService, lifecycle *eventapplication.LifecycleService, governance *eventapplication.GovernanceService, heat *eventapplication.HeatService, claims *eventapplication.ClaimService, intelligence *eventapplication.EventIntelligenceReadService, summaries *eventapplication.EventSummaryService, extractions *eventapplication.EventClaimExtractionService, authenticator httptransport.Authenticator) {
+	eventtransport.RegisterRoutesWithIntelligence(router, read, lifecycle, governance, heat, claims, intelligence, summaries, extractions, authenticator)
 }
 
 func registerDeliveryRoutes(router *gin.Engine, repository *deliverypostgres.Repository) {
@@ -255,6 +259,22 @@ func newEventContentMetricRefreshService(repository *eventpostgres.Repository, h
 
 func newEventClaimService(repository *eventpostgres.Repository) *eventapplication.ClaimService {
 	return eventapplication.NewClaimService(repository)
+}
+
+func newEventIntelligenceRunner(runs *intelligenceapplication.RunService) *intelligenceapplication.EventIntelligenceService {
+	return intelligenceapplication.NewEventIntelligenceService(runs)
+}
+
+func newEventIntelligenceReadService(repository *eventpostgres.Repository) *eventapplication.EventIntelligenceReadService {
+	return eventapplication.NewEventIntelligenceReadService(repository)
+}
+
+func newEventSummaryService(repository *eventpostgres.Repository, runner *intelligenceapplication.EventIntelligenceService) *eventapplication.EventSummaryService {
+	return eventapplication.NewEventSummaryService(repository, runner)
+}
+
+func newEventClaimExtractionService(repository *eventpostgres.Repository, runner *intelligenceapplication.EventIntelligenceService) *eventapplication.EventClaimExtractionService {
+	return eventapplication.NewEventClaimExtractionService(repository, runner, repository)
 }
 
 func newSourceService(runtime *database.Runtime, sources *sourcepostgres.Repository, usage *monitorpostgres.SourceUsageReader, references *monitorpostgres.PublishedReferenceReader, audit *operationspostgres.AuditWriter) (*sourceapplication.Service, error) {

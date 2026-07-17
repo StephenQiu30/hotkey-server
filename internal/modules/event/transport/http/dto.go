@@ -104,6 +104,78 @@ type ClaimResponse struct {
 	Confidence      float64 `json:"confidence"`
 }
 
+type IntelligenceEvidenceResponse struct {
+	ContentID  int64   `json:"content_id"`
+	Locator    string  `json:"locator"`
+	Excerpt    string  `json:"excerpt"`
+	Stance     string  `json:"stance"`
+	Confidence float64 `json:"confidence"`
+}
+
+type IntelligenceClaimResponse struct {
+	ID              int64                          `json:"id"`
+	Version         int64                          `json:"version"`
+	NormalizedClaim string                         `json:"normalized_claim"`
+	ClaimHash       string                         `json:"claim_hash"`
+	Status          string                         `json:"status"`
+	Confidence      float64                        `json:"confidence"`
+	ManualLocked    bool                           `json:"manual_locked"`
+	Evidence        []IntelligenceEvidenceResponse `json:"evidence"`
+}
+
+type IntelligenceEntityResponse struct {
+	EntityID        int64   `json:"entity_id"`
+	EntityVersion   int64   `json:"entity_version"`
+	EntityKey       string  `json:"entity_key"`
+	EntityType      string  `json:"entity_type"`
+	CanonicalName   string  `json:"canonical_name"`
+	EntityLocked    bool    `json:"entity_locked"`
+	RelationID      int64   `json:"relation_id"`
+	RelationVersion int64   `json:"relation_version"`
+	Role            string  `json:"role"`
+	Confidence      float64 `json:"confidence"`
+	Origin          string  `json:"origin"`
+	Confirmed       bool    `json:"confirmed"`
+}
+
+type EventIntelligenceResponse struct {
+	EventID  int64                        `json:"event_id"`
+	Entities []IntelligenceEntityResponse `json:"entities"`
+	Claims   []IntelligenceClaimResponse  `json:"claims"`
+}
+
+type SummarySentenceResponse struct {
+	Text     string                         `json:"text"`
+	Evidence []IntelligenceEvidenceResponse `json:"evidence"`
+}
+
+type EventSummaryResponse struct {
+	Version   string                    `json:"version"`
+	TitleZH   string                    `json:"title_zh"`
+	TitleEN   string                    `json:"title_en,omitempty"`
+	Degraded  bool                      `json:"degraded"`
+	Sentences []SummarySentenceResponse `json:"sentences"`
+}
+
+type SummaryRegenerationResponse struct {
+	EventID    int64                `json:"event_id"`
+	Status     string               `json:"status"`
+	ReasonCode string               `json:"reason_code,omitempty"`
+	RunID      int64                `json:"run_id,omitempty"`
+	Reused     bool                 `json:"reused"`
+	Summary    EventSummaryResponse `json:"summary"`
+}
+
+type ExtractionRegenerationResponse struct {
+	EventID     int64  `json:"event_id"`
+	Status      string `json:"status"`
+	ReasonCode  string `json:"reason_code,omitempty"`
+	RunID       int64  `json:"run_id,omitempty"`
+	Reused      bool   `json:"reused"`
+	EntityCount int    `json:"entity_count"`
+	ClaimCount  int    `json:"claim_count"`
+}
+
 type LifecycleRequest struct {
 	ExpectedVersion int64  `json:"expected_version" binding:"required"`
 	To              string `json:"to" binding:"required"`

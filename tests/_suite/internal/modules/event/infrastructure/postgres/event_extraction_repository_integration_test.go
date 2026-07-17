@@ -63,6 +63,30 @@ func TestRepositoryPersistsExtractedFactsAtomically(t *testing.T) {
 	}
 }
 
+func TestRepositoryReadsSafeEventIntelligenceFacts(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	repository := NewRepository(runtime)
+	fixture := seedEventFixture(t, runtime)
+	if _, err := repository.PersistExtractedFacts(ctx, extractedFactsFixture(fixture.sourceID, fixture.sourceContentID, strings.Repeat("e", 64), "acme", "Acme")); err != nil {
+		t.Fatal(err)
+	}
+	result, err := repository.ReadEventIntelligence(ctx, fixture.sourceID)
+	if err != nil {
+		t.Fatalf("ReadEventIntelligence() error = %v", err)
+	}
+	if result.EventID != fixture.sourceID || len(result.Entities) != 1 || result.Entities[0].Entity.Key != "acme" || len(result.Claims) != 1 || len(result.Claims[0].Evidence) != 1 || result.Claims[0].Evidence[0].ContentID != fixture.sourceContentID {
+		t.Fatalf("ReadEventIntelligence() = %#v", result)
+	}
+}
+
 func extractedFactsFixture(eventID, contentID int64, hash, key, name string) application.ExtractedEventFacts {
 	return application.ExtractedEventFacts{EventID: eventID, Entities: []application.ExtractedEventEntity{{Entity: domain.Entity{ID: 1, Version: 1, Key: key, Name: name, Type: domain.EntityOrganization}, Alias: name, NormalizedAlias: strings.ToLower(name), Language: "en", Role: "mentioned", Confidence: 50}}, Claims: []domain.Claim{claimFixture(eventID, contentID, hash)}}
 }
