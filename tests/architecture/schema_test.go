@@ -119,6 +119,10 @@ func TestGreenfieldSchemaEnforcesCriticalConstraints(t *testing.T) {
 		"AI budget overage block":                     "overage_blocked boolean not null default false",
 		"content embedding run provenance":            "ai_run_id bigint not null references ai_runs(id) on delete restrict",
 		"active content embedding profile uniqueness": "create unique index if not exists content_embeddings_one_active_per_profile_uq on content_embeddings(content_id, model_profile_id) where active",
+		"event current content ownership":             "create unique index if not exists event_contents_one_current_event_uq",
+		"event decision idempotency":                  "create unique index if not exists event_clustering_decisions_idempotency_uq",
+		"event governance audit":                      "create table if not exists event_governance_audits",
+		"event decision append-only":                  "create table if not exists event_clustering_decisions",
 	}
 	for name, snippet := range checks {
 		if !strings.Contains(schema, snippet) {

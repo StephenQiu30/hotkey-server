@@ -139,6 +139,16 @@ type EventContent struct {
 	Record
 	EventID, ContentID int64
 }
+type EventClusteringDecision struct {
+	OperationalRecord
+	ContentID, CandidateEventID                                                               int64
+	CandidateEventKey, ClusteringVersion, FeatureInputHash, Channel, Decision, DecisionOrigin string
+}
+type EventGovernanceAudit struct {
+	OperationalRecord
+	EventID, ActorUserID, SourceEventID, TargetEventID int64
+	Action, ReasonCode, FromStatus, ToStatus           string
+}
 type MonitorEvent struct {
 	Record
 	MonitorID, EventID int64
@@ -374,6 +384,8 @@ var specs = []Spec{
 	{"monitor_feedback_suggestions", LifecycleBusiness, []string{"id", "version", "monitor_id", "monitor_config_version_id", "suggestion_type", "value", "support_count", "status", "reviewed_by_user_id"}},
 	{"events", LifecycleBusiness, []string{"id", "event_key", "lifecycle_status", "deleted_at"}},
 	{"event_contents", LifecycleBusiness, []string{"id", "event_id", "content_id", "membership_score"}},
+	{"event_clustering_decisions", LifecycleOperational, []string{"id", "content_id", "candidate_event_id", "candidate_event_key", "clustering_version", "feature_input_hash", "channel", "candidate_rank", "membership_score", "decision", "decision_origin", "feature_snapshot", "evidence_content_ids", "actor_user_id", "created_at"}},
+	{"event_governance_audits", LifecycleOperational, []string{"id", "event_id", "action", "actor_user_id", "reason_code", "from_status", "to_status", "source_event_id", "target_event_id", "expected_version", "metadata", "created_at"}},
 	{"monitor_events", LifecycleBusiness, []string{"id", "monitor_id", "event_id", "final_score"}},
 	{"entities", LifecycleBusiness, []string{"id", "entity_key", "entity_type", "deleted_at"}},
 	{"entity_aliases", LifecycleBusiness, []string{"id", "entity_id", "normalized_alias"}},

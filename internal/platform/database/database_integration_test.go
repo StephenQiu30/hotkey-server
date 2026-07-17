@@ -17,7 +17,7 @@ import (
 
 func TestEmbeddedSchemaCatalogIsComplete(t *testing.T) {
 	tables := EmbeddedSchemaTableNames()
-	if got, want := len(tables), 60; got != want {
+	if got, want := len(tables), 62; got != want {
 		t.Fatalf("embedded table count = %d, want %d", got, want)
 	}
 	if !EmbeddedSchemaContains("CREATE EXTENSION IF NOT EXISTS vector") {
@@ -33,7 +33,7 @@ func TestRuntimeUsesSharedPoolAndVerifiesCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Verify() error = %v", err)
 	}
-	if got, want := len(verification.Tables), 60; got != want {
+	if got, want := len(verification.Tables), 62; got != want {
 		t.Fatalf("verified table count = %d, want %d", got, want)
 	}
 	if verification.CatalogFingerprint == "" {
@@ -723,6 +723,7 @@ SELECT
 
 func TestPlan009SchemaUpgradeAndRollbackUsesPinnedPlan008Worktree(t *testing.T) {
 	worktree := plan008Worktree(t)
+	targetWorktree := plan009Worktree(t)
 	dsn := postgresfixture.New(t)
 
 	if output, err := runHistoricalDatabaseCommand(worktree, dsn, "init", "--empty-only", "--confirm-empty"); err != nil {
@@ -747,9 +748,9 @@ func TestPlan009SchemaUpgradeAndRollbackUsesPinnedPlan008Worktree(t *testing.T) 
 	if err != nil {
 		t.Fatalf("open upgraded PLAN-009 database: %v", err)
 	}
-	if _, err := Verify(context.Background(), current.Pool); err != nil {
+	if output, err := runHistoricalDatabaseCommand(targetWorktree, dsn, "verify"); err != nil {
 		_ = current.Close()
-		t.Fatalf("verify upgraded PLAN-009 catalog: %v", err)
+		t.Fatalf("verify upgraded PLAN-009 catalog with pinned PLAN-009 worktree: %v\n%s", err, output)
 	}
 	var historicalMatches int
 	if err := current.SQL.QueryRow(`SELECT count(*) FROM monitor_matches WHERE algorithm_version = 'plan009-upgrade-fixture'`).Scan(&historicalMatches); err != nil {
@@ -964,6 +965,22 @@ func plan008Worktree(t *testing.T) string {
 		output, err := exec.Command("git", "-C", root, "worktree", "remove", "--force", worktree).CombinedOutput()
 		if err != nil {
 			t.Errorf("remove detached PLAN-008 worktree: %v\n%s", err, output)
+		}
+	})
+	return worktree
+}
+
+func plan009Worktree(t *testing.T) string {
+	t.Helper()
+	root := filepath.Clean(filepath.Join("..", "..", ".."))
+	worktree := filepath.Join(t.TempDir(), "plan009-worktree")
+	command := exec.Command("git", "-C", root, "worktree", "add", "--detach", worktree, "7cb8148")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("create detached PLAN-009 worktree: %v\n%s", err, output)
+	}
+	t.Cleanup(func() {
+		if output, err := exec.Command("git", "-C", root, "worktree", "remove", "--force", worktree).CombinedOutput(); err != nil {
+			t.Errorf("remove detached PLAN-009 worktree: %v\n%s", err, output)
 		}
 	})
 	return worktree
