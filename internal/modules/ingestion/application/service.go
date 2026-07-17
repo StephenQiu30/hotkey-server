@@ -22,6 +22,13 @@ const (
 
 var errEvidenceReceiptMissing = errors.New("evidence receipt disappeared before asset transaction")
 
+type downstreamEnqueueError struct{ cause error }
+
+func (err downstreamEnqueueError) Error() string {
+	return fmt.Sprintf("enqueue downstream ingestion job: %v", err.cause)
+}
+func (err downstreamEnqueueError) Unwrap() error { return err.cause }
+
 // Dependencies contains only the persisted Source capture boundary and
 // ingestion-owned persistence/object-store ports. In particular, Service has
 // no Connector dependency and cannot initiate another upstream fetch.
@@ -71,9 +78,20 @@ type IngestRunResult struct {
 	Failed     int
 	Uploaded   int
 	NextCursor string
+	ContentIDs []int64
 }
 
 func (service *Service) IngestRun(ctx context.Context, input IngestRunInput) (IngestRunResult, error) {
+	return service.ingestRun(ctx, input, nil)
+}
+
+// IngestRunWithHook lets the queue adapter submit evaluate_relevance in the
+// same transaction as each Content upsert and Source binding.
+func (service *Service) IngestRunWithHook(ctx context.Context, input IngestRunInput, hook func(context.Context, int64) error) (IngestRunResult, error) {
+	return service.ingestRun(ctx, input, hook)
+}
+
+func (service *Service) ingestRun(ctx context.Context, input IngestRunInput, downstream func(context.Context, int64) error) (IngestRunResult, error) {
 	if service == nil || service.runtime == nil || service.captures == nil || service.contents == nil || service.evidence == nil {
 		return IngestRunResult{}, errors.New("ingestion service is not initialized")
 	}
@@ -95,13 +113,20 @@ func (service *Service) IngestRun(ctx context.Context, input IngestRunInput) (In
 	result := IngestRunResult{NextCursor: page.NextCursor}
 	for _, captured := range page.Items {
 		result.Processed++
-		uploaded, err := service.ingestCaptured(ctx, captured)
+		contentID, uploaded, err := service.ingestCaptured(ctx, captured, downstream)
 		if err == nil {
 			result.Bound++
+			if contentID > 0 {
+				result.ContentIDs = append(result.ContentIDs, contentID)
+			}
 			if uploaded {
 				result.Uploaded++
 			}
 			continue
+		}
+		var downstreamErr downstreamEnqueueError
+		if errors.As(err, &downstreamErr) {
+			return result, downstreamErr.cause
 		}
 		failure := sourcedomain.CapturedIngestionFailure{
 			CollectionItemID: captured.ID, RunID: captured.RunID, SourceConnectionID: captured.SourceConnectionID,
@@ -115,46 +140,48 @@ func (service *Service) IngestRun(ctx context.Context, input IngestRunInput) (In
 	return result, nil
 }
 
-func (service *Service) ingestCaptured(ctx context.Context, captured sourcedomain.CapturedCollectionItem) (bool, error) {
+func (service *Service) ingestCaptured(ctx context.Context, captured sourcedomain.CapturedCollectionItem, downstream func(context.Context, int64) error) (int64, bool, error) {
 	content, err := NormalizeCapturedItem(captured.Item, captured.SourceConnectionID)
 	if err != nil {
-		return false, err
+		return 0, false, err
 	}
 	candidates, err := service.contentCandidates(ctx)
 	if err != nil {
-		return false, err
+		return 0, false, err
 	}
 	decision, err := DecideDuplicate(content, candidates)
 	if err != nil {
-		return false, err
+		return 0, false, err
 	}
-	return service.persistCaptured(ctx, captured, content, decision)
+	return service.persistCaptured(ctx, captured, content, decision, downstream)
 }
 
-func (service *Service) persistCaptured(ctx context.Context, captured sourcedomain.CapturedCollectionItem, content ingestiondomain.NormalizedContent, decision ingestiondomain.DedupeDecision) (bool, error) {
+func (service *Service) persistCaptured(ctx context.Context, captured sourcedomain.CapturedCollectionItem, content ingestiondomain.NormalizedContent, decision ingestiondomain.DedupeDecision, downstream func(context.Context, int64) error) (int64, bool, error) {
 	if content.Body == "" {
-		return false, service.persistContent(ctx, captured, content, decision, ingestiondomain.EvidenceReceipt{}, false)
+		contentID, err := service.persistContent(ctx, captured, content, decision, ingestiondomain.EvidenceReceipt{}, false, downstream)
+		return contentID, false, err
 	}
 	object := evidenceObject(content)
 	for attempt := 0; attempt < evidenceReceiptRetries; attempt++ {
 		receipt, err := service.evidence.PutText(ctx, object)
 		if err != nil {
-			return false, fmt.Errorf("put evidence: %w", err)
+			return 0, false, fmt.Errorf("put evidence: %w", err)
 		}
-		err = service.persistContent(ctx, captured, content, decision, receipt, true)
+		var contentID int64
+		contentID, err = service.persistContent(ctx, captured, content, decision, receipt, true, downstream)
 		if errors.Is(err, errEvidenceReceiptMissing) {
 			continue
 		}
 		if err != nil {
 			service.compensateEvidence(ctx, content.SourceConnectionID, receipt.ObjectKey)
-			return false, err
+			return 0, false, err
 		}
-		return true, nil
+		return contentID, true, nil
 	}
-	return false, fmt.Errorf("evidence receipt remained unavailable after %d object writes: %w", evidenceReceiptRetries, errEvidenceReceiptMissing)
+	return 0, false, fmt.Errorf("evidence receipt remained unavailable after %d object writes: %w", evidenceReceiptRetries, errEvidenceReceiptMissing)
 }
 
-func (service *Service) persistContent(ctx context.Context, captured sourcedomain.CapturedCollectionItem, content ingestiondomain.NormalizedContent, decision ingestiondomain.DedupeDecision, receipt ingestiondomain.EvidenceReceipt, hasEvidence bool) error {
+func (service *Service) persistContent(ctx context.Context, captured sourcedomain.CapturedCollectionItem, content ingestiondomain.NormalizedContent, decision ingestiondomain.DedupeDecision, receipt ingestiondomain.EvidenceReceipt, hasEvidence bool, downstream func(context.Context, int64) error) (int64, error) {
 	var contentID int64
 	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
 		// The same source-scoped lock serializes a delete tombstone with every
@@ -202,17 +229,22 @@ func (service *Service) persistContent(ctx context.Context, captured sourcedomai
 		if err := service.captures.BindContent(transactionCtx, binding); err != nil {
 			return fmt.Errorf("bind captured content: %w", err)
 		}
+		if downstream != nil {
+			if err := downstream(transactionCtx, stored.ID); err != nil {
+				return downstreamEnqueueError{cause: err}
+			}
+		}
 		return nil
 	})
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if service.metrics != nil {
 		if err := service.metrics.RecomputeMetricsForContent(ctx, contentID); err != nil {
-			return fmt.Errorf("recompute event metrics: %w", err)
+			return contentID, fmt.Errorf("recompute event metrics: %w", err)
 		}
 	}
-	return nil
+	return contentID, nil
 }
 
 func (service *Service) assetObjectKnown(ctx context.Context, sourceConnectionID int64, objectKey string) (bool, error) {

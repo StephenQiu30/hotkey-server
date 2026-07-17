@@ -96,11 +96,11 @@ depends_on: [PLAN-006, PLAN-007, PLAN-008, PLAN-009, PLAN-010, PLAN-011, PLAN-01
 
 **文件：** 创建 `internal/modules/{source,ingestion,event,intelligence}/infrastructure/jobs/*.go`；修改各自 Application port、Repository 与 Bootstrap provider。
 
-- [ ] **RED：** 六类 Job 的非法版本、重复执行、单来源暂态故障、无 Provider 和取消边界失败。
-- [ ] **GREEN：** `collect_source → normalize_content → evaluate_relevance → cluster_content → recompute_event_heat → generate_event_summary` 只传稳定 ID/版本/哈希，重新读取事实，事务中提交下游 Job。
-- [ ] **重构：** 每个 Job 依赖所属 Application 用例；Job 包不跨模块读取表、不回传 Provider 原始结果。
-- [ ] **回归：** `go run ./test/runner test ./internal/modules/source/... ./internal/modules/ingestion/... ./internal/modules/event/... ./internal/modules/intelligence/... -count=1`。
-- [ ] **提交：** `feat: orchestrate p0 event pipeline jobs`。
+- [x] **RED：** 六类 Job 的非法版本、重复执行、单来源暂态故障、无 Provider 和取消边界失败。
+- [x] **GREEN：** `collect_source → normalize_content → evaluate_relevance → cluster_content → recompute_event_heat → generate_event_summary` 只传稳定 ID/版本/哈希，重新读取事实；Source 成功入库与 normalize、Ingestion Content 与 evaluate 的下游入队复用同一事务。
+- [x] **重构：** 每个 Job 依赖所属 Application 用例；Job 包不跨模块读取表、不回传 Provider 原始结果。未配置 MinIO 时 Worker 保持可启动，Job 以可重试 unavailable 结果等待对象存储恢复。
+- [x] **回归：** `HOTKEY_TEST_DSN='postgres:///hotkey_server_dev?sslmode=disable' HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' go run ./test/runner test ./internal/modules/source/... ./internal/modules/ingestion/... ./internal/modules/event/... ./internal/modules/intelligence/... -count=1`；架构与仓库边界校验通过。
+- [x] **提交：** `feat: orchestrate p0 event pipeline jobs`。
 
 ### Task 5：提供受限运行查询、取消与重试控制
 

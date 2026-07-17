@@ -74,6 +74,19 @@ func (service *ClusteringExecutionService) Execute(ctx context.Context, input Cl
 	if err != nil {
 		return ClusteringExecutionResult{}, err
 	}
+	// Queue handlers carry only the content/version/hash envelope. When no
+	// model-produced score map is supplied, use the bounded recall score as a
+	// deterministic fallback across the fixed five dimensions. This keeps the
+	// P0 path operational without inventing a second provider contract.
+	if input.Scores == nil {
+		input.Scores = make(map[string]domain.ScoreBreakdown, len(recall.Candidates))
+		for _, candidate := range recall.Candidates {
+			input.Scores[candidate.EventKey] = domain.ScoreBreakdown{
+				EntityAction: candidate.Score, Semantic: candidate.Score, Temporal: candidate.Score,
+				Location: candidate.Score, SourceContext: candidate.Score,
+			}
+		}
+	}
 	decisions, err := service.clustering.Evaluate(ctx, ClusteringInput{
 		ContentID:         input.ContentID,
 		ClusteringVersion: input.ClusteringVersion,

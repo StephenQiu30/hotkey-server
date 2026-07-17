@@ -380,6 +380,14 @@ RETURNING `+collectionRunSummaryColumns, runID))
 // target checkpoints durable in one PostgreSQL transaction. Checkpoints move
 // only after every captured item and target-item relation has been written.
 func (repository *CollectionRepository) PersistSuccess(ctx context.Context, success domain.CollectionRunSuccess) (domain.CollectionRun, error) {
+	return repository.PersistSuccessWith(ctx, success, nil)
+}
+
+// PersistSuccessWith is the transaction-aware variant used by the P0 queue
+// handler. The hook runs after Source facts and checkpoints are written but
+// before commit; queue.Store therefore inserts the downstream job into the
+// same PostgreSQL transaction.
+func (repository *CollectionRepository) PersistSuccessWith(ctx context.Context, success domain.CollectionRunSuccess, hook func(context.Context, int64) error) (domain.CollectionRun, error) {
 	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
 		return domain.CollectionRun{}, sharedrepository.ErrUnavailable
 	}
@@ -394,6 +402,11 @@ func (repository *CollectionRepository) PersistSuccess(ctx context.Context, succ
 		}
 		if run.Status == domain.CollectionRunSucceeded {
 			completed = run
+			if hook != nil {
+				if err := hook(ctx, completed.ID); err != nil {
+					return err
+				}
+			}
 			return nil
 		}
 		if run.Status != domain.CollectionRunRunning {
@@ -465,6 +478,11 @@ RETURNING `+collectionRunColumns,
 			candidateCount, acceptedCount, int64(len(success.Result.Diagnostics)), errorCode, success.RunID))
 		if err != nil {
 			return sharedrepository.MapError(err)
+		}
+		if hook != nil {
+			if err := hook(ctx, completed.ID); err != nil {
+				return err
+			}
 		}
 		return nil
 	})

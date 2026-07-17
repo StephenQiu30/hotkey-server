@@ -53,6 +53,17 @@ func NewCollectionService(dependencies CollectionDependencies) (*CollectionServi
 // persist captured facts and checkpoints. A reused run never triggers a
 // second fetch.
 func (service *CollectionService) Collect(ctx context.Context, request domain.CollectionRequest) (domain.CollectionRun, error) {
+	return service.collect(ctx, request, nil)
+}
+
+// CollectWithSuccessHook is the queue-aware entry point. When the Source
+// repository supports the transaction hook, downstream enqueue happens in the
+// same transaction as captured items and checkpoint advancement.
+func (service *CollectionService) CollectWithSuccessHook(ctx context.Context, request domain.CollectionRequest, hook func(context.Context, int64) error) (domain.CollectionRun, error) {
+	return service.collect(ctx, request, hook)
+}
+
+func (service *CollectionService) collect(ctx context.Context, request domain.CollectionRequest, successHook func(context.Context, int64) error) (domain.CollectionRun, error) {
 	if service == nil || service.runtime == nil {
 		return domain.CollectionRun{}, errors.New("collection service is not initialized")
 	}
@@ -68,6 +79,18 @@ func (service *CollectionService) Collect(ctx context.Context, request domain.Co
 		return domain.CollectionRun{}, err
 	}
 	if !started {
+		if run.Status == domain.CollectionRunSucceeded && successHook != nil {
+			if writer, ok := service.runs.(interface {
+				PersistSuccessWith(context.Context, domain.CollectionRunSuccess, func(context.Context, int64) error) (domain.CollectionRun, error)
+			}); ok {
+				_, err = writer.PersistSuccessWith(ctx, domain.CollectionRunSuccess{RunID: run.ID, Targets: request.Targets, CompletedAt: service.now().UTC()}, successHook)
+				if err != nil {
+					return domain.CollectionRun{}, err
+				}
+			} else if err := successHook(ctx, run.ID); err != nil {
+				return domain.CollectionRun{}, err
+			}
+		}
 		return run, nil
 	}
 
@@ -103,9 +126,20 @@ func (service *CollectionService) Collect(ctx context.Context, request domain.Co
 		}
 		captures = append(captures, captured)
 	}
-	completed, err := service.runs.PersistSuccess(ctx, domain.CollectionRunSuccess{
+	success := domain.CollectionRunSuccess{
 		RunID: run.ID, Targets: request.Targets, Items: captures, Result: result, CompletedAt: service.now().UTC(),
-	})
+	}
+	var completed domain.CollectionRun
+	if writer, ok := service.runs.(interface {
+		PersistSuccessWith(context.Context, domain.CollectionRunSuccess, func(context.Context, int64) error) (domain.CollectionRun, error)
+	}); ok {
+		completed, err = writer.PersistSuccessWith(ctx, success, successHook)
+	} else {
+		completed, err = service.runs.PersistSuccess(ctx, success)
+		if err == nil && successHook != nil {
+			err = successHook(ctx, completed.ID)
+		}
+	}
 	if err != nil {
 		return service.fail(ctx, run, request.Targets, result, domain.CollectionErrorTemporary, err)
 	}

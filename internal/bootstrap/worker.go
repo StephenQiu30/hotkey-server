@@ -20,8 +20,8 @@ type workerRunner interface {
 	ReclaimStale(context.Context, time.Duration) (int64, error)
 }
 
-func newQueueWorker(runtime *database.Runtime) *queue.Worker {
-	return queue.NewWorker(runtime, nil)
+func newQueueWorker(runtime *database.Runtime, handlers map[string]queue.Handler) *queue.Worker {
+	return queue.NewWorker(runtime, handlers)
 }
 
 func exposeWorkerRunner(worker *queue.Worker) workerRunner { return worker }

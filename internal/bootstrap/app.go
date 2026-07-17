@@ -10,6 +10,7 @@ import (
 	deliverypostgres "github.com/StephenQiu30/hotkey-server/internal/modules/delivery/infrastructure/postgres"
 	deliverytransport "github.com/StephenQiu30/hotkey-server/internal/modules/delivery/transport/http"
 	eventapplication "github.com/StephenQiu30/hotkey-server/internal/modules/event/application"
+	eventjobs "github.com/StephenQiu30/hotkey-server/internal/modules/event/infrastructure/jobs"
 	eventpostgres "github.com/StephenQiu30/hotkey-server/internal/modules/event/infrastructure/postgres"
 	eventtransport "github.com/StephenQiu30/hotkey-server/internal/modules/event/transport/http"
 	identityapplication "github.com/StephenQiu30/hotkey-server/internal/modules/identity/application"
@@ -19,11 +20,14 @@ import (
 	identitysmtp "github.com/StephenQiu30/hotkey-server/internal/modules/identity/infrastructure/smtp"
 	identitytransport "github.com/StephenQiu30/hotkey-server/internal/modules/identity/transport/http"
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/application"
+	ingestiondomain "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/domain"
+	ingestionjobs "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/infrastructure/jobs"
 	ingestionminio "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/infrastructure/minio"
 	ingestionpostgres "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/infrastructure/postgres"
 	ingestiontransport "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/transport/http"
 	intelligenceapplication "github.com/StephenQiu30/hotkey-server/internal/modules/intelligence/application"
 	intelligencedomain "github.com/StephenQiu30/hotkey-server/internal/modules/intelligence/domain"
+	intelligencejobs "github.com/StephenQiu30/hotkey-server/internal/modules/intelligence/infrastructure/jobs"
 	intelligencepostgres "github.com/StephenQiu30/hotkey-server/internal/modules/intelligence/infrastructure/postgres"
 	intelligenceprovider "github.com/StephenQiu30/hotkey-server/internal/modules/intelligence/infrastructure/provider"
 	intelligencetransport "github.com/StephenQiu30/hotkey-server/internal/modules/intelligence/transport/http"
@@ -36,6 +40,7 @@ import (
 	reporttransport "github.com/StephenQiu30/hotkey-server/internal/modules/report/transport/http"
 	sourceapplication "github.com/StephenQiu30/hotkey-server/internal/modules/source/application"
 	sourceinfrastructure "github.com/StephenQiu30/hotkey-server/internal/modules/source/infrastructure"
+	sourcejobs "github.com/StephenQiu30/hotkey-server/internal/modules/source/infrastructure/jobs"
 	sourcepostgres "github.com/StephenQiu30/hotkey-server/internal/modules/source/infrastructure/postgres"
 	sourcetransport "github.com/StephenQiu30/hotkey-server/internal/modules/source/transport/http"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/config"
@@ -43,6 +48,7 @@ import (
 	httptransport "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/logging"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/observability"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/queue"
 	sharedclock "github.com/StephenQiu30/hotkey-server/internal/shared/clock"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
@@ -163,7 +169,23 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 	if role.StartsWorker() {
 		if usesDatabase {
 			options = append(options,
-				fx.Provide(newQueueWorker, exposeWorkerRunner, newQueueStore, exposeCollectionDueReader, newCollectionScheduler, exposeCollectionSchedulerRunner),
+				fx.Provide(
+					sourceinfrastructure.NewConnectorRegistry,
+					newCollectionService,
+					newCandidateRecallService,
+					newClusteringExecutionService,
+					exposeCollectionTargetReader,
+					exposeContentRepository,
+					exposeRelevanceRepository,
+					sourcejobs.NewCollectHandler,
+					ingestionjobs.NewNormalizeHandler,
+					ingestionjobs.NewEvaluateHandler,
+					eventjobs.NewClusterHandler,
+					eventjobs.NewHeatHandler,
+					newSummaryHandler,
+					newP0Handlers,
+					newQueueWorker, exposeWorkerRunner, newQueueStore, exposeCollectionDueReader, newCollectionScheduler, exposeCollectionSchedulerRunner,
+				),
 				fx.Invoke(registerPersistentWorkerLifecycle, registerCollectionSchedulerLifecycle),
 			)
 			options = append(options, fx.Invoke(intelligenceapplication.RegisterRunLeaseReclaimerLifecycle))
@@ -295,7 +317,55 @@ func newCollectionControlService(runtime *database.Runtime, sources *sourcepostg
 	return sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{Runtime: runtime, Sources: sources, Runs: runs, Connectors: connectors, Metrics: metrics})
 }
 
-func newIngestionEvidenceStore(cfg config.Config) (*ingestionminio.Store, error) {
+func newCollectionService(runtime *database.Runtime, sources *sourcepostgres.Repository, runs *sourcepostgres.CollectionRepository, connectors *sourceinfrastructure.ConnectorRegistry) (*sourceapplication.CollectionService, error) {
+	return sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{Runtime: runtime, Sources: sources, Runs: runs, Connectors: connectors})
+}
+
+func newCandidateRecallService(candidates *ingestionpostgres.RelevanceCandidateReader) (*ingestionapplication.CandidateRecallService, error) {
+	return ingestionapplication.NewCandidateRecallService(candidates, nil)
+}
+
+func newClusteringExecutionService(repository *eventpostgres.Repository) *eventapplication.ClusteringExecutionService {
+	return eventapplication.NewClusteringExecutionService(eventapplication.NewRecallService(repository), eventapplication.NewClusteringService(), repository)
+}
+
+func exposeCollectionTargetReader(reader *monitorpostgres.PublishedCollectionTargetReader) sourcejobs.CollectionTargetReader {
+	return reader
+}
+
+func exposeContentRepository(repository *ingestionpostgres.ContentRepository) ingestionjobs.ContentRepository {
+	return repository
+}
+
+func exposeRelevanceRepository(repository *ingestionpostgres.RelevanceRepository) ingestionjobs.RelevanceRepository {
+	return repository
+}
+
+func newSummaryHandler(service *eventapplication.EventSummaryService) (*intelligencejobs.SummaryHandler, error) {
+	return intelligencejobs.NewSummaryHandler(func(ctx context.Context, eventID int64) error {
+		_, err := service.Generate(ctx, eventID)
+		return err
+	})
+}
+
+func newP0Handlers(collect *sourcejobs.CollectHandler, normalize *ingestionjobs.NormalizeHandler, evaluate *ingestionjobs.EvaluateHandler, cluster *eventjobs.ClusterHandler, heat *eventjobs.HeatHandler, summary *intelligencejobs.SummaryHandler) map[string]queue.Handler {
+	return map[string]queue.Handler{
+		queue.KindCollectSource:        collect.Handle,
+		queue.KindNormalizeContent:     normalize.Handle,
+		queue.KindEvaluateRelevance:    evaluate.Handle,
+		queue.KindClusterContent:       cluster.Handle,
+		queue.KindRecomputeEventHeat:   heat.Handle,
+		queue.KindGenerateEventSummary: summary.Handle,
+	}
+}
+
+func newIngestionEvidenceStore(cfg config.Config) (ingestiondomain.EvidenceStore, error) {
+	if err := cfg.MinIO.ValidateRuntime(); err != nil {
+		// Worker/API composition remains available when object storage is not
+		// configured; the ingestion Job then reports an unavailable dependency
+		// and is retried rather than preventing the process from booting.
+		return unavailableEvidenceStore{}, nil
+	}
 	return ingestionminio.NewStore(cfg.MinIO)
 }
 
@@ -303,10 +373,22 @@ func newIngestionCapturedItemReader(runs *sourcepostgres.CollectionRepository) (
 	return sourceapplication.NewCapturedItemReader(sourceapplication.CapturedItemReaderDependencies{Runs: runs})
 }
 
-func newIngestionService(runtime *database.Runtime, captures *sourceapplication.CapturedItemReader, contents *ingestionpostgres.ContentRepository, evidence *ingestionminio.Store, metrics *eventapplication.ContentMetricRefreshService) (*ingestionapplication.Service, error) {
+func newIngestionService(runtime *database.Runtime, captures *sourceapplication.CapturedItemReader, contents *ingestionpostgres.ContentRepository, evidence ingestiondomain.EvidenceStore, metrics *eventapplication.ContentMetricRefreshService) (*ingestionapplication.Service, error) {
 	return ingestionapplication.NewService(ingestionapplication.Dependencies{
 		Runtime: runtime, Captures: captures, Contents: contents, Evidence: evidence, MetricRefresh: metrics,
 	})
+}
+
+type unavailableEvidenceStore struct{}
+
+func (unavailableEvidenceStore) PutText(context.Context, ingestiondomain.EvidenceObject) (ingestiondomain.EvidenceReceipt, error) {
+	return ingestiondomain.EvidenceReceipt{}, fmt.Errorf("evidence object store is unavailable")
+}
+func (unavailableEvidenceStore) Delete(context.Context, string) error {
+	return fmt.Errorf("evidence object store is unavailable")
+}
+func (unavailableEvidenceStore) ListPrefix(context.Context, string) ([]ingestiondomain.EvidenceReceipt, error) {
+	return nil, fmt.Errorf("evidence object store is unavailable")
 }
 
 func newIngestionRelevanceReviewService(snapshots *ingestionpostgres.RelevanceRepository, reviews *intelligenceapplication.RelevanceReviewService) (*ingestionapplication.RelevanceReviewService, error) {

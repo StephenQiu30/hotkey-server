@@ -159,6 +159,35 @@ func (reader *PublishedCollectionTargetReader) ListDueCollections(ctx context.Co
 	return result, nil
 }
 
+// ListForCollection re-reads the published target projection for one durable
+// collect_source envelope. It intentionally reuses the same eligibility query
+// as Cron, so a target paused or unpublished after enqueue is not executed.
+func (reader *PublishedCollectionTargetReader) ListForCollection(ctx context.Context, sourceConnectionID, configVersionID int64, querySignature string, windowStart, windowEnd time.Time) ([]sourcedomain.PublishedCollectionTarget, error) {
+	if sourceConnectionID <= 0 || configVersionID <= 0 || querySignature == "" || windowStart.IsZero() || windowEnd.IsZero() || !windowEnd.After(windowStart) {
+		return nil, fmt.Errorf("invalid collection envelope")
+	}
+	targets, err := reader.ListDue(ctx, windowEnd.UTC())
+	if err != nil {
+		return nil, err
+	}
+	matched := make([]sourcedomain.PublishedCollectionTarget, 0, len(targets))
+	for _, target := range targets {
+		if target.SourceConnectionID != sourceConnectionID || target.QuerySignature != querySignature || !target.Checkpoint.NextPollAt.UTC().Equal(windowStart.UTC()) {
+			continue
+		}
+		// The scheduler stores the smallest config version for a shared source
+		// window. Keep all matching immutable targets, including that selected
+		// version, so Source can build one shared request and persist every target.
+		if target.MonitorConfigVersionID > 0 {
+			matched = append(matched, target)
+		}
+	}
+	if len(matched) == 0 {
+		return nil, fmt.Errorf("collection target not found")
+	}
+	return matched, nil
+}
+
 type publishedCollectionTargetRow struct {
 	monitorSourceID, monitorConfigVersionID, sourceConnectionID int64
 	querySignature, queryOverride                               string

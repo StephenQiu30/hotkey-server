@@ -19,7 +19,17 @@ result: pending
 
 已完成 PLAN-013 Task 3（提交 `8cc7e88`）：复用 Monitor 的只读 `ListDue` 适配器，排除 draft/paused/disabled/deleted/future checkpoint，只将 immutable published target 转成 source/signature/window 任务；`worker`/`all` 按 `cron_interval` 启动扫描，`source_connection_id + query_signature + UTC window` 生成稳定 key。重复扫描只返回已存在 job，不写 `collection_runs`、Connector 或 checkpoint。真实 PostgreSQL 测试和完整质量门禁通过。
 
-尚未完成：Worker Fx 生命周期、持久化 Cron 扫描、六类业务 Job handler、取消 API、P0 RSS/HN 端到端和恢复故障注入；保持 `pending`。
+已完成 PLAN-013 Task 4（提交待本次代码提交）：六类 P0 Handler 已接入 Bootstrap。Job 只携带 ID/版本/窗口/哈希，Source Handler 重读 published target 后调用 CollectionService；Ingestion Handler 复用 IngestRun 并在 Content 事务内入队 evaluate；Evaluate 写入确定性 relevance snapshot 后入队 cluster；Cluster、Heat、Summary 复用 Event Application 用例。Source capture→normalize 与 Content bind→evaluate 的下游入队通过 transaction context 与业务事实同事务提交。无 MinIO 时不会阻断 Worker 启动，运行时以可重试 unavailable 分类。
+
+本次 Task 4 回归证据：
+
+```bash
+HOTKEY_TEST_DSN='postgres:///hotkey_server_dev?sslmode=disable' HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' go run ./test/runner test ./internal/modules/source/... ./internal/modules/ingestion/... ./internal/modules/event/... ./internal/modules/intelligence/... -count=1
+sh test/tools/validate-architecture.sh
+sh test/tools/validate-repository.sh
+```
+
+尚未完成：取消/重试管理 API、P0 RSS/HN 端到端和恢复故障注入；保持 `pending`。
 
 ```bash
 go run ./test/runner test ./internal/platform/queue -run 'Test(Payload|Job|ErrorClassification)' -count=1
