@@ -1862,6 +1862,299 @@
                 }
             }
         },
+        "/api/v1/knowledge/proposals": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "knowledge"
+                ],
+                "summary": "Create knowledge proposal",
+                "parameters": [
+                    {
+                        "description": "proposal",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-domain_Proposal"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/knowledge/proposals/{id}/apply": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "knowledge"
+                ],
+                "summary": "Apply knowledge proposal",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "proposal ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "proposal version",
+                        "name": "version",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-domain_Document"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/knowledge/proposals/{id}/approve": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "knowledge"
+                ],
+                "summary": "Approve knowledge proposal",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "proposal ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "proposal version",
+                        "name": "version",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-domain_Proposal"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/knowledge/proposals/{id}/reject": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "knowledge"
+                ],
+                "summary": "Reject knowledge proposal",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "proposal ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "proposal version",
+                        "name": "version",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-domain_Proposal"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/knowledge/reconcile": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "knowledge"
+                ],
+                "summary": "Reconcile knowledge Vault",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-domain_ReconciliationReport"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/metric-capability-profiles": {
             "post": {
                 "security": [
@@ -5224,6 +5517,175 @@
         }
     },
     "definitions": {
+        "domain.Document": {
+            "type": "object",
+            "properties": {
+                "contentHash": {
+                    "type": "string"
+                },
+                "eventID": {
+                    "type": "integer",
+                    "format": "int64"
+                },
+                "generatedHash": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer",
+                    "format": "int64"
+                },
+                "reportID": {
+                    "type": "integer",
+                    "format": "int64"
+                },
+                "revisionNo": {
+                    "type": "integer",
+                    "format": "int64"
+                },
+                "status": {
+                    "$ref": "#/definitions/domain.DocumentStatus"
+                },
+                "topicID": {
+                    "type": "integer",
+                    "format": "int64"
+                },
+                "type": {
+                    "$ref": "#/definitions/domain.DocumentType"
+                },
+                "vaultPath": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer",
+                    "format": "int64"
+                }
+            }
+        },
+        "domain.DocumentStatus": {
+            "type": "string",
+            "enum": [
+                "planned",
+                "active",
+                "conflict",
+                "archived",
+                "missing"
+            ],
+            "x-enum-varnames": [
+                "DocumentPlanned",
+                "DocumentActive",
+                "DocumentConflict",
+                "DocumentArchived",
+                "DocumentMissing"
+            ]
+        },
+        "domain.DocumentType": {
+            "type": "string",
+            "enum": [
+                "event",
+                "topic",
+                "report"
+            ],
+            "x-enum-varnames": [
+                "DocumentEvent",
+                "DocumentTopic",
+                "DocumentReport"
+            ]
+        },
+        "domain.Proposal": {
+            "type": "object",
+            "properties": {
+                "baseHash": {
+                    "type": "string"
+                },
+                "baseRevisionNo": {
+                    "type": "integer",
+                    "format": "int64"
+                },
+                "diffSummary": {
+                    "type": "string"
+                },
+                "documentID": {
+                    "type": "integer",
+                    "format": "int64"
+                },
+                "id": {
+                    "type": "integer",
+                    "format": "int64"
+                },
+                "proposedBody": {
+                    "type": "string"
+                },
+                "proposedFrontmatter": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/domain.ProposalStatus"
+                },
+                "version": {
+                    "type": "integer",
+                    "format": "int64"
+                }
+            }
+        },
+        "domain.ProposalStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "approved",
+                "rejected",
+                "conflict",
+                "applied",
+                "failed"
+            ],
+            "x-enum-varnames": [
+                "ProposalPending",
+                "ProposalApproved",
+                "ProposalRejected",
+                "ProposalConflict",
+                "ProposalApplied",
+                "ProposalFailed"
+            ]
+        },
+        "domain.ReconciliationIssue": {
+            "type": "object",
+            "properties": {
+                "actualHash": {
+                    "type": "string"
+                },
+                "expectedHash": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.ReconciliationReport": {
+            "type": "object",
+            "properties": {
+                "changed": {
+                    "type": "integer"
+                },
+                "conflict": {
+                    "type": "integer"
+                },
+                "issues": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.ReconciliationIssue"
+                    }
+                },
+                "scanned": {
+                    "type": "integer"
+                }
+            }
+        },
         "http.AICandidateRequest": {
             "type": "object",
             "required": [
@@ -7463,6 +7925,85 @@
                 }
             }
         },
+        "http.ProposalRequest": {
+            "type": "object",
+            "properties": {
+                "base_hash": {
+                    "type": "string"
+                },
+                "base_revision": {
+                    "type": "integer"
+                },
+                "body": {
+                    "type": "string"
+                },
+                "document_id": {
+                    "type": "integer"
+                },
+                "frontmatter": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ProposalResult-domain_Document": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/domain.Document"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ProposalResult-domain_Proposal": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/domain.Proposal"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ProposalResult-domain_ReconciliationReport": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/domain.ReconciliationReport"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/internal_modules_knowledge_transport_http.EmptyResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "http.PublishRequest": {
             "type": "object",
             "required": [
@@ -8664,6 +9205,9 @@
             "type": "object"
         },
         "internal_modules_intelligence_transport_http.EmptyResponse": {
+            "type": "object"
+        },
+        "internal_modules_knowledge_transport_http.EmptyResponse": {
             "type": "object"
         },
         "internal_modules_monitor_transport_http.EmptyResponse": {

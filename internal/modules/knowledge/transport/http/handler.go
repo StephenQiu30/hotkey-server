@@ -47,6 +47,18 @@ type ProposalResult[T any] struct {
 
 type EmptyResponse struct{}
 
+// Create creates a pending knowledge proposal.
+// @Summary Create knowledge proposal
+// @Tags knowledge
+// @Produce json
+// @Security BearerAuth
+// @Param request body ProposalRequest true "proposal"
+// @Success 200 {object} ProposalResult[domain.Proposal]
+// @Failure 400 {object} ProposalResult[EmptyResponse]
+// @Failure 401 {object} ProposalResult[EmptyResponse]
+// @Failure 403 {object} ProposalResult[EmptyResponse]
+// @Failure 409 {object} ProposalResult[EmptyResponse]
+// @Router /api/v1/knowledge/proposals [post]
 func (handler *Handler) Create(c *gin.Context) error {
 	httptransport.SetModule(c, "knowledge")
 	var request ProposalRequest
@@ -61,10 +73,36 @@ func (handler *Handler) Create(c *gin.Context) error {
 	return nil
 }
 
+// Approve approves a pending proposal after optimistic-version validation.
+// @Summary Approve knowledge proposal
+// @Tags knowledge
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "proposal ID"
+// @Param version query int true "proposal version"
+// @Success 200 {object} ProposalResult[domain.Proposal]
+// @Failure 400 {object} ProposalResult[EmptyResponse]
+// @Failure 401 {object} ProposalResult[EmptyResponse]
+// @Failure 403 {object} ProposalResult[EmptyResponse]
+// @Failure 409 {object} ProposalResult[EmptyResponse]
+// @Router /api/v1/knowledge/proposals/{id}/approve [post]
 func (handler *Handler) Approve(c *gin.Context) error {
 	return handler.change(c, knowledgedomain.ProposalApproved)
 }
 
+// Reject rejects a pending proposal.
+// @Summary Reject knowledge proposal
+// @Tags knowledge
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "proposal ID"
+// @Param version query int true "proposal version"
+// @Success 200 {object} ProposalResult[domain.Proposal]
+// @Failure 400 {object} ProposalResult[EmptyResponse]
+// @Failure 401 {object} ProposalResult[EmptyResponse]
+// @Failure 403 {object} ProposalResult[EmptyResponse]
+// @Failure 409 {object} ProposalResult[EmptyResponse]
+// @Router /api/v1/knowledge/proposals/{id}/reject [post]
 func (handler *Handler) Reject(c *gin.Context) error {
 	return handler.change(c, knowledgedomain.ProposalRejected)
 }
@@ -88,6 +126,19 @@ func (handler *Handler) change(c *gin.Context, status knowledgedomain.ProposalSt
 	return nil
 }
 
+// Apply writes an approved proposal using Vault atomic replacement.
+// @Summary Apply knowledge proposal
+// @Tags knowledge
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "proposal ID"
+// @Param version query int true "proposal version"
+// @Success 200 {object} ProposalResult[domain.Document]
+// @Failure 400 {object} ProposalResult[EmptyResponse]
+// @Failure 401 {object} ProposalResult[EmptyResponse]
+// @Failure 403 {object} ProposalResult[EmptyResponse]
+// @Failure 409 {object} ProposalResult[EmptyResponse]
+// @Router /api/v1/knowledge/proposals/{id}/apply [post]
 func (handler *Handler) Apply(c *gin.Context) error {
 	httptransport.SetModule(c, "knowledge")
 	id, _, err := proposalPath(c)
@@ -106,6 +157,16 @@ func (handler *Handler) Apply(c *gin.Context) error {
 	return nil
 }
 
+// Reconcile compares database projections with Vault files.
+// @Summary Reconcile knowledge Vault
+// @Tags knowledge
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} ProposalResult[domain.ReconciliationReport]
+// @Failure 401 {object} ProposalResult[EmptyResponse]
+// @Failure 403 {object} ProposalResult[EmptyResponse]
+// @Failure 503 {object} ProposalResult[EmptyResponse]
+// @Router /api/v1/knowledge/reconcile [post]
 func (handler *Handler) Reconcile(c *gin.Context) error {
 	httptransport.SetModule(c, "knowledge")
 	report, err := handler.reconcile.Reconcile(c.Request.Context())
