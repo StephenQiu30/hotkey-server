@@ -149,52 +149,57 @@ func (repository *Repository) Merge(ctx context.Context, command application.Mer
 	}
 	var target domain.Event
 	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
-		ids := []int64{command.SourceEventID, command.TargetEventID}
-		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-		locked := make(map[int64]domain.Event, 2)
-		for _, eventID := range ids {
-			event, err := scanEvent(transaction.SQL.QueryRowContext(ctx, `
-SELECT id, version, event_key, COALESCE(event_fingerprint, ''), COALESCE(fingerprint_version, ''), title_zh, COALESCE(title_en, ''), summary,
-       lifecycle_status, first_seen_at, last_seen_at, representative_content_id, merged_into_id, manual_locked
-FROM events WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, eventID))
-			if err != nil {
-				return err
-			}
-			locked[eventID] = event
+		// Discover the target chain without holding locks, then acquire the
+		// complete set (including source) in stable event_key order. If the
+		// chain changed before locking, resolution below returns a conflict
+		// before any mutation; this avoids an out-of-order root lock.
+		requestedTarget, err := readEvent(ctx, transaction.SQL, command.TargetEventID)
+		if err != nil {
+			return err
+		}
+		chain, err := readMergeTargetChain(ctx, transaction.SQL, requestedTarget)
+		if err != nil {
+			return err
+		}
+		sourcePreview, err := readEvent(ctx, transaction.SQL, command.SourceEventID)
+		if err != nil {
+			return err
+		}
+		toLock := append(chain, sourcePreview)
+		locked, err := lockEventsByStableKey(ctx, transaction.SQL, toLock)
+		if err != nil {
+			return err
 		}
 		source := locked[command.SourceEventID]
 		target = locked[command.TargetEventID]
-		if source.Version != command.SourceExpectedVersion || target.Version != command.TargetExpectedVersion {
-			return fmt.Errorf("%w: event version conflict", sharedrepository.ErrConflict)
-		}
 		if source.ManualLocked || source.LifecycleStatus == domain.LifecycleMerged || source.LifecycleStatus == domain.LifecycleArchived || source.LifecycleStatus == domain.LifecycleRejected {
 			return fmt.Errorf("%w: event merge is locked or unavailable", sharedrepository.ErrConflict)
 		}
-		seen := map[int64]bool{target.ID: true}
+		seen := make(map[int64]bool, len(locked))
 		for target.MergedIntoID != nil {
-			if seen[*target.MergedIntoID] {
+			if seen[target.ID] {
 				return fmt.Errorf("%w: merge target contains a cycle", sharedrepository.ErrConflict)
 			}
-			seen[*target.MergedIntoID] = true
-			canonical, err := scanEvent(transaction.SQL.QueryRowContext(ctx, `
-SELECT id, version, event_key, COALESCE(event_fingerprint, ''), COALESCE(fingerprint_version, ''), title_zh, COALESCE(title_en, ''), summary,
-       lifecycle_status, first_seen_at, last_seen_at, representative_content_id, merged_into_id, manual_locked
-FROM events WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, *target.MergedIntoID))
-			if err != nil {
-				return err
+			seen[target.ID] = true
+			canonical, found := locked[*target.MergedIntoID]
+			if !found {
+				return fmt.Errorf("%w: merge target changed while acquiring locks", sharedrepository.ErrConflict)
 			}
 			target = canonical
 		}
-		if target.ID == source.ID || target.ManualLocked || target.LifecycleStatus == domain.LifecycleArchived || target.LifecycleStatus == domain.LifecycleRejected {
+		if source.Version != command.SourceExpectedVersion || target.Version != command.TargetExpectedVersion {
+			return fmt.Errorf("%w: event version conflict", sharedrepository.ErrConflict)
+		}
+		if target.ID == source.ID || target.ManualLocked || target.LifecycleStatus == domain.LifecycleArchived || target.LifecycleStatus == domain.LifecycleRejected || target.LifecycleStatus == domain.LifecycleMerged {
 			return fmt.Errorf("%w: event merge target is locked or version-conflicted", sharedrepository.ErrConflict)
 		}
 		if err := mergeMembers(ctx, transaction.SQL, source.ID, target.ID, command.ActorUserID); err != nil {
 			return err
 		}
-		if err := mergeMonitorEvents(ctx, transaction.SQL, source.ID, target.ID); err != nil {
+		if err := mergeMonitorEvents(ctx, transaction.SQL, source.ID, target.ID, command.ActorUserID); err != nil {
 			return err
 		}
-		result, err := transaction.SQL.ExecContext(ctx, `UPDATE events SET lifecycle_status = 'merged', merged_into_id = $1, version = version + 1, updated_at = now() WHERE id = $2 AND version = $3`, target.ID, source.ID, source.Version)
+		result, err := transaction.SQL.ExecContext(ctx, `UPDATE events SET lifecycle_status = 'merged', merged_into_id = $1, representative_content_id = NULL, version = version + 1, updated_at = now() WHERE id = $2 AND version = $3`, target.ID, source.ID, source.Version)
 		if err != nil {
 			return err
 		}
@@ -219,6 +224,57 @@ FROM events WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, *target.MergedInto
 		return domain.Event{}, err
 	}
 	return target, nil
+}
+
+func readEvent(ctx context.Context, query rowQuery, eventID int64) (domain.Event, error) {
+	return scanEvent(query.QueryRowContext(ctx, `
+SELECT id, version, event_key, COALESCE(event_fingerprint, ''), COALESCE(fingerprint_version, ''), title_zh, COALESCE(title_en, ''), summary,
+       lifecycle_status, first_seen_at, last_seen_at, representative_content_id, merged_into_id, manual_locked
+FROM events WHERE id = $1 AND deleted_at IS NULL`, eventID))
+}
+
+func readMergeTargetChain(ctx context.Context, query rowQuery, first domain.Event) ([]domain.Event, error) {
+	chain := []domain.Event{first}
+	seen := map[int64]bool{first.ID: true}
+	current := first
+	for current.MergedIntoID != nil {
+		nextID := *current.MergedIntoID
+		if seen[nextID] {
+			return nil, fmt.Errorf("%w: merge target contains a cycle", sharedrepository.ErrConflict)
+		}
+		next, err := readEvent(ctx, query, nextID)
+		if err != nil {
+			return nil, err
+		}
+		chain = append(chain, next)
+		seen[next.ID] = true
+		current = next
+	}
+	return chain, nil
+}
+
+func lockEventsByStableKey(ctx context.Context, query *sql.Tx, events []domain.Event) (map[int64]domain.Event, error) {
+	unique := make(map[int64]domain.Event, len(events))
+	for _, event := range events {
+		unique[event.ID] = event
+	}
+	ordered := make([]domain.Event, 0, len(unique))
+	for _, event := range unique {
+		ordered = append(ordered, event)
+	}
+	sort.Slice(ordered, func(left, right int) bool { return ordered[left].EventKey < ordered[right].EventKey })
+	locked := make(map[int64]domain.Event, len(ordered))
+	for _, event := range ordered {
+		current, err := scanEvent(query.QueryRowContext(ctx, `
+SELECT id, version, event_key, COALESCE(event_fingerprint, ''), COALESCE(fingerprint_version, ''), title_zh, COALESCE(title_en, ''), summary,
+       lifecycle_status, first_seen_at, last_seen_at, representative_content_id, merged_into_id, manual_locked
+FROM events WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, event.ID))
+		if err != nil {
+			return nil, err
+		}
+		locked[current.ID] = current
+	}
+	return locked, nil
 }
 
 func (repository *Repository) Split(ctx context.Context, command application.SplitCommand) (domain.Event, error) {
@@ -274,9 +330,12 @@ VALUES ($1, $2, 'content_dedupe_v1', $3, $4, $5, 'detected', $6, $7, NULL) RETUR
 			if _, err := transaction.SQL.ExecContext(ctx, `UPDATE event_contents SET event_id = $1, version = version + 1, updated_at = now() WHERE id = $2 AND version = $3`, created.ID, member.ID, member.Version); err != nil {
 				return err
 			}
+			if err := insertAudit(ctx, transaction.SQL, domain.GovernanceAudit{EventID: created.ID, Action: domain.AuditMemberMove, ActorUserID: command.ActorUserID, ReasonCode: "split_member_moved", SourceEventID: &source.ID, TargetEventID: &created.ID, ExpectedVersion: &member.Version, Metadata: map[string]any{"content_id": member.ContentID, "member_id": member.ID, "relation": "event_content"}}); err != nil {
+				return err
+			}
 			contentIDs = append(contentIDs, member.ContentID)
 		}
-		if err := copyMonitorEvents(ctx, transaction.SQL, source.ID, created.ID); err != nil {
+		if err := copyMonitorEvents(ctx, transaction.SQL, source.ID, created.ID, command.ActorUserID); err != nil {
 			return err
 		}
 		source, err = repository.RecomputeEventEvidence(ctx, application.EvidenceRecomputeCommand{EventID: source.ID, ReasonCode: "split_evidence_recompute", ActorUserID: command.ActorUserID})
@@ -370,6 +429,10 @@ func mergeMembers(ctx context.Context, query *sql.Tx, sourceID, targetID int64, 
 			if _, err := query.ExecContext(ctx, `UPDATE event_contents SET event_id = $1, version = version + 1, updated_at = now() WHERE id = $2 AND version = $3`, targetID, member.ID, member.Version); err != nil {
 				return err
 			}
+			expected := member.Version
+			if err := insertAudit(ctx, query, domain.GovernanceAudit{EventID: targetID, Action: domain.AuditMemberMove, ActorUserID: actor, ReasonCode: "merge_member_moved", SourceEventID: &sourceID, TargetEventID: &targetID, ExpectedVersion: &expected, Metadata: map[string]any{"content_id": member.ContentID, "member_id": member.ID, "relation": "event_content"}}); err != nil {
+				return err
+			}
 			continue
 		}
 		if err != nil {
@@ -383,14 +446,15 @@ func mergeMembers(ctx context.Context, query *sql.Tx, sourceID, targetID int64, 
 		if _, err := query.ExecContext(ctx, `DELETE FROM event_contents WHERE id = $1`, member.ID); err != nil {
 			return err
 		}
-		if err := insertAudit(ctx, query, domain.GovernanceAudit{EventID: targetID, Action: domain.AuditDeduplicated, ActorUserID: actor, ReasonCode: "merge_duplicate_member"}); err != nil {
+		expected := member.Version
+		if err := insertAudit(ctx, query, domain.GovernanceAudit{EventID: targetID, Action: domain.AuditDeduplicated, ActorUserID: actor, ReasonCode: "merge_duplicate_member", SourceEventID: &sourceID, TargetEventID: &targetID, ExpectedVersion: &expected, Metadata: map[string]any{"content_id": member.ContentID, "discarded_member_id": member.ID, "retained_member_id": targetIDValue, "relation": "event_content"}}); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func mergeMonitorEvents(ctx context.Context, query *sql.Tx, sourceID, targetID int64) error {
+func mergeMonitorEvents(ctx context.Context, query *sql.Tx, sourceID, targetID int64, actor *int64) error {
 	rows, err := query.QueryContext(ctx, `SELECT monitor_id, relevance_score, final_score, first_matched_at, last_matched_at, status FROM monitor_events WHERE event_id = $1 ORDER BY monitor_id FOR UPDATE`, sourceID)
 	if err != nil {
 		return err
@@ -417,10 +481,23 @@ func mergeMonitorEvents(ctx context.Context, query *sql.Tx, sourceID, targetID i
 		return err
 	}
 	for _, item := range items {
+		var targetMonitorEventID int64
+		err := query.QueryRowContext(ctx, `SELECT id FROM monitor_events WHERE monitor_id = $1 AND event_id = $2 FOR UPDATE`, item.monitorID, targetID).Scan(&targetMonitorEventID)
+		duplicate := err == nil
+		if err != nil && err != sql.ErrNoRows {
+			return err
+		}
 		if _, err := query.ExecContext(ctx, `
 INSERT INTO monitor_events (monitor_id, event_id, relevance_score, final_score, first_matched_at, last_matched_at, status)
 VALUES ($1,$2,$3,$4,$5,$6,$7)
 ON CONFLICT (monitor_id, event_id) DO UPDATE SET relevance_score = GREATEST(monitor_events.relevance_score, EXCLUDED.relevance_score), final_score = GREATEST(monitor_events.final_score, EXCLUDED.final_score), first_matched_at = LEAST(monitor_events.first_matched_at, EXCLUDED.first_matched_at), last_matched_at = GREATEST(monitor_events.last_matched_at, EXCLUDED.last_matched_at), updated_at = now()`, item.monitorID, targetID, item.relevance, item.final, item.first, item.last, item.status); err != nil {
+			return err
+		}
+		action, reason := domain.AuditMemberMove, "merge_monitor_moved"
+		if duplicate {
+			action, reason = domain.AuditDeduplicated, "merge_duplicate_monitor"
+		}
+		if err := insertAudit(ctx, query, domain.GovernanceAudit{EventID: targetID, Action: action, ActorUserID: actor, ReasonCode: reason, SourceEventID: &sourceID, TargetEventID: &targetID, Metadata: map[string]any{"monitor_id": item.monitorID, "relation": "monitor_event"}}); err != nil {
 			return err
 		}
 	}
@@ -428,9 +505,40 @@ ON CONFLICT (monitor_id, event_id) DO UPDATE SET relevance_score = GREATEST(moni
 	return err
 }
 
-func copyMonitorEvents(ctx context.Context, query *sql.Tx, sourceID, targetID int64) error {
-	_, err := query.ExecContext(ctx, `INSERT INTO monitor_events (monitor_id, event_id, relevance_score, final_score, first_matched_at, last_matched_at, status) SELECT monitor_id, $2, relevance_score, final_score, first_matched_at, last_matched_at, status FROM monitor_events WHERE event_id = $1 ON CONFLICT DO NOTHING`, sourceID, targetID)
-	return err
+func copyMonitorEvents(ctx context.Context, query *sql.Tx, sourceID, targetID int64, actor *int64) error {
+	rows, err := query.QueryContext(ctx, `SELECT monitor_id FROM monitor_events WHERE event_id = $1 ORDER BY monitor_id FOR UPDATE`, sourceID)
+	if err != nil {
+		return err
+	}
+	monitorIDs := make([]int64, 0)
+	for rows.Next() {
+		var monitorID int64
+		if err := rows.Scan(&monitorID); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		monitorIDs = append(monitorIDs, monitorID)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, monitorID := range monitorIDs {
+		result, err := query.ExecContext(ctx, `INSERT INTO monitor_events (monitor_id, event_id, relevance_score, final_score, first_matched_at, last_matched_at, status) SELECT monitor_id, $2, relevance_score, final_score, first_matched_at, last_matched_at, status FROM monitor_events WHERE event_id = $1 AND monitor_id = $3 ON CONFLICT DO NOTHING`, sourceID, targetID, monitorID)
+		if err != nil {
+			return err
+		}
+		if inserted, _ := result.RowsAffected(); inserted != 1 {
+			continue
+		}
+		if err := insertAudit(ctx, query, domain.GovernanceAudit{EventID: targetID, Action: domain.AuditMemberMove, ActorUserID: actor, ReasonCode: "split_monitor_copied", SourceEventID: &sourceID, TargetEventID: &targetID, Metadata: map[string]any{"monitor_id": monitorID, "relation": "monitor_event"}}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func insertAudit(ctx context.Context, query *sql.Tx, audit domain.GovernanceAudit) error {

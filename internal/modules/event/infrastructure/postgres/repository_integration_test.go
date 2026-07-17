@@ -25,6 +25,9 @@ func TestGovernanceRepositoryMergesAndLocksAtomically(t *testing.T) {
 	}
 	repository := NewRepository(runtime)
 	fixture := seedEventFixture(t, runtime)
+	if _, err := runtime.SQL.Exec(`UPDATE events SET representative_content_id = $1 WHERE id = $2`, fixture.sourceContentID, fixture.sourceID); err != nil {
+		t.Fatalf("set source representative: %v", err)
+	}
 	member, err := repository.SetMemberLock(ctx, application.MemberLockCommand{EventID: fixture.sourceID, ContentID: fixture.sourceContentID, ExpectedVersion: 1, Locked: true, ReasonCode: "review"})
 	if err != nil {
 		t.Fatalf("SetMemberLock() error = %v", err)
@@ -44,8 +47,15 @@ func TestGovernanceRepositoryMergesAndLocksAtomically(t *testing.T) {
 	}
 	if got, err := repository.Get(ctx, fixture.sourceID); err != nil {
 		t.Fatalf("Get(source) error = %v", err)
-	} else if got.LifecycleStatus != domain.LifecycleMerged || got.MergedIntoID == nil || *got.MergedIntoID != fixture.targetID {
+	} else if got.LifecycleStatus != domain.LifecycleMerged || got.MergedIntoID == nil || *got.MergedIntoID != fixture.targetID || got.RepresentativeContentID != nil {
 		t.Fatalf("source after merge = %#v", got)
+	}
+	var movedContentID int64
+	if err := runtime.SQL.QueryRow(`SELECT (metadata->>'content_id')::bigint FROM event_governance_audits WHERE event_id = $1 AND action = 'member_move'`, fixture.targetID).Scan(&movedContentID); err != nil {
+		t.Fatalf("read member move audit: %v", err)
+	}
+	if movedContentID != fixture.sourceContentID {
+		t.Fatalf("member move audit content = %d, want %d", movedContentID, fixture.sourceContentID)
 	}
 }
 
@@ -85,7 +95,7 @@ func TestGovernanceRepositoryMergeRecomputesTargetProjection(t *testing.T) {
 	}
 }
 
-func TestGovernanceRepositoryMergesThroughCanonicalTarget(t *testing.T) {
+func TestGovernanceRepositoryMergesThroughCanonicalTargetUsingCanonicalVersion(t *testing.T) {
 	ctx := context.Background()
 	runtime, err := database.Open(ctx, postgresfixture.New(t))
 	if err != nil {
@@ -104,7 +114,7 @@ func TestGovernanceRepositoryMergesThroughCanonicalTarget(t *testing.T) {
 	if err := runtime.SQL.QueryRow(`INSERT INTO events (event_key, title_zh, summary, lifecycle_status, first_seen_at, last_seen_at, merged_into_id) SELECT 'evt-history-' || md5(random()::text), '历史事件', '', 'merged', first_seen_at, last_seen_at, $1 FROM events WHERE id = $1 RETURNING id`, fixture.targetID).Scan(&historicalTargetID); err != nil {
 		t.Fatalf("insert merged target: %v", err)
 	}
-	merged, err := repository.Merge(ctx, application.MergeCommand{SourceEventID: fixture.sourceID, TargetEventID: historicalTargetID, SourceExpectedVersion: 1, TargetExpectedVersion: 1, ReasonCode: "canonical_merge"})
+	merged, err := repository.Merge(ctx, application.MergeCommand{SourceEventID: fixture.sourceID, TargetEventID: historicalTargetID, SourceExpectedVersion: 1, TargetExpectedVersion: 2, ReasonCode: "canonical_merge"})
 	if err != nil {
 		t.Fatalf("Merge() error = %v", err)
 	}
@@ -115,6 +125,41 @@ func TestGovernanceRepositoryMergesThroughCanonicalTarget(t *testing.T) {
 		t.Fatalf("Get(source) error = %v", err)
 	} else if source.LifecycleStatus != domain.LifecycleMerged || source.MergedIntoID == nil || *source.MergedIntoID != fixture.targetID {
 		t.Fatalf("source after canonical merge = %#v", source)
+	}
+}
+
+func TestGovernanceRepositoryRejectsStaleCanonicalTargetVersion(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	repository := NewRepository(runtime)
+	fixture := seedEventFixture(t, runtime)
+	if _, err := runtime.SQL.Exec(`UPDATE events SET version = 2 WHERE id = $1`, fixture.targetID); err != nil {
+		t.Fatalf("set client canonical version: %v", err)
+	}
+	var historicalTargetID int64
+	if err := runtime.SQL.QueryRow(`INSERT INTO events (event_key, title_zh, summary, lifecycle_status, first_seen_at, last_seen_at, merged_into_id) SELECT 'evt-history-' || md5(random()::text), '历史事件', '', 'merged', first_seen_at, last_seen_at, $1 FROM events WHERE id = $1 RETURNING id`, fixture.targetID).Scan(&historicalTargetID); err != nil {
+		t.Fatalf("insert merged target: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE events SET version = 2 WHERE id = $1`, historicalTargetID); err != nil {
+		t.Fatalf("set historical target version: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE events SET version = 3 WHERE id = $1`, fixture.targetID); err != nil {
+		t.Fatalf("make canonical target stale: %v", err)
+	}
+	if _, err := repository.Merge(ctx, application.MergeCommand{SourceEventID: fixture.sourceID, TargetEventID: historicalTargetID, SourceExpectedVersion: 1, TargetExpectedVersion: 2, ReasonCode: "canonical_merge"}); err == nil {
+		t.Fatal("Merge() accepted a stale canonical target version")
+	}
+	if source, err := repository.Get(ctx, fixture.sourceID); err != nil {
+		t.Fatal(err)
+	} else if source.LifecycleStatus != domain.LifecycleDetected || source.MergedIntoID != nil {
+		t.Fatalf("source changed after stale canonical conflict: %#v", source)
 	}
 }
 
@@ -141,6 +186,47 @@ func TestGovernanceRepositorySplitsWithMemberVersion(t *testing.T) {
 		t.Fatalf("Get(source) error = %v", err)
 	} else if got.Version != 2 {
 		t.Fatalf("source version after split = %d, want 2", got.Version)
+	}
+	var movedContentID int64
+	if err := runtime.SQL.QueryRow(`SELECT (metadata->>'content_id')::bigint FROM event_governance_audits WHERE event_id = $1 AND action = 'member_move'`, created.ID).Scan(&movedContentID); err != nil {
+		t.Fatalf("read split member move audit: %v", err)
+	}
+	if movedContentID != fixture.sourceContentID {
+		t.Fatalf("split member move audit content = %d, want %d", movedContentID, fixture.sourceContentID)
+	}
+}
+
+func TestGovernanceRepositoryAuditsMonitorDeduplication(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	repository := NewRepository(runtime)
+	fixture := seedEventFixture(t, runtime)
+	var monitorID int64
+	if err := runtime.SQL.QueryRow(`INSERT INTO monitors (name) VALUES ('governance-monitor-' || md5(random()::text)) RETURNING id`).Scan(&monitorID); err != nil {
+		t.Fatalf("insert monitor: %v", err)
+	}
+	now := time.Now().UTC()
+	for _, eventID := range []int64{fixture.sourceID, fixture.targetID} {
+		if _, err := runtime.SQL.Exec(`INSERT INTO monitor_events (monitor_id, event_id, relevance_score, final_score, first_matched_at, last_matched_at) VALUES ($1,$2,80,80,$3,$3)`, monitorID, eventID, now); err != nil {
+			t.Fatalf("insert monitor event: %v", err)
+		}
+	}
+	if _, err := repository.Merge(ctx, application.MergeCommand{SourceEventID: fixture.sourceID, TargetEventID: fixture.targetID, SourceExpectedVersion: 1, TargetExpectedVersion: 1, ReasonCode: "merge"}); err != nil {
+		t.Fatalf("Merge() error = %v", err)
+	}
+	var auditedMonitorID int64
+	if err := runtime.SQL.QueryRow(`SELECT (metadata->>'monitor_id')::bigint FROM event_governance_audits WHERE event_id = $1 AND action = 'deduplicated' AND metadata->>'relation' = 'monitor_event'`, fixture.targetID).Scan(&auditedMonitorID); err != nil {
+		t.Fatalf("read monitor deduplication audit: %v", err)
+	}
+	if auditedMonitorID != monitorID {
+		t.Fatalf("deduplicated monitor = %d, want %d", auditedMonitorID, monitorID)
 	}
 }
 
