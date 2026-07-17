@@ -35,6 +35,8 @@ const (
 	ActionSubscriptionCreated        AuditAction = "subscription.created"
 	ActionSubscriptionUpdated        AuditAction = "subscription.updated"
 	ActionSubscriptionTokenRotated   AuditAction = "subscription.token_rotated"
+	ActionJobCancelled               AuditAction = "job.cancelled"
+	ActionJobRetried                 AuditAction = "job.retried"
 
 	AuditResultSuccess AuditResult = "success"
 	AuditResultFailure AuditResult = "failure"
@@ -47,6 +49,7 @@ var allowedActions = map[AuditAction]struct{}{
 	ActionSourceCreated: {}, ActionSourceUpdated: {}, ActionSourceEnabled: {}, ActionSourceDisabled: {}, ActionSourceArchived: {}, ActionSourceRestored: {},
 	ActionMetricCapabilityDrafted: {}, ActionMetricCapabilityPublished: {}, ActionMetricCapabilityArchived: {},
 	ActionSubscriptionCreated: {}, ActionSubscriptionUpdated: {}, ActionSubscriptionTokenRotated: {},
+	ActionJobCancelled: {}, ActionJobRetried: {},
 }
 
 var (

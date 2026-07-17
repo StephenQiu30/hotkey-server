@@ -106,11 +106,11 @@ depends_on: [PLAN-006, PLAN-007, PLAN-008, PLAN-009, PLAN-010, PLAN-011, PLAN-01
 
 **文件：** 创建 `internal/modules/operations/{application,infrastructure/postgres,transport/http}/jobs.go`；修改 `internal/bootstrap/app.go`、`docs/openapi/swagger.json` 与 `test/architecture/openapi_test.go`。
 
-- [ ] **RED：** 未认证、非管理员、未知 Job、已完成 Job、非法重试/取消和敏感 payload 泄露失败。
-- [ ] **GREEN：** 管理员可查询安全运行状态、取消未开始任务并受限重试可恢复任务；API 不暴露正文、密钥、Prompt 或 Provider 原始响应。
-- [ ] **重构：** 统一 Result、错误码与审计，Transport 不直接访问 Queue 表。
-- [ ] **回归：** `go run ./test/runner test ./internal/modules/operations/... ./test/architecture -run 'Job|OpenAPI|Result' -count=1`。
-- [ ] **提交：** `feat: manage durable job runs`。
+- [x] **RED：** 未认证、非管理员、未知 Job、已完成 Job、非法重试/取消和敏感 payload 泄露失败。
+- [x] **GREEN：** 管理员可查询安全运行状态、取消未开始任务并受限重试可恢复任务；API 不暴露 args、错误数组、正文、密钥、Prompt 或 Provider 原始响应。
+- [x] **重构：** 统一 Result、错误码与审计，Transport 只依赖 Operations Application，Repository 通过事务 hook 将审计与取消/重试状态绑定。
+- [x] **回归：** `HOTKEY_TEST_DSN='postgres:///hotkey_server_dev?sslmode=disable' go run ./test/runner test -tags=integration ./internal/modules/operations/infrastructure/postgres -run TestJobRepository -count=1`；`go run ./test/runner test ./internal/modules/operations/... ./test/architecture -run 'Job|OpenAPI|Result' -count=1`；`make openapi-check`。
+- [x] **提交：** `feat: manage durable job runs`。
 
 ### Task 6：固定可恢复 P0 端到端验收
 

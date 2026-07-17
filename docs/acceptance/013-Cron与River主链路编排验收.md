@@ -31,6 +31,18 @@ sh test/tools/validate-repository.sh
 
 尚未完成：取消/重试管理 API、P0 RSS/HN 端到端和恢复故障注入；保持 `pending`。
 
+已完成 PLAN-013 Task 5（提交待本次代码提交）：新增管理员专用 `/api/v1/operations/jobs`、`/:id/cancel` 和 `/:id/retry`。查询只返回 kind/state/attempt/priority/时间等安全元数据；取消仅允许 available，重试仅允许 discarded/cancelled 并清空 attempt；状态变更和 `job.cancelled`/`job.retried` 审计在同一事务提交，未知/已完成状态返回 conflict。
+
+Task 5 回归证据：
+
+```bash
+HOTKEY_TEST_DSN='postgres:///hotkey_server_dev?sslmode=disable' go run ./test/runner test -tags=integration ./internal/modules/operations/infrastructure/postgres -run TestJobRepository -count=1
+go run ./test/runner test ./internal/modules/operations/... ./test/architecture -run 'Job|OpenAPI|Result' -count=1
+make openapi-check
+```
+
+尚未完成：P0 RSS/HN 端到端和恢复故障注入；保持 `pending`。
+
 ```bash
 go run ./test/runner test ./internal/platform/queue -run 'Test(Payload|Job|ErrorClassification)' -count=1
 HOTKEY_TEST_DSN='postgres:///hotkey_server_dev?sslmode=disable' go run ./test/runner test -tags=integration ./internal/platform/queue -run 'Test(Enqueue|Worker)' -count=1

@@ -34,7 +34,9 @@ import (
 	monitorapplication "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/application"
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/infrastructure/postgres"
 	monitortransport "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/transport/http"
+	operationsapplication "github.com/StephenQiu30/hotkey-server/internal/modules/operations/application"
 	operationspostgres "github.com/StephenQiu30/hotkey-server/internal/modules/operations/infrastructure/postgres"
+	operationstransport "github.com/StephenQiu30/hotkey-server/internal/modules/operations/transport/http"
 	reportapplication "github.com/StephenQiu30/hotkey-server/internal/modules/report/application"
 	reportpostgres "github.com/StephenQiu30/hotkey-server/internal/modules/report/infrastructure/postgres"
 	reporttransport "github.com/StephenQiu30/hotkey-server/internal/modules/report/transport/http"
@@ -81,6 +83,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 			fx.Provide(
 				database.NewRuntime,
 				operationspostgres.NewAuditWriter,
+				operationspostgres.NewJobRepository,
 				sourcepostgres.NewRepository,
 				sourcepostgres.NewMetricCapabilityRepository,
 				newMetricCapabilityService,
@@ -158,8 +161,9 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newDeliverySubscriptionService,
 					reportpostgres.NewRepository,
 					newReportService,
+					newJobService,
 				),
-				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes),
+				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes, registerJobRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -260,6 +264,10 @@ func registerDeliverySubscriptionRoutes(router *gin.Engine, service *deliveryapp
 
 func registerReportRoutes(router *gin.Engine, service *reportapplication.Service, authenticator httptransport.Authenticator) {
 	reporttransport.RegisterRoutes(router, service, authenticator)
+}
+
+func registerJobRoutes(router *gin.Engine, service *operationsapplication.JobService, authenticator httptransport.Authenticator) {
+	operationstransport.RegisterJobRoutes(router, service, authenticator)
 }
 
 // Fx does not infer interface bindings from a concrete repository. Keep the
@@ -409,6 +417,10 @@ func newMonitorService(runtime *database.Runtime, monitors *monitorpostgres.Repo
 
 func newReportService(repository *reportpostgres.Repository) (*reportapplication.Service, error) {
 	return reportapplication.NewService(repository)
+}
+
+func newJobService(repository *operationspostgres.JobRepository, audit *operationspostgres.AuditWriter) (*operationsapplication.JobService, error) {
+	return operationsapplication.NewJobService(repository, audit)
 }
 
 func newDeliverySubscriptionService(runtime *database.Runtime, repository *deliverypostgres.Repository, audit *operationspostgres.AuditWriter) (*deliveryapplication.SubscriptionService, error) {
