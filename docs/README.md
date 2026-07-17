@@ -32,7 +32,7 @@ downstream:
 
 ## 当前交付状态
 
-目标设计不能代替当前实现状态。任务进度只在 [PRD 索引](prd/README.md) 和 [Plan 索引](plans/README.md) 维护：001–009 已完成并由 [Acceptance](acceptance/README.md) 保存长期证据；治理任务 018 已审核为非阻塞 `ready` 支线；PLAN-009 已在 `d4efda5` 通过完整门禁并经非主要编写者 APPROVED，当前为 `archived` / `done`；PLAN-010 已完成独立文档评审并进入 `accepted/ready`，但 Acceptance-010 尚未实施验收；011–017 仍处于 `review` / `backlog`，必须各自完成文档评审和 ready 门禁。本地启动、GitHub CI、发布和故障处置等可重复运行流程归入 [Operations](operations/README.md)。
+目标设计不能代替当前实现状态。任务进度只在 [PRD 索引](prd/README.md) 和 [Plan 索引](plans/README.md) 维护：001–009 已完成并由 [Acceptance](acceptance/README.md) 保存长期证据；治理任务 018 已审核为非阻塞 `ready` 支线；PLAN-010 的事件治理代码已通过事件/数据库集成门禁，Acceptance-010 与实现复核仍待收口；011–017 已开始实现核心契约，但完整持久化、Worker/API、故障验收与独立复核仍未完成，不能标记 done。本地启动、GitHub CI、发布和故障处置等可重复运行流程归入 [Operations](operations/README.md)。
 
 ## 文档层级
 

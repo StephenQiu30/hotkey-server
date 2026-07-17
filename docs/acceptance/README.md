@@ -68,6 +68,13 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | 008 | [AI Provider 与 Embedding 基础](008-AIProvider与Embedding基础验收.md) | accepted |
 | 009 | [多语言相关性匹配与反馈](009-多语言相关性匹配与反馈验收.md) | accepted |
 | 010 | [事件聚类生命周期与人工治理](010-事件聚类生命周期与人工治理验收.md) | pending |
+| 011 | [热度趋势与监控排序](011-热度趋势与监控排序验收.md) | pending |
+| 012 | [证据化事件摘要实体与主张](012-证据化事件摘要实体与主张验收.md) | pending |
+| 013 | [Cron与River主链路编排](013-Cron与River主链路编排验收.md) | pending |
+| 014 | [Obsidian知识提案修订与对账](014-Obsidian知识提案修订与对账验收.md) | pending |
+| 015 | [日报周报与发布快照](015-日报周报与发布快照验收.md) | pending |
+| 016 | [邮件与RSS-Atom订阅交付](016-邮件与RSS-Atom订阅交付验收.md) | pending |
+| 017 | [运行治理容量与端到端验收](017-运行治理容量与端到端验收.md) | pending |
 
 ## 变更记录
 

@@ -9,7 +9,7 @@ purpose: 定义 Cron 调度与 River P0 主链路编排任务
 phase: P0
 priority: P0
 status: review
-execution_status: backlog
+execution_status: in_progress
 version: v1.0
 owner: HotKey Server Team
 depends_on: [PRD-006, PRD-007, PRD-008, PRD-009, PRD-010, PRD-011, PRD-012]
