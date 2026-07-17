@@ -8,8 +8,8 @@ feature_area: 订阅与交付
 purpose: 定义邮件及 RSS、Atom 订阅交付任务
 phase: P1
 priority: P1
-status: review
-execution_status: backlog
+status: archived
+execution_status: done
 version: v1.0
 owner: HotKey Server Team
 depends_on: [PRD-014, PRD-015]
@@ -17,7 +17,7 @@ design_refs:
   - docs/design/archive/003-数据库与数据生命周期设计.md
   - docs/design/008-Obsidian知识库治理与报告交付设计.md
   - docs/design/012-监控调度与River流水线设计.md
-canonical_path: docs/prd/016-邮件与RSS-Atom订阅交付.md
+canonical_path: docs/prd/archive/016-邮件与RSS-Atom订阅交付.md
 inputs:
   - docs/design/archive/003-数据库与数据生命周期设计.md
   - docs/design/008-Obsidian知识库治理与报告交付设计.md
@@ -27,8 +27,8 @@ outputs:
 triggers:
   - 订阅、邮件、Feed 或投递重试规则变化
 downstream:
-  - docs/plans/016-邮件与RSS-Atom订阅交付计划.md
-  - docs/acceptance/016-邮件与RSS-Atom订阅交付验收.md
+  - docs/plans/archive/016-邮件与RSS-Atom订阅交付计划.md
+  - docs/acceptance/archive/016-邮件与RSS-Atom订阅交付验收.md
 ---
 
 # 邮件与 RSS/Atom 订阅交付

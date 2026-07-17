@@ -4,14 +4,14 @@ doc_no: "014"
 audience: [Dev, QA, Ops]
 feature_area: 知识库治理
 purpose: 实施 Obsidian 提案、审核、修订、原子写入与跨存储对账
-canonical_path: docs/plans/014-Obsidian知识提案修订与对账计划.md
-status: review
-execution_status: backlog
-review_status: pending
+canonical_path: docs/plans/archive/014-Obsidian知识提案修订与对账计划.md
+status: archived
+execution_status: done
+review_status: approved
 version: v1.0
 owner: HotKey Server Team
 inputs:
-  - docs/prd/014-Obsidian知识提案修订与对账.md
+  - docs/prd/archive/014-Obsidian知识提案修订与对账.md
   - docs/plans/archive/010-事件聚类生命周期与人工治理计划.md
   - docs/plans/archive/012-证据化事件摘要实体与主张计划.md
   - docs/plans/archive/013-Cron与River主链路编排计划.md
@@ -21,7 +21,7 @@ outputs:
 triggers:
   - PRD-014 accepted 且 ready
 downstream:
-  - docs/acceptance/014-Obsidian知识提案修订与对账验收.md
+  - docs/acceptance/archive/014-Obsidian知识提案修订与对账验收.md
 depends_on: [PLAN-010, PLAN-012, PLAN-013]
 ---
 

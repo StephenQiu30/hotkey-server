@@ -4,23 +4,23 @@ doc_no: "016"
 audience: [Dev, QA, Ops]
 feature_area: 订阅与交付
 purpose: 实施邮件投递及 RSS、Atom 私有订阅
-canonical_path: docs/plans/016-邮件与RSS-Atom订阅交付计划.md
-status: review
-execution_status: backlog
-review_status: pending
+canonical_path: docs/plans/archive/016-邮件与RSS-Atom订阅交付计划.md
+status: archived
+execution_status: done
+review_status: approved
 version: v1.0
 owner: HotKey Server Team
 inputs:
-  - docs/prd/016-邮件与RSS-Atom订阅交付.md
-  - docs/plans/014-Obsidian知识提案修订与对账计划.md
-  - docs/plans/015-日报周报与发布快照计划.md
+  - docs/prd/archive/016-邮件与RSS-Atom订阅交付.md
+  - docs/plans/archive/014-Obsidian知识提案修订与对账计划.md
+  - docs/plans/archive/015-日报周报与发布快照计划.md
 outputs:
   - delivery 模块
   - 邮件与 Feed 交付
 triggers:
   - PRD-016 accepted 且 ready
 downstream:
-  - docs/acceptance/016-邮件与RSS-Atom订阅交付验收.md
+  - docs/acceptance/archive/016-邮件与RSS-Atom订阅交付验收.md
 depends_on: [PLAN-014, PLAN-015]
 ---
 

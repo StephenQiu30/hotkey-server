@@ -60,16 +60,16 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 
 ## 已归档验收
 
-001–013 的验收结论均为 `accepted`，正文已移入 [`archive/`](archive/README.md)。
+001–016 的验收结论为 `accepted`，017 为 `accepted_with_risk`；正文均已移入 [`archive/`](archive/README.md)。
 
-## 当前待验收任务
+## 已验收任务
 
 | 编号 | 验收 | 结论 |
 |---|---|---|
-| 014 | [Obsidian知识提案修订与对账](014-Obsidian知识提案修订与对账验收.md) | pending |
-| 015 | [日报周报与发布快照](015-日报周报与发布快照验收.md) | pending |
-| 016 | [邮件与RSS-Atom订阅交付](016-邮件与RSS-Atom订阅交付验收.md) | pending |
-| 017 | [运行治理容量与端到端验收](017-运行治理容量与端到端验收.md) | pending |
+| 014 | [Obsidian知识提案修订与对账](archive/014-Obsidian知识提案修订与对账验收.md) | accepted |
+| 015 | [日报周报与发布快照](archive/015-日报周报与发布快照验收.md) | accepted |
+| 016 | [邮件与RSS-Atom订阅交付](archive/016-邮件与RSS-Atom订阅交付验收.md) | accepted |
+| 017 | [运行治理容量与端到端验收](archive/017-运行治理容量与端到端验收.md) | accepted_with_risk |
 
 ## 变更记录
 
@@ -90,3 +90,4 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | v2.3 | 2026-07-17 | `804cac2` 通过全量门禁及独立实现复审，Acceptance-010 归档为 accepted；长期流水线质量由 PLAN-013/017 验收。 |
 | v2.4 | 2026-07-17 | `59e85fe` 固定事件智能离线评测并通过完整质量门禁，Acceptance-012 归档为 accepted。 |
 | v2.5 | 2026-07-17 | `0567332` 完成 PLAN-013 RSS/HN 恢复 fixture 与完整质量门禁，Acceptance-013 归档为 accepted。 |
+| v2.6 | 2026-07-17 | `0daab17` 完成 PLAN-014–016 核心闭环并将 Acceptance-014–016 归档为 accepted；Acceptance-017 归档为 accepted_with_risk，外部依赖演练保留在 Operations-006。 |

@@ -8,8 +8,8 @@ feature_area: 知识库治理
 purpose: 定义 Obsidian 提案、审核、修订、冲突与对账任务
 phase: P1
 priority: P1
-status: review
-execution_status: backlog
+status: archived
+execution_status: done
 version: v1.0
 owner: HotKey Server Team
 depends_on: [PRD-010, PRD-012, PRD-013]
@@ -17,7 +17,7 @@ design_refs:
   - docs/design/archive/003-数据库与数据生命周期设计.md
   - docs/design/008-Obsidian知识库治理与报告交付设计.md
   - docs/design/archive/011-AI任务证据与模型运行设计.md
-canonical_path: docs/prd/014-Obsidian知识提案修订与对账.md
+canonical_path: docs/prd/archive/014-Obsidian知识提案修订与对账.md
 inputs:
   - docs/design/archive/003-数据库与数据生命周期设计.md
   - docs/design/008-Obsidian知识库治理与报告交付设计.md
@@ -27,8 +27,8 @@ outputs:
 triggers:
   - Vault、提案、修订、冲突或对账规则变化
 downstream:
-  - docs/plans/014-Obsidian知识提案修订与对账计划.md
-  - docs/acceptance/014-Obsidian知识提案修订与对账验收.md
+  - docs/plans/archive/014-Obsidian知识提案修订与对账计划.md
+  - docs/acceptance/archive/014-Obsidian知识提案修订与对账验收.md
 ---
 
 # Obsidian 知识提案、修订与对账
