@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/event/application"
+	"github.com/StephenQiu30/hotkey-server/internal/modules/event/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/tests/postgresfixture"
@@ -18,8 +19,8 @@ import (
 )
 
 type candidateRecallFixture struct {
-	contentID int64
-	eventIDs  []int64
+	contentID, sourceID int64
+	eventIDs            []int64
 }
 
 func TestCandidateRecallRepositoryBoundsChannelsAndDegradesWithoutVectors(t *testing.T) {
@@ -83,15 +84,60 @@ func TestCandidateRecallRepositoryUsesHNSWVectorPath(t *testing.T) {
 	assertCandidateRecallVectorHNSW(t, runtime, fixture.contentID)
 }
 
+func TestClusteringExecutionPersistsRecalledCandidateProvenance(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	fixture := seedCandidateRecallFixture(t, runtime, 1)
+	evidenceContentID := seedCandidateRepresentativeEvidence(t, runtime, fixture.sourceID)
+	if _, err := runtime.SQL.Exec(`INSERT INTO event_contents (event_id, content_id, membership_score, evidence_role, is_representative, origin) VALUES ($1,$2,95,'primary',true,'rule')`, fixture.eventIDs[0], evidenceContentID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE events SET representative_content_id = $1 WHERE id = $2`, evidenceContentID, fixture.eventIDs[0]); err != nil {
+		t.Fatal(err)
+	}
+	repository := NewRepository(runtime)
+	target, err := repository.Get(ctx, fixture.eventIDs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := application.NewClusteringExecutionService(application.NewRecallService(repository), application.NewClusteringService(), repository)
+	result, err := service.Execute(ctx, application.ClusteringExecutionInput{
+		ContentID: fixture.contentID, ClusteringVersion: "v1", FeatureInputHash: domain.FeatureInputHash("candidate-recall-provenance"),
+		Scores: map[string]domain.ScoreBreakdown{
+			target.EventKey: {EntityAction: 95, Semantic: 90, Temporal: 90, Location: 80, SourceContext: 80},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if result.Event == nil || result.Event.ID != target.ID || result.Created || !result.VectorUnavailable {
+		t.Fatalf("Execute() = %#v", result)
+	}
+	var channelCount, reasonCount, evidenceCount int
+	if err := runtime.SQL.QueryRow(`SELECT jsonb_array_length(feature_snapshot->'recall_channels'), cardinality(reason_codes), cardinality(evidence_content_ids) FROM event_clustering_decisions WHERE content_id = $1 AND candidate_event_id = $2`, fixture.contentID, target.ID).Scan(&channelCount, &reasonCount, &evidenceCount); err != nil {
+		t.Fatal(err)
+	}
+	if channelCount != 3 || reasonCount != 4 || evidenceCount != 2 {
+		t.Fatalf("persisted recalled provenance = channels=%d reasons=%d evidence=%d", channelCount, reasonCount, evidenceCount)
+	}
+}
+
 func seedCandidateRecallFixture(t *testing.T, runtime *database.Runtime, eventCount int) candidateRecallFixture {
 	t.Helper()
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	var fixture candidateRecallFixture
-	var sourceID, monitorID, configID int64
-	if err := runtime.SQL.QueryRow(`INSERT INTO source_connections (source_type, name, endpoint) VALUES ('rss', 'event-recall-' || md5(random()::text), 'https://event.example') RETURNING id`).Scan(&sourceID); err != nil {
+	var monitorID, configID int64
+	if err := runtime.SQL.QueryRow(`INSERT INTO source_connections (source_type, name, endpoint) VALUES ('rss', 'event-recall-' || md5(random()::text), 'https://event.example') RETURNING id`).Scan(&fixture.sourceID); err != nil {
 		t.Fatalf("insert source: %v", err)
 	}
-	if err := runtime.SQL.QueryRow(`INSERT INTO contents (source_connection_id, external_id, content_type, title, excerpt, canonical_url, published_at, fetched_at, dedupe_key) VALUES ($1, 'candidate-recall', 'article', 'Shared event', 'shared event evidence', 'https://event.example/candidate-recall', $2, $2, repeat('d',64)) RETURNING id`, sourceID, now).Scan(&fixture.contentID); err != nil {
+	if err := runtime.SQL.QueryRow(`INSERT INTO contents (source_connection_id, external_id, content_type, title, excerpt, canonical_url, published_at, fetched_at, dedupe_key) VALUES ($1, 'candidate-recall', 'article', 'Shared event', 'shared event evidence', 'https://event.example/candidate-recall', $2, $2, repeat('d',64)) RETURNING id`, fixture.sourceID, now).Scan(&fixture.contentID); err != nil {
 		t.Fatalf("insert content: %v", err)
 	}
 	if err := runtime.SQL.QueryRow(`INSERT INTO monitors (name, status) VALUES ('event-recall-' || md5(random()::text), 'draft') RETURNING id`).Scan(&monitorID); err != nil {
@@ -124,6 +170,16 @@ func seedCandidateRecallFixture(t *testing.T, runtime *database.Runtime, eventCo
 		fixture.eventIDs = append(fixture.eventIDs, eventID)
 	}
 	return fixture
+}
+
+func seedCandidateRepresentativeEvidence(t *testing.T, runtime *database.Runtime, sourceID int64) int64 {
+	t.Helper()
+	var contentID int64
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	if err := runtime.SQL.QueryRow(`INSERT INTO contents (source_connection_id, external_id, content_type, title, excerpt, canonical_url, published_at, fetched_at, dedupe_key) VALUES ($1, 'candidate-evidence-' || md5(random()::text), 'article', 'Shared event evidence', 'candidate representative evidence', 'https://event.example/candidate-evidence', $2, $2, md5(random()::text) || md5(random()::text)) RETURNING id`, sourceID, now).Scan(&contentID); err != nil {
+		t.Fatalf("insert candidate representative evidence: %v", err)
+	}
+	return contentID
 }
 
 func createCandidateRecallEmbeddingProfile(t *testing.T, runtime *database.Runtime) (int64, int64) {
