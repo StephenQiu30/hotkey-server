@@ -27,6 +27,7 @@ type rowQuery interface {
 
 var _ application.EventStore = (*Repository)(nil)
 var _ application.GovernanceRepository = (*Repository)(nil)
+var _ application.ReadRepository = (*Repository)(nil)
 
 func NewRepository(runtime *database.Runtime) *Repository {
 	return &Repository{runtime: runtime, ids: id.UUID{}}
@@ -44,6 +45,74 @@ func (repository *Repository) Get(ctx context.Context, eventID int64) (domain.Ev
 SELECT id, version, event_key, COALESCE(event_fingerprint, ''), COALESCE(fingerprint_version, ''), title_zh, COALESCE(title_en, ''), summary,
        lifecycle_status, first_seen_at, last_seen_at, representative_content_id, merged_into_id, manual_locked
 FROM events WHERE id = $1 AND deleted_at IS NULL`, eventID))
+}
+
+func (repository *Repository) List(ctx context.Context, query domain.EventListQuery) (domain.EventPage, error) {
+	if !repository.available() || query.Limit < 1 || query.Limit > 100 || query.Cursor < 0 {
+		return domain.EventPage{}, sharedrepository.ErrUnavailable
+	}
+	rows, err := repository.runtime.SQL.QueryContext(ctx, `
+SELECT id, version, event_key, COALESCE(event_fingerprint, ''), COALESCE(fingerprint_version, ''), title_zh, COALESCE(title_en, ''), summary,
+       lifecycle_status, first_seen_at, last_seen_at, representative_content_id, merged_into_id, manual_locked
+FROM events WHERE deleted_at IS NULL AND id > $1 AND lifecycle_status <> 'archived'
+ORDER BY id ASC LIMIT $2`, query.Cursor, query.Limit+1)
+	if err != nil {
+		return domain.EventPage{}, sharedrepository.MapError(err)
+	}
+	defer rows.Close()
+	items := make([]domain.Event, 0, query.Limit)
+	for rows.Next() {
+		var event domain.Event
+		var fingerprint, fingerprintVersion, titleEN string
+		var representative, merged sql.NullInt64
+		if err := rows.Scan(&event.ID, &event.Version, &event.EventKey, &fingerprint, &fingerprintVersion, &event.TitleZH, &titleEN, &event.Summary, &event.LifecycleStatus, &event.FirstSeenAt, &event.LastSeenAt, &representative, &merged, &event.ManualLocked); err != nil {
+			return domain.EventPage{}, sharedrepository.MapError(err)
+		}
+		event.EventFingerprint, event.FingerprintVersion, event.TitleEN = fingerprint, fingerprintVersion, titleEN
+		if representative.Valid {
+			event.RepresentativeContentID = &representative.Int64
+		}
+		if merged.Valid {
+			event.MergedIntoID = &merged.Int64
+		}
+		items = append(items, event)
+	}
+	if err := rows.Err(); err != nil {
+		return domain.EventPage{}, sharedrepository.MapError(err)
+	}
+	page := domain.EventPage{Items: items}
+	if len(items) > query.Limit {
+		page.NextCursor = items[query.Limit-1].ID
+		page.Items = items[:query.Limit]
+	}
+	return page, nil
+}
+
+func (repository *Repository) ListMembers(ctx context.Context, eventID int64) (domain.EventMemberPage, error) {
+	if !repository.available() || eventID <= 0 {
+		return domain.EventMemberPage{}, sharedrepository.ErrUnavailable
+	}
+	rows, err := repository.runtime.SQL.QueryContext(ctx, `
+SELECT id, version, event_id, content_id, membership_score, evidence_role, is_representative, origin, manual_locked
+FROM event_contents WHERE event_id = $1 ORDER BY membership_score DESC, content_id ASC`, eventID)
+	if err != nil {
+		return domain.EventMemberPage{}, sharedrepository.MapError(err)
+	}
+	defer rows.Close()
+	items := make([]domain.EventMember, 0)
+	for rows.Next() {
+		var member domain.EventMember
+		var role, origin string
+		if err := rows.Scan(&member.ID, &member.Version, &member.EventID, &member.ContentID, &member.MembershipScore, &role, &member.Representative, &origin, &member.ManualLocked); err != nil {
+			return domain.EventMemberPage{}, sharedrepository.MapError(err)
+		}
+		member.EvidenceRole, member.Origin = domain.EvidenceRole(role), domain.MemberOrigin(origin)
+		items = append(items, member)
+	}
+	if err := rows.Err(); err != nil {
+		return domain.EventMemberPage{}, sharedrepository.MapError(err)
+	}
+	return domain.EventMemberPage{Items: items}, nil
 }
 
 func (repository *Repository) Save(ctx context.Context, event domain.Event, expectedVersion int64, audit domain.GovernanceAudit) error {

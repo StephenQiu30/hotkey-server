@@ -9,10 +9,10 @@ import (
 
 type MergeCommand struct {
 	SourceEventID, TargetEventID int64
-	SourceExpectedVersion       int64
-	TargetExpectedVersion       int64
-	ActorUserID                 *int64
-	ReasonCode                  string
+	SourceExpectedVersion        int64
+	TargetExpectedVersion        int64
+	ActorUserID                  *int64
+	ReasonCode                   string
 }
 
 func (command MergeCommand) Validate() error {
@@ -28,11 +28,11 @@ type SplitMember struct {
 }
 
 type SplitCommand struct {
-	SourceEventID       int64
+	SourceEventID         int64
 	SourceExpectedVersion int64
-	Members             []SplitMember
-	ActorUserID         *int64
-	ReasonCode          string
+	Members               []SplitMember
+	ActorUserID           *int64
+	ReasonCode            string
 }
 
 func (command SplitCommand) Validate() error {

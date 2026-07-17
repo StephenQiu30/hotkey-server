@@ -124,6 +124,20 @@ func (member EventMember) Validate() error {
 	return nil
 }
 
+type EventListQuery struct {
+	Limit  int
+	Cursor int64
+}
+
+type EventPage struct {
+	Items      []Event
+	NextCursor int64
+}
+
+type EventMemberPage struct {
+	Items []EventMember
+}
+
 type CandidateChannel string
 
 const (

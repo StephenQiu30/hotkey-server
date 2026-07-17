@@ -1064,6 +1064,453 @@
                 }
             }
         },
+        "/api/v1/events": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "List events",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "event id cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-http_EventPageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/events/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "Get event",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "event ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-http_EventResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/events/{id}/contents": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "List event contents",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "event ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-http_EventMemberPageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/events/{id}/contents/{content_id}/lock": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "Lock an event member",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "event ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "content ID",
+                        "name": "content_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "member lock command",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.MemberLockRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-http_EventMemberResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/events/{id}/lifecycle": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "Change event lifecycle",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "event ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "lifecycle command",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_event_transport_http.LifecycleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-http_EventResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/events/{id}/merge": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "Merge events",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "source event ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "merge command",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.MergeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-http_EventResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/events/{id}/split": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "Split event",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "source event ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "split command",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.SplitRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-http_EventResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/monitors": {
             "get": {
                 "security": [
@@ -1274,7 +1721,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/http.LifecycleRequest"
+                            "$ref": "#/definitions/internal_modules_monitor_transport_http.LifecycleRequest"
                         }
                     }
                 ],
@@ -2191,7 +2638,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/http.LifecycleRequest"
+                            "$ref": "#/definitions/internal_modules_monitor_transport_http.LifecycleRequest"
                         }
                     }
                 ],
@@ -2467,7 +2914,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/http.LifecycleRequest"
+                            "$ref": "#/definitions/internal_modules_monitor_transport_http.LifecycleRequest"
                         }
                     }
                 ],
@@ -2542,7 +2989,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/http.LifecycleRequest"
+                            "$ref": "#/definitions/internal_modules_monitor_transport_http.LifecycleRequest"
                         }
                     }
                 ],
@@ -4104,6 +4551,174 @@
                 }
             }
         },
+        "http.EventMemberPageResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.EventMemberResponse"
+                    }
+                }
+            }
+        },
+        "http.EventMemberResponse": {
+            "type": "object",
+            "properties": {
+                "content_id": {
+                    "type": "integer"
+                },
+                "event_id": {
+                    "type": "integer"
+                },
+                "evidence_role": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "manual_locked": {
+                    "type": "boolean"
+                },
+                "membership_score": {
+                    "type": "number"
+                },
+                "origin": {
+                    "type": "string"
+                },
+                "representative": {
+                    "type": "boolean"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.EventPageResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.EventResponse"
+                    }
+                },
+                "next_cursor": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.EventResponse": {
+            "type": "object",
+            "properties": {
+                "event_key": {
+                    "type": "string"
+                },
+                "first_seen_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "last_seen_at": {
+                    "type": "string"
+                },
+                "lifecycle_status": {
+                    "type": "string"
+                },
+                "manual_locked": {
+                    "type": "boolean"
+                },
+                "merged_into_id": {
+                    "type": "integer"
+                },
+                "representative_content_id": {
+                    "type": "integer"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "title_en": {
+                    "type": "string"
+                },
+                "title_zh": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.EventResult-http_EventMemberPageResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.EventMemberPageResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.EventResult-http_EventMemberResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.EventMemberResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.EventResult-http_EventPageResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.EventPageResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.EventResult-http_EventResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.EventResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.EventResult-internal_modules_event_transport_http_EmptyResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/internal_modules_event_transport_http.EmptyResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "http.IdentityResult-array_http_UserResponse": {
             "type": "object",
             "properties": {
@@ -4177,17 +4792,6 @@
                 }
             }
         },
-        "http.LifecycleRequest": {
-            "type": "object",
-            "required": [
-                "expected_monitor_version"
-            ],
-            "properties": {
-                "expected_monitor_version": {
-                    "type": "integer"
-                }
-            }
-        },
         "http.LoginRequest": {
             "type": "object",
             "required": [
@@ -4238,6 +4842,47 @@
                     "type": "string"
                 },
                 "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.MemberLockRequest": {
+            "type": "object",
+            "required": [
+                "expected_version",
+                "reason"
+            ],
+            "properties": {
+                "expected_version": {
+                    "type": "integer"
+                },
+                "locked": {
+                    "type": "boolean"
+                },
+                "reason": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.MergeRequest": {
+            "type": "object",
+            "required": [
+                "reason",
+                "source_expected_version",
+                "target_event_id",
+                "target_expected_version"
+            ],
+            "properties": {
+                "reason": {
+                    "type": "string"
+                },
+                "source_expected_version": {
+                    "type": "integer"
+                },
+                "target_event_id": {
+                    "type": "integer"
+                },
+                "target_expected_version": {
                     "type": "integer"
                 }
             }
@@ -5465,6 +6110,44 @@
                 }
             }
         },
+        "http.SplitMemberRequest": {
+            "type": "object",
+            "required": [
+                "content_id",
+                "expected_version"
+            ],
+            "properties": {
+                "content_id": {
+                    "type": "integer"
+                },
+                "expected_version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.SplitRequest": {
+            "type": "object",
+            "required": [
+                "members",
+                "reason",
+                "source_expected_version"
+            ],
+            "properties": {
+                "members": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/http.SplitMemberRequest"
+                    }
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "source_expected_version": {
+                    "type": "integer"
+                }
+            }
+        },
         "http.UpdateModelProfileRequest": {
             "type": "object",
             "properties": {
@@ -5603,6 +6286,28 @@
                 }
             }
         },
+        "internal_modules_event_transport_http.EmptyResponse": {
+            "type": "object"
+        },
+        "internal_modules_event_transport_http.LifecycleRequest": {
+            "type": "object",
+            "required": [
+                "expected_version",
+                "reason",
+                "to"
+            ],
+            "properties": {
+                "expected_version": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "to": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_modules_identity_transport_http.EmptyResponse": {
             "type": "object"
         },
@@ -5614,6 +6319,17 @@
         },
         "internal_modules_monitor_transport_http.EmptyResponse": {
             "type": "object"
+        },
+        "internal_modules_monitor_transport_http.LifecycleRequest": {
+            "type": "object",
+            "required": [
+                "expected_monitor_version"
+            ],
+            "properties": {
+                "expected_monitor_version": {
+                    "type": "integer"
+                }
+            }
         },
         "internal_modules_source_transport_http.EmptyResponse": {
             "type": "object"
