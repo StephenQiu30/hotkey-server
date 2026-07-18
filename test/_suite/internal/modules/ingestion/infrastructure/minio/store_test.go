@@ -142,6 +142,50 @@ func TestEvidenceObjectKeyUsesSourceScopedSHAPath(t *testing.T) {
 	}
 }
 
+func TestEvidenceStoreReadTextEnforcesLimitAndReturnsVerifiedMetadata(t *testing.T) {
+	t.Parallel()
+
+	fake := newS3Fake(t)
+	store := newStore(t, fake.server.URL)
+	object := evidenceObject(t, 47, "# archived Markdown\n")
+	object.MIMEType = "text/markdown; charset=utf-8"
+	receipt, err := store.PutText(context.Background(), object)
+	if err != nil {
+		t.Fatalf("PutText() error = %v", err)
+	}
+	document, err := store.ReadText(context.Background(), receipt.ObjectKey, int64(len(object.Text)))
+	if err != nil {
+		t.Fatalf("ReadText() error = %v", err)
+	}
+	if document.Text != object.Text || document.MIMEType != object.MIMEType || document.SHA256 != object.SHA256 || document.SizeBytes != int64(len(object.Text)) {
+		t.Fatalf("ReadText() = %#v, want verified Markdown object", document)
+	}
+	if _, err := store.ReadText(context.Background(), receipt.ObjectKey, int64(len(object.Text)-1)); err == nil {
+		t.Fatal("ReadText(over limit) error = nil")
+	}
+}
+
+func TestEvidenceStoreReadTextRejectsTamperedContent(t *testing.T) {
+	t.Parallel()
+
+	fake := newS3Fake(t)
+	store := newStore(t, fake.server.URL)
+	object := evidenceObject(t, 48, "trusted")
+	object.MIMEType = "text/markdown; charset=utf-8"
+	receipt, err := store.PutText(context.Background(), object)
+	if err != nil {
+		t.Fatalf("PutText() error = %v", err)
+	}
+	fake.mu.Lock()
+	tampered := fake.objects[receipt.ObjectKey]
+	tampered.text = "changed"
+	fake.objects[receipt.ObjectKey] = tampered
+	fake.mu.Unlock()
+	if _, err := store.ReadText(context.Background(), receipt.ObjectKey, 1024); err == nil {
+		t.Fatal("ReadText(tampered) error = nil")
+	}
+}
+
 func evidenceObject(t *testing.T, sourceID int64, text string) ingestiondomain.EvidenceObject {
 	t.Helper()
 	sha := sha256.Sum256([]byte(text))
@@ -182,8 +226,9 @@ type s3Fake struct {
 }
 
 type fakeObject struct {
-	text string
-	sha  string
+	text     string
+	sha      string
+	mimeType string
 }
 
 func newS3Fake(t *testing.T) *s3Fake {
@@ -218,7 +263,7 @@ func (fake *s3Fake) serveHTTP(writer http.ResponseWriter, request *http.Request)
 			return
 		}
 		writer.Header().Set("Content-Length", fmt.Sprintf("%d", len(object.text)))
-		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		writer.Header().Set("Content-Type", object.mimeType)
 		writer.Header().Set("X-Amz-Meta-Sha256", object.sha)
 		writer.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 		writer.WriteHeader(http.StatusOK)
@@ -230,10 +275,23 @@ func (fake *s3Fake) serveHTTP(writer http.ResponseWriter, request *http.Request)
 		}
 		fake.mu.Lock()
 		fake.puts++
-		fake.objects[key] = fakeObject{text: string(text), sha: request.Header.Get("X-Amz-Meta-Sha256")}
+		fake.objects[key] = fakeObject{text: string(text), sha: request.Header.Get("X-Amz-Meta-Sha256"), mimeType: request.Header.Get("Content-Type")}
 		fake.mu.Unlock()
 		writer.Header().Set("ETag", "\"fixture-etag\"")
 		writer.WriteHeader(http.StatusOK)
+	case http.MethodGet:
+		fake.mu.Lock()
+		object, ok := fake.objects[key]
+		fake.mu.Unlock()
+		if !ok {
+			writeS3Error(writer, http.StatusNotFound, "NoSuchKey")
+			return
+		}
+		writer.Header().Set("Content-Length", fmt.Sprintf("%d", len(object.text)))
+		writer.Header().Set("Content-Type", object.mimeType)
+		writer.Header().Set("X-Amz-Meta-Sha256", object.sha)
+		writer.WriteHeader(http.StatusOK)
+		_, _ = writer.Write([]byte(object.text))
 	case http.MethodDelete:
 		if fake.deleteStatus != 0 && fake.deleteStatus != http.StatusNoContent {
 			writeS3Error(writer, fake.deleteStatus, "InternalError")

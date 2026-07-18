@@ -22,6 +22,8 @@ import (
 	"github.com/StephenQiu30/hotkey-server/test/postgresfixture"
 )
 
+const archivedMarkdownMIME = "text/markdown; charset=utf-8"
+
 func TestIngestRunPersistsEvidenceBindsContentAndContinuesAfterParseFailure(t *testing.T) {
 	runtime := openIngestionRuntime(t)
 	defer func() { _ = runtime.Close() }()
@@ -113,6 +115,39 @@ func TestIngestRunDoesNotUploadWhenCaptureBodyWasNotPermitted(t *testing.T) {
 	}
 	if assets != 0 {
 		t.Fatalf("content assets = %d, want no body evidence asset", assets)
+	}
+}
+
+func TestArchiveMarkdownUsesAuthorizedProjectionAndExactMIME(t *testing.T) {
+	runtime := openIngestionRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	runID, _ := seedCapturedRun(t, runtime, []sourcedomain.CapturedItem{
+		capturedItem("markdown-body", "article", "Archived", `<p>raw <strong>HTML</strong></p>`),
+	})
+	store := newEvidenceStoreFake()
+	projector := &markdownProjectorFake{output: "raw **HTML**"}
+	service, err := ingestionapplication.NewService(ingestionapplication.Dependencies{
+		Runtime: runtime, Captures: newCapturedItemReader(t, runtime), Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: store, Markdown: projector,
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	result, err := service.IngestRun(context.Background(), ingestionapplication.IngestRunInput{RunID: runID, Limit: 1})
+	if err != nil || result.Uploaded != 1 {
+		t.Fatalf("IngestRun() = %#v/%v, want one Markdown upload", result, err)
+	}
+	if projector.input != `<p>raw <strong>HTML</strong></p>` || projector.baseURL == "" {
+		t.Fatalf("MarkdownProjector.Convert() args = %q/%q", projector.input, projector.baseURL)
+	}
+	if store.lastObject.Text != projector.output || store.lastObject.MIMEType != archivedMarkdownMIME {
+		t.Fatalf("EvidenceObject = %#v, want projected Markdown and exact MIME", store.lastObject)
+	}
+	var mimeType string
+	if err := runtime.SQL.QueryRow(`SELECT mime_type FROM content_assets LIMIT 1`).Scan(&mimeType); err != nil {
+		t.Fatalf("read content asset MIME: %v", err)
+	}
+	if mimeType != archivedMarkdownMIME {
+		t.Fatalf("content asset MIME = %q, want %q", mimeType, archivedMarkdownMIME)
 	}
 }
 
@@ -226,9 +261,20 @@ func (repository *transactionObservingContents) CreateAsset(ctx context.Context,
 }
 
 type evidenceStoreFake struct {
-	mu      sync.Mutex
-	puts    int
-	objects map[string]ingestiondomain.EvidenceReceipt
+	mu         sync.Mutex
+	puts       int
+	objects    map[string]ingestiondomain.EvidenceReceipt
+	lastObject ingestiondomain.EvidenceObject
+}
+
+type markdownProjectorFake struct {
+	input, baseURL, output string
+	err                    error
+}
+
+func (projector *markdownProjectorFake) Convert(input, baseURL string) (string, error) {
+	projector.input, projector.baseURL = input, baseURL
+	return projector.output, projector.err
 }
 
 type contentMetricRefreshFake struct{ contentIDs []int64 }
@@ -246,6 +292,7 @@ func (store *evidenceStoreFake) PutText(_ context.Context, object ingestiondomai
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	store.puts++
+	store.lastObject = object
 	receipt := ingestiondomain.EvidenceReceipt{ObjectKey: object.ObjectKey, SHA256: object.SHA256, SizeBytes: int64(len(object.Text))}
 	store.objects[object.ObjectKey] = receipt
 	return receipt, nil

@@ -125,6 +125,7 @@ func TestContentQueryServiceListSkipsDeletedOrUnavailableSourceAndKeepsCursor(t 
 type contentQueryRepositoryStub struct {
 	page      ingestiondomain.ContentPage
 	content   ingestiondomain.Content
+	assets    []ingestiondomain.ContentAsset
 	listError error
 	getError  error
 }
@@ -142,7 +143,7 @@ func (repository *contentQueryRepositoryStub) MarkAssetStatus(context.Context, s
 	return errors.New("not used")
 }
 func (repository *contentQueryRepositoryStub) ListEvidenceAssets(context.Context, int64, int64) ([]ingestiondomain.ContentAsset, error) {
-	return nil, errors.New("not used")
+	return repository.assets, nil
 }
 func (repository *contentQueryRepositoryStub) ListAssetObjectKeys(context.Context, int64) ([]string, error) {
 	return nil, errors.New("not used")

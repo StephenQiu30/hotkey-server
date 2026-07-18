@@ -143,14 +143,61 @@ func TestContentRoutes(t *testing.T) {
 	})
 }
 
+func TestContentDocumentRouteAllowsAuthenticatedRolesAndReturnsSafeProjection(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	document := ingestiondomain.ContentDocument{
+		ContentID: 7, Title: "Archived title", SourceName: "RSS feed", CanonicalURL: "https://example.test/items/7",
+		Language: "zh", PublishedAt: time.Date(2026, time.July, 17, 8, 0, 0, 0, time.UTC),
+		Availability: ingestiondomain.ContentDocumentReady, Markdown: "# 正文\n", SHA256: strings.Repeat("a", 64),
+		CapturedAt: time.Date(2026, time.July, 17, 8, 1, 0, 0, time.UTC),
+	}
+	for _, role := range []httptransport.Role{httptransport.RoleViewer, httptransport.RoleEditor, httptransport.RoleAdmin} {
+		t.Run(string(role), func(t *testing.T) {
+			service := &contentQueryServiceStub{document: document}
+			router := newContentRouter(t, service, role)
+			response := performContentRequest(router, stdhttp.MethodGet, "/api/v1/contents/7/document", "member")
+			if response.Code != stdhttp.StatusOK {
+				t.Fatalf("status = %d, want 200: %s", response.Code, response.Body.String())
+			}
+			if !strings.Contains(response.Body.String(), `"availability":"ready"`) || !strings.Contains(response.Body.String(), `"markdown":"# 正文\n"`) {
+				t.Fatalf("document response = %s", response.Body.String())
+			}
+			for _, forbidden := range []string{"object_key", "minio", "access_key"} {
+				if strings.Contains(response.Body.String(), forbidden) {
+					t.Fatalf("document response leaked %q: %s", forbidden, response.Body.String())
+				}
+			}
+		})
+	}
+
+	service := &contentQueryServiceStub{documentErrors: map[int64]error{13: sharederrors.New(sharederrors.CodeUnavailable, stdhttp.StatusServiceUnavailable, "")}}
+	router := newContentRouter(t, service, httptransport.RoleViewer)
+	for _, test := range []struct {
+		path       string
+		wantStatus int
+		wantCode   int
+	}{
+		{path: "/api/v1/contents/not-a-number/document", wantStatus: stdhttp.StatusBadRequest, wantCode: sharederrors.CodeInvalidRequest},
+		{path: "/api/v1/contents/13/document", wantStatus: stdhttp.StatusServiceUnavailable, wantCode: sharederrors.CodeUnavailable},
+	} {
+		response := performContentRequest(router, stdhttp.MethodGet, test.path, "viewer")
+		if response.Code != test.wantStatus {
+			t.Fatalf("%s status = %d, want %d: %s", test.path, response.Code, test.wantStatus, response.Body.String())
+		}
+		assertContentErrorResponse(t, response, test.wantCode)
+	}
+}
+
 type contentQueryServiceStub struct {
-	page      ingestiondomain.ContentPage
-	content   ingestiondomain.Content
-	listError error
-	getErrors map[int64]error
-	listCalls int
-	getCalls  int
-	lastQuery ingestiondomain.ContentListQuery
+	page           ingestiondomain.ContentPage
+	content        ingestiondomain.Content
+	listError      error
+	getErrors      map[int64]error
+	document       ingestiondomain.ContentDocument
+	documentErrors map[int64]error
+	listCalls      int
+	getCalls       int
+	lastQuery      ingestiondomain.ContentListQuery
 }
 
 func (service *contentQueryServiceStub) ListActive(_ context.Context, query ingestiondomain.ContentListQuery) (ingestiondomain.ContentPage, error) {
@@ -165,6 +212,13 @@ func (service *contentQueryServiceStub) GetActive(_ context.Context, id int64) (
 		return ingestiondomain.Content{}, err
 	}
 	return service.content, nil
+}
+
+func (service *contentQueryServiceStub) GetDocument(_ context.Context, id int64) (ingestiondomain.ContentDocument, error) {
+	if err := service.documentErrors[id]; err != nil {
+		return ingestiondomain.ContentDocument{}, err
+	}
+	return service.document, nil
 }
 
 type contentAuthenticator struct{ role httptransport.Role }
