@@ -239,7 +239,7 @@ func (repository *Repository) SoftDelete(ctx context.Context, monitor *domain.Mo
 // Publish is deliberately one repository operation so the three immutable
 // pointer/state changes cannot accidentally escape the application transaction.
 func (repository *Repository) Publish(ctx context.Context, monitor *domain.Monitor, draft, previous *domain.MonitorConfigVersion, sources []domain.MonitorSource) error {
-	if monitor == nil || draft == nil || monitor.Version <= 1 || draft.Version <= 1 {
+	if monitor == nil || draft == nil || monitor.Version <= 1 || draft.Version <= 1 || draft.PublishedAt == nil {
 		return fmt.Errorf("%w: publish facts are required", sharedrepository.ErrInvalidInput)
 	}
 	return repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
@@ -251,6 +251,11 @@ func (repository *Repository) Publish(ctx context.Context, monitor *domain.Monit
 		for _, source := range sources {
 			if _, err := transaction.SQL.ExecContext(ctx, `UPDATE monitor_sources SET query_signature = $1, version = version + 1, updated_at = now() WHERE id = $2 AND config_version_id = $3`, nullableString(source.QuerySignature), source.ID, draft.ID); err != nil {
 				return sharedrepository.MapError(err)
+			}
+			if source.Enabled {
+				if _, err := transaction.SQL.ExecContext(ctx, `INSERT INTO source_checkpoints (monitor_source_id, query_hash, next_poll_at) VALUES ($1, $2, $3)`, source.ID, source.QuerySignature, draft.PublishedAt.UTC()); err != nil {
+					return sharedrepository.MapError(err)
+				}
 			}
 		}
 		result, err := transaction.SQL.ExecContext(ctx, `UPDATE monitor_config_versions SET state = 'published', config_hash = $1, published_at = $2, version = $3, updated_at = now() WHERE id = $4 AND state = 'draft' AND version = $5`, draft.ConfigHash, nullableTime(draft.PublishedAt), draft.Version, draft.ID, draft.Version-1)
