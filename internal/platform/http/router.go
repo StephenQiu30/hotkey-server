@@ -48,6 +48,9 @@ func NewRouter(readiness Readiness, metrics *observability.Metrics, telemetry *o
 		return nil
 	}))
 	router.GET("/metrics", gin.WrapH(metrics.Handler()))
+	if cfg.Environment != "production" {
+		registerAPIDocumentation(router)
+	}
 	api := router.Group("/api/v1")
 	api.GET("/capabilities", Wrap(CapabilitiesHandler))
 	return router
