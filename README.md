@@ -50,6 +50,13 @@ curl --fail http://127.0.0.1:8080/healthz
 curl --fail http://127.0.0.1:8080/readyz
 ```
 
+开发环境同时提供自托管的交互式接口文档：
+
+- `http://127.0.0.1:8080/docs`：Swagger UI，可按 Tag 浏览接口、填写 Bearer Token 并直接发起请求
+- `http://127.0.0.1:8080/openapi.json`：与 `docs/openapi/swagger.json` 同源的运行时契约
+
+文档与服务一起编译，不依赖外部 CDN；`make openapi-check` 会继续阻止生成契约漂移。生产环境不会注册上述两个路由，访问时返回 404。
+
 GoLand 可直接运行 `github.com/StephenQiu30/hotkey-server/cmd/hotkey`，工作目录设为 `hotkey-server` 模块目录。生产启动前设置 `HOTKEY_ENV=production`，程序便会在读取 `.env` 后用 `.env.prod` 覆盖对应值。
 
 常用验证命令：
