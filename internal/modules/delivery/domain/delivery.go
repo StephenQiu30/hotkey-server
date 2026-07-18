@@ -35,6 +35,25 @@ type Subscription struct {
 	Enabled                                   bool
 }
 
+// SubscriptionListQuery is the stable, user-scoped cursor contract for the
+// subscription management list. Cursors are opaque to the transport layer.
+type SubscriptionListQuery struct {
+	Cursor string
+	Limit  int
+}
+
+func (query SubscriptionListQuery) Validate() error {
+	if query.Limit < 1 || query.Limit > 100 {
+		return fmt.Errorf("invalid subscription list query")
+	}
+	return nil
+}
+
+type SubscriptionPage struct {
+	Items      []Subscription
+	NextCursor string
+}
+
 func (subscription Subscription) Validate() error {
 	if subscription.ID <= 0 || subscription.Version <= 0 || subscription.UserID <= 0 || (subscription.ReportType != "daily" && subscription.ReportType != "weekly") || strings.TrimSpace(subscription.Timezone) == "" || strings.TrimSpace(subscription.Schedule) == "" {
 		return fmt.Errorf("invalid subscription")

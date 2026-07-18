@@ -26,8 +26,8 @@ func (fake *subscriptionServiceFake) Create(_ context.Context, input deliveryapp
 	fake.subscription.UserID, fake.subscription.ReportType, fake.subscription.Channel, fake.subscription.Timezone, fake.subscription.Schedule, fake.subscription.Enabled = input.Subject.UserID, input.ReportType, input.Channel, input.Timezone, input.Schedule, input.Enabled
 	return deliveryapplication.SubscriptionSecret{Subscription: fake.subscription, RSSToken: "one-time-rss-token"}, nil
 }
-func (fake *subscriptionServiceFake) List(context.Context, identitydomain.Subject) ([]domain.Subscription, error) {
-	return []domain.Subscription{fake.subscription}, nil
+func (fake *subscriptionServiceFake) List(context.Context, identitydomain.Subject, domain.SubscriptionListQuery) (domain.SubscriptionPage, error) {
+	return domain.SubscriptionPage{Items: []domain.Subscription{fake.subscription}}, nil
 }
 func (fake *subscriptionServiceFake) Get(context.Context, identitydomain.Subject, int64) (domain.Subscription, error) {
 	return fake.subscription, nil

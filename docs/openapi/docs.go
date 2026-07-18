@@ -4309,11 +4309,25 @@ const docTemplate = `{
                     "delivery"
                 ],
                 "summary": "List the current user's report subscriptions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "opaque subscription cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/http.DeliveryResult-array_http_SubscriptionResponse"
+                            "$ref": "#/definitions/http.DeliveryResult-http_SubscriptionPageResponse"
                         }
                     },
                     "401": {
@@ -6971,23 +6985,6 @@ const docTemplate = `{
         "http.DeliveryEmptyResponse": {
             "type": "object"
         },
-        "http.DeliveryResult-array_http_SubscriptionResponse": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "integer"
-                },
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/http.SubscriptionResponse"
-                    }
-                },
-                "message": {
-                    "type": "string"
-                }
-            }
-        },
         "http.DeliveryResult-http_DeliveryEmptyResponse": {
             "type": "object",
             "properties": {
@@ -6996,6 +6993,20 @@ const docTemplate = `{
                 },
                 "data": {
                     "$ref": "#/definitions/http.DeliveryEmptyResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.DeliveryResult-http_SubscriptionPageResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.SubscriptionPageResponse"
                 },
                 "message": {
                     "type": "string"
@@ -9389,6 +9400,20 @@ const docTemplate = `{
                 },
                 "source_expected_version": {
                     "type": "integer"
+                }
+            }
+        },
+        "http.SubscriptionPageResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.SubscriptionResponse"
+                    }
+                },
+                "next_cursor": {
+                    "type": "string"
                 }
             }
         },

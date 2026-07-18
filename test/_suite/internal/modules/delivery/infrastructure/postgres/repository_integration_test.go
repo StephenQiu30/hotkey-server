@@ -69,9 +69,16 @@ func TestDeliveryRepositoryIsIdempotentAndAppendsAttempts(t *testing.T) {
 	if err != nil || rotatedSubscription.Version != 2 || rotatedSubscription.TokenHash != domain.TokenHash("rotated-again") {
 		t.Fatalf("RotateRSSToken() = %#v/%v", rotatedSubscription, err)
 	}
-	subscriptions, err := repository.ListSubscriptions(ctx, userID)
-	if err != nil || len(subscriptions) != 4 {
-		t.Fatalf("ListSubscriptions() = %#v/%v", subscriptions, err)
+	page, err := repository.ListSubscriptions(ctx, userID, domain.SubscriptionListQuery{Limit: 2})
+	if err != nil || len(page.Items) != 2 || page.NextCursor == "" {
+		t.Fatalf("ListSubscriptions(first page) = %#v/%v", page, err)
+	}
+	nextPage, err := repository.ListSubscriptions(ctx, userID, domain.SubscriptionListQuery{Cursor: page.NextCursor, Limit: 20})
+	if err != nil || len(nextPage.Items) != 2 || nextPage.NextCursor != "" {
+		t.Fatalf("ListSubscriptions(next page) = %#v/%v", nextPage, err)
+	}
+	if page.Items[0].ID <= page.Items[1].ID || page.Items[1].ID <= nextPage.Items[0].ID {
+		t.Fatalf("subscription cursor order = first %#v next %#v", page.Items, nextPage.Items)
 	}
 	delivery := domain.Delivery{ID: 8301, ReportID: 8101, SubscriptionID: 8201, IdempotencyKey: "delivery-8101-8201", Status: domain.DeliveryQueued, NextAttemptAt: &now}
 	created, err := repository.CreateDelivery(ctx, delivery)

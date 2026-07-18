@@ -54,6 +54,11 @@ type SubscriptionResponse struct {
 	Enabled    bool   `json:"enabled"`
 }
 
+type SubscriptionPageResponse struct {
+	Items      []SubscriptionResponse `json:"items"`
+	NextCursor string                 `json:"next_cursor,omitempty"`
+}
+
 // SubscriptionSecretResponse returns the opaque RSS token exactly once. It
 // is never present in ordinary list/detail/update responses.
 type SubscriptionSecretResponse struct {

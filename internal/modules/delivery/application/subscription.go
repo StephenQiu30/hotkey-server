@@ -21,7 +21,7 @@ import (
 type SubscriptionRepository interface {
 	CreateSubscription(context.Context, domain.Subscription) (domain.Subscription, error)
 	GetSubscription(context.Context, int64, int64) (domain.Subscription, error)
-	ListSubscriptions(context.Context, int64) ([]domain.Subscription, error)
+	ListSubscriptions(context.Context, int64, domain.SubscriptionListQuery) (domain.SubscriptionPage, error)
 	UpdateSubscription(context.Context, domain.Subscription, int64) (domain.Subscription, error)
 	RotateRSSToken(context.Context, int64, int64, int64, string) (domain.Subscription, error)
 	DeleteSubscription(context.Context, int64, int64, int64) (domain.Subscription, error)
@@ -126,12 +126,15 @@ func (service *SubscriptionService) Create(ctx context.Context, input CreateSubs
 	return SubscriptionSecret{Subscription: created, RSSToken: secret}, nil
 }
 
-func (service *SubscriptionService) List(ctx context.Context, subject identitydomain.Subject) ([]domain.Subscription, error) {
+func (service *SubscriptionService) List(ctx context.Context, subject identitydomain.Subject, query domain.SubscriptionListQuery) (domain.SubscriptionPage, error) {
 	if err := requireSubscriptionUser(subject); err != nil {
-		return nil, err
+		return domain.SubscriptionPage{}, err
 	}
-	items, err := service.store.ListSubscriptions(ctx, subject.UserID)
-	return items, deliverySubscriptionError(err)
+	if err := query.Validate(); err != nil {
+		return domain.SubscriptionPage{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	page, err := service.store.ListSubscriptions(ctx, subject.UserID, query)
+	return page, deliverySubscriptionError(err)
 }
 
 func (service *SubscriptionService) Get(ctx context.Context, subject identitydomain.Subject, subscriptionID int64) (domain.Subscription, error) {

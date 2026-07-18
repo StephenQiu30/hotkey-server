@@ -15,7 +15,7 @@ import (
 
 type subscriptionService interface {
 	Create(context.Context, deliveryapplication.CreateSubscriptionInput) (deliveryapplication.SubscriptionSecret, error)
-	List(context.Context, identitydomain.Subject) ([]domain.Subscription, error)
+	List(context.Context, identitydomain.Subject, domain.SubscriptionListQuery) (domain.SubscriptionPage, error)
 	Get(context.Context, identitydomain.Subject, int64) (domain.Subscription, error)
 	Update(context.Context, deliveryapplication.UpdateSubscriptionInput) (domain.Subscription, error)
 	RotateRSSToken(context.Context, deliveryapplication.RotateRSSTokenInput) (deliveryapplication.SubscriptionSecret, error)
@@ -36,7 +36,9 @@ func NewSubscriptionHandler(service subscriptionService) *SubscriptionHandler {
 // @Tags delivery
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} DeliveryResult[[]SubscriptionResponse]
+// @Param cursor query string false "opaque subscription cursor"
+// @Param limit query int false "page size"
+// @Success 200 {object} DeliveryResult[SubscriptionPageResponse]
 // @Failure 401 {object} DeliveryResult[DeliveryEmptyResponse]
 // @Failure 503 {object} DeliveryResult[DeliveryEmptyResponse]
 // @Router /api/v1/report-subscriptions [get]
@@ -45,13 +47,17 @@ func (handler *SubscriptionHandler) List(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	items, err := handler.service.List(c.Request.Context(), subject)
+	query, err := subscriptionListQuery(c)
 	if err != nil {
 		return err
 	}
-	response := make([]SubscriptionResponse, 0, len(items))
-	for _, item := range items {
-		response = append(response, subscriptionResponse(item))
+	page, err := handler.service.List(c.Request.Context(), subject, query)
+	if err != nil {
+		return err
+	}
+	response := SubscriptionPageResponse{Items: make([]SubscriptionResponse, 0, len(page.Items)), NextCursor: page.NextCursor}
+	for _, item := range page.Items {
+		response.Items = append(response.Items, subscriptionResponse(item))
 	}
 	httptransport.OK(c, response)
 	return nil
@@ -238,6 +244,21 @@ func deliverySubject(c *gin.Context) (identitydomain.Subject, error) {
 		return identitydomain.Subject{}, sharederrors.New(sharederrors.CodeUnauthenticated, http.StatusUnauthorized, "")
 	}
 	return identitydomain.Subject{UserID: subject.UserID, SessionID: subject.SessionID, Role: identitydomain.Role(subject.Role)}, nil
+}
+
+func subscriptionListQuery(c *gin.Context) (domain.SubscriptionListQuery, error) {
+	query := domain.SubscriptionListQuery{Cursor: c.Query("cursor"), Limit: 20}
+	if raw := c.Query("limit"); raw != "" {
+		limit, err := strconv.Atoi(raw)
+		if err != nil || limit < 1 || limit > 100 {
+			return domain.SubscriptionListQuery{}, sharederrors.New(sharederrors.CodeInvalidRequest, http.StatusBadRequest, "invalid subscription limit")
+		}
+		query.Limit = limit
+	}
+	if err := query.Validate(); err != nil {
+		return domain.SubscriptionListQuery{}, sharederrors.New(sharederrors.CodeInvalidRequest, http.StatusBadRequest, "invalid subscription query")
+	}
+	return query, nil
 }
 
 func subscriptionID(c *gin.Context) (int64, error) {

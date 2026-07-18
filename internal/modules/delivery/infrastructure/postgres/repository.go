@@ -11,6 +11,7 @@ import (
 	deliveryapplication "github.com/StephenQiu30/hotkey-server/internal/modules/delivery/application"
 	"github.com/StephenQiu30/hotkey-server/internal/modules/delivery/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	"github.com/StephenQiu30/hotkey-server/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -64,7 +65,7 @@ var _ interface {
 	SaveSubscription(context.Context, domain.Subscription) error
 	CreateSubscription(context.Context, domain.Subscription) (domain.Subscription, error)
 	GetSubscription(context.Context, int64, int64) (domain.Subscription, error)
-	ListSubscriptions(context.Context, int64) ([]domain.Subscription, error)
+	ListSubscriptions(context.Context, int64, domain.SubscriptionListQuery) (domain.SubscriptionPage, error)
 	UpdateSubscription(context.Context, domain.Subscription, int64) (domain.Subscription, error)
 	RotateRSSToken(context.Context, int64, int64, int64, string) (domain.Subscription, error)
 	DeleteSubscription(context.Context, int64, int64, int64) (domain.Subscription, error)
@@ -118,27 +119,49 @@ func (repository *Repository) GetSubscription(ctx context.Context, subscriptionI
 	return scanSubscription(deliveryQueryerFor(ctx, repository.runtime).QueryRowContext(ctx, `SELECT `+subscriptionColumns+` FROM report_subscriptions WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`, subscriptionID, userID))
 }
 
-func (repository *Repository) ListSubscriptions(ctx context.Context, userID int64) ([]domain.Subscription, error) {
+func (repository *Repository) ListSubscriptions(ctx context.Context, userID int64, query domain.SubscriptionListQuery) (domain.SubscriptionPage, error) {
 	if repository == nil || repository.runtime == nil || userID <= 0 {
-		return nil, sharedrepository.ErrInvalidInput
+		return domain.SubscriptionPage{}, sharedrepository.ErrInvalidInput
 	}
-	rows, err := deliveryQueryerFor(ctx, repository.runtime).QueryContext(ctx, `SELECT `+subscriptionColumns+` FROM report_subscriptions WHERE user_id = $1 AND deleted_at IS NULL ORDER BY id DESC`, userID)
+	if err := query.Validate(); err != nil {
+		return domain.SubscriptionPage{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	cursor, err := pagination.Decode(query.Cursor, "id", true, subscriptionListFingerprint(userID))
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return domain.SubscriptionPage{}, fmt.Errorf("%w: subscription cursor: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	rows, err := deliveryQueryerFor(ctx, repository.runtime).QueryContext(ctx, `SELECT `+subscriptionColumns+`
+FROM report_subscriptions
+WHERE user_id = $1 AND deleted_at IS NULL AND ($2 = 0 OR id < $2)
+ORDER BY id DESC
+LIMIT $3`, userID, cursor.ID, query.Limit+1)
+	if err != nil {
+		return domain.SubscriptionPage{}, sharedrepository.MapError(err)
 	}
 	defer rows.Close()
-	items := make([]domain.Subscription, 0)
+	page := domain.SubscriptionPage{Items: make([]domain.Subscription, 0, query.Limit)}
 	for rows.Next() {
 		subscription, err := scanSubscription(rows)
 		if err != nil {
-			return nil, err
+			return domain.SubscriptionPage{}, err
 		}
-		items = append(items, subscription)
+		page.Items = append(page.Items, subscription)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return domain.SubscriptionPage{}, sharedrepository.MapError(err)
 	}
-	return items, nil
+	if len(page.Items) > query.Limit {
+		page.NextCursor, err = pagination.Encode("id", true, subscriptionListFingerprint(userID), page.Items[query.Limit-1].ID)
+		if err != nil {
+			return domain.SubscriptionPage{}, fmt.Errorf("encode subscription cursor: %w", err)
+		}
+		page.Items = page.Items[:query.Limit]
+	}
+	return page, nil
+}
+
+func subscriptionListFingerprint(userID int64) string {
+	return fmt.Sprintf("user:%d", userID)
 }
 
 func (repository *Repository) UpdateSubscription(ctx context.Context, subscription domain.Subscription, expectedVersion int64) (domain.Subscription, error) {
