@@ -4,7 +4,7 @@ doc_no: "016"
 audience: [PM, Dev, QA, Ops]
 feature_area: 内容归档与阅读
 purpose: 定义授权 Feed 内容的 Markdown 投影与安全读取契约
-canonical_path: docs/design/016-采集内容Markdown归档与预览设计.md
+canonical_path: docs/design/archive/016-采集内容Markdown归档与预览设计.md
 status: accepted
 version: v1.1
 owner: HotKey Server Team
@@ -19,8 +19,8 @@ outputs:
 triggers:
   - 新增或修改内容正文保存、Markdown 预览或 PDF 导出
 downstream:
-  - docs/prd/019-采集内容Markdown归档与预览.md
-  - docs/plans/019-采集内容Markdown归档与预览计划.md
+  - docs/prd/archive/019-采集内容Markdown归档与预览.md
+  - docs/plans/archive/019-采集内容Markdown归档与预览计划.md
 ---
 
 # 采集内容 Markdown 归档与预览设计

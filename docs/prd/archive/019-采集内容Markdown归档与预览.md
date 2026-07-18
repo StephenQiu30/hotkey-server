@@ -14,18 +14,18 @@ version: v1.1
 owner: HotKey Server Team
 depends_on: [PRD-006, PRD-007, PRD-017]
 design_refs:
-  - docs/design/016-采集内容Markdown归档与预览设计.md
-canonical_path: docs/prd/019-采集内容Markdown归档与预览.md
+  - docs/design/archive/016-采集内容Markdown归档与预览设计.md
+canonical_path: docs/prd/archive/019-采集内容Markdown归档与预览.md
 inputs:
-  - docs/design/016-采集内容Markdown归档与预览设计.md
+  - docs/design/archive/016-采集内容Markdown归档与预览设计.md
 outputs:
   - Markdown 归档生成与读取 API
   - 供 Web 生成客户端消费的 OpenAPI 契约
 triggers:
   - Design-016 accepted
 downstream:
-  - docs/plans/019-采集内容Markdown归档与预览计划.md
-  - docs/acceptance/019-采集内容Markdown归档与预览验收.md
+  - docs/plans/archive/019-采集内容Markdown归档与预览计划.md
+  - docs/acceptance/archive/019-采集内容Markdown归档与预览验收.md
 ---
 
 # 采集内容 Markdown 归档与预览

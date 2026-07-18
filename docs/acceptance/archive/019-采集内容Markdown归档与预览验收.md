@@ -4,15 +4,15 @@ doc_no: "019"
 audience: [Dev, QA, Ops]
 feature_area: 内容归档与阅读
 purpose: 验收授权 Feed 内容的 Markdown 归档与安全读取 API
-canonical_path: docs/acceptance/019-采集内容Markdown归档与预览验收.md
+canonical_path: docs/acceptance/archive/019-采集内容Markdown归档与预览验收.md
 status: accepted
 conclusion: accepted_with_risk
 version: v1.0
 owner: HotKey Server Team
 inputs:
-  - docs/design/016-采集内容Markdown归档与预览设计.md
-  - docs/prd/019-采集内容Markdown归档与预览.md
-  - docs/plans/019-采集内容Markdown归档与预览计划.md
+  - docs/design/archive/016-采集内容Markdown归档与预览设计.md
+  - docs/prd/archive/019-采集内容Markdown归档与预览.md
+  - docs/plans/archive/019-采集内容Markdown归档与预览计划.md
 outputs:
   - PLAN-019 长期验收结论
 triggers:

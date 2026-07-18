@@ -60,7 +60,7 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 
 ## 已归档验收
 
-001–016 的验收结论为 `accepted`，017–019 为 `accepted_with_risk`；001–018 正文已移入 [`archive/`](archive/README.md)。
+001–016 的验收结论为 `accepted`，017–019 为 `accepted_with_risk`；001–019 正文已移入 [`archive/`](archive/README.md)。
 
 ## 已验收任务
 
@@ -71,7 +71,7 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | 016 | [邮件与RSS-Atom订阅交付](archive/016-邮件与RSS-Atom订阅交付验收.md) | accepted |
 | 017 | [运行治理容量与端到端验收](archive/017-运行治理容量与端到端验收.md) | accepted_with_risk |
 | 018 | [LangChainGo多模型接入验收](archive/018-LangChainGo多模型接入验收.md) | accepted_with_risk |
-| 019 | [采集内容 Markdown 归档与预览](019-采集内容Markdown归档与预览验收.md) | accepted_with_risk |
+| 019 | [采集内容 Markdown 归档与预览](archive/019-采集内容Markdown归档与预览验收.md) | accepted_with_risk |
 
 ## 变更记录
 

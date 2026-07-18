@@ -4,21 +4,21 @@ doc_no: "019"
 audience: [Dev, QA, Ops]
 feature_area: 内容归档与阅读
 purpose: 以测试优先方式实施 Markdown 归档与安全 document API
-canonical_path: docs/plans/019-采集内容Markdown归档与预览计划.md
+canonical_path: docs/plans/archive/019-采集内容Markdown归档与预览计划.md
 status: accepted
 execution_status: done
 review_status: approved
 version: v1.1
 owner: HotKey Server Team
 inputs:
-  - docs/design/016-采集内容Markdown归档与预览设计.md
-  - docs/prd/019-采集内容Markdown归档与预览.md
+  - docs/design/archive/016-采集内容Markdown归档与预览设计.md
+  - docs/prd/archive/019-采集内容Markdown归档与预览.md
 outputs:
   - Server Markdown 投影和 document API
 triggers:
   - PRD-019 accepted 且 ready
 downstream:
-  - docs/acceptance/019-采集内容Markdown归档与预览验收.md
+  - docs/acceptance/archive/019-采集内容Markdown归档与预览验收.md
 depends_on: [PLAN-006, PLAN-007, PLAN-017]
 ---
 
