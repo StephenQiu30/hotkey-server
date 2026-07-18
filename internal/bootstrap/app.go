@@ -461,8 +461,8 @@ func newIngestionRelevanceReviewService(snapshots *ingestionpostgres.RelevanceRe
 	return ingestionapplication.NewRelevanceReviewService(ingestionapplication.RelevanceReviewServiceDependencies{Snapshots: snapshots, Reviews: reviews})
 }
 
-func newIngestionContentQueryService(contents *ingestionpostgres.ContentRepository, sources *sourceapplication.Service, evidence ingestiondomain.EvidenceStore) (*ingestionapplication.ContentQueryService, error) {
-	return ingestionapplication.NewContentQueryService(ingestionapplication.ContentQueryDependencies{Contents: contents, Sources: sources, Evidence: evidence})
+func newIngestionContentQueryService(contents *ingestionpostgres.ContentRepository, sources *sourceapplication.Service, evidence ingestiondomain.EvidenceStore, lifecycle *ingestionapplication.Service) (*ingestionapplication.ContentQueryService, error) {
+	return ingestionapplication.NewContentQueryService(ingestionapplication.ContentQueryDependencies{Contents: contents, Sources: sources, Evidence: evidence, Lifecycle: lifecycle})
 }
 
 func newIngestionRelevanceAPIService(snapshots *ingestionpostgres.RelevanceRepository, contents *ingestionpostgres.ContentRepository, candidates *ingestionpostgres.RelevanceCandidateReader) (*ingestionapplication.RelevanceAPIService, error) {

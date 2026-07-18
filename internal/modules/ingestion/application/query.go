@@ -17,25 +17,41 @@ import (
 // reads with Source's safe application read port. No transport or repository
 // reaches across into source_connections directly.
 type ContentQueryDependencies struct {
-	Contents ingestiondomain.ContentRepository
-	Sources  sourcedomain.ContentSourceReader
-	Evidence ingestiondomain.EvidenceStore
+	Contents  ingestiondomain.ContentRepository
+	Sources   sourcedomain.ContentSourceReader
+	Evidence  ingestiondomain.EvidenceStore
+	Lifecycle ContentLifecycle
+}
+
+// ContentLifecycle is the narrow mutation boundary consumed by the public
+// Content management route. Keeping it separate from the read repository
+// prevents HTTP from learning how source identities or evidence are stored.
+type ContentLifecycle interface {
+	DeleteContent(context.Context, int64) (DeleteBySourceItemResult, error)
 }
 
 // ContentQueryService exposes the active Content read use cases consumed by
 // the HTTP transport. It has no object-store dependency, so evidence object
 // keys and provider credentials cannot enter its result model.
 type ContentQueryService struct {
-	contents ingestiondomain.ContentRepository
-	sources  sourcedomain.ContentSourceReader
-	evidence ingestiondomain.EvidenceStore
+	contents  ingestiondomain.ContentRepository
+	sources   sourcedomain.ContentSourceReader
+	evidence  ingestiondomain.EvidenceStore
+	lifecycle ContentLifecycle
 }
 
 func NewContentQueryService(dependencies ContentQueryDependencies) (*ContentQueryService, error) {
 	if dependencies.Contents == nil || dependencies.Sources == nil {
 		return nil, errors.New("content query dependencies are required")
 	}
-	return &ContentQueryService{contents: dependencies.Contents, sources: dependencies.Sources, evidence: dependencies.Evidence}, nil
+	return &ContentQueryService{contents: dependencies.Contents, sources: dependencies.Sources, evidence: dependencies.Evidence, lifecycle: dependencies.Lifecycle}, nil
+}
+
+func (service *ContentQueryService) DeleteContent(ctx context.Context, contentID int64) (DeleteBySourceItemResult, error) {
+	if service == nil || service.lifecycle == nil {
+		return DeleteBySourceItemResult{}, sharederrors.New(sharederrors.CodeUnavailable, 503, "")
+	}
+	return service.lifecycle.DeleteContent(ctx, contentID)
 }
 
 const contentDocumentMaximumBytes int64 = 4 << 20

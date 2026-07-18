@@ -192,6 +192,70 @@ func TestContentDocumentRouteAllowsAuthenticatedRolesAndReturnsSafeProjection(t 
 	}
 }
 
+func TestContentDeleteRouteRequiresEditorAndReturnsEmptySuccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, test := range []struct {
+		name       string
+		role       httptransport.Role
+		wantStatus int
+		wantCalls  int
+	}{
+		{name: "viewer cannot delete", role: httptransport.RoleViewer, wantStatus: stdhttp.StatusForbidden, wantCalls: 0},
+		{name: "editor can delete", role: httptransport.RoleEditor, wantStatus: stdhttp.StatusOK, wantCalls: 1},
+		{name: "admin can delete", role: httptransport.RoleAdmin, wantStatus: stdhttp.StatusOK, wantCalls: 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			service := &contentQueryServiceStub{
+				deleteResult: ingestionapplication.DeleteBySourceItemResult{ContentChanged: true},
+			}
+			router := newContentRouter(t, service, test.role)
+			response := performContentRequest(router, stdhttp.MethodDelete, "/api/v1/contents/7", "member")
+			if response.Code != test.wantStatus {
+				t.Fatalf("status = %d, want %d: %s", response.Code, test.wantStatus, response.Body.String())
+			}
+			if service.deleteCalls != test.wantCalls {
+				t.Fatalf("delete calls = %d, want %d", service.deleteCalls, test.wantCalls)
+			}
+			if test.wantStatus == stdhttp.StatusOK {
+				assertContentErrorResponse(t, response, 0)
+				if service.lastDeletedID != 7 {
+					t.Fatalf("deleted content id = %d, want 7", service.lastDeletedID)
+				}
+			}
+		})
+	}
+
+	t.Run("invalid id is rejected before application", func(t *testing.T) {
+		service := &contentQueryServiceStub{}
+		router := newContentRouter(t, service, httptransport.RoleEditor)
+		response := performContentRequest(router, stdhttp.MethodDelete, "/api/v1/contents/not-a-number", "editor")
+		if response.Code != stdhttp.StatusBadRequest {
+			t.Fatalf("status = %d, want 400: %s", response.Code, response.Body.String())
+		}
+		assertContentErrorResponse(t, response, sharederrors.CodeInvalidRequest)
+		if service.deleteCalls != 0 {
+			t.Fatalf("delete calls = %d, want zero", service.deleteCalls)
+		}
+	})
+
+	t.Run("storage failure is safe", func(t *testing.T) {
+		service := &contentQueryServiceStub{
+			deleteErrors: map[int64]error{
+				7: sharederrors.Wrap(sharederrors.CodeUnavailable, stdhttp.StatusServiceUnavailable, "", errors.New("minio.internal evidence/v1/private-body")),
+			},
+		}
+		router := newContentRouter(t, service, httptransport.RoleEditor)
+		response := performContentRequest(router, stdhttp.MethodDelete, "/api/v1/contents/7", "editor")
+		if response.Code != stdhttp.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want 503: %s", response.Code, response.Body.String())
+		}
+		assertContentErrorResponse(t, response, sharederrors.CodeUnavailable)
+		if strings.Contains(response.Body.String(), "minio.internal") || strings.Contains(response.Body.String(), "private-body") {
+			t.Fatalf("delete error leaked storage details: %s", response.Body.String())
+		}
+	})
+}
+
 type contentQueryServiceStub struct {
 	page           ingestiondomain.ContentPage
 	content        ingestiondomain.Content
@@ -199,8 +263,12 @@ type contentQueryServiceStub struct {
 	getErrors      map[int64]error
 	document       ingestiondomain.ContentDocument
 	documentErrors map[int64]error
+	deleteResult   ingestionapplication.DeleteBySourceItemResult
+	deleteErrors   map[int64]error
 	listCalls      int
 	getCalls       int
+	deleteCalls    int
+	lastDeletedID  int64
 	lastQuery      ingestiondomain.ContentListQuery
 }
 
@@ -223,6 +291,15 @@ func (service *contentQueryServiceStub) GetDocument(_ context.Context, id int64)
 		return ingestiondomain.ContentDocument{}, err
 	}
 	return service.document, nil
+}
+
+func (service *contentQueryServiceStub) DeleteContent(_ context.Context, id int64) (ingestionapplication.DeleteBySourceItemResult, error) {
+	service.deleteCalls++
+	service.lastDeletedID = id
+	if err := service.deleteErrors[id]; err != nil {
+		return ingestionapplication.DeleteBySourceItemResult{}, err
+	}
+	return service.deleteResult, nil
 }
 
 type contentAuthenticator struct{ role httptransport.Role }

@@ -27,7 +27,7 @@ func TestCapturePolicyStoresFeedBodyByDefaultForRSSAndHackerNews(t *testing.T) {
 		captures = append(captures, captured)
 	}
 	for _, captured := range captures {
-		if captured.Body != "must not persist" || len(captured.RawPayload) != 0 || captured.RawPayloadDisposition != domain.RawPayloadDiscarded {
+		if captured.Body != "must not persist" || len(captured.RawPayload) != 0 || captured.RawPayloadDisposition != domain.RawPayloadCapturedItemOnly {
 			t.Fatalf("captured projection = %#v, want Feed body and no raw payload", captured)
 		}
 	}

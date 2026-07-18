@@ -39,10 +39,11 @@ CREATE TABLE IF NOT EXISTS source_connections (
     credential_ref text CHECK ((auth_type = 'none' AND credential_ref IS NULL) OR (auth_type <> 'none' AND credential_ref ~ '^env:[A-Z_][A-Z0-9_]{0,127}$')),
     config jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(config) = 'object'), enabled boolean NOT NULL DEFAULT true,
     health_status varchar(16) NOT NULL DEFAULT 'unknown' CHECK (health_status IN ('unknown','healthy','degraded','unavailable')),
-    terms_policy_url text, body_storage_default_migrated_at timestamptz,
+    terms_policy_url text,
     created_by bigint REFERENCES users(id) ON DELETE SET NULL,
     updated_by bigint REFERENCES users(id) ON DELETE SET NULL,
-    created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), deleted_at timestamptz
+    created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), deleted_at timestamptz,
+    body_storage_default_migrated_at timestamptz
 );
 CREATE UNIQUE INDEX IF NOT EXISTS source_connections_active_name_uq ON source_connections(name) WHERE deleted_at IS NULL;
 

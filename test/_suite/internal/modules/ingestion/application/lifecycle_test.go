@@ -64,6 +64,32 @@ func TestDeleteBySourceItemMarksContentDeletedBeforeRetryingEvidenceDeletion(t *
 	}
 }
 
+func TestDeleteContentByIDTombstonesContentAndDeletesEvidence(t *testing.T) {
+	runtime := openIngestionRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	runID, sourceID := seedCapturedRun(t, runtime, []sourcedomain.CapturedItem{
+		capturedItem("delete-by-id", "article", "Delete by id", "delete content by id evidence"),
+	})
+	store := newEvidenceStoreFake()
+	service := newLifecycleService(t, runtime, store)
+	if result, err := service.IngestRun(context.Background(), ingestionapplication.IngestRunInput{RunID: runID, Limit: 1}); err != nil || result.Bound != 1 || len(result.ContentIDs) != 1 {
+		t.Fatalf("IngestRun() result/error = %#v / %v, want one content id", result, err)
+	} else {
+		deleted, err := service.DeleteContent(context.Background(), result.ContentIDs[0])
+		if err != nil {
+			t.Fatalf("DeleteContent() error = %v", err)
+		}
+		if deleted.Content.ID != result.ContentIDs[0] || !deleted.ContentChanged || deleted.AssetsDeleted != 1 || deleted.AssetsDeletePending != 0 {
+			t.Fatalf("DeleteContent() result = %#v, want tombstone and deleted evidence", deleted)
+		}
+	}
+	assertContentAndAssetLifecycle(t, runtime, sourceID, "delete-by-id", ingestiondomain.ContentStatusDeleted, ingestiondomain.AssetStatusDeleted)
+	assertNoActiveContent(t, runtime)
+	if len(store.objects) != 0 {
+		t.Fatalf("evidence objects after DeleteContent() = %#v, want none", store.objects)
+	}
+}
+
 func TestDeleteBySourceItemMissingSourceItemIsIdempotentNoOp(t *testing.T) {
 	runtime := openIngestionRuntime(t)
 	defer func() { _ = runtime.Close() }()

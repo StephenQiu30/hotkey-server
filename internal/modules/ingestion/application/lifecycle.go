@@ -9,6 +9,7 @@ import (
 
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	sharederrors "github.com/StephenQiu30/hotkey-server/internal/shared/errors"
 )
 
 // DeleteBySourceItemResult reports only Content and evidence asset facts
@@ -19,6 +20,33 @@ type DeleteBySourceItemResult struct {
 	ContentChanged      bool
 	AssetsDeleted       int
 	AssetsDeletePending int
+}
+
+// DeleteContent resolves the public Content identity to its source item and
+// then runs the same serialized tombstone/evidence lifecycle used by source
+// deletion synchronization. The active lookup keeps the HTTP operation
+// scoped to currently visible content; the durable operation remains
+// idempotent for worker retries through DeleteBySourceItem.
+func (service *Service) DeleteContent(ctx context.Context, contentID int64) (DeleteBySourceItemResult, error) {
+	if !service.lifecycleReady() {
+		return DeleteBySourceItemResult{}, sharederrors.New(sharederrors.CodeUnavailable, 503, "")
+	}
+	if contentID <= 0 {
+		return DeleteBySourceItemResult{}, sharederrors.New(sharederrors.CodeInvalidRequest, 400, "")
+	}
+	content, err := service.contents.GetActive(ctx, contentID)
+	if err != nil {
+		return DeleteBySourceItemResult{}, contentQueryReadError(err)
+	}
+	result, err := service.DeleteBySourceItem(ctx, content.SourceConnectionID, content.ExternalID)
+	if err == nil {
+		return result, nil
+	}
+	var appError *sharederrors.AppError
+	if errors.As(err, &appError) {
+		return result, appError
+	}
+	return result, sharederrors.Wrap(sharederrors.CodeUnavailable, 503, "", err)
 }
 
 // DeleteBySourceItem tombstones one source Content fact before operating on

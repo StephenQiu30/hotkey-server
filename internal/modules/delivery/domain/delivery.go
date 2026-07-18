@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/mail"
 	"strings"
 	"time"
 )
@@ -61,7 +62,7 @@ func (subscription Subscription) Validate() error {
 	if subscription.MonitorID != nil && *subscription.MonitorID <= 0 {
 		return fmt.Errorf("invalid subscription monitor")
 	}
-	if subscription.Channel == ChannelEmail && (strings.TrimSpace(subscription.Recipient) == "" || subscription.TokenHash != "") {
+	if subscription.Channel == ChannelEmail && (!validEmailRecipient(subscription.Recipient) || subscription.TokenHash != "") {
 		return fmt.Errorf("invalid email subscription")
 	}
 	if subscription.Channel == ChannelRSS && (!validTokenHash(subscription.TokenHash) || subscription.Recipient != "") {
@@ -71,6 +72,15 @@ func (subscription Subscription) Validate() error {
 		return fmt.Errorf("invalid delivery channel")
 	}
 	return nil
+}
+
+func validEmailRecipient(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	parsed, err := mail.ParseAddress(value)
+	return err == nil && parsed.Name == "" && parsed.Address == value
 }
 
 // ValidateCreate applies the same business contract before the database has

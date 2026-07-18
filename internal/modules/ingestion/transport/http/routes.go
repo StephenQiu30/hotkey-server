@@ -18,4 +18,6 @@ func RegisterRoutes(router *gin.Engine, service contentQueryService, authenticat
 	contents.GET("", httptransport.Wrap(handler.List))
 	contents.GET("/:id/document", httptransport.Wrap(handler.Document))
 	contents.GET("/:id", httptransport.Wrap(handler.Get))
+	edit := contents.Group("", httptransport.RequireRoles(httptransport.RoleEditor, httptransport.RoleAdmin))
+	edit.DELETE("/:id", httptransport.Wrap(handler.Delete))
 }

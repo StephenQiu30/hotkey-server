@@ -7,6 +7,7 @@ import (
 	stdhttp "net/http"
 	"strconv"
 
+	ingestionapplication "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/application"
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/domain"
 	httptransport "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/observability"
@@ -18,6 +19,7 @@ const (
 	contentQueryListOperation = "list_active"
 	contentQueryGetOperation  = "get_active"
 	contentDocumentOperation  = "get_document"
+	contentDeleteOperation    = "delete_active"
 )
 
 // contentQueryService is the ingestion application boundary used by this
@@ -27,6 +29,7 @@ type contentQueryService interface {
 	ListActive(context.Context, ingestiondomain.ContentListQuery) (ingestiondomain.ContentPage, error)
 	GetActive(context.Context, int64) (ingestiondomain.Content, error)
 	GetDocument(context.Context, int64) (ingestiondomain.ContentDocument, error)
+	DeleteContent(context.Context, int64) (ingestionapplication.DeleteBySourceItemResult, error)
 }
 
 type Handler struct {
@@ -124,6 +127,39 @@ func (handler *Handler) Document(c *gin.Context) error {
 	}
 	handler.record(contentDocumentOperation, nil)
 	httptransport.OK(c, contentDocumentResponse(document))
+	return nil
+}
+
+// Delete removes an active Content from operational views and schedules its
+// deterministic evidence objects for deletion. The database row remains as a
+// tombstone so source replay, downstream history, and lifecycle retries stay
+// auditable.
+// @Summary Delete active content
+// @Description Soft-deletes one fetched Content and removes its archived evidence when available.
+// @Tags contents
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "content ID"
+// @Success 200 {object} ContentResult[EmptyResponse]
+// @Failure 400 {object} ContentResult[EmptyResponse]
+// @Failure 401 {object} ContentResult[EmptyResponse]
+// @Failure 403 {object} ContentResult[EmptyResponse]
+// @Failure 404 {object} ContentResult[EmptyResponse]
+// @Failure 503 {object} ContentResult[EmptyResponse]
+// @Router /api/v1/contents/{id} [delete]
+func (handler *Handler) Delete(c *gin.Context) error {
+	httptransport.SetModule(c, "ingestion")
+	id, err := contentID(c)
+	if err != nil {
+		handler.record(contentDeleteOperation, err)
+		return err
+	}
+	if _, err := handler.service.DeleteContent(c.Request.Context(), id); err != nil {
+		handler.record(contentDeleteOperation, err)
+		return err
+	}
+	handler.record(contentDeleteOperation, nil)
+	httptransport.Empty(c)
 	return nil
 }
 
