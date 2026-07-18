@@ -7,7 +7,7 @@ purpose: 验收授权 Feed 内容的 Markdown 归档与安全读取 API
 canonical_path: docs/acceptance/019-采集内容Markdown归档与预览验收.md
 status: review
 conclusion: pending
-version: v0.4
+version: v0.5
 owner: HotKey Server Team
 inputs:
   - docs/design/016-采集内容Markdown归档与预览设计.md
@@ -46,6 +46,9 @@ downstream:
 |---|---|---|
 | Feed 与转换 | `go run ./test/runner test ./internal/modules/source/infrastructure/rss ./internal/modules/ingestion/infrastructure/markdown -run 'Test(ParseFeedPrefersContent\|Converter)' -count=1` | passed |
 | Server 定向 | `HOTKEY_TEST_DSN=<disposable-admin-dsn> go run ./test/runner test ./internal/modules/source/infrastructure/rss ./internal/modules/ingestion/... -count=1` | passed |
+| Task 4 精确生命周期门禁 | `HOTKEY_TEST_DSN=<disposable-admin-dsn> go run ./test/runner test -race ./internal/modules/ingestion/application ./internal/modules/ingestion/infrastructure/minio -run 'Test(ContentDocumentConcurrentReads\|ArchiveMarkdownReplay\|ArchiveMarkdownCompensation\|ArchiveMarkdownOrphanReconciliation\|ContentDocumentStoreRecovery\|ContentDocumentDeleted\|ContentDocumentDeletePending\|ContentDocumentAssetSelection)' -count=1`；application 八项精确测试真实执行且通过，MinIO 包无匹配测试，`-race` 无数据竞争 | passed |
+| Source 授权跨模块链路 | `HOTKEY_TEST_DSN=<disposable-admin-dsn> go run ./test/runner test -race ./internal/modules/ingestion/application -run 'TestSourceCapturePolicyBodyStorageFlowsToIngestionAsset' -count=1`；真实 `CollectionService` 按 Source config 生成并持久化 CapturedItem，`allow_body_storage=false/true` 分别断言 0/1 个 Markdown asset | passed |
+| document HTTP 404 Result | `go run ./test/runner test ./internal/modules/ingestion/transport/http -run 'TestContentDocumentRouteAllowsAuthenticatedRolesAndReturnsSafeProjection' -count=1`；400/404/503 均断言统一 Result 错误码 | passed |
 | Server 全量 | `HOTKEY_TEST_DSN=<disposable-admin-dsn> HOTKEY_TEST_REDIS_URL=<isolated-test-redis> make ci`，随后 `make clean`；OpenAPI、vet、数据库运行校验、全量测试、build、架构、仓库与 Schema 均通过 | passed |
 | OpenAPI | `make openapi-validate` 通过；`GET /api/v1/contents/{id}/document` 由注解生成并进入 80 路由契约 | passed |
 | Schema | `git diff --exit-code -- db/schema.sql`，本期无 Schema 差异 | passed |
@@ -67,3 +70,4 @@ downstream:
 | v0.2 | 2026-07-18 | 分离 Web 页面验收，补齐 Server 生命周期、错误和 Schema 门禁。 |
 | v0.3 | 2026-07-18 | 记录实施前标准经非主要编写者审核通过；实现证据仍 pending。 |
 | v0.4 | 2026-07-18 | 记录真实 RED、定向与全量 GREEN、OpenAPI/Schema 门禁，以及真实 MinIO 未执行风险；等待独立复审。 |
+| v0.5 | 2026-07-18 | 补齐 Plan Task 4 八项精确命名并发/重放/补偿/对账/恢复/删除/选择门禁，以及 Source CapturePolicy 跨模块持久化链路和 document 404 Result；结论继续 pending。 |
