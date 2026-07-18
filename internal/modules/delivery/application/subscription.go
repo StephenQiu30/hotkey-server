@@ -24,6 +24,7 @@ type SubscriptionRepository interface {
 	ListSubscriptions(context.Context, int64) ([]domain.Subscription, error)
 	UpdateSubscription(context.Context, domain.Subscription, int64) (domain.Subscription, error)
 	RotateRSSToken(context.Context, int64, int64, int64, string) (domain.Subscription, error)
+	DeleteSubscription(context.Context, int64, int64, int64) (domain.Subscription, error)
 }
 
 type TokenSource func() (string, error)
@@ -74,6 +75,12 @@ type UpdateSubscriptionInput struct {
 }
 
 type RotateRSSTokenInput struct {
+	Subject         identitydomain.Subject
+	SubscriptionID  int64
+	ExpectedVersion int64
+}
+
+type DeleteSubscriptionInput struct {
 	Subject         identitydomain.Subject
 	SubscriptionID  int64
 	ExpectedVersion int64
@@ -211,6 +218,37 @@ func (service *SubscriptionService) RotateRSSToken(ctx context.Context, input Ro
 		return SubscriptionSecret{}, deliverySubscriptionError(err)
 	}
 	return SubscriptionSecret{Subscription: updated, RSSToken: secret}, nil
+}
+
+// Delete soft-deletes a disabled subscription. Delivery history remains
+// immutable, while ordinary reads stop returning the deleted configuration.
+func (service *SubscriptionService) Delete(ctx context.Context, input DeleteSubscriptionInput) (domain.Subscription, error) {
+	if err := requireSubscriptionUser(input.Subject); err != nil {
+		return domain.Subscription{}, err
+	}
+	if input.SubscriptionID <= 0 || input.ExpectedVersion <= 0 {
+		return domain.Subscription{}, invalidSubscriptionRequest()
+	}
+	current, err := service.store.GetSubscription(ctx, input.SubscriptionID, input.Subject.UserID)
+	if err != nil {
+		return domain.Subscription{}, deliverySubscriptionError(err)
+	}
+	if current.Enabled {
+		return domain.Subscription{}, sharederrors.New(sharederrors.CodeConflict, 409, "disable the subscription before deleting it")
+	}
+	deleted := domain.Subscription{}
+	err = service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error {
+		value, err := service.store.DeleteSubscription(transactionCtx, input.SubscriptionID, input.Subject.UserID, input.ExpectedVersion)
+		if err != nil {
+			return err
+		}
+		deleted = value
+		return service.audit.Write(transactionCtx, subscriptionAudit(transactionCtx, input.Subject, operationsdomain.ActionSubscriptionDeleted, deleted, &current))
+	})
+	if err != nil {
+		return domain.Subscription{}, deliverySubscriptionError(err)
+	}
+	return deleted, nil
 }
 
 func requireSubscriptionUser(subject identitydomain.Subject) error {

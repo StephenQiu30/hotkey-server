@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -29,6 +30,23 @@ func TestMonitorRoutesRequireTheDesignRoles(t *testing.T) {
 	router.ServeHTTP(response, request)
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+}
+
+func TestArchivedMonitorDeleteRouteRequiresAdminAndExpectedVersion(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &readMonitorService{view: monitorapplication.MonitorView{Monitor: domain.Monitor{ID: 7, Version: 4, Name: "archived", Status: domain.MonitorStatusArchived}}}
+	router := gin.New()
+	RegisterRoutes(router, service, testAuthenticator{subject: httptransport.Subject{UserID: 1, SessionID: 1, Role: httptransport.RoleAdmin}})
+
+	request := httptest.NewRequest(http.MethodDelete, "/api/v1/monitors/7", strings.NewReader(`{"expected_monitor_version":4}`))
+	request.Header.Set("Authorization", "Bearer admin")
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
 	}
 }
 
@@ -177,6 +195,31 @@ func TestMonitorDraftRequestsAcceptZeroThresholdAndDefaultOmittedPriorities(t *t
 		if draft.Rules[0].Priority != 100 || draft.Sources[0].Priority != 100 {
 			t.Fatalf("omitted priorities = rule %d source %d, want 100", draft.Rules[0].Priority, draft.Sources[0].Priority)
 		}
+	}
+}
+
+func TestMonitorDraftRequestRejectsMoreThanTenSourcesAtTheTransportBoundary(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &captureMonitorService{readMonitorService: readMonitorService{view: monitorapplication.MonitorView{Monitor: domain.Monitor{ID: 1, Version: 1, Name: "monitor", Status: domain.MonitorStatusDraft}}}}
+	router := gin.New()
+	RegisterRoutes(router, service, testAuthenticator{subject: httptransport.Subject{UserID: 2, SessionID: 2, Role: httptransport.RoleEditor}})
+
+	sources := make([]string, 11)
+	for index := range sources {
+		sources[index] = `{"source_connection_id":` + strconv.Itoa(index+1) + `}`
+	}
+	body := `{"name":"too many sources","config":{"timezone":"UTC","languages":["en"],"collection_interval_seconds":300,"relevance_threshold":60,"event_threshold":0,"retention_days":30},"rules":[{"rule_type":"keyword","operator":"contains","value":"OpenAI"}],"sources":[` + strings.Join(sources, ",") + `]}`
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/monitors", strings.NewReader(body))
+	request.Header.Set("Authorization", "Bearer editor")
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusBadRequest, response.Body.String())
+	}
+	if len(service.creates) != 0 {
+		t.Fatalf("Create calls = %d, want 0", len(service.creates))
 	}
 }
 
@@ -367,6 +410,12 @@ func (*readMonitorService) Archive(context.Context, monitorapplication.Lifecycle
 }
 func (*readMonitorService) Restore(context.Context, monitorapplication.LifecycleInput) (*domain.Monitor, error) {
 	return nil, nil
+}
+func (service *readMonitorService) Delete(_ context.Context, input monitorapplication.LifecycleInput) (*domain.Monitor, error) {
+	monitor := service.view.Monitor
+	monitor.ID = input.MonitorID
+	monitor.Version++
+	return &monitor, nil
 }
 
 type testAuthenticator struct{ subject httptransport.Subject }

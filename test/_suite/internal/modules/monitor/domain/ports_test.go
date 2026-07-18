@@ -30,6 +30,7 @@ func (*monitorRepositoryFake) SaveDraft(context.Context, *MonitorConfigVersion, 
 	return nil
 }
 func (*monitorRepositoryFake) SaveMonitor(context.Context, *Monitor) error { return nil }
+func (*monitorRepositoryFake) SoftDelete(context.Context, *Monitor) error  { return nil }
 func (*monitorRepositoryFake) Publish(context.Context, *Monitor, *MonitorConfigVersion, *MonitorConfigVersion, []MonitorSource) error {
 	return nil
 }

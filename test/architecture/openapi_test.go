@@ -102,7 +102,7 @@ func TestOpenAPIContract(t *testing.T) {
 		"/api/v1/users/{id}":                                                {"patch": {"200", "400", "401", "403", "409", "503"}, "delete": {"200", "401", "403", "409", "503"}},
 		"/api/v1/users/{id}/restore":                                        {"post": {"200", "401", "403", "409", "503"}},
 		"/api/v1/monitors":                                                  {"get": {"200", "400", "401", "503"}, "post": {"201", "400", "401", "403", "409", "503"}},
-		"/api/v1/monitors/{id}":                                             {"get": {"200", "400", "401", "409", "503"}},
+		"/api/v1/monitors/{id}":                                             {"get": {"200", "400", "401", "409", "503"}, "delete": {"200", "400", "401", "403", "409", "503"}},
 		"/api/v1/monitors/{id}/draft":                                       {"put": {"200", "400", "401", "403", "409", "503"}},
 		"/api/v1/monitors/{id}/draft/ai-candidates":                         {"post": {"200", "400", "401", "403", "409", "503"}},
 		"/api/v1/monitors/{id}/draft/rules/{rule_id}/approval":              {"post": {"200", "400", "401", "403", "409", "503"}},
@@ -165,7 +165,7 @@ func TestOpenAPIContract(t *testing.T) {
 		"/api/v1/reports/{id}/build":                                        {"post": {"200", "400", "401", "403", "404", "409", "503"}},
 		"/api/v1/reports/{id}/publish":                                      {"post": {"200", "400", "401", "403", "404", "409", "503"}},
 		"/api/v1/report-subscriptions":                                      {"get": {"200", "401", "503"}, "post": {"201", "400", "401", "409", "503"}},
-		"/api/v1/report-subscriptions/{id}":                                 {"get": {"200", "400", "401", "404", "503"}, "patch": {"200", "400", "401", "404", "409", "503"}},
+		"/api/v1/report-subscriptions/{id}":                                 {"get": {"200", "400", "401", "404", "503"}, "patch": {"200", "400", "401", "404", "409", "503"}, "delete": {"200", "400", "401", "404", "409", "503"}},
 		"/api/v1/report-subscriptions/{id}/rss-token/rotate":                {"post": {"200", "400", "401", "404", "409", "503"}},
 	}
 	if len(document.Paths) != len(required) {
@@ -593,6 +593,48 @@ func assertMonitorDraftDefaultsOpenAPI(t *testing.T, definitions map[string]stru
 	}
 	if threshold.Minimum == nil || *threshold.Minimum != 0 {
 		t.Errorf("event_threshold minimum = %v, want explicit 0", threshold.Minimum)
+	}
+	for _, field := range []struct {
+		name    string
+		minimum float64
+		maximum float64
+	}{
+		{name: "collection_interval_seconds", minimum: 300, maximum: 86400},
+		{name: "relevance_threshold", minimum: 60, maximum: 100},
+		{name: "event_threshold", minimum: 0, maximum: 100},
+		{name: "retention_days", minimum: 1, maximum: 3650},
+	} {
+		var constraint struct {
+			Minimum *float64 `json:"minimum"`
+			Maximum *float64 `json:"maximum"`
+		}
+		if err := json.Unmarshal(config.Properties[field.name], &constraint); err != nil {
+			t.Fatalf("decode %s contract: %v", field.name, err)
+		}
+		if constraint.Minimum == nil || *constraint.Minimum != field.minimum || constraint.Maximum == nil || *constraint.Maximum != field.maximum {
+			t.Errorf("%s range = %v..%v, want %v..%v", field.name, constraint.Minimum, constraint.Maximum, field.minimum, field.maximum)
+		}
+	}
+
+	for _, name := range []string{"http.CreateMonitorRequest", "http.ReplaceDraftRequest"} {
+		definition, ok := definitions[name]
+		if !ok {
+			t.Errorf("missing %s", name)
+			continue
+		}
+		for field, wantMax := range map[string]int{"rules": 100, "sources": 10} {
+			var collection struct {
+				MinItems *int `json:"minItems"`
+				MaxItems *int `json:"maxItems"`
+			}
+			if err := json.Unmarshal(definition.Properties[field], &collection); err != nil {
+				t.Errorf("decode %s %s collection contract: %v", name, field, err)
+				continue
+			}
+			if collection.MinItems == nil || *collection.MinItems != 1 || collection.MaxItems == nil || *collection.MaxItems != wantMax {
+				t.Errorf("%s %s item range = %v..%v, want 1..%d", name, field, collection.MinItems, collection.MaxItems, wantMax)
+			}
+		}
 	}
 
 	for _, name := range []string{"http.MonitorRuleRequest", "http.MonitorSourceRequest", "http.AICandidateRequest"} {

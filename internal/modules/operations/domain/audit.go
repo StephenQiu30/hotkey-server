@@ -23,6 +23,7 @@ const (
 	ActionMonitorResumed             AuditAction = "monitor.resumed"
 	ActionMonitorArchived            AuditAction = "monitor.archived"
 	ActionMonitorRestored            AuditAction = "monitor.restored"
+	ActionMonitorDeleted             AuditAction = "monitor.deleted"
 	ActionSourceCreated              AuditAction = "source.created"
 	ActionSourceUpdated              AuditAction = "source.updated"
 	ActionSourceEnabled              AuditAction = "source.enabled"
@@ -35,6 +36,7 @@ const (
 	ActionSubscriptionCreated        AuditAction = "subscription.created"
 	ActionSubscriptionUpdated        AuditAction = "subscription.updated"
 	ActionSubscriptionTokenRotated   AuditAction = "subscription.token_rotated"
+	ActionSubscriptionDeleted        AuditAction = "subscription.deleted"
 	ActionJobCancelled               AuditAction = "job.cancelled"
 	ActionJobRetried                 AuditAction = "job.retried"
 
@@ -45,10 +47,10 @@ const (
 
 var allowedActions = map[AuditAction]struct{}{
 	ActionMonitorCreated: {}, ActionMonitorDraftUpdated: {}, ActionMonitorAICandidateCreated: {}, ActionMonitorAICandidateApproved: {}, ActionMonitorAICandidateRejected: {},
-	ActionMonitorPublished: {}, ActionMonitorPaused: {}, ActionMonitorResumed: {}, ActionMonitorArchived: {}, ActionMonitorRestored: {},
+	ActionMonitorPublished: {}, ActionMonitorPaused: {}, ActionMonitorResumed: {}, ActionMonitorArchived: {}, ActionMonitorRestored: {}, ActionMonitorDeleted: {},
 	ActionSourceCreated: {}, ActionSourceUpdated: {}, ActionSourceEnabled: {}, ActionSourceDisabled: {}, ActionSourceArchived: {}, ActionSourceRestored: {},
 	ActionMetricCapabilityDrafted: {}, ActionMetricCapabilityPublished: {}, ActionMetricCapabilityArchived: {},
-	ActionSubscriptionCreated: {}, ActionSubscriptionUpdated: {}, ActionSubscriptionTokenRotated: {},
+	ActionSubscriptionCreated: {}, ActionSubscriptionUpdated: {}, ActionSubscriptionTokenRotated: {}, ActionSubscriptionDeleted: {},
 	ActionJobCancelled: {}, ActionJobRetried: {},
 }
 

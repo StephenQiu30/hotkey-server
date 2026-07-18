@@ -160,9 +160,10 @@ func TestAuditActionWhitelistIsClosed(t *testing.T) {
 	for _, action := range []operationsdomain.AuditAction{
 		operationsdomain.ActionMonitorCreated, operationsdomain.ActionMonitorDraftUpdated, operationsdomain.ActionMonitorAICandidateCreated,
 		operationsdomain.ActionMonitorAICandidateApproved, operationsdomain.ActionMonitorAICandidateRejected, operationsdomain.ActionMonitorPublished,
-		operationsdomain.ActionMonitorPaused, operationsdomain.ActionMonitorResumed, operationsdomain.ActionMonitorArchived, operationsdomain.ActionMonitorRestored,
+		operationsdomain.ActionMonitorPaused, operationsdomain.ActionMonitorResumed, operationsdomain.ActionMonitorArchived, operationsdomain.ActionMonitorRestored, operationsdomain.ActionMonitorDeleted,
 		operationsdomain.ActionSourceCreated, operationsdomain.ActionSourceUpdated, operationsdomain.ActionSourceEnabled, operationsdomain.ActionSourceDisabled,
 		operationsdomain.ActionSourceArchived, operationsdomain.ActionSourceRestored,
+		operationsdomain.ActionSubscriptionCreated, operationsdomain.ActionSubscriptionUpdated, operationsdomain.ActionSubscriptionTokenRotated, operationsdomain.ActionSubscriptionDeleted,
 	} {
 		if !action.Valid() {
 			t.Errorf("whitelisted action %q is invalid", action)

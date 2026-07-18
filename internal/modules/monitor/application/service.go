@@ -381,6 +381,47 @@ func (service *Service) Restore(ctx context.Context, input LifecycleInput) (*dom
 	return service.changeState(ctx, input, domain.MonitorStatusPaused, operationsdomain.ActionMonitorRestored)
 }
 
+// Delete soft-deletes an already archived Monitor. Immutable configuration,
+// collection, event, and report provenance remain intact for auditability.
+func (service *Service) Delete(ctx context.Context, input LifecycleInput) (*domain.Monitor, error) {
+	if err := requireAdmin(input.Subject); err != nil {
+		return nil, err
+	}
+	if input.MonitorID <= 0 || input.ExpectedMonitorVersion <= 0 {
+		return nil, domain.MonitorVersionConflict()
+	}
+	var deleted domain.Monitor
+	err := service.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+		if err := lockConfiguration(ctx, transaction); err != nil {
+			return err
+		}
+		monitor, err := service.monitors.LockByID(ctx, input.MonitorID)
+		if err != nil {
+			return monitorReadError(err)
+		}
+		if monitor.Version != input.ExpectedMonitorVersion {
+			return domain.MonitorVersionConflict()
+		}
+		if monitor.Status != domain.MonitorStatusArchived {
+			return domain.InvalidMonitorState()
+		}
+		now := time.Now().UTC()
+		monitor.DeletedAt, monitor.Version = &now, monitor.Version+1
+		if err := service.monitors.SoftDelete(ctx, monitor); err != nil {
+			return monitorWriteError(err)
+		}
+		if err := service.audit.Write(ctx, service.auditEntry(ctx, input.Subject, operationsdomain.ActionMonitorDeleted, *monitor, nil, 0, 0, nil)); err != nil {
+			return err
+		}
+		deleted = *monitor
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &deleted, nil
+}
+
 func (service *Service) changeState(ctx context.Context, input LifecycleInput, target domain.MonitorStatus, action operationsdomain.AuditAction) (*domain.Monitor, error) {
 	if err := requireAdmin(input.Subject); err != nil {
 		return nil, err

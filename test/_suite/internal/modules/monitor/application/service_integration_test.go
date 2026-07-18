@@ -164,6 +164,19 @@ func TestMonitorServicePublishesImmutableConfigurationAndCoordinatesSourceLifecy
 	if _, err := monitors.Restore(ctx, monitorapplication.LifecycleInput{Subject: admin, MonitorID: created.ID, ExpectedMonitorVersion: archived.Version}); appCode(err) != sharederrors.CodeMonitorNameConflict {
 		t.Fatalf("Restore name conflict code=%d", appCode(err))
 	}
+	deleted, err := monitors.Delete(ctx, monitorapplication.LifecycleInput{Subject: admin, MonitorID: created.ID, ExpectedMonitorVersion: archived.Version})
+	if err != nil || deleted.DeletedAt == nil || deleted.Version != archived.Version+1 {
+		t.Fatalf("Delete archived monitor = %#v/%v", deleted, err)
+	}
+	page, err := monitors.List(ctx, monitorapplication.ListInput{Subject: admin})
+	if err != nil {
+		t.Fatalf("List after delete: %v", err)
+	}
+	for _, item := range page.Items {
+		if item.Monitor.ID == created.ID {
+			t.Fatalf("deleted monitor %d remained in list", created.ID)
+		}
+	}
 
 	_, err = runtime.SQL.Exec(`UPDATE monitor_rules SET value = 'mutated' WHERE config_version_id = $1`, publishedConfig.ID)
 	if err == nil {

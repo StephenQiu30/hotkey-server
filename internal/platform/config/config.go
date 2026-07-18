@@ -12,21 +12,22 @@ import (
 )
 
 type Config struct {
-	Environment        string
-	Role               string
-	HTTPAddr           string
-	RequestTimeout     time.Duration
-	ShutdownTimeout    time.Duration
-	WorkerPollInterval time.Duration
-	WorkerConcurrency  int
-	WorkerLeaseTimeout time.Duration
-	CronInterval       time.Duration
-	DatabaseURL        string
-	OTLPHTTPEndpoint   string
-	MinIO              MinIOConfig
-	VaultPath          string
-	Authentication     AuthenticationConfig
-	AI                 AIConfig
+	Environment           string
+	Role                  string
+	HTTPAddr              string
+	RequestTimeout        time.Duration
+	ShutdownTimeout       time.Duration
+	WorkerPollInterval    time.Duration
+	WorkerConcurrency     int
+	WorkerLeaseTimeout    time.Duration
+	CronInterval          time.Duration
+	DatabaseURL           string
+	OTLPHTTPEndpoint      string
+	SourceDNSOverHTTPSURL string
+	MinIO                 MinIOConfig
+	VaultPath             string
+	Authentication        AuthenticationConfig
+	AI                    AIConfig
 }
 
 type MinIOConfig struct {
@@ -144,18 +145,19 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		Environment:        configString(v, "env"),
-		Role:               configString(v, "role"),
-		HTTPAddr:           configString(v, "http_addr"),
-		RequestTimeout:     configDuration(v, "request_timeout"),
-		ShutdownTimeout:    configDuration(v, "shutdown_timeout"),
-		WorkerPollInterval: configDuration(v, "worker_poll_interval"),
-		WorkerConcurrency:  configInt(v, "worker_concurrency"),
-		WorkerLeaseTimeout: configDuration(v, "worker_lease_timeout"),
-		CronInterval:       configDuration(v, "cron_interval"),
-		DatabaseURL:        configString(v, "database_url"),
-		OTLPHTTPEndpoint:   configString(v, "otlp_http_endpoint"),
-		VaultPath:          configString(v, "vault_path"),
+		Environment:           configString(v, "env"),
+		Role:                  configString(v, "role"),
+		HTTPAddr:              configString(v, "http_addr"),
+		RequestTimeout:        configDuration(v, "request_timeout"),
+		ShutdownTimeout:       configDuration(v, "shutdown_timeout"),
+		WorkerPollInterval:    configDuration(v, "worker_poll_interval"),
+		WorkerConcurrency:     configInt(v, "worker_concurrency"),
+		WorkerLeaseTimeout:    configDuration(v, "worker_lease_timeout"),
+		CronInterval:          configDuration(v, "cron_interval"),
+		DatabaseURL:           configString(v, "database_url"),
+		OTLPHTTPEndpoint:      configString(v, "otlp_http_endpoint"),
+		SourceDNSOverHTTPSURL: configString(v, "source_doh_url"),
+		VaultPath:             configString(v, "vault_path"),
 		MinIO: MinIOConfig{
 			Endpoint:  configString(v, "minio_endpoint"),
 			AccessKey: configString(v, "minio_access_key"),
@@ -335,6 +337,7 @@ func setDefaults(v *viper.Viper, cfg Config) {
 func configKeys() []string {
 	return []string{
 		"env", "role", "http_addr", "request_timeout", "shutdown_timeout", "worker_poll_interval", "worker_concurrency", "worker_lease_timeout", "cron_interval", "database_url", "otlp_http_endpoint",
+		"source_doh_url",
 		"minio_endpoint", "minio_access_key", "minio_secret_key", "minio_bucket",
 		"minio_use_ssl", "vault_path",
 		"jwt_secret", "jwt_issuer", "jwt_audience", "verification_hmac_secret", "redis_url", "smtp_enabled", "smtp_host", "smtp_port", "smtp_tls_mode", "smtp_username", "smtp_password", "smtp_from_email", "smtp_from_name", "cors_allowed_origins", "refresh_cookie_secure", "bootstrap_admin_email", "bootstrap_admin_password",

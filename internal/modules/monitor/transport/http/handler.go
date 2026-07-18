@@ -25,6 +25,7 @@ type monitorService interface {
 	Resume(context.Context, monitorapplication.LifecycleInput) (*domain.Monitor, error)
 	Archive(context.Context, monitorapplication.LifecycleInput) (*domain.Monitor, error)
 	Restore(context.Context, monitorapplication.LifecycleInput) (*domain.Monitor, error)
+	Delete(context.Context, monitorapplication.LifecycleInput) (*domain.Monitor, error)
 	Get(context.Context, identitydomain.Subject, int64) (monitorapplication.MonitorView, error)
 	List(context.Context, monitorapplication.ListInput) (monitorapplication.MonitorPage, error)
 }
@@ -419,6 +420,44 @@ func (handler *Handler) Archive(c *gin.Context) error {
 // @Router /api/v1/monitors/{id}/restore [post]
 func (handler *Handler) Restore(c *gin.Context) error {
 	return handler.lifecycle(c, handler.service.Restore)
+}
+
+// Delete soft-deletes an archived Monitor while retaining immutable evidence
+// and report provenance.
+// @Summary Delete an archived monitor
+// @Tags monitors
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "monitor ID"
+// @Param request body LifecycleRequest true "expected monitor version"
+// @Success 200 {object} MonitorResult[MonitorResponse]
+// @Failure 400 {object} MonitorResult[EmptyResponse]
+// @Failure 401 {object} MonitorResult[EmptyResponse]
+// @Failure 403 {object} MonitorResult[EmptyResponse]
+// @Failure 409 {object} MonitorResult[EmptyResponse]
+// @Failure 503 {object} MonitorResult[EmptyResponse]
+// @Router /api/v1/monitors/{id} [delete]
+func (handler *Handler) Delete(c *gin.Context) error {
+	httptransport.SetModule(c, "monitor")
+	subject, err := monitorSubject(c)
+	if err != nil {
+		return err
+	}
+	id, err := monitorID(c)
+	if err != nil {
+		return err
+	}
+	var request LifecycleRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		return invalidRequest(err)
+	}
+	monitor, err := handler.service.Delete(c.Request.Context(), monitorapplication.LifecycleInput{Subject: subject, MonitorID: id, ExpectedMonitorVersion: request.ExpectedMonitorVersion})
+	if err != nil {
+		return err
+	}
+	httptransport.OK(c, monitorResponse(monitorapplication.MonitorView{Monitor: *monitor}))
+	return nil
 }
 
 func (handler *Handler) lifecycle(c *gin.Context, operation func(context.Context, monitorapplication.LifecycleInput) (*domain.Monitor, error)) error {

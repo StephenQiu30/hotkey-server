@@ -20,12 +20,12 @@ type EmptyResponse struct{}
 
 type MonitorConfigRequest struct {
 	Timezone                  string   `json:"timezone" binding:"required" example:"Asia/Shanghai"`
-	Languages                 []string `json:"languages" binding:"required,min=1" example:"en"`
-	Regions                   []string `json:"regions"`
-	CollectionIntervalSeconds int      `json:"collection_interval_seconds" binding:"required" example:"900"`
-	RelevanceThreshold        float64  `json:"relevance_threshold" binding:"required" example:"75"`
-	EventThreshold            *float64 `json:"event_threshold" binding:"required,gte=0,lte=100" minimum:"0" example:"40"`
-	RetentionDays             int      `json:"retention_days" binding:"required" example:"30"`
+	Languages                 []string `json:"languages" binding:"required,min=1,max=8" minItems:"1" maxItems:"8" example:"en"`
+	Regions                   []string `json:"regions" binding:"max=8" maxItems:"8"`
+	CollectionIntervalSeconds int      `json:"collection_interval_seconds" binding:"required,gte=300,lte=86400" minimum:"300" maximum:"86400" example:"900"`
+	RelevanceThreshold        float64  `json:"relevance_threshold" binding:"required,gte=60,lte=100" minimum:"60" maximum:"100" example:"75"`
+	EventThreshold            *float64 `json:"event_threshold" binding:"required,gte=0,lte=100" minimum:"0" maximum:"100" example:"40"`
+	RetentionDays             int      `json:"retention_days" binding:"required,gte=1,lte=3650" minimum:"1" maximum:"3650" example:"30"`
 }
 
 type MonitorRuleRequest struct {
@@ -48,8 +48,8 @@ type CreateMonitorRequest struct {
 	Name        string                 `json:"name" binding:"required" example:"AI releases"`
 	Description string                 `json:"description"`
 	Config      MonitorConfigRequest   `json:"config" binding:"required"`
-	Rules       []MonitorRuleRequest   `json:"rules" binding:"required,min=1"`
-	Sources     []MonitorSourceRequest `json:"sources" binding:"required,min=1"`
+	Rules       []MonitorRuleRequest   `json:"rules" binding:"required,min=1,max=100" minItems:"1" maxItems:"100"`
+	Sources     []MonitorSourceRequest `json:"sources" binding:"required,min=1,max=10" minItems:"1" maxItems:"10"`
 }
 
 // ExpectedDraftRequest uses RawMessage so omitted and explicit JSON null have
@@ -91,8 +91,8 @@ type ReplaceDraftRequest struct {
 	Name        string                 `json:"name" binding:"required"`
 	Description string                 `json:"description"`
 	Config      MonitorConfigRequest   `json:"config" binding:"required"`
-	Rules       []MonitorRuleRequest   `json:"rules" binding:"required,min=1"`
-	Sources     []MonitorSourceRequest `json:"sources" binding:"required,min=1"`
+	Rules       []MonitorRuleRequest   `json:"rules" binding:"required,min=1,max=100" minItems:"1" maxItems:"100"`
+	Sources     []MonitorSourceRequest `json:"sources" binding:"required,min=1,max=10" minItems:"1" maxItems:"10"`
 }
 
 type AICandidateRequest struct {

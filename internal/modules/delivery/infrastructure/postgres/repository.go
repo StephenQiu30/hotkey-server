@@ -67,6 +67,7 @@ var _ interface {
 	ListSubscriptions(context.Context, int64) ([]domain.Subscription, error)
 	UpdateSubscription(context.Context, domain.Subscription, int64) (domain.Subscription, error)
 	RotateRSSToken(context.Context, int64, int64, int64, string) (domain.Subscription, error)
+	DeleteSubscription(context.Context, int64, int64, int64) (domain.Subscription, error)
 	CreateDelivery(context.Context, domain.Delivery) (bool, error)
 	GetDelivery(context.Context, int64) (domain.Delivery, error)
 	ClaimDelivery(context.Context, int64) (domain.Delivery, error)
@@ -171,6 +172,21 @@ UPDATE report_subscriptions
 SET rss_token_hash = $1, version = version + 1, updated_at = now()
 WHERE id = $2 AND user_id = $3 AND version = $4 AND channel = 'rss' AND deleted_at IS NULL
 RETURNING `+subscriptionColumns, tokenHash, subscriptionID, userID, expectedVersion))
+	if errors.Is(err, sharedrepository.ErrNotFound) {
+		return domain.Subscription{}, sharedrepository.ErrConflict
+	}
+	return next, err
+}
+
+func (repository *Repository) DeleteSubscription(ctx context.Context, subscriptionID, userID, expectedVersion int64) (domain.Subscription, error) {
+	if repository == nil || repository.runtime == nil || subscriptionID <= 0 || userID <= 0 || expectedVersion <= 0 {
+		return domain.Subscription{}, sharedrepository.ErrInvalidInput
+	}
+	next, err := scanSubscription(deliveryQueryerFor(ctx, repository.runtime).QueryRowContext(ctx, `
+UPDATE report_subscriptions
+SET deleted_at = now(), enabled = false, version = version + 1, updated_at = now()
+WHERE id = $1 AND user_id = $2 AND version = $3 AND enabled = false AND deleted_at IS NULL
+RETURNING `+subscriptionColumns, subscriptionID, userID, expectedVersion))
 	if errors.Is(err, sharedrepository.ErrNotFound) {
 		return domain.Subscription{}, sharedrepository.ErrConflict
 	}

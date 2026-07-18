@@ -54,6 +54,7 @@ import (
 	sourceinfrastructure "github.com/StephenQiu30/hotkey-server/internal/modules/source/infrastructure"
 	sourcejobs "github.com/StephenQiu30/hotkey-server/internal/modules/source/infrastructure/jobs"
 	sourcepostgres "github.com/StephenQiu30/hotkey-server/internal/modules/source/infrastructure/postgres"
+	sourcenet "github.com/StephenQiu30/hotkey-server/internal/modules/source/infrastructure/sourcenet"
 	sourcetransport "github.com/StephenQiu30/hotkey-server/internal/modules/source/transport/http"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/config"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
@@ -126,7 +127,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newEventClaimExtractionService,
 				monitorpostgres.NewPublishedCollectionTargetReader,
 				knowledgepostgres.NewRepository,
-				sourceinfrastructure.NewConnectorRegistry,
+				newSourceConnectorRegistry,
 				newKnowledgeVaultWriter,
 				newKnowledgeProposalService,
 				newKnowledgeReconciler,
@@ -220,6 +221,14 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 	options = append(options, extra...)
 
 	return fx.New(options...), nil
+}
+
+func newSourceConnectorRegistry(cfg config.Config) (*sourceinfrastructure.ConnectorRegistry, error) {
+	resolver, err := sourcenet.NewResolver(cfg.SourceDNSOverHTTPSURL)
+	if err != nil {
+		return nil, fmt.Errorf("configure source DNS resolver: %w", err)
+	}
+	return sourceinfrastructure.NewConnectorRegistry(resolver), nil
 }
 
 func newAIProviderRegistry(cfg config.Config, logger *zap.Logger) *intelligenceapplication.ProviderRegistry {

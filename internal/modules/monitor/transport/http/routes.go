@@ -28,4 +28,5 @@ func RegisterRoutes(router *gin.Engine, service monitorService, authenticator ht
 	admin.POST("/:id/resume", httptransport.Wrap(handler.Resume))
 	admin.POST("/:id/archive", httptransport.Wrap(handler.Archive))
 	admin.POST("/:id/restore", httptransport.Wrap(handler.Restore))
+	admin.DELETE("/:id", httptransport.Wrap(handler.Delete))
 }

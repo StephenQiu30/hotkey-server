@@ -36,6 +36,10 @@ type RotateRSSTokenRequest struct {
 	ExpectedVersion int64 `json:"expected_version" binding:"required,gt=0"`
 }
 
+type DeleteSubscriptionRequest struct {
+	ExpectedVersion int64 `json:"expected_version" binding:"required,gt=0"`
+}
+
 // SubscriptionResponse deliberately excludes TokenHash. Token hashes are
 // implementation facts and must not become a public correlation surface.
 type SubscriptionResponse struct {

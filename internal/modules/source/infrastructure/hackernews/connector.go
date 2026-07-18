@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
+	"github.com/StephenQiu30/hotkey-server/internal/modules/source/infrastructure/sourcenet"
 )
 
 const (
@@ -50,8 +51,12 @@ type itemOutcome struct {
 }
 
 // New binds the HN Connector to the only supported official endpoint.
-func New(connection domain.SourceConnection) (*Connector, error) {
-	return newConnector(connection, clientOptions{})
+func New(connection domain.SourceConnection, resolvers ...sourcenet.Resolver) (*Connector, error) {
+	options := clientOptions{}
+	if len(resolvers) > 0 && resolvers[0] != nil {
+		options.resolver = resolvers[0].LookupIPAddr
+	}
+	return newConnector(connection, options)
 }
 
 func newConnector(connection domain.SourceConnection, options clientOptions) (*Connector, error) {

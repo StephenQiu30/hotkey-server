@@ -73,6 +73,10 @@ func (repository *previewRepository) SaveMonitor(context.Context, *domain.Monito
 	repository.writes++
 	return nil
 }
+func (repository *previewRepository) SoftDelete(context.Context, *domain.Monitor) error {
+	repository.writes++
+	return nil
+}
 func (repository *previewRepository) Publish(context.Context, *domain.Monitor, *domain.MonitorConfigVersion, *domain.MonitorConfigVersion, []domain.MonitorSource) error {
 	repository.writes++
 	return nil

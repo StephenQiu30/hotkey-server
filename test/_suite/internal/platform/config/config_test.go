@@ -106,6 +106,7 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("HOTKEY_ROLE", "worker")
 	t.Setenv("HOTKEY_HTTP_ADDR", "")
 	t.Setenv("HOTKEY_SHUTDOWN_TIMEOUT", "3s")
+	t.Setenv("HOTKEY_SOURCE_DOH_URL", "https://cloudflare-dns.com/dns-query")
 
 	cfg, err := Load()
 	if err != nil {
@@ -116,6 +117,9 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.ShutdownTimeout != 3*time.Second {
 		t.Errorf("ShutdownTimeout = %s, want 3s", cfg.ShutdownTimeout)
+	}
+	if cfg.SourceDNSOverHTTPSURL != "https://cloudflare-dns.com/dns-query" {
+		t.Errorf("SourceDNSOverHTTPSURL = %q, want configured DoH endpoint", cfg.SourceDNSOverHTTPSURL)
 	}
 }
 

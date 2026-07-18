@@ -2565,6 +2565,79 @@ const docTemplate = `{
                         }
                     }
                 }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitors"
+                ],
+                "summary": "Delete an archived monitor",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "expected monitor version",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_monitor_transport_http.LifecycleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_MonitorResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
             }
         },
         "/api/v1/monitors/{id}/archive": {
@@ -4304,6 +4377,79 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "delivery"
+                ],
+                "summary": "Delete a disabled report subscription",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "subscription ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "expected version",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.DeleteSubscriptionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_SubscriptionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/http.DeliveryResult-http_DeliveryEmptyResponse"
                         }
@@ -6591,6 +6737,7 @@ const docTemplate = `{
                 },
                 "rules": {
                     "type": "array",
+                    "maxItems": 100,
                     "minItems": 1,
                     "items": {
                         "$ref": "#/definitions/http.MonitorRuleRequest"
@@ -6598,6 +6745,7 @@ const docTemplate = `{
                 },
                 "sources": {
                     "type": "array",
+                    "maxItems": 10,
                     "minItems": 1,
                     "items": {
                         "$ref": "#/definitions/http.MonitorSourceRequest"
@@ -6687,6 +6835,17 @@ const docTemplate = `{
                 },
                 "timezone": {
                     "type": "string"
+                }
+            }
+        },
+        "http.DeleteSubscriptionRequest": {
+            "type": "object",
+            "required": [
+                "expected_version"
+            ],
+            "properties": {
+                "expected_version": {
+                    "type": "integer"
                 }
             }
         },
@@ -7694,6 +7853,8 @@ const docTemplate = `{
             "properties": {
                 "collection_interval_seconds": {
                     "type": "integer",
+                    "maximum": 86400,
+                    "minimum": 300,
                     "example": 900
                 },
                 "event_threshold": {
@@ -7704,6 +7865,7 @@ const docTemplate = `{
                 },
                 "languages": {
                     "type": "array",
+                    "maxItems": 8,
                     "minItems": 1,
                     "items": {
                         "type": "string"
@@ -7714,16 +7876,21 @@ const docTemplate = `{
                 },
                 "regions": {
                     "type": "array",
+                    "maxItems": 8,
                     "items": {
                         "type": "string"
                     }
                 },
                 "relevance_threshold": {
                     "type": "number",
+                    "maximum": 100,
+                    "minimum": 60,
                     "example": 75
                 },
                 "retention_days": {
                     "type": "integer",
+                    "maximum": 3650,
+                    "minimum": 1,
                     "example": 30
                 },
                 "timezone": {
@@ -8616,6 +8783,7 @@ const docTemplate = `{
                 },
                 "rules": {
                     "type": "array",
+                    "maxItems": 100,
                     "minItems": 1,
                     "items": {
                         "$ref": "#/definitions/http.MonitorRuleRequest"
@@ -8623,6 +8791,7 @@ const docTemplate = `{
                 },
                 "sources": {
                     "type": "array",
+                    "maxItems": 10,
                     "minItems": 1,
                     "items": {
                         "$ref": "#/definitions/http.MonitorSourceRequest"

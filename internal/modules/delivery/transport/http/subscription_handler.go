@@ -19,6 +19,7 @@ type subscriptionService interface {
 	Get(context.Context, identitydomain.Subject, int64) (domain.Subscription, error)
 	Update(context.Context, deliveryapplication.UpdateSubscriptionInput) (domain.Subscription, error)
 	RotateRSSToken(context.Context, deliveryapplication.RotateRSSTokenInput) (deliveryapplication.SubscriptionSecret, error)
+	Delete(context.Context, deliveryapplication.DeleteSubscriptionInput) (domain.Subscription, error)
 }
 
 var _ subscriptionService = (*deliveryapplication.SubscriptionService)(nil)
@@ -191,6 +192,43 @@ func (handler *SubscriptionHandler) RotateToken(c *gin.Context) error {
 		return err
 	}
 	httptransport.OK(c, subscriptionSecretResponse(result))
+	return nil
+}
+
+// DeleteSubscription soft-deletes a disabled current-user subscription while
+// retaining immutable report and delivery history.
+// @Summary Delete a disabled report subscription
+// @Tags delivery
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "subscription ID"
+// @Param request body DeleteSubscriptionRequest true "expected version"
+// @Success 200 {object} DeliveryResult[SubscriptionResponse]
+// @Failure 400 {object} DeliveryResult[DeliveryEmptyResponse]
+// @Failure 401 {object} DeliveryResult[DeliveryEmptyResponse]
+// @Failure 404 {object} DeliveryResult[DeliveryEmptyResponse]
+// @Failure 409 {object} DeliveryResult[DeliveryEmptyResponse]
+// @Failure 503 {object} DeliveryResult[DeliveryEmptyResponse]
+// @Router /api/v1/report-subscriptions/{id} [delete]
+func (handler *SubscriptionHandler) Delete(c *gin.Context) error {
+	subject, err := deliverySubject(c)
+	if err != nil {
+		return err
+	}
+	id, err := subscriptionID(c)
+	if err != nil {
+		return err
+	}
+	var request DeleteSubscriptionRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		return deliveryInvalidRequest(err)
+	}
+	subscription, err := handler.service.Delete(c.Request.Context(), deliveryapplication.DeleteSubscriptionInput{Subject: subject, SubscriptionID: id, ExpectedVersion: request.ExpectedVersion})
+	if err != nil {
+		return err
+	}
+	httptransport.OK(c, subscriptionResponse(subscription))
 	return nil
 }
 

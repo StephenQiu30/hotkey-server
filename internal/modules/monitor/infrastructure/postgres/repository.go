@@ -77,7 +77,7 @@ func (repository *Repository) List(ctx context.Context, query domain.MonitorList
 	if err != nil {
 		return nil, "", err
 	}
-	statement := `SELECT ` + monitorColumns + ` FROM monitors WHERE id > $1`
+	statement := `SELECT ` + monitorColumns + ` FROM monitors WHERE id > $1 AND deleted_at IS NULL`
 	if query.PublishedOnly {
 		statement += ` AND status IN ('active', 'paused') AND published_config_version_id IS NOT NULL`
 	}
@@ -118,7 +118,7 @@ func (repository *Repository) findMonitor(ctx context.Context, id int64, lock bo
 		return nil, fmt.Errorf("%w: monitor id is required", sharedrepository.ErrInvalidInput)
 	}
 	var monitor domain.Monitor
-	query := `SELECT ` + monitorColumns + ` FROM monitors WHERE id = $1`
+	query := `SELECT ` + monitorColumns + ` FROM monitors WHERE id = $1 AND deleted_at IS NULL`
 	if lock {
 		query += ` FOR UPDATE`
 	}
@@ -218,6 +218,24 @@ func (repository *Repository) SaveMonitor(ctx context.Context, monitor *domain.M
 	})
 }
 
+// SoftDelete hides an archived Monitor from every operational read while
+// retaining its immutable configurations and downstream provenance.
+func (repository *Repository) SoftDelete(ctx context.Context, monitor *domain.Monitor) error {
+	if monitor == nil || monitor.ID <= 0 || monitor.Version <= 1 || monitor.DeletedAt == nil || monitor.Status != domain.MonitorStatusArchived {
+		return fmt.Errorf("%w: archived monitor deletion is required", sharedrepository.ErrInvalidInput)
+	}
+	return repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+		result, err := transaction.SQL.ExecContext(ctx, `UPDATE monitors SET deleted_at = $1, version = $2, updated_at = now() WHERE id = $3 AND version = $4 AND status = 'archived' AND deleted_at IS NULL`, monitor.DeletedAt, monitor.Version, monitor.ID, monitor.Version-1)
+		if err != nil {
+			return sharedrepository.MapError(err)
+		}
+		if changed, _ := result.RowsAffected(); changed != 1 {
+			return sharedrepository.ErrConflict
+		}
+		return nil
+	})
+}
+
 // Publish is deliberately one repository operation so the three immutable
 // pointer/state changes cannot accidentally escape the application transaction.
 func (repository *Repository) Publish(ctx context.Context, monitor *domain.Monitor, draft, previous *domain.MonitorConfigVersion, sources []domain.MonitorSource) error {
@@ -257,7 +275,7 @@ func (repository *Repository) ListActivePublished(ctx context.Context) ([]domain
 	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
 		return nil, sharedrepository.ErrUnavailable
 	}
-	rows, err := repository.runtime.SQL.QueryContext(ctx, `SELECT `+monitorColumns+` FROM monitors WHERE status = 'active' AND published_config_version_id IS NOT NULL ORDER BY id ASC`)
+	rows, err := repository.runtime.SQL.QueryContext(ctx, `SELECT `+monitorColumns+` FROM monitors WHERE status = 'active' AND published_config_version_id IS NOT NULL AND deleted_at IS NULL ORDER BY id ASC`)
 	if err != nil {
 		return nil, sharedrepository.MapError(err)
 	}

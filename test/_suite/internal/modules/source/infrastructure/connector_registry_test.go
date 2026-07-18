@@ -6,10 +6,15 @@ import (
 	"testing"
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
+	"github.com/StephenQiu30/hotkey-server/internal/modules/source/infrastructure/sourcenet"
 )
 
 func TestConnectorRegistryBindsOnlyKnownSourceTypes(t *testing.T) {
-	registry := NewConnectorRegistry()
+	resolver, err := sourcenet.NewResolver("")
+	if err != nil {
+		t.Fatalf("NewResolver(): %v", err)
+	}
+	registry := NewConnectorRegistry(resolver)
 	for _, connection := range []domain.SourceConnection{
 		{ID: 1, SourceType: domain.SourceTypeRSS, Name: "RSS", Endpoint: "https://feeds.example.test/rss", AuthType: domain.AuthTypeNone, Config: domain.DefaultSourceConfig(), Enabled: true, HealthStatus: domain.HealthStatusUnknown},
 		{ID: 2, SourceType: domain.SourceTypeHackerNews, Name: "HN", Endpoint: domain.HackerNewsEndpoint, AuthType: domain.AuthTypeNone, Config: domain.DefaultSourceConfig(), Enabled: true, HealthStatus: domain.HealthStatusUnknown},

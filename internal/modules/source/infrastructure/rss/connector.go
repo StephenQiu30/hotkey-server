@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
+	"github.com/StephenQiu30/hotkey-server/internal/modules/source/infrastructure/sourcenet"
 )
 
 const maxRedirects = 3
@@ -48,8 +49,12 @@ type connectorOptions struct {
 // New binds the RSS Connector to one immutable SourceConnection execution
 // endpoint. Collection runs later supply only request state, never endpoints
 // or credentials.
-func New(connection domain.SourceConnection) (*Connector, error) {
-	return newConnector(connection, connectorOptions{})
+func New(connection domain.SourceConnection, resolvers ...sourcenet.Resolver) (*Connector, error) {
+	options := connectorOptions{}
+	if len(resolvers) > 0 && resolvers[0] != nil {
+		options.resolver = resolvers[0].LookupIPAddr
+	}
+	return newConnector(connection, options)
 }
 
 func newConnector(connection domain.SourceConnection, options connectorOptions) (*Connector, error) {

@@ -15,5 +15,6 @@ func RegisterSubscriptionRoutes(router *gin.Engine, service subscriptionService,
 	api.POST("", httptransport.Wrap(handler.Create))
 	api.GET("/:id", httptransport.Wrap(handler.Get))
 	api.PATCH("/:id", httptransport.Wrap(handler.Update))
+	api.DELETE("/:id", httptransport.Wrap(handler.Delete))
 	api.POST("/:id/rss-token/rotate", httptransport.Wrap(handler.RotateToken))
 }

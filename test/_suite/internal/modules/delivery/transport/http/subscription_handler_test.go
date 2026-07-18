@@ -18,6 +18,7 @@ type subscriptionServiceFake struct {
 	subscription domain.Subscription
 	createCalls  int
 	rotateCalls  int
+	deleteCalls  int
 }
 
 func (fake *subscriptionServiceFake) Create(_ context.Context, input deliveryapplication.CreateSubscriptionInput) (deliveryapplication.SubscriptionSecret, error) {
@@ -39,6 +40,12 @@ func (fake *subscriptionServiceFake) RotateRSSToken(_ context.Context, _ deliver
 	fake.rotateCalls++
 	fake.subscription.Version++
 	return deliveryapplication.SubscriptionSecret{Subscription: fake.subscription, RSSToken: "replacement-rss-token"}, nil
+}
+func (fake *subscriptionServiceFake) Delete(_ context.Context, _ deliveryapplication.DeleteSubscriptionInput) (domain.Subscription, error) {
+	fake.deleteCalls++
+	fake.subscription.Enabled = false
+	fake.subscription.Version++
+	return fake.subscription, nil
 }
 
 type subscriptionAuthenticator struct{}
@@ -67,6 +74,10 @@ func TestSubscriptionRoutesExposeTokenOnlyAtCreateOrRotation(t *testing.T) {
 	rotate := subscriptionRequest(router, http.MethodPost, "/api/v1/report-subscriptions/7/rss-token/rotate", `{"expected_version":1}`, "viewer")
 	if rotate.Code != http.StatusOK || service.rotateCalls != 1 || !strings.Contains(rotate.Body.String(), "replacement-rss-token") || strings.Contains(rotate.Body.String(), service.subscription.TokenHash) {
 		t.Fatalf("rotate response = %d/%s", rotate.Code, rotate.Body.String())
+	}
+	deleted := subscriptionRequest(router, http.MethodDelete, "/api/v1/report-subscriptions/7", `{"expected_version":2}`, "viewer")
+	if deleted.Code != http.StatusOK || service.deleteCalls != 1 || strings.Contains(deleted.Body.String(), service.subscription.TokenHash) {
+		t.Fatalf("delete response = %d/%s", deleted.Code, deleted.Body.String())
 	}
 }
 

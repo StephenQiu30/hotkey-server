@@ -14,6 +14,7 @@ type MonitorRepository interface {
 	CreateDraft(context.Context, *MonitorConfigVersion, []MonitorRule, []MonitorSource) error
 	SaveDraft(context.Context, *MonitorConfigVersion, []MonitorRule, []MonitorSource) error
 	SaveMonitor(context.Context, *Monitor) error
+	SoftDelete(context.Context, *Monitor) error
 	Publish(context.Context, *Monitor, *MonitorConfigVersion, *MonitorConfigVersion, []MonitorSource) error
 	List(context.Context, MonitorListQuery) ([]Monitor, string, error)
 	ListActivePublished(context.Context) ([]PublishedMonitor, error)
