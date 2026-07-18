@@ -65,6 +65,29 @@ func TestMonitorServicePublishesImmutableConfigurationAndCoordinatesSourceLifecy
 	if publishedMonitor.Status != monitordomain.MonitorStatusActive || publishedMonitor.DraftConfigVersionID != nil || publishedConfig.State != monitordomain.ConfigVersionPublished || publishedConfig.ConfigHash == "" || publishedConfig.PublishedAt == nil {
 		t.Fatalf("published facts = %#v %#v", publishedMonitor, publishedConfig)
 	}
+	var checkpointCount int
+	if err := runtime.SQL.QueryRow(`
+SELECT count(*)
+FROM source_checkpoints AS checkpoint
+JOIN monitor_sources AS source ON source.id = checkpoint.monitor_source_id
+WHERE source.config_version_id = $1`, publishedConfig.ID).Scan(&checkpointCount); err != nil {
+		t.Fatalf("read published checkpoints: %v", err)
+	}
+	if checkpointCount != 1 {
+		t.Fatalf("published checkpoint count = %d, want 1", checkpointCount)
+	}
+	var checkpointQueryHash string
+	var checkpointNextPollAt time.Time
+	if err := runtime.SQL.QueryRow(`
+SELECT checkpoint.query_hash, checkpoint.next_poll_at
+FROM source_checkpoints AS checkpoint
+JOIN monitor_sources AS source ON source.id = checkpoint.monitor_source_id
+WHERE source.config_version_id = $1`, publishedConfig.ID).Scan(&checkpointQueryHash, &checkpointNextPollAt); err != nil {
+		t.Fatalf("read published checkpoint facts: %v", err)
+	}
+	if checkpointQueryHash == "" || !checkpointNextPollAt.Equal(publishedConfig.PublishedAt.UTC()) {
+		t.Fatalf("published checkpoints = count %d, hash %q, next poll %s; published at %s", checkpointCount, checkpointQueryHash, checkpointNextPollAt, publishedConfig.PublishedAt.UTC())
+	}
 	if _, err := sources.Disable(ctx, sourceapplication.LifecycleInput{Subject: admin, ID: connection.ID, ExpectedVersion: connection.Version}); appCode(err) != sharederrors.CodeSourceConnectionRequired {
 		t.Fatalf("active sole-source disable code=%d", appCode(err))
 	}
