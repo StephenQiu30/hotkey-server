@@ -2,8 +2,10 @@ package application
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	"sort"
 
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/domain"
 	sourcedomain "github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
@@ -17,6 +19,7 @@ import (
 type ContentQueryDependencies struct {
 	Contents ingestiondomain.ContentRepository
 	Sources  sourcedomain.ContentSourceReader
+	Evidence ingestiondomain.EvidenceStore
 }
 
 // ContentQueryService exposes the active Content read use cases consumed by
@@ -25,13 +28,64 @@ type ContentQueryDependencies struct {
 type ContentQueryService struct {
 	contents ingestiondomain.ContentRepository
 	sources  sourcedomain.ContentSourceReader
+	evidence ingestiondomain.EvidenceStore
 }
 
 func NewContentQueryService(dependencies ContentQueryDependencies) (*ContentQueryService, error) {
 	if dependencies.Contents == nil || dependencies.Sources == nil {
 		return nil, errors.New("content query dependencies are required")
 	}
-	return &ContentQueryService{contents: dependencies.Contents, sources: dependencies.Sources}, nil
+	return &ContentQueryService{contents: dependencies.Contents, sources: dependencies.Sources, evidence: dependencies.Evidence}, nil
+}
+
+const contentDocumentMaximumBytes int64 = 4 << 20
+
+func (service *ContentQueryService) GetDocument(ctx context.Context, contentID int64) (ingestiondomain.ContentDocument, error) {
+	content, err := service.GetActive(ctx, contentID)
+	if err != nil {
+		return ingestiondomain.ContentDocument{}, err
+	}
+	document := ingestiondomain.ContentDocument{
+		ContentID: content.ID, Title: content.Title, SourceName: content.SourceName,
+		CanonicalURL: content.CanonicalURL, Language: content.Language, PublishedAt: content.PublishedAt,
+		Availability: ingestiondomain.ContentDocumentNotCaptured,
+	}
+	assets, err := service.contents.ListEvidenceAssets(ctx, content.SourceConnectionID, content.ID)
+	if err != nil {
+		return ingestiondomain.ContentDocument{}, contentQueryReadError(err)
+	}
+	eligible := make([]ingestiondomain.ContentAsset, 0, len(assets))
+	for _, asset := range assets {
+		if asset.Status == ingestiondomain.AssetStatusAvailable && asset.AssetType == "text" && asset.MIMEType == markdownMIMEType {
+			eligible = append(eligible, asset)
+		}
+	}
+	if len(eligible) == 0 {
+		return document, nil
+	}
+	sort.SliceStable(eligible, func(left, right int) bool {
+		if eligible[left].CapturedAt.Equal(eligible[right].CapturedAt) {
+			return eligible[left].ID > eligible[right].ID
+		}
+		return eligible[left].CapturedAt.After(eligible[right].CapturedAt)
+	})
+	if service.evidence == nil {
+		return ingestiondomain.ContentDocument{}, sharederrors.New(sharederrors.CodeUnavailable, 503, "")
+	}
+	asset := eligible[0]
+	read, err := service.evidence.ReadText(ctx, asset.ObjectKey, contentDocumentMaximumBytes)
+	if err != nil {
+		return ingestiondomain.ContentDocument{}, sharederrors.New(sharederrors.CodeUnavailable, 503, "")
+	}
+	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(read.Text)))
+	if read.Text == "" || read.MIMEType != markdownMIMEType || read.MIMEType != asset.MIMEType || read.SHA256 != asset.SHA256 || digest != asset.SHA256 || read.SizeBytes != asset.SizeBytes || read.SizeBytes != int64(len(read.Text)) {
+		return ingestiondomain.ContentDocument{}, sharederrors.New(sharederrors.CodeUnavailable, 503, "")
+	}
+	document.Availability = ingestiondomain.ContentDocumentReady
+	document.Markdown = read.Text
+	document.SHA256 = read.SHA256
+	document.CapturedAt = asset.CapturedAt
+	return document, nil
 }
 
 func (service *ContentQueryService) ListActive(ctx context.Context, query ingestiondomain.ContentListQuery) (ingestiondomain.ContentPage, error) {

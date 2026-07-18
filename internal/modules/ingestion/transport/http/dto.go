@@ -53,6 +53,19 @@ type ContentPageResponse struct {
 	NextCursor string            `json:"next_cursor"`
 }
 
+type ContentDocumentResponse struct {
+	ContentID    int64      `json:"content_id" example:"7"`
+	Title        string     `json:"title" example:"Release notes"`
+	SourceName   string     `json:"source_name" example:"Product feed"`
+	CanonicalURL string     `json:"canonical_url" example:"https://example.test/items/123"`
+	Language     string     `json:"language" example:"en"`
+	PublishedAt  time.Time  `json:"published_at"`
+	Availability string     `json:"availability" enums:"ready,not_captured"`
+	Markdown     string     `json:"markdown" example:"# Release notes"`
+	SHA256       string     `json:"sha256" example:"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"`
+	CapturedAt   *time.Time `json:"captured_at" extensions:"x-nullable"`
+}
+
 func contentResponse(content ingestiondomain.Content) ContentResponse {
 	return ContentResponse{
 		ID: content.ID, SourceType: string(content.SourceType), SourceName: content.SourceName,
@@ -73,6 +86,19 @@ func contentPageResponse(page ingestiondomain.ContentPage) ContentPageResponse {
 		items = append(items, contentResponse(content))
 	}
 	return ContentPageResponse{Items: items, NextCursor: page.NextCursor}
+}
+
+func contentDocumentResponse(document ingestiondomain.ContentDocument) ContentDocumentResponse {
+	response := ContentDocumentResponse{
+		ContentID: document.ContentID, Title: document.Title, SourceName: document.SourceName,
+		CanonicalURL: document.CanonicalURL, Language: document.Language, PublishedAt: document.PublishedAt,
+		Availability: string(document.Availability), Markdown: document.Markdown, SHA256: document.SHA256,
+	}
+	if !document.CapturedAt.IsZero() {
+		capturedAt := document.CapturedAt
+		response.CapturedAt = &capturedAt
+	}
+	return response
 }
 
 func nullableContentField(value string) *string {

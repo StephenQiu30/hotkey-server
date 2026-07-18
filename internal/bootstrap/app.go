@@ -24,6 +24,7 @@ import (
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/application"
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/domain"
 	ingestionjobs "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/infrastructure/jobs"
+	ingestionmarkdown "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/infrastructure/markdown"
 	ingestionminio "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/infrastructure/minio"
 	ingestionpostgres "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/infrastructure/postgres"
 	ingestiontransport "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/transport/http"
@@ -109,6 +110,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				ingestionpostgres.NewContentRepository,
 				ingestionpostgres.NewRelevanceRepository,
 				ingestionpostgres.NewRelevanceCandidateReader,
+				ingestionmarkdown.NewConverter,
 				newIngestionRelevanceReviewService,
 				newIngestionEvidenceStore,
 				sourcepostgres.NewCollectionRepository,
@@ -432,9 +434,9 @@ func newIngestionCapturedItemReader(runs *sourcepostgres.CollectionRepository) (
 	return sourceapplication.NewCapturedItemReader(sourceapplication.CapturedItemReaderDependencies{Runs: runs})
 }
 
-func newIngestionService(runtime *database.Runtime, captures *sourceapplication.CapturedItemReader, contents *ingestionpostgres.ContentRepository, evidence ingestiondomain.EvidenceStore, metrics *eventapplication.ContentMetricRefreshService) (*ingestionapplication.Service, error) {
+func newIngestionService(runtime *database.Runtime, captures *sourceapplication.CapturedItemReader, contents *ingestionpostgres.ContentRepository, evidence ingestiondomain.EvidenceStore, markdown *ingestionmarkdown.Converter, metrics *eventapplication.ContentMetricRefreshService) (*ingestionapplication.Service, error) {
 	return ingestionapplication.NewService(ingestionapplication.Dependencies{
-		Runtime: runtime, Captures: captures, Contents: contents, Evidence: evidence, MetricRefresh: metrics,
+		Runtime: runtime, Captures: captures, Contents: contents, Evidence: evidence, Markdown: markdown, MetricRefresh: metrics,
 	})
 }
 
@@ -442,6 +444,9 @@ type unavailableEvidenceStore struct{}
 
 func (unavailableEvidenceStore) PutText(context.Context, ingestiondomain.EvidenceObject) (ingestiondomain.EvidenceReceipt, error) {
 	return ingestiondomain.EvidenceReceipt{}, fmt.Errorf("evidence object store is unavailable")
+}
+func (unavailableEvidenceStore) ReadText(context.Context, string, int64) (ingestiondomain.EvidenceText, error) {
+	return ingestiondomain.EvidenceText{}, fmt.Errorf("evidence object store is unavailable")
 }
 func (unavailableEvidenceStore) Delete(context.Context, string) error {
 	return fmt.Errorf("evidence object store is unavailable")
@@ -454,8 +459,8 @@ func newIngestionRelevanceReviewService(snapshots *ingestionpostgres.RelevanceRe
 	return ingestionapplication.NewRelevanceReviewService(ingestionapplication.RelevanceReviewServiceDependencies{Snapshots: snapshots, Reviews: reviews})
 }
 
-func newIngestionContentQueryService(contents *ingestionpostgres.ContentRepository, sources *sourceapplication.Service) (*ingestionapplication.ContentQueryService, error) {
-	return ingestionapplication.NewContentQueryService(ingestionapplication.ContentQueryDependencies{Contents: contents, Sources: sources})
+func newIngestionContentQueryService(contents *ingestionpostgres.ContentRepository, sources *sourceapplication.Service, evidence ingestiondomain.EvidenceStore) (*ingestionapplication.ContentQueryService, error) {
+	return ingestionapplication.NewContentQueryService(ingestionapplication.ContentQueryDependencies{Contents: contents, Sources: sources, Evidence: evidence})
 }
 
 func newIngestionRelevanceAPIService(snapshots *ingestionpostgres.RelevanceRepository, contents *ingestionpostgres.ContentRepository, candidates *ingestionpostgres.RelevanceCandidateReader) (*ingestionapplication.RelevanceAPIService, error) {

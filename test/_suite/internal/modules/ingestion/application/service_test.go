@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -36,7 +37,7 @@ func TestIngestRunPersistsEvidenceBindsContentAndContinuesAfterParseFailure(t *t
 	reader := transactionObservingReader{CapturedItemReader: newCapturedItemReader(t, runtime)}
 	contents := transactionObservingContents{ContentRepository: ingestionpostgres.NewContentRepository(runtime)}
 	service, err := ingestionapplication.NewService(ingestionapplication.Dependencies{
-		Runtime: runtime, Captures: &reader, Contents: &contents, Evidence: store,
+		Runtime: runtime, Captures: &reader, Contents: &contents, Evidence: store, Markdown: passthroughMarkdownProjector{},
 	})
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
@@ -97,7 +98,7 @@ func TestIngestRunDoesNotUploadWhenCaptureBodyWasNotPermitted(t *testing.T) {
 	})
 	store := newEvidenceStoreFake()
 	service, err := ingestionapplication.NewService(ingestionapplication.Dependencies{
-		Runtime: runtime, Captures: newCapturedItemReader(t, runtime), Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: store,
+		Runtime: runtime, Captures: newCapturedItemReader(t, runtime), Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: store, Markdown: passthroughMarkdownProjector{},
 	})
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
@@ -159,7 +160,7 @@ func TestIngestRunRefreshesEventMetricsAfterContentCommit(t *testing.T) {
 	})
 	refresh := &contentMetricRefreshFake{}
 	service, err := ingestionapplication.NewService(ingestionapplication.Dependencies{
-		Runtime: runtime, Captures: newCapturedItemReader(t, runtime), Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: newEvidenceStoreFake(), MetricRefresh: refresh,
+		Runtime: runtime, Captures: newCapturedItemReader(t, runtime), Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: newEvidenceStoreFake(), Markdown: passthroughMarkdownProjector{}, MetricRefresh: refresh,
 	})
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
@@ -181,7 +182,7 @@ func TestIngestRunReusesOneEvidenceAssetForSameSourceBody(t *testing.T) {
 	})
 	store := newEvidenceStoreFake()
 	service, err := ingestionapplication.NewService(ingestionapplication.Dependencies{
-		Runtime: runtime, Captures: newCapturedItemReader(t, runtime), Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: store,
+		Runtime: runtime, Captures: newCapturedItemReader(t, runtime), Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: store, Markdown: passthroughMarkdownProjector{},
 	})
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
@@ -212,7 +213,7 @@ func TestIngestRunCompletesWithSingleConnectionPool(t *testing.T) {
 		capturedItem("single-pool", "article", "Single pool", "evidence must not deadlock"),
 	})
 	service, err := ingestionapplication.NewService(ingestionapplication.Dependencies{
-		Runtime: runtime, Captures: newCapturedItemReader(t, runtime), Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: newEvidenceStoreFake(),
+		Runtime: runtime, Captures: newCapturedItemReader(t, runtime), Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: newEvidenceStoreFake(), Markdown: passthroughMarkdownProjector{},
 	})
 	if err != nil {
 		t.Fatalf("NewService(): %v", err)
@@ -272,6 +273,10 @@ type markdownProjectorFake struct {
 	err                    error
 }
 
+type passthroughMarkdownProjector struct{}
+
+func (passthroughMarkdownProjector) Convert(input, _ string) (string, error) { return input, nil }
+
 func (projector *markdownProjectorFake) Convert(input, baseURL string) (string, error) {
 	projector.input, projector.baseURL = input, baseURL
 	return projector.output, projector.err
@@ -293,9 +298,19 @@ func (store *evidenceStoreFake) PutText(_ context.Context, object ingestiondomai
 	defer store.mu.Unlock()
 	store.puts++
 	store.lastObject = object
-	receipt := ingestiondomain.EvidenceReceipt{ObjectKey: object.ObjectKey, SHA256: object.SHA256, SizeBytes: int64(len(object.Text))}
+	receipt := ingestiondomain.EvidenceReceipt{ObjectKey: object.ObjectKey, MIMEType: object.MIMEType, SHA256: object.SHA256, SizeBytes: int64(len(object.Text))}
 	store.objects[object.ObjectKey] = receipt
 	return receipt, nil
+}
+
+func (store *evidenceStoreFake) ReadText(_ context.Context, objectKey string, _ int64) (ingestiondomain.EvidenceText, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	receipt, ok := store.objects[objectKey]
+	if !ok {
+		return ingestiondomain.EvidenceText{}, errors.New("evidence object not found")
+	}
+	return ingestiondomain.EvidenceText{MIMEType: receipt.MIMEType, SHA256: receipt.SHA256, SizeBytes: receipt.SizeBytes}, nil
 }
 
 func (store *evidenceStoreFake) Delete(_ context.Context, objectKey string) error {

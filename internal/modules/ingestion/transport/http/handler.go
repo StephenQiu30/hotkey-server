@@ -17,6 +17,7 @@ import (
 const (
 	contentQueryListOperation = "list_active"
 	contentQueryGetOperation  = "get_active"
+	contentDocumentOperation  = "get_document"
 )
 
 // contentQueryService is the ingestion application boundary used by this
@@ -25,6 +26,7 @@ const (
 type contentQueryService interface {
 	ListActive(context.Context, ingestiondomain.ContentListQuery) (ingestiondomain.ContentPage, error)
 	GetActive(context.Context, int64) (ingestiondomain.Content, error)
+	GetDocument(context.Context, int64) (ingestiondomain.ContentDocument, error)
 }
 
 type Handler struct {
@@ -92,6 +94,36 @@ func (handler *Handler) Get(c *gin.Context) error {
 	}
 	handler.record(contentQueryGetOperation, nil)
 	httptransport.OK(c, contentResponse(content))
+	return nil
+}
+
+// Document returns the newest verified Markdown projection for one active Content.
+// @Summary Get captured content Markdown document
+// @Description Returns not_captured as a successful empty state when no authorized Markdown asset exists.
+// @Tags contents
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "content ID"
+// @Success 200 {object} ContentResult[ContentDocumentResponse]
+// @Failure 400 {object} ContentResult[EmptyResponse]
+// @Failure 401 {object} ContentResult[EmptyResponse]
+// @Failure 404 {object} ContentResult[EmptyResponse]
+// @Failure 503 {object} ContentResult[EmptyResponse]
+// @Router /api/v1/contents/{id}/document [get]
+func (handler *Handler) Document(c *gin.Context) error {
+	httptransport.SetModule(c, "ingestion")
+	id, err := contentID(c)
+	if err != nil {
+		handler.record(contentDocumentOperation, err)
+		return err
+	}
+	document, err := handler.service.GetDocument(c.Request.Context(), id)
+	if err != nil {
+		handler.record(contentDocumentOperation, err)
+		return err
+	}
+	handler.record(contentDocumentOperation, nil)
+	httptransport.OK(c, contentDocumentResponse(document))
 	return nil
 }
 

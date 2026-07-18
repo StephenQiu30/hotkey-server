@@ -55,6 +55,13 @@ type RelevanceCandidateReader interface {
 // must not leak provider SDK types into application or domain code.
 type EvidenceStore interface {
 	PutText(ctx context.Context, object EvidenceObject) (EvidenceReceipt, error)
+	ReadText(ctx context.Context, objectKey string, maxBytes int64) (EvidenceText, error)
 	Delete(ctx context.Context, objectKey string) error
 	ListPrefix(ctx context.Context, prefix string) ([]EvidenceReceipt, error)
+}
+
+// MarkdownProjector converts only Source-authorized captured text. Its
+// infrastructure implementation must not fetch the canonical URL.
+type MarkdownProjector interface {
+	Convert(input, baseURL string) (string, error)
 }

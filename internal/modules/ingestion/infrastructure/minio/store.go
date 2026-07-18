@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 
@@ -58,12 +59,15 @@ func EvidenceObjectKey(sourceID int64, digest string) string {
 // size; otherwise it never silently treats the conflicting remote object as
 // valid evidence.
 func (store *Store) PutText(ctx context.Context, object ingestiondomain.EvidenceObject) (ingestiondomain.EvidenceReceipt, error) {
+	if strings.TrimSpace(object.MIMEType) == "" {
+		object.MIMEType = "text/plain; charset=utf-8"
+	}
 	if err := validateEvidenceObject(object); err != nil {
 		return ingestiondomain.EvidenceReceipt{}, err
 	}
 	if receipt, err := store.receipt(ctx, object.ObjectKey); err == nil {
-		if receipt.SHA256 != object.SHA256 || receipt.SizeBytes != int64(len(object.Text)) {
-			return ingestiondomain.EvidenceReceipt{}, fmt.Errorf("existing evidence object does not match declared SHA-256 or size")
+		if receipt.SHA256 != object.SHA256 || receipt.SizeBytes != int64(len(object.Text)) || receipt.MIMEType != object.MIMEType {
+			return ingestiondomain.EvidenceReceipt{}, fmt.Errorf("existing evidence object does not match declared SHA-256, size, or MIME type")
 		}
 		return receipt, nil
 	} else if !missingObject(err) {
@@ -71,7 +75,7 @@ func (store *Store) PutText(ctx context.Context, object ingestiondomain.Evidence
 	}
 
 	if _, err := store.client.PutObject(ctx, store.bucket, object.ObjectKey, strings.NewReader(object.Text), int64(len(object.Text)), miniosdk.PutObjectOptions{
-		ContentType:  "text/plain; charset=utf-8",
+		ContentType:  object.MIMEType,
 		UserMetadata: map[string]string{"sha256": object.SHA256},
 	}); err != nil {
 		return ingestiondomain.EvidenceReceipt{}, fmt.Errorf("put evidence object: %w", err)
@@ -81,10 +85,46 @@ func (store *Store) PutText(ctx context.Context, object ingestiondomain.Evidence
 	if err != nil {
 		return ingestiondomain.EvidenceReceipt{}, err
 	}
-	if receipt.SHA256 != object.SHA256 || receipt.SizeBytes != int64(len(object.Text)) {
-		return ingestiondomain.EvidenceReceipt{}, fmt.Errorf("stored evidence object does not match declared SHA-256 or size")
+	if receipt.SHA256 != object.SHA256 || receipt.SizeBytes != int64(len(object.Text)) || receipt.MIMEType != object.MIMEType {
+		return ingestiondomain.EvidenceReceipt{}, fmt.Errorf("stored evidence object does not match declared SHA-256, size, or MIME type")
 	}
 	return receipt, nil
+}
+
+// ReadText reads only deterministic evidence keys through a caller-supplied
+// byte ceiling. It verifies object metadata against the actual bytes before
+// returning provider-neutral facts to the application layer.
+func (store *Store) ReadText(ctx context.Context, objectKey string, maxBytes int64) (ingestiondomain.EvidenceText, error) {
+	if !validEvidenceKey(objectKey) {
+		return ingestiondomain.EvidenceText{}, fmt.Errorf("invalid evidence object key")
+	}
+	if maxBytes <= 0 {
+		return ingestiondomain.EvidenceText{}, fmt.Errorf("positive evidence read limit is required")
+	}
+	receipt, err := store.receipt(ctx, objectKey)
+	if err != nil {
+		return ingestiondomain.EvidenceText{}, err
+	}
+	if receipt.SizeBytes > maxBytes {
+		return ingestiondomain.EvidenceText{}, fmt.Errorf("evidence object exceeds read limit")
+	}
+	object, err := store.client.GetObject(ctx, store.bucket, objectKey, miniosdk.GetObjectOptions{})
+	if err != nil {
+		return ingestiondomain.EvidenceText{}, fmt.Errorf("get evidence object: %w", err)
+	}
+	defer object.Close()
+	body, err := io.ReadAll(io.LimitReader(object, maxBytes+1))
+	if err != nil {
+		return ingestiondomain.EvidenceText{}, fmt.Errorf("read evidence object: %w", err)
+	}
+	if int64(len(body)) > maxBytes || int64(len(body)) != receipt.SizeBytes {
+		return ingestiondomain.EvidenceText{}, fmt.Errorf("evidence object size does not match verified metadata")
+	}
+	digest := fmt.Sprintf("%x", sha256.Sum256(body))
+	if digest != receipt.SHA256 {
+		return ingestiondomain.EvidenceText{}, fmt.Errorf("evidence object SHA-256 does not match verified metadata")
+	}
+	return ingestiondomain.EvidenceText{Text: string(body), MIMEType: receipt.MIMEType, SHA256: digest, SizeBytes: int64(len(body))}, nil
 }
 
 // Delete removes only a deterministic ingestion evidence object.
@@ -130,7 +170,11 @@ func (store *Store) receipt(ctx context.Context, objectKey string) (ingestiondom
 	if !validSHA256(digest) {
 		return ingestiondomain.EvidenceReceipt{}, fmt.Errorf("evidence object is missing valid SHA-256 metadata")
 	}
-	return ingestiondomain.EvidenceReceipt{ObjectKey: objectKey, SHA256: digest, SizeBytes: object.Size}, nil
+	mimeType := object.ContentType
+	if mimeType == "" {
+		mimeType = object.Metadata.Get("Content-Type")
+	}
+	return ingestiondomain.EvidenceReceipt{ObjectKey: objectKey, MIMEType: mimeType, SHA256: digest, SizeBytes: object.Size}, nil
 }
 
 func validateEvidenceObject(object ingestiondomain.EvidenceObject) error {
@@ -139,6 +183,9 @@ func validateEvidenceObject(object ingestiondomain.EvidenceObject) error {
 	}
 	if object.Text == "" {
 		return fmt.Errorf("evidence text must not be empty")
+	}
+	if strings.TrimSpace(object.MIMEType) == "" || strings.ContainsAny(object.MIMEType, "\r\n") {
+		return fmt.Errorf("evidence MIME type is required")
 	}
 	if !validSHA256(object.SHA256) {
 		return fmt.Errorf("evidence SHA-256 must be lowercase hexadecimal")

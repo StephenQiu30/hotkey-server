@@ -163,7 +163,7 @@ func (store *failFirstLifecycleDeleteStore) Delete(ctx context.Context, objectKe
 func newLifecycleService(t *testing.T, runtime *database.Runtime, evidence ingestiondomain.EvidenceStore) *ingestionapplication.Service {
 	t.Helper()
 	service, err := ingestionapplication.NewService(ingestionapplication.Dependencies{
-		Runtime: runtime, Captures: newCapturedItemReader(t, runtime), Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: evidence,
+		Runtime: runtime, Captures: newCapturedItemReader(t, runtime), Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: evidence, Markdown: passthroughMarkdownProjector{},
 	})
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)

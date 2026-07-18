@@ -2,7 +2,9 @@ package application
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -18,14 +20,16 @@ func TestContentDocumentSelectsNewestAvailableMarkdownAsset(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.July, 18, 10, 0, 0, 0, time.UTC)
 	content := queryTestContent(7, 3)
+	readyMarkdown := "# 标题\n"
+	readySHA := fmt.Sprintf("%x", sha256.Sum256([]byte(readyMarkdown)))
 	assets := []ingestiondomain.ContentAsset{
 		{ID: 8, ContentID: 7, AssetType: "text", ObjectKey: "evidence/v1/3/aa/plain.txt", MIMEType: "text/plain; charset=utf-8", SHA256: strings.Repeat("a", 64), SizeBytes: 5, CapturedAt: now.Add(time.Minute), Status: ingestiondomain.AssetStatusAvailable},
 		{ID: 9, ContentID: 7, AssetType: "text", ObjectKey: "evidence/v1/3/bb/pending.txt", MIMEType: testMarkdownMIME, SHA256: strings.Repeat("b", 64), SizeBytes: 7, CapturedAt: now.Add(2 * time.Minute), Status: ingestiondomain.AssetStatusDeletePending},
 		{ID: 10, ContentID: 7, AssetType: "text", ObjectKey: "evidence/v1/3/cc/older.txt", MIMEType: testMarkdownMIME, SHA256: strings.Repeat("c", 64), SizeBytes: 7, CapturedAt: now, Status: ingestiondomain.AssetStatusAvailable},
-		{ID: 11, ContentID: 7, AssetType: "text", ObjectKey: "evidence/v1/3/dd/newer.txt", MIMEType: testMarkdownMIME, SHA256: strings.Repeat("d", 64), SizeBytes: 9, CapturedAt: now, Status: ingestiondomain.AssetStatusAvailable},
+		{ID: 11, ContentID: 7, AssetType: "text", ObjectKey: "evidence/v1/3/dd/newer.txt", MIMEType: testMarkdownMIME, SHA256: readySHA, SizeBytes: int64(len(readyMarkdown)), CapturedAt: now, Status: ingestiondomain.AssetStatusAvailable},
 	}
 	store := &documentEvidenceStoreStub{documents: map[string]ingestiondomain.EvidenceText{
-		assets[3].ObjectKey: {Text: "# 标题\n", MIMEType: testMarkdownMIME, SHA256: assets[3].SHA256, SizeBytes: assets[3].SizeBytes},
+		assets[3].ObjectKey: {Text: readyMarkdown, MIMEType: testMarkdownMIME, SHA256: assets[3].SHA256, SizeBytes: assets[3].SizeBytes},
 	}}
 	service, err := NewContentQueryService(ContentQueryDependencies{
 		Contents: &contentQueryRepositoryStub{content: content, assets: assets},

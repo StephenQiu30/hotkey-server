@@ -97,6 +97,7 @@ type NormalizedContent struct {
 	Title              string
 	Excerpt            string
 	Body               string
+	ArchivedMarkdown   string
 	CanonicalURL       string
 	Language           string
 	Author             NormalizedAuthor
@@ -204,13 +205,42 @@ type EvidenceObject struct {
 	SourceConnectionID int64
 	ObjectKey          string
 	Text               string
+	MIMEType           string
 	SHA256             string
 }
 
 type EvidenceReceipt struct {
 	ObjectKey string
+	MIMEType  string
 	SHA256    string
 	SizeBytes int64
+}
+
+type EvidenceText struct {
+	Text      string
+	MIMEType  string
+	SHA256    string
+	SizeBytes int64
+}
+
+type ContentDocumentAvailability string
+
+const (
+	ContentDocumentReady       ContentDocumentAvailability = "ready"
+	ContentDocumentNotCaptured ContentDocumentAvailability = "not_captured"
+)
+
+type ContentDocument struct {
+	ContentID    int64
+	Title        string
+	SourceName   string
+	CanonicalURL string
+	Language     string
+	PublishedAt  time.Time
+	Availability ContentDocumentAvailability
+	Markdown     string
+	SHA256       string
+	CapturedAt   time.Time
 }
 
 func validSHA256(value string) bool {

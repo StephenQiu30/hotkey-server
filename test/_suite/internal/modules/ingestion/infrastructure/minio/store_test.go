@@ -290,6 +290,8 @@ func (fake *s3Fake) serveHTTP(writer http.ResponseWriter, request *http.Request)
 		writer.Header().Set("Content-Length", fmt.Sprintf("%d", len(object.text)))
 		writer.Header().Set("Content-Type", object.mimeType)
 		writer.Header().Set("X-Amz-Meta-Sha256", object.sha)
+		writer.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
+		writer.Header().Set("ETag", "\"fixture-etag\"")
 		writer.WriteHeader(http.StatusOK)
 		_, _ = writer.Write([]byte(object.text))
 	case http.MethodDelete:

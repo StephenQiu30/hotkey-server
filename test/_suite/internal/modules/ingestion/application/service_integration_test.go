@@ -37,7 +37,7 @@ func TestIngestRunMinIOPostgresRollbackDeletesObject(t *testing.T) {
 
 	reader := failingBindReader{CapturedItemReader: newCapturedItemReader(t, runtime), err: errors.New("inject source bind failure")}
 	service, err := ingestionapplication.NewService(ingestionapplication.Dependencies{
-		Runtime: runtime, Captures: &reader, Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: store,
+		Runtime: runtime, Captures: &reader, Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: store, Markdown: passthroughMarkdownProjector{},
 	})
 	if err != nil {
 		t.Fatalf("NewService(): %v", err)
@@ -70,7 +70,7 @@ func TestIngestRunMinIOPostgresReconcileDeletesOrphan(t *testing.T) {
 	failingDelete := &failFirstDeleteStore{EvidenceStore: store}
 	reader := failingBindReader{CapturedItemReader: newCapturedItemReader(t, runtime), err: errors.New("inject source bind failure")}
 	first, err := ingestionapplication.NewService(ingestionapplication.Dependencies{
-		Runtime: runtime, Captures: &reader, Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: failingDelete,
+		Runtime: runtime, Captures: &reader, Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: failingDelete, Markdown: passthroughMarkdownProjector{},
 	})
 	if err != nil {
 		t.Fatalf("NewService(first): %v", err)
@@ -93,7 +93,7 @@ func TestIngestRunMinIOPostgresReconcileDeletesOrphan(t *testing.T) {
 	// Reconciliation must recover a durable orphan after a Service restart. It
 	// may only remove the unreferenced object and must retain the known asset.
 	second, err := ingestionapplication.NewService(ingestionapplication.Dependencies{
-		Runtime: runtime, Captures: newCapturedItemReader(t, runtime), Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: store,
+		Runtime: runtime, Captures: newCapturedItemReader(t, runtime), Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: store, Markdown: passthroughMarkdownProjector{},
 	})
 	if err != nil {
 		t.Fatalf("NewService(second): %v", err)
@@ -149,13 +149,13 @@ func TestIngestRunMinIOPostgresRePutsEvidenceDeletedBeforeAssetTransaction(t *te
 	blockingStore := newBlockingAfterPutStore(store)
 	defer blockingStore.releasePut()
 	serviceA, err := ingestionapplication.NewService(ingestionapplication.Dependencies{
-		Runtime: runtimeA, Captures: newCapturedItemReader(t, runtimeA), Contents: ingestionpostgres.NewContentRepository(runtimeA), Evidence: blockingStore,
+		Runtime: runtimeA, Captures: newCapturedItemReader(t, runtimeA), Contents: ingestionpostgres.NewContentRepository(runtimeA), Evidence: blockingStore, Markdown: passthroughMarkdownProjector{},
 	})
 	if err != nil {
 		t.Fatalf("NewService(A): %v", err)
 	}
 	serviceB, err := ingestionapplication.NewService(ingestionapplication.Dependencies{
-		Runtime: runtimeB, Captures: newCapturedItemReader(t, runtimeB), Contents: ingestionpostgres.NewContentRepository(runtimeB), Evidence: store,
+		Runtime: runtimeB, Captures: newCapturedItemReader(t, runtimeB), Contents: ingestionpostgres.NewContentRepository(runtimeB), Evidence: store, Markdown: passthroughMarkdownProjector{},
 	})
 	if err != nil {
 		t.Fatalf("NewService(B): %v", err)

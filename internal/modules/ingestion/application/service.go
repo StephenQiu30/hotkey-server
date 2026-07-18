@@ -18,6 +18,7 @@ const (
 	maximumIngestRunLimit  = 200
 	unknownIngestionCode   = "ingestion_failed"
 	evidenceReceiptRetries = 2
+	markdownMIMEType       = "text/markdown; charset=utf-8"
 )
 
 var errEvidenceReceiptMissing = errors.New("evidence receipt disappeared before asset transaction")
@@ -38,6 +39,7 @@ type Dependencies struct {
 	Contents      ingestiondomain.ContentRepository
 	Evidence      ingestiondomain.EvidenceStore
 	MetricRefresh ContentMetricRefresher
+	Markdown      ingestiondomain.MarkdownProjector
 }
 
 // ContentMetricRefresher is an Event-owned use case exposed as a narrow port.
@@ -54,14 +56,15 @@ type Service struct {
 	captures sourcedomain.CapturedItemReader
 	contents ingestiondomain.ContentRepository
 	evidence ingestiondomain.EvidenceStore
+	markdown ingestiondomain.MarkdownProjector
 	metrics  ContentMetricRefresher
 }
 
 func NewService(dependencies Dependencies) (*Service, error) {
-	if dependencies.Runtime == nil || dependencies.Captures == nil || dependencies.Contents == nil || dependencies.Evidence == nil {
+	if dependencies.Runtime == nil || dependencies.Captures == nil || dependencies.Contents == nil || dependencies.Evidence == nil || dependencies.Markdown == nil {
 		return nil, errors.New("ingestion application dependencies are required")
 	}
-	return &Service{runtime: dependencies.Runtime, captures: dependencies.Captures, contents: dependencies.Contents, evidence: dependencies.Evidence, metrics: dependencies.MetricRefresh}, nil
+	return &Service{runtime: dependencies.Runtime, captures: dependencies.Captures, contents: dependencies.Contents, evidence: dependencies.Evidence, markdown: dependencies.Markdown, metrics: dependencies.MetricRefresh}, nil
 }
 
 // IngestRun processes one bounded page of Source-owned captures. A failed
@@ -92,7 +95,7 @@ func (service *Service) IngestRunWithHook(ctx context.Context, input IngestRunIn
 }
 
 func (service *Service) ingestRun(ctx context.Context, input IngestRunInput, downstream func(context.Context, int64) error) (IngestRunResult, error) {
-	if service == nil || service.runtime == nil || service.captures == nil || service.contents == nil || service.evidence == nil {
+	if service == nil || service.runtime == nil || service.captures == nil || service.contents == nil || service.evidence == nil || service.markdown == nil {
 		return IngestRunResult{}, errors.New("ingestion service is not initialized")
 	}
 	if input.RunID <= 0 {
@@ -145,6 +148,12 @@ func (service *Service) ingestCaptured(ctx context.Context, captured sourcedomai
 	if err != nil {
 		return 0, false, err
 	}
+	if content.Body != "" {
+		content.ArchivedMarkdown, err = service.markdown.Convert(captured.Item.Body, content.CanonicalURL)
+		if err != nil {
+			return 0, false, fmt.Errorf("project captured body to Markdown: %w", err)
+		}
+	}
 	candidates, err := service.contentCandidates(ctx)
 	if err != nil {
 		return 0, false, err
@@ -157,7 +166,7 @@ func (service *Service) ingestCaptured(ctx context.Context, captured sourcedomai
 }
 
 func (service *Service) persistCaptured(ctx context.Context, captured sourcedomain.CapturedCollectionItem, content ingestiondomain.NormalizedContent, decision ingestiondomain.DedupeDecision, downstream func(context.Context, int64) error) (int64, bool, error) {
-	if content.Body == "" {
+	if content.ArchivedMarkdown == "" {
 		contentID, err := service.persistContent(ctx, captured, content, decision, ingestiondomain.EvidenceReceipt{}, false, downstream)
 		return contentID, false, err
 	}
@@ -216,7 +225,7 @@ func (service *Service) persistContent(ctx context.Context, captured sourcedomai
 		if createEvidenceAsset {
 			asset := ingestiondomain.ContentAsset{
 				ContentID: stored.ID, AssetType: "text", ObjectKey: receipt.ObjectKey, OriginalURL: content.CanonicalURL,
-				MIMEType: "text/plain; charset=utf-8", SHA256: receipt.SHA256, SizeBytes: receipt.SizeBytes,
+				MIMEType: markdownMIMEType, SHA256: receipt.SHA256, SizeBytes: receipt.SizeBytes,
 				CapturedAt: content.FetchedAt, Status: ingestiondomain.AssetStatusAvailable,
 			}
 			if err := service.contents.CreateAsset(transactionCtx, asset); err != nil {
@@ -294,12 +303,13 @@ func contentCompleteness(content ingestiondomain.Content) int {
 }
 
 func evidenceObject(content ingestiondomain.NormalizedContent) ingestiondomain.EvidenceObject {
-	digest := sha256.Sum256([]byte(content.Body))
+	digest := sha256.Sum256([]byte(content.ArchivedMarkdown))
 	sha := hex.EncodeToString(digest[:])
 	return ingestiondomain.EvidenceObject{
 		SourceConnectionID: content.SourceConnectionID,
 		ObjectKey:          fmt.Sprintf("evidence/v1/%d/%s/%s.txt", content.SourceConnectionID, sha[:2], sha),
-		Text:               content.Body,
+		Text:               content.ArchivedMarkdown,
+		MIMEType:           markdownMIMEType,
 		SHA256:             sha,
 	}
 }
