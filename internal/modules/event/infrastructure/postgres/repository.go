@@ -45,6 +45,7 @@ var _ application.ReadRepository = (*Repository)(nil)
 var _ application.DecisionStore = (*Repository)(nil)
 var _ application.ContentEventReader = (*Repository)(nil)
 var _ application.EventIntelligenceReader = (*Repository)(nil)
+var _ application.EventSummaryStore = (*Repository)(nil)
 
 func NewRepository(runtime *database.Runtime) *Repository {
 	return &Repository{runtime: runtime, ids: id.UUID{}}
@@ -66,9 +67,15 @@ func (repository *Repository) List(ctx context.Context, query domain.EventListQu
 	if !repository.available() || query.Limit < 1 || query.Limit > 100 || query.Cursor < 0 {
 		return domain.EventPage{}, sharedrepository.ErrUnavailable
 	}
+	monitorID := int64(0)
+	if query.MonitorID != nil {
+		monitorID = *query.MonitorID
+	}
 	rows, err := repository.runtime.SQL.QueryContext(ctx, `SELECT `+eventReadColumns+`
-FROM events WHERE deleted_at IS NULL AND id > $1 AND lifecycle_status <> 'archived'
-ORDER BY id ASC LIMIT $2`, query.Cursor, query.Limit+1)
+FROM events
+WHERE deleted_at IS NULL AND id > $1 AND lifecycle_status <> 'archived'
+  AND ($3 = 0 OR EXISTS (SELECT 1 FROM monitor_events scope WHERE scope.event_id = events.id AND scope.monitor_id = $3))
+ORDER BY id ASC LIMIT $2`, query.Cursor, query.Limit+1, monitorID)
 	if err != nil {
 		return domain.EventPage{}, sharedrepository.MapError(err)
 	}
@@ -161,6 +168,40 @@ ORDER BY membership.is_representative DESC, membership.membership_score DESC, me
 		return application.EventIntelligenceSource{}, sharedrepository.MapError(err)
 	}
 	return application.EventIntelligenceSource{Event: event, Evidence: evidence}, nil
+}
+
+func (repository *Repository) PersistSummary(ctx context.Context, eventID int64, summary domain.EventSummary) error {
+	if !repository.available() || eventID <= 0 {
+		return sharedrepository.ErrUnavailable
+	}
+	if err := summary.Validate(summaryContentIDs(summary)); err != nil {
+		// The application service already validates against the active evidence
+		// snapshot. This second check prevents an accidental direct adapter call
+		// from writing an empty or malformed summary.
+		return fmt.Errorf("validate event summary: %w", err)
+	}
+	result, err := repository.runtime.SQL.ExecContext(ctx, `
+UPDATE events SET summary = $1, version = version + 1, updated_at = now()
+WHERE id = $2 AND deleted_at IS NULL`, application.RenderEventSummary(summary), eventID)
+	if err != nil {
+		return sharedrepository.MapError(err)
+	}
+	if affected, err := result.RowsAffected(); err != nil {
+		return sharedrepository.MapError(err)
+	} else if affected != 1 {
+		return sharedrepository.ErrNotFound
+	}
+	return nil
+}
+
+func summaryContentIDs(summary domain.EventSummary) map[int64]bool {
+	ids := make(map[int64]bool)
+	for _, sentence := range summary.Sentences {
+		for _, evidence := range sentence.Evidence {
+			ids[evidence.ContentID] = true
+		}
+	}
+	return ids
 }
 
 func (repository *Repository) ListMetricEventIDsForContent(ctx context.Context, contentID int64) ([]int64, error) {

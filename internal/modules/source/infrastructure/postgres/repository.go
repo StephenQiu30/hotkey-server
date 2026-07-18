@@ -57,8 +57,8 @@ func (repository *Repository) Create(ctx context.Context, connection *domain.Sou
 		}
 		if err := transaction.SQL.QueryRowContext(ctx, `
 INSERT INTO source_connections
-    (source_type, name, endpoint, auth_type, credential_ref, config, enabled, health_status, terms_policy_url)
-VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
+    (source_type, name, endpoint, auth_type, credential_ref, config, enabled, health_status, terms_policy_url, body_storage_default_migrated_at)
+VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, now())
 RETURNING id, version`,
 			string(connection.SourceType), connection.Name, connection.Endpoint, string(connection.AuthType), credentialRef,
 			config, connection.Enabled, string(connection.HealthStatus), termsURL).Scan(&connection.ID, &connection.Version); err != nil {

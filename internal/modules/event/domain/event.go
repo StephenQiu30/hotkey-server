@@ -133,8 +133,9 @@ func (member EventMember) Validate() error {
 }
 
 type EventListQuery struct {
-	Limit  int
-	Cursor int64
+	Limit     int
+	Cursor    int64
+	MonitorID *int64
 }
 
 type EventPage struct {

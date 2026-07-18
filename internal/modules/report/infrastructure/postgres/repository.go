@@ -16,6 +16,80 @@ type Repository struct{ runtime *database.Runtime }
 
 func NewRepository(runtime *database.Runtime) *Repository { return &Repository{runtime: runtime} }
 
+func (repository *Repository) FindByPeriod(ctx context.Context, reportType domain.ReportType, monitorID *int64, start, end time.Time) (domain.Report, error) {
+	if repository == nil || repository.runtime == nil || start.IsZero() || end.IsZero() {
+		return domain.Report{}, sharedrepository.ErrUnavailable
+	}
+	queryer := reportQueryerFor(ctx, repository.runtime)
+	report, err := scanReport(queryer.QueryRowContext(ctx, reportSelect+`
+WHERE report_type = $1 AND monitor_id IS NOT DISTINCT FROM $2
+  AND period_start = $3 AND period_end = $4 AND version_no = 1 AND deleted_at IS NULL`, reportType, monitorID, start.UTC(), end.UTC()))
+	if err != nil {
+		return domain.Report{}, err
+	}
+	report.Items, err = repository.items(ctx, queryer, report.ID)
+	if err != nil {
+		return domain.Report{}, err
+	}
+	return report, nil
+}
+
+// Create allocates the database identity for an automatic report and uses the
+// period uniqueness key as the idempotency boundary for concurrent schedulers.
+func (repository *Repository) Create(ctx context.Context, report domain.Report) (domain.Report, error) {
+	if repository == nil || repository.runtime == nil {
+		return domain.Report{}, sharedrepository.ErrUnavailable
+	}
+	validation := report
+	if validation.ID <= 0 {
+		validation.ID = 1
+	}
+	if validation.Version <= 0 {
+		validation.Version = 1
+	}
+	if validation.VersionNo <= 0 {
+		validation.VersionNo = 1
+	}
+	if err := validation.Validate(); err != nil {
+		return domain.Report{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	created := false
+	err := repository.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
+		var reportID int64
+		err := transaction.SQL.QueryRowContext(transactionCtx, `
+INSERT INTO reports (version, report_type, monitor_id, period_start, period_end, timezone, title, summary, body, status, version_no, generated_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
+ON CONFLICT (report_type, COALESCE(monitor_id, 0), period_start, period_end, version_no) DO NOTHING
+RETURNING id`, report.Version, report.Type, report.MonitorID, report.Period.Start.UTC(), report.Period.End.UTC(), report.Period.Location.String(), report.Title, report.Summary, report.Body, report.Status, report.VersionNo).Scan(&reportID)
+		if err == nil {
+			report.ID = reportID
+			created = true
+			for _, item := range report.Items {
+				if _, err := transaction.SQL.ExecContext(transactionCtx, `
+INSERT INTO report_items (report_id, event_id, rank, section, inclusion_reason, title_snapshot, summary_snapshot, heat_score_snapshot)
+VALUES ($1,$2,$3,'events',$4,$5,$6,$7)`, report.ID, item.EventID, item.Rank, item.InclusionReason, item.Title, item.Summary, item.HeatScore); err != nil {
+					return sharedrepository.MapError(err)
+				}
+			}
+			return nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return sharedrepository.MapError(err)
+		}
+		return transaction.SQL.QueryRowContext(transactionCtx, `
+SELECT id FROM reports
+WHERE report_type = $1 AND monitor_id IS NOT DISTINCT FROM $2
+  AND period_start = $3 AND period_end = $4 AND version_no = $5 AND deleted_at IS NULL`, report.Type, report.MonitorID, report.Period.Start.UTC(), report.Period.End.UTC(), report.VersionNo).Scan(&report.ID)
+	})
+	if err != nil {
+		return domain.Report{}, err
+	}
+	if !created {
+		return repository.Get(ctx, report.ID)
+	}
+	return repository.Get(ctx, report.ID)
+}
+
 func (repository *Repository) Save(ctx context.Context, report domain.Report) error {
 	if repository == nil || repository.runtime == nil {
 		return sharedrepository.ErrUnavailable

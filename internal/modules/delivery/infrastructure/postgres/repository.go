@@ -26,12 +26,22 @@ func (repository *Repository) Message(ctx context.Context, deliveryID int64) (de
 	var attempts int
 	err := repository.runtime.SQL.QueryRowContext(ctx, `
 SELECT COALESCE(s.recipient, ''), r.title, COALESCE(r.summary, ''),
-       COALESCE(string_agg(ri.title_snapshot || E'\\n' || COALESCE(ri.summary_snapshot, ''), E'\\n\\n' ORDER BY ri.rank, ri.event_id), ''),
+       COALESCE(string_agg(ri.title_snapshot || E'\\n' || COALESCE(ri.summary_snapshot, '') ||
+           CASE WHEN COALESCE(source.original_url, '') <> '' THEN E'\\n原文链接: ' || source.original_url ELSE '' END,
+           E'\\n\\n' ORDER BY ri.rank, ri.event_id), ''),
        (SELECT count(*) FROM delivery_attempts WHERE delivery_id = d.id)
 FROM report_deliveries d
 JOIN report_subscriptions s ON s.id = d.subscription_id
 JOIN reports r ON r.id = d.report_id AND r.status = 'published'
 LEFT JOIN report_items ri ON ri.report_id = r.id
+LEFT JOIN LATERAL (
+    SELECT c.canonical_url AS original_url
+    FROM event_contents ec
+    JOIN contents c ON c.id = ec.content_id AND c.content_status = 'active' AND c.deleted_at IS NULL
+    WHERE ec.event_id = ri.event_id AND ec.evidence_role <> 'duplicate'
+    ORDER BY ec.is_representative DESC, ec.membership_score DESC, ec.content_id ASC
+    LIMIT 1
+) source ON true
 WHERE d.id = $1
 GROUP BY d.id, s.recipient, r.title, r.summary`, deliveryID).Scan(&recipient, &title, &summary, &body, &attempts)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -78,6 +88,40 @@ var _ interface {
 } = (*Repository)(nil)
 
 func NewRepository(runtime *database.Runtime) *Repository { return &Repository{runtime: runtime} }
+
+func (repository *Repository) GetEnabledSubscription(ctx context.Context, subscriptionID int64) (domain.Subscription, error) {
+	if repository == nil || repository.runtime == nil || subscriptionID <= 0 {
+		return domain.Subscription{}, sharedrepository.ErrUnavailable
+	}
+	return scanSubscription(repository.runtime.SQL.QueryRowContext(ctx, `
+SELECT `+subscriptionColumns+` FROM report_subscriptions
+WHERE id = $1 AND enabled = true AND deleted_at IS NULL`, subscriptionID))
+}
+
+func (repository *Repository) ListEnabledSubscriptions(ctx context.Context) ([]domain.Subscription, error) {
+	if repository == nil || repository.runtime == nil {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	rows, err := repository.runtime.SQL.QueryContext(ctx, `
+SELECT `+subscriptionColumns+` FROM report_subscriptions
+WHERE enabled = true AND deleted_at IS NULL ORDER BY id ASC`)
+	if err != nil {
+		return nil, sharedrepository.MapError(err)
+	}
+	defer rows.Close()
+	items := make([]domain.Subscription, 0)
+	for rows.Next() {
+		item, err := scanSubscription(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, sharedrepository.MapError(err)
+	}
+	return items, nil
+}
 
 func (repository *Repository) SaveSubscription(ctx context.Context, subscription domain.Subscription) error {
 	if repository == nil || repository.runtime == nil {
@@ -247,14 +291,23 @@ ON CONFLICT (report_id, subscription_id) DO NOTHING RETURNING id`,
 	return false, nil
 }
 
-func (repository *Repository) GetDelivery(ctx context.Context, deliveryID int64) (domain.Delivery, error) {
-	if repository == nil || repository.runtime == nil || deliveryID <= 0 {
+func (repository *Repository) GetDeliveryForScope(ctx context.Context, reportID, subscriptionID int64) (domain.Delivery, error) {
+	if repository == nil || repository.runtime == nil || reportID <= 0 || subscriptionID <= 0 {
 		return domain.Delivery{}, sharedrepository.ErrInvalidInput
 	}
+	return scanDelivery(repository.runtime.SQL.QueryRowContext(ctx, `
+SELECT id, report_id, subscription_id, idempotency_key, status, next_attempt_at, succeeded_at
+FROM report_deliveries WHERE report_id = $1 AND subscription_id = $2`, reportID, subscriptionID))
+}
+
+type deliveryScanner interface {
+	Scan(...any) error
+}
+
+func scanDelivery(row deliveryScanner) (domain.Delivery, error) {
 	var delivery domain.Delivery
 	var next, succeeded sql.NullTime
-	err := repository.runtime.SQL.QueryRowContext(ctx, `SELECT id, report_id, subscription_id, idempotency_key, status, next_attempt_at, succeeded_at FROM report_deliveries WHERE id = $1`, deliveryID).Scan(&delivery.ID, &delivery.ReportID, &delivery.SubscriptionID, &delivery.IdempotencyKey, &delivery.Status, &next, &succeeded)
-	if err != nil {
+	if err := row.Scan(&delivery.ID, &delivery.ReportID, &delivery.SubscriptionID, &delivery.IdempotencyKey, &delivery.Status, &next, &succeeded); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return domain.Delivery{}, sharedrepository.ErrNotFound
 		}
@@ -269,6 +322,13 @@ func (repository *Repository) GetDelivery(ctx context.Context, deliveryID int64)
 		delivery.SucceededAt = &value
 	}
 	return delivery, nil
+}
+
+func (repository *Repository) GetDelivery(ctx context.Context, deliveryID int64) (domain.Delivery, error) {
+	if repository == nil || repository.runtime == nil || deliveryID <= 0 {
+		return domain.Delivery{}, sharedrepository.ErrInvalidInput
+	}
+	return scanDelivery(repository.runtime.SQL.QueryRowContext(ctx, `SELECT id, report_id, subscription_id, idempotency_key, status, next_attempt_at, succeeded_at FROM report_deliveries WHERE id = $1`, deliveryID))
 }
 
 func (repository *Repository) ClaimDelivery(ctx context.Context, deliveryID int64) (domain.Delivery, error) {

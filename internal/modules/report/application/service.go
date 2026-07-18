@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -14,10 +15,12 @@ import (
 // only Publish changes a draft, and the repository makes published rows
 // immutable afterwards.
 type Service struct {
-	store   Store
-	builder *Builder
-	events  EventReader
-	publish Publisher
+	store         Store
+	builder       *Builder
+	events        EventReader
+	subscriptions SubscriptionReader
+	delivery      DeliveryPlanner
+	publish       Publisher
 }
 
 type Publisher interface {
@@ -26,6 +29,33 @@ type Publisher interface {
 
 type EventReader interface {
 	List(context.Context, eventdomain.EventListQuery) (eventdomain.EventPage, error)
+}
+
+// AutomationSubscription is the minimum delivery configuration needed to
+// produce one monitor-scoped report. It deliberately excludes user identity
+// and secrets from the report module.
+type AutomationSubscription struct {
+	ID, Version int64
+	MonitorID   *int64
+	ReportType  domain.ReportType
+	Channel     string
+	Timezone    string
+	Enabled     bool
+}
+
+type SubscriptionReader interface {
+	GetEnabledSubscription(context.Context, int64) (AutomationSubscription, error)
+}
+
+type AutomaticStore interface {
+	FindByPeriod(context.Context, domain.ReportType, *int64, time.Time, time.Time) (domain.Report, error)
+	Create(context.Context, domain.Report) (domain.Report, error)
+}
+
+// DeliveryPlanner creates idempotent delivery rows and queues their delivery
+// jobs after a report has become immutable and visible.
+type DeliveryPlanner interface {
+	Schedule(context.Context, domain.Report) error
 }
 
 type BuildInput struct {
@@ -50,6 +80,12 @@ func NewService(store Store, readers ...EventReader) (*Service, error) {
 
 func (service *Service) SetPublisher(publisher Publisher) { service.publish = publisher }
 
+func (service *Service) SetSubscriptionReader(reader SubscriptionReader) {
+	service.subscriptions = reader
+}
+
+func (service *Service) SetDeliveryPlanner(planner DeliveryPlanner) { service.delivery = planner }
+
 // BuildByID is the durable queue entry point. It rereads the current report
 // definition and a bounded event page; the queue payload contains only ID.
 func (service *Service) BuildByID(ctx context.Context, reportID int64) (domain.Report, error) {
@@ -60,7 +96,7 @@ func (service *Service) BuildByID(ctx context.Context, reportID int64) (domain.R
 	if err != nil {
 		return domain.Report{}, err
 	}
-	page, err := service.events.List(ctx, eventdomain.EventListQuery{Limit: 100})
+	page, err := service.events.List(ctx, eventdomain.EventListQuery{Limit: 100, MonitorID: current.MonitorID})
 	if err != nil {
 		return domain.Report{}, err
 	}
@@ -73,6 +109,74 @@ func (service *Service) BuildByID(ctx context.Context, reportID int64) (domain.R
 		timezone = current.Period.Location.String()
 	}
 	return service.Build(ctx, BuildInput{ID: reportID, Type: current.Type, At: time.Now().UTC(), Timezone: timezone, MonitorID: current.MonitorID, Events: events})
+}
+
+// BuildAndPublishForSubscription is the unattended report path. A
+// subscription is the only schedule input; the service derives the calendar
+// period, monitor scope, report snapshot, publication and delivery trigger.
+func (service *Service) BuildAndPublishForSubscription(ctx context.Context, subscriptionID int64) (domain.Report, error) {
+	if service == nil || service.events == nil || service.subscriptions == nil || subscriptionID <= 0 {
+		return domain.Report{}, sharedrepository.ErrUnavailable
+	}
+	automatic, ok := service.store.(AutomaticStore)
+	if !ok {
+		return domain.Report{}, sharedrepository.ErrUnavailable
+	}
+	subscription, err := service.subscriptions.GetEnabledSubscription(ctx, subscriptionID)
+	if err != nil {
+		return domain.Report{}, err
+	}
+	if !subscription.Enabled || subscription.ID <= 0 || subscription.Version <= 0 || subscription.ReportType == "" {
+		return domain.Report{}, sharedrepository.ErrConflict
+	}
+	timezone := subscription.Timezone
+	if timezone == "" {
+		timezone = "UTC"
+	}
+	location, err := time.LoadLocation(timezone)
+	if err != nil {
+		return domain.Report{}, fmt.Errorf("invalid subscription timezone: %w", err)
+	}
+	at := time.Now().UTC()
+	period, err := domain.PeriodFor(at, subscription.ReportType, location)
+	if err != nil {
+		return domain.Report{}, err
+	}
+	report, err := automatic.FindByPeriod(ctx, subscription.ReportType, subscription.MonitorID, period.Start, period.End)
+	if err != nil && !errors.Is(err, sharedrepository.ErrNotFound) {
+		return domain.Report{}, err
+	}
+	if errors.Is(err, sharedrepository.ErrNotFound) {
+		draft, buildErr := service.builder.Build(1, subscription.ReportType, at, location, nil)
+		if buildErr != nil {
+			return domain.Report{}, buildErr
+		}
+		draft.MonitorID = subscription.MonitorID
+		report, err = automatic.Create(ctx, draft)
+		if err != nil {
+			return domain.Report{}, err
+		}
+	}
+	if report.Status == domain.ReportPublished {
+		if service.delivery != nil {
+			if err := service.delivery.Schedule(ctx, report); err != nil {
+				return domain.Report{}, err
+			}
+		}
+		return report, nil
+	}
+	page, err := service.events.List(ctx, eventdomain.EventListQuery{Limit: 100, MonitorID: subscription.MonitorID})
+	if err != nil {
+		return domain.Report{}, err
+	}
+	events := make([]EventSnapshot, 0, len(page.Items))
+	for _, event := range page.Items {
+		events = append(events, EventSnapshot{EventID: event.ID, Title: event.TitleZH, Summary: event.Summary, HeatScore: event.HeatScore})
+	}
+	if _, err := service.Build(ctx, BuildInput{ID: report.ID, Type: report.Type, At: at, Timezone: timezone, MonitorID: report.MonitorID, Events: events}); err != nil {
+		return domain.Report{}, err
+	}
+	return service.Publish(ctx, report.ID)
 }
 
 func (service *Service) List(ctx context.Context, query domain.ListQuery) (domain.Page, error) {
@@ -115,6 +219,11 @@ func (service *Service) Publish(ctx context.Context, reportID int64) (domain.Rep
 	}
 	if err := service.store.Save(ctx, published); err != nil {
 		return domain.Report{}, err
+	}
+	if service.delivery != nil {
+		if err := service.delivery.Schedule(ctx, published); err != nil {
+			return domain.Report{}, fmt.Errorf("schedule report delivery: %w", err)
+		}
 	}
 	return service.store.Get(ctx, reportID)
 }

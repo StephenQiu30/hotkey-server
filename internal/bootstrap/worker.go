@@ -44,6 +44,14 @@ func exposeCollectionSchedulerRunner(scheduler *platformscheduler.CollectionSche
 	return scheduler
 }
 
+type reportSchedulerRunner interface {
+	Run(context.Context, time.Duration) error
+}
+
+func exposeReportSchedulerRunner(scheduler *platformscheduler.ReportScheduler) reportSchedulerRunner {
+	return scheduler
+}
+
 func workerPollInterval(cfg config.Config) time.Duration {
 	if cfg.WorkerPollInterval <= 0 {
 		return time.Second
@@ -139,6 +147,39 @@ func registerCollectionSchedulerLifecycle(lifecycle fx.Lifecycle, runner collect
 			select {
 			case <-done:
 				logger.Info("collection scheduler stopped")
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+	})
+}
+
+func registerReportSchedulerLifecycle(lifecycle fx.Lifecycle, runner reportSchedulerRunner, cfg config.Config, logger *zap.Logger) {
+	var cancel context.CancelFunc
+	var done chan struct{}
+	lifecycle.Append(fx.Hook{
+		OnStart: func(context.Context) error {
+			runCtx, stop := context.WithCancel(context.Background())
+			cancel = stop
+			done = make(chan struct{})
+			go func() {
+				defer close(done)
+				if err := runner.Run(runCtx, cronInterval(cfg)); err != nil && !errors.Is(err, context.Canceled) {
+					logger.Error("report scheduler stopped", zap.Error(err))
+				}
+			}()
+			logger.Info("report scheduler started", zap.Duration("interval", cronInterval(cfg)))
+			return nil
+		},
+		OnStop: func(ctx context.Context) error {
+			if cancel == nil {
+				return nil
+			}
+			cancel()
+			select {
+			case <-done:
+				logger.Info("report scheduler stopped")
 				return nil
 			case <-ctx.Done():
 				return ctx.Err()

@@ -8,7 +8,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
 )
 
-func TestCapturePolicyAppliesIdenticalRedactionToRSSAndHackerNews(t *testing.T) {
+func TestCapturePolicyStoresFeedBodyByDefaultForRSSAndHackerNews(t *testing.T) {
 	observedAt := time.Date(2026, time.July, 16, 11, 0, 0, 0, time.UTC)
 	connections := []domain.SourceConnection{
 		{SourceType: domain.SourceTypeRSS, Config: domain.DefaultSourceConfig()},
@@ -27,8 +27,8 @@ func TestCapturePolicyAppliesIdenticalRedactionToRSSAndHackerNews(t *testing.T) 
 		captures = append(captures, captured)
 	}
 	for _, captured := range captures {
-		if captured.Body != "" || len(captured.RawPayload) != 0 || captured.RawPayloadDisposition != domain.RawPayloadDiscarded {
-			t.Fatalf("captured redaction = %#v, want no body/raw payload and discarded disposition", captured)
+		if captured.Body != "must not persist" || len(captured.RawPayload) != 0 || captured.RawPayloadDisposition != domain.RawPayloadDiscarded {
+			t.Fatalf("captured projection = %#v, want Feed body and no raw payload", captured)
 		}
 	}
 	if !reflect.DeepEqual(captures[0].Metrics, captures[1].Metrics) || captures[0].RawPayloadDisposition != captures[1].RawPayloadDisposition {

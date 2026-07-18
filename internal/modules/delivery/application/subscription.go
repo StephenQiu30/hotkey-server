@@ -98,7 +98,23 @@ func (service *SubscriptionService) Create(ctx context.Context, input CreateSubs
 	if err := requireSubscriptionUser(input.Subject); err != nil {
 		return SubscriptionSecret{}, err
 	}
-	subscription := domain.Subscription{UserID: input.Subject.UserID, MonitorID: input.MonitorID, ReportType: strings.TrimSpace(input.ReportType), Channel: input.Channel, Recipient: strings.TrimSpace(input.Recipient), Timezone: strings.TrimSpace(input.Timezone), Schedule: strings.TrimSpace(input.Schedule), Enabled: input.Enabled}
+	reportType := strings.TrimSpace(input.ReportType)
+	if reportType == "" {
+		reportType = "daily"
+	}
+	channel := input.Channel
+	if channel == "" {
+		channel = domain.ChannelEmail
+	}
+	timezone := strings.TrimSpace(input.Timezone)
+	if timezone == "" {
+		timezone = "Asia/Shanghai"
+	}
+	schedule := strings.TrimSpace(input.Schedule)
+	if schedule == "" {
+		schedule = "0 9 * * *"
+	}
+	subscription := domain.Subscription{UserID: input.Subject.UserID, MonitorID: input.MonitorID, ReportType: reportType, Channel: channel, Recipient: strings.TrimSpace(input.Recipient), Timezone: timezone, Schedule: schedule, Enabled: input.Enabled}
 	secret := ""
 	if subscription.Channel == domain.ChannelRSS {
 		var err error

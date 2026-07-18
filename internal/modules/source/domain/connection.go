@@ -71,7 +71,7 @@ type SourceConfig struct {
 
 func DefaultSourceConfig() SourceConfig {
 	return SourceConfig{
-		AllowBodyStorage: false, RequiresAttribution: false, RequiresDeletionSync: false,
+		AllowBodyStorage: true, RequiresAttribution: false, RequiresDeletionSync: false,
 		ContentRetentionDays: 30, MetricsRetentionDays: 30,
 		AllowedLanguages: []string{}, AllowedRegions: []string{},
 		RateLimitPerMinute: 60, RequestTimeoutSeconds: 30, MaxPagesPerRun: 1,

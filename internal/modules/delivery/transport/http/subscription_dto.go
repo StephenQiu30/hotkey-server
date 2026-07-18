@@ -16,11 +16,11 @@ type DeliveryEmptyResponse struct{}
 
 type CreateSubscriptionRequest struct {
 	MonitorID  *int64 `json:"monitor_id,omitempty"`
-	ReportType string `json:"report_type" binding:"required,oneof=daily weekly"`
-	Channel    string `json:"channel" binding:"required,oneof=email rss"`
+	ReportType string `json:"report_type,omitempty" binding:"omitempty,oneof=daily weekly"`
+	Channel    string `json:"channel,omitempty" binding:"omitempty,oneof=email rss"`
 	Recipient  string `json:"recipient,omitempty"`
-	Timezone   string `json:"timezone" binding:"required"`
-	Schedule   string `json:"schedule" binding:"required"`
+	Timezone   string `json:"timezone,omitempty"`
+	Schedule   string `json:"schedule,omitempty"`
 	Enabled    *bool  `json:"enabled,omitempty"`
 }
 

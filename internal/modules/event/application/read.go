@@ -23,7 +23,7 @@ func NewReadService(repository ReadRepository) *ReadService {
 }
 
 func (service *ReadService) List(ctx context.Context, query domain.EventListQuery) (domain.EventPage, error) {
-	if service == nil || service.repository == nil || query.Limit < 1 || query.Limit > 100 || query.Cursor < 0 {
+	if service == nil || service.repository == nil || query.Limit < 1 || query.Limit > 100 || query.Cursor < 0 || query.MonitorID != nil && *query.MonitorID <= 0 {
 		return domain.EventPage{}, fmt.Errorf("%w: invalid event list query", sharedrepository.ErrInvalidInput)
 	}
 	return service.repository.List(ctx, query)

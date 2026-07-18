@@ -135,6 +135,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newKnowledgeReconciler,
 				deliverypostgres.NewRepository,
 				reportpostgres.NewRepository,
+				newQueueStore,
 				newReportService,
 			),
 			fx.Invoke(database.RegisterLifecycle),
@@ -211,9 +212,10 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newDeliveryEmailService,
 					newDeliverEmailHandler,
 					newP0Handlers,
-					newQueueWorker, exposeWorkerRunner, newQueueStore, exposeCollectionDueReader, newCollectionScheduler, exposeCollectionSchedulerRunner,
+					newQueueWorker, exposeWorkerRunner, exposeCollectionDueReader, newCollectionScheduler, exposeCollectionSchedulerRunner,
+					newReportScheduler, exposeReportSchedulerRunner,
 				),
-				fx.Invoke(registerPersistentWorkerLifecycle, registerCollectionSchedulerLifecycle),
+				fx.Invoke(registerPersistentWorkerLifecycle, registerCollectionSchedulerLifecycle, registerReportSchedulerLifecycle),
 			)
 			options = append(options, fx.Invoke(intelligenceapplication.RegisterRunLeaseReclaimerLifecycle))
 		} else {
@@ -355,7 +357,7 @@ func newEventIntelligenceReadService(repository *eventpostgres.Repository) *even
 }
 
 func newEventSummaryService(repository *eventpostgres.Repository, runner *intelligenceapplication.EventIntelligenceService) *eventapplication.EventSummaryService {
-	return eventapplication.NewEventSummaryService(repository, runner)
+	return eventapplication.NewEventSummaryService(repository, runner, repository)
 }
 
 func newEventClaimExtractionService(repository *eventpostgres.Repository, runner *intelligenceapplication.EventIntelligenceService) *eventapplication.EventClaimExtractionService {
@@ -471,12 +473,14 @@ func newMonitorService(runtime *database.Runtime, monitors *monitorpostgres.Repo
 	return monitorapplication.NewService(monitorapplication.Dependencies{Runtime: runtime, Monitors: monitors, Sources: sources, Audit: audit})
 }
 
-func newReportService(repository *reportpostgres.Repository, events *eventapplication.ReadService, cfg config.Config) (*reportapplication.Service, error) {
+func newReportService(repository *reportpostgres.Repository, events *eventapplication.ReadService, cfg config.Config, deliveries *deliverypostgres.Repository, jobs *queue.Store) (*reportapplication.Service, error) {
 	service, err := reportapplication.NewService(repository, events)
 	if err != nil {
 		return nil, err
 	}
 	service.SetPublisher(reportvault.NewPublisher(cfg.VaultPath))
+	service.SetSubscriptionReader(reportAutomationReader{repository: deliveries})
+	service.SetDeliveryPlanner(&reportDeliveryPlanner{repository: deliveries, jobs: jobs})
 	return service, nil
 }
 
@@ -537,7 +541,7 @@ func newKnowledgeReconcileHandler(reconcile *knowledgeapplication.Reconciler) (*
 
 func newReportBuildHandler(service *reportapplication.Service) (*reportjobs.BuildHandler, error) {
 	return reportjobs.NewBuildHandler(func(ctx context.Context, id int64) error {
-		_, err := service.BuildByID(ctx, id)
+		_, err := service.BuildAndPublishForSubscription(ctx, id)
 		return err
 	})
 }

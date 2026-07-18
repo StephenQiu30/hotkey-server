@@ -31,6 +31,13 @@ type EventIntelligenceRunner interface {
 	Execute(context.Context, intelligenceapplication.EventIntelligenceInput) (intelligenceapplication.EventIntelligenceResult, error)
 }
 
+// EventSummaryStore makes the generated result a durable Event fact. Without
+// this port the queue job only validates a transient model response and the
+// report layer continues to read the old, usually empty events.summary value.
+type EventSummaryStore interface {
+	PersistSummary(context.Context, int64, domain.EventSummary) error
+}
+
 type EventSummaryGenerationResult struct {
 	Summary    domain.EventSummary
 	RunID      int64
@@ -42,12 +49,17 @@ type EventSummaryGenerationResult struct {
 // before returning it. A provider failure produces only a representative,
 // fact-only fallback and never exposes provider internals.
 type EventSummaryService struct {
-	reader EventIntelligenceReader
-	runner EventIntelligenceRunner
+	reader       EventIntelligenceReader
+	runner       EventIntelligenceRunner
+	summaryStore EventSummaryStore
 }
 
-func NewEventSummaryService(reader EventIntelligenceReader, runner EventIntelligenceRunner) *EventSummaryService {
-	return &EventSummaryService{reader: reader, runner: runner}
+func NewEventSummaryService(reader EventIntelligenceReader, runner EventIntelligenceRunner, stores ...EventSummaryStore) *EventSummaryService {
+	service := &EventSummaryService{reader: reader, runner: runner}
+	if len(stores) > 0 {
+		service.summaryStore = stores[0]
+	}
+	return service
 }
 
 func (service *EventSummaryService) Generate(ctx context.Context, eventID int64) (EventSummaryGenerationResult, error) {
@@ -76,7 +88,8 @@ func (service *EventSummaryService) Generate(ctx context.Context, eventID int64)
 		if err != nil {
 			return EventSummaryGenerationResult{}, err
 		}
-		return EventSummaryGenerationResult{Summary: summary, ReasonCode: executed.ReasonCode}, nil
+		result := EventSummaryGenerationResult{Summary: summary, ReasonCode: executed.ReasonCode}
+		return service.persist(ctx, eventID, result)
 	}
 	if executed.Status != "succeeded" || executed.Run.ID <= 0 {
 		return EventSummaryGenerationResult{}, fmt.Errorf("event summary run did not produce a result")
@@ -85,7 +98,36 @@ func (service *EventSummaryService) Generate(ctx context.Context, eventID int64)
 	if err != nil {
 		return EventSummaryGenerationResult{}, err
 	}
-	return EventSummaryGenerationResult{Summary: summary, RunID: executed.Run.ID, Reused: executed.Reused}, nil
+	return service.persist(ctx, eventID, EventSummaryGenerationResult{Summary: summary, RunID: executed.Run.ID, Reused: executed.Reused})
+}
+
+func (service *EventSummaryService) persist(ctx context.Context, eventID int64, result EventSummaryGenerationResult) (EventSummaryGenerationResult, error) {
+	if service.summaryStore == nil {
+		return result, nil
+	}
+	if err := service.summaryStore.PersistSummary(ctx, eventID, result.Summary); err != nil {
+		return EventSummaryGenerationResult{}, fmt.Errorf("persist event summary: %w", err)
+	}
+	return result, nil
+}
+
+// RenderEventSummary is the stable plain-text projection used by the Event
+// read model and report snapshots. Evidence metadata remains available through
+// the intelligence API; the report receives the verified human-readable facts.
+func RenderEventSummary(summary domain.EventSummary) string {
+	parts := make([]string, 0, len(summary.Sentences)+2)
+	if title := strings.TrimSpace(summary.TitleZH); title != "" {
+		parts = append(parts, title)
+	}
+	if title := strings.TrimSpace(summary.TitleEN); title != "" && title != strings.TrimSpace(summary.TitleZH) {
+		parts = append(parts, title)
+	}
+	for _, sentence := range summary.Sentences {
+		if text := strings.TrimSpace(sentence.Text); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 func (source EventIntelligenceSource) validate(eventID int64) error {

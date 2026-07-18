@@ -6933,12 +6933,6 @@ const docTemplate = `{
         },
         "http.CreateSubscriptionRequest": {
             "type": "object",
-            "required": [
-                "channel",
-                "report_type",
-                "schedule",
-                "timezone"
-            ],
             "properties": {
                 "channel": {
                     "type": "string",
