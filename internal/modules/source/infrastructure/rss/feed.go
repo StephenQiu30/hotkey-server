@@ -121,9 +121,9 @@ func parsedRDF(document rdfDocument, observedAt time.Time) parsedFeed {
 	feed := parsedFeed{Items: make([]domain.SourceItem, 0, len(document.Items))}
 	seen := make(map[string]struct{}, len(document.Items))
 	for _, entry := range document.Items {
-		description := entry.Description
+		description := entry.Content
 		if strings.TrimSpace(description) == "" {
-			description = entry.Content
+			description = entry.Description
 		}
 		item, diagnostic := mapRSSItem(rssItem{
 			GUID:        entry.About,
@@ -180,9 +180,9 @@ func mapRSSItem(entry rssItem, observedAt time.Time) (domain.SourceItem, fetchDi
 	if code != "" {
 		return domain.SourceItem{}, fetchDiagnostic{Code: code, SourceExternalID: externalID}
 	}
-	body := entry.Description
+	body := entry.Content
 	if strings.TrimSpace(body) == "" {
-		body = entry.Content
+		body = entry.Description
 	}
 	item, err := domain.NormalizeSourceItem(domain.SourceItem{
 		SourceCode: sourceCode, ExternalID: externalID, ContentType: "article", Title: entry.Title,
@@ -209,9 +209,9 @@ func mapAtomItem(entry atomEntry, observedAt time.Time) (domain.SourceItem, fetc
 	if code != "" {
 		return domain.SourceItem{}, fetchDiagnostic{Code: code, SourceExternalID: externalID}
 	}
-	body := entry.Summary
+	body := entry.Content
 	if strings.TrimSpace(body) == "" {
-		body = entry.Content
+		body = entry.Summary
 	}
 	author := ""
 	if len(entry.Authors) > 0 {
