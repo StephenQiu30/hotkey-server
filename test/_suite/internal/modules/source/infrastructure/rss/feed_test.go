@@ -3,6 +3,7 @@ package rss
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -98,6 +99,49 @@ func TestParseFeedNormalizesRSS1RDFItems(t *testing.T) {
 	}
 	if item.PublishedAt == nil || item.PublishedAt.Format(time.DateOnly) != "2026-07-17" {
 		t.Fatalf("published_at = %v, want 2026-07-17", item.PublishedAt)
+	}
+}
+
+func TestParseFeedPrefersContentAcrossRSSRDFAndAtom(t *testing.T) {
+	t.Parallel()
+
+	observedAt := time.Date(2026, time.July, 18, 9, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name    string
+		payload string
+	}{
+		{
+			name: "rss2 content encoded",
+			payload: `<?xml version="1.0"?><rss xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><item>
+				<guid>rss-content-first</guid><link>https://example.test/rss</link><title>RSS</title>
+				<description>short RSS description</description><content:encoded><![CDATA[<p>full RSS content</p>]]></content:encoded>
+			</item></channel></rss>`,
+		},
+		{
+			name: "rdf content encoded",
+			payload: `<?xml version="1.0"?><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+				<item rdf:about="https://example.test/rdf"><link>https://example.test/rdf</link><title>RDF</title>
+				<description>short RDF description</description><content:encoded><![CDATA[<p>full RDF content</p>]]></content:encoded></item>
+			</rdf:RDF>`,
+		},
+		{
+			name: "atom content",
+			payload: `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry>
+				<id>atom-content-first</id><title>Atom</title><link rel="alternate" href="https://example.test/atom"/>
+				<summary>short Atom summary</summary><content type="html"><![CDATA[<p>full Atom content</p>]]></content>
+			</entry></feed>`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			feed, err := parseFeed([]byte(test.payload), observedAt)
+			if err != nil {
+				t.Fatalf("parseFeed() error = %v", err)
+			}
+			if len(feed.Items) != 1 || !strings.Contains(feed.Items[0].Body, "full") || strings.Contains(feed.Items[0].Body, "short") {
+				t.Fatalf("parsed body = %#v, want full content instead of summary/description", feed.Items)
+			}
+		})
 	}
 }
 
