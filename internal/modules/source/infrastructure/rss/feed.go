@@ -37,8 +37,23 @@ type rssItem struct {
 	Link        string `xml:"link"`
 	Title       string `xml:"title"`
 	Description string `xml:"description"`
+	Content     string `xml:"encoded"`
 	PubDate     string `xml:"pubDate"`
 	Author      string `xml:"author"`
+}
+
+type rdfDocument struct {
+	Items []rdfItem `xml:"item"`
+}
+
+type rdfItem struct {
+	About       string `xml:"about,attr"`
+	Link        string `xml:"link"`
+	Title       string `xml:"title"`
+	Description string `xml:"description"`
+	Content     string `xml:"encoded"`
+	Date        string `xml:"date"`
+	Creator     string `xml:"creator"`
 }
 
 type atomFeed struct {
@@ -84,6 +99,12 @@ func parseFeed(payload []byte, observedAt time.Time) (parsedFeed, error) {
 				return parsedFeed{}, fmt.Errorf("decode RSS feed: %w", err)
 			}
 			return parsedRSS(document, observedAt), nil
+		case "RDF":
+			var document rdfDocument
+			if err := decoder.DecodeElement(&document, &start); err != nil {
+				return parsedFeed{}, fmt.Errorf("decode RSS 1.0 feed: %w", err)
+			}
+			return parsedRDF(document, observedAt), nil
 		case "feed":
 			var feed atomFeed
 			if err := decoder.DecodeElement(&feed, &start); err != nil {
@@ -94,6 +115,27 @@ func parseFeed(payload []byte, observedAt time.Time) (parsedFeed, error) {
 			return parsedFeed{}, fmt.Errorf("unsupported feed root %q", start.Name.Local)
 		}
 	}
+}
+
+func parsedRDF(document rdfDocument, observedAt time.Time) parsedFeed {
+	feed := parsedFeed{Items: make([]domain.SourceItem, 0, len(document.Items))}
+	seen := make(map[string]struct{}, len(document.Items))
+	for _, entry := range document.Items {
+		description := entry.Description
+		if strings.TrimSpace(description) == "" {
+			description = entry.Content
+		}
+		item, diagnostic := mapRSSItem(rssItem{
+			GUID:        entry.About,
+			Link:        entry.Link,
+			Title:       entry.Title,
+			Description: description,
+			PubDate:     entry.Date,
+			Author:      entry.Creator,
+		}, observedAt)
+		feed.appendItem(item, diagnostic, seen)
+	}
+	return feed
 }
 
 func parsedRSS(document rssDocument, observedAt time.Time) parsedFeed {
@@ -138,9 +180,13 @@ func mapRSSItem(entry rssItem, observedAt time.Time) (domain.SourceItem, fetchDi
 	if code != "" {
 		return domain.SourceItem{}, fetchDiagnostic{Code: code, SourceExternalID: externalID}
 	}
+	body := entry.Description
+	if strings.TrimSpace(body) == "" {
+		body = entry.Content
+	}
 	item, err := domain.NormalizeSourceItem(domain.SourceItem{
 		SourceCode: sourceCode, ExternalID: externalID, ContentType: "article", Title: entry.Title,
-		Body: entry.Description, URL: strings.TrimSpace(entry.Link), Author: entry.Author,
+		Body: body, URL: strings.TrimSpace(entry.Link), Author: entry.Author,
 		PublishedAt: publishedAt, ObservedAt: observedAt.UTC(),
 	})
 	if err != nil {
@@ -181,7 +227,7 @@ func mapAtomItem(entry atomEntry, observedAt time.Time) (domain.SourceItem, fetc
 	return item, fetchDiagnostic{}
 }
 
-var rssTimeLayouts = []string{time.RFC1123Z, time.RFC1123, time.RFC850, time.ANSIC}
+var rssTimeLayouts = []string{time.RFC1123Z, time.RFC1123, time.RFC850, time.ANSIC, time.RFC3339, time.RFC3339Nano, time.DateOnly}
 
 func parsePublishedAt(value string, layouts ...string) (*time.Time, string) {
 	value = strings.TrimSpace(value)
