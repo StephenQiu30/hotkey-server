@@ -1067,6 +1067,64 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/contents/{id}/document": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns not_captured as a successful empty state when no authorized Markdown asset exists.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "contents"
+                ],
+                "summary": "Get captured content Markdown document",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "content ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-http_ContentDocumentResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/events": {
             "get": {
                 "security": [
@@ -6338,6 +6396,53 @@ const docTemplate = `{
                 }
             }
         },
+        "http.ContentDocumentResponse": {
+            "type": "object",
+            "properties": {
+                "availability": {
+                    "type": "string",
+                    "enum": [
+                        "ready",
+                        "not_captured"
+                    ]
+                },
+                "canonical_url": {
+                    "type": "string",
+                    "example": "https://example.test/items/123"
+                },
+                "captured_at": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "content_id": {
+                    "type": "integer",
+                    "example": 7
+                },
+                "language": {
+                    "type": "string",
+                    "example": "en"
+                },
+                "markdown": {
+                    "type": "string",
+                    "example": "# Release notes"
+                },
+                "published_at": {
+                    "type": "string"
+                },
+                "sha256": {
+                    "type": "string",
+                    "example": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                },
+                "source_name": {
+                    "type": "string",
+                    "example": "Product feed"
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Release notes"
+                }
+            }
+        },
         "http.ContentMetricsResponse": {
             "type": "object",
             "properties": {
@@ -6462,6 +6567,20 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/http.RelevancePreviewItemResponse"
                     }
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ContentResult-http_ContentDocumentResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.ContentDocumentResponse"
                 },
                 "message": {
                     "type": "string"
