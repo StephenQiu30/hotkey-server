@@ -163,6 +163,120 @@ INSERT INTO ai_runs (
 	}
 }
 
+func TestPlan018SchemaEnforcesProviderCapabilityMatrix(t *testing.T) {
+	runtime := openTestRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	const insert = `
+INSERT INTO ai_model_profiles (
+ name, task_type, provider, model_name, credential_ref, model_version,
+ embedding_dimensions, max_attempts, max_cost, daily_budget
+) VALUES ($1,$2,$3,$4,$5,$6,$7,1,1.0000,10.0000)`
+	digest := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	for _, test := range []struct {
+		name, task, provider, model string
+		credential, dimensions      any
+		version                     string
+	}{
+		{"deepseek embedding", "embedding", "deepseek", "qwen3-embedding:0.6b", "env:DEEPSEEK_API_KEY", 1024, "remote-v1"},
+		{"deepseek wrong credential", "event_summary", "deepseek", "deepseek-v4-pro", "env:OPENAI_API_KEY", nil, "remote-v1"},
+		{"ollama wrong embedding", "embedding", "ollama", "qwen3-embedding:4b", nil, 1024, digest},
+		{"ollama mutable tag", "event_summary", "ollama", "qwen3:8b", nil, nil, "latest"},
+	} {
+		if _, err := runtime.SQL.Exec(insert, "plan018-invalid-"+test.name+suffix, test.task, test.provider, test.model, test.credential, test.version, test.dimensions); err == nil {
+			t.Errorf("insert %s error = nil", test.name)
+		} else {
+			assertPostgreSQLState(t, err, "23514")
+		}
+	}
+	for _, valid := range []struct {
+		name, task, provider, model string
+		credential, dimensions      any
+		version                     string
+	}{
+		{"deepseek", "event_summary", "deepseek", "deepseek-v4-pro", "env:DEEPSEEK_API_KEY", nil, "remote-v1"},
+		{"ollama embedding", "embedding", "ollama", "qwen3-embedding:0.6b", nil, 1024, digest},
+		{"ollama generation", "event_summary", "ollama", "qwen3:8b", nil, nil, digest},
+	} {
+		if _, err := runtime.SQL.Exec(insert, "plan018-valid-"+valid.name+suffix, valid.task, valid.provider, valid.model, valid.credential, valid.version, valid.dimensions); err != nil {
+			t.Errorf("insert valid %s: %v", valid.name, err)
+		}
+	}
+}
+
+func TestPlan018RunbookUpgradesPreservesAndSafelyRollsBackLegacyProfiles(t *testing.T) {
+	runtime := openTestRuntime(t)
+	defer func() { _ = runtime.Close() }()
+
+	const legacyConstraints = `
+ALTER TABLE ai_model_profiles DROP CONSTRAINT ai_model_profiles_provider_check;
+DO $$
+DECLARE item record;
+BEGIN
+  FOR item IN
+    SELECT conname FROM pg_constraint
+    WHERE conrelid = 'ai_model_profiles'::regclass AND contype = 'c'
+      AND (
+        (pg_get_constraintdef(oid) ILIKE '%credential_ref%' AND pg_get_constraintdef(oid) ILIKE '%provider%')
+        OR (pg_get_constraintdef(oid) ILIKE '%provider%' AND pg_get_constraintdef(oid) ILIKE '%task_type%')
+        OR pg_get_constraintdef(oid) ILIKE '%provider <>%ollama%'
+      )
+  LOOP EXECUTE format('ALTER TABLE ai_model_profiles DROP CONSTRAINT %I', item.conname); END LOOP;
+END $$;
+ALTER TABLE ai_model_profiles
+  ADD CONSTRAINT ai_model_profiles_provider_check CHECK (provider IN ('openai','onnx')),
+  ADD CONSTRAINT ai_model_profiles_credential_check CHECK (
+    (provider = 'openai' AND credential_ref = 'env:OPENAI_API_KEY')
+    OR (provider = 'onnx' AND credential_ref IS NULL)
+  ),
+  ADD CONSTRAINT ai_model_profiles_provider_task_check CHECK (
+    (provider = 'onnx' AND task_type = 'embedding') OR provider = 'openai'
+  );`
+	if _, err := runtime.SQL.Exec(legacyConstraints); err != nil {
+		t.Fatalf("simulate PLAN-017 constraints: %v", err)
+	}
+
+	const insert = `
+INSERT INTO ai_model_profiles (
+ name, task_type, provider, model_name, credential_ref, model_version,
+ embedding_dimensions, max_attempts, max_cost, daily_budget
+) VALUES ($1,$2,$3,$4,$5,$6,$7,1,1.0000,10.0000)`
+	legacyName := fmt.Sprintf("plan018-legacy-openai-%d", time.Now().UnixNano())
+	if _, err := runtime.SQL.Exec(insert, legacyName, "event_summary", "openai", "gpt-test", "env:OPENAI_API_KEY", "legacy-v1", nil); err != nil {
+		t.Fatalf("insert legacy profile: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(plan018UpgradeSQL(t)); err != nil {
+		t.Fatalf("execute PLAN-018 upgrade: %v", err)
+	}
+	var preserved int
+	if err := runtime.SQL.QueryRow("SELECT count(*) FROM ai_model_profiles WHERE name = $1 AND provider = 'openai'", legacyName).Scan(&preserved); err != nil || preserved != 1 {
+		t.Fatalf("legacy profile preserved=%d err=%v", preserved, err)
+	}
+
+	deepSeekName := fmt.Sprintf("plan018-new-deepseek-%d", time.Now().UnixNano())
+	if _, err := runtime.SQL.Exec(insert, deepSeekName, "event_summary", "deepseek", "deepseek-chat", "env:DEEPSEEK_API_KEY", "remote-v1", nil); err != nil {
+		t.Fatalf("insert upgraded DeepSeek profile: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(plan018RollbackSQL(t)); err == nil {
+		t.Fatal("PLAN-018 rollback with new provider profile error = nil")
+	}
+	_, _ = runtime.SQL.Exec("ROLLBACK")
+	if _, err := runtime.SQL.Exec("DELETE FROM ai_model_profiles WHERE name = $1", deepSeekName); err != nil {
+		t.Fatalf("remove disposable DeepSeek fixture: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(plan018RollbackSQL(t)); err != nil {
+		t.Fatalf("execute PLAN-018 rollback after clean preflight: %v", err)
+	}
+	if err := runtime.SQL.QueryRow("SELECT count(*) FROM ai_model_profiles WHERE name = $1", legacyName).Scan(&preserved); err != nil || preserved != 1 {
+		t.Fatalf("legacy profile after rollback=%d err=%v", preserved, err)
+	}
+	if _, err := runtime.SQL.Exec(insert, deepSeekName+"-rejected", "event_summary", "deepseek", "deepseek-chat", "env:DEEPSEEK_API_KEY", "remote-v1", nil); err == nil {
+		t.Fatal("DeepSeek insert after PLAN-017 rollback error = nil")
+	} else {
+		assertPostgreSQLState(t, err, "23514")
+	}
+}
+
 func TestSessionSchemaEnforcesIdentityConstraints(t *testing.T) {
 	runtime := openTestRuntime(t)
 	defer func() { _ = runtime.Close() }()
@@ -1190,6 +1304,35 @@ func plan007UpgradeSQL(t *testing.T) string {
 func plan008UpgradeSQL(t *testing.T) string {
 	t.Helper()
 	return plan008RunbookTransaction(t, "BEGIN;\n\nALTER TABLE ai_model_profiles", "PLAN-008 upgrade")
+}
+
+func plan018UpgradeSQL(t *testing.T) string {
+	t.Helper()
+	return plan018RunbookTransaction(t, "BEGIN;\nALTER TABLE ai_model_profiles", "PLAN-018 upgrade")
+}
+
+func plan018RollbackSQL(t *testing.T) string {
+	t.Helper()
+	return plan018RunbookTransaction(t, "BEGIN;\n\nDO $$", "PLAN-018 rollback")
+}
+
+func plan018RunbookTransaction(t *testing.T, marker, label string) string {
+	t.Helper()
+	path := filepath.Join("..", "..", "..", "docs", "operations", "007-LangChainGo多模型升级与连接.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s runbook: %v", label, err)
+	}
+	text := string(content)
+	start := strings.Index(text, marker)
+	if start < 0 {
+		t.Fatalf("%s transaction is missing", label)
+	}
+	end := strings.Index(text[start:], "\nCOMMIT;")
+	if end < 0 {
+		t.Fatalf("%s transaction has no COMMIT", label)
+	}
+	return text[start : start+end+len("\nCOMMIT;")]
 }
 
 func plan009UpgradeSQL(t *testing.T) string {

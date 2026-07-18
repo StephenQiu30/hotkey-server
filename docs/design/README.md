@@ -51,5 +51,6 @@ downstream:
 | [`archive/012-监控调度与River流水线设计.md`](archive/012-监控调度与River流水线设计.md) | Monitor调度、River任务图、事务入队、检查点、重试、取消和恢复 | accepted |
 | [`archive/013-身份认证会话与权限设计.md`](archive/013-身份认证会话与权限设计.md) | 邮箱验证、密码、可撤销会话、刷新轮换和最小角色授权；服务端验收见 Acceptance 004 | accepted |
 | [`archive/014-监控配置发布与预览设计.md`](archive/014-监控配置发布与预览设计.md) | 版本化 Monitor 发布、来源引用安全、纯配置预览、签名、权限与审计契约 | accepted |
+| [`archive/015-LangChainGo多Provider与本地模型设计.md`](archive/015-LangChainGo多Provider与本地模型设计.md) | DeepSeek、Ollama、Qwen3 Embedding 与 LangChainGo 运行边界 | accepted |
 
-001–014 的现有设计均已随对应实施与长期验收证据归档；新模块只有在设计完成后才加入本索引。已落地设计见 [`archive/`](archive/README.md)。
+001–015 的现有设计均已随对应实施与长期验收证据归档。已落地设计见 [`archive/`](archive/README.md)。

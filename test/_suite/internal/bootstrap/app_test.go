@@ -9,13 +9,43 @@ import (
 	"testing"
 	"time"
 
+	intelligencedomain "github.com/StephenQiu30/hotkey-server/internal/modules/intelligence/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/config"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
 	httptransport "github.com/StephenQiu30/hotkey-server/internal/platform/http"
 	"github.com/StephenQiu30/hotkey-server/test/postgresfixture"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
+
+func TestPlan018AIProviderRegistryUsesExplicitConfiguration(t *testing.T) {
+	cfg := config.Default()
+	cfg.AI.DeepSeekAPIKey = "test-only-deepseek-key"
+	cfg.AI.OllamaEnabled = true
+	cfg.AI.OllamaBaseURL = "http://127.0.0.1:11434"
+	registry := newAIProviderRegistry(cfg, zap.NewNop())
+	if _, ok := registry.Resolve(intelligencedomain.ProviderDeepSeek); !ok {
+		t.Fatal("DeepSeek provider is not registered")
+	}
+	if _, ok := registry.Resolve(intelligencedomain.ProviderOllama); !ok {
+		t.Fatal("Ollama provider is not registered")
+	}
+
+	cfg.AI.DeepSeekAPIKey = ""
+	cfg.AI.OllamaBaseURL = "file:///tmp/ollama.sock"
+	core, logs := observer.New(zap.WarnLevel)
+	registry = newAIProviderRegistry(cfg, zap.New(core))
+	if _, ok := registry.Resolve(intelligencedomain.ProviderDeepSeek); ok {
+		t.Fatal("DeepSeek provider registered without a key")
+	}
+	if _, ok := registry.Resolve(intelligencedomain.ProviderOllama); ok {
+		t.Fatal("Ollama provider registered with an unsafe URL")
+	}
+	if logs.Len() != 1 || logs.All()[0].ContextMap()["provider"] != string(intelligencedomain.ProviderOllama) {
+		t.Fatalf("safe configuration diagnostics = %#v", logs.All())
+	}
+}
 
 func TestApplicationRolesStartAndStopIndependently(t *testing.T) {
 	t.Parallel()

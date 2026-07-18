@@ -24,7 +24,7 @@ type EmptyResponse struct{}
 type CreateModelProfileRequest struct {
 	Name                string  `json:"name" example:"embedding-primary"`
 	TaskType            string  `json:"task_type" enums:"embedding,term_expansion,relevance_review,event_summary,entity_claim_extraction"`
-	Provider            string  `json:"provider" enums:"openai,onnx"`
+	Provider            string  `json:"provider" enums:"openai,deepseek,ollama,onnx"`
 	ModelName           string  `json:"model_name" example:"text-embedding-3-large"`
 	ModelVersion        string  `json:"model_version" example:"2026-07"`
 	CredentialRef       *string `json:"credential_ref"`

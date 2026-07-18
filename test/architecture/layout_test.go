@@ -86,18 +86,51 @@ func TestGreenfieldLayout(t *testing.T) {
 	}
 }
 
-func TestLegacyRuntimeDependenciesAreRemoved(t *testing.T) {
+func TestForbiddenRuntimeDependenciesAreRemoved(t *testing.T) {
 	root := repositoryRoot(t)
 	content, err := os.ReadFile(filepath.Join(root, "go.mod"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, dependency := range []string{
-		"github.com/segmentio/kafka-go",
-		"github.com/tmc/langchaingo",
-	} {
+	for _, dependency := range []string{"github.com/segmentio/kafka-go"} {
 		if strings.Contains(string(content), dependency) {
 			t.Errorf("legacy dependency %s must be removed", dependency)
 		}
+	}
+}
+
+func TestLangChainGoStaysInsideIntelligenceProviderInfrastructure(t *testing.T) {
+	root := repositoryRoot(t)
+	var violations []string
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() && (entry.Name() == ".git" || entry.Name() == "test") {
+			return filepath.SkipDir
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		content, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		if strings.Contains(string(content), "github.com/tmc/langchaingo") {
+			relative, relErr := filepath.Rel(root, path)
+			if relErr != nil {
+				return relErr
+			}
+			if !strings.HasPrefix(filepath.ToSlash(relative), "internal/modules/intelligence/infrastructure/provider/") {
+				violations = append(violations, relative)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) > 0 {
+		t.Errorf("LangChainGo imports escape provider infrastructure: %s", strings.Join(violations, ", "))
 	}
 }

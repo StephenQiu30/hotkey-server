@@ -3,9 +3,12 @@ package domain
 import (
 	"fmt"
 	"math/big"
+	"regexp"
 	"strings"
 	"time"
 )
+
+var ollamaDigestPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 // ModelProfile contains immutable provider/semantic identity plus the few
 // operational knobs that later application services may update under version
@@ -46,6 +49,15 @@ func (profile ModelProfile) Validate() error {
 	switch profile.Provider {
 	case ProviderOpenAI:
 		if profile.CredentialRef == nil || *profile.CredentialRef != OpenAICredentialReference {
+			return NewError(CodeAIModelProfileInvalid)
+		}
+	case ProviderDeepSeek:
+		if profile.CredentialRef == nil || *profile.CredentialRef != DeepSeekCredentialReference || profile.TaskType == TaskTypeEmbedding {
+			return NewError(CodeAIModelProfileInvalid)
+		}
+	case ProviderOllama:
+		if profile.CredentialRef != nil || !ollamaDigestPattern.MatchString(profile.ModelVersion) ||
+			(profile.TaskType == TaskTypeEmbedding && profile.ModelName != OllamaQwenEmbeddingModel) {
 			return NewError(CodeAIModelProfileInvalid)
 		}
 	case ProviderONNX:

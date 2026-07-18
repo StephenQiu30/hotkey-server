@@ -26,14 +26,18 @@ func (taskType TaskType) Valid() bool {
 type ProviderName string
 
 const (
-	ProviderOpenAI ProviderName = "openai"
-	ProviderONNX   ProviderName = "onnx"
+	ProviderOpenAI   ProviderName = "openai"
+	ProviderDeepSeek ProviderName = "deepseek"
+	ProviderOllama   ProviderName = "ollama"
+	ProviderONNX     ProviderName = "onnx"
 
-	OpenAICredentialReference = "env:OPENAI_API_KEY"
+	OpenAICredentialReference   = "env:OPENAI_API_KEY"
+	DeepSeekCredentialReference = "env:DEEPSEEK_API_KEY"
+	OllamaQwenEmbeddingModel    = "qwen3-embedding:0.6b"
 )
 
 func (provider ProviderName) Valid() bool {
-	return provider == ProviderOpenAI || provider == ProviderONNX
+	return provider == ProviderOpenAI || provider == ProviderDeepSeek || provider == ProviderOllama || provider == ProviderONNX
 }
 
 // Provider is intentionally independent of SDK and HTTP types.

@@ -6,7 +6,7 @@ feature_area: 验收记录
 purpose: 定义长期验收证据的结构、结论和归档边界
 canonical_path: docs/acceptance/README.md
 status: review
-version: v2.4
+version: v2.7
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -60,7 +60,7 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 
 ## 已归档验收
 
-001–016 的验收结论为 `accepted`，017 为 `accepted_with_risk`；正文均已移入 [`archive/`](archive/README.md)。
+001–016 的验收结论为 `accepted`，017–018 为 `accepted_with_risk`；正文均已移入 [`archive/`](archive/README.md)。
 
 ## 已验收任务
 
@@ -70,6 +70,7 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | 015 | [日报周报与发布快照](archive/015-日报周报与发布快照验收.md) | accepted |
 | 016 | [邮件与RSS-Atom订阅交付](archive/016-邮件与RSS-Atom订阅交付验收.md) | accepted |
 | 017 | [运行治理容量与端到端验收](archive/017-运行治理容量与端到端验收.md) | accepted_with_risk |
+| 018 | [LangChainGo多模型接入验收](archive/018-LangChainGo多模型接入验收.md) | accepted_with_risk |
 
 ## 变更记录
 
@@ -91,3 +92,4 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | v2.4 | 2026-07-17 | `59e85fe` 固定事件智能离线评测并通过完整质量门禁，Acceptance-012 归档为 accepted。 |
 | v2.5 | 2026-07-17 | `0567332` 完成 PLAN-013 RSS/HN 恢复 fixture 与完整质量门禁，Acceptance-013 归档为 accepted。 |
 | v2.6 | 2026-07-17 | `0daab17` 完成 PLAN-014–016 核心闭环并将 Acceptance-014–016 归档为 accepted；Acceptance-017 归档为 accepted_with_risk，外部依赖演练保留在 Operations-006。 |
+| v2.7 | 2026-07-18 | PLAN-018 通过全量门禁与独立最终复审并归档为 accepted_with_risk，DeepSeek/Ollama 实机连接风险保留在 Operations-007。 |

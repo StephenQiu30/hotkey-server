@@ -222,13 +222,23 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 	return fx.New(options...), nil
 }
 
-func newAIProviderRegistry(cfg config.Config) *intelligenceapplication.ProviderRegistry {
-	providers := make(map[intelligencedomain.ProviderName]intelligencedomain.Provider, 2)
+func newAIProviderRegistry(cfg config.Config, logger *zap.Logger) *intelligenceapplication.ProviderRegistry {
+	providers := make(map[intelligencedomain.ProviderName]intelligencedomain.Provider, 4)
 	if provider, err := intelligenceprovider.NewOpenAIProvider(cfg.AI); err == nil {
 		providers[intelligencedomain.ProviderOpenAI] = provider
 	}
 	if provider, err := intelligenceprovider.NewONNXProvider(cfg.AI); err == nil {
 		providers[intelligencedomain.ProviderONNX] = provider
+	}
+	if provider, err := intelligenceprovider.NewDeepSeekProvider(cfg.AI); err == nil {
+		providers[intelligencedomain.ProviderDeepSeek] = provider
+	} else if strings.TrimSpace(cfg.AI.DeepSeekAPIKey) != "" {
+		logger.Warn("AI provider configuration rejected", zap.String("provider", string(intelligencedomain.ProviderDeepSeek)))
+	}
+	if provider, err := intelligenceprovider.NewOllamaProvider(cfg.AI); err == nil {
+		providers[intelligencedomain.ProviderOllama] = provider
+	} else if cfg.AI.OllamaEnabled {
+		logger.Warn("AI provider configuration rejected", zap.String("provider", string(intelligencedomain.ProviderOllama)))
 	}
 	return intelligenceapplication.NewProviderRegistry(providers)
 }

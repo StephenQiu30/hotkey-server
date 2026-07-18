@@ -84,6 +84,9 @@ type SMTPConfig struct {
 // optional at process startup because no profile is selected implicitly.
 type AIConfig struct {
 	OpenAIAPIKey       string
+	DeepSeekAPIKey     string
+	OllamaEnabled      bool
+	OllamaBaseURL      string
 	ONNXRuntimeLibrary string
 	ONNXModelPath      string
 	ONNXTokenizerPath  string
@@ -114,6 +117,7 @@ func Default() Config {
 				TLSMode: "tls",
 			},
 		},
+		AI: AIConfig{OllamaBaseURL: "http://127.0.0.1:11434"},
 	}
 }
 
@@ -182,6 +186,9 @@ func Load() (Config, error) {
 		},
 		AI: AIConfig{
 			OpenAIAPIKey:       configString(v, "openai_api_key"),
+			DeepSeekAPIKey:     configString(v, "deepseek_api_key"),
+			OllamaEnabled:      configBool(v, "ollama_enabled"),
+			OllamaBaseURL:      configString(v, "ollama_base_url"),
 			ONNXRuntimeLibrary: configString(v, "onnx_runtime_library"),
 			ONNXModelPath:      configString(v, "onnx_model_path"),
 			ONNXTokenizerPath:  configString(v, "onnx_tokenizer_path"),
@@ -321,6 +328,8 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("smtp_port", cfg.Authentication.SMTP.Port)
 	v.SetDefault("smtp_tls_mode", cfg.Authentication.SMTP.TLSMode)
 	v.SetDefault("smtp_from_name", "HotKey")
+	v.SetDefault("ollama_enabled", cfg.AI.OllamaEnabled)
+	v.SetDefault("ollama_base_url", cfg.AI.OllamaBaseURL)
 }
 
 func configKeys() []string {
@@ -329,7 +338,7 @@ func configKeys() []string {
 		"minio_endpoint", "minio_access_key", "minio_secret_key", "minio_bucket",
 		"minio_use_ssl", "vault_path",
 		"jwt_secret", "jwt_issuer", "jwt_audience", "verification_hmac_secret", "redis_url", "smtp_enabled", "smtp_host", "smtp_port", "smtp_tls_mode", "smtp_username", "smtp_password", "smtp_from_email", "smtp_from_name", "cors_allowed_origins", "refresh_cookie_secure", "bootstrap_admin_email", "bootstrap_admin_password",
-		"openai_api_key", "onnx_runtime_library", "onnx_model_path", "onnx_tokenizer_path", "onnx_manifest_path",
+		"openai_api_key", "deepseek_api_key", "ollama_enabled", "ollama_base_url", "onnx_runtime_library", "onnx_model_path", "onnx_tokenizer_path", "onnx_manifest_path",
 	}
 }
 

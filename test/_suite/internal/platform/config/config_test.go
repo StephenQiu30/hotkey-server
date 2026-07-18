@@ -203,6 +203,9 @@ func TestLoadReadsNamedAuthenticationSettings(t *testing.T) {
 
 func TestAIConfigUsesOnlyExplicitProviderAndArtifactKeys(t *testing.T) {
 	t.Setenv("HOTKEY_OPENAI_API_KEY", "test-openai-key")
+	t.Setenv("HOTKEY_DEEPSEEK_API_KEY", "test-deepseek-key")
+	t.Setenv("HOTKEY_OLLAMA_ENABLED", "true")
+	t.Setenv("HOTKEY_OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 	t.Setenv("HOTKEY_ONNX_RUNTIME_LIBRARY", "/fixtures/libonnxruntime.dylib")
 	t.Setenv("HOTKEY_ONNX_MODEL_PATH", "/fixtures/model.onnx")
 	t.Setenv("HOTKEY_ONNX_TOKENIZER_PATH", "/fixtures/tokenizer.json")
@@ -215,6 +218,9 @@ func TestAIConfigUsesOnlyExplicitProviderAndArtifactKeys(t *testing.T) {
 	if got, want := cfg.AI.OpenAIAPIKey, "test-openai-key"; got != want {
 		t.Errorf("AI.OpenAIAPIKey = %q, want %q", got, want)
 	}
+	if cfg.AI.DeepSeekAPIKey != "test-deepseek-key" || !cfg.AI.OllamaEnabled || cfg.AI.OllamaBaseURL != "http://127.0.0.1:11434" {
+		t.Errorf("Load() PLAN-018 AI config = %#v", cfg.AI)
+	}
 	if got, want := cfg.AI.ONNXManifestPath, "/fixtures/manifest.json"; got != want {
 		t.Errorf("AI.ONNXManifestPath = %q, want %q", got, want)
 	}
@@ -222,6 +228,9 @@ func TestAIConfigUsesOnlyExplicitProviderAndArtifactKeys(t *testing.T) {
 	keys := strings.Join(configKeys(), ",")
 	for _, key := range []string{
 		"openai_api_key",
+		"deepseek_api_key",
+		"ollama_enabled",
+		"ollama_base_url",
 		"onnx_runtime_library",
 		"onnx_model_path",
 		"onnx_tokenizer_path",
@@ -243,6 +252,9 @@ func TestAIConfigUsesOnlyExplicitProviderAndArtifactKeys(t *testing.T) {
 	}
 	for _, key := range []string{
 		"HOTKEY_OPENAI_API_KEY=",
+		"HOTKEY_DEEPSEEK_API_KEY=",
+		"HOTKEY_OLLAMA_ENABLED=false",
+		"HOTKEY_OLLAMA_BASE_URL=http://127.0.0.1:11434",
 		"HOTKEY_ONNX_RUNTIME_LIBRARY=",
 		"HOTKEY_ONNX_MODEL_PATH=",
 		"HOTKEY_ONNX_TOKENIZER_PATH=",

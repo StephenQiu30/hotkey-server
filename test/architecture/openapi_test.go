@@ -528,6 +528,15 @@ func assertSafeModelProfileOpenAPIDefinitions(t *testing.T, definitions map[stri
 	} else if strings.Contains(string(credential), "example") {
 		t.Error("model profile credential_ref must not have an OpenAPI example")
 	}
+	var providerProperty struct {
+		Enum []string `json:"enum"`
+	}
+	if err := json.Unmarshal(create.Properties["provider"], &providerProperty); err != nil {
+		t.Fatalf("decode model profile provider property: %v", err)
+	}
+	if !reflect.DeepEqual(providerProperty.Enum, []string{"openai", "deepseek", "ollama", "onnx"}) {
+		t.Errorf("model profile provider enum = %#v", providerProperty.Enum)
+	}
 	for _, forbidden := range []string{"endpoint", "parameters", "prompt", "raw_response", "api_key"} {
 		if _, exists := create.Properties[forbidden]; exists {
 			t.Errorf("model profile create schema exposes %q", forbidden)

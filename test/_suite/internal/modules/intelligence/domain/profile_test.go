@@ -1,6 +1,9 @@
 package domain
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestModelProfileValidatesOnlyPlan008SemanticCombinations(t *testing.T) {
 	profile := validOpenAIEmbeddingProfile()
@@ -46,6 +49,58 @@ func TestModelProfileSemanticIdentityExcludesOnlyOperationalFields(t *testing.T)
 	semantic.ModelVersion = "2026-08"
 	if profile.SameSemanticIdentity(semantic) {
 		t.Fatal("SameSemanticIdentity() accepted changed model version")
+	}
+}
+
+func TestPlan018ProviderProfileContracts(t *testing.T) {
+	deepSeekCredential := DeepSeekCredentialReference
+	deepSeek := validOpenAIEmbeddingProfile()
+	deepSeek.Name = "deepseek-summary"
+	deepSeek.TaskType = TaskTypeEventSummary
+	deepSeek.Provider = ProviderDeepSeek
+	deepSeek.ModelName = "deepseek-v4-pro"
+	deepSeek.CredentialRef = &deepSeekCredential
+	deepSeek.EmbeddingDimensions = nil
+	if err := deepSeek.Validate(); err != nil {
+		t.Fatalf("DeepSeek profile Validate() error = %v", err)
+	}
+
+	digest := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	dimensions := EmbeddingDimensions
+	ollama := deepSeek
+	ollama.Name = "ollama-qwen-embedding"
+	ollama.TaskType = TaskTypeEmbedding
+	ollama.Provider = ProviderOllama
+	ollama.ModelName = OllamaQwenEmbeddingModel
+	ollama.ModelVersion = digest
+	ollama.CredentialRef = nil
+	ollama.EmbeddingDimensions = &dimensions
+	if err := ollama.Validate(); err != nil {
+		t.Fatalf("Ollama Qwen profile Validate() error = %v", err)
+	}
+
+	for _, test := range []struct {
+		name   string
+		mutate func(*ModelProfile)
+	}{
+		{"DeepSeek embedding", func(profile *ModelProfile) {
+			profile.TaskType, profile.EmbeddingDimensions = TaskTypeEmbedding, &dimensions
+		}},
+		{"DeepSeek wrong credential", func(profile *ModelProfile) { value := "env:OPENAI_API_KEY"; profile.CredentialRef = &value }},
+		{"Ollama credential", func(profile *ModelProfile) { value := "env:OLLAMA_KEY"; profile.CredentialRef = &value }},
+		{"Ollama mutable version", func(profile *ModelProfile) { profile.ModelVersion = "latest" }},
+		{"Ollama wrong embedding model", func(profile *ModelProfile) { profile.ModelName = "qwen3-embedding:4b" }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := deepSeek
+			if strings.HasPrefix(test.name, "Ollama") {
+				candidate = ollama
+			}
+			test.mutate(&candidate)
+			if err := candidate.Validate(); err == nil {
+				t.Fatal("ModelProfile.Validate() error = nil, want rejection")
+			}
+		})
 	}
 }
 

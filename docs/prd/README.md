@@ -69,6 +69,7 @@ downstream:
 | [015](archive/015-日报周报与发布快照.md) | 日报、周报与发布快照 | P1 | P1 | 011, 012, 013 | archived | done |
 | [016](archive/016-邮件与RSS-Atom订阅交付.md) | 邮件与 RSS/Atom 订阅交付 | P1 | P1 | 014, 015 | archived | done |
 | [017](archive/017-运行治理容量与端到端验收.md) | 运行治理、容量与端到端验收 | Closure | P0 | 001–016 | archived | done |
+| [018](archive/018-LangChainGo多模型接入.md) | LangChainGo、DeepSeek、Ollama 与 Qwen Embedding | P1 | P0 | 008, 017 | archived | done |
 
 ## 主链路
 
@@ -80,8 +81,9 @@ downstream:
                                       011 + 012 + 013 → 015
                                       014 + 015 → 016
                                       001–016 → 017
+                                      008 + 017 → 018
 
-PRD-001–017 已移入 [`archive/`](archive/README.md)。014–016 的核心验收为 accepted，017 为 accepted_with_risk；外部 MinIO、SMTP 和生产备份恢复仍按 Operations-006 在部署环境演练，不伪造外部证据。
+PRD-001–018 已移入 [`archive/`](archive/README.md)。014–016 的核心验收为 accepted，017–018 为 accepted_with_risk；外部 MinIO、SMTP、生产备份恢复、DeepSeek 凭据与 Ollama 实机连接仍按对应 Operations 在部署环境演练，不伪造外部证据。
 
 ## 每个 PRD 的完成要求
 

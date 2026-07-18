@@ -6549,6 +6549,8 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "openai",
+                        "deepseek",
+                        "ollama",
                         "onnx"
                     ]
                 },
