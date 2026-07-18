@@ -5,9 +5,9 @@ audience: [Dev, QA, Ops]
 feature_area: 内容归档与阅读
 purpose: 验收授权 Feed 内容的 Markdown 归档与安全读取 API
 canonical_path: docs/acceptance/019-采集内容Markdown归档与预览验收.md
-status: review
-conclusion: pending
-version: v0.5
+status: accepted
+conclusion: accepted_with_risk
+version: v1.0
 owner: HotKey Server Team
 inputs:
   - docs/design/016-采集内容Markdown归档与预览设计.md
@@ -52,7 +52,7 @@ downstream:
 | Server 全量 | `HOTKEY_TEST_DSN=<disposable-admin-dsn> HOTKEY_TEST_REDIS_URL=<isolated-test-redis> make ci`，随后 `make clean`；OpenAPI、vet、数据库运行校验、全量测试、build、架构、仓库与 Schema 均通过 | passed |
 | OpenAPI | `make openapi-validate` 通过；`GET /api/v1/contents/{id}/document` 由注解生成并进入 80 路由契约 | passed |
 | Schema | `git diff --exit-code -- db/schema.sql`，本期无 Schema 差异 | passed |
-| 独立复审 | 逐项 passed/failed/blocked | pending |
+| 独立复审 | 非主要实施者复核 8 项精确生命周期测试、Source CapturePolicy 跨模块链路、400/404/503 Result、Schema 零差异与工作区清洁，无 P0/P1/P2 | passed |
 
 ## 数据与外部依赖限制
 
@@ -60,7 +60,7 @@ downstream:
 
 ## 结论
 
-`pending`：Server 实现与本地质量门禁已通过，提交链为 `043cbd4`、`d2df192`、`f8f7e0f`、`54a7610`、`6d6da6f`；等待非主要实施者独立复审及根任务的跨仓浏览器验收后再决定结论，不提前归档或标记 done。
+`accepted_with_risk`：Server 范围内实现、OpenAPI、Schema、全量质量门禁与独立复审均通过，提交链为 `043cbd4`、`d2df192`、`f8f7e0f`、`54a7610`、`6d6da6f`、`2129615`、`f748ea3`、`eb0f604`。唯一保留风险是本轮没有可用的 `HOTKEY_TEST_MINIO_*`，因此真实外部 MinIO integration 未执行；S3 协议 fixture 已覆盖 MIME、大小、SHA、篡改与读取上限。Web 阅读器与浏览器打印由 `../hotkey-web` 自身验收，不作为 Server 结案阻塞项。
 
 ## 变更记录
 
@@ -71,3 +71,4 @@ downstream:
 | v0.3 | 2026-07-18 | 记录实施前标准经非主要编写者审核通过；实现证据仍 pending。 |
 | v0.4 | 2026-07-18 | 记录真实 RED、定向与全量 GREEN、OpenAPI/Schema 门禁，以及真实 MinIO 未执行风险；等待独立复审。 |
 | v0.5 | 2026-07-18 | 补齐 Plan Task 4 八项精确命名并发/重放/补偿/对账/恢复/删除/选择门禁，以及 Source CapturePolicy 跨模块持久化链路和 document 404 Result；结论继续 pending。 |
+| v1.0 | 2026-07-18 | 独立实现复审 APPROVED；Server 验收为 accepted_with_risk，仅保留真实外部 MinIO integration 未执行风险。 |

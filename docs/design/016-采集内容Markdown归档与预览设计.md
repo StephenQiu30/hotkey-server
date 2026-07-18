@@ -6,7 +6,7 @@ feature_area: 内容归档与阅读
 purpose: 定义授权 Feed 内容的 Markdown 投影与安全读取契约
 canonical_path: docs/design/016-采集内容Markdown归档与预览设计.md
 status: accepted
-version: v1.0
+version: v1.1
 owner: HotKey Server Team
 inputs:
   - AGENTS.md
@@ -72,3 +72,4 @@ Server 只提供安全 Markdown 契约和真实可用性，不返回 HTML 或 PD
 | v0.4 | 2026-07-18 | 冻结 Markdown asset 的 MIME、幂等、多版本选择与历史 text/plain 隔离。 |
 | v0.5 | 2026-07-18 | 对齐 CommonMark + GFM table，冻结安全链接协议及对象 Content-Type 完整性。 |
 | v1.0 | 2026-07-18 | 经非主要编写者独立复核通过，设计 accepted。 |
+| v1.1 | 2026-07-18 | PLAN-019 已按设计实现并通过独立复审；真实外部 MinIO 演练风险保留在验收记录。 |

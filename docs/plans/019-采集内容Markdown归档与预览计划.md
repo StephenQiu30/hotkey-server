@@ -6,9 +6,9 @@ feature_area: 内容归档与阅读
 purpose: 以测试优先方式实施 Markdown 归档与安全 document API
 canonical_path: docs/plans/019-采集内容Markdown归档与预览计划.md
 status: accepted
-execution_status: ready
+execution_status: done
 review_status: approved
-version: v1.0
+version: v1.1
 owner: HotKey Server Team
 inputs:
   - docs/design/016-采集内容Markdown归档与预览设计.md
@@ -104,3 +104,4 @@ Design-016 与 PRD-019 必须 accepted，本 Plan 必须 accepted/approved/ready
 | v0.4 | 2026-07-18 | 补齐逐 Task GREEN、授权策略、资产选择、孤儿对账和真实 MinIO integration 门禁。 |
 | v0.5 | 2026-07-18 | 修正 runner 定向命令为 materialize 后的生产包路径。 |
 | v1.0 | 2026-07-18 | 七项 Plan Review 门禁经非主要编写者复核通过，进入 ready。 |
+| v1.1 | 2026-07-18 | Task 1–5、全量门禁与独立实现复审完成，执行状态更新为 done。 |

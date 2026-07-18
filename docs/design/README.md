@@ -54,4 +54,4 @@ downstream:
 | [`archive/015-LangChainGo多Provider与本地模型设计.md`](archive/015-LangChainGo多Provider与本地模型设计.md) | DeepSeek、Ollama、Qwen3 Embedding 与 LangChainGo 运行边界 | accepted |
 | [`016-采集内容Markdown归档与预览设计.md`](016-采集内容Markdown归档与预览设计.md) | 授权 Feed 内容的 Markdown 归档、受限读取与 PDF 保存边界 | accepted |
 
-001–015 的现有设计均已随对应实施与长期验收证据归档。Design-016 已 accepted、等待实施与验收；已落地设计见 [`archive/`](archive/README.md)。
+001–015 的现有设计均已随对应实施与长期验收证据归档。Design-016 已实施并以 `accepted_with_risk` 完成验收；真实外部 MinIO 演练风险保留在 Acceptance-019。已落地设计见 [`archive/`](archive/README.md)。

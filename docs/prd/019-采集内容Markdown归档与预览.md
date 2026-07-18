@@ -9,8 +9,8 @@ purpose: 交付授权 Feed 内容的 Markdown 归档和安全读取 API
 phase: P1
 priority: P0
 status: accepted
-execution_status: ready
-version: v1.0
+execution_status: done
+version: v1.1
 owner: HotKey Server Team
 depends_on: [PRD-006, PRD-007, PRD-017]
 design_refs:
@@ -66,3 +66,4 @@ downstream:
 | v0.3 | 2026-07-18 | 将 Web 交付移出 Server PRD，补齐证据生命周期验收。 |
 | v0.4 | 2026-07-18 | 移除跨仓客户端生成验收，仅保留 Server 注解与 OpenAPI 门禁。 |
 | v1.0 | 2026-07-18 | 经独立复核通过，PRD accepted/ready。 |
+| v1.1 | 2026-07-18 | PLAN-019 实现、全量门禁与独立复审通过，执行状态更新为 done。 |
