@@ -69,6 +69,38 @@ func TestParseFeedRejectsMalformedXML(t *testing.T) {
 	}
 }
 
+func TestParseFeedNormalizesRSS1RDFItems(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  xmlns:dc="http://purl.org/dc/elements/1.1/"
+  xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <item rdf:about="https://journal.example.test/articles/paper-1">
+    <title>Representative journal paper</title>
+    <link>https://journal.example.test/articles/paper-1</link>
+    <content:encoded>Paper abstract</content:encoded>
+    <dc:creator>Researcher One</dc:creator>
+    <dc:date>2026-07-17</dc:date>
+  </item>
+</rdf:RDF>`)
+
+	feed, err := parseFeed(payload, time.Date(2026, time.July, 18, 9, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("parseFeed(): %v", err)
+	}
+	if len(feed.Items) != 1 {
+		t.Fatalf("item count = %d, want 1", len(feed.Items))
+	}
+	item := feed.Items[0]
+	if item.ExternalID != "https://journal.example.test/articles/paper-1" || item.Title != "Representative journal paper" || item.Body != "Paper abstract" || item.Author != "Researcher One" {
+		t.Fatalf("item = %#v", item)
+	}
+	if item.PublishedAt == nil || item.PublishedAt.Format(time.DateOnly) != "2026-07-17" {
+		t.Fatalf("published_at = %v, want 2026-07-17", item.PublishedAt)
+	}
+}
+
 func diagnosticCodes(diagnostics []fetchDiagnostic) map[string]int {
 	codes := make(map[string]int, len(diagnostics))
 	for _, diagnostic := range diagnostics {
