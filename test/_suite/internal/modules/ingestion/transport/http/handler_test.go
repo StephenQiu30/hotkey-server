@@ -170,7 +170,10 @@ func TestContentDocumentRouteAllowsAuthenticatedRolesAndReturnsSafeProjection(t 
 		})
 	}
 
-	service := &contentQueryServiceStub{documentErrors: map[int64]error{13: sharederrors.New(sharederrors.CodeUnavailable, stdhttp.StatusServiceUnavailable, "")}}
+	service := &contentQueryServiceStub{documentErrors: map[int64]error{
+		13:  sharederrors.New(sharederrors.CodeUnavailable, stdhttp.StatusServiceUnavailable, ""),
+		404: sharederrors.New(sharederrors.CodeNotFound, stdhttp.StatusNotFound, ""),
+	}}
 	router := newContentRouter(t, service, httptransport.RoleViewer)
 	for _, test := range []struct {
 		path       string
@@ -178,6 +181,7 @@ func TestContentDocumentRouteAllowsAuthenticatedRolesAndReturnsSafeProjection(t 
 		wantCode   int
 	}{
 		{path: "/api/v1/contents/not-a-number/document", wantStatus: stdhttp.StatusBadRequest, wantCode: sharederrors.CodeInvalidRequest},
+		{path: "/api/v1/contents/404/document", wantStatus: stdhttp.StatusNotFound, wantCode: sharederrors.CodeNotFound},
 		{path: "/api/v1/contents/13/document", wantStatus: stdhttp.StatusServiceUnavailable, wantCode: sharederrors.CodeUnavailable},
 	} {
 		response := performContentRequest(router, stdhttp.MethodGet, test.path, "viewer")

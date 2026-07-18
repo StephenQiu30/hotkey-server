@@ -77,7 +77,7 @@ func lifecycleContent(sourceID int64, externalID string, observedAt time.Time) i
 	}
 }
 
-func TestReconcileObjectsDeletesOnlyUnreferencedEvidence(t *testing.T) {
+func TestArchiveMarkdownOrphanReconciliation(t *testing.T) {
 	runtime := openIngestionRuntime(t)
 	defer func() { _ = runtime.Close() }()
 	repository := ingestionpostgres.NewContentRepository(runtime)
@@ -91,7 +91,7 @@ func TestReconcileObjectsDeletesOnlyUnreferencedEvidence(t *testing.T) {
 	known := deterministicEvidence(t, store, sourceID, "known evidence")
 	if err := repository.CreateAsset(context.Background(), ingestiondomain.ContentAsset{
 		ContentID: stored.ID, AssetType: "text", ObjectKey: known.ObjectKey, OriginalURL: content.CanonicalURL,
-		MIMEType: "text/plain; charset=utf-8", SHA256: known.SHA256, SizeBytes: known.SizeBytes,
+		MIMEType: archivedMarkdownMIME, SHA256: known.SHA256, SizeBytes: known.SizeBytes,
 		CapturedAt: content.FetchedAt, Status: ingestiondomain.AssetStatusAvailable,
 	}); err != nil {
 		t.Fatalf("CreateAsset() error = %v", err)

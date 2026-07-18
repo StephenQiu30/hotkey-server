@@ -119,6 +119,52 @@ func TestIngestRunDoesNotUploadWhenCaptureBodyWasNotPermitted(t *testing.T) {
 	}
 }
 
+func TestSourceCapturePolicyBodyStorageFlowsToIngestionAsset(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		allowBody   bool
+		wantBody    bool
+		wantAssets  int
+		wantUploads int
+	}{
+		{name: "body storage denied", allowBody: false},
+		{name: "body storage allowed", allowBody: true, wantBody: true, wantAssets: 1, wantUploads: 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			runtime := openIngestionRuntime(t)
+			defer func() { _ = runtime.Close() }()
+			runID, _ := collectRunThroughSourcePolicy(t, runtime, test.allowBody)
+
+			var persistedBody string
+			if err := runtime.SQL.QueryRow(`SELECT COALESCE(captured_item->>'body', '') FROM collection_run_items WHERE run_id = $1`, runID).Scan(&persistedBody); err != nil {
+				t.Fatalf("read persisted Source CapturedItem body: %v", err)
+			}
+			if (persistedBody != "") != test.wantBody {
+				t.Fatalf("persisted Source body = %q, allow_body_storage=%t", persistedBody, test.allowBody)
+			}
+
+			store := newEvidenceStoreFake()
+			service, err := ingestionapplication.NewService(ingestionapplication.Dependencies{
+				Runtime: runtime, Captures: newCapturedItemReader(t, runtime), Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: store, Markdown: passthroughMarkdownProjector{},
+			})
+			if err != nil {
+				t.Fatalf("NewService() error = %v", err)
+			}
+			result, err := service.IngestRun(context.Background(), ingestionapplication.IngestRunInput{RunID: runID, Limit: 1})
+			if err != nil {
+				t.Fatalf("IngestRun() error = %v", err)
+			}
+			var assets int
+			if err := runtime.SQL.QueryRow(`SELECT count(*) FROM content_assets`).Scan(&assets); err != nil {
+				t.Fatalf("count content assets: %v", err)
+			}
+			if result.Bound != 1 || result.Uploaded != test.wantUploads || store.puts != test.wantUploads || assets != test.wantAssets {
+				t.Fatalf("allow_body_storage=%t result/store/assets = %#v/%d/%d, want uploads/assets %d/%d", test.allowBody, result, store.puts, assets, test.wantUploads, test.wantAssets)
+			}
+		})
+	}
+}
+
 func TestArchiveMarkdownUsesAuthorizedProjectionAndExactMIME(t *testing.T) {
 	runtime := openIngestionRuntime(t)
 	defer func() { _ = runtime.Close() }()
@@ -173,7 +219,7 @@ func TestIngestRunRefreshesEventMetricsAfterContentCommit(t *testing.T) {
 	}
 }
 
-func TestIngestRunReusesOneEvidenceAssetForSameSourceBody(t *testing.T) {
+func TestArchiveMarkdownReplay(t *testing.T) {
 	runtime := openIngestionRuntime(t)
 	defer func() { _ = runtime.Close() }()
 	runID, _ := seedCapturedRun(t, runtime, []sourcedomain.CapturedItem{
@@ -203,6 +249,36 @@ func TestIngestRunReusesOneEvidenceAssetForSameSourceBody(t *testing.T) {
 	}
 	if assets != 1 || succeeded != 2 {
 		t.Fatalf("shared evidence state = assets=%d bindings=%d, want 1/2", assets, succeeded)
+	}
+}
+
+func TestArchiveMarkdownCompensation(t *testing.T) {
+	runtime := openIngestionRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	runID, _ := seedCapturedRun(t, runtime, []sourcedomain.CapturedItem{
+		capturedItem("compensate", "article", "Compensation", "object must be compensated"),
+	})
+	store := newEvidenceStoreFake()
+	reader := &compensatingBindReader{CapturedItemReader: newCapturedItemReader(t, runtime)}
+	service, err := ingestionapplication.NewService(ingestionapplication.Dependencies{
+		Runtime: runtime, Captures: reader, Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: store, Markdown: passthroughMarkdownProjector{},
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	result, err := service.IngestRun(context.Background(), ingestionapplication.IngestRunInput{RunID: runID, Limit: 1})
+	if err != nil {
+		t.Fatalf("IngestRun() error = %v", err)
+	}
+	var assets int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM content_assets`).Scan(&assets); err != nil {
+		t.Fatalf("count content assets: %v", err)
+	}
+	store.mu.Lock()
+	objects, deletes := len(store.objects), store.deletes
+	store.mu.Unlock()
+	if result.Failed != 1 || result.Bound != 0 || result.Uploaded != 0 || assets != 0 || objects != 0 || deletes != 1 {
+		t.Fatalf("compensation result/assets/objects/deletes = %#v/%d/%d/%d, want failed rollback with one compensated object", result, assets, objects, deletes)
 	}
 }
 
@@ -264,6 +340,7 @@ func (repository *transactionObservingContents) CreateAsset(ctx context.Context,
 type evidenceStoreFake struct {
 	mu         sync.Mutex
 	puts       int
+	deletes    int
 	objects    map[string]ingestiondomain.EvidenceReceipt
 	lastObject ingestiondomain.EvidenceObject
 }
@@ -316,6 +393,7 @@ func (store *evidenceStoreFake) ReadText(_ context.Context, objectKey string, _ 
 func (store *evidenceStoreFake) Delete(_ context.Context, objectKey string) error {
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	store.deletes++
 	delete(store.objects, objectKey)
 	return nil
 }
@@ -434,4 +512,82 @@ func capturedItem(externalID, contentType, title, body string) sourcedomain.Capt
 		Title: title, Body: body, URL: "https://example.test/articles/" + externalID, ObservedAt: observedAt,
 		RawPayloadDisposition: sourcedomain.RawPayloadDiscarded,
 	}
+}
+
+type compensatingBindReader struct {
+	sourcedomain.CapturedItemReader
+}
+
+func (*compensatingBindReader) BindContent(context.Context, sourcedomain.CapturedContentBinding) error {
+	return errors.New("injected Source bind failure")
+}
+
+type policyConnectorRegistry struct{ connector sourcedomain.Connector }
+
+func (registry policyConnectorRegistry) Resolve(context.Context, sourcedomain.SourceConnection) (sourcedomain.Connector, error) {
+	return registry.connector, nil
+}
+
+type policyConnector struct{ item sourcedomain.SourceItem }
+
+func (policyConnector) Validate(context.Context, sourcedomain.SourceConnection) error { return nil }
+func (connector policyConnector) Fetch(context.Context, sourcedomain.FetchRequest) (sourcedomain.FetchResult, error) {
+	return sourcedomain.FetchResult{Items: []sourcedomain.SourceItem{connector.item}}, nil
+}
+func (policyConnector) Health(context.Context, sourcedomain.SourceConnection) sourcedomain.HealthResult {
+	return sourcedomain.HealthResult{Healthy: true}
+}
+
+func collectRunThroughSourcePolicy(t *testing.T, runtime *database.Runtime, allowBody bool) (int64, int64) {
+	t.Helper()
+	ctx := context.Background()
+	config := sourcedomain.DefaultSourceConfig()
+	config.AllowBodyStorage = allowBody
+	connection := sourcedomain.SourceConnection{
+		SourceType: sourcedomain.SourceTypeRSS, Name: fmt.Sprintf("capture-policy-%t-%d", allowBody, time.Now().UnixNano()),
+		Endpoint: "https://feeds.example.test/policy", AuthType: sourcedomain.AuthTypeNone, Config: config, Enabled: true,
+		HealthStatus: sourcedomain.HealthStatusUnknown,
+	}
+	sources := sourcepostgres.NewRepository(runtime)
+	if err := sources.Create(ctx, &connection); err != nil {
+		t.Fatalf("create Source connection: %v", err)
+	}
+	const signature = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	now := time.Date(2026, time.July, 18, 8, 0, 0, 0, time.UTC)
+	var monitorID, configID, monitorSourceID, checkpointID, checkpointVersion int64
+	if err := runtime.SQL.QueryRow(`INSERT INTO monitors (name) VALUES ($1) RETURNING id`, connection.Name+"-monitor").Scan(&monitorID); err != nil {
+		t.Fatalf("create monitor: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`INSERT INTO monitor_config_versions (monitor_id, revision) VALUES ($1, 1) RETURNING id`, monitorID).Scan(&configID); err != nil {
+		t.Fatalf("create monitor config: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`INSERT INTO monitor_sources (config_version_id, source_connection_id, query_signature) VALUES ($1, $2, $3) RETURNING id`, configID, connection.ID, signature).Scan(&monitorSourceID); err != nil {
+		t.Fatalf("create monitor source: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`INSERT INTO source_checkpoints (monitor_source_id, query_hash, next_poll_at) VALUES ($1, $2, $3) RETURNING id, version`, monitorSourceID, signature, now).Scan(&checkpointID, &checkpointVersion); err != nil {
+		t.Fatalf("create source checkpoint: %v", err)
+	}
+	target := sourcedomain.PublishedCollectionTarget{
+		MonitorSourceID: monitorSourceID, MonitorConfigVersionID: configID, SourceConnectionID: connection.ID, QuerySignature: signature,
+		Terms: []sourcedomain.CollectionTerm{{Value: "policy"}}, Languages: []string{"en"}, CollectionInterval: 5 * time.Minute,
+		Checkpoint: sourcedomain.CollectionCheckpoint{ID: checkpointID, Version: checkpointVersion, MonitorSourceID: monitorSourceID, QueryHash: signature, NextPollAt: now},
+	}
+	collector, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+		Runtime: runtime, Sources: sources, Runs: sourcepostgres.NewCollectionRepository(runtime),
+		Connectors: policyConnectorRegistry{connector: policyConnector{item: sourcedomain.SourceItem{
+			SourceCode: "rss", ExternalID: "policy-item", ContentType: "article", Title: "Policy item",
+			Body: "licensed full body", URL: "https://example.test/policy-item", Language: "en", ObservedAt: now,
+		}}}, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("NewCollectionService() error = %v", err)
+	}
+	run, err := collector.Collect(ctx, sourcedomain.CollectionRequest{
+		SourceConnectionID: connection.ID, QuerySignature: signature, Query: "policy", Languages: []string{"en"},
+		WindowStart: now, WindowEnd: now.Add(time.Hour), Targets: []sourcedomain.PublishedCollectionTarget{target},
+	})
+	if err != nil || run.Status != sourcedomain.CollectionRunSucceeded {
+		t.Fatalf("Collect() = %#v/%v, want succeeded", run, err)
+	}
+	return run.ID, connection.ID
 }
