@@ -370,6 +370,13 @@ BEGIN
     END IF;
     IF TG_OP = 'UPDATE'
        AND (NEW.source_type IS DISTINCT FROM OLD.source_type OR NEW.endpoint IS DISTINCT FROM OLD.endpoint OR NEW.config IS DISTINCT FROM OLD.config)
+       AND NOT (
+           NEW.source_type IS NOT DISTINCT FROM OLD.source_type
+           AND NEW.endpoint IS NOT DISTINCT FROM OLD.endpoint
+           AND (NEW.config - 'allow_body_storage') IS NOT DISTINCT FROM (OLD.config - 'allow_body_storage')
+           AND COALESCE(OLD.config->>'allow_body_storage', 'false') = 'false'
+           AND NEW.config->>'allow_body_storage' = 'true'
+       )
        AND EXISTS (
            SELECT 1
            FROM monitor_sources AS monitor_source

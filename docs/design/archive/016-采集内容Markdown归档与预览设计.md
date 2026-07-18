@@ -29,7 +29,7 @@ downstream:
 
 本设计将来源 Feed 已经提供且来源连接明确允许保存的 `description`/`content`/`summary` 组织为 Markdown，供 HotKey 内阅读和通过浏览器打印对话框保存 PDF。它是“采集内容/摘要归档”，不等于 canonical URL 指向的完整网页或论文全文。
 
-当 `allow_body_storage=false` 时，Source 不持久化 body，Content 层不得从标题、URL 或旧记录伪造正文。已发布连接的语义不可变；如需归档，管理员按来源条款新建允许正文保存的连接，仅影响后续采集。
+当 `allow_body_storage=false` 时，Source 不持久化 body，Content 层不得从标题、URL 或旧记录伪造正文。已发布连接的采集语义仍不可变；唯一例外是管理员按来源条款明确执行一次 `false` → `true` 的正文/摘要授权升级。该升级不改变 Feed 地址、过滤条件或采集范围，只影响后续采集。
 
 ## 2. 非目标
 
@@ -44,7 +44,7 @@ RSS/Atom 解析在 `content` 非空时优先使用它，否则退回 `descriptio
 
 Ingestion 使用固定版本 `github.com/JohannesKaufmann/html-to-markdown/v2@v2.5.2` 将 UTF-8 Feed HTML 转为 CommonMark + GFM table。转换只处理已授权的捕获字段，不发起网络请求。相对链接以 canonical URL 为基准解析；链接只允许相对地址以及 `http`、`https`、`mailto` 协议，其他协议和远程图片被删除，`script`/`style`/`iframe`/`form` 不进入 Markdown。转换失败时整条内容安全失败，不写入半成品。
 
-归档继续复用 `content_assets.asset_type='text'` 和 `evidence/v1` 确定性 MinIO 对象，数据库 MIME 与 MinIO `Content-Type` 均固定为 `text/markdown; charset=utf-8`，SHA-256、大小、删除和对账语义不变。重放同一 Markdown SHA 只得到同一对象/一个 asset；内容变化产生新 SHA 时，读模型只选 `object_status='available' AND asset_type='text' AND mime_type='text/markdown; charset=utf-8'`，并按 `captured_at DESC, id DESC` 选唯一最新产物。历史 `text/plain` 不伪装成 Markdown ready。因此本期无 Schema 变更；`db/schema.sql` 必须保持零差异。
+归档继续复用 `content_assets.asset_type='text'` 和 `evidence/v1` 确定性 MinIO 对象，数据库 MIME 与 MinIO `Content-Type` 均固定为 `text/markdown; charset=utf-8`，SHA-256、大小、删除和对账语义不变。重放同一 Markdown SHA 只得到同一对象/一个 asset；内容变化产生新 SHA 时，读模型只选 `object_status='available' AND asset_type='text' AND mime_type='text/markdown; charset=utf-8'`，并按 `captured_at DESC, id DESC` 选唯一最新产物。历史 `text/plain` 不伪装成 Markdown ready。授权升级对应的已发布来源约束已同步写入 `db/schema.sql`。
 
 ## 4. 文档读取契约
 

@@ -196,18 +196,27 @@ func TestSourceServiceDisableUsesRealMonitorUsageAdapter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Publish monitor: %v", err)
 	}
+	bodyConfig := connection.Config
+	bodyConfig.AllowBodyStorage = true
+	authorized, err := sources.Update(ctx, sourceapplication.UpdateInput{Subject: admin, ID: connection.ID, ExpectedVersion: connection.Version, Config: &bodyConfig})
+	if err != nil {
+		t.Fatalf("published body-storage authorization upgrade: %v", err)
+	}
+	if !authorized.Config.AllowBodyStorage || authorized.Version != connection.Version+1 {
+		t.Fatalf("authorized source = %#v, want body storage enabled with advanced version", authorized)
+	}
 	changedEndpoint := "https://feeds.example.test/changed-after-publish"
-	if _, err := sources.Update(ctx, sourceapplication.UpdateInput{Subject: admin, ID: connection.ID, ExpectedVersion: connection.Version, Endpoint: &changedEndpoint}); appCode(err) != sharederrors.CodeSourceConnectionUnavailable {
+	if _, err := sources.Update(ctx, sourceapplication.UpdateInput{Subject: admin, ID: connection.ID, ExpectedVersion: authorized.Version, Endpoint: &changedEndpoint}); appCode(err) != sharederrors.CodeSourceConnectionUnavailable {
 		t.Fatalf("semantic Update with published reference code=%d, want source unavailable", appCode(err))
 	}
-	if _, err := sources.Disable(ctx, sourceapplication.LifecycleInput{Subject: admin, ID: connection.ID, ExpectedVersion: connection.Version}); appCode(err) != sharederrors.CodeSourceConnectionRequired {
+	if _, err := sources.Disable(ctx, sourceapplication.LifecycleInput{Subject: admin, ID: connection.ID, ExpectedVersion: authorized.Version}); appCode(err) != sharederrors.CodeSourceConnectionRequired {
 		t.Fatalf("Disable sole active source code=%d", appCode(err))
 	}
 	paused, err := monitors.Pause(ctx, monitorapplication.LifecycleInput{Subject: admin, MonitorID: monitor.ID, ExpectedMonitorVersion: published.Version})
 	if err != nil {
 		t.Fatalf("Pause monitor: %v", err)
 	}
-	disabled, err := sources.Disable(ctx, sourceapplication.LifecycleInput{Subject: admin, ID: connection.ID, ExpectedVersion: connection.Version})
+	disabled, err := sources.Disable(ctx, sourceapplication.LifecycleInput{Subject: admin, ID: connection.ID, ExpectedVersion: authorized.Version})
 	if err != nil {
 		t.Fatalf("Disable paused source: %v", err)
 	}

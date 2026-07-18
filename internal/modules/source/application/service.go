@@ -142,7 +142,7 @@ func (service *Service) Update(ctx context.Context, input UpdateInput) (*domain.
 			if err != nil {
 				return sourceReadError(err)
 			}
-			if referenced {
+			if referenced && !isBodyStorageAuthorizationUpgrade(*current, next) {
 				return domain.SourceConnectionUnavailable()
 			}
 		}
@@ -502,6 +502,22 @@ func sourceConfigsEqual(left, right domain.SourceConfig) bool {
 	// The domain normalizer sorts/deduplicates its arrays, making structural
 	// equality a stable semantic boundary rather than a JSON-map comparison.
 	return reflect.DeepEqual(left, right)
+}
+
+// isBodyStorageAuthorizationUpgrade is the only source semantic change that
+// may be applied to a published source. It cannot alter endpoint, source
+// type, filtering, retention, rate limits, or any other collection input; it
+// only turns on explicit persistence of content already supplied by the Feed.
+// This lets an administrator repair a metadata-only source without silently
+// changing which items a published monitor collects.
+func isBodyStorageAuthorizationUpgrade(current, next domain.SourceConnection) bool {
+	if current.SourceType != next.SourceType || current.Endpoint != next.Endpoint || current.Config.AllowBodyStorage || !next.Config.AllowBodyStorage {
+		return false
+	}
+	left, right := current.Config, next.Config
+	left.AllowBodyStorage = false
+	right.AllowBodyStorage = false
+	return sourceConfigsEqual(left, right)
 }
 
 func requireAuthenticated(subject identitydomain.Subject) error {
