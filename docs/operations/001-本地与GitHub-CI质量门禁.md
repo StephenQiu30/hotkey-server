@@ -25,6 +25,8 @@ downstream: []
 
 唯一的仓库质量门禁是 `make ci`。它依次校验 OpenAPI 生成无漂移、`go vet`、真实 PostgreSQL 运行时验证、全量 Go 测试、构建、架构/仓库校验和 Schema 重复执行。不得在 GitHub Actions 中维护另一套与本地不一致的检查命令。
 
+OpenAPI 以 Handler 上的 Swaggo 注解为唯一语义来源。`make openapi` 同时生成 `docs/openapi/docs.go` 和 `docs/openapi/swagger.json`：运行时 `/openapi.json` 从生成的 Go 注册表读取文档，JSON 文件供 CI 契约校验及下游客户端生成。两个产物必须由同一条命令重建且语义一致，禁止手工编辑。
+
 测试源码统一存放于 `test/`，其中 `test/_suite/` 按业务包镜像保存同包单元测试与集成测试。`make test`、`make lint` 和需要指定业务包的 `go run ./test/runner test <package>` 会在进程内临时映射这些文件至被测包，随后自动删除映射；不得把 `*_test.go` 直接提交到 `internal/`。
 
 该工作流只提供测试服务，不代表 Docker 或生产部署编排。
@@ -54,7 +56,7 @@ make clean
 
 ## 失败处理
 
-- OpenAPI 漂移：在提交生成的 `docs/openapi/swagger.json` 后重跑门禁。
+- OpenAPI 漂移：先执行 `make openapi`，同时提交生成的 `docs/openapi/docs.go` 与 `docs/openapi/swagger.json`，然后重跑门禁。
 - 数据库失败：确认 DSN 指向可丢弃库，角色可创建/删除数据库，且启用了 `pg_trgm` 与 `vector`。
 - Redis 失败：确认 URL 指向独立 DB，不复用开发验证码或限流状态。
 - CI 工作流或运行时依赖变化：先更新本手册、README 和 `CONTRIBUTING.md`，再修改工作流。

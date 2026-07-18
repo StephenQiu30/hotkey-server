@@ -11,9 +11,10 @@ import (
 
 func registerAPIDocumentation(router *gin.Engine) {
 	router.GET("/openapi.json", func(c *gin.Context) {
+		document := openapi.SwaggerInfo.ReadDoc()
 		c.Header("Cache-Control", "no-store")
 		c.Header("X-Content-Type-Options", "nosniff")
-		c.Data(stdhttp.StatusOK, "application/json; charset=utf-8", openapi.Document)
+		c.Data(stdhttp.StatusOK, "application/json; charset=utf-8", []byte(document))
 	})
 	router.GET("/docs", func(c *gin.Context) {
 		c.Redirect(stdhttp.StatusTemporaryRedirect, "/docs/index.html")

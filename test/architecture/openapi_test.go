@@ -4,11 +4,16 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/StephenQiu30/hotkey-server/docs/openapi"
 )
 
 type openAPIOperation struct {
+	Summary    string                `json:"summary"`
+	Tags       []string              `json:"tags"`
 	Security   []map[string][]string `json:"security"`
 	Parameters []struct {
 		In     string `json:"in"`
@@ -21,6 +26,39 @@ type openAPIOperation struct {
 			Ref string `json:"$ref"`
 		} `json:"schema"`
 	} `json:"responses"`
+}
+
+func TestGeneratedOpenAPIRegistryMatchesCommittedArtifact(t *testing.T) {
+	path := filepath.Join("..", "..", "docs", "openapi", "swagger.json")
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	generated := openapi.SwaggerInfo.ReadDoc()
+
+	var committedDocument any
+	if err := json.Unmarshal(contents, &committedDocument); err != nil {
+		t.Fatalf("decode committed OpenAPI document: %v", err)
+	}
+	var generatedDocument any
+	if err := json.Unmarshal([]byte(generated), &generatedDocument); err != nil {
+		t.Fatalf("decode generated OpenAPI registry: %v", err)
+	}
+	normalizeOpenAPIDocument(committedDocument)
+	normalizeOpenAPIDocument(generatedDocument)
+	if !reflect.DeepEqual(generatedDocument, committedDocument) {
+		t.Fatal("generated OpenAPI registry differs from docs/openapi/swagger.json")
+	}
+}
+
+func normalizeOpenAPIDocument(document any) {
+	object, ok := document.(map[string]any)
+	if !ok {
+		return
+	}
+	if host, exists := object["host"]; exists && host == "" {
+		delete(object, "host")
+	}
 }
 
 func TestOpenAPIContract(t *testing.T) {
@@ -149,6 +187,12 @@ func TestOpenAPIContract(t *testing.T) {
 			if !ok {
 				t.Errorf("missing %s %s", strings.ToUpper(method), route)
 				continue
+			}
+			if strings.TrimSpace(operation.Summary) == "" {
+				t.Errorf("%s %s is missing an annotation-generated summary", strings.ToUpper(method), route)
+			}
+			if len(operation.Tags) == 0 {
+				t.Errorf("%s %s is missing annotation-generated tags", strings.ToUpper(method), route)
 			}
 			for _, status := range statuses {
 				response, ok := operation.Responses[status]

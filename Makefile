@@ -27,13 +27,13 @@ database-runtime-verify:
 	sh test/tools/verify-database-runtime.sh
 
 openapi:
-	$(GO) run github.com/swaggo/swag/cmd/swag init --generalInfo cmd/hotkey/main.go --parseInternal --output docs/openapi --outputTypes json
+	$(GO) run github.com/swaggo/swag/cmd/swag init --generalInfo cmd/hotkey/main.go --parseInternal --output docs/openapi --outputTypes go,json --packageName openapi
 
 openapi-validate:
-	$(GO) test ./test/architecture -run TestOpenAPIContract -count=1
+	$(GO) test ./test/architecture -run 'Test(OpenAPIContract|GeneratedOpenAPIRegistryMatchesCommittedArtifact)$$' -count=1
 
 openapi-check: openapi openapi-validate
-	git diff --exit-code -- docs/openapi/swagger.json
+	git diff --exit-code -- docs/openapi/docs.go docs/openapi/swagger.json
 
 ci: openapi-check lint database-runtime-verify test build validate schema-verify
 
