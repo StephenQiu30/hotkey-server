@@ -350,7 +350,10 @@ func (service *Service) Publish(ctx context.Context, input PublishInput) (*domai
 				return monitorReadError(err)
 			}
 		}
-		now := time.Now().UTC()
+		// PostgreSQL timestamptz stores microsecond precision. Normalize the
+		// in-memory value before persisting it so the published configuration,
+		// source checkpoint, and returned domain object share the same timestamp.
+		now := time.Now().UTC().Truncate(time.Microsecond)
 		draft.Config, draft.State, draft.ConfigHash, draft.PublishedAt, draft.Version = effective, domain.ConfigVersionPublished, hash, &now, draft.Version+1
 		monitor.Status, monitor.DraftConfigVersionID, monitor.PublishedConfigVersionID, monitor.Version = domain.MonitorStatusActive, nil, int64Pointer(draft.ID), monitor.Version+1
 		if err := service.monitors.Publish(ctx, monitor, draft, previous, sources); err != nil {
