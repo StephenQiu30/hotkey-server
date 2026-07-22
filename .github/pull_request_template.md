@@ -1,50 +1,45 @@
-# PR Summary
+## 解决什么问题
 
-## Test-first Evidence
+<!-- 描述用户问题、背景和影响。关联 Issue，例如：Closes #123。 -->
 
-- Failing test commit:
-- Test fails before implementation:
-  - [ ] Yes
-  - [ ] No
-  - [ ] Not applicable
+## 做了什么
 
-## Tests added
+<!-- 简要说明关键改动和没有纳入本 PR 的边界。 -->
 
-- [ ] Unit
-- [ ] Integration
-- [ ] UI
-- [ ] Snapshot
-- [ ] Performance
+## 变更类型
 
-## Commands run
+- [ ] Bug 修复
+- [ ] 新功能
+- [ ] 重构
+- [ ] 测试
+- [ ] 文档
+- [ ] 构建、依赖或运维
+
+## 验证
+
+<!-- 列出实际运行的命令、手工步骤和结果。行为变更请说明测试先行证据。 -->
 
 ```bash
-# test command
+# 例如：make test
 ```
 
-## Result
+## 契约与运行影响
 
-- Failed before implementation
-- Passed after implementation
+- [ ] 无 Schema / OpenAPI / 配置 / 部署影响
+- [ ] 已同步 Schema 与数据库验证
+- [ ] 已同步 OpenAPI、生成文件和 Transport 测试
+- [ ] 已更新 `.env.example` 与运行文档
+- [ ] 已说明升级、回滚或兼容性影响
 
-## Agent Usage
+## AI 辅助（如适用）
 
-Human-authored:
-- Acceptance criteria:
-- Test cases:
-- Edge cases:
+<!-- 说明 AI Agent 参与了哪些实现、测试或文档，以及人工审查范围。未使用可写“无”。 -->
 
-Agent-generated:
-- Implementation:
-- Refactor:
-- Boilerplate:
+## 提交前检查
 
-## Reviewer Checklist
-
-- [ ] Test commit reviewed first
-- [ ] Tests express requirement
-- [ ] Edge cases covered
-- [ ] Implementation is minimal
-- [ ] No unrelated changes
-- [ ] Agent code reviewed
-- [ ] GitHub Actions CI passed
+- [ ] 改动聚焦于单一问题，没有无关文件
+- [ ] 新行为有测试或明确说明无需测试
+- [ ] 没有提交密钥、个人数据、证据正文或本地产物
+- [ ] 已运行与改动风险匹配的检查
+- [ ] 已更新相关文档
+- [ ] 我同意遵守项目行为准则

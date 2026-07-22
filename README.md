@@ -1,105 +1,151 @@
 # HotKey Server
 
-[![CI](https://github.com/StephenQiu30/hotkey-server/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/StephenQiu30/hotkey-server/actions/workflows/ci.yml)
+<p align="center"><a href="README.md">简体中文</a> · <a href="README_EN.md">English</a></p>
 
-HotKey Server 是一个本地优先、面向个人与小团队的 AI 热点事件监控和 Obsidian 知识库治理后端。
+<p align="center">
+  <strong>把分散的公开信号，转化为可验证、可追溯、可发布的事件情报。</strong>
+</p>
 
-项目当前正在按 `docs/design/001`–`014` 进行绿色重建。旧的 Kafka、Redis 核心任务、Topic/Event/HotEvent 重复模型、Git 知识库提交链路及旧数据库结构已经移除，不提供兼容运行路径。
+<p align="center">
+  <a href="https://github.com/StephenQiu30/hotkey-server/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/StephenQiu30/hotkey-server/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="https://go.dev/"><img alt="Go 1.26+" src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white"></a>
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
+  <img alt="Self-hosted" src="https://img.shields.io/badge/deployment-self--hosted-6f42c1">
+</p>
 
-## 目标能力（不等同于当前实现）
+HotKey 是一个本地优先、可自托管的 AI 热点事件监控与 Obsidian 知识库治理平台。它从 RSS、Atom、Hacker News 等合规来源采集内容，将跨来源信息聚合为事件，保留证据和判断依据，并生成日报、周报及长期知识资产。
 
-- 通过 RSS/Atom、GDELT/新闻 API、Reddit、Hacker News、YouTube 和 X 官方 API 采集候选内容
-- 完成标准化、去重、多语言相关性判断、事件聚类、热度与趋势分析
-- 将原始证据写入 MinIO，将可阅读知识投影写入本地 Obsidian Vault
-- 生成日报、周报，并通过邮件和 RSS/Atom 交付
-- 使用 PostgreSQL 保存业务事实和 River 后台任务状态
-- 使用同一个 Go 二进制以 `all`、`api` 或 `worker` 角色运行
+`hotkey-server` 是 HotKey 的后端和 OpenAPI 事实源，负责采集、标准化、相关性判断、事件智能、报告发布、订阅交付、身份权限与运行治理。
 
-## 架构约束
+> 如果 HotKey 对你的研究、内容创作或情报工作有帮助，欢迎 Star、分享使用反馈，或从一个 Issue / Pull Request 开始参与。
 
-- 模块化单体，不拆分微服务
-- PostgreSQL 是唯一业务事实源
-- 业务模块采用 `domain -> application -> transport/infrastructure` 边界
-- 每张业务表提供统一 Repository CRUD，公共 API 仅开放安全业务操作
-- 知识库运行链路不依赖 Git
-- 当前阶段不提供 Docker 或线上部署编排
+## 为什么是 HotKey
 
-## 当前交付状态
+很多热点工具擅长展示“什么正在流行”，却很难回答“为什么值得相信”和“后续如何沉淀”。HotKey 关注的是一条完整、可审计的工作流：
 
-已完成并有长期验收证据的交付包括：模块化单体与工程门禁、单一 Schema/数据库平台、统一 HTTP 契约与观测基础、身份认证/会话/权限、版本化 Monitor 与 Source 配置、RSS/Atom/Hacker News 采集与 P0 River 主链路、Content/MinIO 证据、AI Provider/Embedding、事件智能，以及 Knowledge 提案/对账、报告冻结与 Vault 发布、邮件/RSS/Atom 交付和 Operations 运行治理。完整 001–017 交付的验收证据见 [`docs/acceptance/archive/`](docs/acceptance/archive/README.md)。
+- **本地优先**：业务事实保存在自己的 PostgreSQL，原始证据进入自己的 MinIO，可阅读知识写入自己的 Obsidian Vault。
+- **证据优先**：事件、声明、来源、热度和 AI 运行记录保持可追溯关系，不把模型输出当作无来源事实。
+- **合规采集**：只接入官方 API、RSS、Atom 或授权 Feed，不绕过登录、验证码或平台访问限制。
+- **人机协作**：AI 用于扩展检索、Embedding、实体与声明提取、摘要等环节；关键配置和知识变更保留人工审批边界。
+- **从发现到交付**：同一条链路覆盖监控配置、采集、事件聚类、报告冻结、Vault 发布、邮件和 RSS/Atom 订阅。
+- **面向小团队**：单仓库、单二进制、模块化单体，适合个人和 5–10 人团队自托管与持续演进。
 
-001–017 已完成并分别归档，详细验收记录见 [`docs/acceptance/archive/`](docs/acceptance/archive/README.md)。014–016 为 accepted，017 为 accepted_with_risk；外部 MinIO、SMTP 和生产备份恢复仍需在部署环境按 Operations-006 演练。唯一的任务状态事实源是 [PRD 索引](docs/prd/README.md) 和 [Plan 索引](docs/plans/README.md)；设计边界见 [设计索引](docs/design/README.md)。
+## 核心能力
 
-## 本地启动
+| 领域 | 已实现能力 |
+|------|------------|
+| 身份与权限 | 注册、登录、刷新会话、密码重置、角色权限与管理接口 |
+| 监控配置 | 版本化 Monitor 草稿、预览、发布、暂停、恢复、归档和 AI 候选规则审批 |
+| 来源采集 | RSS、Atom、Hacker News，来源健康检查、采集运行记录和可靠重试 |
+| 内容与证据 | 内容标准化、去重、Markdown 文档预览、MinIO 原始证据存储 |
+| 相关性与反馈 | 多语言匹配、人工反馈、评估与规则建议 |
+| 事件智能 | 聚类、生命周期治理、热度趋势、实体、声明和证据化摘要 |
+| AI Provider | OpenAI、DeepSeek、Ollama，以及可选的本地 ONNX Embedding |
+| 知识与报告 | Obsidian 提案/审批/对账、日报周报构建、预览、冻结和发布 |
+| 交付与运维 | SMTP、私有 RSS/Atom、River 任务、Prometheus、OpenTelemetry 和运行治理接口 |
 
-服务只读取两个配置文件：默认 `.env`，以及在 `HOTKEY_ENV=production` 时覆盖读取的 `.env.prod`。进程环境变量优先级最高。JWT 与认证 HMAC 没有不安全默认值；每个环境都必须填入自己的至少 32 字节的 `HOTKEY_JWT_SECRET` 与 `HOTKEY_VERIFICATION_HMAC_SECRET`，并配置精确的 `HOTKEY_CORS_ALLOWED_ORIGINS`、Redis URL 和专用 PostgreSQL 库。
+开发环境还提供自托管 Swagger UI（`/docs`）和 OpenAPI 文档（`/openapi.json`）。
 
-先从已提交的完整变量模板创建本地配置；`.env` 和 `.env.prod` 均已被 Git 忽略，不要把真实密钥提交到仓库：
+## 工作方式
+
+```mermaid
+flowchart LR
+    A["RSS / Atom / HN"] --> B["采集与标准化"]
+    B --> C["相关性与去重"]
+    C --> D["事件聚类与热度"]
+    D --> E["实体、声明与摘要"]
+    E --> F["日报 / 周报"]
+    F --> G["Obsidian Vault"]
+    F --> H["Email / RSS / Atom"]
+    B -. "原始证据" .-> I["MinIO"]
+    B -. "业务事实" .-> J["PostgreSQL + pgvector"]
+```
+
+服务以同一个 Go 二进制运行，可选择：
+
+- `all`：API 与 worker 同进程，适合本地体验和小规模部署。
+- `api`：只提供 HTTP API。
+- `worker`：只执行采集、AI、报告和投递任务。
+
+## 快速开始
+
+### 环境要求
+
+- Go 1.26+
+- PostgreSQL 16+ 与 pgvector
+- Redis 7+
+- MinIO
+- 可选：SMTP、OpenAI / DeepSeek API、Ollama、ONNX Runtime
+
+### 1. 获取代码与配置
 
 ```bash
+git clone https://github.com/StephenQiu30/hotkey-server.git
+cd hotkey-server
 cp .env.example .env
 ```
 
-变量按用途分为运行角色与超时、worker/cron、PostgreSQL、MinIO、Obsidian Vault、认证与 SMTP、来源凭据、AI Provider 与本地 ONNX。变量名、默认开发值和可选项以 [`.env.example`](.env.example) 为准。测试连接使用独立的 `HOTKEY_TEST_DSN`、`HOTKEY_TEST_REDIS_URL` 和 `HOTKEY_TEST_MINIO_*`，避免污染本地运行数据。
+编辑 `.env`，至少配置专用 PostgreSQL、MinIO、Redis、精确 CORS Origin，以及两个各不少于 32 字节的随机密钥：
 
-现有旧库不能作为当前绿色重建的运行库。创建独立空库后，只能通过显式 empty-only 初始化写入 schema：
+```dotenv
+HOTKEY_DATABASE_URL=postgres://hotkey:hotkey@localhost:5432/hotkey?sslmode=disable
+HOTKEY_JWT_SECRET=replace-with-your-random-secret-at-least-32-bytes
+HOTKEY_VERIFICATION_HMAC_SECRET=replace-with-another-random-secret-32-bytes
+HOTKEY_CORS_ALLOWED_ORIGINS=http://localhost:3000
+```
+
+完整变量、默认开发值和可选 Provider 配置见 [`.env.example`](.env.example)。真实密钥不要提交到仓库。
+
+### 2. 初始化数据库
+
+当前完整结构由 [`db/schema.sql`](db/schema.sql) 统一维护。请使用新的空数据库初始化：
 
 ```bash
-createdb hotkey
-HOTKEY_DATABASE_URL='postgres://USER@localhost:5432/hotkey?sslmode=disable' \
-  go run ./cmd/hotkey db init --empty-only --confirm-empty
+go run ./cmd/hotkey db init --empty-only --confirm-empty
+go run ./cmd/hotkey db verify
+```
+
+### 3. 创建管理员并启动
+
+先在 `.env` 中临时设置 `HOTKEY_BOOTSTRAP_ADMIN_EMAIL` 和 `HOTKEY_BOOTSTRAP_ADMIN_PASSWORD`：
+
+```bash
+go run ./cmd/hotkey user bootstrap-admin
 go run ./cmd/hotkey
 ```
 
-启动后的最小验证：
+确认服务可用：
 
 ```bash
 curl --fail http://127.0.0.1:8080/healthz
 curl --fail http://127.0.0.1:8080/readyz
 ```
 
-开发环境同时提供自托管的交互式接口文档：
+随后可访问：
 
-- `http://127.0.0.1:8080/docs`：Swagger UI，可按 Tag 浏览接口、填写 Bearer Token 并直接发起请求
-- `http://127.0.0.1:8080/openapi.json`：与 `docs/openapi/swagger.json` 同源的运行时契约
+- Swagger UI：<http://127.0.0.1:8080/docs>
+- OpenAPI：<http://127.0.0.1:8080/openapi.json>
+- Prometheus Metrics：<http://127.0.0.1:8080/metrics>
 
-文档以 Handler 上的 Swaggo 注解为唯一语义来源；`make openapi` 会同时生成 Go 注册表与 `swagger.json`，运行时从生成的 Go 文档包读取契约。文档 UI 与服务一起编译，不依赖外部 CDN；`make openapi-check` 会校验两个生成产物的一致性并阻止契约漂移。生产环境不会注册上述两个路由，访问时返回 404。
+> 生产环境设置 `HOTKEY_ENV=production` 后，服务会在 `.env` 基础上覆盖读取 `.env.prod`；进程环境变量优先级最高。生产环境不会开放 Swagger UI 和 OpenAPI 路由。
 
-GoLand 可直接运行 `github.com/StephenQiu30/hotkey-server/cmd/hotkey`，工作目录设为 `hotkey-server` 模块目录。生产启动前设置 `HOTKEY_ENV=production`，程序便会在读取 `.env` 后用 `.env.prod` 覆盖对应值。
+## Web 工作台
 
-常用验证命令：
+推荐搭配 [hotkey-web](https://github.com/StephenQiu30/hotkey-web) 使用。Web 端提供热点总览、监控主题、来源管理、内容证据、事件智能、报告和通知配置等完整界面，并通过生成的 OpenAPI Client 与本服务保持契约一致。
 
-```bash
-make lint
-make test
-make build
-make validate
-make database-runtime-verify
-make ci
-```
+## 开发与质量
 
-所有测试源码统一放在 [`test/`](test/)；业务目录不提交 `*_test.go`。由于 Go 的同包测试必须在被测包目录编译，`make test` 会在运行期间将 `test/_suite/` 的测试文件临时映射到对应包，结束时自动清理。需要只运行一个业务包时，使用同一入口，例如：
+常用命令：
 
 ```bash
-go run ./test/runner test ./internal/modules/event/... -count=1
+make lint       # 静态检查
+make test       # 单元与集成测试
+make build      # 构建二进制
+make validate   # 架构与仓库约束
+make ci         # 完整质量门禁
 ```
 
-完整 Schema 的空库验证使用可丢弃的 PostgreSQL 16+ 与 pgvector 数据库：
-
-```bash
-HOTKEY_TEST_DSN='postgres://hotkey:hotkey@localhost:5432/hotkey_test?sslmode=disable' make database-runtime-verify
-```
-
-该命令会重建目标测试库的 `public` schema，再执行嵌入 Schema 的空库初始化、只读兼容性检查、真实 PostgreSQL 集成测试与游标计划验证。每个 Go 集成测试与容量 fixture 都会创建并删除自己的数据库，因此 `HOTKEY_TEST_DSN` 必须是可丢弃的 PostgreSQL URL，且其角色需要 `CREATE DATABASE` / `DROP DATABASE` 权限；容量 fixture 不与命令或测试共享数据库。运行服务时则使用 `HOTKEY_DATABASE_URL`：
-
-```bash
-HOTKEY_DATABASE_URL='postgres://hotkey:hotkey@localhost:5432/hotkey?sslmode=disable' go run ./cmd/hotkey db verify
-HOTKEY_DATABASE_URL='postgres://hotkey:hotkey@localhost:5432/hotkey_new?sslmode=disable' go run ./cmd/hotkey db init --empty-only --confirm-empty
-```
-
-`make ci` 也会执行该验证，因此 CI 必须提供 `HOTKEY_TEST_DSN`。
-
-身份认证的完整 CI 还会运行真实 Redis 验证流程。为避免污染开发验证码状态，请显式使用可丢弃的 Redis DB，并同时传入两个测试连接：
+完整 CI 需要可丢弃的 PostgreSQL 测试库和独立 Redis DB：
 
 ```bash
 HOTKEY_TEST_DSN='postgres://hotkey:hotkey@localhost:5432/hotkey_test?sslmode=disable' \
@@ -107,15 +153,33 @@ HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15' \
 make ci
 ```
 
-Redis 只承载验证码、验证票据和限流测试状态；用户、会话与刷新凭据的事实仍在 PostgreSQL。
-身份 API 还要求设置不少于 32 字节的 `HOTKEY_VERIFICATION_HMAC_SECRET`；验证码状态使用该密钥绑定验证码、用途和规范化邮箱的 HMAC。`HOTKEY_SMTP_ENABLED=false` 时，新的邮箱验证流程会安全地返回 503，且不会投递邮件或写入验证码状态。
+GitHub Actions 对 `main` 和 Pull Request 执行同一套门禁，包括 OpenAPI 漂移、数据库运行验证、测试、构建、Schema 与架构检查。
 
-## 持续集成
+## 项目状态
 
-GitHub Actions 在推送到 `main`、面向 `main` 的 Pull Request 和手动触发时运行唯一质量门禁 `make ci`。工作流使用临时 PostgreSQL+pgvector 与 Redis 服务，因此真实数据库、Schema、Redis 集成测试、OpenAPI 漂移、构建和架构校验都在同一入口内执行。可复现命令、测试数据边界、集中测试套件的执行方式和失败处理见[本地与 GitHub CI 质量门禁](docs/operations/001-本地与GitHub-CI质量门禁.md)。
+HotKey 正处于积极开发阶段，核心端到端链路已经实现，接口和部署方式在 1.0 前仍可能调整。当前更适合技术预览、自托管评估和共同建设，而不是直接作为无人值守的关键生产系统。
 
-本地 Go 工具链可以放在未跟踪的 `.tools/go` 目录，或直接使用系统中的 Go 1.26+。
+已完成工作的验收证据位于 [`docs/acceptance/archive/`](docs/acceptance/archive/README.md)。外部 MinIO、SMTP 以及生产备份恢复仍需在具体部署环境按 [Operations 手册](docs/operations/README.md) 演练。
+
+## 文档导航
+
+- [架构与设计](docs/design/README.md)
+- [产品需求](docs/prd/README.md)
+- [实施计划](docs/plans/README.md)
+- [验收证据](docs/acceptance/README.md)
+- [运行与升级手册](docs/operations/README.md)
+- [OpenAPI JSON](docs/openapi/swagger.json)
+
+## 参与贡献
+
+欢迎提交 Bug、使用场景、连接器建议、文档改进和 Pull Request。开始前请阅读：
+
+- [贡献指南](CONTRIBUTING.md)
+- [行为准则](CODE_OF_CONDUCT.md)
+- [安全策略](SECURITY.md)
+
+大型功能建议先创建 Issue 对齐问题、边界和验收标准。涉及来源连接器时，请同时说明数据来源的官方或授权访问方式。
 
 ## 许可证
 
-[MIT](LICENSE)
+本项目基于 [MIT License](LICENSE) 开源。
