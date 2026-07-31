@@ -137,7 +137,7 @@ func TestServiceIntegrationUsesPostgresTransactionsForRefreshReplayAndUserRestor
 	}
 	_, err = service.RestoreUser(context.Background(), actor, original.ID)
 	requireAppCode(t, err, sharederrors.CodeConflict)
-	if errors.Is(err, identitypostgres.ErrBootstrapUnavailable) || containsDatabaseDetail(err.Error()) {
+	if containsDatabaseDetail(err.Error()) {
 		t.Fatalf("RestoreUser() leaked persistence detail: %v", err)
 	}
 	var originalDeleted, replacementActive bool

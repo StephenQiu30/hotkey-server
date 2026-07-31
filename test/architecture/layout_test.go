@@ -193,6 +193,79 @@ func TestForbiddenRuntimeDependenciesAreRemoved(t *testing.T) {
 	}
 }
 
+func TestBootstrapAdminConfigurationAndCommandAreRemoved(t *testing.T) {
+	root := repositoryRoot(t)
+	forbiddenFile := filepath.Join(root, "internal", "bootstrap", "user_command.go")
+	if _, err := os.Stat(forbiddenFile); err == nil {
+		t.Errorf("bootstrap administrator command must be removed: %s", forbiddenFile)
+	} else if !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+
+	var violations []string
+	forbiddenTokens := []string{
+		"BOOTSTRAP_ADMIN",
+		"bootstrap_admin",
+		"bootstrap-admin",
+		"BootstrapAdmin",
+		"ErrBootstrapUnavailable",
+	}
+	paths := []string{
+		filepath.Join(root, "cmd"),
+		filepath.Join(root, "internal"),
+		filepath.Join(root, ".env.example"),
+		filepath.Join(root, ".env.prod"),
+		filepath.Join(root, "README.md"),
+		filepath.Join(root, "README_EN.md"),
+	}
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		inspect := func(candidate string) error {
+			content, err := os.ReadFile(candidate)
+			if err != nil {
+				return err
+			}
+			relative, err := filepath.Rel(root, candidate)
+			if err != nil {
+				return err
+			}
+			for _, token := range forbiddenTokens {
+				if strings.Contains(string(content), token) {
+					violations = append(violations, filepath.ToSlash(relative)+" -> "+token)
+				}
+			}
+			return nil
+		}
+		if !info.IsDir() {
+			if err := inspect(path); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		err = filepath.WalkDir(path, func(candidate string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
+				return nil
+			}
+			return inspect(candidate)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(violations) > 0 {
+		t.Errorf("bootstrap administrator configuration or command remains: %s", strings.Join(violations, ", "))
+	}
+}
+
 func TestLangChainGoStaysInsideIntelligenceProviderInfrastructure(t *testing.T) {
 	root := repositoryRoot(t)
 	var violations []string

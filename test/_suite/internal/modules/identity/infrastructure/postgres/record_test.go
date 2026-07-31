@@ -44,6 +44,16 @@ func createIdentityUser(t *testing.T, repository *UserRepository, suffix string)
 	return user
 }
 
+func createIdentityAdmin(t *testing.T, runtime *database.Runtime, repository *UserRepository, suffix string) *domain.User {
+	t.Helper()
+	user := createIdentityUser(t, repository, suffix)
+	if _, err := runtime.SQL.Exec(`UPDATE users SET role = 'admin', version = version + 1, updated_at = now() WHERE id = $1`, user.ID); err != nil {
+		t.Fatalf("promote test administrator: %v", err)
+	}
+	user.Role = domain.RoleAdmin
+	return user
+}
+
 func newIdentitySession(userID int64, now time.Time) domain.Session {
 	return domain.NewSession(userID, uuid.NewString(), now)
 }

@@ -88,12 +88,13 @@ go run ./cmd/hotkey db init --empty-only --confirm-empty
 go run ./cmd/hotkey db verify
 ```
 
-Set `HOTKEY_BOOTSTRAP_ADMIN_EMAIL` and `HOTKEY_BOOTSTRAP_ADMIN_PASSWORD` temporarily, then create an administrator and start the service:
+Run the `cmd/hotkey` main package directly in GoLand, or use the single equivalent command-line entry point:
 
 ```bash
-go run ./cmd/hotkey user bootstrap-admin
 go run ./cmd/hotkey
 ```
+
+The first user completes normal email verification and registration as a viewer. A database operator then follows the one-time transaction in the [initial administrator database procedure](docs/operations/009-首管理员数据库指定操作.md) to promote that registered user. Startup does not read an administrator email or password and requires no separate user-bootstrap command.
 
 Verify the runtime:
 

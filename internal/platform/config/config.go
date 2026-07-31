@@ -66,8 +66,6 @@ type AuthenticationConfig struct {
 	SMTP                   SMTPConfig
 	AllowedOrigins         []string
 	RefreshCookieSecure    bool
-	BootstrapAdminEmail    string
-	BootstrapAdminPassword string
 }
 
 type SMTPConfig struct {
@@ -204,8 +202,6 @@ func Load() (Config, error) {
 			RedisURL:               configString(v, "redis_url"),
 			AllowedOrigins:         parseCSV(configString(v, "cors_allowed_origins")),
 			RefreshCookieSecure:    configBool(v, "refresh_cookie_secure"),
-			BootstrapAdminEmail:    configString(v, "bootstrap_admin_email"),
-			BootstrapAdminPassword: configString(v, "bootstrap_admin_password"),
 			SMTP: SMTPConfig{
 				Enabled:   configBool(v, "smtp_enabled"),
 				Host:      configString(v, "smtp_host"),
@@ -404,7 +400,7 @@ func configKeys() []string {
 		"source_doh_url",
 		"minio_endpoint", "minio_access_key", "minio_secret_key", "minio_bucket",
 		"minio_use_ssl", "vault_path",
-		"jwt_secret", "jwt_issuer", "jwt_audience", "verification_hmac_secret", "redis_url", "smtp_enabled", "smtp_host", "smtp_port", "smtp_tls_mode", "smtp_username", "smtp_password", "smtp_from_email", "smtp_from_name", "cors_allowed_origins", "refresh_cookie_secure", "bootstrap_admin_email", "bootstrap_admin_password",
+		"jwt_secret", "jwt_issuer", "jwt_audience", "verification_hmac_secret", "redis_url", "smtp_enabled", "smtp_host", "smtp_port", "smtp_tls_mode", "smtp_username", "smtp_password", "smtp_from_email", "smtp_from_name", "cors_allowed_origins", "refresh_cookie_secure",
 		"openai_api_key", "deepseek_api_key", "ollama_enabled", "ollama_base_url", "onnx_runtime_library", "onnx_model_path", "onnx_tokenizer_path", "onnx_manifest_path",
 	}
 }

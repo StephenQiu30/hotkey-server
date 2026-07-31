@@ -376,8 +376,6 @@ func TestLoadReadsNamedAuthenticationSettings(t *testing.T) {
 	t.Setenv("HOTKEY_SMTP_FROM_NAME", "HotKey")
 	t.Setenv("HOTKEY_CORS_ALLOWED_ORIGINS", "https://app.example.test,https://admin.example.test")
 	t.Setenv("HOTKEY_REFRESH_COOKIE_SECURE", "true")
-	t.Setenv("HOTKEY_BOOTSTRAP_ADMIN_EMAIL", "admin@example.test")
-	t.Setenv("HOTKEY_BOOTSTRAP_ADMIN_PASSWORD", "bootstrap-password")
 
 	cfg, err := Load()
 	if err != nil {

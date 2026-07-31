@@ -6,7 +6,7 @@ feature_area: 项目运行与发布
 purpose: 定义 HotKey Server 发布、运行、回滚和故障手册的归档规则
 canonical_path: docs/operations/README.md
 status: review
-version: v2.6
+version: v2.7
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -48,6 +48,8 @@ Operations 保存可重复执行的协作和运行流程，包括 Git/PR、发�
 | [PLAN-010 事件治理升级](005-事件聚类生命周期与治理升级.md) | Event 决策/治理审计表、当前成员归属唯一索引及固定 PLAN-009 历史库演练与回退 | review | 实施前模板，尚未演练 |
 | [系统收口与恢复](006-运行治理容量与恢复操作.md) | 运行总览、容量游标基线、清理、对账和备份恢复操作 | accepted | 2026-07-17（PLAN-017） |
 | [PLAN-018 LangChainGo 多模型升级与连接](007-LangChainGo多模型升级与连接.md) | DeepSeek/Ollama/Qwen profile 约束升级、连接探测与安全回退 | accepted | 数据库已演练；外部连接待补测 |
+| [RSS 来源配置与验证](008-RSS来源配置与验证.md) | RSS/RDF/Atom 来源登记与真实接口验证 | accepted | 2026-07-18 |
+| [首管理员数据库指定](009-首管理员数据库指定操作.md) | 用受约束数据库事务指定已注册的首管理员 | review | pending |
 
 ## 文件命名
 
@@ -78,3 +80,4 @@ Operations 保存可重复执行的协作和运行流程，包括 Git/PR、发�
 | v2.4 | 2026-07-17 | 按仓库文档标准改为序号加中文主题命名，修正 `doc_no` 与文件序号，并同步全部引用。 |
 | v2.5 | 2026-07-18 | 新增 PLAN-018 DeepSeek、Ollama 与 Qwen Embedding 升级、探测和回退手册。 |
 | v2.6 | 2026-07-18 | PLAN-018 数据库升级回退已演练并通过独立复审；外部连接按 Acceptance-018 保留风险。 |
+| v2.7 | 2026-08-01 | 补录 Operations-008，并新增 PLAN-023 首管理员数据库指定操作手册。 |

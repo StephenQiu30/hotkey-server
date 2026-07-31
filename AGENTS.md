@@ -66,6 +66,7 @@ bootstrap -> all adapters
 - 业务事实在 PostgreSQL，原始证据在 MinIO，人类可读知识投影在本地 Vault；核心历史、审计、运行记录不得被静默覆盖。
 - 只使用两个配置文件：默认 `.env`，以及 `HOTKEY_ENV=production` 时覆盖读取的 `.env.prod`；进程环境变量优先级最高。
 - JWT 和认证 HMAC secret 每个环境至少 32 字节，不得使用不安全默认值；运行服务使用 `HOTKEY_DATABASE_URL`，测试使用可丢弃的 `HOTKEY_TEST_DSN`，认证集成测试使用独立 `HOTKEY_TEST_REDIS_URL`。
+- 首管理员必须先按普通注册流程创建 viewer，再按 Operations-009 以受审计数据库事务指定；禁止在配置文件保存管理员密码或恢复专用 bootstrap 命令。
 
 来源只能使用官方 API、RSS、Atom 或授权 Feed；不得绕过登录、验证码、反爬或平台访问限制。外部调用必须有超时、限流、指数退避、熔断和可恢复错误处理。
 

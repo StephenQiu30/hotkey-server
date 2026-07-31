@@ -105,14 +105,15 @@ go run ./cmd/hotkey db init --empty-only --confirm-empty
 go run ./cmd/hotkey db verify
 ```
 
-### 3. 创建管理员并启动
+### 3. 启动后端
 
-先在 `.env` 中临时设置 `HOTKEY_BOOTSTRAP_ADMIN_EMAIL` 和 `HOTKEY_BOOTSTRAP_ADMIN_PASSWORD`：
+GoLand 直接运行 `cmd/hotkey` 的 `main` 包即可；命令行等价入口只有一个：
 
 ```bash
-go run ./cmd/hotkey user bootstrap-admin
 go run ./cmd/hotkey
 ```
+
+首个用户通过 Web 正常完成邮箱验证和注册，默认角色为 viewer；随后由数据库操作员按 [首管理员数据库指定操作](docs/operations/009-首管理员数据库指定操作.md) 的一次性事务将该用户提升为 admin。启动过程不读取管理员邮箱或密码，也不需要额外的用户引导命令。
 
 确认服务可用：
 
