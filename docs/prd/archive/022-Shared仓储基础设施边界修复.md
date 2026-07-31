@@ -4,10 +4,10 @@ doc_no: "022"
 audience: [Dev, QA, Ops]
 feature_area: 工程目录与依赖边界
 purpose: 将 GORM/pgx 仓储实现移出 shared，恢复基础设施单向依赖
-canonical_path: docs/prd/022-Shared仓储基础设施边界修复.md
+canonical_path: docs/prd/archive/022-Shared仓储基础设施边界修复.md
 status: accepted
-execution_status: in_progress
-version: v1.1
+execution_status: done
+version: v1.2
 owner: HotKey Server Team
 inputs:
   - AGENTS.md
@@ -19,7 +19,7 @@ outputs:
 triggers:
   - shared 引入数据库驱动、ORM 或 platform 实现
 downstream:
-  - docs/plans/022-Shared仓储基础设施边界修复计划.md
+  - docs/plans/archive/022-Shared仓储基础设施边界修复计划.md
 depends_on: [PRD-002, PRD-021]
 ---
 
@@ -58,3 +58,4 @@ depends_on: [PRD-002, PRD-021]
 |---|---|---|
 | v1.0 | 2026-08-01 | 固定 shared 契约与 platform 数据库适配器边界，等待独立 Plan Review。 |
 | v1.1 | 2026-08-01 | Plan 经独立复审通过，进入实施。 |
+| v1.2 | 2026-08-01 | 实现通过独立复审并以 79df138 提交，执行状态收敛为 done 后归档。 |

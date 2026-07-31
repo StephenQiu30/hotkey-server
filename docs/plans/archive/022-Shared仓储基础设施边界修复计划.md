@@ -4,22 +4,22 @@ doc_no: "022"
 audience: [Dev, QA, Ops]
 feature_area: 工程目录与依赖边界
 purpose: 以架构测试先行方式迁移 shared 中的 GORM/pgx 实现
-canonical_path: docs/plans/022-Shared仓储基础设施边界修复计划.md
+canonical_path: docs/plans/archive/022-Shared仓储基础设施边界修复计划.md
 status: accepted
-execution_status: in_progress
+execution_status: done
 review_status: approved
-version: v1.0
+version: v1.1
 owner: HotKey Server Team
 inputs:
   - docs/design/archive/002-后端单体架构设计.md
-  - docs/prd/022-Shared仓储基础设施边界修复.md
+  - docs/prd/archive/022-Shared仓储基础设施边界修复.md
 outputs:
   - platform database repository 适配器
   - shared 基础设施中立门禁
 triggers:
   - PRD-022 accepted 且 ready
 downstream:
-  - docs/acceptance/022-Shared仓储基础设施边界修复验收.md
+  - docs/acceptance/archive/022-Shared仓储基础设施边界修复验收.md
 depends_on: [PLAN-002, PLAN-021]
 ---
 
@@ -73,7 +73,11 @@ PRD-022 必须为 `accepted/ready`，本 Plan 必须由非主要编写者评为 
 |---|---|---|
 | v0.1 | 2026-08-01 | 建立 shared 依赖门禁、GORM/pgx 迁移、29 个调用点与回归计划，等待独立复审。 |
 | v0.2 | 2026-08-01 | 按评审补齐 GORM not-found、wrapped error 兼容、精确数据库集成命令及 PostgreSQL/Redis 双环境门禁。 |
+| v1.0 | 2026-08-01 | 修订后经独立 Plan Review 通过，进入 approved/ready。 |
+| v1.1 | 2026-08-01 | 依赖迁移、门禁和故障兼容测试通过独立实现复审，以 79df138 提交并归档。 |
 
 ## 6. 独立评审记录
 
 2026-08-01，首轮评审要求补齐 GORM not-found、wrapped error、精确集成命令和 PostgreSQL/Redis 双环境门禁；v0.2 修订后复审无新的 P0/P1/P2，结论 `APPROVED`。
+
+2026-08-01，独立实现复审提出反引号 import literal 可绕过门禁；改用 `strconv.Unquote` 并增加临时源码回归后复审通过，无新的 P0/P1/P2。
