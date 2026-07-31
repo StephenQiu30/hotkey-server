@@ -70,7 +70,7 @@ bootstrap -> all adapters
 
 ## 测试、CI 与提交
 
-- 所有 `*_test.go` 必须位于 `test/`；业务目录不得提交测试文件。`test/_suite/` 按业务包镜像保存测试，使用 `go run ./test/runner test <package>` 或 `make test` 执行；runner 创建的临时映射必须在退出时清理。
+- 所有 `*_test.go` 和纯测试 `testdata` 必须位于 `test/`；业务目录不得提交测试源码或 fixture。`test/_suite/` 按业务包镜像保存测试与包内 `testdata`，使用 `go run ./test/runner test <package>` 或 `make test` 执行；runner 创建的临时映射必须在成功、子进程失败或物化冲突时清理。运行时嵌入资产不得命名为 `testdata`。
 - `test/tools/` 只保留被 Makefile、测试或 CI 调用的门禁工具；无调用的临时脚本、fixture 和数据库必须删除。提交前不得残留符号链接、测试数据库、dump、SQLite 文件或根目录构建产物。
 - 本地至少按风险运行 `make lint`、`make test`、`make build`、`make validate`、`git diff --check`；涉及 Schema、OpenAPI、依赖或 CI 时运行 `make ci`，完成后 `make clean`。
 - GitHub Actions 在 `main` push、面向 `main` 的 Pull Request 和手动触发时运行唯一质量门禁 `make ci`，使用临时 PostgreSQL/pgvector 和 Redis。

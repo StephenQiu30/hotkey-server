@@ -154,12 +154,14 @@ internal/modules/          # 按业务域拆分的应用、领域、基础设施
 internal/platform/         # 数据库、HTTP、队列、配置、日志和可观测适配
 internal/shared/           # 跨模块共享的稳定基础类型
 db/                        # 唯一完整 Schema 与嵌入资源
-test/                      # 集中测试、runner、fixture 和架构门禁
+test/                      # 集中测试、镜像 testdata、runner 和架构门禁
 docs/                      # Design、PRD、Plan、Acceptance 与 Operations
 tools/                     # 构建期工具依赖
 ```
 
 业务代码保持在 `internal/`，防止被仓库外部误用；当前没有跨项目复用的公共 Go 库，因此不创建无实际职责的 `pkg/`。所有运行角色继续由 `cmd/hotkey` 的 `all`、`api`、`worker` 参数提供，不增加重复入口。
+
+测试源码和纯测试 fixture 统一位于 `test/_suite`的包镜像路径；`test/runner` 在执行期间临时物化 `_test.go` 和包内 `testdata`，退出后清理，因此 `internal/` 生产树不保存纯测试资产。
 
 该结构不是照搬某个所谓“标准模板”，而是结合真实项目取舍：
 

@@ -62,11 +62,20 @@ func TestGreenfieldLayout(t *testing.T) {
 		t.Error("centralized test suite test/_suite is missing")
 	}
 	var mixedTests []string
+	var misplacedTestdata []string
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
 		if entry.IsDir() && (entry.Name() == ".git" || entry.Name() == "test") {
+			return filepath.SkipDir
+		}
+		if entry.IsDir() && entry.Name() == "testdata" {
+			relative, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			misplacedTestdata = append(misplacedTestdata, relative)
 			return filepath.SkipDir
 		}
 		if !entry.IsDir() && strings.HasSuffix(entry.Name(), "_test.go") {
@@ -83,6 +92,9 @@ func TestGreenfieldLayout(t *testing.T) {
 	}
 	if len(mixedTests) > 0 {
 		t.Errorf("test files must be kept under test/: %s", strings.Join(mixedTests, ", "))
+	}
+	if len(misplacedTestdata) > 0 {
+		t.Errorf("testdata directories must be kept under test/: %s", strings.Join(misplacedTestdata, ", "))
 	}
 }
 

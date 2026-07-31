@@ -133,12 +133,14 @@ internal/modules/          # Domain-oriented application, domain, infrastructure
 internal/platform/         # Database, HTTP, queue, configuration, logging, and observability adapters
 internal/shared/           # Stable primitives shared across modules
 db/                        # Canonical full schema and embedded resources
-test/                      # Centralized tests, runner, fixtures, and architecture gates
+test/                      # Centralized tests, mirrored testdata, runner, and architecture gates
 docs/                      # Design, PRD, Plan, Acceptance, and Operations documents
 tools/                     # Build-time tool dependencies
 ```
 
 Business code stays under `internal/` so it cannot be imported outside this module. There is no `pkg/` directory because the repository currently exposes no reusable public Go library. The `all`, `api`, and `worker` values remain runtime roles of the single `cmd/hotkey` entry point.
+
+Test sources and test-only fixtures live in package-mirrored paths below `test/_suite`. During execution, `test/runner` temporarily materializes `_test.go` files and package-local `testdata`, then removes those links, keeping test-only assets out of the `internal/` production tree.
 
 This layout is an evidence-based choice rather than a copy of a purported standard template:
 

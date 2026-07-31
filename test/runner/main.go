@@ -1,5 +1,5 @@
-// Command runner executes Go tests with the centralized test suite temporarily
-// materialized beside the packages it tests. The source tests remain under test/.
+// Command runner 将集中测试源码和包内 testdata 临时物化到目标包。
+// 权威测试资产始终保存在 test/_suite，runner 退出时清理所有链接。
 package main
 
 import (
@@ -15,37 +15,43 @@ import (
 func main() {
 	root, err := os.Getwd()
 	if err != nil {
-		fail(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
+	os.Exit(run(root, os.Args[1:], os.Getenv("GO")))
+}
+
+func run(root string, args []string, goCommand string) (status int) {
 	suiteRoot := filepath.Join(root, "test", "_suite")
-	sources, err := testSources(suiteRoot)
+	entries, err := suiteEntries(suiteRoot)
 	if err != nil {
-		fail(err)
+		fmt.Fprintln(os.Stderr, repositoryError(root, err))
+		return 1
 	}
-	if len(sources) == 0 {
-		fail(fmt.Errorf("centralized test suite is empty: %s", suiteRoot))
+	if len(entries) == 0 {
+		fmt.Fprintln(os.Stderr, "centralized test suite is empty: test/_suite")
+		return 1
 	}
 
-	args := os.Args[1:]
 	if len(args) == 0 {
 		args = []string{"test", "./...", "-count=1"}
 	}
-	goCommand := os.Getenv("GO")
 	if goCommand == "" {
 		goCommand = "go"
 	}
 
-	links, err := materialize(root, suiteRoot, sources)
+	links, err := materialize(root, suiteRoot, entries)
 	if err != nil {
-		fail(err)
+		fmt.Fprintln(os.Stderr, repositoryError(root, err))
+		return 1
 	}
-	status := 0
 	defer func() {
-		if err := cleanup(links); err != nil && status == 0 {
-			fmt.Fprintln(os.Stderr, err)
-			status = 1
+		if err := cleanup(root, links); err != nil {
+			fmt.Fprintln(os.Stderr, repositoryError(root, err))
+			if status == 0 {
+				status = 1
+			}
 		}
-		os.Exit(status)
 	}()
 
 	command := exec.Command(goCommand, args...)
@@ -55,69 +61,81 @@ func main() {
 	command.Env = append(os.Environ(), "HOTKEY_TEST_SUITE_ACTIVE=1")
 	if err := command.Run(); err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
-			status = exitError.ExitCode()
+			return exitError.ExitCode()
 		} else {
 			fmt.Fprintln(os.Stderr, err)
-			status = 1
+			return 1
 		}
 	}
+	return 0
 }
 
-func testSources(root string) ([]string, error) {
-	var sources []string
+func suiteEntries(root string) ([]string, error) {
+	var entries []string
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
+		if entry.IsDir() && entry.Name() == "testdata" {
+			entries = append(entries, path)
+			return filepath.SkipDir
+		}
 		if !entry.IsDir() && strings.HasSuffix(entry.Name(), "_test.go") {
-			sources = append(sources, path)
+			entries = append(entries, path)
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("scan centralized test suite: %w", err)
 	}
-	sort.Strings(sources)
-	return sources, nil
+	sort.Strings(entries)
+	return entries, nil
 }
 
-func materialize(root, suiteRoot string, sources []string) (links []string, err error) {
-	links = make([]string, 0, len(sources))
+func materialize(root, suiteRoot string, entries []string) (links []string, err error) {
+	links = make([]string, 0, len(entries))
 	defer func() {
 		if err == nil {
 			return
 		}
-		if cleanupErr := cleanup(links); cleanupErr != nil {
+		if cleanupErr := cleanup(root, links); cleanupErr != nil {
 			err = fmt.Errorf("%w; %v", err, cleanupErr)
 		}
 	}()
-	for _, source := range sources {
+	for _, source := range entries {
 		relative, err := filepath.Rel(suiteRoot, source)
 		if err != nil {
-			return nil, fmt.Errorf("resolve test source %s: %w", source, err)
+			return links, fmt.Errorf("resolve test suite entry: %w", err)
+		}
+		if relative == "." || relative == ".." || filepath.IsAbs(relative) || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return links, fmt.Errorf("test suite entry escapes suite root: %s", relative)
 		}
 		target := filepath.Join(root, relative)
 		if _, err := os.Lstat(target); err == nil {
-			return nil, fmt.Errorf("test materialization conflict: %s", relative)
+			return links, fmt.Errorf("test materialization conflict: %s", relative)
 		} else if !os.IsNotExist(err) {
-			return nil, fmt.Errorf("inspect test target %s: %w", target, err)
+			return links, fmt.Errorf("inspect test target %s: %s", relative, repositoryError(root, err))
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			return nil, fmt.Errorf("create test target directory: %w", err)
+			return links, fmt.Errorf("create test target directory: %w", err)
 		}
 		if err := os.Symlink(source, target); err != nil {
-			return nil, fmt.Errorf("materialize test %s: %w", relative, err)
+			return links, fmt.Errorf("materialize test suite entry %s: %s", relative, repositoryError(root, err))
 		}
 		links = append(links, target)
 	}
 	return links, nil
 }
 
-func cleanup(links []string) error {
+func cleanup(root string, links []string) error {
 	var failures []string
 	for _, link := range links {
 		if err := os.Remove(link); err != nil && !os.IsNotExist(err) {
-			failures = append(failures, fmt.Sprintf("remove test link %s: %v", link, err))
+			relative, relativeErr := filepath.Rel(root, link)
+			if relativeErr != nil {
+				relative = "<unknown>"
+			}
+			failures = append(failures, fmt.Sprintf("remove test link %s: %s", relative, repositoryError(root, err)))
 		}
 	}
 	if len(failures) > 0 {
@@ -126,7 +144,12 @@ func cleanup(links []string) error {
 	return nil
 }
 
-func fail(err error) {
-	fmt.Fprintln(os.Stderr, err)
-	os.Exit(1)
+func repositoryError(root string, err error) string {
+	if err == nil {
+		return ""
+	}
+	cleanRoot := filepath.Clean(root)
+	message := err.Error()
+	message = strings.ReplaceAll(message, cleanRoot+string(filepath.Separator), "")
+	return strings.ReplaceAll(message, cleanRoot, ".")
 }
