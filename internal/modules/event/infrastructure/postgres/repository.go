@@ -13,6 +13,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/modules/event/application"
 	"github.com/StephenQiu30/hotkey-server/internal/modules/event/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	"github.com/StephenQiu30/hotkey-server/internal/shared/id"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
@@ -77,7 +78,7 @@ WHERE deleted_at IS NULL AND id > $1 AND lifecycle_status <> 'archived'
   AND ($3 = 0 OR EXISTS (SELECT 1 FROM monitor_events scope WHERE scope.event_id = events.id AND scope.monitor_id = $3))
 ORDER BY id ASC LIMIT $2`, query.Cursor, query.Limit+1, monitorID)
 	if err != nil {
-		return domain.EventPage{}, sharedrepository.MapError(err)
+		return domain.EventPage{}, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	items := make([]domain.Event, 0, query.Limit)
@@ -89,7 +90,7 @@ ORDER BY id ASC LIMIT $2`, query.Cursor, query.Limit+1, monitorID)
 		items = append(items, event)
 	}
 	if err := rows.Err(); err != nil {
-		return domain.EventPage{}, sharedrepository.MapError(err)
+		return domain.EventPage{}, databaserepository.MapError(err)
 	}
 	page := domain.EventPage{Items: items}
 	if len(items) > query.Limit {
@@ -110,7 +111,7 @@ func (repository *Repository) ListMembers(ctx context.Context, eventID int64) (d
 SELECT id, version, event_id, content_id, membership_score, evidence_role, is_representative, origin, manual_locked
 FROM event_contents WHERE event_id = $1 ORDER BY membership_score DESC, content_id ASC`, eventID)
 	if err != nil {
-		return domain.EventMemberPage{}, sharedrepository.MapError(err)
+		return domain.EventMemberPage{}, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	items := make([]domain.EventMember, 0)
@@ -118,13 +119,13 @@ FROM event_contents WHERE event_id = $1 ORDER BY membership_score DESC, content_
 		var member domain.EventMember
 		var role, origin string
 		if err := rows.Scan(&member.ID, &member.Version, &member.EventID, &member.ContentID, &member.MembershipScore, &role, &member.Representative, &origin, &member.ManualLocked); err != nil {
-			return domain.EventMemberPage{}, sharedrepository.MapError(err)
+			return domain.EventMemberPage{}, databaserepository.MapError(err)
 		}
 		member.EvidenceRole, member.Origin = domain.EvidenceRole(role), domain.MemberOrigin(origin)
 		items = append(items, member)
 	}
 	if err := rows.Err(); err != nil {
-		return domain.EventMemberPage{}, sharedrepository.MapError(err)
+		return domain.EventMemberPage{}, databaserepository.MapError(err)
 	}
 	return domain.EventMemberPage{Items: items}, nil
 }
@@ -153,19 +154,19 @@ WHERE membership.event_id = $1
   AND content.deleted_at IS NULL
 ORDER BY membership.is_representative DESC, membership.membership_score DESC, membership.content_id ASC`, eventID)
 	if err != nil {
-		return application.EventIntelligenceSource{}, sharedrepository.MapError(err)
+		return application.EventIntelligenceSource{}, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	evidence := make([]domain.EvidenceRef, 0)
 	for rows.Next() {
 		var item domain.EvidenceRef
 		if err := rows.Scan(&item.ContentID, &item.Locator, &item.Excerpt); err != nil {
-			return application.EventIntelligenceSource{}, sharedrepository.MapError(err)
+			return application.EventIntelligenceSource{}, databaserepository.MapError(err)
 		}
 		evidence = append(evidence, item)
 	}
 	if err := rows.Err(); err != nil {
-		return application.EventIntelligenceSource{}, sharedrepository.MapError(err)
+		return application.EventIntelligenceSource{}, databaserepository.MapError(err)
 	}
 	return application.EventIntelligenceSource{Event: event, Evidence: evidence}, nil
 }
@@ -184,10 +185,10 @@ func (repository *Repository) PersistSummary(ctx context.Context, eventID int64,
 UPDATE events SET summary = $1, version = version + 1, updated_at = now()
 WHERE id = $2 AND deleted_at IS NULL`, application.RenderEventSummary(summary), eventID)
 	if err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	if affected, err := result.RowsAffected(); err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	} else if affected != 1 {
 		return sharedrepository.ErrNotFound
 	}
@@ -217,19 +218,19 @@ WHERE membership.content_id = $1
   AND event.deleted_at IS NULL
 ORDER BY event.id ASC`, contentID)
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	eventIDs := make([]int64, 0)
 	for rows.Next() {
 		var eventID int64
 		if err := rows.Scan(&eventID); err != nil {
-			return nil, sharedrepository.MapError(err)
+			return nil, databaserepository.MapError(err)
 		}
 		eventIDs = append(eventIDs, eventID)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	return eventIDs, nil
 }
@@ -244,7 +245,7 @@ UPDATE events SET lifecycle_status = $1, merged_into_id = $2, representative_con
        version = version + 1, updated_at = now()
 WHERE id = $4 AND version = $5`, event.LifecycleStatus, nullableInt64(event.MergedIntoID), nullableInt64(event.RepresentativeContentID), event.ID, expectedVersion)
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if rows, _ := result.RowsAffected(); rows != 1 {
 			return fmt.Errorf("%w: event version conflict", sharedrepository.ErrConflict)
@@ -691,7 +692,7 @@ func scanEvent(row rowScanner) (domain.Event, error) {
 		if err == sql.ErrNoRows {
 			return domain.Event{}, fmt.Errorf("%w: event", sharedrepository.ErrNotFound)
 		}
-		return domain.Event{}, sharedrepository.MapError(err)
+		return domain.Event{}, databaserepository.MapError(err)
 	}
 	event.EventFingerprint, event.FingerprintVersion, event.TitleEN = fingerprint, fingerprintVersion, titleEN
 	if representative.Valid {
@@ -701,7 +702,7 @@ func scanEvent(row rowScanner) (domain.Event, error) {
 		event.MergedIntoID = &merged.Int64
 	}
 	if err := json.Unmarshal(reasons, &event.HeatReasonCodes); err != nil {
-		return domain.Event{}, sharedrepository.MapError(err)
+		return domain.Event{}, databaserepository.MapError(err)
 	}
 	if event.HeatReasonCodes == nil {
 		event.HeatReasonCodes = []string{}
@@ -720,7 +721,7 @@ func scanMember(row *sql.Row) (domain.EventMember, error) {
 		if err == sql.ErrNoRows {
 			return domain.EventMember{}, fmt.Errorf("%w: event member", sharedrepository.ErrNotFound)
 		}
-		return domain.EventMember{}, sharedrepository.MapError(err)
+		return domain.EventMember{}, databaserepository.MapError(err)
 	}
 	member.EvidenceRole, member.Origin = domain.EvidenceRole(role), domain.MemberOrigin(origin)
 	return member, nil

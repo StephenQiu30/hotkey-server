@@ -10,6 +10,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/modules/event/application"
 	"github.com/StephenQiu30/hotkey-server/internal/modules/event/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -45,7 +46,7 @@ func (repository *Repository) PersistExtractedFacts(ctx context.Context, facts a
 		return nil
 	})
 	if err != nil {
-		return application.PersistedEventFacts{}, sharedrepository.MapError(err)
+		return application.PersistedEventFacts{}, databaserepository.MapError(err)
 	}
 	return stored, nil
 }
@@ -71,7 +72,7 @@ RETURNING id, version, entity_key, entity_type, canonical_name, description, man
 				Scan(&stored.ID, &stored.Version, &stored.Key, &stored.Type, &stored.Name, &stored.Description, &stored.ManualLocked)
 		}
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if stored.Type != entity.Type {
 			return fmt.Errorf("%w: entity type is immutable", sharedrepository.ErrConflict)
@@ -92,7 +93,7 @@ RETURNING id, version, entity_key, entity_type, canonical_name, description, man
 			Scan(&stored.ID, &stored.Version, &stored.Key, &stored.Type, &stored.Name, &stored.Description, &stored.ManualLocked)
 	})
 	if err != nil {
-		return domain.Entity{}, sharedrepository.MapError(err)
+		return domain.Entity{}, databaserepository.MapError(err)
 	}
 	return stored, nil
 }
@@ -126,7 +127,7 @@ RETURNING id, version, entity_id, alias, normalized_alias, language, origin, con
 				Scan(&stored.ID, &stored.Version, &stored.EntityID, &stored.Alias, &stored.NormalizedAlias, &stored.Language, &stored.Origin, &stored.Confirmed)
 		}
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if stored.Confirmed && !alias.Confirmed {
 			return fmt.Errorf("%w: entity alias is confirmed", sharedrepository.ErrConflict)
@@ -139,7 +140,7 @@ RETURNING id, version, entity_id, alias, normalized_alias, language, origin, con
 			Scan(&stored.ID, &stored.Version, &stored.EntityID, &stored.Alias, &stored.NormalizedAlias, &stored.Language, &stored.Origin, &stored.Confirmed)
 	})
 	if err != nil {
-		return domain.EntityAlias{}, sharedrepository.MapError(err)
+		return domain.EntityAlias{}, databaserepository.MapError(err)
 	}
 	return stored, nil
 }
@@ -173,7 +174,7 @@ RETURNING id, version, event_id, entity_id, role, confidence, origin, confirmed`
 				Scan(&stored.ID, &stored.Version, &stored.EventID, &stored.EntityID, &stored.Role, &stored.Confidence, &stored.Origin, &stored.Confirmed)
 		}
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if stored.Confirmed && !eventEntity.Confirmed {
 			return fmt.Errorf("%w: event entity is confirmed", sharedrepository.ErrConflict)
@@ -186,7 +187,7 @@ RETURNING id, version, event_id, entity_id, role, confidence, origin, confirmed`
 			Scan(&stored.ID, &stored.Version, &stored.EventID, &stored.EntityID, &stored.Role, &stored.Confidence, &stored.Origin, &stored.Confirmed)
 	})
 	if err != nil {
-		return domain.EventEntity{}, sharedrepository.MapError(err)
+		return domain.EventEntity{}, databaserepository.MapError(err)
 	}
 	return stored, nil
 }
@@ -220,7 +221,7 @@ RETURNING id, version, from_entity_id, to_entity_id, relation_type, confidence, 
 				Scan(&stored.ID, &stored.Version, &stored.FromEntityID, &stored.ToEntityID, &stored.Type, &stored.Confidence, &stored.ValidFrom, &stored.ValidTo, &stored.Origin, &stored.Confirmed)
 		}
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if stored.Confirmed && !relation.Confirmed {
 			return fmt.Errorf("%w: entity relation is confirmed", sharedrepository.ErrConflict)
@@ -233,7 +234,7 @@ RETURNING id, version, from_entity_id, to_entity_id, relation_type, confidence, 
 			Scan(&stored.ID, &stored.Version, &stored.FromEntityID, &stored.ToEntityID, &stored.Type, &stored.Confidence, &stored.ValidFrom, &stored.ValidTo, &stored.Origin, &stored.Confirmed)
 	})
 	if err != nil {
-		return domain.EntityRelation{}, sharedrepository.MapError(err)
+		return domain.EntityRelation{}, databaserepository.MapError(err)
 	}
 	return stored, nil
 }
@@ -257,7 +258,7 @@ SELECT EXISTS (
       AND membership.evidence_role <> 'duplicate'
       AND content.content_status = 'active' AND content.deleted_at IS NULL
 )`, claim.EventID, evidence.ContentID).Scan(&active); err != nil {
-				return sharedrepository.MapError(err)
+				return databaserepository.MapError(err)
 			}
 			if !active {
 				return fmt.Errorf("%w: claim evidence content is not active in event", sharedrepository.ErrConflict)
@@ -286,7 +287,7 @@ RETURNING id, version, manual_locked`, claim.NormalizedClaim, claim.Status, clai
 				Scan(&stored.ID, &stored.Version, &stored.ManualLocked)
 		}
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		for _, evidence := range claim.Evidence {
 			if _, err := transaction.SQL.ExecContext(ctx, `
@@ -294,14 +295,14 @@ INSERT INTO claim_evidences (claim_id, content_id, stance, evidence_locator, sho
 VALUES ($1,$2,$3,$4,$5,$6)
 ON CONFLICT (claim_id, content_id, stance) DO UPDATE
 SET evidence_locator = EXCLUDED.evidence_locator, short_excerpt = EXCLUDED.short_excerpt, confidence = EXCLUDED.confidence, version = claim_evidences.version + 1, updated_at = now()`, stored.ID, evidence.ContentID, evidence.Stance, evidence.Locator, evidence.Excerpt, evidence.Confidence); err != nil {
-				return sharedrepository.MapError(err)
+				return databaserepository.MapError(err)
 			}
 		}
 		stored.EventID, stored.NormalizedClaim, stored.ClaimHash, stored.Status, stored.Confidence, stored.Evidence = claim.EventID, claim.NormalizedClaim, claim.ClaimHash, claim.Status, claim.Confidence, append([]domain.ClaimEvidence(nil), claim.Evidence...)
 		return nil
 	})
 	if err != nil {
-		return domain.Claim{}, sharedrepository.MapError(err)
+		return domain.Claim{}, databaserepository.MapError(err)
 	}
 	return stored, nil
 }
@@ -312,7 +313,7 @@ func entityLocked(ctx context.Context, query *sql.Tx, entityID int64) (bool, err
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, fmt.Errorf("%w: entity", sharedrepository.ErrNotFound)
 	}
-	return locked, sharedrepository.MapError(err)
+	return locked, databaserepository.MapError(err)
 }
 
 func eventOrEntityLocked(ctx context.Context, query *sql.Tx, eventID, entityID int64) (bool, error) {
@@ -325,13 +326,13 @@ FOR UPDATE OF event, entity`, eventID, entityID).Scan(&eventLocked, &entityLocke
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, fmt.Errorf("%w: event or entity", sharedrepository.ErrNotFound)
 	}
-	return eventLocked || entityLocked, sharedrepository.MapError(err)
+	return eventLocked || entityLocked, databaserepository.MapError(err)
 }
 
 func entitiesLocked(ctx context.Context, query *sql.Tx, firstID, secondID int64) (bool, error) {
 	rows, err := query.QueryContext(ctx, `SELECT id, manual_locked FROM entities WHERE id = ANY($1) AND deleted_at IS NULL ORDER BY id FOR UPDATE`, []int64{firstID, secondID})
 	if err != nil {
-		return false, sharedrepository.MapError(err)
+		return false, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	count, locked := 0, false
@@ -339,13 +340,13 @@ func entitiesLocked(ctx context.Context, query *sql.Tx, firstID, secondID int64)
 		var id int64
 		var value bool
 		if err := rows.Scan(&id, &value); err != nil {
-			return false, sharedrepository.MapError(err)
+			return false, databaserepository.MapError(err)
 		}
 		count++
 		locked = locked || value
 	}
 	if err := rows.Err(); err != nil {
-		return false, sharedrepository.MapError(err)
+		return false, databaserepository.MapError(err)
 	}
 	if count != 2 {
 		return false, fmt.Errorf("%w: entity relation endpoint", sharedrepository.ErrNotFound)

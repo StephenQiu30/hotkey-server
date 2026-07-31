@@ -9,6 +9,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/report/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -68,13 +69,13 @@ RETURNING id`, report.Version, report.Type, report.MonitorID, report.Period.Star
 				if _, err := transaction.SQL.ExecContext(transactionCtx, `
 INSERT INTO report_items (report_id, event_id, rank, section, inclusion_reason, title_snapshot, summary_snapshot, heat_score_snapshot)
 VALUES ($1,$2,$3,'events',$4,$5,$6,$7)`, report.ID, item.EventID, item.Rank, item.InclusionReason, item.Title, item.Summary, item.HeatScore); err != nil {
-					return sharedrepository.MapError(err)
+					return databaserepository.MapError(err)
 				}
 			}
 			return nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		return transaction.SQL.QueryRowContext(transactionCtx, `
 SELECT id FROM reports
@@ -101,20 +102,20 @@ func (repository *Repository) Save(ctx context.Context, report domain.Report) er
 		var existingStatus string
 		err := transaction.SQL.QueryRowContext(ctx, `SELECT status FROM reports WHERE id = $1 FOR UPDATE`, report.ID).Scan(&existingStatus)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if err == nil && existingStatus == string(domain.ReportPublished) {
 			return sharedrepository.ErrImmutable
 		}
 		if _, err := transaction.SQL.ExecContext(ctx, `INSERT INTO reports (id, version, report_type, monitor_id, period_start, period_end, timezone, title, summary, body, status, version_no, generated_at, published_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now(),CASE WHEN $13::text = 'published' THEN now() ELSE NULL END) ON CONFLICT (id) DO UPDATE SET version = EXCLUDED.version, summary = EXCLUDED.summary, body = EXCLUDED.body, status = EXCLUDED.status, published_at = EXCLUDED.published_at`, report.ID, report.Version, report.Type, report.MonitorID, report.Period.Start.UTC(), report.Period.End.UTC(), report.Period.Location.String(), report.Title, report.Summary, report.Body, report.Status, report.VersionNo, report.Status); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if _, err := transaction.SQL.ExecContext(ctx, `DELETE FROM report_items WHERE report_id = $1`, report.ID); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		for _, item := range report.Items {
 			if _, err := transaction.SQL.ExecContext(ctx, `INSERT INTO report_items (report_id, event_id, rank, section, inclusion_reason, title_snapshot, summary_snapshot, heat_score_snapshot) VALUES ($1,$2,$3,'events',$4,$5,$6,$7) ON CONFLICT (report_id, event_id) DO UPDATE SET rank = EXCLUDED.rank, title_snapshot = EXCLUDED.title_snapshot, summary_snapshot = EXCLUDED.summary_snapshot, heat_score_snapshot = EXCLUDED.heat_score_snapshot`, report.ID, item.EventID, item.Rank, item.InclusionReason, item.Title, item.Summary, item.HeatScore); err != nil {
-				return sharedrepository.MapError(err)
+				return databaserepository.MapError(err)
 			}
 		}
 		return nil
@@ -160,7 +161,7 @@ WHERE deleted_at IS NULL
 ORDER BY id DESC
 LIMIT $4`, reportType, status, query.Cursor, query.Limit+1)
 	if err != nil {
-		return domain.Page{}, sharedrepository.MapError(err)
+		return domain.Page{}, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	page := domain.Page{Items: make([]domain.Report, 0, query.Limit)}
@@ -172,7 +173,7 @@ LIMIT $4`, reportType, status, query.Cursor, query.Limit+1)
 		page.Items = append(page.Items, report)
 	}
 	if err := rows.Err(); err != nil {
-		return domain.Page{}, sharedrepository.MapError(err)
+		return domain.Page{}, databaserepository.MapError(err)
 	}
 	if len(page.Items) > query.Limit {
 		page.NextCursor = page.Items[query.Limit-1].ID
@@ -208,7 +209,7 @@ func scanReport(row reportRow) (domain.Report, error) {
 		if errors.Is(err, sql.ErrNoRows) {
 			return domain.Report{}, sharedrepository.ErrNotFound
 		}
-		return domain.Report{}, sharedrepository.MapError(err)
+		return domain.Report{}, databaserepository.MapError(err)
 	}
 	report.Type, report.Status = domain.ReportType(reportType), domain.ReportStatus(status)
 	report.Frozen = report.Status == domain.ReportPublished
@@ -253,19 +254,19 @@ func (target *reportTimezone) Scan(value any) error {
 func (repository *Repository) items(ctx context.Context, queryer reportQueryer, reportID int64) ([]domain.Item, error) {
 	rows, err := queryer.QueryContext(ctx, `SELECT event_id, rank, inclusion_reason, title_snapshot, summary_snapshot, heat_score_snapshot FROM report_items WHERE report_id = $1 ORDER BY rank, event_id`, reportID)
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	items := make([]domain.Item, 0)
 	for rows.Next() {
 		var item domain.Item
 		if err := rows.Scan(&item.EventID, &item.Rank, &item.InclusionReason, &item.Title, &item.Summary, &item.HeatScore); err != nil {
-			return nil, sharedrepository.MapError(err)
+			return nil, databaserepository.MapError(err)
 		}
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	return items, nil
 }

@@ -12,6 +12,7 @@ import (
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/domain"
 	sourcedomain "github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	"github.com/StephenQiu30/hotkey-server/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
@@ -85,7 +86,7 @@ SET fetched_at = EXCLUDED.fetched_at,
     updated_at = now()
 RETURNING id, (xmax = 0)`,
 			arguments...).Scan(&contentID, &created); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if created {
 			authorID, err := upsertAuthor(ctx, transaction.SQL, content)
@@ -94,7 +95,7 @@ RETURNING id, (xmax = 0)`,
 			}
 			if authorID != nil {
 				if _, err := transaction.SQL.ExecContext(ctx, `UPDATE contents SET author_id = $1 WHERE id = $2`, authorID, contentID); err != nil {
-					return sharedrepository.MapError(err)
+					return databaserepository.MapError(err)
 				}
 			}
 		}
@@ -149,7 +150,7 @@ INSERT INTO content_assets (
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 			asset.ContentID, asset.AssetType, asset.ObjectKey, originalURL, asset.MIMEType,
 			asset.SHA256, asset.SizeBytes, asset.CapturedAt.UTC(), string(asset.Status)); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		return nil
 	})
@@ -175,7 +176,7 @@ WHERE object_key = $1`, objectKey).Scan(&record.version, &record.status); err !=
 			if errors.Is(err, sql.ErrNoRows) {
 				return fmt.Errorf("%w: asset %q", sharedrepository.ErrNotFound, objectKey)
 			}
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if record.status == string(status) {
 			return nil
@@ -185,11 +186,11 @@ UPDATE content_assets
 SET object_status = $1, version = version + 1, updated_at = now()
 WHERE object_key = $2 AND version = $3 AND object_status = $4`, status, objectKey, record.version, record.status)
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		updated, err := result.RowsAffected()
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if updated == 0 {
 			return fmt.Errorf("%w: asset %q changed concurrently", sharedrepository.ErrConflict, objectKey)
@@ -220,19 +221,19 @@ WHERE content.source_connection_id = $1
   AND asset.object_key LIKE $3
 ORDER BY asset.object_key ASC`, sourceConnectionID, contentID, evidencePrefixPattern(sourceConnectionID))
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	assets := make([]ingestiondomain.ContentAsset, 0)
 	for rows.Next() {
 		asset, err := scanContentAsset(rows)
 		if err != nil {
-			return nil, sharedrepository.MapError(err)
+			return nil, databaserepository.MapError(err)
 		}
 		assets = append(assets, asset)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	return assets, nil
 }
@@ -257,19 +258,19 @@ WHERE content.source_connection_id = $1
   AND asset.object_key LIKE $2
 ORDER BY asset.object_key ASC`, sourceConnectionID, evidencePrefixPattern(sourceConnectionID))
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	keys := make([]string, 0)
 	for rows.Next() {
 		var objectKey string
 		if err := rows.Scan(&objectKey); err != nil {
-			return nil, sharedrepository.MapError(err)
+			return nil, databaserepository.MapError(err)
 		}
 		keys = append(keys, objectKey)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	return keys, nil
 }
@@ -296,7 +297,7 @@ WHERE c.content_status = 'active'
 ORDER BY c.published_at DESC, c.id DESC
 LIMIT $2`, cursorID, limit+1)
 	if err != nil {
-		return ingestiondomain.ContentPage{}, sharedrepository.MapError(err)
+		return ingestiondomain.ContentPage{}, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 
@@ -304,12 +305,12 @@ LIMIT $2`, cursorID, limit+1)
 	for rows.Next() {
 		content, err := scanContent(rows)
 		if err != nil {
-			return ingestiondomain.ContentPage{}, sharedrepository.MapError(err)
+			return ingestiondomain.ContentPage{}, databaserepository.MapError(err)
 		}
 		page.Items = append(page.Items, content)
 	}
 	if err := rows.Err(); err != nil {
-		return ingestiondomain.ContentPage{}, sharedrepository.MapError(err)
+		return ingestiondomain.ContentPage{}, databaserepository.MapError(err)
 	}
 	if len(page.Items) <= limit {
 		return page, nil
@@ -343,7 +344,7 @@ WHERE c.id = $1
 		return ingestiondomain.Content{}, fmt.Errorf("%w: active content %d", sharedrepository.ErrNotFound, contentID)
 	}
 	if err != nil {
-		return ingestiondomain.Content{}, sharedrepository.MapError(err)
+		return ingestiondomain.Content{}, databaserepository.MapError(err)
 	}
 	return content, nil
 }
@@ -375,7 +376,7 @@ RETURNING id`, sourceConnectionID, externalID).Scan(&contentID)
 			return err
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		content, err = selectContentBySourceExternalID(ctx, transaction.SQL, sourceConnectionID, externalID)
 		if errors.Is(err, sharedrepository.ErrNotFound) {
@@ -408,11 +409,11 @@ WHERE content_status = 'active'
   AND deleted_at IS NULL
   AND published_at < $1`, before.UTC())
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		affected, err := result.RowsAffected()
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		expired = int(affected)
 		return nil
@@ -437,13 +438,13 @@ RETURNING id`, content.SourceConnectionID, content.Author.ExternalID, nullableSt
 		return authorID, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	if err := executor.QueryRowContext(ctx, `
 SELECT id
 FROM source_authors
 WHERE source_connection_id = $1 AND external_id = $2`, content.SourceConnectionID, content.Author.ExternalID).Scan(&authorID); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	return authorID, nil
 }
@@ -461,7 +462,7 @@ SET view_count = EXCLUDED.view_count,
     like_count = EXCLUDED.like_count,
     comment_count = EXCLUDED.comment_count,
     share_count = EXCLUDED.share_count`, arguments...); err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	return nil
 }
@@ -476,7 +477,7 @@ WHERE c.id = $1`, contentID))
 		return ingestiondomain.Content{}, fmt.Errorf("%w: content %d", sharedrepository.ErrNotFound, contentID)
 	}
 	if err != nil {
-		return ingestiondomain.Content{}, sharedrepository.MapError(err)
+		return ingestiondomain.Content{}, databaserepository.MapError(err)
 	}
 	return content, nil
 }
@@ -491,7 +492,7 @@ WHERE c.source_connection_id = $1 AND c.external_id = $2`, sourceConnectionID, e
 		return ingestiondomain.Content{}, fmt.Errorf("%w: content source item", sharedrepository.ErrNotFound)
 	}
 	if err != nil {
-		return ingestiondomain.Content{}, sharedrepository.MapError(err)
+		return ingestiondomain.Content{}, databaserepository.MapError(err)
 	}
 	return content, nil
 }

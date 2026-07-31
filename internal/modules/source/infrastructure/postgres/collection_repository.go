@@ -14,6 +14,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	"github.com/StephenQiu30/hotkey-server/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
@@ -66,13 +67,13 @@ RETURNING `+collectionRunColumns,
 INSERT INTO collection_run_targets
     (collection_run_id, monitor_source_id, monitor_config_version_id)
 VALUES ($1, $2, $3)`, run.ID, target.MonitorSourceID, target.MonitorConfigVersionID); err != nil {
-					return sharedrepository.MapError(err)
+					return databaserepository.MapError(err)
 				}
 			}
 			return nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		run, err = scanCollectionRun(transaction.SQL.QueryRowContext(ctx, `
 SELECT `+collectionRunColumns+`
@@ -80,7 +81,7 @@ FROM collection_runs
 WHERE source_connection_id = $1 AND query_signature = $2 AND window_start = $3 AND window_end = $4`,
 			request.SourceConnectionID, request.QuerySignature, request.WindowStart.UTC(), request.WindowEnd.UTC()))
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		return nil
 	})
@@ -120,11 +121,11 @@ RETURNING `+collectionRunColumns, runID, staleAt))
 			return nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		run, err = scanCollectionRun(transaction.SQL.QueryRowContext(ctx, `SELECT `+collectionRunColumns+` FROM collection_runs WHERE id = $1`, runID))
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		return nil
 	})
@@ -152,7 +153,7 @@ WHERE id > $1
 ORDER BY id ASC
 LIMIT $2`, cursorID, limit+1)
 	if err != nil {
-		return domain.CollectionRunPage{}, sharedrepository.MapError(err)
+		return domain.CollectionRunPage{}, databaserepository.MapError(err)
 	}
 
 	items := make([]domain.CollectionRunSummary, 0, limit+1)
@@ -160,16 +161,16 @@ LIMIT $2`, cursorID, limit+1)
 		summary, err := scanCollectionRunSummary(rows)
 		if err != nil {
 			_ = rows.Close()
-			return domain.CollectionRunPage{}, sharedrepository.MapError(err)
+			return domain.CollectionRunPage{}, databaserepository.MapError(err)
 		}
 		items = append(items, summary)
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
-		return domain.CollectionRunPage{}, sharedrepository.MapError(err)
+		return domain.CollectionRunPage{}, databaserepository.MapError(err)
 	}
 	if err := rows.Close(); err != nil {
-		return domain.CollectionRunPage{}, sharedrepository.MapError(err)
+		return domain.CollectionRunPage{}, databaserepository.MapError(err)
 	}
 	page := domain.CollectionRunPage{Items: items}
 	if len(page.Items) <= limit {
@@ -227,7 +228,7 @@ WHERE run_id = $1
 ORDER BY id ASC
 LIMIT $4`, query.RunID, statuses, cursorID, limit+1)
 	if err != nil {
-		return domain.CapturedItemPage{}, sharedrepository.MapError(err)
+		return domain.CapturedItemPage{}, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	items := make([]domain.CapturedCollectionItem, 0, limit+1)
@@ -235,7 +236,7 @@ LIMIT $4`, query.RunID, statuses, cursorID, limit+1)
 		var item domain.CapturedCollectionItem
 		var payload []byte
 		if err := rows.Scan(&item.ID, &item.RunID, &item.SourceConnectionID, &payload); err != nil {
-			return domain.CapturedItemPage{}, sharedrepository.MapError(err)
+			return domain.CapturedItemPage{}, databaserepository.MapError(err)
 		}
 		captured, err := decodeCapturedItem(payload)
 		if err != nil {
@@ -245,7 +246,7 @@ LIMIT $4`, query.RunID, statuses, cursorID, limit+1)
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
-		return domain.CapturedItemPage{}, sharedrepository.MapError(err)
+		return domain.CapturedItemPage{}, databaserepository.MapError(err)
 	}
 	page := domain.CapturedItemPage{Items: items}
 	if len(page.Items) <= limit {
@@ -280,11 +281,11 @@ WHERE id = $2
   AND content_id IS NULL
   AND ingestion_status IN ('pending', 'failed')`, binding.ContentID, binding.CollectionItemID, binding.RunID, binding.SourceConnectionID)
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		rowsAffected, err := result.RowsAffected()
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if rowsAffected != 1 {
 			return fmt.Errorf("%w: captured item was bound or changed", sharedrepository.ErrConflict)
@@ -314,11 +315,11 @@ WHERE id = $2
   AND content_id IS NULL
   AND ingestion_status IN ('pending', 'failed')`, strings.TrimSpace(failure.Code), failure.CollectionItemID, failure.RunID, failure.SourceConnectionID)
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		rowsAffected, err := result.RowsAffected()
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if rowsAffected != 1 {
 			return fmt.Errorf("%w: captured item was bound or changed", sharedrepository.ErrConflict)
@@ -351,7 +352,7 @@ UPDATE collection_run_targets
 SET target_status = 'queued', candidate_count = 0, accepted_count = 0, rejected_count = 0,
     error_code = NULL, updated_at = now()
 WHERE collection_run_id = $1`, runID); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		summary, err = scanCollectionRunSummary(transaction.SQL.QueryRowContext(ctx, `
 UPDATE collection_runs
@@ -361,7 +362,7 @@ SET status = 'queued', trigger_type = 'retry', scheduled_at = now(), retry_after
 WHERE id = $1
 RETURNING `+collectionRunSummaryColumns, runID))
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		targets, err := collectionRunTargetSummaries(ctx, transaction.SQL, runID)
 		if err != nil {
@@ -432,21 +433,21 @@ func (repository *CollectionRepository) PersistSuccessWith(ctx context.Context, 
 			}
 			savepoint := fmt.Sprintf("collection_target_%d", index)
 			if _, err := transaction.SQL.ExecContext(ctx, "SAVEPOINT "+savepoint); err != nil {
-				return sharedrepository.MapError(err)
+				return databaserepository.MapError(err)
 			}
 			err := persistTargetSuccess(ctx, transaction, success.RunID, target, itemIDs, candidateCount, success.Result, run, completedAt)
 			if err == nil {
 				if _, releaseErr := transaction.SQL.ExecContext(ctx, "RELEASE SAVEPOINT "+savepoint); releaseErr != nil {
-					return sharedrepository.MapError(releaseErr)
+					return databaserepository.MapError(releaseErr)
 				}
 				succeededTargets++
 				continue
 			}
 			if _, rollbackErr := transaction.SQL.ExecContext(ctx, "ROLLBACK TO SAVEPOINT "+savepoint); rollbackErr != nil {
-				return sharedrepository.MapError(rollbackErr)
+				return databaserepository.MapError(rollbackErr)
 			}
 			if _, releaseErr := transaction.SQL.ExecContext(ctx, "RELEASE SAVEPOINT "+savepoint); releaseErr != nil {
-				return sharedrepository.MapError(releaseErr)
+				return databaserepository.MapError(releaseErr)
 			}
 			if !errors.Is(err, sharedrepository.ErrConflict) {
 				return err
@@ -477,7 +478,7 @@ RETURNING `+collectionRunColumns,
 			string(status), nullableString(nextCursor), nullableString(etag), nullableString(lastModified), completedAt,
 			candidateCount, acceptedCount, int64(len(success.Result.Diagnostics)), errorCode, success.RunID))
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if hook != nil {
 			if err := hook(ctx, completed.ID); err != nil {
@@ -522,7 +523,7 @@ func (repository *CollectionRepository) PersistFailure(ctx context.Context, fail
 UPDATE collection_run_targets
 SET target_status = 'failed', error_code = $1, updated_at = now()
 WHERE id = $2 AND collection_run_id = $3`, string(failure.ErrorKind), target.ID, failure.RunID); err != nil {
-				return sharedrepository.MapError(err)
+				return databaserepository.MapError(err)
 			}
 			if err := failCheckpoint(ctx, transaction, target.PublishedCollectionTarget, failure.Result.RateLimit.RetryAfter, completedAt); err != nil {
 				return err
@@ -536,7 +537,7 @@ WHERE id = $4
 RETURNING `+collectionRunColumns,
 			failure.Result.RateLimit.RetryAfter, completedAt, string(failure.ErrorKind), failure.RunID))
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		return nil
 	})
@@ -554,7 +555,7 @@ type collectionPersistedTarget struct {
 func collectionRunForUpdate(ctx context.Context, transaction database.Transaction, runID int64) (domain.CollectionRun, error) {
 	run, err := scanCollectionRun(transaction.SQL.QueryRowContext(ctx, `SELECT `+collectionRunColumns+` FROM collection_runs WHERE id = $1 FOR UPDATE`, runID))
 	if err != nil {
-		return domain.CollectionRun{}, sharedrepository.MapError(err)
+		return domain.CollectionRun{}, databaserepository.MapError(err)
 	}
 	return run, nil
 }
@@ -577,14 +578,14 @@ WHERE collection_run_id = $1
 ORDER BY monitor_source_id ASC
 FOR UPDATE`, runID)
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	targets := make([]collectionPersistedTarget, 0, len(supplied))
 	for rows.Next() {
 		var id, monitorSourceID, configVersionID int64
 		if err := rows.Scan(&id, &monitorSourceID, &configVersionID); err != nil {
-			return nil, sharedrepository.MapError(err)
+			return nil, databaserepository.MapError(err)
 		}
 		target, found := byMonitorSource[monitorSourceID]
 		if !found || target.MonitorConfigVersionID != configVersionID {
@@ -593,7 +594,7 @@ FOR UPDATE`, runID)
 		targets = append(targets, collectionPersistedTarget{PublishedCollectionTarget: target, ID: id})
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	if len(targets) != len(supplied) {
 		return nil, fmt.Errorf("%w: collection run target set changed", sharedrepository.ErrConflict)
@@ -624,7 +625,7 @@ SET external_id = collection_run_items.external_id
 RETURNING id`,
 			run.ID, run.SourceConnectionID, item.SourceCode, item.ExternalID, item.ContentType, item.Version, string(payload), hash,
 			string(item.RawPayloadDisposition), item.ObservedAt.UTC()).Scan(&itemID); err != nil {
-			return nil, sharedrepository.MapError(err)
+			return nil, databaserepository.MapError(err)
 		}
 		itemIDs = append(itemIDs, itemID)
 	}
@@ -639,7 +640,7 @@ INSERT INTO collection_run_target_items
 VALUES ($1, $2, $3, 'captured')
 ON CONFLICT (collection_run_target_id, collection_run_item_id) DO UPDATE
 SET outcome = 'captured', reason_code = NULL`, runID, target.ID, itemID); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 	}
 	if _, err := transaction.SQL.ExecContext(ctx, `
@@ -647,7 +648,7 @@ UPDATE collection_run_targets
 SET target_status = 'succeeded', candidate_count = $1, accepted_count = $1,
     rejected_count = $2, error_code = NULL, updated_at = now()
 WHERE id = $3 AND collection_run_id = $4`, candidateCount, int64(len(result.Diagnostics)), target.ID, runID); err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	return advanceCheckpoint(ctx, transaction, target.PublishedCollectionTarget, runID, run, result, completedAt)
 }
@@ -663,7 +664,7 @@ INSERT INTO collection_run_target_items
 VALUES ($1, $2, $3, 'failed', $4)
 ON CONFLICT (collection_run_target_id, collection_run_item_id) DO UPDATE
 SET outcome = 'failed', reason_code = $4`, runID, target.ID, itemID, reasonCode); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 	}
 	if _, err := transaction.SQL.ExecContext(ctx, `
@@ -671,7 +672,7 @@ UPDATE collection_run_targets
 SET target_status = 'failed', candidate_count = $1, accepted_count = 0,
     rejected_count = $2, error_code = $3, updated_at = now()
 WHERE id = $4 AND collection_run_id = $5`, candidateCount, candidateCount+int64(diagnosticCount), reasonCode, target.ID, runID); err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	return nil
 }
@@ -774,11 +775,11 @@ WHERE id = $7 AND monitor_source_id = $8 AND query_hash = $9 AND version = $10`,
 		nullableString(nextCursor), nullableString(etag), nullableString(lastModified), runID, completedAt, nextPollAt,
 		checkpoint.ID, target.MonitorSourceID, target.QuerySignature, checkpoint.Version)
 	if err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	count, err := update.RowsAffected()
 	if err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	if count != 1 {
 		return fmt.Errorf("%w: collection checkpoint changed", sharedrepository.ErrConflict)
@@ -799,11 +800,11 @@ SET next_poll_at = $1, consecutive_failures = consecutive_failures + 1,
 WHERE id = $2 AND monitor_source_id = $3 AND query_hash = $4 AND version = $5`,
 		nextPollAt, checkpoint.ID, target.MonitorSourceID, target.QuerySignature, checkpoint.Version)
 	if err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	count, err := update.RowsAffected()
 	if err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	if count != 1 {
 		return fmt.Errorf("%w: collection checkpoint changed", sharedrepository.ErrConflict)
@@ -843,7 +844,7 @@ FROM collection_run_targets
 WHERE collection_run_id = $1
 ORDER BY id ASC`, runID)
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	targets := make([]domain.CollectionRunTargetSummary, 0)
@@ -852,13 +853,13 @@ ORDER BY id ASC`, runID)
 		var status string
 		var errorCode sql.NullString
 		if err := rows.Scan(&target.ID, &status, &target.CandidateCount, &target.AcceptedCount, &target.RejectedCount, &errorCode); err != nil {
-			return nil, sharedrepository.MapError(err)
+			return nil, databaserepository.MapError(err)
 		}
 		target.Status, target.ErrorCode = domain.CollectionRunStatus(status), errorCode.String
 		targets = append(targets, target)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	return targets, nil
 }

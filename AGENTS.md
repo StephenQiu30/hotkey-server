@@ -23,8 +23,8 @@ HotKey Server 是本地优先的 AI 热点事件监控与 Obsidian 知识库治�
 ```text
 cmd/hotkey/
 internal/bootstrap/       # Fx 装配和生命周期
-internal/platform/        # HTTP、DB、Queue、MinIO、Vault、邮件、观测
-internal/shared/          # 错误、分页、事务、Clock、ID
+internal/platform/        # HTTP、DB（含具体 Repository）、Queue、MinIO、Vault、邮件、观测
+internal/shared/          # 稳定错误、分页/仓储契约、Clock、ID
 internal/modules/{identity,monitor,source,ingestion,event,
   intelligence,knowledge,report,delivery,operations}/
 db/schema.sql
@@ -45,6 +45,7 @@ bootstrap -> all adapters
 - Transport 只处理协议、参数、认证上下文和 Result；Application 负责用例、权限、事务和跨模块编排；Domain 只保存规则、实体、值对象和端口；Repository 只读写数据。
 - 跨模块调用通过目标模块 Application 接口或只读查询端口；业务模块不得直接读取其他模块拥有的表。
 - Domain 禁止导入 Gin、GORM、River、MinIO 或第三方 SDK；第三方类型不得穿透 Infrastructure；禁止包级业务单例和全局可变状态。
+- Shared 只保存基础设施中立的稳定类型和契约，不得导入 Platform、GORM、pgx、Gin、River 或 MinIO；通用数据库适配器位于 `internal/platform/database/repository`。
 - Redis 只用于缓存、验证码、短期票据和限流，不是业务事实源或核心任务依赖。禁止重新引入 Kafka、微服务、内部事件总线、Elasticsearch、独立向量库、动态插件框架和通用规则/工作流引擎。
 
 ## HTTP 契约

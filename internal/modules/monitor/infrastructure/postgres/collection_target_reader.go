@@ -10,6 +10,7 @@ import (
 
 	sourcedomain "github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	platformscheduler "github.com/StephenQiu30/hotkey-server/internal/platform/scheduler"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
@@ -81,7 +82,7 @@ WHERE monitor.status = 'active'
   AND checkpoint.next_poll_at <= $1
 ORDER BY monitor_source.id ASC, rule.priority DESC, rule.id ASC`, now.UTC())
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 
@@ -90,7 +91,7 @@ ORDER BY monitor_source.id ASC, rule.priority DESC, rule.id ASC`, now.UTC())
 	for rows.Next() {
 		row, err := scanPublishedCollectionTarget(rows)
 		if err != nil {
-			return nil, sharedrepository.MapError(err)
+			return nil, databaserepository.MapError(err)
 		}
 		if row.monitorSourceID != currentID {
 			if currentID != 0 {
@@ -110,7 +111,7 @@ ORDER BY monitor_source.id ASC, rule.priority DESC, rule.id ASC`, now.UTC())
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	if currentID != 0 {
 		if err := targets[len(targets)-1].Validate(); err != nil {

@@ -6,7 +6,7 @@ feature_area: 验收记录
 purpose: 定义长期验收证据的结构、结论和归档边界
 canonical_path: docs/acceptance/README.md
 status: review
-version: v3.3
+version: v3.4
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -74,6 +74,7 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | 019 | [采集内容 Markdown 归档与预览](archive/019-采集内容Markdown归档与预览验收.md) | accepted_with_risk |
 | 020 | [工程配置与启动安全加固](archive/020-工程配置与启动安全加固验收.md) | accepted_with_risk |
 | 021 | [集中测试资产与目录边界优化](archive/021-集中测试资产与目录边界优化验收.md) | accepted_with_risk |
+| 022 | [Shared 仓储基础设施边界修复](022-Shared仓储基础设施边界修复验收.md) | pending |
 
 ## 变更记录
 
@@ -102,3 +103,4 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | v3.1 | 2026-08-01 | PLAN-020 通过 GoLand 实机验收与独立实现复审，以 accepted_with_risk 记录隔离测试环境缺失并归档。 |
 | v3.2 | 2026-08-01 | 创建 PLAN-021 集中测试资产与目录边界优化验收模板，结论保持 pending。 |
 | v3.3 | 2026-08-01 | PLAN-021 通过精确回归和独立实现复审，以 accepted_with_risk 记录隔离测试环境缺失并归档。 |
+| v3.4 | 2026-08-01 | 创建 PLAN-022 Shared 仓储基础设施边界修复验收模板，结论保持 pending。 |

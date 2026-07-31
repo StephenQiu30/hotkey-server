@@ -151,8 +151,8 @@ GoLand 会自动使用项目 `go.mod` 中声明的 Go SDK 和依赖；代码缩�
 cmd/hotkey/                # 唯一可执行入口与命令行
 internal/bootstrap/        # Fx 装配、角色与生命周期
 internal/modules/          # 按业务域拆分的应用、领域、基础设施和 HTTP 传输
-internal/platform/         # 数据库、HTTP、队列、配置、日志和可观测适配
-internal/shared/           # 跨模块共享的稳定基础类型
+internal/platform/         # 数据库（含具体仓储）、HTTP、队列、配置、日志和可观测适配
+internal/shared/           # 跨模块稳定错误、分页/仓储契约和基础类型
 db/                        # 唯一完整 Schema 与嵌入资源
 test/                      # 集中测试、镜像 testdata、runner 和架构门禁
 docs/                      # Design、PRD、Plan、Acceptance 与 Operations
@@ -160,6 +160,8 @@ tools/                     # 构建期工具依赖
 ```
 
 业务代码保持在 `internal/`，防止被仓库外部误用；当前没有跨项目复用的公共 Go 库，因此不创建无实际职责的 `pkg/`。所有运行角色继续由 `cmd/hotkey` 的 `all`、`api`、`worker` 参数提供，不增加重复入口。
+
+`internal/shared` 不依赖 ORM、数据库驱动或 `internal/platform`；GORM CRUD 和 PostgreSQL 错误映射集中在 `internal/platform/database/repository`，业务模块的基础设施层向内依赖 shared 契约。
 
 测试源码和纯测试 fixture 统一位于 `test/_suite`的包镜像路径；`test/runner` 在执行期间临时物化 `_test.go` 和包内 `testdata`，退出后清理，因此 `internal/` 生产树不保存纯测试资产。
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	"github.com/StephenQiu30/hotkey-server/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
@@ -62,7 +63,7 @@ VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, now())
 RETURNING id, version`,
 			string(connection.SourceType), connection.Name, connection.Endpoint, string(connection.AuthType), credentialRef,
 			config, connection.Enabled, string(connection.HealthStatus), termsURL).Scan(&connection.ID, &connection.Version); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		return nil
 	})
@@ -90,19 +91,19 @@ FROM source_connections
 WHERE id = ANY($1::bigint[])
 ORDER BY id ASC`, unique)
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	contexts := make([]domain.MetricSourceContext, 0, len(unique))
 	for rows.Next() {
 		var context domain.MetricSourceContext
 		if err := rows.Scan(&context.SourceConnectionID, &context.SourceType); err != nil {
-			return nil, sharedrepository.MapError(err)
+			return nil, databaserepository.MapError(err)
 		}
 		contexts = append(contexts, context)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	if len(contexts) != len(unique) {
 		return nil, sharedrepository.ErrNotFound
@@ -128,7 +129,7 @@ WHERE id > $1
 ORDER BY id ASC
 LIMIT $2`, cursorID, limit+1)
 	if err != nil {
-		return nil, "", sharedrepository.MapError(err)
+		return nil, "", databaserepository.MapError(err)
 	}
 	defer rows.Close()
 
@@ -145,7 +146,7 @@ LIMIT $2`, cursorID, limit+1)
 		connections = append(connections, connection)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, "", sharedrepository.MapError(err)
+		return nil, "", databaserepository.MapError(err)
 	}
 	if len(connections) <= limit {
 		return connections, "", nil
@@ -192,11 +193,11 @@ WHERE id = $11 AND version = $12`,
 			string(connection.SourceType), connection.Name, connection.Endpoint, string(connection.AuthType), credentialRef,
 			config, connection.Enabled, string(connection.HealthStatus), termsURL, deletedAt, connection.ID, previousVersion)
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		rowsAffected, err := result.RowsAffected()
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if rowsAffected != 1 {
 			return fmt.Errorf("%w: source connection was changed or removed", sharedrepository.ErrConflict)
@@ -251,7 +252,7 @@ func (repository *Repository) find(ctx context.Context, id int64, lock bool) (*d
 	}
 	var record sourceConnectionRecord
 	if err := repository.queryRow(ctx, query, id).Scan(sourceConnectionScanTargets(&record)...); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	connection, err := record.sourceConnection()
 	if err != nil {
@@ -340,7 +341,7 @@ func sourceListParameters(query domain.SourceConnectionListQuery) (int, int64, e
 func scanSourceConnection(scanner interface{ Scan(...any) error }) (sourceConnectionRecord, error) {
 	var record sourceConnectionRecord
 	if err := scanner.Scan(sourceConnectionScanTargets(&record)...); err != nil {
-		return sourceConnectionRecord{}, sharedrepository.MapError(err)
+		return sourceConnectionRecord{}, databaserepository.MapError(err)
 	}
 	return record, nil
 }

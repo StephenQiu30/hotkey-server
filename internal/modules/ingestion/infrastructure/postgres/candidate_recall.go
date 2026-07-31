@@ -10,6 +10,7 @@ import (
 
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -57,7 +58,7 @@ WHERE monitor_id IS NOT NULL
 ORDER BY priority ASC, monitor_id ASC
 LIMIT $2`, sourceConnectionID, limit)
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	return scanSourceCandidateHits(rows)
@@ -92,7 +93,7 @@ WHERE monitor.status='active' AND monitor.deleted_at IS NULL
 ORDER BY matched_rules.lexical_score DESC, monitor.id ASC
 LIMIT $2`, terms, limit)
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	return scanLexicalCandidateHits(rows)
@@ -119,7 +120,7 @@ WHERE monitor.id=ANY($1::bigint[])
   AND monitor.status='active' AND monitor.deleted_at IS NULL AND config.state='published'
 ORDER BY monitor.id ASC, rule.priority ASC, rule.id ASC`, monitorIDs)
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 
@@ -133,7 +134,7 @@ ORDER BY monitor.id ASC, rule.priority ASC, rule.id ASC`, monitorIDs)
 		var priority sql.NullInt16
 		if err := rows.Scan(&candidate.MonitorID, &candidate.MonitorConfigVersionID, &candidate.ConfigHash, &candidate.RelevanceThreshold,
 			&languagesJSON, &regionsJSON, &ruleID, &ruleType, &operator, &value, &weight, &priority, &origin); err != nil {
-			return nil, sharedrepository.MapError(err)
+			return nil, databaserepository.MapError(err)
 		}
 		stored, exists := byID[candidate.MonitorID]
 		if !exists {
@@ -153,7 +154,7 @@ ORDER BY monitor.id ASC, rule.priority ASC, rule.id ASC`, monitorIDs)
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	result := make([]ingestiondomain.RelevanceCandidate, 0, len(byID))
 	for _, candidate := range byID {
@@ -168,12 +169,12 @@ func scanSourceCandidateHits(rows *sql.Rows) ([]ingestiondomain.RelevanceCandida
 	for rows.Next() {
 		var hit ingestiondomain.RelevanceCandidateHit
 		if err := rows.Scan(&hit.MonitorID); err != nil {
-			return nil, sharedrepository.MapError(err)
+			return nil, databaserepository.MapError(err)
 		}
 		result = append(result, hit)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	return result, nil
 }
@@ -183,12 +184,12 @@ func scanLexicalCandidateHits(rows *sql.Rows) ([]ingestiondomain.RelevanceCandid
 	for rows.Next() {
 		var hit ingestiondomain.RelevanceCandidateHit
 		if err := rows.Scan(&hit.MonitorID, &hit.LexicalScore); err != nil {
-			return nil, sharedrepository.MapError(err)
+			return nil, databaserepository.MapError(err)
 		}
 		result = append(result, hit)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	return result, nil
 }

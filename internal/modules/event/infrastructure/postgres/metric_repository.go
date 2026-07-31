@@ -11,6 +11,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/event/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -56,10 +57,10 @@ LIMIT 1`, eventID).Scan(&result.EventID, &result.WindowEnd, &result.WindowHours,
 		if err == sql.ErrNoRows {
 			return domain.HeatResult{}, sharedrepository.ErrNotFound
 		}
-		return domain.HeatResult{}, sharedrepository.MapError(err)
+		return domain.HeatResult{}, databaserepository.MapError(err)
 	}
 	if err := json.Unmarshal(reasons, &result.ReasonCodes); err != nil {
-		return domain.HeatResult{}, sharedrepository.MapError(err)
+		return domain.HeatResult{}, databaserepository.MapError(err)
 	}
 	if result.ReasonCodes == nil {
 		result.ReasonCodes = []string{}
@@ -81,7 +82,7 @@ WHERE id = $1 AND deleted_at IS NULL`, eventID).Scan(&set.FirstSeenAt, &set.Last
 		if err == sql.ErrNoRows {
 			return domain.MetricEvidenceSet{}, sharedrepository.ErrNotFound
 		}
-		return domain.MetricEvidenceSet{}, sharedrepository.MapError(err)
+		return domain.MetricEvidenceSet{}, databaserepository.MapError(err)
 	}
 	rows, err := repository.metricQuery(ctx).QueryContext(ctx, `
 WITH eligible AS (
@@ -116,7 +117,7 @@ LEFT JOIN baseline ON baseline.content_id = eligible.id
 LEFT JOIN latest ON latest.content_id = eligible.id
 ORDER BY eligible.id ASC`, eventID, windowEnd, windowStart)
 	if err != nil {
-		return domain.MetricEvidenceSet{}, sharedrepository.MapError(err)
+		return domain.MetricEvidenceSet{}, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	keys := map[domain.MetricPopulationKey]struct{}{}
@@ -129,7 +130,7 @@ ORDER BY eligible.id ASC`, eventID, windowEnd, windowStart)
 		keys[domain.MetricPopulationKey{SourceConnectionID: item.SourceConnectionID, ContentType: item.ContentType}] = struct{}{}
 	}
 	if err := rows.Err(); err != nil {
-		return domain.MetricEvidenceSet{}, sharedrepository.MapError(err)
+		return domain.MetricEvidenceSet{}, databaserepository.MapError(err)
 	}
 	ordered := make([]domain.MetricPopulationKey, 0, len(keys))
 	for key := range keys {
@@ -163,19 +164,19 @@ WHERE event_id = $1 AND window_hours = $2 AND captured_at < $3
 ORDER BY captured_at DESC, id DESC
 LIMIT $4`, eventID, windowHours, before.UTC(), limit)
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	results := make([]domain.HeatResult, 0, limit)
 	for rows.Next() {
 		var result domain.HeatResult
 		if err := rows.Scan(&result.EventID, &result.WindowEnd, &result.WindowHours, &result.HeatScore, &result.TrendScore, &result.TrendStatus, &result.SourceCount, &result.ContentCount, &result.HeatVersion, &result.EvidenceSetHash, &result.CapabilityProfileSetHash); err != nil {
-			return nil, sharedrepository.MapError(err)
+			return nil, databaserepository.MapError(err)
 		}
 		results = append(results, result)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	for left, right := 0, len(results)-1; left < right; left, right = left+1, right-1 {
 		results[left], results[right] = results[right], results[left]
@@ -204,7 +205,7 @@ func (repository *Repository) SaveRecomputedHeatSnapshots(ctx context.Context, r
 INSERT INTO event_metric_snapshots (event_id, captured_at, window_hours, heat_score, trend_score, trend_status, source_count, content_count, heat_version, evidence_set_hash, capability_profile_set_hash)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 ON CONFLICT (event_id, captured_at, window_hours, heat_version, evidence_set_hash, capability_profile_set_hash) DO NOTHING`, result.EventID, result.WindowEnd.UTC(), result.WindowHours, result.HeatScore, result.TrendScore, string(result.TrendStatus), result.SourceCount, result.ContentCount, result.HeatVersion, result.EvidenceSetHash, result.CapabilityProfileSetHash); err != nil {
-				return sharedrepository.MapError(err)
+				return databaserepository.MapError(err)
 			}
 		}
 		current, found := currentHeatProjection(ordered)
@@ -216,7 +217,7 @@ UPDATE events
 SET heat_score = $1, trend_score = $2, trend_status = $3, heat_window_hours = $4, heat_version = $5,
     heat_reason_codes = $6::text[], metric_capability_profile_set_hash = $7, heat_calculated_at = $8, updated_at = now()
 WHERE id = $9 AND deleted_at IS NULL`, current.HeatScore, current.TrendScore, string(current.TrendStatus), current.WindowHours, current.HeatVersion, current.ReasonCodes, current.CapabilityProfileSetHash, current.WindowEnd.UTC(), current.EventID); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		return repository.updateMonitorMetricProjection(ctx, transaction.SQL, current)
 	})
@@ -247,19 +248,19 @@ SELECT latest.view_count - baseline.view_count, latest.like_count - baseline.lik
 FROM latest
 JOIN baseline ON baseline.content_id = latest.content_id`, key.SourceConnectionID, key.ContentType, windowEnd, windowStart)
 	if err != nil {
-		return domain.MetricPopulation{}, sharedrepository.MapError(err)
+		return domain.MetricPopulation{}, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	population := domain.MetricPopulation{MetricPopulationKey: key, Deltas: []domain.MetricCounts{}}
 	for rows.Next() {
 		var views, likes, comments, shares sql.NullInt64
 		if err := rows.Scan(&views, &likes, &comments, &shares); err != nil {
-			return domain.MetricPopulation{}, sharedrepository.MapError(err)
+			return domain.MetricPopulation{}, databaserepository.MapError(err)
 		}
 		population.Deltas = append(population.Deltas, domain.MetricCounts{Views: nullInt64Pointer(views), Likes: nullInt64Pointer(likes), Comments: nullInt64Pointer(comments), Shares: nullInt64Pointer(shares)})
 	}
 	if err := rows.Err(); err != nil {
-		return domain.MetricPopulation{}, sharedrepository.MapError(err)
+		return domain.MetricPopulation{}, databaserepository.MapError(err)
 	}
 	return population, nil
 }
@@ -275,7 +276,7 @@ LEFT JOIN monitor_config_versions config ON config.id = monitor.published_config
 WHERE monitor_event.event_id = $1
 FOR UPDATE OF monitor_event`, current.EventID)
 	if err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	type projection struct {
@@ -288,7 +289,7 @@ FOR UPDATE OF monitor_event`, current.EventID)
 		var relevance, threshold float64
 		var lastSeen time.Time
 		if err := rows.Scan(&id, &relevance, &threshold, &lastSeen); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		freshness := current.WindowEnd.Sub(lastSeen).Hours()
 		if freshness < 0 {
@@ -301,11 +302,11 @@ FOR UPDATE OF monitor_event`, current.EventID)
 		updates = append(updates, projection{id: id, final: final})
 	}
 	if err := rows.Err(); err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	for _, update := range updates {
 		if _, err := transaction.ExecContext(ctx, `UPDATE monitor_events SET final_score = $1, version = version + 1, updated_at = now() WHERE id = $2`, update.final, update.id); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 	}
 	return nil
@@ -320,7 +321,7 @@ func scanMetricEvidence(rows *sql.Rows) (domain.MetricEvidence, error) {
 	if err := rows.Scan(&item.ContentID, &item.SourceConnectionID, &author, &item.ContentType, &item.PublishedAt,
 		&baselineAt, &baselineViews, &baselineLikes, &baselineComments, &baselineShares,
 		&latestAt, &latestViews, &latestLikes, &latestComments, &latestShares); err != nil {
-		return domain.MetricEvidence{}, sharedrepository.MapError(err)
+		return domain.MetricEvidence{}, databaserepository.MapError(err)
 	}
 	if author.Valid {
 		value := author.Int64

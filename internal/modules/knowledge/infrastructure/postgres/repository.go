@@ -9,6 +9,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/knowledge/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -35,7 +36,7 @@ FROM knowledge_documents WHERE id = $1`, id).Scan(&document.ID, &document.Versio
 		if err == sql.ErrNoRows {
 			return domain.Document{}, sharedrepository.ErrNotFound
 		}
-		return domain.Document{}, sharedrepository.MapError(err)
+		return domain.Document{}, databaserepository.MapError(err)
 	}
 	return document, nil
 }
@@ -48,19 +49,19 @@ func (repository *Repository) ListDocuments(ctx context.Context) ([]domain.Docum
 SELECT id, version, revision_no, document_type, vault_path, coalesce(content_hash, ''), coalesce(generated_hash, ''), status, event_id, topic_id, report_id
 FROM knowledge_documents WHERE status <> 'archived' ORDER BY id`)
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	documents := make([]domain.Document, 0)
 	for rows.Next() {
 		var document domain.Document
 		if err := rows.Scan(&document.ID, &document.Version, &document.RevisionNo, &document.Type, &document.VaultPath, &document.ContentHash, &document.GeneratedHash, &document.Status, &document.EventID, &document.TopicID, &document.ReportID); err != nil {
-			return nil, sharedrepository.MapError(err)
+			return nil, databaserepository.MapError(err)
 		}
 		documents = append(documents, document)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	return documents, nil
 }
@@ -78,7 +79,7 @@ FROM knowledge_change_proposals WHERE id = $1`, id).Scan(&proposal.ID, &proposal
 		if errors.Is(err, sql.ErrNoRows) {
 			return domain.Proposal{}, sharedrepository.ErrNotFound
 		}
-		return domain.Proposal{}, sharedrepository.MapError(err)
+		return domain.Proposal{}, databaserepository.MapError(err)
 	}
 	proposal.ProposedFrontmatter = string(frontmatter)
 	return proposal, nil
@@ -101,7 +102,7 @@ ON CONFLICT (id) DO UPDATE SET version = EXCLUDED.version, vault_path = EXCLUDED
 revision_no = EXCLUDED.revision_no, content_hash = EXCLUDED.content_hash, generated_hash = EXCLUDED.generated_hash,
 status = EXCLUDED.status, updated_at = now()`, document.ID, document.Version, document.Type, document.EventID, document.TopicID,
 		document.ReportID, document.VaultPath, document.RevisionNo, document.ContentHash, document.GeneratedHash, document.Status)
-	return sharedrepository.MapError(err)
+	return databaserepository.MapError(err)
 }
 
 func (repository *Repository) SaveProposal(proposal domain.Proposal) error {
@@ -138,7 +139,7 @@ VALUES ($1, $2, 'update', $3, NULLIF($4, ''), $5, $6, $7, $8, $9)
 RETURNING id, version, document_id, base_revision_no, coalesce(base_hash, ''), proposed_frontmatter, proposed_body, diff_summary, reason, status`, proposal.Version, proposal.DocumentID, proposal.BaseRevisionNo, proposal.BaseHash, raw, proposal.ProposedBody, proposal.DiffSummary, proposal.Reason, proposal.Status).Scan(
 		&created.ID, &created.Version, &created.DocumentID, &created.BaseRevisionNo, &created.BaseHash, &storedFrontmatter, &created.ProposedBody, &created.DiffSummary, &created.Reason, &created.Status)
 	if err != nil {
-		return domain.Proposal{}, sharedrepository.MapError(err)
+		return domain.Proposal{}, databaserepository.MapError(err)
 	}
 	created.ProposedFrontmatter = string(storedFrontmatter)
 	return created, nil
@@ -163,7 +164,7 @@ RETURNING id, version, document_id, base_revision_no, coalesce(base_hash, ''), p
 		if errors.Is(err, sql.ErrNoRows) {
 			return domain.Proposal{}, sharedrepository.ErrConflict
 		}
-		return domain.Proposal{}, sharedrepository.MapError(err)
+		return domain.Proposal{}, databaserepository.MapError(err)
 	}
 	proposal.ProposedFrontmatter = string(frontmatter)
 	return proposal, nil
@@ -187,19 +188,19 @@ func (repository *Repository) ApplyProposal(ctx context.Context, proposalID, exp
 			if errors.Is(err, sql.ErrNoRows) {
 				return sharedrepository.ErrNotFound
 			}
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if currentVersion != document.Version-1 || currentRevision != document.RevisionNo-1 || currentHash != revision.PreviousHash {
 			return sharedrepository.ErrConflict
 		}
 		if _, err := transaction.SQL.ExecContext(transactionCtx, `UPDATE knowledge_documents SET version = $1, revision_no = $2, content_hash = $3, generated_hash = $4, status = $5, last_written_at = now(), updated_at = now() WHERE id = $6`, document.Version, document.RevisionNo, document.ContentHash, document.GeneratedHash, document.Status, document.ID); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if _, err := transaction.SQL.ExecContext(transactionCtx, `UPDATE knowledge_change_proposals SET status = 'applied', version = $1, applied_at = now(), updated_at = now() WHERE id = $2 AND version = $3 AND status = 'approved'`, expectedVersion+1, proposalID, expectedVersion); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if _, err := transaction.SQL.ExecContext(transactionCtx, `INSERT INTO knowledge_revisions (document_id, revision_no, source, proposal_id, previous_hash, new_hash, snapshot_object_key, frontmatter_snapshot) VALUES ($1,$2,$3,NULLIF($4,0),NULLIF($5,''),$6,NULLIF($7,''),$8::jsonb)`, revision.DocumentID, revision.RevisionNo, revision.Source, proposalID, revision.PreviousHash, revision.NewHash, revision.SnapshotObjectKey, nullableJSON(revision.Frontmatter)); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		applied = document
 		return nil
@@ -236,7 +237,7 @@ ON CONFLICT (id) DO UPDATE SET version = EXCLUDED.version, proposed_frontmatter 
 proposed_body = EXCLUDED.proposed_body, diff_summary = EXCLUDED.diff_summary, reason = EXCLUDED.reason, status = EXCLUDED.status,
 updated_at = now()`, proposal.ID, proposal.Version, proposal.DocumentID, proposal.BaseRevisionNo, proposal.BaseHash, raw,
 		proposal.ProposedBody, proposal.DiffSummary, proposal.Reason, proposal.Status)
-	return sharedrepository.MapError(err)
+	return databaserepository.MapError(err)
 }
 
 func countReferences(document domain.Document) int {

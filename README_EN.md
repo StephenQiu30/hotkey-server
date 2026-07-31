@@ -130,8 +130,8 @@ The backend is a single-module, single-binary modular monolith:
 cmd/hotkey/                # Executable and CLI entry point
 internal/bootstrap/        # Fx composition, roles, and lifecycle
 internal/modules/          # Domain-oriented application, domain, infrastructure, and HTTP layers
-internal/platform/         # Database, HTTP, queue, configuration, logging, and observability adapters
-internal/shared/           # Stable primitives shared across modules
+internal/platform/         # Database repositories, HTTP, queue, configuration, logging, and observability adapters
+internal/shared/           # Stable errors, pagination/repository contracts, and shared primitives
 db/                        # Canonical full schema and embedded resources
 test/                      # Centralized tests, mirrored testdata, runner, and architecture gates
 docs/                      # Design, PRD, Plan, Acceptance, and Operations documents
@@ -139,6 +139,8 @@ tools/                     # Build-time tool dependencies
 ```
 
 Business code stays under `internal/` so it cannot be imported outside this module. There is no `pkg/` directory because the repository currently exposes no reusable public Go library. The `all`, `api`, and `worker` values remain runtime roles of the single `cmd/hotkey` entry point.
+
+`internal/shared` does not depend on an ORM, database driver, or `internal/platform`. GORM CRUD and PostgreSQL error mapping live in `internal/platform/database/repository`, while module infrastructure depends inward on the shared contracts.
 
 Test sources and test-only fixtures live in package-mirrored paths below `test/_suite`. During execution, `test/runner` temporarily materializes `_test.go` files and package-local `testdata`, then removes those links, keeping test-only assets out of the `internal/` production tree.
 

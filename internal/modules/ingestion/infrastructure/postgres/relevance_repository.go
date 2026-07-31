@@ -10,6 +10,7 @@ import (
 
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/internal/modules/ingestion/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -84,7 +85,7 @@ RETURNING id`,
 			}
 			return nil
 		default:
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 
 		stored, err = selectSnapshotByID(ctx, transaction.SQL, snapshotID)
@@ -140,7 +141,7 @@ RETURNING `+snapshotColumns("monitor_matches"),
 			return fmt.Errorf("%w: relevance snapshot changed or is not eligible for AI review", sharedrepository.ErrConflict)
 		}
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		return nil
 	})
@@ -177,7 +178,7 @@ RETURNING `+snapshotColumns("monitor_matches"), reasonCode, snapshotID, expected
 			return fmt.Errorf("%w: relevance snapshot changed or is not eligible for AI review", sharedrepository.ErrConflict)
 		}
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		return nil
 	})
@@ -222,7 +223,7 @@ WHERE ($2::varchar IS NULL OR match.decision = $2)
 ORDER BY match.final_score DESC, match.id DESC
 LIMIT $5`, monitorID, decision, cursorScore, cursorID, query.Limit+1)
 	if err != nil {
-		return ingestiondomain.RelevanceSnapshotPage{}, sharedrepository.MapError(err)
+		return ingestiondomain.RelevanceSnapshotPage{}, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 
@@ -230,7 +231,7 @@ LIMIT $5`, monitorID, decision, cursorScore, cursorID, query.Limit+1)
 	for rows.Next() {
 		snapshot, err := scanSnapshot(rows)
 		if err != nil {
-			return ingestiondomain.RelevanceSnapshotPage{}, sharedrepository.MapError(err)
+			return ingestiondomain.RelevanceSnapshotPage{}, databaserepository.MapError(err)
 		}
 		if len(page.Items) == query.Limit {
 			page.Next = &ingestiondomain.RelevanceSnapshotCursor{FinalScore: page.Items[len(page.Items)-1].FinalScore, ID: page.Items[len(page.Items)-1].ID}
@@ -239,7 +240,7 @@ LIMIT $5`, monitorID, decision, cursorScore, cursorID, query.Limit+1)
 		page.Items = append(page.Items, snapshot)
 	}
 	if err := rows.Err(); err != nil {
-		return ingestiondomain.RelevanceSnapshotPage{}, sharedrepository.MapError(err)
+		return ingestiondomain.RelevanceSnapshotPage{}, databaserepository.MapError(err)
 	}
 	return page, nil
 }
@@ -261,7 +262,7 @@ WHERE match.monitor_id = $1 AND match.id = $2
 		return ingestiondomain.RelevanceSnapshot{}, fmt.Errorf("%w: active relevance snapshot", sharedrepository.ErrNotFound)
 	}
 	if err != nil {
-		return ingestiondomain.RelevanceSnapshot{}, sharedrepository.MapError(err)
+		return ingestiondomain.RelevanceSnapshot{}, databaserepository.MapError(err)
 	}
 	return snapshot, nil
 }
@@ -284,7 +285,7 @@ WHERE monitor.id = $1 AND monitor.status = 'active' AND monitor.deleted_at IS NU
 		return 0, fmt.Errorf("%w: active published monitor", sharedrepository.ErrNotFound)
 	}
 	if err != nil {
-		return 0, sharedrepository.MapError(err)
+		return 0, databaserepository.MapError(err)
 	}
 	return configID, nil
 }
@@ -322,7 +323,7 @@ FOR UPDATE`, input.MonitorConfigVersionID, input.ContentID, input.ActorUserID).S
 			stored, err = insertFeedback(ctx, transaction.SQL, input)
 			return err
 		default:
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 	})
 	if err != nil {
@@ -356,7 +357,7 @@ SELECT EXISTS(
     SELECT 1 FROM monitor_matches
     WHERE monitor_id = $1 AND monitor_config_version_id = $2 AND content_id = $3
 )`, input.MonitorID, input.MonitorConfigVersionID, input.ContentID).Scan(&snapshotExists); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if snapshotExists {
 			return fmt.Errorf("%w: relevance snapshot already exists", sharedrepository.ErrConflict)
@@ -382,7 +383,7 @@ FOR UPDATE`, input.MonitorConfigVersionID, input.ContentID, input.ActorUserID).S
 			stored, err = insertFeedback(ctx, transaction.SQL, input)
 			return err
 		default:
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 	})
 	if err != nil {
@@ -422,7 +423,7 @@ RETURNING id, version, monitor_id, monitor_config_version_id, suggestion_type, v
 			&stored.SupportCount, &stored.Status, &reviewedByUserID, &stored.CreatedAt, &stored.UpdatedAt, &wasCreated,
 		)
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		created = wasCreated
 		stored.ReviewedByUserID = optionalInt64Value(reviewedByUserID)
@@ -484,19 +485,19 @@ ON CONFLICT (monitor_config_version_id, suggestion_type, value) WHERE status = '
 SET support_count = EXCLUDED.support_count, version = monitor_feedback_suggestions.version + 1, updated_at = now()
 RETURNING id`, monitorID, configID)
 	if err != nil {
-		return 0, sharedrepository.MapError(err)
+		return 0, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	count := 0
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
-			return 0, sharedrepository.MapError(err)
+			return 0, databaserepository.MapError(err)
 		}
 		count++
 	}
 	if err := rows.Err(); err != nil {
-		return 0, sharedrepository.MapError(err)
+		return 0, databaserepository.MapError(err)
 	}
 	return count, nil
 }
@@ -525,14 +526,14 @@ WHERE monitor_id = $1 AND ($2::varchar IS NULL OR status = $2)
 ORDER BY updated_at DESC, id DESC
 LIMIT $5`, monitorID, status, updatedAt, cursorID, query.Limit+1)
 	if err != nil {
-		return ingestiondomain.RelevanceSuggestionPage{}, sharedrepository.MapError(err)
+		return ingestiondomain.RelevanceSuggestionPage{}, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	page := ingestiondomain.RelevanceSuggestionPage{Items: make([]ingestiondomain.RelevanceSuggestion, 0, query.Limit)}
 	for rows.Next() {
 		suggestion, err := scanSuggestion(rows)
 		if err != nil {
-			return ingestiondomain.RelevanceSuggestionPage{}, sharedrepository.MapError(err)
+			return ingestiondomain.RelevanceSuggestionPage{}, databaserepository.MapError(err)
 		}
 		if len(page.Items) == query.Limit {
 			last := page.Items[len(page.Items)-1]
@@ -542,7 +543,7 @@ LIMIT $5`, monitorID, status, updatedAt, cursorID, query.Limit+1)
 		page.Items = append(page.Items, suggestion)
 	}
 	if err := rows.Err(); err != nil {
-		return ingestiondomain.RelevanceSuggestionPage{}, sharedrepository.MapError(err)
+		return ingestiondomain.RelevanceSuggestionPage{}, databaserepository.MapError(err)
 	}
 	return page, nil
 }
@@ -559,7 +560,7 @@ func (repository *RelevanceRepository) ReviewSuggestion(ctx context.Context, mon
 		var active bool
 		if err := transaction.SQL.QueryRowContext(ctx, `
 SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND status = 'active' AND deleted_at IS NULL)`, reviewerID).Scan(&active); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if !active {
 			return fmt.Errorf("%w: active reviewer %d", sharedrepository.ErrNotFound, reviewerID)
@@ -567,7 +568,7 @@ SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND status = 'active' AND delete
 		var exists bool
 		if err := transaction.SQL.QueryRowContext(ctx, `
 SELECT EXISTS(SELECT 1 FROM monitor_feedback_suggestions WHERE id = $1 AND monitor_id = $2)`, suggestionID, monitorID).Scan(&exists); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if !exists {
 			return fmt.Errorf("%w: relevance suggestion", sharedrepository.ErrNotFound)
@@ -588,7 +589,7 @@ RETURNING id, version, monitor_id, monitor_config_version_id, suggestion_type, v
 			return fmt.Errorf("%w: pending relevance suggestion", sharedrepository.ErrConflict)
 		}
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		stored.ReviewedByUserID = optionalInt64Value(reviewedByUserID)
 		stored.CreatedAt = stored.CreatedAt.UTC()
@@ -637,19 +638,19 @@ LEFT JOIN feedback ON feedback.monitor_config_version_id = ranked.monitor_config
 GROUP BY ranked.scoring_version
 ORDER BY ranked.scoring_version ASC`, monitorID)
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	values := []ingestiondomain.RelevanceEvaluation{}
 	for rows.Next() {
 		var value ingestiondomain.RelevanceEvaluation
 		if err := rows.Scan(&value.ScoringVersion, &value.PrecisionAt20, &value.ExclusionFalsePositiveRate, &value.EvaluatedCount); err != nil {
-			return nil, sharedrepository.MapError(err)
+			return nil, databaserepository.MapError(err)
 		}
 		values = append(values, value)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	return values, nil
 }
@@ -672,7 +673,7 @@ WHERE id = $1`, *input.EmbeddingModelProfileID).Scan(&version, &modelVersion, &t
 		return fmt.Errorf("%w: embedding model profile", sharedrepository.ErrInvalidInput)
 	}
 	if err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	if taskType != "embedding" || version != *input.EmbeddingModelProfileVersion || modelVersion != *input.EmbeddingModelVersion {
 		return fmt.Errorf("%w: stale or incompatible embedding provenance", sharedrepository.ErrInvalidInput)
@@ -692,7 +693,7 @@ WHERE run.id = $1 AND run.task_type = 'relevance_review' AND run.target_type = '
 		return fmt.Errorf("%w: relevance review run", sharedrepository.ErrInvalidInput)
 	}
 	if err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	var output struct {
 		Decision    ingestiondomain.MatchDecision `json:"decision"`
@@ -714,7 +715,7 @@ func ensureFeedbackReferences(ctx context.Context, executor queryRowExecutor, in
 	err := executor.QueryRowContext(ctx, `
 SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND status = 'active' AND deleted_at IS NULL)`, input.ActorUserID).Scan(&activeActor)
 	if err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	if !activeActor {
 		return fmt.Errorf("%w: active feedback actor %d", sharedrepository.ErrNotFound, input.ActorUserID)
@@ -729,7 +730,7 @@ SELECT EXISTS(
     WHERE id = $1 AND monitor_id = $2 AND monitor_config_version_id = $3 AND content_id = $4
 )`, *input.MonitorMatchID, input.MonitorID, input.MonitorConfigVersionID, input.ContentID).Scan(&matching)
 	if err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	if !matching {
 		return fmt.Errorf("%w: relevance snapshot", sharedrepository.ErrNotFound)
@@ -750,7 +751,7 @@ FOR UPDATE`, contentID).Scan(&lockedID)
 		return fmt.Errorf("%w: active content %d", sharedrepository.ErrNotFound, contentID)
 	}
 	if err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	return nil
 }
@@ -764,7 +765,7 @@ SELECT EXISTS(
     WHERE id = $1 AND monitor_id = $2 AND state IN ('published', 'superseded')
 )`, configID, monitorID).Scan(&configExists)
 	if err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	if !configExists {
 		return fmt.Errorf("%w: historical monitor configuration", sharedrepository.ErrNotFound)
@@ -776,7 +777,7 @@ SELECT EXISTS(
     WHERE id = $1 AND content_status = 'active' AND deleted_at IS NULL
 )`, contentID).Scan(&active)
 	if err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	if !active {
 		return fmt.Errorf("%w: active content %d", sharedrepository.ErrNotFound, contentID)
@@ -795,7 +796,7 @@ SELECT EXISTS(
       AND config.id = $2 AND config.monitor_id = monitor.id AND config.state = 'published'
 )`, monitorID, configID).Scan(&exists)
 	if err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	if !exists {
 		return fmt.Errorf("%w: active published monitor configuration", sharedrepository.ErrNotFound)
@@ -814,7 +815,7 @@ SELECT EXISTS(
     WHERE id = $1 AND content_status = 'active' AND deleted_at IS NULL
 )`, contentID).Scan(&active)
 	if err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	if !active {
 		return fmt.Errorf("%w: active content %d", sharedrepository.ErrNotFound, contentID)
@@ -855,7 +856,7 @@ func selectSnapshotByID(ctx context.Context, executor queryRowExecutor, snapshot
 		return ingestiondomain.RelevanceSnapshot{}, fmt.Errorf("%w: relevance snapshot %d", sharedrepository.ErrNotFound, snapshotID)
 	}
 	if err != nil {
-		return ingestiondomain.RelevanceSnapshot{}, sharedrepository.MapError(err)
+		return ingestiondomain.RelevanceSnapshot{}, databaserepository.MapError(err)
 	}
 	return snapshot, nil
 }
@@ -870,7 +871,7 @@ WHERE match.monitor_config_version_id = $1 AND match.content_id = $2
 		return ingestiondomain.RelevanceSnapshot{}, fmt.Errorf("%w: relevance snapshot retry", sharedrepository.ErrNotFound)
 	}
 	if err != nil {
-		return ingestiondomain.RelevanceSnapshot{}, sharedrepository.MapError(err)
+		return ingestiondomain.RelevanceSnapshot{}, databaserepository.MapError(err)
 	}
 	return snapshot, nil
 }
@@ -932,7 +933,7 @@ func scanFeedback(scanner interface{ Scan(...any) error }) (ingestiondomain.Rele
 		&feedback.ID, &feedback.Version, &feedback.MonitorID, &feedback.MonitorConfigVersionID, &feedback.ContentID, &matchID,
 		&feedback.ActorUserID, &feedbackType, &feedback.CreatedAt, &feedback.UpdatedAt,
 	); err != nil {
-		return ingestiondomain.RelevanceFeedback{}, sharedrepository.MapError(err)
+		return ingestiondomain.RelevanceFeedback{}, databaserepository.MapError(err)
 	}
 	feedback.MonitorMatchID = optionalInt64Value(matchID)
 	feedback.FeedbackType = ingestiondomain.FeedbackType(feedbackType)

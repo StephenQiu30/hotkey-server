@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -47,10 +48,10 @@ func (worker *Worker) RunOnce(ctx context.Context) (bool, error) {
 			if errors.Is(err, sql.ErrNoRows) {
 				return sql.ErrNoRows
 			}
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		_, err := transaction.SQL.ExecContext(ctx, `UPDATE river_job SET state = 'running', attempt = attempt + 1, attempted_at = now() WHERE id = $1`, id)
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
@@ -77,21 +78,21 @@ func (worker *Worker) finish(ctx context.Context, id int64, kind string, attempt
 	return worker.runtime.WithinTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
 		if handlerErr == nil {
 			_, err := transaction.SQL.ExecContext(ctx, `UPDATE river_job SET state = 'completed', finalized_at = now() WHERE id = $1`, id)
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if _, err := transaction.SQL.ExecContext(ctx, `INSERT INTO river_job_attempt (job_id, attempt, error) VALUES ($1, $2, $3) ON CONFLICT (job_id, attempt) DO NOTHING`, id, attempt, handlerErr.Error()); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if IsCancelled(handlerErr) {
 			_, err := transaction.SQL.ExecContext(ctx, `UPDATE river_job SET state = 'cancelled', finalized_at = now() WHERE id = $1`, id)
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if IsPermanent(handlerErr) || attempt >= maxAttempts {
 			_, err := transaction.SQL.ExecContext(ctx, `UPDATE river_job SET state = 'discarded', finalized_at = now() WHERE id = $1`, id)
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		_, err := transaction.SQL.ExecContext(ctx, `UPDATE river_job SET state = 'available', scheduled_at = now() + interval '1 minute', finalized_at = NULL WHERE id = $1`, id)
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	})
 }
 
@@ -122,7 +123,7 @@ func (worker *Worker) ReclaimStale(ctx context.Context, timeout time.Duration) (
 	}
 	result, err := worker.runtime.SQL.ExecContext(ctx, `UPDATE river_job SET state = 'available', scheduled_at = now() WHERE state = 'running' AND attempted_at < now() - $1::interval AND attempt < max_attempts`, timeout.String())
 	if err != nil {
-		return 0, sharedrepository.MapError(err)
+		return 0, databaserepository.MapError(err)
 	}
 	return result.RowsAffected()
 }

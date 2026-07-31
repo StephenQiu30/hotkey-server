@@ -11,6 +11,7 @@ import (
 	deliveryapplication "github.com/StephenQiu30/hotkey-server/internal/modules/delivery/application"
 	"github.com/StephenQiu30/hotkey-server/internal/modules/delivery/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	"github.com/StephenQiu30/hotkey-server/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
@@ -48,7 +49,7 @@ GROUP BY d.id, s.recipient, r.title, r.summary`, deliveryID).Scan(&recipient, &t
 		return deliveryapplication.MailMessage{}, 0, sharedrepository.ErrNotFound
 	}
 	if err != nil {
-		return deliveryapplication.MailMessage{}, 0, sharedrepository.MapError(err)
+		return deliveryapplication.MailMessage{}, 0, databaserepository.MapError(err)
 	}
 	if strings.TrimSpace(recipient) == "" {
 		return deliveryapplication.MailMessage{}, 0, fmt.Errorf("%w: email recipient is missing", sharedrepository.ErrConstraint)
@@ -106,7 +107,7 @@ func (repository *Repository) ListEnabledSubscriptions(ctx context.Context) ([]d
 SELECT `+subscriptionColumns+` FROM report_subscriptions
 WHERE enabled = true AND deleted_at IS NULL ORDER BY id ASC`)
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	items := make([]domain.Subscription, 0)
@@ -118,7 +119,7 @@ WHERE enabled = true AND deleted_at IS NULL ORDER BY id ASC`)
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	return items, nil
 }
@@ -138,7 +139,7 @@ monitor_id = EXCLUDED.monitor_id, channel = EXCLUDED.channel, recipient = EXCLUD
 timezone = EXCLUDED.timezone, schedule = EXCLUDED.schedule, enabled = EXCLUDED.enabled, updated_at = now()`,
 		subscription.ID, subscription.Version, subscription.UserID, subscription.MonitorID, subscription.ReportType, subscription.Channel,
 		subscription.Recipient, subscription.TokenHash, subscription.Timezone, subscription.Schedule, subscription.Enabled)
-	return sharedrepository.MapError(err)
+	return databaserepository.MapError(err)
 }
 
 func (repository *Repository) CreateSubscription(ctx context.Context, subscription domain.Subscription) (domain.Subscription, error) {
@@ -180,7 +181,7 @@ WHERE user_id = $1 AND deleted_at IS NULL AND ($2 = 0 OR id < $2)
 ORDER BY id DESC
 LIMIT $3`, userID, cursor.ID, query.Limit+1)
 	if err != nil {
-		return domain.SubscriptionPage{}, sharedrepository.MapError(err)
+		return domain.SubscriptionPage{}, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	page := domain.SubscriptionPage{Items: make([]domain.Subscription, 0, query.Limit)}
@@ -192,7 +193,7 @@ LIMIT $3`, userID, cursor.ID, query.Limit+1)
 		page.Items = append(page.Items, subscription)
 	}
 	if err := rows.Err(); err != nil {
-		return domain.SubscriptionPage{}, sharedrepository.MapError(err)
+		return domain.SubscriptionPage{}, databaserepository.MapError(err)
 	}
 	if len(page.Items) > query.Limit {
 		page.NextCursor, err = pagination.Encode("id", true, subscriptionListFingerprint(userID), page.Items[query.Limit-1].ID)
@@ -286,7 +287,7 @@ ON CONFLICT (report_id, subscription_id) DO NOTHING RETURNING id`,
 		return true, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return false, sharedrepository.MapError(err)
+		return false, databaserepository.MapError(err)
 	}
 	return false, nil
 }
@@ -311,7 +312,7 @@ func scanDelivery(row deliveryScanner) (domain.Delivery, error) {
 		if errors.Is(err, sql.ErrNoRows) {
 			return domain.Delivery{}, sharedrepository.ErrNotFound
 		}
-		return domain.Delivery{}, sharedrepository.MapError(err)
+		return domain.Delivery{}, databaserepository.MapError(err)
 	}
 	if next.Valid {
 		value := next.Time.UTC()
@@ -345,7 +346,7 @@ RETURNING id, report_id, subscription_id, idempotency_key, status, next_attempt_
 		if errors.Is(err, sql.ErrNoRows) {
 			return domain.Delivery{}, sharedrepository.ErrConflict
 		}
-		return domain.Delivery{}, sharedrepository.MapError(err)
+		return domain.Delivery{}, databaserepository.MapError(err)
 	}
 	if next.Valid {
 		value := next.Time.UTC()
@@ -370,7 +371,7 @@ UPDATE report_deliveries SET status = $1, next_attempt_at = $2, succeeded_at = $
 WHERE id = $4 AND report_id = $5 AND subscription_id = $6`, delivery.Status, delivery.NextAttemptAt, delivery.SucceededAt,
 		delivery.ID, delivery.ReportID, delivery.SubscriptionID)
 	if err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	if affected, err := result.RowsAffected(); err != nil {
 		return err
@@ -390,7 +391,7 @@ func (repository *Repository) AppendAttempt(ctx context.Context, deliveryID int6
 	_, err := repository.runtime.SQL.ExecContext(ctx, `
 INSERT INTO delivery_attempts (delivery_id, attempt_no, started_at, finished_at, status, response_code, error)
 VALUES ($1, $2, now(), now(), $3, NULLIF($4, 0), NULLIF($5, ''))`, deliveryID, attemptNo, status, responseCode, message)
-	return sharedrepository.MapError(err)
+	return databaserepository.MapError(err)
 }
 
 const subscriptionColumns = `id, version, user_id, monitor_id, report_type, channel, COALESCE(recipient, ''), COALESCE(rss_token_hash, ''), timezone, schedule, enabled`
@@ -420,7 +421,7 @@ func scanSubscription(row deliveryRow) (domain.Subscription, error) {
 		if errors.Is(err, sql.ErrNoRows) {
 			return domain.Subscription{}, sharedrepository.ErrNotFound
 		}
-		return domain.Subscription{}, sharedrepository.MapError(err)
+		return domain.Subscription{}, databaserepository.MapError(err)
 	}
 	subscription.Channel = domain.Channel(channel)
 	if monitorID.Valid {

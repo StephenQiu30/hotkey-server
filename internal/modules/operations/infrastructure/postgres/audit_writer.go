@@ -10,6 +10,7 @@ import (
 	operationsapplication "github.com/StephenQiu30/hotkey-server/internal/modules/operations/application"
 	operationsdomain "github.com/StephenQiu30/hotkey-server/internal/modules/operations/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -47,7 +48,7 @@ func (writer *AuditWriter) Write(ctx context.Context, entry operationsdomain.Aud
 INSERT INTO audit_logs (actor_type, actor_id, action, resource_type, resource_id, request_id, trace_id, before_data, after_data, result, ip_hash)
 VALUES ($1, NULLIF($2, 0), $3, $4, NULLIF($5, 0), NULLIF($6, ''), NULLIF($7, ''), $8, $9, $10, NULLIF($11, ''))`,
 		entry.ActorType, entry.ActorID, string(entry.Action), entry.ResourceType, entry.ResourceID, entry.RequestID, entry.TraceID, before, after, string(entry.Result), entry.IPHash)
-	return sharedrepository.MapError(err)
+	return databaserepository.MapError(err)
 }
 
 func marshalMetadata(metadata map[string]any) ([]byte, error) {

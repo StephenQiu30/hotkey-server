@@ -8,6 +8,7 @@ import (
 	operationsapplication "github.com/StephenQiu30/hotkey-server/internal/modules/operations/application"
 	operationsdomain "github.com/StephenQiu30/hotkey-server/internal/modules/operations/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -37,7 +38,7 @@ func (repository *RetentionRepository) ApplyRetention(ctx context.Context, polic
 	}
 	result, err := repository.runtime.SQL.ExecContext(ctx, query, args...)
 	if err != nil {
-		return 0, sharedrepository.MapError(err)
+		return 0, databaserepository.MapError(err)
 	}
 	return result.RowsAffected()
 }

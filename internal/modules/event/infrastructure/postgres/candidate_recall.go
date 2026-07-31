@@ -8,6 +8,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/event/application"
 	"github.com/StephenQiu30/hotkey-server/internal/modules/event/domain"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 	"github.com/pgvector/pgvector-go"
 )
@@ -96,7 +97,7 @@ WHERE e.event_fingerprint = $1 AND e.fingerprint_version = $2
   AND e.first_seen_at >= $3 AND e.first_seen_at < $3 + interval '1 day'
 ORDER BY e.event_key ASC LIMIT $4`, fingerprint.Value, fingerprint.Version, fingerprint.TimeBucket, limit)
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	return scanCandidates(rows)
@@ -113,7 +114,7 @@ func (repository *Repository) fingerprintForContent(ctx context.Context, query c
 		if err == sql.ErrNoRows {
 			return domain.EventFingerprint{}, false, fmt.Errorf("%w: active content", sharedrepository.ErrNotFound)
 		}
-		return domain.EventFingerprint{}, false, sharedrepository.MapError(err)
+		return domain.EventFingerprint{}, false, databaserepository.MapError(err)
 	}
 	rules, err := query.QueryContext(ctx, `
 SELECT r.rule_type, r.value
@@ -126,14 +127,14 @@ WHERE c.id = $1
   AND position(lower(trim(r.value)) IN lower(concat_ws(' ', c.title, c.excerpt))) > 0
 ORDER BY r.rule_type ASC, lower(r.value) ASC`, contentID)
 	if err != nil {
-		return domain.EventFingerprint{}, false, sharedrepository.MapError(err)
+		return domain.EventFingerprint{}, false, databaserepository.MapError(err)
 	}
 	defer rules.Close()
 	facts := domain.EventFingerprintFacts{PublishedAt: publishedAt}
 	for rules.Next() {
 		var ruleType, value string
 		if err := rules.Scan(&ruleType, &value); err != nil {
-			return domain.EventFingerprint{}, false, sharedrepository.MapError(err)
+			return domain.EventFingerprint{}, false, databaserepository.MapError(err)
 		}
 		if ruleType == "entity" {
 			facts.EntityTerms = append(facts.EntityTerms, value)
@@ -142,7 +143,7 @@ ORDER BY r.rule_type ASC, lower(r.value) ASC`, contentID)
 		}
 	}
 	if err := rules.Err(); err != nil {
-		return domain.EventFingerprint{}, false, sharedrepository.MapError(err)
+		return domain.EventFingerprint{}, false, databaserepository.MapError(err)
 	}
 	regions, err := query.QueryContext(ctx, `
 SELECT DISTINCT lower(region)
@@ -152,18 +153,18 @@ CROSS JOIN LATERAL unnest(config.regions) AS region
 WHERE mm.content_id = $1 AND mm.decision = 'accepted'
 ORDER BY lower(region) ASC`, contentID)
 	if err != nil {
-		return domain.EventFingerprint{}, false, sharedrepository.MapError(err)
+		return domain.EventFingerprint{}, false, databaserepository.MapError(err)
 	}
 	defer regions.Close()
 	for regions.Next() {
 		var region string
 		if err := regions.Scan(&region); err != nil {
-			return domain.EventFingerprint{}, false, sharedrepository.MapError(err)
+			return domain.EventFingerprint{}, false, databaserepository.MapError(err)
 		}
 		facts.Regions = append(facts.Regions, region)
 	}
 	if err := regions.Err(); err != nil {
-		return domain.EventFingerprint{}, false, sharedrepository.MapError(err)
+		return domain.EventFingerprint{}, false, databaserepository.MapError(err)
 	}
 	fingerprint, available := domain.BuildEventFingerprint(facts)
 	return fingerprint, available, nil
@@ -184,7 +185,7 @@ WHERE ce.content_id = $1 AND ce.active
   AND p.enabled AND p.deleted_at IS NULL AND p.version = ce.model_profile_version`, contentID).Scan(&vector, &profileID, &profileVersion, &modelVersion); err == sql.ErrNoRows {
 		return nil, sharedrepository.ErrUnavailable
 	} else if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	var available bool
 	if err := repository.runtime.SQL.QueryRowContext(ctx, `
@@ -197,7 +198,7 @@ SELECT EXISTS (
     AND p.enabled AND p.deleted_at IS NULL AND p.version = ee.model_profile_version
     AND e.lifecycle_status IN ('detected','active','cooling','closed') AND e.deleted_at IS NULL
 )`, profileID, profileVersion, modelVersion).Scan(&available); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	if !available {
 		return nil, sharedrepository.ErrUnavailable
@@ -218,7 +219,7 @@ WHERE ee.active AND ee.model_profile_id = $2 AND ee.model_profile_version = $3 A
   )
 ORDER BY ee.embedding <=> $1::halfvec LIMIT $6`, vector, profileID, profileVersion, modelVersion, contentID, limit)
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	return scanCandidates(rows)
@@ -230,7 +231,7 @@ func (repository *Repository) queryCandidates(ctx context.Context, query string,
 	}
 	rows, err := repository.runtime.SQL.QueryContext(ctx, query, contentID, limit)
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	return scanCandidates(rows)
@@ -243,7 +244,7 @@ func scanCandidates(rows *sql.Rows) ([]domain.Candidate, error) {
 		var channel string
 		var representativeContentID sql.NullInt64
 		if err := rows.Scan(&candidate.EventID, &candidate.EventKey, &channel, &candidate.Score, &representativeContentID); err != nil {
-			return nil, sharedrepository.MapError(err)
+			return nil, databaserepository.MapError(err)
 		}
 		candidate.Channel = domain.CandidateChannel(channel)
 		if representativeContentID.Valid {
@@ -252,7 +253,7 @@ func scanCandidates(rows *sql.Rows) ([]domain.Candidate, error) {
 		result = append(result, candidate)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	return result, nil
 }

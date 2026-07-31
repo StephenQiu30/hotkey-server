@@ -7,7 +7,7 @@ purpose: 定义 HotKey Server 执行计划的结构、状态和验收映射
 canonical_path: docs/plans/README.md
 status: review
 review_status: pending
-version: v2.4
+version: v2.5
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -111,5 +111,6 @@ Plan 必须由非本计划主要编写者的 Reviewer 再次审核。Reviewer �
 | 019 | [采集内容 Markdown 归档与预览](../prd/archive/019-采集内容Markdown归档与预览.md) | [执行计划](archive/019-采集内容Markdown归档与预览计划.md) | 006, 007, 017 | done | approved |
 | 020 | [工程配置与启动安全加固](../prd/archive/020-工程配置与启动安全加固.md) | [执行计划](archive/020-工程配置与启动安全加固计划.md) | 004, 017 | done | approved |
 | 021 | [集中测试资产与目录边界优化](../prd/archive/021-集中测试资产与目录边界优化.md) | [执行计划](archive/021-集中测试资产与目录边界优化计划.md) | 001 | done | approved |
+| 022 | [Shared 仓储基础设施边界修复](../prd/022-Shared仓储基础设施边界修复.md) | [执行计划](022-Shared仓储基础设施边界修复计划.md) | 002, 021 | in_progress | approved |
 
-PLAN-001–021 已移入 [`archive/`](archive/README.md)，并保留对应验收证据。017–021 的外部依赖演练或隔离测试环境限制以 `accepted_with_risk` 记录，不把尚未执行的结果写成已通过。
+PLAN-001–021 已移入 [`archive/`](archive/README.md)，并保留对应验收证据。PLAN-022 已通过独立计划评审，正在实施；外部依赖或隔离测试环境限制不记为已通过。

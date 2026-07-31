@@ -11,6 +11,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/modules/event/application"
 	"github.com/StephenQiu30/hotkey-server/internal/modules/event/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -101,7 +102,7 @@ FOR UPDATE`, contentID).Scan(&content.ID, &content.Title, &content.Excerpt, &con
 		return clusteringContent{}, fmt.Errorf("%w: active content %d", sharedrepository.ErrNotFound, contentID)
 	}
 	if err != nil {
-		return clusteringContent{}, sharedrepository.MapError(err)
+		return clusteringContent{}, databaserepository.MapError(err)
 	}
 	return content, nil
 }
@@ -164,7 +165,7 @@ func (repository *Repository) attachAcceptedDecision(ctx context.Context, transa
 	if _, err := transaction.ExecContext(ctx, `
 INSERT INTO event_contents (event_id, content_id, membership_score, evidence_role, is_representative, origin)
 VALUES ($1,$2,$3,'supporting',false,$4)`, target.ID, content.ID, decision.MembershipScore, domain.MemberOrigin(decision.DecisionOrigin)); err != nil {
-		return domain.Event{}, false, sharedrepository.MapError(err)
+		return domain.Event{}, false, databaserepository.MapError(err)
 	}
 	if err := upsertMonitorEvents(ctx, transaction, content.ID, target.ID, content.PublishedAt); err != nil {
 		return domain.Event{}, false, err
@@ -173,7 +174,7 @@ VALUES ($1,$2,$3,'supporting',false,$4)`, target.ID, content.ID, decision.Member
 UPDATE events
 SET last_seen_at = GREATEST(last_seen_at, $1), version = version + 1, updated_at = now()
 WHERE id = $2`, content.PublishedAt, target.ID); err != nil {
-		return domain.Event{}, false, sharedrepository.MapError(err)
+		return domain.Event{}, false, databaserepository.MapError(err)
 	}
 	if err := insertAudit(ctx, transaction, domain.GovernanceAudit{EventID: target.ID, Action: domain.AuditEvidenceRecompute, ReasonCode: "clustering_member_attached", Metadata: map[string]any{"content_id": content.ID, "clustering_version": decision.ClusteringVersion}}); err != nil {
 		return domain.Event{}, false, err
@@ -201,12 +202,12 @@ func (repository *Repository) createEventForContent(ctx context.Context, transac
 	if _, err := transaction.ExecContext(ctx, `
 INSERT INTO events (event_key, event_fingerprint, fingerprint_version, title_zh, summary, lifecycle_status, first_seen_at, last_seen_at, representative_content_id)
 VALUES ($1,$2,$3,$4,'','detected',$5,$5,$6)`, eventKey, fingerprintValue, fingerprintVersion, clusteringTitle(content), content.PublishedAt, content.ID); err != nil {
-		return domain.Event{}, false, sharedrepository.MapError(err)
+		return domain.Event{}, false, databaserepository.MapError(err)
 	}
 	if _, err := transaction.ExecContext(ctx, `
 INSERT INTO event_contents (event_id, content_id, membership_score, evidence_role, is_representative, origin)
 SELECT id, $1, 0, 'primary', true, 'rule' FROM events WHERE event_key = $2`, content.ID, eventKey); err != nil {
-		return domain.Event{}, false, sharedrepository.MapError(err)
+		return domain.Event{}, false, databaserepository.MapError(err)
 	}
 	event, err := lockedEventByKey(ctx, transaction, eventKey)
 	if err != nil {
@@ -231,7 +232,7 @@ FOR UPDATE`, contentID).Scan(&eventID)
 		return 0, false, nil
 	}
 	if err != nil {
-		return 0, false, sharedrepository.MapError(err)
+		return 0, false, databaserepository.MapError(err)
 	}
 	return eventID, true, nil
 }
@@ -260,7 +261,7 @@ SET relevance_score = GREATEST(monitor_events.relevance_score, EXCLUDED.relevanc
     last_matched_at = GREATEST(monitor_events.last_matched_at, EXCLUDED.last_matched_at),
     updated_at = now()`, contentID, eventID, matchedAt)
 	if err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	return nil
 }

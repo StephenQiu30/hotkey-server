@@ -8,6 +8,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -74,7 +75,7 @@ SET status = 'published', published_at = now(), version = version + 1, updated_a
 WHERE id = $1 AND version = $2 AND status = 'draft'
 RETURNING version, published_at`, profile.ID, profile.Version).Scan(&profile.Version, &publishedAt)
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		profile.Status, profile.PublishedAt, profile.ArchivedAt = domain.MetricCapabilityPublished, &publishedAt, nil
 		return nil
@@ -96,7 +97,7 @@ SET status = 'archived', archived_at = now(), version = version + 1, updated_at 
 WHERE id = $1 AND version = $2 AND status IN ('draft','published')
 RETURNING version, archived_at`, profile.ID, profile.Version).Scan(&profile.Version, &archivedAt)
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		profile.Status, profile.ArchivedAt = domain.MetricCapabilityArchived, &archivedAt
 		return nil
@@ -149,7 +150,7 @@ func scanMetricCapabilityProfile(row *sql.Row) (*domain.MetricCapabilityProfile,
 		if err == sql.ErrNoRows {
 			return nil, sharedrepository.ErrNotFound
 		}
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	profile.SourceType, profile.IndependenceStrategy, profile.Status = domain.SourceType(sourceType), domain.IndependenceStrategy(strategy), domain.MetricCapabilityStatus(status)
 	if publishedAt.Valid {

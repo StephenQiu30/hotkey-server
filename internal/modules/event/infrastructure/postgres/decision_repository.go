@@ -7,6 +7,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/event/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -54,7 +55,7 @@ INSERT INTO event_clustering_decisions (content_id, candidate_event_id, candidat
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,ARRAY(SELECT jsonb_array_elements_text($16::jsonb)),COALESCE($17::jsonb,'{}'::jsonb),ARRAY(SELECT (jsonb_array_elements_text($18::jsonb))::bigint),$19)
 ON CONFLICT (content_id, clustering_version, feature_input_hash, candidate_event_key) DO NOTHING`, decision.ContentID, candidateID, decision.CandidateEventKey, decision.ClusteringVersion, decision.FeatureInputHash, decision.Channel, decision.CandidateRank, decision.Scores.EntityAction, decision.Scores.Semantic, decision.Scores.Temporal, decision.Scores.Location, decision.Scores.SourceContext, decision.MembershipScore, decision.Decision, decision.DecisionOrigin, reasons, feature, evidence, decision.ActorUserID)
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 	}
 	return nil

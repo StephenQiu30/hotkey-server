@@ -10,6 +10,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/identity/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -495,5 +496,5 @@ func mapRepositoryError(err error) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return sharedrepository.ErrNotFound
 	}
-	return sharedrepository.MapError(err)
+	return databaserepository.MapError(err)
 }

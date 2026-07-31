@@ -6,6 +6,7 @@ import (
 
 	operationsapplication "github.com/StephenQiu30/hotkey-server/internal/modules/operations/application"
 	operationsdomain "github.com/StephenQiu30/hotkey-server/internal/modules/operations/domain"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -26,14 +27,14 @@ SELECT count(*) FILTER (WHERE state = 'available'),
        min(scheduled_at) FILTER (WHERE state = 'available')
 FROM river_job`).Scan(&overview.AvailableJobs, &overview.RunningJobs, &overview.CompletedJobs, &overview.DiscardedJobs, &overview.CancelledJobs, &oldest)
 	if err != nil {
-		return operationsdomain.RuntimeOverview{}, sharedrepository.MapError(err)
+		return operationsdomain.RuntimeOverview{}, databaserepository.MapError(err)
 	}
 	if oldest.Valid {
 		value := oldest.Time.UTC()
 		overview.OldestAvailableAt = &value
 	}
 	if err := repository.runtime.SQL.QueryRowContext(ctx, `SELECT now()`).Scan(&overview.GeneratedAt); err != nil {
-		return operationsdomain.RuntimeOverview{}, sharedrepository.MapError(err)
+		return operationsdomain.RuntimeOverview{}, databaserepository.MapError(err)
 	}
 	return overview, nil
 }

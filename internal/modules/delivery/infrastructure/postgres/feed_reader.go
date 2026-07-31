@@ -6,6 +6,7 @@ import (
 	"time"
 
 	deliveryapplication "github.com/StephenQiu30/hotkey-server/internal/modules/delivery/application"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -27,7 +28,7 @@ WHERE s.rss_token_hash = $1 AND s.channel = 'rss' AND s.enabled = true
   AND r.period_end = (SELECT max(r2.period_end) FROM reports r2 WHERE r2.report_type = s.report_type AND r2.monitor_id IS NOT DISTINCT FROM s.monitor_id AND r2.status = 'published')
 ORDER BY ri.rank, ri.event_id`, tokenHash)
 	if err != nil {
-		return deliveryapplication.Feed{}, sharedrepository.MapError(err)
+		return deliveryapplication.Feed{}, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	feed := deliveryapplication.Feed{Link: "https://hotkey.local/feeds", UpdatedAt: time.Time{}}
@@ -36,7 +37,7 @@ ORDER BY ri.rank, ri.event_id`, tokenHash)
 		var eventID int64
 		var publishedAt time.Time
 		if err := rows.Scan(&reportTitle, &publishedAt, &eventID, &itemTitle, &summary); err != nil {
-			return deliveryapplication.Feed{}, sharedrepository.MapError(err)
+			return deliveryapplication.Feed{}, databaserepository.MapError(err)
 		}
 		if feed.Title == "" {
 			feed.Title = reportTitle
@@ -47,7 +48,7 @@ ORDER BY ri.rank, ri.event_id`, tokenHash)
 		feed.Items = append(feed.Items, deliveryapplication.FeedItem{ID: fmt.Sprintf("event-%d", eventID), Title: itemTitle, URL: fmt.Sprintf("https://hotkey.local/api/v1/events/%d", eventID), Summary: summary, PublishedAt: publishedAt})
 	}
 	if err := rows.Err(); err != nil {
-		return deliveryapplication.Feed{}, sharedrepository.MapError(err)
+		return deliveryapplication.Feed{}, databaserepository.MapError(err)
 	}
 	if feed.Title == "" {
 		return deliveryapplication.Feed{}, sharedrepository.ErrNotFound

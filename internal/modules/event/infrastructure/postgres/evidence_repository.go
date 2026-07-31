@@ -8,6 +8,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/internal/modules/event/application"
 	"github.com/StephenQiu30/hotkey-server/internal/modules/event/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -55,13 +56,13 @@ UPDATE event_contents
 SET is_representative = ($1::bigint IS NOT NULL AND content_id = $1), version = version + 1, updated_at = now()
 WHERE event_id = $2 AND evidence_role <> 'duplicate'
   AND is_representative IS DISTINCT FROM ($1::bigint IS NOT NULL AND content_id = $1)`, nullableInt64(representative), event.ID); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if _, err := transaction.SQL.ExecContext(ctx, `
 UPDATE events
 SET lifecycle_status = $1, representative_content_id = $2, version = version + 1, updated_at = now()
 WHERE id = $3 AND version = $4`, status, nullableInt64(representative), event.ID, event.Version); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		to = status
 		metadata = map[string]any{"recomputed": true, "active_member_count": len(members)}
@@ -91,7 +92,7 @@ WHERE ec.event_id = $1 AND ec.evidence_role <> 'duplicate'
 ORDER BY ec.membership_score DESC, ec.content_id ASC
 FOR UPDATE OF ec`, eventID)
 	if err != nil {
-		return nil, nil, sharedrepository.MapError(err)
+		return nil, nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	members := make([]domain.EventMember, 0)
@@ -101,14 +102,14 @@ FOR UPDATE OF ec`, eventID)
 		var role, origin string
 		var sourceID int64
 		if err := rows.Scan(&member.ID, &member.Version, &member.EventID, &member.ContentID, &member.MembershipScore, &role, &member.Representative, &origin, &member.ManualLocked, &sourceID); err != nil {
-			return nil, nil, sharedrepository.MapError(err)
+			return nil, nil, databaserepository.MapError(err)
 		}
 		member.EvidenceRole, member.Origin = domain.EvidenceRole(role), domain.MemberOrigin(origin)
 		members = append(members, member)
 		sourceIDs = append(sourceIDs, sourceID)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, nil, sharedrepository.MapError(err)
+		return nil, nil, databaserepository.MapError(err)
 	}
 	return members, sourceIDs, nil
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/monitor/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	"github.com/StephenQiu30/hotkey-server/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
@@ -37,7 +38,7 @@ func (repository *Repository) Create(ctx context.Context, monitor *domain.Monito
 	}
 	return repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
 		if err := transaction.SQL.QueryRowContext(ctx, `INSERT INTO monitors (name, description, status) VALUES ($1, $2, 'draft') RETURNING `+monitorColumns, monitor.Name, monitor.Description).Scan(monitorScanTargets(monitor)...); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		config.MonitorID = monitor.ID
 		config.State = domain.ConfigVersionDraft
@@ -52,7 +53,7 @@ func (repository *Repository) Create(ctx context.Context, monitor *domain.Monito
 			return err
 		}
 		if _, err := transaction.SQL.ExecContext(ctx, `UPDATE monitors SET draft_config_version_id = $1 WHERE id = $2`, config.ID, monitor.ID); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		monitor.DraftConfigVersionID = int64Pointer(config.ID)
 		return nil
@@ -84,19 +85,19 @@ func (repository *Repository) List(ctx context.Context, query domain.MonitorList
 	statement += ` ORDER BY id ASC LIMIT $2`
 	rows, err := repository.runtime.SQL.QueryContext(ctx, statement, cursorID, limit+1)
 	if err != nil {
-		return nil, "", sharedrepository.MapError(err)
+		return nil, "", databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	monitors := make([]domain.Monitor, 0, limit+1)
 	for rows.Next() {
 		var monitor domain.Monitor
 		if err := rows.Scan(monitorScanTargets(&monitor)...); err != nil {
-			return nil, "", sharedrepository.MapError(err)
+			return nil, "", databaserepository.MapError(err)
 		}
 		monitors = append(monitors, monitor)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, "", sharedrepository.MapError(err)
+		return nil, "", databaserepository.MapError(err)
 	}
 	if len(monitors) <= limit {
 		return monitors, "", nil
@@ -123,7 +124,7 @@ func (repository *Repository) findMonitor(ctx context.Context, id int64, lock bo
 		query += ` FOR UPDATE`
 	}
 	if err := repository.queryRow(ctx, query, id).Scan(monitorScanTargets(&monitor)...); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	return &monitor, nil
 }
@@ -145,7 +146,7 @@ func (repository *Repository) config(ctx context.Context, id int64, lock bool) (
 		query += ` FOR UPDATE`
 	}
 	if err := repository.queryRow(ctx, query, id).Scan(configScanTargets(&config)...); err != nil {
-		return nil, nil, nil, sharedrepository.MapError(err)
+		return nil, nil, nil, databaserepository.MapError(err)
 	}
 	rules, err := repository.rules(ctx, id, lock)
 	if err != nil {
@@ -179,10 +180,10 @@ func (repository *Repository) SaveDraft(ctx context.Context, config *domain.Moni
 	}
 	return repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
 		if _, err := transaction.SQL.ExecContext(ctx, `DELETE FROM monitor_rules WHERE config_version_id = $1`, config.ID); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if _, err := transaction.SQL.ExecContext(ctx, `DELETE FROM monitor_sources WHERE config_version_id = $1`, config.ID); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		languages, regions, err := configArrays(config.Config)
 		if err != nil {
@@ -190,7 +191,7 @@ func (repository *Repository) SaveDraft(ctx context.Context, config *domain.Moni
 		}
 		result, err := transaction.SQL.ExecContext(ctx, `UPDATE monitor_config_versions SET timezone = $1, languages = $2::text[], regions = $3::text[], collection_interval_seconds = $4, relevance_threshold = $5, event_threshold = $6, retention_days = $7, version = $8, updated_at = now() WHERE id = $9 AND state = 'draft' AND version = $10`, config.Config.Timezone, languages, regions, config.Config.CollectionIntervalSeconds, config.Config.RelevanceThreshold, config.Config.EventThreshold, config.Config.RetentionDays, config.Version, config.ID, config.Version-1)
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if changed, _ := result.RowsAffected(); changed != 1 {
 			return sharedrepository.ErrConflict
@@ -209,7 +210,7 @@ func (repository *Repository) SaveMonitor(ctx context.Context, monitor *domain.M
 	return repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
 		result, err := transaction.SQL.ExecContext(ctx, `UPDATE monitors SET name = $1, description = $2, status = $3, draft_config_version_id = $4, published_config_version_id = $5, version = $6, updated_at = now() WHERE id = $7 AND version = $8`, monitor.Name, monitor.Description, string(monitor.Status), nullableInt64(monitor.DraftConfigVersionID), nullableInt64(monitor.PublishedConfigVersionID), monitor.Version, monitor.ID, monitor.Version-1)
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if changed, _ := result.RowsAffected(); changed != 1 {
 			return sharedrepository.ErrConflict
@@ -227,7 +228,7 @@ func (repository *Repository) SoftDelete(ctx context.Context, monitor *domain.Mo
 	return repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
 		result, err := transaction.SQL.ExecContext(ctx, `UPDATE monitors SET deleted_at = $1, version = $2, updated_at = now() WHERE id = $3 AND version = $4 AND status = 'archived' AND deleted_at IS NULL`, monitor.DeletedAt, monitor.Version, monitor.ID, monitor.Version-1)
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if changed, _ := result.RowsAffected(); changed != 1 {
 			return sharedrepository.ErrConflict
@@ -245,29 +246,29 @@ func (repository *Repository) Publish(ctx context.Context, monitor *domain.Monit
 	return repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
 		if previous != nil {
 			if _, err := transaction.SQL.ExecContext(ctx, `UPDATE monitor_config_versions SET state = 'superseded' WHERE id = $1 AND state = 'published'`, previous.ID); err != nil {
-				return sharedrepository.MapError(err)
+				return databaserepository.MapError(err)
 			}
 		}
 		for _, source := range sources {
 			if _, err := transaction.SQL.ExecContext(ctx, `UPDATE monitor_sources SET query_signature = $1, version = version + 1, updated_at = now() WHERE id = $2 AND config_version_id = $3`, nullableString(source.QuerySignature), source.ID, draft.ID); err != nil {
-				return sharedrepository.MapError(err)
+				return databaserepository.MapError(err)
 			}
 			if source.Enabled {
 				if _, err := transaction.SQL.ExecContext(ctx, `INSERT INTO source_checkpoints (monitor_source_id, query_hash, next_poll_at) VALUES ($1, $2, $3)`, source.ID, source.QuerySignature, draft.PublishedAt.UTC()); err != nil {
-					return sharedrepository.MapError(err)
+					return databaserepository.MapError(err)
 				}
 			}
 		}
 		result, err := transaction.SQL.ExecContext(ctx, `UPDATE monitor_config_versions SET state = 'published', config_hash = $1, published_at = $2, version = $3, updated_at = now() WHERE id = $4 AND state = 'draft' AND version = $5`, draft.ConfigHash, nullableTime(draft.PublishedAt), draft.Version, draft.ID, draft.Version-1)
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if changed, _ := result.RowsAffected(); changed != 1 {
 			return sharedrepository.ErrConflict
 		}
 		result, err = transaction.SQL.ExecContext(ctx, `UPDATE monitors SET status = 'active', draft_config_version_id = NULL, published_config_version_id = $1, version = $2, updated_at = now() WHERE id = $3 AND version = $4`, draft.ID, monitor.Version, monitor.ID, monitor.Version-1)
 		if err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 		if changed, _ := result.RowsAffected(); changed != 1 {
 			return sharedrepository.ErrConflict
@@ -282,21 +283,21 @@ func (repository *Repository) ListActivePublished(ctx context.Context) ([]domain
 	}
 	rows, err := repository.runtime.SQL.QueryContext(ctx, `SELECT `+monitorColumns+` FROM monitors WHERE status = 'active' AND published_config_version_id IS NOT NULL AND deleted_at IS NULL ORDER BY id ASC`)
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	monitors := []domain.Monitor{}
 	for rows.Next() {
 		var monitor domain.Monitor
 		if err := rows.Scan(monitorScanTargets(&monitor)...); err != nil {
-			return nil, sharedrepository.MapError(err)
+			return nil, databaserepository.MapError(err)
 		}
 		monitors = append(monitors, monitor)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	if err := rows.Close(); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	result := make([]domain.PublishedMonitor, 0, len(monitors))
 	for _, monitor := range monitors {
@@ -336,7 +337,7 @@ func (repository *Repository) insertConfig(ctx context.Context, queryer interfac
 		return err
 	}
 	if err := queryer.QueryRowContext(ctx, `INSERT INTO monitor_config_versions (monitor_id, revision, state, timezone, languages, regions, collection_interval_seconds, relevance_threshold, event_threshold, retention_days) VALUES ($1, $2, 'draft', $3, $4::text[], $5::text[], $6, $7, $8, $9) RETURNING `+configColumns, config.MonitorID, config.Revision, config.Config.Timezone, languages, regions, config.Config.CollectionIntervalSeconds, config.Config.RelevanceThreshold, config.Config.EventThreshold, config.Config.RetentionDays).Scan(configScanTargets(config)...); err != nil {
-		return sharedrepository.MapError(err)
+		return databaserepository.MapError(err)
 	}
 	return nil
 }
@@ -354,7 +355,7 @@ func (repository *Repository) insertRules(ctx context.Context, queryer interface
 			args = append([]any{rule.ID}, args...)
 		}
 		if err := queryer.QueryRowContext(ctx, query, args...).Scan(ruleScanTargets(rule)...); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 	}
 	return nil
@@ -367,7 +368,7 @@ func (repository *Repository) insertSources(ctx context.Context, queryer interfa
 		source := &sources[index]
 		source.ConfigVersionID = configID
 		if err := queryer.QueryRowContext(ctx, `INSERT INTO monitor_sources (config_version_id, source_connection_id, query_override, priority, enabled) VALUES ($1,$2,$3,$4,$5) RETURNING `+monitorSourceColumns, configID, source.SourceConnectionID, nullableString(source.QueryOverride), source.Priority, source.Enabled).Scan(sourceScanTargets(source)...); err != nil {
-			return sharedrepository.MapError(err)
+			return databaserepository.MapError(err)
 		}
 	}
 	return nil
@@ -380,19 +381,19 @@ func (repository *Repository) rules(ctx context.Context, configID int64, lock bo
 	}
 	rows, err := repository.queryRows(ctx, query, configID)
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	result := []domain.MonitorRule{}
 	for rows.Next() {
 		var rule domain.MonitorRule
 		if err := rows.Scan(ruleScanTargets(&rule)...); err != nil {
-			return nil, sharedrepository.MapError(err)
+			return nil, databaserepository.MapError(err)
 		}
 		result = append(result, rule)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	return result, nil
 }
@@ -404,19 +405,19 @@ func (repository *Repository) sources(ctx context.Context, configID int64, lock 
 	}
 	rows, err := repository.queryRows(ctx, query, configID)
 	if err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	result := []domain.MonitorSource{}
 	for rows.Next() {
 		var source domain.MonitorSource
 		if err := rows.Scan(sourceScanTargets(&source)...); err != nil {
-			return nil, sharedrepository.MapError(err)
+			return nil, databaserepository.MapError(err)
 		}
 		result = append(result, source)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, sharedrepository.MapError(err)
+		return nil, databaserepository.MapError(err)
 	}
 	return result, nil
 }

@@ -6,6 +6,7 @@ import (
 
 	sourcedomain "github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -42,7 +43,7 @@ SELECT EXISTS (
     WHERE monitor_source.source_connection_id = $1
       AND config_version.state IN ('published', 'superseded')
 )`, sourceID).Scan(&referenced); err != nil {
-		return false, sharedrepository.MapError(err)
+		return false, databaserepository.MapError(err)
 	}
 	return referenced, nil
 }

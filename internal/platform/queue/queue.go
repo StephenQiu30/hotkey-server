@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -91,10 +92,10 @@ ON CONFLICT (kind, unique_key) DO NOTHING RETURNING id`, job.Kind, args, job.Max
 		return id, true, nil
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return 0, false, sharedrepository.MapError(err)
+		return 0, false, databaserepository.MapError(err)
 	}
 	err = executor.QueryRowContext(ctx, `SELECT id FROM river_job WHERE kind = $1 AND unique_key = $2`, job.Kind, []byte(job.UniqueKey)).Scan(&id)
-	return id, false, sharedrepository.MapError(err)
+	return id, false, databaserepository.MapError(err)
 }
 
 type sqlQueryer interface {

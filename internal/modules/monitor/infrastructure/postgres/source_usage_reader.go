@@ -6,6 +6,7 @@ import (
 
 	sourcedomain "github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
+	databaserepository "github.com/StephenQiu30/hotkey-server/internal/platform/database/repository"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/internal/shared/repository"
 )
 
@@ -49,7 +50,7 @@ WHERE target.source_connection_id = $1
 ORDER BY monitor.id ASC, member.id ASC
 FOR UPDATE OF monitor, config_version, target, member`, sourceID)
 	if err != nil {
-		return sourcedomain.SourceUsage{}, sharedrepository.MapError(err)
+		return sourcedomain.SourceUsage{}, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 
@@ -64,7 +65,7 @@ FOR UPDATE OF monitor, config_version, target, member`, sourceID)
 		var status string
 		var enabled bool
 		if err := rows.Scan(&monitorID, &status, &memberID, &enabled); err != nil {
-			return sourcedomain.SourceUsage{}, sharedrepository.MapError(err)
+			return sourcedomain.SourceUsage{}, databaserepository.MapError(err)
 		}
 		item, found := groups[monitorID]
 		if !found {
@@ -75,7 +76,7 @@ FOR UPDATE OF monitor, config_version, target, member`, sourceID)
 		item.group.Sources = append(item.group.Sources, sourcedomain.MonitorUsageSource{SourceConnectionID: memberID, Enabled: enabled})
 	}
 	if err := rows.Err(); err != nil {
-		return sourcedomain.SourceUsage{}, sharedrepository.MapError(err)
+		return sourcedomain.SourceUsage{}, databaserepository.MapError(err)
 	}
 
 	usage := sourcedomain.SourceUsage{ActiveMonitorGroups: []sourcedomain.MonitorUsageGroup{}, PausedMonitorGroups: []sourcedomain.MonitorUsageGroup{}}
