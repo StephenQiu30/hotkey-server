@@ -109,5 +109,6 @@ Plan 必须由非本计划主要编写者的 Reviewer 再次审核。Reviewer �
 | 017 | [运行治理容量与端到端验收](../prd/archive/017-运行治理容量与端到端验收.md) | [执行计划](archive/017-运行治理容量与端到端验收计划.md) | 001–016 | done | approved |
 | 018 | [LangChainGo多模型接入](../prd/archive/018-LangChainGo多模型接入.md) | [执行计划](archive/018-LangChainGo多模型接入计划.md) | 008, 017 | done | approved |
 | 019 | [采集内容 Markdown 归档与预览](../prd/archive/019-采集内容Markdown归档与预览.md) | [执行计划](archive/019-采集内容Markdown归档与预览计划.md) | 006, 007, 017 | done | approved |
+| 020 | [工程配置与启动安全加固](../prd/archive/020-工程配置与启动安全加固.md) | [执行计划](archive/020-工程配置与启动安全加固计划.md) | 004, 017 | done | approved |
 
-PLAN-001–019 已移入 [`archive/`](archive/README.md)，并保留对应验收证据。PLAN-019 已完成全量门禁和独立实现复审。017–019 的外部依赖演练以 `accepted_with_risk` 记录，不把部署环境尚未执行的备份/SMTP/MinIO/DeepSeek/Ollama 结果写成已通过。
+PLAN-001–020 已移入 [`archive/`](archive/README.md)，并保留对应验收证据。PLAN-020 已完成 GoLand 共享 DIRECTORY 配置实机验收和独立实现复审。017–020 的外部依赖演练或隔离测试环境限制以 `accepted_with_risk` 记录，不把尚未执行的结果写成已通过。

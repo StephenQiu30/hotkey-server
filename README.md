@@ -89,12 +89,12 @@ cp .env.example .env
 
 ```dotenv
 HOTKEY_DATABASE_URL=postgres://hotkey:hotkey@localhost:5432/hotkey?sslmode=disable
-HOTKEY_JWT_SECRET=replace-with-your-random-secret-at-least-32-bytes
-HOTKEY_VERIFICATION_HMAC_SECRET=replace-with-another-random-secret-32-bytes
+HOTKEY_JWT_SECRET=
+HOTKEY_VERIFICATION_HMAC_SECRET=
 HOTKEY_CORS_ALLOWED_ORIGINS=http://localhost:3000
 ```
 
-完整变量、默认开发值和可选 Provider 配置见 [`.env.example`](.env.example)。真实密钥不要提交到仓库。
+请在本地为两个密钥填写各自独立、随机且不少于 32 字节的值。完整变量、默认开发值和可选 Provider 配置见 [`.env.example`](.env.example)，真实密钥不要提交到仓库。
 
 ### 2. 初始化数据库
 
@@ -129,11 +129,46 @@ curl --fail http://127.0.0.1:8080/readyz
 
 > 生产环境设置 `HOTKEY_ENV=production` 后，服务会在 `.env` 基础上覆盖读取 `.env.prod`；进程环境变量优先级最高。生产环境不会开放 Swagger UI 和 OpenAPI 路由。
 
+### GoLand 一键运行与调试
+
+使用 GoLand 打开本仓库后，在顶部运行配置中选择 `HotKey 后端一键启动`：
+
+- 点击运行按钮启动后端；点击调试按钮使用断点调试。
+- 运行入口固定为 `cmd/hotkey`，工作目录固定为仓库根目录，因此会自动读取当前 `.env`。
+- 共享配置保存在 [`.run/HotKey_Server.run.xml`](.run/HotKey_Server.run.xml)，不依赖个人 `.idea/workspace.xml`。
+
+GoLand 会自动使用项目 `go.mod` 中声明的 Go SDK 和依赖；代码缩进、换行与尾随空格规则由 [`.editorconfig`](.editorconfig) 统一管理。
+
 ## Web 工作台
 
 推荐搭配 [hotkey-web](https://github.com/StephenQiu30/hotkey-web) 使用。Web 端提供热点总览、监控主题、来源管理、内容证据、事件智能、报告和通知配置等完整界面，并通过生成的 OpenAPI Client 与本服务保持契约一致。
 
 ## 开发与质量
+
+后端采用单模块、单二进制的模块化单体结构：
+
+```text
+cmd/hotkey/                # 唯一可执行入口与命令行
+internal/bootstrap/        # Fx 装配、角色与生命周期
+internal/modules/          # 按业务域拆分的应用、领域、基础设施和 HTTP 传输
+internal/platform/         # 数据库、HTTP、队列、配置、日志和可观测适配
+internal/shared/           # 跨模块共享的稳定基础类型
+db/                        # 唯一完整 Schema 与嵌入资源
+test/                      # 集中测试、runner、fixture 和架构门禁
+docs/                      # Design、PRD、Plan、Acceptance 与 Operations
+tools/                     # 构建期工具依赖
+```
+
+业务代码保持在 `internal/`，防止被仓库外部误用；当前没有跨项目复用的公共 Go 库，因此不创建无实际职责的 `pkg/`。所有运行角色继续由 `cmd/hotkey` 的 `all`、`api`、`worker` 参数提供，不增加重复入口。
+
+该结构不是照搬某个所谓“标准模板”，而是结合真实项目取舍：
+
+- [golang-standards/project-layout](https://github.com/golang-standards/project-layout) 明确声明自身不是 Go 官方标准，并建议只保留项目真正需要的部分。
+- [ardanlabs/service](https://github.com/ardanlabs/service) 证明生产服务可以按应用、业务和基础能力分层，而不必固定使用 `internal/modules` 这一种命名。
+- [ThreeDotsLabs/wild-workouts-go-ddd-example](https://github.com/ThreeDotsLabs/wild-workouts-go-ddd-example/tree/master/internal) 展示了按业务域组织 application、domain、ports 与 adapters 的实践，与本项目的模块边界最接近。
+- [Grafana](https://github.com/grafana/grafana/tree/main/pkg/services)、[Gitea](https://github.com/go-gitea/gitea/tree/main/services) 和 [Prometheus](https://github.com/prometheus/prometheus) 使用不同的服务目录布局，说明大型 Go 项目并不存在唯一目录答案。
+
+GoLand 共享运行配置采用 [JetBrains 官方 Run/Debug 配置模型](https://www.jetbrains.com/help/go/run-debug-configuration.html)：使用 `DIRECTORY` 运行类型，以 `$PROJECT_DIR$/cmd/hotkey` 为运行目录、仓库根目录为工作目录，避免依赖个人项目模块名。
 
 常用命令：
 

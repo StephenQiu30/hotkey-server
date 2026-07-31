@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/mail"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -38,9 +40,8 @@ type MinIOConfig struct {
 	UseSSL    bool
 }
 
-// ValidateRuntime verifies the minimum credentials required to construct the
-// single MinIO client used by a running process. It intentionally names only
-// missing fields so an error can never echo a configured secret.
+// ValidateRuntime 校验运行进程创建唯一 MinIO 客户端所需的最小配置。
+// 错误只标识字段，不回显任何已配置的凭据。
 func (c MinIOConfig) ValidateRuntime() error {
 	switch {
 	case strings.TrimSpace(c.Endpoint) == "":
@@ -80,9 +81,39 @@ type SMTPConfig struct {
 	FromName  string
 }
 
-// AIConfig contains only the explicit provider credentials and local ONNX
-// artifact locations required by the PLAN-008 adapters. All values remain
-// optional at process startup because no profile is selected implicitly.
+// ValidateRuntime 在 SMTP 启用时校验所有角色共享的连接配置。
+// 禁用时允许保留空值，错误只标识字段，不回显主机、账号或凭据。
+func (c SMTPConfig) ValidateRuntime() error {
+	if !c.Enabled {
+		return nil
+	}
+	switch {
+	case strings.TrimSpace(c.Host) == "":
+		return errors.New("SMTP host is required when SMTP is enabled")
+	case c.Port < 1 || c.Port > 65535:
+		return errors.New("SMTP port must be between 1 and 65535")
+	case c.TLSMode != "tls" && c.TLSMode != "starttls":
+		return errors.New("SMTP TLS mode must be tls or starttls")
+	case !validMailbox(c.FromEmail):
+		return errors.New("SMTP from email must be a valid mailbox")
+	case (strings.TrimSpace(c.Username) == "") != (strings.TrimSpace(c.Password) == ""):
+		return errors.New("SMTP username and password must be configured together")
+	default:
+		return nil
+	}
+}
+
+func validMailbox(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" || trimmed != value {
+		return false
+	}
+	address, err := mail.ParseAddress(trimmed)
+	return err == nil && address.Name == "" && address.Address == trimmed
+}
+
+// AIConfig 只保存 Provider 显式凭据和 PLAN-008 适配器使用的本地 ONNX 产物路径。
+// 启动时不会隐式选择模型配置，因此这些字段均可留空。
 type AIConfig struct {
 	OpenAIAPIKey       string
 	DeepSeekAPIKey     string
@@ -200,9 +231,8 @@ func Load() (Config, error) {
 	return cfg, cfg.Validate()
 }
 
-// loadEnvironmentFile reads one conventional dotenv file when it exists.
-// .env is the default development configuration; .env.prod is loaded only
-// when the resolved environment is production.
+// loadEnvironmentFile 在文件存在时读取约定的 dotenv 配置。
+// .env 是默认配置；只有解析后的环境为 production 时才叠加 .env.prod。
 func loadEnvironmentFile(v *viper.Viper, path string) error {
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -236,6 +266,11 @@ func configDuration(v *viper.Viper, key string) time.Duration {
 }
 
 func (c Config) Validate() error {
+	switch c.Environment {
+	case "development", "testing", "production":
+	default:
+		return errors.New("environment must be development, testing, or production")
+	}
 	switch c.Role {
 	case "all", "api", "worker":
 	default:
@@ -261,12 +296,11 @@ func (c Config) Validate() error {
 			return errors.New("request timeout must be positive")
 		}
 	}
-	return nil
+	return c.Authentication.SMTP.ValidateRuntime()
 }
 
-// ValidateRuntime adds the production requirement that every running role has
-// an explicit database URL. Validate stays usable for lightweight constructor
-// tests that intentionally do not start a database lifecycle.
+// ValidateRuntime 为所有运行角色补充显式数据库 URL 要求。
+// Validate 仍可供不启动数据库生命周期的轻量构造测试使用。
 func (c Config) ValidateRuntime() error {
 	if err := c.Validate(); err != nil {
 		return err
@@ -277,10 +311,8 @@ func (c Config) ValidateRuntime() error {
 	return nil
 }
 
-// ValidateAuthenticationRuntime is intentionally separate from ValidateRuntime:
-// database commands do not need email authentication, while an API runtime that
-// serves identity endpoints must reject unsafe credential and credentialed CORS
-// configuration before wiring those endpoints.
+// ValidateAuthenticationRuntime 与 ValidateRuntime 保持独立：数据库命令不需要身份认证，
+// 提供身份接口的 API 则必须在装配路由前拒绝不安全密钥和携带凭据的 CORS 配置。
 func (c Config) ValidateAuthenticationRuntime() error {
 	if err := c.Validate(); err != nil {
 		return err
@@ -288,6 +320,9 @@ func (c Config) ValidateAuthenticationRuntime() error {
 	auth := c.Authentication
 	if len([]byte(strings.TrimSpace(auth.JWTSecret))) < 32 {
 		return errors.New("JWT secret must be at least 32 bytes")
+	}
+	if knownAuthenticationPlaceholder(auth.JWTSecret) {
+		return errors.New("JWT secret must not use a known placeholder")
 	}
 	if strings.TrimSpace(auth.JWTIssuer) == "" {
 		return errors.New("JWT issuer is required")
@@ -298,18 +333,47 @@ func (c Config) ValidateAuthenticationRuntime() error {
 	if len([]byte(strings.TrimSpace(auth.VerificationHMACSecret))) < 32 {
 		return errors.New("verification HMAC secret must be at least 32 bytes")
 	}
+	if knownAuthenticationPlaceholder(auth.VerificationHMACSecret) {
+		return errors.New("verification HMAC secret must not use a known placeholder")
+	}
 	if len(auth.AllowedOrigins) == 0 {
 		return errors.New("at least one allowed CORS origin is required for authentication")
 	}
 	for _, origin := range auth.AllowedOrigins {
-		if strings.TrimSpace(origin) == "" || origin == "*" {
-			return errors.New("authentication CORS origins must be explicit")
+		if !validCORSOrigin(origin) {
+			return errors.New("authentication CORS origins must be absolute HTTP or HTTPS origins without credentials, paths, queries, or fragments")
 		}
 	}
 	if c.Environment == "production" && !auth.RefreshCookieSecure {
 		return errors.New("production refresh cookie must be secure")
 	}
 	return nil
+}
+
+func knownAuthenticationPlaceholder(value string) bool {
+	switch strings.TrimSpace(value) {
+	case "change-me-with-at-least-32-characters",
+		"replace-with-your-random-secret-at-least-32-bytes",
+		"replace-with-another-random-secret-32-bytes":
+		return true
+	default:
+		return false
+	}
+}
+
+func validCORSOrigin(value string) bool {
+	if value == "" || value != strings.TrimSpace(value) || value == "*" || strings.Contains(value, "#") {
+		return false
+	}
+	origin, err := url.Parse(value)
+	if err != nil || origin.Opaque != "" || origin.User != nil {
+		return false
+	}
+	if origin.Scheme != "http" && origin.Scheme != "https" {
+		return false
+	}
+	return origin.Host != "" && origin.Hostname() != "" && origin.Path == "" && origin.RawPath == "" &&
+		!origin.ForceQuery && origin.RawQuery == "" && origin.Fragment == ""
 }
 
 func setDefaults(v *viper.Viper, cfg Config) {

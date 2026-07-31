@@ -46,10 +46,112 @@ func TestValidateRejectsInvalidRuntimeConfiguration(t *testing.T) {
 	}
 }
 
+func TestConfigValidateRejectsUnsupportedEnvironment(t *testing.T) {
+	t.Parallel()
+
+	for _, environment := range []string{"development", "testing", "production"} {
+		environment := environment
+		t.Run(environment, func(t *testing.T) {
+			t.Parallel()
+			cfg := Default()
+			cfg.Environment = environment
+			if err := cfg.Validate(); err != nil {
+				t.Fatalf("Validate() supported environment error = %v", err)
+			}
+		})
+	}
+
+	cfg := Default()
+	cfg.Environment = "staging-sensitive-value"
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil, want unsupported environment rejection")
+	}
+	if strings.Contains(err.Error(), cfg.Environment) {
+		t.Fatalf("Validate() leaked environment value: %v", err)
+	}
+}
+
+func TestConfigValidateRejectsInvalidEnabledSMTP(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		mutate func(*SMTPConfig)
+	}{
+		{name: "missing host", mutate: func(c *SMTPConfig) { c.Host = "" }},
+		{name: "zero port", mutate: func(c *SMTPConfig) { c.Port = 0 }},
+		{name: "port exceeds maximum", mutate: func(c *SMTPConfig) { c.Port = 65536 }},
+		{name: "unsupported TLS mode", mutate: func(c *SMTPConfig) { c.TLSMode = "plaintext-sensitive" }},
+		{name: "invalid from email", mutate: func(c *SMTPConfig) { c.FromEmail = "not-an-email-sensitive" }},
+		{name: "username without password", mutate: func(c *SMTPConfig) { c.Password = "" }},
+		{name: "password without username", mutate: func(c *SMTPConfig) { c.Username = "" }},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := Default()
+			cfg.Authentication.SMTP = SMTPConfig{
+				Enabled:   true,
+				Host:      "smtp.sensitive.example",
+				Port:      465,
+				TLSMode:   "tls",
+				Username:  "smtp-user-sensitive",
+				Password:  "smtp-password-sensitive",
+				FromEmail: "sender-sensitive@example.test",
+			}
+			test.mutate(&cfg.Authentication.SMTP)
+
+			err := cfg.Validate()
+			if err == nil {
+				t.Fatal("Validate() error = nil, want invalid enabled SMTP rejection")
+			}
+			for _, secret := range []string{
+				"smtp.sensitive.example",
+				"plaintext-sensitive",
+				"not-an-email-sensitive",
+				"smtp-user-sensitive",
+				"smtp-password-sensitive",
+				"sender-sensitive@example.test",
+			} {
+				if strings.Contains(err.Error(), secret) {
+					t.Fatalf("Validate() leaked SMTP value: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestConfigValidateAcceptsCompleteEnabledSMTP(t *testing.T) {
+	t.Parallel()
+
+	for _, tlsMode := range []string{"tls", "starttls"} {
+		tlsMode := tlsMode
+		t.Run(tlsMode, func(t *testing.T) {
+			t.Parallel()
+			cfg := Default()
+			cfg.Authentication.SMTP = SMTPConfig{
+				Enabled:   true,
+				Host:      "smtp.example.test",
+				Port:      465,
+				TLSMode:   tlsMode,
+				Username:  "sender@example.test",
+				Password:  "test-only-password",
+				FromEmail: "sender@example.test",
+			}
+			if err := cfg.Validate(); err != nil {
+				t.Fatalf("Validate() complete SMTP error = %v", err)
+			}
+		})
+	}
+}
+
 func TestValidateAcceptsWorkerWithoutListeningAddress(t *testing.T) {
 	t.Parallel()
 
-	cfg := Config{Role: "worker", ShutdownTimeout: time.Second}
+	cfg := Config{Environment: "development", Role: "worker", ShutdownTimeout: time.Second}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)
 	}
@@ -172,6 +274,90 @@ func TestValidateAuthenticationRuntimeAcceptsExplicitSafeConfiguration(t *testin
 	cfg := validAuthenticationConfig()
 	if err := cfg.ValidateAuthenticationRuntime(); err != nil {
 		t.Fatalf("ValidateAuthenticationRuntime() error = %v", err)
+	}
+}
+
+func TestValidateAuthenticationRuntimeRejectsKnownPlaceholderSecrets(t *testing.T) {
+	t.Parallel()
+
+	placeholders := []string{
+		"change-me-with-at-least-32-characters",
+		"replace-with-your-random-secret-at-least-32-bytes",
+		"replace-with-another-random-secret-32-bytes",
+	}
+	for _, placeholder := range placeholders {
+		placeholder := placeholder
+		for _, field := range []string{"JWT", "HMAC"} {
+			field := field
+			t.Run(field, func(t *testing.T) {
+				t.Parallel()
+				cfg := validAuthenticationConfig()
+				if field == "JWT" {
+					cfg.Authentication.JWTSecret = placeholder
+				} else {
+					cfg.Authentication.VerificationHMACSecret = placeholder
+				}
+
+				err := cfg.ValidateAuthenticationRuntime()
+				if err == nil {
+					t.Fatal("ValidateAuthenticationRuntime() error = nil, want known placeholder rejection")
+				}
+				if strings.Contains(err.Error(), placeholder) {
+					t.Fatalf("ValidateAuthenticationRuntime() leaked secret: %v", err)
+				}
+			})
+		}
+	}
+
+	example, err := os.ReadFile(filepath.Join("..", "..", "..", ".env.example"))
+	if err != nil {
+		t.Fatalf("read .env.example: %v", err)
+	}
+	content := string(example)
+	for _, line := range []string{"HOTKEY_JWT_SECRET=\n", "HOTKEY_VERIFICATION_HMAC_SECRET=\n"} {
+		if !strings.Contains(content, line) {
+			t.Errorf(".env.example must leave authentication secret blank: %q", strings.TrimSpace(line))
+		}
+	}
+	for _, placeholder := range placeholders {
+		if strings.Contains(content, placeholder) {
+			t.Errorf(".env.example contains a known authentication placeholder")
+		}
+	}
+}
+
+func TestValidateAuthenticationRuntimeRejectsInvalidCORSOrigins(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		origin string
+	}{
+		{name: "relative URL", origin: "/relative-sensitive"},
+		{name: "unsupported scheme", origin: "ftp://cors-sensitive.example"},
+		{name: "userinfo", origin: "https://user:pass@cors-sensitive.example"},
+		{name: "path", origin: "https://cors-sensitive.example/path"},
+		{name: "root path", origin: "https://cors-sensitive.example/"},
+		{name: "query", origin: "https://cors-sensitive.example?query=sensitive"},
+		{name: "fragment", origin: "https://cors-sensitive.example#sensitive"},
+		{name: "empty fragment", origin: "https://cors-sensitive.example#"},
+		{name: "missing host", origin: "https:///missing-sensitive"},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := validAuthenticationConfig()
+			cfg.Authentication.AllowedOrigins = []string{test.origin}
+			err := cfg.ValidateAuthenticationRuntime()
+			if err == nil {
+				t.Fatal("ValidateAuthenticationRuntime() error = nil, want invalid CORS origin rejection")
+			}
+			if strings.Contains(err.Error(), test.origin) {
+				t.Fatalf("ValidateAuthenticationRuntime() leaked CORS origin: %v", err)
+			}
+		})
 	}
 }
 

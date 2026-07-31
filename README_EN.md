@@ -108,11 +108,46 @@ curl --fail http://127.0.0.1:8080/readyz
 
 For production, set `HOTKEY_ENV=production` to load `.env.prod` as an override. Process environment variables always take precedence. API documentation routes are disabled in production.
 
+### Run and debug with GoLand
+
+Open this repository in GoLand and select the shared `HotKey 后端一键启动` run configuration:
+
+- Use Run to start the backend or Debug to attach breakpoints.
+- The entry point is fixed to `cmd/hotkey` and the working directory is the repository root, so the application loads the current `.env` automatically.
+- The shared configuration lives in [`.run/HotKey_Server.run.xml`](.run/HotKey_Server.run.xml) and does not depend on a developer's `.idea/workspace.xml`.
+
+GoLand uses the SDK and dependencies declared by `go.mod`. [`.editorconfig`](.editorconfig) keeps indentation, line endings, and trailing-whitespace behavior consistent across IDEs.
+
 ## Web application
 
 Use [hotkey-web](https://github.com/StephenQiu30/hotkey-web) for the complete browser workspace, including events, monitors, sources, evidence, reports, and notification settings.
 
 ## Development
+
+The backend is a single-module, single-binary modular monolith:
+
+```text
+cmd/hotkey/                # Executable and CLI entry point
+internal/bootstrap/        # Fx composition, roles, and lifecycle
+internal/modules/          # Domain-oriented application, domain, infrastructure, and HTTP layers
+internal/platform/         # Database, HTTP, queue, configuration, logging, and observability adapters
+internal/shared/           # Stable primitives shared across modules
+db/                        # Canonical full schema and embedded resources
+test/                      # Centralized tests, runner, fixtures, and architecture gates
+docs/                      # Design, PRD, Plan, Acceptance, and Operations documents
+tools/                     # Build-time tool dependencies
+```
+
+Business code stays under `internal/` so it cannot be imported outside this module. There is no `pkg/` directory because the repository currently exposes no reusable public Go library. The `all`, `api`, and `worker` values remain runtime roles of the single `cmd/hotkey` entry point.
+
+This layout is an evidence-based choice rather than a copy of a purported standard template:
+
+- [golang-standards/project-layout](https://github.com/golang-standards/project-layout) explicitly says it is not an official Go standard and recommends keeping only what a project needs.
+- [ardanlabs/service](https://github.com/ardanlabs/service) structures a production starter around application, business, and foundation layers without requiring the same names used here.
+- [ThreeDotsLabs/wild-workouts-go-ddd-example](https://github.com/ThreeDotsLabs/wild-workouts-go-ddd-example/tree/master/internal) organizes application, domain, ports, and adapters within business capabilities, which is the closest match to HotKey's module boundaries.
+- [Grafana](https://github.com/grafana/grafana/tree/main/pkg/services), [Gitea](https://github.com/go-gitea/gitea/tree/main/services), and [Prometheus](https://github.com/prometheus/prometheus) use different service layouts, demonstrating that large Go projects do not converge on one directory tree.
+
+The shared GoLand configuration follows the [official JetBrains Run/Debug configuration model](https://www.jetbrains.com/help/go/run-debug-configuration.html): it uses the `DIRECTORY` run kind with `$PROJECT_DIR$/cmd/hotkey` as the run directory and the repository root as the working directory, without depending on a developer-specific project module name.
 
 ```bash
 make lint

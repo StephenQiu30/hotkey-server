@@ -89,6 +89,19 @@ func TestNewAppRejectsInvalidRole(t *testing.T) {
 	}
 }
 
+func TestNewAppRejectsInvalidEnabledSMTPForWorker(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	cfg.Role = string(RoleWorker)
+	cfg.HTTPAddr = ""
+	cfg.Authentication.SMTP.Enabled = true
+	cfg.Authentication.SMTP.Host = ""
+	if _, err := NewApp(cfg, zap.NewNop()); err == nil {
+		t.Fatal("NewApp() error = nil, want invalid enabled SMTP rejection before worker assembly")
+	}
+}
+
 func TestNewAppWithReadinessRejectsMissingAPICheck(t *testing.T) {
 	cfg := apiTestConfig()
 	cfg.HTTPAddr = "127.0.0.1:0"

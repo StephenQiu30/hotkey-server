@@ -6,7 +6,7 @@ feature_area: AI热点事件监控平台
 purpose: 管理从权威设计拆分出的后端执行任务需求
 canonical_path: docs/prd/README.md
 status: review
-version: v3.1
+version: v3.2
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -71,6 +71,7 @@ downstream:
 | [017](archive/017-运行治理容量与端到端验收.md) | 运行治理、容量与端到端验收 | Closure | P0 | 001–016 | archived | done |
 | [018](archive/018-LangChainGo多模型接入.md) | LangChainGo、DeepSeek、Ollama 与 Qwen Embedding | P1 | P0 | 008, 017 | archived | done |
 | [019](archive/019-采集内容Markdown归档与预览.md) | 授权 Feed 内容 Markdown 归档与安全读取 API | P1 | P0 | 006, 007, 017 | archived | done |
+| [020](archive/020-工程配置与启动安全加固.md) | 工程配置与 GoLand 后端单入口安全加固 | Closure | P0 | 004, 017 | archived | done |
 
 ## 主链路
 
@@ -84,8 +85,9 @@ downstream:
                                       001–016 → 017
                                       008 + 017 → 018
                                       006 + 007 + 017 → 019
+                                      004 + 017 → 020
 
-PRD-001–019 已移入 [`archive/`](archive/README.md)。PRD-019 已完成并以 `accepted_with_risk` 验收；真实外部 MinIO integration 保留为部署环境风险。014–016 的核心验收为 accepted，017–019 为 accepted_with_risk；外部 MinIO、SMTP、生产备份恢复、DeepSeek 凭据与 Ollama 实机连接仍按对应 Operations 在部署环境演练，不伪造外部证据。
+PRD-001–020 已移入 [`archive/`](archive/README.md)。PRD-020 已完成 GoLand DIRECTORY 实机验收和独立复审，以 `accepted_with_risk` 结案；隔离 PostgreSQL/Redis 测试环境缺失风险已明确记录。014–016 的核心验收为 accepted，017–020 为 accepted_with_risk；外部 MinIO、SMTP、生产备份恢复、DeepSeek 凭据与 Ollama 实机连接仍按对应 Operations 在部署环境演练，不伪造外部证据。
 
 ## 每个 PRD 的完成要求
 
