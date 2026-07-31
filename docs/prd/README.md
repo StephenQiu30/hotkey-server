@@ -6,7 +6,7 @@ feature_area: AI热点事件监控平台
 purpose: 管理从权威设计拆分出的后端执行任务需求
 canonical_path: docs/prd/README.md
 status: review
-version: v3.3
+version: v3.4
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -72,7 +72,7 @@ downstream:
 | [018](archive/018-LangChainGo多模型接入.md) | LangChainGo、DeepSeek、Ollama 与 Qwen Embedding | P1 | P0 | 008, 017 | archived | done |
 | [019](archive/019-采集内容Markdown归档与预览.md) | 授权 Feed 内容 Markdown 归档与安全读取 API | P1 | P0 | 006, 007, 017 | archived | done |
 | [020](archive/020-工程配置与启动安全加固.md) | 工程配置与 GoLand 后端单入口安全加固 | Closure | P0 | 004, 017 | archived | done |
-| [021](021-集中测试资产与目录边界优化.md) | 集中测试资产与生产目录边界优化 | Closure | P1 | 001 | accepted | in_progress |
+| [021](archive/021-集中测试资产与目录边界优化.md) | 集中测试资产与生产目录边界优化 | Closure | P1 | 001 | archived | done |
 
 ## 主链路
 
@@ -89,7 +89,7 @@ downstream:
                                       004 + 017 → 020
                                       001 → 021
 
-PRD-001–020 已移入 [`archive/`](archive/README.md)。PRD-021 已完成范围评审，正在实施纯测试 fixture 从生产树迁入集中测试树。014–016 的核心验收为 accepted，017–020 为 accepted_with_risk；外部 MinIO、SMTP、生产备份恢复、DeepSeek 凭据与 Ollama 实机连接仍按对应 Operations 在部署环境演练，不伪造外部证据。
+PRD-001–021 已移入 [`archive/`](archive/README.md)。014–016 的核心验收为 accepted，017–021 为 accepted_with_risk；外部 MinIO、SMTP、生产备份恢复、DeepSeek 凭据、Ollama 实机连接和隔离测试环境仍按对应 Acceptance/Operations 记录，不伪造外部证据。
 
 ## 每个 PRD 的完成要求
 
