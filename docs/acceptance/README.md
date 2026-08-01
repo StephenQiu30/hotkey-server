@@ -6,7 +6,7 @@ feature_area: 验收记录
 purpose: 定义长期验收证据的结构、结论和归档边界
 canonical_path: docs/acceptance/README.md
 status: review
-version: v3.8
+version: v3.9
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -60,7 +60,7 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 
 ## 已归档验收
 
-001–016 的验收结论为 `accepted`，017–023 为 `accepted_with_risk`；001–023 正文已移入 [`archive/`](archive/README.md)。
+001–016 与 024 的验收结论为 `accepted`，017–023 为 `accepted_with_risk`；001–024 正文已移入 [`archive/`](archive/README.md)。
 
 ## 已验收任务
 
@@ -76,7 +76,7 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | 021 | [集中测试资产与目录边界优化](archive/021-集中测试资产与目录边界优化验收.md) | accepted_with_risk |
 | 022 | [Shared 仓储基础设施边界修复](archive/022-Shared仓储基础设施边界修复验收.md) | accepted_with_risk |
 | 023 | [首管理员数据库指定](archive/023-首管理员数据库指定验收.md) | accepted_with_risk |
-| 024 | [采集批次原子重试](024-采集批次原子重试验收.md) | pending |
+| 024 | [采集批次原子重试](archive/024-采集批次原子重试验收.md) | accepted |
 
 ## 变更记录
 
@@ -110,3 +110,4 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | v3.6 | 2026-08-01 | 创建 PLAN-023 首管理员数据库指定验收模板，结论保持 pending。 |
 | v3.7 | 2026-08-01 | `27efea1` 完成 PLAN-023 并通过独立实现复审，以隔离 PostgreSQL DSN 与外部 Secret 清理风险归档。 |
 | v3.8 | 2026-08-01 | 创建 PLAN-024 原子恢复采集批次与原队列任务的实施前验收模板。 |
+| v3.9 | 2026-08-01 | `70d00ba` 关闭多目标与确定性竞态审查问题，PLAN-024 通过完整门禁和独立最终复审并归档为 accepted。 |

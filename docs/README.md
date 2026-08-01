@@ -6,7 +6,7 @@ feature_area: 项目文档
 purpose: 定义 HotKey Server 正式文档的分类、归档和维护规则
 canonical_path: docs/README.md
 status: review
-version: v1.7
+version: v1.8
 owner: HotKey Server Team
 inputs:
   - https://github.com/StephenQiu30/stephen-codex
@@ -32,7 +32,7 @@ downstream:
 
 ## 当前交付状态
 
-目标设计不能代替当前实现状态。001–017 已完成并分别移入对应 `archive/`；014–016 的核心验收为 accepted，017 为 accepted_with_risk。本地启动、GitHub CI、发布和故障处置等可重复运行流程归入 [Operations](operations/README.md)。
+目标设计不能代替当前实现状态。当前 001–024 已完成并分别移入对应 `archive/`；024 的原子采集重试验收为 accepted。本地启动、GitHub CI、发布和故障处置等可重复运行流程归入 [Operations](operations/README.md)。
 
 ## 文档层级
 
@@ -43,10 +43,10 @@ downstream:
 | [plans](plans/README.md) | 任务具体如何执行 | 开工条件、文件清单、步骤、验证命令和提交边界 |
 | [acceptance](acceptance/README.md) | 如何证明任务完成 | 红绿证据、测试记录、验收结论和残余风险 |
 | [operations](operations/README.md) | 如何发布与运行 | Git/PR、GitHub CI、发布、部署、运行、回滚和故障手册 |
-| [design/archive](design/archive/README.md) | 已完成设计放在哪里 | 已落地设计基线 |
-| [prd/archive](prd/archive/README.md) | 已完成 PRD 放在哪里 | 001–017 的历史任务需求 |
-| [plans/archive](plans/archive/README.md) | 已完成 Plan 放在哪里 | 001–017 的历史执行计划 |
-| [acceptance/archive](acceptance/archive/README.md) | 已完成验收放在哪里 | 001–017 的长期验收证据 |
+| [design/archive](design/archive/README.md) | 已完成设计放在哪里 | 001–018 的已落地设计基线 |
+| [prd/archive](prd/archive/README.md) | 已完成 PRD 放在哪里 | 001–024 的历史任务需求 |
+| [plans/archive](plans/archive/README.md) | 已完成 Plan 放在哪里 | 001–024 的历史执行计划 |
+| [acceptance/archive](acceptance/archive/README.md) | 已完成验收放在哪里 | 001–024 的长期验收证据 |
 
 ## 文档状态
 
