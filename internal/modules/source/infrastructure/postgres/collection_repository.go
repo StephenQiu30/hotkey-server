@@ -328,10 +328,15 @@ WHERE id = $2
 	})
 }
 
-// RetryRun only requeues a terminal failed/cancelled run. It never performs
-// external I/O and therefore cannot create a duplicate fetch from an HTTP
-// request; the ordinary collection scheduler claims the queued run later.
 func (repository *CollectionRepository) RetryRun(ctx context.Context, runID int64) (domain.CollectionRunSummary, error) {
+	return repository.RetryRunWithHook(ctx, runID, nil)
+}
+
+// RetryRunWithHook restores the failed window and its durable queue job in
+// one transaction. The per-source/signature advisory lock is shared with the
+// worker claim path, so a newer window cannot appear between the latest-run
+// check and checkpoint restoration.
+func (repository *CollectionRepository) RetryRunWithHook(ctx context.Context, runID int64, hook func(context.Context, domain.CollectionRun) error) (domain.CollectionRunSummary, error) {
 	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
 		return domain.CollectionRunSummary{}, sharedrepository.ErrUnavailable
 	}
@@ -340,12 +345,67 @@ func (repository *CollectionRepository) RetryRun(ctx context.Context, runID int6
 	}
 	var summary domain.CollectionRunSummary
 	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+		var sourceConnectionID int64
+		var querySignature string
+		if err := transaction.SQL.QueryRowContext(ctx, `SELECT source_connection_id, query_signature FROM collection_runs WHERE id = $1`, runID).Scan(&sourceConnectionID, &querySignature); err != nil {
+			return databaserepository.MapError(err)
+		}
+		if _, err := transaction.SQL.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, domain.CollectionClaimKey(sourceConnectionID, querySignature)); err != nil {
+			return databaserepository.MapError(err)
+		}
 		run, err := collectionRunForUpdate(ctx, transaction, runID)
 		if err != nil {
 			return err
 		}
 		if run.Status != domain.CollectionRunFailed && run.Status != domain.CollectionRunCancelled {
 			return fmt.Errorf("%w: collection run status cannot be retried", sharedrepository.ErrConflict)
+		}
+		var newer bool
+		if err := transaction.SQL.QueryRowContext(ctx, `
+SELECT EXISTS (
+    SELECT 1 FROM collection_runs
+    WHERE source_connection_id = $1
+      AND query_signature = $2
+      AND window_start > $3
+)`, run.SourceConnectionID, run.QuerySignature, run.WindowStart).Scan(&newer); err != nil {
+			return databaserepository.MapError(err)
+		}
+		if newer {
+			return fmt.Errorf("%w: a newer collection window exists", sharedrepository.ErrConflict)
+		}
+		var targetCount int64
+		if err := transaction.SQL.QueryRowContext(ctx, `SELECT count(*) FROM collection_run_targets WHERE collection_run_id = $1`, runID).Scan(&targetCount); err != nil {
+			return databaserepository.MapError(err)
+		}
+		checkpointResult, err := transaction.SQL.ExecContext(ctx, `
+UPDATE source_checkpoints AS checkpoint
+SET next_poll_at = $2, version = checkpoint.version + 1, updated_at = now()
+WHERE checkpoint.monitor_source_id IN (
+    SELECT target.monitor_source_id
+    FROM collection_run_targets AS target
+    WHERE target.collection_run_id = $1
+)
+  AND checkpoint.query_hash = $3
+  AND COALESCE(checkpoint.cursor_value, '') = $4
+  AND COALESCE(checkpoint.etag, '') = $5
+  AND COALESCE(checkpoint.last_modified, '') = $6
+  AND (
+      checkpoint.last_successful_run_id IS NULL
+      OR EXISTS (
+          SELECT 1 FROM collection_runs AS successful
+          WHERE successful.id = checkpoint.last_successful_run_id
+            AND successful.window_end <= $2
+      )
+  )`, runID, run.WindowStart, run.QuerySignature, run.RequestCursor, run.ETag, run.LastModified)
+		if err != nil {
+			return databaserepository.MapError(err)
+		}
+		checkpointCount, err := checkpointResult.RowsAffected()
+		if err != nil {
+			return databaserepository.MapError(err)
+		}
+		if targetCount == 0 || checkpointCount != targetCount {
+			return fmt.Errorf("%w: collection checkpoint changed", sharedrepository.ErrConflict)
 		}
 		if _, err := transaction.SQL.ExecContext(ctx, `
 UPDATE collection_run_targets
@@ -369,6 +429,11 @@ RETURNING `+collectionRunSummaryColumns, runID))
 			return err
 		}
 		summary.Targets = targets
+		if hook != nil {
+			if err := hook(ctx, run); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	if err != nil {

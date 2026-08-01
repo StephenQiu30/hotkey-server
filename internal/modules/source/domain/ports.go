@@ -190,6 +190,7 @@ type CollectionRepository interface {
 	PersistFailure(context.Context, CollectionRunFailure) (CollectionRun, error)
 	ListRuns(context.Context, CollectionRunListQuery) (CollectionRunPage, error)
 	RetryRun(context.Context, int64) (CollectionRunSummary, error)
+	RetryRunWithHook(context.Context, int64, func(context.Context, CollectionRun) error) (CollectionRunSummary, error)
 	ListUnboundCaptured(context.Context, CapturedItemQuery) (CapturedItemPage, error)
 	BindContent(context.Context, CapturedContentBinding) error
 	MarkIngestionFailure(context.Context, CapturedIngestionFailure) error

@@ -1,10 +1,17 @@
 package domain
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
 )
+
+func CollectionClaimKey(sourceConnectionID int64, querySignature string) string {
+	digest := sha256.Sum256([]byte(fmt.Sprintf("hotkey.collection_claim:%d:%s", sourceConnectionID, querySignature)))
+	return hex.EncodeToString(digest[:])
+}
 
 const (
 	// CapturedItemVersionV1 is the legacy PLAN-006 envelope. Its integer

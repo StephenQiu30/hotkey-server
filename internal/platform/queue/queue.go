@@ -98,6 +98,50 @@ ON CONFLICT (kind, unique_key) DO NOTHING RETURNING id`, job.Kind, args, job.Max
 	return id, false, databaserepository.MapError(err)
 }
 
+// ReactivateByUniqueKey makes an existing collection job immediately
+// available without erasing its attempt history. A terminal manual retry
+// grants exactly one additional attempt; an already-available automatic retry
+// is only brought forward.
+func (store *Store) ReactivateByUniqueKey(ctx context.Context, kind, uniqueKey string) (int64, error) {
+	if store == nil || store.runtime == nil {
+		return 0, sharedrepository.ErrUnavailable
+	}
+	if !IsKnownKind(kind) || uniqueKey == "" || len(uniqueKey) > MaxUniqueKeyBytes {
+		return 0, fmt.Errorf("%w: invalid job identity", sharedrepository.ErrInvalidInput)
+	}
+	var executor sqlQueryer = store.runtime.SQL
+	if transaction, ok := database.TransactionFromContext(ctx); ok {
+		executor = transaction.SQL
+	}
+	var id int64
+	err := executor.QueryRowContext(ctx, `
+UPDATE river_job
+SET state = 'available',
+    max_attempts = CASE WHEN state IN ('discarded', 'cancelled') THEN max_attempts + 1 ELSE max_attempts END,
+    scheduled_at = now(),
+    finalized_at = NULL
+WHERE kind = $1
+  AND unique_key = $2
+  AND state IN ('available', 'discarded', 'cancelled')
+  AND (state = 'available' OR max_attempts < 25)
+RETURNING id`, kind, []byte(uniqueKey)).Scan(&id)
+	if err == nil {
+		return id, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return 0, databaserepository.MapError(err)
+	}
+	var state string
+	err = executor.QueryRowContext(ctx, `SELECT state FROM river_job WHERE kind = $1 AND unique_key = $2`, kind, []byte(uniqueKey)).Scan(&state)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, fmt.Errorf("%w: job not found", sharedrepository.ErrNotFound)
+	}
+	if err != nil {
+		return 0, databaserepository.MapError(err)
+	}
+	return 0, fmt.Errorf("%w: job state %s cannot be reactivated", sharedrepository.ErrConflict, state)
+}
+
 type sqlQueryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }

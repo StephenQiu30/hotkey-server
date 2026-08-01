@@ -37,27 +37,30 @@ func (handler *CollectHandler) Handle(ctx context.Context, job queue.Job) error 
 		return queue.NewPermanentError(err)
 	}
 	payload := job.Payload
-	targets, err := handler.targets.ListForCollection(ctx, payload.EntityID, payload.EntityVersion, payload.InputHash, payload.WindowStart, payload.WindowEnd)
-	if err != nil {
-		return queue.ClassifyHandlerError(ctx, err)
-	}
-	planner := sourceapplication.QueryPlanner{}
-	requests := make([]sourcedomain.CollectionRequest, 0, len(targets))
-	for _, target := range targets {
-		request, err := planner.Plan(target, payload.WindowStart, payload.WindowEnd)
+	resolve := func(transactionCtx context.Context) (sourcedomain.CollectionRequest, error) {
+		targets, err := handler.targets.ListForCollection(transactionCtx, payload.EntityID, payload.EntityVersion, payload.InputHash, payload.WindowStart, payload.WindowEnd)
 		if err != nil {
-			return queue.ClassifyHandlerError(ctx, err)
+			return sourcedomain.CollectionRequest{}, err
 		}
-		requests = append(requests, request)
+		planner := sourceapplication.QueryPlanner{}
+		requests := make([]sourcedomain.CollectionRequest, 0, len(targets))
+		for _, target := range targets {
+			request, err := planner.Plan(target, payload.WindowStart, payload.WindowEnd)
+			if err != nil {
+				return sourcedomain.CollectionRequest{}, err
+			}
+			requests = append(requests, request)
+		}
+		groups, err := planner.GroupRequests(requests)
+		if err != nil {
+			return sourcedomain.CollectionRequest{}, err
+		}
+		if len(groups) != 1 {
+			return sourcedomain.CollectionRequest{}, fmt.Errorf("collect envelope resolved to %d request groups", len(groups))
+		}
+		return groups[0], nil
 	}
-	groups, err := planner.GroupRequests(requests)
-	if err != nil {
-		return queue.ClassifyHandlerError(ctx, err)
-	}
-	if len(groups) != 1 {
-		return queue.NewPermanentError(fmt.Errorf("collect envelope resolved to %d request groups", len(groups)))
-	}
-	_, err = handler.collections.CollectWithSuccessHook(ctx, groups[0], func(transactionCtx context.Context, runID int64) error {
+	_, err := handler.collections.CollectResolvedWithSuccessHook(ctx, payload.EntityID, payload.InputHash, resolve, func(transactionCtx context.Context, runID int64) error {
 		_, _, err := handler.jobs.Enqueue(transactionCtx, queue.Job{
 			Kind:        queue.KindNormalizeContent,
 			UniqueKey:   queue.StableJobKey(queue.KindNormalizeContent, runID, 1, payload.InputHash),

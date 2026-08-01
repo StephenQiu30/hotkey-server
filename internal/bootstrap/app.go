@@ -136,6 +136,8 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				deliverypostgres.NewRepository,
 				reportpostgres.NewRepository,
 				newQueueStore,
+				exposeCollectionTargetReader,
+				sourcejobs.NewCollectionRetryActivator,
 				newReportService,
 			),
 			fx.Invoke(database.RegisterLifecycle),
@@ -197,7 +199,6 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newCollectionService,
 					newCandidateRecallService,
 					newClusteringExecutionService,
-					exposeCollectionTargetReader,
 					exposeContentRepository,
 					exposeRelevanceRepository,
 					sourcejobs.NewCollectHandler,
@@ -372,8 +373,8 @@ func newMetricCapabilityService(runtime *database.Runtime, profiles *sourcepostg
 	return sourceapplication.NewMetricCapabilityService(sourceapplication.MetricCapabilityDependencies{Runtime: runtime, Profiles: profiles, SourceContexts: sources, Audit: audit})
 }
 
-func newCollectionControlService(runtime *database.Runtime, sources *sourcepostgres.Repository, runs *sourcepostgres.CollectionRepository, connectors *sourceinfrastructure.ConnectorRegistry, metrics *observability.Metrics) (*sourceapplication.CollectionControlService, error) {
-	return sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{Runtime: runtime, Sources: sources, Runs: runs, Connectors: connectors, Metrics: metrics})
+func newCollectionControlService(runtime *database.Runtime, sources *sourcepostgres.Repository, runs *sourcepostgres.CollectionRepository, connectors *sourceinfrastructure.ConnectorRegistry, retries *sourcejobs.CollectionRetryActivator, metrics *observability.Metrics) (*sourceapplication.CollectionControlService, error) {
+	return sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{Runtime: runtime, Sources: sources, Runs: runs, Connectors: connectors, Retries: retries, Metrics: metrics})
 }
 
 func newCollectionService(runtime *database.Runtime, sources *sourcepostgres.Repository, runs *sourcepostgres.CollectionRepository, connectors *sourceinfrastructure.ConnectorRegistry) (*sourceapplication.CollectionService, error) {

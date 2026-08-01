@@ -63,6 +63,46 @@ func (service *CollectionService) CollectWithSuccessHook(ctx context.Context, re
 	return service.collect(ctx, request, hook)
 }
 
+type CollectionRequestResolver func(context.Context) (domain.CollectionRequest, error)
+
+// CollectResolvedWithSuccessHook keeps target rereading, request planning and
+// run claiming under the same source/query advisory lock. External Fetch runs
+// only after that transaction commits.
+func (service *CollectionService) CollectResolvedWithSuccessHook(ctx context.Context, sourceConnectionID int64, querySignature string, resolve CollectionRequestResolver, hook func(context.Context, int64) error) (domain.CollectionRun, error) {
+	if service == nil || service.runtime == nil || resolve == nil || sourceConnectionID <= 0 || querySignature == "" {
+		return domain.CollectionRun{}, errors.New("collection service is not initialized")
+	}
+	var request domain.CollectionRequest
+	var run domain.CollectionRun
+	var started bool
+	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
+		if _, err := transaction.SQL.ExecContext(transactionCtx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, domain.CollectionClaimKey(sourceConnectionID, querySignature)); err != nil {
+			return err
+		}
+		var err error
+		request, err = resolve(transactionCtx)
+		if err != nil {
+			return err
+		}
+		if err := request.Validate(); err != nil {
+			return domain.NewCollectionError(domain.CollectionErrorPermanent, err)
+		}
+		if request.SourceConnectionID != sourceConnectionID || request.QuerySignature != querySignature {
+			return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("resolved collection identity changed"))
+		}
+		run, _, err = service.runs.CreateOrReuseRun(transactionCtx, request)
+		if err != nil {
+			return err
+		}
+		run, started, err = service.runs.StartRun(transactionCtx, run.ID, service.now().UTC().Add(-collectionRunReclaimAfter))
+		return err
+	})
+	if err != nil {
+		return domain.CollectionRun{}, err
+	}
+	return service.execute(ctx, request, run, started, hook)
+}
+
 func (service *CollectionService) collect(ctx context.Context, request domain.CollectionRequest, successHook func(context.Context, int64) error) (domain.CollectionRun, error) {
 	if service == nil || service.runtime == nil {
 		return domain.CollectionRun{}, errors.New("collection service is not initialized")
@@ -70,21 +110,18 @@ func (service *CollectionService) collect(ctx context.Context, request domain.Co
 	if err := request.Validate(); err != nil {
 		return domain.CollectionRun{}, domain.NewCollectionError(domain.CollectionErrorPermanent, err)
 	}
-	run, _, err := service.runs.CreateOrReuseRun(ctx, request)
-	if err != nil {
-		return domain.CollectionRun{}, err
-	}
-	run, started, err := service.runs.StartRun(ctx, run.ID, service.now().UTC().Add(-collectionRunReclaimAfter))
-	if err != nil {
-		return domain.CollectionRun{}, err
-	}
+	return service.CollectResolvedWithSuccessHook(ctx, request.SourceConnectionID, request.QuerySignature, func(context.Context) (domain.CollectionRequest, error) {
+		return request, nil
+	}, successHook)
+}
+
+func (service *CollectionService) execute(ctx context.Context, request domain.CollectionRequest, run domain.CollectionRun, started bool, successHook func(context.Context, int64) error) (domain.CollectionRun, error) {
 	if !started {
 		if run.Status == domain.CollectionRunSucceeded && successHook != nil {
 			if writer, ok := service.runs.(interface {
 				PersistSuccessWith(context.Context, domain.CollectionRunSuccess, func(context.Context, int64) error) (domain.CollectionRun, error)
 			}); ok {
-				_, err = writer.PersistSuccessWith(ctx, domain.CollectionRunSuccess{RunID: run.ID, Targets: request.Targets, CompletedAt: service.now().UTC()}, successHook)
-				if err != nil {
+				if _, err := writer.PersistSuccessWith(ctx, domain.CollectionRunSuccess{RunID: run.ID, Targets: request.Targets, CompletedAt: service.now().UTC()}, successHook); err != nil {
 					return domain.CollectionRun{}, err
 				}
 			} else if err := successHook(ctx, run.ID); err != nil {

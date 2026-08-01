@@ -36,7 +36,13 @@ func (reader *PublishedCollectionTargetReader) ListDue(ctx context.Context, now 
 	if now.IsZero() {
 		return nil, fmt.Errorf("%w: collection due time is required", sharedrepository.ErrInvalidInput)
 	}
-	rows, err := reader.runtime.SQL.QueryContext(ctx, `
+	queryer := interface {
+		QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	}(reader.runtime.SQL)
+	if transaction, ok := database.TransactionFromContext(ctx); ok {
+		queryer = transaction.SQL
+	}
+	rows, err := queryer.QueryContext(ctx, `
 SELECT
     monitor_source.id,
     config_version.id,
@@ -184,7 +190,7 @@ func (reader *PublishedCollectionTargetReader) ListForCollection(ctx context.Con
 		}
 	}
 	if len(matched) == 0 {
-		return nil, fmt.Errorf("collection target not found")
+		return nil, fmt.Errorf("%w: collection target not found", sharedrepository.ErrNotFound)
 	}
 	return matched, nil
 }

@@ -20,7 +20,12 @@ type CollectionControlDependencies struct {
 	Runs       domain.CollectionRepository
 	Connectors domain.CollectionConnectorRegistry
 	Metrics    CollectionMetrics
+	Retries    CollectionRetryActivator
 	Now        func() time.Time
+}
+
+type CollectionRetryActivator interface {
+	Reactivate(context.Context, domain.CollectionRun) error
 }
 
 type CollectionControlService struct {
@@ -29,11 +34,12 @@ type CollectionControlService struct {
 	runs       domain.CollectionRepository
 	connectors domain.CollectionConnectorRegistry
 	metrics    CollectionMetrics
+	retries    CollectionRetryActivator
 	now        func() time.Time
 }
 
 func NewCollectionControlService(dependencies CollectionControlDependencies) (*CollectionControlService, error) {
-	if dependencies.Runtime == nil || dependencies.Sources == nil || dependencies.Runs == nil || dependencies.Connectors == nil {
+	if dependencies.Runtime == nil || dependencies.Sources == nil || dependencies.Runs == nil || dependencies.Connectors == nil || dependencies.Retries == nil {
 		return nil, errors.New("collection control dependencies are required")
 	}
 	if dependencies.Metrics == nil {
@@ -44,7 +50,7 @@ func NewCollectionControlService(dependencies CollectionControlDependencies) (*C
 	}
 	return &CollectionControlService{
 		runtime: dependencies.Runtime, sources: dependencies.Sources, runs: dependencies.Runs,
-		connectors: dependencies.Connectors, metrics: dependencies.Metrics, now: dependencies.Now,
+		connectors: dependencies.Connectors, metrics: dependencies.Metrics, retries: dependencies.Retries, now: dependencies.Now,
 	}, nil
 }
 
@@ -76,9 +82,8 @@ func (service *CollectionControlService) List(ctx context.Context, input Collect
 	return page, nil
 }
 
-// Retry is an explicit state command, not an execution shortcut. The durable
-// run is requeued for the normal scheduler; this request neither calls Fetch
-// nor creates a Cron/River job.
+// Retry atomically restores the failed window and reactivates its original
+// durable job. The request does not call Fetch or create a new queue record.
 func (service *CollectionControlService) Retry(ctx context.Context, input CollectionRunRetryInput) (domain.CollectionRunSummary, error) {
 	if err := requireAdmin(input.Subject); err != nil {
 		return domain.CollectionRunSummary{}, err
@@ -86,7 +91,15 @@ func (service *CollectionControlService) Retry(ctx context.Context, input Collec
 	if input.ID <= 0 {
 		return domain.CollectionRunSummary{}, domain.InvalidCollectionRequest()
 	}
-	summary, err := service.runs.RetryRun(ctx, input.ID)
+	var summary domain.CollectionRunSummary
+	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
+		if _, err := transaction.SQL.ExecContext(transactionCtx, `SELECT pg_advisory_xact_lock(hashtext($1))`, "hotkey.monitor_source_configuration"); err != nil {
+			return err
+		}
+		var err error
+		summary, err = service.runs.RetryRunWithHook(transactionCtx, input.ID, service.retries.Reactivate)
+		return err
+	})
 	if err != nil {
 		service.metrics.RecordCollectionOperation("retry", "error")
 		return domain.CollectionRunSummary{}, collectionControlError(err)
