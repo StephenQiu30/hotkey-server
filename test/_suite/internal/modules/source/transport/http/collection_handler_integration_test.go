@@ -27,6 +27,7 @@ func TestCollectionAdminHTTPIntegrationUsesSafeDTOsAndDurableStateCommands(t *te
 	service, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
 		Connectors: collectionHTTPRegistry{connector: collectionHTTPConnector{health: domain.HealthResult{CheckedAt: checkedAt, ErrorKind: domain.CollectionErrorTemporary, DiagnosticCode: "request_failed"}}},
+		Retries:    collectionHTTPRetryActivator{},
 		Now:        func() time.Time { return checkedAt },
 	})
 	if err != nil {
@@ -67,6 +68,12 @@ func TestCollectionAdminHTTPIntegrationUsesSafeDTOsAndDurableStateCommands(t *te
 	if healthStatus != string(domain.HealthStatusDegraded) {
 		t.Fatalf("health status = %q, want %q", healthStatus, domain.HealthStatusDegraded)
 	}
+}
+
+type collectionHTTPRetryActivator struct{}
+
+func (collectionHTTPRetryActivator) Reactivate(context.Context, domain.CollectionRun) error {
+	return nil
 }
 
 func collectionHTTPRuntime(t *testing.T) *database.Runtime {
