@@ -6,7 +6,7 @@ feature_area: 验收记录
 purpose: 定义长期验收证据的结构、结论和归档边界
 canonical_path: docs/acceptance/README.md
 status: review
-version: v3.7
+version: v3.8
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -76,6 +76,7 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | 021 | [集中测试资产与目录边界优化](archive/021-集中测试资产与目录边界优化验收.md) | accepted_with_risk |
 | 022 | [Shared 仓储基础设施边界修复](archive/022-Shared仓储基础设施边界修复验收.md) | accepted_with_risk |
 | 023 | [首管理员数据库指定](archive/023-首管理员数据库指定验收.md) | accepted_with_risk |
+| 024 | [采集批次原子重试](024-采集批次原子重试验收.md) | pending |
 
 ## 变更记录
 
@@ -108,3 +109,4 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | v3.5 | 2026-08-01 | PLAN-022 通过依赖门禁和独立实现复审，以 accepted_with_risk 记录隔离测试环境缺失并归档。 |
 | v3.6 | 2026-08-01 | 创建 PLAN-023 首管理员数据库指定验收模板，结论保持 pending。 |
 | v3.7 | 2026-08-01 | `27efea1` 完成 PLAN-023 并通过独立实现复审，以隔离 PostgreSQL DSN 与外部 Secret 清理风险归档。 |
+| v3.8 | 2026-08-01 | 创建 PLAN-024 原子恢复采集批次与原队列任务的实施前验收模板。 |

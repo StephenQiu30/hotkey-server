@@ -6,7 +6,7 @@ feature_area: AI热点事件监控平台
 purpose: 管理从权威设计拆分出的后端执行任务需求
 canonical_path: docs/prd/README.md
 status: review
-version: v3.8
+version: v3.9
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -75,6 +75,7 @@ downstream:
 | [021](archive/021-集中测试资产与目录边界优化.md) | 集中测试资产与生产目录边界优化 | Closure | P1 | 001 | archived | done |
 | [022](archive/022-Shared仓储基础设施边界修复.md) | Shared 仓储基础设施边界修复 | Closure | P1 | 002, 021 | archived | done |
 | [023](archive/023-首管理员数据库指定.md) | 首管理员数据库指定与引导凭据移除 | Closure | P1 | 004, 020 | archived | done |
+| [024](024-采集批次原子重试.md) | 采集批次与原队列任务原子重试 | Closure | P0 | 006, 013, 014 | accepted | ready |
 
 ## 主链路
 
@@ -92,8 +93,9 @@ downstream:
                                       001 → 021
                                       002 + 021 → 022
                                       004 + 020 → 023
+                                      006 + 013 + 014 → 024
 
-PRD-001–023 已移入 [`archive/`](archive/README.md)。外部依赖和隔离测试环境限制按对应 Acceptance/Operations 记录。
+PRD-001–023 已移入 [`archive/`](archive/README.md)；PRD-024 已接受并等待计划门禁。外部依赖和隔离测试环境限制按对应 Acceptance/Operations 记录。
 
 ## 每个 PRD 的完成要求
 

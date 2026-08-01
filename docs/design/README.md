@@ -6,7 +6,7 @@ feature_area: AI热点事件监控平台
 purpose: 管理 HotKey Server 权威设计文档及其状态
 canonical_path: docs/design/README.md
 status: review
-version: v1.6
+version: v1.7
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -54,5 +54,6 @@ downstream:
 | [`archive/015-LangChainGo多Provider与本地模型设计.md`](archive/015-LangChainGo多Provider与本地模型设计.md) | DeepSeek、Ollama、Qwen3 Embedding 与 LangChainGo 运行边界 | accepted |
 | [`archive/016-采集内容Markdown归档与预览设计.md`](archive/016-采集内容Markdown归档与预览设计.md) | 授权 Feed 内容的 Markdown 归档、受限读取与 PDF 保存边界 | accepted |
 | [`archive/017-首管理员数据库指定设计.md`](archive/017-首管理员数据库指定设计.md) | 以数据库角色指定替代环境变量管理员引导凭据 | archived |
+| [`018-采集批次与队列任务原子重试设计.md`](018-采集批次与队列任务原子重试设计.md) | failed/cancelled 采集批次与原 River 任务的事务一致重试 | accepted |
 
-001–017 的现有设计均已随对应实施与长期验收证据归档。已落地设计见 [`archive/`](archive/README.md)。
+001–017 的现有设计均已随对应实施与长期验收证据归档；018 为当前实施设计。已落地设计见 [`archive/`](archive/README.md)。
