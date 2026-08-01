@@ -3,15 +3,51 @@ package postgres_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/internal/modules/monitor/infrastructure/postgres"
 	sourcedomain "github.com/StephenQiu30/hotkey-server/internal/modules/source/domain"
+	"github.com/StephenQiu30/hotkey-server/internal/platform/database"
 	"github.com/StephenQiu30/hotkey-server/internal/platform/queue"
 	platformscheduler "github.com/StephenQiu30/hotkey-server/internal/platform/scheduler"
 )
+
+func TestPublishedCollectionTargetReaderUsesCallerTransactionForRetryCheckpoint(t *testing.T) {
+	runtime := monitorRepositoryRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	windowStart := time.Date(2026, time.July, 16, 8, 0, 0, 0, time.UTC)
+	windowEnd := windowStart.Add(time.Hour)
+	future := windowEnd.Add(time.Hour)
+	seeded := seedCollectionTarget(t, runtime.SQL, "transaction-retry", "active", true, true, true, false, future)
+	reader := monitorpostgres.NewPublishedCollectionTargetReader(runtime)
+	rollback := errors.New("rollback transaction-scoped checkpoint")
+	err := runtime.WithinTransaction(context.Background(), func(ctx context.Context, transaction database.Transaction) error {
+		if _, err := transaction.SQL.ExecContext(ctx, `UPDATE source_checkpoints SET next_poll_at = $1 WHERE monitor_source_id = $2`, windowStart, seeded.monitorSourceID); err != nil {
+			return err
+		}
+		targets, err := reader.ListForCollection(ctx, seeded.sourceID, seeded.configID, strings.Repeat("a", 64), windowStart, windowEnd)
+		if err != nil {
+			t.Fatalf("ListForCollection() did not see caller transaction checkpoint: %v", err)
+		}
+		if len(targets) != 1 || targets[0].MonitorSourceID != seeded.monitorSourceID || !targets[0].Checkpoint.NextPollAt.Equal(windowStart) {
+			t.Fatalf("transaction-scoped targets = %#v", targets)
+		}
+		return rollback
+	})
+	if !errors.Is(err, rollback) {
+		t.Fatalf("WithinTransaction() error = %v, want rollback sentinel", err)
+	}
+	var persisted time.Time
+	if err := runtime.SQL.QueryRow(`SELECT next_poll_at FROM source_checkpoints WHERE monitor_source_id = $1`, seeded.monitorSourceID).Scan(&persisted); err != nil {
+		t.Fatal(err)
+	}
+	if !persisted.Equal(future) {
+		t.Fatalf("checkpoint after rollback = %s, want %s", persisted, future)
+	}
+}
 
 func TestPublishedCollectionTargetReaderReturnsOnlyDueActivePublishedEnabledTargets(t *testing.T) {
 	runtime := monitorRepositoryRuntime(t)

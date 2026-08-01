@@ -362,9 +362,9 @@ func TestCollectionRepositoryListsSafeSummariesAndRequeuesOnlyTerminalFailures(t
 		t.Fatalf("ListRuns(invalid cursor) error = %v, want invalid input", err)
 	}
 
-	retried, err := repository.RetryRun(context.Background(), run.ID)
+	retried, err := repository.RetryRunWithHook(context.Background(), run.ID, successfulRetryHook)
 	if err != nil {
-		t.Fatalf("RetryRun(): %v", err)
+		t.Fatalf("RetryRunWithHook(): %v", err)
 	}
 	if retried.Status != domain.CollectionRunQueued || retried.ErrorCode != "" || retried.StartedAt != nil || retried.FinishedAt != nil || len(retried.Targets) != 2 {
 		t.Fatalf("retried summary = %#v, want reset queued run", retried)
@@ -382,8 +382,8 @@ func TestCollectionRepositoryListsSafeSummariesAndRequeuesOnlyTerminalFailures(t
 	if triggerType != "retry" || status != "queued" || retryAfter != nil || startedAt != nil || finishedAt != nil {
 		t.Fatalf("requeued database state = trigger=%q status=%q retry=%v started=%v finished=%v", triggerType, status, retryAfter, startedAt, finishedAt)
 	}
-	if _, err := repository.RetryRun(context.Background(), run.ID); !errors.Is(err, sharedrepository.ErrConflict) {
-		t.Fatalf("RetryRun(queued) error = %v, want conflict", err)
+	if _, err := repository.RetryRunWithHook(context.Background(), run.ID, successfulRetryHook); !errors.Is(err, sharedrepository.ErrConflict) {
+		t.Fatalf("RetryRunWithHook(queued) error = %v, want conflict", err)
 	}
 }
 
@@ -422,8 +422,8 @@ func TestCollectionRepositoryRetryRepairsCheckpointConflictTargetReconciliation(
 		t.Fatalf("failed reconciliation = outcome=%q reason=%q", outcome, reason)
 	}
 
-	if _, err := repository.RetryRun(context.Background(), run.ID); err != nil {
-		t.Fatalf("RetryRun(): %v", err)
+	if _, err := repository.RetryRunWithHook(context.Background(), run.ID, successfulRetryHook); err != nil {
+		t.Fatalf("RetryRunWithHook(): %v", err)
 	}
 	if _, started, err := repository.StartRun(context.Background(), run.ID, time.Time{}); err != nil || !started {
 		t.Fatalf("StartRun(retry) started/error = %t / %v", started, err)
@@ -446,6 +446,56 @@ func TestCollectionRepositoryRetryRepairsCheckpointConflictTargetReconciliation(
 	if outcome != "captured" || reason != "" {
 		t.Fatalf("repaired reconciliation = outcome=%q reason=%q, want captured with no reason", outcome, reason)
 	}
+}
+
+func TestCollectionRepositoryRetryHookFailureRollsBack(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	repository := sourcepostgres.NewCollectionRepository(runtime)
+	request := collectionRequestForRepository(t, runtime, "retry-hook-rollback", 1)
+	run, _, err := repository.CreateOrReuseRun(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, started, err := repository.StartRun(context.Background(), run.ID, time.Time{}); err != nil || !started {
+		t.Fatalf("StartRun() = %t/%v", started, err)
+	}
+	if _, err := repository.PersistFailure(context.Background(), domain.CollectionRunFailure{
+		RunID: run.ID, Targets: request.Targets, ErrorKind: domain.CollectionErrorTemporary, CompletedAt: request.WindowEnd,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var checkpointBefore time.Time
+	if err := runtime.SQL.QueryRow(`SELECT next_poll_at FROM source_checkpoints WHERE id = $1`, request.Targets[0].Checkpoint.ID).Scan(&checkpointBefore); err != nil {
+		t.Fatal(err)
+	}
+	hookError := errors.New("queue activation failed")
+	if _, err := repository.RetryRunWithHook(context.Background(), run.ID, func(context.Context, domain.CollectionRunRetry) error {
+		return hookError
+	}); !errors.Is(err, hookError) {
+		t.Fatalf("RetryRunWithHook() error = %v, want hook failure", err)
+	}
+	var runStatus, targetStatus string
+	var checkpointAfter time.Time
+	if err := runtime.SQL.QueryRow(`SELECT status FROM collection_runs WHERE id = $1`, run.ID).Scan(&runStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT target_status FROM collection_run_targets WHERE collection_run_id = $1`, run.ID).Scan(&targetStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT next_poll_at FROM source_checkpoints WHERE id = $1`, request.Targets[0].Checkpoint.ID).Scan(&checkpointAfter); err != nil {
+		t.Fatal(err)
+	}
+	if runStatus != "failed" || targetStatus != "failed" || !checkpointAfter.Equal(checkpointBefore) {
+		t.Fatalf("rollback facts = run=%q target=%q checkpoint=%s", runStatus, targetStatus, checkpointAfter)
+	}
+	if _, err := repository.RetryRunWithHook(context.Background(), run.ID, nil); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("RetryRunWithHook(nil) error = %v, want invalid input", err)
+	}
+}
+
+func successfulRetryHook(context.Context, domain.CollectionRunRetry) error {
+	return nil
 }
 
 func collectionRequestForRepository(t *testing.T, runtime *database.Runtime, name string, targetCount int) domain.CollectionRequest {

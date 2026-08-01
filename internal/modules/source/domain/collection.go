@@ -305,6 +305,19 @@ type CollectionRun struct {
 	Status             CollectionRunStatus
 }
 
+// CollectionRunRetry carries the immutable target identity captured with the
+// original run. Retry infrastructure must prove that the complete target set
+// is still eligible before it can reactivate the durable queue job.
+type CollectionRunRetry struct {
+	Run     CollectionRun
+	Targets []CollectionRunTargetIdentity
+}
+
+type CollectionRunTargetIdentity struct {
+	MonitorSourceID        int64
+	MonitorConfigVersionID int64
+}
+
 // CollectionRunSummary is the deliberately safe operations projection. It
 // excludes the source identity, query signature and all upstream request
 // state, which remain internal collection execution facts.

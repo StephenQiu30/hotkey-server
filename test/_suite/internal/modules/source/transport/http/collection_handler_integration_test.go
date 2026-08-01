@@ -72,7 +72,7 @@ func TestCollectionAdminHTTPIntegrationUsesSafeDTOsAndDurableStateCommands(t *te
 
 type collectionHTTPRetryActivator struct{}
 
-func (collectionHTTPRetryActivator) Reactivate(context.Context, domain.CollectionRun) error {
+func (collectionHTTPRetryActivator) Reactivate(context.Context, domain.CollectionRunRetry) error {
 	return nil
 }
 

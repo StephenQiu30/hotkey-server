@@ -25,7 +25,7 @@ type CollectionControlDependencies struct {
 }
 
 type CollectionRetryActivator interface {
-	Reactivate(context.Context, domain.CollectionRun) error
+	Reactivate(context.Context, domain.CollectionRunRetry) error
 }
 
 type CollectionControlService struct {

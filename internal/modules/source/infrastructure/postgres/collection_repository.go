@@ -328,17 +328,16 @@ WHERE id = $2
 	})
 }
 
-func (repository *CollectionRepository) RetryRun(ctx context.Context, runID int64) (domain.CollectionRunSummary, error) {
-	return repository.RetryRunWithHook(ctx, runID, nil)
-}
-
 // RetryRunWithHook restores the failed window and its durable queue job in
 // one transaction. The per-source/signature advisory lock is shared with the
 // worker claim path, so a newer window cannot appear between the latest-run
 // check and checkpoint restoration.
-func (repository *CollectionRepository) RetryRunWithHook(ctx context.Context, runID int64, hook func(context.Context, domain.CollectionRun) error) (domain.CollectionRunSummary, error) {
+func (repository *CollectionRepository) RetryRunWithHook(ctx context.Context, runID int64, hook func(context.Context, domain.CollectionRunRetry) error) (domain.CollectionRunSummary, error) {
 	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
 		return domain.CollectionRunSummary{}, sharedrepository.ErrUnavailable
+	}
+	if hook == nil {
+		return domain.CollectionRunSummary{}, fmt.Errorf("%w: collection retry activator is required", sharedrepository.ErrInvalidInput)
 	}
 	if runID <= 0 {
 		return domain.CollectionRunSummary{}, fmt.Errorf("%w: collection run id is required", sharedrepository.ErrInvalidInput)
@@ -373,10 +372,11 @@ SELECT EXISTS (
 		if newer {
 			return fmt.Errorf("%w: a newer collection window exists", sharedrepository.ErrConflict)
 		}
-		var targetCount int64
-		if err := transaction.SQL.QueryRowContext(ctx, `SELECT count(*) FROM collection_run_targets WHERE collection_run_id = $1`, runID).Scan(&targetCount); err != nil {
-			return databaserepository.MapError(err)
+		targetIdentities, err := collectionRunTargetIdentitiesForUpdate(ctx, transaction, runID)
+		if err != nil {
+			return err
 		}
+		targetCount := int64(len(targetIdentities))
 		checkpointResult, err := transaction.SQL.ExecContext(ctx, `
 UPDATE source_checkpoints AS checkpoint
 SET next_poll_at = $2, version = checkpoint.version + 1, updated_at = now()
@@ -429,10 +429,8 @@ RETURNING `+collectionRunSummaryColumns, runID))
 			return err
 		}
 		summary.Targets = targets
-		if hook != nil {
-			if err := hook(ctx, run); err != nil {
-				return err
-			}
+		if err := hook(ctx, domain.CollectionRunRetry{Run: run, Targets: targetIdentities}); err != nil {
+			return err
 		}
 		return nil
 	})
@@ -440,6 +438,31 @@ RETURNING `+collectionRunSummaryColumns, runID))
 		return domain.CollectionRunSummary{}, err
 	}
 	return summary, nil
+}
+
+func collectionRunTargetIdentitiesForUpdate(ctx context.Context, transaction database.Transaction, runID int64) ([]domain.CollectionRunTargetIdentity, error) {
+	rows, err := transaction.SQL.QueryContext(ctx, `
+SELECT monitor_source_id, monitor_config_version_id
+FROM collection_run_targets
+WHERE collection_run_id = $1
+ORDER BY monitor_source_id ASC
+FOR UPDATE`, runID)
+	if err != nil {
+		return nil, databaserepository.MapError(err)
+	}
+	defer rows.Close()
+	identities := make([]domain.CollectionRunTargetIdentity, 0)
+	for rows.Next() {
+		var identity domain.CollectionRunTargetIdentity
+		if err := rows.Scan(&identity.MonitorSourceID, &identity.MonitorConfigVersionID); err != nil {
+			return nil, databaserepository.MapError(err)
+		}
+		identities = append(identities, identity)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, databaserepository.MapError(err)
+	}
+	return identities, nil
 }
 
 // PersistSuccess makes captured source facts, per-target reconciliation and

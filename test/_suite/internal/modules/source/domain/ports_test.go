@@ -58,10 +58,7 @@ func (*collectionRepositoryFake) PersistFailure(context.Context, CollectionRunFa
 func (*collectionRepositoryFake) ListRuns(context.Context, CollectionRunListQuery) (CollectionRunPage, error) {
 	return CollectionRunPage{}, nil
 }
-func (*collectionRepositoryFake) RetryRun(context.Context, int64) (CollectionRunSummary, error) {
-	return CollectionRunSummary{}, nil
-}
-func (*collectionRepositoryFake) RetryRunWithHook(context.Context, int64, func(context.Context, CollectionRun) error) (CollectionRunSummary, error) {
+func (*collectionRepositoryFake) RetryRunWithHook(context.Context, int64, func(context.Context, CollectionRunRetry) error) (CollectionRunSummary, error) {
 	return CollectionRunSummary{}, nil
 }
 func (*collectionRepositoryFake) ListUnboundCaptured(context.Context, CapturedItemQuery) (CapturedItemPage, error) {

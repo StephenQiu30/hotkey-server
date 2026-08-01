@@ -25,19 +25,45 @@ func NewCollectionRetryActivator(targets CollectionTargetReader, jobs *queue.Sto
 	return &CollectionRetryActivator{targets: targets, jobs: jobs}, nil
 }
 
-func (activator *CollectionRetryActivator) Reactivate(ctx context.Context, run sourcedomain.CollectionRun) error {
+func (activator *CollectionRetryActivator) Reactivate(ctx context.Context, retry sourcedomain.CollectionRunRetry) error {
 	if activator == nil || activator.targets == nil || activator.jobs == nil {
 		return sharedrepository.ErrUnavailable
 	}
-	targets, err := activator.targets.ListForCollection(ctx, run.SourceConnectionID, 1, run.QuerySignature, run.WindowStart, run.WindowEnd)
+	if len(retry.Targets) == 0 {
+		return fmt.Errorf("%w: original collection targets are unavailable", sharedrepository.ErrConflict)
+	}
+	minimumConfigVersionID := retry.Targets[0].MonitorConfigVersionID
+	expected := make(map[sourcedomain.CollectionRunTargetIdentity]struct{}, len(retry.Targets))
+	for _, target := range retry.Targets {
+		if target.MonitorSourceID <= 0 || target.MonitorConfigVersionID <= 0 {
+			return fmt.Errorf("%w: original collection target identity is invalid", sharedrepository.ErrConflict)
+		}
+		if target.MonitorConfigVersionID < minimumConfigVersionID {
+			minimumConfigVersionID = target.MonitorConfigVersionID
+		}
+		if _, duplicate := expected[target]; duplicate {
+			return fmt.Errorf("%w: original collection target identity is duplicated", sharedrepository.ErrConflict)
+		}
+		expected[target] = struct{}{}
+	}
+	run := retry.Run
+	targets, err := activator.targets.ListForCollection(ctx, run.SourceConnectionID, minimumConfigVersionID, run.QuerySignature, run.WindowStart, run.WindowEnd)
 	if err != nil {
 		if errors.Is(err, sharedrepository.ErrNotFound) {
 			return fmt.Errorf("%w: collection targets are no longer eligible", sharedrepository.ErrConflict)
 		}
 		return err
 	}
-	if len(targets) == 0 {
-		return fmt.Errorf("%w: collection targets are no longer eligible", sharedrepository.ErrConflict)
+	if len(targets) != len(expected) {
+		return fmt.Errorf("%w: collection target set is no longer eligible", sharedrepository.ErrConflict)
+	}
+	for _, target := range targets {
+		identity := sourcedomain.CollectionRunTargetIdentity{
+			MonitorSourceID: target.MonitorSourceID, MonitorConfigVersionID: target.MonitorConfigVersionID,
+		}
+		if _, found := expected[identity]; !found {
+			return fmt.Errorf("%w: collection target set changed", sharedrepository.ErrConflict)
+		}
 	}
 	_, err = activator.jobs.ReactivateByUniqueKey(ctx, queue.KindCollectSource, scheduler.CollectionUniqueKey(run.SourceConnectionID, run.QuerySignature, run.WindowStart, run.WindowEnd))
 	if err != nil {

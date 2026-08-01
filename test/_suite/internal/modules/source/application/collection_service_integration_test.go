@@ -2,6 +2,7 @@ package application_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -418,6 +419,411 @@ WHERE id = (SELECT monitor_id FROM monitor_config_versions WHERE id = $1)`, requ
 	}
 }
 
+func TestCollectionControlRetryRejectsIncompleteEligibleTargetSet(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	request := collectionRequestForService(t, runtime, "incomplete-target-set", 2)
+	for _, target := range request.Targets {
+		if _, err := runtime.SQL.Exec(`
+INSERT INTO monitor_rules (config_version_id, rule_type, operator, value, origin, approval_status)
+VALUES ($1, 'keyword', 'contains', 'climate', 'user', 'approved')`, target.MonitorConfigVersionID); err != nil {
+			t.Fatalf("create monitor rule: %v", err)
+		}
+		if _, err := runtime.SQL.Exec(`
+UPDATE monitor_config_versions SET state = 'published', published_at = now(), config_hash = repeat('a', 64)
+WHERE id = $1`, target.MonitorConfigVersionID); err != nil {
+			t.Fatalf("publish config: %v", err)
+		}
+		if _, err := runtime.SQL.Exec(`
+UPDATE monitors SET status = 'active', published_config_version_id = $1
+WHERE id = (SELECT monitor_id FROM monitor_config_versions WHERE id = $1)`, target.MonitorConfigVersionID); err != nil {
+			t.Fatalf("activate monitor: %v", err)
+		}
+	}
+	runs := sourcepostgres.NewCollectionRepository(runtime)
+	run, _, err := runs.CreateOrReuseRun(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, started, err := runs.StartRun(context.Background(), run.ID, time.Time{}); err != nil || !started {
+		t.Fatalf("start run: %t/%v", started, err)
+	}
+	if _, err := runs.PersistFailure(context.Background(), domain.CollectionRunFailure{
+		RunID: run.ID, Targets: request.Targets, ErrorKind: domain.CollectionErrorTemporary, CompletedAt: request.WindowEnd,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	store := queue.NewStore(runtime)
+	jobID, _, err := store.Enqueue(context.Background(), queue.Job{
+		Kind:      queue.KindCollectSource,
+		UniqueKey: scheduler.CollectionUniqueKey(request.SourceConnectionID, request.QuerySignature, request.WindowStart, request.WindowEnd),
+		Payload: queue.Payload{
+			EntityID: request.SourceConnectionID, EntityVersion: request.Targets[0].MonitorConfigVersionID,
+			InputHash: request.QuerySignature, WindowStart: request.WindowStart, WindowEnd: request.WindowEnd,
+		},
+		ScheduledAt: request.WindowStart, MaxAttempts: 3, Priority: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE river_job SET state = 'discarded', attempt = 1, finalized_at = now() WHERE id = $1`, jobID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`
+UPDATE monitors SET status = 'paused'
+WHERE id = (SELECT monitor_id FROM monitor_config_versions WHERE id = $1)`, request.Targets[1].MonitorConfigVersionID); err != nil {
+		t.Fatal(err)
+	}
+	var checkpointBefore time.Time
+	if err := runtime.SQL.QueryRow(`SELECT next_poll_at FROM source_checkpoints WHERE id = $1`, request.Targets[0].Checkpoint.ID).Scan(&checkpointBefore); err != nil {
+		t.Fatal(err)
+	}
+	targetReader := monitorpostgres.NewPublishedCollectionTargetReader(runtime)
+	activator, err := sourcejobs.NewCollectionRetryActivator(targetReader, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
+		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs, Retries: activator,
+		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := identitydomain.Subject{UserID: 1, SessionID: 1, Role: identitydomain.RoleAdmin}
+	if _, err := control.Retry(context.Background(), sourceapplication.CollectionRunRetryInput{Subject: admin, ID: run.ID}); err == nil {
+		t.Fatal("Retry() unexpectedly accepted an incomplete eligible target set")
+	}
+	var runStatus, firstTargetStatus, secondTargetStatus, jobState string
+	var checkpointAfter time.Time
+	if err := runtime.SQL.QueryRow(`SELECT status FROM collection_runs WHERE id = $1`, run.ID).Scan(&runStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT target_status FROM collection_run_targets WHERE collection_run_id = $1 AND monitor_source_id = $2`, run.ID, request.Targets[0].MonitorSourceID).Scan(&firstTargetStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT target_status FROM collection_run_targets WHERE collection_run_id = $1 AND monitor_source_id = $2`, run.ID, request.Targets[1].MonitorSourceID).Scan(&secondTargetStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT next_poll_at FROM source_checkpoints WHERE id = $1`, request.Targets[0].Checkpoint.ID).Scan(&checkpointAfter); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT state FROM river_job WHERE id = $1`, jobID).Scan(&jobState); err != nil {
+		t.Fatal(err)
+	}
+	if runStatus != "failed" || firstTargetStatus != "failed" || secondTargetStatus != "failed" || !checkpointAfter.Equal(checkpointBefore) || jobState != "discarded" {
+		t.Fatalf("rollback facts = run=%q targets=%q/%q checkpoint=%s job=%q", runStatus, firstTargetStatus, secondTargetStatus, checkpointAfter, jobState)
+	}
+}
+
+func TestCollectionControlRetryRejectsAdvancedCheckpointAndRollsBack(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	request := collectionRequestForService(t, runtime, "advanced-checkpoint", 1)
+	runs := sourcepostgres.NewCollectionRepository(runtime)
+	run, _, err := runs.CreateOrReuseRun(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, started, err := runs.StartRun(context.Background(), run.ID, time.Time{}); err != nil || !started {
+		t.Fatalf("start run: %t/%v", started, err)
+	}
+	if _, err := runs.PersistFailure(context.Background(), domain.CollectionRunFailure{
+		RunID: run.ID, Targets: request.Targets, ErrorKind: domain.CollectionErrorTemporary, CompletedAt: request.WindowEnd,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE source_checkpoints SET cursor_value = 'newer-cursor', version = version + 1 WHERE id = $1`, request.Targets[0].Checkpoint.ID); err != nil {
+		t.Fatal(err)
+	}
+	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
+		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs, Retries: collectionRetryActivatorFake{},
+		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := identitydomain.Subject{UserID: 1, SessionID: 1, Role: identitydomain.RoleAdmin}
+	if _, err := control.Retry(context.Background(), sourceapplication.CollectionRunRetryInput{Subject: admin, ID: run.ID}); err == nil {
+		t.Fatal("Retry() unexpectedly accepted an advanced checkpoint")
+	}
+	var runStatus, targetStatus, cursor string
+	if err := runtime.SQL.QueryRow(`SELECT status FROM collection_runs WHERE id = $1`, run.ID).Scan(&runStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT target_status FROM collection_run_targets WHERE collection_run_id = $1`, run.ID).Scan(&targetStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT COALESCE(cursor_value, '') FROM source_checkpoints WHERE id = $1`, request.Targets[0].Checkpoint.ID).Scan(&cursor); err != nil {
+		t.Fatal(err)
+	}
+	if runStatus != "failed" || targetStatus != "failed" || cursor != "newer-cursor" {
+		t.Fatalf("rollback facts = run=%q target=%q cursor=%q", runStatus, targetStatus, cursor)
+	}
+}
+
+func TestCollectionControlRetryIsConcurrentSafe(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	request := collectionRequestForService(t, runtime, "concurrent-retry", 1)
+	runs := sourcepostgres.NewCollectionRepository(runtime)
+	run, _, err := runs.CreateOrReuseRun(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, started, err := runs.StartRun(context.Background(), run.ID, time.Time{}); err != nil || !started {
+		t.Fatalf("start run: %t/%v", started, err)
+	}
+	if _, err := runs.PersistFailure(context.Background(), domain.CollectionRunFailure{
+		RunID: run.ID, Targets: request.Targets, ErrorKind: domain.CollectionErrorTemporary, CompletedAt: request.WindowEnd,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
+		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs, Retries: collectionRetryActivatorFake{},
+		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := identitydomain.Subject{UserID: 1, SessionID: 1, Role: identitydomain.RoleAdmin}
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	var group sync.WaitGroup
+	for range 2 {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			<-start
+			_, retryErr := control.Retry(context.Background(), sourceapplication.CollectionRunRetryInput{Subject: admin, ID: run.ID})
+			results <- retryErr
+		}()
+	}
+	close(start)
+	group.Wait()
+	close(results)
+	succeeded, conflicted := 0, 0
+	for retryErr := range results {
+		if retryErr == nil {
+			succeeded++
+		} else {
+			conflicted++
+		}
+	}
+	if succeeded != 1 || conflicted != 1 {
+		t.Fatalf("concurrent retry results = success %d conflict %d", succeeded, conflicted)
+	}
+}
+
+func TestCollectionClaimSerializesRetryAndNewerWorker(t *testing.T) {
+	t.Run("retry wins", testCollectionClaimRetryWins)
+	t.Run("newer worker wins", testCollectionClaimNewerWorkerWins)
+}
+
+func testCollectionClaimRetryWins(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	request := collectionRequestForService(t, runtime, "retry-worker-claim-retry-wins", 1)
+	runs := sourcepostgres.NewCollectionRepository(runtime)
+	run, _, err := runs.CreateOrReuseRun(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, started, err := runs.StartRun(context.Background(), run.ID, time.Time{}); err != nil || !started {
+		t.Fatalf("start run: %t/%v", started, err)
+	}
+	if _, err := runs.PersistFailure(context.Background(), domain.CollectionRunFailure{
+		RunID: run.ID, Targets: request.Targets, ErrorKind: domain.CollectionErrorTemporary, CompletedAt: request.WindowEnd,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	newer := newerCollectionRequest(t, runtime, request)
+	activator := &blockingCollectionRetryActivator{entered: make(chan struct{}), release: make(chan struct{})}
+	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
+		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs, Retries: activator,
+		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	collections, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs,
+		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := identitydomain.Subject{UserID: 1, SessionID: 1, Role: identitydomain.RoleAdmin}
+	retryResult := make(chan error, 1)
+	go func() {
+		_, retryErr := control.Retry(context.Background(), sourceapplication.CollectionRunRetryInput{Subject: admin, ID: run.ID})
+		retryResult <- retryErr
+	}()
+	<-activator.entered
+	workerAttempted := make(chan struct{})
+	retryWon := errors.New("retry restored the old window before worker resolution")
+	workerResult := make(chan error, 1)
+	go func() {
+		close(workerAttempted)
+		_, workerErr := collections.CollectResolvedWithSuccessHook(context.Background(), request.SourceConnectionID, request.QuerySignature, func(ctx context.Context) (domain.CollectionRequest, error) {
+			transaction, found := database.TransactionFromContext(ctx)
+			if !found {
+				return domain.CollectionRequest{}, errors.New("worker resolver lost caller transaction")
+			}
+			var nextPoll time.Time
+			if err := transaction.SQL.QueryRowContext(ctx, `SELECT next_poll_at FROM source_checkpoints WHERE id = $1`, request.Targets[0].Checkpoint.ID).Scan(&nextPoll); err != nil {
+				return domain.CollectionRequest{}, err
+			}
+			if !nextPoll.Equal(newer.WindowStart) {
+				return domain.CollectionRequest{}, retryWon
+			}
+			return newer, nil
+		}, nil)
+		workerResult <- workerErr
+	}()
+	<-workerAttempted
+	waitForAdvisoryWaiter(t, runtime)
+	close(activator.release)
+	if retryErr := <-retryResult; retryErr != nil {
+		t.Fatalf("Retry() error = %v", retryErr)
+	}
+	if workerErr := <-workerResult; !errors.Is(workerErr, retryWon) {
+		t.Fatalf("newer worker error = %v, want restored-window signal", workerErr)
+	}
+	var runCount int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM collection_runs WHERE source_connection_id = $1 AND query_signature = $2`, request.SourceConnectionID, request.QuerySignature).Scan(&runCount); err != nil {
+		t.Fatal(err)
+	}
+	if runCount != 1 {
+		t.Fatalf("collection run count = %d, want no phantom newer run", runCount)
+	}
+}
+
+func testCollectionClaimNewerWorkerWins(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	request := collectionRequestForService(t, runtime, "retry-worker-claim-worker-wins", 1)
+	runs := sourcepostgres.NewCollectionRepository(runtime)
+	failed, _, err := runs.CreateOrReuseRun(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, started, err := runs.StartRun(context.Background(), failed.ID, time.Time{}); err != nil || !started {
+		t.Fatalf("start run: %t/%v", started, err)
+	}
+	if _, err := runs.PersistFailure(context.Background(), domain.CollectionRunFailure{
+		RunID: failed.ID, Targets: request.Targets, ErrorKind: domain.CollectionErrorTemporary, CompletedAt: request.WindowEnd,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	newer := newerCollectionRequest(t, runtime, request)
+	collections, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs,
+		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}}, Now: func() time.Time { return newer.WindowEnd },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolverEntered := make(chan struct{})
+	resolverRelease := make(chan struct{})
+	workerResult := make(chan collectionClaimWorkerResult, 1)
+	go func() {
+		completed, workerErr := collections.CollectResolvedWithSuccessHook(context.Background(), request.SourceConnectionID, request.QuerySignature, func(context.Context) (domain.CollectionRequest, error) {
+			close(resolverEntered)
+			<-resolverRelease
+			return newer, nil
+		}, nil)
+		workerResult <- collectionClaimWorkerResult{run: completed, err: workerErr}
+	}()
+	<-resolverEntered
+	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
+		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs, Retries: collectionRetryActivatorFake{},
+		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := identitydomain.Subject{UserID: 1, SessionID: 1, Role: identitydomain.RoleAdmin}
+	retryAttempted := make(chan struct{})
+	retryResult := make(chan error, 1)
+	go func() {
+		close(retryAttempted)
+		_, retryErr := control.Retry(context.Background(), sourceapplication.CollectionRunRetryInput{Subject: admin, ID: failed.ID})
+		retryResult <- retryErr
+	}()
+	<-retryAttempted
+	waitForAdvisoryWaiter(t, runtime)
+	close(resolverRelease)
+	worker := <-workerResult
+	if worker.err != nil || worker.run.Status != domain.CollectionRunSucceeded || !worker.run.WindowStart.Equal(newer.WindowStart) {
+		t.Fatalf("newer worker result = %#v/%v", worker.run, worker.err)
+	}
+	if retryErr := <-retryResult; retryErr == nil {
+		t.Fatal("Retry() unexpectedly succeeded after the newer worker claimed its window")
+	}
+	var failedStatus string
+	if err := runtime.SQL.QueryRow(`SELECT status FROM collection_runs WHERE id = $1`, failed.ID).Scan(&failedStatus); err != nil {
+		t.Fatal(err)
+	}
+	var runCount int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM collection_runs WHERE source_connection_id = $1 AND query_signature = $2`, request.SourceConnectionID, request.QuerySignature).Scan(&runCount); err != nil {
+		t.Fatal(err)
+	}
+	if failedStatus != "failed" || runCount != 2 {
+		t.Fatalf("serialized facts = old run %q count %d, want failed/2", failedStatus, runCount)
+	}
+}
+
+type collectionClaimWorkerResult struct {
+	run domain.CollectionRun
+	err error
+}
+
+func newerCollectionRequest(t *testing.T, runtime *database.Runtime, request domain.CollectionRequest) domain.CollectionRequest {
+	t.Helper()
+	newer := request
+	newer.Targets = append([]domain.PublishedCollectionTarget(nil), request.Targets...)
+	var checkpoint domain.CollectionCheckpoint
+	checkpoint.ID = request.Targets[0].Checkpoint.ID
+	checkpoint.MonitorSourceID = request.Targets[0].MonitorSourceID
+	checkpoint.QueryHash = request.QuerySignature
+	if err := runtime.SQL.QueryRow(`
+SELECT version, COALESCE(cursor_value, ''), COALESCE(etag, ''), COALESCE(last_modified, ''), next_poll_at
+FROM source_checkpoints WHERE id = $1`, checkpoint.ID).Scan(
+		&checkpoint.Version, &checkpoint.CursorValue, &checkpoint.ETag, &checkpoint.LastModified, &checkpoint.NextPollAt,
+	); err != nil {
+		t.Fatal(err)
+	}
+	newer.WindowStart = checkpoint.NextPollAt
+	newer.WindowEnd = checkpoint.NextPollAt.Add(time.Hour)
+	newer.Targets[0].Checkpoint = checkpoint
+	return newer
+}
+
+func waitForAdvisoryWaiter(t *testing.T, runtime *database.Runtime) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		var waiting bool
+		if err := runtime.SQL.QueryRow(`
+SELECT EXISTS (
+    SELECT 1 FROM pg_locks
+    WHERE locktype = 'advisory'
+      AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+      AND NOT granted
+)`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for a blocked collection advisory lock")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 func TestCollectionControlRetryRejectsNewerQueuedOrRunningRun(t *testing.T) {
 	runtime := openRuntime(t)
 	defer func() { _ = runtime.Close() }()
@@ -477,7 +883,18 @@ func TestCollectionControlRetryRejectsNewerQueuedOrRunningRun(t *testing.T) {
 
 type collectionRetryActivatorFake struct{}
 
-func (collectionRetryActivatorFake) Reactivate(context.Context, domain.CollectionRun) error {
+func (collectionRetryActivatorFake) Reactivate(context.Context, domain.CollectionRunRetry) error {
+	return nil
+}
+
+type blockingCollectionRetryActivator struct {
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (activator *blockingCollectionRetryActivator) Reactivate(context.Context, domain.CollectionRunRetry) error {
+	close(activator.entered)
+	<-activator.release
 	return nil
 }
 
