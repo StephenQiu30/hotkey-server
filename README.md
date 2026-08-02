@@ -19,6 +19,17 @@ HotKey 是一个本地优先、可自托管的 AI 热点事件监控与 Obsidian
 
 > 如果 HotKey 对你的研究、内容创作或情报工作有帮助，欢迎 Star、分享使用反馈，或从一个 Issue / Pull Request 开始参与。
 
+## 项目组成
+
+HotKey 由两个可独立开发、组合部署的开源仓库组成：
+
+| 仓库 | 职责 |
+|------|------|
+| [hotkey-server](https://github.com/StephenQiu30/hotkey-server) | 本仓库；提供后端 API、采集与 AI 任务、数据模型、交付能力和 OpenAPI 契约 |
+| [hotkey-web](https://github.com/StephenQiu30/hotkey-web) | 面向最终用户的 Web 工作台，提供事件、监控、来源、证据、报告和设置界面 |
+
+本仓库可以独立运行 API 和后台任务；完整的交互体验需要同时运行 `hotkey-web`。
+
 ## 为什么是 HotKey
 
 很多热点工具擅长展示“什么正在流行”，却很难回答“为什么值得相信”和“后续如何沉淀”。HotKey 关注的是一条完整、可审计的工作流：
@@ -96,20 +107,7 @@ HOTKEY_CORS_ALLOWED_ORIGINS=http://localhost:3000
 
 请在本地为两个密钥填写各自独立、随机且不少于 32 字节的值。完整变量、默认开发值和可选 Provider 配置见 [`.env.example`](.env.example)，真实密钥不要提交到仓库。
 
-注册和密码重置需要邮件验证码。启用 SMTP 时至少填写以下配置；`HOTKEY_SMTP_PASSWORD` 应使用邮件服务商提供的 SMTP 授权码，而不是网页登录密码：
-
-```dotenv
-HOTKEY_SMTP_ENABLED=true
-HOTKEY_SMTP_HOST=smtp.163.com
-HOTKEY_SMTP_PORT=465
-HOTKEY_SMTP_TLS_MODE=tls
-HOTKEY_SMTP_USERNAME=your-account@163.com
-HOTKEY_SMTP_PASSWORD=your-smtp-authorization-code
-HOTKEY_SMTP_FROM_EMAIL=your-account@163.com
-HOTKEY_SMTP_FROM_NAME=HotKey
-```
-
-如果暂时不需要注册或找回密码，可保持 `HOTKEY_SMTP_ENABLED=false`；此时发送验证码接口会明确返回服务不可用，属于预期降级而不是前端代理故障。
+注册和密码重置依赖兼容 SMTP 的邮件服务；需要启用这些功能时，请按 [`.env.example`](.env.example) 填写服务商地址、TLS 模式、账号、授权码和发件人信息。部署、诊断和生产检查见 [运行与升级手册](docs/operations/README.md)。
 
 ### 2. 初始化数据库
 
@@ -155,20 +153,9 @@ curl --fail http://127.0.0.1:8080/readyz
 
 GoLand 会自动使用项目 `go.mod` 中声明的 Go SDK 和依赖；代码缩进、换行与尾随空格规则由 [`.editorconfig`](.editorconfig) 统一管理。
 
-### 推荐的本地启动边界
-
-本仓库只负责后端。推荐先在 GoLand 运行 `HotKey 后端一键启动`，确认 `/readyz` 为 200；再在 WebStorm 中单独启动 `hotkey-web` 的 `npm run dev`。不需要启动脚本、复合命令或多个 Go 入口。
-
-遇到注册页提示“服务暂时不可用”时，按顺序检查：
-
-1. `http://127.0.0.1:8080/readyz` 是否返回 200。
-2. Web 的 `HOTKEY_API_ORIGIN` 是否为当前后端地址。
-3. SMTP 是否启用，用户名、发件地址和授权码是否匹配。
-4. 修改 `.env` 后是否已经通过 GoLand 重启后端进程。
-
 ## Web 工作台
 
-推荐搭配 [hotkey-web](https://github.com/StephenQiu30/hotkey-web) 使用。Web 端提供热点总览、监控主题、来源管理、内容证据、事件智能、报告和通知配置等完整界面，并通过生成的 OpenAPI Client 与本服务保持契约一致。
+推荐搭配 [hotkey-web](https://github.com/StephenQiu30/hotkey-web) 使用。Web 端提供热点总览、监控主题、来源管理、内容证据、事件智能、报告和通知配置等完整界面，并通过生成的 OpenAPI Client 与本服务保持契约一致。后端与 Web 分别启动和部署，不依赖 `.sh` 启动脚本。
 
 ## 开发与质量
 
@@ -225,9 +212,7 @@ GitHub Actions 对 `main` 和 Pull Request 执行同一套门禁，包括 OpenAP
 
 HotKey 正处于积极开发阶段，核心端到端链路已经实现，接口和部署方式在 1.0 前仍可能调整。当前更适合技术预览、自托管评估和共同建设，而不是直接作为无人值守的关键生产系统。
 
-已完成工作的验收证据位于 [`docs/acceptance/archive/`](docs/acceptance/archive/README.md)。外部 MinIO、SMTP 以及生产备份恢复仍需在具体部署环境按 [Operations 手册](docs/operations/README.md) 演练。
-
-采集批次重试已经按 PostgreSQL 单事务实现：失败或取消的批次只有在原目标集合仍完整可用、检查点未被较新事实推进且原 River 任务可安全恢复时才会重新排队；任一条件不满足都会整体回滚并返回冲突。长期证据见 [采集批次原子重试验收](docs/acceptance/archive/024-采集批次原子重试验收.md)。
+已完成工作的长期证据位于 [`docs/acceptance/archive/`](docs/acceptance/archive/README.md)。路线与功能建议通过 [GitHub Issues](https://github.com/StephenQiu30/hotkey-server/issues) 公开讨论；外部依赖和生产备份恢复仍需在具体部署环境按 [Operations 手册](docs/operations/README.md) 演练。
 
 ## 文档导航
 

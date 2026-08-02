@@ -19,6 +19,17 @@ HotKey is a local-first, self-hosted platform for AI-assisted trend monitoring a
 
 > If HotKey is useful for your research, editorial, or intelligence workflow, consider starring the project, sharing your use case, or contributing through an Issue or Pull Request.
 
+## Project repositories
+
+HotKey is developed as two open-source repositories that can be worked on independently and deployed together:
+
+| Repository | Responsibility |
+|------------|----------------|
+| [hotkey-server](https://github.com/StephenQiu30/hotkey-server) | This repository: backend APIs, collection and AI jobs, data models, delivery, and the OpenAPI contract |
+| [hotkey-web](https://github.com/StephenQiu30/hotkey-web) | The user-facing workspace for events, monitors, sources, evidence, reports, and settings |
+
+This repository can run the API and background jobs on its own. Run `hotkey-web` alongside it for the complete interactive experience.
+
 ## Why HotKey
 
 - **Local first** — PostgreSQL stores business facts, MinIO stores raw evidence, and your Obsidian Vault receives readable knowledge artifacts.
@@ -81,20 +92,7 @@ cp .env.example .env
 
 Configure a dedicated PostgreSQL database, MinIO, Redis, explicit CORS origins, and unique JWT/HMAC secrets of at least 32 bytes. See [`.env.example`](.env.example) for every option and never commit real credentials.
 
-Registration and password reset require email verification. When SMTP is enabled, configure the following values. `HOTKEY_SMTP_PASSWORD` must be the provider-issued SMTP authorization code rather than the webmail password:
-
-```dotenv
-HOTKEY_SMTP_ENABLED=true
-HOTKEY_SMTP_HOST=smtp.163.com
-HOTKEY_SMTP_PORT=465
-HOTKEY_SMTP_TLS_MODE=tls
-HOTKEY_SMTP_USERNAME=your-account@163.com
-HOTKEY_SMTP_PASSWORD=your-smtp-authorization-code
-HOTKEY_SMTP_FROM_EMAIL=your-account@163.com
-HOTKEY_SMTP_FROM_NAME=HotKey
-```
-
-If registration and password recovery are not needed yet, keep `HOTKEY_SMTP_ENABLED=false`. Verification requests will then return an explicit service-unavailable response; this is an expected degraded mode rather than a frontend proxy failure.
+Registration and password reset require a compatible SMTP service. To enable them, use [`.env.example`](.env.example) to configure the provider host, TLS mode, account, authorization code, and sender. See the [operations guides](docs/operations/README.md) for deployment and diagnostics.
 
 Initialize a new, empty database:
 
@@ -134,20 +132,9 @@ Open this repository in GoLand and select the shared `HotKey 后端一键启动`
 
 GoLand uses the SDK and dependencies declared by `go.mod`. [`.editorconfig`](.editorconfig) keeps indentation, line endings, and trailing-whitespace behavior consistent across IDEs.
 
-### Recommended local startup boundary
-
-This repository runs only the backend. Start `HotKey 后端一键启动` in GoLand and confirm `/readyz` returns 200, then start `npm run dev` for `hotkey-web` separately in WebStorm. No shell launcher, compound command, or additional Go entry point is required.
-
-If registration displays a temporary service-unavailable message, check these items in order:
-
-1. `http://127.0.0.1:8080/readyz` returns 200.
-2. The Web application's `HOTKEY_API_ORIGIN` points to this backend.
-3. SMTP is enabled and its username, sender address, and authorization code match.
-4. The backend was restarted in GoLand after changing `.env`.
-
 ## Web application
 
-Use [hotkey-web](https://github.com/StephenQiu30/hotkey-web) for the complete browser workspace, including events, monitors, sources, evidence, reports, and notification settings.
+Use [hotkey-web](https://github.com/StephenQiu30/hotkey-web) for the complete browser workspace, including events, monitors, sources, evidence, reports, and notification settings. The backend and Web application start and deploy separately, without `.sh` launchers.
 
 ## Development
 
@@ -194,9 +181,7 @@ The complete CI suite requires a disposable PostgreSQL database and a dedicated 
 
 HotKey is under active development. The core end-to-end workflow is implemented, but APIs and deployment details may still change before 1.0. It is best suited for technical previews, self-hosted evaluation, and collaborative development rather than unattended critical production workloads.
 
-Long-lived acceptance evidence is available in [`docs/acceptance/archive/`](docs/acceptance/archive/README.md). External MinIO, SMTP, backup, and restore procedures must still be exercised in each deployment environment.
-
-Collection-run retry now uses one PostgreSQL transaction. A failed or cancelled run is requeued only when its original target set is still fully eligible, no newer checkpoint fact has superseded it, and the original River job can be safely reactivated. Any failed condition rolls back the whole operation and returns a conflict. See the [atomic collection retry acceptance record](docs/acceptance/archive/024-采集批次原子重试验收.md).
+Long-lived acceptance evidence is available in [`docs/acceptance/archive/`](docs/acceptance/archive/README.md). Roadmap and feature proposals are discussed publicly in [GitHub Issues](https://github.com/StephenQiu30/hotkey-server/issues). External dependencies, backups, and restores must still be exercised in each deployment environment using the [operations guides](docs/operations/README.md).
 
 ## Documentation
 
