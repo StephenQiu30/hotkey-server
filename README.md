@@ -36,7 +36,7 @@ HotKey 是一个本地优先、可自托管的 AI 热点事件监控与 Obsidian
 |------|------------|
 | 身份与权限 | 注册、登录、刷新会话、密码重置、角色权限与管理接口 |
 | 监控配置 | 版本化 Monitor 草稿、预览、发布、暂停、恢复、归档和 AI 候选规则审批 |
-| 来源采集 | RSS、Atom、Hacker News，来源健康检查、采集运行记录和可靠重试 |
+| 来源采集 | RSS、Atom、Hacker News，来源健康检查、采集运行记录，以及批次、检查点与 River 任务的原子重试 |
 | 内容与证据 | 内容标准化、去重、Markdown 文档预览、MinIO 原始证据存储 |
 | 相关性与反馈 | 多语言匹配、人工反馈、评估与规则建议 |
 | 事件智能 | 聚类、生命周期治理、热度趋势、实体、声明和证据化摘要 |
@@ -96,6 +96,21 @@ HOTKEY_CORS_ALLOWED_ORIGINS=http://localhost:3000
 
 请在本地为两个密钥填写各自独立、随机且不少于 32 字节的值。完整变量、默认开发值和可选 Provider 配置见 [`.env.example`](.env.example)，真实密钥不要提交到仓库。
 
+注册和密码重置需要邮件验证码。启用 SMTP 时至少填写以下配置；`HOTKEY_SMTP_PASSWORD` 应使用邮件服务商提供的 SMTP 授权码，而不是网页登录密码：
+
+```dotenv
+HOTKEY_SMTP_ENABLED=true
+HOTKEY_SMTP_HOST=smtp.163.com
+HOTKEY_SMTP_PORT=465
+HOTKEY_SMTP_TLS_MODE=tls
+HOTKEY_SMTP_USERNAME=your-account@163.com
+HOTKEY_SMTP_PASSWORD=your-smtp-authorization-code
+HOTKEY_SMTP_FROM_EMAIL=your-account@163.com
+HOTKEY_SMTP_FROM_NAME=HotKey
+```
+
+如果暂时不需要注册或找回密码，可保持 `HOTKEY_SMTP_ENABLED=false`；此时发送验证码接口会明确返回服务不可用，属于预期降级而不是前端代理故障。
+
 ### 2. 初始化数据库
 
 当前完整结构由 [`db/schema.sql`](db/schema.sql) 统一维护。请使用新的空数据库初始化：
@@ -139,6 +154,17 @@ curl --fail http://127.0.0.1:8080/readyz
 - 共享配置保存在 [`.run/HotKey_Server.run.xml`](.run/HotKey_Server.run.xml)，不依赖个人 `.idea/workspace.xml`。
 
 GoLand 会自动使用项目 `go.mod` 中声明的 Go SDK 和依赖；代码缩进、换行与尾随空格规则由 [`.editorconfig`](.editorconfig) 统一管理。
+
+### 推荐的本地启动边界
+
+本仓库只负责后端。推荐先在 GoLand 运行 `HotKey 后端一键启动`，确认 `/readyz` 为 200；再在 WebStorm 中单独启动 `hotkey-web` 的 `npm run dev`。不需要启动脚本、复合命令或多个 Go 入口。
+
+遇到注册页提示“服务暂时不可用”时，按顺序检查：
+
+1. `http://127.0.0.1:8080/readyz` 是否返回 200。
+2. Web 的 `HOTKEY_API_ORIGIN` 是否为当前后端地址。
+3. SMTP 是否启用，用户名、发件地址和授权码是否匹配。
+4. 修改 `.env` 后是否已经通过 GoLand 重启后端进程。
 
 ## Web 工作台
 
@@ -200,6 +226,8 @@ GitHub Actions 对 `main` 和 Pull Request 执行同一套门禁，包括 OpenAP
 HotKey 正处于积极开发阶段，核心端到端链路已经实现，接口和部署方式在 1.0 前仍可能调整。当前更适合技术预览、自托管评估和共同建设，而不是直接作为无人值守的关键生产系统。
 
 已完成工作的验收证据位于 [`docs/acceptance/archive/`](docs/acceptance/archive/README.md)。外部 MinIO、SMTP 以及生产备份恢复仍需在具体部署环境按 [Operations 手册](docs/operations/README.md) 演练。
+
+采集批次重试已经按 PostgreSQL 单事务实现：失败或取消的批次只有在原目标集合仍完整可用、检查点未被较新事实推进且原 River 任务可安全恢复时才会重新排队；任一条件不满足都会整体回滚并返回冲突。长期证据见 [采集批次原子重试验收](docs/acceptance/archive/024-采集批次原子重试验收.md)。
 
 ## 文档导航
 
