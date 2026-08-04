@@ -15,16 +15,30 @@ import (
 
 type unusedSubscriptionStore struct{}
 
-func (unusedSubscriptionStore) CreateSubscription(context.Context, domain.Subscription) (domain.Subscription, error) { panic("unexpected call") }
-func (unusedSubscriptionStore) GetSubscription(context.Context, int64, int64) (domain.Subscription, error) { panic("unexpected call") }
-func (unusedSubscriptionStore) ListSubscriptions(context.Context, int64, domain.SubscriptionListQuery) (domain.SubscriptionPage, error) { panic("unexpected call") }
-func (unusedSubscriptionStore) UpdateSubscription(context.Context, domain.Subscription, int64) (domain.Subscription, error) { panic("unexpected call") }
-func (unusedSubscriptionStore) RotateRSSToken(context.Context, int64, int64, int64, string) (domain.Subscription, error) { panic("unexpected call") }
-func (unusedSubscriptionStore) DeleteSubscription(context.Context, int64, int64, int64) (domain.Subscription, error) { panic("unexpected call") }
+func (unusedSubscriptionStore) CreateSubscription(context.Context, domain.Subscription) (domain.Subscription, error) {
+	panic("unexpected call")
+}
+func (unusedSubscriptionStore) GetSubscription(context.Context, int64, int64) (domain.Subscription, error) {
+	panic("unexpected call")
+}
+func (unusedSubscriptionStore) ListSubscriptions(context.Context, int64, domain.SubscriptionListQuery) (domain.SubscriptionPage, error) {
+	panic("unexpected call")
+}
+func (unusedSubscriptionStore) UpdateSubscription(context.Context, domain.Subscription, int64) (domain.Subscription, error) {
+	panic("unexpected call")
+}
+func (unusedSubscriptionStore) RotateRSSToken(context.Context, int64, int64, int64, string) (domain.Subscription, error) {
+	panic("unexpected call")
+}
+func (unusedSubscriptionStore) DeleteSubscription(context.Context, int64, int64, int64) (domain.Subscription, error) {
+	panic("unexpected call")
+}
 
 type unusedAuditWriter struct{}
 
-func (unusedAuditWriter) Write(context.Context, operationsdomain.AuditEntry) error { panic("unexpected call") }
+func (unusedAuditWriter) Write(context.Context, operationsdomain.AuditEntry) error {
+	panic("unexpected call")
+}
 
 func TestSubscriptionServiceMapsInvalidCreateInputToBadRequest(t *testing.T) {
 	service, err := deliveryapplication.NewSubscriptionService(deliveryapplication.SubscriptionDependencies{
