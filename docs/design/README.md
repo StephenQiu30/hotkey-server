@@ -6,7 +6,7 @@ feature_area: AI热点事件监控平台
 purpose: 管理 HotKey Server 权威设计文档及其状态
 canonical_path: docs/design/README.md
 status: review
-version: v1.8
+version: v1.9
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -55,5 +55,6 @@ downstream:
 | [`archive/016-采集内容Markdown归档与预览设计.md`](archive/016-采集内容Markdown归档与预览设计.md) | 授权 Feed 内容的 Markdown 归档、受限读取与 PDF 保存边界 | accepted |
 | [`archive/017-首管理员数据库指定设计.md`](archive/017-首管理员数据库指定设计.md) | 以数据库角色指定替代环境变量管理员引导凭据 | archived |
 | [`archive/018-采集批次与队列任务原子重试设计.md`](archive/018-采集批次与队列任务原子重试设计.md) | failed/cancelled 采集批次与原 River 任务的事务一致重试 | archived |
+| [`019-事件变化雷达与低噪声告警设计.md`](019-事件变化雷达与低噪声告警设计.md) | 事件变化事实、可解释热点雷达与低噪声告警闭环 | accepted |
 
-001–018 的现有设计均已随对应实施与长期验收证据归档。已落地设计见 [`archive/`](archive/README.md)。
+001–018 的现有设计均已随对应实施与长期验收证据归档。Design-019 为当前实施设计；已落地设计见 [`archive/`](archive/README.md)。

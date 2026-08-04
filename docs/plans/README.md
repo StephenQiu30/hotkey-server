@@ -7,7 +7,7 @@ purpose: 定义 HotKey Server 执行计划的结构、状态和验收映射
 canonical_path: docs/plans/README.md
 status: review
 review_status: pending
-version: v3.1
+version: v3.3
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -114,5 +114,6 @@ Plan 必须由非本计划主要编写者的 Reviewer 再次审核。Reviewer �
 | 022 | [Shared 仓储基础设施边界修复](../prd/archive/022-Shared仓储基础设施边界修复.md) | [执行计划](archive/022-Shared仓储基础设施边界修复计划.md) | 002, 021 | done | approved |
 | 023 | [首管理员数据库指定](../prd/archive/023-首管理员数据库指定.md) | [执行计划](archive/023-首管理员数据库指定计划.md) | 004, 020 | done | approved |
 | 024 | [采集批次原子重试](../prd/archive/024-采集批次原子重试.md) | [执行计划](archive/024-采集批次原子重试计划.md) | 006, 013, 014 | done | approved |
+| 025 | [事件变化雷达与低噪声告警](../prd/025-事件变化雷达与低噪声告警.md) | [执行计划](025-事件变化雷达与低噪声告警计划.md) | 010–013 | ready | approved |
 
-PLAN-001–024 已移入 [`archive/`](archive/README.md)，并保留对应验收证据。
+PLAN-001–024 已移入 [`archive/`](archive/README.md)，并保留对应验收证据。PLAN-025 已通过独立 readiness 复审并进入实施。

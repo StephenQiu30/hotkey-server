@@ -6,7 +6,7 @@ feature_area: 验收记录
 purpose: 定义长期验收证据的结构、结论和归档边界
 canonical_path: docs/acceptance/README.md
 status: review
-version: v3.9
+version: v4.0
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -77,6 +77,7 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | 022 | [Shared 仓储基础设施边界修复](archive/022-Shared仓储基础设施边界修复验收.md) | accepted_with_risk |
 | 023 | [首管理员数据库指定](archive/023-首管理员数据库指定验收.md) | accepted_with_risk |
 | 024 | [采集批次原子重试](archive/024-采集批次原子重试验收.md) | accepted |
+| 025 | [事件变化雷达与低噪声告警](025-事件变化雷达与低噪声告警验收.md) | pending |
 
 ## 变更记录
 
@@ -111,3 +112,4 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | v3.7 | 2026-08-01 | `27efea1` 完成 PLAN-023 并通过独立实现复审，以隔离 PostgreSQL DSN 与外部 Secret 清理风险归档。 |
 | v3.8 | 2026-08-01 | 创建 PLAN-024 原子恢复采集批次与原队列任务的实施前验收模板。 |
 | v3.9 | 2026-08-01 | `70d00ba` 关闭多目标与确定性竞态审查问题，PLAN-024 通过完整门禁和独立最终复审并归档为 accepted。 |
+| v4.0 | 2026-08-04 | 创建 PLAN-025 事件变化、Radar 与低噪声告警实施前验收模板。 |
