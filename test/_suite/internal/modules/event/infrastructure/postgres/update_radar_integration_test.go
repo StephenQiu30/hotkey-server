@@ -4,6 +4,10 @@ package postgres
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -211,39 +215,219 @@ func TestRadarRepositoryFiltersAndUsesAllFiveDeterministicOrders(t *testing.T) {
 	}
 }
 
+func TestRadarRepositorySelectsOnlyFactsCreatedByAsOf(t *testing.T) {
+	ctx, runtime, fixture := seedRadarRepositoryFixture(t)
+	defer runtime.Close()
+	futureCreatedAt := fixture.asOf.Add(time.Minute)
+	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO event_metric_snapshots (event_id,captured_at,heat_score,trend_score,source_count,content_count,heat_version,evidence_set_hash,capability_profile_set_hash,window_hours,trend_status,created_at) VALUES ($1,$2,1,100,20,20,'heat-v1',repeat('c',64),repeat('d',64),24,'rising',$3)`, fixture.eventIDs["a"], fixture.asOf, futureCreatedAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO event_claims (event_id,normalized_claim,claim_hash,status,confidence,first_seen_at,last_seen_at,created_at) VALUES ($1,'future disputed claim',repeat('f',64),'disputed',50,$2,$2,$3)`, fixture.eventIDs["a"], fixture.asOf, futureCreatedAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO event_updates (event_id,sequence_no,kind,summary,observed_at,reason_codes,before_state,after_state,evidence_set_hash,idempotency_key,created_at) VALUES ($1,1,'metric_changed','future-created update',$2,'{}','{}','{}',repeat('e',64),repeat('9',64),$3)`, fixture.eventIDs["e"], fixture.asOf.Add(-time.Minute), futureCreatedAt); err != nil {
+		t.Fatal(err)
+	}
+	lateEventID := seedRadarEvent(t, runtime, "late-created", fixture.asOf.Add(-time.Minute), 100, 100, eventdomain.TrendRising, 10, eventdomain.LifecycleActive, fixture.monitor, 100, 100, "visible")
+	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE events SET created_at = $1 WHERE id = $2`, futureCreatedAt, lateEventID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE monitor_events SET status = 'visible', created_at = $1 WHERE monitor_id = $2 AND event_id = $3`, futureCreatedAt, fixture.monitor, fixture.eventIDs["a"]); err != nil {
+		t.Fatal(err)
+	}
+
+	repository := NewRadarRepository(runtime)
+	global, err := repository.ListRadar(ctx, eventdomain.RadarQuery{Window: eventdomain.RadarWindow7Days, Sort: eventdomain.RadarSortAttention, Limit: 100, AsOf: fixture.asOf})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertRadarOrder(t, global.Items, fixture, []string{"a", "b", "c", "d", "e"})
+	itemA := radarItemByID(t, global.Items, fixture.eventIDs["a"])
+	if itemA.Attention != 95 || itemA.Confirmation != eventdomain.RadarConfirmationInsufficient {
+		t.Fatalf("future-created metric or claim leaked into as_of page: %#v", itemA)
+	}
+	itemE := radarItemByID(t, global.Items, fixture.eventIDs["e"])
+	if itemE.LatestUpdate != nil {
+		t.Fatalf("future-created EventUpdate leaked into as_of page: %#v", itemE.LatestUpdate)
+	}
+	monitor, err := repository.ListRadar(ctx, eventdomain.RadarQuery{Window: eventdomain.RadarWindow7Days, MonitorID: &fixture.monitor, Sort: eventdomain.RadarSortRelevance, Limit: 100, AsOf: fixture.asOf})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertRadarOrder(t, monitor.Items, fixture, []string{"c", "e", "d", "b"})
+}
+
 func TestRadarRepositoryCursorFreezesAsOfAndRejectsAnotherShape(t *testing.T) {
 	ctx, runtime, fixture := seedRadarRepositoryFixture(t)
 	defer runtime.Close()
 	repository := NewRadarRepository(runtime)
-	query := eventdomain.RadarQuery{Window: eventdomain.RadarWindow7Days, Sort: eventdomain.RadarSortBreadth, Limit: 2, AsOf: fixture.asOf}
+	mintedAt := fixture.asOf.Add(-2 * time.Hour)
+	repository.now = func() time.Time { return mintedAt }
+	query := eventdomain.RadarQuery{
+		Window: eventdomain.RadarWindow7Days, MonitorID: &fixture.monitor,
+		Lifecycles:    []eventdomain.LifecycleStatus{eventdomain.LifecycleDetected, eventdomain.LifecycleActive, eventdomain.LifecycleCooling},
+		Verifications: []eventdomain.RadarConfirmation{eventdomain.RadarConfirmationDisputed, eventdomain.RadarConfirmationCorroborated, eventdomain.RadarConfirmationSingleSource, eventdomain.RadarConfirmationUnverified},
+		Sort:          eventdomain.RadarSortRelevance, Limit: 1, AsOf: fixture.asOf,
+	}
 	first, err := repository.ListRadar(ctx, query)
-	if err != nil || len(first.Items) != 2 || first.NextCursor == "" || !first.AsOf.Equal(fixture.asOf) {
+	if err != nil || len(first.Items) != 1 || first.NextCursor == "" || !first.AsOf.Equal(fixture.asOf) {
 		t.Fatalf("first page = %#v/%v", first, err)
 	}
-	seedRadarEvent(t, runtime, "future", fixture.asOf.Add(time.Minute), 100, 100, eventdomain.TrendRising, 10, eventdomain.LifecycleActive, fixture.monitor, 100, 100, "visible")
-	query.Cursor, query.Limit, query.AsOf = first.NextCursor, 100, fixture.asOf.Add(24*time.Hour)
-	next, err := repository.ListRadar(ctx, query)
-	if err != nil || !next.AsOf.Equal(fixture.asOf) {
-		t.Fatalf("next page = %#v/%v", next, err)
+	assertRadarOrder(t, first.Items, fixture, []string{"c"})
+
+	// Every mutable projection that could otherwise alter membership or order is
+	// changed after page one. The cursor must retain the original top-100 IDs,
+	// scores, and tie-break timestamps while later pages re-read only details.
+	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE events SET lifecycle_status = 'closed', last_seen_at = $1 WHERE id = ANY($2)`, fixture.asOf.Add(-6*24*time.Hour), []int64{fixture.eventIDs["e"], fixture.eventIDs["d"], fixture.eventIDs["b"]}); err != nil {
+		t.Fatal(err)
 	}
+	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE monitor_events SET final_score = CASE event_id WHEN $1 THEN 1 WHEN $2 THEN 100 ELSE 99 END, status = 'hidden' WHERE monitor_id = $3 AND event_id = ANY($4)`, fixture.eventIDs["e"], fixture.eventIDs["d"], fixture.monitor, []int64{fixture.eventIDs["e"], fixture.eventIDs["d"], fixture.eventIDs["b"]}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE event_claims SET status = 'retracted' WHERE event_id = ANY($1)`, []int64{fixture.eventIDs["e"], fixture.eventIDs["d"], fixture.eventIDs["b"]}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO event_metric_snapshots (event_id,captured_at,heat_score,trend_score,source_count,content_count,heat_version,evidence_set_hash,capability_profile_set_hash,window_hours,trend_status,created_at) VALUES ($1,$2,100,100,20,20,'heat-v1',repeat('c',64),repeat('d',64),24,'rising',$3)`, fixture.eventIDs["b"], fixture.asOf.Add(-time.Minute), fixture.asOf.Add(-time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	seedRadarEvent(t, runtime, "future", fixture.asOf.Add(time.Minute), 100, 100, eventdomain.TrendRising, 10, eventdomain.LifecycleActive, fixture.monitor, 100, 100, "visible")
+
+	query.Cursor, query.Limit, query.AsOf = first.NextCursor, 2, fixture.asOf.Add(24*time.Hour)
+	second, err := repository.ListRadar(ctx, query)
+	if err != nil || !second.AsOf.Equal(fixture.asOf) || second.NextCursor == "" {
+		t.Fatalf("second page = %#v/%v", second, err)
+	}
+	assertRadarOrder(t, second.Items, fixture, []string{"e", "d"})
+	assertFrozenRadarPosition(t, second.Items[0], 85, fixture.asOf.Add(-30*time.Minute))
+	assertFrozenRadarPosition(t, second.Items[1], 80, fixture.asOf.Add(-30*time.Minute))
+	query.Cursor, query.Limit = second.NextCursor, 100
+	third, err := repository.ListRadar(ctx, query)
+	if err != nil || third.NextCursor != "" || !third.AsOf.Equal(fixture.asOf) {
+		t.Fatalf("third page = %#v/%v", third, err)
+	}
+	assertRadarOrder(t, third.Items, fixture, []string{"b"})
+	assertFrozenRadarPosition(t, third.Items[0], 70, fixture.asOf.Add(-2*time.Hour))
+
 	seen := map[int64]bool{}
-	for _, item := range append(first.Items, next.Items...) {
+	items := append(append(append([]eventdomain.RadarEvent(nil), first.Items...), second.Items...), third.Items...)
+	for _, item := range items {
 		if seen[item.EventID] {
 			t.Fatalf("event %d repeated across frozen pages", item.EventID)
 		}
 		seen[item.EventID] = true
 	}
-	if len(seen) != 5 {
-		t.Fatalf("frozen cursor returned %d original events, want 5", len(seen))
+	if len(seen) != 4 {
+		t.Fatalf("frozen cursor returned %d original monitor events, want 4", len(seen))
 	}
 	for _, changed := range []eventdomain.RadarQuery{
-		{Window: eventdomain.RadarWindow24Hours, Sort: eventdomain.RadarSortBreadth, Limit: 10, Cursor: first.NextCursor},
-		{Window: eventdomain.RadarWindow7Days, Sort: eventdomain.RadarSortAttention, Limit: 10, Cursor: first.NextCursor},
-		{Window: eventdomain.RadarWindow7Days, Sort: eventdomain.RadarSortBreadth, MinHeat: radarRepositoryScore(50), Limit: 10, Cursor: first.NextCursor},
+		{Window: eventdomain.RadarWindow24Hours, MonitorID: &fixture.monitor, Lifecycles: query.Lifecycles, Verifications: query.Verifications, Sort: eventdomain.RadarSortRelevance, Limit: 10, Cursor: first.NextCursor},
+		{Window: eventdomain.RadarWindow7Days, MonitorID: &fixture.monitor, Lifecycles: query.Lifecycles, Verifications: query.Verifications, Sort: eventdomain.RadarSortAttention, Limit: 10, Cursor: first.NextCursor},
+		{Window: eventdomain.RadarWindow7Days, MonitorID: &fixture.monitor, Lifecycles: query.Lifecycles, Verifications: query.Verifications, Sort: eventdomain.RadarSortRelevance, MinHeat: radarRepositoryScore(50), Limit: 10, Cursor: first.NextCursor},
 	} {
 		if _, err := repository.ListRadar(ctx, changed); !errors.Is(err, sharedrepository.ErrInvalidInput) {
 			t.Fatalf("cross-shape cursor error = %v, want ErrInvalidInput", err)
 		}
+	}
+}
+
+func TestRadarRepositoryRejectsEverySignedCursorPayloadMutationAndExpiry(t *testing.T) {
+	ctx, runtime, fixture := seedRadarRepositoryFixture(t)
+	defer runtime.Close()
+	repository := NewRadarRepository(runtime)
+	mintedAt := fixture.asOf.Add(-time.Hour)
+	repository.now = func() time.Time { return mintedAt }
+	query := eventdomain.RadarQuery{Window: eventdomain.RadarWindow7Days, Sort: eventdomain.RadarSortBreadth, Limit: 1, AsOf: fixture.asOf}
+	first, err := repository.ListRadar(ctx, query)
+	if err != nil || first.NextCursor == "" {
+		t.Fatalf("first page = %#v/%v", first, err)
+	}
+	for _, field := range []string{"as_of", "score", "last_seen_at", "event_id", "remaining"} {
+		t.Run(field, func(t *testing.T) {
+			changed := query
+			changed.Cursor = tamperRadarCursorPayload(t, first.NextCursor, field)
+			if _, err := repository.ListRadar(ctx, changed); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+				t.Fatalf("tampered %s cursor error = %v, want ErrInvalidInput", field, err)
+			}
+		})
+	}
+	repository.now = func() time.Time { return mintedAt.Add(radarCursorTTL + time.Nanosecond) }
+	query.Cursor = first.NextCursor
+	if _, err := repository.ListRadar(ctx, query); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("expired cursor error = %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestRadarRepositoryProductionConstructorUsesAContextDerivedSecret(t *testing.T) {
+	_, runtime, _ := seedRadarRepositoryFixture(t)
+	defer runtime.Close()
+	if _, err := NewRadarRepositoryWithSigningSecret(runtime, ""); err == nil {
+		t.Fatal("production Radar repository accepted an empty signing secret")
+	}
+	const secret = "radar-production-secret-with-at-least-32-bytes"
+	repository, err := NewRadarRepositoryWithSigningSecret(runtime, secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := hmac.New(sha256.New, []byte(secret))
+	_, _ = want.Write([]byte(radarCursorSigningContext))
+	if !hmac.Equal(repository.cursorSigningKey, want.Sum(nil)) {
+		t.Fatal("production Radar cursor key was not derived with the radar-cursor-v1 context")
+	}
+	fallback := NewRadarRepository(runtime)
+	wantFallback := hmac.New(sha256.New, []byte(runtime.Pool.Config().ConnString()))
+	_, _ = wantFallback.Write([]byte(radarCursorSigningContext))
+	if !hmac.Equal(fallback.cursorSigningKey, wantFallback.Sum(nil)) {
+		t.Fatal("test Radar cursor key was not derived from the runtime database connection string")
+	}
+	if hmac.Equal(fallback.cursorSigningKey, repository.cursorSigningKey) {
+		t.Fatal("test constructor reused the caller-provided production secret")
+	}
+}
+
+func TestRadarRepositoryLimitsTheFrozenCandidateSetToOneHundred(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	asOf := time.Now().UTC().Add(time.Hour).Truncate(time.Second)
+	if _, err := runtime.SQL.ExecContext(ctx, `
+INSERT INTO events (event_key,title_zh,summary,lifecycle_status,first_seen_at,last_seen_at,created_at)
+SELECT 'radar-cap-' || value, 'Radar cap ' || value, '', 'active', $1::timestamptz - value * interval '1 minute', $1::timestamptz - value * interval '1 minute', $1::timestamptz - interval '2 hours'
+FROM generate_series(1, 105) value`, asOf); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO event_metric_snapshots (event_id,captured_at,heat_score,trend_score,source_count,content_count,heat_version,evidence_set_hash,capability_profile_set_hash,window_hours,trend_status,created_at)
+SELECT id,last_seen_at,100,0,1,1,'heat-v1',repeat('a',64),repeat('b',64),24,'stable',$1::timestamptz - interval '2 hours'
+FROM events WHERE event_key LIKE 'radar-cap-%'`, asOf); err != nil {
+		t.Fatal(err)
+	}
+	repository := NewRadarRepository(runtime)
+	repository.now = func() time.Time { return asOf.Add(-time.Hour) }
+	query := eventdomain.RadarQuery{Window: eventdomain.RadarWindow7Days, Sort: eventdomain.RadarSortAttention, Limit: 17, AsOf: asOf}
+	seen := map[int64]bool{}
+	for {
+		page, err := repository.ListRadar(ctx, query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range page.Items {
+			if seen[item.EventID] {
+				t.Fatalf("event %d repeated", item.EventID)
+			}
+			seen[item.EventID] = true
+		}
+		if page.NextCursor == "" {
+			break
+		}
+		query.Cursor, query.Limit = page.NextCursor, 31
+	}
+	if len(seen) != eventdomain.RadarCursorMaximumEvents {
+		t.Fatalf("frozen Radar candidate count = %d, want %d", len(seen), eventdomain.RadarCursorMaximumEvents)
 	}
 }
 
@@ -282,7 +466,7 @@ func seedRadarRepositoryFixture(t *testing.T) (context.Context, *database.Runtim
 		runtime.Close()
 		t.Fatal(err)
 	}
-	fixture := radarFixture{asOf: time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC), eventIDs: map[string]int64{}}
+	fixture := radarFixture{asOf: time.Now().UTC().Add(time.Hour).Truncate(time.Second), eventIDs: map[string]int64{}}
 	if err := runtime.SQL.QueryRow(`INSERT INTO monitors (name,status) VALUES ('radar-monitor','active') RETURNING id`).Scan(&fixture.monitor); err != nil {
 		t.Fatal(err)
 	}
@@ -354,6 +538,50 @@ func assertRadarOrder(t *testing.T, items []eventdomain.RadarEvent, fixture rada
 			t.Fatalf("Radar order[%d] = %d, want %s/%d", index, items[index].EventID, key, fixture.eventIDs[key])
 		}
 	}
+}
+
+func assertFrozenRadarPosition(t *testing.T, item eventdomain.RadarEvent, score float64, lastSeenAt time.Time) {
+	t.Helper()
+	if item.RankingScore != score || !item.LastSeenAt.Equal(lastSeenAt) {
+		t.Fatalf("frozen Radar position = score %.2f / last_seen_at %s, want %.2f / %s", item.RankingScore, item.LastSeenAt, score, lastSeenAt)
+	}
+}
+
+func tamperRadarCursorPayload(t *testing.T, encoded, field string) string {
+	t.Helper()
+	parts := strings.Split(encoded, ".")
+	if len(parts) != 2 {
+		t.Fatalf("signed cursor has %d parts, want 2", len(parts))
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(payload, &value); err != nil {
+		t.Fatal(err)
+	}
+	switch field {
+	case "as_of":
+		value[field] = time.Now().UTC().Add(24 * time.Hour).Format(time.RFC3339Nano)
+	case "score":
+		value[field] = value[field].(float64) + 1
+	case "last_seen_at":
+		value[field] = time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339Nano)
+	case "event_id":
+		value[field] = value[field].(float64) + 1
+	case "remaining":
+		remaining := value[field].([]any)
+		position := remaining[0].(map[string]any)
+		position["event_id"] = position["event_id"].(float64) + 1
+	default:
+		t.Fatalf("unknown cursor field %q", field)
+	}
+	changed, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return base64.RawURLEncoding.EncodeToString(changed) + "." + parts[1]
 }
 
 func radarRepositoryScore(value float64) *float64 { return &value }

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"math"
+	"strings"
 	"testing"
 	"time"
 )
@@ -114,5 +115,57 @@ func TestAlertStateMachineReopensOnlyAfterCooldownAndNeverReopensSuppressed(t *t
 	}
 	if ShouldReopen(StateOpen, cooldownUntil, cooldownUntil.Add(time.Hour)) || ShouldReopen(StateSuppressed, cooldownUntil, cooldownUntil.Add(time.Hour)) {
 		t.Fatal("open or suppressed thread was treated as an automatic reopen candidate")
+	}
+}
+
+func TestRecordOccurrenceCommandEnforcesEligibleConsistentScoreFacts(t *testing.T) {
+	t.Parallel()
+	fingerprint, err := OccurrenceFingerprint(FingerprintInput{
+		MonitorConfigVersionID: 17,
+		EventUpdateID:          41,
+		TriggerType:            TriggerRising,
+		PolicyVersion:          PolicyVersionV1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := RecordOccurrenceCommand{
+		MonitorID: 3, EventID: 5, EventUpdateID: 41,
+		TriggerType: TriggerRising, PolicyVersion: PolicyVersionV1,
+		MonitorConfigVersionID: 17, MonitorRevision: 7,
+		MonitorConfigHash:      strings.Repeat("a", 64),
+		EventThresholdSnapshot: 75, FinalScoreSnapshot: 80, Severity: SeverityWarning,
+		TitleSnapshot: "Eligible event", TriggeredAt: time.Date(2026, 8, 4, 7, 0, 0, 0, time.UTC),
+		Fingerprint: fingerprint,
+	}
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("valid command error = %v", err)
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(*RecordOccurrenceCommand)
+	}{
+		{name: "nan threshold", mutate: func(command *RecordOccurrenceCommand) { command.EventThresholdSnapshot = math.NaN() }},
+		{name: "infinite threshold", mutate: func(command *RecordOccurrenceCommand) { command.EventThresholdSnapshot = math.Inf(1) }},
+		{name: "negative threshold", mutate: func(command *RecordOccurrenceCommand) { command.EventThresholdSnapshot = -0.01 }},
+		{name: "threshold above one hundred", mutate: func(command *RecordOccurrenceCommand) { command.EventThresholdSnapshot = 100.01 }},
+		{name: "nan final score", mutate: func(command *RecordOccurrenceCommand) { command.FinalScoreSnapshot = math.NaN() }},
+		{name: "infinite final score", mutate: func(command *RecordOccurrenceCommand) { command.FinalScoreSnapshot = math.Inf(-1) }},
+		{name: "below frozen threshold", mutate: func(command *RecordOccurrenceCommand) {
+			command.FinalScoreSnapshot, command.Severity = 74.99, SeverityInfo
+		}},
+		{name: "severity disagrees with score", mutate: func(command *RecordOccurrenceCommand) {
+			command.FinalScoreSnapshot, command.Severity = 95, SeverityInfo
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			command := valid
+			test.mutate(&command)
+			if err := command.Validate(); err == nil {
+				t.Fatal("Validate() error = nil")
+			}
+		})
 	}
 }

@@ -15,17 +15,28 @@ type openAPIOperation struct {
 	Summary    string                `json:"summary"`
 	Tags       []string              `json:"tags"`
 	Security   []map[string][]string `json:"security"`
-	Parameters []struct {
-		In     string `json:"in"`
-		Schema struct {
-			Ref string `json:"$ref"`
-		} `json:"schema"`
-	} `json:"parameters"`
-	Responses map[string]struct {
+	Parameters []openAPIParameter    `json:"parameters"`
+	Responses  map[string]struct {
 		Schema struct {
 			Ref string `json:"$ref"`
 		} `json:"schema"`
 	} `json:"responses"`
+}
+
+type openAPIParameter struct {
+	Name             string   `json:"name"`
+	In               string   `json:"in"`
+	Type             string   `json:"type"`
+	Enum             []string `json:"enum"`
+	Minimum          *float64 `json:"minimum"`
+	Maximum          *float64 `json:"maximum"`
+	CollectionFormat string   `json:"collectionFormat"`
+	Items            struct {
+		Enum []string `json:"enum"`
+	} `json:"items"`
+	Schema struct {
+		Ref string `json:"$ref"`
+	} `json:"schema"`
 }
 
 func TestGeneratedOpenAPIRegistryMatchesCommittedArtifact(t *testing.T) {
@@ -246,9 +257,80 @@ func TestOpenAPIContract(t *testing.T) {
 	assertHeatOpenAPIDefinitions(t, document.Definitions)
 	assertSafeEventIntelligenceOpenAPI(t, document.Definitions)
 	assertSafeRadarAlertOpenAPI(t, document.Definitions)
+	assertRadarAlertParameterContracts(t, document.Paths, document.Definitions)
 	assertSafeDeliveryOpenAPIDefinitions(t, document.Definitions)
 	assertDraftExpectedVersionOpenAPI(t, document.Definitions)
 	assertMonitorDraftDefaultsOpenAPI(t, document.Definitions)
+}
+
+func assertRadarAlertParameterContracts(t *testing.T, paths map[string]json.RawMessage, definitions map[string]struct {
+	Properties map[string]json.RawMessage `json:"properties"`
+	Required   []string                   `json:"required"`
+}) {
+	t.Helper()
+	operations := func(route string) map[string]openAPIOperation {
+		var result map[string]openAPIOperation
+		if err := json.Unmarshal(paths[route], &result); err != nil {
+			t.Fatalf("decode parameter contract %s: %v", route, err)
+		}
+		return result
+	}
+	parameter := func(operation openAPIOperation, name string) openAPIParameter {
+		for _, candidate := range operation.Parameters {
+			if candidate.Name == name {
+				return candidate
+			}
+		}
+		t.Fatalf("missing parameter %s", name)
+		return openAPIParameter{}
+	}
+	assertRange := func(candidate openAPIParameter, minimum, maximum float64) {
+		if candidate.Minimum == nil || candidate.Maximum == nil || *candidate.Minimum != minimum || *candidate.Maximum != maximum {
+			t.Errorf("parameter %s range = %v/%v, want %v/%v", candidate.Name, candidate.Minimum, candidate.Maximum, minimum, maximum)
+		}
+	}
+	assertEnum := func(candidate openAPIParameter, expected []string) {
+		actual := candidate.Enum
+		if candidate.Type == "array" {
+			actual = candidate.Items.Enum
+			if candidate.CollectionFormat != "csv" {
+				t.Errorf("parameter %s collection format = %q, want csv", candidate.Name, candidate.CollectionFormat)
+			}
+		}
+		if !reflect.DeepEqual(actual, expected) {
+			t.Errorf("parameter %s enum = %v, want %v", candidate.Name, actual, expected)
+		}
+	}
+
+	radar := operations("/api/v1/radar/events")["get"]
+	assertEnum(parameter(radar, "window"), []string{"1h", "6h", "24h", "7d"})
+	assertEnum(parameter(radar, "lifecycle"), []string{"detected", "active", "cooling", "closed", "merged", "archived", "rejected"})
+	assertEnum(parameter(radar, "trend"), []string{"emerging", "rising", "stable", "falling", "dormant"})
+	assertEnum(parameter(radar, "verification"), []string{"disputed", "corroborated", "single_source", "unverified", "insufficient"})
+	assertEnum(parameter(radar, "sort"), []string{"momentum", "attention", "breadth", "latest", "relevance"})
+	assertRange(parameter(radar, "min_heat"), 0, 100)
+	assertRange(parameter(radar, "limit"), 1, 100)
+	monitor := parameter(radar, "monitor_id")
+	if monitor.Minimum == nil || *monitor.Minimum != 1 {
+		t.Errorf("Radar monitor_id minimum = %v, want 1", monitor.Minimum)
+	}
+
+	alerts := operations("/api/v1/alerts")["get"]
+	assertEnum(parameter(alerts, "state"), []string{"open", "acknowledged", "resolved", "suppressed"})
+	assertEnum(parameter(alerts, "severity"), []string{"info", "warning", "critical"})
+	assertRange(parameter(alerts, "limit"), 1, 100)
+	alertMonitor := parameter(alerts, "monitor_id")
+	if alertMonitor.Minimum == nil || *alertMonitor.Minimum != 1 {
+		t.Errorf("Alert monitor_id minimum = %v, want 1", alertMonitor.Minimum)
+	}
+
+	action := definitions["http.AlertActionRequest"]
+	var expectedVersion struct {
+		Minimum *float64 `json:"minimum"`
+	}
+	if err := json.Unmarshal(action.Properties["expected_version"], &expectedVersion); err != nil || expectedVersion.Minimum == nil || *expectedVersion.Minimum != 1 {
+		t.Errorf("AlertActionRequest expected_version minimum = %v/%v, want 1", expectedVersion.Minimum, err)
+	}
 }
 
 func assertSafeRadarAlertOpenAPI(t *testing.T, definitions map[string]struct {

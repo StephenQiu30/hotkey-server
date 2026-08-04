@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"strings"
 
+	alertapplication "github.com/StephenQiu30/hotkey-server/internal/modules/alert/application"
+	alertjobs "github.com/StephenQiu30/hotkey-server/internal/modules/alert/infrastructure/jobs"
+	alertpostgres "github.com/StephenQiu30/hotkey-server/internal/modules/alert/infrastructure/postgres"
+	alerttransport "github.com/StephenQiu30/hotkey-server/internal/modules/alert/transport/http"
 	deliveryapplication "github.com/StephenQiu30/hotkey-server/internal/modules/delivery/application"
 	deliveryjobs "github.com/StephenQiu30/hotkey-server/internal/modules/delivery/infrastructure/jobs"
 	deliverypostgres "github.com/StephenQiu30/hotkey-server/internal/modules/delivery/infrastructure/postgres"
@@ -127,7 +131,13 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newEventIntelligenceReadService,
 				newEventSummaryService,
 				newEventClaimExtractionService,
+				eventpostgres.NewUpdateRepository,
+				newEventUpdateService,
+				eventpostgres.NewAlertCandidateReader,
 				monitorpostgres.NewPublishedCollectionTargetReader,
+				monitorpostgres.NewAlertPolicyReader,
+				newAlertRepository,
+				newAlertService,
 				knowledgepostgres.NewRepository,
 				newSourceConnectorRegistry,
 				newKnowledgeVaultWriter,
@@ -169,6 +179,8 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 		if usesDatabase {
 			apiOptions = append(apiOptions,
 				fx.Provide(
+					newEventRadarRepository,
+					newEventRadarService,
 					newIdentityVerificationStore,
 					newIdentityService,
 					newIdentityAuthenticator,
@@ -185,7 +197,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newOperationsOverviewService,
 					newJobService,
 				),
-				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes, registerKnowledgeRoutes, registerJobRoutes, registerOverviewRoutes),
+				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerRadarRoutes, registerEventUpdateRoutes, registerAlertRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes, registerKnowledgeRoutes, registerJobRoutes, registerOverviewRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -205,7 +217,8 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					ingestionjobs.NewNormalizeHandler,
 					ingestionjobs.NewEvaluateHandler,
 					eventjobs.NewClusterHandler,
-					eventjobs.NewHeatHandler,
+					newEventHeatHandler,
+					newAlertEvaluateHandler,
 					newSummaryHandler,
 					newKnowledgeProjectHandler,
 					newKnowledgeReconcileHandler,
@@ -298,6 +311,18 @@ func registerEventRoutes(router *gin.Engine, read *eventapplication.ReadService,
 	eventtransport.RegisterRoutesWithIntelligence(router, read, lifecycle, governance, heat, claims, intelligence, summaries, extractions, authenticator)
 }
 
+func registerRadarRoutes(router *gin.Engine, radar *eventapplication.RadarService, authenticator httptransport.Authenticator) {
+	eventtransport.RegisterRadarRoutes(router, radar, authenticator)
+}
+
+func registerEventUpdateRoutes(router *gin.Engine, updates *eventapplication.UpdateService, authenticator httptransport.Authenticator) {
+	eventtransport.RegisterEventUpdateRoutes(router, updates, authenticator)
+}
+
+func registerAlertRoutes(router *gin.Engine, service *alertapplication.Service, authenticator httptransport.Authenticator) {
+	alerttransport.RegisterRoutes(router, service, authenticator)
+}
+
 func registerDeliveryRoutes(router *gin.Engine, repository *deliverypostgres.Repository) {
 	deliverytransport.RegisterRoutes(router, repository)
 }
@@ -365,6 +390,34 @@ func newEventClaimExtractionService(repository *eventpostgres.Repository, runner
 	return eventapplication.NewEventClaimExtractionService(repository, runner, repository)
 }
 
+func newEventUpdateService(repository *eventpostgres.UpdateRepository) *eventapplication.UpdateService {
+	return eventapplication.NewUpdateService(repository)
+}
+
+func newEventRadarRepository(runtime *database.Runtime, cfg config.Config) (*eventpostgres.RadarRepository, error) {
+	return eventpostgres.NewRadarRepositoryWithSigningSecret(runtime, cfg.Authentication.JWTSecret)
+}
+
+func newEventRadarService(repository *eventpostgres.RadarRepository) *eventapplication.RadarService {
+	return eventapplication.NewRadarService(repository)
+}
+
+func newAlertRepository(runtime *database.Runtime, cfg config.Config) (*alertpostgres.Repository, error) {
+	if Role(cfg.Role) == RoleWorker {
+		// A worker never serves Alert list cursors. Keep it independent from API
+		// authentication configuration while still deriving a purpose-scoped key
+		// from its parsed private database connection.
+		return alertpostgres.NewRepository(runtime), nil
+	}
+	return alertpostgres.NewRepositoryWithCursorSecret(runtime, cfg.Authentication.JWTSecret)
+}
+
+func newAlertService(candidates *eventpostgres.AlertCandidateReader, policies *monitorpostgres.AlertPolicyReader, repository *alertpostgres.Repository) (*alertapplication.Service, error) {
+	return alertapplication.NewService(alertapplication.Dependencies{
+		Candidates: candidates, Policies: policies, Occurrences: repository, Clock: sharedclock.System{},
+	})
+}
+
 func newSourceService(runtime *database.Runtime, sources *sourcepostgres.Repository, usage *monitorpostgres.SourceUsageReader, references *monitorpostgres.PublishedReferenceReader, audit *operationspostgres.AuditWriter) (*sourceapplication.Service, error) {
 	return sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sources, MonitorUsage: usage, PublishedReferences: references, Audit: audit})
 }
@@ -408,13 +461,22 @@ func newSummaryHandler(service *eventapplication.EventSummaryService) (*intellig
 	})
 }
 
-func newP0Handlers(collect *sourcejobs.CollectHandler, normalize *ingestionjobs.NormalizeHandler, evaluate *ingestionjobs.EvaluateHandler, cluster *eventjobs.ClusterHandler, heat *eventjobs.HeatHandler, summary *intelligencejobs.SummaryHandler, projectKnowledge *projectKnowledgeHandler, reconcileKnowledge *reconcileKnowledgeHandler, buildReport *reportjobs.BuildHandler, deliverEmail *deliveryjobs.DeliverEmailHandler) map[string]queue.Handler {
+func newEventHeatHandler(service *eventapplication.HeatService, updates *eventapplication.UpdateService, jobs *queue.Store) (*eventjobs.HeatHandler, error) {
+	return eventjobs.NewHeatHandlerWithUpdates(service, updates, jobs)
+}
+
+func newAlertEvaluateHandler(service *alertapplication.Service) *alertjobs.EvaluateHandler {
+	return alertjobs.NewEvaluateHandler(service)
+}
+
+func newP0Handlers(collect *sourcejobs.CollectHandler, normalize *ingestionjobs.NormalizeHandler, evaluate *ingestionjobs.EvaluateHandler, cluster *eventjobs.ClusterHandler, heat *eventjobs.HeatHandler, alerts *alertjobs.EvaluateHandler, summary *intelligencejobs.SummaryHandler, projectKnowledge *projectKnowledgeHandler, reconcileKnowledge *reconcileKnowledgeHandler, buildReport *reportjobs.BuildHandler, deliverEmail *deliveryjobs.DeliverEmailHandler) map[string]queue.Handler {
 	return map[string]queue.Handler{
 		queue.KindCollectSource:        collect.Handle,
 		queue.KindNormalizeContent:     normalize.Handle,
 		queue.KindEvaluateRelevance:    evaluate.Handle,
 		queue.KindClusterContent:       cluster.Handle,
 		queue.KindRecomputeEventHeat:   heat.Handle,
+		queue.KindEvaluateEventAlerts:  alerts.Handle,
 		queue.KindGenerateEventSummary: summary.Handle,
 		queue.KindProjectKnowledge:     projectKnowledge.Handle,
 		queue.KindReconcileKnowledge:   reconcileKnowledge.Handle,

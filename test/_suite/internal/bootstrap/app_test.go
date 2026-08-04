@@ -262,6 +262,7 @@ func TestConfiguredWorkerVerifiesDatabaseOnStart(t *testing.T) {
 	cfg.Role = string(RoleWorker)
 	cfg.HTTPAddr = ""
 	cfg.DatabaseURL = dsn
+	cfg.Authentication.JWTSecret = "unused-short-worker-secret"
 	app, err := NewApp(cfg, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewApp() error = %v", err)

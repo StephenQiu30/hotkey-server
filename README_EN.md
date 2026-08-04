@@ -48,12 +48,17 @@ This repository can run the API and background jobs on its own. Run `hotkey-web`
 | Sources | RSS, Atom, Hacker News, health checks, collection runs, and atomic retry across runs, checkpoints, and River jobs |
 | Content | Normalization, deduplication, Markdown document view, and MinIO evidence |
 | Relevance | Multilingual matching, human feedback, evaluation, and rule suggestions |
+| Hotspot monitoring | Event change timelines, explainable Radar, multi-dimensional filtering and sorting, low-noise inbox alerts, and action audits |
 | Events | Clustering, lifecycle governance, heat/trend metrics, entities, claims, and evidence-backed summaries |
 | AI | OpenAI, DeepSeek, Ollama, and optional local ONNX embeddings |
 | Knowledge | Obsidian proposals, approval, reconciliation, daily/weekly reports, and publishing |
 | Delivery & Ops | SMTP, private RSS/Atom, reliable jobs, Prometheus, OpenTelemetry, and operations APIs |
 
 Development mode also includes a self-hosted Swagger UI at `/docs` and an OpenAPI document at `/openapi.json`.
+
+The monitoring loop is event-centric rather than article-centric. Every 24-hour heat recomputation deterministically decides whether to append an immutable EventUpdate. Radar returns at most 100 explainable events ranked by attention, momentum, breadth, recency, or Monitor relevance. Material changes that meet a published Monitor threshold enter a low-noise Alert Thread. Alerts support acknowledge, resolve, suppress, optimistic concurrency, and immutable audits; retries and concurrent workers do not duplicate facts. If no AI Provider is configured or a Provider is temporarily unavailable, change detection, Radar, and alerts continue to work while summaries explicitly fall back to evidence-based degraded output.
+
+The authenticated API surface includes `GET /api/v1/radar/events`, `GET /api/v1/events/{id}/updates`, `GET /api/v1/alerts`, `GET /api/v1/alerts/{id}`, and the three alert state actions. OpenAPI is the source of truth for request and response details.
 
 ## Architecture
 
@@ -62,12 +67,14 @@ flowchart LR
     A["RSS / Atom / HN"] --> B["Collect and normalize"]
     B --> C["Relevance and deduplication"]
     C --> D["Event clustering and heat"]
-    D --> E["Entities, claims, summaries"]
-    E --> F["Daily / weekly reports"]
-    F --> G["Obsidian Vault"]
-    F --> H["Email / RSS / Atom"]
-    B -. "raw evidence" .-> I["MinIO"]
-    B -. "business facts" .-> J["PostgreSQL + pgvector"]
+    D --> E["Change timeline and Radar"]
+    E --> F["Low-noise alerts"]
+    E --> G["Entities, claims, summaries"]
+    G --> H["Daily / weekly reports"]
+    H --> I["Obsidian Vault"]
+    H --> J["Email / RSS / Atom"]
+    B -. "raw evidence" .-> K["MinIO"]
+    B -. "business facts" .-> L["PostgreSQL + pgvector"]
 ```
 
 The same Go binary can run as `all`, `api`, or `worker`.

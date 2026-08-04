@@ -50,12 +50,17 @@ HotKey 由两个可独立开发、组合部署的开源仓库组成：
 | 来源采集 | RSS、Atom、Hacker News，来源健康检查、采集运行记录，以及批次、检查点与 River 任务的原子重试 |
 | 内容与证据 | 内容标准化、去重、Markdown 文档预览、MinIO 原始证据存储 |
 | 相关性与反馈 | 多语言匹配、人工反馈、评估与规则建议 |
+| 热点监测 | 事件变化时间线、可解释 Radar、多条件排序筛选、低噪声站内告警与处理审计 |
 | 事件智能 | 聚类、生命周期治理、热度趋势、实体、声明和证据化摘要 |
 | AI Provider | OpenAI、DeepSeek、Ollama，以及可选的本地 ONNX Embedding |
 | 知识与报告 | Obsidian 提案/审批/对账、日报周报构建、预览、冻结和发布 |
 | 交付与运维 | SMTP、私有 RSS/Atom、River 任务、Prometheus、OpenTelemetry 和运行治理接口 |
 
 开发环境还提供自托管 Swagger UI（`/docs`）和 OpenAPI 文档（`/openapi.json`）。
+
+热点监测链路以 Event 而不是单篇文章为中心：每次 24 小时热度重算会确定性判断是否形成一条不可变 EventUpdate；Radar 按 attention、momentum、breadth、latest 或 Monitor relevance 返回最多 100 个可解释事件；达到已发布 Monitor 阈值的实质变化进入站内 Alert Thread。告警支持 acknowledge、resolve、suppress 和乐观锁审计，重复任务与并发 Worker 不会重复创建事实。AI Provider 缺失或暂时不可用时，变化检测、Radar 和告警仍然运行，摘要则明确降级为基于证据的结果。
+
+对应的认证 API 是 `GET /api/v1/radar/events`、`GET /api/v1/events/{id}/updates`、`GET /api/v1/alerts`、`GET /api/v1/alerts/{id}` 及三个告警状态动作；准确参数与响应以 OpenAPI 为准。
 
 ## 工作方式
 
@@ -64,12 +69,14 @@ flowchart LR
     A["RSS / Atom / HN"] --> B["采集与标准化"]
     B --> C["相关性与去重"]
     C --> D["事件聚类与热度"]
-    D --> E["实体、声明与摘要"]
-    E --> F["日报 / 周报"]
-    F --> G["Obsidian Vault"]
-    F --> H["Email / RSS / Atom"]
-    B -. "原始证据" .-> I["MinIO"]
-    B -. "业务事实" .-> J["PostgreSQL + pgvector"]
+    D --> E["变化时间线与 Radar"]
+    E --> F["低噪声告警"]
+    E --> G["实体、声明与摘要"]
+    G --> H["日报 / 周报"]
+    H --> I["Obsidian Vault"]
+    H --> J["Email / RSS / Atom"]
+    B -. "原始证据" .-> K["MinIO"]
+    B -. "业务事实" .-> L["PostgreSQL + pgvector"]
 ```
 
 服务以同一个 Go 二进制运行，可选择：

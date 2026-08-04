@@ -54,3 +54,21 @@ func registerRoutes(router *gin.Engine, read *application.ReadService, lifecycle
 	admin.POST("/:id/merge", httptransport.Wrap(handler.Merge))
 	admin.POST("/:id/split", httptransport.Wrap(handler.Split))
 }
+
+func RegisterRadarRoutes(router *gin.Engine, radar *application.RadarService, authenticator httptransport.Authenticator) {
+	if router == nil {
+		return
+	}
+	handler := &Handler{radar: radar}
+	api := router.Group("/api/v1/radar", httptransport.RequireAuthentication(authenticator))
+	api.GET("/events", httptransport.Wrap(handler.ListRadar))
+}
+
+func RegisterEventUpdateRoutes(router *gin.Engine, updates *application.UpdateService, authenticator httptransport.Authenticator) {
+	if router == nil {
+		return
+	}
+	handler := &Handler{updates: updates}
+	api := router.Group("/api/v1/events", httptransport.RequireAuthentication(authenticator))
+	api.GET("/:id/updates", httptransport.Wrap(handler.ListUpdates))
+}

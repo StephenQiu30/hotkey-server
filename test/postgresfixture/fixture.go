@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -22,10 +23,10 @@ var sequence atomic.Uint64
 // identify a PostgreSQL role permitted to create and drop databases.
 func New(t testing.TB) string {
 	t.Helper()
-	dsn := os.Getenv("HOTKEY_TEST_DSN")
-	if dsn == "" {
-		t.Fatal("HOTKEY_TEST_DSN is required for PostgreSQL integration tests")
+	if err := validateIsolationEnvironment(); err != nil {
+		t.Fatal(err)
 	}
+	dsn := os.Getenv("HOTKEY_TEST_DSN")
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	adminConfig, err := pgxpool.ParseConfig(dsn)
@@ -57,6 +58,60 @@ func New(t testing.TB) string {
 		admin.Close()
 	})
 	return childDSN
+}
+
+func validateIsolationEnvironment() error {
+	testDSN := strings.TrimSpace(os.Getenv("HOTKEY_TEST_DSN"))
+	if testDSN == "" {
+		return fmt.Errorf("HOTKEY_TEST_DSN is required for PostgreSQL integration tests")
+	}
+	testPostgres, err := normalizedTarget(testDSN, map[string]bool{"postgres": true, "postgresql": true})
+	if err != nil {
+		return fmt.Errorf("validate HOTKEY_TEST_DSN: %w", err)
+	}
+	if runtimeDSN := strings.TrimSpace(os.Getenv("HOTKEY_DATABASE_URL")); runtimeDSN != "" {
+		runtimePostgres, err := normalizedTarget(runtimeDSN, map[string]bool{"postgres": true, "postgresql": true})
+		if err != nil {
+			return fmt.Errorf("validate HOTKEY_DATABASE_URL: %w", err)
+		}
+		if testPostgres == runtimePostgres {
+			return fmt.Errorf("HOTKEY_TEST_DSN must not target HOTKEY_DATABASE_URL")
+		}
+	}
+
+	testRedisURL := strings.TrimSpace(os.Getenv("HOTKEY_TEST_REDIS_URL"))
+	if testRedisURL == "" {
+		return fmt.Errorf("HOTKEY_TEST_REDIS_URL is required for integration tests")
+	}
+	testRedis, err := normalizedTarget(testRedisURL, map[string]bool{"redis": true, "rediss": true})
+	if err != nil {
+		return fmt.Errorf("validate HOTKEY_TEST_REDIS_URL: %w", err)
+	}
+	if runtimeRedisURL := strings.TrimSpace(os.Getenv("HOTKEY_REDIS_URL")); runtimeRedisURL != "" {
+		runtimeRedis, err := normalizedTarget(runtimeRedisURL, map[string]bool{"redis": true, "rediss": true})
+		if err != nil {
+			return fmt.Errorf("validate HOTKEY_REDIS_URL: %w", err)
+		}
+		if testRedis == runtimeRedis {
+			return fmt.Errorf("HOTKEY_TEST_REDIS_URL must not target HOTKEY_REDIS_URL")
+		}
+	}
+	return nil
+}
+
+func normalizedTarget(raw string, allowedSchemes map[string]bool) (string, error) {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", err
+	}
+	parsed.Scheme = strings.ToLower(parsed.Scheme)
+	parsed.Host = strings.ToLower(parsed.Host)
+	if !allowedSchemes[parsed.Scheme] || parsed.Host == "" {
+		return "", fmt.Errorf("unsupported or incomplete target URL")
+	}
+	parsed.RawQuery = parsed.Query().Encode()
+	parsed.Fragment = ""
+	return parsed.String(), nil
 }
 
 func databaseName(processID int, timestamp int64, ordinal uint64) string {

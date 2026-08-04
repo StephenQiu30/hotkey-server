@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/StephenQiu30/hotkey-server/internal/modules/event/application"
 	"github.com/StephenQiu30/hotkey-server/internal/modules/event/domain"
@@ -17,6 +18,8 @@ import (
 
 type Handler struct {
 	read         *application.ReadService
+	radar        *application.RadarService
+	updates      *application.UpdateService
 	lifecycle    *application.LifecycleService
 	governance   *application.GovernanceService
 	heat         *application.HeatService
@@ -238,6 +241,7 @@ func (handler *Handler) SaveClaim(c *gin.Context) error {
 // @Success 200 {object} EventResult[EventPageResponse]
 // @Failure 400 {object} EventResult[EmptyResponse]
 // @Failure 401 {object} EventResult[EmptyResponse]
+// @Failure 404 {object} EventResult[EmptyResponse]
 // @Failure 503 {object} EventResult[EmptyResponse]
 // @Router /api/v1/events [get]
 func (handler *Handler) List(c *gin.Context) error {
@@ -256,6 +260,89 @@ func (handler *Handler) List(c *gin.Context) error {
 	response := EventPageResponse{Items: make([]EventResponse, 0, len(page.Items)), NextCursor: page.NextCursor}
 	for _, event := range page.Items {
 		response.Items = append(response.Items, eventResponse(event))
+	}
+	httptransport.OK(c, response)
+	return nil
+}
+
+// ListRadar returns a frozen, explainable Event ranking without exposing
+// source configuration, model payloads, or full Content bodies.
+// @Summary List explainable Radar events
+// @Tags radar
+// @Produce json
+// @Security BearerAuth
+// @Param window query string false "Radar window" Enums(1h,6h,24h,7d) default(24h)
+// @Param monitor_id query int false "monitor ID" minimum(1)
+// @Param lifecycle query []string false "lifecycle filters" collectionFormat(csv) Enums(detected,active,cooling,closed,merged,archived,rejected)
+// @Param trend query []string false "trend filters" collectionFormat(csv) Enums(emerging,rising,stable,falling,dormant)
+// @Param verification query []string false "verification filters" collectionFormat(csv) Enums(disputed,corroborated,single_source,unverified,insufficient)
+// @Param min_heat query number false "minimum heat" minimum(0) maximum(100)
+// @Param sort query string false "ranking dimension" Enums(momentum,attention,breadth,latest,relevance) default(momentum)
+// @Param limit query int false "page size" minimum(1) maximum(100) default(50)
+// @Param cursor query string false "opaque Radar cursor"
+// @Success 200 {object} EventResult[RadarPageResponse]
+// @Failure 400 {object} EventResult[EmptyResponse]
+// @Failure 401 {object} EventResult[EmptyResponse]
+// @Failure 404 {object} EventResult[EmptyResponse]
+// @Failure 503 {object} EventResult[EmptyResponse]
+// @Router /api/v1/radar/events [get]
+func (handler *Handler) ListRadar(c *gin.Context) error {
+	if handler == nil || handler.radar == nil {
+		return sharederrors.New(sharederrors.CodeUnavailable, http.StatusServiceUnavailable, "")
+	}
+	query, err := radarQuery(c)
+	if err != nil {
+		return err
+	}
+	page, err := handler.radar.List(c.Request.Context(), query)
+	if err != nil {
+		return eventError(err)
+	}
+	response := RadarPageResponse{Items: make([]RadarEventResponse, 0, len(page.Items)), NextCursor: page.NextCursor, AsOf: page.AsOf}
+	for _, item := range page.Items {
+		response.Items = append(response.Items, radarEventResponse(item))
+	}
+	httptransport.OK(c, response)
+	return nil
+}
+
+// ListUpdates returns the immutable material-change timeline for one Event.
+// @Summary List event updates
+// @Tags events
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "event ID" minimum(1)
+// @Param cursor query int false "sequence cursor" minimum(0)
+// @Param limit query int false "page size" minimum(1) maximum(100) default(50)
+// @Success 200 {object} EventResult[EventUpdatePageResponse]
+// @Failure 400 {object} EventResult[EmptyResponse]
+// @Failure 401 {object} EventResult[EmptyResponse]
+// @Failure 404 {object} EventResult[EmptyResponse]
+// @Failure 503 {object} EventResult[EmptyResponse]
+// @Router /api/v1/events/{id}/updates [get]
+func (handler *Handler) ListUpdates(c *gin.Context) error {
+	if handler == nil || handler.updates == nil {
+		return sharederrors.New(sharederrors.CodeUnavailable, http.StatusServiceUnavailable, "")
+	}
+	eventID, err := pathID(c, "id")
+	if err != nil {
+		return err
+	}
+	limit, err := queryLimit(c.Query("limit"))
+	if err != nil {
+		return err
+	}
+	cursor, err := queryCursor(c.Query("cursor"))
+	if err != nil {
+		return err
+	}
+	page, err := handler.updates.List(c.Request.Context(), eventID, limit, cursor)
+	if err != nil {
+		return eventError(err)
+	}
+	response := EventUpdatePageResponse{Items: make([]EventUpdateResponse, 0, len(page.Items)), NextCursor: page.NextCursor}
+	for _, update := range page.Items {
+		response.Items = append(response.Items, eventUpdateResponse(update))
 	}
 	httptransport.OK(c, response)
 	return nil
@@ -494,6 +581,67 @@ func queryCursor(raw string) (int64, error) {
 		return 0, invalidRequest(fmt.Errorf("invalid event cursor"))
 	}
 	return value, nil
+}
+
+func radarQuery(c *gin.Context) (domain.RadarQuery, error) {
+	limit, err := queryLimit(c.Query("limit"))
+	if err != nil {
+		return domain.RadarQuery{}, err
+	}
+	query := domain.RadarQuery{
+		Window: domain.RadarWindow(c.Query("window")), Sort: domain.RadarSort(c.Query("sort")),
+		Limit: limit, Cursor: c.Query("cursor"),
+	}
+	if raw := c.Query("monitor_id"); raw != "" {
+		value, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || value <= 0 {
+			return domain.RadarQuery{}, invalidRequest(fmt.Errorf("invalid Radar monitor"))
+		}
+		query.MonitorID = &value
+	}
+	if raw := c.Query("min_heat"); raw != "" {
+		value, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			return domain.RadarQuery{}, invalidRequest(fmt.Errorf("invalid Radar minimum heat"))
+		}
+		query.MinHeat = &value
+	}
+	values, err := radarQueryValues(c.Query("lifecycle"))
+	if err != nil {
+		return domain.RadarQuery{}, err
+	}
+	for _, value := range values {
+		query.Lifecycles = append(query.Lifecycles, domain.LifecycleStatus(value))
+	}
+	values, err = radarQueryValues(c.Query("trend"))
+	if err != nil {
+		return domain.RadarQuery{}, err
+	}
+	for _, value := range values {
+		query.Trends = append(query.Trends, domain.TrendStatus(value))
+	}
+	values, err = radarQueryValues(c.Query("verification"))
+	if err != nil {
+		return domain.RadarQuery{}, err
+	}
+	for _, value := range values {
+		query.Verifications = append(query.Verifications, domain.RadarConfirmation(value))
+	}
+	return query, nil
+}
+
+func radarQueryValues(raw string) ([]string, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	values := strings.Split(raw, ",")
+	for index := range values {
+		values[index] = strings.TrimSpace(values[index])
+		if values[index] == "" {
+			return nil, invalidRequest(fmt.Errorf("invalid empty Radar filter"))
+		}
+	}
+	return values, nil
 }
 
 func invalidRequest(cause error) error {

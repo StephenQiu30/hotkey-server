@@ -213,14 +213,66 @@ func TestRadarQueryAndCursorBindSemanticShapeButAllowLimitChanges(t *testing.T) 
 			t.Fatalf("semantic change did not change shape: %#v", changed)
 		}
 	}
-	cursor := RadarCursor{Version: RadarCursorVersionV1, AsOf: asOf, ShapeHash: baseHash, RankingScore: 75, LastSeenAt: asOf.Add(-time.Hour), EventID: 9}
-	if err := cursor.ValidateFor(equivalent); err != nil {
+	cursor := RadarCursor{
+		Version: RadarCursorVersionV1, AsOf: asOf, ExpiresAt: asOf.Add(15 * time.Minute), ShapeHash: baseHash,
+		RankingScore: 75, LastSeenAt: asOf.Add(-time.Hour), EventID: 9,
+		Remaining: []RadarCursorPosition{{EventID: 8, RankingScore: 70, LastSeenAt: asOf.Add(-2 * time.Hour)}},
+	}
+	if err := cursor.ValidateForAt(equivalent, asOf); err != nil {
 		t.Fatalf("cursor rejected equivalent query: %v", err)
 	}
 	changed := base
 	changed.Sort = RadarSortMomentum
-	if err := cursor.ValidateFor(changed); err == nil {
+	if err := cursor.ValidateForAt(changed, asOf); err == nil {
 		t.Fatal("cursor accepted another query shape")
+	}
+}
+
+func TestRadarCursorRejectsExpiredOrMalformedFrozenPositions(t *testing.T) {
+	now := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
+	query := RadarQuery{Window: RadarWindow24Hours, Sort: RadarSortMomentum, Limit: 25, AsOf: now}
+	shapeHash, err := query.ShapeHash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := RadarCursor{
+		Version: RadarCursorVersionV1, AsOf: now, ExpiresAt: now.Add(15 * time.Minute), ShapeHash: shapeHash,
+		RankingScore: 75, LastSeenAt: now.Add(-time.Hour), EventID: 9,
+		Remaining: []RadarCursorPosition{
+			{EventID: 8, RankingScore: 70, LastSeenAt: now.Add(-2 * time.Hour)},
+			{EventID: 7, RankingScore: 70, LastSeenAt: now.Add(-3 * time.Hour)},
+		},
+	}
+	if err := valid.ValidateForAt(query, now); err != nil {
+		t.Fatalf("valid frozen cursor: %v", err)
+	}
+
+	for name, mutate := range map[string]func(*RadarCursor){
+		"expired":                func(cursor *RadarCursor) { cursor.ExpiresAt = now.Add(-time.Nanosecond) },
+		"expiry before snapshot": func(cursor *RadarCursor) { cursor.ExpiresAt = now.Add(-time.Minute) },
+		"duplicate event":        func(cursor *RadarCursor) { cursor.Remaining[1].EventID = cursor.Remaining[0].EventID },
+		"unordered score":        func(cursor *RadarCursor) { cursor.Remaining[0].RankingScore = 76 },
+		"unordered tie":          func(cursor *RadarCursor) { cursor.Remaining[1].LastSeenAt = now.Add(-time.Hour) },
+		"future last seen":       func(cursor *RadarCursor) { cursor.Remaining[0].LastSeenAt = now.Add(time.Second) },
+		"invalid event":          func(cursor *RadarCursor) { cursor.Remaining[0].EventID = 0 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			cursor := valid
+			cursor.Remaining = append([]RadarCursorPosition(nil), valid.Remaining...)
+			mutate(&cursor)
+			if err := cursor.ValidateForAt(query, now); err == nil {
+				t.Fatalf("ValidateForAt accepted %#v", cursor)
+			}
+		})
+	}
+
+	tooMany := valid
+	tooMany.Remaining = make([]RadarCursorPosition, RadarCursorMaximumEvents)
+	for index := range tooMany.Remaining {
+		tooMany.Remaining[index] = RadarCursorPosition{EventID: int64(1000 - index), RankingScore: 70, LastSeenAt: now.Add(-time.Duration(index+2) * time.Hour)}
+	}
+	if err := tooMany.ValidateForAt(query, now); err == nil {
+		t.Fatal("cursor accepted more than the remaining positions possible in a top-100 snapshot")
 	}
 }
 

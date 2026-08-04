@@ -81,15 +81,13 @@ func (service *EventSummaryService) Generate(ctx context.Context, eventID int64)
 		Evidence: eventIntelligenceEvidence(source.Evidence),
 	})
 	if err != nil {
+		if reason, safe := safeEventSummaryDegradation(err); safe {
+			return service.degraded(ctx, eventID, source, reason)
+		}
 		return EventSummaryGenerationResult{}, err
 	}
 	if executed.Status == "degraded" {
-		summary, err := DegradedSummary(source.Event.TitleZH, source.Event.TitleEN, source.representativeEvidence())
-		if err != nil {
-			return EventSummaryGenerationResult{}, err
-		}
-		result := EventSummaryGenerationResult{Summary: summary, ReasonCode: executed.ReasonCode}
-		return service.persist(ctx, eventID, result)
+		return service.degraded(ctx, eventID, source, executed.ReasonCode)
 	}
 	if executed.Status != "succeeded" || executed.Run.ID <= 0 {
 		return EventSummaryGenerationResult{}, fmt.Errorf("event summary run did not produce a result")
@@ -99,6 +97,27 @@ func (service *EventSummaryService) Generate(ctx context.Context, eventID int64)
 		return EventSummaryGenerationResult{}, err
 	}
 	return service.persist(ctx, eventID, EventSummaryGenerationResult{Summary: summary, RunID: executed.Run.ID, Reused: executed.Reused})
+}
+
+func (service *EventSummaryService) degraded(ctx context.Context, eventID int64, source EventIntelligenceSource, reason string) (EventSummaryGenerationResult, error) {
+	summary, err := DegradedSummary(source.Event.TitleZH, source.Event.TitleEN, source.representativeEvidence())
+	if err != nil {
+		return EventSummaryGenerationResult{}, err
+	}
+	return service.persist(ctx, eventID, EventSummaryGenerationResult{Summary: summary, ReasonCode: reason})
+}
+
+func safeEventSummaryDegradation(err error) (string, bool) {
+	code, known := intelligencedomain.CodeOf(err)
+	if !known {
+		return "", false
+	}
+	switch code {
+	case intelligencedomain.CodeAIModelUnavailable, intelligencedomain.CodeAIProviderTransient, intelligencedomain.CodeAIProviderTimeout:
+		return "ai_unavailable", true
+	default:
+		return "", false
+	}
 }
 
 func (service *EventSummaryService) persist(ctx context.Context, eventID int64, result EventSummaryGenerationResult) (EventSummaryGenerationResult, error) {

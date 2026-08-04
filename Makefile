@@ -4,6 +4,7 @@ GO ?= go
 
 test:
 	test -n "$$HOTKEY_TEST_DSN"
+	test -n "$$HOTKEY_TEST_REDIS_URL"
 	GO=$(GO) $(GO) run ./test/runner test ./... -count=1
 
 lint:

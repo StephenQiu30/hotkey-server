@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -31,8 +32,16 @@ func newIdentityRuntime(t *testing.T) *database.Runtime {
 
 func createIdentityUser(t *testing.T, repository *UserRepository, suffix string) *domain.User {
 	t.Helper()
+	safeSuffix := strings.Map(func(character rune) rune {
+		switch {
+		case character >= 'a' && character <= 'z', character >= 'A' && character <= 'Z', character >= '0' && character <= '9', character == '-':
+			return character
+		default:
+			return '-'
+		}
+	}, suffix)
 	user := &domain.User{
-		Email:        fmt.Sprintf("identity-%s@example.test", suffix),
+		Email:        fmt.Sprintf("identity-%s@example.test", safeSuffix),
 		PasswordHash: "bcrypt-hash",
 		DisplayName:  "Identity User",
 		Role:         domain.RoleViewer,

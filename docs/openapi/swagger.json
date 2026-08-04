@@ -392,6 +392,383 @@
                 }
             }
         },
+        "/api/v1/alerts": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "alerts"
+                ],
+                "summary": "List alert threads",
+                "parameters": [
+                    {
+                        "enum": [
+                            "open",
+                            "acknowledged",
+                            "resolved",
+                            "suppressed"
+                        ],
+                        "type": "string",
+                        "description": "thread state",
+                        "name": "state",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "info",
+                            "warning",
+                            "critical"
+                        ],
+                        "type": "string",
+                        "description": "severity",
+                        "name": "severity",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "monitor_id",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 100,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 20,
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "opaque alert cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-http_AlertPageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/alerts/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "alerts"
+                ],
+                "summary": "Get an alert thread",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "alert thread ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-http_AlertDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/alerts/{id}/acknowledge": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "alerts"
+                ],
+                "summary": "Acknowledge an alert thread",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "alert thread ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "versioned alert action",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertActionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-http_AlertThreadResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/alerts/{id}/resolve": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "alerts"
+                ],
+                "summary": "Resolve an alert thread",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "alert thread ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "versioned alert action",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertActionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-http_AlertThreadResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/alerts/{id}/suppress": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "alerts"
+                ],
+                "summary": "Suppress an alert thread",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "alert thread ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "versioned alert action",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertActionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-http_AlertThreadResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.AlertResult-internal_modules_alert_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/auth/email-verifications": {
             "post": {
                 "consumes": [
@@ -1231,6 +1608,12 @@
                             "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
                         }
                     },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
                     "503": {
                         "description": "Service Unavailable",
                         "schema": {
@@ -1975,6 +2358,80 @@
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/events/{id}/updates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "List event updates",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "event ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "sequence cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 100,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 50,
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-http_EventUpdatePageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
                         }
@@ -4354,6 +4811,166 @@
                 }
             }
         },
+        "/api/v1/radar/events": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "radar"
+                ],
+                "summary": "List explainable Radar events",
+                "parameters": [
+                    {
+                        "enum": [
+                            "1h",
+                            "6h",
+                            "24h",
+                            "7d"
+                        ],
+                        "type": "string",
+                        "default": "24h",
+                        "description": "Radar window",
+                        "name": "window",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "monitor_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "enum": [
+                                "detected",
+                                "active",
+                                "cooling",
+                                "closed",
+                                "merged",
+                                "archived",
+                                "rejected"
+                            ],
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "lifecycle filters",
+                        "name": "lifecycle",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "enum": [
+                                "emerging",
+                                "rising",
+                                "stable",
+                                "falling",
+                                "dormant"
+                            ],
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "trend filters",
+                        "name": "trend",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "enum": [
+                                "disputed",
+                                "corroborated",
+                                "single_source",
+                                "unverified",
+                                "insufficient"
+                            ],
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "verification filters",
+                        "name": "verification",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 100,
+                        "minimum": 0,
+                        "type": "number",
+                        "description": "minimum heat",
+                        "name": "min_heat",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "momentum",
+                            "attention",
+                            "breadth",
+                            "latest",
+                            "relevance"
+                        ],
+                        "type": "string",
+                        "default": "momentum",
+                        "description": "ranking dimension",
+                        "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 100,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 50,
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "opaque Radar cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-http_RadarPageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/report-subscriptions": {
             "get": {
                 "security": [
@@ -6139,6 +6756,242 @@
                 }
             }
         },
+        "http.AlertActionRequest": {
+            "type": "object",
+            "required": [
+                "expected_version",
+                "reason_code"
+            ],
+            "properties": {
+                "expected_version": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "reason_code": {
+                    "type": "string",
+                    "maxLength": 64
+                }
+            }
+        },
+        "http.AlertDetailResponse": {
+            "type": "object",
+            "properties": {
+                "audits": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.AlertStateAuditResponse"
+                    }
+                },
+                "occurrences": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.AlertOccurrenceResponse"
+                    }
+                },
+                "thread": {
+                    "$ref": "#/definitions/http.AlertThreadResponse"
+                }
+            }
+        },
+        "http.AlertOccurrenceResponse": {
+            "type": "object",
+            "properties": {
+                "event_update_id": {
+                    "type": "integer"
+                },
+                "final_score": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "reason_codes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "severity": {
+                    "type": "string"
+                },
+                "threshold": {
+                    "type": "number"
+                },
+                "triggered_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.AlertPageResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.AlertThreadResponse"
+                    }
+                },
+                "next_cursor": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.AlertResult-http_AlertDetailResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.AlertDetailResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.AlertResult-http_AlertPageResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.AlertPageResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.AlertResult-http_AlertThreadResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.AlertThreadResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.AlertResult-internal_modules_alert_transport_http_EmptyResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/internal_modules_alert_transport_http.EmptyResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.AlertStateAuditResponse": {
+            "type": "object",
+            "properties": {
+                "actor_type": {
+                    "type": "string"
+                },
+                "actor_user_id": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "expected_version": {
+                    "type": "integer"
+                },
+                "from_state": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "reason_code": {
+                    "type": "string"
+                },
+                "to_state": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.AlertThreadResponse": {
+            "type": "object",
+            "properties": {
+                "acknowledged_at": {
+                    "type": "string"
+                },
+                "acknowledged_by_user_id": {
+                    "type": "integer"
+                },
+                "cooldown_until": {
+                    "type": "string"
+                },
+                "event_id": {
+                    "type": "integer"
+                },
+                "first_triggered_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "last_triggered_at": {
+                    "type": "string"
+                },
+                "monitor_id": {
+                    "type": "integer"
+                },
+                "monitor_revision": {
+                    "type": "integer"
+                },
+                "occurrence_count": {
+                    "type": "integer"
+                },
+                "policy_version": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "resolved_at": {
+                    "type": "string"
+                },
+                "resolved_by_user_id": {
+                    "type": "integer"
+                },
+                "severity": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                },
+                "suppressed_at": {
+                    "type": "string"
+                },
+                "suppressed_by_user_id": {
+                    "type": "integer"
+                },
+                "threshold": {
+                    "type": "number"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "trigger_type": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
         "http.ApprovalRequest": {
             "type": "object",
             "required": [
@@ -7323,6 +8176,20 @@
                 }
             }
         },
+        "http.EventResult-http_EventUpdatePageResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.EventUpdatePageResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "http.EventResult-http_ExtractionRegenerationResponse": {
             "type": "object",
             "properties": {
@@ -7345,6 +8212,20 @@
                 },
                 "data": {
                     "$ref": "#/definitions/http.HeatResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.EventResult-http_RadarPageResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.RadarPageResponse"
                 },
                 "message": {
                     "type": "string"
@@ -7399,6 +8280,96 @@
                 },
                 "version": {
                     "type": "string"
+                }
+            }
+        },
+        "http.EventUpdatePageResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.EventUpdateResponse"
+                    }
+                },
+                "next_cursor": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.EventUpdateResponse": {
+            "type": "object",
+            "properties": {
+                "after_state": {
+                    "$ref": "#/definitions/http.EventUpdateStateResponse"
+                },
+                "before_state": {
+                    "$ref": "#/definitions/http.EventUpdateStateResponse"
+                },
+                "event_id": {
+                    "type": "integer"
+                },
+                "evidence_set_hash": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "observed_at": {
+                    "type": "string"
+                },
+                "reason_codes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "sequence_no": {
+                    "type": "integer"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.EventUpdateStateResponse": {
+            "type": "object",
+            "properties": {
+                "capability_profile_set_hash": {
+                    "type": "string"
+                },
+                "content_count": {
+                    "type": "integer"
+                },
+                "evidence_set_hash": {
+                    "type": "string"
+                },
+                "heat_score": {
+                    "type": "number"
+                },
+                "heat_version": {
+                    "type": "string"
+                },
+                "source_count": {
+                    "type": "integer"
+                },
+                "trend_score": {
+                    "type": "number"
+                },
+                "trend_status": {
+                    "type": "string"
+                },
+                "window_end": {
+                    "type": "string"
+                },
+                "window_hours": {
+                    "type": "integer"
                 }
             }
         },
@@ -8538,6 +9509,103 @@
                 },
                 "expected_monitor_version": {
                     "type": "integer"
+                }
+            }
+        },
+        "http.RadarEventResponse": {
+            "type": "object",
+            "properties": {
+                "attention": {
+                    "type": "number"
+                },
+                "breadth": {
+                    "type": "number"
+                },
+                "confirmation": {
+                    "type": "string"
+                },
+                "confirmation_score": {
+                    "type": "number"
+                },
+                "data_confidence": {
+                    "type": "number"
+                },
+                "event_id": {
+                    "type": "integer"
+                },
+                "event_key": {
+                    "type": "string"
+                },
+                "first_seen_at": {
+                    "type": "string"
+                },
+                "independent_source_count": {
+                    "type": "integer"
+                },
+                "last_seen_at": {
+                    "type": "string"
+                },
+                "latest_update": {
+                    "$ref": "#/definitions/http.EventUpdateResponse"
+                },
+                "lifecycle_status": {
+                    "type": "string"
+                },
+                "momentum": {
+                    "type": "number"
+                },
+                "ranking_score": {
+                    "type": "number"
+                },
+                "reason_codes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "title_en": {
+                    "type": "string"
+                },
+                "title_zh": {
+                    "type": "string"
+                },
+                "trend_score": {
+                    "type": "number"
+                },
+                "trend_status": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                },
+                "watch_final_score": {
+                    "type": "number"
+                },
+                "watch_relevance": {
+                    "type": "number"
+                }
+            }
+        },
+        "http.RadarPageResponse": {
+            "type": "object",
+            "properties": {
+                "as_of": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.RadarEventResponse"
+                    }
+                },
+                "next_cursor": {
+                    "type": "string"
                 }
             }
         },
@@ -9710,6 +10778,9 @@
                     "type": "string"
                 }
             }
+        },
+        "internal_modules_alert_transport_http.EmptyResponse": {
+            "type": "object"
         },
         "internal_modules_event_transport_http.EmptyResponse": {
             "type": "object"

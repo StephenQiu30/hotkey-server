@@ -24,6 +24,38 @@ type Payload struct {
 	InputHash     string    `json:"input_hash,omitempty"`
 }
 
+// MarshalJSON keeps the queue envelope minimal. time.Time implements
+// json.Marshaler, so the standard encoder does not honor omitempty for its
+// zero value; representing optional windows as pointers avoids leaking two
+// meaningless timestamps into jobs that only need an entity identity.
+func (payload Payload) MarshalJSON() ([]byte, error) {
+	type wirePayload struct {
+		EntityID      int64      `json:"entity_id"`
+		EntityVersion int64      `json:"entity_version"`
+		WindowStart   *time.Time `json:"window_start,omitempty"`
+		WindowEnd     *time.Time `json:"window_end,omitempty"`
+		InputHash     string     `json:"input_hash,omitempty"`
+	}
+
+	var windowStart, windowEnd *time.Time
+	if !payload.WindowStart.IsZero() {
+		value := payload.WindowStart.UTC()
+		windowStart = &value
+	}
+	if !payload.WindowEnd.IsZero() {
+		value := payload.WindowEnd.UTC()
+		windowEnd = &value
+	}
+
+	return json.Marshal(wirePayload{
+		EntityID:      payload.EntityID,
+		EntityVersion: payload.EntityVersion,
+		WindowStart:   windowStart,
+		WindowEnd:     windowEnd,
+		InputHash:     payload.InputHash,
+	})
+}
+
 func (payload Payload) Validate() error {
 	if payload.EntityID <= 0 || payload.EntityVersion < 1 || len(payload.InputHash) > 128 {
 		return fmt.Errorf("invalid job payload")

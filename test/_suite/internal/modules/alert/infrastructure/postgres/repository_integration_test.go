@@ -4,6 +4,11 @@ package postgres_test
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -105,6 +110,66 @@ FOR EACH ROW EXECUTE FUNCTION fail_alert_thread_update()`); err != nil {
 	}
 }
 
+func TestOutOfOrderOccurrenceOnlyAdvancesCountAndCannotReopen(t *testing.T) {
+	fixture := newAlertRepositoryFixture(t)
+	newerUpdateID := fixture.insertUpdate(t, "metric_changed", 2)
+	triggeredAt := time.Now().UTC().Add(-4 * time.Hour).Truncate(time.Microsecond)
+
+	newer := fixture.command(newerUpdateID, triggeredAt)
+	newer.FinalScoreSnapshot = 95
+	newer.Severity = domain.SeverityCritical
+	newer.TitleSnapshot = "Newest alert snapshot"
+	newer.ReasonSnapshot = "newest reason"
+	newer.Fingerprint, _ = domain.OccurrenceFingerprint(domain.FingerprintInput{
+		MonitorConfigVersionID: fixture.configID, EventUpdateID: newerUpdateID,
+		TriggerType: newer.TriggerType, PolicyVersion: newer.PolicyVersion,
+	})
+	first, err := fixture.repository.RecordOccurrence(context.Background(), newer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	acknowledgedAt := triggeredAt.Add(2 * time.Hour)
+	acknowledged, err := fixture.repository.Transition(context.Background(), domain.TransitionCommand{
+		ThreadID: first.Thread.ID, ExpectedVersion: first.Thread.Version,
+		To: domain.StateAcknowledged, ActorUserID: fixture.userID,
+		ReasonCode: "reviewed", At: acknowledgedAt,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A legacy/evolved policy could have a cooldown at the exact tuple time.
+	// This makes the tuple tie-break, rather than the cooldown comparison, the
+	// fact that prevents a delayed lower event_update_id from reopening.
+	if _, err := fixture.runtime.SQL.ExecContext(context.Background(), `UPDATE alert_threads SET cooldown_until=$1 WHERE id=$2`, triggeredAt, acknowledged.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	delayed := fixture.command(fixture.updateID, triggeredAt)
+	delayed.TitleSnapshot = "Delayed stale snapshot"
+	delayed.ReasonSnapshot = "stale reason"
+	writeStartedAt := time.Now().UTC()
+	result, err := fixture.repository.RecordOccurrence(context.Background(), delayed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Created || result.Reopened {
+		t.Fatalf("delayed result = %#v, want created without reopen", result)
+	}
+	thread := result.Thread
+	if thread.State != domain.StateAcknowledged || thread.OccurrenceCount != 2 || thread.Version != acknowledged.Version+1 {
+		t.Fatalf("delayed occurrence state/count/version = %q/%d/%d", thread.State, thread.OccurrenceCount, thread.Version)
+	}
+	if thread.Severity != newer.Severity || thread.TitleSnapshot != newer.TitleSnapshot || thread.ReasonSnapshot != newer.ReasonSnapshot {
+		t.Fatalf("delayed occurrence replaced latest snapshot: %#v", thread)
+	}
+	if !thread.LastTriggeredAt.Equal(triggeredAt) || !thread.CooldownUntil.Equal(triggeredAt) {
+		t.Fatalf("delayed occurrence advanced trigger/cooldown = %s/%s", thread.LastTriggeredAt, thread.CooldownUntil)
+	}
+	if !thread.UpdatedAt.After(acknowledgedAt) || thread.UpdatedAt.Before(writeStartedAt) {
+		t.Fatalf("delayed occurrence updated_at = %s, want a write time at or after %s without regressing below %s", thread.UpdatedAt, writeStartedAt, acknowledgedAt)
+	}
+}
+
 func TestRepositoryUsesCASAuditAndStableListDetailReads(t *testing.T) {
 	fixture := newAlertRepositoryFixture(t)
 	first, err := fixture.repository.RecordOccurrence(context.Background(), fixture.command(fixture.updateID, time.Date(2026, 8, 4, 7, 0, 0, 0, time.UTC)))
@@ -148,6 +213,15 @@ func TestRepositoryUsesCASAuditAndStableListDetailReads(t *testing.T) {
 	if _, err := fixture.repository.List(context.Background(), domain.ListQuery{Limit: 1, Cursor: page.NextCursor, State: &state}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
 		t.Fatalf("cross-shape cursor error = %v, want ErrInvalidInput", err)
 	}
+	for name, cursor := range map[string]string{
+		"rewritten id":    rewriteAlertCursorWithoutSigning(t, page.NextCursor, "id", float64(first.Thread.ID)),
+		"rewritten shape": rewriteAlertCursorWithoutSigning(t, page.NextCursor, "shape", strings.Repeat("f", 64)),
+		"expired":         resignAlertCursor(t, page.NextCursor, fixture.cursorSecret, "issued_at", time.Now().UTC().Add(-16*time.Minute).Format(time.RFC3339Nano)),
+	} {
+		if _, err := fixture.repository.List(context.Background(), domain.ListQuery{Limit: 1, Cursor: cursor}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+			t.Fatalf("%s cursor error = %v, want ErrInvalidInput", name, err)
+		}
+	}
 
 	detail, err := fixture.repository.Get(context.Background(), first.Thread.ID)
 	if err != nil {
@@ -158,15 +232,102 @@ func TestRepositoryUsesCASAuditAndStableListDetailReads(t *testing.T) {
 	}
 }
 
+func TestGetReadsThreadOccurrencesAndAuditsFromOneRepeatableReadSnapshot(t *testing.T) {
+	fixture := newAlertRepositoryFixture(t)
+	first, err := fixture.repository.RecordOccurrence(context.Background(), fixture.command(fixture.updateID, time.Date(2026, 8, 4, 7, 0, 0, 0, time.UTC)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondUpdateID := fixture.insertUpdate(t, "metric_changed", 2)
+	second := fixture.command(secondUpdateID, time.Date(2026, 8, 4, 8, 0, 0, 0, time.UTC))
+	second.FinalScoreSnapshot, second.Severity = 95, domain.SeverityCritical
+	second.Fingerprint, _ = domain.OccurrenceFingerprint(domain.FingerprintInput{
+		MonitorConfigVersionID: fixture.configID, EventUpdateID: secondUpdateID,
+		TriggerType: second.TriggerType, PolicyVersion: second.PolicyVersion,
+	})
+
+	writer, err := fixture.runtime.SQL.BeginTx(context.Background(), &sql.TxOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Rollback()
+	if _, err := writer.ExecContext(context.Background(), `LOCK TABLE alert_occurrences IN ACCESS EXCLUSIVE MODE`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.ExecContext(context.Background(), `
+UPDATE alert_threads SET version=version+1,state='acknowledged',severity=$1,title_snapshot='committed snapshot',
+    reason_snapshot='committed reason',last_triggered_at=$2,occurrence_count=occurrence_count+1,
+    cooldown_until=$3,acknowledged_at=$2,acknowledged_by_user_id=$4,updated_at=$2
+WHERE id=$5`, second.Severity, second.TriggeredAt, domain.CooldownUntil(second.TriggeredAt), fixture.userID, first.Thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.ExecContext(context.Background(), `
+INSERT INTO alert_occurrences (alert_thread_id,event_update_id,severity,final_score_snapshot,threshold_snapshot,reason_codes,fingerprint,triggered_at)
+VALUES ($1,$2,$3,$4,$5,'{}',$6,$7)`, first.Thread.ID, secondUpdateID, second.Severity, second.FinalScoreSnapshot,
+		second.EventThresholdSnapshot, second.Fingerprint, second.TriggeredAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.ExecContext(context.Background(), `
+INSERT INTO alert_state_audits (alert_thread_id,actor_type,actor_user_id,from_state,to_state,expected_version,reason_code,created_at)
+VALUES ($1,'user',$2,'open','acknowledged',$3,'snapshot_test',$4)`, first.Thread.ID, fixture.userID, first.Thread.Version, second.TriggeredAt); err != nil {
+		t.Fatal(err)
+	}
+
+	type detailResult struct {
+		detail domain.ThreadDetail
+		err    error
+	}
+	result := make(chan detailResult, 1)
+	go func() {
+		detail, err := fixture.repository.Get(context.Background(), first.Thread.ID)
+		result <- detailResult{detail: detail, err: err}
+	}()
+	if !waitForBlockedOccurrenceRead(fixture.runtime.SQL, 3*time.Second) {
+		t.Fatal("Get did not block on the occurrence relation")
+	}
+	if err := writer.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	read := <-result
+	if read.err != nil {
+		t.Fatal(read.err)
+	}
+	if read.detail.Thread.OccurrenceCount != 1 || len(read.detail.Occurrences) != 1 || len(read.detail.Audits) != 0 {
+		t.Fatalf("Get combined different commit snapshots: %#v", read.detail)
+	}
+
+	latest, err := fixture.repository.Get(context.Background(), first.Thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if latest.Thread.OccurrenceCount != 2 || len(latest.Occurrences) != 2 || len(latest.Audits) != 1 {
+		t.Fatalf("latest committed detail = %#v", latest)
+	}
+}
+
+func TestAlertRepositoryProductionConstructorRequiresStrongPurposeDerivedSecret(t *testing.T) {
+	if _, err := alertpostgres.NewRepositoryWithCursorSecret(nil, "too-short"); err == nil {
+		t.Fatal("NewRepositoryWithCursorSecret() error = nil for a weak secret")
+	}
+	repository, err := alertpostgres.NewRepositoryWithCursorSecret(nil, strings.Repeat("s", sha256.Size))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repository == nil {
+		t.Fatal("NewRepositoryWithCursorSecret() repository = nil")
+	}
+}
+
 type alertRepositoryFixture struct {
-	runtime    *database.Runtime
-	repository *alertpostgres.Repository
-	userID     int64
-	monitorID  int64
-	configID   int64
-	eventID    int64
-	updateID   int64
-	configHash string
+	runtime      *database.Runtime
+	repository   *alertpostgres.Repository
+	userID       int64
+	monitorID    int64
+	configID     int64
+	eventID      int64
+	updateID     int64
+	configHash   string
+	cursorSecret string
 }
 
 func newAlertRepositoryFixture(t *testing.T) *alertRepositoryFixture {
@@ -181,7 +342,11 @@ func newAlertRepositoryFixture(t *testing.T) *alertRepositoryFixture {
 	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
 		t.Fatal(err)
 	}
-	fixture := &alertRepositoryFixture{runtime: runtime, repository: alertpostgres.NewRepository(runtime), configHash: strings.Repeat("a", 64)}
+	fixture := &alertRepositoryFixture{runtime: runtime, configHash: strings.Repeat("a", 64), cursorSecret: strings.Repeat("cursor-secret-", 3)}
+	fixture.repository, err = alertpostgres.NewRepositoryWithCursorSecret(runtime, fixture.cursorSecret)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := runtime.SQL.QueryRowContext(ctx, `INSERT INTO users (email,password_hash,display_name,role) VALUES ('alert@example.test','hash','Alert Tester','editor') RETURNING id`).Scan(&fixture.userID); err != nil {
 		t.Fatal(err)
 	}
@@ -199,6 +364,60 @@ func newAlertRepositoryFixture(t *testing.T) *alertRepositoryFixture {
 	}
 	fixture.eventID, fixture.updateID = fixture.insertEventAndUpdate(t)
 	return fixture
+}
+
+func rewriteAlertCursorWithoutSigning(t *testing.T, cursor, field string, value any) string {
+	t.Helper()
+	parts := strings.Split(cursor, ".")
+	if len(parts) != 2 {
+		t.Fatalf("cursor parts = %d, want signed payload", len(parts))
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var claims map[string]any
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		t.Fatal(err)
+	}
+	claims[field] = value
+	payload, err = json.Marshal(claims)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return base64.RawURLEncoding.EncodeToString(payload) + "." + parts[1]
+}
+
+func resignAlertCursor(t *testing.T, cursor, secret, field string, value any) string {
+	t.Helper()
+	unsigned := rewriteAlertCursorWithoutSigning(t, cursor, field, value)
+	parts := strings.Split(unsigned, ".")
+	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	derive := hmac.New(sha256.New, []byte(secret))
+	_, _ = derive.Write([]byte("alert-cursor-v1"))
+	sign := hmac.New(sha256.New, derive.Sum(nil))
+	_, _ = sign.Write(payload)
+	return parts[0] + "." + base64.RawURLEncoding.EncodeToString(sign.Sum(nil))
+}
+
+func waitForBlockedOccurrenceRead(database *sql.DB, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		var blocked bool
+		err := database.QueryRowContext(context.Background(), `
+SELECT EXISTS (
+    SELECT 1 FROM pg_locks
+    WHERE relation='alert_occurrences'::regclass AND mode='AccessShareLock' AND NOT granted
+)`).Scan(&blocked)
+		if err == nil && blocked {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return false
 }
 
 func (fixture *alertRepositoryFixture) insertEventAndUpdate(t *testing.T) (int64, int64) {
