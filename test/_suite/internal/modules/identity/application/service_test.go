@@ -85,6 +85,24 @@ func TestRequestVerificationHasTheSameAcceptedResultForExistingAndNewEmail(t *te
 	}
 }
 
+func TestRequestVerificationRejectsMalformedEmailBeforeDelivery(t *testing.T) {
+	t.Parallel()
+
+	store := &verificationStoreFake{}
+	mailer := &countingMailerFake{}
+	service := &Service{
+		verification: store,
+		mailer:       mailer,
+		clock:        fixedClock{now: time.Date(2026, time.July, 16, 8, 0, 0, 0, time.UTC)},
+	}
+
+	err := service.RequestVerification(context.Background(), domain.VerificationPurposeRegistration, "invalid")
+	requireAppCode(t, err, sharederrors.CodeVerificationInvalid)
+	if mailer.calls != 0 || store.createCalls != 0 {
+		t.Fatalf("invalid email caused sends=%d CreateCode calls=%d, want neither", mailer.calls, store.createCalls)
+	}
+}
+
 func TestRegisterConsumesOnlyRegistrationTicketAndCreatesActiveViewer(t *testing.T) {
 	service, users, store := newFakeService(t)
 	store.ticket = domain.VerificationTicket{
@@ -427,6 +445,15 @@ type mailerFake struct {
 
 func (mailer mailerFake) SendVerificationCode(context.Context, domain.VerificationPurpose, string, string) error {
 	return mailer.err
+}
+
+type countingMailerFake struct {
+	calls int
+}
+
+func (mailer *countingMailerFake) SendVerificationCode(context.Context, domain.VerificationPurpose, string, string) error {
+	mailer.calls++
+	return nil
 }
 
 type verificationStoreFake struct {

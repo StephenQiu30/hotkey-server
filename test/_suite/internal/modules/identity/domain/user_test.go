@@ -1,6 +1,9 @@
 package domain
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestNormalizeEmailTrimsAndLowercases(t *testing.T) {
 	t.Parallel()
@@ -11,6 +14,26 @@ func TestNormalizeEmailTrimsAndLowercases(t *testing.T) {
 	}
 	if email != "admin@example.com" {
 		t.Errorf("NormalizeEmail() = %q, want admin@example.com", email)
+	}
+}
+
+func TestNormalizeEmailRejectsMalformedAddresses(t *testing.T) {
+	t.Parallel()
+
+	for _, raw := range []string{
+		"",
+		"invalid",
+		"missing-domain@",
+		"@missing-local.test",
+		"Display Name <reader@example.test>",
+		"reader @example.test",
+	} {
+		t.Run(raw, func(t *testing.T) {
+			t.Parallel()
+			if _, err := NormalizeEmail(raw); !errors.Is(err, ErrInvalidEmail) {
+				t.Fatalf("NormalizeEmail(%q) error = %v, want ErrInvalidEmail", raw, err)
+			}
+		})
 	}
 }
 
