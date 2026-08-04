@@ -6,7 +6,7 @@ feature_area: 验收记录
 purpose: 定义长期验收证据的结构、结论和归档边界
 canonical_path: docs/acceptance/README.md
 status: review
-version: v4.0
+version: v4.1
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -78,6 +78,7 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | 023 | [首管理员数据库指定](archive/023-首管理员数据库指定验收.md) | accepted_with_risk |
 | 024 | [采集批次原子重试](archive/024-采集批次原子重试验收.md) | accepted |
 | 025 | [事件变化雷达与低噪声告警](025-事件变化雷达与低噪声告警验收.md) | accepted |
+| 026 | [双环境容器部署](026-双环境容器部署验收.md) | pending |
 
 ## 变更记录
 
@@ -113,3 +114,4 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | v3.8 | 2026-08-01 | 创建 PLAN-024 原子恢复采集批次与原队列任务的实施前验收模板。 |
 | v3.9 | 2026-08-01 | `70d00ba` 关闭多目标与确定性竞态审查问题，PLAN-024 通过完整门禁和独立最终复审并归档为 accepted。 |
 | v4.0 | 2026-08-04 | 创建 PLAN-025 事件变化、Radar 与低噪声告警实施前验收模板。 |
+| v4.1 | 2026-08-04 | 创建 PLAN-026 双环境容器部署实施前验收矩阵，固定配置负测、初始化状态机与真实容器证据。 |
