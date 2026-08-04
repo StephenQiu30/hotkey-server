@@ -125,7 +125,7 @@ func (service *SubscriptionService) Create(ctx context.Context, input CreateSubs
 		subscription.TokenHash = domain.TokenHash(secret)
 	}
 	if err := subscription.ValidateCreate(); err != nil {
-		return SubscriptionSecret{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return SubscriptionSecret{}, invalidSubscriptionRequest()
 	}
 	created := domain.Subscription{}
 	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error {
