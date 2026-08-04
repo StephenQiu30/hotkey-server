@@ -77,7 +77,7 @@ Acceptance 保存可长期复核的完成证据，不保存完整终端流水或
 | 022 | [Shared 仓储基础设施边界修复](archive/022-Shared仓储基础设施边界修复验收.md) | accepted_with_risk |
 | 023 | [首管理员数据库指定](archive/023-首管理员数据库指定验收.md) | accepted_with_risk |
 | 024 | [采集批次原子重试](archive/024-采集批次原子重试验收.md) | accepted |
-| 025 | [事件变化雷达与低噪声告警](025-事件变化雷达与低噪声告警验收.md) | pending |
+| 025 | [事件变化雷达与低噪声告警](025-事件变化雷达与低噪声告警验收.md) | accepted |
 
 ## 变更记录
 

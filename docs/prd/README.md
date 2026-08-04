@@ -76,7 +76,7 @@ downstream:
 | [022](archive/022-Shared仓储基础设施边界修复.md) | Shared 仓储基础设施边界修复 | Closure | P1 | 002, 021 | archived | done |
 | [023](archive/023-首管理员数据库指定.md) | 首管理员数据库指定与引导凭据移除 | Closure | P1 | 004, 020 | archived | done |
 | [024](archive/024-采集批次原子重试.md) | 采集批次与原队列任务原子重试 | Closure | P0 | 006, 013, 014 | archived | done |
-| [025](025-事件变化雷达与低噪声告警.md) | 事件变化、可解释热点雷达与低噪声告警 | P0 | P0 | 010–013 | accepted | ready |
+| [025](025-事件变化雷达与低噪声告警.md) | 事件变化、可解释热点雷达与低噪声告警 | P0 | P0 | 010–013 | accepted | done |
 
 ## 主链路
 
