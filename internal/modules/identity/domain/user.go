@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"net/mail"
 	"strings"
 	"time"
 )
@@ -55,7 +56,8 @@ func (u User) Active() bool {
 
 func NormalizeEmail(email string) (string, error) {
 	normalized := strings.ToLower(strings.TrimSpace(email))
-	if normalized == "" {
+	address, err := mail.ParseAddress(normalized)
+	if err != nil || address.Address != normalized || !strings.Contains(normalized, "@") {
 		return "", ErrInvalidEmail
 	}
 	return normalized, nil
