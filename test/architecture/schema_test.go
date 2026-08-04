@@ -131,6 +131,18 @@ func TestGreenfieldSchemaEnforcesCriticalConstraints(t *testing.T) {
 		"event decision idempotency":                  "create unique index if not exists event_clustering_decisions_idempotency_uq",
 		"event governance audit":                      "create table if not exists event_governance_audits",
 		"event decision append-only":                  "create table if not exists event_clustering_decisions",
+		"event update fact":                           "create table if not exists event_updates",
+		"event update idempotency":                    "unique (event_id, idempotency_key)",
+		"event update sequence":                       "unique (event_id, sequence_no)",
+		"event update append-only":                    "create trigger event_updates_append_only",
+		"alert thread record":                         "create table if not exists alert_threads",
+		"alert thread identity":                       "unique (monitor_config_version_id, event_id, trigger_type, policy_version)",
+		"alert occurrence fact":                       "create table if not exists alert_occurrences",
+		"alert occurrence fingerprint":                "fingerprint char(64) not null unique",
+		"alert occurrence event uniqueness":           "unique (alert_thread_id, event_update_id)",
+		"alert occurrence append-only":                "create trigger alert_occurrences_append_only",
+		"alert state audit fact":                      "create table if not exists alert_state_audits",
+		"alert state audit append-only":               "create trigger alert_state_audits_append_only",
 	}
 	for name, snippet := range checks {
 		if !strings.Contains(schema, snippet) {

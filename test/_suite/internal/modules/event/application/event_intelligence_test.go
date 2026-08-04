@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -52,6 +53,37 @@ func TestEventSummaryServiceReturnsRepresentativeFallback(t *testing.T) {
 	}
 }
 
+func TestEventSummaryServiceFallsBackAfterSafeProviderFailures(t *testing.T) {
+	tests := []struct {
+		name string
+		code int
+	}{
+		{name: "provider unavailable", code: intelligencedomain.CodeAIModelUnavailable},
+		{name: "provider transient failure", code: intelligencedomain.CodeAIProviderTransient},
+		{name: "provider timeout", code: intelligencedomain.CodeAIProviderTimeout},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			source := eventIntelligenceSourceFixture()
+			runner := &eventIntelligenceRunnerStub{err: fmt.Errorf("provider diagnostic must not escape: %w", intelligencedomain.NewError(test.code))}
+			store := &eventSummaryStoreStub{}
+			result, err := NewEventSummaryService(&eventIntelligenceReaderStub{source: source}, runner, store).Generate(context.Background(), source.Event.ID)
+			if err != nil {
+				t.Fatalf("Generate() error = %v", err)
+			}
+			if !result.Summary.Degraded || result.Summary.Version != "fallback-v1" || result.ReasonCode != "ai_unavailable" || result.RunID != 0 || result.Reused {
+				t.Fatalf("Generate() = %#v, want safe degraded fallback", result)
+			}
+			if len(result.Summary.Sentences) != 1 || len(result.Summary.Sentences[0].Evidence) != 1 || result.Summary.Sentences[0].Evidence[0] != source.representativeEvidence() {
+				t.Fatalf("fallback summary = %#v, want only representative evidence", result.Summary)
+			}
+			if store.calls != 1 || store.eventID != source.Event.ID || !store.summary.Degraded {
+				t.Fatalf("PersistSummary() = %d/%d/%#v", store.calls, store.eventID, store.summary)
+			}
+		})
+	}
+}
+
 func eventIntelligenceSourceFixture() EventIntelligenceSource {
 	now := time.Now().UTC()
 	representative := int64(2)
@@ -79,4 +111,16 @@ type eventIntelligenceRunnerStub struct {
 func (stub *eventIntelligenceRunnerStub) Execute(_ context.Context, input intelligenceapplication.EventIntelligenceInput) (intelligenceapplication.EventIntelligenceResult, error) {
 	stub.input = input
 	return stub.result, stub.err
+}
+
+type eventSummaryStoreStub struct {
+	eventID int64
+	summary domain.EventSummary
+	calls   int
+}
+
+func (stub *eventSummaryStoreStub) PersistSummary(_ context.Context, eventID int64, summary domain.EventSummary) error {
+	stub.calls++
+	stub.eventID, stub.summary = eventID, summary
+	return nil
 }
