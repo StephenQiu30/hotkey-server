@@ -30,7 +30,8 @@ func TestDockerDeploymentContract(t *testing.T) {
 
 	dockerfile := readDockerContractFile(t, root, "Dockerfile")
 	assertDockerContains(t, "Dockerfile", dockerfile,
-		"FROM golang:1.26",
+		"FROM golang:latest AS builder",
+		"FROM alpine:latest",
 		"CGO_ENABLED=0",
 		"ca-certificates",
 		"tzdata",
@@ -48,10 +49,10 @@ func TestDockerDeploymentContract(t *testing.T) {
 	assertDockerContains(t, "docker-compose-env.yml", envCompose,
 		"name: hotkey-server-env",
 		"image: hotkey-server:env",
-		"pgvector/pgvector:",
-		"redis:7.4-alpine",
-		"minio/minio:",
-		"minio/mc:",
+		"pgvector/pgvector:pg16",
+		"redis:latest",
+		"minio/minio:latest",
+		"minio/mc:latest",
 		"postgres:",
 		"redis:",
 		"minio:",
@@ -72,6 +73,7 @@ func TestDockerDeploymentContract(t *testing.T) {
 	if strings.Contains(envCompose, ".env.prod") {
 		t.Error("docker-compose-env.yml must not reference .env.prod")
 	}
+	assertDockerUsesLatestUpstreamImages(t, dockerfile, envCompose)
 
 	readme := readDockerContractFile(t, root, "README.md")
 	readmeEN := readDockerContractFile(t, root, "README_EN.md")
@@ -102,6 +104,7 @@ func TestDockerProductionIsolation(t *testing.T) {
 		"/readyz",
 		"stop_grace_period: 30s",
 	)
+	assertDockerUsesLatestUpstreamImages(t, prodCompose)
 	for _, service := range []string{"postgres", "redis", "minio", "minio-init", "db-init"} {
 		block := dockerComposeServiceBlock(t, prodCompose, service)
 		if strings.Contains(block, "\n    ports:") {
@@ -138,6 +141,31 @@ func TestDockerProductionIsolation(t *testing.T) {
 
 	gitignore := readDockerContractFile(t, root, ".gitignore")
 	assertDockerContains(t, ".gitignore", gitignore, "!.env.prod.example")
+}
+
+func assertDockerUsesLatestUpstreamImages(t *testing.T, sources ...string) {
+	t.Helper()
+	for _, source := range sources {
+		for _, line := range strings.Split(source, "\n") {
+			trimmed := strings.TrimSpace(line)
+			var image string
+			switch {
+			case strings.HasPrefix(trimmed, "FROM "):
+				fields := strings.Fields(trimmed)
+				if len(fields) >= 2 {
+					image = fields[1]
+				}
+			case strings.HasPrefix(trimmed, "image: "):
+				image = strings.TrimSpace(strings.TrimPrefix(trimmed, "image: "))
+			}
+			if image == "" || strings.HasPrefix(image, "hotkey-server:") || image == "pgvector/pgvector:pg16" {
+				continue
+			}
+			if !strings.HasSuffix(image, ":latest") {
+				t.Errorf("upstream Docker image %q must use latest, except pgvector's official floating pg16 tag", image)
+			}
+		}
+	}
 }
 
 func readDockerContractFile(t *testing.T, root, relative string) string {
