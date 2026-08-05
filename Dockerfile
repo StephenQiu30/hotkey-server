@@ -1,8 +1,6 @@
-FROM golang:1.26-alpine AS builder
+FROM golang:latest AS builder
 
 WORKDIR /src
-
-RUN apk add --no-cache ca-certificates git
 
 COPY go.mod go.sum ./
 ARG GOPROXY=https://proxy.golang.org,direct
@@ -11,7 +9,7 @@ RUN GOPROXY="${GOPROXY}" go mod download && go mod verify
 COPY . .
 RUN CGO_ENABLED=0 go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/hotkey ./cmd/hotkey
 
-FROM alpine:3.23
+FROM alpine:latest
 
 RUN apk add --no-cache ca-certificates tzdata wget \
     && addgroup -S -g 10001 hotkey \
