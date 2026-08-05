@@ -149,13 +149,7 @@ For production, set `HOTKEY_ENV=production` to load `.env.prod` as an override. 
 
 ### Run and debug with GoLand
 
-Open this repository in GoLand and select the shared `HotKey 后端一键启动` run configuration:
-
-- Use Run to start the backend or Debug to attach breakpoints.
-- The entry point is fixed to `cmd/hotkey` and the working directory is the repository root, so the application loads the current `.env` automatically.
-- The shared configuration lives in [`.run/HotKey_Server.run.xml`](.run/HotKey_Server.run.xml) and does not depend on a developer's `.idea/workspace.xml`.
-
-GoLand uses the SDK and dependencies declared by `go.mod`. [`.editorconfig`](.editorconfig) keeps indentation, line endings, and trailing-whitespace behavior consistent across IDEs.
+Open the repository and run the `cmd/hotkey` main package directly. Use the repository root as the working directory so the application loads the current `.env`; keep the run configuration in your local IDE rather than committing a shared file. GoLand uses the SDK and dependencies declared by `go.mod`, while [`.editorconfig`](.editorconfig) keeps formatting consistent.
 
 ## Web application
 
@@ -219,7 +213,7 @@ Long-lived acceptance evidence is available in [`docs/acceptance/archive/`](docs
 
 ## Contributing
 
-Bug reports, use cases, connector proposals, documentation, and code contributions are welcome. Read the [contribution guide](CONTRIBUTING.md), [code of conduct](CODE_OF_CONDUCT.md), and [security policy](SECURITY.md) before getting started.
+Bug reports, use cases, connector proposals, documentation, and code contributions are welcome. Read the [contribution guide](CONTRIBUTING.md) and [security policy](SECURITY.md) before getting started.
 
 Please open an Issue before large changes. New connectors must document an official or authorized access path.
 

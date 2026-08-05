@@ -168,15 +168,9 @@ curl --fail http://127.0.0.1:8080/readyz
 
 > 生产环境设置 `HOTKEY_ENV=production` 后，服务会在 `.env` 基础上覆盖读取 `.env.prod`；进程环境变量优先级最高。生产环境不会开放 Swagger UI 和 OpenAPI 路由。
 
-### GoLand 一键运行与调试
+### GoLand 运行与调试
 
-使用 GoLand 打开本仓库后，在顶部运行配置中选择 `HotKey 后端一键启动`：
-
-- 点击运行按钮启动后端；点击调试按钮使用断点调试。
-- 运行入口固定为 `cmd/hotkey`，工作目录固定为仓库根目录，因此会自动读取当前 `.env`。
-- 共享配置保存在 [`.run/HotKey_Server.run.xml`](.run/HotKey_Server.run.xml)，不依赖个人 `.idea/workspace.xml`。
-
-GoLand 会自动使用项目 `go.mod` 中声明的 Go SDK 和依赖；代码缩进、换行与尾随空格规则由 [`.editorconfig`](.editorconfig) 统一管理。
+使用 GoLand 打开本仓库后，直接运行 `cmd/hotkey` 的 `main` 包即可。工作目录使用仓库根目录，以便读取当前 `.env`；运行配置保存在个人 IDE 中，无需提交共享配置。GoLand 会使用 `go.mod` 中声明的 Go SDK 和依赖，代码格式由 [`.editorconfig`](.editorconfig) 统一管理。
 
 ## Web 工作台
 
@@ -253,7 +247,6 @@ HotKey 正处于积极开发阶段，核心端到端链路已经实现，接口�
 欢迎提交 Bug、使用场景、连接器建议、文档改进和 Pull Request。开始前请阅读：
 
 - [贡献指南](CONTRIBUTING.md)
-- [行为准则](CODE_OF_CONDUCT.md)
 - [安全策略](SECURITY.md)
 
 大型功能建议先创建 Issue 对齐问题、边界和验收标准。涉及来源连接器时，请同时说明数据来源的官方或授权访问方式。
