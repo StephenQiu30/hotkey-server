@@ -111,7 +111,7 @@ cp .env.prod.example .env.prod
 docker compose --env-file .env.prod -f docker-compose-prod.yml up --build -d
 ```
 
-日常文件会发布 Server、PostgreSQL、Redis 和 MinIO 端口；生产文件只发布 Server 的 `8080` 端口。`--env-file .env.prod` 只为基础设施映射必要凭据，Server 仍固定读取 `.env.prod`。两份文件都会初始化空数据库和 MinIO Bucket，已有兼容数据库只执行验证。生产 HTTP 需要由外部反向代理提供 HTTPS。
+日常文件会发布 Server、PostgreSQL、Redis 和 MinIO 端口；生产文件只发布 Server 的 `8080` 端口。`--env-file .env.prod` 只为基础设施映射必要凭据，Server 仍固定读取 `.env.prod`。上游镜像使用 `latest` 浮动标签；pgvector 官方没有 `latest`，因此使用兼容现有数据卷的浮动 `pg16` 标签。两份文件都会初始化空数据库和 MinIO Bucket，已有兼容数据库只执行验证。生产 HTTP 需要由外部反向代理提供 HTTPS。
 
 ### 1. 获取代码与配置
 

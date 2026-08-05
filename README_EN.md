@@ -105,7 +105,7 @@ cp .env.prod.example .env.prod
 docker compose --env-file .env.prod -f docker-compose-prod.yml up --build -d
 ```
 
-The daily file publishes the Server, PostgreSQL, Redis, and MinIO ports. The production file publishes only Server port `8080`. `--env-file .env.prod` maps only the required infrastructure credentials, while Server still reads `.env.prod` directly. Both files initialize an empty database and the MinIO bucket, while a compatible existing database is only verified. Put an HTTPS reverse proxy in front of the production HTTP port.
+The daily file publishes the Server, PostgreSQL, Redis, and MinIO ports. The production file publishes only Server port `8080`. `--env-file .env.prod` maps only the required infrastructure credentials, while Server still reads `.env.prod` directly. Upstream images use floating `latest` tags; pgvector does not publish `latest`, so it uses the floating `pg16` tag to remain compatible with existing data volumes. Both files initialize an empty database and the MinIO bucket, while a compatible existing database is only verified. Put an HTTPS reverse proxy in front of the production HTTP port.
 
 ### Configure and initialize
 
