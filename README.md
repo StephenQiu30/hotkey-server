@@ -95,6 +95,24 @@ flowchart LR
 - MinIO
 - 可选：SMTP、OpenAI / DeepSeek API、Ollama、ONNX Runtime
 
+### Docker Compose 启动
+
+日常环境使用 `.env`：
+
+```bash
+cp .env.example .env
+docker compose -f docker-compose-env.yml up --build -d
+```
+
+生产环境使用独立的 `.env.prod`，其中 6 个必填空值必须先填写：
+
+```bash
+cp .env.prod.example .env.prod
+docker compose --env-file .env.prod -f docker-compose-prod.yml up --build -d
+```
+
+日常文件会发布 Server、PostgreSQL、Redis 和 MinIO 端口；生产文件只发布 Server 的 `8080` 端口。`--env-file .env.prod` 只为基础设施映射必要凭据，Server 仍固定读取 `.env.prod`。两份文件都会初始化空数据库和 MinIO Bucket，已有兼容数据库只执行验证。生产 HTTP 需要由外部反向代理提供 HTTPS。
+
 ### 1. 获取代码与配置
 
 ```bash
@@ -112,7 +130,7 @@ HOTKEY_VERIFICATION_HMAC_SECRET=
 HOTKEY_CORS_ALLOWED_ORIGINS=http://localhost:3000
 ```
 
-请在本地为两个密钥填写各自独立、随机且不少于 32 字节的值。完整变量、默认开发值和可选 Provider 配置见 [`.env.example`](.env.example)，真实密钥不要提交到仓库。
+请在本地为两个密钥填写各自独立、随机且不少于 32 字节的值。常用配置与可选 Provider 示例见 [`.env.example`](.env.example)；未列出的配置使用程序默认值，真实密钥不要提交到仓库。
 
 注册和密码重置依赖兼容 SMTP 的邮件服务；需要启用这些功能时，请按 [`.env.example`](.env.example) 填写服务商地址、TLS 模式、账号、授权码和发件人信息。部署、诊断和生产检查见 [运行与升级手册](docs/operations/README.md)。
 

@@ -6,7 +6,7 @@ feature_area: AI热点事件监控平台
 purpose: 管理从权威设计拆分出的后端执行任务需求
 canonical_path: docs/prd/README.md
 status: review
-version: v4.2
+version: v4.3
 owner: HotKey Server Team
 inputs:
   - docs/README.md
@@ -77,7 +77,7 @@ downstream:
 | [023](archive/023-首管理员数据库指定.md) | 首管理员数据库指定与引导凭据移除 | Closure | P1 | 004, 020 | archived | done |
 | [024](archive/024-采集批次原子重试.md) | 采集批次与原队列任务原子重试 | Closure | P0 | 006, 013, 014 | archived | done |
 | [025](025-事件变化雷达与低噪声告警.md) | 事件变化、可解释热点雷达与低噪声告警 | P0 | P0 | 010–013 | accepted | done |
-| [026](026-双环境容器部署.md) | Server 日常与生产双 Compose 部署 | Closure | P0 | 002, 020 | accepted | ready |
+| [026](026-双环境容器部署.md) | Server 日常与生产双 Compose 部署 | Closure | P0 | 002, 020 | accepted | done |
 
 ## 主链路
 
@@ -99,7 +99,7 @@ downstream:
                                       010–013 → 025
                                       002 + 020 → 026
 
-PRD-001–024 已移入 [`archive/`](archive/README.md)。PRD-025 已完成，PRD-026 是当前 ready 候选；是否开工仍取决于 PLAN-026 独立复审。
+PRD-001–024 已移入 [`archive/`](archive/README.md)。PRD-025、PRD-026 已完成并具备对应验收记录。
 
 ## 每个 PRD 的完成要求
 

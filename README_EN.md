@@ -89,6 +89,24 @@ The same Go binary can run as `all`, `api`, or `worker`.
 - MinIO
 - Optional: SMTP, OpenAI / DeepSeek, Ollama, ONNX Runtime
 
+### Start with Docker Compose
+
+The daily environment uses `.env`:
+
+```bash
+cp .env.example .env
+docker compose -f docker-compose-env.yml up --build -d
+```
+
+Production uses an independent `.env.prod`; fill its six required empty values first:
+
+```bash
+cp .env.prod.example .env.prod
+docker compose --env-file .env.prod -f docker-compose-prod.yml up --build -d
+```
+
+The daily file publishes the Server, PostgreSQL, Redis, and MinIO ports. The production file publishes only Server port `8080`. `--env-file .env.prod` maps only the required infrastructure credentials, while Server still reads `.env.prod` directly. Both files initialize an empty database and the MinIO bucket, while a compatible existing database is only verified. Put an HTTPS reverse proxy in front of the production HTTP port.
+
 ### Configure and initialize
 
 ```bash
@@ -97,7 +115,7 @@ cd hotkey-server
 cp .env.example .env
 ```
 
-Configure a dedicated PostgreSQL database, MinIO, Redis, explicit CORS origins, and unique JWT/HMAC secrets of at least 32 bytes. See [`.env.example`](.env.example) for every option and never commit real credentials.
+Configure a dedicated PostgreSQL database, MinIO, Redis, explicit CORS origins, and unique JWT/HMAC secrets of at least 32 bytes. [`.env.example`](.env.example) lists the common settings and optional providers; omitted settings use application defaults. Never commit real credentials.
 
 Registration and password reset require a compatible SMTP service. To enable them, use [`.env.example`](.env.example) to configure the provider host, TLS mode, account, authorization code, and sender. See the [operations guides](docs/operations/README.md) for deployment and diagnostics.
 
