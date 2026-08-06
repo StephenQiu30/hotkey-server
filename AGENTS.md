@@ -105,6 +105,9 @@ docker compose --env-file .env.prod \
 ## Git、评审与交付
 
 - 提交只包含当前任务文件；提交前检查工作区、生成物、冲突标记和敏感信息。
+- Git 提交标题统一使用 Conventional Commits：`<type>(<scope>): <subject>`。`scope` 必填，使用稳定的小写英文模块名（如 `backend`、`frontend`、`docs`、`ci`、`repo`）；冒号后保留一个空格，标题不超过 72 个字符。
+- 允许的 `type` 为 `feat`、`fix`、`test`、`refactor`、`docs`、`chore`、`perf`、`build`、`ci` 与 `revert`；禁止使用 `impl`、无 scope 前缀或 `feat():xxx` 这类空 scope/缺少空格的变体。示例：`feat(frontend): add monitor empty state`。
+- 不兼容变更使用 `<type>(<scope>)!:`，并在提交正文以 `BREAKING CHANGE:` 说明迁移方式；正文同时记录变更摘要、原因和实际验证命令。
 - 行为变更的提交顺序保持测试、最小实现、重构/文档可审查；不得通过放宽断言掩盖失败。
 - Pull Request 说明用户影响、实现边界、测试命令与结果、Schema/OpenAPI/配置/部署影响和残余风险。
 - 未经用户明确要求，不创建提交、不推送、不创建或合并 Pull Request。

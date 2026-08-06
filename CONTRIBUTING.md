@@ -69,4 +69,25 @@ git diff --check
 
 涉及 Go 代码、Schema、OpenAPI、依赖或 CI 时，在配置可丢弃 PostgreSQL 和 Redis 测试环境后运行 `make ci`。Pull Request 必须说明用户影响、实现边界、测试结果、Schema/OpenAPI/配置/部署影响、必要的截图或日志，以及仍未验证的风险。
 
+## Git 提交规范
+
+每个提交只表达一个可审查目的，标题统一使用：
+
+```text
+<type>(<scope>): <subject>
+```
+
+- `scope` 必填，使用稳定的小写英文模块名，例如 `backend`、`frontend`、`docs`、`ci` 或 `repo`。
+- `type` 只使用 `feat`、`fix`、`test`、`refactor`、`docs`、`chore`、`perf`、`build`、`ci` 或 `revert`。
+- 冒号后保留一个空格，标题使用祈使语气且不超过 72 个字符；不使用 `impl`、空 scope 或自定义前缀。
+- 不兼容变更在冒号前增加 `!`，并在正文添加 `BREAKING CHANGE:` 与迁移说明。
+- 行为变更按 `test` → `feat`/`fix` → `refactor`/`docs` 的顺序提交；提交正文记录摘要、原因与实际运行的验证命令。
+
+```text
+feat(frontend): add monitor empty state
+fix(backend): reject expired verification codes
+test(identity): cover password reset rotation
+docs(workflow): define commit message convention
+```
+
 长期影响架构、需求、验收或运维的内容放入根 `docs/` 对应分类，使用 `scope` 标识前端、后端或共享范围，并遵守 frontmatter 与索引规则。

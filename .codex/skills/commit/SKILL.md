@@ -14,18 +14,21 @@ description:
 - Follow `WORKFLOW.md` and `AGENTS.md` commit discipline (allowed types and test-first ordering).
 - Include both summary and rationale in the body.
 
-## Allowed commit types
+## Commit title convention
 
-Only these subject prefixes are allowed:
+Every title must use Conventional Commits with a non-empty scope:
 
-- `test:` — failing tests, fixtures, mocks, acceptance scripts, test-only expectations
-- `impl:` — smallest implementation that makes existing red tests pass
-- `feat:` — user-visible capability or behavior changes (after prior `test:` unless documented as not scriptable)
-- `refactor:` — behavior-preserving cleanup after tests are green
-- `docs:` — documentation, examples, workflow text, acceptance notes
-- `chore:` — CI, configuration, dependency metadata, generated housekeeping
+```text
+<type>(<scope>): <subject>
+```
 
-For feature or behavior work, preserve order: `test:` first, then `impl:`/`feat:`, then optional `refactor:`, `docs:`, or `chore:`.
+Allowed types are `feat`, `fix`, `test`, `refactor`, `docs`, `chore`, `perf`,
+`build`, `ci`, and `revert`. Use a stable lowercase scope such as `backend`,
+`frontend`, `identity`, `docs`, `ci`, or `repo`. Do not use `impl`, an empty
+scope, an unscoped prefix, or omit the single space after the colon.
+
+For feature or behavior work, preserve order: `test` first, then `feat`/`fix`,
+then optional `refactor`, `docs`, or `chore`.
 
 Do not mix unrelated types in one commit. Split by type when practical.
 
@@ -42,8 +45,8 @@ Do not mix unrelated types in one commit. Split by type when practical.
 3. Stage intended changes (`git add -A`) after confirming scope.
 4. Sanity-check newly added files; flag build artifacts, logs, or temp files before committing.
 5. If staging is incomplete or includes unrelated files, fix the index or ask for confirmation.
-6. Choose the allowed type that matches the staged diff. Do not use `fix:` or scoped conventional types unless documented as an exception.
-7. Write a subject line in imperative mood, <= 72 characters. Format: `<type> <short summary>`.
+6. Choose the allowed type and stable non-empty scope that match the staged diff.
+7. Write a subject line in imperative mood, <= 72 characters. Format: `<type>(<scope>): <subject>`.
 8. Write a body with summary, rationale, and tests or validation run (or why not run).
 9. Wrap body lines at 72 characters.
 10. Create the commit message with a here-doc or temp file and use `git commit -F <file>`.
@@ -56,7 +59,7 @@ Do not mix unrelated types in one commit. Split by type when practical.
 ## Template
 
 ```
-<type> <short summary>
+<type>(<scope>): <subject>
 
 Summary:
 - <what changed>
