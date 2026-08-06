@@ -14,9 +14,9 @@ export default function NotFound() {
         >
           <BrandLogo />
         </Link>
-        <p className="mono mt-12 text-sm text-blue-700">404</p>
+        <p className="mono mt-12 text-sm text-foreground">404</p>
         <h1 className="mt-3 text-3xl font-semibold">页面不存在</h1>
-        <p className="mt-4 text-sm leading-6 text-slate-600">
+        <p className="mt-4 text-sm leading-6 text-muted-foreground">
           你访问的地址可能已被移动或删除。可以返回首页，或登录后继续使用工作台。
         </p>
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">

@@ -86,16 +86,16 @@ export default function RegisterPage() {
                   <User className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                   <Input id="display-name" placeholder="您的昵称" value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    className="h-10 rounded-lg border-border bg-slate-50 pl-8 text-sm" />
+                    className="h-10 border-border bg-background pl-8 text-sm" />
                 </div>
               </div>
               <PasswordFields prefix="register" password={password} confirmPassword={confirmPassword}
                 onPasswordChange={setPassword} onConfirmChange={setConfirmPassword} />
-              {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+              {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
               {recovery === "conflict" && (
                 <div className="flex items-center gap-4 text-sm">
                   <Link href="/login" className="font-medium text-primary hover:text-primary/80">去登录</Link>
-                  <Link href="/forgot-password" className="text-slate-600 hover:text-foreground">找回密码</Link>
+                  <Link href="/forgot-password" className="text-muted-foreground hover:text-foreground">找回密码</Link>
                 </div>
               )}
               {recovery === "verification" && (
@@ -103,14 +103,14 @@ export default function RegisterPage() {
                   重新验证邮箱
                 </Button>
               )}
-              <Button type="submit" disabled={loading || recovery !== null} className="h-10 w-full rounded-md text-sm font-medium shadow-button">
+              <Button type="submit" disabled={loading || recovery !== null} className="h-11 w-full">
                 {loading ? "注册中..." : "完成注册"}
               </Button>
             </form>
           )}
         </div>
         <div className="mt-4 text-center">
-          <a href="/login" className="inline-flex items-center gap-1 text-sm text-slate-600 transition-colors hover:text-foreground">
+          <a href="/login" className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground">
             <ArrowLeft className="h-3 w-3" /> 已有账号？去登录
           </a>
         </div>

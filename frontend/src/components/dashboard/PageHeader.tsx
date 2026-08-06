@@ -17,12 +17,12 @@ export function PageHeader({
     <header
       aria-label={title}
       role="group"
-      className="flex flex-col gap-5 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between"
+      className="flex flex-col gap-6 border-b border-border pb-8 sm:flex-row sm:items-end sm:justify-between"
     >
       <div className="min-w-0">
         <p className="eyebrow">{eyebrow}</p>
-        <h1 className="mt-2 text-2xl font-semibold">{title}</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+        <h1 className="mt-3 text-3xl font-semibold tracking-[-0.045em]">{title}</h1>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
           {description}
         </p>
       </div>

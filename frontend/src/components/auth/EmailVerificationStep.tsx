@@ -75,11 +75,11 @@ export default function EmailVerificationStep({ purpose, onConfirmed }: EmailVer
             <Input id="verify-email" type="email" placeholder="name@example.com" autoComplete="email" required
               autoCapitalize="none" spellCheck={false}
               value={email} onChange={(e) => { setEmail(e.target.value); setSendError(""); }}
-              className={`h-9 rounded-lg border-border bg-slate-50 pl-8 text-xs ${sendError ? "border-destructive" : ""}`} />
+              className={`h-10 border-border bg-background pl-8 text-sm ${sendError ? "border-destructive" : ""}`} />
           </div>
-          {sendError && <p role="alert" className="text-xs text-red-700">{sendError}</p>}
+          {sendError && <p role="alert" className="text-xs text-destructive">{sendError}</p>}
         </div>
-        <Button type="submit" disabled={!email || loading} className="h-10 w-full rounded-md text-sm font-medium shadow-button">
+        <Button type="submit" disabled={!email || loading} className="h-11 w-full">
           {loading ? "发送中..." : "发送验证码"}
         </Button>
       </form>
@@ -102,10 +102,10 @@ export default function EmailVerificationStep({ purpose, onConfirmed }: EmailVer
         <Input id="verify-code" placeholder="输入 6 位验证码" maxLength={6} inputMode="numeric"
           autoComplete="one-time-code"
           value={code} onChange={(e) => { setCode(e.target.value.replace(/\D/g, "")); setSendError(""); }}
-          className={`h-9 rounded-lg border-border bg-slate-50 text-center font-mono text-sm tracking-[0.3em] ${sendError ? "border-destructive" : ""}`} />
-        {sendError && <p role="alert" className="text-xs text-red-700">{sendError}</p>}
+          className={`h-10 border-border bg-background text-center font-mono text-sm tracking-[0.3em] ${sendError ? "border-destructive" : ""}`} />
+        {sendError && <p role="alert" className="text-xs text-destructive">{sendError}</p>}
       </div>
-      <Button type="submit" disabled={code.length !== 6 || loading} className="h-10 w-full rounded-md text-sm font-medium shadow-button">
+      <Button type="submit" disabled={code.length !== 6 || loading} className="h-11 w-full">
         {loading ? "验证中..." : "验证"}
       </Button>
       <button type="button" onClick={handleSend} disabled={countdown > 0}

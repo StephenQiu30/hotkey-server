@@ -66,7 +66,7 @@ function EventMark({ trend }: { trend?: string }) {
         "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
         tone === "danger" && "bg-red-50 text-red-600",
         tone === "success" && "bg-emerald-50 text-emerald-600",
-        tone === "muted" && "bg-slate-100 text-slate-500",
+        tone === "muted" && "bg-muted text-muted-foreground",
       )}
     >
       {tone === "danger" ? (
@@ -135,7 +135,7 @@ export default function DashboardPage() {
   const focusEvents = useMemo(() => events.slice(0, 6), [events]);
   if (loading) {
     return (
-      <div className="flex min-h-[calc(100vh-72px)] items-center justify-center">
+      <div className="flex min-h-[calc(100vh-64px)] items-center justify-center">
         <Loader2 className="h-5 w-5 animate-spin text-primary" />
       </div>
     );
@@ -143,9 +143,9 @@ export default function DashboardPage() {
 
   return (
     <div className="app-page radar-page" data-testid="dashboard-overview">
-      <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+      <header className="flex flex-col gap-6 border-b pb-8 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-medium tracking-tight text-foreground sm:text-[28px]">
+          <h1 className="text-3xl font-semibold tracking-[-0.045em] text-foreground sm:text-4xl">
             {timeContext.greeting}，这是今日值得关注的变化
           </h1>
           <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
@@ -163,7 +163,7 @@ export default function DashboardPage() {
           </div>
         </div>
         {events.length > 0 ? (
-          <Button asChild className="self-start gap-2 px-5 shadow-sm">
+          <Button asChild className="self-start gap-2 px-5">
             <Link href="/dashboard/settings">
               <Plus className="h-4 w-4" />
               创建监控
@@ -205,7 +205,7 @@ export default function DashboardPage() {
         </Card>
       ) : (
         <>
-          <Card className="mt-8 overflow-hidden shadow-none">
+          <Card className="mt-8 overflow-hidden">
             <CardHeader className="flex-row flex-wrap items-center gap-2 space-y-0 border-b px-5 py-4 sm:px-6">
               <Bot className="h-4 w-4 text-primary" />
               <h2 className="text-sm font-semibold text-foreground">
@@ -266,7 +266,7 @@ export default function DashboardPage() {
                   <ChevronRight className="h-4 w-4" />
                 </Link>
               </div>
-              <Card className="overflow-hidden shadow-none">
+              <Card className="overflow-hidden">
                 <Table aria-label="重点事件列表">
                   <TableHeader>
                     <TableRow>
@@ -321,7 +321,7 @@ export default function DashboardPage() {
             </section>
 
             <aside>
-              <Card className="shadow-none">
+              <Card>
                 <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
                   <h2 className="text-base font-semibold text-foreground">
                     我的监控

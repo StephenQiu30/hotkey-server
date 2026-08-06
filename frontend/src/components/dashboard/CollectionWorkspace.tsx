@@ -188,7 +188,7 @@ export function CollectionWorkspace({
                 <div className="mt-2 min-w-0">
                   {content.id != null ? (
                     <a
-                      className="block text-sm font-medium leading-6 text-foreground no-underline hover:text-blue-300"
+                      className="block text-sm font-medium leading-6 text-foreground no-underline hover:text-foreground"
                       href={`/dashboard/contents/${content.id}`}
                     >
                       {title}
@@ -200,7 +200,7 @@ export function CollectionWorkspace({
                     {content.id != null ? (
                       <a
                         aria-label={`阅读归档：${title}`}
-                        className="text-blue-400 no-underline"
+                        className="text-muted-foreground no-underline"
                         href={`/dashboard/contents/${content.id}`}
                       >
                         阅读归档

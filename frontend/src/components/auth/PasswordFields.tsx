@@ -41,7 +41,7 @@ export default function PasswordFields({
           autoComplete="new-password"
           value={onPasswordChange ? password : localPassword}
           onChange={(e) => handlePasswordChange(e.target.value)}
-          className="h-10 rounded-lg border-border bg-slate-50 text-sm" />
+          className="h-10 border-border bg-background text-sm" />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor={`${prefix}-confirm`} className="text-xs font-medium">确认密码</Label>
@@ -49,10 +49,10 @@ export default function PasswordFields({
           autoComplete="new-password"
           value={onConfirmChange ? confirmPassword : localConfirm}
           onChange={(e) => handleConfirmChange(e.target.value)}
-          className={`h-9 rounded-lg border-border bg-slate-50 text-xs ${displayError ? "border-destructive" : ""}`} />
+          className={`h-10 border-border bg-background text-sm ${displayError ? "border-destructive" : ""}`} />
       </div>
-      {displayError && <p className="text-xs text-red-700">{displayError}</p>}
-      <p className="text-[11px] text-slate-600">密码要求：至少 8 位，含大小写字母和数字</p>
+      {displayError && <p className="text-xs text-destructive">{displayError}</p>}
+      <p className="text-[11px] text-muted-foreground">密码要求：至少 8 位，含大小写字母和数字</p>
     </div>
   );
 }

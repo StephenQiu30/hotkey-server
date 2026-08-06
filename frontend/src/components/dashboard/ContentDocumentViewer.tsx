@@ -78,7 +78,7 @@ export function ContentDocumentViewer({ document, canManage = false, deleting = 
           </div>
         </div>
 
-        <div className="document-scope mt-6 rounded-md border border-blue-500/25 bg-blue-500/[0.06] px-4 py-3 text-xs leading-5 text-blue-200/80">
+        <div className="document-scope mt-6 rounded-md border border-border bg-muted0/[0.06] px-4 py-3 text-xs leading-5 text-muted-foreground">
           仅包含来源 Feed 实际提供并获准归档的正文或摘要；系统不会抓取原网页，也不代表完整论文或付费内容。
         </div>
         {document.canonical_url ? (

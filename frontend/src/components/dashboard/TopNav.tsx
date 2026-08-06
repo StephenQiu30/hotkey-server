@@ -95,15 +95,18 @@ export default function TopNav({
   return (
     <header
       data-top-nav
-      className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur-xl"
+      className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur-sm"
     >
-      <div className="mx-auto flex h-[72px] max-w-[1536px] min-w-0 items-center gap-3 px-4 sm:px-6 lg:gap-6 lg:px-8">
+      <div className="mx-auto flex h-16 max-w-[1440px] min-w-0 items-center gap-3 px-4 sm:px-6 lg:gap-7 lg:px-8">
         <Link
           href="/dashboard"
           className="flex shrink-0 items-center text-base font-bold tracking-tight text-foreground no-underline"
         >
           <BrandLogo title={title} markClassName="h-5 w-5" />
         </Link>
+        <span className="hidden rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground xl:inline-flex">
+          Intelligence
+        </span>
 
         <NavigationMenu
           aria-label="主导航"
@@ -119,14 +122,14 @@ export default function TopNav({
                       href={item.path}
                       aria-current={active ? "page" : undefined}
                       className={cn(
-                        "relative inline-flex h-[72px] items-center px-3 text-sm font-medium text-muted-foreground no-underline transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset",
-                        active && "text-primary",
+                        "relative inline-flex h-16 items-center px-2.5 text-sm font-normal text-muted-foreground no-underline transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                        active && "font-medium text-foreground",
                       )}
                     >
                       <span className="hidden">{item.icon}</span>
                       {item.name}
                       {active ? (
-                        <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-primary" />
+                        <span className="absolute inset-x-2.5 bottom-0 h-px bg-foreground" />
                       ) : null}
                     </Link>
                   </NavigationMenuLink>
@@ -148,7 +151,7 @@ export default function TopNav({
             placeholder="搜索事件或监控"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className="h-9 bg-muted/40 pl-9 shadow-none"
+            className="h-9 bg-background pl-9 shadow-none"
           />
         </form>
 
@@ -166,7 +169,7 @@ export default function TopNav({
           >
             <Bell />
             {alertCount > 0 ? (
-              <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full border-2 border-background bg-primary" />
+              <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full border-2 border-background bg-destructive" />
             ) : null}
           </Link>
         </Button>

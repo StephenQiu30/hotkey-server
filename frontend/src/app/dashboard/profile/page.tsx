@@ -9,6 +9,7 @@ import { getSourceConnections } from "@/services/hotkey/hotkey-server/sources";
 import { getOperationsOverview } from "@/services/hotkey/hotkey-server/operations";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/dashboard/PageHeader";
 import { UserRole } from "@/lib/domainEnums";
 
 const emptyStats = { monitors: 0, reports: 0, sources: 0, running: 0 };
@@ -56,10 +57,11 @@ export default function ProfilePage() {
 
   return (
     <div className="app-page">
-      <div className="border-b border-border pb-6">
-        <p className="eyebrow">Account</p>
-        <h1 className="mt-2 text-2xl font-semibold">账户信息</h1>
-      </div>
+      <PageHeader
+        eyebrow="Account"
+        title="账户信息"
+        description="查看当前账户、权限角色与工作区资源概览。"
+      />
       <div className="mt-6 grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="panel h-fit p-6">
           <Avatar className="h-12 w-12">
@@ -84,7 +86,7 @@ export default function ProfilePage() {
                 {summaryRows.map((row) => {
                   const Icon = row.icon;
                   return (
-                    <a key={row.label} href={row.href} className="flex items-center gap-4 px-5 py-5 text-foreground no-underline hover:bg-blue-50/60">
+                    <a key={row.label} href={row.href} className="flex items-center gap-4 px-5 py-5 text-foreground no-underline hover:bg-muted/60">
                       <Icon className="h-4 w-4 text-muted-foreground" />
                       <span className="text-sm">{row.label}</span>
                       <span className="mono ml-auto text-lg">{row.value}</span>

@@ -45,7 +45,7 @@ export default function BasicLayout({
         title={title}
         alertCount={alertCount}
       />
-      <main>{children}</main>
+      <main className="min-w-0">{children}</main>
     </div>
   );
 }

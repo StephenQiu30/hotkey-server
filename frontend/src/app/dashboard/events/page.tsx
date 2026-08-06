@@ -141,10 +141,10 @@ function EventsWorkspace() {
   const selected = events.find((event) => event.event_id === selectedId);
 
   return (
-    <div className="app-page radar-page !max-w-[1536px]">
-      <header className="flex flex-col gap-5 border-b pb-6 sm:flex-row sm:items-end sm:justify-between">
+    <div className="app-page radar-page">
+      <header className="flex flex-col gap-6 border-b pb-8 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+          <h1 className="text-3xl font-semibold tracking-[-0.045em] text-foreground">
             事件动态
           </h1>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">

@@ -6,10 +6,7 @@ describe("BrandLogo", () => {
   it("renders the approved radar mark with the product name", () => {
     render(<BrandLogo />);
 
-    expect(screen.getByRole("img", { name: "HotKey" })).toHaveAttribute(
-      "src",
-      "/icon.svg",
-    );
+    expect(screen.getByRole("img", { name: "HotKey" })).toBeInTheDocument();
     expect(screen.getByText("HotKey")).toBeInTheDocument();
   });
 

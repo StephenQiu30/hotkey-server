@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MonitorStatus } from "@/lib/domainEnums";
 import { monitorStatusLabel } from "@/lib/domainPresentation";
+import { PageHeader } from "@/components/dashboard/PageHeader";
 
 type EmptyWorkspaceProps = {
   monitors: HotKeyAPI.MonitorResponse[];
@@ -57,13 +58,11 @@ export function EmptyWorkspace({
 
   return (
     <div className="app-page">
-      <div className="border-b border-border pb-6">
-        <p className="eyebrow">Workspace</p>
-        <h1 className="mt-2 text-2xl font-semibold">工作台运行概览</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          监控配置、采集批次、内容入库与事件聚合是连续阶段，这里展示当前真实进度。
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Workspace"
+        title="工作台运行概览"
+        description="监控配置、采集批次、内容入库与事件聚合是连续阶段，这里展示当前真实进度。"
+      />
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {metrics.map((metric) => {
@@ -108,7 +107,7 @@ export function EmptyWorkspace({
                 <a
                   key={monitor.id}
                   href="/dashboard/settings"
-                  className="grid gap-3 px-5 py-4 text-foreground no-underline hover:bg-blue-50/60 sm:grid-cols-[minmax(0,1fr)_120px_110px] sm:items-center"
+                  className="grid gap-3 px-5 py-4 text-foreground no-underline hover:bg-muted/60 sm:grid-cols-[minmax(0,1fr)_120px_110px] sm:items-center"
                 >
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium">

@@ -252,7 +252,7 @@ export default function SubscriptionsPage() {
                     {subscription.channel === DeliveryChannel.RSS ? (
                       <Rss className="h-3.5 w-3.5 text-orange-400" />
                     ) : (
-                      <Send className="h-3.5 w-3.5 text-blue-400" />
+                      <Send className="h-3.5 w-3.5 text-muted-foreground" />
                     )}
                     <p className="text-sm font-medium">
                       {reportTypeLabel(subscription.report_type)} ·{" "}

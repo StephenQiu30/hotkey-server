@@ -9,15 +9,16 @@ describe("公开入口页面", () => {
     render(<HomePage />);
 
     expect(
-      screen.getByRole("heading", { name: "重要变化，第一时间形成共识。" }),
+      screen.getByRole("heading", { name: "重要变化，先形成判断" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("每天早上 07:30")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "今日情报简报" })).toBeInTheDocument();
-    expect(screen.getByText("为什么重要")).toBeInTheDocument();
     expect(screen.getByText("证据来源")).toBeInTheDocument();
     expect(screen.getByText("持续监测")).toBeInTheDocument();
     expect(screen.getByText("AI 识别与判断")).toBeInTheDocument();
     expect(screen.getByText("形成共识与行动")).toBeInTheDocument();
+    expect(screen.getByText("财新")).toBeInTheDocument();
+    expect(screen.getByText("36氪")).toBeInTheDocument();
+    expect(screen.getByText("虎嗅")).toBeInTheDocument();
   });
 
   it("首页的完整情报入口指向受保护的报告页面", () => {
@@ -29,18 +30,18 @@ describe("公开入口页面", () => {
     );
   });
 
-  it("首页的小字号辅助文字使用满足浅色背景对比度的颜色", () => {
+  it("首页使用中性的高对比设计令牌", () => {
     render(<HomePage />);
 
     expect(
-      screen.getByText("从海量噪声中，锁定真正重要的变化，给团队清晰可行动的判断。"),
-    ).toHaveClass("text-slate-600");
-    expect(screen.getByText("2026-08-04")).toHaveClass("text-slate-600");
-    expect(screen.getByText("连续 4 天上升")).toHaveClass("text-emerald-700");
-    expect(screen.getByText("/100")).toHaveClass("text-slate-600");
+      screen.getByRole("heading", { name: "把公开信号，变成可以核验的团队判断" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("2026-08-06")).toHaveClass("text-muted-foreground");
+    expect(screen.getByText("连续 4 天上升")).toHaveClass("text-success");
+    expect(screen.getByText("/100")).toHaveClass("text-muted-foreground");
     expect(screen.getAllByText(/小时前$/)).toHaveLength(3);
     for (const timestamp of screen.getAllByText(/小时前$/)) {
-      expect(timestamp).toHaveClass("text-slate-600");
+      expect(timestamp).toHaveClass("text-muted-foreground");
     }
   });
 
@@ -70,9 +71,9 @@ describe("公开入口页面", () => {
   it("未找到页面的编号与说明使用可读的前景色", () => {
     render(<NotFound />);
 
-    expect(screen.getByText("404")).toHaveClass("text-blue-700");
+    expect(screen.getByText("404")).toHaveClass("text-foreground");
     expect(
       screen.getByText("你访问的地址可能已被移动或删除。可以返回首页，或登录后继续使用工作台。"),
-    ).toHaveClass("text-slate-600");
+    ).toHaveClass("text-muted-foreground");
   });
 });

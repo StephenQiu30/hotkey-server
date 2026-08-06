@@ -1,3 +1,4 @@
+import { Radar } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface BrandLogoProps {
@@ -13,11 +14,10 @@ export function BrandLogo({
 }: BrandLogoProps) {
   return (
     <span className={cn("inline-flex items-center gap-2", className)}>
-      <img
-        src="/icon.svg"
-        alt="HotKey"
-        width={20}
-        height={20}
+      <Radar
+        role="img"
+        aria-label="HotKey"
+        strokeWidth={1.8}
         className={cn("h-4 w-4 shrink-0", markClassName)}
       />
       <span aria-hidden="true">{title}</span>

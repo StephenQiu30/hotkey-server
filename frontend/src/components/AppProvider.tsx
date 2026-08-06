@@ -27,7 +27,7 @@ export default function AppProvider({ children }: { children: React.ReactNode })
         toastOptions={{
           style: {
             fontFamily:
-              '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif',
+              '"Geist", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif',
           },
         }}
       />

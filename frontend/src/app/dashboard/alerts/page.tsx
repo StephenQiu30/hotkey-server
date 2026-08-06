@@ -175,14 +175,14 @@ export default function AlertsPage() {
   };
 
   return (
-    <div className="app-page radar-page !max-w-[1360px]">
-      <header className="flex flex-col gap-5 border-b pb-6 sm:flex-row sm:items-end sm:justify-between">
+    <div className="app-page radar-page">
+      <header className="flex flex-col gap-6 border-b pb-8 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="flex items-center gap-2 text-xs font-medium text-primary">
             <BellRing className="h-4 w-4" />
             低噪声告警
           </div>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">
+          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.045em]">
             告警中心
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">

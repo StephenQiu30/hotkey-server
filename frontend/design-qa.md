@@ -1,66 +1,38 @@
-# HotKey Radar 前端优化 — Design QA
+# HotKey 方案 1 设计 QA
 
-- Source visual truth: `/Users/stephenqiu/.codex/generated_images/019fcb84-56b5-74d2-a802-56cebc04212c/exec-33a65ab4-b2e7-47c5-ac96-ec7f0d83fcf4.png`
-- Implementation screenshot: `/Users/stephenqiu/Desktop/StephenQiu/HotKey/hotkey-web/product-design-output/radar-frontend-20260804/screenshots/06-dashboard-1440-pass2.png`
-- Full-view comparison: `/Users/stephenqiu/Desktop/StephenQiu/HotKey/hotkey-web/product-design-output/radar-frontend-20260804/screenshots/07-dashboard-comparison-pass2.png`
-- Event workspace evidence: `/Users/stephenqiu/Desktop/StephenQiu/HotKey/hotkey-web/product-design-output/radar-frontend-20260804/screenshots/03-events-1440.png`
-- Alert inbox evidence: `/Users/stephenqiu/Desktop/StephenQiu/HotKey/hotkey-web/product-design-output/radar-frontend-20260804/screenshots/04-alerts-1440.png`
-- Responsive evidence: `/Users/stephenqiu/Desktop/StephenQiu/HotKey/hotkey-web/product-design-output/radar-frontend-20260804/screenshots/08-dashboard-mobile-390-viewport.png`
-- Viewport: 1440 × 1024 CSS px; responsive check 390 × 844 CSS px
-- Pixel dimensions: source 1487 × 1058, normalized to 1440 × 1024 in the comparison; implementation 1440 × 1024; mobile implementation 390 × 844
-- Density normalization: comparison inputs are both 1× after proportional source normalization
-- State: authenticated administrator; Radar overview with four events, four monitors and one open alert
-- Browser: agent-browser headed session, continuing the browser choice already used by this product
+## 验收范围
 
-## Findings
+- 设计源：`/Users/stephenqiu/.codex/generated_images/019fd68a-3f08-7801-9516-8fc6b945e154/exec-c0a18aaf-13e6-4dae-9daf-1191ff418e7e.png`
+- 桌面实现：`.codex-design/hotkey-option1-final-1487x1058.png`
+- 同屏对照：`.codex-design/hotkey-option1-comparison-final.png`
+- 移动实现：`.codex-design/hotkey-option1-mobile-final-390x844.png`
+- 桌面视口：1487 × 1058，可见首屏状态
+- 移动视口：390 × 844，首页初始状态与导航展开状态
 
-- No actionable P0/P1/P2 differences remain.
-- [Intentional product constraint] The visual target shows per-monitor change counts and named source links. The current Radar and Monitor public contracts do not expose those joins in the overview response, so the implementation displays truthful monitor state, independent-source counts and confirmation status instead of inventing data.
-- [Intentional product enhancement] The selected visual only specifies the overview. The implemented event workspace and alert inbox extend the same layout language because Radar filtering, event-update inspection and alert actions are required product flows backed by the new APIs.
+## 对照结论
 
-## Required Fidelity Surfaces
+- 字体与层级：Geist / Geist Mono 通过 `next/font` 统一加载；中文使用系统无衬线回退。首屏标题已调整为常规字重，并与设计源的字号、换行和基线对齐。
+- 间距与布局：桌面首屏保持三栏结构，标题起点约为 `(92, 410)`，来源带起点为 `y=929`；雷达、主标题、辅助文案与 CTA 的垂直关系与方案 1 一致。
+- 颜色与表面：全站切换为黑、白、中性灰令牌；主要按钮为纯黑，卡片使用细边框和低圆角，移除非必要阴影。
+- 图像与图标：首屏与认证页使用真实生成的雷达 PNG；品牌标记使用 Lucide Radar 图标，未使用 CSS 绘图、占位框或手绘 SVG。
+- 响应式：桌面 `scrollWidth === clientWidth`；移动端 `scrollWidth === clientWidth`，无横向溢出。导航抽屉可打开并可通过 Escape 关闭。
+- 状态与交互：首页导航、主 CTA、简报锚点与报告入口均为真实链接；未登录访问工作台会回到登录页。认证页表单字段可见且布局稳定。
+- 可访问性：主标题具备稳定的可访问名称；区域、导航、按钮和图片均有语义标签；焦点环与移动端点击目标由统一组件保证。
+- 控制台：最终桌面与移动端新会话均无 warning / error；所有首屏图片均加载完成。
 
-- Fonts and typography: passed. The existing Geist/SF/Segoe stack is preserved; the selected restrained headline, 14 px product copy and compact metadata hierarchy are reproduced without adding a font dependency.
-- Spacing and layout rhythm: passed. The 72 px top navigation, wide desktop canvas, single AI summary surface, dense event rows and narrow monitor rail match the selected composition. The 390 px viewport collapses cleanly to one column with no horizontal overflow.
-- Colors and visual tokens: passed. The existing HotKey blue is used for active navigation and actions, while red, amber and green remain semantic signal colors. Backgrounds, borders and shadows are deliberately quiet and consistent with the reference.
-- Image quality and asset fidelity: passed. The target contains no photography or illustration. The repository brand mark and existing Lucide icon system are reused; no placeholder image, handcrafted SVG or CSS drawing was introduced.
-- Copy and content: passed. Labels are Chinese-first, describe the real Radar/Alert behavior and state clearly when information is automated or still being monitored.
-- Icons and controls: passed. Navigation, search, filters, refresh, alert actions, links and the mobile menu use one icon family, practical hit areas, visible focus treatment and semantic labels.
+## 修正记录
 
-## Interaction And Browser Verification
+1. P1 — 首轮首屏标题、雷达和来源带纵向基线低于设计源。通过重新分配首屏行高、扩大雷达视觉占比并调整桌面偏移完成修正。
+2. P1 — 雷达缩放曾导致移动端 13px 横向溢出。将放大限制在 `lg` 断点，复验后移动端宽度完全吻合。
+3. P2 — 原品牌图标在小尺寸下辨识度不足。改为同风格的 Lucide Radar 图标，提升导航与认证页的一致性。
+4. P2 — 认证页首屏雷达触发 LCP 提示。将图片设为优先加载，最终新会话无控制台告警。
 
-- Primary navigation exposes 概览、监控、事件、简报 and marks the current route.
-- Global search submits to `/dashboard/events?q=...` and the event workspace filters the loaded Radar results.
-- Radar time-window and ranking controls are wired to `GET /api/v1/radar/events`.
-- Selecting an event loads `GET /api/v1/events/{id}/updates` and updates the detail rail.
-- The alert bell opens the real inbox; 确认告警、解决 and 抑制 call the versioned Alert action APIs.
-- Mobile navigation opens and exposes search, four primary routes and administrator management.
-- Browser page errors: none.
-- Console: React development/HMR messages only; no application runtime errors.
+## 自动化验证
 
-## Comparison History
-
-### Pass 1
-
-- [P2] AI summary rows displayed the ordinal twice because the title included a second visible number for a test selector.
-- Fix: kept the large left ordinal and moved the disambiguating copy to screen-reader-only text.
-- Evidence before fix: `/Users/stephenqiu/Desktop/StephenQiu/HotKey/hotkey-web/product-design-output/radar-frontend-20260804/screenshots/02-dashboard-comparison.png`
-
-### Pass 2
-
-- The summary hierarchy now matches the selected reference, all main regions fit at 1440 × 1024, and no P0/P1/P2 issue remains.
-- Post-fix evidence: `/Users/stephenqiu/Desktop/StephenQiu/HotKey/hotkey-web/product-design-output/radar-frontend-20260804/screenshots/07-dashboard-comparison-pass2.png`
-
-## Follow-up Polish
-
-- [P3] When the backend exposes monitor-level daily change totals and source display names in an overview-safe projection, the right rail and AI summary can show the additional reference details without changing the layout.
-
-## Implementation Checklist
-
-- [x] Match the selected top-navigation SaaS direction.
-- [x] Replace the old event-detail-first home with a Radar overview.
-- [x] Connect event filtering and event-update inspection to generated OpenAPI services.
-- [x] Add an actionable low-noise alert inbox.
-- [x] Verify desktop, mobile, search, navigation, event selection, alert actions, typecheck, unit tests and production build.
+- TypeScript：通过
+- OpenAPI 生成契约：通过
+- Vitest：33 个文件、104 个测试通过
+- Next.js 生产构建：通过，19 个页面生成完成
+- `git diff --check`：通过
 
 final result: passed

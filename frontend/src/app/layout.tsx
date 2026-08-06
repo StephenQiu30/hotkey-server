@@ -1,7 +1,20 @@
 import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
 import AppProvider from "@/components/AppProvider";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+  display: "swap",
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "HotKey · AI 热点情报平台",
@@ -21,8 +34,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-CN" data-theme="light" data-scroll-behavior="smooth">
-      <body>
+    <html
+      lang="zh-CN"
+      className={`${geistSans.variable} ${geistMono.variable}`}
+      data-theme="light"
+      data-scroll-behavior="smooth"
+    >
+      <body className="antialiased">
         <ThemeProvider>
           <AppProvider>{children}</AppProvider>
         </ThemeProvider>

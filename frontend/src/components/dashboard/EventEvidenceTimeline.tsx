@@ -37,7 +37,7 @@ export function EventEvidenceTimeline({
       <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-6 sm:px-7">
         <div>
           <div className="flex items-baseline gap-2">
-            <h2 id="event-evidence-heading" className="text-base font-semibold text-slate-950">
+            <h2 id="event-evidence-heading" className="text-base font-semibold text-foreground">
               证据验证
             </h2>
             <span className="text-xs text-muted-foreground">（{totalCount} 条）</span>
@@ -49,7 +49,7 @@ export function EventEvidenceTimeline({
             {countDescription}
           </p>
         </div>
-        <Button asChild variant="ghost" size="sm" className="h-auto shrink-0 px-2 text-xs text-blue-700 hover:bg-blue-50 hover:text-blue-800">
+        <Button asChild variant="ghost" size="sm" className="h-auto shrink-0 px-2 text-xs text-foreground hover:bg-muted hover:text-foreground">
           <a href="#event-evidence-list">全部证据</a>
         </Button>
       </div>
@@ -69,14 +69,14 @@ export function EventEvidenceTimeline({
                 key={content.id ?? `${content.external_id ?? title}-${index}`}
                 className="grid grid-cols-[28px_minmax(0,1fr)] gap-3 py-5"
               >
-                <Badge variant="secondary" className="mono flex h-6 w-6 items-center justify-center rounded-full border-0 bg-blue-50 p-0 text-[10px] font-semibold text-blue-700">
+                <Badge variant="secondary" className="mono flex h-6 w-6 items-center justify-center rounded-full border-0 bg-muted p-0 text-[10px] font-semibold text-foreground">
                   {index + 1}
                 </Badge>
                 <div className="min-w-0">
                   <div className="flex min-w-0 items-start gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span className="truncate text-sm font-medium text-slate-900">
+                        <span className="truncate text-sm font-medium text-foreground">
                           {content.source_name || content.source_type || "公开来源"}
                         </span>
                         <span className="mono text-[10px] text-muted-foreground">
@@ -88,10 +88,10 @@ export function EventEvidenceTimeline({
                       可读
                     </Badge>
                   </div>
-                  <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-600">{title}</p>
+                  <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">{title}</p>
                   <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px]">
                     {content.id != null ? (
-                      <Button asChild variant="link" className="h-auto p-0 text-[11px] font-medium text-blue-700 no-underline hover:text-blue-800">
+                      <Button asChild variant="link" className="h-auto p-0 text-[11px] font-medium text-foreground no-underline hover:text-foreground">
                         <a aria-label={`阅读归档：${title}`} href={`/dashboard/contents/${content.id}`}>阅读归档</a>
                       </Button>
                     ) : null}
