@@ -1284,7 +1284,7 @@ ALTER TABLE collection_runs
 
 func plan007UpgradeSQL(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "..", "docs", "operations", "002-内容标准化去重与MinIO证据升级.md")
+	path := filepath.Join("testdata", "legacy", "plan007-content-evidence-upgrade.md")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read PLAN-007 upgrade runbook: %v", err)
@@ -1318,7 +1318,7 @@ func plan018RollbackSQL(t *testing.T) string {
 
 func plan018RunbookTransaction(t *testing.T, marker, label string) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "..", "docs", "operations", "007-LangChainGo多模型升级与连接.md")
+	path := filepath.Join("testdata", "legacy", "plan018-model-provider-upgrade.md")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s runbook: %v", label, err)
@@ -1337,7 +1337,7 @@ func plan018RunbookTransaction(t *testing.T, marker, label string) string {
 
 func plan009UpgradeSQL(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "..", "docs", "operations", "004-多语言相关性匹配与反馈升级.md")
+	path := filepath.Join("testdata", "legacy", "plan009-multilingual-relevance-upgrade.md")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read PLAN-009 upgrade runbook: %v", err)
@@ -1356,7 +1356,7 @@ func plan009UpgradeSQL(t *testing.T) string {
 
 func plan010UpgradeSQL(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "..", "docs", "operations", "005-事件聚类生命周期与治理升级.md")
+	path := filepath.Join("testdata", "legacy", "plan010-event-clustering-upgrade.md")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read PLAN-010 upgrade runbook: %v", err)
@@ -1375,7 +1375,7 @@ func plan010UpgradeSQL(t *testing.T) string {
 
 func plan010RollbackPreparationSQL(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "..", "docs", "operations", "005-事件聚类生命周期与治理升级.md")
+	path := filepath.Join("testdata", "legacy", "plan010-event-clustering-upgrade.md")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read PLAN-010 rollback runbook: %v", err)
@@ -1394,7 +1394,7 @@ func plan010RollbackPreparationSQL(t *testing.T) string {
 
 func plan010RollbackNormalizationSQL(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "..", "docs", "operations", "005-事件聚类生命周期与治理升级.md")
+	path := filepath.Join("testdata", "legacy", "plan010-event-clustering-upgrade.md")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read PLAN-010 rollback normalization: %v", err)
@@ -1413,7 +1413,7 @@ func plan010RollbackNormalizationSQL(t *testing.T) string {
 
 func plan009RollbackNormalizationSQL(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "..", "docs", "operations", "004-多语言相关性匹配与反馈升级.md")
+	path := filepath.Join("testdata", "legacy", "plan009-multilingual-relevance-upgrade.md")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read PLAN-009 rollback runbook: %v", err)
@@ -1432,7 +1432,7 @@ func plan009RollbackNormalizationSQL(t *testing.T) string {
 
 func plan009RollbackPreparationSQL(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "..", "docs", "operations", "004-多语言相关性匹配与反馈升级.md")
+	path := filepath.Join("testdata", "legacy", "plan009-multilingual-relevance-upgrade.md")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read PLAN-009 rollback runbook: %v", err)
@@ -1505,7 +1505,7 @@ func plan008RollbackPreparationSQL(t *testing.T) string {
 
 func plan008RunbookTransaction(t *testing.T, opening, description string) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "..", "docs", "operations", "003-AIProvider与Embedding升级.md")
+	path := filepath.Join("testdata", "legacy", "plan008-ai-provider-embedding-upgrade.md")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s runbook: %v", description, err)
@@ -1524,7 +1524,7 @@ func plan008RunbookTransaction(t *testing.T, opening, description string) string
 
 func plan007RollbackForeignKeyCleanupSQL(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "..", "..", "docs", "operations", "002-内容标准化去重与MinIO证据升级.md")
+	path := filepath.Join("testdata", "legacy", "plan007-content-evidence-upgrade.md")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read PLAN-007 upgrade runbook: %v", err)

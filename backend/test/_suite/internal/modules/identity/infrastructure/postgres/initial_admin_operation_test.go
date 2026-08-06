@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -229,38 +228,26 @@ func breakGlassAdministratorSQL(t *testing.T, mistakenEmail, correctEmail, ticke
 
 func operationSQLBlock(t *testing.T, heading string) string {
 	t.Helper()
-	_, source, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve operation test source")
+	content, err := os.ReadFile(filepath.Join("testdata", "initial-admin-operation.md"))
+	if err != nil {
+		t.Fatalf("read initial administrator operation fixture: %v", err)
 	}
-	directory := filepath.Dir(source)
-	for {
-		candidate := filepath.Join(directory, "docs", "operations", "009-首管理员数据库指定操作.md")
-		content, err := os.ReadFile(candidate)
-		if err == nil {
-			section := string(content)
-			headingIndex := strings.Index(section, heading)
-			if headingIndex < 0 {
-				t.Fatalf("operation heading %q is missing", heading)
-			}
-			section = section[headingIndex+len(heading):]
-			start := strings.Index(section, "```sql")
-			if start < 0 {
-				t.Fatalf("SQL fence after %q is missing", heading)
-			}
-			section = section[start+len("```sql"):]
-			end := strings.Index(section, "```")
-			if end < 0 {
-				t.Fatalf("SQL fence after %q is not closed", heading)
-			}
-			return strings.TrimSpace(section[:end])
-		}
-		parent := filepath.Dir(directory)
-		if parent == directory {
-			t.Fatalf("locate operation document from %s: %v", source, err)
-		}
-		directory = parent
+	section := string(content)
+	headingIndex := strings.Index(section, heading)
+	if headingIndex < 0 {
+		t.Fatalf("operation heading %q is missing", heading)
 	}
+	section = section[headingIndex+len(heading):]
+	start := strings.Index(section, "```sql")
+	if start < 0 {
+		t.Fatalf("SQL fence after %q is missing", heading)
+	}
+	section = section[start+len("```sql"):]
+	end := strings.Index(section, "```")
+	if end < 0 {
+		t.Fatalf("SQL fence after %q is not closed", heading)
+	}
+	return strings.TrimSpace(section[:end])
 }
 
 func executeOperationSQL(t *testing.T, runtime *database.Runtime, script string) {
