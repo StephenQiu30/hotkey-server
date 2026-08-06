@@ -19,6 +19,7 @@ describe("公开入口页面", () => {
     expect(screen.getByText("财新")).toBeInTheDocument();
     expect(screen.getByText("36氪")).toBeInTheDocument();
     expect(screen.getByText("虎嗅")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "切换到暗色模式" })).toBeInTheDocument();
   });
 
   it("首页的完整情报入口指向受保护的报告页面", () => {
@@ -40,6 +41,9 @@ describe("公开入口页面", () => {
     expect(screen.getByText("连续 4 天上升")).toHaveClass("text-success");
     expect(screen.getByText("/100")).toHaveClass("text-muted-foreground");
     expect(screen.getAllByText(/小时前$/)).toHaveLength(3);
+    expect(screen.getByAltText("由多层信号轨道组成的 HotKey 雷达")).toHaveClass(
+      "dark:invert",
+    );
     for (const timestamp of screen.getAllByText(/小时前$/)) {
       expect(timestamp).toHaveClass("text-muted-foreground");
     }

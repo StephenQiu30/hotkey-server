@@ -65,6 +65,7 @@ describe("TopNav", () => {
       "/dashboard/alerts",
     );
     expect(screen.getByRole("button", { name: "账户菜单" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "切换到暗色模式" })).toBeInTheDocument();
   });
 
   it("submits global search to the event workspace", () => {

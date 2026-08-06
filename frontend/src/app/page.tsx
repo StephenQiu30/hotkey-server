@@ -77,7 +77,7 @@ export default function HomePage() {
                 fill
                 priority
                 sizes="(max-width: 1024px) 100vw, 42vw"
-                className="object-contain lg:scale-[1.2]"
+                className="object-contain dark:invert lg:scale-[1.2]"
               />
             </div>
 
@@ -213,7 +213,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="pricing" className="border-t bg-[#fafafa]">
+        <section id="pricing" className="border-t bg-muted/35">
           <div className="mx-auto flex max-w-[1440px] flex-col gap-8 px-5 py-24 sm:px-8 lg:flex-row lg:items-end lg:justify-between lg:py-32">
             <div>
               <p className="text-sm text-muted-foreground">从第一条监控开始</p>

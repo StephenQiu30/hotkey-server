@@ -14,6 +14,7 @@ import {
   User,
 } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
+import ThemeToggle from "@/components/ThemeToggle";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -173,6 +174,8 @@ export default function TopNav({
             ) : null}
           </Link>
         </Button>
+
+        <ThemeToggle />
 
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetTrigger asChild>

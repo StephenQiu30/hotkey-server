@@ -20,7 +20,7 @@ Design 记录长期有效的产品与技术决策。状态只使用 `proposed`�
 | 编号 | Design | PRD | Plan | 状态 |
 |---:|---|---|---|---|
 | 001 | [MVP产品边界与模块化单体](001-MVP产品边界与模块化单体设计.md) | [PRD](../prd/001-MVP产品边界与模块化单体.md) | [Plan](../plans/001-MVP产品边界与模块化单体计划.md) | accepted |
-| 002 | [Vercel风格与shadcn-ui设计系统](002-Vercel风格与shadcn-ui设计系统设计.md) | [PRD](../prd/002-Vercel风格与shadcn-ui设计系统.md) | [Plan](../plans/002-Vercel风格与shadcn-ui设计系统计划.md) | proposed |
+| 002 | [Vercel风格与shadcn-ui设计系统](002-Vercel风格与shadcn-ui设计系统设计.md) | [PRD](../prd/002-Vercel风格与shadcn-ui设计系统.md) | [Plan](../plans/002-Vercel风格与shadcn-ui设计系统计划.md) | accepted |
 | 003 | [账户认证与会话安全](003-账户认证与会话安全设计.md) | [PRD](../prd/003-账户认证与会话安全.md) | [Plan](../plans/003-账户认证与会话安全计划.md) | proposed |
 | 004 | [用户角色与权限管理](004-用户角色与权限管理设计.md) | [PRD](../prd/004-用户角色与权限管理.md) | [Plan](../plans/004-用户角色与权限管理计划.md) | proposed |
 | 005 | [监控主题CRUD与生命周期](005-监控主题CRUD与生命周期设计.md) | [PRD](../prd/005-监控主题CRUD与生命周期.md) | [Plan](../plans/005-监控主题CRUD与生命周期计划.md) | proposed |

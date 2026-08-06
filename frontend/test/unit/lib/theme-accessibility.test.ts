@@ -24,10 +24,23 @@ function contrast(foreground: string, background: string) {
 }
 
 describe("dashboard theme accessibility", () => {
-  it("keeps muted text at WCAG AA contrast on shared light surfaces", () => {
-    const muted = css.match(/--muted-foreground:\s*(#[0-9a-f]{6})/i)?.[1];
+  it.each([
+    ["light", css.match(/:root\s*{([\s\S]*?)}/)?.[1]],
+    ["dark", css.match(/\.dark\s*{([\s\S]*?)}/)?.[1]],
+  ])("keeps muted text at WCAG AA contrast in the %s theme", (_, theme) => {
+    expect(theme).toBeTruthy();
+    const muted = theme!.match(/--muted-foreground:\s*(#[0-9a-f]{6})/i)?.[1];
+    const background = theme!.match(/--background:\s*(#[0-9a-f]{6})/i)?.[1];
+    const secondary = theme!.match(/--secondary:\s*(#[0-9a-f]{6})/i)?.[1];
     expect(muted).toBeTruthy();
-    expect(contrast(muted!, "#f5f8fd")).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(muted!, "#f8fafc")).toBeGreaterThanOrEqual(4.5);
+    expect(background).toBeTruthy();
+    expect(secondary).toBeTruthy();
+    expect(contrast(muted!, background!)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(muted!, secondary!)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("provides a global reduced-motion fallback", () => {
+    expect(css).toContain("@media (prefers-reduced-motion: reduce)");
+    expect(css).toContain("transition-duration: 0.01ms !important");
   });
 });

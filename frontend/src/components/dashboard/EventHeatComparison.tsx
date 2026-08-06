@@ -53,19 +53,19 @@ export function EventHeatComparison({ events }: EventHeatComparisonProps) {
                 axisLine={false}
                 tickLine={false}
                 width={120}
-                tick={{ fill: "#65758b", fontSize: 11 }}
+                tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
               />
               <Tooltip
                 contentStyle={{
-                  background: "#ffffff",
-                  border: "1px solid #dce6f2",
+                  background: "var(--popover)",
+                  border: "1px solid var(--border)",
                   borderRadius: 10,
-                  color: "#10213b",
+                  color: "var(--popover-foreground)",
                   fontSize: 11,
                   boxShadow: "0 12px 32px rgba(22, 52, 85, .12)",
                 }}
               />
-              <Bar dataKey="heat" fill="#1769e0" radius={[0, 5, 5, 0]} />
+              <Bar dataKey="heat" fill="var(--primary)" radius={[0, 5, 5, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>

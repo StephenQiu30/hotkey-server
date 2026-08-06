@@ -3,7 +3,7 @@ layer: PRD
 scope: frontend
 doc_no: "002"
 title: Vercel风格与shadcn-ui设计系统
-status: draft
+status: implemented
 version: v1.0
 owner: HotKey Team
 phase: P0

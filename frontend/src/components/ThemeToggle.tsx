@@ -9,8 +9,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
-export default function ThemeToggle() {
+export default function ThemeToggle({ className }: { className?: string }) {
   const { theme, toggleTheme } = useTheme();
   const label = theme === "dark" ? "切换到亮色模式" : "切换到暗色模式";
 
@@ -24,7 +25,7 @@ export default function ThemeToggle() {
             size="icon"
             onClick={toggleTheme}
             aria-label={label}
-            className="h-8 w-8 text-muted-foreground"
+            className={cn("h-8 w-8 text-muted-foreground", className)}
           >
             {theme === "dark" ? <Sun /> : <Moon />}
           </Button>

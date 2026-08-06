@@ -18,3 +18,4 @@ canonical_path: docs/acceptance/README.md
 | 编号 | 验收 | 结果 |
 |---:|---|---|
 | 001 | [MVP产品边界与模块化单体](001-MVP产品边界与模块化单体验收.md) | passed |
+| 002 | [Vercel风格与shadcn-ui设计系统](002-Vercel风格与shadcn-ui设计系统验收.md) | passed |

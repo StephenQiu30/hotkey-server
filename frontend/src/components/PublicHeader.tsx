@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Menu } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
+import ThemeToggle from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -57,12 +58,14 @@ export function PublicHeader() {
           </Button>
         </nav>
 
+        <ThemeToggle className="ml-auto md:ml-2" />
+
         <Sheet>
           <SheetTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="ml-auto md:hidden"
+              className="md:hidden"
               aria-label="打开首页导航"
             >
               <Menu />
