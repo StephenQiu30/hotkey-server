@@ -2,76 +2,70 @@
 layer: Operations
 scope: shared
 doc_no: "000"
-audience: [PM, Dev, QA, Ops]
-feature_area: 项目文档
-purpose: 定义 HotKey 单体仓库正式文档的分类、归属、归档和维护规则
-canonical_path: docs/README.md
-status: review
-version: v1.8
+title: HotKey MVP 文档地图
+status: active
+version: v2.0
 owner: HotKey Team
-inputs:
-  - https://github.com/StephenQiu30/stephen-codex
-outputs:
-  - 文档目录约定
-  - 完成任务归档约定
-triggers:
-  - 新增正式文档类型
-  - 修改文档状态、关联或归档规则
-downstream:
-  - docs/design/README.md
-  - docs/prd/README.md
-  - docs/plans/README.md
-  - docs/acceptance/README.md
-  - docs/operations/README.md
+canonical_path: docs/README.md
 ---
 
-# 项目文档规范
+# HotKey MVP 文档地图
 
-`docs/` 只保存会长期影响 HotKey 前端、后端、验收、发布或维护决策的正式文档。需求、设计、计划、验收和运维材料共同进入对应分类目录，不按应用建立二级目录。
+本目录已于 2026-08-06 从零重建。旧 Design、PRD、Plan、Acceptance、Operations 与归档材料不再作为当前项目依据；历史内容仍可通过 Git 版本记录追溯。
 
-本文档只约定仓库中的文档如何分类、查找和归档，不参与服务启动或业务运行。
+## 单一事实源
 
-## 当前交付状态
+- 产品与技术目标：`docs/design/`
+- 稳定交付范围：`docs/prd/`
+- 文件级执行步骤：`docs/plans/`
+- 数据库结构：`backend/db/schema.sql`
+- 发布 API 契约：`docs/openapi/swagger.json`，只允许由后端生成
+- 已完成验证证据：`docs/acceptance/`
+- 可重复运行手册：`docs/operations/`
 
-目标设计不能代替当前实现状态。后端 001–024 已完成并分别移入对应 `archive/`；前端当前文档保留在统一分类目录，并通过 `scope: frontend` 标识。本地启动、GitHub CI、发布和故障处置等可重复运行流程归入 [Operations](operations/README.md)。
+## 一条需求，一组三件套
 
-## 文档层级
+每个编号必须同时拥有同主题的 Design、PRD 和 Plan。三份文档分别回答“如何设计”“交付什么”“如何实现”，不得把未设计的新功能直接写进计划或代码。
 
-| 目录 | 回答的问题 | 内容 |
-|---|---|---|
-| [design](design/README.md) | 系统应当如何设计 | 架构、数据、接口、状态机、算法与技术取舍 |
-| [prd](prd/README.md) | 任务必须交付什么 | 目标、范围、非目标、功能要求和首版验收门禁 |
-| [plans](plans/README.md) | 任务具体如何执行 | 开工条件、文件清单、步骤、验证命令和提交边界 |
-| [acceptance](acceptance/README.md) | 如何证明任务完成 | 红绿证据、测试记录、验收结论和残余风险 |
-| [operations](operations/README.md) | 如何发布与运行 | Git/PR、GitHub CI、发布、部署、运行、回滚和故障手册 |
-| [design/archive](design/archive/README.md) | 已完成设计放在哪里 | 001–018 的已落地设计基线 |
-| [prd/archive](prd/archive/README.md) | 已完成 PRD 放在哪里 | 001–024 的历史任务需求 |
-| [plans/archive](plans/archive/README.md) | 已完成 Plan 放在哪里 | 001–024 的历史执行计划 |
-| [acceptance/archive](acceptance/archive/README.md) | 已完成验收放在哪里 | 001–024 的长期验收证据 |
+| 阶段 | 编号 | 交付项 | 当前判断 |
+|---|---:|---|---|
+| 基线 | 001 | MVP 产品边界与模块化单体 | 已有基础，需按新范围收敛 |
+| 基线 | 002 | Vercel 风格与 shadcn/ui 设计系统 | 部分实现 |
+| 账号 | 003 | 账户认证与会话安全 | 基本实现 |
+| 账号 | 004 | 用户角色与权限管理 | 后端实现，管理界面待补 |
+| 监控 | 005 | 监控主题 CRUD 与生命周期 | 基本实现 |
+| 监控 | 006 | 关键词规则与多语言查询扩展 | 部分实现 |
+| 来源 | 007 | 来源连接控制面与合规健康 | RSS/HN 已实现 |
+| 来源 | 008 | RSS/Atom 来源连接器 | 已实现 |
+| 来源 | 009 | Hacker News 官方来源连接器 | 已实现 |
+| 来源 | 010 | X 官方搜索连接器 | 未实现 |
+| 来源 | 011 | Bing Grounding 来源适配 | 未实现，旧 Search API 已停用 |
+| 来源 | 012 | 搜狗授权来源适配 | 阻塞于可用授权读取接口 |
+| 来源 | 013 | Bilibili 开放平台与账号监控 | 未实现 |
+| 来源 | 014 | 微博开放平台来源适配 | 未实现，依赖应用授权 |
+| 来源 | 015 | Google 可授权搜索迁移 | 未实现，旧 API 仅限存量客户 |
+| 来源 | 016 | DuckDuckGo Instant Answer 边界 | 不作为通用网页搜索源 |
+| 流水线 | 017 | 定时监听、手动搜索与失败重试 | 定时与重试已有，手动搜索待补 |
+| 流水线 | 018 | 内容标准化、去重、时效与原始证据 | 基本实现 |
+| 智能 | 019 | AI 真伪、相关性、重要性与摘要 | 部分实现 |
+| 智能 | 020 | 事件聚类、生命周期、热度与趋势 | 基本实现 |
+| 体验 | 021 | 内容与事件检索、筛选、排序 | 部分实现 |
+| 体验 | 022 | 实时事件流与站内通知 | 未实现 |
+| 交付 | 023 | 低噪声告警与邮件交付 | 站内告警已有，告警邮件待补 |
+| 交付 | 024 | 日报周报、私有 Feed 与知识归档 | 基本实现 |
+| 治理 | 025 | 配额、限流、保留与审计治理 | 部分实现 |
+| 前端 | 026 | Web 工作台全页面交互 | 部分实现 |
+| 集成 | 027 | Agent Skill 与外部 API | 未实现 |
+| 工程 | 028 | 可观测性、部署与质量门禁 | 基本实现 |
 
-## 文档状态
+## 执行顺序
 
-正式文档保留简短 frontmatter，至少说明文档类型、编号、`scope`、状态和用途。`scope` 只能为 `backend`、`frontend` 或 `shared`。PRD/Plan 使用 `execution_status` 标记 `backlog`、`ready`、`in_progress` 或 `done`。通过验收并完成的内容移入所属目录的 `archive/`；未完成内容不提前归档。
+```mermaid
+flowchart LR
+  A["001–004 基线与账号"] --> B["005–016 监控与来源"]
+  B --> C["017–020 采集与智能"]
+  C --> D["021–024 检索、实时与交付"]
+  D --> E["025–028 治理、工作台与工程"]
+```
 
-## 关联规则
-
-PRD、Plan 和 Acceptance 应在正文中保留对应关系和验收提交；移动到 archive 后同步更新路径。Operations 只保存可重复执行的运行、发布和回滚流程。
-
-## 内容边界
-
-- 正式文档只写稳定需求、决策、执行契约和可复用证据
-- 临时 todo、工时、日报、会议流水、一次性排查和中间推演不得进入 `docs/`
-- 未实现目标必须明确标记，不能描述成当前能力
-- 数据库的唯一可执行事实源是完整 `backend/db/schema.sql`
-- 公共接口的唯一可执行契约是生成并校验后的 OpenAPI
-- 单次实施进度应保留在 ticket、Workpad 或 PR，不回写正式 Plan 正文
-
-## 更新顺序
-
-涉及需求或架构变化时，按以下顺序更新：
-
-1. Design（若设计发生变化）
-2. PRD 与 Plan
-3. 代码、完整 Schema、记录模型、OpenAPI 和测试
-4. Acceptance
-5. 必要的 Operations
+任一条进入开发前必须先将对应 Design 评审为 `accepted`，再将 PRD 评审为 `approved`，最后把 Plan 状态改为 `in_progress`。实现完成后新增同编号 Acceptance；只有出现可重复运行的人工或生产操作时才新增 Operations。
