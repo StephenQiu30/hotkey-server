@@ -1,13 +1,14 @@
 ---
 layer: Design
+scope: shared
 doc_no: "000"
 audience: [PM, Dev, QA, Ops]
 feature_area: AI热点事件监控平台
-purpose: 管理 HotKey Server 权威设计文档及其状态
+purpose: 管理 HotKey 前后端权威设计文档及其状态
 canonical_path: docs/design/README.md
 status: review
 version: v2.0
-owner: HotKey Server Team
+owner: HotKey Team
 inputs:
   - docs/README.md
 outputs:
@@ -20,9 +21,11 @@ downstream:
   - docs/plans/README.md
 ---
 
-# 后端设计索引
+# 设计索引
 
-本目录记录 AI 热点事件监控平台后端的长期设计决策。`AGENTS.md` 定义所有开发必须遵守的架构约束，本目录解释需求、模型、流程和技术取舍。
+本目录共同记录 HotKey 前后端的长期设计决策，使用 frontmatter `scope` 标识归属。`AGENTS.md` 定义所有开发必须遵守的架构约束，本目录解释需求、模型、流程和技术取舍。
+
+当前前端设计：[021-内容归档阅读与工作台可视化设计](021-内容归档阅读与工作台可视化设计.md)。
 
 ## 文档规则
 

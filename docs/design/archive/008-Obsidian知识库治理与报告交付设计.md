@@ -1,5 +1,6 @@
 ---
 layer: Design
+scope: backend
 doc_no: "008"
 audience: [PM, Dev, QA, Ops]
 feature_area: Obsidian知识库治理与报告交付

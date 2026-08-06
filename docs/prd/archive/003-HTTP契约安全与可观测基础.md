@@ -1,5 +1,6 @@
 ---
 layer: PRD
+scope: backend
 prd_no: "003"
 doc_no: "003"
 title: HTTP契约安全与可观测基础

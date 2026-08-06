@@ -1,5 +1,6 @@
 ---
 layer: Acceptance
+scope: backend
 doc_no: "002"
 audience: [Dev, QA, Ops]
 feature_area: 数据库运行时

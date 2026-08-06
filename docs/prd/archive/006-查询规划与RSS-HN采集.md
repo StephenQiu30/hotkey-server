@@ -1,5 +1,6 @@
 ---
 layer: PRD
+scope: backend
 prd_no: "006"
 doc_no: "006"
 title: 查询规划与RSS-HN采集

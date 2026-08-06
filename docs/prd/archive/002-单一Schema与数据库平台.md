@@ -1,5 +1,6 @@
 ---
 layer: PRD
+scope: backend
 prd_no: "002"
 doc_no: "002"
 title: 数据库运行时、事务与兼容性平台

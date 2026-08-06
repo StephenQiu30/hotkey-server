@@ -1,5 +1,6 @@
 ---
 layer: Acceptance
+scope: backend
 doc_no: "007"
 audience: [Dev, QA, Ops]
 feature_area: 内容与证据

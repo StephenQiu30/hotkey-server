@@ -1,5 +1,6 @@
 ---
 layer: PRD
+scope: backend
 prd_no: "019"
 doc_no: "019"
 title: 采集内容Markdown归档与预览

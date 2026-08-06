@@ -1,5 +1,6 @@
 ---
 layer: Plan
+scope: backend
 doc_no: "003"
 audience: [Dev, QA, Ops]
 feature_area: HTTP与可观测

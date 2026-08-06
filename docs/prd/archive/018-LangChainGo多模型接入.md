@@ -1,5 +1,6 @@
 ---
 layer: PRD
+scope: backend
 prd_no: "018"
 doc_no: "018"
 title: LangChainGo多模型接入

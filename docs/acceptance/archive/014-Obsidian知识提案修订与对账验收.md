@@ -1,5 +1,6 @@
 ---
 layer: Acceptance
+scope: backend
 doc_no: "014"
 audience: [Dev, QA, Ops]
 feature_area: 知识库治理

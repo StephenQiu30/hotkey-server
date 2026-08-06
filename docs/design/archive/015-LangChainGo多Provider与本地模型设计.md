@@ -1,5 +1,6 @@
 ---
 layer: Design
+scope: backend
 doc_no: "015"
 audience: [PM, Dev, QA, Ops]
 feature_area: AI运行基础

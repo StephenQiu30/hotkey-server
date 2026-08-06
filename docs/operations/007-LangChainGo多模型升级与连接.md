@@ -1,5 +1,6 @@
 ---
 layer: Operations
+scope: backend
 doc_no: "007"
 audience: [Dev, QA, Ops]
 feature_area: AI Provider升级与连接

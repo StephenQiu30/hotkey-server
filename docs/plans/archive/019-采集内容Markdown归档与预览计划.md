@@ -1,5 +1,6 @@
 ---
 layer: Plan
+scope: backend
 doc_no: "019"
 audience: [Dev, QA, Ops]
 feature_area: 内容归档与阅读
@@ -51,7 +52,7 @@ Design-016 与 PRD-019 必须 accepted，本 Plan 必须 accepted/approved/ready
 - `test/_suite/internal/modules/ingestion/infrastructure/minio/store_test.go`
 - `test/_suite/internal/modules/ingestion/infrastructure/minio/store_integration_test.go`
 - `test/_suite/internal/modules/ingestion/infrastructure/postgres/repository_integration_test.go`
-- `docs/openapi/docs.go`、`docs/openapi/swagger.json`
+- `backend/openapi/docs.go`、`docs/openapi/swagger.json`
 - 四层文档索引与本文档链
 
 `db/schema.sql` 不修改；如实施发现必须增表或扩展 asset type，立即停工并回到 Design Review。

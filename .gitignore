@@ -1,32 +1,52 @@
+# Operating systems and editors
 .DS_Store
 .idea/
+.vscode/
+*.swp
+*.swo
 skills-lock.json
-node_modules/
-npm-debug.log*
-package-lock.json
-dist/
-coverage/
-artifacts/
-reports/
-test-results/
-playwright-report/
-tmp/
-temp/
-.tmp/
-.tools/
+
+# Environment files
 .env
 .env.*
 !.env.example
 !.env.prod.example
 
-# Build output & runtime artifacts
-/hotkey-server
+# Dependencies and language caches
+node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
 
-# Symphony runtime artifacts
-.symphony-codex-prompt.*
-.symphony-workspaces/
+# Build output and reports
+dist/
+build/
+coverage/
+artifacts/
+reports/
+test-results/
+playwright-report/
+.next/
+out/
+tsconfig.tsbuildinfo
 
-# Swagger generated output (JSON/YAML not needed at runtime)
-docs/swagger.json
-docs/swagger.yaml
-/hotkey
+# Temporary and local tool state
+tmp/
+temp/
+.tmp/
+.tools/
+.playwright-mcp/
+.product-design/
+dogfood-output/
+product-design-output/
+*.log
+npm-debug.log*
+
+# Backend-only artifacts
+/backend/package-lock.json
+/backend/hotkey-server
+/backend/hotkey
+/backend/.symphony-codex-prompt.*
+/backend/.symphony-workspaces/
+/docs/swagger.json
+/docs/swagger.yaml

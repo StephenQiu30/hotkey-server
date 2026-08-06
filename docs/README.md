@@ -1,13 +1,14 @@
 ---
 layer: Operations
+scope: shared
 doc_no: "000"
 audience: [PM, Dev, QA, Ops]
 feature_area: 项目文档
-purpose: 定义 HotKey Server 正式文档的分类、归档和维护规则
+purpose: 定义 HotKey 单体仓库正式文档的分类、归属、归档和维护规则
 canonical_path: docs/README.md
 status: review
 version: v1.8
-owner: HotKey Server Team
+owner: HotKey Team
 inputs:
   - https://github.com/StephenQiu30/stephen-codex
 outputs:
@@ -26,13 +27,13 @@ downstream:
 
 # 项目文档规范
 
-`docs/` 只保存会长期影响 HotKey Server 开发、验收、发布或维护决策的正式文档。需求、设计、计划、验收和运维材料必须进入对应目录，不能混放。
+`docs/` 只保存会长期影响 HotKey 前端、后端、验收、发布或维护决策的正式文档。需求、设计、计划、验收和运维材料共同进入对应分类目录，不按应用建立二级目录。
 
 本文档只约定仓库中的文档如何分类、查找和归档，不参与服务启动或业务运行。
 
 ## 当前交付状态
 
-目标设计不能代替当前实现状态。当前 001–024 已完成并分别移入对应 `archive/`；024 的原子采集重试验收为 accepted。本地启动、GitHub CI、发布和故障处置等可重复运行流程归入 [Operations](operations/README.md)。
+目标设计不能代替当前实现状态。后端 001–024 已完成并分别移入对应 `archive/`；前端当前文档保留在统一分类目录，并通过 `scope: frontend` 标识。本地启动、GitHub CI、发布和故障处置等可重复运行流程归入 [Operations](operations/README.md)。
 
 ## 文档层级
 
@@ -50,7 +51,7 @@ downstream:
 
 ## 文档状态
 
-正式文档保留简短 frontmatter，至少说明文档类型、编号、状态和用途。PRD/Plan 使用 `execution_status` 标记 `backlog`、`ready`、`in_progress` 或 `done`。通过验收并完成的内容移入所属目录的 `archive/`；未完成内容不提前归档。
+正式文档保留简短 frontmatter，至少说明文档类型、编号、`scope`、状态和用途。`scope` 只能为 `backend`、`frontend` 或 `shared`。PRD/Plan 使用 `execution_status` 标记 `backlog`、`ready`、`in_progress` 或 `done`。通过验收并完成的内容移入所属目录的 `archive/`；未完成内容不提前归档。
 
 ## 关联规则
 
@@ -61,7 +62,7 @@ PRD、Plan 和 Acceptance 应在正文中保留对应关系和验收提交；移
 - 正式文档只写稳定需求、决策、执行契约和可复用证据
 - 临时 todo、工时、日报、会议流水、一次性排查和中间推演不得进入 `docs/`
 - 未实现目标必须明确标记，不能描述成当前能力
-- 数据库的唯一可执行事实源是完整 `db/schema.sql`
+- 数据库的唯一可执行事实源是完整 `backend/db/schema.sql`
 - 公共接口的唯一可执行契约是生成并校验后的 OpenAPI
 - 单次实施进度应保留在 ticket、Workpad 或 PR，不回写正式 Plan 正文
 

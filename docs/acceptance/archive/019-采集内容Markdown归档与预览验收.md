@@ -1,5 +1,6 @@
 ---
 layer: Acceptance
+scope: backend
 doc_no: "019"
 audience: [Dev, QA, Ops]
 feature_area: 内容归档与阅读

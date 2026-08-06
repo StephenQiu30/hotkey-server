@@ -1,5 +1,6 @@
 ---
 layer: PRD
+scope: backend
 prd_no: "007"
 doc_no: "007"
 title: 内容标准化去重与MinIO证据

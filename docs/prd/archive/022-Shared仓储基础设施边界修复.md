@@ -1,5 +1,6 @@
 ---
 layer: PRD
+scope: backend
 doc_no: "022"
 audience: [Dev, QA, Ops]
 feature_area: 工程目录与依赖边界

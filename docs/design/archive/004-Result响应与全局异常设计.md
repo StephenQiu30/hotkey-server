@@ -1,5 +1,6 @@
 ---
 layer: Design
+scope: backend
 doc_no: "004"
 audience: Dev, QA
 feature_area: API响应与异常

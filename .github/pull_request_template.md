@@ -15,12 +15,19 @@
 - [ ] 文档
 - [ ] 构建、依赖或运维
 
+## 影响范围
+
+- [ ] `backend/`
+- [ ] `frontend/`
+- [ ] 根级通用配置或文档
+
 ## 验证
 
 <!-- 列出实际运行的命令、手工步骤和结果。行为变更请说明测试先行证据。 -->
 
 ```bash
-# 例如：make test
+# 后端示例：cd backend && make test
+# 前端示例：cd frontend && npm run test:unit
 ```
 
 ## 契约与运行影响
@@ -28,6 +35,7 @@
 - [ ] 无 Schema / OpenAPI / 配置 / 部署影响
 - [ ] 已同步 Schema 与数据库验证
 - [ ] 已同步 OpenAPI、生成文件和 Transport 测试
+- [ ] 前端已重新生成并审查受影响的 OpenAPI 客户端
 - [ ] 已更新 `.env.example` 与运行文档
 - [ ] 已说明升级、回滚或兼容性影响
 

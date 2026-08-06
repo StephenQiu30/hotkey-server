@@ -1,13 +1,14 @@
 ---
 layer: PRD
+scope: shared
 doc_no: "000"
 audience: [PM, Dev, QA, Ops]
 feature_area: AI热点事件监控平台
-purpose: 管理从权威设计拆分出的后端执行任务需求
+purpose: 管理从权威设计拆分出的前后端执行任务需求
 canonical_path: docs/prd/README.md
 status: review
 version: v4.3
-owner: HotKey Server Team
+owner: HotKey Team
 inputs:
   - docs/README.md
   - docs/design/README.md
@@ -24,7 +25,9 @@ downstream:
 
 # 执行任务 PRD 索引
 
-本目录把 docs/design/001–014 的目标设计转换为可排期、可实现、可测试、可验收的后端任务。设计文档回答“系统应当是什么”，PRD 回答“下一项实现交付什么、依赖什么、如何证明完成”。
+本目录把目标设计转换为可排期、可实现、可测试、可验收的前后端任务，使用 frontmatter `scope` 标识归属。设计文档回答“系统应当是什么”，PRD 回答“下一项实现交付什么、依赖什么、如何证明完成”。
+
+当前前端 PRD：[027-内容归档阅读与工作台可视化](027-内容归档阅读与工作台可视化.md) 与 [028-Web 工作台完整配置与查看](028-Web工作台完整配置与查看.md)（遗留范围，待重新评审）。
 
 ## 使用规则
 
@@ -99,7 +102,7 @@ downstream:
                                       010–013 → 025
                                       002 + 020 → 026
 
-PRD-001–024 已移入 [`archive/`](archive/README.md)。PRD-025、PRD-026 已完成并具备对应验收记录。
+PRD-001–024 已移入 [`archive/`](archive/README.md)。PRD-025–027 已完成并具备对应验收记录；PRD-028 为待重新评审的前端遗留范围。
 
 ## 每个 PRD 的完成要求
 

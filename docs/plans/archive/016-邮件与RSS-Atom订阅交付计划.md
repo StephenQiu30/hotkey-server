@@ -1,5 +1,6 @@
 ---
 layer: Plan
+scope: backend
 doc_no: "016"
 audience: [Dev, QA, Ops]
 feature_area: 订阅与交付

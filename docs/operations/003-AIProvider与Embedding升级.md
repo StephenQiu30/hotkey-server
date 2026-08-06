@@ -1,5 +1,6 @@
 ---
 layer: Operations
+scope: backend
 doc_no: "003"
 audience: [Dev, QA, Ops]
 feature_area: 数据库升级

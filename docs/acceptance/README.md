@@ -1,5 +1,6 @@
 ---
 layer: Acceptance
+scope: shared
 doc_no: "000"
 audience: [Dev, QA, Ops]
 feature_area: 验收记录
@@ -7,7 +8,7 @@ purpose: 定义长期验收证据的结构、结论和归档边界
 canonical_path: docs/acceptance/README.md
 status: review
 version: v4.2
-owner: HotKey Server Team
+owner: HotKey Team
 inputs:
   - docs/README.md
   - docs/plans/README.md
@@ -23,6 +24,8 @@ downstream:
 # 验收文档规范
 
 Acceptance 保存可长期复核的完成证据，不保存完整终端流水或临时调试记录。
+
+当前前端验收：[027-内容归档阅读与工作台可视化验收](027-内容归档阅读与工作台可视化验收.md)。
 
 ## 必需内容
 

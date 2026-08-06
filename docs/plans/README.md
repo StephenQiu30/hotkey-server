@@ -1,14 +1,15 @@
 ---
 layer: Plan
+scope: shared
 doc_no: "000"
 audience: [PM, Dev, QA, Ops]
 feature_area: 执行计划
-purpose: 定义 HotKey Server 执行计划的结构、状态和验收映射
+purpose: 定义 HotKey 前后端执行计划的结构、状态和验收映射
 canonical_path: docs/plans/README.md
 status: review
 review_status: pending
 version: v3.5
-owner: HotKey Server Team
+owner: HotKey Team
 inputs:
   - docs/README.md
   - docs/prd/README.md
@@ -26,6 +27,8 @@ downstream:
 # 执行计划规范与索引
 
 Plan 把一个 PRD 转换为可直接实施的文件级步骤。执行者只读 Design 和 PRD 仍无法确定修改文件或验证命令时，Plan 就不完整。
+
+当前前端计划：[027-内容归档阅读与工作台可视化计划](027-内容归档阅读与工作台可视化计划.md)。
 
 ## Plan 必须包含
 
@@ -117,4 +120,4 @@ Plan 必须由非本计划主要编写者的 Reviewer 再次审核。Reviewer �
 | 025 | [事件变化雷达与低噪声告警](../prd/025-事件变化雷达与低噪声告警.md) | [执行计划](025-事件变化雷达与低噪声告警计划.md) | 010–013 | done | approved |
 | 026 | [双环境容器部署](../prd/026-双环境容器部署.md) | [执行计划](026-双环境容器部署计划.md) | 002, 020 | done | approved |
 
-PLAN-001–024 已移入 [`archive/`](archive/README.md)，并保留对应验收证据。PLAN-025、PLAN-026 已完成；PLAN-026 的精简 env 与生产凭据最小映射已通过独立最终复审。
+PLAN-001–024 已移入 [`archive/`](archive/README.md)，并保留对应验收证据。PLAN-025–027 已完成；PLAN-026 的精简 env 与生产凭据最小映射已通过独立最终复审。

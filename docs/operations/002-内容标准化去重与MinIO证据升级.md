@@ -1,5 +1,6 @@
 ---
 layer: Operations
+scope: backend
 doc_no: "002"
 audience: [Dev, QA, Ops]
 feature_area: 数据库升级
@@ -9,7 +10,7 @@ status: accepted
 version: v1.0
 owner: HotKey Server Team
 inputs:
-  - db/schema.sql
+  - backend/db/schema.sql
   - docs/design/archive/003-数据库与数据生命周期设计.md
   - docs/design/archive/006-内容标准化去重与证据设计.md
   - docs/plans/archive/007-内容标准化去重与MinIO证据计划.md
@@ -25,7 +26,7 @@ downstream:
 
 ## 适用范围与停止条件
 
-本手册仅升级已经由 PLAN-006 或更早版本初始化的 PostgreSQL 库。新环境仍必须使用 `go run ./cmd/hotkey db init --empty-only --confirm-empty` 从 [db/schema.sql](../../db/schema.sql) 建立，不能执行本手册。
+本手册仅升级已经由 PLAN-006 或更早版本初始化的 PostgreSQL 库。新环境仍必须从 `backend/` 执行 `go run ./cmd/hotkey db init --empty-only --confirm-empty`，并使用 [backend/db/schema.sql](../../backend/db/schema.sql) 建立，不能执行本手册。
 
 只在已批准维护窗口、停止会写入 `contents`、`collection_runs` 与 `collection_run_items` 的进程后执行。运行手册中的 SQL 是从 `db/schema.sql` 导出的单次操作，不是第二份 Schema；服务启动绝不自动执行它。任一 preflight、转换或验证失败时立即停止，不启动服务，并进入“回退”。
 

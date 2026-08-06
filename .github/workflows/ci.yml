@@ -15,8 +15,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  acceptance:
-    name: Server test acceptance
+  backend-acceptance:
+    name: Backend test acceptance
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
@@ -47,6 +47,10 @@ jobs:
       HOTKEY_TEST_DSN: postgres://hotkey:hotkey@localhost:5432/hotkey_test?sslmode=disable
       HOTKEY_TEST_REDIS_URL: redis://127.0.0.1:6379/15
 
+    defaults:
+      run:
+        working-directory: backend
+
     steps:
       - name: Check out source
         uses: actions/checkout@v7
@@ -56,8 +60,9 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version-file: backend/go.mod
           cache: true
+          cache-dependency-path: backend/go.sum
 
       - name: OpenAPI contract acceptance
         run: make openapi-check
@@ -83,3 +88,38 @@ jobs:
       - name: Clean generated artifacts
         if: always()
         run: make clean
+
+  frontend-acceptance:
+    name: Frontend test acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: OpenAPI client acceptance
+        run: npm run openapi:check
+
+      - name: TypeScript acceptance
+        run: npm run typecheck
+
+      - name: Unit test acceptance
+        run: npm run test:unit
+
+      - name: Production build acceptance
+        run: npm run build

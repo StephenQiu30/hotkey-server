@@ -1,5 +1,6 @@
 ---
 layer: PRD
+scope: backend
 prd_no: "008"
 doc_no: "008"
 title: AI Provider与Embedding基础

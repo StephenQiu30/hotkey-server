@@ -1,5 +1,6 @@
 ---
 layer: PRD
+scope: backend
 prd_no: "016"
 doc_no: "016"
 title: 邮件与RSS-Atom订阅交付

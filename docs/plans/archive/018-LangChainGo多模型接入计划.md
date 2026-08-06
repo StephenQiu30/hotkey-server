@@ -1,5 +1,6 @@
 ---
 layer: Plan
+scope: backend
 doc_no: "018"
 audience: [Dev, QA, Ops]
 feature_area: AI运行基础
@@ -52,7 +53,7 @@ depends_on: [PLAN-008, PLAN-017]
 - `internal/modules/intelligence/transport/http/dto.go`
 - `internal/bootstrap/app.go`
 - `db/schema.sql`
-- `docs/openapi/docs.go`、`docs/openapi/swagger.json`
+- `backend/openapi/docs.go`、`docs/openapi/swagger.json`
 - `docs/design/README.md`、`docs/prd/README.md`、`docs/plans/README.md`、`docs/acceptance/README.md`、`docs/operations/README.md`
 - `docs/design/archive/015-LangChainGo多Provider与本地模型设计.md`
 - `docs/prd/archive/018-LangChainGo多模型接入.md`

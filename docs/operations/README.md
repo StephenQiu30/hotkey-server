@@ -1,13 +1,14 @@
 ---
 layer: Operations
+scope: shared
 doc_no: "000"
 audience: [Dev, QA, Ops]
 feature_area: 项目运行与发布
-purpose: 定义 HotKey Server 发布、运行、回滚和故障手册的归档规则
+purpose: 定义 HotKey 前后端发布、运行、回滚和故障手册的归档规则
 canonical_path: docs/operations/README.md
 status: review
 version: v2.7
-owner: HotKey Server Team
+owner: HotKey Team
 inputs:
   - docs/README.md
 outputs:

@@ -1,5 +1,6 @@
 ---
 layer: PRD
+scope: backend
 prd_no: "014"
 doc_no: "014"
 title: Obsidian知识提案修订与对账
