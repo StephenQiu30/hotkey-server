@@ -520,7 +520,15 @@ func (service *Service) UpdateUser(ctx context.Context, actor domain.Subject, us
 	var changed *domain.User
 	err := service.withTransaction(ctx, func(ctx context.Context, _ database.Transaction) error {
 		now := service.now()
-		var err error
+		// Keep the same lock order as the PostgreSQL lifecycle methods so the
+		// audit snapshot describes the exact state this transaction changes.
+		if _, err := service.users.LockActiveAdmins(ctx); err != nil {
+			return err
+		}
+		before, err := service.users.LockByID(ctx, userID)
+		if err != nil {
+			return err
+		}
 		if update.Role != nil {
 			changed, err = service.users.ChangeRole(ctx, userID, *update.Role, now)
 			if err != nil {
@@ -541,7 +549,17 @@ func (service *Service) UpdateUser(ctx context.Context, actor domain.Subject, us
 		if changed == nil {
 			return validationError(nil)
 		}
-		return service.audit.Create(ctx, auditEntry(ctx, "user", actor.UserID, "identity.user_update", "user", changed.ID, "success", nil, map[string]any{"role": string(changed.Role), "status": string(changed.Status)}))
+		return service.audit.Create(ctx, auditEntry(
+			ctx,
+			"user",
+			actor.UserID,
+			"identity.user_update",
+			"user",
+			changed.ID,
+			"success",
+			map[string]any{"role": string(before.Role), "status": string(before.Status)},
+			map[string]any{"role": string(changed.Role), "status": string(changed.Status)},
+		))
 	})
 	if err != nil {
 		if auditErr := service.auditLifecycleFailure(ctx, actor, "identity.user_update", userID); auditErr != nil {

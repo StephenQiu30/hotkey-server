@@ -388,6 +388,40 @@ func TestAdministratorInvariantFailureIsAuditedAfterItsTransactionRollsBack(t *t
 	}
 }
 
+func TestAdministratorUpdateAuditCapturesBeforeAndAfterLifecycleFacts(t *testing.T) {
+	service, users, _ := newFakeService(t)
+	users.put(domain.User{ID: 1, Email: "admin@example.test", PasswordHash: "hash:admin", Role: domain.RoleAdmin, Status: domain.UserStatusActive})
+	users.put(domain.User{ID: 2, Email: "member@example.test", PasswordHash: "hash:member", Role: domain.RoleViewer, Status: domain.UserStatusActive})
+
+	changed, err := service.UpdateUser(
+		context.Background(),
+		domain.Subject{UserID: 1, Role: domain.RoleAdmin},
+		2,
+		UserUpdate{Role: pointerToRole(domain.RoleEditor), Status: pointerToStatus(domain.UserStatusDisabled)},
+	)
+	if err != nil {
+		t.Fatalf("UpdateUser() error = %v", err)
+	}
+	if changed.Role != domain.RoleEditor || changed.Status != domain.UserStatusDisabled {
+		t.Fatalf("UpdateUser() = %#v, want disabled editor", changed)
+	}
+
+	audit := service.audit.(*auditRepositoryFake)
+	if len(audit.entries) != 1 {
+		t.Fatalf("audit entries = %#v, want one successful lifecycle event", audit.entries)
+	}
+	entry := audit.entries[0]
+	if entry.Action != "identity.user_update" || entry.Result != "success" || entry.ActorID != 1 || entry.ResourceID != 2 {
+		t.Fatalf("audit identity = %#v, want successful user update by administrator", entry)
+	}
+	if entry.BeforeData["role"] != string(domain.RoleViewer) || entry.BeforeData["status"] != string(domain.UserStatusActive) {
+		t.Fatalf("audit before = %#v, want active viewer", entry.BeforeData)
+	}
+	if entry.AfterData["role"] != string(domain.RoleEditor) || entry.AfterData["status"] != string(domain.UserStatusDisabled) {
+		t.Fatalf("audit after = %#v, want disabled editor", entry.AfterData)
+	}
+}
+
 func pointerToRole(role domain.Role) *domain.Role { return &role }
 
 func pointerToStatus(status domain.UserStatus) *domain.UserStatus { return &status }

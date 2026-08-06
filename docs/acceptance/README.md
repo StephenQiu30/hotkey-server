@@ -20,3 +20,4 @@ canonical_path: docs/acceptance/README.md
 | 001 | [MVP产品边界与模块化单体](001-MVP产品边界与模块化单体验收.md) | passed |
 | 002 | [Vercel风格与shadcn-ui设计系统](002-Vercel风格与shadcn-ui设计系统验收.md) | passed |
 | 003 | [账户认证与会话安全](003-账户认证与会话安全验收.md) | passed |
+| 004 | [用户角色与权限管理](004-用户角色与权限管理验收.md) | passed |

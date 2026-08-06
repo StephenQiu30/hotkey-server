@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -220,6 +221,60 @@ func TestUserRepositoryPreventsRemovingLastActiveAdmin(t *testing.T) {
 				t.Fatalf("last admin after %s = %#v, want unchanged active admin", operation.name, locked)
 			}
 		})
+	}
+}
+
+func TestUserRepositorySerializesConcurrentAdminDemotions(t *testing.T) {
+	runtime := newIdentityRuntime(t)
+	repository := NewUserRepository(runtime)
+	first := createIdentityAdmin(t, runtime, repository, "concurrent-admin-first")
+	second := createIdentityAdmin(t, runtime, repository, "concurrent-admin-second")
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	var workers sync.WaitGroup
+	for _, id := range []int64{first.ID, second.ID} {
+		id := id
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			<-start
+			_, err := repository.ChangeRole(context.Background(), id, domain.RoleViewer, now)
+			results <- err
+		}()
+	}
+	close(start)
+	workers.Wait()
+	close(results)
+
+	succeeded := 0
+	protected := 0
+	for err := range results {
+		if err == nil {
+			succeeded++
+			continue
+		}
+		var appError *sharederrors.AppError
+		if errors.As(err, &appError) && appError.Code == sharederrors.CodeLastActiveAdmin {
+			protected++
+			continue
+		}
+		t.Fatalf("concurrent ChangeRole() error = %v, want success or CodeLastActiveAdmin", err)
+	}
+	if succeeded != 1 || protected != 1 {
+		t.Fatalf("concurrent demotions = %d succeeded, %d protected; want 1 and 1", succeeded, protected)
+	}
+
+	var activeAdmins int
+	if err := runtime.SQL.QueryRow(`
+SELECT count(*)
+FROM users
+WHERE role = 'admin' AND status = 'active' AND deleted_at IS NULL`).Scan(&activeAdmins); err != nil {
+		t.Fatalf("count active admins: %v", err)
+	}
+	if activeAdmins != 1 {
+		t.Fatalf("active admins after concurrent demotions = %d, want 1", activeAdmins)
 	}
 }
 

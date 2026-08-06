@@ -49,6 +49,7 @@ interface MenuItem {
   path: string;
   name: string;
   icon: React.ReactNode;
+  roles?: UserRole[];
 }
 
 function isActivePath(pathname: string, path: string) {
@@ -76,6 +77,9 @@ export default function TopNav({
   const logout = useAuthStore((state) => state.logout);
   const canManage =
     user?.role === UserRole.Admin || user?.role === UserRole.Editor;
+  const visibleAdminMenuItems = adminMenuItems.filter(
+    (item) => !item.roles || (user?.role && item.roles.includes(user.role as UserRole)),
+  );
 
   const handleSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -279,13 +283,13 @@ export default function TopNav({
                 账户信息
               </Link>
             </DropdownMenuItem>
-            {canManage && adminMenuItems.length > 0 ? (
+            {canManage && visibleAdminMenuItems.length > 0 ? (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">
                   工作区管理
                 </DropdownMenuLabel>
-                {adminMenuItems.map((item) => (
+                {visibleAdminMenuItems.map((item) => (
                   <DropdownMenuItem key={item.path} asChild>
                     <Link href={item.path}>
                       <span className="mr-2">{item.icon}</span>

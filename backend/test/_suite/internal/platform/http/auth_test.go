@@ -148,25 +148,30 @@ func TestAuthenticationStoresUnforgeableSubject(t *testing.T) {
 	}
 }
 
-func TestAuthorizationRejectsViewerForAdminRoute(t *testing.T) {
+func TestAuthorizationRejectsNonAdminsForAdminRoute(t *testing.T) {
 	t.Parallel()
 
-	authenticator := &authenticatorStub{auth: func(_ context.Context, _ string) (Subject, error) {
-		return Subject{UserID: 11, SessionID: 22, Role: RoleViewer}, nil
-	}}
-	router := gin.New()
-	admin := router.Group("/admin", RequireAuthentication(authenticator), RequireRoles(RoleAdmin))
-	admin.GET("/users", func(c *gin.Context) { OK[any](c, nil) })
+	for _, role := range []Role{RoleViewer, RoleEditor} {
+		role := role
+		t.Run(string(role), func(t *testing.T) {
+			authenticator := &authenticatorStub{auth: func(_ context.Context, _ string) (Subject, error) {
+				return Subject{UserID: 11, SessionID: 22, Role: role}, nil
+			}}
+			router := gin.New()
+			admin := router.Group("/admin", RequireAuthentication(authenticator), RequireRoles(RoleAdmin))
+			admin.GET("/users", func(c *gin.Context) { OK[any](c, nil) })
 
-	request := httptest.NewRequest(stdhttp.MethodGet, "/admin/users", nil)
-	request.Header.Set("Authorization", "Bearer viewer")
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, request)
+			request := httptest.NewRequest(stdhttp.MethodGet, "/admin/users", nil)
+			request.Header.Set("Authorization", "Bearer "+string(role))
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
 
-	if response.Code != stdhttp.StatusForbidden {
-		t.Fatalf("status = %d, want %d", response.Code, stdhttp.StatusForbidden)
+			if response.Code != stdhttp.StatusForbidden {
+				t.Fatalf("status = %d, want %d", response.Code, stdhttp.StatusForbidden)
+			}
+			assertResult(t, response, sharederrors.CodeForbidden, "forbidden", nil)
+		})
 	}
-	assertResult(t, response, sharederrors.CodeForbidden, "forbidden", nil)
 }
 
 func TestPublicAuthGroupNeverParsesBearer(t *testing.T) {

@@ -96,6 +96,27 @@ describe("TopNav", () => {
     expect(await screen.findByRole("menuitem", { name: /来源管理/ })).toBeInTheDocument();
   });
 
+  it("hides administrator-only menu items from editors", async () => {
+    useAuthStore.setState((state) => ({
+      ...state,
+      user: { ...state.user!, role: UserRole.Editor },
+    }));
+    const user = userEvent.setup();
+    render(
+      <TopNav
+        menuItems={[]}
+        adminMenuItems={[
+          { path: "/dashboard/users", name: "用户与权限", icon: <Activity />, roles: [UserRole.Admin] },
+          { path: "/dashboard/contents", name: "采集内容", icon: <Database /> },
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "账户菜单" }));
+    expect(screen.queryByRole("menuitem", { name: /用户与权限/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /采集内容/ })).toBeInTheDocument();
+  });
+
   it("opens mobile navigation as an accessible sheet", async () => {
     const user = userEvent.setup();
     render(
