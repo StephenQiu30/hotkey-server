@@ -6,12 +6,20 @@ import {
   resetRefreshPromise,
 } from "./authSession";
 import { getUserFacingAPIErrorMessage } from "./apiErrorMessages";
+import { createLoginRedirect } from "./safeRedirect";
 
 /** Pages that do NOT require authentication — skip redirect-to-login on 401. */
 const PUBLIC_PATHS = ["/", "/login", "/register", "/forgot-password", "/reset-password"];
 
-function shouldSkipRedirect(pathname: string): boolean {
-  return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p));
+export function shouldSkipAuthRedirect(pathname: string): boolean {
+  return PUBLIC_PATHS.some(
+    (path) => pathname === path || (path !== "/" && pathname.startsWith(`${path}/`)),
+  );
+}
+
+function redirectToLogin(): void {
+  if (typeof window === "undefined" || shouldSkipAuthRedirect(window.location.pathname)) return;
+  window.location.href = createLoginRedirect(window.location.pathname, window.location.search);
 }
 
 /**
@@ -119,9 +127,7 @@ apiClient.interceptors.response.use(
         // Refresh failed — clear session
         clearAccessToken();
         resetRefreshPromise();
-        if (typeof window !== "undefined" && !shouldSkipRedirect(window.location.pathname)) {
-          window.location.href = "/login";
-        }
+        redirectToLogin();
         throw new HotKeyAPIError(401, "登录已过期，请重新登录");
       }
     }
@@ -129,9 +135,7 @@ apiClient.interceptors.response.use(
     // 401 on auth endpoints or retry — fail immediately
     if (status === 401) {
       clearAccessToken();
-      if (typeof window !== "undefined" && !shouldSkipRedirect(window.location.pathname)) {
-        window.location.href = "/login";
-      }
+      redirectToLogin();
     }
 
     throw new HotKeyAPIError(status, errorMessage, errorData, body?.code ?? status);

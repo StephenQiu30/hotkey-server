@@ -20,7 +20,13 @@ import * as authSession from "@/lib/authSession";
 import { AuthStatus } from "@/lib/domainEnums";
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.mocked(authService.postAuthLogin).mockReset();
+  vi.mocked(authService.postAuthLogout).mockReset();
+  vi.mocked(authService.getAuthMe).mockReset();
+  vi.mocked(authService.postAuthRefresh).mockReset();
+  vi.mocked(authSession.setAccessToken).mockReset();
+  vi.mocked(authSession.clearAccessToken).mockReset();
+  vi.mocked(authSession.getAccessToken).mockReset().mockReturnValue("");
   localStorage.clear();
   useAuthStore.setState({ status: AuthStatus.Initializing, user: null, error: null });
 });
@@ -51,33 +57,29 @@ describe("auth store state machine", () => {
     expect(useAuthStore.getState().user).toEqual(userData);
   });
 
-  it("does not refresh an anonymous session without local credentials", async () => {
+  it("attempts cookie refresh when no in-memory access token exists", async () => {
     vi.mocked(authSession.getAccessToken).mockReturnValueOnce("");
+    vi.mocked(authService.postAuthRefresh).mockRejectedValueOnce(new Error("no session"));
     useAuthStore.setState({ status: AuthStatus.Initializing, user: null, error: null });
 
     await useAuthStore.getState().initialize();
 
-    expect(authService.postAuthRefresh).not.toHaveBeenCalled();
+    expect(authService.postAuthRefresh).toHaveBeenCalledOnce();
     expect(authService.getAuthMe).not.toHaveBeenCalled();
     expect(useAuthStore.getState().status).toBe(AuthStatus.Unauthenticated);
   });
 
-  it("refreshes a persisted session when its access token is missing", async () => {
-    const persistedUser = {
+  it("restores a session from its HttpOnly refresh cookie", async () => {
+    const user = {
       id: 1,
       email: "a@b.com",
       display_name: "Alice",
     } as HotKeyAPI.UserResponse;
     vi.mocked(authSession.getAccessToken).mockReturnValueOnce("");
     vi.mocked(authService.postAuthRefresh).mockResolvedValueOnce({
-      data: { access_token: "refreshed-token", user: persistedUser },
+      data: { access_token: "refreshed-token", user },
     } as any);
-    vi.mocked(authService.getAuthMe).mockResolvedValueOnce({ data: persistedUser } as any);
-    useAuthStore.setState({
-      status: AuthStatus.Initializing,
-      user: persistedUser,
-      error: null,
-    });
+    vi.mocked(authService.getAuthMe).mockResolvedValueOnce({ data: user } as any);
 
     await useAuthStore.getState().initialize();
 
@@ -85,6 +87,18 @@ describe("auth store state machine", () => {
     expect(authSession.setAccessToken).toHaveBeenCalledWith("refreshed-token", 900);
     expect(authService.getAuthMe).toHaveBeenCalledOnce();
     expect(useAuthStore.getState().status).toBe(AuthStatus.Authenticated);
+  });
+
+  it("does not persist identity state in localStorage", async () => {
+    const user = { id: 1, email: "a@b.com", display_name: "Alice" } as HotKeyAPI.UserResponse;
+    vi.mocked(authService.postAuthLogin).mockResolvedValueOnce({
+      data: { access_token: "tok1", user },
+    } as any);
+    vi.mocked(authService.getAuthMe).mockResolvedValueOnce({ data: user } as any);
+
+    await useAuthStore.getState().login({ email: "a@b.com", password: "pass123" });
+
+    expect(localStorage.getItem("hk-auth-storage")).toBeNull();
   });
 
   it("initialize transitions to unauthenticated when me fails", async () => {

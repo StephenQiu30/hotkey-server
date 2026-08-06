@@ -4,11 +4,12 @@ import type { AxiosAdapter } from "axios";
 // -- authSession.ts unit tests ---------------------------------------
 
 describe("authSession", () => {
-  it("stores and retrieves access token", async () => {
+  it("stores and retrieves the access token in memory only", async () => {
     const { setAccessToken, getAccessToken, clearAccessToken } = await import("@/lib/authSession");
     clearAccessToken();
     setAccessToken("tok1", 3600);
     expect(getAccessToken()).toBe("tok1");
+    expect(localStorage.getItem("hk_access_token")).toBeNull();
     clearAccessToken();
     expect(getAccessToken()).toBe("");
   });
@@ -31,6 +32,40 @@ describe("authSession", () => {
     expect(r1).toBe("tok-a");
     expect(r2).toBe("tok-a"); // same promise shared
     expect(calls).toBe(1);
+  });
+});
+
+describe("safe authentication redirects", () => {
+  it("keeps an allowed dashboard return target", async () => {
+    const { safeRedirect, createLoginRedirect } = await import("@/lib/safeRedirect");
+
+    expect(safeRedirect("/dashboard/events?status=active#latest")).toBe(
+      "/dashboard/events?status=active#latest",
+    );
+    expect(createLoginRedirect("/dashboard/events", "?status=active")).toBe(
+      "/login?redirect=%2Fdashboard%2Fevents%3Fstatus%3Dactive",
+    );
+    expect(safeRedirect("/dashboard-evil")).toBe("/dashboard");
+  });
+
+  it.each([
+    null,
+    "https://evil.example/dashboard",
+    "//evil.example/dashboard",
+    "/\\evil.example/dashboard",
+    "/login?redirect=/dashboard",
+    "/settings",
+  ])("rejects unsafe or unsupported return target %s", async (target) => {
+    const { safeRedirect } = await import("@/lib/safeRedirect");
+    expect(safeRedirect(target)).toBe("/dashboard");
+  });
+
+  it("does not mistake every absolute path for the public home page", async () => {
+    const { shouldSkipAuthRedirect } = await import("@/lib/request");
+
+    expect(shouldSkipAuthRedirect("/")).toBe(true);
+    expect(shouldSkipAuthRedirect("/login")).toBe(true);
+    expect(shouldSkipAuthRedirect("/dashboard/events")).toBe(false);
   });
 });
 

@@ -1,50 +1,29 @@
 /**
- * Access token storage with localStorage persistence and single-flight refresh.
+ * In-memory access-token storage with single-flight refresh.
  *
- * Token is stored both in memory (fast access) and localStorage (survives page reload).
- * On page reload, getAccessToken() falls back to localStorage transparently.
+ * Page reloads intentionally discard the token. The Auth store restores a valid
+ * session through the server-managed HttpOnly refresh cookie instead of exposing
+ * long-lived credentials to JavaScript-readable browser storage.
  */
-
-const STORAGE_KEY = "hk_access_token";
 
 let accessToken = "";
 let expiresAt = 0;
 let refreshPromise: Promise<string> | null = null;
 
-/**
- * Store a new access token in memory and localStorage.
- */
+/** Store a new access token in memory. */
 export function setAccessToken(token: string, expiresIn: number): void {
   accessToken = token;
   expiresAt = Date.now() + expiresIn * 1000;
-  try {
-    localStorage.setItem(STORAGE_KEY, token);
-  } catch {
-    // localStorage unavailable (SSR / private mode) — memory-only fallback
-  }
 }
 
-/**
- * Clear the access token from memory and localStorage.
- */
+/** Clear the in-memory access token. */
 export function clearAccessToken(): void {
   accessToken = "";
   expiresAt = 0;
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch { /* ignore */ }
 }
 
-/**
- * Read the current access token.
- * Falls back to localStorage when the in-memory value is empty (page reload).
- */
+/** Read the current in-memory access token. */
 export function getAccessToken(): string {
-  if (!accessToken) {
-    try {
-      accessToken = localStorage.getItem(STORAGE_KEY) ?? "";
-    } catch { /* ignore */ }
-  }
   return accessToken;
 }
 
