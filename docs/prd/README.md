@@ -19,7 +19,7 @@ PRD 将每一条设计转换为稳定、可验收的产品范围。状态只使�
 
 | 编号 | Design | PRD | Plan | 状态 |
 |---:|---|---|---|---|
-| 001 | [MVP产品边界与模块化单体](../design/001-MVP产品边界与模块化单体设计.md) | [PRD](001-MVP产品边界与模块化单体.md) | [Plan](../plans/001-MVP产品边界与模块化单体计划.md) | draft |
+| 001 | [MVP产品边界与模块化单体](../design/001-MVP产品边界与模块化单体设计.md) | [PRD](001-MVP产品边界与模块化单体.md) | [Plan](../plans/001-MVP产品边界与模块化单体计划.md) | implemented |
 | 002 | [Vercel风格与shadcn-ui设计系统](../design/002-Vercel风格与shadcn-ui设计系统设计.md) | [PRD](002-Vercel风格与shadcn-ui设计系统.md) | [Plan](../plans/002-Vercel风格与shadcn-ui设计系统计划.md) | draft |
 | 003 | [账户认证与会话安全](../design/003-账户认证与会话安全设计.md) | [PRD](003-账户认证与会话安全.md) | [Plan](../plans/003-账户认证与会话安全计划.md) | draft |
 | 004 | [用户角色与权限管理](../design/004-用户角色与权限管理设计.md) | [PRD](004-用户角色与权限管理.md) | [Plan](../plans/004-用户角色与权限管理计划.md) | draft |
