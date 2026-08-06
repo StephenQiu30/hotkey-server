@@ -9,6 +9,7 @@ import { getSourceConnections } from "@/services/hotkey/hotkey-server/sources";
 import { getOperationsOverview } from "@/services/hotkey/hotkey-server/operations";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { UserRole } from "@/lib/domainEnums";
 
@@ -63,26 +64,28 @@ export default function ProfilePage() {
         description="查看当前账户、权限角色与工作区资源概览。"
       />
       <div className="mt-6 grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="panel h-fit p-6">
-          <Avatar className="h-12 w-12">
-            <AvatarFallback className="bg-foreground text-background">
-              {user?.display_name?.slice(0, 1) || <User />}
-            </AvatarFallback>
-          </Avatar>
-          <h2 className="mt-4 text-lg font-semibold">{user?.display_name || "HotKey 用户"}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{user?.email}</p>
-          <div className="mt-6 space-y-3 border-t border-border pt-5 text-xs">
-            <div className="flex justify-between"><span className="text-muted-foreground">角色</span><span>{user?.role || "—"}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">状态</span><span>{user?.status || "—"}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">最近登录</span><span className="mono">{user?.last_login_at ? new Date(user.last_login_at).toLocaleDateString("zh-CN") : "—"}</span></div>
-          </div>
-        </aside>
+        <Card className="h-fit">
+          <CardContent>
+            <Avatar className="h-12 w-12">
+              <AvatarFallback className="bg-foreground text-background">
+                {user?.display_name?.slice(0, 1) || <User />}
+              </AvatarFallback>
+            </Avatar>
+            <h2 className="mt-4 text-lg font-semibold">{user?.display_name || "HotKey 用户"}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{user?.email}</p>
+            <div className="mt-6 space-y-3 border-t border-border pt-5 text-xs">
+              <div className="flex justify-between"><span className="text-muted-foreground">角色</span><span>{user?.role || "—"}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">状态</span><span>{user?.status || "—"}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">最近登录</span><span className="mono">{user?.last_login_at ? new Date(user.last_login_at).toLocaleDateString("zh-CN") : "—"}</span></div>
+            </div>
+          </CardContent>
+        </Card>
         <section>
           {loading ? (
-            <div className="panel flex h-64 items-center justify-center"><Loader2 className="animate-spin text-muted-foreground" /></div>
+            <Card><CardContent className="flex h-64 items-center justify-center"><Loader2 className="animate-spin text-muted-foreground" /></CardContent></Card>
           ) : (
             <>
-              <div className="panel divide-y divide-border">
+              <Card className="gap-0 divide-y divide-border py-0">
                 {summaryRows.map((row) => {
                   const Icon = row.icon;
                   return (
@@ -93,7 +96,7 @@ export default function ProfilePage() {
                     </a>
                   );
                 })}
-              </div>
+              </Card>
               <div className="mt-5 flex flex-wrap gap-2">
                 <a href="/dashboard/settings"><Button>管理监控</Button></a>
                 <a href="/dashboard/reports"><Button variant="outline">查看报告</Button></a>

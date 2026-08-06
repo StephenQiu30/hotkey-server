@@ -1,6 +1,14 @@
 import { ExternalLink, FileSearch, RadioTower, RotateCcw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { CollectionRunStatus } from "@/lib/domainEnums";
 import { collectionRunPresentation } from "@/lib/domainPresentation";
 import {
@@ -72,26 +80,30 @@ export function CollectionWorkspace({
           ["采集成功", succeeded],
           ["最近入库内容", contents.length],
         ].map(([label, value]) => (
-          <div className="panel p-4" key={label}>
-            <p className="text-xs text-muted-foreground">{label}</p>
-            <p className="mono mt-3 text-2xl font-medium">{value}</p>
-          </div>
+          <Card key={label}>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className="mono mt-3 text-2xl font-medium">{value}</p>
+            </CardContent>
+          </Card>
         ))}
       </section>
 
       <div data-testid="collection-pipeline" className="grid items-stretch gap-5 lg:grid-cols-2">
-        <section className="panel flex h-full min-w-0 flex-col overflow-hidden">
-        <div className="flex min-h-[84px] items-center justify-between border-b border-border px-5 py-4">
-          <div>
-            <h2 className="text-sm font-medium">采集批次（当前页）</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
+        <Card className="flex h-full min-w-0 flex-col overflow-hidden">
+        <CardHeader className="flex min-h-[84px] flex-row items-center justify-between space-y-0 border-b px-5 py-4">
+          <div className="space-y-1">
+            <CardTitle className="text-sm" role="heading" aria-level={2}>
+              采集批次（当前页）
+            </CardTitle>
+            <CardDescription className="text-xs">
               按批次编号展示调度器与来源连接的真实执行结果，每页 {runsPagination?.pageSize ?? DEFAULT_PAGE_SIZE} 条。
-            </p>
+            </CardDescription>
           </div>
           <RadioTower className="h-4 w-4 text-muted-foreground" />
-        </div>
+        </CardHeader>
         {runs.length ? (
-          <div className="flex-1 divide-y divide-border">
+          <CardContent className="flex-1 divide-y divide-border p-0">
             {runs.map((run) => {
               const status = collectionRunPresentation(run.status);
               return (
@@ -145,33 +157,35 @@ export function CollectionWorkspace({
                 </article>
               );
             })}
-          </div>
+          </CardContent>
         ) : (
-          <div className="flex min-h-48 flex-1 flex-col items-center justify-center px-5 text-center">
-            <RadioTower className="mb-3 h-5 w-5 text-muted-foreground" />
-            <p className="text-sm font-medium">尚未产生采集批次</p>
-            <p className="mt-1 max-w-md text-xs leading-5 text-muted-foreground">
-              发布监控后仍长期停留在这里，通常表示后台调度器未创建任务。
-            </p>
-          </div>
+          <Empty className="min-h-48 flex-1 rounded-none border-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><RadioTower /></EmptyMedia>
+              <EmptyTitle className="text-sm">尚未产生采集批次</EmptyTitle>
+              <EmptyDescription>发布监控后仍长期停留在这里，通常表示后台调度器未创建任务。</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         )}
         {runsPagination ? (
           <CursorPagination {...runsPagination} />
         ) : null}
-        </section>
+        </Card>
 
-        <section className="panel flex h-full min-w-0 flex-col overflow-hidden">
-        <div className="flex min-h-[84px] items-center justify-between border-b border-border px-5 py-4">
-          <div>
-            <h2 className="text-sm font-medium">最近入库内容</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
+        <Card className="flex h-full min-w-0 flex-col overflow-hidden">
+        <CardHeader className="flex min-h-[84px] flex-row items-center justify-between space-y-0 border-b px-5 py-4">
+          <div className="space-y-1">
+            <CardTitle className="text-sm" role="heading" aria-level={2}>
+              最近入库内容
+            </CardTitle>
+            <CardDescription className="text-xs">
               采集成功后完成标准化的真实内容，每页 {contentsPagination?.pageSize ?? DEFAULT_PAGE_SIZE} 条。
-            </p>
+            </CardDescription>
           </div>
           <FileSearch className="h-4 w-4 text-muted-foreground" />
-        </div>
+        </CardHeader>
         {contents.length ? (
-          <div className="flex-1 divide-y divide-border">
+          <CardContent className="flex-1 divide-y divide-border p-0">
             {contents.map((content, index) => {
               const title = content.title || content.external_id || `内容 #${content.id ?? "—"}`;
               return (
@@ -234,24 +248,26 @@ export function CollectionWorkspace({
                 </article>
               );
             })}
-          </div>
+          </CardContent>
         ) : (
-          <div className="flex min-h-48 flex-1 flex-col items-center justify-center px-5 text-center">
-            <FileSearch className="mb-3 h-5 w-5 text-muted-foreground" />
-            <p className="text-sm font-medium">暂时没有已入库内容</p>
-            <p className="mt-1 max-w-md text-xs leading-5 text-muted-foreground">
+          <Empty className="min-h-48 flex-1 rounded-none border-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><FileSearch /></EmptyMedia>
+              <EmptyTitle className="text-sm">暂时没有已入库内容</EmptyTitle>
+              <EmptyDescription>
               {failed > 0
                 ? "已有采集失败批次，请先根据上方错误码检查来源。"
                 : runs.length > 0
                   ? "采集任务已创建，内容会在标准化完成后出现在这里。"
                   : "等待监控发布并生成第一条采集批次。"}
-            </p>
-          </div>
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         )}
         {contentsPagination ? (
           <CursorPagination {...contentsPagination} />
         ) : null}
-        </section>
+        </Card>
       </div>
     </div>
   );

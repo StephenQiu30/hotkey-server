@@ -5,6 +5,8 @@ import { PublicHeader } from "@/components/PublicHeader";
 import { BrandLogo } from "@/components/BrandLogo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 
 const supportedSources = [
@@ -109,13 +111,13 @@ export default function HomePage() {
               </p>
             </div>
 
-            <div
+            <Card
               id="briefing"
               role="region"
               aria-label="今日情报简报"
-              className="mt-16 overflow-hidden rounded-xl border bg-card lg:mt-24"
+              className="mt-16 overflow-hidden lg:mt-24"
             >
-              <header className="flex flex-col gap-3 border-b px-5 py-5 sm:flex-row sm:items-center sm:px-7">
+              <CardHeader className="flex flex-col gap-3 space-y-0 border-b px-5 py-5 sm:flex-row sm:items-center sm:px-7">
                 <div className="flex items-baseline gap-4">
                   <h3 className="text-base font-semibold">今日情报简报</h3>
                   <span className="mono text-xs text-muted-foreground">2026-08-06</span>
@@ -127,9 +129,9 @@ export default function HomePage() {
                   </Badge>
                   <span className="text-xs text-muted-foreground">更新于 14:20</span>
                 </div>
-              </header>
+              </CardHeader>
 
-              <div className="grid lg:grid-cols-[1.2fr_.8fr_.7fr]">
+              <CardContent className="grid p-0 lg:grid-cols-[1.2fr_.8fr_.7fr]">
                 <article className="p-6 sm:p-8 lg:border-r">
                   <span className="mono text-xs text-muted-foreground">01 / SIGNAL</span>
                   <h3 className="mt-5 max-w-2xl text-2xl font-semibold leading-tight sm:text-3xl">
@@ -147,14 +149,11 @@ export default function HomePage() {
                       92<span className="ml-1 text-xs font-normal text-muted-foreground">/100</span>
                     </p>
                   </div>
-                  <progress
+                  <Progress
                     aria-label="事件热度 92 分"
-                    className="briefing-progress mt-4 w-full"
+                    className="mt-4"
                     value={92}
-                    max={100}
-                  >
-                    92%
-                  </progress>
+                  />
                 </article>
 
                 <aside className="p-6 sm:p-8 lg:border-r">
@@ -187,8 +186,8 @@ export default function HomePage() {
                     <span className="mono font-semibold">85%</span>
                   </div>
                 </aside>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           </div>
         </section>
 

@@ -3,6 +3,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { BrandLogo } from "@/components/BrandLogo";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 export default function AuthShell({
   title,
@@ -60,10 +67,16 @@ export default function AuthShell({
           >
             <BrandLogo />
           </Link>
-          <p className="text-xs text-muted-foreground">HotKey Intelligence</p>
-          <h1 className="mt-4 text-3xl font-semibold tracking-[-0.045em]">{title}</h1>
-          <p className="mt-3 text-sm leading-6 text-muted-foreground">{subtitle}</p>
-          <div className="mt-10">{children}</div>
+          <Card>
+            <CardHeader>
+              <p className="text-xs text-muted-foreground">HotKey Intelligence</p>
+              <CardTitle>
+                <h1 className="mt-2 text-2xl tracking-[-0.035em]">{title}</h1>
+              </CardTitle>
+              <CardDescription className="leading-6">{subtitle}</CardDescription>
+            </CardHeader>
+            <CardContent>{children}</CardContent>
+          </Card>
         </div>
       </main>
     </div>

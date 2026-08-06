@@ -20,6 +20,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -219,14 +226,14 @@ function EventsWorkspace() {
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </div>
       ) : visibleEvents.length === 0 ? (
-        <Card className="mt-6 border-dashed shadow-none">
-          <CardContent className="flex h-80 flex-col items-center justify-center text-center">
-            <SearchX className="h-6 w-6 text-muted-foreground" />
-            <p className="mt-3 text-sm font-medium">没有符合当前条件的事件</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              调整时间窗口或清除搜索后重试。
-            </p>
-          </CardContent>
+        <Card className="mt-6 border-dashed">
+          <Empty className="h-80 border-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><SearchX /></EmptyMedia>
+              <EmptyTitle className="text-sm">没有符合当前条件的事件</EmptyTitle>
+              <EmptyDescription>调整时间窗口或清除搜索后重试。</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         </Card>
       ) : (
         <div className="mt-6 grid min-h-[620px] gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">

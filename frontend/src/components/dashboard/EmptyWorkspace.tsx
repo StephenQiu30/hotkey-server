@@ -8,6 +8,15 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { MonitorStatus } from "@/lib/domainEnums";
 import { monitorStatusLabel } from "@/lib/domainPresentation";
 import { PageHeader } from "@/components/dashboard/PageHeader";
@@ -68,24 +77,26 @@ export function EmptyWorkspace({
         {metrics.map((metric) => {
           const Icon = metric.icon;
           return (
-            <div key={metric.label} className="panel p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-muted-foreground">{metric.label}</p>
-                <Icon className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <p className="mono mt-3 text-2xl font-medium">{metric.value}</p>
-            </div>
+            <Card key={metric.label}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">{metric.label}</p>
+                  <Icon className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <p className="mono mt-3 text-2xl font-medium">{metric.value}</p>
+              </CardContent>
+            </Card>
           );
         })}
       </div>
 
-      <section className="panel mt-5 overflow-hidden">
-        <div className="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-sm font-medium">监控准备状态</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {progressMessage}
-            </p>
+      <Card className="mt-5 overflow-hidden">
+        <CardHeader className="flex flex-col gap-3 space-y-0 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle className="text-sm" role="heading" aria-level={2}>
+              监控准备状态
+            </CardTitle>
+            <CardDescription className="text-xs">{progressMessage}</CardDescription>
           </div>
           <Button asChild size="sm" className="self-start sm:self-auto">
             <a href={draftCount > 0 ? "/dashboard/settings" : "/dashboard/contents"}>
@@ -93,10 +104,10 @@ export function EmptyWorkspace({
               <ArrowUpRight />
             </a>
           </Button>
-        </div>
+        </CardHeader>
 
         {visibleMonitors.length ? (
-          <div className="divide-y divide-border">
+          <CardContent className="divide-y divide-border p-0">
             {visibleMonitors.slice(0, 6).map((monitor) => {
               const config =
                 monitor.status === MonitorStatus.Draft
@@ -126,22 +137,23 @@ export function EmptyWorkspace({
                 </a>
               );
             })}
-          </div>
+          </CardContent>
         ) : (
-          <div className="flex min-h-52 flex-col items-center justify-center px-5 text-center">
-            <Activity className="mb-3 h-5 w-5 text-muted-foreground" />
-            <p className="text-sm font-medium">还没有配置监控</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              创建监控并关联数据来源，建立第一条热点检测链路。
-            </p>
-            <Button asChild className="mt-4" size="sm">
-              <a href="/dashboard/settings">创建监控</a>
-            </Button>
-          </div>
+          <Empty className="min-h-52 rounded-none border-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><Activity /></EmptyMedia>
+              <EmptyTitle className="text-sm">还没有配置监控</EmptyTitle>
+              <EmptyDescription>创建监控并关联数据来源，建立第一条热点检测链路。</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button asChild size="sm"><a href="/dashboard/settings">创建监控</a></Button>
+            </EmptyContent>
+          </Empty>
         )}
-      </section>
+      </Card>
 
-      <section className="mt-5 grid overflow-hidden rounded-md border border-border sm:grid-cols-2 xl:grid-cols-4 xl:divide-x xl:divide-border">
+      <Card className="mt-5 overflow-hidden">
+        <CardContent className="grid p-0 sm:grid-cols-2 xl:grid-cols-4 xl:divide-x xl:divide-border">
         {[
           {
             step: "01",
@@ -191,7 +203,8 @@ export function EmptyWorkspace({
             </div>
           </div>
         ))}
-      </section>
+        </CardContent>
+      </Card>
     </div>
   );
 }

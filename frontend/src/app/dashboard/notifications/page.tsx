@@ -5,6 +5,7 @@ import { Loader2, Plus, Rss, RotateCw, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -15,6 +16,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import {
   deleteReportSubscriptionsId,
   getReportSubscriptions,
@@ -229,12 +237,21 @@ export default function SubscriptionsPage() {
           <Loader2 className="animate-spin text-muted-foreground" />
         </div>
       ) : !subscriptions.length ? (
-        <div className="panel mt-6 flex h-72 flex-col items-center justify-center">
-          <Send className="mb-3 h-6 w-6 text-muted-foreground" />
-          <p className="text-sm">暂时没有发布订阅</p>
-        </div>
+        <Card className="mt-6">
+          <Empty className="h-72">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Send />
+              </EmptyMedia>
+              <EmptyTitle>暂时没有发布订阅</EmptyTitle>
+              <EmptyDescription>
+                创建订阅后，日报或周报会按计划发送到指定邮箱。
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        </Card>
       ) : (
-        <div className="panel mt-6 overflow-hidden">
+        <Card className="mt-6 gap-0 overflow-hidden py-0">
           <div className="hidden grid-cols-[minmax(0,1fr)_100px_120px_250px] gap-4 border-b border-border px-5 py-3 text-xs text-muted-foreground md:grid">
             <span>订阅</span>
             <span>状态</span>
@@ -317,7 +334,7 @@ export default function SubscriptionsPage() {
             page={page}
             pageSize={pageSize}
           />
-        </div>
+        </Card>
       )}
       <ConfirmDeleteDialog
         open={deleteTarget != null}

@@ -30,6 +30,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -87,7 +94,11 @@ function SummaryCard({ label, value }: { label: string; value: number }) {
   return (
     <Card className="shadow-none">
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
+        <CardTitle
+          className="text-sm font-medium text-muted-foreground"
+          role="heading"
+          aria-level={2}
+        >
           {label}
         </CardTitle>
       </CardHeader>
@@ -236,14 +247,14 @@ export default function AlertsPage() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : threads.length === 0 ? (
-        <Card className="mt-6 border-dashed shadow-none">
-          <CardContent className="flex h-80 flex-col items-center justify-center text-center">
-            <CheckCircle2 className="h-7 w-7 text-emerald-600" />
-            <h2 className="mt-4 text-base font-semibold">当前没有这类告警</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Radar 会在事件达到监控阈值时自动创建告警线程。
-            </p>
-          </CardContent>
+        <Card className="mt-6 border-dashed">
+          <Empty className="h-80 border-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><CheckCircle2 className="text-emerald-600" /></EmptyMedia>
+              <EmptyTitle className="text-base">当前没有这类告警</EmptyTitle>
+              <EmptyDescription>Radar 会在事件达到监控阈值时自动创建告警线程。</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         </Card>
       ) : (
         <Card className="mt-6 overflow-hidden shadow-none">

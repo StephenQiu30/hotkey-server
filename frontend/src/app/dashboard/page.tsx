@@ -19,6 +19,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import {
   Table,
   TableBody,
   TableCell,
@@ -188,20 +196,15 @@ export default function DashboardPage() {
           </Button>
         </Alert>
       ) : events.length === 0 ? (
-        <Card className="mt-8 border-dashed shadow-none">
-          <CardContent className="flex min-h-80 flex-col items-center justify-center px-6 text-center">
-            <BellRing className="h-7 w-7 text-muted-foreground" />
-            <h2 className="mt-4 text-lg font-semibold">
-              当前窗口内还没有热点事件
-            </h2>
-            <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-              创建并发布监控后，HotKey
-              会持续聚合来源、识别事件变化并在这里给出解释。
-            </p>
-            <Button asChild className="mt-5">
-              <Link href="/dashboard/settings">创建监控</Link>
-            </Button>
-          </CardContent>
+        <Card className="mt-8 border-dashed">
+          <Empty className="min-h-80 border-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><BellRing /></EmptyMedia>
+              <EmptyTitle>当前窗口内还没有热点事件</EmptyTitle>
+              <EmptyDescription>创建并发布监控后，HotKey 会持续聚合来源、识别事件变化并在这里给出解释。</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent><Button asChild><Link href="/dashboard/settings">创建监控</Link></Button></EmptyContent>
+          </Empty>
         </Card>
       ) : (
         <>

@@ -5,6 +5,15 @@ import { ArrowLeft, Loader2, RefreshCw, ShieldAlert } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { ContentDocumentViewer } from "@/components/dashboard/ContentDocumentViewer";
 import { ConfirmDeleteDialog } from "@/components/dashboard/ConfirmDeleteDialog";
 import { deleteContentsId, getContentsIdDocument } from "@/services/hotkey/hotkey-server/contents";
@@ -102,11 +111,14 @@ export default function ContentDetailPage() {
     const copy = errorCopy[error ?? 503];
     return (
       <div className="app-page">
-        <div className="panel mx-auto flex min-h-80 max-w-2xl flex-col items-center justify-center px-6 text-center">
-          <ShieldAlert className="mb-4 h-6 w-6 text-muted-foreground" />
-          <h1 className="text-xl font-semibold">{copy.title}</h1>
-          <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">{copy.description}</p>
-          <div className="mt-6 flex flex-wrap justify-center gap-2">
+        <Card className="mx-auto max-w-2xl">
+          <Empty className="min-h-80 border-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><ShieldAlert /></EmptyMedia>
+              <EmptyTitle><h1>{copy.title}</h1></EmptyTitle>
+              <EmptyDescription>{copy.description}</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent className="flex-row flex-wrap justify-center gap-2">
             <Button asChild variant="outline" className="gap-2">
               <a href="/dashboard/contents">
                 <ArrowLeft className="h-4 w-4" /> 返回采集内容
@@ -117,8 +129,9 @@ export default function ContentDetailPage() {
                 <RefreshCw className="h-4 w-4" /> 重试
               </Button>
             ) : null}
-          </div>
-        </div>
+            </EmptyContent>
+          </Empty>
+        </Card>
       </div>
     );
   }

@@ -22,7 +22,15 @@ import {
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import {
   Dialog,
   DialogContent,
@@ -553,14 +561,18 @@ export default function MonitorsPage() {
           <Loader2 className="animate-spin text-muted-foreground" />
         </div>
       ) : !monitors.length ? (
-        <div className="panel mt-6">
-          <div className="flex h-72 flex-col items-center justify-center text-center">
-            <Radar className="mb-3 h-6 w-6 text-muted-foreground" />
-            <p className="text-sm font-medium">还没有热点监控</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              至少需要一个已启用来源才能创建监控。
-            </p>
-          </div>
+        <Card className="mt-6 gap-0 overflow-hidden py-0">
+          <Empty className="h-72">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Radar />
+              </EmptyMedia>
+              <EmptyTitle>还没有热点监控</EmptyTitle>
+              <EmptyDescription>
+                至少需要一个已启用来源才能创建监控。
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
           <CursorPagination
             hasNext={hasNextCursor(nextCursor)}
             loading={loading}
@@ -570,9 +582,9 @@ export default function MonitorsPage() {
             page={page}
             pageSize={pageSize}
           />
-        </div>
+        </Card>
       ) : (
-        <div className="panel mt-6 overflow-hidden">
+        <Card className="mt-6 gap-0 overflow-hidden py-0">
           <div className="hidden grid-cols-[minmax(0,1.3fr)_110px_100px_260px] gap-4 border-b border-border px-5 py-3 text-xs text-muted-foreground lg:grid">
             <span>监控</span>
             <span>采集间隔</span>
@@ -691,7 +703,7 @@ export default function MonitorsPage() {
             onPrevious={previousPage}
             page={page}
           />
-        </div>
+        </Card>
       )}
       <ConfirmDeleteDialog
         open={deleteTarget != null}

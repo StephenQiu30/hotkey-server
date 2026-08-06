@@ -5,6 +5,14 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 
 type ContentDocumentViewerProps = {
   document: HotKeyAPI.ContentDocumentResponse;
@@ -78,7 +86,7 @@ export function ContentDocumentViewer({ document, canManage = false, deleting = 
           </div>
         </div>
 
-        <div className="document-scope mt-6 rounded-md border border-border bg-muted0/[0.06] px-4 py-3 text-xs leading-5 text-muted-foreground">
+        <div className="document-scope mt-6 rounded-md border border-border bg-muted/30 px-4 py-3 text-xs leading-5 text-muted-foreground">
           仅包含来源 Feed 实际提供并获准归档的正文或摘要；系统不会抓取原网页，也不代表完整论文或付费内容。
         </div>
         {document.canonical_url ? (
@@ -109,13 +117,15 @@ export function ContentDocumentViewer({ document, canManage = false, deleting = 
           </ReactMarkdown>
         </div>
       ) : (
-        <div className="panel my-8 flex min-h-64 flex-col items-center justify-center px-6 text-center">
-          <FileText className="mb-4 h-6 w-6 text-muted-foreground" />
-          <h2 className="text-base font-medium">本条未归档正文/摘要</h2>
-          <p className="mt-2 max-w-lg text-sm leading-6 text-muted-foreground">
-            来源可能没有在 Feed 中提供正文，或采集时未开启正文归档授权。标题和原站地址不会被伪装成正文。
-          </p>
-        </div>
+        <Card className="my-8">
+          <Empty className="min-h-64 border-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><FileText /></EmptyMedia>
+              <EmptyTitle className="text-base">本条未归档正文/摘要</EmptyTitle>
+              <EmptyDescription>来源可能没有在 Feed 中提供正文，或采集时未开启正文归档授权。标题和原站地址不会被伪装成正文。</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        </Card>
       )}
 
       <footer className="document-footer border-t border-border py-5 text-xs text-muted-foreground">

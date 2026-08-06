@@ -1,6 +1,13 @@
 import { ExternalLink, FileText, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 
 type EventEvidenceTimelineProps = {
   contents: HotKeyAPI.ContentResponse[];
@@ -55,11 +62,13 @@ export function EventEvidenceTimeline({
       </div>
 
       {unavailable ? (
-        <div className="flex min-h-56 flex-col items-center justify-center px-8 text-center">
-          <FileText className="mb-3 h-5 w-5 text-muted-foreground" />
-          <p className="text-sm font-medium">证据成员暂时无法加载</p>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">事件本身仍可查看，稍后刷新可重试证据列表。</p>
-        </div>
+        <Empty className="min-h-56 rounded-none border-0">
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><FileText /></EmptyMedia>
+            <EmptyTitle className="text-sm">证据成员暂时无法加载</EmptyTitle>
+            <EmptyDescription>事件本身仍可查看，稍后刷新可重试证据列表。</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : contents.length ? (
         <div id="event-evidence-list" className="divide-y divide-border px-5 sm:px-7">
           {contents.map((content, index) => {
@@ -112,13 +121,15 @@ export function EventEvidenceTimeline({
           })}
         </div>
       ) : (
-        <div className="flex min-h-56 flex-col items-center justify-center px-8 text-center">
-          <FileText className="mb-3 h-5 w-5 text-muted-foreground" />
-          <p className="text-sm font-medium">
+        <Empty className="min-h-56 rounded-none border-0">
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><FileText /></EmptyMedia>
+            <EmptyTitle className="text-sm">
             {totalCount > 0 ? "该事件有证据成员，但详情暂不可读。" : "该事件暂时没有内容证据。"}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">采集完成后，证据会按时间显示在这里。</p>
-        </div>
+            </EmptyTitle>
+            <EmptyDescription>采集完成后，证据会按时间显示在这里。</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )}
 
       <div className="flex items-center justify-between border-t border-border px-5 py-4 text-[11px] text-muted-foreground sm:px-7">

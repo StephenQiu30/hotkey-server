@@ -2,6 +2,14 @@
 
 import { Activity } from "lucide-react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 
 type EventHeatComparisonProps = {
   events: HotKeyAPI.EventResponse[];
@@ -19,18 +27,23 @@ export function EventHeatComparison({ events }: EventHeatComparisonProps) {
   const hasHeat = data.some((item) => item.heat > 0);
 
   return (
-    <section className="panel overflow-hidden" aria-labelledby="event-heat-heading">
-      <div className="flex items-center justify-between border-b border-border px-5 py-4">
-        <div>
-          <h3 id="event-heat-heading" className="text-sm font-medium">
+    <Card className="overflow-hidden" aria-labelledby="event-heat-heading">
+      <CardHeader className="flex-row items-center justify-between space-y-0 border-b px-5 py-4">
+        <div className="space-y-1">
+          <CardTitle
+            id="event-heat-heading"
+            className="text-sm"
+            role="heading"
+            aria-level={2}
+          >
             事件热度对比
-          </h3>
-          <p className="mt-1 text-xs text-muted-foreground">当前事件集合 · Top 6</p>
+          </CardTitle>
+          <CardDescription className="text-xs">当前事件集合 · Top 6</CardDescription>
         </div>
         <Activity className="h-4 w-4 text-muted-foreground" />
-      </div>
+      </CardHeader>
       {hasHeat ? (
-        <div className="h-64 px-4 py-5" data-testid="event-heat-chart">
+        <CardContent className="h-64 px-4 py-5" data-testid="event-heat-chart">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} layout="vertical" margin={{ left: 4, right: 18 }}>
               <XAxis type="number" hide />
@@ -55,14 +68,16 @@ export function EventHeatComparison({ events }: EventHeatComparisonProps) {
               <Bar dataKey="heat" fill="#1769e0" radius={[0, 5, 5, 0]} />
             </BarChart>
           </ResponsiveContainer>
-        </div>
+        </CardContent>
       ) : (
-        <div className="flex min-h-52 flex-col items-center justify-center px-6 text-center">
-          <Activity className="mb-3 h-5 w-5 text-muted-foreground" />
-          <p className="text-sm font-medium">热度尚未计算</p>
-          <p className="mt-1 text-xs text-muted-foreground">有真实热度分数后才会展示对比图。</p>
-        </div>
+        <Empty className="min-h-52 rounded-none border-0">
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><Activity /></EmptyMedia>
+            <EmptyTitle className="text-sm">热度尚未计算</EmptyTitle>
+            <EmptyDescription>有真实热度分数后才会展示对比图。</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )}
-    </section>
+    </Card>
   );
 }

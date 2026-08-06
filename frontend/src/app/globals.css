@@ -146,27 +146,6 @@ h4 {
   scrollbar-color: #d4d4d4 transparent;
   scrollbar-width: thin;
 }
-.briefing-progress {
-  appearance: none;
-  height: 8px;
-  overflow: hidden;
-  border: 0;
-  border-radius: 999px;
-  background: #ededed;
-}
-.briefing-progress::-webkit-progress-bar {
-  border-radius: 999px;
-  background: #ededed;
-}
-.briefing-progress::-webkit-progress-value {
-  border-radius: 999px;
-  background: #1d1d1f;
-}
-.briefing-progress::-moz-progress-bar {
-  border-radius: 999px;
-  background: #1d1d1f;
-}
-
 .document-markdown {
   max-width: 72ch;
   color: #3f3f46;

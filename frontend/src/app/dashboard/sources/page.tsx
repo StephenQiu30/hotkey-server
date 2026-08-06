@@ -13,6 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +25,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -358,27 +367,32 @@ export default function SourcesPage() {
         }
       />
       {!canManage && (
-        <div className="panel mt-6 flex items-start gap-3 px-4 py-3 text-sm">
-          <Eye className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-          <div>
-            <p className="font-medium">只读来源目录</p>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              当前 {user?.role ?? UserRole.Viewer}{" "}
-              角色可以查看来源状态；新增、探测和启停来源仅对管理员开放。
-            </p>
-          </div>
-        </div>
+        <Alert className="mt-6">
+          <Eye />
+          <AlertTitle>只读来源目录</AlertTitle>
+          <AlertDescription>
+            当前 {user?.role ?? UserRole.Viewer}{" "}
+            角色可以查看来源状态；新增、探测和启停来源仅对管理员开放。
+          </AlertDescription>
+        </Alert>
       )}
       {loading ? (
         <div className="flex h-72 items-center justify-center">
           <Loader2 className="animate-spin text-muted-foreground" />
         </div>
       ) : !sources.length ? (
-        <div className="panel mt-6">
-          <div className="flex h-72 flex-col items-center justify-center">
-            <Database className="mb-3 h-6 w-6 text-muted-foreground" />
-            <p className="text-sm">还没有来源连接</p>
-          </div>
+        <Card className="mt-6 gap-0 overflow-hidden py-0">
+          <Empty className="h-72">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Database />
+              </EmptyMedia>
+              <EmptyTitle>还没有来源连接</EmptyTitle>
+              <EmptyDescription>
+                添加来源后即可查看连接状态和采集健康度。
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
           <CursorPagination
             hasNext={hasNextCursor(nextCursor)}
             loading={loading}
@@ -388,9 +402,9 @@ export default function SourcesPage() {
             page={page}
             pageSize={pageSize}
           />
-        </div>
+        </Card>
       ) : (
-        <div className="panel mt-6 overflow-hidden">
+        <Card className="mt-6 gap-0 overflow-hidden py-0">
           <div
             className={`hidden gap-4 border-b border-border px-5 py-3 text-xs text-muted-foreground md:grid ${
               canManage
@@ -489,7 +503,7 @@ export default function SourcesPage() {
             onPrevious={previousPage}
             page={page}
           />
-        </div>
+        </Card>
       )}
       <div className="mt-4 flex justify-end">
         <Button

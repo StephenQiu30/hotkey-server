@@ -108,10 +108,16 @@ export default function EmailVerificationStep({ purpose, onConfirmed }: EmailVer
       <Button type="submit" disabled={code.length !== 6 || loading} className="h-11 w-full">
         {loading ? "验证中..." : "验证"}
       </Button>
-      <button type="button" onClick={handleSend} disabled={countdown > 0}
-        className={`w-full text-center text-xs no-underline ${countdown > 0 ? "cursor-not-allowed text-muted-foreground" : "cursor-pointer text-primary hover:text-primary/80"}`}>
+      <Button
+        type="button"
+        variant="link"
+        size="sm"
+        onClick={handleSend}
+        disabled={countdown > 0}
+        className="w-full text-xs"
+      >
         {countdown > 0 ? `${countdown}秒后可重新发送` : "重新发送验证码"}
-      </button>
+      </Button>
     </form>
   );
 }
