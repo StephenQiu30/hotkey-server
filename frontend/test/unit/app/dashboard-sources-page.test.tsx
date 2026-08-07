@@ -310,6 +310,63 @@ describe("SourcesPage body storage authorization", () => {
     );
   });
 
+  it("creates Google Agent Search disabled with a regional official contract", async () => {
+    render(<SourcesPage />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "新增来源" }));
+    await user.type(screen.getByLabelText("名称"), "Google 限定域搜索");
+    fireEvent.keyDown(screen.getByLabelText("来源类型"), { key: "ArrowDown" });
+    fireEvent.click(
+      screen.getByRole("option", { name: "Google Agent Search（限定域）" })
+    );
+
+    expect(screen.getByLabelText("接口地址")).toHaveValue(
+      "https://discoveryengine.googleapis.com"
+    );
+    expect(screen.getByLabelText("接口地址")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("授权方式")).toBeDisabled();
+    expect(screen.getByLabelText("条款与政策地址")).toHaveValue(
+      "https://cloud.google.com/terms"
+    );
+    expect(screen.getByLabelText("条款与政策地址")).toHaveAttribute(
+      "readonly"
+    );
+    expect(screen.getByRole("button", { name: "创建连接" })).toBeDisabled();
+    expect(screen.getByText(/已关闭新客户/)).toBeInTheDocument();
+    expect(screen.getByText(/不会降级抓取 Google 搜索页/)).toBeInTheDocument();
+
+    await user.type(
+      screen.getByLabelText("ServingConfig 资源名"),
+      "projects/hotkey-demo/locations/global/collections/default_collection/dataStores/news/servingConfigs/default_config"
+    );
+    await user.type(
+      screen.getByLabelText("凭据环境变量引用"),
+      "env:GOOGLE_AGENT_SEARCH_TOKEN"
+    );
+    await user.click(screen.getByRole("button", { name: "创建连接" }));
+
+    await waitFor(() =>
+      expect(mocks.postSourceConnections).toHaveBeenCalledWith(
+        expect.objectContaining({
+          auth_type: "bearer",
+          credential_ref: "env:GOOGLE_AGENT_SEARCH_TOKEN",
+          enabled: false,
+          endpoint: "https://discoveryengine.googleapis.com",
+          source_type: "google_agent_search",
+          terms_policy_url: "https://cloud.google.com/terms",
+          config: expect.objectContaining({
+            allow_body_storage: true,
+            requires_attribution: true,
+            requires_deletion_sync: false,
+            google_location: "global",
+            google_serving_config:
+              "projects/hotkey-demo/locations/global/collections/default_collection/dataStores/news/servingConfigs/default_config",
+          }),
+        })
+      )
+    );
+  });
+
   it("shows safe compliance facts without exposing a credential reference", async () => {
     mocks.getSourceConnections.mockResolvedValue({
       data: {
@@ -401,7 +458,7 @@ describe("SourcesPage body storage authorization", () => {
       expect(await screen.findByText("只读来源目录")).toBeInTheDocument();
       expect(
         screen.getByText(
-          "查看当前工作区已接入的 RSS、Hacker News、X、微博关键词、Bilibili 授权账号与 Microsoft Foundry Web Search。"
+          "查看当前工作区已接入的 RSS、Hacker News、X、微博关键词、Bilibili 授权账号、Google Agent Search 与 Microsoft Foundry Web Search。"
         )
       ).toBeInTheDocument();
       expect(

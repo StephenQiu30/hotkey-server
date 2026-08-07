@@ -112,6 +112,18 @@ func TestWeiboConnectorDoesNotCallWebOrMobilePrivateEndpoints(t *testing.T) {
 	}
 }
 
+func TestGoogleAgentSearchDoesNotCallWebPagesOrRetiredCustomSearch(t *testing.T) {
+	violations := productionGoFilesContaining(t, filepath.Join(repositoryRoot(t), "internal"), []string{
+		"google.com/search?",
+		"www.google.com/search",
+		"customsearch.googleapis.com",
+		"googleapis.com/customsearch",
+	})
+	if len(violations) > 0 {
+		t.Fatalf("production code calls Google web pages or retired Custom Search: %s", strings.Join(violations, ", "))
+	}
+}
+
 func productionGoFilesContaining(t *testing.T, root string, forbidden []string) []string {
 	t.Helper()
 	var violations []string

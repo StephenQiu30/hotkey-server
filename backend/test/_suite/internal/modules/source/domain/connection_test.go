@@ -110,6 +110,41 @@ func TestWeiboConnectionRequiresOfficialCLIAPIAndCompliancePolicy(t *testing.T) 
 	}
 }
 
+func TestGoogleAgentSearchConnectionRequiresMatchingOfficialRegionAndServingConfig(t *testing.T) {
+	t.Parallel()
+	config := DefaultSourceConfig()
+	config.RequiresAttribution = true
+	config.GoogleLocation = "global"
+	config.GoogleServingConfig = "projects/hotkey-demo/locations/global/collections/default_collection/dataStores/news/servingConfigs/default_config"
+	connection := SourceConnection{
+		SourceType: SourceTypeGoogleAgentSearch, Name: "Google 限定域搜索", Endpoint: GoogleAgentSearchGlobalEndpoint,
+		AuthType: AuthTypeBearer, CredentialRef: "env:GOOGLE_AGENT_SEARCH_TOKEN", Config: config,
+		TermsPolicyURL: GoogleCloudTerms,
+	}
+	if normalized, err := NormalizeSourceConnection(connection); err != nil || normalized.Config.GoogleLocation != "global" {
+		t.Fatalf("NormalizeSourceConnection() = %#v, %v", normalized, err)
+	}
+	for _, mutate := range []func(*SourceConnection){
+		func(value *SourceConnection) { value.Endpoint = "https://www.googleapis.com/customsearch/v1" },
+		func(value *SourceConnection) { value.Endpoint = GoogleAgentSearchUSEndpoint },
+		func(value *SourceConnection) {
+			value.Config.GoogleServingConfig = "projects/hotkey-demo/locations/us/collections/default_collection/dataStores/news/servingConfigs/default_config"
+		},
+		func(value *SourceConnection) {
+			value.Config.GoogleServingConfig = "projects/hotkey-demo/locations/global/collections/default_collection/engines/news/servingConfigs/default_config"
+		},
+		func(value *SourceConnection) { value.AuthType = AuthTypeAPIKey },
+		func(value *SourceConnection) { value.Config.RequiresAttribution = false },
+		func(value *SourceConnection) { value.TermsPolicyURL = "https://example.test/terms" },
+	} {
+		invalid := connection
+		mutate(&invalid)
+		if _, err := NormalizeSourceConnection(invalid); err == nil {
+			t.Fatalf("accepted invalid Google Agent Search connection %#v", invalid)
+		}
+	}
+}
+
 func TestCredentialReferenceMustMatchAuthType(t *testing.T) {
 	t.Parallel()
 

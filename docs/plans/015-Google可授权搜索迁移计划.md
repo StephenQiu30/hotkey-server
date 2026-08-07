@@ -1,10 +1,10 @@
 ---
 layer: Plan
-scope: backend
+scope: fullstack
 doc_no: "015"
 title: Google可授权搜索迁移计划
-status: planned
-version: v1.0
+status: completed
+version: v1.1
 owner: HotKey Team
 phase: P2
 canonical_path: docs/plans/015-Google可授权搜索迁移计划.md
@@ -12,55 +12,37 @@ design: docs/design/015-Google可授权搜索迁移设计.md
 prd: docs/prd/015-Google可授权搜索迁移.md
 ---
 
-# Google可授权搜索迁移计划
+# Google 可授权搜索迁移计划
 
 ## 前置门禁
 
-- Design 已 accepted，PRD 已 approved。
-- 官方/授权接口、应用 scope、条款、配额和测试凭据已核实；阻塞项不得用非官方接口绕过。
-- 先保存 Connector 契约、查询编译、分页、限流、失败分类和 SSRF 的失败测试。
-
-## 预计变更范围
-
-- backend/internal/modules/source/infrastructure/google/
-- backend/internal/modules/source/domain/
-- backend/internal/modules/operations/
-- backend/db/schema.sql
-- frontend/src/app/dashboard/sources/
+- [x] Design 已 accepted，PRD 已 approved。
+- [x] 官方停用政策、Discovery Engine v1、location、OAuth/IAM、分页和 snippet 契约已核实。
+- [x] 确认仓库不存在需迁移的既有 Google 连接，因此不建立旧 API 兼容器。
 
 ## 执行步骤
 
-1. 在 Source Domain 增加最小能力枚举与严格配置，不泄漏第三方 SDK 类型。
-2. 在唯一 Schema 增加必要字段和约束，保持既有 RSS/HN 数据兼容。
-3. 实现绑定不可变 SourceConnection 的 Connector、分页检查点、限流和错误分类。
-4. 将 Capture 接入既有 normalize→relevance→cluster 流水线，不建立旁路存储。
-5. 更新来源/监控 API 注解，生成 OpenAPI 与前端 Client。
-6. 用 shadcn/ui 组合来源配置、授权状态、健康诊断和能力预览。
-7. 运行契约、集成、并发、重试、权限和端到端测试，新增同编号 Acceptance。
+1. [x] 先补严格配置、Registry、Connector、旧端点禁止与服务启用门禁的失败测试。
+2. [x] 增加 `google_agent_search` 类型和最小 Google 配置，更新唯一 Schema 与 API 契约。
+3. [x] 实现固定官方端点的健康探测、关键词搜索、分页、映射和错误分类。
+4. [x] 用 shadcn/ui 组合来源配置、迁移告警和能力边界，保持创建默认禁用。
+5. [x] 生成 OpenAPI 与前端 Client，补齐领域、集成、权限和界面测试。
+6. [x] 运行后端/前端全量回归、Compose 检查和 `git diff --check`。
+7. [x] 使用 agent-browser 验收管理员、阅读者、未登录、移动端、错误态和可访问性。
+8. [x] 新建同编号 Acceptance，按中文 Conventional Commits 独立提交。
 
-## 验证
+## 验证命令
 
 - `cd backend && make ci`
 - `cd frontend && npm run openapi:check && npm run typecheck && npm run test:unit && npm run build`
-- 使用可控官方沙盒或 HTTP fixture 验证成功、分页、429、401、超时、恶意重定向和撤销授权。
-- 根目录运行 Compose 配置检查与 `git diff --check`。
+- 根目录运行 Compose 开发/生产配置检查与 `git diff --check`。
 
-## 迁移与回滚
+## 回滚
 
-新来源默认 disabled，并以能力开关逐一启用。回滚时先停止该来源的新调度、等待运行任务结束，再回退应用；保留检查点、采集运行和历史证据。
-
-## 依赖与功能切片
-
-- 前置编号：006、007。
-- 依赖未验收时，本条只允许完成不改变对外行为的基础工作。
-
-- [ ] Slice-015-1：实现「存量 Custom Search 兼容连接器」，补齐实际涉及的领域、任务、API 与界面，并绑定 AC-015-* 回归。
-- [ ] Slice-015-2：实现「弃用检测和迁移提示」，补齐实际涉及的领域、任务、API 与界面，并绑定 AC-015-* 回归。
-- [ ] Slice-015-3：实现「限定域/全网搜索能力抽象」，补齐实际涉及的领域、任务、API 与界面，并绑定 AC-015-* 回归。
-- [ ] Slice-015-4：实现「成本、配额和合同审计」，补齐实际涉及的领域、任务、API 与界面，并绑定 AC-015-* 回归。
+新来源默认 disabled。回滚时先停用来源并等待运行任务结束，再回退应用；保留采集运行、检查点和历史证据，不转用 Custom Search 或网页抓取。
 
 ## 完成定义
 
-- 新客户配置流程不会引导创建已关闭 API
-- 2027 停用日前有可观测迁移门禁
-- 无替代授权时来源安全停用而非转网页抓取
+- AC-015-1..5 全部绑定自动化或浏览器证据。
+- 没有真实凭据、临时验收文件或生成漂移进入提交。
+- 工作区只包含第 015 项变更并完成独立中文提交。

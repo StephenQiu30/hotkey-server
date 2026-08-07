@@ -9,6 +9,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/bilibili"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/binggrounding"
+	googleagentsearch "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/googleagentsearch"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/hackernews"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/rss"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/sourcenet"
@@ -41,6 +42,8 @@ func (registry *ConnectorRegistry) Resolve(_ context.Context, connection domain.
 		return bilibili.New(connection, registry.resolver)
 	case domain.SourceTypeWeibo:
 		return weibo.New(connection, registry.resolver)
+	case domain.SourceTypeGoogleAgentSearch:
+		return googleagentsearch.New(connection, registry.resolver)
 	default:
 		return nil, domain.NewCollectionError(domain.CollectionErrorPermanent, fmt.Errorf("unsupported collection source type"))
 	}

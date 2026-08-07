@@ -386,7 +386,8 @@ required property without making explicit null impossible to bind. */
       | "x"
       | "bing_grounding"
       | "bilibili"
-      | "weibo";
+      | "weibo"
+      | "google_agent_search";
     terms_policy_url?: string;
   };
 
@@ -1872,6 +1873,8 @@ required property without making explicit null impossible to bind. */
     allowed_regions?: string[];
     bilibili_open_id?: string;
     content_retention_days?: number;
+    google_location?: string;
+    google_serving_config?: string;
     grounding_data_boundary_approved?: boolean;
     max_pages_per_run?: number;
     metrics_retention_days?: number;
@@ -1887,6 +1890,8 @@ required property without making explicit null impossible to bind. */
     allowed_regions?: string[];
     bilibili_open_id?: string;
     content_retention_days?: number;
+    google_location?: string;
+    google_serving_config?: string;
     grounding_data_boundary_approved?: boolean;
     max_pages_per_run?: number;
     metrics_retention_days?: number;
@@ -2025,7 +2030,8 @@ required property without making explicit null impossible to bind. */
       | "x"
       | "bing_grounding"
       | "bilibili"
-      | "weibo";
+      | "weibo"
+      | "google_agent_search";
     terms_policy_url?: string;
   };
 

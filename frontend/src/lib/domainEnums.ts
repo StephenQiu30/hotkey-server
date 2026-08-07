@@ -17,6 +17,7 @@ export enum SourceType {
   BingGrounding = "bing_grounding",
   Bilibili = "bilibili",
   Weibo = "weibo",
+  GoogleAgentSearch = "google_agent_search",
 }
 
 export enum SourceHealthStatus {

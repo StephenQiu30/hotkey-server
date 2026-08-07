@@ -228,8 +228,8 @@ export default function SourcesPage() {
         title={canManage ? "来源管理" : "来源目录"}
         description={
           canManage
-            ? "连接、探测并管理 RSS、Hacker News、X、微博关键词、Bilibili 授权账号与 Microsoft Foundry Web Search。"
-            : "查看当前工作区已接入的 RSS、Hacker News、X、微博关键词、Bilibili 授权账号与 Microsoft Foundry Web Search。"
+            ? "连接、探测并管理 RSS、Hacker News、X、微博关键词、Bilibili 授权账号、Google Agent Search 与 Microsoft Foundry Web Search。"
+            : "查看当前工作区已接入的 RSS、Hacker News、X、微博关键词、Bilibili 授权账号、Google Agent Search 与 Microsoft Foundry Web Search。"
         }
         action={
           canManage ? (

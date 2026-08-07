@@ -7942,7 +7942,8 @@
                         "x",
                         "bing_grounding",
                         "bilibili",
-                        "weibo"
+                        "weibo",
+                        "google_agent_search"
                     ]
                 },
                 "terms_policy_url": {
@@ -10442,6 +10443,12 @@
                 "content_retention_days": {
                     "type": "integer"
                 },
+                "google_location": {
+                    "type": "string"
+                },
+                "google_serving_config": {
+                    "type": "string"
+                },
                 "grounding_data_boundary_approved": {
                     "type": "boolean"
                 },
@@ -10488,6 +10495,12 @@
                 },
                 "content_retention_days": {
                     "type": "integer"
+                },
+                "google_location": {
+                    "type": "string"
+                },
+                "google_serving_config": {
+                    "type": "string"
                 },
                 "grounding_data_boundary_approved": {
                     "type": "boolean"
@@ -10862,7 +10875,8 @@
                         "x",
                         "bing_grounding",
                         "bilibili",
-                        "weibo"
+                        "weibo",
+                        "google_agent_search"
                     ]
                 },
                 "terms_policy_url": {

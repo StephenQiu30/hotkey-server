@@ -21,12 +21,17 @@ func TestConnectorRegistryBindsOnlyKnownSourceTypes(t *testing.T) {
 	weiboConfig := domain.DefaultSourceConfig()
 	weiboConfig.RequiresAttribution = true
 	weiboConfig.RequiresDeletionSync = true
+	googleConfig := domain.DefaultSourceConfig()
+	googleConfig.RequiresAttribution = true
+	googleConfig.GoogleLocation = "global"
+	googleConfig.GoogleServingConfig = "projects/hotkey-demo/locations/global/collections/default_collection/dataStores/news/servingConfigs/default_config"
 	for _, connection := range []domain.SourceConnection{
 		{ID: 1, SourceType: domain.SourceTypeRSS, Name: "RSS", Endpoint: "https://feeds.example.test/rss", AuthType: domain.AuthTypeNone, Config: domain.DefaultSourceConfig(), Enabled: true, HealthStatus: domain.HealthStatusUnknown},
 		{ID: 2, SourceType: domain.SourceTypeHackerNews, Name: "HN", Endpoint: domain.HackerNewsEndpoint, AuthType: domain.AuthTypeNone, Config: domain.DefaultSourceConfig(), Enabled: true, HealthStatus: domain.HealthStatusUnknown},
 		{ID: 3, SourceType: domain.SourceTypeX, Name: "X", Endpoint: domain.XRecentSearchEndpoint, AuthType: domain.AuthTypeBearer, CredentialRef: "env:X_BEARER_TOKEN", Config: domain.DefaultSourceConfig(), Enabled: true, HealthStatus: domain.HealthStatusHealthy},
 		{ID: 4, SourceType: domain.SourceTypeBingGrounding, Name: "Foundry Web Search", Endpoint: "https://hotkey.services.ai.azure.com/api/projects/hotkey/toolboxes/web-search/versions/1/mcp?api-version=v1", AuthType: domain.AuthTypeBearer, CredentialRef: "env:AZURE_FOUNDRY_TOKEN", Config: groundingConfig, Enabled: true, HealthStatus: domain.HealthStatusHealthy, TermsPolicyURL: "https://learn.microsoft.com/azure/foundry/web-search"},
 		{ID: 5, SourceType: domain.SourceTypeWeibo, Name: "Weibo", Endpoint: domain.WeiboCLIApiEndpoint, AuthType: domain.AuthTypeBearer, CredentialRef: "env:WEIBO_TOKEN", Config: weiboConfig, Enabled: true, HealthStatus: domain.HealthStatusHealthy, TermsPolicyURL: domain.WeiboDeveloperTerms},
+		{ID: 6, SourceType: domain.SourceTypeGoogleAgentSearch, Name: "Google Agent Search", Endpoint: domain.GoogleAgentSearchGlobalEndpoint, AuthType: domain.AuthTypeBearer, CredentialRef: "env:GOOGLE_AGENT_SEARCH_TOKEN", Config: googleConfig, Enabled: true, HealthStatus: domain.HealthStatusHealthy, TermsPolicyURL: domain.GoogleCloudTerms},
 	} {
 		connector, err := registry.Resolve(context.Background(), connection)
 		if err != nil || connector == nil {

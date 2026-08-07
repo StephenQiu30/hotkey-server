@@ -21,12 +21,13 @@ type AuthType string
 type HealthStatus string
 
 const (
-	SourceTypeRSS           SourceType = "rss"
-	SourceTypeHackerNews    SourceType = "hacker_news"
-	SourceTypeX             SourceType = "x"
-	SourceTypeBingGrounding SourceType = "bing_grounding"
-	SourceTypeBilibili      SourceType = "bilibili"
-	SourceTypeWeibo         SourceType = "weibo"
+	SourceTypeRSS               SourceType = "rss"
+	SourceTypeHackerNews        SourceType = "hacker_news"
+	SourceTypeX                 SourceType = "x"
+	SourceTypeBingGrounding     SourceType = "bing_grounding"
+	SourceTypeBilibili          SourceType = "bilibili"
+	SourceTypeWeibo             SourceType = "weibo"
+	SourceTypeGoogleAgentSearch SourceType = "google_agent_search"
 
 	AuthTypeNone   AuthType = "none"
 	AuthTypeAPIKey AuthType = "api_key"
@@ -38,16 +39,22 @@ const (
 	HealthStatusDegraded    HealthStatus = "degraded"
 	HealthStatusUnavailable HealthStatus = "unavailable"
 
-	HackerNewsEndpoint    = "https://hacker-news.firebaseio.com/v0"
-	XRecentSearchEndpoint = "https://api.x.com/2/tweets/search/recent"
-	BilibiliOpenEndpoint  = "https://member.bilibili.com/arcopen/fn"
-	WeiboCLIApiEndpoint   = "https://open.weibo.com/cli/api"
-	WeiboDeveloperTerms   = "https://open.weibo.com/wiki/%E5%BC%80%E5%8F%91%E8%80%85%E5%8D%8F%E8%AE%AE"
+	HackerNewsEndpoint              = "https://hacker-news.firebaseio.com/v0"
+	XRecentSearchEndpoint           = "https://api.x.com/2/tweets/search/recent"
+	BilibiliOpenEndpoint            = "https://member.bilibili.com/arcopen/fn"
+	WeiboCLIApiEndpoint             = "https://open.weibo.com/cli/api"
+	WeiboDeveloperTerms             = "https://open.weibo.com/wiki/%E5%BC%80%E5%8F%91%E8%80%85%E5%8D%8F%E8%AE%AE"
+	GoogleAgentSearchGlobalEndpoint = "https://discoveryengine.googleapis.com"
+	GoogleAgentSearchUSEndpoint     = "https://us-discoveryengine.googleapis.com"
+	GoogleAgentSearchEUEndpoint     = "https://eu-discoveryengine.googleapis.com"
+	GoogleCloudTerms                = "https://cloud.google.com/terms"
+	GoogleLegacySearchDeprecationAt = "2027-01-01"
 )
 
 var credentialReferencePattern = regexp.MustCompile(`^env:[A-Z_][A-Z0-9_]{0,127}$`)
 var foundryToolboxPathPattern = regexp.MustCompile(`^/api/projects/[A-Za-z0-9][A-Za-z0-9._-]{0,127}/toolboxes/[A-Za-z0-9][A-Za-z0-9._-]{0,127}/versions/[A-Za-z0-9][A-Za-z0-9._-]{0,127}/mcp$`)
 var bilibiliOpenIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
+var googleServingConfigPattern = regexp.MustCompile(`^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/locations/(global|us|eu)/collections/default_collection/dataStores/[A-Za-z0-9_-]{1,63}/servingConfigs/[A-Za-z0-9_-]{1,63}$`)
 
 type SourceConnection struct {
 	ID             int64
@@ -79,6 +86,8 @@ type SourceConfig struct {
 	MaxPagesPerRun                int
 	GroundingDataBoundaryApproved bool
 	BilibiliOpenID                string
+	GoogleLocation                string
+	GoogleServingConfig           string
 }
 
 func DefaultSourceConfig() SourceConfig {
@@ -118,6 +127,9 @@ func NormalizeSourceConnection(connection SourceConnection) (SourceConnection, e
 	if connection.SourceType == SourceTypeWeibo && (connection.AuthType != AuthTypeBearer || credentialRef == "") {
 		return SourceConnection{}, fmt.Errorf("Weibo source requires a Bearer env credential reference")
 	}
+	if connection.SourceType == SourceTypeGoogleAgentSearch && (connection.AuthType != AuthTypeBearer || credentialRef == "") {
+		return SourceConnection{}, fmt.Errorf("Google Agent Search source requires a Bearer env credential reference")
+	}
 	config := connection.Config
 	if config.isZero() {
 		config = DefaultSourceConfig()
@@ -141,6 +153,15 @@ func NormalizeSourceConnection(connection SourceConnection) (SourceConnection, e
 	if connection.SourceType == SourceTypeWeibo && strings.TrimSpace(connection.TermsPolicyURL) != WeiboDeveloperTerms {
 		return SourceConnection{}, fmt.Errorf("Weibo source requires the official developer agreement URL")
 	}
+	if connection.SourceType == SourceTypeGoogleAgentSearch {
+		expectedEndpoint, ok := googleAgentSearchEndpoint(config.GoogleLocation)
+		if !ok || connection.Endpoint != expectedEndpoint || !googleServingConfigPattern.MatchString(config.GoogleServingConfig) || !strings.Contains(config.GoogleServingConfig, "/locations/"+config.GoogleLocation+"/") {
+			return SourceConnection{}, fmt.Errorf("Google Agent Search source requires a matching official endpoint, location, and ServingConfig")
+		}
+		if !config.AllowBodyStorage || !config.RequiresAttribution || strings.TrimSpace(connection.TermsPolicyURL) != GoogleCloudTerms {
+			return SourceConnection{}, fmt.Errorf("Google Agent Search source requires snippet storage, attribution, and the official Google Cloud terms URL")
+		}
+	}
 	if connection.SourceType == SourceTypeBingGrounding {
 		termsPolicyURL, err := url.Parse(strings.TrimSpace(connection.TermsPolicyURL))
 		if err != nil || termsPolicyURL.Scheme != "https" || termsPolicyURL.Hostname() == "" || termsPolicyURL.User != nil || termsPolicyURL.Fragment != "" {
@@ -162,7 +183,7 @@ func NormalizeSourceConnection(connection SourceConnection) (SourceConnection, e
 }
 
 func (sourceType SourceType) Valid() bool {
-	return sourceType == SourceTypeRSS || sourceType == SourceTypeHackerNews || sourceType == SourceTypeX || sourceType == SourceTypeBingGrounding || sourceType == SourceTypeBilibili || sourceType == SourceTypeWeibo
+	return sourceType == SourceTypeRSS || sourceType == SourceTypeHackerNews || sourceType == SourceTypeX || sourceType == SourceTypeBingGrounding || sourceType == SourceTypeBilibili || sourceType == SourceTypeWeibo || sourceType == SourceTypeGoogleAgentSearch
 }
 
 func (authType AuthType) Valid() bool {
@@ -238,6 +259,14 @@ func NormalizeEndpoint(sourceType SourceType, value string) (string, error) {
 			return "", fmt.Errorf("Weibo endpoint must be the official CLI API endpoint")
 		}
 		return WeiboCLIApiEndpoint, nil
+	}
+	if sourceType == SourceTypeGoogleAgentSearch {
+		for _, endpoint := range []string{GoogleAgentSearchGlobalEndpoint, GoogleAgentSearchUSEndpoint, GoogleAgentSearchEUEndpoint} {
+			if normalized == endpoint {
+				return endpoint, nil
+			}
+		}
+		return "", fmt.Errorf("Google Agent Search endpoint must be an official regional endpoint")
 	}
 	if sourceType != SourceTypeRSS {
 		return "", fmt.Errorf("unsupported source type %q", sourceType)
@@ -347,6 +376,18 @@ func NormalizeSourceConfig(input map[string]any) (SourceConfig, error) {
 				return SourceConfig{}, fmt.Errorf("%s must be string", key)
 			}
 			config.BilibiliOpenID = text
+		case "google_location":
+			text, ok := value.(string)
+			if !ok {
+				return SourceConfig{}, fmt.Errorf("%s must be string", key)
+			}
+			config.GoogleLocation = text
+		case "google_serving_config":
+			text, ok := value.(string)
+			if !ok {
+				return SourceConfig{}, fmt.Errorf("%s must be string", key)
+			}
+			config.GoogleServingConfig = text
 		default:
 			return SourceConfig{}, fmt.Errorf("source config key %q is not allowed", key)
 		}
@@ -375,6 +416,8 @@ func (config SourceConfig) Normalize() (SourceConfig, error) {
 		return SourceConfig{}, fmt.Errorf("max pages per run must be from 1 to 20")
 	}
 	config.BilibiliOpenID = strings.TrimSpace(config.BilibiliOpenID)
+	config.GoogleLocation = strings.ToLower(strings.TrimSpace(config.GoogleLocation))
+	config.GoogleServingConfig = strings.TrimSpace(config.GoogleServingConfig)
 	if config.BilibiliOpenID != "" && !bilibiliOpenIDPattern.MatchString(config.BilibiliOpenID) {
 		return SourceConfig{}, fmt.Errorf("Bilibili OpenID is invalid")
 	}
@@ -382,7 +425,7 @@ func (config SourceConfig) Normalize() (SourceConfig, error) {
 }
 
 func (config SourceConfig) isZero() bool {
-	return !config.AllowBodyStorage && !config.RequiresAttribution && !config.RequiresDeletionSync && !config.GroundingDataBoundaryApproved && config.BilibiliOpenID == "" && config.ContentRetentionDays == 0 && config.MetricsRetentionDays == 0 && len(config.AllowedLanguages) == 0 && len(config.AllowedRegions) == 0 && config.RateLimitPerMinute == 0 && config.RequestTimeoutSeconds == 0 && config.MaxPagesPerRun == 0
+	return !config.AllowBodyStorage && !config.RequiresAttribution && !config.RequiresDeletionSync && !config.GroundingDataBoundaryApproved && config.BilibiliOpenID == "" && config.GoogleLocation == "" && config.GoogleServingConfig == "" && config.ContentRetentionDays == 0 && config.MetricsRetentionDays == 0 && len(config.AllowedLanguages) == 0 && len(config.AllowedRegions) == 0 && config.RateLimitPerMinute == 0 && config.RequestTimeoutSeconds == 0 && config.MaxPagesPerRun == 0
 }
 
 func (config SourceConfig) Map() map[string]any {
@@ -393,6 +436,21 @@ func (config SourceConfig) Map() map[string]any {
 		"rate_limit_per_minute": config.RateLimitPerMinute, "request_timeout_seconds": config.RequestTimeoutSeconds, "max_pages_per_run": config.MaxPagesPerRun,
 		"grounding_data_boundary_approved": config.GroundingDataBoundaryApproved,
 		"bilibili_open_id":                 config.BilibiliOpenID,
+		"google_location":                  config.GoogleLocation,
+		"google_serving_config":            config.GoogleServingConfig,
+	}
+}
+
+func googleAgentSearchEndpoint(location string) (string, bool) {
+	switch location {
+	case "global":
+		return GoogleAgentSearchGlobalEndpoint, true
+	case "us":
+		return GoogleAgentSearchUSEndpoint, true
+	case "eu":
+		return GoogleAgentSearchEUEndpoint, true
+	default:
+		return "", false
 	}
 }
 

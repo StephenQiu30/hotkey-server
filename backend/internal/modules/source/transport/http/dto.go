@@ -110,10 +110,12 @@ type SourceConfigRequest struct {
 	MaxPagesPerRun                *int      `json:"max_pages_per_run,omitempty"`
 	GroundingDataBoundaryApproved *bool     `json:"grounding_data_boundary_approved,omitempty"`
 	BilibiliOpenID                *string   `json:"bilibili_open_id,omitempty"`
+	GoogleLocation                *string   `json:"google_location,omitempty"`
+	GoogleServingConfig           *string   `json:"google_serving_config,omitempty"`
 }
 
 type CreateSourceRequest struct {
-	SourceType     string              `json:"source_type" binding:"required,oneof=rss hacker_news x bing_grounding bilibili weibo"`
+	SourceType     string              `json:"source_type" binding:"required,oneof=rss hacker_news x bing_grounding bilibili weibo google_agent_search"`
 	Name           string              `json:"name" binding:"required"`
 	Endpoint       string              `json:"endpoint" binding:"required"`
 	AuthType       string              `json:"auth_type" binding:"required,oneof=none api_key oauth2 bearer"`
@@ -125,7 +127,7 @@ type CreateSourceRequest struct {
 
 type UpdateSourceRequest struct {
 	ExpectedSourceVersion int64                `json:"expected_source_version" binding:"required,gt=0"`
-	SourceType            *string              `json:"source_type,omitempty" binding:"omitempty,oneof=rss hacker_news x bing_grounding bilibili weibo"`
+	SourceType            *string              `json:"source_type,omitempty" binding:"omitempty,oneof=rss hacker_news x bing_grounding bilibili weibo google_agent_search"`
 	Name                  *string              `json:"name,omitempty"`
 	Endpoint              *string              `json:"endpoint,omitempty"`
 	AuthType              *string              `json:"auth_type,omitempty" binding:"omitempty,oneof=none api_key oauth2 bearer"`
@@ -182,6 +184,8 @@ type SourceConfigDTO struct {
 	MaxPagesPerRun                int      `json:"max_pages_per_run"`
 	GroundingDataBoundaryApproved bool     `json:"grounding_data_boundary_approved"`
 	BilibiliOpenID                string   `json:"bilibili_open_id"`
+	GoogleLocation                string   `json:"google_location"`
+	GoogleServingConfig           string   `json:"google_serving_config"`
 }
 
 type SourcePageResponse struct {
@@ -237,6 +241,12 @@ func sourceConfig(request SourceConfigRequest) (domain.SourceConfig, error) {
 	if request.BilibiliOpenID != nil {
 		values["bilibili_open_id"] = *request.BilibiliOpenID
 	}
+	if request.GoogleLocation != nil {
+		values["google_location"] = *request.GoogleLocation
+	}
+	if request.GoogleServingConfig != nil {
+		values["google_serving_config"] = *request.GoogleServingConfig
+	}
 	config, err := domain.NormalizeSourceConfig(values)
 	if err != nil {
 		return domain.SourceConfig{}, fmt.Errorf("normalize source config: %w", err)
@@ -290,7 +300,7 @@ func managementReadResponse(source domain.ManagementSourceConnection) SourceRead
 	return SourceReadResponse{SourceResponse: sourceResponse(source.PublicSourceConnection), Endpoint: &endpoint, Config: &config}
 }
 func configResponse(config domain.SourceConfig) SourceConfigDTO {
-	return SourceConfigDTO{AllowBodyStorage: config.AllowBodyStorage, RequiresAttribution: config.RequiresAttribution, RequiresDeletionSync: config.RequiresDeletionSync, ContentRetentionDays: config.ContentRetentionDays, MetricsRetentionDays: config.MetricsRetentionDays, AllowedLanguages: config.AllowedLanguages, AllowedRegions: config.AllowedRegions, RateLimitPerMinute: config.RateLimitPerMinute, RequestTimeoutSeconds: config.RequestTimeoutSeconds, MaxPagesPerRun: config.MaxPagesPerRun, GroundingDataBoundaryApproved: config.GroundingDataBoundaryApproved, BilibiliOpenID: config.BilibiliOpenID}
+	return SourceConfigDTO{AllowBodyStorage: config.AllowBodyStorage, RequiresAttribution: config.RequiresAttribution, RequiresDeletionSync: config.RequiresDeletionSync, ContentRetentionDays: config.ContentRetentionDays, MetricsRetentionDays: config.MetricsRetentionDays, AllowedLanguages: config.AllowedLanguages, AllowedRegions: config.AllowedRegions, RateLimitPerMinute: config.RateLimitPerMinute, RequestTimeoutSeconds: config.RequestTimeoutSeconds, MaxPagesPerRun: config.MaxPagesPerRun, GroundingDataBoundaryApproved: config.GroundingDataBoundaryApproved, BilibiliOpenID: config.BilibiliOpenID, GoogleLocation: config.GoogleLocation, GoogleServingConfig: config.GoogleServingConfig}
 }
 
 func metricCapabilityProfileResponse(profile domain.MetricCapabilityProfile) MetricCapabilityProfileResponse {

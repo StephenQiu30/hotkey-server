@@ -35,9 +35,18 @@ const BILIBILI_PRIVACY_POLICY_URL =
 const WEIBO_CLI_API_ENDPOINT = "https://open.weibo.com/cli/api";
 const WEIBO_DEVELOPER_TERMS_URL =
   "https://open.weibo.com/wiki/%E5%BC%80%E5%8F%91%E8%80%85%E5%8D%8F%E8%AE%AE";
+const GOOGLE_AGENT_SEARCH_ENDPOINTS = {
+  global: "https://discoveryengine.googleapis.com",
+  us: "https://us-discoveryengine.googleapis.com",
+  eu: "https://eu-discoveryengine.googleapis.com",
+} as const;
+const GOOGLE_CLOUD_TERMS_URL = "https://cloud.google.com/terms";
+const googleServingConfigPattern =
+  /^projects\/[a-z][a-z0-9-]{4,28}[a-z0-9]\/locations\/(global|us|eu)\/collections\/default_collection\/dataStores\/[A-Za-z0-9_-]{1,63}\/servingConfigs\/[A-Za-z0-9_-]{1,63}$/;
 const credentialPattern = /^env:[A-Z_][A-Z0-9_]{0,127}$/;
 
 type AuthType = "none" | "api_key" | "oauth2" | "bearer";
+type GoogleLocation = keyof typeof GOOGLE_AGENT_SEARCH_ENDPOINTS;
 
 type SourceForm = {
   allowBodyStorage: boolean;
@@ -56,6 +65,8 @@ type SourceForm = {
   requiresDeletionSync: boolean;
   groundingDataBoundaryApproved: boolean;
   bilibiliOpenID: string;
+  googleLocation: GoogleLocation;
+  googleServingConfig: string;
   sourceType: SourceType;
   termsPolicyURL: string;
 };
@@ -115,6 +126,8 @@ const emptyForm = (): SourceForm => ({
   requiresDeletionSync: false,
   groundingDataBoundaryApproved: false,
   bilibiliOpenID: "",
+  googleLocation: "global",
+  googleServingConfig: "",
   sourceType: SourceType.RSS,
   termsPolicyURL: "",
 });
@@ -159,7 +172,12 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
           form.maxPagesPerRun === 1 &&
           Boolean(form.termsPolicyURL.trim()))) &&
       (form.sourceType !== SourceType.Bilibili ||
-        /^[A-Za-z0-9_-]{1,128}$/.test(form.bilibiliOpenID.trim()))
+        /^[A-Za-z0-9_-]{1,128}$/.test(form.bilibiliOpenID.trim())) &&
+      (form.sourceType !== SourceType.GoogleAgentSearch ||
+        (googleServingConfigPattern.test(form.googleServingConfig.trim()) &&
+          form.googleServingConfig.includes(
+            `/locations/${form.googleLocation}/`
+          )))
   );
 
   const updateForm = (values: Partial<SourceForm>) => {
@@ -190,13 +208,16 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
         requires_deletion_sync: form.requiresDeletionSync,
         grounding_data_boundary_approved: form.groundingDataBoundaryApproved,
         bilibili_open_id: form.bilibiliOpenID.trim(),
+        google_location: form.googleLocation,
+        google_serving_config: form.googleServingConfig.trim(),
       },
       credential_ref: form.credentialRef.trim(),
       enabled:
         form.sourceType !== SourceType.X &&
         form.sourceType !== SourceType.BingGrounding &&
         form.sourceType !== SourceType.Bilibili &&
-        form.sourceType !== SourceType.Weibo,
+        form.sourceType !== SourceType.Weibo &&
+        form.sourceType !== SourceType.GoogleAgentSearch,
       endpoint: form.endpoint.trim(),
       name: form.name.trim(),
       source_type: form.sourceType,
@@ -257,6 +278,8 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                         ? BILIBILI_OPEN_ENDPOINT
                         : value === SourceType.Weibo
                         ? WEIBO_CLI_API_ENDPOINT
+                        : value === SourceType.GoogleAgentSearch
+                        ? GOOGLE_AGENT_SEARCH_ENDPOINTS.global
                         : "",
                     authType:
                       value === SourceType.X ||
@@ -266,24 +289,30 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                         ? "oauth2"
                         : value === SourceType.Weibo
                         ? "bearer"
+                        : value === SourceType.GoogleAgentSearch
+                        ? "bearer"
                         : "none",
                     credentialRef: "",
                     allowBodyStorage:
                       value === SourceType.BingGrounding ||
                       value === SourceType.Bilibili ||
-                      value === SourceType.Weibo
+                      value === SourceType.Weibo ||
+                      value === SourceType.GoogleAgentSearch
                         ? true
                         : form.allowBodyStorage,
                     requiresAttribution:
                       value === SourceType.BingGrounding ||
                       value === SourceType.Bilibili ||
-                      value === SourceType.Weibo
+                      value === SourceType.Weibo ||
+                      value === SourceType.GoogleAgentSearch
                         ? true
                         : form.requiresAttribution,
                     requiresDeletionSync:
                       value === SourceType.Bilibili ||
                       value === SourceType.Weibo
                         ? true
+                        : value === SourceType.GoogleAgentSearch
+                        ? false
                         : form.requiresDeletionSync,
                     maxPagesPerRun:
                       value === SourceType.BingGrounding
@@ -291,6 +320,8 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                         : form.maxPagesPerRun,
                     groundingDataBoundaryApproved: false,
                     bilibiliOpenID: "",
+                    googleLocation: "global",
+                    googleServingConfig: "",
                     termsPolicyURL:
                       value === SourceType.BingGrounding
                         ? FOUNDRY_WEB_SEARCH_POLICY_URL
@@ -298,6 +329,8 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                         ? BILIBILI_PRIVACY_POLICY_URL
                         : value === SourceType.Weibo
                         ? WEIBO_DEVELOPER_TERMS_URL
+                        : value === SourceType.GoogleAgentSearch
+                        ? GOOGLE_CLOUD_TERMS_URL
                         : "",
                   })
                 }
@@ -320,6 +353,9 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                   <SelectItem value={SourceType.Weibo}>
                     微博开放平台关键词
                   </SelectItem>
+                  <SelectItem value={SourceType.GoogleAgentSearch}>
+                    Google Agent Search（限定域）
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -331,7 +367,8 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                   form.sourceType === SourceType.X ||
                   form.sourceType === SourceType.BingGrounding ||
                   form.sourceType === SourceType.Bilibili ||
-                  form.sourceType === SourceType.Weibo
+                  form.sourceType === SourceType.Weibo ||
+                  form.sourceType === SourceType.GoogleAgentSearch
                 }
                 onValueChange={(value) =>
                   updateForm({
@@ -369,7 +406,8 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                   form.sourceType === SourceType.HackerNews ||
                   form.sourceType === SourceType.X ||
                   form.sourceType === SourceType.Bilibili ||
-                  form.sourceType === SourceType.Weibo
+                  form.sourceType === SourceType.Weibo ||
+                  form.sourceType === SourceType.GoogleAgentSearch
                 }
               />
               {form.sourceType === SourceType.X && (
@@ -395,6 +433,12 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                   API；创建后先验证账号和关键词命令可用性，再手动启用。
                 </p>
               )}
+              {form.sourceType === SourceType.GoogleAgentSearch && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  固定使用 Discovery Engine v1；创建后先验证 ServingConfig
+                  搜索权限，再手动启用。
+                </p>
+              )}
             </div>
             {form.sourceType === SourceType.Bilibili && (
               <div className="sm:col-span-2">
@@ -412,6 +456,56 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                   仅支持已授权账号；公共 UID、@账号与主页地址不会被解析或抓取。
                 </p>
               </div>
+            )}
+            {form.sourceType === SourceType.GoogleAgentSearch && (
+              <>
+                <div>
+                  <Label htmlFor="source-google-location">数据位置</Label>
+                  <Select
+                    value={form.googleLocation}
+                    onValueChange={(value) => {
+                      const location = value as GoogleLocation;
+                      updateForm({
+                        googleLocation: location,
+                        googleServingConfig: "",
+                        endpoint: GOOGLE_AGENT_SEARCH_ENDPOINTS[location],
+                      });
+                    }}
+                  >
+                    <SelectTrigger id="source-google-location" className="mt-2">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="global">Global</SelectItem>
+                      <SelectItem value="us">United States</SelectItem>
+                      <SelectItem value="eu">European Union</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="source-google-serving-config">
+                    ServingConfig 资源名
+                  </Label>
+                  <Input
+                    id="source-google-serving-config"
+                    className="mono mt-2"
+                    value={form.googleServingConfig}
+                    onChange={(event) =>
+                      updateForm({ googleServingConfig: event.target.value })
+                    }
+                    placeholder={`projects/project-id/locations/${form.googleLocation}/collections/default_collection/dataStores/data-store/servingConfigs/default_config`}
+                    aria-invalid={
+                      form.googleServingConfig.length > 0 &&
+                      (!googleServingConfigPattern.test(
+                        form.googleServingConfig.trim()
+                      ) ||
+                        !form.googleServingConfig.includes(
+                          `/locations/${form.googleLocation}/`
+                        ))
+                    }
+                  />
+                </div>
+              </>
             )}
             {form.authType !== "none" && (
               <div className="sm:col-span-2">
@@ -444,7 +538,8 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                 aria-invalid={!validHTTPSURL(form.termsPolicyURL)}
                 readOnly={
                   form.sourceType === SourceType.Bilibili ||
-                  form.sourceType === SourceType.Weibo
+                  form.sourceType === SourceType.Weibo ||
+                  form.sourceType === SourceType.GoogleAgentSearch
                 }
               />
             </div>
@@ -473,7 +568,10 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                         (form.sourceType === SourceType.Weibo &&
                           (option.key === "allowBodyStorage" ||
                             option.key === "requiresAttribution" ||
-                            option.key === "requiresDeletionSync"))
+                            option.key === "requiresDeletionSync")) ||
+                        (form.sourceType === SourceType.GoogleAgentSearch &&
+                          (option.key === "allowBodyStorage" ||
+                            option.key === "requiresAttribution"))
                       }
                     />
                     {option.label}
@@ -487,6 +585,8 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                   ? "仅轮询已授权账号的视频和专栏；授权撤销后自动停用，并按来源政策同步删除状态。"
                   : form.sourceType === SourceType.Weibo
                   ? "只调用当前 Token 已获套餐授权的关键词命令；不可见或删除提示不保存正文，也不抓取微博网页。"
+                  : form.sourceType === SourceType.GoogleAgentSearch
+                  ? "只保存已配置数据存储返回的标题、HTTPS 链接和 snippet；不抓取结果网页，也不把限定域搜索描述为全网搜索。"
                   : "只保存来源 Feed 实际提供的正文/摘要，不抓取原网页；启用前确认来源条款。"}
               </p>
             </div>
@@ -529,6 +629,20 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                   账号须完成开发者认证、开通套餐或试用并取得 API
                   Token；健康探测还会确认 search statuses/limited 当前可用。MVP
                   不支持账号时间线、热搜页或网页抓取。
+                </AlertDescription>
+              </Alert>
+            )}
+            {form.sourceType === SourceType.GoogleAgentSearch && (
+              <Alert className="sm:col-span-2">
+                <TriangleAlert />
+                <div className="mb-1 font-medium leading-none tracking-tight">
+                  Google 搜索迁移边界
+                </div>
+                <AlertDescription>
+                  Custom Search JSON API 已关闭新客户，并将在 2027-01-01
+                  停用存量服务。此来源仅搜索你在 Agent Search
+                  中配置的限定域数据存储；全网搜索需要另行取得 Google
+                  正式方案，系统不会降级抓取 Google 搜索页。
                 </AlertDescription>
               </Alert>
             )}

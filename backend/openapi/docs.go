@@ -7945,7 +7945,8 @@ const docTemplate = `{
                         "x",
                         "bing_grounding",
                         "bilibili",
-                        "weibo"
+                        "weibo",
+                        "google_agent_search"
                     ]
                 },
                 "terms_policy_url": {
@@ -10445,6 +10446,12 @@ const docTemplate = `{
                 "content_retention_days": {
                     "type": "integer"
                 },
+                "google_location": {
+                    "type": "string"
+                },
+                "google_serving_config": {
+                    "type": "string"
+                },
                 "grounding_data_boundary_approved": {
                     "type": "boolean"
                 },
@@ -10491,6 +10498,12 @@ const docTemplate = `{
                 },
                 "content_retention_days": {
                     "type": "integer"
+                },
+                "google_location": {
+                    "type": "string"
+                },
+                "google_serving_config": {
+                    "type": "string"
                 },
                 "grounding_data_boundary_approved": {
                     "type": "boolean"
@@ -10865,7 +10878,8 @@ const docTemplate = `{
                         "x",
                         "bing_grounding",
                         "bilibili",
-                        "weibo"
+                        "weibo",
+                        "google_agent_search"
                     ]
                 },
                 "terms_policy_url": {

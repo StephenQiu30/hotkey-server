@@ -291,6 +291,38 @@ func TestWeiboSourceStartsDisabledAndRequiresHealthyCapabilityProbe(t *testing.T
 	}
 }
 
+func TestGoogleAgentSearchStartsDisabledAndRequiresHealthyCapabilityProbe(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	admin := seedAdmin(t, runtime)
+	service := newService(t, runtime, usageReader{})
+	config := domain.DefaultSourceConfig()
+	config.RequiresAttribution = true
+	config.GoogleLocation = "global"
+	config.GoogleServingConfig = "projects/hotkey-demo/locations/global/collections/default_collection/dataStores/news/servingConfigs/default_config"
+	created, err := service.Create(context.Background(), sourceapplication.CreateInput{Subject: admin, Connection: domain.SourceConnection{
+		SourceType: domain.SourceTypeGoogleAgentSearch, Name: "Google Agent Search", Endpoint: domain.GoogleAgentSearchGlobalEndpoint,
+		AuthType: domain.AuthTypeBearer, CredentialRef: "env:GOOGLE_AGENT_SEARCH_TOKEN", Config: config, Enabled: true,
+		TermsPolicyURL: domain.GoogleCloudTerms,
+	}})
+	if err != nil {
+		t.Fatalf("Create(Google Agent Search): %v", err)
+	}
+	if created.Enabled || created.HealthStatus != domain.HealthStatusUnknown || created.Config.GoogleServingConfig != config.GoogleServingConfig {
+		t.Fatalf("created Google Agent Search source = %#v", created)
+	}
+	if _, err := service.Enable(context.Background(), sourceapplication.LifecycleInput{Subject: admin, ID: created.ID, ExpectedVersion: created.Version}); appCode(err) != sharederrors.CodeSourceConnectionUnavailable {
+		t.Fatalf("Enable(unprobed Google Agent Search) code = %d", appCode(err))
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE source_connections SET health_status = 'healthy' WHERE id = $1`, created.ID); err != nil {
+		t.Fatalf("mark Google Agent Search healthy: %v", err)
+	}
+	enabled, err := service.Enable(context.Background(), sourceapplication.LifecycleInput{Subject: admin, ID: created.ID, ExpectedVersion: created.Version})
+	if err != nil || !enabled.Enabled {
+		t.Fatalf("Enable(healthy Google Agent Search) = %#v, %v", enabled, err)
+	}
+}
+
 func TestSourceServiceUsesSourceOwnedAvailabilityForActiveMonitorGroup(t *testing.T) {
 	runtime := openRuntime(t)
 	defer func() { _ = runtime.Close() }()
