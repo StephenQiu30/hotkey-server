@@ -590,6 +590,16 @@ func requireAdmin(subject identitydomain.Subject) error {
 	return nil
 }
 
+func requireEditor(subject identitydomain.Subject) error {
+	if err := requireAuthenticated(subject); err != nil {
+		return err
+	}
+	if subject.Role == identitydomain.RoleViewer {
+		return sharederrors.New(sharederrors.CodeForbidden, 403, "")
+	}
+	return nil
+}
+
 func sourceReadError(err error) error {
 	if err == nil {
 		return nil

@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"strconv"
 	"time"
 
 	identitydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
@@ -21,11 +22,17 @@ type CollectionControlDependencies struct {
 	Connectors domain.CollectionConnectorRegistry
 	Metrics    CollectionMetrics
 	Retries    CollectionRetryActivator
+	Manuals    ManualCollectionActivator
+	Targets    domain.ManualCollectionTargetReader
 	Now        func() time.Time
 }
 
 type CollectionRetryActivator interface {
 	Reactivate(context.Context, domain.CollectionRunRetry) error
+}
+
+type ManualCollectionActivator interface {
+	Enqueue(context.Context, domain.ManualCollectionCommand) (bool, error)
 }
 
 type CollectionControlService struct {
@@ -35,6 +42,8 @@ type CollectionControlService struct {
 	connectors domain.CollectionConnectorRegistry
 	metrics    CollectionMetrics
 	retries    CollectionRetryActivator
+	manuals    ManualCollectionActivator
+	targets    domain.ManualCollectionTargetReader
 	now        func() time.Time
 }
 
@@ -50,7 +59,8 @@ func NewCollectionControlService(dependencies CollectionControlDependencies) (*C
 	}
 	return &CollectionControlService{
 		runtime: dependencies.Runtime, sources: dependencies.Sources, runs: dependencies.Runs,
-		connectors: dependencies.Connectors, metrics: dependencies.Metrics, retries: dependencies.Retries, now: dependencies.Now,
+		connectors: dependencies.Connectors, metrics: dependencies.Metrics, retries: dependencies.Retries,
+		manuals: dependencies.Manuals, targets: dependencies.Targets, now: dependencies.Now,
 	}, nil
 }
 
@@ -64,13 +74,18 @@ type CollectionRunRetryInput struct {
 	ID      int64
 }
 
+type ManualCollectionInput struct {
+	Subject   identitydomain.Subject
+	MonitorID int64
+}
+
 type SourceHealthInput struct {
 	Subject identitydomain.Subject
 	ID      int64
 }
 
 func (service *CollectionControlService) List(ctx context.Context, input CollectionRunListInput) (domain.CollectionRunPage, error) {
-	if err := requireAdmin(input.Subject); err != nil {
+	if err := requireEditor(input.Subject); err != nil {
 		return domain.CollectionRunPage{}, err
 	}
 	page, err := service.runs.ListRuns(ctx, input.Query)
@@ -80,6 +95,75 @@ func (service *CollectionControlService) List(ctx context.Context, input Collect
 	}
 	service.metrics.RecordCollectionOperation("list", "success")
 	return page, nil
+}
+
+// Manual submits one durable collect_source job per source/query group. It
+// never calls a Connector and relies on the queue's unique key for atomic
+// five-minute cooldown reuse.
+func (service *CollectionControlService) Manual(ctx context.Context, input ManualCollectionInput) (domain.ManualCollectionSummary, error) {
+	if err := requireEditor(input.Subject); err != nil {
+		return domain.ManualCollectionSummary{}, err
+	}
+	if input.MonitorID <= 0 {
+		return domain.ManualCollectionSummary{}, domain.InvalidCollectionRequest()
+	}
+	if service.manuals == nil || service.targets == nil {
+		return domain.ManualCollectionSummary{}, sharederrors.New(sharederrors.CodeUnavailable, 503, "")
+	}
+	now := service.now().UTC()
+	type groupKey struct {
+		sourceID  int64
+		signature string
+	}
+	type group struct {
+		configVersionID int64
+		interval        time.Duration
+	}
+	var summary domain.ManualCollectionSummary
+	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
+		lockKey := "hotkey.manual_collection:" + strconv.FormatInt(input.MonitorID, 10) + ":" + strconv.FormatInt(now.Truncate(5*time.Minute).Unix(), 10)
+		if _, err := transaction.SQL.ExecContext(transactionCtx, `SELECT pg_advisory_xact_lock(hashtext($1))`, lockKey); err != nil {
+			return err
+		}
+		targets, err := service.targets.ListForManualCollection(transactionCtx, input.MonitorID)
+		if err != nil {
+			return err
+		}
+		groups := make(map[groupKey]group, len(targets))
+		for _, target := range targets {
+			key := groupKey{sourceID: target.SourceConnectionID, signature: target.QuerySignature}
+			candidate := group{configVersionID: target.MonitorConfigVersionID, interval: target.CollectionInterval}
+			if current, ok := groups[key]; !ok || candidate.configVersionID < current.configVersionID {
+				groups[key] = candidate
+			}
+		}
+		summary.Requested = len(groups)
+		summary.CooldownUntil = now.Truncate(5 * time.Minute).Add(5 * time.Minute)
+		for key, item := range groups {
+			created, err := service.manuals.Enqueue(transactionCtx, domain.ManualCollectionCommand{
+				SourceConnectionID: key.sourceID, ConfigVersionID: item.configVersionID, QuerySignature: key.signature,
+				WindowStart: now.Add(-item.interval), WindowEnd: now, ScheduledAt: now,
+			})
+			if err != nil {
+				return err
+			}
+			if created {
+				summary.Created++
+			} else {
+				summary.Reused++
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		service.metrics.RecordCollectionOperation("manual", "error")
+		if errors.Is(err, sharedrepository.ErrNotFound) {
+			return domain.ManualCollectionSummary{}, domain.CollectionRunConflict()
+		}
+		return domain.ManualCollectionSummary{}, collectionControlError(err)
+	}
+	service.metrics.RecordCollectionOperation("manual", "success")
+	return summary, nil
 }
 
 // Retry atomically restores the failed window and reactivates its original

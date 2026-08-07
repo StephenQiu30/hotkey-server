@@ -24,7 +24,7 @@ func TestCollectionAdminRoutesEnforceRolesAndExposeOnlySafeRunFacts(t *testing.T
 		ErrorCode: "temporary", StartedAt: timePtr(time.Date(2026, 7, 16, 1, 2, 3, 0, time.UTC)),
 		FinishedAt: timePtr(time.Date(2026, 7, 16, 1, 3, 3, 0, time.UTC)),
 		Targets:    []domain.CollectionRunTargetSummary{{ID: 73, Status: domain.CollectionRunFailed, CandidateCount: 7, AcceptedCount: 2, RejectedCount: 5, ErrorCode: "temporary"}},
-	}}}}
+	}}}, manual: domain.ManualCollectionSummary{Requested: 2, Created: 1, Reused: 1, CooldownUntil: time.Date(2026, 7, 16, 1, 5, 0, 0, time.UTC)}}
 
 	for _, test := range []struct {
 		name       string
@@ -35,6 +35,9 @@ func TestCollectionAdminRoutesEnforceRolesAndExposeOnlySafeRunFacts(t *testing.T
 		wantCode   int
 	}{
 		{name: "viewer list denied", role: httptransport.RoleViewer, path: "/api/v1/collection-runs", method: http.MethodGet, wantStatus: http.StatusForbidden, wantCode: sharederrors.CodeForbidden},
+		{name: "viewer manual denied", role: httptransport.RoleViewer, path: "/api/v1/monitors/9/collect", method: http.MethodPost, wantStatus: http.StatusForbidden, wantCode: sharederrors.CodeForbidden},
+		{name: "editor list", role: httptransport.RoleEditor, path: "/api/v1/collection-runs", method: http.MethodGet, wantStatus: http.StatusOK, wantCode: 0},
+		{name: "editor manual", role: httptransport.RoleEditor, path: "/api/v1/monitors/9/collect", method: http.MethodPost, wantStatus: http.StatusOK, wantCode: 0},
 		{name: "editor retry denied", role: httptransport.RoleEditor, path: "/api/v1/collection-runs/41/retry", method: http.MethodPost, wantStatus: http.StatusForbidden, wantCode: sharederrors.CodeForbidden},
 		{name: "admin list", role: httptransport.RoleAdmin, path: "/api/v1/collection-runs", method: http.MethodGet, wantStatus: http.StatusOK, wantCode: 0},
 		{name: "admin retry", role: httptransport.RoleAdmin, path: "/api/v1/collection-runs/41/retry", method: http.MethodPost, wantStatus: http.StatusOK, wantCode: 0},
@@ -69,8 +72,8 @@ func TestCollectionAdminRoutesEnforceRolesAndExposeOnlySafeRunFacts(t *testing.T
 			}
 		})
 	}
-	if service.listCalls != 1 || service.retryCalls != 1 || service.healthCalls != 1 {
-		t.Fatalf("service calls = list:%d retry:%d health:%d, want 1 each", service.listCalls, service.retryCalls, service.healthCalls)
+	if service.listCalls != 2 || service.manualCalls != 1 || service.retryCalls != 1 || service.healthCalls != 1 {
+		t.Fatalf("service calls = list:%d manual:%d retry:%d health:%d", service.listCalls, service.manualCalls, service.retryCalls, service.healthCalls)
 	}
 }
 
@@ -129,15 +132,17 @@ type collectionControlServiceFake struct {
 	page        domain.CollectionRunPage
 	retry       domain.CollectionRunSummary
 	health      domain.SourceHealth
+	manual      domain.ManualCollectionSummary
 	retryErr    error
 	listCalls   int
 	retryCalls  int
 	healthCalls int
+	manualCalls int
 }
 
 func (service *collectionControlServiceFake) List(_ context.Context, input sourceapplication.CollectionRunListInput) (domain.CollectionRunPage, error) {
 	service.listCalls++
-	if input.Subject.Role != identitydomain.RoleAdmin {
+	if input.Subject.Role == identitydomain.RoleViewer {
 		return domain.CollectionRunPage{}, sharederrors.New(sharederrors.CodeForbidden, http.StatusForbidden, "")
 	}
 	return service.page, nil
@@ -152,6 +157,14 @@ func (service *collectionControlServiceFake) Retry(_ context.Context, input sour
 		return domain.CollectionRunSummary{}, service.retryErr
 	}
 	return service.retry, nil
+}
+
+func (service *collectionControlServiceFake) Manual(_ context.Context, input sourceapplication.ManualCollectionInput) (domain.ManualCollectionSummary, error) {
+	service.manualCalls++
+	if input.Subject.Role == identitydomain.RoleViewer {
+		return domain.ManualCollectionSummary{}, sharederrors.New(sharederrors.CodeForbidden, http.StatusForbidden, "")
+	}
+	return service.manual, nil
 }
 
 func (service *collectionControlServiceFake) Health(_ context.Context, input sourceapplication.SourceHealthInput) (domain.SourceHealth, error) {

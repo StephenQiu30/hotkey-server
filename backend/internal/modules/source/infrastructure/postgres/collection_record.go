@@ -15,6 +15,8 @@ type collectionRunRecord struct {
 	retryAfter                sql.NullTime
 	pageCount                 int
 	windowStart, windowEnd    time.Time
+	scheduledAt               time.Time
+	triggerType               string
 	status                    string
 }
 
@@ -54,7 +56,7 @@ func scanCollectionRun(scanner interface{ Scan(...any) error }) (domain.Collecti
 	if err := scanner.Scan(
 		&record.id, &record.sourceConnectionID, &record.querySignature,
 		&record.requestCursor, &record.nextCursor, &record.etag, &record.lastModified,
-		&record.retryAfter, &record.pageCount, &record.windowStart, &record.windowEnd, &record.status,
+		&record.retryAfter, &record.pageCount, &record.windowStart, &record.windowEnd, &record.scheduledAt, &record.triggerType, &record.status,
 	); err != nil {
 		return domain.CollectionRun{}, err
 	}
@@ -62,7 +64,8 @@ func scanCollectionRun(scanner interface{ Scan(...any) error }) (domain.Collecti
 		ID: record.id, SourceConnectionID: record.sourceConnectionID, QuerySignature: record.querySignature,
 		RequestCursor: record.requestCursor.String, NextCursor: record.nextCursor.String,
 		ETag: record.etag.String, LastModified: record.lastModified.String, PageCount: record.pageCount,
-		WindowStart: record.windowStart.UTC(), WindowEnd: record.windowEnd.UTC(), Status: domain.CollectionRunStatus(record.status),
+		WindowStart: record.windowStart.UTC(), WindowEnd: record.windowEnd.UTC(), ScheduledAt: record.scheduledAt.UTC(),
+		TriggerType: domain.CollectionTriggerType(record.triggerType), Status: domain.CollectionRunStatus(record.status),
 	}
 	if record.retryAfter.Valid {
 		value := record.retryAfter.Time.UTC()
@@ -73,7 +76,7 @@ func scanCollectionRun(scanner interface{ Scan(...any) error }) (domain.Collecti
 
 const collectionRunColumns = `
 id, source_connection_id, query_signature, request_cursor, next_cursor, etag,
-last_modified, retry_after, page_count, window_start, window_end, status`
+last_modified, retry_after, page_count, window_start, window_end, scheduled_at, trigger_type, status`
 
 const collectionRunSummaryColumns = `
 id, status, candidate_count, accepted_count, rejected_count, error_code, started_at, finished_at`

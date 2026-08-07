@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   postMonitorsIdArchive: vi.fn(),
   postMonitorsIdDraftAiCandidates: vi.fn(),
   postMonitorsIdDraftRulesRuleIdApproval: vi.fn(),
+  postMonitorsIdCollect: vi.fn(),
   postMonitorsIdRestore: vi.fn(),
   deleteMonitorsId: vi.fn(),
   getSourceConnections: vi.fn(),
@@ -40,6 +41,9 @@ vi.mock("@/services/hotkey/hotkey-server/monitors", () => ({
 }));
 vi.mock("@/services/hotkey/hotkey-server/sources", () => ({
   getSourceConnections: mocks.getSourceConnections,
+}));
+vi.mock("@/services/hotkey/hotkey-server/collectionRuns", () => ({
+  postMonitorsIdCollect: mocks.postMonitorsIdCollect,
 }));
 
 import MonitorsPage from "@/app/dashboard/settings/page";
@@ -105,6 +109,7 @@ describe("MonitorsPage", () => {
     mocks.postMonitorsIdDraftAiCandidates.mockResolvedValue({ data: { id: 41, origin: "ai", approval_status: "pending" } });
     mocks.postMonitorsIdDraftRulesRuleIdApproval.mockResolvedValue({ data: null });
     mocks.postMonitorsIdPause.mockResolvedValue({ data: { ...monitor, version: 5, status: "paused" } });
+    mocks.postMonitorsIdCollect.mockResolvedValue({ data: { requested: 1, created: 1, reused: 0, cooldown_until: "2026-08-07T09:05:00Z" } });
   });
 
   it("keeps viewer access read-only without requesting source management data", async () => {
@@ -136,6 +141,16 @@ describe("MonitorsPage", () => {
     ));
     expect(screen.queryByRole("button", { name: "预览并发布" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "暂停" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "立即搜索" })).toBeInTheDocument();
+  });
+
+  it("submits an active published monitor through the manual collection API", async () => {
+    setRole(UserRole.Editor);
+    render(<MonitorsPage />);
+
+    await userEvent.setup().click(await screen.findByRole("button", { name: "立即搜索" }));
+
+    await waitFor(() => expect(mocks.postMonitorsIdCollect).toHaveBeenCalledWith({ id: 1 }));
   });
 
   it("requires a successful preview before an admin can publish the exact draft", async () => {

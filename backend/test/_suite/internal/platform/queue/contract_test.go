@@ -19,6 +19,8 @@ func TestPayloadRequiresVersionedBoundedEnvelope(t *testing.T) {
 		{name: "missing version", payload: Payload{EntityID: 1}, wantErr: true},
 		{name: "oversized hash", payload: Payload{EntityID: 1, EntityVersion: 1, InputHash: strings.Repeat("x", 129)}, wantErr: true},
 		{name: "invalid window", payload: Payload{EntityID: 1, EntityVersion: 1, WindowStart: time.Unix(20, 0), WindowEnd: time.Unix(10, 0)}, wantErr: true},
+		{name: "manual trigger", payload: Payload{EntityID: 1, EntityVersion: 1, TriggerType: "manual"}},
+		{name: "invalid trigger", payload: Payload{EntityID: 1, EntityVersion: 1, TriggerType: "browser"}, wantErr: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

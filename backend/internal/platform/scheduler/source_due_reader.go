@@ -21,6 +21,8 @@ type CollectionDueSource struct {
 	CollectionInterval time.Duration
 }
 
+const ManualCollectionCooldown = 5 * time.Minute
+
 func (source CollectionDueSource) Validate() error {
 	if source.SourceConnectionID <= 0 || source.ConfigVersionID <= 0 || source.QuerySignature == "" || len(source.QuerySignature) > 128 || source.NextPollAt.IsZero() {
 		return fmt.Errorf("invalid collection due source")
@@ -104,4 +106,14 @@ func (scheduler *CollectionScheduler) Run(ctx context.Context, interval time.Dur
 func CollectionUniqueKey(sourceConnectionID int64, querySignature string, windowStart, windowEnd time.Time) string {
 	sum := sha256.Sum256([]byte(fmt.Sprintf("collect_source:%d:%s:%s:%s", sourceConnectionID, querySignature, windowStart.UTC().Format(time.RFC3339Nano), windowEnd.UTC().Format(time.RFC3339Nano))))
 	return hex.EncodeToString(sum[:])
+}
+
+func ManualCollectionUniqueKey(sourceConnectionID int64, querySignature string, scheduledAt time.Time) string {
+	bucket := scheduledAt.UTC().Truncate(ManualCollectionCooldown)
+	sum := sha256.Sum256([]byte(fmt.Sprintf("collect_source:manual:%d:%s:%s", sourceConnectionID, querySignature, bucket.Format(time.RFC3339Nano))))
+	return hex.EncodeToString(sum[:])
+}
+
+func ManualCollectionCooldownUntil(scheduledAt time.Time) time.Time {
+	return scheduledAt.UTC().Truncate(ManualCollectionCooldown).Add(ManualCollectionCooldown)
 }

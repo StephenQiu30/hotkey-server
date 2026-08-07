@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -380,7 +381,29 @@ type CollectionRequest struct {
 	Regions            []string
 	WindowStart        time.Time
 	WindowEnd          time.Time
+	ScheduledAt        time.Time
+	TriggerType        CollectionTriggerType
 	Targets            []PublishedCollectionTarget
+}
+
+type CollectionTriggerType string
+
+const (
+	CollectionTriggerSchedule  CollectionTriggerType = "schedule"
+	CollectionTriggerManual    CollectionTriggerType = "manual"
+	CollectionTriggerRetry     CollectionTriggerType = "retry"
+	CollectionTriggerReconcile CollectionTriggerType = "reconcile"
+)
+
+func (trigger CollectionTriggerType) Valid() bool {
+	return trigger == CollectionTriggerSchedule || trigger == CollectionTriggerManual || trigger == CollectionTriggerRetry || trigger == CollectionTriggerReconcile
+}
+
+func (request CollectionRequest) EffectiveTriggerType() CollectionTriggerType {
+	if request.TriggerType == "" {
+		return CollectionTriggerSchedule
+	}
+	return request.TriggerType
 }
 
 func (request CollectionRequest) Validate() error {
@@ -392,6 +415,9 @@ func (request CollectionRequest) Validate() error {
 	}
 	if request.WindowStart.IsZero() || request.WindowEnd.IsZero() || !request.WindowEnd.After(request.WindowStart) {
 		return fmt.Errorf("collection request window is invalid")
+	}
+	if !request.EffectiveTriggerType().Valid() {
+		return fmt.Errorf("collection request trigger type is invalid")
 	}
 	if len(request.Targets) == 0 {
 		return fmt.Errorf("collection request requires at least one target")
@@ -429,7 +455,39 @@ type CollectionRun struct {
 	PageCount          int
 	WindowStart        time.Time
 	WindowEnd          time.Time
+	ScheduledAt        time.Time
+	TriggerType        CollectionTriggerType
 	Status             CollectionRunStatus
+}
+
+type ManualCollectionTargetReader interface {
+	ListForManualCollection(context.Context, int64) ([]PublishedCollectionTarget, error)
+}
+
+type ManualCollectionCommand struct {
+	SourceConnectionID int64
+	ConfigVersionID    int64
+	QuerySignature     string
+	WindowStart        time.Time
+	WindowEnd          time.Time
+	ScheduledAt        time.Time
+}
+
+func (command ManualCollectionCommand) Validate() error {
+	if command.SourceConnectionID <= 0 || command.ConfigVersionID <= 0 || !validSHA256(command.QuerySignature) {
+		return fmt.Errorf("manual collection identity is invalid")
+	}
+	if command.WindowStart.IsZero() || command.WindowEnd.IsZero() || !command.WindowEnd.After(command.WindowStart) || command.ScheduledAt.IsZero() {
+		return fmt.Errorf("manual collection time is invalid")
+	}
+	return nil
+}
+
+type ManualCollectionSummary struct {
+	Requested     int
+	Created       int
+	Reused        int
+	CooldownUntil time.Time
 }
 
 // CollectionRunRetry carries the immutable target identity captured with the

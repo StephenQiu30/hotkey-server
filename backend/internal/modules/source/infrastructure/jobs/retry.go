@@ -47,7 +47,11 @@ func (activator *CollectionRetryActivator) Reactivate(ctx context.Context, retry
 		expected[target] = struct{}{}
 	}
 	run := retry.Run
-	targets, err := activator.targets.ListForCollection(ctx, run.SourceConnectionID, minimumConfigVersionID, run.QuerySignature, run.WindowStart, run.WindowEnd)
+	triggerType := run.TriggerType
+	if triggerType == sourcedomain.CollectionTriggerRetry || triggerType == sourcedomain.CollectionTriggerReconcile || triggerType == "" {
+		triggerType = sourcedomain.CollectionTriggerSchedule
+	}
+	targets, err := activator.targets.ListForCollection(ctx, run.SourceConnectionID, minimumConfigVersionID, run.QuerySignature, run.WindowStart, run.WindowEnd, triggerType)
 	if err != nil {
 		if errors.Is(err, sharedrepository.ErrNotFound) {
 			return fmt.Errorf("%w: collection targets are no longer eligible", sharedrepository.ErrConflict)
@@ -65,7 +69,11 @@ func (activator *CollectionRetryActivator) Reactivate(ctx context.Context, retry
 			return fmt.Errorf("%w: collection target set changed", sharedrepository.ErrConflict)
 		}
 	}
-	_, err = activator.jobs.ReactivateByUniqueKey(ctx, queue.KindCollectSource, scheduler.CollectionUniqueKey(run.SourceConnectionID, run.QuerySignature, run.WindowStart, run.WindowEnd))
+	uniqueKey := scheduler.CollectionUniqueKey(run.SourceConnectionID, run.QuerySignature, run.WindowStart, run.WindowEnd)
+	if triggerType == sourcedomain.CollectionTriggerManual {
+		uniqueKey = scheduler.ManualCollectionUniqueKey(run.SourceConnectionID, run.QuerySignature, run.ScheduledAt)
+	}
+	_, err = activator.jobs.ReactivateByUniqueKey(ctx, queue.KindCollectSource, uniqueKey)
 	if err != nil {
 		if errors.Is(err, sharedrepository.ErrNotFound) {
 			return fmt.Errorf("%w: original collection job is unavailable", sharedrepository.ErrConflict)

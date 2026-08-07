@@ -43,3 +43,19 @@ func TestCollectionSchedulerRejectsInvalidDueSource(t *testing.T) {
 		t.Fatal("invalid due source was accepted")
 	}
 }
+
+func TestManualCollectionUniqueKeyUsesFiveMinuteCooldownBuckets(t *testing.T) {
+	first := time.Date(2026, 7, 17, 9, 1, 0, 0, time.UTC)
+	second := first.Add(3 * time.Minute)
+	next := first.Add(5 * time.Minute)
+	firstKey := ManualCollectionUniqueKey(9, "query-signature", first)
+	if secondKey := ManualCollectionUniqueKey(9, "query-signature", second); secondKey != firstKey {
+		t.Fatalf("same cooldown bucket keys differ: %q != %q", secondKey, firstKey)
+	}
+	if nextKey := ManualCollectionUniqueKey(9, "query-signature", next); nextKey == firstKey {
+		t.Fatal("next cooldown bucket reused the previous key")
+	}
+	if got := ManualCollectionCooldownUntil(first); !got.Equal(time.Date(2026, 7, 17, 9, 5, 0, 0, time.UTC)) {
+		t.Fatalf("cooldown until = %s", got)
+	}
+}

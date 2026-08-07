@@ -74,6 +74,31 @@ func TestCollectionRepositoryCreateOrReuseRunIsRaceSafeAndCreatesAllTargets(t *t
 	}
 }
 
+func TestCollectionRepositoryPersistsManualRunIdentity(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	repository := sourcepostgres.NewCollectionRepository(runtime)
+	request := collectionRequestForRepository(t, runtime, "manual-run", 1)
+	request.TriggerType = domain.CollectionTriggerManual
+	request.ScheduledAt = time.Date(2026, time.July, 16, 8, 3, 0, 0, time.UTC)
+
+	run, created, err := repository.CreateOrReuseRun(context.Background(), request)
+	if err != nil || !created {
+		t.Fatalf("CreateOrReuseRun(manual) = %#v / %t / %v", run, created, err)
+	}
+	if run.TriggerType != domain.CollectionTriggerManual || !run.ScheduledAt.Equal(request.ScheduledAt) {
+		t.Fatalf("manual run identity = trigger %q scheduled %s", run.TriggerType, run.ScheduledAt)
+	}
+	var triggerType string
+	var scheduledAt time.Time
+	if err := runtime.SQL.QueryRow(`SELECT trigger_type, scheduled_at FROM collection_runs WHERE id = $1`, run.ID).Scan(&triggerType, &scheduledAt); err != nil {
+		t.Fatal(err)
+	}
+	if triggerType != "manual" || !scheduledAt.Equal(request.ScheduledAt) {
+		t.Fatalf("persisted manual run = trigger %q scheduled %s", triggerType, scheduledAt)
+	}
+}
+
 func TestCollectionRepositoryRollsBackCaptureBeforeCheckpointAdvance(t *testing.T) {
 	runtime := openRuntime(t)
 	defer func() { _ = runtime.Close() }()

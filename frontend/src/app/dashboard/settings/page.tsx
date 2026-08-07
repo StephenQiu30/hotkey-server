@@ -33,6 +33,7 @@ import {
   postMonitorsIdRestore,
   putMonitorsIdDraft,
 } from "@/services/hotkey/hotkey-server/monitors";
+import { postMonitorsIdCollect } from "@/services/hotkey/hotkey-server/collectionRuns";
 import { getSourceConnections } from "@/services/hotkey/hotkey-server/sources";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -200,6 +201,24 @@ export default function MonitorsPage() {
     }
   };
 
+  const collectNow = async (monitor: HotKeyAPI.MonitorResponse) => {
+    if (!canEdit || monitor.id == null) return;
+    setBusyID(monitor.id);
+    try {
+      const result = await postMonitorsIdCollect({ id: monitor.id });
+      const created = result.data?.created ?? 0;
+      const reused = result.data?.reused ?? 0;
+      const cooldown = result.data?.cooldown_until
+        ? new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(new Date(result.data.cooldown_until))
+        : "稍后";
+      toast.success(`立即搜索已提交：新建 ${created}，复用 ${reused}；${cooldown} 后可再次提交。可前往采集内容查看进度。`);
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : "立即搜索提交失败");
+    } finally {
+      setBusyID(undefined);
+    }
+  };
+
   const deleteMonitor = async () => {
     if (deleteTarget?.id == null) return;
     setBusyID(deleteTarget.id);
@@ -295,6 +314,7 @@ export default function MonitorsPage() {
                 {canEdit && monitor.status !== MonitorStatus.Archived && <Button variant="outline" size="sm" className="gap-1.5" onClick={() => openEdit(monitor)}><Pencil />编辑草稿</Button>}
                 {canAdmin && monitor.draft && <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setCandidateTarget(monitor)}><Sparkles />导入 AI 候选</Button>}
                 {canEdit && monitor.draft && <Button size="sm" className="gap-1.5" disabled={busy} onClick={() => void previewMonitor(monitor)}>{busy && <Loader2 className="animate-spin" />}{canAdmin ? "预览并发布" : "预览配置"}</Button>}
+                {canEdit && monitor.status === MonitorStatus.Active && monitor.published && <Button variant="outline" size="sm" className="gap-1.5" disabled={busy} onClick={() => void collectNow(monitor)}>{busy ? <Loader2 className="animate-spin" /> : <Search />}立即搜索</Button>}
                 {canAdmin && monitor.status === MonitorStatus.Active && <Button variant="outline" size="sm" className="gap-1.5" disabled={busy} onClick={() => void lifecycle(monitor, "pause")}><Pause />暂停</Button>}
                 {canAdmin && monitor.status === MonitorStatus.Paused && <Button variant="outline" size="sm" className="gap-1.5" disabled={busy} onClick={() => void lifecycle(monitor, "resume")}><Play />恢复运行</Button>}
                 {canAdmin && monitor.status !== MonitorStatus.Archived && <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" disabled={busy} onClick={() => void lifecycle(monitor, "archive")}><Archive />归档</Button>}

@@ -3292,6 +3292,69 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/monitors/{id}/collect": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "collection-runs"
+                ],
+                "summary": "Trigger an immediate monitor collection",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.CollectionResult-http_ManualCollectionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.CollectionResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.CollectionResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.CollectionResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.CollectionResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.CollectionResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/monitors/{id}/contents/{content_id}/feedback": {
             "put": {
                 "security": [
@@ -7275,6 +7338,20 @@ const docTemplate = `{
                 }
             }
         },
+        "http.CollectionResult-http_ManualCollectionResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.ManualCollectionResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "http.CollectionResult-http_SourceHealthResponse": {
             "type": "object",
             "properties": {
@@ -8861,6 +8938,23 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.ManualCollectionResponse": {
+            "type": "object",
+            "properties": {
+                "cooldown_until": {
+                    "type": "string"
+                },
+                "created": {
+                    "type": "integer"
+                },
+                "requested": {
+                    "type": "integer"
+                },
+                "reused": {
                     "type": "integer"
                 }
             }

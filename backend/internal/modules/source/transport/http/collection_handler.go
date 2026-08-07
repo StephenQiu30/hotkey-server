@@ -12,8 +12,41 @@ import (
 
 type collectionControlService interface {
 	List(context.Context, sourceapplication.CollectionRunListInput) (domain.CollectionRunPage, error)
+	Manual(context.Context, sourceapplication.ManualCollectionInput) (domain.ManualCollectionSummary, error)
 	Retry(context.Context, sourceapplication.CollectionRunRetryInput) (domain.CollectionRunSummary, error)
 	Health(context.Context, sourceapplication.SourceHealthInput) (domain.SourceHealth, error)
+}
+
+// Manual submits an immediate durable collection for an active published
+// Monitor. The request cannot supply a query, source, window or connector.
+// @Summary Trigger an immediate monitor collection
+// @Tags collection-runs
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "monitor ID"
+// @Success 200 {object} CollectionResult[ManualCollectionResponse]
+// @Failure 400 {object} CollectionResult[EmptyResponse]
+// @Failure 401 {object} CollectionResult[EmptyResponse]
+// @Failure 403 {object} CollectionResult[EmptyResponse]
+// @Failure 409 {object} CollectionResult[EmptyResponse]
+// @Failure 503 {object} CollectionResult[EmptyResponse]
+// @Router /api/v1/monitors/{id}/collect [post]
+func (handler *CollectionHandler) Manual(c *gin.Context) error {
+	httptransport.SetModule(c, "source")
+	subject, err := sourceSubject(c)
+	if err != nil {
+		return err
+	}
+	id, err := collectionResourceID(c, "monitor")
+	if err != nil {
+		return err
+	}
+	summary, err := handler.service.Manual(c.Request.Context(), sourceapplication.ManualCollectionInput{Subject: subject, MonitorID: id})
+	if err != nil {
+		return err
+	}
+	httptransport.OK(c, manualCollectionResponse(summary))
+	return nil
 }
 
 type CollectionHandler struct{ service collectionControlService }

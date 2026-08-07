@@ -36,6 +36,30 @@ func (reader *PublishedCollectionTargetReader) ListDue(ctx context.Context, now 
 	if now.IsZero() {
 		return nil, fmt.Errorf("%w: collection due time is required", sharedrepository.ErrInvalidInput)
 	}
+	return reader.listPublishedTargets(ctx, "checkpoint.next_poll_at <= $1", now.UTC())
+}
+
+// ListForManualCollection returns only the active published targets belonging
+// to the requested Monitor. It intentionally ignores checkpoint due time: the
+// API uses this projection only to submit bounded durable jobs, never to fetch.
+func (reader *PublishedCollectionTargetReader) ListForManualCollection(ctx context.Context, monitorID int64) ([]sourcedomain.PublishedCollectionTarget, error) {
+	if reader == nil || reader.runtime == nil || reader.runtime.SQL == nil {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	if monitorID <= 0 {
+		return nil, fmt.Errorf("%w: monitor id is required", sharedrepository.ErrInvalidInput)
+	}
+	targets, err := reader.listPublishedTargets(ctx, "monitor.id = $1", monitorID)
+	if err != nil {
+		return nil, err
+	}
+	if len(targets) == 0 {
+		return nil, fmt.Errorf("%w: active published monitor targets not found", sharedrepository.ErrNotFound)
+	}
+	return targets, nil
+}
+
+func (reader *PublishedCollectionTargetReader) listPublishedTargets(ctx context.Context, predicate string, args ...any) ([]sourcedomain.PublishedCollectionTarget, error) {
 	queryer := interface {
 		QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 	}(reader.runtime.SQL)
@@ -85,8 +109,8 @@ WHERE monitor.status = 'active'
   AND source_connection.enabled
   AND source_connection.deleted_at IS NULL
   AND monitor_source.query_signature IS NOT NULL
-  AND checkpoint.next_poll_at <= $1
-ORDER BY monitor_source.id ASC, rule.priority DESC, rule.id ASC`, now.UTC())
+  AND `+predicate+`
+ORDER BY monitor_source.id ASC, rule.priority DESC, rule.id ASC`, args...)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
@@ -169,17 +193,28 @@ func (reader *PublishedCollectionTargetReader) ListDueCollections(ctx context.Co
 // ListForCollection re-reads the published target projection for one durable
 // collect_source envelope. It intentionally reuses the same eligibility query
 // as Cron, so a target paused or unpublished after enqueue is not executed.
-func (reader *PublishedCollectionTargetReader) ListForCollection(ctx context.Context, sourceConnectionID, configVersionID int64, querySignature string, windowStart, windowEnd time.Time) ([]sourcedomain.PublishedCollectionTarget, error) {
+func (reader *PublishedCollectionTargetReader) ListForCollection(ctx context.Context, sourceConnectionID, configVersionID int64, querySignature string, windowStart, windowEnd time.Time, triggerType sourcedomain.CollectionTriggerType) ([]sourcedomain.PublishedCollectionTarget, error) {
 	if sourceConnectionID <= 0 || configVersionID <= 0 || querySignature == "" || windowStart.IsZero() || windowEnd.IsZero() || !windowEnd.After(windowStart) {
 		return nil, fmt.Errorf("invalid collection envelope")
 	}
-	targets, err := reader.ListDue(ctx, windowEnd.UTC())
+	var (
+		targets []sourcedomain.PublishedCollectionTarget
+		err     error
+	)
+	if triggerType == sourcedomain.CollectionTriggerManual {
+		targets, err = reader.listPublishedTargets(ctx, "monitor_source.source_connection_id = $1 AND monitor_source.query_signature = $2", sourceConnectionID, querySignature)
+	} else {
+		targets, err = reader.ListDue(ctx, windowEnd.UTC())
+	}
 	if err != nil {
 		return nil, err
 	}
 	matched := make([]sourcedomain.PublishedCollectionTarget, 0, len(targets))
 	for _, target := range targets {
-		if target.SourceConnectionID != sourceConnectionID || target.QuerySignature != querySignature || !target.Checkpoint.NextPollAt.UTC().Equal(windowStart.UTC()) {
+		if target.SourceConnectionID != sourceConnectionID || target.QuerySignature != querySignature {
+			continue
+		}
+		if triggerType != sourcedomain.CollectionTriggerManual && !target.Checkpoint.NextPollAt.UTC().Equal(windowStart.UTC()) {
 			continue
 		}
 		// The scheduler stores the smallest config version for a shared source

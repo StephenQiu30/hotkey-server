@@ -22,6 +22,7 @@ type Payload struct {
 	WindowStart   time.Time `json:"window_start,omitempty"`
 	WindowEnd     time.Time `json:"window_end,omitempty"`
 	InputHash     string    `json:"input_hash,omitempty"`
+	TriggerType   string    `json:"trigger_type,omitempty"`
 }
 
 // MarshalJSON keeps the queue envelope minimal. time.Time implements
@@ -35,6 +36,7 @@ func (payload Payload) MarshalJSON() ([]byte, error) {
 		WindowStart   *time.Time `json:"window_start,omitempty"`
 		WindowEnd     *time.Time `json:"window_end,omitempty"`
 		InputHash     string     `json:"input_hash,omitempty"`
+		TriggerType   string     `json:"trigger_type,omitempty"`
 	}
 
 	var windowStart, windowEnd *time.Time
@@ -53,6 +55,7 @@ func (payload Payload) MarshalJSON() ([]byte, error) {
 		WindowStart:   windowStart,
 		WindowEnd:     windowEnd,
 		InputHash:     payload.InputHash,
+		TriggerType:   payload.TriggerType,
 	})
 }
 
@@ -62,6 +65,9 @@ func (payload Payload) Validate() error {
 	}
 	if payload.WindowStart.IsZero() != payload.WindowEnd.IsZero() || (!payload.WindowStart.IsZero() && payload.WindowEnd.Before(payload.WindowStart)) {
 		return fmt.Errorf("invalid job window")
+	}
+	if payload.TriggerType != "" && payload.TriggerType != "schedule" && payload.TriggerType != "manual" {
+		return fmt.Errorf("invalid job trigger type")
 	}
 	return nil
 }

@@ -50,15 +50,19 @@ func (repository *CollectionRepository) CreateOrReuseRun(ctx context.Context, re
 	created := false
 	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
 		requestCursor, etag, lastModified := initialRequestState(request.Targets)
+		var scheduledAt any
+		if !request.ScheduledAt.IsZero() {
+			scheduledAt = request.ScheduledAt.UTC()
+		}
 		candidate, err := scanCollectionRun(transaction.SQL.QueryRowContext(ctx, `
 INSERT INTO collection_runs
     (source_connection_id, query_signature, request_cursor, etag, last_modified,
      window_start, window_end, trigger_type, scheduled_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, 'schedule', now())
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, now()))
 ON CONFLICT (source_connection_id, query_signature, window_start, window_end) DO NOTHING
 RETURNING `+collectionRunColumns,
 			request.SourceConnectionID, request.QuerySignature, nullableString(requestCursor), nullableString(etag), nullableString(lastModified),
-			request.WindowStart.UTC(), request.WindowEnd.UTC()))
+			request.WindowStart.UTC(), request.WindowEnd.UTC(), string(request.EffectiveTriggerType()), scheduledAt))
 		if err == nil {
 			run = candidate
 			created = true

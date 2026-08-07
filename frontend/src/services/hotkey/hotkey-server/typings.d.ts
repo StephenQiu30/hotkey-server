@@ -164,6 +164,12 @@ required property without making explicit null impossible to bind. */
     message?: string;
   };
 
+  type CollectionResultHttpManualCollectionResponse = {
+    code?: number;
+    data?: ManualCollectionResponse;
+    message?: string;
+  };
+
   type CollectionResultHttpSourceHealthResponse = {
     code?: number;
     data?: SourceHealthResponse;
@@ -1035,6 +1041,13 @@ required property without making explicit null impossible to bind. */
     version?: number;
   };
 
+  type ManualCollectionResponse = {
+    cooldown_until?: string;
+    created?: number;
+    requested?: number;
+    reused?: number;
+  };
+
   type MemberLockRequest = {
     expected_version: number;
     locked?: boolean;
@@ -1366,6 +1379,11 @@ required property without making explicit null impossible to bind. */
   };
 
   type postMonitorsIdArchiveParams = {
+    /** monitor ID */
+    id: number;
+  };
+
+  type postMonitorsIdCollectParams = {
     /** monitor ID */
     id: number;
   };

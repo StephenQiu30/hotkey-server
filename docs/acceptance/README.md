@@ -33,3 +33,4 @@ canonical_path: docs/acceptance/README.md
 | 014 | [微博开放平台关键词来源适配](014-微博开放平台来源适配验收.md) | passed |
 | 015 | [Google可授权搜索迁移](015-Google可授权搜索迁移验收.md) | passed |
 | 016 | [DuckDuckGo-Instant-Answer边界](016-DuckDuckGo-Instant-Answer边界验收.md) | passed |
+| 017 | [定时监听手动搜索与失败重试](017-定时监听手动搜索与失败重试验收.md) | passed |

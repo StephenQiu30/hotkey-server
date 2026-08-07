@@ -112,6 +112,7 @@ describe("ContentsPage pagination", () => {
   });
 
   it("lets an administrator retry a failed collection run", async () => {
+    mocks.role = "admin";
     mocks.getCollectionRuns
       .mockResolvedValueOnce({
         data: { items: [{ id: 3, status: "failed", error_code: "temporary" }] },
@@ -133,5 +134,21 @@ describe("ContentsPage pagination", () => {
       expect(mocks.retryCollectionRun).toHaveBeenCalledWith({ id: 3 }),
     );
     expect(mocks.getCollectionRuns).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets an editor inspect a failed run without exposing manual retry", async () => {
+    mocks.role = "editor";
+    mocks.getCollectionRuns.mockResolvedValue({
+      data: { items: [{ id: 3, status: "failed", error_code: "temporary" }] },
+    });
+    mocks.getContents.mockResolvedValue({ data: { items: [] } });
+
+    render(<ContentsPage />);
+
+    expect(await screen.findByText("temporary")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "重试采集批次 #3" }),
+    ).not.toBeInTheDocument();
+    expect(mocks.getCollectionRuns).toHaveBeenCalledWith({ limit: 20 });
   });
 });

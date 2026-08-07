@@ -13,7 +13,7 @@ import (
 )
 
 type CollectionTargetReader interface {
-	ListForCollection(context.Context, int64, int64, string, time.Time, time.Time) ([]sourcedomain.PublishedCollectionTarget, error)
+	ListForCollection(context.Context, int64, int64, string, time.Time, time.Time, sourcedomain.CollectionTriggerType) ([]sourcedomain.PublishedCollectionTarget, error)
 }
 
 // CollectHandler executes one shared source/signature/window request. The
@@ -37,8 +37,12 @@ func (handler *CollectHandler) Handle(ctx context.Context, job queue.Job) error 
 		return queue.NewPermanentError(err)
 	}
 	payload := job.Payload
+	triggerType := sourcedomain.CollectionTriggerType(payload.TriggerType)
+	if triggerType == "" {
+		triggerType = sourcedomain.CollectionTriggerSchedule
+	}
 	resolve := func(transactionCtx context.Context) (sourcedomain.CollectionRequest, error) {
-		targets, err := handler.targets.ListForCollection(transactionCtx, payload.EntityID, payload.EntityVersion, payload.InputHash, payload.WindowStart, payload.WindowEnd)
+		targets, err := handler.targets.ListForCollection(transactionCtx, payload.EntityID, payload.EntityVersion, payload.InputHash, payload.WindowStart, payload.WindowEnd, triggerType)
 		if err != nil {
 			return sourcedomain.CollectionRequest{}, err
 		}
@@ -58,6 +62,8 @@ func (handler *CollectHandler) Handle(ctx context.Context, job queue.Job) error 
 		if len(groups) != 1 {
 			return sourcedomain.CollectionRequest{}, fmt.Errorf("collect envelope resolved to %d request groups", len(groups))
 		}
+		groups[0].ScheduledAt = job.ScheduledAt.UTC()
+		groups[0].TriggerType = triggerType
 		return groups[0], nil
 	}
 	_, err := handler.collections.CollectResolvedWithSuccessHook(ctx, payload.EntityID, payload.InputHash, resolve, func(transactionCtx context.Context, runID int64) error {

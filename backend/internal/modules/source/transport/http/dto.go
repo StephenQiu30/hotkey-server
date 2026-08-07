@@ -88,6 +88,13 @@ type CollectionRunPageResponse struct {
 	NextCursor string                  `json:"next_cursor,omitempty"`
 }
 
+type ManualCollectionResponse struct {
+	Requested     int       `json:"requested"`
+	Created       int       `json:"created"`
+	Reused        int       `json:"reused"`
+	CooldownUntil time.Time `json:"cooldown_until"`
+}
+
 type SourceHealthResponse struct {
 	Healthy   bool      `json:"healthy"`
 	CheckedAt time.Time `json:"checked_at"`
@@ -320,6 +327,13 @@ func collectionRunPageResponse(page domain.CollectionRunPage) CollectionRunPageR
 		response.Items = append(response.Items, collectionRunResponse(item))
 	}
 	return response
+}
+
+func manualCollectionResponse(summary domain.ManualCollectionSummary) ManualCollectionResponse {
+	return ManualCollectionResponse{
+		Requested: summary.Requested, Created: summary.Created, Reused: summary.Reused,
+		CooldownUntil: summary.CooldownUntil.UTC(),
+	}
 }
 
 func collectionRunResponse(summary domain.CollectionRunSummary) CollectionRunResponse {

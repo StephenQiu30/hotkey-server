@@ -137,6 +137,115 @@ FROM collection_runs WHERE id = $1`, partialRun.ID).Scan(&partialStatus, &partia
 	}
 }
 
+func TestManualCollectionUsesDurableCooldownAndActivePublishedTargets(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	request := collectionRequestForService(t, runtime, "manual-cooldown", 1)
+	target := request.Targets[0]
+	var monitorID int64
+	if err := runtime.SQL.QueryRow(`SELECT monitor_id FROM monitor_config_versions WHERE id = $1`, target.MonitorConfigVersionID).Scan(&monitorID); err != nil {
+		t.Fatalf("read monitor id: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO monitor_rules (config_version_id, rule_type, operator, value, origin, approval_status)
+VALUES ($1, 'keyword', 'contains', 'climate', 'user', 'approved')`, target.MonitorConfigVersionID); err != nil {
+		t.Fatalf("create manual monitor rule: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE monitor_config_versions SET state = 'published', config_hash = $1, published_at = now() WHERE id = $2`, strings.Repeat("d", 64), target.MonitorConfigVersionID); err != nil {
+		t.Fatalf("publish monitor config: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE monitors SET status = 'active', published_config_version_id = $1 WHERE id = $2`, target.MonitorConfigVersionID, monitorID); err != nil {
+		t.Fatalf("activate monitor: %v", err)
+	}
+
+	store := queue.NewStore(runtime)
+	manuals, err := sourcejobs.NewManualCollectionActivator(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, time.July, 16, 9, 2, 0, 0, time.UTC)
+	targetReader := monitorpostgres.NewPublishedCollectionTargetReader(runtime)
+	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
+		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
+		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}}, Retries: collectionRetryActivatorFake{},
+		Manuals: manuals, Targets: targetReader, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	editor := identitydomain.Subject{UserID: 2, SessionID: 2, Role: identitydomain.RoleEditor}
+	first, err := control.Manual(context.Background(), sourceapplication.ManualCollectionInput{Subject: editor, MonitorID: monitorID})
+	if err != nil || first.Requested != 1 || first.Created != 1 || first.Reused != 0 || !first.CooldownUntil.Equal(time.Date(2026, time.July, 16, 9, 5, 0, 0, time.UTC)) {
+		t.Fatalf("Manual(first) = %#v / %v", first, err)
+	}
+	second, err := control.Manual(context.Background(), sourceapplication.ManualCollectionInput{Subject: editor, MonitorID: monitorID})
+	if err != nil || second.Created != 0 || second.Reused != 1 {
+		t.Fatalf("Manual(second) = %#v / %v, want cooldown reuse", second, err)
+	}
+	var jobCount int
+	var triggerType string
+	if err := runtime.SQL.QueryRow(`SELECT count(*), min(args->>'trigger_type') FROM river_job WHERE kind = 'collect_source'`).Scan(&jobCount, &triggerType); err != nil {
+		t.Fatalf("read manual jobs: %v", err)
+	}
+	if jobCount != 1 || triggerType != "manual" {
+		t.Fatalf("manual jobs = %d trigger=%q, want one manual envelope", jobCount, triggerType)
+	}
+	collections, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
+		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{result: domain.FetchResult{Items: []domain.SourceItem{{
+			SourceCode: "rss", ExternalID: "manual-item", ContentType: "article", Title: "Manual collection item", ObservedAt: now,
+		}}}}}, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := sourcejobs.NewCollectHandler(collections, targetReader, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manualWindowStart := now.Add(-target.CollectionInterval)
+	err = handler.Handle(context.Background(), queue.Job{
+		Kind:      queue.KindCollectSource,
+		UniqueKey: scheduler.ManualCollectionUniqueKey(request.SourceConnectionID, request.QuerySignature, now),
+		Payload: queue.Payload{
+			EntityID: request.SourceConnectionID, EntityVersion: target.MonitorConfigVersionID,
+			InputHash: request.QuerySignature, WindowStart: manualWindowStart, WindowEnd: now, TriggerType: "manual",
+		},
+		ScheduledAt: now, MaxAttempts: 3, Priority: 2,
+	})
+	if err != nil {
+		t.Fatalf("manual collect handler: %v", err)
+	}
+	var runTrigger, runStatus string
+	var normalizeJobs int
+	if err := runtime.SQL.QueryRow(`SELECT trigger_type, status FROM collection_runs ORDER BY id DESC LIMIT 1`).Scan(&runTrigger, &runStatus); err != nil {
+		t.Fatalf("read manual collection run: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM river_job WHERE kind = 'normalize_content'`).Scan(&normalizeJobs); err != nil {
+		t.Fatalf("count manual normalize jobs: %v", err)
+	}
+	if runTrigger != "manual" || runStatus != "succeeded" || normalizeJobs != 1 {
+		t.Fatalf("manual pipeline = trigger %q status %q normalize jobs %d", runTrigger, runStatus, normalizeJobs)
+	}
+
+	now = now.Add(5 * time.Minute)
+	third, err := control.Manual(context.Background(), sourceapplication.ManualCollectionInput{Subject: editor, MonitorID: monitorID})
+	if err != nil || third.Created != 1 || third.Reused != 0 {
+		t.Fatalf("Manual(next bucket) = %#v / %v", third, err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE monitors SET status = 'paused' WHERE id = $1`, monitorID); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(5 * time.Minute)
+	if _, err := control.Manual(context.Background(), sourceapplication.ManualCollectionInput{Subject: editor, MonitorID: monitorID}); err == nil {
+		t.Fatal("Manual(paused monitor) unexpectedly succeeded")
+	}
+	viewer := identitydomain.Subject{UserID: 3, SessionID: 3, Role: identitydomain.RoleViewer}
+	if _, err := control.Manual(context.Background(), sourceapplication.ManualCollectionInput{Subject: viewer, MonitorID: monitorID}); err == nil {
+		t.Fatal("Manual(viewer) unexpectedly succeeded")
+	}
+}
+
 func TestCollectionServiceFailureRetainsCursorAndPersistsRetryState(t *testing.T) {
 	runtime := openRuntime(t)
 	defer func() { _ = runtime.Close() }()

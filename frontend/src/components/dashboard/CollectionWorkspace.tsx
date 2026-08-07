@@ -30,6 +30,7 @@ type CollectionWorkspaceProps = {
   runs: HotKeyAPI.CollectionRunResponse[];
   contents: HotKeyAPI.ContentResponse[];
   canManage?: boolean;
+  canRetry?: boolean;
   deletingContentID?: number;
   retryingRunID?: number;
   onDelete?: (content: HotKeyAPI.ContentResponse) => void;
@@ -52,6 +53,7 @@ export function CollectionWorkspace({
   runs,
   contents,
   canManage = false,
+  canRetry = false,
   deletingContentID,
   retryingRunID,
   onDelete,
@@ -120,7 +122,7 @@ export function CollectionWorkspace({
                       拒绝 {run.rejected_count ?? 0}
                     </span>
                     {run.error_code ? (
-                      <span className="mono mt-1 block truncate text-xs text-red-400">
+                      <span className="text-destructive mono mt-1 block truncate text-xs">
                         {run.error_code}
                       </span>
                     ) : (
@@ -136,7 +138,7 @@ export function CollectionWorkspace({
                     >
                       {status.label}
                     </Badge>
-                    {canManage &&
+                    {canRetry &&
                     run.id != null &&
                     onRetry &&
                     (run.status === CollectionRunStatus.Failed ||

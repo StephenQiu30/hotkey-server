@@ -28,7 +28,7 @@ func TestPublishedCollectionTargetReaderUsesCallerTransactionForRetryCheckpoint(
 		if _, err := transaction.SQL.ExecContext(ctx, `UPDATE source_checkpoints SET next_poll_at = $1 WHERE monitor_source_id = $2`, windowStart, seeded.monitorSourceID); err != nil {
 			return err
 		}
-		targets, err := reader.ListForCollection(ctx, seeded.sourceID, seeded.configID, strings.Repeat("a", 64), windowStart, windowEnd)
+		targets, err := reader.ListForCollection(ctx, seeded.sourceID, seeded.configID, strings.Repeat("a", 64), windowStart, windowEnd, sourcedomain.CollectionTriggerSchedule)
 		if err != nil {
 			t.Fatalf("ListForCollection() did not see caller transaction checkpoint: %v", err)
 		}

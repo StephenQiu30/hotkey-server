@@ -14,8 +14,10 @@ func RegisterCollectionRoutes(router *gin.Engine, service collectionControlServi
 	}
 	handler := NewCollectionHandler(service)
 	api := router.Group("/api/v1", httptransport.RequireAuthentication(authenticator))
+	editor := api.Group("", httptransport.RequireRoles(httptransport.RoleEditor, httptransport.RoleAdmin))
+	editor.GET("/collection-runs", httptransport.Wrap(handler.List))
+	editor.POST("/monitors/:id/collect", httptransport.Wrap(handler.Manual))
 	admin := api.Group("", httptransport.RequireRoles(httptransport.RoleAdmin))
-	admin.GET("/collection-runs", httptransport.Wrap(handler.List))
 	admin.POST("/collection-runs/:id/retry", httptransport.Wrap(handler.Retry))
 	admin.POST("/source-connections/:id/health", httptransport.Wrap(handler.Health))
 }

@@ -25,6 +25,8 @@ export default function ContentsPage() {
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const user = useAuthStore((state) => state.user);
   const canManage = user?.role === UserRole.Editor || user?.role === UserRole.Admin;
+  const canViewRuns = canManage;
+  const canRetry = user?.role === UserRole.Admin;
   const [runs, setRuns] = useState<HotKeyAPI.CollectionRunResponse[]>([]);
   const [contents, setContents] = useState<HotKeyAPI.ContentResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,7 +47,7 @@ export default function ContentsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const runRequest = canManage
+      const runRequest = canViewRuns
         ? getCollectionRuns({ limit: pageSize })
         : undefined;
       const contentResult = await getContents({ limit: pageSize });
@@ -68,10 +70,10 @@ export default function ContentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [canManage, pageSize]);
+  }, [canViewRuns, pageSize]);
 
   const loadRunsPage = async (cursor: string | undefined, page: number) => {
-    if (!canManage) return;
+    if (!canViewRuns) return;
     setLoading(true);
     try {
       const result = await getCollectionRuns({
@@ -152,7 +154,7 @@ export default function ContentsPage() {
   };
 
   const retryRun = async (run: HotKeyAPI.CollectionRunResponse) => {
-    if (!canManage || run.id == null) return;
+    if (!canRetry || run.id == null) return;
     setRetryingRunID(run.id);
     try {
       await postCollectionRunsIdRetry({ id: run.id });
@@ -208,6 +210,7 @@ export default function ContentsPage() {
       ) : (
         <CollectionWorkspace
           canManage={canManage}
+          canRetry={canRetry}
           contents={contents}
           contentsPagination={contentsPagination}
           deletingContentID={deletingContentID}
