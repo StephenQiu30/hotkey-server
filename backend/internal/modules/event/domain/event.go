@@ -40,7 +40,7 @@ func CanTransition(from, to LifecycleStatus) bool {
 	case LifecycleCooling:
 		return to == LifecycleActive || to == LifecycleClosed || to == LifecycleRejected || to == LifecycleMerged
 	case LifecycleClosed:
-		return to == LifecycleActive || to == LifecycleRejected || to == LifecycleMerged
+		return to == LifecycleActive || to == LifecycleArchived || to == LifecycleRejected || to == LifecycleMerged
 	case LifecycleArchived:
 		return false
 	case LifecycleRejected:

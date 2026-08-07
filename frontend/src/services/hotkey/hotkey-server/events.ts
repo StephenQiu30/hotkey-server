@@ -167,7 +167,7 @@ export async function postEventsIdIntelligenceSummaryRegenerate(
 export async function postEventsIdLifecycle(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: HotKeyAPI.postEventsIdLifecycleParams,
-  body: HotKeyAPI.LifecycleRequest,
+  body: HotKeyAPI.EventLifecycleRequest,
   options?: RequestOptions
 ) {
   const { id: param0, ...queryParams } = params;

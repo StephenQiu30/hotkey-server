@@ -17,6 +17,8 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { EventIntelligencePanel } from "@/components/dashboard/EventIntelligencePanel";
+import { EventGovernancePanel } from "@/components/dashboard/EventGovernancePanel";
+import { EventHeatPanel } from "@/components/dashboard/EventHeatPanel";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,8 +46,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  getEventsIdContents,
+  getEventsIdHeat,
   getEventsIdIntelligence,
   getEventsIdUpdates,
+  postEventsIdContentsContentIdLock,
+  postEventsIdLifecycle,
+  postEventsIdMerge,
+  postEventsIdSplit,
 } from "@/services/hotkey/hotkey-server/events";
 import { getMonitors } from "@/services/hotkey/hotkey-server/monitors";
 import { getRadarEvents } from "@/services/hotkey/hotkey-server/radar";
@@ -60,6 +68,7 @@ import {
   updateKindLabel,
 } from "@/lib/radarPresentation";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/stores/authStore";
 
 type RadarWindow = NonNullable<HotKeyAPI.getRadarEventsParams["window"]>;
 type RadarSort = NonNullable<HotKeyAPI.getRadarEventsParams["sort"]>;
@@ -76,6 +85,7 @@ function SignalIcon({ trend }: { trend?: string }) {
 
 function EventsWorkspace() {
   const searchParams = useSearchParams();
+  const role = useAuthStore((state) => state.user?.role);
   const query = searchParams.get("q")?.trim().toLocaleLowerCase("zh-CN") || "";
   const requestedEventId = Number(searchParams.get("event")) || undefined;
   const [windowValue, setWindowValue] = useState<RadarWindow>("24h");
@@ -84,15 +94,24 @@ function EventsWorkspace() {
   const [monitors, setMonitors] = useState<HotKeyAPI.MonitorResponse[]>([]);
   const [monitorId, setMonitorId] = useState<number>();
   const [selectedId, setSelectedId] = useState<number>();
+  const [detailRevision, setDetailRevision] = useState(0);
   const [updates, setUpdates] = useState<HotKeyAPI.EventUpdateResponse[]>([]);
   const [intelligence, setIntelligence] =
     useState<HotKeyAPI.EventIntelligenceResponse>();
+  const [heat, setHeat] = useState<HotKeyAPI.HeatResponse>();
+  const [members, setMembers] = useState<HotKeyAPI.EventMemberResponse[]>([]);
   const [asOf, setAsOf] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [updatesError, setUpdatesError] = useState(false);
   const [intelligenceLoading, setIntelligenceLoading] = useState(false);
   const [intelligenceError, setIntelligenceError] = useState(false);
+  const [heatLoading, setHeatLoading] = useState(false);
+  const [heatError, setHeatError] = useState(false);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [membersError, setMembersError] = useState(false);
+  const [governanceBusy, setGovernanceBusy] = useState(false);
+  const [governanceError, setGovernanceError] = useState<string>();
   const [error, setError] = useState<string>();
 
   const loadRadar = useCallback(async () => {
@@ -135,8 +154,8 @@ function EventsWorkspace() {
           (result.data?.items ?? []).filter(
             (monitor) =>
               monitor.id != null &&
-              (monitor.status === "active" || monitor.status === "paused"),
-          ),
+              (monitor.status === "active" || monitor.status === "paused")
+          )
         );
       })
       .catch(() => {
@@ -152,6 +171,8 @@ function EventsWorkspace() {
       setUpdates([]);
       setUpdatesError(false);
       setIntelligence(undefined);
+      setHeat(undefined);
+      setMembers([]);
       return;
     }
     let active = true;
@@ -160,31 +181,54 @@ function EventsWorkspace() {
     setIntelligenceLoading(true);
     setIntelligenceError(false);
     setIntelligence(undefined);
+    setHeatLoading(true);
+    setHeatError(false);
+    setHeat(undefined);
+    setMembersLoading(true);
+    setMembersError(false);
+    setMembers([]);
+    setGovernanceError(undefined);
 
     Promise.allSettled([
       getEventsIdUpdates({ id: selectedId, limit: 20 }),
       getEventsIdIntelligence({ id: selectedId }),
-    ]).then(([updatesResult, intelligenceResult]) => {
-      if (!active) return;
-      setUpdates(
-        updatesResult.status === "fulfilled"
-          ? (updatesResult.value.data?.items ?? [])
-          : [],
-      );
-      setUpdatesError(updatesResult.status === "rejected");
-      if (intelligenceResult.status === "fulfilled") {
-        setIntelligence(intelligenceResult.value.data);
-      } else {
-        setIntelligence(undefined);
-        setIntelligenceError(true);
+      getEventsIdHeat({ id: selectedId }),
+      getEventsIdContents({ id: selectedId }),
+    ]).then(
+      ([updatesResult, intelligenceResult, heatResult, membersResult]) => {
+        if (!active) return;
+        setUpdates(
+          updatesResult.status === "fulfilled"
+            ? updatesResult.value.data?.items ?? []
+            : []
+        );
+        setUpdatesError(updatesResult.status === "rejected");
+        if (intelligenceResult.status === "fulfilled") {
+          setIntelligence(intelligenceResult.value.data);
+        } else {
+          setIntelligence(undefined);
+          setIntelligenceError(true);
+        }
+        if (heatResult.status === "fulfilled") {
+          setHeat(heatResult.value.data);
+        } else {
+          setHeatError(true);
+        }
+        if (membersResult.status === "fulfilled") {
+          setMembers(membersResult.value.data?.items ?? []);
+        } else {
+          setMembersError(true);
+        }
+        setDetailLoading(false);
+        setIntelligenceLoading(false);
+        setHeatLoading(false);
+        setMembersLoading(false);
       }
-      setDetailLoading(false);
-      setIntelligenceLoading(false);
-    });
+    );
     return () => {
       active = false;
     };
-  }, [selectedId]);
+  }, [detailRevision, selectedId]);
 
   const visibleEvents = useMemo(() => {
     if (!query) return events;
@@ -193,11 +237,138 @@ function EventsWorkspace() {
         .filter(Boolean)
         .join(" ")
         .toLocaleLowerCase("zh-CN")
-        .includes(query),
+        .includes(query)
     );
   }, [events, query]);
 
   const selected = events.find((event) => event.event_id === selectedId);
+
+  const toggleMemberLock = useCallback(
+    async (member: HotKeyAPI.EventMemberResponse) => {
+      if (!selected?.event_id || !member.content_id || !member.version) return;
+      setGovernanceBusy(true);
+      setGovernanceError(undefined);
+      try {
+        const result = await postEventsIdContentsContentIdLock(
+          { id: selected.event_id, content_id: member.content_id },
+          {
+            expected_version: member.version,
+            locked: !member.manual_locked,
+            reason: "manual_member_lock",
+          }
+        );
+        if (result.data) {
+          setMembers((current) =>
+            current.map((item) =>
+              item.content_id === member.content_id ? result.data! : item
+            )
+          );
+        }
+        setDetailRevision((current) => current + 1);
+      } catch {
+        setGovernanceError("成员锁定失败，数据可能已更新，请刷新后重试。");
+      } finally {
+        setGovernanceBusy(false);
+      }
+    },
+    [selected?.event_id]
+  );
+
+  const transitionLifecycle = useCallback(
+    async (status: string) => {
+      if (!selected?.event_id || !selected.version) return;
+      setGovernanceBusy(true);
+      setGovernanceError(undefined);
+      try {
+        const result = await postEventsIdLifecycle(
+          { id: selected.event_id },
+          {
+            expected_version: selected.version,
+            reason: "manual_lifecycle_update",
+            to: status,
+          }
+        );
+        setEvents((current) =>
+          current.map((item) =>
+            item.event_id === selected.event_id
+              ? {
+                  ...item,
+                  lifecycle_status: result.data?.lifecycle_status ?? status,
+                  version: result.data?.version ?? item.version,
+                }
+              : item
+          )
+        );
+        setDetailRevision((current) => current + 1);
+      } catch {
+        setGovernanceError("生命周期变更失败，请刷新后重试。");
+      } finally {
+        setGovernanceBusy(false);
+      }
+    },
+    [selected]
+  );
+
+  const mergeEvent = useCallback(
+    async (target: HotKeyAPI.RadarEventResponse) => {
+      if (
+        !selected?.event_id ||
+        !selected.version ||
+        !target.event_id ||
+        !target.version
+      ) {
+        return;
+      }
+      setGovernanceBusy(true);
+      setGovernanceError(undefined);
+      try {
+        await postEventsIdMerge(
+          { id: selected.event_id },
+          {
+            reason: "manual_event_merge",
+            source_expected_version: selected.version,
+            target_event_id: target.event_id,
+            target_expected_version: target.version,
+          }
+        );
+        await loadRadar();
+        setDetailRevision((current) => current + 1);
+      } catch {
+        setGovernanceError("事件合并失败，数据可能已更新，请刷新后重试。");
+      } finally {
+        setGovernanceBusy(false);
+      }
+    },
+    [loadRadar, selected]
+  );
+
+  const splitEvent = useCallback(
+    async (selectedMembers: HotKeyAPI.EventMemberResponse[]) => {
+      if (!selected?.event_id || !selected.version) return;
+      setGovernanceBusy(true);
+      setGovernanceError(undefined);
+      try {
+        await postEventsIdSplit(
+          { id: selected.event_id },
+          {
+            reason: "manual_event_split",
+            source_expected_version: selected.version,
+            members: selectedMembers.map((member) => ({
+              content_id: member.content_id!,
+              expected_version: member.version!,
+            })),
+          }
+        );
+        await loadRadar();
+        setDetailRevision((current) => current + 1);
+      } catch {
+        setGovernanceError("事件拆分失败，数据可能已更新，请刷新后重试。");
+      } finally {
+        setGovernanceBusy(false);
+      }
+    },
+    [loadRadar, selected]
+  );
 
   return (
     <div className="app-page radar-page">
@@ -307,14 +478,20 @@ function EventsWorkspace() {
         <Card className="mt-6 border-dashed">
           <Empty className="h-80 border-0">
             <EmptyHeader>
-              <EmptyMedia variant="icon"><SearchX /></EmptyMedia>
-              <EmptyTitle className="text-sm">没有符合当前条件的事件</EmptyTitle>
-              <EmptyDescription>调整时间窗口或清除搜索后重试。</EmptyDescription>
+              <EmptyMedia variant="icon">
+                <SearchX />
+              </EmptyMedia>
+              <EmptyTitle className="text-sm">
+                没有符合当前条件的事件
+              </EmptyTitle>
+              <EmptyDescription>
+                调整时间窗口或清除搜索后重试。
+              </EmptyDescription>
             </EmptyHeader>
           </Empty>
         </Card>
       ) : (
-        <div className="mt-6 grid min-h-[620px] gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="mt-6 grid min-h-[620px] gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(400px,460px)]">
           <section className="min-w-0">
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
               <span className="h-2 w-2 rounded-full bg-destructive" />
@@ -328,8 +505,12 @@ function EventsWorkspace() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="min-w-[320px]">事件</TableHead>
-                    <TableHead className="hidden sm:table-cell">来源广度</TableHead>
-                    <TableHead className="hidden sm:table-cell">首次发现</TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      来源广度
+                    </TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      首次发现
+                    </TableHead>
                     <TableHead className="hidden sm:table-cell">趋势</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -354,7 +535,7 @@ function EventsWorkspace() {
                                 "shrink-0",
                                 tone === "danger" && "text-destructive",
                                 tone === "success" && "text-emerald-600",
-                                tone === "muted" && "text-muted-foreground",
+                                tone === "muted" && "text-muted-foreground"
                               )}
                             >
                               <SignalIcon trend={event.trend_status} />
@@ -452,6 +633,27 @@ function EventsWorkspace() {
                       intelligenceLoading={intelligenceLoading}
                       intelligenceError={intelligenceError}
                       monitorSelected={monitorId != null}
+                    />
+
+                    <EventHeatPanel
+                      heat={heat}
+                      loading={heatLoading}
+                      error={heatError}
+                    />
+
+                    <EventGovernancePanel
+                      event={selected}
+                      events={events}
+                      members={members}
+                      role={role}
+                      loading={membersLoading}
+                      error={membersError}
+                      busy={governanceBusy}
+                      operationError={governanceError}
+                      onToggleLock={toggleMemberLock}
+                      onLifecycle={transitionLifecycle}
+                      onMerge={mergeEvent}
+                      onSplit={splitEvent}
                     />
 
                     <section className="border-t pt-5">

@@ -2174,7 +2174,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_modules_event_transport_http.LifecycleRequest"
+                            "$ref": "#/definitions/http.EventLifecycleRequest"
                         }
                     }
                 ],
@@ -3173,7 +3173,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_modules_monitor_transport_http.LifecycleRequest"
+                            "$ref": "#/definitions/http.LifecycleRequest"
                         }
                     }
                 ],
@@ -3248,7 +3248,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_modules_monitor_transport_http.LifecycleRequest"
+                            "$ref": "#/definitions/http.LifecycleRequest"
                         }
                     }
                 ],
@@ -4228,7 +4228,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_modules_monitor_transport_http.LifecycleRequest"
+                            "$ref": "#/definitions/http.LifecycleRequest"
                         }
                     }
                 ],
@@ -4504,7 +4504,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_modules_monitor_transport_http.LifecycleRequest"
+                            "$ref": "#/definitions/http.LifecycleRequest"
                         }
                     }
                 ],
@@ -4579,7 +4579,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_modules_monitor_transport_http.LifecycleRequest"
+                            "$ref": "#/definitions/http.LifecycleRequest"
                         }
                     }
                 ],
@@ -8167,6 +8167,26 @@ const docTemplate = `{
                 }
             }
         },
+        "http.EventLifecycleRequest": {
+            "type": "object",
+            "required": [
+                "expected_version",
+                "reason",
+                "to"
+            ],
+            "properties": {
+                "expected_version": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "to": {
+                    "type": "string"
+                }
+            }
+        },
         "http.EventMemberPageResponse": {
             "type": "object",
             "properties": {
@@ -8599,6 +8619,29 @@ const docTemplate = `{
                 }
             }
         },
+        "http.HeatComponentResponse": {
+            "type": "object",
+            "properties": {
+                "content_velocity": {
+                    "type": "number"
+                },
+                "credibility": {
+                    "type": "number"
+                },
+                "engagement": {
+                    "type": "number"
+                },
+                "independence": {
+                    "type": "number"
+                },
+                "recency": {
+                    "type": "number"
+                },
+                "source_breadth": {
+                    "type": "number"
+                }
+            }
+        },
         "http.HeatResponse": {
             "type": "object",
             "properties": {
@@ -8607,6 +8650,9 @@ const docTemplate = `{
                 },
                 "captured_at": {
                     "type": "string"
+                },
+                "components": {
+                    "$ref": "#/definitions/http.HeatComponentResponse"
                 },
                 "content_count": {
                     "type": "integer"
@@ -8897,6 +8943,17 @@ const docTemplate = `{
                 },
                 "message": {
                     "type": "string"
+                }
+            }
+        },
+        "http.LifecycleRequest": {
+            "type": "object",
+            "required": [
+                "expected_monitor_version"
+            ],
+            "properties": {
+                "expected_monitor_version": {
+                    "type": "integer"
                 }
             }
         },
@@ -11086,26 +11143,6 @@ const docTemplate = `{
         "internal_modules_event_transport_http.EmptyResponse": {
             "type": "object"
         },
-        "internal_modules_event_transport_http.LifecycleRequest": {
-            "type": "object",
-            "required": [
-                "expected_version",
-                "reason",
-                "to"
-            ],
-            "properties": {
-                "expected_version": {
-                    "type": "integer"
-                },
-                "reason": {
-                    "type": "string",
-                    "maxLength": 64
-                },
-                "to": {
-                    "type": "string"
-                }
-            }
-        },
         "internal_modules_identity_transport_http.EmptyResponse": {
             "type": "object"
         },
@@ -11120,17 +11157,6 @@ const docTemplate = `{
         },
         "internal_modules_monitor_transport_http.EmptyResponse": {
             "type": "object"
-        },
-        "internal_modules_monitor_transport_http.LifecycleRequest": {
-            "type": "object",
-            "required": [
-                "expected_monitor_version"
-            ],
-            "properties": {
-                "expected_monitor_version": {
-                    "type": "integer"
-                }
-            }
         },
         "internal_modules_operations_transport_http.EmptyResponse": {
             "type": "object"

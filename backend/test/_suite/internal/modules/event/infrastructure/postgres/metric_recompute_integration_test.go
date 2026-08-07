@@ -5,6 +5,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -243,6 +244,33 @@ func assertMetricQueryProjection(t *testing.T, repository *Repository, ctx conte
 	}
 	if latest.WindowHours != expected.WindowHours || latest.TrendStatus != expected.TrendStatus || latest.CapabilityProfileSetHash != expected.CapabilityProfileSetHash || strings.Join(latest.ReasonCodes, ",") != strings.Join(expected.ReasonCodes, ",") {
 		t.Fatalf("latest metric response = %#v, want %#v", latest, expected)
+	}
+	if !reflect.DeepEqual(latest.Components, expected.Components) {
+		t.Fatalf("latest metric components = %#v, want %#v", latest.Components, expected.Components)
+	}
+}
+
+func TestLatestHeatSnapshotKeepsLegacyEmptyComponentsAbsent(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	var eventID int64
+	now := time.Date(2026, 7, 17, 12, 0, 0, 0, time.UTC)
+	if err := runtime.SQL.QueryRow(`INSERT INTO events (event_key, title_zh, summary, lifecycle_status, first_seen_at, last_seen_at) VALUES ('evt-legacy-components', '历史事件', '', 'closed', $1, $1) RETURNING id`, now).Scan(&eventID); err != nil {
+		t.Fatalf("insert event: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`INSERT INTO event_metric_snapshots (event_id,captured_at,heat_score,trend_score,heat_version,evidence_set_hash,capability_profile_set_hash,window_hours,trend_status,component_scores) VALUES ($1,$2,42,0,'heat-v1',repeat('a',64),repeat('b',64),24,'stable','{}')`, eventID, now); err != nil {
+		t.Fatalf("insert legacy snapshot: %v", err)
+	}
+	latest, err := NewRepository(runtime).LatestHeatSnapshot(ctx, eventID)
+	if err != nil || latest.Components != nil {
+		t.Fatalf("LatestHeatSnapshot() components = %#v/%v, want nil", latest.Components, err)
 	}
 }
 

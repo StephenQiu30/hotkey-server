@@ -29,6 +29,12 @@ func TestCalculateRecomputedHeatReweightsUnavailableMetrics(t *testing.T) {
 	if result.HeatScore <= 0 || result.SourceCount != 1 || result.ContentCount != 1 || !containsReason(result.ReasonCodes, "metrics_unavailable") || !containsReason(result.ReasonCodes, "normalization_fallback") || !containsReason(result.ReasonCodes, "single_source_cap") {
 		t.Fatalf("heat result = %#v", result)
 	}
+	if result.Components == nil || result.Components.Engagement != nil {
+		t.Fatalf("heat components = %#v, want recorded components with unavailable engagement", result.Components)
+	}
+	if result.Components.Independence != 25 || result.Components.ContentVelocity != 20 || result.Components.SourceBreadth != 50 || result.Components.Credibility != 80 || result.Components.Recency <= 0 {
+		t.Fatalf("heat components = %#v", result.Components)
+	}
 }
 
 func TestRecomputeHeatDistinguishesMissingCapabilityFromNoActiveEvidence(t *testing.T) {
@@ -36,6 +42,9 @@ func TestRecomputeHeatDistinguishesMissingCapabilityFromNoActiveEvidence(t *test
 	result, err := CalculateRecomputedHeat(RecomputeHeatInput{EventID: 1, WindowEnd: now, WindowHours: 24, HeatVersion: HeatAlgorithmVersionV1, EvidenceSetHash: strings.Repeat("a", 64), CapabilityProfileSetHash: strings.Repeat("b", 64), EventAgeHours: 12, ActiveEvidenceCount: 2})
 	if err != nil || result.ContentCount != 2 || !containsReason(result.ReasonCodes, "metrics_unavailable") || containsReason(result.ReasonCodes, "no_active_evidence") {
 		t.Fatalf("missing capability result = %#v/%v", result, err)
+	}
+	if result.Components != nil {
+		t.Fatalf("missing capability components = %#v, want nil", result.Components)
 	}
 }
 

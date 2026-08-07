@@ -290,7 +290,15 @@ func CalculateRecomputedHeat(input RecomputeHeatInput) (HeatResult, error) {
 	if recency < 50 {
 		reasons = append(reasons, "stale_evidence")
 	}
-	return HeatResult{EventID: input.EventID, HeatScore: roundScore(math.Min(100, score)), SourceCount: independentCount, ContentCount: contentCount, ReasonCodes: reasons, HeatVersion: input.HeatVersion, EvidenceSetHash: input.EvidenceSetHash, CapabilityProfileSetHash: input.CapabilityProfileSetHash, WindowHours: input.WindowHours, WindowEnd: input.WindowEnd.UTC()}, nil
+	componentScores := &HeatComponents{
+		Independence:    roundScore(independence),
+		ContentVelocity: roundScore(contentVelocity),
+		SourceBreadth:   roundScore(sourceBreadth),
+		Engagement:      engagement,
+		Recency:         roundScore(recency),
+		Credibility:     roundScore(credibility),
+	}
+	return HeatResult{EventID: input.EventID, HeatScore: roundScore(math.Min(100, score)), SourceCount: independentCount, ContentCount: contentCount, ReasonCodes: reasons, HeatVersion: input.HeatVersion, EvidenceSetHash: input.EvidenceSetHash, CapabilityProfileSetHash: input.CapabilityProfileSetHash, WindowHours: input.WindowHours, WindowEnd: input.WindowEnd.UTC(), Components: componentScores}, nil
 }
 
 type TrendInput struct {

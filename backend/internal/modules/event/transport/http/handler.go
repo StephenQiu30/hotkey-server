@@ -186,7 +186,7 @@ func (handler *Handler) GetHeat(c *gin.Context) error {
 	if err != nil {
 		return eventError(err)
 	}
-	httptransport.OK(c, HeatResponse{EventID: result.EventID, HeatScore: result.HeatScore, TrendScore: result.TrendScore, TrendStatus: string(result.TrendStatus), SourceCount: result.SourceCount, ContentCount: result.ContentCount, WindowHours: result.WindowHours, HeatVersion: result.HeatVersion, EvidenceSetHash: result.EvidenceSetHash, CapabilityProfileSetHash: result.CapabilityProfileSetHash, ReasonCodes: result.ReasonCodes, CapturedAt: result.WindowEnd})
+	httptransport.OK(c, heatResponse(result))
 	return nil
 }
 
@@ -448,7 +448,7 @@ func (handler *Handler) SetMemberLock(c *gin.Context) error {
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "event ID"
-// @Param request body LifecycleRequest true "lifecycle command"
+// @Param request body EventLifecycleRequest true "lifecycle command"
 // @Success 200 {object} EventResult[EventResponse]
 // @Failure 400 {object} EventResult[EmptyResponse]
 // @Failure 401 {object} EventResult[EmptyResponse]
@@ -461,7 +461,7 @@ func (handler *Handler) Transition(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	var request LifecycleRequest
+	var request EventLifecycleRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		return invalidRequest(err)
 	}

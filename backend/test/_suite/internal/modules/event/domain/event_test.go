@@ -12,6 +12,7 @@ func TestLifecycleStateMachineUsesDetectedAsInitialState(t *testing.T) {
 		{LifecycleActive, LifecycleCooling},
 		{LifecycleCooling, LifecycleActive},
 		{LifecycleClosed, LifecycleActive},
+		{LifecycleClosed, LifecycleArchived},
 		{LifecycleActive, LifecycleMerged},
 	}
 	for _, transition := range allowed {

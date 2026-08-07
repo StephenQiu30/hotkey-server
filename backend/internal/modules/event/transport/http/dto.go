@@ -126,18 +126,36 @@ type EventMemberPageResponse struct {
 }
 
 type HeatResponse struct {
-	EventID                  int64     `json:"event_id"`
-	HeatScore                float64   `json:"heat_score"`
-	TrendScore               float64   `json:"trend_score"`
-	TrendStatus              string    `json:"trend_status"`
-	SourceCount              int       `json:"source_count"`
-	ContentCount             int       `json:"content_count"`
-	WindowHours              int       `json:"window_hours"`
-	HeatVersion              string    `json:"heat_version"`
-	EvidenceSetHash          string    `json:"evidence_set_hash"`
-	CapabilityProfileSetHash string    `json:"capability_profile_set_hash"`
-	ReasonCodes              []string  `json:"reason_codes"`
-	CapturedAt               time.Time `json:"captured_at"`
+	EventID                  int64                  `json:"event_id"`
+	HeatScore                float64                `json:"heat_score"`
+	TrendScore               float64                `json:"trend_score"`
+	TrendStatus              string                 `json:"trend_status"`
+	SourceCount              int                    `json:"source_count"`
+	ContentCount             int                    `json:"content_count"`
+	WindowHours              int                    `json:"window_hours"`
+	HeatVersion              string                 `json:"heat_version"`
+	EvidenceSetHash          string                 `json:"evidence_set_hash"`
+	CapabilityProfileSetHash string                 `json:"capability_profile_set_hash"`
+	ReasonCodes              []string               `json:"reason_codes"`
+	CapturedAt               time.Time              `json:"captured_at"`
+	Components               *HeatComponentResponse `json:"components,omitempty"`
+}
+
+type HeatComponentResponse struct {
+	Independence    float64  `json:"independence"`
+	ContentVelocity float64  `json:"content_velocity"`
+	SourceBreadth   float64  `json:"source_breadth"`
+	Engagement      *float64 `json:"engagement"`
+	Recency         float64  `json:"recency"`
+	Credibility     float64  `json:"credibility"`
+}
+
+func heatResponse(result domain.HeatResult) HeatResponse {
+	response := HeatResponse{EventID: result.EventID, HeatScore: result.HeatScore, TrendScore: result.TrendScore, TrendStatus: string(result.TrendStatus), SourceCount: result.SourceCount, ContentCount: result.ContentCount, WindowHours: result.WindowHours, HeatVersion: result.HeatVersion, EvidenceSetHash: result.EvidenceSetHash, CapabilityProfileSetHash: result.CapabilityProfileSetHash, ReasonCodes: result.ReasonCodes, CapturedAt: result.WindowEnd}
+	if result.Components != nil {
+		response.Components = &HeatComponentResponse{Independence: result.Components.Independence, ContentVelocity: result.Components.ContentVelocity, SourceBreadth: result.Components.SourceBreadth, Engagement: result.Components.Engagement, Recency: result.Components.Recency, Credibility: result.Components.Credibility}
+	}
+	return response
 }
 
 type ClaimEvidenceRequest struct {
@@ -241,7 +259,7 @@ type ExtractionRegenerationResponse struct {
 	ClaimCount  int    `json:"claim_count"`
 }
 
-type LifecycleRequest struct {
+type EventLifecycleRequest struct {
 	ExpectedVersion int64  `json:"expected_version" binding:"required"`
 	To              string `json:"to" binding:"required"`
 	Reason          string `json:"reason" binding:"required,max=64"`

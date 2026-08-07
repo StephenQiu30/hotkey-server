@@ -22,6 +22,31 @@ type HeatResult struct {
 	CapabilityProfileSetHash string
 	WindowHours              int
 	WindowEnd                time.Time
+	Components               *HeatComponents
+}
+
+// HeatComponents preserves the explainable heat-v1 inputs. Engagement is
+// optional because a source may not expose any supported interaction metric.
+type HeatComponents struct {
+	Independence    float64  `json:"independence"`
+	ContentVelocity float64  `json:"content_velocity"`
+	SourceBreadth   float64  `json:"source_breadth"`
+	Engagement      *float64 `json:"engagement"`
+	Recency         float64  `json:"recency"`
+	Credibility     float64  `json:"credibility"`
+}
+
+func (components HeatComponents) Validate() error {
+	values := []float64{components.Independence, components.ContentVelocity, components.SourceBreadth, components.Recency, components.Credibility}
+	for _, value := range values {
+		if !finiteInRange(value, 0, 100) {
+			return fmt.Errorf("invalid heat component")
+		}
+	}
+	if components.Engagement != nil && !finiteInRange(*components.Engagement, 0, 100) {
+		return fmt.Errorf("invalid heat engagement component")
+	}
+	return nil
 }
 
 type TrendStatus string

@@ -45,14 +45,15 @@ func (repository *Repository) LatestHeatSnapshot(ctx context.Context, eventID in
 	}
 	var result domain.HeatResult
 	var reasons []byte
+	var components []byte
 	err := repository.metricQuery(ctx).QueryRowContext(ctx, `
 SELECT snapshot.event_id, snapshot.captured_at, snapshot.window_hours, snapshot.heat_score, snapshot.trend_score, snapshot.trend_status, snapshot.source_count, snapshot.content_count,
-       snapshot.heat_version, snapshot.evidence_set_hash, snapshot.capability_profile_set_hash, array_to_json(event.heat_reason_codes)
+       snapshot.heat_version, snapshot.evidence_set_hash, snapshot.capability_profile_set_hash, snapshot.component_scores, array_to_json(event.heat_reason_codes)
 FROM event_metric_snapshots snapshot
 JOIN events event ON event.id = snapshot.event_id
 WHERE snapshot.event_id = $1
 ORDER BY snapshot.captured_at DESC, snapshot.window_hours DESC, snapshot.id DESC
-LIMIT 1`, eventID).Scan(&result.EventID, &result.WindowEnd, &result.WindowHours, &result.HeatScore, &result.TrendScore, &result.TrendStatus, &result.SourceCount, &result.ContentCount, &result.HeatVersion, &result.EvidenceSetHash, &result.CapabilityProfileSetHash, &reasons)
+LIMIT 1`, eventID).Scan(&result.EventID, &result.WindowEnd, &result.WindowHours, &result.HeatScore, &result.TrendScore, &result.TrendStatus, &result.SourceCount, &result.ContentCount, &result.HeatVersion, &result.EvidenceSetHash, &result.CapabilityProfileSetHash, &components, &reasons)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return domain.HeatResult{}, sharedrepository.ErrNotFound
@@ -64,6 +65,9 @@ LIMIT 1`, eventID).Scan(&result.EventID, &result.WindowEnd, &result.WindowHours,
 	}
 	if result.ReasonCodes == nil {
 		result.ReasonCodes = []string{}
+	}
+	if err := decodeHeatComponents(components, &result); err != nil {
+		return domain.HeatResult{}, err
 	}
 	return result, nil
 }
@@ -158,7 +162,7 @@ func (repository *Repository) ListHeatSnapshots(ctx context.Context, eventID int
 	}
 	rows, err := repository.metricQuery(ctx).QueryContext(ctx, `
 SELECT event_id, captured_at, window_hours, heat_score, trend_score, trend_status, source_count, content_count,
-       heat_version, evidence_set_hash, capability_profile_set_hash
+       heat_version, evidence_set_hash, capability_profile_set_hash, component_scores
 FROM event_metric_snapshots
 WHERE event_id = $1 AND window_hours = $2 AND captured_at < $3
 ORDER BY captured_at DESC, id DESC
@@ -170,8 +174,12 @@ LIMIT $4`, eventID, windowHours, before.UTC(), limit)
 	results := make([]domain.HeatResult, 0, limit)
 	for rows.Next() {
 		var result domain.HeatResult
-		if err := rows.Scan(&result.EventID, &result.WindowEnd, &result.WindowHours, &result.HeatScore, &result.TrendScore, &result.TrendStatus, &result.SourceCount, &result.ContentCount, &result.HeatVersion, &result.EvidenceSetHash, &result.CapabilityProfileSetHash); err != nil {
+		var components []byte
+		if err := rows.Scan(&result.EventID, &result.WindowEnd, &result.WindowHours, &result.HeatScore, &result.TrendScore, &result.TrendStatus, &result.SourceCount, &result.ContentCount, &result.HeatVersion, &result.EvidenceSetHash, &result.CapabilityProfileSetHash, &components); err != nil {
 			return nil, databaserepository.MapError(err)
+		}
+		if err := decodeHeatComponents(components, &result); err != nil {
+			return nil, err
 		}
 		results = append(results, result)
 	}
@@ -198,13 +206,22 @@ func (repository *Repository) SaveRecomputedHeatSnapshots(ctx context.Context, r
 		if result.ReasonCodes == nil {
 			result.ReasonCodes = []string{}
 		}
+		if result.Components != nil {
+			if err := result.Components.Validate(); err != nil {
+				return sharedrepository.ErrInvalidInput
+			}
+		}
 	}
 	return repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
 		for _, result := range ordered {
+			components, err := encodeHeatComponents(result.Components)
+			if err != nil {
+				return err
+			}
 			if _, err := transaction.SQL.ExecContext(ctx, `
-INSERT INTO event_metric_snapshots (event_id, captured_at, window_hours, heat_score, trend_score, trend_status, source_count, content_count, heat_version, evidence_set_hash, capability_profile_set_hash)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-ON CONFLICT (event_id, captured_at, window_hours, heat_version, evidence_set_hash, capability_profile_set_hash) DO NOTHING`, result.EventID, result.WindowEnd.UTC(), result.WindowHours, result.HeatScore, result.TrendScore, string(result.TrendStatus), result.SourceCount, result.ContentCount, result.HeatVersion, result.EvidenceSetHash, result.CapabilityProfileSetHash); err != nil {
+INSERT INTO event_metric_snapshots (event_id, captured_at, window_hours, heat_score, trend_score, trend_status, source_count, content_count, heat_version, evidence_set_hash, capability_profile_set_hash, component_scores)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+ON CONFLICT (event_id, captured_at, window_hours, heat_version, evidence_set_hash, capability_profile_set_hash) DO NOTHING`, result.EventID, result.WindowEnd.UTC(), result.WindowHours, result.HeatScore, result.TrendScore, string(result.TrendStatus), result.SourceCount, result.ContentCount, result.HeatVersion, result.EvidenceSetHash, result.CapabilityProfileSetHash, components); err != nil {
 				return databaserepository.MapError(err)
 			}
 		}
@@ -221,6 +238,32 @@ WHERE id = $9 AND deleted_at IS NULL`, current.HeatScore, current.TrendScore, st
 		}
 		return repository.updateMonitorMetricProjection(ctx, transaction.SQL, current)
 	})
+}
+
+func encodeHeatComponents(components *domain.HeatComponents) ([]byte, error) {
+	if components == nil {
+		return []byte(`{}`), nil
+	}
+	encoded, err := json.Marshal(components)
+	if err != nil {
+		return nil, databaserepository.MapError(err)
+	}
+	return encoded, nil
+}
+
+func decodeHeatComponents(encoded []byte, result *domain.HeatResult) error {
+	if len(encoded) == 0 || string(encoded) == `{}` {
+		return nil
+	}
+	var components domain.HeatComponents
+	if err := json.Unmarshal(encoded, &components); err != nil {
+		return databaserepository.MapError(err)
+	}
+	if err := components.Validate(); err != nil {
+		return databaserepository.MapError(err)
+	}
+	result.Components = &components
+	return nil
 }
 
 func (repository *Repository) loadMetricPopulation(ctx context.Context, key domain.MetricPopulationKey, windowEnd, windowStart time.Time) (domain.MetricPopulation, error) {

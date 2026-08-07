@@ -1110,6 +1110,7 @@ CREATE TABLE IF NOT EXISTS event_metric_snapshots (
     heat_version varchar(64) NOT NULL DEFAULT 'v1', evidence_set_hash char(64) NOT NULL DEFAULT repeat('0', 64),
     capability_profile_set_hash char(64) NOT NULL DEFAULT repeat('0', 64), window_hours smallint NOT NULL DEFAULT 24 CHECK (window_hours IN (1,6,24)),
     trend_status varchar(16) NOT NULL DEFAULT 'stable' CHECK (trend_status IN ('emerging','rising','stable','falling','dormant')),
+	component_scores jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(component_scores) = 'object'),
     created_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE event_metric_snapshots ADD COLUMN IF NOT EXISTS heat_version varchar(64) NOT NULL DEFAULT 'v1';
@@ -1117,10 +1118,13 @@ ALTER TABLE event_metric_snapshots ADD COLUMN IF NOT EXISTS evidence_set_hash ch
 ALTER TABLE event_metric_snapshots ADD COLUMN IF NOT EXISTS capability_profile_set_hash char(64) NOT NULL DEFAULT repeat('0', 64);
 ALTER TABLE event_metric_snapshots ADD COLUMN IF NOT EXISTS window_hours smallint NOT NULL DEFAULT 24;
 ALTER TABLE event_metric_snapshots ADD COLUMN IF NOT EXISTS trend_status varchar(16) NOT NULL DEFAULT 'stable';
+ALTER TABLE event_metric_snapshots ADD COLUMN IF NOT EXISTS component_scores jsonb NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE event_metric_snapshots DROP CONSTRAINT IF EXISTS event_metric_snapshots_window_hours_check;
 ALTER TABLE event_metric_snapshots ADD CONSTRAINT event_metric_snapshots_window_hours_check CHECK (window_hours IN (1,6,24));
 ALTER TABLE event_metric_snapshots DROP CONSTRAINT IF EXISTS event_metric_snapshots_trend_status_check;
 ALTER TABLE event_metric_snapshots ADD CONSTRAINT event_metric_snapshots_trend_status_check CHECK (trend_status IN ('emerging','rising','stable','falling','dormant'));
+ALTER TABLE event_metric_snapshots DROP CONSTRAINT IF EXISTS event_metric_snapshots_component_scores_check;
+ALTER TABLE event_metric_snapshots ADD CONSTRAINT event_metric_snapshots_component_scores_check CHECK (jsonb_typeof(component_scores) = 'object');
 ALTER TABLE event_metric_snapshots DROP CONSTRAINT IF EXISTS event_metric_snapshots_event_id_captured_at_key;
 DROP INDEX IF EXISTS event_metric_snapshots_version_uq;
 CREATE UNIQUE INDEX IF NOT EXISTS event_metric_snapshots_version_uq

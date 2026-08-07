@@ -517,6 +517,12 @@ required property without making explicit null impossible to bind. */
     event_id?: number;
   };
 
+  type EventLifecycleRequest = {
+    expected_version: number;
+    reason: string;
+    to: string;
+  };
+
   type EventMemberPageResponse = {
     items?: EventMemberResponse[];
   };
@@ -903,9 +909,19 @@ required property without making explicit null impossible to bind. */
     limit?: number;
   };
 
+  type HeatComponentResponse = {
+    content_velocity?: number;
+    credibility?: number;
+    engagement?: number;
+    independence?: number;
+    recency?: number;
+    source_breadth?: number;
+  };
+
   type HeatResponse = {
     capability_profile_set_hash?: string;
     captured_at?: string;
+    components?: HeatComponentResponse;
     content_count?: number;
     event_id?: number;
     evidence_set_hash?: string;
@@ -1016,12 +1032,6 @@ required property without making explicit null impossible to bind. */
     code?: number;
     data?: EmptyResponse;
     message?: string;
-  };
-
-  type LifecycleRequest = {
-    expected_version: number;
-    reason: string;
-    to: string;
   };
 
   type LifecycleRequest = {
