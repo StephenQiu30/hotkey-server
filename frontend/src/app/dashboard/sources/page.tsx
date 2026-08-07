@@ -49,6 +49,7 @@ import { sourceHealthPresentation } from "@/lib/domainPresentation";
 import { ConfirmDeleteDialog } from "@/components/dashboard/ConfirmDeleteDialog";
 import { SourceConnectionDialog } from "@/components/dashboard/SourceConnectionDialog";
 import { SogouAuthorizationCard } from "@/components/dashboard/SogouAuthorizationCard";
+import { DuckDuckGoBoundaryCard } from "@/components/dashboard/DuckDuckGoBoundaryCard";
 import {
   CursorPagination,
   DEFAULT_PAGE_SIZE,
@@ -250,6 +251,7 @@ export default function SourcesPage() {
         </Alert>
       )}
       <SogouAuthorizationCard />
+      <DuckDuckGoBoundaryCard />
       {loadError && (
         <Alert variant="destructive" className="mt-6">
           <div className="mb-1 font-medium leading-none tracking-tight">

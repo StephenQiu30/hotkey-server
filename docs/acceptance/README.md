@@ -32,3 +32,4 @@ canonical_path: docs/acceptance/README.md
 | 013 | [Bilibili开放平台与授权账号监控](013-Bilibili开放平台与账号监控验收.md) | passed |
 | 014 | [微博开放平台关键词来源适配](014-微博开放平台来源适配验收.md) | passed |
 | 015 | [Google可授权搜索迁移](015-Google可授权搜索迁移验收.md) | passed |
+| 016 | [DuckDuckGo-Instant-Answer边界](016-DuckDuckGo-Instant-Answer边界验收.md) | passed |

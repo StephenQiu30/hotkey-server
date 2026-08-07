@@ -1,10 +1,10 @@
 ---
 layer: Plan
-scope: backend
+scope: fullstack
 doc_no: "016"
 title: DuckDuckGo-Instant-Answer边界计划
-status: planned
-version: v1.0
+status: completed
+version: v1.1
 owner: HotKey Team
 phase: P2
 canonical_path: docs/plans/016-DuckDuckGo-Instant-Answer边界计划.md
@@ -12,55 +12,44 @@ design: docs/design/016-DuckDuckGo-Instant-Answer边界设计.md
 prd: docs/prd/016-DuckDuckGo-Instant-Answer边界.md
 ---
 
-# DuckDuckGo-Instant-Answer边界计划
+# DuckDuckGo Instant Answer 边界计划
 
 ## 前置门禁
 
-- Design 已 accepted，PRD 已 approved。
-- 官方/授权接口、应用 scope、条款、配额和测试凭据已核实；阻塞项不得用非官方接口绕过。
-- 先保存 Connector 契约、查询编译、分页、限流、失败分类和 SSRF 的失败测试。
-
-## 预计变更范围
-
-- backend/internal/modules/source/
-- backend/internal/modules/event/
-- backend/db/schema.sql
-- frontend/src/app/dashboard/sources/
-- backend/test/
+- [x] Design 已 accepted，PRD 已 approved。
+- [x] 官方 Instant Answers、结果来源、搜索结果和服务条款已复核。
+- [x] 确认官方当前没有满足生产接入要求的第三方 Instant Answer API 契约，因此不得创建 Connector。
+- [x] 确认仓库没有既有 DuckDuckGo SourceType、Schema 数据、连接、内容或调度需要迁移。
 
 ## 执行步骤
 
-1. 在 Source Domain 增加最小能力枚举与严格配置，不泄漏第三方 SDK 类型。
-2. 在唯一 Schema 增加必要字段和约束，保持既有 RSS/HN 数据兼容。
-3. 实现绑定不可变 SourceConnection 的 Connector、分页检查点、限流和错误分类。
-4. 将 Capture 接入既有 normalize→relevance→cluster 流水线，不建立旁路存储。
-5. 更新来源/监控 API 注解，生成 OpenAPI 与前端 Client。
-6. 用 shadcn/ui 组合来源配置、授权状态、健康诊断和能力预览。
-7. 运行契约、集成、并发、重试、权限和端到端测试，新增同编号 Acceptance。
+1. [x] 先增加架构失败测试，禁止 DuckDuckGo Connector、HTML/Lite 搜索页、历史 API 地址和 Schema 枚举。
+2. [x] 新增复用 shadcn/ui 的只读能力卡，展示“未开放”、事实边界、官方链接和解锁条件。
+3. [x] 将能力卡接入来源页，确保管理员与 Viewer 可见，来源创建器没有 DuckDuckGo 选项。
+4. [x] 增加界面测试，覆盖官方链接、不可执行按钮、无创建选项和无 API 请求。
+5. [x] 运行后端架构/仓库测试、前端全量回归、生产构建、Compose 检查和 `git diff --check`。
+6. [x] 使用 agent-browser 验收管理员、Viewer、匿名、390px 移动端、官方链接语义和 axe。
+7. [x] 新建同编号 Acceptance，完成后按中文 Conventional Commits 独立提交。
 
-## 验证
+## 验证命令
 
-- `cd backend && make ci`
+- `cd backend && go test ./test/architecture -run DuckDuckGo -count=1 && make validate`
 - `cd frontend && npm run openapi:check && npm run typecheck && npm run test:unit && npm run build`
-- 使用可控官方沙盒或 HTTP fixture 验证成功、分页、429、401、超时、恶意重定向和撤销授权。
-- 根目录运行 Compose 配置检查与 `git diff --check`。
+- 根目录运行 Compose 开发/生产配置检查与 `git diff --check`。
 
-## 迁移与回滚
+## 测试策略
 
-新来源默认 disabled，并以能力开关逐一启用。回滚时先停止该来源的新调度、等待运行任务结束，再回退应用；保留检查点、采集运行和历史证据。
+- 架构测试直接扫描生产 Go、Connector 目录和唯一 Schema，不依赖字符串约定或人工审查。
+- React 测试 mock 既有来源 API，证明渲染能力卡不会新增 DuckDuckGo 请求。
+- 浏览器只验证 HotKey 本地页面；不点击外链、不向 DuckDuckGo 发起验收请求。
 
-## 依赖与功能切片
+## 回滚
 
-- 前置编号：006、007。
-- 依赖未验收时，本条只允许完成不改变对外行为的基础工作。
-
-- [ ] Slice-016-1：实现「能力边界说明和禁用态」，补齐实际涉及的领域、任务、API 与界面，并绑定 AC-016-* 回归。
-- [ ] Slice-016-2：实现「可选 Instant Answer 映射」，补齐实际涉及的领域、任务、API 与界面，并绑定 AC-016-* 回归。
-- [ ] Slice-016-3：实现「禁止热度计权规则」，补齐实际涉及的领域、任务、API 与界面，并绑定 AC-016-* 回归。
-- [ ] Slice-016-4：实现「未来合作接口扩展点」，补齐实际涉及的领域、任务、API 与界面，并绑定 AC-016-* 回归。
+回滚只移除 DuckDuckGo 边界卡、接入点和对应门禁测试；不涉及数据库、来源、调度、内容、指标或凭据。
 
 ## 完成定义
 
-- 代码和 UI 不出现“DuckDuckGo 全网搜索已支持”的误导
-- Instant Answer 不创建虚假来源指标
-- 未配置正式能力时不会产生调度任务
+- AC-016-1..5 全部绑定自动化或浏览器证据。
+- 没有 DuckDuckGo Connector、SourceType、Schema 枚举、外部请求或热度旁路。
+- 没有真实凭据、临时验收文件或生成漂移进入提交。
+- 工作区只包含第 016 项变更并完成独立中文提交。

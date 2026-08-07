@@ -124,6 +124,37 @@ func TestGoogleAgentSearchDoesNotCallWebPagesOrRetiredCustomSearch(t *testing.T)
 	}
 }
 
+func TestDuckDuckGoRemainsANonExecutableCapabilityBoundary(t *testing.T) {
+	root := repositoryRoot(t)
+	if _, err := os.Stat(filepath.Join(root, "internal", "modules", "source", "infrastructure", "duckduckgo")); err == nil {
+		t.Fatal("DuckDuckGo connector must not exist without a documented production API contract")
+	} else if !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+
+	violations := productionGoFilesContaining(t, filepath.Join(root, "internal"), []string{
+		"api.duckduckgo.com",
+		"html.duckduckgo.com",
+		"lite.duckduckgo.com",
+		"duckduckgo.com/html",
+		"duckduckgo.com/?q=",
+	})
+	if len(violations) > 0 {
+		t.Fatalf("production code calls an undocumented DuckDuckGo endpoint: %s", strings.Join(violations, ", "))
+	}
+
+	schema, err := os.ReadFile(filepath.Join(root, "db", "schema.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	normalizedSchema := strings.ToLower(string(schema))
+	for _, sourceType := range []string{"'duckduckgo'", "'duckduckgo_instant_answer'"} {
+		if strings.Contains(normalizedSchema, sourceType) {
+			t.Fatalf("database source enum must not register %s without a production API contract", sourceType)
+		}
+	}
+}
+
 func productionGoFilesContaining(t *testing.T, root string, forbidden []string) []string {
 	t.Helper()
 	var violations []string

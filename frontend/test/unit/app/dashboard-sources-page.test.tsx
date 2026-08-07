@@ -416,6 +416,39 @@ describe("SourcesPage body storage authorization", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows DuckDuckGo as a non-executable knowledge boundary", async () => {
+    render(<SourcesPage />);
+
+    expect(
+      await screen.findByText("DuckDuckGo Instant Answer")
+    ).toBeInTheDocument();
+    expect(screen.getByText("未开放")).toBeInTheDocument();
+    expect(
+      screen.getByText(/不是通用网页搜索结果 API/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/不抓取 DuckDuckGo 页面，不创建或调度该来源/)
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "即时答案说明" })).toHaveAttribute(
+      "href",
+      "https://duckduckgo.com/duckduckgo-help-pages/features/instant-answers-and-other-features"
+    );
+    expect(screen.getByRole("link", { name: "结果来源" })).toHaveAttribute(
+      "href",
+      "https://duckduckgo.com/duckduckgo-help-pages/results/sources"
+    );
+    expect(screen.getByRole("link", { name: "服务条款" })).toHaveAttribute(
+      "href",
+      "https://duckduckgo.com/terms"
+    );
+    expect(
+      screen.getByRole("button", { name: "尚无正式 API 契约" })
+    ).toBeDisabled();
+
+    expect(screen.queryByRole("option", { name: /DuckDuckGo/ })).toBeNull();
+    expect(mocks.getSourceConnections).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps body storage enabled when a new form is opened", async () => {
     render(<SourcesPage />);
     const user = await openCompletedForm();
@@ -469,6 +502,10 @@ describe("SourcesPage body storage authorization", () => {
           name: "保存来源正文/摘要用于归档预览",
         })
       ).not.toBeInTheDocument();
+      expect(screen.getByText("DuckDuckGo Instant Answer")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "尚无正式 API 契约" })
+      ).toBeDisabled();
     }
   );
 
