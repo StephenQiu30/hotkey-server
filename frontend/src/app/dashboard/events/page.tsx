@@ -12,9 +12,11 @@ import {
   Loader2,
   RefreshCw,
   SearchX,
+  Target,
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
+import { EventIntelligencePanel } from "@/components/dashboard/EventIntelligencePanel";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,7 +43,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getEventsIdUpdates } from "@/services/hotkey/hotkey-server/events";
+import {
+  getEventsIdIntelligence,
+  getEventsIdUpdates,
+} from "@/services/hotkey/hotkey-server/events";
+import { getMonitors } from "@/services/hotkey/hotkey-server/monitors";
 import { getRadarEvents } from "@/services/hotkey/hotkey-server/radar";
 import {
   confirmationLabel,
@@ -75,11 +81,18 @@ function EventsWorkspace() {
   const [windowValue, setWindowValue] = useState<RadarWindow>("24h");
   const [sort, setSort] = useState<RadarSort>("momentum");
   const [events, setEvents] = useState<HotKeyAPI.RadarEventResponse[]>([]);
+  const [monitors, setMonitors] = useState<HotKeyAPI.MonitorResponse[]>([]);
+  const [monitorId, setMonitorId] = useState<number>();
   const [selectedId, setSelectedId] = useState<number>();
   const [updates, setUpdates] = useState<HotKeyAPI.EventUpdateResponse[]>([]);
+  const [intelligence, setIntelligence] =
+    useState<HotKeyAPI.EventIntelligenceResponse>();
   const [asOf, setAsOf] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [updatesError, setUpdatesError] = useState(false);
+  const [intelligenceLoading, setIntelligenceLoading] = useState(false);
+  const [intelligenceError, setIntelligenceError] = useState(false);
   const [error, setError] = useState<string>();
 
   const loadRadar = useCallback(async () => {
@@ -90,6 +103,7 @@ function EventsWorkspace() {
         window: windowValue,
         sort,
         limit: 50,
+        ...(monitorId != null ? { monitor_id: monitorId } : {}),
       });
       const items = result.data?.items ?? [];
       setEvents(items);
@@ -106,29 +120,67 @@ function EventsWorkspace() {
     } finally {
       setLoading(false);
     }
-  }, [requestedEventId, sort, windowValue]);
+  }, [monitorId, requestedEventId, sort, windowValue]);
 
   useEffect(() => {
     void loadRadar();
   }, [loadRadar]);
 
   useEffect(() => {
+    let active = true;
+    getMonitors({ limit: 100 })
+      .then((result) => {
+        if (!active) return;
+        setMonitors(
+          (result.data?.items ?? []).filter(
+            (monitor) =>
+              monitor.id != null &&
+              (monitor.status === "active" || monitor.status === "paused"),
+          ),
+        );
+      })
+      .catch(() => {
+        if (active) setMonitors([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (selectedId == null) {
       setUpdates([]);
+      setUpdatesError(false);
+      setIntelligence(undefined);
       return;
     }
     let active = true;
     setDetailLoading(true);
-    getEventsIdUpdates({ id: selectedId, limit: 20 })
-      .then((result) => {
-        if (active) setUpdates(result.data?.items ?? []);
-      })
-      .catch(() => {
-        if (active) setUpdates([]);
-      })
-      .finally(() => {
-        if (active) setDetailLoading(false);
-      });
+    setUpdatesError(false);
+    setIntelligenceLoading(true);
+    setIntelligenceError(false);
+    setIntelligence(undefined);
+
+    Promise.allSettled([
+      getEventsIdUpdates({ id: selectedId, limit: 20 }),
+      getEventsIdIntelligence({ id: selectedId }),
+    ]).then(([updatesResult, intelligenceResult]) => {
+      if (!active) return;
+      setUpdates(
+        updatesResult.status === "fulfilled"
+          ? (updatesResult.value.data?.items ?? [])
+          : [],
+      );
+      setUpdatesError(updatesResult.status === "rejected");
+      if (intelligenceResult.status === "fulfilled") {
+        setIntelligence(intelligenceResult.value.data);
+      } else {
+        setIntelligence(undefined);
+        setIntelligenceError(true);
+      }
+      setDetailLoading(false);
+      setIntelligenceLoading(false);
+    });
     return () => {
       active = false;
     };
@@ -178,6 +230,30 @@ function EventsWorkspace() {
 
       <div className="mt-5 flex flex-wrap items-center gap-3">
         <Select
+          value={monitorId?.toString() ?? "all"}
+          onValueChange={(value) => {
+            if (value === "all") {
+              setMonitorId(undefined);
+              if (sort === "relevance") setSort("momentum");
+              return;
+            }
+            setMonitorId(Number(value));
+          }}
+        >
+          <SelectTrigger aria-label="监控上下文" className="w-[180px]">
+            <Target className="h-4 w-4 text-muted-foreground" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全部事件</SelectItem>
+            {monitors.map((monitor) => (
+              <SelectItem key={monitor.id} value={String(monitor.id)}>
+                {monitor.name || `监控 #${monitor.id}`}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
           value={windowValue}
           onValueChange={(value) => setWindowValue(value as RadarWindow)}
         >
@@ -205,7 +281,9 @@ function EventsWorkspace() {
             <SelectItem value="attention">关注度</SelectItem>
             <SelectItem value="breadth">来源覆盖</SelectItem>
             <SelectItem value="latest">最新变化</SelectItem>
-            <SelectItem value="relevance">监控相关性</SelectItem>
+            <SelectItem value="relevance" disabled={monitorId == null}>
+              监控相关性
+            </SelectItem>
           </SelectContent>
         </Select>
         {query ? (
@@ -250,9 +328,9 @@ function EventsWorkspace() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="min-w-[320px]">事件</TableHead>
-                    <TableHead>来源广度</TableHead>
-                    <TableHead>首次发现</TableHead>
-                    <TableHead>趋势</TableHead>
+                    <TableHead className="hidden sm:table-cell">来源广度</TableHead>
+                    <TableHead className="hidden sm:table-cell">首次发现</TableHead>
+                    <TableHead className="hidden sm:table-cell">趋势</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -292,13 +370,13 @@ function EventsWorkspace() {
                             </span>
                           </Button>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="hidden sm:table-cell">
                           {event.independent_source_count ?? 0} 个
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="hidden sm:table-cell">
                           {formatRadarTime(event.first_seen_at)}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="hidden sm:table-cell">
                           <Badge
                             variant="outline"
                             className="gap-1.5 font-normal"
@@ -368,6 +446,14 @@ function EventsWorkspace() {
                       </ul>
                     </section>
 
+                    <EventIntelligencePanel
+                      event={selected}
+                      intelligence={intelligence}
+                      intelligenceLoading={intelligenceLoading}
+                      intelligenceError={intelligenceError}
+                      monitorSelected={monitorId != null}
+                    />
+
                     <section className="border-t pt-5">
                       <div className="flex items-center justify-between">
                         <h3 className="text-sm font-semibold text-foreground">
@@ -377,7 +463,11 @@ function EventsWorkspace() {
                           <Loader2 className="h-4 w-4 animate-spin text-primary" />
                         ) : null}
                       </div>
-                      {updates.length ? (
+                      {updatesError ? (
+                        <p className="mt-3 text-sm text-muted-foreground">
+                          最新变化暂时不可用，请稍后重试。
+                        </p>
+                      ) : updates.length ? (
                         <ol className="mt-3 space-y-4">
                           {updates.slice(0, 5).map((update) => (
                             <li key={update.id} className="flex gap-3">

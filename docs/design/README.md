@@ -37,7 +37,7 @@ Design 记录长期有效的产品与技术决策。状态只使用 `proposed`�
 | 016 | [DuckDuckGo-Instant-Answer边界](016-DuckDuckGo-Instant-Answer边界设计.md) | [PRD](../prd/016-DuckDuckGo-Instant-Answer边界.md) | [Plan](../plans/016-DuckDuckGo-Instant-Answer边界计划.md) | proposed |
 | 017 | [定时监听手动搜索与失败重试](017-定时监听手动搜索与失败重试设计.md) | [PRD](../prd/017-定时监听手动搜索与失败重试.md) | [Plan](../plans/017-定时监听手动搜索与失败重试计划.md) | proposed |
 | 018 | [内容标准化去重时效与原始证据](018-内容标准化去重时效与原始证据设计.md) | [PRD](../prd/018-内容标准化去重时效与原始证据.md) | [Plan](../plans/018-内容标准化去重时效与原始证据计划.md) | proposed |
-| 019 | [AI真伪相关性重要性与摘要](019-AI真伪相关性重要性与摘要设计.md) | [PRD](../prd/019-AI真伪相关性重要性与摘要.md) | [Plan](../plans/019-AI真伪相关性重要性与摘要计划.md) | proposed |
+| 019 | [AI真伪相关性重要性与摘要](019-AI真伪相关性重要性与摘要设计.md) | [PRD](../prd/019-AI真伪相关性重要性与摘要.md) | [Plan](../plans/019-AI真伪相关性重要性与摘要计划.md) | accepted |
 | 020 | [事件聚类生命周期热度与趋势](020-事件聚类生命周期热度与趋势设计.md) | [PRD](../prd/020-事件聚类生命周期热度与趋势.md) | [Plan](../plans/020-事件聚类生命周期热度与趋势计划.md) | proposed |
 | 021 | [内容与事件检索筛选排序](021-内容与事件检索筛选排序设计.md) | [PRD](../prd/021-内容与事件检索筛选排序.md) | [Plan](../plans/021-内容与事件检索筛选排序计划.md) | proposed |
 | 022 | [实时事件流与站内通知](022-实时事件流与站内通知设计.md) | [PRD](../prd/022-实时事件流与站内通知.md) | [Plan](../plans/022-实时事件流与站内通知计划.md) | proposed |

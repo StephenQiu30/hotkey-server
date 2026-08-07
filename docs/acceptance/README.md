@@ -35,3 +35,4 @@ canonical_path: docs/acceptance/README.md
 | 016 | [DuckDuckGo-Instant-Answer边界](016-DuckDuckGo-Instant-Answer边界验收.md) | passed |
 | 017 | [定时监听手动搜索与失败重试](017-定时监听手动搜索与失败重试验收.md) | passed |
 | 018 | [内容标准化去重时效与原始证据](018-内容标准化去重时效与原始证据验收.md) | passed |
+| 019 | [AI真伪相关性重要性与摘要](019-AI真伪相关性重要性与摘要验收.md) | passed |

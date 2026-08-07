@@ -14,6 +14,20 @@ const CONFIRMATION_LABELS: Record<string, string> = {
   insufficient: "证据不足",
 };
 
+const CLAIM_STATUS_LABELS: Record<string, string> = {
+  corroborated: "多源支持",
+  disputed: "存在争议",
+  single_source: "单一来源",
+  unverified: "待核实",
+  insufficient: "证据不足",
+};
+
+const EVIDENCE_STANCE_LABELS: Record<string, string> = {
+  supports: "支持",
+  contradicts: "反驳",
+  neutral: "中立",
+};
+
 const REASON_LABELS: Record<string, string> = {
   momentum: "传播动量正在增强",
   attention: "公众关注度正在上升",
@@ -58,6 +72,22 @@ export function trendLabel(value?: string) {
 
 export function confirmationLabel(value?: string) {
   return (value && CONFIRMATION_LABELS[value]) || "待核实";
+}
+
+export function claimStatusLabel(value?: string) {
+  return (value && CLAIM_STATUS_LABELS[value]) || "待核实";
+}
+
+export function evidenceStanceLabel(value?: string) {
+  return (value && EVIDENCE_STANCE_LABELS[value]) || "相关";
+}
+
+export function formatConfidence(value?: number) {
+  if (value == null) return "— · 置信度未知";
+  const score = Math.round(value);
+  if (score < 60) return `${score} · 低置信度`;
+  if (score < 80) return `${score} · 中等置信度`;
+  return `${score} · 高置信度`;
 }
 
 export function reasonLabel(value?: string) {

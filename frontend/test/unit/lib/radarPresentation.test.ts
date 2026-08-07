@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  claimStatusLabel,
   confirmationLabel,
+  evidenceStanceLabel,
+  formatConfidence,
   getRadarEventTitle,
   reasonLabel,
   trendLabel,
@@ -20,5 +23,26 @@ describe("radarPresentation", () => {
     expect(confirmationLabel("corroborated")).toBe("多源印证");
     expect(reasonLabel("source_breadth_growing")).toBe("来源覆盖正在扩大");
     expect(reasonLabel("unknown_reason")).toBe("出现新的重要变化");
+  });
+
+  it("keeps every evidence state and confidence band explicit", () => {
+    expect([
+      "corroborated",
+      "disputed",
+      "single_source",
+      "unverified",
+      "insufficient",
+    ].map(claimStatusLabel)).toEqual([
+      "多源支持",
+      "存在争议",
+      "单一来源",
+      "待核实",
+      "证据不足",
+    ]);
+    expect(formatConfidence(46)).toBe("46 · 低置信度");
+    expect(formatConfidence(60)).toBe("60 · 中等置信度");
+    expect(formatConfidence(80)).toBe("80 · 高置信度");
+    expect(formatConfidence()).toBe("— · 置信度未知");
+    expect(evidenceStanceLabel("contradicts")).toBe("反驳");
   });
 });
