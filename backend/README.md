@@ -97,23 +97,23 @@ flowchart LR
 
 ### Docker Compose 启动
 
-Compose 公共基线与环境覆盖均位于仓库根目录，并统一启动前端、后端与基础设施。日常环境使用 `backend/.env`：
+默认 Compose 文件位于仓库根目录，包含前端、后端与基础设施的完整配置。默认环境使用 `backend/.env`：
 
 ```bash
 cd ..
 cp backend/.env.example backend/.env
 cp .env.example .env
-docker compose -f docker-compose.yml -f docker-compose-env.yml up --build -d
+docker compose -f docker-compose.yml up --build -d
 ```
 
 生产环境使用根目录独立的 `.env.prod`，其中 6 个必填空值必须先填写：
 
 ```bash
 cp .env.prod.example .env.prod
-docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose-prod.yml up --build -d
+docker compose --env-file .env.prod -f docker-compose-prod.yml up --build -d
 ```
 
-公共基线只定义一次服务、初始化、依赖、健康检查和卷；日常覆盖发布 Web、Server、PostgreSQL、Redis 和 MinIO 端口，生产覆盖只发布 Web 与 Server 端口。`--env-file .env.prod` 只为容器映射必要凭据和端口。上游镜像使用 `latest` 浮动标签；pgvector 官方没有 `latest`，因此使用兼容现有数据卷的浮动 `pg16` 标签。生产 HTTP 需要由外部反向代理提供 HTTPS。
+默认文件完整定义服务、初始化、依赖、健康检查和卷；生产覆盖只替换生产镜像、凭据和运行环境。`--env-file .env.prod` 为生产容器映射必要凭据。上游镜像使用 `latest` 浮动标签；pgvector 官方没有 `latest`，因此使用兼容现有数据卷的浮动 `pg16` 标签。生产 HTTP 需要由外部反向代理提供 HTTPS。
 
 ### 1. 获取代码与配置
 

@@ -1,4 +1,4 @@
-name: hotkey-env
+name: hotkey-server
 
 services:
   postgres:
@@ -76,6 +76,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
+    env_file:
+      - ./backend/.env
     environment:
       HOTKEY_ENV: development
       HOTKEY_ROLE: all

@@ -94,21 +94,21 @@ HOTKEY_API_ORIGIN=http://127.0.0.1:8080
 
 ### Docker
 
-Docker Compose 已统一为仓库根目录的公共基线与环境覆盖，并同时启动前端、后端、PostgreSQL、Redis 与 MinIO。启动日常环境：
+Docker Compose 已统一为仓库根目录的默认配置与生产覆盖，并同时启动前端、后端、PostgreSQL、Redis 与 MinIO。启动默认环境：
 
 ```bash
 cd ..
 cp backend/.env.example backend/.env
 cp .env.example .env
-docker compose -f docker-compose.yml -f docker-compose-env.yml up --build -d
+docker compose -f docker-compose.yml up --build -d
 ```
 
 首次启动生产环境前，在根目录创建生产配置并填写必需凭据：
 
 ```bash
 cp .env.prod.example .env.prod
-docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose-prod.yml config
-docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose-prod.yml up --build -d
+docker compose --env-file .env.prod -f docker-compose-prod.yml config
+docker compose --env-file .env.prod -f docker-compose-prod.yml up --build -d
 ```
 
 公共基线使用内部服务名连接前后端，不再依赖 `host.docker.internal`；覆盖文件只保存环境差异。前端 Dockerfile 仍位于 `frontend/`，根 Compose 负责环境、端口和服务编排。

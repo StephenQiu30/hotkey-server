@@ -91,20 +91,20 @@ The same Go binary can run as `all`, `api`, or `worker`.
 
 ### Start with Docker Compose
 
-The root Compose baseline and environment overrides start the frontend, backend, and infrastructure together. The daily environment uses `backend/.env`:
+The root default Compose file starts the frontend, backend, and infrastructure together. The default environment uses `backend/.env`:
 
 ```bash
 cd ..
 cp backend/.env.example backend/.env
 cp .env.example .env
-docker compose -f docker-compose.yml -f docker-compose-env.yml up --build -d
+docker compose -f docker-compose.yml up --build -d
 ```
 
 Production uses the root `.env.prod`; fill its six required empty values first:
 
 ```bash
 cp .env.prod.example .env.prod
-docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose-prod.yml up --build -d
+docker compose --env-file .env.prod -f docker-compose-prod.yml up --build -d
 ```
 
 The baseline defines services, initialization, dependencies, health checks, and volumes once. The daily override publishes the Web, Server, PostgreSQL, Redis, and MinIO ports; the production override publishes only Web and Server. `--env-file .env.prod` maps the required container credentials and port overrides. Upstream images use floating `latest` tags; pgvector does not publish `latest`, so it uses the floating `pg16` tag to remain compatible with existing data volumes. Put an HTTPS reverse proxy in front of the production HTTP ports.

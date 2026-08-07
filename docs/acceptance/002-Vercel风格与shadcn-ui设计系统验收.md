@@ -51,9 +51,9 @@ npm run build
 npx shadcn@latest info
 
 cd ..
-docker compose -f docker-compose.yml -f docker-compose-env.yml config --quiet
+docker compose -f docker-compose.yml config --quiet
 docker compose --env-file .env.prod \
-  -f docker-compose.yml -f docker-compose-prod.yml config --quiet
+  -f docker-compose-prod.yml config --quiet
 git diff --check
 ```
 

@@ -18,7 +18,6 @@ func TestDockerDeploymentContract(t *testing.T) {
 	for _, relative := range []string{
 		".env.prod.example",
 		"docker-compose.yml",
-		"docker-compose-env.yml",
 		"docker-compose-prod.yml",
 	} {
 		if _, err := os.Stat(filepath.Join(root, relative)); err != nil {
@@ -48,7 +47,7 @@ func TestDockerDeploymentContract(t *testing.T) {
 
 	baseCompose := readDockerContractFile(t, root, "docker-compose.yml")
 	assertDockerContains(t, "docker-compose.yml", baseCompose,
-		"name: hotkey-env",
+		"name: hotkey-server",
 		"image: hotkey-server:env",
 		"image: hotkey-web:env",
 		"pgvector/pgvector:pg16",
@@ -64,6 +63,7 @@ func TestDockerDeploymentContract(t *testing.T) {
 		"hotkey-web:",
 		"HOTKEY_ENV: development",
 		"HOTKEY_DEPLOY_ENV: env",
+		"- ./backend/.env",
 		"db verify ||",
 		"db init --empty-only --confirm-empty ||",
 		"mc mb --ignore-existing",
@@ -75,60 +75,64 @@ func TestDockerDeploymentContract(t *testing.T) {
 	)
 	assertDockerUsesLatestUpstreamImages(t, dockerfile, baseCompose)
 
-	envOverride := readDockerContractFile(t, root, "docker-compose-env.yml")
-	assertDockerContains(t, "docker-compose-env.yml", envOverride,
-		"${HOTKEY_POSTGRES_PORT:-5432}:5432",
-		"${HOTKEY_REDIS_PORT:-6379}:6379",
-		"${HOTKEY_MINIO_PORT:-9000}:9000",
-		"${HOTKEY_MINIO_CONSOLE_PORT:-9001}:9001",
-		"- ./backend/.env",
-	)
-	if strings.Contains(envOverride, ".env.prod") {
-		t.Error("docker-compose-env.yml must not reference .env.prod")
-	}
-	assertComposeOverrideContainsOnlyDifferences(t, "docker-compose-env.yml", envOverride)
-
 	readme := readDockerContractFile(t, root, "README.md")
 	readmeEN := readDockerContractFile(t, root, "README_EN.md")
 	for name, source := range map[string]string{"README.md": readme, "README_EN.md": readmeEN} {
 		assertDockerContains(t, name, source,
-			"docker compose -f docker-compose.yml -f docker-compose-env.yml up --build -d",
-			"-f docker-compose.yml -f docker-compose-prod.yml up --build -d",
+			"docker compose -f docker-compose.yml up --build -d",
+			"docker compose --env-file .env.prod -f docker-compose-prod.yml up --build -d",
 		)
 	}
 }
 
 func TestDockerProductionIsolation(t *testing.T) {
-	root := filepath.Clean(filepath.Join(repositoryRoot(t), ".."))
+	backendRoot := repositoryRoot(t)
+	root := filepath.Clean(filepath.Join(backendRoot, ".."))
+	dockerfile := readDockerContractFile(t, backendRoot, "Dockerfile")
 	baseCompose := readDockerContractFile(t, root, "docker-compose.yml")
 	prodOverride := readDockerContractFile(t, root, "docker-compose-prod.yml")
 	assertDockerContains(t, "docker-compose-prod.yml", prodOverride,
 		"name: hotkey-prod",
+		"pgvector/pgvector:pg16",
+		"redis:latest",
+		"minio/minio:latest",
+		"minio/mc:latest",
 		"image: hotkey-server:prod",
 		"image: hotkey-web:prod",
 		"- .env.prod",
+		"context: ./backend",
+		"context: ./frontend",
+		"healthcheck:",
+		"depends_on:",
+		"entrypoint:",
+		"stop_grace_period: 30s",
+		"postgres_data:",
+		"minio_data:",
+		"vault_data:",
 		"${POSTGRES_PASSWORD:?",
 		"${MINIO_ROOT_USER:?",
 		"${MINIO_ROOT_PASSWORD:?",
 		"postgres://hotkey:${POSTGRES_PASSWORD:?",
 		"HOTKEY_ENV: production",
+		"HOTKEY_ROLE: all",
+		"HOTKEY_REDIS_URL: redis://redis:6379/0",
+		"HOTKEY_MINIO_ENDPOINT: minio:9000",
 		`HOTKEY_REFRESH_COOKIE_SECURE: "true"`,
 		"HOTKEY_DEPLOY_ENV: prod",
 	)
-	assertComposeOverrideContainsOnlyDifferences(t, "docker-compose-prod.yml", prodOverride)
-	if strings.Contains(prodOverride, "\n    ports:") {
-		t.Error("production override must not publish additional host ports")
-	}
-	for _, service := range []string{"postgres", "redis", "minio", "minio-init", "db-init"} {
-		block := dockerComposeServiceBlock(t, baseCompose, service)
-		if strings.Contains(block, "\n    ports:") {
-			t.Errorf("production support service %s must not publish host ports in the shared baseline", service)
+	assertDockerUsesLatestUpstreamImages(t, dockerfile, prodOverride)
+	for name, compose := range map[string]string{"docker-compose.yml": baseCompose, "docker-compose-prod.yml": prodOverride} {
+		for _, service := range []string{"postgres", "redis", "minio", "minio-init", "db-init"} {
+			block := dockerComposeServiceBlock(t, compose, service)
+			if strings.Contains(block, "\n    ports:") {
+				t.Errorf("%s support service %s must not publish host ports", name, service)
+			}
 		}
-	}
-	for _, service := range []string{"hotkey-server", "hotkey-web"} {
-		block := dockerComposeServiceBlock(t, baseCompose, service)
-		if !strings.Contains(block, "\n    ports:") {
-			t.Errorf("production application service %s must publish its HTTP port", service)
+		for _, service := range []string{"hotkey-server", "hotkey-web"} {
+			block := dockerComposeServiceBlock(t, compose, service)
+			if !strings.Contains(block, "\n    ports:") {
+				t.Errorf("%s application service %s must publish its HTTP port", name, service)
+			}
 		}
 	}
 
@@ -154,21 +158,6 @@ func TestDockerProductionIsolation(t *testing.T) {
 
 	gitignore := readDockerContractFile(t, root, ".gitignore")
 	assertDockerContains(t, ".gitignore", gitignore, "!.env.prod.example")
-}
-
-func assertComposeOverrideContainsOnlyDifferences(t *testing.T, name, source string) {
-	t.Helper()
-	for _, duplicatedCommonBlock := range []string{
-		"healthcheck:",
-		"depends_on:",
-		"entrypoint:",
-		"stop_grace_period:",
-		"\nvolumes:",
-	} {
-		if strings.Contains(source, duplicatedCommonBlock) {
-			t.Errorf("%s duplicates shared Compose block %q", name, duplicatedCommonBlock)
-		}
-	}
 }
 
 func assertDockerUsesLatestUpstreamImages(t *testing.T, sources ...string) {

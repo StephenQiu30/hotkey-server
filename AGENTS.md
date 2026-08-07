@@ -88,18 +88,18 @@ bootstrap -> all adapters
 ## Docker 与环境配置
 
 - Dockerfile 与 `.dockerignore` 保留在各应用目录，因为构建上下文不同；不得为了文件名相同而合并不同应用镜像。
-- `docker-compose.yml` 保存公共服务、依赖、健康检查、初始化命令和卷；`docker-compose-env.yml` 与 `docker-compose-prod.yml` 只覆盖环境变量、凭据、镜像标签和端口策略。
+- `docker-compose.yml` 与 `docker-compose-prod.yml` 都保存完整服务、环境变量、依赖、健康检查、初始化命令和卷；prod 文件只将默认环境值替换为生产环境值、生产凭据和 prod 镜像标签。
 - 日常环境读取 `backend/.env` 并可发布基础设施端口；生产环境读取根 `.env.prod`，基础设施只接收所需凭据且不发布宿主机端口。
 - 上游镜像使用 `latest`；`pgvector/pgvector` 使用官方浮动 `pg16` 以保持 PostgreSQL 16 数据卷兼容。应用镜像使用 `env` / `prod` 标签。
 - 子项目不得新增 Compose 文件、生产环境模板、启动脚本或重复部署入口。
 
 ```bash
 # 日常环境
-docker compose -f docker-compose.yml -f docker-compose-env.yml up --build -d
+docker compose -f docker-compose.yml up --build -d
 
 # 生产环境
 docker compose --env-file .env.prod \
-  -f docker-compose.yml -f docker-compose-prod.yml up --build -d
+  -f docker-compose-prod.yml up --build -d
 ```
 
 ## Git、评审与交付
@@ -126,9 +126,9 @@ npm run test:unit
 npm run build
 
 cd ..
-docker compose -f docker-compose.yml -f docker-compose-env.yml config --quiet
+docker compose -f docker-compose.yml config --quiet
 docker compose --env-file .env.prod \
-  -f docker-compose.yml -f docker-compose-prod.yml config --quiet
+  -f docker-compose-prod.yml config --quiet
 git diff --check
 ```
 

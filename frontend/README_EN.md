@@ -94,21 +94,21 @@ In WebStorm, you can run the `dev` script from `package.json` directly. The Web 
 
 ### Docker
 
-Docker Compose is centralized as a root baseline plus environment overrides and starts the frontend, backend, PostgreSQL, Redis, and MinIO together. Start the daily environment with:
+Docker Compose is centralized in a root default configuration with a production override and starts the frontend, backend, PostgreSQL, Redis, and MinIO together. Start the default environment with:
 
 ```bash
 cd ..
 cp backend/.env.example backend/.env
 cp .env.example .env
-docker compose -f docker-compose.yml -f docker-compose-env.yml up --build -d
+docker compose -f docker-compose.yml up --build -d
 ```
 
 Create the root production configuration and fill the required credentials before the first production run:
 
 ```bash
 cp .env.prod.example .env.prod
-docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose-prod.yml config
-docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose-prod.yml up --build -d
+docker compose --env-file .env.prod -f docker-compose-prod.yml config
+docker compose --env-file .env.prod -f docker-compose-prod.yml up --build -d
 ```
 
 The shared baseline connects the frontend and backend through internal service names instead of `host.docker.internal`; overrides contain environment differences only. The frontend Dockerfile remains in `frontend/`, while root Compose owns environment, port, and service orchestration.

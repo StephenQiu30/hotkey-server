@@ -33,22 +33,22 @@ npm run dev
 
 ## Docker Compose
 
-根 `docker-compose.yml` 统一定义前端、后端、PostgreSQL、Redis、MinIO、健康检查和卷；日常与生产文件只覆盖环境差异。日常环境：
+根 `docker-compose.yml` 统一定义前端、后端、PostgreSQL、Redis、MinIO、默认环境配置、健康检查和卷；生产文件只覆盖生产环境差异。默认环境：
 
 ```bash
 cp backend/.env.example backend/.env
 cp .env.example .env
-docker compose -f docker-compose.yml -f docker-compose-env.yml up --build -d
+docker compose -f docker-compose.yml up --build -d
 ```
 
 生产环境：
 
 ```bash
 cp .env.prod.example .env.prod
-docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose-prod.yml up --build -d
+docker compose --env-file .env.prod -f docker-compose-prod.yml up --build -d
 ```
 
-公共服务只在基线中定义一次，两个覆盖文件不复制服务依赖或健康检查。子项目目录不维护 Compose；Dockerfile 与 `.dockerignore` 仍跟随各自应用，以保持最小构建上下文。
+公共服务、初始化命令、依赖和健康检查均在默认 Compose 文件中完整定义，生产文件只覆盖镜像、凭据和运行环境。子项目目录不维护 Compose；Dockerfile 与 `.dockerignore` 仍跟随各自应用，以保持最小构建上下文。
 
 ## 质量检查
 

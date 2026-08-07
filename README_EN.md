@@ -33,19 +33,19 @@ The backend listens on `http://127.0.0.1:8080` by default. See each project READ
 
 ## Docker Compose
 
-The root `docker-compose.yml` defines the frontend, backend, PostgreSQL, Redis, MinIO, health checks, and volumes once. The environment files contain differences only. For the daily environment:
+The root `docker-compose.yml` defines the frontend, backend, PostgreSQL, Redis, MinIO, default environment, health checks, and volumes. The production file contains only production differences. For the default environment:
 
 ```bash
 cp backend/.env.example backend/.env
 cp .env.example .env
-docker compose -f docker-compose.yml -f docker-compose-env.yml up --build -d
+docker compose -f docker-compose.yml up --build -d
 ```
 
 For production:
 
 ```bash
 cp .env.prod.example .env.prod
-docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose-prod.yml up --build -d
+docker compose --env-file .env.prod -f docker-compose-prod.yml up --build -d
 ```
 
 Common services exist only in the baseline; the two overrides do not repeat dependencies or health checks. Subprojects keep no Compose files. Their Dockerfiles and `.dockerignore` files remain beside each application to preserve focused build contexts.

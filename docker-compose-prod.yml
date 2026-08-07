@@ -2,40 +2,133 @@ name: hotkey-prod
 
 services:
   postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
     environment:
+      POSTGRES_DB: hotkey
+      POSTGRES_USER: hotkey
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hotkey -d hotkey"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:latest
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address :9001
     environment:
       MINIO_ROOT_USER: "${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env.prod}"
       MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env.prod}"
+    volumes:
+      - minio_data:/data
 
   minio-init:
+    image: minio/mc:latest
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_started
     environment:
       MINIO_ROOT_USER: "${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env.prod}"
       MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env.prod}"
+      HOTKEY_MINIO_BUCKET: "${HOTKEY_MINIO_BUCKET:-hotkey-evidence}"
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        until mc alias set hotkey http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"; do
+          sleep 1
+        done
+        mc mb --ignore-existing "hotkey/$$HOTKEY_MINIO_BUCKET"
 
   db-init:
     image: hotkey-server:prod
+    restart: "no"
     environment:
       HOTKEY_ENV: production
+      HOTKEY_ROLE: all
       HOTKEY_DATABASE_URL: "postgres://hotkey:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}@postgres:5432/hotkey?sslmode=disable&connect_timeout=5"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        /usr/local/bin/hotkey db verify ||
+          /usr/local/bin/hotkey db init --empty-only --confirm-empty ||
+          /usr/local/bin/hotkey db verify
 
   hotkey-server:
     image: hotkey-server:prod
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
     env_file:
       - .env.prod
     environment:
       HOTKEY_ENV: production
+      HOTKEY_ROLE: all
+      HOTKEY_HTTP_ADDR: :8080
       HOTKEY_DATABASE_URL: "postgres://hotkey:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}@postgres:5432/hotkey?sslmode=disable&connect_timeout=5"
+      HOTKEY_REDIS_URL: redis://redis:6379/0
+      HOTKEY_MINIO_ENDPOINT: minio:9000
       HOTKEY_MINIO_ACCESS_KEY: "${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env.prod}"
       HOTKEY_MINIO_SECRET_KEY: "${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env.prod}"
+      HOTKEY_MINIO_BUCKET: "${HOTKEY_MINIO_BUCKET:-hotkey-evidence}"
+      HOTKEY_MINIO_USE_SSL: "false"
+      HOTKEY_VAULT_PATH: /var/lib/hotkey/vault
       HOTKEY_REFRESH_COOKIE_SECURE: "true"
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    ports:
+      - "${HOTKEY_HTTP_PORT:-8080}:8080"
+    volumes:
+      - vault_data:/var/lib/hotkey/vault
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    stop_grace_period: 30s
 
   hotkey-web:
     image: hotkey-web:prod
     build:
+      context: ./frontend
+      dockerfile: Dockerfile
       args:
+        HOTKEY_API_ORIGIN: http://hotkey-server:8080
         HOTKEY_DEPLOY_ENV: prod
+    restart: unless-stopped
+    depends_on:
+      hotkey-server:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-3000}:3000"
     environment:
+      NODE_ENV: production
       HOTKEY_DEPLOY_ENV: prod
+
+volumes:
+  postgres_data:
+  minio_data:
+  vault_data:
