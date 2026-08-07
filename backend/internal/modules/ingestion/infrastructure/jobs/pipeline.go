@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/application"
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/domain"
@@ -16,6 +17,10 @@ type ContentRepository interface {
 
 type RelevanceRepository interface {
 	UpsertSnapshot(context.Context, ingestiondomain.RelevanceSnapshotInput) (ingestiondomain.RelevanceSnapshot, bool, error)
+}
+
+type EvaluateJobEnqueuer interface {
+	Enqueue(context.Context, queue.Job) (int64, bool, error)
 }
 
 // NormalizeHandler consumes only Source-owned captured items and schedules the
@@ -59,14 +64,19 @@ type EvaluateHandler struct {
 	contents   ContentRepository
 	candidates *ingestionapplication.CandidateRecallService
 	snapshots  RelevanceRepository
-	jobs       *queue.Store
+	jobs       EvaluateJobEnqueuer
+	now        func() time.Time
 }
 
 func NewEvaluateHandler(contents ContentRepository, candidates *ingestionapplication.CandidateRecallService, snapshots RelevanceRepository, jobs *queue.Store) (*EvaluateHandler, error) {
-	if contents == nil || candidates == nil || snapshots == nil || jobs == nil {
+	return NewEvaluateHandlerWithClock(contents, candidates, snapshots, jobs, func() time.Time { return time.Now().UTC() })
+}
+
+func NewEvaluateHandlerWithClock(contents ContentRepository, candidates *ingestionapplication.CandidateRecallService, snapshots RelevanceRepository, jobs EvaluateJobEnqueuer, now func() time.Time) (*EvaluateHandler, error) {
+	if contents == nil || candidates == nil || snapshots == nil || jobs == nil || now == nil {
 		return nil, fmt.Errorf("evaluate handler dependencies are required")
 	}
-	return &EvaluateHandler{contents: contents, candidates: candidates, snapshots: snapshots, jobs: jobs}, nil
+	return &EvaluateHandler{contents: contents, candidates: candidates, snapshots: snapshots, jobs: jobs, now: now}, nil
 }
 
 func (handler *EvaluateHandler) Handle(ctx context.Context, job queue.Job) error {
@@ -108,6 +118,9 @@ func (handler *EvaluateHandler) Handle(ctx context.Context, job queue.Job) error
 		if _, _, err := handler.snapshots.UpsertSnapshot(ctx, input); err != nil {
 			return queue.ClassifyHandlerError(ctx, err)
 		}
+	}
+	if !ingestiondomain.EligibleForNewEvent(content.PublishedAt, handler.now().UTC()) {
+		return nil
 	}
 	clusterHash := queue.StableJobHash(queue.KindClusterContent, fmt.Sprint(content.ID), fmt.Sprint(content.Version), job.Payload.InputHash)
 	_, _, err = handler.jobs.Enqueue(ctx, queue.Job{

@@ -30,9 +30,8 @@ type ContentLifecycle interface {
 	DeleteContent(context.Context, int64) (DeleteBySourceItemResult, error)
 }
 
-// ContentQueryService exposes the active Content read use cases consumed by
-// the HTTP transport. It has no object-store dependency, so evidence object
-// keys and provider credentials cannot enter its result model.
+// ContentQueryService exposes active Content reads and a verified evidence
+// projection. Object-store keys and provider details never enter its result.
 type ContentQueryService struct {
 	contents  ingestiondomain.ContentRepository
 	sources   sourcedomain.ContentSourceReader
@@ -70,38 +69,68 @@ func (service *ContentQueryService) GetDocument(ctx context.Context, contentID i
 	if err != nil {
 		return ingestiondomain.ContentDocument{}, contentQueryReadError(err)
 	}
-	eligible := make([]ingestiondomain.ContentAsset, 0, len(assets))
+	markdownAssets := make([]ingestiondomain.ContentAsset, 0, len(assets))
 	for _, asset := range assets {
-		if asset.Status == ingestiondomain.AssetStatusAvailable && asset.AssetType == "text" && asset.MIMEType == markdownMIMEType {
-			eligible = append(eligible, asset)
+		if asset.AssetType == "text" && asset.MIMEType == markdownMIMEType {
+			markdownAssets = append(markdownAssets, asset)
 		}
 	}
-	if len(eligible) == 0 {
+	if len(markdownAssets) == 0 {
 		return document, nil
 	}
-	sort.SliceStable(eligible, func(left, right int) bool {
-		if eligible[left].CapturedAt.Equal(eligible[right].CapturedAt) {
-			return eligible[left].ID > eligible[right].ID
+	sort.SliceStable(markdownAssets, func(left, right int) bool {
+		leftAvailable := markdownAssets[left].Status == ingestiondomain.AssetStatusAvailable
+		rightAvailable := markdownAssets[right].Status == ingestiondomain.AssetStatusAvailable
+		if leftAvailable != rightAvailable {
+			return leftAvailable
 		}
-		return eligible[left].CapturedAt.After(eligible[right].CapturedAt)
+		if markdownAssets[left].CapturedAt.Equal(markdownAssets[right].CapturedAt) {
+			return markdownAssets[left].ID > markdownAssets[right].ID
+		}
+		return markdownAssets[left].CapturedAt.After(markdownAssets[right].CapturedAt)
 	})
-	if service.evidence == nil {
-		return ingestiondomain.ContentDocument{}, sharederrors.New(sharederrors.CodeUnavailable, 503, "")
+	asset := markdownAssets[0]
+	if asset.Status != ingestiondomain.AssetStatusAvailable {
+		document.Availability = ingestiondomain.ContentDocumentUnavailable
+		document.UnavailableReason = contentDocumentAssetReason(asset.Status)
+		return document, nil
 	}
-	asset := eligible[0]
+	if service.evidence == nil {
+		document.Availability = ingestiondomain.ContentDocumentUnavailable
+		document.UnavailableReason = ingestiondomain.ContentDocumentReasonReadFailed
+		return document, nil
+	}
 	read, err := service.evidence.ReadText(ctx, asset.ObjectKey, contentDocumentMaximumBytes)
 	if err != nil {
-		return ingestiondomain.ContentDocument{}, sharederrors.New(sharederrors.CodeUnavailable, 503, "")
+		document.Availability = ingestiondomain.ContentDocumentUnavailable
+		document.UnavailableReason = ingestiondomain.ContentDocumentReasonReadFailed
+		return document, nil
 	}
 	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(read.Text)))
 	if read.Text == "" || read.MIMEType != markdownMIMEType || read.MIMEType != asset.MIMEType || read.SHA256 != asset.SHA256 || digest != asset.SHA256 || read.SizeBytes != asset.SizeBytes || read.SizeBytes != int64(len(read.Text)) {
-		return ingestiondomain.ContentDocument{}, sharederrors.New(sharederrors.CodeUnavailable, 503, "")
+		document.Availability = ingestiondomain.ContentDocumentUnavailable
+		document.UnavailableReason = ingestiondomain.ContentDocumentReasonIntegrityFailed
+		return document, nil
 	}
 	document.Availability = ingestiondomain.ContentDocumentReady
+	document.UnavailableReason = ""
 	document.Markdown = read.Text
 	document.SHA256 = read.SHA256
 	document.CapturedAt = asset.CapturedAt
 	return document, nil
+}
+
+func contentDocumentAssetReason(status ingestiondomain.AssetStatus) ingestiondomain.ContentDocumentUnavailableReason {
+	switch status {
+	case ingestiondomain.AssetStatusPending:
+		return ingestiondomain.ContentDocumentReasonPending
+	case ingestiondomain.AssetStatusMissing:
+		return ingestiondomain.ContentDocumentReasonMissing
+	case ingestiondomain.AssetStatusDeletePending, ingestiondomain.AssetStatusDeleted:
+		return ingestiondomain.ContentDocumentReasonDeleting
+	default:
+		return ingestiondomain.ContentDocumentReasonReadFailed
+	}
 }
 
 func (service *ContentQueryService) ListActive(ctx context.Context, query ingestiondomain.ContentListQuery) (ingestiondomain.ContentPage, error) {

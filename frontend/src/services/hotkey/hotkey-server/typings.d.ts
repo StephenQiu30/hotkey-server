@@ -224,7 +224,7 @@ required property without making explicit null impossible to bind. */
   };
 
   type ContentDocumentResponse = {
-    availability?: "ready" | "not_captured";
+    availability?: "ready" | "not_captured" | "unavailable";
     canonical_url?: string;
     captured_at?: string;
     content_id?: number;
@@ -234,6 +234,12 @@ required property without making explicit null impossible to bind. */
     sha256?: string;
     source_name?: string;
     title?: string;
+    unavailable_reason?:
+      | "pending"
+      | "missing"
+      | "deleting"
+      | "read_failed"
+      | "integrity_failed";
   };
 
   type ContentMetricsResponse = {

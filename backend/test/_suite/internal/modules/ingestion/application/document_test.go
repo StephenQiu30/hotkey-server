@@ -101,8 +101,9 @@ func TestContentDocumentStoreRecovery(t *testing.T) {
 	store := &recoveringDocumentEvidenceStore{document: ingestiondomain.EvidenceText{Text: markdown, MIMEType: testMarkdownMIME, SHA256: digest, SizeBytes: int64(len(markdown))}, remainingFailures: 1}
 	service := newDocumentQueryService(t, content, []ingestiondomain.ContentAsset{asset}, store)
 
-	if _, err := service.GetDocument(context.Background(), content.ID); !isAppCode(err, sharederrors.CodeUnavailable) {
-		t.Fatalf("GetDocument(first) error = %v, want unavailable", err)
+	first, err := service.GetDocument(context.Background(), content.ID)
+	if err != nil || first.Availability != ingestiondomain.ContentDocumentUnavailable || first.UnavailableReason != ingestiondomain.ContentDocumentReasonReadFailed || first.Markdown != "" {
+		t.Fatalf("GetDocument(first) = %#v/%v, want safe read_failed projection", first, err)
 	}
 	document, err := service.GetDocument(context.Background(), content.ID)
 	if err != nil || document.Availability != ingestiondomain.ContentDocumentReady || document.Markdown != markdown {
@@ -131,8 +132,8 @@ func TestContentDocumentDeletePending(t *testing.T) {
 	store := &concurrentDocumentEvidenceStore{}
 	service := newDocumentQueryService(t, content, []ingestiondomain.ContentAsset{asset}, store)
 	document, err := service.GetDocument(context.Background(), content.ID)
-	if err != nil || document.Availability != ingestiondomain.ContentDocumentNotCaptured || store.reads != 0 {
-		t.Fatalf("GetDocument(delete_pending) = %#v/%v reads=%d, want not_captured without store read", document, err, store.reads)
+	if err != nil || document.Availability != ingestiondomain.ContentDocumentUnavailable || document.UnavailableReason != ingestiondomain.ContentDocumentReasonDeleting || document.Markdown != "" || store.reads != 0 {
+		t.Fatalf("GetDocument(delete_pending) = %#v/%v reads=%d, want deleting without store read", document, err, store.reads)
 	}
 }
 
@@ -166,7 +167,7 @@ func TestContentDocumentReturnsNotCapturedForLegacyOrMissingAsset(t *testing.T) 
 	if err != nil {
 		t.Fatalf("GetDocument() error = %v", err)
 	}
-	if document.Availability != ingestiondomain.ContentDocumentNotCaptured || document.Markdown != "" || document.SHA256 != "" {
+	if document.Availability != ingestiondomain.ContentDocumentNotCaptured || document.UnavailableReason != "" || document.Markdown != "" || document.SHA256 != "" {
 		t.Fatalf("GetDocument() = %#v, want not_captured empty state", document)
 	}
 }
@@ -179,11 +180,12 @@ func TestContentDocumentRejectsStoreAndIntegrityFailuresAsUnavailable(t *testing
 		name     string
 		document ingestiondomain.EvidenceText
 		err      error
+		reason   ingestiondomain.ContentDocumentUnavailableReason
 	}{
-		{name: "store unavailable", err: errors.New("minio.internal private diagnostic")},
-		{name: "sha mismatch", document: ingestiondomain.EvidenceText{Text: "body", MIMEType: testMarkdownMIME, SHA256: strings.Repeat("b", 64), SizeBytes: 5}},
-		{name: "size mismatch", document: ingestiondomain.EvidenceText{Text: "body", MIMEType: testMarkdownMIME, SHA256: asset.SHA256, SizeBytes: 4}},
-		{name: "mime mismatch", document: ingestiondomain.EvidenceText{Text: "body", MIMEType: "text/plain", SHA256: asset.SHA256, SizeBytes: 5}},
+		{name: "store unavailable", err: errors.New("minio.internal private diagnostic"), reason: ingestiondomain.ContentDocumentReasonReadFailed},
+		{name: "sha mismatch", document: ingestiondomain.EvidenceText{Text: "body", MIMEType: testMarkdownMIME, SHA256: strings.Repeat("b", 64), SizeBytes: 5}, reason: ingestiondomain.ContentDocumentReasonIntegrityFailed},
+		{name: "size mismatch", document: ingestiondomain.EvidenceText{Text: "body", MIMEType: testMarkdownMIME, SHA256: asset.SHA256, SizeBytes: 4}, reason: ingestiondomain.ContentDocumentReasonIntegrityFailed},
+		{name: "mime mismatch", document: ingestiondomain.EvidenceText{Text: "body", MIMEType: "text/plain", SHA256: asset.SHA256, SizeBytes: 5}, reason: ingestiondomain.ContentDocumentReasonIntegrityFailed},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -195,8 +197,32 @@ func TestContentDocumentRejectsStoreAndIntegrityFailuresAsUnavailable(t *testing
 			if err != nil {
 				t.Fatalf("NewContentQueryService() error = %v", err)
 			}
-			if _, err := service.GetDocument(context.Background(), content.ID); !isAppCode(err, sharederrors.CodeUnavailable) {
-				t.Fatalf("GetDocument() error = %v, want unavailable", err)
+			document, err := service.GetDocument(context.Background(), content.ID)
+			if err != nil || document.Availability != ingestiondomain.ContentDocumentUnavailable || document.UnavailableReason != test.reason || document.Markdown != "" || document.SHA256 != "" {
+				t.Fatalf("GetDocument() = %#v/%v, want unavailable reason %q", document, err, test.reason)
+			}
+		})
+	}
+}
+
+func TestContentDocumentMapsUnavailableAssetLifecycleWithoutReadingStore(t *testing.T) {
+	t.Parallel()
+	content := queryTestContent(7, 3)
+	for _, test := range []struct {
+		status ingestiondomain.AssetStatus
+		reason ingestiondomain.ContentDocumentUnavailableReason
+	}{
+		{status: ingestiondomain.AssetStatusPending, reason: ingestiondomain.ContentDocumentReasonPending},
+		{status: ingestiondomain.AssetStatusMissing, reason: ingestiondomain.ContentDocumentReasonMissing},
+		{status: ingestiondomain.AssetStatusDeletePending, reason: ingestiondomain.ContentDocumentReasonDeleting},
+	} {
+		t.Run(string(test.status), func(t *testing.T) {
+			asset := ingestiondomain.ContentAsset{ID: 8, ContentID: content.ID, AssetType: "text", ObjectKey: "evidence/v1/3/state.txt", MIMEType: testMarkdownMIME, Status: test.status}
+			store := &concurrentDocumentEvidenceStore{}
+			service := newDocumentQueryService(t, content, []ingestiondomain.ContentAsset{asset}, store)
+			document, err := service.GetDocument(context.Background(), content.ID)
+			if err != nil || document.Availability != ingestiondomain.ContentDocumentUnavailable || document.UnavailableReason != test.reason || document.Markdown != "" || store.reads != 0 {
+				t.Fatalf("GetDocument(%s) = %#v/%v reads=%d", test.status, document, err, store.reads)
 			}
 		})
 	}

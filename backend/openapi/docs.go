@@ -1513,7 +1513,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Returns not_captured as a successful empty state when no authorized Markdown asset exists.",
+                "description": "Returns a successful safe projection for ready, not_captured, and unavailable evidence states; Markdown is present only when verified.",
                 "produces": [
                     "application/json"
                 ],
@@ -7509,7 +7509,8 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "ready",
-                        "not_captured"
+                        "not_captured",
+                        "unavailable"
                     ]
                 },
                 "canonical_url": {
@@ -7546,6 +7547,17 @@ const docTemplate = `{
                 "title": {
                     "type": "string",
                     "example": "Release notes"
+                },
+                "unavailable_reason": {
+                    "type": "string",
+                    "enum": [
+                        "pending",
+                        "missing",
+                        "deleting",
+                        "read_failed",
+                        "integrity_failed"
+                    ],
+                    "x-nullable": true
                 }
             }
         },

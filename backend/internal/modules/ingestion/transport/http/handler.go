@@ -102,7 +102,7 @@ func (handler *Handler) Get(c *gin.Context) error {
 
 // Document returns the newest verified Markdown projection for one active Content.
 // @Summary Get captured content Markdown document
-// @Description Returns not_captured as a successful empty state when no authorized Markdown asset exists.
+// @Description Returns a successful safe projection for ready, not_captured, and unavailable evidence states; Markdown is present only when verified.
 // @Tags contents
 // @Produce json
 // @Security BearerAuth

@@ -29,8 +29,41 @@ const formatDateTime = (value?: string) =>
       }).format(new Date(value))
     : "—";
 
+const unavailableCopy: Record<string, { title: string; description: string }> = {
+  pending: {
+    title: "归档证据仍在处理中",
+    description: "证据记录已经建立，但尚未完成可用性确认。请稍后重试。",
+  },
+  missing: {
+    title: "归档证据缺失",
+    description: "系统保留了证据记录，但对象存储中已无法找到对应正文。",
+  },
+  deleting: {
+    title: "归档证据正在清理",
+    description: "该证据已进入删除生命周期，不再提供正文读取。",
+  },
+  read_failed: {
+    title: "归档证据暂时无法读取",
+    description: "对象存储当前不可用。系统不会使用标题或摘要代替正文。",
+  },
+  integrity_failed: {
+    title: "归档证据完整性校验失败",
+    description: "证据的类型、大小或 SHA-256 与记录不一致，因此正文已被安全隐藏。",
+  },
+};
+
 export function ContentDocumentViewer({ document, canManage = false, deleting = false, onDelete }: ContentDocumentViewerProps) {
   const ready = document.availability === "ready";
+  const unavailable = document.availability === "unavailable";
+  const emptyCopy = unavailable
+    ? unavailableCopy[document.unavailable_reason ?? ""] ?? {
+        title: "归档证据不可用",
+        description: "证据当前无法安全读取，系统不会展示未经校验的正文。",
+      }
+    : {
+        title: "本条未归档正文/摘要",
+        description: "来源可能没有在 Feed 中提供正文，或采集时未开启正文归档授权。标题和原站地址不会被伪装成正文。",
+      };
 
   return (
     <article className="document-print-root mx-auto w-full max-w-[920px]">
@@ -39,8 +72,8 @@ export function ContentDocumentViewer({ document, canManage = false, deleting = 
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <p className="eyebrow">Archived content</p>
-              <Badge variant="outline" className={ready ? "success-text" : "text-muted-foreground"}>
-                {ready ? "已归档" : "未归档"}
+              <Badge variant="outline" className={ready ? "success-text" : unavailable ? "text-destructive" : "text-muted-foreground"}>
+                {ready ? "已归档" : unavailable ? "不可用" : "未归档"}
               </Badge>
             </div>
             <h1 className="mt-3 text-2xl font-semibold sm:text-3xl">
@@ -121,8 +154,8 @@ export function ContentDocumentViewer({ document, canManage = false, deleting = 
           <Empty className="min-h-64 border-0">
             <EmptyHeader>
               <EmptyMedia variant="icon"><FileText /></EmptyMedia>
-              <EmptyTitle className="text-base">本条未归档正文/摘要</EmptyTitle>
-              <EmptyDescription>来源可能没有在 Feed 中提供正文，或采集时未开启正文归档授权。标题和原站地址不会被伪装成正文。</EmptyDescription>
+              <EmptyTitle className="text-base">{emptyCopy.title}</EmptyTitle>
+              <EmptyDescription>{emptyCopy.description}</EmptyDescription>
             </EmptyHeader>
           </Empty>
         </Card>

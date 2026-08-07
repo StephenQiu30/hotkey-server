@@ -54,7 +54,7 @@ export async function deleteContentsId(
   );
 }
 
-/** Get captured content Markdown document Returns not_captured as a successful empty state when no authorized Markdown asset exists. GET /api/v1/contents/${param0}/document */
+/** Get captured content Markdown document Returns a successful safe projection for ready, not_captured, and unavailable evidence states; Markdown is present only when verified. GET /api/v1/contents/${param0}/document */
 export async function getContentsIdDocument(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: HotKeyAPI.getContentsIdDocumentParams,

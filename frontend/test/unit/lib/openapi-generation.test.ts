@@ -72,8 +72,9 @@ describe("Umi OpenAPI generation contract", () => {
     expect(typeSource).toContain("type ContentDocumentResponse");
     expect(typeSource).toContain("data?: ContentDocumentResponse");
     expect(typeSource).toMatch(
-      /availability\?:\s*["']ready["']\s*\|\s*["']not_captured["']/,
+      /availability\?:\s*["']ready["']\s*\|\s*["']not_captured["']\s*\|\s*["']unavailable["']/,
     );
+    expect(typeSource).toMatch(/unavailable_reason\?:/);
   });
 
   it("keeps application code on the generated server client only", () => {

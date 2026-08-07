@@ -88,6 +88,29 @@ describe("ContentDocumentViewer", () => {
     );
   });
 
+  it.each([
+    ["missing", "归档证据缺失"],
+    ["deleting", "归档证据正在清理"],
+    ["read_failed", "归档证据暂时无法读取"],
+    ["integrity_failed", "归档证据完整性校验失败"],
+  ] as const)("shows unavailable reason %s without rendering fallback body", (reason, copy) => {
+    render(
+      <ContentDocumentViewer
+        document={{
+          availability: "unavailable",
+          unavailable_reason: reason,
+          content_id: 9,
+          title: "Only metadata",
+          markdown: "must not render",
+        }}
+      />,
+    );
+
+    expect(screen.getByText(copy)).toBeInTheDocument();
+    expect(screen.queryByText("must not render")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打印 / 保存 PDF" })).toBeDisabled();
+  });
+
   it("shows the management action only when the caller has permission", async () => {
     const onDelete = vi.fn();
     const { rerender } = render(

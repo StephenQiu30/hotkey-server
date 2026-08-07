@@ -170,6 +170,15 @@ func TestContentDocumentRouteAllowsAuthenticatedRolesAndReturnsSafeProjection(t 
 		})
 	}
 
+	unavailable := document
+	unavailable.Availability = ingestiondomain.ContentDocumentUnavailable
+	unavailable.UnavailableReason = ingestiondomain.ContentDocumentReasonIntegrityFailed
+	unavailable.Markdown, unavailable.SHA256 = "", ""
+	unavailableResponse := performContentRequest(newContentRouter(t, &contentQueryServiceStub{document: unavailable}, httptransport.RoleViewer), stdhttp.MethodGet, "/api/v1/contents/7/document", "viewer")
+	if unavailableResponse.Code != stdhttp.StatusOK || !strings.Contains(unavailableResponse.Body.String(), `"availability":"unavailable"`) || !strings.Contains(unavailableResponse.Body.String(), `"unavailable_reason":"integrity_failed"`) || strings.Contains(unavailableResponse.Body.String(), `"markdown":"# 正文`) {
+		t.Fatalf("unavailable document response = %s", unavailableResponse.Body.String())
+	}
+
 	service := &contentQueryServiceStub{documentErrors: map[int64]error{
 		13:  sharederrors.New(sharederrors.CodeUnavailable, stdhttp.StatusServiceUnavailable, ""),
 		404: sharederrors.New(sharederrors.CodeNotFound, stdhttp.StatusNotFound, ""),

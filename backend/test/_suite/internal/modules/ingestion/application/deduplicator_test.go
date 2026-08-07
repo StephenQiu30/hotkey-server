@@ -9,12 +9,12 @@ import (
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/domain"
 )
 
-func TestDecideDuplicatePrioritizesExactURLAndHashAcrossSources(t *testing.T) {
+func TestDecideDuplicatePrioritizesExactURLAndHashWithinSource(t *testing.T) {
 	t.Parallel()
 
 	content := mustNormalize(t, 31, "https://example.test/news?b=2", "A distinct title", "A distinct body")
-	urlCandidate := candidateFor(t, 7, 99, "https://example.test/news?b=2", strings.Repeat("e", 64), "other title", "other body", content.PublishedAt)
-	hashCandidate := candidateFor(t, 4, 100, "https://other.example.test/news", content.ContentHash, "other title", "other body", content.PublishedAt)
+	urlCandidate := candidateFor(t, 7, 31, "https://example.test/news?b=2", strings.Repeat("e", 64), "other title", "other body", content.PublishedAt)
+	hashCandidate := candidateFor(t, 4, 31, "https://other.example.test/news", content.ContentHash, "other title", "other body", content.PublishedAt)
 
 	decision, err := DecideDuplicate(content, []ingestiondomain.ContentCandidate{hashCandidate, urlCandidate})
 	if err != nil {
@@ -33,14 +33,32 @@ func TestDecideDuplicatePrioritizesExactURLAndHashAcrossSources(t *testing.T) {
 	}
 }
 
+func TestDecideDuplicateKeepsCrossSourceURLAndHashAsIndependentEvidence(t *testing.T) {
+	t.Parallel()
+
+	content := mustNormalize(t, 31, "https://example.test/news", "Shared title", "Shared body")
+	for _, candidate := range []ingestiondomain.ContentCandidate{
+		candidateFor(t, 7, 32, content.CanonicalURL, strings.Repeat("e", 64), "other title", "other body", content.PublishedAt),
+		candidateFor(t, 8, 33, "https://other.example.test/news", content.ContentHash, "Shared title", "Shared body", content.PublishedAt),
+	} {
+		decision, err := DecideDuplicate(content, []ingestiondomain.ContentCandidate{candidate})
+		if err != nil {
+			t.Fatalf("DecideDuplicate() error = %v", err)
+		}
+		if decision != (ingestiondomain.DedupeDecision{Status: ingestiondomain.ContentStatusActive}) {
+			t.Fatalf("cross-source decision = %#v, want independent active Content", decision)
+		}
+	}
+}
+
 func TestDecideDuplicateChoosesExactTargetByCompletenessPublicationAndStableIdentity(t *testing.T) {
 	t.Parallel()
 
 	content := mustNormalize(t, 31, "https://example.test/duplicate", "A distinct title", "A distinct body")
-	lessCompleteEarlier := candidateFor(t, 90, 99, content.CanonicalURL, strings.Repeat("a", 64), "old title", "old body", content.PublishedAt.Add(-time.Hour))
+	lessCompleteEarlier := candidateFor(t, 90, 31, content.CanonicalURL, strings.Repeat("a", 64), "old title", "old body", content.PublishedAt.Add(-time.Hour))
 	lessCompleteEarlier.Completeness = 2
 	lessCompleteEarlier.SourceExternalIDStable = true
-	moreCompleteLater := candidateFor(t, 5, 100, content.CanonicalURL, strings.Repeat("b", 64), "better title", "better body", content.PublishedAt.Add(time.Hour))
+	moreCompleteLater := candidateFor(t, 5, 31, content.CanonicalURL, strings.Repeat("b", 64), "better title", "better body", content.PublishedAt.Add(time.Hour))
 	moreCompleteLater.Completeness = 3
 	decision, err := DecideDuplicate(content, []ingestiondomain.ContentCandidate{lessCompleteEarlier, moreCompleteLater})
 	if err != nil {
@@ -50,9 +68,9 @@ func TestDecideDuplicateChoosesExactTargetByCompletenessPublicationAndStableIden
 		t.Fatalf("URL decision target = %#v, want more complete candidate ID %d", decision, moreCompleteLater.ID)
 	}
 
-	earlierLargerID := candidateFor(t, 101, 101, "https://other.example.test/old", content.ContentHash, "old title", "old body", content.PublishedAt.Add(-time.Hour))
+	earlierLargerID := candidateFor(t, 101, 31, "https://other.example.test/old", content.ContentHash, "old title", "old body", content.PublishedAt.Add(-time.Hour))
 	earlierLargerID.Completeness = 3
-	laterSmallerID := candidateFor(t, 1, 102, "https://other.example.test/new", content.ContentHash, "new title", "new body", content.PublishedAt)
+	laterSmallerID := candidateFor(t, 1, 31, "https://other.example.test/new", content.ContentHash, "new title", "new body", content.PublishedAt)
 	laterSmallerID.Completeness = 3
 	decision, err = DecideDuplicate(content, []ingestiondomain.ContentCandidate{laterSmallerID, earlierLargerID})
 	if err != nil {
@@ -62,9 +80,9 @@ func TestDecideDuplicateChoosesExactTargetByCompletenessPublicationAndStableIden
 		t.Fatalf("hash decision target = %#v, want earlier candidate ID %d despite larger ID", decision, earlierLargerID.ID)
 	}
 
-	lessStable := candidateFor(t, 2, 103, content.CanonicalURL, strings.Repeat("c", 64), "title", "body", content.PublishedAt)
+	lessStable := candidateFor(t, 2, 31, content.CanonicalURL, strings.Repeat("c", 64), "title", "body", content.PublishedAt)
 	lessStable.Completeness = 3
-	stableLargerID := candidateFor(t, 77, 104, content.CanonicalURL, strings.Repeat("d", 64), "title", "body", content.PublishedAt)
+	stableLargerID := candidateFor(t, 77, 31, content.CanonicalURL, strings.Repeat("d", 64), "title", "body", content.PublishedAt)
 	stableLargerID.Completeness = 3
 	stableLargerID.SourceExternalIDStable = true
 	decision, err = DecideDuplicate(content, []ingestiondomain.ContentCandidate{lessStable, stableLargerID})

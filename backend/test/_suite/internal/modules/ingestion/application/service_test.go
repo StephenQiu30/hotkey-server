@@ -252,6 +252,41 @@ func TestArchiveMarkdownReplay(t *testing.T) {
 	}
 }
 
+func TestArchiveMarkdownKeepsCrossSourceEvidenceIndependent(t *testing.T) {
+	runtime := openIngestionRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	first := capturedItem("shared-first", "article", "Shared report", "same licensed evidence")
+	second := capturedItem("shared-second", "article", "Shared report", "same licensed evidence")
+	first.URL, second.URL = "https://example.test/shared-report", "https://example.test/shared-report"
+	firstRunID, firstSourceID := seedCapturedRun(t, runtime, []sourcedomain.CapturedItem{first})
+	secondRunID, secondSourceID := seedCapturedRun(t, runtime, []sourcedomain.CapturedItem{second})
+	store := newEvidenceStoreFake()
+	service, err := ingestionapplication.NewService(ingestionapplication.Dependencies{
+		Runtime: runtime, Captures: newCapturedItemReader(t, runtime), Contents: ingestionpostgres.NewContentRepository(runtime), Evidence: store, Markdown: passthroughMarkdownProjector{},
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	for _, runID := range []int64{firstRunID, secondRunID} {
+		if result, err := service.IngestRun(context.Background(), ingestionapplication.IngestRunInput{RunID: runID, Limit: 1}); err != nil || result.Bound != 1 || result.Uploaded != 1 {
+			t.Fatalf("IngestRun(%d) = %#v/%v", runID, result, err)
+		}
+	}
+	var active, assets int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM contents WHERE content_status = 'active'`).Scan(&active); err != nil {
+		t.Fatalf("count active cross-source Content: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM content_assets`).Scan(&assets); err != nil {
+		t.Fatalf("count cross-source assets: %v", err)
+	}
+	store.mu.Lock()
+	objects := len(store.objects)
+	store.mu.Unlock()
+	if firstSourceID == secondSourceID || active != 2 || assets != 2 || objects != 2 {
+		t.Fatalf("cross-source evidence = sources %d/%d active=%d assets=%d objects=%d, want distinct 2/2/2", firstSourceID, secondSourceID, active, assets, objects)
+	}
+}
+
 func TestArchiveMarkdownCompensation(t *testing.T) {
 	runtime := openIngestionRuntime(t)
 	defer func() { _ = runtime.Close() }()

@@ -24,12 +24,12 @@ func DecideDuplicate(content ingestiondomain.NormalizedContent, candidates []ing
 		}
 	}
 	if candidate, ok := preferredMatchingCandidate(candidates, func(candidate ingestiondomain.ContentCandidate) bool {
-		return candidate.CanonicalURL != "" && candidate.CanonicalURL == content.CanonicalURL
+		return candidate.SourceConnectionID == content.SourceConnectionID && candidate.CanonicalURL != "" && candidate.CanonicalURL == content.CanonicalURL
 	}); ok {
 		return duplicateDecision(candidate.ID, ingestiondomain.DedupeReasonExactURL, ingestiondomain.DedupeVersionExactURL), nil
 	}
 	if candidate, ok := preferredMatchingCandidate(candidates, func(candidate ingestiondomain.ContentCandidate) bool {
-		return candidate.DedupeKey != "" && candidate.DedupeKey == content.ContentHash
+		return candidate.SourceConnectionID == content.SourceConnectionID && candidate.DedupeKey != "" && candidate.DedupeKey == content.ContentHash
 	}); ok {
 		return duplicateDecision(candidate.ID, ingestiondomain.DedupeReasonExactHash, ingestiondomain.DedupeVersionExactHash), nil
 	}

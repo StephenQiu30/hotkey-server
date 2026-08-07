@@ -54,16 +54,17 @@ type ContentPageResponse struct {
 }
 
 type ContentDocumentResponse struct {
-	ContentID    int64      `json:"content_id" example:"7"`
-	Title        string     `json:"title" example:"Release notes"`
-	SourceName   string     `json:"source_name" example:"Product feed"`
-	CanonicalURL string     `json:"canonical_url" example:"https://example.test/items/123"`
-	Language     string     `json:"language" example:"en"`
-	PublishedAt  time.Time  `json:"published_at"`
-	Availability string     `json:"availability" enums:"ready,not_captured"`
-	Markdown     string     `json:"markdown" example:"# Release notes"`
-	SHA256       string     `json:"sha256" example:"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"`
-	CapturedAt   *time.Time `json:"captured_at" extensions:"x-nullable"`
+	ContentID         int64      `json:"content_id" example:"7"`
+	Title             string     `json:"title" example:"Release notes"`
+	SourceName        string     `json:"source_name" example:"Product feed"`
+	CanonicalURL      string     `json:"canonical_url" example:"https://example.test/items/123"`
+	Language          string     `json:"language" example:"en"`
+	PublishedAt       time.Time  `json:"published_at"`
+	Availability      string     `json:"availability" enums:"ready,not_captured,unavailable"`
+	UnavailableReason *string    `json:"unavailable_reason,omitempty" enums:"pending,missing,deleting,read_failed,integrity_failed" extensions:"x-nullable"`
+	Markdown          string     `json:"markdown" example:"# Release notes"`
+	SHA256            string     `json:"sha256" example:"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"`
+	CapturedAt        *time.Time `json:"captured_at" extensions:"x-nullable"`
 }
 
 func contentResponse(content ingestiondomain.Content) ContentResponse {
@@ -93,6 +94,10 @@ func contentDocumentResponse(document ingestiondomain.ContentDocument) ContentDo
 		ContentID: document.ContentID, Title: document.Title, SourceName: document.SourceName,
 		CanonicalURL: document.CanonicalURL, Language: document.Language, PublishedAt: document.PublishedAt,
 		Availability: string(document.Availability), Markdown: document.Markdown, SHA256: document.SHA256,
+	}
+	if document.UnavailableReason != "" {
+		reason := string(document.UnavailableReason)
+		response.UnavailableReason = &reason
 	}
 	if !document.CapturedAt.IsZero() {
 		capturedAt := document.CapturedAt

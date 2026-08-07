@@ -228,19 +228,43 @@ type ContentDocumentAvailability string
 const (
 	ContentDocumentReady       ContentDocumentAvailability = "ready"
 	ContentDocumentNotCaptured ContentDocumentAvailability = "not_captured"
+	ContentDocumentUnavailable ContentDocumentAvailability = "unavailable"
+)
+
+type ContentDocumentUnavailableReason string
+
+const (
+	ContentDocumentReasonPending         ContentDocumentUnavailableReason = "pending"
+	ContentDocumentReasonMissing         ContentDocumentUnavailableReason = "missing"
+	ContentDocumentReasonDeleting        ContentDocumentUnavailableReason = "deleting"
+	ContentDocumentReasonReadFailed      ContentDocumentUnavailableReason = "read_failed"
+	ContentDocumentReasonIntegrityFailed ContentDocumentUnavailableReason = "integrity_failed"
 )
 
 type ContentDocument struct {
-	ContentID    int64
-	Title        string
-	SourceName   string
-	CanonicalURL string
-	Language     string
-	PublishedAt  time.Time
-	Availability ContentDocumentAvailability
-	Markdown     string
-	SHA256       string
-	CapturedAt   time.Time
+	ContentID         int64
+	Title             string
+	SourceName        string
+	CanonicalURL      string
+	Language          string
+	PublishedAt       time.Time
+	Availability      ContentDocumentAvailability
+	UnavailableReason ContentDocumentUnavailableReason
+	Markdown          string
+	SHA256            string
+	CapturedAt        time.Time
+}
+
+const NewEventFreshnessWindow = 7 * 24 * time.Hour
+
+// EligibleForNewEvent keeps Content retention independent from hotspot
+// freshness. Stale Content remains readable evidence but cannot start the
+// downstream cluster, heat, and alert chain.
+func EligibleForNewEvent(publishedAt, evaluatedAt time.Time) bool {
+	if publishedAt.IsZero() || evaluatedAt.IsZero() {
+		return false
+	}
+	return !publishedAt.UTC().Before(evaluatedAt.UTC().Add(-NewEventFreshnessWindow))
 }
 
 func validSHA256(value string) bool {
