@@ -60,11 +60,54 @@ func TestConnectorFetchesBoundedFirstHNRangeInStableOrder(t *testing.T) {
 	if len(result.Items) != 2 || result.Items[0].ExternalID != "101" || result.Items[1].ExternalID != "102" || result.Items[0].ContentType != "article" || result.Items[1].ContentType != "comment" {
 		t.Fatalf("items = %#v, want ordered story/comment SourceItems", result.Items)
 	}
+	if result.Items[0].ParentExternalID != "" || result.Items[1].ParentExternalID != "101" {
+		t.Fatalf("thread parents = %q / %q, want story root and comment parent 101", result.Items[0].ParentExternalID, result.Items[1].ParentExternalID)
+	}
+	if result.Items[0].Metrics.LikeCount == nil || *result.Items[0].Metrics.LikeCount != 17 || result.Items[0].Metrics.CommentCount == nil || *result.Items[0].Metrics.CommentCount != 4 {
+		t.Fatalf("story metrics = %#v, want official score and descendants", result.Items[0].Metrics)
+	}
+	if result.Items[1].Metrics.LikeCount != nil || result.Items[1].Metrics.CommentCount != nil {
+		t.Fatalf("comment metrics = %#v, want absent official metrics to remain unknown", result.Items[1].Metrics)
+	}
 	if len(result.Items[0].RawPayload) != 0 || len(result.Diagnostics) != 1 || result.Diagnostics[0].Code != "dead_item" {
 		t.Fatalf("safe capture result = %#v", result)
 	}
 	if peak.Load() > maxItemWorkers {
 		t.Fatalf("peak item concurrency = %d, want <= %d", peak.Load(), maxItemWorkers)
+	}
+}
+
+func TestConnectorMapsAllSupportedHNItemTypesAndPollRelationship(t *testing.T) {
+	t.Parallel()
+
+	connector := newTestConnector(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/v0/maxitem.json":
+			_, _ = writer.Write([]byte("103"))
+		case "/v0/item/101.json":
+			_, _ = writer.Write([]byte(`{"id":101,"type":"job","title":"Hiring","time":1784192400,"score":0}`))
+		case "/v0/item/102.json":
+			_, _ = writer.Write([]byte(`{"id":102,"type":"poll","title":"Choose","text":"Question","time":1784192460,"score":3,"descendants":2}`))
+		case "/v0/item/103.json":
+			_, _ = writer.Write([]byte(`{"id":103,"type":"pollopt","text":"Option A","poll":102,"time":1784192520,"score":0}`))
+		default:
+			t.Errorf("unexpected request path %q", request.URL.Path)
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+
+	result, err := connector.Fetch(context.Background(), testFetchRequest(3, "100"))
+	if err != nil {
+		t.Fatalf("Fetch(): %v", err)
+	}
+	if len(result.Items) != 3 || result.Items[0].ContentType != "article" || result.Items[1].ContentType != "article" || result.Items[2].ContentType != "comment" {
+		t.Fatalf("mapped item types = %#v, want job/poll articles and poll option comment", result.Items)
+	}
+	if result.Items[2].ParentExternalID != "102" {
+		t.Fatalf("poll option parent = %q, want poll 102", result.Items[2].ParentExternalID)
+	}
+	if result.Items[0].Metrics.LikeCount == nil || *result.Items[0].Metrics.LikeCount != 0 || result.Items[0].Metrics.CommentCount != nil {
+		t.Fatalf("job metrics = %#v, want explicit zero score and unknown descendants", result.Items[0].Metrics)
 	}
 }
 
@@ -134,6 +177,51 @@ func TestConnectorBoundsInitialRangeToFetchLimit(t *testing.T) {
 	}
 }
 
+func TestConnectorUsesBoundedHNItemConcurrency(t *testing.T) {
+	t.Parallel()
+
+	var active, peak atomic.Int32
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	connector := newTestConnector(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v0/maxitem.json" {
+			_, _ = writer.Write([]byte("108"))
+			return
+		}
+		current := active.Add(1)
+		defer active.Add(-1)
+		for {
+			previous := peak.Load()
+			if current <= previous || peak.CompareAndSwap(previous, current) {
+				break
+			}
+		}
+		if current == maxItemWorkers {
+			releaseOnce.Do(func() { close(release) })
+		}
+		select {
+		case <-release:
+		case <-request.Context().Done():
+			return
+		}
+		id, err := strconv.ParseInt(strings.TrimSuffix(filepath.Base(request.URL.Path), ".json"), 10, 64)
+		if err != nil {
+			t.Errorf("parse item ID: %v", err)
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		_, _ = writer.Write([]byte(`{"id":` + strconv.FormatInt(id, 10) + `,"type":"story","title":"Concurrent","time":1784192400}`))
+	}))
+
+	result, err := connector.Fetch(context.Background(), testFetchRequest(8, "100"))
+	if err != nil || len(result.Items) != 8 {
+		t.Fatalf("Fetch() result/error = %#v / %v, want eight items", result, err)
+	}
+	if peak.Load() != maxItemWorkers {
+		t.Fatalf("peak item concurrency = %d, want bounded parallelism %d", peak.Load(), maxItemWorkers)
+	}
+}
+
 func TestConnectorIsolatesBadItemsButDoesNotAdvanceCursorOnPageFailure(t *testing.T) {
 	t.Parallel()
 
@@ -171,6 +259,77 @@ func TestConnectorIsolatesBadItemsButDoesNotAdvanceCursorOnPageFailure(t *testin
 			t.Fatalf("page failure result/error = %#v, %v; want temporary without cursor", result, err)
 		}
 	})
+}
+
+func TestConnectorPartiallySucceedsAndRetriesOnlyUnfinishedHNWindow(t *testing.T) {
+	t.Parallel()
+
+	var recovered atomic.Bool
+	var requests sync.Map
+	connector := newTestConnector(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v0/maxitem.json" {
+			_, _ = writer.Write([]byte("103"))
+			return
+		}
+		requests.LoadOrStore(request.URL.Path, new(atomic.Int32))
+		counter, _ := requests.Load(request.URL.Path)
+		counter.(*atomic.Int32).Add(1)
+		switch request.URL.Path {
+		case "/v0/item/101.json":
+			_, _ = writer.Write([]byte(`{"id":101,"type":"story","title":"First","time":1784192400}`))
+		case "/v0/item/102.json":
+			if !recovered.Load() {
+				writer.WriteHeader(http.StatusBadGateway)
+				return
+			}
+			_, _ = writer.Write([]byte(`{"id":102,"type":"comment","text":"Recovered","parent":101,"time":1784192460}`))
+		case "/v0/item/103.json":
+			_, _ = writer.Write([]byte(`{"id":103,"type":"story","title":"Last","time":1784192520}`))
+		default:
+			t.Errorf("unexpected request path %q", request.URL.Path)
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+
+	partial, err := connector.Fetch(context.Background(), testFetchRequest(3, "100"))
+	if err != nil {
+		t.Fatalf("Fetch(partial): %v", err)
+	}
+	if partial.NextCursor != "101" || !partial.HasMore || len(partial.Items) != 1 || partial.Items[0].ExternalID != "101" {
+		t.Fatalf("partial result = %#v, want only completed prefix through 101", partial)
+	}
+	if len(partial.Diagnostics) != 1 || partial.Diagnostics[0].Code != "item_temporary_failure" || partial.Diagnostics[0].SourceExternalID != "102" {
+		t.Fatalf("partial diagnostics = %#v, want classified failed item 102", partial.Diagnostics)
+	}
+
+	recovered.Store(true)
+	completed, err := connector.Fetch(context.Background(), testFetchRequest(3, partial.NextCursor))
+	if err != nil {
+		t.Fatalf("Fetch(retry): %v", err)
+	}
+	if completed.NextCursor != "103" || completed.HasMore || len(completed.Items) != 2 || completed.Items[0].ExternalID != "102" || completed.Items[1].ExternalID != "103" {
+		t.Fatalf("retry result = %#v, want unfinished window 102-103", completed)
+	}
+	if count := requestCount(&requests, "/v0/item/101.json"); count != 1 {
+		t.Fatalf("item 101 request count = %d, want completed prefix not retried", count)
+	}
+}
+
+func TestConnectorFailsWhenEveryHNItemRequestFails(t *testing.T) {
+	t.Parallel()
+
+	connector := newTestConnector(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v0/maxitem.json" {
+			_, _ = writer.Write([]byte("102"))
+			return
+		}
+		writer.WriteHeader(http.StatusBadGateway)
+	}))
+
+	result, err := connector.Fetch(context.Background(), testFetchRequest(2, "100"))
+	if err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorTemporary || result.NextCursor != "" {
+		t.Fatalf("all-failed result/error = %#v / %v, want temporary failure without cursor", result, err)
+	}
 }
 
 func TestConnectorClassifiesHNTransportAndParseFailures(t *testing.T) {
@@ -226,6 +385,40 @@ func TestConnectorHonorsContextTimeoutAndOfficialEndpoint(t *testing.T) {
 			t.Fatalf("New(non-official endpoint) error = %v, class = %q; want permanent", err, domain.ClassifyCollectionError(err))
 		}
 	})
+
+	t.Run("cross_host_redirect", func(t *testing.T) {
+		connector := newTestConnector(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			http.Redirect(writer, request, "https://example.test/v0/maxitem.json", http.StatusFound)
+		}))
+		result, err := connector.Fetch(context.Background(), testFetchRequest(1, ""))
+		if err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorPermanent || result.NextCursor != "" {
+			t.Fatalf("cross-host redirect result/error = %#v / %v, want permanent rejection", result, err)
+		}
+	})
+
+	t.Run("private_dns", func(t *testing.T) {
+		config := domain.DefaultSourceConfig()
+		var dialed atomic.Bool
+		connector, err := newConnector(domain.SourceConnection{
+			ID: 9, SourceType: domain.SourceTypeHackerNews, Name: "HN", Endpoint: domain.HackerNewsEndpoint,
+			AuthType: domain.AuthTypeNone, Config: config, Enabled: true,
+		}, clientOptions{
+			resolver: func(context.Context, string) ([]net.IPAddr, error) {
+				return []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}}, nil
+			},
+			dialContext: func(context.Context, string, string) (net.Conn, error) {
+				dialed.Store(true)
+				return nil, nil
+			},
+		})
+		if err != nil {
+			t.Fatalf("newConnector(): %v", err)
+		}
+		result, err := connector.Fetch(context.Background(), testFetchRequest(1, ""))
+		if err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorPermanent || result.NextCursor != "" || dialed.Load() {
+			t.Fatalf("private DNS result/error/dialed = %#v / %v / %t, want pre-dial permanent rejection", result, err, dialed.Load())
+		}
+	})
 }
 
 func TestFetchItemsTreatsParentCancellationAsPageFailure(t *testing.T) {
@@ -268,6 +461,32 @@ func TestConnectorPreservesRateLimitWhenConcurrentWorkerCancellationRaces(t *tes
 	}
 }
 
+func TestConnectorPreservesPermanentFailureWhenCancellationRaces(t *testing.T) {
+	t.Parallel()
+
+	startedFirst := make(chan struct{})
+	connector := newTestConnector(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/v0/maxitem.json":
+			_, _ = writer.Write([]byte("102"))
+		case "/v0/item/101.json":
+			close(startedFirst)
+			<-request.Context().Done()
+		case "/v0/item/102.json":
+			<-startedFirst
+			writer.WriteHeader(http.StatusNotFound)
+		default:
+			t.Errorf("unexpected request path %q", request.URL.Path)
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+
+	result, err := connector.Fetch(context.Background(), testFetchRequest(2, "100"))
+	if err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorPermanent || result.NextCursor != "" {
+		t.Fatalf("concurrent permanent result/error = %#v / %v, want permanent failure without cursor", result, err)
+	}
+}
+
 func newTestConnector(t *testing.T, handler http.Handler) *Connector {
 	t.Helper()
 	server := httptest.NewTLSServer(handler)
@@ -307,4 +526,12 @@ func readFixture(t *testing.T, path string) []byte {
 		t.Fatalf("ReadFile(%q): %v", path, err)
 	}
 	return payload
+}
+
+func requestCount(requests *sync.Map, path string) int32 {
+	value, ok := requests.Load(path)
+	if !ok {
+		return 0
+	}
+	return value.(*atomic.Int32).Load()
 }

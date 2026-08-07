@@ -43,6 +43,7 @@ func TestCollectionSourceItemRequiresStableExternalIDAndCapturePolicyRedacts(t *
 	item, err := NormalizeSourceItem(SourceItem{
 		SourceCode:           "rss",
 		ExternalID:           "  https://feeds.example.test/posts/42  ",
+		ParentExternalID:     "  parent-41  ",
 		ContentType:          "article",
 		Title:                "A safe title",
 		Body:                 "body that is not retained when policy forbids it",
@@ -61,6 +62,9 @@ func TestCollectionSourceItemRequiresStableExternalIDAndCapturePolicyRedacts(t *
 	if item.ExternalID != "https://feeds.example.test/posts/42" {
 		t.Fatalf("normalized external ID = %q", item.ExternalID)
 	}
+	if item.ParentExternalID != "parent-41" {
+		t.Fatalf("normalized parent external ID = %q, want parent-41", item.ParentExternalID)
+	}
 	if _, err := NormalizeSourceItem(SourceItem{SourceCode: "rss", ContentType: "article", ObservedAt: observedAt}); err == nil {
 		t.Fatal("NormalizeSourceItem() = nil error without a stable external ID")
 	}
@@ -71,6 +75,9 @@ func TestCollectionSourceItemRequiresStableExternalIDAndCapturePolicyRedacts(t *
 	}
 	if captured.Version != CapturedItemVersionV2 || captured.Body != "" || captured.RawPayloadDisposition != RawPayloadDiscarded {
 		t.Fatalf("captured item = %#v, want versioned body-redacted discarded payload", captured)
+	}
+	if captured.ParentExternalID != "parent-41" {
+		t.Fatalf("captured parent external ID = %q, want parent-41", captured.ParentExternalID)
 	}
 	if captured.EvidenceCompleteness != EvidenceCompletenessMetadataOnly || len(captured.Attachments) != 1 || captured.Attachments[0].URL != "https://cdn.example.test/report.pdf" {
 		t.Fatalf("captured evidence metadata = %#v / %#v, want metadata-only with preserved attachment", captured.EvidenceCompleteness, captured.Attachments)

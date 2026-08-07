@@ -36,8 +36,10 @@ type hnItem struct {
 	Title       string `json:"title"`
 	Text        string `json:"text"`
 	URL         string `json:"url"`
-	Score       int64  `json:"score"`
-	Descendants int64  `json:"descendants"`
+	Parent      int64  `json:"parent"`
+	Poll        int64  `json:"poll"`
+	Score       *int64 `json:"score"`
+	Descendants *int64 `json:"descendants"`
 	Deleted     bool   `json:"deleted"`
 	Dead        bool   `json:"dead"`
 }
@@ -109,20 +111,82 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 		return result, nil
 	}
 	outcomes, failure := connector.fetchItems(ctx, start, end)
-	if failure != nil {
+	if failure != nil && ctx.Err() != nil {
 		result.RateLimit.RetryAfter = failure.retryAfter
 		return domain.FetchResult{RateLimit: result.RateLimit}, failure.err
 	}
+	responded := 0
 	for _, outcome := range outcomes {
+		if outcome.err == nil {
+			responded++
+		}
+	}
+	if failure != nil && responded == 0 {
+		result.RateLimit.RetryAfter = failure.retryAfter
+		return domain.FetchResult{RateLimit: result.RateLimit}, failure.err
+	}
+	completeThrough := end
+	if failure != nil {
+		incompleteID, incomplete := firstIncompleteOutcome(outcomes, start, end)
+		if incomplete {
+			completeThrough = incompleteID - 1
+			result.Diagnostics = append(result.Diagnostics, incompleteDiagnostic(outcomes, incompleteID))
+		}
+		result.RateLimit.RetryAfter = failure.retryAfter
+	}
+	for _, outcome := range outcomes {
+		if outcome.id > completeThrough {
+			break
+		}
 		if outcome.diagnostic != nil {
 			result.Diagnostics = append(result.Diagnostics, *outcome.diagnostic)
 			continue
 		}
+		if outcome.err != nil {
+			continue
+		}
 		result.Items = append(result.Items, outcome.item)
 	}
-	result.NextCursor = strconv.FormatInt(end, 10)
-	result.HasMore = end < newest
+	result.NextCursor = strconv.FormatInt(completeThrough, 10)
+	result.HasMore = completeThrough < newest
 	return result, nil
+}
+
+func firstIncompleteOutcome(outcomes []itemOutcome, start, end int64) (int64, bool) {
+	index := 0
+	for id := start; id <= end; id++ {
+		for index < len(outcomes) && outcomes[index].id < id {
+			index++
+		}
+		if index >= len(outcomes) || outcomes[index].id != id || outcomes[index].err != nil {
+			return id, true
+		}
+		index++
+	}
+	return 0, false
+}
+
+func incompleteDiagnostic(outcomes []itemOutcome, id int64) domain.FetchDiagnostic {
+	code := "item_unfinished"
+	for _, outcome := range outcomes {
+		if outcome.id != id || outcome.err == nil {
+			continue
+		}
+		switch domain.ClassifyCollectionError(outcome.err) {
+		case domain.CollectionErrorAuthentication:
+			code = "item_authentication_failure"
+		case domain.CollectionErrorRateLimited:
+			code = "item_rate_limited"
+		case domain.CollectionErrorTemporary:
+			code = "item_temporary_failure"
+		case domain.CollectionErrorParse:
+			code = "item_parse_failure"
+		case domain.CollectionErrorPermanent:
+			code = "item_permanent_failure"
+		}
+		break
+	}
+	return domain.FetchDiagnostic{Code: code, SourceExternalID: strconv.FormatInt(id, 10)}
 }
 
 func (connector *Connector) Health(ctx context.Context, connection domain.SourceConnection) domain.HealthResult {
@@ -194,7 +258,9 @@ func (connector *Connector) fetchItems(parent context.Context, start, end int64)
 				outcomes <- outcome
 				if outcome.err != nil {
 					recordFailure(outcome)
-					cancel()
+					if stopsHNPage(outcome.err) {
+						cancel()
+					}
 				}
 			}
 		}()
@@ -232,6 +298,15 @@ func (connector *Connector) fetchItems(parent context.Context, start, end int64)
 	return collected, nil
 }
 
+func stopsHNPage(err error) bool {
+	switch domain.ClassifyCollectionError(err) {
+	case domain.CollectionErrorAuthentication, domain.CollectionErrorRateLimited, domain.CollectionErrorPermanent:
+		return true
+	default:
+		return false
+	}
+}
+
 func canceledPageFailure(_ error) *itemOutcome {
 	return &itemOutcome{err: domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("Hacker News item page canceled"))}
 }
@@ -239,10 +314,30 @@ func canceledPageFailure(_ error) *itemOutcome {
 func preferredPageFailure(candidate, current itemOutcome) bool {
 	candidateKind := domain.ClassifyCollectionError(candidate.err)
 	currentKind := domain.ClassifyCollectionError(current.err)
-	if candidateKind == domain.CollectionErrorRateLimited && currentKind != domain.CollectionErrorRateLimited {
+	if candidatePriority, currentPriority := hnFailurePriority(candidateKind), hnFailurePriority(currentKind); candidatePriority != currentPriority {
+		return candidatePriority > currentPriority
+	}
+	if candidate.retryAfter != nil && current.retryAfter == nil {
 		return true
 	}
-	return candidate.retryAfter != nil && current.retryAfter == nil
+	return candidate.id > 0 && (current.id <= 0 || candidate.id < current.id)
+}
+
+func hnFailurePriority(kind domain.CollectionErrorKind) int {
+	switch kind {
+	case domain.CollectionErrorRateLimited:
+		return 5
+	case domain.CollectionErrorAuthentication:
+		return 4
+	case domain.CollectionErrorPermanent:
+		return 3
+	case domain.CollectionErrorParse:
+		return 2
+	case domain.CollectionErrorTemporary:
+		return 1
+	default:
+		return 0
+	}
 }
 
 func (connector *Connector) fetchItem(ctx context.Context, id int64) itemOutcome {
@@ -264,11 +359,20 @@ func (connector *Connector) fetchItem(ctx context.Context, id int64) itemOutcome
 		return itemOutcome{id: id, diagnostic: &domain.FetchDiagnostic{Code: "dead_item", SourceExternalID: strconv.FormatInt(id, 10)}}
 	}
 	contentType := ""
+	parentExternalID := ""
 	switch item.Type {
-	case "story":
+	case "story", "job", "poll":
 		contentType = "article"
 	case "comment":
 		contentType = "comment"
+		if item.Parent > 0 {
+			parentExternalID = strconv.FormatInt(item.Parent, 10)
+		}
+	case "pollopt":
+		contentType = "comment"
+		if item.Poll > 0 {
+			parentExternalID = strconv.FormatInt(item.Poll, 10)
+		}
 	default:
 		return itemOutcome{id: id, diagnostic: &domain.FetchDiagnostic{Code: "unsupported_item_type", SourceExternalID: strconv.FormatInt(id, 10)}}
 	}
@@ -281,13 +385,25 @@ func (connector *Connector) fetchItem(ctx context.Context, id int64) itemOutcome
 	if contentType == "comment" || itemURL == "" {
 		itemURL = "https://news.ycombinator.com/item?id=" + strconv.FormatInt(id, 10)
 	}
+	evidenceCompleteness := domain.EvidenceCompletenessMetadataOnly
+	if strings.TrimSpace(item.Text) != "" {
+		evidenceCompleteness = domain.EvidenceCompletenessFullBody
+	}
 	normalized, err := domain.NormalizeSourceItem(domain.SourceItem{
-		SourceCode: sourceCode, ExternalID: strconv.FormatInt(id, 10), ContentType: contentType,
+		SourceCode: sourceCode, ExternalID: strconv.FormatInt(id, 10), ParentExternalID: parentExternalID, ContentType: contentType,
 		Title: item.Title, Body: item.Text, URL: itemURL, Author: item.By, PublishedAt: publishedAt,
-		ObservedAt: connector.client.now(), Metrics: domain.SourceMetrics{LikeCount: domain.KnownMetric(item.Score), CommentCount: domain.KnownMetric(item.Descendants)},
+		ObservedAt: connector.client.now(), EvidenceCompleteness: evidenceCompleteness,
+		Metrics: domain.SourceMetrics{LikeCount: cloneHNMetric(item.Score), CommentCount: cloneHNMetric(item.Descendants)},
 	})
 	if err != nil {
 		return itemOutcome{id: id, diagnostic: &domain.FetchDiagnostic{Code: "invalid_item", SourceExternalID: strconv.FormatInt(id, 10)}}
 	}
 	return itemOutcome{id: id, item: normalized}
+}
+
+func cloneHNMetric(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	return domain.KnownMetric(*value)
 }

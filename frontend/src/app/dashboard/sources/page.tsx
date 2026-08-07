@@ -70,6 +70,7 @@ export default function SourcesPage() {
   const canManage = user?.role === UserRole.Admin;
   const [sources, setSources] = useState<HotKeyAPI.SourceReadResponse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string>();
   const [creating, setCreating] = useState(false);
   const [action, setAction] = useState<number>();
   const [deleteTarget, setDeleteTarget] =
@@ -83,6 +84,7 @@ export default function SourcesPage() {
   const loadPage = useCallback(
     async (cursor: string | undefined, pageNumber: number) => {
       setLoading(true);
+      setLoadError(undefined);
       try {
         const result = await getSourceConnections({
           limit: pageSize,
@@ -94,7 +96,10 @@ export default function SourcesPage() {
         setPage(pageNumber);
         setNextCursor(result.data?.next_cursor);
       } catch (reason) {
-        toast.error(reason instanceof Error ? reason.message : "来源加载失败");
+        const message =
+          reason instanceof Error ? reason.message : "来源加载失败";
+        setLoadError(message);
+        toast.error(message);
       } finally {
         setLoading(false);
       }
@@ -241,11 +246,22 @@ export default function SourcesPage() {
           </AlertDescription>
         </Alert>
       )}
+      {loadError && (
+        <Alert variant="destructive" className="mt-6">
+          <AlertTitle>来源加载失败</AlertTitle>
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+            <span>{loadError}</span>
+            <Button variant="outline" size="sm" onClick={load}>
+              重新加载
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
       {loading ? (
         <div className="flex h-72 items-center justify-center">
           <Loader2 className="animate-spin text-muted-foreground" />
         </div>
-      ) : !sources.length ? (
+      ) : !sources.length && !loadError ? (
         <Card className="mt-6 gap-0 overflow-hidden py-0">
           <Empty className="h-72">
             <EmptyHeader>
@@ -268,7 +284,7 @@ export default function SourcesPage() {
             pageSize={pageSize}
           />
         </Card>
-      ) : (
+      ) : sources.length ? (
         <Card className="mt-6 gap-0 overflow-hidden py-0">
           <div
             className={`hidden gap-4 border-b border-border px-5 py-3 text-xs text-muted-foreground md:grid ${
@@ -391,7 +407,7 @@ export default function SourcesPage() {
             page={page}
           />
         </Card>
-      )}
+      ) : null}
       <div className="mt-4 flex justify-end">
         <Button
           variant="ghost"

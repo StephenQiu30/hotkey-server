@@ -3,7 +3,7 @@ layer: Plan
 scope: backend
 doc_no: "009"
 title: Hacker-News官方来源连接器计划
-status: planned
+status: completed
 version: v1.0
 owner: HotKey Team
 phase: P0
@@ -16,50 +16,53 @@ prd: docs/prd/009-Hacker-News官方来源连接器.md
 
 ## 前置门禁
 
-- Design 状态改为 `accepted`，PRD 状态改为 `approved`。
-- 对照当前代码保存可复现差距；行为变化先增加失败测试。
-- 涉及第三方来源时，先确认官方/授权接口、条款、配额和测试凭据边界。
+- [x] Design 状态改为 `accepted`，PRD 状态改为 `approved`。
+- [x] 以 Hacker News 官方 API 仓库核对 item 类型、可选字段、父项和 `maxitem` 语义。
+- [x] 对照当前代码保存 ParentExternalID 缺失的编译失败，以及部分窗口重试契约失败测试。
 
-## 预计变更范围
+## 实际变更范围
 
-- backend/internal/modules/source/infrastructure/hackernews/
-- backend/internal/modules/source/domain/
-- backend/internal/modules/source/infrastructure/postgres/
-- backend/test/
+- `backend/internal/modules/source/domain/collection.go`
+- `backend/internal/modules/source/infrastructure/hackernews/connector.go`
+- `backend/internal/modules/source/infrastructure/postgres/collection_repository.go`
+- `backend/test/_suite/internal/modules/source/`
+- `docs/design/`、`docs/prd/`、`docs/plans/`、`docs/acceptance/`
 
 ## 执行步骤
 
-1. 为验收标准建立领域、应用、Transport 和前端测试，记录预期失败。
-2. 在 `backend/db/schema.sql` 完成最小数据变化；不创建 migration 目录或第二套 Schema。
-3. 按 domain→application→infrastructure→transport 实现后端最小闭环，并加入审计与可观测性。
-4. 生成 OpenAPI，再生成前端 Client；禁止手写 DTO 或接口路径。
-5. 使用 shadcn/ui 组合实现页面的正常、加载、空、错误和权限状态。
-6. 完成并发、重试、幂等、权限、可访问性和端到端回归。
-7. 新增 `docs/acceptance/009-Hacker-News官方来源连接器验收.md`；如有可重复人工操作，再新增 Operations。
+1. [x] 以失败测试固定五类 item、父项、可选指标、连续前缀、部分成功、全量失败、并发和网络边界。
+2. [x] 在 SourceItem、CapturedItem 与向后兼容的 CapturedItem v2 JSON 中增加可选 `parent_external_id`；无需新增表、列或 migration。
+3. [x] 映射 `story`/`job`/`poll` 与 `comment`/`pollopt`，保持显式零指标和缺失指标的差异。
+4. [x] 将 item 读取限制为 4 worker；临时单项失败继续完成有界窗口，认证、限流和永久错误停止继续派发。
+5. [x] 只返回首个未完成 ID 之前的连续前缀，令下一次 checkpoint 从失败位置继续；全量失败保持原 checkpoint。
+6. [x] 复用既有 CollectionRun、来源健康、OpenAPI 和来源页面；本条无新增公开契约或前端 Client。
+7. [x] 使用 `$agent-browser` 验证 Hacker News 来源的创建、固定端点、探测错误、列表错误恢复、权限、桌面/移动布局与 WCAG A/AA；CollectionRun 状态由应用集成测试覆盖。
+8. [x] 新增 `docs/acceptance/009-Hacker-News官方来源连接器验收.md` 并完成全量门禁；本条无新增生产人工操作，不新增 Operations。
 
 ## 验证
 
 - `cd backend && make ci`
+- `cd backend && go run ./test/runner test -race ./internal/modules/source/infrastructure/hackernews -count=1`
 - `cd frontend && npm run openapi:check && npm run typecheck && npm run test:unit && npm run build`
 - 从仓库根运行两套 Compose `config --quiet` 与 `git diff --check`。
-- 针对本条逐项验证 AC-009-*，保存长期证据而不是终端流水。
+- 使用 `$agent-browser` 覆盖管理员正常流程、固定端点、上游错误、来源列表错误恢复、权限、桌面、移动、键盘和 axe WCAG A/AA；采集状态由应用集成测试覆盖。
 
 ## 迁移与回滚
 
-新增能力默认以未配置或关闭状态上线。Schema 必须向前兼容既有事实；回滚先停用入口和调度，再恢复上一应用版本，不删除已采集证据或审计记录。
+`parent_external_id` 是 CapturedItem v2 JSON 的可选字段，旧记录缺失时保持空值；不需要 Schema 迁移。回滚应用版本会忽略该 JSON 字段，不删除 CapturedItem、Content、CollectionRun 或 checkpoint。先停用 Hacker News SourceConnection，再恢复上一应用版本即可停止新增采集。
 
 ## 依赖与功能切片
 
-- 前置编号：007。
-- 依赖未验收时，本条只允许完成不改变对外行为的基础工作。
+- 前置编号：007，已通过验收。
 
-- [ ] Slice-009-1：实现「官方 API 增量采集」，补齐实际涉及的领域、任务、API 与界面，并绑定 AC-009-* 回归。
-- [ ] Slice-009-2：实现「项目类型和线程关系映射」，补齐实际涉及的领域、任务、API 与界面，并绑定 AC-009-* 回归。
-- [ ] Slice-009-3：实现「公开指标快照」，补齐实际涉及的领域、任务、API 与界面，并绑定 AC-009-* 回归。
-- [ ] Slice-009-4：实现「分页、并发、限流和重试」，补齐实际涉及的领域、任务、API 与界面，并绑定 AC-009-* 回归。
+- [x] Slice-009-1：实现官方 API 增量采集和单调 checkpoint。
+- [x] Slice-009-2：实现完整 item 类型、父项和证据字段映射。
+- [x] Slice-009-3：实现公开指标的存在性快照。
+- [x] Slice-009-4：实现有界并发、确定性故障分类、部分成功与未完成窗口重试。
 
 ## 完成定义
 
-- 断点续传不漏不重
-- 官方端点之外的地址全部拒绝
-- 部分失败和全量失败在 CollectionRun 中可区分
+- 断点续传只重试未完成窗口，连续成功前缀不漏不重。
+- 官方端点之外的地址、重定向和非公网解析全部拒绝。
+- 部分失败与全量失败在 CollectionRun 状态和计数中可区分。
+- 自动化、浏览器和全量回归均通过并形成同编号 Acceptance。

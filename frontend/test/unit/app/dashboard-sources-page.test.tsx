@@ -241,4 +241,24 @@ describe("SourcesPage body storage authorization", () => {
       }),
     );
   });
+
+  it("keeps a failed source request distinct from the real empty state and retries", async () => {
+    mocks.getSourceConnections
+      .mockRejectedValueOnce(new Error("来源服务暂时不可用"))
+      .mockResolvedValueOnce({
+        data: {
+          items: [{ id: 9, name: "Hacker News 官方", deleted: false }],
+        },
+      });
+
+    render(<SourcesPage />);
+
+    expect(await screen.findByText("来源加载失败")).toBeInTheDocument();
+    expect(screen.queryByText("还没有来源连接")).not.toBeInTheDocument();
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "重新加载" }));
+
+    expect(await screen.findByText("Hacker News 官方")).toBeInTheDocument();
+    expect(screen.queryByText("来源加载失败")).not.toBeInTheDocument();
+  });
 });

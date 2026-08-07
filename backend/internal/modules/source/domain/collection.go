@@ -99,6 +99,7 @@ func (request FetchRequest) Validate() error {
 type SourceItem struct {
 	SourceCode           string
 	ExternalID           string
+	ParentExternalID     string
 	ContentType          string
 	Title                string
 	Body                 string
@@ -136,6 +137,7 @@ func (metrics SourceMetrics) Validate() error {
 func NormalizeSourceItem(item SourceItem) (SourceItem, error) {
 	item.SourceCode = strings.ToLower(strings.TrimSpace(item.SourceCode))
 	item.ExternalID = strings.TrimSpace(item.ExternalID)
+	item.ParentExternalID = strings.TrimSpace(item.ParentExternalID)
 	item.ContentType = strings.ToLower(strings.TrimSpace(item.ContentType))
 	item.Title = strings.TrimSpace(item.Title)
 	item.Body = strings.TrimSpace(item.Body)
@@ -163,6 +165,9 @@ func NormalizeSourceItem(item SourceItem) (SourceItem, error) {
 	}
 	if item.ExternalID == "" || len(item.ExternalID) > 512 {
 		return SourceItem{}, fmt.Errorf("source item requires a stable external ID")
+	}
+	if len(item.ParentExternalID) > 512 || item.ParentExternalID == item.ExternalID {
+		return SourceItem{}, fmt.Errorf("source item parent external ID is invalid")
 	}
 	if item.ContentType == "" || len(item.ContentType) > 32 {
 		return SourceItem{}, fmt.Errorf("source item content type is invalid")
@@ -230,6 +235,7 @@ type CapturedItem struct {
 	Version               string
 	SourceCode            string
 	ExternalID            string
+	ParentExternalID      string
 	ContentType           string
 	Title                 string
 	Body                  string
@@ -255,7 +261,7 @@ func (policy CapturePolicy) Capture(item SourceItem) (CapturedItem, error) {
 	}
 	captured := CapturedItem{
 		Version: policy.Version, SourceCode: normalized.SourceCode, ExternalID: normalized.ExternalID,
-		ContentType: normalized.ContentType, Title: normalized.Title, Language: normalized.Language,
+		ParentExternalID: normalized.ParentExternalID, ContentType: normalized.ContentType, Title: normalized.Title, Language: normalized.Language,
 		URL: normalized.URL, Author: normalized.Author, ObservedAt: normalized.ObservedAt,
 		EvidenceCompleteness: normalized.EvidenceCompleteness, Attachments: normalized.Attachments,
 		Metrics: normalized.Metrics, RawPayloadDisposition: policy.RawPayloadDisposition,

@@ -87,6 +87,56 @@ func TestCollectionServiceFetchesOnceAndDurablyReconcilesEveryTarget(t *testing.
 	}
 }
 
+func TestCollectionServiceDistinguishesPartialItemResultsFromFullFailure(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+
+	partialRequest := collectionRequestForService(t, runtime, "partial-item-window", 1)
+	partialConnector := &collectionConnectorFake{result: domain.FetchResult{
+		Items: []domain.SourceItem{{
+			SourceCode: "hacker_news", ExternalID: "101", ContentType: "article", Title: "Completed prefix",
+			URL: "https://news.ycombinator.com/item?id=101", ObservedAt: partialRequest.WindowStart,
+		}},
+		NextCursor: "101", HasMore: true,
+		Diagnostics: []domain.FetchDiagnostic{{Code: "item_temporary_failure", SourceExternalID: "102"}},
+	}}
+	partialService, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
+		Connectors: collectionConnectorRegistryFake{connector: partialConnector}, Now: func() time.Time { return partialRequest.WindowEnd },
+	})
+	if err != nil {
+		t.Fatalf("NewCollectionService(partial): %v", err)
+	}
+	partialRun, err := partialService.Collect(context.Background(), partialRequest)
+	if err != nil || partialRun.Status != domain.CollectionRunSucceeded {
+		t.Fatalf("Collect(partial) run/error = %#v / %v, want succeeded run", partialRun, err)
+	}
+	var partialStatus, partialCursor string
+	var partialAccepted, partialRejected int64
+	if err := runtime.SQL.QueryRow(`
+SELECT status, COALESCE(next_cursor, ''), accepted_count, rejected_count
+FROM collection_runs WHERE id = $1`, partialRun.ID).Scan(&partialStatus, &partialCursor, &partialAccepted, &partialRejected); err != nil {
+		t.Fatalf("read partial run: %v", err)
+	}
+	if partialStatus != "succeeded" || partialCursor != "101" || partialAccepted != 1 || partialRejected != 1 {
+		t.Fatalf("partial run facts = %q cursor=%q accepted=%d rejected=%d", partialStatus, partialCursor, partialAccepted, partialRejected)
+	}
+
+	failedRequest := collectionRequestForService(t, runtime, "full-item-window-failure", 1)
+	failedConnector := &collectionConnectorFake{err: domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("all item requests failed"))}
+	failedService, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
+		Connectors: collectionConnectorRegistryFake{connector: failedConnector}, Now: func() time.Time { return failedRequest.WindowEnd },
+	})
+	if err != nil {
+		t.Fatalf("NewCollectionService(failed): %v", err)
+	}
+	failedRun, err := failedService.Collect(context.Background(), failedRequest)
+	if err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorTemporary || failedRun.Status != domain.CollectionRunFailed {
+		t.Fatalf("Collect(failed) run/error = %#v / %v, want failed temporary run", failedRun, err)
+	}
+}
+
 func TestCollectionServiceFailureRetainsCursorAndPersistsRetryState(t *testing.T) {
 	runtime := openRuntime(t)
 	defer func() { _ = runtime.Close() }()

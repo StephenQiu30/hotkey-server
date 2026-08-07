@@ -769,6 +769,7 @@ type capturedItemPayload struct {
 	Version               string                       `json:"version"`
 	SourceCode            string                       `json:"source_code"`
 	ExternalID            string                       `json:"external_id"`
+	ParentExternalID      string                       `json:"parent_external_id,omitempty"`
 	ContentType           string                       `json:"content_type"`
 	Title                 string                       `json:"title"`
 	Body                  string                       `json:"body,omitempty"`
@@ -788,7 +789,7 @@ func encodedCapturedItem(item domain.CapturedItem) ([]byte, string, error) {
 		return nil, "", errors.New("captured item is incomplete")
 	}
 	normalized, err := domain.NormalizeSourceItem(domain.SourceItem{
-		SourceCode: item.SourceCode, ExternalID: item.ExternalID, ContentType: item.ContentType, Title: item.Title,
+		SourceCode: item.SourceCode, ExternalID: item.ExternalID, ParentExternalID: item.ParentExternalID, ContentType: item.ContentType, Title: item.Title,
 		Body: item.Body, Language: item.Language, URL: item.URL, Author: item.Author, PublishedAt: item.PublishedAt,
 		ObservedAt: item.ObservedAt, EvidenceCompleteness: item.EvidenceCompleteness, Attachments: item.Attachments, Metrics: item.Metrics,
 	})
@@ -799,7 +800,7 @@ func encodedCapturedItem(item domain.CapturedItem) ([]byte, string, error) {
 		return nil, "", err
 	}
 	payload, err := json.Marshal(capturedItemPayload{
-		Version: item.Version, SourceCode: normalized.SourceCode, ExternalID: normalized.ExternalID, ContentType: normalized.ContentType,
+		Version: item.Version, SourceCode: normalized.SourceCode, ExternalID: normalized.ExternalID, ParentExternalID: normalized.ParentExternalID, ContentType: normalized.ContentType,
 		Title: normalized.Title, Body: normalized.Body, Language: normalized.Language, URL: normalized.URL, Author: normalized.Author,
 		PublishedAt: normalized.PublishedAt, ObservedAt: normalized.ObservedAt.UTC(), EvidenceCompleteness: normalized.EvidenceCompleteness,
 		Attachments: normalized.Attachments, Metrics: normalized.Metrics,
@@ -832,7 +833,7 @@ func decodeCapturedItem(payload []byte) (domain.CapturedItem, error) {
 	}
 	item := domain.CapturedItem{
 		Version: persisted.Version, SourceCode: persisted.SourceCode, ExternalID: persisted.ExternalID,
-		ContentType: persisted.ContentType, Title: persisted.Title, Body: persisted.Body, Language: persisted.Language,
+		ParentExternalID: persisted.ParentExternalID, ContentType: persisted.ContentType, Title: persisted.Title, Body: persisted.Body, Language: persisted.Language,
 		URL: persisted.URL, Author: persisted.Author, ObservedAt: persisted.ObservedAt.UTC(),
 		EvidenceCompleteness: persisted.EvidenceCompleteness, Attachments: persisted.Attachments, Metrics: metrics,
 		RawPayloadDisposition: persisted.RawPayloadDisposition,
