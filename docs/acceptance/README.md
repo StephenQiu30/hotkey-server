@@ -27,3 +27,4 @@ canonical_path: docs/acceptance/README.md
 | 008 | [RSS-Atom来源连接器](008-RSS-Atom来源连接器验收.md) | passed |
 | 009 | [Hacker-News官方来源连接器](009-Hacker-News官方来源连接器验收.md) | passed |
 | 010 | [X官方搜索连接器](010-X官方搜索连接器验收.md) | passed |
+| 011 | [Bing-Grounding来源适配](011-Bing-Grounding来源适配验收.md) | passed |

@@ -7,6 +7,8 @@ const SOURCE_HEALTH_MESSAGES: Readonly<Record<SourceHealthDiagnostic, string>> =
   [SourceHealthDiagnostic.ConnectorUnavailable]: "当前来源类型暂不可用",
   [SourceHealthDiagnostic.DestinationNotPermitted]: "来源地址被安全策略拒绝，请检查 DNS 或代理的 Fake-IP 设置",
   [SourceHealthDiagnostic.CredentialUnavailable]: "来源凭据不可用，请检查服务端环境变量",
+  [SourceHealthDiagnostic.DataBoundaryReviewRequired]: "请先确认 Microsoft Grounding 数据边界、额外条款与成本",
+  [SourceHealthDiagnostic.ToolboxContractInvalid]: "Foundry Toolbox 未提供唯一可用的 Web Search 工具",
 };
 
 export function getSourceHealthMessage(code: string | undefined): string {

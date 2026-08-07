@@ -21,9 +21,10 @@ type AuthType string
 type HealthStatus string
 
 const (
-	SourceTypeRSS        SourceType = "rss"
-	SourceTypeHackerNews SourceType = "hacker_news"
-	SourceTypeX          SourceType = "x"
+	SourceTypeRSS           SourceType = "rss"
+	SourceTypeHackerNews    SourceType = "hacker_news"
+	SourceTypeX             SourceType = "x"
+	SourceTypeBingGrounding SourceType = "bing_grounding"
 
 	AuthTypeNone   AuthType = "none"
 	AuthTypeAPIKey AuthType = "api_key"
@@ -40,6 +41,7 @@ const (
 )
 
 var credentialReferencePattern = regexp.MustCompile(`^env:[A-Z_][A-Z0-9_]{0,127}$`)
+var foundryToolboxPathPattern = regexp.MustCompile(`^/api/projects/[A-Za-z0-9][A-Za-z0-9._-]{0,127}/toolboxes/[A-Za-z0-9][A-Za-z0-9._-]{0,127}/versions/[A-Za-z0-9][A-Za-z0-9._-]{0,127}/mcp$`)
 
 type SourceConnection struct {
 	ID             int64
@@ -59,16 +61,17 @@ type SourceConnection struct {
 // SourceConfig is the complete, defaulted P0 configuration. A Source
 // Connection never carries arbitrary JSON in its domain model.
 type SourceConfig struct {
-	AllowBodyStorage      bool
-	RequiresAttribution   bool
-	RequiresDeletionSync  bool
-	ContentRetentionDays  int
-	MetricsRetentionDays  int
-	AllowedLanguages      []string
-	AllowedRegions        []string
-	RateLimitPerMinute    int
-	RequestTimeoutSeconds int
-	MaxPagesPerRun        int
+	AllowBodyStorage              bool
+	RequiresAttribution           bool
+	RequiresDeletionSync          bool
+	ContentRetentionDays          int
+	MetricsRetentionDays          int
+	AllowedLanguages              []string
+	AllowedRegions                []string
+	RateLimitPerMinute            int
+	RequestTimeoutSeconds         int
+	MaxPagesPerRun                int
+	GroundingDataBoundaryApproved bool
 }
 
 func DefaultSourceConfig() SourceConfig {
@@ -99,6 +102,9 @@ func NormalizeSourceConnection(connection SourceConnection) (SourceConnection, e
 	if connection.SourceType == SourceTypeX && (connection.AuthType != AuthTypeBearer || credentialRef == "") {
 		return SourceConnection{}, fmt.Errorf("X source requires a Bearer env credential reference")
 	}
+	if connection.SourceType == SourceTypeBingGrounding && (connection.AuthType != AuthTypeBearer || credentialRef == "") {
+		return SourceConnection{}, fmt.Errorf("Bing Grounding source requires a Bearer env credential reference")
+	}
 	config := connection.Config
 	if config.isZero() {
 		config = DefaultSourceConfig()
@@ -106,6 +112,16 @@ func NormalizeSourceConnection(connection SourceConnection) (SourceConnection, e
 	config, err = config.Normalize()
 	if err != nil {
 		return SourceConnection{}, err
+	}
+	if connection.SourceType == SourceTypeBingGrounding && (!config.AllowBodyStorage || !config.RequiresAttribution || config.MaxPagesPerRun != 1) {
+		return SourceConnection{}, fmt.Errorf("Bing Grounding source requires body storage, attribution, and one page per run")
+	}
+	if connection.SourceType == SourceTypeBingGrounding {
+		termsPolicyURL, err := url.Parse(strings.TrimSpace(connection.TermsPolicyURL))
+		if err != nil || termsPolicyURL.Scheme != "https" || termsPolicyURL.Hostname() == "" || termsPolicyURL.User != nil || termsPolicyURL.Fragment != "" {
+			return SourceConnection{}, fmt.Errorf("Bing Grounding source requires an HTTPS terms and policy URL")
+		}
+		connection.TermsPolicyURL = termsPolicyURL.String()
 	}
 	if connection.HealthStatus == "" {
 		connection.HealthStatus = HealthStatusUnknown
@@ -121,7 +137,7 @@ func NormalizeSourceConnection(connection SourceConnection) (SourceConnection, e
 }
 
 func (sourceType SourceType) Valid() bool {
-	return sourceType == SourceTypeRSS || sourceType == SourceTypeHackerNews || sourceType == SourceTypeX
+	return sourceType == SourceTypeRSS || sourceType == SourceTypeHackerNews || sourceType == SourceTypeX || sourceType == SourceTypeBingGrounding
 }
 
 func (authType AuthType) Valid() bool {
@@ -165,6 +181,26 @@ func NormalizeEndpoint(sourceType SourceType, value string) (string, error) {
 			return "", fmt.Errorf("X endpoint must be the official recent search endpoint")
 		}
 		return XRecentSearchEndpoint, nil
+	}
+	if sourceType == SourceTypeBingGrounding {
+		parsed, err := url.Parse(normalized)
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
+			return "", fmt.Errorf("Bing Grounding endpoint must be an HTTPS Foundry Toolbox URI")
+		}
+		if port := parsed.Port(); port != "" && port != "443" {
+			return "", fmt.Errorf("Bing Grounding endpoint must use port 443")
+		}
+		host := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
+		account := strings.TrimSuffix(host, ".services.ai.azure.com")
+		if account == host || account == "" || strings.Contains(account, ".") || !validDNSName(host) || !foundryToolboxPathPattern.MatchString(parsed.Path) {
+			return "", fmt.Errorf("Bing Grounding endpoint must be a versioned Foundry Toolbox MCP URI")
+		}
+		query := parsed.Query()
+		if len(query) != 1 || len(query["api-version"]) != 1 || query.Get("api-version") != "v1" {
+			return "", fmt.Errorf("Bing Grounding endpoint must use api-version=v1")
+		}
+		parsed.Scheme, parsed.Host = "https", host
+		return parsed.String(), nil
 	}
 	if sourceType != SourceTypeRSS {
 		return "", fmt.Errorf("unsupported source type %q", sourceType)
@@ -262,6 +298,12 @@ func NormalizeSourceConfig(input map[string]any) (SourceConfig, error) {
 				return SourceConfig{}, fmt.Errorf("%s: %w", key, err)
 			}
 			config.MaxPagesPerRun = integer
+		case "grounding_data_boundary_approved":
+			boolean, ok := value.(bool)
+			if !ok {
+				return SourceConfig{}, fmt.Errorf("%s must be boolean", key)
+			}
+			config.GroundingDataBoundaryApproved = boolean
 		default:
 			return SourceConfig{}, fmt.Errorf("source config key %q is not allowed", key)
 		}
@@ -293,7 +335,7 @@ func (config SourceConfig) Normalize() (SourceConfig, error) {
 }
 
 func (config SourceConfig) isZero() bool {
-	return !config.AllowBodyStorage && !config.RequiresAttribution && !config.RequiresDeletionSync && config.ContentRetentionDays == 0 && config.MetricsRetentionDays == 0 && len(config.AllowedLanguages) == 0 && len(config.AllowedRegions) == 0 && config.RateLimitPerMinute == 0 && config.RequestTimeoutSeconds == 0 && config.MaxPagesPerRun == 0
+	return !config.AllowBodyStorage && !config.RequiresAttribution && !config.RequiresDeletionSync && !config.GroundingDataBoundaryApproved && config.ContentRetentionDays == 0 && config.MetricsRetentionDays == 0 && len(config.AllowedLanguages) == 0 && len(config.AllowedRegions) == 0 && config.RateLimitPerMinute == 0 && config.RequestTimeoutSeconds == 0 && config.MaxPagesPerRun == 0
 }
 
 func (config SourceConfig) Map() map[string]any {
@@ -302,6 +344,7 @@ func (config SourceConfig) Map() map[string]any {
 		"content_retention_days": config.ContentRetentionDays, "metrics_retention_days": config.MetricsRetentionDays,
 		"allowed_languages": append([]string(nil), config.AllowedLanguages...), "allowed_regions": append([]string(nil), config.AllowedRegions...),
 		"rate_limit_per_minute": config.RateLimitPerMinute, "request_timeout_seconds": config.RequestTimeoutSeconds, "max_pages_per_run": config.MaxPagesPerRun,
+		"grounding_data_boundary_approved": config.GroundingDataBoundaryApproved,
 	}
 }
 

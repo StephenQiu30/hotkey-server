@@ -7897,7 +7897,8 @@ const docTemplate = `{
                     "enum": [
                         "rss",
                         "hacker_news",
-                        "x"
+                        "x",
+                        "bing_grounding"
                     ]
                 },
                 "terms_policy_url": {
@@ -10394,6 +10395,9 @@ const docTemplate = `{
                 "content_retention_days": {
                     "type": "integer"
                 },
+                "grounding_data_boundary_approved": {
+                    "type": "boolean"
+                },
                 "max_pages_per_run": {
                     "type": "integer"
                 },
@@ -10434,6 +10438,9 @@ const docTemplate = `{
                 },
                 "content_retention_days": {
                     "type": "integer"
+                },
+                "grounding_data_boundary_approved": {
+                    "type": "boolean"
                 },
                 "max_pages_per_run": {
                     "type": "integer"
@@ -10802,7 +10809,8 @@ const docTemplate = `{
                     "enum": [
                         "rss",
                         "hacker_news",
-                        "x"
+                        "x",
+                        "bing_grounding"
                     ]
                 },
                 "terms_policy_url": {

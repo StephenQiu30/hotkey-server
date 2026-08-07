@@ -14,6 +14,7 @@ export enum SourceType {
   RSS = "rss",
   HackerNews = "hacker_news",
   X = "x",
+  BingGrounding = "bing_grounding",
 }
 
 export enum SourceHealthStatus {
@@ -119,6 +120,8 @@ export enum SourceHealthDiagnostic {
   ConnectorUnavailable = "connector_unavailable",
   DestinationNotPermitted = "destination_not_permitted",
   CredentialUnavailable = "credential_unavailable",
+  DataBoundaryReviewRequired = "data_boundary_review_required",
+  ToolboxContractInvalid = "toolbox_contract_invalid",
 }
 
 export enum APIErrorCode {

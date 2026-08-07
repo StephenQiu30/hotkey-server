@@ -175,6 +175,50 @@ func TestXSourceStartsDisabledAndRequiresHealthyProbeBeforeEnable(t *testing.T) 
 	}
 }
 
+func TestBingGroundingStartsDisabledAndRequiresReviewAndHealthyProbe(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	admin := seedAdmin(t, runtime)
+	service := newService(t, runtime, usageReader{})
+	ctx := context.Background()
+	config := domain.DefaultSourceConfig()
+	config.RequiresAttribution = true
+
+	created, err := service.Create(ctx, sourceapplication.CreateInput{Subject: admin, Connection: domain.SourceConnection{
+		SourceType: domain.SourceTypeBingGrounding, Name: "Foundry Web Search",
+		Endpoint: "https://hotkey.services.ai.azure.com/api/projects/hotkey/toolboxes/web-search/versions/1/mcp?api-version=v1",
+		AuthType: domain.AuthTypeBearer, CredentialRef: "env:AZURE_FOUNDRY_TOKEN", Config: config, Enabled: true,
+		TermsPolicyURL: "https://learn.microsoft.com/azure/foundry/web-search",
+	}})
+	if err != nil {
+		t.Fatalf("Create(Bing Grounding): %v", err)
+	}
+	if created.Enabled || created.HealthStatus != domain.HealthStatusUnknown || created.Config.GroundingDataBoundaryApproved {
+		t.Fatalf("created Bing Grounding source = %#v", created)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE source_connections SET health_status = 'healthy' WHERE id = $1`, created.ID); err != nil {
+		t.Fatalf("mark Grounding source healthy: %v", err)
+	}
+	if _, err := service.Enable(ctx, sourceapplication.LifecycleInput{Subject: admin, ID: created.ID, ExpectedVersion: created.Version}); appCode(err) != sharederrors.CodeSourceConnectionUnavailable {
+		t.Fatalf("Enable(unreviewed Grounding) code = %d", appCode(err))
+	}
+	config.GroundingDataBoundaryApproved = true
+	updated, err := service.Update(ctx, sourceapplication.UpdateInput{Subject: admin, ID: created.ID, ExpectedVersion: created.Version, Config: &config})
+	if err != nil || updated.HealthStatus != domain.HealthStatusUnknown {
+		t.Fatalf("Update(reviewed Grounding) = %#v, %v", updated, err)
+	}
+	if _, err := service.Enable(ctx, sourceapplication.LifecycleInput{Subject: admin, ID: updated.ID, ExpectedVersion: updated.Version}); appCode(err) != sharederrors.CodeSourceConnectionUnavailable {
+		t.Fatalf("Enable(unprobed Grounding) code = %d", appCode(err))
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE source_connections SET health_status = 'healthy' WHERE id = $1`, updated.ID); err != nil {
+		t.Fatalf("mark reviewed Grounding source healthy: %v", err)
+	}
+	enabled, err := service.Enable(ctx, sourceapplication.LifecycleInput{Subject: admin, ID: updated.ID, ExpectedVersion: updated.Version})
+	if err != nil || !enabled.Enabled {
+		t.Fatalf("Enable(reviewed healthy Grounding) = %#v, %v", enabled, err)
+	}
+}
+
 func TestSourceServiceUsesSourceOwnedAvailabilityForActiveMonitorGroup(t *testing.T) {
 	runtime := openRuntime(t)
 	defer func() { _ = runtime.Close() }()

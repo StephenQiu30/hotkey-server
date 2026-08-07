@@ -380,7 +380,7 @@ required property without making explicit null impossible to bind. */
     enabled?: boolean;
     endpoint: string;
     name: string;
-    source_type: "rss" | "hacker_news" | "x";
+    source_type: "rss" | "hacker_news" | "x" | "bing_grounding";
     terms_policy_url?: string;
   };
 
@@ -1865,6 +1865,7 @@ required property without making explicit null impossible to bind. */
     allowed_languages?: string[];
     allowed_regions?: string[];
     content_retention_days?: number;
+    grounding_data_boundary_approved?: boolean;
     max_pages_per_run?: number;
     metrics_retention_days?: number;
     rate_limit_per_minute?: number;
@@ -1878,6 +1879,7 @@ required property without making explicit null impossible to bind. */
     allowed_languages?: string[];
     allowed_regions?: string[];
     content_retention_days?: number;
+    grounding_data_boundary_approved?: boolean;
     max_pages_per_run?: number;
     metrics_retention_days?: number;
     rate_limit_per_minute?: number;
@@ -2009,7 +2011,7 @@ required property without making explicit null impossible to bind. */
     endpoint?: string;
     expected_source_version: number;
     name?: string;
-    source_type?: "rss" | "hacker_news" | "x";
+    source_type?: "rss" | "hacker_news" | "x" | "bing_grounding";
     terms_policy_url?: string;
   };
 

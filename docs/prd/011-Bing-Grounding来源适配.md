@@ -3,8 +3,8 @@ layer: PRD
 scope: backend
 doc_no: "011"
 title: Bing-Grounding来源适配
-status: draft
-version: v1.0
+status: approved
+version: v1.1
 owner: HotKey Team
 phase: P2
 canonical_path: docs/prd/011-Bing-Grounding来源适配.md
@@ -24,10 +24,10 @@ plan: docs/plans/011-Bing-Grounding来源适配计划.md
 
 ## 范围
 
-- Foundry 凭据与能力配置
-- 带引用回答到候选证据的映射
-- 查询、成本和数据边界审计
-- 停用旧 Bing 选项和迁移提示
+- Foundry Toolbox 版本端点与 Entra 凭据引用配置
+- 带引用派生回答到候选证据的无损映射
+- 查询、成本和数据边界的显式门禁与审计
+- 停用旧 Bing Search API 选项和迁移提示
 
 ## 用户故事
 
@@ -41,6 +41,9 @@ plan: docs/plans/011-Bing-Grounding来源适配计划.md
 - FR-011-2：Grounding 不向开发者返回原始搜索内容，因此输出标记为 derived_evidence，不能冒充抓取正文或原始指标。
 - FR-011-3：完整保留 Microsoft 要求展示的引用链接和查询引用，不改变其格式；查询不得包含用户身份或敏感数据。
 - FR-011-4：当业务必须获得原始文章时，仅对引用 URL 使用该站点自己的官方 API/RSS/授权 Feed 再采集。
+- FR-011-5：来源创建后默认停用；健康探测只校验 MCP 初始化与唯一 Web Search 工具，不产生搜索调用。
+- FR-011-6：只有管理员显式确认 Grounding 数据可能越出 Microsoft 合规与地理边界、DPA 不适用及额外成本条款，且健康探测通过，来源才可启用。
+- FR-011-7：配置页必须说明模型生成、引用展示、数据边界和短期 Entra Token；不得要求或显示明文 Token。
 
 ## 非功能要求
 
@@ -57,3 +60,6 @@ plan: docs/plans/011-Bing-Grounding来源适配计划.md
 - AC-011-1：代码中不存在对已停用 Search API 的调用
 - AC-011-2：所有 Bing 派生内容明确显示模型生成和引用
 - AC-011-3：无 Foundry 配置时来源保持 disabled 而不影响其他连接器
+- AC-011-4：未确认数据边界、凭据缺失、工具清单不唯一或健康未通过时均无法启用，且错误不泄漏 Token 或上游正文
+- AC-011-5：成功采集只产生一个 `summary_only` 派生证据，正文保留内联引用，附件保留 URL 引用，不生成原始来源指标
+- AC-011-6：桌面端和移动端均可完成创建、合规确认、探测、启用和安全失败恢复，管理员/只读权限与可访问性验收通过

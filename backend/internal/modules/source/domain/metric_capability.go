@@ -65,7 +65,7 @@ func (profile MetricCapabilityProfile) Validate() error {
 }
 
 func (profile MetricCapabilityProfile) validateFields() error {
-	if !profile.SourceType.Valid() || !metricCapabilityVersionPattern.MatchString(strings.TrimSpace(profile.ProfileVersion)) {
+	if !profile.SourceType.Valid() || profile.SourceType == SourceTypeBingGrounding || !metricCapabilityVersionPattern.MatchString(strings.TrimSpace(profile.ProfileVersion)) {
 		return fmt.Errorf("invalid metric capability profile identity")
 	}
 	if !profile.SupportsViews && !profile.SupportsLikes && !profile.SupportsComments && !profile.SupportsShares {

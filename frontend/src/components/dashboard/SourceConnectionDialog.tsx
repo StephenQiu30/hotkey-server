@@ -1,7 +1,8 @@
 "use client";
 
 import { type FormEvent, useState } from "react";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus, TriangleAlert } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -26,6 +27,8 @@ import { SourceType } from "@/lib/domainEnums";
 
 const HACKER_NEWS_ENDPOINT = "https://hacker-news.firebaseio.com/v0";
 const X_RECENT_SEARCH_ENDPOINT = "https://api.x.com/2/tweets/search/recent";
+const FOUNDRY_WEB_SEARCH_POLICY_URL =
+  "https://learn.microsoft.com/en-us/azure/ai-foundry/agents/how-to/tools/web-search?view=foundry";
 const credentialPattern = /^env:[A-Z_][A-Z0-9_]{0,127}$/;
 
 type AuthType = "none" | "api_key" | "oauth2" | "bearer";
@@ -45,6 +48,7 @@ type SourceForm = {
   requestTimeoutSeconds: number;
   requiresAttribution: boolean;
   requiresDeletionSync: boolean;
+  groundingDataBoundaryApproved: boolean;
   sourceType: SourceType;
   termsPolicyURL: string;
 };
@@ -102,6 +106,7 @@ const emptyForm = (): SourceForm => ({
   requestTimeoutSeconds: 30,
   requiresAttribution: false,
   requiresDeletionSync: false,
+  groundingDataBoundaryApproved: false,
   sourceType: SourceType.RSS,
   termsPolicyURL: "",
 });
@@ -138,7 +143,13 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
     form.name.trim() &&
       form.endpoint.trim() &&
       credentialValid &&
-      validHTTPSURL(form.termsPolicyURL),
+      validHTTPSURL(form.termsPolicyURL) &&
+      (form.sourceType !== SourceType.BingGrounding ||
+        (form.groundingDataBoundaryApproved &&
+          form.allowBodyStorage &&
+          form.requiresAttribution &&
+          form.maxPagesPerRun === 1 &&
+          Boolean(form.termsPolicyURL.trim()))),
   );
 
   const updateForm = (values: Partial<SourceForm>) => {
@@ -167,9 +178,13 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
         request_timeout_seconds: form.requestTimeoutSeconds,
         requires_attribution: form.requiresAttribution,
         requires_deletion_sync: form.requiresDeletionSync,
+        grounding_data_boundary_approved:
+          form.groundingDataBoundaryApproved,
       },
       credential_ref: form.credentialRef.trim(),
-      enabled: form.sourceType !== SourceType.X,
+      enabled:
+        form.sourceType !== SourceType.X &&
+        form.sourceType !== SourceType.BingGrounding,
       endpoint: form.endpoint.trim(),
       name: form.name.trim(),
       source_type: form.sourceType,
@@ -227,8 +242,29 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                         : value === SourceType.X
                           ? X_RECENT_SEARCH_ENDPOINT
                         : "",
-                    authType: value === SourceType.X ? "bearer" : "none",
+                    authType:
+                      value === SourceType.X ||
+                      value === SourceType.BingGrounding
+                        ? "bearer"
+                        : "none",
                     credentialRef: "",
+                    allowBodyStorage:
+                      value === SourceType.BingGrounding
+                        ? true
+                        : form.allowBodyStorage,
+                    requiresAttribution:
+                      value === SourceType.BingGrounding
+                        ? true
+                        : form.requiresAttribution,
+                    maxPagesPerRun:
+                      value === SourceType.BingGrounding
+                        ? 1
+                        : form.maxPagesPerRun,
+                    groundingDataBoundaryApproved: false,
+                    termsPolicyURL:
+                      value === SourceType.BingGrounding
+                        ? FOUNDRY_WEB_SEARCH_POLICY_URL
+                        : "",
                   })
                 }
               >
@@ -241,6 +277,9 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                     Hacker News
                   </SelectItem>
                   <SelectItem value={SourceType.X}>X Recent Search</SelectItem>
+                  <SelectItem value={SourceType.BingGrounding}>
+                    Microsoft Foundry Web Search
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -248,7 +287,10 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
               <Label htmlFor="source-auth-type">授权方式</Label>
               <Select
                 value={form.authType}
-                disabled={form.sourceType === SourceType.X}
+                disabled={
+                  form.sourceType === SourceType.X ||
+                  form.sourceType === SourceType.BingGrounding
+                }
                 onValueChange={(value) =>
                   updateForm({
                     authType: value as AuthType,
@@ -275,7 +317,11 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                 className="mt-2"
                 value={form.endpoint}
                 onChange={(event) => updateForm({ endpoint: event.target.value })}
-                placeholder="https://example.com/feed.xml"
+                placeholder={
+                  form.sourceType === SourceType.BingGrounding
+                    ? "https://account.services.ai.azure.com/api/projects/project/toolboxes/web-search/versions/1/mcp?api-version=v1"
+                    : "https://example.com/feed.xml"
+                }
                 readOnly={
                   form.sourceType === SourceType.HackerNews ||
                   form.sourceType === SourceType.X
@@ -284,6 +330,11 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
               {form.sourceType === SourceType.X && (
                 <p className="mt-1 text-xs text-muted-foreground">
                   固定使用官方 Recent Search；创建后先完成健康探测，再手动启用。
+                </p>
+              )}
+              {form.sourceType === SourceType.BingGrounding && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  填写版本固定的 Foundry Toolbox MCP 地址；创建后先探测工具契约，再手动启用。
                 </p>
               )}
             </div>
@@ -334,16 +385,47 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                       onCheckedChange={(checked) =>
                         updateForm({ [option.key]: checked === true })
                       }
+                      disabled={
+                        form.sourceType === SourceType.BingGrounding &&
+                        (option.key === "allowBodyStorage" ||
+                          option.key === "requiresAttribution")
+                      }
                     />
                     {option.label}
                   </label>
                 ))}
               </div>
               <p className="mt-3 text-xs text-muted-foreground">
-                只保存来源 Feed
-                实际提供的正文/摘要，不抓取原网页；启用前确认来源条款。
+                {form.sourceType === SourceType.BingGrounding
+                  ? "只保存 Foundry 模型生成的派生摘要和必要引用，不把它标记为原始网页正文或来源指标。"
+                  : "只保存来源 Feed 实际提供的正文/摘要，不抓取原网页；启用前确认来源条款。"}
               </p>
             </div>
+            {form.sourceType === SourceType.BingGrounding && (
+              <Alert className="sm:col-span-2">
+                <TriangleAlert />
+                <AlertTitle>Grounding 数据边界确认</AlertTitle>
+                <AlertDescription>
+                  <label className="mt-2 flex cursor-pointer items-start gap-2 text-sm text-foreground">
+                    <Checkbox
+                      aria-label="确认 Grounding 数据边界与额外条款"
+                      checked={form.groundingDataBoundaryApproved}
+                      onCheckedChange={(checked) =>
+                        updateForm({
+                          groundingDataBoundaryApproved: checked === true,
+                        })
+                      }
+                    />
+                    <span>
+                      我已确认 Microsoft DPA 不适用于该能力，数据可能离开既定合规与地理边界，并接受额外条款及费用。
+                    </span>
+                  </label>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Web Search 返回模型生成的派生摘要和引用，不是原始搜索结果或网页正文；查询不得包含身份、凭据或其他敏感数据。
+                  </p>
+                </AlertDescription>
+              </Alert>
+            )}
             <div>
               <Label htmlFor="source-languages">允许语言</Label>
               <Input
@@ -380,6 +462,10 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                   value={form[option.key]}
                   onChange={(event) =>
                     updateForm({ [option.key]: Number(event.target.value) })
+                  }
+                  disabled={
+                    form.sourceType === SourceType.BingGrounding &&
+                    option.key === "maxPagesPerRun"
                   }
                 />
               </div>

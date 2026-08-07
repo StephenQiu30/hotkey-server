@@ -227,8 +227,8 @@ export default function SourcesPage() {
         title={canManage ? "来源管理" : "来源目录"}
         description={
           canManage
-            ? "连接、探测并管理官方 RSS、Atom、Hacker News 与 X 数据源。"
-            : "查看当前工作区已接入的 RSS、Atom、Hacker News 与 X 数据源。"
+            ? "连接、探测并管理官方 RSS、Atom、Hacker News、X 与 Microsoft Foundry Web Search 数据源。"
+            : "查看当前工作区已接入的 RSS、Atom、Hacker News、X 与 Microsoft Foundry Web Search 数据源。"
         }
         action={
           canManage ? (
@@ -332,6 +332,9 @@ export default function SourcesPage() {
                       )}
                       {source.credential_configured && (
                         <span>凭据已配置</span>
+                      )}
+                      {source.source_type === "bing_grounding" && (
+                        <span>模型生成的派生证据 · 保留引用</span>
                       )}
                       {source.config?.rate_limit_per_minute != null &&
                         source.config?.content_retention_days != null && (

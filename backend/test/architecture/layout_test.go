@@ -64,6 +64,35 @@ func TestSharedPackagesDoNotImportInfrastructure(t *testing.T) {
 	}
 }
 
+func TestProductionSourceCodeDoesNotCallRetiredBingSearchAPI(t *testing.T) {
+	root := filepath.Join(repositoryRoot(t), "internal")
+	var violations []string
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			return nil
+		}
+		payload, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		content := strings.ToLower(string(payload))
+		if strings.Contains(content, "api.bing.microsoft.com") || strings.Contains(content, "/v7.0/search") {
+			relative, _ := filepath.Rel(repositoryRoot(t), path)
+			violations = append(violations, relative)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) > 0 {
+		t.Fatalf("production code calls retired Bing Search API: %s", strings.Join(violations, ", "))
+	}
+}
+
 func TestImportPathLiteralSupportsQuotedAndRawStrings(t *testing.T) {
 	for _, literal := range []string{`"gorm.io/gorm"`, "`gorm.io/gorm`"} {
 		t.Run(literal, func(t *testing.T) {

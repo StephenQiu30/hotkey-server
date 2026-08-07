@@ -145,6 +145,65 @@ describe("SourcesPage body storage authorization", () => {
     );
   });
 
+  it("creates Microsoft Foundry Web Search disabled after explicit data-boundary review", async () => {
+    render(<SourcesPage />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "新增来源" }));
+    await user.type(screen.getByLabelText("名称"), "Foundry Web Search");
+
+    fireEvent.keyDown(screen.getByLabelText("来源类型"), { key: "ArrowDown" });
+    fireEvent.click(
+      screen.getByRole("option", { name: "Microsoft Foundry Web Search" }),
+    );
+
+    expect(screen.getByLabelText("接口地址")).toHaveAttribute(
+      "placeholder",
+      "https://account.services.ai.azure.com/api/projects/project/toolboxes/web-search/versions/1/mcp?api-version=v1",
+    );
+    expect(screen.getByLabelText("授权方式")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "创建连接" })).toBeDisabled();
+    await user.type(
+      screen.getByLabelText("接口地址"),
+      "https://hotkey.services.ai.azure.com/api/projects/hotkey/toolboxes/web-search/versions/1/mcp?api-version=v1",
+    );
+    await user.type(
+      screen.getByLabelText("凭据环境变量引用"),
+      "env:AZURE_FOUNDRY_TOKEN",
+    );
+    expect(
+      screen.getByText(/Microsoft DPA 不适用于该能力/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/模型生成的派生摘要和引用/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/不把它标记为原始网页正文或来源指标/),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("checkbox", {
+        name: "确认 Grounding 数据边界与额外条款",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "创建连接" }));
+
+    await waitFor(() =>
+      expect(mocks.postSourceConnections).toHaveBeenCalledWith(
+        expect.objectContaining({
+          auth_type: "bearer",
+          credential_ref: "env:AZURE_FOUNDRY_TOKEN",
+          enabled: false,
+          source_type: "bing_grounding",
+          config: expect.objectContaining({
+            allow_body_storage: true,
+            requires_attribution: true,
+            max_pages_per_run: 1,
+            grounding_data_boundary_approved: true,
+          }),
+        }),
+      ),
+    );
+  });
+
   it("shows safe compliance facts without exposing a credential reference", async () => {
     mocks.getSourceConnections.mockResolvedValue({ data: { items: [{
       id: 7,
@@ -207,7 +266,7 @@ describe("SourcesPage body storage authorization", () => {
         await screen.findByText("只读来源目录"),
       ).toBeInTheDocument();
       expect(
-        screen.getByText("查看当前工作区已接入的 RSS、Atom、Hacker News 与 X 数据源。"),
+        screen.getByText("查看当前工作区已接入的 RSS、Atom、Hacker News、X 与 Microsoft Foundry Web Search 数据源。"),
       ).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "新增来源" })).not.toBeInTheDocument();
       expect(

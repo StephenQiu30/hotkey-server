@@ -98,20 +98,21 @@ type SourceHealthResponse struct {
 // map and no credential-shaped field, so management DTOs cannot become a
 // vehicle for arbitrary secret JSON.
 type SourceConfigRequest struct {
-	AllowBodyStorage      *bool     `json:"allow_body_storage,omitempty"`
-	RequiresAttribution   *bool     `json:"requires_attribution,omitempty"`
-	RequiresDeletionSync  *bool     `json:"requires_deletion_sync,omitempty"`
-	ContentRetentionDays  *int      `json:"content_retention_days,omitempty"`
-	MetricsRetentionDays  *int      `json:"metrics_retention_days,omitempty"`
-	AllowedLanguages      *[]string `json:"allowed_languages,omitempty"`
-	AllowedRegions        *[]string `json:"allowed_regions,omitempty"`
-	RateLimitPerMinute    *int      `json:"rate_limit_per_minute,omitempty"`
-	RequestTimeoutSeconds *int      `json:"request_timeout_seconds,omitempty"`
-	MaxPagesPerRun        *int      `json:"max_pages_per_run,omitempty"`
+	AllowBodyStorage              *bool     `json:"allow_body_storage,omitempty"`
+	RequiresAttribution           *bool     `json:"requires_attribution,omitempty"`
+	RequiresDeletionSync          *bool     `json:"requires_deletion_sync,omitempty"`
+	ContentRetentionDays          *int      `json:"content_retention_days,omitempty"`
+	MetricsRetentionDays          *int      `json:"metrics_retention_days,omitempty"`
+	AllowedLanguages              *[]string `json:"allowed_languages,omitempty"`
+	AllowedRegions                *[]string `json:"allowed_regions,omitempty"`
+	RateLimitPerMinute            *int      `json:"rate_limit_per_minute,omitempty"`
+	RequestTimeoutSeconds         *int      `json:"request_timeout_seconds,omitempty"`
+	MaxPagesPerRun                *int      `json:"max_pages_per_run,omitempty"`
+	GroundingDataBoundaryApproved *bool     `json:"grounding_data_boundary_approved,omitempty"`
 }
 
 type CreateSourceRequest struct {
-	SourceType     string              `json:"source_type" binding:"required,oneof=rss hacker_news x"`
+	SourceType     string              `json:"source_type" binding:"required,oneof=rss hacker_news x bing_grounding"`
 	Name           string              `json:"name" binding:"required"`
 	Endpoint       string              `json:"endpoint" binding:"required"`
 	AuthType       string              `json:"auth_type" binding:"required,oneof=none api_key oauth2 bearer"`
@@ -123,7 +124,7 @@ type CreateSourceRequest struct {
 
 type UpdateSourceRequest struct {
 	ExpectedSourceVersion int64                `json:"expected_source_version" binding:"required,gt=0"`
-	SourceType            *string              `json:"source_type,omitempty" binding:"omitempty,oneof=rss hacker_news x"`
+	SourceType            *string              `json:"source_type,omitempty" binding:"omitempty,oneof=rss hacker_news x bing_grounding"`
 	Name                  *string              `json:"name,omitempty"`
 	Endpoint              *string              `json:"endpoint,omitempty"`
 	AuthType              *string              `json:"auth_type,omitempty" binding:"omitempty,oneof=none api_key oauth2 bearer"`
@@ -168,16 +169,17 @@ type SourceReadResponse struct {
 }
 
 type SourceConfigDTO struct {
-	AllowBodyStorage      bool     `json:"allow_body_storage"`
-	RequiresAttribution   bool     `json:"requires_attribution"`
-	RequiresDeletionSync  bool     `json:"requires_deletion_sync"`
-	ContentRetentionDays  int      `json:"content_retention_days"`
-	MetricsRetentionDays  int      `json:"metrics_retention_days"`
-	AllowedLanguages      []string `json:"allowed_languages"`
-	AllowedRegions        []string `json:"allowed_regions"`
-	RateLimitPerMinute    int      `json:"rate_limit_per_minute"`
-	RequestTimeoutSeconds int      `json:"request_timeout_seconds"`
-	MaxPagesPerRun        int      `json:"max_pages_per_run"`
+	AllowBodyStorage              bool     `json:"allow_body_storage"`
+	RequiresAttribution           bool     `json:"requires_attribution"`
+	RequiresDeletionSync          bool     `json:"requires_deletion_sync"`
+	ContentRetentionDays          int      `json:"content_retention_days"`
+	MetricsRetentionDays          int      `json:"metrics_retention_days"`
+	AllowedLanguages              []string `json:"allowed_languages"`
+	AllowedRegions                []string `json:"allowed_regions"`
+	RateLimitPerMinute            int      `json:"rate_limit_per_minute"`
+	RequestTimeoutSeconds         int      `json:"request_timeout_seconds"`
+	MaxPagesPerRun                int      `json:"max_pages_per_run"`
+	GroundingDataBoundaryApproved bool     `json:"grounding_data_boundary_approved"`
 }
 
 type SourcePageResponse struct {
@@ -226,6 +228,9 @@ func sourceConfig(request SourceConfigRequest) (domain.SourceConfig, error) {
 	}
 	if request.MaxPagesPerRun != nil {
 		values["max_pages_per_run"] = *request.MaxPagesPerRun
+	}
+	if request.GroundingDataBoundaryApproved != nil {
+		values["grounding_data_boundary_approved"] = *request.GroundingDataBoundaryApproved
 	}
 	config, err := domain.NormalizeSourceConfig(values)
 	if err != nil {
@@ -280,7 +285,7 @@ func managementReadResponse(source domain.ManagementSourceConnection) SourceRead
 	return SourceReadResponse{SourceResponse: sourceResponse(source.PublicSourceConnection), Endpoint: &endpoint, Config: &config}
 }
 func configResponse(config domain.SourceConfig) SourceConfigDTO {
-	return SourceConfigDTO{AllowBodyStorage: config.AllowBodyStorage, RequiresAttribution: config.RequiresAttribution, RequiresDeletionSync: config.RequiresDeletionSync, ContentRetentionDays: config.ContentRetentionDays, MetricsRetentionDays: config.MetricsRetentionDays, AllowedLanguages: config.AllowedLanguages, AllowedRegions: config.AllowedRegions, RateLimitPerMinute: config.RateLimitPerMinute, RequestTimeoutSeconds: config.RequestTimeoutSeconds, MaxPagesPerRun: config.MaxPagesPerRun}
+	return SourceConfigDTO{AllowBodyStorage: config.AllowBodyStorage, RequiresAttribution: config.RequiresAttribution, RequiresDeletionSync: config.RequiresDeletionSync, ContentRetentionDays: config.ContentRetentionDays, MetricsRetentionDays: config.MetricsRetentionDays, AllowedLanguages: config.AllowedLanguages, AllowedRegions: config.AllowedRegions, RateLimitPerMinute: config.RateLimitPerMinute, RequestTimeoutSeconds: config.RequestTimeoutSeconds, MaxPagesPerRun: config.MaxPagesPerRun, GroundingDataBoundaryApproved: config.GroundingDataBoundaryApproved}
 }
 
 func metricCapabilityProfileResponse(profile domain.MetricCapabilityProfile) MetricCapabilityProfileResponse {

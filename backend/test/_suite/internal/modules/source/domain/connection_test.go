@@ -50,6 +50,39 @@ func TestNormalizeSourceConnectionValidatesP0SourceTypesAndEndpoints(t *testing.
 	}
 }
 
+func TestBingGroundingConnectionRequiresVersionedFoundryToolboxAndDerivedEvidencePolicy(t *testing.T) {
+	t.Parallel()
+	config := DefaultSourceConfig()
+	config.RequiresAttribution = true
+	config.GroundingDataBoundaryApproved = true
+	connection := SourceConnection{
+		SourceType: SourceTypeBingGrounding, Name: "Foundry Web Search",
+		Endpoint: "https://hotkey.services.ai.azure.com/api/projects/hotkey/toolboxes/web-search/versions/1/mcp?api-version=v1",
+		AuthType: AuthTypeBearer, CredentialRef: "env:AZURE_FOUNDRY_TOKEN", Config: config,
+		TermsPolicyURL: "https://learn.microsoft.com/azure/foundry/web-search",
+	}
+	normalized, err := NormalizeSourceConnection(connection)
+	if err != nil || normalized.Endpoint != connection.Endpoint || !normalized.Config.GroundingDataBoundaryApproved {
+		t.Fatalf("NormalizeSourceConnection() = %#v, %v", normalized, err)
+	}
+	for _, endpoint := range []string{
+		"https://api.bing.microsoft.com/v7.0/search",
+		"https://hotkey.services.ai.azure.com/api/projects/hotkey/toolboxes/web-search/mcp?api-version=v1",
+		"https://hotkey.services.ai.azure.com/api/projects/hotkey/toolboxes/web-search/versions/1/mcp?api-version=2025-05-01",
+		"https://127.0.0.1/api/projects/hotkey/toolboxes/web-search/versions/1/mcp?api-version=v1",
+	} {
+		connection.Endpoint = endpoint
+		if _, err := NormalizeSourceConnection(connection); err == nil {
+			t.Fatalf("accepted unsupported endpoint %q", endpoint)
+		}
+	}
+	connection.Endpoint = "https://hotkey.services.ai.azure.com/api/projects/hotkey/toolboxes/web-search/versions/1/mcp?api-version=v1"
+	connection.Config.RequiresAttribution = false
+	if _, err := NormalizeSourceConnection(connection); err == nil {
+		t.Fatal("accepted Grounding without attribution")
+	}
+}
+
 func TestCredentialReferenceMustMatchAuthType(t *testing.T) {
 	t.Parallel()
 
