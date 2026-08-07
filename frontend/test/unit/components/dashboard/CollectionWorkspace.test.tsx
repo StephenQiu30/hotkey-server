@@ -36,6 +36,10 @@ describe("CollectionWorkspace", () => {
             source_name: "arXiv · Artificial Intelligence",
             canonical_url: "https://example.test/paper",
             fetched_at: "2026-07-18T04:00:00Z",
+            relevance_score: 91.5,
+            match_decision: "accepted",
+            event_id: 12,
+            event_title: "Agent 产品发布",
           },
         ]}
       />
@@ -46,20 +50,25 @@ describe("CollectionWorkspace", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("destination_not_permitted")).toBeInTheDocument();
     expect(screen.getByTestId("collection-pipeline")).toHaveClass(
-      "lg:grid-cols-2",
+      "lg:grid-cols-2"
     );
     expect(screen.getByTestId("collection-pipeline")).toHaveClass(
-      "items-stretch",
+      "items-stretch"
     );
     expect(
       screen.getByRole("link", {
         name: "阅读归档：Agent systems are changing software development",
-      }),
+      })
     ).toHaveAttribute("href", "/dashboard/contents/4");
     expect(screen.getByRole("link", { name: "访问原站" })).toHaveAttribute(
       "href",
       "https://example.test/paper"
     );
+    expect(screen.getByText("相关性 91.5")).toBeInTheDocument();
+    expect(screen.getByText("已接受")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "归属事件：Agent 产品发布" })
+    ).toHaveAttribute("href", "/dashboard/events?event=12");
   });
 
   it("explains when the scheduler has not created any run", () => {
@@ -67,7 +76,9 @@ describe("CollectionWorkspace", () => {
 
     expect(screen.getByText("尚未产生采集批次")).toBeInTheDocument();
     expect(
-      screen.getByText("发布监控后仍长期停留在这里，通常表示后台调度器未创建任务。")
+      screen.getByText(
+        "发布监控后仍长期停留在这里，通常表示后台调度器未创建任务。"
+      )
     ).toBeInTheDocument();
   });
 
@@ -76,21 +87,24 @@ describe("CollectionWorkspace", () => {
       <CollectionWorkspace
         runs={[]}
         contents={[
-          { title: "Missing internal id", canonical_url: "https://example.test/external" },
+          {
+            title: "Missing internal id",
+            canonical_url: "https://example.test/external",
+          },
           { id: 9, title: "Missing canonical URL" },
         ]}
-      />,
+      />
     );
 
     expect(
-      screen.queryByRole("link", { name: "阅读归档：Missing internal id" }),
+      screen.queryByRole("link", { name: "阅读归档：Missing internal id" })
     ).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "访问原站" })).toHaveAttribute(
       "href",
-      "https://example.test/external",
+      "https://example.test/external"
     );
     expect(
-      screen.getByRole("link", { name: "阅读归档：Missing canonical URL" }),
+      screen.getByRole("link", { name: "阅读归档：Missing canonical URL" })
     ).toHaveAttribute("href", "/dashboard/contents/9");
   });
 
@@ -103,17 +117,19 @@ describe("CollectionWorkspace", () => {
         contents={[content]}
         onDelete={onDelete}
         runs={[]}
-      />,
+      />
     );
 
-    await userEvent.setup().click(
-      screen.getByRole("button", { name: "删除内容：Content to remove" }),
-    );
+    await userEvent
+      .setup()
+      .click(
+        screen.getByRole("button", { name: "删除内容：Content to remove" })
+      );
     expect(onDelete).toHaveBeenCalledWith(content);
 
     rerender(<CollectionWorkspace contents={[content]} runs={[]} />);
     expect(
-      screen.queryByRole("button", { name: "删除内容：Content to remove" }),
+      screen.queryByRole("button", { name: "删除内容：Content to remove" })
     ).not.toBeInTheDocument();
   });
 });

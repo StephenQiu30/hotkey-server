@@ -260,12 +260,16 @@ required property without making explicit null impossible to bind. */
     dedupe_reason?: string;
     dedupe_status?: "active" | "duplicate";
     dedupe_version?: string;
+    event_id?: number;
+    event_title?: string;
     external_id?: string;
     fetched_at?: string;
     id?: number;
     language?: string;
+    match_decision?: "accepted" | "review" | "rejected";
     metrics?: ContentMetricsResponse;
     published_at?: string;
+    relevance_score?: number;
     source_name?: string;
     source_type?: string;
     title?: string;
@@ -734,6 +738,20 @@ required property without making explicit null impossible to bind. */
     cursor?: string;
     /** page size */
     limit?: number;
+    /** title or summary keyword */
+    q?: string;
+    /** source connection ID */
+    source_connection_id?: number;
+    /** published at or after (RFC3339) */
+    published_from?: string;
+    /** published at or before (RFC3339) */
+    published_to?: string;
+    /** monitor ID */
+    monitor_id?: number;
+    /** latest monitor match decision */
+    decision?: "accepted" | "review" | "rejected";
+    /** sort order */
+    sort?: "latest" | "relevance";
   };
 
   type getEventsIdContentsParams = {
@@ -835,6 +853,8 @@ required property without making explicit null impossible to bind. */
   };
 
   type getRadarEventsParams = {
+    /** event title or summary keyword */
+    q?: string;
     /** Radar window */
     window?: "1h" | "6h" | "24h" | "7d";
     /** monitor ID */

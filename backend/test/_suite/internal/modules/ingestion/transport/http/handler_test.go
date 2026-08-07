@@ -143,6 +143,41 @@ func TestContentRoutes(t *testing.T) {
 	})
 }
 
+func TestContentListParsesServerSideSearchShape(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &contentQueryServiceStub{page: ingestiondomain.ContentPage{}}
+	router := newContentRouter(t, service, httptransport.RoleViewer)
+	path := "/api/v1/contents?q=%E5%8F%91%E5%B8%83&source_connection_id=3&published_from=2026-08-01T00%3A00%3A00Z&published_to=2026-08-02T00%3A00%3A00Z&monitor_id=7&decision=accepted&sort=relevance&limit=25"
+	response := performContentRequest(router, stdhttp.MethodGet, path, "viewer")
+	if response.Code != stdhttp.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", response.Code, response.Body.String())
+	}
+	query := service.lastQuery
+	if query.Keyword != "发布" || query.Limit != 25 || query.Sort != ingestiondomain.ContentSortRelevance ||
+		query.SourceConnectionID == nil || *query.SourceConnectionID != 3 || query.MonitorID == nil || *query.MonitorID != 7 ||
+		query.Decision == nil || *query.Decision != ingestiondomain.MatchDecisionAccepted || query.PublishedFrom == nil || query.PublishedTo == nil {
+		t.Fatalf("parsed query = %#v", query)
+	}
+}
+
+func TestContentListRejectsInvalidSearchCombinationsBeforeApplication(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, path := range []string{
+		"/api/v1/contents?sort=relevance",
+		"/api/v1/contents?decision=accepted",
+		"/api/v1/contents?monitor_id=bad",
+		"/api/v1/contents?published_from=not-a-time",
+		"/api/v1/contents?limit=101",
+		"/api/v1/contents?q=" + strings.Repeat("%E7%95%8C", 101),
+	} {
+		service := &contentQueryServiceStub{}
+		response := performContentRequest(newContentRouter(t, service, httptransport.RoleViewer), stdhttp.MethodGet, path, "viewer")
+		if response.Code != stdhttp.StatusBadRequest || service.listCalls != 0 {
+			t.Fatalf("%s status/calls = %d/%d, want 400/0: %s", path, response.Code, service.listCalls, response.Body.String())
+		}
+	}
+}
+
 func TestContentDocumentRouteAllowsAuthenticatedRolesAndReturnsSafeProjection(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	document := ingestiondomain.ContentDocument{

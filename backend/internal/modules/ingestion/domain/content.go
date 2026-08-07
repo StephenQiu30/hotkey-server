@@ -1,8 +1,13 @@
 package domain
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	"golang.org/x/text/unicode/norm"
@@ -189,11 +194,98 @@ type Content struct {
 	DedupeReason  string
 	DedupeVersion string
 	DeletedAt     *time.Time
+	// Relevance and Event are optional safe query projections. They are not
+	// persisted on Content and remain nil when no matching context exists.
+	RelevanceScore *float64
+	MatchDecision  *MatchDecision
+	EventID        *int64
+	EventTitle     string
 }
 
 type ContentListQuery struct {
-	Cursor string
-	Limit  int
+	Cursor             string
+	Limit              int
+	Keyword            string
+	SourceConnectionID *int64
+	PublishedFrom      *time.Time
+	PublishedTo        *time.Time
+	MonitorID          *int64
+	Decision           *MatchDecision
+	Sort               ContentSort
+}
+
+type ContentSort string
+
+const (
+	ContentSortLatest    ContentSort = "latest"
+	ContentSortRelevance ContentSort = "relevance"
+)
+
+func (sortValue ContentSort) Valid() bool {
+	return sortValue == ContentSortLatest || sortValue == ContentSortRelevance
+}
+
+func (query ContentListQuery) Normalized() ContentListQuery {
+	query.Keyword = strings.TrimSpace(query.Keyword)
+	if query.Sort == "" {
+		query.Sort = ContentSortLatest
+	}
+	if query.PublishedFrom != nil {
+		value := query.PublishedFrom.UTC()
+		query.PublishedFrom = &value
+	}
+	if query.PublishedTo != nil {
+		value := query.PublishedTo.UTC()
+		query.PublishedTo = &value
+	}
+	return query
+}
+
+func (query ContentListQuery) Validate() error {
+	query = query.Normalized()
+	if query.Limit < 1 || query.Limit > 200 || !query.Sort.Valid() || utf8.RuneCountInString(query.Keyword) > 100 {
+		return fmt.Errorf("invalid content list query")
+	}
+	if query.SourceConnectionID != nil && *query.SourceConnectionID <= 0 || query.MonitorID != nil && *query.MonitorID <= 0 {
+		return fmt.Errorf("invalid content list reference")
+	}
+	if query.PublishedFrom != nil && query.PublishedFrom.IsZero() || query.PublishedTo != nil && query.PublishedTo.IsZero() ||
+		query.PublishedFrom != nil && query.PublishedTo != nil && query.PublishedFrom.After(*query.PublishedTo) {
+		return fmt.Errorf("invalid content list time range")
+	}
+	if query.Decision != nil && (!query.Decision.Valid() || query.MonitorID == nil) || query.Sort == ContentSortRelevance && query.MonitorID == nil {
+		return fmt.Errorf("invalid content relevance query")
+	}
+	return nil
+}
+
+func (query ContentListQuery) ShapeFingerprint() (string, error) {
+	query = query.Normalized()
+	if err := query.Validate(); err != nil {
+		return "", err
+	}
+	value := func(reference *int64) string {
+		if reference == nil {
+			return ""
+		}
+		return strconv.FormatInt(*reference, 10)
+	}
+	instant := func(reference *time.Time) string {
+		if reference == nil {
+			return ""
+		}
+		return reference.UTC().Format(time.RFC3339Nano)
+	}
+	decision := ""
+	if query.Decision != nil {
+		decision = string(*query.Decision)
+	}
+	parts := []string{
+		"active-content-v2", strings.ToLower(query.Keyword), value(query.SourceConnectionID),
+		instant(query.PublishedFrom), instant(query.PublishedTo), value(query.MonitorID), decision, string(query.Sort),
+	}
+	digest := sha256.Sum256([]byte(strings.Join(parts, "\n")))
+	return hex.EncodeToString(digest[:]), nil
 }
 
 type ContentPage struct {

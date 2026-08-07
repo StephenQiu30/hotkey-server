@@ -57,10 +57,20 @@ export class HotKeyAPIError extends Error {
 
 export type RequestOptions = AxiosRequestConfig;
 
+export function serializeQueryParams(params: Record<string, unknown>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value == null) continue;
+    search.set(key, Array.isArray(value) ? value.join(",") : String(value));
+  }
+  return search.toString();
+}
+
 const apiClient = axios.create({
   baseURL: "",
   timeout: 15000,
   withCredentials: true, // HttpOnly Refresh Cookie
+  paramsSerializer: { serialize: serializeQueryParams },
 });
 
 // ── Request interceptor: inject Bearer token from memory ───────────

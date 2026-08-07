@@ -21,10 +21,13 @@ const mocks = vi.hoisted(() => ({
   postEventsIdMerge: vi.fn(),
   postEventsIdSplit: vi.fn(),
   getMonitors: vi.fn(),
+  routerReplace: vi.fn(),
+  navigationQuery: "",
 }));
 
 vi.mock("next/navigation", () => ({
-  useSearchParams: () => new URLSearchParams(""),
+  useSearchParams: () => new URLSearchParams(mocks.navigationQuery),
+  useRouter: () => ({ replace: mocks.routerReplace }),
 }));
 vi.mock("@/services/hotkey/hotkey-server/radar", () => ({
   getRadarEvents: mocks.getRadarEvents,
@@ -48,6 +51,7 @@ describe("EventsPage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.navigationQuery = "";
     useAuthStore.setState({
       user: { role: "viewer" } as HotKeyAPI.UserResponse,
     });
@@ -172,6 +176,49 @@ describe("EventsPage", () => {
         ],
       },
     });
+  });
+
+  it("sends URL search filters to Radar instead of filtering the current page", async () => {
+    mocks.navigationQuery =
+      "q=%E5%8C%96%E5%B7%A5&window=7d&monitor=7&sort=relevance&lifecycle=active&trend=rising&verification=corroborated&min_heat=70";
+    render(<EventsPage />);
+
+    await waitFor(() =>
+      expect(mocks.getRadarEvents).toHaveBeenCalledWith({
+        q: "化工",
+        window: "7d",
+        monitor_id: 7,
+        lifecycle: ["active"],
+        trend: ["rising"],
+        verification: ["corroborated"],
+        min_heat: 70,
+        sort: "relevance",
+        limit: 50,
+      })
+    );
+    expect(screen.getByRole("link", { name: "在内容中搜索" })).toHaveAttribute(
+      "href",
+      "/dashboard/contents?q=%E5%8C%96%E5%B7%A5"
+    );
+  });
+
+  it("debounces event search and persists it in the URL", async () => {
+    render(<EventsPage />);
+    const search = screen.getByRole("searchbox", { name: "搜索事件" });
+    await userEvent.setup().type(search, "发布");
+
+    await waitFor(() =>
+      expect(mocks.getRadarEvents).toHaveBeenLastCalledWith({
+        window: "24h",
+        sort: "momentum",
+        limit: 50,
+        q: "发布",
+      })
+    );
+    expect(mocks.routerReplace).toHaveBeenCalledWith(
+      "/dashboard/events?q=%E5%8F%91%E5%B8%83",
+      { scroll: false }
+    );
   });
 
   it("filters Radar and opens a real event-change detail panel", async () => {

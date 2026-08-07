@@ -1,7 +1,7 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -78,8 +78,13 @@ export default function TopNav({
   const canManage =
     user?.role === UserRole.Admin || user?.role === UserRole.Editor;
   const visibleAdminMenuItems = adminMenuItems.filter(
-    (item) => !item.roles || (user?.role && item.roles.includes(user.role as UserRole)),
+    (item) =>
+      !item.roles || (user?.role && item.roles.includes(user.role as UserRole))
   );
+
+  useEffect(() => {
+    setQuery(new URLSearchParams(window.location.search).get("q") ?? "");
+  }, [pathname]);
 
   const handleSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -87,7 +92,7 @@ export default function TopNav({
     router.push(
       normalized
         ? `/dashboard/events?q=${encodeURIComponent(normalized)}`
-        : "/dashboard/events",
+        : "/dashboard/events"
     );
     setMobileOpen(false);
   };
@@ -128,7 +133,7 @@ export default function TopNav({
                       aria-current={active ? "page" : undefined}
                       className={cn(
                         "relative inline-flex h-16 items-center px-2.5 text-sm font-normal text-muted-foreground no-underline transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-                        active && "font-medium text-foreground",
+                        active && "font-medium text-foreground"
                       )}
                     >
                       <span className="hidden">{item.icon}</span>
@@ -224,7 +229,7 @@ export default function TopNav({
                         aria-current={active ? "page" : undefined}
                         className={cn(
                           "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm text-muted-foreground no-underline hover:bg-accent hover:text-accent-foreground",
-                          active && "bg-accent font-medium text-foreground",
+                          active && "bg-accent font-medium text-foreground"
                         )}
                       >
                         {item.icon}

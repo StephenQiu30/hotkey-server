@@ -1347,9 +1347,63 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "maximum": 100,
+                        "minimum": 1,
                         "type": "integer",
                         "description": "page size",
                         "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "maxLength": 100,
+                        "type": "string",
+                        "description": "title or summary keyword",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "source connection ID",
+                        "name": "source_connection_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "published at or after (RFC3339)",
+                        "name": "published_from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "published at or before (RFC3339)",
+                        "name": "published_to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "monitor_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "accepted",
+                            "review",
+                            "rejected"
+                        ],
+                        "type": "string",
+                        "description": "latest monitor match decision",
+                        "name": "decision",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "latest",
+                            "relevance"
+                        ],
+                        "type": "string",
+                        "description": "sort order",
+                        "name": "sort",
                         "in": "query"
                     }
                 ],
@@ -4950,6 +5004,13 @@ const docTemplate = `{
                 "summary": "List explainable Radar events",
                 "parameters": [
                     {
+                        "maxLength": 100,
+                        "type": "string",
+                        "description": "event title or summary keyword",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
                         "enum": [
                             "1h",
                             "6h",
@@ -7622,6 +7683,14 @@ const docTemplate = `{
                     "type": "string",
                     "x-nullable": true
                 },
+                "event_id": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "event_title": {
+                    "type": "string",
+                    "x-nullable": true
+                },
                 "external_id": {
                     "type": "string",
                     "example": "item-123"
@@ -7637,11 +7706,24 @@ const docTemplate = `{
                     "type": "string",
                     "example": "en"
                 },
+                "match_decision": {
+                    "type": "string",
+                    "enum": [
+                        "accepted",
+                        "review",
+                        "rejected"
+                    ],
+                    "x-nullable": true
+                },
                 "metrics": {
                     "$ref": "#/definitions/http.ContentMetricsResponse"
                 },
                 "published_at": {
                     "type": "string"
+                },
+                "relevance_score": {
+                    "type": "number",
+                    "x-nullable": true
                 },
                 "source_name": {
                     "type": "string",

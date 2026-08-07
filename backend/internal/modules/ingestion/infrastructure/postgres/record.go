@@ -33,16 +33,44 @@ author.external_id, author.display_name`
 
 func scanContent(scanner interface{ Scan(...any) error }) (ingestiondomain.Content, error) {
 	var record contentRecord
-	if err := scanner.Scan(
+	if err := scanner.Scan(contentRecordDestinations(&record)...); err != nil {
+		return ingestiondomain.Content{}, err
+	}
+	return contentFromRecord(record), nil
+}
+
+func scanContentSearch(scanner interface{ Scan(...any) error }) (ingestiondomain.Content, error) {
+	var record contentRecord
+	var relevanceScore sql.NullFloat64
+	var matchDecision sql.NullString
+	destinations := append(contentRecordDestinations(&record), &relevanceScore, &matchDecision)
+	if err := scanner.Scan(destinations...); err != nil {
+		return ingestiondomain.Content{}, err
+	}
+	content := contentFromRecord(record)
+	if relevanceScore.Valid {
+		value := relevanceScore.Float64
+		content.RelevanceScore = &value
+	}
+	if matchDecision.Valid {
+		value := ingestiondomain.MatchDecision(matchDecision.String)
+		content.MatchDecision = &value
+	}
+	return content, nil
+}
+
+func contentRecordDestinations(record *contentRecord) []any {
+	return []any{
 		&record.id, &record.version, &record.sourceConnectionID, &record.externalID,
 		&record.contentType, &record.title, &record.excerpt, &record.canonicalURL, &record.language,
 		&record.publishedAt, &record.fetchedAt, &record.contentHash, &record.status,
 		&record.duplicateOfID, &record.dedupeReason, &record.dedupeVersion,
 		&record.viewCount, &record.likeCount, &record.commentCount, &record.shareCount, &record.deletedAt,
 		&record.authorExternalID, &record.authorDisplayName,
-	); err != nil {
-		return ingestiondomain.Content{}, err
 	}
+}
+
+func contentFromRecord(record contentRecord) ingestiondomain.Content {
 	content := ingestiondomain.Content{
 		ID:                 record.id,
 		Version:            record.version,
@@ -78,7 +106,7 @@ func scanContent(scanner interface{ Scan(...any) error }) (ingestiondomain.Conte
 		value := record.deletedAt.Time.UTC()
 		content.DeletedAt = &value
 	}
-	return content, nil
+	return content
 }
 
 func nullableMetric(value sql.NullInt64) *int64 {

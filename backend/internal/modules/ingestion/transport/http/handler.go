@@ -6,6 +6,8 @@ import (
 	"fmt"
 	stdhttp "net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/application"
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/domain"
@@ -47,7 +49,14 @@ func NewHandler(service contentQueryService, metrics *observability.Metrics) *Ha
 // @Produce json
 // @Security BearerAuth
 // @Param cursor query string false "cursor"
-// @Param limit query int false "page size"
+// @Param limit query int false "page size" minimum(1) maximum(100)
+// @Param q query string false "title or summary keyword" maxlength(100)
+// @Param source_connection_id query int false "source connection ID"
+// @Param published_from query string false "published at or after (RFC3339)"
+// @Param published_to query string false "published at or before (RFC3339)"
+// @Param monitor_id query int false "monitor ID"
+// @Param decision query string false "latest monitor match decision" Enums(accepted,review,rejected)
+// @Param sort query string false "sort order" Enums(latest,relevance)
 // @Success 200 {object} ContentResult[ContentPageResponse]
 // @Failure 400 {object} ContentResult[EmptyResponse]
 // @Failure 401 {object} ContentResult[EmptyResponse]
@@ -164,13 +173,63 @@ func (handler *Handler) Delete(c *gin.Context) error {
 }
 
 func contentListQuery(c *gin.Context) (ingestiondomain.ContentListQuery, error) {
-	query := ingestiondomain.ContentListQuery{Cursor: c.Query("cursor")}
+	query := ingestiondomain.ContentListQuery{
+		Cursor: c.Query("cursor"), Keyword: strings.TrimSpace(c.Query("q")),
+		Sort: ingestiondomain.ContentSort(c.Query("sort")),
+	}
 	if raw := c.Query("limit"); raw != "" {
 		limit, err := strconv.Atoi(raw)
-		if err != nil || limit <= 0 {
+		if err != nil || limit <= 0 || limit > 100 {
 			return ingestiondomain.ContentListQuery{}, invalidRequest(fmt.Errorf("invalid content limit"))
 		}
 		query.Limit = limit
+	}
+	if query.Limit == 0 {
+		query.Limit = 50
+	}
+	parseID := func(name string) (*int64, error) {
+		raw := c.Query(name)
+		if raw == "" {
+			return nil, nil
+		}
+		value, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || value <= 0 {
+			return nil, invalidRequest(fmt.Errorf("invalid content %s", name))
+		}
+		return &value, nil
+	}
+	var err error
+	if query.SourceConnectionID, err = parseID("source_connection_id"); err != nil {
+		return ingestiondomain.ContentListQuery{}, err
+	}
+	if query.MonitorID, err = parseID("monitor_id"); err != nil {
+		return ingestiondomain.ContentListQuery{}, err
+	}
+	parseTime := func(name string) (*time.Time, error) {
+		raw := c.Query(name)
+		if raw == "" {
+			return nil, nil
+		}
+		value, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return nil, invalidRequest(fmt.Errorf("invalid content %s", name))
+		}
+		value = value.UTC()
+		return &value, nil
+	}
+	if query.PublishedFrom, err = parseTime("published_from"); err != nil {
+		return ingestiondomain.ContentListQuery{}, err
+	}
+	if query.PublishedTo, err = parseTime("published_to"); err != nil {
+		return ingestiondomain.ContentListQuery{}, err
+	}
+	if raw := c.Query("decision"); raw != "" {
+		value := ingestiondomain.MatchDecision(raw)
+		query.Decision = &value
+	}
+	query = query.Normalized()
+	if err := query.Validate(); err != nil {
+		return ingestiondomain.ContentListQuery{}, invalidRequest(err)
 	}
 	return query, nil
 }

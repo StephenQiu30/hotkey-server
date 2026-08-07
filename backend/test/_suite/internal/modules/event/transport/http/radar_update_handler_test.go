@@ -76,14 +76,14 @@ func TestRadarHandlerParsesPublicShapeAndReturnsOnlySafeResult(t *testing.T) {
 	router := gin.New()
 	RegisterRadarRoutes(router, application.NewRadarService(repository), radarViewerAuthenticator{})
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/radar/events?window=6h&monitor_id=9&lifecycle=active,cooling&trend=rising,stable&verification=corroborated,disputed&min_heat=42.5&sort=relevance&limit=25&cursor=opaque", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/radar/events?q=%E5%8F%91%E5%B8%83&window=6h&monitor_id=9&lifecycle=active,cooling&trend=rising,stable&verification=corroborated,disputed&min_heat=42.5&sort=relevance&limit=25&cursor=opaque", nil)
 	request.Header.Set("Authorization", "Bearer viewer")
 	router.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK || len(repository.queries) != 1 {
 		t.Fatalf("Radar response = %d/%s queries=%#v", recorder.Code, recorder.Body.String(), repository.queries)
 	}
 	query := repository.queries[0]
-	if query.Window != domain.RadarWindow6Hours || query.MonitorID == nil || *query.MonitorID != 9 || query.Sort != domain.RadarSortRelevance || query.Limit != 25 || query.Cursor != "opaque" || query.MinHeat == nil || *query.MinHeat != 42.5 || len(query.Lifecycles) != 2 || len(query.Trends) != 2 || len(query.Verifications) != 2 {
+	if query.Keyword != "发布" || query.Window != domain.RadarWindow6Hours || query.MonitorID == nil || *query.MonitorID != 9 || query.Sort != domain.RadarSortRelevance || query.Limit != 25 || query.Cursor != "opaque" || query.MinHeat == nil || *query.MinHeat != 42.5 || len(query.Lifecycles) != 2 || len(query.Trends) != 2 || len(query.Verifications) != 2 {
 		t.Fatalf("parsed Radar query = %#v", query)
 	}
 	assertRadarHTTPSafeEnvelope(t, recorder.Body.Bytes())

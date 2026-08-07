@@ -234,6 +234,9 @@ func radarStatement(query domain.RadarQuery, eventIDs []int64, applyShape bool, 
 			"event.last_seen_at <= "+asOf,
 			"("+monitor+" = 0 OR watch.event_id IS NOT NULL)",
 		)
+		if strings.TrimSpace(query.Keyword) != "" {
+			conditions = append(conditions, "lower(event.title_zh || ' ' || COALESCE(event.title_en, '') || ' ' || event.summary) LIKE "+builder.bind(radarSearchPattern(query.Keyword))+" ESCAPE '\\'")
+		}
 	} else {
 		conditions = append(conditions, "event.id = ANY("+builder.bind(eventIDs)+")")
 	}
@@ -326,6 +329,11 @@ SELECT event_id, version, event_key, title_zh, title_en, summary, lifecycle_stat
 FROM radar_ranked`
 	statement += ` ORDER BY ranking_score DESC, last_seen_at DESC, event_id DESC LIMIT ` + builder.bind(limit)
 	return statement, builder.arguments
+}
+
+func radarSearchPattern(keyword string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return "%" + replacer.Replace(strings.ToLower(strings.TrimSpace(keyword))) + "%"
 }
 
 type radarRowScanner interface {

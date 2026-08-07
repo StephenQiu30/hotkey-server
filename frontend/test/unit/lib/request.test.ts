@@ -72,6 +72,21 @@ describe("safe authentication redirects", () => {
 // -- HotKeyAPIError ----------------------------------------------------
 
 describe("HotKeyAPIError", () => {
+  it("serializes OpenAPI csv arrays without Axios bracket suffixes", async () => {
+    const { serializeQueryParams } = await import("@/lib/request");
+
+    expect(
+      serializeQueryParams({
+        lifecycle: ["active", "cooling"],
+        trend: ["rising"],
+        q: "Alpha 发布",
+        cursor: undefined,
+      }),
+    ).toBe(
+      "lifecycle=active%2Ccooling&trend=rising&q=Alpha+%E5%8F%91%E5%B8%83",
+    );
+  });
+
   it("carries HTTP status and Chinese message", async () => {
     const { HotKeyAPIError } = await import("@/lib/request");
     const err = new HotKeyAPIError(401, "邮箱或密码错误", null, 20002);

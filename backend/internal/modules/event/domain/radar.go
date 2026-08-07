@@ -181,6 +181,7 @@ func RadarRankingScore(sortValue RadarSort, dimensions RadarDimensions, monitorF
 
 type RadarQuery struct {
 	Window        RadarWindow
+	Keyword       string
 	MonitorID     *int64
 	Lifecycles    []LifecycleStatus
 	Trends        []TrendStatus
@@ -193,7 +194,7 @@ type RadarQuery struct {
 }
 
 func (query RadarQuery) Validate() error {
-	if !query.Window.Valid() || !query.Sort.Valid() || query.Limit < 1 || query.Limit > 100 || query.AsOf.IsZero() {
+	if !query.Window.Valid() || !query.Sort.Valid() || query.Limit < 1 || query.Limit > 100 || query.AsOf.IsZero() || len([]rune(strings.TrimSpace(query.Keyword))) > 100 {
 		return fmt.Errorf("invalid Radar query")
 	}
 	if query.MonitorID != nil && *query.MonitorID <= 0 || query.Sort == RadarSortRelevance && query.MonitorID == nil {
@@ -233,7 +234,7 @@ func (query RadarQuery) ShapeHash() (string, error) {
 		minimumHeat = strconv.FormatFloat(*query.MinHeat, 'g', -1, 64)
 	}
 	parts := []string{
-		"radar-query-v1", string(query.Window), monitor,
+		"radar-query-v1", string(query.Window), strings.ToLower(strings.TrimSpace(query.Keyword)), monitor,
 		sortedRadarValues(query.Lifecycles), sortedRadarValues(query.Trends), sortedRadarValues(query.Verifications),
 		minimumHeat, string(query.Sort),
 	}

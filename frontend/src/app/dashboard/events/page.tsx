@@ -1,16 +1,18 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowUpRight,
   CalendarRange,
   CircleDot,
   ExternalLink,
   Filter,
+  FilterX,
   Loader2,
   RefreshCw,
+  Search,
   SearchX,
   Target,
   TrendingDown,
@@ -23,6 +25,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   Empty,
   EmptyDescription,
@@ -69,9 +72,20 @@ import {
 } from "@/lib/radarPresentation";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
+import {
+  CursorPagination,
+  DEFAULT_PAGE_SIZE,
+} from "@/components/dashboard/CursorPagination";
 
 type RadarWindow = NonNullable<HotKeyAPI.getRadarEventsParams["window"]>;
 type RadarSort = NonNullable<HotKeyAPI.getRadarEventsParams["sort"]>;
+type RadarLifecycle = NonNullable<
+  HotKeyAPI.getRadarEventsParams["lifecycle"]
+>[number];
+type RadarTrend = NonNullable<HotKeyAPI.getRadarEventsParams["trend"]>[number];
+type RadarVerification = NonNullable<
+  HotKeyAPI.getRadarEventsParams["verification"]
+>[number];
 
 function SignalIcon({ trend }: { trend?: string }) {
   if (trend === "rising" || trend === "emerging") {
@@ -84,15 +98,53 @@ function SignalIcon({ trend }: { trend?: string }) {
 }
 
 function EventsWorkspace() {
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const serializedSearch = searchParams.toString();
   const role = useAuthStore((state) => state.user?.role);
-  const query = searchParams.get("q")?.trim().toLocaleLowerCase("zh-CN") || "";
+  const initialQuery = searchParams.get("q")?.trim() || "";
+  const initialCursor = searchParams.get("cursor") || undefined;
+  const initialPage = Number(searchParams.get("page")) || 1;
+  const [query, setQuery] = useState(initialQuery);
+  const [searchInput, setSearchInput] = useState(initialQuery);
   const requestedEventId = Number(searchParams.get("event")) || undefined;
-  const [windowValue, setWindowValue] = useState<RadarWindow>("24h");
-  const [sort, setSort] = useState<RadarSort>("momentum");
+  const [windowValue, setWindowValue] = useState<RadarWindow>(
+    (searchParams.get("window") as RadarWindow) || "24h"
+  );
+  const [sort, setSort] = useState<RadarSort>(
+    (searchParams.get("sort") as RadarSort) || "momentum"
+  );
+  const [lifecycle, setLifecycle] = useState<RadarLifecycle | undefined>(
+    (searchParams.get("lifecycle") as RadarLifecycle) || undefined
+  );
+  const [trend, setTrend] = useState<RadarTrend | undefined>(
+    (searchParams.get("trend") as RadarTrend) || undefined
+  );
+  const [verification, setVerification] = useState<
+    RadarVerification | undefined
+  >((searchParams.get("verification") as RadarVerification) || undefined);
+  const [minHeat, setMinHeat] = useState<number | undefined>(() => {
+    const value = Number(searchParams.get("min_heat"));
+    return value > 0 ? value : undefined;
+  });
   const [events, setEvents] = useState<HotKeyAPI.RadarEventResponse[]>([]);
   const [monitors, setMonitors] = useState<HotKeyAPI.MonitorResponse[]>([]);
-  const [monitorId, setMonitorId] = useState<number>();
+  const [monitorId, setMonitorId] = useState<number | undefined>(() => {
+    const value = Number(searchParams.get("monitor"));
+    return value > 0 ? value : undefined;
+  });
+  const [page, setPage] = useState(initialPage);
+  const [cursors, setCursors] = useState<(string | undefined)[]>(() => {
+    const history = Array<string | undefined>(initialPage).fill(undefined);
+    history[initialPage - 1] = initialCursor;
+    return history;
+  });
+  const [currentCursor, setCurrentCursor] = useState(initialCursor);
+  const [nextCursor, setNextCursor] = useState<string>();
+  const [pageSize, setPageSize] = useState(() => {
+    const value = Number(searchParams.get("limit"));
+    return value > 0 ? value : 50;
+  });
   const [selectedId, setSelectedId] = useState<number>();
   const [detailRevision, setDetailRevision] = useState(0);
   const [updates, setUpdates] = useState<HotKeyAPI.EventUpdateResponse[]>([]);
@@ -114,6 +166,41 @@ function EventsWorkspace() {
   const [governanceError, setGovernanceError] = useState<string>();
   const [error, setError] = useState<string>();
 
+  const replaceURL = useCallback(
+    (changes: Record<string, string | undefined>) => {
+      const next = new URLSearchParams(searchParams.toString());
+      Object.entries(changes).forEach(([key, value]) =>
+        value ? next.set(key, value) : next.delete(key)
+      );
+      router.replace(
+        `/dashboard/events${next.size ? `?${next.toString()}` : ""}`,
+        { scroll: false }
+      );
+    },
+    [router, searchParams]
+  );
+
+  useEffect(() => {
+    const params = new URLSearchParams(serializedSearch);
+    const nextQuery = params.get("q")?.trim() ?? "";
+    const nextMonitor = Number(params.get("monitor")) || undefined;
+    const nextSort = (params.get("sort") as RadarSort) || "momentum";
+    setQuery(nextQuery);
+    setSearchInput(nextQuery);
+    setWindowValue((params.get("window") as RadarWindow) || "24h");
+    setMonitorId(nextMonitor);
+    setSort(nextMonitor || nextSort !== "relevance" ? nextSort : "momentum");
+    setLifecycle((params.get("lifecycle") as RadarLifecycle) || undefined);
+    setTrend((params.get("trend") as RadarTrend) || undefined);
+    setVerification(
+      (params.get("verification") as RadarVerification) || undefined
+    );
+    setMinHeat(Number(params.get("min_heat")) || undefined);
+    setPage(Number(params.get("page")) || 1);
+    setCurrentCursor(params.get("cursor") || undefined);
+    setPageSize(Number(params.get("limit")) || 50);
+  }, [serializedSearch]);
+
   const loadRadar = useCallback(async () => {
     setLoading(true);
     setError(undefined);
@@ -121,12 +208,19 @@ function EventsWorkspace() {
       const result = await getRadarEvents({
         window: windowValue,
         sort,
-        limit: 50,
+        limit: pageSize,
+        ...(query ? { q: query } : {}),
+        ...(currentCursor ? { cursor: currentCursor } : {}),
         ...(monitorId != null ? { monitor_id: monitorId } : {}),
+        ...(lifecycle ? { lifecycle: [lifecycle] } : {}),
+        ...(trend ? { trend: [trend] } : {}),
+        ...(verification ? { verification: [verification] } : {}),
+        ...(minHeat != null ? { min_heat: minHeat } : {}),
       });
       const items = result.data?.items ?? [];
       setEvents(items);
       setAsOf(result.data?.as_of);
+      setNextCursor(result.data?.next_cursor);
       setSelectedId((current) => {
         const preferred = requestedEventId ?? current;
         return items.some((item) => item.event_id === preferred)
@@ -139,7 +233,32 @@ function EventsWorkspace() {
     } finally {
       setLoading(false);
     }
-  }, [monitorId, requestedEventId, sort, windowValue]);
+  }, [
+    currentCursor,
+    lifecycle,
+    minHeat,
+    monitorId,
+    pageSize,
+    query,
+    requestedEventId,
+    sort,
+    trend,
+    verification,
+    windowValue,
+  ]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const next = searchInput.trim();
+      if (next === query) return;
+      setQuery(next);
+      setPage(1);
+      setCursors([undefined]);
+      setCurrentCursor(undefined);
+      replaceURL({ q: next || undefined, cursor: undefined, page: undefined });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [query, replaceURL, searchInput]);
 
   useEffect(() => {
     void loadRadar();
@@ -230,18 +349,41 @@ function EventsWorkspace() {
     };
   }, [detailRevision, selectedId]);
 
-  const visibleEvents = useMemo(() => {
-    if (!query) return events;
-    return events.filter((event) =>
-      [getRadarEventTitle(event), event.summary, event.latest_update?.summary]
-        .filter(Boolean)
-        .join(" ")
-        .toLocaleLowerCase("zh-CN")
-        .includes(query)
-    );
-  }, [events, query]);
-
   const selected = events.find((event) => event.event_id === selectedId);
+
+  const resetPage = (changes: Record<string, string | undefined>) => {
+    setPage(1);
+    setCursors([undefined]);
+    setCurrentCursor(undefined);
+    replaceURL({ ...changes, cursor: undefined, page: undefined });
+  };
+
+  const clearFilters = () => {
+    setSearchInput("");
+    setQuery("");
+    setMonitorId(undefined);
+    setWindowValue("24h");
+    setSort("momentum");
+    setLifecycle(undefined);
+    setTrend(undefined);
+    setVerification(undefined);
+    setMinHeat(undefined);
+    setPage(1);
+    setCursors([undefined]);
+    setCurrentCursor(undefined);
+    replaceURL({
+      q: undefined,
+      monitor: undefined,
+      window: undefined,
+      sort: undefined,
+      lifecycle: undefined,
+      trend: undefined,
+      verification: undefined,
+      min_heat: undefined,
+      cursor: undefined,
+      page: undefined,
+    });
+  };
 
   const toggleMemberLock = useCallback(
     async (member: HotKeyAPI.EventMemberResponse) => {
@@ -264,7 +406,6 @@ function EventsWorkspace() {
             )
           );
         }
-        setDetailRevision((current) => current + 1);
       } catch {
         setGovernanceError("成员锁定失败，数据可能已更新，请刷新后重试。");
       } finally {
@@ -399,70 +540,187 @@ function EventsWorkspace() {
         </div>
       </header>
 
-      <div className="mt-5 flex flex-wrap items-center gap-3">
-        <Select
-          value={monitorId?.toString() ?? "all"}
-          onValueChange={(value) => {
-            if (value === "all") {
-              setMonitorId(undefined);
-              if (sort === "relevance") setSort("momentum");
-              return;
-            }
-            setMonitorId(Number(value));
-          }}
-        >
-          <SelectTrigger aria-label="监控上下文" className="w-[180px]">
-            <Target className="h-4 w-4 text-muted-foreground" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部事件</SelectItem>
-            {monitors.map((monitor) => (
-              <SelectItem key={monitor.id} value={String(monitor.id)}>
-                {monitor.name || `监控 #${monitor.id}`}
+      <Card className="mt-5 shadow-none">
+        <CardContent className="flex flex-wrap items-end gap-3 p-4">
+          <div className="relative min-w-[240px] flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              aria-label="搜索事件"
+              className="pl-9"
+              maxLength={100}
+              placeholder="搜索事件标题或摘要"
+              type="search"
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  const next = searchInput.trim();
+                  setQuery(next);
+                  resetPage({ q: next || undefined });
+                }
+              }}
+            />
+          </div>
+          <Select
+            value={monitorId?.toString() ?? "all"}
+            onValueChange={(value) => {
+              if (value === "all") {
+                setMonitorId(undefined);
+                if (sort === "relevance") setSort("momentum");
+                resetPage({
+                  monitor: undefined,
+                  sort: sort === "relevance" ? undefined : sort,
+                });
+                return;
+              }
+              setMonitorId(Number(value));
+              resetPage({ monitor: value });
+            }}
+          >
+            <SelectTrigger aria-label="监控上下文" className="w-[180px]">
+              <Target className="h-4 w-4 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部事件</SelectItem>
+              {monitors.map((monitor) => (
+                <SelectItem key={monitor.id} value={String(monitor.id)}>
+                  {monitor.name || `监控 #${monitor.id}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={windowValue}
+            onValueChange={(value) => {
+              setWindowValue(value as RadarWindow);
+              resetPage({ window: value === "24h" ? undefined : value });
+            }}
+          >
+            <SelectTrigger aria-label="时间窗口" className="w-[160px]">
+              <CalendarRange className="h-4 w-4 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1h">过去 1 小时</SelectItem>
+              <SelectItem value="6h">过去 6 小时</SelectItem>
+              <SelectItem value="24h">过去 24 小时</SelectItem>
+              <SelectItem value="7d">过去 7 天</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            value={sort}
+            onValueChange={(value) => {
+              setSort(value as RadarSort);
+              resetPage({ sort: value === "momentum" ? undefined : value });
+            }}
+          >
+            <SelectTrigger aria-label="排序方式" className="w-[160px]">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="momentum">变化速度</SelectItem>
+              <SelectItem value="attention">关注度</SelectItem>
+              <SelectItem value="breadth">来源覆盖</SelectItem>
+              <SelectItem value="latest">最新变化</SelectItem>
+              <SelectItem value="relevance" disabled={monitorId == null}>
+                监控相关性
               </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={windowValue}
-          onValueChange={(value) => setWindowValue(value as RadarWindow)}
-        >
-          <SelectTrigger aria-label="时间窗口" className="w-[160px]">
-            <CalendarRange className="h-4 w-4 text-muted-foreground" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="1h">过去 1 小时</SelectItem>
-            <SelectItem value="6h">过去 6 小时</SelectItem>
-            <SelectItem value="24h">过去 24 小时</SelectItem>
-            <SelectItem value="7d">过去 7 天</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select
-          value={sort}
-          onValueChange={(value) => setSort(value as RadarSort)}
-        >
-          <SelectTrigger aria-label="排序方式" className="w-[160px]">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="momentum">变化速度</SelectItem>
-            <SelectItem value="attention">关注度</SelectItem>
-            <SelectItem value="breadth">来源覆盖</SelectItem>
-            <SelectItem value="latest">最新变化</SelectItem>
-            <SelectItem value="relevance" disabled={monitorId == null}>
-              监控相关性
-            </SelectItem>
-          </SelectContent>
-        </Select>
-        {query ? (
-          <Badge variant="secondary" className="h-9 px-3 font-normal">
-            搜索：{searchParams.get("q")}
-          </Badge>
-        ) : null}
-      </div>
+            </SelectContent>
+          </Select>
+          <Select
+            value={lifecycle ?? "all"}
+            onValueChange={(value) => {
+              const next =
+                value === "all" ? undefined : (value as RadarLifecycle);
+              setLifecycle(next);
+              resetPage({ lifecycle: next });
+            }}
+          >
+            <SelectTrigger aria-label="生命周期" className="w-[150px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部生命周期</SelectItem>
+              <SelectItem value="detected">已发现</SelectItem>
+              <SelectItem value="active">活跃</SelectItem>
+              <SelectItem value="cooling">降温</SelectItem>
+              <SelectItem value="closed">已关闭</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            value={trend ?? "all"}
+            onValueChange={(value) => {
+              const next = value === "all" ? undefined : (value as RadarTrend);
+              setTrend(next);
+              resetPage({ trend: next });
+            }}
+          >
+            <SelectTrigger aria-label="趋势状态" className="w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部趋势</SelectItem>
+              <SelectItem value="emerging">新兴</SelectItem>
+              <SelectItem value="rising">上升</SelectItem>
+              <SelectItem value="stable">稳定</SelectItem>
+              <SelectItem value="falling">下降</SelectItem>
+              <SelectItem value="dormant">沉寂</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            value={verification ?? "all"}
+            onValueChange={(value) => {
+              const next =
+                value === "all" ? undefined : (value as RadarVerification);
+              setVerification(next);
+              resetPage({ verification: next });
+            }}
+          >
+            <SelectTrigger aria-label="证据状态" className="w-[150px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部证据状态</SelectItem>
+              <SelectItem value="corroborated">多源印证</SelectItem>
+              <SelectItem value="disputed">存在争议</SelectItem>
+              <SelectItem value="single_source">单一来源</SelectItem>
+              <SelectItem value="unverified">未验证</SelectItem>
+              <SelectItem value="insufficient">证据不足</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            value={minHeat?.toString() ?? "all"}
+            onValueChange={(value) => {
+              const next = value === "all" ? undefined : Number(value);
+              setMinHeat(next);
+              resetPage({ min_heat: next?.toString() });
+            }}
+          >
+            <SelectTrigger aria-label="最低热度" className="w-[130px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">不限热度</SelectItem>
+              <SelectItem value="40">热度 ≥ 40</SelectItem>
+              <SelectItem value="70">热度 ≥ 70</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button onClick={clearFilters} variant="outline">
+            <FilterX />
+            清除筛选
+          </Button>
+          {query ? (
+            <Button asChild variant="ghost">
+              <Link href={`/dashboard/contents?q=${encodeURIComponent(query)}`}>
+                在内容中搜索
+              </Link>
+            </Button>
+          ) : null}
+        </CardContent>
+      </Card>
 
       {error ? (
         <Alert variant="destructive" className="mt-6">
@@ -474,7 +732,7 @@ function EventsWorkspace() {
         <div className="flex h-96 items-center justify-center">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </div>
-      ) : visibleEvents.length === 0 ? (
+      ) : events.length === 0 ? (
         <Card className="mt-6 border-dashed">
           <Empty className="h-80 border-0">
             <EmptyHeader>
@@ -497,7 +755,7 @@ function EventsWorkspace() {
               <span className="h-2 w-2 rounded-full bg-destructive" />
               需要关注
               <span className="font-normal text-muted-foreground">
-                {visibleEvents.length}
+                {events.length}
               </span>
             </div>
             <Card className="overflow-hidden shadow-none">
@@ -515,7 +773,7 @@ function EventsWorkspace() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {visibleEvents.map((event, index) => {
+                  {events.map((event, index) => {
                     const active = event.event_id === selectedId;
                     const tone = trendTone(event.trend_status);
                     return (
@@ -527,7 +785,10 @@ function EventsWorkspace() {
                           <Button
                             type="button"
                             variant="ghost"
-                            onClick={() => setSelectedId(event.event_id)}
+                            onClick={() => {
+                              setSelectedId(event.event_id);
+                              replaceURL({ event: event.event_id?.toString() });
+                            }}
                             className="h-auto w-full justify-start gap-3 whitespace-normal px-0 py-0 text-left hover:bg-transparent"
                           >
                             <span
@@ -571,6 +832,41 @@ function EventsWorkspace() {
                   })}
                 </TableBody>
               </Table>
+              <CursorPagination
+                hasNext={Boolean(nextCursor)}
+                loading={loading}
+                onNext={() => {
+                  if (!nextCursor) return;
+                  const nextPage = page + 1;
+                  setCursors((history) => [
+                    ...history.slice(0, page),
+                    nextCursor,
+                  ]);
+                  setCurrentCursor(nextCursor);
+                  setPage(nextPage);
+                  replaceURL({ cursor: nextCursor, page: String(nextPage) });
+                }}
+                onPageSizeChange={(value) => {
+                  setPageSize(value);
+                  resetPage({
+                    limit:
+                      value === DEFAULT_PAGE_SIZE ? undefined : String(value),
+                  });
+                }}
+                onPrevious={() => {
+                  if (page <= 1) return;
+                  const previousPage = page - 1;
+                  const cursor = cursors[previousPage - 1];
+                  setCurrentCursor(cursor);
+                  setPage(previousPage);
+                  replaceURL({
+                    cursor,
+                    page: previousPage === 1 ? undefined : String(previousPage),
+                  });
+                }}
+                page={page}
+                pageSize={pageSize}
+              />
             </Card>
           </section>
 

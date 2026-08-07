@@ -20,8 +20,6 @@ import (
 const (
 	contentListDefaultLimit = 50
 	contentListMaximumLimit = 200
-	contentListSort         = "published_at,id"
-	contentListFingerprint  = "active-content-v1"
 )
 
 // ContentRepository owns ingestion's Content, source-author, asset and
@@ -279,31 +277,20 @@ func (repository *ContentRepository) ListActive(ctx context.Context, query inges
 	if !repository.available() {
 		return ingestiondomain.ContentPage{}, sharedrepository.ErrUnavailable
 	}
-	limit, cursorID, err := contentListParameters(query)
+	query, cursorID, fingerprint, err := contentListParameters(query)
 	if err != nil {
 		return ingestiondomain.ContentPage{}, err
 	}
-	rows, err := repository.queryRows(ctx, `
-SELECT `+contentColumns+`
-FROM contents AS c
-LEFT JOIN source_authors AS author ON author.id = c.author_id
-WHERE c.content_status = 'active'
-  AND c.deleted_at IS NULL
-  AND ($1 = 0 OR (c.published_at, c.id) < (
-      SELECT previous.published_at, previous.id
-      FROM contents AS previous
-      WHERE previous.id = $1
-  ))
-ORDER BY c.published_at DESC, c.id DESC
-LIMIT $2`, cursorID, limit+1)
+	statement, arguments := contentListStatement(query, cursorID)
+	rows, err := repository.queryRows(ctx, statement, arguments...)
 	if err != nil {
 		return ingestiondomain.ContentPage{}, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 
-	page := ingestiondomain.ContentPage{Items: make([]ingestiondomain.Content, 0, limit+1)}
+	page := ingestiondomain.ContentPage{Items: make([]ingestiondomain.Content, 0, query.Limit+1)}
 	for rows.Next() {
-		content, err := scanContent(rows)
+		content, err := scanContentSearch(rows)
 		if err != nil {
 			return ingestiondomain.ContentPage{}, databaserepository.MapError(err)
 		}
@@ -312,11 +299,11 @@ LIMIT $2`, cursorID, limit+1)
 	if err := rows.Err(); err != nil {
 		return ingestiondomain.ContentPage{}, databaserepository.MapError(err)
 	}
-	if len(page.Items) <= limit {
+	if len(page.Items) <= query.Limit {
 		return page, nil
 	}
-	page.Items = page.Items[:limit]
-	page.NextCursor, err = pagination.Encode(contentListSort, true, contentListFingerprint, page.Items[len(page.Items)-1].ID)
+	page.Items = page.Items[:query.Limit]
+	page.NextCursor, err = pagination.Encode(string(query.Sort), true, fingerprint, page.Items[len(page.Items)-1].ID)
 	if err != nil {
 		return ingestiondomain.ContentPage{}, fmt.Errorf("%w: encode content cursor: %v", sharedrepository.ErrInvalidInput, err)
 	}
@@ -522,19 +509,101 @@ func (repository *ContentRepository) available() bool {
 	return repository != nil && repository.runtime != nil && repository.runtime.SQL != nil
 }
 
-func contentListParameters(query ingestiondomain.ContentListQuery) (int, int64, error) {
-	limit := query.Limit
-	if limit == 0 {
-		limit = contentListDefaultLimit
+func contentListParameters(query ingestiondomain.ContentListQuery) (ingestiondomain.ContentListQuery, int64, string, error) {
+	query = query.Normalized()
+	if query.Limit == 0 {
+		query.Limit = contentListDefaultLimit
 	}
-	if limit < 1 || limit > contentListMaximumLimit {
-		return 0, 0, fmt.Errorf("%w: content limit must be between 1 and %d", sharedrepository.ErrInvalidInput, contentListMaximumLimit)
+	if query.Limit > contentListMaximumLimit || query.Validate() != nil {
+		return ingestiondomain.ContentListQuery{}, 0, "", fmt.Errorf("%w: invalid content list query", sharedrepository.ErrInvalidInput)
 	}
-	cursor, err := pagination.Decode(query.Cursor, contentListSort, true, contentListFingerprint)
+	fingerprint, err := query.ShapeFingerprint()
 	if err != nil {
-		return 0, 0, fmt.Errorf("%w: content cursor: %v", sharedrepository.ErrInvalidInput, err)
+		return ingestiondomain.ContentListQuery{}, 0, "", fmt.Errorf("%w: content shape: %v", sharedrepository.ErrInvalidInput, err)
 	}
-	return limit, cursor.ID, nil
+	cursor, err := pagination.Decode(query.Cursor, string(query.Sort), true, fingerprint)
+	if err != nil {
+		return ingestiondomain.ContentListQuery{}, 0, "", fmt.Errorf("%w: content cursor: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	return query, cursor.ID, fingerprint, nil
+}
+
+type contentSQLBuilder struct{ arguments []any }
+
+func (builder *contentSQLBuilder) bind(value any) string {
+	builder.arguments = append(builder.arguments, value)
+	return fmt.Sprintf("$%d", len(builder.arguments))
+}
+
+func contentListStatement(query ingestiondomain.ContentListQuery, cursorID int64) (string, []any) {
+	builder := &contentSQLBuilder{}
+	monitorID := int64(0)
+	if query.MonitorID != nil {
+		monitorID = *query.MonitorID
+	}
+	monitor := builder.bind(monitorID)
+	conditions := []string{"c.content_status = 'active'", "c.deleted_at IS NULL"}
+	if query.Keyword != "" {
+		conditions = append(conditions, "lower(c.title || ' ' || c.excerpt) LIKE "+builder.bind(contentSearchPattern(query.Keyword))+" ESCAPE '\\'")
+	}
+	if query.SourceConnectionID != nil {
+		conditions = append(conditions, "c.source_connection_id = "+builder.bind(*query.SourceConnectionID))
+	}
+	if query.PublishedFrom != nil {
+		conditions = append(conditions, "c.published_at >= "+builder.bind(query.PublishedFrom.UTC()))
+	}
+	if query.PublishedTo != nil {
+		conditions = append(conditions, "c.published_at <= "+builder.bind(query.PublishedTo.UTC()))
+	}
+	if query.MonitorID != nil {
+		conditions = append(conditions, "latest_match.content_id IS NOT NULL")
+	}
+	if query.Decision != nil {
+		conditions = append(conditions, "latest_match.decision = "+builder.bind(string(*query.Decision)))
+	}
+	if cursorID > 0 {
+		cursor := builder.bind(cursorID)
+		if query.Sort == ingestiondomain.ContentSortRelevance {
+			conditions = append(conditions, `(latest_match.final_score, c.id) < (
+    SELECT previous_match.final_score, previous.id
+    FROM contents AS previous
+    JOIN LATERAL (
+        SELECT match.final_score
+        FROM monitor_matches AS match
+        WHERE match.monitor_id = `+monitor+` AND match.content_id = previous.id
+        ORDER BY match.created_at DESC, match.id DESC
+        LIMIT 1
+    ) AS previous_match ON true
+    WHERE previous.id = `+cursor+`)`)
+		} else {
+			conditions = append(conditions, `(c.published_at, c.id) < (
+    SELECT previous.published_at, previous.id FROM contents AS previous WHERE previous.id = `+cursor+`)`)
+		}
+	}
+	orderBy := "c.published_at DESC, c.id DESC"
+	if query.Sort == ingestiondomain.ContentSortRelevance {
+		orderBy = "latest_match.final_score DESC, c.id DESC"
+	}
+	statement := `SELECT ` + contentColumns + `,
+       latest_match.final_score::double precision, latest_match.decision
+FROM contents AS c
+LEFT JOIN source_authors AS author ON author.id = c.author_id
+LEFT JOIN LATERAL (
+    SELECT match.content_id, match.final_score, match.decision
+    FROM monitor_matches AS match
+    WHERE ` + monitor + ` > 0 AND match.monitor_id = ` + monitor + ` AND match.content_id = c.id
+    ORDER BY match.created_at DESC, match.id DESC
+    LIMIT 1
+) AS latest_match ON true
+WHERE ` + strings.Join(conditions, " AND ") + `
+ORDER BY ` + orderBy + `
+LIMIT ` + builder.bind(query.Limit+1)
+	return statement, builder.arguments
+}
+
+func contentSearchPattern(keyword string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return "%" + replacer.Replace(strings.ToLower(keyword)) + "%"
 }
 
 func metricArguments(metrics sourcedomain.SourceMetrics) []any {

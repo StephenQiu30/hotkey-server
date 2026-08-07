@@ -182,7 +182,7 @@ func TestRadarConfirmationPriorityAndInsufficientNull(t *testing.T) {
 func TestRadarQueryAndCursorBindSemanticShapeButAllowLimitChanges(t *testing.T) {
 	asOf := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
 	monitorID, minHeat := int64(7), 40.0
-	base := RadarQuery{Window: RadarWindow24Hours, MonitorID: &monitorID, Lifecycles: []LifecycleStatus{LifecycleActive, LifecycleCooling}, Trends: []TrendStatus{TrendRising, TrendStable}, Verifications: []RadarConfirmation{RadarConfirmationCorroborated, RadarConfirmationDisputed}, MinHeat: &minHeat, Sort: RadarSortRelevance, Limit: 25, AsOf: asOf}
+	base := RadarQuery{Window: RadarWindow24Hours, Keyword: "发布", MonitorID: &monitorID, Lifecycles: []LifecycleStatus{LifecycleActive, LifecycleCooling}, Trends: []TrendStatus{TrendRising, TrendStable}, Verifications: []RadarConfirmation{RadarConfirmationCorroborated, RadarConfirmationDisputed}, MinHeat: &minHeat, Sort: RadarSortRelevance, Limit: 25, AsOf: asOf}
 	if err := base.Validate(); err != nil {
 		t.Fatalf("valid query: %v", err)
 	}
@@ -200,6 +200,7 @@ func TestRadarQueryAndCursorBindSemanticShapeButAllowLimitChanges(t *testing.T) 
 	}
 	for _, mutate := range []func(*RadarQuery){
 		func(q *RadarQuery) { q.Window = RadarWindow7Days },
+		func(q *RadarQuery) { q.Keyword = "另一条" },
 		func(q *RadarQuery) { id := int64(8); q.MonitorID = &id },
 		func(q *RadarQuery) { q.Lifecycles = []LifecycleStatus{LifecycleActive} },
 		func(q *RadarQuery) { q.Trends = []TrendStatus{TrendRising} },
@@ -293,6 +294,13 @@ func TestRadarQueryRejectsInvalidValuesAndRelevanceWithoutMonitor(t *testing.T) 
 		if err := query.Validate(); err == nil {
 			t.Fatalf("Validate accepted %#v", query)
 		}
+	}
+}
+
+func TestRadarQueryRejectsKeywordOverOneHundredCharacters(t *testing.T) {
+	query := RadarQuery{Window: RadarWindow24Hours, Keyword: strings.Repeat("界", 101), Sort: RadarSortMomentum, Limit: 20, AsOf: time.Now().UTC()}
+	if err := query.Validate(); err == nil {
+		t.Fatal("Validate() accepted an oversized public keyword")
 	}
 }
 

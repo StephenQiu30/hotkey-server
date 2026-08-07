@@ -9,6 +9,15 @@ const mocks = vi.hoisted(() => ({
   retryCollectionRun: vi.fn(),
   getContents: vi.fn(),
   deleteContentsId: vi.fn(),
+  getSourceConnections: vi.fn(),
+  getMonitors: vi.fn(),
+  routerReplace: vi.fn(),
+  navigationQuery: "",
+}));
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(mocks.navigationQuery),
+  useRouter: () => ({ replace: mocks.routerReplace }),
 }));
 
 vi.mock("@/services/hotkey/hotkey-server/collectionRuns", () => ({
@@ -19,6 +28,12 @@ vi.mock("@/services/hotkey/hotkey-server/contents", () => ({
   getContents: mocks.getContents,
   deleteContentsId: mocks.deleteContentsId,
 }));
+vi.mock("@/services/hotkey/hotkey-server/sources", () => ({
+  getSourceConnections: mocks.getSourceConnections,
+}));
+vi.mock("@/services/hotkey/hotkey-server/monitors", () => ({
+  getMonitors: mocks.getMonitors,
+}));
 vi.mock("@/stores/authStore", () => ({
   useAuthStore: (selector: (state: { user: { role: string } }) => unknown) =>
     selector({ user: { role: mocks.role } }),
@@ -27,6 +42,56 @@ vi.mock("@/stores/authStore", () => ({
 describe("ContentsPage pagination", () => {
   beforeEach(() => {
     mocks.role = "editor";
+    mocks.navigationQuery = "";
+    mocks.getSourceConnections.mockResolvedValue({ data: { items: [] } });
+    mocks.getMonitors.mockResolvedValue({ data: { items: [] } });
+  });
+
+  it("restores URL filters and sends the complete query to the content API", async () => {
+    mocks.navigationQuery =
+      "q=%E5%8F%91%E5%B8%83&source=3&monitor=7&from=2026-08-01&to=2026-08-02&decision=accepted&sort=relevance&limit=50";
+    mocks.getCollectionRuns.mockResolvedValue({ data: { items: [] } });
+    mocks.getContents.mockResolvedValue({ data: { items: [] } });
+
+    render(<ContentsPage />);
+
+    await waitFor(() =>
+      expect(mocks.getContents).toHaveBeenCalledWith({
+        q: "发布",
+        source_connection_id: 3,
+        monitor_id: 7,
+        published_from: "2026-08-01T00:00:00Z",
+        published_to: "2026-08-02T23:59:59Z",
+        decision: "accepted",
+        sort: "relevance",
+        limit: 50,
+      })
+    );
+    expect(
+      screen.getByRole("link", { name: "在事件中搜索同一关键词" })
+    ).toHaveAttribute("href", "/dashboard/events?q=%E5%8F%91%E5%B8%83");
+  });
+
+  it("debounces content search, resets its cursor and persists the query", async () => {
+    mocks.getCollectionRuns.mockResolvedValue({ data: { items: [] } });
+    mocks.getContents.mockResolvedValue({ data: { items: [] } });
+    render(<ContentsPage />);
+
+    await userEvent
+      .setup()
+      .type(screen.getByRole("searchbox", { name: "搜索内容" }), "更新");
+
+    await waitFor(() =>
+      expect(mocks.getContents).toHaveBeenLastCalledWith({
+        limit: 20,
+        q: "更新",
+      })
+    );
+    expect(mocks.getCollectionRuns).toHaveBeenCalledTimes(1);
+    expect(mocks.routerReplace).toHaveBeenCalledWith(
+      "/dashboard/contents?q=%E6%9B%B4%E6%96%B0",
+      { scroll: false }
+    );
   });
 
   afterEach(() => {
@@ -59,14 +124,16 @@ describe("ContentsPage pagination", () => {
     mocks.getContents.mockResolvedValue({ data: { items: [] } });
 
     render(<ContentsPage />);
-    const nextButtons = await screen.findAllByRole("button", { name: "下一页" });
+    const nextButtons = await screen.findAllByRole("button", {
+      name: "下一页",
+    });
     await userEvent.setup().click(nextButtons[0]);
 
     await waitFor(() =>
       expect(mocks.getCollectionRuns).toHaveBeenLastCalledWith({
         cursor: "run-cursor-1",
         limit: 20,
-      }),
+      })
     );
   });
 
@@ -102,12 +169,14 @@ describe("ContentsPage pagination", () => {
     render(<ContentsPage />);
     const user = userEvent.setup();
     await user.click(
-      await screen.findByRole("button", { name: "删除内容：Fetched content" }),
+      await screen.findByRole("button", { name: "删除内容：Fetched content" })
     );
     expect(screen.getByText("删除采集内容")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "确认删除" }));
 
-    await waitFor(() => expect(mocks.deleteContentsId).toHaveBeenCalledWith({ id: 7 }));
+    await waitFor(() =>
+      expect(mocks.deleteContentsId).toHaveBeenCalledWith({ id: 7 })
+    );
     expect(mocks.getContents).toHaveBeenCalledTimes(2);
   });
 
@@ -126,12 +195,12 @@ describe("ContentsPage pagination", () => {
     });
 
     render(<ContentsPage />);
-    await userEvent.setup().click(
-      await screen.findByRole("button", { name: "重试采集批次 #3" }),
-    );
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "重试采集批次 #3" }));
 
     await waitFor(() =>
-      expect(mocks.retryCollectionRun).toHaveBeenCalledWith({ id: 3 }),
+      expect(mocks.retryCollectionRun).toHaveBeenCalledWith({ id: 3 })
     );
     expect(mocks.getCollectionRuns).toHaveBeenCalledTimes(2);
   });
@@ -147,7 +216,7 @@ describe("ContentsPage pagination", () => {
 
     expect(await screen.findByText("temporary")).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "重试采集批次 #3" }),
+      screen.queryByRole("button", { name: "重试采集批次 #3" })
     ).not.toBeInTheDocument();
     expect(mocks.getCollectionRuns).toHaveBeenCalledWith({ limit: 20 });
   });

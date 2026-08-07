@@ -261,6 +261,68 @@ func TestContentRepositoryListsOnlyActiveContentWithPublishedCursor(t *testing.T
 	}
 }
 
+func TestContentRepositorySearchFiltersLatestMatchAndStableRelevanceCursor(t *testing.T) {
+	runtime := openContentRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	repository := ingestionpostgres.NewContentRepository(runtime)
+	firstSource := createContentSource(t, runtime, "search-first")
+	secondSource := createContentSource(t, runtime, "search-second")
+	base := time.Date(2026, time.August, 1, 9, 0, 0, 0, time.UTC)
+	inputs := []struct {
+		sourceID  int64
+		external  string
+		published time.Time
+	}{
+		{firstSource, "发布-high", base.Add(3 * time.Hour)},
+		{firstSource, "发布-middle", base.Add(2 * time.Hour)},
+		{secondSource, "发布-other-source", base.Add(time.Hour)},
+		{firstSource, "unrelated", base},
+	}
+	contents := make(map[string]ingestiondomain.Content, len(inputs))
+	for _, fixture := range inputs {
+		input := normalizedContent(fixture.sourceID, fixture.external, fixture.published)
+		input.PublishedAt = fixture.published
+		stored, _, err := repository.Upsert(context.Background(), input, activeDecision())
+		if err != nil {
+			t.Fatalf("Upsert(%s): %v", fixture.external, err)
+		}
+		contents[fixture.external] = stored
+	}
+	monitorID, configID := createContentSearchMonitor(t, runtime)
+	insertContentSearchMatch(t, runtime, monitorID, configID, contents["发布-high"].ID, 10, ingestiondomain.MatchDecisionRejected, base)
+	insertContentSearchMatch(t, runtime, monitorID, configID, contents["发布-high"].ID, 93, ingestiondomain.MatchDecisionAccepted, base.Add(time.Minute))
+	insertContentSearchMatch(t, runtime, monitorID, configID, contents["发布-middle"].ID, 71, ingestiondomain.MatchDecisionReview, base)
+	insertContentSearchMatch(t, runtime, monitorID, configID, contents["发布-other-source"].ID, 82, ingestiondomain.MatchDecisionAccepted, base)
+	assertContentSearchIndexes(t, runtime, monitorID)
+
+	from, to := base.Add(time.Hour), base.Add(4*time.Hour)
+	filtered, err := repository.ListActive(context.Background(), ingestiondomain.ContentListQuery{
+		Limit: 10, Keyword: "发布", SourceConnectionID: &firstSource, PublishedFrom: &from, PublishedTo: &to, Sort: ingestiondomain.ContentSortLatest,
+	})
+	if err != nil || len(filtered.Items) != 2 || filtered.Items[0].ExternalID != "发布-high" || filtered.Items[1].ExternalID != "发布-middle" {
+		t.Fatalf("filtered page/error = %#v/%v", filtered, err)
+	}
+
+	accepted := ingestiondomain.MatchDecisionAccepted
+	first, err := repository.ListActive(context.Background(), ingestiondomain.ContentListQuery{
+		Limit: 1, Keyword: "发布", MonitorID: &monitorID, Sort: ingestiondomain.ContentSortRelevance,
+	})
+	if err != nil || len(first.Items) != 1 || first.Items[0].ExternalID != "发布-high" || first.Items[0].RelevanceScore == nil || *first.Items[0].RelevanceScore != 93 || first.Items[0].MatchDecision == nil || *first.Items[0].MatchDecision != accepted || first.NextCursor == "" {
+		t.Fatalf("first relevance page/error = %#v/%v", first, err)
+	}
+	second, err := repository.ListActive(context.Background(), ingestiondomain.ContentListQuery{
+		Limit: 1, Keyword: "发布", MonitorID: &monitorID, Sort: ingestiondomain.ContentSortRelevance, Cursor: first.NextCursor,
+	})
+	if err != nil || len(second.Items) != 1 || second.Items[0].ExternalID != "发布-other-source" || second.Items[0].ID == first.Items[0].ID {
+		t.Fatalf("second relevance page/error = %#v/%v", second, err)
+	}
+	if _, err := repository.ListActive(context.Background(), ingestiondomain.ContentListQuery{
+		Limit: 1, Keyword: "发布", MonitorID: &monitorID, Decision: &accepted, Sort: ingestiondomain.ContentSortRelevance, Cursor: first.NextCursor,
+	}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("changed shape cursor error = %v, want invalid input", err)
+	}
+}
+
 func TestContentRepositoryAssetsAreUniqueAndVersionConflictSafe(t *testing.T) {
 	runtime := openContentRuntime(t)
 	defer func() { _ = runtime.Close() }()
@@ -450,6 +512,77 @@ RETURNING id`, fmt.Sprintf("content-%s-%d", suffix, time.Now().UnixNano())).Scan
 		t.Fatalf("create source connection: %v", err)
 	}
 	return sourceID
+}
+
+func createContentSearchMonitor(t *testing.T, runtime *database.Runtime) (int64, int64) {
+	t.Helper()
+	var monitorID, configID int64
+	if err := runtime.SQL.QueryRow(`INSERT INTO monitors (name, status) VALUES ($1, 'draft') RETURNING id`, fmt.Sprintf("content-search-%d", time.Now().UnixNano())).Scan(&monitorID); err != nil {
+		t.Fatalf("create search monitor: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`INSERT INTO monitor_config_versions (monitor_id, revision) VALUES ($1, 1) RETURNING id`, monitorID).Scan(&configID); err != nil {
+		t.Fatalf("create search monitor config: %v", err)
+	}
+	return monitorID, configID
+}
+
+func insertContentSearchMatch(t *testing.T, runtime *database.Runtime, monitorID, configID, contentID int64, score float64, decision ingestiondomain.MatchDecision, createdAt time.Time) {
+	t.Helper()
+	inputHash := fmt.Sprintf("%064x", contentID+int64(score)+createdAt.UnixNano())
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO monitor_matches (
+  monitor_id, monitor_config_version_id, content_id, rule_score, final_score,
+  decision, algorithm_version, input_hash, scoring_version, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $4, $5, 'search-v1', $6, 'search-v1', $7, $7)`,
+		monitorID, configID, contentID, score, string(decision), inputHash[len(inputHash)-64:], createdAt); err != nil {
+		t.Fatalf("insert content search match: %v", err)
+	}
+}
+
+func assertContentSearchIndexes(t *testing.T, runtime *database.Runtime, monitorID int64) {
+	t.Helper()
+	var plan strings.Builder
+	err := runtime.WithinTransaction(context.Background(), func(ctx context.Context, transaction database.Transaction) error {
+		for _, statement := range []string{`ANALYZE contents`, `ANALYZE monitor_matches`, `SET LOCAL enable_seqscan = off`} {
+			if _, err := transaction.SQL.ExecContext(ctx, statement); err != nil {
+				return err
+			}
+		}
+		rows, err := transaction.SQL.QueryContext(ctx, `
+EXPLAIN (COSTS OFF)
+SELECT c.id, latest_match.final_score
+FROM contents AS c
+JOIN LATERAL (
+  SELECT match.final_score
+  FROM monitor_matches AS match
+  WHERE match.monitor_id=$1 AND match.content_id=c.id
+  ORDER BY match.created_at DESC,match.id DESC LIMIT 1
+) latest_match ON true
+WHERE c.content_status='active' AND c.deleted_at IS NULL
+  AND lower(c.title || ' ' || c.excerpt) LIKE '%发布%'
+ORDER BY latest_match.final_score DESC,c.id DESC LIMIT 100`, monitorID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var line string
+			if err := rows.Scan(&line); err != nil {
+				return err
+			}
+			plan.WriteString(line)
+			plan.WriteByte('\n')
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, index := range []string{"contents_search_active_trgm_idx", "monitor_matches_monitor_content_latest_idx"} {
+		if !strings.Contains(plan.String(), index) {
+			t.Fatalf("content search plan missing %s:\n%s", index, plan.String())
+		}
+	}
 }
 
 func normalizedContent(sourceID int64, externalID string, observedAt time.Time) ingestiondomain.NormalizedContent {

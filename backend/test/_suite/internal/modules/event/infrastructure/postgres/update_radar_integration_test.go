@@ -178,6 +178,11 @@ func TestRadarRepositoryFiltersAndUsesAllFiveDeterministicOrders(t *testing.T) {
 			}
 		}
 	}
+	keywordPage, err := repository.ListRadar(ctx, eventdomain.RadarQuery{Window: eventdomain.RadarWindow7Days, Keyword: "Radar b", Sort: eventdomain.RadarSortMomentum, Limit: 100, AsOf: fixture.asOf})
+	if err != nil {
+		t.Fatalf("ListRadar(keyword): %v", err)
+	}
+	assertRadarOrder(t, keywordPage.Items, fixture, []string{"b"})
 
 	monitorPage, err := repository.ListRadar(ctx, eventdomain.RadarQuery{Window: eventdomain.RadarWindow7Days, MonitorID: &fixture.monitor, Sort: eventdomain.RadarSortRelevance, Limit: 100, AsOf: fixture.asOf})
 	if err != nil {
@@ -452,6 +457,38 @@ func TestRadarRepositoryTimeBoundaryUsesAnIndex(t *testing.T) {
 	}
 	if strings.Contains(plan.String(), "Seq Scan on events") || !strings.Contains(plan.String(), "Index") {
 		t.Fatalf("Radar time-boundary EXPLAIN is unbounded:\n%s", plan.String())
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `
+INSERT INTO events (event_key,title_zh,summary,lifecycle_status,first_seen_at,last_seen_at)
+SELECT 'radar-capacity-' || value, '容量事件 ' || value, '不相关摘要', 'active', $1, $1
+FROM generate_series(1,1000) AS value`, fixture.asOf); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `ANALYZE events`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `SET enable_indexscan = off`); err != nil {
+		t.Fatal(err)
+	}
+	keywordRows, err := runtime.SQL.QueryContext(ctx, `EXPLAIN (COSTS OFF) SELECT id FROM events WHERE deleted_at IS NULL AND lower(title_zh || ' ' || COALESCE(title_en,'') || ' ' || summary) LIKE '%radar b%' LIMIT 100`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer keywordRows.Close()
+	var keywordPlan strings.Builder
+	for keywordRows.Next() {
+		var line string
+		if err := keywordRows.Scan(&line); err != nil {
+			t.Fatal(err)
+		}
+		keywordPlan.WriteString(line)
+	}
+	if strings.Contains(keywordPlan.String(), "Seq Scan on events") || !strings.Contains(keywordPlan.String(), "Index") {
+		t.Fatalf("Radar keyword EXPLAIN is unbounded:\n%s", keywordPlan.String())
+	}
+	var keywordIndexExists bool
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname='events_search_active_trgm_idx')`).Scan(&keywordIndexExists); err != nil || !keywordIndexExists {
+		t.Fatalf("Radar keyword index exists/error = %t/%v", keywordIndexExists, err)
 	}
 }
 

@@ -1,7 +1,19 @@
-import { ExternalLink, FileSearch, RadioTower, RotateCcw, Trash2 } from "lucide-react";
+import {
+  ExternalLink,
+  FileSearch,
+  RadioTower,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Empty,
   EmptyDescription,
@@ -37,6 +49,7 @@ type CollectionWorkspaceProps = {
   onRetry?: (run: HotKeyAPI.CollectionRunResponse) => void;
   runsPagination?: CollectionWorkspacePagination;
   contentsPagination?: CollectionWorkspacePagination;
+  contentEmptyDescription?: string;
 };
 
 const formatDateTime = (value?: string) =>
@@ -60,17 +73,18 @@ export function CollectionWorkspace({
   onRetry,
   runsPagination,
   contentsPagination,
+  contentEmptyDescription,
 }: CollectionWorkspaceProps) {
   const succeeded = runs.filter(
-    (run) => run.status === CollectionRunStatus.Succeeded,
+    (run) => run.status === CollectionRunStatus.Succeeded
   ).length;
   const failed = runs.filter(
-    (run) => run.status === CollectionRunStatus.Failed,
+    (run) => run.status === CollectionRunStatus.Failed
   ).length;
   const active = runs.filter(
     (run) =>
       run.status === CollectionRunStatus.Queued ||
-      run.status === CollectionRunStatus.Running,
+      run.status === CollectionRunStatus.Running
   ).length;
 
   return (
@@ -91,184 +105,241 @@ export function CollectionWorkspace({
         ))}
       </section>
 
-      <div data-testid="collection-pipeline" className="grid items-stretch gap-5 lg:grid-cols-2">
+      <div
+        data-testid="collection-pipeline"
+        className="grid items-stretch gap-5 lg:grid-cols-2"
+      >
         <Card className="flex h-full min-w-0 flex-col overflow-hidden">
-        <CardHeader className="flex min-h-[84px] flex-row items-center justify-between space-y-0 border-b px-5 py-4">
-          <div className="space-y-1">
-            <CardTitle className="text-sm" role="heading" aria-level={2}>
-              采集批次（当前页）
-            </CardTitle>
-            <CardDescription className="text-xs">
-              按批次编号展示调度器与来源连接的真实执行结果，每页 {runsPagination?.pageSize ?? DEFAULT_PAGE_SIZE} 条。
-            </CardDescription>
-          </div>
-          <RadioTower className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        {runs.length ? (
-          <CardContent className="flex-1 divide-y divide-border p-0">
-            {runs.map((run) => {
-              const status = collectionRunPresentation(run.status);
-              return (
-                <article
-                  className="grid gap-3 px-5 py-4 sm:grid-cols-[80px_minmax(0,1fr)_120px] sm:items-center"
-                  key={run.id}
-                >
-                  <span className="mono text-xs text-muted-foreground">
-                    #{run.id}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-xs text-muted-foreground">
-                      候选 {run.candidate_count ?? 0} · 接受 {run.accepted_count ?? 0} ·
-                      拒绝 {run.rejected_count ?? 0}
+          <CardHeader className="flex min-h-[84px] flex-row items-center justify-between space-y-0 border-b px-5 py-4">
+            <div className="space-y-1">
+              <CardTitle className="text-sm" role="heading" aria-level={2}>
+                采集批次（当前页）
+              </CardTitle>
+              <CardDescription className="text-xs">
+                按批次编号展示调度器与来源连接的真实执行结果，每页{" "}
+                {runsPagination?.pageSize ?? DEFAULT_PAGE_SIZE} 条。
+              </CardDescription>
+            </div>
+            <RadioTower className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          {runs.length ? (
+            <CardContent className="flex-1 divide-y divide-border p-0">
+              {runs.map((run) => {
+                const status = collectionRunPresentation(run.status);
+                return (
+                  <article
+                    className="grid gap-3 px-5 py-4 sm:grid-cols-[80px_minmax(0,1fr)_120px] sm:items-center"
+                    key={run.id}
+                  >
+                    <span className="mono text-xs text-muted-foreground">
+                      #{run.id}
                     </span>
-                    {run.error_code ? (
-                      <span className="text-destructive mono mt-1 block truncate text-xs">
-                        {run.error_code}
+                    <span className="min-w-0">
+                      <span className="block text-xs text-muted-foreground">
+                        候选 {run.candidate_count ?? 0} · 接受{" "}
+                        {run.accepted_count ?? 0} · 拒绝{" "}
+                        {run.rejected_count ?? 0}
                       </span>
-                    ) : (
-                      <span className="mt-1 block text-xs text-muted-foreground">
-                        完成于 {formatDateTime(run.finished_at ?? run.started_at)}
-                      </span>
-                    )}
-                  </span>
-                  <span className="flex items-center gap-2 sm:ml-auto">
-                    <Badge
-                      className={`w-fit ${status.className}`}
-                      variant="outline"
-                    >
-                      {status.label}
-                    </Badge>
-                    {canRetry &&
-                    run.id != null &&
-                    onRetry &&
-                    (run.status === CollectionRunStatus.Failed ||
-                      run.status === CollectionRunStatus.Cancelled) ? (
-                      <Button
-                        aria-label={`重试采集批次 #${run.id}`}
-                        className="h-7 gap-1 px-2 text-xs"
-                        disabled={retryingRunID === run.id}
-                        onClick={() => onRetry(run)}
-                        size="sm"
+                      {run.error_code ? (
+                        <span className="text-destructive mono mt-1 block truncate text-xs">
+                          {run.error_code}
+                        </span>
+                      ) : (
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          完成于{" "}
+                          {formatDateTime(run.finished_at ?? run.started_at)}
+                        </span>
+                      )}
+                    </span>
+                    <span className="flex items-center gap-2 sm:ml-auto">
+                      <Badge
+                        className={`w-fit ${status.className}`}
                         variant="outline"
                       >
-                        <RotateCcw className={retryingRunID === run.id ? "animate-spin" : ""} />
-                        重试
-                      </Button>
-                    ) : null}
-                  </span>
-                </article>
-              );
-            })}
-          </CardContent>
-        ) : (
-          <Empty className="min-h-48 flex-1 rounded-none border-0">
-            <EmptyHeader>
-              <EmptyMedia variant="icon"><RadioTower /></EmptyMedia>
-              <EmptyTitle className="text-sm">尚未产生采集批次</EmptyTitle>
-              <EmptyDescription>发布监控后仍长期停留在这里，通常表示后台调度器未创建任务。</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        )}
-        {runsPagination ? (
-          <CursorPagination {...runsPagination} />
-        ) : null}
+                        {status.label}
+                      </Badge>
+                      {canRetry &&
+                      run.id != null &&
+                      onRetry &&
+                      (run.status === CollectionRunStatus.Failed ||
+                        run.status === CollectionRunStatus.Cancelled) ? (
+                        <Button
+                          aria-label={`重试采集批次 #${run.id}`}
+                          className="h-7 gap-1 px-2 text-xs"
+                          disabled={retryingRunID === run.id}
+                          onClick={() => onRetry(run)}
+                          size="sm"
+                          variant="outline"
+                        >
+                          <RotateCcw
+                            className={
+                              retryingRunID === run.id ? "animate-spin" : ""
+                            }
+                          />
+                          重试
+                        </Button>
+                      ) : null}
+                    </span>
+                  </article>
+                );
+              })}
+            </CardContent>
+          ) : (
+            <Empty className="min-h-48 flex-1 rounded-none border-0">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <RadioTower />
+                </EmptyMedia>
+                <EmptyTitle className="text-sm">尚未产生采集批次</EmptyTitle>
+                <EmptyDescription>
+                  发布监控后仍长期停留在这里，通常表示后台调度器未创建任务。
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          )}
+          {runsPagination ? <CursorPagination {...runsPagination} /> : null}
         </Card>
 
         <Card className="flex h-full min-w-0 flex-col overflow-hidden">
-        <CardHeader className="flex min-h-[84px] flex-row items-center justify-between space-y-0 border-b px-5 py-4">
-          <div className="space-y-1">
-            <CardTitle className="text-sm" role="heading" aria-level={2}>
-              最近入库内容
-            </CardTitle>
-            <CardDescription className="text-xs">
-              采集成功后完成标准化的真实内容，每页 {contentsPagination?.pageSize ?? DEFAULT_PAGE_SIZE} 条。
-            </CardDescription>
-          </div>
-          <FileSearch className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        {contents.length ? (
-          <CardContent className="flex-1 divide-y divide-border p-0">
-            {contents.map((content, index) => {
-              const title = content.title || content.external_id || `内容 #${content.id ?? "—"}`;
-              return (
-                <article
-                  className="px-5 py-4"
-                  key={content.id ?? `${content.external_id ?? title}-${index}`}
-                >
-                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span>{content.source_name || content.source_type || "来源"}</span>
-                  <span>·</span>
-                  <span>{formatDateTime(content.published_at ?? content.fetched_at)}</span>
-                  <span className="mono ml-auto">{content.language || "—"}</span>
-                </div>
-                <div className="mt-2 min-w-0">
-                  {content.id != null ? (
-                    <a
-                      className="block text-sm font-medium leading-6 text-foreground no-underline hover:text-foreground"
-                      href={`/dashboard/contents/${content.id}`}
-                    >
-                      {title}
-                    </a>
-                  ) : (
-                    <p className="text-sm font-medium leading-6">{title}</p>
-                  )}
-                  <div className="mt-3 flex flex-wrap items-center gap-4 text-xs">
-                    {content.id != null ? (
-                      <a
-                        aria-label={`阅读归档：${title}`}
-                        className="text-muted-foreground no-underline"
-                        href={`/dashboard/contents/${content.id}`}
-                      >
-                        阅读归档
-                      </a>
-                    ) : null}
-                    {content.canonical_url ? (
-                      <a
-                        aria-label="访问原站"
-                        className="flex shrink-0 items-center gap-1 text-muted-foreground no-underline hover:text-foreground"
-                        href={content.canonical_url}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        访问原站 <ExternalLink className="h-3 w-3" />
-                      </a>
-                    ) : null}
-                    {canManage && content.id != null && onDelete ? (
-                      <Button
-                        aria-label={`删除内容：${title}`}
-                        className="h-auto gap-1 px-0 py-0 text-destructive hover:bg-transparent hover:text-destructive"
-                        disabled={deletingContentID === content.id}
-                        onClick={() => onDelete(content)}
-                        variant="ghost"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                        删除
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-                </article>
-              );
-            })}
-          </CardContent>
-        ) : (
-          <Empty className="min-h-48 flex-1 rounded-none border-0">
-            <EmptyHeader>
-              <EmptyMedia variant="icon"><FileSearch /></EmptyMedia>
-              <EmptyTitle className="text-sm">暂时没有已入库内容</EmptyTitle>
-              <EmptyDescription>
-              {failed > 0
-                ? "已有采集失败批次，请先根据上方错误码检查来源。"
-                : runs.length > 0
-                  ? "采集任务已创建，内容会在标准化完成后出现在这里。"
-                  : "等待监控发布并生成第一条采集批次。"}
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        )}
-        {contentsPagination ? (
-          <CursorPagination {...contentsPagination} />
-        ) : null}
+          <CardHeader className="flex min-h-[84px] flex-row items-center justify-between space-y-0 border-b px-5 py-4">
+            <div className="space-y-1">
+              <CardTitle className="text-sm" role="heading" aria-level={2}>
+                最近入库内容
+              </CardTitle>
+              <CardDescription className="text-xs">
+                采集成功后完成标准化的真实内容，每页{" "}
+                {contentsPagination?.pageSize ?? DEFAULT_PAGE_SIZE} 条。
+              </CardDescription>
+            </div>
+            <FileSearch className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          {contents.length ? (
+            <CardContent className="flex-1 divide-y divide-border p-0">
+              {contents.map((content, index) => {
+                const title =
+                  content.title ||
+                  content.external_id ||
+                  `内容 #${content.id ?? "—"}`;
+                return (
+                  <article
+                    className="px-5 py-4"
+                    key={
+                      content.id ?? `${content.external_id ?? title}-${index}`
+                    }
+                  >
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span>
+                        {content.source_name || content.source_type || "来源"}
+                      </span>
+                      <span>·</span>
+                      <span>
+                        {formatDateTime(
+                          content.published_at ?? content.fetched_at
+                        )}
+                      </span>
+                      <span className="mono ml-auto">
+                        {content.language || "—"}
+                      </span>
+                    </div>
+                    <div className="mt-2 min-w-0">
+                      {content.id != null ? (
+                        <a
+                          className="block text-sm font-medium leading-6 text-foreground no-underline hover:text-foreground"
+                          href={`/dashboard/contents/${content.id}`}
+                        >
+                          {title}
+                        </a>
+                      ) : (
+                        <p className="text-sm font-medium leading-6">{title}</p>
+                      )}
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {content.relevance_score != null ? (
+                          <Badge
+                            variant="secondary"
+                            className="font-mono font-normal"
+                          >
+                            相关性 {content.relevance_score.toFixed(1)}
+                          </Badge>
+                        ) : null}
+                        {content.match_decision ? (
+                          <Badge variant="outline" className="font-normal">
+                            {content.match_decision === "accepted"
+                              ? "已接受"
+                              : content.match_decision === "review"
+                              ? "待复核"
+                              : "已拒绝"}
+                          </Badge>
+                        ) : null}
+                        {content.event_id != null ? (
+                          <a
+                            className="text-xs text-muted-foreground no-underline hover:text-foreground"
+                            href={`/dashboard/events?event=${content.event_id}`}
+                          >
+                            归属事件：
+                            {content.event_title || `#${content.event_id}`}
+                          </a>
+                        ) : null}
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-4 text-xs">
+                        {content.id != null ? (
+                          <a
+                            aria-label={`阅读归档：${title}`}
+                            className="text-muted-foreground no-underline"
+                            href={`/dashboard/contents/${content.id}`}
+                          >
+                            阅读归档
+                          </a>
+                        ) : null}
+                        {content.canonical_url ? (
+                          <a
+                            aria-label="访问原站"
+                            className="flex shrink-0 items-center gap-1 text-muted-foreground no-underline hover:text-foreground"
+                            href={content.canonical_url}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            访问原站 <ExternalLink className="h-3 w-3" />
+                          </a>
+                        ) : null}
+                        {canManage && content.id != null && onDelete ? (
+                          <Button
+                            aria-label={`删除内容：${title}`}
+                            className="h-auto gap-1 px-0 py-0 text-destructive hover:bg-transparent hover:text-destructive"
+                            disabled={deletingContentID === content.id}
+                            onClick={() => onDelete(content)}
+                            variant="ghost"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            删除
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </CardContent>
+          ) : (
+            <Empty className="min-h-48 flex-1 rounded-none border-0">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <FileSearch />
+                </EmptyMedia>
+                <EmptyTitle className="text-sm">暂时没有已入库内容</EmptyTitle>
+                <EmptyDescription>
+                  {contentEmptyDescription ??
+                    (failed > 0
+                      ? "已有采集失败批次，请先根据上方错误码检查来源。"
+                      : runs.length > 0
+                      ? "采集任务已创建，内容会在标准化完成后出现在这里。"
+                      : "等待监控发布并生成第一条采集批次。")}
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          )}
+          {contentsPagination ? (
+            <CursorPagination {...contentsPagination} />
+          ) : null}
         </Card>
       </div>
     </div>

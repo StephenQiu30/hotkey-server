@@ -271,6 +271,7 @@ func (handler *Handler) List(c *gin.Context) error {
 // @Tags radar
 // @Produce json
 // @Security BearerAuth
+// @Param q query string false "event title or summary keyword" maxlength(100)
 // @Param window query string false "Radar window" Enums(1h,6h,24h,7d) default(24h)
 // @Param monitor_id query int false "monitor ID" minimum(1)
 // @Param lifecycle query []string false "lifecycle filters" collectionFormat(csv) Enums(detected,active,cooling,closed,merged,archived,rejected)
@@ -590,7 +591,7 @@ func radarQuery(c *gin.Context) (domain.RadarQuery, error) {
 	}
 	query := domain.RadarQuery{
 		Window: domain.RadarWindow(c.Query("window")), Sort: domain.RadarSort(c.Query("sort")),
-		Limit: limit, Cursor: c.Query("cursor"),
+		Limit: limit, Cursor: c.Query("cursor"), Keyword: strings.TrimSpace(c.Query("q")),
 	}
 	if raw := c.Query("monitor_id"); raw != "" {
 		value, err := strconv.ParseInt(raw, 10, 64)
