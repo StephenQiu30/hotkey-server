@@ -1,3 +1,4 @@
+# Local development override; shared service definitions remain in docker-compose.yml.
 services:
   postgres:
     ports:
