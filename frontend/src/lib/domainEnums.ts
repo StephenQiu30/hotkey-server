@@ -16,6 +16,7 @@ export enum SourceType {
   X = "x",
   BingGrounding = "bing_grounding",
   Bilibili = "bilibili",
+  Weibo = "weibo",
 }
 
 export enum SourceHealthStatus {

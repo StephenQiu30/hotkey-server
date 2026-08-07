@@ -12,7 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -228,8 +228,8 @@ export default function SourcesPage() {
         title={canManage ? "来源管理" : "来源目录"}
         description={
           canManage
-            ? "连接、探测并管理 RSS、Hacker News、X、Bilibili 授权账号与 Microsoft Foundry Web Search。"
-            : "查看当前工作区已接入的 RSS、Hacker News、X、Bilibili 授权账号与 Microsoft Foundry Web Search。"
+            ? "连接、探测并管理 RSS、Hacker News、X、微博关键词、Bilibili 授权账号与 Microsoft Foundry Web Search。"
+            : "查看当前工作区已接入的 RSS、Hacker News、X、微博关键词、Bilibili 授权账号与 Microsoft Foundry Web Search。"
         }
         action={
           canManage ? (
@@ -240,7 +240,9 @@ export default function SourcesPage() {
       {!canManage && (
         <Alert className="mt-6">
           <Eye />
-          <AlertTitle>只读来源目录</AlertTitle>
+          <div className="mb-1 font-medium leading-none tracking-tight">
+            只读来源目录
+          </div>
           <AlertDescription>
             当前 {user?.role ?? UserRole.Viewer}{" "}
             角色可以查看来源状态；新增、探测和启停来源仅对管理员开放。
@@ -250,7 +252,9 @@ export default function SourcesPage() {
       <SogouAuthorizationCard />
       {loadError && (
         <Alert variant="destructive" className="mt-6">
-          <AlertTitle>来源加载失败</AlertTitle>
+          <div className="mb-1 font-medium leading-none tracking-tight">
+            来源加载失败
+          </div>
           <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
             <span>{loadError}</span>
             <Button variant="outline" size="sm" onClick={load}>

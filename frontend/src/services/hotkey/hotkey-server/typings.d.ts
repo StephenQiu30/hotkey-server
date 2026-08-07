@@ -337,7 +337,7 @@ required property without making explicit null impossible to bind. */
     max_single_item_contribution: number;
     normalization_window_hours: number;
     profile_version: string;
-    source_type: "rss" | "hacker_news" | "x" | "bilibili";
+    source_type: "rss" | "hacker_news" | "x" | "bilibili" | "weibo";
     supports_comments?: boolean;
     supports_likes?: boolean;
     supports_shares?: boolean;
@@ -380,7 +380,13 @@ required property without making explicit null impossible to bind. */
     enabled?: boolean;
     endpoint: string;
     name: string;
-    source_type: "rss" | "hacker_news" | "x" | "bing_grounding" | "bilibili";
+    source_type:
+      | "rss"
+      | "hacker_news"
+      | "x"
+      | "bing_grounding"
+      | "bilibili"
+      | "weibo";
     terms_policy_url?: string;
   };
 
@@ -2013,7 +2019,13 @@ required property without making explicit null impossible to bind. */
     endpoint?: string;
     expected_source_version: number;
     name?: string;
-    source_type?: "rss" | "hacker_news" | "x" | "bing_grounding" | "bilibili";
+    source_type?:
+      | "rss"
+      | "hacker_news"
+      | "x"
+      | "bing_grounding"
+      | "bilibili"
+      | "weibo";
     terms_policy_url?: string;
   };
 

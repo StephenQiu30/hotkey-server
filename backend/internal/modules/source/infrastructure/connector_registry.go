@@ -12,6 +12,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/hackernews"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/rss"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/sourcenet"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/weibo"
 	xconnector "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/x"
 )
 
@@ -38,6 +39,8 @@ func (registry *ConnectorRegistry) Resolve(_ context.Context, connection domain.
 		return binggrounding.New(connection, registry.resolver)
 	case domain.SourceTypeBilibili:
 		return bilibili.New(connection, registry.resolver)
+	case domain.SourceTypeWeibo:
+		return weibo.New(connection, registry.resolver)
 	default:
 		return nil, domain.NewCollectionError(domain.CollectionErrorPermanent, fmt.Errorf("unsupported collection source type"))
 	}

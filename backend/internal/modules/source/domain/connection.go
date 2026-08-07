@@ -26,6 +26,7 @@ const (
 	SourceTypeX             SourceType = "x"
 	SourceTypeBingGrounding SourceType = "bing_grounding"
 	SourceTypeBilibili      SourceType = "bilibili"
+	SourceTypeWeibo         SourceType = "weibo"
 
 	AuthTypeNone   AuthType = "none"
 	AuthTypeAPIKey AuthType = "api_key"
@@ -40,6 +41,8 @@ const (
 	HackerNewsEndpoint    = "https://hacker-news.firebaseio.com/v0"
 	XRecentSearchEndpoint = "https://api.x.com/2/tweets/search/recent"
 	BilibiliOpenEndpoint  = "https://member.bilibili.com/arcopen/fn"
+	WeiboCLIApiEndpoint   = "https://open.weibo.com/cli/api"
+	WeiboDeveloperTerms   = "https://open.weibo.com/wiki/%E5%BC%80%E5%8F%91%E8%80%85%E5%8D%8F%E8%AE%AE"
 )
 
 var credentialReferencePattern = regexp.MustCompile(`^env:[A-Z_][A-Z0-9_]{0,127}$`)
@@ -112,6 +115,9 @@ func NormalizeSourceConnection(connection SourceConnection) (SourceConnection, e
 	if connection.SourceType == SourceTypeBilibili && (connection.AuthType != AuthTypeOAuth2 || credentialRef == "") {
 		return SourceConnection{}, fmt.Errorf("Bilibili source requires an OAuth2 env credential reference")
 	}
+	if connection.SourceType == SourceTypeWeibo && (connection.AuthType != AuthTypeBearer || credentialRef == "") {
+		return SourceConnection{}, fmt.Errorf("Weibo source requires a Bearer env credential reference")
+	}
 	config := connection.Config
 	if config.isZero() {
 		config = DefaultSourceConfig()
@@ -128,6 +134,12 @@ func NormalizeSourceConnection(connection SourceConnection) (SourceConnection, e
 	}
 	if connection.SourceType == SourceTypeBilibili && strings.TrimSpace(connection.TermsPolicyURL) != "https://openhome.bilibili.com/agreement/privacy-policy" {
 		return SourceConnection{}, fmt.Errorf("Bilibili source requires the official privacy policy URL")
+	}
+	if connection.SourceType == SourceTypeWeibo && (!config.AllowBodyStorage || !config.RequiresAttribution || !config.RequiresDeletionSync) {
+		return SourceConnection{}, fmt.Errorf("Weibo source requires body storage, attribution, and deletion sync")
+	}
+	if connection.SourceType == SourceTypeWeibo && strings.TrimSpace(connection.TermsPolicyURL) != WeiboDeveloperTerms {
+		return SourceConnection{}, fmt.Errorf("Weibo source requires the official developer agreement URL")
 	}
 	if connection.SourceType == SourceTypeBingGrounding {
 		termsPolicyURL, err := url.Parse(strings.TrimSpace(connection.TermsPolicyURL))
@@ -150,7 +162,7 @@ func NormalizeSourceConnection(connection SourceConnection) (SourceConnection, e
 }
 
 func (sourceType SourceType) Valid() bool {
-	return sourceType == SourceTypeRSS || sourceType == SourceTypeHackerNews || sourceType == SourceTypeX || sourceType == SourceTypeBingGrounding || sourceType == SourceTypeBilibili
+	return sourceType == SourceTypeRSS || sourceType == SourceTypeHackerNews || sourceType == SourceTypeX || sourceType == SourceTypeBingGrounding || sourceType == SourceTypeBilibili || sourceType == SourceTypeWeibo
 }
 
 func (authType AuthType) Valid() bool {
@@ -220,6 +232,12 @@ func NormalizeEndpoint(sourceType SourceType, value string) (string, error) {
 			return "", fmt.Errorf("Bilibili endpoint must be the official Open Platform endpoint")
 		}
 		return BilibiliOpenEndpoint, nil
+	}
+	if sourceType == SourceTypeWeibo {
+		if normalized != WeiboCLIApiEndpoint {
+			return "", fmt.Errorf("Weibo endpoint must be the official CLI API endpoint")
+		}
+		return WeiboCLIApiEndpoint, nil
 	}
 	if sourceType != SourceTypeRSS {
 		return "", fmt.Errorf("unsupported source type %q", sourceType)

@@ -266,6 +266,50 @@ describe("SourcesPage body storage authorization", () => {
     );
   });
 
+  it("creates an official Weibo keyword source disabled behind capability health", async () => {
+    render(<SourcesPage />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "新增来源" }));
+    await user.type(screen.getByLabelText("名称"), "微博官方关键词");
+    fireEvent.keyDown(screen.getByLabelText("来源类型"), { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("option", { name: "微博开放平台关键词" }));
+
+    expect(screen.getByLabelText("接口地址")).toHaveValue(
+      "https://open.weibo.com/cli/api"
+    );
+    expect(screen.getByLabelText("接口地址")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("授权方式")).toBeDisabled();
+    expect(screen.getByLabelText("条款与政策地址")).toHaveAttribute("readonly");
+    expect(screen.getByText(/账号须完成开发者认证/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/不支持账号时间线、热搜页或网页抓取/)
+    ).toBeInTheDocument();
+    await user.type(
+      screen.getByLabelText("凭据环境变量引用"),
+      "env:WEIBO_API_TOKEN"
+    );
+    await user.click(screen.getByRole("button", { name: "创建连接" }));
+
+    await waitFor(() =>
+      expect(mocks.postSourceConnections).toHaveBeenCalledWith(
+        expect.objectContaining({
+          auth_type: "bearer",
+          credential_ref: "env:WEIBO_API_TOKEN",
+          enabled: false,
+          endpoint: "https://open.weibo.com/cli/api",
+          source_type: "weibo",
+          terms_policy_url:
+            "https://open.weibo.com/wiki/%E5%BC%80%E5%8F%91%E8%80%85%E5%8D%8F%E8%AE%AE",
+          config: expect.objectContaining({
+            allow_body_storage: true,
+            requires_attribution: true,
+            requires_deletion_sync: true,
+          }),
+        })
+      )
+    );
+  });
+
   it("shows safe compliance facts without exposing a credential reference", async () => {
     mocks.getSourceConnections.mockResolvedValue({
       data: {
@@ -357,7 +401,7 @@ describe("SourcesPage body storage authorization", () => {
       expect(await screen.findByText("只读来源目录")).toBeInTheDocument();
       expect(
         screen.getByText(
-          "查看当前工作区已接入的 RSS、Hacker News、X、Bilibili 授权账号与 Microsoft Foundry Web Search。"
+          "查看当前工作区已接入的 RSS、Hacker News、X、微博关键词、Bilibili 授权账号与 Microsoft Foundry Web Search。"
         )
       ).toBeInTheDocument();
       expect(

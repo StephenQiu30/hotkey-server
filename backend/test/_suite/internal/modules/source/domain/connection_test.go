@@ -83,6 +83,33 @@ func TestBingGroundingConnectionRequiresVersionedFoundryToolboxAndDerivedEvidenc
 	}
 }
 
+func TestWeiboConnectionRequiresOfficialCLIAPIAndCompliancePolicy(t *testing.T) {
+	t.Parallel()
+	config := DefaultSourceConfig()
+	config.RequiresAttribution = true
+	config.RequiresDeletionSync = true
+	connection := SourceConnection{
+		SourceType: SourceTypeWeibo, Name: "微博关键词", Endpoint: WeiboCLIApiEndpoint,
+		AuthType: AuthTypeBearer, CredentialRef: "env:WEIBO_TOKEN", Config: config,
+		TermsPolicyURL: WeiboDeveloperTerms,
+	}
+	if normalized, err := NormalizeSourceConnection(connection); err != nil || normalized.Endpoint != WeiboCLIApiEndpoint {
+		t.Fatalf("NormalizeSourceConnection() = %#v, %v", normalized, err)
+	}
+	for _, mutate := range []func(*SourceConnection){
+		func(value *SourceConnection) { value.Endpoint = "https://weibo.com/ajax/statuses/searchProfile" },
+		func(value *SourceConnection) { value.AuthType = AuthTypeNone; value.CredentialRef = "" },
+		func(value *SourceConnection) { value.TermsPolicyURL = "https://example.test/terms" },
+		func(value *SourceConnection) { value.Config.RequiresDeletionSync = false },
+	} {
+		invalid := connection
+		mutate(&invalid)
+		if _, err := NormalizeSourceConnection(invalid); err == nil {
+			t.Fatalf("accepted invalid Weibo connection %#v", invalid)
+		}
+	}
+}
+
 func TestCredentialReferenceMustMatchAuthType(t *testing.T) {
 	t.Parallel()
 

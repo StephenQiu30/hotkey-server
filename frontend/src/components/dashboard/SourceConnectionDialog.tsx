@@ -2,7 +2,7 @@
 
 import { type FormEvent, useState } from "react";
 import { Loader2, Plus, TriangleAlert } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -32,6 +32,9 @@ const FOUNDRY_WEB_SEARCH_POLICY_URL =
 const BILIBILI_OPEN_ENDPOINT = "https://member.bilibili.com/arcopen/fn";
 const BILIBILI_PRIVACY_POLICY_URL =
   "https://openhome.bilibili.com/agreement/privacy-policy";
+const WEIBO_CLI_API_ENDPOINT = "https://open.weibo.com/cli/api";
+const WEIBO_DEVELOPER_TERMS_URL =
+  "https://open.weibo.com/wiki/%E5%BC%80%E5%8F%91%E8%80%85%E5%8D%8F%E8%AE%AE";
 const credentialPattern = /^env:[A-Z_][A-Z0-9_]{0,127}$/;
 
 type AuthType = "none" | "api_key" | "oauth2" | "bearer";
@@ -192,7 +195,8 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
       enabled:
         form.sourceType !== SourceType.X &&
         form.sourceType !== SourceType.BingGrounding &&
-        form.sourceType !== SourceType.Bilibili,
+        form.sourceType !== SourceType.Bilibili &&
+        form.sourceType !== SourceType.Weibo,
       endpoint: form.endpoint.trim(),
       name: form.name.trim(),
       source_type: form.sourceType,
@@ -251,6 +255,8 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                         ? X_RECENT_SEARCH_ENDPOINT
                         : value === SourceType.Bilibili
                         ? BILIBILI_OPEN_ENDPOINT
+                        : value === SourceType.Weibo
+                        ? WEIBO_CLI_API_ENDPOINT
                         : "",
                     authType:
                       value === SourceType.X ||
@@ -258,20 +264,25 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                         ? "bearer"
                         : value === SourceType.Bilibili
                         ? "oauth2"
+                        : value === SourceType.Weibo
+                        ? "bearer"
                         : "none",
                     credentialRef: "",
                     allowBodyStorage:
                       value === SourceType.BingGrounding ||
-                      value === SourceType.Bilibili
+                      value === SourceType.Bilibili ||
+                      value === SourceType.Weibo
                         ? true
                         : form.allowBodyStorage,
                     requiresAttribution:
                       value === SourceType.BingGrounding ||
-                      value === SourceType.Bilibili
+                      value === SourceType.Bilibili ||
+                      value === SourceType.Weibo
                         ? true
                         : form.requiresAttribution,
                     requiresDeletionSync:
-                      value === SourceType.Bilibili
+                      value === SourceType.Bilibili ||
+                      value === SourceType.Weibo
                         ? true
                         : form.requiresDeletionSync,
                     maxPagesPerRun:
@@ -285,6 +296,8 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                         ? FOUNDRY_WEB_SEARCH_POLICY_URL
                         : value === SourceType.Bilibili
                         ? BILIBILI_PRIVACY_POLICY_URL
+                        : value === SourceType.Weibo
+                        ? WEIBO_DEVELOPER_TERMS_URL
                         : "",
                   })
                 }
@@ -304,6 +317,9 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                   <SelectItem value={SourceType.Bilibili}>
                     Bilibili 开放平台
                   </SelectItem>
+                  <SelectItem value={SourceType.Weibo}>
+                    微博开放平台关键词
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -314,7 +330,8 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                 disabled={
                   form.sourceType === SourceType.X ||
                   form.sourceType === SourceType.BingGrounding ||
-                  form.sourceType === SourceType.Bilibili
+                  form.sourceType === SourceType.Bilibili ||
+                  form.sourceType === SourceType.Weibo
                 }
                 onValueChange={(value) =>
                   updateForm({
@@ -351,7 +368,8 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                 readOnly={
                   form.sourceType === SourceType.HackerNews ||
                   form.sourceType === SourceType.X ||
-                  form.sourceType === SourceType.Bilibili
+                  form.sourceType === SourceType.Bilibili ||
+                  form.sourceType === SourceType.Weibo
                 }
               />
               {form.sourceType === SourceType.X && (
@@ -369,6 +387,12 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                 <p className="mt-1 text-xs text-muted-foreground">
                   固定使用官方开放平台；创建后先校验授权账号和
                   scopes，再手动启用。
+                </p>
+              )}
+              {form.sourceType === SourceType.Weibo && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  固定使用微博官方 CLI
+                  API；创建后先验证账号和关键词命令可用性，再手动启用。
                 </p>
               )}
             </div>
@@ -418,7 +442,10 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                 }
                 placeholder="https://example.com/terms"
                 aria-invalid={!validHTTPSURL(form.termsPolicyURL)}
-                readOnly={form.sourceType === SourceType.Bilibili}
+                readOnly={
+                  form.sourceType === SourceType.Bilibili ||
+                  form.sourceType === SourceType.Weibo
+                }
               />
             </div>
             <div className="sm:col-span-2 rounded-md border border-border p-4">
@@ -442,6 +469,10 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                         (form.sourceType === SourceType.Bilibili &&
                           (option.key === "allowBodyStorage" ||
                             option.key === "requiresAttribution" ||
+                            option.key === "requiresDeletionSync")) ||
+                        (form.sourceType === SourceType.Weibo &&
+                          (option.key === "allowBodyStorage" ||
+                            option.key === "requiresAttribution" ||
                             option.key === "requiresDeletionSync"))
                       }
                     />
@@ -454,13 +485,17 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                   ? "只保存 Foundry 模型生成的派生摘要和必要引用，不把它标记为原始网页正文或来源指标。"
                   : form.sourceType === SourceType.Bilibili
                   ? "仅轮询已授权账号的视频和专栏；授权撤销后自动停用，并按来源政策同步删除状态。"
+                  : form.sourceType === SourceType.Weibo
+                  ? "只调用当前 Token 已获套餐授权的关键词命令；不可见或删除提示不保存正文，也不抓取微博网页。"
                   : "只保存来源 Feed 实际提供的正文/摘要，不抓取原网页；启用前确认来源条款。"}
               </p>
             </div>
             {form.sourceType === SourceType.BingGrounding && (
               <Alert className="sm:col-span-2">
                 <TriangleAlert />
-                <AlertTitle>Grounding 数据边界确认</AlertTitle>
+                <div className="mb-1 font-medium leading-none tracking-tight">
+                  Grounding 数据边界确认
+                </div>
                 <AlertDescription>
                   <label className="mt-2 flex cursor-pointer items-start gap-2 text-sm text-foreground">
                     <Checkbox
@@ -481,6 +516,19 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                     Web Search
                     返回模型生成的派生摘要和引用，不是原始搜索结果或网页正文；查询不得包含身份、凭据或其他敏感数据。
                   </p>
+                </AlertDescription>
+              </Alert>
+            )}
+            {form.sourceType === SourceType.Weibo && (
+              <Alert className="sm:col-span-2">
+                <TriangleAlert />
+                <div className="mb-1 font-medium leading-none tracking-tight">
+                  微博官方能力前提
+                </div>
+                <AlertDescription>
+                  账号须完成开发者认证、开通套餐或试用并取得 API
+                  Token；健康探测还会确认 search statuses/limited 当前可用。MVP
+                  不支持账号时间线、热搜页或网页抓取。
                 </AlertDescription>
               </Alert>
             )}

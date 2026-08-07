@@ -27,6 +27,7 @@ describe("domain enums", () => {
     expect(SourceType.HackerNews).toBe("hacker_news");
     expect(SourceType.X).toBe("x");
     expect(SourceType.Bilibili).toBe("bilibili");
+    expect(SourceType.Weibo).toBe("weibo");
     expect(SourceHealthStatus.Unavailable).toBe("unavailable");
     expect(MonitorStatus.Paused).toBe("paused");
     expect(MonitorAction.Publish).toBe("publish");

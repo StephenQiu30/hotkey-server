@@ -100,6 +100,18 @@ func TestProductionSourceCodeDoesNotScrapeSogouSearchPages(t *testing.T) {
 	}
 }
 
+func TestWeiboConnectorDoesNotCallWebOrMobilePrivateEndpoints(t *testing.T) {
+	violations := productionGoFilesContaining(t, filepath.Join(repositoryRoot(t), "internal"), []string{
+		"weibo.com/ajax/",
+		"m.weibo.cn/api/",
+		"weibo.com/hot/search",
+		"weibo.com/newlogin",
+	})
+	if len(violations) > 0 {
+		t.Fatalf("production code calls a Weibo web/mobile private endpoint: %s", strings.Join(violations, ", "))
+	}
+}
+
 func productionGoFilesContaining(t *testing.T, root string, forbidden []string) []string {
 	t.Helper()
 	var violations []string

@@ -7783,7 +7783,8 @@ const docTemplate = `{
                         "rss",
                         "hacker_news",
                         "x",
-                        "bilibili"
+                        "bilibili",
+                        "weibo"
                     ]
                 },
                 "supports_comments": {
@@ -7943,7 +7944,8 @@ const docTemplate = `{
                         "hacker_news",
                         "x",
                         "bing_grounding",
-                        "bilibili"
+                        "bilibili",
+                        "weibo"
                     ]
                 },
                 "terms_policy_url": {
@@ -10862,7 +10864,8 @@ const docTemplate = `{
                         "hacker_news",
                         "x",
                         "bing_grounding",
-                        "bilibili"
+                        "bilibili",
+                        "weibo"
                     ]
                 },
                 "terms_policy_url": {

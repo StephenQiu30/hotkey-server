@@ -241,7 +241,7 @@ func (service *Service) changeEnabled(ctx context.Context, input LifecycleInput,
 			changed = *current
 			return nil
 		}
-		if enabled && (current.SourceType == domain.SourceTypeX || current.SourceType == domain.SourceTypeBingGrounding || current.SourceType == domain.SourceTypeBilibili) && current.HealthStatus != domain.HealthStatusHealthy {
+		if enabled && (current.SourceType == domain.SourceTypeX || current.SourceType == domain.SourceTypeBingGrounding || current.SourceType == domain.SourceTypeBilibili || current.SourceType == domain.SourceTypeWeibo) && current.HealthStatus != domain.HealthStatusHealthy {
 			return domain.SourceConnectionUnavailable()
 		}
 		if enabled && current.SourceType == domain.SourceTypeBingGrounding && !current.Config.GroundingDataBoundaryApproved {
@@ -498,7 +498,7 @@ func lockConfiguration(ctx context.Context, transaction database.Transaction) er
 }
 
 func normalizeCreate(connection domain.SourceConnection) (domain.SourceConnection, error) {
-	if connection.SourceType != domain.SourceTypeRSS && connection.SourceType != domain.SourceTypeHackerNews && connection.SourceType != domain.SourceTypeX && connection.SourceType != domain.SourceTypeBingGrounding && connection.SourceType != domain.SourceTypeBilibili {
+	if connection.SourceType != domain.SourceTypeRSS && connection.SourceType != domain.SourceTypeHackerNews && connection.SourceType != domain.SourceTypeX && connection.SourceType != domain.SourceTypeBingGrounding && connection.SourceType != domain.SourceTypeBilibili && connection.SourceType != domain.SourceTypeWeibo {
 		return domain.SourceConnection{}, domain.UnsupportedSourceType()
 	}
 	// A new connection cannot be created already archived. `enabled` remains
@@ -506,7 +506,7 @@ func normalizeCreate(connection domain.SourceConnection) (domain.SourceConnectio
 	// route that may change `Deleted` after creation.
 	connection.Deleted = false
 	connection.HealthStatus = domain.HealthStatusUnknown
-	if connection.SourceType == domain.SourceTypeX || connection.SourceType == domain.SourceTypeBingGrounding || connection.SourceType == domain.SourceTypeBilibili {
+	if connection.SourceType == domain.SourceTypeX || connection.SourceType == domain.SourceTypeBingGrounding || connection.SourceType == domain.SourceTypeBilibili || connection.SourceType == domain.SourceTypeWeibo {
 		connection.Enabled = false
 	}
 	normalized, err := domain.NormalizeSourceConnection(connection)
@@ -539,7 +539,7 @@ func mergeUpdate(current domain.SourceConnection, input UpdateInput) (domain.Sou
 	if input.TermsPolicyURL != nil {
 		next.TermsPolicyURL = *input.TermsPolicyURL
 	}
-	if next.SourceType != domain.SourceTypeRSS && next.SourceType != domain.SourceTypeHackerNews && next.SourceType != domain.SourceTypeX && next.SourceType != domain.SourceTypeBingGrounding && next.SourceType != domain.SourceTypeBilibili {
+	if next.SourceType != domain.SourceTypeRSS && next.SourceType != domain.SourceTypeHackerNews && next.SourceType != domain.SourceTypeX && next.SourceType != domain.SourceTypeBingGrounding && next.SourceType != domain.SourceTypeBilibili && next.SourceType != domain.SourceTypeWeibo {
 		return domain.SourceConnection{}, false, false, domain.UnsupportedSourceType()
 	}
 	normalized, err := domain.NormalizeSourceConnection(next)
