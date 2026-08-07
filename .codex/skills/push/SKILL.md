@@ -27,9 +27,9 @@ description:
 
 1. Identify current branch and confirm remote state.
 2. Confirm branch commits use `<type>(<scope>): <subject>` with a non-empty
-   lowercase scope and only the types allowed by `AGENTS.md`; reject legacy
-   `impl:`, unscoped, empty-scope, or missing-space variants. Preserve
-   test-first ordering for behavior work.
+   lowercase scope, a Simplified Chinese subject, and only the types allowed by
+   `AGENTS.md`; reject legacy `impl:`, English-subject, unscoped, empty-scope,
+   or missing-space variants. Preserve test-first ordering for behavior work.
 3. Run project validation for the change scope before pushing.
 4. Push branch to `origin` with upstream tracking if needed, using whatever
    remote URL is already configured.

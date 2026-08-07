@@ -79,15 +79,15 @@ git diff --check
 
 - `scope` 必填，使用稳定的小写英文模块名，例如 `backend`、`frontend`、`docs`、`ci` 或 `repo`。
 - `type` 只使用 `feat`、`fix`、`test`、`refactor`、`docs`、`chore`、`perf`、`build`、`ci` 或 `revert`。
-- 冒号后保留一个空格，标题使用祈使语气且不超过 72 个字符；不使用 `impl`、空 scope 或自定义前缀。
+- `subject` 使用简体中文动宾短语；冒号后保留一个空格，标题不超过 72 个字符，不使用英文主题、`impl`、空 scope 或自定义前缀。
 - 不兼容变更在冒号前增加 `!`，并在正文添加 `BREAKING CHANGE:` 与迁移说明。
-- 行为变更按 `test` → `feat`/`fix` → `refactor`/`docs` 的顺序提交；提交正文记录摘要、原因与实际运行的验证命令。
+- 行为变更按 `test` → `feat`/`fix` → `refactor`/`docs` 的顺序提交；提交正文使用中文，并以“变更摘要”“变更原因”“验证”记录实际内容和命令。
 
 ```text
-feat(frontend): add monitor empty state
-fix(backend): reject expired verification codes
-test(identity): cover password reset rotation
-docs(workflow): define commit message convention
+feat(frontend): 新增监控空状态
+fix(backend): 拒绝已过期的验证码
+test(identity): 覆盖密码重置轮换流程
+docs(workflow): 统一提交信息规范
 ```
 
 长期影响架构、需求、验收或运维的内容放入根 `docs/` 对应分类，使用 `scope` 标识前端、后端或共享范围，并遵守 frontmatter 与索引规则。

@@ -25,7 +25,9 @@ Every title must use Conventional Commits with a non-empty scope:
 Allowed types are `feat`, `fix`, `test`, `refactor`, `docs`, `chore`, `perf`,
 `build`, `ci`, and `revert`. Use a stable lowercase scope such as `backend`,
 `frontend`, `identity`, `docs`, `ci`, or `repo`. Do not use `impl`, an empty
-scope, an unscoped prefix, or omit the single space after the colon.
+scope, an unscoped prefix, or omit the single space after the colon. The
+subject must be a concise Simplified Chinese verb-object phrase; do not use an
+English subject.
 
 For feature or behavior work, preserve order: `test` first, then `feat`/`fix`,
 then optional `refactor`, `docs`, or `chore`.
@@ -46,8 +48,8 @@ Do not mix unrelated types in one commit. Split by type when practical.
 4. Sanity-check newly added files; flag build artifacts, logs, or temp files before committing.
 5. If staging is incomplete or includes unrelated files, fix the index or ask for confirmation.
 6. Choose the allowed type and stable non-empty scope that match the staged diff.
-7. Write a subject line in imperative mood, <= 72 characters. Format: `<type>(<scope>): <subject>`.
-8. Write a body with summary, rationale, and tests or validation run (or why not run).
+7. Write a concise Simplified Chinese subject, <= 72 characters. Format: `<type>(<scope>): <subject>`.
+8. Write the body in Chinese with change summary, rationale, and tests or validation run (or why not run).
 9. Wrap body lines at 72 characters.
 10. Create the commit message with a here-doc or temp file and use `git commit -F <file>`.
 11. Commit only when the message matches the staged changes.
@@ -59,14 +61,14 @@ Do not mix unrelated types in one commit. Split by type when practical.
 ## Template
 
 ```
-<type>(<scope>): <subject>
+<type>(<scope>): <中文主题>
 
-Summary:
-- <what changed>
+变更摘要：
+- <变更内容>
 
-Rationale:
-- <why>
+变更原因：
+- <变更原因>
 
-Tests:
-- <command or "not run (reason)">
+验证：
+- <验证命令或“未运行（原因）”>
 ```
