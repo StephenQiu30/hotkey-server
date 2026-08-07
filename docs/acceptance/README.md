@@ -24,3 +24,4 @@ canonical_path: docs/acceptance/README.md
 | 005 | [监控主题CRUD与生命周期](005-监控主题CRUD与生命周期验收.md) | passed |
 | 006 | [关键词规则与多语言查询扩展](006-关键词规则与多语言查询扩展验收.md) | passed |
 | 007 | [来源连接控制面与合规健康](007-来源连接控制面与合规健康验收.md) | passed |
+| 008 | [RSS-Atom来源连接器](008-RSS-Atom来源连接器验收.md) | passed |

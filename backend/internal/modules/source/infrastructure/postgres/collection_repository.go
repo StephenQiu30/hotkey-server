@@ -777,21 +777,32 @@ type capturedItemPayload struct {
 	Author                string                       `json:"author,omitempty"`
 	PublishedAt           *time.Time                   `json:"published_at,omitempty"`
 	ObservedAt            time.Time                    `json:"observed_at"`
+	EvidenceCompleteness  domain.EvidenceCompleteness  `json:"evidence_completeness,omitempty"`
+	Attachments           []domain.SourceAttachment    `json:"attachments,omitempty"`
 	Metrics               domain.SourceMetrics         `json:"metrics"`
 	RawPayloadDisposition domain.RawPayloadDisposition `json:"raw_payload_disposition"`
 }
 
 func encodedCapturedItem(item domain.CapturedItem) ([]byte, string, error) {
-	if item.Version != domain.CapturedItemVersionV2 || item.SourceCode == "" || item.ExternalID == "" || item.ContentType == "" || item.ObservedAt.IsZero() || !item.RawPayloadDisposition.Valid() {
+	if item.Version != domain.CapturedItemVersionV2 || item.SourceCode == "" || item.ExternalID == "" || item.ContentType == "" || item.ObservedAt.IsZero() || !item.RawPayloadDisposition.Valid() || !item.EvidenceCompleteness.Valid() {
 		return nil, "", errors.New("captured item is incomplete")
+	}
+	normalized, err := domain.NormalizeSourceItem(domain.SourceItem{
+		SourceCode: item.SourceCode, ExternalID: item.ExternalID, ContentType: item.ContentType, Title: item.Title,
+		Body: item.Body, Language: item.Language, URL: item.URL, Author: item.Author, PublishedAt: item.PublishedAt,
+		ObservedAt: item.ObservedAt, EvidenceCompleteness: item.EvidenceCompleteness, Attachments: item.Attachments, Metrics: item.Metrics,
+	})
+	if err != nil {
+		return nil, "", err
 	}
 	if err := item.Metrics.Validate(); err != nil {
 		return nil, "", err
 	}
 	payload, err := json.Marshal(capturedItemPayload{
-		Version: item.Version, SourceCode: item.SourceCode, ExternalID: item.ExternalID, ContentType: item.ContentType,
-		Title: item.Title, Body: item.Body, Language: item.Language, URL: item.URL, Author: item.Author,
-		PublishedAt: item.PublishedAt, ObservedAt: item.ObservedAt.UTC(), Metrics: item.Metrics,
+		Version: item.Version, SourceCode: normalized.SourceCode, ExternalID: normalized.ExternalID, ContentType: normalized.ContentType,
+		Title: normalized.Title, Body: normalized.Body, Language: normalized.Language, URL: normalized.URL, Author: normalized.Author,
+		PublishedAt: normalized.PublishedAt, ObservedAt: normalized.ObservedAt.UTC(), EvidenceCompleteness: normalized.EvidenceCompleteness,
+		Attachments: normalized.Attachments, Metrics: normalized.Metrics,
 		RawPayloadDisposition: item.RawPayloadDisposition,
 	})
 	if err != nil {
@@ -809,7 +820,7 @@ func decodeCapturedItem(payload []byte) (domain.CapturedItem, error) {
 	if persisted.Version != domain.CapturedItemVersionV1 && persisted.Version != domain.CapturedItemVersionV2 {
 		return domain.CapturedItem{}, fmt.Errorf("unsupported captured item version %q", persisted.Version)
 	}
-	if persisted.SourceCode == "" || persisted.ExternalID == "" || persisted.ContentType == "" || persisted.ObservedAt.IsZero() || !persisted.RawPayloadDisposition.Valid() {
+	if persisted.SourceCode == "" || persisted.ExternalID == "" || persisted.ContentType == "" || persisted.ObservedAt.IsZero() || !persisted.RawPayloadDisposition.Valid() || !persisted.EvidenceCompleteness.Valid() {
 		return domain.CapturedItem{}, errors.New("captured item is incomplete")
 	}
 	if err := persisted.Metrics.Validate(); err != nil {
@@ -822,7 +833,8 @@ func decodeCapturedItem(payload []byte) (domain.CapturedItem, error) {
 	item := domain.CapturedItem{
 		Version: persisted.Version, SourceCode: persisted.SourceCode, ExternalID: persisted.ExternalID,
 		ContentType: persisted.ContentType, Title: persisted.Title, Body: persisted.Body, Language: persisted.Language,
-		URL: persisted.URL, Author: persisted.Author, ObservedAt: persisted.ObservedAt.UTC(), Metrics: metrics,
+		URL: persisted.URL, Author: persisted.Author, ObservedAt: persisted.ObservedAt.UTC(),
+		EvidenceCompleteness: persisted.EvidenceCompleteness, Attachments: persisted.Attachments, Metrics: metrics,
 		RawPayloadDisposition: persisted.RawPayloadDisposition,
 	}
 	if persisted.PublishedAt != nil {

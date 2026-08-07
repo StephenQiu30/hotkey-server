@@ -127,6 +127,21 @@ func TestConnectorClassifiesTimeoutAndInvalidXML(t *testing.T) {
 	})
 }
 
+func TestConnectorRejectsResponseAboveHardByteLimit(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = writer.Write([]byte(strings.Repeat("x", maxResponseBodyBytes+1)))
+	}))
+	defer server.Close()
+
+	connector := newTestConnector(t, server, 1, publicResolver())
+	if _, err := connector.Fetch(context.Background(), testFetchRequest()); err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorPermanent {
+		t.Fatalf("oversized response error = %v, class = %q; want permanent", err, domain.ClassifyCollectionError(err))
+	}
+}
+
 func TestConnectorBoundsPaginationAndRejectsUnsafeDestinations(t *testing.T) {
 	t.Parallel()
 

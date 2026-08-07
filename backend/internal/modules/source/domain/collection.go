@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -32,6 +33,30 @@ const (
 
 func (disposition RawPayloadDisposition) Valid() bool {
 	return disposition == RawPayloadDiscarded || disposition == RawPayloadCapturedItemOnly
+}
+
+type EvidenceCompleteness string
+
+const (
+	// EvidenceCompletenessUnknown preserves compatibility for connectors that
+	// have not declared whether an upstream body is complete or excerpted.
+	EvidenceCompletenessUnknown      EvidenceCompleteness = ""
+	EvidenceCompletenessMetadataOnly EvidenceCompleteness = "metadata_only"
+	EvidenceCompletenessSummaryOnly  EvidenceCompleteness = "summary_only"
+	EvidenceCompletenessFullBody     EvidenceCompleteness = "full_body"
+	MaxSourceAttachments                                  = 32
+)
+
+func (completeness EvidenceCompleteness) Valid() bool {
+	return completeness == EvidenceCompletenessUnknown || completeness == EvidenceCompletenessMetadataOnly || completeness == EvidenceCompletenessSummaryOnly || completeness == EvidenceCompletenessFullBody
+}
+
+// SourceAttachment is metadata declared by a Feed. Connectors never download
+// the referenced bytes; binary capture remains an ingestion concern.
+type SourceAttachment struct {
+	URL       string `json:"url"`
+	MIMEType  string `json:"mime_type,omitempty"`
+	SizeBytes *int64 `json:"size_bytes,omitempty"`
 }
 
 // FetchRequest is the protocol-neutral request for one shared collection run.
@@ -72,18 +97,20 @@ func (request FetchRequest) Validate() error {
 // Connector call is being processed; CapturePolicy intentionally never copies
 // it into a CapturedItem.
 type SourceItem struct {
-	SourceCode  string
-	ExternalID  string
-	ContentType string
-	Title       string
-	Body        string
-	Language    string
-	URL         string
-	Author      string
-	PublishedAt *time.Time
-	ObservedAt  time.Time
-	Metrics     SourceMetrics
-	RawPayload  []byte
+	SourceCode           string
+	ExternalID           string
+	ContentType          string
+	Title                string
+	Body                 string
+	Language             string
+	URL                  string
+	Author               string
+	PublishedAt          *time.Time
+	ObservedAt           time.Time
+	EvidenceCompleteness EvidenceCompleteness
+	Attachments          []SourceAttachment
+	Metrics              SourceMetrics
+	RawPayload           []byte
 }
 
 type SourceMetrics struct {
@@ -115,6 +142,22 @@ func NormalizeSourceItem(item SourceItem) (SourceItem, error) {
 	item.Language = strings.TrimSpace(item.Language)
 	item.URL = strings.TrimSpace(item.URL)
 	item.Author = strings.TrimSpace(item.Author)
+	if !item.EvidenceCompleteness.Valid() {
+		return SourceItem{}, fmt.Errorf("source item evidence completeness is invalid")
+	}
+	if item.Body == "" {
+		if item.EvidenceCompleteness == EvidenceCompletenessSummaryOnly || item.EvidenceCompleteness == EvidenceCompletenessFullBody {
+			return SourceItem{}, fmt.Errorf("source item evidence completeness requires a body")
+		}
+		item.EvidenceCompleteness = EvidenceCompletenessMetadataOnly
+	} else if item.EvidenceCompleteness == EvidenceCompletenessMetadataOnly {
+		return SourceItem{}, fmt.Errorf("metadata-only source item cannot include a body")
+	}
+	attachments, err := normalizeSourceAttachments(item.Attachments)
+	if err != nil {
+		return SourceItem{}, err
+	}
+	item.Attachments = attachments
 	if item.SourceCode == "" || len(item.SourceCode) > 64 {
 		return SourceItem{}, fmt.Errorf("source code must be 1-64 bytes")
 	}
@@ -138,6 +181,30 @@ func NormalizeSourceItem(item SourceItem) (SourceItem, error) {
 		return SourceItem{}, err
 	}
 	return item, nil
+}
+
+func normalizeSourceAttachments(attachments []SourceAttachment) ([]SourceAttachment, error) {
+	if len(attachments) > MaxSourceAttachments {
+		return nil, fmt.Errorf("source item attachment count exceeds %d", MaxSourceAttachments)
+	}
+	normalized := make([]SourceAttachment, 0, len(attachments))
+	for _, attachment := range attachments {
+		attachment.URL = strings.TrimSpace(attachment.URL)
+		attachment.MIMEType = strings.ToLower(strings.TrimSpace(attachment.MIMEType))
+		parsed, err := url.Parse(attachment.URL)
+		if err != nil || parsed == nil || parsed.User != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" || len(attachment.URL) > 2048 || len(attachment.MIMEType) > 255 {
+			return nil, fmt.Errorf("source attachment metadata is invalid")
+		}
+		if attachment.SizeBytes != nil {
+			if *attachment.SizeBytes < 0 {
+				return nil, fmt.Errorf("source attachment size cannot be negative")
+			}
+			size := *attachment.SizeBytes
+			attachment.SizeBytes = &size
+		}
+		normalized = append(normalized, attachment)
+	}
+	return normalized, nil
 }
 
 // CapturePolicy centralizes the durable, versioned projection from a transient
@@ -171,6 +238,8 @@ type CapturedItem struct {
 	Author                string
 	PublishedAt           *time.Time
 	ObservedAt            time.Time
+	EvidenceCompleteness  EvidenceCompleteness
+	Attachments           []SourceAttachment
 	Metrics               SourceMetrics
 	RawPayloadDisposition RawPayloadDisposition
 	RawPayload            []byte
@@ -188,6 +257,7 @@ func (policy CapturePolicy) Capture(item SourceItem) (CapturedItem, error) {
 		Version: policy.Version, SourceCode: normalized.SourceCode, ExternalID: normalized.ExternalID,
 		ContentType: normalized.ContentType, Title: normalized.Title, Language: normalized.Language,
 		URL: normalized.URL, Author: normalized.Author, ObservedAt: normalized.ObservedAt,
+		EvidenceCompleteness: normalized.EvidenceCompleteness, Attachments: normalized.Attachments,
 		Metrics: normalized.Metrics, RawPayloadDisposition: policy.RawPayloadDisposition,
 	}
 	if normalized.PublishedAt != nil {
@@ -196,6 +266,8 @@ func (policy CapturePolicy) Capture(item SourceItem) (CapturedItem, error) {
 	}
 	if policy.AllowBodyStorage {
 		captured.Body = normalized.Body
+	} else {
+		captured.EvidenceCompleteness = EvidenceCompletenessMetadataOnly
 	}
 	return captured, nil
 }

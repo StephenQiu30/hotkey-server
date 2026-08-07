@@ -41,17 +41,19 @@ func TestCollectionSourceItemRequiresStableExternalIDAndCapturePolicyRedacts(t *
 
 	observedAt := time.Date(2026, time.July, 16, 8, 0, 0, 0, time.UTC)
 	item, err := NormalizeSourceItem(SourceItem{
-		SourceCode:  "rss",
-		ExternalID:  "  https://feeds.example.test/posts/42  ",
-		ContentType: "article",
-		Title:       "A safe title",
-		Body:        "body that is not retained when policy forbids it",
-		Language:    "en",
-		URL:         "https://feeds.example.test/posts/42",
-		Author:      "Example Author",
-		ObservedAt:  observedAt,
-		Metrics:     SourceMetrics{ViewCount: int64Pointer(12), CommentCount: int64Pointer(3)},
-		RawPayload:  []byte(`{"authorization":"must-never-persist"}`),
+		SourceCode:           "rss",
+		ExternalID:           "  https://feeds.example.test/posts/42  ",
+		ContentType:          "article",
+		Title:                "A safe title",
+		Body:                 "body that is not retained when policy forbids it",
+		Language:             "en",
+		URL:                  "https://feeds.example.test/posts/42",
+		Author:               "Example Author",
+		ObservedAt:           observedAt,
+		EvidenceCompleteness: EvidenceCompletenessSummaryOnly,
+		Attachments:          []SourceAttachment{{URL: "https://cdn.example.test/report.pdf", MIMEType: "application/pdf", SizeBytes: int64Pointer(1024)}},
+		Metrics:              SourceMetrics{ViewCount: int64Pointer(12), CommentCount: int64Pointer(3)},
+		RawPayload:           []byte(`{"authorization":"must-never-persist"}`),
 	})
 	if err != nil {
 		t.Fatalf("NormalizeSourceItem(): %v", err)
@@ -69,6 +71,9 @@ func TestCollectionSourceItemRequiresStableExternalIDAndCapturePolicyRedacts(t *
 	}
 	if captured.Version != CapturedItemVersionV2 || captured.Body != "" || captured.RawPayloadDisposition != RawPayloadDiscarded {
 		t.Fatalf("captured item = %#v, want versioned body-redacted discarded payload", captured)
+	}
+	if captured.EvidenceCompleteness != EvidenceCompletenessMetadataOnly || len(captured.Attachments) != 1 || captured.Attachments[0].URL != "https://cdn.example.test/report.pdf" {
+		t.Fatalf("captured evidence metadata = %#v / %#v, want metadata-only with preserved attachment", captured.EvidenceCompleteness, captured.Attachments)
 	}
 	if captured.Metrics.ViewCount == nil || *captured.Metrics.ViewCount != 12 || captured.Metrics.CommentCount == nil || *captured.Metrics.CommentCount != 3 || captured.Metrics.LikeCount != nil || captured.Metrics.ShareCount != nil {
 		t.Fatalf("captured metrics = %#v, want safe normalized metrics", captured.Metrics)
@@ -112,6 +117,39 @@ func TestCapturePolicyV2PreservesUnknownAndExplicitZeroMetrics(t *testing.T) {
 	}
 	if captured.Metrics.CommentCount == nil || *captured.Metrics.CommentCount != 7 {
 		t.Fatalf("captured comment count = %#v, want pointer to 7", captured.Metrics.CommentCount)
+	}
+}
+
+func TestNormalizeSourceItemRejectsContradictoryOrUnsafeEvidenceMetadata(t *testing.T) {
+	t.Parallel()
+
+	observedAt := time.Date(2026, time.July, 16, 9, 0, 0, 0, time.UTC)
+	base := SourceItem{SourceCode: "rss", ExternalID: "evidence-validation", ContentType: "article", Title: "Evidence", ObservedAt: observedAt}
+	tests := []struct {
+		name   string
+		mutate func(*SourceItem)
+	}{
+		{"summary without body", func(item *SourceItem) { item.EvidenceCompleteness = EvidenceCompletenessSummaryOnly }},
+		{"metadata with body", func(item *SourceItem) {
+			item.Body = "body"
+			item.EvidenceCompleteness = EvidenceCompletenessMetadataOnly
+		}},
+		{"invalid completeness", func(item *SourceItem) { item.EvidenceCompleteness = "guessed" }},
+		{"credential attachment", func(item *SourceItem) {
+			item.Attachments = []SourceAttachment{{URL: "https://user:secret@cdn.example.test/file"}}
+		}},
+		{"negative attachment size", func(item *SourceItem) {
+			item.Attachments = []SourceAttachment{{URL: "https://cdn.example.test/file", SizeBytes: int64Pointer(-1)}}
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			item := base
+			test.mutate(&item)
+			if _, err := NormalizeSourceItem(item); err == nil {
+				t.Fatalf("NormalizeSourceItem(%s) error = nil", test.name)
+			}
+		})
 	}
 }
 

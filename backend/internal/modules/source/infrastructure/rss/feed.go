@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,13 +34,20 @@ type rssChannel struct {
 }
 
 type rssItem struct {
-	GUID        string `xml:"guid"`
-	Link        string `xml:"link"`
-	Title       string `xml:"title"`
-	Description string `xml:"description"`
-	Content     string `xml:"encoded"`
-	PubDate     string `xml:"pubDate"`
-	Author      string `xml:"author"`
+	GUID        string         `xml:"guid"`
+	Link        string         `xml:"link"`
+	Title       string         `xml:"title"`
+	Description string         `xml:"description"`
+	Content     string         `xml:"encoded"`
+	PubDate     string         `xml:"pubDate"`
+	Author      string         `xml:"author"`
+	Enclosures  []rssEnclosure `xml:"enclosure"`
+}
+
+type rssEnclosure struct {
+	URL    string `xml:"url,attr"`
+	Type   string `xml:"type,attr"`
+	Length string `xml:"length,attr"`
 }
 
 type rdfDocument struct {
@@ -73,8 +81,10 @@ type atomEntry struct {
 }
 
 type atomLink struct {
-	Rel  string `xml:"rel,attr"`
-	Href string `xml:"href,attr"`
+	Rel    string `xml:"rel,attr"`
+	Href   string `xml:"href,attr"`
+	Type   string `xml:"type,attr"`
+	Length string `xml:"length,attr"`
 }
 
 type atomAuthor struct {
@@ -121,15 +131,12 @@ func parsedRDF(document rdfDocument, observedAt time.Time) parsedFeed {
 	feed := parsedFeed{Items: make([]domain.SourceItem, 0, len(document.Items))}
 	seen := make(map[string]struct{}, len(document.Items))
 	for _, entry := range document.Items {
-		description := entry.Content
-		if strings.TrimSpace(description) == "" {
-			description = entry.Description
-		}
 		item, diagnostic := mapRSSItem(rssItem{
 			GUID:        entry.About,
 			Link:        entry.Link,
 			Title:       entry.Title,
-			Description: description,
+			Description: entry.Description,
+			Content:     entry.Content,
 			PubDate:     entry.Date,
 			Author:      entry.Creator,
 		}, observedAt)
@@ -181,13 +188,19 @@ func mapRSSItem(entry rssItem, observedAt time.Time) (domain.SourceItem, fetchDi
 		return domain.SourceItem{}, fetchDiagnostic{Code: code, SourceExternalID: externalID}
 	}
 	body := entry.Content
+	completeness := domain.EvidenceCompletenessFullBody
 	if strings.TrimSpace(body) == "" {
 		body = entry.Description
+		completeness = domain.EvidenceCompletenessSummaryOnly
+	}
+	if strings.TrimSpace(body) == "" {
+		completeness = domain.EvidenceCompletenessMetadataOnly
 	}
 	item, err := domain.NormalizeSourceItem(domain.SourceItem{
 		SourceCode: sourceCode, ExternalID: externalID, ContentType: "article", Title: entry.Title,
 		Body: body, URL: strings.TrimSpace(entry.Link), Author: entry.Author,
-		PublishedAt: publishedAt, ObservedAt: observedAt.UTC(),
+		PublishedAt: publishedAt, ObservedAt: observedAt.UTC(), EvidenceCompleteness: completeness,
+		Attachments: rssAttachments(entry.Enclosures),
 	})
 	if err != nil {
 		return domain.SourceItem{}, fetchDiagnostic{Code: "invalid_source_item", SourceExternalID: externalID}
@@ -210,8 +223,13 @@ func mapAtomItem(entry atomEntry, observedAt time.Time) (domain.SourceItem, fetc
 		return domain.SourceItem{}, fetchDiagnostic{Code: code, SourceExternalID: externalID}
 	}
 	body := entry.Content
+	completeness := domain.EvidenceCompletenessFullBody
 	if strings.TrimSpace(body) == "" {
 		body = entry.Summary
+		completeness = domain.EvidenceCompletenessSummaryOnly
+	}
+	if strings.TrimSpace(body) == "" {
+		completeness = domain.EvidenceCompletenessMetadataOnly
 	}
 	author := ""
 	if len(entry.Authors) > 0 {
@@ -220,6 +238,7 @@ func mapAtomItem(entry atomEntry, observedAt time.Time) (domain.SourceItem, fetc
 	item, err := domain.NormalizeSourceItem(domain.SourceItem{
 		SourceCode: sourceCode, ExternalID: externalID, ContentType: "article", Title: entry.Title,
 		Body: body, URL: link, Author: author, PublishedAt: publishedAt, ObservedAt: observedAt.UTC(),
+		EvidenceCompleteness: completeness, Attachments: atomAttachments(entry.Links),
 	})
 	if err != nil {
 		return domain.SourceItem{}, fetchDiagnostic{Code: "invalid_source_item", SourceExternalID: externalID}
@@ -276,11 +295,53 @@ func preferredAtomURL(links []atomLink) string {
 		}
 	}
 	for _, link := range links {
-		if strings.TrimSpace(link.Href) != "" {
+		if !strings.EqualFold(strings.TrimSpace(link.Rel), "enclosure") && strings.TrimSpace(link.Href) != "" {
 			return strings.TrimSpace(link.Href)
 		}
 	}
 	return ""
+}
+
+func rssAttachments(enclosures []rssEnclosure) []domain.SourceAttachment {
+	attachments := make([]domain.SourceAttachment, 0, min(len(enclosures), domain.MaxSourceAttachments))
+	for _, enclosure := range enclosures {
+		if len(attachments) == domain.MaxSourceAttachments {
+			break
+		}
+		if attachment, ok := sourceAttachment(enclosure.URL, enclosure.Type, enclosure.Length); ok {
+			attachments = append(attachments, attachment)
+		}
+	}
+	return attachments
+}
+
+func atomAttachments(links []atomLink) []domain.SourceAttachment {
+	attachments := make([]domain.SourceAttachment, 0)
+	for _, link := range links {
+		if len(attachments) == domain.MaxSourceAttachments {
+			break
+		}
+		if strings.EqualFold(strings.TrimSpace(link.Rel), "enclosure") {
+			if attachment, ok := sourceAttachment(link.Href, link.Type, link.Length); ok {
+				attachments = append(attachments, attachment)
+			}
+		}
+	}
+	return attachments
+}
+
+func sourceAttachment(rawURL, mimeType, rawSize string) (domain.SourceAttachment, bool) {
+	rawURL = strings.TrimSpace(rawURL)
+	mimeType = strings.TrimSpace(mimeType)
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed == nil || parsed.User != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" || len(rawURL) > 2048 || len(mimeType) > 255 {
+		return domain.SourceAttachment{}, false
+	}
+	attachment := domain.SourceAttachment{URL: rawURL, MIMEType: mimeType}
+	if size, err := strconv.ParseInt(strings.TrimSpace(rawSize), 10, 64); err == nil && size >= 0 {
+		attachment.SizeBytes = &size
+	}
+	return attachment, true
 }
 
 func nextAtomURL(links []atomLink) string {

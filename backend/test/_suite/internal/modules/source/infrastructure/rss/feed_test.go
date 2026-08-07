@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 )
 
 func TestParseFeedNormalizesRSSAndAtomItems(t *testing.T) {
@@ -144,6 +146,73 @@ func TestParseFeedPrefersContentAcrossRSSRDFAndAtom(t *testing.T) {
 		})
 	}
 }
+
+func TestParseFeedMarksEvidenceCompletenessAndPreservesEnclosures(t *testing.T) {
+	t.Parallel()
+
+	observedAt := time.Date(2026, time.July, 18, 9, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name         string
+		payload      string
+		completeness domain.EvidenceCompleteness
+		attachment   domain.SourceAttachment
+	}{
+		{
+			name: "rss summary fallback",
+			payload: `<?xml version="1.0"?><rss><channel><item>
+				<guid>rss-summary</guid><link>https://example.test/rss-summary</link><title>RSS summary</title>
+				<description>publisher summary</description>
+				<enclosure url="https://cdn.example.test/audio.mp3" type="audio/mpeg" length="2048"/>
+			</item></channel></rss>`,
+			completeness: domain.EvidenceCompletenessSummaryOnly,
+			attachment:   domain.SourceAttachment{URL: "https://cdn.example.test/audio.mp3", MIMEType: "audio/mpeg", SizeBytes: int64Pointer(2048)},
+		},
+		{
+			name: "atom full body",
+			payload: `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry>
+				<id>atom-body</id><title>Atom body</title><link rel="alternate" href="https://example.test/atom-body"/>
+				<summary>publisher summary</summary><content>publisher full body</content>
+				<link rel="enclosure" href="https://cdn.example.test/video.mp4" type="video/mp4" length="4096"/>
+			</entry></feed>`,
+			completeness: domain.EvidenceCompletenessFullBody,
+			attachment:   domain.SourceAttachment{URL: "https://cdn.example.test/video.mp4", MIMEType: "video/mp4", SizeBytes: int64Pointer(4096)},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			feed, err := parseFeed([]byte(test.payload), observedAt)
+			if err != nil {
+				t.Fatalf("parseFeed() error = %v", err)
+			}
+			if len(feed.Items) != 1 || feed.Items[0].EvidenceCompleteness != test.completeness {
+				t.Fatalf("items = %#v, want evidence completeness %q", feed.Items, test.completeness)
+			}
+			if len(feed.Items[0].Attachments) != 1 || feed.Items[0].Attachments[0].URL != test.attachment.URL || feed.Items[0].Attachments[0].MIMEType != test.attachment.MIMEType || feed.Items[0].Attachments[0].SizeBytes == nil || *feed.Items[0].Attachments[0].SizeBytes != *test.attachment.SizeBytes {
+				t.Fatalf("attachments = %#v, want %#v", feed.Items[0].Attachments, test.attachment)
+			}
+		})
+	}
+}
+
+func TestParseFeedIgnoresUnsafeOptionalEnclosuresWithoutDroppingItem(t *testing.T) {
+	t.Parallel()
+
+	payload := `<?xml version="1.0"?><rss><channel><item>
+		<guid>safe-item</guid><link>https://example.test/safe-item</link><title>Safe item</title>
+		<description>Publisher summary</description>
+		<enclosure url="file:///etc/passwd" type="text/plain" length="128"/>
+		<enclosure url="https://user:secret@cdn.example.test/file" type="text/plain" length="128"/>
+	</item></channel></rss>`
+	feed, err := parseFeed([]byte(payload), time.Date(2026, time.July, 18, 9, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("parseFeed() error = %v", err)
+	}
+	if len(feed.Items) != 1 || len(feed.Items[0].Attachments) != 0 || feed.Items[0].EvidenceCompleteness != domain.EvidenceCompletenessSummaryOnly {
+		t.Fatalf("feed = %#v, want accepted summary without unsafe enclosure metadata", feed)
+	}
+}
+
+func int64Pointer(value int64) *int64 { return &value }
 
 func diagnosticCodes(diagnostics []fetchDiagnostic) map[string]int {
 	codes := make(map[string]int, len(diagnostics))

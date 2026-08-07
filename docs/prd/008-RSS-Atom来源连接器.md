@@ -3,7 +3,7 @@ layer: PRD
 scope: backend
 doc_no: "008"
 title: RSS-Atom来源连接器
-status: draft
+status: implemented
 version: v1.0
 owner: HotKey Team
 phase: P0
@@ -20,7 +20,7 @@ RSS/Atom HTTPS 连接器、分页、ETag/Last-Modified、SSRF 防护、标准化
 
 ## 产品目标
 
-将财新、36氪、澎湃、人民网、第一财经、界面新闻、虎嗅等拥有公开或授权 Feed 的站点作为首要稳定事实源。
+将拥有公开或授权 Feed 的站点作为首要稳定事实源，并提供可追溯、可降级且不会无限消耗资源的采集结果。
 
 ## 范围
 
@@ -38,9 +38,10 @@ RSS/Atom HTTPS 连接器、分页、ETag/Last-Modified、SSRF 防护、标准化
 ## 功能要求
 
 - FR-008-1：一个 SourceConnection 绑定一个不可变 HTTPS Feed 根端点；翻页只能同源并重复执行安全校验。
-- FR-008-2：支持 RSS 2.0 与 Atom，保留 guid/id、canonical URL、作者、发布时间、摘要、正文和附件元数据。
-- FR-008-3：使用 ETag、Last-Modified 和 checkpoint 增量拉取；单次页数、正文大小、项目数和超时均有硬上限。
-- FR-008-4：来源没有公开 Feed 时不抓取网页，改为等待授权 Feed 或由用户提供合法订阅地址。
+- FR-008-2：支持 RSS 2.0、RSS 1.0 与 Atom，保留 guid/id、canonical URL、作者、发布时间、摘要、正文和 enclosure 元数据；附件只保留安全元数据，不在本条下载。
+- FR-008-3：使用 ETag、Last-Modified 和 checkpoint 增量拉取；单次页数、4 MiB Feed 响应、项目数和超时均有硬上限。
+- FR-008-4：正文、摘要降级和仅元数据分别标记为 `full_body`、`summary_only`、`metadata_only`，并随 CapturedItem 持久化；关闭正文保存时降级为 `metadata_only`。
+- FR-008-5：来源没有公开 Feed 时不抓取网页，改为等待授权 Feed 或由用户提供合法订阅地址。
 
 ## 非功能要求
 

@@ -18,7 +18,10 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/sourcenet"
 )
 
-const maxRedirects = 3
+const (
+	maxRedirects         = 3
+	maxResponseBodyBytes = 4 << 20
+)
 
 var (
 	errUnsafeDestination = errors.New("unsafe RSS destination")
@@ -162,10 +165,13 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 			closeResponse(response)
 			return result, statusError(status)
 		}
-		payload, readErr := io.ReadAll(response.Body)
+		payload, readErr := io.ReadAll(io.LimitReader(response.Body, maxResponseBodyBytes+1))
 		closeErr := response.Body.Close()
 		if readErr != nil || closeErr != nil {
 			return result, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("read RSS response"))
+		}
+		if len(payload) > maxResponseBodyBytes {
+			return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("RSS response exceeds body byte limit"))
 		}
 		feed, err := parseFeed(payload, connector.now())
 		if err != nil {

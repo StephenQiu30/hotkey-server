@@ -192,8 +192,11 @@ func TestCollectionRepositoryReadsAndBindsCapturedItemsWithSourceOwnership(t *te
 	if _, started, err := repository.StartRun(context.Background(), run.ID, time.Time{}); err != nil || !started {
 		t.Fatalf("StartRun() started/error = %t / %v", started, err)
 	}
-	captured, err := (domain.CapturePolicy{Version: domain.CapturedItemVersionV2, RawPayloadDisposition: domain.RawPayloadDiscarded}).Capture(domain.SourceItem{
-		SourceCode: "rss", ExternalID: "ingestion-boundary-item", ContentType: "article", Title: "Capture boundary", URL: "https://example.test/capture-boundary", ObservedAt: request.WindowStart,
+	attachmentSize := int64(1024)
+	captured, err := (domain.CapturePolicy{Version: domain.CapturedItemVersionV2, AllowBodyStorage: true, RawPayloadDisposition: domain.RawPayloadDiscarded}).Capture(domain.SourceItem{
+		SourceCode: "rss", ExternalID: "ingestion-boundary-item", ContentType: "article", Title: "Capture boundary", Body: "Publisher summary",
+		URL: "https://example.test/capture-boundary", ObservedAt: request.WindowStart, EvidenceCompleteness: domain.EvidenceCompletenessSummaryOnly,
+		Attachments: []domain.SourceAttachment{{URL: "https://cdn.example.test/report.pdf", MIMEType: "application/pdf", SizeBytes: &attachmentSize}},
 	})
 	if err != nil {
 		t.Fatalf("Capture(): %v", err)
@@ -211,6 +214,9 @@ func TestCollectionRepositoryReadsAndBindsCapturedItemsWithSourceOwnership(t *te
 	item := page.Items[0]
 	if item.RunID != run.ID || item.SourceConnectionID != request.SourceConnectionID || item.Item.Version != domain.CapturedItemVersionV2 {
 		t.Fatalf("captured item = %#v, want source-owned v2 run item", item)
+	}
+	if item.Item.EvidenceCompleteness != domain.EvidenceCompletenessSummaryOnly || item.Item.Body != "Publisher summary" || len(item.Item.Attachments) != 1 || item.Item.Attachments[0].SizeBytes == nil || *item.Item.Attachments[0].SizeBytes != attachmentSize {
+		t.Fatalf("captured evidence metadata = %#v, want durable summary-only marker and enclosure", item.Item)
 	}
 
 	var wrongSourceID, wrongContentID, contentID int64
