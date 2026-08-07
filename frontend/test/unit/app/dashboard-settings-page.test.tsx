@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   postMonitorsIdPause: vi.fn(),
   postMonitorsIdResume: vi.fn(),
   postMonitorsIdArchive: vi.fn(),
+  postMonitorsIdDraftAiCandidates: vi.fn(),
+  postMonitorsIdDraftRulesRuleIdApproval: vi.fn(),
   postMonitorsIdRestore: vi.fn(),
   deleteMonitorsId: vi.fn(),
   getSourceConnections: vi.fn(),
@@ -31,6 +33,8 @@ vi.mock("@/services/hotkey/hotkey-server/monitors", () => ({
   postMonitorsIdPause: mocks.postMonitorsIdPause,
   postMonitorsIdResume: mocks.postMonitorsIdResume,
   postMonitorsIdArchive: mocks.postMonitorsIdArchive,
+  postMonitorsIdDraftAiCandidates: mocks.postMonitorsIdDraftAiCandidates,
+  postMonitorsIdDraftRulesRuleIdApproval: mocks.postMonitorsIdDraftRulesRuleIdApproval,
   postMonitorsIdRestore: mocks.postMonitorsIdRestore,
   deleteMonitorsId: mocks.deleteMonitorsId,
 }));
@@ -96,8 +100,10 @@ describe("MonitorsPage", () => {
     mocks.getMonitorsId.mockResolvedValue({ data: monitor });
     mocks.getMonitorsIdVersions.mockResolvedValue({ data: { items: [draft, published] } });
     mocks.putMonitorsIdDraft.mockResolvedValue({ data: monitor });
-    mocks.postMonitorsIdPreview.mockResolvedValue({ data: { eligible: true, config_hash: "b".repeat(64), estimated_requests: 2, warnings: [], sources: [{ source_connection_id: 7, estimated_requests: 2 }] } });
+    mocks.postMonitorsIdPreview.mockResolvedValue({ data: { eligible: true, config_hash: "b".repeat(64), estimated_requests: 2, warnings: [], sources: [{ source_connection_id: 7, estimated_requests: 2, compiled_query: "OpenAI -jobs", query_mode: "local_filter", query_signature: "c".repeat(64), languages: ["zh", "en"], max_query_bytes: 2048 }] } });
     mocks.postMonitorsIdPublish.mockResolvedValue({ data: { ...monitor, status: "active", draft: undefined } });
+    mocks.postMonitorsIdDraftAiCandidates.mockResolvedValue({ data: { id: 41, origin: "ai", approval_status: "pending" } });
+    mocks.postMonitorsIdDraftRulesRuleIdApproval.mockResolvedValue({ data: null });
     mocks.postMonitorsIdPause.mockResolvedValue({ data: { ...monitor, version: 5, status: "paused" } });
   });
 
@@ -121,7 +127,7 @@ describe("MonitorsPage", () => {
 
     await user.click(await screen.findByRole("button", { name: "编辑草稿" }));
     expect(screen.getByRole("dialog", { name: "编辑监控草稿" })).toBeInTheDocument();
-    expect(screen.getByLabelText("关键词规则")).toHaveValue("OpenAI");
+    expect(screen.getByLabelText("规则 1 内容")).toHaveValue("OpenAI");
     await user.click(screen.getByRole("button", { name: "保存草稿" }));
 
     await waitFor(() => expect(mocks.putMonitorsIdDraft).toHaveBeenCalledWith(
@@ -140,6 +146,8 @@ describe("MonitorsPage", () => {
     expect(mocks.postMonitorsIdPreview).toHaveBeenCalledWith({ id: 1 });
     expect(await screen.findByRole("dialog", { name: "发布预览" })).toBeInTheDocument();
     expect(screen.getByText("预计请求 2 次")).toBeInTheDocument();
+    expect(screen.getByText("OpenAI -jobs")).toBeInTheDocument();
+    expect(screen.getByText("local_filter")).toBeInTheDocument();
     expect(mocks.postMonitorsIdPublish).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "确认发布" }));
 
@@ -161,6 +169,27 @@ describe("MonitorsPage", () => {
     expect(screen.getAllByText("OpenAI").length).toBeGreaterThan(0);
     expect(screen.getAllByText("修订 2").length).toBeGreaterThan(0);
     expect(screen.getByText("修订 1")).toBeInTheDocument();
+  });
+
+  it("keeps AI expansion candidates pending until an administrator approves them", async () => {
+    render(<MonitorsPage />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "导入 AI 候选" }));
+    await user.type(screen.getByLabelText("候选内容"), "agentic workflow");
+    await user.click(screen.getByRole("button", { name: "加入待审批" }));
+    await waitFor(() => expect(mocks.postMonitorsIdDraftAiCandidates).toHaveBeenCalledWith(
+      { id: 1 },
+      expect.objectContaining({ expected_monitor_version: 4, expected_draft_version: 3, value: "agentic workflow", weight: 60 }),
+    ));
+
+    const pending = { ...draft, rules: [...(draft.rules ?? []), { id: 41, rule_type: "phrase", operator: "contains", value: "agentic workflow", origin: "ai", approval_status: "pending", weight: 60, enabled: true }] };
+    mocks.getMonitorsId.mockResolvedValue({ data: { ...monitor, draft: pending } });
+    await user.click(screen.getByRole("button", { name: "查看详情" }));
+    await user.click(await screen.findByRole("button", { name: "批准" }));
+    await waitFor(() => expect(mocks.postMonitorsIdDraftRulesRuleIdApproval).toHaveBeenCalledWith(
+      { id: 1, rule_id: 41 },
+      { approval: "approved", expected_monitor_version: 4, expected_draft_version: 3 },
+    ));
   });
 
   it("supports direct lifecycle actions and a visible retry state", async () => {

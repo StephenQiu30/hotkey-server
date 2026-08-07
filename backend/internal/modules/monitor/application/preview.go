@@ -5,11 +5,17 @@ import (
 
 	identitydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/domain"
+	sourcedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 )
 
 type PreviewSource struct {
 	SourceConnectionID int64
 	QuerySignature     string
+	CompiledQuery      string
+	QueryMode          string
+	Languages          []string
+	Regions            []string
+	MaxQueryBytes      int
 	IncludedRuleIDs    []int64
 	ExcludedRuleIDs    []int64
 	UnapprovedRuleIDs  []int64
@@ -63,7 +69,7 @@ func (service *Service) Preview(ctx context.Context, subject identitydomain.Subj
 		if err != nil {
 			return PreviewResult{}, monitorSourceError(err)
 		}
-		preview := PreviewSource{SourceConnectionID: source.SourceConnectionID, IncludedRuleIDs: []int64{}, ExcludedRuleIDs: []int64{}, UnapprovedRuleIDs: []int64{}, EstimatedRequests: connection.Config.MaxPagesPerRun}
+		preview := PreviewSource{SourceConnectionID: source.SourceConnectionID, QueryMode: "local_filter", MaxQueryBytes: sourcedomain.MaxCollectionQueryBytes, IncludedRuleIDs: []int64{}, ExcludedRuleIDs: []int64{}, UnapprovedRuleIDs: []int64{}, EstimatedRequests: connection.Config.MaxPagesPerRun}
 		for _, rule := range rules {
 			if !rule.Enabled {
 				continue
@@ -84,9 +90,19 @@ func (service *Service) Preview(ctx context.Context, subject identitydomain.Subj
 			result.Sources = append(result.Sources, preview)
 			continue
 		}
-		if _, err := intersectSourceLocales(effective, connection.Config); err != nil {
+		perSource, err := intersectSourceLocales(effective, connection.Config)
+		if err != nil {
 			result.Eligible = false
 			result.Warnings = append(result.Warnings, "source_locale_intersection_empty")
+			result.Sources = append(result.Sources, preview)
+			continue
+		}
+		preview.Languages = append([]string(nil), perSource.Languages...)
+		preview.Regions = append([]string(nil), perSource.Regions...)
+		preview.CompiledQuery, err = sourcedomain.CompileCollectionQuery(source.QueryOverride, collectionTerms(rules))
+		if err != nil {
+			result.Eligible = false
+			result.Warnings = append(result.Warnings, "source_query_limit_exceeded")
 			result.Sources = append(result.Sources, preview)
 			continue
 		}
@@ -102,4 +118,20 @@ func (service *Service) Preview(ctx context.Context, subject identitydomain.Subj
 		result.Warnings = append(result.Warnings, "no_enabled_sources")
 	}
 	return result, nil
+}
+
+func collectionTerms(rules []domain.MonitorRule) []sourcedomain.CollectionTerm {
+	terms := make([]sourcedomain.CollectionTerm, 0, len(rules))
+	for _, rule := range rules {
+		if !rule.Enabled || rule.ApprovalStatus != domain.RuleApprovalApproved {
+			continue
+		}
+		switch rule.RuleType {
+		case domain.RuleTypeKeyword, domain.RuleTypePhrase, domain.RuleTypeEntity:
+			terms = append(terms, sourcedomain.CollectionTerm{Value: rule.Value})
+		case domain.RuleTypeExcludeKeyword:
+			terms = append(terms, sourcedomain.CollectionTerm{Value: rule.Value, Excluded: true})
+		}
+	}
+	return terms
 }

@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -201,6 +203,53 @@ func (policy CapturePolicy) Capture(item SourceItem) (CapturedItem, error) {
 type CollectionTerm struct {
 	Value    string
 	Excluded bool
+}
+
+const MaxCollectionQueryBytes = 2048
+
+// CompileCollectionQuery is the single deterministic representation used by
+// control-plane previews and collection workers. Current official connectors
+// apply it as a local filter; they do not claim unsupported upstream syntax.
+func CompileCollectionQuery(override string, terms []CollectionTerm) (string, error) {
+	override = strings.TrimSpace(override)
+	if override != "" {
+		if len([]byte(override)) > MaxCollectionQueryBytes {
+			return "", fmt.Errorf("collection query must be at most %d UTF-8 bytes", MaxCollectionQueryBytes)
+		}
+		return override, nil
+	}
+	normalized := make([]CollectionTerm, 0, len(terms))
+	for _, term := range terms {
+		term.Value = strings.Join(strings.Fields(term.Value), " ")
+		if term.Value != "" {
+			normalized = append(normalized, term)
+		}
+	}
+	sort.Slice(normalized, func(left, right int) bool {
+		if normalized[left].Excluded != normalized[right].Excluded {
+			return !normalized[left].Excluded
+		}
+		return normalized[left].Value < normalized[right].Value
+	})
+	tokens := make([]string, 0, len(normalized))
+	for _, term := range normalized {
+		value := term.Value
+		if strings.ContainsAny(value, " \t\r\n") {
+			value = strconv.Quote(value)
+		}
+		if term.Excluded {
+			value = "-" + value
+		}
+		tokens = append(tokens, value)
+	}
+	query := strings.Join(tokens, " ")
+	if query == "" {
+		return "", fmt.Errorf("collection query requires an effective term")
+	}
+	if len([]byte(query)) > MaxCollectionQueryBytes {
+		return "", fmt.Errorf("collection query must be at most %d UTF-8 bytes", MaxCollectionQueryBytes)
+	}
+	return query, nil
 }
 
 // PublishedCollectionTarget is the Source-facing projection of one immutable

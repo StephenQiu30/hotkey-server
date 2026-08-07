@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { Archive, Eye, Loader2, Pause, Pencil, Play, Plus, Radar, RotateCcw, Search, Trash2 } from "lucide-react";
+import { Archive, Eye, Loader2, Pause, Pencil, Play, Plus, Radar, RotateCcw, Search, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,13 +9,14 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { ConfirmDeleteDialog } from "@/components/dashboard/ConfirmDeleteDialog";
+import { AICandidateDialog } from "@/components/dashboard/AICandidateDialog";
 import { CursorPagination, DEFAULT_PAGE_SIZE, hasNextCursor } from "@/components/dashboard/CursorPagination";
 import { MonitorDetailDialog } from "@/components/dashboard/MonitorDetailDialog";
 import { MonitorDraftDialog } from "@/components/dashboard/MonitorDraftDialog";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { MonitorRegion, MonitorStatus, UserRole } from "@/lib/domainEnums";
 import { monitorStatusLabel } from "@/lib/domainPresentation";
-import { buildMonitorDraftRequest, monitorToDraftForm, selectAllMonitorSources, validateMonitorDraft, type MonitorDraftForm } from "@/lib/monitorDraft";
+import { buildMonitorDraftRequest, createMonitorRule, monitorToDraftForm, selectAllMonitorSources, validateMonitorDraft, type MonitorDraftForm } from "@/lib/monitorDraft";
 import {
   deleteMonitorsId,
   getMonitors,
@@ -23,6 +24,8 @@ import {
   getMonitorsIdVersions,
   postMonitors,
   postMonitorsIdArchive,
+  postMonitorsIdDraftAiCandidates,
+  postMonitorsIdDraftRulesRuleIdApproval,
   postMonitorsIdPause,
   postMonitorsIdPreview,
   postMonitorsIdPublish,
@@ -34,7 +37,7 @@ import { getSourceConnections } from "@/services/hotkey/hotkey-server/sources";
 import { useAuthStore } from "@/stores/authStore";
 
 const initialForm = (): MonitorDraftForm => ({
-  name: "", description: "", query: "", language: "zh", region: MonitorRegion.China,
+  name: "", description: "", rules: [createMonitorRule()], languages: ["zh"], region: MonitorRegion.China,
   interval: 900, relevance: 60, event: 70, retention: 30, sourceIds: [],
 });
 
@@ -61,6 +64,8 @@ export default function MonitorsPage() {
   const [previewTarget, setPreviewTarget] = useState<HotKeyAPI.MonitorResponse>();
   const [preview, setPreview] = useState<HotKeyAPI.PreviewResponse>();
   const [detail, setDetail] = useState<DetailState>({ history: [], loading: false, open: false });
+  const [candidateTarget, setCandidateTarget] = useState<HotKeyAPI.MonitorResponse>();
+  const [approvingRuleID, setApprovingRuleID] = useState<number>();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -120,7 +125,7 @@ export default function MonitorsPage() {
 
   const saveDraft = async (event: FormEvent) => {
     event.preventDefault();
-    const normalized = { ...form, name: form.name.trim() || `热点监控 · ${form.query.trim().slice(0, 48)}` };
+    const normalized = { ...form, name: form.name.trim() || `热点监控 · ${form.rules.find((rule) => rule.value.trim())?.value.trim().slice(0, 48) ?? "未命名"}` };
     const validation = validateMonitorDraft(normalized);
     if (validation) return toast.error(validation);
     setSaving(true);
@@ -221,6 +226,51 @@ export default function MonitorsPage() {
     }
   };
 
+  const addCandidate = async (candidate: { ruleType: import("@/lib/monitorDraft").MonitorRuleType; value: string }) => {
+    const target = candidateTarget;
+    if (target?.id == null || target.draft?.version == null) return;
+    setSaving(true);
+    try {
+      await postMonitorsIdDraftAiCandidates({ id: target.id }, {
+        expected_monitor_version: target.version ?? 0,
+        expected_draft_version: target.draft.version,
+        operator: "contains",
+        priority: 100,
+        rule_type: candidate.ruleType,
+        value: candidate.value,
+        weight: candidate.ruleType === "exclude_keyword" ? 0 : 60,
+      });
+      setCandidateTarget(undefined);
+      await load();
+      toast.success("AI 候选已加入草稿，发布前需审批");
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : "AI 候选导入失败");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const approveCandidate = async (rule: HotKeyAPI.MonitorRuleResponse, approval: "approved" | "rejected") => {
+    const target = detail.monitor;
+    if (target?.id == null || target.draft?.version == null || rule.id == null) return;
+    setApprovingRuleID(rule.id);
+    try {
+      await postMonitorsIdDraftRulesRuleIdApproval({ id: target.id, rule_id: rule.id }, {
+        approval,
+        expected_monitor_version: target.version ?? 0,
+        expected_draft_version: target.draft.version,
+      });
+      const refreshed = await getMonitorsId({ id: target.id });
+      if (refreshed.data) await openDetail(refreshed.data);
+      await load();
+      toast.success(approval === "approved" ? "AI 候选已批准" : "AI 候选已拒绝");
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : "候选审批失败");
+    } finally {
+      setApprovingRuleID(undefined);
+    }
+  };
+
   return (
     <div className="app-page">
       <PageHeader eyebrow="Monitoring" title="热点监控" description="用正式来源、查询规则和阈值建立可发布的监控。" action={canEdit ? <Button className="gap-2" onClick={openCreate}><Plus />新建监控</Button> : undefined} />
@@ -243,6 +293,7 @@ export default function MonitorsPage() {
               <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
                 <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => void openDetail(monitor)}><Eye />查看详情</Button>
                 {canEdit && monitor.status !== MonitorStatus.Archived && <Button variant="outline" size="sm" className="gap-1.5" onClick={() => openEdit(monitor)}><Pencil />编辑草稿</Button>}
+                {canAdmin && monitor.draft && <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setCandidateTarget(monitor)}><Sparkles />导入 AI 候选</Button>}
                 {canEdit && monitor.draft && <Button size="sm" className="gap-1.5" disabled={busy} onClick={() => void previewMonitor(monitor)}>{busy && <Loader2 className="animate-spin" />}{canAdmin ? "预览并发布" : "预览配置"}</Button>}
                 {canAdmin && monitor.status === MonitorStatus.Active && <Button variant="outline" size="sm" className="gap-1.5" disabled={busy} onClick={() => void lifecycle(monitor, "pause")}><Pause />暂停</Button>}
                 {canAdmin && monitor.status === MonitorStatus.Paused && <Button variant="outline" size="sm" className="gap-1.5" disabled={busy} onClick={() => void lifecycle(monitor, "resume")}><Play />恢复运行</Button>}
@@ -256,11 +307,17 @@ export default function MonitorsPage() {
       )}
 
       <MonitorDraftDialog busy={saving} form={form} mode={draftDialog?.mode ?? "create"} onFormChange={setForm} onOpenChange={(open) => !open && setDraftDialog(undefined)} onSubmit={saveDraft} open={draftDialog != null} sources={sources} />
-      <MonitorDetailDialog error={detail.error} history={detail.history} loading={detail.loading} monitor={detail.monitor} onOpenChange={(open) => setDetail((current) => ({ ...current, open }))} open={detail.open} />
+      <MonitorDetailDialog approvingRuleID={approvingRuleID} canAdmin={canAdmin} error={detail.error} history={detail.history} loading={detail.loading} monitor={detail.monitor} onCandidateApproval={approveCandidate} onOpenChange={(open) => setDetail((current) => ({ ...current, open }))} open={detail.open} />
+      <AICandidateDialog busy={saving} onOpenChange={(open) => !open && setCandidateTarget(undefined)} onSubmit={addCandidate} open={candidateTarget != null} />
       <Dialog open={previewTarget != null} onOpenChange={(open) => { if (!open) { setPreviewTarget(undefined); setPreview(undefined); } }}>
         <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>{canAdmin ? "发布预览" : "配置预览"}</DialogTitle><DialogDescription>检查命中资格、预计请求量和配置哈希后再决定是否发布。</DialogDescription></DialogHeader>
           <div className="space-y-4 py-2"><div className="flex items-center justify-between rounded-md border border-border p-4"><div><p className="text-sm font-medium">{preview?.eligible ? "配置可以发布" : "配置暂不可发布"}</p><p className="mt-1 text-xs text-muted-foreground">{preview?.eligible ? "发布时服务端会再次校验同一草稿。" : "请修正规则或来源后重新预览。"}</p></div><Badge variant={preview?.eligible ? "default" : "destructive"}>{preview?.eligible ? "通过" : "阻止"}</Badge></div>
-            <p className="text-sm font-medium">预计请求 {preview?.estimated_requests ?? 0} 次</p><p className="mono break-all text-xs text-muted-foreground">配置哈希 {preview?.config_hash || "—"}</p>
+            <p className="text-sm font-medium">预计请求 {preview?.estimated_requests ?? 0} 次</p>
+            <div className="space-y-2">{preview?.sources?.map((source) => {
+              const sourceName = sources.find((candidate) => candidate.id === source.source_connection_id)?.name ?? `来源 #${source.source_connection_id}`;
+              return <div key={source.source_connection_id} className="rounded-md border border-border p-3"><div className="flex items-center justify-between gap-3"><p className="text-sm font-medium">{sourceName}</p><Badge variant="secondary">{source.query_mode ?? "local_filter"}</Badge></div><p className="mono mt-3 break-all rounded bg-muted/50 px-2 py-1.5 text-xs">{source.compiled_query || "无有效查询"}</p><div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"><span>语言 {(source.languages ?? []).join(" / ") || "全部"}</span><span>上限 {source.max_query_bytes ?? 2048} bytes</span><span>包含 {source.included_rule_ids?.length ?? 0}</span><span>排除 {source.excluded_rule_ids?.length ?? 0}</span></div><p className="mono mt-2 break-all text-[11px] text-muted-foreground">signature {source.query_signature || "—"}</p></div>;
+            })}</div>
+            <p className="mono break-all text-xs text-muted-foreground">配置哈希 {preview?.config_hash || "—"}</p>
             {!!preview?.warnings?.length && <div role="alert" className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm">{preview.warnings.join("；")}</div>}
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setPreviewTarget(undefined)}>关闭</Button>{canAdmin && <Button disabled={!preview?.eligible || busyID === previewTarget?.id} onClick={() => void publish()}>{busyID === previewTarget?.id && <Loader2 className="animate-spin" />}确认发布</Button>}</DialogFooter>

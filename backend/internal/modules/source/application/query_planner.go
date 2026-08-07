@@ -22,12 +22,9 @@ func (QueryPlanner) Plan(target domain.PublishedCollectionTarget, windowStart, w
 	if windowStart.IsZero() || windowEnd.IsZero() || !windowEnd.After(windowStart) {
 		return domain.CollectionRequest{}, invalidCollectionPlan(fmt.Errorf("collection window is invalid"))
 	}
-	query := strings.TrimSpace(target.QueryOverride)
-	if query == "" {
-		query = queryFromTerms(target.Terms)
-	}
-	if query == "" {
-		return domain.CollectionRequest{}, invalidCollectionPlan(fmt.Errorf("published collection target has no effective query terms"))
+	query, err := domain.CompileCollectionQuery(target.QueryOverride, target.Terms)
+	if err != nil {
+		return domain.CollectionRequest{}, invalidCollectionPlan(err)
 	}
 	request := domain.CollectionRequest{
 		SourceConnectionID: target.SourceConnectionID, QuerySignature: target.QuerySignature, Query: query,
@@ -105,33 +102,6 @@ func (planner QueryPlanner) validateRequestMatchesPublishedTargets(request domai
 		}
 	}
 	return nil
-}
-
-func queryFromTerms(terms []domain.CollectionTerm) string {
-	normalized := make([]domain.CollectionTerm, 0, len(terms))
-	for _, term := range terms {
-		term.Value = strings.TrimSpace(term.Value)
-		value := term.Value
-		if value == "" {
-			continue
-		}
-		normalized = append(normalized, term)
-	}
-	sort.Slice(normalized, func(left, right int) bool {
-		if normalized[left].Excluded != normalized[right].Excluded {
-			return !normalized[left].Excluded
-		}
-		return normalized[left].Value < normalized[right].Value
-	})
-	tokens := make([]string, 0, len(normalized))
-	for _, term := range normalized {
-		value := term.Value
-		if term.Excluded {
-			value = "-" + value
-		}
-		tokens = append(tokens, value)
-	}
-	return strings.Join(tokens, " ")
 }
 
 func invalidCollectionPlan(cause error) error {

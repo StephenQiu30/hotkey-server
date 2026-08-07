@@ -22,3 +22,4 @@ canonical_path: docs/acceptance/README.md
 | 003 | [账户认证与会话安全](003-账户认证与会话安全验收.md) | passed |
 | 004 | [用户角色与权限管理](004-用户角色与权限管理验收.md) | passed |
 | 005 | [监控主题CRUD与生命周期](005-监控主题CRUD与生命周期验收.md) | passed |
+| 006 | [关键词规则与多语言查询扩展](006-关键词规则与多语言查询扩展验收.md) | passed |

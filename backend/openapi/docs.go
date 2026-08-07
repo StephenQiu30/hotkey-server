@@ -9481,6 +9481,9 @@ const docTemplate = `{
         "http.PreviewSourceResponse": {
             "type": "object",
             "properties": {
+                "compiled_query": {
+                    "type": "string"
+                },
                 "estimated_requests": {
                     "type": "integer"
                 },
@@ -9496,8 +9499,26 @@ const docTemplate = `{
                         "type": "integer"
                     }
                 },
+                "languages": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "max_query_bytes": {
+                    "type": "integer"
+                },
+                "query_mode": {
+                    "type": "string"
+                },
                 "query_signature": {
                     "type": "string"
+                },
+                "regions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "source_connection_id": {
                     "type": "integer"

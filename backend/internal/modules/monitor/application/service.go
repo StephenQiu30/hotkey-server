@@ -757,6 +757,9 @@ func querySignature(source domain.MonitorSource, connection sourcedomain.Monitor
 	if err != nil {
 		return "", err
 	}
+	if _, err := sourcedomain.CompileCollectionQuery(override, collectionTerms(rules)); err != nil {
+		return "", err
+	}
 	payload := struct {
 		SignatureVersion   int                     `json:"signature_version"`
 		SourceConnectionID int64                   `json:"source_connection_id"`

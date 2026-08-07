@@ -1486,10 +1486,15 @@ required property without making explicit null impossible to bind. */
   };
 
   type PreviewSourceResponse = {
+    compiled_query?: string;
     estimated_requests?: number;
     excluded_rule_ids?: number[];
     included_rule_ids?: number[];
+    languages?: string[];
+    max_query_bytes?: number;
+    query_mode?: string;
     query_signature?: string;
+    regions?: string[];
     source_connection_id?: number;
     unapproved_rule_ids?: number[];
   };

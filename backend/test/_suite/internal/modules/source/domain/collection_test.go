@@ -117,6 +117,30 @@ func TestCapturePolicyV2PreservesUnknownAndExplicitZeroMetrics(t *testing.T) {
 
 func int64Pointer(value int64) *int64 { return &value }
 
+func TestCompileCollectionQueryIsCanonicalQuotedAndBounded(t *testing.T) {
+	t.Parallel()
+
+	terms := []CollectionTerm{
+		{Value: " job listing ", Excluded: true},
+		{Value: "OpenAI"},
+		{Value: "artificial intelligence"},
+	}
+	query, err := CompileCollectionQuery("", terms)
+	if err != nil {
+		t.Fatalf("CompileCollectionQuery(): %v", err)
+	}
+	if query != `OpenAI "artificial intelligence" -"job listing"` {
+		t.Fatalf("compiled query = %q", query)
+	}
+	reordered, err := CompileCollectionQuery("", []CollectionTerm{terms[1], terms[2], terms[0]})
+	if err != nil || reordered != query {
+		t.Fatalf("reordered query = %q, err=%v; want stable %q", reordered, err, query)
+	}
+	if _, err := CompileCollectionQuery(strings.Repeat("x", MaxCollectionQueryBytes+1), terms); err == nil {
+		t.Fatal("CompileCollectionQuery() accepted an override above the hard byte limit")
+	}
+}
+
 func TestPublishedCollectionTargetBindsCheckpointToImmutableConfiguration(t *testing.T) {
 	t.Parallel()
 

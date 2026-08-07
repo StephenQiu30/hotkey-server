@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	"golang.org/x/text/unicode/norm"
 )
 
 const (
@@ -154,6 +156,7 @@ func (service *CollectionService) execute(ctx context.Context, request domain.Co
 	if fetchErr != nil {
 		return service.fail(ctx, run, request.Targets, result, domain.ClassifyCollectionError(fetchErr), fetchErr)
 	}
+	result.Items = filterCollectionItems(result.Items, request.Targets[0].Terms)
 	captures := make([]domain.CapturedItem, 0, len(result.Items))
 	policy := capturePolicy(*connection)
 	for _, item := range result.Items {
@@ -181,6 +184,36 @@ func (service *CollectionService) execute(ctx context.Context, request domain.Co
 		return service.fail(ctx, run, request.Targets, result, domain.CollectionErrorTemporary, err)
 	}
 	return completed, nil
+}
+
+func filterCollectionItems(items []domain.SourceItem, terms []domain.CollectionTerm) []domain.SourceItem {
+	excludes := []string{}
+	for _, term := range terms {
+		value := normalizedCollectionText(term.Value)
+		if value != "" && term.Excluded {
+			excludes = append(excludes, value)
+		}
+	}
+	filtered := make([]domain.SourceItem, 0, len(items))
+	for _, item := range items {
+		text := normalizedCollectionText(item.Title + " " + item.Body)
+		excluded := false
+		for _, term := range excludes {
+			if strings.Contains(text, term) {
+				excluded = true
+				break
+			}
+		}
+		if excluded {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	return filtered
+}
+
+func normalizedCollectionText(value string) string {
+	return strings.ToLower(strings.Join(strings.Fields(norm.NFKC.String(value)), " "))
 }
 
 func (service *CollectionService) fail(ctx context.Context, run domain.CollectionRun, targets []domain.PublishedCollectionTarget, result domain.FetchResult, kind domain.CollectionErrorKind, cause error) (domain.CollectionRun, error) {

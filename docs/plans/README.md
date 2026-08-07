@@ -24,7 +24,7 @@ Plan 中的“当前实现”仅用于确定差距；只有 Acceptance 保存完
 | 003 | [账户认证与会话安全](../design/003-账户认证与会话安全设计.md) | [PRD](../prd/003-账户认证与会话安全.md) | [Plan](003-账户认证与会话安全计划.md) | completed |
 | 004 | [用户角色与权限管理](../design/004-用户角色与权限管理设计.md) | [PRD](../prd/004-用户角色与权限管理.md) | [Plan](004-用户角色与权限管理计划.md) | completed |
 | 005 | [监控主题CRUD与生命周期](../design/005-监控主题CRUD与生命周期设计.md) | [PRD](../prd/005-监控主题CRUD与生命周期.md) | [Plan](005-监控主题CRUD与生命周期计划.md) | completed |
-| 006 | [关键词规则与多语言查询扩展](../design/006-关键词规则与多语言查询扩展设计.md) | [PRD](../prd/006-关键词规则与多语言查询扩展.md) | [Plan](006-关键词规则与多语言查询扩展计划.md) | planned |
+| 006 | [关键词规则与多语言查询扩展](../design/006-关键词规则与多语言查询扩展设计.md) | [PRD](../prd/006-关键词规则与多语言查询扩展.md) | [Plan](006-关键词规则与多语言查询扩展计划.md) | completed |
 | 007 | [来源连接控制面与合规健康](../design/007-来源连接控制面与合规健康设计.md) | [PRD](../prd/007-来源连接控制面与合规健康.md) | [Plan](007-来源连接控制面与合规健康计划.md) | planned |
 | 008 | [RSS-Atom来源连接器](../design/008-RSS-Atom来源连接器设计.md) | [PRD](../prd/008-RSS-Atom来源连接器.md) | [Plan](008-RSS-Atom来源连接器计划.md) | planned |
 | 009 | [Hacker-News官方来源连接器](../design/009-Hacker-News官方来源连接器设计.md) | [PRD](../prd/009-Hacker-News官方来源连接器.md) | [Plan](009-Hacker-News官方来源连接器计划.md) | planned |

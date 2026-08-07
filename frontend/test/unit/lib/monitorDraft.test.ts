@@ -12,8 +12,8 @@ import {
 const baseForm = {
   name: "AI Agent 创建工具",
   description: "测试",
-  query: "Anthropic",
-  language: "zh",
+  rules: [{ key: "rule-1", ruleType: "keyword" as const, value: "Anthropic" }],
+  languages: ["zh"],
   region: MonitorRegion.China,
   interval: 900,
   relevance: 60,
@@ -44,6 +44,24 @@ describe("monitor draft contract", () => {
     ]);
   });
 
+  it("builds multilingual include, alias, and exclude rules without AI", () => {
+    const request = buildMonitorDraftRequest({
+      ...baseForm,
+      languages: ["zh", "en"],
+      rules: [
+        { key: "1", ruleType: "keyword", value: "OpenAI" },
+        { key: "2", ruleType: "entity", value: "开放人工智能" },
+        { key: "3", ruleType: "exclude_keyword", value: "招聘" },
+      ],
+    });
+    expect(request.config.languages).toEqual(["zh", "en"]);
+    expect(request.rules).toEqual([
+      expect.objectContaining({ rule_type: "keyword", value: "OpenAI", weight: 100 }),
+      expect.objectContaining({ rule_type: "entity", value: "开放人工智能", weight: 100 }),
+      expect.objectContaining({ rule_type: "exclude_keyword", value: "招聘", weight: 0 }),
+    ]);
+  });
+
   it("reports client-side constraints before calling the API", () => {
     expect(
       validateMonitorDraft({
@@ -60,7 +78,7 @@ describe("monitor draft contract", () => {
   });
 
   it("prefills an editable form from the newest draft without losing source identity", () => {
-    expect(monitorToDraftForm({
+    const form = monitorToDraftForm({
       name: "AI releases",
       description: "Official launches",
       published: { revision: 1, rules: [{ value: "old" }], sources: [{ source_connection_id: 4 }] },
@@ -72,14 +90,15 @@ describe("monitor draft contract", () => {
         regions: ["US"],
         relevance_threshold: 72,
         retention_days: 45,
-        rules: [{ value: "OpenAI", enabled: true }],
+        rules: [{ rule_type: "keyword", value: "OpenAI", origin: "user", enabled: true }],
         sources: [{ source_connection_id: 7, enabled: true }],
       },
-    })).toEqual({
+    });
+    expect(form).toEqual({
       name: "AI releases",
       description: "Official launches",
-      query: "OpenAI",
-      language: "en",
+      rules: [expect.objectContaining({ ruleType: "keyword", value: "OpenAI" })],
+      languages: ["en"],
       region: MonitorRegion.UnitedStates,
       interval: 600,
       relevance: 72,

@@ -28,6 +28,10 @@ func TestPreviewUsesOnlyReadPortsAndNeverWritesAudit(t *testing.T) {
 	if !result.Eligible || len(result.Sources) != 1 || result.Sources[0].EstimatedRequests != 1 || audit.writes != 0 || repository.writes != 0 || sources.locks != 0 {
 		t.Fatalf("preview result or side effects = %#v writes=%d repositoryWrites=%d locks=%d", result, audit.writes, repository.writes, sources.locks)
 	}
+	preview := result.Sources[0]
+	if preview.CompiledQuery != "preview" || preview.QueryMode != "local_filter" || len(preview.Languages) != 1 || preview.Languages[0] != "en" || preview.MaxQueryBytes != sourcedomain.MaxCollectionQueryBytes {
+		t.Fatalf("source query preview = %#v", preview)
+	}
 	if _, err := service.Preview(context.Background(), identitydomain.Subject{UserID: 1, Role: identitydomain.RoleViewer}, 1); err == nil {
 		t.Fatal("viewer preview succeeded")
 	}

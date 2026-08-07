@@ -22,10 +22,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { MonitorRegion } from "@/lib/domainEnums";
+import { MonitorRuleEditor } from "@/components/dashboard/MonitorRuleEditor";
 import {
   MAX_MONITOR_SOURCES,
   MONITOR_LIMITS,
   selectAllMonitorSources,
+  toggleMonitorLanguage,
   toggleMonitorSource,
   type MonitorDraftForm,
 } from "@/lib/monitorDraft";
@@ -56,31 +58,32 @@ export function MonitorDraftDialog({ busy, form, mode, onFormChange, onOpenChang
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-hidden p-0 sm:max-w-xl">
+      <DialogContent className="grid h-[90vh] max-h-[90vh] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:h-auto sm:max-w-xl">
         <DialogHeader className="border-b border-border px-6 py-5">
           <DialogTitle>{mode === "create" ? "新建监控草稿" : "编辑监控草稿"}</DialogTitle>
-          <DialogDescription>配置一个关键词规则、采集节奏、阈值和已启用数据来源。</DialogDescription>
+          <DialogDescription>配置中英文包含词、别名和排除词，再选择采集节奏与正式来源。</DialogDescription>
         </DialogHeader>
-        <form onSubmit={onSubmit}>
-          <div className="grid max-h-[calc(90vh-9rem)] gap-4 overflow-y-auto px-6 py-5 sm:grid-cols-2">
+        <form className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto]" onSubmit={onSubmit}>
+          <div
+            aria-label="监控配置内容"
+            className="grid min-h-0 gap-4 overflow-y-auto px-6 py-5 sm:grid-cols-2"
+            role="region"
+            tabIndex={0}
+          >
             <div className="sm:col-span-2">
               <Label htmlFor="monitor-name">监控名称</Label>
               <Input id="monitor-name" className="mt-2" value={form.name} onChange={(event) => onFormChange({ ...form, name: event.target.value })} placeholder="例如：AI 产品发布" />
             </div>
-            <div className="sm:col-span-2">
-              <Label htmlFor="monitor-query">关键词规则</Label>
-              <Input id="monitor-query" className="mt-2" value={form.query} onChange={(event) => onFormChange({ ...form, query: event.target.value })} placeholder="AI Agent OR 智能体 OR agentic" />
-            </div>
+            <MonitorRuleEditor rules={form.rules} onChange={(rules) => onFormChange({ ...form, rules })} />
             <div className="sm:col-span-2">
               <Label htmlFor="monitor-description">说明</Label>
               <Input id="monitor-description" className="mt-2" value={form.description} onChange={(event) => onFormChange({ ...form, description: event.target.value })} placeholder="说明这个监控关注什么" />
             </div>
             <div>
-              <Label htmlFor="monitor-language">语言</Label>
-              <Select value={form.language} onValueChange={(value) => onFormChange({ ...form, language: value })}>
-                <SelectTrigger id="monitor-language" className="mt-2"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="zh">中文</SelectItem><SelectItem value="en">English</SelectItem></SelectContent>
-              </Select>
+              <Label>语言（可多选）</Label>
+              <div className="mt-2 flex min-h-9 items-center gap-4 rounded-md border border-border px-3">
+                {[["zh", "中文"], ["en", "English"]].map(([value, label]) => <label key={value} className="flex cursor-pointer items-center gap-2 text-sm"><Checkbox aria-label={`选择${label}`} checked={form.languages.includes(value)} onCheckedChange={(checked) => onFormChange({ ...form, languages: toggleMonitorLanguage(form.languages, value, checked === true) })} />{label}</label>)}
+              </div>
             </div>
             <div>
               <Label htmlFor="monitor-region">地区</Label>
@@ -123,7 +126,7 @@ export function MonitorDraftDialog({ busy, form, mode, onFormChange, onOpenChang
           </div>
           <DialogFooter className="border-t border-border px-6 py-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
-            <Button type="submit" disabled={busy || !form.query.trim() || !form.sourceIds.length}>
+            <Button type="submit" disabled={busy || !form.rules.some((rule) => rule.value.trim()) || !form.languages.length || !form.sourceIds.length}>
               {busy && <Loader2 className="animate-spin" />}{busy ? "保存中" : mode === "create" ? "创建草稿" : "保存草稿"}
             </Button>
           </DialogFooter>
