@@ -1,8 +1,5 @@
-"use client";
-
-import { useEffect, useState } from "react";
 import TopNav from "@/components/dashboard/TopNav";
-import { getAlerts } from "@/services/hotkey/hotkey-server/alerts";
+import { RealtimeNotifications } from "@/components/notifications/RealtimeNotifications";
 
 interface MenuItem {
   path: string;
@@ -21,29 +18,13 @@ export default function BasicLayout({
   adminMenuItems?: MenuItem[];
   title?: string;
 }) {
-  const [alertCount, setAlertCount] = useState(0);
-
-  useEffect(() => {
-    let active = true;
-    getAlerts({ state: "open", limit: 100 })
-      .then((result) => {
-        if (active) setAlertCount(result.data?.items?.length ?? 0);
-      })
-      .catch(() => {
-        if (active) setAlertCount(0);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <RealtimeNotifications />
       <TopNav
         menuItems={menuItems}
         adminMenuItems={adminMenuItems}
         title={title}
-        alertCount={alertCount}
       />
       <main className="min-w-0">{children}</main>
     </div>

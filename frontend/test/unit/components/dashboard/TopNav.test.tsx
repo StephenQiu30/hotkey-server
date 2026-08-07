@@ -10,6 +10,7 @@ import { Activity, Database } from "lucide-react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import TopNav from "@/components/dashboard/TopNav";
 import { useAuthStore } from "@/stores/authStore";
+import { useNotificationStore } from "@/stores/notificationStore";
 import { AuthStatus, UserRole } from "@/lib/domainEnums";
 
 const navigationMocks = vi.hoisted(() => ({
@@ -39,12 +40,12 @@ describe("TopNav", () => {
       },
       error: null,
     });
+    useNotificationStore.setState({ unreadCount: 3 });
   });
 
   it("keeps the primary product areas in a restrained top navigation", () => {
     render(
       <TopNav
-        alertCount={3}
         menuItems={[{ path: "/dashboard", name: "概览", icon: <Activity /> }]}
         adminMenuItems={[
           { path: "/dashboard/sources", name: "来源管理", icon: <Database /> },
@@ -60,9 +61,9 @@ describe("TopNav", () => {
       "aria-current",
       "page",
     );
-    expect(screen.getByRole("link", { name: "告警，3 条待处理" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "通知，3 条未读" })).toHaveAttribute(
       "href",
-      "/dashboard/alerts",
+      "/dashboard/notifications",
     );
     expect(screen.getByRole("button", { name: "账户菜单" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "切换到暗色模式" })).toBeInTheDocument();

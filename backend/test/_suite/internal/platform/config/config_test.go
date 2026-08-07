@@ -18,6 +18,9 @@ func TestDefaultIsValid(t *testing.T) {
 	if cfg.Role != "all" {
 		t.Fatalf("Default().Role = %q, want all", cfg.Role)
 	}
+	if cfg.Notification.PollInterval <= 0 || cfg.Notification.HeartbeatInterval <= 0 || cfg.Notification.MaxConnections <= 0 {
+		t.Fatalf("Default().Notification = %#v, want positive limits", cfg.Notification)
+	}
 }
 
 func TestValidateRejectsInvalidRuntimeConfiguration(t *testing.T) {
@@ -30,6 +33,10 @@ func TestValidateRejectsInvalidRuntimeConfiguration(t *testing.T) {
 		{name: "role", mutate: func(c *Config) { c.Role = "scheduler" }},
 		{name: "http address", mutate: func(c *Config) { c.HTTPAddr = "" }},
 		{name: "shutdown timeout", mutate: func(c *Config) { c.ShutdownTimeout = 0 }},
+		{name: "notification poll interval", mutate: func(c *Config) { c.Notification.PollInterval = 0 }},
+		{name: "notification heartbeat interval", mutate: func(c *Config) { c.Notification.HeartbeatInterval = 0 }},
+		{name: "notification max connections", mutate: func(c *Config) { c.Notification.MaxConnections = 0 }},
+		{name: "notification excessive connections", mutate: func(c *Config) { c.Notification.MaxConnections = 10001 }},
 	}
 
 	for _, tt := range tests {
@@ -210,6 +217,9 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("HOTKEY_SHUTDOWN_TIMEOUT", "3s")
 	t.Setenv("HOTKEY_SOURCE_DOH_URL", "https://cloudflare-dns.com/dns-query")
 	t.Setenv("HOTKEY_BILIBILI_WEBHOOK_SECRET", "fixture-webhook-secret")
+	t.Setenv("HOTKEY_NOTIFICATION_POLL_INTERVAL", "2s")
+	t.Setenv("HOTKEY_NOTIFICATION_HEARTBEAT_INTERVAL", "12s")
+	t.Setenv("HOTKEY_NOTIFICATION_MAX_CONNECTIONS", "25")
 
 	cfg, err := Load()
 	if err != nil {
@@ -226,6 +236,9 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.BilibiliWebhookSecret != "fixture-webhook-secret" {
 		t.Error("BilibiliWebhookSecret was not loaded from the environment")
+	}
+	if cfg.Notification.PollInterval != 2*time.Second || cfg.Notification.HeartbeatInterval != 12*time.Second || cfg.Notification.MaxConnections != 25 {
+		t.Errorf("Notification = %#v, want environment overrides", cfg.Notification)
 	}
 }
 

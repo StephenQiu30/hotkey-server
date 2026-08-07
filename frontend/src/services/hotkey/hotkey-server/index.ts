@@ -13,6 +13,7 @@ import * as knowledge from "./knowledge";
 import * as sourceMetricCapabilities from "./sourceMetricCapabilities";
 import * as monitors from "./monitors";
 import * as relevance from "./relevance";
+import * as notifications from "./notifications";
 import * as operations from "./operations";
 import * as radar from "./radar";
 import * as delivery from "./delivery";
@@ -31,6 +32,7 @@ export default {
   sourceMetricCapabilities,
   monitors,
   relevance,
+  notifications,
   operations,
   radar,
   delivery,

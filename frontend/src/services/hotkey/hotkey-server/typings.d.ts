@@ -515,6 +515,8 @@ required property without making explicit null impossible to bind. */
 
   type EmptyResponse = true;
 
+  type EmptyResponse = true;
+
   type EventIntelligenceResponse = {
     claims?: IntelligenceClaimResponse[];
     entities?: IntelligenceEntityResponse[];
@@ -839,6 +841,18 @@ required property without making explicit null impossible to bind. */
     cursor?: string;
     /** page size */
     limit?: number;
+  };
+
+  type getNotificationsParams = {
+    /** last processed notification ID */
+    after_id?: number;
+    /** page size */
+    limit?: number;
+  };
+
+  type getNotificationsStreamParams = {
+    /** last processed notification ID */
+    after_id?: number;
   };
 
   type getOperationsJobsParams = {
@@ -1288,6 +1302,41 @@ required property without making explicit null impossible to bind. */
   type MonitorVersionHistoryResponse = {
     items?: MonitorConfigResponse[];
   };
+
+  type NotificationPageResponse = {
+    items?: NotificationResponse[];
+    next_after_id?: number;
+  };
+
+  type NotificationPayloadResponse = {
+    severity?: string;
+    status?: string;
+    summary?: string;
+    title?: string;
+  };
+
+  type NotificationResponse = {
+    audience?: string;
+    event_type?: string;
+    id?: number;
+    occurred_at?: string;
+    payload?: NotificationPayloadResponse;
+    resource_id?: number;
+    resource_type?: string;
+  };
+
+  type NotificationResultHttpNotificationPageResponse = {
+    code?: number;
+    data?: NotificationPageResponse;
+    message?: string;
+  };
+
+  type NotificationResultInternalModulesNotificationTransportHttpEmptyResponse =
+    {
+      code?: number;
+      data?: EmptyResponse;
+      message?: string;
+    };
 
   type OverviewResultDomainRuntimeOverview = {
     code?: number;

@@ -109,7 +109,7 @@ func cors(allowedOrigins []string) gin.HandlerFunc {
 			c.Header("Access-Control-Allow-Origin", c.GetHeader("Origin"))
 			c.Header("Access-Control-Allow-Credentials", "true")
 			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Request-ID")
+			c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, Last-Event-ID, X-Request-ID")
 			c.Header("Vary", "Origin")
 		}
 		if c.Request.Method == "OPTIONS" {
@@ -122,6 +122,10 @@ func cors(allowedOrigins []string) gin.HandlerFunc {
 
 func requestContextTimeout(timeout time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if c.Request.URL.Path == "/api/v1/notifications/stream" {
+			c.Next()
+			return
+		}
 		requestContext, cancel := context.WithTimeout(c.Request.Context(), timeout)
 		defer cancel()
 		c.Request = c.Request.WithContext(requestContext)

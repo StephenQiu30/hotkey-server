@@ -47,6 +47,9 @@ import (
 	monitorapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/application"
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/infrastructure/postgres"
 	monitortransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/transport/http"
+	notificationapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/application"
+	notificationpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/infrastructure/postgres"
+	notificationtransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/transport/http"
 	operationsapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/application"
 	operationspostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/infrastructure/postgres"
 	operationstransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/transport/http"
@@ -145,6 +148,8 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newKnowledgeReconciler,
 				deliverypostgres.NewRepository,
 				reportpostgres.NewRepository,
+				notificationpostgres.NewRepository,
+				newNotificationService,
 				newQueueStore,
 				exposeCollectionTargetReader,
 				sourcejobs.NewCollectionRetryActivator,
@@ -197,8 +202,9 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newKnowledgeHandler,
 					newOperationsOverviewService,
 					newJobService,
+					newNotificationHandler,
 				),
-				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerBilibiliWebhookRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerRadarRoutes, registerEventUpdateRoutes, registerAlertRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes, registerKnowledgeRoutes, registerJobRoutes, registerOverviewRoutes),
+				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerBilibiliWebhookRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerRadarRoutes, registerEventUpdateRoutes, registerAlertRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes, registerKnowledgeRoutes, registerJobRoutes, registerOverviewRoutes, registerNotificationRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -350,6 +356,21 @@ func registerJobRoutes(router *gin.Engine, service *operationsapplication.JobSer
 
 func registerOverviewRoutes(router *gin.Engine, service *operationsapplication.OverviewService, authenticator httptransport.Authenticator) {
 	operationstransport.RegisterOverviewRoutes(router, service, authenticator)
+}
+
+func newNotificationHandler(service *notificationapplication.Service, cfg config.Config) (*notificationtransport.Handler, error) {
+	return notificationtransport.NewHandler(service, notificationtransport.StreamConfig{
+		PollInterval: cfg.Notification.PollInterval, HeartbeatInterval: cfg.Notification.HeartbeatInterval,
+		MaxConnections: cfg.Notification.MaxConnections,
+	})
+}
+
+func newNotificationService(repository *notificationpostgres.Repository) (*notificationapplication.Service, error) {
+	return notificationapplication.NewService(repository)
+}
+
+func registerNotificationRoutes(router *gin.Engine, handler *notificationtransport.Handler, authenticator httptransport.Authenticator) {
+	notificationtransport.RegisterRoutes(router, handler, authenticator)
 }
 
 // Fx does not infer interface bindings from a concrete repository. Keep the

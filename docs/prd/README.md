@@ -40,7 +40,7 @@ PRD 将每一条设计转换为稳定、可验收的产品范围。状态只使�
 | 019 | [AI真伪相关性重要性与摘要](../design/019-AI真伪相关性重要性与摘要设计.md) | [PRD](019-AI真伪相关性重要性与摘要.md) | [Plan](../plans/019-AI真伪相关性重要性与摘要计划.md) | implemented |
 | 020 | [事件聚类生命周期热度与趋势](../design/archive/020-事件聚类生命周期热度与趋势设计.md) | [PRD](archive/020-事件聚类生命周期热度与趋势.md) | [Plan](../plans/archive/020-事件聚类生命周期热度与趋势计划.md) | implemented |
 | 021 | [内容与事件检索筛选排序](../design/archive/021-内容与事件检索筛选排序设计.md) | [PRD](archive/021-内容与事件检索筛选排序.md) | [Plan](../plans/archive/021-内容与事件检索筛选排序计划.md) | implemented |
-| 022 | [实时事件流与站内通知](../design/022-实时事件流与站内通知设计.md) | [PRD](022-实时事件流与站内通知.md) | [Plan](../plans/022-实时事件流与站内通知计划.md) | draft |
+| 022 | [实时事件流与站内通知](../design/archive/022-实时事件流与站内通知设计.md) | [PRD](archive/022-实时事件流与站内通知.md) | [Plan](../plans/archive/022-实时事件流与站内通知计划.md) | implemented |
 | 023 | [低噪声告警与邮件交付](../design/023-低噪声告警与邮件交付设计.md) | [PRD](023-低噪声告警与邮件交付.md) | [Plan](../plans/023-低噪声告警与邮件交付计划.md) | draft |
 | 024 | [日报周报私有Feed与知识归档](../design/024-日报周报私有Feed与知识归档设计.md) | [PRD](024-日报周报私有Feed与知识归档.md) | [Plan](../plans/024-日报周报私有Feed与知识归档计划.md) | draft |
 | 025 | [配额限流保留与审计治理](../design/025-配额限流保留与审计治理设计.md) | [PRD](025-配额限流保留与审计治理.md) | [Plan](../plans/025-配额限流保留与审计治理计划.md) | draft |

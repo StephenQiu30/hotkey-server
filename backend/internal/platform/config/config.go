@@ -31,6 +31,7 @@ type Config struct {
 	VaultPath             string
 	Authentication        AuthenticationConfig
 	AI                    AIConfig
+	Notification          NotificationConfig
 }
 
 type MinIOConfig struct {
@@ -39,6 +40,12 @@ type MinIOConfig struct {
 	SecretKey string
 	Bucket    string
 	UseSSL    bool
+}
+
+type NotificationConfig struct {
+	PollInterval      time.Duration
+	HeartbeatInterval time.Duration
+	MaxConnections    int
 }
 
 // ValidateRuntime 校验运行进程创建唯一 MinIO 客户端所需的最小配置。
@@ -149,6 +156,11 @@ func Default() Config {
 			},
 		},
 		AI: AIConfig{OllamaBaseURL: "http://127.0.0.1:11434"},
+		Notification: NotificationConfig{
+			PollInterval:      time.Second,
+			HeartbeatInterval: 10 * time.Second,
+			MaxConnections:    100,
+		},
 	}
 }
 
@@ -225,6 +237,11 @@ func Load() (Config, error) {
 			ONNXTokenizerPath:  configString(v, "onnx_tokenizer_path"),
 			ONNXManifestPath:   configString(v, "onnx_manifest_path"),
 		},
+		Notification: NotificationConfig{
+			PollInterval:      configDuration(v, "notification_poll_interval"),
+			HeartbeatInterval: configDuration(v, "notification_heartbeat_interval"),
+			MaxConnections:    configInt(v, "notification_max_connections"),
+		},
 	}
 	return cfg, cfg.Validate()
 }
@@ -284,6 +301,12 @@ func (c Config) Validate() error {
 		return errors.New("worker concurrency must not exceed 64")
 	}
 	if c.Role != "worker" {
+		if c.Notification.PollInterval <= 0 || c.Notification.HeartbeatInterval <= 0 {
+			return errors.New("notification intervals must be positive")
+		}
+		if c.Notification.MaxConnections <= 0 || c.Notification.MaxConnections > 10000 {
+			return errors.New("notification max connections must be between 1 and 10000")
+		}
 		if strings.TrimSpace(c.HTTPAddr) == "" {
 			return errors.New("HTTP address is required for all and api roles")
 		}
@@ -394,6 +417,9 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("smtp_from_name", "HotKey")
 	v.SetDefault("ollama_enabled", cfg.AI.OllamaEnabled)
 	v.SetDefault("ollama_base_url", cfg.AI.OllamaBaseURL)
+	v.SetDefault("notification_poll_interval", cfg.Notification.PollInterval)
+	v.SetDefault("notification_heartbeat_interval", cfg.Notification.HeartbeatInterval)
+	v.SetDefault("notification_max_connections", cfg.Notification.MaxConnections)
 }
 
 func configKeys() []string {
@@ -404,6 +430,7 @@ func configKeys() []string {
 		"minio_use_ssl", "vault_path",
 		"jwt_secret", "jwt_issuer", "jwt_audience", "verification_hmac_secret", "redis_url", "smtp_enabled", "smtp_host", "smtp_port", "smtp_tls_mode", "smtp_username", "smtp_password", "smtp_from_email", "smtp_from_name", "cors_allowed_origins", "refresh_cookie_secure",
 		"openai_api_key", "deepseek_api_key", "ollama_enabled", "ollama_base_url", "onnx_runtime_library", "onnx_model_path", "onnx_tokenizer_path", "onnx_manifest_path",
+		"notification_poll_interval", "notification_heartbeat_interval", "notification_max_connections",
 	}
 }
 

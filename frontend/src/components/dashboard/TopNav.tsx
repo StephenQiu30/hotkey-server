@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
+import { useNotificationStore } from "@/stores/notificationStore";
 import { UserRole } from "@/lib/domainEnums";
 
 interface MenuItem {
@@ -62,12 +63,10 @@ export default function TopNav({
   menuItems,
   adminMenuItems = [],
   title = "HotKey",
-  alertCount = 0,
 }: {
   menuItems: MenuItem[];
   adminMenuItems?: MenuItem[];
   title?: string;
-  alertCount?: number;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -75,6 +74,7 @@ export default function TopNav({
   const [query, setQuery] = useState("");
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
+  const unreadCount = useNotificationStore((state) => state.unreadCount);
   const canManage =
     user?.role === UserRole.Admin || user?.role === UserRole.Editor;
   const visibleAdminMenuItems = adminMenuItems.filter(
@@ -172,13 +172,13 @@ export default function TopNav({
           className="relative shrink-0"
         >
           <Link
-            href="/dashboard/alerts"
+            href="/dashboard/notifications"
             aria-label={
-              alertCount > 0 ? `告警，${alertCount} 条待处理` : "告警"
+              unreadCount > 0 ? `通知，${unreadCount} 条未读` : "通知"
             }
           >
             <Bell />
-            {alertCount > 0 ? (
+            {unreadCount > 0 ? (
               <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full border-2 border-background bg-destructive" />
             ) : null}
           </Link>

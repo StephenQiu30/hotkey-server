@@ -18,7 +18,7 @@ describe("dashboard menu", () => {
     expect(dashboardAdminMenuItems.map(({ path, name }) => ({ path, name }))).toEqual([
       { path: "/dashboard/users", name: "用户与权限" },
       { path: "/dashboard/contents", name: "采集内容" },
-      { path: "/dashboard/notifications", name: "发布订阅" },
+      { path: "/dashboard/notifications", name: "通知与订阅" },
       { path: "/dashboard/sources", name: "来源管理" },
     ]);
   });

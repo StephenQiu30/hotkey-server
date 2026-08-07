@@ -98,6 +98,33 @@ func TestMiddlewareMapsPanicAndDeadline(t *testing.T) {
 	}
 }
 
+func TestRequestTimeoutExemptsAuthenticatedNotificationStreamOnly(t *testing.T) {
+	router := gin.New()
+	router.Use(requestContextTimeout(time.Millisecond))
+	deadline := make(chan bool, 2)
+	handler := func(c *gin.Context) {
+		_, hasDeadline := c.Request.Context().Deadline()
+		deadline <- hasDeadline
+		c.Status(stdhttp.StatusNoContent)
+	}
+	router.GET("/api/v1/notifications/stream", handler)
+	router.GET("/api/v1/notifications", handler)
+
+	for _, fixture := range []struct {
+		path         string
+		wantDeadline bool
+	}{
+		{path: "/api/v1/notifications/stream", wantDeadline: false},
+		{path: "/api/v1/notifications", wantDeadline: true},
+	} {
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest(stdhttp.MethodGet, fixture.path, nil))
+		if got := <-deadline; got != fixture.wantDeadline {
+			t.Errorf("%s has deadline = %t, want %t", fixture.path, got, fixture.wantDeadline)
+		}
+	}
+}
+
 func TestTraceContextExtractsInboundParentAndSetsRequestID(t *testing.T) {
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 	exporter := tracetest.NewInMemoryExporter()
