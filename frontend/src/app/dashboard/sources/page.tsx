@@ -48,6 +48,7 @@ import { SourceAction, UserRole } from "@/lib/domainEnums";
 import { sourceHealthPresentation } from "@/lib/domainPresentation";
 import { ConfirmDeleteDialog } from "@/components/dashboard/ConfirmDeleteDialog";
 import { SourceConnectionDialog } from "@/components/dashboard/SourceConnectionDialog";
+import { SogouAuthorizationCard } from "@/components/dashboard/SogouAuthorizationCard";
 import {
   CursorPagination,
   DEFAULT_PAGE_SIZE,
@@ -227,8 +228,8 @@ export default function SourcesPage() {
         title={canManage ? "来源管理" : "来源目录"}
         description={
           canManage
-            ? "连接、探测并管理官方 RSS、Atom、Hacker News、X 与 Microsoft Foundry Web Search 数据源。"
-            : "查看当前工作区已接入的 RSS、Atom、Hacker News、X 与 Microsoft Foundry Web Search 数据源。"
+            ? "连接、探测并管理 RSS、Atom、Hacker News、X 与 Microsoft Foundry Web Search，同时查看尚待授权的来源能力。"
+            : "查看当前工作区已接入的 RSS、Atom、Hacker News、X、Microsoft Foundry Web Search 与尚待授权能力。"
         }
         action={
           canManage ? (
@@ -246,6 +247,7 @@ export default function SourcesPage() {
           </AlertDescription>
         </Alert>
       )}
+      <SogouAuthorizationCard />
       {loadError && (
         <Alert variant="destructive" className="mt-6">
           <AlertTitle>来源加载失败</AlertTitle>

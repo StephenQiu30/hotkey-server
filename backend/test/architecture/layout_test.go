@@ -66,6 +66,42 @@ func TestSharedPackagesDoNotImportInfrastructure(t *testing.T) {
 
 func TestProductionSourceCodeDoesNotCallRetiredBingSearchAPI(t *testing.T) {
 	root := filepath.Join(repositoryRoot(t), "internal")
+	violations := productionGoFilesContaining(t, root, []string{
+		"api.bing.microsoft.com",
+		"/v7.0/search",
+	})
+	if len(violations) > 0 {
+		t.Fatalf("production code calls retired Bing Search API: %s", strings.Join(violations, ", "))
+	}
+}
+
+func TestProductionSourceCodeDoesNotScrapeSogouSearchPages(t *testing.T) {
+	root := repositoryRoot(t)
+	if _, err := os.Stat(filepath.Join(root, "internal", "modules", "source", "infrastructure", "sogou")); err == nil {
+		t.Fatal("Sogou connector must not exist before an authorized read contract is accepted")
+	} else if !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+
+	violations := productionGoFilesContaining(t, filepath.Join(root, "internal"), []string{
+		"sogou.com/web",
+		"weixin.sogou.com",
+	})
+	if len(violations) > 0 {
+		t.Fatalf("production code scrapes Sogou search pages: %s", strings.Join(violations, ", "))
+	}
+
+	schema, err := os.ReadFile(filepath.Join(root, "db", "schema.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.ToLower(string(schema)), "'sogou'") {
+		t.Fatal("database source enum must not register Sogou before authorization")
+	}
+}
+
+func productionGoFilesContaining(t *testing.T, root string, forbidden []string) []string {
+	t.Helper()
 	var violations []string
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -79,18 +115,19 @@ func TestProductionSourceCodeDoesNotCallRetiredBingSearchAPI(t *testing.T) {
 			return err
 		}
 		content := strings.ToLower(string(payload))
-		if strings.Contains(content, "api.bing.microsoft.com") || strings.Contains(content, "/v7.0/search") {
-			relative, _ := filepath.Rel(repositoryRoot(t), path)
-			violations = append(violations, relative)
+		for _, value := range forbidden {
+			if strings.Contains(content, strings.ToLower(value)) {
+				relative, _ := filepath.Rel(repositoryRoot(t), path)
+				violations = append(violations, relative)
+				break
+			}
 		}
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(violations) > 0 {
-		t.Fatalf("production code calls retired Bing Search API: %s", strings.Join(violations, ", "))
-	}
+	return violations
 }
 
 func TestImportPathLiteralSupportsQuotedAndRawStrings(t *testing.T) {

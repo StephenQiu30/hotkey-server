@@ -223,6 +223,28 @@ describe("SourcesPage body storage authorization", () => {
     expect(screen.queryByText(/env:/)).not.toBeInTheDocument();
   });
 
+  it("shows Sogou as an authorization-gated capability without executable actions", async () => {
+    render(<SourcesPage />);
+
+    expect(await screen.findByText("搜狗授权搜索")).toBeInTheDocument();
+    expect(screen.getByText("需要授权")).toBeInTheDocument();
+    expect(
+      screen.getByText(/不抓取搜索结果页，也不会创建或调度搜狗来源连接/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "查看官方开放平台说明" }),
+    ).toHaveAttribute(
+      "href",
+      "https://data.open.sogou.com/data-resource/help.html?type=1",
+    );
+    expect(
+      screen.getByRole("button", { name: "授权资料未齐备" }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByRole("option", { name: /搜狗/ }),
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps body storage enabled when a new form is opened", async () => {
     render(<SourcesPage />);
     const user = await openCompletedForm();
@@ -266,7 +288,7 @@ describe("SourcesPage body storage authorization", () => {
         await screen.findByText("只读来源目录"),
       ).toBeInTheDocument();
       expect(
-        screen.getByText("查看当前工作区已接入的 RSS、Atom、Hacker News、X 与 Microsoft Foundry Web Search 数据源。"),
+        screen.getByText("查看当前工作区已接入的 RSS、Atom、Hacker News、X、Microsoft Foundry Web Search 与尚待授权能力。"),
       ).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "新增来源" })).not.toBeInTheDocument();
       expect(
