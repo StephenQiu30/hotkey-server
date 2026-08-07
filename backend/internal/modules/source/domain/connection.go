@@ -25,6 +25,7 @@ const (
 	SourceTypeHackerNews    SourceType = "hacker_news"
 	SourceTypeX             SourceType = "x"
 	SourceTypeBingGrounding SourceType = "bing_grounding"
+	SourceTypeBilibili      SourceType = "bilibili"
 
 	AuthTypeNone   AuthType = "none"
 	AuthTypeAPIKey AuthType = "api_key"
@@ -38,10 +39,12 @@ const (
 
 	HackerNewsEndpoint    = "https://hacker-news.firebaseio.com/v0"
 	XRecentSearchEndpoint = "https://api.x.com/2/tweets/search/recent"
+	BilibiliOpenEndpoint  = "https://member.bilibili.com/arcopen/fn"
 )
 
 var credentialReferencePattern = regexp.MustCompile(`^env:[A-Z_][A-Z0-9_]{0,127}$`)
 var foundryToolboxPathPattern = regexp.MustCompile(`^/api/projects/[A-Za-z0-9][A-Za-z0-9._-]{0,127}/toolboxes/[A-Za-z0-9][A-Za-z0-9._-]{0,127}/versions/[A-Za-z0-9][A-Za-z0-9._-]{0,127}/mcp$`)
+var bilibiliOpenIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 
 type SourceConnection struct {
 	ID             int64
@@ -72,6 +75,7 @@ type SourceConfig struct {
 	RequestTimeoutSeconds         int
 	MaxPagesPerRun                int
 	GroundingDataBoundaryApproved bool
+	BilibiliOpenID                string
 }
 
 func DefaultSourceConfig() SourceConfig {
@@ -105,6 +109,9 @@ func NormalizeSourceConnection(connection SourceConnection) (SourceConnection, e
 	if connection.SourceType == SourceTypeBingGrounding && (connection.AuthType != AuthTypeBearer || credentialRef == "") {
 		return SourceConnection{}, fmt.Errorf("Bing Grounding source requires a Bearer env credential reference")
 	}
+	if connection.SourceType == SourceTypeBilibili && (connection.AuthType != AuthTypeOAuth2 || credentialRef == "") {
+		return SourceConnection{}, fmt.Errorf("Bilibili source requires an OAuth2 env credential reference")
+	}
 	config := connection.Config
 	if config.isZero() {
 		config = DefaultSourceConfig()
@@ -115,6 +122,12 @@ func NormalizeSourceConnection(connection SourceConnection) (SourceConnection, e
 	}
 	if connection.SourceType == SourceTypeBingGrounding && (!config.AllowBodyStorage || !config.RequiresAttribution || config.MaxPagesPerRun != 1) {
 		return SourceConnection{}, fmt.Errorf("Bing Grounding source requires body storage, attribution, and one page per run")
+	}
+	if connection.SourceType == SourceTypeBilibili && (!config.AllowBodyStorage || !config.RequiresAttribution || !config.RequiresDeletionSync || config.BilibiliOpenID == "") {
+		return SourceConnection{}, fmt.Errorf("Bilibili source requires an authorized OpenID, body storage, attribution, and deletion sync")
+	}
+	if connection.SourceType == SourceTypeBilibili && strings.TrimSpace(connection.TermsPolicyURL) != "https://openhome.bilibili.com/agreement/privacy-policy" {
+		return SourceConnection{}, fmt.Errorf("Bilibili source requires the official privacy policy URL")
 	}
 	if connection.SourceType == SourceTypeBingGrounding {
 		termsPolicyURL, err := url.Parse(strings.TrimSpace(connection.TermsPolicyURL))
@@ -137,7 +150,7 @@ func NormalizeSourceConnection(connection SourceConnection) (SourceConnection, e
 }
 
 func (sourceType SourceType) Valid() bool {
-	return sourceType == SourceTypeRSS || sourceType == SourceTypeHackerNews || sourceType == SourceTypeX || sourceType == SourceTypeBingGrounding
+	return sourceType == SourceTypeRSS || sourceType == SourceTypeHackerNews || sourceType == SourceTypeX || sourceType == SourceTypeBingGrounding || sourceType == SourceTypeBilibili
 }
 
 func (authType AuthType) Valid() bool {
@@ -201,6 +214,12 @@ func NormalizeEndpoint(sourceType SourceType, value string) (string, error) {
 		}
 		parsed.Scheme, parsed.Host = "https", host
 		return parsed.String(), nil
+	}
+	if sourceType == SourceTypeBilibili {
+		if normalized != BilibiliOpenEndpoint {
+			return "", fmt.Errorf("Bilibili endpoint must be the official Open Platform endpoint")
+		}
+		return BilibiliOpenEndpoint, nil
 	}
 	if sourceType != SourceTypeRSS {
 		return "", fmt.Errorf("unsupported source type %q", sourceType)
@@ -304,6 +323,12 @@ func NormalizeSourceConfig(input map[string]any) (SourceConfig, error) {
 				return SourceConfig{}, fmt.Errorf("%s must be boolean", key)
 			}
 			config.GroundingDataBoundaryApproved = boolean
+		case "bilibili_open_id":
+			text, ok := value.(string)
+			if !ok {
+				return SourceConfig{}, fmt.Errorf("%s must be string", key)
+			}
+			config.BilibiliOpenID = text
 		default:
 			return SourceConfig{}, fmt.Errorf("source config key %q is not allowed", key)
 		}
@@ -331,11 +356,15 @@ func (config SourceConfig) Normalize() (SourceConfig, error) {
 	if config.MaxPagesPerRun < 1 || config.MaxPagesPerRun > 20 {
 		return SourceConfig{}, fmt.Errorf("max pages per run must be from 1 to 20")
 	}
+	config.BilibiliOpenID = strings.TrimSpace(config.BilibiliOpenID)
+	if config.BilibiliOpenID != "" && !bilibiliOpenIDPattern.MatchString(config.BilibiliOpenID) {
+		return SourceConfig{}, fmt.Errorf("Bilibili OpenID is invalid")
+	}
 	return config, nil
 }
 
 func (config SourceConfig) isZero() bool {
-	return !config.AllowBodyStorage && !config.RequiresAttribution && !config.RequiresDeletionSync && !config.GroundingDataBoundaryApproved && config.ContentRetentionDays == 0 && config.MetricsRetentionDays == 0 && len(config.AllowedLanguages) == 0 && len(config.AllowedRegions) == 0 && config.RateLimitPerMinute == 0 && config.RequestTimeoutSeconds == 0 && config.MaxPagesPerRun == 0
+	return !config.AllowBodyStorage && !config.RequiresAttribution && !config.RequiresDeletionSync && !config.GroundingDataBoundaryApproved && config.BilibiliOpenID == "" && config.ContentRetentionDays == 0 && config.MetricsRetentionDays == 0 && len(config.AllowedLanguages) == 0 && len(config.AllowedRegions) == 0 && config.RateLimitPerMinute == 0 && config.RequestTimeoutSeconds == 0 && config.MaxPagesPerRun == 0
 }
 
 func (config SourceConfig) Map() map[string]any {
@@ -345,6 +374,7 @@ func (config SourceConfig) Map() map[string]any {
 		"allowed_languages": append([]string(nil), config.AllowedLanguages...), "allowed_regions": append([]string(nil), config.AllowedRegions...),
 		"rate_limit_per_minute": config.RateLimitPerMinute, "request_timeout_seconds": config.RequestTimeoutSeconds, "max_pages_per_run": config.MaxPagesPerRun,
 		"grounding_data_boundary_approved": config.GroundingDataBoundaryApproved,
+		"bilibili_open_id":                 config.BilibiliOpenID,
 	}
 }
 

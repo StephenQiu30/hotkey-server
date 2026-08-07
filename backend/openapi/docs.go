@@ -6354,6 +6354,49 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/source-webhooks/bilibili": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "source webhooks"
+                ],
+                "summary": "Receive Bilibili Open Platform webhook",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "official webhook signature",
+                        "name": "x-bilibili-signature",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users": {
             "get": {
                 "security": [
@@ -7739,7 +7782,8 @@ const docTemplate = `{
                     "enum": [
                         "rss",
                         "hacker_news",
-                        "x"
+                        "x",
+                        "bilibili"
                     ]
                 },
                 "supports_comments": {
@@ -7898,7 +7942,8 @@ const docTemplate = `{
                         "rss",
                         "hacker_news",
                         "x",
-                        "bing_grounding"
+                        "bing_grounding",
+                        "bilibili"
                     ]
                 },
                 "terms_policy_url": {
@@ -10392,6 +10437,9 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "bilibili_open_id": {
+                    "type": "string"
+                },
                 "content_retention_days": {
                     "type": "integer"
                 },
@@ -10435,6 +10483,9 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "bilibili_open_id": {
+                    "type": "string"
                 },
                 "content_retention_days": {
                     "type": "integer"
@@ -10810,7 +10861,8 @@ const docTemplate = `{
                         "rss",
                         "hacker_news",
                         "x",
-                        "bing_grounding"
+                        "bing_grounding",
+                        "bilibili"
                     ]
                 },
                 "terms_policy_url": {

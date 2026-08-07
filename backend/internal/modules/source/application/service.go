@@ -85,6 +85,50 @@ type ListInput struct {
 	Query   domain.SourceConnectionListQuery
 }
 
+// HandleBilibiliDeauthorization processes an already verified official event.
+// Duplicate deliveries are acknowledged without repeating the lifecycle write.
+func (service *Service) HandleBilibiliDeauthorization(ctx context.Context, webhook domain.BilibiliWebhook) (bool, error) {
+	if webhook.Event != "deauthorize" || webhook.OpenID == "" || webhook.Digest == "" {
+		return false, domain.InvalidSourceConfiguration()
+	}
+	repository, ok := service.sources.(domain.BilibiliWebhookRepository)
+	if !ok {
+		return false, sharederrors.New(sharederrors.CodeUnavailable, 503, "")
+	}
+	processed := false
+	err := service.withTransaction(ctx, func(ctx context.Context, _ database.Transaction) error {
+		created, err := repository.CreateBilibiliWebhookReceipt(ctx, webhook)
+		if err != nil {
+			return sourceWriteError(err)
+		}
+		if !created {
+			processed = true
+			return nil
+		}
+		current, err := repository.LockBilibiliByOpenID(ctx, webhook.OpenID)
+		if err != nil {
+			return sourceReadError(err)
+		}
+		before := sourceMetadata(*current)
+		current.Enabled = false
+		current.HealthStatus = domain.HealthStatusUnavailable
+		if err := service.sources.Update(ctx, current); err != nil {
+			return sourceWriteError(err)
+		}
+		if err := service.audit.Write(ctx, operationsdomain.AuditEntry{
+			ActorType: "system", Action: operationsdomain.ActionSourceDisabled,
+			ResourceType: "source_connection", ResourceID: current.ID,
+			RequestID: requestcontext.RequestID(ctx), TraceID: requestcontext.TraceID(ctx),
+			Before: before, After: sourceMetadata(*current), Result: operationsdomain.AuditResultSuccess,
+		}); err != nil {
+			return err
+		}
+		processed = true
+		return nil
+	})
+	return processed, err
+}
+
 func (service *Service) Create(ctx context.Context, input CreateInput) (*domain.ManagementSourceConnection, error) {
 	if err := requireAdmin(input.Subject); err != nil {
 		return nil, err
@@ -197,7 +241,7 @@ func (service *Service) changeEnabled(ctx context.Context, input LifecycleInput,
 			changed = *current
 			return nil
 		}
-		if enabled && (current.SourceType == domain.SourceTypeX || current.SourceType == domain.SourceTypeBingGrounding) && current.HealthStatus != domain.HealthStatusHealthy {
+		if enabled && (current.SourceType == domain.SourceTypeX || current.SourceType == domain.SourceTypeBingGrounding || current.SourceType == domain.SourceTypeBilibili) && current.HealthStatus != domain.HealthStatusHealthy {
 			return domain.SourceConnectionUnavailable()
 		}
 		if enabled && current.SourceType == domain.SourceTypeBingGrounding && !current.Config.GroundingDataBoundaryApproved {
@@ -454,7 +498,7 @@ func lockConfiguration(ctx context.Context, transaction database.Transaction) er
 }
 
 func normalizeCreate(connection domain.SourceConnection) (domain.SourceConnection, error) {
-	if connection.SourceType != domain.SourceTypeRSS && connection.SourceType != domain.SourceTypeHackerNews && connection.SourceType != domain.SourceTypeX && connection.SourceType != domain.SourceTypeBingGrounding {
+	if connection.SourceType != domain.SourceTypeRSS && connection.SourceType != domain.SourceTypeHackerNews && connection.SourceType != domain.SourceTypeX && connection.SourceType != domain.SourceTypeBingGrounding && connection.SourceType != domain.SourceTypeBilibili {
 		return domain.SourceConnection{}, domain.UnsupportedSourceType()
 	}
 	// A new connection cannot be created already archived. `enabled` remains
@@ -462,7 +506,7 @@ func normalizeCreate(connection domain.SourceConnection) (domain.SourceConnectio
 	// route that may change `Deleted` after creation.
 	connection.Deleted = false
 	connection.HealthStatus = domain.HealthStatusUnknown
-	if connection.SourceType == domain.SourceTypeX || connection.SourceType == domain.SourceTypeBingGrounding {
+	if connection.SourceType == domain.SourceTypeX || connection.SourceType == domain.SourceTypeBingGrounding || connection.SourceType == domain.SourceTypeBilibili {
 		connection.Enabled = false
 	}
 	normalized, err := domain.NormalizeSourceConnection(connection)
@@ -495,7 +539,7 @@ func mergeUpdate(current domain.SourceConnection, input UpdateInput) (domain.Sou
 	if input.TermsPolicyURL != nil {
 		next.TermsPolicyURL = *input.TermsPolicyURL
 	}
-	if next.SourceType != domain.SourceTypeRSS && next.SourceType != domain.SourceTypeHackerNews && next.SourceType != domain.SourceTypeX && next.SourceType != domain.SourceTypeBingGrounding {
+	if next.SourceType != domain.SourceTypeRSS && next.SourceType != domain.SourceTypeHackerNews && next.SourceType != domain.SourceTypeX && next.SourceType != domain.SourceTypeBingGrounding && next.SourceType != domain.SourceTypeBilibili {
 		return domain.SourceConnection{}, false, false, domain.UnsupportedSourceType()
 	}
 	normalized, err := domain.NormalizeSourceConnection(next)

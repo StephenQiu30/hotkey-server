@@ -33,6 +33,7 @@ type Repository struct{ runtime *database.Runtime }
 
 var _ domain.SourceConnectionRepository = (*Repository)(nil)
 var _ domain.MetricSourceContextRepository = (*Repository)(nil)
+var _ domain.BilibiliWebhookRepository = (*Repository)(nil)
 
 func NewRepository(runtime *database.Runtime) *Repository { return &Repository{runtime: runtime} }
 
@@ -317,6 +318,45 @@ func encodeConfig(config domain.SourceConfig) (string, error) {
 		return "", fmt.Errorf("%w: encode source config: %v", sharedrepository.ErrInvalidInput, err)
 	}
 	return string(encoded), nil
+}
+
+func (repository *Repository) LockBilibiliByOpenID(ctx context.Context, openID string) (*domain.SourceConnection, error) {
+	transaction, ok := database.TransactionFromContext(ctx)
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil || !ok || strings.TrimSpace(openID) == "" {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	record, err := scanSourceConnection(transaction.SQL.QueryRowContext(ctx, `
+SELECT `+sourceConnectionColumns+`
+FROM source_connections
+WHERE source_type = 'bilibili' AND deleted_at IS NULL AND config->>'bilibili_open_id' = $1
+FOR UPDATE`, openID))
+	if err != nil {
+		return nil, err
+	}
+	connection, err := record.sourceConnection()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+	}
+	return &connection, nil
+}
+
+func (repository *Repository) CreateBilibiliWebhookReceipt(ctx context.Context, webhook domain.BilibiliWebhook) (bool, error) {
+	transaction, ok := database.TransactionFromContext(ctx)
+	if repository == nil || repository.runtime == nil || !ok {
+		return false, sharedrepository.ErrUnavailable
+	}
+	result, err := transaction.SQL.ExecContext(ctx, `
+INSERT INTO bilibili_webhook_receipts (event_digest, event_type, open_id, status, processed_at)
+VALUES ($1, $2, NULLIF($3, ''), 'processed', now())
+ON CONFLICT (event_digest) DO NOTHING`, webhook.Digest, webhook.Event, webhook.OpenID)
+	if err != nil {
+		return false, databaserepository.MapError(err)
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return false, databaserepository.MapError(err)
+	}
+	return count == 1, nil
 }
 
 // timeNowUTC is a variable solely so deterministic repository tests can

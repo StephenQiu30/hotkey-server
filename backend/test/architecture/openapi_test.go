@@ -130,6 +130,7 @@ func TestOpenAPIContract(t *testing.T) {
 		"/api/v1/source-connections/{id}/disable":                           {"post": {"200", "400", "401", "403", "409", "503"}},
 		"/api/v1/source-connections/{id}/archive":                           {"post": {"200", "400", "401", "403", "409", "503"}},
 		"/api/v1/source-connections/{id}/restore":                           {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/source-webhooks/bilibili":                                  {"post": {"200", "400", "401"}},
 		"/api/v1/metric-capability-profiles":                                {"post": {"201", "400", "401", "403", "409", "503"}},
 		"/api/v1/metric-capability-profiles/{id}/publish":                   {"post": {"200", "400", "401", "403", "404", "409", "503"}},
 		"/api/v1/metric-capability-profiles/{id}/archive":                   {"post": {"200", "400", "401", "403", "404", "409", "503"}},

@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SourcesPage from "@/app/dashboard/sources/page";
@@ -35,7 +41,7 @@ const openCompletedForm = async () => {
   await user.type(screen.getByLabelText("名称"), "Research feed");
   await user.type(
     screen.getByLabelText("接口地址"),
-    "https://example.test/feed.xml",
+    "https://example.test/feed.xml"
   );
   return user;
 };
@@ -62,8 +68,8 @@ describe("SourcesPage body storage authorization", () => {
     expect(checkbox).toBeChecked();
     expect(
       screen.getByText(
-        "只保存来源 Feed 实际提供的正文/摘要，不抓取原网页；启用前确认来源条款。",
-      ),
+        "只保存来源 Feed 实际提供的正文/摘要，不抓取原网页；启用前确认来源条款。"
+      )
     ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "创建连接" }));
@@ -71,8 +77,8 @@ describe("SourcesPage body storage authorization", () => {
       expect(mocks.postSourceConnections).toHaveBeenCalledWith(
         expect.objectContaining({
           config: expect.objectContaining({ allow_body_storage: true }),
-        }),
-      ),
+        })
+      )
     );
   });
 
@@ -82,9 +88,17 @@ describe("SourcesPage body storage authorization", () => {
 
     fireEvent.keyDown(screen.getByLabelText("授权方式"), { key: "ArrowDown" });
     fireEvent.click(screen.getByRole("option", { name: "Bearer Token" }));
-    await user.type(screen.getByLabelText("凭据环境变量引用"), "env:RESEARCH_FEED_TOKEN");
-    await user.type(screen.getByLabelText("条款与政策地址"), "https://example.test/terms");
-    await user.click(screen.getByRole("checkbox", { name: "需要来源归属标记" }));
+    await user.type(
+      screen.getByLabelText("凭据环境变量引用"),
+      "env:RESEARCH_FEED_TOKEN"
+    );
+    await user.type(
+      screen.getByLabelText("条款与政策地址"),
+      "https://example.test/terms"
+    );
+    await user.click(
+      screen.getByRole("checkbox", { name: "需要来源归属标记" })
+    );
     await user.clear(screen.getByLabelText("每分钟请求上限"));
     await user.type(screen.getByLabelText("每分钟请求上限"), "30");
     await user.clear(screen.getByLabelText("内容保留天数"));
@@ -93,23 +107,25 @@ describe("SourcesPage body storage authorization", () => {
     await user.type(screen.getByLabelText("允许地区"), "CN, US");
     await user.click(screen.getByRole("button", { name: "创建连接" }));
 
-    await waitFor(() => expect(mocks.postSourceConnections).toHaveBeenCalledWith({
-      auth_type: "bearer",
-      credential_ref: "env:RESEARCH_FEED_TOKEN",
-      enabled: true,
-      endpoint: "https://example.test/feed.xml",
-      name: "Research feed",
-      source_type: "rss",
-      terms_policy_url: "https://example.test/terms",
-      config: expect.objectContaining({
-        allow_body_storage: true,
-        allowed_languages: ["zh-CN", "en"],
-        allowed_regions: ["CN", "US"],
-        content_retention_days: 90,
-        rate_limit_per_minute: 30,
-        requires_attribution: true,
-      }),
-    }));
+    await waitFor(() =>
+      expect(mocks.postSourceConnections).toHaveBeenCalledWith({
+        auth_type: "bearer",
+        credential_ref: "env:RESEARCH_FEED_TOKEN",
+        enabled: true,
+        endpoint: "https://example.test/feed.xml",
+        name: "Research feed",
+        source_type: "rss",
+        terms_policy_url: "https://example.test/terms",
+        config: expect.objectContaining({
+          allow_body_storage: true,
+          allowed_languages: ["zh-CN", "en"],
+          allowed_regions: ["CN", "US"],
+          content_retention_days: 90,
+          rate_limit_per_minute: 30,
+          requires_attribution: true,
+        }),
+      })
+    );
   });
 
   it("creates X Recent Search disabled with a fixed endpoint and Bearer env reference", async () => {
@@ -122,13 +138,13 @@ describe("SourcesPage body storage authorization", () => {
     fireEvent.click(screen.getByRole("option", { name: "X Recent Search" }));
 
     expect(screen.getByLabelText("接口地址")).toHaveValue(
-      "https://api.x.com/2/tweets/search/recent",
+      "https://api.x.com/2/tweets/search/recent"
     );
     expect(screen.getByLabelText("接口地址")).toHaveAttribute("readonly");
     expect(screen.getByLabelText("授权方式")).toBeDisabled();
     await user.type(
       screen.getByLabelText("凭据环境变量引用"),
-      "env:X_BEARER_TOKEN",
+      "env:X_BEARER_TOKEN"
     );
     await user.click(screen.getByRole("button", { name: "创建连接" }));
 
@@ -140,8 +156,8 @@ describe("SourcesPage body storage authorization", () => {
           enabled: false,
           endpoint: "https://api.x.com/2/tweets/search/recent",
           source_type: "x",
-        }),
-      ),
+        })
+      )
     );
   });
 
@@ -153,36 +169,34 @@ describe("SourcesPage body storage authorization", () => {
 
     fireEvent.keyDown(screen.getByLabelText("来源类型"), { key: "ArrowDown" });
     fireEvent.click(
-      screen.getByRole("option", { name: "Microsoft Foundry Web Search" }),
+      screen.getByRole("option", { name: "Microsoft Foundry Web Search" })
     );
 
     expect(screen.getByLabelText("接口地址")).toHaveAttribute(
       "placeholder",
-      "https://account.services.ai.azure.com/api/projects/project/toolboxes/web-search/versions/1/mcp?api-version=v1",
+      "https://account.services.ai.azure.com/api/projects/project/toolboxes/web-search/versions/1/mcp?api-version=v1"
     );
     expect(screen.getByLabelText("授权方式")).toBeDisabled();
     expect(screen.getByRole("button", { name: "创建连接" })).toBeDisabled();
     await user.type(
       screen.getByLabelText("接口地址"),
-      "https://hotkey.services.ai.azure.com/api/projects/hotkey/toolboxes/web-search/versions/1/mcp?api-version=v1",
+      "https://hotkey.services.ai.azure.com/api/projects/hotkey/toolboxes/web-search/versions/1/mcp?api-version=v1"
     );
     await user.type(
       screen.getByLabelText("凭据环境变量引用"),
-      "env:AZURE_FOUNDRY_TOKEN",
+      "env:AZURE_FOUNDRY_TOKEN"
     );
     expect(
-      screen.getByText(/Microsoft DPA 不适用于该能力/),
+      screen.getByText(/Microsoft DPA 不适用于该能力/)
     ).toBeInTheDocument();
+    expect(screen.getByText(/模型生成的派生摘要和引用/)).toBeInTheDocument();
     expect(
-      screen.getByText(/模型生成的派生摘要和引用/),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/不把它标记为原始网页正文或来源指标/),
+      screen.getByText(/不把它标记为原始网页正文或来源指标/)
     ).toBeInTheDocument();
     await user.click(
       screen.getByRole("checkbox", {
         name: "确认 Grounding 数据边界与额外条款",
-      }),
+      })
     );
     await user.click(screen.getByRole("button", { name: "创建连接" }));
 
@@ -199,25 +213,81 @@ describe("SourcesPage body storage authorization", () => {
             max_pages_per_run: 1,
             grounding_data_boundary_approved: true,
           }),
-        }),
-      ),
+        })
+      )
+    );
+  });
+
+  it("creates an authorized Bilibili account disabled with official fixed fields", async () => {
+    render(<SourcesPage />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "新增来源" }));
+    await user.type(screen.getByLabelText("名称"), "Bilibili 官方账号");
+    fireEvent.keyDown(screen.getByLabelText("来源类型"), { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("option", { name: "Bilibili 开放平台" }));
+
+    expect(screen.getByLabelText("接口地址")).toHaveValue(
+      "https://member.bilibili.com/arcopen/fn"
+    );
+    expect(screen.getByLabelText("接口地址")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("授权方式")).toBeDisabled();
+    expect(screen.getByLabelText("条款与政策地址")).toHaveAttribute("readonly");
+    expect(
+      screen.getByText(/公共 UID、@账号与主页地址不会被解析或抓取/)
+    ).toBeInTheDocument();
+    await user.type(
+      screen.getByLabelText("授权账号 OpenID"),
+      "creator_open_id"
+    );
+    await user.type(
+      screen.getByLabelText("凭据环境变量引用"),
+      "env:BILIBILI_OAUTH"
+    );
+    await user.click(screen.getByRole("button", { name: "创建连接" }));
+
+    await waitFor(() =>
+      expect(mocks.postSourceConnections).toHaveBeenCalledWith(
+        expect.objectContaining({
+          auth_type: "oauth2",
+          credential_ref: "env:BILIBILI_OAUTH",
+          enabled: false,
+          endpoint: "https://member.bilibili.com/arcopen/fn",
+          source_type: "bilibili",
+          terms_policy_url:
+            "https://openhome.bilibili.com/agreement/privacy-policy",
+          config: expect.objectContaining({
+            allow_body_storage: true,
+            requires_attribution: true,
+            requires_deletion_sync: true,
+            bilibili_open_id: "creator_open_id",
+          }),
+        })
+      )
     );
   });
 
   it("shows safe compliance facts without exposing a credential reference", async () => {
-    mocks.getSourceConnections.mockResolvedValue({ data: { items: [{
-      id: 7,
-      name: "Official feed",
-      source_type: "rss",
-      health_status: "healthy",
-      credential_configured: true,
-      terms_policy_url: "https://example.test/terms",
-      config: { rate_limit_per_minute: 45, content_retention_days: 60 },
-    }] } });
+    mocks.getSourceConnections.mockResolvedValue({
+      data: {
+        items: [
+          {
+            id: 7,
+            name: "Official feed",
+            source_type: "rss",
+            health_status: "healthy",
+            credential_configured: true,
+            terms_policy_url: "https://example.test/terms",
+            config: { rate_limit_per_minute: 45, content_retention_days: 60 },
+          },
+        ],
+      },
+    });
 
     render(<SourcesPage />);
 
-    expect(await screen.findByRole("link", { name: "条款与政策" })).toHaveAttribute("href", "https://example.test/terms");
+    expect(
+      await screen.findByRole("link", { name: "条款与政策" })
+    ).toHaveAttribute("href", "https://example.test/terms");
     expect(screen.getByText("凭据已配置")).toBeInTheDocument();
     expect(screen.getByText("45 req/min · 保留 60 天")).toBeInTheDocument();
     expect(screen.queryByText(/env:/)).not.toBeInTheDocument();
@@ -229,19 +299,19 @@ describe("SourcesPage body storage authorization", () => {
     expect(await screen.findByText("搜狗授权搜索")).toBeInTheDocument();
     expect(screen.getByText("需要授权")).toBeInTheDocument();
     expect(
-      screen.getByText(/不抓取搜索结果页，也不会创建或调度搜狗来源连接/),
+      screen.getByText(/不抓取搜索结果页，也不会创建或调度搜狗来源连接/)
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "查看官方开放平台说明" }),
+      screen.getByRole("link", { name: "查看官方开放平台说明" })
     ).toHaveAttribute(
       "href",
-      "https://data.open.sogou.com/data-resource/help.html?type=1",
+      "https://data.open.sogou.com/data-resource/help.html?type=1"
     );
     expect(
-      screen.getByRole("button", { name: "授权资料未齐备" }),
+      screen.getByRole("button", { name: "授权资料未齐备" })
     ).toBeDisabled();
     expect(
-      screen.queryByRole("option", { name: /搜狗/ }),
+      screen.queryByRole("option", { name: /搜狗/ })
     ).not.toBeInTheDocument();
   });
 
@@ -259,13 +329,13 @@ describe("SourcesPage body storage authorization", () => {
     expect(
       screen.getByRole("checkbox", {
         name: "保存来源正文/摘要用于归档预览",
-      }),
+      })
     ).toBeChecked();
 
     await user.type(screen.getByLabelText("名称"), "Second feed");
     await user.type(
       screen.getByLabelText("接口地址"),
-      "https://example.test/second.xml",
+      "https://example.test/second.xml"
     );
     await user.click(screen.getByRole("button", { name: "创建连接" }));
 
@@ -273,8 +343,8 @@ describe("SourcesPage body storage authorization", () => {
       expect(mocks.postSourceConnections).toHaveBeenCalledWith(
         expect.objectContaining({
           config: expect.objectContaining({ allow_body_storage: true }),
-        }),
-      ),
+        })
+      )
     );
   });
 
@@ -284,19 +354,21 @@ describe("SourcesPage body storage authorization", () => {
       setRole(role);
       render(<SourcesPage />);
 
+      expect(await screen.findByText("只读来源目录")).toBeInTheDocument();
       expect(
-        await screen.findByText("只读来源目录"),
+        screen.getByText(
+          "查看当前工作区已接入的 RSS、Hacker News、X、Bilibili 授权账号与 Microsoft Foundry Web Search。"
+        )
       ).toBeInTheDocument();
       expect(
-        screen.getByText("查看当前工作区已接入的 RSS、Atom、Hacker News、X、Microsoft Foundry Web Search 与尚待授权能力。"),
-      ).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "新增来源" })).not.toBeInTheDocument();
+        screen.queryByRole("button", { name: "新增来源" })
+      ).not.toBeInTheDocument();
       expect(
         screen.queryByRole("checkbox", {
           name: "保存来源正文/摘要用于归档预览",
-        }),
+        })
       ).not.toBeInTheDocument();
-    },
+    }
   );
 
   it("lets an admin explicitly enable Feed body storage for an existing source", async () => {
@@ -319,13 +391,17 @@ describe("SourcesPage body storage authorization", () => {
       .mockResolvedValueOnce({ data: { items: [] } });
 
     render(<SourcesPage />);
-    await userEvent.setup().click(await screen.findByRole("button", { name: "开启归档" }));
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "开启归档" }));
 
     expect(
-      await screen.findByRole("alertdialog", { name: "开启正文与摘要归档？" }),
+      await screen.findByRole("alertdialog", { name: "开启正文与摘要归档？" })
     ).toBeInTheDocument();
     expect(mocks.patchSourceConnectionsId).not.toHaveBeenCalled();
-    await userEvent.setup().click(screen.getByRole("button", { name: "确认开启" }));
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "确认开启" }));
 
     await waitFor(() =>
       expect(mocks.patchSourceConnectionsId).toHaveBeenCalledWith(
@@ -333,8 +409,8 @@ describe("SourcesPage body storage authorization", () => {
         {
           expected_source_version: 4,
           config: { allow_body_storage: true },
-        },
-      ),
+        }
+      )
     );
   });
 
@@ -349,13 +425,15 @@ describe("SourcesPage body storage authorization", () => {
       .mockResolvedValueOnce({ data: { items: [], next_cursor: undefined } });
 
     render(<SourcesPage />);
-    await userEvent.setup().click(await screen.findByRole("button", { name: "下一页" }));
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "下一页" }));
 
     await waitFor(() =>
       expect(mocks.getSourceConnections).toHaveBeenLastCalledWith({
         cursor: "source-cursor-1",
         limit: 20,
-      }),
+      })
     );
   });
 
@@ -373,7 +451,9 @@ describe("SourcesPage body storage authorization", () => {
     expect(await screen.findByText("来源加载失败")).toBeInTheDocument();
     expect(screen.queryByText("还没有来源连接")).not.toBeInTheDocument();
 
-    await userEvent.setup().click(screen.getByRole("button", { name: "重新加载" }));
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "重新加载" }));
 
     expect(await screen.findByText("Hacker News 官方")).toBeInTheDocument();
     expect(screen.queryByText("来源加载失败")).not.toBeInTheDocument();

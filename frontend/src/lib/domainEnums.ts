@@ -15,6 +15,7 @@ export enum SourceType {
   HackerNews = "hacker_news",
   X = "x",
   BingGrounding = "bing_grounding",
+  Bilibili = "bilibili",
 }
 
 export enum SourceHealthStatus {

@@ -108,6 +108,45 @@ func TestSourceServiceAdminLifecycleAndSafeReads(t *testing.T) {
 	}
 }
 
+func TestBilibiliDeauthorizationIsAtomicAuditedAndIdempotent(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	admin := seedAdmin(t, runtime)
+	service := newService(t, runtime, usageReader{})
+	config := domain.DefaultSourceConfig()
+	config.RequiresAttribution, config.RequiresDeletionSync = true, true
+	config.BilibiliOpenID = "creator_open_id"
+	created, err := service.Create(context.Background(), sourceapplication.CreateInput{Subject: admin, Connection: domain.SourceConnection{
+		SourceType: domain.SourceTypeBilibili, Name: "bilibili-deauthorize", Endpoint: domain.BilibiliOpenEndpoint,
+		AuthType: domain.AuthTypeOAuth2, CredentialRef: "env:BILIBILI_OAUTH", Config: config, Enabled: true,
+		TermsPolicyURL: "https://openhome.bilibili.com/agreement/privacy-policy",
+	}})
+	if err != nil {
+		t.Fatalf("Create(Bilibili): %v", err)
+	}
+	webhook := domain.BilibiliWebhook{Event: "deauthorize", OpenID: "creator_open_id", Digest: "1111111111111111111111111111111111111111"}
+	for attempt := 0; attempt < 2; attempt++ {
+		processed, err := service.HandleBilibiliDeauthorization(context.Background(), webhook)
+		if err != nil || !processed {
+			t.Fatalf("HandleBilibiliDeauthorization(%d) = %v, %v", attempt, processed, err)
+		}
+	}
+	updated, err := service.GetManagement(context.Background(), admin, created.ID)
+	if err != nil || updated.Enabled || updated.HealthStatus != domain.HealthStatusUnavailable || updated.Version != created.Version+1 {
+		t.Fatalf("deauthorized source = %#v, %v", updated, err)
+	}
+	var receipts, disabledAudits int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM bilibili_webhook_receipts WHERE event_digest = $1`, webhook.Digest).Scan(&receipts); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM audit_logs WHERE action = 'source.disabled' AND resource_id = $1`, created.ID).Scan(&disabledAudits); err != nil {
+		t.Fatal(err)
+	}
+	if receipts != 1 || disabledAudits != 1 {
+		t.Fatalf("receipts=%d disabled audits=%d, want one each", receipts, disabledAudits)
+	}
+}
+
 func TestSourceServiceUsageAndAuditFailureRollback(t *testing.T) {
 	runtime := openRuntime(t)
 	defer func() { _ = runtime.Close() }()

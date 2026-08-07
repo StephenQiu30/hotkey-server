@@ -2,9 +2,9 @@
 layer: Plan
 scope: shared
 doc_no: "013"
-title: Bilibili开放平台与账号监控计划
-status: planned
-version: v1.0
+title: Bilibili开放平台与授权账号监控计划
+status: completed
+version: v1.1
 owner: HotKey Team
 phase: P1
 canonical_path: docs/plans/013-Bilibili开放平台与账号监控计划.md
@@ -12,56 +12,38 @@ design: docs/design/013-Bilibili开放平台与账号监控设计.md
 prd: docs/prd/013-Bilibili开放平台与账号监控.md
 ---
 
-# Bilibili开放平台与账号监控计划
+# Bilibili开放平台与授权账号监控计划
 
 ## 前置门禁
 
-- Design 已 accepted，PRD 已 approved。
-- 官方/授权接口、应用 scope、条款、配额和测试凭据已核实；阻塞项不得用非官方接口绕过。
-- 先保存 Connector 契约、查询编译、分页、限流、失败分类和 SSRF 的失败测试。
-
-## 预计变更范围
-
-- backend/internal/modules/source/infrastructure/bilibili/
-- backend/internal/modules/source/domain/
-- backend/internal/modules/monitor/
-- backend/db/schema.sql
-- frontend/src/app/dashboard/sources/
-- frontend/src/app/dashboard/settings/
+- [x] Design 已 accepted，PRD 已 approved。
+- [x] 已核实官方 OAuth、scopes、v2 签名、视频/专栏列表、Webhook 与隐私条款。
+- [x] 已确认开放平台不支持任意公共账号搜索，MVP 不以非官方接口绕过。
 
 ## 执行步骤
 
-1. 在 Source Domain 增加最小能力枚举与严格配置，不泄漏第三方 SDK 类型。
-2. 在唯一 Schema 增加必要字段和约束，保持既有 RSS/HN 数据兼容。
-3. 实现绑定不可变 SourceConnection 的 Connector、分页检查点、限流和错误分类。
-4. 将 Capture 接入既有 normalize→relevance→cluster 流水线，不建立旁路存储。
-5. 更新来源/监控 API 注解，生成 OpenAPI 与前端 Client。
-6. 用 shadcn/ui 组合来源配置、授权状态、健康诊断和能力预览。
-7. 运行契约、集成、并发、重试、权限和端到端测试，新增同编号 Acceptance。
+1. [x] 扩展 Source Domain、固定配置、Schema 约束和启用健康门禁。
+2. [x] 实现 Bilibili v2 签名连接器、scopes 健康探测、视频/专栏分页游标和安全错误分类。
+3. [x] 实现 Webhook 原始请求体验签、challenge、撤销停用、幂等回执和审计。
+4. [x] 更新 Source API、OpenAPI Client 与 shadcn/ui 来源表单/能力说明。
+5. [x] 完成领域、连接器、数据库、传输、权限、脱敏、并发/重试测试。
+6. [x] 运行后端 CI、前端全量测试与构建、Compose、diff 检查及 agent-browser 桌面/移动验收。
+7. [x] 新建并通过同编号 Acceptance，按中文 Conventional Commits 提交。
 
-## 验证
+## 测试清单
 
-- `cd backend && make ci`
-- `cd frontend && npm run openapi:check && npm run typecheck && npm run test:unit && npm run build`
-- 使用可控官方沙盒或 HTTP fixture 验证成功、分页、429、401、超时、恶意重定向和撤销授权。
-- 根目录运行 Compose 配置检查与 `git diff --check`。
+- 正常：scopes、视频、专栏、分页游标、challenge、撤销、管理员配置。
+- 失败：缺少凭据、错误 OpenID、scope 不足、401/403/429/5xx、超时、畸形 JSON、恶意重定向、错误签名、过大回调。
+- 幂等：重复轮询、重复撤销事件、相同内容跨轮次。
+- 权限与脱敏：Viewer 无写入口；API、日志、回执、错误均无凭据和原始回调。
+- UI：1440×900 与 390×844 无横向溢出，关键流程 axe 零违规。
 
 ## 迁移与回滚
 
-新来源默认 disabled，并以能力开关逐一启用。回滚时先停止该来源的新调度、等待运行任务结束，再回退应用；保留检查点、采集运行和历史证据。
-
-## 依赖与功能切片
-
-- 前置编号：005、006、007。
-- 依赖未验收时，本条只允许完成不改变对外行为的基础工作。
-
-- [ ] Slice-013-1：实现「B 站应用授权和账号绑定」，补齐实际涉及的领域、任务、API 与界面，并绑定 AC-013-* 回归。
-- [ ] Slice-013-2：实现「账号目标解析与确认」，补齐实际涉及的领域、任务、API 与界面，并绑定 AC-013-* 回归。
-- [ ] Slice-013-3：实现「稿件、专栏、直播事件采集」，补齐实际涉及的领域、任务、API 与界面，并绑定 AC-013-* 回归。
-- [ ] Slice-013-4：实现「Webhook 验签、轮询补偿和指标快照」，补齐实际涉及的领域、任务、API 与界面，并绑定 AC-013-* 回归。
+新来源默认 disabled。回滚时先停用 Bilibili 调度与 Webhook 路由，再回退应用；保留历史 Content、CollectionRun、回执和审计记录。Schema 采用可重复执行的增量约束，不删除既有事实。
 
 ## 完成定义
 
-- 未授权账号数据不会被读取
-- 相同内容在 Webhook 与轮询并发时只生成一条 Content
-- 授权撤销后停止采集并保留合规所需审计
+- [x] AC-013-1 至 AC-013-5 全部通过。
+- [x] 自动化测试、构建、Compose、浏览器验收全部通过。
+- [x] Acceptance 记录证据与清理结果，工作树仅包含本任务提交。

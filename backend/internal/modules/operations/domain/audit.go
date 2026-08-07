@@ -177,7 +177,7 @@ func validMetadataValue(key string, value any) bool {
 		return ok
 	case "capability_source_type":
 		value, ok := value.(string)
-		return ok && (value == "rss" || value == "hacker_news")
+		return ok && (value == "rss" || value == "hacker_news" || value == "x" || value == "bilibili")
 	case "capability_profile_version":
 		value, ok := value.(string)
 		return ok && metricCapabilityProfileVersionRegex.MatchString(value)

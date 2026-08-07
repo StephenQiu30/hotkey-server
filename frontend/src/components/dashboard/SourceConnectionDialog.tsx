@@ -29,6 +29,9 @@ const HACKER_NEWS_ENDPOINT = "https://hacker-news.firebaseio.com/v0";
 const X_RECENT_SEARCH_ENDPOINT = "https://api.x.com/2/tweets/search/recent";
 const FOUNDRY_WEB_SEARCH_POLICY_URL =
   "https://learn.microsoft.com/en-us/azure/ai-foundry/agents/how-to/tools/web-search?view=foundry";
+const BILIBILI_OPEN_ENDPOINT = "https://member.bilibili.com/arcopen/fn";
+const BILIBILI_PRIVACY_POLICY_URL =
+  "https://openhome.bilibili.com/agreement/privacy-policy";
 const credentialPattern = /^env:[A-Z_][A-Z0-9_]{0,127}$/;
 
 type AuthType = "none" | "api_key" | "oauth2" | "bearer";
@@ -49,6 +52,7 @@ type SourceForm = {
   requiresAttribution: boolean;
   requiresDeletionSync: boolean;
   groundingDataBoundaryApproved: boolean;
+  bilibiliOpenID: string;
   sourceType: SourceType;
   termsPolicyURL: string;
 };
@@ -107,6 +111,7 @@ const emptyForm = (): SourceForm => ({
   requiresAttribution: false,
   requiresDeletionSync: false,
   groundingDataBoundaryApproved: false,
+  bilibiliOpenID: "",
   sourceType: SourceType.RSS,
   termsPolicyURL: "",
 });
@@ -149,7 +154,9 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
           form.allowBodyStorage &&
           form.requiresAttribution &&
           form.maxPagesPerRun === 1 &&
-          Boolean(form.termsPolicyURL.trim()))),
+          Boolean(form.termsPolicyURL.trim()))) &&
+      (form.sourceType !== SourceType.Bilibili ||
+        /^[A-Za-z0-9_-]{1,128}$/.test(form.bilibiliOpenID.trim()))
   );
 
   const updateForm = (values: Partial<SourceForm>) => {
@@ -178,13 +185,14 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
         request_timeout_seconds: form.requestTimeoutSeconds,
         requires_attribution: form.requiresAttribution,
         requires_deletion_sync: form.requiresDeletionSync,
-        grounding_data_boundary_approved:
-          form.groundingDataBoundaryApproved,
+        grounding_data_boundary_approved: form.groundingDataBoundaryApproved,
+        bilibili_open_id: form.bilibiliOpenID.trim(),
       },
       credential_ref: form.credentialRef.trim(),
       enabled:
         form.sourceType !== SourceType.X &&
-        form.sourceType !== SourceType.BingGrounding,
+        form.sourceType !== SourceType.BingGrounding &&
+        form.sourceType !== SourceType.Bilibili,
       endpoint: form.endpoint.trim(),
       name: form.name.trim(),
       source_type: form.sourceType,
@@ -240,30 +248,43 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                       value === SourceType.HackerNews
                         ? HACKER_NEWS_ENDPOINT
                         : value === SourceType.X
-                          ? X_RECENT_SEARCH_ENDPOINT
+                        ? X_RECENT_SEARCH_ENDPOINT
+                        : value === SourceType.Bilibili
+                        ? BILIBILI_OPEN_ENDPOINT
                         : "",
                     authType:
                       value === SourceType.X ||
                       value === SourceType.BingGrounding
                         ? "bearer"
+                        : value === SourceType.Bilibili
+                        ? "oauth2"
                         : "none",
                     credentialRef: "",
                     allowBodyStorage:
-                      value === SourceType.BingGrounding
+                      value === SourceType.BingGrounding ||
+                      value === SourceType.Bilibili
                         ? true
                         : form.allowBodyStorage,
                     requiresAttribution:
-                      value === SourceType.BingGrounding
+                      value === SourceType.BingGrounding ||
+                      value === SourceType.Bilibili
                         ? true
                         : form.requiresAttribution,
+                    requiresDeletionSync:
+                      value === SourceType.Bilibili
+                        ? true
+                        : form.requiresDeletionSync,
                     maxPagesPerRun:
                       value === SourceType.BingGrounding
                         ? 1
                         : form.maxPagesPerRun,
                     groundingDataBoundaryApproved: false,
+                    bilibiliOpenID: "",
                     termsPolicyURL:
                       value === SourceType.BingGrounding
                         ? FOUNDRY_WEB_SEARCH_POLICY_URL
+                        : value === SourceType.Bilibili
+                        ? BILIBILI_PRIVACY_POLICY_URL
                         : "",
                   })
                 }
@@ -280,6 +301,9 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                   <SelectItem value={SourceType.BingGrounding}>
                     Microsoft Foundry Web Search
                   </SelectItem>
+                  <SelectItem value={SourceType.Bilibili}>
+                    Bilibili 开放平台
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -289,13 +313,13 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                 value={form.authType}
                 disabled={
                   form.sourceType === SourceType.X ||
-                  form.sourceType === SourceType.BingGrounding
+                  form.sourceType === SourceType.BingGrounding ||
+                  form.sourceType === SourceType.Bilibili
                 }
                 onValueChange={(value) =>
                   updateForm({
                     authType: value as AuthType,
-                    credentialRef:
-                      value === "none" ? "" : form.credentialRef,
+                    credentialRef: value === "none" ? "" : form.credentialRef,
                   })
                 }
               >
@@ -316,7 +340,9 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                 id="source-endpoint"
                 className="mt-2"
                 value={form.endpoint}
-                onChange={(event) => updateForm({ endpoint: event.target.value })}
+                onChange={(event) =>
+                  updateForm({ endpoint: event.target.value })
+                }
                 placeholder={
                   form.sourceType === SourceType.BingGrounding
                     ? "https://account.services.ai.azure.com/api/projects/project/toolboxes/web-search/versions/1/mcp?api-version=v1"
@@ -324,7 +350,8 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                 }
                 readOnly={
                   form.sourceType === SourceType.HackerNews ||
-                  form.sourceType === SourceType.X
+                  form.sourceType === SourceType.X ||
+                  form.sourceType === SourceType.Bilibili
                 }
               />
               {form.sourceType === SourceType.X && (
@@ -334,15 +361,37 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
               )}
               {form.sourceType === SourceType.BingGrounding && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  填写版本固定的 Foundry Toolbox MCP 地址；创建后先探测工具契约，再手动启用。
+                  填写版本固定的 Foundry Toolbox MCP
+                  地址；创建后先探测工具契约，再手动启用。
+                </p>
+              )}
+              {form.sourceType === SourceType.Bilibili && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  固定使用官方开放平台；创建后先校验授权账号和
+                  scopes，再手动启用。
                 </p>
               )}
             </div>
+            {form.sourceType === SourceType.Bilibili && (
+              <div className="sm:col-span-2">
+                <Label htmlFor="source-bilibili-open-id">授权账号 OpenID</Label>
+                <Input
+                  id="source-bilibili-open-id"
+                  className="mono mt-2"
+                  value={form.bilibiliOpenID}
+                  onChange={(event) =>
+                    updateForm({ bilibiliOpenID: event.target.value })
+                  }
+                  placeholder="从开放平台授权结果复制 OpenID"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  仅支持已授权账号；公共 UID、@账号与主页地址不会被解析或抓取。
+                </p>
+              </div>
+            )}
             {form.authType !== "none" && (
               <div className="sm:col-span-2">
-                <Label htmlFor="source-credential-ref">
-                  凭据环境变量引用
-                </Label>
+                <Label htmlFor="source-credential-ref">凭据环境变量引用</Label>
                 <Input
                   id="source-credential-ref"
                   className="mono mt-2"
@@ -369,6 +418,7 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                 }
                 placeholder="https://example.com/terms"
                 aria-invalid={!validHTTPSURL(form.termsPolicyURL)}
+                readOnly={form.sourceType === SourceType.Bilibili}
               />
             </div>
             <div className="sm:col-span-2 rounded-md border border-border p-4">
@@ -386,9 +436,13 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                         updateForm({ [option.key]: checked === true })
                       }
                       disabled={
-                        form.sourceType === SourceType.BingGrounding &&
-                        (option.key === "allowBodyStorage" ||
-                          option.key === "requiresAttribution")
+                        (form.sourceType === SourceType.BingGrounding &&
+                          (option.key === "allowBodyStorage" ||
+                            option.key === "requiresAttribution")) ||
+                        (form.sourceType === SourceType.Bilibili &&
+                          (option.key === "allowBodyStorage" ||
+                            option.key === "requiresAttribution" ||
+                            option.key === "requiresDeletionSync"))
                       }
                     />
                     {option.label}
@@ -398,6 +452,8 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
               <p className="mt-3 text-xs text-muted-foreground">
                 {form.sourceType === SourceType.BingGrounding
                   ? "只保存 Foundry 模型生成的派生摘要和必要引用，不把它标记为原始网页正文或来源指标。"
+                  : form.sourceType === SourceType.Bilibili
+                  ? "仅轮询已授权账号的视频和专栏；授权撤销后自动停用，并按来源政策同步删除状态。"
                   : "只保存来源 Feed 实际提供的正文/摘要，不抓取原网页；启用前确认来源条款。"}
               </p>
             </div>
@@ -417,11 +473,13 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                       }
                     />
                     <span>
-                      我已确认 Microsoft DPA 不适用于该能力，数据可能离开既定合规与地理边界，并接受额外条款及费用。
+                      我已确认 Microsoft DPA
+                      不适用于该能力，数据可能离开既定合规与地理边界，并接受额外条款及费用。
                     </span>
                   </label>
                   <p className="mt-3 text-xs text-muted-foreground">
-                    Web Search 返回模型生成的派生摘要和引用，不是原始搜索结果或网页正文；查询不得包含身份、凭据或其他敏感数据。
+                    Web Search
+                    返回模型生成的派生摘要和引用，不是原始搜索结果或网页正文；查询不得包含身份、凭据或其他敏感数据。
                   </p>
                 </AlertDescription>
               </Alert>

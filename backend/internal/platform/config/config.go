@@ -26,6 +26,7 @@ type Config struct {
 	DatabaseURL           string
 	OTLPHTTPEndpoint      string
 	SourceDNSOverHTTPSURL string
+	BilibiliWebhookSecret string
 	MinIO                 MinIOConfig
 	VaultPath             string
 	Authentication        AuthenticationConfig
@@ -186,6 +187,7 @@ func Load() (Config, error) {
 		DatabaseURL:           configString(v, "database_url"),
 		OTLPHTTPEndpoint:      configString(v, "otlp_http_endpoint"),
 		SourceDNSOverHTTPSURL: configString(v, "source_doh_url"),
+		BilibiliWebhookSecret: configString(v, "bilibili_webhook_secret"),
 		VaultPath:             configString(v, "vault_path"),
 		MinIO: MinIOConfig{
 			Endpoint:  configString(v, "minio_endpoint"),
@@ -397,7 +399,7 @@ func setDefaults(v *viper.Viper, cfg Config) {
 func configKeys() []string {
 	return []string{
 		"env", "role", "http_addr", "request_timeout", "shutdown_timeout", "worker_poll_interval", "worker_concurrency", "worker_lease_timeout", "cron_interval", "database_url", "otlp_http_endpoint",
-		"source_doh_url",
+		"source_doh_url", "bilibili_webhook_secret",
 		"minio_endpoint", "minio_access_key", "minio_secret_key", "minio_bucket",
 		"minio_use_ssl", "vault_path",
 		"jwt_secret", "jwt_issuer", "jwt_audience", "verification_hmac_secret", "redis_url", "smtp_enabled", "smtp_host", "smtp_port", "smtp_tls_mode", "smtp_username", "smtp_password", "smtp_from_email", "smtp_from_name", "cors_allowed_origins", "refresh_cookie_secure",

@@ -337,7 +337,7 @@ required property without making explicit null impossible to bind. */
     max_single_item_contribution: number;
     normalization_window_hours: number;
     profile_version: string;
-    source_type: "rss" | "hacker_news" | "x";
+    source_type: "rss" | "hacker_news" | "x" | "bilibili";
     supports_comments?: boolean;
     supports_likes?: boolean;
     supports_shares?: boolean;
@@ -380,7 +380,7 @@ required property without making explicit null impossible to bind. */
     enabled?: boolean;
     endpoint: string;
     name: string;
-    source_type: "rss" | "hacker_news" | "x" | "bing_grounding";
+    source_type: "rss" | "hacker_news" | "x" | "bing_grounding" | "bilibili";
     terms_policy_url?: string;
   };
 
@@ -1864,6 +1864,7 @@ required property without making explicit null impossible to bind. */
     allow_body_storage?: boolean;
     allowed_languages?: string[];
     allowed_regions?: string[];
+    bilibili_open_id?: string;
     content_retention_days?: number;
     grounding_data_boundary_approved?: boolean;
     max_pages_per_run?: number;
@@ -1878,6 +1879,7 @@ required property without making explicit null impossible to bind. */
     allow_body_storage?: boolean;
     allowed_languages?: string[];
     allowed_regions?: string[];
+    bilibili_open_id?: string;
     content_retention_days?: number;
     grounding_data_boundary_approved?: boolean;
     max_pages_per_run?: number;
@@ -2011,7 +2013,7 @@ required property without making explicit null impossible to bind. */
     endpoint?: string;
     expected_source_version: number;
     name?: string;
-    source_type?: "rss" | "hacker_news" | "x" | "bing_grounding";
+    source_type?: "rss" | "hacker_news" | "x" | "bing_grounding" | "bilibili";
     terms_policy_url?: string;
   };
 

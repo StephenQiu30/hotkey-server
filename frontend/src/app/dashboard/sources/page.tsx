@@ -92,7 +92,7 @@ export default function SourcesPage() {
           ...(cursor ? { cursor } : {}),
         });
         setSources(
-          (result.data?.items ?? []).filter((source) => !source.deleted),
+          (result.data?.items ?? []).filter((source) => !source.deleted)
         );
         setPage(pageNumber);
         setNextCursor(result.data?.next_cursor);
@@ -105,7 +105,7 @@ export default function SourcesPage() {
         setLoading(false);
       }
     },
-    [pageSize],
+    [pageSize]
   );
 
   const load = useCallback(async () => {
@@ -150,7 +150,7 @@ export default function SourcesPage() {
 
   const operate = async (
     source: HotKeyAPI.SourceReadResponse,
-    kind: SourceAction,
+    kind: SourceAction
   ) => {
     if (!canManage || source.id == null) return;
     setAction(source.id);
@@ -160,17 +160,17 @@ export default function SourcesPage() {
         toast[result.data?.healthy ? "success" : "error"](
           result.data?.healthy
             ? "来源健康"
-            : getSourceHealthMessage(result.data?.error_code),
+            : getSourceHealthMessage(result.data?.error_code)
         );
       } else if (source.enabled)
         await postSourceConnectionsIdDisable(
           { id: source.id },
-          { expected_source_version: source.version ?? 0 },
+          { expected_source_version: source.version ?? 0 }
         );
       else
         await postSourceConnectionsIdEnable(
           { id: source.id },
-          { expected_source_version: source.version ?? 0 },
+          { expected_source_version: source.version ?? 0 }
         );
       await load();
     } catch (reason) {
@@ -186,7 +186,7 @@ export default function SourcesPage() {
     try {
       await postSourceConnectionsIdArchive(
         { id: deleteTarget.id },
-        { expected_source_version: deleteTarget.version ?? 0 },
+        { expected_source_version: deleteTarget.version ?? 0 }
       );
       setDeleteTarget(undefined);
       await load();
@@ -209,7 +209,7 @@ export default function SourcesPage() {
         {
           expected_source_version: source.version ?? 0,
           config: { allow_body_storage: true },
-        },
+        }
       );
       setBodyStorageTarget(undefined);
       await load();
@@ -228,8 +228,8 @@ export default function SourcesPage() {
         title={canManage ? "来源管理" : "来源目录"}
         description={
           canManage
-            ? "连接、探测并管理 RSS、Atom、Hacker News、X 与 Microsoft Foundry Web Search，同时查看尚待授权的来源能力。"
-            : "查看当前工作区已接入的 RSS、Atom、Hacker News、X、Microsoft Foundry Web Search 与尚待授权能力。"
+            ? "连接、探测并管理 RSS、Hacker News、X、Bilibili 授权账号与 Microsoft Foundry Web Search。"
+            : "查看当前工作区已接入的 RSS、Hacker News、X、Bilibili 授权账号与 Microsoft Foundry Web Search。"
         }
         action={
           canManage ? (
@@ -332,9 +332,7 @@ export default function SourcesPage() {
                           条款与政策
                         </a>
                       )}
-                      {source.credential_configured && (
-                        <span>凭据已配置</span>
-                      )}
+                      {source.credential_configured && <span>凭据已配置</span>}
                       {source.source_type === "bing_grounding" && (
                         <span>模型生成的派生证据 · 保留引用</span>
                       )}

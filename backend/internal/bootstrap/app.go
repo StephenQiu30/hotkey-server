@@ -197,7 +197,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newOperationsOverviewService,
 					newJobService,
 				),
-				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerRadarRoutes, registerEventUpdateRoutes, registerAlertRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes, registerKnowledgeRoutes, registerJobRoutes, registerOverviewRoutes),
+				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerBilibiliWebhookRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerRadarRoutes, registerEventUpdateRoutes, registerAlertRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes, registerKnowledgeRoutes, registerJobRoutes, registerOverviewRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -284,6 +284,10 @@ func registerIdentityRoutes(router *gin.Engine, service *identityapplication.Ser
 
 func registerSourceRoutes(router *gin.Engine, service *sourceapplication.Service, authenticator httptransport.Authenticator) {
 	sourcetransport.RegisterRoutes(router, service, authenticator)
+}
+
+func registerBilibiliWebhookRoutes(router *gin.Engine, service *sourceapplication.Service, cfg config.Config) {
+	sourcetransport.RegisterBilibiliWebhookRoutes(router, service, cfg.BilibiliWebhookSecret)
 }
 
 func registerMetricCapabilityRoutes(router *gin.Engine, service *sourceapplication.MetricCapabilityService, authenticator httptransport.Authenticator) {

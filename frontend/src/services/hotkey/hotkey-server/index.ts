@@ -18,6 +18,7 @@ import * as radar from "./radar";
 import * as delivery from "./delivery";
 import * as reports from "./reports";
 import * as sources from "./sources";
+import * as sourceWebhooks from "./sourceWebhooks";
 export default {
   ai,
   alerts,
@@ -35,4 +36,5 @@ export default {
   delivery,
   reports,
   sources,
+  sourceWebhooks,
 };

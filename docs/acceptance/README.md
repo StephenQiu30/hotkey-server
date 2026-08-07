@@ -29,3 +29,4 @@ canonical_path: docs/acceptance/README.md
 | 010 | [X官方搜索连接器](010-X官方搜索连接器验收.md) | passed |
 | 011 | [Bing-Grounding来源适配](011-Bing-Grounding来源适配验收.md) | passed |
 | 012 | [搜狗授权来源适配](012-搜狗授权来源适配验收.md) | passed |
+| 013 | [Bilibili开放平台与授权账号监控](013-Bilibili开放平台与账号监控验收.md) | passed |
