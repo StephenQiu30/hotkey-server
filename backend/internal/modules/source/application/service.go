@@ -197,6 +197,9 @@ func (service *Service) changeEnabled(ctx context.Context, input LifecycleInput,
 			changed = *current
 			return nil
 		}
+		if enabled && current.SourceType == domain.SourceTypeX && current.HealthStatus != domain.HealthStatusHealthy {
+			return domain.SourceConnectionUnavailable()
+		}
 		if !enabled {
 			if err := service.ensureCanRemoveSchedulableSource(ctx, current.ID); err != nil {
 				return err
@@ -448,7 +451,7 @@ func lockConfiguration(ctx context.Context, transaction database.Transaction) er
 }
 
 func normalizeCreate(connection domain.SourceConnection) (domain.SourceConnection, error) {
-	if connection.SourceType != domain.SourceTypeRSS && connection.SourceType != domain.SourceTypeHackerNews {
+	if connection.SourceType != domain.SourceTypeRSS && connection.SourceType != domain.SourceTypeHackerNews && connection.SourceType != domain.SourceTypeX {
 		return domain.SourceConnection{}, domain.UnsupportedSourceType()
 	}
 	// A new connection cannot be created already archived. `enabled` remains
@@ -456,6 +459,9 @@ func normalizeCreate(connection domain.SourceConnection) (domain.SourceConnectio
 	// route that may change `Deleted` after creation.
 	connection.Deleted = false
 	connection.HealthStatus = domain.HealthStatusUnknown
+	if connection.SourceType == domain.SourceTypeX {
+		connection.Enabled = false
+	}
 	normalized, err := domain.NormalizeSourceConnection(connection)
 	if err != nil {
 		return domain.SourceConnection{}, domain.InvalidSourceConfiguration()
@@ -486,7 +492,7 @@ func mergeUpdate(current domain.SourceConnection, input UpdateInput) (domain.Sou
 	if input.TermsPolicyURL != nil {
 		next.TermsPolicyURL = *input.TermsPolicyURL
 	}
-	if next.SourceType != domain.SourceTypeRSS && next.SourceType != domain.SourceTypeHackerNews {
+	if next.SourceType != domain.SourceTypeRSS && next.SourceType != domain.SourceTypeHackerNews && next.SourceType != domain.SourceTypeX {
 		return domain.SourceConnection{}, false, false, domain.UnsupportedSourceType()
 	}
 	normalized, err := domain.NormalizeSourceConnection(next)

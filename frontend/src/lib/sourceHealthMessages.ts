@@ -6,6 +6,7 @@ const SOURCE_HEALTH_MESSAGES: Readonly<Record<SourceHealthDiagnostic, string>> =
   [SourceHealthDiagnostic.UpstreamStatus]: "来源服务返回异常状态，请稍后重试",
   [SourceHealthDiagnostic.ConnectorUnavailable]: "当前来源类型暂不可用",
   [SourceHealthDiagnostic.DestinationNotPermitted]: "来源地址被安全策略拒绝，请检查 DNS 或代理的 Fake-IP 设置",
+  [SourceHealthDiagnostic.CredentialUnavailable]: "来源凭据不可用，请检查服务端环境变量",
 };
 
 export function getSourceHealthMessage(code: string | undefined): string {

@@ -25,6 +25,7 @@ describe("domain enums", () => {
     expect(UserRole.Admin).toBe("admin");
     expect(AuthStatus.Authenticated).toBe("authenticated");
     expect(SourceType.HackerNews).toBe("hacker_news");
+    expect(SourceType.X).toBe("x");
     expect(SourceHealthStatus.Unavailable).toBe("unavailable");
     expect(MonitorStatus.Paused).toBe("paused");
     expect(MonitorAction.Publish).toBe("publish");
@@ -35,6 +36,9 @@ describe("domain enums", () => {
     expect(APIErrorCode.Forbidden).toBe(20001);
     expect(SourceHealthDiagnostic.DestinationNotPermitted).toBe(
       "destination_not_permitted",
+    );
+    expect(SourceHealthDiagnostic.CredentialUnavailable).toBe(
+      "credential_unavailable",
     );
   });
 

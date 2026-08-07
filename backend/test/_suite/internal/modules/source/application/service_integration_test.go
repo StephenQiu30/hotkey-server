@@ -146,6 +146,35 @@ func TestSourceServiceUsageAndAuditFailureRollback(t *testing.T) {
 	}
 }
 
+func TestXSourceStartsDisabledAndRequiresHealthyProbeBeforeEnable(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	admin := seedAdmin(t, runtime)
+	service := newService(t, runtime, usageReader{})
+	ctx := context.Background()
+
+	created, err := service.Create(ctx, sourceapplication.CreateInput{Subject: admin, Connection: domain.SourceConnection{
+		SourceType: domain.SourceTypeX, Name: "X recent search", Endpoint: domain.XRecentSearchEndpoint,
+		AuthType: domain.AuthTypeBearer, CredentialRef: "env:X_BEARER_TOKEN", Config: domain.DefaultSourceConfig(), Enabled: true,
+	}})
+	if err != nil {
+		t.Fatalf("Create(X): %v", err)
+	}
+	if created.Enabled || created.HealthStatus != domain.HealthStatusUnknown || !created.CredentialConfigured {
+		t.Fatalf("created X source = %#v, want disabled unknown source with configured credential", created)
+	}
+	if _, err := service.Enable(ctx, sourceapplication.LifecycleInput{Subject: admin, ID: created.ID, ExpectedVersion: created.Version}); appCode(err) != sharederrors.CodeSourceConnectionUnavailable {
+		t.Fatalf("Enable(unprobed X) code = %d, want source unavailable", appCode(err))
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE source_connections SET health_status = 'healthy' WHERE id = $1`, created.ID); err != nil {
+		t.Fatalf("mark X source healthy: %v", err)
+	}
+	enabled, err := service.Enable(ctx, sourceapplication.LifecycleInput{Subject: admin, ID: created.ID, ExpectedVersion: created.Version})
+	if err != nil || !enabled.Enabled {
+		t.Fatalf("Enable(healthy X) = %#v, %v", enabled, err)
+	}
+}
+
 func TestSourceServiceUsesSourceOwnedAvailabilityForActiveMonitorGroup(t *testing.T) {
 	runtime := openRuntime(t)
 	defer func() { _ = runtime.Close() }()

@@ -25,6 +25,7 @@ import {
 import { SourceType } from "@/lib/domainEnums";
 
 const HACKER_NEWS_ENDPOINT = "https://hacker-news.firebaseio.com/v0";
+const X_RECENT_SEARCH_ENDPOINT = "https://api.x.com/2/tweets/search/recent";
 const credentialPattern = /^env:[A-Z_][A-Z0-9_]{0,127}$/;
 
 type AuthType = "none" | "api_key" | "oauth2" | "bearer";
@@ -168,7 +169,7 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
         requires_deletion_sync: form.requiresDeletionSync,
       },
       credential_ref: form.credentialRef.trim(),
-      enabled: true,
+      enabled: form.sourceType !== SourceType.X,
       endpoint: form.endpoint.trim(),
       name: form.name.trim(),
       source_type: form.sourceType,
@@ -223,8 +224,10 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                     endpoint:
                       value === SourceType.HackerNews
                         ? HACKER_NEWS_ENDPOINT
+                        : value === SourceType.X
+                          ? X_RECENT_SEARCH_ENDPOINT
                         : "",
-                    authType: "none",
+                    authType: value === SourceType.X ? "bearer" : "none",
                     credentialRef: "",
                   })
                 }
@@ -237,6 +240,7 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                   <SelectItem value={SourceType.HackerNews}>
                     Hacker News
                   </SelectItem>
+                  <SelectItem value={SourceType.X}>X Recent Search</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -244,6 +248,7 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
               <Label htmlFor="source-auth-type">授权方式</Label>
               <Select
                 value={form.authType}
+                disabled={form.sourceType === SourceType.X}
                 onValueChange={(value) =>
                   updateForm({
                     authType: value as AuthType,
@@ -271,8 +276,16 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                 value={form.endpoint}
                 onChange={(event) => updateForm({ endpoint: event.target.value })}
                 placeholder="https://example.com/feed.xml"
-                readOnly={form.sourceType === SourceType.HackerNews}
+                readOnly={
+                  form.sourceType === SourceType.HackerNews ||
+                  form.sourceType === SourceType.X
+                }
               />
+              {form.sourceType === SourceType.X && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  固定使用官方 Recent Search；创建后先完成健康探测，再手动启用。
+                </p>
+              )}
             </div>
             {form.authType !== "none" && (
               <div className="sm:col-span-2">

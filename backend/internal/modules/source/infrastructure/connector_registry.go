@@ -10,6 +10,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/hackernews"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/rss"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/sourcenet"
+	xconnector "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/x"
 )
 
 // ConnectorRegistry constructs a connector bound to one immutable
@@ -29,6 +30,8 @@ func (registry *ConnectorRegistry) Resolve(_ context.Context, connection domain.
 		return rss.New(connection, registry.resolver)
 	case domain.SourceTypeHackerNews:
 		return hackernews.New(connection, registry.resolver)
+	case domain.SourceTypeX:
+		return xconnector.New(connection, registry.resolver)
 	default:
 		return nil, domain.NewCollectionError(domain.CollectionErrorPermanent, fmt.Errorf("unsupported collection source type"))
 	}

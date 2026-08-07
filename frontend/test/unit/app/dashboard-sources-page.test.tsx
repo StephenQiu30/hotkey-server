@@ -112,6 +112,39 @@ describe("SourcesPage body storage authorization", () => {
     }));
   });
 
+  it("creates X Recent Search disabled with a fixed endpoint and Bearer env reference", async () => {
+    render(<SourcesPage />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "新增来源" }));
+    await user.type(screen.getByLabelText("名称"), "X 官方搜索");
+
+    fireEvent.keyDown(screen.getByLabelText("来源类型"), { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("option", { name: "X Recent Search" }));
+
+    expect(screen.getByLabelText("接口地址")).toHaveValue(
+      "https://api.x.com/2/tweets/search/recent",
+    );
+    expect(screen.getByLabelText("接口地址")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("授权方式")).toBeDisabled();
+    await user.type(
+      screen.getByLabelText("凭据环境变量引用"),
+      "env:X_BEARER_TOKEN",
+    );
+    await user.click(screen.getByRole("button", { name: "创建连接" }));
+
+    await waitFor(() =>
+      expect(mocks.postSourceConnections).toHaveBeenCalledWith(
+        expect.objectContaining({
+          auth_type: "bearer",
+          credential_ref: "env:X_BEARER_TOKEN",
+          enabled: false,
+          endpoint: "https://api.x.com/2/tweets/search/recent",
+          source_type: "x",
+        }),
+      ),
+    );
+  });
+
   it("shows safe compliance facts without exposing a credential reference", async () => {
     mocks.getSourceConnections.mockResolvedValue({ data: { items: [{
       id: 7,
@@ -172,6 +205,9 @@ describe("SourcesPage body storage authorization", () => {
 
       expect(
         await screen.findByText("只读来源目录"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("查看当前工作区已接入的 RSS、Atom、Hacker News 与 X 数据源。"),
       ).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "新增来源" })).not.toBeInTheDocument();
       expect(

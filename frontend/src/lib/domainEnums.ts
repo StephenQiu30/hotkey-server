@@ -13,6 +13,7 @@ export enum AuthStatus {
 export enum SourceType {
   RSS = "rss",
   HackerNews = "hacker_news",
+  X = "x",
 }
 
 export enum SourceHealthStatus {
@@ -117,6 +118,7 @@ export enum SourceHealthDiagnostic {
   UpstreamStatus = "upstream_status",
   ConnectorUnavailable = "connector_unavailable",
   DestinationNotPermitted = "destination_not_permitted",
+  CredentialUnavailable = "credential_unavailable",
 }
 
 export enum APIErrorCode {

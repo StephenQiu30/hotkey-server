@@ -23,6 +23,7 @@ type HealthStatus string
 const (
 	SourceTypeRSS        SourceType = "rss"
 	SourceTypeHackerNews SourceType = "hacker_news"
+	SourceTypeX          SourceType = "x"
 
 	AuthTypeNone   AuthType = "none"
 	AuthTypeAPIKey AuthType = "api_key"
@@ -34,7 +35,8 @@ const (
 	HealthStatusDegraded    HealthStatus = "degraded"
 	HealthStatusUnavailable HealthStatus = "unavailable"
 
-	HackerNewsEndpoint = "https://hacker-news.firebaseio.com/v0"
+	HackerNewsEndpoint    = "https://hacker-news.firebaseio.com/v0"
+	XRecentSearchEndpoint = "https://api.x.com/2/tweets/search/recent"
 )
 
 var credentialReferencePattern = regexp.MustCompile(`^env:[A-Z_][A-Z0-9_]{0,127}$`)
@@ -94,6 +96,9 @@ func NormalizeSourceConnection(connection SourceConnection) (SourceConnection, e
 	if err != nil {
 		return SourceConnection{}, err
 	}
+	if connection.SourceType == SourceTypeX && (connection.AuthType != AuthTypeBearer || credentialRef == "") {
+		return SourceConnection{}, fmt.Errorf("X source requires a Bearer env credential reference")
+	}
 	config := connection.Config
 	if config.isZero() {
 		config = DefaultSourceConfig()
@@ -116,7 +121,7 @@ func NormalizeSourceConnection(connection SourceConnection) (SourceConnection, e
 }
 
 func (sourceType SourceType) Valid() bool {
-	return sourceType == SourceTypeRSS || sourceType == SourceTypeHackerNews
+	return sourceType == SourceTypeRSS || sourceType == SourceTypeHackerNews || sourceType == SourceTypeX
 }
 
 func (authType AuthType) Valid() bool {
@@ -154,6 +159,12 @@ func NormalizeEndpoint(sourceType SourceType, value string) (string, error) {
 			return "", fmt.Errorf("hacker news endpoint must be the official endpoint")
 		}
 		return HackerNewsEndpoint, nil
+	}
+	if sourceType == SourceTypeX {
+		if normalized != XRecentSearchEndpoint {
+			return "", fmt.Errorf("X endpoint must be the official recent search endpoint")
+		}
+		return XRecentSearchEndpoint, nil
 	}
 	if sourceType != SourceTypeRSS {
 		return "", fmt.Errorf("unsupported source type %q", sourceType)

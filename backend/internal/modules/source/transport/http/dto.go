@@ -37,7 +37,7 @@ type MetricCapabilityProfileResponse struct {
 }
 
 type CreateMetricCapabilityProfileRequest struct {
-	SourceType                string  `json:"source_type" binding:"required,oneof=rss hacker_news"`
+	SourceType                string  `json:"source_type" binding:"required,oneof=rss hacker_news x"`
 	ProfileVersion            string  `json:"profile_version" binding:"required,max=64"`
 	SupportsViews             bool    `json:"supports_views"`
 	SupportsLikes             bool    `json:"supports_likes"`
@@ -111,7 +111,7 @@ type SourceConfigRequest struct {
 }
 
 type CreateSourceRequest struct {
-	SourceType     string              `json:"source_type" binding:"required,oneof=rss hacker_news"`
+	SourceType     string              `json:"source_type" binding:"required,oneof=rss hacker_news x"`
 	Name           string              `json:"name" binding:"required"`
 	Endpoint       string              `json:"endpoint" binding:"required"`
 	AuthType       string              `json:"auth_type" binding:"required,oneof=none api_key oauth2 bearer"`
@@ -123,7 +123,7 @@ type CreateSourceRequest struct {
 
 type UpdateSourceRequest struct {
 	ExpectedSourceVersion int64                `json:"expected_source_version" binding:"required,gt=0"`
-	SourceType            *string              `json:"source_type,omitempty" binding:"omitempty,oneof=rss hacker_news"`
+	SourceType            *string              `json:"source_type,omitempty" binding:"omitempty,oneof=rss hacker_news x"`
 	Name                  *string              `json:"name,omitempty"`
 	Endpoint              *string              `json:"endpoint,omitempty"`
 	AuthType              *string              `json:"auth_type,omitempty" binding:"omitempty,oneof=none api_key oauth2 bearer"`

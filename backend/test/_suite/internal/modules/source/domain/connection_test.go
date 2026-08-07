@@ -32,6 +32,22 @@ func TestNormalizeSourceConnectionValidatesP0SourceTypesAndEndpoints(t *testing.
 	if got, err := NormalizeEndpoint(SourceTypeHackerNews, "https://hacker-news.firebaseio.com/v0"); err != nil || got != HackerNewsEndpoint {
 		t.Errorf("NormalizeEndpoint(hacker news) = %q, %v", got, err)
 	}
+	xConnection, err := NormalizeSourceConnection(SourceConnection{
+		SourceType: SourceTypeX, Name: "X Recent Search", Endpoint: XRecentSearchEndpoint,
+		AuthType: AuthTypeBearer, CredentialRef: "env:X_BEARER_TOKEN",
+	})
+	if err != nil || xConnection.Endpoint != XRecentSearchEndpoint {
+		t.Fatalf("NormalizeSourceConnection(X) = %#v, %v", xConnection, err)
+	}
+	for _, invalid := range []SourceConnection{
+		{SourceType: SourceTypeX, Name: "X", Endpoint: "https://example.test/2/tweets/search/recent", AuthType: AuthTypeBearer, CredentialRef: "env:X_BEARER_TOKEN"},
+		{SourceType: SourceTypeX, Name: "X", Endpoint: XRecentSearchEndpoint, AuthType: AuthTypeNone},
+		{SourceType: SourceTypeX, Name: "X", Endpoint: XRecentSearchEndpoint, AuthType: AuthTypeBearer},
+	} {
+		if _, err := NormalizeSourceConnection(invalid); err == nil {
+			t.Fatalf("NormalizeSourceConnection(%#v) accepted invalid X connection", invalid)
+		}
+	}
 }
 
 func TestCredentialReferenceMustMatchAuthType(t *testing.T) {

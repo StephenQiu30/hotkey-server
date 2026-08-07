@@ -7738,7 +7738,8 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "rss",
-                        "hacker_news"
+                        "hacker_news",
+                        "x"
                     ]
                 },
                 "supports_comments": {
@@ -7895,7 +7896,8 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "rss",
-                        "hacker_news"
+                        "hacker_news",
+                        "x"
                     ]
                 },
                 "terms_policy_url": {
@@ -10799,7 +10801,8 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "rss",
-                        "hacker_news"
+                        "hacker_news",
+                        "x"
                     ]
                 },
                 "terms_policy_url": {

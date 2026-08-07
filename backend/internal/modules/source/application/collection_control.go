@@ -187,7 +187,7 @@ func healthStatus(probe domain.HealthResult) domain.HealthStatus {
 
 func safeHealthCode(value string) string {
 	switch value {
-	case "invalid_source_connection", "request_failed", "upstream_status", "connector_unavailable", "destination_not_permitted":
+	case "invalid_source_connection", "request_failed", "upstream_status", "connector_unavailable", "destination_not_permitted", "credential_unavailable":
 		return value
 	default:
 		return "probe_failed"

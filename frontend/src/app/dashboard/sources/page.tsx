@@ -227,8 +227,8 @@ export default function SourcesPage() {
         title={canManage ? "来源管理" : "来源目录"}
         description={
           canManage
-            ? "连接、探测并管理官方 RSS、Atom 与 Hacker News 数据源。"
-            : "查看当前工作区已接入的 RSS、Atom 与 Hacker News 数据源。"
+            ? "连接、探测并管理官方 RSS、Atom、Hacker News 与 X 数据源。"
+            : "查看当前工作区已接入的 RSS、Atom、Hacker News 与 X 数据源。"
         }
         action={
           canManage ? (

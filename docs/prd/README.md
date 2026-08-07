@@ -28,7 +28,7 @@ PRD 将每一条设计转换为稳定、可验收的产品范围。状态只使�
 | 007 | [来源连接控制面与合规健康](../design/007-来源连接控制面与合规健康设计.md) | [PRD](007-来源连接控制面与合规健康.md) | [Plan](../plans/007-来源连接控制面与合规健康计划.md) | implemented |
 | 008 | [RSS-Atom来源连接器](../design/008-RSS-Atom来源连接器设计.md) | [PRD](008-RSS-Atom来源连接器.md) | [Plan](../plans/008-RSS-Atom来源连接器计划.md) | implemented |
 | 009 | [Hacker-News官方来源连接器](../design/009-Hacker-News官方来源连接器设计.md) | [PRD](009-Hacker-News官方来源连接器.md) | [Plan](../plans/009-Hacker-News官方来源连接器计划.md) | implemented |
-| 010 | [X官方搜索连接器](../design/010-X官方搜索连接器设计.md) | [PRD](010-X官方搜索连接器.md) | [Plan](../plans/010-X官方搜索连接器计划.md) | draft |
+| 010 | [X官方搜索连接器](../design/010-X官方搜索连接器设计.md) | [PRD](010-X官方搜索连接器.md) | [Plan](../plans/010-X官方搜索连接器计划.md) | implemented |
 | 011 | [Bing-Grounding来源适配](../design/011-Bing-Grounding来源适配设计.md) | [PRD](011-Bing-Grounding来源适配.md) | [Plan](../plans/011-Bing-Grounding来源适配计划.md) | draft |
 | 012 | [搜狗授权来源适配](../design/012-搜狗授权来源适配设计.md) | [PRD](012-搜狗授权来源适配.md) | [Plan](../plans/012-搜狗授权来源适配计划.md) | draft |
 | 013 | [Bilibili开放平台与账号监控](../design/013-Bilibili开放平台与账号监控设计.md) | [PRD](013-Bilibili开放平台与账号监控.md) | [Plan](../plans/013-Bilibili开放平台与账号监控计划.md) | draft |
