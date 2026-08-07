@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SourcesPage from "@/app/dashboard/sources/page";
@@ -70,10 +70,65 @@ describe("SourcesPage body storage authorization", () => {
     await waitFor(() =>
       expect(mocks.postSourceConnections).toHaveBeenCalledWith(
         expect.objectContaining({
-          config: { allow_body_storage: true },
+          config: expect.objectContaining({ allow_body_storage: true }),
         }),
       ),
     );
+  });
+
+  it("submits compliance, env credential, retention, and quota controls", async () => {
+    render(<SourcesPage />);
+    const user = await openCompletedForm();
+
+    fireEvent.keyDown(screen.getByLabelText("授权方式"), { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("option", { name: "Bearer Token" }));
+    await user.type(screen.getByLabelText("凭据环境变量引用"), "env:RESEARCH_FEED_TOKEN");
+    await user.type(screen.getByLabelText("条款与政策地址"), "https://example.test/terms");
+    await user.click(screen.getByRole("checkbox", { name: "需要来源归属标记" }));
+    await user.clear(screen.getByLabelText("每分钟请求上限"));
+    await user.type(screen.getByLabelText("每分钟请求上限"), "30");
+    await user.clear(screen.getByLabelText("内容保留天数"));
+    await user.type(screen.getByLabelText("内容保留天数"), "90");
+    await user.type(screen.getByLabelText("允许语言"), "zh-CN, en");
+    await user.type(screen.getByLabelText("允许地区"), "CN, US");
+    await user.click(screen.getByRole("button", { name: "创建连接" }));
+
+    await waitFor(() => expect(mocks.postSourceConnections).toHaveBeenCalledWith({
+      auth_type: "bearer",
+      credential_ref: "env:RESEARCH_FEED_TOKEN",
+      enabled: true,
+      endpoint: "https://example.test/feed.xml",
+      name: "Research feed",
+      source_type: "rss",
+      terms_policy_url: "https://example.test/terms",
+      config: expect.objectContaining({
+        allow_body_storage: true,
+        allowed_languages: ["zh-CN", "en"],
+        allowed_regions: ["CN", "US"],
+        content_retention_days: 90,
+        rate_limit_per_minute: 30,
+        requires_attribution: true,
+      }),
+    }));
+  });
+
+  it("shows safe compliance facts without exposing a credential reference", async () => {
+    mocks.getSourceConnections.mockResolvedValue({ data: { items: [{
+      id: 7,
+      name: "Official feed",
+      source_type: "rss",
+      health_status: "healthy",
+      credential_configured: true,
+      terms_policy_url: "https://example.test/terms",
+      config: { rate_limit_per_minute: 45, content_retention_days: 60 },
+    }] } });
+
+    render(<SourcesPage />);
+
+    expect(await screen.findByRole("link", { name: "条款与政策" })).toHaveAttribute("href", "https://example.test/terms");
+    expect(screen.getByText("凭据已配置")).toBeInTheDocument();
+    expect(screen.getByText("45 req/min · 保留 60 天")).toBeInTheDocument();
+    expect(screen.queryByText(/env:/)).not.toBeInTheDocument();
   });
 
   it("keeps body storage enabled when a new form is opened", async () => {
@@ -103,7 +158,7 @@ describe("SourcesPage body storage authorization", () => {
     await waitFor(() =>
       expect(mocks.postSourceConnections).toHaveBeenCalledWith(
         expect.objectContaining({
-          config: { allow_body_storage: true },
+          config: expect.objectContaining({ allow_body_storage: true }),
         }),
       ),
     );

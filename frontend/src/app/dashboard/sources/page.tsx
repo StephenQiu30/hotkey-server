@@ -7,7 +7,6 @@ import {
   Eye,
   FileText,
   Loader2,
-  Plus,
   Power,
   RefreshCw,
   Trash2,
@@ -33,23 +32,6 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   getSourceConnections,
   patchSourceConnectionsId,
@@ -62,23 +44,15 @@ import {
 import { getSourceHealthMessage } from "@/lib/sourceHealthMessages";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { useAuthStore } from "@/stores/authStore";
-import { SourceAction, SourceType, UserRole } from "@/lib/domainEnums";
+import { SourceAction, UserRole } from "@/lib/domainEnums";
 import { sourceHealthPresentation } from "@/lib/domainPresentation";
 import { ConfirmDeleteDialog } from "@/components/dashboard/ConfirmDeleteDialog";
-import { Checkbox } from "@/components/ui/checkbox";
+import { SourceConnectionDialog } from "@/components/dashboard/SourceConnectionDialog";
 import {
   CursorPagination,
   DEFAULT_PAGE_SIZE,
   hasNextCursor,
 } from "@/components/dashboard/CursorPagination";
-
-const emptySourceForm = () => ({
-  name: "",
-  source_type: SourceType.RSS,
-  endpoint: "",
-  auth_type: "none" as "none" | "api_key" | "oauth2" | "bearer",
-  allow_body_storage: true,
-});
 
 function sourceStatus(source: HotKeyAPI.SourceReadResponse) {
   if (source.deleted) {
@@ -96,21 +70,15 @@ export default function SourcesPage() {
   const canManage = user?.role === UserRole.Admin;
   const [sources, setSources] = useState<HotKeyAPI.SourceReadResponse[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dialog, setDialog] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [action, setAction] = useState<number>();
   const [deleteTarget, setDeleteTarget] =
     useState<HotKeyAPI.SourceReadResponse>();
   const [bodyStorageTarget, setBodyStorageTarget] =
     useState<HotKeyAPI.SourceReadResponse>();
-  const [form, setForm] = useState(emptySourceForm);
   const [page, setPage] = useState(1);
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const [nextCursor, setNextCursor] = useState<string>();
-
-  const changeDialog = (open: boolean) => {
-    setDialog(open);
-    if (!open) setForm(emptySourceForm());
-  };
 
   const loadPage = useCallback(
     async (cursor: string | undefined, pageNumber: number) => {
@@ -158,24 +126,19 @@ export default function SourcesPage() {
     setPageSize(nextPageSize);
   };
 
-  const create = async () => {
-    if (!canManage || !form.name || !form.endpoint) return;
+  const create = async (request: HotKeyAPI.CreateSourceRequest) => {
+    if (!canManage) return false;
+    setCreating(true);
     try {
-      await postSourceConnections({
-        name: form.name,
-        source_type: form.source_type,
-        endpoint: form.endpoint,
-        auth_type: form.auth_type,
-        enabled: true,
-        config: {
-          allow_body_storage: form.allow_body_storage,
-        },
-      });
-      changeDialog(false);
+      await postSourceConnections(request);
       await load();
       toast.success("来源连接已创建");
+      return true;
     } catch (reason) {
       toast.error(reason instanceof Error ? reason.message : "创建失败");
+      return false;
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -264,105 +227,7 @@ export default function SourcesPage() {
         }
         action={
           canManage ? (
-            <Dialog open={dialog} onOpenChange={changeDialog}>
-              <DialogTrigger asChild>
-                <Button className="gap-2">
-                  <Plus />
-                  新增来源
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>新增来源连接</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-2">
-                  <div>
-                    <Label htmlFor="source-name">名称</Label>
-                    <Input
-                      id="source-name"
-                      value={form.name}
-                      onChange={(event) =>
-                        setForm({ ...form, name: event.target.value })
-                      }
-                      placeholder="OpenAI 官方博客"
-                      className="mt-2"
-                    />
-                  </div>
-                  <div>
-                    <Label>来源类型</Label>
-                    <Select
-                      value={form.source_type}
-                      onValueChange={(value) =>
-                        setForm({
-                          ...form,
-                          source_type: value as SourceType,
-                          allow_body_storage: true,
-                        })
-                      }
-                    >
-                      <SelectTrigger className="mt-2">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={SourceType.RSS}>
-                          RSS / Atom
-                        </SelectItem>
-                        <SelectItem value={SourceType.HackerNews}>
-                          Hacker News
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="source-endpoint">接口地址</Label>
-                    <Input
-                      id="source-endpoint"
-                      value={form.endpoint}
-                      onChange={(event) =>
-                        setForm({ ...form, endpoint: event.target.value })
-                      }
-                      placeholder="https://example.com/feed.xml"
-                      className="mt-2"
-                    />
-                  </div>
-                  <div className="rounded-md border border-border p-4">
-                    <div className="flex items-start gap-3">
-                      <Checkbox
-                        aria-label="保存来源正文/摘要用于归档预览"
-                        checked={form.allow_body_storage}
-                        id="source-allow-body-storage"
-                        onCheckedChange={(checked) =>
-                          setForm({
-                            ...form,
-                            allow_body_storage: checked === true,
-                          })
-                        }
-                      />
-                      <div className="min-w-0">
-                        <Label htmlFor="source-allow-body-storage">
-                          保存来源正文/摘要用于归档预览
-                        </Label>
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                          只保存来源 Feed
-                          实际提供的正文/摘要，不抓取原网页；启用前确认来源条款。
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => changeDialog(false)}>
-                    取消
-                  </Button>
-                  <Button
-                    onClick={create}
-                    disabled={!form.name || !form.endpoint}
-                  >
-                    创建连接
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+            <SourceConnectionDialog busy={creating} onSubmit={create} />
           ) : undefined
         }
       />
@@ -438,6 +303,28 @@ export default function SourcesPage() {
                         {source.endpoint}
                       </p>
                     )}
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      {source.terms_policy_url && (
+                        <a
+                          className="underline underline-offset-4 hover:text-foreground"
+                          href={source.terms_policy_url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          条款与政策
+                        </a>
+                      )}
+                      {source.credential_configured && (
+                        <span>凭据已配置</span>
+                      )}
+                      {source.config?.rate_limit_per_minute != null &&
+                        source.config?.content_retention_days != null && (
+                          <span>
+                            {source.config.rate_limit_per_minute} req/min · 保留{" "}
+                            {source.config.content_retention_days} 天
+                          </span>
+                        )}
+                    </div>
                   </div>
                   <span className="mono text-xs text-muted-foreground">
                     {source.source_type}

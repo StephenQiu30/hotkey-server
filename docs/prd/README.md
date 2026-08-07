@@ -25,7 +25,7 @@ PRD 将每一条设计转换为稳定、可验收的产品范围。状态只使�
 | 004 | [用户角色与权限管理](../design/004-用户角色与权限管理设计.md) | [PRD](004-用户角色与权限管理.md) | [Plan](../plans/004-用户角色与权限管理计划.md) | implemented |
 | 005 | [监控主题CRUD与生命周期](../design/005-监控主题CRUD与生命周期设计.md) | [PRD](005-监控主题CRUD与生命周期.md) | [Plan](../plans/005-监控主题CRUD与生命周期计划.md) | implemented |
 | 006 | [关键词规则与多语言查询扩展](../design/006-关键词规则与多语言查询扩展设计.md) | [PRD](006-关键词规则与多语言查询扩展.md) | [Plan](../plans/006-关键词规则与多语言查询扩展计划.md) | implemented |
-| 007 | [来源连接控制面与合规健康](../design/007-来源连接控制面与合规健康设计.md) | [PRD](007-来源连接控制面与合规健康.md) | [Plan](../plans/007-来源连接控制面与合规健康计划.md) | draft |
+| 007 | [来源连接控制面与合规健康](../design/007-来源连接控制面与合规健康设计.md) | [PRD](007-来源连接控制面与合规健康.md) | [Plan](../plans/007-来源连接控制面与合规健康计划.md) | implemented |
 | 008 | [RSS-Atom来源连接器](../design/008-RSS-Atom来源连接器设计.md) | [PRD](008-RSS-Atom来源连接器.md) | [Plan](../plans/008-RSS-Atom来源连接器计划.md) | draft |
 | 009 | [Hacker-News官方来源连接器](../design/009-Hacker-News官方来源连接器设计.md) | [PRD](009-Hacker-News官方来源连接器.md) | [Plan](../plans/009-Hacker-News官方来源连接器计划.md) | draft |
 | 010 | [X官方搜索连接器](../design/010-X官方搜索连接器设计.md) | [PRD](010-X官方搜索连接器.md) | [Plan](../plans/010-X官方搜索连接器计划.md) | draft |

@@ -1,0 +1,392 @@
+"use client";
+
+import { type FormEvent, useState } from "react";
+import { Loader2, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { SourceType } from "@/lib/domainEnums";
+
+const HACKER_NEWS_ENDPOINT = "https://hacker-news.firebaseio.com/v0";
+const credentialPattern = /^env:[A-Z_][A-Z0-9_]{0,127}$/;
+
+type AuthType = "none" | "api_key" | "oauth2" | "bearer";
+
+type SourceForm = {
+  allowBodyStorage: boolean;
+  allowedLanguages: string;
+  allowedRegions: string;
+  authType: AuthType;
+  contentRetentionDays: number;
+  credentialRef: string;
+  endpoint: string;
+  maxPagesPerRun: number;
+  metricsRetentionDays: number;
+  name: string;
+  rateLimitPerMinute: number;
+  requestTimeoutSeconds: number;
+  requiresAttribution: boolean;
+  requiresDeletionSync: boolean;
+  sourceType: SourceType;
+  termsPolicyURL: string;
+};
+
+type ComplianceKey = keyof Pick<
+  SourceForm,
+  "allowBodyStorage" | "requiresAttribution" | "requiresDeletionSync"
+>;
+type NumericKey = keyof Pick<
+  SourceForm,
+  | "contentRetentionDays"
+  | "metricsRetentionDays"
+  | "rateLimitPerMinute"
+  | "requestTimeoutSeconds"
+  | "maxPagesPerRun"
+>;
+
+const complianceOptions: ReadonlyArray<{
+  key: ComplianceKey;
+  label: string;
+}> = [
+  {
+    key: "allowBodyStorage",
+    label: "保存来源正文/摘要用于归档预览",
+  },
+  { key: "requiresAttribution", label: "需要来源归属标记" },
+  { key: "requiresDeletionSync", label: "需要同步删除" },
+];
+
+const numericOptions: ReadonlyArray<{
+  key: NumericKey;
+  label: string;
+  min: number;
+  max: number;
+}> = [
+  { key: "contentRetentionDays", label: "内容保留天数", min: 1, max: 3650 },
+  { key: "metricsRetentionDays", label: "指标保留天数", min: 1, max: 3650 },
+  { key: "rateLimitPerMinute", label: "每分钟请求上限", min: 1, max: 600 },
+  { key: "requestTimeoutSeconds", label: "请求超时秒数", min: 1, max: 120 },
+  { key: "maxPagesPerRun", label: "单次最大页数", min: 1, max: 20 },
+];
+
+const emptyForm = (): SourceForm => ({
+  allowBodyStorage: true,
+  allowedLanguages: "",
+  allowedRegions: "",
+  authType: "none",
+  contentRetentionDays: 30,
+  credentialRef: "",
+  endpoint: "",
+  maxPagesPerRun: 1,
+  metricsRetentionDays: 30,
+  name: "",
+  rateLimitPerMinute: 60,
+  requestTimeoutSeconds: 30,
+  requiresAttribution: false,
+  requiresDeletionSync: false,
+  sourceType: SourceType.RSS,
+  termsPolicyURL: "",
+});
+
+const splitValues = (value: string) =>
+  value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const validHTTPSURL = (value: string) => {
+  if (!value.trim()) return true;
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+type Props = {
+  busy: boolean;
+  onSubmit: (request: HotKeyAPI.CreateSourceRequest) => Promise<boolean>;
+};
+
+export function SourceConnectionDialog({ busy, onSubmit }: Props) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState<SourceForm>(emptyForm);
+
+  const credentialValid =
+    form.authType === "none"
+      ? !form.credentialRef.trim()
+      : credentialPattern.test(form.credentialRef.trim());
+  const valid = Boolean(
+    form.name.trim() &&
+      form.endpoint.trim() &&
+      credentialValid &&
+      validHTTPSURL(form.termsPolicyURL),
+  );
+
+  const updateForm = (values: Partial<SourceForm>) => {
+    setForm((current) => ({ ...current, ...values }));
+  };
+
+  const changeOpen = (next: boolean) => {
+    setOpen(next);
+    if (!next) setForm(emptyForm());
+  };
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!valid) return;
+
+    const created = await onSubmit({
+      auth_type: form.authType,
+      config: {
+        allow_body_storage: form.allowBodyStorage,
+        allowed_languages: splitValues(form.allowedLanguages),
+        allowed_regions: splitValues(form.allowedRegions),
+        content_retention_days: form.contentRetentionDays,
+        max_pages_per_run: form.maxPagesPerRun,
+        metrics_retention_days: form.metricsRetentionDays,
+        rate_limit_per_minute: form.rateLimitPerMinute,
+        request_timeout_seconds: form.requestTimeoutSeconds,
+        requires_attribution: form.requiresAttribution,
+        requires_deletion_sync: form.requiresDeletionSync,
+      },
+      credential_ref: form.credentialRef.trim(),
+      enabled: true,
+      endpoint: form.endpoint.trim(),
+      name: form.name.trim(),
+      source_type: form.sourceType,
+      terms_policy_url: form.termsPolicyURL.trim(),
+    });
+    if (created) changeOpen(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={changeOpen}>
+      <DialogTrigger asChild>
+        <Button className="gap-2">
+          <Plus />
+          新增来源
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="grid h-[90vh] max-h-[90vh] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:h-auto sm:max-w-2xl">
+        <DialogHeader className="border-b border-border px-6 py-5">
+          <DialogTitle>新增来源连接</DialogTitle>
+          <DialogDescription>
+            只连接官方 API、RSS / Atom 或已获书面授权的 Feed；凭据只保存 env
+            引用。
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto]"
+          onSubmit={submit}
+        >
+          <div
+            aria-label="来源连接配置"
+            className="grid min-h-0 gap-4 overflow-y-auto px-6 py-5 sm:grid-cols-2"
+            role="region"
+            tabIndex={0}
+          >
+            <div className="sm:col-span-2">
+              <Label htmlFor="source-name">名称</Label>
+              <Input
+                id="source-name"
+                className="mt-2"
+                value={form.name}
+                onChange={(event) => updateForm({ name: event.target.value })}
+                placeholder="OpenAI 官方博客"
+              />
+            </div>
+            <div>
+              <Label htmlFor="source-type">来源类型</Label>
+              <Select
+                value={form.sourceType}
+                onValueChange={(value) =>
+                  updateForm({
+                    sourceType: value as SourceType,
+                    endpoint:
+                      value === SourceType.HackerNews
+                        ? HACKER_NEWS_ENDPOINT
+                        : "",
+                    authType: "none",
+                    credentialRef: "",
+                  })
+                }
+              >
+                <SelectTrigger id="source-type" className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={SourceType.RSS}>RSS / Atom</SelectItem>
+                  <SelectItem value={SourceType.HackerNews}>
+                    Hacker News
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="source-auth-type">授权方式</Label>
+              <Select
+                value={form.authType}
+                onValueChange={(value) =>
+                  updateForm({
+                    authType: value as AuthType,
+                    credentialRef:
+                      value === "none" ? "" : form.credentialRef,
+                  })
+                }
+              >
+                <SelectTrigger id="source-auth-type" className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">无凭据</SelectItem>
+                  <SelectItem value="api_key">API Key</SelectItem>
+                  <SelectItem value="bearer">Bearer Token</SelectItem>
+                  <SelectItem value="oauth2">OAuth 2.0</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="sm:col-span-2">
+              <Label htmlFor="source-endpoint">接口地址</Label>
+              <Input
+                id="source-endpoint"
+                className="mt-2"
+                value={form.endpoint}
+                onChange={(event) => updateForm({ endpoint: event.target.value })}
+                placeholder="https://example.com/feed.xml"
+                readOnly={form.sourceType === SourceType.HackerNews}
+              />
+            </div>
+            {form.authType !== "none" && (
+              <div className="sm:col-span-2">
+                <Label htmlFor="source-credential-ref">
+                  凭据环境变量引用
+                </Label>
+                <Input
+                  id="source-credential-ref"
+                  className="mono mt-2"
+                  value={form.credentialRef}
+                  onChange={(event) =>
+                    updateForm({ credentialRef: event.target.value })
+                  }
+                  placeholder="env:SOURCE_API_TOKEN"
+                  aria-invalid={!credentialValid}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  仅允许 env:NAME，不保存或回显明文密钥。
+                </p>
+              </div>
+            )}
+            <div className="sm:col-span-2">
+              <Label htmlFor="source-terms-url">条款与政策地址</Label>
+              <Input
+                id="source-terms-url"
+                className="mt-2"
+                value={form.termsPolicyURL}
+                onChange={(event) =>
+                  updateForm({ termsPolicyURL: event.target.value })
+                }
+                placeholder="https://example.com/terms"
+                aria-invalid={!validHTTPSURL(form.termsPolicyURL)}
+              />
+            </div>
+            <div className="sm:col-span-2 rounded-md border border-border p-4">
+              <p className="text-sm font-medium">合规与保留</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                {complianceOptions.map((option) => (
+                  <label
+                    key={option.key}
+                    className="flex cursor-pointer items-center gap-2 text-sm"
+                  >
+                    <Checkbox
+                      aria-label={option.label}
+                      checked={form[option.key]}
+                      onCheckedChange={(checked) =>
+                        updateForm({ [option.key]: checked === true })
+                      }
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                只保存来源 Feed
+                实际提供的正文/摘要，不抓取原网页；启用前确认来源条款。
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="source-languages">允许语言</Label>
+              <Input
+                id="source-languages"
+                className="mt-2"
+                value={form.allowedLanguages}
+                onChange={(event) =>
+                  updateForm({ allowedLanguages: event.target.value })
+                }
+                placeholder="zh-CN, en"
+              />
+            </div>
+            <div>
+              <Label htmlFor="source-regions">允许地区</Label>
+              <Input
+                id="source-regions"
+                className="mt-2"
+                value={form.allowedRegions}
+                onChange={(event) =>
+                  updateForm({ allowedRegions: event.target.value })
+                }
+                placeholder="CN, US"
+              />
+            </div>
+            {numericOptions.map((option) => (
+              <div key={option.key}>
+                <Label htmlFor={`source-${option.key}`}>{option.label}</Label>
+                <Input
+                  id={`source-${option.key}`}
+                  className="mono mt-2"
+                  type="number"
+                  min={option.min}
+                  max={option.max}
+                  value={form[option.key]}
+                  onChange={(event) =>
+                    updateForm({ [option.key]: Number(event.target.value) })
+                  }
+                />
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="border-t border-border px-6 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => changeOpen(false)}
+            >
+              取消
+            </Button>
+            <Button type="submit" disabled={busy || !valid}>
+              {busy && <Loader2 className="animate-spin" />}
+              创建连接
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

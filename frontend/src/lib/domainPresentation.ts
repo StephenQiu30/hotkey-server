@@ -17,15 +17,15 @@ const sourceHealthPresentations: Record<
 > = {
   [SourceHealthStatus.Healthy]: {
     label: "健康",
-    className: "text-green-500",
+    className: "text-green-600 dark:text-green-400",
   },
   [SourceHealthStatus.Degraded]: {
     label: "降级",
-    className: "text-amber-400",
+    className: "text-amber-700 dark:text-amber-400",
   },
   [SourceHealthStatus.Unavailable]: {
     label: "不可用",
-    className: "text-red-400",
+    className: "text-red-600 dark:text-red-400",
   },
   [SourceHealthStatus.Unknown]: {
     label: "未探测",
@@ -60,15 +60,15 @@ const collectionRunPresentations: Record<
   },
   [CollectionRunStatus.Running]: {
     label: "采集中",
-    className: "text-blue-400",
+    className: "text-blue-600 dark:text-blue-400",
   },
   [CollectionRunStatus.Succeeded]: {
     label: "成功",
-    className: "text-green-500",
+    className: "text-green-600 dark:text-green-400",
   },
   [CollectionRunStatus.Failed]: {
     label: "失败",
-    className: "text-red-400",
+    className: "text-red-600 dark:text-red-400",
   },
   [CollectionRunStatus.Cancelled]: {
     label: "已取消",

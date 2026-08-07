@@ -270,6 +270,33 @@ func TestConnectorBoundsPaginationAndRejectsUnsafeDestinations(t *testing.T) {
 			t.Fatalf("private DNS error = %v, class = %q; want permanent", err, domain.ClassifyCollectionError(err))
 		}
 	})
+
+	t.Run("dns_rebinding_before_new_connection", func(t *testing.T) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.Header().Set("Connection", "close")
+			_, _ = writer.Write([]byte(`<?xml version="1.0"?><rss><channel><item><guid>safe</guid><title>Safe</title></item></channel></rss>`))
+		}))
+		defer server.Close()
+
+		lookups := 0
+		connector := newTestConnector(t, server, 1, func(context.Context, string) ([]net.IPAddr, error) {
+			lookups++
+			if lookups == 1 {
+				return []net.IPAddr{{IP: net.ParseIP("8.8.8.8")}}, nil
+			}
+			return []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}}, nil
+		})
+
+		if _, err := connector.Fetch(context.Background(), testFetchRequest()); err != nil {
+			t.Fatalf("first Fetch(): %v", err)
+		}
+		if _, err := connector.Fetch(context.Background(), testFetchRequest()); err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorPermanent {
+			t.Fatalf("rebound DNS error = %v, class = %q; want permanent", err, domain.ClassifyCollectionError(err))
+		}
+		if lookups != 2 {
+			t.Fatalf("DNS lookups = %d, want one validation per connection", lookups)
+		}
+	})
 }
 
 func TestConnectorHealthReportsBlockedDestination(t *testing.T) {

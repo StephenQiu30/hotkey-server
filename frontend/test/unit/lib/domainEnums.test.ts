@@ -41,7 +41,7 @@ describe("domain enums", () => {
   it("provides centralized user-facing presentations", () => {
     expect(sourceHealthPresentation(SourceHealthStatus.Healthy)).toEqual({
       label: "健康",
-      className: "text-green-500",
+      className: "text-green-600 dark:text-green-400",
     });
     expect(sourceHealthPresentation("future_status")).toEqual({
       label: "未探测",
