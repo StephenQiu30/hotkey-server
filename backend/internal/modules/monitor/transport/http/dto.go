@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	monitorapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/domain"
@@ -141,6 +142,9 @@ type MonitorConfigResponse struct {
 	ID                        int64                   `json:"id"`
 	Version                   int64                   `json:"version"`
 	Revision                  int64                   `json:"revision"`
+	State                     string                  `json:"state"`
+	ConfigHash                string                  `json:"config_hash"`
+	PublishedAt               *time.Time              `json:"published_at,omitempty"`
 	Timezone                  string                  `json:"timezone"`
 	Languages                 []string                `json:"languages"`
 	Regions                   []string                `json:"regions"`
@@ -150,6 +154,10 @@ type MonitorConfigResponse struct {
 	RetentionDays             int                     `json:"retention_days"`
 	Rules                     []MonitorRuleResponse   `json:"rules"`
 	Sources                   []MonitorSourceResponse `json:"sources"`
+}
+
+type MonitorVersionHistoryResponse struct {
+	Items []MonitorConfigResponse `json:"items"`
 }
 
 type MonitorResponse struct {
@@ -267,7 +275,7 @@ func monitorResponse(view monitorapplication.MonitorView) MonitorResponse {
 
 func monitorConfigResponse(view monitorapplication.ConfigurationView) MonitorConfigResponse {
 	config, rules, sources := view.Config, view.Rules, view.Sources
-	response := MonitorConfigResponse{ID: config.ID, Version: config.Version, Revision: config.Revision, Timezone: config.Config.Timezone, Languages: config.Config.Languages, Regions: config.Config.Regions, CollectionIntervalSeconds: config.Config.CollectionIntervalSeconds, RelevanceThreshold: config.Config.RelevanceThreshold, EventThreshold: config.Config.EventThreshold, RetentionDays: config.Config.RetentionDays, Rules: make([]MonitorRuleResponse, 0, len(rules)), Sources: make([]MonitorSourceResponse, 0, len(sources))}
+	response := MonitorConfigResponse{ID: config.ID, Version: config.Version, Revision: config.Revision, State: string(config.State), ConfigHash: config.ConfigHash, PublishedAt: config.PublishedAt, Timezone: config.Config.Timezone, Languages: config.Config.Languages, Regions: config.Config.Regions, CollectionIntervalSeconds: config.Config.CollectionIntervalSeconds, RelevanceThreshold: config.Config.RelevanceThreshold, EventThreshold: config.Config.EventThreshold, RetentionDays: config.Config.RetentionDays, Rules: make([]MonitorRuleResponse, 0, len(rules)), Sources: make([]MonitorSourceResponse, 0, len(sources))}
 	for _, rule := range rules {
 		response.Rules = append(response.Rules, MonitorRuleResponse{ID: rule.ID, RuleType: string(rule.RuleType), Operator: string(rule.Operator), Value: rule.Value, Weight: rule.Weight, Priority: rule.Priority, Origin: string(rule.Origin), ApprovalStatus: string(rule.ApprovalStatus), Enabled: rule.Enabled})
 	}

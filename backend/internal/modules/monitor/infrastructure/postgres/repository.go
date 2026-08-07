@@ -132,6 +132,30 @@ func (repository *Repository) findMonitor(ctx context.Context, id int64, lock bo
 func (repository *Repository) FindConfig(ctx context.Context, id int64) (*domain.MonitorConfigVersion, []domain.MonitorRule, []domain.MonitorSource, error) {
 	return repository.config(ctx, id, false)
 }
+
+func (repository *Repository) ListConfigs(ctx context.Context, monitorID int64) ([]domain.MonitorConfigVersion, error) {
+	if monitorID <= 0 {
+		return nil, fmt.Errorf("%w: monitor id is required", sharedrepository.ErrInvalidInput)
+	}
+	rows, err := repository.queryRows(ctx, `SELECT `+configColumns+` FROM monitor_config_versions WHERE monitor_id = $1 ORDER BY revision DESC, id DESC`, monitorID)
+	if err != nil {
+		return nil, databaserepository.MapError(err)
+	}
+	defer rows.Close()
+	result := []domain.MonitorConfigVersion{}
+	for rows.Next() {
+		var config domain.MonitorConfigVersion
+		if err := rows.Scan(configScanTargets(&config)...); err != nil {
+			return nil, databaserepository.MapError(err)
+		}
+		result = append(result, config)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, databaserepository.MapError(err)
+	}
+	return result, nil
+}
+
 func (repository *Repository) LockConfig(ctx context.Context, id int64) (*domain.MonitorConfigVersion, []domain.MonitorRule, []domain.MonitorSource, error) {
 	return repository.config(ctx, id, true)
 }

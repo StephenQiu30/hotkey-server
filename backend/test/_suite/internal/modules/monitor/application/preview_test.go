@@ -57,6 +57,9 @@ func (repository *previewRepository) FindConfig(context.Context, int64) (*domain
 	config := repository.config
 	return &config, append([]domain.MonitorRule(nil), repository.rules...), append([]domain.MonitorSource(nil), repository.sources...), nil
 }
+func (*previewRepository) ListConfigs(context.Context, int64) ([]domain.MonitorConfigVersion, error) {
+	return nil, nil
+}
 func (repository *previewRepository) LockConfig(context.Context, int64) (*domain.MonitorConfigVersion, []domain.MonitorRule, []domain.MonitorSource, error) {
 	repository.writes++
 	return nil, nil, nil, nil

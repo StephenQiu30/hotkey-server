@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	identitydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
 	monitorapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/application"
@@ -329,8 +330,34 @@ func TestMonitorReadRoutesProjectPublishedAndDraftByRole(t *testing.T) {
 	}
 }
 
+func TestMonitorHistoryRouteReturnsLifecycleMetadata(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	publishedAt := time.Date(2026, time.August, 7, 8, 30, 0, 0, time.UTC)
+	service := &readMonitorService{history: []monitorapplication.ConfigurationView{
+		{Config: domain.MonitorConfigVersion{
+			ID: 10, Version: 2, Revision: 2, State: domain.ConfigVersionPublished, ConfigHash: "sha256:history", PublishedAt: &publishedAt,
+			Config: domain.MonitorConfig{Timezone: "UTC", Languages: []string{"en"}, CollectionIntervalSeconds: 300, RelevanceThreshold: 60, EventThreshold: 10, RetentionDays: 30},
+		}},
+	}}
+	router := gin.New()
+	RegisterRoutes(router, service, testAuthenticator{subject: httptransport.Subject{UserID: 2, SessionID: 2, Role: httptransport.RoleEditor}})
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/monitors/1/versions", nil)
+	request.Header.Set("Authorization", "Bearer editor")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{`"revision":2`, `"state":"published"`, `"config_hash":"sha256:history"`, `"published_at":"2026-08-07T08:30:00Z"`} {
+		if !strings.Contains(response.Body.String(), expected) {
+			t.Fatalf("history response missing %s: %s", expected, response.Body.String())
+		}
+	}
+}
+
 type readMonitorService struct {
-	view monitorapplication.MonitorView
+	view    monitorapplication.MonitorView
+	history []monitorapplication.ConfigurationView
 }
 
 type draftVersionMonitorService struct {
@@ -380,6 +407,9 @@ func (service *readMonitorService) Get(_ context.Context, input identitydomain.S
 		view.Draft = nil
 	}
 	return view, nil
+}
+func (service *readMonitorService) History(context.Context, identitydomain.Subject, int64) ([]monitorapplication.ConfigurationView, error) {
+	return service.history, nil
 }
 func (*readMonitorService) Create(context.Context, monitorapplication.CreateInput) (*domain.Monitor, *domain.MonitorConfigVersion, error) {
 	return nil, nil, nil

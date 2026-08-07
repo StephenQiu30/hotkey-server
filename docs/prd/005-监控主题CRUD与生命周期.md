@@ -3,7 +3,7 @@ layer: PRD
 scope: shared
 doc_no: "005"
 title: 监控主题CRUD与生命周期
-status: draft
+status: implemented
 version: v1.0
 owner: HotKey Team
 phase: P0

@@ -16,6 +16,7 @@ func RegisterRoutes(router *gin.Engine, service monitorService, authenticator ht
 	api := router.Group("/api/v1/monitors", httptransport.RequireAuthentication(authenticator))
 	api.GET("", httptransport.Wrap(handler.List))
 	api.GET("/:id", httptransport.Wrap(handler.Get))
+	api.GET("/:id/versions", httptransport.Wrap(handler.History))
 	editor := api.Group("", httptransport.RequireRoles(httptransport.RoleEditor, httptransport.RoleAdmin))
 	editor.POST("", httptransport.Wrap(handler.Create))
 	editor.PUT("/:id/draft", httptransport.Wrap(handler.ReplaceDraft))

@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,6 +40,36 @@ func TestRepositoryCreatesAndReadsVersionedDraft(t *testing.T) {
 	}
 	if loadedConfig.MonitorID != monitor.ID || len(loadedRules) != 1 || len(loadedSources) != 0 || loadedRules[0].Value != "repository" {
 		t.Fatalf("loaded config/rules/sources = %#v %#v %#v", loadedConfig, loadedRules, loadedSources)
+	}
+}
+
+func TestRepositoryListsConfigurationHistoryNewestRevisionFirst(t *testing.T) {
+	runtime := monitorRepositoryRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	repository := monitorpostgres.NewRepository(runtime)
+	monitor := domain.Monitor{Name: "history monitor", Status: domain.MonitorStatusDraft}
+	first := domain.MonitorConfigVersion{Revision: 1, State: domain.ConfigVersionDraft, Config: repositoryConfig()}
+	rules := []domain.MonitorRule{{RuleType: domain.RuleTypeKeyword, Operator: domain.RuleOperatorContains, Value: "history", Weight: 100, Priority: 1, Origin: domain.RuleOriginUser, ApprovalStatus: domain.RuleApprovalApproved, Enabled: true}}
+	if err := repository.Create(context.Background(), &monitor, &first, rules, nil); err != nil {
+		t.Fatalf("Create(): %v", err)
+	}
+	publishedAt := time.Now().UTC().Truncate(time.Microsecond)
+	monitor.Status, monitor.Version, monitor.DraftConfigVersionID, monitor.PublishedConfigVersionID = domain.MonitorStatusActive, monitor.Version+1, nil, &first.ID
+	first.State, first.ConfigHash, first.PublishedAt, first.Version = domain.ConfigVersionPublished, strings.Repeat("a", 64), &publishedAt, first.Version+1
+	if err := repository.Publish(context.Background(), &monitor, &first, nil, nil); err != nil {
+		t.Fatalf("Publish first config: %v", err)
+	}
+	second := domain.MonitorConfigVersion{MonitorID: monitor.ID, Revision: 2, State: domain.ConfigVersionDraft, Config: repositoryConfig()}
+	if err := repository.CreateDraft(context.Background(), &second, nil, nil); err != nil {
+		t.Fatalf("CreateDraft(): %v", err)
+	}
+
+	history, err := repository.ListConfigs(context.Background(), monitor.ID)
+	if err != nil {
+		t.Fatalf("ListConfigs(): %v", err)
+	}
+	if len(history) != 2 || history[0].ID != second.ID || history[0].Revision != 2 || history[1].ID != first.ID || history[1].Revision != 1 {
+		t.Fatalf("history = %#v", history)
 	}
 }
 

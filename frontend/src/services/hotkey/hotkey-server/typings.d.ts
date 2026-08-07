@@ -786,6 +786,11 @@ required property without making explicit null impossible to bind. */
     id: number;
   };
 
+  type getMonitorsIdVersionsParams = {
+    /** monitor ID */
+    id: number;
+  };
+
   type getMonitorsParams = {
     /** cursor */
     cursor?: string;
@@ -1118,15 +1123,18 @@ required property without making explicit null impossible to bind. */
 
   type MonitorConfigResponse = {
     collection_interval_seconds?: number;
+    config_hash?: string;
     event_threshold?: number;
     id?: number;
     languages?: string[];
+    published_at?: string;
     regions?: string[];
     relevance_threshold?: number;
     retention_days?: number;
     revision?: number;
     rules?: MonitorRuleResponse[];
     sources?: MonitorSourceResponse[];
+    state?: string;
     timezone?: string;
     version?: number;
   };
@@ -1162,6 +1170,12 @@ required property without making explicit null impossible to bind. */
   type MonitorResultHttpMonitorRuleResponse = {
     code?: number;
     data?: MonitorRuleResponse;
+    message?: string;
+  };
+
+  type MonitorResultHttpMonitorVersionHistoryResponse = {
+    code?: number;
+    data?: MonitorVersionHistoryResponse;
     message?: string;
   };
 
@@ -1213,6 +1227,10 @@ required property without making explicit null impossible to bind. */
     query_override?: string;
     source_connection_id?: number;
     source_type?: string;
+  };
+
+  type MonitorVersionHistoryResponse = {
+    items?: MonitorConfigResponse[];
   };
 
   type OverviewResultDomainRuntimeOverview = {

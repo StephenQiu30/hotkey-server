@@ -3,7 +3,7 @@ layer: Design
 scope: shared
 doc_no: "005"
 title: 监控主题CRUD与生命周期设计
-status: proposed
+status: accepted
 version: v1.0
 owner: HotKey Team
 phase: P0

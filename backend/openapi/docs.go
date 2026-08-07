@@ -4560,6 +4560,63 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/monitors/{id}/versions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitors"
+                ],
+                "summary": "List monitor configuration versions",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_MonitorVersionHistoryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/operations/jobs": {
             "get": {
                 "security": [
@@ -9062,6 +9119,9 @@ const docTemplate = `{
                 "collection_interval_seconds": {
                     "type": "integer"
                 },
+                "config_hash": {
+                    "type": "string"
+                },
                 "event_threshold": {
                     "type": "number"
                 },
@@ -9073,6 +9133,9 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "published_at": {
+                    "type": "string"
                 },
                 "regions": {
                     "type": "array",
@@ -9100,6 +9163,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/http.MonitorSourceResponse"
                     }
+                },
+                "state": {
+                    "type": "string"
                 },
                 "timezone": {
                     "type": "string"
@@ -9188,6 +9254,20 @@ const docTemplate = `{
                 },
                 "data": {
                     "$ref": "#/definitions/http.MonitorRuleResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.MonitorResult-http_MonitorVersionHistoryResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.MonitorVersionHistoryResponse"
                 },
                 "message": {
                     "type": "string"
@@ -9330,6 +9410,17 @@ const docTemplate = `{
                 },
                 "source_type": {
                     "type": "string"
+                }
+            }
+        },
+        "http.MonitorVersionHistoryResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.MonitorConfigResponse"
+                    }
                 }
             }
         },

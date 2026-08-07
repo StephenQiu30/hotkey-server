@@ -114,6 +114,7 @@ func TestOpenAPIContract(t *testing.T) {
 		"/api/v1/users/{id}/restore":                                        {"post": {"200", "401", "403", "409", "503"}},
 		"/api/v1/monitors":                                                  {"get": {"200", "400", "401", "503"}, "post": {"201", "400", "401", "403", "409", "503"}},
 		"/api/v1/monitors/{id}":                                             {"get": {"200", "400", "401", "409", "503"}, "delete": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}/versions":                                    {"get": {"200", "400", "401", "409", "503"}},
 		"/api/v1/monitors/{id}/draft":                                       {"put": {"200", "400", "401", "403", "409", "503"}},
 		"/api/v1/monitors/{id}/draft/ai-candidates":                         {"post": {"200", "400", "401", "403", "409", "503"}},
 		"/api/v1/monitors/{id}/draft/rules/{rule_id}/approval":              {"post": {"200", "400", "401", "403", "409", "503"}},

@@ -50,6 +50,45 @@ func TestMonitorReadsRespectPublishedAndDraftVisibility(t *testing.T) {
 	}
 }
 
+func TestMonitorHistoryReturnsAllVersionsToCollaboratorsAndPublishedOnlyToViewers(t *testing.T) {
+	publishedID, draftID := int64(10), int64(11)
+	monitor := domain.Monitor{ID: 1, Version: 4, Name: "active", Status: domain.MonitorStatusActive, PublishedConfigVersionID: &publishedID, DraftConfigVersionID: &draftID}
+	superseded := testReadConfig(9, domain.ConfigVersionSuperseded)
+	superseded.Revision = 1
+	published := testReadConfig(publishedID, domain.ConfigVersionPublished)
+	published.Revision = 2
+	draft := testReadConfig(draftID, domain.ConfigVersionDraft)
+	draft.Revision = 3
+	repository := &readRepository{
+		monitors: map[int64]domain.Monitor{1: monitor},
+		history:  map[int64][]domain.MonitorConfigVersion{1: {draft, published, superseded}},
+		configs: map[int64]readConfiguration{
+			9:           {config: superseded},
+			publishedID: {config: published},
+			draftID:     {config: draft},
+		},
+	}
+	service, err := NewService(Dependencies{Runtime: &database.Runtime{}, Monitors: repository, Sources: readSourceReader{}, Audit: &previewAudit{}})
+	if err != nil {
+		t.Fatalf("NewService(): %v", err)
+	}
+
+	editorHistory, err := service.History(context.Background(), identitydomain.Subject{UserID: 2, Role: identitydomain.RoleEditor}, 1)
+	if err != nil {
+		t.Fatalf("editor History(): %v", err)
+	}
+	if len(editorHistory) != 3 || editorHistory[0].Config.Revision != 3 || editorHistory[2].Config.State != domain.ConfigVersionSuperseded {
+		t.Fatalf("editor history = %#v", editorHistory)
+	}
+	viewerHistory, err := service.History(context.Background(), identitydomain.Subject{UserID: 1, Role: identitydomain.RoleViewer}, 1)
+	if err != nil {
+		t.Fatalf("viewer History(): %v", err)
+	}
+	if len(viewerHistory) != 2 || viewerHistory[0].Config.State != domain.ConfigVersionPublished || viewerHistory[1].Config.State != domain.ConfigVersionSuperseded {
+		t.Fatalf("viewer history = %#v", viewerHistory)
+	}
+}
+
 type readConfiguration struct {
 	config  domain.MonitorConfigVersion
 	rules   []domain.MonitorRule
@@ -60,6 +99,7 @@ type readRepository struct {
 	monitors  map[int64]domain.Monitor
 	all       []domain.Monitor
 	configs   map[int64]readConfiguration
+	history   map[int64][]domain.MonitorConfigVersion
 	lastQuery domain.MonitorListQuery
 }
 
@@ -82,6 +122,9 @@ func (repository *readRepository) List(_ context.Context, query domain.MonitorLi
 		result = append(result, monitor)
 	}
 	return result, "", nil
+}
+func (repository *readRepository) ListConfigs(_ context.Context, monitorID int64) ([]domain.MonitorConfigVersion, error) {
+	return append([]domain.MonitorConfigVersion(nil), repository.history[monitorID]...), nil
 }
 
 type readSourceReader struct{}

@@ -56,6 +56,42 @@ func (service *Service) Get(ctx context.Context, subject identitydomain.Subject,
 	return service.monitorView(ctx, subject, *monitor)
 }
 
+// History returns newest-first immutable configuration history. Viewers may
+// inspect only published/superseded versions of an operational Monitor; draft
+// facts remain restricted to editors and administrators.
+func (service *Service) History(ctx context.Context, subject identitydomain.Subject, id int64) ([]ConfigurationView, error) {
+	if err := requireAuthenticated(subject); err != nil {
+		return nil, err
+	}
+	if id <= 0 {
+		return nil, domain.MonitorDraftUnavailable()
+	}
+	monitor, err := service.monitors.FindByID(ctx, id)
+	if err != nil {
+		return nil, monitorReadError(err)
+	}
+	viewer := subject.Role == identitydomain.RoleViewer
+	if viewer && (monitor.Status != domain.MonitorStatusActive && monitor.Status != domain.MonitorStatusPaused || monitor.PublishedConfigVersionID == nil) {
+		return nil, domain.MonitorDraftUnavailable()
+	}
+	configs, err := service.monitors.ListConfigs(ctx, id)
+	if err != nil {
+		return nil, monitorReadError(err)
+	}
+	result := make([]ConfigurationView, 0, len(configs))
+	for _, config := range configs {
+		if viewer && config.State == domain.ConfigVersionDraft {
+			continue
+		}
+		view, err := service.configurationView(ctx, config.ID)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, *view)
+	}
+	return result, nil
+}
+
 // List preserves a fixed repository-owned cursor/id ascending order. Viewer
 // reads are constrained at the repository to active/paused published facts;
 // collaborators receive all shared Monitor metadata with a safe draft view.

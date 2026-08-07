@@ -3,6 +3,7 @@ import { MonitorRegion } from "@/lib/domainEnums";
 import {
   MAX_MONITOR_SOURCES,
   buildMonitorDraftRequest,
+  monitorToDraftForm,
   selectAllMonitorSources,
   toggleMonitorSource,
   validateMonitorDraft,
@@ -56,6 +57,36 @@ describe("monitor draft contract", () => {
     expect(validateMonitorDraft({ ...baseForm, relevance: 59 })).toBe(
       "相关性阈值需为 60–100"
     );
+  });
+
+  it("prefills an editable form from the newest draft without losing source identity", () => {
+    expect(monitorToDraftForm({
+      name: "AI releases",
+      description: "Official launches",
+      published: { revision: 1, rules: [{ value: "old" }], sources: [{ source_connection_id: 4 }] },
+      draft: {
+        revision: 2,
+        collection_interval_seconds: 600,
+        event_threshold: 80,
+        languages: ["en"],
+        regions: ["US"],
+        relevance_threshold: 72,
+        retention_days: 45,
+        rules: [{ value: "OpenAI", enabled: true }],
+        sources: [{ source_connection_id: 7, enabled: true }],
+      },
+    })).toEqual({
+      name: "AI releases",
+      description: "Official launches",
+      query: "OpenAI",
+      language: "en",
+      region: MonitorRegion.UnitedStates,
+      interval: 600,
+      relevance: 72,
+      event: 80,
+      retention: 45,
+      sourceIds: [7],
+    });
   });
 });
 

@@ -88,6 +88,33 @@ export function buildMonitorDraftRequest(form: MonitorDraftForm) {
   };
 }
 
+export function monitorToDraftForm(
+  monitor: HotKeyAPI.MonitorResponse,
+): MonitorDraftForm {
+  const config = monitor.draft ?? monitor.published;
+  const region = config?.regions?.[0];
+  return {
+    name: monitor.name ?? "",
+    description: monitor.description ?? "",
+    query: config?.rules?.find((rule) => rule.enabled !== false)?.value ?? "",
+    language: config?.languages?.[0] ?? "zh",
+    region:
+      region === MonitorRegion.China || region === MonitorRegion.UnitedStates
+        ? region
+        : MonitorRegion.Global,
+    interval: config?.collection_interval_seconds ?? 900,
+    relevance: config?.relevance_threshold ?? 60,
+    event: config?.event_threshold ?? 70,
+    retention: config?.retention_days ?? 30,
+    sourceIds:
+      config?.sources?.flatMap((source) =>
+        source.enabled !== false && source.source_connection_id != null
+          ? [source.source_connection_id]
+          : [],
+      ) ?? [],
+  };
+}
+
 export function selectAllMonitorSources(availableIds: number[]): number[] {
   return Array.from(new Set(availableIds)).slice(0, MAX_MONITOR_SOURCES);
 }

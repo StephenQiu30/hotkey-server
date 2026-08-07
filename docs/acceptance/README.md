@@ -21,3 +21,4 @@ canonical_path: docs/acceptance/README.md
 | 002 | [Vercel风格与shadcn-ui设计系统](002-Vercel风格与shadcn-ui设计系统验收.md) | passed |
 | 003 | [账户认证与会话安全](003-账户认证与会话安全验收.md) | passed |
 | 004 | [用户角色与权限管理](004-用户角色与权限管理验收.md) | passed |
+| 005 | [监控主题CRUD与生命周期](005-监控主题CRUD与生命周期验收.md) | passed |

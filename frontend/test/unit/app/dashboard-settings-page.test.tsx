@@ -1,0 +1,182 @@
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AuthStatus, UserRole } from "@/lib/domainEnums";
+import { useAuthStore } from "@/stores/authStore";
+
+const mocks = vi.hoisted(() => ({
+  getMonitors: vi.fn(),
+  getMonitorsId: vi.fn(),
+  getMonitorsIdVersions: vi.fn(),
+  postMonitors: vi.fn(),
+  putMonitorsIdDraft: vi.fn(),
+  postMonitorsIdPreview: vi.fn(),
+  postMonitorsIdPublish: vi.fn(),
+  postMonitorsIdPause: vi.fn(),
+  postMonitorsIdResume: vi.fn(),
+  postMonitorsIdArchive: vi.fn(),
+  postMonitorsIdRestore: vi.fn(),
+  deleteMonitorsId: vi.fn(),
+  getSourceConnections: vi.fn(),
+}));
+
+vi.mock("@/services/hotkey/hotkey-server/monitors", () => ({
+  getMonitors: mocks.getMonitors,
+  getMonitorsId: mocks.getMonitorsId,
+  getMonitorsIdVersions: mocks.getMonitorsIdVersions,
+  postMonitors: mocks.postMonitors,
+  putMonitorsIdDraft: mocks.putMonitorsIdDraft,
+  postMonitorsIdPreview: mocks.postMonitorsIdPreview,
+  postMonitorsIdPublish: mocks.postMonitorsIdPublish,
+  postMonitorsIdPause: mocks.postMonitorsIdPause,
+  postMonitorsIdResume: mocks.postMonitorsIdResume,
+  postMonitorsIdArchive: mocks.postMonitorsIdArchive,
+  postMonitorsIdRestore: mocks.postMonitorsIdRestore,
+  deleteMonitorsId: mocks.deleteMonitorsId,
+}));
+vi.mock("@/services/hotkey/hotkey-server/sources", () => ({
+  getSourceConnections: mocks.getSourceConnections,
+}));
+
+import MonitorsPage from "@/app/dashboard/settings/page";
+
+const draft = {
+  id: 11,
+  version: 3,
+  revision: 2,
+  state: "draft",
+  timezone: "Asia/Shanghai",
+  languages: ["zh"],
+  regions: ["CN"],
+  collection_interval_seconds: 900,
+  relevance_threshold: 70,
+  event_threshold: 80,
+  retention_days: 30,
+  rules: [{ id: 21, rule_type: "keyword", operator: "contains", value: "OpenAI", enabled: true }],
+  sources: [{ id: 31, source_connection_id: 7, name: "Official feed", source_type: "rss", enabled: true }],
+} satisfies HotKeyAPI.MonitorConfigResponse;
+
+const published = {
+  ...draft,
+  id: 10,
+  version: 2,
+  revision: 1,
+  state: "published",
+  config_hash: "a".repeat(64),
+  published_at: "2026-08-07T08:30:00Z",
+} satisfies HotKeyAPI.MonitorConfigResponse;
+
+const monitor = {
+  id: 1,
+  version: 4,
+  name: "AI releases",
+  description: "Track official launches",
+  status: "active",
+  published_revision: 1,
+  published,
+  draft,
+} satisfies HotKeyAPI.MonitorResponse;
+
+function setRole(role: UserRole) {
+  useAuthStore.setState({
+    status: AuthStatus.Authenticated,
+    user: { id: 1, email: `${role}@example.test`, role },
+    error: null,
+  });
+}
+
+describe("MonitorsPage", () => {
+  afterEach(cleanup);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setRole(UserRole.Admin);
+    mocks.getMonitors.mockResolvedValue({ data: { items: [monitor] } });
+    mocks.getSourceConnections.mockResolvedValue({ data: { items: [{ id: 7, name: "Official feed", source_type: "rss", enabled: true, deleted: false }] } });
+    mocks.getMonitorsId.mockResolvedValue({ data: monitor });
+    mocks.getMonitorsIdVersions.mockResolvedValue({ data: { items: [draft, published] } });
+    mocks.putMonitorsIdDraft.mockResolvedValue({ data: monitor });
+    mocks.postMonitorsIdPreview.mockResolvedValue({ data: { eligible: true, config_hash: "b".repeat(64), estimated_requests: 2, warnings: [], sources: [{ source_connection_id: 7, estimated_requests: 2 }] } });
+    mocks.postMonitorsIdPublish.mockResolvedValue({ data: { ...monitor, status: "active", draft: undefined } });
+    mocks.postMonitorsIdPause.mockResolvedValue({ data: { ...monitor, version: 5, status: "paused" } });
+  });
+
+  it("keeps viewer access read-only without requesting source management data", async () => {
+    setRole(UserRole.Viewer);
+    render(<MonitorsPage />);
+
+    expect(await screen.findByText("AI releases")).toBeInTheDocument();
+    expect(screen.getByText("只读监控目录")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "新建监控" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑草稿" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "预览并发布" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "暂停" })).not.toBeInTheDocument();
+    expect(mocks.getSourceConnections).not.toHaveBeenCalled();
+  });
+
+  it("lets an editor update a draft but never exposes publication or lifecycle controls", async () => {
+    setRole(UserRole.Editor);
+    render(<MonitorsPage />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "编辑草稿" }));
+    expect(screen.getByRole("dialog", { name: "编辑监控草稿" })).toBeInTheDocument();
+    expect(screen.getByLabelText("关键词规则")).toHaveValue("OpenAI");
+    await user.click(screen.getByRole("button", { name: "保存草稿" }));
+
+    await waitFor(() => expect(mocks.putMonitorsIdDraft).toHaveBeenCalledWith(
+      { id: 1 },
+      expect.objectContaining({ expected_monitor_version: 4, expected_draft_version: 3, name: "AI releases" }),
+    ));
+    expect(screen.queryByRole("button", { name: "预览并发布" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "暂停" })).not.toBeInTheDocument();
+  });
+
+  it("requires a successful preview before an admin can publish the exact draft", async () => {
+    render(<MonitorsPage />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "预览并发布" }));
+    expect(mocks.postMonitorsIdPreview).toHaveBeenCalledWith({ id: 1 });
+    expect(await screen.findByRole("dialog", { name: "发布预览" })).toBeInTheDocument();
+    expect(screen.getByText("预计请求 2 次")).toBeInTheDocument();
+    expect(mocks.postMonitorsIdPublish).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "确认发布" }));
+
+    await waitFor(() => expect(mocks.postMonitorsIdPublish).toHaveBeenCalledWith(
+      { id: 1 },
+      { expected_monitor_version: 4, expected_draft_version: 3 },
+    ));
+  });
+
+  it("shows lifecycle, schedule, rules, sources, and immutable version history in details", async () => {
+    render(<MonitorsPage />);
+    await userEvent.setup().click(await screen.findByRole("button", { name: "查看详情" }));
+
+    expect(await screen.findByRole("dialog", { name: "监控详情" })).toBeInTheDocument();
+    expect(mocks.getMonitorsId).toHaveBeenCalledWith({ id: 1 });
+    expect(mocks.getMonitorsIdVersions).toHaveBeenCalledWith({ id: 1 });
+    expect(screen.getByText("每 15 分钟采集")).toBeInTheDocument();
+    expect(screen.getByText("Official feed")).toBeInTheDocument();
+    expect(screen.getAllByText("OpenAI").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("修订 2").length).toBeGreaterThan(0);
+    expect(screen.getByText("修订 1")).toBeInTheDocument();
+  });
+
+  it("supports direct lifecycle actions and a visible retry state", async () => {
+    render(<MonitorsPage />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "暂停" }));
+    await waitFor(() => expect(mocks.postMonitorsIdPause).toHaveBeenCalledWith(
+      { id: 1 },
+      { expected_monitor_version: 4 },
+    ));
+
+    cleanup();
+    mocks.getMonitors.mockRejectedValueOnce(new Error("monitor network unavailable"));
+    render(<MonitorsPage />);
+    expect(await screen.findByText("monitor network unavailable")).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "重试" }));
+    expect(await screen.findByText("AI releases")).toBeInTheDocument();
+  });
+});

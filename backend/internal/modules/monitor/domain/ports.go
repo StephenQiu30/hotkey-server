@@ -10,6 +10,7 @@ type MonitorRepository interface {
 	FindByID(context.Context, int64) (*Monitor, error)
 	LockByID(context.Context, int64) (*Monitor, error)
 	FindConfig(context.Context, int64) (*MonitorConfigVersion, []MonitorRule, []MonitorSource, error)
+	ListConfigs(context.Context, int64) ([]MonitorConfigVersion, error)
 	LockConfig(context.Context, int64) (*MonitorConfigVersion, []MonitorRule, []MonitorSource, error)
 	CreateDraft(context.Context, *MonitorConfigVersion, []MonitorRule, []MonitorSource) error
 	SaveDraft(context.Context, *MonitorConfigVersion, []MonitorRule, []MonitorSource) error

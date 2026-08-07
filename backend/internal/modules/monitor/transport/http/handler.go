@@ -27,6 +27,7 @@ type monitorService interface {
 	Restore(context.Context, monitorapplication.LifecycleInput) (*domain.Monitor, error)
 	Delete(context.Context, monitorapplication.LifecycleInput) (*domain.Monitor, error)
 	Get(context.Context, identitydomain.Subject, int64) (monitorapplication.MonitorView, error)
+	History(context.Context, identitydomain.Subject, int64) ([]monitorapplication.ConfigurationView, error)
 	List(context.Context, monitorapplication.ListInput) (monitorapplication.MonitorPage, error)
 }
 
@@ -96,6 +97,40 @@ func (handler *Handler) Get(c *gin.Context) error {
 		return err
 	}
 	httptransport.OK(c, monitorResponse(view))
+	return nil
+}
+
+// History returns newest-first configuration versions with lifecycle metadata.
+// @Summary List monitor configuration versions
+// @Tags monitors
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "monitor ID"
+// @Success 200 {object} MonitorResult[MonitorVersionHistoryResponse]
+// @Failure 400 {object} MonitorResult[EmptyResponse]
+// @Failure 401 {object} MonitorResult[EmptyResponse]
+// @Failure 409 {object} MonitorResult[EmptyResponse]
+// @Failure 503 {object} MonitorResult[EmptyResponse]
+// @Router /api/v1/monitors/{id}/versions [get]
+func (handler *Handler) History(c *gin.Context) error {
+	httptransport.SetModule(c, "monitor")
+	subject, err := monitorSubject(c)
+	if err != nil {
+		return err
+	}
+	id, err := monitorID(c)
+	if err != nil {
+		return err
+	}
+	history, err := handler.service.History(c.Request.Context(), subject, id)
+	if err != nil {
+		return err
+	}
+	response := MonitorVersionHistoryResponse{Items: make([]MonitorConfigResponse, 0, len(history))}
+	for _, item := range history {
+		response.Items = append(response.Items, monitorConfigResponse(item))
+	}
+	httptransport.OK(c, response)
 	return nil
 }
 

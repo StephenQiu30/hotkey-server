@@ -96,6 +96,17 @@ WHERE source.config_version_id = $1`, publishedConfig.ID).Scan(&checkpointQueryH
 	if err != nil {
 		t.Fatalf("Pause: %v", err)
 	}
+	idempotentPause, err := monitors.Pause(ctx, monitorapplication.LifecycleInput{Subject: admin, MonitorID: created.ID, ExpectedMonitorVersion: paused.Version})
+	if err != nil || idempotentPause.Version != paused.Version || idempotentPause.Status != monitordomain.MonitorStatusPaused {
+		t.Fatalf("idempotent Pause = %#v/%v", idempotentPause, err)
+	}
+	if _, err := monitors.Pause(ctx, monitorapplication.LifecycleInput{Subject: admin, MonitorID: created.ID, ExpectedMonitorVersion: publishedMonitor.Version}); appCode(err) != sharederrors.CodeMonitorVersionConflict {
+		t.Fatalf("stale Pause code=%d", appCode(err))
+	}
+	dueWhilePaused, err := monitorpostgres.NewPublishedCollectionTargetReader(runtime).ListDue(ctx, time.Now().UTC().Add(time.Minute))
+	if err != nil || len(dueWhilePaused) != 0 {
+		t.Fatalf("paused due targets = %#v/%v, want none", dueWhilePaused, err)
+	}
 	disabled, err := sources.Disable(ctx, sourceapplication.LifecycleInput{Subject: admin, ID: connection.ID, ExpectedVersion: connection.Version})
 	if err != nil {
 		t.Fatalf("paused historical source Disable: %v", err)
@@ -116,6 +127,17 @@ WHERE source.config_version_id = $1`, publishedConfig.ID).Scan(&checkpointQueryH
 	}
 	if resumed.Status != monitordomain.MonitorStatusActive {
 		t.Fatalf("resumed status=%s", resumed.Status)
+	}
+	idempotentResume, err := monitors.Resume(ctx, monitorapplication.LifecycleInput{Subject: admin, MonitorID: created.ID, ExpectedMonitorVersion: resumed.Version})
+	if err != nil || idempotentResume.Version != resumed.Version || idempotentResume.Status != monitordomain.MonitorStatusActive {
+		t.Fatalf("idempotent Resume = %#v/%v", idempotentResume, err)
+	}
+	if _, err := monitors.Resume(ctx, monitorapplication.LifecycleInput{Subject: admin, MonitorID: created.ID, ExpectedMonitorVersion: paused.Version}); appCode(err) != sharederrors.CodeMonitorVersionConflict {
+		t.Fatalf("stale Resume code=%d", appCode(err))
+	}
+	dueAfterResume, err := monitorpostgres.NewPublishedCollectionTargetReader(runtime).ListDue(ctx, time.Now().UTC().Add(time.Minute))
+	if err != nil || len(dueAfterResume) != 1 || dueAfterResume[0].MonitorConfigVersionID != publishedConfig.ID {
+		t.Fatalf("resumed due targets = %#v/%v, want published config %d", dueAfterResume, err, publishedConfig.ID)
 	}
 
 	firstDraftMonitor, secondDraft, err := monitors.ReplaceDraft(ctx, monitorapplication.ReplaceDraftInput{Subject: monitorEditor(admin.UserID), MonitorID: created.ID, Expected: monitordomain.ExpectedVersions{MonitorVersion: resumed.Version, DraftVersion: nil}, Draft: monitorDraft(connection.ID)})
