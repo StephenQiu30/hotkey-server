@@ -1,6 +1,6 @@
 module github.com/StephenQiu30/hotkey-server/backend
 
-go 1.26.3
+go 1.26.5
 
 require (
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.2
