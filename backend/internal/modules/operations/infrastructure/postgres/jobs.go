@@ -18,6 +18,10 @@ var _ operationsapplication.JobStoreWithHook = (*JobRepository)(nil)
 
 type JobRepository struct{ runtime *database.Runtime }
 
+const safeResourceIDProjection = `CASE WHEN args->>'entity_id' ~ '^[1-9][0-9]{0,18}$'
+THEN CASE WHEN (args->>'entity_id')::numeric <= 9223372036854775807 THEN (args->>'entity_id')::bigint ELSE 0 END
+ELSE 0 END`
+
 func NewJobRepository(runtime *database.Runtime) *JobRepository {
 	return &JobRepository{runtime: runtime}
 }
@@ -39,7 +43,11 @@ func (repository *JobRepository) ListJobs(ctx context.Context, query operationsd
 		args = append(args, string(query.State))
 		filters = append(filters, fmt.Sprintf("state = $%d", len(args)))
 	}
-	rows, err := repository.runtime.SQL.QueryContext(ctx, `SELECT id, kind, state, attempt, max_attempts, priority, scheduled_at, attempted_at, finalized_at, created_at FROM river_job WHERE `+strings.Join(filters, " AND ")+` ORDER BY id ASC LIMIT $2`, args...)
+	rows, err := repository.runtime.SQL.QueryContext(ctx, `SELECT id, kind, `+safeResourceIDProjection+`,
+state, attempt, max_attempts, priority, scheduled_at, attempted_at, finalized_at, created_at,
+COALESCE((SELECT CASE WHEN attempt.error IN ('retryable','permanent','cancelled') THEN attempt.error ELSE '' END
+          FROM river_job_attempt attempt WHERE attempt.job_id=river_job.id ORDER BY attempt.attempt DESC LIMIT 1),'')
+FROM river_job WHERE `+strings.Join(filters, " AND ")+` ORDER BY id ASC LIMIT $2`, args...)
 	if err != nil {
 		return operationsdomain.JobPage{}, databaserepository.MapError(err)
 	}
@@ -90,9 +98,9 @@ func (repository *JobRepository) mutateJob(ctx context.Context, jobID int64, nex
 		var query string
 		args := []any{nextState, jobID}
 		if nextState == "cancelled" {
-			query = `UPDATE river_job SET state = $1, finalized_at = now() WHERE id = $2 AND state = 'available' RETURNING id, kind, state, attempt, max_attempts, priority, scheduled_at, attempted_at, finalized_at, created_at`
+			query = `UPDATE river_job SET state = $1, finalized_at = now() WHERE id = $2 AND state = 'available' RETURNING id, kind, ` + safeResourceIDProjection + `, state, attempt, max_attempts, priority, scheduled_at, attempted_at, finalized_at, created_at, ''`
 		} else {
-			query = `UPDATE river_job SET state = $1, attempt = 0, attempted_at = NULL, finalized_at = NULL, scheduled_at = now(), errors = ARRAY[]::jsonb[] WHERE id = $2 AND state IN ('discarded', 'cancelled') RETURNING id, kind, state, attempt, max_attempts, priority, scheduled_at, attempted_at, finalized_at, created_at`
+			query = `UPDATE river_job SET state = $1, attempt = 0, attempted_at = NULL, finalized_at = NULL, scheduled_at = now(), errors = ARRAY[]::jsonb[] WHERE id = $2 AND state IN ('discarded', 'cancelled') RETURNING id, kind, ` + safeResourceIDProjection + `, state, attempt, max_attempts, priority, scheduled_at, attempted_at, finalized_at, created_at, ''`
 		}
 		if _, err := scanJobSummary(transaction.SQL.QueryRowContext(transactionCtx, query, args...), &result); err != nil {
 			if err == sql.ErrNoRows {
@@ -131,7 +139,7 @@ func scanJobSummary(row rowScanner, target ...*operationsdomain.JobSummary) (ope
 	var job operationsdomain.JobSummary
 	var state string
 	var attempted, finalized sql.NullTime
-	if err := row.Scan(&job.ID, &job.Kind, &state, &job.Attempt, &job.MaxAttempts, &job.Priority, &job.ScheduledAt, &attempted, &finalized, &job.CreatedAt); err != nil {
+	if err := row.Scan(&job.ID, &job.Kind, &job.ResourceID, &state, &job.Attempt, &job.MaxAttempts, &job.Priority, &job.ScheduledAt, &attempted, &finalized, &job.CreatedAt, &job.FailureCode); err != nil {
 		return operationsdomain.JobSummary{}, databaserepository.MapError(err)
 	}
 	job.State = operationsdomain.JobState(state)

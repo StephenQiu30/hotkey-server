@@ -46,4 +46,4 @@ PRD 将每一条设计转换为稳定、可验收的产品范围。状态只使�
 | 025 | [配额限流保留与审计治理](../design/archive/025-配额限流保留与审计治理设计.md) | [PRD](archive/025-配额限流保留与审计治理.md) | [Plan](../plans/archive/025-配额限流保留与审计治理计划.md) | implemented |
 | 026 | [Web工作台全页面交互](../design/archive/026-Web工作台全页面交互设计.md) | [PRD](archive/026-Web工作台全页面交互.md) | [Plan](../plans/archive/026-Web工作台全页面交互计划.md) | implemented |
 | 027 | [Agent-Skill与外部API](../design/archive/027-Agent-Skill与外部API设计.md) | [PRD](archive/027-Agent-Skill与外部API.md) | [Plan](../plans/archive/027-Agent-Skill与外部API计划.md) | implemented |
-| 028 | [可观测性部署与质量门禁](../design/028-可观测性部署与质量门禁设计.md) | [PRD](028-可观测性部署与质量门禁.md) | [Plan](../plans/028-可观测性部署与质量门禁计划.md) | draft |
+| 028 | [可观测性部署与质量门禁](../design/archive/028-可观测性部署与质量门禁设计.md) | [PRD](archive/028-可观测性部署与质量门禁.md) | [Plan](../plans/archive/028-可观测性部署与质量门禁计划.md) | implemented |

@@ -80,7 +80,7 @@ func (worker *Worker) finish(ctx context.Context, id int64, kind string, attempt
 			_, err := transaction.SQL.ExecContext(ctx, `UPDATE river_job SET state = 'completed', finalized_at = now() WHERE id = $1`, id)
 			return databaserepository.MapError(err)
 		}
-		if _, err := transaction.SQL.ExecContext(ctx, `INSERT INTO river_job_attempt (job_id, attempt, error) VALUES ($1, $2, $3) ON CONFLICT (job_id, attempt) DO NOTHING`, id, attempt, handlerErr.Error()); err != nil {
+		if _, err := transaction.SQL.ExecContext(ctx, `INSERT INTO river_job_attempt (job_id, attempt, error) VALUES ($1, $2, $3) ON CONFLICT (job_id, attempt) DO NOTHING`, id, attempt, failureCode(handlerErr)); err != nil {
 			return databaserepository.MapError(err)
 		}
 		if IsCancelled(handlerErr) {
@@ -95,6 +95,19 @@ func (worker *Worker) finish(ctx context.Context, id int64, kind string, attempt
 		_, err := transaction.SQL.ExecContext(ctx, `UPDATE river_job SET state = 'available', scheduled_at = $2, finalized_at = NULL WHERE id = $1`, id, retryAt)
 		return databaserepository.MapError(err)
 	})
+}
+
+// failureCode deliberately drops the wrapped cause. Provider responses,
+// query text and credentials must never become durable queue diagnostics.
+func failureCode(err error) string {
+	switch {
+	case IsCancelled(err):
+		return "cancelled"
+	case IsPermanent(err):
+		return "permanent"
+	default:
+		return "retryable"
+	}
 }
 
 func retryBackoff(attempt int) time.Duration {

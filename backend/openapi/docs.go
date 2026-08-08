@@ -9001,6 +9001,9 @@ const docTemplate = `{
                 "oldest_available_at": {
                     "type": "string"
                 },
+                "queue_lag_seconds": {
+                    "type": "number"
+                },
                 "running_jobs": {
                     "type": "integer"
                 }
@@ -11440,6 +11443,9 @@ const docTemplate = `{
                 "created_at": {
                     "type": "string"
                 },
+                "failure_code": {
+                    "type": "string"
+                },
                 "finalized_at": {
                     "type": "string"
                 },
@@ -11453,6 +11459,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "priority": {
+                    "type": "integer"
+                },
+                "resource_id": {
                     "type": "integer"
                 },
                 "scheduled_at": {

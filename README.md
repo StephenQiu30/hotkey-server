@@ -38,14 +38,16 @@ npm run dev
 ```bash
 cp backend/.env.example backend/.env
 cp .env.example .env
-docker compose -f docker-compose.yml up --build -d
+docker compose -f docker-compose.yml up --build --detach --wait --wait-timeout 240
+curl --fail --silent http://127.0.0.1:8080/readyz
+curl --fail --silent http://127.0.0.1:8080/metrics | grep 'hotkey_runtime_metrics_collection_success'
 ```
 
 生产环境：
 
 ```bash
 cp .env.prod.example .env.prod
-docker compose --env-file .env.prod -f docker-compose-prod.yml up --build -d
+docker compose --env-file .env.prod -f docker-compose-prod.yml up --build --detach --wait --wait-timeout 240
 ```
 
 公共服务、初始化命令、依赖和健康检查均在默认 Compose 文件中完整定义，生产文件只覆盖镜像、凭据和运行环境。子项目目录不维护 Compose；Dockerfile 与 `.dockerignore` 仍跟随各自应用，以保持最小构建上下文。
@@ -55,14 +57,18 @@ docker compose --env-file .env.prod -f docker-compose-prod.yml up --build -d
 ```bash
 cd backend
 make ci
+go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
 
 cd ../frontend
 npm run openapi:check
 npm run typecheck
 npm run test:unit
+npm audit --omit=dev --audit-level=high
 npm run build
 ```
 
 后端 OpenAPI 发布契约位于 [`docs/openapi/swagger.json`](docs/openapi/swagger.json)，运行时注册代码位于 `backend/openapi/docs.go`，生成的前端客户端位于 `frontend/src/services/hotkey/hotkey-server/`。
+
+部署升级、备份恢复、密钥轮换、来源故障和容量阈值见 [Operations 手册](docs/operations/README.md)。生产更新前必须完成恢复演练；回滚不删除事实、任务、审计或持久卷。
 
 贡献和安全报告请参阅 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [SECURITY.md](SECURITY.md)。

@@ -224,7 +224,7 @@ func validActorType(value string) bool {
 }
 
 func validResourceType(value string) bool {
-	return value == "monitor" || value == "source_connection" || value == "metric_capability_profile" || value == "report_subscription" || value == "retention_policy"
+	return value == "monitor" || value == "source_connection" || value == "metric_capability_profile" || value == "report_subscription" || value == "retention_policy" || value == "river_job"
 }
 
 func validRequestID(value string) bool {

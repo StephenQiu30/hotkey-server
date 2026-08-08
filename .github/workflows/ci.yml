@@ -85,6 +85,9 @@ jobs:
       - name: Schema acceptance
         run: make schema-verify
 
+      - name: Production dependency vulnerability acceptance
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+
       - name: Clean generated artifacts
         if: always()
         run: make clean
@@ -121,5 +124,96 @@ jobs:
       - name: Unit test acceptance
         run: npm run test:unit
 
+      - name: Production dependency vulnerability acceptance
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Production build acceptance
         run: npm run build
+
+  compose-acceptance:
+    name: Compose configuration acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Prepare CI-only environment files
+        run: |
+          cp backend/.env.example backend/.env
+          sed -i 's/^HOTKEY_JWT_SECRET=.*/HOTKEY_JWT_SECRET=ci-jwt-secret-0123456789abcdef0123456789abcdef/' backend/.env
+          sed -i 's/^HOTKEY_VERIFICATION_HMAC_SECRET=.*/HOTKEY_VERIFICATION_HMAC_SECRET=ci-verification-secret-0123456789abcdef0123456789abcdef/' backend/.env
+          cp .env.prod.example .env.prod
+          sed -i 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=ci-postgres-password/' .env.prod
+          sed -i 's/^MINIO_ROOT_USER=.*/MINIO_ROOT_USER=ci-minio/' .env.prod
+          sed -i 's/^MINIO_ROOT_PASSWORD=.*/MINIO_ROOT_PASSWORD=ci-minio-password/' .env.prod
+          sed -i 's/^HOTKEY_JWT_SECRET=.*/HOTKEY_JWT_SECRET=ci-jwt-secret-0123456789abcdef0123456789abcdef/' .env.prod
+          sed -i 's/^HOTKEY_VERIFICATION_HMAC_SECRET=.*/HOTKEY_VERIFICATION_HMAC_SECRET=ci-verification-secret-0123456789abcdef0123456789abcdef/' .env.prod
+          sed -i 's|^HOTKEY_CORS_ALLOWED_ORIGINS=.*|HOTKEY_CORS_ALLOWED_ORIGINS=https://hotkey.example.test|' .env.prod
+
+      - name: Development Compose acceptance
+        run: docker compose -f docker-compose.yml config --quiet
+
+      - name: Production Compose acceptance
+        run: docker compose --env-file .env.prod -f docker-compose-prod.yml config --quiet
+
+  browser-smoke-acceptance:
+    name: Fresh-container browser smoke acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs: [backend-acceptance, frontend-acceptance, compose-acceptance]
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Prepare CI-only development environment
+        run: |
+          cp backend/.env.example backend/.env
+          sed -i 's/^HOTKEY_JWT_SECRET=.*/HOTKEY_JWT_SECRET=ci-jwt-secret-0123456789abcdef0123456789abcdef/' backend/.env
+          sed -i 's/^HOTKEY_VERIFICATION_HMAC_SECRET=.*/HOTKEY_VERIFICATION_HMAC_SECRET=ci-verification-secret-0123456789abcdef0123456789abcdef/' backend/.env
+
+      - name: Start a fresh container stack
+        run: docker compose -p hotkey-ci -f docker-compose.yml up --build --detach --wait --wait-timeout 240
+
+      - name: HTTP readiness and metrics smoke acceptance
+        run: |
+          curl --fail --silent http://127.0.0.1:8080/healthz
+          curl --fail --silent http://127.0.0.1:8080/readyz
+          curl --fail --silent http://127.0.0.1:8080/metrics | grep 'hotkey_runtime_metrics_collection_success'
+
+      - name: Install browser acceptance runtime
+        run: |
+          npm install --global agent-browser@0.33.2
+          agent-browser install --with-deps
+
+      - name: Real browser rendering and deep-link acceptance
+        env:
+          AGENT_BROWSER_SESSION: hotkey-ci
+        run: |
+          agent-browser open http://127.0.0.1:3000
+          agent-browser wait --load networkidle
+          agent-browser snapshot --compact
+          test "$(agent-browser get count 'main')" -eq 1
+          agent-browser open http://127.0.0.1:3000/dashboard/governance
+          agent-browser wait --url '**/login*'
+          agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y.json
+          node -e "const report=require('/tmp/hotkey-a11y.json'); if (!report.success || (report.data?.violations ?? []).length) process.exit(1)"
+
+      - name: Close browser session
+        if: always()
+        run: agent-browser --session hotkey-ci close || true
+
+      - name: Print container diagnostics
+        if: failure()
+        run: docker compose -p hotkey-ci -f docker-compose.yml logs --no-color --tail=200
+
+      - name: Remove fresh container stack
+        if: always()
+        run: docker compose -p hotkey-ci -f docker-compose.yml down --volumes --remove-orphans

@@ -28,7 +28,9 @@ func (state JobState) Valid() bool {
 type JobSummary struct {
 	ID          int64      `json:"id"`
 	Kind        string     `json:"kind"`
+	ResourceID  int64      `json:"resource_id,omitempty"`
 	State       JobState   `json:"state"`
+	FailureCode string     `json:"failure_code,omitempty"`
 	Attempt     int        `json:"attempt"`
 	MaxAttempts int        `json:"max_attempts"`
 	Priority    int        `json:"priority"`
@@ -39,10 +41,14 @@ type JobSummary struct {
 }
 
 func (job JobSummary) Validate() error {
-	if job.ID <= 0 || strings.TrimSpace(job.Kind) == "" || !job.State.Valid() || job.Attempt < 0 || job.MaxAttempts < 1 || job.Priority < 1 || job.ScheduledAt.IsZero() || job.CreatedAt.IsZero() {
+	if job.ID <= 0 || strings.TrimSpace(job.Kind) == "" || job.ResourceID < 0 || !job.State.Valid() || !validJobFailureCode(job.FailureCode) || job.Attempt < 0 || job.MaxAttempts < 1 || job.Priority < 1 || job.ScheduledAt.IsZero() || job.CreatedAt.IsZero() {
 		return fmt.Errorf("invalid job summary")
 	}
 	return nil
+}
+
+func validJobFailureCode(code string) bool {
+	return code == "" || code == "retryable" || code == "permanent" || code == "cancelled"
 }
 
 type JobListQuery struct {

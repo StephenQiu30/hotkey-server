@@ -46,4 +46,4 @@ Design 记录长期有效的产品与技术决策。状态只使用 `proposed`�
 | 025 | [配额限流保留与审计治理](archive/025-配额限流保留与审计治理设计.md) | [PRD](../prd/archive/025-配额限流保留与审计治理.md) | [Plan](../plans/archive/025-配额限流保留与审计治理计划.md) | accepted |
 | 026 | [Web工作台全页面交互](archive/026-Web工作台全页面交互设计.md) | [PRD](../prd/archive/026-Web工作台全页面交互.md) | [Plan](../plans/archive/026-Web工作台全页面交互计划.md) | accepted |
 | 027 | [Agent-Skill与外部API](archive/027-Agent-Skill与外部API设计.md) | [PRD](../prd/archive/027-Agent-Skill与外部API.md) | [Plan](../plans/archive/027-Agent-Skill与外部API计划.md) | accepted |
-| 028 | [可观测性部署与质量门禁](028-可观测性部署与质量门禁设计.md) | [PRD](../prd/028-可观测性部署与质量门禁.md) | [Plan](../plans/028-可观测性部署与质量门禁计划.md) | proposed |
+| 028 | [可观测性部署与质量门禁](archive/028-可观测性部署与质量门禁设计.md) | [PRD](../prd/archive/028-可观测性部署与质量门禁.md) | [Plan](../plans/archive/028-可观测性部署与质量门禁计划.md) | accepted |

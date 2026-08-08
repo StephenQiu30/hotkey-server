@@ -192,6 +192,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 			apiOptions = append(apiOptions,
 				fx.Provide(
 					agentpostgres.NewRepository,
+					operationspostgres.NewRuntimeMetricsCollector,
 					newAgentAccessService,
 					newAgentTokenAuthenticator,
 					newEventRadarRepository,
@@ -214,7 +215,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newJobService,
 					newNotificationHandler,
 				),
-				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerAgentTokenRoutes, registerSourceRoutes, registerBilibiliWebhookRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerRadarRoutes, registerEventUpdateRoutes, registerAlertRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes, registerKnowledgeRoutes, registerJobRoutes, registerOverviewRoutes, registerGovernanceRoutes, registerNotificationRoutes, registerAgentRoutes),
+				fx.Invoke(registerRuntimeMetricsCollector, registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerAgentTokenRoutes, registerSourceRoutes, registerBilibiliWebhookRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerRadarRoutes, registerEventUpdateRoutes, registerAlertRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes, registerKnowledgeRoutes, registerJobRoutes, registerOverviewRoutes, registerGovernanceRoutes, registerNotificationRoutes, registerAgentRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -258,6 +259,10 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 	options = append(options, extra...)
 
 	return fx.New(options...), nil
+}
+
+func registerRuntimeMetricsCollector(metrics *observability.Metrics, collector *operationspostgres.RuntimeMetricsCollector) error {
+	return metrics.RegisterCollector(collector)
 }
 
 func newSourceConnectorRegistry(cfg config.Config) (*sourceinfrastructure.ConnectorRegistry, error) {

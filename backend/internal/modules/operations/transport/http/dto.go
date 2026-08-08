@@ -24,7 +24,9 @@ type OverviewResult[T any] struct {
 type JobResponse struct {
 	ID          int64      `json:"id"`
 	Kind        string     `json:"kind"`
+	ResourceID  int64      `json:"resource_id,omitempty"`
 	State       string     `json:"state"`
+	FailureCode string     `json:"failure_code,omitempty"`
 	Attempt     int        `json:"attempt"`
 	MaxAttempts int        `json:"max_attempts"`
 	Priority    int        `json:"priority"`
@@ -40,7 +42,7 @@ type JobPageResponse struct {
 }
 
 func jobResponse(job operationsdomain.JobSummary) JobResponse {
-	return JobResponse{ID: job.ID, Kind: job.Kind, State: string(job.State), Attempt: job.Attempt, MaxAttempts: job.MaxAttempts, Priority: job.Priority, ScheduledAt: job.ScheduledAt, AttemptedAt: job.AttemptedAt, FinalizedAt: job.FinalizedAt, CreatedAt: job.CreatedAt}
+	return JobResponse{ID: job.ID, Kind: job.Kind, ResourceID: job.ResourceID, State: string(job.State), FailureCode: job.FailureCode, Attempt: job.Attempt, MaxAttempts: job.MaxAttempts, Priority: job.Priority, ScheduledAt: job.ScheduledAt, AttemptedAt: job.AttemptedAt, FinalizedAt: job.FinalizedAt, CreatedAt: job.CreatedAt}
 }
 
 func jobPageResponse(page operationsdomain.JobPage) JobPageResponse {

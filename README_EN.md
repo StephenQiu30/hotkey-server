@@ -38,14 +38,14 @@ The root `docker-compose.yml` defines the frontend, backend, PostgreSQL, Redis, 
 ```bash
 cp backend/.env.example backend/.env
 cp .env.example .env
-docker compose -f docker-compose.yml up --build -d
+docker compose -f docker-compose.yml up --build --detach --wait --wait-timeout 240
 ```
 
 For production:
 
 ```bash
 cp .env.prod.example .env.prod
-docker compose --env-file .env.prod -f docker-compose-prod.yml up --build -d
+docker compose --env-file .env.prod -f docker-compose-prod.yml up --build --detach --wait --wait-timeout 240
 ```
 
 Common services exist only in the baseline; the two overrides do not repeat dependencies or health checks. Subprojects keep no Compose files. Their Dockerfiles and `.dockerignore` files remain beside each application to preserve focused build contexts.

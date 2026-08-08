@@ -1357,11 +1357,13 @@ required property without making explicit null impossible to bind. */
     attempt?: number;
     attempted_at?: string;
     created_at?: string;
+    failure_code?: string;
     finalized_at?: string;
     id?: number;
     kind?: string;
     max_attempts?: number;
     priority?: number;
+    resource_id?: number;
     scheduled_at?: string;
     state?: string;
   };
@@ -2369,6 +2371,7 @@ required property without making explicit null impossible to bind. */
     discarded_jobs?: number;
     generated_at?: string;
     oldest_available_at?: string;
+    queue_lag_seconds?: number;
     running_jobs?: number;
   };
 

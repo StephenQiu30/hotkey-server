@@ -12,5 +12,6 @@ type RuntimeOverview struct {
 	CompletedJobs     int64      `json:"completed_jobs"`
 	DiscardedJobs     int64      `json:"discarded_jobs"`
 	CancelledJobs     int64      `json:"cancelled_jobs"`
+	QueueLagSeconds   float64    `json:"queue_lag_seconds"`
 	OldestAvailableAt *time.Time `json:"oldest_available_at,omitempty"`
 }

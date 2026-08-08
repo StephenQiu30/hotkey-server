@@ -29,6 +29,12 @@ describe("Docker Compose environment configuration", () => {
     expect(prodCompose).toContain("healthcheck:");
     expect(prodCompose).toContain("depends_on:");
     expect(prodCompose).toContain("stop_grace_period: 30s");
+    for (const compose of [baseCompose, prodCompose]) {
+      expect(compose).toContain("http://127.0.0.1:9000/minio/health/live");
+      expect(compose).toContain("condition: service_healthy");
+      expect(compose).toContain("fetch('http://127.0.0.1:3000/')");
+      expect(compose).toContain("HOTKEY_CORS_ALLOWED_ORIGINS:");
+    }
     expect(dockerfile.match(/^FROM node:latest AS /gm)).toHaveLength(3);
     expect(dockerfile).toContain("USER node");
   });

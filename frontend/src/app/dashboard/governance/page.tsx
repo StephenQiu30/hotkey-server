@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeader } from "@/components/dashboard/PageHeader";
+import { RuntimeOperationsPanel } from "@/components/operations/RuntimeOperationsPanel";
 import { UserRole } from "@/lib/domainEnums";
 import { useAuthStore } from "@/stores/authStore";
 import {
@@ -144,6 +145,8 @@ export default function GovernancePage() {
   return <div className="app-page">
     <PageHeader eyebrow="Governance" title="配额与审计" description="统一查看成本与调用量，预览后分批清理可删除数据，并追踪关键操作。" action={<Button variant="outline" onClick={() => void load()} disabled={loading}>{loading ? <Loader2 className="animate-spin" /> : null}刷新</Button>} />
     {error ? <Alert variant="destructive" className="mt-6"><AlertCircle /><AlertTitle>无法加载治理数据</AlertTitle><AlertDescription className="flex flex-wrap items-center justify-between gap-3"><span>{error}</span><Button size="sm" variant="outline" onClick={() => void load()}>重试</Button></AlertDescription></Alert> : null}
+
+    <RuntimeOperationsPanel />
 
     <section className="mt-8" aria-labelledby="usage-title">
       <div className="mb-4 flex items-center gap-2"><Gauge className="h-4 w-4 text-muted-foreground" /><h2 id="usage-title" className="text-base font-semibold">今日用量</h2></div>

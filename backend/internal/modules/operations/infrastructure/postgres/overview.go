@@ -24,8 +24,12 @@ SELECT count(*) FILTER (WHERE state = 'available'),
        count(*) FILTER (WHERE state = 'completed'),
        count(*) FILTER (WHERE state = 'discarded'),
        count(*) FILTER (WHERE state = 'cancelled'),
-       min(scheduled_at) FILTER (WHERE state = 'available')
-FROM river_job`).Scan(&overview.AvailableJobs, &overview.RunningJobs, &overview.CompletedJobs, &overview.DiscardedJobs, &overview.CancelledJobs, &oldest)
+       min(scheduled_at) FILTER (WHERE state = 'available'),
+       coalesce(greatest(extract(epoch FROM now() - min(scheduled_at) FILTER (WHERE state = 'available' AND scheduled_at <= now())), 0), 0)
+FROM river_job`).Scan(
+		&overview.AvailableJobs, &overview.RunningJobs, &overview.CompletedJobs,
+		&overview.DiscardedJobs, &overview.CancelledJobs, &oldest, &overview.QueueLagSeconds,
+	)
 	if err != nil {
 		return operationsdomain.RuntimeOverview{}, databaserepository.MapError(err)
 	}

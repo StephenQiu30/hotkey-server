@@ -72,6 +72,13 @@ func (metrics *Metrics) Handler() stdhttp.Handler {
 	return promhttp.HandlerFor(metrics.Registry, promhttp.HandlerOpts{})
 }
 
+func (metrics *Metrics) RegisterCollector(collector prometheus.Collector) error {
+	if metrics == nil || metrics.Registry == nil || collector == nil {
+		return nil
+	}
+	return metrics.Registry.Register(collector)
+}
+
 func (metrics *Metrics) RecordHTTPRequest(method, route string, status int, duration time.Duration) {
 	labels := []string{method, route, strconv.Itoa(status)}
 	metrics.httpRequests.WithLabelValues(labels...).Inc()

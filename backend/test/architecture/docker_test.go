@@ -79,8 +79,8 @@ func TestDockerDeploymentContract(t *testing.T) {
 	readmeEN := readDockerContractFile(t, root, "README_EN.md")
 	for name, source := range map[string]string{"README.md": readme, "README_EN.md": readmeEN} {
 		assertDockerContains(t, name, source,
-			"docker compose -f docker-compose.yml up --build -d",
-			"docker compose --env-file .env.prod -f docker-compose-prod.yml up --build -d",
+			"docker compose -f docker-compose.yml up --build --detach --wait --wait-timeout 240",
+			"docker compose --env-file .env.prod -f docker-compose-prod.yml up --build --detach --wait --wait-timeout 240",
 		)
 	}
 }
