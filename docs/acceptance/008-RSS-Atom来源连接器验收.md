@@ -8,9 +8,9 @@ version: v1.0
 owner: HotKey Team
 phase: P0
 canonical_path: docs/acceptance/008-RSS-Atom来源连接器验收.md
-design: docs/design/008-RSS-Atom来源连接器设计.md
-prd: docs/prd/008-RSS-Atom来源连接器.md
-plan: docs/plans/008-RSS-Atom来源连接器计划.md
+design: docs/design/archive/008-RSS-Atom来源连接器设计.md
+prd: docs/prd/archive/008-RSS-Atom来源连接器.md
+plan: docs/plans/archive/008-RSS-Atom来源连接器计划.md
 ---
 
 # RSS-Atom来源连接器验收

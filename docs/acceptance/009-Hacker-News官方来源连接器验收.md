@@ -8,9 +8,9 @@ version: v1.0
 owner: HotKey Team
 phase: P0
 canonical_path: docs/acceptance/009-Hacker-News官方来源连接器验收.md
-design: docs/design/009-Hacker-News官方来源连接器设计.md
-prd: docs/prd/009-Hacker-News官方来源连接器.md
-plan: docs/plans/009-Hacker-News官方来源连接器计划.md
+design: docs/design/archive/009-Hacker-News官方来源连接器设计.md
+prd: docs/prd/archive/009-Hacker-News官方来源连接器.md
+plan: docs/plans/archive/009-Hacker-News官方来源连接器计划.md
 ---
 
 # Hacker-News官方来源连接器验收

@@ -8,9 +8,9 @@ version: v1.0
 owner: HotKey Team
 phase: P0
 canonical_path: docs/acceptance/002-Vercel风格与shadcn-ui设计系统验收.md
-design: docs/design/002-Vercel风格与shadcn-ui设计系统设计.md
-prd: docs/prd/002-Vercel风格与shadcn-ui设计系统.md
-plan: docs/plans/002-Vercel风格与shadcn-ui设计系统计划.md
+design: docs/design/archive/002-Vercel风格与shadcn-ui设计系统设计.md
+prd: docs/prd/archive/002-Vercel风格与shadcn-ui设计系统.md
+plan: docs/plans/archive/002-Vercel风格与shadcn-ui设计系统计划.md
 ---
 
 # Vercel风格与shadcn-ui设计系统验收

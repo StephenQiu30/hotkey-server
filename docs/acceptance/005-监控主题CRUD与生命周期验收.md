@@ -8,9 +8,9 @@ version: v1.0
 owner: HotKey Team
 phase: P0
 canonical_path: docs/acceptance/005-监控主题CRUD与生命周期验收.md
-design: docs/design/005-监控主题CRUD与生命周期设计.md
-prd: docs/prd/005-监控主题CRUD与生命周期.md
-plan: docs/plans/005-监控主题CRUD与生命周期计划.md
+design: docs/design/archive/005-监控主题CRUD与生命周期设计.md
+prd: docs/prd/archive/005-监控主题CRUD与生命周期.md
+plan: docs/plans/archive/005-监控主题CRUD与生命周期计划.md
 ---
 
 # 监控主题CRUD与生命周期验收

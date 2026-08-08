@@ -8,9 +8,9 @@ version: v1.0
 owner: HotKey Team
 phase: P2
 canonical_path: docs/acceptance/011-Bing-Grounding来源适配验收.md
-design: docs/design/011-Bing-Grounding来源适配设计.md
-prd: docs/prd/011-Bing-Grounding来源适配.md
-plan: docs/plans/011-Bing-Grounding来源适配计划.md
+design: docs/design/archive/011-Bing-Grounding来源适配设计.md
+prd: docs/prd/archive/011-Bing-Grounding来源适配.md
+plan: docs/plans/archive/011-Bing-Grounding来源适配计划.md
 ---
 
 # Bing-Grounding来源适配验收

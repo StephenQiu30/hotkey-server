@@ -8,9 +8,9 @@ version: v1.0
 owner: HotKey Team
 phase: P1
 canonical_path: docs/acceptance/013-Bilibili开放平台与账号监控验收.md
-design: docs/design/013-Bilibili开放平台与账号监控设计.md
-prd: docs/prd/013-Bilibili开放平台与账号监控.md
-plan: docs/plans/013-Bilibili开放平台与账号监控计划.md
+design: docs/design/archive/013-Bilibili开放平台与账号监控设计.md
+prd: docs/prd/archive/013-Bilibili开放平台与账号监控.md
+plan: docs/plans/archive/013-Bilibili开放平台与账号监控计划.md
 ---
 
 # Bilibili开放平台与授权账号监控验收

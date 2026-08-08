@@ -8,9 +8,9 @@ version: v1.0
 owner: HotKey Team
 phase: P2
 canonical_path: docs/acceptance/016-DuckDuckGo-Instant-Answer边界验收.md
-design: docs/design/016-DuckDuckGo-Instant-Answer边界设计.md
-prd: docs/prd/016-DuckDuckGo-Instant-Answer边界.md
-plan: docs/plans/016-DuckDuckGo-Instant-Answer边界计划.md
+design: docs/design/archive/016-DuckDuckGo-Instant-Answer边界设计.md
+prd: docs/prd/archive/016-DuckDuckGo-Instant-Answer边界.md
+plan: docs/plans/archive/016-DuckDuckGo-Instant-Answer边界计划.md
 ---
 
 # DuckDuckGo Instant Answer 边界验收

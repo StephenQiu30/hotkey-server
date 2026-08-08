@@ -8,9 +8,9 @@ version: v1.0
 owner: HotKey Team
 phase: P2
 canonical_path: docs/acceptance/015-Google可授权搜索迁移验收.md
-design: docs/design/015-Google可授权搜索迁移设计.md
-prd: docs/prd/015-Google可授权搜索迁移.md
-plan: docs/plans/015-Google可授权搜索迁移计划.md
+design: docs/design/archive/015-Google可授权搜索迁移设计.md
+prd: docs/prd/archive/015-Google可授权搜索迁移.md
+plan: docs/plans/archive/015-Google可授权搜索迁移计划.md
 ---
 
 # Google 可授权搜索迁移验收
