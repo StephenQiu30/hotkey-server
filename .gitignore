@@ -23,7 +23,7 @@ dist/
 build/
 coverage/
 artifacts/
-reports/
+/reports/
 test-results/
 playwright-report/
 .next/

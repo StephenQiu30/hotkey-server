@@ -56,7 +56,6 @@ import (
 	reportapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/application"
 	reportjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/infrastructure/jobs"
 	reportpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/infrastructure/postgres"
-	reportvault "github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/infrastructure/vault"
 	reporttransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/transport/http"
 	sourceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/application"
 	sourceinfrastructure "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure"
@@ -148,6 +147,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newKnowledgeReconciler,
 				deliverypostgres.NewRepository,
 				reportpostgres.NewRepository,
+				reportpostgres.NewCandidateReader,
 				notificationpostgres.NewRepository,
 				newNotificationService,
 				newQueueStore,
@@ -569,14 +569,14 @@ func newMonitorService(runtime *database.Runtime, monitors *monitorpostgres.Repo
 	return monitorapplication.NewService(monitorapplication.Dependencies{Runtime: runtime, Monitors: monitors, Sources: sources, Audit: audit})
 }
 
-func newReportService(repository *reportpostgres.Repository, events *eventapplication.ReadService, cfg config.Config, deliveries *deliverypostgres.Repository, jobs *queue.Store) (*reportapplication.Service, error) {
-	service, err := reportapplication.NewService(repository, events)
+func newReportService(repository *reportpostgres.Repository, candidates *reportpostgres.CandidateReader, deliveries *deliverypostgres.Repository, knowledge *knowledgepostgres.Repository, jobs *queue.Store) (*reportapplication.Service, error) {
+	service, err := reportapplication.NewService(repository, candidates)
 	if err != nil {
 		return nil, err
 	}
-	service.SetPublisher(reportvault.NewPublisher(cfg.VaultPath))
 	service.SetSubscriptionReader(reportAutomationReader{repository: deliveries})
 	service.SetDeliveryPlanner(&reportDeliveryPlanner{repository: deliveries, jobs: jobs})
+	service.SetArchivePlanner(&reportArchivePlanner{repository: knowledge})
 	return service, nil
 }
 

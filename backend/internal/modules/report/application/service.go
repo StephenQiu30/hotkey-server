@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	eventdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/domain"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
@@ -17,30 +16,27 @@ import (
 type Service struct {
 	store         Store
 	builder       *Builder
-	events        EventReader
+	snapshots     SnapshotReader
 	subscriptions SubscriptionReader
 	delivery      DeliveryPlanner
-	publish       Publisher
+	archive       ArchivePlanner
+	transactions  TransactionRunner
 }
 
-type Publisher interface {
-	Publish(context.Context, domain.Report) error
-}
-
-type EventReader interface {
-	List(context.Context, eventdomain.EventListQuery) (eventdomain.EventPage, error)
+type SnapshotReader interface {
+	ListForPeriod(context.Context, *int64, time.Time, time.Time, int) ([]EventSnapshot, error)
 }
 
 // AutomationSubscription is the minimum delivery configuration needed to
 // produce one monitor-scoped report. It deliberately excludes user identity
 // and secrets from the report module.
 type AutomationSubscription struct {
-	ID, Version int64
-	MonitorID   *int64
-	ReportType  domain.ReportType
-	Channel     string
-	Timezone    string
-	Enabled     bool
+	ID, Version, UserID int64
+	MonitorID           *int64
+	ReportType          domain.ReportType
+	Channel             string
+	Timezone            string
+	Enabled             bool
 }
 
 type SubscriptionReader interface {
@@ -58,6 +54,14 @@ type DeliveryPlanner interface {
 	Schedule(context.Context, domain.Report) error
 }
 
+type ArchivePlanner interface {
+	Prepare(context.Context, domain.Report) error
+}
+
+type TransactionRunner interface {
+	WithinTransaction(context.Context, func(context.Context) error) error
+}
+
 type BuildInput struct {
 	ID        int64
 	Type      domain.ReportType
@@ -65,57 +69,108 @@ type BuildInput struct {
 	Timezone  string
 	MonitorID *int64
 	Events    []EventSnapshot
+	ActorID   *int64
 }
 
-func NewService(store Store, readers ...EventReader) (*Service, error) {
+type CreateInput struct {
+	Type      domain.ReportType
+	At        time.Time
+	Timezone  string
+	MonitorID *int64
+	ActorID   int64
+}
+
+func NewService(store Store, readers ...SnapshotReader) (*Service, error) {
 	if store == nil {
 		return nil, fmt.Errorf("report store is required")
 	}
 	service := &Service{store: store, builder: NewBuilder()}
 	if len(readers) > 0 {
-		service.events = readers[0]
+		service.snapshots = readers[0]
+	}
+	if transactions, ok := store.(TransactionRunner); ok {
+		service.transactions = transactions
 	}
 	return service, nil
 }
-
-func (service *Service) SetPublisher(publisher Publisher) { service.publish = publisher }
 
 func (service *Service) SetSubscriptionReader(reader SubscriptionReader) {
 	service.subscriptions = reader
 }
 
 func (service *Service) SetDeliveryPlanner(planner DeliveryPlanner) { service.delivery = planner }
+func (service *Service) SetArchivePlanner(planner ArchivePlanner)   { service.archive = planner }
 
 // BuildByID is the durable queue entry point. It rereads the current report
 // definition and a bounded event page; the queue payload contains only ID.
 func (service *Service) BuildByID(ctx context.Context, reportID int64) (domain.Report, error) {
-	if service == nil || service.events == nil || reportID <= 0 {
+	if service == nil || service.snapshots == nil || reportID <= 0 {
 		return domain.Report{}, sharedrepository.ErrUnavailable
 	}
 	current, err := service.Get(ctx, reportID)
 	if err != nil {
 		return domain.Report{}, err
 	}
-	page, err := service.events.List(ctx, eventdomain.EventListQuery{Limit: 100, MonitorID: current.MonitorID})
+	events, err := service.snapshots.ListForPeriod(ctx, current.MonitorID, current.Period.Start, current.Period.End, 100)
 	if err != nil {
 		return domain.Report{}, err
-	}
-	events := make([]EventSnapshot, 0, len(page.Items))
-	for _, event := range page.Items {
-		events = append(events, EventSnapshot{EventID: event.ID, Title: event.TitleZH, Summary: event.Summary, HeatScore: event.HeatScore})
 	}
 	timezone := "UTC"
 	if current.Period.Location != nil {
 		timezone = current.Period.Location.String()
 	}
-	return service.Build(ctx, BuildInput{ID: reportID, Type: current.Type, At: time.Now().UTC(), Timezone: timezone, MonitorID: current.MonitorID, Events: events})
+	return service.Build(ctx, BuildInput{ID: reportID, Type: current.Type, At: current.Period.Start, Timezone: timezone, MonitorID: current.MonitorID, Events: events, ActorID: current.UpdatedBy})
+}
+
+// CreateDraft creates at most one draft for a type, monitor and calendar
+// period, then refreshes its immutable EventUpdate candidate snapshots.
+func (service *Service) CreateDraft(ctx context.Context, input CreateInput) (domain.Report, error) {
+	if service == nil || service.snapshots == nil || input.ActorID <= 0 || input.At.IsZero() {
+		return domain.Report{}, sharedrepository.ErrInvalidInput
+	}
+	location, err := time.LoadLocation(input.Timezone)
+	if err != nil {
+		return domain.Report{}, fmt.Errorf("invalid report timezone: %w", err)
+	}
+	period, err := domain.PeriodFor(input.At, input.Type, location)
+	if err != nil {
+		return domain.Report{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	automatic, ok := service.store.(AutomaticStore)
+	if !ok {
+		return domain.Report{}, sharedrepository.ErrUnavailable
+	}
+	report, err := automatic.FindByPeriod(ctx, input.Type, input.MonitorID, period.Start, period.End)
+	if err != nil && !errors.Is(err, sharedrepository.ErrNotFound) {
+		return domain.Report{}, err
+	}
+	actor := input.ActorID
+	if errors.Is(err, sharedrepository.ErrNotFound) {
+		draft, buildErr := service.builder.Build(1, input.Type, input.At, location, nil)
+		if buildErr != nil {
+			return domain.Report{}, buildErr
+		}
+		draft.MonitorID, draft.CreatedBy, draft.UpdatedBy = input.MonitorID, &actor, &actor
+		report, err = automatic.Create(ctx, draft)
+		if err != nil {
+			return domain.Report{}, err
+		}
+	}
+	if report.Status != domain.ReportDraft {
+		return domain.Report{}, sharedrepository.ErrImmutable
+	}
+	events, err := service.snapshots.ListForPeriod(ctx, input.MonitorID, period.Start, period.End, 100)
+	if err != nil {
+		return domain.Report{}, err
+	}
+	return service.Build(ctx, BuildInput{ID: report.ID, Type: input.Type, At: input.At, Timezone: input.Timezone, MonitorID: input.MonitorID, Events: events, ActorID: &actor})
 }
 
 // BuildAndPublishForSubscription is the unattended report path. A
 // subscription is the only schedule input; the service derives the calendar
 // period, monitor scope, report snapshot, publication and delivery trigger.
 func (service *Service) BuildAndPublishForSubscription(ctx context.Context, subscriptionID int64) (domain.Report, error) {
-	if service == nil || service.events == nil || service.subscriptions == nil || subscriptionID <= 0 {
+	if service == nil || service.snapshots == nil || service.subscriptions == nil || subscriptionID <= 0 {
 		return domain.Report{}, sharedrepository.ErrUnavailable
 	}
 	automatic, ok := service.store.(AutomaticStore)
@@ -152,6 +207,9 @@ func (service *Service) BuildAndPublishForSubscription(ctx context.Context, subs
 			return domain.Report{}, buildErr
 		}
 		draft.MonitorID = subscription.MonitorID
+		if subscription.UserID > 0 {
+			draft.CreatedBy, draft.UpdatedBy = &subscription.UserID, &subscription.UserID
+		}
 		report, err = automatic.Create(ctx, draft)
 		if err != nil {
 			return domain.Report{}, err
@@ -165,15 +223,15 @@ func (service *Service) BuildAndPublishForSubscription(ctx context.Context, subs
 		}
 		return report, nil
 	}
-	page, err := service.events.List(ctx, eventdomain.EventListQuery{Limit: 100, MonitorID: subscription.MonitorID})
+	events, err := service.snapshots.ListForPeriod(ctx, subscription.MonitorID, period.Start, period.End, 100)
 	if err != nil {
 		return domain.Report{}, err
 	}
-	events := make([]EventSnapshot, 0, len(page.Items))
-	for _, event := range page.Items {
-		events = append(events, EventSnapshot{EventID: event.ID, Title: event.TitleZH, Summary: event.Summary, HeatScore: event.HeatScore})
+	var actor *int64
+	if subscription.UserID > 0 {
+		actor = &subscription.UserID
 	}
-	if _, err := service.Build(ctx, BuildInput{ID: report.ID, Type: report.Type, At: at, Timezone: timezone, MonitorID: report.MonitorID, Events: events}); err != nil {
+	if _, err := service.Build(ctx, BuildInput{ID: report.ID, Type: report.Type, At: at, Timezone: timezone, MonitorID: report.MonitorID, Events: events, ActorID: actor}); err != nil {
 		return domain.Report{}, err
 	}
 	return service.Publish(ctx, report.ID)
@@ -201,6 +259,10 @@ func (service *Service) Preview(ctx context.Context, reportID int64) (domain.Rep
 }
 
 func (service *Service) Publish(ctx context.Context, reportID int64) (domain.Report, error) {
+	return service.PublishAs(ctx, reportID, 0)
+}
+
+func (service *Service) PublishAs(ctx context.Context, reportID, actorID int64) (domain.Report, error) {
 	report, err := service.Get(ctx, reportID)
 	if err != nil {
 		return domain.Report{}, err
@@ -212,18 +274,32 @@ func (service *Service) Publish(ctx context.Context, reportID int64) (domain.Rep
 	if err != nil {
 		return domain.Report{}, err
 	}
-	if service.publish != nil {
-		if err := service.publish.Publish(ctx, published); err != nil {
-			return domain.Report{}, err
-		}
+	if actorID > 0 {
+		published.UpdatedBy = &actorID
 	}
-	if err := service.store.Save(ctx, published); err != nil {
+	commit := func(transactionCtx context.Context) error {
+		if err := service.store.Save(transactionCtx, published); err != nil {
+			return err
+		}
+		if service.delivery != nil {
+			if err := service.delivery.Schedule(transactionCtx, published); err != nil {
+				return fmt.Errorf("schedule report delivery: %w", err)
+			}
+		}
+		if service.archive != nil {
+			if err := service.archive.Prepare(transactionCtx, published); err != nil {
+				return fmt.Errorf("prepare report archive: %w", err)
+			}
+		}
+		return nil
+	}
+	if service.transactions != nil {
+		err = service.transactions.WithinTransaction(ctx, commit)
+	} else {
+		err = commit(ctx)
+	}
+	if err != nil {
 		return domain.Report{}, err
-	}
-	if service.delivery != nil {
-		if err := service.delivery.Schedule(ctx, published); err != nil {
-			return domain.Report{}, fmt.Errorf("schedule report delivery: %w", err)
-		}
 	}
 	return service.store.Get(ctx, reportID)
 }
@@ -244,6 +320,13 @@ func (service *Service) Build(ctx context.Context, input BuildInput) (domain.Rep
 		return domain.Report{}, err
 	}
 	report.MonitorID = input.MonitorID
+	report.CreatedBy, report.UpdatedBy = input.ActorID, input.ActorID
+	if current, getErr := service.store.Get(ctx, input.ID); getErr == nil {
+		report.CreatedBy = current.CreatedBy
+		if input.ActorID == nil {
+			report.UpdatedBy = current.UpdatedBy
+		}
+	}
 	report.Summary = fallbackSummary(report.Items)
 	if err := service.store.Save(ctx, report); err != nil {
 		return domain.Report{}, err

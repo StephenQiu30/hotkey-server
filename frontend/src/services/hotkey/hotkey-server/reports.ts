@@ -20,6 +20,21 @@ export async function getReports(
   );
 }
 
+/** Create or refresh a report draft POST /api/v1/reports */
+export async function postReports(
+  body: HotKeyAPI.CreateReportRequest,
+  options?: RequestOptions
+) {
+  return request<HotKeyAPI.ReportResultHttpReportResponse>("/api/v1/reports", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    data: body,
+    ...(options || {}),
+  });
+}
+
 /** Get a report GET /api/v1/reports/${param0} */
 export async function getReportsId(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)

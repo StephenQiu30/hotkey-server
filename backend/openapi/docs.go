@@ -2496,7 +2496,94 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/knowledge/documents": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "knowledge"
+                ],
+                "summary": "List knowledge documents",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-array_http_DocumentResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/knowledge/documents/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "knowledge"
+                ],
+                "summary": "Get knowledge document",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "document ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-http_DocumentResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/knowledge/proposals": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "knowledge"
+                ],
+                "summary": "List knowledge proposals",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "proposal status",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-array_http_ProposalResponse"
+                        }
+                    }
+                }
+            },
             "post": {
                 "security": [
                     {
@@ -2525,7 +2612,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/http.ProposalResult-domain_Proposal"
+                            "$ref": "#/definitions/http.ProposalResult-http_ProposalResponse"
                         }
                     },
                     "400": {
@@ -2550,6 +2637,39 @@ const docTemplate = `{
                         "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/knowledge/proposals/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "knowledge"
+                ],
+                "summary": "Get knowledge proposal",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "proposal ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-http_ProposalResponse"
                         }
                     }
                 }
@@ -2589,7 +2709,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/http.ProposalResult-domain_Document"
+                            "$ref": "#/definitions/http.ProposalResult-http_DocumentResponse"
                         }
                     },
                     "400": {
@@ -2653,7 +2773,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/http.ProposalResult-domain_Proposal"
+                            "$ref": "#/definitions/http.ProposalResult-http_ProposalResponse"
                         }
                     },
                     "400": {
@@ -2717,7 +2837,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/http.ProposalResult-domain_Proposal"
+                            "$ref": "#/definitions/http.ProposalResult-http_ProposalResponse"
                         }
                     },
                     "400": {
@@ -2765,7 +2885,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/http.ProposalResult-domain_ReconciliationReport"
+                            "$ref": "#/definitions/http.ProposalResult-http_ReconciliationResponse"
                         }
                     },
                     "401": {
@@ -5726,6 +5846,66 @@ const docTemplate = `{
                         }
                     }
                 }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Create or refresh a report draft",
+                "parameters": [
+                    {
+                        "description": "report draft",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.CreateReportRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-http_ReportResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    }
+                }
             }
         },
         "/api/v1/reports/{id}": {
@@ -6869,175 +7049,6 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "domain.Document": {
-            "type": "object",
-            "properties": {
-                "contentHash": {
-                    "type": "string"
-                },
-                "eventID": {
-                    "type": "integer",
-                    "format": "int64"
-                },
-                "generatedHash": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer",
-                    "format": "int64"
-                },
-                "reportID": {
-                    "type": "integer",
-                    "format": "int64"
-                },
-                "revisionNo": {
-                    "type": "integer",
-                    "format": "int64"
-                },
-                "status": {
-                    "$ref": "#/definitions/domain.DocumentStatus"
-                },
-                "topicID": {
-                    "type": "integer",
-                    "format": "int64"
-                },
-                "type": {
-                    "$ref": "#/definitions/domain.DocumentType"
-                },
-                "vaultPath": {
-                    "type": "string"
-                },
-                "version": {
-                    "type": "integer",
-                    "format": "int64"
-                }
-            }
-        },
-        "domain.DocumentStatus": {
-            "type": "string",
-            "enum": [
-                "planned",
-                "active",
-                "conflict",
-                "archived",
-                "missing"
-            ],
-            "x-enum-varnames": [
-                "DocumentPlanned",
-                "DocumentActive",
-                "DocumentConflict",
-                "DocumentArchived",
-                "DocumentMissing"
-            ]
-        },
-        "domain.DocumentType": {
-            "type": "string",
-            "enum": [
-                "event",
-                "topic",
-                "report"
-            ],
-            "x-enum-varnames": [
-                "DocumentEvent",
-                "DocumentTopic",
-                "DocumentReport"
-            ]
-        },
-        "domain.Proposal": {
-            "type": "object",
-            "properties": {
-                "baseHash": {
-                    "type": "string"
-                },
-                "baseRevisionNo": {
-                    "type": "integer",
-                    "format": "int64"
-                },
-                "diffSummary": {
-                    "type": "string"
-                },
-                "documentID": {
-                    "type": "integer",
-                    "format": "int64"
-                },
-                "id": {
-                    "type": "integer",
-                    "format": "int64"
-                },
-                "proposedBody": {
-                    "type": "string"
-                },
-                "proposedFrontmatter": {
-                    "type": "string"
-                },
-                "reason": {
-                    "type": "string"
-                },
-                "status": {
-                    "$ref": "#/definitions/domain.ProposalStatus"
-                },
-                "version": {
-                    "type": "integer",
-                    "format": "int64"
-                }
-            }
-        },
-        "domain.ProposalStatus": {
-            "type": "string",
-            "enum": [
-                "pending",
-                "approved",
-                "rejected",
-                "conflict",
-                "applied",
-                "failed"
-            ],
-            "x-enum-varnames": [
-                "ProposalPending",
-                "ProposalApproved",
-                "ProposalRejected",
-                "ProposalConflict",
-                "ProposalApplied",
-                "ProposalFailed"
-            ]
-        },
-        "domain.ReconciliationIssue": {
-            "type": "object",
-            "properties": {
-                "actualHash": {
-                    "type": "string"
-                },
-                "expectedHash": {
-                    "type": "string"
-                },
-                "kind": {
-                    "type": "string"
-                },
-                "path": {
-                    "type": "string"
-                }
-            }
-        },
-        "domain.ReconciliationReport": {
-            "type": "object",
-            "properties": {
-                "changed": {
-                    "type": "integer"
-                },
-                "conflict": {
-                    "type": "integer"
-                },
-                "issues": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/domain.ReconciliationIssue"
-                    }
-                },
-                "scanned": {
-                    "type": "integer"
-                }
-            }
-        },
         "domain.RuntimeOverview": {
             "type": "object",
             "properties": {
@@ -8254,6 +8265,31 @@ const docTemplate = `{
                 }
             }
         },
+        "http.CreateReportRequest": {
+            "type": "object",
+            "required": [
+                "timezone",
+                "type"
+            ],
+            "properties": {
+                "at": {
+                    "type": "string"
+                },
+                "monitor_id": {
+                    "type": "integer"
+                },
+                "timezone": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "daily",
+                        "weekly"
+                    ]
+                }
+            }
+        },
         "http.CreateSourceRequest": {
             "type": "object",
             "required": [
@@ -8405,6 +8441,44 @@ const docTemplate = `{
                 },
                 "message": {
                     "type": "string"
+                }
+            }
+        },
+        "http.DocumentResponse": {
+            "type": "object",
+            "properties": {
+                "contentHash": {
+                    "type": "string"
+                },
+                "eventID": {
+                    "type": "integer"
+                },
+                "generatedHash": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "reportID": {
+                    "type": "integer"
+                },
+                "revisionNo": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "topicID": {
+                    "type": "integer"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "vaultPath": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
                 }
             }
         },
@@ -10186,42 +10260,111 @@ const docTemplate = `{
                 }
             }
         },
-        "http.ProposalResult-domain_Document": {
+        "http.ProposalResponse": {
+            "type": "object",
+            "properties": {
+                "baseHash": {
+                    "type": "string"
+                },
+                "baseRevisionNo": {
+                    "type": "integer"
+                },
+                "diffSummary": {
+                    "type": "string"
+                },
+                "documentID": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "proposedBody": {
+                    "type": "string"
+                },
+                "proposedFrontmatter": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.ProposalResult-array_http_DocumentResponse": {
             "type": "object",
             "properties": {
                 "code": {
                     "type": "integer"
                 },
                 "data": {
-                    "$ref": "#/definitions/domain.Document"
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.DocumentResponse"
+                    }
                 },
                 "message": {
                     "type": "string"
                 }
             }
         },
-        "http.ProposalResult-domain_Proposal": {
+        "http.ProposalResult-array_http_ProposalResponse": {
             "type": "object",
             "properties": {
                 "code": {
                     "type": "integer"
                 },
                 "data": {
-                    "$ref": "#/definitions/domain.Proposal"
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.ProposalResponse"
+                    }
                 },
                 "message": {
                     "type": "string"
                 }
             }
         },
-        "http.ProposalResult-domain_ReconciliationReport": {
+        "http.ProposalResult-http_DocumentResponse": {
             "type": "object",
             "properties": {
                 "code": {
                     "type": "integer"
                 },
                 "data": {
-                    "$ref": "#/definitions/domain.ReconciliationReport"
+                    "$ref": "#/definitions/http.DocumentResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ProposalResult-http_ProposalResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.ProposalResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ProposalResult-http_ReconciliationResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.ReconciliationResponse"
                 },
                 "message": {
                     "type": "string"
@@ -10353,6 +10496,43 @@ const docTemplate = `{
                 },
                 "next_cursor": {
                     "type": "string"
+                }
+            }
+        },
+        "http.ReconciliationIssueResponse": {
+            "type": "object",
+            "properties": {
+                "actualHash": {
+                    "type": "string"
+                },
+                "expectedHash": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ReconciliationResponse": {
+            "type": "object",
+            "properties": {
+                "changed": {
+                    "type": "integer"
+                },
+                "conflict": {
+                    "type": "integer"
+                },
+                "issues": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.ReconciliationIssueResponse"
+                    }
+                },
+                "scanned": {
+                    "type": "integer"
                 }
             }
         },
@@ -10803,6 +10983,12 @@ const docTemplate = `{
                 "event_id": {
                     "type": "integer"
                 },
+                "event_update_id": {
+                    "type": "integer"
+                },
+                "evidence_set_hash": {
+                    "type": "string"
+                },
                 "heat_score": {
                     "type": "number"
                 },
@@ -10811,6 +10997,12 @@ const docTemplate = `{
                 },
                 "rank": {
                     "type": "integer"
+                },
+                "reason_codes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "summary": {
                     "type": "string"
@@ -10850,6 +11042,9 @@ const docTemplate = `{
             "properties": {
                 "body": {
                     "type": "string"
+                },
+                "created_by": {
+                    "type": "integer"
                 },
                 "frozen": {
                     "type": "boolean"
@@ -10892,6 +11087,9 @@ const docTemplate = `{
                 },
                 "type": {
                     "type": "string"
+                },
+                "updated_by": {
+                    "type": "integer"
                 },
                 "version": {
                     "type": "integer"

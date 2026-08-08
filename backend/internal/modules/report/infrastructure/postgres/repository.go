@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -58,17 +59,17 @@ func (repository *Repository) Create(ctx context.Context, report domain.Report) 
 	err := repository.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
 		var reportID int64
 		err := transaction.SQL.QueryRowContext(transactionCtx, `
-INSERT INTO reports (version, report_type, monitor_id, period_start, period_end, timezone, title, summary, body, status, version_no, generated_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
+INSERT INTO reports (version, report_type, monitor_id, period_start, period_end, timezone, title, summary, body, status, version_no, generated_at, created_by, updated_by)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now(),$12,$13)
 ON CONFLICT (report_type, COALESCE(monitor_id, 0), period_start, period_end, version_no) DO NOTHING
-RETURNING id`, report.Version, report.Type, report.MonitorID, report.Period.Start.UTC(), report.Period.End.UTC(), report.Period.Location.String(), report.Title, report.Summary, report.Body, report.Status, report.VersionNo).Scan(&reportID)
+RETURNING id`, report.Version, report.Type, report.MonitorID, report.Period.Start.UTC(), report.Period.End.UTC(), report.Period.Location.String(), report.Title, report.Summary, report.Body, report.Status, report.VersionNo, report.CreatedBy, report.UpdatedBy).Scan(&reportID)
 		if err == nil {
 			report.ID = reportID
 			created = true
 			for _, item := range report.Items {
 				if _, err := transaction.SQL.ExecContext(transactionCtx, `
-INSERT INTO report_items (report_id, event_id, rank, section, inclusion_reason, title_snapshot, summary_snapshot, heat_score_snapshot)
-VALUES ($1,$2,$3,'events',$4,$5,$6,$7)`, report.ID, item.EventID, item.Rank, item.InclusionReason, item.Title, item.Summary, item.HeatScore); err != nil {
+INSERT INTO report_items (report_id, event_id, event_update_id, rank, section, inclusion_reason, title_snapshot, summary_snapshot, heat_score_snapshot, evidence_set_hash, reason_codes)
+VALUES ($1,$2,$3,$4,'events',$5,$6,$7,$8,$9,$10)`, report.ID, item.EventID, item.EventUpdateID, item.Rank, item.InclusionReason, item.Title, item.Summary, item.HeatScore, item.EvidenceSetHash, item.ReasonCodes); err != nil {
 					return databaserepository.MapError(err)
 				}
 			}
@@ -98,7 +99,7 @@ func (repository *Repository) Save(ctx context.Context, report domain.Report) er
 	if err := report.Validate(); err != nil {
 		return fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
 	}
-	return repository.runtime.WithinTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+	write := func(ctx context.Context, transaction database.Transaction) error {
 		var existingStatus string
 		err := transaction.SQL.QueryRowContext(ctx, `SELECT status FROM reports WHERE id = $1 FOR UPDATE`, report.ID).Scan(&existingStatus)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -107,19 +108,30 @@ func (repository *Repository) Save(ctx context.Context, report domain.Report) er
 		if err == nil && existingStatus == string(domain.ReportPublished) {
 			return sharedrepository.ErrImmutable
 		}
-		if _, err := transaction.SQL.ExecContext(ctx, `INSERT INTO reports (id, version, report_type, monitor_id, period_start, period_end, timezone, title, summary, body, status, version_no, generated_at, published_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now(),CASE WHEN $13::text = 'published' THEN now() ELSE NULL END) ON CONFLICT (id) DO UPDATE SET version = EXCLUDED.version, summary = EXCLUDED.summary, body = EXCLUDED.body, status = EXCLUDED.status, published_at = EXCLUDED.published_at`, report.ID, report.Version, report.Type, report.MonitorID, report.Period.Start.UTC(), report.Period.End.UTC(), report.Period.Location.String(), report.Title, report.Summary, report.Body, report.Status, report.VersionNo, report.Status); err != nil {
+		if _, err := transaction.SQL.ExecContext(ctx, `INSERT INTO reports (id, version, report_type, monitor_id, period_start, period_end, timezone, title, summary, body, status, version_no, generated_at, published_at, created_by, updated_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now(),CASE WHEN $13::text = 'published' THEN now() ELSE NULL END,$14,$15) ON CONFLICT (id) DO UPDATE SET version = EXCLUDED.version, title = EXCLUDED.title, summary = EXCLUDED.summary, body = EXCLUDED.body, status = EXCLUDED.status, generated_at = EXCLUDED.generated_at, published_at = EXCLUDED.published_at, updated_by = EXCLUDED.updated_by, updated_at = now()`, report.ID, report.Version, report.Type, report.MonitorID, report.Period.Start.UTC(), report.Period.End.UTC(), report.Period.Location.String(), report.Title, report.Summary, report.Body, report.Status, report.VersionNo, report.Status, report.CreatedBy, report.UpdatedBy); err != nil {
 			return databaserepository.MapError(err)
 		}
 		if _, err := transaction.SQL.ExecContext(ctx, `DELETE FROM report_items WHERE report_id = $1`, report.ID); err != nil {
 			return databaserepository.MapError(err)
 		}
 		for _, item := range report.Items {
-			if _, err := transaction.SQL.ExecContext(ctx, `INSERT INTO report_items (report_id, event_id, rank, section, inclusion_reason, title_snapshot, summary_snapshot, heat_score_snapshot) VALUES ($1,$2,$3,'events',$4,$5,$6,$7) ON CONFLICT (report_id, event_id) DO UPDATE SET rank = EXCLUDED.rank, title_snapshot = EXCLUDED.title_snapshot, summary_snapshot = EXCLUDED.summary_snapshot, heat_score_snapshot = EXCLUDED.heat_score_snapshot`, report.ID, item.EventID, item.Rank, item.InclusionReason, item.Title, item.Summary, item.HeatScore); err != nil {
+			if _, err := transaction.SQL.ExecContext(ctx, `INSERT INTO report_items (report_id, event_id, event_update_id, rank, section, inclusion_reason, title_snapshot, summary_snapshot, heat_score_snapshot, evidence_set_hash, reason_codes) VALUES ($1,$2,$3,$4,'events',$5,$6,$7,$8,$9,$10) ON CONFLICT (report_id, event_id) DO UPDATE SET event_update_id = EXCLUDED.event_update_id, rank = EXCLUDED.rank, inclusion_reason = EXCLUDED.inclusion_reason, title_snapshot = EXCLUDED.title_snapshot, summary_snapshot = EXCLUDED.summary_snapshot, heat_score_snapshot = EXCLUDED.heat_score_snapshot, evidence_set_hash = EXCLUDED.evidence_set_hash, reason_codes = EXCLUDED.reason_codes`, report.ID, item.EventID, item.EventUpdateID, item.Rank, item.InclusionReason, item.Title, item.Summary, item.HeatScore, item.EvidenceSetHash, item.ReasonCodes); err != nil {
 				return databaserepository.MapError(err)
 			}
 		}
 		return nil
-	})
+	}
+	if transaction, ok := database.TransactionFromContext(ctx); ok {
+		return write(ctx, transaction)
+	}
+	return repository.runtime.WithinTransaction(ctx, write)
+}
+
+func (repository *Repository) WithinTransaction(ctx context.Context, fn func(context.Context) error) error {
+	if repository == nil || repository.runtime == nil || fn == nil {
+		return sharedrepository.ErrUnavailable
+	}
+	return repository.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error { return fn(transactionCtx) })
 }
 
 func (repository *Repository) Get(ctx context.Context, reportID int64) (domain.Report, error) {
@@ -179,10 +191,21 @@ LIMIT $4`, reportType, status, query.Cursor, query.Limit+1)
 		page.NextCursor = page.Items[query.Limit-1].ID
 		page.Items = page.Items[:query.Limit]
 	}
+	if err := rows.Close(); err != nil {
+		return domain.Page{}, databaserepository.MapError(err)
+	}
+	queryer := reportQueryerFor(ctx, repository.runtime)
+	for index := range page.Items {
+		items, err := repository.items(ctx, queryer, page.Items[index].ID)
+		if err != nil {
+			return domain.Page{}, err
+		}
+		page.Items[index].Items = items
+	}
 	return page, nil
 }
 
-const reportSelect = `SELECT id, version, report_type, monitor_id, period_start, period_end, timezone, title, summary, body, status, version_no, generated_at, published_at FROM reports`
+const reportSelect = `SELECT id, version, report_type, monitor_id, period_start, period_end, timezone, title, summary, body, status, version_no, generated_at, published_at, created_by, updated_by FROM reports`
 
 type reportRow interface {
 	Scan(...any) error
@@ -203,9 +226,9 @@ func reportQueryerFor(ctx context.Context, runtime *database.Runtime) reportQuer
 func scanReport(row reportRow) (domain.Report, error) {
 	var report domain.Report
 	var reportType, status string
-	var monitorID sql.NullInt64
+	var monitorID, createdBy, updatedBy sql.NullInt64
 	var generatedAt, publishedAt sql.NullTime
-	if err := row.Scan(&report.ID, &report.Version, &reportType, &monitorID, &report.Period.Start, &report.Period.End, &reportTimezone{period: &report.Period}, &report.Title, &report.Summary, &report.Body, &status, &report.VersionNo, &generatedAt, &publishedAt); err != nil {
+	if err := row.Scan(&report.ID, &report.Version, &reportType, &monitorID, &report.Period.Start, &report.Period.End, &reportTimezone{period: &report.Period}, &report.Title, &report.Summary, &report.Body, &status, &report.VersionNo, &generatedAt, &publishedAt, &createdBy, &updatedBy); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return domain.Report{}, sharedrepository.ErrNotFound
 		}
@@ -224,6 +247,14 @@ func scanReport(row reportRow) (domain.Report, error) {
 	if publishedAt.Valid {
 		value := publishedAt.Time.UTC()
 		report.PublishedAt = &value
+	}
+	if createdBy.Valid {
+		value := createdBy.Int64
+		report.CreatedBy = &value
+	}
+	if updatedBy.Valid {
+		value := updatedBy.Int64
+		report.UpdatedBy = &value
 	}
 	return report, nil
 }
@@ -252,7 +283,7 @@ func (target *reportTimezone) Scan(value any) error {
 }
 
 func (repository *Repository) items(ctx context.Context, queryer reportQueryer, reportID int64) ([]domain.Item, error) {
-	rows, err := queryer.QueryContext(ctx, `SELECT event_id, rank, inclusion_reason, title_snapshot, summary_snapshot, heat_score_snapshot FROM report_items WHERE report_id = $1 ORDER BY rank, event_id`, reportID)
+	rows, err := queryer.QueryContext(ctx, `SELECT event_id, event_update_id, rank, inclusion_reason, title_snapshot, summary_snapshot, heat_score_snapshot, evidence_set_hash, array_to_json(reason_codes) FROM report_items WHERE report_id = $1 ORDER BY rank, event_id`, reportID)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
@@ -260,8 +291,12 @@ func (repository *Repository) items(ctx context.Context, queryer reportQueryer, 
 	items := make([]domain.Item, 0)
 	for rows.Next() {
 		var item domain.Item
-		if err := rows.Scan(&item.EventID, &item.Rank, &item.InclusionReason, &item.Title, &item.Summary, &item.HeatScore); err != nil {
+		var reasons []byte
+		if err := rows.Scan(&item.EventID, &item.EventUpdateID, &item.Rank, &item.InclusionReason, &item.Title, &item.Summary, &item.HeatScore, &item.EvidenceSetHash, &reasons); err != nil {
 			return nil, databaserepository.MapError(err)
+		}
+		if err := json.Unmarshal(reasons, &item.ReasonCodes); err != nil {
+			return nil, fmt.Errorf("decode report item reasons: %w", err)
 		}
 		items = append(items, item)
 	}

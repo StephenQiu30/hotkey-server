@@ -157,6 +157,17 @@ func (service *ProposalService) Apply(ctx context.Context, proposal domain.Propo
 	if len(current) > 0 && !vaultContentMatchesBase(string(current), proposal.BaseHash) {
 		return domain.Document{}, sharedrepository.ErrConflict
 	}
+	snapshotKey := ""
+	if service.snapshot != nil {
+		merged, err := domain.MergeAutomaticRegion(string(current), proposal.ProposedBody)
+		if err != nil {
+			return domain.Document{}, err
+		}
+		snapshotKey = fmt.Sprintf("knowledge/v1/%d/%d.md", document.ID, document.RevisionNo+1)
+		if err := service.snapshot.Put(ctx, snapshotKey, merged); err != nil {
+			return domain.Document{}, err
+		}
+	}
 	if _, err := vault.WriteAutomatic(kind, key, proposal.ProposedBody); err != nil {
 		return domain.Document{}, err
 	}
@@ -164,21 +175,16 @@ func (service *ProposalService) Apply(ctx context.Context, proposal domain.Propo
 	if err != nil {
 		return domain.Document{}, err
 	}
-	newHash := domain.HashContent(proposal.ProposedFrontmatter, proposal.ProposedBody)
+	contentHash := domain.HashContent("", string(updated))
+	generatedHash := domain.HashContent(proposal.ProposedFrontmatter, proposal.ProposedBody)
 	next := document
 	next.Version++
 	next.RevisionNo++
-	next.ContentHash = newHash
-	next.GeneratedHash = newHash
+	next.ContentHash = contentHash
+	next.GeneratedHash = generatedHash
 	next.Status = domain.DocumentActive
-	revision := domain.Revision{DocumentID: document.ID, RevisionNo: next.RevisionNo, ProposalID: proposal.ID, Source: "proposal", PreviousHash: document.ContentHash, NewHash: newHash, Frontmatter: proposal.ProposedFrontmatter}
-	if service.snapshot != nil {
-		key := fmt.Sprintf("knowledge/v1/%d/%d.md", document.ID, next.RevisionNo)
-		if err := service.snapshot.Put(ctx, key, string(updated)); err != nil {
-			return domain.Document{}, err
-		}
-		revision.SnapshotObjectKey = key
-	}
+	revision := domain.Revision{DocumentID: document.ID, RevisionNo: next.RevisionNo, ProposalID: proposal.ID, Source: "proposal", PreviousHash: document.ContentHash, NewHash: contentHash, Frontmatter: proposal.ProposedFrontmatter}
+	revision.SnapshotObjectKey = snapshotKey
 	store, ok := service.proposals.(interface {
 		ApplyProposal(context.Context, int64, int64, domain.Document, domain.Revision) (domain.Document, error)
 	})

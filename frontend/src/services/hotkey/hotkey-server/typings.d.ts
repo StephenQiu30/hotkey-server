@@ -410,6 +410,13 @@ required property without making explicit null impossible to bind. */
     sources: MonitorSourceRequest[];
   };
 
+  type CreateReportRequest = {
+    at?: string;
+    monitor_id?: number;
+    timezone: string;
+    type: "daily" | "weekly";
+  };
+
   type CreateSourceRequest = {
     auth_type: "none" | "api_key" | "oauth2" | "bearer";
     config?: SourceConfigRequest;
@@ -493,28 +500,19 @@ required property without making explicit null impossible to bind. */
     message?: string;
   };
 
-  type Document = {
+  type DocumentResponse = {
     contentHash?: string;
     eventID?: number;
     generatedHash?: string;
     id?: number;
     reportID?: number;
     revisionNo?: number;
-    status?: DocumentStatus;
+    status?: string;
     topicID?: number;
-    type?: DocumentType;
+    type?: string;
     vaultPath?: string;
     version?: number;
   };
-
-  type DocumentStatus =
-    | "planned"
-    | "active"
-    | "conflict"
-    | "archived"
-    | "missing";
-
-  type DocumentType = "event" | "topic" | "report";
 
   type EmptyResponse = true;
 
@@ -811,6 +809,21 @@ required property without making explicit null impossible to bind. */
     cursor?: number;
     /** page size */
     limit?: number;
+  };
+
+  type getKnowledgeDocumentsIdParams = {
+    /** document ID */
+    id: number;
+  };
+
+  type getKnowledgeProposalsIdParams = {
+    /** proposal ID */
+    id: number;
+  };
+
+  type getKnowledgeProposalsParams = {
+    /** proposal status */
+    status?: string;
   };
 
   type getMonitorsIdFeedbackEvaluationParams = {
@@ -1646,19 +1659,6 @@ required property without making explicit null impossible to bind. */
     unapproved_rule_ids?: number[];
   };
 
-  type Proposal = {
-    baseHash?: string;
-    baseRevisionNo?: number;
-    diffSummary?: string;
-    documentID?: number;
-    id?: number;
-    proposedBody?: string;
-    proposedFrontmatter?: string;
-    reason?: string;
-    status?: ProposalStatus;
-    version?: number;
-  };
-
   type ProposalRequest = {
     base_hash?: string;
     base_revision?: number;
@@ -1668,21 +1668,46 @@ required property without making explicit null impossible to bind. */
     reason?: string;
   };
 
-  type ProposalResultDomainDocument = {
+  type ProposalResponse = {
+    baseHash?: string;
+    baseRevisionNo?: number;
+    diffSummary?: string;
+    documentID?: number;
+    id?: number;
+    proposedBody?: string;
+    proposedFrontmatter?: string;
+    reason?: string;
+    status?: string;
+    version?: number;
+  };
+
+  type ProposalResultArrayHttpDocumentResponse = {
     code?: number;
-    data?: Document;
+    data?: DocumentResponse[];
     message?: string;
   };
 
-  type ProposalResultDomainProposal = {
+  type ProposalResultArrayHttpProposalResponse = {
     code?: number;
-    data?: Proposal;
+    data?: ProposalResponse[];
     message?: string;
   };
 
-  type ProposalResultDomainReconciliationReport = {
+  type ProposalResultHttpDocumentResponse = {
     code?: number;
-    data?: ReconciliationReport;
+    data?: DocumentResponse;
+    message?: string;
+  };
+
+  type ProposalResultHttpProposalResponse = {
+    code?: number;
+    data?: ProposalResponse;
+    message?: string;
+  };
+
+  type ProposalResultHttpReconciliationResponse = {
+    code?: number;
+    data?: ReconciliationResponse;
     message?: string;
   };
 
@@ -1691,14 +1716,6 @@ required property without making explicit null impossible to bind. */
     data?: EmptyResponse;
     message?: string;
   };
-
-  type ProposalStatus =
-    | "pending"
-    | "approved"
-    | "rejected"
-    | "conflict"
-    | "applied"
-    | "failed";
 
   type PublishRequest = {
     /** Gin must not apply required directly to this nullable wrapper: both an
@@ -1761,17 +1778,17 @@ required property without making explicit null impossible to bind. */
     next_cursor?: string;
   };
 
-  type ReconciliationIssue = {
+  type ReconciliationIssueResponse = {
     actualHash?: string;
     expectedHash?: string;
     kind?: string;
     path?: string;
   };
 
-  type ReconciliationReport = {
+  type ReconciliationResponse = {
     changed?: number;
     conflict?: number;
-    issues?: ReconciliationIssue[];
+    issues?: ReconciliationIssueResponse[];
     scanned?: number;
   };
 
@@ -1922,9 +1939,12 @@ required property without making explicit null impossible to bind. */
 
   type ReportItemResponse = {
     event_id?: number;
+    event_update_id?: number;
+    evidence_set_hash?: string;
     heat_score?: number;
     inclusion_reason?: string;
     rank?: number;
+    reason_codes?: string[];
     summary?: string;
     title?: string;
   };
@@ -1941,6 +1961,7 @@ required property without making explicit null impossible to bind. */
 
   type ReportResponse = {
     body?: string;
+    created_by?: number;
     frozen?: boolean;
     generated_at?: string;
     id?: number;
@@ -1954,6 +1975,7 @@ required property without making explicit null impossible to bind. */
     timezone?: string;
     title?: string;
     type?: string;
+    updated_by?: number;
     version?: number;
     version_no?: number;
   };

@@ -66,6 +66,56 @@ FROM knowledge_documents WHERE status <> 'archived' ORDER BY id`)
 	return documents, nil
 }
 
+func (repository *Repository) ListProposals(ctx context.Context, status domain.ProposalStatus) ([]domain.Proposal, error) {
+	if repository == nil || repository.runtime == nil {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	rows, err := knowledgeQueryerFor(ctx, repository.runtime).QueryContext(ctx, `
+SELECT id, version, document_id, base_revision_no, coalesce(base_hash, ''), proposed_frontmatter, proposed_body, diff_summary, reason, status
+FROM knowledge_change_proposals
+WHERE ($1 = '' OR status = $1)
+ORDER BY created_at DESC, id DESC
+LIMIT 100`, status)
+	if err != nil {
+		return nil, databaserepository.MapError(err)
+	}
+	defer rows.Close()
+	items := make([]domain.Proposal, 0)
+	for rows.Next() {
+		var item domain.Proposal
+		var frontmatter []byte
+		if err := rows.Scan(&item.ID, &item.Version, &item.DocumentID, &item.BaseRevisionNo, &item.BaseHash, &frontmatter, &item.ProposedBody, &item.DiffSummary, &item.Reason, &item.Status); err != nil {
+			return nil, databaserepository.MapError(err)
+		}
+		item.ProposedFrontmatter = string(frontmatter)
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, databaserepository.MapError(err)
+	}
+	return items, nil
+}
+
+// EnsureReportDocument creates the single knowledge projection assigned to a
+// report. It is transaction-aware so publication can roll it back atomically.
+func (repository *Repository) EnsureReportDocument(ctx context.Context, reportID int64, vaultPath string, actorID *int64) (domain.Document, error) {
+	if repository == nil || repository.runtime == nil || reportID <= 0 || vaultPath == "" {
+		return domain.Document{}, sharedrepository.ErrInvalidInput
+	}
+	emptyHash := domain.HashContent("", "")
+	var document domain.Document
+	err := knowledgeQueryerFor(ctx, repository.runtime).QueryRowContext(ctx, `
+INSERT INTO knowledge_documents (version, document_type, report_id, vault_path, revision_no, content_hash, generated_hash, status, created_by, updated_by)
+VALUES (1, 'report', $1, $2, 0, $3, $3, 'planned', $4, $4)
+ON CONFLICT (report_id) WHERE report_id IS NOT NULL DO UPDATE SET updated_at = knowledge_documents.updated_at
+RETURNING id, version, revision_no, document_type, vault_path, coalesce(content_hash, ''), coalesce(generated_hash, ''), status, event_id, topic_id, report_id`, reportID, vaultPath, emptyHash, actorID).Scan(
+		&document.ID, &document.Version, &document.RevisionNo, &document.Type, &document.VaultPath, &document.ContentHash, &document.GeneratedHash, &document.Status, &document.EventID, &document.TopicID, &document.ReportID)
+	if err != nil {
+		return domain.Document{}, databaserepository.MapError(err)
+	}
+	return document, nil
+}
+
 func (repository *Repository) GetProposal(ctx context.Context, id int64) (domain.Proposal, error) {
 	if repository == nil || repository.runtime == nil || id <= 0 {
 		return domain.Proposal{}, sharedrepository.ErrInvalidInput

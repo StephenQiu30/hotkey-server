@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Plus, Rss, RotateCw, Send, Trash2 } from "lucide-react";
+import { Copy, Loader2, Plus, Rss, RotateCw, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -16,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Empty,
   EmptyDescription,
@@ -54,12 +56,16 @@ export function ReportSubscriptions() {
   const [page, setPage] = useState(1);
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const [nextCursor, setNextCursor] = useState<string>();
+  const [rssToken, setRssToken] = useState<string>();
   const [form, setForm] = useState({
     recipient: "",
+    channel: DeliveryChannel.Email as DeliveryChannel,
+    reportType: ReportType.Daily as ReportType,
+    monitorID: "",
+    timezone: "Asia/Shanghai",
+    hour: "9",
   });
-  const recipientValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
-    form.recipient.trim(),
-  );
+  const recipientValid = form.channel === DeliveryChannel.RSS || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.recipient.trim());
 
   const loadPage = useCallback(async (cursor: string | undefined, pageNumber: number) => {
     setLoading(true);
@@ -105,17 +111,17 @@ export function ReportSubscriptions() {
   const create = async () => {
     try {
       const result = await postReportSubscriptions({
-        channel: DeliveryChannel.Email,
-        report_type: ReportType.Daily,
-        recipient: form.recipient.trim(),
-        schedule: "0 9 * * *",
-        timezone: "Asia/Shanghai",
+		channel: form.channel,
+		report_type: form.reportType,
+		...(form.channel === DeliveryChannel.Email ? { recipient: form.recipient.trim() } : {}),
+		...(form.monitorID ? { monitor_id: Number(form.monitorID) } : {}),
+		schedule: form.reportType === ReportType.Daily ? `0 ${form.hour} * * *` : `0 ${form.hour} * * 1`,
+		timezone: form.timezone,
         enabled: true,
       });
       setDialog(false);
       await load();
-      if (result.data?.rss_token)
-        toast.success(`RSS Token 已生成：${result.data.rss_token}`);
+      if (result.data?.rss_token) setRssToken(result.data.rss_token);
       else toast.success("报告订阅已创建");
     } catch (reason) {
       toast.error(reason instanceof Error ? reason.message : "订阅创建失败");
@@ -149,7 +155,8 @@ export function ReportSubscriptions() {
         { id: subscription.id },
         { expected_version: subscription.version ?? 0 },
       );
-      toast.success(`新 RSS Token：${result.data?.rss_token || "已生成"}`);
+      if (result.data?.rss_token) setRssToken(result.data.rss_token);
+      toast.success("私有 Feed 地址已轮换，旧地址立即失效");
       await load();
     } catch (reason) {
       toast.error(reason instanceof Error ? reason.message : "Token 轮换失败");
@@ -195,9 +202,26 @@ export function ReportSubscriptions() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>新建报告订阅</DialogTitle>
+                <DialogDescription>选择报告周期与交付方式；私有 Feed 密钥只展示一次。</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-2">
-                <div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>报告周期</Label>
+                    <Select value={form.reportType} onValueChange={(value) => setForm({ ...form, reportType: value as ReportType })}>
+                      <SelectTrigger aria-label="报告周期"><SelectValue /></SelectTrigger>
+                      <SelectContent><SelectItem value={ReportType.Daily}>日报</SelectItem><SelectItem value={ReportType.Weekly}>周报</SelectItem></SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>交付方式</Label>
+                    <Select value={form.channel} onValueChange={(value) => setForm({ ...form, channel: value as DeliveryChannel })}>
+                      <SelectTrigger aria-label="交付方式"><SelectValue /></SelectTrigger>
+                      <SelectContent><SelectItem value={DeliveryChannel.Email}>电子邮件</SelectItem><SelectItem value={DeliveryChannel.RSS}>私有 Feed</SelectItem></SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                {form.channel === DeliveryChannel.Email && <div>
                   <Label htmlFor="recipient">收件邮箱</Label>
                   <Input
                     id="recipient"
@@ -213,10 +237,12 @@ export function ReportSubscriptions() {
                       请输入有效的邮箱地址。
                     </p>
                   )}
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    系统每天 09:00 自动整理所有已启用关键词监测结果并发送邮件。
-                  </p>
+				</div>}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2"><Label htmlFor="monitor-id">监控 ID（可选）</Label><Input id="monitor-id" inputMode="numeric" value={form.monitorID} onChange={(event) => setForm({ ...form, monitorID: event.target.value.replace(/\D/g, "") })} placeholder="全部已启用监控" /></div>
+                  <div className="space-y-2"><Label>发送时间</Label><Select value={form.hour} onValueChange={(hour) => setForm({ ...form, hour })}><SelectTrigger aria-label="发送时间"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="9">09:00</SelectItem><SelectItem value="18">18:00</SelectItem></SelectContent></Select></div>
                 </div>
+                <div className="space-y-2"><Label>时区</Label><Select value={form.timezone} onValueChange={(timezone) => setForm({ ...form, timezone })}><SelectTrigger aria-label="订阅时区"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Asia/Shanghai">Asia/Shanghai</SelectItem><SelectItem value="UTC">UTC</SelectItem></SelectContent></Select></div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setDialog(false)}>
@@ -346,6 +372,18 @@ export function ReportSubscriptions() {
         onConfirm={deleteSubscription}
         loading={action === deleteTarget?.id}
       />
+      <Dialog open={rssToken != null} onOpenChange={(open) => !open && setRssToken(undefined)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>保存私有 Feed 地址</DialogTitle><DialogDescription>密钥不会再次展示。轮换后旧地址立即失效。</DialogDescription></DialogHeader>
+          <div className="space-y-3">
+            {["rss", "atom"].map((format) => {
+              const url = typeof window === "undefined" ? `/feeds/${rssToken}?format=${format}` : `${window.location.origin}/feeds/${rssToken}?format=${format}`;
+              return <div key={format} className="space-y-2"><Label>{format.toUpperCase()}</Label><div className="flex gap-2"><Input readOnly value={url} aria-label={`${format.toUpperCase()} 私有地址`} /><Button type="button" variant="outline" size="icon" aria-label={`复制 ${format.toUpperCase()} 地址`} onClick={() => void navigator.clipboard.writeText(url)}><Copy /></Button></div></div>;
+            })}
+          </div>
+          <DialogFooter><Button onClick={() => setRssToken(undefined)}>我已保存</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

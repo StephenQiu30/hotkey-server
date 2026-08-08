@@ -54,9 +54,11 @@ func PeriodFor(at time.Time, reportType ReportType, location *time.Location) (Pe
 }
 
 type Item struct {
-	EventID                         int64
+	EventID, EventUpdateID          int64
 	Rank                            int
 	Title, Summary, InclusionReason string
+	EvidenceSetHash                 string
+	ReasonCodes                     []string
 	HeatScore                       float64
 }
 type Report struct {
@@ -70,6 +72,7 @@ type Report struct {
 	Frozen                 bool
 	GeneratedAt            *time.Time
 	PublishedAt            *time.Time
+	CreatedBy, UpdatedBy   *int64
 }
 
 type ListQuery struct {
@@ -108,7 +111,7 @@ func (report Report) Validate() error {
 		return fmt.Errorf("published report must be frozen")
 	}
 	for _, item := range report.Items {
-		if item.EventID <= 0 || item.Rank <= 0 || strings.TrimSpace(item.Title) == "" || item.HeatScore < 0 {
+		if item.EventID <= 0 || item.EventUpdateID <= 0 || item.Rank <= 0 || strings.TrimSpace(item.Title) == "" || item.HeatScore < 0 || len(item.EvidenceSetHash) != 64 || len(item.ReasonCodes) == 0 {
 			return fmt.Errorf("invalid report item")
 		}
 	}

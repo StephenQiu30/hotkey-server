@@ -6,6 +6,7 @@ import (
 	"fmt"
 	stdhttp "net/http"
 	"strconv"
+	"time"
 
 	reportapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/domain"
@@ -62,6 +63,47 @@ var _ reportService = (*reportapplication.Service)(nil)
 type Handler struct{ service reportService }
 
 func NewHandler(service reportService) *Handler { return &Handler{service: service} }
+
+// Create creates or refreshes the current period draft.
+// @Summary Create or refresh a report draft
+// @Tags reports
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body CreateReportRequest true "report draft"
+// @Success 200 {object} ReportResult[ReportResponse]
+// @Failure 400 {object} ReportResult[EmptyResponse]
+// @Failure 401 {object} ReportResult[EmptyResponse]
+// @Failure 403 {object} ReportResult[EmptyResponse]
+// @Failure 409 {object} ReportResult[EmptyResponse]
+// @Router /api/v1/reports [post]
+func (handler *Handler) Create(c *gin.Context) error {
+	httptransport.SetModule(c, "report")
+	var request CreateReportRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		return sharederrors.New(sharederrors.CodeInvalidRequest, stdhttp.StatusBadRequest, "invalid report draft")
+	}
+	subject, ok := httptransport.SubjectFromContext(c)
+	if !ok {
+		return sharederrors.New(sharederrors.CodeUnauthenticated, stdhttp.StatusUnauthorized, "authentication required")
+	}
+	at := time.Now().UTC()
+	if request.At != nil {
+		at = request.At.UTC()
+	}
+	creator, ok := handler.service.(interface {
+		CreateDraft(context.Context, reportapplication.CreateInput) (domain.Report, error)
+	})
+	if !ok {
+		return reportError(sharedrepository.ErrUnavailable)
+	}
+	report, err := creator.CreateDraft(c.Request.Context(), reportapplication.CreateInput{Type: domain.ReportType(request.Type), MonitorID: request.MonitorID, Timezone: request.Timezone, At: at, ActorID: subject.UserID})
+	if err != nil {
+		return reportError(err)
+	}
+	httptransport.OK(c, reportResponse(report))
+	return nil
+}
 
 // List returns report metadata in reverse creation order. Details and frozen
 // snapshots are fetched through the report detail endpoint.
@@ -170,7 +212,18 @@ func (handler *Handler) Publish(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	report, err := handler.service.Publish(c.Request.Context(), reportID)
+	report, err := domain.Report{}, error(nil)
+	if subject, ok := httptransport.SubjectFromContext(c); ok {
+		if publisher, supported := handler.service.(interface {
+			PublishAs(context.Context, int64, int64) (domain.Report, error)
+		}); supported {
+			report, err = publisher.PublishAs(c.Request.Context(), reportID, subject.UserID)
+		} else {
+			report, err = handler.service.Publish(c.Request.Context(), reportID)
+		}
+	} else {
+		return sharederrors.New(sharederrors.CodeUnauthenticated, stdhttp.StatusUnauthorized, "authentication required")
+	}
 	if err != nil {
 		return reportError(err)
 	}

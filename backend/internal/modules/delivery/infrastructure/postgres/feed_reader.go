@@ -20,7 +20,7 @@ func (repository *Repository) ReadFeed(ctx context.Context, tokenHash string) (d
 		return deliveryapplication.Feed{}, fmt.Errorf("%w: invalid feed token", sharedrepository.ErrInvalidInput)
 	}
 	rows, err := repository.runtime.SQL.QueryContext(ctx, `
-SELECT r.title, r.period_end, ri.event_id, ri.title_snapshot, ri.summary_snapshot
+SELECT r.title, COALESCE(r.published_at, r.period_end), ri.event_id, ri.title_snapshot, ri.summary_snapshot
 FROM report_subscriptions s
 JOIN reports r ON r.report_type = s.report_type AND r.monitor_id IS NOT DISTINCT FROM s.monitor_id AND r.status = 'published'
 JOIN report_items ri ON ri.report_id = r.id

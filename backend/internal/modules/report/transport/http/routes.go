@@ -14,7 +14,9 @@ func RegisterRoutes(router *gin.Engine, service reportService, authenticator htt
 	api.GET("", httptransport.Wrap(handler.List))
 	api.GET("/:id", httptransport.Wrap(handler.Get))
 	api.POST("/:id/preview", httptransport.Wrap(handler.Preview))
+	editor := api.Group("", httptransport.RequireRoles(httptransport.RoleEditor, httptransport.RoleAdmin))
+	editor.POST("", httptransport.Wrap(handler.Create))
+	editor.POST("/:id/build", httptransport.Wrap(handler.Build))
 	admin := api.Group("", httptransport.RequireRoles(httptransport.RoleAdmin))
-	admin.POST("/:id/build", httptransport.Wrap(handler.Build))
 	admin.POST("/:id/publish", httptransport.Wrap(handler.Publish))
 }

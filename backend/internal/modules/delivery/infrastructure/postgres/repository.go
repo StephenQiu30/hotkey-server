@@ -94,7 +94,7 @@ func (repository *Repository) GetEnabledSubscription(ctx context.Context, subscr
 	if repository == nil || repository.runtime == nil || subscriptionID <= 0 {
 		return domain.Subscription{}, sharedrepository.ErrUnavailable
 	}
-	return scanSubscription(repository.runtime.SQL.QueryRowContext(ctx, `
+	return scanSubscription(deliveryQueryerFor(ctx, repository.runtime).QueryRowContext(ctx, `
 SELECT `+subscriptionColumns+` FROM report_subscriptions
 WHERE id = $1 AND enabled = true AND deleted_at IS NULL`, subscriptionID))
 }
@@ -103,7 +103,7 @@ func (repository *Repository) ListEnabledSubscriptions(ctx context.Context) ([]d
 	if repository == nil || repository.runtime == nil {
 		return nil, sharedrepository.ErrUnavailable
 	}
-	rows, err := repository.runtime.SQL.QueryContext(ctx, `
+	rows, err := deliveryQueryerFor(ctx, repository.runtime).QueryContext(ctx, `
 SELECT `+subscriptionColumns+` FROM report_subscriptions
 WHERE enabled = true AND deleted_at IS NULL ORDER BY id ASC`)
 	if err != nil {
@@ -273,16 +273,23 @@ func (repository *Repository) CreateDelivery(ctx context.Context, delivery domai
 		return false, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
 	}
 	var id int64
-	insertID := delivery.ID
-	if insertID <= 0 {
-		insertID = 0
-	}
-	err := repository.runtime.SQL.QueryRowContext(ctx, `
+	queryer := deliveryQueryerFor(ctx, repository.runtime)
+	var err error
+	if delivery.ID > 0 {
+		err = queryer.QueryRowContext(ctx, `
 INSERT INTO report_deliveries (id, report_id, subscription_id, idempotency_key, status, next_attempt_at, succeeded_at)
-VALUES (NULLIF($1, 0), $2, $3, $4, $5, $6, $7)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 ON CONFLICT (report_id, subscription_id) DO NOTHING RETURNING id`,
-		insertID, delivery.ReportID, delivery.SubscriptionID, delivery.IdempotencyKey, delivery.Status,
-		delivery.NextAttemptAt, delivery.SucceededAt).Scan(&id)
+			delivery.ID, delivery.ReportID, delivery.SubscriptionID, delivery.IdempotencyKey, delivery.Status,
+			delivery.NextAttemptAt, delivery.SucceededAt).Scan(&id)
+	} else {
+		err = queryer.QueryRowContext(ctx, `
+INSERT INTO report_deliveries (report_id, subscription_id, idempotency_key, status, next_attempt_at, succeeded_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (report_id, subscription_id) DO NOTHING RETURNING id`,
+			delivery.ReportID, delivery.SubscriptionID, delivery.IdempotencyKey, delivery.Status,
+			delivery.NextAttemptAt, delivery.SucceededAt).Scan(&id)
+	}
 	if err == nil {
 		return true, nil
 	}
@@ -296,7 +303,7 @@ func (repository *Repository) GetDeliveryForScope(ctx context.Context, reportID,
 	if repository == nil || repository.runtime == nil || reportID <= 0 || subscriptionID <= 0 {
 		return domain.Delivery{}, sharedrepository.ErrInvalidInput
 	}
-	return scanDelivery(repository.runtime.SQL.QueryRowContext(ctx, `
+	return scanDelivery(deliveryQueryerFor(ctx, repository.runtime).QueryRowContext(ctx, `
 SELECT id, report_id, subscription_id, idempotency_key, status, next_attempt_at, succeeded_at
 FROM report_deliveries WHERE report_id = $1 AND subscription_id = $2`, reportID, subscriptionID))
 }

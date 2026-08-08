@@ -22,7 +22,7 @@ func TestDeliveryRepositoryIsIdempotentAndAppendsAttempts(t *testing.T) {
 	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
 		t.Fatal(err)
 	}
-	var userID, eventID, monitorID int64
+	var userID, eventID, eventUpdateID, monitorID int64
 	if err := runtime.SQL.QueryRowContext(ctx, `INSERT INTO users (email, password_hash, display_name, role) VALUES ('delivery-' || md5(random()::text) || '@example.test', 'hash', 'delivery', 'viewer') RETURNING id`).Scan(&userID); err != nil {
 		t.Fatal(err)
 	}
@@ -30,10 +30,13 @@ func TestDeliveryRepositoryIsIdempotentAndAppendsAttempts(t *testing.T) {
 	if err := runtime.SQL.QueryRowContext(ctx, `INSERT INTO events (event_key, title_zh, summary, lifecycle_status, first_seen_at, last_seen_at) VALUES ('delivery-event-' || md5(random()::text), 'Delivery event', '', 'active', $1, $1) RETURNING id`, now).Scan(&eventID); err != nil {
 		t.Fatal(err)
 	}
+	if err := runtime.SQL.QueryRowContext(ctx, `INSERT INTO event_updates (event_id, sequence_no, kind, summary, observed_at, reason_codes, before_state, after_state, evidence_set_hash, idempotency_key) VALUES ($1, 1, 'event_created', 'Delivery snapshot', $2, ARRAY['delivery_fixture'], '{}', '{"heat_score":90}', repeat('a',64), repeat('b',64)) RETURNING id`, eventID, now).Scan(&eventUpdateID); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO reports (id, report_type, period_start, period_end, timezone, title, status, version_no) VALUES (8101, 'daily', $1, $2, 'UTC', 'Delivery report', 'published', 1)`, now, now.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO report_items (report_id, event_id, rank, section, title_snapshot, summary_snapshot, heat_score_snapshot) VALUES (8101, $1, 1, 'events', 'Delivery event', 'Snapshot', 90)`, eventID); err != nil {
+	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO report_items (report_id, event_id, event_update_id, rank, section, title_snapshot, summary_snapshot, heat_score_snapshot, evidence_set_hash, reason_codes) VALUES (8101, $1, $2, 1, 'events', 'Delivery event', 'Snapshot', 90, repeat('a',64), ARRAY['delivery_fixture'])`, eventID, eventUpdateID); err != nil {
 		t.Fatal(err)
 	}
 	if err := runtime.SQL.QueryRowContext(ctx, `INSERT INTO monitors (name, status) VALUES ('delivery-scope-' || md5(random()::text), 'active') RETURNING id`).Scan(&monitorID); err != nil {
@@ -42,7 +45,7 @@ func TestDeliveryRepositoryIsIdempotentAndAppendsAttempts(t *testing.T) {
 	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO reports (id, monitor_id, report_type, period_start, period_end, timezone, title, status, version_no) VALUES (8102, $1, 'daily', $2, $3, 'UTC', 'Scoped report', 'published', 1)`, monitorID, now.Add(time.Hour), now.Add(2*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO report_items (report_id, event_id, rank, section, title_snapshot, summary_snapshot, heat_score_snapshot) VALUES (8102, $1, 1, 'events', 'Scoped event', 'Scoped snapshot', 95)`, eventID); err != nil {
+	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO report_items (report_id, event_id, event_update_id, rank, section, title_snapshot, summary_snapshot, heat_score_snapshot, evidence_set_hash, reason_codes) VALUES (8102, $1, $2, 1, 'events', 'Scoped event', 'Scoped snapshot', 95, repeat('a',64), ARRAY['delivery_fixture'])`, eventID, eventUpdateID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO report_subscriptions (id, user_id, report_type, channel, recipient, timezone, schedule) VALUES (8201, $1, 'daily', 'email', 'delivery@example.test', 'UTC', '0 8 * * *')`, userID); err != nil {
@@ -80,21 +83,25 @@ func TestDeliveryRepositoryIsIdempotentAndAppendsAttempts(t *testing.T) {
 	if page.Items[0].ID <= page.Items[1].ID || page.Items[1].ID <= nextPage.Items[0].ID {
 		t.Fatalf("subscription cursor order = first %#v next %#v", page.Items, nextPage.Items)
 	}
-	delivery := domain.Delivery{ID: 8301, ReportID: 8101, SubscriptionID: 8201, IdempotencyKey: "delivery-8101-8201", Status: domain.DeliveryQueued, NextAttemptAt: &now}
+	delivery := domain.Delivery{ReportID: 8101, SubscriptionID: 8201, IdempotencyKey: "delivery-8101-8201", Status: domain.DeliveryQueued, NextAttemptAt: &now}
 	created, err := repository.CreateDelivery(ctx, delivery)
 	if err != nil || !created {
 		t.Fatalf("CreateDelivery() = %v/%v, want created", created, err)
+	}
+	allocated, err := repository.GetDeliveryForScope(ctx, delivery.ReportID, delivery.SubscriptionID)
+	if err != nil || allocated.ID <= 0 {
+		t.Fatalf("allocated delivery = %#v/%v", allocated, err)
 	}
 	delivery.ID = 8302
 	created, err = repository.CreateDelivery(ctx, delivery)
 	if err != nil || created {
 		t.Fatalf("duplicate CreateDelivery() = %v/%v, want no-op", created, err)
 	}
-	if err := repository.AppendAttempt(ctx, 8301, 1, "failed", 421, "temporary smtp failure"); err != nil {
+	if err := repository.AppendAttempt(ctx, allocated.ID, 1, "failed", 421, "temporary smtp failure"); err != nil {
 		t.Fatal(err)
 	}
 	var attempts int
-	if err := runtime.SQL.QueryRowContext(ctx, `SELECT count(*) FROM delivery_attempts WHERE delivery_id = 8301`).Scan(&attempts); err != nil {
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT count(*) FROM delivery_attempts WHERE delivery_id = $1`, allocated.ID).Scan(&attempts); err != nil {
 		t.Fatal(err)
 	}
 	if attempts != 1 {

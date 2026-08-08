@@ -16,13 +16,23 @@ type ReportResult[T any] struct {
 
 type EmptyResponse struct{}
 
+type CreateReportRequest struct {
+	Type      string     `json:"type" binding:"required,oneof=daily weekly"`
+	MonitorID *int64     `json:"monitor_id,omitempty"`
+	Timezone  string     `json:"timezone" binding:"required"`
+	At        *time.Time `json:"at,omitempty"`
+}
+
 type ReportItemResponse struct {
-	EventID         int64   `json:"event_id"`
-	Rank            int     `json:"rank"`
-	InclusionReason string  `json:"inclusion_reason"`
-	Title           string  `json:"title"`
-	Summary         string  `json:"summary"`
-	HeatScore       float64 `json:"heat_score"`
+	EventID         int64    `json:"event_id"`
+	EventUpdateID   int64    `json:"event_update_id"`
+	Rank            int      `json:"rank"`
+	InclusionReason string   `json:"inclusion_reason"`
+	Title           string   `json:"title"`
+	Summary         string   `json:"summary"`
+	HeatScore       float64  `json:"heat_score"`
+	EvidenceSetHash string   `json:"evidence_set_hash"`
+	ReasonCodes     []string `json:"reason_codes"`
 }
 
 type ReportResponse struct {
@@ -41,6 +51,8 @@ type ReportResponse struct {
 	Frozen      bool                 `json:"frozen"`
 	GeneratedAt *time.Time           `json:"generated_at,omitempty"`
 	PublishedAt *time.Time           `json:"published_at,omitempty"`
+	CreatedBy   *int64               `json:"created_by,omitempty"`
+	UpdatedBy   *int64               `json:"updated_by,omitempty"`
 	Items       []ReportItemResponse `json:"items"`
 }
 
@@ -57,11 +69,11 @@ type ReportPreviewResponse struct {
 func reportResponse(report domain.Report) ReportResponse {
 	items := make([]ReportItemResponse, 0, len(report.Items))
 	for _, item := range report.Items {
-		items = append(items, ReportItemResponse{EventID: item.EventID, Rank: item.Rank, InclusionReason: item.InclusionReason, Title: item.Title, Summary: item.Summary, HeatScore: item.HeatScore})
+		items = append(items, ReportItemResponse{EventID: item.EventID, EventUpdateID: item.EventUpdateID, Rank: item.Rank, InclusionReason: item.InclusionReason, Title: item.Title, Summary: item.Summary, HeatScore: item.HeatScore, EvidenceSetHash: item.EvidenceSetHash, ReasonCodes: append([]string(nil), item.ReasonCodes...)})
 	}
 	timezone := ""
 	if report.Period.Location != nil {
 		timezone = report.Period.Location.String()
 	}
-	return ReportResponse{ID: report.ID, Version: report.Version, VersionNo: report.VersionNo, Type: string(report.Type), MonitorID: report.MonitorID, PeriodStart: report.Period.Start, PeriodEnd: report.Period.End, Timezone: timezone, Title: report.Title, Summary: report.Summary, Body: report.Body, Status: string(report.Status), Frozen: report.Frozen, GeneratedAt: report.GeneratedAt, PublishedAt: report.PublishedAt, Items: items}
+	return ReportResponse{ID: report.ID, Version: report.Version, VersionNo: report.VersionNo, Type: string(report.Type), MonitorID: report.MonitorID, PeriodStart: report.Period.Start, PeriodEnd: report.Period.End, Timezone: timezone, Title: report.Title, Summary: report.Summary, Body: report.Body, Status: string(report.Status), Frozen: report.Frozen, GeneratedAt: report.GeneratedAt, PublishedAt: report.PublishedAt, CreatedBy: report.CreatedBy, UpdatedBy: report.UpdatedBy, Items: items}
 }

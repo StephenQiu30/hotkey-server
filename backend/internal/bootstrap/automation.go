@@ -3,10 +3,13 @@ package bootstrap
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	deliverydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/delivery/domain"
 	deliverypostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/delivery/infrastructure/postgres"
+	knowledgedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/domain"
+	knowledgepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/infrastructure/postgres"
 	reportapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/queue"
@@ -24,10 +27,34 @@ func (reader reportAutomationReader) GetEnabledSubscription(ctx context.Context,
 		return reportapplication.AutomationSubscription{}, err
 	}
 	return reportapplication.AutomationSubscription{
-		ID: subscription.ID, Version: subscription.Version, MonitorID: subscription.MonitorID,
+		ID: subscription.ID, Version: subscription.Version, UserID: subscription.UserID, MonitorID: subscription.MonitorID,
 		ReportType: domain.ReportType(subscription.ReportType), Channel: string(subscription.Channel),
 		Timezone: subscription.Timezone, Enabled: subscription.Enabled,
 	}, nil
+}
+
+type reportArchivePlanner struct{ repository *knowledgepostgres.Repository }
+
+func (planner *reportArchivePlanner) Prepare(ctx context.Context, report domain.Report) error {
+	if planner == nil || planner.repository == nil || report.ID <= 0 || report.Status != domain.ReportPublished {
+		return sharedrepository.ErrUnavailable
+	}
+	path := fmt.Sprintf("reports/%s-%d-v%d.md", report.Type, report.ID, report.VersionNo)
+	document, err := planner.repository.EnsureReportDocument(ctx, report.ID, path, report.UpdatedBy)
+	if err != nil {
+		return err
+	}
+	var body strings.Builder
+	fmt.Fprintf(&body, "# %s\n\n%s\n\n", report.Title, report.Summary)
+	for _, item := range report.Items {
+		fmt.Fprintf(&body, "## %d. %s\n\n%s\n\n- EventUpdate: %d\n- Evidence: `%s`\n- Reasons: %s\n\n", item.Rank, item.Title, item.Summary, item.EventUpdateID, item.EvidenceSetHash, strings.Join(item.ReasonCodes, ", "))
+	}
+	_, err = planner.repository.CreateProposalContext(ctx, knowledgedomain.Proposal{
+		Version: 1, DocumentID: document.ID, BaseRevisionNo: document.RevisionNo,
+		BaseHash: document.ContentHash, ProposedFrontmatter: "{}", ProposedBody: body.String(),
+		DiffSummary: "归档已发布报告快照", Reason: "report_published", Status: knowledgedomain.ProposalPending,
+	})
+	return err
 }
 
 type reportSubscriptionDueReader struct {

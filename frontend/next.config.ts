@@ -16,6 +16,10 @@ const nextConfig: NextConfig = {
         source: "/healthz",
         destination: `${apiOrigin}/healthz`,
       },
+      {
+        source: "/feeds/:path*",
+        destination: `${apiOrigin}/feeds/:path*`,
+      },
     ];
   },
 };

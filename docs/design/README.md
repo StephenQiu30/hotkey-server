@@ -42,7 +42,7 @@ Design 记录长期有效的产品与技术决策。状态只使用 `proposed`�
 | 021 | [内容与事件检索筛选排序](archive/021-内容与事件检索筛选排序设计.md) | [PRD](../prd/archive/021-内容与事件检索筛选排序.md) | [Plan](../plans/archive/021-内容与事件检索筛选排序计划.md) | accepted |
 | 022 | [实时事件流与站内通知](archive/022-实时事件流与站内通知设计.md) | [PRD](../prd/archive/022-实时事件流与站内通知.md) | [Plan](../plans/archive/022-实时事件流与站内通知计划.md) | accepted |
 | 023 | [低噪声告警与邮件交付](archive/023-低噪声告警与邮件交付设计.md) | [PRD](../prd/archive/023-低噪声告警与邮件交付.md) | [Plan](../plans/archive/023-低噪声告警与邮件交付计划.md) | accepted |
-| 024 | [日报周报私有Feed与知识归档](024-日报周报私有Feed与知识归档设计.md) | [PRD](../prd/024-日报周报私有Feed与知识归档.md) | [Plan](../plans/024-日报周报私有Feed与知识归档计划.md) | proposed |
+| 024 | [日报周报私有Feed与知识归档](archive/024-日报周报私有Feed与知识归档设计.md) | [PRD](../prd/archive/024-日报周报私有Feed与知识归档.md) | [Plan](../plans/archive/024-日报周报私有Feed与知识归档计划.md) | accepted |
 | 025 | [配额限流保留与审计治理](025-配额限流保留与审计治理设计.md) | [PRD](../prd/025-配额限流保留与审计治理.md) | [Plan](../plans/025-配额限流保留与审计治理计划.md) | proposed |
 | 026 | [Web工作台全页面交互](026-Web工作台全页面交互设计.md) | [PRD](../prd/026-Web工作台全页面交互.md) | [Plan](../plans/026-Web工作台全页面交互计划.md) | proposed |
 | 027 | [Agent-Skill与外部API](027-Agent-Skill与外部API设计.md) | [PRD](../prd/027-Agent-Skill与外部API.md) | [Plan](../plans/027-Agent-Skill与外部API计划.md) | proposed |

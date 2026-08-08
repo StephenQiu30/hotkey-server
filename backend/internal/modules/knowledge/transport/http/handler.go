@@ -30,6 +30,112 @@ func NewHandler(proposals *knowledgeapplication.ProposalService, reader proposal
 	return &Handler{proposals: proposals, reader: reader, reconcile: reconcile, vault: vault}
 }
 
+// ListDocuments returns the current knowledge projections.
+// @Summary List knowledge documents
+// @Tags knowledge
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} ProposalResult[[]DocumentResponse]
+// @Router /api/v1/knowledge/documents [get]
+func (handler *Handler) ListDocuments(c *gin.Context) error {
+	httptransport.SetModule(c, "knowledge")
+	reader, ok := handler.reader.(interface {
+		ListDocuments(context.Context) ([]knowledgedomain.Document, error)
+	})
+	if !ok {
+		return knowledgeError(sharedrepository.ErrUnavailable)
+	}
+	items, err := reader.ListDocuments(c.Request.Context())
+	if err != nil {
+		return knowledgeError(err)
+	}
+	response := make([]DocumentResponse, 0, len(items))
+	for _, item := range items {
+		response = append(response, documentResponse(item))
+	}
+	httptransport.OK(c, response)
+	return nil
+}
+
+// GetDocument returns a knowledge projection and its optimistic revision.
+// @Summary Get knowledge document
+// @Tags knowledge
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "document ID"
+// @Success 200 {object} ProposalResult[DocumentResponse]
+// @Router /api/v1/knowledge/documents/{id} [get]
+func (handler *Handler) GetDocument(c *gin.Context) error {
+	httptransport.SetModule(c, "knowledge")
+	id, err := positivePathID(c, "document")
+	if err != nil {
+		return err
+	}
+	reader, ok := handler.reader.(interface {
+		GetDocumentContext(context.Context, int64) (knowledgedomain.Document, error)
+	})
+	if !ok {
+		return knowledgeError(sharedrepository.ErrUnavailable)
+	}
+	document, err := reader.GetDocumentContext(c.Request.Context(), id)
+	if err != nil {
+		return knowledgeError(err)
+	}
+	httptransport.OK(c, documentResponse(document))
+	return nil
+}
+
+// ListProposals returns up to one hundred newest proposals.
+// @Summary List knowledge proposals
+// @Tags knowledge
+// @Produce json
+// @Security BearerAuth
+// @Param status query string false "proposal status"
+// @Success 200 {object} ProposalResult[[]ProposalResponse]
+// @Router /api/v1/knowledge/proposals [get]
+func (handler *Handler) ListProposals(c *gin.Context) error {
+	httptransport.SetModule(c, "knowledge")
+	status := knowledgedomain.ProposalStatus(c.Query("status"))
+	reader, ok := handler.reader.(interface {
+		ListProposals(context.Context, knowledgedomain.ProposalStatus) ([]knowledgedomain.Proposal, error)
+	})
+	if !ok {
+		return knowledgeError(sharedrepository.ErrUnavailable)
+	}
+	items, err := reader.ListProposals(c.Request.Context(), status)
+	if err != nil {
+		return knowledgeError(err)
+	}
+	response := make([]ProposalResponse, 0, len(items))
+	for _, item := range items {
+		response = append(response, proposalResponse(item))
+	}
+	httptransport.OK(c, response)
+	return nil
+}
+
+// GetProposal returns one proposal including its proposed automatic body.
+// @Summary Get knowledge proposal
+// @Tags knowledge
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "proposal ID"
+// @Success 200 {object} ProposalResult[ProposalResponse]
+// @Router /api/v1/knowledge/proposals/{id} [get]
+func (handler *Handler) GetProposal(c *gin.Context) error {
+	httptransport.SetModule(c, "knowledge")
+	id, err := positivePathID(c, "proposal")
+	if err != nil {
+		return err
+	}
+	proposal, err := handler.reader.GetProposal(c.Request.Context(), id)
+	if err != nil {
+		return knowledgeError(err)
+	}
+	httptransport.OK(c, proposalResponse(proposal))
+	return nil
+}
+
 type ProposalRequest struct {
 	DocumentID   int64  `json:"document_id"`
 	BaseRevision int64  `json:"base_revision"`
@@ -53,7 +159,7 @@ type EmptyResponse struct{}
 // @Produce json
 // @Security BearerAuth
 // @Param request body ProposalRequest true "proposal"
-// @Success 200 {object} ProposalResult[domain.Proposal]
+// @Success 200 {object} ProposalResult[ProposalResponse]
 // @Failure 400 {object} ProposalResult[EmptyResponse]
 // @Failure 401 {object} ProposalResult[EmptyResponse]
 // @Failure 403 {object} ProposalResult[EmptyResponse]
@@ -69,7 +175,7 @@ func (handler *Handler) Create(c *gin.Context) error {
 	if err != nil {
 		return knowledgeError(err)
 	}
-	httptransport.OK(c, proposal)
+	httptransport.OK(c, proposalResponse(proposal))
 	return nil
 }
 
@@ -80,7 +186,7 @@ func (handler *Handler) Create(c *gin.Context) error {
 // @Security BearerAuth
 // @Param id path int true "proposal ID"
 // @Param version query int true "proposal version"
-// @Success 200 {object} ProposalResult[domain.Proposal]
+// @Success 200 {object} ProposalResult[ProposalResponse]
 // @Failure 400 {object} ProposalResult[EmptyResponse]
 // @Failure 401 {object} ProposalResult[EmptyResponse]
 // @Failure 403 {object} ProposalResult[EmptyResponse]
@@ -97,7 +203,7 @@ func (handler *Handler) Approve(c *gin.Context) error {
 // @Security BearerAuth
 // @Param id path int true "proposal ID"
 // @Param version query int true "proposal version"
-// @Success 200 {object} ProposalResult[domain.Proposal]
+// @Success 200 {object} ProposalResult[ProposalResponse]
 // @Failure 400 {object} ProposalResult[EmptyResponse]
 // @Failure 401 {object} ProposalResult[EmptyResponse]
 // @Failure 403 {object} ProposalResult[EmptyResponse]
@@ -122,7 +228,7 @@ func (handler *Handler) change(c *gin.Context, status knowledgedomain.ProposalSt
 	if err != nil {
 		return knowledgeError(err)
 	}
-	httptransport.OK(c, proposal)
+	httptransport.OK(c, proposalResponse(proposal))
 	return nil
 }
 
@@ -133,7 +239,7 @@ func (handler *Handler) change(c *gin.Context, status knowledgedomain.ProposalSt
 // @Security BearerAuth
 // @Param id path int true "proposal ID"
 // @Param version query int true "proposal version"
-// @Success 200 {object} ProposalResult[domain.Document]
+// @Success 200 {object} ProposalResult[DocumentResponse]
 // @Failure 400 {object} ProposalResult[EmptyResponse]
 // @Failure 401 {object} ProposalResult[EmptyResponse]
 // @Failure 403 {object} ProposalResult[EmptyResponse]
@@ -153,7 +259,7 @@ func (handler *Handler) Apply(c *gin.Context) error {
 	if err != nil {
 		return knowledgeError(err)
 	}
-	httptransport.OK(c, document)
+	httptransport.OK(c, documentResponse(document))
 	return nil
 }
 
@@ -162,7 +268,7 @@ func (handler *Handler) Apply(c *gin.Context) error {
 // @Tags knowledge
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} ProposalResult[domain.ReconciliationReport]
+// @Success 200 {object} ProposalResult[ReconciliationResponse]
 // @Failure 401 {object} ProposalResult[EmptyResponse]
 // @Failure 403 {object} ProposalResult[EmptyResponse]
 // @Failure 503 {object} ProposalResult[EmptyResponse]
@@ -173,20 +279,28 @@ func (handler *Handler) Reconcile(c *gin.Context) error {
 	if err != nil {
 		return knowledgeError(err)
 	}
-	httptransport.OK(c, report)
+	httptransport.OK(c, reconciliationResponse(report))
 	return nil
 }
 
 func proposalPath(c *gin.Context) (int64, int64, error) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil || id <= 0 {
-		return 0, 0, sharederrors.New(sharederrors.CodeInvalidRequest, stdhttp.StatusBadRequest, "invalid proposal id")
+	id, err := positivePathID(c, "proposal")
+	if err != nil {
+		return 0, 0, err
 	}
 	version, err := strconv.ParseInt(c.Query("version"), 10, 64)
 	if err != nil || version <= 0 {
 		return 0, 0, sharederrors.New(sharederrors.CodeInvalidRequest, stdhttp.StatusBadRequest, "proposal version is required")
 	}
 	return id, version, nil
+}
+
+func positivePathID(c *gin.Context, resource string) (int64, error) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		return 0, sharederrors.New(sharederrors.CodeInvalidRequest, stdhttp.StatusBadRequest, "invalid "+resource+" id")
+	}
+	return id, nil
 }
 
 func knowledgeError(err error) error {
