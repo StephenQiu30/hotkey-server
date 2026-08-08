@@ -24,12 +24,15 @@ import (
 
 const threadColumns = `id, version, monitor_id, event_id, trigger_type, policy_version,
        monitor_config_version_id, monitor_revision, monitor_config_hash, event_threshold_snapshot,
+       alert_min_heat_snapshot, alert_min_momentum_snapshot, alert_min_breadth_snapshot,
+       alert_warning_threshold_snapshot, alert_critical_threshold_snapshot, alert_cooldown_minutes_snapshot,
        state, severity, title_snapshot, reason_snapshot, first_triggered_at, last_triggered_at,
        occurrence_count, cooldown_until, acknowledged_at, acknowledged_by_user_id,
        resolved_at, resolved_by_user_id, suppressed_at, suppressed_by_user_id, created_at, updated_at`
 
 const occurrenceColumns = `id, alert_thread_id, event_update_id, severity, final_score_snapshot,
-       threshold_snapshot, array_to_json(reason_codes), fingerprint, triggered_at, created_at`
+       threshold_snapshot, heat_score_snapshot, momentum_score_snapshot, breadth_score_snapshot,
+       array_to_json(reason_codes), fingerprint, triggered_at, created_at`
 
 const (
 	alertCursorContext = "alert-cursor-v1"
@@ -109,6 +112,7 @@ func (repository *Repository) RecordOccurrence(ctx context.Context, command doma
 		}
 		priorState := thread.State
 		reopened := advancesLatest && domain.ShouldReopen(priorState, thread.CooldownUntil, command.TriggeredAt)
+		disturb := insertedThread || advancesLatest && priorState != domain.StateSuppressed && !command.TriggeredAt.UTC().Before(thread.CooldownUntil.UTC())
 		thread = applyOccurrence(thread, command, insertedThread, advancesLatest, reopened, time.Now().UTC())
 		if err := updateThread(ctx, transaction.SQL, thread); err != nil {
 			return err
@@ -121,7 +125,7 @@ func (repository *Repository) RecordOccurrence(ctx context.Context, command doma
 				return err
 			}
 		}
-		result = domain.RecordOccurrenceResult{Thread: thread, Occurrence: occurrence, Created: true, Reopened: reopened}
+		result = domain.RecordOccurrenceResult{Thread: thread, Occurrence: occurrence, Created: true, Reopened: reopened, Disturb: disturb}
 		return nil
 	})
 	return result, err
@@ -142,17 +146,25 @@ LIMIT 1`, threadID).Scan(&latestID)
 
 func insertOrFindThread(ctx context.Context, transaction *sql.Tx, command domain.RecordOccurrenceCommand) (bool, error) {
 	var id int64
+	cooldownMinutes := command.AlertCooldownMinutesSnapshot
+	if cooldownMinutes == 0 {
+		cooldownMinutes = 60
+	}
 	err := transaction.QueryRowContext(ctx, `
 INSERT INTO alert_threads (
     monitor_id, monitor_config_version_id, monitor_revision, monitor_config_hash,
     event_id, trigger_type, policy_version, state, severity, event_threshold_snapshot,
+    alert_min_heat_snapshot, alert_min_momentum_snapshot, alert_min_breadth_snapshot,
+    alert_warning_threshold_snapshot, alert_critical_threshold_snapshot, alert_cooldown_minutes_snapshot,
     title_snapshot, reason_snapshot, first_triggered_at, last_triggered_at,
     occurrence_count, cooldown_until
-) VALUES ($1,$2,$3,$4,$5,$6,$7,'open',$8,$9,$10,$11,$12,$12,0,$13)
+) VALUES ($1,$2,$3,$4,$5,$6,$7,'open',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$18,0,$19)
 ON CONFLICT (monitor_config_version_id,event_id,trigger_type,policy_version) DO NOTHING
 RETURNING id`, command.MonitorID, command.MonitorConfigVersionID, command.MonitorRevision, command.MonitorConfigHash,
 		command.EventID, command.TriggerType, command.PolicyVersion, command.Severity, command.EventThresholdSnapshot,
-		command.TitleSnapshot, command.ReasonSnapshot, command.TriggeredAt.UTC(), domain.CooldownUntil(command.TriggeredAt)).Scan(&id)
+		command.AlertMinHeatSnapshot, command.AlertMinMomentumSnapshot, command.AlertMinBreadthSnapshot,
+		command.AlertWarningThresholdSnapshot, command.AlertCriticalThresholdSnapshot, cooldownMinutes,
+		command.TitleSnapshot, command.ReasonSnapshot, command.TriggeredAt.UTC(), domain.CooldownUntilMinutes(command.TriggeredAt, cooldownMinutes)).Scan(&id)
 	if err == nil {
 		return true, nil
 	}
@@ -179,6 +191,11 @@ func frozenIdentityMatches(thread domain.Thread, command domain.RecordOccurrence
 		thread.PolicyVersion != command.PolicyVersion || thread.EventThresholdSnapshot != command.EventThresholdSnapshot {
 		return fmt.Errorf("%w: alert thread frozen policy differs", sharedrepository.ErrConflict)
 	}
+	if command.PolicyVersion == domain.PolicyVersionV2 && (thread.AlertMinHeatSnapshot != command.AlertMinHeatSnapshot || thread.AlertMinMomentumSnapshot != command.AlertMinMomentumSnapshot ||
+		thread.AlertMinBreadthSnapshot != command.AlertMinBreadthSnapshot || thread.AlertWarningThresholdSnapshot != command.AlertWarningThresholdSnapshot ||
+		thread.AlertCriticalThresholdSnapshot != command.AlertCriticalThresholdSnapshot || thread.AlertCooldownMinutesSnapshot != command.AlertCooldownMinutesSnapshot) {
+		return fmt.Errorf("%w: alert thread frozen policy differs", sharedrepository.ErrConflict)
+	}
 	return nil
 }
 
@@ -193,11 +210,13 @@ func insertOccurrence(ctx context.Context, transaction *sql.Tx, threadID int64, 
 	occurrence, err := scanOccurrence(transaction.QueryRowContext(ctx, `
 INSERT INTO alert_occurrences (
     alert_thread_id,event_update_id,severity,final_score_snapshot,threshold_snapshot,
+    heat_score_snapshot,momentum_score_snapshot,breadth_score_snapshot,
     reason_codes,fingerprint,triggered_at
-) VALUES ($1,$2,$3,$4,$5,ARRAY(SELECT jsonb_array_elements_text($6::jsonb)),$7,$8)
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,ARRAY(SELECT jsonb_array_elements_text($9::jsonb)),$10,$11)
 ON CONFLICT DO NOTHING
 RETURNING `+occurrenceColumns, threadID, command.EventUpdateID, command.Severity, command.FinalScoreSnapshot,
-		command.EventThresholdSnapshot, reasons, command.Fingerprint, command.TriggeredAt.UTC()))
+		command.EventThresholdSnapshot, command.HeatScoreSnapshot, command.MomentumScoreSnapshot, command.BreadthScoreSnapshot,
+		reasons, command.Fingerprint, command.TriggeredAt.UTC()))
 	if err == nil {
 		return occurrence, true, nil
 	}
@@ -226,7 +245,11 @@ func applyOccurrence(thread domain.Thread, command domain.RecordOccurrenceComman
 		thread.TitleSnapshot = command.TitleSnapshot
 		thread.ReasonSnapshot = command.ReasonSnapshot
 		thread.LastTriggeredAt = command.TriggeredAt.UTC()
-		newCooldown := domain.CooldownUntil(command.TriggeredAt)
+		cooldownMinutes := command.AlertCooldownMinutesSnapshot
+		if cooldownMinutes == 0 {
+			cooldownMinutes = 60
+		}
+		newCooldown := domain.CooldownUntilMinutes(command.TriggeredAt, cooldownMinutes)
 		if newCooldown.After(thread.CooldownUntil) {
 			thread.CooldownUntil = newCooldown
 		}
@@ -413,7 +436,7 @@ func readThreadDetail(ctx context.Context, reader detailReader, threadID int64) 
 	if err != nil {
 		return domain.ThreadDetail{}, mapDatabaseError(err)
 	}
-	detail := domain.ThreadDetail{Thread: thread, Occurrences: []domain.Occurrence{}, Audits: []domain.StateAudit{}}
+	detail := domain.ThreadDetail{Thread: thread, Occurrences: []domain.Occurrence{}, Audits: []domain.StateAudit{}, EmailDeliveries: []domain.EmailDelivery{}}
 	rows, err := reader.QueryContext(ctx, `SELECT `+occurrenceColumns+`
 FROM alert_occurrences WHERE alert_thread_id=$1 ORDER BY triggered_at DESC,id DESC LIMIT 50`, threadID)
 	if err != nil {
@@ -432,6 +455,34 @@ FROM alert_occurrences WHERE alert_thread_id=$1 ORDER BY triggered_at DESC,id DE
 		return domain.ThreadDetail{}, databaserepository.MapError(err)
 	}
 	rows.Close()
+	deliveries, err := reader.QueryContext(ctx, `
+SELECT delivery.id,delivery.occurrence_id,delivery.severity,delivery.status,
+       (SELECT count(*) FROM alert_email_attempts attempt WHERE attempt.delivery_id=delivery.id AND attempt.status='started'),
+       delivery.next_attempt_at,delivery.succeeded_at,coalesce(delivery.last_error,'')
+FROM alert_email_deliveries delivery
+JOIN alert_occurrences occurrence ON occurrence.id=delivery.occurrence_id
+WHERE occurrence.alert_thread_id=$1
+ORDER BY occurrence.triggered_at DESC,delivery.id DESC`, threadID)
+	if err != nil {
+		return domain.ThreadDetail{}, databaserepository.MapError(err)
+	}
+	for deliveries.Next() {
+		var delivery domain.EmailDelivery
+		var severity string
+		var next, succeeded sql.NullTime
+		if err := deliveries.Scan(&delivery.ID, &delivery.OccurrenceID, &severity, &delivery.Status, &delivery.AttemptCount, &next, &succeeded, &delivery.LastError); err != nil {
+			deliveries.Close()
+			return domain.ThreadDetail{}, mapDatabaseError(err)
+		}
+		delivery.Severity = domain.Severity(severity)
+		delivery.NextAttemptAt, delivery.SucceededAt = nullTimePointer(next), nullTimePointer(succeeded)
+		detail.EmailDeliveries = append(detail.EmailDeliveries, delivery)
+	}
+	if err := deliveries.Err(); err != nil {
+		deliveries.Close()
+		return domain.ThreadDetail{}, databaserepository.MapError(err)
+	}
+	deliveries.Close()
 
 	audits, err := reader.QueryContext(ctx, `
 SELECT id,alert_thread_id,actor_type,actor_user_id,from_state,to_state,expected_version,reason_code,created_at
@@ -463,6 +514,8 @@ func scanThread(scanner rowScanner) (domain.Thread, error) {
 	err := scanner.Scan(
 		&thread.ID, &thread.Version, &thread.MonitorID, &thread.EventID, &trigger, &thread.PolicyVersion,
 		&thread.MonitorConfigVersionID, &thread.MonitorRevision, &thread.MonitorConfigHash, &thread.EventThresholdSnapshot,
+		&thread.AlertMinHeatSnapshot, &thread.AlertMinMomentumSnapshot, &thread.AlertMinBreadthSnapshot,
+		&thread.AlertWarningThresholdSnapshot, &thread.AlertCriticalThresholdSnapshot, &thread.AlertCooldownMinutesSnapshot,
 		&state, &severity, &thread.TitleSnapshot, &thread.ReasonSnapshot, &thread.FirstTriggeredAt, &thread.LastTriggeredAt,
 		&thread.OccurrenceCount, &thread.CooldownUntil, &acknowledgedAt, &acknowledgedBy, &resolvedAt, &resolvedBy,
 		&suppressedAt, &suppressedBy, &thread.CreatedAt, &thread.UpdatedAt,
@@ -481,7 +534,7 @@ func scanOccurrence(scanner rowScanner) (domain.Occurrence, error) {
 	var severity string
 	var encodedReasons []byte
 	err := scanner.Scan(&occurrence.ID, &occurrence.ThreadID, &occurrence.EventUpdateID, &severity,
-		&occurrence.FinalScoreSnapshot, &occurrence.EventThresholdSnapshot, &encodedReasons,
+		&occurrence.FinalScoreSnapshot, &occurrence.EventThresholdSnapshot, &occurrence.HeatScoreSnapshot, &occurrence.MomentumScoreSnapshot, &occurrence.BreadthScoreSnapshot, &encodedReasons,
 		&occurrence.Fingerprint, &occurrence.TriggeredAt, &occurrence.CreatedAt)
 	if err != nil {
 		return domain.Occurrence{}, err

@@ -10,6 +10,7 @@ import {
   ChevronRight,
   CircleAlert,
   Loader2,
+  Mail,
   MoreHorizontal,
   RefreshCw,
   ShieldAlert,
@@ -29,6 +30,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Empty,
   EmptyDescription,
@@ -60,11 +68,14 @@ import {
 } from "@/components/ui/table";
 import {
   getAlerts,
+  getAlertsId,
   postAlertsIdAcknowledge,
   postAlertsIdResolve,
   postAlertsIdSuppress,
 } from "@/services/hotkey/hotkey-server/alerts";
 import { formatRadarTime } from "@/lib/radarPresentation";
+import { UserRole } from "@/lib/domainEnums";
+import { useAuthStore } from "@/stores/authStore";
 
 type AlertState = NonNullable<HotKeyAPI.getAlertsParams["state"]> | "all";
 type AlertAction = "acknowledge" | "resolve" | "suppress";
@@ -74,6 +85,14 @@ const stateLabels: Record<string, string> = {
   acknowledged: "已确认",
   resolved: "已解决",
   suppressed: "已抑制",
+};
+
+const deliveryLabels: Record<string, string> = {
+  queued: "等待投递",
+  claimed: "投递中",
+  retrying: "等待重试",
+  succeeded: "已送达",
+  failed: "投递失败",
 };
 
 function SeverityBadge({ severity }: { severity?: string }) {
@@ -110,6 +129,8 @@ function SummaryCard({ label, value }: { label: string; value: number }) {
 }
 
 export default function AlertsPage() {
+  const role = useAuthStore((auth) => auth.user?.role);
+  const canSuppress = role === UserRole.Editor || role === UserRole.Admin;
   const [state, setState] = useState<AlertState>("open");
   const [threads, setThreads] = useState<HotKeyAPI.AlertThreadResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -117,6 +138,28 @@ export default function AlertsPage() {
   const [actioning, setActioning] = useState<number>();
   const [pendingSuppression, setPendingSuppression] =
     useState<HotKeyAPI.AlertThreadResponse>();
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detail, setDetail] = useState<HotKeyAPI.AlertDetailResponse>();
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string>();
+
+  const openDetail = async (thread: HotKeyAPI.AlertThreadResponse) => {
+    if (thread.id == null) return;
+    setDetailOpen(true);
+    setDetail(undefined);
+    setDetailError(undefined);
+    setDetailLoading(true);
+    try {
+      const result = await getAlertsId({ id: thread.id });
+      setDetail(result.data);
+    } catch (reason) {
+      setDetailError(
+        reason instanceof Error ? reason.message : "告警详情加载失败"
+      );
+    } finally {
+      setDetailLoading(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -144,12 +187,12 @@ export default function AlertsPage() {
         .length,
       warning: threads.filter((thread) => thread.severity === "warning").length,
     }),
-    [threads],
+    [threads]
   );
 
   const operate = async (
     thread: HotKeyAPI.AlertThreadResponse,
-    action: AlertAction,
+    action: AlertAction
   ) => {
     if (thread.id == null || thread.version == null) return;
     setActioning(thread.id);
@@ -159,8 +202,8 @@ export default function AlertsPage() {
         action === "acknowledge"
           ? "user_acknowledged"
           : action === "resolve"
-            ? "user_resolved"
-            : "user_suppressed",
+          ? "user_resolved"
+          : "user_suppressed",
     };
     try {
       if (action === "acknowledge") {
@@ -174,8 +217,8 @@ export default function AlertsPage() {
         action === "acknowledge"
           ? "告警已确认"
           : action === "resolve"
-            ? "告警已解决"
-            : "同类告警已抑制",
+          ? "告警已解决"
+          : "同类告警已抑制"
       );
       await load();
     } catch (reason) {
@@ -250,9 +293,13 @@ export default function AlertsPage() {
         <Card className="mt-6 border-dashed">
           <Empty className="h-80 border-0">
             <EmptyHeader>
-              <EmptyMedia variant="icon"><CheckCircle2 className="text-emerald-600" /></EmptyMedia>
+              <EmptyMedia variant="icon">
+                <CheckCircle2 className="text-emerald-600" />
+              </EmptyMedia>
               <EmptyTitle className="text-base">当前没有这类告警</EmptyTitle>
-              <EmptyDescription>Radar 会在事件达到监控阈值时自动创建告警线程。</EmptyDescription>
+              <EmptyDescription>
+                Radar 会在事件达到监控阈值时自动创建告警线程。
+              </EmptyDescription>
             </EmptyHeader>
           </Empty>
         </Card>
@@ -279,14 +326,20 @@ export default function AlertsPage() {
                         <CircleAlert className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
                       )}
                       <div className="min-w-0">
-                        <p className="font-medium leading-6">
+                        <Button
+                          variant="link"
+                          className="h-auto justify-start p-0 text-left font-medium leading-6"
+                          onClick={() => void openDetail(thread)}
+                        >
                           {thread.title || `告警 #${thread.id}`}
-                        </p>
+                        </Button>
                         <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
                           {thread.reason || "事件信号达到当前监控阈值。"}
                         </p>
                         <Link
-                          href={`/dashboard/events?event=${thread.event_id ?? ""}`}
+                          href={`/dashboard/events?event=${
+                            thread.event_id ?? ""
+                          }`}
                           className="mt-2 inline-flex items-center gap-1 text-xs text-primary no-underline"
                         >
                           查看关联事件
@@ -344,7 +397,7 @@ export default function AlertsPage() {
                               解决告警
                             </DropdownMenuItem>
                           ) : null}
-                          {thread.state !== "suppressed" ? (
+                          {canSuppress && thread.state !== "suppressed" ? (
                             <>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
@@ -367,6 +420,163 @@ export default function AlertsPage() {
           </Table>
         </Card>
       )}
+
+      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{detail?.thread?.title ?? "告警详情"}</DialogTitle>
+            <DialogDescription>
+              {detail?.thread?.reason ?? "查看触发依据、历史和交付状态。"}
+            </DialogDescription>
+          </DialogHeader>
+          {detailLoading ? (
+            <div
+              className="flex h-48 items-center justify-center"
+              aria-label="正在加载告警详情"
+            >
+              <Loader2 className="animate-spin" />
+            </div>
+          ) : detailError ? (
+            <Alert variant="destructive">
+              <CircleAlert />
+              <AlertTitle>详情加载失败</AlertTitle>
+              <AlertDescription>{detailError}</AlertDescription>
+            </Alert>
+          ) : detail?.thread ? (
+            <div className="space-y-6">
+              <section aria-labelledby="alert-evidence-title">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 id="alert-evidence-title" className="text-sm font-medium">
+                    触发依据
+                  </h2>
+                  <SeverityBadge severity={detail.thread.severity} />
+                </div>
+                <dl className="mt-3 grid grid-cols-2 gap-3 rounded-md border p-4 text-sm sm:grid-cols-4">
+                  <div>
+                    <dt className="text-xs text-muted-foreground">
+                      综合重要性
+                    </dt>
+                    <dd className="mt-1 font-medium tabular-nums">
+                      ≥ {detail.thread.threshold ?? 0}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">最低热度</dt>
+                    <dd className="mt-1 font-medium tabular-nums">
+                      ≥ {detail.thread.min_heat ?? 0}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">最低动量</dt>
+                    <dd className="mt-1 font-medium tabular-nums">
+                      ≥ {detail.thread.min_momentum ?? 0}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">最低宽度</dt>
+                    <dd className="mt-1 font-medium tabular-nums">
+                      ≥ {detail.thread.min_breadth ?? 0}
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+              <section aria-labelledby="alert-occurrences-title">
+                <h2
+                  id="alert-occurrences-title"
+                  className="text-sm font-medium"
+                >
+                  变化记录
+                </h2>
+                <div className="mt-3 space-y-2">
+                  {(detail.occurrences ?? []).map((occurrence) => (
+                    <div
+                      key={occurrence.id}
+                      className="rounded-md border p-3 text-sm"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <SeverityBadge severity={occurrence.severity} />
+                        <time className="text-xs text-muted-foreground">
+                          {formatRadarTime(occurrence.triggered_at)}
+                        </time>
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        综合 {occurrence.final_score ?? 0} · 热度{" "}
+                        {occurrence.heat_score ?? 0} · 动量{" "}
+                        {occurrence.momentum_score ?? 0} · 宽度{" "}
+                        {occurrence.breadth_score ?? 0}
+                      </p>
+                      {!!occurrence.reason_codes?.length && (
+                        <p className="mt-1 text-xs">
+                          原因：{occurrence.reason_codes.join("、")}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+              <section aria-labelledby="alert-delivery-title">
+                <h2
+                  id="alert-delivery-title"
+                  className="flex items-center gap-2 text-sm font-medium"
+                >
+                  <Mail className="h-4 w-4" />
+                  邮件交付
+                </h2>
+                <div className="mt-3 space-y-2">
+                  {(detail.email_deliveries ?? []).length ? (
+                    detail.email_deliveries?.map((delivery) => (
+                      <div
+                        key={delivery.id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm"
+                      >
+                        <div>
+                          <p className="font-medium">
+                            {deliveryLabels[delivery.status ?? ""] ??
+                              delivery.status}
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            尝试 {delivery.attempt_count ?? 0}/5 次
+                            {delivery.last_error
+                              ? ` · ${delivery.last_error}`
+                              : ""}
+                          </p>
+                        </div>
+                        <SeverityBadge severity={delivery.severity} />
+                      </div>
+                    ))
+                  ) : (
+                    <p className="rounded-md border border-dashed p-4 text-xs text-muted-foreground">
+                      该告警未规划邮件，或仍处于冷却期。
+                    </p>
+                  )}
+                </div>
+              </section>
+              <section aria-labelledby="alert-audit-title">
+                <h2 id="alert-audit-title" className="text-sm font-medium">
+                  状态审计
+                </h2>
+                <ol className="mt-3 space-y-2 text-xs text-muted-foreground">
+                  {(detail.audits ?? []).length ? (
+                    detail.audits?.map((audit) => (
+                      <li key={audit.id} className="rounded-md border p-3">
+                        {stateLabels[audit.from_state ?? ""] ??
+                          audit.from_state}{" "}
+                        → {stateLabels[audit.to_state ?? ""] ?? audit.to_state}{" "}
+                        · {audit.reason_code} ·{" "}
+                        {formatRadarTime(audit.created_at)}
+                      </li>
+                    ))
+                  ) : (
+                    <li className="rounded-md border border-dashed p-4">
+                      暂无状态变更。
+                    </li>
+                  )}
+                </ol>
+              </section>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog
         open={Boolean(pendingSuppression)}

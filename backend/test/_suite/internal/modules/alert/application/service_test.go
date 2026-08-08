@@ -44,7 +44,7 @@ func (fake *occurrenceWriterFake) RecordOccurrence(_ context.Context, command do
 	if fake.err != nil {
 		return domain.RecordOccurrenceResult{}, fake.err
 	}
-	return domain.RecordOccurrenceResult{Created: true}, nil
+	return domain.RecordOccurrenceResult{Created: true, Disturb: true, Occurrence: domain.Occurrence{ID: 51, Fingerprint: command.Fingerprint}, Thread: domain.Thread{Severity: command.Severity, TitleSnapshot: command.TitleSnapshot, ReasonSnapshot: command.ReasonSnapshot}}, nil
 }
 
 var _ EventCandidateReader = (*candidateReaderFake)(nil)
@@ -55,9 +55,9 @@ func TestServiceUsesNarrowPortsForEligibilityAndFreezesPublishedPolicy(t *testin
 	t.Parallel()
 	observedAt := time.Date(2026, 8, 4, 4, 0, 0, 0, time.UTC)
 	candidates := &candidateReaderFake{candidates: []EventAlertCandidate{
-		{MonitorID: 10, EventID: 20, UpdateKind: "rising", FinalScore: 75, TitleSnapshot: "Event 20", ReasonSnapshot: "heat entered rising", TriggeredAt: observedAt},
+		{MonitorID: 10, EventID: 20, UpdateKind: "rising", FinalScore: 75, HeatScore: 80, MomentumScore: 70, BreadthScore: 50, TitleSnapshot: "Event 20", ReasonSnapshot: "heat entered rising", TriggeredAt: observedAt},
 		{MonitorID: 11, EventID: 21, UpdateKind: "cooling", FinalScore: 99, TitleSnapshot: "ignored cooling", TriggeredAt: observedAt},
-		{MonitorID: 12, EventID: 22, UpdateKind: "event_created", FinalScore: 74.99, TitleSnapshot: "below threshold", TriggeredAt: observedAt},
+		{MonitorID: 12, EventID: 22, UpdateKind: "event_created", FinalScore: 74.99, HeatScore: 80, MomentumScore: 70, BreadthScore: 50, TitleSnapshot: "below threshold", TriggeredAt: observedAt},
 		{MonitorID: 13, EventID: 23, UpdateKind: "reactivated", FinalScore: 98, TitleSnapshot: "no active policy", TriggeredAt: observedAt},
 	}}
 	policies := &policyReaderFake{policies: []PublishedAlertPolicy{
@@ -93,7 +93,7 @@ func TestServiceUsesNarrowPortsForEligibilityAndFreezesPublishedPolicy(t *testin
 	if command.MonitorConfigVersionID != 101 || command.MonitorRevision != 7 || command.MonitorConfigHash != strings.Repeat("a", 64) || command.EventThresholdSnapshot != 75 {
 		t.Fatalf("published policy was not frozen: %#v", command)
 	}
-	if command.FinalScoreSnapshot != 75 || command.Severity != domain.SeverityWarning || command.PolicyVersion != domain.PolicyVersionV1 || command.Fingerprint == "" {
+	if command.FinalScoreSnapshot != 75 || command.HeatScoreSnapshot != 80 || command.MomentumScoreSnapshot != 70 || command.BreadthScoreSnapshot != 50 || command.Severity != domain.SeverityWarning || command.PolicyVersion != domain.PolicyVersionV2 || command.Fingerprint == "" {
 		t.Fatalf("occurrence snapshot = %#v", command)
 	}
 }
@@ -101,7 +101,7 @@ func TestServiceUsesNarrowPortsForEligibilityAndFreezesPublishedPolicy(t *testin
 func TestServiceKeepsPublishedRevisionsAsDistinctThreadIdentities(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 8, 4, 4, 0, 0, 0, time.UTC)
-	candidates := &candidateReaderFake{candidates: []EventAlertCandidate{{MonitorID: 10, EventID: 20, UpdateKind: "metric_changed", FinalScore: 91, TriggeredAt: now}}}
+	candidates := &candidateReaderFake{candidates: []EventAlertCandidate{{MonitorID: 10, EventID: 20, UpdateKind: "metric_changed", FinalScore: 91, HeatScore: 90, MomentumScore: 80, BreadthScore: 75, TriggeredAt: now}}}
 	policies := &policyReaderFake{policies: []PublishedAlertPolicy{{MonitorID: 10, ConfigVersionID: 101, Revision: 7, ConfigHash: strings.Repeat("a", 64), EventThreshold: 80}}}
 	writer := &occurrenceWriterFake{}
 	service, err := NewService(Dependencies{Candidates: candidates, Policies: policies, Occurrences: writer})

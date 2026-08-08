@@ -22,6 +22,11 @@ export const MONITOR_LIMITS = {
   interval: { min: 300, max: 86_400, step: 60 },
   relevance: { min: 60, max: 100 },
   event: { min: 0, max: 100 },
+  alertHeat: { min: 0, max: 100 },
+  alertMomentum: { min: 0, max: 100 },
+  alertBreadth: { min: 0, max: 100 },
+  alertSeverity: { min: 0, max: 100 },
+  alertCooldown: { min: 5, max: 1_440 },
   retention: { min: 1, max: 3_650 },
 } as const;
 
@@ -34,6 +39,14 @@ export type MonitorDraftForm = {
   interval: number;
   relevance: number;
   event: number;
+  alertHeat: number;
+  alertMomentum: number;
+  alertBreadth: number;
+  alertWarning: number;
+  alertCritical: number;
+  alertCooldown: number;
+  alertEmailEnabled: boolean;
+  alertEmailMinSeverity: "warning" | "critical";
   retention: number;
   sourceIds: number[];
 };
@@ -42,7 +55,7 @@ let ruleSequence = 0;
 
 export function createMonitorRule(
   ruleType: MonitorRuleType = "keyword",
-  value = "",
+  value = ""
 ): MonitorDraftRule {
   ruleSequence += 1;
   return { key: `rule-${ruleSequence}`, ruleType, value };
@@ -57,8 +70,13 @@ export function validateMonitorDraft(form: MonitorDraftForm): string | null {
   if (!form.languages.length) return "请至少选择 1 种语言";
   if (form.languages.length > 8) return "语言最多选择 8 种";
   if (!form.rules.length) return "请至少添加 1 条包含规则";
-  if (form.rules.length > MAX_MONITOR_RULES) return `规则最多 ${MAX_MONITOR_RULES} 条`;
-  if (!form.rules.some((rule) => rule.ruleType !== "exclude_keyword" && rule.value.trim()))
+  if (form.rules.length > MAX_MONITOR_RULES)
+    return `规则最多 ${MAX_MONITOR_RULES} 条`;
+  if (
+    !form.rules.some(
+      (rule) => rule.ruleType !== "exclude_keyword" && rule.value.trim()
+    )
+  )
     return "请至少添加 1 条关键词、短语或别名";
   const seen = new Set<string>();
   for (const rule of form.rules) {
@@ -77,11 +95,37 @@ export function validateMonitorDraft(form: MonitorDraftForm): string | null {
     form.interval % MONITOR_LIMITS.interval.step !== 0
   )
     return "采集间隔需为 300–86400 秒，并且是 60 的倍数";
-  if (form.relevance < MONITOR_LIMITS.relevance.min || form.relevance > MONITOR_LIMITS.relevance.max)
+  if (
+    form.relevance < MONITOR_LIMITS.relevance.min ||
+    form.relevance > MONITOR_LIMITS.relevance.max
+  )
     return "相关性阈值需为 60–100";
-  if (form.event < MONITOR_LIMITS.event.min || form.event > MONITOR_LIMITS.event.max)
+  if (
+    form.event < MONITOR_LIMITS.event.min ||
+    form.event > MONITOR_LIMITS.event.max
+  )
     return "事件阈值需为 0–100";
-  if (form.retention < MONITOR_LIMITS.retention.min || form.retention > MONITOR_LIMITS.retention.max)
+  if (
+    [form.alertHeat, form.alertMomentum, form.alertBreadth].some(
+      (value) => value < 0 || value > 100
+    )
+  )
+    return "告警热度、动量和来源宽度需为 0–100";
+  if (
+    form.alertWarning < 0 ||
+    form.alertCritical > 100 ||
+    form.alertWarning > form.alertCritical
+  )
+    return "严重级别阈值需满足 0 ≤ 警告 ≤ 严重 ≤ 100";
+  if (
+    form.alertCooldown < MONITOR_LIMITS.alertCooldown.min ||
+    form.alertCooldown > MONITOR_LIMITS.alertCooldown.max
+  )
+    return "告警冷却时间需为 5–1440 分钟";
+  if (
+    form.retention < MONITOR_LIMITS.retention.min ||
+    form.retention > MONITOR_LIMITS.retention.max
+  )
     return "保留天数需为 1–3650";
   return null;
 }
@@ -93,6 +137,14 @@ export function buildMonitorDraftRequest(form: MonitorDraftForm) {
     config: {
       collection_interval_seconds: form.interval,
       event_threshold: form.event,
+      alert_min_heat: form.alertHeat,
+      alert_min_momentum: form.alertMomentum,
+      alert_min_breadth: form.alertBreadth,
+      alert_warning_threshold: form.alertWarning,
+      alert_critical_threshold: form.alertCritical,
+      alert_cooldown_minutes: form.alertCooldown,
+      alert_email_enabled: form.alertEmailEnabled,
+      alert_email_min_severity: form.alertEmailMinSeverity,
       languages: form.languages,
       regions: form.region === MonitorRegion.Global ? [] : [form.region],
       relevance_threshold: form.relevance,
@@ -115,13 +167,19 @@ export function buildMonitorDraftRequest(form: MonitorDraftForm) {
   };
 }
 
-export function monitorToDraftForm(monitor: HotKeyAPI.MonitorResponse): MonitorDraftForm {
+export function monitorToDraftForm(
+  monitor: HotKeyAPI.MonitorResponse
+): MonitorDraftForm {
   const config = monitor.draft ?? monitor.published;
   const region = config?.regions?.[0];
   const editableRules = (config?.rules ?? []).flatMap((rule) => {
     const ruleType = rule.rule_type;
-    const supported = MONITOR_RULE_TYPES.some((option) => option.value === ruleType);
-    return rule.enabled !== false && (!rule.origin || rule.origin === "user") && supported
+    const supported = MONITOR_RULE_TYPES.some(
+      (option) => option.value === ruleType
+    );
+    return rule.enabled !== false &&
+      (!rule.origin || rule.origin === "user") &&
+      supported
       ? [{ ...rule, rule_type: ruleType as MonitorRuleType }]
       : [];
   });
@@ -129,7 +187,9 @@ export function monitorToDraftForm(monitor: HotKeyAPI.MonitorResponse): MonitorD
     name: monitor.name ?? "",
     description: monitor.description ?? "",
     rules: editableRules.length
-      ? editableRules.map((rule) => createMonitorRule(rule.rule_type, rule.value ?? ""))
+      ? editableRules.map((rule) =>
+          createMonitorRule(rule.rule_type, rule.value ?? "")
+        )
       : [createMonitorRule()],
     languages: config?.languages?.length ? config.languages : ["zh"],
     region:
@@ -139,12 +199,21 @@ export function monitorToDraftForm(monitor: HotKeyAPI.MonitorResponse): MonitorD
     interval: config?.collection_interval_seconds ?? 900,
     relevance: config?.relevance_threshold ?? 60,
     event: config?.event_threshold ?? 70,
+    alertHeat: config?.alert_min_heat ?? 70,
+    alertMomentum: config?.alert_min_momentum ?? 55,
+    alertBreadth: config?.alert_min_breadth ?? 25,
+    alertWarning: config?.alert_warning_threshold ?? 75,
+    alertCritical: config?.alert_critical_threshold ?? 90,
+    alertCooldown: config?.alert_cooldown_minutes ?? 60,
+    alertEmailEnabled: config?.alert_email_enabled ?? false,
+    alertEmailMinSeverity:
+      config?.alert_email_min_severity === "warning" ? "warning" : "critical",
     retention: config?.retention_days ?? 30,
     sourceIds:
       config?.sources?.flatMap((source) =>
         source.enabled !== false && source.source_connection_id != null
           ? [source.source_connection_id]
-          : [],
+          : []
       ) ?? [],
   };
 }
@@ -153,13 +222,22 @@ export function selectAllMonitorSources(availableIds: number[]): number[] {
   return Array.from(new Set(availableIds)).slice(0, MAX_MONITOR_SOURCES);
 }
 
-export function toggleMonitorSource(selectedIds: number[], id: number, checked: boolean): number[] {
+export function toggleMonitorSource(
+  selectedIds: number[],
+  id: number,
+  checked: boolean
+): number[] {
   if (!checked) return selectedIds.filter((value) => value !== id);
-  if (selectedIds.includes(id) || selectedIds.length >= MAX_MONITOR_SOURCES) return selectedIds;
+  if (selectedIds.includes(id) || selectedIds.length >= MAX_MONITOR_SOURCES)
+    return selectedIds;
   return [...selectedIds, id];
 }
 
-export function toggleMonitorLanguage(selected: string[], language: string, checked: boolean): string[] {
+export function toggleMonitorLanguage(
+  selected: string[],
+  language: string,
+  checked: boolean
+): string[] {
   if (!checked) return selected.filter((value) => value !== language);
   return selected.includes(language) ? selected : [...selected, language];
 }

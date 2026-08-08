@@ -41,7 +41,7 @@ Plan 中的“当前实现”仅用于确定差距；只有 Acceptance 保存完
 | 020 | [事件聚类生命周期热度与趋势](../design/archive/020-事件聚类生命周期热度与趋势设计.md) | [PRD](../prd/archive/020-事件聚类生命周期热度与趋势.md) | [Plan](archive/020-事件聚类生命周期热度与趋势计划.md) | completed |
 | 021 | [内容与事件检索筛选排序](../design/archive/021-内容与事件检索筛选排序设计.md) | [PRD](../prd/archive/021-内容与事件检索筛选排序.md) | [Plan](archive/021-内容与事件检索筛选排序计划.md) | completed |
 | 022 | [实时事件流与站内通知](../design/archive/022-实时事件流与站内通知设计.md) | [PRD](../prd/archive/022-实时事件流与站内通知.md) | [Plan](archive/022-实时事件流与站内通知计划.md) | completed |
-| 023 | [低噪声告警与邮件交付](../design/023-低噪声告警与邮件交付设计.md) | [PRD](../prd/023-低噪声告警与邮件交付.md) | [Plan](023-低噪声告警与邮件交付计划.md) | planned |
+| 023 | [低噪声告警与邮件交付](../design/archive/023-低噪声告警与邮件交付设计.md) | [PRD](../prd/archive/023-低噪声告警与邮件交付.md) | [Plan](archive/023-低噪声告警与邮件交付计划.md) | completed |
 | 024 | [日报周报私有Feed与知识归档](../design/024-日报周报私有Feed与知识归档设计.md) | [PRD](../prd/024-日报周报私有Feed与知识归档.md) | [Plan](024-日报周报私有Feed与知识归档计划.md) | planned |
 | 025 | [配额限流保留与审计治理](../design/025-配额限流保留与审计治理设计.md) | [PRD](../prd/025-配额限流保留与审计治理.md) | [Plan](025-配额限流保留与审计治理计划.md) | planned |
 | 026 | [Web工作台全页面交互](../design/026-Web工作台全页面交互设计.md) | [PRD](../prd/026-Web工作台全页面交互.md) | [Plan](026-Web工作台全页面交互计划.md) | planned |

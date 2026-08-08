@@ -7126,6 +7126,12 @@ const docTemplate = `{
                         "$ref": "#/definitions/http.AlertStateAuditResponse"
                     }
                 },
+                "email_deliveries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.AlertEmailDeliveryResponse"
+                    }
+                },
                 "occurrences": {
                     "type": "array",
                     "items": {
@@ -7137,17 +7143,55 @@ const docTemplate = `{
                 }
             }
         },
+        "http.AlertEmailDeliveryResponse": {
+            "type": "object",
+            "properties": {
+                "attempt_count": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "last_error": {
+                    "type": "string"
+                },
+                "next_attempt_at": {
+                    "type": "string"
+                },
+                "occurrence_id": {
+                    "type": "integer"
+                },
+                "severity": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "succeeded_at": {
+                    "type": "string"
+                }
+            }
+        },
         "http.AlertOccurrenceResponse": {
             "type": "object",
             "properties": {
+                "breadth_score": {
+                    "type": "number"
+                },
                 "event_update_id": {
                     "type": "integer"
                 },
                 "final_score": {
                     "type": "number"
                 },
+                "heat_score": {
+                    "type": "number"
+                },
                 "id": {
                     "type": "integer"
+                },
+                "momentum_score": {
+                    "type": "number"
                 },
                 "reason_codes": {
                     "type": "array",
@@ -7274,8 +7318,14 @@ const docTemplate = `{
                 "acknowledged_by_user_id": {
                     "type": "integer"
                 },
+                "cooldown_minutes": {
+                    "type": "integer"
+                },
                 "cooldown_until": {
                     "type": "string"
+                },
+                "critical_threshold": {
+                    "type": "number"
                 },
                 "event_id": {
                     "type": "integer"
@@ -7288,6 +7338,15 @@ const docTemplate = `{
                 },
                 "last_triggered_at": {
                     "type": "string"
+                },
+                "min_breadth": {
+                    "type": "number"
+                },
+                "min_heat": {
+                    "type": "number"
+                },
+                "min_momentum": {
+                    "type": "number"
                 },
                 "monitor_id": {
                     "type": "integer"
@@ -7333,6 +7392,9 @@ const docTemplate = `{
                 },
                 "version": {
                     "type": "integer"
+                },
+                "warning_threshold": {
+                    "type": "number"
                 }
             }
         },
@@ -9478,6 +9540,54 @@ const docTemplate = `{
                 "timezone"
             ],
             "properties": {
+                "alert_cooldown_minutes": {
+                    "type": "integer",
+                    "maximum": 1440,
+                    "minimum": 5,
+                    "example": 60
+                },
+                "alert_critical_threshold": {
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0,
+                    "example": 90
+                },
+                "alert_email_enabled": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "alert_email_min_severity": {
+                    "type": "string",
+                    "enum": [
+                        "warning",
+                        "critical"
+                    ],
+                    "example": "critical"
+                },
+                "alert_min_breadth": {
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0,
+                    "example": 25
+                },
+                "alert_min_heat": {
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0,
+                    "example": 70
+                },
+                "alert_min_momentum": {
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0,
+                    "example": 55
+                },
+                "alert_warning_threshold": {
+                    "type": "number",
+                    "maximum": 100,
+                    "minimum": 0,
+                    "example": 75
+                },
                 "collection_interval_seconds": {
                     "type": "integer",
                     "maximum": 86400,
@@ -9529,6 +9639,30 @@ const docTemplate = `{
         "http.MonitorConfigResponse": {
             "type": "object",
             "properties": {
+                "alert_cooldown_minutes": {
+                    "type": "integer"
+                },
+                "alert_critical_threshold": {
+                    "type": "number"
+                },
+                "alert_email_enabled": {
+                    "type": "boolean"
+                },
+                "alert_email_min_severity": {
+                    "type": "string"
+                },
+                "alert_min_breadth": {
+                    "type": "number"
+                },
+                "alert_min_heat": {
+                    "type": "number"
+                },
+                "alert_min_momentum": {
+                    "type": "number"
+                },
+                "alert_warning_threshold": {
+                    "type": "number"
+                },
                 "collection_interval_seconds": {
                     "type": "integer"
                 },

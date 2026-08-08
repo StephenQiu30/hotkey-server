@@ -30,8 +30,10 @@ func TestSpecsHaveUniqueTablesAndColumns(t *testing.T) {
 		"content_metric_snapshots":     {"id", "content_id", "captured_at", "view_count", "like_count", "comment_count", "share_count"},
 		"metric_capability_profiles":   {"id", "version", "source_type", "profile_version", "status", "published_at", "archived_at"},
 		"event_updates":                {"id", "version", "event_id", "sequence_no", "kind", "summary", "observed_at", "reason_codes", "before_state", "after_state", "evidence_set_hash", "idempotency_key", "created_at"},
-		"alert_threads":                {"id", "version", "monitor_id", "monitor_config_version_id", "monitor_revision", "monitor_config_hash", "event_id", "trigger_type", "policy_version", "state", "severity", "event_threshold_snapshot", "title_snapshot", "reason_snapshot", "first_triggered_at", "last_triggered_at", "occurrence_count", "cooldown_until", "acknowledged_at", "acknowledged_by_user_id", "resolved_at", "resolved_by_user_id", "suppressed_at", "suppressed_by_user_id", "created_at", "updated_at"},
-		"alert_occurrences":            {"id", "alert_thread_id", "event_update_id", "severity", "final_score_snapshot", "threshold_snapshot", "reason_codes", "fingerprint", "triggered_at", "created_at"},
+		"alert_threads":                {"id", "version", "monitor_id", "monitor_config_version_id", "monitor_revision", "monitor_config_hash", "event_id", "trigger_type", "policy_version", "state", "severity", "event_threshold_snapshot", "alert_min_heat_snapshot", "alert_min_momentum_snapshot", "alert_min_breadth_snapshot", "alert_warning_threshold_snapshot", "alert_critical_threshold_snapshot", "alert_cooldown_minutes_snapshot", "title_snapshot", "reason_snapshot", "first_triggered_at", "last_triggered_at", "occurrence_count", "cooldown_until", "acknowledged_at", "acknowledged_by_user_id", "resolved_at", "resolved_by_user_id", "suppressed_at", "suppressed_by_user_id", "created_at", "updated_at"},
+		"alert_occurrences":            {"id", "alert_thread_id", "event_update_id", "severity", "final_score_snapshot", "threshold_snapshot", "heat_score_snapshot", "momentum_score_snapshot", "breadth_score_snapshot", "reason_codes", "fingerprint", "triggered_at", "created_at"},
+		"alert_email_deliveries":       {"id", "occurrence_id", "idempotency_key", "severity", "status", "next_attempt_at", "succeeded_at"},
+		"alert_email_attempts":         {"id", "delivery_id", "attempt_no", "status"},
 		"alert_state_audits":           {"id", "alert_thread_id", "actor_type", "actor_user_id", "from_state", "to_state", "expected_version", "reason_code", "created_at"},
 		"notification_events":          {"id", "event_type", "resource_type", "resource_id", "audience_role", "occurred_at", "payload", "dedupe_key", "created_at"},
 	}
@@ -52,7 +54,7 @@ func TestSpecsHaveUniqueTablesAndColumns(t *testing.T) {
 			t.Errorf("missing mapped table %s", table)
 		}
 	}
-	if got, want := len(seen), 63; got != want {
+	if got, want := len(seen), 65; got != want {
 		t.Errorf("mapped table count = %d, want %d", got, want)
 	}
 }

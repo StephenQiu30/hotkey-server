@@ -232,6 +232,8 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newReportBuildHandler,
 					newDeliveryEmailService,
 					newDeliverEmailHandler,
+					newAlertEmailService,
+					newDeliverAlertEmailHandler,
 					newP0Handlers,
 					newQueueWorker, exposeWorkerRunner, exposeCollectionDueReader, newCollectionScheduler, exposeCollectionSchedulerRunner,
 					newReportScheduler, exposeReportSchedulerRunner,
@@ -438,9 +440,10 @@ func newAlertRepository(runtime *database.Runtime, cfg config.Config) (*alertpos
 	return alertpostgres.NewRepositoryWithCursorSecret(runtime, cfg.Authentication.JWTSecret)
 }
 
-func newAlertService(candidates *eventpostgres.AlertCandidateReader, policies *monitorpostgres.AlertPolicyReader, repository *alertpostgres.Repository) (*alertapplication.Service, error) {
+func newAlertService(candidates *eventpostgres.AlertCandidateReader, policies *monitorpostgres.AlertPolicyReader, repository *alertpostgres.Repository, runtime *database.Runtime, deliveries *deliverypostgres.Repository, jobs *queue.Store) (*alertapplication.Service, error) {
 	return alertapplication.NewService(alertapplication.Dependencies{
 		Candidates: candidates, Policies: policies, Occurrences: repository, Clock: sharedclock.System{},
+		Transactions: alertTransactionRunner{runtime: runtime}, Emails: alertEmailPlanner{repository: deliveries, jobs: jobs},
 	})
 }
 
@@ -498,7 +501,7 @@ func newAlertEvaluateHandler(service *alertapplication.Service) *alertjobs.Evalu
 	return alertjobs.NewEvaluateHandler(service)
 }
 
-func newP0Handlers(collect *sourcejobs.CollectHandler, normalize *ingestionjobs.NormalizeHandler, evaluate *ingestionjobs.EvaluateHandler, cluster *eventjobs.ClusterHandler, heat *eventjobs.HeatHandler, alerts *alertjobs.EvaluateHandler, summary *intelligencejobs.SummaryHandler, projectKnowledge *projectKnowledgeHandler, reconcileKnowledge *reconcileKnowledgeHandler, buildReport *reportjobs.BuildHandler, deliverEmail *deliveryjobs.DeliverEmailHandler) map[string]queue.Handler {
+func newP0Handlers(collect *sourcejobs.CollectHandler, normalize *ingestionjobs.NormalizeHandler, evaluate *ingestionjobs.EvaluateHandler, cluster *eventjobs.ClusterHandler, heat *eventjobs.HeatHandler, alerts *alertjobs.EvaluateHandler, summary *intelligencejobs.SummaryHandler, projectKnowledge *projectKnowledgeHandler, reconcileKnowledge *reconcileKnowledgeHandler, buildReport *reportjobs.BuildHandler, deliverEmail *deliveryjobs.DeliverEmailHandler, deliverAlertEmail *deliveryjobs.DeliverAlertEmailHandler) map[string]queue.Handler {
 	return map[string]queue.Handler{
 		queue.KindCollectSource:        collect.Handle,
 		queue.KindNormalizeContent:     normalize.Handle,
@@ -511,6 +514,7 @@ func newP0Handlers(collect *sourcejobs.CollectHandler, normalize *ingestionjobs.
 		queue.KindReconcileKnowledge:   reconcileKnowledge.Handle,
 		queue.KindBuildReport:          buildReport.Handle,
 		queue.KindDeliverEmail:         deliverEmail.Handle,
+		queue.KindDeliverAlertEmail:    deliverAlertEmail.Handle,
 	}
 }
 
@@ -650,6 +654,14 @@ func newDeliveryEmailService(repository *deliverypostgres.Repository, cfg config
 
 func newDeliverEmailHandler(service *deliveryapplication.EmailService, repository *deliverypostgres.Repository) (*deliveryjobs.DeliverEmailHandler, error) {
 	return deliveryjobs.NewDeliverEmailHandler(service, repository)
+}
+
+func newAlertEmailService(repository *deliverypostgres.Repository, cfg config.Config) (*deliveryapplication.AlertEmailService, error) {
+	return deliveryapplication.NewAlertEmailService(repository, deliveryMailSender{mailer: deliverysmtp.NewMailer(cfg.Authentication.SMTP)}, nil)
+}
+
+func newDeliverAlertEmailHandler(service *deliveryapplication.AlertEmailService) (*deliveryjobs.DeliverAlertEmailHandler, error) {
+	return deliveryjobs.NewDeliverAlertEmailHandler(service)
 }
 
 func newJobService(repository *operationspostgres.JobRepository, audit *operationspostgres.AuditWriter) (*operationsapplication.JobService, error) {

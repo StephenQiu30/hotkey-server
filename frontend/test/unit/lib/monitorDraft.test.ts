@@ -18,6 +18,14 @@ const baseForm = {
   interval: 900,
   relevance: 60,
   event: 70,
+  alertHeat: 70,
+  alertMomentum: 55,
+  alertBreadth: 25,
+  alertWarning: 75,
+  alertCritical: 90,
+  alertCooldown: 60,
+  alertEmailEnabled: false,
+  alertEmailMinSeverity: "critical" as const,
   retention: 30,
   sourceIds: [1],
 };
@@ -30,6 +38,16 @@ describe("monitor draft contract", () => {
     });
 
     expect(request.config.regions).toEqual([]);
+    expect(request.config).toMatchObject({
+      alert_min_heat: 70,
+      alert_min_momentum: 55,
+      alert_min_breadth: 25,
+      alert_warning_threshold: 75,
+      alert_critical_threshold: 90,
+      alert_cooldown_minutes: 60,
+      alert_email_enabled: false,
+      alert_email_min_severity: "critical",
+    });
   });
 
   it("builds the source priorities from the selected source order", () => {
@@ -56,9 +74,21 @@ describe("monitor draft contract", () => {
     });
     expect(request.config.languages).toEqual(["zh", "en"]);
     expect(request.rules).toEqual([
-      expect.objectContaining({ rule_type: "keyword", value: "OpenAI", weight: 100 }),
-      expect.objectContaining({ rule_type: "entity", value: "开放人工智能", weight: 100 }),
-      expect.objectContaining({ rule_type: "exclude_keyword", value: "招聘", weight: 0 }),
+      expect.objectContaining({
+        rule_type: "keyword",
+        value: "OpenAI",
+        weight: 100,
+      }),
+      expect.objectContaining({
+        rule_type: "entity",
+        value: "开放人工智能",
+        weight: 100,
+      }),
+      expect.objectContaining({
+        rule_type: "exclude_keyword",
+        value: "招聘",
+        weight: 0,
+      }),
     ]);
   });
 
@@ -75,34 +105,66 @@ describe("monitor draft contract", () => {
     expect(validateMonitorDraft({ ...baseForm, relevance: 59 })).toBe(
       "相关性阈值需为 60–100"
     );
+    expect(
+      validateMonitorDraft({ ...baseForm, alertWarning: 95, alertCritical: 90 })
+    ).toBe("严重级别阈值需满足 0 ≤ 警告 ≤ 严重 ≤ 100");
   });
 
   it("prefills an editable form from the newest draft without losing source identity", () => {
     const form = monitorToDraftForm({
       name: "AI releases",
       description: "Official launches",
-      published: { revision: 1, rules: [{ value: "old" }], sources: [{ source_connection_id: 4 }] },
+      published: {
+        revision: 1,
+        rules: [{ value: "old" }],
+        sources: [{ source_connection_id: 4 }],
+      },
       draft: {
         revision: 2,
         collection_interval_seconds: 600,
         event_threshold: 80,
+        alert_min_heat: 72,
+        alert_min_momentum: 60,
+        alert_min_breadth: 50,
+        alert_warning_threshold: 78,
+        alert_critical_threshold: 92,
+        alert_cooldown_minutes: 90,
+        alert_email_enabled: true,
+        alert_email_min_severity: "warning",
         languages: ["en"],
         regions: ["US"],
         relevance_threshold: 72,
         retention_days: 45,
-        rules: [{ rule_type: "keyword", value: "OpenAI", origin: "user", enabled: true }],
+        rules: [
+          {
+            rule_type: "keyword",
+            value: "OpenAI",
+            origin: "user",
+            enabled: true,
+          },
+        ],
         sources: [{ source_connection_id: 7, enabled: true }],
       },
     });
     expect(form).toEqual({
       name: "AI releases",
       description: "Official launches",
-      rules: [expect.objectContaining({ ruleType: "keyword", value: "OpenAI" })],
+      rules: [
+        expect.objectContaining({ ruleType: "keyword", value: "OpenAI" }),
+      ],
       languages: ["en"],
       region: MonitorRegion.UnitedStates,
       interval: 600,
       relevance: 72,
       event: 80,
+      alertHeat: 72,
+      alertMomentum: 60,
+      alertBreadth: 50,
+      alertWarning: 78,
+      alertCritical: 92,
+      alertCooldown: 90,
+      alertEmailEnabled: true,
+      alertEmailMinSeverity: "warning",
       retention: 45,
       sourceIds: [7],
     });

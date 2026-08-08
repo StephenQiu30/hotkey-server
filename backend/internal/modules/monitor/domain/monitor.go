@@ -71,6 +71,8 @@ type Monitor struct {
 	Status                   MonitorStatus
 	DraftConfigVersionID     *int64
 	PublishedConfigVersionID *int64
+	CreatedByUserID          int64
+	UpdatedByUserID          int64
 	CreatedAt                time.Time
 	UpdatedAt                time.Time
 	DeletedAt                *time.Time
@@ -83,7 +85,40 @@ type MonitorConfig struct {
 	CollectionIntervalSeconds int
 	RelevanceThreshold        float64
 	EventThreshold            float64
+	AlertMinHeat              float64
+	AlertMinMomentum          float64
+	AlertMinBreadth           float64
+	AlertWarningThreshold     float64
+	AlertCriticalThreshold    float64
+	AlertCooldownMinutes      int
+	AlertEmailEnabled         bool
+	AlertEmailMinSeverity     AlertEmailSeverity
 	RetentionDays             int
+}
+
+type AlertEmailSeverity string
+
+const (
+	AlertEmailSeverityWarning  AlertEmailSeverity = "warning"
+	AlertEmailSeverityCritical AlertEmailSeverity = "critical"
+)
+
+func DefaultMonitorAlertPolicy() MonitorConfig {
+	return MonitorConfig{AlertMinHeat: 70, AlertMinMomentum: 55, AlertMinBreadth: 25, AlertWarningThreshold: 75, AlertCriticalThreshold: 90, AlertCooldownMinutes: 60, AlertEmailMinSeverity: AlertEmailSeverityCritical}
+}
+
+func withDefaultAlertPolicy(config MonitorConfig) MonitorConfig {
+	if config.AlertCooldownMinutes == 0 && config.AlertEmailMinSeverity == "" && config.AlertWarningThreshold == 0 && config.AlertCriticalThreshold == 0 && config.AlertMinHeat == 0 && config.AlertMinMomentum == 0 && config.AlertMinBreadth == 0 {
+		defaults := DefaultMonitorAlertPolicy()
+		config.AlertMinHeat = defaults.AlertMinHeat
+		config.AlertMinMomentum = defaults.AlertMinMomentum
+		config.AlertMinBreadth = defaults.AlertMinBreadth
+		config.AlertWarningThreshold = defaults.AlertWarningThreshold
+		config.AlertCriticalThreshold = defaults.AlertCriticalThreshold
+		config.AlertCooldownMinutes = defaults.AlertCooldownMinutes
+		config.AlertEmailMinSeverity = defaults.AlertEmailMinSeverity
+	}
+	return config
 }
 
 type MonitorConfigVersion struct {
@@ -144,6 +179,7 @@ func NormalizeMonitorDescription(value string) (string, error) {
 }
 
 func NormalizeMonitorConfig(config MonitorConfig) (MonitorConfig, error) {
+	config = withDefaultAlertPolicy(config)
 	if _, err := time.LoadLocation(strings.TrimSpace(config.Timezone)); err != nil {
 		return MonitorConfig{}, fmt.Errorf("invalid IANA timezone: %w", err)
 	}
@@ -163,6 +199,18 @@ func NormalizeMonitorConfig(config MonitorConfig) (MonitorConfig, error) {
 	}
 	if config.EventThreshold < 0 || config.EventThreshold > 100 {
 		return MonitorConfig{}, fmt.Errorf("event threshold must be from 0 to 100")
+	}
+	if config.AlertMinHeat < 0 || config.AlertMinHeat > 100 || config.AlertMinMomentum < 0 || config.AlertMinMomentum > 100 || config.AlertMinBreadth < 0 || config.AlertMinBreadth > 100 {
+		return MonitorConfig{}, fmt.Errorf("alert heat, momentum and breadth thresholds must be from 0 to 100")
+	}
+	if config.AlertWarningThreshold < 0 || config.AlertWarningThreshold > 100 || config.AlertCriticalThreshold < 0 || config.AlertCriticalThreshold > 100 || config.AlertWarningThreshold > config.AlertCriticalThreshold {
+		return MonitorConfig{}, fmt.Errorf("alert severity thresholds must be ordered from 0 to 100")
+	}
+	if config.AlertCooldownMinutes < 5 || config.AlertCooldownMinutes > 1440 {
+		return MonitorConfig{}, fmt.Errorf("alert cooldown must be from 5 to 1440 minutes")
+	}
+	if config.AlertEmailMinSeverity != AlertEmailSeverityWarning && config.AlertEmailMinSeverity != AlertEmailSeverityCritical {
+		return MonitorConfig{}, fmt.Errorf("alert email minimum severity must be warning or critical")
 	}
 	if config.RetentionDays < 1 || config.RetentionDays > 3650 {
 		return MonitorConfig{}, fmt.Errorf("retention days must be from 1 to 3650")
@@ -248,23 +296,34 @@ func CanonicalConfigHash(input ConfigHashInput) (string, error) {
 		return "", err
 	}
 	payload := struct {
-		HashVersion int               `json:"hash_version"`
-		MonitorID   int64             `json:"monitor_id"`
-		Revision    int64             `json:"revision"`
-		Timezone    string            `json:"timezone"`
-		Languages   []string          `json:"languages"`
-		Regions     []string          `json:"regions"`
-		Interval    int               `json:"collection_interval_seconds"`
-		Relevance   float64           `json:"relevance_threshold"`
-		Event       float64           `json:"event_threshold"`
-		Retention   int               `json:"retention_days"`
-		Rules       []canonicalRule   `json:"rules"`
-		Sources     []canonicalSource `json:"sources"`
+		HashVersion           int                `json:"hash_version"`
+		MonitorID             int64              `json:"monitor_id"`
+		Revision              int64              `json:"revision"`
+		Timezone              string             `json:"timezone"`
+		Languages             []string           `json:"languages"`
+		Regions               []string           `json:"regions"`
+		Interval              int                `json:"collection_interval_seconds"`
+		Relevance             float64            `json:"relevance_threshold"`
+		Event                 float64            `json:"event_threshold"`
+		AlertMinHeat          float64            `json:"alert_min_heat"`
+		AlertMinMomentum      float64            `json:"alert_min_momentum"`
+		AlertMinBreadth       float64            `json:"alert_min_breadth"`
+		AlertWarning          float64            `json:"alert_warning_threshold"`
+		AlertCritical         float64            `json:"alert_critical_threshold"`
+		AlertCooldownMinutes  int                `json:"alert_cooldown_minutes"`
+		AlertEmailEnabled     bool               `json:"alert_email_enabled"`
+		AlertEmailMinSeverity AlertEmailSeverity `json:"alert_email_min_severity"`
+		Retention             int                `json:"retention_days"`
+		Rules                 []canonicalRule    `json:"rules"`
+		Sources               []canonicalSource  `json:"sources"`
 	}{
-		HashVersion: 1, MonitorID: input.MonitorID, Revision: input.Revision,
+		HashVersion: 2, MonitorID: input.MonitorID, Revision: input.Revision,
 		Timezone: config.Timezone, Languages: config.Languages, Regions: config.Regions,
 		Interval: config.CollectionIntervalSeconds, Relevance: config.RelevanceThreshold,
-		Event: config.EventThreshold, Retention: config.RetentionDays, Rules: rules, Sources: sources,
+		Event: config.EventThreshold, AlertMinHeat: config.AlertMinHeat, AlertMinMomentum: config.AlertMinMomentum,
+		AlertMinBreadth: config.AlertMinBreadth, AlertWarning: config.AlertWarningThreshold, AlertCritical: config.AlertCriticalThreshold,
+		AlertCooldownMinutes: config.AlertCooldownMinutes, AlertEmailEnabled: config.AlertEmailEnabled, AlertEmailMinSeverity: config.AlertEmailMinSeverity,
+		Retention: config.RetentionDays, Rules: rules, Sources: sources,
 	}
 	return sha256JSON(payload)
 }

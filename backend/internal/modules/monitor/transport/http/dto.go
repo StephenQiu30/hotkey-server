@@ -26,6 +26,14 @@ type MonitorConfigRequest struct {
 	CollectionIntervalSeconds int      `json:"collection_interval_seconds" binding:"required,gte=300,lte=86400" minimum:"300" maximum:"86400" example:"900"`
 	RelevanceThreshold        float64  `json:"relevance_threshold" binding:"required,gte=60,lte=100" minimum:"60" maximum:"100" example:"75"`
 	EventThreshold            *float64 `json:"event_threshold" binding:"required,gte=0,lte=100" minimum:"0" maximum:"100" example:"40"`
+	AlertMinHeat              *float64 `json:"alert_min_heat,omitempty" binding:"omitempty,gte=0,lte=100" minimum:"0" maximum:"100" example:"70"`
+	AlertMinMomentum          *float64 `json:"alert_min_momentum,omitempty" binding:"omitempty,gte=0,lte=100" minimum:"0" maximum:"100" example:"55"`
+	AlertMinBreadth           *float64 `json:"alert_min_breadth,omitempty" binding:"omitempty,gte=0,lte=100" minimum:"0" maximum:"100" example:"25"`
+	AlertWarningThreshold     *float64 `json:"alert_warning_threshold,omitempty" binding:"omitempty,gte=0,lte=100" minimum:"0" maximum:"100" example:"75"`
+	AlertCriticalThreshold    *float64 `json:"alert_critical_threshold,omitempty" binding:"omitempty,gte=0,lte=100" minimum:"0" maximum:"100" example:"90"`
+	AlertCooldownMinutes      *int     `json:"alert_cooldown_minutes,omitempty" binding:"omitempty,gte=5,lte=1440" minimum:"5" maximum:"1440" example:"60"`
+	AlertEmailEnabled         *bool    `json:"alert_email_enabled,omitempty" example:"false"`
+	AlertEmailMinSeverity     string   `json:"alert_email_min_severity,omitempty" binding:"omitempty,oneof=warning critical" enums:"warning,critical" example:"critical"`
 	RetentionDays             int      `json:"retention_days" binding:"required,gte=1,lte=3650" minimum:"1" maximum:"3650" example:"30"`
 }
 
@@ -151,6 +159,14 @@ type MonitorConfigResponse struct {
 	CollectionIntervalSeconds int                     `json:"collection_interval_seconds"`
 	RelevanceThreshold        float64                 `json:"relevance_threshold"`
 	EventThreshold            float64                 `json:"event_threshold"`
+	AlertMinHeat              float64                 `json:"alert_min_heat"`
+	AlertMinMomentum          float64                 `json:"alert_min_momentum"`
+	AlertMinBreadth           float64                 `json:"alert_min_breadth"`
+	AlertWarningThreshold     float64                 `json:"alert_warning_threshold"`
+	AlertCriticalThreshold    float64                 `json:"alert_critical_threshold"`
+	AlertCooldownMinutes      int                     `json:"alert_cooldown_minutes"`
+	AlertEmailEnabled         bool                    `json:"alert_email_enabled"`
+	AlertEmailMinSeverity     string                  `json:"alert_email_min_severity"`
 	RetentionDays             int                     `json:"retention_days"`
 	Rules                     []MonitorRuleResponse   `json:"rules"`
 	Sources                   []MonitorSourceResponse `json:"sources"`
@@ -225,7 +241,31 @@ func monitorConfig(request MonitorConfigRequest) domain.MonitorConfig {
 	if request.EventThreshold != nil {
 		eventThreshold = *request.EventThreshold
 	}
-	return domain.MonitorConfig{Timezone: request.Timezone, Languages: request.Languages, Regions: request.Regions, CollectionIntervalSeconds: request.CollectionIntervalSeconds, RelevanceThreshold: request.RelevanceThreshold, EventThreshold: eventThreshold, RetentionDays: request.RetentionDays}
+	alertMinHeat, alertMinMomentum, alertMinBreadth := float64(0), float64(0), float64(0)
+	alertWarning, alertCritical, alertEmailEnabled := float64(0), float64(0), false
+	if request.AlertMinHeat != nil {
+		alertMinHeat = *request.AlertMinHeat
+	}
+	if request.AlertMinMomentum != nil {
+		alertMinMomentum = *request.AlertMinMomentum
+	}
+	if request.AlertMinBreadth != nil {
+		alertMinBreadth = *request.AlertMinBreadth
+	}
+	if request.AlertWarningThreshold != nil {
+		alertWarning = *request.AlertWarningThreshold
+	}
+	if request.AlertCriticalThreshold != nil {
+		alertCritical = *request.AlertCriticalThreshold
+	}
+	if request.AlertEmailEnabled != nil {
+		alertEmailEnabled = *request.AlertEmailEnabled
+	}
+	alertCooldown := 0
+	if request.AlertCooldownMinutes != nil {
+		alertCooldown = *request.AlertCooldownMinutes
+	}
+	return domain.MonitorConfig{Timezone: request.Timezone, Languages: request.Languages, Regions: request.Regions, CollectionIntervalSeconds: request.CollectionIntervalSeconds, RelevanceThreshold: request.RelevanceThreshold, EventThreshold: eventThreshold, AlertMinHeat: alertMinHeat, AlertMinMomentum: alertMinMomentum, AlertMinBreadth: alertMinBreadth, AlertWarningThreshold: alertWarning, AlertCriticalThreshold: alertCritical, AlertCooldownMinutes: alertCooldown, AlertEmailEnabled: alertEmailEnabled, AlertEmailMinSeverity: domain.AlertEmailSeverity(request.AlertEmailMinSeverity), RetentionDays: request.RetentionDays}
 }
 
 func monitorRules(requests []MonitorRuleRequest) []domain.MonitorRule {
@@ -280,7 +320,7 @@ func monitorResponse(view monitorapplication.MonitorView) MonitorResponse {
 
 func monitorConfigResponse(view monitorapplication.ConfigurationView) MonitorConfigResponse {
 	config, rules, sources := view.Config, view.Rules, view.Sources
-	response := MonitorConfigResponse{ID: config.ID, Version: config.Version, Revision: config.Revision, State: string(config.State), ConfigHash: config.ConfigHash, PublishedAt: config.PublishedAt, Timezone: config.Config.Timezone, Languages: config.Config.Languages, Regions: config.Config.Regions, CollectionIntervalSeconds: config.Config.CollectionIntervalSeconds, RelevanceThreshold: config.Config.RelevanceThreshold, EventThreshold: config.Config.EventThreshold, RetentionDays: config.Config.RetentionDays, Rules: make([]MonitorRuleResponse, 0, len(rules)), Sources: make([]MonitorSourceResponse, 0, len(sources))}
+	response := MonitorConfigResponse{ID: config.ID, Version: config.Version, Revision: config.Revision, State: string(config.State), ConfigHash: config.ConfigHash, PublishedAt: config.PublishedAt, Timezone: config.Config.Timezone, Languages: config.Config.Languages, Regions: config.Config.Regions, CollectionIntervalSeconds: config.Config.CollectionIntervalSeconds, RelevanceThreshold: config.Config.RelevanceThreshold, EventThreshold: config.Config.EventThreshold, AlertMinHeat: config.Config.AlertMinHeat, AlertMinMomentum: config.Config.AlertMinMomentum, AlertMinBreadth: config.Config.AlertMinBreadth, AlertWarningThreshold: config.Config.AlertWarningThreshold, AlertCriticalThreshold: config.Config.AlertCriticalThreshold, AlertCooldownMinutes: config.Config.AlertCooldownMinutes, AlertEmailEnabled: config.Config.AlertEmailEnabled, AlertEmailMinSeverity: string(config.Config.AlertEmailMinSeverity), RetentionDays: config.Config.RetentionDays, Rules: make([]MonitorRuleResponse, 0, len(rules)), Sources: make([]MonitorSourceResponse, 0, len(sources))}
 	for _, rule := range rules {
 		response.Rules = append(response.Rules, MonitorRuleResponse{ID: rule.ID, RuleType: string(rule.RuleType), Operator: string(rule.Operator), Value: rule.Value, Weight: rule.Weight, Priority: rule.Priority, Origin: string(rule.Origin), ApprovalStatus: string(rule.ApprovalStatus), Enabled: rule.Enabled})
 	}

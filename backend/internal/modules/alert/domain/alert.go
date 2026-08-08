@@ -13,6 +13,7 @@ import (
 
 const (
 	PolicyVersionV1              = "alert-policy-v1"
+	PolicyVersionV2              = "alert-policy-v2"
 	OccurrenceFingerprintVersion = "alert-occurrence-v1"
 	CooldownV1                   = time.Hour
 	MaxReasonCodeLength          = 64
@@ -64,13 +65,20 @@ func (severity Severity) Valid() bool {
 }
 
 func SeverityForScore(score float64) (Severity, error) {
+	return SeverityForThresholds(score, 75, 90)
+}
+
+func SeverityForThresholds(score, warningThreshold, criticalThreshold float64) (Severity, error) {
 	if math.IsNaN(score) || math.IsInf(score, 0) || score < 0 || score > 100 {
 		return "", fmt.Errorf("score must be finite and between 0 and 100")
 	}
-	if score >= 90 {
+	if math.IsNaN(warningThreshold) || math.IsInf(warningThreshold, 0) || math.IsNaN(criticalThreshold) || math.IsInf(criticalThreshold, 0) || warningThreshold < 0 || criticalThreshold > 100 || warningThreshold > criticalThreshold {
+		return "", fmt.Errorf("severity thresholds must be ordered from 0 to 100")
+	}
+	if score >= criticalThreshold {
 		return SeverityCritical, nil
 	}
-	if score >= 75 {
+	if score >= warningThreshold {
 		return SeverityWarning, nil
 	}
 	return SeverityInfo, nil
@@ -101,10 +109,14 @@ func CanUserTransition(from, to State) bool {
 }
 
 func CooldownUntil(triggeredAt time.Time) time.Time {
-	if triggeredAt.IsZero() {
+	return CooldownUntilMinutes(triggeredAt, 60)
+}
+
+func CooldownUntilMinutes(triggeredAt time.Time, minutes int) time.Time {
+	if triggeredAt.IsZero() || minutes < 5 || minutes > 1440 {
 		return time.Time{}
 	}
-	return triggeredAt.UTC().Add(CooldownV1)
+	return triggeredAt.UTC().Add(time.Duration(minutes) * time.Minute)
 }
 
 func ShouldReopen(state State, cooldownUntil, triggeredAt time.Time) bool {
@@ -144,32 +156,38 @@ const (
 )
 
 type Thread struct {
-	ID                     int64
-	Version                int64
-	MonitorID              int64
-	EventID                int64
-	TriggerType            TriggerType
-	PolicyVersion          string
-	MonitorConfigVersionID int64
-	MonitorRevision        int64
-	MonitorConfigHash      string
-	EventThresholdSnapshot float64
-	State                  State
-	Severity               Severity
-	TitleSnapshot          string
-	ReasonSnapshot         string
-	FirstTriggeredAt       time.Time
-	LastTriggeredAt        time.Time
-	OccurrenceCount        int64
-	CooldownUntil          time.Time
-	AcknowledgedAt         *time.Time
-	AcknowledgedByUserID   *int64
-	ResolvedAt             *time.Time
-	ResolvedByUserID       *int64
-	SuppressedAt           *time.Time
-	SuppressedByUserID     *int64
-	CreatedAt              time.Time
-	UpdatedAt              time.Time
+	ID                             int64
+	Version                        int64
+	MonitorID                      int64
+	EventID                        int64
+	TriggerType                    TriggerType
+	PolicyVersion                  string
+	MonitorConfigVersionID         int64
+	MonitorRevision                int64
+	MonitorConfigHash              string
+	EventThresholdSnapshot         float64
+	AlertMinHeatSnapshot           float64
+	AlertMinMomentumSnapshot       float64
+	AlertMinBreadthSnapshot        float64
+	AlertWarningThresholdSnapshot  float64
+	AlertCriticalThresholdSnapshot float64
+	AlertCooldownMinutesSnapshot   int
+	State                          State
+	Severity                       Severity
+	TitleSnapshot                  string
+	ReasonSnapshot                 string
+	FirstTriggeredAt               time.Time
+	LastTriggeredAt                time.Time
+	OccurrenceCount                int64
+	CooldownUntil                  time.Time
+	AcknowledgedAt                 *time.Time
+	AcknowledgedByUserID           *int64
+	ResolvedAt                     *time.Time
+	ResolvedByUserID               *int64
+	SuppressedAt                   *time.Time
+	SuppressedByUserID             *int64
+	CreatedAt                      time.Time
+	UpdatedAt                      time.Time
 }
 
 type Occurrence struct {
@@ -178,6 +196,9 @@ type Occurrence struct {
 	EventUpdateID          int64
 	Severity               Severity
 	FinalScoreSnapshot     float64
+	HeatScoreSnapshot      float64
+	MomentumScoreSnapshot  float64
+	BreadthScoreSnapshot   float64
 	EventThresholdSnapshot float64
 	ReasonCodes            []string
 	Fingerprint            string
@@ -198,35 +219,51 @@ type StateAudit struct {
 }
 
 type RecordOccurrenceCommand struct {
-	MonitorID              int64
-	EventID                int64
-	EventUpdateID          int64
-	TriggerType            TriggerType
-	PolicyVersion          string
-	MonitorConfigVersionID int64
-	MonitorRevision        int64
-	MonitorConfigHash      string
-	EventThresholdSnapshot float64
-	FinalScoreSnapshot     float64
-	Severity               Severity
-	TitleSnapshot          string
-	ReasonSnapshot         string
-	ReasonCodes            []string
-	TriggeredAt            time.Time
-	Fingerprint            string
+	MonitorID                      int64
+	EventID                        int64
+	EventUpdateID                  int64
+	TriggerType                    TriggerType
+	PolicyVersion                  string
+	MonitorConfigVersionID         int64
+	MonitorRevision                int64
+	MonitorConfigHash              string
+	EventThresholdSnapshot         float64
+	AlertMinHeatSnapshot           float64
+	AlertMinMomentumSnapshot       float64
+	AlertMinBreadthSnapshot        float64
+	AlertWarningThresholdSnapshot  float64
+	AlertCriticalThresholdSnapshot float64
+	AlertCooldownMinutesSnapshot   int
+	FinalScoreSnapshot             float64
+	HeatScoreSnapshot              float64
+	MomentumScoreSnapshot          float64
+	BreadthScoreSnapshot           float64
+	Severity                       Severity
+	TitleSnapshot                  string
+	ReasonSnapshot                 string
+	ReasonCodes                    []string
+	TriggeredAt                    time.Time
+	Fingerprint                    string
 }
 
 func (command RecordOccurrenceCommand) Validate() error {
 	if command.MonitorID <= 0 || command.EventID <= 0 || command.EventUpdateID <= 0 || command.MonitorConfigVersionID <= 0 || command.MonitorRevision <= 0 {
 		return fmt.Errorf("positive alert identities are required")
 	}
-	if !command.TriggerType.Valid() || command.PolicyVersion != PolicyVersionV1 || !command.Severity.Valid() {
+	if !command.TriggerType.Valid() || command.PolicyVersion != PolicyVersionV1 && command.PolicyVersion != PolicyVersionV2 || !command.Severity.Valid() {
 		return fmt.Errorf("invalid alert policy facts")
 	}
 	if !validHash(command.MonitorConfigHash) || !validHash(command.Fingerprint) {
 		return fmt.Errorf("invalid alert hashes")
 	}
-	wantSeverity, scoreErr := SeverityForScore(command.FinalScoreSnapshot)
+	warning, critical := float64(75), float64(90)
+	if command.PolicyVersion == PolicyVersionV2 {
+		warning, critical = command.AlertWarningThresholdSnapshot, command.AlertCriticalThresholdSnapshot
+		if command.AlertCooldownMinutesSnapshot < 5 || command.AlertCooldownMinutesSnapshot > 1440 || !validScore(command.AlertMinHeatSnapshot) || !validScore(command.AlertMinMomentumSnapshot) || !validScore(command.AlertMinBreadthSnapshot) || command.HeatScoreSnapshot < command.AlertMinHeatSnapshot || command.MomentumScoreSnapshot < command.AlertMinMomentumSnapshot || command.BreadthScoreSnapshot < command.AlertMinBreadthSnapshot {
+			return fmt.Errorf("invalid alert dimension snapshot")
+		}
+	}
+	wantSeverity, scoreErr := SeverityForThresholds(command.FinalScoreSnapshot, warning, critical)
 	_, thresholdErr := SeverityForScore(command.EventThresholdSnapshot)
 	if scoreErr != nil || thresholdErr != nil || command.FinalScoreSnapshot < command.EventThresholdSnapshot || command.Severity != wantSeverity {
 		return fmt.Errorf("invalid alert score snapshot")
@@ -246,6 +283,7 @@ type RecordOccurrenceResult struct {
 	Occurrence Occurrence
 	Created    bool
 	Reopened   bool
+	Disturb    bool
 }
 
 type TransitionCommand struct {
@@ -289,9 +327,21 @@ type ThreadPage struct {
 }
 
 type ThreadDetail struct {
-	Thread      Thread
-	Occurrences []Occurrence
-	Audits      []StateAudit
+	Thread          Thread
+	Occurrences     []Occurrence
+	Audits          []StateAudit
+	EmailDeliveries []EmailDelivery
+}
+
+type EmailDelivery struct {
+	ID            int64
+	OccurrenceID  int64
+	Severity      Severity
+	Status        string
+	AttemptCount  int
+	NextAttemptAt *time.Time
+	SucceededAt   *time.Time
+	LastError     string
 }
 
 func validHash(value string) bool {
@@ -300,4 +350,8 @@ func validHash(value string) bool {
 	}
 	_, err := hex.DecodeString(value)
 	return err == nil && value == strings.ToLower(value)
+}
+
+func validScore(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0 && value <= 100
 }

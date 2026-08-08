@@ -30,6 +30,12 @@ type AlertThreadResponse struct {
 	PolicyVersion        string     `json:"policy_version"`
 	MonitorRevision      int64      `json:"monitor_revision"`
 	Threshold            float64    `json:"threshold"`
+	MinHeat              float64    `json:"min_heat"`
+	MinMomentum          float64    `json:"min_momentum"`
+	MinBreadth           float64    `json:"min_breadth"`
+	WarningThreshold     float64    `json:"warning_threshold"`
+	CriticalThreshold    float64    `json:"critical_threshold"`
+	CooldownMinutes      int        `json:"cooldown_minutes"`
 	State                string     `json:"state"`
 	Severity             string     `json:"severity"`
 	Title                string     `json:"title"`
@@ -52,6 +58,9 @@ type AlertOccurrenceResponse struct {
 	Severity      string    `json:"severity"`
 	FinalScore    float64   `json:"final_score"`
 	Threshold     float64   `json:"threshold"`
+	HeatScore     float64   `json:"heat_score"`
+	MomentumScore float64   `json:"momentum_score"`
+	BreadthScore  float64   `json:"breadth_score"`
 	ReasonCodes   []string  `json:"reason_codes"`
 	TriggeredAt   time.Time `json:"triggered_at"`
 }
@@ -73,9 +82,21 @@ type AlertPageResponse struct {
 }
 
 type AlertDetailResponse struct {
-	Thread      AlertThreadResponse       `json:"thread"`
-	Occurrences []AlertOccurrenceResponse `json:"occurrences"`
-	Audits      []AlertStateAuditResponse `json:"audits"`
+	Thread          AlertThreadResponse          `json:"thread"`
+	Occurrences     []AlertOccurrenceResponse    `json:"occurrences"`
+	Audits          []AlertStateAuditResponse    `json:"audits"`
+	EmailDeliveries []AlertEmailDeliveryResponse `json:"email_deliveries"`
+}
+
+type AlertEmailDeliveryResponse struct {
+	ID            int64      `json:"id"`
+	OccurrenceID  int64      `json:"occurrence_id"`
+	Severity      string     `json:"severity"`
+	Status        string     `json:"status"`
+	AttemptCount  int        `json:"attempt_count"`
+	NextAttemptAt *time.Time `json:"next_attempt_at,omitempty"`
+	SucceededAt   *time.Time `json:"succeeded_at,omitempty"`
+	LastError     string     `json:"last_error,omitempty"`
 }
 
 func threadResponse(thread domain.Thread) AlertThreadResponse {
@@ -83,6 +104,8 @@ func threadResponse(thread domain.Thread) AlertThreadResponse {
 		ID: thread.ID, Version: thread.Version, MonitorID: thread.MonitorID, EventID: thread.EventID,
 		TriggerType: string(thread.TriggerType), PolicyVersion: thread.PolicyVersion,
 		MonitorRevision: thread.MonitorRevision, Threshold: thread.EventThresholdSnapshot,
+		MinHeat: thread.AlertMinHeatSnapshot, MinMomentum: thread.AlertMinMomentumSnapshot, MinBreadth: thread.AlertMinBreadthSnapshot,
+		WarningThreshold: thread.AlertWarningThresholdSnapshot, CriticalThreshold: thread.AlertCriticalThresholdSnapshot, CooldownMinutes: thread.AlertCooldownMinutesSnapshot,
 		State: string(thread.State), Severity: string(thread.Severity),
 		Title: thread.TitleSnapshot, Reason: thread.ReasonSnapshot, FirstTriggeredAt: thread.FirstTriggeredAt, LastTriggeredAt: thread.LastTriggeredAt,
 		OccurrenceCount: thread.OccurrenceCount, CooldownUntil: thread.CooldownUntil,
@@ -102,14 +125,18 @@ func pageResponse(page domain.ThreadPage) AlertPageResponse {
 
 func detailResponse(detail domain.ThreadDetail) AlertDetailResponse {
 	response := AlertDetailResponse{
-		Thread: threadResponse(detail.Thread), Occurrences: make([]AlertOccurrenceResponse, 0, len(detail.Occurrences)), Audits: make([]AlertStateAuditResponse, 0, len(detail.Audits)),
+		Thread: threadResponse(detail.Thread), Occurrences: make([]AlertOccurrenceResponse, 0, len(detail.Occurrences)), Audits: make([]AlertStateAuditResponse, 0, len(detail.Audits)), EmailDeliveries: make([]AlertEmailDeliveryResponse, 0, len(detail.EmailDeliveries)),
 	}
 	for _, occurrence := range detail.Occurrences {
 		response.Occurrences = append(response.Occurrences, AlertOccurrenceResponse{
 			ID: occurrence.ID, EventUpdateID: occurrence.EventUpdateID, Severity: string(occurrence.Severity),
 			FinalScore: occurrence.FinalScoreSnapshot, Threshold: occurrence.EventThresholdSnapshot,
+			HeatScore: occurrence.HeatScoreSnapshot, MomentumScore: occurrence.MomentumScoreSnapshot, BreadthScore: occurrence.BreadthScoreSnapshot,
 			ReasonCodes: append([]string(nil), occurrence.ReasonCodes...), TriggeredAt: occurrence.TriggeredAt,
 		})
+	}
+	for _, delivery := range detail.EmailDeliveries {
+		response.EmailDeliveries = append(response.EmailDeliveries, AlertEmailDeliveryResponse{ID: delivery.ID, OccurrenceID: delivery.OccurrenceID, Severity: string(delivery.Severity), Status: delivery.Status, AttemptCount: delivery.AttemptCount, NextAttemptAt: delivery.NextAttemptAt, SucceededAt: delivery.SucceededAt, LastError: delivery.LastError})
 	}
 	for _, audit := range detail.Audits {
 		response.Audits = append(response.Audits, AlertStateAuditResponse{

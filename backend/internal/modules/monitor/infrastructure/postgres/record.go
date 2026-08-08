@@ -38,14 +38,17 @@ func (record monitorRecord) monitor() domain.Monitor {
 }
 
 type configRecord struct {
-	ID, Version, MonitorID, Revision int64
-	State, Timezone, ConfigHash      string
-	Languages, Regions               []byte
-	Interval                         int
-	Relevance, Event                 float64
-	Retention                        int
-	PublishedAt                      sql.NullTime
-	CreatedAt, UpdatedAt             time.Time
+	ID, Version, MonitorID, Revision                                                               int64
+	State, Timezone, ConfigHash                                                                    string
+	Languages, Regions                                                                             []byte
+	Interval                                                                                       int
+	Relevance, Event, AlertMinHeat, AlertMinMomentum, AlertMinBreadth, AlertWarning, AlertCritical float64
+	AlertCooldown                                                                                  int
+	AlertEmailEnabled                                                                              bool
+	AlertEmailMinSeverity                                                                          string
+	Retention                                                                                      int
+	PublishedAt                                                                                    sql.NullTime
+	CreatedAt, UpdatedAt                                                                           time.Time
 }
 
 func (record configRecord) config() (domain.MonitorConfigVersion, error) {
@@ -58,7 +61,10 @@ func (record configRecord) config() (domain.MonitorConfigVersion, error) {
 	}
 	config := domain.MonitorConfigVersion{ID: record.ID, Version: record.Version, MonitorID: record.MonitorID, Revision: record.Revision,
 		State: domain.ConfigVersionState(record.State), Config: domain.MonitorConfig{Timezone: record.Timezone, Languages: languages, Regions: regions,
-			CollectionIntervalSeconds: record.Interval, RelevanceThreshold: record.Relevance, EventThreshold: record.Event, RetentionDays: record.Retention},
+			CollectionIntervalSeconds: record.Interval, RelevanceThreshold: record.Relevance, EventThreshold: record.Event,
+			AlertMinHeat: record.AlertMinHeat, AlertMinMomentum: record.AlertMinMomentum, AlertMinBreadth: record.AlertMinBreadth,
+			AlertWarningThreshold: record.AlertWarning, AlertCriticalThreshold: record.AlertCritical, AlertCooldownMinutes: record.AlertCooldown,
+			AlertEmailEnabled: record.AlertEmailEnabled, AlertEmailMinSeverity: domain.AlertEmailSeverity(record.AlertEmailMinSeverity), RetentionDays: record.Retention},
 		ConfigHash: record.ConfigHash, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt}
 	if record.PublishedAt.Valid {
 		value := record.PublishedAt.Time

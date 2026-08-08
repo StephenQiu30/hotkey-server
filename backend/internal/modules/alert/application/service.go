@@ -38,18 +38,39 @@ type stateWriter interface {
 	Transition(context.Context, domain.TransitionCommand) (domain.Thread, error)
 }
 
+type TransactionRunner interface {
+	WithinTransaction(context.Context, func(context.Context) error) error
+}
+
+type AlertEmailPlan struct {
+	OccurrenceID   int64
+	IdempotencyKey string
+	Recipient      string
+	Severity       domain.Severity
+	Title          string
+	Reason         string
+}
+
+type AlertEmailPlanner interface {
+	PlanAlertEmail(context.Context, AlertEmailPlan) error
+}
+
 type Dependencies struct {
-	Candidates  EventCandidateReader
-	Policies    MonitorPolicyReader
-	Occurrences OccurrenceWriter
-	Clock       sharedclock.Clock
+	Candidates   EventCandidateReader
+	Policies     MonitorPolicyReader
+	Occurrences  OccurrenceWriter
+	Clock        sharedclock.Clock
+	Transactions TransactionRunner
+	Emails       AlertEmailPlanner
 }
 
 type Service struct {
-	candidates  EventCandidateReader
-	policies    MonitorPolicyReader
-	occurrences OccurrenceWriter
-	clock       sharedclock.Clock
+	candidates   EventCandidateReader
+	policies     MonitorPolicyReader
+	occurrences  OccurrenceWriter
+	clock        sharedclock.Clock
+	transactions TransactionRunner
+	emails       AlertEmailPlanner
 }
 
 func NewService(dependencies Dependencies) (*Service, error) {
@@ -59,7 +80,7 @@ func NewService(dependencies Dependencies) (*Service, error) {
 	if dependencies.Clock == nil {
 		dependencies.Clock = sharedclock.System{}
 	}
-	return &Service{candidates: dependencies.Candidates, policies: dependencies.Policies, occurrences: dependencies.Occurrences, clock: dependencies.Clock}, nil
+	return &Service{candidates: dependencies.Candidates, policies: dependencies.Policies, occurrences: dependencies.Occurrences, clock: dependencies.Clock, transactions: dependencies.Transactions, emails: dependencies.Emails}, nil
 }
 
 type EvaluationResult struct {
@@ -105,7 +126,8 @@ func (service *Service) Evaluate(ctx context.Context, ref EventUpdateRef) (Evalu
 	}
 	byMonitor := make(map[int64]PublishedAlertPolicy, len(policies))
 	for _, policy := range policies {
-		if policy.MonitorID <= 0 || policy.ConfigVersionID <= 0 || policy.Revision <= 0 || !validSHA256(policy.ConfigHash) || policy.EventThreshold < 0 || policy.EventThreshold > 100 {
+		policy = normalizePolicy(policy)
+		if policy.MonitorID <= 0 || policy.ConfigVersionID <= 0 || policy.Revision <= 0 || !validSHA256(policy.ConfigHash) || !validPolicy(policy) {
 			return EvaluationResult{}, fmt.Errorf("%w: invalid published alert policy", sharedrepository.ErrInvalidInput)
 		}
 		if _, duplicate := byMonitor[policy.MonitorID]; duplicate {
@@ -122,27 +144,51 @@ func (service *Service) Evaluate(ctx context.Context, ref EventUpdateRef) (Evalu
 		if !found {
 			continue
 		}
-		severity, err := domain.SeverityForScore(candidate.FinalScore)
+		severity, err := domain.SeverityForThresholds(candidate.FinalScore, policy.AlertWarningThreshold, policy.AlertCriticalThreshold)
 		if err != nil || candidate.TriggeredAt.IsZero() {
 			return EvaluationResult{}, fmt.Errorf("%w: invalid event alert score or time", sharedrepository.ErrInvalidInput)
 		}
-		if candidate.FinalScore < policy.EventThreshold {
+		if candidate.FinalScore < policy.EventThreshold || candidate.HeatScore < policy.AlertMinHeat || candidate.MomentumScore < policy.AlertMinMomentum || candidate.BreadthScore < policy.AlertMinBreadth {
 			continue
 		}
 		result.EligibleCount++
-		fingerprint, err := domain.OccurrenceFingerprint(domain.FingerprintInput{MonitorConfigVersionID: policy.ConfigVersionID, EventUpdateID: ref.ID, TriggerType: trigger, PolicyVersion: domain.PolicyVersionV1})
+		fingerprint, err := domain.OccurrenceFingerprint(domain.FingerprintInput{MonitorConfigVersionID: policy.ConfigVersionID, EventUpdateID: ref.ID, TriggerType: trigger, PolicyVersion: domain.PolicyVersionV2})
 		if err != nil {
 			return EvaluationResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
 		}
 		command := domain.RecordOccurrenceCommand{
 			MonitorID: candidate.MonitorID, EventID: candidate.EventID, EventUpdateID: ref.ID,
-			TriggerType: trigger, PolicyVersion: domain.PolicyVersionV1,
+			TriggerType: trigger, PolicyVersion: domain.PolicyVersionV2,
 			MonitorConfigVersionID: policy.ConfigVersionID, MonitorRevision: policy.Revision, MonitorConfigHash: policy.ConfigHash,
-			EventThresholdSnapshot: policy.EventThreshold, FinalScoreSnapshot: candidate.FinalScore, Severity: severity,
+			EventThresholdSnapshot: policy.EventThreshold, AlertMinHeatSnapshot: policy.AlertMinHeat, AlertMinMomentumSnapshot: policy.AlertMinMomentum, AlertMinBreadthSnapshot: policy.AlertMinBreadth,
+			AlertWarningThresholdSnapshot: policy.AlertWarningThreshold, AlertCriticalThresholdSnapshot: policy.AlertCriticalThreshold, AlertCooldownMinutesSnapshot: policy.AlertCooldownMinutes,
+			FinalScoreSnapshot: candidate.FinalScore, HeatScoreSnapshot: candidate.HeatScore, MomentumScoreSnapshot: candidate.MomentumScore, BreadthScoreSnapshot: candidate.BreadthScore, Severity: severity,
 			TitleSnapshot: candidate.TitleSnapshot, ReasonSnapshot: candidate.ReasonSnapshot, ReasonCodes: append([]string(nil), candidate.ReasonCodes...),
 			TriggeredAt: candidate.TriggeredAt.UTC(), Fingerprint: fingerprint,
 		}
-		recorded, err := service.occurrences.RecordOccurrence(ctx, command)
+		var recorded domain.RecordOccurrenceResult
+		record := func(writeContext context.Context) error {
+			var writeErr error
+			recorded, writeErr = service.occurrences.RecordOccurrence(writeContext, command)
+			if writeErr != nil {
+				return writeErr
+			}
+			if recorded.Created && recorded.Disturb && shouldEmail(policy, recorded.Thread.Severity) {
+				if service.emails == nil {
+					return sharedrepository.ErrUnavailable
+				}
+				return service.emails.PlanAlertEmail(writeContext, AlertEmailPlan{OccurrenceID: recorded.Occurrence.ID, IdempotencyKey: recorded.Occurrence.Fingerprint, Recipient: policy.RecipientEmail, Severity: recorded.Thread.Severity, Title: recorded.Thread.TitleSnapshot, Reason: recorded.Thread.ReasonSnapshot})
+			}
+			return nil
+		}
+		if policy.AlertEmailEnabled {
+			if service.transactions == nil {
+				return result, sharedrepository.ErrUnavailable
+			}
+			err = service.transactions.WithinTransaction(ctx, record)
+		} else {
+			err = record(ctx)
+		}
 		if err != nil {
 			return result, err
 		}
@@ -156,6 +202,32 @@ func (service *Service) Evaluate(ctx context.Context, ref EventUpdateRef) (Evalu
 		}
 	}
 	return result, nil
+}
+
+func validPolicy(policy PublishedAlertPolicy) bool {
+	if policy.EventThreshold < 0 || policy.EventThreshold > 100 || policy.AlertMinHeat < 0 || policy.AlertMinHeat > 100 || policy.AlertMinMomentum < 0 || policy.AlertMinMomentum > 100 || policy.AlertMinBreadth < 0 || policy.AlertMinBreadth > 100 || policy.AlertWarningThreshold < 0 || policy.AlertWarningThreshold > policy.AlertCriticalThreshold || policy.AlertCriticalThreshold > 100 || policy.AlertCooldownMinutes < 5 || policy.AlertCooldownMinutes > 1440 {
+		return false
+	}
+	if policy.AlertEmailMinSeverity != "warning" && policy.AlertEmailMinSeverity != "critical" {
+		return false
+	}
+	return !policy.AlertEmailEnabled || strings.TrimSpace(policy.RecipientEmail) != ""
+}
+
+func normalizePolicy(policy PublishedAlertPolicy) PublishedAlertPolicy {
+	if policy.AlertCooldownMinutes == 0 && policy.AlertEmailMinSeverity == "" && policy.AlertWarningThreshold == 0 && policy.AlertCriticalThreshold == 0 && policy.AlertMinHeat == 0 && policy.AlertMinMomentum == 0 && policy.AlertMinBreadth == 0 {
+		policy.AlertMinHeat, policy.AlertMinMomentum, policy.AlertMinBreadth = 70, 55, 25
+		policy.AlertWarningThreshold, policy.AlertCriticalThreshold, policy.AlertCooldownMinutes = 75, 90, 60
+		policy.AlertEmailMinSeverity = "critical"
+	}
+	return policy
+}
+
+func shouldEmail(policy PublishedAlertPolicy, severity domain.Severity) bool {
+	if !policy.AlertEmailEnabled || strings.TrimSpace(policy.RecipientEmail) == "" || severity == domain.SeverityInfo {
+		return false
+	}
+	return policy.AlertEmailMinSeverity == "warning" || severity == domain.SeverityCritical
 }
 
 func (service *Service) List(ctx context.Context, query domain.ListQuery) (domain.ThreadPage, error) {

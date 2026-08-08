@@ -35,6 +35,9 @@ type AlertCandidate struct {
 	EventID        int64
 	UpdateKind     string
 	FinalScore     float64
+	HeatScore      float64
+	MomentumScore  float64
+	BreadthScore   float64
 	TitleSnapshot  string
 	ReasonSnapshot string
 	ReasonCodes    []string

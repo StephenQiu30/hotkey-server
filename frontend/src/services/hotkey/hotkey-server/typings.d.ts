@@ -20,14 +20,29 @@ required property without making explicit null impossible to bind. */
 
   type AlertDetailResponse = {
     audits?: AlertStateAuditResponse[];
+    email_deliveries?: AlertEmailDeliveryResponse[];
     occurrences?: AlertOccurrenceResponse[];
     thread?: AlertThreadResponse;
   };
 
+  type AlertEmailDeliveryResponse = {
+    attempt_count?: number;
+    id?: number;
+    last_error?: string;
+    next_attempt_at?: string;
+    occurrence_id?: number;
+    severity?: string;
+    status?: string;
+    succeeded_at?: string;
+  };
+
   type AlertOccurrenceResponse = {
+    breadth_score?: number;
     event_update_id?: number;
     final_score?: number;
+    heat_score?: number;
     id?: number;
+    momentum_score?: number;
     reason_codes?: string[];
     severity?: string;
     threshold?: number;
@@ -77,11 +92,16 @@ required property without making explicit null impossible to bind. */
   type AlertThreadResponse = {
     acknowledged_at?: string;
     acknowledged_by_user_id?: number;
+    cooldown_minutes?: number;
     cooldown_until?: string;
+    critical_threshold?: number;
     event_id?: number;
     first_triggered_at?: string;
     id?: number;
     last_triggered_at?: string;
+    min_breadth?: number;
+    min_heat?: number;
+    min_momentum?: number;
     monitor_id?: number;
     monitor_revision?: number;
     occurrence_count?: number;
@@ -97,6 +117,7 @@ required property without making explicit null impossible to bind. */
     title?: string;
     trigger_type?: string;
     version?: number;
+    warning_threshold?: number;
   };
 
   type ApprovalRequest = {
@@ -1182,6 +1203,14 @@ required property without making explicit null impossible to bind. */
   };
 
   type MonitorConfigRequest = {
+    alert_cooldown_minutes?: number;
+    alert_critical_threshold?: number;
+    alert_email_enabled?: boolean;
+    alert_email_min_severity?: "warning" | "critical";
+    alert_min_breadth?: number;
+    alert_min_heat?: number;
+    alert_min_momentum?: number;
+    alert_warning_threshold?: number;
     collection_interval_seconds: number;
     event_threshold: number;
     languages: string[];
@@ -1192,6 +1221,14 @@ required property without making explicit null impossible to bind. */
   };
 
   type MonitorConfigResponse = {
+    alert_cooldown_minutes?: number;
+    alert_critical_threshold?: number;
+    alert_email_enabled?: boolean;
+    alert_email_min_severity?: string;
+    alert_min_breadth?: number;
+    alert_min_heat?: number;
+    alert_min_momentum?: number;
+    alert_warning_threshold?: number;
     collection_interval_seconds?: number;
     config_hash?: string;
     event_threshold?: number;

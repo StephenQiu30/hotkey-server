@@ -15,8 +15,8 @@ import (
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
-const monitorColumns = `id, version, name, description, status, draft_config_version_id, published_config_version_id, created_at, updated_at, deleted_at`
-const configColumns = `id, version, monitor_id, revision, state, timezone, array_to_json(languages), array_to_json(regions), collection_interval_seconds, relevance_threshold, event_threshold, retention_days, coalesce(config_hash, ''), published_at, created_at, updated_at`
+const monitorColumns = `id, version, name, description, status, draft_config_version_id, published_config_version_id, coalesce(created_by,0), coalesce(updated_by,0), created_at, updated_at, deleted_at`
+const configColumns = `id, version, monitor_id, revision, state, timezone, array_to_json(languages), array_to_json(regions), collection_interval_seconds, relevance_threshold, event_threshold, alert_min_heat, alert_min_momentum, alert_min_breadth, alert_warning_threshold, alert_critical_threshold, alert_cooldown_minutes, alert_email_enabled, alert_email_min_severity, retention_days, coalesce(config_hash, ''), published_at, created_at, updated_at`
 const ruleColumns = `id, version, config_version_id, rule_type, operator, value, weight, priority, origin, approval_status, enabled`
 const monitorSourceColumns = `id, version, config_version_id, source_connection_id, query_override, query_signature, priority, enabled`
 
@@ -37,7 +37,7 @@ func (repository *Repository) Create(ctx context.Context, monitor *domain.Monito
 		return fmt.Errorf("%w: monitor and config are required", sharedrepository.ErrInvalidInput)
 	}
 	return repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
-		if err := transaction.SQL.QueryRowContext(ctx, `INSERT INTO monitors (name, description, status) VALUES ($1, $2, 'draft') RETURNING `+monitorColumns, monitor.Name, monitor.Description).Scan(monitorScanTargets(monitor)...); err != nil {
+		if err := transaction.SQL.QueryRowContext(ctx, `INSERT INTO monitors (name, description, status, created_by, updated_by) VALUES ($1, $2, 'draft', NULLIF($3,0), NULLIF($3,0)) RETURNING `+monitorColumns, monitor.Name, monitor.Description, monitor.CreatedByUserID).Scan(monitorScanTargets(monitor)...); err != nil {
 			return databaserepository.MapError(err)
 		}
 		config.MonitorID = monitor.ID
@@ -203,6 +203,11 @@ func (repository *Repository) SaveDraft(ctx context.Context, config *domain.Moni
 		return fmt.Errorf("%w: draft version is required", sharedrepository.ErrInvalidInput)
 	}
 	return repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+		normalized, err := domain.NormalizeMonitorConfig(config.Config)
+		if err != nil {
+			return fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		}
+		config.Config = normalized
 		if _, err := transaction.SQL.ExecContext(ctx, `DELETE FROM monitor_rules WHERE config_version_id = $1`, config.ID); err != nil {
 			return databaserepository.MapError(err)
 		}
@@ -213,7 +218,7 @@ func (repository *Repository) SaveDraft(ctx context.Context, config *domain.Moni
 		if err != nil {
 			return err
 		}
-		result, err := transaction.SQL.ExecContext(ctx, `UPDATE monitor_config_versions SET timezone = $1, languages = $2::text[], regions = $3::text[], collection_interval_seconds = $4, relevance_threshold = $5, event_threshold = $6, retention_days = $7, version = $8, updated_at = now() WHERE id = $9 AND state = 'draft' AND version = $10`, config.Config.Timezone, languages, regions, config.Config.CollectionIntervalSeconds, config.Config.RelevanceThreshold, config.Config.EventThreshold, config.Config.RetentionDays, config.Version, config.ID, config.Version-1)
+		result, err := transaction.SQL.ExecContext(ctx, `UPDATE monitor_config_versions SET timezone = $1, languages = $2::text[], regions = $3::text[], collection_interval_seconds = $4, relevance_threshold = $5, event_threshold = $6, alert_min_heat = $7, alert_min_momentum = $8, alert_min_breadth = $9, alert_warning_threshold = $10, alert_critical_threshold = $11, alert_cooldown_minutes = $12, alert_email_enabled = $13, alert_email_min_severity = $14, retention_days = $15, version = $16, updated_at = now() WHERE id = $17 AND state = 'draft' AND version = $18`, config.Config.Timezone, languages, regions, config.Config.CollectionIntervalSeconds, config.Config.RelevanceThreshold, config.Config.EventThreshold, config.Config.AlertMinHeat, config.Config.AlertMinMomentum, config.Config.AlertMinBreadth, config.Config.AlertWarningThreshold, config.Config.AlertCriticalThreshold, config.Config.AlertCooldownMinutes, config.Config.AlertEmailEnabled, config.Config.AlertEmailMinSeverity, config.Config.RetentionDays, config.Version, config.ID, config.Version-1)
 		if err != nil {
 			return databaserepository.MapError(err)
 		}
@@ -356,11 +361,16 @@ func monitorListParameters(query domain.MonitorListQuery) (int, int64, error) {
 func (repository *Repository) insertConfig(ctx context.Context, queryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }, config *domain.MonitorConfigVersion) error {
+	normalized, err := domain.NormalizeMonitorConfig(config.Config)
+	if err != nil {
+		return fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	config.Config = normalized
 	languages, regions, err := configArrays(config.Config)
 	if err != nil {
 		return err
 	}
-	if err := queryer.QueryRowContext(ctx, `INSERT INTO monitor_config_versions (monitor_id, revision, state, timezone, languages, regions, collection_interval_seconds, relevance_threshold, event_threshold, retention_days) VALUES ($1, $2, 'draft', $3, $4::text[], $5::text[], $6, $7, $8, $9) RETURNING `+configColumns, config.MonitorID, config.Revision, config.Config.Timezone, languages, regions, config.Config.CollectionIntervalSeconds, config.Config.RelevanceThreshold, config.Config.EventThreshold, config.Config.RetentionDays).Scan(configScanTargets(config)...); err != nil {
+	if err := queryer.QueryRowContext(ctx, `INSERT INTO monitor_config_versions (monitor_id, revision, state, timezone, languages, regions, collection_interval_seconds, relevance_threshold, event_threshold, alert_min_heat, alert_min_momentum, alert_min_breadth, alert_warning_threshold, alert_critical_threshold, alert_cooldown_minutes, alert_email_enabled, alert_email_min_severity, retention_days) VALUES ($1, $2, 'draft', $3, $4::text[], $5::text[], $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING `+configColumns, config.MonitorID, config.Revision, config.Config.Timezone, languages, regions, config.Config.CollectionIntervalSeconds, config.Config.RelevanceThreshold, config.Config.EventThreshold, config.Config.AlertMinHeat, config.Config.AlertMinMomentum, config.Config.AlertMinBreadth, config.Config.AlertWarningThreshold, config.Config.AlertCriticalThreshold, config.Config.AlertCooldownMinutes, config.Config.AlertEmailEnabled, config.Config.AlertEmailMinSeverity, config.Config.RetentionDays).Scan(configScanTargets(config)...); err != nil {
 		return databaserepository.MapError(err)
 	}
 	return nil
@@ -469,10 +479,10 @@ func (repository *Repository) queryRows(ctx context.Context, query string, args 
 }
 
 func monitorScanTargets(monitor *domain.Monitor) []any {
-	return []any{&monitor.ID, &monitor.Version, &monitor.Name, &monitor.Description, &monitor.Status, int64PointerScan{&monitor.DraftConfigVersionID}, int64PointerScan{&monitor.PublishedConfigVersionID}, &monitor.CreatedAt, &monitor.UpdatedAt, timePointerScan{&monitor.DeletedAt}}
+	return []any{&monitor.ID, &monitor.Version, &monitor.Name, &monitor.Description, &monitor.Status, int64PointerScan{&monitor.DraftConfigVersionID}, int64PointerScan{&monitor.PublishedConfigVersionID}, &monitor.CreatedByUserID, &monitor.UpdatedByUserID, &monitor.CreatedAt, &monitor.UpdatedAt, timePointerScan{&monitor.DeletedAt}}
 }
 func configScanTargets(config *domain.MonitorConfigVersion) []any {
-	return []any{&config.ID, &config.Version, &config.MonitorID, &config.Revision, &config.State, &config.Config.Timezone, stringSliceScan{&config.Config.Languages}, stringSliceScan{&config.Config.Regions}, &config.Config.CollectionIntervalSeconds, &config.Config.RelevanceThreshold, &config.Config.EventThreshold, &config.Config.RetentionDays, &config.ConfigHash, timePointerScan{&config.PublishedAt}, &config.CreatedAt, &config.UpdatedAt}
+	return []any{&config.ID, &config.Version, &config.MonitorID, &config.Revision, &config.State, &config.Config.Timezone, stringSliceScan{&config.Config.Languages}, stringSliceScan{&config.Config.Regions}, &config.Config.CollectionIntervalSeconds, &config.Config.RelevanceThreshold, &config.Config.EventThreshold, &config.Config.AlertMinHeat, &config.Config.AlertMinMomentum, &config.Config.AlertMinBreadth, &config.Config.AlertWarningThreshold, &config.Config.AlertCriticalThreshold, &config.Config.AlertCooldownMinutes, &config.Config.AlertEmailEnabled, &config.Config.AlertEmailMinSeverity, &config.Config.RetentionDays, &config.ConfigHash, timePointerScan{&config.PublishedAt}, &config.CreatedAt, &config.UpdatedAt}
 }
 func ruleScanTargets(rule *domain.MonitorRule) []any {
 	return []any{&rule.ID, &rule.Version, &rule.ConfigVersionID, &rule.RuleType, &rule.Operator, &rule.Value, &rule.Weight, &rule.Priority, &rule.Origin, &rule.ApprovalStatus, &rule.Enabled}

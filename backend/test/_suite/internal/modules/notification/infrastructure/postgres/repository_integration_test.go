@@ -112,6 +112,20 @@ INSERT INTO alert_occurrences (alert_thread_id,event_update_id,severity,final_sc
 VALUES ($1,$2,'warning',80,70,repeat('d',64),$3)`, threadID, updateID, now.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE alert_threads SET occurrence_count=1 WHERE id=$1`, threadID); err != nil {
+		t.Fatal(err)
+	}
+	var cooldownUpdateID int64
+	if err := runtime.SQL.QueryRowContext(ctx, `
+INSERT INTO event_updates (event_id, sequence_no, kind, summary, observed_at, after_state, evidence_set_hash, idempotency_key)
+VALUES ($1, 2, 'metric_changed', '冷却期内变化', $2, '{}', repeat('1', 64), repeat('2', 64)) RETURNING id`, eventID, now.Add(2*time.Second)).Scan(&cooldownUpdateID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `
+INSERT INTO alert_occurrences (alert_thread_id,event_update_id,severity,final_score_snapshot,threshold_snapshot,fingerprint,triggered_at)
+VALUES ($1,$2,'warning',82,70,repeat('3',64),$3)`, threadID, cooldownUpdateID, now.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
 
 	var publishedReportID, failedReportID int64
 	for reportIndex, fixture := range []struct {
@@ -150,7 +164,7 @@ VALUES ($1, $2, $3::timestamptz, $3::timestamptz + interval '1 hour', 'schedule'
 	}
 
 	assertNotificationTypes(t, runtime, map[string]int{
-		"event.updated":        1,
+		"event.updated":        2,
 		"alert.triggered":      1,
 		"report.published":     1,
 		"report.failed":        1,
@@ -164,7 +178,7 @@ VALUES ($1, $2, $3::timestamptz, $3::timestamptz + interval '1 hour', 'schedule'
 	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE collection_runs SET accepted_count=1, updated_at=now() WHERE status='succeeded'`); err != nil {
 		t.Fatal(err)
 	}
-	assertNotificationCount(t, runtime, 6)
+	assertNotificationCount(t, runtime, 7)
 
 	tx, err := runtime.SQL.BeginTx(ctx, nil)
 	if err != nil {
@@ -172,14 +186,14 @@ VALUES ($1, $2, $3::timestamptz, $3::timestamptz + interval '1 hour', 'schedule'
 	}
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO event_updates (event_id, sequence_no, kind, summary, observed_at, after_state, evidence_set_hash, idempotency_key)
-VALUES ($1, 2, 'metric_changed', '事务回滚', $2, '{}', repeat('f',64), repeat('0',64))`, eventID, now.Add(4*time.Second)); err != nil {
+VALUES ($1, 3, 'metric_changed', '事务回滚', $2, '{}', repeat('f',64), repeat('0',64))`, eventID, now.Add(4*time.Second)); err != nil {
 		_ = tx.Rollback()
 		t.Fatal(err)
 	}
 	if err := tx.Rollback(); err != nil {
 		t.Fatal(err)
 	}
-	assertNotificationCount(t, runtime, 6)
+	assertNotificationCount(t, runtime, 7)
 
 	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE notification_events SET payload='{}' WHERE id=(SELECT min(id) FROM notification_events)`); err == nil {
 		t.Fatal("notification outbox UPDATE succeeded, want append-only rejection")

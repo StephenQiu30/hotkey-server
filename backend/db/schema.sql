@@ -156,6 +156,14 @@ CREATE TABLE IF NOT EXISTS monitor_config_versions (
     collection_interval_seconds integer NOT NULL DEFAULT 300 CHECK (collection_interval_seconds BETWEEN 300 AND 86400 AND mod(collection_interval_seconds, 60) = 0),
     relevance_threshold numeric(5,2) NOT NULL DEFAULT 60 CHECK (relevance_threshold BETWEEN 60 AND 100),
     event_threshold numeric(5,2) NOT NULL DEFAULT 0 CHECK (event_threshold BETWEEN 0 AND 100),
+    alert_min_heat numeric(5,2) NOT NULL DEFAULT 70 CHECK (alert_min_heat BETWEEN 0 AND 100),
+    alert_min_momentum numeric(5,2) NOT NULL DEFAULT 55 CHECK (alert_min_momentum BETWEEN 0 AND 100),
+    alert_min_breadth numeric(5,2) NOT NULL DEFAULT 25 CHECK (alert_min_breadth BETWEEN 0 AND 100),
+    alert_warning_threshold numeric(5,2) NOT NULL DEFAULT 75 CHECK (alert_warning_threshold BETWEEN 0 AND 100),
+    alert_critical_threshold numeric(5,2) NOT NULL DEFAULT 90 CHECK (alert_critical_threshold BETWEEN 0 AND 100 AND alert_critical_threshold >= alert_warning_threshold),
+    alert_cooldown_minutes integer NOT NULL DEFAULT 60 CHECK (alert_cooldown_minutes BETWEEN 5 AND 1440),
+    alert_email_enabled boolean NOT NULL DEFAULT false,
+    alert_email_min_severity varchar(16) NOT NULL DEFAULT 'critical' CHECK (alert_email_min_severity IN ('warning','critical')),
     retention_days integer NOT NULL DEFAULT 180 CHECK (retention_days BETWEEN 1 AND 3650),
     config_hash char(64), published_at timestamptz,
     created_by bigint REFERENCES users(id) ON DELETE SET NULL, updated_by bigint REFERENCES users(id) ON DELETE SET NULL,
@@ -259,6 +267,14 @@ BEGIN
            OR NEW.collection_interval_seconds IS DISTINCT FROM OLD.collection_interval_seconds
            OR NEW.relevance_threshold IS DISTINCT FROM OLD.relevance_threshold
            OR NEW.event_threshold IS DISTINCT FROM OLD.event_threshold
+           OR NEW.alert_min_heat IS DISTINCT FROM OLD.alert_min_heat
+           OR NEW.alert_min_momentum IS DISTINCT FROM OLD.alert_min_momentum
+           OR NEW.alert_min_breadth IS DISTINCT FROM OLD.alert_min_breadth
+           OR NEW.alert_warning_threshold IS DISTINCT FROM OLD.alert_warning_threshold
+           OR NEW.alert_critical_threshold IS DISTINCT FROM OLD.alert_critical_threshold
+           OR NEW.alert_cooldown_minutes IS DISTINCT FROM OLD.alert_cooldown_minutes
+           OR NEW.alert_email_enabled IS DISTINCT FROM OLD.alert_email_enabled
+           OR NEW.alert_email_min_severity IS DISTINCT FROM OLD.alert_email_min_severity
            OR NEW.retention_days IS DISTINCT FROM OLD.retention_days
            OR NEW.config_hash IS DISTINCT FROM OLD.config_hash
            OR NEW.published_at IS DISTINCT FROM OLD.published_at
@@ -1177,6 +1193,12 @@ CREATE TABLE IF NOT EXISTS alert_threads (
     state varchar(16) NOT NULL DEFAULT 'open' CHECK (state IN ('open','acknowledged','resolved','suppressed')),
     severity varchar(16) NOT NULL CHECK (severity IN ('info','warning','critical')),
     event_threshold_snapshot numeric(5,2) NOT NULL CHECK (event_threshold_snapshot BETWEEN 0 AND 100),
+    alert_min_heat_snapshot numeric(5,2) NOT NULL DEFAULT 0 CHECK (alert_min_heat_snapshot BETWEEN 0 AND 100),
+    alert_min_momentum_snapshot numeric(5,2) NOT NULL DEFAULT 0 CHECK (alert_min_momentum_snapshot BETWEEN 0 AND 100),
+    alert_min_breadth_snapshot numeric(5,2) NOT NULL DEFAULT 0 CHECK (alert_min_breadth_snapshot BETWEEN 0 AND 100),
+    alert_warning_threshold_snapshot numeric(5,2) NOT NULL DEFAULT 75 CHECK (alert_warning_threshold_snapshot BETWEEN 0 AND 100),
+    alert_critical_threshold_snapshot numeric(5,2) NOT NULL DEFAULT 90 CHECK (alert_critical_threshold_snapshot BETWEEN alert_warning_threshold_snapshot AND 100),
+    alert_cooldown_minutes_snapshot integer NOT NULL DEFAULT 60 CHECK (alert_cooldown_minutes_snapshot BETWEEN 5 AND 1440),
     title_snapshot text NOT NULL CHECK (octet_length(title_snapshot) >= 1 AND octet_length(title_snapshot) <= 1000),
     reason_snapshot text NOT NULL DEFAULT '' CHECK (octet_length(reason_snapshot) <= 2000),
     first_triggered_at timestamptz NOT NULL,
@@ -1213,6 +1235,9 @@ CREATE TABLE IF NOT EXISTS alert_occurrences (
     severity varchar(16) NOT NULL CHECK (severity IN ('info','warning','critical')),
     final_score_snapshot numeric(5,2) NOT NULL CHECK (final_score_snapshot BETWEEN 0 AND 100),
     threshold_snapshot numeric(5,2) NOT NULL CHECK (threshold_snapshot BETWEEN 0 AND 100),
+    heat_score_snapshot numeric(5,2) NOT NULL DEFAULT 0 CHECK (heat_score_snapshot BETWEEN 0 AND 100),
+    momentum_score_snapshot numeric(5,2) NOT NULL DEFAULT 0 CHECK (momentum_score_snapshot BETWEEN 0 AND 100),
+    breadth_score_snapshot numeric(5,2) NOT NULL DEFAULT 0 CHECK (breadth_score_snapshot BETWEEN 0 AND 100),
     reason_codes text[] NOT NULL DEFAULT '{}',
     fingerprint char(64) NOT NULL UNIQUE,
     triggered_at timestamptz NOT NULL,
@@ -1221,6 +1246,37 @@ CREATE TABLE IF NOT EXISTS alert_occurrences (
 );
 CREATE INDEX IF NOT EXISTS alert_occurrences_thread_time_idx
     ON alert_occurrences(alert_thread_id, triggered_at DESC, id DESC);
+
+CREATE TABLE IF NOT EXISTS alert_email_deliveries (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    occurrence_id bigint NOT NULL UNIQUE REFERENCES alert_occurrences(id) ON DELETE RESTRICT,
+    idempotency_key char(64) NOT NULL UNIQUE,
+    recipient text NOT NULL CHECK (octet_length(recipient) >= 3 AND octet_length(recipient) <= 320),
+    subject text NOT NULL CHECK (octet_length(subject) >= 1 AND octet_length(subject) <= 1000),
+    text_body text NOT NULL CHECK (octet_length(text_body) >= 1 AND octet_length(text_body) <= 10000),
+    html_body text NOT NULL CHECK (octet_length(html_body) >= 1 AND octet_length(html_body) <= 20000),
+    severity varchar(16) NOT NULL CHECK (severity IN ('warning','critical')),
+    status varchar(16) NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','claimed','succeeded','retrying','failed')),
+    next_attempt_at timestamptz,
+    succeeded_at timestamptz,
+    last_error text CHECK (last_error IS NULL OR octet_length(last_error) <= 255),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS alert_email_deliveries_next_attempt_idx
+    ON alert_email_deliveries(status, next_attempt_at, id);
+
+CREATE TABLE IF NOT EXISTS alert_email_attempts (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    delivery_id bigint NOT NULL REFERENCES alert_email_deliveries(id) ON DELETE RESTRICT,
+    attempt_no integer NOT NULL CHECK (attempt_no >= 1 AND attempt_no <= 5),
+    status varchar(16) NOT NULL CHECK (status IN ('started','succeeded','failed')),
+    error text CHECK (error IS NULL OR octet_length(error) <= 255),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (delivery_id, attempt_no, status)
+);
+CREATE INDEX IF NOT EXISTS alert_email_attempts_delivery_idx
+    ON alert_email_attempts(delivery_id, attempt_no, id);
 
 CREATE TABLE IF NOT EXISTS alert_state_audits (
     id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
@@ -1294,6 +1350,9 @@ DECLARE
     projected_occurred_at timestamptz;
     projected_payload jsonb;
     projected_dedupe_key varchar(160);
+    alert_occurrence_count bigint;
+    alert_state varchar(16);
+    alert_cooldown_until timestamptz;
 BEGIN
     IF TG_TABLE_NAME = 'event_updates' THEN
         projected_event_type := 'event.updated';
@@ -1308,6 +1367,19 @@ BEGIN
         );
         projected_dedupe_key := 'event_update:' || NEW.id;
     ELSIF TG_TABLE_NAME = 'alert_occurrences' THEN
+        SELECT occurrence_count, state, cooldown_until
+        INTO alert_occurrence_count, alert_state, alert_cooldown_until
+        FROM alert_threads
+        WHERE id = NEW.alert_thread_id;
+
+        -- The first occurrence always disturbs. Later occurrences are durable
+        -- facts but do not create a real-time notification while the thread is
+        -- suppressed or still inside its frozen cooldown window.
+        IF alert_occurrence_count > 0 AND (
+            alert_state = 'suppressed' OR NEW.triggered_at < alert_cooldown_until
+        ) THEN
+            RETURN NEW;
+        END IF;
         projected_event_type := 'alert.triggered';
         projected_resource_type := 'alert';
         projected_resource_id := NEW.alert_thread_id;

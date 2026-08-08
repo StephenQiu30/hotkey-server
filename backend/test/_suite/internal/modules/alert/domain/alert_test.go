@@ -57,6 +57,44 @@ func TestSeverityForScoreUsesAbsoluteV1Boundaries(t *testing.T) {
 	}
 }
 
+func TestSeverityAndCooldownUsePublishedV2Thresholds(t *testing.T) {
+	t.Parallel()
+	if got, err := SeverityForThresholds(84, 80, 95); err != nil || got != SeverityWarning {
+		t.Fatalf("SeverityForThresholds() = %q/%v", got, err)
+	}
+	if _, err := SeverityForThresholds(80, 95, 90); err == nil {
+		t.Fatal("unordered severity thresholds were accepted")
+	}
+	triggered := time.Date(2026, 8, 4, 1, 0, 0, 0, time.UTC)
+	if got := CooldownUntilMinutes(triggered, 90); !got.Equal(triggered.Add(90 * time.Minute)) {
+		t.Fatalf("CooldownUntilMinutes() = %s", got)
+	}
+}
+
+func TestRecordOccurrenceV2RequiresEveryFrozenDimension(t *testing.T) {
+	t.Parallel()
+	fingerprint, err := OccurrenceFingerprint(FingerprintInput{MonitorConfigVersionID: 17, EventUpdateID: 41, TriggerType: TriggerRising, PolicyVersion: PolicyVersionV2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := RecordOccurrenceCommand{
+		MonitorID: 3, EventID: 5, EventUpdateID: 41, TriggerType: TriggerRising, PolicyVersion: PolicyVersionV2,
+		MonitorConfigVersionID: 17, MonitorRevision: 7, MonitorConfigHash: strings.Repeat("a", 64),
+		EventThresholdSnapshot: 70, AlertMinHeatSnapshot: 70, AlertMinMomentumSnapshot: 55, AlertMinBreadthSnapshot: 25,
+		AlertWarningThresholdSnapshot: 80, AlertCriticalThresholdSnapshot: 95, AlertCooldownMinutesSnapshot: 90,
+		FinalScoreSnapshot: 84, HeatScoreSnapshot: 82, MomentumScoreSnapshot: 70, BreadthScoreSnapshot: 50,
+		Severity: SeverityWarning, TitleSnapshot: "V2 event", TriggeredAt: time.Now().UTC(), Fingerprint: fingerprint,
+	}
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("valid v2 command: %v", err)
+	}
+	invalid := valid
+	invalid.BreadthScoreSnapshot = 24.99
+	if err := invalid.Validate(); err == nil {
+		t.Fatal("below-threshold breadth was accepted")
+	}
+}
+
 func TestOccurrenceFingerprintUsesTheFrozenOrderedV1Input(t *testing.T) {
 	t.Parallel()
 	input := FingerprintInput{

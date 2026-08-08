@@ -91,9 +91,20 @@ func (worker *Worker) finish(ctx context.Context, id int64, kind string, attempt
 			_, err := transaction.SQL.ExecContext(ctx, `UPDATE river_job SET state = 'discarded', finalized_at = now() WHERE id = $1`, id)
 			return databaserepository.MapError(err)
 		}
-		_, err := transaction.SQL.ExecContext(ctx, `UPDATE river_job SET state = 'available', scheduled_at = now() + interval '1 minute', finalized_at = NULL WHERE id = $1`, id)
+		retryAt := worker.now().UTC().Add(retryBackoff(attempt))
+		_, err := transaction.SQL.ExecContext(ctx, `UPDATE river_job SET state = 'available', scheduled_at = $2, finalized_at = NULL WHERE id = $1`, id, retryAt)
 		return databaserepository.MapError(err)
 	})
+}
+
+func retryBackoff(attempt int) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+	if attempt > 8 {
+		attempt = 8
+	}
+	return time.Duration(1<<uint(attempt-1)) * time.Minute
 }
 
 func (worker *Worker) Run(ctx context.Context, interval time.Duration) error {

@@ -98,7 +98,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (*domain.
 	if err != nil {
 		return nil, nil, err
 	}
-	monitor := domain.Monitor{Name: draft.Name, Description: draft.Description, Status: domain.MonitorStatusDraft}
+	monitor := domain.Monitor{Name: draft.Name, Description: draft.Description, Status: domain.MonitorStatusDraft, CreatedByUserID: input.Subject.UserID, UpdatedByUserID: input.Subject.UserID}
 	config := domain.MonitorConfigVersion{Revision: 1, State: domain.ConfigVersionDraft, Config: draft.Config}
 	err = service.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
 		if err := lockConfiguration(ctx, transaction); err != nil {

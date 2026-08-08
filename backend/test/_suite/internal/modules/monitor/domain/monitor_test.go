@@ -75,6 +75,20 @@ func TestNormalizeMonitorConfigValidatesAndCanonicalizesInput(t *testing.T) {
 	}
 }
 
+func TestNormalizeMonitorConfigAppliesConservativeAlertDefaultsAndRejectsSeverityInversion(t *testing.T) {
+	config, err := NormalizeMonitorConfig(MonitorConfig{Timezone: "UTC", Languages: []string{"en"}, CollectionIntervalSeconds: 300, RelevanceThreshold: 60, EventThreshold: 70, RetentionDays: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.AlertMinHeat != 70 || config.AlertMinMomentum != 55 || config.AlertMinBreadth != 25 || config.AlertCooldownMinutes != 60 || config.AlertEmailEnabled || config.AlertEmailMinSeverity != AlertEmailSeverityCritical {
+		t.Fatalf("alert defaults = %#v", config)
+	}
+	config.AlertWarningThreshold, config.AlertCriticalThreshold = 95, 90
+	if _, err := NormalizeMonitorConfig(config); err == nil {
+		t.Fatal("inverted severity thresholds were accepted")
+	}
+}
+
 func TestCanonicalConfigHashIsStableAcrossInputOrdering(t *testing.T) {
 	t.Parallel()
 

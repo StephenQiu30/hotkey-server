@@ -340,6 +340,17 @@ type AlertStateAudit struct {
 	ActorType, FromState, ToState, ReasonCode string
 	ActorUserID                               *int64
 }
+type AlertEmailDelivery struct {
+	OperationalRecord
+	OccurrenceID                     int64
+	IdempotencyKey, Severity, Status string
+}
+type AlertEmailAttempt struct {
+	OperationalRecord
+	DeliveryID int64
+	AttemptNo  int
+	Status     string
+}
 type AIRun struct {
 	OperationalRecord
 	TaskType, TargetType, PromptVersion, SchemaVersion, ModelVersion, ParametersVersion, InputSchemaVersion string
@@ -445,8 +456,10 @@ var specs = []Spec{
 	{"content_metric_snapshots", LifecycleOperational, []string{"id", "content_id", "captured_at", "view_count", "like_count", "comment_count", "share_count"}},
 	{"event_metric_snapshots", LifecycleOperational, []string{"id", "event_id", "captured_at", "window_hours", "heat_score", "trend_score", "trend_status", "heat_version", "evidence_set_hash", "capability_profile_set_hash"}},
 	{"event_updates", LifecycleOperational, []string{"id", "version", "event_id", "sequence_no", "kind", "summary", "observed_at", "reason_codes", "before_state", "after_state", "evidence_set_hash", "idempotency_key", "created_at"}},
-	{"alert_threads", LifecycleBusiness, []string{"id", "version", "monitor_id", "monitor_config_version_id", "monitor_revision", "monitor_config_hash", "event_id", "trigger_type", "policy_version", "state", "severity", "event_threshold_snapshot", "title_snapshot", "reason_snapshot", "first_triggered_at", "last_triggered_at", "occurrence_count", "cooldown_until", "acknowledged_at", "acknowledged_by_user_id", "resolved_at", "resolved_by_user_id", "suppressed_at", "suppressed_by_user_id", "created_at", "updated_at"}},
-	{"alert_occurrences", LifecycleOperational, []string{"id", "alert_thread_id", "event_update_id", "severity", "final_score_snapshot", "threshold_snapshot", "reason_codes", "fingerprint", "triggered_at", "created_at"}},
+	{"alert_threads", LifecycleBusiness, []string{"id", "version", "monitor_id", "monitor_config_version_id", "monitor_revision", "monitor_config_hash", "event_id", "trigger_type", "policy_version", "state", "severity", "event_threshold_snapshot", "alert_min_heat_snapshot", "alert_min_momentum_snapshot", "alert_min_breadth_snapshot", "alert_warning_threshold_snapshot", "alert_critical_threshold_snapshot", "alert_cooldown_minutes_snapshot", "title_snapshot", "reason_snapshot", "first_triggered_at", "last_triggered_at", "occurrence_count", "cooldown_until", "acknowledged_at", "acknowledged_by_user_id", "resolved_at", "resolved_by_user_id", "suppressed_at", "suppressed_by_user_id", "created_at", "updated_at"}},
+	{"alert_occurrences", LifecycleOperational, []string{"id", "alert_thread_id", "event_update_id", "severity", "final_score_snapshot", "threshold_snapshot", "heat_score_snapshot", "momentum_score_snapshot", "breadth_score_snapshot", "reason_codes", "fingerprint", "triggered_at", "created_at"}},
+	{"alert_email_deliveries", LifecycleOperational, []string{"id", "occurrence_id", "idempotency_key", "severity", "status", "next_attempt_at", "succeeded_at"}},
+	{"alert_email_attempts", LifecycleOperational, []string{"id", "delivery_id", "attempt_no", "status"}},
 	{"alert_state_audits", LifecycleOperational, []string{"id", "alert_thread_id", "actor_type", "actor_user_id", "from_state", "to_state", "expected_version", "reason_code", "created_at"}},
 	{"notification_events", LifecycleOperational, []string{"id", "event_type", "resource_type", "resource_id", "audience_role", "occurred_at", "payload", "dedupe_key", "created_at"}},
 	{"ai_runs", LifecycleOperational, []string{"id", "task_type", "target_type", "target_id", "model_profile_id", "model_profile_version", "model_version", "prompt_version", "input_schema_version", "schema_version", "parameters_version", "input_hash", "evidence_set_hash", "reuse_key", "attempt", "max_attempts", "repair_attempted", "retry_after", "error_code", "budget_day", "reserved_cost", "lease_expires_at", "status"}},

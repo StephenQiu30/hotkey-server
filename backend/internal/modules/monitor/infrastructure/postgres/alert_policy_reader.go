@@ -45,12 +45,16 @@ func (reader *AlertPolicyReader) ListPublishedAlertPolicies(ctx context.Context,
 		return nil, fmt.Errorf("encode monitor ids: %w", err)
 	}
 	rows, err := reader.runtime.SQL.QueryContext(ctx, `
-SELECT monitor.id, config.id, config.revision, config.config_hash, config.event_threshold
+SELECT monitor.id, config.id, config.revision, config.config_hash, config.event_threshold,
+       config.alert_min_heat, config.alert_min_momentum, config.alert_min_breadth,
+       config.alert_warning_threshold, config.alert_critical_threshold, config.alert_cooldown_minutes,
+       config.alert_email_enabled, config.alert_email_min_severity, coalesce(owner.email, '')
 FROM monitors AS monitor
 JOIN monitor_config_versions AS config
   ON config.id = monitor.published_config_version_id
  AND config.monitor_id = monitor.id
  AND config.state = 'published'
+LEFT JOIN users AS owner ON owner.id = monitor.created_by AND owner.status = 'active' AND owner.deleted_at IS NULL
 WHERE monitor.status = 'active'
   AND monitor.deleted_at IS NULL
   AND monitor.id IN (
@@ -64,7 +68,7 @@ ORDER BY monitor.id ASC`, encodedIDs)
 	policies := make([]application.PublishedAlertPolicy, 0, len(ids))
 	for rows.Next() {
 		var policy application.PublishedAlertPolicy
-		if err := rows.Scan(&policy.MonitorID, &policy.ConfigVersionID, &policy.Revision, &policy.ConfigHash, &policy.EventThreshold); err != nil {
+		if err := rows.Scan(&policy.MonitorID, &policy.ConfigVersionID, &policy.Revision, &policy.ConfigHash, &policy.EventThreshold, &policy.AlertMinHeat, &policy.AlertMinMomentum, &policy.AlertMinBreadth, &policy.AlertWarningThreshold, &policy.AlertCriticalThreshold, &policy.AlertCooldownMinutes, &policy.AlertEmailEnabled, &policy.AlertEmailMinSeverity, &policy.RecipientEmail); err != nil {
 			return nil, databaserepository.MapError(err)
 		}
 		policies = append(policies, policy)
