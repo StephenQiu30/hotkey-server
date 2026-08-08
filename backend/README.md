@@ -145,6 +145,10 @@ go run ./cmd/hotkey db init --empty-only --confirm-empty
 go run ./cmd/hotkey db verify
 ```
 
+> **为什么必须是空库：** `db init` 只接受 public schema 中无任何对象的目标库，`db verify` 会对表集合、列名与顺序、约束、索引和默认值做字节级一致性校验。旧版本库与当前 `db/schema.sql` 存在结构漂移时**无法增量迁移**，需对全新空库初始化，或将现有数据备份后重建。
+>
+> **扩展权限：** 若目标库由非超级用户持有，该用户默认无法 `CREATE EXTENSION`。先以超级用户执行 `CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE EXTENSION IF NOT EXISTS vector;`，或在初始化后收回临时授予的超级用户权限。
+
 ### 3. 启动后端
 
 GoLand 直接运行 `cmd/hotkey` 的 `main` 包即可；命令行等价入口只有一个：
@@ -152,6 +156,8 @@ GoLand 直接运行 `cmd/hotkey` 的 `main` 包即可；命令行等价入口只
 ```bash
 go run ./cmd/hotkey
 ```
+
+> **配置加载与工作目录：** 后端从进程工作目录读取 `.env`（生产环境叠加 `.env.prod`，进程环境变量优先级最高）。GoLand 运行 `cmd/hotkey` 时，请把工作目录设为 `backend/` 以便读取 `backend/.env`；相对路径配置（如 `HOTKEY_VAULT_PATH`）按工作目录解析，建议填写绝对路径。
 
 首个用户通过 Web 正常完成邮箱验证和注册，默认角色为 viewer；随后由数据库操作员按 [首管理员数据库指定操作](../docs/operations/009-首管理员数据库指定操作.md) 的一次性事务将该用户提升为 admin。启动过程不读取管理员邮箱或密码，也不需要额外的用户引导命令。
 
