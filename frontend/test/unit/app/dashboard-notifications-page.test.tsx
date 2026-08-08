@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import SubscriptionsPage from "@/app/dashboard/notifications/page";
 import { useNotificationStore } from "@/stores/notificationStore";
@@ -65,7 +66,20 @@ describe("SubscriptionsPage", () => {
     render(<SubscriptionsPage />);
     expect(screen.getByText("轮询中")).toBeInTheDocument();
     expect(screen.getByText("报告生成失败")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看通知关联内容" })).toHaveAttribute("href", "/dashboard/reports");
     await waitFor(() => expect(useNotificationStore.getState().unreadCount).toBe(0));
     expect(useNotificationStore.getState().readThroughID).toBe(3);
+  });
+
+  it("keeps subscription failures distinct from the empty state and retries", async () => {
+    mocks.getSubscriptions
+      .mockRejectedValueOnce(new Error("subscription unavailable"))
+      .mockResolvedValueOnce({ data: { items: [] } });
+
+    render(<SubscriptionsPage />);
+    expect(await screen.findByText("无法加载报告订阅")).toBeInTheDocument();
+    expect(screen.queryByText("暂时没有发布订阅")).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "重试订阅" }));
+    expect(await screen.findByText("暂时没有发布订阅")).toBeInTheDocument();
   });
 });

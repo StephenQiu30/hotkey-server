@@ -726,7 +726,17 @@ function EventsWorkspace() {
         <Alert variant="destructive" className="mt-6">
           <CircleDot className="h-4 w-4" />
           <AlertTitle>事件雷达加载失败</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+            <span>{error}</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void loadRadar()}
+              aria-label="重试事件"
+            >
+              重试
+            </Button>
+          </AlertDescription>
         </Alert>
       ) : loading ? (
         <div className="flex h-96 items-center justify-center">
@@ -759,7 +769,7 @@ function EventsWorkspace() {
               </span>
             </div>
             <Card className="overflow-hidden shadow-none">
-              <Table aria-label="热点事件列表">
+              <Table aria-label="热点事件列表" scrollAreaLabel="热点事件列表">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="min-w-[320px]">事件</TableHead>

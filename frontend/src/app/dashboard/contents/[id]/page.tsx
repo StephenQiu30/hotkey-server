@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { ArrowLeft, Loader2, RefreshCw, ShieldAlert } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -16,7 +17,10 @@ import {
 } from "@/components/ui/empty";
 import { ContentDocumentViewer } from "@/components/dashboard/ContentDocumentViewer";
 import { ConfirmDeleteDialog } from "@/components/dashboard/ConfirmDeleteDialog";
-import { deleteContentsId, getContentsIdDocument } from "@/services/hotkey/hotkey-server/contents";
+import {
+  deleteContentsId,
+  getContentsIdDocument,
+} from "@/services/hotkey/hotkey-server/contents";
 import { useAuthStore } from "@/stores/authStore";
 import { UserRole } from "@/lib/domainEnums";
 
@@ -41,7 +45,8 @@ const errorCopy: Record<DetailError, { title: string; description: string }> = {
   },
   503: {
     title: "归档暂不可用",
-    description: "归档存储暂时无法读取，请稍后重试。页面不会展示缓存中的旧正文。",
+    description:
+      "归档存储暂时无法读取，请稍后重试。页面不会展示缓存中的旧正文。",
   },
 };
 
@@ -49,7 +54,8 @@ export default function ContentDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
-  const canManage = user?.role === UserRole.Editor || user?.role === UserRole.Admin;
+  const canManage =
+    user?.role === UserRole.Editor || user?.role === UserRole.Admin;
   const id = Number(params.id);
   const validId = Number.isSafeInteger(id) && id > 0;
   const [document, setDocument] = useState<HotKeyAPI.ContentDocumentResponse>();
@@ -70,7 +76,8 @@ export default function ContentDetailPage() {
     setDocument(undefined);
     try {
       const result = await getContentsIdDocument({ id });
-      if (!result.data) throw Object.assign(new Error("empty response"), { code: 503 });
+      if (!result.data)
+        throw Object.assign(new Error("empty response"), { code: 503 });
       setDocument(result.data);
     } catch (reason) {
       setDocument(undefined);
@@ -102,7 +109,10 @@ export default function ContentDetailPage() {
   if (loading) {
     return (
       <div className="flex min-h-[calc(100vh-60px)] items-center justify-center">
-        <Loader2 aria-label="加载归档内容" className="h-5 w-5 animate-spin text-muted-foreground" />
+        <Loader2
+          aria-label="加载归档内容"
+          className="h-5 w-5 animate-spin text-muted-foreground"
+        />
       </div>
     );
   }
@@ -114,21 +124,25 @@ export default function ContentDetailPage() {
         <Card className="mx-auto max-w-2xl">
           <Empty className="min-h-80 border-0">
             <EmptyHeader>
-              <EmptyMedia variant="icon"><ShieldAlert /></EmptyMedia>
-              <EmptyTitle><h1>{copy.title}</h1></EmptyTitle>
+              <EmptyMedia variant="icon">
+                <ShieldAlert />
+              </EmptyMedia>
+              <EmptyTitle>
+                <h1>{copy.title}</h1>
+              </EmptyTitle>
               <EmptyDescription>{copy.description}</EmptyDescription>
             </EmptyHeader>
             <EmptyContent className="flex-row flex-wrap justify-center gap-2">
-            <Button asChild variant="outline" className="gap-2">
-              <a href="/dashboard/contents">
-                <ArrowLeft className="h-4 w-4" /> 返回采集内容
-              </a>
-            </Button>
-            {error === 503 ? (
-              <Button onClick={load} className="gap-2">
-                <RefreshCw className="h-4 w-4" /> 重试
+              <Button asChild variant="outline" className="gap-2">
+                <Link href="/dashboard/contents">
+                  <ArrowLeft className="h-4 w-4" /> 返回采集内容
+                </Link>
               </Button>
-            ) : null}
+              {error === 503 ? (
+                <Button onClick={load} className="gap-2">
+                  <RefreshCw className="h-4 w-4" /> 重试
+                </Button>
+              ) : null}
             </EmptyContent>
           </Empty>
         </Card>

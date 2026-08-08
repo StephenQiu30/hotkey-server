@@ -4,15 +4,7 @@ import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import {
-  Bell,
-  ChevronDown,
-  LogOut,
-  Menu,
-  Search,
-  Settings2,
-  User,
-} from "lucide-react";
+import { Bell, ChevronDown, LogOut, Menu, Search, User } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -75,8 +67,6 @@ export default function TopNav({
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const unreadCount = useNotificationStore((state) => state.unreadCount);
-  const canManage =
-    user?.role === UserRole.Admin || user?.role === UserRole.Editor;
   const visibleAdminMenuItems = adminMenuItems.filter(
     (item) =>
       !item.roles || (user?.role && item.roles.includes(user.role as UserRole))
@@ -114,13 +104,13 @@ export default function TopNav({
         >
           <BrandLogo title={title} markClassName="h-5 w-5" />
         </Link>
-        <span className="hidden rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground xl:inline-flex">
+        <span className="hidden rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground 2xl:inline-flex">
           Intelligence
         </span>
 
         <NavigationMenu
           aria-label="主导航"
-          className="hidden h-full max-w-none flex-none justify-start lg:flex"
+          className="hidden h-full max-w-none flex-none justify-start xl:flex"
         >
           <NavigationMenuList className="h-full gap-1">
             {menuItems.map((item) => {
@@ -157,8 +147,8 @@ export default function TopNav({
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="search"
-            aria-label="搜索事件或监控"
-            placeholder="搜索事件或监控"
+            aria-label="搜索事件"
+            placeholder="搜索事件"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             className="h-9 bg-background pl-9 shadow-none"
@@ -191,13 +181,16 @@ export default function TopNav({
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9 shrink-0 lg:hidden"
+              className="h-9 w-9 shrink-0 xl:hidden"
               aria-label="打开导航"
             >
               <Menu />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="w-[min(88vw,360px)] p-0">
+          <SheetContent
+            side="left"
+            className="w-[min(88vw,360px)] overflow-y-auto p-0"
+          >
             <SheetHeader className="border-b p-5 text-left">
               <SheetTitle>工作区导航</SheetTitle>
               <SheetDescription>浏览热点监控与分析功能。</SheetDescription>
@@ -210,8 +203,8 @@ export default function TopNav({
               >
                 <Input
                   type="search"
-                  aria-label="移动端搜索事件或监控"
-                  placeholder="搜索事件或监控"
+                  aria-label="移动端搜索事件"
+                  placeholder="搜索事件"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                 />
@@ -238,16 +231,30 @@ export default function TopNav({
                     </SheetClose>
                   );
                 })}
-                {canManage ? (
-                  <SheetClose asChild>
-                    <Link
-                      href="/dashboard/sources"
-                      className="mt-3 flex items-center gap-3 border-t px-3 pt-4 text-sm text-muted-foreground no-underline"
-                    >
-                      <Settings2 className="h-4 w-4" />
-                      工作区管理
-                    </Link>
-                  </SheetClose>
+                {visibleAdminMenuItems.length > 0 ? (
+                  <div className="mt-3 space-y-1 border-t pt-3">
+                    <p className="px-3 py-1 text-xs font-medium text-muted-foreground">
+                      管理
+                    </p>
+                    {visibleAdminMenuItems.map((item) => {
+                      const active = isActivePath(pathname, item.path);
+                      return (
+                        <SheetClose asChild key={item.path}>
+                          <Link
+                            href={item.path}
+                            aria-current={active ? "page" : undefined}
+                            className={cn(
+                              "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm text-muted-foreground no-underline hover:bg-accent hover:text-accent-foreground",
+                              active && "bg-accent font-medium text-foreground"
+                            )}
+                          >
+                            {item.icon}
+                            {item.name}
+                          </Link>
+                        </SheetClose>
+                      );
+                    })}
+                  </div>
                 ) : null}
               </nav>
             </div>
@@ -288,7 +295,7 @@ export default function TopNav({
                 账户信息
               </Link>
             </DropdownMenuItem>
-            {canManage && visibleAdminMenuItems.length > 0 ? (
+            {visibleAdminMenuItems.length > 0 ? (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">

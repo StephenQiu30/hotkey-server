@@ -603,10 +603,22 @@ function ContentsWorkspace() {
       {contentError ? (
         <Alert className="mt-6" variant="destructive">
           <AlertTitle>内容检索失败</AlertTitle>
-          <AlertDescription>{contentError}</AlertDescription>
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+            <span>{contentError}</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                void loadContentsPage(currentContentCursor, contentPage)
+              }
+              aria-label="重试内容"
+            >
+              重试
+            </Button>
+          </AlertDescription>
         </Alert>
       ) : null}
-      {loading && !runs.length && !contents.length ? (
+      {contentError ? null : loading && !runs.length && !contents.length ? (
         <div className="flex min-h-80 items-center justify-center">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>

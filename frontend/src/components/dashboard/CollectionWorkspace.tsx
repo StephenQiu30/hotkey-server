@@ -243,12 +243,12 @@ export function CollectionWorkspace({
                     </div>
                     <div className="mt-2 min-w-0">
                       {content.id != null ? (
-                        <a
+                        <Link
                           className="block text-sm font-medium leading-6 text-foreground no-underline hover:text-foreground"
                           href={`/dashboard/contents/${content.id}`}
                         >
                           {title}
-                        </a>
+                        </Link>
                       ) : (
                         <p className="text-sm font-medium leading-6">{title}</p>
                       )}
@@ -271,24 +271,24 @@ export function CollectionWorkspace({
                           </Badge>
                         ) : null}
                         {content.event_id != null ? (
-                          <a
+                          <Link
                             className="text-xs text-muted-foreground no-underline hover:text-foreground"
                             href={`/dashboard/events?event=${content.event_id}`}
                           >
                             归属事件：
                             {content.event_title || `#${content.event_id}`}
-                          </a>
+                          </Link>
                         ) : null}
                       </div>
                       <div className="mt-3 flex flex-wrap items-center gap-4 text-xs">
                         {content.id != null ? (
-                          <a
+                          <Link
                             aria-label={`阅读归档：${title}`}
                             className="text-muted-foreground no-underline"
                             href={`/dashboard/contents/${content.id}`}
                           >
                             阅读归档
-                          </a>
+                          </Link>
                         ) : null}
                         {content.canonical_url ? (
                           <a
@@ -345,3 +345,4 @@ export function CollectionWorkspace({
     </div>
   );
 }
+import Link from "next/link";

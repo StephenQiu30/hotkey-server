@@ -8,7 +8,13 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Empty,
   EmptyContent,
@@ -38,7 +44,7 @@ export function EmptyWorkspace({
     (monitor) => monitor.status !== MonitorStatus.Archived
   );
   const draftCount = visibleMonitors.filter(
-    (monitor) => monitor.status === MonitorStatus.Draft,
+    (monitor) => monitor.status === MonitorStatus.Draft
   ).length;
   const publishedCount = visibleMonitors.filter(
     (monitor) => monitor.published != null
@@ -51,17 +57,25 @@ export function EmptyWorkspace({
     draftCount > 0
       ? "草稿不会创建采集任务"
       : publishedCount === 0
-        ? "创建并发布监控后，系统才会开始采集与聚合"
-        : !collectionStarted
-          ? "监控已发布，但尚未产生采集任务。请确认后台调度器正在运行。"
-          : !contentsReady
-            ? "采集任务已经产生，内容会在标准化完成后进入工作台。"
-            : `最近一页已有 ${collectedContents.length} 条内容，正在等待相关性匹配与事件聚合。`;
+      ? "创建并发布监控后，系统才会开始采集与聚合"
+      : !collectionStarted
+      ? "监控已发布，但尚未产生采集任务。请确认后台调度器正在运行。"
+      : !contentsReady
+      ? "采集任务已经产生，内容会在标准化完成后进入工作台。"
+      : `最近一页已有 ${collectedContents.length} 条内容，正在等待相关性匹配与事件聚合。`;
 
   const metrics = [
     { label: "已创建监控", value: visibleMonitors.length, icon: Radar },
-    { label: "当前页采集批次", value: collectionRuns.length, icon: DatabaseZap },
-    { label: "最近入库内容", value: collectedContents.length, icon: FileSearch },
+    {
+      label: "当前页采集批次",
+      value: collectionRuns.length,
+      icon: DatabaseZap,
+    },
+    {
+      label: "最近入库内容",
+      value: collectedContents.length,
+      icon: FileSearch,
+    },
     { label: "执行中任务", value: runningJobs, icon: Workflow },
   ];
 
@@ -80,7 +94,9 @@ export function EmptyWorkspace({
             <Card key={metric.label}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs text-muted-foreground">{metric.label}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {metric.label}
+                  </p>
                   <Icon className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <p className="mono mt-3 text-2xl font-medium">{metric.value}</p>
@@ -96,13 +112,19 @@ export function EmptyWorkspace({
             <CardTitle className="text-sm" role="heading" aria-level={2}>
               监控准备状态
             </CardTitle>
-            <CardDescription className="text-xs">{progressMessage}</CardDescription>
+            <CardDescription className="text-xs">
+              {progressMessage}
+            </CardDescription>
           </div>
           <Button asChild size="sm" className="self-start sm:self-auto">
-            <a href={draftCount > 0 ? "/dashboard/settings" : "/dashboard/contents"}>
+            <Link
+              href={
+                draftCount > 0 ? "/dashboard/settings" : "/dashboard/contents"
+              }
+            >
               {draftCount > 0 ? "发布监控" : "查看采集内容"}
               <ArrowUpRight />
-            </a>
+            </Link>
           </Button>
         </CardHeader>
 
@@ -112,10 +134,10 @@ export function EmptyWorkspace({
               const config =
                 monitor.status === MonitorStatus.Draft
                   ? monitor.draft
-                  : (monitor.published ?? monitor.draft);
+                  : monitor.published ?? monitor.draft;
               const query = config?.rules?.[0]?.value;
               return (
-                <a
+                <Link
                   key={monitor.id}
                   href="/dashboard/settings"
                   className="grid gap-3 px-5 py-4 text-foreground no-underline hover:bg-muted/60 sm:grid-cols-[minmax(0,1fr)_120px_110px] sm:items-center"
@@ -134,19 +156,25 @@ export function EmptyWorkspace({
                   <Badge variant="outline" className="w-fit">
                     {monitorStatusLabel(monitor.status)}
                   </Badge>
-                </a>
+                </Link>
               );
             })}
           </CardContent>
         ) : (
           <Empty className="min-h-52 rounded-none border-0">
             <EmptyHeader>
-              <EmptyMedia variant="icon"><Activity /></EmptyMedia>
+              <EmptyMedia variant="icon">
+                <Activity />
+              </EmptyMedia>
               <EmptyTitle className="text-sm">还没有配置监控</EmptyTitle>
-              <EmptyDescription>创建监控并关联数据来源，建立第一条热点检测链路。</EmptyDescription>
+              <EmptyDescription>
+                创建监控并关联数据来源，建立第一条热点检测链路。
+              </EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
-              <Button asChild size="sm"><a href="/dashboard/settings">创建监控</a></Button>
+              <Button asChild size="sm">
+                <Link href="/dashboard/settings">创建监控</Link>
+              </Button>
             </EmptyContent>
           </Empty>
         )}
@@ -154,57 +182,64 @@ export function EmptyWorkspace({
 
       <Card className="mt-5 overflow-hidden">
         <CardContent className="grid p-0 sm:grid-cols-2 xl:grid-cols-4 xl:divide-x xl:divide-border">
-        {[
-          {
-            step: "01",
-            title: "配置监控",
-            detail: visibleMonitors.length ? "已完成" : "等待创建",
-            active: visibleMonitors.length > 0,
-          },
-          {
-            step: "02",
-            title: "创建采集任务",
-            detail: collectionStarted ? "已产生采集批次" : publishedCount ? "等待调度" : "等待发布草稿",
-            active: collectionStarted,
-          },
-          {
-            step: "03",
-            title: "内容标准化",
-            detail: contentsReady ? `${collectedContents.length} 条已入库` : "尚无内容",
-            active: contentsReady,
-          },
-          {
-            step: "04",
-            title: "形成聚合事件",
-            detail: "尚无事件",
-            active: false,
-          },
-        ].map((stage) => (
-          <div
-            key={stage.step}
-            className="border-b border-border p-5 last:border-0 md:border-b-0"
-          >
-            <div className="flex items-center gap-3">
-              <span
-                className={`mono flex h-7 w-7 items-center justify-center rounded-full border text-[11px] ${
-                  stage.active
-                    ? "border-green-500/50 text-green-400"
-                    : "border-border text-muted-foreground"
-                }`}
-              >
-                {stage.step}
-              </span>
-              <div>
-                <p className="text-sm font-medium">{stage.title}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {stage.detail}
-                </p>
+          {[
+            {
+              step: "01",
+              title: "配置监控",
+              detail: visibleMonitors.length ? "已完成" : "等待创建",
+              active: visibleMonitors.length > 0,
+            },
+            {
+              step: "02",
+              title: "创建采集任务",
+              detail: collectionStarted
+                ? "已产生采集批次"
+                : publishedCount
+                ? "等待调度"
+                : "等待发布草稿",
+              active: collectionStarted,
+            },
+            {
+              step: "03",
+              title: "内容标准化",
+              detail: contentsReady
+                ? `${collectedContents.length} 条已入库`
+                : "尚无内容",
+              active: contentsReady,
+            },
+            {
+              step: "04",
+              title: "形成聚合事件",
+              detail: "尚无事件",
+              active: false,
+            },
+          ].map((stage) => (
+            <div
+              key={stage.step}
+              className="border-b border-border p-5 last:border-0 md:border-b-0"
+            >
+              <div className="flex items-center gap-3">
+                <span
+                  className={`mono flex h-7 w-7 items-center justify-center rounded-full border text-[11px] ${
+                    stage.active
+                      ? "border-green-500/50 text-green-400"
+                      : "border-border text-muted-foreground"
+                  }`}
+                >
+                  {stage.step}
+                </span>
+                <div>
+                  <p className="text-sm font-medium">{stage.title}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {stage.detail}
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))}
         </CardContent>
       </Card>
     </div>
   );
 }
+import Link from "next/link";

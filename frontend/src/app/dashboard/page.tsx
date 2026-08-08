@@ -46,6 +46,8 @@ import {
   trendTone,
 } from "@/lib/radarPresentation";
 import { cn } from "@/lib/utils";
+import { UserRole } from "@/lib/domainEnums";
+import { useAuthStore } from "@/stores/authStore";
 
 function currentTimeContext() {
   const hour = new Date().getHours();
@@ -53,10 +55,10 @@ function currentTimeContext() {
     hour < 11
       ? "上午好"
       : hour < 14
-        ? "中午好"
-        : hour < 18
-          ? "下午好"
-          : "晚上好";
+      ? "中午好"
+      : hour < 18
+      ? "下午好"
+      : "晚上好";
   const today = new Intl.DateTimeFormat("zh-CN", {
     year: "numeric",
     month: "2-digit",
@@ -74,7 +76,7 @@ function EventMark({ trend }: { trend?: string }) {
         "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
         tone === "danger" && "bg-red-50 text-red-600",
         tone === "success" && "bg-emerald-50 text-emerald-600",
-        tone === "muted" && "bg-muted text-muted-foreground",
+        tone === "muted" && "bg-muted text-muted-foreground"
       )}
     >
       {tone === "danger" ? (
@@ -87,6 +89,8 @@ function EventMark({ trend }: { trend?: string }) {
 }
 
 export default function DashboardPage() {
+  const role = useAuthStore((state) => state.user?.role);
+  const canManage = role === UserRole.Admin || role === UserRole.Editor;
   const [events, setEvents] = useState<HotKeyAPI.RadarEventResponse[]>([]);
   const [monitors, setMonitors] = useState<HotKeyAPI.MonitorResponse[]>([]);
   const [openAlerts, setOpenAlerts] = useState(0);
@@ -111,7 +115,7 @@ export default function DashboardPage() {
       setError(
         radarResult.reason instanceof Error
           ? radarResult.reason.message
-          : "热点雷达加载失败",
+          : "热点雷达加载失败"
       );
       setEvents([]);
     } else {
@@ -120,13 +124,13 @@ export default function DashboardPage() {
     }
     setMonitors(
       monitorResult.status === "fulfilled"
-        ? (monitorResult.value.data?.items ?? [])
-        : [],
+        ? monitorResult.value.data?.items ?? []
+        : []
     );
     setOpenAlerts(
       alertResult.status === "fulfilled"
-        ? (alertResult.value.data?.items?.length ?? 0)
-        : 0,
+        ? alertResult.value.data?.items?.length ?? 0
+        : 0
     );
     setLoading(false);
   }, []);
@@ -170,7 +174,7 @@ export default function DashboardPage() {
             ) : null}
           </div>
         </div>
-        {events.length > 0 ? (
+        {events.length > 0 && canManage ? (
           <Button asChild className="self-start gap-2 px-5">
             <Link href="/dashboard/settings">
               <Plus className="h-4 w-4" />
@@ -199,11 +203,23 @@ export default function DashboardPage() {
         <Card className="mt-8 border-dashed">
           <Empty className="min-h-80 border-0">
             <EmptyHeader>
-              <EmptyMedia variant="icon"><BellRing /></EmptyMedia>
+              <EmptyMedia variant="icon">
+                <BellRing />
+              </EmptyMedia>
               <EmptyTitle>当前窗口内还没有热点事件</EmptyTitle>
-              <EmptyDescription>创建并发布监控后，HotKey 会持续聚合来源、识别事件变化并在这里给出解释。</EmptyDescription>
+              <EmptyDescription>
+                {canManage
+                  ? "创建并发布监控后，HotKey 会持续聚合来源、识别事件变化并在这里给出解释。"
+                  : "工作区发布监控后，HotKey 会持续聚合来源、识别事件变化并在这里给出解释。"}
+              </EmptyDescription>
             </EmptyHeader>
-            <EmptyContent><Button asChild><Link href="/dashboard/settings">创建监控</Link></Button></EmptyContent>
+            <EmptyContent>
+              <Button asChild>
+                <Link href="/dashboard/settings">
+                  {canManage ? "创建监控" : "查看监控"}
+                </Link>
+              </Button>
+            </EmptyContent>
           </Empty>
         </Card>
       ) : (
@@ -270,7 +286,7 @@ export default function DashboardPage() {
                 </Link>
               </div>
               <Card className="overflow-hidden">
-                <Table aria-label="重点事件列表">
+                <Table aria-label="重点事件列表" scrollAreaLabel="重点事件列表">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="min-w-[300px]">事件</TableHead>
@@ -284,7 +300,9 @@ export default function DashboardPage() {
                       <TableRow key={event.event_id ?? index}>
                         <TableCell className="py-3">
                           <Link
-                            href={`/dashboard/events?event=${event.event_id ?? ""}`}
+                            href={`/dashboard/events?event=${
+                              event.event_id ?? ""
+                            }`}
                             className="flex min-w-0 items-center gap-3 text-foreground no-underline"
                           >
                             <EventMark trend={event.trend_status} />

@@ -220,4 +220,19 @@ describe("ContentsPage pagination", () => {
     ).not.toBeInTheDocument();
     expect(mocks.getCollectionRuns).toHaveBeenCalledWith({ limit: 20 });
   });
+
+  it("retries content search failures without presenting them as empty results", async () => {
+    mocks.getCollectionRuns.mockResolvedValue({ data: { items: [] } });
+    mocks.getContents
+      .mockRejectedValueOnce(new Error("content unavailable"))
+      .mockResolvedValueOnce({ data: { items: [] } });
+
+    render(<ContentsPage />);
+    expect(await screen.findByText("内容检索失败")).toBeInTheDocument();
+    expect(screen.queryByText("暂时没有已入库内容")).not.toBeInTheDocument();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "重试内容" }));
+    await waitFor(() => expect(mocks.getContents).toHaveBeenCalledTimes(2));
+  });
 });

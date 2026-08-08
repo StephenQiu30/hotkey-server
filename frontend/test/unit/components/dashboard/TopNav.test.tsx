@@ -55,7 +55,7 @@ describe("TopNav", () => {
 
     expect(screen.getByRole("banner")).toHaveAttribute("data-top-nav");
     expect(screen.getByRole("navigation", { name: "主导航" })).toHaveClass(
-      "lg:flex",
+      "xl:flex",
     );
     expect(screen.getByRole("link", { name: /概览/ })).toHaveAttribute(
       "aria-current",
@@ -72,7 +72,7 @@ describe("TopNav", () => {
   it("submits global search to the event workspace", () => {
     render(<TopNav menuItems={[]} />);
 
-    fireEvent.change(screen.getByRole("searchbox", { name: "搜索事件或监控" }), {
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索事件" }), {
       target: { value: "化工安全" },
     });
     fireEvent.submit(screen.getByRole("search"));
@@ -137,5 +137,20 @@ describe("TopNav", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: "工作区导航" })).not.toBeInTheDocument();
     });
+  });
+
+  it("shows administrator destinations inside the mobile sheet", async () => {
+    const user = userEvent.setup();
+    render(
+      <TopNav
+        menuItems={[{ path: "/dashboard", name: "概览", icon: <Activity /> }]}
+        adminMenuItems={[
+          { path: "/dashboard/users", name: "用户与权限", icon: <Database />, roles: [UserRole.Admin] },
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "打开导航" }));
+    expect(screen.getByRole("link", { name: /用户与权限/ })).toHaveAttribute("href", "/dashboard/users");
   });
 });

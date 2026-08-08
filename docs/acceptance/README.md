@@ -42,3 +42,4 @@ canonical_path: docs/acceptance/README.md
 | 023 | [低噪声告警与邮件交付](023-低噪声告警与邮件交付验收.md) | passed |
 | 024 | [日报周报私有Feed与知识归档](024-日报周报私有Feed与知识归档验收.md) | passed |
 | 025 | [配额限流保留与审计治理](025-配额限流保留与审计治理验收.md) | passed |
+| 026 | [Web工作台全页面交互](026-Web工作台全页面交互验收.md) | passed |

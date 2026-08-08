@@ -3,24 +3,31 @@ import {
   dashboardAdminMenuItems,
   dashboardMenuItems,
 } from "@/app/dashboard/menuConfig";
+import { UserRole } from "@/lib/domainEnums";
 
 describe("dashboard menu", () => {
-  it("uses the selected four-part SaaS information architecture", () => {
+  it("exposes every readable MVP product area in the primary navigation", () => {
     expect(dashboardMenuItems.map(({ path, name }) => ({ path, name }))).toEqual([
       { path: "/dashboard", name: "概览" },
       { path: "/dashboard/settings", name: "监控" },
+      { path: "/dashboard/sources", name: "来源" },
+      { path: "/dashboard/contents", name: "内容" },
       { path: "/dashboard/events", name: "事件" },
-      { path: "/dashboard/reports", name: "简报" },
+      { path: "/dashboard/alerts", name: "告警" },
+      { path: "/dashboard/reports", name: "报告" },
+      { path: "/dashboard/notifications", name: "通知与订阅" },
     ]);
   });
 
-  it("keeps data and delivery operations out of the primary navigation", () => {
+  it("keeps only administrator-only governance in the protected menu", () => {
     expect(dashboardAdminMenuItems.map(({ path, name }) => ({ path, name }))).toEqual([
       { path: "/dashboard/users", name: "用户与权限" },
       { path: "/dashboard/governance", name: "配额与审计" },
-      { path: "/dashboard/contents", name: "采集内容" },
-      { path: "/dashboard/notifications", name: "通知与订阅" },
-      { path: "/dashboard/sources", name: "来源管理" },
     ]);
+    expect(
+      dashboardAdminMenuItems.every((item) =>
+        item.roles?.includes(UserRole.Admin)
+      )
+    ).toBe(true);
   });
 });

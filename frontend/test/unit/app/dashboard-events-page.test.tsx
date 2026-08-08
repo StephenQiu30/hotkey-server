@@ -357,7 +357,7 @@ describe("EventsPage", () => {
     expect(screen.getByText("聚类成员暂时不可用")).toBeInTheDocument();
   });
 
-  it("uses a non-heading alert title when the Radar request fails", async () => {
+  it("uses a non-heading recoverable alert when the Radar request fails", async () => {
     mocks.getRadarEvents.mockRejectedValueOnce(new Error("radar unavailable"));
     render(<EventsPage />);
 
@@ -365,5 +365,7 @@ describe("EventsPage", () => {
     expect(
       screen.queryByRole("heading", { name: "事件雷达加载失败" })
     ).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "重试事件" }));
+    expect(await screen.findByText("华东沿海化工园区发生爆燃事故")).toBeInTheDocument();
   });
 });

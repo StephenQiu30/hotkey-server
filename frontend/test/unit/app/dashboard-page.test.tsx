@@ -1,6 +1,8 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import DashboardPage from "@/app/dashboard/page";
+import { AuthStatus, UserRole } from "@/lib/domainEnums";
+import { useAuthStore } from "@/stores/authStore";
 
 const mocks = vi.hoisted(() => ({
   getRadarEvents: vi.fn(),
@@ -23,6 +25,11 @@ describe("DashboardPage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    useAuthStore.setState({
+      status: AuthStatus.Authenticated,
+      user: { id: 1, email: "admin@example.test", role: UserRole.Admin },
+      error: null,
+    });
     mocks.getRadarEvents.mockResolvedValue({
       data: {
         as_of: "2026-08-04T14:30:00+08:00",
@@ -78,17 +85,21 @@ describe("DashboardPage", () => {
     expect(
       await screen.findByRole("heading", {
         name: /这是今日值得关注的变化/,
-      }),
+      })
     ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "今日 AI 摘要" })).toBeInTheDocument();
     expect(
-      screen.getAllByText("华东沿海化工园区发生爆燃事故"),
-    ).toHaveLength(2);
-    expect(screen.getByRole("heading", { name: "重点事件" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "我的监控" })).toBeInTheDocument();
+      screen.getByRole("heading", { name: "今日 AI 摘要" })
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("华东沿海化工园区发生爆燃事故")).toHaveLength(2);
+    expect(
+      screen.getByRole("heading", { name: "重点事件" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "我的监控" })
+    ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "查看全部事件" })).toHaveAttribute(
       "href",
-      "/dashboard/events",
+      "/dashboard/events"
     );
     expect(mocks.getRadarEvents).toHaveBeenCalledWith({
       limit: 12,
@@ -104,10 +115,32 @@ describe("DashboardPage", () => {
 
     render(<DashboardPage />);
 
-    expect(await screen.findByText("当前窗口内还没有热点事件")).toBeInTheDocument();
+    expect(
+      await screen.findByText("当前窗口内还没有热点事件")
+    ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "创建监控" })).toHaveAttribute(
       "href",
-      "/dashboard/settings",
+      "/dashboard/settings"
     );
+  });
+
+  it("keeps the empty-state action read-only for viewers", async () => {
+    useAuthStore.setState({
+      status: AuthStatus.Authenticated,
+      user: { id: 2, email: "viewer@example.test", role: UserRole.Viewer },
+      error: null,
+    });
+    mocks.getRadarEvents.mockResolvedValue({
+      data: { as_of: "2026-08-04T14:30:00+08:00", items: [] },
+    });
+
+    render(<DashboardPage />);
+
+    expect(
+      await screen.findByRole("link", { name: "查看监控" })
+    ).toHaveAttribute("href", "/dashboard/settings");
+    expect(
+      screen.queryByRole("link", { name: "创建监控" })
+    ).not.toBeInTheDocument();
   });
 });

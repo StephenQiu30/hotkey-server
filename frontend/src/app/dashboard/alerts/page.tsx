@@ -287,7 +287,17 @@ export default function AlertsPage() {
         <Alert variant="destructive" className="mt-6">
           <CircleAlert className="h-4 w-4" />
           <AlertTitle>告警加载失败</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+            <span>{error}</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void load()}
+              aria-label="重试告警"
+            >
+              重试
+            </Button>
+          </AlertDescription>
         </Alert>
       ) : threads.length === 0 ? (
         <Card className="mt-6 border-dashed">
@@ -305,7 +315,7 @@ export default function AlertsPage() {
         </Card>
       ) : (
         <Card className="mt-6 overflow-hidden shadow-none">
-          <Table aria-label="告警线程列表">
+          <Table aria-label="告警线程列表" scrollAreaLabel="告警线程列表">
             <TableHeader>
               <TableRow>
                 <TableHead className="min-w-[320px]">告警</TableHead>

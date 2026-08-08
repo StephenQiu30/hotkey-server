@@ -143,4 +143,13 @@ describe("AlertsPage", () => {
       { expected_version: 2, reason_code: "user_suppressed" }
     );
   });
+
+  it("recovers the alert list after a read failure", async () => {
+    mocks.getAlerts.mockRejectedValueOnce(new Error("alerts unavailable"));
+    render(<AlertsPage />);
+
+    expect(await screen.findByText("告警加载失败")).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "重试告警" }));
+    expect(await screen.findByText("化工安全事件快速升温")).toBeInTheDocument();
+  });
 });
