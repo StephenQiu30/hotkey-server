@@ -58,7 +58,19 @@ type AccessTokenClaims struct {
 }
 
 type Subject struct {
-	UserID    int64
-	SessionID int64
-	Role      Role
+	UserID       int64
+	SessionID    int64
+	AgentTokenID int64
+	Role         Role
+}
+
+func (subject Subject) Authenticated() bool {
+	credentialCount := 0
+	if subject.SessionID > 0 {
+		credentialCount++
+	}
+	if subject.AgentTokenID > 0 {
+		credentialCount++
+	}
+	return subject.UserID > 0 && subject.Role.Valid() && credentialCount == 1
 }

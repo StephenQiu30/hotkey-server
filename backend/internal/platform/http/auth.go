@@ -28,13 +28,22 @@ func (role Role) valid() bool {
 // Subject is the database-backed identity fact made available only after a
 // successful authentication middleware invocation.
 type Subject struct {
-	UserID    int64
-	SessionID int64
-	Role      Role
+	UserID       int64
+	SessionID    int64
+	AgentTokenID int64
+	Role         Role
+	AgentScopes  string
 }
 
 func (subject Subject) valid() bool {
-	return subject.UserID > 0 && subject.SessionID > 0 && subject.Role.valid()
+	credentialCount := 0
+	if subject.SessionID > 0 {
+		credentialCount++
+	}
+	if subject.AgentTokenID > 0 {
+		credentialCount++
+	}
+	return subject.UserID > 0 && credentialCount == 1 && subject.Role.valid()
 }
 
 // Authenticator validates one bearer token and returns current identity facts.
@@ -89,6 +98,44 @@ func RequireRoles(roles ...Role) gin.HandlerFunc {
 		}
 		c.Next()
 	}
+}
+
+// RequireAgentScope authorizes only an Agent Token carrying the exact scope.
+// Browser sessions and unknown scope values fail closed.
+func RequireAgentScope(scope string, roles ...Role) gin.HandlerFunc {
+	allowedRoles := make(map[Role]struct{}, len(roles))
+	for _, role := range roles {
+		if role.valid() {
+			allowedRoles[role] = struct{}{}
+		}
+	}
+	return func(c *gin.Context) {
+		subject, ok := SubjectFromContext(c)
+		if !ok {
+			WriteError(c, unauthenticated())
+			return
+		}
+		if subject.AgentTokenID <= 0 || !containsScope(subject.AgentScopes, scope) {
+			WriteError(c, forbidden())
+			return
+		}
+		if len(allowedRoles) > 0 {
+			if _, ok := allowedRoles[subject.Role]; !ok {
+				WriteError(c, forbidden())
+				return
+			}
+		}
+		c.Next()
+	}
+}
+
+func containsScope(scopes string, expected string) bool {
+	for _, scope := range strings.Split(scopes, ",") {
+		if scope == expected {
+			return true
+		}
+	}
+	return false
 }
 
 // SubjectFromContext returns only a Subject written by RequireAuthentication.

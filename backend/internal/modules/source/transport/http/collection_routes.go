@@ -21,3 +21,12 @@ func RegisterCollectionRoutes(router *gin.Engine, service collectionControlServi
 	admin.POST("/collection-runs/:id/retry", httptransport.Wrap(handler.Retry))
 	admin.POST("/source-connections/:id/health", httptransport.Wrap(handler.Health))
 }
+
+func RegisterAgentCollectionRoutes(router *gin.Engine, service collectionControlService, authenticator httptransport.Authenticator) {
+	if router == nil || service == nil {
+		return
+	}
+	handler := NewCollectionHandler(service)
+	api := router.Group("/api/v1/agent", httptransport.RequireAuthentication(authenticator), httptransport.RequireAgentScope("search.run", httptransport.RoleEditor, httptransport.RoleAdmin))
+	api.POST("/monitors/:id/collect", httptransport.Wrap(handler.Manual))
+}

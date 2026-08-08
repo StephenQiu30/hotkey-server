@@ -232,14 +232,42 @@ BEGIN
     IF to_regclass('public.auth_refresh_tokens_session_expiry_idx') IS NULL THEN
       RAISE EXCEPTION 'missing auth refresh token access-path index';
     END IF;
+
+    INSERT INTO agent_tokens (user_id, name, token_prefix, token_hash, scopes, expires_at)
+      VALUES (identity_user_id, 'schema agent', 'hk_agent_abcdefghij', repeat('d', 64), ARRAY['events.read'], now() + interval '30 days')
+      ON CONFLICT (token_hash) DO NOTHING;
+    BEGIN
+      INSERT INTO agent_tokens (user_id, name, token_prefix, token_hash, scopes, expires_at)
+        VALUES (identity_user_id, 'duplicate hash', 'hk_agent_klmnopqrst', repeat('d', 64), ARRAY['events.read'], now() + interval '30 days');
+      RAISE EXCEPTION 'missing Agent Token hash uniqueness constraint';
+    EXCEPTION WHEN unique_violation THEN
+      NULL;
+    END;
+    BEGIN
+      INSERT INTO agent_tokens (user_id, name, token_prefix, token_hash, scopes, expires_at)
+        VALUES (identity_user_id, 'invalid scope', 'hk_agent_uvwxabcdef', repeat('e', 64), ARRAY['users.write'], now() + interval '30 days');
+      RAISE EXCEPTION 'missing Agent Token scope allowlist constraint';
+    EXCEPTION WHEN check_violation THEN
+      NULL;
+    END;
+    BEGIN
+      INSERT INTO agent_tokens (user_id, name, token_prefix, token_hash, scopes, expires_at)
+        VALUES (identity_user_id, 'expired', 'hk_agent_ghijklmnop', repeat('f', 64), ARRAY['events.read'], now() - interval '1 second');
+      RAISE EXCEPTION 'missing Agent Token expiry constraint';
+    EXCEPTION WHEN check_violation THEN
+      NULL;
+    END;
+    IF to_regclass('public.agent_tokens_active_user_idx') IS NULL THEN
+      RAISE EXCEPTION 'missing Agent Token active-user index';
+    END IF;
   END;
 END
 $$;
 SQL
 
 application_tables=$(psql "$dsn" -Atqc "SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tablename NOT LIKE 'river_%'")
-if test "$application_tables" -ne 67; then
-  printf 'application table count = %s, want 67\n' "$application_tables" >&2
+if test "$application_tables" -ne 68; then
+  printf 'application table count = %s, want 68\n' "$application_tables" >&2
   exit 1
 fi
 

@@ -20,3 +20,13 @@ func RegisterRoutes(router *gin.Engine, service reportService, authenticator htt
 	admin := api.Group("", httptransport.RequireRoles(httptransport.RoleAdmin))
 	admin.POST("/:id/publish", httptransport.Wrap(handler.Publish))
 }
+
+func RegisterAgentRoutes(router *gin.Engine, service reportService, authenticator httptransport.Authenticator) {
+	if router == nil || service == nil {
+		return
+	}
+	handler := NewHandler(service)
+	api := router.Group("/api/v1/agent/reports", httptransport.RequireAuthentication(authenticator), httptransport.RequireAgentScope("reports.read"))
+	api.GET("", httptransport.Wrap(handler.List))
+	api.GET("/:id", httptransport.Wrap(handler.Get))
+}

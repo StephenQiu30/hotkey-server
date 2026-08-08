@@ -72,3 +72,38 @@ func RegisterEventUpdateRoutes(router *gin.Engine, updates *application.UpdateSe
 	api := router.Group("/api/v1/events", httptransport.RequireAuthentication(authenticator))
 	api.GET("/:id/updates", httptransport.Wrap(handler.ListUpdates))
 }
+
+func RegisterAgentRoutesWithIntelligence(router *gin.Engine, read *application.ReadService, heat *application.HeatService, intelligence *application.EventIntelligenceReadService, authenticator httptransport.Authenticator) {
+	if router == nil || read == nil {
+		return
+	}
+	handler := NewHandlerWithIntelligence(read, nil, nil, heat, nil, intelligence, nil, nil)
+	api := router.Group("/api/v1/agent/events", httptransport.RequireAuthentication(authenticator), httptransport.RequireAgentScope("events.read"))
+	api.GET("", httptransport.Wrap(handler.List))
+	api.GET("/:id", httptransport.Wrap(handler.Get))
+	api.GET("/:id/contents", httptransport.Wrap(handler.ListMembers))
+	if heat != nil {
+		api.GET("/:id/heat", httptransport.Wrap(handler.GetHeat))
+	}
+	if intelligence != nil {
+		api.GET("/:id/intelligence", httptransport.Wrap(handler.GetIntelligence))
+	}
+}
+
+func RegisterAgentRadarRoutes(router *gin.Engine, radar *application.RadarService, authenticator httptransport.Authenticator) {
+	if router == nil || radar == nil {
+		return
+	}
+	handler := &Handler{radar: radar}
+	api := router.Group("/api/v1/agent/radar", httptransport.RequireAuthentication(authenticator), httptransport.RequireAgentScope("events.read"))
+	api.GET("/events", httptransport.Wrap(handler.ListRadar))
+}
+
+func RegisterAgentEventUpdateRoutes(router *gin.Engine, updates *application.UpdateService, authenticator httptransport.Authenticator) {
+	if router == nil || updates == nil {
+		return
+	}
+	handler := &Handler{updates: updates}
+	api := router.Group("/api/v1/agent/events", httptransport.RequireAuthentication(authenticator), httptransport.RequireAgentScope("events.read"))
+	api.GET("/:id/updates", httptransport.Wrap(handler.ListUpdates))
+}

@@ -120,6 +120,7 @@ func (handler *Handler) Create(c *gin.Context) error {
 // @Failure 401 {object} ReportResult[EmptyResponse]
 // @Failure 503 {object} ReportResult[EmptyResponse]
 // @Router /api/v1/reports [get]
+// @Router /api/v1/agent/reports [get]
 func (handler *Handler) List(c *gin.Context) error {
 	httptransport.SetModule(c, "report")
 	query, err := reportListQuery(c)
@@ -151,6 +152,7 @@ func (handler *Handler) List(c *gin.Context) error {
 // @Failure 404 {object} ReportResult[EmptyResponse]
 // @Failure 503 {object} ReportResult[EmptyResponse]
 // @Router /api/v1/reports/{id} [get]
+// @Router /api/v1/agent/reports/{id} [get]
 func (handler *Handler) Get(c *gin.Context) error {
 	httptransport.SetModule(c, "report")
 	reportID, err := reportID(c)

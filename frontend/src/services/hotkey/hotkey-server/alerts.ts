@@ -2,6 +2,87 @@
 /* eslint-disable */
 import { request, type RequestOptions } from "@/lib/request";
 
+/** List alert threads GET /api/v1/agent/alerts */
+export async function getAgentAlerts(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: HotKeyAPI.getAgentAlertsParams,
+  options?: RequestOptions
+) {
+  return request<HotKeyAPI.AlertResultHttpAlertPageResponse>(
+    "/api/v1/agent/alerts",
+    {
+      method: "GET",
+      params: {
+        // limit has a default value: 20
+        limit: "20",
+        ...params,
+      },
+      ...(options || {}),
+    }
+  );
+}
+
+/** Get an alert thread GET /api/v1/agent/alerts/${param0} */
+export async function getAgentAlertsId(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: HotKeyAPI.getAgentAlertsIdParams,
+  options?: RequestOptions
+) {
+  const { id: param0, ...queryParams } = params;
+  return request<HotKeyAPI.AlertResultHttpAlertDetailResponse>(
+    `/api/v1/agent/alerts/${param0}`,
+    {
+      method: "GET",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** Acknowledge an alert thread POST /api/v1/agent/alerts/${param0}/acknowledge */
+export async function postAgentAlertsIdAcknowledge(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: HotKeyAPI.postAgentAlertsIdAcknowledgeParams,
+  body: HotKeyAPI.AlertActionRequest,
+  options?: RequestOptions
+) {
+  const { id: param0, ...queryParams } = params;
+  return request<HotKeyAPI.AlertResultHttpAlertThreadResponse>(
+    `/api/v1/agent/alerts/${param0}/acknowledge`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      params: { ...queryParams },
+      data: body,
+      ...(options || {}),
+    }
+  );
+}
+
+/** Resolve an alert thread POST /api/v1/agent/alerts/${param0}/resolve */
+export async function postAgentAlertsIdResolve(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: HotKeyAPI.postAgentAlertsIdResolveParams,
+  body: HotKeyAPI.AlertActionRequest,
+  options?: RequestOptions
+) {
+  const { id: param0, ...queryParams } = params;
+  return request<HotKeyAPI.AlertResultHttpAlertThreadResponse>(
+    `/api/v1/agent/alerts/${param0}/resolve`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      params: { ...queryParams },
+      data: body,
+      ...(options || {}),
+    }
+  );
+}
+
 /** List alert threads GET /api/v1/alerts */
 export async function getAlerts(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)

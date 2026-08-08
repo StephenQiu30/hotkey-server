@@ -48,6 +48,7 @@ func NewHandler(service monitorService) *Handler { return &Handler{service: serv
 // @Failure 401 {object} MonitorResult[EmptyResponse]
 // @Failure 503 {object} MonitorResult[EmptyResponse]
 // @Router /api/v1/monitors [get]
+// @Router /api/v1/agent/monitors [get]
 func (handler *Handler) List(c *gin.Context) error {
 	httptransport.SetModule(c, "monitor")
 	subject, err := monitorSubject(c)
@@ -82,6 +83,7 @@ func (handler *Handler) List(c *gin.Context) error {
 // @Failure 409 {object} MonitorResult[EmptyResponse]
 // @Failure 503 {object} MonitorResult[EmptyResponse]
 // @Router /api/v1/monitors/{id} [get]
+// @Router /api/v1/agent/monitors/{id} [get]
 func (handler *Handler) Get(c *gin.Context) error {
 	httptransport.SetModule(c, "monitor")
 	subject, err := monitorSubject(c)
@@ -528,7 +530,7 @@ func monitorSubject(c *gin.Context) (identitydomain.Subject, error) {
 	if !ok {
 		return identitydomain.Subject{}, sharederrors.New(sharederrors.CodeUnauthenticated, stdhttp.StatusUnauthorized, "")
 	}
-	return identitydomain.Subject{UserID: subject.UserID, SessionID: subject.SessionID, Role: identitydomain.Role(subject.Role)}, nil
+	return identitydomain.Subject{UserID: subject.UserID, SessionID: subject.SessionID, AgentTokenID: subject.AgentTokenID, Role: identitydomain.Role(subject.Role)}, nil
 }
 func monitorID(c *gin.Context) (int64, error) { return positivePathID(c, "id") }
 func ruleID(c *gin.Context) (int64, error)    { return positivePathID(c, "rule_id") }

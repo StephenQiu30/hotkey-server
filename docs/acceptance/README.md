@@ -43,3 +43,4 @@ canonical_path: docs/acceptance/README.md
 | 024 | [日报周报私有Feed与知识归档](024-日报周报私有Feed与知识归档验收.md) | passed |
 | 025 | [配额限流保留与审计治理](025-配额限流保留与审计治理验收.md) | passed |
 | 026 | [Web工作台全页面交互](026-Web工作台全页面交互验收.md) | passed |
+| 027 | [Agent-Skill与外部API](027-Agent-Skill与外部API验收.md) | passed |

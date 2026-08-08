@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   getOperationsOverview: vi
     .fn()
     .mockResolvedValue({ data: { running_jobs: 2 } }),
+  getAgentTokens: vi.fn().mockResolvedValue({ data: [] }),
 }));
 
 vi.mock("@/services/hotkey/hotkey-server/monitors", () => ({
@@ -23,6 +24,11 @@ vi.mock("@/services/hotkey/hotkey-server/sources", () => ({
 }));
 vi.mock("@/services/hotkey/hotkey-server/operations", () => ({
   getOperationsOverview: mocks.getOperationsOverview,
+}));
+vi.mock("@/services/hotkey/hotkey-server/agentAccess", () => ({
+  getAgentTokens: mocks.getAgentTokens,
+  postAgentTokens: vi.fn(),
+  postAgentTokensIdRevoke: vi.fn(),
 }));
 vi.mock("@/stores/authStore", () => ({
   useAuthStore: (
@@ -47,6 +53,7 @@ describe("ProfilePage", () => {
     mocks.getOperationsOverview.mockResolvedValue({
       data: { running_jobs: 2 },
     });
+    mocks.getAgentTokens.mockResolvedValue({ data: [] });
   });
 
   it("shows viewer profile statistics without requesting the editor-only runtime overview", async () => {

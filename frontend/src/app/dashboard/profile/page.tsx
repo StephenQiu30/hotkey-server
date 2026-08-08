@@ -21,6 +21,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/dashboard/PageHeader";
+import { AgentTokenManager } from "@/components/agent/AgentTokenManager";
 import { UserRole } from "@/lib/domainEnums";
 
 const emptyStats = { monitors: 0, reports: 0, sources: 0, running: 0 };
@@ -180,6 +181,9 @@ export default function ProfilePage() {
             </>
           )}
         </section>
+      </div>
+      <div className="mt-5">
+        <AgentTokenManager />
       </div>
     </div>
   );

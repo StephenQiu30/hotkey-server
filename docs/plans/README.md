@@ -45,5 +45,5 @@ Plan 中的“当前实现”仅用于确定差距；只有 Acceptance 保存完
 | 024 | [日报周报私有Feed与知识归档](../design/archive/024-日报周报私有Feed与知识归档设计.md) | [PRD](../prd/archive/024-日报周报私有Feed与知识归档.md) | [Plan](archive/024-日报周报私有Feed与知识归档计划.md) | completed |
 | 025 | [配额限流保留与审计治理](../design/archive/025-配额限流保留与审计治理设计.md) | [PRD](../prd/archive/025-配额限流保留与审计治理.md) | [Plan](archive/025-配额限流保留与审计治理计划.md) | completed |
 | 026 | [Web工作台全页面交互](../design/archive/026-Web工作台全页面交互设计.md) | [PRD](../prd/archive/026-Web工作台全页面交互.md) | [Plan](archive/026-Web工作台全页面交互计划.md) | completed |
-| 027 | [Agent-Skill与外部API](../design/027-Agent-Skill与外部API设计.md) | [PRD](../prd/027-Agent-Skill与外部API.md) | [Plan](027-Agent-Skill与外部API计划.md) | planned |
+| 027 | [Agent-Skill与外部API](../design/archive/027-Agent-Skill与外部API设计.md) | [PRD](../prd/archive/027-Agent-Skill与外部API.md) | [Plan](archive/027-Agent-Skill与外部API计划.md) | completed |
 | 028 | [可观测性部署与质量门禁](../design/028-可观测性部署与质量门禁设计.md) | [PRD](../prd/028-可观测性部署与质量门禁.md) | [Plan](028-可观测性部署与质量门禁计划.md) | planned |

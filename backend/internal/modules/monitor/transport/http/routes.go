@@ -31,3 +31,13 @@ func RegisterRoutes(router *gin.Engine, service monitorService, authenticator ht
 	admin.POST("/:id/restore", httptransport.Wrap(handler.Restore))
 	admin.DELETE("/:id", httptransport.Wrap(handler.Delete))
 }
+
+func RegisterAgentRoutes(router *gin.Engine, service monitorService, authenticator httptransport.Authenticator) {
+	if router == nil || service == nil {
+		return
+	}
+	handler := NewHandler(service)
+	api := router.Group("/api/v1/agent/monitors", httptransport.RequireAuthentication(authenticator), httptransport.RequireAgentScope("monitors.read"))
+	api.GET("", httptransport.Wrap(handler.List))
+	api.GET("/:id", httptransport.Wrap(handler.Get))
+}

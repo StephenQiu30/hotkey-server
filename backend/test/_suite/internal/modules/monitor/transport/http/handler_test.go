@@ -330,6 +330,24 @@ func TestMonitorReadRoutesProjectPublishedAndDraftByRole(t *testing.T) {
 	}
 }
 
+func TestAgentMonitorRoutePreservesAgentCredentialSubject(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &readMonitorService{view: monitorapplication.MonitorView{Monitor: domain.Monitor{ID: 1, Version: 1, Name: "agent monitor", Status: domain.MonitorStatusActive}}}
+	router := gin.New()
+	RegisterAgentRoutes(router, service, testAuthenticator{subject: httptransport.Subject{UserID: 2, AgentTokenID: 9, Role: httptransport.RoleViewer, AgentScopes: "monitors.read"}})
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/agent/monitors", nil)
+	request.Header.Set("Authorization", "Bearer agent")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if service.lastSubject.AgentTokenID != 9 || !service.lastSubject.Authenticated() {
+		t.Fatalf("agent subject = %#v, want authenticated token 9", service.lastSubject)
+	}
+}
+
 func TestMonitorHistoryRouteReturnsLifecycleMetadata(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	publishedAt := time.Date(2026, time.August, 7, 8, 30, 0, 0, time.UTC)
@@ -356,8 +374,9 @@ func TestMonitorHistoryRouteReturnsLifecycleMetadata(t *testing.T) {
 }
 
 type readMonitorService struct {
-	view    monitorapplication.MonitorView
-	history []monitorapplication.ConfigurationView
+	view        monitorapplication.MonitorView
+	history     []monitorapplication.ConfigurationView
+	lastSubject identitydomain.Subject
 }
 
 type draftVersionMonitorService struct {
@@ -395,6 +414,7 @@ func (service *draftVersionMonitorService) ReplaceDraft(_ context.Context, input
 }
 
 func (service *readMonitorService) List(_ context.Context, input monitorapplication.ListInput) (monitorapplication.MonitorPage, error) {
+	service.lastSubject = input.Subject
 	view := service.view
 	if input.Subject.Role == identitydomain.RoleViewer {
 		view.Draft = nil

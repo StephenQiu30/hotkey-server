@@ -300,7 +300,7 @@ func sourceSubject(c *gin.Context) (identitydomain.Subject, error) {
 	if !ok {
 		return identitydomain.Subject{}, sharederrors.New(sharederrors.CodeUnauthenticated, stdhttp.StatusUnauthorized, "")
 	}
-	return identitydomain.Subject{UserID: subject.UserID, SessionID: subject.SessionID, Role: identitydomain.Role(subject.Role)}, nil
+	return identitydomain.Subject{UserID: subject.UserID, SessionID: subject.SessionID, AgentTokenID: subject.AgentTokenID, Role: identitydomain.Role(subject.Role)}, nil
 }
 func sourceID(c *gin.Context) (int64, error) {
 	value, err := strconv.ParseInt(c.Param("id"), 10, 64)

@@ -32,6 +32,7 @@ type collectionControlService interface {
 // @Failure 429 {object} CollectionQuotaErrorResponse
 // @Failure 503 {object} CollectionResult[EmptyResponse]
 // @Router /api/v1/monitors/{id}/collect [post]
+// @Router /api/v1/agent/monitors/{id}/collect [post]
 func (handler *CollectionHandler) Manual(c *gin.Context) error {
 	httptransport.SetModule(c, "source")
 	subject, err := sourceSubject(c)

@@ -77,6 +77,7 @@ func NewHandlerWithIntelligence(read *application.ReadService, lifecycle *applic
 // @Failure 404 {object} EventResult[EmptyResponse]
 // @Failure 503 {object} EventResult[EmptyResponse]
 // @Router /api/v1/events/{id}/intelligence [get]
+// @Router /api/v1/agent/events/{id}/intelligence [get]
 func (handler *Handler) GetIntelligence(c *gin.Context) error {
 	if handler == nil || handler.intelligence == nil {
 		return sharederrors.New(sharederrors.CodeUnavailable, http.StatusServiceUnavailable, "")
@@ -174,6 +175,7 @@ func (handler *Handler) RegenerateExtraction(c *gin.Context) error {
 // @Failure 404 {object} EventResult[EmptyResponse]
 // @Failure 503 {object} EventResult[EmptyResponse]
 // @Router /api/v1/events/{id}/heat [get]
+// @Router /api/v1/agent/events/{id}/heat [get]
 func (handler *Handler) GetHeat(c *gin.Context) error {
 	if handler == nil || handler.heat == nil {
 		return sharederrors.New(sharederrors.CodeUnavailable, http.StatusServiceUnavailable, "")
@@ -244,6 +246,7 @@ func (handler *Handler) SaveClaim(c *gin.Context) error {
 // @Failure 404 {object} EventResult[EmptyResponse]
 // @Failure 503 {object} EventResult[EmptyResponse]
 // @Router /api/v1/events [get]
+// @Router /api/v1/agent/events [get]
 func (handler *Handler) List(c *gin.Context) error {
 	limit, err := queryLimit(c.Query("limit"))
 	if err != nil {
@@ -287,6 +290,7 @@ func (handler *Handler) List(c *gin.Context) error {
 // @Failure 404 {object} EventResult[EmptyResponse]
 // @Failure 503 {object} EventResult[EmptyResponse]
 // @Router /api/v1/radar/events [get]
+// @Router /api/v1/agent/radar/events [get]
 func (handler *Handler) ListRadar(c *gin.Context) error {
 	if handler == nil || handler.radar == nil {
 		return sharederrors.New(sharederrors.CodeUnavailable, http.StatusServiceUnavailable, "")
@@ -321,6 +325,7 @@ func (handler *Handler) ListRadar(c *gin.Context) error {
 // @Failure 404 {object} EventResult[EmptyResponse]
 // @Failure 503 {object} EventResult[EmptyResponse]
 // @Router /api/v1/events/{id}/updates [get]
+// @Router /api/v1/agent/events/{id}/updates [get]
 func (handler *Handler) ListUpdates(c *gin.Context) error {
 	if handler == nil || handler.updates == nil {
 		return sharederrors.New(sharederrors.CodeUnavailable, http.StatusServiceUnavailable, "")
@@ -360,6 +365,7 @@ func (handler *Handler) ListUpdates(c *gin.Context) error {
 // @Failure 401 {object} EventResult[EmptyResponse]
 // @Failure 404 {object} EventResult[EmptyResponse]
 // @Router /api/v1/events/{id} [get]
+// @Router /api/v1/agent/events/{id} [get]
 func (handler *Handler) Get(c *gin.Context) error {
 	eventID, err := pathID(c, "id")
 	if err != nil {
@@ -384,6 +390,7 @@ func (handler *Handler) Get(c *gin.Context) error {
 // @Failure 401 {object} EventResult[EmptyResponse]
 // @Failure 404 {object} EventResult[EmptyResponse]
 // @Router /api/v1/events/{id}/contents [get]
+// @Router /api/v1/agent/events/{id}/contents [get]
 func (handler *Handler) ListMembers(c *gin.Context) error {
 	eventID, err := pathID(c, "id")
 	if err != nil {

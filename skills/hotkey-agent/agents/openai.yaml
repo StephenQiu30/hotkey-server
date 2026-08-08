@@ -1,0 +1,4 @@
+interface:
+  display_name: "HotKey Agent"
+  short_description: "通过最小权限 Agent API 检索 HotKey 热点情报"
+  default_prompt: "使用 $hotkey-agent 读取 HotKey 监控、事件、内容与报告，并在授权范围内执行采集或处理告警。"

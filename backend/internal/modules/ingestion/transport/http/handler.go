@@ -63,6 +63,7 @@ func NewHandler(service contentQueryService, metrics *observability.Metrics) *Ha
 // @Failure 404 {object} ContentResult[EmptyResponse]
 // @Failure 503 {object} ContentResult[EmptyResponse]
 // @Router /api/v1/contents [get]
+// @Router /api/v1/agent/contents [get]
 func (handler *Handler) List(c *gin.Context) error {
 	httptransport.SetModule(c, "ingestion")
 	query, err := contentListQuery(c)
@@ -92,6 +93,7 @@ func (handler *Handler) List(c *gin.Context) error {
 // @Failure 404 {object} ContentResult[EmptyResponse]
 // @Failure 503 {object} ContentResult[EmptyResponse]
 // @Router /api/v1/contents/{id} [get]
+// @Router /api/v1/agent/contents/{id} [get]
 func (handler *Handler) Get(c *gin.Context) error {
 	httptransport.SetModule(c, "ingestion")
 	id, err := contentID(c)
@@ -122,6 +124,7 @@ func (handler *Handler) Get(c *gin.Context) error {
 // @Failure 404 {object} ContentResult[EmptyResponse]
 // @Failure 503 {object} ContentResult[EmptyResponse]
 // @Router /api/v1/contents/{id}/document [get]
+// @Router /api/v1/agent/contents/{id}/document [get]
 func (handler *Handler) Document(c *gin.Context) error {
 	httptransport.SetModule(c, "ingestion")
 	id, err := contentID(c)

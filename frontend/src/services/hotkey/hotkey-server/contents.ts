@@ -2,6 +2,58 @@
 /* eslint-disable */
 import { request, type RequestOptions } from "@/lib/request";
 
+/** List active content GET /api/v1/agent/contents */
+export async function getAgentContents(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: HotKeyAPI.getAgentContentsParams,
+  options?: RequestOptions
+) {
+  return request<HotKeyAPI.ContentResultHttpContentPageResponse>(
+    "/api/v1/agent/contents",
+    {
+      method: "GET",
+      params: {
+        ...params,
+      },
+      ...(options || {}),
+    }
+  );
+}
+
+/** Get active content GET /api/v1/agent/contents/${param0} */
+export async function getAgentContentsId(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: HotKeyAPI.getAgentContentsIdParams,
+  options?: RequestOptions
+) {
+  const { id: param0, ...queryParams } = params;
+  return request<HotKeyAPI.ContentResultHttpContentResponse>(
+    `/api/v1/agent/contents/${param0}`,
+    {
+      method: "GET",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** Get captured content Markdown document Returns a successful safe projection for ready, not_captured, and unavailable evidence states; Markdown is present only when verified. GET /api/v1/agent/contents/${param0}/document */
+export async function getAgentContentsIdDocument(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: HotKeyAPI.getAgentContentsIdDocumentParams,
+  options?: RequestOptions
+) {
+  const { id: param0, ...queryParams } = params;
+  return request<HotKeyAPI.ContentResultHttpContentDocumentResponse>(
+    `/api/v1/agent/contents/${param0}/document`,
+    {
+      method: "GET",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
 /** List active content GET /api/v1/contents */
 export async function getContents(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)

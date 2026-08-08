@@ -21,3 +21,14 @@ func RegisterRoutes(router *gin.Engine, service contentQueryService, authenticat
 	edit := contents.Group("", httptransport.RequireRoles(httptransport.RoleEditor, httptransport.RoleAdmin))
 	edit.DELETE("/:id", httptransport.Wrap(handler.Delete))
 }
+
+func RegisterAgentRoutes(router *gin.Engine, service contentQueryService, authenticator httptransport.Authenticator, metrics *observability.Metrics) {
+	if router == nil || service == nil {
+		return
+	}
+	handler := NewHandler(service, metrics)
+	contents := router.Group("/api/v1/agent/contents", httptransport.RequireAuthentication(authenticator), httptransport.RequireAgentScope("contents.read"))
+	contents.GET("", httptransport.Wrap(handler.List))
+	contents.GET("/:id", httptransport.Wrap(handler.Get))
+	contents.GET("/:id/document", httptransport.Wrap(handler.Document))
+}

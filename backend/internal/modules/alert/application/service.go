@@ -272,7 +272,7 @@ func (service *Service) Suppress(ctx context.Context, input ActionInput) (domain
 }
 
 func (service *Service) transition(ctx context.Context, input ActionInput, to domain.State, elevated bool) (domain.Thread, error) {
-	if service == nil || service.clock == nil || input.Subject.UserID <= 0 || input.Subject.SessionID <= 0 || !input.Subject.Role.Valid() {
+	if service == nil || service.clock == nil || !input.Subject.Authenticated() {
 		return domain.Thread{}, fmt.Errorf("%w: invalid alert actor", sharedrepository.ErrInvalidInput)
 	}
 	if elevated && input.Subject.Role == identitydomain.RoleViewer {

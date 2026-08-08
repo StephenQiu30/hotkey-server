@@ -1,4 +1,28 @@
 declare namespace HotKeyAPI {
+  type AgentAccessResultArrayHttpTokenResponse = {
+    code?: number;
+    data?: TokenResponse[];
+    message?: string;
+  };
+
+  type AgentAccessResultHttpCreatedTokenResponse = {
+    code?: number;
+    data?: CreatedTokenResponse;
+    message?: string;
+  };
+
+  type AgentAccessResultHttpTokenResponse = {
+    code?: number;
+    data?: TokenResponse;
+    message?: string;
+  };
+
+  type AgentAccessResultInternalModulesAgentaccessTransportHttpEmptyResponse = {
+    code?: number;
+    data?: EmptyResponse;
+    message?: string;
+  };
+
   type AICandidateRequest = {
     /** Gin must not apply required directly to this nullable wrapper: both an
 explicit JSON null and a positive integer are valid. The application
@@ -405,6 +429,19 @@ required property without making explicit null impossible to bind. */
     message?: string;
   };
 
+  type CreatedTokenResponse = {
+    created_at?: string;
+    expires_at?: string;
+    id?: number;
+    last_used_at?: string;
+    name?: string;
+    revoked_at?: string;
+    scopes?: string[];
+    token?: string;
+    token_prefix?: string;
+    version?: number;
+  };
+
   type CreateMetricCapabilityProfileRequest = {
     credibility_weight?: number;
     independence_strategy: "source_connection" | "author";
@@ -482,6 +519,19 @@ required property without making explicit null impossible to bind. */
     timezone?: string;
   };
 
+  type CreateTokenRequest = {
+    lifetime_days: number;
+    name: string;
+    scopes: (
+      | "monitors.read"
+      | "events.read"
+      | "contents.read"
+      | "reports.read"
+      | "search.run"
+      | "alerts.write"
+    )[];
+  };
+
   type deleteAiModelProfilesIdParams = {
     /** model profile ID */
     id: number;
@@ -550,6 +600,8 @@ required property without making explicit null impossible to bind. */
     vaultPath?: string;
     version?: number;
   };
+
+  type EmptyResponse = true;
 
   type EmptyResponse = true;
 
@@ -748,6 +800,156 @@ required property without making explicit null impossible to bind. */
     reason_code?: string;
     reused?: boolean;
     run_id?: number;
+    status?: string;
+  };
+
+  type getAgentAlertsIdParams = {
+    /** alert thread ID */
+    id: number;
+  };
+
+  type getAgentAlertsParams = {
+    /** thread state */
+    state?: "open" | "acknowledged" | "resolved" | "suppressed";
+    /** severity */
+    severity?: "info" | "warning" | "critical";
+    /** monitor ID */
+    monitor_id?: number;
+    /** page size */
+    limit?: number;
+    /** opaque alert cursor */
+    cursor?: string;
+  };
+
+  type getAgentContentsIdDocumentParams = {
+    /** content ID */
+    id: number;
+  };
+
+  type getAgentContentsIdParams = {
+    /** content ID */
+    id: number;
+  };
+
+  type getAgentContentsParams = {
+    /** cursor */
+    cursor?: string;
+    /** page size */
+    limit?: number;
+    /** title or summary keyword */
+    q?: string;
+    /** source connection ID */
+    source_connection_id?: number;
+    /** published at or after (RFC3339) */
+    published_from?: string;
+    /** published at or before (RFC3339) */
+    published_to?: string;
+    /** monitor ID */
+    monitor_id?: number;
+    /** latest monitor match decision */
+    decision?: "accepted" | "review" | "rejected";
+    /** sort order */
+    sort?: "latest" | "relevance";
+  };
+
+  type getAgentEventsIdContentsParams = {
+    /** event ID */
+    id: number;
+  };
+
+  type getAgentEventsIdHeatParams = {
+    /** event ID */
+    id: number;
+  };
+
+  type getAgentEventsIdIntelligenceParams = {
+    /** event ID */
+    id: number;
+  };
+
+  type getAgentEventsIdParams = {
+    /** event ID */
+    id: number;
+  };
+
+  type getAgentEventsIdUpdatesParams = {
+    /** event ID */
+    id: number;
+    /** sequence cursor */
+    cursor?: number;
+    /** page size */
+    limit?: number;
+  };
+
+  type getAgentEventsParams = {
+    /** event id cursor */
+    cursor?: number;
+    /** page size */
+    limit?: number;
+  };
+
+  type getAgentMonitorsIdParams = {
+    /** monitor ID */
+    id: number;
+  };
+
+  type getAgentMonitorsParams = {
+    /** cursor */
+    cursor?: string;
+    /** page size */
+    limit?: number;
+  };
+
+  type getAgentRadarEventsParams = {
+    /** event title or summary keyword */
+    q?: string;
+    /** Radar window */
+    window?: "1h" | "6h" | "24h" | "7d";
+    /** monitor ID */
+    monitor_id?: number;
+    /** lifecycle filters */
+    lifecycle?: (
+      | "detected"
+      | "active"
+      | "cooling"
+      | "closed"
+      | "merged"
+      | "archived"
+      | "rejected"
+    )[];
+    /** trend filters */
+    trend?: ("emerging" | "rising" | "stable" | "falling" | "dormant")[];
+    /** verification filters */
+    verification?: (
+      | "disputed"
+      | "corroborated"
+      | "single_source"
+      | "unverified"
+      | "insufficient"
+    )[];
+    /** minimum heat */
+    min_heat?: number;
+    /** ranking dimension */
+    sort?: "momentum" | "attention" | "breadth" | "latest" | "relevance";
+    /** page size */
+    limit?: number;
+    /** opaque Radar cursor */
+    cursor?: string;
+  };
+
+  type getAgentReportsIdParams = {
+    /** report ID */
+    id: number;
+  };
+
+  type getAgentReportsParams = {
+    /** report id cursor */
+    cursor?: number;
+    /** page size */
+    limit?: number;
+    /** daily or weekly */
+    type?: string;
+    /** draft, published, failed or archived */
     status?: string;
   };
 
@@ -1511,6 +1713,26 @@ required property without making explicit null impossible to bind. */
     id: number;
   };
 
+  type postAgentAlertsIdAcknowledgeParams = {
+    /** alert thread ID */
+    id: number;
+  };
+
+  type postAgentAlertsIdResolveParams = {
+    /** alert thread ID */
+    id: number;
+  };
+
+  type postAgentMonitorsIdCollectParams = {
+    /** monitor ID */
+    id: number;
+  };
+
+  type postAgentTokensIdRevokeParams = {
+    /** Agent Token ID */
+    id: number;
+  };
+
   type postAiModelProfilesIdRestoreParams = {
     /** model profile ID */
     id: number;
@@ -2132,6 +2354,10 @@ required property without making explicit null impossible to bind. */
     expected_version: number;
   };
 
+  type RevokeTokenRequest = {
+    expected_version: number;
+  };
+
   type RotateRSSTokenRequest = {
     expected_version: number;
   };
@@ -2284,6 +2510,18 @@ required property without making explicit null impossible to bind. */
   type SummarySentenceResponse = {
     evidence?: IntelligenceEvidenceResponse[];
     text?: string;
+  };
+
+  type TokenResponse = {
+    created_at?: string;
+    expires_at?: string;
+    id?: number;
+    last_used_at?: string;
+    name?: string;
+    revoked_at?: string;
+    scopes?: string[];
+    token_prefix?: string;
+    version?: number;
   };
 
   type UpdateModelProfileRequest = {

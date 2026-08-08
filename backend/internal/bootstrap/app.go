@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"strings"
 
+	agentapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/agentaccess/application"
+	agentdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/agentaccess/domain"
+	agentpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/agentaccess/infrastructure/postgres"
+	agenttransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/agentaccess/transport/http"
 	alertapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/alert/application"
 	alertjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/alert/infrastructure/jobs"
 	alertpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/alert/infrastructure/postgres"
@@ -187,6 +191,9 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 		if usesDatabase {
 			apiOptions = append(apiOptions,
 				fx.Provide(
+					agentpostgres.NewRepository,
+					newAgentAccessService,
+					newAgentTokenAuthenticator,
 					newEventRadarRepository,
 					newEventRadarService,
 					newIdentityVerificationStore,
@@ -207,7 +214,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newJobService,
 					newNotificationHandler,
 				),
-				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerBilibiliWebhookRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerRadarRoutes, registerEventUpdateRoutes, registerAlertRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes, registerKnowledgeRoutes, registerJobRoutes, registerOverviewRoutes, registerGovernanceRoutes, registerNotificationRoutes),
+				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerAgentTokenRoutes, registerSourceRoutes, registerBilibiliWebhookRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerRadarRoutes, registerEventUpdateRoutes, registerAlertRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes, registerKnowledgeRoutes, registerJobRoutes, registerOverviewRoutes, registerGovernanceRoutes, registerNotificationRoutes, registerAgentRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -292,6 +299,21 @@ func newAIEmbeddingService(runs *intelligencepostgres.Repository, providers *int
 
 func registerIdentityRoutes(router *gin.Engine, service *identityapplication.Service, authenticator httptransport.Authenticator, cfg config.Config) {
 	identitytransport.RegisterRoutes(router, service, authenticator, cfg)
+}
+
+func registerAgentTokenRoutes(router *gin.Engine, service *agentapplication.Service, authenticator httptransport.Authenticator) {
+	agenttransport.RegisterRoutes(router, service, authenticator)
+}
+
+func registerAgentRoutes(router *gin.Engine, authenticator agentTokenAuthenticator, monitors *monitorapplication.Service, contents *ingestionapplication.ContentQueryService, reports *reportapplication.Service, collections *sourceapplication.CollectionControlService, alerts *alertapplication.Service, read *eventapplication.ReadService, heat *eventapplication.HeatService, intelligence *eventapplication.EventIntelligenceReadService, radar *eventapplication.RadarService, updates *eventapplication.UpdateService, metrics *observability.Metrics) {
+	monitortransport.RegisterAgentRoutes(router, monitors, authenticator)
+	ingestiontransport.RegisterAgentRoutes(router, contents, authenticator, metrics)
+	reporttransport.RegisterAgentRoutes(router, reports, authenticator)
+	sourcetransport.RegisterAgentCollectionRoutes(router, collections, authenticator)
+	alerttransport.RegisterAgentRoutes(router, alerts, authenticator)
+	eventtransport.RegisterAgentRoutesWithIntelligence(router, read, heat, intelligence, authenticator)
+	eventtransport.RegisterAgentRadarRoutes(router, radar, authenticator)
+	eventtransport.RegisterAgentEventUpdateRoutes(router, updates, authenticator)
 }
 
 func registerSourceRoutes(router *gin.Engine, service *sourceapplication.Service, authenticator httptransport.Authenticator) {
@@ -716,6 +738,32 @@ func newIdentityService(runtime *database.Runtime, cfg config.Config, verificati
 		}),
 		Clock: sharedclock.System{},
 	})
+}
+
+func newAgentAccessService(runtime *database.Runtime, tokens *agentpostgres.Repository) (*agentapplication.Service, error) {
+	return agentapplication.NewService(agentapplication.Dependencies{
+		Runtime: runtime,
+		Tokens:  tokens,
+		Audit:   identitypostgres.NewAuditRepository(runtime),
+		Clock:   sharedclock.System{},
+	})
+}
+
+type agentTokenAuthenticator struct{ service *agentapplication.Service }
+
+func newAgentTokenAuthenticator(service *agentapplication.Service) agentTokenAuthenticator {
+	return agentTokenAuthenticator{service: service}
+}
+
+func (authenticator agentTokenAuthenticator) Authenticate(ctx context.Context, token string) (httptransport.Subject, error) {
+	principal, err := authenticator.service.Authenticate(ctx, token)
+	if err != nil {
+		return httptransport.Subject{}, err
+	}
+	return httptransport.Subject{
+		UserID: principal.UserID, AgentTokenID: principal.TokenID, Role: httptransport.Role(principal.Role),
+		AgentScopes: strings.Join(agentdomain.ScopeStrings(principal.Scopes), ","),
+	}, nil
 }
 
 func newIdentityVerificationStore(cfg config.Config) (*identityredis.VerificationStore, error) {

@@ -103,6 +103,27 @@ func TestOpenAPIContract(t *testing.T) {
 
 	required := map[string]map[string][]string{
 		"/api/v1/capabilities":                                              {"get": {"200"}},
+		"/api/v1/agent-tokens":                                              {"get": {"200", "401", "503"}, "post": {"201", "400", "401", "403", "409", "503"}},
+		"/api/v1/agent-tokens/{id}/revoke":                                  {"post": {"200", "400", "401", "404", "409", "503"}},
+		"/api/v1/agent/monitors":                                            {"get": {"200", "400", "401", "503"}},
+		"/api/v1/agent/monitors/{id}":                                       {"get": {"200", "400", "401", "409", "503"}},
+		"/api/v1/agent/monitors/{id}/collect":                               {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/agent/contents":                                            {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/agent/contents/{id}":                                       {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/agent/contents/{id}/document":                              {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/agent/events":                                              {"get": {"200", "400", "401", "503"}},
+		"/api/v1/agent/events/{id}":                                         {"get": {"200", "400", "401", "404"}},
+		"/api/v1/agent/events/{id}/contents":                                {"get": {"200", "400", "401", "404"}},
+		"/api/v1/agent/events/{id}/heat":                                    {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/agent/events/{id}/intelligence":                            {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/agent/events/{id}/updates":                                 {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/agent/radar/events":                                        {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/agent/alerts":                                              {"get": {"200", "400", "401", "503"}},
+		"/api/v1/agent/alerts/{id}":                                         {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/agent/alerts/{id}/acknowledge":                             {"post": {"200", "400", "401", "404", "409", "503"}},
+		"/api/v1/agent/alerts/{id}/resolve":                                 {"post": {"200", "400", "401", "404", "409", "503"}},
+		"/api/v1/agent/reports":                                             {"get": {"200", "400", "401", "503"}},
+		"/api/v1/agent/reports/{id}":                                        {"get": {"200", "400", "401", "404", "503"}},
 		"/api/v1/auth/email-verifications":                                  {"post": {"200", "400", "429", "503"}},
 		"/api/v1/auth/email-verifications/confirm":                          {"post": {"200", "400", "429", "503"}},
 		"/api/v1/auth/registrations":                                        {"post": {"201", "400", "409", "503"}},
@@ -263,12 +284,32 @@ func TestOpenAPIContract(t *testing.T) {
 		}
 	}
 
+	for _, route := range []string{
+		"/api/v1/agent-tokens", "/api/v1/agent-tokens/{id}/revoke",
+		"/api/v1/agent/monitors", "/api/v1/agent/monitors/{id}", "/api/v1/agent/monitors/{id}/collect",
+		"/api/v1/agent/contents", "/api/v1/agent/contents/{id}", "/api/v1/agent/contents/{id}/document",
+		"/api/v1/agent/events", "/api/v1/agent/events/{id}", "/api/v1/agent/events/{id}/contents", "/api/v1/agent/events/{id}/heat", "/api/v1/agent/events/{id}/intelligence", "/api/v1/agent/events/{id}/updates", "/api/v1/agent/radar/events",
+		"/api/v1/agent/alerts", "/api/v1/agent/alerts/{id}", "/api/v1/agent/alerts/{id}/acknowledge", "/api/v1/agent/alerts/{id}/resolve",
+		"/api/v1/agent/reports", "/api/v1/agent/reports/{id}",
+	} {
+		var operations map[string]openAPIOperation
+		if err := json.Unmarshal(document.Paths[route], &operations); err != nil {
+			t.Fatalf("decode protected Agent path %s: %v", route, err)
+		}
+		for method, operation := range operations {
+			if !usesBearerAuth(operation.Security) {
+				t.Errorf("%s %s is missing BearerAuth", strings.ToUpper(method), route)
+			}
+		}
+	}
+
 	for _, route := range []string{"/healthz", "/readyz", "/metrics"} {
 		if _, exists := document.Paths[route]; exists {
 			t.Errorf("operational path %s must not be in OpenAPI", route)
 		}
 	}
 	assertSafeIdentityOpenAPIDefinitions(t, document.Definitions)
+	assertSafeAgentTokenOpenAPIDefinitions(t, document.Definitions)
 	assertSafeMonitorSourceOpenAPIDefinitions(t, document.Definitions)
 	assertSafeCollectionOpenAPIDefinitions(t, document.Definitions)
 	assertSafeContentOpenAPIDefinitions(t, document.Definitions)
@@ -283,6 +324,29 @@ func TestOpenAPIContract(t *testing.T) {
 	assertSafeDeliveryOpenAPIDefinitions(t, document.Definitions)
 	assertDraftExpectedVersionOpenAPI(t, document.Definitions)
 	assertMonitorDraftDefaultsOpenAPI(t, document.Definitions)
+}
+
+func assertSafeAgentTokenOpenAPIDefinitions(t *testing.T, definitions map[string]struct {
+	Properties map[string]json.RawMessage `json:"properties"`
+	Required   []string                   `json:"required"`
+}) {
+	t.Helper()
+	response, ok := definitions["http.TokenResponse"]
+	if !ok {
+		t.Fatal("missing Agent Token response definition")
+	}
+	for _, forbidden := range []string{"token", "token_hash", "authorization"} {
+		if _, exists := response.Properties[forbidden]; exists {
+			t.Errorf("safe Agent Token response exposes %q", forbidden)
+		}
+	}
+	created, ok := definitions["http.CreatedTokenResponse"]
+	if !ok {
+		t.Fatal("missing one-time Agent Token response definition")
+	}
+	if _, exists := created.Properties["token"]; !exists {
+		t.Error("created Agent Token response must expose the one-time token")
+	}
 }
 
 func assertRadarAlertParameterContracts(t *testing.T, paths map[string]json.RawMessage, definitions map[string]struct {
