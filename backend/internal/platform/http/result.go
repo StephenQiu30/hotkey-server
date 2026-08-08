@@ -36,5 +36,9 @@ func PageOK[T any](c *gin.Context, page Page[T]) {
 }
 
 func Fail(c *gin.Context, status int, code int, message string) {
-	c.AbortWithStatusJSON(status, Result[any]{Code: code, Message: message, Data: nil})
+	FailData(c, status, code, message, nil)
+}
+
+func FailData(c *gin.Context, status int, code int, message string, data any) {
+	c.AbortWithStatusJSON(status, Result[any]{Code: code, Message: message, Data: data})
 }

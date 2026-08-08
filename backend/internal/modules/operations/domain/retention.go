@@ -12,6 +12,8 @@ type RetentionPolicy struct {
 	RetentionDays int
 	Action        string
 	Enabled       bool
+	Description   string
+	Protected     bool
 }
 
 func (policy RetentionPolicy) Validate() error {
@@ -22,7 +24,10 @@ func (policy RetentionPolicy) Validate() error {
 }
 
 type CleanupResult struct {
-	DataClass string
-	Cutoff    time.Time
-	Affected  int64
+	DataClass string    `json:"data_class"`
+	Cutoff    time.Time `json:"cutoff"`
+	Affected  int64     `json:"affected"`
+	BatchSize int       `json:"batch_size"`
+	HasMore   bool      `json:"has_more"`
+	DryRun    bool      `json:"dry_run"`
 }

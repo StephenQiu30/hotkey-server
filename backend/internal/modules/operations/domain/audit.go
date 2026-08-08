@@ -39,6 +39,7 @@ const (
 	ActionSubscriptionDeleted        AuditAction = "subscription.deleted"
 	ActionJobCancelled               AuditAction = "job.cancelled"
 	ActionJobRetried                 AuditAction = "job.retried"
+	ActionRetentionExecuted          AuditAction = "retention.executed"
 
 	AuditResultSuccess AuditResult = "success"
 	AuditResultFailure AuditResult = "failure"
@@ -52,6 +53,7 @@ var allowedActions = map[AuditAction]struct{}{
 	ActionMetricCapabilityDrafted: {}, ActionMetricCapabilityPublished: {}, ActionMetricCapabilityArchived: {},
 	ActionSubscriptionCreated: {}, ActionSubscriptionUpdated: {}, ActionSubscriptionTokenRotated: {}, ActionSubscriptionDeleted: {},
 	ActionJobCancelled: {}, ActionJobRetried: {},
+	ActionRetentionExecuted: {},
 }
 
 var (
@@ -112,7 +114,7 @@ func (entry AuditEntry) Validate() error {
 var safeMetadataKeys = map[string]struct{}{
 	"monitor_version": {}, "draft_version": {}, "source_version": {}, "subscription_version": {}, "config_version": {}, "revision": {}, "rule_count": {}, "source_count": {},
 	"status": {}, "previous_status": {}, "approval_status": {}, "config_hash": {}, "published_at": {},
-	"enabled": {}, "deleted": {}, "credential_configured": {},
+	"enabled": {}, "deleted": {}, "credential_configured": {}, "affected": {}, "batch_size": {},
 	"capability_source_type": {}, "capability_profile_version": {}, "capability_status": {}, "capability_profile_record_version": {}, "reason_code": {},
 }
 
@@ -165,7 +167,7 @@ func SanitizeMetadata(metadata map[string]any) map[string]any {
 
 func validMetadataValue(key string, value any) bool {
 	switch key {
-	case "monitor_version", "draft_version", "source_version", "subscription_version", "config_version", "revision", "rule_count", "source_count":
+	case "monitor_version", "draft_version", "source_version", "subscription_version", "config_version", "revision", "rule_count", "source_count", "affected", "batch_size":
 		switch value.(type) {
 		case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 			return true
@@ -222,7 +224,7 @@ func validActorType(value string) bool {
 }
 
 func validResourceType(value string) bool {
-	return value == "monitor" || value == "source_connection" || value == "metric_capability_profile" || value == "report_subscription"
+	return value == "monitor" || value == "source_connection" || value == "metric_capability_profile" || value == "report_subscription" || value == "retention_policy"
 }
 
 func validRequestID(value string) bool {

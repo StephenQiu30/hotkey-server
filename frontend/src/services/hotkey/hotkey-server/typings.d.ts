@@ -130,6 +130,23 @@ required property without making explicit null impossible to bind. */
     expected_monitor_version: number;
   };
 
+  type AuditPage = {
+    items?: AuditRecord[];
+    next_cursor?: number;
+  };
+
+  type AuditRecord = {
+    action?: string;
+    actor_id?: number;
+    actor_type?: string;
+    created_at?: string;
+    id?: number;
+    request_id?: string;
+    resource_id?: number;
+    resource_type?: string;
+    result?: string;
+  };
+
   type AuthenticationResponse = {
     access_token?: string;
     user?: UserResponse;
@@ -171,6 +188,26 @@ required property without making explicit null impossible to bind. */
     normalized_claim?: string;
     status?: string;
     version?: number;
+  };
+
+  type CleanupResult = {
+    affected?: number;
+    batch_size?: number;
+    cutoff?: string;
+    data_class?: string;
+    dry_run?: boolean;
+    has_more?: boolean;
+  };
+
+  type CollectionQuotaErrorResponse = {
+    code?: number;
+    data?: {
+      dimension?: string;
+      limit?: number;
+      remaining?: number;
+      reset_at?: string;
+    };
+    message?: string;
   };
 
   type CollectionResultHttpCollectionRunPageResponse = {
@@ -889,6 +926,19 @@ required property without making explicit null impossible to bind. */
     after_id?: number;
   };
 
+  type getOperationsAuditLogsParams = {
+    /** last audit ID */
+    cursor?: number;
+    /** page size */
+    limit?: number;
+    /** exact action */
+    action?: string;
+    /** exact resource type */
+    resource_type?: string;
+    /** success, failure or denied */
+    result?: string;
+  };
+
   type getOperationsJobsParams = {
     /** last job id */
     cursor?: number;
@@ -975,6 +1025,36 @@ required property without making explicit null impossible to bind. */
     cursor?: string;
     /** page size */
     limit?: number;
+  };
+
+  type GovernanceResultArrayHttpRetentionPolicyResponse = {
+    code?: number;
+    data?: RetentionPolicyResponse[];
+    message?: string;
+  };
+
+  type GovernanceResultDomainAuditPage = {
+    code?: number;
+    data?: AuditPage;
+    message?: string;
+  };
+
+  type GovernanceResultDomainCleanupResult = {
+    code?: number;
+    data?: CleanupResult;
+    message?: string;
+  };
+
+  type GovernanceResultDomainUsageOverview = {
+    code?: number;
+    data?: UsageOverview;
+    message?: string;
+  };
+
+  type GovernanceResultInternalModulesOperationsTransportHttpEmptyResponse = {
+    code?: number;
+    data?: EmptyResponse;
+    message?: string;
   };
 
   type HeatComponentResponse = {
@@ -1262,6 +1342,17 @@ required property without making explicit null impossible to bind. */
   type MonitorPageResponse = {
     items?: MonitorResponse[];
     next_cursor?: string;
+  };
+
+  type MonitorQuotaErrorResponse = {
+    code?: number;
+    data?: {
+      dimension?: string;
+      limit?: number;
+      remaining?: number;
+      reset_at?: string;
+    };
+    message?: string;
   };
 
   type MonitorResponse = {
@@ -1584,6 +1675,16 @@ required property without making explicit null impossible to bind. */
 
   type postOperationsJobsIdRetryParams = {
     /** job id */
+    id: number;
+  };
+
+  type postOperationsRetentionPoliciesIdPreviewParams = {
+    /** retention policy ID */
+    id: number;
+  };
+
+  type postOperationsRetentionPoliciesIdRunParams = {
+    /** retention policy ID */
     id: number;
   };
 
@@ -2015,6 +2116,22 @@ required property without making explicit null impossible to bind. */
     message?: string;
   };
 
+  type RetentionPolicyResponse = {
+    action?: string;
+    data_class?: string;
+    description?: string;
+    enabled?: boolean;
+    id?: number;
+    protected?: boolean;
+    retention_days?: number;
+    version?: number;
+  };
+
+  type RetentionRunRequest = {
+    batch_size: number;
+    expected_version: number;
+  };
+
   type RotateRSSTokenRequest = {
     expected_version: number;
   };
@@ -2208,6 +2325,25 @@ required property without making explicit null impossible to bind. */
   type UpdateUserRequest = {
     role?: "admin" | "editor" | "viewer";
     status?: "active" | "disabled";
+  };
+
+  type UsageItem = {
+    dimension?: string;
+    label?: string;
+    limit?: string;
+    mode?: string;
+    remaining?: string;
+    reserved?: string;
+    reset_at?: string;
+    scope?: string;
+    settled?: string;
+    unit?: string;
+    used?: string;
+  };
+
+  type UsageOverview = {
+    generated_at?: string;
+    items?: UsageItem[];
   };
 
   type UserResponse = {

@@ -43,7 +43,7 @@ PRD 将每一条设计转换为稳定、可验收的产品范围。状态只使�
 | 022 | [实时事件流与站内通知](../design/archive/022-实时事件流与站内通知设计.md) | [PRD](archive/022-实时事件流与站内通知.md) | [Plan](../plans/archive/022-实时事件流与站内通知计划.md) | implemented |
 | 023 | [低噪声告警与邮件交付](../design/archive/023-低噪声告警与邮件交付设计.md) | [PRD](archive/023-低噪声告警与邮件交付.md) | [Plan](../plans/archive/023-低噪声告警与邮件交付计划.md) | implemented |
 | 024 | [日报周报私有Feed与知识归档](../design/archive/024-日报周报私有Feed与知识归档设计.md) | [PRD](archive/024-日报周报私有Feed与知识归档.md) | [Plan](../plans/archive/024-日报周报私有Feed与知识归档计划.md) | implemented |
-| 025 | [配额限流保留与审计治理](../design/025-配额限流保留与审计治理设计.md) | [PRD](025-配额限流保留与审计治理.md) | [Plan](../plans/025-配额限流保留与审计治理计划.md) | draft |
+| 025 | [配额限流保留与审计治理](../design/archive/025-配额限流保留与审计治理设计.md) | [PRD](archive/025-配额限流保留与审计治理.md) | [Plan](../plans/archive/025-配额限流保留与审计治理计划.md) | implemented |
 | 026 | [Web工作台全页面交互](../design/026-Web工作台全页面交互设计.md) | [PRD](026-Web工作台全页面交互.md) | [Plan](../plans/026-Web工作台全页面交互计划.md) | draft |
 | 027 | [Agent-Skill与外部API](../design/027-Agent-Skill与外部API设计.md) | [PRD](027-Agent-Skill与外部API.md) | [Plan](../plans/027-Agent-Skill与外部API计划.md) | draft |
 | 028 | [可观测性部署与质量门禁](../design/028-可观测性部署与质量门禁设计.md) | [PRD](028-可观测性部署与质量门禁.md) | [Plan](../plans/028-可观测性部署与质量门禁计划.md) | draft |

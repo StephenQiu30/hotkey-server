@@ -12,7 +12,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
 
-func TestRetentionRepositoryArchivesBusinessRowsAndDeletesAttempts(t *testing.T) {
+func TestRetentionRepositoryDeletesOnlyWhitelistedBoundedOperationalRows(t *testing.T) {
 	ctx := context.Background()
 	runtime, err := database.Open(ctx, postgresfixture.New(t))
 	if err != nil {
@@ -31,16 +31,19 @@ func TestRetentionRepositoryArchivesBusinessRowsAndDeletesAttempts(t *testing.T)
 		t.Fatal(err)
 	}
 	repository := NewRetentionRepository(runtime)
-	affected, err := repository.ApplyRetention(ctx, operationsdomain.RetentionPolicy{ID: 1, Version: 1, DataClass: "contents", RetentionDays: 1, Action: "archive", Enabled: true}, time.Now().UTC().Add(-24*time.Hour))
+	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO content_metric_snapshots (content_id,captured_at) VALUES ($1,$2)`, contentID, old); err != nil {
+		t.Fatal(err)
+	}
+	affected, err := repository.ApplyRetention(ctx, operationsdomain.RetentionPolicy{ID: 1, Version: 1, DataClass: "content_metric_snapshots", RetentionDays: 1, Action: "delete", Enabled: true}, time.Now().UTC().Add(-24*time.Hour))
 	if err != nil || affected != 1 {
-		t.Fatalf("archive contents = %d/%v, want 1", affected, err)
+		t.Fatalf("delete content metrics = %d/%v, want 1", affected, err)
 	}
 	var deletedAt *time.Time
 	if err := runtime.SQL.QueryRowContext(ctx, `SELECT deleted_at FROM contents WHERE id = $1`, contentID).Scan(&deletedAt); err != nil {
 		t.Fatal(err)
 	}
-	if deletedAt == nil {
-		t.Fatal("content was not archived")
+	if deletedAt != nil {
+		t.Fatal("core content was modified by metric retention")
 	}
 	var userID int64
 	if err := runtime.SQL.QueryRowContext(ctx, `INSERT INTO users (email, password_hash, display_name, role) VALUES ('retention-' || md5(random()::text) || '@example.test', 'hash', 'retention', 'viewer') RETURNING id`).Scan(&userID); err != nil {

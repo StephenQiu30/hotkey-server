@@ -7,17 +7,18 @@ import (
 )
 
 const (
-	CodeInvalidRequest      = 10000
-	CodeValidation          = 10001
-	CodeConflict            = 10002
-	CodeNotFound            = 10003
-	CodeRateLimited         = 10004
-	CodeUnauthenticated     = 20000
-	CodeForbidden           = 20001
-	CodeInvalidCredentials  = 20002
-	CodeSessionInvalid      = 20003
-	CodeVerificationInvalid = 20004
-	CodeLastActiveAdmin     = 20005
+	CodeInvalidRequest       = 10000
+	CodeValidation           = 10001
+	CodeConflict             = 10002
+	CodeNotFound             = 10003
+	CodeRateLimited          = 10004
+	CodeProductQuotaExceeded = 10005
+	CodeUnauthenticated      = 20000
+	CodeForbidden            = 20001
+	CodeInvalidCredentials   = 20002
+	CodeSessionInvalid       = 20003
+	CodeVerificationInvalid  = 20004
+	CodeLastActiveAdmin      = 20005
 	// Monitor/source configuration errors are stable control-plane outcomes;
 	// callers must key behavior on these values rather than error messages.
 	CodeInvalidMonitorState         = 30000
@@ -67,6 +68,7 @@ func init() {
 		{Code: CodeConflict, HTTPStatus: stdhttp.StatusConflict, Message: "conflict"},
 		{Code: CodeNotFound, HTTPStatus: stdhttp.StatusNotFound, Message: "not found"},
 		{Code: CodeRateLimited, HTTPStatus: stdhttp.StatusTooManyRequests, Message: "rate limited", Retryable: true},
+		{Code: CodeProductQuotaExceeded, HTTPStatus: stdhttp.StatusTooManyRequests, Message: "product quota exceeded"},
 		{Code: CodeUnauthenticated, HTTPStatus: stdhttp.StatusUnauthorized, Message: "unauthenticated"},
 		{Code: CodeForbidden, HTTPStatus: stdhttp.StatusForbidden, Message: "forbidden"},
 		{Code: CodeInvalidCredentials, HTTPStatus: stdhttp.StatusUnauthorized, Message: "invalid credentials"},
@@ -112,6 +114,22 @@ type AppError struct {
 	Message    string
 	Retryable  bool
 	Cause      error
+	Data       any
+}
+
+// QuotaData is the stable, safe client projection for product quota failures.
+// Provider throttling uses separate error codes and never returns this shape.
+type QuotaData struct {
+	Dimension string  `json:"dimension"`
+	Limit     int64   `json:"limit"`
+	Remaining int64   `json:"remaining"`
+	ResetAt   *string `json:"reset_at"`
+}
+
+func ProductQuotaExceeded(dimension string, limit, remaining int64, resetAt *string) *AppError {
+	err := New(CodeProductQuotaExceeded, stdhttp.StatusTooManyRequests, "")
+	err.Data = QuotaData{Dimension: dimension, Limit: limit, Remaining: remaining, ResetAt: resetAt}
+	return err
 }
 
 func (e *AppError) Error() string {

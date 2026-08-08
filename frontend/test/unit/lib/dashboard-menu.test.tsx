@@ -17,6 +17,7 @@ describe("dashboard menu", () => {
   it("keeps data and delivery operations out of the primary navigation", () => {
     expect(dashboardAdminMenuItems.map(({ path, name }) => ({ path, name }))).toEqual([
       { path: "/dashboard/users", name: "用户与权限" },
+      { path: "/dashboard/governance", name: "配额与审计" },
       { path: "/dashboard/contents", name: "采集内容" },
       { path: "/dashboard/notifications", name: "通知与订阅" },
       { path: "/dashboard/sources", name: "来源管理" },

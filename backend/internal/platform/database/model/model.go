@@ -446,6 +446,7 @@ var specs = []Spec{
 	{"report_subscriptions", LifecycleBusiness, []string{"id", "user_id", "channel", "deleted_at"}},
 	{"ai_model_profiles", LifecycleBusiness, []string{"id", "version", "name", "task_type", "provider", "model_name", "model_version", "credential_ref", "embedding_dimensions", "timeout_seconds", "max_attempts", "max_cost", "daily_budget", "fallback_priority", "enabled", "deleted_at"}},
 	{"retention_policies", LifecycleBusiness, []string{"id", "data_class", "retention_days", "action"}},
+	{"quota_usage_ledgers", LifecycleOperational, []string{"id", "dimension", "subject_type", "subject_id", "window_start", "window_end", "used", "updated_at"}},
 	{"auth_sessions", LifecycleOperational, []string{"id", "user_id", "family_id", "absolute_expires_at", "revoked_at"}},
 	{"auth_refresh_tokens", LifecycleOperational, []string{"id", "session_id", "token_hash", "expires_at", "used_at", "revoked_at"}},
 	{"source_checkpoints", LifecycleOperational, []string{"id", "monitor_source_id", "last_successful_run_id", "last_fetched_at", "next_poll_at"}},

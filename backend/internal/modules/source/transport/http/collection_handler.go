@@ -29,6 +29,7 @@ type collectionControlService interface {
 // @Failure 401 {object} CollectionResult[EmptyResponse]
 // @Failure 403 {object} CollectionResult[EmptyResponse]
 // @Failure 409 {object} CollectionResult[EmptyResponse]
+// @Failure 429 {object} CollectionQuotaErrorResponse
 // @Failure 503 {object} CollectionResult[EmptyResponse]
 // @Router /api/v1/monitors/{id}/collect [post]
 func (handler *CollectionHandler) Manual(c *gin.Context) error {

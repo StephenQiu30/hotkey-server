@@ -19,6 +19,17 @@ type MonitorResult[T any] struct {
 
 type EmptyResponse struct{}
 
+type MonitorQuotaErrorResponse struct {
+	Code    int    `json:"code" example:"10005"`
+	Message string `json:"message" example:"product quota exceeded"`
+	Data    struct {
+		Dimension string  `json:"dimension" example:"active_monitors"`
+		Limit     int64   `json:"limit" example:"50"`
+		Remaining int64   `json:"remaining" example:"0"`
+		ResetAt   *string `json:"reset_at"`
+	} `json:"data"`
+}
+
 type MonitorConfigRequest struct {
 	Timezone                  string   `json:"timezone" binding:"required" example:"Asia/Shanghai"`
 	Languages                 []string `json:"languages" binding:"required,min=1,max=8" minItems:"1" maxItems:"8" example:"en"`

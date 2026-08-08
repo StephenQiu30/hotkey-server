@@ -31,6 +31,7 @@ type Dependencies struct {
 	Monitors domain.MonitorRepository
 	Sources  sourcedomain.MonitorSourceReader
 	Audit    operationsapplication.AuditWriter
+	Quota    operationsapplication.QuotaGuard
 }
 
 type Service struct {
@@ -38,13 +39,14 @@ type Service struct {
 	monitors domain.MonitorRepository
 	sources  sourcedomain.MonitorSourceReader
 	audit    operationsapplication.AuditWriter
+	quota    operationsapplication.QuotaGuard
 }
 
 func NewService(dependencies Dependencies) (*Service, error) {
 	if dependencies.Runtime == nil || dependencies.Monitors == nil || dependencies.Sources == nil || dependencies.Audit == nil {
 		return nil, errors.New("monitor application dependencies are required")
 	}
-	return &Service{runtime: dependencies.Runtime, monitors: dependencies.Monitors, sources: dependencies.Sources, audit: dependencies.Audit}, nil
+	return &Service{runtime: dependencies.Runtime, monitors: dependencies.Monitors, sources: dependencies.Sources, audit: dependencies.Audit, quota: dependencies.Quota}, nil
 }
 
 type DraftInput struct {
@@ -323,6 +325,11 @@ func (service *Service) Publish(ctx context.Context, input PublishInput) (*domai
 		if err != nil {
 			return err
 		}
+		if service.quota != nil {
+			if err := service.quota.CheckActiveMonitor(ctx, monitor.ID); err != nil {
+				return err
+			}
+		}
 		if !domain.HasApprovedHumanCoreRule(rules) {
 			return domain.InvalidMonitorConfiguration()
 		}
@@ -470,6 +477,11 @@ func (service *Service) changeState(ctx context.Context, input LifecycleInput, t
 			}
 			if _, _, err := service.validatePublishSources(ctx, config.Config, rules, sources, true); err != nil {
 				return err
+			}
+			if service.quota != nil {
+				if err := service.quota.CheckActiveMonitor(ctx, monitor.ID); err != nil {
+					return err
+				}
 			}
 		}
 		previous := monitor.Status

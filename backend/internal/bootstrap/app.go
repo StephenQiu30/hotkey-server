@@ -102,6 +102,8 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				database.NewRuntime,
 				operationspostgres.NewAuditWriter,
 				operationspostgres.NewJobRepository,
+				operationspostgres.NewGovernanceRepository,
+				operationspostgres.NewRetentionRepository,
 				sourcepostgres.NewRepository,
 				sourcepostgres.NewMetricCapabilityRepository,
 				newMetricCapabilityService,
@@ -201,10 +203,11 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newDeliverySubscriptionService,
 					newKnowledgeHandler,
 					newOperationsOverviewService,
+					newGovernanceService,
 					newJobService,
 					newNotificationHandler,
 				),
-				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerBilibiliWebhookRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerRadarRoutes, registerEventUpdateRoutes, registerAlertRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes, registerKnowledgeRoutes, registerJobRoutes, registerOverviewRoutes, registerNotificationRoutes),
+				fx.Invoke(registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerBilibiliWebhookRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerRadarRoutes, registerEventUpdateRoutes, registerAlertRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes, registerKnowledgeRoutes, registerJobRoutes, registerOverviewRoutes, registerGovernanceRoutes, registerNotificationRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -360,6 +363,10 @@ func registerOverviewRoutes(router *gin.Engine, service *operationsapplication.O
 	operationstransport.RegisterOverviewRoutes(router, service, authenticator)
 }
 
+func registerGovernanceRoutes(router *gin.Engine, service *operationsapplication.GovernanceService, authenticator httptransport.Authenticator) {
+	operationstransport.RegisterGovernanceRoutes(router, service, authenticator)
+}
+
 func newNotificationHandler(service *notificationapplication.Service, cfg config.Config) (*notificationtransport.Handler, error) {
 	return notificationtransport.NewHandler(service, notificationtransport.StreamConfig{
 		PollInterval: cfg.Notification.PollInterval, HeartbeatInterval: cfg.Notification.HeartbeatInterval,
@@ -455,10 +462,10 @@ func newMetricCapabilityService(runtime *database.Runtime, profiles *sourcepostg
 	return sourceapplication.NewMetricCapabilityService(sourceapplication.MetricCapabilityDependencies{Runtime: runtime, Profiles: profiles, SourceContexts: sources, Audit: audit})
 }
 
-func newCollectionControlService(runtime *database.Runtime, sources *sourcepostgres.Repository, runs *sourcepostgres.CollectionRepository, connectors *sourceinfrastructure.ConnectorRegistry, retries *sourcejobs.CollectionRetryActivator, manuals *sourcejobs.ManualCollectionActivator, targets *monitorpostgres.PublishedCollectionTargetReader, metrics *observability.Metrics) (*sourceapplication.CollectionControlService, error) {
+func newCollectionControlService(runtime *database.Runtime, sources *sourcepostgres.Repository, runs *sourcepostgres.CollectionRepository, connectors *sourceinfrastructure.ConnectorRegistry, retries *sourcejobs.CollectionRetryActivator, manuals *sourcejobs.ManualCollectionActivator, targets *monitorpostgres.PublishedCollectionTargetReader, quota *operationspostgres.GovernanceRepository, metrics *observability.Metrics) (*sourceapplication.CollectionControlService, error) {
 	return sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
 		Runtime: runtime, Sources: sources, Runs: runs, Connectors: connectors, Retries: retries,
-		Manuals: manuals, Targets: targets, Metrics: metrics,
+		Manuals: manuals, Targets: targets, Metrics: metrics, Quota: quota,
 	})
 }
 
@@ -565,8 +572,8 @@ func newIngestionRelevanceAPIService(snapshots *ingestionpostgres.RelevanceRepos
 	return ingestionapplication.NewRelevanceAPIService(ingestionapplication.RelevanceAPIServiceDependencies{Snapshots: snapshots, Contents: contents, Candidates: candidates})
 }
 
-func newMonitorService(runtime *database.Runtime, monitors *monitorpostgres.Repository, sources *sourceapplication.Service, audit *operationspostgres.AuditWriter) (*monitorapplication.Service, error) {
-	return monitorapplication.NewService(monitorapplication.Dependencies{Runtime: runtime, Monitors: monitors, Sources: sources, Audit: audit})
+func newMonitorService(runtime *database.Runtime, monitors *monitorpostgres.Repository, sources *sourceapplication.Service, audit *operationspostgres.AuditWriter, quota *operationspostgres.GovernanceRepository) (*monitorapplication.Service, error) {
+	return monitorapplication.NewService(monitorapplication.Dependencies{Runtime: runtime, Monitors: monitors, Sources: sources, Audit: audit, Quota: quota})
 }
 
 func newReportService(repository *reportpostgres.Repository, candidates *reportpostgres.CandidateReader, deliveries *deliverypostgres.Repository, knowledge *knowledgepostgres.Repository, jobs *queue.Store) (*reportapplication.Service, error) {
@@ -670,6 +677,10 @@ func newJobService(repository *operationspostgres.JobRepository, audit *operatio
 
 func newOperationsOverviewService(repository *operationspostgres.JobRepository) (*operationsapplication.OverviewService, error) {
 	return operationsapplication.NewOverviewService(repository)
+}
+
+func newGovernanceService(runtime *database.Runtime, store *operationspostgres.GovernanceRepository, retention *operationspostgres.RetentionRepository, audit *operationspostgres.AuditWriter) (*operationsapplication.GovernanceService, error) {
+	return operationsapplication.NewGovernanceService(operationsapplication.GovernanceDependencies{Runtime: runtime, Store: store, Retention: retention, Audit: audit})
 }
 
 func newDeliverySubscriptionService(runtime *database.Runtime, repository *deliverypostgres.Repository, audit *operationspostgres.AuditWriter) (*deliveryapplication.SubscriptionService, error) {

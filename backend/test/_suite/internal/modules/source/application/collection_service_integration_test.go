@@ -12,6 +12,7 @@ import (
 
 	identitydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/infrastructure/postgres"
+	operationspostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/infrastructure/postgres"
 	sourceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	sourcejobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/jobs"
@@ -168,12 +169,16 @@ VALUES ($1, 'keyword', 'contains', 'climate', 'user', 'approved')`, target.Monit
 	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
 		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}}, Retries: collectionRetryActivatorFake{},
-		Manuals: manuals, Targets: targetReader, Now: func() time.Time { return now },
+		Manuals: manuals, Targets: targetReader, Quota: operationspostgres.NewGovernanceRepository(runtime), Now: func() time.Time { return now },
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	editor := identitydomain.Subject{UserID: 2, SessionID: 2, Role: identitydomain.RoleEditor}
+	var editorID int64
+	if err := runtime.SQL.QueryRow(`INSERT INTO users (email,password_hash,display_name,role) VALUES ('manual-quota@example.test','hash','Manual quota','editor') RETURNING id`).Scan(&editorID); err != nil {
+		t.Fatal(err)
+	}
+	editor := identitydomain.Subject{UserID: editorID, SessionID: 2, Role: identitydomain.RoleEditor}
 	first, err := control.Manual(context.Background(), sourceapplication.ManualCollectionInput{Subject: editor, MonitorID: monitorID})
 	if err != nil || first.Requested != 1 || first.Created != 1 || first.Reused != 0 || !first.CooldownUntil.Equal(time.Date(2026, time.July, 16, 9, 5, 0, 0, time.UTC)) {
 		t.Fatalf("Manual(first) = %#v / %v", first, err)
@@ -232,6 +237,10 @@ VALUES ($1, 'keyword', 'contains', 'climate', 'user', 'approved')`, target.Monit
 	third, err := control.Manual(context.Background(), sourceapplication.ManualCollectionInput{Subject: editor, MonitorID: monitorID})
 	if err != nil || third.Created != 1 || third.Reused != 0 {
 		t.Fatalf("Manual(next bucket) = %#v / %v", third, err)
+	}
+	var consumed int64
+	if err := runtime.SQL.QueryRow(`SELECT used FROM quota_usage_ledgers WHERE subject_id=$1`, editorID).Scan(&consumed); err != nil || consumed != 2 {
+		t.Fatalf("manual quota used = %d/%v, want 2", consumed, err)
 	}
 	if _, err := runtime.SQL.Exec(`UPDATE monitors SET status = 'paused' WHERE id = $1`, monitorID); err != nil {
 		t.Fatal(err)

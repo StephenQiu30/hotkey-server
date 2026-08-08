@@ -37,6 +37,7 @@ describe("domain enums", () => {
     expect(ReportType.Weekly).toBe("weekly");
     expect(DeliveryChannel.RSS).toBe("rss");
     expect(APIErrorCode.Forbidden).toBe(20001);
+    expect(APIErrorCode.ProductQuotaExceeded).toBe(10005);
     expect(SourceHealthDiagnostic.DestinationNotPermitted).toBe(
       "destination_not_permitted"
     );

@@ -133,6 +133,7 @@ export enum APIErrorCode {
   VersionConflict = 10002,
   NotFound = 10003,
   RateLimited = 10004,
+  ProductQuotaExceeded = 10005,
   Unauthorized = 20000,
   Forbidden = 20001,
   InvalidCredentials = 20002,

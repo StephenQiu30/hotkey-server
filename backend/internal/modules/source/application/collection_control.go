@@ -7,6 +7,7 @@ import (
 	"time"
 
 	identitydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
+	operationsapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
@@ -25,6 +26,7 @@ type CollectionControlDependencies struct {
 	Manuals    ManualCollectionActivator
 	Targets    domain.ManualCollectionTargetReader
 	Now        func() time.Time
+	Quota      operationsapplication.QuotaGuard
 }
 
 type CollectionRetryActivator interface {
@@ -45,6 +47,7 @@ type CollectionControlService struct {
 	manuals    ManualCollectionActivator
 	targets    domain.ManualCollectionTargetReader
 	now        func() time.Time
+	quota      operationsapplication.QuotaGuard
 }
 
 func NewCollectionControlService(dependencies CollectionControlDependencies) (*CollectionControlService, error) {
@@ -60,7 +63,7 @@ func NewCollectionControlService(dependencies CollectionControlDependencies) (*C
 	return &CollectionControlService{
 		runtime: dependencies.Runtime, sources: dependencies.Sources, runs: dependencies.Runs,
 		connectors: dependencies.Connectors, metrics: dependencies.Metrics, retries: dependencies.Retries,
-		manuals: dependencies.Manuals, targets: dependencies.Targets, now: dependencies.Now,
+		manuals: dependencies.Manuals, targets: dependencies.Targets, now: dependencies.Now, quota: dependencies.Quota,
 	}, nil
 }
 
@@ -151,6 +154,11 @@ func (service *CollectionControlService) Manual(ctx context.Context, input Manua
 				summary.Created++
 			} else {
 				summary.Reused++
+			}
+		}
+		if summary.Created > 0 && service.quota != nil {
+			if err := service.quota.ConsumeManualSearch(transactionCtx, input.Subject.UserID, now); err != nil {
+				return err
 			}
 		}
 		return nil

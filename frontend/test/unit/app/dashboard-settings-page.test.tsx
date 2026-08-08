@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   postMonitorsIdRestore: vi.fn(),
   deleteMonitorsId: vi.fn(),
   getSourceConnections: vi.fn(),
+  getOperationsUsage: vi.fn(),
 }));
 
 vi.mock("@/services/hotkey/hotkey-server/monitors", () => ({
@@ -44,6 +45,9 @@ vi.mock("@/services/hotkey/hotkey-server/sources", () => ({
 }));
 vi.mock("@/services/hotkey/hotkey-server/collectionRuns", () => ({
   postMonitorsIdCollect: mocks.postMonitorsIdCollect,
+}));
+vi.mock("@/services/hotkey/hotkey-server/operations", () => ({
+  getOperationsUsage: mocks.getOperationsUsage,
 }));
 
 import MonitorsPage from "@/app/dashboard/settings/page";
@@ -110,6 +114,7 @@ describe("MonitorsPage", () => {
     mocks.postMonitorsIdDraftRulesRuleIdApproval.mockResolvedValue({ data: null });
     mocks.postMonitorsIdPause.mockResolvedValue({ data: { ...monitor, version: 5, status: "paused" } });
     mocks.postMonitorsIdCollect.mockResolvedValue({ data: { requested: 1, created: 1, reused: 0, cooldown_until: "2026-08-07T09:05:00Z" } });
+    mocks.getOperationsUsage.mockResolvedValue({ data: { items: [{ dimension: "manual_searches", used: "3", limit: "20", remaining: "17", reset_at: "2026-08-08T00:00:00Z" }] } });
   });
 
   it("keeps viewer access read-only without requesting source management data", async () => {
@@ -151,6 +156,8 @@ describe("MonitorsPage", () => {
     await userEvent.setup().click(await screen.findByRole("button", { name: "立即搜索" }));
 
     await waitFor(() => expect(mocks.postMonitorsIdCollect).toHaveBeenCalledWith({ id: 1 }));
+    expect(screen.getByLabelText("手动搜索配额")).toHaveTextContent("17 / 20 次可用");
+    await waitFor(() => expect(mocks.getOperationsUsage).toHaveBeenCalledTimes(2));
   });
 
   it("requires a successful preview before an admin can publish the exact draft", async () => {

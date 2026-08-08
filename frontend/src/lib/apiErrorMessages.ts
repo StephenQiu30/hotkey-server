@@ -6,6 +6,7 @@ const API_ERROR_MESSAGES: Readonly<Record<APIErrorCode, string>> = {
   [APIErrorCode.VersionConflict]: "当前数据已发生变化，请刷新后重试",
   [APIErrorCode.NotFound]: "请求的内容不存在或已被删除",
   [APIErrorCode.RateLimited]: "操作过于频繁，请稍后重试",
+  [APIErrorCode.ProductQuotaExceeded]: "当前配额已用完，请在重置后重试",
   [APIErrorCode.Unauthorized]: "请先登录后再继续",
   [APIErrorCode.Forbidden]: "当前账号没有执行此操作的权限",
   [APIErrorCode.InvalidCredentials]: "邮箱或密码错误",

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
@@ -107,6 +108,23 @@ func TestWriteErrorStatusMatrix(t *testing.T) {
 				t.Fatal("response leaked internal error")
 			}
 		})
+	}
+}
+
+func TestWriteErrorIncludesOnlyStableProductQuotaData(t *testing.T) {
+	reset := "2026-08-09T00:00:00Z"
+	response := httptest.NewRecorder()
+	ginContext, _ := gin.CreateTestContext(response)
+	WriteError(ginContext, sharederrors.ProductQuotaExceeded("manual_searches", 20, 0, &reset))
+
+	if response.Code != stdhttp.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", response.Code)
+	}
+	assertJSONResultShape(t, response, sharederrors.CodeProductQuotaExceeded, "", map[string]any{
+		"dimension": "manual_searches", "limit": float64(20), "remaining": float64(0), "reset_at": reset,
+	})
+	if strings.Contains(response.Body.String(), "provider") || strings.Contains(response.Body.String(), "cause") {
+		t.Fatalf("quota response leaked internal data: %s", response.Body.String())
 	}
 }
 

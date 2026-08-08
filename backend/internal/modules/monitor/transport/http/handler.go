@@ -349,6 +349,7 @@ func (handler *Handler) Preview(c *gin.Context) error {
 // @Failure 401 {object} MonitorResult[EmptyResponse]
 // @Failure 403 {object} MonitorResult[EmptyResponse]
 // @Failure 409 {object} MonitorResult[EmptyResponse]
+// @Failure 429 {object} MonitorQuotaErrorResponse
 // @Failure 503 {object} MonitorResult[EmptyResponse]
 // @Router /api/v1/monitors/{id}/publish [post]
 func (handler *Handler) Publish(c *gin.Context) error {
@@ -413,6 +414,7 @@ func (handler *Handler) Pause(c *gin.Context) error {
 // @Failure 401 {object} MonitorResult[EmptyResponse]
 // @Failure 403 {object} MonitorResult[EmptyResponse]
 // @Failure 409 {object} MonitorResult[EmptyResponse]
+// @Failure 429 {object} MonitorQuotaErrorResponse
 // @Failure 503 {object} MonitorResult[EmptyResponse]
 // @Router /api/v1/monitors/{id}/resume [post]
 func (handler *Handler) Resume(c *gin.Context) error {

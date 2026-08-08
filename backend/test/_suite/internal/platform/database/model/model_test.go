@@ -8,6 +8,7 @@ func TestSpecsHaveUniqueTablesAndColumns(t *testing.T) {
 		"ai_model_profiles":            {"id", "version", "name", "task_type", "provider", "model_name", "model_version", "credential_ref", "embedding_dimensions", "timeout_seconds", "max_attempts", "max_cost", "daily_budget", "fallback_priority", "enabled", "deleted_at"},
 		"ai_runs":                      {"id", "task_type", "target_type", "target_id", "model_profile_id", "model_profile_version", "model_version", "prompt_version", "input_schema_version", "schema_version", "parameters_version", "input_hash", "evidence_set_hash", "reuse_key", "attempt", "max_attempts", "repair_attempted", "retry_after", "error_code", "budget_day", "reserved_cost", "lease_expires_at", "status"},
 		"ai_budget_ledgers":            {"id", "model_profile_id", "budget_day", "reserved_cost", "settled_cost", "overage_blocked", "updated_at"},
+		"quota_usage_ledgers":          {"id", "dimension", "subject_type", "subject_id", "window_start", "window_end", "used", "updated_at"},
 		"content_embeddings":           {"id", "content_id", "model_profile_id", "model_profile_version", "ai_run_id", "model_version", "input_hash", "embedding", "active"},
 		"monitor_embeddings":           {"id", "monitor_id", "model_profile_id", "model_profile_version", "ai_run_id", "model_version", "input_hash", "query_text", "embedding", "active"},
 		"event_embeddings":             {"id", "event_id", "model_profile_id", "model_profile_version", "ai_run_id", "model_version", "input_hash", "embedding", "active"},
@@ -54,7 +55,7 @@ func TestSpecsHaveUniqueTablesAndColumns(t *testing.T) {
 			t.Errorf("missing mapped table %s", table)
 		}
 	}
-	if got, want := len(seen), 65; got != want {
+	if got, want := len(seen), 66; got != want {
 		t.Errorf("mapped table count = %d, want %d", got, want)
 	}
 }
