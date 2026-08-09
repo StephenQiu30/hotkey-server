@@ -13,7 +13,7 @@ canonical_path: docs/prd/README.md
 
 PRD 将每一条设计转换为稳定、可验收的产品范围。状态只使用 `draft`、`approved`、`implemented`、`cancelled`。
 
-001–029 与 Design、Plan 一一对应。任何需求新增、拆分或合并都必须同时修改三类索引和文件，不能只在 Plan 中临时扩大范围。
+001–030 与 Design、Plan 一一对应。任何需求新增、拆分或合并都必须同时修改三类索引和文件，不能只在 Plan 中临时扩大范围。
 
 ## 交付项
 
@@ -48,3 +48,4 @@ PRD 将每一条设计转换为稳定、可验收的产品范围。状态只使�
 | 027 | [Agent-Skill与外部API](../design/archive/027-Agent-Skill与外部API设计.md) | [PRD](archive/027-Agent-Skill与外部API.md) | [Plan](../plans/archive/027-Agent-Skill与外部API计划.md) | implemented |
 | 028 | [可观测性部署与质量门禁](../design/archive/028-可观测性部署与质量门禁设计.md) | [PRD](archive/028-可观测性部署与质量门禁.md) | [Plan](../plans/archive/028-可观测性部署与质量门禁计划.md) | implemented |
 | 029 | [来源凭据与个性化配置](../design/archive/029-来源凭据与个性化配置设计.md) | [PRD](archive/029-来源凭据与个性化配置.md) | [Plan](../plans/archive/029-来源凭据与个性化配置计划.md) | implemented |
+| 030 | [通知与订阅页面拆分](../design/archive/030-通知与订阅页面拆分设计.md) | [PRD](archive/030-通知与订阅页面拆分.md) | [Plan](../plans/archive/030-通知与订阅页面拆分计划.md) | implemented |

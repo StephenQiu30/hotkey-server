@@ -11,7 +11,7 @@ canonical_path: docs/design/README.md
 
 # Design 索引
 
-Design 记录长期有效的产品与技术决策。状态只使用 `proposed`、`accepted`、`superseded`。001–029 均已评审、实现并随对应 Acceptance 归档；新增设计在评审前不能被描述为已承诺实现。
+Design 记录长期有效的产品与技术决策。状态只使用 `proposed`、`accepted`、`superseded`。001–030 均已评审、实现并随对应 Acceptance 归档；新增设计在评审前不能被描述为已承诺实现。
 
 具体编号和当前实现差距见 [文档地图](../README.md)。同编号必须链接到对应 [PRD](../prd/README.md) 与 [Plan](../plans/README.md)。
 
@@ -48,3 +48,4 @@ Design 记录长期有效的产品与技术决策。状态只使用 `proposed`�
 | 027 | [Agent-Skill与外部API](archive/027-Agent-Skill与外部API设计.md) | [PRD](../prd/archive/027-Agent-Skill与外部API.md) | [Plan](../plans/archive/027-Agent-Skill与外部API计划.md) | accepted |
 | 028 | [可观测性部署与质量门禁](archive/028-可观测性部署与质量门禁设计.md) | [PRD](../prd/archive/028-可观测性部署与质量门禁.md) | [Plan](../plans/archive/028-可观测性部署与质量门禁计划.md) | accepted |
 | 029 | [来源凭据与个性化配置](archive/029-来源凭据与个性化配置设计.md) | [PRD](../prd/archive/029-来源凭据与个性化配置.md) | [Plan](../plans/archive/029-来源凭据与个性化配置计划.md) | accepted |
+| 030 | [通知与订阅页面拆分](archive/030-通知与订阅页面拆分设计.md) | [PRD](../prd/archive/030-通知与订阅页面拆分.md) | [Plan](../plans/archive/030-通知与订阅页面拆分计划.md) | accepted |

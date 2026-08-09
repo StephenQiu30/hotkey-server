@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { PageHeader } from "@/components/dashboard/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -213,21 +214,12 @@ export function ReportSubscriptions() {
   };
 
   return (
-    <section aria-labelledby="report-subscriptions-title">
-      <header className="flex flex-col gap-6 border-b border-border pb-8 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <p className="eyebrow">Delivery</p>
-          <h2
-            id="report-subscriptions-title"
-            className="mt-3 text-2xl font-semibold tracking-[-0.04em]"
-          >
-            报告订阅
-          </h2>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-            按监控订阅日报或周报，通过邮件或私有 RSS 获取。
-          </p>
-        </div>
-        <div className="w-full shrink-0 sm:w-auto">
+    <section aria-label="报告订阅">
+      <PageHeader
+        eyebrow="Delivery"
+        title="报告订阅"
+        description="按监控订阅日报或周报，通过邮件或私有 RSS 获取。"
+        action={
           <Dialog open={dialog} onOpenChange={setDialog}>
             <DialogTrigger asChild>
               <Button className="gap-2">
@@ -362,8 +354,8 @@ export function ReportSubscriptions() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-        </div>
-      </header>
+        }
+      />
       {error ? (
         <Alert variant="destructive" className="mt-6">
           <AlertCircle />

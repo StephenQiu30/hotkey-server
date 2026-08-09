@@ -15,7 +15,8 @@ describe("dashboard menu", () => {
       { path: "/dashboard/events", name: "事件" },
       { path: "/dashboard/alerts", name: "告警" },
       { path: "/dashboard/reports", name: "报告" },
-      { path: "/dashboard/notifications", name: "通知与订阅" },
+      { path: "/dashboard/notifications", name: "通知" },
+      { path: "/dashboard/subscriptions", name: "订阅" },
     ]);
   });
 
