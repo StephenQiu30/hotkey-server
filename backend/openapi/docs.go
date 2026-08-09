@@ -10389,6 +10389,9 @@ const docTemplate = `{
                 "config": {
                     "$ref": "#/definitions/http.SourceConfigRequest"
                 },
+                "credential": {
+                    "type": "string"
+                },
                 "credential_ref": {
                     "type": "string"
                 },
@@ -13993,6 +13996,9 @@ const docTemplate = `{
                 },
                 "config": {
                     "$ref": "#/definitions/http.SourceConfigRequest"
+                },
+                "credential": {
+                    "type": "string"
                 },
                 "credential_ref": {
                     "type": "string"

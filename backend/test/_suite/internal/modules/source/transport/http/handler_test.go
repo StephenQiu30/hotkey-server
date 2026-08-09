@@ -51,6 +51,23 @@ func TestSourceResponsesNeverEchoCredentialReference(t *testing.T) {
 	}
 }
 
+func TestSourceWriteDTOAcceptsCredentialAsWriteOnlyInput(t *testing.T) {
+	var request CreateSourceRequest
+	if err := json.Unmarshal([]byte(`{"source_type":"x","name":"X","endpoint":"https://api.x.com/2/tweets/search/recent","auth_type":"bearer","credential":"top-secret"}`), &request); err != nil {
+		t.Fatalf("decode request: %v", err)
+	}
+	if request.Credential == nil || *request.Credential != "top-secret" {
+		t.Fatalf("credential = %#v, want write-only value", request.Credential)
+	}
+	encoded, err := json.Marshal(sourceResponse(domain.PublicSourceConnection{CredentialConfigured: true}))
+	if err != nil {
+		t.Fatalf("marshal response: %v", err)
+	}
+	if strings.Contains(string(encoded), "top-secret") || strings.Contains(string(encoded), "credential\"") {
+		t.Fatalf("response leaked write-only credential: %s", encoded)
+	}
+}
+
 func TestSourceTransportRejectsUnknownConfigKeysBeforeApplication(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

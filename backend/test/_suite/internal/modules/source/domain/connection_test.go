@@ -151,6 +151,9 @@ func TestCredentialReferenceMustMatchAuthType(t *testing.T) {
 	if got, err := NormalizeCredentialReference(AuthTypeBearer, "env:HOTKEY_TOKEN"); err != nil || got != "env:HOTKEY_TOKEN" {
 		t.Errorf("NormalizeCredentialReference() = %q, %v", got, err)
 	}
+	if got, err := NormalizeCredentialReference(AuthTypeBearer, ManagedCredentialReference); err != nil || got != ManagedCredentialReference {
+		t.Errorf("NormalizeCredentialReference(managed) = %q, %v", got, err)
+	}
 	for _, test := range []struct {
 		auth AuthType
 		ref  string

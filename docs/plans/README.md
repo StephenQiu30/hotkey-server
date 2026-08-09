@@ -13,7 +13,7 @@ canonical_path: docs/plans/README.md
 
 Plan 将已评审 Design 和 PRD 转换为文件级、测试先行、可回滚的执行计划。状态只使用 `planned`、`in_progress`、`blocked`、`completed`。
 
-Plan 中的“当前实现”仅用于确定差距；只有 Acceptance 保存完成证据。001–028 的推荐依赖顺序见 [文档地图](../README.md)。
+Plan 中的“当前实现”仅用于确定差距；只有 Acceptance 保存完成证据。001–029 的推荐依赖顺序见 [文档地图](../README.md)。
 
 ## 交付项
 
@@ -47,3 +47,4 @@ Plan 中的“当前实现”仅用于确定差距；只有 Acceptance 保存完
 | 026 | [Web工作台全页面交互](../design/archive/026-Web工作台全页面交互设计.md) | [PRD](../prd/archive/026-Web工作台全页面交互.md) | [Plan](archive/026-Web工作台全页面交互计划.md) | completed |
 | 027 | [Agent-Skill与外部API](../design/archive/027-Agent-Skill与外部API设计.md) | [PRD](../prd/archive/027-Agent-Skill与外部API.md) | [Plan](archive/027-Agent-Skill与外部API计划.md) | completed |
 | 028 | [可观测性部署与质量门禁](../design/archive/028-可观测性部署与质量门禁设计.md) | [PRD](../prd/archive/028-可观测性部署与质量门禁.md) | [Plan](archive/028-可观测性部署与质量门禁计划.md) | completed |
+| 029 | [来源凭据与个性化配置](../design/archive/029-来源凭据与个性化配置设计.md) | [PRD](../prd/archive/029-来源凭据与个性化配置.md) | [Plan](archive/029-来源凭据与个性化配置计划.md) | completed |

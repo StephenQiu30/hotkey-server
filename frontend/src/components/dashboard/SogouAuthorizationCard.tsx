@@ -15,7 +15,7 @@ const SOGOU_PLATFORM_HELP =
 
 const authorizationRequirements = [
   "书面搜索结果读取授权与适用条款",
-  "固定 HTTPS 端点、认证 scope 与 env 凭据引用",
+  "固定 HTTPS 端点、认证 scope 与 UI 托管凭据方案",
   "配额、分页、归属标记和删除同步规则",
   "可控沙盒或 fixture，以及通过的 Connector 契约测试",
 ] as const;

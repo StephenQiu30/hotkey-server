@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SourceType } from "@/lib/domainEnums";
+import PasswordInput from "@/components/auth/PasswordInput";
 
 const HACKER_NEWS_ENDPOINT = "https://hacker-news.firebaseio.com/v0";
 const X_RECENT_SEARCH_ENDPOINT = "https://api.x.com/2/tweets/search/recent";
@@ -43,7 +44,6 @@ const GOOGLE_AGENT_SEARCH_ENDPOINTS = {
 const GOOGLE_CLOUD_TERMS_URL = "https://cloud.google.com/terms";
 const googleServingConfigPattern =
   /^projects\/[a-z][a-z0-9-]{4,28}[a-z0-9]\/locations\/(global|us|eu)\/collections\/default_collection\/dataStores\/[A-Za-z0-9_-]{1,63}\/servingConfigs\/[A-Za-z0-9_-]{1,63}$/;
-const credentialPattern = /^env:[A-Z_][A-Z0-9_]{0,127}$/;
 
 type AuthType = "none" | "api_key" | "oauth2" | "bearer";
 type GoogleLocation = keyof typeof GOOGLE_AGENT_SEARCH_ENDPOINTS;
@@ -54,7 +54,7 @@ type SourceForm = {
   allowedRegions: string;
   authType: AuthType;
   contentRetentionDays: number;
-  credentialRef: string;
+  credential: string;
   endpoint: string;
   maxPagesPerRun: number;
   metricsRetentionDays: number;
@@ -115,7 +115,7 @@ const emptyForm = (): SourceForm => ({
   allowedRegions: "",
   authType: "none",
   contentRetentionDays: 30,
-  credentialRef: "",
+  credential: "",
   endpoint: "",
   maxPagesPerRun: 1,
   metricsRetentionDays: 30,
@@ -158,8 +158,9 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
 
   const credentialValid =
     form.authType === "none"
-      ? !form.credentialRef.trim()
-      : credentialPattern.test(form.credentialRef.trim());
+      ? !form.credential
+      : Boolean(form.credential.trim()) &&
+        new TextEncoder().encode(form.credential).length <= 16 * 1024;
   const valid = Boolean(
     form.name.trim() &&
       form.endpoint.trim() &&
@@ -195,6 +196,7 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
 
     const created = await onSubmit({
       auth_type: form.authType,
+      ...(form.authType === "none" ? {} : { credential: form.credential }),
       config: {
         allow_body_storage: form.allowBodyStorage,
         allowed_languages: splitValues(form.allowedLanguages),
@@ -211,7 +213,6 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
         google_location: form.googleLocation,
         google_serving_config: form.googleServingConfig.trim(),
       },
-      credential_ref: form.credentialRef.trim(),
       enabled:
         form.sourceType !== SourceType.X &&
         form.sourceType !== SourceType.BingGrounding &&
@@ -238,8 +239,7 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
         <DialogHeader className="border-b border-border px-6 py-5">
           <DialogTitle>新增来源连接</DialogTitle>
           <DialogDescription>
-            只连接官方 API、RSS / Atom 或已获书面授权的 Feed；凭据只保存 env
-            引用。
+            只连接官方 API、RSS / Atom 或已获书面授权的 Feed；访问凭据由服务端加密保存，提交后不再回显。
           </DialogDescription>
         </DialogHeader>
         <form
@@ -292,7 +292,7 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                         : value === SourceType.GoogleAgentSearch
                         ? "bearer"
                         : "none",
-                    credentialRef: "",
+                    credential: "",
                     allowBodyStorage:
                       value === SourceType.BingGrounding ||
                       value === SourceType.Bilibili ||
@@ -373,7 +373,7 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                 onValueChange={(value) =>
                   updateForm({
                     authType: value as AuthType,
-                    credentialRef: value === "none" ? "" : form.credentialRef,
+                    credential: value === "none" ? "" : form.credential,
                   })
                 }
               >
@@ -509,19 +509,25 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
             )}
             {form.authType !== "none" && (
               <div className="sm:col-span-2">
-                <Label htmlFor="source-credential-ref">凭据环境变量引用</Label>
-                <Input
-                  id="source-credential-ref"
+                <Label htmlFor="source-credential">访问凭据</Label>
+                <PasswordInput
+                  id="source-credential"
                   className="mono mt-2"
-                  value={form.credentialRef}
+                  value={form.credential}
                   onChange={(event) =>
-                    updateForm({ credentialRef: event.target.value })
+                    updateForm({ credential: event.target.value })
                   }
-                  placeholder="env:SOURCE_API_TOKEN"
+                  placeholder={
+                    form.sourceType === SourceType.Bilibili
+                      ? '{"client_id":"…","app_secret":"…","access_token":"…"}'
+                      : "粘贴 API Key 或 Token"
+                  }
+                  autoComplete="new-password"
+                  maxLength={16 * 1024}
                   aria-invalid={!credentialValid}
                 />
                 <p className="mt-1 text-xs text-muted-foreground">
-                  仅允许 env:NAME，不保存或回显明文密钥。
+                  仅在本次提交中使用；服务端认证加密后保存，任何页面、日志和 API 响应都不会回显明文。
                 </p>
               </div>
             )}

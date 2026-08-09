@@ -82,35 +82,39 @@ describe("SourcesPage body storage authorization", () => {
     );
   });
 
-  it("submits compliance, env credential, retention, and quota controls", async () => {
+  it("submits compliance, managed credential, retention, and quota controls", async () => {
     render(<SourcesPage />);
     const user = await openCompletedForm();
 
     fireEvent.keyDown(screen.getByLabelText("授权方式"), { key: "ArrowDown" });
     fireEvent.click(screen.getByRole("option", { name: "Bearer Token" }));
-    await user.type(
-      screen.getByLabelText("凭据环境变量引用"),
-      "env:RESEARCH_FEED_TOKEN"
-    );
-    await user.type(
-      screen.getByLabelText("条款与政策地址"),
-      "https://example.test/terms"
-    );
+    fireEvent.change(screen.getByLabelText("访问凭据"), {
+      target: { value: "research-feed-token" },
+    });
+    fireEvent.change(screen.getByLabelText("条款与政策地址"), {
+      target: { value: "https://example.test/terms" },
+    });
     await user.click(
       screen.getByRole("checkbox", { name: "需要来源归属标记" })
     );
-    await user.clear(screen.getByLabelText("每分钟请求上限"));
-    await user.type(screen.getByLabelText("每分钟请求上限"), "30");
-    await user.clear(screen.getByLabelText("内容保留天数"));
-    await user.type(screen.getByLabelText("内容保留天数"), "90");
-    await user.type(screen.getByLabelText("允许语言"), "zh-CN, en");
-    await user.type(screen.getByLabelText("允许地区"), "CN, US");
+    fireEvent.change(screen.getByLabelText("每分钟请求上限"), {
+      target: { value: "30" },
+    });
+    fireEvent.change(screen.getByLabelText("内容保留天数"), {
+      target: { value: "90" },
+    });
+    fireEvent.change(screen.getByLabelText("允许语言"), {
+      target: { value: "zh-CN, en" },
+    });
+    fireEvent.change(screen.getByLabelText("允许地区"), {
+      target: { value: "CN, US" },
+    });
     await user.click(screen.getByRole("button", { name: "创建连接" }));
 
     await waitFor(() =>
       expect(mocks.postSourceConnections).toHaveBeenCalledWith({
         auth_type: "bearer",
-        credential_ref: "env:RESEARCH_FEED_TOKEN",
+        credential: "research-feed-token",
         enabled: true,
         endpoint: "https://example.test/feed.xml",
         name: "Research feed",
@@ -128,7 +132,7 @@ describe("SourcesPage body storage authorization", () => {
     );
   });
 
-  it("creates X Recent Search disabled with a fixed endpoint and Bearer env reference", async () => {
+  it("creates X Recent Search disabled with a fixed endpoint and managed credential", async () => {
     render(<SourcesPage />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "新增来源" }));
@@ -143,8 +147,8 @@ describe("SourcesPage body storage authorization", () => {
     expect(screen.getByLabelText("接口地址")).toHaveAttribute("readonly");
     expect(screen.getByLabelText("授权方式")).toBeDisabled();
     await user.type(
-      screen.getByLabelText("凭据环境变量引用"),
-      "env:X_BEARER_TOKEN"
+      screen.getByLabelText("访问凭据"),
+      "x-bearer-token"
     );
     await user.click(screen.getByRole("button", { name: "创建连接" }));
 
@@ -152,7 +156,7 @@ describe("SourcesPage body storage authorization", () => {
       expect(mocks.postSourceConnections).toHaveBeenCalledWith(
         expect.objectContaining({
           auth_type: "bearer",
-          credential_ref: "env:X_BEARER_TOKEN",
+          credential: "x-bearer-token",
           enabled: false,
           endpoint: "https://api.x.com/2/tweets/search/recent",
           source_type: "x",
@@ -165,7 +169,9 @@ describe("SourcesPage body storage authorization", () => {
     render(<SourcesPage />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "新增来源" }));
-    await user.type(screen.getByLabelText("名称"), "Foundry Web Search");
+    fireEvent.change(screen.getByLabelText("名称"), {
+      target: { value: "Foundry Web Search" },
+    });
 
     fireEvent.keyDown(screen.getByLabelText("来源类型"), { key: "ArrowDown" });
     fireEvent.click(
@@ -178,14 +184,15 @@ describe("SourcesPage body storage authorization", () => {
     );
     expect(screen.getByLabelText("授权方式")).toBeDisabled();
     expect(screen.getByRole("button", { name: "创建连接" })).toBeDisabled();
-    await user.type(
-      screen.getByLabelText("接口地址"),
-      "https://hotkey.services.ai.azure.com/api/projects/hotkey/toolboxes/web-search/versions/1/mcp?api-version=v1"
-    );
-    await user.type(
-      screen.getByLabelText("凭据环境变量引用"),
-      "env:AZURE_FOUNDRY_TOKEN"
-    );
+    fireEvent.change(screen.getByLabelText("接口地址"), {
+      target: {
+        value:
+          "https://hotkey.services.ai.azure.com/api/projects/hotkey/toolboxes/web-search/versions/1/mcp?api-version=v1",
+      },
+    });
+    fireEvent.change(screen.getByLabelText("访问凭据"), {
+      target: { value: "azure-foundry-token" },
+    });
     expect(
       screen.getByText(/Microsoft DPA 不适用于该能力/)
     ).toBeInTheDocument();
@@ -204,7 +211,7 @@ describe("SourcesPage body storage authorization", () => {
       expect(mocks.postSourceConnections).toHaveBeenCalledWith(
         expect.objectContaining({
           auth_type: "bearer",
-          credential_ref: "env:AZURE_FOUNDRY_TOKEN",
+          credential: "azure-foundry-token",
           enabled: false,
           source_type: "bing_grounding",
           config: expect.objectContaining({
@@ -239,17 +246,20 @@ describe("SourcesPage body storage authorization", () => {
       screen.getByLabelText("授权账号 OpenID"),
       "creator_open_id"
     );
-    await user.type(
-      screen.getByLabelText("凭据环境变量引用"),
-      "env:BILIBILI_OAUTH"
-    );
+    fireEvent.change(screen.getByLabelText("访问凭据"), {
+      target: {
+        value:
+          '{"client_id":"client","app_secret":"secret","access_token":"token"}',
+      },
+    });
     await user.click(screen.getByRole("button", { name: "创建连接" }));
 
     await waitFor(() =>
       expect(mocks.postSourceConnections).toHaveBeenCalledWith(
         expect.objectContaining({
           auth_type: "oauth2",
-          credential_ref: "env:BILIBILI_OAUTH",
+          credential:
+            '{"client_id":"client","app_secret":"secret","access_token":"token"}',
           enabled: false,
           endpoint: "https://member.bilibili.com/arcopen/fn",
           source_type: "bilibili",
@@ -285,8 +295,8 @@ describe("SourcesPage body storage authorization", () => {
       screen.getByText(/不支持账号时间线、热搜页或网页抓取/)
     ).toBeInTheDocument();
     await user.type(
-      screen.getByLabelText("凭据环境变量引用"),
-      "env:WEIBO_API_TOKEN"
+      screen.getByLabelText("访问凭据"),
+      "weibo-api-token"
     );
     await user.click(screen.getByRole("button", { name: "创建连接" }));
 
@@ -294,7 +304,7 @@ describe("SourcesPage body storage authorization", () => {
       expect(mocks.postSourceConnections).toHaveBeenCalledWith(
         expect.objectContaining({
           auth_type: "bearer",
-          credential_ref: "env:WEIBO_API_TOKEN",
+          credential: "weibo-api-token",
           enabled: false,
           endpoint: "https://open.weibo.com/cli/api",
           source_type: "weibo",
@@ -340,8 +350,8 @@ describe("SourcesPage body storage authorization", () => {
       "projects/hotkey-demo/locations/global/collections/default_collection/dataStores/news/servingConfigs/default_config"
     );
     await user.type(
-      screen.getByLabelText("凭据环境变量引用"),
-      "env:GOOGLE_AGENT_SEARCH_TOKEN"
+      screen.getByLabelText("访问凭据"),
+      "google-agent-search-token"
     );
     await user.click(screen.getByRole("button", { name: "创建连接" }));
 
@@ -349,7 +359,7 @@ describe("SourcesPage body storage authorization", () => {
       expect(mocks.postSourceConnections).toHaveBeenCalledWith(
         expect.objectContaining({
           auth_type: "bearer",
-          credential_ref: "env:GOOGLE_AGENT_SEARCH_TOKEN",
+          credential: "google-agent-search-token",
           enabled: false,
           endpoint: "https://discoveryengine.googleapis.com",
           source_type: "google_agent_search",
@@ -392,6 +402,42 @@ describe("SourcesPage body storage authorization", () => {
     expect(screen.getByText("凭据已配置")).toBeInTheDocument();
     expect(screen.getByText("45 req/min · 保留 60 天")).toBeInTheDocument();
     expect(screen.queryByText(/env:/)).not.toBeInTheDocument();
+  });
+
+  it("replaces an existing credential without reading the old value", async () => {
+    mocks.getSourceConnections.mockResolvedValue({
+      data: {
+        items: [
+          {
+            id: 7,
+            version: 3,
+            name: "Official API",
+            source_type: "x",
+            enabled: false,
+            health_status: "unknown",
+            credential_configured: true,
+            config: { allow_body_storage: true },
+          },
+        ],
+      },
+    });
+    mocks.patchSourceConnectionsId.mockResolvedValue({ data: { id: 7 } });
+
+    render(<SourcesPage />);
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: "替换凭据" })
+    );
+    expect(screen.getByLabelText("新访问凭据")).toHaveValue("");
+    await user.type(screen.getByLabelText("新访问凭据"), "rotated-token");
+    await user.click(screen.getByRole("button", { name: "保存并替换" }));
+
+    await waitFor(() =>
+      expect(mocks.patchSourceConnectionsId).toHaveBeenCalledWith(
+        { id: 7 },
+        { expected_source_version: 3, credential: "rotated-token" }
+      )
+    );
   });
 
   it("shows Sogou as an authorization-gated capability without executable actions", async () => {

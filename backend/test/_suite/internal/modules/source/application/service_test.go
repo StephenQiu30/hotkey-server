@@ -44,6 +44,18 @@ func TestSourceReadModelsCannotExposeCredentialReferences(t *testing.T) {
 	}
 }
 
+func TestNormalizeManagedCredentialRejectsMissingOrOversizedSecrets(t *testing.T) {
+	valid := "managed-secret"
+	if got, err := normalizeManagedCredential(&valid); err != nil || got != valid {
+		t.Fatalf("normalizeManagedCredential(valid) = %q, %v", got, err)
+	}
+	for _, value := range []string{"", "   ", string(make([]byte, maxManagedCredentialBytes+1))} {
+		if _, err := normalizeManagedCredential(&value); err == nil {
+			t.Fatalf("normalizeManagedCredential(%d bytes) accepted invalid value", len(value))
+		}
+	}
+}
+
 func validConnection() domain.SourceConnection {
 	return domain.SourceConnection{SourceType: domain.SourceTypeRSS, Name: "Test RSS", Endpoint: "https://feeds.example.test/rss", AuthType: domain.AuthTypeNone, Config: domain.DefaultSourceConfig(), Enabled: true}
 }

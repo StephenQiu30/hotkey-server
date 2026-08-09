@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 
 	identitydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
 	operationsapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/application"
@@ -19,13 +20,17 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/requestcontext"
 )
 
-const configurationAdvisoryLock = "hotkey.monitor_source_configuration"
+const (
+	configurationAdvisoryLock = "hotkey.monitor_source_configuration"
+	maxManagedCredentialBytes = 16 * 1024
+)
 
 type Dependencies struct {
 	Runtime             *database.Runtime
 	Sources             domain.SourceConnectionRepository
 	MonitorUsage        domain.MonitorUsageReader
 	PublishedReferences domain.MonitorPublishedReferenceReader
+	Credentials         domain.ManagedCredentialStore
 	Audit               operationsapplication.AuditWriter
 }
 
@@ -34,6 +39,7 @@ type Service struct {
 	sources             domain.SourceConnectionRepository
 	monitorUsage        domain.MonitorUsageReader
 	publishedReferences domain.MonitorPublishedReferenceReader
+	credentials         domain.ManagedCredentialStore
 	audit               operationsapplication.AuditWriter
 }
 
@@ -49,13 +55,14 @@ func NewService(dependencies Dependencies) (*Service, error) {
 	return &Service{
 		runtime: dependencies.Runtime, sources: dependencies.Sources,
 		monitorUsage: dependencies.MonitorUsage, publishedReferences: dependencies.PublishedReferences,
-		audit: dependencies.Audit,
+		credentials: dependencies.Credentials, audit: dependencies.Audit,
 	}, nil
 }
 
 type CreateInput struct {
 	Subject    identitydomain.Subject
 	Connection domain.SourceConnection
+	Credential *string
 }
 
 // UpdateInput uses pointers so a transport can distinguish a PATCH omission
@@ -70,6 +77,7 @@ type UpdateInput struct {
 	Endpoint        *string
 	AuthType        *domain.AuthType
 	CredentialRef   *string
+	Credential      *string
 	Config          *domain.SourceConfig
 	TermsPolicyURL  *string
 }
@@ -133,7 +141,20 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (*domain.
 	if err := requireAdmin(input.Subject); err != nil {
 		return nil, err
 	}
-	connection, err := normalizeCreate(input.Connection)
+	managedCredential, err := normalizeManagedCredential(input.Credential)
+	if err != nil {
+		return nil, err
+	}
+	connection := input.Connection
+	if input.Credential != nil {
+		if strings.TrimSpace(connection.CredentialRef) != "" {
+			return nil, domain.InvalidSourceConfiguration()
+		}
+		connection.CredentialRef = domain.ManagedCredentialReference
+	} else if strings.TrimSpace(connection.CredentialRef) == domain.ManagedCredentialReference {
+		return nil, domain.InvalidSourceConfiguration()
+	}
+	connection, err = normalizeCreate(connection)
 	if err != nil {
 		return nil, err
 	}
@@ -144,6 +165,14 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (*domain.
 		}
 		if err := service.sources.Create(ctx, &connection); err != nil {
 			return sourceWriteError(err)
+		}
+		if input.Credential != nil {
+			if service.credentials == nil {
+				return sharederrors.New(sharederrors.CodeUnavailable, 503, "")
+			}
+			if err := service.credentials.Store(ctx, connection.ID, managedCredential, input.Subject.UserID); err != nil {
+				return sourceCredentialWriteError(err)
+			}
 		}
 		if err := service.audit.Write(ctx, service.auditEntry(ctx, input.Subject, operationsdomain.ActionSourceCreated, connection.ID, nil, sourceMetadata(connection))); err != nil {
 			return err
@@ -165,8 +194,21 @@ func (service *Service) Update(ctx context.Context, input UpdateInput) (*domain.
 	if input.ID <= 0 || input.ExpectedVersion <= 0 {
 		return nil, domain.SourceConnectionUnavailable()
 	}
+	managedCredential, err := normalizeManagedCredential(input.Credential)
+	if err != nil {
+		return nil, err
+	}
+	if input.Credential != nil {
+		if input.CredentialRef != nil {
+			return nil, domain.InvalidSourceConfiguration()
+		}
+		managedReference := domain.ManagedCredentialReference
+		input.CredentialRef = &managedReference
+	} else if input.CredentialRef != nil && strings.TrimSpace(*input.CredentialRef) == domain.ManagedCredentialReference {
+		return nil, domain.InvalidSourceConfiguration()
+	}
 	var changed domain.SourceConnection
-	err := service.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+	err = service.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
 		if err := lockConfiguration(ctx, transaction); err != nil {
 			return err
 		}
@@ -181,6 +223,9 @@ func (service *Service) Update(ctx context.Context, input UpdateInput) (*domain.
 		if err != nil {
 			return err
 		}
+		if input.Credential != nil && next.AuthType == domain.AuthTypeNone {
+			return domain.InvalidSourceConfiguration()
+		}
 		if semanticChanged {
 			referenced, err := service.publishedReferences.HasPublishedReference(ctx, current.ID)
 			if err != nil {
@@ -190,12 +235,27 @@ func (service *Service) Update(ctx context.Context, input UpdateInput) (*domain.
 				return domain.SourceConnectionUnavailable()
 			}
 		}
-		if credentialChanged || semanticChanged {
+		managedCredentialRemoved := current.CredentialRef == domain.ManagedCredentialReference && next.CredentialRef != domain.ManagedCredentialReference
+		if input.Credential != nil || managedCredentialRemoved {
+			if service.credentials == nil {
+				return sharederrors.New(sharederrors.CodeUnavailable, 503, "")
+			}
+		}
+		if credentialChanged || semanticChanged || input.Credential != nil {
 			next.HealthStatus = domain.HealthStatusUnknown
 		}
 		before := sourceMetadata(*current)
 		if err := service.sources.Update(ctx, &next); err != nil {
 			return sourceWriteError(err)
+		}
+		if input.Credential != nil {
+			if err := service.credentials.Store(ctx, next.ID, managedCredential, input.Subject.UserID); err != nil {
+				return sourceCredentialWriteError(err)
+			}
+		} else if managedCredentialRemoved {
+			if err := service.credentials.Delete(ctx, next.ID); err != nil {
+				return sourceCredentialWriteError(err)
+			}
 		}
 		if err := service.audit.Write(ctx, service.auditEntry(ctx, input.Subject, operationsdomain.ActionSourceUpdated, next.ID, before, sourceMetadata(next))); err != nil {
 			return err
@@ -539,6 +599,9 @@ func mergeUpdate(current domain.SourceConnection, input UpdateInput) (domain.Sou
 	if input.TermsPolicyURL != nil {
 		next.TermsPolicyURL = *input.TermsPolicyURL
 	}
+	if next.AuthType == domain.AuthTypeNone {
+		next.CredentialRef = ""
+	}
 	if next.SourceType != domain.SourceTypeRSS && next.SourceType != domain.SourceTypeHackerNews && next.SourceType != domain.SourceTypeX && next.SourceType != domain.SourceTypeBingGrounding && next.SourceType != domain.SourceTypeBilibili && next.SourceType != domain.SourceTypeWeibo && next.SourceType != domain.SourceTypeGoogleAgentSearch {
 		return domain.SourceConnection{}, false, false, domain.UnsupportedSourceType()
 	}
@@ -629,6 +692,23 @@ func sourceWriteError(err error) error {
 		return domain.SourceConnectionUnavailable()
 	}
 	return err
+}
+
+func sourceCredentialWriteError(err error) error {
+	if errors.Is(err, sharedrepository.ErrInvalidInput) {
+		return domain.InvalidSourceConfiguration()
+	}
+	return sharederrors.New(sharederrors.CodeUnavailable, 503, "")
+}
+
+func normalizeManagedCredential(value *string) (string, error) {
+	if value == nil {
+		return "", nil
+	}
+	if strings.TrimSpace(*value) == "" || len([]byte(*value)) > maxManagedCredentialBytes {
+		return "", domain.InvalidSourceConfiguration()
+	}
+	return *value, nil
 }
 
 func publicProjection(connection domain.SourceConnection) domain.PublicSourceConnection {

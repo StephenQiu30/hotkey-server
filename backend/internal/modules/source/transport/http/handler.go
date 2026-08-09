@@ -120,7 +120,8 @@ func (handler *Handler) Get(c *gin.Context) error {
 	return nil
 }
 
-// Create records a credential reference but never echoes it.
+// Create accepts a write-only credential or a compatible env reference and
+// never echoes either value.
 // @Summary Create a source connection
 // @Tags sources
 // @Accept json
@@ -148,7 +149,7 @@ func (handler *Handler) Create(c *gin.Context) error {
 	if err != nil {
 		return invalidRequest(err)
 	}
-	result, err := handler.service.Create(c.Request.Context(), sourceapplication.CreateInput{Subject: subject, Connection: connection})
+	result, err := handler.service.Create(c.Request.Context(), sourceapplication.CreateInput{Subject: subject, Connection: connection, Credential: request.Credential})
 	if err != nil {
 		return err
 	}

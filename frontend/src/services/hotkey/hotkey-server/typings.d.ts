@@ -494,6 +494,7 @@ required property without making explicit null impossible to bind. */
   type CreateSourceRequest = {
     auth_type: "none" | "api_key" | "oauth2" | "bearer";
     config?: SourceConfigRequest;
+    credential?: string;
     credential_ref?: string;
     enabled?: boolean;
     endpoint: string;
@@ -2540,6 +2541,7 @@ required property without making explicit null impossible to bind. */
   type UpdateSourceRequest = {
     auth_type?: "none" | "api_key" | "oauth2" | "bearer";
     config?: SourceConfigRequest;
+    credential?: string;
     credential_ref?: string;
     endpoint?: string;
     expected_source_version: number;

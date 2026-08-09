@@ -15,6 +15,15 @@ type SourceConnectionRepository interface {
 	Update(context.Context, *SourceConnection) error
 }
 
+// ManagedCredentialStore owns encrypted, write-only source credentials.
+// Callers receive plaintext only at the connector construction boundary; no
+// read model or transport DTO may expose it.
+type ManagedCredentialStore interface {
+	Store(context.Context, int64, string, int64) error
+	Delete(context.Context, int64) error
+	Resolve(context.Context, int64) (string, error)
+}
+
 // MetricCapabilityProfileRepository owns only the source-type capability
 // configuration. Event code consumes the published profile through the narrow
 // reader below and never reads this table directly.

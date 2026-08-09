@@ -48,6 +48,7 @@ import { SourceAction, UserRole } from "@/lib/domainEnums";
 import { sourceHealthPresentation } from "@/lib/domainPresentation";
 import { ConfirmDeleteDialog } from "@/components/dashboard/ConfirmDeleteDialog";
 import { SourceConnectionDialog } from "@/components/dashboard/SourceConnectionDialog";
+import { SourceCredentialDialog } from "@/components/dashboard/SourceCredentialDialog";
 import { SogouAuthorizationCard } from "@/components/dashboard/SogouAuthorizationCard";
 import { DuckDuckGoBoundaryCard } from "@/components/dashboard/DuckDuckGoBoundaryCard";
 import {
@@ -222,6 +223,31 @@ export default function SourcesPage() {
     }
   };
 
+  const replaceCredential = async (
+    source: HotKeyAPI.SourceReadResponse,
+    credential: string
+  ) => {
+    if (!canManage || source.id == null) return false;
+    setAction(source.id);
+    try {
+      await patchSourceConnectionsId(
+        { id: source.id },
+        {
+          expected_source_version: source.version ?? 0,
+          credential,
+        }
+      );
+      await load();
+      toast.success("来源凭据已替换，请重新执行健康探测");
+      return true;
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : "凭据替换失败");
+      return false;
+    } finally {
+      setAction(undefined);
+    }
+  };
+
   return (
     <div className="app-page">
       <PageHeader
@@ -297,7 +323,7 @@ export default function SourcesPage() {
           <div
             className={`hidden gap-4 border-b border-border px-5 py-3 text-xs text-muted-foreground md:grid ${
               canManage
-                ? "grid-cols-[minmax(0,1.5fr)_120px_120px_250px]"
+                ? "grid-cols-[minmax(0,1.5fr)_120px_120px_320px]"
                 : "grid-cols-[minmax(0,1.5fr)_120px_120px]"
             }`}
           >
@@ -314,7 +340,7 @@ export default function SourcesPage() {
                   key={source.id}
                   className={`grid gap-3 px-4 py-4 md:items-center md:gap-4 md:px-5 ${
                     canManage
-                      ? "md:grid-cols-[minmax(0,1.5fr)_120px_120px_250px]"
+                      ? "md:grid-cols-[minmax(0,1.5fr)_120px_120px_320px]"
                       : "md:grid-cols-[minmax(0,1.5fr)_120px_120px]"
                   }`}
                 >
@@ -359,6 +385,15 @@ export default function SourcesPage() {
                   </span>
                   {canManage && (
                     <div className="flex flex-wrap justify-start gap-2 md:justify-end">
+                      {source.credential_configured && (
+                        <SourceCredentialDialog
+                          busy={action === source.id}
+                          sourceName={source.name ?? `来源 #${source.id}`}
+                          onSubmit={(credential) =>
+                            replaceCredential(source, credential)
+                          }
+                        />
+                      )}
                       {!source.config?.allow_body_storage && (
                         <Button
                           variant="outline"

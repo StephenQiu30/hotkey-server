@@ -106,7 +106,7 @@ cp .env.example .env
 docker compose -f docker-compose.yml up --build -d
 ```
 
-生产环境使用根目录独立的 `.env.prod`，其中 6 个必填空值必须先填写：
+生产环境使用根目录独立的 `.env.prod`，其中 7 个必填空值必须先填写：
 
 ```bash
 cp .env.prod.example .env.prod
@@ -123,16 +123,17 @@ cd hotkey-server/backend
 cp .env.example .env
 ```
 
-编辑 `.env`，至少配置专用 PostgreSQL、MinIO、Redis、精确 CORS Origin，以及两个各不少于 32 字节的随机密钥：
+编辑 `.env`，至少配置专用 PostgreSQL、MinIO、Redis、精确 CORS Origin、两个身份随机密钥和独立的来源凭据主密钥：
 
 ```dotenv
 HOTKEY_DATABASE_URL=postgres://hotkey:hotkey@localhost:5432/hotkey?sslmode=disable
 HOTKEY_JWT_SECRET=
 HOTKEY_VERIFICATION_HMAC_SECRET=
+HOTKEY_SOURCE_CREDENTIAL_MASTER_KEY=
 HOTKEY_CORS_ALLOWED_ORIGINS=http://localhost:3000
 ```
 
-请在本地为两个密钥填写各自独立、随机且不少于 32 字节的值。常用配置与可选 Provider 示例见 [`.env.example`](.env.example)；未列出的配置使用程序默认值，真实密钥不要提交到仓库。
+JWT 与 HMAC 密钥填写各自独立、随机且不少于 32 字节的值；来源凭据主密钥必须是 Base64 编码的 32 个随机字节，可使用 `openssl rand -base64 32` 生成。登录后的“来源管理”会用它认证加密 API Key、Token 或 OAuth 凭据包，读取接口只返回“是否已配置”，从不回显明文。主密钥必须与数据库备份分开保存；旧 `env:NAME` 来源仍兼容。常用配置与可选 Provider 示例见 [`.env.example`](.env.example)，真实密钥不要提交到仓库。
 
 注册和密码重置依赖兼容 SMTP 的邮件服务；需要启用这些功能时，请按 [`.env.example`](.env.example) 填写服务商地址、TLS 模式、账号、授权码和发件人信息。部署、诊断和生产检查见 [运行与升级手册](../docs/operations/README.md)。
 

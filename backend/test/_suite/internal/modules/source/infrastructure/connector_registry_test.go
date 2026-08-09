@@ -42,3 +42,51 @@ func TestConnectorRegistryBindsOnlyKnownSourceTypes(t *testing.T) {
 		t.Fatalf("Resolve(unknown) error = %v, want safe permanent error", err)
 	}
 }
+
+func TestConnectorRegistryResolvesManagedCredentialWithoutChangingSourceFact(t *testing.T) {
+	resolver, err := sourcenet.NewResolver("")
+	if err != nil {
+		t.Fatalf("NewResolver(): %v", err)
+	}
+	credentials := &credentialStoreFake{value: "managed-x-token"}
+	registry := NewConnectorRegistry(resolver, credentials)
+	connection := domain.SourceConnection{
+		ID: 9, SourceType: domain.SourceTypeX, Name: "Managed X", Endpoint: domain.XRecentSearchEndpoint,
+		AuthType: domain.AuthTypeBearer, CredentialRef: domain.ManagedCredentialReference,
+		Config: domain.DefaultSourceConfig(), Enabled: false, HealthStatus: domain.HealthStatusUnknown,
+	}
+	connector, err := registry.Resolve(context.Background(), connection)
+	if err != nil {
+		t.Fatalf("Resolve(managed) error = %v", err)
+	}
+	if credentials.resolvedID != connection.ID {
+		t.Fatalf("credential source id = %d, want %d", credentials.resolvedID, connection.ID)
+	}
+	if err := connector.Validate(context.Background(), connection); err != nil {
+		t.Fatalf("Validate(original managed fact) error = %v", err)
+	}
+	if connection.CredentialRef != domain.ManagedCredentialReference {
+		t.Fatalf("registry mutated source credential reference to %q", connection.CredentialRef)
+	}
+
+	unavailable, err := NewConnectorRegistry(resolver).Resolve(context.Background(), connection)
+	if err != nil {
+		t.Fatalf("Resolve(unconfigured store) error = %v", err)
+	}
+	health := unavailable.Health(context.Background(), connection)
+	if health.Healthy || health.ErrorKind != domain.CollectionErrorAuthentication || health.DiagnosticCode != "credential_unavailable" {
+		t.Fatalf("managed credential unavailable health = %#v", health)
+	}
+}
+
+type credentialStoreFake struct {
+	value      string
+	resolvedID int64
+}
+
+func (*credentialStoreFake) Store(context.Context, int64, string, int64) error { return nil }
+func (*credentialStoreFake) Delete(context.Context, int64) error               { return nil }
+func (store *credentialStoreFake) Resolve(_ context.Context, sourceID int64) (string, error) {
+	store.resolvedID = sourceID
+	return store.value, nil
+}

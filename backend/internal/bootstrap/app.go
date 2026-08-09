@@ -63,6 +63,7 @@ import (
 	reporttransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/transport/http"
 	sourceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/application"
 	sourceinfrastructure "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure"
+	sourcecredentialstore "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/credentialstore"
 	sourcejobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/jobs"
 	sourcepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/postgres"
 	sourcenet "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/sourcenet"
@@ -109,6 +110,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				operationspostgres.NewGovernanceRepository,
 				operationspostgres.NewRetentionRepository,
 				sourcepostgres.NewRepository,
+				newSourceCredentialStore,
 				sourcepostgres.NewMetricCapabilityRepository,
 				newMetricCapabilityService,
 				intelligencepostgres.NewRepository,
@@ -265,12 +267,16 @@ func registerRuntimeMetricsCollector(metrics *observability.Metrics, collector *
 	return metrics.RegisterCollector(collector)
 }
 
-func newSourceConnectorRegistry(cfg config.Config) (*sourceinfrastructure.ConnectorRegistry, error) {
+func newSourceCredentialStore(runtime *database.Runtime, cfg config.Config) (*sourcecredentialstore.Store, error) {
+	return sourcecredentialstore.NewStore(runtime, cfg.SourceCredentialMasterKey)
+}
+
+func newSourceConnectorRegistry(cfg config.Config, credentials *sourcecredentialstore.Store) (*sourceinfrastructure.ConnectorRegistry, error) {
 	resolver, err := sourcenet.NewResolver(cfg.SourceDNSOverHTTPSURL)
 	if err != nil {
 		return nil, fmt.Errorf("configure source DNS resolver: %w", err)
 	}
-	return sourceinfrastructure.NewConnectorRegistry(resolver), nil
+	return sourceinfrastructure.NewConnectorRegistry(resolver, credentials), nil
 }
 
 func newAIProviderRegistry(cfg config.Config, logger *zap.Logger) *intelligenceapplication.ProviderRegistry {
@@ -481,8 +487,8 @@ func newAlertService(candidates *eventpostgres.AlertCandidateReader, policies *m
 	})
 }
 
-func newSourceService(runtime *database.Runtime, sources *sourcepostgres.Repository, usage *monitorpostgres.SourceUsageReader, references *monitorpostgres.PublishedReferenceReader, audit *operationspostgres.AuditWriter) (*sourceapplication.Service, error) {
-	return sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sources, MonitorUsage: usage, PublishedReferences: references, Audit: audit})
+func newSourceService(runtime *database.Runtime, sources *sourcepostgres.Repository, usage *monitorpostgres.SourceUsageReader, references *monitorpostgres.PublishedReferenceReader, credentials *sourcecredentialstore.Store, audit *operationspostgres.AuditWriter) (*sourceapplication.Service, error) {
+	return sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sources, MonitorUsage: usage, PublishedReferences: references, Credentials: credentials, Audit: audit})
 }
 
 func newMetricCapabilityService(runtime *database.Runtime, profiles *sourcepostgres.MetricCapabilityRepository, sources *sourcepostgres.Repository, audit *operationspostgres.AuditWriter) (*sourceapplication.MetricCapabilityService, error) {

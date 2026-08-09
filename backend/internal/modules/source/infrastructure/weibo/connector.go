@@ -130,6 +130,14 @@ func New(connection domain.SourceConnection, resolvers ...sourcenet.Resolver) (*
 	return newConnector(connection, options)
 }
 
+func NewWithCredentialLookup(connection domain.SourceConnection, resolver sourcenet.Resolver, lookup func(string) (string, bool)) (*Connector, error) {
+	options := connectorOptions{lookupEnv: lookup}
+	if resolver != nil {
+		options.resolver = resolver.LookupIPAddr
+	}
+	return newConnector(connection, options)
+}
+
 func newConnector(connection domain.SourceConnection, options connectorOptions) (*Connector, error) {
 	normalized, err := domain.NormalizeSourceConnection(connection)
 	if err != nil || normalized.SourceType != domain.SourceTypeWeibo || normalized.Endpoint != domain.WeiboCLIApiEndpoint {

@@ -45,3 +45,4 @@ canonical_path: docs/acceptance/README.md
 | 026 | [Web工作台全页面交互](026-Web工作台全页面交互验收.md) | passed |
 | 027 | [Agent-Skill与外部API](027-Agent-Skill与外部API验收.md) | passed |
 | 028 | [可观测性部署与质量门禁](028-可观测性部署与质量门禁验收.md) | passed |
+| 029 | [来源凭据与个性化配置](029-来源凭据与个性化配置验收.md) | passed |

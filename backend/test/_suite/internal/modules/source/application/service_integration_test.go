@@ -1,7 +1,9 @@
 package application_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"reflect"
@@ -17,6 +19,7 @@ import (
 	operationspostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/infrastructure/postgres"
 	sourceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
+	sourcecredentialstore "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/credentialstore"
 	sourcepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/postgres"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
@@ -105,6 +108,63 @@ func TestSourceServiceAdminLifecycleAndSafeReads(t *testing.T) {
 	}
 	if restored.Deleted || restored.Enabled || restored.HealthStatus != domain.HealthStatusUnknown {
 		t.Fatalf("restored source = %#v, want non-deleted disabled unknown source", restored)
+	}
+}
+
+func TestSourceServiceCreatesAndRotatesEncryptedManagedCredential(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	admin := seedAdmin(t, runtime)
+	credentials := newCredentialStore(t, runtime)
+	service := newServiceWithCredentials(t, runtime, usageReader{}, credentials)
+	ctx := context.Background()
+
+	first := "first-provider-token"
+	connection := sourceConnection("managed-credential-source")
+	connection.AuthType = domain.AuthTypeBearer
+	created, err := service.Create(ctx, sourceapplication.CreateInput{Subject: admin, Connection: connection, Credential: &first})
+	if err != nil {
+		t.Fatalf("Create(managed credential) error = %v", err)
+	}
+	if !created.CredentialConfigured {
+		t.Fatal("created source did not expose the safe configured boolean")
+	}
+	var reference string
+	var ciphertext []byte
+	if err := runtime.SQL.QueryRow(`
+SELECT connection.credential_ref, credential.ciphertext
+FROM source_connections AS connection
+JOIN source_credentials AS credential ON credential.source_connection_id = connection.id
+WHERE connection.id = $1`, created.ID).Scan(&reference, &ciphertext); err != nil {
+		t.Fatalf("read encrypted credential record: %v", err)
+	}
+	if reference != domain.ManagedCredentialReference || bytes.Contains(ciphertext, []byte(first)) {
+		t.Fatalf("credential persistence reference/ciphertext = %q/%x", reference, ciphertext)
+	}
+	if resolved, err := credentials.Resolve(ctx, created.ID); err != nil || resolved != first {
+		t.Fatalf("Resolve(first) = %q, %v", resolved, err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE source_connections SET health_status = 'healthy' WHERE id = $1`, created.ID); err != nil {
+		t.Fatalf("seed healthy status: %v", err)
+	}
+
+	second := "rotated-provider-token"
+	rotated, err := service.Update(ctx, sourceapplication.UpdateInput{Subject: admin, ID: created.ID, ExpectedVersion: created.Version, Credential: &second})
+	if err != nil {
+		t.Fatalf("Update(rotate credential) error = %v", err)
+	}
+	if rotated.Version != created.Version+1 || rotated.HealthStatus != domain.HealthStatusUnknown {
+		t.Fatalf("rotated source = %#v, want advanced version and unknown health", rotated)
+	}
+	if resolved, err := credentials.Resolve(ctx, created.ID); err != nil || resolved != second {
+		t.Fatalf("Resolve(rotated) = %q, %v", resolved, err)
+	}
+	stale := "stale-overwrite"
+	if _, err := service.Update(ctx, sourceapplication.UpdateInput{Subject: admin, ID: created.ID, ExpectedVersion: created.Version, Credential: &stale}); appCode(err) != sharederrors.CodeSourceConnectionUnavailable {
+		t.Fatalf("stale credential update code = %d, want source unavailable", appCode(err))
+	}
+	if resolved, err := credentials.Resolve(ctx, created.ID); err != nil || resolved != second {
+		t.Fatalf("stale update changed credential to %q, error %v", resolved, err)
 	}
 }
 
@@ -542,11 +602,26 @@ VALUES ($1, 'hash', 'Source Admin', 'admin', 'active') RETURNING id`, name).Scan
 
 func newService(t *testing.T, runtime *database.Runtime, usage usageReader) *sourceapplication.Service {
 	t.Helper()
-	service, err := sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usage, PublishedReferences: referenceReader{}, Audit: operationspostgres.NewAuditWriter(runtime)})
+	return newServiceWithCredentials(t, runtime, usage, newCredentialStore(t, runtime))
+}
+
+func newServiceWithCredentials(t *testing.T, runtime *database.Runtime, usage usageReader, credentials domain.ManagedCredentialStore) *sourceapplication.Service {
+	t.Helper()
+	service, err := sourceapplication.NewService(sourceapplication.Dependencies{Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usage, PublishedReferences: referenceReader{}, Credentials: credentials, Audit: operationspostgres.NewAuditWriter(runtime)})
 	if err != nil {
 		t.Fatalf("NewService(): %v", err)
 	}
 	return service
+}
+
+func newCredentialStore(t *testing.T, runtime *database.Runtime) *sourcecredentialstore.Store {
+	t.Helper()
+	key := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x31}, 32))
+	credentials, err := sourcecredentialstore.NewStore(runtime, key)
+	if err != nil {
+		t.Fatalf("NewStore(): %v", err)
+	}
+	return credentials
 }
 
 func sourceConnection(name string) domain.SourceConnection {

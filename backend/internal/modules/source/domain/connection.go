@@ -49,6 +49,7 @@ const (
 	GoogleAgentSearchEUEndpoint     = "https://eu-discoveryengine.googleapis.com"
 	GoogleCloudTerms                = "https://cloud.google.com/terms"
 	GoogleLegacySearchDeprecationAt = "2027-01-01"
+	ManagedCredentialReference      = "managed:v1"
 )
 
 var credentialReferencePattern = regexp.MustCompile(`^env:[A-Z_][A-Z0-9_]{0,127}$`)
@@ -116,19 +117,19 @@ func NormalizeSourceConnection(connection SourceConnection) (SourceConnection, e
 		return SourceConnection{}, err
 	}
 	if connection.SourceType == SourceTypeX && (connection.AuthType != AuthTypeBearer || credentialRef == "") {
-		return SourceConnection{}, fmt.Errorf("X source requires a Bearer env credential reference")
+		return SourceConnection{}, fmt.Errorf("X source requires a Bearer credential reference")
 	}
 	if connection.SourceType == SourceTypeBingGrounding && (connection.AuthType != AuthTypeBearer || credentialRef == "") {
-		return SourceConnection{}, fmt.Errorf("Bing Grounding source requires a Bearer env credential reference")
+		return SourceConnection{}, fmt.Errorf("Bing Grounding source requires a Bearer credential reference")
 	}
 	if connection.SourceType == SourceTypeBilibili && (connection.AuthType != AuthTypeOAuth2 || credentialRef == "") {
-		return SourceConnection{}, fmt.Errorf("Bilibili source requires an OAuth2 env credential reference")
+		return SourceConnection{}, fmt.Errorf("Bilibili source requires an OAuth2 credential reference")
 	}
 	if connection.SourceType == SourceTypeWeibo && (connection.AuthType != AuthTypeBearer || credentialRef == "") {
-		return SourceConnection{}, fmt.Errorf("Weibo source requires a Bearer env credential reference")
+		return SourceConnection{}, fmt.Errorf("Weibo source requires a Bearer credential reference")
 	}
 	if connection.SourceType == SourceTypeGoogleAgentSearch && (connection.AuthType != AuthTypeBearer || credentialRef == "") {
-		return SourceConnection{}, fmt.Errorf("Google Agent Search source requires a Bearer env credential reference")
+		return SourceConnection{}, fmt.Errorf("Google Agent Search source requires a Bearer credential reference")
 	}
 	config := connection.Config
 	if config.isZero() {
@@ -205,8 +206,8 @@ func NormalizeCredentialReference(authType AuthType, value string) (string, erro
 		}
 		return "", nil
 	}
-	if !credentialReferencePattern.MatchString(normalized) {
-		return "", fmt.Errorf("credential reference must use env:NAME")
+	if normalized != ManagedCredentialReference && !credentialReferencePattern.MatchString(normalized) {
+		return "", fmt.Errorf("credential reference must use env:NAME or the managed credential store")
 	}
 	return normalized, nil
 }

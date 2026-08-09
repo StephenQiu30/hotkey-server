@@ -75,6 +75,10 @@ type SourceConnection struct {
 	Record
 	SourceType, Name, Endpoint string
 }
+type SourceCredential struct {
+	OperationalRecord
+	SourceConnectionID int64
+}
 type MetricCapabilityProfile struct {
 	Record
 	SourceType, ProfileVersion, Status string
@@ -412,6 +416,7 @@ var specs = []Spec{
 	{"users", LifecycleBusiness, []string{"id", "version", "email", "password_hash", "role", "status", "deleted_at"}},
 	{"user_preferences", LifecycleBusiness, []string{"id", "user_id", "timezone", "preferences"}},
 	{"source_connections", LifecycleBusiness, []string{"id", "source_type", "name", "endpoint", "deleted_at"}},
+	{"source_credentials", LifecycleOperational, []string{"id", "source_connection_id", "key_version", "nonce", "ciphertext", "updated_at"}},
 	{"metric_capability_profiles", LifecycleBusiness, []string{"id", "version", "source_type", "profile_version", "status", "published_at", "archived_at"}},
 	{"monitors", LifecycleBusiness, []string{"id", "version", "name", "status", "draft_config_version_id", "published_config_version_id", "deleted_at"}},
 	{"monitor_config_versions", LifecycleBusiness, []string{"id", "version", "monitor_id", "revision", "state", "config_hash", "published_at"}},

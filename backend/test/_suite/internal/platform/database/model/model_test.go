@@ -37,6 +37,7 @@ func TestSpecsHaveUniqueTablesAndColumns(t *testing.T) {
 		"alert_email_attempts":         {"id", "delivery_id", "attempt_no", "status"},
 		"alert_state_audits":           {"id", "alert_thread_id", "actor_type", "actor_user_id", "from_state", "to_state", "expected_version", "reason_code", "created_at"},
 		"notification_events":          {"id", "event_type", "resource_type", "resource_id", "audience_role", "occurred_at", "payload", "dedupe_key", "created_at"},
+		"source_credentials":           {"id", "source_connection_id", "key_version", "nonce", "ciphertext", "updated_at"},
 	}
 	for _, spec := range All() {
 		if spec.Table == "" || seen[spec.Table] {
@@ -55,7 +56,7 @@ func TestSpecsHaveUniqueTablesAndColumns(t *testing.T) {
 			t.Errorf("missing mapped table %s", table)
 		}
 	}
-	if got, want := len(seen), 66; got != want {
+	if got, want := len(seen), 67; got != want {
 		t.Errorf("mapped table count = %d, want %d", got, want)
 	}
 }

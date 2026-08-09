@@ -138,6 +138,7 @@ type CreateSourceRequest struct {
 	Endpoint       string              `json:"endpoint" binding:"required"`
 	AuthType       string              `json:"auth_type" binding:"required,oneof=none api_key oauth2 bearer"`
 	CredentialRef  string              `json:"credential_ref"`
+	Credential     *string             `json:"credential,omitempty"`
 	Config         SourceConfigRequest `json:"config"`
 	Enabled        *bool               `json:"enabled,omitempty"`
 	TermsPolicyURL string              `json:"terms_policy_url"`
@@ -150,6 +151,7 @@ type UpdateSourceRequest struct {
 	Endpoint              *string              `json:"endpoint,omitempty"`
 	AuthType              *string              `json:"auth_type,omitempty" binding:"omitempty,oneof=none api_key oauth2 bearer"`
 	CredentialRef         *string              `json:"credential_ref,omitempty"`
+	Credential            *string              `json:"credential,omitempty"`
 	Config                *SourceConfigRequest `json:"config,omitempty"`
 	TermsPolicyURL        *string              `json:"terms_policy_url,omitempty"`
 }
@@ -285,7 +287,7 @@ func sourceCreateInput(request CreateSourceRequest) (domain.SourceConnection, er
 }
 
 func sourceUpdateInput(request UpdateSourceRequest) (sourceapplication.UpdateInput, error) {
-	input := sourceapplication.UpdateInput{ExpectedVersion: request.ExpectedSourceVersion, Name: request.Name, Endpoint: request.Endpoint, CredentialRef: request.CredentialRef, TermsPolicyURL: request.TermsPolicyURL}
+	input := sourceapplication.UpdateInput{ExpectedVersion: request.ExpectedSourceVersion, Name: request.Name, Endpoint: request.Endpoint, CredentialRef: request.CredentialRef, Credential: request.Credential, TermsPolicyURL: request.TermsPolicyURL}
 	if request.SourceType != nil {
 		value := domain.SourceType(*request.SourceType)
 		input.SourceType = &value

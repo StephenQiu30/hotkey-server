@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,6 +38,7 @@ func TestValidateRejectsInvalidRuntimeConfiguration(t *testing.T) {
 		{name: "notification heartbeat interval", mutate: func(c *Config) { c.Notification.HeartbeatInterval = 0 }},
 		{name: "notification max connections", mutate: func(c *Config) { c.Notification.MaxConnections = 0 }},
 		{name: "notification excessive connections", mutate: func(c *Config) { c.Notification.MaxConnections = 10001 }},
+		{name: "source credential master key", mutate: func(c *Config) { c.SourceCredentialMasterKey = "invalid-key" }},
 	}
 
 	for _, tt := range tests {
@@ -216,6 +218,8 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("HOTKEY_HTTP_ADDR", "")
 	t.Setenv("HOTKEY_SHUTDOWN_TIMEOUT", "3s")
 	t.Setenv("HOTKEY_SOURCE_DOH_URL", "https://cloudflare-dns.com/dns-query")
+	masterKey := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("k", 32)))
+	t.Setenv("HOTKEY_SOURCE_CREDENTIAL_MASTER_KEY", masterKey)
 	t.Setenv("HOTKEY_BILIBILI_WEBHOOK_SECRET", "fixture-webhook-secret")
 	t.Setenv("HOTKEY_NOTIFICATION_POLL_INTERVAL", "2s")
 	t.Setenv("HOTKEY_NOTIFICATION_HEARTBEAT_INTERVAL", "12s")
@@ -233,6 +237,9 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.SourceDNSOverHTTPSURL != "https://cloudflare-dns.com/dns-query" {
 		t.Errorf("SourceDNSOverHTTPSURL = %q, want configured DoH endpoint", cfg.SourceDNSOverHTTPSURL)
+	}
+	if cfg.SourceCredentialMasterKey != masterKey {
+		t.Error("SourceCredentialMasterKey was not loaded from the environment")
 	}
 	if cfg.BilibiliWebhookSecret != "fixture-webhook-secret" {
 		t.Error("BilibiliWebhookSecret was not loaded from the environment")
