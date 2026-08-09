@@ -95,7 +95,7 @@ export default function TopNav({
   return (
     <header
       data-top-nav
-      className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur-sm"
+      className="sticky top-0 z-50 bg-background/90 backdrop-blur-xl"
     >
       <div className="mx-auto flex h-16 max-w-[1440px] min-w-0 items-center gap-3 px-4 sm:px-6 lg:gap-7 lg:px-8">
         <Link
@@ -104,7 +104,7 @@ export default function TopNav({
         >
           <BrandLogo title={title} markClassName="h-5 w-5" />
         </Link>
-        <span className="hidden rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground 2xl:inline-flex">
+        <span className="hidden rounded-full bg-muted px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground 2xl:inline-flex">
           Intelligence
         </span>
 
@@ -151,7 +151,7 @@ export default function TopNav({
             placeholder="搜索事件"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className="h-9 bg-background pl-9 shadow-none"
+            className="h-9 bg-muted/70 pl-9 shadow-none"
           />
         </form>
 
@@ -191,7 +191,7 @@ export default function TopNav({
             side="left"
             className="w-[min(88vw,360px)] overflow-y-auto p-0"
           >
-            <SheetHeader className="border-b p-5 text-left">
+            <SheetHeader className="p-5 text-left">
               <SheetTitle>工作区导航</SheetTitle>
               <SheetDescription>浏览热点监控与分析功能。</SheetDescription>
             </SheetHeader>
@@ -232,7 +232,7 @@ export default function TopNav({
                   );
                 })}
                 {visibleAdminMenuItems.length > 0 ? (
-                  <div className="mt-3 space-y-1 border-t pt-3">
+                  <div className="mt-5 space-y-1 pt-3">
                     <p className="px-3 py-1 text-xs font-medium text-muted-foreground">
                       管理
                     </p>

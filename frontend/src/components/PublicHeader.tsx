@@ -33,7 +33,7 @@ export function PublicHeader() {
         >
           <BrandLogo markClassName="h-[18px] w-[18px]" />
         </Link>
-        <span className="ml-3 hidden rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.13em] text-muted-foreground sm:inline-flex">
+        <span className="ml-3 hidden rounded-full bg-muted px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.13em] text-muted-foreground sm:inline-flex">
           Intelligence
         </span>
 
@@ -72,7 +72,7 @@ export function PublicHeader() {
             </Button>
           </SheetTrigger>
           <SheetContent side="right" className="w-[min(88vw,360px)] p-0">
-            <SheetHeader className="border-b p-5 text-left">
+            <SheetHeader className="p-5 text-left">
               <SheetTitle>HotKey</SheetTitle>
               <SheetDescription>重要变化，先形成判断。</SheetDescription>
             </SheetHeader>

@@ -17,7 +17,7 @@ export function PageHeader({
     <header
       aria-label={title}
       role="group"
-      className="flex flex-col gap-6 border-b border-border pb-8 sm:flex-row sm:items-end sm:justify-between"
+      className="flex flex-col gap-6 pb-8 sm:flex-row sm:items-end sm:justify-between"
     >
       <div className="min-w-0">
         <p className="eyebrow">{eyebrow}</p>

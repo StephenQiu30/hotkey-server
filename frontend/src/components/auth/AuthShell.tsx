@@ -24,7 +24,7 @@ export default function AuthShell({
     <div className="grid min-h-screen bg-background lg:grid-cols-[minmax(0,1fr)_480px]">
       <aside
         aria-label="HotKey 品牌介绍"
-        className="relative hidden min-h-screen overflow-hidden border-r p-8 lg:flex lg:flex-col xl:p-10"
+        className="relative hidden min-h-screen overflow-hidden bg-muted/30 p-8 lg:flex lg:flex-col xl:p-10"
       >
         <Link
           href="/"
@@ -59,7 +59,7 @@ export default function AuthShell({
         <p className="relative z-10 text-xs text-muted-foreground">© 2026 HotKey</p>
       </aside>
 
-      <main className="flex min-h-screen items-center justify-center px-5 py-12 sm:px-10">
+      <main className="flex min-h-screen items-center justify-center px-5 py-12 sm:px-10 lg:px-14">
         <div className="w-full max-w-sm">
           <Link
             href="/"
@@ -67,15 +67,15 @@ export default function AuthShell({
           >
             <BrandLogo />
           </Link>
-          <Card>
-            <CardHeader>
+          <Card className="rounded-none">
+            <CardHeader className="px-0">
               <p className="text-xs text-muted-foreground">HotKey Intelligence</p>
               <CardTitle>
                 <h1 className="mt-2 text-2xl tracking-[-0.035em]">{title}</h1>
               </CardTitle>
               <CardDescription className="leading-6">{subtitle}</CardDescription>
             </CardHeader>
-            <CardContent>{children}</CardContent>
+            <CardContent className="px-0">{children}</CardContent>
           </Card>
         </div>
       </main>

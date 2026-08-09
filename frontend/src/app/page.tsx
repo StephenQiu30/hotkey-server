@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
 
 const supportedSources = [
   "财新",
@@ -92,7 +91,7 @@ export default function HomePage() {
             {supportedSources.map((source) => (
               <div
                 key={source}
-                className="flex min-h-20 items-center justify-center border-b text-base font-semibold tracking-[-0.03em] sm:min-h-24 lg:min-h-[140px] lg:items-start lg:border-b-0 lg:pt-5"
+                className="flex min-h-20 items-center justify-center text-base font-semibold tracking-[-0.03em] sm:min-h-24 lg:min-h-[140px] lg:items-start lg:pt-5"
               >
                 {source}
               </div>
@@ -100,7 +99,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="product" className="border-t">
+        <section id="product">
           <div className="mx-auto max-w-[1440px] px-5 py-28 sm:px-8 lg:py-44">
             <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-end">
               <h2 className="max-w-5xl text-[clamp(2.8rem,5.4vw,5.5rem)] font-normal leading-[0.98] tracking-[-0.065em]">
@@ -115,9 +114,9 @@ export default function HomePage() {
               id="briefing"
               role="region"
               aria-label="今日情报简报"
-              className="mt-16 overflow-hidden lg:mt-24"
+              className="mt-16 scroll-mt-24 lg:mt-24"
             >
-              <CardHeader className="flex flex-col gap-3 space-y-0 border-b px-5 py-5 sm:flex-row sm:items-center sm:px-7">
+              <CardHeader className="flex flex-col gap-3 space-y-0 px-0 py-5 sm:flex-row sm:items-center">
                 <div className="flex items-baseline gap-4">
                   <h3 className="text-base font-semibold">今日情报简报</h3>
                   <span className="mono text-xs text-muted-foreground">2026-08-06</span>
@@ -131,8 +130,8 @@ export default function HomePage() {
                 </div>
               </CardHeader>
 
-              <CardContent className="grid p-0 lg:grid-cols-[1.2fr_.8fr_.7fr]">
-                <article className="p-6 sm:p-8 lg:border-r">
+              <CardContent className="grid gap-12 p-0 lg:grid-cols-[1.2fr_.8fr_.7fr] lg:gap-10">
+                <article className="py-6">
                   <span className="mono text-xs text-muted-foreground">01 / SIGNAL</span>
                   <h3 className="mt-5 max-w-2xl text-2xl font-semibold leading-tight sm:text-3xl">
                     AI Agent 进入端侧部署阶段，生态合作加速落地
@@ -140,7 +139,7 @@ export default function HomePage() {
                   <p className="mt-4 max-w-2xl text-sm leading-7 text-muted-foreground">
                     多家头部厂商宣布端侧 AI Agent 产品计划，能力正从云端下沉到终端设备，带来算力、隐私与交互体验的系统性变化。
                   </p>
-                  <div className="mt-10 flex items-end justify-between border-t pt-5">
+                  <div className="mt-12 flex items-end justify-between">
                     <div>
                       <p className="text-xs text-muted-foreground">热度趋势 · 近 7 天</p>
                       <p className="mt-1 text-xs text-success">连续 4 天上升</p>
@@ -156,11 +155,11 @@ export default function HomePage() {
                   />
                 </article>
 
-                <aside className="p-6 sm:p-8 lg:border-r">
+                <aside className="py-6 lg:px-4">
                   <p className="text-sm font-semibold">证据来源</p>
-                  <div className="mt-5 divide-y">
+                  <div className="mt-6 space-y-6">
                     {evidence.map((item) => (
-                      <div key={item.source} className="grid gap-2 py-4 first:pt-0">
+                      <div key={item.source} className="grid gap-2">
                         <p className="text-sm leading-6">{item.source}</p>
                         <span className="text-xs text-muted-foreground">{item.time}</span>
                       </div>
@@ -174,14 +173,13 @@ export default function HomePage() {
                   </Link>
                 </aside>
 
-                <aside className="bg-muted/35 p-6 sm:p-8">
+                <aside className="self-start rounded-2xl bg-muted/55 p-6 sm:p-8">
                   <Sparkles className="h-5 w-5" />
                   <p className="mt-5 text-sm font-semibold">AI 判断</p>
                   <p className="mt-3 text-sm leading-7 text-muted-foreground">
                     这是从“云上能力”到“终端体验”的关键拐点，建议持续跟踪端侧模型压缩、隐私计算与生态伙伴落地节奏。
                   </p>
-                  <Separator className="my-7" />
-                  <div className="flex items-center justify-between text-xs">
+                  <div className="mt-8 flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">置信度</span>
                     <span className="mono font-semibold">85%</span>
                   </div>
@@ -191,7 +189,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="workflow" className="border-t">
+        <section id="workflow">
           <div className="mx-auto max-w-[1440px] px-5 py-28 sm:px-8 lg:py-40">
             <div className="grid gap-12 lg:grid-cols-[.8fr_1.2fr]">
               <div>
@@ -200,9 +198,9 @@ export default function HomePage() {
                   让情报系统像团队一样持续工作
                 </h2>
               </div>
-              <div className="divide-y border-y">
+              <div className="space-y-10 lg:pt-2">
                 {workflow.map((item) => (
-                  <article key={item.step} className="grid gap-5 py-8 sm:grid-cols-[64px_180px_1fr] sm:items-start">
+                  <article key={item.step} className="grid gap-5 sm:grid-cols-[64px_180px_1fr] sm:items-start">
                     <span className="mono text-xs text-muted-foreground">{item.step}</span>
                     <h3 className="text-lg font-semibold">{item.title}</h3>
                     <p className="max-w-xl text-sm leading-7 text-muted-foreground">{item.body}</p>
@@ -213,7 +211,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="pricing" className="border-t bg-muted/35">
+        <section id="pricing" className="bg-muted/35">
           <div className="mx-auto flex max-w-[1440px] flex-col gap-8 px-5 py-24 sm:px-8 lg:flex-row lg:items-end lg:justify-between lg:py-32">
             <div>
               <p className="text-sm text-muted-foreground">从第一条监控开始</p>
@@ -228,7 +226,7 @@ export default function HomePage() {
         </section>
       </main>
 
-      <footer className="border-t">
+      <footer>
         <div className="mx-auto flex max-w-[1440px] flex-col gap-3 px-5 py-8 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-8">
           <BrandLogo className="font-semibold text-foreground" />
           <span>© 2026 HotKey · 让热点判断建立在证据之上</span>
