@@ -9,6 +9,11 @@
 let accessToken = "";
 let expiresAt = 0;
 let refreshPromise: Promise<string> | null = null;
+const refreshLockName = "hotkey-auth-refresh";
+
+interface BrowserLockManager {
+  request<T>(name: string, callback: () => Promise<T>): Promise<T>;
+}
 
 /** Store a new access token in memory. */
 export function setAccessToken(token: string, expiresIn: number): void {
@@ -43,11 +48,26 @@ export function refreshAccessToken(
   perform: () => Promise<string>,
 ): Promise<string> {
   if (!refreshPromise) {
-    refreshPromise = perform().finally(() => {
+    refreshPromise = withBrowserRefreshLock(perform).finally(() => {
       refreshPromise = null;
     });
   }
   return refreshPromise;
+}
+
+/**
+ * Serialize refresh-cookie rotation across tabs. The cookie is shared by the
+ * browser, so concurrent rotations from two tabs would otherwise look like a
+ * replay of the same credential to the server.
+ */
+function withBrowserRefreshLock(perform: () => Promise<string>): Promise<string> {
+  if (typeof navigator === "undefined" || !navigator.locks) {
+    return perform();
+  }
+  return (navigator.locks as unknown as BrowserLockManager).request(
+    refreshLockName,
+    perform,
+  );
 }
 
 /**

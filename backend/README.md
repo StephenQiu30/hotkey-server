@@ -130,7 +130,7 @@ HOTKEY_DATABASE_URL=postgres://hotkey:hotkey@localhost:5432/hotkey?sslmode=disab
 HOTKEY_JWT_SECRET=
 HOTKEY_VERIFICATION_HMAC_SECRET=
 HOTKEY_SOURCE_CREDENTIAL_MASTER_KEY=
-HOTKEY_CORS_ALLOWED_ORIGINS=http://localhost:3000
+HOTKEY_CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 ```
 
 JWT 与 HMAC 密钥填写各自独立、随机且不少于 32 字节的值；来源凭据主密钥必须是 Base64 编码的 32 个随机字节，可使用 `openssl rand -base64 32` 生成。登录后的“来源管理”会用它认证加密 API Key、Token 或 OAuth 凭据包，读取接口只返回“是否已配置”，从不回显明文。主密钥必须与数据库备份分开保存；旧 `env:NAME` 来源仍兼容。常用配置与可选 Provider 示例见 [`.env.example`](.env.example)，真实密钥不要提交到仓库。

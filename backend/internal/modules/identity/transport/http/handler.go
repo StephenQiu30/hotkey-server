@@ -7,6 +7,7 @@ import (
 	"context"
 	stdhttp "net/http"
 	"strconv"
+	"time"
 
 	identityapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
@@ -394,7 +395,7 @@ func (handler *Handler) RestoreUser(c *gin.Context) error {
 
 func (handler *Handler) setRefreshCookie(c *gin.Context, value string) {
 	c.SetSameSite(stdhttp.SameSiteStrictMode)
-	c.SetCookie(refreshCookieName, value, 0, refreshCookiePath, "", handler.cookieSecure, true)
+	c.SetCookie(refreshCookieName, value, int(domain.RefreshSessionLifetime/time.Second), refreshCookiePath, "", handler.cookieSecure, true)
 }
 
 func (handler *Handler) clearRefreshCookie(c *gin.Context) {

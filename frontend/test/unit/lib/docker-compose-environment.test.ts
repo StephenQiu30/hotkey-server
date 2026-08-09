@@ -35,6 +35,9 @@ describe("Docker Compose environment configuration", () => {
       expect(compose).toContain("fetch('http://127.0.0.1:3000/')");
       expect(compose).toContain("HOTKEY_CORS_ALLOWED_ORIGINS:");
     }
+    expect(baseCompose).toContain(
+      "http://localhost:3000,http://127.0.0.1:3000",
+    );
     expect(dockerfile.match(/^FROM node:latest AS /gm)).toHaveLength(3);
     expect(dockerfile).toContain("USER node");
   });

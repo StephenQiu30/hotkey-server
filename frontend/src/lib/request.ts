@@ -2,8 +2,10 @@ import axios, { AxiosError, type AxiosRequestConfig } from "axios";
 import {
   getAccessToken,
   clearAccessToken,
+  isAccessTokenExpired,
   refreshAccessToken,
   resetRefreshPromise,
+  setAccessToken,
 } from "./authSession";
 import { getUserFacingAPIErrorMessage } from "./apiErrorMessages";
 import { createLoginRedirect } from "./safeRedirect";
@@ -73,10 +75,31 @@ const apiClient = axios.create({
   paramsSerializer: { serialize: serializeQueryParams },
 });
 
-// ── Request interceptor: inject Bearer token from memory ───────────
+async function requestFreshAccessToken(): Promise<string> {
+  const { postAuthRefresh } = await import(
+    "@/services/hotkey/hotkey-server/identity"
+  );
+  const res = await postAuthRefresh();
+  const token = res.data?.access_token ?? "";
+  if (!token) throw new Error("refresh returned no token");
+  setAccessToken(token, 900);
+  return token;
+}
 
-apiClient.interceptors.request.use((config) => {
-  const token = getAccessToken();
+// ── Request interceptor: refresh early + inject Bearer token ──────
+
+apiClient.interceptors.request.use(async (config) => {
+  let token = getAccessToken();
+  if (token && isAccessTokenExpired() && !isNoRefreshPath(config.url)) {
+    try {
+      token = await refreshAccessToken(requestFreshAccessToken);
+    } catch {
+      clearAccessToken();
+      resetRefreshPromise();
+      redirectToLogin();
+      throw new HotKeyAPIError(401, "登录已过期，请重新登录");
+    }
+  }
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -88,6 +111,9 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError<{ code?: number; message?: string; data?: unknown }>) => {
+    if (error instanceof HotKeyAPIError) {
+      throw error;
+    }
     // ── Network-level errors (no HTTP response received) ──────────
     // e.g. ECONNREFUSED, ERR_NETWORK, ERR_NAME_NOT_RESOLVED
     if (!error.response) {
@@ -111,19 +137,7 @@ apiClient.interceptors.response.use(
     if (status === 401 && !isRetry && !isNoRefreshPath(requestUrl)) {
       try {
         // Single-flight: all concurrent 401s share one refresh
-        const newToken = await refreshAccessToken(async () => {
-          const { postAuthRefresh } = await import(
-            "@/services/hotkey/hotkey-server/identity"
-          );
-          const res = await postAuthRefresh();
-          const data = res.data ?? {};
-          const token = data.access_token ?? "";
-          if (!token) throw new Error("refresh returned no token");
-          return token;
-        });
-
-        // Update the stored token
-        (await import("./authSession")).setAccessToken(newToken, 900);
+        const newToken = await refreshAccessToken(requestFreshAccessToken);
 
         // Retry the original request with the new token
         const retryConfig: Record<string, any> = {

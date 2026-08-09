@@ -391,7 +391,13 @@ func assertRefreshCookie(t *testing.T, response *httptest.ResponseRecorder, secu
 	if cleared && (cookie.Value != "" || cookie.MaxAge >= 0) {
 		t.Fatalf("cleared cookie = %#v, want empty expired cookie", cookie)
 	}
-	if !cleared && cookie.Value == "" {
-		t.Fatal("issued refresh cookie has empty value")
+	if !cleared {
+		if cookie.Value == "" {
+			t.Fatal("issued refresh cookie has empty value")
+		}
+		wantMaxAge := int(domain.RefreshSessionLifetime / time.Second)
+		if cookie.MaxAge != wantMaxAge {
+			t.Fatalf("refresh cookie MaxAge = %d, want %d", cookie.MaxAge, wantMaxAge)
+		}
 	}
 }

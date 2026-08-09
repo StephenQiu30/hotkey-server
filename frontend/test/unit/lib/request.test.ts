@@ -1,5 +1,9 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type { AxiosAdapter } from "axios";
+
+vi.mock("@/services/hotkey/hotkey-server/identity", () => ({
+  postAuthRefresh: vi.fn(),
+}));
 
 // -- authSession.ts unit tests ---------------------------------------
 
@@ -32,6 +36,32 @@ describe("authSession", () => {
     expect(r1).toBe("tok-a");
     expect(r2).toBe("tok-a"); // same promise shared
     expect(calls).toBe(1);
+  });
+
+  it("serializes refreshes with the browser-wide authentication lock", async () => {
+    const request = vi.fn(async (_name: string, callback: () => Promise<string>) =>
+      callback(),
+    );
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: { request },
+    });
+
+    const { refreshAccessToken, resetRefreshPromise } = await import("@/lib/authSession");
+    resetRefreshPromise();
+
+    await expect(refreshAccessToken(async () => "locked-token")).resolves.toBe(
+      "locked-token",
+    );
+    expect(request).toHaveBeenCalledWith(
+      "hotkey-auth-refresh",
+      expect.any(Function),
+    );
+
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: undefined,
+    });
   });
 });
 
@@ -123,6 +153,35 @@ describe("HotKeyAPIError", () => {
         data: { source: "generated-client" },
       }),
     ).resolves.toEqual({ code: 0, data: { ok: true }, message: "ok" });
+  });
+
+  it("refreshes an expiring access token before a protected request", async () => {
+    const authService = await import("@/services/hotkey/hotkey-server/identity");
+    const { setAccessToken, clearAccessToken } = await import("@/lib/authSession");
+    const { request } = await import("@/lib/request");
+    vi.mocked(authService.postAuthRefresh).mockResolvedValueOnce({
+      data: { access_token: "fresh-token" },
+    } as any);
+    clearAccessToken();
+    setAccessToken("expiring-token", 0);
+
+    let authorization = "";
+    const adapter: AxiosAdapter = async (config) => {
+      authorization = String(config.headers?.Authorization ?? "");
+      return {
+        config,
+        data: { code: 0, data: { ok: true }, message: "ok" },
+        headers: {},
+        status: 200,
+        statusText: "OK",
+      };
+    };
+
+    await request("/api/v1/auth/me", { adapter, method: "GET" });
+
+    expect(authService.postAuthRefresh).toHaveBeenCalledOnce();
+    expect(authorization).toBe("Bearer fresh-token");
+    clearAccessToken();
   });
 });
 
