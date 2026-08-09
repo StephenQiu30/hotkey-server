@@ -13,13 +13,16 @@ import * as reports from "./reports";
 import * as ai from "./ai";
 import * as identity from "./identity";
 import * as platform from "./platform";
+import * as documentVersions from "./documentVersions";
 import * as knowledge from "./knowledge";
 import * as sourceMetricCapabilities from "./sourceMetricCapabilities";
 import * as relevance from "./relevance";
+import * as monitorIntent from "./monitorIntent";
 import * as notifications from "./notifications";
 import * as operations from "./operations";
 import * as delivery from "./delivery";
 import * as sources from "./sources";
+import * as sourceRights from "./sourceRights";
 import * as sourceWebhooks from "./sourceWebhooks";
 export default {
   agentAccess,
@@ -33,12 +36,15 @@ export default {
   ai,
   identity,
   platform,
+  documentVersions,
   knowledge,
   sourceMetricCapabilities,
   relevance,
+  monitorIntent,
   notifications,
   operations,
   delivery,
   sources,
+  sourceRights,
   sourceWebhooks,
 };

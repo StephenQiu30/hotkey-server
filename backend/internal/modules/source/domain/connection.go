@@ -19,6 +19,7 @@ import (
 type SourceType string
 type AuthType string
 type HealthStatus string
+type HackerNewsMode string
 
 const (
 	SourceTypeRSS               SourceType = "rss"
@@ -38,6 +39,10 @@ const (
 	HealthStatusHealthy     HealthStatus = "healthy"
 	HealthStatusDegraded    HealthStatus = "degraded"
 	HealthStatusUnavailable HealthStatus = "unavailable"
+
+	HackerNewsModeNew  HackerNewsMode = "new"
+	HackerNewsModeTop  HackerNewsMode = "top"
+	HackerNewsModeBest HackerNewsMode = "best"
 
 	HackerNewsEndpoint              = "https://hacker-news.firebaseio.com/v0"
 	XRecentSearchEndpoint           = "https://api.x.com/2/tweets/search/recent"
@@ -75,6 +80,9 @@ type SourceConnection struct {
 // SourceConfig is the complete, defaulted P0 configuration. A Source
 // Connection never carries arbitrary JSON in its domain model.
 type SourceConfig struct {
+	// AllowBodyStorage is a legacy compatibility flag. It is not a rights fact
+	// and cannot authorize new CapturedItem, EvidenceSnapshot, or DocumentVersion
+	// body persistence; only an exact current RightsDecision can do that.
 	AllowBodyStorage              bool
 	RequiresAttribution           bool
 	RequiresDeletionSync          bool
@@ -89,6 +97,7 @@ type SourceConfig struct {
 	BilibiliOpenID                string
 	GoogleLocation                string
 	GoogleServingConfig           string
+	HackerNewsMode                HackerNewsMode
 }
 
 func DefaultSourceConfig() SourceConfig {
@@ -97,6 +106,7 @@ func DefaultSourceConfig() SourceConfig {
 		ContentRetentionDays: 30, MetricsRetentionDays: 30,
 		AllowedLanguages: []string{}, AllowedRegions: []string{},
 		RateLimitPerMinute: 60, RequestTimeoutSeconds: 30, MaxPagesPerRun: 1,
+		HackerNewsMode: HackerNewsModeNew,
 	}
 }
 
@@ -193,6 +203,10 @@ func (authType AuthType) Valid() bool {
 
 func (status HealthStatus) Valid() bool {
 	return status == HealthStatusUnknown || status == HealthStatusHealthy || status == HealthStatusDegraded || status == HealthStatusUnavailable
+}
+
+func (mode HackerNewsMode) Valid() bool {
+	return mode == HackerNewsModeNew || mode == HackerNewsModeTop || mode == HackerNewsModeBest
 }
 
 func NormalizeCredentialReference(authType AuthType, value string) (string, error) {
@@ -389,6 +403,12 @@ func NormalizeSourceConfig(input map[string]any) (SourceConfig, error) {
 				return SourceConfig{}, fmt.Errorf("%s must be string", key)
 			}
 			config.GoogleServingConfig = text
+		case "hacker_news_mode":
+			text, ok := value.(string)
+			if !ok {
+				return SourceConfig{}, fmt.Errorf("%s must be string", key)
+			}
+			config.HackerNewsMode = HackerNewsMode(text)
 		default:
 			return SourceConfig{}, fmt.Errorf("source config key %q is not allowed", key)
 		}
@@ -419,14 +439,18 @@ func (config SourceConfig) Normalize() (SourceConfig, error) {
 	config.BilibiliOpenID = strings.TrimSpace(config.BilibiliOpenID)
 	config.GoogleLocation = strings.ToLower(strings.TrimSpace(config.GoogleLocation))
 	config.GoogleServingConfig = strings.TrimSpace(config.GoogleServingConfig)
+	config.HackerNewsMode = HackerNewsMode(strings.ToLower(strings.TrimSpace(string(config.HackerNewsMode))))
 	if config.BilibiliOpenID != "" && !bilibiliOpenIDPattern.MatchString(config.BilibiliOpenID) {
 		return SourceConfig{}, fmt.Errorf("Bilibili OpenID is invalid")
+	}
+	if !config.HackerNewsMode.Valid() {
+		return SourceConfig{}, fmt.Errorf("Hacker News mode must be new, top, or best")
 	}
 	return config, nil
 }
 
 func (config SourceConfig) isZero() bool {
-	return !config.AllowBodyStorage && !config.RequiresAttribution && !config.RequiresDeletionSync && !config.GroundingDataBoundaryApproved && config.BilibiliOpenID == "" && config.GoogleLocation == "" && config.GoogleServingConfig == "" && config.ContentRetentionDays == 0 && config.MetricsRetentionDays == 0 && len(config.AllowedLanguages) == 0 && len(config.AllowedRegions) == 0 && config.RateLimitPerMinute == 0 && config.RequestTimeoutSeconds == 0 && config.MaxPagesPerRun == 0
+	return !config.AllowBodyStorage && !config.RequiresAttribution && !config.RequiresDeletionSync && !config.GroundingDataBoundaryApproved && config.BilibiliOpenID == "" && config.GoogleLocation == "" && config.GoogleServingConfig == "" && config.HackerNewsMode == "" && config.ContentRetentionDays == 0 && config.MetricsRetentionDays == 0 && len(config.AllowedLanguages) == 0 && len(config.AllowedRegions) == 0 && config.RateLimitPerMinute == 0 && config.RequestTimeoutSeconds == 0 && config.MaxPagesPerRun == 0
 }
 
 func (config SourceConfig) Map() map[string]any {
@@ -439,6 +463,7 @@ func (config SourceConfig) Map() map[string]any {
 		"bilibili_open_id":                 config.BilibiliOpenID,
 		"google_location":                  config.GoogleLocation,
 		"google_serving_config":            config.GoogleServingConfig,
+		"hacker_news_mode":                 string(config.HackerNewsMode),
 	}
 }
 

@@ -54,7 +54,6 @@ func TestCollectionSourceItemRequiresStableExternalIDAndCapturePolicyRedacts(t *
 		EvidenceCompleteness: EvidenceCompletenessSummaryOnly,
 		Attachments:          []SourceAttachment{{URL: "https://cdn.example.test/report.pdf", MIMEType: "application/pdf", SizeBytes: int64Pointer(1024)}},
 		Metrics:              SourceMetrics{ViewCount: int64Pointer(12), CommentCount: int64Pointer(3)},
-		RawPayload:           []byte(`{"authorization":"must-never-persist"}`),
 	})
 	if err != nil {
 		t.Fatalf("NormalizeSourceItem(): %v", err)
@@ -69,7 +68,7 @@ func TestCollectionSourceItemRequiresStableExternalIDAndCapturePolicyRedacts(t *
 		t.Fatal("NormalizeSourceItem() = nil error without a stable external ID")
 	}
 
-	captured, err := (CapturePolicy{Version: CapturedItemVersionV2, AllowBodyStorage: false, RawPayloadDisposition: RawPayloadDiscarded}).Capture(item)
+	captured, err := (CapturePolicy{Version: CapturedItemVersionV2, RawPayloadDisposition: RawPayloadDiscarded}).Capture(item)
 	if err != nil {
 		t.Fatalf("Capture(): %v", err)
 	}

@@ -218,7 +218,7 @@ func TestCollectionRepositoryReadsAndBindsCapturedItemsWithSourceOwnership(t *te
 		t.Fatalf("StartRun() started/error = %t / %v", started, err)
 	}
 	attachmentSize := int64(1024)
-	captured, err := (domain.CapturePolicy{Version: domain.CapturedItemVersionV2, AllowBodyStorage: true, RawPayloadDisposition: domain.RawPayloadDiscarded}).Capture(domain.SourceItem{
+	captured, err := (domain.CapturePolicy{Version: domain.CapturedItemVersionV2, RawPayloadDisposition: domain.RawPayloadDiscarded}).Capture(domain.SourceItem{
 		SourceCode: "rss", ExternalID: "ingestion-boundary-item", ParentExternalID: "parent-item", ContentType: "article", Title: "Capture boundary", Body: "Publisher summary",
 		URL: "https://example.test/capture-boundary", ObservedAt: request.WindowStart, EvidenceCompleteness: domain.EvidenceCompletenessSummaryOnly,
 		Attachments: []domain.SourceAttachment{{URL: "https://cdn.example.test/report.pdf", MIMEType: "application/pdf", SizeBytes: &attachmentSize}},
@@ -240,8 +240,8 @@ func TestCollectionRepositoryReadsAndBindsCapturedItemsWithSourceOwnership(t *te
 	if item.RunID != run.ID || item.SourceConnectionID != request.SourceConnectionID || item.Item.Version != domain.CapturedItemVersionV2 {
 		t.Fatalf("captured item = %#v, want source-owned v2 run item", item)
 	}
-	if item.Item.EvidenceCompleteness != domain.EvidenceCompletenessSummaryOnly || item.Item.Body != "Publisher summary" || len(item.Item.Attachments) != 1 || item.Item.Attachments[0].SizeBytes == nil || *item.Item.Attachments[0].SizeBytes != attachmentSize {
-		t.Fatalf("captured evidence metadata = %#v, want durable summary-only marker and enclosure", item.Item)
+	if item.Item.EvidenceCompleteness != domain.EvidenceCompletenessMetadataOnly || item.Item.Body != "" || len(item.Item.Attachments) != 1 || item.Item.Attachments[0].SizeBytes == nil || *item.Item.Attachments[0].SizeBytes != attachmentSize {
+		t.Fatalf("captured evidence metadata = %#v, want durable metadata-only marker and enclosure", item.Item)
 	}
 	if item.Item.ParentExternalID != "parent-item" {
 		t.Fatalf("captured parent external ID = %q, want durable parent-item", item.Item.ParentExternalID)

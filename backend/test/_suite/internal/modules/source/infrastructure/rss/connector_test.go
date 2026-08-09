@@ -43,13 +43,51 @@ func TestConnectorFetchesRSSAndAtomWithConditionalRequests(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Fetch(): %v", err)
 			}
-			if len(result.Items) == 0 || result.Items[0].ExternalID != test.externalID || len(result.Items[0].RawPayload) != 0 {
-				t.Fatalf("items = %#v, want normalized item without raw response", result.Items)
+			if len(result.Items) == 0 || result.Items[0].ExternalID != test.externalID {
+				t.Fatalf("items = %#v, want normalized item", result.Items)
 			}
 			if result.ETag != `"next-etag"` || result.LastModified != "Wed, 16 Jul 2026 08:00:00 GMT" {
 				t.Fatalf("conditional metadata = %#v", result)
 			}
+			if len(result.Snapshots) != 1 || string(result.Snapshots[0].Payload) != string(payload) || !result.Snapshots[0].VerifyPayload() {
+				t.Fatalf("snapshots = %#v, want one verifiable raw response", result.Snapshots)
+			}
+			if result.Items[0].SnapshotKey != result.Snapshots[0].Key || result.Items[0].ItemLocator == "" {
+				t.Fatalf("item evidence reference = %#v, snapshot = %#v", result.Items[0], result.Snapshots[0])
+			}
 		})
+	}
+}
+
+func TestConnectorSharesOnePageSnapshotAcrossItemsWithStableUniqueLocators(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`<?xml version="1.0"?><rss><channel>
+		<item><guid>first</guid><title>First</title></item>
+		<item><guid>second</guid><title>Second</title></item>
+	</channel></rss>`)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
+		_, _ = writer.Write(payload)
+	}))
+	defer server.Close()
+
+	connector := newTestConnector(t, server, 1, publicResolver())
+	result, err := connector.Fetch(context.Background(), testFetchRequest())
+	if err != nil {
+		t.Fatalf("Fetch(): %v", err)
+	}
+	if len(result.Snapshots) != 1 || len(result.Items) != 2 {
+		t.Fatalf("result = %#v, want one response snapshot and two items", result)
+	}
+	if result.Items[0].SnapshotKey != result.Snapshots[0].Key || result.Items[1].SnapshotKey != result.Snapshots[0].Key {
+		t.Fatalf("snapshot references = %#v, want shared key %q", result.Items, result.Snapshots[0].Key)
+	}
+	if result.Items[0].ItemLocator == "" || result.Items[0].ItemLocator == result.Items[1].ItemLocator {
+		t.Fatalf("item locators = %q, %q; want stable unique locators", result.Items[0].ItemLocator, result.Items[1].ItemLocator)
+	}
+	if string(result.Snapshots[0].Payload) != string(payload) {
+		t.Fatal("raw response was not preserved byte-for-byte in its snapshot")
 	}
 }
 
@@ -81,10 +119,13 @@ func TestConnectorReturnsNotModifiedAndClassifiesResponses(t *testing.T) {
 			connector := newTestConnector(t, server, 1, publicResolver())
 			result, err := connector.Fetch(context.Background(), testFetchRequest())
 			if test.wantKind == "" {
-				if err != nil || result.ETag != `"not-modified"` || len(result.Items) != 0 {
+				if err != nil || result.ETag != `"not-modified"` || len(result.Items) != 0 || len(result.Snapshots) != 0 {
 					t.Fatalf("304 result, error = %#v, %v", result, err)
 				}
 				return
+			}
+			if len(result.Snapshots) != 0 {
+				t.Fatalf("failed response fabricated snapshots: %#v", result.Snapshots)
 			}
 			if err == nil || domain.ClassifyCollectionError(err) != test.wantKind {
 				t.Fatalf("Fetch() error = %v, class = %q; want %q", err, domain.ClassifyCollectionError(err), test.wantKind)
@@ -96,6 +137,39 @@ func TestConnectorReturnsNotModifiedAndClassifiesResponses(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestConnectorSnapshotRecordsRequestedFinalAndRedirectChain(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/rss":
+			http.Redirect(writer, request, "https://feeds.example.test/intermediate", http.StatusFound)
+		case "/intermediate":
+			http.Redirect(writer, request, "https://feeds.example.test/final", http.StatusTemporaryRedirect)
+		case "/final":
+			writer.Header().Set("Content-Type", "application/atom+xml")
+			_, _ = writer.Write([]byte(`<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><id>redirected</id><title>Redirected</title></entry></feed>`))
+		default:
+			t.Fatalf("unexpected request path %q", request.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	connector := newTestConnector(t, server, 1, publicResolver())
+	result, err := connector.Fetch(context.Background(), testFetchRequest())
+	if err != nil {
+		t.Fatalf("Fetch(): %v", err)
+	}
+	if len(result.Snapshots) != 1 {
+		t.Fatalf("snapshots = %#v, want one", result.Snapshots)
+	}
+	snapshot := result.Snapshots[0]
+	wantRedirects := []string{"https://feeds.example.test/intermediate", "https://feeds.example.test/final"}
+	if snapshot.RequestedURL != "https://feeds.example.test/rss" || snapshot.FinalURL != wantRedirects[1] || len(snapshot.RedirectChain) != 2 || snapshot.RedirectChain[0] != wantRedirects[0] || snapshot.RedirectChain[1] != wantRedirects[1] {
+		t.Fatalf("redirect provenance = %#v, want requested/final/chain", snapshot)
 	}
 }
 
@@ -121,7 +195,8 @@ func TestConnectorClassifiesTimeoutAndInvalidXML(t *testing.T) {
 		}))
 		defer server.Close()
 		connector := newTestConnector(t, server, 1, publicResolver())
-		if _, err := connector.Fetch(context.Background(), testFetchRequest()); err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorParse {
+		result, err := connector.Fetch(context.Background(), testFetchRequest())
+		if err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorParse || len(result.Snapshots) != 0 {
 			t.Fatalf("invalid XML error = %v, class = %q; want parse", err, domain.ClassifyCollectionError(err))
 		}
 	})
@@ -173,6 +248,9 @@ func TestConnectorBoundsPaginationAndRejectsUnsafeDestinations(t *testing.T) {
 		}
 		if len(paths) != 2 || len(result.Items) != 2 || result.HasMore || result.NextCursor != "" {
 			t.Fatalf("paths/result = %#v, %#v; want two completed pages", paths, result)
+		}
+		if len(result.Snapshots) != 2 || result.Items[0].SnapshotKey == result.Items[1].SnapshotKey {
+			t.Fatalf("page evidence = %#v, %#v; want one distinct snapshot per page", result.Snapshots, result.Items)
 		}
 	})
 

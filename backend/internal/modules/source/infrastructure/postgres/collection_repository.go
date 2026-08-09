@@ -792,6 +792,9 @@ func encodedCapturedItem(item domain.CapturedItem) ([]byte, string, error) {
 	if item.Version != domain.CapturedItemVersionV2 || item.SourceCode == "" || item.ExternalID == "" || item.ContentType == "" || item.ObservedAt.IsZero() || !item.RawPayloadDisposition.Valid() || !item.EvidenceCompleteness.Valid() {
 		return nil, "", errors.New("captured item is incomplete")
 	}
+	if item.Body != "" || len(item.RawPayload) != 0 || item.RawPayloadDisposition != domain.RawPayloadDiscarded || item.EvidenceCompleteness != domain.EvidenceCompletenessMetadataOnly {
+		return nil, "", errors.New("new captured items may persist metadata only")
+	}
 	normalized, err := domain.NormalizeSourceItem(domain.SourceItem{
 		SourceCode: item.SourceCode, ExternalID: item.ExternalID, ParentExternalID: item.ParentExternalID, ContentType: item.ContentType, Title: item.Title,
 		Body: item.Body, Language: item.Language, URL: item.URL, Author: item.Author, PublishedAt: item.PublishedAt,

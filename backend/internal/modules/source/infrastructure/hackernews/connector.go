@@ -26,6 +26,7 @@ const (
 type Connector struct {
 	sourceID int64
 	client   *client
+	mode     domain.HackerNewsMode
 }
 
 type hnItem struct {
@@ -71,7 +72,7 @@ func newConnector(connection domain.SourceConnection, options clientOptions) (*C
 		return nil, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid Hacker News endpoint"))
 	}
 	timeout := time.Duration(normalized.Config.RequestTimeoutSeconds) * time.Second
-	return &Connector{sourceID: normalized.ID, client: newClient(endpoint, timeout, options)}, nil
+	return &Connector{sourceID: normalized.ID, client: newClient(endpoint, timeout, options), mode: normalized.Config.HackerNewsMode}, nil
 }
 
 func (connector *Connector) Validate(_ context.Context, connection domain.SourceConnection) error {
@@ -88,6 +89,9 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 	}
 	if connector.sourceID > 0 && request.SourceConnectionID != connector.sourceID {
 		return domain.FetchResult{}, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("Hacker News fetch request source does not match connector"))
+	}
+	if connector.mode != domain.HackerNewsModeNew {
+		return connector.fetchRanked(ctx, request)
 	}
 	cursor, initial, err := parseCursor(request.RequestCursor)
 	if err != nil {
@@ -152,6 +156,69 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 	return result, nil
 }
 
+func (connector *Connector) fetchRanked(ctx context.Context, request domain.FetchRequest) (domain.FetchResult, error) {
+	result := domain.FetchResult{Items: []domain.SourceItem{}, Diagnostics: []domain.FetchDiagnostic{}}
+	path := "topstories.json"
+	if connector.mode == domain.HackerNewsModeBest {
+		path = "beststories.json"
+	}
+	payload, retry, err := connector.client.get(ctx, path)
+	if err != nil {
+		result.RateLimit.RetryAfter = retry
+		return result, err
+	}
+	var listed []int64
+	if err := json.Unmarshal(payload, &listed); err != nil {
+		return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("decode Hacker News ranked stories"))
+	}
+	ids := make([]int64, 0, min(len(listed), request.Limit))
+	seen := make(map[int64]struct{}, len(listed))
+	for _, id := range listed {
+		if id <= 0 {
+			return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("decode Hacker News ranked story ID"))
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+		if len(ids) == request.Limit {
+			break
+		}
+	}
+	if len(ids) == 0 {
+		return result, nil
+	}
+	outcomes, failure := connector.fetchRankedItems(ctx, ids)
+	if ctx.Err() != nil {
+		return domain.FetchResult{}, canceledPageFailure(ctx.Err()).err
+	}
+	responded := 0
+	for _, outcome := range outcomes {
+		if outcome.err == nil {
+			responded++
+		}
+	}
+	if failure != nil && responded == 0 {
+		result.RateLimit.RetryAfter = failure.retryAfter
+		return result, failure.err
+	}
+	for _, outcome := range outcomes {
+		switch {
+		case outcome.diagnostic != nil:
+			result.Diagnostics = append(result.Diagnostics, *outcome.diagnostic)
+		case outcome.err != nil:
+			result.Diagnostics = append(result.Diagnostics, incompleteDiagnostic(outcomes, outcome.id))
+		default:
+			result.Items = append(result.Items, outcome.item)
+		}
+	}
+	if failure != nil {
+		result.RateLimit.RetryAfter = failure.retryAfter
+	}
+	return result, nil
+}
+
 func firstIncompleteOutcome(outcomes []itemOutcome, start, end int64) (int64, bool) {
 	index := 0
 	for id := start; id <= end; id++ {
@@ -194,10 +261,82 @@ func (connector *Connector) Health(ctx context.Context, connection domain.Source
 	if err := connector.Validate(ctx, connection); err != nil {
 		return domain.HealthResult{CheckedAt: checkedAt, ErrorKind: domain.ClassifyCollectionError(err), DiagnosticCode: "invalid_source_connection"}
 	}
-	if _, _, err := connector.client.get(ctx, "maxitem.json"); err != nil {
+	path := "maxitem.json"
+	if connector.mode == domain.HackerNewsModeTop {
+		path = "topstories.json"
+	} else if connector.mode == domain.HackerNewsModeBest {
+		path = "beststories.json"
+	}
+	if _, _, err := connector.client.get(ctx, path); err != nil {
 		return domain.HealthResult{CheckedAt: checkedAt, ErrorKind: domain.ClassifyCollectionError(err), DiagnosticCode: "request_failed"}
 	}
 	return domain.HealthResult{Healthy: true, CheckedAt: checkedAt}
+}
+
+func (connector *Connector) fetchRankedItems(parent context.Context, ids []int64) ([]itemOutcome, *itemOutcome) {
+	if err := parent.Err(); err != nil {
+		return nil, canceledPageFailure(err)
+	}
+	jobs := make(chan int64)
+	results := make(chan itemOutcome, len(ids))
+	workers := min(maxItemWorkers, len(ids))
+	var group sync.WaitGroup
+	var failureMu sync.Mutex
+	var failure *itemOutcome
+	for range workers {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			for id := range jobs {
+				outcome := connector.fetchItem(parent, id)
+				results <- outcome
+				if outcome.err != nil {
+					failureMu.Lock()
+					if failure == nil || preferredPageFailure(outcome, *failure) {
+						candidate := outcome
+						failure = &candidate
+					}
+					failureMu.Unlock()
+				}
+			}
+		}()
+	}
+	go func() {
+		defer close(jobs)
+		for _, id := range ids {
+			select {
+			case <-parent.Done():
+				return
+			case jobs <- id:
+			}
+		}
+	}()
+	go func() {
+		group.Wait()
+		close(results)
+	}()
+	byID := make(map[int64]itemOutcome, len(ids))
+	for outcome := range results {
+		byID[outcome.id] = outcome
+	}
+	ordered := make([]itemOutcome, 0, len(ids))
+	for _, id := range ids {
+		if outcome, ok := byID[id]; ok {
+			ordered = append(ordered, outcome)
+		}
+	}
+	if err := parent.Err(); err != nil {
+		return ordered, canceledPageFailure(err)
+	}
+	failureMu.Lock()
+	defer failureMu.Unlock()
+	if failure != nil {
+		return ordered, failure
+	}
+	if len(ordered) != len(ids) {
+		return ordered, &itemOutcome{err: domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("Hacker News ranked page was interrupted"))}
+	}
+	return ordered, nil
 }
 
 func parseCursor(value string) (int64, bool, error) {

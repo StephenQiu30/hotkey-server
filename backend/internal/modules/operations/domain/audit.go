@@ -13,33 +13,35 @@ type AuditAction string
 type AuditResult string
 
 const (
-	ActionMonitorCreated             AuditAction = "monitor.created"
-	ActionMonitorDraftUpdated        AuditAction = "monitor.draft_updated"
-	ActionMonitorAICandidateCreated  AuditAction = "monitor.ai_candidate_created"
-	ActionMonitorAICandidateApproved AuditAction = "monitor.ai_candidate_approved"
-	ActionMonitorAICandidateRejected AuditAction = "monitor.ai_candidate_rejected"
-	ActionMonitorPublished           AuditAction = "monitor.published"
-	ActionMonitorPaused              AuditAction = "monitor.paused"
-	ActionMonitorResumed             AuditAction = "monitor.resumed"
-	ActionMonitorArchived            AuditAction = "monitor.archived"
-	ActionMonitorRestored            AuditAction = "monitor.restored"
-	ActionMonitorDeleted             AuditAction = "monitor.deleted"
-	ActionSourceCreated              AuditAction = "source.created"
-	ActionSourceUpdated              AuditAction = "source.updated"
-	ActionSourceEnabled              AuditAction = "source.enabled"
-	ActionSourceDisabled             AuditAction = "source.disabled"
-	ActionSourceArchived             AuditAction = "source.archived"
-	ActionSourceRestored             AuditAction = "source.restored"
-	ActionMetricCapabilityDrafted    AuditAction = "metric_capability.drafted"
-	ActionMetricCapabilityPublished  AuditAction = "metric_capability.published"
-	ActionMetricCapabilityArchived   AuditAction = "metric_capability.archived"
-	ActionSubscriptionCreated        AuditAction = "subscription.created"
-	ActionSubscriptionUpdated        AuditAction = "subscription.updated"
-	ActionSubscriptionTokenRotated   AuditAction = "subscription.token_rotated"
-	ActionSubscriptionDeleted        AuditAction = "subscription.deleted"
-	ActionJobCancelled               AuditAction = "job.cancelled"
-	ActionJobRetried                 AuditAction = "job.retried"
-	ActionRetentionExecuted          AuditAction = "retention.executed"
+	ActionMonitorCreated              AuditAction = "monitor.created"
+	ActionMonitorDraftUpdated         AuditAction = "monitor.draft_updated"
+	ActionMonitorAICandidateCreated   AuditAction = "monitor.ai_candidate_created"
+	ActionMonitorAICandidateApproved  AuditAction = "monitor.ai_candidate_approved"
+	ActionMonitorAICandidateRejected  AuditAction = "monitor.ai_candidate_rejected"
+	ActionMonitorPublished            AuditAction = "monitor.published"
+	ActionMonitorPaused               AuditAction = "monitor.paused"
+	ActionMonitorResumed              AuditAction = "monitor.resumed"
+	ActionMonitorArchived             AuditAction = "monitor.archived"
+	ActionMonitorRestored             AuditAction = "monitor.restored"
+	ActionMonitorDeleted              AuditAction = "monitor.deleted"
+	ActionSourceCreated               AuditAction = "source.created"
+	ActionSourceUpdated               AuditAction = "source.updated"
+	ActionSourceEnabled               AuditAction = "source.enabled"
+	ActionSourceDisabled              AuditAction = "source.disabled"
+	ActionSourceArchived              AuditAction = "source.archived"
+	ActionSourceRestored              AuditAction = "source.restored"
+	ActionRightsPolicyCreated         AuditAction = "rights_policy.created"
+	ActionRightsDecisionBatchRecorded AuditAction = "rights_decision_batch.recorded"
+	ActionMetricCapabilityDrafted     AuditAction = "metric_capability.drafted"
+	ActionMetricCapabilityPublished   AuditAction = "metric_capability.published"
+	ActionMetricCapabilityArchived    AuditAction = "metric_capability.archived"
+	ActionSubscriptionCreated         AuditAction = "subscription.created"
+	ActionSubscriptionUpdated         AuditAction = "subscription.updated"
+	ActionSubscriptionTokenRotated    AuditAction = "subscription.token_rotated"
+	ActionSubscriptionDeleted         AuditAction = "subscription.deleted"
+	ActionJobCancelled                AuditAction = "job.cancelled"
+	ActionJobRetried                  AuditAction = "job.retried"
+	ActionRetentionExecuted           AuditAction = "retention.executed"
 
 	AuditResultSuccess AuditResult = "success"
 	AuditResultFailure AuditResult = "failure"
@@ -50,6 +52,7 @@ var allowedActions = map[AuditAction]struct{}{
 	ActionMonitorCreated: {}, ActionMonitorDraftUpdated: {}, ActionMonitorAICandidateCreated: {}, ActionMonitorAICandidateApproved: {}, ActionMonitorAICandidateRejected: {},
 	ActionMonitorPublished: {}, ActionMonitorPaused: {}, ActionMonitorResumed: {}, ActionMonitorArchived: {}, ActionMonitorRestored: {}, ActionMonitorDeleted: {},
 	ActionSourceCreated: {}, ActionSourceUpdated: {}, ActionSourceEnabled: {}, ActionSourceDisabled: {}, ActionSourceArchived: {}, ActionSourceRestored: {},
+	ActionRightsPolicyCreated: {}, ActionRightsDecisionBatchRecorded: {},
 	ActionMetricCapabilityDrafted: {}, ActionMetricCapabilityPublished: {}, ActionMetricCapabilityArchived: {},
 	ActionSubscriptionCreated: {}, ActionSubscriptionUpdated: {}, ActionSubscriptionTokenRotated: {}, ActionSubscriptionDeleted: {},
 	ActionJobCancelled: {}, ActionJobRetried: {},
@@ -58,6 +61,7 @@ var allowedActions = map[AuditAction]struct{}{
 
 var (
 	requestIDPattern                    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+	idempotencyKeyPattern               = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 	lowerHex32                          = regexp.MustCompile(`^[0-9a-f]{32}$`)
 	lowerHex64                          = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	metricCapabilityProfileVersionRegex = regexp.MustCompile(`^[a-z][a-z0-9._-]{0,63}$`)
@@ -67,17 +71,19 @@ var (
 // AuditEntry intentionally contains no free-form payload field. Before and
 // After may only use the small safe-metadata whitelist validated below.
 type AuditEntry struct {
-	ActorType    string
-	ActorID      int64
-	Action       AuditAction
-	ResourceType string
-	ResourceID   int64
-	RequestID    string
-	TraceID      string
-	Before       map[string]any
-	After        map[string]any
-	Result       AuditResult
-	IPHash       string
+	ActorType          string
+	ActorID            int64
+	Action             AuditAction
+	ResourceType       string
+	ResourceID         int64
+	RequestID          string
+	TraceID            string
+	IdempotencyKey     string
+	CommandFingerprint string
+	Before             map[string]any
+	After              map[string]any
+	Result             AuditResult
+	IPHash             string
 }
 
 func (action AuditAction) Valid() bool {
@@ -102,6 +108,9 @@ func (entry AuditEntry) Validate() error {
 	if !validRequestID(entry.RequestID) || !validTraceID(entry.TraceID) || !validIPHash(entry.IPHash) {
 		return fmt.Errorf("audit correlation identifiers are invalid")
 	}
+	if !validCommandReceipt(entry.IdempotencyKey, entry.CommandFingerprint) {
+		return fmt.Errorf("audit command receipt is invalid")
+	}
 	if err := ValidateMetadata(entry.Before); err != nil {
 		return fmt.Errorf("invalid before audit metadata: %w", err)
 	}
@@ -114,7 +123,7 @@ func (entry AuditEntry) Validate() error {
 var safeMetadataKeys = map[string]struct{}{
 	"monitor_version": {}, "draft_version": {}, "source_version": {}, "subscription_version": {}, "config_version": {}, "revision": {}, "rule_count": {}, "source_count": {},
 	"status": {}, "previous_status": {}, "approval_status": {}, "config_hash": {}, "published_at": {},
-	"enabled": {}, "deleted": {}, "credential_configured": {}, "affected": {}, "batch_size": {},
+	"enabled": {}, "deleted": {}, "credential_configured": {}, "affected": {}, "batch_size": {}, "decision_count": {},
 	"capability_source_type": {}, "capability_profile_version": {}, "capability_status": {}, "capability_profile_record_version": {}, "reason_code": {},
 }
 
@@ -167,7 +176,7 @@ func SanitizeMetadata(metadata map[string]any) map[string]any {
 
 func validMetadataValue(key string, value any) bool {
 	switch key {
-	case "monitor_version", "draft_version", "source_version", "subscription_version", "config_version", "revision", "rule_count", "source_count", "affected", "batch_size":
+	case "monitor_version", "draft_version", "source_version", "subscription_version", "config_version", "revision", "rule_count", "source_count", "affected", "batch_size", "decision_count":
 		switch value.(type) {
 		case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 			return true
@@ -224,7 +233,15 @@ func validActorType(value string) bool {
 }
 
 func validResourceType(value string) bool {
-	return value == "monitor" || value == "source_connection" || value == "metric_capability_profile" || value == "report_subscription" || value == "retention_policy" || value == "river_job"
+	return value == "monitor" || value == "source_connection" || value == "rights_policy" || value == "rights_decision_batch" ||
+		value == "metric_capability_profile" || value == "report_subscription" || value == "retention_policy" || value == "river_job"
+}
+
+func validCommandReceipt(idempotencyKey, commandFingerprint string) bool {
+	if idempotencyKey == "" || commandFingerprint == "" {
+		return idempotencyKey == "" && commandFingerprint == ""
+	}
+	return idempotencyKeyPattern.MatchString(idempotencyKey) && lowerHex64.MatchString(commandFingerprint)
 }
 
 func validRequestID(value string) bool {

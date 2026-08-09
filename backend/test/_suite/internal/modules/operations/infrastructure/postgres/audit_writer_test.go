@@ -124,6 +124,53 @@ func TestAuditEntryRejectsUnboundedCorrelationAndIdentityStrings(t *testing.T) {
 	}
 }
 
+func TestRightsAuditReceiptIsAtomicBoundedAndIdempotent(t *testing.T) {
+	runtime := newOperationsRuntime(t)
+	writer := NewAuditWriter(runtime)
+	entry := operationsdomain.AuditEntry{
+		ActorType: "user", ActorID: 42, Action: operationsdomain.ActionRightsDecisionBatchRecorded,
+		ResourceType: "rights_decision_batch", ResourceID: 9,
+		IdempotencyKey: "rights.decision.batch-9", CommandFingerprint: strings.Repeat("c", 64),
+		After: map[string]any{"decision_count": int64(3)}, Result: operationsdomain.AuditResultSuccess,
+	}
+	if err := runtime.WithinTransaction(context.Background(), func(ctx context.Context, _ database.Transaction) error {
+		return writer.Write(ctx, entry)
+	}); err != nil {
+		t.Fatalf("Write(rights audit) error = %v", err)
+	}
+	var idempotencyKey, fingerprint string
+	if err := runtime.SQL.QueryRow(`
+SELECT idempotency_key,command_fingerprint
+FROM audit_logs WHERE action=$1 AND resource_id=$2`, string(entry.Action), entry.ResourceID).
+		Scan(&idempotencyKey, &fingerprint); err != nil {
+		t.Fatalf("read rights audit receipt: %v", err)
+	}
+	if idempotencyKey != entry.IdempotencyKey || fingerprint != entry.CommandFingerprint {
+		t.Fatalf("rights audit receipt = %q/%q", idempotencyKey, fingerprint)
+	}
+	if err := runtime.WithinTransaction(context.Background(), func(ctx context.Context, _ database.Transaction) error {
+		return writer.Write(ctx, entry)
+	}); err == nil {
+		t.Fatal("duplicate rights audit receipt was persisted")
+	}
+
+	for _, mutate := range []func(*operationsdomain.AuditEntry){
+		func(candidate *operationsdomain.AuditEntry) { candidate.CommandFingerprint = "" },
+		func(candidate *operationsdomain.AuditEntry) { candidate.IdempotencyKey = "" },
+		func(candidate *operationsdomain.AuditEntry) {
+			candidate.IdempotencyKey = "raw body must not be an idempotency key"
+		},
+		func(candidate *operationsdomain.AuditEntry) { candidate.CommandFingerprint = strings.Repeat("A", 64) },
+	} {
+		candidate := entry
+		candidate.IdempotencyKey = "rights.decision.another"
+		mutate(&candidate)
+		if err := candidate.Validate(); err == nil {
+			t.Error("AuditEntry.Validate() accepted an invalid command receipt")
+		}
+	}
+}
+
 func TestAuditWriterRejectsUnknownActionsAndRollsBackWithCaller(t *testing.T) {
 	runtime := newOperationsRuntime(t)
 	writer := NewAuditWriter(runtime)
@@ -163,6 +210,7 @@ func TestAuditActionWhitelistIsClosed(t *testing.T) {
 		operationsdomain.ActionMonitorPaused, operationsdomain.ActionMonitorResumed, operationsdomain.ActionMonitorArchived, operationsdomain.ActionMonitorRestored, operationsdomain.ActionMonitorDeleted,
 		operationsdomain.ActionSourceCreated, operationsdomain.ActionSourceUpdated, operationsdomain.ActionSourceEnabled, operationsdomain.ActionSourceDisabled,
 		operationsdomain.ActionSourceArchived, operationsdomain.ActionSourceRestored,
+		operationsdomain.ActionRightsPolicyCreated, operationsdomain.ActionRightsDecisionBatchRecorded,
 		operationsdomain.ActionSubscriptionCreated, operationsdomain.ActionSubscriptionUpdated, operationsdomain.ActionSubscriptionTokenRotated, operationsdomain.ActionSubscriptionDeleted,
 	} {
 		if !action.Valid() {

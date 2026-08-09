@@ -24,6 +24,14 @@ func TestCatalogConstraintNormalizationMatchesPostgreSQLLeaseCheck(t *testing.T)
 	}
 }
 
+func TestCatalogConstraintNormalizationMatchesPostgreSQLFunctionBetweenCheck(t *testing.T) {
+	expected := normalizeCatalogExpression("CHECK (octet_length(value) BETWEEN 1 AND 2048)")
+	actual := normalizeCatalogExpression("CHECK (((octet_length(value) >= 1) AND (octet_length(value) <= 2048)))")
+	if actual != expected {
+		t.Fatalf("normalized PostgreSQL octet-length CHECK = %q, want %q", actual, expected)
+	}
+}
+
 func TestCatalogIndexNormalizationMatchesPostgreSQLInflightPredicate(t *testing.T) {
 	expected := normalizeIndexDefinition("CREATE UNIQUE INDEX ai_runs_reuse_inflight_uq ON ai_runs(reuse_key) WHERE status IN ('queued','running')")
 	actual := normalizeIndexDefinition("CREATE UNIQUE INDEX ai_runs_reuse_inflight_uq ON ai_runs USING btree (reuse_key) WHERE (status = ANY ((ARRAY['queued'::text, 'running'::text])))")

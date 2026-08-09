@@ -21,10 +21,10 @@ func TestSchemaRegistryEmbedsAndCompilesVersionedContracts(t *testing.T) {
 	if contract.SchemaName != "term-expansion-output-v1" || len(contract.OutputSchema) == 0 || strings.TrimSpace(contract.Instruction) == "" {
 		t.Fatalf("Structured() = %#v, want embedded term-expansion schema and instruction", contract)
 	}
-	if err := registry.ValidateInput(domain.TaskTypeTermExpansion, "v1", []byte(`{"intent":"AI workflow","terms":["automation"],"language":"en"}`)); err != nil {
+	if err := registry.ValidateInput(domain.TaskTypeTermExpansion, "v1", []byte(`{"objective":"AI workflow","clauses":[{"operator":"must","field":"term","value":"automation"}],"entities":[],"examples":[],"existing_candidates":[],"output_languages":["en"]}`)); err != nil {
 		t.Fatalf("ValidateInput() error = %v", err)
 	}
-	if err := registry.ValidateOutput(domain.TaskTypeTermExpansion, "v1", []byte(`{"terms":[{"term":"workflow","language":"en"}]}`)); err != nil {
+	if err := registry.ValidateOutput(domain.TaskTypeTermExpansion, "v1", []byte(`{"terms":[{"term":"workflow","language":"en","reason":"semantic wording related to the monitoring objective","similarity":0.82,"risk":"low"}]}`)); err != nil {
 		t.Fatalf("ValidateOutput() error = %v", err)
 	}
 	if err := registry.ValidateInput(domain.TaskTypeEmbedding, "v1", []byte(`{"inputs":["HotKey"],"language":"und"}`)); err != nil {
@@ -126,7 +126,7 @@ func TestSchemaRegistryRejectsUnknownOversizedAndSecondInvalidRepair(t *testing.
 	if err := registry.ValidateOutput(domain.TaskTypeTermExpansion, "v1", []byte(`{"terms":[],"raw_response":"forbidden"}`)); err == nil {
 		t.Fatal("ValidateOutput() with unknown field error = nil, want rejection")
 	}
-	oversized := `{"terms":[{"term":"` + strings.Repeat("a", 121) + `","language":"en"}]}`
+	oversized := `{"terms":[{"term":"` + strings.Repeat("a", 121) + `","language":"en","reason":"semantic wording","similarity":0.8,"risk":"low"}]}`
 	if err := registry.ValidateOutput(domain.TaskTypeTermExpansion, "v1", []byte(oversized)); err == nil {
 		t.Fatal("ValidateOutput() with overlong term error = nil, want rejection")
 	}
@@ -134,7 +134,7 @@ func TestSchemaRegistryRejectsUnknownOversizedAndSecondInvalidRepair(t *testing.
 		t.Fatal("ValidateOutput() with 1-dimensional embedding error = nil, want rejection")
 	}
 
-	invalid := []byte(`{"terms":[{"term":"workflow","language":"fr"}]}`)
+	invalid := []byte(`{"terms":[{"term":"workflow","language":"fr","reason":"semantic wording","similarity":0.8,"risk":"low"}]}`)
 	repair, err := registry.RepairForInvalidOutput(domain.TaskTypeTermExpansion, "v1", invalid, false)
 	if err != nil {
 		t.Fatalf("RepairForInvalidOutput() first error = %v", err)

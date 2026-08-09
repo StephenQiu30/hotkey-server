@@ -21,32 +21,36 @@ const (
 	CodeLastActiveAdmin      = 20005
 	// Monitor/source configuration errors are stable control-plane outcomes;
 	// callers must key behavior on these values rather than error messages.
-	CodeInvalidMonitorState         = 30000
-	CodeMonitorVersionConflict      = 30001
-	CodeInvalidMonitorConfiguration = 30002
-	CodeMonitorDraftUnavailable     = 30003
-	CodeMonitorNameConflict         = 30004
-	CodeInvalidSourceConfiguration  = 40000
-	CodeSourceConnectionRequired    = 40001
-	CodeUnsupportedSourceType       = 40002
-	CodeSourceConnectionUnavailable = 40003
-	CodeCollectionRunNotFound       = 40004
-	CodeCollectionRunConflict       = 40005
-	CodeInvalidCollectionRequest    = 40006
-	CodeAIModelProfileInvalid       = 70000
-	CodeAIModelUnavailable          = 70001
-	CodeAIBudgetExhausted           = 70002
-	CodeAIProviderRateLimited       = 70003
-	CodeAIProviderTransient         = 70004
-	CodeAIProviderTimeout           = 70005
-	CodeAIOutputInvalid             = 70006
-	CodeAIRunInProgress             = 70007
-	CodeAIEmbeddingInvalid          = 70008
-	CodeAIRunLeaseExpired           = 70009
-	CodeInternal                    = 90000
-	CodeUnavailable                 = 90001
-	CodeBadGateway                  = 90002
-	CodeDeadlineExceeded            = 90003
+	CodeInvalidMonitorState              = 30000
+	CodeMonitorVersionConflict           = 30001
+	CodeInvalidMonitorConfiguration      = 30002
+	CodeMonitorDraftUnavailable          = 30003
+	CodeMonitorNameConflict              = 30004
+	CodeMonitorIntentDraftUninitialized  = 30005
+	CodeMonitorIntentVersionConflict     = 30006
+	CodeMonitorIntentIdempotencyConflict = 30007
+	CodeMonitorIntentRunNotFound         = 30008
+	CodeInvalidSourceConfiguration       = 40000
+	CodeSourceConnectionRequired         = 40001
+	CodeUnsupportedSourceType            = 40002
+	CodeSourceConnectionUnavailable      = 40003
+	CodeCollectionRunNotFound            = 40004
+	CodeCollectionRunConflict            = 40005
+	CodeInvalidCollectionRequest         = 40006
+	CodeAIModelProfileInvalid            = 70000
+	CodeAIModelUnavailable               = 70001
+	CodeAIBudgetExhausted                = 70002
+	CodeAIProviderRateLimited            = 70003
+	CodeAIProviderTransient              = 70004
+	CodeAIProviderTimeout                = 70005
+	CodeAIOutputInvalid                  = 70006
+	CodeAIRunInProgress                  = 70007
+	CodeAIEmbeddingInvalid               = 70008
+	CodeAIRunLeaseExpired                = 70009
+	CodeInternal                         = 90000
+	CodeUnavailable                      = 90001
+	CodeBadGateway                       = 90002
+	CodeDeadlineExceeded                 = 90003
 )
 
 type CodeDefinition struct {
@@ -80,6 +84,10 @@ func init() {
 		{Code: CodeInvalidMonitorConfiguration, HTTPStatus: stdhttp.StatusBadRequest, Message: "invalid monitor configuration"},
 		{Code: CodeMonitorDraftUnavailable, HTTPStatus: stdhttp.StatusConflict, Message: "monitor draft unavailable"},
 		{Code: CodeMonitorNameConflict, HTTPStatus: stdhttp.StatusConflict, Message: "monitor name conflict"},
+		{Code: CodeMonitorIntentDraftUninitialized, HTTPStatus: stdhttp.StatusNotFound, Message: "monitor intent draft is uninitialized"},
+		{Code: CodeMonitorIntentVersionConflict, HTTPStatus: stdhttp.StatusConflict, Message: "monitor intent version conflict"},
+		{Code: CodeMonitorIntentIdempotencyConflict, HTTPStatus: stdhttp.StatusConflict, Message: "monitor intent idempotency conflict"},
+		{Code: CodeMonitorIntentRunNotFound, HTTPStatus: stdhttp.StatusNotFound, Message: "monitor intent run not found"},
 		{Code: CodeInvalidSourceConfiguration, HTTPStatus: stdhttp.StatusBadRequest, Message: "invalid source configuration"},
 		{Code: CodeSourceConnectionRequired, HTTPStatus: stdhttp.StatusConflict, Message: "source connection required"},
 		{Code: CodeUnsupportedSourceType, HTTPStatus: stdhttp.StatusBadRequest, Message: "unsupported source type"},

@@ -13,6 +13,7 @@ import (
 	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/commonmark"
 	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/table"
 	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 )
 
 // Converter is stateless and safe to reuse. A fresh upstream converter is
@@ -77,6 +78,7 @@ func sanitize(parent *html.Node, baseURL *url.URL) {
 
 func sanitizeLink(node *html.Node, baseURL *url.URL) {
 	attributes := node.Attr[:0]
+	hasSafeTarget := false
 	for _, attribute := range node.Attr {
 		if !strings.EqualFold(attribute.Key, "href") {
 			continue
@@ -84,9 +86,16 @@ func sanitizeLink(node *html.Node, baseURL *url.URL) {
 		target, ok := safeLink(attribute.Val, baseURL)
 		if ok {
 			attributes = append(attributes, html.Attribute{Key: "href", Val: target})
+			hasSafeTarget = true
 		}
 	}
 	node.Attr = attributes
+	if !hasSafeTarget {
+		// Leaving an anchor without href lets some converters synthesize the
+		// base URL as a destination. Demote it to inert text instead.
+		node.Data = "span"
+		node.DataAtom = atom.Span
+	}
 }
 
 func safeLink(value string, baseURL *url.URL) (string, bool) {

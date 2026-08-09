@@ -13,6 +13,11 @@ func TestStablePathRejectsTraversal(t *testing.T) {
 	if err != nil || path != "/tmp/vault/events/evt-1.md" {
 		t.Fatalf("path = %q/%v", path, err)
 	}
+	for _, kind := range []string{"documents", "documents/1/2/markdown", "unknown"} {
+		if _, err := StablePath("/tmp/vault", kind, "projection-hash"); err == nil {
+			t.Errorf("reserved or unknown legacy kind %q was accepted", kind)
+		}
+	}
 }
 
 func TestMergeAutomaticRegionPreservesHumanNotes(t *testing.T) {

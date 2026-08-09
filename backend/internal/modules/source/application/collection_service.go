@@ -27,6 +27,7 @@ type CollectionDependencies struct {
 	Sources    domain.SourceConnectionRepository
 	Runs       domain.CollectionRepository
 	Connectors domain.CollectionConnectorRegistry
+	Evidence   CollectionEvidenceArchiver
 	Now        func() time.Time
 
 	// Logger is optionally injected for operational diagnostics. A nil logger
@@ -39,6 +40,7 @@ type CollectionService struct {
 	sources    domain.SourceConnectionRepository
 	runs       domain.CollectionRepository
 	connectors domain.CollectionConnectorRegistry
+	evidence   CollectionEvidenceArchiver
 	now        func() time.Time
 	logger     *zap.Logger
 }
@@ -52,7 +54,7 @@ func NewCollectionService(dependencies CollectionDependencies) (*CollectionServi
 	}
 	return &CollectionService{
 		runtime: dependencies.Runtime, sources: dependencies.Sources, runs: dependencies.Runs,
-		connectors: dependencies.Connectors, now: dependencies.Now, logger: dependencies.Logger,
+		connectors: dependencies.Connectors, evidence: dependencies.Evidence, now: dependencies.Now, logger: dependencies.Logger,
 	}, nil
 }
 
@@ -163,8 +165,26 @@ func (service *CollectionService) execute(ctx context.Context, request domain.Co
 		return service.fail(ctx, run, request.Targets, result, domain.ClassifyCollectionError(fetchErr), fetchErr)
 	}
 	result.Items = filterCollectionItems(result.Items, request.Targets[0].Terms)
+	if service.evidence != nil && len(result.Items) > 0 && len(result.Snapshots) > 0 {
+		if _, err := service.evidence.ArchiveFetch(ctx, ArchiveCollectionEvidenceCommand{
+			SourceConnectionID: run.SourceConnectionID,
+			CollectionRunID:    run.ID,
+			Fetch:              rawEvidenceFetchDTOFromEntity(result),
+		}); err != nil {
+			if errors.Is(err, domain.ErrRawArchiveNotAuthorized) {
+				if service.logger != nil {
+					service.logger.Info("raw evidence archive skipped by current rights policy",
+						zap.Int64("source_connection_id", run.SourceConnectionID),
+						zap.Int64("collection_run_id", run.ID),
+					)
+				}
+			} else {
+				return service.fail(ctx, run, request.Targets, result, domain.CollectionErrorTemporary, errors.New("raw evidence archive failed"))
+			}
+		}
+	}
 	captures := make([]domain.CapturedItem, 0, len(result.Items))
-	policy := capturePolicy(*connection)
+	policy := captureMetadataPolicy()
 	for _, item := range result.Items {
 		captured, err := policy.Capture(item)
 		if err != nil {
@@ -245,13 +265,8 @@ func (service *CollectionService) fail(ctx context.Context, run domain.Collectio
 	return failed, domain.NewCollectionError(kind, cause)
 }
 
-func capturePolicy(connection domain.SourceConnection) domain.CapturePolicy {
-	disposition := domain.RawPayloadDiscarded
-	if connection.Config.AllowBodyStorage {
-		disposition = domain.RawPayloadCapturedItemOnly
-	}
+func captureMetadataPolicy() domain.CapturePolicy {
 	return domain.CapturePolicy{
-		Version: domain.CapturedItemVersionV2, AllowBodyStorage: connection.Config.AllowBodyStorage,
-		RawPayloadDisposition: disposition,
+		Version: domain.CapturedItemVersionV2, RawPayloadDisposition: domain.RawPayloadDiscarded,
 	}
 }

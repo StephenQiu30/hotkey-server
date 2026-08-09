@@ -29,11 +29,12 @@ var (
 )
 
 type Connector struct {
-	sourceID int64
-	endpoint *url.URL
-	client   *http.Client
-	maxPages int
-	now      func() time.Time
+	sourceID         int64
+	endpoint         *url.URL
+	client           *http.Client
+	maxPages         int
+	now              func() time.Time
+	collectorProfile domain.CollectorProfileVersion
 }
 
 type lookupIPAddrFunc func(context.Context, string) ([]net.IPAddr, error)
@@ -48,6 +49,8 @@ type connectorOptions struct {
 	tlsConfig   *tls.Config
 	now         func() time.Time
 }
+
+type redirectTraceContextKey struct{}
 
 // New binds the RSS Connector to one immutable SourceConnection execution
 // endpoint. Collection runs later supply only request state, never endpoints
@@ -81,6 +84,10 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 	if options.now == nil {
 		options.now = func() time.Time { return time.Now().UTC() }
 	}
+	collectorProfile, err := domain.NewCollectorProfileVersion(CollectorProfileVersion)
+	if err != nil {
+		return nil, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid RSS collector profile version"))
+	}
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
 	if options.tlsConfig != nil {
 		tlsConfig = options.tlsConfig.Clone()
@@ -106,10 +113,16 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 			if _, err := validatedRSSURLForEndpoint(endpoint, request.URL.String()); err != nil {
 				return errUnsafeDestination
 			}
+			if trace, ok := request.Context().Value(redirectTraceContextKey{}).(*[]string); ok && trace != nil {
+				*trace = append(*trace, request.URL.String())
+			}
 			return nil
 		},
 	}
-	return &Connector{sourceID: normalized.ID, endpoint: endpoint, client: client, maxPages: normalized.Config.MaxPagesPerRun, now: options.now}, nil
+	return &Connector{
+		sourceID: normalized.ID, endpoint: endpoint, client: client,
+		maxPages: normalized.Config.MaxPagesPerRun, now: options.now, collectorProfile: collectorProfile,
+	}, nil
 }
 
 func (connector *Connector) Validate(_ context.Context, connection domain.SourceConnection) error {
@@ -134,6 +147,7 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 	rootFeedRequest := strings.TrimSpace(request.RequestCursor) == ""
 	result := domain.FetchResult{
 		Items:        []domain.SourceItem{},
+		Snapshots:    []domain.EvidenceSnapshot{},
 		ETag:         request.ETag,
 		LastModified: request.LastModified,
 		Diagnostics:  []domain.FetchDiagnostic{},
@@ -143,7 +157,7 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 		if rootFeedRequest && page == 0 {
 			etag, lastModified = request.ETag, request.LastModified
 		}
-		response, err := connector.get(ctx, current, etag, lastModified)
+		response, redirectChain, err := connector.get(ctx, current, etag, lastModified)
 		if err != nil {
 			return result, connector.requestError(err)
 		}
@@ -173,13 +187,46 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 		if len(payload) > maxResponseBodyBytes {
 			return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("RSS response exceeds body byte limit"))
 		}
-		feed, err := parseFeed(payload, connector.now())
+		capturedAt := connector.now().UTC()
+		feed, err := parseFeed(payload, capturedAt)
 		if err != nil {
 			return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("parse RSS response"))
+		}
+		mimeType := response.Header.Get("Content-Type")
+		if strings.TrimSpace(mimeType) == "" {
+			mimeType = http.DetectContentType(payload)
+		}
+		finalURL := current.String()
+		if response.Request != nil && response.Request.URL != nil {
+			finalURL = response.Request.URL.String()
+		}
+		responseHeaders, err := domain.NewRawResponseHeaders(map[string][]string(response.Header))
+		if err != nil {
+			return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("validate RSS response headers"))
+		}
+		snapshot, err := domain.NewEvidenceSnapshot(domain.EvidenceSnapshot{
+			Payload: payload, MIMEType: mimeType, StatusCode: response.StatusCode,
+			RequestedURL: current.String(), FinalURL: finalURL, RedirectChain: redirectChain,
+			ResponseHeaders: responseHeaders, CapturedAt: capturedAt, CollectorProfileVersion: connector.collectorProfile,
+		})
+		if err != nil {
+			return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("validate RSS response snapshot"))
+		}
+		for index := range feed.Items {
+			feed.Items[index].SnapshotKey = snapshot.Key
+			for referenceIndex := range feed.Items[index].EvidenceReferences {
+				feed.Items[index].EvidenceReferences[referenceIndex].SnapshotKey = snapshot.Key
+			}
+			normalized, err := domain.NormalizeSourceItem(feed.Items[index])
+			if err != nil {
+				return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("bind RSS item snapshot"))
+			}
+			feed.Items[index] = normalized
 		}
 		if len(result.Items)+len(feed.Items) > request.Limit {
 			return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("RSS response exceeds collection item limit"))
 		}
+		result.Snapshots = append(result.Snapshots, snapshot)
 		result.Items = append(result.Items, feed.Items...)
 		for _, diagnostic := range feed.Diagnostics {
 			result.Diagnostics = append(result.Diagnostics, domain.FetchDiagnostic{Code: diagnostic.Code, SourceExternalID: diagnostic.SourceExternalID})
@@ -206,7 +253,7 @@ func (connector *Connector) Health(ctx context.Context, connection domain.Source
 	if err := connector.Validate(ctx, connection); err != nil {
 		return domain.HealthResult{CheckedAt: checkedAt, ErrorKind: domain.ClassifyCollectionError(err), DiagnosticCode: "invalid_source_connection"}
 	}
-	response, err := connector.get(ctx, connector.endpoint, "", "")
+	response, _, err := connector.get(ctx, connector.endpoint, "", "")
 	if err != nil {
 		diagnosticCode := "request_failed"
 		if errors.Is(err, errUnsafeDestination) || errors.Is(err, errRedirectLimit) {
@@ -245,11 +292,13 @@ func (connector *Connector) nextURL(current *url.URL, linkHeader, atomNext strin
 	return validatedRSSURLForEndpoint(connector.endpoint, next.String())
 }
 
-func (connector *Connector) get(ctx context.Context, target *url.URL, etag, lastModified string) (*http.Response, error) {
+func (connector *Connector) get(ctx context.Context, target *url.URL, etag, lastModified string) (*http.Response, []string, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
 	if err != nil {
-		return nil, errUnsafeDestination
+		return nil, nil, errUnsafeDestination
 	}
+	redirectChain := []string{}
+	request = request.WithContext(context.WithValue(request.Context(), redirectTraceContextKey{}, &redirectChain))
 	request.Header.Set("Accept", "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9")
 	if strings.TrimSpace(etag) != "" {
 		request.Header.Set("If-None-Match", strings.TrimSpace(etag))
@@ -257,7 +306,8 @@ func (connector *Connector) get(ctx context.Context, target *url.URL, etag, last
 	if strings.TrimSpace(lastModified) != "" {
 		request.Header.Set("If-Modified-Since", strings.TrimSpace(lastModified))
 	}
-	return connector.client.Do(request)
+	response, err := connector.client.Do(request)
+	return response, redirectChain, err
 }
 
 func (connector *Connector) requestError(err error) error {

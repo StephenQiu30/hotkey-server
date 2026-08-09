@@ -94,9 +94,8 @@ func (request FetchRequest) Validate() error {
 	return nil
 }
 
-// SourceItem is the stable Connector output. RawPayload exists only while a
-// Connector call is being processed; CapturePolicy intentionally never copies
-// it into a CapturedItem.
+// SourceItem is the stable Connector output. It refers to one response
+// snapshot and an item locator, but never owns or copies raw upstream bytes.
 type SourceItem struct {
 	SourceCode           string
 	ExternalID           string
@@ -112,7 +111,9 @@ type SourceItem struct {
 	EvidenceCompleteness EvidenceCompleteness
 	Attachments          []SourceAttachment
 	Metrics              SourceMetrics
-	RawPayload           []byte
+	SnapshotKey          string
+	ItemLocator          string
+	EvidenceReferences   []EvidenceReference
 }
 
 type SourceMetrics struct {
@@ -145,6 +146,43 @@ func NormalizeSourceItem(item SourceItem) (SourceItem, error) {
 	item.Language = strings.TrimSpace(item.Language)
 	item.URL = strings.TrimSpace(item.URL)
 	item.Author = strings.TrimSpace(item.Author)
+	item.SnapshotKey = strings.ToLower(strings.TrimSpace(item.SnapshotKey))
+	item.ItemLocator = strings.TrimSpace(item.ItemLocator)
+	if (item.SnapshotKey == "") != (item.ItemLocator == "") {
+		return SourceItem{}, fmt.Errorf("source item snapshot reference is incomplete")
+	}
+	if item.SnapshotKey != "" && (!validSHA256(item.SnapshotKey) || len(item.ItemLocator) > 1024 || strings.ContainsAny(item.ItemLocator, "\x00\r\n")) {
+		return SourceItem{}, fmt.Errorf("source item snapshot reference is invalid")
+	}
+	if len(item.EvidenceReferences) > MaxEvidenceReferences {
+		return SourceItem{}, fmt.Errorf("source item evidence reference count exceeds %d", MaxEvidenceReferences)
+	}
+	references := make([]EvidenceReference, 0, len(item.EvidenceReferences))
+	seenReferences := make(map[string]struct{}, len(item.EvidenceReferences))
+	for _, reference := range item.EvidenceReferences {
+		reference.SnapshotKey = strings.ToLower(strings.TrimSpace(reference.SnapshotKey))
+		reference.LocatorValue = strings.TrimSpace(reference.LocatorValue)
+		reference.SelectedPayloadSHA256 = strings.ToLower(strings.TrimSpace(reference.SelectedPayloadSHA256))
+		reference.SelectorVersion = strings.TrimSpace(reference.SelectorVersion)
+		if err := reference.Validate(); err != nil {
+			return SourceItem{}, err
+		}
+		identity := reference.SnapshotKey + "\x00" + string(reference.LocatorType) + "\x00" + reference.LocatorValue
+		if _, exists := seenReferences[identity]; exists {
+			return SourceItem{}, fmt.Errorf("source item evidence reference is duplicated")
+		}
+		seenReferences[identity] = struct{}{}
+		references = append(references, reference)
+	}
+	item.EvidenceReferences = references
+	if len(references) > 0 {
+		if item.SnapshotKey == "" && item.ItemLocator == "" {
+			item.SnapshotKey = references[0].SnapshotKey
+			item.ItemLocator = references[0].LocatorValue
+		} else if item.SnapshotKey != references[0].SnapshotKey || item.ItemLocator != references[0].LocatorValue {
+			return SourceItem{}, fmt.Errorf("source item primary evidence reference is inconsistent")
+		}
+	}
 	if !item.EvidenceCompleteness.Valid() {
 		return SourceItem{}, fmt.Errorf("source item evidence completeness is invalid")
 	}
@@ -218,7 +256,6 @@ func normalizeSourceAttachments(attachments []SourceAttachment) ([]SourceAttachm
 // shape or retain raw upstream bytes.
 type CapturePolicy struct {
 	Version               string
-	AllowBodyStorage      bool
 	RawPayloadDisposition RawPayloadDisposition
 }
 
@@ -226,8 +263,8 @@ func (policy CapturePolicy) Validate() error {
 	if policy.Version != CapturedItemVersionV2 {
 		return fmt.Errorf("unsupported captured item version %q", policy.Version)
 	}
-	if !policy.RawPayloadDisposition.Valid() {
-		return fmt.Errorf("raw payload disposition is invalid")
+	if policy.RawPayloadDisposition != RawPayloadDiscarded {
+		return fmt.Errorf("new captured items must discard transient body and raw payload bytes")
 	}
 	return nil
 }
@@ -271,11 +308,10 @@ func (policy CapturePolicy) Capture(item SourceItem) (CapturedItem, error) {
 		publishedAt := normalized.PublishedAt.UTC()
 		captured.PublishedAt = &publishedAt
 	}
-	if policy.AllowBodyStorage {
-		captured.Body = normalized.Body
-	} else {
-		captured.EvidenceCompleteness = EvidenceCompletenessMetadataOnly
-	}
+	// CapturedItem remains a metadata compatibility projection. Rights-aware
+	// raw evidence and immutable DocumentVersion artifacts are the only new
+	// body persistence path; legacy allow_body_storage is not authorization.
+	captured.EvidenceCompleteness = EvidenceCompletenessMetadataOnly
 	return captured, nil
 }
 

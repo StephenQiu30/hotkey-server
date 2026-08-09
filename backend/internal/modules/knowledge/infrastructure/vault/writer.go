@@ -1,13 +1,19 @@
 package vault
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
+	knowledgeapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/domain"
+	"github.com/google/uuid"
 )
 
 type Writer struct {
@@ -21,6 +27,150 @@ func NewWriter(root string) *Writer {
 		absolute = filepath.Clean(root)
 	}
 	return &Writer{root: absolute}
+}
+
+// PutIfAbsent writes an immutable document projection without exposing an
+// absolute Vault path. A repeated identical write is idempotent; a different
+// payload for the same document version is a conflict and never overwrites
+// the existing projection.
+func (writer *Writer) PutIfAbsent(ctx context.Context, command knowledgeapplication.StoreProjectionCommand) (knowledgeapplication.ProjectionStoreReceiptDTO, error) {
+	if writer == nil {
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, fmt.Errorf("vault writer is required")
+	}
+	projection, err := projectionManifestFromStoreCommand(command)
+	if err != nil {
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, err
+	}
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+
+	relativePath, err := validateProjectionRelativePath(projection.relativePath)
+	if err != nil {
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, err
+	}
+	root, err := writer.openRoot()
+	if err != nil {
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, err
+	}
+	defer root.Close()
+	if receipt, found, err := projectionReceiptAt(root, relativePath, projection); err != nil {
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, err
+	} else if found {
+		return receipt, nil
+	}
+	directory := filepath.Dir(relativePath)
+	if err := root.MkdirAll(directory, 0o755); err != nil {
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, err
+	}
+	if err := rejectRootSymlinkComponents(root, directory); err != nil {
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, err
+	}
+	temporaryPath := filepath.Join(directory, ".hotkey-projection-"+uuid.NewString()+".tmp")
+	temporary, err := root.OpenFile(temporaryPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, err
+	}
+	defer root.Remove(temporaryPath)
+	if _, err := temporary.Write(projection.content); err != nil {
+		_ = temporary.Close()
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, err
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, err
+	}
+	if err := temporary.Close(); err != nil {
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, err
+	}
+	// A hard link publishes the complete temporary file atomically and fails
+	// with EEXIST instead of replacing an immutable target.
+	if err := root.Link(temporaryPath, relativePath); err != nil {
+		if !os.IsExist(err) {
+			return knowledgeapplication.ProjectionStoreReceiptDTO{}, err
+		}
+		if receipt, found, verifyErr := projectionReceiptAt(root, relativePath, projection); verifyErr != nil {
+			return knowledgeapplication.ProjectionStoreReceiptDTO{}, verifyErr
+		} else if found {
+			return receipt, nil
+		}
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, knowledgeapplication.ErrProjectionConflict
+	}
+	if err := syncRootDirectory(root, directory); err != nil {
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, err
+	}
+	return projectionReceipt(projection), nil
+}
+
+// ReadProjection verifies the caller's immutable receipt against both the
+// deterministic path and the bytes on disk before returning content.
+func (writer *Writer) ReadProjection(ctx context.Context, command knowledgeapplication.ReadStoredProjectionCommand) (knowledgeapplication.StoredProjectionContentDTO, error) {
+	if writer == nil {
+		return knowledgeapplication.StoredProjectionContentDTO{}, fmt.Errorf("vault writer is required")
+	}
+	receipt, err := projectionReceiptRecordFromDTO(command.Receipt)
+	if err != nil {
+		return knowledgeapplication.StoredProjectionContentDTO{}, err
+	}
+	if command.MaxBytes <= 0 {
+		return knowledgeapplication.StoredProjectionContentDTO{}, knowledgeapplication.ErrProjectionInvalid
+	}
+	if receipt.sizeBytes > command.MaxBytes {
+		return knowledgeapplication.StoredProjectionContentDTO{}, knowledgeapplication.ErrProjectionTooLarge
+	}
+	if err := ctx.Err(); err != nil {
+		return knowledgeapplication.StoredProjectionContentDTO{}, err
+	}
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	relativePath, err := validateProjectionRelativePath(receipt.relativePath)
+	if err != nil {
+		return knowledgeapplication.StoredProjectionContentDTO{}, err
+	}
+	root, err := writer.openRoot()
+	if err != nil {
+		return knowledgeapplication.StoredProjectionContentDTO{}, err
+	}
+	defer root.Close()
+	if err := rejectRootSymlinkComponents(root, filepath.Dir(relativePath)); err != nil {
+		return knowledgeapplication.StoredProjectionContentDTO{}, err
+	}
+	info, err := root.Lstat(relativePath)
+	if err != nil {
+		return knowledgeapplication.StoredProjectionContentDTO{}, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return knowledgeapplication.StoredProjectionContentDTO{}, fmt.Errorf("%w: projection is not a regular file", knowledgeapplication.ErrProjectionIntegrity)
+	}
+	file, err := root.Open(relativePath)
+	if err != nil {
+		return knowledgeapplication.StoredProjectionContentDTO{}, err
+	}
+	defer file.Close()
+	openedInfo, err := file.Stat()
+	if err != nil || !os.SameFile(info, openedInfo) {
+		return knowledgeapplication.StoredProjectionContentDTO{}, fmt.Errorf("%w: projection changed during read", knowledgeapplication.ErrProjectionIntegrity)
+	}
+	content, err := io.ReadAll(io.LimitReader(file, command.MaxBytes+1))
+	if err != nil {
+		return knowledgeapplication.StoredProjectionContentDTO{}, err
+	}
+	if int64(len(content)) > command.MaxBytes {
+		return knowledgeapplication.StoredProjectionContentDTO{}, knowledgeapplication.ErrProjectionTooLarge
+	}
+	digest := sha256.Sum256(content)
+	actualSHA := hex.EncodeToString(digest[:])
+	if int64(len(content)) != receipt.sizeBytes || actualSHA != receipt.sha256 {
+		return knowledgeapplication.StoredProjectionContentDTO{}, knowledgeapplication.ErrProjectionIntegrity
+	}
+	return knowledgeapplication.StoredProjectionContentDTO{
+		Content: content, MIMEType: receipt.mimeType, SHA256: actualSHA, SizeBytes: int64(len(content)),
+	}, nil
 }
 
 func (writer *Writer) Write(kind, key, content string) (string, error) {
@@ -187,6 +337,20 @@ func (writer *Writer) safePath(kind, key string) (string, error) {
 	return path, nil
 }
 
+func (writer *Writer) openRoot() (*os.Root, error) {
+	if err := writer.ensureRoot(); err != nil {
+		return nil, err
+	}
+	return os.OpenRoot(writer.root)
+}
+
+func validateProjectionRelativePath(relativePath string) (string, error) {
+	if relativePath == "" || filepath.IsAbs(relativePath) || filepath.ToSlash(filepath.Clean(relativePath)) != relativePath || !strings.HasPrefix(relativePath, "documents/") {
+		return "", fmt.Errorf("invalid projection path")
+	}
+	return filepath.FromSlash(relativePath), nil
+}
+
 func (writer *Writer) ensureRoot() error {
 	if strings.TrimSpace(writer.root) == "" {
 		return fmt.Errorf("vault root is required")
@@ -251,3 +415,126 @@ func (writer *Writer) writeAtomic(path, content string) (string, error) {
 	}
 	return path, nil
 }
+
+type projectionManifest struct {
+	documentID, documentVersionID int64
+	format                        string
+	transformerProfileSHA256      string
+	relativePath, mimeType        string
+	content                       []byte
+	sha256                        string
+}
+
+type projectionReceiptRecord struct {
+	documentID, documentVersionID int64
+	format                        string
+	transformerProfileSHA256      string
+	relativePath, mimeType        string
+	sha256                        string
+	sizeBytes                     int64
+}
+
+func projectionManifestFromStoreCommand(command knowledgeapplication.StoreProjectionCommand) (projectionManifest, error) {
+	if err := knowledgeapplication.ValidateStoreProjectionCommand(command); err != nil {
+		return projectionManifest{}, err
+	}
+	return projectionManifest{
+		documentID: command.DocumentID, documentVersionID: command.DocumentVersionID,
+		format: command.Format, transformerProfileSHA256: command.TransformerProfileSHA256,
+		relativePath: command.RelativePath, mimeType: command.MIMEType,
+		content: append([]byte(nil), command.Content...), sha256: command.SHA256,
+	}, nil
+}
+
+func projectionReceiptRecordFromDTO(receipt knowledgeapplication.ProjectionStoreReceiptDTO) (projectionReceiptRecord, error) {
+	if err := knowledgeapplication.ValidateProjectionStoreReceiptDTO(receipt); err != nil {
+		return projectionReceiptRecord{}, err
+	}
+	return projectionReceiptRecord{
+		documentID: receipt.DocumentID, documentVersionID: receipt.DocumentVersionID,
+		format: receipt.Format, transformerProfileSHA256: receipt.TransformerProfileSHA256,
+		relativePath: receipt.RelativePath, mimeType: receipt.MIMEType,
+		sha256: receipt.SHA256, sizeBytes: receipt.SizeBytes,
+	}, nil
+}
+
+func projectionReceipt(projection projectionManifest) knowledgeapplication.ProjectionStoreReceiptDTO {
+	return knowledgeapplication.ProjectionStoreReceiptDTO{
+		DocumentID: projection.documentID, DocumentVersionID: projection.documentVersionID,
+		Format: projection.format, TransformerProfileSHA256: projection.transformerProfileSHA256,
+		RelativePath: projection.relativePath, MIMEType: projection.mimeType, SHA256: projection.sha256,
+		SizeBytes: int64(len(projection.content)),
+	}
+}
+
+func projectionReceiptAt(root *os.Root, relativePath string, projection projectionManifest) (knowledgeapplication.ProjectionStoreReceiptDTO, bool, error) {
+	if err := rejectRootSymlinkComponents(root, filepath.Dir(relativePath)); err != nil {
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, false, err
+	}
+	info, err := root.Lstat(relativePath)
+	if os.IsNotExist(err) {
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, false, nil
+	}
+	if err != nil {
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, false, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, false, fmt.Errorf("%w: projection is not a regular file", knowledgeapplication.ErrProjectionIntegrity)
+	}
+	if info.Size() != int64(len(projection.content)) {
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, false, knowledgeapplication.ErrProjectionConflict
+	}
+	file, err := root.Open(relativePath)
+	if err != nil {
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, false, err
+	}
+	defer file.Close()
+	openedInfo, err := file.Stat()
+	if err != nil || !os.SameFile(info, openedInfo) {
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, false, fmt.Errorf("%w: projection changed during read", knowledgeapplication.ErrProjectionIntegrity)
+	}
+	content, err := io.ReadAll(io.LimitReader(file, info.Size()+1))
+	if err != nil {
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, false, err
+	}
+	digest := sha256.Sum256(content)
+	if int64(len(content)) != int64(len(projection.content)) || hex.EncodeToString(digest[:]) != projection.sha256 {
+		return knowledgeapplication.ProjectionStoreReceiptDTO{}, false, knowledgeapplication.ErrProjectionConflict
+	}
+	return projectionReceipt(projection), true, nil
+}
+
+func syncRootDirectory(root *os.Root, directory string) error {
+	handle, err := root.Open(directory)
+	if err != nil {
+		return err
+	}
+	defer handle.Close()
+	return handle.Sync()
+}
+
+func rejectRootSymlinkComponents(root *os.Root, target string) error {
+	current := "."
+	for _, component := range strings.Split(filepath.Clean(target), string(filepath.Separator)) {
+		if component == "." || component == "" {
+			continue
+		}
+		current = filepath.Join(current, component)
+		info, err := root.Lstat(current)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("vault path contains symlink")
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("vault path component is not a directory")
+		}
+	}
+	return nil
+}
+
+var _ knowledgeapplication.ProjectionStore = (*Writer)(nil)

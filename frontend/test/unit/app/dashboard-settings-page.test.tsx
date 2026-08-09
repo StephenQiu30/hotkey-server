@@ -151,6 +151,9 @@ describe("MonitorsPage", () => {
       expect.objectContaining({ expected_monitor_version: 4, expected_draft_version: 3, name: "AI releases" }),
     ));
     await openMonitorActions(user);
+    expect(
+      screen.getByRole("menuitem", { name: "编辑语义意图" })
+    ).toHaveAttribute("href", "/dashboard/settings/monitors/1/intent");
     expect(screen.queryByRole("menuitem", { name: "预览并发布" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "暂停" })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "立即搜索" })).toBeInTheDocument();

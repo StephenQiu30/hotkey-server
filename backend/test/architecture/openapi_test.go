@@ -29,6 +29,7 @@ type openAPIOperation struct {
 type openAPIParameter struct {
 	Name             string   `json:"name"`
 	In               string   `json:"in"`
+	Required         bool     `json:"required"`
 	Type             string   `json:"type"`
 	Enum             []string `json:"enum"`
 	Minimum          *float64 `json:"minimum"`
@@ -102,127 +103,140 @@ func TestOpenAPIContract(t *testing.T) {
 	}
 
 	required := map[string]map[string][]string{
-		"/api/v1/capabilities":                                              {"get": {"200"}},
-		"/api/v1/agent-tokens":                                              {"get": {"200", "401", "503"}, "post": {"201", "400", "401", "403", "409", "503"}},
-		"/api/v1/agent-tokens/{id}/revoke":                                  {"post": {"200", "400", "401", "404", "409", "503"}},
-		"/api/v1/agent/monitors":                                            {"get": {"200", "400", "401", "503"}},
-		"/api/v1/agent/monitors/{id}":                                       {"get": {"200", "400", "401", "409", "503"}},
-		"/api/v1/agent/monitors/{id}/collect":                               {"post": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/agent/contents":                                            {"get": {"200", "400", "401", "404", "503"}},
-		"/api/v1/agent/contents/{id}":                                       {"get": {"200", "400", "401", "404", "503"}},
-		"/api/v1/agent/contents/{id}/document":                              {"get": {"200", "400", "401", "404", "503"}},
-		"/api/v1/agent/events":                                              {"get": {"200", "400", "401", "503"}},
-		"/api/v1/agent/events/{id}":                                         {"get": {"200", "400", "401", "404"}},
-		"/api/v1/agent/events/{id}/contents":                                {"get": {"200", "400", "401", "404"}},
-		"/api/v1/agent/events/{id}/heat":                                    {"get": {"200", "400", "401", "404", "503"}},
-		"/api/v1/agent/events/{id}/intelligence":                            {"get": {"200", "400", "401", "404", "503"}},
-		"/api/v1/agent/events/{id}/updates":                                 {"get": {"200", "400", "401", "404", "503"}},
-		"/api/v1/agent/radar/events":                                        {"get": {"200", "400", "401", "404", "503"}},
-		"/api/v1/agent/alerts":                                              {"get": {"200", "400", "401", "503"}},
-		"/api/v1/agent/alerts/{id}":                                         {"get": {"200", "400", "401", "404", "503"}},
-		"/api/v1/agent/alerts/{id}/acknowledge":                             {"post": {"200", "400", "401", "404", "409", "503"}},
-		"/api/v1/agent/alerts/{id}/resolve":                                 {"post": {"200", "400", "401", "404", "409", "503"}},
-		"/api/v1/agent/reports":                                             {"get": {"200", "400", "401", "503"}},
-		"/api/v1/agent/reports/{id}":                                        {"get": {"200", "400", "401", "404", "503"}},
-		"/api/v1/auth/email-verifications":                                  {"post": {"200", "400", "429", "503"}},
-		"/api/v1/auth/email-verifications/confirm":                          {"post": {"200", "400", "429", "503"}},
-		"/api/v1/auth/registrations":                                        {"post": {"201", "400", "409", "503"}},
-		"/api/v1/auth/login":                                                {"post": {"200", "400", "401", "503"}},
-		"/api/v1/auth/refresh":                                              {"post": {"200", "401", "403", "503"}},
-		"/api/v1/auth/logout":                                               {"post": {"200", "403", "503"}},
-		"/api/v1/auth/me":                                                   {"get": {"200", "401"}},
-		"/api/v1/auth/password":                                             {"post": {"200", "400", "401", "503"}},
-		"/api/v1/auth/password-resets/confirm":                              {"post": {"200", "400", "503"}},
-		"/api/v1/users":                                                     {"get": {"200", "401", "403", "503"}},
-		"/api/v1/users/{id}":                                                {"patch": {"200", "400", "401", "403", "409", "503"}, "delete": {"200", "401", "403", "409", "503"}},
-		"/api/v1/users/{id}/restore":                                        {"post": {"200", "401", "403", "409", "503"}},
-		"/api/v1/monitors":                                                  {"get": {"200", "400", "401", "503"}, "post": {"201", "400", "401", "403", "409", "503"}},
-		"/api/v1/monitors/{id}":                                             {"get": {"200", "400", "401", "409", "503"}, "delete": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/monitors/{id}/versions":                                    {"get": {"200", "400", "401", "409", "503"}},
-		"/api/v1/monitors/{id}/draft":                                       {"put": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/monitors/{id}/draft/ai-candidates":                         {"post": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/monitors/{id}/draft/rules/{rule_id}/approval":              {"post": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/monitors/{id}/preview":                                     {"post": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/monitors/{id}/publish":                                     {"post": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/monitors/{id}/pause":                                       {"post": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/monitors/{id}/resume":                                      {"post": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/monitors/{id}/archive":                                     {"post": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/monitors/{id}/restore":                                     {"post": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/source-connections":                                        {"get": {"200", "400", "401", "503"}, "post": {"201", "400", "401", "403", "409", "503"}},
-		"/api/v1/source-connections/{id}":                                   {"get": {"200", "400", "401", "409", "503"}, "patch": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/source-connections/{id}/enable":                            {"post": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/source-connections/{id}/disable":                           {"post": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/source-connections/{id}/archive":                           {"post": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/source-connections/{id}/restore":                           {"post": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/source-webhooks/bilibili":                                  {"post": {"200", "400", "401"}},
-		"/api/v1/metric-capability-profiles":                                {"post": {"201", "400", "401", "403", "409", "503"}},
-		"/api/v1/metric-capability-profiles/{id}/publish":                   {"post": {"200", "400", "401", "403", "404", "409", "503"}},
-		"/api/v1/metric-capability-profiles/{id}/archive":                   {"post": {"200", "400", "401", "403", "404", "409", "503"}},
-		"/api/v1/collection-runs":                                           {"get": {"200", "400", "401", "403", "503"}},
-		"/api/v1/collection-runs/{id}/retry":                                {"post": {"200", "400", "401", "403", "404", "409", "503"}},
-		"/api/v1/monitors/{id}/collect":                                     {"post": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/source-connections/{id}/health":                            {"post": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/operations/jobs":                                           {"get": {"200", "400", "401", "403", "503"}},
-		"/api/v1/operations/jobs/{id}/cancel":                               {"post": {"200", "400", "401", "403", "404", "409", "503"}},
-		"/api/v1/operations/jobs/{id}/retry":                                {"post": {"200", "400", "401", "403", "404", "409", "503"}},
-		"/api/v1/operations/overview":                                       {"get": {"200", "401", "403", "503"}},
-		"/api/v1/operations/usage":                                          {"get": {"200", "401", "403", "503"}},
-		"/api/v1/operations/retention-policies":                             {"get": {"200", "401", "403", "503"}},
-		"/api/v1/operations/retention-policies/{id}/preview":                {"post": {"200", "400", "401", "403", "404", "409"}},
-		"/api/v1/operations/retention-policies/{id}/run":                    {"post": {"200", "400", "401", "403", "404", "409"}},
-		"/api/v1/operations/audit-logs":                                     {"get": {"200", "400", "401", "403", "503"}},
-		"/api/v1/knowledge/documents":                                       {"get": {"200"}},
-		"/api/v1/knowledge/documents/{id}":                                  {"get": {"200"}},
-		"/api/v1/knowledge/proposals":                                       {"get": {"200"}, "post": {"200", "400", "401", "403", "409"}},
-		"/api/v1/knowledge/proposals/{id}":                                  {"get": {"200"}},
-		"/api/v1/knowledge/proposals/{id}/approve":                          {"post": {"200", "400", "401", "403", "409"}},
-		"/api/v1/knowledge/proposals/{id}/reject":                           {"post": {"200", "400", "401", "403", "409"}},
-		"/api/v1/knowledge/proposals/{id}/apply":                            {"post": {"200", "400", "401", "403", "409"}},
-		"/api/v1/knowledge/reconcile":                                       {"post": {"200", "401", "403", "503"}},
-		"/api/v1/contents":                                                  {"get": {"200", "400", "401", "404", "503"}},
-		"/api/v1/contents/{id}":                                             {"get": {"200", "400", "401", "404", "503"}},
-		"/api/v1/contents/{id}/document":                                    {"get": {"200", "400", "401", "404", "503"}},
-		"/api/v1/monitors/{id}/matches":                                     {"get": {"200", "400", "401", "404", "503"}},
-		"/api/v1/monitors/{id}/matches/{match_id}":                          {"get": {"200", "400", "401", "404", "503"}},
-		"/api/v1/monitors/{id}/relevance-preview":                           {"post": {"200", "400", "401", "403", "404", "503"}},
-		"/api/v1/monitors/{id}/matches/{match_id}/feedback":                 {"put": {"200", "400", "401", "403", "404", "409", "503"}},
-		"/api/v1/monitors/{id}/contents/{content_id}/feedback":              {"put": {"200", "400", "401", "403", "404", "409", "503"}},
-		"/api/v1/monitors/{id}/feedback/evaluation":                         {"get": {"200", "400", "401", "403", "404", "503"}},
-		"/api/v1/monitors/{id}/feedback/suggestions/refresh":                {"post": {"200", "400", "401", "403", "404", "503"}},
-		"/api/v1/monitors/{id}/feedback/suggestions":                        {"get": {"200", "400", "401", "403", "404", "503"}},
-		"/api/v1/monitors/{id}/feedback/suggestions/{suggestion_id}/review": {"post": {"200", "400", "401", "403", "404", "409", "503"}},
-		"/api/v1/ai/model-profiles":                                         {"get": {"200", "401", "403", "503"}, "post": {"201", "400", "401", "403", "503"}},
-		"/api/v1/ai/model-profiles/{id}":                                    {"get": {"200", "400", "401", "403", "503"}, "patch": {"200", "400", "401", "403", "409", "503"}, "delete": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/ai/model-profiles/{id}/restore":                            {"post": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/events":                                                    {"get": {"200", "400", "401", "503"}},
-		"/api/v1/events/{id}":                                               {"get": {"200", "400", "401", "404"}},
-		"/api/v1/events/{id}/contents":                                      {"get": {"200", "400", "401", "404"}},
-		"/api/v1/events/{id}/heat":                                          {"get": {"200", "400", "401", "404", "503"}},
-		"/api/v1/events/{id}/claims":                                        {"post": {"200", "400", "401", "403", "409", "503"}},
-		"/api/v1/events/{id}/intelligence":                                  {"get": {"200", "400", "401", "404", "503"}},
-		"/api/v1/events/{id}/intelligence/summary/regenerate":               {"post": {"200", "400", "401", "403", "404", "409", "503"}},
-		"/api/v1/events/{id}/intelligence/extract":                          {"post": {"200", "400", "401", "403", "404", "409", "503"}},
-		"/api/v1/events/{id}/contents/{content_id}/lock":                    {"post": {"200", "400", "401", "403", "404", "409"}},
-		"/api/v1/events/{id}/lifecycle":                                     {"post": {"200", "400", "401", "403", "409"}},
-		"/api/v1/events/{id}/merge":                                         {"post": {"200", "400", "401", "403", "409"}},
-		"/api/v1/events/{id}/split":                                         {"post": {"200", "400", "401", "403", "404", "409"}},
-		"/api/v1/radar/events":                                              {"get": {"200", "400", "401", "404", "503"}},
-		"/api/v1/events/{id}/updates":                                       {"get": {"200", "400", "401", "404", "503"}},
-		"/api/v1/alerts":                                                    {"get": {"200", "400", "401", "503"}},
-		"/api/v1/alerts/{id}":                                               {"get": {"200", "400", "401", "404", "503"}},
-		"/api/v1/alerts/{id}/acknowledge":                                   {"post": {"200", "400", "401", "404", "409", "503"}},
-		"/api/v1/alerts/{id}/resolve":                                       {"post": {"200", "400", "401", "404", "409", "503"}},
-		"/api/v1/alerts/{id}/suppress":                                      {"post": {"200", "400", "401", "403", "404", "409", "503"}},
-		"/api/v1/reports":                                                   {"get": {"200", "400", "401", "503"}, "post": {"200", "400", "401", "403", "409"}},
-		"/api/v1/reports/{id}":                                              {"get": {"200", "400", "401", "404", "503"}},
-		"/api/v1/reports/{id}/preview":                                      {"post": {"200", "400", "401", "404", "503"}},
-		"/api/v1/reports/{id}/build":                                        {"post": {"200", "400", "401", "403", "404", "409", "503"}},
-		"/api/v1/reports/{id}/publish":                                      {"post": {"200", "400", "401", "403", "404", "409", "503"}},
-		"/api/v1/report-subscriptions":                                      {"get": {"200", "401", "503"}, "post": {"201", "400", "401", "409", "503"}},
-		"/api/v1/report-subscriptions/{id}":                                 {"get": {"200", "400", "401", "404", "503"}, "patch": {"200", "400", "401", "404", "409", "503"}, "delete": {"200", "400", "401", "404", "409", "503"}},
-		"/api/v1/report-subscriptions/{id}/rss-token/rotate":                {"post": {"200", "400", "401", "404", "409", "503"}},
-		"/api/v1/notifications":                                             {"get": {"200", "400", "401", "503"}},
-		"/api/v1/notifications/stream":                                      {"get": {"200", "400", "401", "503"}},
+		"/api/v1/capabilities":                                {"get": {"200"}},
+		"/api/v1/agent-tokens":                                {"get": {"200", "401", "503"}, "post": {"201", "400", "401", "403", "409", "503"}},
+		"/api/v1/agent-tokens/{id}/revoke":                    {"post": {"200", "400", "401", "404", "409", "503"}},
+		"/api/v1/agent/monitors":                              {"get": {"200", "400", "401", "503"}},
+		"/api/v1/agent/monitors/{id}":                         {"get": {"200", "400", "401", "409", "503"}},
+		"/api/v1/agent/monitors/{id}/collect":                 {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/agent/contents":                              {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/agent/contents/{id}":                         {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/agent/contents/{id}/document":                {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/agent/events":                                {"get": {"200", "400", "401", "503"}},
+		"/api/v1/agent/events/{id}":                           {"get": {"200", "400", "401", "404"}},
+		"/api/v1/agent/events/{id}/contents":                  {"get": {"200", "400", "401", "404"}},
+		"/api/v1/agent/events/{id}/heat":                      {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/agent/events/{id}/intelligence":              {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/agent/events/{id}/updates":                   {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/agent/radar/events":                          {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/agent/alerts":                                {"get": {"200", "400", "401", "503"}},
+		"/api/v1/agent/alerts/{id}":                           {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/agent/alerts/{id}/acknowledge":               {"post": {"200", "400", "401", "404", "409", "503"}},
+		"/api/v1/agent/alerts/{id}/resolve":                   {"post": {"200", "400", "401", "404", "409", "503"}},
+		"/api/v1/agent/reports":                               {"get": {"200", "400", "401", "503"}},
+		"/api/v1/agent/reports/{id}":                          {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/auth/email-verifications":                    {"post": {"200", "400", "429", "503"}},
+		"/api/v1/auth/email-verifications/confirm":            {"post": {"200", "400", "429", "503"}},
+		"/api/v1/auth/registrations":                          {"post": {"201", "400", "409", "503"}},
+		"/api/v1/auth/login":                                  {"post": {"200", "400", "401", "503"}},
+		"/api/v1/auth/refresh":                                {"post": {"200", "401", "403", "503"}},
+		"/api/v1/auth/logout":                                 {"post": {"200", "403", "503"}},
+		"/api/v1/auth/me":                                     {"get": {"200", "401"}},
+		"/api/v1/auth/password":                               {"post": {"200", "400", "401", "503"}},
+		"/api/v1/auth/password-resets/confirm":                {"post": {"200", "400", "503"}},
+		"/api/v1/users":                                       {"get": {"200", "401", "403", "503"}},
+		"/api/v1/users/{id}":                                  {"patch": {"200", "400", "401", "403", "409", "503"}, "delete": {"200", "401", "403", "409", "503"}},
+		"/api/v1/users/{id}/restore":                          {"post": {"200", "401", "403", "409", "503"}},
+		"/api/v1/monitors":                                    {"get": {"200", "400", "401", "503"}, "post": {"201", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}":                               {"get": {"200", "400", "401", "409", "503"}, "delete": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}/versions":                      {"get": {"200", "400", "401", "409", "503"}},
+		"/api/v1/monitors/{id}/draft":                         {"get": {"200", "400", "401", "403", "404", "503"}, "put": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}/draft/intent":                  {"put": {"200", "201", "400", "401", "403", "404", "409", "503"}},
+		"/api/v1/monitors/{id}/draft/expansion-runs":          {"post": {"202", "400", "401", "403", "404", "409", "503"}},
+		"/api/v1/monitors/{id}/draft/expansion-runs/{run_id}": {"get": {"200", "400", "401", "403", "404", "503"}},
+		"/api/v1/monitors/{id}/draft/expansion-candidates/{candidate_id}/decision": {"post": {"200", "400", "401", "403", "404", "409", "503"}},
+		"/api/v1/monitors/{id}/draft/preview-runs":                                 {"post": {"202", "400", "401", "403", "404", "409", "503"}},
+		"/api/v1/monitors/{id}/draft/preview-runs/{run_id}":                        {"get": {"200", "400", "401", "403", "404", "503"}},
+		"/api/v1/monitors/{id}/draft/ai-candidates":                                {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}/draft/rules/{rule_id}/approval":                     {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}/preview":                                            {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}/publish":                                            {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}/pause":                                              {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}/resume":                                             {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}/archive":                                            {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}/restore":                                            {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/source-connections":                                               {"get": {"200", "400", "401", "503"}, "post": {"201", "400", "401", "403", "409", "503"}},
+		"/api/v1/source-connections/{id}":                                          {"get": {"200", "400", "401", "409", "503"}, "patch": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/source-connections/{id}/enable":                                   {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/source-connections/{id}/disable":                                  {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/source-connections/{id}/archive":                                  {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/source-connections/{id}/restore":                                  {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/source-webhooks/bilibili":                                         {"post": {"200", "400", "401"}},
+		"/api/v1/source-endpoints/{id}/capabilities":                               {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/source-endpoints/{id}/rights-policies":                            {"get": {"200", "400", "401", "403", "404", "503"}, "post": {"201", "400", "401", "403", "409", "503"}},
+		"/api/v1/source-endpoints/{id}/rights-decision-batches":                    {"get": {"200", "400", "401", "403", "404", "503"}, "post": {"201", "400", "401", "403", "409", "503"}},
+		"/api/v1/source-endpoints/{id}/rights-decisions/{decision_id}":             {"get": {"200", "400", "401", "403", "404", "503"}},
+		"/api/v1/source-endpoints/{id}/rights-evaluations":                         {"post": {"200", "400", "401", "403", "404", "503"}},
+		"/api/v1/metric-capability-profiles":                                       {"post": {"201", "400", "401", "403", "409", "503"}},
+		"/api/v1/metric-capability-profiles/{id}/publish":                          {"post": {"200", "400", "401", "403", "404", "409", "503"}},
+		"/api/v1/metric-capability-profiles/{id}/archive":                          {"post": {"200", "400", "401", "403", "404", "409", "503"}},
+		"/api/v1/collection-runs":                                                  {"get": {"200", "400", "401", "403", "503"}},
+		"/api/v1/collection-runs/{id}/retry":                                       {"post": {"200", "400", "401", "403", "404", "409", "503"}},
+		"/api/v1/monitors/{id}/collect":                                            {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/source-connections/{id}/health":                                   {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/operations/jobs":                                                  {"get": {"200", "400", "401", "403", "503"}},
+		"/api/v1/operations/jobs/{id}/cancel":                                      {"post": {"200", "400", "401", "403", "404", "409", "503"}},
+		"/api/v1/operations/jobs/{id}/retry":                                       {"post": {"200", "400", "401", "403", "404", "409", "503"}},
+		"/api/v1/operations/overview":                                              {"get": {"200", "401", "403", "503"}},
+		"/api/v1/operations/usage":                                                 {"get": {"200", "401", "403", "503"}},
+		"/api/v1/operations/retention-policies":                                    {"get": {"200", "401", "403", "503"}},
+		"/api/v1/operations/retention-policies/{id}/preview":                       {"post": {"200", "400", "401", "403", "404", "409"}},
+		"/api/v1/operations/retention-policies/{id}/run":                           {"post": {"200", "400", "401", "403", "404", "409"}},
+		"/api/v1/operations/audit-logs":                                            {"get": {"200", "400", "401", "403", "503"}},
+		"/api/v1/knowledge/documents":                                              {"get": {"200"}},
+		"/api/v1/knowledge/documents/{id}":                                         {"get": {"200"}},
+		"/api/v1/knowledge/proposals":                                              {"get": {"200"}, "post": {"200", "400", "401", "403", "409"}},
+		"/api/v1/knowledge/proposals/{id}":                                         {"get": {"200"}},
+		"/api/v1/knowledge/proposals/{id}/approve":                                 {"post": {"200", "400", "401", "403", "409"}},
+		"/api/v1/knowledge/proposals/{id}/reject":                                  {"post": {"200", "400", "401", "403", "409"}},
+		"/api/v1/knowledge/proposals/{id}/apply":                                   {"post": {"200", "400", "401", "403", "409"}},
+		"/api/v1/knowledge/reconcile":                                              {"post": {"200", "401", "403", "503"}},
+		"/api/v1/contents":                                                         {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/contents/{id}":                                                    {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/contents/{id}/document":                                           {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/document-versions/{id}/citation":                                  {"get": {"200", "400", "401", "404", "502", "503"}},
+		"/api/v1/document-versions/{id}/document":                                  {"get": {"200", "304", "400", "401", "403", "404", "409", "502", "503"}},
+		"/api/v1/monitors/{id}/matches":                                            {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/monitors/{id}/matches/{match_id}":                                 {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/monitors/{id}/relevance-preview":                                  {"post": {"200", "400", "401", "403", "404", "503"}},
+		"/api/v1/monitors/{id}/matches/{match_id}/feedback":                        {"put": {"200", "400", "401", "403", "404", "409", "503"}},
+		"/api/v1/monitors/{id}/contents/{content_id}/feedback":                     {"put": {"200", "400", "401", "403", "404", "409", "503"}},
+		"/api/v1/monitors/{id}/feedback/evaluation":                                {"get": {"200", "400", "401", "403", "404", "503"}},
+		"/api/v1/monitors/{id}/feedback/suggestions/refresh":                       {"post": {"200", "400", "401", "403", "404", "503"}},
+		"/api/v1/monitors/{id}/feedback/suggestions":                               {"get": {"200", "400", "401", "403", "404", "503"}},
+		"/api/v1/monitors/{id}/feedback/suggestions/{suggestion_id}/review":        {"post": {"200", "400", "401", "403", "404", "409", "503"}},
+		"/api/v1/ai/model-profiles":                                                {"get": {"200", "401", "403", "503"}, "post": {"201", "400", "401", "403", "503"}},
+		"/api/v1/ai/model-profiles/{id}":                                           {"get": {"200", "400", "401", "403", "503"}, "patch": {"200", "400", "401", "403", "409", "503"}, "delete": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/ai/model-profiles/{id}/restore":                                   {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/events":                                                           {"get": {"200", "400", "401", "503"}},
+		"/api/v1/events/{id}":                                                      {"get": {"200", "400", "401", "404"}},
+		"/api/v1/events/{id}/contents":                                             {"get": {"200", "400", "401", "404"}},
+		"/api/v1/events/{id}/heat":                                                 {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/events/{id}/claims":                                               {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/events/{id}/intelligence":                                         {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/events/{id}/intelligence/summary/regenerate":                      {"post": {"200", "400", "401", "403", "404", "409", "503"}},
+		"/api/v1/events/{id}/intelligence/extract":                                 {"post": {"200", "400", "401", "403", "404", "409", "503"}},
+		"/api/v1/events/{id}/contents/{content_id}/lock":                           {"post": {"200", "400", "401", "403", "404", "409"}},
+		"/api/v1/events/{id}/lifecycle":                                            {"post": {"200", "400", "401", "403", "409"}},
+		"/api/v1/events/{id}/merge":                                                {"post": {"200", "400", "401", "403", "409"}},
+		"/api/v1/events/{id}/split":                                                {"post": {"200", "400", "401", "403", "404", "409"}},
+		"/api/v1/radar/events":                                                     {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/events/{id}/updates":                                              {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/alerts":                                                           {"get": {"200", "400", "401", "503"}},
+		"/api/v1/alerts/{id}":                                                      {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/alerts/{id}/acknowledge":                                          {"post": {"200", "400", "401", "404", "409", "503"}},
+		"/api/v1/alerts/{id}/resolve":                                              {"post": {"200", "400", "401", "404", "409", "503"}},
+		"/api/v1/alerts/{id}/suppress":                                             {"post": {"200", "400", "401", "403", "404", "409", "503"}},
+		"/api/v1/reports":                                                          {"get": {"200", "400", "401", "503"}, "post": {"200", "400", "401", "403", "409"}},
+		"/api/v1/reports/{id}":                                                     {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/reports/{id}/preview":                                             {"post": {"200", "400", "401", "404", "503"}},
+		"/api/v1/reports/{id}/build":                                               {"post": {"200", "400", "401", "403", "404", "409", "503"}},
+		"/api/v1/reports/{id}/publish":                                             {"post": {"200", "400", "401", "403", "404", "409", "503"}},
+		"/api/v1/report-subscriptions":                                             {"get": {"200", "401", "503"}, "post": {"201", "400", "401", "409", "503"}},
+		"/api/v1/report-subscriptions/{id}":                                        {"get": {"200", "400", "401", "404", "503"}, "patch": {"200", "400", "401", "404", "409", "503"}, "delete": {"200", "400", "401", "404", "409", "503"}},
+		"/api/v1/report-subscriptions/{id}/rss-token/rotate":                       {"post": {"200", "400", "401", "404", "409", "503"}},
+		"/api/v1/notifications":                                                    {"get": {"200", "400", "401", "503"}},
+		"/api/v1/notifications/stream":                                             {"get": {"200", "400", "401", "503"}},
 	}
 	if len(document.Paths) != len(required) {
 		t.Fatalf("public path count = %d, want %d (%v)", len(document.Paths), len(required), document.Paths)
@@ -252,6 +266,12 @@ func TestOpenAPIContract(t *testing.T) {
 			}
 			for _, status := range statuses {
 				response, ok := operation.Responses[status]
+				if route == "/api/v1/document-versions/{id}/document" && status == "304" {
+					if !ok || response.Schema.Ref != "" || response.Schema.Type != "" {
+						t.Errorf("GET %s response 304 must be bodyless", route)
+					}
+					continue
+				}
 				if route == "/api/v1/notifications/stream" && status == "200" {
 					if !ok || response.Schema.Type != "string" || !slices.Contains(operation.Produces, "text/event-stream") {
 						t.Errorf("GET %s response 200 must be a text/event-stream string", route)
@@ -272,10 +292,45 @@ func TestOpenAPIContract(t *testing.T) {
 		}
 	}
 
-	for _, route := range []string{"/api/v1/auth/me", "/api/v1/auth/password", "/api/v1/users", "/api/v1/users/{id}", "/api/v1/users/{id}/restore", "/api/v1/monitors", "/api/v1/monitors/{id}", "/api/v1/monitors/{id}/draft", "/api/v1/monitors/{id}/draft/ai-candidates", "/api/v1/monitors/{id}/draft/rules/{rule_id}/approval", "/api/v1/monitors/{id}/preview", "/api/v1/monitors/{id}/publish", "/api/v1/monitors/{id}/pause", "/api/v1/monitors/{id}/resume", "/api/v1/monitors/{id}/archive", "/api/v1/monitors/{id}/restore", "/api/v1/monitors/{id}/collect", "/api/v1/source-connections", "/api/v1/source-connections/{id}", "/api/v1/source-connections/{id}/enable", "/api/v1/source-connections/{id}/disable", "/api/v1/source-connections/{id}/archive", "/api/v1/source-connections/{id}/restore", "/api/v1/metric-capability-profiles", "/api/v1/metric-capability-profiles/{id}/publish", "/api/v1/metric-capability-profiles/{id}/archive", "/api/v1/collection-runs", "/api/v1/collection-runs/{id}/retry", "/api/v1/source-connections/{id}/health", "/api/v1/operations/jobs", "/api/v1/operations/jobs/{id}/cancel", "/api/v1/operations/jobs/{id}/retry", "/api/v1/operations/usage", "/api/v1/operations/retention-policies", "/api/v1/operations/retention-policies/{id}/preview", "/api/v1/operations/retention-policies/{id}/run", "/api/v1/operations/audit-logs", "/api/v1/knowledge/documents", "/api/v1/knowledge/documents/{id}", "/api/v1/knowledge/proposals", "/api/v1/knowledge/proposals/{id}", "/api/v1/knowledge/proposals/{id}/approve", "/api/v1/knowledge/proposals/{id}/reject", "/api/v1/knowledge/proposals/{id}/apply", "/api/v1/knowledge/reconcile", "/api/v1/contents", "/api/v1/contents/{id}", "/api/v1/contents/{id}/document", "/api/v1/monitors/{id}/matches", "/api/v1/monitors/{id}/matches/{match_id}", "/api/v1/monitors/{id}/relevance-preview", "/api/v1/monitors/{id}/matches/{match_id}/feedback", "/api/v1/monitors/{id}/contents/{content_id}/feedback", "/api/v1/monitors/{id}/feedback/evaluation", "/api/v1/monitors/{id}/feedback/suggestions/refresh", "/api/v1/monitors/{id}/feedback/suggestions", "/api/v1/monitors/{id}/feedback/suggestions/{suggestion_id}/review", "/api/v1/ai/model-profiles", "/api/v1/ai/model-profiles/{id}", "/api/v1/ai/model-profiles/{id}/restore", "/api/v1/events", "/api/v1/events/{id}", "/api/v1/events/{id}/contents", "/api/v1/events/{id}/heat", "/api/v1/events/{id}/claims", "/api/v1/events/{id}/intelligence", "/api/v1/events/{id}/intelligence/summary/regenerate", "/api/v1/events/{id}/intelligence/extract", "/api/v1/events/{id}/contents/{content_id}/lock", "/api/v1/events/{id}/lifecycle", "/api/v1/events/{id}/merge", "/api/v1/events/{id}/split", "/api/v1/radar/events", "/api/v1/events/{id}/updates", "/api/v1/alerts", "/api/v1/alerts/{id}", "/api/v1/alerts/{id}/acknowledge", "/api/v1/alerts/{id}/resolve", "/api/v1/alerts/{id}/suppress", "/api/v1/reports", "/api/v1/reports/{id}", "/api/v1/reports/{id}/preview", "/api/v1/reports/{id}/build", "/api/v1/reports/{id}/publish", "/api/v1/report-subscriptions", "/api/v1/report-subscriptions/{id}", "/api/v1/report-subscriptions/{id}/rss-token/rotate", "/api/v1/notifications", "/api/v1/notifications/stream"} {
+	for _, route := range []string{"/api/v1/auth/me", "/api/v1/auth/password", "/api/v1/users", "/api/v1/users/{id}", "/api/v1/users/{id}/restore", "/api/v1/monitors", "/api/v1/monitors/{id}", "/api/v1/monitors/{id}/draft", "/api/v1/monitors/{id}/draft/ai-candidates", "/api/v1/monitors/{id}/draft/rules/{rule_id}/approval", "/api/v1/monitors/{id}/preview", "/api/v1/monitors/{id}/publish", "/api/v1/monitors/{id}/pause", "/api/v1/monitors/{id}/resume", "/api/v1/monitors/{id}/archive", "/api/v1/monitors/{id}/restore", "/api/v1/monitors/{id}/collect", "/api/v1/source-connections", "/api/v1/source-connections/{id}", "/api/v1/source-connections/{id}/enable", "/api/v1/source-connections/{id}/disable", "/api/v1/source-connections/{id}/archive", "/api/v1/source-connections/{id}/restore", "/api/v1/metric-capability-profiles", "/api/v1/metric-capability-profiles/{id}/publish", "/api/v1/metric-capability-profiles/{id}/archive", "/api/v1/collection-runs", "/api/v1/collection-runs/{id}/retry", "/api/v1/source-connections/{id}/health", "/api/v1/operations/jobs", "/api/v1/operations/jobs/{id}/cancel", "/api/v1/operations/jobs/{id}/retry", "/api/v1/operations/usage", "/api/v1/operations/retention-policies", "/api/v1/operations/retention-policies/{id}/preview", "/api/v1/operations/retention-policies/{id}/run", "/api/v1/operations/audit-logs", "/api/v1/knowledge/documents", "/api/v1/knowledge/documents/{id}", "/api/v1/knowledge/proposals", "/api/v1/knowledge/proposals/{id}", "/api/v1/knowledge/proposals/{id}/approve", "/api/v1/knowledge/proposals/{id}/reject", "/api/v1/knowledge/proposals/{id}/apply", "/api/v1/knowledge/reconcile", "/api/v1/contents", "/api/v1/contents/{id}", "/api/v1/contents/{id}/document", "/api/v1/document-versions/{id}/citation", "/api/v1/document-versions/{id}/document", "/api/v1/monitors/{id}/matches", "/api/v1/monitors/{id}/matches/{match_id}", "/api/v1/monitors/{id}/relevance-preview", "/api/v1/monitors/{id}/matches/{match_id}/feedback", "/api/v1/monitors/{id}/contents/{content_id}/feedback", "/api/v1/monitors/{id}/feedback/evaluation", "/api/v1/monitors/{id}/feedback/suggestions/refresh", "/api/v1/monitors/{id}/feedback/suggestions", "/api/v1/monitors/{id}/feedback/suggestions/{suggestion_id}/review", "/api/v1/ai/model-profiles", "/api/v1/ai/model-profiles/{id}", "/api/v1/ai/model-profiles/{id}/restore", "/api/v1/events", "/api/v1/events/{id}", "/api/v1/events/{id}/contents", "/api/v1/events/{id}/heat", "/api/v1/events/{id}/claims", "/api/v1/events/{id}/intelligence", "/api/v1/events/{id}/intelligence/summary/regenerate", "/api/v1/events/{id}/intelligence/extract", "/api/v1/events/{id}/contents/{content_id}/lock", "/api/v1/events/{id}/lifecycle", "/api/v1/events/{id}/merge", "/api/v1/events/{id}/split", "/api/v1/radar/events", "/api/v1/events/{id}/updates", "/api/v1/alerts", "/api/v1/alerts/{id}", "/api/v1/alerts/{id}/acknowledge", "/api/v1/alerts/{id}/resolve", "/api/v1/alerts/{id}/suppress", "/api/v1/reports", "/api/v1/reports/{id}", "/api/v1/reports/{id}/preview", "/api/v1/reports/{id}/build", "/api/v1/reports/{id}/publish", "/api/v1/report-subscriptions", "/api/v1/report-subscriptions/{id}", "/api/v1/report-subscriptions/{id}/rss-token/rotate", "/api/v1/notifications", "/api/v1/notifications/stream"} {
 		var operations map[string]openAPIOperation
 		if err := json.Unmarshal(document.Paths[route], &operations); err != nil {
 			t.Fatalf("decode protected path %s: %v", route, err)
+		}
+		for method, operation := range operations {
+			if !usesBearerAuth(operation.Security) {
+				t.Errorf("%s %s is missing BearerAuth", strings.ToUpper(method), route)
+			}
+		}
+	}
+	for _, route := range []string{
+		"/api/v1/monitors/{id}/draft/intent",
+		"/api/v1/monitors/{id}/draft/expansion-runs",
+		"/api/v1/monitors/{id}/draft/expansion-runs/{run_id}",
+		"/api/v1/monitors/{id}/draft/expansion-candidates/{candidate_id}/decision",
+		"/api/v1/monitors/{id}/draft/preview-runs",
+		"/api/v1/monitors/{id}/draft/preview-runs/{run_id}",
+	} {
+		var operations map[string]openAPIOperation
+		if err := json.Unmarshal(document.Paths[route], &operations); err != nil {
+			t.Fatalf("decode protected monitor intent path %s: %v", route, err)
+		}
+		for method, operation := range operations {
+			if !usesBearerAuth(operation.Security) {
+				t.Errorf("%s %s is missing BearerAuth", strings.ToUpper(method), route)
+			}
+		}
+	}
+	for _, route := range []string{
+		"/api/v1/source-endpoints/{id}/capabilities",
+		"/api/v1/source-endpoints/{id}/rights-policies",
+		"/api/v1/source-endpoints/{id}/rights-decision-batches",
+		"/api/v1/source-endpoints/{id}/rights-decisions/{decision_id}",
+		"/api/v1/source-endpoints/{id}/rights-evaluations",
+	} {
+		var operations map[string]openAPIOperation
+		if err := json.Unmarshal(document.Paths[route], &operations); err != nil {
+			t.Fatalf("decode protected source rights path %s: %v", route, err)
 		}
 		for method, operation := range operations {
 			if !usesBearerAuth(operation.Security) {
@@ -311,8 +366,10 @@ func TestOpenAPIContract(t *testing.T) {
 	assertSafeIdentityOpenAPIDefinitions(t, document.Definitions)
 	assertSafeAgentTokenOpenAPIDefinitions(t, document.Definitions)
 	assertSafeMonitorSourceOpenAPIDefinitions(t, document.Definitions)
+	assertSafeMonitorIntentOpenAPI(t, document.Paths, document.Definitions)
 	assertSafeCollectionOpenAPIDefinitions(t, document.Definitions)
 	assertSafeContentOpenAPIDefinitions(t, document.Definitions)
+	assertSafeVersionedCitationOpenAPIDefinitions(t, document.Definitions)
 	assertSafeRelevanceOpenAPIDefinitions(t, document.Definitions)
 	assertFalseNegativeContentFeedbackOpenAPI(t, document.Paths)
 	assertSafeModelProfileOpenAPIDefinitions(t, document.Definitions)
@@ -324,6 +381,181 @@ func TestOpenAPIContract(t *testing.T) {
 	assertSafeDeliveryOpenAPIDefinitions(t, document.Definitions)
 	assertDraftExpectedVersionOpenAPI(t, document.Definitions)
 	assertMonitorDraftDefaultsOpenAPI(t, document.Definitions)
+}
+
+func assertSafeVersionedCitationOpenAPIDefinitions(t *testing.T, definitions map[string]struct {
+	Properties map[string]json.RawMessage `json:"properties"`
+	Required   []string                   `json:"required"`
+}) {
+	t.Helper()
+	allowed := map[string]map[string]bool{
+		"http.CitationArtifactResponseDTO": {
+			"artifact_type": true, "transformer_profile_sha256": true, "mime_type": true,
+			"sha256": true, "size_bytes": true, "etag": true,
+		},
+		"http.CitationAnchorMapResponseDTO": {
+			"normalization_version": true, "anchor_map_version": true, "markdown_anchor": true,
+		},
+		"http.CitationResponseDTO": {
+			"document_id": true, "document_version_id": true, "source_type": true, "source_name": true,
+			"title": true, "author": true, "publisher": true, "publisher_availability": true,
+			"publisher_unavailable_reason": true, "source_record_url": true, "canonical_url": true,
+			"discussion_url": true, "body_origin": true, "completeness": true, "language": true,
+			"published_at": true, "captured_at": true, "content_sha256": true, "availability": true,
+			"unavailable_reason": true, "artifact": true, "locator_availability": true,
+			"locator_unavailable_reason": true, "exact_quote": true, "utf8_byte_start": true,
+			"utf8_byte_end": true, "anchor_map": true,
+		},
+		"http.VersionedDocumentResponseDTO": {"citation": true, "markdown": true, "etag": true},
+	}
+	for name, fields := range allowed {
+		definition, ok := definitions[name]
+		if !ok {
+			t.Errorf("missing %s", name)
+			continue
+		}
+		for field := range definition.Properties {
+			if !fields[field] {
+				t.Errorf("%s exposes non-allowlisted field %q", name, field)
+			}
+			for _, forbidden := range []string{"object_key", "bucket", "credential", "rights_decision", "raw_payload", "provider_payload"} {
+				if strings.Contains(field, forbidden) {
+					t.Errorf("%s exposes internal field %q", name, field)
+				}
+			}
+		}
+		for field := range fields {
+			if _, ok := definition.Properties[field]; !ok {
+				t.Errorf("%s misses %q", name, field)
+			}
+		}
+	}
+	var availability struct {
+		Enum []string `json:"enum"`
+	}
+	if err := json.Unmarshal(definitions["http.CitationResponseDTO"].Properties["availability"], &availability); err != nil {
+		t.Fatalf("decode Citation availability: %v", err)
+	}
+	wantAvailability := []string{
+		"full_archive", "partial_archive", "summary_only", "metadata_only",
+		"policy_blocked", "temporarily_unavailable", "quarantined", "tombstoned",
+	}
+	if !reflect.DeepEqual(availability.Enum, wantAvailability) {
+		t.Errorf("Citation availability = %v, want %v", availability.Enum, wantAvailability)
+	}
+}
+
+func assertSafeMonitorIntentOpenAPI(t *testing.T, paths map[string]json.RawMessage, definitions map[string]struct {
+	Properties map[string]json.RawMessage `json:"properties"`
+	Required   []string                   `json:"required"`
+}) {
+	t.Helper()
+	allowed := map[string]map[string]bool{
+		"http.IntentRunAcceptedResponseDTO": {
+			"run_id": true, "kind": true, "monitor_id": true, "draft_id": true, "resource_version": true,
+			"input_hash": true, "status": true, "status_url": true, "reused": true,
+		},
+		"http.IntentExpansionRunStatusResponseDTO": {
+			"run_id": true, "kind": true, "monitor_id": true, "draft_id": true, "resource_version": true,
+			"input_hash": true, "status": true, "status_url": true, "queued_at": true, "started_at": true,
+			"completed_at": true, "invalidated_at": true, "failure_code": true, "candidates": true,
+		},
+		"http.IntentPreviewRunStatusResponseDTO": {
+			"run_id": true, "kind": true, "monitor_id": true, "draft_id": true, "resource_version": true,
+			"input_hash": true, "status": true, "status_url": true, "queued_at": true, "started_at": true,
+			"completed_at": true, "invalidated_at": true, "failure_code": true, "preview": true,
+		},
+		"http.IntentExpansionCandidateResponseDTO": {
+			"id": true, "value": true, "source": true, "reason": true, "model_version": true,
+			"prompt_version": true, "input_hash": true, "similarity": true, "risk": true,
+			"approval_status": true, "reviewer_user_id": true, "reviewed_at": true, "review_note": true,
+		},
+		"http.IntentPreviewRecallSignalResponseDTO": {"channel": true, "rank": true, "raw_score": true},
+		"http.IntentPreviewSampleResponseDTO": {
+			"document_version_id": true, "title": true, "decision": true, "recall_signals": true,
+			"reasons": true, "exclusion_reasons": true,
+		},
+		"http.IntentPreviewResponseDTO": {
+			"samples": true, "estimated_alert_count": true, "warnings": true,
+		},
+	}
+	for name, fields := range allowed {
+		definition, ok := definitions[name]
+		if !ok {
+			t.Errorf("missing %s", name)
+			continue
+		}
+		for field := range definition.Properties {
+			if !fields[field] {
+				t.Errorf("%s exposes non-allowlisted field %q", name, field)
+			}
+			for _, forbidden := range []string{"body", "markdown", "raw", "objective", "provider_payload", "prompt_content", "compiled_profile"} {
+				if forbidden == "raw" && field == "raw_score" {
+					continue
+				}
+				if strings.Contains(field, forbidden) {
+					t.Errorf("%s exposes forbidden field %q", name, field)
+				}
+			}
+		}
+		for field := range fields {
+			if _, ok := definition.Properties[field]; !ok {
+				t.Errorf("%s misses %q", name, field)
+			}
+		}
+	}
+
+	for _, name := range []string{"http.IntentExpansionRunStatusResponseDTO", "http.IntentPreviewRunStatusResponseDTO"} {
+		definition, ok := definitions[name]
+		if !ok {
+			t.Errorf("missing %s", name)
+			continue
+		}
+		for field := range definition.Properties {
+			for _, forbidden := range []string{"body", "markdown", "raw", "objective", "provider_payload", "prompt_content", "compiled_profile"} {
+				if forbidden == "raw" && field == "raw_score" {
+					continue
+				}
+				if strings.Contains(field, forbidden) {
+					t.Errorf("%s exposes forbidden field %q", name, field)
+				}
+			}
+		}
+	}
+
+	operation := func(route, method string) openAPIOperation {
+		var operations map[string]openAPIOperation
+		if err := json.Unmarshal(paths[route], &operations); err != nil {
+			t.Fatalf("decode monitor intent route %s: %v", route, err)
+		}
+		return operations[method]
+	}
+	parameter := func(value openAPIOperation, name string) openAPIParameter {
+		for _, candidate := range value.Parameters {
+			if candidate.Name == name {
+				return candidate
+			}
+		}
+		t.Errorf("monitor intent operation misses parameter %q", name)
+		return openAPIParameter{}
+	}
+	put := operation("/api/v1/monitors/{id}/draft/intent", "put")
+	if parameter(put, "If-Match").Required || parameter(put, "If-None-Match").Required {
+		t.Error("intent PUT conditional headers must remain mutually exclusive optional OpenAPI parameters")
+	}
+	for _, route := range []string{
+		"/api/v1/monitors/{id}/draft/expansion-runs",
+		"/api/v1/monitors/{id}/draft/expansion-candidates/{candidate_id}/decision",
+		"/api/v1/monitors/{id}/draft/preview-runs",
+	} {
+		post := operation(route, "post")
+		for _, header := range []string{"If-Match", "Idempotency-Key"} {
+			candidate := parameter(post, header)
+			if candidate.In != "header" || !candidate.Required {
+				t.Errorf("POST %s %s must be a required header", route, header)
+			}
+		}
+	}
 }
 
 func assertSafeAgentTokenOpenAPIDefinitions(t *testing.T, definitions map[string]struct {

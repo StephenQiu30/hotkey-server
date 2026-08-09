@@ -119,16 +119,13 @@ func TestIngestRunDoesNotUploadWhenCaptureBodyWasNotPermitted(t *testing.T) {
 	}
 }
 
-func TestSourceCapturePolicyBodyStorageFlowsToIngestionAsset(t *testing.T) {
+func TestLegacyBodyStorageFlagCannotCreateNewCapturedBodyOrAsset(t *testing.T) {
 	for _, test := range []struct {
-		name        string
-		allowBody   bool
-		wantBody    bool
-		wantAssets  int
-		wantUploads int
+		name      string
+		allowBody bool
 	}{
 		{name: "body storage denied", allowBody: false},
-		{name: "body storage allowed", allowBody: true, wantBody: true, wantAssets: 1, wantUploads: 1},
+		{name: "legacy body storage flag enabled", allowBody: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			runtime := openIngestionRuntime(t)
@@ -139,8 +136,8 @@ func TestSourceCapturePolicyBodyStorageFlowsToIngestionAsset(t *testing.T) {
 			if err := runtime.SQL.QueryRow(`SELECT COALESCE(captured_item->>'body', '') FROM collection_run_items WHERE run_id = $1`, runID).Scan(&persistedBody); err != nil {
 				t.Fatalf("read persisted Source CapturedItem body: %v", err)
 			}
-			if (persistedBody != "") != test.wantBody {
-				t.Fatalf("persisted Source body = %q, allow_body_storage=%t", persistedBody, test.allowBody)
+			if persistedBody != "" {
+				t.Fatalf("persisted Source body = %q, legacy allow_body_storage=%t", persistedBody, test.allowBody)
 			}
 
 			store := newEvidenceStoreFake()
@@ -158,8 +155,8 @@ func TestSourceCapturePolicyBodyStorageFlowsToIngestionAsset(t *testing.T) {
 			if err := runtime.SQL.QueryRow(`SELECT count(*) FROM content_assets`).Scan(&assets); err != nil {
 				t.Fatalf("count content assets: %v", err)
 			}
-			if result.Bound != 1 || result.Uploaded != test.wantUploads || store.puts != test.wantUploads || assets != test.wantAssets {
-				t.Fatalf("allow_body_storage=%t result/store/assets = %#v/%d/%d, want uploads/assets %d/%d", test.allowBody, result, store.puts, assets, test.wantUploads, test.wantAssets)
+			if result.Bound != 1 || result.Uploaded != 0 || store.puts != 0 || assets != 0 {
+				t.Fatalf("legacy allow_body_storage=%t result/store/assets = %#v/%d/%d, want metadata-only ingestion", test.allowBody, result, store.puts, assets)
 			}
 		})
 	}

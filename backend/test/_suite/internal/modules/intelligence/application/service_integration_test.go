@@ -23,7 +23,7 @@ func TestRunServiceSettlesSafeStructuredResultAndReusesIt(t *testing.T) {
 		t.Fatalf("CreateProfile(): %v", err)
 	}
 	provider := &applicationFakeProvider{structured: []domain.StructuredResponse{{
-		ModelVersion: profile.ModelVersion, JSON: json.RawMessage(`{"terms":[{"term":"hotkey","language":"en"}]}`), Usage: domain.Usage{InputTokens: 3, OutputTokens: 2},
+		ModelVersion: profile.ModelVersion, JSON: json.RawMessage(`{"terms":[{"term":"hotkey","language":"en","reason":"semantic wording related to the objective","similarity":0.8,"risk":"low"}]}`), Usage: domain.Usage{InputTokens: 3, OutputTokens: 2},
 	}}}
 	clock := &applicationClock{value: time.Date(2026, time.July, 17, 11, 0, 0, 0, time.UTC)}
 	service := newApplicationRunService(t, runs, provider, clock)
@@ -543,7 +543,7 @@ func applicationEmbeddingProfile() domain.ModelProfile {
 func applicationStructuredInput() StructuredExecutionInput {
 	return StructuredExecutionInput{TaskType: domain.TaskTypeTermExpansion, TargetType: "monitor", TargetID: 99,
 		PromptVersion: "prompt-v1", InputSchemaVersion: "v1", SchemaVersion: "v1", ParametersVersion: "params-v1",
-		InputHash: strings.Repeat("a", 64), EvidenceSetHash: strings.Repeat("b", 64), Input: json.RawMessage(`{"intent":"hotkey","terms":["hotkey"],"language":"en"}`)}
+		InputHash: strings.Repeat("a", 64), EvidenceSetHash: strings.Repeat("b", 64), Input: json.RawMessage(`{"objective":"hotkey","clauses":[{"operator":"must","field":"term","value":"hotkey"}],"entities":[],"examples":[],"existing_candidates":[],"output_languages":["en"]}`)}
 }
 
 func applicationRelevanceReviewInput() StructuredExecutionInput {

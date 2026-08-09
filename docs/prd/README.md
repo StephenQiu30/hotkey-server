@@ -4,7 +4,7 @@ scope: shared
 doc_no: "000"
 title: PRD 索引
 status: approved
-version: v2.0
+version: v2.1
 owner: HotKey Team
 canonical_path: docs/prd/README.md
 ---
@@ -13,7 +13,7 @@ canonical_path: docs/prd/README.md
 
 PRD 将每一条设计转换为稳定、可验收的产品范围。状态只使用 `draft`、`approved`、`implemented`、`cancelled`。
 
-001–030 与 Design、Plan 一一对应。任何需求新增、拆分或合并都必须同时修改三类索引和文件，不能只在 Plan 中临时扩大范围。
+001–032 与 Design、Plan 一一对应。任何需求新增、拆分或合并都必须同时修改三类索引和文件，不能只在 Plan 中临时扩大范围。
 
 ## 交付项
 
@@ -49,3 +49,5 @@ PRD 将每一条设计转换为稳定、可验收的产品范围。状态只使�
 | 028 | [可观测性部署与质量门禁](../design/archive/028-可观测性部署与质量门禁设计.md) | [PRD](archive/028-可观测性部署与质量门禁.md) | [Plan](../plans/archive/028-可观测性部署与质量门禁计划.md) | implemented |
 | 029 | [来源凭据与个性化配置](../design/archive/029-来源凭据与个性化配置设计.md) | [PRD](archive/029-来源凭据与个性化配置.md) | [Plan](../plans/archive/029-来源凭据与个性化配置计划.md) | implemented |
 | 030 | [通知与订阅页面拆分](../design/archive/030-通知与订阅页面拆分设计.md) | [PRD](archive/030-通知与订阅页面拆分.md) | [Plan](../plans/archive/030-通知与订阅页面拆分计划.md) | implemented |
+| 031 | [Hacker-News热门榜单与持续观测](../design/archive/031-Hacker-News热门榜单与持续观测设计.md) | [PRD](archive/031-Hacker-News热门榜单与持续观测.md) | [Plan](../plans/archive/031-Hacker-News热门榜单与持续观测计划.md) | implemented |
+| 032 | [热点事件语义监控与出处正文](../design/032-热点事件语义监控与出处正文设计.md) | [PRD](032-热点事件语义监控与出处正文.md) | [Plan](../plans/032-热点事件语义监控与出处正文计划.md) | approved |

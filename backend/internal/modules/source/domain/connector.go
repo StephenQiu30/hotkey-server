@@ -7,7 +7,8 @@ import (
 
 // Connector is deliberately small and protocol-neutral. Implementations may
 // perform source-specific HTTP work, but can only return normalized SourceItem
-// values and safe request metadata to the Source application.
+// values, provider-neutral response snapshots and safe request metadata to the
+// Source application.
 type Connector interface {
 	Validate(context.Context, SourceConnection) error
 	Fetch(context.Context, FetchRequest) (FetchResult, error)
@@ -16,6 +17,7 @@ type Connector interface {
 
 type FetchResult struct {
 	Items        []SourceItem
+	Snapshots    []EvidenceSnapshot
 	NextCursor   string
 	ETag         string
 	LastModified string

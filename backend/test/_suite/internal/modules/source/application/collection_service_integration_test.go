@@ -30,7 +30,7 @@ func TestCollectionServiceFetchesOnceAndDurablyReconcilesEveryTarget(t *testing.
 		Items: []domain.SourceItem{{
 			SourceCode: "rss", ExternalID: "post-42", ContentType: "article", Title: "Safe title",
 			Body: "body retained from the source Feed", ObservedAt: time.Date(2026, time.July, 16, 8, 5, 0, 0, time.UTC),
-			Metrics: domain.SourceMetrics{ViewCount: domain.KnownMetric(12), CommentCount: domain.KnownMetric(3)}, RawPayload: []byte(`{"authorization":"never-persist"}`),
+			Metrics: domain.SourceMetrics{ViewCount: domain.KnownMetric(12), CommentCount: domain.KnownMetric(3)},
 		}}, NextCursor: "cursor-42", ETag: "etag-42", LastModified: "Wed, 16 Jul 2026 08:05:00 GMT",
 	}}
 	service, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
@@ -73,7 +73,7 @@ func TestCollectionServiceFetchesOnceAndDurablyReconcilesEveryTarget(t *testing.
 	if items != 1 || reconciled != len(request.Targets) || succeededTargets != len(request.Targets) {
 		t.Fatalf("items/reconciled/succeeded targets = %d/%d/%d, want 1/%d/%d", items, reconciled, succeededTargets, len(request.Targets), len(request.Targets))
 	}
-	if strings.Contains(payload, "authorization") || strings.Contains(payload, "never-persist") || !strings.Contains(payload, "body retained from the source Feed") {
+	if strings.Contains(payload, "authorization") || strings.Contains(payload, "never-persist") || strings.Contains(payload, "body retained from the source Feed") || !strings.Contains(payload, `"evidence_completeness": "metadata_only"`) {
 		t.Fatalf("captured payload leaked transient or disallowed fields: %s", payload)
 	}
 	for _, target := range request.Targets {

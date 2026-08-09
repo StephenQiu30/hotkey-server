@@ -60,12 +60,28 @@ describe("ContentDocumentViewer", () => {
     );
     expect(sourceLink).toHaveAttribute(
       "rel",
-      "noreferrer",
+      "noopener noreferrer",
     );
     expect(sourceLink.querySelector("button")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "打印 / 保存 PDF" }));
     expect(window.print).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the shared URL policy for document provenance", () => {
+    render(
+      <ContentDocumentViewer
+        document={{
+          ...readyDocument,
+          canonical_url: "javascript:alert(1)",
+        }}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("link", { name: "访问原站" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/javascript:alert/)).not.toBeInTheDocument();
   });
 
   it("keeps not-captured content honest and disables printing", () => {

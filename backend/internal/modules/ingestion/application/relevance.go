@@ -204,10 +204,10 @@ func termScores(content RelevanceContent, terms []weightedTerm) (score float64, 
 
 func hardVeto(content RelevanceContent, candidate ingestiondomain.RelevanceCandidate, rules []ingestiondomain.RelevanceRule, lexicalMatch, entityMatch bool) (bool, []string, []string) {
 	reasons, excluded := []string{}, []string{}
-	if len(candidate.Languages) > 0 && !containsNormalized(candidate.Languages, content.Language) {
+	if len(candidate.Languages) > 0 && knownLanguage(content.Language) && !containsNormalized(candidate.Languages, content.Language) {
 		reasons = append(reasons, "language_mismatch")
 	}
-	if len(candidate.Regions) > 0 && !containsNormalized(candidate.Regions, content.Region) {
+	if len(candidate.Regions) > 0 && knownRegion(content.Region) && !containsNormalized(candidate.Regions, content.Region) {
 		reasons = append(reasons, "region_mismatch")
 	}
 	text := normalizedTerm(content.Title + " " + content.Excerpt)
@@ -249,11 +249,21 @@ func hardVeto(content RelevanceContent, candidate ingestiondomain.RelevanceCandi
 }
 
 func preferenceScore(content RelevanceContent, candidate ingestiondomain.RelevanceCandidate) float64 {
-	if (len(candidate.Languages) == 0 || containsNormalized(candidate.Languages, content.Language)) &&
-		(len(candidate.Regions) == 0 || containsNormalized(candidate.Regions, content.Region)) {
+	if (len(candidate.Languages) == 0 || !knownLanguage(content.Language) || containsNormalized(candidate.Languages, content.Language)) &&
+		(len(candidate.Regions) == 0 || !knownRegion(content.Region) || containsNormalized(candidate.Regions, content.Region)) {
 		return 100
 	}
 	return 0
+}
+
+func knownLanguage(value string) bool {
+	normalized := normalizedTerm(value)
+	return normalized != "" && normalized != "und"
+}
+
+func knownRegion(value string) bool {
+	normalized := normalizedTerm(value)
+	return normalized != "" && normalized != "und"
 }
 
 func ruleMatchesExact(actual, expected, operator string) bool {

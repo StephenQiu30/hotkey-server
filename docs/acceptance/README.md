@@ -47,3 +47,4 @@ canonical_path: docs/acceptance/README.md
 | 028 | [可观测性部署与质量门禁](028-可观测性部署与质量门禁验收.md) | passed |
 | 029 | [来源凭据与个性化配置](029-来源凭据与个性化配置验收.md) | passed |
 | 030 | [通知与订阅页面拆分](030-通知与订阅页面拆分验收.md) | passed |
+| 031 | [Hacker-News热门榜单与持续观测](031-Hacker-News热门榜单与持续观测验收.md) | passed |

@@ -11,10 +11,13 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["term", "language"],
+        "required": ["term", "language", "reason", "similarity", "risk"],
         "properties": {
           "term": { "type": "string", "minLength": 1, "maxLength": 120 },
-          "language": { "type": "string", "enum": ["zh", "en", "und"] }
+          "language": { "type": "string", "enum": ["zh", "en", "und"] },
+          "reason": { "type": "string", "minLength": 1, "maxLength": 1000 },
+          "similarity": { "type": "number", "minimum": 0, "maximum": 1 },
+          "risk": { "type": "string", "enum": ["low", "medium", "high"] }
         }
       }
     }

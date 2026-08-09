@@ -59,11 +59,14 @@ func (worker *Worker) RunOnce(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	var payload Payload
-	if err := json.Unmarshal(args, &payload); err != nil {
-		return true, worker.finish(ctx, id, kind, attempt+1, maxAttempts, NewPermanentError(fmt.Errorf("decode job payload: %w", err)))
+	job := Job{ID: id, Kind: kind, UniqueKey: string(uniqueKey), ScheduledAt: scheduledAt, MaxAttempts: maxAttempts, Priority: priority}
+	if kindUsesSemanticDurableArgs(kind) {
+		job.DurableArgs = append([]byte(nil), args...)
+	} else {
+		if err := json.Unmarshal(args, &job.Payload); err != nil {
+			return true, worker.finish(ctx, id, kind, attempt+1, maxAttempts, NewPermanentError(fmt.Errorf("decode job payload: %w", err)))
+		}
 	}
-	job := Job{ID: id, Kind: kind, UniqueKey: string(uniqueKey), Payload: payload, ScheduledAt: scheduledAt, MaxAttempts: maxAttempts, Priority: priority}
 	if err := job.Validate(); err != nil {
 		return true, worker.finish(ctx, id, kind, attempt+1, maxAttempts, NewPermanentError(err))
 	}

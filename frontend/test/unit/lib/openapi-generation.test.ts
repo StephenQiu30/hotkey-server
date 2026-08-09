@@ -77,6 +77,83 @@ describe("Umi OpenAPI generation contract", () => {
     expect(typeSource).toMatch(/unavailable_reason\?:/);
   });
 
+  it("generates exact-version citation readers with the bounded availability projection", () => {
+    const generatedService = path.resolve(
+      repositoryRoot,
+      "src/services/hotkey/hotkey-server/documentVersions.ts",
+    );
+    const generatedTypes = path.resolve(
+      repositoryRoot,
+      "src/services/hotkey/hotkey-server/typings.d.ts",
+    );
+    const serviceSource = fs.readFileSync(generatedService, "utf8");
+    const typeSource = fs.readFileSync(generatedTypes, "utf8");
+
+    expect(serviceSource).toContain("export async function getDocumentVersionsIdCitation");
+    expect(serviceSource).toContain("export async function getDocumentVersionsIdDocument");
+    expect(serviceSource).toContain("HotKeyAPI.ContentResultHttpCitationResponseDTO");
+    expect(serviceSource).toContain("HotKeyAPI.ContentResultHttpVersionedDocumentResponseDTO");
+    expect(typeSource).toMatch(
+      /availability\?:[\s\S]*["']full_archive["'][\s\S]*["']partial_archive["'][\s\S]*["']summary_only["'][\s\S]*["']metadata_only["'][\s\S]*["']policy_blocked["'][\s\S]*["']temporarily_unavailable["'][\s\S]*["']quarantined["'][\s\S]*["']tombstoned["']/,
+    );
+    const citationDefinition = typeSource.slice(
+      typeSource.indexOf("type CitationResponseDTO"),
+      typeSource.indexOf("type ClaimEvidenceRequest"),
+    );
+    for (const internalField of [
+      "object_key",
+      "bucket",
+      "rights_decision_id",
+      "raw_payload",
+      "vault_relative_path",
+    ]) {
+      expect(citationDefinition).not.toContain(internalField);
+    }
+  });
+
+  it("generates the versioned monitor-intent workspace without truth semantics", () => {
+    const generatedService = path.resolve(
+      repositoryRoot,
+      "src/services/hotkey/hotkey-server/monitorIntent.ts",
+    );
+    const generatedTypes = path.resolve(
+      repositoryRoot,
+      "src/services/hotkey/hotkey-server/typings.d.ts",
+    );
+    const serviceSource = fs.readFileSync(generatedService, "utf8");
+    const typeSource = fs.readFileSync(generatedTypes, "utf8");
+
+    for (const operation of [
+      "getMonitorsIdDraft",
+      "putMonitorsIdDraftIntent",
+      "postMonitorsIdDraftExpansionRuns",
+      "getMonitorsIdDraftExpansionRunsRunId",
+      "postMonitorsIdDraftExpansionCandidatesCandidateIdDecision",
+      "postMonitorsIdDraftPreviewRuns",
+      "getMonitorsIdDraftPreviewRunsRunId",
+    ]) {
+      expect(serviceSource).toContain(`export async function ${operation}`);
+    }
+    const intentDefinitions = typeSource.slice(
+      typeSource.indexOf("type IntentClauseRequestDTO"),
+      typeSource.indexOf("type JobPageResponse"),
+    );
+    expect(intentDefinitions).toContain('"must" | "should" | "must_not"');
+    expect(intentDefinitions).toContain("raw_score?: number");
+    expect(intentDefinitions).toContain("model_version?: string");
+    expect(intentDefinitions).toContain("prompt_version?: string");
+    for (const forbidden of [
+      "truth",
+      "credibility",
+      "confirmation",
+      "verification_probability",
+      "confidence",
+      "is_real",
+    ]) {
+      expect(intentDefinitions.toLowerCase()).not.toContain(forbidden);
+    }
+  });
+
   it("keeps application code on the generated server client only", () => {
     const legacyServices = [
       "auth.ts",

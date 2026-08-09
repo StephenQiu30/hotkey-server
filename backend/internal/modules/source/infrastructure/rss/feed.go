@@ -2,6 +2,7 @@ package rss
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/xml"
 	"fmt"
 	"net/url"
@@ -12,7 +13,13 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 )
 
-const sourceCode = "rss"
+const (
+	sourceCode               = "rss"
+	CollectorProfileVersion  = "rss-http-feed-go-xml-v1"
+	RSSItemSelectorVersion   = "rss2-go-xml-v1"
+	RDFItemSelectorVersion   = "rss-rdf-go-xml-v1"
+	AtomEntrySelectorVersion = "atom-go-xml-v1"
+)
 
 type parsedFeed struct {
 	Items       []domain.SourceItem
@@ -26,6 +33,7 @@ type fetchDiagnostic struct {
 }
 
 type rssDocument struct {
+	XMLName xml.Name   `xml:"rss"`
 	Channel rssChannel `xml:"channel"`
 }
 
@@ -51,7 +59,8 @@ type rssEnclosure struct {
 }
 
 type rdfDocument struct {
-	Items []rdfItem `xml:"item"`
+	XMLName xml.Name  `xml:"RDF"`
+	Items   []rdfItem `xml:"item"`
 }
 
 type rdfItem struct {
@@ -65,6 +74,7 @@ type rdfItem struct {
 }
 
 type atomFeed struct {
+	XMLName xml.Name    `xml:"feed"`
 	Entries []atomEntry `xml:"entry"`
 	Links   []atomLink  `xml:"link"`
 }
@@ -130,7 +140,7 @@ func parseFeed(payload []byte, observedAt time.Time) (parsedFeed, error) {
 func parsedRDF(document rdfDocument, observedAt time.Time) parsedFeed {
 	feed := parsedFeed{Items: make([]domain.SourceItem, 0, len(document.Items))}
 	seen := make(map[string]struct{}, len(document.Items))
-	for _, entry := range document.Items {
+	for index, entry := range document.Items {
 		item, diagnostic := mapRSSItem(rssItem{
 			GUID:        entry.About,
 			Link:        entry.Link,
@@ -140,6 +150,7 @@ func parsedRDF(document rdfDocument, observedAt time.Time) parsedFeed {
 			PubDate:     entry.Date,
 			Author:      entry.Creator,
 		}, observedAt)
+		bindXMLItemEvidence(&item, fmt.Sprintf("/rdf:RDF/item[%d]", index+1), RDFItemSelectorVersion, entry)
 		feed.appendItem(item, diagnostic, seen)
 	}
 	return feed
@@ -148,8 +159,9 @@ func parsedRDF(document rdfDocument, observedAt time.Time) parsedFeed {
 func parsedRSS(document rssDocument, observedAt time.Time) parsedFeed {
 	feed := parsedFeed{Items: make([]domain.SourceItem, 0, len(document.Channel.Items))}
 	seen := make(map[string]struct{}, len(document.Channel.Items))
-	for _, entry := range document.Channel.Items {
+	for index, entry := range document.Channel.Items {
 		item, diagnostic := mapRSSItem(entry, observedAt)
+		bindXMLItemEvidence(&item, fmt.Sprintf("/rss/channel/item[%d]", index+1), RSSItemSelectorVersion, entry)
 		feed.appendItem(item, diagnostic, seen)
 	}
 	return feed
@@ -158,11 +170,28 @@ func parsedRSS(document rssDocument, observedAt time.Time) parsedFeed {
 func parsedAtom(document atomFeed, observedAt time.Time) parsedFeed {
 	feed := parsedFeed{Items: make([]domain.SourceItem, 0, len(document.Entries)), NextURL: nextAtomURL(document.Links)}
 	seen := make(map[string]struct{}, len(document.Entries))
-	for _, entry := range document.Entries {
+	for index, entry := range document.Entries {
 		item, diagnostic := mapAtomItem(entry, observedAt)
+		bindXMLItemEvidence(&item, fmt.Sprintf("/feed/entry[%d]", index+1), AtomEntrySelectorVersion, entry)
 		feed.appendItem(item, diagnostic, seen)
 	}
 	return feed
+}
+
+func bindXMLItemEvidence(item *domain.SourceItem, locator, selectorVersion string, selected any) {
+	if item == nil {
+		return
+	}
+	item.ItemLocator = locator
+	payload, err := xml.Marshal(selected)
+	if err != nil {
+		return
+	}
+	digest := sha256.Sum256(payload)
+	item.EvidenceReferences = []domain.EvidenceReference{{
+		LocatorType: domain.EvidenceLocatorXMLPath, LocatorValue: locator,
+		SelectedPayloadSHA256: fmt.Sprintf("%x", digest), SelectorVersion: selectorVersion,
+	}}
 }
 
 func (feed *parsedFeed) appendItem(item domain.SourceItem, diagnostic fetchDiagnostic, seen map[string]struct{}) {

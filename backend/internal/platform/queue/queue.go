@@ -1,9 +1,10 @@
 // Package queue provides the small PostgreSQL-backed job contract used by
-// workers. The payload is intentionally an ID/version envelope rather than
-// arbitrary business JSON.
+// workers. Most jobs use a shared ID/version envelope; explicitly registered
+// kinds may instead use one bounded semantic JSON object.
 package queue
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -73,10 +74,13 @@ func (payload Payload) Validate() error {
 }
 
 type Job struct {
-	ID          int64
-	Kind        string
-	UniqueKey   string
-	Payload     Payload
+	ID        int64
+	Kind      string
+	UniqueKey string
+	Payload   Payload
+	// DurableArgs is reserved for job kinds with their own bounded semantic
+	// queue DTO. Existing versioned-envelope jobs must continue using Payload.
+	DurableArgs json.RawMessage
 	ScheduledAt time.Time
 	MaxAttempts int
 	Priority    int
@@ -86,17 +90,42 @@ func (job Job) Validate() error {
 	if !IsKnownKind(job.Kind) || len(job.Kind) > 64 || len(job.UniqueKey) == 0 || len(job.UniqueKey) > MaxUniqueKeyBytes || job.ScheduledAt.IsZero() || job.MaxAttempts < 1 || job.MaxAttempts > 25 || job.Priority < 1 || job.Priority > 100 {
 		return fmt.Errorf("invalid job")
 	}
-	if err := job.Payload.Validate(); err != nil {
-		return err
+	if kindUsesSemanticDurableArgs(job.Kind) {
+		if job.Payload != (Payload{}) || !validSemanticDurableArgs(job.DurableArgs) {
+			return fmt.Errorf("invalid semantic durable job args")
+		}
+	} else {
+		if len(job.DurableArgs) != 0 {
+			return fmt.Errorf("generic payload job cannot include semantic durable args")
+		}
+		if err := job.Payload.Validate(); err != nil {
+			return err
+		}
 	}
-	encoded, err := json.Marshal(job.Payload)
+	encoded, err := job.encodedArgs()
 	if err != nil {
-		return fmt.Errorf("marshal job payload: %w", err)
+		return fmt.Errorf("encode job args: %w", err)
 	}
 	if len(encoded) > MaxPayloadBytes {
 		return fmt.Errorf("job payload exceeds %d bytes", MaxPayloadBytes)
 	}
 	return nil
+}
+
+func kindUsesSemanticDurableArgs(kind string) bool {
+	return kind == KindGenerateSourceDocument || kind == KindAnalyzeMonitorIntent
+}
+
+func validSemanticDurableArgs(args json.RawMessage) bool {
+	trimmed := bytes.TrimSpace(args)
+	return len(trimmed) >= 2 && len(args) <= MaxPayloadBytes && trimmed[0] == '{' && trimmed[len(trimmed)-1] == '}' && json.Valid(trimmed)
+}
+
+func (job Job) encodedArgs() ([]byte, error) {
+	if kindUsesSemanticDurableArgs(job.Kind) {
+		return append([]byte(nil), job.DurableArgs...), nil
+	}
+	return json.Marshal(job.Payload)
 }
 
 type Store struct{ runtime *database.Runtime }
@@ -110,7 +139,7 @@ func (store *Store) Enqueue(ctx context.Context, job Job) (int64, bool, error) {
 	if err := job.Validate(); err != nil {
 		return 0, false, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
 	}
-	args, err := json.Marshal(job.Payload)
+	args, err := job.encodedArgs()
 	if err != nil {
 		return 0, false, err
 	}

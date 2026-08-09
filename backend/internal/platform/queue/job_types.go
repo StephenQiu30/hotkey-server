@@ -5,32 +5,35 @@ import (
 	"fmt"
 )
 
-// P0 job kinds are deliberately finite. Each handler consumes only this
-// package's bounded ID/version envelope and rereads business facts in the DB.
+// P0 job kinds are deliberately finite. Each handler consumes either the
+// bounded ID/version envelope or one explicitly registered bounded semantic
+// object and rereads all body-sized business facts from their owning module.
 const (
 	MaxPayloadBytes   = 4096
 	MaxUniqueKeyBytes = 256
 
-	KindCollectSource        = "collect_source"
-	KindNormalizeContent     = "normalize_content"
-	KindEvaluateRelevance    = "evaluate_relevance"
-	KindClusterContent       = "cluster_content"
-	KindRecomputeEventHeat   = "recompute_event_heat"
-	KindEvaluateEventAlerts  = "evaluate_event_alerts"
-	KindGenerateEventSummary = "generate_event_summary"
-	KindBuildReport          = "build_report"
-	KindDeliverEmail         = "deliver_email"
-	KindDeliverAlertEmail    = "deliver_alert_email"
-	KindProjectKnowledge     = "project_knowledge"
-	KindReconcileKnowledge   = "reconcile_knowledge"
-	KindRunRetention         = "run_retention"
+	KindCollectSource          = "collect_source"
+	KindNormalizeContent       = "normalize_content"
+	KindEvaluateRelevance      = "evaluate_relevance"
+	KindClusterContent         = "cluster_content"
+	KindRecomputeEventHeat     = "recompute_event_heat"
+	KindEvaluateEventAlerts    = "evaluate_event_alerts"
+	KindGenerateEventSummary   = "generate_event_summary"
+	KindBuildReport            = "build_report"
+	KindDeliverEmail           = "deliver_email"
+	KindDeliverAlertEmail      = "deliver_alert_email"
+	KindProjectKnowledge       = "project_knowledge"
+	KindReconcileKnowledge     = "reconcile_knowledge"
+	KindRunRetention           = "run_retention"
+	KindGenerateSourceDocument = "generate_source_document"
+	KindAnalyzeMonitorIntent   = "analyze_monitor_intent"
 )
 
 func IsKnownKind(kind string) bool {
 	switch kind {
 	case KindCollectSource, KindNormalizeContent, KindEvaluateRelevance, KindClusterContent,
 		KindRecomputeEventHeat, KindEvaluateEventAlerts, KindGenerateEventSummary, KindBuildReport, KindDeliverEmail, KindDeliverAlertEmail,
-		KindProjectKnowledge, KindReconcileKnowledge, KindRunRetention:
+		KindProjectKnowledge, KindReconcileKnowledge, KindRunRetention, KindGenerateSourceDocument, KindAnalyzeMonitorIntent:
 		return true
 	default:
 		return false

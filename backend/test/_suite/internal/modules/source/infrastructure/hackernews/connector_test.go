@@ -69,7 +69,7 @@ func TestConnectorFetchesBoundedFirstHNRangeInStableOrder(t *testing.T) {
 	if result.Items[1].Metrics.LikeCount != nil || result.Items[1].Metrics.CommentCount != nil {
 		t.Fatalf("comment metrics = %#v, want absent official metrics to remain unknown", result.Items[1].Metrics)
 	}
-	if len(result.Items[0].RawPayload) != 0 || len(result.Diagnostics) != 1 || result.Diagnostics[0].Code != "dead_item" {
+	if len(result.Diagnostics) != 1 || result.Diagnostics[0].Code != "dead_item" {
 		t.Fatalf("safe capture result = %#v", result)
 	}
 	if peak.Load() > maxItemWorkers {
@@ -142,6 +142,69 @@ func TestConnectorUsesMonotonicCursorAndDoesNotRefetchSeenIDs(t *testing.T) {
 	}
 	if result.NextCursor != "105" || len(result.Items) != 0 || itemRequests.Load() != 2 {
 		t.Fatalf("seen result/requests = %#v, %d; want no item refetch", result, itemRequests.Load())
+	}
+}
+
+func TestConnectorFetchesTopStoriesInRankingOrderOnEveryPoll(t *testing.T) {
+	t.Parallel()
+
+	var poll atomic.Int32
+	connector := newTestConnectorWithMode(t, domain.HackerNewsModeTop, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/v0/topstories.json":
+			poll.Add(1)
+			_, _ = writer.Write([]byte(`[205,203,205,204]`))
+		case "/v0/item/205.json", "/v0/item/203.json", "/v0/item/204.json":
+			id, _ := strconv.ParseInt(strings.TrimSuffix(filepath.Base(request.URL.Path), ".json"), 10, 64)
+			score := id - 190 + int64(poll.Load())
+			_, _ = writer.Write([]byte(`{"id":` + strconv.FormatInt(id, 10) + `,"type":"story","title":"Ranked","time":1784192400,"score":` + strconv.FormatInt(score, 10) + `,"descendants":2}`))
+		default:
+			t.Errorf("unexpected request path %q", request.URL.Path)
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+
+	first, err := connector.Fetch(context.Background(), testFetchRequest(3, "ignored-cursor"))
+	if err != nil {
+		t.Fatalf("Fetch(first): %v", err)
+	}
+	second, err := connector.Fetch(context.Background(), testFetchRequest(3, first.NextCursor))
+	if err != nil {
+		t.Fatalf("Fetch(second): %v", err)
+	}
+	for name, result := range map[string]domain.FetchResult{"first": first, "second": second} {
+		if result.NextCursor != "" || result.HasMore || len(result.Items) != 3 || result.Items[0].ExternalID != "205" || result.Items[1].ExternalID != "203" || result.Items[2].ExternalID != "204" {
+			t.Fatalf("%s ranked result = %#v", name, result)
+		}
+	}
+	if *second.Items[0].Metrics.LikeCount <= *first.Items[0].Metrics.LikeCount {
+		t.Fatalf("repeated observation metrics = %d -> %d, want refresh", *first.Items[0].Metrics.LikeCount, *second.Items[0].Metrics.LikeCount)
+	}
+}
+
+func TestConnectorUsesConfiguredBestStoriesEndpointAndPreservesPartialSuccess(t *testing.T) {
+	t.Parallel()
+
+	connector := newTestConnectorWithMode(t, domain.HackerNewsModeBest, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/v0/beststories.json":
+			_, _ = writer.Write([]byte(`[302,301]`))
+		case "/v0/item/302.json":
+			writer.WriteHeader(http.StatusBadGateway)
+		case "/v0/item/301.json":
+			_, _ = writer.Write([]byte(`{"id":301,"type":"story","title":"Available","time":1784192400,"score":9}`))
+		default:
+			t.Errorf("unexpected request path %q", request.URL.Path)
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+
+	result, err := connector.Fetch(context.Background(), testFetchRequest(2, ""))
+	if err != nil {
+		t.Fatalf("Fetch(): %v", err)
+	}
+	if len(result.Items) != 1 || result.Items[0].ExternalID != "301" || len(result.Diagnostics) != 1 || result.Diagnostics[0].SourceExternalID != "302" || result.Diagnostics[0].Code != "item_temporary_failure" {
+		t.Fatalf("partial ranked result = %#v", result)
 	}
 }
 
@@ -488,10 +551,15 @@ func TestConnectorPreservesPermanentFailureWhenCancellationRaces(t *testing.T) {
 }
 
 func newTestConnector(t *testing.T, handler http.Handler) *Connector {
+	return newTestConnectorWithMode(t, domain.HackerNewsModeNew, handler)
+}
+
+func newTestConnectorWithMode(t *testing.T, mode domain.HackerNewsMode, handler http.Handler) *Connector {
 	t.Helper()
 	server := httptest.NewTLSServer(handler)
 	t.Cleanup(server.Close)
 	config := domain.DefaultSourceConfig()
+	config.HackerNewsMode = mode
 	connector, err := newConnector(domain.SourceConnection{
 		ID: 9, SourceType: domain.SourceTypeHackerNews, Name: "HN", Endpoint: domain.HackerNewsEndpoint,
 		AuthType: domain.AuthTypeNone, Config: config, Enabled: true,

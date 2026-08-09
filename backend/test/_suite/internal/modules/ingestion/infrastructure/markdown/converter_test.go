@@ -16,19 +16,23 @@ func TestConverterProducesSafeCommonMarkAndGFMTable(t *testing.T) {
 		<script>alert(1)</script><style>body{display:none}</style><iframe src="https://evil.test"></iframe>
 		<form action="https://evil.test"><input value="secret"></form><img src="https://remote.test/tracker.png" alt="tracker">
 		<a href="javascript:alert(1)">危险链接</a><a href="data:text/html,bad">数据链接</a>
+		<custom-element data-secret="raw">自定义标签正文</custom-element><!-- raw-comment -->
 	</article>`, "https://example.test/base/")
 	if err != nil {
 		t.Fatalf("Convert() error = %v", err)
 	}
-	for _, want := range []string{"# 标题", "[相对链接](https://example.test/read)", "[邮件](mailto:news@example.test)", "| 名称 | 值 |", "- 列表", "```go"} {
+	for _, want := range []string{"# 标题", "[相对链接](https://example.test/read)", "[邮件](mailto:news@example.test)", "| 名称 | 值 |", "- 列表", "```go", "自定义标签正文"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("Convert() = %q, want %q", got, want)
 		}
 	}
-	for _, forbidden := range []string{"alert(1)", "display:none", "evil.test", "tracker.png", "javascript:", "data:text"} {
+	for _, forbidden := range []string{"alert(1)", "display:none", "evil.test", "tracker.png", "javascript:", "data:text", "<custom-element", "data-secret", "raw-comment", "<!--"} {
 		if strings.Contains(got, forbidden) {
 			t.Fatalf("Convert() leaked %q: %s", forbidden, got)
 		}
+	}
+	if strings.Contains(got, "[危险链接](") || strings.Contains(got, "[数据链接](") {
+		t.Fatalf("Convert() synthesized a target for an unsafe link: %s", got)
 	}
 }
 

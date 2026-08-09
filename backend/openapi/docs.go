@@ -3148,6 +3148,153 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/document-versions/{id}/citation": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "document-versions"
+                ],
+                "summary": "Get an exact document-version citation",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "document version ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-http_CitationResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/document-versions/{id}/document": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "document-versions"
+                ],
+                "summary": "Get an exact document-version Markdown projection",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "document version ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "strong artifact SHA-256 ETag",
+                        "name": "If-None-Match",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-http_VersionedDocumentResponseDTO"
+                        }
+                    },
+                    "304": {
+                        "description": "Not Modified"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/events": {
             "get": {
                 "security": [
@@ -5154,6 +5301,67 @@ const docTemplate = `{
             }
         },
         "/api/v1/monitors/{id}/draft": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitor-intent"
+                ],
+                "summary": "Get the current monitor intent draft",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_IntentDraftResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            },
             "put": {
                 "security": [
                     {
@@ -5290,6 +5498,537 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/monitors/{id}/draft/expansion-candidates/{candidate_id}/decision": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitor-intent"
+                ],
+                "summary": "Review a monitor intent expansion candidate",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "expansion candidate ID",
+                        "name": "candidate_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "strong current resource ETag",
+                        "name": "If-Match",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "bounded idempotency key",
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "candidate decision",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.ReviewIntentExpansionCandidateRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_IntentDraftResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/monitors/{id}/draft/expansion-runs": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitor-intent"
+                ],
+                "summary": "Submit a monitor intent expansion run",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "strong current resource ETag",
+                        "name": "If-Match",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "bounded idempotency key",
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "expansion request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.SubmitIntentExpansionRunRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_IntentRunAcceptedResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/monitors/{id}/draft/expansion-runs/{run_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitor-intent"
+                ],
+                "summary": "Get a monitor intent expansion run",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "expansion run ID",
+                        "name": "run_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_IntentExpansionRunStatusResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/monitors/{id}/draft/intent": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitor-intent"
+                ],
+                "summary": "Initialize or replace the current monitor intent draft",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "strong current resource ETag, required for replacement",
+                        "name": "If-Match",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "*, required for initialization",
+                        "name": "If-None-Match",
+                        "in": "header"
+                    },
+                    {
+                        "description": "complete semantic intent replacement",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.ReplaceIntentDraftRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_IntentDraftResponseDTO"
+                        }
+                    },
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_IntentDraftResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/monitors/{id}/draft/preview-runs": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitor-intent"
+                ],
+                "summary": "Submit a monitor intent preview run",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "strong current resource ETag",
+                        "name": "If-Match",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "bounded idempotency key",
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "preview request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.SubmitIntentPreviewRunRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_IntentRunAcceptedResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/monitors/{id}/draft/preview-runs/{run_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitor-intent"
+                ],
+                "summary": "Get a monitor intent preview run",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "preview run ID",
+                        "name": "run_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_IntentPreviewRunStatusResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
                         }
@@ -8637,6 +9376,525 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/source-endpoints/{id}/capabilities": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "source rights"
+                ],
+                "summary": "Get safe source endpoint capability",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "source endpoint ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-http_SourceEndpointCapabilityResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/source-endpoints/{id}/rights-decision-batches": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "source rights"
+                ],
+                "summary": "List source endpoint rights decision batches",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "source endpoint ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "opaque cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-http_RightsDecisionBatchPageResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "source rights"
+                ],
+                "summary": "Record an atomic source rights decision batch",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "source endpoint ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "durable idempotency key",
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "quoted policy row version, for example v1",
+                        "name": "If-Match",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "single-action decisions",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.RecordRightsDecisionBatchRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-http_RecordRightsDecisionBatchResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/source-endpoints/{id}/rights-decisions/{decision_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "source rights"
+                ],
+                "summary": "Get one source rights decision",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "source endpoint ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "rights decision ID",
+                        "name": "decision_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-http_RightsDecisionResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/source-endpoints/{id}/rights-evaluations": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "source rights"
+                ],
+                "summary": "Evaluate exact current source rights actions",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "source endpoint ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "exact subject evaluation",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.EvaluateRightsActionsRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-http_RightsActionMatrixResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/source-endpoints/{id}/rights-policies": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "source rights"
+                ],
+                "summary": "List source endpoint rights policies",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "source endpoint ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "opaque cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-http_RightsPolicyPageResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "source rights"
+                ],
+                "summary": "Create an immutable source rights policy",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "source endpoint ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "durable idempotency key",
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "rights policy",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.CreateRightsPolicyRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-http_CreateRightsPolicyResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/source-webhooks/bilibili": {
             "post": {
                 "consumes": [
@@ -9514,6 +10772,174 @@ const docTemplate = `{
                 }
             }
         },
+        "http.CitationAnchorMapResponseDTO": {
+            "type": "object",
+            "properties": {
+                "anchor_map_version": {
+                    "type": "string"
+                },
+                "markdown_anchor": {
+                    "type": "string"
+                },
+                "normalization_version": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.CitationArtifactResponseDTO": {
+            "type": "object",
+            "properties": {
+                "artifact_type": {
+                    "type": "string",
+                    "enum": [
+                        "markdown"
+                    ]
+                },
+                "etag": {
+                    "type": "string"
+                },
+                "mime_type": {
+                    "type": "string",
+                    "example": "text/markdown; charset=utf-8"
+                },
+                "sha256": {
+                    "type": "string"
+                },
+                "size_bytes": {
+                    "type": "integer"
+                },
+                "transformer_profile_sha256": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.CitationResponseDTO": {
+            "type": "object",
+            "properties": {
+                "anchor_map": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/http.CitationAnchorMapResponseDTO"
+                        }
+                    ],
+                    "x-nullable": true
+                },
+                "artifact": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/http.CitationArtifactResponseDTO"
+                        }
+                    ],
+                    "x-nullable": true
+                },
+                "author": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "availability": {
+                    "type": "string",
+                    "enum": [
+                        "full_archive",
+                        "partial_archive",
+                        "summary_only",
+                        "metadata_only",
+                        "policy_blocked",
+                        "temporarily_unavailable",
+                        "quarantined",
+                        "tombstoned"
+                    ]
+                },
+                "body_origin": {
+                    "type": "string"
+                },
+                "canonical_url": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "captured_at": {
+                    "type": "string"
+                },
+                "completeness": {
+                    "type": "string"
+                },
+                "content_sha256": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "discussion_url": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "document_id": {
+                    "type": "integer"
+                },
+                "document_version_id": {
+                    "type": "integer"
+                },
+                "exact_quote": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "language": {
+                    "type": "string"
+                },
+                "locator_availability": {
+                    "type": "string",
+                    "enum": [
+                        "available",
+                        "unavailable"
+                    ]
+                },
+                "locator_unavailable_reason": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "published_at": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "publisher": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "publisher_availability": {
+                    "type": "string",
+                    "enum": [
+                        "available",
+                        "unavailable"
+                    ]
+                },
+                "publisher_unavailable_reason": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "source_name": {
+                    "type": "string"
+                },
+                "source_record_url": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "source_type": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "unavailable_reason": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "utf8_byte_end": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "utf8_byte_start": {
+                    "type": "integer",
+                    "x-nullable": true
+                }
+            }
+        },
         "http.ClaimEvidenceRequest": {
             "type": "object",
             "required": [
@@ -10041,6 +11467,20 @@ const docTemplate = `{
                 }
             }
         },
+        "http.ContentResult-http_CitationResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.CitationResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "http.ContentResult-http_ContentDocumentResponse": {
             "type": "object",
             "properties": {
@@ -10161,6 +11601,20 @@ const docTemplate = `{
                 },
                 "data": {
                     "$ref": "#/definitions/http.RelevanceSuggestionResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ContentResult-http_VersionedDocumentResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.VersionedDocumentResponseDTO"
                 },
                 "message": {
                     "type": "string"
@@ -10365,6 +11819,55 @@ const docTemplate = `{
                         "daily",
                         "weekly"
                     ]
+                }
+            }
+        },
+        "http.CreateRightsPolicyRequestDTO": {
+            "type": "object",
+            "properties": {
+                "approved_by_user_id": {
+                    "type": "integer"
+                },
+                "basis_summary": {
+                    "type": "string"
+                },
+                "effective_from": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "license_uri": {
+                    "type": "string"
+                },
+                "parent_policy_id": {
+                    "type": "integer"
+                },
+                "priority": {
+                    "type": "integer"
+                },
+                "revision": {
+                    "type": "integer"
+                },
+                "scope_subject": {
+                    "type": "string"
+                },
+                "scope_type": {
+                    "type": "string"
+                },
+                "terms_url": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.CreateRightsPolicyResponseDTO": {
+            "type": "object",
+            "properties": {
+                "idempotent_replay": {
+                    "type": "boolean"
+                },
+                "policy": {
+                    "$ref": "#/definitions/http.RightsPolicyResponseDTO"
                 }
             }
         },
@@ -10636,6 +12139,23 @@ const docTemplate = `{
                 },
                 "version": {
                     "type": "integer"
+                }
+            }
+        },
+        "http.EvaluateRightsActionsRequestDTO": {
+            "type": "object",
+            "properties": {
+                "at": {
+                    "type": "string"
+                },
+                "input_digest": {
+                    "type": "string"
+                },
+                "subject_key": {
+                    "type": "string"
+                },
+                "subject_type": {
+                    "type": "string"
                 }
             }
         },
@@ -11420,6 +12940,449 @@ const docTemplate = `{
                 }
             }
         },
+        "http.IntentClauseRequestDTO": {
+            "type": "object",
+            "required": [
+                "field",
+                "operator",
+                "value"
+            ],
+            "properties": {
+                "field": {
+                    "type": "string",
+                    "enum": [
+                        "term",
+                        "phrase",
+                        "action",
+                        "location",
+                        "language",
+                        "region",
+                        "source",
+                        "time_window"
+                    ]
+                },
+                "operator": {
+                    "type": "string",
+                    "enum": [
+                        "must",
+                        "should",
+                        "must_not"
+                    ]
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.IntentClauseResponseDTO": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "type": "string"
+                },
+                "operator": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.IntentDraftResponseDTO": {
+            "type": "object",
+            "properties": {
+                "candidates": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.IntentExpansionCandidateResponseDTO"
+                    }
+                },
+                "clauses": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.IntentClauseResponseDTO"
+                    }
+                },
+                "draft_id": {
+                    "type": "integer"
+                },
+                "entities": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.IntentEntityResponseDTO"
+                    }
+                },
+                "examples": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.IntentExampleResponseDTO"
+                    }
+                },
+                "monitor_id": {
+                    "type": "integer"
+                },
+                "objective": {
+                    "type": "string"
+                },
+                "resource_version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.IntentEntityRequestDTO": {
+            "type": "object",
+            "required": [
+                "canonical_id",
+                "display_name"
+            ],
+            "properties": {
+                "aliases": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "ambiguity_note": {
+                    "type": "string"
+                },
+                "canonical_id": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.IntentEntityResponseDTO": {
+            "type": "object",
+            "properties": {
+                "aliases": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "ambiguity_note": {
+                    "type": "string"
+                },
+                "canonical_id": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.IntentExampleRequestDTO": {
+            "type": "object",
+            "required": [
+                "label",
+                "text"
+            ],
+            "properties": {
+                "label": {
+                    "type": "string",
+                    "enum": [
+                        "positive",
+                        "negative"
+                    ]
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.IntentExampleResponseDTO": {
+            "type": "object",
+            "properties": {
+                "label": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.IntentExpansionCandidateResponseDTO": {
+            "type": "object",
+            "properties": {
+                "approval_status": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "input_hash": {
+                    "type": "string"
+                },
+                "model_version": {
+                    "type": "string"
+                },
+                "prompt_version": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "review_note": {
+                    "type": "string"
+                },
+                "reviewed_at": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "reviewer_user_id": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "risk": {
+                    "type": "string"
+                },
+                "similarity": {
+                    "type": "number"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.IntentExpansionRunStatusResponseDTO": {
+            "type": "object",
+            "properties": {
+                "candidates": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.IntentExpansionCandidateResponseDTO"
+                    }
+                },
+                "completed_at": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "draft_id": {
+                    "type": "integer"
+                },
+                "failure_code": {
+                    "type": "string"
+                },
+                "input_hash": {
+                    "type": "string"
+                },
+                "invalidated_at": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "expansion",
+                        "preview"
+                    ]
+                },
+                "monitor_id": {
+                    "type": "integer"
+                },
+                "queued_at": {
+                    "type": "string"
+                },
+                "resource_version": {
+                    "type": "integer"
+                },
+                "run_id": {
+                    "type": "integer"
+                },
+                "started_at": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "queued",
+                        "running",
+                        "succeeded",
+                        "failed",
+                        "invalidated"
+                    ]
+                },
+                "status_url": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.IntentPreviewRecallSignalResponseDTO": {
+            "type": "object",
+            "properties": {
+                "channel": {
+                    "type": "string"
+                },
+                "rank": {
+                    "type": "integer"
+                },
+                "raw_score": {
+                    "description": "RawScore is comparable only within the same recall channel. It is not a\nprobability or a cross-channel relevance percentage.",
+                    "type": "number"
+                }
+            }
+        },
+        "http.IntentPreviewResponseDTO": {
+            "type": "object",
+            "properties": {
+                "estimated_alert_count": {
+                    "type": "integer"
+                },
+                "samples": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.IntentPreviewSampleResponseDTO"
+                    }
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "http.IntentPreviewRunStatusResponseDTO": {
+            "type": "object",
+            "properties": {
+                "completed_at": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "draft_id": {
+                    "type": "integer"
+                },
+                "failure_code": {
+                    "type": "string"
+                },
+                "input_hash": {
+                    "type": "string"
+                },
+                "invalidated_at": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "expansion",
+                        "preview"
+                    ]
+                },
+                "monitor_id": {
+                    "type": "integer"
+                },
+                "preview": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/http.IntentPreviewResponseDTO"
+                        }
+                    ],
+                    "x-nullable": true
+                },
+                "queued_at": {
+                    "type": "string"
+                },
+                "resource_version": {
+                    "type": "integer"
+                },
+                "run_id": {
+                    "type": "integer"
+                },
+                "started_at": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "queued",
+                        "running",
+                        "succeeded",
+                        "failed",
+                        "invalidated"
+                    ]
+                },
+                "status_url": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.IntentPreviewSampleResponseDTO": {
+            "type": "object",
+            "properties": {
+                "decision": {
+                    "type": "string"
+                },
+                "document_version_id": {
+                    "type": "integer"
+                },
+                "exclusion_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "recall_signals": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.IntentPreviewRecallSignalResponseDTO"
+                    }
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.IntentRunAcceptedResponseDTO": {
+            "type": "object",
+            "properties": {
+                "draft_id": {
+                    "type": "integer"
+                },
+                "input_hash": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "expansion",
+                        "preview"
+                    ]
+                },
+                "monitor_id": {
+                    "type": "integer"
+                },
+                "resource_version": {
+                    "type": "integer"
+                },
+                "reused": {
+                    "type": "boolean"
+                },
+                "run_id": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "status_url": {
+                    "type": "string"
+                }
+            }
+        },
         "http.JobPageResponse": {
             "type": "object",
             "properties": {
@@ -12105,6 +14068,62 @@ const docTemplate = `{
                 },
                 "version": {
                     "type": "integer"
+                }
+            }
+        },
+        "http.MonitorResult-http_IntentDraftResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.IntentDraftResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.MonitorResult-http_IntentExpansionRunStatusResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.IntentExpansionRunStatusResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.MonitorResult-http_IntentPreviewRunStatusResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.IntentPreviewRunStatusResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.MonitorResult-http_IntentRunAcceptedResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.IntentRunAcceptedResponseDTO"
+                },
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -12805,6 +14824,49 @@ const docTemplate = `{
                 }
             }
         },
+        "http.RecordRightsDecisionBatchRequestDTO": {
+            "type": "object",
+            "properties": {
+                "decisions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.RightsActionDecisionRequestDTO"
+                    }
+                },
+                "expected_policy_version": {
+                    "type": "integer"
+                },
+                "input_digest": {
+                    "type": "string"
+                },
+                "policy_id": {
+                    "type": "integer"
+                },
+                "subject_key": {
+                    "type": "string"
+                },
+                "subject_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.RecordRightsDecisionBatchResponseDTO": {
+            "type": "object",
+            "properties": {
+                "decision_batch_id": {
+                    "type": "integer"
+                },
+                "decisions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.RightsDecisionResponseDTO"
+                    }
+                },
+                "idempotent_replay": {
+                    "type": "boolean"
+                }
+            }
+        },
         "http.RegistrationRequest": {
             "type": "object",
             "required": [
@@ -13246,6 +15308,42 @@ const docTemplate = `{
                 }
             }
         },
+        "http.ReplaceIntentDraftRequestDTO": {
+            "type": "object",
+            "required": [
+                "objective"
+            ],
+            "properties": {
+                "clauses": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "items": {
+                        "$ref": "#/definitions/http.IntentClauseRequestDTO"
+                    }
+                },
+                "entities": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "items": {
+                        "$ref": "#/definitions/http.IntentEntityRequestDTO"
+                    }
+                },
+                "examples": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "items": {
+                        "$ref": "#/definitions/http.IntentExampleRequestDTO"
+                    }
+                },
+                "expected_resource_version": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "objective": {
+                    "type": "string"
+                }
+            }
+        },
         "http.ReportItemResponse": {
             "type": "object",
             "properties": {
@@ -13503,6 +15601,29 @@ const docTemplate = `{
                 }
             }
         },
+        "http.ReviewIntentExpansionCandidateRequestDTO": {
+            "type": "object",
+            "required": [
+                "decision",
+                "expected_resource_version"
+            ],
+            "properties": {
+                "decision": {
+                    "type": "string",
+                    "enum": [
+                        "approved",
+                        "rejected"
+                    ]
+                },
+                "expected_resource_version": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "note": {
+                    "type": "string"
+                }
+            }
+        },
         "http.RevokeTokenRequest": {
             "type": "object",
             "required": [
@@ -13512,6 +15633,311 @@ const docTemplate = `{
                 "expected_version": {
                     "type": "integer",
                     "example": 1
+                }
+            }
+        },
+        "http.RightsActionCapabilityResponseDTO": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "decision": {
+                    "type": "string"
+                },
+                "decision_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "policy_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "priority": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "retention_days": {
+                    "type": "integer",
+                    "x-nullable": true
+                }
+            }
+        },
+        "http.RightsActionDecisionRequestDTO": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "decision": {
+                    "type": "string"
+                },
+                "effective_from": {
+                    "type": "string"
+                },
+                "evaluated_at": {
+                    "type": "string"
+                },
+                "evaluator": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "reason_codes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "retention_days": {
+                    "type": "integer"
+                },
+                "supersedes_decision_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.RightsActionMatrixResponseDTO": {
+            "type": "object",
+            "properties": {
+                "actions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.RightsActionCapabilityResponseDTO"
+                    }
+                },
+                "evaluated_at": {
+                    "type": "string"
+                },
+                "source_endpoint_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.RightsDecisionBatchPageResponseDTO": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.RightsDecisionBatchResponseDTO"
+                    }
+                },
+                "next_cursor": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.RightsDecisionBatchResponseDTO": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "decision_count": {
+                    "type": "integer"
+                },
+                "decisions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.RightsDecisionResponseDTO"
+                    }
+                },
+                "expected_policy_version": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "input_digest": {
+                    "type": "string"
+                },
+                "policy_id": {
+                    "type": "integer"
+                },
+                "recorded_by_user_id": {
+                    "type": "integer"
+                },
+                "source_endpoint_id": {
+                    "type": "integer"
+                },
+                "subject_key": {
+                    "type": "string"
+                },
+                "subject_type": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.RightsDecisionResponseDTO": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "basis_summary": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "decision": {
+                    "type": "string"
+                },
+                "decision_batch_id": {
+                    "type": "integer"
+                },
+                "effective_from": {
+                    "type": "string"
+                },
+                "evaluated_at": {
+                    "type": "string"
+                },
+                "evaluator": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "input_digest": {
+                    "type": "string"
+                },
+                "license_uri": {
+                    "type": "string"
+                },
+                "policy_id": {
+                    "type": "integer"
+                },
+                "policy_revision": {
+                    "type": "integer"
+                },
+                "policy_scope_subject": {
+                    "type": "string"
+                },
+                "policy_scope_type": {
+                    "type": "string"
+                },
+                "priority": {
+                    "type": "integer"
+                },
+                "reason_codes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "recorded_by_user_id": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "retention_days": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "source_endpoint_id": {
+                    "type": "integer"
+                },
+                "subject_key": {
+                    "type": "string"
+                },
+                "subject_type": {
+                    "type": "string"
+                },
+                "supersedes_decision_id": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "terms_url": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.RightsPolicyPageResponseDTO": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.RightsPolicyResponseDTO"
+                    }
+                },
+                "next_cursor": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.RightsPolicyResponseDTO": {
+            "type": "object",
+            "properties": {
+                "approved_by_user_id": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "basis_summary": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "effective_from": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "license_uri": {
+                    "type": "string"
+                },
+                "parent_policy_id": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "policy_hash": {
+                    "type": "string"
+                },
+                "priority": {
+                    "type": "integer"
+                },
+                "recorded_by_user_id": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "revision": {
+                    "type": "integer"
+                },
+                "scope_subject": {
+                    "type": "string"
+                },
+                "scope_type": {
+                    "type": "string"
+                },
+                "source_endpoint_id": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "terms_url": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
                 }
             }
         },
@@ -13530,6 +15956,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "allow_body_storage": {
+                    "description": "Deprecated: informational legacy configuration only; not a rights grant.",
                     "type": "boolean"
                 },
                 "allowed_languages": {
@@ -13558,6 +15985,9 @@ const docTemplate = `{
                 },
                 "grounding_data_boundary_approved": {
                     "type": "boolean"
+                },
+                "hacker_news_mode": {
+                    "type": "string"
                 },
                 "max_pages_per_run": {
                     "type": "integer"
@@ -13583,6 +16013,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "allow_body_storage": {
+                    "description": "Deprecated: retained for legacy source configuration compatibility. This\nvalue never authorizes v2 raw evidence or document body persistence.",
                     "type": "boolean"
                 },
                 "allowed_languages": {
@@ -13612,6 +16043,14 @@ const docTemplate = `{
                 "grounding_data_boundary_approved": {
                     "type": "boolean"
                 },
+                "hacker_news_mode": {
+                    "type": "string",
+                    "enum": [
+                        "new",
+                        "top",
+                        "best"
+                    ]
+                },
                 "max_pages_per_run": {
                     "type": "integer"
                 },
@@ -13629,6 +16068,32 @@ const docTemplate = `{
                 },
                 "requires_deletion_sync": {
                     "type": "boolean"
+                }
+            }
+        },
+        "http.SourceEndpointCapabilityResponseDTO": {
+            "type": "object",
+            "properties": {
+                "availability": {
+                    "type": "string"
+                },
+                "collection_interface": {
+                    "type": "string"
+                },
+                "content_scope": {
+                    "type": "string"
+                },
+                "follows_canonical_url": {
+                    "type": "boolean"
+                },
+                "rights_status": {
+                    "type": "string"
+                },
+                "source_endpoint_id": {
+                    "type": "integer"
+                },
+                "source_type": {
+                    "type": "string"
                 }
             }
         },
@@ -13709,6 +16174,20 @@ const docTemplate = `{
                 }
             }
         },
+        "http.SourceResult-http_CreateRightsPolicyResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.CreateRightsPolicyResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "http.SourceResult-http_ManagementSourceResponse": {
             "type": "object",
             "properties": {
@@ -13731,6 +16210,90 @@ const docTemplate = `{
                 },
                 "data": {
                     "$ref": "#/definitions/http.MetricCapabilityProfileResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.SourceResult-http_RecordRightsDecisionBatchResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.RecordRightsDecisionBatchResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.SourceResult-http_RightsActionMatrixResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.RightsActionMatrixResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.SourceResult-http_RightsDecisionBatchPageResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.RightsDecisionBatchPageResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.SourceResult-http_RightsDecisionResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.RightsDecisionResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.SourceResult-http_RightsPolicyPageResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.RightsPolicyPageResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.SourceResult-http_SourceEndpointCapabilityResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.SourceEndpointCapabilityResponseDTO"
                 },
                 "message": {
                     "type": "string"
@@ -13815,6 +16378,48 @@ const docTemplate = `{
                 },
                 "source_expected_version": {
                     "type": "integer"
+                }
+            }
+        },
+        "http.SubmitIntentExpansionRunRequestDTO": {
+            "type": "object",
+            "required": [
+                "expansion_profile",
+                "expected_resource_version"
+            ],
+            "properties": {
+                "expansion_profile": {
+                    "type": "string",
+                    "enum": [
+                        "monitor-intent-expansion-v1"
+                    ],
+                    "example": "monitor-intent-expansion-v1"
+                },
+                "expected_resource_version": {
+                    "type": "integer",
+                    "minimum": 1
+                }
+            }
+        },
+        "http.SubmitIntentPreviewRunRequestDTO": {
+            "type": "object",
+            "required": [
+                "evaluator_profile",
+                "expected_resource_version",
+                "sample_limit"
+            ],
+            "properties": {
+                "evaluator_profile": {
+                    "type": "string"
+                },
+                "expected_resource_version": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "sample_limit": {
+                    "type": "integer",
+                    "maximum": 200,
+                    "minimum": 1
                 }
             }
         },
@@ -14112,6 +16717,20 @@ const docTemplate = `{
                     ]
                 },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.VersionedDocumentResponseDTO": {
+            "type": "object",
+            "properties": {
+                "citation": {
+                    "$ref": "#/definitions/http.CitationResponseDTO"
+                },
+                "etag": {
+                    "type": "string"
+                },
+                "markdown": {
                     "type": "string"
                 }
             }

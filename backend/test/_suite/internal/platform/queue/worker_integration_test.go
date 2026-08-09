@@ -4,13 +4,65 @@ package queue
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
+
+func TestWorkerRoundTripsSemanticDurableArgsWithoutGenericPayload(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	args := json.RawMessage(`{"evidence_reference_id":71,"trace_id":"0123456789abcdef0123456789abcdef"}`)
+	store := NewStore(runtime)
+	if _, _, err := store.Enqueue(ctx, Job{
+		Kind: KindGenerateSourceDocument, UniqueKey: "source-document-71", DurableArgs: args,
+		ScheduledAt: time.Now().UTC(), MaxAttempts: 3, Priority: 3,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var received Job
+	worker := NewWorker(runtime, map[string]Handler{KindGenerateSourceDocument: func(_ context.Context, job Job) error {
+		received = job
+		return nil
+	}})
+	if claimed, err := worker.RunOnce(ctx); err != nil || !claimed {
+		t.Fatalf("RunOnce() = %t/%v", claimed, err)
+	}
+	if !sameJSONObject(t, received.DurableArgs, args) || received.Payload != (Payload{}) {
+		t.Fatalf("received durable job = %#v", received)
+	}
+	var stored []byte
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT args FROM river_job WHERE unique_key=$1`, []byte("source-document-71")).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if !sameJSONObject(t, stored, args) {
+		t.Fatalf("stored args = %s", stored)
+	}
+}
+
+func sameJSONObject(t *testing.T, left, right []byte) bool {
+	t.Helper()
+	var leftValue, rightValue map[string]any
+	if err := json.Unmarshal(left, &leftValue); err != nil {
+		t.Fatalf("decode left JSON object: %v", err)
+	}
+	if err := json.Unmarshal(right, &rightValue); err != nil {
+		t.Fatalf("decode right JSON object: %v", err)
+	}
+	return reflect.DeepEqual(leftValue, rightValue)
+}
 
 func TestWorkerClaimsCompletesAndRetriesJobs(t *testing.T) {
 	ctx := context.Background()

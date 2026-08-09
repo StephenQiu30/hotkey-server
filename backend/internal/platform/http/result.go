@@ -27,6 +27,10 @@ func Created[T any](c *gin.Context, data T) {
 	c.JSON(stdhttp.StatusCreated, Result[T]{Code: 0, Message: "success", Data: data})
 }
 
+func Accepted[T any](c *gin.Context, data T) {
+	c.JSON(stdhttp.StatusAccepted, Result[T]{Code: 0, Message: "success", Data: data})
+}
+
 func Empty(c *gin.Context) {
 	c.JSON(stdhttp.StatusOK, Result[any]{Code: 0, Message: "success", Data: nil})
 }

@@ -23,7 +23,7 @@ var alterTableAddForeignKeyPattern = regexp.MustCompile(`(?is)\bALTER\s+TABLE\s+
 var uniqueWordPattern = regexp.MustCompile(`\bunique\b`)
 var checkWordPattern = regexp.MustCompile(`\bcheck\b`)
 var referencesWordPattern = regexp.MustCompile(`\breferences\b`)
-var betweenPattern = regexp.MustCompile(`(?i)\b([a-z_][a-z0-9_]*)\s+between\s+([^()\s]+)\s+and\s+([^()\s]+)`)
+var betweenPattern = regexp.MustCompile(`(?i)\b([a-z_][a-z0-9_]*(?:\([^()]*\))?)\s+between\s+([^()\s]+)\s+and\s+([^()\s]+)`)
 var castPattern = regexp.MustCompile(`::(?:character varying|timestamp with time zone|double precision|[a-z_]+)(?:\[\])?`)
 var spacePattern = regexp.MustCompile(`\s+`)
 var quotedNumberPattern = regexp.MustCompile(`'(-?[0-9]+(?:\.[0-9]+)?)'`)
@@ -102,7 +102,17 @@ func Verify(ctx context.Context, pool *pgxpool.Pool) (Verification, error) {
 		return Verification{}, fmt.Errorf("begin read-only compatibility transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	verification, err := verifyCanonicalTransaction(ctx, tx)
+	if err != nil {
+		return Verification{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Verification{}, fmt.Errorf("complete read-only compatibility transaction: %w", err)
+	}
+	return verification, nil
+}
 
+func verifyCanonicalTransaction(ctx context.Context, tx pgx.Tx) (Verification, error) {
 	var version int
 	if err := tx.QueryRow(ctx, "SELECT current_setting('server_version_num')::int").Scan(&version); err != nil {
 		return Verification{}, fmt.Errorf("read PostgreSQL version: %w", err)
@@ -142,9 +152,6 @@ func Verify(ctx context.Context, pool *pgxpool.Pool) (Verification, error) {
 	fingerprint, err := catalogFingerprint(ctx, tx)
 	if err != nil {
 		return Verification{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return Verification{}, fmt.Errorf("complete read-only compatibility transaction: %w", err)
 	}
 	return Verification{ServerVersion: version, CatalogFingerprint: fingerprint, Tables: actual}, nil
 }
@@ -562,6 +569,9 @@ func normalizeCatalogExpression(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	value = strings.ReplaceAll(value, `"`, "")
 	value = betweenPattern.ReplaceAllString(value, "$1 >= $2 and $1 <= $3")
+	if strings.HasPrefix(value, "check") {
+		value = "check" + stripOuterParentheses(strings.TrimSpace(value[len("check"):]))
+	}
 	value = castPattern.ReplaceAllString(value, "")
 	value = quotedNumberPattern.ReplaceAllString(value, "$1")
 	value = spacePattern.ReplaceAllString(value, "")
@@ -629,6 +639,11 @@ func stripRedundantParentheses(value string) string {
 				break
 			}
 			if isSimpleIdentifier(inner) {
+				value = value[:index] + inner + value[end+1:]
+				changed = true
+				break
+			}
+			if !strings.Contains(inner, "and") && !strings.Contains(inner, "or") && strings.ContainsAny(inner, "=<>") {
 				value = value[:index] + inner + value[end+1:]
 				changed = true
 				break

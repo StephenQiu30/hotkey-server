@@ -47,6 +47,7 @@ const googleServingConfigPattern =
 
 type AuthType = "none" | "api_key" | "oauth2" | "bearer";
 type GoogleLocation = keyof typeof GOOGLE_AGENT_SEARCH_ENDPOINTS;
+type HackerNewsMode = "new" | "top" | "best";
 
 type SourceForm = {
   allowBodyStorage: boolean;
@@ -67,6 +68,7 @@ type SourceForm = {
   bilibiliOpenID: string;
   googleLocation: GoogleLocation;
   googleServingConfig: string;
+  hackerNewsMode: HackerNewsMode;
   sourceType: SourceType;
   termsPolicyURL: string;
 };
@@ -128,6 +130,7 @@ const emptyForm = (): SourceForm => ({
   bilibiliOpenID: "",
   googleLocation: "global",
   googleServingConfig: "",
+  hackerNewsMode: "top",
   sourceType: SourceType.RSS,
   termsPolicyURL: "",
 });
@@ -212,6 +215,10 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
         bilibili_open_id: form.bilibiliOpenID.trim(),
         google_location: form.googleLocation,
         google_serving_config: form.googleServingConfig.trim(),
+        hacker_news_mode:
+          form.sourceType === SourceType.HackerNews
+            ? form.hackerNewsMode
+            : "new",
       },
       enabled:
         form.sourceType !== SourceType.X &&
@@ -322,6 +329,7 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                     bilibiliOpenID: "",
                     googleLocation: "global",
                     googleServingConfig: "",
+                    hackerNewsMode: "top",
                     termsPolicyURL:
                       value === SourceType.BingGrounding
                         ? FOUNDRY_WEB_SEARCH_POLICY_URL
@@ -359,6 +367,30 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
                 </SelectContent>
               </Select>
             </div>
+            {form.sourceType === SourceType.HackerNews && (
+              <div className="sm:col-span-2">
+                <Label htmlFor="source-hacker-news-mode">榜单模式</Label>
+                <Select
+                  value={form.hackerNewsMode}
+                  onValueChange={(value) =>
+                    updateForm({ hackerNewsMode: value as HackerNewsMode })
+                  }
+                >
+                  <SelectTrigger id="source-hacker-news-mode" className="mt-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="top">热门榜单</SelectItem>
+                    <SelectItem value="best">最佳榜单</SelectItem>
+                    <SelectItem value="new">最新项目</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  热门和最佳模式会在每轮重复观测官方 score
+                  与评论数，为事件热度和趋势提供连续指标。
+                </p>
+              </div>
+            )}
             <div>
               <Label htmlFor="source-auth-type">授权方式</Label>
               <Select

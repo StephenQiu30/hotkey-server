@@ -45,9 +45,15 @@ func (writer *AuditWriter) Write(ctx context.Context, entry operationsdomain.Aud
 		return err
 	}
 	_, err = transaction.SQL.ExecContext(ctx, `
-INSERT INTO audit_logs (actor_type, actor_id, action, resource_type, resource_id, request_id, trace_id, before_data, after_data, result, ip_hash)
-VALUES ($1, NULLIF($2, 0), $3, $4, NULLIF($5, 0), NULLIF($6, ''), NULLIF($7, ''), $8, $9, $10, NULLIF($11, ''))`,
-		entry.ActorType, entry.ActorID, string(entry.Action), entry.ResourceType, entry.ResourceID, entry.RequestID, entry.TraceID, before, after, string(entry.Result), entry.IPHash)
+INSERT INTO audit_logs (
+  actor_type,actor_id,action,resource_type,resource_id,request_id,trace_id,
+  idempotency_key,command_fingerprint,before_data,after_data,result,ip_hash
+) VALUES (
+  $1,NULLIF($2,0),$3,$4,NULLIF($5,0),NULLIF($6,''),NULLIF($7,''),
+  NULLIF($8,''),NULLIF($9,''),$10,$11,$12,NULLIF($13,'')
+)`, entry.ActorType, entry.ActorID, string(entry.Action), entry.ResourceType, entry.ResourceID,
+		entry.RequestID, entry.TraceID, entry.IdempotencyKey, entry.CommandFingerprint,
+		before, after, string(entry.Result), entry.IPHash)
 	return databaserepository.MapError(err)
 }
 

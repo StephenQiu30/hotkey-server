@@ -1,8 +1,10 @@
 "use client";
 
 import { type FormEvent, useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Archive,
+  BrainCircuit,
   Eye,
   Loader2,
   MoreHorizontal,
@@ -601,6 +603,18 @@ export default function MonitorsPage() {
                             >
                               <Pencil />
                               编辑草稿
+                            </DropdownMenuItem>
+                          ) : null}
+                          {monitor.status !== MonitorStatus.Archived &&
+                          monitor.draft &&
+                          monitor.id != null ? (
+                            <DropdownMenuItem asChild>
+                              <Link
+                                href={`/dashboard/settings/monitors/${monitor.id}/intent`}
+                              >
+                                <BrainCircuit />
+                                编辑语义意图
+                              </Link>
                             </DropdownMenuItem>
                           ) : null}
                           {canAdmin && monitor.draft ? (

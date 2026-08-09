@@ -24,6 +24,30 @@ func TestPipelineHandlersRejectInvalidEnvelopeBeforeDependencies(t *testing.T) {
 	}
 }
 
+func TestNormalizeHandlerDrainsEveryCapturedItemPage(t *testing.T) {
+	t.Parallel()
+
+	service := &pagedNormalizeService{pages: []ingestionapplication.IngestRunResult{
+		{Processed: 50, Bound: 50, NextCursor: "more"},
+		{Processed: 50, Bound: 50},
+	}}
+	jobs := &recordingJobEnqueuer{}
+	handler, err := newNormalizeHandler(service, jobs)
+	if err != nil {
+		t.Fatalf("newNormalizeHandler() error = %v", err)
+	}
+	job := queue.Job{
+		Kind: queue.KindNormalizeContent, UniqueKey: "normalize", ScheduledAt: time.Now().UTC(), MaxAttempts: 3, Priority: 2,
+		Payload: queue.Payload{EntityID: 18, EntityVersion: 1, InputHash: strings.Repeat("a", 64)},
+	}
+	if err := handler.Handle(context.Background(), job); err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+	if service.calls != 2 || len(jobs.jobs) != 100 {
+		t.Fatalf("drain calls/jobs = %d/%d, want 2/100", service.calls, len(jobs.jobs))
+	}
+}
+
 func TestEvaluateHandlerSkipsClusterOnlyForStaleContent(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.August, 7, 10, 0, 0, 0, time.UTC)
@@ -96,4 +120,20 @@ type recordingJobEnqueuer struct{ jobs []queue.Job }
 func (enqueuer *recordingJobEnqueuer) Enqueue(_ context.Context, job queue.Job) (int64, bool, error) {
 	enqueuer.jobs = append(enqueuer.jobs, job)
 	return int64(len(enqueuer.jobs)), true, nil
+}
+
+type pagedNormalizeService struct {
+	pages []ingestionapplication.IngestRunResult
+	calls int
+}
+
+func (service *pagedNormalizeService) IngestRunWithHook(_ context.Context, _ ingestionapplication.IngestRunInput, hook func(context.Context, int64) error) (ingestionapplication.IngestRunResult, error) {
+	result := service.pages[service.calls]
+	service.calls++
+	for offset := 0; offset < result.Bound; offset++ {
+		if err := hook(context.Background(), int64((service.calls-1)*50+offset+1)); err != nil {
+			return ingestionapplication.IngestRunResult{}, err
+		}
+	}
+	return result, nil
 }

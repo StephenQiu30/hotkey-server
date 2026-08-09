@@ -116,6 +116,8 @@ type SourceHealthResponse struct {
 // map and no credential-shaped field, so management DTOs cannot become a
 // vehicle for arbitrary secret JSON.
 type SourceConfigRequest struct {
+	// Deprecated: retained for legacy source configuration compatibility. This
+	// value never authorizes v2 raw evidence or document body persistence.
 	AllowBodyStorage              *bool     `json:"allow_body_storage,omitempty"`
 	RequiresAttribution           *bool     `json:"requires_attribution,omitempty"`
 	RequiresDeletionSync          *bool     `json:"requires_deletion_sync,omitempty"`
@@ -130,6 +132,7 @@ type SourceConfigRequest struct {
 	BilibiliOpenID                *string   `json:"bilibili_open_id,omitempty"`
 	GoogleLocation                *string   `json:"google_location,omitempty"`
 	GoogleServingConfig           *string   `json:"google_serving_config,omitempty"`
+	HackerNewsMode                *string   `json:"hacker_news_mode,omitempty" binding:"omitempty,oneof=new top best"`
 }
 
 type CreateSourceRequest struct {
@@ -192,6 +195,7 @@ type SourceReadResponse struct {
 }
 
 type SourceConfigDTO struct {
+	// Deprecated: informational legacy configuration only; not a rights grant.
 	AllowBodyStorage              bool     `json:"allow_body_storage"`
 	RequiresAttribution           bool     `json:"requires_attribution"`
 	RequiresDeletionSync          bool     `json:"requires_deletion_sync"`
@@ -206,6 +210,7 @@ type SourceConfigDTO struct {
 	BilibiliOpenID                string   `json:"bilibili_open_id"`
 	GoogleLocation                string   `json:"google_location"`
 	GoogleServingConfig           string   `json:"google_serving_config"`
+	HackerNewsMode                string   `json:"hacker_news_mode"`
 }
 
 type SourcePageResponse struct {
@@ -267,6 +272,9 @@ func sourceConfig(request SourceConfigRequest) (domain.SourceConfig, error) {
 	if request.GoogleServingConfig != nil {
 		values["google_serving_config"] = *request.GoogleServingConfig
 	}
+	if request.HackerNewsMode != nil {
+		values["hacker_news_mode"] = *request.HackerNewsMode
+	}
 	config, err := domain.NormalizeSourceConfig(values)
 	if err != nil {
 		return domain.SourceConfig{}, fmt.Errorf("normalize source config: %w", err)
@@ -320,7 +328,7 @@ func managementReadResponse(source domain.ManagementSourceConnection) SourceRead
 	return SourceReadResponse{SourceResponse: sourceResponse(source.PublicSourceConnection), Endpoint: &endpoint, Config: &config}
 }
 func configResponse(config domain.SourceConfig) SourceConfigDTO {
-	return SourceConfigDTO{AllowBodyStorage: config.AllowBodyStorage, RequiresAttribution: config.RequiresAttribution, RequiresDeletionSync: config.RequiresDeletionSync, ContentRetentionDays: config.ContentRetentionDays, MetricsRetentionDays: config.MetricsRetentionDays, AllowedLanguages: config.AllowedLanguages, AllowedRegions: config.AllowedRegions, RateLimitPerMinute: config.RateLimitPerMinute, RequestTimeoutSeconds: config.RequestTimeoutSeconds, MaxPagesPerRun: config.MaxPagesPerRun, GroundingDataBoundaryApproved: config.GroundingDataBoundaryApproved, BilibiliOpenID: config.BilibiliOpenID, GoogleLocation: config.GoogleLocation, GoogleServingConfig: config.GoogleServingConfig}
+	return SourceConfigDTO{AllowBodyStorage: config.AllowBodyStorage, RequiresAttribution: config.RequiresAttribution, RequiresDeletionSync: config.RequiresDeletionSync, ContentRetentionDays: config.ContentRetentionDays, MetricsRetentionDays: config.MetricsRetentionDays, AllowedLanguages: config.AllowedLanguages, AllowedRegions: config.AllowedRegions, RateLimitPerMinute: config.RateLimitPerMinute, RequestTimeoutSeconds: config.RequestTimeoutSeconds, MaxPagesPerRun: config.MaxPagesPerRun, GroundingDataBoundaryApproved: config.GroundingDataBoundaryApproved, BilibiliOpenID: config.BilibiliOpenID, GoogleLocation: config.GoogleLocation, GoogleServingConfig: config.GoogleServingConfig, HackerNewsMode: string(config.HackerNewsMode)}
 }
 
 func metricCapabilityProfileResponse(profile domain.MetricCapabilityProfile) MetricCapabilityProfileResponse {

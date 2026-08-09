@@ -121,7 +121,7 @@ func HashContent(frontmatter, body string) string {
 }
 
 func StablePath(root, kind, key string) (string, error) {
-	if strings.TrimSpace(root) == "" || strings.TrimSpace(kind) == "" || strings.TrimSpace(key) == "" || filepath.IsAbs(key) || strings.ContainsAny(key, `/\\`) || key == "." || key == ".." {
+	if strings.TrimSpace(root) == "" || !legacyKnowledgeKind(kind) || strings.TrimSpace(key) == "" || filepath.IsAbs(key) || strings.ContainsAny(key, `/\\`) || key == "." || key == ".." {
 		return "", fmt.Errorf("invalid vault path")
 	}
 	cleanRoot := filepath.Clean(root)
@@ -131,6 +131,10 @@ func StablePath(root, kind, key string) (string, error) {
 		return "", fmt.Errorf("vault path escapes root")
 	}
 	return path, nil
+}
+
+func legacyKnowledgeKind(kind string) bool {
+	return kind == "events" || kind == "topics" || kind == "reports"
 }
 
 // MergeAutomaticRegion changes only the generated region. Existing human

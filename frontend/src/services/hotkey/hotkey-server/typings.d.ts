@@ -185,6 +185,59 @@ required property without making explicit null impossible to bind. */
     new_password: string;
   };
 
+  type CitationAnchorMapResponseDTO = {
+    anchor_map_version?: string;
+    markdown_anchor?: string;
+    normalization_version?: string;
+  };
+
+  type CitationArtifactResponseDTO = {
+    artifact_type?: "markdown";
+    etag?: string;
+    mime_type?: string;
+    sha256?: string;
+    size_bytes?: number;
+    transformer_profile_sha256?: string;
+  };
+
+  type CitationResponseDTO = {
+    anchor_map?: CitationAnchorMapResponseDTO;
+    artifact?: CitationArtifactResponseDTO;
+    author?: string;
+    availability?:
+      | "full_archive"
+      | "partial_archive"
+      | "summary_only"
+      | "metadata_only"
+      | "policy_blocked"
+      | "temporarily_unavailable"
+      | "quarantined"
+      | "tombstoned";
+    body_origin?: string;
+    canonical_url?: string;
+    captured_at?: string;
+    completeness?: string;
+    content_sha256?: string;
+    discussion_url?: string;
+    document_id?: number;
+    document_version_id?: number;
+    exact_quote?: string;
+    language?: string;
+    locator_availability?: "available" | "unavailable";
+    locator_unavailable_reason?: string;
+    published_at?: string;
+    publisher?: string;
+    publisher_availability?: "available" | "unavailable";
+    publisher_unavailable_reason?: string;
+    source_name?: string;
+    source_record_url?: string;
+    source_type?: string;
+    title?: string;
+    unavailable_reason?: string;
+    utf8_byte_end?: number;
+    utf8_byte_start?: number;
+  };
+
   type ClaimEvidenceRequest = {
     confidence?: number;
     content_id: number;
@@ -369,6 +422,12 @@ required property without making explicit null impossible to bind. */
     message?: string;
   };
 
+  type ContentResultHttpCitationResponseDTO = {
+    code?: number;
+    data?: CitationResponseDTO;
+    message?: string;
+  };
+
   type ContentResultHttpContentDocumentResponse = {
     code?: number;
     data?: ContentDocumentResponse;
@@ -420,6 +479,12 @@ required property without making explicit null impossible to bind. */
   type ContentResultHttpRelevanceSuggestionResponse = {
     code?: number;
     data?: RelevanceSuggestionResponse;
+    message?: string;
+  };
+
+  type ContentResultHttpVersionedDocumentResponseDTO = {
+    code?: number;
+    data?: VersionedDocumentResponseDTO;
     message?: string;
   };
 
@@ -489,6 +554,25 @@ required property without making explicit null impossible to bind. */
     monitor_id?: number;
     timezone: string;
     type: "daily" | "weekly";
+  };
+
+  type CreateRightsPolicyRequestDTO = {
+    approved_by_user_id?: number;
+    basis_summary?: string;
+    effective_from?: string;
+    expires_at?: string;
+    license_uri?: string;
+    parent_policy_id?: number;
+    priority?: number;
+    revision?: number;
+    scope_subject?: string;
+    scope_type?: string;
+    terms_url?: string;
+  };
+
+  type CreateRightsPolicyResponseDTO = {
+    idempotent_replay?: boolean;
+    policy?: RightsPolicyResponseDTO;
   };
 
   type CreateSourceRequest = {
@@ -625,6 +709,13 @@ required property without making explicit null impossible to bind. */
   type EmptyResponse = true;
 
   type EmptyResponse = true;
+
+  type EvaluateRightsActionsRequestDTO = {
+    at?: string;
+    input_digest?: string;
+    subject_key?: string;
+    subject_type?: string;
+  };
 
   type EventIntelligenceResponse = {
     claims?: IntelligenceClaimResponse[];
@@ -1015,6 +1106,16 @@ required property without making explicit null impossible to bind. */
     sort?: "latest" | "relevance";
   };
 
+  type getDocumentVersionsIdCitationParams = {
+    /** document version ID */
+    id: number;
+  };
+
+  type getDocumentVersionsIdDocumentParams = {
+    /** document version ID */
+    id: number;
+  };
+
   type getEventsIdContentsParams = {
     /** event ID */
     id: number;
@@ -1064,6 +1165,25 @@ required property without making explicit null impossible to bind. */
   type getKnowledgeProposalsParams = {
     /** proposal status */
     status?: string;
+  };
+
+  type getMonitorsIdDraftExpansionRunsRunIdParams = {
+    /** monitor ID */
+    id: number;
+    /** expansion run ID */
+    run_id: number;
+  };
+
+  type getMonitorsIdDraftParams = {
+    /** monitor ID */
+    id: number;
+  };
+
+  type getMonitorsIdDraftPreviewRunsRunIdParams = {
+    /** monitor ID */
+    id: number;
+    /** preview run ID */
+    run_id: number;
   };
 
   type getMonitorsIdFeedbackEvaluationParams = {
@@ -1230,6 +1350,36 @@ required property without making explicit null impossible to bind. */
     limit?: number;
   };
 
+  type getSourceEndpointsIdCapabilitiesParams = {
+    /** source endpoint ID */
+    id: number;
+  };
+
+  type getSourceEndpointsIdRightsDecisionBatchesParams = {
+    /** source endpoint ID */
+    id: number;
+    /** opaque cursor */
+    cursor?: string;
+    /** page size */
+    limit?: number;
+  };
+
+  type getSourceEndpointsIdRightsDecisionsDecisionIdParams = {
+    /** source endpoint ID */
+    id: number;
+    /** rights decision ID */
+    decision_id: number;
+  };
+
+  type getSourceEndpointsIdRightsPoliciesParams = {
+    /** source endpoint ID */
+    id: number;
+    /** opaque cursor */
+    cursor?: string;
+    /** page size */
+    limit?: number;
+  };
+
   type GovernanceResultArrayHttpRetentionPolicyResponse = {
     code?: number;
     data?: RetentionPolicyResponse[];
@@ -1347,6 +1497,146 @@ required property without making explicit null impossible to bind. */
     excerpt?: string;
     locator?: string;
     stance?: string;
+  };
+
+  type IntentClauseRequestDTO = {
+    field:
+      | "term"
+      | "phrase"
+      | "action"
+      | "location"
+      | "language"
+      | "region"
+      | "source"
+      | "time_window";
+    operator: "must" | "should" | "must_not";
+    value: string;
+  };
+
+  type IntentClauseResponseDTO = {
+    field?: string;
+    operator?: string;
+    value?: string;
+  };
+
+  type IntentDraftResponseDTO = {
+    candidates?: IntentExpansionCandidateResponseDTO[];
+    clauses?: IntentClauseResponseDTO[];
+    draft_id?: number;
+    entities?: IntentEntityResponseDTO[];
+    examples?: IntentExampleResponseDTO[];
+    monitor_id?: number;
+    objective?: string;
+    resource_version?: number;
+  };
+
+  type IntentEntityRequestDTO = {
+    aliases?: string[];
+    ambiguity_note?: string;
+    canonical_id: string;
+    display_name: string;
+  };
+
+  type IntentEntityResponseDTO = {
+    aliases?: string[];
+    ambiguity_note?: string;
+    canonical_id?: string;
+    display_name?: string;
+  };
+
+  type IntentExampleRequestDTO = {
+    label: "positive" | "negative";
+    text: string;
+  };
+
+  type IntentExampleResponseDTO = {
+    label?: string;
+    text?: string;
+  };
+
+  type IntentExpansionCandidateResponseDTO = {
+    approval_status?: string;
+    id?: string;
+    input_hash?: string;
+    model_version?: string;
+    prompt_version?: string;
+    reason?: string;
+    review_note?: string;
+    reviewed_at?: string;
+    reviewer_user_id?: number;
+    risk?: string;
+    similarity?: number;
+    source?: string;
+    value?: string;
+  };
+
+  type IntentExpansionRunStatusResponseDTO = {
+    candidates?: IntentExpansionCandidateResponseDTO[];
+    completed_at?: string;
+    draft_id?: number;
+    failure_code?: string;
+    input_hash?: string;
+    invalidated_at?: string;
+    kind?: "expansion" | "preview";
+    monitor_id?: number;
+    queued_at?: string;
+    resource_version?: number;
+    run_id?: number;
+    started_at?: string;
+    status?: "queued" | "running" | "succeeded" | "failed" | "invalidated";
+    status_url?: string;
+  };
+
+  type IntentPreviewRecallSignalResponseDTO = {
+    channel?: string;
+    rank?: number;
+    /** RawScore is comparable only within the same recall channel. It is not a
+probability or a cross-channel relevance percentage. */
+    raw_score?: number;
+  };
+
+  type IntentPreviewResponseDTO = {
+    estimated_alert_count?: number;
+    samples?: IntentPreviewSampleResponseDTO[];
+    warnings?: string[];
+  };
+
+  type IntentPreviewRunStatusResponseDTO = {
+    completed_at?: string;
+    draft_id?: number;
+    failure_code?: string;
+    input_hash?: string;
+    invalidated_at?: string;
+    kind?: "expansion" | "preview";
+    monitor_id?: number;
+    preview?: IntentPreviewResponseDTO;
+    queued_at?: string;
+    resource_version?: number;
+    run_id?: number;
+    started_at?: string;
+    status?: "queued" | "running" | "succeeded" | "failed" | "invalidated";
+    status_url?: string;
+  };
+
+  type IntentPreviewSampleResponseDTO = {
+    decision?: string;
+    document_version_id?: number;
+    exclusion_reasons?: string[];
+    reasons?: string[];
+    recall_signals?: IntentPreviewRecallSignalResponseDTO[];
+    title?: string;
+  };
+
+  type IntentRunAcceptedResponseDTO = {
+    draft_id?: number;
+    input_hash?: string;
+    kind?: "expansion" | "preview";
+    monitor_id?: number;
+    resource_version?: number;
+    reused?: boolean;
+    run_id?: number;
+    status?: string;
+    status_url?: string;
   };
 
   type JobPageResponse = {
@@ -1569,6 +1859,30 @@ required property without making explicit null impossible to bind. */
     published_revision?: number;
     status?: string;
     version?: number;
+  };
+
+  type MonitorResultHttpIntentDraftResponseDTO = {
+    code?: number;
+    data?: IntentDraftResponseDTO;
+    message?: string;
+  };
+
+  type MonitorResultHttpIntentExpansionRunStatusResponseDTO = {
+    code?: number;
+    data?: IntentExpansionRunStatusResponseDTO;
+    message?: string;
+  };
+
+  type MonitorResultHttpIntentPreviewRunStatusResponseDTO = {
+    code?: number;
+    data?: IntentPreviewRunStatusResponseDTO;
+    message?: string;
+  };
+
+  type MonitorResultHttpIntentRunAcceptedResponseDTO = {
+    code?: number;
+    data?: IntentRunAcceptedResponseDTO;
+    message?: string;
   };
 
   type MonitorResultHttpMonitorPageResponse = {
@@ -1844,6 +2158,23 @@ required property without making explicit null impossible to bind. */
     id: number;
   };
 
+  type postMonitorsIdDraftExpansionCandidatesCandidateIdDecisionParams = {
+    /** monitor ID */
+    id: number;
+    /** expansion candidate ID */
+    candidate_id: string;
+  };
+
+  type postMonitorsIdDraftExpansionRunsParams = {
+    /** monitor ID */
+    id: number;
+  };
+
+  type postMonitorsIdDraftPreviewRunsParams = {
+    /** monitor ID */
+    id: number;
+  };
+
   type postMonitorsIdDraftRulesRuleIdApprovalParams = {
     /** monitor ID */
     id: number;
@@ -1958,6 +2289,21 @@ required property without making explicit null impossible to bind. */
     id: number;
   };
 
+  type postSourceEndpointsIdRightsDecisionBatchesParams = {
+    /** source endpoint ID */
+    id: number;
+  };
+
+  type postSourceEndpointsIdRightsEvaluationsParams = {
+    /** source endpoint ID */
+    id: number;
+  };
+
+  type postSourceEndpointsIdRightsPoliciesParams = {
+    /** source endpoint ID */
+    id: number;
+  };
+
   type postUsersIdRestoreParams = {
     /** user ID */
     id: number;
@@ -2059,6 +2405,11 @@ required property without making explicit null impossible to bind. */
     content_id: number;
   };
 
+  type putMonitorsIdDraftIntentParams = {
+    /** monitor ID */
+    id: number;
+  };
+
   type putMonitorsIdDraftParams = {
     /** monitor ID */
     id: number;
@@ -2116,6 +2467,21 @@ required property without making explicit null impossible to bind. */
     conflict?: number;
     issues?: ReconciliationIssueResponse[];
     scanned?: number;
+  };
+
+  type RecordRightsDecisionBatchRequestDTO = {
+    decisions?: RightsActionDecisionRequestDTO[];
+    expected_policy_version?: number;
+    input_digest?: string;
+    policy_id?: number;
+    subject_key?: string;
+    subject_type?: string;
+  };
+
+  type RecordRightsDecisionBatchResponseDTO = {
+    decision_batch_id?: number;
+    decisions?: RightsDecisionResponseDTO[];
+    idempotent_replay?: boolean;
   };
 
   type RegistrationRequest = {
@@ -2263,6 +2629,14 @@ required property without making explicit null impossible to bind. */
     sources: MonitorSourceRequest[];
   };
 
+  type ReplaceIntentDraftRequestDTO = {
+    clauses?: IntentClauseRequestDTO[];
+    entities?: IntentEntityRequestDTO[];
+    examples?: IntentExampleRequestDTO[];
+    expected_resource_version?: number;
+    objective: string;
+  };
+
   type ReportItemResponse = {
     event_id?: number;
     event_update_id?: number;
@@ -2357,8 +2731,114 @@ required property without making explicit null impossible to bind. */
     expected_version: number;
   };
 
+  type ReviewIntentExpansionCandidateRequestDTO = {
+    decision: "approved" | "rejected";
+    expected_resource_version: number;
+    note?: string;
+  };
+
   type RevokeTokenRequest = {
     expected_version: number;
+  };
+
+  type RightsActionCapabilityResponseDTO = {
+    action?: string;
+    decision?: string;
+    decision_ids?: number[];
+    policy_ids?: number[];
+    priority?: number;
+    retention_days?: number;
+  };
+
+  type RightsActionDecisionRequestDTO = {
+    action?: string;
+    decision?: string;
+    effective_from?: string;
+    evaluated_at?: string;
+    evaluator?: string;
+    expires_at?: string;
+    reason_codes?: string[];
+    retention_days?: number;
+    supersedes_decision_id?: number;
+  };
+
+  type RightsActionMatrixResponseDTO = {
+    actions?: RightsActionCapabilityResponseDTO[];
+    evaluated_at?: string;
+    source_endpoint_id?: number;
+  };
+
+  type RightsDecisionBatchPageResponseDTO = {
+    items?: RightsDecisionBatchResponseDTO[];
+    next_cursor?: string;
+  };
+
+  type RightsDecisionBatchResponseDTO = {
+    created_at?: string;
+    decision_count?: number;
+    decisions?: RightsDecisionResponseDTO[];
+    expected_policy_version?: number;
+    id?: number;
+    input_digest?: string;
+    policy_id?: number;
+    recorded_by_user_id?: number;
+    source_endpoint_id?: number;
+    subject_key?: string;
+    subject_type?: string;
+    version?: number;
+  };
+
+  type RightsDecisionResponseDTO = {
+    action?: string;
+    basis_summary?: string;
+    created_at?: string;
+    decision?: string;
+    decision_batch_id?: number;
+    effective_from?: string;
+    evaluated_at?: string;
+    evaluator?: string;
+    expires_at?: string;
+    id?: number;
+    input_digest?: string;
+    license_uri?: string;
+    policy_id?: number;
+    policy_revision?: number;
+    policy_scope_subject?: string;
+    policy_scope_type?: string;
+    priority?: number;
+    reason_codes?: string[];
+    recorded_by_user_id?: number;
+    retention_days?: number;
+    source_endpoint_id?: number;
+    subject_key?: string;
+    subject_type?: string;
+    supersedes_decision_id?: number;
+    terms_url?: string;
+  };
+
+  type RightsPolicyPageResponseDTO = {
+    items?: RightsPolicyResponseDTO[];
+    next_cursor?: string;
+  };
+
+  type RightsPolicyResponseDTO = {
+    approved_by_user_id?: number;
+    basis_summary?: string;
+    created_at?: string;
+    effective_from?: string;
+    expires_at?: string;
+    id?: number;
+    license_uri?: string;
+    parent_policy_id?: number;
+    policy_hash?: string;
+    priority?: number;
+    recorded_by_user_id?: number;
+    revision?: number;
+    scope_subject?: string;
+    scope_type?: string;
+    source_endpoint_id?: number;
+    terms_url?: string;
+    version?: number;
   };
 
   type RotateRSSTokenRequest = {
@@ -2377,6 +2857,7 @@ required property without making explicit null impossible to bind. */
   };
 
   type SourceConfigDTO = {
+    /** Deprecated: informational legacy configuration only; not a rights grant. */
     allow_body_storage?: boolean;
     allowed_languages?: string[];
     allowed_regions?: string[];
@@ -2385,6 +2866,7 @@ required property without making explicit null impossible to bind. */
     google_location?: string;
     google_serving_config?: string;
     grounding_data_boundary_approved?: boolean;
+    hacker_news_mode?: string;
     max_pages_per_run?: number;
     metrics_retention_days?: number;
     rate_limit_per_minute?: number;
@@ -2394,6 +2876,8 @@ required property without making explicit null impossible to bind. */
   };
 
   type SourceConfigRequest = {
+    /** Deprecated: retained for legacy source configuration compatibility. This
+value never authorizes v2 raw evidence or document body persistence. */
     allow_body_storage?: boolean;
     allowed_languages?: string[];
     allowed_regions?: string[];
@@ -2402,12 +2886,23 @@ required property without making explicit null impossible to bind. */
     google_location?: string;
     google_serving_config?: string;
     grounding_data_boundary_approved?: boolean;
+    hacker_news_mode?: "new" | "top" | "best";
     max_pages_per_run?: number;
     metrics_retention_days?: number;
     rate_limit_per_minute?: number;
     request_timeout_seconds?: number;
     requires_attribution?: boolean;
     requires_deletion_sync?: boolean;
+  };
+
+  type SourceEndpointCapabilityResponseDTO = {
+    availability?: string;
+    collection_interface?: string;
+    content_scope?: string;
+    follows_canonical_url?: boolean;
+    rights_status?: string;
+    source_endpoint_id?: number;
+    source_type?: string;
   };
 
   type SourceHealthResponse = {
@@ -2439,6 +2934,12 @@ required property without making explicit null impossible to bind. */
     version?: number;
   };
 
+  type SourceResultHttpCreateRightsPolicyResponseDTO = {
+    code?: number;
+    data?: CreateRightsPolicyResponseDTO;
+    message?: string;
+  };
+
   type SourceResultHttpManagementSourceResponse = {
     code?: number;
     data?: ManagementSourceResponse;
@@ -2448,6 +2949,42 @@ required property without making explicit null impossible to bind. */
   type SourceResultHttpMetricCapabilityProfileResponse = {
     code?: number;
     data?: MetricCapabilityProfileResponse;
+    message?: string;
+  };
+
+  type SourceResultHttpRecordRightsDecisionBatchResponseDTO = {
+    code?: number;
+    data?: RecordRightsDecisionBatchResponseDTO;
+    message?: string;
+  };
+
+  type SourceResultHttpRightsActionMatrixResponseDTO = {
+    code?: number;
+    data?: RightsActionMatrixResponseDTO;
+    message?: string;
+  };
+
+  type SourceResultHttpRightsDecisionBatchPageResponseDTO = {
+    code?: number;
+    data?: RightsDecisionBatchPageResponseDTO;
+    message?: string;
+  };
+
+  type SourceResultHttpRightsDecisionResponseDTO = {
+    code?: number;
+    data?: RightsDecisionResponseDTO;
+    message?: string;
+  };
+
+  type SourceResultHttpRightsPolicyPageResponseDTO = {
+    code?: number;
+    data?: RightsPolicyPageResponseDTO;
+    message?: string;
+  };
+
+  type SourceResultHttpSourceEndpointCapabilityResponseDTO = {
+    code?: number;
+    data?: SourceEndpointCapabilityResponseDTO;
     message?: string;
   };
 
@@ -2478,6 +3015,17 @@ required property without making explicit null impossible to bind. */
     members: SplitMemberRequest[];
     reason: string;
     source_expected_version: number;
+  };
+
+  type SubmitIntentExpansionRunRequestDTO = {
+    expansion_profile: "monitor-intent-expansion-v1";
+    expected_resource_version: number;
+  };
+
+  type SubmitIntentPreviewRunRequestDTO = {
+    evaluator_profile: string;
+    expected_resource_version: number;
+    sample_limit: number;
   };
 
   type SubscriptionPageResponse = {
@@ -2599,5 +3147,11 @@ required property without making explicit null impossible to bind. */
     role?: "admin" | "editor" | "viewer";
     status?: "active" | "disabled";
     updated_at?: string;
+  };
+
+  type VersionedDocumentResponseDTO = {
+    citation?: CitationResponseDTO;
+    etag?: string;
+    markdown?: string;
   };
 }

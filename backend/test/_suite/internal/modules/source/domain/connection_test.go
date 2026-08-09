@@ -175,7 +175,7 @@ func TestNormalizeSourceConfigAppliesDefaultsAndRejectsSecretShapedInput(t *test
 	if err != nil {
 		t.Fatalf("NormalizeSourceConfig() error = %v", err)
 	}
-	if config.ContentRetentionDays != 30 || config.RateLimitPerMinute != 60 || config.RequestTimeoutSeconds != 30 || config.MaxPagesPerRun != 2 {
+	if config.ContentRetentionDays != 30 || config.RateLimitPerMinute != 60 || config.RequestTimeoutSeconds != 30 || config.MaxPagesPerRun != 2 || config.HackerNewsMode != HackerNewsModeNew {
 		t.Errorf("defaults = %#v, want stable P0 defaults", config)
 	}
 	if got, want := config.AllowedLanguages[0], "en"; got != want {
@@ -189,6 +189,22 @@ func TestNormalizeSourceConfigAppliesDefaultsAndRejectsSecretShapedInput(t *test
 	} {
 		if _, err := NormalizeSourceConfig(input); err == nil {
 			t.Errorf("NormalizeSourceConfig(%#v) = nil error, want rejection", input)
+		}
+	}
+}
+
+func TestNormalizeSourceConfigAcceptsOnlySupportedHackerNewsModes(t *testing.T) {
+	t.Parallel()
+
+	for _, mode := range []HackerNewsMode{HackerNewsModeNew, HackerNewsModeTop, HackerNewsModeBest} {
+		config, err := NormalizeSourceConfig(map[string]any{"hacker_news_mode": string(mode)})
+		if err != nil || config.HackerNewsMode != mode || config.Map()["hacker_news_mode"] != string(mode) {
+			t.Fatalf("NormalizeSourceConfig(%q) = %#v, %v", mode, config, err)
+		}
+	}
+	for _, mode := range []any{"hot", "", 7} {
+		if _, err := NormalizeSourceConfig(map[string]any{"hacker_news_mode": mode}); err == nil {
+			t.Fatalf("NormalizeSourceConfig(%#v) accepted unsupported Hacker News mode", mode)
 		}
 	}
 }

@@ -34,6 +34,47 @@ if test -n "$domain_matches"; then
   report "domain code imports infrastructure package"
 fi
 
+numbered_implementation_files=$(find "$root/internal" "$root/test/_suite" -type f -iname '*032*' -print 2>/dev/null || true)
+if test -n "$numbered_implementation_files"; then
+  report "implementation files must use capability semantics instead of plan numbers"
+fi
+
+numbered_implementation_symbols=$(grep -Rni '032' "$root/db/schema.sql" "$root/internal" "$root/test/_suite" 2>/dev/null \
+  | grep -v 'CanonicalUpgradeTarget = "032"' || true)
+if test -n "$numbered_implementation_symbols"; then
+  report "implementation symbols and fixtures must use capability semantics instead of plan numbers"
+fi
+
+semantic_domain_layer_leaks=$(grep -nE '^type [[:alnum:]_]+(DTO|Row|Record|Manifest|Command|Query|Result) struct' \
+  "$root/internal/modules/source/domain/raw_response.go" \
+  "$root/internal/modules/source/domain/raw_archive.go" \
+  "$root/internal/modules/ingestion/domain/document.go" \
+  "$root/internal/modules/ingestion/domain/document_version.go" \
+  "$root/internal/modules/ingestion/domain/derived_artifact.go" \
+  "$root/internal/modules/knowledge/domain/projection.go" \
+  "$root/internal/modules/monitor/domain/intent.go" \
+  "$root/internal/modules/monitor/domain/intent_version.go" \
+  "$root/internal/modules/monitor/domain/expansion.go" \
+  "$root/internal/modules/monitor/domain/intent_run.go" 2>/dev/null || true)
+if test -n "$semantic_domain_layer_leaks"; then
+  report "new Domain files must contain only entities and value objects, not DTO or persistence/transport shapes"
+fi
+
+source_evidence_application_contract_domain_leaks=$(awk '
+  /^type [A-Z][A-Za-z0-9_]* (struct|interface) \{/ { inside_public_contract=1 }
+  inside_public_contract && /domain\./ { print FILENAME ":" FNR ":" $0 }
+  inside_public_contract && /^}/ { inside_public_contract=0 }
+' \
+  "$root/internal/modules/source/application/raw_evidence_dto.go" \
+  "$root/internal/modules/source/application/raw_archive.go" \
+  "$root/internal/modules/source/application/raw_evidence_collection.go" \
+  "$root/internal/modules/source/application/raw_evidence_rights.go" \
+  "$root/internal/modules/source/application/evidence_selection.go" \
+  "$root/internal/modules/source/application/source_document_scheduling.go" 2>/dev/null || true)
+if test -n "$source_evidence_application_contract_domain_leaks"; then
+  report "Source raw-evidence Application public contracts must be POJOs without Domain entity or value-object fields"
+fi
+
 if ! (cd "$root" && go test ./test/architecture -run TestArchitectureValidationRejectsDirectGinResponsesInModuleTransport -count=1); then
   report "direct Gin response output is forbidden in module transport; use internal/platform/http Result helpers and Wrap"
 fi

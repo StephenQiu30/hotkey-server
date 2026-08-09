@@ -98,7 +98,7 @@ func TestConnectorUsesOfficialStreamingMCPContractAndMapsDerivedEvidence(t *test
 	if item.Body != "HotKey 已发布。[来源](https://example.com/news)" || item.URL != "https://example.com/news" || len(item.Attachments) != 2 {
 		t.Fatalf("citations = body %q URL %q attachments %#v", item.Body, item.URL, item.Attachments)
 	}
-	if item.Metrics != (domain.SourceMetrics{}) || item.RawPayload != nil || result.HasMore || result.NextCursor != "" {
+	if item.Metrics != (domain.SourceMetrics{}) || result.HasMore || result.NextCursor != "" {
 		t.Fatalf("unsupported raw facts leaked: %#v / %#v", item.Metrics, result)
 	}
 }

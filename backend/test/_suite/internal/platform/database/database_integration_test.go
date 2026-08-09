@@ -17,7 +17,7 @@ import (
 
 func TestEmbeddedSchemaCatalogIsComplete(t *testing.T) {
 	tables := EmbeddedSchemaTableNames()
-	if got, want := len(tables), 74; got != want {
+	if got, want := len(tables), 98; got != want {
 		t.Fatalf("embedded table count = %d, want %d", got, want)
 	}
 	if !EmbeddedSchemaContains("CREATE EXTENSION IF NOT EXISTS vector") {
@@ -33,7 +33,7 @@ func TestRuntimeUsesSharedPoolAndVerifiesCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Verify() error = %v", err)
 	}
-	if got, want := len(verification.Tables), 74; got != want {
+	if got, want := len(verification.Tables), 98; got != want {
 		t.Fatalf("verified table count = %d, want %d", got, want)
 	}
 	if verification.CatalogFingerprint == "" {

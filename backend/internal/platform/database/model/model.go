@@ -5,6 +5,7 @@ package model
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -103,9 +104,147 @@ type MonitorSource struct {
 	ConfigVersionID, SourceConnectionID int64
 	QuerySignature                      string
 }
+type MonitorIntentDraft struct {
+	ID, ResourceVersion, MonitorID, ConfigVersionID int64
+}
+type MonitorIntentDraftRevision struct {
+	Record
+	DraftID, MonitorID, ConfigVersionID, ResourceVersion int64
+	Objective                                            string
+}
+type MonitorIntentClause struct {
+	Record
+	RevisionID, DraftID, ResourceVersion int64
+	Operator, Field, Value               string
+}
+type MonitorIntentEntity struct {
+	Record
+	RevisionID, DraftID, ResourceVersion    int64
+	CanonicalID, DisplayName, AmbiguityNote string
+}
+type MonitorIntentEntityAlias struct {
+	Record
+	EntityID, DraftID, ResourceVersion int64
+	Alias                              string
+}
+type MonitorIntentExample struct {
+	Record
+	RevisionID, DraftID, ResourceVersion int64
+	Label, Text                          string
+}
+type MonitorIntentAnalysisRun struct {
+	OperationalRecord
+	MonitorID, DraftID, DraftResourceVersion, RiverJobID int64
+	Kind, InputHash, ProfileVersion, RequestHash, Status string
+}
+type MonitorIntentExpansionCandidate struct {
+	Record
+	DraftID, IntroducedResourceVersion int64
+	OriginRunID                        *int64
+	CandidateID, Value, Source, Risk   string
+}
+type MonitorIntentDraftCandidate struct {
+	Record
+	RevisionID, DraftID, ResourceVersion, CandidateRecordID int64
+	ApprovalStatus                                          string
+}
+type MonitorIntentMutationReceipt struct {
+	OperationalRecord
+	MonitorID, DraftID, ExpectedResourceVersion, ResultResourceVersion int64
+	MutationKind, IdempotencyKey, CommandFingerprint                   string
+}
+type MonitorIntentPreviewResult struct {
+	RunID               int64
+	EstimatedAlertCount int
+}
+type MonitorIntentPreviewSample struct {
+	OperationalRecord
+	RunID, DocumentVersionID int64
+	Title, Decision          string
+}
+type MonitorIntentPreviewRecallSignal struct {
+	OperationalRecord
+	SampleID, RunID int64
+	Channel         string
+}
+type MonitorIntentPreviewReason struct {
+	OperationalRecord
+	SampleID, RunID    int64
+	ReasonType, Reason string
+}
+type MonitorIntentPreviewWarning struct {
+	OperationalRecord
+	RunID   int64
+	Warning string
+}
+type MonitorCompiledProfile struct {
+	Record
+	MonitorID, ConfigVersionID, IntentRevisionID int64
+	Purpose, Status, SemanticState               string
+}
+type MonitorCompiledClause struct {
+	Record
+	CompiledProfileID       int64
+	Operator, Field, Origin string
+}
+type MonitorCompiledEntity struct {
+	Record
+	CompiledProfileID int64
+	CanonicalID       string
+}
+type MonitorCompiledEntityAlias struct {
+	Record
+	CompiledEntityID, CompiledProfileID int64
+	Alias                               string
+}
+type MonitorCompiledIntentEmbedding struct {
+	OperationalRecord
+	CompiledProfileID, ModelProfileID, ModelProfileVersion, AIRunID int64
+}
 type SourceAuthor struct {
 	Record
 	SourceConnectionID int64
+}
+type SourceRightsPolicy struct {
+	Record
+	SourceConnectionID                  *int64
+	ScopeType, ScopeSubject, PolicyHash string
+}
+type SourceRightsDecision struct {
+	OperationalRecord
+	SourceConnectionID, PolicyID, PolicyRevision int64
+	RetentionDays                                *int
+	SupersedesDecisionID                         *int64
+	PolicyScopeType, PolicyScopeSubject          string
+	SubjectType, SubjectKey, InputDigest         string
+	Action, Decision                             string
+}
+type EvidenceSnapshot struct {
+	OperationalRecord
+	SourceConnectionID, StoreRawRightsDecisionID, RetainRightsDecisionID int64
+	SnapshotKey, ObjectKey, PayloadSHA256, CollectorProfileVersion       string
+	LifecycleState                                                       string
+}
+type SourceObservation struct {
+	Record
+	SourceConnectionID           int64
+	CollectionRunItemID          *int64
+	ExternalID, UpstreamIdentity string
+}
+type SourceObservationEvidence struct {
+	OperationalRecord
+	SourceConnectionID, SourceObservationID, EvidenceSnapshotID int64
+	LocatorType, LocatorValue                                   string
+}
+type DocumentVersionSearchIndex struct {
+	OperationalRecord
+	DocumentVersionID, SourceConnectionID, DerivedArtifactID int64
+	LifecycleState                                           string
+}
+type DocumentVersionEmbedding struct {
+	OperationalRecord
+	DocumentVersionID, SourceConnectionID, ModelProfileID, AIRunID int64
+	LifecycleState                                                 string
 }
 type Content struct {
 	Record
@@ -118,6 +257,25 @@ type ContentAsset struct {
 	Record
 	ContentID int64
 	ObjectKey string
+}
+type ArchiveDocument struct {
+	Record
+	SourceConnectionID       int64
+	DocumentKey              string
+	CurrentDocumentVersionID *int64
+}
+type ArchiveDocumentVersion struct {
+	Record
+	DocumentID, SourceObservationID                                    int64
+	DisplayPrivateRightsDecisionID                                     *int64
+	QualityScore                                                       *float64
+	VersionKey, ContentSHA256, ExtractorProfileVersion, LifecycleState string
+}
+type DerivedArtifact struct {
+	OperationalRecord
+	SourceConnectionID, DocumentVersionID                                     int64
+	StoreDerivedRightsDecisionID, RetainRightsDecisionID                      int64
+	ArtifactType, TransformerProfileSHA256, VaultRelativePath, LifecycleState string
 }
 type MonitorMatch struct {
 	Record
@@ -422,9 +580,40 @@ var specs = []Spec{
 	{"monitor_config_versions", LifecycleBusiness, []string{"id", "version", "monitor_id", "revision", "state", "config_hash", "published_at"}},
 	{"monitor_rules", LifecycleBusiness, []string{"id", "version", "config_version_id", "rule_type", "value"}},
 	{"monitor_sources", LifecycleBusiness, []string{"id", "version", "config_version_id", "source_connection_id", "query_signature"}},
+	{"monitor_intent_drafts", LifecycleBusiness, []string{"id", "resource_version", "monitor_id", "config_version_id", "created_at", "updated_at"}},
+	{"monitor_intent_draft_revisions", LifecycleBusiness, []string{"id", "version", "draft_id", "monitor_id", "config_version_id", "resource_version", "objective", "created_at"}},
+	{"monitor_intent_clauses", LifecycleBusiness, []string{"id", "version", "revision_id", "draft_id", "resource_version", "ordinal", "operator", "field", "value"}},
+	{"monitor_intent_entities", LifecycleBusiness, []string{"id", "version", "revision_id", "draft_id", "resource_version", "ordinal", "canonical_id", "display_name", "ambiguity_note"}},
+	{"monitor_intent_entity_aliases", LifecycleBusiness, []string{"id", "version", "entity_id", "draft_id", "resource_version", "ordinal", "alias"}},
+	{"monitor_intent_examples", LifecycleBusiness, []string{"id", "version", "revision_id", "draft_id", "resource_version", "ordinal", "label", "example_text"}},
+	{"monitor_intent_analysis_runs", LifecycleOperational, []string{"id", "monitor_id", "draft_id", "draft_resource_version", "kind", "input_hash", "profile_version", "sample_limit", "request_hash", "idempotency_key", "river_job_id", "status", "queued_at", "started_at", "completed_at", "invalidated_at", "failure_reason", "result_fingerprint"}},
+	{"monitor_intent_expansion_candidates", LifecycleBusiness, []string{"id", "version", "draft_id", "introduced_resource_version", "candidate_id", "origin_run_id", "candidate_value", "source", "reason", "model_version", "prompt_version", "input_hash", "similarity", "risk"}},
+	{"monitor_intent_draft_candidates", LifecycleBusiness, []string{"id", "version", "revision_id", "draft_id", "resource_version", "candidate_record_id", "ordinal", "approval_status", "reviewer_user_id", "reviewed_at", "review_note"}},
+	{"monitor_intent_mutation_receipts", LifecycleOperational, []string{"id", "monitor_id", "draft_id", "mutation_kind", "idempotency_key", "command_fingerprint", "expected_resource_version", "result_resource_version", "created_at"}},
+	{"monitor_intent_preview_results", LifecycleOperational, []string{"run_id", "estimated_alert_count", "created_at"}},
+	{"monitor_intent_preview_samples", LifecycleOperational, []string{"id", "run_id", "ordinal", "document_version_id", "title", "decision"}},
+	{"monitor_intent_preview_recall_signals", LifecycleOperational, []string{"id", "sample_id", "run_id", "ordinal", "channel", "rank", "score"}},
+	{"monitor_intent_preview_reasons", LifecycleOperational, []string{"id", "sample_id", "run_id", "ordinal", "reason_type", "reason"}},
+	{"monitor_intent_preview_warnings", LifecycleOperational, []string{"id", "run_id", "ordinal", "warning"}},
+	{"monitor_compiled_profiles", LifecycleBusiness, []string{"id", "version", "monitor_id", "purpose", "config_version_id", "monitor_version_id", "preview_run_id", "draft_id", "draft_resource_version", "intent_revision_id", "compiler_version", "matching_algorithm_version", "lexical_algorithm_version", "semantic_algorithm_version", "structured_algorithm_version", "search_normalization_profile_version", "semantic_state", "semantic_unavailable_reason", "status", "profile_hash", "ready_at", "retired_at", "created_at"}},
+	{"monitor_compiled_clauses", LifecycleBusiness, []string{"id", "version", "compiled_profile_id", "ordinal", "operator", "field", "value", "normalized_value", "origin", "created_at"}},
+	{"monitor_compiled_entities", LifecycleBusiness, []string{"id", "version", "compiled_profile_id", "ordinal", "canonical_id", "created_at"}},
+	{"monitor_compiled_entity_aliases", LifecycleBusiness, []string{"id", "version", "compiled_entity_id", "compiled_profile_id", "ordinal", "alias", "normalized_alias", "created_at"}},
+	{"monitor_compiled_intent_embeddings", LifecycleOperational, []string{"id", "compiled_profile_id", "config_version_id", "model_profile_id", "model_profile_version", "model_version", "input_hash", "embedding", "ai_run_id", "created_at"}},
 	{"source_authors", LifecycleBusiness, []string{"id", "source_connection_id", "external_id"}},
+	{"source_rights_policies", LifecycleBusiness, []string{"id", "version", "recorded_by_user_id", "idempotency_key", "command_fingerprint", "source_connection_id", "scope_type", "scope_subject", "policy_revision", "policy_hash"}},
+	{"source_rights_decision_batches", LifecycleOperational, []string{"id", "version", "source_connection_id", "policy_id", "expected_policy_version", "subject_type", "subject_key", "input_digest", "recorded_by_user_id", "idempotency_key", "command_fingerprint", "decision_count"}},
+	{"source_rights_decisions", LifecycleOperational, []string{"id", "decision_batch_id", "source_connection_id", "policy_id", "policy_revision", "policy_scope_type", "policy_scope_subject", "priority_rank", "basis_summary", "subject_type", "subject_key", "input_digest", "action", "decision", "effective_from", "retention_days", "supersedes_decision_id"}},
+	{"evidence_snapshots", LifecycleOperational, []string{"id", "source_connection_id", "store_raw_rights_decision_id", "retain_rights_decision_id", "snapshot_key", "object_key", "payload_sha256", "collector_profile_version", "retention_until", "lifecycle_state"}},
+	{"source_observations", LifecycleBusiness, []string{"id", "version", "source_connection_id", "collection_run_item_id", "external_id", "upstream_identity", "body_origin", "completeness"}},
+	{"source_observation_evidences", LifecycleOperational, []string{"id", "source_connection_id", "source_observation_id", "evidence_snapshot_id", "locator_type", "locator_value", "selected_payload_sha256"}},
 	{"contents", LifecycleBusiness, []string{"id", "source_connection_id", "external_id", "dedupe_key", "dedupe_reason", "dedupe_version", "view_count", "like_count", "comment_count", "share_count", "deleted_at"}},
 	{"content_assets", LifecycleBusiness, []string{"id", "content_id", "object_key", "object_status"}},
+	{"documents", LifecycleBusiness, []string{"id", "version", "source_connection_id", "document_key", "current_document_version_id", "document_state"}},
+	{"document_versions", LifecycleBusiness, []string{"id", "version", "document_id", "source_observation_id", "revision_no", "version_key", "quality_score", "content_sha256", "extractor_profile_version", "extractor_profile_sha256", "display_private_rights_decision_id", "lifecycle_state"}},
+	{"derived_artifacts", LifecycleOperational, []string{"id", "source_connection_id", "document_version_id", "store_derived_rights_decision_id", "retain_rights_decision_id", "artifact_type", "transformer_profile_sha256", "vault_relative_path", "sha256", "retention_until", "lifecycle_state", "active"}},
+	{"document_version_search_indexes", LifecycleOperational, []string{"id", "version", "document_version_id", "source_connection_id", "derived_artifact_id", "store_derived_rights_decision_id", "retain_rights_decision_id", "normalization_profile_version", "normalized_text_sha256", "title_search_vector", "body_search_vector", "title_trigrams", "body_trigrams", "entity_keys", "action_keys", "location_keys", "region_keys", "lifecycle_state", "tombstoned_at", "purge_reason", "retention_until", "indexed_at", "created_at"}},
+	{"document_version_embeddings", LifecycleOperational, []string{"id", "document_version_id", "source_connection_id", "embed_local_rights_decision_id", "retain_rights_decision_id", "model_profile_id", "model_profile_version", "model_version", "normalized_text_sha256", "embedding", "ai_run_id", "retention_until", "lifecycle_state", "tombstoned_at", "purge_reason", "created_at"}},
 	{"monitor_matches", LifecycleBusiness, []string{"id", "version", "monitor_id", "monitor_config_version_id", "content_id", "input_hash", "scoring_version", "final_score", "decision", "decision_origin", "embedding_model_profile_id", "embedding_model_profile_version", "embedding_model_version", "review_ai_run_id"}},
 	{"monitor_match_feedbacks", LifecycleBusiness, []string{"id", "version", "monitor_id", "monitor_config_version_id", "content_id", "monitor_match_id", "actor_user_id", "feedback_type"}},
 	{"monitor_feedback_suggestions", LifecycleBusiness, []string{"id", "version", "monitor_id", "monitor_config_version_id", "suggestion_type", "value", "support_count", "status", "reviewed_by_user_id"}},
@@ -479,7 +668,7 @@ var specs = []Spec{
 	{"vault_sync_runs", LifecycleOperational, []string{"id", "run_type", "status"}},
 	{"report_deliveries", LifecycleOperational, []string{"id", "report_id", "subscription_id", "idempotency_key", "status"}},
 	{"delivery_attempts", LifecycleOperational, []string{"id", "delivery_id", "attempt_no", "status"}},
-	{"audit_logs", LifecycleOperational, []string{"id", "action", "resource_type", "result"}},
+	{"audit_logs", LifecycleOperational, []string{"id", "action", "resource_type", "idempotency_key", "command_fingerprint", "result"}},
 }
 
 func All() []Spec { return append([]Spec(nil), specs...) }
@@ -501,8 +690,19 @@ func PersistenceFor(table string) (Persistence, bool) {
 		if spec.Lifecycle == LifecycleBusiness {
 			persistence.VersionColumn = "version"
 		}
+		if spec.Table == "monitor_intent_drafts" {
+			persistence.VersionColumn = "resource_version"
+		}
+		if spec.Table == "monitor_intent_preview_results" {
+			persistence.KeyColumn = "run_id"
+			persistence.AllowedSort = []string{"run_id"}
+			persistence.CursorFields = []string{"run_id"}
+		}
 		switch {
-		case spec.Table == "monitor_config_versions" || spec.Table == "monitor_rules" || spec.Table == "monitor_sources":
+		case spec.Table == "monitor_config_versions" || spec.Table == "monitor_rules" || spec.Table == "monitor_sources" ||
+			spec.Table == "source_rights_policies" || spec.Table == "source_observations" ||
+			spec.Table == "documents" || spec.Table == "document_versions" ||
+			strings.HasPrefix(spec.Table, "monitor_intent_") || strings.HasPrefix(spec.Table, "monitor_compiled_"):
 			persistence.Deletion = DeletionRetained
 			if spec.Table == "monitor_config_versions" {
 				persistence.AllowedSort = []string{"revision", "id"}

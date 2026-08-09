@@ -95,6 +95,36 @@ func TestPlan009BoundedMultilingualRelevance(t *testing.T) {
 	}
 }
 
+func TestUnknownLanguageAndRegionDoNotVetoAnOtherwiseRelevantSourceItem(t *testing.T) {
+	t.Parallel()
+
+	content := RelevanceContent{
+		ID: 1, SourceConnectionID: 2, DedupeKey: strings.Repeat("a", 64), Language: "und", Region: "",
+		Title: "My server is a phone now", CanonicalURL: "https://example.test/server",
+	}
+	candidate := ingestiondomain.RelevanceCandidate{
+		MonitorID: 3, MonitorConfigVersionID: 4, ConfigHash: strings.Repeat("b", 64), RelevanceThreshold: 60,
+		Languages: []string{"en"}, Regions: []string{"US"},
+		Rules: []ingestiondomain.RelevanceRule{{ID: 5, RuleType: "keyword", Operator: "contains", Value: "server", Weight: 100, Origin: "user"}},
+	}
+	unknown, err := scoreRelevanceCandidate(RelevanceScoreRequest{Content: content}, candidate, mergedCandidateHit{source: true}, nil)
+	if err != nil {
+		t.Fatalf("scoreRelevanceCandidate(unknown metadata) error = %v", err)
+	}
+	if unknown.HardVeto || contains(unknown.ReasonCodes, "language_mismatch") || contains(unknown.ReasonCodes, "region_mismatch") || len(unknown.MatchedTerms) != 1 {
+		t.Fatalf("unknown metadata score = %#v, want lexical match without metadata veto", unknown)
+	}
+
+	content.Language, content.Region = "zh", "CN"
+	knownMismatch, err := scoreRelevanceCandidate(RelevanceScoreRequest{Content: content}, candidate, mergedCandidateHit{source: true}, nil)
+	if err != nil {
+		t.Fatalf("scoreRelevanceCandidate(known mismatch) error = %v", err)
+	}
+	if !knownMismatch.HardVeto || !contains(knownMismatch.ReasonCodes, "language_mismatch") || !contains(knownMismatch.ReasonCodes, "region_mismatch") {
+		t.Fatalf("known mismatch score = %#v, want explicit metadata veto", knownMismatch)
+	}
+}
+
 type relevanceCandidateFake struct {
 	candidates                           []ingestiondomain.RelevanceCandidate
 	sourceLimit, lexicalLimit            int

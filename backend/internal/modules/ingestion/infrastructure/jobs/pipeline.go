@@ -23,14 +23,22 @@ type EvaluateJobEnqueuer interface {
 	Enqueue(context.Context, queue.Job) (int64, bool, error)
 }
 
+type capturedRunIngester interface {
+	IngestRunWithHook(context.Context, ingestionapplication.IngestRunInput, func(context.Context, int64) error) (ingestionapplication.IngestRunResult, error)
+}
+
 // NormalizeHandler consumes only Source-owned captured items and schedules the
 // next deterministic stage for each Content fact produced by the use case.
 type NormalizeHandler struct {
-	service *ingestionapplication.Service
-	jobs    *queue.Store
+	service capturedRunIngester
+	jobs    EvaluateJobEnqueuer
 }
 
 func NewNormalizeHandler(service *ingestionapplication.Service, jobs *queue.Store) (*NormalizeHandler, error) {
+	return newNormalizeHandler(service, jobs)
+}
+
+func newNormalizeHandler(service capturedRunIngester, jobs EvaluateJobEnqueuer) (*NormalizeHandler, error) {
 	if service == nil || jobs == nil {
 		return nil, fmt.Errorf("normalize handler dependencies are required")
 	}
@@ -41,20 +49,27 @@ func (handler *NormalizeHandler) Handle(ctx context.Context, job queue.Job) erro
 	if err := queue.ValidateHandlerJob(job, queue.KindNormalizeContent); err != nil {
 		return queue.NewPermanentError(err)
 	}
-	_, err := handler.service.IngestRunWithHook(ctx, ingestionapplication.IngestRunInput{RunID: job.Payload.EntityID}, func(transactionCtx context.Context, contentID int64) error {
-		inputHash := queue.StableJobHash(queue.KindEvaluateRelevance, fmt.Sprint(contentID), fmt.Sprint(job.Payload.EntityVersion), job.Payload.InputHash)
-		_, _, err := handler.jobs.Enqueue(transactionCtx, queue.Job{
-			Kind:        queue.KindEvaluateRelevance,
-			UniqueKey:   queue.StableJobKey(queue.KindEvaluateRelevance, contentID, job.Payload.EntityVersion, inputHash),
-			Payload:     queue.Payload{EntityID: contentID, EntityVersion: job.Payload.EntityVersion, WindowStart: job.Payload.WindowStart, WindowEnd: job.Payload.WindowEnd, InputHash: inputHash},
-			ScheduledAt: job.ScheduledAt, MaxAttempts: 3, Priority: 3,
+	for {
+		result, err := handler.service.IngestRunWithHook(ctx, ingestionapplication.IngestRunInput{RunID: job.Payload.EntityID}, func(transactionCtx context.Context, contentID int64) error {
+			inputHash := queue.StableJobHash(queue.KindEvaluateRelevance, fmt.Sprint(contentID), fmt.Sprint(job.Payload.EntityVersion), job.Payload.InputHash)
+			_, _, err := handler.jobs.Enqueue(transactionCtx, queue.Job{
+				Kind:        queue.KindEvaluateRelevance,
+				UniqueKey:   queue.StableJobKey(queue.KindEvaluateRelevance, contentID, job.Payload.EntityVersion, inputHash),
+				Payload:     queue.Payload{EntityID: contentID, EntityVersion: job.Payload.EntityVersion, WindowStart: job.Payload.WindowStart, WindowEnd: job.Payload.WindowEnd, InputHash: inputHash},
+				ScheduledAt: job.ScheduledAt, MaxAttempts: 3, Priority: 3,
+			})
+			return err
 		})
-		return err
-	})
-	if err != nil {
-		return queue.ClassifyHandlerError(ctx, err)
+		if err != nil {
+			return queue.ClassifyHandlerError(ctx, err)
+		}
+		if result.NextCursor == "" {
+			return nil
+		}
+		if result.Processed == 0 {
+			return queue.NewPermanentError(fmt.Errorf("normalize captured item pagination made no progress"))
+		}
 	}
-	return nil
 }
 
 // EvaluateHandler persists deterministic MonitorMatch snapshots. AI review is

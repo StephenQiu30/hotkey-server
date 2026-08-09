@@ -165,6 +165,34 @@ describe("SourcesPage body storage authorization", () => {
     );
   });
 
+  it("creates Hacker News with official top stories repeated observation by default", async () => {
+    render(<SourcesPage />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "新增来源" }));
+    await user.type(screen.getByLabelText("名称"), "HN 热门榜单");
+    fireEvent.keyDown(screen.getByLabelText("来源类型"), { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("option", { name: "Hacker News" }));
+
+    expect(screen.getByLabelText("接口地址")).toHaveValue(
+      "https://hacker-news.firebaseio.com/v0"
+    );
+    expect(screen.getByLabelText("榜单模式")).toHaveTextContent("热门榜单");
+    expect(screen.getByText(/每轮重复观测官方 score 与评论数/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "创建连接" }));
+
+    await waitFor(() =>
+      expect(mocks.postSourceConnections).toHaveBeenCalledWith(
+        expect.objectContaining({
+          auth_type: "none",
+          enabled: true,
+          endpoint: "https://hacker-news.firebaseio.com/v0",
+          source_type: "hacker_news",
+          config: expect.objectContaining({ hacker_news_mode: "top" }),
+        })
+      )
+    );
+  });
+
   it("creates Microsoft Foundry Web Search disabled after explicit data-boundary review", async () => {
     render(<SourcesPage />);
     const user = userEvent.setup();

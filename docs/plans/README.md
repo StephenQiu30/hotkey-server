@@ -4,7 +4,7 @@ scope: shared
 doc_no: "000"
 title: Plan 索引
 status: completed
-version: v2.0
+version: v2.1
 owner: HotKey Team
 canonical_path: docs/plans/README.md
 ---
@@ -13,7 +13,7 @@ canonical_path: docs/plans/README.md
 
 Plan 将已评审 Design 和 PRD 转换为文件级、测试先行、可回滚的执行计划。状态只使用 `planned`、`in_progress`、`blocked`、`completed`。
 
-Plan 中的“当前实现”仅用于确定差距；只有 Acceptance 保存完成证据。001–030 的推荐依赖顺序见 [文档地图](../README.md)。
+Plan 中的“当前实现”仅用于确定差距；只有 Acceptance 保存完成证据。001–032 的推荐依赖顺序见 [文档地图](../README.md)。
 
 ## 交付项
 
@@ -49,3 +49,5 @@ Plan 中的“当前实现”仅用于确定差距；只有 Acceptance 保存完
 | 028 | [可观测性部署与质量门禁](../design/archive/028-可观测性部署与质量门禁设计.md) | [PRD](../prd/archive/028-可观测性部署与质量门禁.md) | [Plan](archive/028-可观测性部署与质量门禁计划.md) | completed |
 | 029 | [来源凭据与个性化配置](../design/archive/029-来源凭据与个性化配置设计.md) | [PRD](../prd/archive/029-来源凭据与个性化配置.md) | [Plan](archive/029-来源凭据与个性化配置计划.md) | completed |
 | 030 | [通知与订阅页面拆分](../design/archive/030-通知与订阅页面拆分设计.md) | [PRD](../prd/archive/030-通知与订阅页面拆分.md) | [Plan](archive/030-通知与订阅页面拆分计划.md) | completed |
+| 031 | [Hacker-News热门榜单与持续观测](../design/archive/031-Hacker-News热门榜单与持续观测设计.md) | [PRD](../prd/archive/031-Hacker-News热门榜单与持续观测.md) | [Plan](archive/031-Hacker-News热门榜单与持续观测计划.md) | completed |
+| 032 | [热点事件语义监控与出处正文](../design/032-热点事件语义监控与出处正文设计.md) | [PRD](../prd/032-热点事件语义监控与出处正文.md) | [Plan](032-热点事件语义监控与出处正文计划.md) | in_progress |

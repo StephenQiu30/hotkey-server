@@ -10,9 +10,9 @@ import (
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
-// ValidateHandlerJob keeps every P0 handler on the same small envelope
-// contract. A handler must not inspect River metadata or accept arbitrary
-// business JSON.
+// ValidateHandlerJob keeps every P0 handler on its registered bounded queue
+// contract. A handler must not inspect River metadata or accept an
+// unregistered payload shape.
 func ValidateHandlerJob(job Job, kind string) error {
 	if job.Kind != kind {
 		return fmt.Errorf("unexpected job kind %q", job.Kind)
