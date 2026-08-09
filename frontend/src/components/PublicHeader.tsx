@@ -33,10 +33,6 @@ export function PublicHeader() {
         >
           <BrandLogo markClassName="h-[18px] w-[18px]" />
         </Link>
-        <span className="ml-3 hidden rounded-full bg-muted px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.13em] text-muted-foreground sm:inline-flex">
-          Intelligence
-        </span>
-
         <nav aria-label="首页导航" className="ml-auto hidden items-center gap-7 md:flex">
           {navigation.map((item) => (
             <a

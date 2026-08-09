@@ -104,10 +104,6 @@ export default function TopNav({
         >
           <BrandLogo title={title} markClassName="h-5 w-5" />
         </Link>
-        <span className="hidden rounded-full bg-muted px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground 2xl:inline-flex">
-          Intelligence
-        </span>
-
         <NavigationMenu
           aria-label="主导航"
           className="hidden h-full max-w-none flex-none justify-start xl:flex"
