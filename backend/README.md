@@ -149,6 +149,16 @@ go run ./cmd/hotkey db verify
 >
 > **扩展权限：** 若目标库由非超级用户持有，该用户默认无法 `CREATE EXTENSION`。先以超级用户执行 `CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE EXTENSION IF NOT EXISTS vector;`，或在初始化后收回临时授予的超级用户权限。
 
+### 采集失败排查
+
+采集任务失败时，`collection_runs` 只记录 `error_code`（`permanent` / `temporary` / `rate_limited` …），真实原因见后端运行日志中的 `collection source fetch failed` 警告，包含 `source_connection_id`、`error_kind` 与净化后的 `reason`。
+
+常见原因：
+
+- **域名被本地代理/DNS 劫持解析成保留地址**（如 `198.18.0.0/15` 基准测试段、`fd00::/8` 私有段）：SSRF 防护（`publicAddress`）会拒绝连接非公网 IP，日志出现 `RSS destination is not permitted`。这是**安全设计生效**，不是 bug。排查方式：关闭代理 TUN 模式或调整分流规则，让域名解析回真实公网 IP。
+- **网络层失败**（超时 / 状态码非 2xx）：`reason` 对应 `error_kind` 提示。
+- **配置错误**（endpoint 非 HTTPS、带 userinfo 等）：`reason` 直接给出具体校验错误。
+
 ### 3. 启动后端
 
 GoLand 直接运行 `cmd/hotkey` 的 `main` 包即可；命令行等价入口只有一个：

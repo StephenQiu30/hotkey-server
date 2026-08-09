@@ -496,8 +496,8 @@ func newCollectionControlService(runtime *database.Runtime, sources *sourcepostg
 	})
 }
 
-func newCollectionService(runtime *database.Runtime, sources *sourcepostgres.Repository, runs *sourcepostgres.CollectionRepository, connectors *sourceinfrastructure.ConnectorRegistry) (*sourceapplication.CollectionService, error) {
-	return sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{Runtime: runtime, Sources: sources, Runs: runs, Connectors: connectors})
+func newCollectionService(runtime *database.Runtime, sources *sourcepostgres.Repository, runs *sourcepostgres.CollectionRepository, connectors *sourceinfrastructure.ConnectorRegistry, logger *zap.Logger) (*sourceapplication.CollectionService, error) {
+	return sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{Runtime: runtime, Sources: sources, Runs: runs, Connectors: connectors, Logger: logger})
 }
 
 func newCandidateRecallService(candidates *ingestionpostgres.RelevanceCandidateReader) (*ingestionapplication.CandidateRecallService, error) {

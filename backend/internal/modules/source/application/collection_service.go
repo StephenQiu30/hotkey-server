@@ -9,6 +9,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	"go.uber.org/zap"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -27,6 +28,10 @@ type CollectionDependencies struct {
 	Runs       domain.CollectionRepository
 	Connectors domain.CollectionConnectorRegistry
 	Now        func() time.Time
+
+	// Logger is optionally injected for operational diagnostics. A nil logger
+	// disables failure logging, so direct constructions in tests keep working.
+	Logger *zap.Logger
 }
 
 type CollectionService struct {
@@ -35,6 +40,7 @@ type CollectionService struct {
 	runs       domain.CollectionRepository
 	connectors domain.CollectionConnectorRegistry
 	now        func() time.Time
+	logger     *zap.Logger
 }
 
 func NewCollectionService(dependencies CollectionDependencies) (*CollectionService, error) {
@@ -46,7 +52,7 @@ func NewCollectionService(dependencies CollectionDependencies) (*CollectionServi
 	}
 	return &CollectionService{
 		runtime: dependencies.Runtime, sources: dependencies.Sources, runs: dependencies.Runs,
-		connectors: dependencies.Connectors, now: dependencies.Now,
+		connectors: dependencies.Connectors, now: dependencies.Now, logger: dependencies.Logger,
 	}, nil
 }
 
@@ -219,6 +225,13 @@ func normalizedCollectionText(value string) string {
 func (service *CollectionService) fail(ctx context.Context, run domain.CollectionRun, targets []domain.PublishedCollectionTarget, result domain.FetchResult, kind domain.CollectionErrorKind, cause error) (domain.CollectionRun, error) {
 	if !kind.Valid() {
 		kind = domain.CollectionErrorPermanent
+	}
+	if service.logger != nil {
+		service.logger.Warn("collection source fetch failed",
+			zap.Int64("source_connection_id", run.SourceConnectionID),
+			zap.String("error_kind", string(kind)),
+			zap.String("reason", domain.SafeCollectionErrorCause(cause)),
+		)
 	}
 	failed, persistErr := service.runs.PersistFailure(ctx, domain.CollectionRunFailure{
 		RunID: run.ID, Targets: targets, Result: result, ErrorKind: kind, CompletedAt: service.now().UTC(),
