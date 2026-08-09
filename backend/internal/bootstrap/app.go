@@ -155,6 +155,12 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				monitorpostgres.NewAlertPolicyReader,
 				monitorpostgres.NewIntentRepository,
 				newIntentService,
+				newMonitorIntentCompiler,
+				newIntentPublicationService,
+				monitorpostgres.NewCompiledRecallProfileReader,
+				ingestionpostgres.NewHybridDocumentRecallReader,
+				newHybridRecallService,
+				newMonitorIntentPreviewEvaluator,
 				newMonitorIntentAnalysisProcessor,
 				exposeMonitorIntentAnalysisAvailability,
 				newAlertRepository,
@@ -696,8 +702,11 @@ func newIngestionRelevanceAPIService(snapshots *ingestionpostgres.RelevanceRepos
 	return ingestionapplication.NewRelevanceAPIService(ingestionapplication.RelevanceAPIServiceDependencies{Snapshots: snapshots, Contents: contents, Candidates: candidates})
 }
 
-func newMonitorService(runtime *database.Runtime, monitors *monitorpostgres.Repository, sources *sourceapplication.Service, audit *operationspostgres.AuditWriter, quota *operationspostgres.GovernanceRepository) (*monitorapplication.Service, error) {
-	return monitorapplication.NewService(monitorapplication.Dependencies{Runtime: runtime, Monitors: monitors, Sources: sources, Audit: audit, Quota: quota})
+func newMonitorService(runtime *database.Runtime, monitors *monitorpostgres.Repository, sources *sourceapplication.Service, audit *operationspostgres.AuditWriter, quota *operationspostgres.GovernanceRepository, publication *monitorapplication.IntentPublicationService) (*monitorapplication.Service, error) {
+	return monitorapplication.NewService(monitorapplication.Dependencies{
+		Runtime: runtime, Monitors: monitors, Sources: sources, Audit: audit, Quota: quota,
+		IntentPublication: publication,
+	})
 }
 
 func newIntentService(repository *monitorpostgres.IntentRepository) (*monitorapplication.IntentService, error) {

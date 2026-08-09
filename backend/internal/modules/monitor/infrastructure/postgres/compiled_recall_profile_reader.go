@@ -151,27 +151,49 @@ FROM monitor_compiled_clauses WHERE compiled_profile_id=$1 ORDER BY ordinal`, pr
 
 func (reader *CompiledRecallProfileReader) readCompiledRecallEntities(ctx context.Context, profileID int64) ([]compiledRecallEntityRecord, error) {
 	rows, err := reader.runtime.SQL.QueryContext(ctx, `
-SELECT entity.id,entity.canonical_id,COALESCE(array_agg(alias.alias ORDER BY alias.ordinal) FILTER (WHERE alias.id IS NOT NULL),'{}')
-FROM monitor_compiled_entities AS entity
-LEFT JOIN monitor_compiled_entity_aliases AS alias
-  ON alias.compiled_entity_id=entity.id AND alias.compiled_profile_id=entity.compiled_profile_id
-WHERE entity.compiled_profile_id=$1
-GROUP BY entity.id,entity.canonical_id,entity.ordinal
-ORDER BY entity.ordinal`, profileID)
+SELECT id,canonical_id FROM monitor_compiled_entities
+WHERE compiled_profile_id=$1 ORDER BY ordinal`, profileID)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
 	result := []compiledRecallEntityRecord{}
 	for rows.Next() {
 		var record compiledRecallEntityRecord
-		if err := rows.Scan(&record.ID, &record.CanonicalID, &record.Aliases); err != nil {
+		if err := rows.Scan(&record.ID, &record.CanonicalID); err != nil {
+			_ = rows.Close()
 			return nil, databaserepository.MapError(err)
 		}
 		result = append(result, record)
 	}
 	if err := rows.Err(); err != nil {
+		_ = rows.Close()
 		return nil, databaserepository.MapError(err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, databaserepository.MapError(err)
+	}
+	for index := range result {
+		aliasRows, aliasErr := reader.runtime.SQL.QueryContext(ctx, `
+SELECT alias FROM monitor_compiled_entity_aliases
+WHERE compiled_profile_id=$1 AND compiled_entity_id=$2 ORDER BY ordinal`, profileID, result[index].ID)
+		if aliasErr != nil {
+			return nil, databaserepository.MapError(aliasErr)
+		}
+		for aliasRows.Next() {
+			var alias string
+			if aliasErr = aliasRows.Scan(&alias); aliasErr != nil {
+				_ = aliasRows.Close()
+				return nil, databaserepository.MapError(aliasErr)
+			}
+			result[index].Aliases = append(result[index].Aliases, alias)
+		}
+		if aliasErr = aliasRows.Err(); aliasErr != nil {
+			_ = aliasRows.Close()
+			return nil, databaserepository.MapError(aliasErr)
+		}
+		if aliasErr = aliasRows.Close(); aliasErr != nil {
+			return nil, databaserepository.MapError(aliasErr)
+		}
 	}
 	return result, nil
 }

@@ -97,10 +97,12 @@ func TestAuditEntryRejectsUnboundedCorrelationAndIdentityStrings(t *testing.T) {
 	valid := safeAuditEntry()
 	valid.Before = map[string]any{"status": "draft"}
 	valid.After = map[string]any{
-		"status":          "active",
-		"approval_status": "approved",
-		"config_hash":     strings.Repeat("a", 64),
-		"published_at":    "2026-07-16T08:00:00Z",
+		"status":              "active",
+		"approval_status":     "approved",
+		"config_hash":         strings.Repeat("a", 64),
+		"published_at":        "2026-07-16T08:00:00Z",
+		"compiled_profile_id": int64(17),
+		"intent_revision_id":  int64(23),
 	}
 	valid.RequestID = "request-audit-77"
 	valid.TraceID = "4bf92f3577b34da6a3ce929d0e0e4736"

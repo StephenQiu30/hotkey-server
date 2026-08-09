@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -433,6 +434,206 @@ func TestMonitorServicePublishAndSourceDisableSerializeThroughConfigurationLock(
 		t.Fatalf("publish/disable serial outcome successes=%d required=%d", successes, required)
 	}
 }
+
+func TestMonitorServicePublishesSuccessfulIntentProfileAtomicallyWithoutLegacyRules(t *testing.T) {
+	runtime := monitorRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	admin := monitorAdmin(t, runtime)
+	ctx := context.Background()
+	usage := monitorpostgres.NewSourceUsageReader(runtime)
+	sources, err := sourceapplication.NewService(sourceapplication.Dependencies{
+		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usage,
+		PublishedReferences: monitorpostgres.NewPublishedReferenceReader(runtime), Audit: operationspostgres.NewAuditWriter(runtime),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, err := sources.Create(ctx, sourceapplication.CreateInput{
+		Subject: admin, Connection: monitorSourceConnection("intent-publication-source"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	intentRepository, err := monitorpostgres.NewIntentRepository(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicationClock := monitorIntentPublicationClock{now: time.Date(2026, time.July, 18, 8, 0, 0, 0, time.UTC)}
+	publication, err := monitorapplication.NewIntentPublicationService(intentRepository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	draftInput := monitorDraft(connection.ID)
+	draftInput.Rules = nil
+	creator, err := monitorapplication.NewService(monitorapplication.Dependencies{
+		Runtime: runtime, Monitors: monitorpostgres.NewRepository(runtime), Sources: sources,
+		Audit: operationspostgres.NewAuditWriter(runtime),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	monitor, draft, err := creator.Create(ctx, monitorapplication.CreateInput{Subject: monitorEditor(admin.UserID), Draft: draftInput})
+	if err != nil {
+		t.Fatalf("Create(): %v", err)
+	}
+	seedSuccessfulIntentPreview(t, runtime, intentRepository, monitor.ID, draft.ID, publicationClock.now)
+
+	auditFailure := errors.New("intent publication audit rollback")
+	failing, err := monitorapplication.NewService(monitorapplication.Dependencies{
+		Runtime: runtime, Monitors: monitorpostgres.NewRepository(runtime), Sources: sources,
+		Audit: monitorFailingAudit{err: auditFailure}, IntentPublication: publication,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := failing.Publish(ctx, monitorapplication.PublishInput{
+		Subject: admin, MonitorID: monitor.ID,
+		Expected: monitordomain.ExpectedVersions{MonitorVersion: monitor.Version, DraftVersion: int64Value(draft.Version)},
+	}); !errors.Is(err, auditFailure) {
+		t.Fatalf("Publish(audit failure) = %v", err)
+	}
+	var state string
+	var publishedProfiles int
+	if err := runtime.SQL.QueryRow(`SELECT state FROM monitor_config_versions WHERE id=$1`, draft.ID).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM monitor_compiled_profiles WHERE purpose='published' AND config_version_id=$1`, draft.ID).Scan(&publishedProfiles); err != nil {
+		t.Fatal(err)
+	}
+	if state != "draft" || publishedProfiles != 0 {
+		t.Fatalf("failed publication leaked state/profile = %s/%d", state, publishedProfiles)
+	}
+
+	service, err := monitorapplication.NewService(monitorapplication.Dependencies{
+		Runtime: runtime, Monitors: monitorpostgres.NewRepository(runtime), Sources: sources,
+		Audit: operationspostgres.NewAuditWriter(runtime), IntentPublication: publication,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	publishedMonitor, publishedConfig, err := service.Publish(ctx, monitorapplication.PublishInput{
+		Subject: admin, MonitorID: monitor.ID,
+		Expected: monitordomain.ExpectedVersions{MonitorVersion: monitor.Version, DraftVersion: int64Value(draft.Version)},
+	})
+	if err != nil {
+		t.Fatalf("Publish(): %v", err)
+	}
+	if publishedMonitor.Status != monitordomain.MonitorStatusActive || publishedConfig.State != monitordomain.ConfigVersionPublished {
+		t.Fatalf("published monitor/config = %#v / %#v", publishedMonitor, publishedConfig)
+	}
+	var profileStatus string
+	if err := runtime.SQL.QueryRow(`
+SELECT status FROM monitor_compiled_profiles
+WHERE purpose='published' AND monitor_version_id=$1`, publishedConfig.ID).Scan(&profileStatus); err != nil {
+		t.Fatal(err)
+	}
+	if profileStatus != "ready" {
+		t.Fatalf("published compiled profile status = %q", profileStatus)
+	}
+	var legacyRuleCount int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM monitor_rules WHERE config_version_id=$1`, publishedConfig.ID).Scan(&legacyRuleCount); err != nil {
+		t.Fatal(err)
+	}
+	if legacyRuleCount != 0 {
+		t.Fatalf("legacy rule count = %d", legacyRuleCount)
+	}
+	targets, err := monitorpostgres.NewPublishedCollectionTargetReader(runtime).ListDue(ctx, publishedConfig.PublishedAt.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(targets) != 1 || len(targets[0].Terms) == 0 {
+		t.Fatalf("published collection targets = %#v", targets)
+	}
+	seen := map[string]bool{}
+	for _, term := range targets[0].Terms {
+		seen[term.Value] = !term.Excluded
+	}
+	if !seen["launch"] || !seen["Track launch disruption"] || !seen["HotKey"] {
+		t.Fatalf("published compiled terms = %#v", targets[0].Terms)
+	}
+}
+
+func seedSuccessfulIntentPreview(t *testing.T, runtime *database.Runtime, repository *monitorpostgres.IntentRepository, monitorID, configID int64, now time.Time) {
+	t.Helper()
+	var draftID, revisionID, entityID int64
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO monitor_intent_drafts (monitor_id,config_version_id) VALUES ($1,$2) RETURNING id`, monitorID, configID).Scan(&draftID); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO monitor_intent_draft_revisions (draft_id,monitor_id,config_version_id,resource_version,objective)
+VALUES ($1,$2,$3,1,'Track launch disruption') RETURNING id`, draftID, monitorID, configID).Scan(&revisionID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO monitor_intent_clauses (revision_id,draft_id,resource_version,ordinal,operator,field,value)
+VALUES ($1,$2,1,0,'must','action','launch')`, revisionID, draftID); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO monitor_intent_entities (revision_id,draft_id,resource_version,ordinal,canonical_id,display_name,ambiguity_note)
+VALUES ($1,$2,1,0,'product:hotkey','HotKey','product') RETURNING id`, revisionID, draftID).Scan(&entityID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO monitor_intent_entity_aliases (entity_id,draft_id,resource_version,ordinal,alias)
+VALUES ($1,$2,1,0,'HotKey')`, entityID, draftID); err != nil {
+		t.Fatal(err)
+	}
+	reservation, err := repository.ReserveAndEnqueue(context.Background(), monitorapplication.ReserveIntentRunDTO{
+		IdempotencyKey: fmt.Sprintf("monitor.%d.preview", monitorID), RequestHash: strings.Repeat("8", 64), RequestedAt: now,
+		Task: monitorapplication.IntentRunTaskDTO{
+			Kind: "preview", MonitorID: monitorID, DraftID: draftID, DraftResourceVersion: 1,
+			InputHash: strings.Repeat("a", 64), AnalysisProfile: "preview-v1", SampleLimit: 25,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	startedAt := now.Add(time.Second)
+	running := reservation.Run
+	running.Status, running.StartedAt = "running", &startedAt
+	if _, err := repository.SaveTransition(context.Background(), monitorapplication.IntentRunTransitionDTO{Expected: reservation.Run, Next: running}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.PersistPreviewCompiledProfile(context.Background(), monitorapplication.PersistPreviewCompiledProfileDTO{
+		Task: monitorapplication.IntentAnalysisTaskDTO{
+			Run: monitorapplication.IntentRunReferenceDTO{
+				RunID: running.ID, Kind: "preview", MonitorID: monitorID, DraftID: draftID,
+				DraftResourceVersion: 1, InputHash: running.InputHash,
+			}, AnalysisProfile: "preview-v1", SampleLimit: 25,
+		},
+		CompilerVersion:          monitorapplication.IntentCompilerVersion,
+		MatchingAlgorithmVersion: "rrf-k60-v1", LexicalAlgorithmVersion: "fts-trgm-dice-v1",
+		SemanticAlgorithmVersion: "halfvec-cosine-v1", StructuredAlgorithmVersion: "entity-hard-rule-v1",
+		SearchNormalizationProfileVersion: monitorapplication.IntentSearchNormalizationProfileVersion,
+		SemanticState:                     "unavailable", SemanticUnavailableReason: monitorapplication.IntentSemanticGenerationUnavailable,
+		ProfileHash: strings.Repeat("c", 64), ReadyAt: startedAt,
+		Clauses: []monitorapplication.CompiledIntentClauseDTO{
+			{Operator: "must", Field: "action", Value: "launch", NormalizedValue: "launch", Origin: "intent_clause"},
+			{Operator: "should", Field: "phrase", Value: "Track launch disruption", NormalizedValue: "track launch disruption", Origin: "objective_derived"},
+		},
+		Entities: []monitorapplication.CompiledIntentEntityDTO{{
+			CanonicalID: "product:hotkey", Aliases: []string{"HotKey"}, NormalizedAliases: []string{"hotkey"},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	completedAt := now.Add(2 * time.Second)
+	succeeded := running
+	succeeded.Status, succeeded.CompletedAt = "succeeded", &completedAt
+	if _, err := repository.CompletePreview(context.Background(), monitorapplication.CompletePreviewRunMutationDTO{
+		Transition:        monitorapplication.IntentRunTransitionDTO{Expected: running, Next: succeeded},
+		Preview:           monitorapplication.IntentPreviewDTO{Warnings: []string{"preview_uncalibrated"}},
+		ResultFingerprint: strings.Repeat("d", 64),
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type monitorIntentPublicationClock struct{ now time.Time }
+
+func (clock monitorIntentPublicationClock) Now() time.Time { return clock.now }
 
 func monitorRuntime(t *testing.T) *database.Runtime {
 	t.Helper()

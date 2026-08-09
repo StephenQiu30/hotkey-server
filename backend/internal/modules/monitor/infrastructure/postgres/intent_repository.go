@@ -25,13 +25,15 @@ type IntentRepository struct {
 }
 
 var (
-	_ monitorapplication.IntentDraftRepository         = (*IntentRepository)(nil)
-	_ monitorapplication.IntentDraftRevisionRepository = (*IntentRepository)(nil)
-	_ monitorapplication.CurrentIntentDraftRepository  = (*IntentRepository)(nil)
-	_ monitorapplication.IntentRunRepository           = (*IntentRepository)(nil)
-	_ monitorapplication.IntentAnalysisTaskRepository  = (*IntentRepository)(nil)
-	_ monitorapplication.IntentRunStatusRepository     = (*IntentRepository)(nil)
-	_ monitorapplication.IntentControlAuthorizer       = (*IntentRepository)(nil)
+	_ monitorapplication.IntentDraftRepository           = (*IntentRepository)(nil)
+	_ monitorapplication.IntentDraftRevisionRepository   = (*IntentRepository)(nil)
+	_ monitorapplication.CurrentIntentDraftRepository    = (*IntentRepository)(nil)
+	_ monitorapplication.IntentRunRepository             = (*IntentRepository)(nil)
+	_ monitorapplication.IntentAnalysisTaskRepository    = (*IntentRepository)(nil)
+	_ monitorapplication.IntentRunStatusRepository       = (*IntentRepository)(nil)
+	_ monitorapplication.IntentControlAuthorizer         = (*IntentRepository)(nil)
+	_ monitorapplication.CompiledIntentProfileRepository = (*IntentRepository)(nil)
+	_ monitorapplication.IntentPublicationRepository     = (*IntentRepository)(nil)
 )
 
 func NewIntentRepository(runtime *database.Runtime) (*IntentRepository, error) {

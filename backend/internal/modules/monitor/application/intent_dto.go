@@ -341,6 +341,22 @@ type PrepareIntentExpansionResult struct {
 	Expansion PreparedIntentExpansionDTO
 }
 
+// PreparedIntentPreviewDTO freezes the exact append-only draft revision used
+// by a durable preview run. Infrastructure receives no editable pointer and
+// cannot substitute legacy monitor_rules.
+type PreparedIntentPreviewDTO struct {
+	Task  IntentAnalysisTaskDTO
+	Draft IntentDraftDTO
+}
+
+type PrepareIntentPreviewQuery struct {
+	Task IntentAnalysisTaskDTO
+}
+
+type PrepareIntentPreviewResult struct {
+	Preview PreparedIntentPreviewDTO
+}
+
 type StartIntentRunCommand struct {
 	Run IntentRunReferenceDTO
 }

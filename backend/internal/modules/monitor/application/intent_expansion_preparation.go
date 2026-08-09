@@ -64,6 +64,44 @@ func (service *IntentService) PrepareIntentExpansion(ctx context.Context, query 
 	}}, nil
 }
 
+// PrepareIntentPreview independently reloads the durable run and its exact
+// append-only draft revision, then recomputes the input hash. This is the only
+// draft projection accepted by the compiler/evaluator path.
+func (service *IntentService) PrepareIntentPreview(ctx context.Context, query PrepareIntentPreviewQuery) (PrepareIntentPreviewResult, error) {
+	if service == nil || service.tasks == nil || service.revisions == nil {
+		return PrepareIntentPreviewResult{}, ErrInvalidIntentContract
+	}
+	run := query.Task.Run
+	resolved, err := service.ReadIntentAnalysisTask(ctx, ReadIntentAnalysisTaskQuery{
+		RunID: run.RunID, DraftID: run.DraftID, DraftResourceVersion: run.DraftResourceVersion,
+	})
+	if err != nil {
+		return PrepareIntentPreviewResult{}, err
+	}
+	if !reflect.DeepEqual(resolved.Task, query.Task) || run.Kind != string(domain.IntentRunPreview) || query.Task.SampleLimit < 1 || query.Task.SampleLimit > 200 {
+		return PrepareIntentPreviewResult{}, invalidIntentContract(fmt.Errorf("preview task differs from its durable run"))
+	}
+	stored, err := service.revisions.FindIntentDraftRevision(ctx, ReadIntentDraftRevisionQuery{
+		MonitorID: run.MonitorID, DraftID: run.DraftID, ResourceVersion: run.DraftResourceVersion,
+	})
+	if err != nil {
+		return PrepareIntentPreviewResult{}, err
+	}
+	draft, err := intentDraftFromDTO(stored)
+	if err != nil {
+		return PrepareIntentPreviewResult{}, err
+	}
+	if draft.MonitorID() != run.MonitorID || draft.DraftID() != run.DraftID || draft.ResourceVersion() != run.DraftResourceVersion {
+		return PrepareIntentPreviewResult{}, invalidIntentContract(fmt.Errorf("immutable draft revision identity drifted"))
+	}
+	if intentPreviewInputHash(draft, query.Task.AnalysisProfile, query.Task.SampleLimit) != run.InputHash {
+		return PrepareIntentPreviewResult{}, invalidIntentContract(fmt.Errorf("preview input hash does not match the immutable draft revision"))
+	}
+	return PrepareIntentPreviewResult{Preview: PreparedIntentPreviewDTO{
+		Task: resolved.Task, Draft: intentDraftToDTO(draft),
+	}}, nil
+}
+
 func validateIntentAnalysisTask(task IntentAnalysisTaskDTO, query ReadIntentAnalysisTaskQuery) error {
 	run := task.Run
 	kind := domain.IntentRunKind(run.Kind)

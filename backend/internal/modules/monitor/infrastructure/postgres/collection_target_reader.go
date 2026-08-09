@@ -87,9 +87,8 @@ SELECT
     checkpoint.last_fetched_at,
     checkpoint.next_poll_at,
     checkpoint.consecutive_failures,
-    rule.rule_type,
-    rule.operator,
-    rule.value
+    term.value,
+    term.excluded
 FROM monitors AS monitor
 JOIN monitor_config_versions AS config_version
   ON config_version.id = monitor.published_config_version_id
@@ -99,10 +98,43 @@ JOIN source_connections AS source_connection
   ON source_connection.id = monitor_source.source_connection_id
 JOIN source_checkpoints AS checkpoint
   ON checkpoint.monitor_source_id = monitor_source.id
-LEFT JOIN monitor_rules AS rule
-  ON rule.config_version_id = config_version.id
- AND rule.enabled
- AND rule.approval_status = 'approved'
+LEFT JOIN monitor_compiled_profiles AS compiled_profile
+  ON compiled_profile.monitor_id=monitor.id
+ AND compiled_profile.purpose='published'
+ AND compiled_profile.monitor_version_id=config_version.id
+ AND compiled_profile.status='ready'
+LEFT JOIN LATERAL (
+    SELECT selected.value,selected.excluded,selected.term_order,selected.ordinal
+    FROM (
+        SELECT DISTINCT ON (candidate.excluded,candidate.normalized_value)
+               candidate.value,candidate.excluded,candidate.term_order,candidate.ordinal
+        FROM (
+            SELECT clause.value,(clause.operator='must_not') AS excluded,
+                   clause.normalized_value,0 AS term_order,clause.ordinal::bigint AS ordinal
+            FROM monitor_compiled_clauses AS clause
+            WHERE compiled_profile.id IS NOT NULL
+              AND clause.compiled_profile_id=compiled_profile.id
+              AND clause.field IN ('term','phrase','action','location')
+            UNION ALL
+            SELECT alias.alias,false,alias.normalized_alias,1,alias.ordinal::bigint
+            FROM monitor_compiled_entity_aliases AS alias
+            WHERE compiled_profile.id IS NOT NULL
+              AND alias.compiled_profile_id=compiled_profile.id
+            UNION ALL
+            SELECT rule.value,
+                   (rule.rule_type='exclude_keyword' OR rule.operator='not_equals'),
+                   lower(btrim(rule.value)),2,
+                   (32767-rule.priority)::bigint*1000000+rule.id
+            FROM monitor_rules AS rule
+            WHERE compiled_profile.id IS NULL
+              AND rule.config_version_id=config_version.id
+              AND rule.enabled AND rule.approval_status='approved'
+              AND rule.rule_type IN ('keyword','phrase','entity','exclude_keyword')
+        ) AS candidate
+        ORDER BY candidate.excluded,candidate.normalized_value,candidate.term_order,candidate.ordinal
+    ) AS selected
+    ORDER BY selected.term_order,selected.ordinal,selected.value
+) AS term ON true
 WHERE monitor.status = 'active'
   AND config_version.state = 'published'
   AND monitor_source.enabled
@@ -110,7 +142,7 @@ WHERE monitor.status = 'active'
   AND source_connection.deleted_at IS NULL
   AND monitor_source.query_signature IS NOT NULL
   AND `+predicate+`
-ORDER BY monitor_source.id ASC, rule.priority DESC, rule.id ASC`, args...)
+ORDER BY monitor_source.id ASC, term.term_order ASC, term.ordinal ASC, term.value ASC`, args...)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
@@ -136,7 +168,7 @@ ORDER BY monitor_source.id ASC, rule.priority DESC, rule.id ASC`, args...)
 			}
 			targets = append(targets, target)
 		}
-		if term, include := collectionTerm(row.ruleType, row.ruleOperator, row.ruleValue); include {
+		if term, include := collectionTerm(row.termValue, row.termExcluded); include {
 			targets[len(targets)-1].Terms = append(targets[len(targets)-1].Terms, term)
 		}
 	}
@@ -242,7 +274,8 @@ type publishedCollectionTargetRow struct {
 	lastSuccessfulRun                                           sql.NullInt64
 	nextPollAt                                                  time.Time
 	consecutiveFailures                                         int
-	ruleType, ruleOperator, ruleValue                           sql.NullString
+	termValue                                                   sql.NullString
+	termExcluded                                                sql.NullBool
 }
 
 func scanPublishedCollectionTarget(rows *sql.Rows) (publishedCollectionTargetRow, error) {
@@ -252,7 +285,7 @@ func scanPublishedCollectionTarget(rows *sql.Rows) (publishedCollectionTargetRow
 		&row.languagesJSON, &row.regionsJSON, &row.collectionIntervalSeconds,
 		&row.checkpointID, &row.checkpointVersion, &row.checkpointQueryHash, &row.checkpointCursor, &row.checkpointETag,
 		&row.checkpointLastModified, &row.highWatermark, &row.lastSuccessfulRun, &row.lastFetchedAt, &row.nextPollAt,
-		&row.consecutiveFailures, &row.ruleType, &row.ruleOperator, &row.ruleValue,
+		&row.consecutiveFailures, &row.termValue, &row.termExcluded,
 	)
 	return row, err
 }
@@ -290,16 +323,9 @@ func (row publishedCollectionTargetRow) target() (sourcedomain.PublishedCollecti
 	}, nil
 }
 
-func collectionTerm(ruleType, operator, value sql.NullString) (sourcedomain.CollectionTerm, bool) {
-	if !ruleType.Valid || !operator.Valid || !value.Valid {
+func collectionTerm(value sql.NullString, excluded sql.NullBool) (sourcedomain.CollectionTerm, bool) {
+	if !value.Valid || !excluded.Valid {
 		return sourcedomain.CollectionTerm{}, false
 	}
-	switch ruleType.String {
-	case "keyword", "phrase", "entity":
-		return sourcedomain.CollectionTerm{Value: value.String, Excluded: operator.String == "not_equals"}, true
-	case "exclude_keyword":
-		return sourcedomain.CollectionTerm{Value: value.String, Excluded: true}, true
-	default:
-		return sourcedomain.CollectionTerm{}, false
-	}
+	return sourcedomain.CollectionTerm{Value: value.String, Excluded: excluded.Bool}, true
 }

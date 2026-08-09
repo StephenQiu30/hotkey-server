@@ -26,6 +26,7 @@ var (
 	_ ingestionapplication.LexicalDocumentRecallReader    = (*HybridDocumentRecallReader)(nil)
 	_ ingestionapplication.StructuredDocumentRecallReader = (*HybridDocumentRecallReader)(nil)
 	_ ingestionapplication.SemanticDocumentRecallReader   = (*HybridDocumentRecallReader)(nil)
+	_ ingestionapplication.RecallPreviewDocumentReader    = (*HybridDocumentRecallReader)(nil)
 )
 
 func NewHybridDocumentRecallReader(runtime *database.Runtime) (*HybridDocumentRecallReader, error) {
@@ -33,6 +34,66 @@ func NewHybridDocumentRecallReader(runtime *database.Runtime) (*HybridDocumentRe
 		return nil, fmt.Errorf("%w: database runtime is required", sharedrepository.ErrUnavailable)
 	}
 	return &HybridDocumentRecallReader{runtime: runtime}, nil
+}
+
+func (reader *HybridDocumentRecallReader) ReadRecallPreviewDocuments(ctx context.Context, query ingestionapplication.RecallPreviewDocumentQuery) (ingestionapplication.RecallPreviewDocumentResult, error) {
+	if reader == nil || reader.runtime == nil || reader.runtime.SQL == nil {
+		return ingestionapplication.RecallPreviewDocumentResult{}, sharedrepository.ErrUnavailable
+	}
+	if len(query.DocumentVersionIDs) > 200 {
+		return ingestionapplication.RecallPreviewDocumentResult{}, sharedrepository.ErrInvalidInput
+	}
+	seen := make(map[int64]struct{}, len(query.DocumentVersionIDs))
+	for _, id := range query.DocumentVersionIDs {
+		if id <= 0 {
+			return ingestionapplication.RecallPreviewDocumentResult{}, sharedrepository.ErrInvalidInput
+		}
+		if _, duplicate := seen[id]; duplicate {
+			return ingestionapplication.RecallPreviewDocumentResult{}, sharedrepository.ErrInvalidInput
+		}
+		seen[id] = struct{}{}
+	}
+	if len(query.DocumentVersionIDs) == 0 {
+		return ingestionapplication.RecallPreviewDocumentResult{Documents: []ingestionapplication.RecallPreviewDocumentDTO{}}, nil
+	}
+	rows, err := reader.runtime.SQL.QueryContext(ctx, `
+SELECT version.id,
+       CASE WHEN version.lifecycle_state NOT IN ('retention_blocked','quarantined','tombstoned')
+                  AND current_rights_action_allowed(
+                    version.display_private_rights_decision_id,document.source_connection_id,
+                    'document_version',version.id::text,version.content_sha256,'display_private',CURRENT_TIMESTAMP
+                  )
+            THEN observation.title ELSE '' END AS safe_title,
+       version.lifecycle_state NOT IN ('retention_blocked','quarantined','tombstoned')
+         AND btrim(observation.title)<>''
+         AND current_rights_action_allowed(
+           version.display_private_rights_decision_id,document.source_connection_id,
+           'document_version',version.id::text,version.content_sha256,'display_private',CURRENT_TIMESTAMP
+         ) AS title_available
+FROM unnest($1::bigint[]) WITH ORDINALITY AS requested(document_version_id,ordinal)
+JOIN document_versions AS version ON version.id=requested.document_version_id
+JOIN documents AS document ON document.id=version.document_id
+JOIN source_observations AS observation ON observation.id=version.source_observation_id
+ORDER BY requested.ordinal`, query.DocumentVersionIDs)
+	if err != nil {
+		return ingestionapplication.RecallPreviewDocumentResult{}, databaserepository.MapError(err)
+	}
+	defer rows.Close()
+	result := ingestionapplication.RecallPreviewDocumentResult{Documents: []ingestionapplication.RecallPreviewDocumentDTO{}}
+	for rows.Next() {
+		var document ingestionapplication.RecallPreviewDocumentDTO
+		if err := rows.Scan(&document.DocumentVersionID, &document.Title, &document.TitleAvailable); err != nil {
+			return ingestionapplication.RecallPreviewDocumentResult{}, databaserepository.MapError(err)
+		}
+		result.Documents = append(result.Documents, document)
+	}
+	if err := rows.Err(); err != nil {
+		return ingestionapplication.RecallPreviewDocumentResult{}, databaserepository.MapError(err)
+	}
+	if len(result.Documents) != len(query.DocumentVersionIDs) {
+		return ingestionapplication.RecallPreviewDocumentResult{}, sharedrepository.ErrNotFound
+	}
+	return result, nil
 }
 
 func (reader *HybridDocumentRecallReader) RecallLexical(ctx context.Context, query ingestionapplication.LexicalRecallQueryDTO) ([]ingestionapplication.RecallHitDTO, error) {

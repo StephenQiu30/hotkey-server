@@ -175,6 +175,27 @@ type HybridRecallResult struct {
 	DegradationReasons                            []string
 }
 
+// RecallPreviewDocumentDTO is a rights-safe title projection for one fused
+// candidate. TitleAvailable is explicit so a preview can preserve candidate
+// identity without leaking a withdrawn or non-displayable source title.
+type RecallPreviewDocumentDTO struct {
+	DocumentVersionID int64
+	Title             string
+	TitleAvailable    bool
+}
+
+type RecallPreviewDocumentQuery struct {
+	DocumentVersionIDs []int64
+}
+
+type RecallPreviewDocumentResult struct {
+	Documents []RecallPreviewDocumentDTO
+}
+
+type RecallPreviewDocumentReader interface {
+	ReadRecallPreviewDocuments(context.Context, RecallPreviewDocumentQuery) (RecallPreviewDocumentResult, error)
+}
+
 type LexicalDocumentRecallReader interface {
 	RecallLexical(context.Context, LexicalRecallQueryDTO) ([]RecallHitDTO, error)
 }

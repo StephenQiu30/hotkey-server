@@ -7,17 +7,19 @@ import (
 )
 
 var (
-	ErrInvalidIntentContract      = errors.New("monitor intent contract is invalid")
-	ErrIntentDraftNotFound        = errors.New("monitor intent draft was not found")
-	ErrIntentRunNotFound          = errors.New("monitor intent run was not found")
-	ErrIntentVersionConflict      = errors.New("monitor intent resource version conflict")
-	ErrIntentMutationNotFound     = errors.New("monitor intent mutation was not found")
-	ErrExpansionCandidateNotFound = errors.New("monitor expansion candidate was not found")
-	ErrExpansionDecisionConflict  = errors.New("monitor expansion candidate already has a decision")
-	ErrIntentIdempotencyConflict  = errors.New("intent action idempotency key conflicts with prior input")
-	ErrIntentRunStateConflict     = errors.New("intent analysis run state conflicts with the requested transition")
-	ErrIntentRunResultConflict    = errors.New("intent analysis run already has different terminal output")
-	ErrIntentAuthorizationDenied  = errors.New("monitor intent authorization denied")
+	ErrInvalidIntentContract         = errors.New("monitor intent contract is invalid")
+	ErrIntentDraftNotFound           = errors.New("monitor intent draft was not found")
+	ErrIntentRunNotFound             = errors.New("monitor intent run was not found")
+	ErrIntentVersionConflict         = errors.New("monitor intent resource version conflict")
+	ErrIntentMutationNotFound        = errors.New("monitor intent mutation was not found")
+	ErrExpansionCandidateNotFound    = errors.New("monitor expansion candidate was not found")
+	ErrExpansionDecisionConflict     = errors.New("monitor expansion candidate already has a decision")
+	ErrIntentIdempotencyConflict     = errors.New("intent action idempotency key conflicts with prior input")
+	ErrIntentRunStateConflict        = errors.New("intent analysis run state conflicts with the requested transition")
+	ErrIntentRunResultConflict       = errors.New("intent analysis run already has different terminal output")
+	ErrIntentAuthorizationDenied     = errors.New("monitor intent authorization denied")
+	ErrCompiledIntentProfileConflict = errors.New("compiled monitor intent profile conflicts with the existing owner")
+	ErrIntentPublicationUnavailable  = errors.New("monitor intent publication prerequisites are unavailable")
 )
 
 // IntentDraftRepository is deliberately expressed only in Application DTOs.
@@ -90,6 +92,28 @@ type IntentRunRepository interface {
 // Monitor scope, or preview parameters from being injected through River.
 type IntentAnalysisTaskRepository interface {
 	FindIntentAnalysisTask(context.Context, ReadIntentAnalysisTaskQuery) (IntentAnalysisTaskDTO, error)
+}
+
+// CompiledIntentProfileRepository atomically persists one immutable preview
+// profile. Implementations must resolve ConfigVersionID and IntentRevisionID
+// from the exact run/draft identity and must treat a matching owner+hash as an
+// idempotent replay rather than adding a second profile.
+type CompiledIntentProfileRepository interface {
+	PersistPreviewCompiledProfile(context.Context, PersistPreviewCompiledProfileDTO) (PersistPreviewCompiledProfileReceiptDTO, error)
+}
+
+// IntentPublicationRepository reads one successful exact preview profile,
+// stages its immutable facts as the published owner, then finalizes it only
+// after the enclosing Monitor transaction has published the configuration.
+type IntentPublicationRepository interface {
+	ReadPublishableIntentProfile(context.Context, ReadPublishableIntentProfileQuery) (PublishableIntentProfileDTO, error)
+	StagePublishedIntentProfile(context.Context, StagePublishedIntentProfileDTO) (StagePublishedIntentProfileReceiptDTO, error)
+	CompletePublishedIntentProfile(context.Context, CompletePublishedIntentProfileDTO) error
+}
+
+type IntentPublicationCoordinator interface {
+	Prepare(context.Context, PrepareIntentPublicationCommand) (PrepareIntentPublicationResult, error)
+	Complete(context.Context, CompleteIntentPublicationCommand) error
 }
 
 type IntentClock interface {

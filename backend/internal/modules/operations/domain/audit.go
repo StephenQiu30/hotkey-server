@@ -122,6 +122,7 @@ func (entry AuditEntry) Validate() error {
 
 var safeMetadataKeys = map[string]struct{}{
 	"monitor_version": {}, "draft_version": {}, "source_version": {}, "subscription_version": {}, "config_version": {}, "revision": {}, "rule_count": {}, "source_count": {},
+	"compiled_profile_id": {}, "intent_revision_id": {},
 	"status": {}, "previous_status": {}, "approval_status": {}, "config_hash": {}, "published_at": {},
 	"enabled": {}, "deleted": {}, "credential_configured": {}, "affected": {}, "batch_size": {}, "decision_count": {},
 	"capability_source_type": {}, "capability_profile_version": {}, "capability_status": {}, "capability_profile_record_version": {}, "reason_code": {},
@@ -176,7 +177,7 @@ func SanitizeMetadata(metadata map[string]any) map[string]any {
 
 func validMetadataValue(key string, value any) bool {
 	switch key {
-	case "monitor_version", "draft_version", "source_version", "subscription_version", "config_version", "revision", "rule_count", "source_count", "affected", "batch_size", "decision_count":
+	case "monitor_version", "draft_version", "source_version", "subscription_version", "config_version", "revision", "rule_count", "source_count", "compiled_profile_id", "intent_revision_id", "affected", "batch_size", "decision_count":
 		switch value.(type) {
 		case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 			return true

@@ -95,6 +95,106 @@ func TestPublishedCollectionTargetReaderReturnsOnlyDueActivePublishedEnabledTarg
 	}
 }
 
+func TestPublishedCollectionTargetReaderPrefersExactCompiledIntentOverLegacyRules(t *testing.T) {
+	runtime := intentRepositoryRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	fixture := insertIntentRepositoryDraft(t, runtime, false)
+	now := time.Date(2026, time.July, 17, 8, 0, 0, 0, time.UTC)
+	var sourceID, monitorSourceID, revisionID, profileID, entityID int64
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO source_connections (source_type,name,endpoint,auth_type,config,enabled,health_status)
+VALUES ('rss','compiled intent source','https://feeds.example.test/compiled','none','{}'::jsonb,true,'unknown') RETURNING id`).Scan(&sourceID); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO monitor_sources (config_version_id,source_connection_id,query_signature,enabled)
+VALUES ($1,$2,$3,true) RETURNING id`, fixture.configID, sourceID, strings.Repeat("e", 64)).Scan(&monitorSourceID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO source_checkpoints (monitor_source_id,query_hash,next_poll_at)
+VALUES ($1,$2,$3)`, monitorSourceID, strings.Repeat("e", 64), now.Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO monitor_rules (config_version_id,rule_type,operator,value,weight,approval_status,enabled)
+VALUES ($1,'keyword','contains','legacy-only',100,'approved',true)`, fixture.configID); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`
+SELECT id FROM monitor_intent_draft_revisions
+WHERE draft_id=$1 AND resource_version=1`, fixture.draftID).Scan(&revisionID); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO monitor_compiled_profiles (
+  monitor_id,purpose,config_version_id,monitor_version_id,intent_revision_id,
+  compiler_version,matching_algorithm_version,lexical_algorithm_version,semantic_algorithm_version,
+  structured_algorithm_version,search_normalization_profile_version,semantic_state,semantic_unavailable_reason
+) VALUES ($1,'published',$2,$2,$3,'monitor-intent-compiler-v1','rrf-k60-v1','fts-trgm-dice-v1',
+          'halfvec-cosine-v1','entity-hard-rule-v1','canonical-nfc-plaintext-v1','unavailable','semantic_generation_unavailable')
+RETURNING id`, fixture.monitorID, fixture.configID, revisionID).Scan(&profileID); err != nil {
+		t.Fatal(err)
+	}
+	for ordinal, clause := range []struct {
+		operator, field, value, normalized string
+	}{{"must", "action", "launch", "launch"}, {"must_not", "term", "noise", "noise"}} {
+		if _, err := runtime.SQL.Exec(`
+INSERT INTO monitor_compiled_clauses (compiled_profile_id,ordinal,operator,field,value,normalized_value,origin)
+VALUES ($1,$2,$3,$4,$5,$6,'intent_clause')`, profileID, ordinal, clause.operator, clause.field, clause.value, clause.normalized); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO monitor_compiled_entities (compiled_profile_id,ordinal,canonical_id)
+VALUES ($1,0,'product:hotkey') RETURNING id`, profileID).Scan(&entityID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO monitor_compiled_entity_aliases (compiled_entity_id,compiled_profile_id,ordinal,alias,normalized_alias)
+VALUES ($1,$2,0,'HotKey','hotkey')`, entityID, profileID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`
+UPDATE monitor_config_versions SET state='published',config_hash=$2,published_at=$3 WHERE id=$1`, fixture.configID, strings.Repeat("f", 64), now.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`
+UPDATE monitors SET status='active',draft_config_version_id=NULL,published_config_version_id=$2 WHERE id=$1`, fixture.monitorID, fixture.configID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`
+UPDATE monitor_compiled_profiles SET status='ready',profile_hash=$2,ready_at=$3 WHERE id=$1`, profileID, strings.Repeat("d", 64), now.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	targets, err := monitorpostgres.NewPublishedCollectionTargetReader(runtime).ListDue(context.Background(), now)
+	if err != nil {
+		t.Fatalf("ListDue(): %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("targets = %#v", targets)
+	}
+	want := []sourcedomain.CollectionTerm{{Value: "launch"}, {Value: "noise", Excluded: true}, {Value: "HotKey"}}
+	if len(targets[0].Terms) != len(want) {
+		t.Fatalf("compiled terms = %#v, want %#v", targets[0].Terms, want)
+	}
+	for _, term := range targets[0].Terms {
+		if term.Value == "legacy-only" {
+			t.Fatalf("reader fell back to legacy monitor_rules: %#v", targets[0].Terms)
+		}
+	}
+	seen := map[sourcedomain.CollectionTerm]bool{}
+	for _, term := range targets[0].Terms {
+		seen[term] = true
+	}
+	for _, term := range want {
+		if !seen[term] {
+			t.Fatalf("compiled terms = %#v, missing %#v", targets[0].Terms, term)
+		}
+	}
+}
+
 func TestCollectionSchedulerEnqueuesDueSourceWithoutWritingCollectionFacts(t *testing.T) {
 	runtime := monitorRepositoryRuntime(t)
 	defer func() { _ = runtime.Close() }()

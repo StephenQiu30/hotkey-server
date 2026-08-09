@@ -48,31 +48,62 @@ type intentExpansionStructuredRunner interface {
 	ExecuteStructured(context.Context, intelligenceapplication.StructuredExecutionInput) (intelligenceapplication.StructuredExecutionResult, error)
 }
 
+type intentPreviewProcessor interface {
+	EvaluatePreview(context.Context, monitorapplication.IntentAnalysisTaskDTO) (monitorapplication.IntentPreviewDTO, error)
+}
+
 // IntentAnalysisCompositeProcessor intentionally implements only production
 // expansion. Preview remains unavailable until a real immutable-document
 // evaluator exists; it is never represented by an empty or fixed result.
 type IntentAnalysisCompositeProcessor struct {
 	preparer intentExpansionPreparer
 	runner   intentExpansionStructuredRunner
+	preview  intentPreviewProcessor
 }
 
-func NewIntentAnalysisCompositeProcessor(intents *monitorapplication.IntentService, runs *intelligenceapplication.RunService) (*IntentAnalysisCompositeProcessor, error) {
-	return newIntentAnalysisCompositeProcessor(intents, runs)
+func NewIntentAnalysisCompositeProcessor(intents *monitorapplication.IntentService, runs *intelligenceapplication.RunService, previews ...*IntentPreviewEvaluator) (*IntentAnalysisCompositeProcessor, error) {
+	processors := make([]intentPreviewProcessor, 0, len(previews))
+	for _, preview := range previews {
+		if preview != nil {
+			processors = append(processors, preview)
+		}
+	}
+	return newIntentAnalysisCompositeProcessor(intents, runs, processors...)
 }
 
-func newIntentAnalysisCompositeProcessor(preparer intentExpansionPreparer, runner intentExpansionStructuredRunner) (*IntentAnalysisCompositeProcessor, error) {
+func newIntentAnalysisCompositeProcessor(preparer intentExpansionPreparer, runner intentExpansionStructuredRunner, previews ...intentPreviewProcessor) (*IntentAnalysisCompositeProcessor, error) {
 	if preparer == nil || runner == nil {
 		return nil, ErrIntentExpansionProcessorUnavailable
 	}
-	return &IntentAnalysisCompositeProcessor{preparer: preparer, runner: runner}, nil
+	if len(previews) > 1 {
+		return nil, ErrIntentPreviewProcessorUnavailable
+	}
+	processor := &IntentAnalysisCompositeProcessor{preparer: preparer, runner: runner}
+	if len(previews) == 1 {
+		processor.preview = previews[0]
+	}
+	return processor, nil
 }
 
 func (processor *IntentAnalysisCompositeProcessor) Available(kind string) bool {
-	return processor != nil && processor.preparer != nil && processor.runner != nil && kind == "expansion"
+	if processor == nil {
+		return false
+	}
+	switch kind {
+	case "expansion":
+		return processor.preparer != nil && processor.runner != nil
+	case "preview":
+		return processor.preview != nil
+	default:
+		return false
+	}
 }
 
-func (processor *IntentAnalysisCompositeProcessor) EvaluatePreview(context.Context, monitorapplication.IntentAnalysisTaskDTO) (monitorapplication.IntentPreviewDTO, error) {
-	return monitorapplication.IntentPreviewDTO{}, ErrIntentPreviewProcessorUnavailable
+func (processor *IntentAnalysisCompositeProcessor) EvaluatePreview(ctx context.Context, task monitorapplication.IntentAnalysisTaskDTO) (monitorapplication.IntentPreviewDTO, error) {
+	if processor == nil || processor.preview == nil {
+		return monitorapplication.IntentPreviewDTO{}, ErrIntentPreviewProcessorUnavailable
+	}
+	return processor.preview.EvaluatePreview(ctx, task)
 }
 
 func (processor *IntentAnalysisCompositeProcessor) GenerateExpansion(ctx context.Context, task monitorapplication.IntentAnalysisTaskDTO) ([]monitorapplication.ExpansionCandidateDTO, error) {

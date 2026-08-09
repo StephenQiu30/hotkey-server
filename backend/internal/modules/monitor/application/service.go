@@ -27,26 +27,31 @@ import (
 const configurationAdvisoryLock = "hotkey.monitor_source_configuration"
 
 type Dependencies struct {
-	Runtime  *database.Runtime
-	Monitors domain.MonitorRepository
-	Sources  sourcedomain.MonitorSourceReader
-	Audit    operationsapplication.AuditWriter
-	Quota    operationsapplication.QuotaGuard
+	Runtime           *database.Runtime
+	Monitors          domain.MonitorRepository
+	Sources           sourcedomain.MonitorSourceReader
+	Audit             operationsapplication.AuditWriter
+	Quota             operationsapplication.QuotaGuard
+	IntentPublication IntentPublicationCoordinator
 }
 
 type Service struct {
-	runtime  *database.Runtime
-	monitors domain.MonitorRepository
-	sources  sourcedomain.MonitorSourceReader
-	audit    operationsapplication.AuditWriter
-	quota    operationsapplication.QuotaGuard
+	runtime           *database.Runtime
+	monitors          domain.MonitorRepository
+	sources           sourcedomain.MonitorSourceReader
+	audit             operationsapplication.AuditWriter
+	quota             operationsapplication.QuotaGuard
+	intentPublication IntentPublicationCoordinator
 }
 
 func NewService(dependencies Dependencies) (*Service, error) {
 	if dependencies.Runtime == nil || dependencies.Monitors == nil || dependencies.Sources == nil || dependencies.Audit == nil {
 		return nil, errors.New("monitor application dependencies are required")
 	}
-	return &Service{runtime: dependencies.Runtime, monitors: dependencies.Monitors, sources: dependencies.Sources, audit: dependencies.Audit, quota: dependencies.Quota}, nil
+	return &Service{
+		runtime: dependencies.Runtime, monitors: dependencies.Monitors, sources: dependencies.Sources,
+		audit: dependencies.Audit, quota: dependencies.Quota, intentPublication: dependencies.IntentPublication,
+	}, nil
 }
 
 type DraftInput struct {
@@ -330,10 +335,29 @@ func (service *Service) Publish(ctx context.Context, input PublishInput) (*domai
 				return err
 			}
 		}
-		if !domain.HasApprovedHumanCoreRule(rules) {
+		publication := IntentPublicationDTO{}
+		if service.intentPublication != nil {
+			prepared, prepareErr := service.intentPublication.Prepare(ctx, PrepareIntentPublicationCommand{
+				MonitorID: monitor.ID, ConfigVersionID: draft.ID,
+			})
+			if prepareErr != nil {
+				return monitorIntentPublicationError(prepareErr)
+			}
+			publication = prepared.Publication
+		}
+		if !publication.Enabled && !domain.HasApprovedHumanCoreRule(rules) {
 			return domain.InvalidMonitorConfiguration()
 		}
-		effective, sourceFacts, err := service.validatePublishSources(ctx, draft.Config, rules, sources, true)
+		effective := draft.Config
+		if publication.Enabled {
+			effective, err = effectiveIntentLocales(effective, publication.LocaleClauses)
+		} else {
+			effective, err = effectiveLocales(effective, rules)
+		}
+		if err != nil {
+			return domain.InvalidMonitorConfiguration()
+		}
+		effective, sourceFacts, err := service.validateEffectivePublishSources(ctx, effective, sources, true)
 		if err != nil {
 			return err
 		}
@@ -341,9 +365,20 @@ func (service *Service) Publish(ctx context.Context, input PublishInput) (*domai
 		if err != nil {
 			return domain.InvalidMonitorConfiguration()
 		}
+		if publication.Enabled {
+			hash = intentPublishedConfigHash(hash, publication.ProfileHash)
+		}
 		for index := range sources {
 			if sources[index].Enabled {
-				signature, err := querySignature(sources[index], sourceFacts[sources[index].SourceConnectionID], effective, rules)
+				var signature string
+				if publication.Enabled {
+					signature, err = querySignatureFromCompiledIntent(
+						sources[index], sourceFacts[sources[index].SourceConnectionID], effective,
+						publication.CollectionTerms, publication.ProfileHash,
+					)
+				} else {
+					signature, err = querySignature(sources[index], sourceFacts[sources[index].SourceConnectionID], effective, rules)
+				}
 				if err != nil {
 					return domain.InvalidMonitorConfiguration()
 				}
@@ -366,7 +401,23 @@ func (service *Service) Publish(ctx context.Context, input PublishInput) (*domai
 		if err := service.monitors.Publish(ctx, monitor, draft, previous, sources); err != nil {
 			return monitorWriteError(err)
 		}
-		if err := service.audit.Write(ctx, service.auditEntry(ctx, input.Subject, operationsdomain.ActionMonitorPublished, *monitor, draft, len(rules), len(sources), nil)); err != nil {
+		auditMetadata := map[string]any(nil)
+		if publication.Enabled {
+			previousConfigVersionID := int64(0)
+			if previous != nil {
+				previousConfigVersionID = previous.ID
+			}
+			if err := service.intentPublication.Complete(ctx, CompleteIntentPublicationCommand{
+				Publication: publication, PreviousConfigVersionID: previousConfigVersionID, PublishedAt: now,
+			}); err != nil {
+				return monitorIntentPublicationError(err)
+			}
+			auditMetadata = map[string]any{
+				"compiled_profile_id": publication.CompiledProfileID,
+				"intent_revision_id":  publication.IntentRevisionID,
+			}
+		}
+		if err := service.audit.Write(ctx, service.auditEntry(ctx, input.Subject, operationsdomain.ActionMonitorPublished, *monitor, draft, len(rules), len(sources), auditMetadata)); err != nil {
 			return err
 		}
 		changed, publishedResult = *monitor, *draft
@@ -638,13 +689,20 @@ func (service *Service) validatePublishSources(ctx context.Context, config domai
 	if err != nil {
 		return domain.MonitorConfig{}, nil, domain.InvalidMonitorConfiguration()
 	}
+	return service.validateEffectivePublishSources(ctx, effective, sources, lock)
+}
+
+func (service *Service) validateEffectivePublishSources(ctx context.Context, effective domain.MonitorConfig, sources []domain.MonitorSource, lock bool) (domain.MonitorConfig, map[int64]sourcedomain.MonitorSourceConnection, error) {
 	facts := make(map[int64]sourcedomain.MonitorSourceConnection, len(sources))
 	schedulable := 0
 	for _, source := range sources {
 		if !source.Enabled {
 			continue
 		}
-		var connection sourcedomain.MonitorSourceConnection
+		var (
+			connection sourcedomain.MonitorSourceConnection
+			err        error
+		)
 		if lock {
 			connection, err = service.sources.LockForMonitor(ctx, source.SourceConnectionID)
 		} else {
@@ -692,6 +750,45 @@ func effectiveLocales(config domain.MonitorConfig, rules []domain.MonitorRule) (
 	}
 	config.Languages, config.Regions = languages, regions
 	return config, nil
+}
+
+func effectiveIntentLocales(config domain.MonitorConfig, clauses []IntentClauseDTO) (domain.MonitorConfig, error) {
+	config, err := domain.NormalizeMonitorConfig(config)
+	if err != nil {
+		return domain.MonitorConfig{}, err
+	}
+	languages, regions := append([]string(nil), config.Languages...), append([]string(nil), config.Regions...)
+	for _, clause := range clauses {
+		if clause.Field != "language" && clause.Field != "region" {
+			return domain.MonitorConfig{}, fmt.Errorf("unsupported locale intent field %q", clause.Field)
+		}
+		if clause.Operator == "should" {
+			continue
+		}
+		var operator domain.RuleOperator
+		switch clause.Operator {
+		case "must":
+			operator = domain.RuleOperatorEquals
+		case "must_not":
+			operator = domain.RuleOperatorNotEquals
+		default:
+			return domain.MonitorConfig{}, fmt.Errorf("unsupported locale intent operator %q", clause.Operator)
+		}
+		if clause.Field == "language" {
+			languages = applyLocaleRule(languages, clause.Value, operator)
+		} else {
+			regions = applyLocaleRule(regions, clause.Value, operator)
+		}
+	}
+	if len(languages) == 0 {
+		return domain.MonitorConfig{}, fmt.Errorf("intent language clauses exclude every configured language")
+	}
+	config.Languages, err = domain.NormalizeLanguages(languages, 1, 8)
+	if err != nil {
+		return domain.MonitorConfig{}, err
+	}
+	config.Regions, err = domain.NormalizeRegions(regions, 0, 8)
+	return config, err
 }
 func applyLocaleRule(values []string, target string, operator domain.RuleOperator) []string {
 	result := []string{}
@@ -790,6 +887,57 @@ func querySignature(source domain.MonitorSource, connection sourcedomain.Monitor
 	}
 	sum := sha256.Sum256(encoded)
 	return hex.EncodeToString(sum[:]), nil
+}
+
+func querySignatureFromCompiledIntent(source domain.MonitorSource, connection sourcedomain.MonitorSourceConnection, config domain.MonitorConfig, terms []CompiledCollectionTermDTO, profileHash string) (string, error) {
+	if !validIntentApplicationSHA256(profileHash) {
+		return "", fmt.Errorf("compiled intent profile hash is invalid")
+	}
+	config, err := intersectSourceLocales(config, connection.Config)
+	if err != nil {
+		return "", err
+	}
+	override, err := domain.NormalizeQueryOverride(source.QueryOverride)
+	if err != nil {
+		return "", err
+	}
+	ordered := sortedCompiledCollectionTerms(terms)
+	collection := make([]sourcedomain.CollectionTerm, 0, len(ordered))
+	for _, term := range ordered {
+		if term.Value == "" {
+			return "", fmt.Errorf("compiled collection term is empty")
+		}
+		collection = append(collection, sourcedomain.CollectionTerm{Value: term.Value, Excluded: term.Excluded})
+	}
+	if _, err := sourcedomain.CompileCollectionQuery(override, collection); err != nil {
+		return "", err
+	}
+	payload := struct {
+		SignatureVersion   int                         `json:"signature_version"`
+		SourceConnectionID int64                       `json:"source_connection_id"`
+		SourceType         sourcedomain.SourceType     `json:"source_type"`
+		Endpoint           string                      `json:"normalized_endpoint"`
+		Override           string                      `json:"normalized_query_override"`
+		Languages          []string                    `json:"languages"`
+		Regions            []string                    `json:"regions"`
+		CompiledProfile    string                      `json:"compiled_profile_hash"`
+		Terms              []CompiledCollectionTermDTO `json:"terms"`
+		Window             string                      `json:"query_window_kind"`
+	}{
+		SignatureVersion: 2, SourceConnectionID: connection.ID, SourceType: connection.SourceType,
+		Endpoint: connection.Endpoint, Override: override, Languages: config.Languages, Regions: config.Regions,
+		CompiledProfile: profileHash, Terms: ordered, Window: "scheduled_interval",
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func intentPublishedConfigHash(legacyConfigHash, compiledProfileHash string) string {
+	return intentRunHash("monitor-published-config-v2", legacyConfigHash, compiledProfileHash)
 }
 
 type includeSignatureRule struct {
@@ -904,6 +1052,23 @@ func monitorWriteError(err error) error {
 	}
 	return err
 }
+
+func monitorIntentPublicationError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, ErrIntentPublicationUnavailable) || errors.Is(err, ErrInvalidIntentContract) {
+		return domain.InvalidMonitorConfiguration()
+	}
+	if errors.Is(err, ErrCompiledIntentProfileConflict) || errors.Is(err, sharedrepository.ErrConflict) {
+		return domain.MonitorVersionConflict()
+	}
+	if errors.Is(err, sharedrepository.ErrUnavailable) {
+		return sharederrors.New(sharederrors.CodeUnavailable, 503, "")
+	}
+	return err
+}
+
 func monitorSourceError(err error) error {
 	var app *sharederrors.AppError
 	if errors.As(err, &app) {

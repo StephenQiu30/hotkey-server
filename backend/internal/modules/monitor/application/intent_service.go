@@ -163,16 +163,20 @@ func (service *IntentService) SubmitPreviewRun(ctx context.Context, command Subm
 	if command.SampleLimit < 1 || command.SampleLimit > 200 {
 		return SubmitPreviewRunResult{}, ErrInvalidIntentContract
 	}
-	inputHash := intentRunHash(
-		"preview-input-v1", strconv.FormatInt(draft.DraftID(), 10),
-		strconv.FormatInt(draft.ResourceVersion(), 10), draft.MatchingFingerprint(), profile,
-		strconv.Itoa(command.SampleLimit),
-	)
+	inputHash := intentPreviewInputHash(draft, profile, command.SampleLimit)
 	run, reused, err := service.reserveRun(ctx, command.IdempotencyKey, domain.IntentRunPreview, draft, inputHash, profile, command.SampleLimit)
 	if err != nil {
 		return SubmitPreviewRunResult{}, err
 	}
 	return SubmitPreviewRunResult{Run: run, Reused: reused}, nil
+}
+
+func intentPreviewInputHash(draft domain.IntentDraft, profile string, sampleLimit int) string {
+	return intentRunHash(
+		"preview-input-v1", strconv.FormatInt(draft.DraftID(), 10),
+		strconv.FormatInt(draft.ResourceVersion(), 10), draft.MatchingFingerprint(), profile,
+		strconv.Itoa(sampleLimit),
+	)
 }
 
 func (service *IntentService) ReadExpansionRun(ctx context.Context, query ReadExpansionRunQuery) (ReadExpansionRunResult, error) {

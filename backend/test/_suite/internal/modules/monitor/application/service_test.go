@@ -1,6 +1,7 @@
 package application
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/domain"
@@ -72,5 +73,36 @@ func TestQuerySignatureIsCanonicalAndExcludesPendingAI(t *testing.T) {
 	}
 	if withOverride == withoutOverride {
 		t.Fatal("query override did not change query signature")
+	}
+}
+
+func TestCompiledIntentQuerySignatureIsCanonicalAndBindsExactProfile(t *testing.T) {
+	connection := sourcedomain.MonitorSourceConnection{
+		ID: 17, SourceType: sourcedomain.SourceTypeRSS, Endpoint: "https://feeds.example.test/intent",
+		Enabled: true, Config: sourcedomain.DefaultSourceConfig(),
+	}
+	config := domain.MonitorConfig{
+		Timezone: "UTC", Languages: []string{"en"}, Regions: []string{"US"},
+		CollectionIntervalSeconds: 300, RelevanceThreshold: 60, RetentionDays: 30,
+	}
+	source := domain.MonitorSource{SourceConnectionID: connection.ID, Enabled: true}
+	terms := []CompiledCollectionTermDTO{{Value: "launch"}, {Value: "noise", Excluded: true}, {Value: "HotKey"}}
+	first, err := querySignatureFromCompiledIntent(source, connection, config, terms, strings.Repeat("a", 64))
+	if err != nil {
+		t.Fatalf("querySignatureFromCompiledIntent(first): %v", err)
+	}
+	reordered, err := querySignatureFromCompiledIntent(source, connection, config, []CompiledCollectionTermDTO{terms[2], terms[0], terms[1]}, strings.Repeat("a", 64))
+	if err != nil {
+		t.Fatalf("querySignatureFromCompiledIntent(reordered): %v", err)
+	}
+	if first != reordered {
+		t.Fatalf("term ordering changed signature: first=%s reordered=%s", first, reordered)
+	}
+	otherProfile, err := querySignatureFromCompiledIntent(source, connection, config, terms, strings.Repeat("b", 64))
+	if err != nil {
+		t.Fatalf("querySignatureFromCompiledIntent(other profile): %v", err)
+	}
+	if first == otherProfile {
+		t.Fatal("exact compiled profile hash did not change query signature")
 	}
 }
