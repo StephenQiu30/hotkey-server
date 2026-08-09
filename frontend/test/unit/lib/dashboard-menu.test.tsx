@@ -6,7 +6,7 @@ import {
 import { UserRole } from "@/lib/domainEnums";
 
 describe("dashboard menu", () => {
-  it("exposes every readable MVP product area in the primary navigation", () => {
+  it("keeps the primary navigation free of the duplicate notification entry", () => {
     expect(dashboardMenuItems.map(({ path, name }) => ({ path, name }))).toEqual([
       { path: "/dashboard", name: "概览" },
       { path: "/dashboard/settings", name: "监控" },
@@ -15,7 +15,6 @@ describe("dashboard menu", () => {
       { path: "/dashboard/events", name: "事件" },
       { path: "/dashboard/alerts", name: "告警" },
       { path: "/dashboard/reports", name: "报告" },
-      { path: "/dashboard/notifications", name: "通知" },
       { path: "/dashboard/subscriptions", name: "订阅" },
     ]);
   });

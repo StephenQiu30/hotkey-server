@@ -6,7 +6,6 @@ import {
   Library,
   Radar,
   Rss,
-  Send,
   ShieldCheck,
   Telescope,
   Users,
@@ -51,11 +50,6 @@ export const dashboardMenuItems: MenuItem[] = [
     path: "/dashboard/reports",
     name: "报告",
     icon: <FileText className="h-4 w-4" />,
-  },
-  {
-    path: "/dashboard/notifications",
-    name: "通知",
-    icon: <Send className="h-4 w-4" />,
   },
   {
     path: "/dashboard/subscriptions",
