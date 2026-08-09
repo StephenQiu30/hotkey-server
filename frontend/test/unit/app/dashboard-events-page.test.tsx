@@ -275,6 +275,28 @@ describe("EventsPage", () => {
     expect(mocks.getEventsIdIntelligence).toHaveBeenLastCalledWith({ id: 12 });
   });
 
+  it("presents the event list and intelligence as a balanced master-detail workspace", async () => {
+    render(<EventsPage />);
+
+    const listPanel = await screen.findByRole("region", {
+      name: "事件列表",
+    });
+    const detailPanel = screen.getByRole("complementary", {
+      name: "事件研判",
+    });
+    const workspace = listPanel.parentElement;
+
+    expect(workspace).toContainElement(detailPanel);
+    expect(workspace).toHaveClass("2xl:grid-cols-2");
+    expect(listPanel).toHaveAttribute("data-layout-panel", "event-workspace");
+    expect(detailPanel).toHaveAttribute(
+      "data-layout-panel",
+      "event-workspace"
+    );
+    expect(screen.getByRole("heading", { name: "需要关注" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "事件研判" })).toBeVisible();
+  });
+
   it("lets an editor lock a member with its exact version", async () => {
     useAuthStore.setState({
       user: { role: "editor" } as HotKeyAPI.UserResponse,

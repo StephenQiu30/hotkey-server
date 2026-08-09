@@ -759,13 +759,19 @@ function EventsWorkspace() {
           </Empty>
         </Card>
       ) : (
-        <div className="mt-6 grid min-h-[620px] gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(400px,460px)]">
-          <section className="min-w-0">
-            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-              <span className="h-2 w-2 rounded-full bg-destructive" />
-              需要关注
-              <span className="font-normal text-muted-foreground">
-                {events.length}
+        <div className="mt-6 grid min-h-[620px] items-start gap-x-8 gap-y-10 2xl:grid-cols-2 2xl:gap-y-0">
+          <section
+            aria-label="事件列表"
+            className="min-w-0"
+            data-layout-panel="event-workspace"
+          >
+            <div className="mb-3 flex h-6 items-center justify-between gap-3">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <span className="h-2 w-2 rounded-full bg-destructive" />
+                需要关注
+              </h2>
+              <span className="text-xs text-muted-foreground">
+                {events.length} 个事件
               </span>
             </div>
             <Card className="overflow-hidden shadow-none">
@@ -880,7 +886,18 @@ function EventsWorkspace() {
             </Card>
           </section>
 
-          <aside className="h-fit xl:sticky xl:top-[96px]">
+          <aside
+            aria-label="事件研判"
+            className="h-fit min-w-0 2xl:sticky 2xl:top-[96px]"
+            data-layout-panel="event-workspace"
+          >
+            <div className="mb-3 flex h-6 items-center justify-between gap-3">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <span className="h-2 w-2 rounded-full bg-destructive" />
+                事件研判
+              </h2>
+              <span className="text-xs text-muted-foreground">持续更新</span>
+            </div>
             <Card className="overflow-hidden shadow-none">
               {selected ? (
                 <>
