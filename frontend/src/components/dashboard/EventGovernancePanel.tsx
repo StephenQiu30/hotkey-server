@@ -25,7 +25,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import { UserRole } from "@/lib/domainEnums";
 import { getRadarEventTitle } from "@/lib/radarPresentation";
 
@@ -139,67 +146,77 @@ export function EventGovernancePanel({
           <AlertDescription>其他事件信息不受影响。</AlertDescription>
         </Alert>
       ) : (
-        <div className="mt-4 space-y-3">
+        <div className="mt-4">
           {members.length ? (
-            members.map((member) => (
-              <div key={member.id} className="rounded-lg border p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <Link
-                      href={`/dashboard/contents/${member.content_id}`}
-                      className="inline-flex items-center gap-1 text-sm font-medium no-underline hover:underline"
-                    >
-                      内容 #{member.content_id}
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </Link>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      匹配 {Math.round(member.membership_score ?? 0)} ·{" "}
-                      {member.evidence_role || "supporting"} ·{" "}
-                      {member.origin || "rule"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {member.manual_locked ? (
-                      <Badge variant="outline">已锁定</Badge>
+            <ScrollArea
+              aria-label="聚类成员列表"
+              className="h-96 pr-3"
+              role="region"
+            >
+              <div className="space-y-2">
+                {members.map((member) => (
+                  <div key={member.id} className="rounded-lg bg-muted/45 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <Link
+                          href={`/dashboard/contents/${member.content_id}`}
+                          className="inline-flex items-center gap-1 text-sm font-medium no-underline hover:underline"
+                        >
+                          内容 #{member.content_id}
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </Link>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          匹配 {Math.round(member.membership_score ?? 0)} ·{" "}
+                          {member.evidence_role || "supporting"} ·{" "}
+                          {member.origin || "rule"}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {member.manual_locked ? (
+                          <Badge variant="outline">已锁定</Badge>
+                        ) : null}
+                        {canLock ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={
+                              busy ||
+                              isTerminal ||
+                              !member.version ||
+                              !member.content_id
+                            }
+                            aria-label={`${
+                              member.manual_locked ? "解锁" : "锁定"
+                            }内容 ${member.content_id}`}
+                            onClick={() => void onToggleLock(member)}
+                          >
+                            {member.manual_locked ? "解锁" : "锁定"}
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                    {isAdmin && members.length > 1 ? (
+                      <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                        <Checkbox
+                          checked={splitIds.includes(member.content_id ?? -1)}
+                          disabled={isTerminal}
+                          onCheckedChange={(checked) =>
+                            setSplitIds((current) =>
+                              checked
+                                ? [...current, member.content_id!]
+                                : current.filter(
+                                    (id) => id !== member.content_id
+                                  )
+                            )
+                          }
+                        />
+                        移入新事件
+                      </label>
                     ) : null}
-                    {canLock ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={
-                          busy ||
-                          isTerminal ||
-                          !member.version ||
-                          !member.content_id
-                        }
-                        aria-label={`${
-                          member.manual_locked ? "解锁" : "锁定"
-                        }内容 ${member.content_id}`}
-                        onClick={() => void onToggleLock(member)}
-                      >
-                        {member.manual_locked ? "解锁" : "锁定"}
-                      </Button>
-                    ) : null}
                   </div>
-                </div>
-                {isAdmin && members.length > 1 ? (
-                  <label className="mt-3 flex cursor-pointer items-center gap-2 border-t pt-3 text-xs text-muted-foreground">
-                    <Checkbox
-                      checked={splitIds.includes(member.content_id ?? -1)}
-                      disabled={isTerminal}
-                      onCheckedChange={(checked) =>
-                        setSplitIds((current) =>
-                          checked
-                            ? [...current, member.content_id!]
-                            : current.filter((id) => id !== member.content_id)
-                        )
-                      }
-                    />
-                    移入新事件
-                  </label>
-                ) : null}
+                ))}
               </div>
-            ))
+            </ScrollArea>
           ) : (
             <p className="text-sm text-muted-foreground">暂无有效聚类成员。</p>
           )}
@@ -213,9 +230,26 @@ export function EventGovernancePanel({
       ) : null}
 
       {isAdmin ? (
-        <div className="mt-5 space-y-4 rounded-lg border bg-muted/20 p-4">
-          <div>
-            <p className="mb-2 text-xs font-medium">变更生命周期</p>
+        <Tabs defaultValue="lifecycle" className="mt-5">
+          <TabsList
+            aria-label="治理操作"
+            className={
+              members.length > 1
+                ? "grid w-full grid-cols-3"
+                : "grid w-full grid-cols-2"
+            }
+          >
+            <TabsTrigger value="lifecycle">生命周期</TabsTrigger>
+            <TabsTrigger value="merge">合并事件</TabsTrigger>
+            {members.length > 1 ? (
+              <TabsTrigger value="split">拆分事件</TabsTrigger>
+            ) : null}
+          </TabsList>
+
+          <TabsContent value="lifecycle" className="mt-4">
+            <p className="mb-2 text-xs text-muted-foreground">
+              将事件推进到下一治理状态。
+            </p>
             <div className="flex gap-2">
               <Select
                 value={lifecycle}
@@ -245,10 +279,12 @@ export function EventGovernancePanel({
                 应用
               </Button>
             </div>
-          </div>
+          </TabsContent>
 
-          <div className="border-t pt-4">
-            <p className="mb-2 text-xs font-medium">合并到已有事件</p>
+          <TabsContent value="merge" className="mt-4">
+            <p className="mb-2 text-xs text-muted-foreground">
+              将当前事件及其成员合并到已有事件。
+            </p>
             <div className="flex gap-2">
               <Select
                 value={targetId}
@@ -300,17 +336,14 @@ export function EventGovernancePanel({
                 </AlertDialogContent>
               </AlertDialog>
             </div>
-          </div>
+          </TabsContent>
 
           {members.length > 1 ? (
-            <div className="border-t pt-4">
+            <TabsContent value="split" className="mt-4">
               <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-medium">拆分所选成员</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    已选择 {selectedMembers.length} 条，需保留至少一条。
-                  </p>
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  已选择 {selectedMembers.length} 条，需保留至少一条。
+                </p>
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button
@@ -340,9 +373,9 @@ export function EventGovernancePanel({
                   </AlertDialogContent>
                 </AlertDialog>
               </div>
-            </div>
+            </TabsContent>
           ) : null}
-        </div>
+        </Tabs>
       ) : (
         <p className="mt-4 flex gap-2 text-xs leading-5 text-muted-foreground">
           <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />

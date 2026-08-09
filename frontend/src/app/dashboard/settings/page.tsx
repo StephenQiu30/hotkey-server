@@ -5,6 +5,7 @@ import {
   Archive,
   Eye,
   Loader2,
+  MoreHorizontal,
   Pause,
   Pencil,
   Play,
@@ -27,6 +28,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Empty,
   EmptyDescription,
@@ -522,6 +531,17 @@ export default function MonitorsPage() {
               const config = monitor.draft ?? monitor.published;
               const rule = config?.rules?.[0];
               const busy = busyID === monitor.id;
+              const monitorName = monitor.name || `监控 #${monitor.id}`;
+              const hasConfigurationActions =
+                monitor.status !== MonitorStatus.Archived ||
+                (canAdmin && Boolean(monitor.draft));
+              const hasRuntimeActions =
+                (monitor.status === MonitorStatus.Active &&
+                  Boolean(monitor.published)) ||
+                (canAdmin &&
+                  (monitor.status === MonitorStatus.Active ||
+                    monitor.status === MonitorStatus.Paused));
+              const hasLifecycleActions = canAdmin;
               return (
                 <div
                   key={monitor.id}
@@ -531,7 +551,7 @@ export default function MonitorsPage() {
                     <div className="flex items-center gap-2">
                       <Search className="h-3.5 w-3.5 text-muted-foreground" />
                       <p className="truncate text-sm font-medium">
-                        {monitor.name || `监控 #${monitor.id}`}
+                        {monitorName}
                       </p>
                     </div>
                     <p className="mono mt-2 truncate text-xs text-muted-foreground">
@@ -546,7 +566,7 @@ export default function MonitorsPage() {
                   <Badge variant="outline" className="w-fit">
                     {monitorStatusLabel(monitor.status)}
                   </Badge>
-                  <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
+                  <div className="flex items-center justify-start gap-1 lg:justify-end">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -556,117 +576,130 @@ export default function MonitorsPage() {
                       <Eye />
                       查看详情
                     </Button>
-                    {canEdit && monitor.status !== MonitorStatus.Archived && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5"
-                        onClick={() => openEdit(monitor)}
-                      >
-                        <Pencil />
-                        编辑草稿
-                      </Button>
-                    )}
-                    {canAdmin && monitor.draft && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5"
-                        onClick={() => setCandidateTarget(monitor)}
-                      >
-                        <Sparkles />
-                        导入 AI 候选
-                      </Button>
-                    )}
-                    {canEdit && monitor.draft && (
-                      <Button
-                        size="sm"
-                        className="gap-1.5"
-                        disabled={busy}
-                        onClick={() => void previewMonitor(monitor)}
-                      >
-                        {busy && <Loader2 className="animate-spin" />}
-                        {canAdmin ? "预览并发布" : "预览配置"}
-                      </Button>
-                    )}
-                    {canEdit &&
-                      monitor.status === MonitorStatus.Active &&
-                      monitor.published && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-1.5"
-                          disabled={busy}
-                          onClick={() => void collectNow(monitor)}
-                        >
-                          {busy ? (
-                            <Loader2 className="animate-spin" />
-                          ) : (
-                            <Search />
-                          )}
-                          立即搜索
-                        </Button>
-                      )}
-                    {canAdmin && monitor.status === MonitorStatus.Active && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5"
-                        disabled={busy}
-                        onClick={() => void lifecycle(monitor, "pause")}
-                      >
-                        <Pause />
-                        暂停
-                      </Button>
-                    )}
-                    {canAdmin && monitor.status === MonitorStatus.Paused && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5"
-                        disabled={busy}
-                        onClick={() => void lifecycle(monitor, "resume")}
-                      >
-                        <Play />
-                        恢复运行
-                      </Button>
-                    )}
-                    {canAdmin && monitor.status !== MonitorStatus.Archived && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="gap-1.5 text-muted-foreground"
-                        disabled={busy}
-                        onClick={() => void lifecycle(monitor, "archive")}
-                      >
-                        <Archive />
-                        归档
-                      </Button>
-                    )}
-                    {canAdmin && monitor.status === MonitorStatus.Archived && (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-1.5"
-                          disabled={busy}
-                          onClick={() => void lifecycle(monitor, "restore")}
-                        >
-                          <RotateCcw />
-                          恢复
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="gap-1.5 text-destructive hover:text-destructive"
-                          disabled={busy}
-                          onClick={() => setDeleteTarget(monitor)}
-                        >
-                          <Trash2 />
-                          删除
-                        </Button>
-                      </>
-                    )}
+                    {canEdit ? (
+                      <DropdownMenu modal={false}>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            aria-label={`${monitorName} 操作`}
+                            className="h-8 w-8 px-0"
+                            disabled={busy}
+                            size="sm"
+                            variant="ghost"
+                          >
+                            {busy ? (
+                              <Loader2 className="animate-spin" />
+                            ) : (
+                              <MoreHorizontal />
+                            )}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-52">
+                          <DropdownMenuLabel>监控操作</DropdownMenuLabel>
+                          {monitor.status !== MonitorStatus.Archived ? (
+                            <DropdownMenuItem
+                              onSelect={() => openEdit(monitor)}
+                            >
+                              <Pencil />
+                              编辑草稿
+                            </DropdownMenuItem>
+                          ) : null}
+                          {canAdmin && monitor.draft ? (
+                            <DropdownMenuItem
+                              onSelect={() => setCandidateTarget(monitor)}
+                            >
+                              <Sparkles />
+                              导入 AI 候选
+                            </DropdownMenuItem>
+                          ) : null}
+                          {monitor.draft ? (
+                            <DropdownMenuItem
+                              disabled={busy}
+                              onSelect={() => void previewMonitor(monitor)}
+                            >
+                              <Eye />
+                              {canAdmin ? "预览并发布" : "预览配置"}
+                            </DropdownMenuItem>
+                          ) : null}
+
+                          {hasConfigurationActions && hasRuntimeActions ? (
+                            <DropdownMenuSeparator />
+                          ) : null}
+                          {monitor.status === MonitorStatus.Active &&
+                          monitor.published ? (
+                            <DropdownMenuItem
+                              disabled={busy}
+                              onSelect={() => void collectNow(monitor)}
+                            >
+                              <Search />
+                              立即搜索
+                            </DropdownMenuItem>
+                          ) : null}
+                          {canAdmin &&
+                          monitor.status === MonitorStatus.Active ? (
+                            <DropdownMenuItem
+                              disabled={busy}
+                              onSelect={() =>
+                                void lifecycle(monitor, "pause")
+                              }
+                            >
+                              <Pause />
+                              暂停
+                            </DropdownMenuItem>
+                          ) : null}
+                          {canAdmin &&
+                          monitor.status === MonitorStatus.Paused ? (
+                            <DropdownMenuItem
+                              disabled={busy}
+                              onSelect={() =>
+                                void lifecycle(monitor, "resume")
+                              }
+                            >
+                              <Play />
+                              恢复运行
+                            </DropdownMenuItem>
+                          ) : null}
+
+                          {hasLifecycleActions &&
+                          (hasConfigurationActions || hasRuntimeActions) ? (
+                            <DropdownMenuSeparator />
+                          ) : null}
+                          {canAdmin &&
+                          monitor.status !== MonitorStatus.Archived ? (
+                            <DropdownMenuItem
+                              disabled={busy}
+                              onSelect={() =>
+                                void lifecycle(monitor, "archive")
+                              }
+                            >
+                              <Archive />
+                              归档
+                            </DropdownMenuItem>
+                          ) : null}
+                          {canAdmin &&
+                          monitor.status === MonitorStatus.Archived ? (
+                            <>
+                              <DropdownMenuItem
+                                disabled={busy}
+                                onSelect={() =>
+                                  void lifecycle(monitor, "restore")
+                                }
+                              >
+                                <RotateCcw />
+                                恢复
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                disabled={busy}
+                                onSelect={() => setDeleteTarget(monitor)}
+                              >
+                                <Trash2 />
+                                删除
+                              </DropdownMenuItem>
+                            </>
+                          ) : null}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    ) : null}
                   </div>
                 </div>
               );

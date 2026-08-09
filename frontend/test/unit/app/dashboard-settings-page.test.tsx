@@ -97,6 +97,13 @@ function setRole(role: UserRole) {
   });
 }
 
+async function openMonitorActions(user = userEvent.setup()) {
+  await user.click(
+    await screen.findByRole("button", { name: "AI releases 操作" })
+  );
+  return user;
+}
+
 describe("MonitorsPage", () => {
   afterEach(cleanup);
 
@@ -124,9 +131,7 @@ describe("MonitorsPage", () => {
     expect(await screen.findByText("AI releases")).toBeInTheDocument();
     expect(screen.getByText("只读监控目录")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "新建监控" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "编辑草稿" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "预览并发布" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "暂停" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "AI releases 操作" })).not.toBeInTheDocument();
     expect(mocks.getSourceConnections).not.toHaveBeenCalled();
   });
 
@@ -135,7 +140,8 @@ describe("MonitorsPage", () => {
     render(<MonitorsPage />);
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole("button", { name: "编辑草稿" }));
+    await openMonitorActions(user);
+    await user.click(screen.getByRole("menuitem", { name: "编辑草稿" }));
     expect(screen.getByRole("dialog", { name: "编辑监控草稿" })).toBeInTheDocument();
     expect(screen.getByLabelText("规则 1 内容")).toHaveValue("OpenAI");
     await user.click(screen.getByRole("button", { name: "保存草稿" }));
@@ -144,16 +150,18 @@ describe("MonitorsPage", () => {
       { id: 1 },
       expect.objectContaining({ expected_monitor_version: 4, expected_draft_version: 3, name: "AI releases" }),
     ));
-    expect(screen.queryByRole("button", { name: "预览并发布" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "暂停" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "立即搜索" })).toBeInTheDocument();
+    await openMonitorActions(user);
+    expect(screen.queryByRole("menuitem", { name: "预览并发布" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "暂停" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "立即搜索" })).toBeInTheDocument();
   });
 
   it("submits an active published monitor through the manual collection API", async () => {
     setRole(UserRole.Editor);
     render(<MonitorsPage />);
 
-    await userEvent.setup().click(await screen.findByRole("button", { name: "立即搜索" }));
+    const user = await openMonitorActions();
+    await user.click(screen.getByRole("menuitem", { name: "立即搜索" }));
 
     await waitFor(() => expect(mocks.postMonitorsIdCollect).toHaveBeenCalledWith({ id: 1 }));
     expect(screen.getByLabelText("手动搜索配额")).toHaveTextContent("17 / 20 次可用");
@@ -164,7 +172,8 @@ describe("MonitorsPage", () => {
     render(<MonitorsPage />);
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole("button", { name: "预览并发布" }));
+    await openMonitorActions(user);
+    await user.click(screen.getByRole("menuitem", { name: "预览并发布" }));
     expect(mocks.postMonitorsIdPreview).toHaveBeenCalledWith({ id: 1 });
     expect(await screen.findByRole("dialog", { name: "发布预览" })).toBeInTheDocument();
     expect(screen.getByText("预计请求 2 次")).toBeInTheDocument();
@@ -196,7 +205,8 @@ describe("MonitorsPage", () => {
   it("keeps AI expansion candidates pending until an administrator approves them", async () => {
     render(<MonitorsPage />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "导入 AI 候选" }));
+    await openMonitorActions(user);
+    await user.click(screen.getByRole("menuitem", { name: "导入 AI 候选" }));
     await user.type(screen.getByLabelText("候选内容"), "agentic workflow");
     await user.click(screen.getByRole("button", { name: "加入待审批" }));
     await waitFor(() => expect(mocks.postMonitorsIdDraftAiCandidates).toHaveBeenCalledWith(
@@ -217,7 +227,8 @@ describe("MonitorsPage", () => {
   it("supports direct lifecycle actions and a visible retry state", async () => {
     render(<MonitorsPage />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "暂停" }));
+    await openMonitorActions(user);
+    await user.click(screen.getByRole("menuitem", { name: "暂停" }));
     await waitFor(() => expect(mocks.postMonitorsIdPause).toHaveBeenCalledWith(
       { id: 1 },
       { expected_monitor_version: 4 },

@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { EventIntelligencePanel } from "@/components/dashboard/EventIntelligencePanel";
 
@@ -10,6 +11,38 @@ const event: HotKeyAPI.RadarEventResponse = {
   data_confidence: 82,
   confirmation: "disputed",
   confirmation_score: 48,
+};
+
+const intelligence: HotKeyAPI.EventIntelligenceResponse = {
+  event_id: 11,
+  claims: [
+    {
+      id: 1,
+      normalized_claim: "首条可核查声明",
+      status: "corroborated",
+      confidence: 88,
+      evidence: [
+        {
+          content_id: 101,
+          stance: "supporting",
+          excerpt: "首条声明的支持证据",
+        },
+      ],
+    },
+    {
+      id: 2,
+      normalized_claim: "第二条可核查声明",
+      status: "disputed",
+      confidence: 61,
+      evidence: [
+        {
+          content_id: 102,
+          stance: "contradicting",
+          excerpt: "第二条声明的反向证据",
+        },
+      ],
+    },
+  ],
 };
 
 describe("EventIntelligencePanel", () => {
@@ -34,5 +67,30 @@ describe("EventIntelligencePanel", () => {
     expect(screen.getByText("事件研判暂时不可用")).toBeInTheDocument();
     expect(screen.getByText("重要性")).toBeInTheDocument();
     expect(screen.getByText("相关性分数等待事件命中该监控后生成。")).toBeInTheDocument();
+  });
+
+  it("organizes claims as a keyboard-accessible Radix accordion", async () => {
+    const user = userEvent.setup();
+    render(
+      <EventIntelligencePanel event={event} intelligence={intelligence} />
+    );
+
+    const firstClaim = screen.getByRole("button", {
+      name: /首条可核查声明/,
+    });
+    const secondClaim = screen.getByRole("button", {
+      name: /第二条可核查声明/,
+    });
+
+    expect(firstClaim).toHaveAttribute("data-state", "open");
+    expect(secondClaim).toHaveAttribute("data-state", "closed");
+    expect(screen.getByText("首条声明的支持证据")).toBeVisible();
+    expect(screen.queryByText("第二条声明的反向证据")).not.toBeInTheDocument();
+
+    secondClaim.focus();
+    await user.keyboard("{Enter}");
+
+    expect(secondClaim).toHaveAttribute("data-state", "open");
+    expect(screen.getByText("第二条声明的反向证据")).toBeVisible();
   });
 });
