@@ -51,7 +51,19 @@ func (mailer *Mailer) Send(ctx context.Context, message Message) error {
 	if mailer == nil || !mailer.config.Enabled || !valid(mailer.config) || strings.TrimSpace(message.To) == "" || strings.TrimSpace(message.Subject) == "" {
 		return &Failure{Temporary: true, Err: fmt.Errorf("smtp is unavailable")}
 	}
+	// Header fields must not carry CR/LF, or a value could terminate the line
+	// and inject new headers.
+	message.To = stripHeaderControl(message.To)
+	message.Subject = stripHeaderControl(message.Subject)
 	return mailer.send(ctx, message)
+}
+
+// stripHeaderControl removes the control characters that terminate a header
+// line.
+func stripHeaderControl(value string) string {
+	value = strings.ReplaceAll(value, "\r", "")
+	value = strings.ReplaceAll(value, "\n", "")
+	return value
 }
 
 func (mailer *Mailer) sendSMTP(ctx context.Context, message Message) error {
