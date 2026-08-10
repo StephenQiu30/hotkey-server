@@ -348,7 +348,11 @@ func (service *IntentService) now() (time.Time, error) {
 	if now.IsZero() {
 		return time.Time{}, invalidIntentContract(fmt.Errorf("intent clock returned a zero time"))
 	}
-	return now.UTC(), nil
+	// PostgreSQL stores timestamptz values at microsecond precision. Canonicalize
+	// application timestamps before they enter immutable commands so strict
+	// repository receipt validation does not treat expected precision loss as a
+	// mutation of run, review, or draft facts.
+	return now.UTC().Truncate(time.Microsecond), nil
 }
 
 func validateStoredIntentRun(item IntentRunDTO, monitorID, draftID, draftResourceVersion, runID int64, kind domain.IntentRunKind) (domain.IntentAnalysisRun, error) {

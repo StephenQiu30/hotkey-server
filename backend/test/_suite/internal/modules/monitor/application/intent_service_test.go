@@ -233,6 +233,40 @@ func TestIntentServiceStartsAndFailsRunsThroughCAS(t *testing.T) {
 	}
 }
 
+func TestIntentServiceCanonicalizesPersistedRunTimesToPostgresPrecision(t *testing.T) {
+	t.Parallel()
+
+	clockTime := time.Date(2026, 8, 9, 15, 35, 0, 123456789, time.FixedZone("intent-test", 8*60*60))
+	expected := clockTime.UTC().Truncate(time.Microsecond)
+	queuedAt := expected.Add(-time.Minute)
+	runs := newIntentRunRepositoryFake(queuedAt)
+	runs.expansion = ExpansionRunDTO{Run: IntentRunDTO{
+		ID: 304, Kind: "expansion", MonitorID: 7, DraftID: 101, DraftResourceVersion: 4,
+		InputHash: strings.Repeat("b", 64), Status: "queued", QueuedAt: queuedAt,
+	}}
+	service, err := NewIntentService(IntentServiceDependencies{
+		Drafts: &intentDraftRepositoryFake{draft: intentDraftFixture()},
+		Runs:   runs,
+		Clock:  fixedIntentClock{now: clockTime},
+	})
+	if err != nil {
+		t.Fatalf("NewIntentService(): %v", err)
+	}
+
+	started, err := service.StartIntentRun(context.Background(), StartIntentRunCommand{
+		Run: intentRunReferenceFixture(runs.expansion.Run),
+	})
+	if err != nil {
+		t.Fatalf("StartIntentRun(): %v", err)
+	}
+	if started.Run.StartedAt == nil || !started.Run.StartedAt.Equal(expected) || started.Run.StartedAt.Nanosecond()%int(time.Microsecond) != 0 {
+		t.Fatalf("started_at = %v, want canonical PostgreSQL timestamp %v", started.Run.StartedAt, expected)
+	}
+	if runs.lastTransition.Next.StartedAt == nil || !runs.lastTransition.Next.StartedAt.Equal(expected) {
+		t.Fatalf("persisted transition started_at = %v, want %v", runs.lastTransition.Next.StartedAt, expected)
+	}
+}
+
 func TestIntentServiceAtomicallyCompletesExpansionAndAdvancesDraft(t *testing.T) {
 	t.Parallel()
 
