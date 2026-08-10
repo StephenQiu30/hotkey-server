@@ -14,9 +14,10 @@ import (
 )
 
 type Server struct {
-	server   *stdhttp.Server
-	logger   *zap.Logger
-	listener net.Listener
+	server         *stdhttp.Server
+	logger         *zap.Logger
+	listener       net.Listener
+	cancelRequests context.CancelFunc
 }
 
 func (s *Server) Address() string {
@@ -27,14 +28,19 @@ func (s *Server) Address() string {
 }
 
 func NewServer(cfg config.Config, handler *gin.Engine, logger *zap.Logger) *Server {
+	requestContext, cancelRequests := context.WithCancel(context.Background())
 	return &Server{
 		server: &stdhttp.Server{
 			Addr:              cfg.HTTPAddr,
 			Handler:           handler,
 			ReadHeaderTimeout: 5 * time.Second,
 			IdleTimeout:       60 * time.Second,
+			BaseContext: func(net.Listener) context.Context {
+				return requestContext
+			},
 		},
-		logger: logger,
+		logger:         logger,
+		cancelRequests: cancelRequests,
 	}
 }
 
@@ -57,6 +63,13 @@ func RegisterServer(lifecycle fx.Lifecycle, server *Server) {
 		},
 		OnStop: func(ctx context.Context) error {
 			server.logger.Info("HTTP server stopping")
+			// Long-lived streams do not become idle just because Shutdown stops
+			// accepting new connections. Cancel the shared request base context
+			// first so SSE and other streaming handlers can finish inside the
+			// graceful-shutdown deadline.
+			if server.cancelRequests != nil {
+				server.cancelRequests()
+			}
 			shutdownErr := server.server.Shutdown(ctx)
 			if server.listener != nil {
 				closeErr := server.listener.Close()
