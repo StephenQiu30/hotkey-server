@@ -57,7 +57,7 @@ func (handler *BilibiliWebhookHandler) Receive(c *gin.Context) error {
 			httptransport.Fail(c, stdhttp.StatusBadRequest, 40001, "invalid request")
 			return nil
 		}
-		c.JSON(stdhttp.StatusOK, gin.H{"data": echo})
+		httptransport.OK[any](c, echo)
 		return nil
 	}
 	_, err = handler.service.HandleBilibiliDeauthorization(c.Request.Context(), webhook)
