@@ -34,6 +34,8 @@ func TestGreenfieldApplicationContractsDoNotExposeDomainTypes(t *testing.T) {
 		"internal/modules/monitor/application/intent_mapper.go",
 		"internal/modules/monitor/application/intent_ports.go",
 		"internal/modules/monitor/application/intent_service.go",
+		"internal/modules/operations/application/decision_quality_evaluation.go",
+		"internal/modules/operations/application/decision_quality_profile.go",
 		"internal/modules/source/application/evidence_selection.go",
 		"internal/modules/source/application/raw_archive.go",
 		"internal/modules/source/application/raw_evidence_collection.go",

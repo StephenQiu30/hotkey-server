@@ -62,8 +62,14 @@ func (EvidenceSelectorVerifier) Select(input sourceapplication.EvidenceSelectorI
 		return nil, errors.New("evidence locator type is unsupported")
 	}
 
+	return VerifySelectedPayloadDigest(selected, reference.SelectedPayloadSHA256)
+}
+
+// VerifySelectedPayloadDigest is shared with the connector-neutral JSON
+// selector. It deliberately exposes only verified bytes, never parser state.
+func VerifySelectedPayloadDigest(selected []byte, selectedPayloadSHA256 string) ([]byte, error) {
 	digest := sha256.Sum256(selected)
-	declared, err := hex.DecodeString(reference.SelectedPayloadSHA256)
+	declared, err := hex.DecodeString(selectedPayloadSHA256)
 	if err != nil || len(declared) != sha256.Size || subtle.ConstantTimeCompare(digest[:], declared) != 1 {
 		return nil, errors.New("selected evidence SHA-256 does not match raw bytes")
 	}

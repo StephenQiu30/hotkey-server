@@ -8,9 +8,7 @@ const event: HotKeyAPI.RadarEventResponse = {
   attention: 86,
   momentum: 91,
   breadth: 75,
-  data_confidence: 82,
-  confirmation: "disputed",
-  confirmation_score: 48,
+  independent_source_count: 3,
 };
 
 const intelligence: HotKeyAPI.EventIntelligenceResponse = {
@@ -19,8 +17,6 @@ const intelligence: HotKeyAPI.EventIntelligenceResponse = {
     {
       id: 1,
       normalized_claim: "首条可核查声明",
-      status: "corroborated",
-      confidence: 88,
       evidence: [
         {
           content_id: 101,
@@ -32,8 +28,6 @@ const intelligence: HotKeyAPI.EventIntelligenceResponse = {
     {
       id: 2,
       normalized_claim: "第二条可核查声明",
-      status: "disputed",
-      confidence: 61,
       evidence: [
         {
           content_id: 102,
@@ -46,13 +40,14 @@ const intelligence: HotKeyAPI.EventIntelligenceResponse = {
 };
 
 describe("EventIntelligencePanel", () => {
-  it("separates evidence confirmation, importance and monitor relevance", () => {
-    render(<EventIntelligencePanel event={event} />);
+  it("separates source coverage, importance and monitor relevance", () => {
+	render(<EventIntelligencePanel event={event} />);
 
-    expect(screen.getByText("存在争议")).toBeInTheDocument();
-    expect(screen.getByText(/不是事实为真的概率/)).toBeInTheDocument();
-    expect(screen.getByRole("progressbar", { name: "传播动量 91" })).toBeInTheDocument();
-    expect(screen.getByText("选择监控后查看事件与监控规则的相关程度。")).toBeInTheDocument();
+	expect(screen.getByText("3 个独立来源")).toBeInTheDocument();
+	expect(screen.getByText(/不据此判断事件真假或来源可信度/)).toBeInTheDocument();
+	expect(screen.getByRole("progressbar", { name: "传播动量 91" })).toBeInTheDocument();
+	expect(screen.getByText("选择监控后查看事件与监控规则的相关程度。")).toBeInTheDocument();
+	expect(screen.queryByText(/置信度|已核实|多源印证/)).not.toBeInTheDocument();
   });
 
   it("contains intelligence failures without hiding the event metrics", () => {

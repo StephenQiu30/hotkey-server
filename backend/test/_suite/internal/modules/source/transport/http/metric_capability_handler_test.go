@@ -31,7 +31,7 @@ func TestMetricCapabilityCreateUsesFixedRequestShape(t *testing.T) {
 	service := &metricCapabilityServiceFake{}
 	router := gin.New()
 	RegisterMetricCapabilityRoutes(router, service, testAuthenticator{subject: httptransport.Subject{UserID: 1, SessionID: 1, Role: httptransport.RoleAdmin}})
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/metric-capability-profiles", strings.NewReader(`{"source_type":"rss","profile_version":"v1","supports_views":true,"independence_strategy":"source_connection","normalization_window_hours":24,"credibility_weight":0.8,"max_single_item_contribution":50}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/metric-capability-profiles", strings.NewReader(`{"source_type":"rss","profile_version":"v1","supports_views":true,"independence_strategy":"source_connection","normalization_window_hours":24,"max_single_item_contribution":50}`))
 	request.Header.Set("Authorization", "Bearer admin")
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
@@ -41,6 +41,9 @@ func TestMetricCapabilityCreateUsesFixedRequestShape(t *testing.T) {
 	}
 	if service.created.Profile.ProfileVersion != "v1" || service.created.Profile.MaxSingleItemContribution != 50 || !service.created.Profile.SupportsViews {
 		t.Fatalf("CreateDraft input = %#v", service.created)
+	}
+	if strings.Contains(response.Body.String(), "credibility") {
+		t.Fatalf("response leaked legacy credibility weight: %s", response.Body.String())
 	}
 }
 

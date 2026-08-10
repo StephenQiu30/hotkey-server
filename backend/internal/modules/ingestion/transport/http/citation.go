@@ -25,12 +25,25 @@ type DocumentRequestDTO struct {
 }
 
 type CitationArtifactResponseDTO struct {
-	ArtifactType             string `json:"artifact_type" enums:"markdown"`
-	TransformerProfileSHA256 string `json:"transformer_profile_sha256"`
-	MIMEType                 string `json:"mime_type" example:"text/markdown; charset=utf-8"`
-	SHA256                   string `json:"sha256"`
-	SizeBytes                int64  `json:"size_bytes"`
-	ETag                     string `json:"etag"`
+	ArtifactType             string                                `json:"artifact_type" enums:"markdown"`
+	TransformerProfileSHA256 string                                `json:"transformer_profile_sha256"`
+	MIMEType                 string                                `json:"mime_type" example:"text/markdown; charset=utf-8"`
+	SHA256                   string                                `json:"sha256"`
+	SizeBytes                int64                                 `json:"size_bytes"`
+	ETag                     string                                `json:"etag"`
+	AnchorMap                *CitationArtifactAnchorMapResponseDTO `json:"anchor_map" extensions:"x-nullable"`
+}
+
+type CitationArtifactAnchorBlockResponseDTO struct {
+	Ordinal        int    `json:"ordinal"`
+	MarkdownAnchor string `json:"markdown_anchor"`
+}
+
+type CitationArtifactAnchorMapResponseDTO struct {
+	NormalizationVersion    string                                   `json:"normalization_version"`
+	AnchorMapProfileVersion string                                   `json:"anchor_map_profile_version"`
+	AnchorMapSHA256         string                                   `json:"anchor_map_sha256"`
+	Blocks                  []CitationArtifactAnchorBlockResponseDTO `json:"blocks"`
 }
 
 type CitationAnchorMapResponseDTO struct {
@@ -39,22 +52,36 @@ type CitationAnchorMapResponseDTO struct {
 	MarkdownAnchor       string `json:"markdown_anchor"`
 }
 
+type CitationPartyResponseDTO struct {
+	Role              string  `json:"role" enums:"publisher,author,distributor,content_origin"`
+	Kind              string  `json:"kind" enums:"organization,person,account"`
+	IdentityNamespace string  `json:"identity_namespace"`
+	ExternalID        string  `json:"external_id"`
+	DisplayName       string  `json:"display_name"`
+	HomepageURL       *string `json:"homepage_url" extensions:"x-nullable"`
+}
+
 // CitationResponseDTO is an explicit transport allowlist. Internal storage
 // and rights-decision identities are intentionally not representable.
 type CitationResponseDTO struct {
-	DocumentID        int64   `json:"document_id"`
-	DocumentVersionID int64   `json:"document_version_id"`
-	SourceType        string  `json:"source_type"`
-	SourceName        string  `json:"source_name"`
-	Title             string  `json:"title"`
-	Author            *string `json:"author" extensions:"x-nullable"`
-	Publisher         *string `json:"publisher" extensions:"x-nullable"`
+	DocumentID        int64                      `json:"document_id"`
+	DocumentVersionID int64                      `json:"document_version_id"`
+	SourceType        string                     `json:"source_type"`
+	SourceName        string                     `json:"source_name"`
+	Title             string                     `json:"title"`
+	Author            *string                    `json:"author" extensions:"x-nullable"`
+	Publisher         *string                    `json:"publisher" extensions:"x-nullable"`
+	PublisherParty    *CitationPartyResponseDTO  `json:"publisher_party" extensions:"x-nullable"`
+	ContentOrigin     *CitationPartyResponseDTO  `json:"content_origin" extensions:"x-nullable"`
+	Distributors      []CitationPartyResponseDTO `json:"distributors"`
 
-	PublisherAvailability      string  `json:"publisher_availability" enums:"available,unavailable"`
-	PublisherUnavailableReason *string `json:"publisher_unavailable_reason" extensions:"x-nullable"`
-	SourceRecordURL            *string `json:"source_record_url" extensions:"x-nullable"`
-	CanonicalURL               *string `json:"canonical_url" extensions:"x-nullable"`
-	DiscussionURL              *string `json:"discussion_url" extensions:"x-nullable"`
+	PublisherAvailability          string  `json:"publisher_availability" enums:"available,unavailable"`
+	PublisherUnavailableReason     *string `json:"publisher_unavailable_reason" extensions:"x-nullable"`
+	ContentOriginAvailability      string  `json:"content_origin_availability" enums:"available,unavailable"`
+	ContentOriginUnavailableReason *string `json:"content_origin_unavailable_reason" extensions:"x-nullable"`
+	SourceRecordURL                *string `json:"source_record_url" extensions:"x-nullable"`
+	CanonicalURL                   *string `json:"canonical_url" extensions:"x-nullable"`
+	DiscussionURL                  *string `json:"discussion_url" extensions:"x-nullable"`
 
 	BodyOrigin    string     `json:"body_origin"`
 	Completeness  string     `json:"completeness"`
@@ -222,9 +249,13 @@ func citationResponseDTO(value ingestionapplication.CitationDTO) CitationRespons
 		DocumentID: value.DocumentID, DocumentVersionID: value.DocumentVersionID,
 		SourceType: value.SourceType, SourceName: value.SourceName, Title: value.Title,
 		Author: value.Author, Publisher: value.Publisher,
-		PublisherAvailability:      string(value.PublisherAvailability),
-		PublisherUnavailableReason: citationReasonPointer(value.PublisherUnavailableReason),
-		SourceRecordURL:            value.SourceRecordURL, CanonicalURL: value.CanonicalURL, DiscussionURL: value.DiscussionURL,
+		PublisherParty: citationPartyResponseDTO(value.PublisherParty), ContentOrigin: citationPartyResponseDTO(value.ContentOrigin),
+		Distributors:                   citationPartyResponseDTOs(value.Distributors),
+		PublisherAvailability:          string(value.PublisherAvailability),
+		PublisherUnavailableReason:     citationReasonPointer(value.PublisherUnavailableReason),
+		ContentOriginAvailability:      string(value.ContentOriginAvailability),
+		ContentOriginUnavailableReason: citationReasonPointer(value.ContentOriginUnavailableReason),
+		SourceRecordURL:                value.SourceRecordURL, CanonicalURL: value.CanonicalURL, DiscussionURL: value.DiscussionURL,
 		BodyOrigin: string(value.BodyOrigin), Completeness: string(value.Completeness), Language: value.Language,
 		PublishedAt: value.PublishedAt, CapturedAt: value.CapturedAt, ContentSHA256: value.ContentSHA256,
 		Availability: string(value.Availability), UnavailableReason: citationReasonPointer(value.UnavailableReason),
@@ -238,6 +269,17 @@ func citationResponseDTO(value ingestionapplication.CitationDTO) CitationRespons
 			MIMEType: value.Artifact.MIMEType, SHA256: value.Artifact.SHA256,
 			SizeBytes: value.Artifact.SizeBytes, ETag: value.Artifact.ETag,
 		}
+		if value.Artifact.AnchorMap != nil {
+			response.Artifact.AnchorMap = &CitationArtifactAnchorMapResponseDTO{
+				NormalizationVersion:    value.Artifact.AnchorMap.NormalizationVersion,
+				AnchorMapProfileVersion: value.Artifact.AnchorMap.AnchorMapProfileVersion,
+				AnchorMapSHA256:         value.Artifact.AnchorMap.AnchorMapSHA256,
+				Blocks:                  make([]CitationArtifactAnchorBlockResponseDTO, len(value.Artifact.AnchorMap.Blocks)),
+			}
+			for index, block := range value.Artifact.AnchorMap.Blocks {
+				response.Artifact.AnchorMap.Blocks[index] = CitationArtifactAnchorBlockResponseDTO{Ordinal: block.Ordinal, MarkdownAnchor: block.MarkdownAnchor}
+			}
+		}
 	}
 	if value.AnchorMap != nil {
 		response.AnchorMap = &CitationAnchorMapResponseDTO{
@@ -246,6 +288,24 @@ func citationResponseDTO(value ingestionapplication.CitationDTO) CitationRespons
 		}
 	}
 	return response
+}
+
+func citationPartyResponseDTO(value *ingestionapplication.CitationPartyDTO) *CitationPartyResponseDTO {
+	if value == nil {
+		return nil
+	}
+	return &CitationPartyResponseDTO{
+		Role: value.Role, Kind: value.Kind, IdentityNamespace: value.IdentityNamespace,
+		ExternalID: value.ExternalID, DisplayName: value.DisplayName, HomepageURL: value.HomepageURL,
+	}
+}
+
+func citationPartyResponseDTOs(values []ingestionapplication.CitationPartyDTO) []CitationPartyResponseDTO {
+	result := make([]CitationPartyResponseDTO, len(values))
+	for index := range values {
+		result[index] = *citationPartyResponseDTO(&values[index])
+	}
+	return result
 }
 
 func citationReasonPointer(value ingestionapplication.CitationUnavailableReason) *string {

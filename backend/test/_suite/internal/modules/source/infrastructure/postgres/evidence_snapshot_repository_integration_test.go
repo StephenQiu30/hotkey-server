@@ -149,6 +149,15 @@ func TestEvidenceSnapshotRepositoryCommitIsAtomicIdempotentAndManyToMany(t *test
 	selectedDigest := digestValue("normalized selected entry")
 	first := evidenceObservation(fixture, "entry-one", "First", selectedDigest)
 	second := evidenceObservation(fixture, "entry-two", "Second", selectedDigest)
+	publisher := sourceapplication.SourceObservationPartyDTO{
+		Role: "publisher", Kind: "organization", IdentityNamespace: "publisher-registry",
+		ExternalID: "publisher-42", DisplayName: "Example Newsroom", HomepageURL: "https://publisher.example.test/",
+	}
+	first.Parties = []sourceapplication.SourceObservationPartyDTO{publisher, {
+		Role: "distributor", Kind: "account", IdentityNamespace: "platform-account",
+		ExternalID: "distributor-7", DisplayName: "Syndication Desk", HomepageURL: "https://distribution.example.test/accounts/7",
+	}}
+	second.Parties = []sourceapplication.SourceObservationPartyDTO{publisher}
 	commit := sourceapplication.CommitEvidenceSnapshotCommand{
 		SnapshotID: persisted.ID, StoreResult: storeResult(persisted), Observations: []sourceapplication.SourceObservationDTO{first, second},
 		DocumentGenerationScheduledAt: time.Now().UTC(),
@@ -161,6 +170,7 @@ func TestEvidenceSnapshotRepositoryCommitIsAtomicIdempotentAndManyToMany(t *test
 		t.Fatalf("committed lifecycle = %q", committed.Snapshot.LifecycleState)
 	}
 	assertEvidenceFactCounts(t, runtime.SQL, fixture.SourceID, 2, 2)
+	assertSourcePartyFactCounts(t, runtime.SQL, fixture.SourceID, 2, 3)
 	var legacyBindings int
 	if err := runtime.SQL.QueryRow(`
 SELECT count(*) FROM source_observations
@@ -174,6 +184,14 @@ WHERE source_connection_id=$1 AND collection_run_item_id IS NOT NULL`, fixture.S
 		t.Fatalf("idempotent Commit(): %v", err)
 	}
 	assertEvidenceFactCounts(t, runtime.SQL, fixture.SourceID, 2, 2)
+	assertSourcePartyFactCounts(t, runtime.SQL, fixture.SourceID, 2, 3)
+	partyConflict := commit
+	partyConflict.Observations = append([]sourceapplication.SourceObservationDTO(nil), commit.Observations...)
+	partyConflict.Observations[0].Parties = append([]sourceapplication.SourceObservationPartyDTO(nil), commit.Observations[0].Parties...)
+	partyConflict.Observations[0].Parties[0].DisplayName = "Changed Publisher"
+	if _, err := repository.Commit(ctx, partyConflict); !errors.Is(err, domain.ErrRawEvidenceConflict) {
+		t.Fatalf("party-drift Commit() error = %v, want immutable party-set conflict", err)
+	}
 
 	subset := commit
 	subset.Observations = append([]sourceapplication.SourceObservationDTO(nil), commit.Observations[:1]...)
@@ -270,6 +288,20 @@ SELECT EXISTS (
 	}
 	if leaked {
 		t.Fatal("raw body marker entered evidence persistence tables")
+	}
+}
+
+func assertSourcePartyFactCounts(t *testing.T, database *sql.DB, sourceConnectionID int64, expectedParties, expectedRelations int) {
+	t.Helper()
+	var parties, relations int
+	if err := database.QueryRow(`SELECT count(*) FROM source_parties WHERE source_connection_id=$1`, sourceConnectionID).Scan(&parties); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`SELECT count(*) FROM source_observation_parties WHERE source_connection_id=$1`, sourceConnectionID).Scan(&relations); err != nil {
+		t.Fatal(err)
+	}
+	if parties != expectedParties || relations != expectedRelations {
+		t.Fatalf("source party facts = %d/%d, want %d/%d", parties, relations, expectedParties, expectedRelations)
 	}
 }
 
@@ -656,7 +688,7 @@ func evidenceObservation(fixture evidenceRepositoryFixture, externalID, title, s
 		CanonicalURL: "https://publisher.example.test/" + externalID, BodyOrigin: "feed_content", Completeness: "full",
 		PublishedAt: &publishedAt, DiscoveredAt: fixture.Reservation.CapturedAt, CapturedAt: fixture.Reservation.CapturedAt,
 		Evidence: sourceapplication.RawEvidenceReferenceDTO{
-			EvidenceKey: fixture.Reservation.EvidenceKey, LocatorType: string(domain.EvidenceLocatorByteRange),
+			EvidenceKey: fixture.Reservation.EvidenceKey, Usage: "document_source", LocatorType: string(domain.EvidenceLocatorByteRange),
 			LocatorValue: "bytes[0:16]", ByteStart: &start, ByteEnd: &end,
 			SelectedPayloadSHA256: selectedDigest, SelectorVersion: domain.ByteRangeSelectorVersion,
 		},

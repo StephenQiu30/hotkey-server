@@ -37,18 +37,17 @@ func registerRoutes(router *gin.Engine, read *application.ReadService, lifecycle
 	if intelligence != nil {
 		api.GET("/:id/intelligence", httptransport.Wrap(handler.GetIntelligence))
 	}
-	if claims != nil {
-		claimAdmin := api.Group("", httptransport.RequireRoles(httptransport.RoleAdmin, httptransport.RoleEditor))
-		claimAdmin.POST("/:id/claims", httptransport.Wrap(handler.SaveClaim))
-	}
+	// Legacy claim mutation is intentionally not exposed. The evidence-lineage
+	// model replaces truth-like status/confidence writes with immutable quote
+	// selectors and descriptive evidence relations.
 	editor := api.Group("", httptransport.RequireRoles(httptransport.RoleEditor, httptransport.RoleAdmin))
 	editor.POST("/:id/contents/:content_id/lock", httptransport.Wrap(handler.SetMemberLock))
 	if summaries != nil {
 		editor.POST("/:id/intelligence/summary/regenerate", httptransport.Wrap(handler.RegenerateSummary))
 	}
-	if extractions != nil {
-		editor.POST("/:id/intelligence/extract", httptransport.Wrap(handler.RegenerateExtraction))
-	}
+	// Legacy extraction produced corroborated/unverified claim states. Keep the
+	// service available for historical migration only; do not register a v2
+	// public producer.
 	admin := api.Group("", httptransport.RequireRoles(httptransport.RoleAdmin))
 	admin.POST("/:id/lifecycle", httptransport.Wrap(handler.Transition))
 	admin.POST("/:id/merge", httptransport.Wrap(handler.Merge))
@@ -71,6 +70,32 @@ func RegisterEventUpdateRoutes(router *gin.Engine, updates *application.UpdateSe
 	handler := &Handler{updates: updates}
 	api := router.Group("/api/v1/events", httptransport.RequireAuthentication(authenticator))
 	api.GET("/:id/updates", httptransport.Wrap(handler.ListUpdates))
+}
+
+// RegisterMicroEventRoutes exposes the v2 event model on a separate semantic
+// resource while the legacy /events projection remains available for the
+// migration window. All mutation routes require an authenticated editor or
+// administrator; repository-level checks still revalidate the durable actor.
+func RegisterMicroEventRoutes(
+	router *gin.Engine,
+	queries *application.MicroEventQueryService,
+	governance *application.MicroEventGovernanceService,
+	evidence *application.ClaimEvidenceService,
+	authenticator httptransport.Authenticator,
+) {
+	if router == nil || queries == nil || governance == nil || evidence == nil {
+		return
+	}
+	handler := NewMicroEventHandler(queries, governance, evidence)
+	api := router.Group("/api/v1/micro-events", httptransport.RequireAuthentication(authenticator))
+	api.GET("", httptransport.Wrap(handler.List))
+	api.GET("/:id", httptransport.Wrap(handler.Get))
+	api.GET("/:id/evidence", httptransport.Wrap(handler.Evidence))
+
+	editor := api.Group("", httptransport.RequireRoles(httptransport.RoleEditor, httptransport.RoleAdmin))
+	editor.POST("/:id/evidence", httptransport.Wrap(handler.RecordEvidence))
+	editor.POST("/:id/evidence/:evidence_id/feedback", httptransport.Wrap(handler.CorrectEvidence))
+	editor.POST("/:id/feedback", httptransport.Wrap(handler.Govern))
 }
 
 func RegisterAgentRoutesWithIntelligence(router *gin.Engine, read *application.ReadService, heat *application.HeatService, intelligence *application.EventIntelligenceReadService, authenticator httptransport.Authenticator) {

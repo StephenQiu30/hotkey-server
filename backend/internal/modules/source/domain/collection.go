@@ -105,12 +105,14 @@ type SourceItem struct {
 	Body                 string
 	Language             string
 	URL                  string
+	DiscussionURL        string
 	Author               string
 	PublishedAt          *time.Time
 	ObservedAt           time.Time
 	EvidenceCompleteness EvidenceCompleteness
 	Attachments          []SourceAttachment
 	Metrics              SourceMetrics
+	Parties              []SourcePartyAssertion
 	SnapshotKey          string
 	ItemLocator          string
 	EvidenceReferences   []EvidenceReference
@@ -145,6 +147,7 @@ func NormalizeSourceItem(item SourceItem) (SourceItem, error) {
 	item.Body = strings.TrimSpace(item.Body)
 	item.Language = strings.TrimSpace(item.Language)
 	item.URL = strings.TrimSpace(item.URL)
+	item.DiscussionURL = strings.TrimSpace(item.DiscussionURL)
 	item.Author = strings.TrimSpace(item.Author)
 	item.SnapshotKey = strings.ToLower(strings.TrimSpace(item.SnapshotKey))
 	item.ItemLocator = strings.TrimSpace(item.ItemLocator)
@@ -161,6 +164,9 @@ func NormalizeSourceItem(item SourceItem) (SourceItem, error) {
 	seenReferences := make(map[string]struct{}, len(item.EvidenceReferences))
 	for _, reference := range item.EvidenceReferences {
 		reference.SnapshotKey = strings.ToLower(strings.TrimSpace(reference.SnapshotKey))
+		if reference.Usage == "" {
+			reference.Usage = EvidenceUsageDocumentSource
+		}
 		reference.LocatorValue = strings.TrimSpace(reference.LocatorValue)
 		reference.SelectedPayloadSHA256 = strings.ToLower(strings.TrimSpace(reference.SelectedPayloadSHA256))
 		reference.SelectorVersion = strings.TrimSpace(reference.SelectorVersion)
@@ -175,6 +181,11 @@ func NormalizeSourceItem(item SourceItem) (SourceItem, error) {
 		references = append(references, reference)
 	}
 	item.EvidenceReferences = references
+	parties, err := NormalizeSourceParties(item.Parties)
+	if err != nil {
+		return SourceItem{}, err
+	}
+	item.Parties = parties
 	if len(references) > 0 {
 		if item.SnapshotKey == "" && item.ItemLocator == "" {
 			item.SnapshotKey = references[0].SnapshotKey
@@ -208,6 +219,16 @@ func NormalizeSourceItem(item SourceItem) (SourceItem, error) {
 	if len(item.ParentExternalID) > 512 || item.ParentExternalID == item.ExternalID {
 		return SourceItem{}, fmt.Errorf("source item parent external ID is invalid")
 	}
+	normalizedURL, err := normalizeSourceItemURL(item.URL)
+	if err != nil {
+		return SourceItem{}, fmt.Errorf("source item canonical URL is invalid")
+	}
+	item.URL = normalizedURL
+	discussionURL, err := normalizeSourceItemURL(item.DiscussionURL)
+	if err != nil {
+		return SourceItem{}, fmt.Errorf("source item discussion URL is invalid")
+	}
+	item.DiscussionURL = discussionURL
 	if item.ContentType == "" || len(item.ContentType) > 32 {
 		return SourceItem{}, fmt.Errorf("source item content type is invalid")
 	}
@@ -225,6 +246,18 @@ func NormalizeSourceItem(item SourceItem) (SourceItem, error) {
 		return SourceItem{}, err
 	}
 	return item, nil
+}
+
+func normalizeSourceItemURL(value string) (string, error) {
+	if value == "" {
+		return "", nil
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed == nil || parsed.User != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" || len(value) > 2048 {
+		return "", fmt.Errorf("invalid URL")
+	}
+	parsed.Fragment = ""
+	return parsed.String(), nil
 }
 
 func normalizeSourceAttachments(attachments []SourceAttachment) ([]SourceAttachment, error) {

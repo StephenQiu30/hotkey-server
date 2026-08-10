@@ -191,13 +191,35 @@ required property without making explicit null impossible to bind. */
     normalization_version?: string;
   };
 
+  type CitationArtifactAnchorBlockResponseDTO = {
+    markdown_anchor?: string;
+    ordinal?: number;
+  };
+
+  type CitationArtifactAnchorMapResponseDTO = {
+    anchor_map_profile_version?: string;
+    anchor_map_sha256?: string;
+    blocks?: CitationArtifactAnchorBlockResponseDTO[];
+    normalization_version?: string;
+  };
+
   type CitationArtifactResponseDTO = {
+    anchor_map?: CitationArtifactAnchorMapResponseDTO;
     artifact_type?: "markdown";
     etag?: string;
     mime_type?: string;
     sha256?: string;
     size_bytes?: number;
     transformer_profile_sha256?: string;
+  };
+
+  type CitationPartyResponseDTO = {
+    display_name?: string;
+    external_id?: string;
+    homepage_url?: string;
+    identity_namespace?: string;
+    kind?: "organization" | "person" | "account";
+    role?: "publisher" | "author" | "distributor" | "content_origin";
   };
 
   type CitationResponseDTO = {
@@ -217,8 +239,12 @@ required property without making explicit null impossible to bind. */
     canonical_url?: string;
     captured_at?: string;
     completeness?: string;
+    content_origin?: CitationPartyResponseDTO;
+    content_origin_availability?: "available" | "unavailable";
+    content_origin_unavailable_reason?: string;
     content_sha256?: string;
     discussion_url?: string;
+    distributors?: CitationPartyResponseDTO[];
     document_id?: number;
     document_version_id?: number;
     exact_quote?: string;
@@ -228,6 +254,7 @@ required property without making explicit null impossible to bind. */
     published_at?: string;
     publisher?: string;
     publisher_availability?: "available" | "unavailable";
+    publisher_party?: CitationPartyResponseDTO;
     publisher_unavailable_reason?: string;
     source_name?: string;
     source_record_url?: string;
@@ -238,33 +265,59 @@ required property without making explicit null impossible to bind. */
     utf8_byte_start?: number;
   };
 
-  type ClaimEvidenceRequest = {
-    confidence?: number;
-    content_id: number;
-    excerpt?: string;
-    locator: string;
-    stance: string;
+  type ClaimEvidenceCorrectionResponseDTO = {
+    evidence_id?: number;
+    evidence_state?: EvidenceStateResponseDTO;
+    evidence_version?: number;
+    feedback_id?: number;
   };
 
-  type ClaimRequest = {
-    claim_hash: string;
-    confidence?: number;
-    evidence: ClaimEvidenceRequest[];
-    id: number;
-    manual_locked?: boolean;
-    normalized_claim: string;
-    status: string;
-    version: number;
+  type ClaimEvidenceMutationResponseDTO = {
+    claim_id?: number;
+    claim_version?: number;
+    evidence_id?: number;
+    evidence_state?: EvidenceStateResponseDTO;
+    evidence_version?: number;
   };
 
-  type ClaimResponse = {
-    claim_hash?: string;
-    confidence?: number;
-    event_id?: number;
+  type ClaimEvidenceResponseDTO = {
+    availability?: string;
+    canonical_url?: string;
+    captured_at?: string;
+    claim_id?: number;
+    content_family_id?: number;
+    content_family_member_version?: number;
+    content_origin?: string;
+    created_at?: string;
+    decision_origin?: string;
+    document_version_id?: number;
+    exact_quote?: string;
+    extraction_schema_version?: string;
     id?: number;
-    normalized_claim?: string;
-    status?: string;
+    lineage_decision_id?: number;
+    lineage_root_document_version_id?: number;
+    markdown_anchor?: string;
+    object?: string;
+    plaintext_sha256?: string;
+    predicate?: string;
+    prefix?: string;
+    published_at?: string;
+    publisher?: string;
+    quote_sha256?: string;
+    relation?: string;
+    selector_version?: string;
+    source_record_url?: string;
+    subject?: string;
+    suffix?: string;
+    text_quote_selector_id?: number;
+    utf8_byte_end?: number;
+    utf8_byte_start?: number;
     version?: number;
+  };
+
+  type ClaimQualifierRequestDTO = {
+    key: string;
+    value: string;
   };
 
   type CleanupResult = {
@@ -377,6 +430,22 @@ required property without making explicit null impossible to bind. */
       | "integrity_failed";
   };
 
+  type ContentLineageFeedbackResponseDTO = {
+    document_version_id?: number;
+    feedback_id?: number;
+    feedback_type?: string;
+    lineage_decision_id?: number;
+    original_content_family_id?: number;
+    original_parent_document_version_id?: number;
+    original_relation?: string;
+    result_content_family_id?: number;
+    result_content_family_version?: number;
+    result_lineage_decision_id?: number;
+    result_parent_document_version_id?: number;
+    result_relation?: string;
+    reused?: boolean;
+  };
+
   type ContentMetricsResponse = {
     comment_count?: number;
     like_count?: number;
@@ -395,6 +464,7 @@ required property without making explicit null impossible to bind. */
     dedupe_reason?: string;
     dedupe_status?: "active" | "duplicate";
     dedupe_version?: string;
+    document_version_id?: number;
     event_id?: number;
     event_title?: string;
     external_id?: string;
@@ -434,6 +504,12 @@ required property without making explicit null impossible to bind. */
     message?: string;
   };
 
+  type ContentResultHttpContentLineageFeedbackResponseDTO = {
+    code?: number;
+    data?: ContentLineageFeedbackResponseDTO;
+    message?: string;
+  };
+
   type ContentResultHttpContentPageResponse = {
     code?: number;
     data?: ContentPageResponse;
@@ -443,6 +519,18 @@ required property without making explicit null impossible to bind. */
   type ContentResultHttpContentResponse = {
     code?: number;
     data?: ContentResponse;
+    message?: string;
+  };
+
+  type ContentResultHttpDocumentMatchPageResponseDTO = {
+    code?: number;
+    data?: DocumentMatchPageResponseDTO;
+    message?: string;
+  };
+
+  type ContentResultHttpOverrideDocumentMatchResponseDTO = {
+    code?: number;
+    data?: OverrideDocumentMatchResponseDTO;
     message?: string;
   };
 
@@ -482,6 +570,12 @@ required property without making explicit null impossible to bind. */
     message?: string;
   };
 
+  type ContentResultHttpTextQuoteSelectorResponseDTO = {
+    code?: number;
+    data?: TextQuoteSelectorResponseDTO;
+    message?: string;
+  };
+
   type ContentResultHttpVersionedDocumentResponseDTO = {
     code?: number;
     data?: VersionedDocumentResponseDTO;
@@ -492,6 +586,14 @@ required property without making explicit null impossible to bind. */
     code?: number;
     data?: EmptyResponse;
     message?: string;
+  };
+
+  type CorrectClaimEvidenceRequestDTO = {
+    expected_claim_version: number;
+    note?: string;
+    reason_code: string;
+    result_relation: string;
+    result_text_quote_selector_id: number;
   };
 
   type CreatedTokenResponse = {
@@ -508,7 +610,6 @@ required property without making explicit null impossible to bind. */
   };
 
   type CreateMetricCapabilityProfileRequest = {
-    credibility_weight?: number;
     independence_strategy: "source_connection" | "author";
     max_single_item_contribution: number;
     normalization_window_hours: number;
@@ -632,6 +733,11 @@ required property without making explicit null impossible to bind. */
     id: number;
   };
 
+  type deleteNotificationsPushSubscriptionsIdParams = {
+    /** subscription ID */
+    id: number;
+  };
+
   type deleteReportSubscriptionsIdParams = {
     /** subscription ID */
     id: number;
@@ -672,6 +778,39 @@ required property without making explicit null impossible to bind. */
     message?: string;
   };
 
+  type DocumentMatchPageResponseDTO = {
+    items?: DocumentMatchResponseDTO[];
+    next_cursor?: string;
+  };
+
+  type DocumentMatchResponseDTO = {
+    automatic_decision?: "accepted" | "review" | "rejected";
+    calibration_version?: string;
+    compiled_profile_id?: number;
+    decided_at?: string;
+    degraded?: boolean;
+    document_version_id?: number;
+    effective_decision?: "accepted" | "review" | "rejected";
+    match_decision_id?: number;
+    matching_algorithm_version?: string;
+    monitor_id?: number;
+    monitor_version_id?: number;
+    reason_codes?: string[];
+    relevance_probability?: number;
+    relevance_profile_id?: number;
+    reranker_version?: string;
+    resource_version?: number;
+    rrf_score?: number;
+    signals?: DocumentMatchSignalResponseDTO[];
+  };
+
+  type DocumentMatchSignalResponseDTO = {
+    algorithm_version?: string;
+    channel?: "lexical" | "semantic" | "structured";
+    rank?: number;
+    raw_score?: number;
+  };
+
   type DocumentResponse = {
     contentHash?: string;
     eventID?: number;
@@ -708,13 +847,28 @@ required property without making explicit null impossible to bind. */
 
   type EmptyResponse = true;
 
-  type EmptyResponse = true;
+  type EmptyResponseDTO = true;
 
   type EvaluateRightsActionsRequestDTO = {
     at?: string;
     input_digest?: string;
     subject_key?: string;
     subject_type?: string;
+  };
+
+  type EventHeatV2ResponseDTO = {
+    acceleration?: number;
+    coverage?: number;
+    heat_score?: number;
+    id?: number;
+    independent_lineage_root_count?: number;
+    micro_event_version?: number;
+    normalized_engagement?: number;
+    reason_codes?: string[];
+    recency?: number;
+    velocity?: number;
+    window_ended_at?: string;
+    window_started_at?: string;
   };
 
   type EventIntelligenceResponse = {
@@ -773,12 +927,6 @@ required property without making explicit null impossible to bind. */
     window_hours?: number;
   };
 
-  type EventResultHttpClaimResponse = {
-    code?: number;
-    data?: ClaimResponse;
-    message?: string;
-  };
-
   type EventResultHttpEventIntelligenceResponse = {
     code?: number;
     data?: EventIntelligenceResponse;
@@ -812,12 +960,6 @@ required property without making explicit null impossible to bind. */
   type EventResultHttpEventUpdatePageResponse = {
     code?: number;
     data?: EventUpdatePageResponse;
-    message?: string;
-  };
-
-  type EventResultHttpExtractionRegenerationResponse = {
-    code?: number;
-    data?: ExtractionRegenerationResponse;
     message?: string;
   };
 
@@ -885,14 +1027,31 @@ required property without making explicit null impossible to bind. */
     window_hours?: number;
   };
 
-  type ExtractionRegenerationResponse = {
-    claim_count?: number;
-    entity_count?: number;
-    event_id?: number;
-    reason_code?: string;
-    reused?: boolean;
-    run_id?: number;
-    status?: string;
+  type EvidenceStateResponseDTO = {
+    algorithm_version?: string;
+    calculated_at?: string;
+    event_version?: number;
+    id?: number;
+    independent_origin_count?: number;
+    reason_codes?: string[];
+    state?: string;
+  };
+
+  type EvidenceSummaryResponseDTO = {
+    created_at?: string;
+    event_version?: number;
+    id?: number;
+    sentences?: EvidenceSummarySentenceResponseDTO[];
+    summary_profile_version?: string;
+  };
+
+  type EvidenceSummarySentenceResponseDTO = {
+    claim_evidence_version_ids?: number[];
+    decision_origin?: string;
+    editorial_note?: boolean;
+    id?: number;
+    ordinal?: number;
+    text?: string;
   };
 
   type getAgentAlertsIdParams = {
@@ -1011,14 +1170,6 @@ required property without making explicit null impossible to bind. */
     )[];
     /** trend filters */
     trend?: ("emerging" | "rising" | "stable" | "falling" | "dormant")[];
-    /** verification filters */
-    verification?: (
-      | "disputed"
-      | "corroborated"
-      | "single_source"
-      | "unverified"
-      | "insufficient"
-    )[];
     /** minimum heat */
     min_heat?: number;
     /** ranking dimension */
@@ -1167,6 +1318,40 @@ required property without making explicit null impossible to bind. */
     status?: string;
   };
 
+  type getMicroEventsIdEvidenceParams = {
+    /** micro-event ID */
+    id: number;
+    /** exclusive evidence cursor */
+    cursor_id?: number;
+    /** page size */
+    limit?: number;
+  };
+
+  type getMicroEventsIdParams = {
+    /** micro-event ID */
+    id: number;
+  };
+
+  type getMicroEventsParams = {
+    /** exclusive event cursor */
+    cursor_id?: number;
+    /** page size */
+    limit?: number;
+    /** comma-separated lifecycle states */
+    status?: string;
+  };
+
+  type getMonitorsIdDocumentMatchesParams = {
+    /** monitor ID */
+    id: number;
+    /** effective accepted, review, or rejected decision */
+    decision?: string;
+    /** opaque cursor */
+    cursor?: string;
+    /** page size, 1-100 */
+    limit?: number;
+  };
+
   type getMonitorsIdDraftExpansionRunsRunIdParams = {
     /** monitor ID */
     id: number;
@@ -1238,15 +1423,19 @@ required property without making explicit null impossible to bind. */
   };
 
   type getNotificationsParams = {
-    /** last processed notification ID */
+    /** last processed user notification ID */
     after_id?: number;
+    /** authorized monitor filter */
+    monitor_id?: number;
     /** page size */
     limit?: number;
   };
 
   type getNotificationsStreamParams = {
-    /** last processed notification ID */
+    /** last processed user notification ID */
     after_id?: number;
+    /** authorized monitor filter */
+    monitor_id?: number;
   };
 
   type getOperationsAuditLogsParams = {
@@ -1292,14 +1481,6 @@ required property without making explicit null impossible to bind. */
     )[];
     /** trend filters */
     trend?: ("emerging" | "rising" | "stable" | "falling" | "dormant")[];
-    /** verification filters */
-    verification?: (
-      | "disputed"
-      | "corroborated"
-      | "single_source"
-      | "unverified"
-      | "insufficient"
-    )[];
     /** minimum heat */
     min_heat?: number;
     /** ranking dimension */
@@ -1412,7 +1593,6 @@ required property without making explicit null impossible to bind. */
 
   type HeatComponentResponse = {
     content_velocity?: number;
-    credibility?: number;
     engagement?: number;
     independence?: number;
     recency?: number;
@@ -1467,19 +1647,15 @@ required property without making explicit null impossible to bind. */
 
   type IntelligenceClaimResponse = {
     claim_hash?: string;
-    confidence?: number;
     evidence?: IntelligenceEvidenceResponse[];
     id?: number;
     manual_locked?: boolean;
     normalized_claim?: string;
-    status?: string;
     version?: number;
   };
 
   type IntelligenceEntityResponse = {
     canonical_name?: string;
-    confidence?: number;
-    confirmed?: boolean;
     entity_id?: number;
     entity_key?: string;
     entity_locked?: boolean;
@@ -1492,7 +1668,6 @@ required property without making explicit null impossible to bind. */
   };
 
   type IntelligenceEvidenceResponse = {
-    confidence?: number;
     content_id?: number;
     excerpt?: string;
     locator?: string;
@@ -1681,6 +1856,12 @@ probability or a cross-channel relevance percentage. */
     expected_monitor_version: number;
   };
 
+  type LocateTextQuoteSelectorRequestDTO = {
+    exact_quote: string;
+    normalization_version: string;
+    plaintext_sha256: string;
+  };
+
   type LoginRequest = {
     email: string;
     password: string;
@@ -1727,7 +1908,6 @@ probability or a cross-channel relevance percentage. */
 
   type MetricCapabilityProfileResponse = {
     archived_at?: string;
-    credibility_weight?: number;
     id?: number;
     independence_strategy?: string;
     max_single_item_contribution?: number;
@@ -1741,6 +1921,102 @@ probability or a cross-channel relevance percentage. */
     supports_shares?: boolean;
     supports_views?: boolean;
     version?: number;
+  };
+
+  type MicroEventEvidencePageResponseDTO = {
+    items?: ClaimEvidenceResponseDTO[];
+    next_cursor_id?: number;
+  };
+
+  type MicroEventGovernanceRequestDTO = {
+    action: string;
+    content_family_id?: number;
+    expected_event_version: number;
+    expected_member_version?: number;
+    expected_target_event_version?: number;
+    membership_decision_id?: number;
+    note?: string;
+    reason_code: string;
+    target_micro_event_id?: number;
+  };
+
+  type MicroEventGovernanceResponseDTO = {
+    feedback_id?: number;
+    source_event?: MicroEventGovernanceResultDTO;
+    target_event?: MicroEventGovernanceResultDTO;
+  };
+
+  type MicroEventGovernanceResultDTO = {
+    id?: number;
+    status?: string;
+    version?: number;
+  };
+
+  type MicroEventPageResponseDTO = {
+    items?: MicroEventResponseDTO[];
+    next_cursor_id?: number;
+  };
+
+  type MicroEventResponseDTO = {
+    clustering_profile_version?: string;
+    content_family_count?: number;
+    document_count?: number;
+    event_ended_at?: string;
+    event_key?: string;
+    event_started_at?: string;
+    evidence_state?: EvidenceStateResponseDTO;
+    evidence_summary?: EvidenceSummaryResponseDTO;
+    id?: number;
+    identifier_keys?: string[];
+    latest_heat?: EventHeatV2ResponseDTO;
+    location_keys?: string[];
+    primary_action_key?: string;
+    primary_subject_key?: string;
+    status?: string;
+    storyline?: StorylineResponseDTO;
+    version?: number;
+  };
+
+  type MicroEventV2ResultHttpClaimEvidenceCorrectionResponseDTO = {
+    code?: number;
+    data?: ClaimEvidenceCorrectionResponseDTO;
+    message?: string;
+  };
+
+  type MicroEventV2ResultHttpClaimEvidenceMutationResponseDTO = {
+    code?: number;
+    data?: ClaimEvidenceMutationResponseDTO;
+    message?: string;
+  };
+
+  type MicroEventV2ResultHttpMicroEventEvidencePageResponseDTO = {
+    code?: number;
+    data?: MicroEventEvidencePageResponseDTO;
+    message?: string;
+  };
+
+  type MicroEventV2ResultHttpMicroEventGovernanceResponseDTO = {
+    code?: number;
+    data?: MicroEventGovernanceResponseDTO;
+    message?: string;
+  };
+
+  type MicroEventV2ResultHttpMicroEventPageResponseDTO = {
+    code?: number;
+    data?: MicroEventPageResponseDTO;
+    message?: string;
+  };
+
+  type MicroEventV2ResultHttpMicroEventResponseDTO = {
+    code?: number;
+    data?: MicroEventResponseDTO;
+    message?: string;
+  };
+
+  type MicroEventV2ResultInternalModulesEventTransportHttpEmptyResponse = {
+    code?: number;
+    data?: EmptyResponse;
+    message?: string;
   };
 
   type ModelProfileListResponse = {
@@ -1963,40 +2239,57 @@ probability or a cross-channel relevance percentage. */
     items?: MonitorConfigResponse[];
   };
 
-  type NotificationPageResponse = {
-    items?: NotificationResponse[];
-    next_after_id?: number;
-  };
-
-  type NotificationPayloadResponse = {
-    severity?: string;
-    status?: string;
-    summary?: string;
-    title?: string;
-  };
-
-  type NotificationResponse = {
-    audience?: string;
-    event_type?: string;
-    id?: number;
-    occurred_at?: string;
-    payload?: NotificationPayloadResponse;
-    resource_id?: number;
-    resource_type?: string;
-  };
-
-  type NotificationResultHttpNotificationPageResponse = {
+  type NotificationResultHttpEmptyResponseDTO = {
     code?: number;
-    data?: NotificationPageResponse;
+    data?: EmptyResponseDTO;
     message?: string;
   };
 
-  type NotificationResultInternalModulesNotificationTransportHttpEmptyResponse =
-    {
-      code?: number;
-      data?: EmptyResponse;
-      message?: string;
-    };
+  type NotificationResultHttpPushCapabilityResponseDTO = {
+    code?: number;
+    data?: PushCapabilityResponseDTO;
+    message?: string;
+  };
+
+  type NotificationResultHttpPushSubscriptionListResponseDTO = {
+    code?: number;
+    data?: PushSubscriptionListResponseDTO;
+    message?: string;
+  };
+
+  type NotificationResultHttpPushSubscriptionResponseDTO = {
+    code?: number;
+    data?: PushSubscriptionResponseDTO;
+    message?: string;
+  };
+
+  type NotificationResultHttpUserNotificationPageResponseDTO = {
+    code?: number;
+    data?: UserNotificationPageResponseDTO;
+    message?: string;
+  };
+
+  type OverrideDocumentMatchRequestDTO = {
+    decision: "accepted" | "rejected";
+    note?: string;
+    reason_code: string;
+  };
+
+  type OverrideDocumentMatchResponseDTO = {
+    actor_user_id?: number;
+    created_at?: string;
+    decision?: "accepted" | "rejected";
+    document_version_id?: number;
+    match_decision_id?: number;
+    monitor_id?: number;
+    monitor_version_id?: number;
+    note?: string;
+    override_id?: number;
+    previous_effective_decision?: "accepted" | "review" | "rejected";
+    reason_code?: string;
+    resource_version?: number;
+    reused?: boolean;
+  };
 
   type OverviewResultDomainRuntimeOverview = {
     code?: number;
@@ -2075,8 +2368,13 @@ probability or a cross-channel relevance percentage. */
     id: number;
   };
 
-  type postEventsIdClaimsParams = {
-    /** event ID */
+  type postContentLineageDecisionsIdFeedbackParams = {
+    /** lineage decision ID */
+    id: number;
+  };
+
+  type postDocumentVersionsIdTextQuoteSelectorsParams = {
+    /** document version ID */
     id: number;
   };
 
@@ -2085,11 +2383,6 @@ probability or a cross-channel relevance percentage. */
     id: number;
     /** content ID */
     content_id: number;
-  };
-
-  type postEventsIdIntelligenceExtractParams = {
-    /** event ID */
-    id: number;
   };
 
   type postEventsIdIntelligenceSummaryRegenerateParams = {
@@ -2143,6 +2436,23 @@ probability or a cross-channel relevance percentage. */
     id: number;
   };
 
+  type postMicroEventsIdEvidenceEvidenceIdFeedbackParams = {
+    /** micro-event ID */
+    id: number;
+    /** original claim evidence version ID */
+    evidence_id: number;
+  };
+
+  type postMicroEventsIdEvidenceParams = {
+    /** micro-event ID */
+    id: number;
+  };
+
+  type postMicroEventsIdFeedbackParams = {
+    /** micro-event ID */
+    id: number;
+  };
+
   type postMonitorsIdArchiveParams = {
     /** monitor ID */
     id: number;
@@ -2151,6 +2461,13 @@ probability or a cross-channel relevance percentage. */
   type postMonitorsIdCollectParams = {
     /** monitor ID */
     id: number;
+  };
+
+  type postMonitorsIdDocumentMatchesMatchDecisionIdOverridesParams = {
+    /** monitor ID */
+    id: number;
+    /** automatic match decision ID */
+    match_decision_id: number;
   };
 
   type postMonitorsIdDraftAiCandidatesParams = {
@@ -2321,7 +2638,9 @@ probability or a cross-channel relevance percentage. */
     compiled_query?: string;
     estimated_requests?: number;
     excluded_rule_ids?: number[];
+    excluded_term_count?: number;
     included_rule_ids?: number[];
+    included_term_count?: number;
     languages?: string[];
     max_query_bytes?: number;
     query_mode?: string;
@@ -2398,6 +2717,37 @@ required property without making explicit null impossible to bind. */
     expected_monitor_version: number;
   };
 
+  type PushCapabilityResponseDTO = {
+    available?: boolean;
+    vapid_public_key?: string;
+  };
+
+  type PushSubscriptionKeysRequestDTO = {
+    auth: string;
+    p256dh: string;
+  };
+
+  type PushSubscriptionListResponseDTO = {
+    items?: PushSubscriptionResponseDTO[];
+  };
+
+  type PushSubscriptionResponseDTO = {
+    created_at?: string;
+    device_label?: string;
+    expiration_reason?: string;
+    id?: number;
+    last_failure_at?: string;
+    last_success_at?: string;
+    monitor_ids?: number[];
+    quiet_end?: string;
+    quiet_start?: string;
+    status?: "active" | "disabled" | "expired";
+    timezone?: string;
+    ttl_seconds?: number;
+    updated_at?: string;
+    version?: number;
+  };
+
   type putMonitorsIdContentsContentIdFeedbackParams = {
     /** monitor ID */
     id: number;
@@ -2422,12 +2772,14 @@ required property without making explicit null impossible to bind. */
     match_id: number;
   };
 
+  type putNotificationsPushSubscriptionsIdParams = {
+    /** subscription ID */
+    id: number;
+  };
+
   type RadarEventResponse = {
     attention?: number;
     breadth?: number;
-    confirmation?: string;
-    confirmation_score?: number;
-    data_confidence?: number;
     event_id?: number;
     event_key?: string;
     first_seen_at?: string;
@@ -2469,6 +2821,17 @@ required property without making explicit null impossible to bind. */
     scanned?: number;
   };
 
+  type RecordClaimEvidenceRequestDTO = {
+    document_version_id: number;
+    expected_event_version: number;
+    object: string;
+    predicate: string;
+    qualifiers?: ClaimQualifierRequestDTO[];
+    relation: string;
+    subject: string;
+    text_quote_selector_id: number;
+  };
+
   type RecordRightsDecisionBatchRequestDTO = {
     decisions?: RightsActionDecisionRequestDTO[];
     expected_policy_version?: number;
@@ -2482,6 +2845,17 @@ required property without making explicit null impossible to bind. */
     decision_batch_id?: number;
     decisions?: RightsDecisionResponseDTO[];
     idempotent_replay?: boolean;
+  };
+
+  type RegisterPushSubscriptionRequestDTO = {
+    device_label: string;
+    endpoint: string;
+    keys: PushSubscriptionKeysRequestDTO;
+    monitor_ids: number[];
+    quiet_end?: string;
+    quiet_start?: string;
+    timezone: string;
+    ttl_seconds: number;
   };
 
   type RegistrationRequest = {
@@ -2731,6 +3105,16 @@ required property without making explicit null impossible to bind. */
     expected_version: number;
   };
 
+  type ReviewContentLineageRequestDTO = {
+    expected_member_version: number;
+    expected_target_member_version?: number;
+    feedback_type: string;
+    note?: string;
+    reason_code: string;
+    relation_override?: string;
+    target_parent_document_version_id?: number;
+  };
+
   type ReviewIntentExpansionCandidateRequestDTO = {
     decision: "approved" | "rejected";
     expected_resource_version: number;
@@ -2899,7 +3283,10 @@ value never authorizes v2 raw evidence or document body persistence. */
     availability?: string;
     collection_interface?: string;
     content_scope?: string;
+    default_access_mode?: string;
+    document_capture_mode?: string;
     follows_canonical_url?: boolean;
+    required_actions?: string[];
     rights_status?: string;
     source_endpoint_id?: number;
     source_type?: string;
@@ -3017,6 +3404,16 @@ value never authorizes v2 raw evidence or document body persistence. */
     source_expected_version: number;
   };
 
+  type StorylineResponseDTO = {
+    id?: number;
+    relation_profile_version?: string;
+    status?: string;
+    storyline_key?: string;
+    summary?: string;
+    title?: string;
+    version?: number;
+  };
+
   type SubmitIntentExpansionRunRequestDTO = {
     expansion_profile: "monitor-intent-expansion-v1";
     expected_resource_version: number;
@@ -3064,6 +3461,23 @@ value never authorizes v2 raw evidence or document body persistence. */
     text?: string;
   };
 
+  type TextQuoteSelectorResponseDTO = {
+    document_version_id?: number;
+    exact_quote?: string;
+    id?: number;
+    markdown_anchor?: string;
+    normalization_version?: string;
+    plaintext_sha256?: string;
+    prefix?: string;
+    quote_sha256?: string;
+    retention_until?: string;
+    selector_version?: string;
+    suffix?: string;
+    utf8_byte_end?: number;
+    utf8_byte_start?: number;
+    version?: number;
+  };
+
   type TokenResponse = {
     created_at?: string;
     expires_at?: string;
@@ -3084,6 +3498,15 @@ value never authorizes v2 raw evidence or document body persistence. */
     max_cost?: string;
     timeout_seconds?: number;
     version?: number;
+  };
+
+  type UpdatePushSubscriptionRequestDTO = {
+    device_label: string;
+    monitor_ids: number[];
+    quiet_end?: string;
+    quiet_start?: string;
+    timezone: string;
+    ttl_seconds: number;
   };
 
   type UpdateSourceRequest = {
@@ -3135,6 +3558,27 @@ value never authorizes v2 raw evidence or document body persistence. */
   type UsageOverview = {
     generated_at?: string;
     items?: UsageItem[];
+  };
+
+  type UserNotificationPageResponseDTO = {
+    items?: UserNotificationResponseDTO[];
+    next_after_id?: number;
+  };
+
+  type UserNotificationResponseDTO = {
+    created_at?: string;
+    deep_link?: string;
+    event_type?: string;
+    id?: number;
+    monitor_id?: number;
+    occurred_at?: string;
+    resource_id?: number;
+    resource_status?: string;
+    resource_type?: string;
+    resource_version?: number;
+    summary?: string;
+    title?: string;
+    version?: number;
   };
 
   type UserResponse = {

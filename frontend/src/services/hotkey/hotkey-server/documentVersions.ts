@@ -35,3 +35,25 @@ export async function getDocumentVersionsIdDocument(
     }
   );
 }
+
+/** Create an exact document-version quote selector POST /api/v1/document-versions/${param0}/text-quote-selectors */
+export async function postDocumentVersionsIdTextQuoteSelectors(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: HotKeyAPI.postDocumentVersionsIdTextQuoteSelectorsParams,
+  body: HotKeyAPI.LocateTextQuoteSelectorRequestDTO,
+  options?: RequestOptions
+) {
+  const { id: param0, ...queryParams } = params;
+  return request<HotKeyAPI.ContentResultHttpTextQuoteSelectorResponseDTO>(
+    `/api/v1/document-versions/${param0}/text-quote-selectors`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      params: { ...queryParams },
+      data: body,
+      ...(options || {}),
+    }
+  );
+}

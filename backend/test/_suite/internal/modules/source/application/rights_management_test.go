@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -334,6 +335,25 @@ func TestRightsManagementServiceFailsClosedForUnapprovedAllowInvalidRetentionAnd
 		}
 		if repository.recordCalls != 0 {
 			t.Fatal("policy source mismatch reached decision writer")
+		}
+	})
+
+	t.Run("endpoint subject binds concrete source and policy hash", func(t *testing.T) {
+		repository := newRightsManagementRepositoryFake()
+		policy := approvedRightsPolicyDTO()
+		repository.policies[policy.ID] = policy
+		service := newRightsManagementServiceForTest(t, repository, &rightsActorAuthorizerFake{}, &rightsManagementAuditFake{}, &rightsManagementTransactionFake{})
+		command := validRecordRightsDecisionCommand(policy, RightsDecisionDTO{})
+		command.SubjectType = string(domain.RightsSubjectSourceEndpoint)
+		command.SubjectKey = "42"
+		command.InputDigest = strings.Repeat("f", 64)
+		command.Decisions = command.Decisions[:1]
+		command.Decisions[0].SupersedesDecisionID = nil
+		if _, err := service.RecordDecisions(context.Background(), command); !errors.Is(err, sharedrepository.ErrConstraint) {
+			t.Fatalf("endpoint policy hash mismatch error = %v", err)
+		}
+		if repository.recordCalls != 0 {
+			t.Fatal("invalid endpoint binding reached decision writer")
 		}
 	})
 

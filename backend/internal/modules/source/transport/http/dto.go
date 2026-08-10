@@ -40,7 +40,6 @@ type MetricCapabilityProfileResponse struct {
 	SupportsShares            bool       `json:"supports_shares"`
 	IndependenceStrategy      string     `json:"independence_strategy"`
 	NormalizationWindowHours  int        `json:"normalization_window_hours"`
-	CredibilityWeight         float64    `json:"credibility_weight"`
 	MaxSingleItemContribution float64    `json:"max_single_item_contribution"`
 	Status                    string     `json:"status"`
 	PublishedAt               *time.Time `json:"published_at,omitempty"`
@@ -56,7 +55,6 @@ type CreateMetricCapabilityProfileRequest struct {
 	SupportsShares            bool    `json:"supports_shares"`
 	IndependenceStrategy      string  `json:"independence_strategy" binding:"required,oneof=source_connection author"`
 	NormalizationWindowHours  int     `json:"normalization_window_hours" binding:"required,gte=1,lte=720"`
-	CredibilityWeight         float64 `json:"credibility_weight" binding:"gte=0,lte=1"`
 	MaxSingleItemContribution float64 `json:"max_single_item_contribution" binding:"required,gt=0,lte=100"`
 }
 
@@ -336,7 +334,7 @@ func metricCapabilityProfileResponse(profile domain.MetricCapabilityProfile) Met
 		ID: profile.ID, Version: profile.Version, SourceType: string(profile.SourceType), ProfileVersion: profile.ProfileVersion,
 		SupportsViews: profile.SupportsViews, SupportsLikes: profile.SupportsLikes, SupportsComments: profile.SupportsComments,
 		SupportsShares: profile.SupportsShares, IndependenceStrategy: string(profile.IndependenceStrategy),
-		NormalizationWindowHours: profile.NormalizationWindowHours, CredibilityWeight: profile.CredibilityWeight,
+		NormalizationWindowHours:  profile.NormalizationWindowHours,
 		MaxSingleItemContribution: profile.MaxSingleItemContribution, Status: string(profile.Status),
 		PublishedAt: profile.PublishedAt, ArchivedAt: profile.ArchivedAt,
 	}

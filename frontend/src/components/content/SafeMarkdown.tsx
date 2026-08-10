@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
@@ -10,10 +10,27 @@ import {
 export const MAX_SAFE_MARKDOWN_LENGTH = 500_000;
 
 type SafeMarkdownProps = {
+  anchors?: readonly SafeMarkdownAnchor[];
   className?: string;
   markdown?: string | null;
   maxLength?: number;
 };
+
+export type SafeMarkdownAnchor = {
+  ordinal: number;
+  markdownAnchor: string;
+};
+
+type MarkdownSyntaxNode = {
+  type?: string;
+  children?: MarkdownSyntaxNode[];
+  data?: {
+    hProperties?: Record<string, unknown>;
+  };
+};
+
+const SERVER_MARKDOWN_ANCHOR_PATTERN = /^body-[0-9]{4,5}-[0-9a-f]{12}$/;
+const MAX_SERVER_MARKDOWN_ANCHORS = 20_000;
 
 function safeLengthLimit(requested?: number) {
   if (requested == null || !Number.isFinite(requested) || requested <= 0) {
@@ -85,7 +102,91 @@ const SAFE_MARKDOWN_COMPONENTS: Components = {
 const GFM_PLUGINS = [remarkGfm];
 const safeURLTransform = (url: string) => toSafeExternalURL(url) ?? "";
 
+function safeServerMarkdownAnchors(
+  anchors?: readonly SafeMarkdownAnchor[],
+): readonly SafeMarkdownAnchor[] | undefined {
+  if (!anchors?.length || anchors.length > MAX_SERVER_MARKDOWN_ANCHORS) {
+    return undefined;
+  }
+  const seen = new Set<string>();
+  for (let index = 0; index < anchors.length; index += 1) {
+    const anchor = anchors[index];
+    if (
+      anchor.ordinal !== index ||
+      !SERVER_MARKDOWN_ANCHOR_PATTERN.test(anchor.markdownAnchor) ||
+      seen.has(anchor.markdownAnchor)
+    ) {
+      return undefined;
+    }
+    seen.add(anchor.markdownAnchor);
+  }
+  return anchors;
+}
+
+function collectMarkdownAnchorTargets(
+  node: MarkdownSyntaxNode,
+  targets: MarkdownSyntaxNode[],
+) {
+  for (const child of node.children ?? []) {
+    switch (child.type) {
+      case "heading":
+      case "paragraph":
+      case "code":
+        targets.push(child);
+        break;
+      case "list":
+        collectMarkdownListAnchorTargets(child, targets);
+        break;
+      case "table":
+        for (const row of child.children ?? []) {
+          if (row.type === "tableRow") targets.push(row);
+        }
+        break;
+      case "blockquote":
+      case "root":
+        collectMarkdownAnchorTargets(child, targets);
+        break;
+      default:
+        break;
+    }
+  }
+}
+
+function collectMarkdownListAnchorTargets(
+  list: MarkdownSyntaxNode,
+  targets: MarkdownSyntaxNode[],
+) {
+  for (const item of list.children ?? []) {
+    if (item.type !== "listItem") continue;
+    targets.push(item);
+    for (const child of item.children ?? []) {
+      if (child.type === "list") collectMarkdownListAnchorTargets(child, targets);
+    }
+  }
+}
+
+function createServerMarkdownAnchorPlugin(
+  anchors: readonly SafeMarkdownAnchor[],
+) {
+  return function serverMarkdownAnchorPlugin() {
+    return function applyServerMarkdownAnchors(tree: MarkdownSyntaxNode) {
+      const targets: MarkdownSyntaxNode[] = [];
+      collectMarkdownAnchorTargets(tree, targets);
+      if (targets.length !== anchors.length) return;
+      for (let index = 0; index < targets.length; index += 1) {
+        const target = targets[index];
+        target.data ??= {};
+        target.data.hProperties = {
+          ...target.data.hProperties,
+          id: anchors[index].markdownAnchor,
+        };
+      }
+    };
+  };
+}
+
 export const SafeMarkdown = memo(function SafeMarkdown({
+  anchors,
   className,
   markdown = "",
   maxLength,
@@ -96,12 +197,23 @@ export const SafeMarkdown = memo(function SafeMarkdown({
   const visibleMarkdown = truncated
     ? truncateAtCodePoint(source, limit)
     : source;
+  const remarkPlugins = useMemo(() => {
+    const safeAnchors = truncated ? undefined : safeServerMarkdownAnchors(anchors);
+    return safeAnchors
+      ? [remarkGfm, createServerMarkdownAnchorPlugin(safeAnchors)]
+      : GFM_PLUGINS;
+  }, [anchors, truncated]);
 
   return (
-    <div className={cn("document-markdown", className)}>
+    <div
+      className={cn(
+        "document-markdown [&_:target]:scroll-mt-24 [&_:target]:rounded-md [&_:target]:bg-primary/10 [&_:target]:ring-2 [&_:target]:ring-primary/45 [&_:target]:ring-offset-4 [&_:target]:ring-offset-background",
+        className,
+      )}
+    >
       <ReactMarkdown
         components={SAFE_MARKDOWN_COMPONENTS}
-        remarkPlugins={GFM_PLUGINS}
+        remarkPlugins={remarkPlugins}
         skipHtml
         urlTransform={safeURLTransform}
       >

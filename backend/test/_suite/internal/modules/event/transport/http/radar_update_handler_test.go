@@ -76,24 +76,24 @@ func TestRadarHandlerParsesPublicShapeAndReturnsOnlySafeResult(t *testing.T) {
 	router := gin.New()
 	RegisterRadarRoutes(router, application.NewRadarService(repository), radarViewerAuthenticator{})
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/radar/events?q=%E5%8F%91%E5%B8%83&window=6h&monitor_id=9&lifecycle=active,cooling&trend=rising,stable&verification=corroborated,disputed&min_heat=42.5&sort=relevance&limit=25&cursor=opaque", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/radar/events?q=%E5%8F%91%E5%B8%83&window=6h&monitor_id=9&lifecycle=active,cooling&trend=rising,stable&min_heat=42.5&sort=relevance&limit=25&cursor=opaque", nil)
 	request.Header.Set("Authorization", "Bearer viewer")
 	router.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK || len(repository.queries) != 1 {
 		t.Fatalf("Radar response = %d/%s queries=%#v", recorder.Code, recorder.Body.String(), repository.queries)
 	}
 	query := repository.queries[0]
-	if query.Keyword != "发布" || query.Window != domain.RadarWindow6Hours || query.MonitorID == nil || *query.MonitorID != 9 || query.Sort != domain.RadarSortRelevance || query.Limit != 25 || query.Cursor != "opaque" || query.MinHeat == nil || *query.MinHeat != 42.5 || len(query.Lifecycles) != 2 || len(query.Trends) != 2 || len(query.Verifications) != 2 {
+	if query.Keyword != "发布" || query.Window != domain.RadarWindow6Hours || query.MonitorID == nil || *query.MonitorID != 9 || query.Sort != domain.RadarSortRelevance || query.Limit != 25 || query.Cursor != "opaque" || query.MinHeat == nil || *query.MinHeat != 42.5 || len(query.Lifecycles) != 2 || len(query.Trends) != 2 || len(query.Verifications) != 0 {
 		t.Fatalf("parsed Radar query = %#v", query)
 	}
 	assertRadarHTTPSafeEnvelope(t, recorder.Body.Bytes())
 	body := recorder.Body.String()
-	for _, forbidden := range []string{"must-not-leak", "idempotency_key", "provider", "prompt", "raw_content", "credential", "endpoint"} {
+	for _, forbidden := range []string{"must-not-leak", "idempotency_key", "provider", "prompt", "raw_content", "credential", "endpoint", "confirmation", "data_confidence", "credibility", "verification"} {
 		if strings.Contains(body, forbidden) {
 			t.Fatalf("Radar response leaked %q: %s", forbidden, body)
 		}
 	}
-	for _, required := range []string{`"as_of":"2026-08-04T12:00:00Z"`, `"confirmation":"corroborated"`, `"watch_final_score":99`, `"latest_update"`} {
+	for _, required := range []string{`"as_of":"2026-08-04T12:00:00Z"`, `"independent_source_count":2`, `"watch_final_score":99`, `"latest_update"`} {
 		if !strings.Contains(body, required) {
 			t.Fatalf("Radar response missing %s: %s", required, body)
 		}
@@ -109,7 +109,7 @@ func TestRadarHandlerKeepsInsufficientScoreNullAndRejectsInvalidParameters(t *te
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/radar/events", nil)
 	request.Header.Set("Authorization", "Bearer viewer")
 	router.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"confirmation_score":null`) || strings.Contains(recorder.Body.String(), "watch_relevance") || strings.Contains(recorder.Body.String(), "watch_final_score") {
+	if recorder.Code != http.StatusOK || strings.Contains(recorder.Body.String(), "confirmation") || strings.Contains(recorder.Body.String(), "watch_relevance") || strings.Contains(recorder.Body.String(), "watch_final_score") {
 		t.Fatalf("global insufficient Radar response = %d/%s", recorder.Code, recorder.Body.String())
 	}
 	for _, target := range []string{

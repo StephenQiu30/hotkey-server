@@ -57,12 +57,21 @@ func TestIntentRepositoryPersistsExactPreviewCompiledProfileIdempotently(t *test
 	if err != nil {
 		t.Fatalf("PersistPreviewCompiledProfile(): %v", err)
 	}
-	if first.CompiledProfileID <= 0 || first.ConfigVersionID != fixture.configID || first.IntentRevisionID <= 0 || first.Reused {
+	if first.CompiledProfileID <= 0 || first.ConfigVersionID != fixture.configID || first.IntentRevisionID <= 0 || first.Reused || first.Status != "building" {
 		t.Fatalf("first receipt = %#v", first)
 	}
 	replayed, err := repository.PersistPreviewCompiledProfile(context.Background(), command)
 	if err != nil || replayed.CompiledProfileID != first.CompiledProfileID || !replayed.Reused {
 		t.Fatalf("replayed receipt = %#v / %v", replayed, err)
+	}
+	completed, err := repository.CompletePreviewCompiledProfile(context.Background(), monitorapplication.CompletePreviewCompiledProfileDTO{
+		CompiledProfileID: first.CompiledProfileID, ConfigVersionID: fixture.configID,
+		IntentRevisionID: first.IntentRevisionID, ProfileHash: command.ProfileHash,
+		SemanticState:             monitorapplication.IntentSemanticStateUnavailable,
+		SemanticUnavailableReason: monitorapplication.IntentSemanticModelUnavailable, ReadyAt: command.ReadyAt,
+	})
+	if err != nil || completed.Status != "ready" || completed.SemanticUnavailableReason != monitorapplication.IntentSemanticModelUnavailable {
+		t.Fatalf("CompletePreviewCompiledProfile() = %#v / %v", completed, err)
 	}
 	var status, hash string
 	var clauses, entities, aliases int
@@ -93,7 +102,7 @@ func TestIntentRepositoryPersistsExactPreviewCompiledProfileIdempotently(t *test
 	if err != nil {
 		t.Fatalf("ReadReadyRecallProfile(): %v", err)
 	}
-	if len(ready.Clauses) != 2 || len(ready.Entities) != 1 || len(ready.Entities[0].Aliases) != 2 || ready.SemanticUnavailableReason != command.SemanticUnavailableReason {
+	if len(ready.Clauses) != 2 || len(ready.Entities) != 1 || len(ready.Entities[0].Aliases) != 2 || ready.SemanticUnavailableReason != monitorapplication.IntentSemanticModelUnavailable {
 		t.Fatalf("ready recall profile = %#v", ready)
 	}
 

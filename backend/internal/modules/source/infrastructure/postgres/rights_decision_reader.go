@@ -41,13 +41,26 @@ WITH requested AS (
   SELECT subject_key,input_digest,position
   FROM unnest($2::text[],$3::text[]) WITH ORDINALITY AS request(subject_key,input_digest,position)
 ), terminal AS (
-  SELECT request.position,decision.*
+  SELECT request.position,
+         request.subject_key AS requested_subject_key,
+         request.input_digest AS requested_input_digest,
+         decision.*
   FROM requested AS request
   JOIN source_rights_decisions AS decision
     ON decision.source_connection_id=$1
-   AND decision.subject_type='raw_response'
-   AND decision.subject_key=request.subject_key
-   AND decision.input_digest=request.input_digest
+   AND (
+        (decision.subject_type='raw_response'
+         AND decision.subject_key=request.subject_key
+         AND decision.input_digest=request.input_digest)
+        OR
+        (decision.subject_type='source_endpoint'
+         AND decision.subject_key=($1::bigint)::text
+         AND EXISTS (
+           SELECT 1 FROM source_rights_policies AS policy
+           WHERE policy.id=decision.policy_id
+             AND policy.policy_hash=decision.input_digest
+         ))
+   )
    AND decision.action IN ('store_raw','retain')
   WHERE decision.effective_from <= $4
     AND (decision.expires_at IS NULL OR $4 < decision.expires_at)
@@ -57,38 +70,39 @@ WITH requested AS (
         AND superseding.effective_from <= $4
     )
 ), highest_priority AS (
-  SELECT position,subject_key,input_digest,action,max(priority_rank) AS priority_rank
+  SELECT position,requested_subject_key,requested_input_digest,action,max(priority_rank) AS priority_rank
   FROM terminal
-  GROUP BY position,subject_key,input_digest,action
+  GROUP BY position,requested_subject_key,requested_input_digest,action
 ), highest_terminal AS (
   SELECT terminal.*
   FROM terminal
   JOIN highest_priority AS highest
     ON highest.position=terminal.position
-   AND highest.subject_key=terminal.subject_key
-   AND highest.input_digest=terminal.input_digest
+   AND highest.requested_subject_key=terminal.requested_subject_key
+   AND highest.requested_input_digest=terminal.requested_input_digest
    AND highest.action=terminal.action
    AND highest.priority_rank=terminal.priority_rank
 ), allowed_groups AS (
-  SELECT position,subject_key,input_digest,action
+  SELECT position,requested_subject_key,requested_input_digest,action
   FROM highest_terminal
-  GROUP BY position,subject_key,input_digest,action
+  GROUP BY position,requested_subject_key,requested_input_digest,action
   HAVING bool_and(decision='allow')
 ), selected AS (
-  SELECT DISTINCT ON (terminal.position,terminal.subject_key,terminal.input_digest,terminal.action)
+  SELECT DISTINCT ON (terminal.position,terminal.requested_subject_key,terminal.requested_input_digest,terminal.action)
     terminal.*
   FROM highest_terminal AS terminal
   JOIN allowed_groups AS allowed
     ON allowed.position=terminal.position
-   AND allowed.subject_key=terminal.subject_key
-   AND allowed.input_digest=terminal.input_digest
+   AND allowed.requested_subject_key=terminal.requested_subject_key
+   AND allowed.requested_input_digest=terminal.requested_input_digest
    AND allowed.action=terminal.action
   WHERE terminal.decision='allow'
-  ORDER BY terminal.position,terminal.subject_key,terminal.input_digest,terminal.action,
+  ORDER BY terminal.position,terminal.requested_subject_key,terminal.requested_input_digest,terminal.action,
            CASE WHEN terminal.action='retain' THEN terminal.retention_days END ASC NULLS LAST,
            terminal.id DESC
 )
-SELECT id,source_connection_id,policy_id,policy_revision,policy_scope_type,policy_scope_subject,
+SELECT requested_subject_key,requested_input_digest,
+       id,source_connection_id,policy_id,policy_revision,policy_scope_type,policy_scope_subject,
        priority_rank,basis_summary,terms_url,license_uri,subject_type,subject_key,input_digest,
        action,decision,array_to_json(reason_codes)::text,evaluator,evaluated_at,effective_from,
        expires_at,retention_days,supersedes_decision_id
@@ -104,7 +118,7 @@ ORDER BY position,action`, query.SourceConnectionID, keys, digests, query.Decisi
 		RetainDecisions:   make(map[string]sourceapplication.RawEvidenceRightsDecisionDTO, len(query.Subjects)),
 	}
 	for rows.Next() {
-		record, err := scanRightsDecisionRecord(rows)
+		requestedKey, requestedDigest, record, err := scanRequestedRightsDecisionRecord(rows)
 		if err != nil {
 			return sourceapplication.CurrentRawEvidenceRightsResult{}, databaserepository.MapError(err)
 		}
@@ -113,11 +127,13 @@ ORDER BY position,action`, query.SourceConnectionID, keys, digests, query.Decisi
 			return sourceapplication.CurrentRawEvidenceRightsResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
 		}
 		dto := rawEvidenceRightsDecisionDTO(entity)
+		dto.AuthorizedEvidenceKey = requestedKey
+		dto.AuthorizedPayloadSHA256 = requestedDigest
 		switch entity.Action {
 		case domain.RightsActionStoreRaw:
-			result.StoreRawDecisions[entity.SubjectKey] = dto
+			result.StoreRawDecisions[requestedKey] = dto
 		case domain.RightsActionRetain:
-			result.RetainDecisions[entity.SubjectKey] = dto
+			result.RetainDecisions[requestedKey] = dto
 		default:
 			return sourceapplication.CurrentRawEvidenceRightsResult{}, fmt.Errorf("%w: unexpected raw evidence rights action", sharedrepository.ErrConstraint)
 		}
@@ -126,4 +142,21 @@ ORDER BY position,action`, query.SourceConnectionID, keys, digests, query.Decisi
 		return sourceapplication.CurrentRawEvidenceRightsResult{}, databaserepository.MapError(err)
 	}
 	return result, nil
+}
+
+func scanRequestedRightsDecisionRecord(scanner rightsDecisionScanner) (string, string, rightsDecisionRecord, error) {
+	var requestedKey string
+	var requestedDigest string
+	var record rightsDecisionRecord
+	err := scanner.Scan(
+		&requestedKey, &requestedDigest,
+		&record.ID, &record.SourceConnectionID, &record.PolicyID, &record.PolicyRevision,
+		&record.PolicyScopeType, &record.PolicyScopeSubject, &record.PriorityRank,
+		&record.BasisSummary, &record.TermsURL, &record.LicenseURI,
+		&record.SubjectType, &record.SubjectKey, &record.InputDigest,
+		&record.Action, &record.Decision, &record.ReasonCodesJSON, &record.Evaluator,
+		&record.EvaluatedAt, &record.EffectiveFrom, &record.ExpiresAt,
+		&record.RetentionDays, &record.SupersedesDecisionID,
+	)
+	return requestedKey, requestedDigest, record, err
 }

@@ -46,6 +46,95 @@ type EmbeddingCompletion struct {
 	FinishedAt time.Time
 }
 
+// ProjectedEmbeddingCompletion lets a v2 owning module persist its exact,
+// rights-bound projection inside the same PostgreSQL transaction that settles
+// the AI run. The callback receives only a transaction-bearing context; the
+// Intelligence repository never imports or writes another module's tables.
+type ProjectedEmbeddingCompletion struct {
+	RunID, TargetID, ModelProfileID, ModelProfileVersion int64
+	TargetType, ModelVersion, InputHash                  string
+	Vector                                               []float32
+	Usage                                                intelligencedomain.Usage
+	LatencyMS                                            int64
+	FinishedAt                                           time.Time
+}
+
+type ProjectedEmbeddingCommit func(context.Context) error
+
+const (
+	projectedEmbeddingTargetDocumentVersion        = "document_version"
+	projectedEmbeddingTargetMonitorCompiledProfile = "monitor_compiled_profile"
+)
+
+func (repository *Repository) CompleteProjectedEmbedding(ctx context.Context, completion ProjectedEmbeddingCompletion, commit ProjectedEmbeddingCommit) error {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil || commit == nil ||
+		completion.RunID <= 0 || completion.TargetID <= 0 || completion.ModelProfileID <= 0 || completion.ModelProfileVersion <= 0 ||
+		(completion.TargetType != projectedEmbeddingTargetDocumentVersion && completion.TargetType != projectedEmbeddingTargetMonitorCompiledProfile) ||
+		strings.TrimSpace(completion.ModelVersion) == "" || !validEmbeddingHash(completion.InputHash) || completion.LatencyMS < 0 {
+		return intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
+	if _, err := completion.Usage.TotalTokens(); err != nil {
+		return err
+	}
+	if err := intelligencedomain.ValidateEmbedding(completion.Vector); err != nil {
+		return err
+	}
+	if completion.FinishedAt.IsZero() {
+		completion.FinishedAt = time.Now().UTC()
+	} else {
+		completion.FinishedAt = completion.FinishedAt.UTC()
+	}
+	reference, err := repository.embeddingRunReference(ctx, repository.queryer(ctx), completion.RunID, false)
+	if err != nil {
+		return err
+	}
+	return repository.withTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
+		if err := lockBudget(transactionCtx, transaction.SQL, reference.ModelProfileID, reference.BudgetDay); err != nil {
+			return err
+		}
+		if err := lockRun(transactionCtx, transaction.SQL, reference.ReuseKey); err != nil {
+			return err
+		}
+		locked, err := repository.embeddingRunReference(transactionCtx, transaction.SQL, completion.RunID, true)
+		if err != nil {
+			return err
+		}
+		if locked != reference || locked.Status != intelligencedomain.RunStatusValidating ||
+			locked.TaskType != intelligencedomain.TaskTypeEmbedding || locked.TargetType != completion.TargetType ||
+			locked.TargetID != completion.TargetID || locked.ModelProfileID != completion.ModelProfileID ||
+			locked.ModelProfileVersion != completion.ModelProfileVersion || locked.ModelVersion != completion.ModelVersion ||
+			locked.InputHash != completion.InputHash {
+			return intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+		}
+		if _, err := transaction.SQL.ExecContext(transactionCtx, `SELECT pg_advisory_xact_lock(hashtext($1))`,
+			fmt.Sprintf("ai-projected-embedding:%s:%d:%d", completion.TargetType, completion.TargetID, completion.ModelProfileID)); err != nil {
+			return fmt.Errorf("lock projected embedding: %w", err)
+		}
+		tokens, err := completion.Usage.TotalTokens()
+		if err != nil {
+			return err
+		}
+		if err := settleReservedBudget(transactionCtx, transaction.SQL, locked.runReference, locked.ReservedCost); err != nil {
+			return err
+		}
+		if _, err := transaction.SQL.ExecContext(transactionCtx, `
+UPDATE ai_runs
+SET status='succeeded',tokens=$1,cost=$2::numeric,latency_ms=$3,reserved_cost=0,
+    error_code=NULL,lease_expires_at=NULL,finished_at=$4
+WHERE id=$5`, tokens, locked.ReservedCost, completion.LatencyMS, completion.FinishedAt, completion.RunID); err != nil {
+			return fmt.Errorf("complete projected embedding AI run: %w", err)
+		}
+		// The owning projection is allowed to bind only a succeeded run. Mark
+		// the run succeeded before invoking the callback, but keep both writes
+		// in this transaction: any callback failure rolls the run and budget
+		// settlement back together with the owning projection.
+		if err := commit(transactionCtx); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
 // CompleteEmbedding retires any prior active vector and writes its successor
 // while settling exactly the reserved PLAN-008 budget unit. Its advisory lock
 // order is fixed: ai-budget -> ai-run -> ai-embedding.

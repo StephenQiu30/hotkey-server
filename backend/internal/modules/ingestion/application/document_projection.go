@@ -40,6 +40,19 @@ type ProjectDocumentCommand struct {
 	RetainRightsDecisionID         int64
 	DisplayPrivateRightsDecisionID *int64
 	ProjectionBytes                []byte
+	AnchorMap                      *ProjectDocumentAnchorMapCommand
+}
+
+// ProjectDocumentAnchorMapCommand is the only body-bearing anchor command.
+// Reserve/Commit persistence DTOs below deliberately strip Plaintext.
+type ProjectDocumentAnchorMapCommand struct {
+	Plaintext               string
+	NormalizationVersion    string
+	AnchorMapProfileVersion string
+	PlaintextSHA256         string
+	MarkdownSHA256          string
+	AnchorMapSHA256         string
+	Blocks                  []DocumentAnchorBlockDTO
 }
 
 type ProjectDocumentResult struct {
@@ -57,6 +70,7 @@ type ReserveDerivedArtifactCommand struct {
 	MIMEType                     string
 	SHA256                       string
 	SizeBytes                    int64
+	AnchorMap                    *DerivedArtifactAnchorMapDTO
 }
 
 type ReserveDerivedArtifactResult struct {
@@ -78,8 +92,9 @@ type ProjectionReceiptDTO struct {
 }
 
 type CommitDerivedArtifactCommand struct {
-	ArtifactID int64
-	Receipt    ProjectionReceiptDTO
+	ArtifactID   int64
+	Receipt      ProjectionReceiptDTO
+	AnchorBlocks []DocumentAnchorBlockDTO
 }
 
 type CommitDerivedArtifactResult struct {
@@ -162,7 +177,9 @@ func (service *DocumentProjectionService) Project(ctx context.Context, command P
 	if err != nil {
 		return ProjectDocumentResult{}, service.quarantineContentConflict(ctx, reservation)
 	}
-	committed, err := service.repository.Commit(ctx, CommitDerivedArtifactCommand{ArtifactID: reservation.Artifact.ID, Receipt: receipt})
+	committed, err := service.repository.Commit(ctx, CommitDerivedArtifactCommand{
+		ArtifactID: reservation.Artifact.ID, Receipt: receipt, AnchorBlocks: cloneDocumentAnchorBlocks(prepared.anchorBlocks),
+	})
 	if err != nil {
 		if errors.Is(err, ErrDerivedArtifactContentConflict) && committed.Artifact.ID > 0 {
 			conflicting := reservation
@@ -201,6 +218,13 @@ func ValidateReserveDerivedArtifactCommand(command ReserveDerivedArtifactCommand
 		command.SizeBytes <= 0 {
 		return errors.New("derived artifact reservation command is invalid")
 	}
+	if command.ArtifactType == DocumentProjectionMarkdown {
+		if err := validateDerivedArtifactAnchorMapDTO(command.AnchorMap, command.SHA256); err != nil {
+			return err
+		}
+	} else if command.AnchorMap != nil {
+		return errors.New("plaintext artifact reservation cannot carry an anchor map")
+	}
 	return nil
 }
 
@@ -218,8 +242,9 @@ func ValidateProjectionReceiptDTO(receipt ProjectionReceiptDTO) error {
 }
 
 type preparedDocumentProjection struct {
-	reservation ReserveDerivedArtifactCommand
-	format      knowledgeapplication.ProjectionFormat
+	reservation  ReserveDerivedArtifactCommand
+	format       knowledgeapplication.ProjectionFormat
+	anchorBlocks []DocumentAnchorBlockDTO
 }
 
 func prepareDocumentProjection(command ProjectDocumentCommand) (preparedDocumentProjection, error) {
@@ -233,6 +258,22 @@ func prepareDocumentProjection(command ProjectDocumentCommand) (preparedDocument
 	if command.DisplayPrivateRightsDecisionID != nil && *command.DisplayPrivateRightsDecisionID <= 0 {
 		return preparedDocumentProjection{}, errors.New("display-private rights decision is invalid")
 	}
+	if command.ArtifactType == DocumentProjectionMarkdown {
+		if command.AnchorMap == nil {
+			return preparedDocumentProjection{}, errors.New("Markdown projection requires an immutable anchor map")
+		}
+		mapped := MapDocumentTextResult{
+			Plaintext: command.AnchorMap.Plaintext, NormalizationVersion: command.AnchorMap.NormalizationVersion,
+			AnchorMapProfileVersion: command.AnchorMap.AnchorMapProfileVersion,
+			PlaintextSHA256:         command.AnchorMap.PlaintextSHA256, MarkdownSHA256: command.AnchorMap.MarkdownSHA256,
+			AnchorMapSHA256: command.AnchorMap.AnchorMapSHA256, Blocks: cloneDocumentAnchorBlocks(command.AnchorMap.Blocks),
+		}
+		if err := ValidateMapDocumentTextResult(MapDocumentTextCommand{Markdown: string(command.ProjectionBytes)}, mapped); err != nil {
+			return preparedDocumentProjection{}, fmt.Errorf("Markdown anchor map is invalid: %w", err)
+		}
+	} else if command.AnchorMap != nil {
+		return preparedDocumentProjection{}, errors.New("plaintext projection cannot carry a Markdown anchor map")
+	}
 	artifactType := documentProjectionDomainType(command.ArtifactType)
 	digest := sha256.Sum256(command.ProjectionBytes)
 	prepared := preparedDocumentProjection{
@@ -244,6 +285,14 @@ func prepareDocumentProjection(command ProjectDocumentCommand) (preparedDocument
 			MIMEType: artifactType.MIMEType(), SHA256: fmt.Sprintf("%x", digest), SizeBytes: int64(len(command.ProjectionBytes)),
 		},
 		format: documentProjectionKnowledgeFormat(command.ArtifactType),
+	}
+	if command.AnchorMap != nil {
+		prepared.reservation.AnchorMap = &DerivedArtifactAnchorMapDTO{
+			NormalizationVersion: command.AnchorMap.NormalizationVersion, AnchorMapProfileVersion: command.AnchorMap.AnchorMapProfileVersion,
+			PlaintextSHA256: command.AnchorMap.PlaintextSHA256, MarkdownSHA256: command.AnchorMap.MarkdownSHA256,
+			AnchorMapSHA256: command.AnchorMap.AnchorMapSHA256,
+		}
+		prepared.anchorBlocks = cloneDocumentAnchorBlocks(command.AnchorMap.Blocks)
 	}
 	if err := ValidateReserveDerivedArtifactCommand(prepared.reservation); err != nil {
 		return preparedDocumentProjection{}, err
@@ -264,6 +313,9 @@ func validateDerivedArtifactReservation(result ReserveDerivedArtifactResult, com
 	if artifact.ArtifactType != commandArtifactType || artifact.TransformerProfileSHA256 != command.TransformerProfileSHA256 ||
 		artifact.MIMEType != command.MIMEType || artifact.SHA256 != command.SHA256 || artifact.SizeBytes != command.SizeBytes ||
 		result.VaultRelativePath != documentProjectionRelativePath(result.DocumentID, command.DocumentVersionID, command.ArtifactType, command.TransformerProfileSHA256) {
+		return fmt.Errorf("%w: %w", sharedrepository.ErrConflict, ErrDerivedArtifactContentConflict)
+	}
+	if !sameDerivedArtifactAnchorMap(result.Artifact.AnchorMap, command.AnchorMap) {
 		return fmt.Errorf("%w: %w", sharedrepository.ErrConflict, ErrDerivedArtifactContentConflict)
 	}
 	if artifact.LifecycleState != ingestiondomain.DerivedArtifactPending && artifact.LifecycleState != ingestiondomain.DerivedArtifactAvailable {
@@ -312,7 +364,32 @@ func validateCommittedDerivedArtifact(committed CommitDerivedArtifactResult, res
 		artifact.SizeBytes != command.SizeBytes || artifact.MIMEType != command.MIMEType {
 		return fmt.Errorf("%w: %w", sharedrepository.ErrConflict, ErrDerivedArtifactContentConflict)
 	}
+	if !sameDerivedArtifactAnchorMap(committed.Artifact.AnchorMap, command.AnchorMap) {
+		return fmt.Errorf("%w: %w", sharedrepository.ErrConflict, ErrDerivedArtifactContentConflict)
+	}
 	return nil
+}
+
+func validateDerivedArtifactAnchorMapDTO(value *DerivedArtifactAnchorMapDTO, markdownSHA256 string) error {
+	if value == nil || value.NormalizationVersion != CanonicalDocumentTextNormalizationVersion ||
+		value.AnchorMapProfileVersion != CanonicalDocumentAnchorMapProfileVersion ||
+		!validLowerHexSHA256(value.PlaintextSHA256) || !validLowerHexSHA256(value.MarkdownSHA256) ||
+		!validLowerHexSHA256(value.AnchorMapSHA256) || value.MarkdownSHA256 != markdownSHA256 {
+		return errors.New("derived artifact anchor map identity is invalid")
+	}
+	return nil
+}
+
+func sameDerivedArtifactAnchorMap(left, right *DerivedArtifactAnchorMapDTO) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return left.NormalizationVersion == right.NormalizationVersion && left.AnchorMapProfileVersion == right.AnchorMapProfileVersion &&
+		left.PlaintextSHA256 == right.PlaintextSHA256 && left.MarkdownSHA256 == right.MarkdownSHA256 && left.AnchorMapSHA256 == right.AnchorMapSHA256
+}
+
+func cloneDocumentAnchorBlocks(values []DocumentAnchorBlockDTO) []DocumentAnchorBlockDTO {
+	return append([]DocumentAnchorBlockDTO(nil), values...)
 }
 
 func (service *DocumentProjectionService) advanceDocumentVersion(ctx context.Context, current ingestiondomain.DocumentVersion, displayDecisionID *int64) (ingestiondomain.DocumentVersion, error) {

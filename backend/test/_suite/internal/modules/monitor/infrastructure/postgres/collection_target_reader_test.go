@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	monitorapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/application"
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/infrastructure/postgres"
 	sourcedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
@@ -100,7 +101,7 @@ func TestPublishedCollectionTargetReaderPrefersExactCompiledIntentOverLegacyRule
 	defer func() { _ = runtime.Close() }()
 	fixture := insertIntentRepositoryDraft(t, runtime, false)
 	now := time.Date(2026, time.July, 17, 8, 0, 0, 0, time.UTC)
-	var sourceID, monitorSourceID, revisionID, profileID, entityID int64
+	var sourceID, monitorSourceID, revisionID, sourcePreviewID, profileID, entityID int64
 	if err := runtime.SQL.QueryRow(`
 INSERT INTO source_connections (source_type,name,endpoint,auth_type,config,enabled,health_status)
 VALUES ('rss','compiled intent source','https://feeds.example.test/compiled','none','{}'::jsonb,true,'unknown') RETURNING id`).Scan(&sourceID); err != nil {
@@ -126,14 +127,23 @@ SELECT id FROM monitor_intent_draft_revisions
 WHERE draft_id=$1 AND resource_version=1`, fixture.draftID).Scan(&revisionID); err != nil {
 		t.Fatal(err)
 	}
+	sourcePreviewID, _ = createUnavailablePreviewCompiledProfile(t, runtime, fixture, now.Add(-2*time.Hour),
+		[]monitorapplication.CompiledIntentClauseDTO{
+			{Operator: "must", Field: "action", Value: "launch", NormalizedValue: "launch", Origin: "intent_clause"},
+			{Operator: "must_not", Field: "term", Value: "noise", NormalizedValue: "noise", Origin: "intent_clause"},
+		},
+		[]monitorapplication.CompiledIntentEntityDTO{{
+			CanonicalID: "product:hotkey", Aliases: []string{"HotKey"}, NormalizedAliases: []string{"hotkey"},
+		}},
+	)
 	if err := runtime.SQL.QueryRow(`
 INSERT INTO monitor_compiled_profiles (
-  monitor_id,purpose,config_version_id,monitor_version_id,intent_revision_id,
+  monitor_id,purpose,config_version_id,monitor_version_id,source_preview_compiled_profile_id,intent_revision_id,
   compiler_version,matching_algorithm_version,lexical_algorithm_version,semantic_algorithm_version,
   structured_algorithm_version,search_normalization_profile_version,semantic_state,semantic_unavailable_reason
-) VALUES ($1,'published',$2,$2,$3,'monitor-intent-compiler-v1','rrf-k60-v1','fts-trgm-dice-v1',
-          'halfvec-cosine-v1','entity-hard-rule-v1','canonical-nfc-plaintext-v1','unavailable','semantic_generation_unavailable')
-RETURNING id`, fixture.monitorID, fixture.configID, revisionID).Scan(&profileID); err != nil {
+) VALUES ($1,'published',$2,$2,$3,$4,'monitor-intent-compiler-v1','rrf-k60-v1','fts-trgm-dice-v1',
+          'halfvec-cosine-v1','entity-hard-rule-v1','canonical-nfc-plaintext-v1','unavailable','semantic_model_unavailable')
+RETURNING id`, fixture.monitorID, fixture.configID, sourcePreviewID, revisionID).Scan(&profileID); err != nil {
 		t.Fatal(err)
 	}
 	for ordinal, clause := range []struct {

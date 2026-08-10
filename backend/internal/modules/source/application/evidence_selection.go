@@ -252,7 +252,7 @@ func sameEvidenceSelectionFacts(left, right EvidenceSelectionManifestDTO) bool {
 }
 
 func sameEvidenceReference(left, right RawEvidenceReferenceDTO) bool {
-	return left.EvidenceKey == right.EvidenceKey && left.LocatorType == right.LocatorType &&
+	return left.EvidenceKey == right.EvidenceKey && left.Usage == right.Usage && left.LocatorType == right.LocatorType &&
 		left.LocatorValue == right.LocatorValue && equalOptionalInt64(left.ByteStart, right.ByteStart) &&
 		equalOptionalInt64(left.ByteEnd, right.ByteEnd) &&
 		left.SelectedPayloadSHA256 == right.SelectedPayloadSHA256 && left.SelectorVersion == right.SelectorVersion
@@ -301,7 +301,7 @@ func validateEvidenceSelectionManifest(manifest EvidenceSelectionManifestDTO, qu
 		return fmt.Errorf("%w: evidence selection object manifest is invalid", sharedrepository.ErrConstraint)
 	}
 	reference, err := rawEvidenceReferenceEntityFromDTO(manifest.EvidenceReference)
-	if err != nil || reference.SnapshotKey != manifest.EvidenceKey {
+	if err != nil || reference.SnapshotKey != manifest.EvidenceKey || reference.Usage != domain.EvidenceUsageDocumentSource {
 		return fmt.Errorf("%w: evidence selection locator is invalid", sharedrepository.ErrConstraint)
 	}
 	return nil

@@ -93,4 +93,27 @@ describe("SafeMarkdown", () => {
       "正文过长，仅展示前 32 个字符",
     );
   });
+
+  it("applies only a complete server-issued stable anchor map", () => {
+	const markdown = ["# 中文标题", "", "正文 [链接](https://example.test)", "", "- 第一项", "- 第二项"].join("\n");
+	const anchors = [
+	  { ordinal: 0, markdownAnchor: "body-0000-45937b7f2844" },
+	  { ordinal: 1, markdownAnchor: "body-0001-000000000001" },
+	  { ordinal: 2, markdownAnchor: "body-0002-000000000002" },
+	  { ordinal: 3, markdownAnchor: "body-0003-000000000003" },
+	];
+	const { container, rerender } = render(<SafeMarkdown anchors={anchors} markdown={markdown} />);
+	expect(container.querySelector("#body-0000-45937b7f2844")).toHaveTextContent("中文标题");
+	expect(container.querySelector("#body-0001-000000000001")).toHaveTextContent("正文 链接");
+	expect(container.querySelector("#body-0002-000000000002")).toHaveTextContent("第一项");
+	expect(container.querySelector("#body-0003-000000000003")).toHaveTextContent("第二项");
+
+	rerender(
+	  <SafeMarkdown
+		anchors={[...anchors.slice(0, 3), { ordinal: 3, markdownAnchor: "javascript:alert(1)" }]}
+		markdown={markdown}
+	  />,
+	);
+	expect(container.querySelector("[id^='body-']")).toBeNull();
+  });
 });

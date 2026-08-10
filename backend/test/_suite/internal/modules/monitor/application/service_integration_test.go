@@ -25,6 +25,15 @@ import (
 
 type monitorFailingAudit struct{ err error }
 
+type monitorIntentBackfillScheduler struct{}
+
+func (monitorIntentBackfillScheduler) SchedulePublishedIntentBackfill(_ context.Context, command monitorapplication.SchedulePublishedIntentBackfillCommand) (monitorapplication.SchedulePublishedIntentBackfillResult, error) {
+	return monitorapplication.SchedulePublishedIntentBackfillResult{
+		MonitorID: command.MonitorID, MonitorVersionID: command.MonitorVersionID,
+		CompiledProfileID: command.CompiledProfileID, JobID: 901, Created: true,
+	}, nil
+}
+
 func (audit monitorFailingAudit) Write(context.Context, operationsdomain.AuditEntry) error {
 	return audit.err
 }
@@ -459,7 +468,7 @@ func TestMonitorServicePublishesSuccessfulIntentProfileAtomicallyWithoutLegacyRu
 		t.Fatal(err)
 	}
 	publicationClock := monitorIntentPublicationClock{now: time.Date(2026, time.July, 18, 8, 0, 0, 0, time.UTC)}
-	publication, err := monitorapplication.NewIntentPublicationService(intentRepository)
+	publication, err := monitorapplication.NewIntentPublicationService(intentRepository, monitorIntentBackfillScheduler{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -485,6 +494,16 @@ func TestMonitorServicePublishesSuccessfulIntentProfileAtomicallyWithoutLegacyRu
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	publicationPreview, err := failing.Preview(ctx, admin, monitor.ID)
+	if err != nil {
+		t.Fatalf("Preview(v2 intent): %v", err)
+	}
+	if !publicationPreview.Eligible || len(publicationPreview.Sources) != 1 ||
+		publicationPreview.Sources[0].IncludedTermCount != 3 || publicationPreview.Sources[0].ExcludedTermCount != 0 ||
+		!strings.Contains(publicationPreview.Sources[0].CompiledQuery, "launch") ||
+		!strings.Contains(publicationPreview.Sources[0].CompiledQuery, "HotKey") {
+		t.Fatalf("v2 publication preview = %#v", publicationPreview)
 	}
 	if _, _, err := failing.Publish(ctx, monitorapplication.PublishInput{
 		Subject: admin, MonitorID: monitor.ID,
@@ -596,7 +615,7 @@ VALUES ($1,$2,1,0,'HotKey')`, entityID, draftID); err != nil {
 	if _, err := repository.SaveTransition(context.Background(), monitorapplication.IntentRunTransitionDTO{Expected: reservation.Run, Next: running}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repository.PersistPreviewCompiledProfile(context.Background(), monitorapplication.PersistPreviewCompiledProfileDTO{
+	profileCommand := monitorapplication.PersistPreviewCompiledProfileDTO{
 		Task: monitorapplication.IntentAnalysisTaskDTO{
 			Run: monitorapplication.IntentRunReferenceDTO{
 				RunID: running.ID, Kind: "preview", MonitorID: monitorID, DraftID: draftID,
@@ -616,6 +635,16 @@ VALUES ($1,$2,1,0,'HotKey')`, entityID, draftID); err != nil {
 		Entities: []monitorapplication.CompiledIntentEntityDTO{{
 			CanonicalID: "product:hotkey", Aliases: []string{"HotKey"}, NormalizedAliases: []string{"hotkey"},
 		}},
+	}
+	profileReceipt, err := repository.PersistPreviewCompiledProfile(context.Background(), profileCommand)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.CompletePreviewCompiledProfile(context.Background(), monitorapplication.CompletePreviewCompiledProfileDTO{
+		CompiledProfileID: profileReceipt.CompiledProfileID, ConfigVersionID: configID,
+		IntentRevisionID: profileReceipt.IntentRevisionID, ProfileHash: profileCommand.ProfileHash,
+		SemanticState:             monitorapplication.IntentSemanticStateUnavailable,
+		SemanticUnavailableReason: monitorapplication.IntentSemanticModelUnavailable, ReadyAt: profileCommand.ReadyAt,
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -58,6 +58,13 @@ func TestConnectorDiscoversOfficialSearchCapabilityAndMapsPosts(t *testing.T) {
 	if result.Diagnostics[0].Code != "unavailable_weibo_post" || result.Diagnostics[0].SourceExternalID != "1234567890123999" {
 		t.Errorf("diagnostics = %#v", result.Diagnostics)
 	}
+	if len(result.Snapshots) != 1 || !result.Snapshots[0].VerifyPayload() || len(item.EvidenceReferences) != 1 ||
+		item.EvidenceReferences[0].LocatorValue != "/result/statuses/0" || item.EvidenceReferences[0].SnapshotKey != result.Snapshots[0].Key {
+		t.Fatalf("Weibo raw evidence = %#v / %#v", result.Snapshots, item.EvidenceReferences)
+	}
+	if len(item.Parties) != 3 || item.Parties[0].Role != domain.SourcePartyRoleContentOrigin || item.Parties[1].Role != domain.SourcePartyRoleDistributor || item.Parties[2].Role != domain.SourcePartyRoleAuthor {
+		t.Fatalf("Weibo explicit parties = %#v", item.Parties)
+	}
 }
 
 func TestHealthRejectsLockedSearchCapability(t *testing.T) {

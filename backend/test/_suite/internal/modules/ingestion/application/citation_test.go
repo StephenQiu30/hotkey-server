@@ -31,7 +31,8 @@ func TestCitationServiceReadsOnlyTheRequestedDocumentVersion(t *testing.T) {
 		t.Fatalf("GetCitation() error = %v", err)
 	}
 	if reader.lastID != 41 || first.Citation.DocumentVersionID != 41 || first.Citation.Title != "old title" ||
-		first.Citation.Availability != CitationFullArchive {
+		first.Citation.Availability != CitationFullArchive || first.Citation.Artifact == nil || first.Citation.Artifact.AnchorMap == nil ||
+		len(first.Citation.Artifact.AnchorMap.Blocks) != 1 || first.Citation.Artifact.AnchorMap.Blocks[0].MarkdownAnchor != "body-0000-000000000000" {
 		t.Fatalf("exact citation = %#v, repository id = %d", first, reader.lastID)
 	}
 
@@ -70,6 +71,10 @@ func TestCitationServiceFailsClosedForUnprovablePublisherAndLocator(t *testing.T
 	if citation.Publisher != nil || citation.PublisherAvailability != CitationFactUnavailable || citation.PublisherUnavailableReason != CitationReasonPublisherUnavailable {
 		t.Fatalf("publisher projection = %#v, want explicit unavailable", citation)
 	}
+	if citation.ContentOrigin != nil || citation.ContentOriginAvailability != CitationFactUnavailable ||
+		citation.ContentOriginUnavailableReason != CitationReasonContentOriginUnavailable || len(citation.Distributors) != 0 {
+		t.Fatalf("origin/distributor projection = %#v/%#v, want explicit unavailable/empty", citation.ContentOrigin, citation.Distributors)
+	}
 	if citation.LocatorAvailability != CitationFactUnavailable || citation.LocatorUnavailableReason != CitationReasonLocatorUnavailable ||
 		citation.ExactQuote != nil || citation.UTF8ByteStart != nil || citation.UTF8ByteEnd != nil || citation.AnchorMap != nil {
 		t.Fatalf("locator projection = %#v, want fail-closed unavailable", citation)
@@ -78,6 +83,67 @@ func TestCitationServiceFailsClosedForUnprovablePublisherAndLocator(t *testing.T
 		t.Fatalf("provenance URLs = %#v/%#v/%#v, want all three", citation.SourceRecordURL, citation.CanonicalURL, citation.DiscussionURL)
 	}
 }
+
+func TestCitationServiceProjectsOnlyExplicitEvidenceBoundParties(t *testing.T) {
+	t.Parallel()
+	record := readyCitationReadDTO(41, "title", strings.Repeat("1", 64), strings.Repeat("a", 64))
+	record.Publisher = &CitationPartyReadDTO{
+		Role: "publisher", Kind: "organization", IdentityNamespace: "publisher-registry",
+		ExternalID: "publisher-42", DisplayName: "Example Newsroom", HomepageURL: optionalCitationString("https://publisher.example.test/"),
+	}
+	record.ContentOrigin = &CitationPartyReadDTO{
+		Role: "content_origin", Kind: "organization", IdentityNamespace: "origin-registry",
+		ExternalID: "origin-9", DisplayName: "Original Desk",
+	}
+	record.Distributors = []CitationPartyReadDTO{{
+		Role: "distributor", Kind: "account", IdentityNamespace: "platform-account",
+		ExternalID: "distribution-7", DisplayName: "Syndication Desk", HomepageURL: optionalCitationString("https://distribution.example.test/accounts/7"),
+	}}
+	service, err := NewCitationService(CitationDependencies{
+		Citations:   &citationMetadataReaderStub{records: map[int64]CitationReadDTO{41: record}},
+		Projections: &citationProjectionReaderStub{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.GetCitation(context.Background(), CitationQuery{DocumentVersionID: 41})
+	if err != nil {
+		t.Fatal(err)
+	}
+	citation := result.Citation
+	if citation.Publisher == nil || *citation.Publisher != "Example Newsroom" || citation.PublisherParty == nil ||
+		citation.PublisherAvailability != CitationFactAvailable || citation.PublisherUnavailableReason != "" {
+		t.Fatalf("publisher projection = %#v", citation)
+	}
+	if citation.ContentOrigin == nil || citation.ContentOrigin.DisplayName != "Original Desk" ||
+		citation.ContentOriginAvailability != CitationFactAvailable || len(citation.Distributors) != 1 ||
+		citation.Distributors[0].DisplayName != "Syndication Desk" {
+		t.Fatalf("origin/distributor projection = %#v/%#v", citation.ContentOrigin, citation.Distributors)
+	}
+
+	unsafe := record
+	unsafe.Publisher = &CitationPartyReadDTO{
+		Role: "publisher", Kind: "organization", IdentityNamespace: "publisher-registry",
+		ExternalID: "publisher-42", DisplayName: "Unsafe\nPublisher", HomepageURL: optionalCitationString("javascript:alert(1)"),
+	}
+	service, err = NewCitationService(CitationDependencies{
+		Citations:   &citationMetadataReaderStub{records: map[int64]CitationReadDTO{41: unsafe}},
+		Projections: &citationProjectionReaderStub{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = service.GetCitation(context.Background(), CitationQuery{DocumentVersionID: 41})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Citation.Publisher != nil || result.Citation.PublisherParty != nil ||
+		result.Citation.PublisherAvailability != CitationFactUnavailable {
+		t.Fatalf("unsafe publisher was exposed: %#v", result.Citation)
+	}
+}
+
+func optionalCitationString(value string) *string { return &value }
 
 func TestCitationServiceFiltersUnsafeProvenanceURLs(t *testing.T) {
 	t.Parallel()
@@ -296,6 +362,19 @@ func readyCitationReadDTO(documentVersionID int64, title, contentSHA, artifactSH
 	discussionURL := "https://forum.example.test/discussions/41"
 	availableAt := now.Add(-time.Minute)
 	retentionDays := 30
+	anchorBlocks := []DocumentAnchorBlockDTO{{
+		Ordinal: 0, PlaintextUTF8ByteStart: 0, PlaintextUTF8ByteEnd: 1,
+		MarkdownUTF8ByteStart: 0, MarkdownUTF8ByteEnd: 12, MarkdownAnchor: "body-0000-000000000000",
+	}}
+	anchorIdentity := DerivedArtifactAnchorMapDTO{
+		NormalizationVersion:    CanonicalDocumentTextNormalizationVersion,
+		AnchorMapProfileVersion: CanonicalDocumentAnchorMapProfileVersion,
+		PlaintextSHA256:         contentSHA, MarkdownSHA256: artifactSHA,
+	}
+	anchorIdentity.AnchorMapSHA256 = DocumentAnchorMapSHA256(MapDocumentTextResult{
+		NormalizationVersion: anchorIdentity.NormalizationVersion, AnchorMapProfileVersion: anchorIdentity.AnchorMapProfileVersion,
+		PlaintextSHA256: anchorIdentity.PlaintextSHA256, MarkdownSHA256: anchorIdentity.MarkdownSHA256, Blocks: anchorBlocks,
+	})
 	return CitationReadDTO{
 		DocumentID: 11, DocumentVersionID: documentVersionID, SourceConnectionID: 7,
 		DocumentState: "active", DocumentLifecycleState: DocumentReadable,
@@ -311,6 +390,15 @@ func readyCitationReadDTO(documentVersionID int64, title, contentSHA, artifactSH
 			LifecycleState: "derived_available", Active: true, AvailableAt: &availableAt,
 			RetentionUntil: now.Add(24 * time.Hour), StoreDerivedAllowed: true, RetainAllowed: true,
 			CurrentRetentionDays: &retentionDays,
+			AnchorMap: &CitationArtifactAnchorMapReadDTO{
+				NormalizationVersion: anchorIdentity.NormalizationVersion, AnchorMapProfileVersion: anchorIdentity.AnchorMapProfileVersion,
+				PlaintextSHA256: anchorIdentity.PlaintextSHA256, MarkdownSHA256: anchorIdentity.MarkdownSHA256,
+				AnchorMapSHA256: anchorIdentity.AnchorMapSHA256,
+				Blocks: []CitationAnchorBlockReadDTO{{
+					Ordinal: 0, PlaintextUTF8ByteStart: 0, PlaintextUTF8ByteEnd: 1,
+					MarkdownUTF8ByteStart: 0, MarkdownUTF8ByteEnd: 12, MarkdownAnchor: "body-0000-000000000000",
+				}},
+			},
 		},
 	}
 }

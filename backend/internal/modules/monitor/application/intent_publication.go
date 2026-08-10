@@ -101,21 +101,55 @@ type PrepareIntentPublicationResult struct {
 	Publication IntentPublicationDTO
 }
 
+type PreviewIntentPublicationCommand struct {
+	MonitorID       int64
+	ConfigVersionID int64
+}
+
+type PreviewIntentPublicationResult struct {
+	Enabled         bool
+	ProfileHash     string
+	CollectionTerms []CompiledCollectionTermDTO
+	LocaleClauses   []IntentClauseDTO
+}
+
 type CompleteIntentPublicationCommand struct {
 	Publication             IntentPublicationDTO
 	PreviousConfigVersionID int64
 	PublishedAt             time.Time
 }
 
-type IntentPublicationService struct {
-	repository IntentPublicationRepository
+// SchedulePublishedIntentBackfillCommand contains only immutable publication
+// identities. The scheduler must enqueue a durable, paginated backfill; it
+// must not copy intent text, document text, or query expressions into a job.
+type SchedulePublishedIntentBackfillCommand struct {
+	MonitorID         int64
+	MonitorVersionID  int64
+	CompiledProfileID int64
 }
 
-func NewIntentPublicationService(repository IntentPublicationRepository) (*IntentPublicationService, error) {
-	if repository == nil {
-		return nil, fmt.Errorf("%w: intent publication repository is required", ErrInvalidIntentContract)
+type SchedulePublishedIntentBackfillResult struct {
+	MonitorID         int64
+	MonitorVersionID  int64
+	CompiledProfileID int64
+	JobID             int64
+	Created           bool
+}
+
+type PublishedIntentBackfillScheduler interface {
+	SchedulePublishedIntentBackfill(context.Context, SchedulePublishedIntentBackfillCommand) (SchedulePublishedIntentBackfillResult, error)
+}
+
+type IntentPublicationService struct {
+	repository IntentPublicationRepository
+	backfills  PublishedIntentBackfillScheduler
+}
+
+func NewIntentPublicationService(repository IntentPublicationRepository, backfills PublishedIntentBackfillScheduler) (*IntentPublicationService, error) {
+	if repository == nil || backfills == nil {
+		return nil, fmt.Errorf("%w: intent publication repository and backfill scheduler are required", ErrInvalidIntentContract)
 	}
-	return &IntentPublicationService{repository: repository}, nil
+	return &IntentPublicationService{repository: repository, backfills: backfills}, nil
 }
 
 func (service *IntentPublicationService) Prepare(ctx context.Context, command PrepareIntentPublicationCommand) (PrepareIntentPublicationResult, error) {
@@ -164,25 +198,66 @@ func (service *IntentPublicationService) Prepare(ctx context.Context, command Pr
 	}}, nil
 }
 
+// Preview is read-only. It resolves the exact successful draft preview and
+// returns the same compiled collection inputs that Prepare will stage during
+// publication, without creating a published profile or queue job.
+func (service *IntentPublicationService) Preview(ctx context.Context, command PreviewIntentPublicationCommand) (PreviewIntentPublicationResult, error) {
+	if service == nil || service.repository == nil || command.MonitorID <= 0 || command.ConfigVersionID <= 0 {
+		return PreviewIntentPublicationResult{}, ErrInvalidIntentContract
+	}
+	candidate, err := service.repository.ReadPublishableIntentProfile(ctx, ReadPublishableIntentProfileQuery(command))
+	if err != nil {
+		return PreviewIntentPublicationResult{}, err
+	}
+	if !candidate.Exists {
+		return PreviewIntentPublicationResult{}, nil
+	}
+	if err := validatePublishableIntentProfile(candidate, PrepareIntentPublicationCommand(command)); err != nil {
+		return PreviewIntentPublicationResult{}, err
+	}
+	terms, locales, err := compiledIntentPublicationInputs(candidate.Clauses, candidate.Entities)
+	if err != nil {
+		return PreviewIntentPublicationResult{}, err
+	}
+	return PreviewIntentPublicationResult{
+		Enabled: true, ProfileHash: publishedIntentProfileHash(candidate),
+		CollectionTerms: terms, LocaleClauses: locales,
+	}, nil
+}
+
 func (service *IntentPublicationService) Complete(ctx context.Context, command CompleteIntentPublicationCommand) error {
 	publication := command.Publication
-	if service == nil || service.repository == nil || !publication.Enabled || publication.MonitorID <= 0 ||
+	if service == nil || service.repository == nil || service.backfills == nil || !publication.Enabled || publication.MonitorID <= 0 ||
 		publication.ConfigVersionID <= 0 || publication.CompiledProfileID <= 0 || !validIntentApplicationSHA256(publication.ProfileHash) ||
 		command.PreviousConfigVersionID < 0 || command.PublishedAt.IsZero() {
 		return ErrInvalidIntentContract
 	}
-	return service.repository.CompletePublishedIntentProfile(ctx, CompletePublishedIntentProfileDTO{
+	if err := service.repository.CompletePublishedIntentProfile(ctx, CompletePublishedIntentProfileDTO{
 		MonitorID: publication.MonitorID, ConfigVersionID: publication.ConfigVersionID,
 		CompiledProfileID: publication.CompiledProfileID, PreviousConfigVersionID: command.PreviousConfigVersionID,
 		ProfileHash: publication.ProfileHash, PublishedAt: command.PublishedAt.UTC(),
+	}); err != nil {
+		return err
+	}
+	receipt, err := service.backfills.SchedulePublishedIntentBackfill(ctx, SchedulePublishedIntentBackfillCommand{
+		MonitorID: publication.MonitorID, MonitorVersionID: publication.ConfigVersionID,
+		CompiledProfileID: publication.CompiledProfileID,
 	})
+	if err != nil {
+		return err
+	}
+	if receipt.MonitorID != publication.MonitorID || receipt.MonitorVersionID != publication.ConfigVersionID ||
+		receipt.CompiledProfileID != publication.CompiledProfileID || receipt.JobID <= 0 {
+		return ErrIntentPublicationUnavailable
+	}
+	return nil
 }
 
 func validatePublishableIntentProfile(candidate PublishableIntentProfileDTO, command PrepareIntentPublicationCommand) error {
 	if candidate.MonitorID != command.MonitorID || candidate.ConfigVersionID != command.ConfigVersionID ||
 		candidate.PreviewRunID <= 0 || candidate.DraftID <= 0 || candidate.DraftResourceVersion <= 0 || candidate.IntentRevisionID <= 0 ||
 		candidate.PreviewCompiledProfileID <= 0 || !validIntentApplicationSHA256(candidate.PreviewProfileHash) ||
-		candidate.SemanticState != "unavailable" || candidate.SemanticUnavailableReason != IntentSemanticGenerationUnavailable ||
+		!validCompletedIntentSemanticState(candidate.SemanticState, candidate.SemanticUnavailableReason) ||
 		candidate.CompilerVersion != IntentCompilerVersion || candidate.SearchNormalizationProfileVersion != IntentSearchNormalizationProfileVersion ||
 		len(candidate.Clauses) > maximumCompiledIntentClauses || len(candidate.Entities) > 64 {
 		return ErrIntentPublicationUnavailable

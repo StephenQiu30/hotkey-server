@@ -81,6 +81,7 @@ type evidenceSelectionManifestRecord struct {
 	byteEnd               sql.NullInt64
 	selectedPayloadSHA256 string
 	selectorVersion       string
+	usage                 string
 }
 
 type evidenceSelectionManifestRow interface {
@@ -147,6 +148,7 @@ SELECT
     CURRENT_TIMESTAMP
   ) AS current_retention_days,
   CURRENT_TIMESTAMP AS rights_evaluated_at,
+	  reference.usage,
   reference.locator_type,
   reference.locator_value,
   reference.byte_start,
@@ -192,7 +194,7 @@ func scanEvidenceSelectionManifestRecord(row evidenceSelectionManifestRow) (evid
 		&record.collectorProfileVersion, &record.mimeType, &record.sizeBytes, &record.responseStatus,
 		&record.requestedURL, &record.finalURL, &record.redirectChainJSON, &record.responseHeadersJSON,
 		&record.capturedAt, &record.retentionUntil, &record.storeRawAllowed, &record.retainAllowed,
-		&record.currentRetentionDays, &record.rightsEvaluatedAt,
+		&record.currentRetentionDays, &record.rightsEvaluatedAt, &record.usage,
 		&record.locatorType, &record.locatorValue, &record.byteStart, &record.byteEnd,
 		&record.selectedPayloadSHA256, &record.selectorVersion,
 	)
@@ -226,7 +228,7 @@ func (record evidenceSelectionManifestRecord) applicationDTO() (sourceapplicatio
 		StoreRawAllowed: record.storeRawAllowed, RetainAllowed: record.retainAllowed,
 		CurrentRetentionDays: evidenceSelectionInt(record.currentRetentionDays), RightsEvaluatedAt: record.rightsEvaluatedAt.UTC(),
 		EvidenceReference: sourceapplication.RawEvidenceReferenceDTO{
-			EvidenceKey: strings.TrimSpace(record.evidenceKey), LocatorType: record.locatorType,
+			EvidenceKey: strings.TrimSpace(record.evidenceKey), Usage: record.usage, LocatorType: record.locatorType,
 			LocatorValue: record.locatorValue, ByteStart: evidenceSelectionInt64(record.byteStart), ByteEnd: evidenceSelectionInt64(record.byteEnd),
 			SelectedPayloadSHA256: strings.TrimSpace(record.selectedPayloadSHA256), SelectorVersion: record.selectorVersion,
 		},

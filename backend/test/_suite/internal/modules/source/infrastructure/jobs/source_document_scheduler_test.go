@@ -43,8 +43,8 @@ func TestSourceDocumentGenerationSchedulerMapsExactSemanticJobs(t *testing.T) {
 	traceID := "0123456789abcdef0123456789abcdef"
 	command := sourceapplication.ScheduleSourceDocumentGenerationCommand{
 		EvidenceReferences: []sourceapplication.CommittedEvidenceReferenceDTO{
-			{EvidenceReferenceID: 71, SourceObservationID: 31, EvidenceSnapshotID: 11},
-			{EvidenceReferenceID: 72, SourceObservationID: 32, EvidenceSnapshotID: 11},
+			{EvidenceReferenceID: 71, SourceObservationID: 31, EvidenceSnapshotID: 11, Usage: "document_source"},
+			{EvidenceReferenceID: 72, SourceObservationID: 32, EvidenceSnapshotID: 11, Usage: "document_source"},
 		},
 		TraceID: traceID, ScheduledAt: scheduledAt,
 	}
@@ -125,8 +125,8 @@ func TestSourceDocumentGenerationSchedulerEmptyAndFailureContracts(t *testing.T)
 	}
 	_, err = failingScheduler.Schedule(context.Background(), sourceapplication.ScheduleSourceDocumentGenerationCommand{
 		EvidenceReferences: []sourceapplication.CommittedEvidenceReferenceDTO{
-			{EvidenceReferenceID: 81, SourceObservationID: 41, EvidenceSnapshotID: 21},
-			{EvidenceReferenceID: 82, SourceObservationID: 42, EvidenceSnapshotID: 21},
+			{EvidenceReferenceID: 81, SourceObservationID: 41, EvidenceSnapshotID: 21, Usage: "document_source"},
+			{EvidenceReferenceID: 82, SourceObservationID: 42, EvidenceSnapshotID: 21, Usage: "document_source"},
 		},
 		ScheduledAt: time.Now().UTC(),
 	})
@@ -143,7 +143,7 @@ func TestSourceDocumentGenerationSchedulerRejectsUnsafeApplicationCommands(t *te
 		t.Fatal(err)
 	}
 	valid := sourceapplication.ScheduleSourceDocumentGenerationCommand{
-		EvidenceReferences: []sourceapplication.CommittedEvidenceReferenceDTO{{EvidenceReferenceID: 91, SourceObservationID: 51, EvidenceSnapshotID: 31}},
+		EvidenceReferences: []sourceapplication.CommittedEvidenceReferenceDTO{{EvidenceReferenceID: 91, SourceObservationID: 51, EvidenceSnapshotID: 31, Usage: "document_source"}},
 		ScheduledAt:        time.Now().UTC(),
 	}
 	tests := []struct {

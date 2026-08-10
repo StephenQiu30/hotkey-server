@@ -14,8 +14,8 @@ func TestEvidenceSchemaSeparatesRawObservationDocumentAndProjectionFacts(t *test
 	}
 	for _, table := range []string{
 		"source_rights_policies", "source_rights_decisions", "evidence_snapshots",
-		"source_observations", "source_observation_evidences", "documents",
-		"document_versions", "derived_artifacts",
+		"source_observations", "source_observation_evidences", "source_parties", "source_observation_parties", "documents",
+		"document_versions", "derived_artifacts", "document_anchor_blocks",
 	} {
 		if _, found := contract.Tables[table]; !found {
 			t.Errorf("canonical catalog is missing %s", table)
@@ -41,6 +41,10 @@ func TestEvidenceSchemaSeparatesRawObservationDocumentAndProjectionFacts(t *test
 		"source-scoped snapshot identity":   "unique (source_connection_id, snapshot_key)",
 		"raw response header allowlist":     "response_headers - array['content-type','etag','last-modified','date','link','retry-after']::text[] = '{}'::jsonb",
 		"observation snapshot many-to-many": "create table if not exists source_observation_evidences",
+		"explicit source party identity":    "create table if not exists source_parties",
+		"evidence-bound party assertion":    "create table if not exists source_observation_parties",
+		"single publisher per observation":  "source_observation_parties_one_publisher_uq",
+		"single origin per observation":     "source_observation_parties_one_content_origin_uq",
 		"immutable document content":        "create trigger document_versions_lifecycle",
 		"document quality is nullable":      "quality_score numeric(5,2) check (quality_score is null or quality_score between 0 and 100)",
 		"document profile version identity": "unique (document_id, source_observation_id, content_sha256, extractor_profile_version)",
@@ -49,6 +53,11 @@ func TestEvidenceSchemaSeparatesRawObservationDocumentAndProjectionFacts(t *test
 		"derived exact rights binding":      "create trigger derived_artifacts_rights_binding",
 		"transformer artifact identity":     "unique (document_version_id, artifact_type, transformer_profile_sha256)",
 		"one active projection":             "derived_artifacts_one_active_per_type_uq",
+		"anchor identity bound to artifact": "derived_artifacts_anchor_identity_check",
+		"UTF-8 byte anchor start":           "plaintext_utf8_byte_start",
+		"Markdown byte anchor end":          "markdown_utf8_byte_end",
+		"anchor block append-only trigger":  "document_anchor_blocks_immutable",
+		"readable requires anchor blocks":   "anchor.anchor_map_sha256 = artifact.anchor_map_sha256",
 	} {
 		if !strings.Contains(schema, snippet) {
 			t.Errorf("missing %s contract: %q", name, snippet)
@@ -86,6 +95,9 @@ func TestEvidenceSchemaSeparatesRawObservationDocumentAndProjectionFacts(t *test
 		t.Error("source_observations contains evidence-specific selected payload hash")
 	}
 	locatorBlock := evidenceTableBlock(t, schema, "source_observation_evidences")
+	if !strings.Contains(locatorBlock, "usage varchar(24) not null") || !strings.Contains(locatorBlock, "'document_source','context'") {
+		t.Error("source_observation_evidences is missing document/context evidence usage")
+	}
 	for _, required := range []string{
 		"selected_payload_sha256 char(64) not null",
 		"selected_payload_sha256 ~ '^[0-9a-f]{64}$'",
@@ -98,7 +110,7 @@ func TestEvidenceSchemaSeparatesRawObservationDocumentAndProjectionFacts(t *test
 
 func TestEvidenceFactsDoNotIntroduceTruthOrCredibilitySemantics(t *testing.T) {
 	schema := strings.ToLower(canonicaldb.SchemaSQL)
-	for _, table := range []string{"source_rights_policies", "source_rights_decisions", "evidence_snapshots", "source_observations", "source_observation_evidences", "documents", "document_versions", "derived_artifacts"} {
+	for _, table := range []string{"source_rights_policies", "source_rights_decisions", "evidence_snapshots", "source_observations", "source_observation_evidences", "source_parties", "source_observation_parties", "documents", "document_versions", "derived_artifacts", "document_anchor_blocks"} {
 		block := evidenceTableBlock(t, schema, table)
 		for _, forbidden := range []string{"truth_score", "is_real", "credibility", "confirmation_score"} {
 			if strings.Contains(block, forbidden) {

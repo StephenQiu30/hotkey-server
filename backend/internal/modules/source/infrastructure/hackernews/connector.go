@@ -15,12 +15,14 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/evidencecapture"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/sourcenet"
 )
 
 const (
-	sourceCode     = "hacker_news"
-	maxItemWorkers = 4
+	sourceCode              = "hacker_news"
+	collectorProfileVersion = "hacker-news-firebase-json-v1"
+	maxItemWorkers          = 4
 )
 
 type Connector struct {
@@ -51,6 +53,12 @@ type itemOutcome struct {
 	diagnostic *domain.FetchDiagnostic
 	retryAfter *time.Time
 	err        error
+	snapshot   *domain.EvidenceSnapshot
+}
+
+func hackerNewsSnapshot(response fetchedJSONResponse) (domain.EvidenceSnapshot, error) {
+	return evidencecapture.NewJSONSnapshot(response.payload, collectorProfileVersion, response.requestedURL, response.finalURL,
+		response.redirectChain, response.statusCode, response.headers, response.capturedAt)
 }
 
 // New binds the HN Connector to the only supported official endpoint.
@@ -98,13 +106,13 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 		return domain.FetchResult{}, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid Hacker News request cursor"))
 	}
 	result := domain.FetchResult{Items: []domain.SourceItem{}, Diagnostics: []domain.FetchDiagnostic{}}
-	maxPayload, retry, err := connector.client.get(ctx, "maxitem.json")
+	maximumResponse, retry, err := connector.client.get(ctx, "maxitem.json")
 	if err != nil {
 		result.RateLimit.RetryAfter = retry
 		return result, err
 	}
 	var newest int64
-	if err := json.Unmarshal(maxPayload, &newest); err != nil || newest < 0 {
+	if err := json.Unmarshal(maximumResponse.payload, &newest); err != nil || newest < 0 {
 		return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("decode Hacker News max item"))
 	}
 	start, end := itemRange(cursor, newest, int64(request.Limit), initial)
@@ -149,7 +157,12 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 		if outcome.err != nil {
 			continue
 		}
-		result.Items = append(result.Items, outcome.item)
+		item := outcome.item
+		if outcome.snapshot == nil {
+			return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("Hacker News item evidence is missing"))
+		}
+		result.Snapshots = appendUniqueSnapshot(result.Snapshots, *outcome.snapshot)
+		result.Items = append(result.Items, item)
 	}
 	result.NextCursor = strconv.FormatInt(completeThrough, 10)
 	result.HasMore = completeThrough < newest
@@ -162,13 +175,13 @@ func (connector *Connector) fetchRanked(ctx context.Context, request domain.Fetc
 	if connector.mode == domain.HackerNewsModeBest {
 		path = "beststories.json"
 	}
-	payload, retry, err := connector.client.get(ctx, path)
+	rankedResponse, retry, err := connector.client.get(ctx, path)
 	if err != nil {
 		result.RateLimit.RetryAfter = retry
 		return result, err
 	}
 	var listed []int64
-	if err := json.Unmarshal(payload, &listed); err != nil {
+	if err := json.Unmarshal(rankedResponse.payload, &listed); err != nil {
 		return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("decode Hacker News ranked stories"))
 	}
 	ids := make([]int64, 0, min(len(listed), request.Limit))
@@ -194,6 +207,15 @@ func (connector *Connector) fetchRanked(ctx context.Context, request domain.Fetc
 		return domain.FetchResult{}, canceledPageFailure(ctx.Err()).err
 	}
 	responded := 0
+	rankedSnapshot, err := hackerNewsSnapshot(rankedResponse)
+	if err != nil {
+		return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("capture Hacker News ranked response"))
+	}
+	result.Snapshots = append(result.Snapshots, rankedSnapshot)
+	rankByID := make(map[int64]int, len(ids))
+	for index, id := range ids {
+		rankByID[id] = index
+	}
 	for _, outcome := range outcomes {
 		if outcome.err == nil {
 			responded++
@@ -210,7 +232,20 @@ func (connector *Connector) fetchRanked(ctx context.Context, request domain.Fetc
 		case outcome.err != nil:
 			result.Diagnostics = append(result.Diagnostics, incompleteDiagnostic(outcomes, outcome.id))
 		default:
-			result.Items = append(result.Items, outcome.item)
+			item := outcome.item
+			if outcome.snapshot == nil {
+				return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("Hacker News item evidence is missing"))
+			}
+			if err := evidencecapture.BindJSONPointer(&item, rankedSnapshot, "/"+strconv.Itoa(rankByID[outcome.id]), domain.EvidenceUsageContext); err != nil {
+				return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("bind Hacker News ranked evidence"))
+			}
+			item.ObservedAt = rankedSnapshot.CapturedAt
+			item, err = domain.NormalizeSourceItem(item)
+			if err != nil {
+				return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("normalize Hacker News ranked evidence"))
+			}
+			result.Snapshots = appendUniqueSnapshot(result.Snapshots, *outcome.snapshot)
+			result.Items = append(result.Items, item)
 		}
 	}
 	if failure != nil {
@@ -480,15 +515,15 @@ func hnFailurePriority(kind domain.CollectionErrorKind) int {
 }
 
 func (connector *Connector) fetchItem(ctx context.Context, id int64) itemOutcome {
-	payload, retry, err := connector.client.get(ctx, "item/"+strconv.FormatInt(id, 10)+".json")
+	response, retry, err := connector.client.get(ctx, "item/"+strconv.FormatInt(id, 10)+".json")
 	if err != nil {
 		return itemOutcome{id: id, retryAfter: retry, err: err}
 	}
-	if bytes.Equal(bytes.TrimSpace(payload), []byte("null")) {
+	if bytes.Equal(bytes.TrimSpace(response.payload), []byte("null")) {
 		return itemOutcome{id: id, diagnostic: &domain.FetchDiagnostic{Code: "missing_item", SourceExternalID: strconv.FormatInt(id, 10)}}
 	}
 	var item hnItem
-	if err := json.Unmarshal(payload, &item); err != nil || item.ID != id {
+	if err := json.Unmarshal(response.payload, &item); err != nil || item.ID != id {
 		return itemOutcome{id: id, diagnostic: &domain.FetchDiagnostic{Code: "invalid_item", SourceExternalID: strconv.FormatInt(id, 10)}}
 	}
 	if item.Deleted {
@@ -521,23 +556,63 @@ func (connector *Connector) fetchItem(ctx context.Context, id int64) itemOutcome
 		publishedAt = &published
 	}
 	itemURL := strings.TrimSpace(item.URL)
+	discussionURL := "https://news.ycombinator.com/item?id=" + strconv.FormatInt(id, 10)
 	if contentType == "comment" || itemURL == "" {
-		itemURL = "https://news.ycombinator.com/item?id=" + strconv.FormatInt(id, 10)
+		itemURL = discussionURL
 	}
 	evidenceCompleteness := domain.EvidenceCompletenessMetadataOnly
 	if strings.TrimSpace(item.Text) != "" {
 		evidenceCompleteness = domain.EvidenceCompletenessFullBody
 	}
+	parties := []domain.SourcePartyAssertion{{
+		Role: domain.SourcePartyRoleDistributor, Kind: domain.SourcePartyKindOrganization,
+		IdentityNamespace: "platform", ExternalID: "hacker-news", DisplayName: "Hacker News", HomepageURL: "https://news.ycombinator.com",
+	}}
+	if strings.TrimSpace(item.By) != "" && itemURL == discussionURL {
+		account := domain.SourcePartyAssertion{Kind: domain.SourcePartyKindAccount, IdentityNamespace: "hacker-news:user", ExternalID: item.By, DisplayName: item.By}
+		account.Role = domain.SourcePartyRoleAuthor
+		parties = append(parties, account)
+		account.Role = domain.SourcePartyRoleContentOrigin
+		parties = append(parties, account)
+	}
 	normalized, err := domain.NormalizeSourceItem(domain.SourceItem{
 		SourceCode: sourceCode, ExternalID: strconv.FormatInt(id, 10), ParentExternalID: parentExternalID, ContentType: contentType,
-		Title: item.Title, Body: item.Text, URL: itemURL, Author: item.By, PublishedAt: publishedAt,
-		ObservedAt: connector.client.now(), EvidenceCompleteness: evidenceCompleteness,
+		Title: item.Title, Body: item.Text, URL: itemURL, DiscussionURL: discussionURL, Author: item.By, PublishedAt: publishedAt,
+		ObservedAt: response.capturedAt, EvidenceCompleteness: evidenceCompleteness,
 		Metrics: domain.SourceMetrics{LikeCount: cloneHNMetric(item.Score), CommentCount: cloneHNMetric(item.Descendants)},
+		Parties: parties,
 	})
 	if err != nil {
 		return itemOutcome{id: id, diagnostic: &domain.FetchDiagnostic{Code: "invalid_item", SourceExternalID: strconv.FormatInt(id, 10)}}
 	}
-	return itemOutcome{id: id, item: normalized}
+	snapshot, err := hackerNewsSnapshot(response)
+	if err != nil {
+		return itemOutcome{id: id, diagnostic: &domain.FetchDiagnostic{Code: "invalid_item_evidence", SourceExternalID: strconv.FormatInt(id, 10)}}
+	}
+	normalized.EvidenceReferences = []domain.EvidenceReference{wholePayloadReference(snapshot, domain.EvidenceUsageDocumentSource)}
+	normalized.SnapshotKey = snapshot.Key
+	normalized.ItemLocator = "/"
+	normalized, err = domain.NormalizeSourceItem(normalized)
+	if err != nil {
+		return itemOutcome{id: id, diagnostic: &domain.FetchDiagnostic{Code: "invalid_item_evidence", SourceExternalID: strconv.FormatInt(id, 10)}}
+	}
+	return itemOutcome{id: id, item: normalized, snapshot: &snapshot}
+}
+
+func wholePayloadReference(snapshot domain.EvidenceSnapshot, usage domain.EvidenceUsage) domain.EvidenceReference {
+	return domain.EvidenceReference{
+		SnapshotKey: snapshot.Key, Usage: usage, LocatorType: domain.EvidenceLocatorWholePayload,
+		LocatorValue: "/", SelectedPayloadSHA256: snapshot.PayloadSHA256, SelectorVersion: domain.WholePayloadSelectorVersion,
+	}
+}
+
+func appendUniqueSnapshot(values []domain.EvidenceSnapshot, snapshot domain.EvidenceSnapshot) []domain.EvidenceSnapshot {
+	for _, existing := range values {
+		if existing.Key == snapshot.Key {
+			return values
+		}
+	}
+	return append(values, snapshot)
 }
 
 func cloneHNMetric(value *int64) *int64 {

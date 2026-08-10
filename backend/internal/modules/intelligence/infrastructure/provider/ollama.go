@@ -1,8 +1,10 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"math"
 	"net/http"
 	"net/url"
@@ -10,8 +12,6 @@ import (
 
 	intelligencedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/config"
-	"github.com/tmc/langchaingo/llms"
-	langchainollama "github.com/tmc/langchaingo/llms/ollama"
 )
 
 type OllamaProvider struct {
@@ -45,21 +45,40 @@ func (provider *OllamaProvider) Embed(ctx context.Context, request intelligenced
 	if err := provider.verifyModelDigest(ctx, request.ModelName, request.ModelVersion); err != nil {
 		return intelligencedomain.EmbeddingResponse{}, err
 	}
-	model, err := langchainollama.New(langchainollama.WithServerURL(provider.baseURL.String()), langchainollama.WithHTTPClient(provider.client), langchainollama.WithModel(request.ModelName))
+	payload, err := json.Marshal(struct {
+		Model      string   `json:"model"`
+		Input      []string `json:"input"`
+		Dimensions int      `json:"dimensions"`
+	}{Model: request.ModelName, Input: request.Inputs, Dimensions: request.Dimensions})
+	if err != nil {
+		return intelligencedomain.EmbeddingResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
+	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, provider.baseURL.JoinPath("api", "embed").String(), bytes.NewReader(payload))
+	if err != nil {
+		return intelligencedomain.EmbeddingResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
+	httpRequest.Header.Set("Content-Type", "application/json")
+	httpResponse, err := provider.client.Do(httpRequest)
 	if err != nil {
 		return intelligencedomain.EmbeddingResponse{}, mapLangChainError(err)
 	}
-	vectors, err := model.CreateEmbedding(ctx, request.Inputs)
-	if err != nil {
-		if ctx.Err() != nil {
-			return intelligencedomain.EmbeddingResponse{}, mapLangChainError(ctx.Err())
-		}
-		return intelligencedomain.EmbeddingResponse{}, mapLangChainError(err)
+	defer httpResponse.Body.Close()
+	var response struct {
+		Vectors         [][]float32 `json:"embeddings"`
+		PromptEvalCount int64       `json:"prompt_eval_count"`
 	}
-	if err := validateOllamaVectors(vectors, len(request.Inputs)); err != nil {
+	decoder := json.NewDecoder(io.LimitReader(httpResponse.Body, 32<<20))
+	if err := decoder.Decode(&response); err != nil || response.PromptEvalCount < 0 {
+		return intelligencedomain.EmbeddingResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIEmbeddingInvalid)
+	}
+	if err := validateOllamaVectors(response.Vectors, len(request.Inputs)); err != nil {
 		return intelligencedomain.EmbeddingResponse{}, err
 	}
-	return intelligencedomain.EmbeddingResponse{ModelVersion: request.ModelVersion, Vectors: vectors}, nil
+	return intelligencedomain.EmbeddingResponse{
+		ModelVersion: request.ModelVersion,
+		Vectors:      response.Vectors,
+		Usage:        intelligencedomain.Usage{InputTokens: response.PromptEvalCount},
+	}, nil
 }
 
 func validateOllamaVectors(vectors [][]float32, expected int) error {
@@ -93,21 +112,74 @@ func (provider *OllamaProvider) GenerateStructured(ctx context.Context, request 
 	if err != nil {
 		return intelligencedomain.StructuredResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIOutputInvalid)
 	}
-	model, err := langchainollama.New(langchainollama.WithServerURL(provider.baseURL.String()), langchainollama.WithHTTPClient(provider.client), langchainollama.WithModel(request.ModelName))
+	payload, err := json.Marshal(ollamaStructuredRequestRecord{
+		Model: request.ModelName,
+		Messages: []ollamaChatMessageRecord{
+			{Role: "system", Content: request.Instruction + "\nReturn exactly one JSON value matching this schema:\n" + string(request.Schema)},
+			{Role: "user", Content: string(input)},
+		},
+		Format:  append(json.RawMessage(nil), request.Schema...),
+		Stream:  false,
+		Think:   false,
+		Options: ollamaStructuredOptionsRecord{Temperature: 0},
+	})
 	if err != nil {
-		return intelligencedomain.StructuredResponse{}, mapLangChainError(err)
+		return intelligencedomain.StructuredResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
 	}
-	response, err := model.GenerateContent(ctx, []llms.MessageContent{
-		llms.TextParts(llms.ChatMessageTypeSystem, request.Instruction),
-		llms.TextParts(llms.ChatMessageTypeHuman, string(input)),
-	}, llms.WithJSONMode())
+	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, provider.baseURL.JoinPath("api", "chat").String(), bytes.NewReader(payload))
+	if err != nil {
+		return intelligencedomain.StructuredResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
+	httpRequest.Header.Set("Content-Type", "application/json")
+	httpResponse, err := provider.client.Do(httpRequest)
 	if err != nil {
 		if ctx.Err() != nil {
 			return intelligencedomain.StructuredResponse{}, mapLangChainError(ctx.Err())
 		}
 		return intelligencedomain.StructuredResponse{}, mapLangChainError(err)
 	}
-	return structuredLangChainResponse(response, request.ModelVersion)
+	defer httpResponse.Body.Close()
+	var response ollamaStructuredResponseRecord
+	decoder := json.NewDecoder(io.LimitReader(httpResponse.Body, 32<<20))
+	if err := decoder.Decode(&response); err != nil || !response.Done || !json.Valid([]byte(response.Message.Content)) || response.PromptEvalCount < 0 || response.EvalCount < 0 {
+		return intelligencedomain.StructuredResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIOutputInvalid)
+	}
+	usage := intelligencedomain.Usage{InputTokens: response.PromptEvalCount, OutputTokens: response.EvalCount}
+	if _, err := usage.TotalTokens(); err != nil {
+		return intelligencedomain.StructuredResponse{}, err
+	}
+	return intelligencedomain.StructuredResponse{
+		ModelVersion: request.ModelVersion,
+		JSON:         append(json.RawMessage(nil), response.Message.Content...),
+		Usage:        usage,
+	}, nil
+}
+
+type ollamaChatMessageRecord struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type ollamaStructuredOptionsRecord struct {
+	Temperature float64 `json:"temperature"`
+}
+
+type ollamaStructuredRequestRecord struct {
+	Model    string                        `json:"model"`
+	Messages []ollamaChatMessageRecord     `json:"messages"`
+	Format   json.RawMessage               `json:"format"`
+	Stream   bool                          `json:"stream"`
+	Think    bool                          `json:"think"`
+	Options  ollamaStructuredOptionsRecord `json:"options"`
+}
+
+type ollamaStructuredResponseRecord struct {
+	Message struct {
+		Content string `json:"content"`
+	} `json:"message"`
+	Done            bool  `json:"done"`
+	PromptEvalCount int64 `json:"prompt_eval_count"`
+	EvalCount       int64 `json:"eval_count"`
 }
 
 func (provider *OllamaProvider) verifyModelDigest(ctx context.Context, modelName, modelVersion string) error {

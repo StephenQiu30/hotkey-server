@@ -23,16 +23,18 @@ import (
 	"unicode/utf8"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/evidencecapture"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/sourcenet"
 )
 
 const (
-	commandGroup         = "search"
-	commandAction        = "statuses/limited"
-	maxResponseBodyBytes = 4 << 20
-	maxQueryCharacters   = 120
-	maxPageSize          = 50
-	cursorVersion        = 1
+	commandGroup            = "search"
+	commandAction           = "statuses/limited"
+	collectorProfileVersion = "weibo-cli-search-json-v1"
+	maxResponseBodyBytes    = 4 << 20
+	maxQueryCharacters      = 120
+	maxPageSize             = 50
+	cursorVersion           = 1
 )
 
 var postIDPattern = regexp.MustCompile(`^[0-9]{1,20}$`)
@@ -122,6 +124,21 @@ type user struct {
 	ScreenName string          `json:"screen_name"`
 }
 
+type fetchedJSONResponse struct {
+	payload       []byte
+	statusCode    int
+	requestedURL  string
+	finalURL      string
+	redirectChain []string
+	headers       http.Header
+	capturedAt    time.Time
+}
+
+func (value fetchedJSONResponse) snapshot() (domain.EvidenceSnapshot, error) {
+	return evidencecapture.NewJSONSnapshot(value.payload, collectorProfileVersion, value.requestedURL, value.finalURL,
+		value.redirectChain, value.statusCode, value.headers, value.capturedAt)
+}
+
 func New(connection domain.SourceConnection, resolvers ...sourcenet.Resolver) (*Connector, error) {
 	options := connectorOptions{}
 	if len(resolvers) > 0 && resolvers[0] != nil {
@@ -200,7 +217,7 @@ func (connector *Connector) Health(ctx context.Context, connection domain.Source
 		return domain.HealthResult{CheckedAt: checkedAt, ErrorKind: domain.CollectionErrorAuthentication, DiagnosticCode: "credential_unavailable"}
 	}
 	var identity map[string]any
-	if _, err := connector.request(ctx, http.MethodGet, "/cli/whoami", nil, nil, token, &identity); err != nil || len(identity) == 0 {
+	if _, _, err := connector.request(ctx, http.MethodGet, "/cli/whoami", nil, nil, token, &identity); err != nil || len(identity) == 0 {
 		return healthFailure(checkedAt, err, "credential_unavailable")
 	}
 	if err := connector.requireSearchCapability(ctx, token); err != nil {
@@ -240,7 +257,7 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 		"q": query, "count": strconv.Itoa(count), "page": strconv.Itoa(checkpoint.Page),
 	}}
 	var envelope invokeEnvelope
-	rateLimit, err := connector.request(ctx, http.MethodPost, "/cli/invoke", nil, body, token, &envelope)
+	captured, rateLimit, err := connector.request(ctx, http.MethodPost, "/cli/invoke", nil, body, token, &envelope)
 	result.RateLimit = rateLimit
 	if err != nil {
 		return result, err
@@ -252,16 +269,25 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 	if err != nil {
 		return result, parse("decode Weibo search result")
 	}
-	for _, value := range page.Statuses {
+	snapshot, err := captured.snapshot()
+	if err != nil {
+		return result, parse("capture Weibo search response")
+	}
+	result.Snapshots = append(result.Snapshots, snapshot)
+	for index, value := range page.Statuses {
 		externalID := value.stableID()
 		if value.unavailable() {
 			result.Diagnostics = append(result.Diagnostics, domain.FetchDiagnostic{Code: "unavailable_weibo_post", SourceExternalID: externalID})
 			continue
 		}
-		mapped, err := connector.mapPost(value)
+		mapped, err := connector.mapPost(value, captured.capturedAt)
 		if err != nil {
 			result.Diagnostics = append(result.Diagnostics, domain.FetchDiagnostic{Code: "invalid_weibo_post", SourceExternalID: externalID})
 			continue
+		}
+		pointer, pointerErr := weiboResultPointer(envelope.Result, index)
+		if pointerErr != nil || evidencecapture.BindJSONPointer(&mapped, snapshot, "/result"+pointer, domain.EvidenceUsageDocumentSource) != nil {
+			return domain.FetchResult{}, parse("bind Weibo post evidence")
 		}
 		result.Items = append(result.Items, mapped)
 	}
@@ -276,7 +302,7 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 func (connector *Connector) requireSearchCapability(ctx context.Context, token string) error {
 	query := url.Values{"group": {commandGroup}, "access": {"available"}}
 	var catalog commandCatalog
-	if _, err := connector.request(ctx, http.MethodGet, "/cli/commands", query, nil, token, &catalog); err != nil {
+	if _, _, err := connector.request(ctx, http.MethodGet, "/cli/commands", query, nil, token, &catalog); err != nil {
 		return err
 	}
 	for _, command := range catalog.Commands {
@@ -287,7 +313,7 @@ func (connector *Connector) requireSearchCapability(ctx context.Context, token s
 	return authentication("required Weibo search capability is unavailable")
 }
 
-func (connector *Connector) request(ctx context.Context, method, path string, query url.Values, body any, token string, output any) (domain.RateLimit, error) {
+func (connector *Connector) request(ctx context.Context, method, path string, query url.Values, body any, token string, output any) (fetchedJSONResponse, domain.RateLimit, error) {
 	target := *connector.endpoint
 	target.Path = strings.TrimSuffix(connector.endpoint.Path, "/") + path
 	if query != nil {
@@ -297,13 +323,13 @@ func (connector *Connector) request(ctx context.Context, method, path string, qu
 	if body != nil {
 		encoded, err := json.Marshal(body)
 		if err != nil {
-			return domain.RateLimit{}, permanent("encode Weibo request")
+			return fetchedJSONResponse{}, domain.RateLimit{}, permanent("encode Weibo request")
 		}
 		payload = bytes.NewReader(encoded)
 	}
 	httpRequest, err := http.NewRequestWithContext(ctx, method, target.String(), payload)
 	if err != nil {
-		return domain.RateLimit{}, permanent("build Weibo request")
+		return fetchedJSONResponse{}, domain.RateLimit{}, permanent("build Weibo request")
 	}
 	httpRequest.Header.Set("Accept", "application/json")
 	httpRequest.Header.Set("Authorization", "Bearer "+token)
@@ -312,31 +338,35 @@ func (connector *Connector) request(ctx context.Context, method, path string, qu
 	}
 	response, err := connector.http.Do(httpRequest)
 	if err != nil {
-		return domain.RateLimit{}, temporary("request Weibo CLI API")
+		return fetchedJSONResponse{}, domain.RateLimit{}, temporary("request Weibo CLI API")
 	}
 	defer response.Body.Close()
 	rateLimit := parseRateLimit(response.Header)
 	responseBody, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBodyBytes+1))
 	if err != nil {
-		return rateLimit, temporary("read Weibo response")
+		return fetchedJSONResponse{}, rateLimit, temporary("read Weibo response")
 	}
 	if len(responseBody) > maxResponseBodyBytes {
-		return rateLimit, permanent("Weibo response exceeds body byte limit")
+		return fetchedJSONResponse{}, rateLimit, permanent("Weibo response exceeds body byte limit")
 	}
 	switch {
 	case response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusPaymentRequired:
-		return rateLimit, authentication("Weibo authorization rejected")
+		return fetchedJSONResponse{}, rateLimit, authentication("Weibo authorization rejected")
 	case response.StatusCode == http.StatusTooManyRequests:
-		return rateLimit, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("Weibo rate limited"))
+		return fetchedJSONResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("Weibo rate limited"))
 	case response.StatusCode >= 500:
-		return rateLimit, temporary("Weibo service unavailable")
+		return fetchedJSONResponse{}, rateLimit, temporary("Weibo service unavailable")
 	case response.StatusCode < 200 || response.StatusCode >= 300:
-		return rateLimit, permanent("Weibo request rejected")
+		return fetchedJSONResponse{}, rateLimit, permanent("Weibo request rejected")
 	}
 	if len(responseBody) == 0 || json.Unmarshal(responseBody, output) != nil {
-		return rateLimit, parse("decode Weibo response")
+		return fetchedJSONResponse{}, rateLimit, parse("decode Weibo response")
 	}
-	return rateLimit, nil
+	return fetchedJSONResponse{
+		payload: responseBody, statusCode: response.StatusCode, requestedURL: target.String(),
+		finalURL: response.Request.URL.String(), redirectChain: evidencecapture.RedirectChain(target.String(), response.Request),
+		headers: response.Header.Clone(), capturedAt: connector.now().UTC(),
+	}, rateLimit, nil
 }
 
 func (connector *Connector) token() (string, error) {
@@ -349,7 +379,7 @@ func (connector *Connector) token() (string, error) {
 	return token, nil
 }
 
-func (connector *Connector) mapPost(value post) (domain.SourceItem, error) {
+func (connector *Connector) mapPost(value post, observedAt time.Time) (domain.SourceItem, error) {
 	id := value.stableID()
 	if !postIDPattern.MatchString(id) {
 		return domain.SourceItem{}, errors.New("invalid Weibo post ID")
@@ -377,14 +407,62 @@ func (connector *Connector) mapPost(value post) (domain.SourceItem, error) {
 	if body != "" {
 		evidence = domain.EvidenceCompletenessFullBody
 	}
+	parties := []domain.SourcePartyAssertion{{
+		Role: domain.SourcePartyRoleDistributor, Kind: domain.SourcePartyKindOrganization,
+		IdentityNamespace: "platform", ExternalID: "weibo", DisplayName: "微博", HomepageURL: "https://weibo.com",
+	}}
+	userID := value.User.stableID()
+	if userID != "" && strings.TrimSpace(value.User.ScreenName) != "" {
+		account := domain.SourcePartyAssertion{
+			Kind: domain.SourcePartyKindAccount, IdentityNamespace: "weibo:user", ExternalID: userID,
+			DisplayName: strings.TrimSpace(value.User.ScreenName),
+		}
+		account.Role = domain.SourcePartyRoleContentOrigin
+		parties = append(parties, account)
+		account.Role = domain.SourcePartyRoleAuthor
+		parties = append(parties, account)
+	}
 	return domain.NormalizeSourceItem(domain.SourceItem{
 		SourceCode: "weibo", ExternalID: id, ParentExternalID: parentID,
 		ContentType: "post", Body: body, URL: itemURL, Author: strings.TrimSpace(value.User.ScreenName),
-		PublishedAt: publishedAt, ObservedAt: connector.now().UTC(), EvidenceCompleteness: evidence,
+		PublishedAt: publishedAt, ObservedAt: observedAt.UTC(), EvidenceCompleteness: evidence,
 		Metrics: domain.SourceMetrics{
 			LikeCount: domain.KnownMetric(value.AttitudesCount), CommentCount: domain.KnownMetric(value.CommentsCount), ShareCount: domain.KnownMetric(value.RepostsCount),
-		},
+		}, Parties: parties,
 	})
+}
+
+func (value user) stableID() string {
+	if postIDPattern.MatchString(strings.TrimSpace(value.IDStr)) {
+		return strings.TrimSpace(value.IDStr)
+	}
+	return rawID(value.ID)
+}
+
+func weiboResultPointer(raw json.RawMessage, index int) (string, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || index < 0 {
+		return "", errors.New("Weibo result locator is invalid")
+	}
+	if trimmed[0] == '[' {
+		return "/" + strconv.Itoa(index), nil
+	}
+	var record map[string]json.RawMessage
+	if json.Unmarshal(trimmed, &record) != nil {
+		return "", errors.New("Weibo result locator is invalid")
+	}
+	for _, field := range []string{"statuses", "items"} {
+		if value := bytes.TrimSpace(record[field]); len(value) > 0 && value[0] == '[' {
+			return "/" + field + "/" + strconv.Itoa(index), nil
+		}
+	}
+	if nested := bytes.TrimSpace(record["data"]); len(nested) > 0 && string(nested) != "null" {
+		pointer, err := weiboResultPointer(nested, index)
+		if err == nil {
+			return "/data" + pointer, nil
+		}
+	}
+	return "", errors.New("Weibo result locator did not resolve")
 }
 
 func decodeSearchPage(raw json.RawMessage) (searchPage, error) {

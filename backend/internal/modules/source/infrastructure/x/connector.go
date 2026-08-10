@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -21,15 +22,17 @@ import (
 	"unicode/utf8"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/evidencecapture"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/sourcenet"
 )
 
 const (
-	sourceCode           = "x"
-	maxQueryCharacters   = 512
-	maxResponseBodyBytes = 4 << 20
-	maxRedirects         = 3
-	cursorVersion        = 1
+	sourceCode              = "x"
+	collectorProfileVersion = "x-recent-search-json-v1"
+	maxQueryCharacters      = 512
+	maxResponseBodyBytes    = 4 << 20
+	maxRedirects            = 3
+	cursorVersion           = 1
 )
 
 var (
@@ -139,6 +142,23 @@ type apiProblem struct {
 	Value        string `json:"value"`
 }
 
+type fetchedJSONResponse struct {
+	payload       []byte
+	statusCode    int
+	requestedURL  string
+	finalURL      string
+	redirectChain []string
+	headers       http.Header
+	capturedAt    time.Time
+}
+
+func (value fetchedJSONResponse) snapshot() (domain.EvidenceSnapshot, error) {
+	return evidencecapture.NewJSONSnapshot(
+		value.payload, collectorProfileVersion, value.requestedURL, value.finalURL,
+		value.redirectChain, value.statusCode, value.headers, value.capturedAt,
+	)
+}
+
 func New(connection domain.SourceConnection, resolvers ...sourcenet.Resolver) (*Connector, error) {
 	options := connectorOptions{}
 	if len(resolvers) > 0 && resolvers[0] != nil {
@@ -241,15 +261,20 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 		}
 	}
 	parameters := searchParameters(query, request.Limit, cursor)
-	payload, rateLimit, err := connector.get(ctx, parameters, token)
+	captured, rateLimit, err := connector.get(ctx, parameters, token)
 	result.RateLimit = rateLimit
 	if err != nil {
 		return result, err
 	}
 	var response searchResponse
-	if err := json.Unmarshal(payload, &response); err != nil {
+	if err := json.Unmarshal(captured.payload, &response); err != nil {
 		return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("decode X recent search response"))
 	}
+	snapshot, err := captured.snapshot()
+	if err != nil {
+		return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("capture X recent search response"))
+	}
+	result.Snapshots = append(result.Snapshots, snapshot)
 	users := make(map[string]string, len(response.Includes.Users))
 	for _, user := range response.Includes.Users {
 		if usernamePattern.MatchString(user.Username) {
@@ -260,7 +285,7 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 	for _, item := range response.Includes.Media {
 		media[item.MediaKey] = item
 	}
-	for _, sourcePost := range response.Data {
+	for index, sourcePost := range response.Data {
 		switch {
 		case sourcePost.PossiblySensitive:
 			result.Diagnostics = append(result.Diagnostics, domain.FetchDiagnostic{Code: "possibly_sensitive_post", SourceExternalID: safePostID(sourcePost.ID)})
@@ -269,10 +294,13 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 			result.Diagnostics = append(result.Diagnostics, domain.FetchDiagnostic{Code: "withheld_post", SourceExternalID: safePostID(sourcePost.ID)})
 			continue
 		}
-		item, err := connector.mapPost(sourcePost, users, media)
+		item, err := connector.mapPost(sourcePost, users, media, captured.capturedAt)
 		if err != nil {
 			result.Diagnostics = append(result.Diagnostics, domain.FetchDiagnostic{Code: "invalid_post", SourceExternalID: safePostID(sourcePost.ID)})
 			continue
+		}
+		if err := evidencecapture.BindJSONPointer(&item, snapshot, fmt.Sprintf("/data/%d", index), domain.EvidenceUsageDocumentSource); err != nil {
+			return domain.FetchResult{}, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("bind X post evidence"))
 		}
 		result.Items = append(result.Items, item)
 	}
@@ -351,18 +379,18 @@ func (connector *Connector) token() (string, error) {
 	return token, nil
 }
 
-func (connector *Connector) get(ctx context.Context, parameters url.Values, token string) ([]byte, domain.RateLimit, error) {
+func (connector *Connector) get(ctx context.Context, parameters url.Values, token string) (fetchedJSONResponse, domain.RateLimit, error) {
 	target := *connector.endpoint
 	target.RawQuery = parameters.Encode()
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
 	if err != nil {
-		return nil, domain.RateLimit{}, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("create X request"))
+		return fetchedJSONResponse{}, domain.RateLimit{}, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("create X request"))
 	}
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Authorization", "Bearer "+token)
 	response, err := connector.http.Do(request)
 	if err != nil {
-		return nil, domain.RateLimit{}, requestError(err)
+		return fetchedJSONResponse{}, domain.RateLimit{}, requestError(err)
 	}
 	rateLimit := parseRateLimit(response.Header)
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
@@ -371,20 +399,24 @@ func (connector *Connector) get(ctx context.Context, parameters url.Values, toke
 		if status == http.StatusTooManyRequests && rateLimit.ResetAt != nil {
 			rateLimit.RetryAfter = cloneTime(rateLimit.ResetAt)
 		}
-		return nil, rateLimit, statusError(status)
+		return fetchedJSONResponse{}, rateLimit, statusError(status)
 	}
 	payload, readErr := io.ReadAll(io.LimitReader(response.Body, maxResponseBodyBytes+1))
 	closeErr := response.Body.Close()
 	if readErr != nil || closeErr != nil {
-		return nil, rateLimit, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("read X response"))
+		return fetchedJSONResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("read X response"))
 	}
 	if len(payload) > maxResponseBodyBytes {
-		return nil, rateLimit, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X response exceeds body byte limit"))
+		return fetchedJSONResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X response exceeds body byte limit"))
 	}
-	return payload, rateLimit, nil
+	return fetchedJSONResponse{
+		payload: payload, statusCode: response.StatusCode, requestedURL: target.String(),
+		finalURL: response.Request.URL.String(), redirectChain: evidencecapture.RedirectChain(target.String(), response.Request),
+		headers: response.Header.Clone(), capturedAt: connector.now().UTC(),
+	}, rateLimit, nil
 }
 
-func (connector *Connector) mapPost(value post, users map[string]string, media map[string]includedMedia) (domain.SourceItem, error) {
+func (connector *Connector) mapPost(value post, users map[string]string, media map[string]includedMedia, observedAt time.Time) (domain.SourceItem, error) {
 	if !postIDPattern.MatchString(value.ID) {
 		return domain.SourceItem{}, errors.New("invalid X post ID")
 	}
@@ -410,12 +442,26 @@ func (connector *Connector) mapPost(value post, users map[string]string, media m
 	if strings.TrimSpace(value.Text) != "" {
 		evidence = domain.EvidenceCompletenessFullBody
 	}
+	parties := []domain.SourcePartyAssertion{{
+		Role: domain.SourcePartyRoleDistributor, Kind: domain.SourcePartyKindOrganization,
+		IdentityNamespace: "platform", ExternalID: "x", DisplayName: "X", HomepageURL: "https://x.com",
+	}}
+	if value.AuthorID != "" && len(value.AuthorID) <= 512 && usernamePattern.MatchString(username) {
+		account := domain.SourcePartyAssertion{
+			Kind: domain.SourcePartyKindAccount, IdentityNamespace: "x:user", ExternalID: value.AuthorID,
+			DisplayName: username, HomepageURL: "https://x.com/" + username,
+		}
+		account.Role = domain.SourcePartyRoleContentOrigin
+		parties = append(parties, account)
+		account.Role = domain.SourcePartyRoleAuthor
+		parties = append(parties, account)
+	}
 	return domain.NormalizeSourceItem(domain.SourceItem{
 		SourceCode: sourceCode, ExternalID: value.ID, ParentExternalID: parentID,
 		ContentType: "post", Body: value.Text, Language: value.Language, URL: itemURL,
-		Author: username, PublishedAt: publishedAt, ObservedAt: connector.now().UTC(),
+		Author: username, PublishedAt: publishedAt, ObservedAt: observedAt.UTC(),
 		EvidenceCompleteness: evidence, Attachments: mapAttachments(value.Attachments.MediaKeys, media),
-		Metrics: mapMetrics(value.PublicMetrics),
+		Metrics: mapMetrics(value.PublicMetrics), Parties: parties,
 	})
 }
 

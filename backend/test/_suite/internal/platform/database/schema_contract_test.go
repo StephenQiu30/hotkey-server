@@ -39,3 +39,11 @@ func TestCatalogIndexNormalizationMatchesPostgreSQLInflightPredicate(t *testing.
 		t.Fatalf("normalized PostgreSQL in-flight index = %q, want %q", actual, expected)
 	}
 }
+
+func TestCatalogIndexNormalizationMatchesLegacyVarcharArrayPredicate(t *testing.T) {
+	expected := normalizeIndexDefinition("CREATE UNIQUE INDEX ai_runs_reuse_inflight_uq ON ai_runs(reuse_key) WHERE status IN ('queued','running','validating','retry_wait')")
+	actual := normalizeIndexDefinition("CREATE UNIQUE INDEX ai_runs_reuse_inflight_uq ON public.ai_runs USING btree (reuse_key) WHERE ((status)::text = ANY (ARRAY[('queued'::character varying)::text, ('running'::character varying)::text, ('validating'::character varying)::text, ('retry_wait'::character varying)::text]))")
+	if actual != expected {
+		t.Fatalf("normalized legacy PostgreSQL in-flight index = %q, want %q", actual, expected)
+	}
+}

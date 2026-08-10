@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, BrainCircuit } from "lucide-react";
+import { ArrowLeft, BrainCircuit, SearchCheck } from "lucide-react";
 import { useParams } from "next/navigation";
 import { MonitorIntentWorkspace } from "@/components/dashboard/MonitorIntentWorkspace";
 import { PageHeader } from "@/components/dashboard/PageHeader";
@@ -22,12 +22,22 @@ export default function MonitorIntentPage() {
     <div className="app-page">
       <PageHeader
         action={
-          <Button asChild variant="outline">
-            <Link href="/dashboard/settings">
-              <ArrowLeft />
-              返回热点监控
-            </Link>
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button asChild variant="outline">
+              <Link href="/dashboard/settings">
+                <ArrowLeft />
+                返回热点监控
+              </Link>
+            </Button>
+            {validMonitorID ? (
+              <Button asChild variant="outline">
+                <Link href={`/dashboard/settings/monitors/${monitorID}/matches`}>
+                  <SearchCheck />
+                  查看匹配判定
+                </Link>
+              </Button>
+            ) : null}
+          </div>
         }
         description="把自然语言目标、硬条件、实体和正反例保存为独立、可审计的草稿版本。"
         eyebrow="Semantic Monitoring"

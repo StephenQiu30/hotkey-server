@@ -219,7 +219,7 @@ WHERE namespace.nspname = 'public'
   AND c.relkind = 'r'
   AND a.attnum > 0
   AND NOT a.attisdropped
-ORDER BY c.relname, a.attnum`)
+ORDER BY c.relname, a.attname`)
 	if err != nil {
 		return "", fmt.Errorf("read catalog fingerprint: %w", err)
 	}
@@ -458,6 +458,8 @@ func normalizeSQLType(value string) string {
 		return "character" + strings.TrimPrefix(value, "char")
 	case value == "timestamptz":
 		return "timestamp with time zone"
+	case value == "time" || value == "time without time zone":
+		return "time without time zone"
 	default:
 		return value
 	}
@@ -638,7 +640,7 @@ func stripRedundantParentheses(value string) string {
 				changed = true
 				break
 			}
-			if isSimpleIdentifier(inner) {
+			if isSimpleIdentifier(inner) || isSimpleQuotedLiteral(inner) {
 				value = value[:index] + inner + value[end+1:]
 				changed = true
 				break
@@ -676,6 +678,16 @@ func isSimpleIdentifier(value string) bool {
 		}
 	}
 	return true
+}
+
+// PostgreSQL can preserve redundant parentheses around scalar string values
+// when an older partial index used varchar values inside an ARRAY. Casts are
+// removed earlier, so ('queued') and 'queued' are the same catalog fact. Keep
+// the rule deliberately narrow: quoted values containing an escaped quote are
+// left untouched rather than attempting to parse arbitrary SQL literals.
+func isSimpleQuotedLiteral(value string) bool {
+	return len(value) >= 2 && value[0] == '\'' && value[len(value)-1] == '\'' &&
+		!strings.Contains(value[1:len(value)-1], "'")
 }
 
 func matchingParenthesis(value string, start int) int {
@@ -725,10 +737,12 @@ func (contract catalogContract) Compare(actual catalogContract) error {
 		if !found {
 			return fmt.Errorf("table %s is missing", table)
 		}
-		if !slices.EqualFunc(expectedTable.Columns, actualTable.Columns, func(left, right columnCatalogContract) bool {
+		expectedColumns := sortedCatalogColumns(expectedTable.Columns)
+		actualColumns := sortedCatalogColumns(actualTable.Columns)
+		if !slices.EqualFunc(expectedColumns, actualColumns, func(left, right columnCatalogContract) bool {
 			return left == right
 		}) {
-			return fmt.Errorf("table %s columns differ: expected=%v actual=%v", table, expectedTable.Columns, actualTable.Columns)
+			return fmt.Errorf("table %s columns differ: expected=%v actual=%v", table, expectedColumns, actualColumns)
 		}
 		if expectedTable.Constraints != actualTable.Constraints {
 			return fmt.Errorf("table %s constraint counts differ: expected=%+v actual=%+v", table, expectedTable.Constraints, actualTable.Constraints)
@@ -747,7 +761,7 @@ func (contract catalogContract) Fingerprint() string {
 	hash := sha256.New()
 	for _, table := range contract.TableNames() {
 		definition := contract.Tables[table]
-		for _, column := range definition.Columns {
+		for _, column := range sortedCatalogColumns(definition.Columns) {
 			_, _ = fmt.Fprintf(hash, "column|%s|%s|%s|%t|%s\n", table, column.Name, column.Type, column.NotNull, column.Default)
 		}
 		_, _ = fmt.Fprintf(hash, "constraints|%s|%d|%d|%d|%d\n", table, definition.Constraints.Primary, definition.Constraints.Unique, definition.Constraints.Foreign, definition.Constraints.Check)
@@ -779,7 +793,7 @@ WHERE namespace.nspname = 'public'
   AND c.relkind = 'r'
   AND attribute.attnum > 0
   AND NOT attribute.attisdropped
-ORDER BY c.relname, attribute.attnum`)
+ORDER BY c.relname, attribute.attname`)
 	if err != nil {
 		return catalogContract{}, fmt.Errorf("read catalog columns: %w", err)
 	}
@@ -875,6 +889,14 @@ ORDER BY indexname`, expectedIndexNames)
 		return catalogContract{}, fmt.Errorf("iterate canonical indexes: %w", err)
 	}
 	return contract, nil
+}
+
+func sortedCatalogColumns(columns []columnCatalogContract) []columnCatalogContract {
+	result := append([]columnCatalogContract(nil), columns...)
+	slices.SortFunc(result, func(left, right columnCatalogContract) int {
+		return strings.Compare(left.Name, right.Name)
+	})
+	return result
 }
 
 func schemaTableNames() []string {

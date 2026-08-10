@@ -32,24 +32,25 @@ type ContentMetricsResponse struct {
 // particular, excerpt/body, author profile values, asset object keys and
 // object-store details are not public Content query fields.
 type ContentResponse struct {
-	ID             int64                  `json:"id" example:"7"`
-	SourceType     string                 `json:"source_type" example:"rss"`
-	SourceName     string                 `json:"source_name" example:"Product feed"`
-	ExternalID     string                 `json:"external_id" example:"item-123"`
-	ContentType    string                 `json:"content_type" example:"article"`
-	Title          string                 `json:"title" example:"Release notes"`
-	CanonicalURL   string                 `json:"canonical_url" example:"https://example.test/items/123"`
-	Language       string                 `json:"language" example:"en"`
-	PublishedAt    time.Time              `json:"published_at"`
-	FetchedAt      time.Time              `json:"fetched_at"`
-	Metrics        ContentMetricsResponse `json:"metrics"`
-	DedupeStatus   string                 `json:"dedupe_status" enums:"active,duplicate"`
-	DedupeReason   *string                `json:"dedupe_reason" extensions:"x-nullable"`
-	DedupeVersion  *string                `json:"dedupe_version" extensions:"x-nullable"`
-	RelevanceScore *float64               `json:"relevance_score,omitempty" extensions:"x-nullable"`
-	MatchDecision  *string                `json:"match_decision,omitempty" extensions:"x-nullable" enums:"accepted,review,rejected"`
-	EventID        *int64                 `json:"event_id,omitempty" extensions:"x-nullable"`
-	EventTitle     *string                `json:"event_title,omitempty" extensions:"x-nullable"`
+	ID                int64                  `json:"id" example:"7"`
+	SourceType        string                 `json:"source_type" example:"rss"`
+	SourceName        string                 `json:"source_name" example:"Product feed"`
+	ExternalID        string                 `json:"external_id" example:"item-123"`
+	ContentType       string                 `json:"content_type" example:"article"`
+	Title             string                 `json:"title" example:"Release notes"`
+	CanonicalURL      string                 `json:"canonical_url" example:"https://example.test/items/123"`
+	Language          string                 `json:"language" example:"en"`
+	PublishedAt       time.Time              `json:"published_at"`
+	FetchedAt         time.Time              `json:"fetched_at"`
+	Metrics           ContentMetricsResponse `json:"metrics"`
+	DedupeStatus      string                 `json:"dedupe_status" enums:"active,duplicate"`
+	DedupeReason      *string                `json:"dedupe_reason" extensions:"x-nullable"`
+	DedupeVersion     *string                `json:"dedupe_version" extensions:"x-nullable"`
+	RelevanceScore    *float64               `json:"relevance_score,omitempty" extensions:"x-nullable"`
+	MatchDecision     *string                `json:"match_decision,omitempty" extensions:"x-nullable" enums:"accepted,review,rejected"`
+	EventID           *int64                 `json:"event_id,omitempty" extensions:"x-nullable"`
+	EventTitle        *string                `json:"event_title,omitempty" extensions:"x-nullable"`
+	DocumentVersionID *int64                 `json:"document_version_id,omitempty" extensions:"x-nullable"`
 }
 
 type ContentPageResponse struct {
@@ -83,6 +84,7 @@ func contentResponse(content ingestiondomain.Content) ContentResponse {
 		},
 		DedupeStatus: string(content.Status), DedupeReason: nullableContentField(content.DedupeReason), DedupeVersion: nullableContentField(content.DedupeVersion),
 		RelevanceScore: content.RelevanceScore, EventID: content.EventID, EventTitle: nullableContentField(content.EventTitle),
+		DocumentVersionID: content.DocumentVersionID,
 	}
 	if content.MatchDecision != nil {
 		value := string(*content.MatchDecision)

@@ -43,11 +43,13 @@ type documentProjectionAuthorizationRecord struct {
 	storeDerivedDecisionID sql.NullInt64
 	retainDecisionID       sql.NullInt64
 	displayDecisionID      sql.NullInt64
+	embedLocalDecisionID   sql.NullInt64
 	selectedRetentionDays  sql.NullInt64
 	currentRetentionDays   sql.NullInt64
 	storeDerivedAllowed    bool
 	retainAllowed          bool
 	displayAllowed         bool
+	embedLocalAllowed      bool
 }
 
 func (reader *DocumentProjectionAuthorizationReader) ReadDocumentProjectionAuthorization(
@@ -77,10 +79,20 @@ WITH target AS (
   FROM target
   JOIN source_rights_decisions AS decision
     ON decision.source_connection_id=target.source_connection_id
-   AND decision.subject_type='document_version'
-   AND decision.subject_key=target.document_version_id::text
-   AND decision.input_digest=target.content_sha256
-   AND decision.action IN ('store_derived','retain','display_private')
+   AND (
+        (decision.subject_type='document_version'
+         AND decision.subject_key=target.document_version_id::text
+         AND decision.input_digest=target.content_sha256)
+        OR
+        (decision.subject_type='source_endpoint'
+         AND decision.subject_key=target.source_connection_id::text
+         AND EXISTS (
+           SELECT 1 FROM source_rights_policies AS policy
+           WHERE policy.id=decision.policy_id
+             AND policy.policy_hash=decision.input_digest
+         ))
+   )
+   AND decision.action IN ('store_derived','retain','display_private','embed_local')
   WHERE decision.effective_from<=$4
     AND (decision.expires_at IS NULL OR $4<decision.expires_at)
     AND NOT EXISTS (
@@ -123,6 +135,7 @@ SELECT
   store_decision.id,
   retain_decision.id,
   display_decision.id,
+  embed_decision.id,
   retain_decision.retention_days,
   current_rights_retention_days(
     target.source_connection_id,'document_version',target.document_version_id::text,
@@ -139,11 +152,16 @@ SELECT
   CASE WHEN display_decision.id IS NULL THEN false ELSE current_rights_action_allowed(
     display_decision.id,target.source_connection_id,'document_version',target.document_version_id::text,
     target.content_sha256,'display_private',$4
-  ) END AS display_allowed
+  ) END AS display_allowed,
+  CASE WHEN embed_decision.id IS NULL THEN false ELSE current_rights_action_allowed(
+    embed_decision.id,target.source_connection_id,'document_version',target.document_version_id::text,
+    target.content_sha256,'embed_local',$4
+  ) END AS embed_local_allowed
 FROM target
 LEFT JOIN selected AS store_decision ON store_decision.action='store_derived'
 LEFT JOIN selected AS retain_decision ON retain_decision.action='retain'
-LEFT JOIN selected AS display_decision ON display_decision.action='display_private'`,
+LEFT JOIN selected AS display_decision ON display_decision.action='display_private'
+LEFT JOIN selected AS embed_decision ON embed_decision.action='embed_local'`,
 		query.SourceConnectionID,
 		query.DocumentVersionID,
 		query.ContentSHA256,
@@ -178,11 +196,13 @@ func scanDocumentProjectionAuthorizationRecord(row *sql.Row) (documentProjection
 		&record.storeDerivedDecisionID,
 		&record.retainDecisionID,
 		&record.displayDecisionID,
+		&record.embedLocalDecisionID,
 		&record.selectedRetentionDays,
 		&record.currentRetentionDays,
 		&record.storeDerivedAllowed,
 		&record.retainAllowed,
 		&record.displayAllowed,
+		&record.embedLocalAllowed,
 	)
 	return record, err
 }
@@ -211,6 +231,11 @@ func documentProjectionAuthorizationDTOFromRecord(
 		value := record.displayDecisionID.Int64
 		displayDecisionID = &value
 	}
+	var embedLocalDecisionID *int64
+	if record.embedLocalDecisionID.Valid && record.embedLocalAllowed {
+		value := record.embedLocalDecisionID.Int64
+		embedLocalDecisionID = &value
+	}
 	result := ingestionapplication.DocumentProjectionAuthorizationDTO{
 		SourceConnectionID:             record.sourceConnectionID,
 		DocumentVersionID:              record.documentVersionID,
@@ -219,6 +244,7 @@ func documentProjectionAuthorizationDTOFromRecord(
 		StoreDerivedRightsDecisionID:   record.storeDerivedDecisionID.Int64,
 		RetainRightsDecisionID:         record.retainDecisionID.Int64,
 		DisplayPrivateRightsDecisionID: displayDecisionID,
+		EmbedLocalRightsDecisionID:     embedLocalDecisionID,
 	}
 	if err := ingestionapplication.ValidateDocumentProjectionAuthorizationDTO(result, query); err != nil {
 		return ingestionapplication.DocumentProjectionAuthorizationDTO{}, fmt.Errorf(

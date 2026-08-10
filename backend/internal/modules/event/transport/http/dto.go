@@ -93,9 +93,6 @@ type RadarEventResponse struct {
 	Momentum               float64              `json:"momentum"`
 	Breadth                float64              `json:"breadth"`
 	IndependentSourceCount int                  `json:"independent_source_count"`
-	Confirmation           string               `json:"confirmation"`
-	ConfirmationScore      *float64             `json:"confirmation_score"`
-	DataConfidence         float64              `json:"data_confidence"`
 	WatchRelevance         *float64             `json:"watch_relevance,omitempty"`
 	WatchFinalScore        *float64             `json:"watch_final_score,omitempty"`
 	RankingScore           float64              `json:"ranking_score"`
@@ -147,13 +144,12 @@ type HeatComponentResponse struct {
 	SourceBreadth   float64  `json:"source_breadth"`
 	Engagement      *float64 `json:"engagement"`
 	Recency         float64  `json:"recency"`
-	Credibility     float64  `json:"credibility"`
 }
 
 func heatResponse(result domain.HeatResult) HeatResponse {
 	response := HeatResponse{EventID: result.EventID, HeatScore: result.HeatScore, TrendScore: result.TrendScore, TrendStatus: string(result.TrendStatus), SourceCount: result.SourceCount, ContentCount: result.ContentCount, WindowHours: result.WindowHours, HeatVersion: result.HeatVersion, EvidenceSetHash: result.EvidenceSetHash, CapabilityProfileSetHash: result.CapabilityProfileSetHash, ReasonCodes: result.ReasonCodes, CapturedAt: result.WindowEnd}
 	if result.Components != nil {
-		response.Components = &HeatComponentResponse{Independence: result.Components.Independence, ContentVelocity: result.Components.ContentVelocity, SourceBreadth: result.Components.SourceBreadth, Engagement: result.Components.Engagement, Recency: result.Components.Recency, Credibility: result.Components.Credibility}
+		response.Components = &HeatComponentResponse{Independence: result.Components.Independence, ContentVelocity: result.Components.ContentVelocity, SourceBreadth: result.Components.SourceBreadth, Engagement: result.Components.Engagement, Recency: result.Components.Recency}
 	}
 	return response
 }
@@ -188,11 +184,10 @@ type ClaimResponse struct {
 }
 
 type IntelligenceEvidenceResponse struct {
-	ContentID  int64   `json:"content_id"`
-	Locator    string  `json:"locator"`
-	Excerpt    string  `json:"excerpt"`
-	Stance     string  `json:"stance"`
-	Confidence float64 `json:"confidence"`
+	ContentID int64  `json:"content_id"`
+	Locator   string `json:"locator"`
+	Excerpt   string `json:"excerpt"`
+	Stance    string `json:"stance"`
 }
 
 type IntelligenceClaimResponse struct {
@@ -200,25 +195,21 @@ type IntelligenceClaimResponse struct {
 	Version         int64                          `json:"version"`
 	NormalizedClaim string                         `json:"normalized_claim"`
 	ClaimHash       string                         `json:"claim_hash"`
-	Status          string                         `json:"status"`
-	Confidence      float64                        `json:"confidence"`
 	ManualLocked    bool                           `json:"manual_locked"`
 	Evidence        []IntelligenceEvidenceResponse `json:"evidence"`
 }
 
 type IntelligenceEntityResponse struct {
-	EntityID        int64   `json:"entity_id"`
-	EntityVersion   int64   `json:"entity_version"`
-	EntityKey       string  `json:"entity_key"`
-	EntityType      string  `json:"entity_type"`
-	CanonicalName   string  `json:"canonical_name"`
-	EntityLocked    bool    `json:"entity_locked"`
-	RelationID      int64   `json:"relation_id"`
-	RelationVersion int64   `json:"relation_version"`
-	Role            string  `json:"role"`
-	Confidence      float64 `json:"confidence"`
-	Origin          string  `json:"origin"`
-	Confirmed       bool    `json:"confirmed"`
+	EntityID        int64  `json:"entity_id"`
+	EntityVersion   int64  `json:"entity_version"`
+	EntityKey       string `json:"entity_key"`
+	EntityType      string `json:"entity_type"`
+	CanonicalName   string `json:"canonical_name"`
+	EntityLocked    bool   `json:"entity_locked"`
+	RelationID      int64  `json:"relation_id"`
+	RelationVersion int64  `json:"relation_version"`
+	Role            string `json:"role"`
+	Origin          string `json:"origin"`
 }
 
 type EventIntelligenceResponse struct {
@@ -324,9 +315,8 @@ func radarEventResponse(event domain.RadarEvent) RadarEventResponse {
 		TrendScore: event.TrendScore, TrendStatus: string(event.TrendStatus),
 		Attention: event.Attention, Momentum: event.Momentum, Breadth: event.Breadth,
 		IndependentSourceCount: event.IndependentSourceCount,
-		Confirmation:           string(event.Confirmation), ConfirmationScore: event.ConfirmationScore,
-		DataConfidence: event.DataConfidence, WatchRelevance: event.WatchRelevance,
-		WatchFinalScore: event.WatchFinalScore, RankingScore: event.RankingScore,
+		WatchRelevance:         event.WatchRelevance,
+		WatchFinalScore:        event.WatchFinalScore, RankingScore: event.RankingScore,
 		ReasonCodes: append([]string(nil), event.ReasonCodes...),
 	}
 	if event.LatestUpdate != nil {

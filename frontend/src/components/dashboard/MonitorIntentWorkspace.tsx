@@ -140,7 +140,11 @@ export function MonitorIntentWorkspace({
         if (cancelled || !result.data) return;
         reportedFailure = false;
         setExpansionRun(result.data);
-        if (result.data.status === "succeeded") {
+        const archivedWithCandidates =
+          result.data.status === "invalidated" &&
+          !result.data.failure_code &&
+          (result.data.candidates?.length ?? 0) > 0;
+        if (result.data.status === "succeeded" || archivedWithCandidates) {
           await refreshDraft(false);
           return;
         }
@@ -205,6 +209,10 @@ export function MonitorIntentWorkspace({
     (draft?.candidates ?? []).length > 0
       ? draft?.candidates ?? []
       : expansionRun?.candidates ?? [];
+  const expansionArchivedAfterSuccess =
+    expansionRun?.status === "invalidated" &&
+    !expansionRun.failure_code &&
+    (expansionRun.candidates?.length ?? 0) > 0;
 
   const changeForm = (next: MonitorIntentDraftForm) => {
     setForm(next);
@@ -381,7 +389,13 @@ export function MonitorIntentWorkspace({
             扩展任务正在{expansionRun.status === "queued" ? "排队" : "运行"}
           </p>
         ) : null}
-        {expansionRun?.status === "failed" || expansionRun?.status === "invalidated" ? (
+        {expansionArchivedAfterSuccess ? (
+          <p className="text-sm text-muted-foreground" role="status">
+            候选已生成，原运行绑定的草稿版本已归档
+          </p>
+        ) : null}
+        {expansionRun?.status === "failed" ||
+        (expansionRun?.status === "invalidated" && !expansionArchivedAfterSuccess) ? (
           <p className="text-sm text-destructive" role="alert">
             扩展任务{expansionRun.status === "invalidated" ? "因草稿变化已失效" : "失败"}
             {expansionRun.failure_code ? `：${expansionRun.failure_code}` : ""}

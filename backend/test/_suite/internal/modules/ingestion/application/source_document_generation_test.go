@@ -21,7 +21,7 @@ func TestSourceDocumentGenerationPublishesPlaintextIndexesExactReceiptThenPublis
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
-	if got, want := strings.Join(fixture.calls, ","), "read,extract,persist,authorize,project_plaintext,index,project_markdown"; got != want {
+	if got, want := strings.Join(fixture.calls, ","), "read,extract,persist,authorize,project_plaintext,structure,index,family,embed,schedule_matches,project_markdown"; got != want {
 		t.Fatalf("call order = %q, want %q", got, want)
 	}
 	if fixture.extractor.command.Evidence.EvidenceReferenceID != 71 || string(fixture.extractor.command.Evidence.SelectedPayload) != string(fixture.reader.evidence.SelectedPayload) {
@@ -53,7 +53,10 @@ func TestSourceDocumentGenerationPublishesPlaintextIndexesExactReceiptThenPublis
 		search.StoreDerivedRightsDecisionID != 81 || search.RetainRightsDecisionID != 82 ||
 		search.NormalizationProfileVersion != CanonicalDocumentSearchNormalizationProfileVersion ||
 		search.NormalizedTextSHA256 != fixture.extraction.PlaintextSHA256 || search.Plaintext != "Café launch" ||
-		len(search.EntityKeys) != 0 || len(search.ActionKeys) != 0 || len(search.LocationKeys) != 0 || len(search.RegionKeys) != 0 ||
+		!reflect.DeepEqual(search.EntityKeys, []string{"café", "café launch"}) ||
+		!reflect.DeepEqual(search.ActionKeys, []string{"launch"}) ||
+		!reflect.DeepEqual(search.LocationKeys, []string{"san francisco"}) ||
+		!reflect.DeepEqual(search.RegionKeys, []string{"us"}) ||
 		!search.IndexedAt.Equal(fixture.now) {
 		t.Fatalf("PersistSearchProjection() command = %#v", search)
 	}
@@ -70,6 +73,22 @@ func TestSourceDocumentGenerationPublishesPlaintextIndexesExactReceiptThenPublis
 		result.PlaintextArtifact == nil || result.PlaintextArtifact.ID != 38 || result.MarkdownArtifact == nil || result.MarkdownArtifact.ID != 39 ||
 		result.SearchProjection == nil || result.SearchProjection.ProjectionID != 49 {
 		t.Fatalf("Generate() result = %#v", result)
+	}
+	if fixture.contentFamily.calls != 1 || fixture.contentFamily.command.DocumentVersionID != 29 ||
+		fixture.contentFamily.command.DerivedArtifactID != 38 || fixture.contentFamily.command.CanonicalPlaintext != "Café launch" ||
+		fixture.contentFamily.command.StoreDerivedRightsDecisionID != 81 || fixture.contentFamily.command.RetainRightsDecisionID != 82 ||
+		result.ContentFamilyAvailability != SourceDocumentAvailable || result.ContentFamilyDecision == nil || result.ContentFamilyDecision.FamilyID != 56 {
+		t.Fatalf("content family assignment = calls %d command %#v result %#v", fixture.contentFamily.calls, fixture.contentFamily.command, result)
+	}
+	if fixture.matchScheduler.calls != 1 || fixture.matchScheduler.command.DocumentVersionID != 29 ||
+		fixture.matchScheduler.result.DocumentVersionID != 29 || fixture.matchScheduler.result.JobID != 59 {
+		t.Fatalf("published match scheduling = calls %d command %#v result %#v", fixture.matchScheduler.calls, fixture.matchScheduler.command, fixture.matchScheduler.result)
+	}
+	if fixture.embedding.calls != 1 || fixture.embedding.command.DocumentVersionID != 29 ||
+		fixture.embedding.command.EmbedLocalRightsDecisionID != 84 || fixture.embedding.command.RetainRightsDecisionID != 82 ||
+		fixture.embedding.command.NormalizedTextSHA256 != fixture.extraction.PlaintextSHA256 || fixture.embedding.command.Plaintext != "Café launch" ||
+		result.EmbeddingAvailability != SourceDocumentAvailable || result.EmbeddingReceipt == nil || result.EmbeddingReceipt.EmbeddingID != 69 {
+		t.Fatalf("document embedding = calls %d command %#v result %#v", fixture.embedding.calls, fixture.embedding.command, result)
 	}
 	resultType := reflect.TypeOf(result)
 	for _, forbidden := range []string{"SelectedPayload", "ProjectionBytes", "Markdown", "Plaintext", "Body"} {
@@ -102,12 +121,12 @@ func TestSourceDocumentGenerationPersistsMetadataOnlyWithoutRightsOrArtifact(t *
 	if got, want := strings.Join(fixture.calls, ","), "read,extract,persist"; got != want {
 		t.Fatalf("call order = %q, want %q", got, want)
 	}
-	if fixture.persister.command.Observation.Body != "" || fixture.authorization.calls != 0 || fixture.projector.calls != 0 || fixture.search.calls != 0 {
-		t.Fatalf("metadata-only side effects = persist %#v, auth %d, project %d, search %d", fixture.persister.command, fixture.authorization.calls, fixture.projector.calls, fixture.search.calls)
+	if fixture.persister.command.Observation.Body != "" || fixture.authorization.calls != 0 || fixture.projector.calls != 0 || fixture.structure.calls != 0 || fixture.search.calls != 0 || fixture.contentFamily.calls != 0 || fixture.embedding.calls != 0 || fixture.matchScheduler.calls != 0 {
+		t.Fatalf("metadata-only side effects = persist %#v, auth %d, project %d, search %d, embedding %d, match schedule %d", fixture.persister.command, fixture.authorization.calls, fixture.projector.calls, fixture.search.calls, fixture.embedding.calls, fixture.matchScheduler.calls)
 	}
 	if result.PlaintextAvailability != SourceDocumentNotApplicable || result.MarkdownAvailability != SourceDocumentNotApplicable ||
 		result.SearchAvailability != SourceDocumentNotApplicable || result.PlaintextArtifact != nil || result.MarkdownArtifact != nil ||
-		result.SearchProjection != nil || result.ContentSHA256 != "" || result.DocumentVersionID != 29 ||
+		result.SearchProjection != nil || result.ContentFamilyAvailability != SourceDocumentNotApplicable || result.ContentFamilyDecision != nil || result.ContentSHA256 != "" || result.DocumentVersionID != 29 ||
 		result.LastVerifiedDocumentLifecycleState != DocumentPolicyPending {
 		t.Fatalf("metadata-only result = %#v", result)
 	}
@@ -122,7 +141,7 @@ func TestSourceDocumentGenerationReturnsHonestPartialResultWhenSearchProjectionF
 	if !errors.Is(err, sharedrepository.ErrUnavailable) {
 		t.Fatalf("Generate() error = %v, want search unavailable", err)
 	}
-	if got, want := strings.Join(fixture.calls, ","), "read,extract,persist,authorize,project_plaintext,index"; got != want {
+	if got, want := strings.Join(fixture.calls, ","), "read,extract,persist,authorize,project_plaintext,structure,index"; got != want {
 		t.Fatalf("call order = %q, want %q", got, want)
 	}
 	if result.PlaintextAvailability != SourceDocumentAvailable || result.PlaintextArtifact == nil || result.PlaintextArtifact.ID != 38 ||
@@ -131,6 +150,30 @@ func TestSourceDocumentGenerationReturnsHonestPartialResultWhenSearchProjectionF
 		result.LastVerifiedDocumentLifecycleState != DocumentDerivedAvailable || fixture.projector.calls != 1 {
 		t.Fatalf("partial search failure result = %#v", result)
 	}
+}
+
+func TestSourceDocumentGenerationFailsClosedBeforeIndexWhenStructureExtractionFails(t *testing.T) {
+	t.Parallel()
+
+	t.Run("extractor unavailable", func(t *testing.T) {
+		fixture := newSourceDocumentGenerationFixture(t, BodyCompletenessFull)
+		fixture.structure.err = sharedrepository.ErrUnavailable
+		result, err := fixture.service.Generate(context.Background(), GenerateSourceDocumentCommand{EvidenceReferenceID: 71})
+		if !errors.Is(err, sharedrepository.ErrUnavailable) || fixture.structure.calls != 1 || fixture.search.calls != 0 || fixture.embedding.calls != 0 ||
+			result.PlaintextAvailability != SourceDocumentAvailable || result.SearchAvailability != SourceDocumentUnavailable {
+			t.Fatalf("structure failure result/error = %#v / %v", result, err)
+		}
+	})
+
+	t.Run("extractor changes document identity", func(t *testing.T) {
+		fixture := newSourceDocumentGenerationFixture(t, BodyCompletenessFull)
+		fixture.structure.result.DocumentVersionID++
+		result, err := fixture.service.Generate(context.Background(), GenerateSourceDocumentCommand{EvidenceReferenceID: 71})
+		if !errors.Is(err, sharedrepository.ErrConflict) || fixture.structure.calls != 1 || fixture.search.calls != 0 ||
+			result.PlaintextAvailability != SourceDocumentAvailable || result.SearchAvailability != SourceDocumentUnavailable {
+			t.Fatalf("structure mismatch result/error = %#v / %v", result, err)
+		}
+	})
 }
 
 func TestSourceDocumentGenerationReturnsHonestPartialResultWhenMarkdownProjectionFails(t *testing.T) {
@@ -142,7 +185,7 @@ func TestSourceDocumentGenerationReturnsHonestPartialResultWhenMarkdownProjectio
 	if !errors.Is(err, sharedrepository.ErrUnavailable) {
 		t.Fatalf("Generate() error = %v, want Markdown unavailable", err)
 	}
-	if got, want := strings.Join(fixture.calls, ","), "read,extract,persist,authorize,project_plaintext,index,project_markdown"; got != want {
+	if got, want := strings.Join(fixture.calls, ","), "read,extract,persist,authorize,project_plaintext,structure,index,family,embed,schedule_matches,project_markdown"; got != want {
 		t.Fatalf("call order = %q, want %q", got, want)
 	}
 	if result.PlaintextAvailability != SourceDocumentAvailable || result.SearchAvailability != SourceDocumentAvailable ||
@@ -150,6 +193,51 @@ func TestSourceDocumentGenerationReturnsHonestPartialResultWhenMarkdownProjectio
 		result.LastVerifiedDocumentLifecycleState != DocumentDerivedAvailable {
 		t.Fatalf("partial Markdown failure result = %#v", result)
 	}
+}
+
+func TestSourceDocumentGenerationReturnsHonestSearchReceiptWhenPublishedMatchSchedulingFails(t *testing.T) {
+	t.Parallel()
+
+	fixture := newSourceDocumentGenerationFixture(t, BodyCompletenessFull)
+	fixture.matchScheduler.err = sharedrepository.ErrUnavailable
+	result, err := fixture.service.Generate(context.Background(), GenerateSourceDocumentCommand{EvidenceReferenceID: 71})
+	if !errors.Is(err, sharedrepository.ErrUnavailable) {
+		t.Fatalf("Generate() error = %v, want match scheduling unavailable", err)
+	}
+	if got, want := strings.Join(fixture.calls, ","), "read,extract,persist,authorize,project_plaintext,structure,index,family,embed,schedule_matches"; got != want {
+		t.Fatalf("call order = %q, want %q", got, want)
+	}
+	if result.PlaintextAvailability != SourceDocumentAvailable || result.SearchAvailability != SourceDocumentAvailable ||
+		result.SearchProjection == nil || result.MarkdownAvailability != SourceDocumentUnavailable || result.MarkdownArtifact != nil ||
+		result.LastVerifiedDocumentLifecycleState != DocumentDerivedAvailable {
+		t.Fatalf("partial match scheduling failure result = %#v", result)
+	}
+}
+
+func TestSourceDocumentGenerationDoesNotScheduleMatchUntilEmbeddingAttemptIsTerminal(t *testing.T) {
+	t.Parallel()
+
+	t.Run("transient embedding failure", func(t *testing.T) {
+		fixture := newSourceDocumentGenerationFixture(t, BodyCompletenessFull)
+		fixture.embedding.err = sharedrepository.ErrUnavailable
+		result, err := fixture.service.Generate(context.Background(), GenerateSourceDocumentCommand{EvidenceReferenceID: 71})
+		if !errors.Is(err, sharedrepository.ErrUnavailable) || fixture.matchScheduler.calls != 0 ||
+			result.SearchAvailability != SourceDocumentAvailable || result.EmbeddingAvailability != SourceDocumentUnavailable {
+			t.Fatalf("embedding failure result/error/match calls = %#v / %v / %d", result, err, fixture.matchScheduler.calls)
+		}
+	})
+
+	t.Run("explicit model degradation", func(t *testing.T) {
+		fixture := newSourceDocumentGenerationFixture(t, BodyCompletenessFull)
+		fixture.embedding.result = ProduceDocumentEmbeddingResult{
+			DocumentVersionID: 29, Availability: SourceDocumentUnavailable, UnavailableReason: "embedding_model_unavailable",
+		}
+		result, err := fixture.service.Generate(context.Background(), GenerateSourceDocumentCommand{EvidenceReferenceID: 71})
+		if err != nil || fixture.matchScheduler.calls != 1 || result.EmbeddingAvailability != SourceDocumentUnavailable ||
+			result.EmbeddingUnavailableReason != "embedding_model_unavailable" || result.EmbeddingReceipt != nil {
+			t.Fatalf("degraded embedding result/error/match calls = %#v / %v / %d", result, err, fixture.matchScheduler.calls)
+		}
+	})
 }
 
 func TestSourceDocumentGenerationRejectsEveryMismatchedDownstreamReceiptBeforeNextEffect(t *testing.T) {
@@ -239,6 +327,26 @@ func TestSourceDocumentGenerationRejectsTamperedSelectedBytesBeforeExtraction(t 
 	}
 }
 
+func TestSelectedSourceEvidenceAcceptsUntitledPlatformComment(t *testing.T) {
+	t.Parallel()
+
+	fixture := newSourceDocumentGenerationFixture(t, BodyCompletenessFull)
+	evidence := fixture.reader.evidence
+	evidence.SourceCode = "hacker_news"
+	evidence.ContentType = "comment"
+	evidence.Title = ""
+	evidence.BodyOrigin = BodyOriginPlatformPost
+	evidence.SelectedPayload = []byte(`{"id":2921983,"type":"comment","text":"An exact archived comment"}`)
+	digest := sha256.Sum256(evidence.SelectedPayload)
+	evidence.SelectedPayloadSHA256 = fmt.Sprintf("%x", digest)
+	evidence.PayloadMIMEType = "application/json"
+	evidence.SelectorVersion = "whole-payload-sha256-v1"
+
+	if err := validateSelectedSourceEvidence(evidence, evidence.EvidenceReferenceID); err != nil {
+		t.Fatalf("untitled platform comment was rejected: %v", err)
+	}
+}
+
 func TestSourceDocumentGenerationFailsClosedOnMismatchedDerivedAuthorization(t *testing.T) {
 	t.Parallel()
 
@@ -292,16 +400,20 @@ func TestSourceDocumentGenerationRejectsExtractorPromotionAndPersistenceMismatch
 }
 
 type sourceDocumentGenerationFixture struct {
-	service       *SourceDocumentGenerationService
-	reader        *selectedSourceEvidenceReaderFake
-	extractor     *selectedSourceBodyExtractorFake
-	persister     *documentObservationPersisterFake
-	authorization *documentProjectionAuthorizationReaderFake
-	projector     *documentArtifactProjectorFake
-	search        *documentSearchProjectionPersisterFake
-	extraction    ExtractSelectedSourceBodyResult
-	calls         []string
-	now           time.Time
+	service        *SourceDocumentGenerationService
+	reader         *selectedSourceEvidenceReaderFake
+	extractor      *selectedSourceBodyExtractorFake
+	persister      *documentObservationPersisterFake
+	authorization  *documentProjectionAuthorizationReaderFake
+	projector      *documentArtifactProjectorFake
+	search         *documentSearchProjectionPersisterFake
+	contentFamily  *documentContentFamilyAssignerFake
+	structure      *documentStructureExtractorFake
+	embedding      *documentEmbeddingProducerFake
+	matchScheduler *publishedDocumentMatchEvaluationSchedulerFake
+	extraction     ExtractSelectedSourceBodyResult
+	calls          []string
+	now            time.Time
 }
 
 func newSourceDocumentGenerationFixture(t *testing.T, completeness string) *sourceDocumentGenerationFixture {
@@ -325,6 +437,7 @@ func newSourceDocumentGenerationFixture(t *testing.T, completeness string) *sour
 		MarkdownTransformerProfileSHA256: strings.Repeat("b", 64),
 		PlaintextSHA256:                  fmt.Sprintf("%x", sha256.Sum256([]byte("Café launch"))),
 	}
+	addSourceDocumentExtractionAnchorFacts(&fixture.extraction)
 	fixture.extractor = &selectedSourceBodyExtractorFake{callsLog: &fixture.calls, result: fixture.extraction}
 	capturedAt := now.Add(-time.Minute)
 	fixture.persister = &documentObservationPersisterFake{callsLog: &fixture.calls, result: PersistDocumentVersionResult{
@@ -345,9 +458,11 @@ func newSourceDocumentGenerationFixture(t *testing.T, completeness string) *sour
 		DocumentVersionCreated: true,
 	}}
 	displayID := int64(83)
+	embedID := int64(84)
 	fixture.authorization = &documentProjectionAuthorizationReaderFake{callsLog: &fixture.calls, result: DocumentProjectionAuthorizationDTO{
 		SourceConnectionID: 7, DocumentVersionID: 29, ContentSHA256: fixture.extraction.PlaintextSHA256,
-		DecisionAt: now, StoreDerivedRightsDecisionID: 81, RetainRightsDecisionID: 82, DisplayPrivateRightsDecisionID: &displayID,
+		DecisionAt: now, StoreDerivedRightsDecisionID: 81, RetainRightsDecisionID: 82,
+		DisplayPrivateRightsDecisionID: &displayID, EmbedLocalRightsDecisionID: &embedID,
 	}}
 	availableAt := now
 	plaintextVersion := fixture.persister.result.DocumentVersion
@@ -376,6 +491,12 @@ func newSourceDocumentGenerationFixture(t *testing.T, completeness string) *sour
 				TransformerProfileSHA256: strings.Repeat("b", 64), SHA256: fmt.Sprintf("%x", sha256.Sum256([]byte("# Café launch"))),
 				MIMEType: "text/markdown; charset=utf-8", SizeBytes: int64(len("# Café launch")), LifecycleState: DerivedArtifactAvailable,
 				AvailableAt: &availableAt, RetentionUntil: now.Add(30 * 24 * time.Hour), CreatedAt: now, UpdatedAt: now,
+				AnchorMap: &DerivedArtifactAnchorMapDTO{
+					NormalizationVersion:    fixture.extraction.TextNormalizationVersion,
+					AnchorMapProfileVersion: fixture.extraction.AnchorMapProfileVersion,
+					PlaintextSHA256:         fixture.extraction.PlaintextSHA256, MarkdownSHA256: fixture.extraction.MarkdownSHA256,
+					AnchorMapSHA256: fixture.extraction.AnchorMapSHA256,
+				},
 			},
 			DocumentVersion: markdownVersion,
 		},
@@ -388,16 +509,78 @@ func newSourceDocumentGenerationFixture(t *testing.T, completeness string) *sour
 		RetentionUntil:              now.Add(30 * 24 * time.Hour), IndexedAt: now,
 		LifecycleState: RecallAssetLifecycleActive, Created: true,
 	}}
+	fixture.structure = &documentStructureExtractorFake{callsLog: &fixture.calls, result: ExtractDocumentStructureResult{
+		DocumentVersionID: 29, ContentSHA256: fixture.extraction.PlaintextSHA256,
+		ProfileVersion: CanonicalDocumentStructureProfileVersion,
+		EntityKeys:     []string{"café", "café launch"}, ActionKeys: []string{"launch"},
+		LocationKeys: []string{"san francisco"}, RegionKeys: []string{"us"},
+	}}
+	fixture.contentFamily = &documentContentFamilyAssignerFake{callsLog: &fixture.calls, result: AssignDocumentContentFamilyResult{Decision: ContentFamilyDecisionDTO{
+		DecisionID: 55, FamilyID: 56, FamilyVersion: 1, DocumentVersionID: 29, RootDocumentVersionID: 29,
+		Action: "create", Relation: "unrelated", DecisionProfileVersion: CanonicalContentFamilyDecisionProfileVersion,
+		ReasonCodes: []string{"no_candidate"},
+	}}}
+	fixture.matchScheduler = &publishedDocumentMatchEvaluationSchedulerFake{callsLog: &fixture.calls, result: SchedulePublishedDocumentMatchEvaluationResult{
+		DocumentVersionID: 29, JobID: 59, Created: true,
+	}}
+	fixture.embedding = &documentEmbeddingProducerFake{callsLog: &fixture.calls, result: ProduceDocumentEmbeddingResult{
+		DocumentVersionID: 29, Availability: SourceDocumentAvailable,
+		Receipt: &DocumentEmbeddingReceiptResult{
+			EmbeddingID: 69, DocumentVersionID: 29, SourceConnectionID: 7, EmbedLocalRightsDecisionID: 84,
+			RetainRightsDecisionID: 82, ModelProfileID: 91, ModelProfileVersion: 1,
+			ModelVersion: "document-embedding-v1", NormalizedTextSHA256: fixture.extraction.PlaintextSHA256,
+			AIRunID: 101, RetentionUntil: now.Add(30 * 24 * time.Hour), CreatedAt: now,
+			LifecycleState: RecallAssetLifecycleActive, Created: true,
+		},
+	}}
 	service, err := NewSourceDocumentGenerationService(SourceDocumentGenerationDependencies{
 		Evidence: fixture.reader, Extractor: fixture.extractor, DocumentVersions: fixture.persister,
 		Authorizations: fixture.authorization, Projections: fixture.projector, SearchProjections: fixture.search,
-		Now: func() time.Time { return now },
+		ContentFamilies:           fixture.contentFamily,
+		StructureExtractor:        fixture.structure,
+		PublishedMatchEvaluations: fixture.matchScheduler,
+		DocumentEmbeddings:        fixture.embedding,
+		Now:                       func() time.Time { return now },
 	})
 	if err != nil {
 		t.Fatalf("NewSourceDocumentGenerationService() error = %v", err)
 	}
 	fixture.service = service
 	return fixture
+}
+
+func addSourceDocumentExtractionAnchorFacts(extraction *ExtractSelectedSourceBodyResult) {
+	if extraction == nil || extraction.Plaintext == "" || extraction.Markdown == "" {
+		return
+	}
+	extraction.MarkdownSHA256 = fmt.Sprintf("%x", sha256.Sum256([]byte(extraction.Markdown)))
+	extraction.TextNormalizationVersion = CanonicalDocumentTextNormalizationVersion
+	extraction.AnchorMapProfileVersion = CanonicalDocumentAnchorMapProfileVersion
+	extraction.AnchorBlocks = []DocumentAnchorBlockDTO{{
+		Ordinal: 0, PlaintextUTF8ByteStart: 0, PlaintextUTF8ByteEnd: int64(len(extraction.Plaintext)),
+		MarkdownUTF8ByteStart: 0, MarkdownUTF8ByteEnd: int64(len(extraction.Markdown)),
+		MarkdownAnchor: DocumentMarkdownAnchor(0, extraction.Plaintext),
+	}}
+	extraction.AnchorMapSHA256 = DocumentAnchorMapSHA256(MapDocumentTextResult{
+		Plaintext: extraction.Plaintext, NormalizationVersion: extraction.TextNormalizationVersion,
+		AnchorMapProfileVersion: extraction.AnchorMapProfileVersion, PlaintextSHA256: extraction.PlaintextSHA256,
+		MarkdownSHA256: extraction.MarkdownSHA256, Blocks: extraction.AnchorBlocks,
+	})
+}
+
+type documentStructureExtractorFake struct {
+	callsLog *[]string
+	command  ExtractDocumentStructureCommand
+	result   ExtractDocumentStructureResult
+	err      error
+	calls    int
+}
+
+func (extractor *documentStructureExtractorFake) ExtractDocumentStructure(_ context.Context, command ExtractDocumentStructureCommand) (ExtractDocumentStructureResult, error) {
+	*extractor.callsLog = append(*extractor.callsLog, "structure")
+	extractor.calls++
+	extractor.command = command
+	return extractor.result, extractor.err
 }
 
 type selectedSourceEvidenceReaderFake struct {
@@ -480,6 +663,51 @@ type documentSearchProjectionPersisterFake struct {
 	result   DocumentSearchProjectionResult
 	err      error
 	calls    int
+}
+
+type publishedDocumentMatchEvaluationSchedulerFake struct {
+	callsLog *[]string
+	command  SchedulePublishedDocumentMatchEvaluationCommand
+	result   SchedulePublishedDocumentMatchEvaluationResult
+	err      error
+	calls    int
+}
+
+type documentContentFamilyAssignerFake struct {
+	callsLog *[]string
+	command  AssignDocumentContentFamilyCommand
+	result   AssignDocumentContentFamilyResult
+	err      error
+	calls    int
+}
+
+func (assigner *documentContentFamilyAssignerFake) Assign(_ context.Context, command AssignDocumentContentFamilyCommand) (AssignDocumentContentFamilyResult, error) {
+	*assigner.callsLog = append(*assigner.callsLog, "family")
+	assigner.calls++
+	assigner.command = command
+	return assigner.result, assigner.err
+}
+
+func (scheduler *publishedDocumentMatchEvaluationSchedulerFake) SchedulePublishedDocumentMatchEvaluation(_ context.Context, command SchedulePublishedDocumentMatchEvaluationCommand) (SchedulePublishedDocumentMatchEvaluationResult, error) {
+	*scheduler.callsLog = append(*scheduler.callsLog, "schedule_matches")
+	scheduler.calls++
+	scheduler.command = command
+	return scheduler.result, scheduler.err
+}
+
+type documentEmbeddingProducerFake struct {
+	callsLog *[]string
+	command  ProduceDocumentEmbeddingCommand
+	result   ProduceDocumentEmbeddingResult
+	err      error
+	calls    int
+}
+
+func (producer *documentEmbeddingProducerFake) ProduceDocumentEmbedding(_ context.Context, command ProduceDocumentEmbeddingCommand) (ProduceDocumentEmbeddingResult, error) {
+	*producer.callsLog = append(*producer.callsLog, "embed")
+	producer.calls++
+	producer.command = command
+	return producer.result, producer.err
 }
 
 func (persister *documentSearchProjectionPersisterFake) PersistSearchProjection(_ context.Context, command PersistDocumentSearchProjectionCommand) (DocumentSearchProjectionResult, error) {

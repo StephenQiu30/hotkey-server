@@ -26,6 +26,9 @@ func TestDocumentProjectionAuthorizationReaderSelectsExactCurrentDecisions(t *te
 		nil,
 		fixture.persisted.DocumentVersion.ID,
 	)
+	embedPolicy := createDocumentRightsPolicy(t, runtime, fixture.sourceID, 3, time.Now().UTC().Add(-time.Hour))
+	embedDecisionID := insertDocumentRightsDecision(t, runtime, embedPolicy, fixture.persisted.DocumentVersion.ID,
+		fixture.persisted.DocumentVersion.ContentSHA256, "embed_local", nil, nil, fixture.persisted.DocumentVersion.ID)
 	decisionAt := time.Now().UTC().Truncate(time.Microsecond)
 	query := ingestionapplication.DocumentProjectionAuthorizationQuery{
 		SourceConnectionID: fixture.sourceID,
@@ -42,7 +45,8 @@ func TestDocumentProjectionAuthorizationReaderSelectsExactCurrentDecisions(t *te
 	if result.SourceConnectionID != query.SourceConnectionID || result.DocumentVersionID != query.DocumentVersionID ||
 		result.ContentSHA256 != query.ContentSHA256 || !result.DecisionAt.Equal(decisionAt) ||
 		result.StoreDerivedRightsDecisionID != storeDecisionID || result.RetainRightsDecisionID != retainDecisionID ||
-		result.DisplayPrivateRightsDecisionID == nil || *result.DisplayPrivateRightsDecisionID != displayDecisionID {
+		result.DisplayPrivateRightsDecisionID == nil || *result.DisplayPrivateRightsDecisionID != displayDecisionID ||
+		result.EmbedLocalRightsDecisionID == nil || *result.EmbedLocalRightsDecisionID != embedDecisionID {
 		t.Fatalf("authorization projection = %#v", result)
 	}
 
@@ -142,5 +146,41 @@ func TestDocumentProjectionAuthorizationReaderTreatsSamePriorityConflictAsDenied
 	})
 	if !errors.Is(err, sharedrepository.ErrConflict) {
 		t.Fatalf("same-priority retain conflict error = %v, want conflict", err)
+	}
+}
+
+func TestDocumentProjectionAuthorizationReaderUsesEndpointRightsWithExactDenyPrecedence(t *testing.T) {
+	runtime := openDocumentVersionRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	fixture := createDerivedArtifactDocument(t, runtime, "authorization-endpoint", 74)
+	decisionAt := time.Now().UTC().Truncate(time.Microsecond)
+	endpointPolicy := createDocumentRightsPolicy(t, runtime, fixture.sourceID, 1, decisionAt.Add(-time.Hour))
+	retentionDays := 30
+	storeID := insertDocumentEndpointRightsDecision(t, runtime, endpointPolicy, "store_derived", "allow", nil)
+	retainID := insertDocumentEndpointRightsDecision(t, runtime, endpointPolicy, "retain", "allow", &retentionDays)
+	displayID := insertDocumentEndpointRightsDecision(t, runtime, endpointPolicy, "display_private", "allow", nil)
+	embedID := insertDocumentEndpointRightsDecision(t, runtime, endpointPolicy, "embed_local", "allow", nil)
+	query := ingestionapplication.DocumentProjectionAuthorizationQuery{
+		SourceConnectionID: fixture.sourceID,
+		DocumentVersionID:  fixture.persisted.DocumentVersion.ID,
+		ContentSHA256:      fixture.persisted.DocumentVersion.ContentSHA256,
+		DecisionAt:         decisionAt,
+	}
+	reader := ingestionpostgres.NewDocumentProjectionAuthorizationReader(runtime)
+	result, err := reader.ReadDocumentProjectionAuthorization(context.Background(), query)
+	if err != nil {
+		t.Fatalf("ReadDocumentProjectionAuthorization() endpoint error = %v", err)
+	}
+	if result.StoreDerivedRightsDecisionID != storeID || result.RetainRightsDecisionID != retainID ||
+		result.DisplayPrivateRightsDecisionID == nil || *result.DisplayPrivateRightsDecisionID != displayID ||
+		result.EmbedLocalRightsDecisionID == nil || *result.EmbedLocalRightsDecisionID != embedID {
+		t.Fatalf("endpoint authorization projection = %#v", result)
+	}
+
+	denyPolicy := createDocumentObservationRightsPolicy(t, runtime, fixture.sourceID, fixture.observationID, 2, decisionAt.Add(-time.Hour))
+	insertDocumentRightsDecisionWithOutcome(t, runtime, denyPolicy, fixture.persisted.DocumentVersion.ID,
+		fixture.persisted.DocumentVersion.ContentSHA256, "store_derived", "deny", nil, nil, fixture.persisted.DocumentVersion.ID)
+	if _, err := reader.ReadDocumentProjectionAuthorization(context.Background(), query); !errors.Is(err, sharedrepository.ErrConflict) {
+		t.Fatalf("higher-priority exact deny error = %v, want conflict", err)
 	}
 }

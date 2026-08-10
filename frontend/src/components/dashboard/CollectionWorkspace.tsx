@@ -281,13 +281,20 @@ export function CollectionWorkspace({
                         ) : null}
                       </div>
                       <div className="mt-3 flex flex-wrap items-center gap-4 text-xs">
-                        {content.id != null ? (
+                        {content.document_version_id != null ||
+                        content.id != null ? (
                           <Link
                             aria-label={`阅读归档：${title}`}
                             className="text-muted-foreground no-underline"
-                            href={`/dashboard/contents/${content.id}`}
+                            href={
+                              content.document_version_id != null
+                                ? `/dashboard/document-versions/${content.document_version_id}`
+                                : `/dashboard/contents/${content.id}`
+                            }
                           >
-                            阅读归档
+                            {content.document_version_id != null
+                              ? "阅读归档"
+                              : "查看采集记录"}
                           </Link>
                         ) : null}
                         {content.canonical_url ? (

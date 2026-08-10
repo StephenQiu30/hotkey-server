@@ -1,14 +1,19 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useNotificationStore } from "@/stores/notificationStore";
 
-const notification = (id: number): HotKeyAPI.NotificationResponse => ({
+const notification = (id: number): HotKeyAPI.UserNotificationResponseDTO => ({
   id,
-  event_type: "event.updated",
-  resource_type: "event",
+  version: 1,
+  monitor_id: 2,
+  event_type: "micro_event.updated",
+  resource_type: "micro_event",
   resource_id: id,
-  audience: "viewer",
+  resource_version: 1,
   occurred_at: "2026-08-08T00:00:00Z",
-  payload: { title: `通知 ${id}` },
+  created_at: "2026-08-08T00:00:00Z",
+  title: `通知 ${id}`,
+  resource_status: "active",
+  deep_link: `/dashboard/events?event=${id}`,
 });
 
 describe("notificationStore", () => {
@@ -29,15 +34,15 @@ describe("notificationStore", () => {
     expect(state.items[0].id).toBe(105);
     expect(state.lastEventID).toBe(105);
     expect(state.unreadCount).toBe(100);
-    expect(localStorage.getItem("hotkey.notifications.7")).toBe(
+    expect(localStorage.getItem("hotkey.notifications.v2.7")).toBe(
       JSON.stringify({ lastEventID: 105, readThroughID: 0 }),
     );
-    expect(localStorage.getItem("hotkey.notifications.7")).not.toContain("通知");
+    expect(localStorage.getItem("hotkey.notifications.v2.7")).not.toContain("通知");
   });
 
   it("restores per-user cursors and marks all loaded notifications read", () => {
     localStorage.setItem(
-      "hotkey.notifications.9",
+      "hotkey.notifications.v2.9",
       JSON.stringify({ lastEventID: 8, readThroughID: 5 }),
     );
     useNotificationStore.getState().initializeUser(9);

@@ -124,7 +124,7 @@ func metricCapabilityProfile(request CreateMetricCapabilityProfileRequest) domai
 		SourceType: domain.SourceType(request.SourceType), ProfileVersion: request.ProfileVersion,
 		SupportsViews: request.SupportsViews, SupportsLikes: request.SupportsLikes, SupportsComments: request.SupportsComments,
 		SupportsShares: request.SupportsShares, IndependenceStrategy: domain.IndependenceStrategy(request.IndependenceStrategy),
-		NormalizationWindowHours: request.NormalizationWindowHours, CredibilityWeight: request.CredibilityWeight,
+		NormalizationWindowHours: request.NormalizationWindowHours, CredibilityWeight: 0,
 		MaxSingleItemContribution: request.MaxSingleItemContribution,
 	}
 }

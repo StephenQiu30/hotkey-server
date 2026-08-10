@@ -24,7 +24,9 @@ const (
 	// memory-only plaintext identity consumed by lexical recall. The current
 	// profile performs no additional rewrite after the extractor's UTF-8, LF,
 	// trim and NFC canonicalization.
-	CanonicalDocumentSearchNormalizationProfileVersion = "canonical-nfc-plaintext-v1"
+	CanonicalDocumentSearchNormalizationProfileVersion = "canonical-nfc-plaintext-structure-v1"
+	CanonicalContentFingerprintProfileVersion          = "content-fingerprint-v1"
+	CanonicalContentFamilyDecisionProfileVersion       = "content-family-decision-v1"
 )
 
 type SourceEvidenceQuery struct {
@@ -86,6 +88,11 @@ type ExtractSelectedSourceBodyResult struct {
 	PlaintextTransformerProfileSHA256 string
 	MarkdownTransformerProfileSHA256  string
 	PlaintextSHA256                   string
+	MarkdownSHA256                    string
+	TextNormalizationVersion          string
+	AnchorMapProfileVersion           string
+	AnchorMapSHA256                   string
+	AnchorBlocks                      []DocumentAnchorBlockDTO
 	Truncated                         bool
 	QualityScore                      *float64
 	QualityWarnings                   []string
@@ -118,6 +125,7 @@ type DocumentProjectionAuthorizationDTO struct {
 	StoreDerivedRightsDecisionID   int64
 	RetainRightsDecisionID         int64
 	DisplayPrivateRightsDecisionID *int64
+	EmbedLocalRightsDecisionID     *int64
 }
 
 // DocumentProjectionAuthorizationReader must fail closed unless all returned
@@ -132,6 +140,10 @@ type DocumentArtifactProjector interface {
 
 type DocumentSearchProjectionPersister interface {
 	PersistSearchProjection(context.Context, PersistDocumentSearchProjectionCommand) (DocumentSearchProjectionResult, error)
+}
+
+type DocumentContentFamilyAssigner interface {
+	Assign(context.Context, AssignDocumentContentFamilyCommand) (AssignDocumentContentFamilyResult, error)
 }
 
 type GenerateSourceDocumentCommand struct {
@@ -154,6 +166,9 @@ type GenerateSourceDocumentResult struct {
 	PlaintextAvailability              SourceDocumentAvailability
 	MarkdownAvailability               SourceDocumentAvailability
 	SearchAvailability                 SourceDocumentAvailability
+	EmbeddingAvailability              SourceDocumentAvailability
+	EmbeddingUnavailableReason         string
+	ContentFamilyAvailability          SourceDocumentAvailability
 	DocumentID                         int64
 	DocumentVersionID                  int64
 	LastVerifiedDocumentVersion        int64
@@ -164,43 +179,57 @@ type GenerateSourceDocumentResult struct {
 	PlaintextArtifact                  *DerivedArtifactDTO
 	MarkdownArtifact                   *DerivedArtifactDTO
 	SearchProjection                   *DocumentSearchProjectionResult
+	EmbeddingReceipt                   *DocumentEmbeddingReceiptResult
+	ContentFamilyDecision              *ContentFamilyDecisionDTO
 }
 
 type SourceDocumentGenerationDependencies struct {
-	Evidence          SourceEvidenceReader
-	Extractor         SelectedSourceBodyExtractor
-	DocumentVersions  DocumentObservationPersister
-	Authorizations    DocumentProjectionAuthorizationReader
-	Projections       DocumentArtifactProjector
-	SearchProjections DocumentSearchProjectionPersister
-	Now               func() time.Time
+	Evidence                  SourceEvidenceReader
+	Extractor                 SelectedSourceBodyExtractor
+	DocumentVersions          DocumentObservationPersister
+	Authorizations            DocumentProjectionAuthorizationReader
+	Projections               DocumentArtifactProjector
+	SearchProjections         DocumentSearchProjectionPersister
+	ContentFamilies           DocumentContentFamilyAssigner
+	StructureExtractor        DocumentStructureExtractor
+	DocumentEmbeddings        DocumentEmbeddingProducer
+	PublishedMatchEvaluations PublishedDocumentMatchEvaluationScheduler
+	Now                       func() time.Time
 }
 
 type SourceDocumentGenerationService struct {
-	evidence          SourceEvidenceReader
-	extractor         SelectedSourceBodyExtractor
-	documentVersions  DocumentObservationPersister
-	authorizations    DocumentProjectionAuthorizationReader
-	projections       DocumentArtifactProjector
-	searchProjections DocumentSearchProjectionPersister
-	now               func() time.Time
+	evidence                  SourceEvidenceReader
+	extractor                 SelectedSourceBodyExtractor
+	documentVersions          DocumentObservationPersister
+	authorizations            DocumentProjectionAuthorizationReader
+	projections               DocumentArtifactProjector
+	searchProjections         DocumentSearchProjectionPersister
+	contentFamilies           DocumentContentFamilyAssigner
+	structureExtractor        DocumentStructureExtractor
+	documentEmbeddings        DocumentEmbeddingProducer
+	publishedMatchEvaluations PublishedDocumentMatchEvaluationScheduler
+	now                       func() time.Time
 }
 
 func NewSourceDocumentGenerationService(dependencies SourceDocumentGenerationDependencies) (*SourceDocumentGenerationService, error) {
 	if dependencies.Evidence == nil || dependencies.Extractor == nil || dependencies.DocumentVersions == nil ||
-		dependencies.Authorizations == nil || dependencies.Projections == nil || dependencies.SearchProjections == nil || dependencies.Now == nil {
-		return nil, errors.New("source evidence, body extractor, document persistence, projection authorization, artifact writer, search projection writer, and clock are required")
+		dependencies.Authorizations == nil || dependencies.Projections == nil || dependencies.SearchProjections == nil || dependencies.StructureExtractor == nil ||
+		dependencies.ContentFamilies == nil || dependencies.DocumentEmbeddings == nil || dependencies.PublishedMatchEvaluations == nil || dependencies.Now == nil {
+		return nil, errors.New("source evidence, body extractor, document persistence, projection authorization, artifact writer, structure extractor, search projection writer, document embedding producer, published match scheduler, and clock are required")
 	}
 	return &SourceDocumentGenerationService{
 		evidence: dependencies.Evidence, extractor: dependencies.Extractor, documentVersions: dependencies.DocumentVersions,
 		authorizations: dependencies.Authorizations, projections: dependencies.Projections,
-		searchProjections: dependencies.SearchProjections, now: dependencies.Now,
+		searchProjections: dependencies.SearchProjections, structureExtractor: dependencies.StructureExtractor, documentEmbeddings: dependencies.DocumentEmbeddings,
+		contentFamilies:           dependencies.ContentFamilies,
+		publishedMatchEvaluations: dependencies.PublishedMatchEvaluations, now: dependencies.Now,
 	}, nil
 }
 
 func (service *SourceDocumentGenerationService) Generate(ctx context.Context, command GenerateSourceDocumentCommand) (GenerateSourceDocumentResult, error) {
 	if service == nil || service.evidence == nil || service.extractor == nil || service.documentVersions == nil ||
-		service.authorizations == nil || service.projections == nil || service.searchProjections == nil || service.now == nil || command.EvidenceReferenceID <= 0 {
+		service.authorizations == nil || service.projections == nil || service.searchProjections == nil || service.structureExtractor == nil || service.documentEmbeddings == nil ||
+		service.contentFamilies == nil || service.publishedMatchEvaluations == nil || service.now == nil || command.EvidenceReferenceID <= 0 {
 		return GenerateSourceDocumentResult{}, fmt.Errorf("%w: invalid source document generation input", sharedrepository.ErrInvalidInput)
 	}
 	evidence, err := service.evidence.ReadSelectedSourceEvidence(ctx, SourceEvidenceQuery{EvidenceReferenceID: command.EvidenceReferenceID})
@@ -239,6 +268,8 @@ func (service *SourceDocumentGenerationService) Generate(ctx context.Context, co
 		baseResult.PlaintextAvailability = SourceDocumentNotApplicable
 		baseResult.MarkdownAvailability = SourceDocumentNotApplicable
 		baseResult.SearchAvailability = SourceDocumentNotApplicable
+		baseResult.EmbeddingAvailability = SourceDocumentNotApplicable
+		baseResult.ContentFamilyAvailability = SourceDocumentNotApplicable
 		// The immutable version uses an internal empty-content digest for its
 		// identity constraint, but metadata-only output must not project that
 		// implementation detail as evidence that body bytes exist.
@@ -277,11 +308,28 @@ func (service *SourceDocumentGenerationService) Generate(ctx context.Context, co
 	}
 	if err := validateGeneratedDocumentProjection(
 		plaintextProjected, persisted, authorization, DocumentProjectionPlaintext,
-		extracted.PlaintextTransformerProfileSHA256, []byte(extracted.Plaintext), persisted.DocumentVersion.Version,
+		extracted.PlaintextTransformerProfileSHA256, []byte(extracted.Plaintext), persisted.DocumentVersion.Version, nil,
 	); err != nil {
 		return baseResult, fmt.Errorf("%w: plaintext projection receipt changed", sharedrepository.ErrConflict)
 	}
 	baseResult = withGeneratedArtifact(baseResult, plaintextProjected, DocumentProjectionPlaintext)
+	structureCommand := ExtractDocumentStructureCommand{
+		DocumentVersionID: persisted.DocumentVersion.ID,
+		ContentSHA256:     persisted.DocumentVersion.ContentSHA256,
+		Title:             evidence.Title,
+		Plaintext:         extracted.Plaintext,
+		Language:          extracted.Language,
+	}
+	if err := validateDocumentStructureCommand(structureCommand); err != nil {
+		return baseResult, err
+	}
+	structure, err := service.structureExtractor.ExtractDocumentStructure(ctx, structureCommand)
+	if err != nil {
+		return baseResult, fmt.Errorf("extract local document structure: %w", err)
+	}
+	if err := validateDocumentStructureResult(structure, structureCommand); err != nil {
+		return baseResult, err
+	}
 
 	searchProjected, err := service.searchProjections.PersistSearchProjection(ctx, PersistDocumentSearchProjectionCommand{
 		DocumentVersionID: persisted.DocumentVersion.ID, DerivedArtifactID: plaintextProjected.Artifact.ID,
@@ -290,8 +338,11 @@ func (service *SourceDocumentGenerationService) Generate(ctx context.Context, co
 		NormalizationProfileVersion:  CanonicalDocumentSearchNormalizationProfileVersion,
 		NormalizedTextSHA256:         extracted.PlaintextSHA256,
 		Plaintext:                    extracted.Plaintext,
-		EntityKeys:                   []string{}, ActionKeys: []string{}, LocationKeys: []string{}, RegionKeys: []string{},
-		IndexedAt: authorization.DecisionAt,
+		EntityKeys:                   cloneDocumentStructureKeys(structure.EntityKeys),
+		ActionKeys:                   cloneDocumentStructureKeys(structure.ActionKeys),
+		LocationKeys:                 cloneDocumentStructureKeys(structure.LocationKeys),
+		RegionKeys:                   cloneDocumentStructureKeys(structure.RegionKeys),
+		IndexedAt:                    authorization.DecisionAt,
 	})
 	if err != nil {
 		return baseResult, fmt.Errorf("persist exact document search projection: %w", err)
@@ -303,6 +354,61 @@ func (service *SourceDocumentGenerationService) Generate(ctx context.Context, co
 	searchReceipt := searchProjected
 	baseResult.SearchProjection = &searchReceipt
 
+	familyAssignment, err := service.contentFamilies.Assign(ctx, AssignDocumentContentFamilyCommand{
+		SourceConnectionID: evidence.SourceConnectionID, DocumentVersionID: persisted.DocumentVersion.ID,
+		DerivedArtifactID:            plaintextProjected.Artifact.ID,
+		StoreDerivedRightsDecisionID: authorization.StoreDerivedRightsDecisionID,
+		RetainRightsDecisionID:       authorization.RetainRightsDecisionID,
+		RetentionUntil:               plaintextProjected.Artifact.RetentionUntil, DecisionAt: authorization.DecisionAt,
+		CanonicalPlaintext: extracted.Plaintext, FingerprintProfile: CanonicalContentFingerprintProfileVersion,
+		DecisionProfileVersion: CanonicalContentFamilyDecisionProfileVersion,
+	})
+	if err != nil {
+		return baseResult, fmt.Errorf("assign exact document content family: %w", err)
+	}
+	if familyAssignment.Decision.DecisionID <= 0 || familyAssignment.Decision.DocumentVersionID != persisted.DocumentVersion.ID ||
+		familyAssignment.Decision.FamilyID <= 0 || familyAssignment.Decision.RootDocumentVersionID <= 0 ||
+		familyAssignment.Decision.DecisionProfileVersion != CanonicalContentFamilyDecisionProfileVersion {
+		return baseResult, fmt.Errorf("%w: content family receipt changed", sharedrepository.ErrConflict)
+	}
+	baseResult.ContentFamilyAvailability = SourceDocumentAvailable
+	familyReceipt := familyAssignment.Decision
+	baseResult.ContentFamilyDecision = &familyReceipt
+
+	if authorization.EmbedLocalRightsDecisionID == nil {
+		baseResult.EmbeddingAvailability = SourceDocumentUnavailable
+		baseResult.EmbeddingUnavailableReason = DocumentEmbeddingReasonPolicyUnavailable
+	} else {
+		embeddingCommand := ProduceDocumentEmbeddingCommand{
+			DocumentVersionID: persisted.DocumentVersion.ID, SourceConnectionID: evidence.SourceConnectionID,
+			EmbedLocalRightsDecisionID: *authorization.EmbedLocalRightsDecisionID,
+			RetainRightsDecisionID:     authorization.RetainRightsDecisionID,
+			NormalizedTextSHA256:       extracted.PlaintextSHA256, Plaintext: extracted.Plaintext,
+		}
+		embedding, err := service.documentEmbeddings.ProduceDocumentEmbedding(ctx, embeddingCommand)
+		if err != nil {
+			return baseResult, fmt.Errorf("produce exact document embedding: %w", err)
+		}
+		if err := validateProducedDocumentEmbedding(embeddingCommand, embedding); err != nil {
+			return baseResult, fmt.Errorf("%w: document embedding receipt changed", sharedrepository.ErrConflict)
+		}
+		baseResult.EmbeddingAvailability = embedding.Availability
+		baseResult.EmbeddingUnavailableReason = embedding.UnavailableReason
+		if embedding.Receipt != nil {
+			receipt := *embedding.Receipt
+			baseResult.EmbeddingReceipt = &receipt
+		}
+	}
+
+	scheduleCommand := SchedulePublishedDocumentMatchEvaluationCommand{DocumentVersionID: persisted.DocumentVersion.ID}
+	scheduled, err := service.publishedMatchEvaluations.SchedulePublishedDocumentMatchEvaluation(ctx, scheduleCommand)
+	if err != nil {
+		return baseResult, fmt.Errorf("schedule published document match evaluation: %w", err)
+	}
+	if err := validatePublishedDocumentMatchScheduleReceipt(scheduleCommand, scheduled); err != nil {
+		return baseResult, fmt.Errorf("%w: published document match schedule receipt changed", sharedrepository.ErrConflict)
+	}
+
 	markdownProjected, err := service.projections.Project(ctx, ProjectDocumentCommand{
 		DocumentVersionID: persisted.DocumentVersion.ID, ExpectedDocumentVersion: plaintextProjected.DocumentVersion.Version,
 		ArtifactType: DocumentProjectionMarkdown, TransformerProfileSHA256: extracted.MarkdownTransformerProfileSHA256,
@@ -310,6 +416,7 @@ func (service *SourceDocumentGenerationService) Generate(ctx context.Context, co
 		RetainRightsDecisionID:         authorization.RetainRightsDecisionID,
 		DisplayPrivateRightsDecisionID: copyAuthorizationDecisionID(authorization.DisplayPrivateRightsDecisionID),
 		ProjectionBytes:                []byte(extracted.Markdown),
+		AnchorMap:                      projectDocumentAnchorMapFromExtraction(extracted),
 	})
 	if err != nil {
 		return baseResult, fmt.Errorf("project authorized Markdown artifact: %w", err)
@@ -317,6 +424,7 @@ func (service *SourceDocumentGenerationService) Generate(ctx context.Context, co
 	if err := validateGeneratedDocumentProjection(
 		markdownProjected, persisted, authorization, DocumentProjectionMarkdown,
 		extracted.MarkdownTransformerProfileSHA256, []byte(extracted.Markdown), plaintextProjected.DocumentVersion.Version,
+		projectDocumentAnchorMapFromExtraction(extracted),
 	); err != nil {
 		return baseResult, fmt.Errorf("%w: Markdown projection receipt changed", sharedrepository.ErrConflict)
 	}
@@ -326,19 +434,20 @@ func (service *SourceDocumentGenerationService) Generate(ctx context.Context, co
 
 func validateSelectedSourceEvidence(evidence SelectedSourceEvidenceDTO, requestedReferenceID int64) error {
 	if evidence.EvidenceReferenceID != requestedReferenceID || evidence.SourceObservationID <= 0 || evidence.EvidenceSnapshotID <= 0 ||
-		evidence.SourceConnectionID <= 0 || strings.TrimSpace(evidence.ExternalWorkID) == "" || evidence.SourceCode != "rss" ||
+		evidence.SourceConnectionID <= 0 || strings.TrimSpace(evidence.ExternalWorkID) == "" || !supportedSourceEvidenceCode(evidence.SourceCode) ||
 		!validLowerHexSHA256(evidence.UpstreamIdentity) ||
-		strings.TrimSpace(evidence.ContentType) == "" || strings.TrimSpace(evidence.Title) == "" || !validApplicationBodyOrigin(evidence.BodyOrigin) ||
+		strings.TrimSpace(evidence.ContentType) == "" || !validApplicationBodyOrigin(evidence.BodyOrigin) ||
 		!validApplicationBodyCompleteness(evidence.Completeness) || evidence.CapturedAt.IsZero() || len(evidence.SelectedPayload) == 0 ||
 		len(evidence.SelectedPayload) > MaximumSelectedSourceEvidenceBytes || !utf8.Valid(evidence.SelectedPayload) ||
 		!validLowerHexSHA256(evidence.SelectedPayloadSHA256) || strings.TrimSpace(evidence.PayloadMIMEType) == "" ||
 		strings.TrimSpace(evidence.SelectorVersion) == "" {
 		return errors.New("selected source evidence is invalid")
 	}
-	if evidence.BodyOrigin != BodyOriginFeedContent && evidence.BodyOrigin != BodyOriginFeedSummary {
+	if evidence.BodyOrigin != BodyOriginFeedContent && evidence.BodyOrigin != BodyOriginFeedSummary &&
+		evidence.BodyOrigin != BodyOriginPlatformPost && evidence.BodyOrigin != BodyOriginSearchSnippet && evidence.BodyOrigin != BodyOriginAPIContent {
 		return errors.New("selected source evidence body origin is unsupported")
 	}
-	if evidence.Completeness != BodyCompletenessFull && evidence.Completeness != BodyCompletenessSummary &&
+	if evidence.Completeness != BodyCompletenessFull && evidence.Completeness != BodyCompletenessSummary && evidence.Completeness != BodyCompletenessSnippet &&
 		evidence.Completeness != BodyCompletenessMetadataOnly {
 		return errors.New("selected source evidence completeness is unsupported")
 	}
@@ -348,6 +457,15 @@ func validateSelectedSourceEvidence(evidence SelectedSourceEvidenceDTO, requeste
 		return errors.New("selected source evidence digest is invalid")
 	}
 	return nil
+}
+
+func supportedSourceEvidenceCode(value string) bool {
+	switch value {
+	case "rss", "x", "bilibili", "hacker_news", "weibo", "google_agent_search", "bing_grounding":
+		return true
+	default:
+		return false
+	}
 }
 
 func validateExtractedSourceBody(extracted ExtractSelectedSourceBodyResult, evidence SelectedSourceEvidenceDTO) error {
@@ -366,7 +484,8 @@ func validateExtractedSourceBody(extracted ExtractSelectedSourceBodyResult, evid
 		return errors.New("extracted source plaintext is not canonical")
 	}
 	if extracted.Completeness == BodyCompletenessMetadataOnly {
-		if extracted.Plaintext != "" || extracted.Markdown != "" || extracted.PlaintextSHA256 != "" {
+		if extracted.Plaintext != "" || extracted.Markdown != "" || extracted.PlaintextSHA256 != "" || extracted.MarkdownSHA256 != "" ||
+			extracted.TextNormalizationVersion != "" || extracted.AnchorMapProfileVersion != "" || extracted.AnchorMapSHA256 != "" || len(extracted.AnchorBlocks) != 0 {
 			return errors.New("metadata-only extraction contains body bytes")
 		}
 		return nil
@@ -379,6 +498,15 @@ func validateExtractedSourceBody(extracted ExtractSelectedSourceBodyResult, evid
 	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(extracted.Plaintext)))
 	if digest != extracted.PlaintextSHA256 {
 		return errors.New("extracted source plaintext digest is invalid")
+	}
+	mapResult := MapDocumentTextResult{
+		Plaintext: extracted.Plaintext, NormalizationVersion: extracted.TextNormalizationVersion,
+		AnchorMapProfileVersion: extracted.AnchorMapProfileVersion, PlaintextSHA256: extracted.PlaintextSHA256,
+		MarkdownSHA256: extracted.MarkdownSHA256, AnchorMapSHA256: extracted.AnchorMapSHA256,
+		Blocks: append([]DocumentAnchorBlockDTO(nil), extracted.AnchorBlocks...),
+	}
+	if err := ValidateMapDocumentTextResult(MapDocumentTextCommand{Markdown: extracted.Markdown}, mapResult); err != nil {
+		return errors.New("extracted source anchor map is invalid")
 	}
 	return nil
 }
@@ -418,14 +546,18 @@ func ValidateDocumentProjectionAuthorizationDTO(authorization DocumentProjection
 	if authorization.DisplayPrivateRightsDecisionID != nil && *authorization.DisplayPrivateRightsDecisionID <= 0 {
 		return errors.New("document display authorization is invalid")
 	}
+	if authorization.EmbedLocalRightsDecisionID != nil && *authorization.EmbedLocalRightsDecisionID <= 0 {
+		return errors.New("document embedding authorization is invalid")
+	}
 	return nil
 }
 
 func generatedSourceDocumentResult(persisted PersistDocumentVersionResult) GenerateSourceDocumentResult {
 	return GenerateSourceDocumentResult{
 		PlaintextAvailability: SourceDocumentUnavailable, MarkdownAvailability: SourceDocumentUnavailable,
-		SearchAvailability: SourceDocumentUnavailable,
-		DocumentID:         persisted.Document.ID, DocumentVersionID: persisted.DocumentVersion.ID,
+		SearchAvailability: SourceDocumentUnavailable, EmbeddingAvailability: SourceDocumentUnavailable,
+		ContentFamilyAvailability: SourceDocumentUnavailable,
+		DocumentID:                persisted.Document.ID, DocumentVersionID: persisted.DocumentVersion.ID,
 		LastVerifiedDocumentVersion:        persisted.DocumentVersion.Version,
 		LastVerifiedDocumentLifecycleState: persisted.DocumentVersion.LifecycleState,
 		DocumentCreated:                    persisted.DocumentCreated, DocumentVersionCreated: persisted.DocumentVersionCreated,
@@ -448,6 +580,7 @@ func validateGeneratedDocumentProjection(
 	transformerProfileSHA256 string,
 	content []byte,
 	minimumDocumentVersion int64,
+	anchorMap *ProjectDocumentAnchorMapCommand,
 ) error {
 	artifact, artifactErr := derivedArtifactDomainFromDTO(projected.Artifact)
 	version, versionErr := documentVersionDomainFromDTO(projected.DocumentVersion)
@@ -466,7 +599,26 @@ func validateGeneratedDocumentProjection(
 		!validApplicationDocumentLifecycle(string(version.LifecycleState)) {
 		return errors.New("document projection receipt is inconsistent")
 	}
+	if artifactType == DocumentProjectionMarkdown {
+		if anchorMap == nil || artifact.AnchorMap == nil || artifact.AnchorMap.NormalizationVersion != anchorMap.NormalizationVersion ||
+			artifact.AnchorMap.AnchorMapProfileVersion != anchorMap.AnchorMapProfileVersion ||
+			artifact.AnchorMap.PlaintextSHA256 != anchorMap.PlaintextSHA256 || artifact.AnchorMap.MarkdownSHA256 != anchorMap.MarkdownSHA256 ||
+			artifact.AnchorMap.AnchorMapSHA256 != anchorMap.AnchorMapSHA256 {
+			return errors.New("Markdown anchor map receipt is inconsistent")
+		}
+	} else if artifact.AnchorMap != nil {
+		return errors.New("plaintext projection returned a Markdown anchor map")
+	}
 	return nil
+}
+
+func projectDocumentAnchorMapFromExtraction(extracted ExtractSelectedSourceBodyResult) *ProjectDocumentAnchorMapCommand {
+	return &ProjectDocumentAnchorMapCommand{
+		Plaintext: extracted.Plaintext, NormalizationVersion: extracted.TextNormalizationVersion,
+		AnchorMapProfileVersion: extracted.AnchorMapProfileVersion, PlaintextSHA256: extracted.PlaintextSHA256,
+		MarkdownSHA256: extracted.MarkdownSHA256, AnchorMapSHA256: extracted.AnchorMapSHA256,
+		Blocks: cloneDocumentAnchorBlocks(extracted.AnchorBlocks),
+	}
 }
 
 func validateGeneratedSearchProjection(

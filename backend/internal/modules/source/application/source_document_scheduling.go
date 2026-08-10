@@ -14,10 +14,12 @@ type CommittedEvidenceReferenceDTO struct {
 	EvidenceReferenceID int64
 	SourceObservationID int64
 	EvidenceSnapshotID  int64
+	Usage               string
 }
 
 func (reference CommittedEvidenceReferenceDTO) Validate() error {
-	if reference.EvidenceReferenceID <= 0 || reference.SourceObservationID <= 0 || reference.EvidenceSnapshotID <= 0 {
+	if reference.EvidenceReferenceID <= 0 || reference.SourceObservationID <= 0 || reference.EvidenceSnapshotID <= 0 ||
+		(reference.Usage != "document_source" && reference.Usage != "context") {
 		return fmt.Errorf("committed evidence reference identity is invalid")
 	}
 	return nil

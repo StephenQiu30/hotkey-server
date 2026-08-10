@@ -38,7 +38,9 @@ func (repository *IntentRepository) PersistPreviewCompiledProfile(ctx context.Co
 			}
 			receipt = monitorapplication.PersistPreviewCompiledProfileReceiptDTO{
 				CompiledProfileID: existing.ID, ConfigVersionID: owner.ConfigVersionID,
-				IntentRevisionID: owner.IntentRevisionID, Reused: true,
+				IntentRevisionID: owner.IntentRevisionID, Status: existing.Status,
+				SemanticState: existing.SemanticState, SemanticUnavailableReason: existing.SemanticUnavailableReason,
+				Reused: true,
 			}
 			return nil
 		}
@@ -52,20 +54,10 @@ func (repository *IntentRepository) PersistPreviewCompiledProfile(ctx context.Co
 		if insertErr = insertCompiledIntentProfileFacts(transactionCtx, executor, profileID, command); insertErr != nil {
 			return insertErr
 		}
-		result, updateErr := executor.ExecContext(transactionCtx, `
-UPDATE monitor_compiled_profiles
-SET status='ready',profile_hash=$2,ready_at=$3
-WHERE id=$1 AND status='building'`, profileID, command.ProfileHash, command.ReadyAt.UTC())
-		if updateErr != nil {
-			return mapIntentDatabaseError(updateErr)
-		}
-		changed, updateErr := result.RowsAffected()
-		if updateErr != nil || changed != 1 {
-			return monitorapplication.ErrCompiledIntentProfileConflict
-		}
 		receipt = monitorapplication.PersistPreviewCompiledProfileReceiptDTO{
 			CompiledProfileID: profileID, ConfigVersionID: owner.ConfigVersionID,
-			IntentRevisionID: owner.IntentRevisionID,
+			IntentRevisionID: owner.IntentRevisionID, Status: "building",
+			SemanticState: command.SemanticState, SemanticUnavailableReason: command.SemanticUnavailableReason,
 		}
 		return nil
 	})
@@ -73,6 +65,69 @@ WHERE id=$1 AND status='building'`, profileID, command.ProfileHash, command.Read
 		return monitorapplication.PersistPreviewCompiledProfileReceiptDTO{}, err
 	}
 	return receipt, nil
+}
+
+func (repository *IntentRepository) CompletePreviewCompiledProfile(ctx context.Context, command monitorapplication.CompletePreviewCompiledProfileDTO) (monitorapplication.CompletePreviewCompiledProfileReceiptDTO, error) {
+	if repository == nil || command.CompiledProfileID <= 0 || command.ConfigVersionID <= 0 || command.IntentRevisionID <= 0 ||
+		validateIntentRecordHash(command.ProfileHash) != nil || command.ReadyAt.IsZero() ||
+		!validCompletedCompiledIntentSemanticState(command.SemanticState, command.SemanticUnavailableReason) {
+		return monitorapplication.CompletePreviewCompiledProfileReceiptDTO{}, monitorapplication.ErrInvalidIntentContract
+	}
+	var receipt monitorapplication.CompletePreviewCompiledProfileReceiptDTO
+	err := repository.withIntentTransaction(ctx, func(transactionCtx context.Context, executor intentExecutor) error {
+		var status, semanticState string
+		var semanticReason, profileHash sql.NullString
+		err := executor.QueryRowContext(transactionCtx, `
+SELECT status,semantic_state,semantic_unavailable_reason,btrim(profile_hash)
+FROM monitor_compiled_profiles
+WHERE id=$1 AND config_version_id=$2 AND intent_revision_id=$3 AND purpose='preview'
+FOR UPDATE`, command.CompiledProfileID, command.ConfigVersionID, command.IntentRevisionID).Scan(
+			&status, &semanticState, &semanticReason, &profileHash,
+		)
+		if errors.Is(err, sql.ErrNoRows) {
+			return monitorapplication.ErrIntentPublicationUnavailable
+		}
+		if err != nil {
+			return mapIntentDatabaseError(err)
+		}
+		if status == "ready" {
+			if strings.TrimSpace(profileHash.String) != command.ProfileHash || semanticState != command.SemanticState ||
+				semanticReason.String != command.SemanticUnavailableReason {
+				return monitorapplication.ErrCompiledIntentProfileConflict
+			}
+			receipt = monitorapplication.CompletePreviewCompiledProfileReceiptDTO{
+				CompiledProfileID: command.CompiledProfileID, Status: status, SemanticState: semanticState,
+				SemanticUnavailableReason: semanticReason.String, Reused: true,
+			}
+			return nil
+		}
+		if status != "building" {
+			return monitorapplication.ErrCompiledIntentProfileConflict
+		}
+		result, updateErr := executor.ExecContext(transactionCtx, `
+UPDATE monitor_compiled_profiles
+SET status='ready',profile_hash=$2,ready_at=$3,semantic_state=$4,semantic_unavailable_reason=$5
+WHERE id=$1 AND status='building'`, command.CompiledProfileID, command.ProfileHash, command.ReadyAt.UTC(),
+			command.SemanticState, nullableIntentText(command.SemanticUnavailableReason))
+		if updateErr != nil {
+			return mapIntentDatabaseError(updateErr)
+		}
+		if changed, rowsErr := result.RowsAffected(); rowsErr != nil || changed != 1 {
+			return monitorapplication.ErrCompiledIntentProfileConflict
+		}
+		receipt = monitorapplication.CompletePreviewCompiledProfileReceiptDTO{
+			CompiledProfileID: command.CompiledProfileID, Status: "ready", SemanticState: command.SemanticState,
+			SemanticUnavailableReason: command.SemanticUnavailableReason,
+		}
+		return nil
+	})
+	return receipt, err
+}
+
+func validCompletedCompiledIntentSemanticState(state, reason string) bool {
+	return state == monitorapplication.IntentSemanticStateReady && reason == "" ||
+		state == monitorapplication.IntentSemanticStateUnavailable &&
+			(reason == monitorapplication.IntentSemanticModelUnavailable || reason == monitorapplication.IntentSemanticGenerationUnavailable)
 }
 
 func validCompiledIntentProfileCommand(command monitorapplication.PersistPreviewCompiledProfileDTO) bool {
@@ -175,15 +230,18 @@ FROM monitor_compiled_profiles WHERE preview_run_id=$1 FOR UPDATE`, previewRunID
 }
 
 func sameCompiledIntentProfile(record, owner compiledIntentProfileRecord, command monitorapplication.PersistPreviewCompiledProfileDTO) bool {
-	return record.ID > 0 && record.Status == "ready" && record.MonitorID == owner.MonitorID &&
+	validStatus := record.Status == "building" || record.Status == "ready" && record.ProfileHash == command.ProfileHash
+	validSemantic := record.SemanticState == monitorapplication.IntentSemanticStateReady && record.SemanticUnavailableReason == "" ||
+		record.SemanticState == monitorapplication.IntentSemanticStateUnavailable &&
+			(record.SemanticUnavailableReason == monitorapplication.IntentSemanticGenerationUnavailable ||
+				record.SemanticUnavailableReason == monitorapplication.IntentSemanticModelUnavailable)
+	return record.ID > 0 && validStatus && validSemantic && record.MonitorID == owner.MonitorID &&
 		record.ConfigVersionID == owner.ConfigVersionID && record.PreviewRunID == owner.PreviewRunID &&
 		record.DraftID == owner.DraftID && record.DraftResourceVersion == owner.DraftResourceVersion &&
 		record.IntentRevisionID == owner.IntentRevisionID && record.CompilerVersion == command.CompilerVersion &&
 		record.MatchingAlgorithmVersion == command.MatchingAlgorithmVersion && record.LexicalAlgorithmVersion == command.LexicalAlgorithmVersion &&
 		record.SemanticAlgorithmVersion == command.SemanticAlgorithmVersion && record.StructuredAlgorithmVersion == command.StructuredAlgorithmVersion &&
-		record.SearchNormalizationProfileVersion == command.SearchNormalizationProfileVersion &&
-		record.SemanticState == command.SemanticState && record.SemanticUnavailableReason == command.SemanticUnavailableReason &&
-		record.ProfileHash == command.ProfileHash
+		record.SearchNormalizationProfileVersion == command.SearchNormalizationProfileVersion
 }
 
 func insertCompiledIntentProfile(ctx context.Context, executor intentExecutor, owner compiledIntentProfileRecord, command monitorapplication.PersistPreviewCompiledProfileDTO) (int64, error) {

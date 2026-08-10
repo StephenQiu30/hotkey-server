@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html"
 	"io"
 	"net"
@@ -24,14 +25,16 @@ import (
 	"unicode/utf8"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/evidencecapture"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/sourcenet"
 )
 
 const (
-	maxResponseBodyBytes = 4 << 20
-	maxQueryCharacters   = 256
-	maxPageSize          = 25
-	cursorVersion        = 1
+	maxResponseBodyBytes    = 4 << 20
+	collectorProfileVersion = "google-agent-search-json-v1"
+	maxQueryCharacters      = 256
+	maxPageSize             = 25
+	cursorVersion           = 1
 )
 
 var htmlTagPattern = regexp.MustCompile(`<[^>]*>`)
@@ -109,6 +112,21 @@ type searchCursor struct {
 	QuerySignature string `json:"q"`
 }
 
+type fetchedSearchResponse struct {
+	payload       []byte
+	statusCode    int
+	requestedURL  string
+	finalURL      string
+	redirectChain []string
+	headers       http.Header
+	capturedAt    time.Time
+}
+
+func (value fetchedSearchResponse) snapshot() (domain.EvidenceSnapshot, error) {
+	return evidencecapture.NewJSONSnapshot(value.payload, collectorProfileVersion, value.requestedURL, value.finalURL,
+		value.redirectChain, value.statusCode, value.headers, value.capturedAt)
+}
+
 func New(connection domain.SourceConnection, resolvers ...sourcenet.Resolver) (*Connector, error) {
 	options := connectorOptions{}
 	if len(resolvers) > 0 && resolvers[0] != nil {
@@ -184,7 +202,7 @@ func (connector *Connector) Health(ctx context.Context, connection domain.Source
 		return domain.HealthResult{CheckedAt: checkedAt, ErrorKind: domain.CollectionErrorAuthentication, DiagnosticCode: "credential_unavailable"}
 	}
 	var response searchResponse
-	_, err = connector.search(ctx, token, searchRequest{Query: "HotKey connectivity check", PageSize: 1, SafeSearch: true, ContentSearchSpec: contentSearchSpec{SnippetSpec: snippetSpec{ReturnSnippet: false}}}, &response)
+	_, _, err = connector.search(ctx, token, searchRequest{Query: "HotKey connectivity check", PageSize: 1, SafeSearch: true, ContentSearchSpec: contentSearchSpec{SnippetSpec: snippetSpec{ReturnSnippet: false}}}, &response)
 	if err != nil {
 		return healthFailure(checkedAt, err)
 	}
@@ -216,18 +234,27 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 		pageSize = maxPageSize
 	}
 	var response searchResponse
-	result.RateLimit, err = connector.search(ctx, token, searchRequest{
+	captured, rateLimit, err := connector.search(ctx, token, searchRequest{
 		Query: query, PageSize: pageSize, PageToken: cursor.PageToken, SafeSearch: true,
 		ContentSearchSpec: contentSearchSpec{SnippetSpec: snippetSpec{ReturnSnippet: true}},
 	}, &response)
+	result.RateLimit = rateLimit
 	if err != nil {
 		return result, err
 	}
-	for _, value := range response.Results {
-		item, err := connector.mapResult(value)
+	snapshot, err := captured.snapshot()
+	if err != nil {
+		return result, parse("capture Google Agent Search response")
+	}
+	result.Snapshots = append(result.Snapshots, snapshot)
+	for index, value := range response.Results {
+		item, err := connector.mapResult(value, captured.capturedAt)
 		if err != nil {
 			result.Diagnostics = append(result.Diagnostics, domain.FetchDiagnostic{Code: "invalid_google_agent_search_result", SourceExternalID: stableID(value)})
 			continue
+		}
+		if err := evidencecapture.BindJSONPointer(&item, snapshot, fmt.Sprintf("/results/%d", index), domain.EvidenceUsageDocumentSource); err != nil {
+			return domain.FetchResult{}, parse("bind Google Agent Search result evidence")
 		}
 		result.Items = append(result.Items, item)
 	}
@@ -238,47 +265,51 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 	return result, nil
 }
 
-func (connector *Connector) search(ctx context.Context, token string, body searchRequest, output *searchResponse) (domain.RateLimit, error) {
+func (connector *Connector) search(ctx context.Context, token string, body searchRequest, output *searchResponse) (fetchedSearchResponse, domain.RateLimit, error) {
 	payload, err := json.Marshal(body)
 	if err != nil {
-		return domain.RateLimit{}, permanent("encode Google Agent Search request")
+		return fetchedSearchResponse{}, domain.RateLimit{}, permanent("encode Google Agent Search request")
 	}
 	target := *connector.endpoint
 	target.Path = "/v1/" + connector.servingConfig + ":search"
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, target.String(), bytes.NewReader(payload))
 	if err != nil {
-		return domain.RateLimit{}, permanent("build Google Agent Search request")
+		return fetchedSearchResponse{}, domain.RateLimit{}, permanent("build Google Agent Search request")
 	}
 	httpRequest.Header.Set("Accept", "application/json")
 	httpRequest.Header.Set("Authorization", "Bearer "+token)
 	httpRequest.Header.Set("Content-Type", "application/json")
 	response, err := connector.http.Do(httpRequest)
 	if err != nil {
-		return domain.RateLimit{}, temporary("request Google Agent Search")
+		return fetchedSearchResponse{}, domain.RateLimit{}, temporary("request Google Agent Search")
 	}
 	defer response.Body.Close()
 	rateLimit := parseRateLimit(response.Header)
 	responseBody, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBodyBytes+1))
 	if err != nil {
-		return rateLimit, temporary("read Google Agent Search response")
+		return fetchedSearchResponse{}, rateLimit, temporary("read Google Agent Search response")
 	}
 	if len(responseBody) > maxResponseBodyBytes {
-		return rateLimit, permanent("Google Agent Search response exceeds body byte limit")
+		return fetchedSearchResponse{}, rateLimit, permanent("Google Agent Search response exceeds body byte limit")
 	}
 	switch {
 	case response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden:
-		return rateLimit, authentication("Google Agent Search authorization rejected")
+		return fetchedSearchResponse{}, rateLimit, authentication("Google Agent Search authorization rejected")
 	case response.StatusCode == http.StatusTooManyRequests:
-		return rateLimit, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("Google Agent Search rate limited"))
+		return fetchedSearchResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("Google Agent Search rate limited"))
 	case response.StatusCode >= 500:
-		return rateLimit, temporary("Google Agent Search service unavailable")
+		return fetchedSearchResponse{}, rateLimit, temporary("Google Agent Search service unavailable")
 	case response.StatusCode < 200 || response.StatusCode >= 300:
-		return rateLimit, permanent("Google Agent Search request rejected")
+		return fetchedSearchResponse{}, rateLimit, permanent("Google Agent Search request rejected")
 	}
 	if len(responseBody) == 0 || json.Unmarshal(responseBody, output) != nil {
-		return rateLimit, parse("decode Google Agent Search response")
+		return fetchedSearchResponse{}, rateLimit, parse("decode Google Agent Search response")
 	}
-	return rateLimit, nil
+	return fetchedSearchResponse{
+		payload: responseBody, statusCode: response.StatusCode, requestedURL: target.String(),
+		finalURL: response.Request.URL.String(), redirectChain: evidencecapture.RedirectChain(target.String(), response.Request),
+		headers: response.Header.Clone(), capturedAt: connector.now().UTC(),
+	}, rateLimit, nil
 }
 
 func (connector *Connector) token() (string, error) {
@@ -291,7 +322,7 @@ func (connector *Connector) token() (string, error) {
 	return token, nil
 }
 
-func (connector *Connector) mapResult(value searchResult) (domain.SourceItem, error) {
+func (connector *Connector) mapResult(value searchResult, observedAt time.Time) (domain.SourceItem, error) {
 	externalID := stableID(value)
 	if externalID == "" || utf8.RuneCountInString(externalID) > 512 || containsControl(externalID) {
 		return domain.SourceItem{}, errors.New("invalid Google Agent Search document ID")
@@ -323,7 +354,12 @@ func (connector *Connector) mapResult(value searchResult) (domain.SourceItem, er
 	}
 	return domain.NormalizeSourceItem(domain.SourceItem{
 		SourceCode: "google_agent_search", ExternalID: externalID, ContentType: "search_result",
-		Title: title, Body: body, URL: itemURL, ObservedAt: connector.now().UTC(), EvidenceCompleteness: evidence,
+		Title: title, Body: body, URL: itemURL, ObservedAt: observedAt.UTC(), EvidenceCompleteness: evidence,
+		Parties: []domain.SourcePartyAssertion{{
+			Role: domain.SourcePartyRoleDistributor, Kind: domain.SourcePartyKindOrganization,
+			IdentityNamespace: "platform", ExternalID: "google-agent-search", DisplayName: "Google Agent Search",
+			HomepageURL: "https://cloud.google.com/generative-ai-app-builder/docs/enterprise-search-introduction",
+		}},
 	})
 }
 

@@ -176,13 +176,15 @@ func (policy RightsPolicy) Validate() error {
 type RightsSubjectType string
 
 const (
+	RightsSubjectSourceEndpoint    RightsSubjectType = "source_endpoint"
 	RightsSubjectRawResponse       RightsSubjectType = "raw_response"
 	RightsSubjectSourceObservation RightsSubjectType = "source_observation"
 	RightsSubjectDocumentVersion   RightsSubjectType = "document_version"
 )
 
 func (subjectType RightsSubjectType) Valid() bool {
-	return subjectType == RightsSubjectRawResponse || subjectType == RightsSubjectSourceObservation || subjectType == RightsSubjectDocumentVersion
+	return subjectType == RightsSubjectSourceEndpoint || subjectType == RightsSubjectRawResponse ||
+		subjectType == RightsSubjectSourceObservation || subjectType == RightsSubjectDocumentVersion
 }
 
 // RightsDecision is one immutable, exact action evaluation. Policy metadata is

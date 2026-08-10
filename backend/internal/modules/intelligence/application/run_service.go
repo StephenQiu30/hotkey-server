@@ -182,7 +182,9 @@ func (service *RunService) generateStructured(ctx context.Context, runID int64, 
 				return domain.StructuredResponse{}, err
 			}
 		}
-		response, err := provider.GenerateStructured(ctx, request)
+		providerCtx, cancel := providerCallContext(ctx, profile.TimeoutSeconds)
+		response, err := provider.GenerateStructured(providerCtx, request)
+		cancel()
 		if err == nil {
 			if response.ModelVersion != profile.ModelVersion {
 				_ = service.fail(ctx, runID, domain.CodeAIModelProfileInvalid)
@@ -242,6 +244,10 @@ func (service *RunService) fail(ctx context.Context, runID int64, code int) erro
 }
 
 func (service *RunService) now() time.Time { return service.clock.Now().UTC() }
+
+func providerCallContext(parent context.Context, timeoutSeconds int) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(parent, time.Duration(timeoutSeconds)*time.Second)
+}
 
 func waitForRetry(ctx context.Context, delay time.Duration) error {
 	timer := time.NewTimer(delay)

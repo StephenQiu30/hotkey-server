@@ -7,6 +7,7 @@ import {
   BrainCircuit,
   Eye,
   Loader2,
+  ListChecks,
   MoreHorizontal,
   Pause,
   Pencil,
@@ -505,7 +506,9 @@ export default function MonitorsPage() {
               <EmptyTitle>还没有热点监控</EmptyTitle>
               <EmptyDescription>
                 {canEdit
-                  ? "至少需要一个已启用来源才能创建监控。"
+                  ? sources.length > 0
+                    ? "点击“新建监控”配置规则并选择已启用来源。"
+                    : "至少需要一个已启用来源才能创建监控。"
                   : "当前没有可查看的已发布监控。"}
               </EmptyDescription>
             </EmptyHeader>
@@ -569,6 +572,14 @@ export default function MonitorsPage() {
                     {monitorStatusLabel(monitor.status)}
                   </Badge>
                   <div className="flex items-center justify-start gap-1 lg:justify-end">
+                    {monitor.id != null ? (
+                      <Button asChild className="gap-1.5" size="sm" variant="ghost">
+                        <Link href={`/dashboard/settings/monitors/${monitor.id}/matches`}>
+                          <ListChecks />
+                          相关性判定
+                        </Link>
+                      </Button>
+                    ) : null}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -818,8 +829,12 @@ export default function MonitorsPage() {
                         语言 {(source.languages ?? []).join(" / ") || "全部"}
                       </span>
                       <span>上限 {source.max_query_bytes ?? 2048} bytes</span>
-                      <span>包含 {source.included_rule_ids?.length ?? 0}</span>
-                      <span>排除 {source.excluded_rule_ids?.length ?? 0}</span>
+                      <span>
+                        包含 {source.included_term_count ?? source.included_rule_ids?.length ?? 0}
+                      </span>
+                      <span>
+                        排除 {source.excluded_term_count ?? source.excluded_rule_ids?.length ?? 0}
+                      </span>
                     </div>
                     <p className="mono mt-2 break-all text-[11px] text-muted-foreground">
                       signature {source.query_signature || "—"}

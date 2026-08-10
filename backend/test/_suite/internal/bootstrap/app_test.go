@@ -14,6 +14,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	httptransport "github.com/StephenQiu30/hotkey-server/backend/internal/platform/http"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
+	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
@@ -86,6 +87,53 @@ func TestNewAppRejectsInvalidRole(t *testing.T) {
 	cfg.Role = "scheduler"
 	if _, err := NewApp(cfg, zap.NewNop()); err == nil {
 		t.Fatal("NewApp() error = nil, want an error")
+	}
+}
+
+func TestAPIFxGraphRegistersExactDocumentMatchRoutes(t *testing.T) {
+	dsn := initializedBootstrapDatabase(t)
+	cfg := apiTestConfig()
+	cfg.Role, cfg.HTTPAddr, cfg.DatabaseURL = string(RoleAPI), "127.0.0.1:0", dsn
+	var router *gin.Engine
+	app, err := NewAppWithReadiness(
+		cfg, zap.NewNop(), httptransport.ReadinessFunc(func(context.Context) error { return nil }), fx.Populate(&router),
+	)
+	if err != nil {
+		t.Fatalf("NewAppWithReadiness(): %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := app.Start(ctx); err != nil {
+		t.Fatalf("Start(): %v", err)
+	}
+	defer func() { _ = app.Stop(ctx) }()
+	wanted := map[string]bool{
+		"GET /api/v1/monitors/:id/document-matches":                               false,
+		"POST /api/v1/monitors/:id/document-matches/:match_decision_id/overrides": false,
+		"GET /api/v1/micro-events":                                                false,
+		"GET /api/v1/micro-events/:id":                                            false,
+		"GET /api/v1/micro-events/:id/evidence":                                   false,
+		"POST /api/v1/micro-events/:id/evidence":                                  false,
+		"POST /api/v1/micro-events/:id/evidence/:evidence_id/feedback":            false,
+		"POST /api/v1/micro-events/:id/feedback":                                  false,
+		"POST /api/v1/document-versions/:id/text-quote-selectors":                 false,
+		"POST /api/v1/content-lineage-decisions/:id/feedback":                     false,
+		"GET /api/v1/notifications/push-capability":                               false,
+		"GET /api/v1/notifications/push-subscriptions":                            false,
+		"POST /api/v1/notifications/push-subscriptions":                           false,
+		"PUT /api/v1/notifications/push-subscriptions/:id":                        false,
+		"DELETE /api/v1/notifications/push-subscriptions/:id":                     false,
+	}
+	for _, route := range router.Routes() {
+		key := route.Method + " " + route.Path
+		if _, found := wanted[key]; found {
+			wanted[key] = true
+		}
+	}
+	for route, found := range wanted {
+		if !found {
+			t.Errorf("route %s is not registered", route)
+		}
 	}
 }
 
@@ -313,7 +361,7 @@ func TestConfiguredAPIWiresControlPlanes(t *testing.T) {
 		t.Fatalf("Start() error = %v", err)
 	}
 	defer func() { _ = app.Stop(ctx) }()
-	for _, path := range []string{"/api/v1/monitors", "/api/v1/monitors/1/draft", "/api/v1/source-connections", "/api/v1/contents", "/api/v1/ai/model-profiles", "/api/v1/operations/jobs", "/api/v1/radar/events", "/api/v1/alerts"} {
+	for _, path := range []string{"/api/v1/monitors", "/api/v1/monitors/1/draft", "/api/v1/source-connections", "/api/v1/contents", "/api/v1/ai/model-profiles", "/api/v1/operations/jobs", "/api/v1/radar/events", "/api/v1/alerts", "/api/v1/notifications/push-capability", "/api/v1/notifications/push-subscriptions"} {
 		response, err := stdhttp.Get("http://" + server.Address() + path)
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)

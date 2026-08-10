@@ -32,7 +32,7 @@ func (writer *DocumentRecallProjectionWriter) PersistDocumentSearchProjection(ct
 		return ingestionapplication.DocumentSearchProjectionResult{}, sharedrepository.ErrUnavailable
 	}
 	var record documentSearchProjectionRecord
-	err := writer.runtime.SQL.QueryRowContext(ctx, persistDocumentSearchProjectionSQL,
+	err := writer.queryRow(ctx, persistDocumentSearchProjectionSQL,
 		command.DocumentVersionID, command.DerivedArtifactID,
 		command.StoreDerivedRightsDecisionID, command.RetainRightsDecisionID,
 		command.NormalizationProfileVersion, command.NormalizedTextSHA256, command.Plaintext,
@@ -64,7 +64,7 @@ func (writer *DocumentRecallProjectionWriter) PersistDocumentEmbeddingReceipt(ct
 		return ingestionapplication.DocumentEmbeddingReceiptResult{}, sharedrepository.ErrUnavailable
 	}
 	var record documentEmbeddingReceiptRecord
-	err := writer.runtime.SQL.QueryRowContext(ctx, persistDocumentEmbeddingReceiptSQL,
+	err := writer.queryRow(ctx, persistDocumentEmbeddingReceiptSQL,
 		command.DocumentVersionID, command.EmbedLocalRightsDecisionID, command.RetainRightsDecisionID,
 		command.ModelProfileID, command.ModelProfileVersion, command.ModelVersion,
 		command.NormalizedTextSHA256, pgvector.NewHalfVector(command.Embedding), command.AIRunID,
@@ -89,6 +89,59 @@ func (writer *DocumentRecallProjectionWriter) PersistDocumentEmbeddingReceipt(ct
 		return ingestionapplication.DocumentEmbeddingReceiptResult{}, databaserepository.MapError(err)
 	}
 	return documentEmbeddingReceiptResult(record), nil
+}
+
+func (writer *DocumentRecallProjectionWriter) ReadDocumentEmbeddingReceipt(ctx context.Context, query ingestionapplication.ReadDocumentEmbeddingReceiptQuery) (ingestionapplication.DocumentEmbeddingReceiptResult, error) {
+	if writer == nil || writer.runtime == nil || writer.runtime.SQL == nil {
+		return ingestionapplication.DocumentEmbeddingReceiptResult{}, sharedrepository.ErrUnavailable
+	}
+	var record documentEmbeddingReceiptRecord
+	err := writer.queryRow(ctx, `
+SELECT embedding.id,embedding.document_version_id,embedding.source_connection_id,
+       embedding.embed_local_rights_decision_id,embedding.retain_rights_decision_id,
+       embedding.model_profile_id,embedding.model_profile_version,embedding.model_version,
+       btrim(embedding.normalized_text_sha256),embedding.ai_run_id,embedding.retention_until,
+       embedding.created_at,embedding.lifecycle_state,false
+FROM document_version_embeddings AS embedding
+JOIN ai_runs AS run ON run.id=embedding.ai_run_id AND run.status='succeeded'
+JOIN ai_model_profiles AS model ON model.id=embedding.model_profile_id
+    AND model.version=embedding.model_profile_version AND model.model_version=embedding.model_version
+    AND model.enabled AND model.deleted_at IS NULL
+WHERE embedding.document_version_id=$1 AND embedding.embed_local_rights_decision_id=$2
+  AND embedding.retain_rights_decision_id=$3 AND embedding.model_profile_id=$4
+  AND embedding.model_profile_version=$5 AND embedding.model_version=$6
+  AND embedding.normalized_text_sha256=$7 AND embedding.ai_run_id=$8
+  AND embedding.lifecycle_state='active' AND embedding.retention_until>CURRENT_TIMESTAMP
+  AND current_rights_action_allowed(
+      embedding.embed_local_rights_decision_id,embedding.source_connection_id,'document_version',
+      embedding.document_version_id::text,embedding.normalized_text_sha256,'embed_local',CURRENT_TIMESTAMP
+  )
+  AND current_rights_action_allowed(
+      embedding.retain_rights_decision_id,embedding.source_connection_id,'document_version',
+      embedding.document_version_id::text,embedding.normalized_text_sha256,'retain',CURRENT_TIMESTAMP
+  )`, query.DocumentVersionID, query.EmbedLocalRightsDecisionID, query.RetainRightsDecisionID,
+		query.ModelProfileID, query.ModelProfileVersion, query.ModelVersion, query.NormalizedTextSHA256, query.AIRunID,
+	).Scan(
+		&record.ID, &record.DocumentVersionID, &record.SourceConnectionID,
+		&record.EmbedLocalRightsDecisionID, &record.RetainRightsDecisionID,
+		&record.ModelProfileID, &record.ModelProfileVersion, &record.ModelVersion,
+		&record.NormalizedTextSHA256, &record.AIRunID, &record.RetentionUntil, &record.CreatedAt,
+		&record.LifecycleState, &record.Created,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ingestionapplication.DocumentEmbeddingReceiptResult{}, sharedrepository.ErrNotFound
+	}
+	if err != nil {
+		return ingestionapplication.DocumentEmbeddingReceiptResult{}, databaserepository.MapError(err)
+	}
+	return documentEmbeddingReceiptResult(record), nil
+}
+
+func (writer *DocumentRecallProjectionWriter) queryRow(ctx context.Context, query string, arguments ...any) *sql.Row {
+	if transaction, found := database.TransactionFromContext(ctx); found {
+		return transaction.SQL.QueryRowContext(ctx, query, arguments...)
+	}
+	return writer.runtime.SQL.QueryRowContext(ctx, query, arguments...)
 }
 
 const persistDocumentSearchProjectionSQL = `

@@ -15,7 +15,7 @@ import (
 
 const (
 	IntentCompilerVersion                   = "monitor-intent-compiler-v1"
-	IntentSearchNormalizationProfileVersion = "canonical-nfc-plaintext-v1"
+	IntentSearchNormalizationProfileVersion = ingestionapplication.CanonicalDocumentSearchNormalizationProfileVersion
 	IntentSemanticGenerationUnavailable     = "semantic_generation_unavailable"
 	maximumCompiledIntentClauses            = 128
 	maximumCompiledObjectivePhraseBytes     = 2048
@@ -52,10 +52,13 @@ type PersistPreviewCompiledProfileDTO struct {
 }
 
 type PersistPreviewCompiledProfileReceiptDTO struct {
-	CompiledProfileID int64
-	ConfigVersionID   int64
-	IntentRevisionID  int64
-	Reused            bool
+	CompiledProfileID         int64
+	ConfigVersionID           int64
+	IntentRevisionID          int64
+	Status                    string
+	SemanticState             string
+	SemanticUnavailableReason string
+	Reused                    bool
 }
 
 type CompiledIntentProfileDTO struct {
@@ -88,19 +91,20 @@ type CompilePreviewIntentProfileResult struct {
 }
 
 type IntentCompiler struct {
-	profiles CompiledIntentProfileRepository
-	clock    IntentClock
+	profiles   CompiledIntentProfileRepository
+	embeddings CompiledIntentEmbeddingProducer
+	clock      IntentClock
 }
 
-func NewIntentCompiler(profiles CompiledIntentProfileRepository, clock IntentClock) (*IntentCompiler, error) {
-	if profiles == nil || clock == nil {
+func NewIntentCompiler(profiles CompiledIntentProfileRepository, embeddings CompiledIntentEmbeddingProducer, clock IntentClock) (*IntentCompiler, error) {
+	if profiles == nil || embeddings == nil || clock == nil {
 		return nil, fmt.Errorf("%w: intent compiler dependencies are required", ErrInvalidIntentContract)
 	}
-	return &IntentCompiler{profiles: profiles, clock: clock}, nil
+	return &IntentCompiler{profiles: profiles, embeddings: embeddings, clock: clock}, nil
 }
 
 func (compiler *IntentCompiler) CompilePreview(ctx context.Context, command CompilePreviewIntentProfileCommand) (CompilePreviewIntentProfileResult, error) {
-	if compiler == nil || compiler.profiles == nil || compiler.clock == nil {
+	if compiler == nil || compiler.profiles == nil || compiler.embeddings == nil || compiler.clock == nil {
 		return CompilePreviewIntentProfileResult{}, ErrInvalidIntentContract
 	}
 	task := command.Preview.Task
@@ -144,8 +148,48 @@ func (compiler *IntentCompiler) CompilePreview(ctx context.Context, command Comp
 	if err != nil {
 		return CompilePreviewIntentProfileResult{}, err
 	}
-	if receipt.CompiledProfileID <= 0 || receipt.ConfigVersionID <= 0 || receipt.IntentRevisionID <= 0 {
+	if receipt.CompiledProfileID <= 0 || receipt.ConfigVersionID <= 0 || receipt.IntentRevisionID <= 0 ||
+		(receipt.Status != "building" && receipt.Status != "ready") {
 		return CompilePreviewIntentProfileResult{}, invalidIntentContract(fmt.Errorf("compiled profile receipt is incomplete"))
+	}
+	semanticState, semanticReason := receipt.SemanticState, receipt.SemanticUnavailableReason
+	if receipt.Status == "building" {
+		if semanticState != IntentSemanticStateReady {
+			embeddingInput := compiledIntentEmbeddingInput(command.Preview.Draft, clauses, entities)
+			embeddingHash := intentRunHash("compiled-intent-embedding-v1", embeddingInput)
+			produced, produceErr := compiler.embeddings.ProduceCompiledIntentEmbedding(ctx, ProduceCompiledIntentEmbeddingCommand{
+				CompiledProfileID: receipt.CompiledProfileID, ConfigVersionID: receipt.ConfigVersionID,
+				InputHash: embeddingHash, Input: embeddingInput,
+			})
+			if produceErr != nil {
+				return CompilePreviewIntentProfileResult{}, produceErr
+			}
+			if err := validateProducedCompiledIntentEmbedding(ProduceCompiledIntentEmbeddingCommand{
+				CompiledProfileID: receipt.CompiledProfileID, ConfigVersionID: receipt.ConfigVersionID,
+				InputHash: embeddingHash, Input: embeddingInput,
+			}, produced); err != nil {
+				return CompilePreviewIntentProfileResult{}, err
+			}
+			semanticState, semanticReason = IntentSemanticStateReady, ""
+			if produced.Availability == IntentEmbeddingAvailabilityDegraded {
+				semanticState, semanticReason = IntentSemanticStateUnavailable, produced.UnavailableReason
+			}
+		}
+		completed, completeErr := compiler.profiles.CompletePreviewCompiledProfile(ctx, CompletePreviewCompiledProfileDTO{
+			CompiledProfileID: receipt.CompiledProfileID, ConfigVersionID: receipt.ConfigVersionID,
+			IntentRevisionID: receipt.IntentRevisionID, ProfileHash: profileHash,
+			SemanticState: semanticState, SemanticUnavailableReason: semanticReason, ReadyAt: readyAt,
+		})
+		if completeErr != nil {
+			return CompilePreviewIntentProfileResult{}, completeErr
+		}
+		if completed.CompiledProfileID != receipt.CompiledProfileID || completed.Status != "ready" ||
+			completed.SemanticState != semanticState || completed.SemanticUnavailableReason != semanticReason {
+			return CompilePreviewIntentProfileResult{}, ErrCompiledIntentProfileConflict
+		}
+		receipt.Reused = receipt.Reused && completed.Reused
+	} else if !validCompletedIntentSemanticState(semanticState, semanticReason) {
+		return CompilePreviewIntentProfileResult{}, ErrCompiledIntentProfileConflict
 	}
 	return CompilePreviewIntentProfileResult{Profile: CompiledIntentProfileDTO{
 		CompiledProfileID: receipt.CompiledProfileID, MonitorID: task.Run.MonitorID, Purpose: "preview",
@@ -155,7 +199,7 @@ func (compiler *IntentCompiler) CompilePreview(ctx context.Context, command Comp
 		LexicalAlgorithmVersion: persist.LexicalAlgorithmVersion, SemanticAlgorithmVersion: persist.SemanticAlgorithmVersion,
 		StructuredAlgorithmVersion:        persist.StructuredAlgorithmVersion,
 		SearchNormalizationProfileVersion: persist.SearchNormalizationProfileVersion,
-		SemanticState:                     persist.SemanticState, SemanticUnavailableReason: persist.SemanticUnavailableReason,
+		SemanticState:                     semanticState, SemanticUnavailableReason: semanticReason,
 		ProfileHash: profileHash,
 	}, Reused: receipt.Reused}, nil
 }
@@ -279,7 +323,7 @@ func compiledIntentProfileHash(task IntentAnalysisTaskDTO, clauses []CompiledInt
 		strconv.FormatInt(task.Run.DraftID, 10), strconv.FormatInt(task.Run.DraftResourceVersion, 10), task.Run.InputHash,
 		IntentCompilerVersion, ingestionapplication.HybridRecallMatchingAlgorithmVersion, ingestionapplication.LexicalRecallAlgorithmVersion,
 		ingestionapplication.SemanticRecallAlgorithmVersion, ingestionapplication.StructuredRecallAlgorithmVersion,
-		IntentSearchNormalizationProfileVersion, ingestionapplication.SemanticRecallStateUnavailable, IntentSemanticGenerationUnavailable,
+		IntentSearchNormalizationProfileVersion,
 		strconv.Itoa(len(clauses)),
 	}
 	for _, item := range clauses {
@@ -293,4 +337,22 @@ func compiledIntentProfileHash(task IntentAnalysisTaskDTO, clauses []CompiledInt
 		}
 	}
 	return intentRunHash(parts...)
+}
+
+func compiledIntentEmbeddingInput(draft IntentDraftDTO, clauses []CompiledIntentClauseDTO, entities []CompiledIntentEntityDTO) string {
+	parts := []string{"objective", normalizeCompiledIntentValue(draft.Objective), "clauses"}
+	for _, clause := range clauses {
+		parts = append(parts, clause.Operator, clause.Field, clause.NormalizedValue)
+	}
+	parts = append(parts, "entities")
+	for _, entity := range entities {
+		parts = append(parts, entity.CanonicalID)
+		parts = append(parts, entity.NormalizedAliases...)
+	}
+	return strings.Join(parts, "\n")
+}
+
+func validCompletedIntentSemanticState(state, reason string) bool {
+	return state == IntentSemanticStateReady && reason == "" ||
+		state == IntentSemanticStateUnavailable && (reason == IntentSemanticModelUnavailable || reason == IntentSemanticGenerationUnavailable)
 }

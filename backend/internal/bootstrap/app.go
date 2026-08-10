@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"os"
 	"strings"
 
 	agentapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/agentaccess/application"
@@ -52,7 +53,10 @@ import (
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/infrastructure/postgres"
 	monitortransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/transport/http"
 	notificationapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/application"
+	notificationjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/infrastructure/jobs"
 	notificationpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/infrastructure/postgres"
+	notificationsecurity "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/infrastructure/security"
+	notificationwebpush "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/infrastructure/webpush"
 	notificationtransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/transport/http"
 	operationsapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/application"
 	operationspostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/infrastructure/postgres"
@@ -109,6 +113,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				operationspostgres.NewJobRepository,
 				operationspostgres.NewGovernanceRepository,
 				operationspostgres.NewRetentionRepository,
+				operationspostgres.NewDecisionQualityRepository,
 				identitypostgres.NewUserRepository,
 				sourcepostgres.NewRepository,
 				sourcepostgres.NewRightsManagementRepository,
@@ -129,6 +134,8 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				intelligenceapplication.NewRunLeaseReclaimer,
 				ingestionpostgres.NewContentRepository,
 				ingestionpostgres.NewCitationRepository,
+				ingestionpostgres.NewTextQuoteSelectorRepository,
+				ingestionpostgres.NewContentFamilyRepository,
 				ingestionpostgres.NewRelevanceRepository,
 				ingestionpostgres.NewRelevanceCandidateReader,
 				ingestionmarkdown.NewConverter,
@@ -155,11 +162,45 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				monitorpostgres.NewAlertPolicyReader,
 				monitorpostgres.NewIntentRepository,
 				newIntentService,
+				newCompiledIntentEmbeddingProjectionService,
+				newCompiledIntentEmbeddingProducerAdapter,
 				newMonitorIntentCompiler,
+				ingestionjobs.NewPublishedMonitorMatchBackfillScheduler,
+				newIntentPublicationBackfillAdapter,
 				newIntentPublicationService,
 				monitorpostgres.NewCompiledRecallProfileReader,
 				ingestionpostgres.NewHybridDocumentRecallReader,
 				newHybridRecallService,
+				ingestionjobs.NewAcceptedDocumentMatchProjectionScheduler,
+				newDocumentMatchRepository,
+				ingestionapplication.NewRankSignalDocumentMatchReranker,
+				newPublishedDocumentMatchService,
+				newRelevanceCalibrationService,
+				ingestionpostgres.NewPublishedMatchTargetReader,
+				eventpostgres.NewMicroEventRepository,
+				exposeAcceptedMatchFamilyReader,
+				newMicroEventService,
+				eventpostgres.NewStorylinePostgresRepository,
+				newStorylineService,
+				eventpostgres.NewEventHeatRepository,
+				newEventHeatV2Service,
+				eventpostgres.NewMicroEventGovernancePostgresRepository,
+				newMicroEventGovernanceService,
+				eventpostgres.NewClaimEvidencePostgresRepository,
+				newClaimEvidenceService,
+				eventpostgres.NewEvidenceSummaryPostgresRepository,
+				newEvidenceSummaryService,
+				newAutomaticClaimEvidenceService,
+				eventpostgres.NewMicroEventQueryPostgresRepository,
+				newMicroEventQueryService,
+				eventapplication.NewAcceptedMatchEventProjectionService,
+				newAcceptedDocumentMatchEventProjectionAdapter,
+				newAcceptedDocumentMatchProjectionHandler,
+				newPublishedMatchEvaluationService,
+				newPublishedMonitorMatchBackfillService,
+				ingestionjobs.NewPublishedMonitorMatchBackfillHandler,
+				newDocumentMatchReviewService,
+				newDocumentMatchQueryService,
 				newMonitorIntentPreviewEvaluator,
 				newMonitorIntentAnalysisProcessor,
 				exposeMonitorIntentAnalysisAvailability,
@@ -169,6 +210,8 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newSourceConnectorRegistry,
 				newKnowledgeVaultWriter,
 				newKnowledgeProjectionService,
+				newTextQuoteSelectorService,
+				newContentLineageFeedbackService,
 				newKnowledgeProposalService,
 				newKnowledgeReconciler,
 				deliverypostgres.NewRepository,
@@ -176,6 +219,8 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				reportpostgres.NewCandidateReader,
 				notificationpostgres.NewRepository,
 				newNotificationService,
+				newPushSubscriptionCipher,
+				newPushSubscriptionService,
 				newQueueStore,
 				exposeCollectionTargetReader,
 				sourcejobs.NewCollectionRetryActivator,
@@ -236,8 +281,9 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newGovernanceService,
 					newJobService,
 					newNotificationHandler,
+					notificationtransport.NewPushSubscriptionHandler,
 				),
-				fx.Invoke(registerRuntimeMetricsCollector, registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerAgentTokenRoutes, registerSourceRoutes, registerRightsManagementRoutes, registerBilibiliWebhookRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerMonitorIntentRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerRadarRoutes, registerEventUpdateRoutes, registerAlertRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes, registerKnowledgeRoutes, registerJobRoutes, registerOverviewRoutes, registerGovernanceRoutes, registerNotificationRoutes, registerAgentRoutes),
+				fx.Invoke(registerRuntimeMetricsCollector, registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerAgentTokenRoutes, registerSourceRoutes, registerRightsManagementRoutes, registerBilibiliWebhookRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerMonitorIntentRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerMicroEventRoutes, registerRadarRoutes, registerEventUpdateRoutes, registerAlertRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes, registerKnowledgeRoutes, registerJobRoutes, registerOverviewRoutes, registerGovernanceRoutes, registerNotificationRoutes, registerPushSubscriptionRoutes, registerAgentRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -249,6 +295,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 			if cfg.MinIO.ValidateRuntime() == nil {
 				options = append(options, fx.Provide(
 					sourcejobs.NewSourceDocumentGenerationScheduler,
+					ingestionjobs.NewPublishedDocumentMatchEvaluationScheduler,
 					newEvidenceSnapshotRepository,
 					sourcepostgres.NewRightsDecisionReader,
 					sourcepostgres.NewEvidenceSelectionManifestReader,
@@ -265,8 +312,13 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					ingestionpostgres.NewDocumentProjectionAuthorizationReader,
 					ingestionpostgres.NewDocumentRecallProjectionWriter,
 					newFeedBodyExtractor,
+					newPlatformBodyExtractor,
+					newSelectedSourceBodyExtractor,
+					newDocumentStructureExtractor,
 					newDerivedDocumentProjectionService,
 					newDocumentRecallProjectionService,
+					newContentFamilyService,
+					newDocumentEmbeddingProducerAdapter,
 					newSourceDocumentGenerationService,
 					ingestionjobs.NewSourceDocumentGenerationHandler,
 				))
@@ -292,12 +344,18 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newDeliverEmailHandler,
 					newAlertEmailService,
 					newDeliverAlertEmailHandler,
+					newNotificationEmailDeliveryService,
+					notificationjobs.NewEmailDispatcher,
+					newWebPushSender,
+					newWebPushDeliveryService,
+					notificationjobs.NewWebPushDispatcher,
 					newMonitorIntentAnalysisHandler,
+					ingestionjobs.NewPublishedDocumentMatchEvaluationHandler,
 					newP0Handlers,
 					newQueueWorker, exposeWorkerRunner, exposeCollectionDueReader, newCollectionScheduler, exposeCollectionSchedulerRunner,
 					newReportScheduler, exposeReportSchedulerRunner,
 				),
-				fx.Invoke(registerPersistentWorkerLifecycle, registerCollectionSchedulerLifecycle, registerReportSchedulerLifecycle),
+				fx.Invoke(registerPersistentWorkerLifecycle, registerCollectionSchedulerLifecycle, registerReportSchedulerLifecycle, registerNotificationEmailDispatcherLifecycle, registerWebPushDispatcherLifecycle),
 			)
 			options = append(options, fx.Invoke(intelligenceapplication.RegisterRunLeaseReclaimerLifecycle))
 		} else {
@@ -401,10 +459,24 @@ func registerMonitorIntentRoutes(router *gin.Engine, service *monitorapplication
 	monitortransport.RegisterIntentRoutes(router, service, authenticator)
 }
 
-func registerIngestionRoutes(router *gin.Engine, service *ingestionapplication.ContentQueryService, citations *ingestionapplication.CitationService, relevance *ingestionapplication.RelevanceAPIService, authenticator httptransport.Authenticator, metrics *observability.Metrics) {
+func registerIngestionRoutes(
+	router *gin.Engine,
+	service *ingestionapplication.ContentQueryService,
+	citations *ingestionapplication.CitationService,
+	relevance *ingestionapplication.RelevanceAPIService,
+	documentMatches *ingestionapplication.DocumentMatchQueryService,
+	documentMatchReviews *ingestionapplication.DocumentMatchReviewService,
+	textQuoteSelectors *ingestionapplication.TextQuoteSelectorService,
+	contentLineageFeedback *ingestionapplication.ContentLineageFeedbackService,
+	authenticator httptransport.Authenticator,
+	metrics *observability.Metrics,
+) {
 	ingestiontransport.RegisterRoutes(router, service, authenticator, metrics)
 	ingestiontransport.RegisterCitationRoutes(router, citations, authenticator)
 	ingestiontransport.RegisterRelevanceRoutes(router, relevance, authenticator)
+	ingestiontransport.RegisterDocumentMatchRoutes(router, documentMatches, documentMatchReviews, authenticator)
+	ingestiontransport.RegisterTextQuoteSelectorRoutes(router, textQuoteSelectors, authenticator)
+	ingestiontransport.RegisterContentLineageFeedbackRoutes(router, contentLineageFeedback, authenticator)
 }
 
 func registerIntelligenceRoutes(router *gin.Engine, service *intelligenceapplication.ModelProfileService, authenticator httptransport.Authenticator) {
@@ -413,6 +485,10 @@ func registerIntelligenceRoutes(router *gin.Engine, service *intelligenceapplica
 
 func registerEventRoutes(router *gin.Engine, read *eventapplication.ReadService, lifecycle *eventapplication.LifecycleService, governance *eventapplication.GovernanceService, heat *eventapplication.HeatService, claims *eventapplication.ClaimService, intelligence *eventapplication.EventIntelligenceReadService, summaries *eventapplication.EventSummaryService, extractions *eventapplication.EventClaimExtractionService, authenticator httptransport.Authenticator) {
 	eventtransport.RegisterRoutesWithIntelligence(router, read, lifecycle, governance, heat, claims, intelligence, summaries, extractions, authenticator)
+}
+
+func registerMicroEventRoutes(router *gin.Engine, queries *eventapplication.MicroEventQueryService, governance *eventapplication.MicroEventGovernanceService, evidence *eventapplication.ClaimEvidenceService, authenticator httptransport.Authenticator) {
+	eventtransport.RegisterMicroEventRoutes(router, queries, governance, evidence, authenticator)
 }
 
 func registerRadarRoutes(router *gin.Engine, radar *eventapplication.RadarService, authenticator httptransport.Authenticator) {
@@ -466,8 +542,49 @@ func newNotificationService(repository *notificationpostgres.Repository) (*notif
 	return notificationapplication.NewService(repository)
 }
 
+func newPushSubscriptionCipher(cfg config.Config) (*notificationsecurity.PushSubscriptionCipher, error) {
+	return notificationsecurity.NewPushSubscriptionCipher(cfg.Notification.PushSubscriptionEncryptionKey)
+}
+
+func newPushSubscriptionService(repository *notificationpostgres.Repository, cipher *notificationsecurity.PushSubscriptionCipher, cfg config.Config) (*notificationapplication.PushSubscriptionService, error) {
+	return notificationapplication.NewPushSubscriptionService(notificationapplication.PushSubscriptionServiceDependencies{
+		Repository: repository, Cipher: cipher, VAPIDPublicKey: cfg.Notification.VAPIDPublicKey,
+	})
+}
+
+type notificationEmailSender struct{ mailer *deliverysmtp.Mailer }
+
+func (sender notificationEmailSender) SendNotificationEmail(ctx context.Context, message notificationapplication.NotificationEmailMessageDTO) (string, error) {
+	err := sender.mailer.Send(ctx, deliverysmtp.Message{
+		To: message.Recipient, Subject: message.Subject, Text: message.Text, HTML: message.HTML,
+	})
+	return "", err
+}
+
+func newNotificationEmailDeliveryService(repository *notificationpostgres.Repository, cfg config.Config) (*notificationapplication.EmailDeliveryService, error) {
+	return notificationapplication.NewEmailDeliveryService(notificationapplication.EmailDeliveryServiceDependencies{
+		Repository: repository, Sender: notificationEmailSender{mailer: deliverysmtp.NewMailer(cfg.Authentication.SMTP)},
+		WebOrigin: cfg.Notification.WebOrigin,
+	})
+}
+
+func newWebPushSender(cfg config.Config) (*notificationwebpush.Sender, error) {
+	return notificationwebpush.NewSender(cfg.Notification)
+}
+
+func newWebPushDeliveryService(repository *notificationpostgres.Repository, cipher *notificationsecurity.PushSubscriptionCipher, sender *notificationwebpush.Sender, cfg config.Config) (*notificationapplication.WebPushDeliveryService, error) {
+	return notificationapplication.NewWebPushDeliveryService(notificationapplication.WebPushDeliveryServiceDependencies{
+		Repository: repository, Secrets: cipher, Sender: sender,
+		Enabled: sender != nil && cfg.Notification.VAPIDPrivateKey != "" && cfg.Notification.PushSubscriptionEncryptionKey != "",
+	})
+}
+
 func registerNotificationRoutes(router *gin.Engine, handler *notificationtransport.Handler, authenticator httptransport.Authenticator) {
 	notificationtransport.RegisterRoutes(router, handler, authenticator)
+}
+
+func registerPushSubscriptionRoutes(router *gin.Engine, handler *notificationtransport.PushSubscriptionHandler, authenticator httptransport.Authenticator) {
+	notificationtransport.RegisterPushSubscriptionRoutes(router, handler, authenticator)
 }
 
 // Fx does not infer interface bindings from a concrete repository. Keep the
@@ -535,10 +652,11 @@ func newAlertRepository(runtime *database.Runtime, cfg config.Config) (*alertpos
 	return alertpostgres.NewRepositoryWithCursorSecret(runtime, cfg.Authentication.JWTSecret)
 }
 
-func newAlertService(candidates *eventpostgres.AlertCandidateReader, policies *monitorpostgres.AlertPolicyReader, repository *alertpostgres.Repository, runtime *database.Runtime, deliveries *deliverypostgres.Repository, jobs *queue.Store) (*alertapplication.Service, error) {
+func newAlertService(candidates *eventpostgres.AlertCandidateReader, policies *monitorpostgres.AlertPolicyReader, repository *alertpostgres.Repository, runtime *database.Runtime, deliveries *deliverypostgres.Repository, jobs *queue.Store, qualityProfiles *operationspostgres.DecisionQualityRepository) (*alertapplication.Service, error) {
 	return alertapplication.NewService(alertapplication.Dependencies{
 		Candidates: candidates, Policies: policies, Occurrences: repository, Clock: sharedclock.System{},
 		Transactions: alertTransactionRunner{runtime: runtime}, Emails: alertEmailPlanner{repository: deliveries, jobs: jobs},
+		QualityProfiles: qualityProfiles,
 	})
 }
 
@@ -613,20 +731,23 @@ func newAlertEvaluateHandler(service *alertapplication.Service) *alertjobs.Evalu
 type p0HandlerParams struct {
 	fx.In
 
-	Collect                *sourcejobs.CollectHandler
-	Normalize              *ingestionjobs.NormalizeHandler
-	Evaluate               *ingestionjobs.EvaluateHandler
-	Cluster                *eventjobs.ClusterHandler
-	Heat                   *eventjobs.HeatHandler
-	Alerts                 *alertjobs.EvaluateHandler
-	Summary                *intelligencejobs.SummaryHandler
-	ProjectKnowledge       *projectKnowledgeHandler
-	ReconcileKnowledge     *reconcileKnowledgeHandler
-	BuildReport            *reportjobs.BuildHandler
-	DeliverEmail           *deliveryjobs.DeliverEmailHandler
-	DeliverAlertEmail      *deliveryjobs.DeliverAlertEmailHandler
-	AnalyzeMonitorIntent   *monitorIntentAnalysisHandler
-	GenerateSourceDocument *ingestionjobs.SourceDocumentGenerationHandler `optional:"true"`
+	Collect                          *sourcejobs.CollectHandler
+	Normalize                        *ingestionjobs.NormalizeHandler
+	Evaluate                         *ingestionjobs.EvaluateHandler
+	Cluster                          *eventjobs.ClusterHandler
+	Heat                             *eventjobs.HeatHandler
+	Alerts                           *alertjobs.EvaluateHandler
+	Summary                          *intelligencejobs.SummaryHandler
+	ProjectKnowledge                 *projectKnowledgeHandler
+	ReconcileKnowledge               *reconcileKnowledgeHandler
+	BuildReport                      *reportjobs.BuildHandler
+	DeliverEmail                     *deliveryjobs.DeliverEmailHandler
+	DeliverAlertEmail                *deliveryjobs.DeliverAlertEmailHandler
+	AnalyzeMonitorIntent             *monitorIntentAnalysisHandler
+	GenerateSourceDocument           *ingestionjobs.SourceDocumentGenerationHandler         `optional:"true"`
+	EvaluatePublishedDocumentMatches *ingestionjobs.PublishedDocumentMatchEvaluationHandler `optional:"true"`
+	BackfillPublishedMonitorMatches  *ingestionjobs.PublishedMonitorMatchBackfillHandler    `optional:"true"`
+	ProjectAcceptedDocumentMatch     *ingestionjobs.AcceptedDocumentMatchProjectionHandler  `optional:"true"`
 }
 
 func newP0Handlers(params p0HandlerParams) map[string]queue.Handler {
@@ -647,6 +768,15 @@ func newP0Handlers(params p0HandlerParams) map[string]queue.Handler {
 	}
 	if params.GenerateSourceDocument != nil {
 		handlers[queue.KindGenerateSourceDocument] = params.GenerateSourceDocument.Handle
+	}
+	if params.EvaluatePublishedDocumentMatches != nil {
+		handlers[queue.KindEvaluatePublishedDocumentMatches] = params.EvaluatePublishedDocumentMatches.Handle
+	}
+	if params.BackfillPublishedMonitorMatches != nil {
+		handlers[queue.KindBackfillPublishedMonitorMatches] = params.BackfillPublishedMonitorMatches.Handle
+	}
+	if params.ProjectAcceptedDocumentMatch != nil {
+		handlers[queue.KindProjectAcceptedDocumentMatch] = params.ProjectAcceptedDocumentMatch.Handle
 	}
 	return handlers
 }
@@ -927,6 +1057,15 @@ func Run(ctx context.Context, args []string) error {
 	}
 	if len(args) > 0 && args[0] == "db" {
 		return runDatabaseCommand(ctx, cfg, args[1:])
+	}
+	if len(args) > 0 && args[0] == "relevance" {
+		return runRelevanceCommand(ctx, cfg, args[1:], os.Stdout)
+	}
+	if len(args) > 0 && args[0] == "quality" {
+		return runDecisionQualityCommand(ctx, cfg, args[1:], os.Stdout)
+	}
+	if len(args) > 0 && args[0] == "maintenance" {
+		return runMaintenanceCommand(ctx, cfg, args[1:], os.Stdout)
 	}
 	if err := applyCommandLine(&cfg, args); err != nil {
 		return err

@@ -30,9 +30,17 @@ func TestIntentPublicationStagesExactPreviewFactsAndCompletesPublishedProfile(t 
 		Entities: []CompiledIntentEntityDTO{{CanonicalID: "company:hotkey", Aliases: []string{"Hot Key", "HotKey"}, NormalizedAliases: []string{"hot key", "hotkey"}}},
 	}}
 	repository.stageReceipt = StagePublishedIntentProfileReceiptDTO{CompiledProfileID: 801, Reused: false}
-	service, err := NewIntentPublicationService(repository)
+	backfills := &intentPublicationBackfillFake{}
+	service, err := NewIntentPublicationService(repository, backfills)
 	if err != nil {
 		t.Fatalf("NewIntentPublicationService(): %v", err)
+	}
+	preview, err := service.Preview(context.Background(), PreviewIntentPublicationCommand{MonitorID: 7, ConfigVersionID: 301})
+	if err != nil {
+		t.Fatalf("Preview(): %v", err)
+	}
+	if !preview.Enabled || preview.ProfileHash == "" || repository.stages != 0 || len(preview.CollectionTerms) != 5 {
+		t.Fatalf("read-only publication preview = %#v, stages=%d", preview, repository.stages)
 	}
 
 	prepared, err := service.Prepare(context.Background(), PrepareIntentPublicationCommand{MonitorID: 7, ConfigVersionID: 301})
@@ -66,12 +74,15 @@ func TestIntentPublicationStagesExactPreviewFactsAndCompletesPublishedProfile(t 
 	if repository.complete.CompiledProfileID != 801 || repository.complete.ConfigVersionID != 301 || repository.complete.PreviousConfigVersionID != 201 || !repository.complete.PublishedAt.Equal(completedAt) {
 		t.Fatalf("complete command = %#v", repository.complete)
 	}
+	if backfills.command != (SchedulePublishedIntentBackfillCommand{MonitorID: 7, MonitorVersionID: 301, CompiledProfileID: 801}) {
+		t.Fatalf("backfill command = %#v", backfills.command)
+	}
 }
 
 func TestIntentPublicationKeepsLegacyPathOnlyWhenNoIntentDraftExists(t *testing.T) {
 	t.Parallel()
 	repository := &intentPublicationRepositoryFake{candidate: PublishableIntentProfileDTO{Exists: false}}
-	service, err := NewIntentPublicationService(repository)
+	service, err := NewIntentPublicationService(repository, &intentPublicationBackfillFake{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,6 +95,19 @@ func TestIntentPublicationKeepsLegacyPathOnlyWhenNoIntentDraftExists(t *testing.
 	if _, err := service.Prepare(context.Background(), PrepareIntentPublicationCommand{MonitorID: 7, ConfigVersionID: 301}); !errors.Is(err, ErrIntentPublicationUnavailable) {
 		t.Fatalf("incomplete v2 intent fell back to legacy: %v", err)
 	}
+}
+
+type intentPublicationBackfillFake struct {
+	command SchedulePublishedIntentBackfillCommand
+	err     error
+}
+
+func (scheduler *intentPublicationBackfillFake) SchedulePublishedIntentBackfill(_ context.Context, command SchedulePublishedIntentBackfillCommand) (SchedulePublishedIntentBackfillResult, error) {
+	scheduler.command = command
+	return SchedulePublishedIntentBackfillResult{
+		MonitorID: command.MonitorID, MonitorVersionID: command.MonitorVersionID,
+		CompiledProfileID: command.CompiledProfileID, JobID: 91, Created: true,
+	}, scheduler.err
 }
 
 type intentPublicationRepositoryFake struct {

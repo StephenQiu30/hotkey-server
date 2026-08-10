@@ -5,13 +5,13 @@ import { AuthStatus, UserRole } from "@/lib/domainEnums";
 import { useAuthStore } from "@/stores/authStore";
 
 const mocks = vi.hoisted(() => ({
-  getRadarEvents: vi.fn(),
+  getMicroEvents: vi.fn(),
   getAlerts: vi.fn(),
   getMonitors: vi.fn(),
 }));
 
-vi.mock("@/services/hotkey/hotkey-server/radar", () => ({
-  getRadarEvents: mocks.getRadarEvents,
+vi.mock("@/services/hotkey/hotkey-server/microEvents", () => ({
+  getMicroEvents: mocks.getMicroEvents,
 }));
 vi.mock("@/services/hotkey/hotkey-server/alerts", () => ({
   getAlerts: mocks.getAlerts,
@@ -30,38 +30,35 @@ describe("DashboardPage", () => {
       user: { id: 1, email: "admin@example.test", role: UserRole.Admin },
       error: null,
     });
-    mocks.getRadarEvents.mockResolvedValue({
+    mocks.getMicroEvents.mockResolvedValue({
       data: {
-        as_of: "2026-08-04T14:30:00+08:00",
         items: [
           {
-            event_id: 7,
-            title_zh: "华东沿海化工园区发生爆燃事故",
-            summary: "事故引发公众对化工园区风险与安全生产的持续关注。",
-            momentum: 92,
-            independent_source_count: 8,
-            trend_status: "rising",
-            confirmation: "corroborated",
-            reason_codes: ["momentum_rising", "source_breadth_growing"],
-            latest_update: { summary: "多家权威来源补充伤亡与救援进展" },
+            id: 7,
+            primary_subject_key: "华东沿海化工园区",
+            primary_action_key: "发生爆燃事故",
+            status: "active",
+            storyline: { summary: "事故救援与后续调查持续更新。" },
+            latest_heat: {
+              acceleration: 2,
+              independent_lineage_root_count: 8,
+              reason_codes: ["acceleration_rising"],
+              window_ended_at: "2026-08-04T14:30:00+08:00",
+            },
           },
           {
-            event_id: 8,
-            title_zh: "国际航线逐步恢复，暑期出行升温",
-            summary: "航司运力增加，热门航线票价与预订热度回升。",
-            momentum: 70,
-            independent_source_count: 5,
-            trend_status: "rising",
-            confirmation: "corroborated",
+            id: 8,
+            primary_subject_key: "国际航线",
+            primary_action_key: "逐步恢复",
+            status: "active",
+            latest_heat: { independent_lineage_root_count: 5 },
           },
           {
-            event_id: 9,
-            title_zh: "生成式 AI 产品迎来新一轮功能更新",
-            summary: "头部产品密集发布新功能，行业讨论度持续增长。",
-            momentum: 66,
-            independent_source_count: 4,
-            trend_status: "stable",
-            confirmation: "single_source",
+            id: 9,
+            primary_subject_key: "生成式 AI 产品",
+            primary_action_key: "发布功能更新",
+            status: "review_pending",
+            latest_heat: { independent_lineage_root_count: 4 },
           },
         ],
       },
@@ -79,7 +76,7 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("renders a radar-first overview from the new monitoring APIs", async () => {
+  it("renders a Heat v2 overview from semantic micro-events", async () => {
     render(<DashboardPage />);
 
     expect(
@@ -88,9 +85,9 @@ describe("DashboardPage", () => {
       })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "今日 AI 摘要" })
+      screen.getByRole("heading", { name: "今日事件摘要" })
     ).toBeInTheDocument();
-    expect(screen.getAllByText("华东沿海化工园区发生爆燃事故")).toHaveLength(2);
+    expect(screen.getAllByText("华东沿海化工园区 · 发生爆燃事故")).toHaveLength(2);
     expect(
       screen.getByRole("heading", { name: "重点事件" })
     ).toBeInTheDocument();
@@ -101,16 +98,14 @@ describe("DashboardPage", () => {
       "href",
       "/dashboard/events"
     );
-    expect(mocks.getRadarEvents).toHaveBeenCalledWith({
-      limit: 12,
-      sort: "momentum",
-      window: "24h",
-    });
+    expect(mocks.getMicroEvents).toHaveBeenCalledWith({ limit: 12 });
+    expect(screen.getByText("Heat v2")).toBeInTheDocument();
+    expect(screen.queryByText(/可信|已证实|置信度|Radar 综合/)).not.toBeInTheDocument();
   });
 
-  it("shows a truthful empty state when Radar has no events", async () => {
-    mocks.getRadarEvents.mockResolvedValue({
-      data: { as_of: "2026-08-04T14:30:00+08:00", items: [] },
+  it("shows an explicit empty state when there are no micro-events", async () => {
+    mocks.getMicroEvents.mockResolvedValue({
+      data: { items: [] },
     });
 
     render(<DashboardPage />);
@@ -130,8 +125,8 @@ describe("DashboardPage", () => {
       user: { id: 2, email: "viewer@example.test", role: UserRole.Viewer },
       error: null,
     });
-    mocks.getRadarEvents.mockResolvedValue({
-      data: { as_of: "2026-08-04T14:30:00+08:00", items: [] },
+    mocks.getMicroEvents.mockResolvedValue({
+      data: { items: [] },
     });
 
     render(<DashboardPage />);

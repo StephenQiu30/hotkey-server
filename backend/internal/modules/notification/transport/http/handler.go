@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/application"
-	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/domain"
 	httptransport "github.com/StephenQiu30/hotkey-server/backend/internal/platform/http"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
@@ -19,7 +18,8 @@ import (
 )
 
 type notificationService interface {
-	ListAfter(context.Context, application.ListInput) (domain.NotificationPage, error)
+	ListUserNotifications(context.Context, application.ListUserNotificationsQuery) (application.ListUserNotificationsResult, error)
+	RecordDeliveryAttempt(context.Context, application.RecordNotificationDeliveryAttemptCommand) (application.RecordNotificationDeliveryAttemptResult, error)
 }
 
 type StreamConfig struct {
@@ -33,64 +33,68 @@ type Handler struct {
 	pollInterval      time.Duration
 	heartbeatInterval time.Duration
 	slots             chan struct{}
+	clock             func() time.Time
 }
 
 func NewHandler(service notificationService, config StreamConfig) (*Handler, error) {
 	if service == nil {
-		return nil, fmt.Errorf("notification service is required")
+		return nil, fmt.Errorf("user notification service is required")
 	}
 	if config.PollInterval <= 0 || config.HeartbeatInterval <= 0 || config.MaxConnections <= 0 {
 		return nil, fmt.Errorf("notification stream configuration is invalid")
 	}
 	return &Handler{
 		service: service, pollInterval: config.PollInterval, heartbeatInterval: config.HeartbeatInterval,
-		slots: make(chan struct{}, config.MaxConnections),
+		slots: make(chan struct{}, config.MaxConnections), clock: func() time.Time { return time.Now().UTC() },
 	}, nil
 }
 
 // List godoc
 //
-// @Summary List notification events after a durable cursor
+// @Summary List current user's monitor notifications after a durable cursor
 // @Tags notifications
 // @Produce json
 // @Security BearerAuth
-// @Param after_id query int false "last processed notification ID" minimum(0)
+// @Param after_id query int false "last processed user notification ID" minimum(0)
+// @Param monitor_id query int false "authorized monitor filter" minimum(1)
 // @Param limit query int false "page size" minimum(1) maximum(100)
-// @Success 200 {object} NotificationResult[NotificationPageResponse]
-// @Failure 400 {object} NotificationResult[EmptyResponse]
-// @Failure 401 {object} NotificationResult[EmptyResponse]
-// @Failure 503 {object} NotificationResult[EmptyResponse]
+// @Success 200 {object} NotificationResult[UserNotificationPageResponseDTO]
+// @Failure 400 {object} NotificationResult[EmptyResponseDTO]
+// @Failure 401 {object} NotificationResult[EmptyResponseDTO]
+// @Failure 503 {object} NotificationResult[EmptyResponseDTO]
 // @Router /api/v1/notifications [get]
 func (handler *Handler) List(c *gin.Context) error {
 	httptransport.SetModule(c, "notification")
-	input, err := notificationListInput(c, false)
+	c.Header("Cache-Control", "private, no-store")
+	query, err := notificationListQuery(c, false)
 	if err != nil {
 		return err
 	}
-	page, err := handler.service.ListAfter(c.Request.Context(), input)
+	page, err := handler.service.ListUserNotifications(c.Request.Context(), query)
 	if err != nil {
 		return notificationError(err)
 	}
-	httptransport.OK(c, notificationPageResponse(page))
+	httptransport.OK(c, userNotificationPageResponse(page))
 	return nil
 }
 
 // Stream godoc
 //
-// @Summary Stream notification events after a durable cursor
+// @Summary Stream current user's monitor notifications with durable replay
 // @Tags notifications
 // @Produce text/event-stream
 // @Security BearerAuth
-// @Param after_id query int false "last processed notification ID" minimum(0)
-// @Param Last-Event-ID header int false "last processed notification ID" minimum(0)
+// @Param after_id query int false "last processed user notification ID" minimum(0)
+// @Param monitor_id query int false "authorized monitor filter" minimum(1)
+// @Param Last-Event-ID header int false "last processed user notification ID" minimum(0)
 // @Success 200 {string} string
-// @Failure 400 {object} NotificationResult[EmptyResponse]
-// @Failure 401 {object} NotificationResult[EmptyResponse]
-// @Failure 503 {object} NotificationResult[EmptyResponse]
+// @Failure 400 {object} NotificationResult[EmptyResponseDTO]
+// @Failure 401 {object} NotificationResult[EmptyResponseDTO]
+// @Failure 503 {object} NotificationResult[EmptyResponseDTO]
 // @Router /api/v1/notifications/stream [get]
 func (handler *Handler) Stream(c *gin.Context) {
 	httptransport.SetModule(c, "notification")
-	input, err := notificationListInput(c, true)
+	query, err := notificationListQuery(c, true)
 	if err != nil {
 		httptransport.WriteError(c, err)
 		return
@@ -103,7 +107,7 @@ func (handler *Handler) Stream(c *gin.Context) {
 		return
 	}
 
-	page, err := handler.service.ListAfter(c.Request.Context(), input)
+	page, err := handler.service.ListUserNotifications(c.Request.Context(), query)
 	if err != nil {
 		httptransport.WriteError(c, notificationError(err))
 		return
@@ -114,11 +118,11 @@ func (handler *Handler) Stream(c *gin.Context) {
 		return
 	}
 	c.Header("Content-Type", "text/event-stream; charset=utf-8")
-	c.Header("Cache-Control", "no-cache, no-transform")
+	c.Header("Cache-Control", "private, no-store, no-transform")
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
 	c.Status(stdhttp.StatusOK)
-	cursor, writeErr := writeNotificationFrames(c, flusher, page)
+	cursor, writeErr := handler.writeNotificationFrames(c, flusher, query.UserID, page)
 	if writeErr != nil {
 		return
 	}
@@ -137,11 +141,13 @@ func (handler *Handler) Stream(c *gin.Context) {
 			}
 			flusher.Flush()
 		case <-poll.C:
-			page, err := handler.service.ListAfter(c.Request.Context(), application.ListInput{Role: input.Role, AfterID: cursor, Limit: domain.MaximumListLimit})
+			page, err := handler.service.ListUserNotifications(c.Request.Context(), application.ListUserNotificationsQuery{
+				UserID: query.UserID, MonitorID: query.MonitorID, AfterID: cursor, Limit: 100,
+			})
 			if err != nil {
 				return
 			}
-			cursor, err = writeNotificationFrames(c, flusher, page)
+			cursor, err = handler.writeNotificationFrames(c, flusher, query.UserID, page)
 			if err != nil {
 				return
 			}
@@ -149,25 +155,32 @@ func (handler *Handler) Stream(c *gin.Context) {
 	}
 }
 
-func writeNotificationFrames(c *gin.Context, flusher stdhttp.Flusher, page domain.NotificationPage) (int64, error) {
+func (handler *Handler) writeNotificationFrames(c *gin.Context, flusher stdhttp.Flusher, userID int64, page application.ListUserNotificationsResult) (int64, error) {
 	cursor := page.NextAfterID
-	for _, event := range page.Items {
-		payload, err := json.Marshal(notificationResponse(event))
+	for _, item := range page.Items {
+		response := userNotificationResponse(item)
+		payload, err := json.Marshal(response)
 		if err != nil {
 			return cursor, err
 		}
-		if _, err := fmt.Fprintf(c.Writer, "id: %d\nevent: %s\ndata: %s\n\n", event.ID, event.EventType, payload); err != nil {
+		if _, err := fmt.Fprintf(c.Writer, "id: %d\nevent: %s\ndata: %s\n\n", item.ID, item.EventType, payload); err != nil {
 			return cursor, err
 		}
+		flusher.Flush()
+		// Delivery attempts are independent append-only transport facts. A
+		// bookkeeping failure must not duplicate or retract an already written SSE frame.
+		_, _ = handler.service.RecordDeliveryAttempt(c.Request.Context(), application.RecordNotificationDeliveryAttemptCommand{
+			UserNotificationID: item.ID, UserID: userID, Channel: "sse", DeliveryTargetKey: "browser_stream",
+			Status: "succeeded", AttemptedAt: handler.clock(),
+		})
 	}
-	flusher.Flush()
 	return cursor, nil
 }
 
-func notificationListInput(c *gin.Context, stream bool) (application.ListInput, error) {
+func notificationListQuery(c *gin.Context, stream bool) (application.ListUserNotificationsQuery, error) {
 	subject, ok := httptransport.SubjectFromContext(c)
 	if !ok {
-		return application.ListInput{}, sharederrors.New(sharederrors.CodeUnauthenticated, stdhttp.StatusUnauthorized, "")
+		return application.ListUserNotificationsQuery{}, sharederrors.New(sharederrors.CodeUnauthenticated, stdhttp.StatusUnauthorized, "")
 	}
 	afterIDValue := strings.TrimSpace(c.Query("after_id"))
 	if stream && strings.TrimSpace(c.GetHeader("Last-Event-ID")) != "" {
@@ -175,22 +188,29 @@ func notificationListInput(c *gin.Context, stream bool) (application.ListInput, 
 	}
 	afterID, err := parseNonNegativeInt64(afterIDValue)
 	if err != nil {
-		return application.ListInput{}, invalidNotificationRequest()
+		return application.ListUserNotificationsQuery{}, invalidNotificationRequest()
 	}
-	limit := domain.DefaultListLimit
+	limit := 50
 	if value := strings.TrimSpace(c.Query("limit")); value != "" {
 		parsed, err := strconv.Atoi(value)
 		if err != nil {
-			return application.ListInput{}, invalidNotificationRequest()
+			return application.ListUserNotificationsQuery{}, invalidNotificationRequest()
 		}
 		limit = parsed
 	}
-	input := application.ListInput{Role: domain.AudienceRole(subject.Role), AfterID: afterID, Limit: limit}
-	query := domain.NotificationQuery{Role: input.Role, AfterID: input.AfterID, Limit: input.Limit}
-	if err := query.Validate(); err != nil {
-		return application.ListInput{}, invalidNotificationRequest()
+	var monitorID *int64
+	if value := strings.TrimSpace(c.Query("monitor_id")); value != "" {
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || parsed <= 0 {
+			return application.ListUserNotificationsQuery{}, invalidNotificationRequest()
+		}
+		monitorID = &parsed
 	}
-	return input, nil
+	query := application.ListUserNotificationsQuery{UserID: subject.UserID, MonitorID: monitorID, AfterID: afterID, Limit: limit}
+	if query.UserID <= 0 || query.AfterID < 0 || query.Limit <= 0 || query.Limit > 100 {
+		return application.ListUserNotificationsQuery{}, invalidNotificationRequest()
+	}
+	return query, nil
 }
 
 func parseNonNegativeInt64(value string) (int64, error) {

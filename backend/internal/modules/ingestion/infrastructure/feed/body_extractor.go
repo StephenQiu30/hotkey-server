@@ -42,16 +42,17 @@ const (
 
 type BodyExtractor struct {
 	markdown ingestiondomain.MarkdownProjector
+	anchors  ingestionapplication.DocumentTextAnchorMapper
 }
 
 var _ ingestionapplication.SelectedSourceBodyExtractor = (*BodyExtractor)(nil)
 
-func NewBodyExtractor(markdown ingestiondomain.MarkdownProjector) *BodyExtractor {
-	return &BodyExtractor{markdown: markdown}
+func NewBodyExtractor(markdown ingestiondomain.MarkdownProjector, anchors ingestionapplication.DocumentTextAnchorMapper) *BodyExtractor {
+	return &BodyExtractor{markdown: markdown, anchors: anchors}
 }
 
 func (extractor *BodyExtractor) Extract(ctx context.Context, command ingestionapplication.ExtractSelectedSourceBodyCommand) (ingestionapplication.ExtractSelectedSourceBodyResult, error) {
-	if extractor == nil || extractor.markdown == nil {
+	if extractor == nil || extractor.markdown == nil || extractor.anchors == nil {
 		return ingestionapplication.ExtractSelectedSourceBodyResult{}, errors.New("feed body extractor is not initialized")
 	}
 	if err := ctx.Err(); err != nil {
@@ -93,9 +94,16 @@ func (extractor *BodyExtractor) Extract(ctx context.Context, command ingestionap
 	if projection == "" || !utf8.ValidString(projection) || len(projection) > ingestionapplication.MaximumMarkdownProjectionBytes {
 		return ingestionapplication.ExtractSelectedSourceBodyResult{}, errors.New("feed Markdown projection is invalid or exceeds the size limit")
 	}
+	anchored, err := extractor.anchors.MapDocumentText(ctx, ingestionapplication.MapDocumentTextCommand{Markdown: projection})
+	if err != nil {
+		return ingestionapplication.ExtractSelectedSourceBodyResult{}, fmt.Errorf("map canonical Markdown body: %w", err)
+	}
 	plaintext, err := canonicalPlaintextFromCapturedHTML(rawBody)
 	if err != nil {
 		return ingestionapplication.ExtractSelectedSourceBodyResult{}, err
+	}
+	if plaintext != anchored.Plaintext {
+		return ingestionapplication.ExtractSelectedSourceBodyResult{}, errors.New("plaintext and Markdown visible text do not align")
 	}
 	if plaintext == "" || len(plaintext) > ingestionapplication.MaximumCanonicalSourceBodyBytes {
 		return ingestionapplication.ExtractSelectedSourceBodyResult{}, errors.New("feed plaintext projection is empty or exceeds the size limit")
@@ -103,6 +111,11 @@ func (extractor *BodyExtractor) Extract(ctx context.Context, command ingestionap
 	result.Plaintext = plaintext
 	result.Markdown = projection
 	result.PlaintextSHA256 = profileSHA256(plaintext)
+	result.MarkdownSHA256 = anchored.MarkdownSHA256
+	result.TextNormalizationVersion = anchored.NormalizationVersion
+	result.AnchorMapProfileVersion = anchored.AnchorMapProfileVersion
+	result.AnchorMapSHA256 = anchored.AnchorMapSHA256
+	result.AnchorBlocks = append([]ingestionapplication.DocumentAnchorBlockDTO(nil), anchored.Blocks...)
 	if looksLikeMarkup(rawBody) {
 		result.QualityWarnings = append(result.QualityWarnings, "captured_markup_sanitized")
 	}

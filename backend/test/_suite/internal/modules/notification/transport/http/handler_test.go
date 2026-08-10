@@ -13,43 +13,50 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/application"
-	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/domain"
 	httptransport "github.com/StephenQiu30/hotkey-server/backend/internal/platform/http"
 	"github.com/gin-gonic/gin"
 )
 
 type notificationServiceStub struct {
-	mu     sync.Mutex
-	inputs []application.ListInput
-	events []domain.NotificationEvent
-	err    error
+	mu         sync.Mutex
+	queries    []application.ListUserNotificationsQuery
+	items      []application.UserNotificationDTO
+	deliveries []application.RecordNotificationDeliveryAttemptCommand
+	err        error
 }
 
-func (stub *notificationServiceStub) ListAfter(_ context.Context, input application.ListInput) (domain.NotificationPage, error) {
+func (stub *notificationServiceStub) ListUserNotifications(_ context.Context, query application.ListUserNotificationsQuery) (application.ListUserNotificationsResult, error) {
 	stub.mu.Lock()
 	defer stub.mu.Unlock()
-	stub.inputs = append(stub.inputs, input)
+	stub.queries = append(stub.queries, query)
 	if stub.err != nil {
-		return domain.NotificationPage{}, stub.err
+		return application.ListUserNotificationsResult{}, stub.err
 	}
-	page := domain.NotificationPage{Items: []domain.NotificationEvent{}, NextAfterID: input.AfterID}
-	for _, event := range stub.events {
-		if event.ID > input.AfterID && event.Audience.Allows(event.Audience) {
-			page.Items = append(page.Items, event)
-			page.NextAfterID = event.ID
+	page := application.ListUserNotificationsResult{Items: []application.UserNotificationDTO{}, NextAfterID: query.AfterID}
+	for _, item := range stub.items {
+		if item.ID > query.AfterID && item.UserID == query.UserID {
+			page.Items = append(page.Items, item)
+			page.NextAfterID = item.ID
 		}
 	}
 	return page, nil
 }
 
-func TestListUsesAuthenticatedRoleAndStableEnvelope(t *testing.T) {
-	stub := &notificationServiceStub{events: []domain.NotificationEvent{notificationFixture(8)}}
+func (stub *notificationServiceStub) RecordDeliveryAttempt(_ context.Context, command application.RecordNotificationDeliveryAttemptCommand) (application.RecordNotificationDeliveryAttemptResult, error) {
+	stub.mu.Lock()
+	defer stub.mu.Unlock()
+	stub.deliveries = append(stub.deliveries, command)
+	return application.RecordNotificationDeliveryAttemptResult{DeliveryAttemptID: int64(len(stub.deliveries)), AttemptNo: 1}, nil
+}
+
+func TestListUsesAuthenticatedUserAndSafeEnvelope(t *testing.T) {
+	stub := &notificationServiceStub{items: []application.UserNotificationDTO{notificationFixture(8)}}
 	handler := mustNotificationHandler(t, stub, StreamConfig{PollInterval: time.Millisecond, HeartbeatInterval: time.Second, MaxConnections: 2})
 	router := gin.New()
 	RegisterRoutes(router, handler, notificationAuthenticator{role: httptransport.RoleEditor})
 
 	response := httptest.NewRecorder()
-	request := httptest.NewRequest(stdhttp.MethodGet, "/api/v1/notifications?after_id=7&limit=20", nil)
+	request := httptest.NewRequest(stdhttp.MethodGet, "/api/v1/notifications?after_id=7&limit=20&monitor_id=4", nil)
 	request.Header.Set("Authorization", "Bearer fixture")
 	router.ServeHTTP(response, request)
 
@@ -57,25 +64,28 @@ func TestListUsesAuthenticatedRoleAndStableEnvelope(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
 	stub.mu.Lock()
-	input := stub.inputs[0]
+	query := stub.queries[0]
 	stub.mu.Unlock()
-	if input.Role != domain.AudienceEditor || input.AfterID != 7 || input.Limit != 20 {
-		t.Fatalf("list input = %#v", input)
+	if query.UserID != 1 || query.AfterID != 7 || query.Limit != 20 || query.MonitorID == nil || *query.MonitorID != 4 {
+		t.Fatalf("list query = %#v", query)
+	}
+	if response.Header().Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("Cache-Control = %q", response.Header().Get("Cache-Control"))
 	}
 	var result struct {
-		Code int                      `json:"code"`
-		Data NotificationPageResponse `json:"data"`
+		Code int                             `json:"code"`
+		Data UserNotificationPageResponseDTO `json:"data"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.Code != 0 || len(result.Data.Items) != 1 || result.Data.NextAfterID != 8 {
+	if result.Code != 0 || len(result.Data.Items) != 1 || result.Data.NextAfterID != 8 || result.Data.Items[0].DeepLink != "/dashboard/events?event=42" {
 		t.Fatalf("result = %#v", result)
 	}
 }
 
-func TestStreamResumesFromLastEventIDAndEmitsSSEFrame(t *testing.T) {
-	stub := &notificationServiceStub{events: []domain.NotificationEvent{notificationFixture(12)}}
+func TestStreamResumesFromLastEventIDEmitsSafeFrameAndRecordsDelivery(t *testing.T) {
+	stub := &notificationServiceStub{items: []application.UserNotificationDTO{notificationFixture(12)}}
 	handler := mustNotificationHandler(t, stub, StreamConfig{PollInterval: 5 * time.Millisecond, HeartbeatInterval: time.Second, MaxConnections: 2})
 	router := gin.New()
 	RegisterRoutes(router, handler, notificationAuthenticator{role: httptransport.RoleViewer})
@@ -107,15 +117,21 @@ func TestStreamResumesFromLastEventIDAndEmitsSSEFrame(t *testing.T) {
 		}
 		frame += line
 	}
-	if !strings.Contains(frame, "id: 12\n") || !strings.Contains(frame, "event: event.updated\n") || !strings.Contains(frame, `"resource_id":42`) {
+	if !strings.Contains(frame, "id: 12\n") || !strings.Contains(frame, "event: micro_event.updated\n") ||
+		!strings.Contains(frame, `"resource_id":42`) || strings.Contains(frame, "payload") || strings.Contains(frame, "object_key") {
 		t.Fatalf("SSE frame = %q", frame)
 	}
 	cancel()
 	stub.mu.Lock()
-	input := stub.inputs[0]
+	query := stub.queries[0]
+	deliveries := append([]application.RecordNotificationDeliveryAttemptCommand(nil), stub.deliveries...)
 	stub.mu.Unlock()
-	if input.AfterID != 11 || input.Role != domain.AudienceViewer {
-		t.Fatalf("stream input = %#v", input)
+	if query.AfterID != 11 || query.UserID != 1 {
+		t.Fatalf("stream query = %#v", query)
+	}
+	if len(deliveries) != 1 || deliveries[0].UserNotificationID != 12 || deliveries[0].Channel != "sse" ||
+		deliveries[0].DeliveryTargetKey != "browser_stream" || deliveries[0].Status != "succeeded" {
+		t.Fatalf("deliveries = %#v", deliveries)
 	}
 }
 
@@ -131,6 +147,7 @@ func TestStreamRejectsInvalidCursorCapacityAndAnonymousAccess(t *testing.T) {
 		wantStatus    int
 	}{
 		{name: "invalid cursor", authenticator: notificationAuthenticator{role: httptransport.RoleAdmin}, path: "/api/v1/notifications/stream?after_id=-1", wantStatus: stdhttp.StatusBadRequest},
+		{name: "invalid monitor", authenticator: notificationAuthenticator{role: httptransport.RoleAdmin}, path: "/api/v1/notifications/stream?monitor_id=0", wantStatus: stdhttp.StatusBadRequest},
 		{name: "capacity", authenticator: notificationAuthenticator{role: httptransport.RoleAdmin}, path: "/api/v1/notifications/stream", occupy: true, wantStatus: stdhttp.StatusServiceUnavailable},
 		{name: "anonymous", authenticator: httptransport.NewUnavailableAuthenticator(), path: "/api/v1/notifications/stream", wantStatus: stdhttp.StatusUnauthorized},
 	} {
@@ -159,11 +176,13 @@ func (authenticator notificationAuthenticator) Authenticate(context.Context, str
 	return httptransport.Subject{UserID: 1, SessionID: 1, Role: authenticator.role}, nil
 }
 
-func notificationFixture(id int64) domain.NotificationEvent {
-	return domain.NotificationEvent{
-		ID: id, EventType: domain.EventUpdated, ResourceType: domain.ResourceEvent, ResourceID: 42,
-		Audience: domain.AudienceViewer, OccurredAt: time.Date(2026, 8, 8, 0, 0, 0, 0, time.UTC),
-		Payload: domain.NotificationPayload{Title: "事件发生重要变化", Summary: "热度上升", Status: "rising"},
+func notificationFixture(id int64) application.UserNotificationDTO {
+	now := time.Date(2026, 8, 8, 0, 0, 0, 0, time.UTC)
+	return application.UserNotificationDTO{
+		ID: id, Version: 1, OutboxEventID: id, UserID: 1, MonitorID: 4,
+		EventType: "micro_event.updated", ResourceType: "micro_event", ResourceID: 42, ResourceVersion: 3,
+		OccurredAt: now, Title: "事件发生重要变化", Summary: "新增独立来源", ResourceStatus: "active",
+		DeepLink: "/dashboard/events?event=42", CreatedAt: now,
 	}
 }
 

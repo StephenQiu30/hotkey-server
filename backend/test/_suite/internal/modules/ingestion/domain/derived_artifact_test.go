@@ -17,6 +17,10 @@ func TestDerivedArtifactEntityValidatesLifecycleMetadata(t *testing.T) {
 		MIMEType: "text/markdown; charset=utf-8", SHA256: strings.Repeat("b", 64), SizeBytes: 12,
 		LifecycleState: DerivedArtifactAvailable, Active: true, AvailableAt: &availableAt,
 		RetentionUntil: createdAt.Add(30 * 24 * time.Hour), CreatedAt: createdAt, UpdatedAt: availableAt,
+		AnchorMap: &DocumentAnchorMapIdentity{
+			NormalizationVersion: "nfc-lf-collapse-space-v1", AnchorMapProfileVersion: "commonmark-gfm-visible-blocks-v1",
+			PlaintextSHA256: strings.Repeat("c", 64), MarkdownSHA256: strings.Repeat("b", 64), AnchorMapSHA256: strings.Repeat("d", 64),
+		},
 	}
 	if err := artifact.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)

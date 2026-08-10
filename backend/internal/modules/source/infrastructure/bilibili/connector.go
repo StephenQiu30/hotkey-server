@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -25,13 +26,15 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/evidencecapture"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/sourcenet"
 )
 
 const (
-	maxResponseBodyBytes = 4 << 20
-	cursorVersion        = 1
-	pageSize             = 50
+	collectorProfileVersion = "bilibili-open-platform-json-v1"
+	maxResponseBodyBytes    = 4 << 20
+	cursorVersion           = 1
+	pageSize                = 50
 )
 
 type lookupIPAddrFunc func(context.Context, string) ([]net.IPAddr, error)
@@ -109,6 +112,21 @@ type articlePage struct {
 	Page struct {
 		Total int `json:"total"`
 	} `json:"page"`
+}
+
+type fetchedJSONResponse struct {
+	payload       []byte
+	statusCode    int
+	requestedURL  string
+	finalURL      string
+	redirectChain []string
+	headers       http.Header
+	capturedAt    time.Time
+}
+
+func (value fetchedJSONResponse) snapshot() (domain.EvidenceSnapshot, error) {
+	return evidencecapture.NewJSONSnapshot(value.payload, collectorProfileVersion, value.requestedURL, value.finalURL,
+		value.redirectChain, value.statusCode, value.headers, value.capturedAt)
 }
 
 func New(connection domain.SourceConnection, resolvers ...sourcenet.Resolver) (*Connector, error) {
@@ -220,12 +238,23 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 	videoMore, articleMore := false, false
 	if hasVideo {
 		var page videoPage
-		if err := connector.get(ctx, credential, "/archive/viewlist", url.Values{"pn": {strconv.Itoa(checkpoint.VideoPage)}, "ps": {strconv.Itoa(pageSize)}, "status": {"all"}}, &page); err != nil {
+		captured, err := connector.getCaptured(ctx, credential, "/archive/viewlist", url.Values{"pn": {strconv.Itoa(checkpoint.VideoPage)}, "ps": {strconv.Itoa(pageSize)}, "status": {"all"}}, &page)
+		if err != nil {
 			return result, err
 		}
-		for _, item := range page.List {
-			mapped, ok := mapVideo(item, connector.now())
+		snapshot, err := captured.snapshot()
+		if err != nil {
+			return result, parse("capture Bilibili video response")
+		}
+		result.Snapshots = append(result.Snapshots, snapshot)
+		for index, item := range page.List {
+			mapped, ok := mapVideo(item, snapshot.CapturedAt)
 			if ok {
+				mapped.Parties = connector.accountParties()
+				mapped, err = domain.NormalizeSourceItem(mapped)
+				if err != nil || evidencecapture.BindJSONPointer(&mapped, snapshot, fmt.Sprintf("/data/list/%d", index), domain.EvidenceUsageDocumentSource) != nil {
+					return domain.FetchResult{}, parse("bind Bilibili video evidence")
+				}
 				result.Items = append(result.Items, mapped)
 			} else {
 				result.Diagnostics = append(result.Diagnostics, domain.FetchDiagnostic{Code: "invalid_bilibili_video"})
@@ -240,12 +269,23 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 	}
 	if hasArticle {
 		var page articlePage
-		if err := connector.get(ctx, credential, "/article/list", url.Values{"pn": {strconv.Itoa(checkpoint.ArticlePage)}, "ps": {strconv.Itoa(pageSize)}, "sort": {"publish_time"}}, &page); err != nil {
+		captured, err := connector.getCaptured(ctx, credential, "/article/list", url.Values{"pn": {strconv.Itoa(checkpoint.ArticlePage)}, "ps": {strconv.Itoa(pageSize)}, "sort": {"publish_time"}}, &page)
+		if err != nil {
 			return result, err
 		}
-		for _, item := range page.List {
-			mapped, ok := mapArticle(item, connector.now(), scopes["ATC_DATA"])
+		snapshot, err := captured.snapshot()
+		if err != nil {
+			return result, parse("capture Bilibili article response")
+		}
+		result.Snapshots = append(result.Snapshots, snapshot)
+		for index, item := range page.List {
+			mapped, ok := mapArticle(item, snapshot.CapturedAt, scopes["ATC_DATA"])
 			if ok {
+				mapped.Parties = connector.accountParties()
+				mapped, err = domain.NormalizeSourceItem(mapped)
+				if err != nil || evidencecapture.BindJSONPointer(&mapped, snapshot, fmt.Sprintf("/data/list/%d", index), domain.EvidenceUsageDocumentSource) != nil {
+					return domain.FetchResult{}, parse("bind Bilibili article evidence")
+				}
 				result.Items = append(result.Items, mapped)
 			} else {
 				result.Diagnostics = append(result.Diagnostics, domain.FetchDiagnostic{Code: "invalid_bilibili_article"})
@@ -282,41 +322,64 @@ func (connector *Connector) authorizedScopes(ctx context.Context, credential cre
 }
 
 func (connector *Connector) get(ctx context.Context, credential credentials, path string, query url.Values, output any) error {
+	_, err := connector.getCaptured(ctx, credential, path, query, output)
+	return err
+}
+
+func (connector *Connector) getCaptured(ctx context.Context, credential credentials, path string, query url.Values, output any) (fetchedJSONResponse, error) {
 	target := *connector.endpoint
 	target.Path = strings.TrimSuffix(connector.endpoint.Path, "/") + path
 	target.RawQuery = query.Encode()
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
 	if err != nil {
-		return permanent("build Bilibili request")
+		return fetchedJSONResponse{}, permanent("build Bilibili request")
 	}
 	addSignature(request, credential, connector.now(), connector.nonce())
 	response, err := connector.http.Do(request)
 	if err != nil {
-		return temporary("request Bilibili Open Platform")
+		return fetchedJSONResponse{}, temporary("request Bilibili Open Platform")
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBodyBytes+1))
 	if err != nil || len(body) > maxResponseBodyBytes {
-		return parse("read Bilibili response")
+		return fetchedJSONResponse{}, parse("read Bilibili response")
 	}
 	switch {
 	case response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden:
-		return authentication("Bilibili authorization rejected")
+		return fetchedJSONResponse{}, authentication("Bilibili authorization rejected")
 	case response.StatusCode == http.StatusTooManyRequests:
-		return domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("Bilibili rate limited"))
+		return fetchedJSONResponse{}, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("Bilibili rate limited"))
 	case response.StatusCode >= 500:
-		return temporary("Bilibili service unavailable")
+		return fetchedJSONResponse{}, temporary("Bilibili service unavailable")
 	case response.StatusCode != http.StatusOK:
-		return permanent("Bilibili request rejected")
+		return fetchedJSONResponse{}, permanent("Bilibili request rejected")
 	}
 	var wrapped envelope
 	if json.Unmarshal(body, &wrapped) != nil || wrapped.Code != 0 || len(wrapped.Data) == 0 {
-		return parse("decode Bilibili response")
+		return fetchedJSONResponse{}, parse("decode Bilibili response")
 	}
 	if json.Unmarshal(wrapped.Data, output) != nil {
-		return parse("decode Bilibili data")
+		return fetchedJSONResponse{}, parse("decode Bilibili data")
 	}
-	return nil
+	return fetchedJSONResponse{
+		payload: body, statusCode: response.StatusCode, requestedURL: target.String(),
+		finalURL: response.Request.URL.String(), redirectChain: evidencecapture.RedirectChain(target.String(), response.Request),
+		headers: response.Header.Clone(), capturedAt: connector.now().UTC(),
+	}, nil
+}
+
+func (connector *Connector) accountParties() []domain.SourcePartyAssertion {
+	account := domain.SourcePartyAssertion{
+		Kind: domain.SourcePartyKindAccount, IdentityNamespace: "bilibili:openid", ExternalID: connector.openID,
+		DisplayName: connector.openID,
+	}
+	account.Role = domain.SourcePartyRoleContentOrigin
+	parties := []domain.SourcePartyAssertion{account, {
+		Role: domain.SourcePartyRoleDistributor, Kind: domain.SourcePartyKindOrganization,
+		IdentityNamespace: "platform", ExternalID: "bilibili", DisplayName: "哔哩哔哩", HomepageURL: "https://www.bilibili.com",
+	}}
+	account.Role = domain.SourcePartyRoleAuthor
+	return append(parties, account)
 }
 
 func (connector *Connector) credentials() (credentials, error) {

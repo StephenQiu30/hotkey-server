@@ -9,13 +9,13 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 
 const supportedSources = [
-  "财新",
-  "36氪",
-  "澎湃",
-  "人民网",
-  "第一财经",
-  "界面新闻",
-  "虎嗅",
+  "RSS / Atom",
+  "Hacker News",
+  "X",
+  "微博",
+  "哔哩哔哩",
+  "Bing",
+  "Google",
 ];
 
 const evidence = [
@@ -28,7 +28,7 @@ const workflow = [
   {
     step: "01",
     title: "持续监测",
-    body: "连接可信公开来源，让重要信号在产生时就进入同一条情报链路。",
+    body: "连接已配置权利策略的公开来源，让重要信号在产生时就进入同一条证据链路。",
   },
   {
     step: "02",
@@ -175,13 +175,13 @@ export default function HomePage() {
 
                 <aside className="self-start rounded-2xl bg-muted/55 p-6 sm:p-8">
                   <Sparkles className="h-5 w-5" />
-                  <p className="mt-5 text-sm font-semibold">AI 判断</p>
+                  <p className="mt-5 text-sm font-semibold">AI 相关性建议</p>
                   <p className="mt-3 text-sm leading-7 text-muted-foreground">
                     这是从“云上能力”到“终端体验”的关键拐点，建议持续跟踪端侧模型压缩、隐私计算与生态伙伴落地节奏。
                   </p>
                   <div className="mt-8 flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">置信度</span>
-                    <span className="mono font-semibold">85%</span>
+                    <span className="text-muted-foreground">用途</span>
+                    <span className="mono font-semibold">人工复核</span>
                   </div>
                 </aside>
               </CardContent>
@@ -216,7 +216,7 @@ export default function HomePage() {
             <div>
               <p className="text-sm text-muted-foreground">从第一条监控开始</p>
               <h2 className="mt-4 max-w-3xl text-[clamp(2.5rem,4.5vw,5rem)] font-normal leading-[1] tracking-[-0.06em]">
-                让下一次判断更早，也更可靠。
+                让下一次判断更早，也更可回溯。
               </h2>
             </div>
             <Button asChild size="lg" className="self-start rounded-lg lg:self-auto">

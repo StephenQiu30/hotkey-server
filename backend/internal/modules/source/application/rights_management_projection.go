@@ -74,6 +74,9 @@ type SourceEndpointCapabilityDTO struct {
 	SourceType          string
 	CollectionInterface string
 	ContentScope        string
+	DocumentCaptureMode string
+	DefaultAccessMode   string
+	RequiredActions     []string
 	FollowsCanonicalURL bool
 	Availability        string
 	RightsStatus        string
@@ -370,16 +373,20 @@ func sourceEndpointCapability(facts SourceEndpointCapabilityFactsDTO) (SourceEnd
 	if facts.SourceEndpointID <= 0 || !domain.SourceType(facts.SourceType).Valid() {
 		return SourceEndpointCapabilityDTO{}, fmt.Errorf("%w: invalid source endpoint capability facts", sharedrepository.ErrConstraint)
 	}
-	collectionInterface, contentScope := "", ""
+	collectionInterface, contentScope, documentCaptureMode := "", "", ""
+	requiredActions := []string{"fetch", "store_raw", "store_derived", "display_private", "quote", "embed_local", "retain"}
 	switch domain.SourceType(facts.SourceType) {
 	case domain.SourceTypeRSS:
-		collectionInterface, contentScope = "rss_atom_feed", "feed_payload"
+		collectionInterface, contentScope, documentCaptureMode = "rss_atom_feed", "feed_payload", "policy_gated_body"
 	case domain.SourceTypeHackerNews:
-		collectionInterface, contentScope = "official_api", "platform_post"
+		collectionInterface, contentScope, documentCaptureMode = "official_api", "platform_post", "policy_gated_body"
 	case domain.SourceTypeX, domain.SourceTypeBilibili, domain.SourceTypeWeibo:
-		collectionInterface, contentScope = "authorized_official_api", "platform_post"
-	case domain.SourceTypeBingGrounding, domain.SourceTypeGoogleAgentSearch:
-		collectionInterface, contentScope = "authorized_official_api", "discovery_snippet"
+		collectionInterface, contentScope, documentCaptureMode = "authorized_official_api", "platform_post", "policy_gated_body"
+	case domain.SourceTypeGoogleAgentSearch:
+		collectionInterface, contentScope, documentCaptureMode = "authorized_official_api", "discovery_snippet", "policy_gated_snippet"
+	case domain.SourceTypeBingGrounding:
+		collectionInterface, contentScope, documentCaptureMode = "authorized_official_api", "discovery_synthesis", "metadata_only"
+		requiredActions = []string{"fetch", "store_raw", "retain"}
 	default:
 		return SourceEndpointCapabilityDTO{}, fmt.Errorf("%w: unsupported source endpoint capability", sharedrepository.ErrConstraint)
 	}
@@ -389,7 +396,9 @@ func sourceEndpointCapability(facts SourceEndpointCapabilityFactsDTO) (SourceEnd
 	}
 	return SourceEndpointCapabilityDTO{
 		SourceEndpointID: facts.SourceEndpointID, SourceType: facts.SourceType,
-		CollectionInterface: collectionInterface, ContentScope: contentScope, FollowsCanonicalURL: false,
+		CollectionInterface: collectionInterface, ContentScope: contentScope,
+		DocumentCaptureMode: documentCaptureMode, DefaultAccessMode: "metadata_only",
+		RequiredActions: append([]string(nil), requiredActions...), FollowsCanonicalURL: false,
 		Availability: availability, RightsStatus: rightsStatus,
 	}, nil
 }

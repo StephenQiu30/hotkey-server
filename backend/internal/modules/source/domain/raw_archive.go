@@ -32,10 +32,26 @@ func (locator EvidenceLocatorType) Valid() bool {
 	return locator == EvidenceLocatorJSONPointer || locator == EvidenceLocatorXMLPath || locator == EvidenceLocatorByteRange || locator == EvidenceLocatorWholePayload
 }
 
+// EvidenceUsage states whether a locator is eligible to create a document or
+// only preserves provider context such as a ranked-list membership response.
+// Context evidence remains fully auditable but must never enqueue a body
+// extraction job.
+type EvidenceUsage string
+
+const (
+	EvidenceUsageDocumentSource EvidenceUsage = "document_source"
+	EvidenceUsageContext        EvidenceUsage = "context"
+)
+
+func (usage EvidenceUsage) Valid() bool {
+	return usage == EvidenceUsageDocumentSource || usage == EvidenceUsageContext
+}
+
 // EvidenceReference is an immutable locator from a normalized SourceItem to a
 // selected portion of an EvidenceSnapshot.
 type EvidenceReference struct {
 	SnapshotKey           string
+	Usage                 EvidenceUsage
 	LocatorType           EvidenceLocatorType
 	LocatorValue          string
 	ByteStart             *int64
@@ -45,7 +61,7 @@ type EvidenceReference struct {
 }
 
 func (reference EvidenceReference) Validate() error {
-	if !validSHA256(reference.SnapshotKey) || !reference.LocatorType.Valid() || !validSHA256(reference.SelectedPayloadSHA256) {
+	if !validSHA256(reference.SnapshotKey) || !reference.Usage.Valid() || !reference.LocatorType.Valid() || !validSHA256(reference.SelectedPayloadSHA256) {
 		return fmt.Errorf("evidence reference identity is invalid")
 	}
 	if reference.LocatorValue == "" || reference.LocatorValue != strings.TrimSpace(reference.LocatorValue) || len(reference.LocatorValue) > 2048 || strings.ContainsAny(reference.LocatorValue, "\x00\r\n") {

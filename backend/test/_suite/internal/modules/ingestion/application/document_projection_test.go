@@ -109,6 +109,11 @@ func TestDocumentProjectionServicePublishesCommitsAndAdvancesReadableLifecycle(t
 		reservation.MIMEType != "text/markdown; charset=utf-8" || reservation.StoreDerivedRightsDecisionID != 41 || reservation.RetainRightsDecisionID != 42 {
 		t.Fatalf("Reserve() command = %#v", reservation)
 	}
+	if reservation.AnchorMap == nil || reservation.AnchorMap.PlaintextSHA256 != fixture.command.AnchorMap.PlaintextSHA256 ||
+		reservation.AnchorMap.MarkdownSHA256 != digest || reservation.AnchorMap.AnchorMapSHA256 != fixture.command.AnchorMap.AnchorMapSHA256 ||
+		len(fixture.repository.commits[0].AnchorBlocks) != 1 {
+		t.Fatalf("anchor map reserve/commit = %#v/%#v", reservation.AnchorMap, fixture.repository.commits[0].AnchorBlocks)
+	}
 	if _, exposed := reflect.TypeOf(reservation).FieldByName("ProjectionBytes"); exposed {
 		t.Fatal("ReserveDerivedArtifactCommand exposes projection bytes")
 	}
@@ -286,6 +291,23 @@ func TestDocumentProjectionServiceRejectsNonCanonicalBytesBeforePorts(t *testing
 	}
 }
 
+func TestDocumentProjectionServiceRequiresAnchorMapOnlyForMarkdown(t *testing.T) {
+	t.Parallel()
+	markdown := newDocumentProjectionFixture(t, DocumentPolicyPending, 1)
+	validMap := cloneProjectAnchorMap(markdown.command.AnchorMap)
+	markdown.command.AnchorMap = nil
+	if _, err := markdown.service.Project(context.Background(), markdown.command); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("Project(markdown without map) error = %v, want invalid input", err)
+	}
+
+	plaintext := newDocumentProjectionFixture(t, DocumentPolicyPending, 1)
+	plaintext.command.ArtifactType = DocumentProjectionPlaintext
+	plaintext.command.AnchorMap = validMap
+	if _, err := plaintext.service.Project(context.Background(), plaintext.command); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("Project(plaintext with map) error = %v, want invalid input", err)
+	}
+}
+
 type documentProjectionFixture struct {
 	service    *DocumentProjectionService
 	publisher  *documentProjectionPublisherFake
@@ -316,6 +338,11 @@ func newDocumentProjectionFixture(t *testing.T, state string, version int64) doc
 		LifecycleState: DerivedArtifactPending,
 		RetentionUntil: time.Date(2026, time.September, 8, 9, 0, 0, 0, time.UTC),
 		CreatedAt:      createdAt, UpdatedAt: createdAt,
+	}
+	anchorMap := projectDocumentAnchorMapForTest("Archived\n\n正文", string(content))
+	artifact.AnchorMap = &DerivedArtifactAnchorMapDTO{
+		NormalizationVersion: anchorMap.NormalizationVersion, AnchorMapProfileVersion: anchorMap.AnchorMapProfileVersion,
+		PlaintextSHA256: anchorMap.PlaintextSHA256, MarkdownSHA256: anchorMap.MarkdownSHA256, AnchorMapSHA256: anchorMap.AnchorMapSHA256,
 	}
 	relativePath := "documents/7/19/markdown/" + profile + ".md"
 	publisher := &documentProjectionPublisherFake{result: knowledgeapplication.PublishProjectionResult{
@@ -353,6 +380,36 @@ func newDocumentProjectionFixture(t *testing.T, state string, version int64) doc
 			ArtifactType: DocumentProjectionMarkdown, TransformerProfileSHA256: profile,
 			StoreDerivedRightsDecisionID: 41, RetainRightsDecisionID: 42,
 			ProjectionBytes: append([]byte(nil), content...),
+			AnchorMap:       anchorMap,
 		},
 	}
+}
+
+func projectDocumentAnchorMapForTest(plaintext, markdown string) *ProjectDocumentAnchorMapCommand {
+	result := MapDocumentTextResult{
+		Plaintext: plaintext, NormalizationVersion: CanonicalDocumentTextNormalizationVersion,
+		AnchorMapProfileVersion: CanonicalDocumentAnchorMapProfileVersion,
+		PlaintextSHA256:         documentAnchorTestSHA(plaintext), MarkdownSHA256: documentAnchorTestSHA(markdown),
+		Blocks: []DocumentAnchorBlockDTO{{
+			Ordinal: 0, PlaintextUTF8ByteStart: 0, PlaintextUTF8ByteEnd: int64(len(plaintext)),
+			MarkdownUTF8ByteStart: 0, MarkdownUTF8ByteEnd: int64(len(markdown)),
+			MarkdownAnchor: DocumentMarkdownAnchor(0, plaintext),
+		}},
+	}
+	result.AnchorMapSHA256 = DocumentAnchorMapSHA256(result)
+	return &ProjectDocumentAnchorMapCommand{
+		Plaintext: result.Plaintext, NormalizationVersion: result.NormalizationVersion,
+		AnchorMapProfileVersion: result.AnchorMapProfileVersion, PlaintextSHA256: result.PlaintextSHA256,
+		MarkdownSHA256: result.MarkdownSHA256, AnchorMapSHA256: result.AnchorMapSHA256,
+		Blocks: append([]DocumentAnchorBlockDTO(nil), result.Blocks...),
+	}
+}
+
+func cloneProjectAnchorMap(value *ProjectDocumentAnchorMapCommand) *ProjectDocumentAnchorMapCommand {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	copy.Blocks = append([]DocumentAnchorBlockDTO(nil), value.Blocks...)
+	return &copy
 }

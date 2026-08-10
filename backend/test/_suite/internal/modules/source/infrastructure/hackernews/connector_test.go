@@ -75,6 +75,13 @@ func TestConnectorFetchesBoundedFirstHNRangeInStableOrder(t *testing.T) {
 	if peak.Load() > maxItemWorkers {
 		t.Fatalf("peak item concurrency = %d, want <= %d", peak.Load(), maxItemWorkers)
 	}
+	if len(result.Snapshots) != 2 || len(result.Items[0].EvidenceReferences) != 1 || len(result.Items[1].EvidenceReferences) != 1 ||
+		result.Items[0].EvidenceReferences[0].Usage != domain.EvidenceUsageDocumentSource {
+		t.Fatalf("HN item evidence = %#v / %#v", result.Snapshots, result.Items)
+	}
+	if result.Items[0].DiscussionURL != "https://news.ycombinator.com/item?id=101" || len(result.Items[0].Parties) != 1 || result.Items[0].Parties[0].Role != domain.SourcePartyRoleDistributor {
+		t.Fatalf("HN dual URL/parties = %#v", result.Items[0])
+	}
 }
 
 func TestConnectorMapsAllSupportedHNItemTypesAndPollRelationship(t *testing.T) {
@@ -175,6 +182,10 @@ func TestConnectorFetchesTopStoriesInRankingOrderOnEveryPoll(t *testing.T) {
 	for name, result := range map[string]domain.FetchResult{"first": first, "second": second} {
 		if result.NextCursor != "" || result.HasMore || len(result.Items) != 3 || result.Items[0].ExternalID != "205" || result.Items[1].ExternalID != "203" || result.Items[2].ExternalID != "204" {
 			t.Fatalf("%s ranked result = %#v", name, result)
+		}
+		if len(result.Snapshots) != 4 || len(result.Items[0].EvidenceReferences) != 2 ||
+			result.Items[0].EvidenceReferences[1].LocatorValue != "/0" || result.Items[0].EvidenceReferences[1].Usage != domain.EvidenceUsageContext {
+			t.Fatalf("%s ranked evidence = %#v / %#v", name, result.Snapshots, result.Items[0].EvidenceReferences)
 		}
 	}
 	if *second.Items[0].Metrics.LikeCount <= *first.Items[0].Metrics.LikeCount {

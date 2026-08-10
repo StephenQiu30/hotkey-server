@@ -154,6 +154,7 @@ type evidenceLocatorRecord struct {
 	SourceConnectionID    int64
 	SourceObservationID   int64
 	EvidenceSnapshotID    int64
+	Usage                 string
 	LocatorType           string
 	LocatorValue          string
 	ByteStart             sql.NullInt64
@@ -164,13 +165,13 @@ type evidenceLocatorRecord struct {
 
 const evidenceLocatorColumns = `
 id,source_connection_id,source_observation_id,evidence_snapshot_id,
-locator_type,locator_value,byte_start,byte_end,selected_payload_sha256,selector_version`
+usage,locator_type,locator_value,byte_start,byte_end,selected_payload_sha256,selector_version`
 
 func scanEvidenceLocatorRecord(scanner evidenceSnapshotScanner) (evidenceLocatorRecord, error) {
 	var record evidenceLocatorRecord
 	err := scanner.Scan(
 		&record.ID, &record.SourceConnectionID, &record.SourceObservationID, &record.EvidenceSnapshotID,
-		&record.LocatorType, &record.LocatorValue, &record.ByteStart, &record.ByteEnd,
+		&record.Usage, &record.LocatorType, &record.LocatorValue, &record.ByteStart, &record.ByteEnd,
 		&record.SelectedPayloadSHA256, &record.SelectorVersion,
 	)
 	return record, err
@@ -178,7 +179,7 @@ func scanEvidenceLocatorRecord(scanner evidenceSnapshotScanner) (evidenceLocator
 
 func sameEvidenceLocatorFacts(record evidenceLocatorRecord, sourceConnectionID, observationID, snapshotID int64, reference sourceapplication.RawEvidenceReferenceDTO) bool {
 	return record.SourceConnectionID == sourceConnectionID && record.SourceObservationID == observationID &&
-		record.EvidenceSnapshotID == snapshotID && record.LocatorType == reference.LocatorType &&
+		record.EvidenceSnapshotID == snapshotID && record.Usage == reference.Usage && record.LocatorType == reference.LocatorType &&
 		record.LocatorValue == reference.LocatorValue && nullInt64Equals(record.ByteStart, reference.ByteStart) &&
 		nullInt64Equals(record.ByteEnd, reference.ByteEnd) && strings.TrimSpace(record.SelectedPayloadSHA256) == reference.SelectedPayloadSHA256 &&
 		record.SelectorVersion == reference.SelectorVersion
@@ -189,6 +190,7 @@ func (record evidenceLocatorRecord) committedReferenceDTO() sourceapplication.Co
 		EvidenceReferenceID: record.ID,
 		SourceObservationID: record.SourceObservationID,
 		EvidenceSnapshotID:  record.EvidenceSnapshotID,
+		Usage:               record.Usage,
 	}
 }
 
@@ -290,6 +292,10 @@ func validateSourceObservation(observation sourceapplication.SourceObservationDT
 	}
 	if err := observation.Evidence.Validate(); err != nil {
 		return fmt.Errorf("source observation evidence is invalid: %w", err)
+	}
+	normalizedParties, err := sourceapplication.NormalizeSourceObservationPartyDTOs(observation.Parties)
+	if err != nil || !sameSourceObservationPartyDTOs(normalizedParties, observation.Parties) {
+		return fmt.Errorf("source observation parties are invalid or non-canonical")
 	}
 	return nil
 }

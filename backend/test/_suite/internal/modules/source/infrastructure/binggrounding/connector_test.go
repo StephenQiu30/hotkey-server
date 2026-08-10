@@ -92,11 +92,18 @@ func TestConnectorUsesOfficialStreamingMCPContractAndMapsDerivedEvidence(t *test
 		t.Fatalf("items = %#v", result.Items)
 	}
 	item := result.Items[0]
-	if item.SourceCode != sourceCode || item.ContentType != "bulletin" || item.Title != modelGeneratedTitle+" · 查询：HotKey 发布" || item.Author != modelGeneratedAuthor || item.EvidenceCompleteness != domain.EvidenceCompletenessSummaryOnly {
+	if item.SourceCode != sourceCode || item.ContentType != "bulletin" || item.Title != modelGeneratedTitle+" · 查询：HotKey 发布" || item.Author != modelGeneratedAuthor || item.EvidenceCompleteness != domain.EvidenceCompletenessMetadataOnly {
 		t.Fatalf("derived evidence markers = %#v", item)
 	}
-	if item.Body != "HotKey 已发布。[来源](https://example.com/news)" || item.URL != "https://example.com/news" || len(item.Attachments) != 2 {
+	if item.Body != "" || item.URL != "https://example.com/news" || len(item.Attachments) != 2 {
 		t.Fatalf("citations = body %q URL %q attachments %#v", item.Body, item.URL, item.Attachments)
+	}
+	if len(result.Snapshots) != 1 || !result.Snapshots[0].VerifyPayload() || len(item.EvidenceReferences) != 1 ||
+		item.EvidenceReferences[0].LocatorType != domain.EvidenceLocatorByteRange || item.EvidenceReferences[0].Usage != domain.EvidenceUsageDocumentSource {
+		t.Fatalf("Bing raw evidence = %#v / %#v", result.Snapshots, item.EvidenceReferences)
+	}
+	if len(item.Parties) != 1 || item.Parties[0].Role != domain.SourcePartyRoleDistributor || item.Parties[0].ExternalID != "microsoft-bing-grounding" {
+		t.Fatalf("Bing explicit parties = %#v", item.Parties)
 	}
 	if item.Metrics != (domain.SourceMetrics{}) || result.HasMore || result.NextCursor != "" {
 		t.Fatalf("unsupported raw facts leaked: %#v / %#v", item.Metrics, result)

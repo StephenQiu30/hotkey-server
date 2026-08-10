@@ -26,16 +26,20 @@ func TestOllamaProviderBindsDigestAndEmbedsQwenInOrder(t *testing.T) {
 		case "/api/embed":
 			embeds.Add(1)
 			var body struct {
-				Input string `json:"input"`
+				Model      string   `json:"model"`
+				Input      []string `json:"input"`
+				Dimensions int      `json:"dimensions"`
 			}
 			_ = json.NewDecoder(request.Body).Decode(&body)
-			vector := make([]float32, intelligencedomain.EmbeddingDimensions)
-			if body.Input == "second" {
-				vector[0] = 2
-			} else {
-				vector[0] = 1
+			if body.Model != intelligencedomain.OllamaQwenEmbeddingModel || body.Dimensions != intelligencedomain.EmbeddingDimensions || len(body.Input) != 2 {
+				t.Errorf("embedding request = %#v", body)
 			}
-			writeJSON(writer, map[string]any{"embeddings": [][]float32{vector}, "prompt_eval_count": 11})
+			vectors := make([][]float32, len(body.Input))
+			for index := range body.Input {
+				vectors[index] = make([]float32, intelligencedomain.EmbeddingDimensions)
+				vectors[index][0] = float32(index + 1)
+			}
+			writeJSON(writer, map[string]any{"embeddings": vectors, "prompt_eval_count": 22})
 		default:
 			writer.WriteHeader(http.StatusNotFound)
 		}
@@ -52,7 +56,7 @@ func TestOllamaProviderBindsDigestAndEmbedsQwenInOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tags.Load() != 1 || embeds.Load() != 2 || len(response.Vectors) != 2 || response.Vectors[0][0] != 1 || response.Vectors[1][0] != 2 || response.Usage != (intelligencedomain.Usage{}) {
+	if tags.Load() != 1 || embeds.Load() != 1 || len(response.Vectors) != 2 || response.Vectors[0][0] != 1 || response.Vectors[1][0] != 2 || response.Usage != (intelligencedomain.Usage{InputTokens: 22}) {
 		t.Fatalf("tags=%d embeds=%d response=%#v", tags.Load(), embeds.Load(), response)
 	}
 }
@@ -69,12 +73,13 @@ func TestOllamaProviderGeneratesStructuredJSONWithUsage(t *testing.T) {
 			if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
 				t.Fatal(err)
 			}
-			stream, hasStream := body["stream"]
-			if body["model"] != "qwen3:8b" || body["format"] != "json" || (hasStream && stream != false) {
+			format, formatOK := body["format"].(map[string]any)
+			options, optionsOK := body["options"].(map[string]any)
+			if body["model"] != "qwen3:8b" || body["stream"] != false || body["think"] != false || !formatOK || format["type"] != "object" || !optionsOK || options["temperature"] != float64(0) {
 				t.Errorf("chat request = %#v", body)
 			}
 			messages, _ := body["messages"].([]any)
-			if len(messages) != 2 || !strings.Contains(messages[1].(map[string]any)["content"].(string), `"previous_output"`) {
+			if len(messages) != 2 || !strings.Contains(messages[0].(map[string]any)["content"].(string), `"terms"`) || !strings.Contains(messages[1].(map[string]any)["content"].(string), `"previous_output"`) {
 				t.Errorf("repair messages = %#v", messages)
 			}
 			writeJSON(writer, map[string]any{

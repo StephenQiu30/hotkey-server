@@ -71,7 +71,7 @@ export async function getAgentEventsIdHeat(
   );
 }
 
-/** Get verified event intelligence GET /api/v1/agent/events/${param0}/intelligence */
+/** Get evidence-linked event intelligence GET /api/v1/agent/events/${param0}/intelligence */
 export async function getAgentEventsIdIntelligence(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: HotKeyAPI.getAgentEventsIdIntelligenceParams,
@@ -141,28 +141,6 @@ export async function getEventsId(
   );
 }
 
-/** Save an event claim POST /api/v1/events/${param0}/claims */
-export async function postEventsIdClaims(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: HotKeyAPI.postEventsIdClaimsParams,
-  body: HotKeyAPI.ClaimRequest,
-  options?: RequestOptions
-) {
-  const { id: param0, ...queryParams } = params;
-  return request<HotKeyAPI.EventResultHttpClaimResponse>(
-    `/api/v1/events/${param0}/claims`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      params: { ...queryParams },
-      data: body,
-      ...(options || {}),
-    }
-  );
-}
-
 /** List event contents GET /api/v1/events/${param0}/contents */
 export async function getEventsIdContents(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
@@ -219,7 +197,7 @@ export async function getEventsIdHeat(
   );
 }
 
-/** Get verified event intelligence GET /api/v1/events/${param0}/intelligence */
+/** Get evidence-linked event intelligence GET /api/v1/events/${param0}/intelligence */
 export async function getEventsIdIntelligence(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: HotKeyAPI.getEventsIdIntelligenceParams,
@@ -230,23 +208,6 @@ export async function getEventsIdIntelligence(
     `/api/v1/events/${param0}/intelligence`,
     {
       method: "GET",
-      params: { ...queryParams },
-      ...(options || {}),
-    }
-  );
-}
-
-/** Regenerate event entities and claims POST /api/v1/events/${param0}/intelligence/extract */
-export async function postEventsIdIntelligenceExtract(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: HotKeyAPI.postEventsIdIntelligenceExtractParams,
-  options?: RequestOptions
-) {
-  const { id: param0, ...queryParams } = params;
-  return request<HotKeyAPI.EventResultHttpExtractionRegenerationResponse>(
-    `/api/v1/events/${param0}/intelligence/extract`,
-    {
-      method: "POST",
       params: { ...queryParams },
       ...(options || {}),
     }

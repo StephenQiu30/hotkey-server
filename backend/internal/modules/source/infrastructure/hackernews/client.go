@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/evidencecapture"
 )
 
 const maxRedirects = 3
@@ -34,6 +35,16 @@ type client struct {
 	endpoint *url.URL
 	http     *http.Client
 	now      func() time.Time
+}
+
+type fetchedJSONResponse struct {
+	payload       []byte
+	statusCode    int
+	requestedURL  string
+	finalURL      string
+	redirectChain []string
+	headers       http.Header
+	capturedAt    time.Time
 }
 
 func newClient(endpoint *url.URL, timeout time.Duration, options clientOptions) *client {
@@ -80,30 +91,34 @@ func newClient(endpoint *url.URL, timeout time.Duration, options clientOptions) 
 	}
 }
 
-func (client *client) get(ctx context.Context, path string) ([]byte, *time.Time, error) {
+func (client *client) get(ctx context.Context, path string) (fetchedJSONResponse, *time.Time, error) {
 	target := *client.endpoint
 	target.Path = strings.TrimSuffix(client.endpoint.Path, "/") + "/" + strings.TrimPrefix(path, "/")
 	target.RawQuery = ""
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
 	if err != nil {
-		return nil, nil, errUnsafeDestination
+		return fetchedJSONResponse{}, nil, errUnsafeDestination
 	}
 	response, err := client.http.Do(request)
 	if err != nil {
-		return nil, nil, requestError(err)
+		return fetchedJSONResponse{}, nil, requestError(err)
 	}
 	retry := retryAfter(response.Header.Get("Retry-After"), client.now())
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		status := response.StatusCode
 		closeResponse(response)
-		return nil, retry, statusError(status)
+		return fetchedJSONResponse{}, retry, statusError(status)
 	}
 	payload, readErr := io.ReadAll(response.Body)
 	closeErr := response.Body.Close()
 	if readErr != nil || closeErr != nil {
-		return nil, nil, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("read Hacker News response"))
+		return fetchedJSONResponse{}, nil, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("read Hacker News response"))
 	}
-	return payload, retry, nil
+	return fetchedJSONResponse{
+		payload: payload, statusCode: response.StatusCode, requestedURL: target.String(),
+		finalURL: response.Request.URL.String(), redirectChain: evidencecapture.RedirectChain(target.String(), response.Request),
+		headers: response.Header.Clone(), capturedAt: client.now().UTC(),
+	}, retry, nil
 }
 
 func sameOfficialHost(endpoint, candidate *url.URL) bool {

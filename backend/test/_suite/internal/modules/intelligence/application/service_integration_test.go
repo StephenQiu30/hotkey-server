@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -40,7 +41,7 @@ func TestRunServiceSettlesSafeStructuredResultAndReusesIt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExecuteStructured(reuse): %v", err)
 	}
-	if !second.Reused || second.Run.ID != first.Run.ID || string(second.Result) != string(first.Result) || provider.structuredCalls() != 1 {
+	if !second.Reused || second.Run.ID != first.Run.ID || string(second.Result) != string(first.Result) || provider.structuredCalls() != 1 || !provider.structuredDeadlineApplied() {
 		t.Fatalf("reused structured result = %#v calls=%d, want exact persisted result and one provider call", second, provider.structuredCalls())
 	}
 	var reserved, settled string
@@ -461,7 +462,7 @@ func TestEmbeddingServiceDegradesWithoutProviderAndReusesExactRunVector(t *testi
 	}
 	input := applicationEmbeddingInput(monitorID)
 	first, err := service.Execute(context.Background(), input)
-	if err != nil || first.Status != "succeeded" || first.Reused || len(first.Vector) != domain.EmbeddingDimensions {
+	if err != nil || first.Status != "succeeded" || first.Reused || len(first.Vector) != domain.EmbeddingDimensions || !provider.embeddingDeadlineApplied() {
 		t.Fatalf("Execute(first) = %#v / %v", first, err)
 	}
 	second, err := service.Execute(context.Background(), input)
@@ -475,6 +476,120 @@ func TestEmbeddingServiceDegradesWithoutProviderAndReusesExactRunVector(t *testi
 	if runID != first.Run.ID {
 		t.Fatalf("embedding ai_run_id = %d, want %d", runID, first.Run.ID)
 	}
+}
+
+func TestProjectedEmbeddingCommitsOwningProjectionWithSucceededRunAndReusesExactReceipt(t *testing.T) {
+	runtime := openApplicationRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	runs := intelligencepostgres.NewRepository(runtime)
+	profile := applicationEmbeddingProfile()
+	if err := runs.CreateProfile(context.Background(), &profile); err != nil {
+		t.Fatalf("CreateProfile(): %v", err)
+	}
+	clock := &applicationClock{value: time.Date(2026, time.August, 10, 8, 0, 0, 0, time.UTC)}
+	provider := &applicationFakeProvider{embedding: []domain.EmbeddingResponse{{
+		ModelVersion: profile.ModelVersion, Vectors: [][]float32{applicationVector()}, Usage: domain.Usage{InputTokens: 4},
+	}}}
+	runService := newApplicationRunService(t, runs, provider, clock)
+	service, err := NewEmbeddingService(EmbeddingServiceDependencies{
+		Runs: runs, Providers: NewProviderRegistry(map[domain.ProviderName]domain.Provider{domain.ProviderOpenAI: provider}), RunService: runService,
+	})
+	if err != nil {
+		t.Fatalf("NewEmbeddingService(): %v", err)
+	}
+	sink := &projectedEmbeddingSinkProbe{runtime: runtime}
+	input := ProjectedEmbeddingExecutionInput{
+		TargetType: "document_version", TargetID: 101,
+		PromptVersion: "document-embedding-v1", InputSchemaVersion: "canonical-plaintext-v1",
+		SchemaVersion: "embedding-1024-v1", ParametersVersion: "document-embedding-v1",
+		InputHash: strings.Repeat("f", 64), EvidenceSetHash: strings.Repeat("e", 64), Input: "canonical source document",
+	}
+
+	first, err := service.ExecuteProjectedEmbedding(context.Background(), input, sink)
+	if err != nil {
+		t.Fatalf("ExecuteProjectedEmbedding(first): %v", err)
+	}
+	if first.Status != "succeeded" || first.Reused || sink.commitCalls != 1 || sink.verifyCalls != 0 || !sink.commitUsedTransaction || sink.statusSeenByCommit != "succeeded" {
+		t.Fatalf("first result=%#v sink=%#v, want atomic projection commit", first, sink)
+	}
+	second, err := service.ExecuteProjectedEmbedding(context.Background(), input, sink)
+	if err != nil {
+		t.Fatalf("ExecuteProjectedEmbedding(reuse): %v", err)
+	}
+	if !second.Reused || second.AIRunID != first.AIRunID || sink.commitCalls != 1 || sink.verifyCalls != 1 || provider.embeddingCalls() != 1 {
+		t.Fatalf("second result=%#v sink=%#v provider calls=%d", second, sink, provider.embeddingCalls())
+	}
+}
+
+func TestProjectedEmbeddingRollsBackSucceededRunWhenOwningProjectionFails(t *testing.T) {
+	runtime := openApplicationRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	runs := intelligencepostgres.NewRepository(runtime)
+	profile := applicationEmbeddingProfile()
+	profile.Name = "projected-embedding-rollback"
+	if err := runs.CreateProfile(context.Background(), &profile); err != nil {
+		t.Fatalf("CreateProfile(): %v", err)
+	}
+	clock := &applicationClock{value: time.Date(2026, time.August, 10, 9, 0, 0, 0, time.UTC)}
+	provider := &applicationFakeProvider{embedding: []domain.EmbeddingResponse{{
+		ModelVersion: profile.ModelVersion, Vectors: [][]float32{applicationVector()}, Usage: domain.Usage{InputTokens: 4},
+	}}}
+	runService := newApplicationRunService(t, runs, provider, clock)
+	service, err := NewEmbeddingService(EmbeddingServiceDependencies{
+		Runs: runs, Providers: NewProviderRegistry(map[domain.ProviderName]domain.Provider{domain.ProviderOpenAI: provider}), RunService: runService,
+	})
+	if err != nil {
+		t.Fatalf("NewEmbeddingService(): %v", err)
+	}
+	wantErr := errors.New("owning projection rejected")
+	sink := &projectedEmbeddingSinkProbe{runtime: runtime, commitError: wantErr}
+	_, err = service.ExecuteProjectedEmbedding(context.Background(), ProjectedEmbeddingExecutionInput{
+		TargetType: "document_version", TargetID: 202,
+		PromptVersion: "document-embedding-v1", InputSchemaVersion: "canonical-plaintext-v1",
+		SchemaVersion: "embedding-1024-v1", ParametersVersion: "document-embedding-v1",
+		InputHash: strings.Repeat("1", 64), EvidenceSetHash: strings.Repeat("2", 64), Input: "projection must roll back",
+	}, sink)
+	if !errors.Is(err, wantErr) || sink.generated.AIRunID <= 0 || !sink.commitUsedTransaction || sink.statusSeenByCommit != "succeeded" {
+		t.Fatalf("ExecuteProjectedEmbedding() error=%v sink=%#v", err, sink)
+	}
+	var status string
+	if err := runtime.SQL.QueryRow(`SELECT status FROM ai_runs WHERE id=$1`, sink.generated.AIRunID).Scan(&status); err != nil {
+		t.Fatalf("read failed run: %v", err)
+	}
+	if status != "failed" {
+		t.Fatalf("run status=%q, want failed after transaction rollback", status)
+	}
+}
+
+type projectedEmbeddingSinkProbe struct {
+	runtime               *database.Runtime
+	commitError           error
+	generated             GeneratedEmbeddingDTO
+	verified              GeneratedEmbeddingVerificationQuery
+	commitCalls           int
+	verifyCalls           int
+	commitUsedTransaction bool
+	statusSeenByCommit    string
+}
+
+func (sink *projectedEmbeddingSinkProbe) CommitGeneratedEmbedding(ctx context.Context, generated GeneratedEmbeddingDTO) error {
+	sink.commitCalls++
+	sink.generated = generated
+	transaction, ok := database.TransactionFromContext(ctx)
+	sink.commitUsedTransaction = ok
+	if ok {
+		_ = transaction.SQL.QueryRowContext(ctx, `SELECT status FROM ai_runs WHERE id=$1`, generated.AIRunID).Scan(&sink.statusSeenByCommit)
+	}
+	return sink.commitError
+}
+
+func (sink *projectedEmbeddingSinkProbe) VerifyGeneratedEmbedding(_ context.Context, query GeneratedEmbeddingVerificationQuery) error {
+	sink.verifyCalls++
+	sink.verified = query
+	if sink.generated.AIRunID != query.AIRunID || sink.generated.TargetID != query.TargetID || sink.generated.InputHash != query.InputHash {
+		return errors.New("reused projected embedding identity mismatch")
+	}
+	return nil
 }
 
 func openApplicationRuntime(t *testing.T) *database.Runtime {
@@ -589,12 +704,14 @@ func (clock *applicationClock) advance(duration time.Duration) {
 }
 
 type applicationFakeProvider struct {
-	mu               sync.Mutex
-	structured       []domain.StructuredResponse
-	structuredErrors []error
-	embedding        []domain.EmbeddingResponse
-	structuredCount  int
-	embeddingCount   int
+	mu                 sync.Mutex
+	structured         []domain.StructuredResponse
+	structuredErrors   []error
+	embedding          []domain.EmbeddingResponse
+	structuredCount    int
+	embeddingCount     int
+	structuredDeadline bool
+	embeddingDeadline  bool
 }
 
 type blockingStructuredProvider struct {
@@ -629,9 +746,10 @@ func (provider *blockingStructuredProvider) Embed(context.Context, domain.Embedd
 	return domain.EmbeddingResponse{}, domain.NewError(domain.CodeAIModelUnavailable)
 }
 
-func (provider *applicationFakeProvider) GenerateStructured(_ context.Context, _ domain.StructuredRequest) (domain.StructuredResponse, error) {
+func (provider *applicationFakeProvider) GenerateStructured(ctx context.Context, _ domain.StructuredRequest) (domain.StructuredResponse, error) {
 	provider.mu.Lock()
 	defer provider.mu.Unlock()
+	_, provider.structuredDeadline = ctx.Deadline()
 	index := provider.structuredCount
 	provider.structuredCount++
 	if index < len(provider.structuredErrors) {
@@ -644,9 +762,10 @@ func (provider *applicationFakeProvider) GenerateStructured(_ context.Context, _
 	return provider.structured[responseIndex], nil
 }
 
-func (provider *applicationFakeProvider) Embed(_ context.Context, _ domain.EmbeddingRequest) (domain.EmbeddingResponse, error) {
+func (provider *applicationFakeProvider) Embed(ctx context.Context, _ domain.EmbeddingRequest) (domain.EmbeddingResponse, error) {
 	provider.mu.Lock()
 	defer provider.mu.Unlock()
+	_, provider.embeddingDeadline = ctx.Deadline()
 	index := provider.embeddingCount
 	provider.embeddingCount++
 	if index >= len(provider.embedding) {
@@ -665,4 +784,16 @@ func (provider *applicationFakeProvider) embeddingCalls() int {
 	provider.mu.Lock()
 	defer provider.mu.Unlock()
 	return provider.embeddingCount
+}
+
+func (provider *applicationFakeProvider) structuredDeadlineApplied() bool {
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	return provider.structuredDeadline
+}
+
+func (provider *applicationFakeProvider) embeddingDeadlineApplied() bool {
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	return provider.embeddingDeadline
 }

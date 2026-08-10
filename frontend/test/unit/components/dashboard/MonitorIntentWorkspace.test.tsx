@@ -157,6 +157,52 @@ describe("MonitorIntentWorkspace", () => {
     );
   });
 
+  it("refreshes the advanced draft when a successful expansion run is archived", async () => {
+    const advancedDraft = {
+      ...draft,
+      resource_version: 4,
+      candidates: [
+        {
+          id: "candidate-archived-run",
+          value: "vector indexing",
+          approval_status: "pending",
+        },
+      ],
+    } satisfies HotKeyAPI.IntentDraftResponseDTO;
+    mocks.getDraft.mockResolvedValueOnce({ data: draft }).mockResolvedValueOnce({ data: advancedDraft });
+    mocks.submitExpansion.mockResolvedValue({ data: { run_id: 32, status: "queued" } });
+    mocks.getExpansion.mockResolvedValue({
+      data: {
+        run_id: 32,
+        status: "invalidated",
+        candidates: [
+          {
+            id: "candidate-archived-run",
+            value: "vector indexing",
+            source: "llm",
+            reason: "目标中的向量检索同义表达",
+            model_version: "model-v3",
+            prompt_version: "intent-expansion-v1",
+            input_hash: "b".repeat(64),
+            similarity: 0.9,
+            risk: "high",
+            approval_status: "pending",
+          },
+        ],
+      },
+    });
+    const user = userEvent.setup();
+    render(<MonitorIntentWorkspace canAdmin monitorID={7} pollIntervalMs={10} />);
+
+    await screen.findByDisplayValue("跟踪 OpenAI 的正式产品发布");
+    await user.click(screen.getByRole("button", { name: "生成扩展候选" }));
+
+    expect(await screen.findByText("资源版本 v4")).toBeInTheDocument();
+    expect(screen.getByText("候选已生成，原运行绑定的草稿版本已归档")).toBeInTheDocument();
+    expect(screen.queryByText(/扩展任务因草稿变化已失效/)).not.toBeInTheDocument();
+    expect(mocks.getDraft).toHaveBeenCalledTimes(2);
+  });
+
   it("renders preview channel ranks as raw signals, not percentages", async () => {
     mocks.submitPreview.mockResolvedValue({ data: { run_id: 41, status: "queued" } });
     mocks.getPreview.mockResolvedValue({

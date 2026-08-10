@@ -115,7 +115,7 @@ describe("MonitorsPage", () => {
     mocks.getMonitorsId.mockResolvedValue({ data: monitor });
     mocks.getMonitorsIdVersions.mockResolvedValue({ data: { items: [draft, published] } });
     mocks.putMonitorsIdDraft.mockResolvedValue({ data: monitor });
-    mocks.postMonitorsIdPreview.mockResolvedValue({ data: { eligible: true, config_hash: "b".repeat(64), estimated_requests: 2, warnings: [], sources: [{ source_connection_id: 7, estimated_requests: 2, compiled_query: "OpenAI -jobs", query_mode: "local_filter", query_signature: "c".repeat(64), languages: ["zh", "en"], max_query_bytes: 2048 }] } });
+    mocks.postMonitorsIdPreview.mockResolvedValue({ data: { eligible: true, config_hash: "b".repeat(64), estimated_requests: 2, warnings: [], sources: [{ source_connection_id: 7, estimated_requests: 2, compiled_query: "OpenAI -jobs", query_mode: "local_filter", query_signature: "c".repeat(64), languages: ["zh", "en"], max_query_bytes: 2048, included_term_count: 4, excluded_term_count: 1 }] } });
     mocks.postMonitorsIdPublish.mockResolvedValue({ data: { ...monitor, status: "active", draft: undefined } });
     mocks.postMonitorsIdDraftAiCandidates.mockResolvedValue({ data: { id: 41, origin: "ai", approval_status: "pending" } });
     mocks.postMonitorsIdDraftRulesRuleIdApproval.mockResolvedValue({ data: null });
@@ -132,7 +132,24 @@ describe("MonitorsPage", () => {
     expect(screen.getByText("只读监控目录")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "新建监控" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "AI releases 操作" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "相关性判定" })).toHaveAttribute(
+      "href",
+      "/dashboard/settings/monitors/1/matches",
+    );
     expect(mocks.getSourceConnections).not.toHaveBeenCalled();
+  });
+
+  it("guides editors to create a monitor when an enabled source is available", async () => {
+    mocks.getMonitors.mockResolvedValue({ data: { items: [] } });
+
+    render(<MonitorsPage />);
+
+    expect(
+      await screen.findByText("点击“新建监控”配置规则并选择已启用来源。"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("至少需要一个已启用来源才能创建监控。"),
+    ).not.toBeInTheDocument();
   });
 
   it("lets an editor update a draft but never exposes publication or lifecycle controls", async () => {
@@ -182,6 +199,8 @@ describe("MonitorsPage", () => {
     expect(screen.getByText("预计请求 2 次")).toBeInTheDocument();
     expect(screen.getByText("OpenAI -jobs")).toBeInTheDocument();
     expect(screen.getByText("local_filter")).toBeInTheDocument();
+    expect(screen.getByText("包含 4")).toBeInTheDocument();
+    expect(screen.getByText("排除 1")).toBeInTheDocument();
     expect(mocks.postMonitorsIdPublish).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "确认发布" }));
 

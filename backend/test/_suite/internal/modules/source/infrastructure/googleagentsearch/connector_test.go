@@ -43,6 +43,13 @@ func TestFetchUsesOfficialSearchContractMapsSnippetsAndPaginates(t *testing.T) {
 	if result.Diagnostics[0].Code != "invalid_google_agent_search_result" || result.Diagnostics[0].SourceExternalID != "doc-2" {
 		t.Errorf("diagnostics = %#v", result.Diagnostics)
 	}
+	if len(result.Snapshots) != 1 || !result.Snapshots[0].VerifyPayload() || len(item.EvidenceReferences) != 1 ||
+		item.EvidenceReferences[0].LocatorValue != "/results/0" || item.EvidenceReferences[0].SnapshotKey != result.Snapshots[0].Key {
+		t.Fatalf("Google raw evidence = %#v / %#v", result.Snapshots, item.EvidenceReferences)
+	}
+	if len(item.Parties) != 1 || item.Parties[0].Role != domain.SourcePartyRoleDistributor || item.Parties[0].ExternalID != "google-agent-search" {
+		t.Fatalf("Google explicit parties = %#v", item.Parties)
+	}
 	cursor, err := decodeCursor(result.NextCursor, strings.Repeat("a", 64))
 	if err != nil || cursor.PageToken != "next-page" {
 		t.Fatalf("cursor = %#v, %v", cursor, err)

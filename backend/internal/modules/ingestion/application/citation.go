@@ -38,16 +38,17 @@ const (
 type CitationUnavailableReason string
 
 const (
-	CitationReasonDocumentNotReadable  CitationUnavailableReason = "document_not_readable"
-	CitationReasonPolicyBlocked        CitationUnavailableReason = "policy_blocked"
-	CitationReasonPermissionDenied     CitationUnavailableReason = "permission_denied"
-	CitationReasonRetentionUnavailable CitationUnavailableReason = "retention_unavailable"
-	CitationReasonArtifactMissing      CitationUnavailableReason = "artifact_missing"
-	CitationReasonIntegrityFailed      CitationUnavailableReason = "integrity_failed"
-	CitationReasonSourceUnavailable    CitationUnavailableReason = "source_unavailable"
-	CitationReasonNoCitableBody        CitationUnavailableReason = "no_citable_body"
-	CitationReasonPublisherUnavailable CitationUnavailableReason = "publisher_unavailable"
-	CitationReasonLocatorUnavailable   CitationUnavailableReason = "locator_unavailable"
+	CitationReasonDocumentNotReadable      CitationUnavailableReason = "document_not_readable"
+	CitationReasonPolicyBlocked            CitationUnavailableReason = "policy_blocked"
+	CitationReasonPermissionDenied         CitationUnavailableReason = "permission_denied"
+	CitationReasonRetentionUnavailable     CitationUnavailableReason = "retention_unavailable"
+	CitationReasonArtifactMissing          CitationUnavailableReason = "artifact_missing"
+	CitationReasonIntegrityFailed          CitationUnavailableReason = "integrity_failed"
+	CitationReasonSourceUnavailable        CitationUnavailableReason = "source_unavailable"
+	CitationReasonNoCitableBody            CitationUnavailableReason = "no_citable_body"
+	CitationReasonPublisherUnavailable     CitationUnavailableReason = "publisher_unavailable"
+	CitationReasonContentOriginUnavailable CitationUnavailableReason = "content_origin_unavailable"
+	CitationReasonLocatorUnavailable       CitationUnavailableReason = "locator_unavailable"
 )
 
 type CitationQuery struct {
@@ -87,6 +88,28 @@ type CitationArtifactDTO struct {
 	SHA256                   string
 	SizeBytes                int64
 	ETag                     string
+	AnchorMap                *CitationArtifactAnchorMapDTO
+}
+
+type CitationArtifactAnchorBlockDTO struct {
+	Ordinal        int
+	MarkdownAnchor string
+}
+
+type CitationArtifactAnchorMapDTO struct {
+	NormalizationVersion    string
+	AnchorMapProfileVersion string
+	AnchorMapSHA256         string
+	Blocks                  []CitationArtifactAnchorBlockDTO
+}
+
+type CitationPartyDTO struct {
+	Role              string
+	Kind              string
+	IdentityNamespace string
+	ExternalID        string
+	DisplayName       string
+	HomepageURL       *string
 }
 
 // CitationDTO is the explicit safe citation allowlist for one immutable
@@ -100,12 +123,17 @@ type CitationDTO struct {
 	Title             string
 	Author            *string
 	Publisher         *string
+	PublisherParty    *CitationPartyDTO
+	ContentOrigin     *CitationPartyDTO
+	Distributors      []CitationPartyDTO
 
-	PublisherAvailability      CitationFactAvailability
-	PublisherUnavailableReason CitationUnavailableReason
-	SourceRecordURL            *string
-	CanonicalURL               *string
-	DiscussionURL              *string
+	PublisherAvailability          CitationFactAvailability
+	PublisherUnavailableReason     CitationUnavailableReason
+	ContentOriginAvailability      CitationFactAvailability
+	ContentOriginUnavailableReason CitationUnavailableReason
+	SourceRecordURL                *string
+	CanonicalURL                   *string
+	DiscussionURL                  *string
 
 	BodyOrigin    string
 	Completeness  string
@@ -143,6 +171,34 @@ type CitationArtifactReadDTO struct {
 	StoreDerivedAllowed      bool
 	RetainAllowed            bool
 	CurrentRetentionDays     *int
+	AnchorMap                *CitationArtifactAnchorMapReadDTO
+}
+
+type CitationAnchorBlockReadDTO struct {
+	Ordinal                int
+	PlaintextUTF8ByteStart int64
+	PlaintextUTF8ByteEnd   int64
+	MarkdownUTF8ByteStart  int64
+	MarkdownUTF8ByteEnd    int64
+	MarkdownAnchor         string
+}
+
+type CitationArtifactAnchorMapReadDTO struct {
+	NormalizationVersion    string
+	AnchorMapProfileVersion string
+	PlaintextSHA256         string
+	MarkdownSHA256          string
+	AnchorMapSHA256         string
+	Blocks                  []CitationAnchorBlockReadDTO
+}
+
+type CitationPartyReadDTO struct {
+	Role              string
+	Kind              string
+	IdentityNamespace string
+	ExternalID        string
+	DisplayName       string
+	HomepageURL       *string
 }
 
 // CitationReadDTO is the factual Application projection returned by a
@@ -159,6 +215,9 @@ type CitationReadDTO struct {
 	SourceName      string
 	Title           string
 	Author          *string
+	Publisher       *CitationPartyReadDTO
+	ContentOrigin   *CitationPartyReadDTO
+	Distributors    []CitationPartyReadDTO
 	SourceRecordURL *string
 	CanonicalURL    *string
 	DiscussionURL   *string
@@ -281,7 +340,24 @@ func sameCitationArtifact(before, after CitationDTO) bool {
 	return before.Artifact.ArtifactType == after.Artifact.ArtifactType &&
 		before.Artifact.TransformerProfileSHA256 == after.Artifact.TransformerProfileSHA256 &&
 		before.Artifact.MIMEType == after.Artifact.MIMEType && before.Artifact.SHA256 == after.Artifact.SHA256 &&
-		before.Artifact.SizeBytes == after.Artifact.SizeBytes && before.Artifact.ETag == after.Artifact.ETag
+		before.Artifact.SizeBytes == after.Artifact.SizeBytes && before.Artifact.ETag == after.Artifact.ETag &&
+		sameCitationArtifactAnchorMap(before.Artifact.AnchorMap, after.Artifact.AnchorMap)
+}
+
+func sameCitationArtifactAnchorMap(left, right *CitationArtifactAnchorMapDTO) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	if left.NormalizationVersion != right.NormalizationVersion || left.AnchorMapProfileVersion != right.AnchorMapProfileVersion ||
+		left.AnchorMapSHA256 != right.AnchorMapSHA256 || len(left.Blocks) != len(right.Blocks) {
+		return false
+	}
+	for index := range left.Blocks {
+		if left.Blocks[index] != right.Blocks[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func sameCitationOptionalString(left, right *string) bool {
@@ -293,16 +369,30 @@ func sameCitationOptionalString(left, right *string) bool {
 
 func citationDTO(read CitationReadDTO) CitationDTO {
 	availability, reason := citationReadAvailability(read)
+	publisher := citationPartyDTO(read.Publisher, "publisher")
+	contentOrigin := citationPartyDTO(read.ContentOrigin, "content_origin")
+	distributors := citationPartyDTOs(read.Distributors, "distributor")
 	citation := CitationDTO{
 		DocumentID: read.DocumentID, DocumentVersionID: read.DocumentVersionID,
 		SourceType: read.SourceType, SourceName: read.SourceName, Title: read.Title,
-		Author: safeCitationText(read.Author), Publisher: nil,
+		Author: safeCitationText(read.Author), PublisherParty: publisher, ContentOrigin: contentOrigin, Distributors: distributors,
 		PublisherAvailability: CitationFactUnavailable, PublisherUnavailableReason: CitationReasonPublisherUnavailable,
+		ContentOriginAvailability: CitationFactUnavailable, ContentOriginUnavailableReason: CitationReasonContentOriginUnavailable,
 		SourceRecordURL: safeCitationURL(read.SourceRecordURL), CanonicalURL: safeCitationURL(read.CanonicalURL),
 		DiscussionURL: safeCitationURL(read.DiscussionURL), BodyOrigin: read.BodyOrigin, Completeness: read.Completeness,
 		Language: read.Language, PublishedAt: cloneCitationTime(read.PublishedAt), CapturedAt: read.CapturedAt.UTC(),
 		Availability: availability, UnavailableReason: reason,
 		LocatorAvailability: CitationFactUnavailable, LocatorUnavailableReason: CitationReasonLocatorUnavailable,
+	}
+	if publisher != nil {
+		publisherName := publisher.DisplayName
+		citation.Publisher = &publisherName
+		citation.PublisherAvailability = CitationFactAvailable
+		citation.PublisherUnavailableReason = ""
+	}
+	if contentOrigin != nil {
+		citation.ContentOriginAvailability = CitationFactAvailable
+		citation.ContentOriginUnavailableReason = ""
 	}
 	if citationArchiveAvailable(availability) && read.Artifact != nil {
 		contentSHA256 := read.ContentSHA256
@@ -312,8 +402,67 @@ func citationDTO(read CitationReadDTO) CitationDTO {
 			MIMEType: read.Artifact.MIMEType, SHA256: read.Artifact.SHA256, SizeBytes: read.Artifact.SizeBytes,
 			ETag: `"` + read.Artifact.SHA256 + `"`,
 		}
+		if read.Artifact.AnchorMap != nil {
+			citation.Artifact.AnchorMap = citationArtifactAnchorMapDTO(read.Artifact.AnchorMap)
+		}
 	}
 	return citation
+}
+
+func citationPartyDTO(value *CitationPartyReadDTO, expectedRole string) *CitationPartyDTO {
+	if value == nil || value.Role != expectedRole || !validCitationPartyKind(value.Kind) ||
+		!validCitationPartyNamespace(value.IdentityNamespace) ||
+		!validCitationPartyText(value.ExternalID, 512) || !validCitationPartyText(value.DisplayName, 512) {
+		return nil
+	}
+	homepage := safeCitationURL(value.HomepageURL)
+	if value.HomepageURL != nil && homepage == nil {
+		return nil
+	}
+	return &CitationPartyDTO{
+		Role: value.Role, Kind: value.Kind, IdentityNamespace: value.IdentityNamespace,
+		ExternalID: value.ExternalID, DisplayName: value.DisplayName, HomepageURL: homepage,
+	}
+}
+
+func citationPartyDTOs(values []CitationPartyReadDTO, expectedRole string) []CitationPartyDTO {
+	result := make([]CitationPartyDTO, 0, len(values))
+	for index := range values {
+		if value := citationPartyDTO(&values[index], expectedRole); value != nil {
+			result = append(result, *value)
+		}
+	}
+	return result
+}
+
+func validCitationPartyKind(value string) bool {
+	return value == "organization" || value == "person" || value == "account"
+}
+
+func validCitationPartyNamespace(value string) bool {
+	if value == "" || len(value) > 64 || value != strings.ToLower(value) || value != strings.TrimSpace(value) {
+		return false
+	}
+	for index, character := range value {
+		alphanumeric := character >= 'a' && character <= 'z' || character >= '0' && character <= '9'
+		if alphanumeric || index > 0 && (character == '-' || character == '_' || character == '.' || character == ':') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func validCitationPartyText(value string, maximumBytes int) bool {
+	if value == "" || len(value) > maximumBytes || value != strings.TrimSpace(value) {
+		return false
+	}
+	for _, character := range value {
+		if unicode.IsControl(character) {
+			return false
+		}
+	}
+	return true
 }
 
 func citationReadAvailability(read CitationReadDTO) (CitationAvailability, CitationUnavailableReason) {
@@ -379,7 +528,47 @@ func citationReadAvailability(read CitationReadDTO) (CitationAvailability, Citat
 		artifact.AvailableAt == nil || artifact.AvailableAt.IsZero() || artifact.FailureCode != nil {
 		return CitationQuarantined, CitationReasonIntegrityFailed
 	}
+	if !validCitationArtifactAnchorMap(read.ContentSHA256, artifact) {
+		return CitationQuarantined, CitationReasonIntegrityFailed
+	}
 	return citationArchiveAvailability(read), ""
+}
+
+func validCitationArtifactAnchorMap(contentSHA256 string, artifact *CitationArtifactReadDTO) bool {
+	if artifact == nil || artifact.AnchorMap == nil || artifact.AnchorMap.PlaintextSHA256 != contentSHA256 ||
+		artifact.AnchorMap.MarkdownSHA256 != artifact.SHA256 {
+		return false
+	}
+	blocks := make([]DocumentAnchorBlockDTO, len(artifact.AnchorMap.Blocks))
+	for index, block := range artifact.AnchorMap.Blocks {
+		if block.MarkdownUTF8ByteEnd > artifact.SizeBytes {
+			return false
+		}
+		blocks[index] = DocumentAnchorBlockDTO{
+			Ordinal: block.Ordinal, PlaintextUTF8ByteStart: block.PlaintextUTF8ByteStart, PlaintextUTF8ByteEnd: block.PlaintextUTF8ByteEnd,
+			MarkdownUTF8ByteStart: block.MarkdownUTF8ByteStart, MarkdownUTF8ByteEnd: block.MarkdownUTF8ByteEnd,
+			MarkdownAnchor: block.MarkdownAnchor,
+		}
+	}
+	return ValidatePersistedDocumentAnchorMap(&DerivedArtifactAnchorMapDTO{
+		NormalizationVersion: artifact.AnchorMap.NormalizationVersion, AnchorMapProfileVersion: artifact.AnchorMap.AnchorMapProfileVersion,
+		PlaintextSHA256: artifact.AnchorMap.PlaintextSHA256, MarkdownSHA256: artifact.AnchorMap.MarkdownSHA256,
+		AnchorMapSHA256: artifact.AnchorMap.AnchorMapSHA256,
+	}, blocks) == nil
+}
+
+func citationArtifactAnchorMapDTO(value *CitationArtifactAnchorMapReadDTO) *CitationArtifactAnchorMapDTO {
+	if value == nil {
+		return nil
+	}
+	result := &CitationArtifactAnchorMapDTO{
+		NormalizationVersion: value.NormalizationVersion, AnchorMapProfileVersion: value.AnchorMapProfileVersion,
+		AnchorMapSHA256: value.AnchorMapSHA256, Blocks: make([]CitationArtifactAnchorBlockDTO, len(value.Blocks)),
+	}
+	for index, block := range value.Blocks {
+		result.Blocks[index] = CitationArtifactAnchorBlockDTO{Ordinal: block.Ordinal, MarkdownAnchor: block.MarkdownAnchor}
+	}
+	return result
 }
 
 func citationArchiveAvailability(read CitationReadDTO) CitationAvailability {

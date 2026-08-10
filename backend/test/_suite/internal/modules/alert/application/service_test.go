@@ -39,6 +39,12 @@ type occurrenceWriterFake struct {
 	err      error
 }
 
+type alertQualityReaderFake struct{ active bool }
+
+func (fake alertQualityReaderFake) IsDecisionQualityProfileActive(context.Context, string, string) (bool, error) {
+	return fake.active, nil
+}
+
 func (fake *occurrenceWriterFake) RecordOccurrence(_ context.Context, command domain.RecordOccurrenceCommand) (domain.RecordOccurrenceResult, error) {
 	fake.commands = append(fake.commands, command)
 	if fake.err != nil {
@@ -142,5 +148,20 @@ func TestServiceRejectsInvalidRefsAndStopsAtPortFailures(t *testing.T) {
 	}
 	if len(policies.monitorIDs) != 0 || len(writer.commands) != 0 {
 		t.Fatal("candidate failure consulted downstream policy or repository ports")
+	}
+}
+
+func TestServiceSuppressesAutomaticAlertsWithoutActiveHotspotQualityProfile(t *testing.T) {
+	candidates := &candidateReaderFake{candidates: []EventAlertCandidate{{MonitorID: 10, EventID: 20, UpdateKind: "rising", FinalScore: 95}}}
+	policies := &policyReaderFake{}
+	writer := &occurrenceWriterFake{}
+	service, err := NewService(Dependencies{Candidates: candidates, Policies: policies, Occurrences: writer,
+		QualityProfiles: alertQualityReaderFake{active: false}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.Evaluate(t.Context(), EventUpdateRef{ID: 41, Version: 2, EvidenceSetHash: strings.Repeat("e", 64)})
+	if err != nil || !result.Degraded || !reflect.DeepEqual(result.ReasonCodes, []string{"quality_profile_not_active"}) || len(candidates.refs) != 0 || len(writer.commands) != 0 {
+		t.Fatalf("quality-gated alert result=%#v error=%v candidates=%d writes=%d", result, err, len(candidates.refs), len(writer.commands))
 	}
 }

@@ -82,9 +82,21 @@ type DocumentEmbeddingReceiptResult struct {
 	Created                    bool
 }
 
+type ReadDocumentEmbeddingReceiptQuery struct {
+	DocumentVersionID          int64
+	EmbedLocalRightsDecisionID int64
+	RetainRightsDecisionID     int64
+	ModelProfileID             int64
+	ModelProfileVersion        int64
+	ModelVersion               string
+	NormalizedTextSHA256       string
+	AIRunID                    int64
+}
+
 type DocumentRecallProjectionWriter interface {
 	PersistDocumentSearchProjection(context.Context, PersistDocumentSearchProjectionCommand) (DocumentSearchProjectionResult, error)
 	PersistDocumentEmbeddingReceipt(context.Context, PersistDocumentEmbeddingReceiptCommand) (DocumentEmbeddingReceiptResult, error)
+	ReadDocumentEmbeddingReceipt(context.Context, ReadDocumentEmbeddingReceiptQuery) (DocumentEmbeddingReceiptResult, error)
 }
 
 type DocumentRecallProjectionService struct {
@@ -148,6 +160,26 @@ func (service *DocumentRecallProjectionService) PersistEmbeddingReceipt(ctx cont
 		!result.RetentionUntil.After(prepared.CreatedAt) ||
 		result.LifecycleState != RecallAssetLifecycleActive {
 		return DocumentEmbeddingReceiptResult{}, fmt.Errorf("%w: embedding receipt identity changed", sharedrepository.ErrConflict)
+	}
+	return result, nil
+}
+
+func (service *DocumentRecallProjectionService) ReadEmbeddingReceipt(ctx context.Context, query ReadDocumentEmbeddingReceiptQuery) (DocumentEmbeddingReceiptResult, error) {
+	if service == nil || service.writer == nil || query.DocumentVersionID <= 0 || query.EmbedLocalRightsDecisionID <= 0 ||
+		query.RetainRightsDecisionID <= 0 || query.ModelProfileID <= 0 || query.ModelProfileVersion <= 0 ||
+		!semanticVersionPattern.MatchString(query.ModelVersion) || !validLowerHexSHA256(query.NormalizedTextSHA256) || query.AIRunID <= 0 {
+		return DocumentEmbeddingReceiptResult{}, fmt.Errorf("%w: invalid document embedding receipt query", sharedrepository.ErrInvalidInput)
+	}
+	result, err := service.writer.ReadDocumentEmbeddingReceipt(ctx, query)
+	if err != nil {
+		return DocumentEmbeddingReceiptResult{}, err
+	}
+	if result.EmbeddingID <= 0 || result.DocumentVersionID != query.DocumentVersionID || result.SourceConnectionID <= 0 ||
+		result.EmbedLocalRightsDecisionID != query.EmbedLocalRightsDecisionID || result.RetainRightsDecisionID != query.RetainRightsDecisionID ||
+		result.ModelProfileID != query.ModelProfileID || result.ModelProfileVersion != query.ModelProfileVersion ||
+		result.ModelVersion != query.ModelVersion || result.NormalizedTextSHA256 != query.NormalizedTextSHA256 || result.AIRunID != query.AIRunID ||
+		result.CreatedAt.IsZero() || !result.RetentionUntil.After(result.CreatedAt) || result.LifecycleState != RecallAssetLifecycleActive {
+		return DocumentEmbeddingReceiptResult{}, fmt.Errorf("%w: stored document embedding receipt changed", sharedrepository.ErrConflict)
 	}
 	return result, nil
 }

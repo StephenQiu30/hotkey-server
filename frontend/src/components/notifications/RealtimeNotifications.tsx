@@ -3,25 +3,25 @@
 import { useEffect } from "react";
 import { toast } from "sonner";
 import { AuthStatus } from "@/lib/domainEnums";
-import { consumeNotificationStream, type SSEFrame } from "@/lib/notificationStream";
-import {
-  getNotifications,
-  getNotificationsStream,
-} from "@/services/hotkey/hotkey-server/notifications";
+import { consumeNotificationStream, openNotificationStream, type SSEFrame } from "@/lib/notificationStream";
+import { getNotifications } from "@/services/hotkey/hotkey-server/notifications";
 import { useAuthStore } from "@/stores/authStore";
 import { useNotificationStore } from "@/stores/notificationStore";
 
 const BACKOFF_MS = [1_000, 2_000, 4_000];
 const POLLING_INTERVAL_MS = 10_000;
+const SAFE_MICRO_EVENT_DEEP_LINK = /^\/dashboard\/events\?event=[1-9][0-9]{0,18}$/;
 
-function notificationFromFrame(frame: SSEFrame): HotKeyAPI.NotificationResponse | null {
+function notificationFromFrame(frame: SSEFrame): HotKeyAPI.UserNotificationResponseDTO | null {
   try {
-    const notification = JSON.parse(frame.data) as HotKeyAPI.NotificationResponse;
+    const notification = JSON.parse(frame.data) as HotKeyAPI.UserNotificationResponseDTO;
     if (
       !Number.isSafeInteger(notification.id) ||
       String(notification.id) !== frame.id ||
       notification.event_type !== frame.event ||
-      !notification.payload?.title
+      !notification.title ||
+      notification.resource_type !== "micro_event" ||
+      !notification.deep_link?.match(SAFE_MICRO_EVENT_DEEP_LINK)
     ) {
       return null;
     }
@@ -85,34 +85,19 @@ export function RealtimeNotifications() {
         const cursor = useNotificationStore.getState().lastEventID;
         useNotificationStore.getState().setTransport(failures >= 3 ? "polling" : "connecting");
         try {
-          const response = await getNotificationsStream(
-            { after_id: cursor },
-            {
-              adapter: "fetch",
-              responseType: "stream",
-              timeout: 0,
-              signal: controller.signal,
-              headers: cursor > 0 ? { "Last-Event-ID": String(cursor) } : undefined,
-            },
-          );
-          if (!response || typeof (response as unknown as ReadableStream<Uint8Array>).getReader !== "function") {
-            throw new Error("notification stream response is unavailable");
-          }
+          const response = await openNotificationStream(cursor, controller.signal);
           failures = 0;
           useNotificationStore.getState().setTransport("live");
-          await consumeNotificationStream(
-            response as unknown as ReadableStream<Uint8Array>,
-            (frame) => {
+          await consumeNotificationStream(response, (frame) => {
               const notification = notificationFromFrame(frame);
               if (!notification || !active) return;
               const accepted = useNotificationStore.getState().ingest([notification]);
               if (accepted.length > 0) {
-                toast(notification.payload?.title ?? "收到新通知", {
-                  description: notification.payload?.summary,
+                toast(notification.title ?? "收到新通知", {
+                  description: notification.summary,
                 });
               }
-            },
-          );
+            });
           if (active) throw new Error("notification stream ended");
         } catch {
           if (!active || controller.signal.aborted) break;

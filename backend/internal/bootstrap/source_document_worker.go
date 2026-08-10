@@ -7,9 +7,14 @@ import (
 
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/application"
 	ingestionfeed "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/feed"
+	ingestionjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/jobs"
 	ingestionmarkdown "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/markdown"
+	ingestionplatformbody "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/platformbody"
 	ingestionpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/postgres"
+	ingestionsourcebody "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/sourcebody"
+	ingestiontextstructure "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/textstructure"
 	knowledgeapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/application"
+	operationspostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/infrastructure/postgres"
 	sourceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/application"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
@@ -102,7 +107,19 @@ func newDocumentObservationPersistenceService(repository *ingestionpostgres.Docu
 }
 
 func newFeedBodyExtractor(markdown *ingestionmarkdown.Converter) *ingestionfeed.BodyExtractor {
-	return ingestionfeed.NewBodyExtractor(markdown)
+	return ingestionfeed.NewBodyExtractor(markdown, ingestionmarkdown.NewAnchorMapper())
+}
+
+func newPlatformBodyExtractor(markdown *ingestionmarkdown.Converter) *ingestionplatformbody.BodyExtractor {
+	return ingestionplatformbody.NewBodyExtractor(markdown, ingestionmarkdown.NewAnchorMapper())
+}
+
+func newSelectedSourceBodyExtractor(feed *ingestionfeed.BodyExtractor, platform *ingestionplatformbody.BodyExtractor) (*ingestionsourcebody.Extractor, error) {
+	return ingestionsourcebody.NewExtractor(feed, platform)
+}
+
+func newDocumentStructureExtractor() *ingestiontextstructure.Extractor {
+	return ingestiontextstructure.NewExtractor()
 }
 
 func newDerivedDocumentProjectionService(
@@ -121,17 +138,29 @@ func newDocumentRecallProjectionService(
 	return ingestionapplication.NewDocumentRecallProjectionService(writer)
 }
 
+func newContentFamilyService(repository *ingestionpostgres.ContentFamilyRepository, qualityProfiles *operationspostgres.DecisionQualityRepository) (*ingestionapplication.ContentFamilyService, error) {
+	return ingestionapplication.NewContentFamilyServiceWithQualityProfiles(repository, qualityProfiles)
+}
+
 func newSourceDocumentGenerationService(
 	evidence *sourceEvidenceReaderAdapter,
-	extractor *ingestionfeed.BodyExtractor,
+	extractor *ingestionsourcebody.Extractor,
 	documentVersions *ingestionapplication.DocumentVersionService,
 	authorizations *ingestionpostgres.DocumentProjectionAuthorizationReader,
 	projections *ingestionapplication.DocumentProjectionService,
 	searchProjections *ingestionapplication.DocumentRecallProjectionService,
+	contentFamilies *ingestionapplication.ContentFamilyService,
+	structureExtractor *ingestiontextstructure.Extractor,
+	documentEmbeddings *documentEmbeddingProducerAdapter,
+	publishedMatches *ingestionjobs.PublishedDocumentMatchEvaluationScheduler,
 ) (*ingestionapplication.SourceDocumentGenerationService, error) {
 	return ingestionapplication.NewSourceDocumentGenerationService(ingestionapplication.SourceDocumentGenerationDependencies{
 		Evidence: evidence, Extractor: extractor, DocumentVersions: documentVersions,
 		Authorizations: authorizations, Projections: projections, SearchProjections: searchProjections,
-		Now: func() time.Time { return time.Now().UTC() },
+		ContentFamilies:           contentFamilies,
+		StructureExtractor:        structureExtractor,
+		DocumentEmbeddings:        documentEmbeddings,
+		PublishedMatchEvaluations: publishedMatches,
+		Now:                       func() time.Time { return time.Now().UTC() },
 	})
 }

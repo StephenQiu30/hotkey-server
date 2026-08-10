@@ -10,8 +10,8 @@ func TestSourceDocumentGenerationScheduleResultRequiresExactReceiptSet(t *testin
 
 	command := ScheduleSourceDocumentGenerationCommand{
 		EvidenceReferences: []CommittedEvidenceReferenceDTO{
-			{EvidenceReferenceID: 11, SourceObservationID: 21, EvidenceSnapshotID: 31},
-			{EvidenceReferenceID: 12, SourceObservationID: 22, EvidenceSnapshotID: 31},
+			{EvidenceReferenceID: 11, SourceObservationID: 21, EvidenceSnapshotID: 31, Usage: "document_source"},
+			{EvidenceReferenceID: 12, SourceObservationID: 22, EvidenceSnapshotID: 31, Usage: "document_source"},
 		},
 		TraceID: "0123456789abcdef0123456789abcdef", ScheduledAt: time.Now().UTC(),
 	}

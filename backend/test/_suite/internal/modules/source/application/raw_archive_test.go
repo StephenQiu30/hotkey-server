@@ -97,6 +97,7 @@ func (repository *evidenceSnapshotRepositoryFake) Commit(_ context.Context, comm
 				references[index] = CommittedEvidenceReferenceDTO{
 					EvidenceReferenceID: record.ID*100 + int64(index+1),
 					SourceObservationID: int64(index + 1), EvidenceSnapshotID: record.ID,
+					Usage: command.Observations[index].Evidence.Usage,
 				}
 			}
 			return CommitEvidenceSnapshotResult{Snapshot: record, EvidenceReferences: references}, nil
@@ -173,6 +174,51 @@ func TestRawEvidenceArchiveVerifiesAndPersistsSourceOwnedEvidence(t *testing.T) 
 	}
 	if strings.Contains(fmt.Sprintf("%#v", repository.reservations), bodyMarker) || strings.Contains(fmt.Sprintf("%#v", repository.commits), bodyMarker) {
 		t.Fatal("synchronous RawEvidenceItemDTO.Body flowed into a repository command")
+	}
+}
+
+func TestRawEvidenceArchiveAcceptsConcreteEndpointAuthorizationForExactSnapshot(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.August, 9, 6, 0, 0, 0, time.UTC)
+	snapshot := archiveSnapshot(t, now, []byte("<feed><entry>endpoint</entry></feed>"), archiveCollectorProfileVersion)
+	item := byteRangeItem(snapshot, "endpoint-entry", []byte("<entry>endpoint</entry>"))
+	command := archiveCommand(snapshot, []domain.SourceItem{item}, now)
+	expiresAt := now.Add(24 * time.Hour)
+	retentionDays := 30
+	command.StoreRawDecisions[snapshot.Key] = RawEvidenceRightsDecisionDTO{
+		ID: 31, PolicyID: 41, PolicyRevision: 1, SourceConnectionID: command.SourceConnectionID,
+		SubjectType: RawEvidenceRightsSubjectEndpoint, SubjectKey: "42", InputDigest: strings.Repeat("a", 64),
+		AuthorizedEvidenceKey: snapshot.Key, AuthorizedPayloadSHA256: snapshot.PayloadSHA256,
+		Action: string(domain.RightsActionStoreRaw), Decision: string(domain.RightsAllow),
+		EffectiveFrom: now.Add(-time.Hour), ExpiresAt: &expiresAt,
+	}
+	command.RetainDecisions[snapshot.Key] = RawEvidenceRightsDecisionDTO{
+		ID: 32, PolicyID: 41, PolicyRevision: 1, SourceConnectionID: command.SourceConnectionID,
+		SubjectType: RawEvidenceRightsSubjectEndpoint, SubjectKey: "42", InputDigest: strings.Repeat("a", 64),
+		AuthorizedEvidenceKey: snapshot.Key, AuthorizedPayloadSHA256: snapshot.PayloadSHA256,
+		Action: string(domain.RightsActionRetain), Decision: string(domain.RightsAllow), RetentionDays: &retentionDays,
+		EffectiveFrom: now.Add(-time.Hour), ExpiresAt: &expiresAt,
+	}
+	store := &rawEvidenceStoreFake{}
+	repository := &evidenceSnapshotRepositoryFake{}
+	service := newArchiveService(t, store, repository, &archiveClockFake{now: now})
+
+	if _, err := service.Archive(context.Background(), command); err != nil {
+		t.Fatalf("Archive() endpoint authorization error = %v", err)
+	}
+	if len(repository.reservations) != 1 || repository.reservations[0].StoreRawRightsDecisionID != 31 ||
+		repository.reservations[0].RetainRightsDecisionID != 32 {
+		t.Fatalf("endpoint-authorized reservation = %#v", repository.reservations)
+	}
+
+	tampered := command
+	tampered.StoreRawDecisions = map[string]RawEvidenceRightsDecisionDTO{snapshot.Key: command.StoreRawDecisions[snapshot.Key]}
+	invalid := tampered.StoreRawDecisions[snapshot.Key]
+	invalid.AuthorizedPayloadSHA256 = strings.Repeat("b", 64)
+	tampered.StoreRawDecisions[snapshot.Key] = invalid
+	if _, err := service.Archive(context.Background(), tampered); err == nil {
+		t.Fatal("Archive() accepted endpoint authorization for another payload")
 	}
 }
 

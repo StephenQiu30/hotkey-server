@@ -292,7 +292,9 @@ func TestRightsManagementResponseDTOsCannotCarryRawOrSecretFields(t *testing.T) 
 func publicRightsCapability(sourceEndpointID int64) sourceapplication.SourceEndpointCapabilityDTO {
 	return sourceapplication.SourceEndpointCapabilityDTO{
 		SourceEndpointID: sourceEndpointID, SourceType: "rss", CollectionInterface: "rss_atom_feed",
-		ContentScope: "feed_payload", Availability: "available", RightsStatus: "policy_required",
+		ContentScope: "feed_payload", DocumentCaptureMode: "policy_gated_body", DefaultAccessMode: "metadata_only",
+		RequiredActions: []string{"fetch", "store_raw", "store_derived", "display_private", "quote", "embed_local", "retain"},
+		Availability:    "available", RightsStatus: "policy_required",
 	}
 }
 

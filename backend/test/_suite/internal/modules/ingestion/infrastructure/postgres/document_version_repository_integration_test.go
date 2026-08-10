@@ -505,16 +505,30 @@ func createAvailableDocumentArtifact(t *testing.T, runtime *database.Runtime, so
 		t.Fatalf("read document capture time: %v", err)
 	}
 	profileSHA := strings.Repeat("b", 64)
+	artifactSHA := strings.Repeat("c", 64)
+	anchorMapSHA := strings.Repeat("d", 64)
 	var artifactID int64
 	if err := runtime.SQL.QueryRow(`
 INSERT INTO derived_artifacts (
   source_connection_id,document_version_id,store_derived_rights_decision_id,
   retain_rights_decision_id,artifact_type,transformer_profile_sha256,
-  vault_relative_path,mime_type,sha256,size_bytes,retention_until
-	) VALUES ($1,$2,$3,$4,'markdown',$5,$6,'text/markdown; charset=utf-8',$7,12,$8)
+  vault_relative_path,mime_type,sha256,size_bytes,
+  anchor_normalization_version,anchor_map_profile_version,anchor_plaintext_sha256,
+  anchor_markdown_sha256,anchor_map_sha256,retention_until
+	) VALUES ($1,$2,$3,$4,'markdown',$5,$6,'text/markdown; charset=utf-8',$7,12,
+	          'nfc-lf-collapse-space-v1','commonmark-gfm-visible-blocks-v1',$8,$7,$9,$10)
 RETURNING id`, sourceID, documentVersionID, storeDerivedDecisionID, retainDecisionID, profileSHA,
-		fmt.Sprintf("documents/%d/%d/markdown/%s.md", documentID, documentVersionID, profileSHA), strings.Repeat("c", 64), documentCapturedAt.Add(30*24*time.Hour)).Scan(&artifactID); err != nil {
+		fmt.Sprintf("documents/%d/%d/markdown/%s.md", documentID, documentVersionID, profileSHA), artifactSHA,
+		contentSHA, anchorMapSHA, documentCapturedAt.Add(30*24*time.Hour)).Scan(&artifactID); err != nil {
 		t.Fatalf("insert derived artifact: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO document_anchor_blocks (
+  derived_artifact_id,anchor_map_sha256,block_ordinal,
+  plaintext_utf8_byte_start,plaintext_utf8_byte_end,
+  markdown_utf8_byte_start,markdown_utf8_byte_end,markdown_anchor
+) VALUES ($1,$2,0,0,2,0,2,'body-0000-000000000001')`, artifactID, anchorMapSHA); err != nil {
+		t.Fatalf("insert document anchor block: %v", err)
 	}
 	if _, err := runtime.SQL.Exec(`
 UPDATE derived_artifacts
@@ -531,6 +545,7 @@ type documentRightsPolicyFixture struct {
 	ScopeType    string
 	Subject      string
 	Basis        string
+	PolicyHash   string
 	EffectiveAt  time.Time
 }
 
@@ -554,6 +569,7 @@ func createDocumentRightsPolicyForScope(t *testing.T, runtime *database.Runtime,
 		EffectiveAt: effectiveAt,
 	}
 	policyHash := documentRightsFixtureDigest("policy", fmt.Sprint(sourceID), fmt.Sprint(revision), scopeType, scopeSubject)
+	fixture.PolicyHash = policyHash
 	actorID := insertDocumentRightsFixtureActor(t, runtime, policyHash)
 	idempotencyKey, commandFingerprint := documentRightsFixtureReceipt("policy", policyHash)
 	if err := runtime.SQL.QueryRow(`
@@ -567,6 +583,37 @@ RETURNING id`, actorID, idempotencyKey, commandFingerprint, sourceID, scopeType,
 		t.Fatalf("insert document rights policy %d: %v", revision, err)
 	}
 	return fixture
+}
+
+func insertDocumentEndpointRightsDecision(t *testing.T, runtime *database.Runtime, policy documentRightsPolicyFixture, action, decision string, retentionDays *int) int64 {
+	t.Helper()
+	evaluatedAt := time.Now().UTC().Add(-time.Minute).Truncate(time.Microsecond)
+	idempotencyKey, commandFingerprint := documentRightsFixtureReceipt(
+		"endpoint-decision", fmt.Sprint(policy.SourceID), fmt.Sprint(policy.ID), action, decision,
+	)
+	var decisionID int64
+	if err := runtime.SQL.QueryRow(`
+WITH decision_batch AS (
+  INSERT INTO source_rights_decision_batches (
+    source_connection_id,policy_id,expected_policy_version,subject_type,subject_key,input_digest,
+    recorded_by_user_id,idempotency_key,command_fingerprint,decision_count
+  ) SELECT $1::bigint,$2,policy.version,'source_endpoint',($1::bigint)::text,policy.policy_hash,
+           policy.recorded_by_user_id,$10,$11,1
+    FROM source_rights_policies AS policy WHERE policy.id=$2
+  RETURNING id
+)
+INSERT INTO source_rights_decisions (
+  decision_batch_id,source_connection_id,policy_id,policy_revision,policy_scope_type,policy_scope_subject,
+  priority_rank,basis_summary,subject_type,subject_key,input_digest,action,decision,
+  evaluator,evaluated_at,effective_from,retention_days
+) SELECT decision_batch.id,$1::bigint,$2,$3,$4,$5,$6,$7,'source_endpoint',($1::bigint)::text,$8,$9,$12,
+         'ingestion-endpoint-test',$13,$13,$14
+  FROM decision_batch RETURNING id`, policy.SourceID, policy.ID, policy.Revision, policy.ScopeType, policy.Subject,
+		policy.Priority, policy.Basis, policy.PolicyHash, action, idempotencyKey, commandFingerprint,
+		decision, evaluatedAt, retentionDays).Scan(&decisionID); err != nil {
+		t.Fatalf("insert endpoint %s %s decision: %v", action, decision, err)
+	}
+	return decisionID
 }
 
 func createDocumentDisplayDecision(t *testing.T, runtime *database.Runtime, sourceID, documentVersionID int64, contentSHA string, policyRevision int64, expiresAt *time.Time, subjectDocumentVersionID int64) int64 {

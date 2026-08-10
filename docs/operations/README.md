@@ -4,7 +4,7 @@ scope: shared
 doc_no: "000"
 title: Operations 索引
 status: active
-version: v2.2
+version: v2.3
 owner: HotKey Team
 canonical_path: docs/operations/README.md
 ---
@@ -19,6 +19,7 @@ canonical_path: docs/operations/README.md
 | 002 | [备份、恢复与密钥轮换](002-备份恢复与密钥轮换.md) | PostgreSQL、MinIO、Vault、轮换演练 | active |
 | 003 | [来源授权与故障处置](003-来源授权与故障处置.md) | 七类已实现来源的准入、探测、停用与恢复 | active |
 | 004 | [可观测性、SLO 与容量基线](004-可观测性SLO与容量基线.md) | 指标词典、阈值、排障路径、容量复核 | active |
-| 005 | [032 非空库升级与证据对账](005-032非空库升级与证据对账.md) | canonical Schema 非空升级、批次回填、重入、三存储对账与切流回滚 | planned |
+| 005 | [032 非空库升级与证据对账](005-032非空库升级与证据对账.md) | canonical Schema 非空升级、批次回填、重入、三存储对账与切流回滚 | active |
+| 006 | [自动决策质量、模型成本与来源权利](006-自动决策质量、模型成本与来源权利.md) | 时间隔离质量门禁、AI 成本/降级、七类 Connector 单动作 Rights | active |
 
 部署入口与完整质量命令见根目录 [README](../../README.md)。

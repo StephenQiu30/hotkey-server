@@ -141,11 +141,12 @@ func (repository *IntentRepository) StagePublishedIntentProfile(ctx context.Cont
 		var profileID int64
 		insertErr := executor.QueryRowContext(transactionCtx, `
 INSERT INTO monitor_compiled_profiles (
-  monitor_id,purpose,config_version_id,monitor_version_id,intent_revision_id,
+  monitor_id,purpose,config_version_id,monitor_version_id,source_preview_compiled_profile_id,intent_revision_id,
   compiler_version,matching_algorithm_version,lexical_algorithm_version,semantic_algorithm_version,
   structured_algorithm_version,search_normalization_profile_version,semantic_state,semantic_unavailable_reason
-) VALUES ($1,'published',$2,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-RETURNING id`, command.MonitorID, command.ConfigVersionID, command.IntentRevisionID,
+) VALUES ($1,'published',$2,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+RETURNING id`, command.MonitorID, command.ConfigVersionID, command.SourcePreviewCompiledProfileID,
+			command.IntentRevisionID,
 			command.CompilerVersion, command.MatchingAlgorithmVersion, command.LexicalAlgorithmVersion,
 			command.SemanticAlgorithmVersion, command.StructuredAlgorithmVersion,
 			command.SearchNormalizationProfileVersion, command.SemanticState,
@@ -155,6 +156,22 @@ RETURNING id`, command.MonitorID, command.ConfigVersionID, command.IntentRevisio
 		}
 		if insertErr = insertPublishedIntentProfileFacts(transactionCtx, executor, profileID, command); insertErr != nil {
 			return insertErr
+		}
+		if command.SemanticState == monitorapplication.IntentSemanticStateReady {
+			result, copyErr := executor.ExecContext(transactionCtx, `
+INSERT INTO monitor_compiled_intent_embeddings (
+  compiled_profile_id,config_version_id,model_profile_id,model_profile_version,
+  model_version,input_hash,embedding,ai_run_id,created_at
+)
+SELECT $1,$2,model_profile_id,model_profile_version,model_version,input_hash,embedding,ai_run_id,created_at
+FROM monitor_compiled_intent_embeddings WHERE compiled_profile_id=$3`,
+				profileID, command.ConfigVersionID, command.SourcePreviewCompiledProfileID)
+			if copyErr != nil {
+				return mapIntentDatabaseError(copyErr)
+			}
+			if changed, rowsErr := result.RowsAffected(); rowsErr != nil || changed != 1 {
+				return monitorapplication.ErrIntentPublicationUnavailable
+			}
 		}
 		receipt = monitorapplication.StagePublishedIntentProfileReceiptDTO{CompiledProfileID: profileID}
 		return nil
@@ -284,21 +301,21 @@ func samePublishedIntentSource(record compiledIntentProfileRecord, command monit
 }
 
 func readBuildingPublishedIntentProfile(ctx context.Context, executor intentExecutor, command monitorapplication.StagePublishedIntentProfileDTO) (int64, error) {
-	var id int64
+	var id, sourcePreviewID int64
 	var reason sql.NullString
 	var status, compiler, matching, lexical, semantic, structured, normalization, semanticState string
 	err := executor.QueryRowContext(ctx, `
-SELECT id,status,compiler_version,matching_algorithm_version,lexical_algorithm_version,
+SELECT id,source_preview_compiled_profile_id,status,compiler_version,matching_algorithm_version,lexical_algorithm_version,
        semantic_algorithm_version,structured_algorithm_version,search_normalization_profile_version,
        semantic_state,semantic_unavailable_reason
 FROM monitor_compiled_profiles
 WHERE monitor_id=$1 AND purpose='published' AND monitor_version_id=$2
-FOR UPDATE`, command.MonitorID, command.ConfigVersionID).Scan(&id, &status, &compiler, &matching, &lexical,
+FOR UPDATE`, command.MonitorID, command.ConfigVersionID).Scan(&id, &sourcePreviewID, &status, &compiler, &matching, &lexical,
 		&semantic, &structured, &normalization, &semanticState, &reason)
 	if err != nil {
 		return 0, err
 	}
-	if status != "building" || compiler != command.CompilerVersion || matching != command.MatchingAlgorithmVersion ||
+	if sourcePreviewID != command.SourcePreviewCompiledProfileID || status != "building" || compiler != command.CompilerVersion || matching != command.MatchingAlgorithmVersion ||
 		lexical != command.LexicalAlgorithmVersion || semantic != command.SemanticAlgorithmVersion ||
 		structured != command.StructuredAlgorithmVersion || normalization != command.SearchNormalizationProfileVersion ||
 		semanticState != command.SemanticState || reason.String != command.SemanticUnavailableReason {
@@ -311,7 +328,7 @@ func validPublishedIntentProfileStage(command monitorapplication.StagePublishedI
 	if command.MonitorID <= 0 || command.ConfigVersionID <= 0 || command.IntentRevisionID <= 0 ||
 		command.SourcePreviewRunID <= 0 || command.SourcePreviewCompiledProfileID <= 0 ||
 		validateIntentRecordHash(command.ProfileHash) != nil ||
-		command.SemanticState != "unavailable" || command.SemanticUnavailableReason != monitorapplication.IntentSemanticGenerationUnavailable ||
+		!validCompletedCompiledIntentSemanticState(command.SemanticState, command.SemanticUnavailableReason) ||
 		len(command.Clauses) > 128 || len(command.Entities) > 64 {
 		return false
 	}

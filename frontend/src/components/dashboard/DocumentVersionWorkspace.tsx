@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { ExternalLink, FileDown, FileText, Loader2, RefreshCw } from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ExternalLink, FileDown, FileText, Highlighter, Loader2, RefreshCw } from "lucide-react";
 import { SafeExternalLink } from "@/components/content/SafeExternalLink";
 import { SafeMarkdown } from "@/components/content/SafeMarkdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import {
   Empty,
   EmptyDescription,
@@ -17,7 +18,9 @@ import {
 import {
   getDocumentVersionsIdCitation,
   getDocumentVersionsIdDocument,
+  postDocumentVersionsIdTextQuoteSelectors,
 } from "@/services/hotkey/hotkey-server/documentVersions";
+import { useAuthStore } from "@/stores/authStore";
 
 const availabilityLabels: Record<string, string> = {
   full_archive: "完整归档",
@@ -62,14 +65,37 @@ function documentIdentityFailure(
   }
   const citationArtifactSHA = citation.artifact?.sha256;
   const documentArtifactSHA = document.citation?.artifact?.sha256;
-  if (
-    citationArtifactSHA &&
-    documentArtifactSHA &&
-    citationArtifactSHA !== documentArtifactSHA
-  ) {
+  if (!citationArtifactSHA || citationArtifactSHA !== documentArtifactSHA) {
     return "正文投影与出处清单不一致";
   }
+  const citationAnchorMapSHA = citation.artifact?.anchor_map?.anchor_map_sha256;
+  const documentAnchorMapSHA = document.citation?.artifact?.anchor_map?.anchor_map_sha256;
+  if (!citationAnchorMapSHA || citationAnchorMapSHA !== documentAnchorMapSHA) {
+    return "正文锚点映射与出处清单不一致";
+  }
   return undefined;
+}
+
+function PartyIdentity({ party }: { party: HotKeyAPI.CitationPartyResponseDTO }) {
+  const label = party.display_name || party.external_id || "未命名主体";
+  const identity = [party.identity_namespace, party.external_id].filter(Boolean).join(":");
+
+  return (
+    <div className="min-w-0">
+      {party.homepage_url ? (
+        <SafeExternalLink
+          className="inline-flex max-w-full items-center gap-1 font-medium text-foreground underline-offset-4 hover:underline"
+          href={party.homepage_url}
+        >
+          <span className="truncate">{label}</span>
+          <ExternalLink className="size-3 shrink-0" />
+        </SafeExternalLink>
+      ) : (
+        <p className="font-medium text-foreground">{label}</p>
+      )}
+      {identity ? <p className="mono mt-1 break-all text-[11px]">{identity}</p> : null}
+    </div>
+  );
 }
 
 type DocumentVersionWorkspaceProps = {
@@ -77,11 +103,26 @@ type DocumentVersionWorkspaceProps = {
 };
 
 export function DocumentVersionWorkspace({ documentVersionID }: DocumentVersionWorkspaceProps) {
+  const role = useAuthStore((state) => state.user?.role);
+  const canQuote = role === "editor" || role === "admin";
   const [citation, setCitation] = useState<HotKeyAPI.CitationResponseDTO>();
   const [document, setDocument] = useState<HotKeyAPI.VersionedDocumentResponseDTO>();
   const [bodyFailure, setBodyFailure] = useState<string>();
   const [loadFailure, setLoadFailure] = useState<string>();
   const [loading, setLoading] = useState(true);
+  const [exactQuote, setExactQuote] = useState("");
+  const [quoteSelector, setQuoteSelector] = useState<HotKeyAPI.TextQuoteSelectorResponseDTO>();
+  const [quoteFailure, setQuoteFailure] = useState<string>();
+  const [quoteBusy, setQuoteBusy] = useState(false);
+  const documentBody = useRef<HTMLDivElement>(null);
+  const markdownAnchors = useMemo(
+    () =>
+      document?.citation?.artifact?.anchor_map?.blocks?.map((block) => ({
+        ordinal: block.ordinal ?? -1,
+        markdownAnchor: block.markdown_anchor ?? "",
+      })),
+    [document?.citation?.artifact?.anchor_map?.blocks],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -130,6 +171,53 @@ export function DocumentVersionWorkspace({ documentVersionID }: DocumentVersionW
   useEffect(() => {
     void load();
   }, [load]);
+
+  const captureSelection = () => {
+    const selection = window.getSelection();
+    const anchorNode = selection?.anchorNode;
+    const selectedText = selection?.toString().trim() ?? "";
+    if (!anchorNode || !documentBody.current?.contains(anchorNode) || !selectedText) {
+      setQuoteFailure("请先在归档正文中选择一段连续文字");
+      return;
+    }
+    setExactQuote(selectedText);
+    setQuoteFailure(undefined);
+    setQuoteSelector(undefined);
+  };
+
+  const createQuoteSelector = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const plaintextSHA256 = citation?.content_sha256;
+    if (!plaintextSHA256) {
+      setQuoteFailure("当前正文没有可安全引用的 plaintext 身份");
+      return;
+    }
+    setQuoteBusy(true);
+    setQuoteFailure(undefined);
+    try {
+      const result = await postDocumentVersionsIdTextQuoteSelectors(
+        { id: documentVersionID },
+        {
+          exact_quote: exactQuote.trim(),
+          plaintext_sha256: plaintextSHA256,
+          normalization_version: citation.artifact?.anchor_map?.normalization_version ?? "nfc-lf-collapse-space-v1",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "If-Match": `"${plaintextSHA256}"`,
+            "Idempotency-Key": crypto.randomUUID(),
+          },
+        },
+      );
+      if (!result.data?.id) throw new Error("引用选择器响应为空");
+      setQuoteSelector(result.data);
+    } catch (reason) {
+      setQuoteFailure(reason instanceof Error ? reason.message : "引用选择器创建失败");
+    } finally {
+      setQuoteBusy(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -193,6 +281,50 @@ export function DocumentVersionWorkspace({ documentVersionID }: DocumentVersionW
           <p className="mono">Document #{citation.document_id ?? "—"} · Version #{citation.document_version_id ?? "—"}</p>
         </div>
 
+        <section aria-labelledby="document-parties-title" className="mt-4 rounded-md border border-border p-4">
+          <h2 className="text-sm font-semibold" id="document-parties-title">出处主体</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            仅展示来源显式提供并绑定到本次归档证据的主体；缺失信息不会通过域名、作者或模型推断。
+          </p>
+          <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-3">
+            <div>
+              <dt className="mb-1 text-xs text-muted-foreground">发布者</dt>
+              <dd>
+                {citation.publisher_party ? (
+                  <PartyIdentity party={citation.publisher_party} />
+                ) : (
+                  <span className="text-muted-foreground">发布者信息未提供</span>
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt className="mb-1 text-xs text-muted-foreground">内容源主体</dt>
+              <dd>
+                {citation.content_origin ? (
+                  <PartyIdentity party={citation.content_origin} />
+                ) : (
+                  <span className="text-muted-foreground">内容源主体未提供</span>
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt className="mb-1 text-xs text-muted-foreground">分发方</dt>
+              <dd className="space-y-2">
+                {citation.distributors?.length ? (
+                  citation.distributors.map((party, index) => (
+                    <PartyIdentity
+                      key={`${party.identity_namespace ?? "unknown"}:${party.external_id ?? index}`}
+                      party={party}
+                    />
+                  ))
+                ) : (
+                  <span className="text-muted-foreground">分发方信息未提供</span>
+                )}
+              </dd>
+            </div>
+          </dl>
+        </section>
+
         <nav aria-label="正文出处链接" className="mt-4 flex flex-wrap gap-2">
           {citation.canonical_url ? (
             <Button asChild size="sm" variant="outline">
@@ -219,7 +351,9 @@ export function DocumentVersionWorkspace({ documentVersionID }: DocumentVersionW
       </header>
 
       {document?.markdown ? (
-        <SafeMarkdown className="py-8" markdown={document.markdown} />
+        <div ref={documentBody}>
+          <SafeMarkdown anchors={markdownAnchors} className="py-8" markdown={document.markdown} />
+        </div>
       ) : (
         <Card className="my-8">
           <Empty className="min-h-64 border-0">
@@ -236,6 +370,25 @@ export function DocumentVersionWorkspace({ documentVersionID }: DocumentVersionW
         </Card>
       )}
 
+      {canQuote && document?.markdown && citation.content_sha256 ? (
+        <section aria-labelledby="quote-selector-title" className="document-actions mb-8 rounded-lg border border-border bg-muted/20 p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="font-semibold" id="quote-selector-title">创建精确正文引用</h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">先在正文中选择文字，再由服务端在 immutable NFC plaintext 中唯一定位并计算 UTF-8 字节范围。</p>
+            </div>
+            <Button onClick={captureSelection} type="button" variant="outline"><Highlighter />使用选中文字</Button>
+          </div>
+          <form className="mt-4 space-y-3" onSubmit={createQuoteSelector}>
+            <Label htmlFor="document-exact-quote">精确摘录</Label>
+            <textarea className="min-h-28 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm leading-6 outline-none focus-visible:ring-2 focus-visible:ring-ring" id="document-exact-quote" maxLength={4096} onChange={(event) => { setExactQuote(event.target.value); setQuoteSelector(undefined); }} required value={exactQuote} />
+            {quoteFailure ? <p className="text-sm text-destructive" role="alert">{quoteFailure}</p> : null}
+            {quoteSelector ? <p className="rounded-md border border-border bg-background px-3 py-2 text-sm">引用选择器 #{quoteSelector.id} 已创建 · UTF-8 {quoteSelector.utf8_byte_start}–{quoteSelector.utf8_byte_end}{quoteSelector.markdown_anchor ? ` · #${quoteSelector.markdown_anchor}` : ""}</p> : null}
+            <Button disabled={quoteBusy || !exactQuote.trim()} type="submit">{quoteBusy ? <Loader2 className="animate-spin" /> : null}生成引用选择器</Button>
+          </form>
+        </section>
+      ) : null}
+
       <footer className="document-footer space-y-2 border-t border-border py-5 text-xs text-muted-foreground">
         {citation.unavailable_reason ? <p>{citation.unavailable_reason}</p> : null}
         {citation.locator_availability === "unavailable" ? (
@@ -250,6 +403,12 @@ export function DocumentVersionWorkspace({ documentVersionID }: DocumentVersionW
         ) : null}
         {citation.artifact?.sha256 ? (
           <p className="mono">Markdown SHA-256 {citation.artifact.sha256.slice(0, 16)}…</p>
+        ) : null}
+        {citation.artifact?.anchor_map ? (
+          <p className="mono">
+            锚点映射 {citation.artifact.anchor_map.anchor_map_profile_version} ·{" "}
+            {citation.artifact.anchor_map.blocks?.length ?? 0} blocks
+          </p>
         ) : null}
       </footer>
     </article>

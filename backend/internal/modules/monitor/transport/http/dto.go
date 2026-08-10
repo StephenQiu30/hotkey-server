@@ -214,6 +214,8 @@ type PreviewSourceResponse struct {
 	IncludedRuleIDs    []int64  `json:"included_rule_ids"`
 	ExcludedRuleIDs    []int64  `json:"excluded_rule_ids"`
 	UnapprovedRuleIDs  []int64  `json:"unapproved_rule_ids"`
+	IncludedTermCount  int      `json:"included_term_count"`
+	ExcludedTermCount  int      `json:"excluded_term_count"`
 	EstimatedRequests  int      `json:"estimated_requests"`
 }
 
@@ -344,7 +346,7 @@ func monitorConfigResponse(view monitorapplication.ConfigurationView) MonitorCon
 func previewResponse(preview monitorapplication.PreviewResult) PreviewResponse {
 	response := PreviewResponse{Eligible: preview.Eligible, ConfigHash: preview.ConfigHash, Sources: make([]PreviewSourceResponse, 0, len(preview.Sources)), Warnings: preview.Warnings}
 	for _, source := range preview.Sources {
-		response.Sources = append(response.Sources, PreviewSourceResponse{SourceConnectionID: source.SourceConnectionID, QuerySignature: source.QuerySignature, CompiledQuery: source.CompiledQuery, QueryMode: source.QueryMode, Languages: source.Languages, Regions: source.Regions, MaxQueryBytes: source.MaxQueryBytes, IncludedRuleIDs: source.IncludedRuleIDs, ExcludedRuleIDs: source.ExcludedRuleIDs, UnapprovedRuleIDs: source.UnapprovedRuleIDs, EstimatedRequests: source.EstimatedRequests})
+		response.Sources = append(response.Sources, PreviewSourceResponse{SourceConnectionID: source.SourceConnectionID, QuerySignature: source.QuerySignature, CompiledQuery: source.CompiledQuery, QueryMode: source.QueryMode, Languages: source.Languages, Regions: source.Regions, MaxQueryBytes: source.MaxQueryBytes, IncludedRuleIDs: source.IncludedRuleIDs, ExcludedRuleIDs: source.ExcludedRuleIDs, UnapprovedRuleIDs: source.UnapprovedRuleIDs, IncludedTermCount: source.IncludedTermCount, ExcludedTermCount: source.ExcludedTermCount, EstimatedRequests: source.EstimatedRequests})
 		response.EstimatedRequests += source.EstimatedRequests
 	}
 	return response

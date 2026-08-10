@@ -21,6 +21,7 @@ import {
   type NotificationTransport,
 } from "@/stores/notificationStore";
 import { cn } from "@/lib/utils";
+import { PushSubscriptionManager } from "@/components/notifications/PushSubscriptionManager";
 
 const transportPresentation: Record<
   NotificationTransport,
@@ -33,29 +34,19 @@ const transportPresentation: Record<
 };
 
 const eventTypeLabels: Record<string, string> = {
-  "event.updated": "事件更新",
-  "alert.triggered": "热点告警",
-  "report.published": "报告发布",
-  "report.failed": "报告失败",
-  "collection.succeeded": "采集完成",
-  "collection.failed": "采集失败",
+  "micro_event.created": "新微事件",
+  "micro_event.updated": "微事件更新",
+  "micro_event.review_requested": "需要复核",
+  "micro_event.evidence_changed": "证据覆盖更新",
 };
 
-function resourceHref(notification: HotKeyAPI.NotificationResponse) {
-  const resourceID = notification.resource_id;
-  if (!resourceID) return "/dashboard/notifications";
-  switch (notification.resource_type) {
-    case "event":
-      return `/dashboard/events?event=${resourceID}`;
-    case "alert":
-      return "/dashboard/alerts";
-    case "report":
-      return "/dashboard/reports";
-    case "collection_run":
-      return "/dashboard/contents";
-    default:
-      return "/dashboard/notifications";
-  }
+const SAFE_MICRO_EVENT_DEEP_LINK = /^\/dashboard\/events\?event=[1-9][0-9]{0,18}$/;
+
+function resourceHref(notification: HotKeyAPI.UserNotificationResponseDTO) {
+  const deepLink = notification.deep_link ?? "";
+  return SAFE_MICRO_EVENT_DEEP_LINK.test(deepLink)
+    ? deepLink
+    : "/dashboard/notifications";
 }
 
 function occurredAtLabel(value?: string) {
@@ -101,7 +92,7 @@ export function NotificationInbox() {
       <PageHeader
         eyebrow="Notifications"
         title="站内通知"
-        description="实时接收事件变化、热点告警、报告状态和采集结果；断线后会从上次游标自动补齐。"
+        description="实时接收所管理监控的微事件与证据覆盖变化；断线后会从上次游标自动补齐，权限变更会即时生效。"
         action={
           <div className="flex gap-2">
             <Badge
@@ -129,6 +120,8 @@ export function NotificationInbox() {
         }
       />
 
+      <PushSubscriptionManager />
+
       {items.length === 0 ? (
         <Card className="mt-6">
           <Empty className="h-64">
@@ -138,7 +131,7 @@ export function NotificationInbox() {
               </EmptyMedia>
               <EmptyTitle>暂时没有站内通知</EmptyTitle>
               <EmptyDescription>
-                事件、告警、报告或采集状态变化后会显示在这里。
+                监控发现新微事件、事件归属变化或证据覆盖更新后会显示在这里。
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -182,11 +175,11 @@ export function NotificationInbox() {
                       </time>
                     </div>
                     <h2 className="mt-2 text-sm font-medium">
-                      {notification.payload?.title ?? "系统通知"}
+                      {notification.title ?? "系统通知"}
                     </h2>
-                    {notification.payload?.summary ? (
+                    {notification.summary ? (
                       <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">
-                        {notification.payload.summary}
+                        {notification.summary}
                       </p>
                     ) : null}
                   </div>

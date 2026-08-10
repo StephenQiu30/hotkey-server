@@ -10,10 +10,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
-  claimStatusLabel,
-  confirmationLabel,
   evidenceStanceLabel,
-  formatConfidence,
   formatRadarScore,
 } from "@/lib/radarPresentation";
 
@@ -60,18 +57,18 @@ export function EventIntelligencePanel({
 
   return (
     <div className="space-y-5 border-t pt-5">
-      <section aria-labelledby="confirmation-title">
-        <div className="flex items-center justify-between gap-3">
-          <h3 id="confirmation-title" className="text-sm font-semibold text-foreground">
-            证据确认，不等于真假裁决
-          </h3>
-          <Badge variant="outline" className="shrink-0 font-normal">
-            {confirmationLabel(event.confirmation)}
-          </Badge>
-        </div>
-        <p className="mt-2 text-xs leading-5 text-muted-foreground">
-          证据确认强度 {formatRadarScore(event.confirmation_score)}。该分数仅表示当前证据状态，不是事实为真的概率。
-        </p>
+      <section aria-labelledby="source-coverage-title">
+		<div className="flex items-center justify-between gap-3">
+		  <h3 id="source-coverage-title" className="text-sm font-semibold text-foreground">
+			出处覆盖
+		  </h3>
+		  <Badge variant="outline" className="shrink-0 font-normal">
+			{event.independent_source_count ?? 0} 个独立来源
+		  </Badge>
+		</div>
+		<p className="mt-2 text-xs leading-5 text-muted-foreground">
+		  这里只展示已采集材料的出处数量与引用关系，不据此判断事件真假或来源可信度。
+		</p>
       </section>
 
       <section className="space-y-3 border-t pt-5" aria-labelledby="importance-title">
@@ -85,7 +82,6 @@ export function EventIntelligencePanel({
         </div>
         <ScoreRow label="传播动量" value={event.momentum} />
         <ScoreRow label="来源宽度" value={event.breadth} />
-        <ScoreRow label="数据置信度" value={event.data_confidence} />
       </section>
 
       <section className="border-t pt-5" aria-labelledby="relevance-title">
@@ -137,14 +133,9 @@ export function EventIntelligencePanel({
               >
                 <AccordionTrigger className="py-3 hover:no-underline">
                   <span className="min-w-0 flex-1 text-left">
-                    <span className="flex flex-wrap items-center gap-2">
-                      <Badge variant="secondary" className="font-normal">
-                        {claimStatusLabel(claim.status)}
-                      </Badge>
-                      <span className="text-xs font-normal text-muted-foreground">
-                        {formatConfidence(claim.confidence)}
-                      </span>
-                    </span>
+					<span className="text-xs font-normal text-muted-foreground">
+					  {claim.evidence?.length ?? 0} 条出处材料
+					</span>
                     <span className="mt-2 block text-sm font-medium leading-6 text-foreground">
                       {claim.normalized_claim || "未命名声明"}
                     </span>

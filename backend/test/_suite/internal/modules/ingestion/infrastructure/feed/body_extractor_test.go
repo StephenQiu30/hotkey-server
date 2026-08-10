@@ -26,7 +26,7 @@ func TestBodyExtractorSafelyExtractsRSSContentAsCanonicalPlaintextAndMarkdown(t 
 			<a href="javascript:alert(2)">unsafe</a>
 		]]></content:encoded>
 	</item>`)
-	extractor := NewBodyExtractor(ingestionmarkdown.NewConverter())
+	extractor := NewBodyExtractor(ingestionmarkdown.NewConverter(), ingestionmarkdown.NewAnchorMapper())
 	result, err := extractor.Extract(context.Background(), extractionCommand(payload, "rss2-go-xml-v1", "application/rss+xml", ingestionapplication.BodyOriginFeedContent, ingestionapplication.BodyCompletenessFull))
 	if err != nil {
 		t.Fatalf("Extract() error = %v", err)
@@ -46,6 +46,10 @@ func TestBodyExtractorSafelyExtractsRSSContentAsCanonicalPlaintextAndMarkdown(t 
 		}
 	}
 	if result.PlaintextSHA256 != fmt.Sprintf("%x", sha256.Sum256([]byte(result.Plaintext))) ||
+		result.MarkdownSHA256 != fmt.Sprintf("%x", sha256.Sum256([]byte(result.Markdown))) ||
+		result.TextNormalizationVersion != ingestionapplication.CanonicalDocumentTextNormalizationVersion ||
+		result.AnchorMapProfileVersion != ingestionapplication.CanonicalDocumentAnchorMapProfileVersion ||
+		len(result.AnchorBlocks) != 5 || len(result.AnchorMapSHA256) != 64 ||
 		len(result.ExtractorProfileSHA256) != 64 || len(result.PlaintextTransformerProfileSHA256) != 64 ||
 		len(result.MarkdownTransformerProfileSHA256) != 64 ||
 		strings.ToLower(result.ExtractorProfileSHA256) != result.ExtractorProfileSHA256 ||
@@ -56,6 +60,31 @@ func TestBodyExtractorSafelyExtractsRSSContentAsCanonicalPlaintextAndMarkdown(t 
 	}
 	if !reflect.DeepEqual(result.QualityWarnings, []string{"captured_markup_sanitized"}) {
 		t.Fatalf("quality warnings = %#v", result.QualityWarnings)
+	}
+}
+
+func TestBodyExtractorAcceptsCommonMarkEscapesProducedFromRealFeedSummary(t *testing.T) {
+	t.Parallel()
+	payload := []byte(`<rssItem><guid>https://news.ycombinator.com/item?id=49219262</guid><link>https://github.com/ClickHouse/pg_stat_ch</link><title>Pg_stat_ch</title><description>&#xA;&lt;p&gt;Article URL: &lt;a href=&#34;https://github.com/ClickHouse/pg_stat_ch&#34;&gt;https://github.com/ClickHouse/pg_stat_ch&lt;/a&gt;&lt;/p&gt;&#xA;&lt;p&gt;# Comments: 0&lt;/p&gt;&#xA;</description><encoded></encoded></rssItem>`)
+	evidence := extractionCommand(
+		payload,
+		rssItemSelectorVersion,
+		"application/rss+xml",
+		ingestionapplication.BodyOriginFeedSummary,
+		ingestionapplication.BodyCompletenessSummary,
+	).Evidence
+	evidence.CanonicalURL = "https://github.com/ClickHouse/pg_stat_ch"
+
+	result, err := NewBodyExtractor(ingestionmarkdown.NewConverter(), ingestionmarkdown.NewAnchorMapper()).Extract(
+		context.Background(),
+		ingestionapplication.ExtractSelectedSourceBodyCommand{Evidence: evidence},
+	)
+	if err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+	want := "Article URL: https://github.com/ClickHouse/pg_stat_ch\n\n# Comments: 0"
+	if result.Plaintext != want {
+		t.Fatalf("plaintext = %q, want %q", result.Plaintext, want)
 	}
 }
 
@@ -105,7 +134,7 @@ func TestBodyExtractorSupportsFrozenRSSRDFAndAtomFallbackSemantics(t *testing.T)
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			extractor := NewBodyExtractor(ingestionmarkdown.NewConverter())
+			extractor := NewBodyExtractor(ingestionmarkdown.NewConverter(), ingestionmarkdown.NewAnchorMapper())
 			result, err := extractor.Extract(context.Background(), extractionCommand([]byte(test.payload), test.selector, test.mimeType, test.origin, test.completeness))
 			if err != nil {
 				t.Fatalf("Extract() error = %v", err)
@@ -125,7 +154,7 @@ func TestBodyExtractorReturnsExplicitMetadataOnlyWithoutMarkdownConversion(t *te
 
 	payload := []byte(`<atomEntry><id>one</id><content> </content><summary> </summary></atomEntry>`)
 	projector := &markdownProjectorSpy{}
-	extractor := NewBodyExtractor(projector)
+	extractor := NewBodyExtractor(projector, ingestionmarkdown.NewAnchorMapper())
 	command := extractionCommand(payload, "atom-go-xml-v1", "application/atom+xml", ingestionapplication.BodyOriginFeedSummary, ingestionapplication.BodyCompletenessMetadataOnly)
 	command.Evidence.SourceRecordURL = ""
 	command.Evidence.CanonicalURL = ""
@@ -170,7 +199,7 @@ func TestBodyExtractorFailsClosedOnUntrustedOrUnboundedSelectedEvidence(t *testi
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			extractor := NewBodyExtractor(ingestionmarkdown.NewConverter())
+			extractor := NewBodyExtractor(ingestionmarkdown.NewConverter(), ingestionmarkdown.NewAnchorMapper())
 			if _, err := extractor.Extract(context.Background(), test.command); err == nil {
 				t.Fatal("Extract() accepted untrusted selected evidence")
 			}

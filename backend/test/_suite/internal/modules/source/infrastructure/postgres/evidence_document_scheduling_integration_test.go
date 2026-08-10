@@ -111,6 +111,7 @@ func TestEvidenceSnapshotCommitSchedulesEveryExactReferenceIdempotently(t *testi
 	}
 	linkedAgain := first
 	linkedAgain.Evidence.EvidenceKey = secondPersisted.EvidenceKey
+	linkedAgain.Evidence.Usage = "context"
 	linkedAgain.Evidence.SelectedPayloadSHA256 = digestValue("same observation selected from second snapshot")
 	secondCommit, err := repository.Commit(ctx, sourceapplication.CommitEvidenceSnapshotCommand{
 		SnapshotID: secondPersisted.ID, StoreResult: storeResult(secondPersisted),
@@ -122,11 +123,22 @@ func TestEvidenceSnapshotCommitSchedulesEveryExactReferenceIdempotently(t *testi
 	}
 	if len(secondCommit.EvidenceReferences) != 1 || secondCommit.EvidenceReferences[0].EvidenceSnapshotID != secondPersisted.ID ||
 		secondCommit.EvidenceReferences[0].SourceObservationID != committed.EvidenceReferences[0].SourceObservationID ||
-		secondCommit.EvidenceReferences[0].EvidenceReferenceID == committed.EvidenceReferences[0].EvidenceReferenceID {
+		secondCommit.EvidenceReferences[0].EvidenceReferenceID == committed.EvidenceReferences[0].EvidenceReferenceID ||
+		secondCommit.EvidenceReferences[0].Usage != "context" {
 		t.Fatalf("M:N exact receipt = first:%#v second:%#v", committed.EvidenceReferences[0], secondCommit.EvidenceReferences)
 	}
-	if jobs := readSourceDocumentJobs(t, runtime.SQL); len(jobs) != 3 {
-		t.Fatalf("M:N source document jobs = %d, want 3", len(jobs))
+	if jobs := readSourceDocumentJobs(t, runtime.SQL); len(jobs) != 2 {
+		t.Fatalf("context evidence scheduled a source document job: jobs=%#v", jobs)
+	}
+	var persistedUsage string
+	if err := runtime.SQL.QueryRowContext(ctx, `
+SELECT usage FROM source_observation_evidences WHERE id=$1`,
+		secondCommit.EvidenceReferences[0].EvidenceReferenceID,
+	).Scan(&persistedUsage); err != nil {
+		t.Fatal(err)
+	}
+	if persistedUsage != "context" {
+		t.Fatalf("persisted context evidence usage = %q", persistedUsage)
 	}
 }
 

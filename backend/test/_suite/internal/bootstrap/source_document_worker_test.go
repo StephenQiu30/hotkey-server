@@ -81,7 +81,7 @@ func TestSourceEvidenceReaderAdapterFailsClosedOnInvalidMappedSemantics(t *testi
 	}
 }
 
-func TestMinIOWorkerFxGraphConstructsSourceDocumentHandler(t *testing.T) {
+func TestMinIOWorkerFxGraphConstructsSourceDocumentAndMatchServices(t *testing.T) {
 	dsn := initializedBootstrapDatabase(t)
 	cfg := config.Default()
 	cfg.Role, cfg.HTTPAddr, cfg.DatabaseURL = string(RoleWorker), "", dsn
@@ -91,12 +91,18 @@ func TestMinIOWorkerFxGraphConstructsSourceDocumentHandler(t *testing.T) {
 	}
 	var handler *ingestionjobs.SourceDocumentGenerationHandler
 	var recallProjections *ingestionapplication.DocumentRecallProjectionService
+	var publishedMatches *ingestionapplication.PublishedDocumentMatchService
+	var publishedMatchEvaluations *ingestionapplication.PublishedMatchEvaluationService
+	var matchReviews *ingestionapplication.DocumentMatchReviewService
+	var publishedMatchHandler *ingestionjobs.PublishedDocumentMatchEvaluationHandler
+	var acceptedMatchProjectionHandler *ingestionjobs.AcceptedDocumentMatchProjectionHandler
 	var handlers map[string]queue.Handler
 	app, err := NewAppWithReadiness(
 		cfg,
 		zap.NewNop(),
 		httptransport.ReadinessFunc(func(context.Context) error { return nil }),
-		fx.Populate(&handler, &recallProjections, &handlers),
+		fx.Populate(&handler, &recallProjections, &publishedMatches, &publishedMatchEvaluations, &matchReviews,
+			&publishedMatchHandler, &acceptedMatchProjectionHandler, &handlers),
 	)
 	if err != nil {
 		t.Fatalf("NewAppWithReadiness() error = %v", err)
@@ -107,8 +113,13 @@ func TestMinIOWorkerFxGraphConstructsSourceDocumentHandler(t *testing.T) {
 		t.Fatalf("MinIO worker Start() error = %v", err)
 	}
 	defer func() { _ = app.Stop(ctx) }()
-	if handler == nil || recallProjections == nil || handlers[queue.KindGenerateSourceDocument] == nil {
-		t.Fatalf("source document handler/recall/registration = %#v/%#v/%#v", handler, recallProjections, handlers[queue.KindGenerateSourceDocument])
+	if handler == nil || recallProjections == nil || publishedMatches == nil || publishedMatchEvaluations == nil || matchReviews == nil ||
+		publishedMatchHandler == nil || acceptedMatchProjectionHandler == nil || handlers[queue.KindGenerateSourceDocument] == nil ||
+		handlers[queue.KindEvaluatePublishedDocumentMatches] == nil || handlers[queue.KindProjectAcceptedDocumentMatch] == nil {
+		t.Fatalf("source document/match services/registration = %#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v",
+			handler, recallProjections, publishedMatches, publishedMatchEvaluations, matchReviews, publishedMatchHandler,
+			acceptedMatchProjectionHandler, handlers[queue.KindGenerateSourceDocument],
+			handlers[queue.KindEvaluatePublishedDocumentMatches], handlers[queue.KindProjectAcceptedDocumentMatch])
 	}
 }
 

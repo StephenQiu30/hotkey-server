@@ -178,6 +178,12 @@ FOR UPDATE`, command.SnapshotID))
 				if err != nil {
 					return err
 				}
+				if err := appendObservationParties(
+					transactionCtx, executor, observation.SourceConnectionID, observationID,
+					reference.EvidenceReferenceID, observation.Parties,
+				); err != nil {
+					return err
+				}
 				committedReferences = append(committedReferences, reference)
 			}
 
@@ -199,7 +205,7 @@ RETURNING `+evidenceSnapshotColumns, stored.ID))
 		}
 
 		scheduleCommand := sourceapplication.ScheduleSourceDocumentGenerationCommand{
-			EvidenceReferences: copyCommittedEvidenceReferences(committedReferences),
+			EvidenceReferences: documentSourceEvidenceReferences(committedReferences),
 			TraceID:            command.TraceID, ScheduledAt: command.DocumentGenerationScheduledAt,
 		}
 		scheduleResult, err := repository.documentGenerationScheduler.Schedule(transactionCtx, scheduleCommand)
@@ -227,6 +233,16 @@ func copyCommittedEvidenceReferences(references []sourceapplication.CommittedEvi
 	copyOfReferences := make([]sourceapplication.CommittedEvidenceReferenceDTO, len(references))
 	copy(copyOfReferences, references)
 	return copyOfReferences
+}
+
+func documentSourceEvidenceReferences(references []sourceapplication.CommittedEvidenceReferenceDTO) []sourceapplication.CommittedEvidenceReferenceDTO {
+	result := make([]sourceapplication.CommittedEvidenceReferenceDTO, 0, len(references))
+	for _, reference := range references {
+		if reference.Usage == "document_source" {
+			result = append(result, reference)
+		}
+	}
+	return result
 }
 
 var evidenceFailureCodePattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
@@ -281,6 +297,7 @@ WHERE id=$1 AND lifecycle_state='raw_pending'`, snapshotID, failureCode)
 
 type evidenceSnapshotExecutor interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
@@ -411,6 +428,9 @@ FOR KEY SHARE`, storedObservation.ID, snapshot.ID, observation.Evidence.LocatorT
 		if !sameEvidenceLocatorFacts(storedLocator, snapshot.SourceConnectionID, storedObservation.ID, snapshot.ID, observation.Evidence) {
 			return nil, evidenceConflict("available evidence snapshot has different locator facts")
 		}
+		if err := verifyObservationParties(ctx, executor, snapshot.SourceConnectionID, storedObservation.ID, observation.Parties); err != nil {
+			return nil, err
+		}
 		references = append(references, storedLocator.committedReferenceDTO())
 	}
 
@@ -427,14 +447,17 @@ WHERE source_connection_id=$1 AND evidence_snapshot_id=$2`, snapshot.SourceConne
 }
 
 func appendEvidenceLocator(ctx context.Context, executor evidenceSnapshotExecutor, sourceConnectionID, observationID, snapshotID int64, reference sourceapplication.RawEvidenceReferenceDTO) (sourceapplication.CommittedEvidenceReferenceDTO, error) {
+	if reference.Usage == "" {
+		reference.Usage = "document_source"
+	}
 	stored, err := scanEvidenceLocatorRecord(executor.QueryRowContext(ctx, `
 INSERT INTO source_observation_evidences (
-  source_connection_id,source_observation_id,evidence_snapshot_id,locator_type,locator_value,
+  source_connection_id,source_observation_id,evidence_snapshot_id,usage,locator_type,locator_value,
   byte_start,byte_end,selected_payload_sha256,selector_version
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 ON CONFLICT (source_observation_id,evidence_snapshot_id,locator_type,locator_value) DO NOTHING
 RETURNING `+evidenceLocatorColumns,
-		sourceConnectionID, observationID, snapshotID, reference.LocatorType, reference.LocatorValue,
+		sourceConnectionID, observationID, snapshotID, reference.Usage, reference.LocatorType, reference.LocatorValue,
 		nullInt64(reference.ByteStart), nullInt64(reference.ByteEnd), reference.SelectedPayloadSHA256, reference.SelectorVersion))
 	if errors.Is(err, sql.ErrNoRows) {
 		stored, err = scanEvidenceLocatorRecord(executor.QueryRowContext(ctx, `

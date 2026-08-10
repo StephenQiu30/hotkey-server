@@ -125,9 +125,11 @@ func (service *EmbeddingService) embed(ctx context.Context, runID int64, profile
 		if _, err := service.runs.Transition(ctx, runID, domain.RunStatusRunning, service.runService.now()); err != nil {
 			return domain.EmbeddingResponse{}, err
 		}
-		response, err := provider.Embed(ctx, domain.EmbeddingRequest{
+		providerCtx, cancel := providerCallContext(ctx, profile.TimeoutSeconds)
+		response, err := provider.Embed(providerCtx, domain.EmbeddingRequest{
 			ModelName: profile.ModelName, ModelVersion: profile.ModelVersion, Dimensions: domain.EmbeddingDimensions, Inputs: []string{input},
 		})
+		cancel()
 		if err == nil {
 			if _, err := service.runs.Transition(ctx, runID, domain.RunStatusValidating, service.runService.now()); err != nil {
 				return domain.EmbeddingResponse{}, err

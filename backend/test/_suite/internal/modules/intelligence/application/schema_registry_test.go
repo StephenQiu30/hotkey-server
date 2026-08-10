@@ -109,6 +109,29 @@ func TestEventIntelligenceSchemaRegistryContracts(t *testing.T) {
 	}
 }
 
+func TestAtomicClaimEvidenceV2SchemaRequiresExactQuotedEvidence(t *testing.T) {
+	registry, err := NewSchemaRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := []byte(`{"event_id":7,"event_version":3,"event_key":"evt-7","document_version_id":11,"plaintext_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","body":"Acme 发布了 Nova。","body_truncated":false}`)
+	output := []byte(`{"claims":[{"subject":"Acme","predicate":"发布","object":"Nova","relation":"asserts","exact_quote":"Acme 发布了 Nova。","relation_score":0.9,"qualifiers":[]}]}`)
+	if err := registry.ValidateInput(domain.TaskTypeEntityClaimExtraction, "v2", input); err != nil {
+		t.Fatalf("ValidateInput(v2): %v", err)
+	}
+	if err := registry.ValidateOutput(domain.TaskTypeEntityClaimExtraction, "v2", output); err != nil {
+		t.Fatalf("ValidateOutput(v2): %v", err)
+	}
+	contract, err := registry.Structured(domain.TaskTypeEntityClaimExtraction, "v2")
+	if err != nil || contract.SchemaName != "atomic-claim-evidence-output-v2" {
+		t.Fatalf("Structured(v2) = %#v / %v", contract, err)
+	}
+	forbidden := []byte(`{"claims":[{"subject":"Acme","predicate":"发布","object":"Nova","relation":"asserts","exact_quote":"Acme 发布了 Nova。","relation_score":0.9,"qualifiers":[],"truth_probability":0.99}]}`)
+	if err := registry.ValidateOutput(domain.TaskTypeEntityClaimExtraction, "v2", forbidden); err == nil {
+		t.Fatal("ValidateOutput(v2) accepted forbidden truth probability")
+	}
+}
+
 func relevanceFixture(t *testing.T, name string) []byte {
 	t.Helper()
 	payload, err := os.ReadFile(filepath.Join("testdata", "relevance", name))

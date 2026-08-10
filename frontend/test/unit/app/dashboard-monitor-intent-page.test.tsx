@@ -40,6 +40,10 @@ describe("MonitorIntentPage", () => {
       "href",
       "/dashboard/settings",
     );
+    expect(screen.getByRole("link", { name: "查看匹配判定" })).toHaveAttribute(
+      "href",
+      "/dashboard/settings/monitors/7/matches",
+    );
   });
 
   it("fails closed for viewers and malformed monitor identities", () => {

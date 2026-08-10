@@ -63,8 +63,12 @@ func (governanceStub) SetMemberLock(context.Context, application.MemberLockComma
 func TestHeatResponsePreservesUnavailableEngagement(t *testing.T) {
 	components := &domain.HeatComponents{Independence: 25, ContentVelocity: 20, SourceBreadth: 50, Recency: 97.15, Credibility: 80}
 	response := heatResponse(domain.HeatResult{EventID: 7, Components: components})
-	if response.Components == nil || response.Components.Engagement != nil || response.Components.Credibility != 80 {
+	if response.Components == nil || response.Components.Engagement != nil {
 		t.Fatalf("heatResponse() components = %#v", response.Components)
+	}
+	encoded, err := json.Marshal(response)
+	if err != nil || strings.Contains(string(encoded), "credibility") {
+		t.Fatalf("heatResponse() leaked legacy credibility: %s / %v", encoded, err)
 	}
 	if heatResponse(domain.HeatResult{EventID: 8}).Components != nil {
 		t.Fatal("heatResponse() invented components for a legacy snapshot")

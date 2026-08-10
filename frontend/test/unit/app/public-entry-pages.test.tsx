@@ -16,10 +16,11 @@ describe("公开入口页面", () => {
     expect(screen.getByText("持续监测")).toBeInTheDocument();
     expect(screen.getByText("AI 识别与判断")).toBeInTheDocument();
     expect(screen.getByText("形成共识与行动")).toBeInTheDocument();
-    expect(screen.getByText("财新")).toBeInTheDocument();
-    expect(screen.getByText("36氪")).toBeInTheDocument();
-    expect(screen.getByText("虎嗅")).toBeInTheDocument();
+    expect(screen.getByText("RSS / Atom")).toBeInTheDocument();
+    expect(screen.getByText("Hacker News")).toBeInTheDocument();
+    expect(screen.getByText("Google")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "切换到暗色模式" })).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/可信来源|置信度|更可靠/);
   });
 
   it("首页的完整情报入口指向受保护的报告页面", () => {

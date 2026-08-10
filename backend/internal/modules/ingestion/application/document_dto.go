@@ -120,6 +120,15 @@ type DerivedArtifactDTO struct {
 	RetentionUntil               time.Time
 	CreatedAt                    time.Time
 	UpdatedAt                    time.Time
+	AnchorMap                    *DerivedArtifactAnchorMapDTO
+}
+
+type DerivedArtifactAnchorMapDTO struct {
+	NormalizationVersion    string
+	AnchorMapProfileVersion string
+	PlaintextSHA256         string
+	MarkdownSHA256          string
+	AnchorMapSHA256         string
 }
 
 func ValidateDocumentDTO(value DocumentDTO) error {
@@ -239,7 +248,7 @@ func documentVersionDomainFromDTO(value DocumentVersionDTO) (ingestiondomain.Doc
 }
 
 func derivedArtifactDTOFromDomain(value ingestiondomain.DerivedArtifact) DerivedArtifactDTO {
-	return DerivedArtifactDTO{
+	result := DerivedArtifactDTO{
 		ID: value.ID, SourceConnectionID: value.SourceConnectionID, DocumentVersionID: value.DocumentVersionID,
 		StoreDerivedRightsDecisionID: value.StoreDerivedRightsDecisionID,
 		RetainRightsDecisionID:       value.RetainRightsDecisionID,
@@ -249,6 +258,13 @@ func derivedArtifactDTOFromDomain(value ingestiondomain.DerivedArtifact) Derived
 		AvailableAt: copyDocumentTime(value.AvailableAt), RetentionUntil: value.RetentionUntil.UTC(),
 		CreatedAt: value.CreatedAt.UTC(), UpdatedAt: value.UpdatedAt.UTC(),
 	}
+	if value.AnchorMap != nil {
+		result.AnchorMap = &DerivedArtifactAnchorMapDTO{
+			NormalizationVersion: value.AnchorMap.NormalizationVersion, AnchorMapProfileVersion: value.AnchorMap.AnchorMapProfileVersion,
+			PlaintextSHA256: value.AnchorMap.PlaintextSHA256, MarkdownSHA256: value.AnchorMap.MarkdownSHA256, AnchorMapSHA256: value.AnchorMap.AnchorMapSHA256,
+		}
+	}
+	return result
 }
 
 func derivedArtifactDomainFromDTO(value DerivedArtifactDTO) (ingestiondomain.DerivedArtifact, error) {
@@ -262,6 +278,12 @@ func derivedArtifactDomainFromDTO(value DerivedArtifactDTO) (ingestiondomain.Der
 		LifecycleState: ingestiondomain.DerivedArtifactLifecycleState(value.LifecycleState),
 		Active:         value.Active, FailureCode: value.FailureCode, AvailableAt: copyDocumentTime(value.AvailableAt),
 		RetentionUntil: value.RetentionUntil.UTC(), CreatedAt: value.CreatedAt.UTC(), UpdatedAt: value.UpdatedAt.UTC(),
+	}
+	if value.AnchorMap != nil {
+		artifact.AnchorMap = &ingestiondomain.DocumentAnchorMapIdentity{
+			NormalizationVersion: value.AnchorMap.NormalizationVersion, AnchorMapProfileVersion: value.AnchorMap.AnchorMapProfileVersion,
+			PlaintextSHA256: value.AnchorMap.PlaintextSHA256, MarkdownSHA256: value.AnchorMap.MarkdownSHA256, AnchorMapSHA256: value.AnchorMap.AnchorMapSHA256,
+		}
 	}
 	if err := artifact.Validate(); err != nil {
 		return ingestiondomain.DerivedArtifact{}, err

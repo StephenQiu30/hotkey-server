@@ -68,6 +68,49 @@ func TestRightsDecisionReaderSelectsHighestConflictFreeAndConservativeAllows(t *
 	}
 }
 
+func TestRightsDecisionReaderAppliesEndpointPolicyAndExactDenyPrecedence(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+
+	connection := sourceConnection("endpoint-rights-decision-reader")
+	if err := sourcepostgres.NewRepository(runtime).Create(context.Background(), &connection); err != nil {
+		t.Fatalf("create source connection: %v", err)
+	}
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	endpointPolicy := insertRightsReaderPolicy(t, runtime, connection.ID, "source_endpoint", "feed-reader", 1, 300, now.Add(-time.Hour))
+	observationPolicy := insertRightsReaderPolicy(t, runtime, connection.ID, "observation", "blocked-entry", 1, 400, now.Add(-time.Hour))
+	retentionDays := 30
+	storeID := insertRightsReaderEndpointDecision(t, runtime, connection.ID, endpointPolicy, "store_raw", "allow", nil, now.Add(-time.Minute))
+	insertRightsReaderEndpointDecision(t, runtime, connection.ID, endpointPolicy, "retain", "allow", &retentionDays, now.Add(-time.Minute))
+
+	allowed := sourceapplication.RawEvidenceRightsSubjectDTO{EvidenceKey: rightsReaderDigest("endpoint-allowed"), PayloadSHA256: rightsReaderDigest("endpoint-allowed-payload")}
+	blocked := sourceapplication.RawEvidenceRightsSubjectDTO{EvidenceKey: rightsReaderDigest("endpoint-blocked"), PayloadSHA256: rightsReaderDigest("endpoint-blocked-payload")}
+	insertRightsReaderDecision(t, runtime, connection.ID, observationPolicy, blocked, "store_raw", "deny", nil, now.Add(-time.Minute))
+
+	result, err := sourcepostgres.NewRightsDecisionReader(runtime).ResolveCurrent(context.Background(), sourceapplication.CurrentRawEvidenceRightsQuery{
+		SourceConnectionID: connection.ID,
+		DecisionAt:         now,
+		Subjects:           []sourceapplication.RawEvidenceRightsSubjectDTO{allowed, blocked},
+	})
+	if err != nil {
+		t.Fatalf("ResolveCurrent() error = %v", err)
+	}
+	selected, found := result.StoreRawDecisions[allowed.EvidenceKey]
+	if !found || selected.ID != storeID || selected.SubjectType != "source_endpoint" ||
+		selected.AuthorizedEvidenceKey != allowed.EvidenceKey || selected.AuthorizedPayloadSHA256 != allowed.PayloadSHA256 {
+		t.Fatalf("endpoint authorization = %#v", selected)
+	}
+	if _, found := result.RetainDecisions[allowed.EvidenceKey]; !found {
+		t.Fatal("endpoint retain allow was not inherited")
+	}
+	if _, found := result.StoreRawDecisions[blocked.EvidenceKey]; found {
+		t.Fatal("higher-priority exact deny did not override endpoint allow")
+	}
+	if _, found := result.RetainDecisions[blocked.EvidenceKey]; !found {
+		t.Fatal("independent endpoint retain allow was removed")
+	}
+}
+
 type rightsReaderPolicyFixture struct {
 	ID           int64
 	Revision     int64
@@ -75,12 +118,14 @@ type rightsReaderPolicyFixture struct {
 	ScopeSubject string
 	Priority     int
 	Basis        string
+	PolicyHash   string
 }
 
 func insertRightsReaderPolicy(t *testing.T, runtime *database.Runtime, sourceID int64, scopeType, scopeSubject string, revision int64, priority int, effectiveAt time.Time) rightsReaderPolicyFixture {
 	t.Helper()
 	fixture := rightsReaderPolicyFixture{Revision: revision, ScopeType: scopeType, ScopeSubject: scopeSubject, Priority: priority, Basis: "rights reader fixture"}
 	policyHash := rightsReaderDigest(fmt.Sprintf("%d:%s:%s:%d", sourceID, scopeType, scopeSubject, revision))
+	fixture.PolicyHash = policyHash
 	actorID := insertRightsFixtureActor(t, runtime.SQL, policyHash)
 	idempotencyKey, commandFingerprint := rightsFixtureReceipt("policy", policyHash)
 	if err := runtime.SQL.QueryRow(`
@@ -93,6 +138,36 @@ RETURNING id`, actorID, idempotencyKey, commandFingerprint, sourceID, scopeType,
 		t.Fatalf("insert rights reader policy: %v", err)
 	}
 	return fixture
+}
+
+func insertRightsReaderEndpointDecision(t *testing.T, runtime *database.Runtime, sourceID int64, policy rightsReaderPolicyFixture, action, decision string, retentionDays *int, effectiveFrom time.Time) int64 {
+	t.Helper()
+	idempotencyKey, commandFingerprint := rightsFixtureReceipt(
+		"endpoint-decision", sourceID, policy.ID, policy.Revision, action, decision, effectiveFrom.UTC().Format(time.RFC3339Nano),
+	)
+	var id int64
+	if err := runtime.SQL.QueryRow(`
+WITH decision_batch AS (
+  INSERT INTO source_rights_decision_batches (
+    source_connection_id,policy_id,expected_policy_version,subject_type,subject_key,input_digest,
+    recorded_by_user_id,idempotency_key,command_fingerprint,decision_count
+  ) SELECT $1::bigint,$2,policy.version,'source_endpoint',($1::bigint)::text,policy.policy_hash,
+           policy.recorded_by_user_id,$10,$11,1
+    FROM source_rights_policies AS policy WHERE policy.id=$2
+  RETURNING id
+)
+INSERT INTO source_rights_decisions (
+  decision_batch_id,source_connection_id,policy_id,policy_revision,policy_scope_type,policy_scope_subject,
+  priority_rank,basis_summary,subject_type,subject_key,input_digest,action,decision,
+  reason_codes,evaluator,evaluated_at,effective_from,retention_days
+) SELECT decision_batch.id,$1::bigint,$2,$3,$4,$5,$6,$7,'source_endpoint',($1::bigint)::text,$8,$9,$12,
+         ARRAY['approved_endpoint_policy'],'rights-reader-test',$13,$13,$14
+  FROM decision_batch RETURNING id`, sourceID, policy.ID, policy.Revision, policy.ScopeType, policy.ScopeSubject,
+		policy.Priority, policy.Basis, policy.PolicyHash, action, idempotencyKey, commandFingerprint, decision,
+		effectiveFrom, retentionDays).Scan(&id); err != nil {
+		t.Fatalf("insert endpoint rights reader decision %s/%s: %v", action, decision, err)
+	}
+	return id
 }
 
 func insertRightsReaderDecision(t *testing.T, runtime *database.Runtime, sourceID int64, policy rightsReaderPolicyFixture, subject sourceapplication.RawEvidenceRightsSubjectDTO, action, decision string, retentionDays *int, effectiveFrom time.Time) int64 {

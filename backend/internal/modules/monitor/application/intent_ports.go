@@ -100,6 +100,7 @@ type IntentAnalysisTaskRepository interface {
 // idempotent replay rather than adding a second profile.
 type CompiledIntentProfileRepository interface {
 	PersistPreviewCompiledProfile(context.Context, PersistPreviewCompiledProfileDTO) (PersistPreviewCompiledProfileReceiptDTO, error)
+	CompletePreviewCompiledProfile(context.Context, CompletePreviewCompiledProfileDTO) (CompletePreviewCompiledProfileReceiptDTO, error)
 }
 
 // IntentPublicationRepository reads one successful exact preview profile,
@@ -112,6 +113,7 @@ type IntentPublicationRepository interface {
 }
 
 type IntentPublicationCoordinator interface {
+	Preview(context.Context, PreviewIntentPublicationCommand) (PreviewIntentPublicationResult, error)
 	Prepare(context.Context, PrepareIntentPublicationCommand) (PrepareIntentPublicationResult, error)
 	Complete(context.Context, CompleteIntentPublicationCommand) error
 }

@@ -7,13 +7,16 @@ import (
 )
 
 type SourceEndpointCapabilityResponseDTO struct {
-	SourceEndpointID    int64  `json:"source_endpoint_id"`
-	SourceType          string `json:"source_type"`
-	CollectionInterface string `json:"collection_interface"`
-	ContentScope        string `json:"content_scope"`
-	FollowsCanonicalURL bool   `json:"follows_canonical_url"`
-	Availability        string `json:"availability"`
-	RightsStatus        string `json:"rights_status"`
+	SourceEndpointID    int64    `json:"source_endpoint_id"`
+	SourceType          string   `json:"source_type"`
+	CollectionInterface string   `json:"collection_interface"`
+	ContentScope        string   `json:"content_scope"`
+	DocumentCaptureMode string   `json:"document_capture_mode"`
+	DefaultAccessMode   string   `json:"default_access_mode"`
+	RequiredActions     []string `json:"required_actions"`
+	FollowsCanonicalURL bool     `json:"follows_canonical_url"`
+	Availability        string   `json:"availability"`
+	RightsStatus        string   `json:"rights_status"`
 }
 
 type CreateRightsPolicyRequestDTO struct {
@@ -163,6 +166,8 @@ func sourceEndpointCapabilityResponse(value sourceapplication.SourceEndpointCapa
 	return SourceEndpointCapabilityResponseDTO{
 		SourceEndpointID: value.SourceEndpointID, SourceType: value.SourceType,
 		CollectionInterface: value.CollectionInterface, ContentScope: value.ContentScope,
+		DocumentCaptureMode: value.DocumentCaptureMode, DefaultAccessMode: value.DefaultAccessMode,
+		RequiredActions:     append([]string(nil), value.RequiredActions...),
 		FollowsCanonicalURL: value.FollowsCanonicalURL, Availability: value.Availability, RightsStatus: value.RightsStatus,
 	}
 }

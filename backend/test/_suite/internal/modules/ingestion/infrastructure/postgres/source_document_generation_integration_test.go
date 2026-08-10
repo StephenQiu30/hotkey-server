@@ -12,6 +12,7 @@ import (
 
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/application"
 	ingestionpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/postgres"
+	ingestiontextstructure "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/textstructure"
 )
 
 func TestSourceDocumentGenerationPublishesExactVaultArtifactsAndLexicalProjectionIdempotently(t *testing.T) {
@@ -25,12 +26,12 @@ func TestSourceDocumentGenerationPublishesExactVaultArtifactsAndLexicalProjectio
 	)
 
 	plaintext := "authorized normalized document body"
-	markdown := "# Authorized\n\nnormalized document body"
+	markdown := plaintext
 	payload := []byte(`<rssItem><guid>source-generation</guid><encoded>authorized normalized document body</encoded></rssItem>`)
 	evidence := ingestionapplication.SelectedSourceEvidenceDTO{
 		EvidenceReferenceID: 701, SourceObservationID: fixture.observationID, EvidenceSnapshotID: 702,
 		SourceConnectionID: fixture.sourceID, ExternalWorkID: "derived-artifact-source-generation",
-		UpstreamIdentity: strings.Repeat("a", 64), SourceCode: "rss", ContentType: "article", Title: "Authorized",
+		UpstreamIdentity: strings.Repeat("a", 64), SourceCode: "rss", ContentType: "article", Title: "OpenAI launches in San Francisco",
 		Language: "en", SourceRecordURL: "https://feed.example.test/source-generation",
 		CanonicalURL: "https://publisher.example.test/articles/derived-artifact-source-generation",
 		BodyOrigin:   ingestionapplication.BodyOriginFeedContent, Completeness: ingestionapplication.BodyCompletenessFull,
@@ -46,6 +47,7 @@ func TestSourceDocumentGenerationPublishesExactVaultArtifactsAndLexicalProjectio
 		MarkdownTransformerProfileSHA256:  strings.Repeat("2", 64),
 		PlaintextSHA256:                   fixture.persisted.DocumentVersion.ContentSHA256,
 	}
+	addSourceGenerationAnchorFacts(&extraction)
 	vaultRoot := t.TempDir()
 	artifactProjection := newDerivedArtifactSaga(
 		t, runtime, newKnowledgeProjectionPublisher(t, vaultRoot), fixture.documentVersions,
@@ -58,13 +60,25 @@ func TestSourceDocumentGenerationPublishesExactVaultArtifactsAndLexicalProjectio
 	if err != nil {
 		t.Fatalf("NewDocumentRecallProjectionService() error = %v", err)
 	}
+	familyRepository, err := ingestionpostgres.NewContentFamilyRepository(runtime)
+	if err != nil {
+		t.Fatalf("NewContentFamilyRepository() error = %v", err)
+	}
+	contentFamilies, err := ingestionapplication.NewContentFamilyService(familyRepository)
+	if err != nil {
+		t.Fatalf("NewContentFamilyService() error = %v", err)
+	}
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	decisionAt := now
 	generator, err := ingestionapplication.NewSourceDocumentGenerationService(ingestionapplication.SourceDocumentGenerationDependencies{
 		Evidence: &sourceGenerationEvidenceReader{evidence: evidence}, Extractor: &sourceGenerationBodyExtractor{result: extraction},
 		DocumentVersions: fixture.documentVersions,
 		Authorizations:   ingestionpostgres.NewDocumentProjectionAuthorizationReader(runtime),
-		Projections:      artifactProjection, SearchProjections: recallProjection, Now: func() time.Time { return decisionAt },
+		Projections:      artifactProjection, SearchProjections: recallProjection,
+		ContentFamilies:    contentFamilies,
+		StructureExtractor: ingestiontextstructure.NewExtractor(),
+		DocumentEmbeddings: &sourceGenerationEmbeddingProducer{}, PublishedMatchEvaluations: &sourceGenerationMatchScheduler{},
+		Now: func() time.Time { return decisionAt },
 	})
 	if err != nil {
 		t.Fatalf("NewSourceDocumentGenerationService() error = %v", err)
@@ -77,6 +91,7 @@ func TestSourceDocumentGenerationPublishesExactVaultArtifactsAndLexicalProjectio
 	if first.PlaintextAvailability != ingestionapplication.SourceDocumentAvailable ||
 		first.SearchAvailability != ingestionapplication.SourceDocumentAvailable ||
 		first.MarkdownAvailability != ingestionapplication.SourceDocumentAvailable ||
+		first.ContentFamilyAvailability != ingestionapplication.SourceDocumentAvailable || first.ContentFamilyDecision == nil ||
 		first.PlaintextArtifact == nil || first.MarkdownArtifact == nil || first.SearchProjection == nil ||
 		first.LastVerifiedDocumentLifecycleState != ingestionapplication.DocumentReadable ||
 		first.PlaintextArtifact.StoreDerivedRightsDecisionID != storeDecisionID ||
@@ -84,6 +99,17 @@ func TestSourceDocumentGenerationPublishesExactVaultArtifactsAndLexicalProjectio
 		first.MarkdownArtifact.StoreDerivedRightsDecisionID != storeDecisionID ||
 		first.MarkdownArtifact.RetainRightsDecisionID != retainDecisionID {
 		t.Fatalf("Generate(first) = %#v, display decision %d", first, displayDecisionID)
+	}
+	var hasEntity, hasAction, hasLocation, hasRegion bool
+	if err := runtime.SQL.QueryRow(`
+SELECT 'openai'=ANY(entity_keys),'launch'=ANY(action_keys),'san francisco'=ANY(location_keys),'us'=ANY(region_keys)
+FROM document_version_search_indexes WHERE id=$1`, first.SearchProjection.ProjectionID).Scan(
+		&hasEntity, &hasAction, &hasLocation, &hasRegion,
+	); err != nil {
+		t.Fatalf("read structured search keys: %v", err)
+	}
+	if !hasEntity || !hasAction || !hasLocation || !hasRegion {
+		t.Fatalf("structured search keys = entity:%t action:%t location:%t region:%t", hasEntity, hasAction, hasLocation, hasRegion)
 	}
 
 	decisionAt = now.Add(time.Minute)
@@ -101,7 +127,7 @@ func TestSourceDocumentGenerationPublishesExactVaultArtifactsAndLexicalProjectio
 		"plaintext", extraction.PlaintextTransformerProfileSHA256, ".txt", plaintext)
 	assertSourceGenerationVaultFile(t, vaultRoot, fixture.persisted.Document.ID, fixture.persisted.DocumentVersion.ID,
 		"markdown", extraction.MarkdownTransformerProfileSHA256, ".md", markdown)
-	var artifactCount, searchProjectionCount int
+	var artifactCount, searchProjectionCount, familyCount, familyMemberCount int
 	if err := runtime.SQL.QueryRow(`
 SELECT count(*) FROM derived_artifacts
 WHERE document_version_id=$1 AND lifecycle_state='derived_available' AND active`, fixture.persisted.DocumentVersion.ID).Scan(&artifactCount); err != nil {
@@ -114,9 +140,34 @@ WHERE document_version_id=$1 AND normalization_profile_version=$2 AND lifecycle_
 	).Scan(&searchProjectionCount); err != nil {
 		t.Fatalf("count active search projections: %v", err)
 	}
-	if artifactCount != 2 || searchProjectionCount != 1 {
-		t.Fatalf("active artifact/search counts = %d/%d, want 2/1", artifactCount, searchProjectionCount)
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM content_families`).Scan(&familyCount); err != nil {
+		t.Fatalf("count content families: %v", err)
 	}
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM content_family_members WHERE document_version_id=$1`, fixture.persisted.DocumentVersion.ID).Scan(&familyMemberCount); err != nil {
+		t.Fatalf("count content family members: %v", err)
+	}
+	if artifactCount != 2 || searchProjectionCount != 1 || familyCount != 1 || familyMemberCount != 1 {
+		t.Fatalf("active artifact/search/family/member counts = %d/%d/%d/%d, want 2/1/1/1", artifactCount, searchProjectionCount, familyCount, familyMemberCount)
+	}
+}
+
+func addSourceGenerationAnchorFacts(extraction *ingestionapplication.ExtractSelectedSourceBodyResult) {
+	if extraction == nil || extraction.Plaintext == "" || extraction.Markdown == "" {
+		return
+	}
+	extraction.MarkdownSHA256 = fmt.Sprintf("%x", sha256.Sum256([]byte(extraction.Markdown)))
+	extraction.TextNormalizationVersion = ingestionapplication.CanonicalDocumentTextNormalizationVersion
+	extraction.AnchorMapProfileVersion = ingestionapplication.CanonicalDocumentAnchorMapProfileVersion
+	extraction.AnchorBlocks = []ingestionapplication.DocumentAnchorBlockDTO{{
+		Ordinal: 0, PlaintextUTF8ByteStart: 0, PlaintextUTF8ByteEnd: int64(len(extraction.Plaintext)),
+		MarkdownUTF8ByteStart: 0, MarkdownUTF8ByteEnd: int64(len(extraction.Markdown)),
+		MarkdownAnchor: ingestionapplication.DocumentMarkdownAnchor(0, extraction.Plaintext),
+	}}
+	extraction.AnchorMapSHA256 = ingestionapplication.DocumentAnchorMapSHA256(ingestionapplication.MapDocumentTextResult{
+		Plaintext: extraction.Plaintext, NormalizationVersion: extraction.TextNormalizationVersion,
+		AnchorMapProfileVersion: extraction.AnchorMapProfileVersion, PlaintextSHA256: extraction.PlaintextSHA256,
+		MarkdownSHA256: extraction.MarkdownSHA256, Blocks: extraction.AnchorBlocks,
+	})
 }
 
 type sourceGenerationEvidenceReader struct {
@@ -134,6 +185,20 @@ func (reader *sourceGenerationEvidenceReader) ReadSelectedSourceEvidence(_ conte
 
 type sourceGenerationBodyExtractor struct {
 	result ingestionapplication.ExtractSelectedSourceBodyResult
+}
+
+type sourceGenerationMatchScheduler struct{}
+
+type sourceGenerationEmbeddingProducer struct{}
+
+func (*sourceGenerationEmbeddingProducer) ProduceDocumentEmbedding(context.Context, ingestionapplication.ProduceDocumentEmbeddingCommand) (ingestionapplication.ProduceDocumentEmbeddingResult, error) {
+	return ingestionapplication.ProduceDocumentEmbeddingResult{}, fmt.Errorf("embedding producer must not run without embed_local rights")
+}
+
+func (*sourceGenerationMatchScheduler) SchedulePublishedDocumentMatchEvaluation(_ context.Context, command ingestionapplication.SchedulePublishedDocumentMatchEvaluationCommand) (ingestionapplication.SchedulePublishedDocumentMatchEvaluationResult, error) {
+	return ingestionapplication.SchedulePublishedDocumentMatchEvaluationResult{
+		DocumentVersionID: command.DocumentVersionID, JobID: command.DocumentVersionID + 1000,
+	}, nil
 }
 
 func (extractor *sourceGenerationBodyExtractor) Extract(context.Context, ingestionapplication.ExtractSelectedSourceBodyCommand) (ingestionapplication.ExtractSelectedSourceBodyResult, error) {

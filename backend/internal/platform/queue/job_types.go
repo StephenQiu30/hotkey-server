@@ -12,28 +12,32 @@ const (
 	MaxPayloadBytes   = 4096
 	MaxUniqueKeyBytes = 256
 
-	KindCollectSource          = "collect_source"
-	KindNormalizeContent       = "normalize_content"
-	KindEvaluateRelevance      = "evaluate_relevance"
-	KindClusterContent         = "cluster_content"
-	KindRecomputeEventHeat     = "recompute_event_heat"
-	KindEvaluateEventAlerts    = "evaluate_event_alerts"
-	KindGenerateEventSummary   = "generate_event_summary"
-	KindBuildReport            = "build_report"
-	KindDeliverEmail           = "deliver_email"
-	KindDeliverAlertEmail      = "deliver_alert_email"
-	KindProjectKnowledge       = "project_knowledge"
-	KindReconcileKnowledge     = "reconcile_knowledge"
-	KindRunRetention           = "run_retention"
-	KindGenerateSourceDocument = "generate_source_document"
-	KindAnalyzeMonitorIntent   = "analyze_monitor_intent"
+	KindCollectSource                    = "collect_source"
+	KindNormalizeContent                 = "normalize_content"
+	KindEvaluateRelevance                = "evaluate_relevance"
+	KindClusterContent                   = "cluster_content"
+	KindRecomputeEventHeat               = "recompute_event_heat"
+	KindEvaluateEventAlerts              = "evaluate_event_alerts"
+	KindGenerateEventSummary             = "generate_event_summary"
+	KindBuildReport                      = "build_report"
+	KindDeliverEmail                     = "deliver_email"
+	KindDeliverAlertEmail                = "deliver_alert_email"
+	KindProjectKnowledge                 = "project_knowledge"
+	KindReconcileKnowledge               = "reconcile_knowledge"
+	KindRunRetention                     = "run_retention"
+	KindGenerateSourceDocument           = "generate_source_document"
+	KindAnalyzeMonitorIntent             = "analyze_monitor_intent"
+	KindEvaluatePublishedDocumentMatches = "evaluate_published_document_matches"
+	KindBackfillPublishedMonitorMatches  = "backfill_published_monitor_matches"
+	KindProjectAcceptedDocumentMatch     = "project_accepted_document_match"
 )
 
 func IsKnownKind(kind string) bool {
 	switch kind {
 	case KindCollectSource, KindNormalizeContent, KindEvaluateRelevance, KindClusterContent,
 		KindRecomputeEventHeat, KindEvaluateEventAlerts, KindGenerateEventSummary, KindBuildReport, KindDeliverEmail, KindDeliverAlertEmail,
-		KindProjectKnowledge, KindReconcileKnowledge, KindRunRetention, KindGenerateSourceDocument, KindAnalyzeMonitorIntent:
+		KindProjectKnowledge, KindReconcileKnowledge, KindRunRetention, KindGenerateSourceDocument, KindAnalyzeMonitorIntent,
+		KindEvaluatePublishedDocumentMatches, KindBackfillPublishedMonitorMatches, KindProjectAcceptedDocumentMatch:
 		return true
 	default:
 		return false

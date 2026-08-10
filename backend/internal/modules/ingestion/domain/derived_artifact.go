@@ -68,6 +68,28 @@ type DerivedArtifact struct {
 	RetentionUntil               time.Time
 	CreatedAt                    time.Time
 	UpdatedAt                    time.Time
+	AnchorMap                    *DocumentAnchorMapIdentity
+}
+
+// DocumentAnchorMapIdentity binds a Markdown artifact to the exact NFC
+// plaintext identity and immutable offset map used to render stable anchors.
+// Individual blocks are persisted separately and are not part of this Entity.
+type DocumentAnchorMapIdentity struct {
+	NormalizationVersion    string
+	AnchorMapProfileVersion string
+	PlaintextSHA256         string
+	MarkdownSHA256          string
+	AnchorMapSHA256         string
+}
+
+func (identity DocumentAnchorMapIdentity) Validate() error {
+	if strings.TrimSpace(identity.NormalizationVersion) != identity.NormalizationVersion || identity.NormalizationVersion == "" || len(identity.NormalizationVersion) > 64 ||
+		strings.TrimSpace(identity.AnchorMapProfileVersion) != identity.AnchorMapProfileVersion || identity.AnchorMapProfileVersion == "" || len(identity.AnchorMapProfileVersion) > 96 ||
+		!validLowerDerivedArtifactSHA256(identity.PlaintextSHA256) || !validLowerDerivedArtifactSHA256(identity.MarkdownSHA256) ||
+		!validLowerDerivedArtifactSHA256(identity.AnchorMapSHA256) {
+		return fmt.Errorf("document anchor map identity is invalid")
+	}
+	return nil
 }
 
 func (artifact DerivedArtifact) Validate() error {
@@ -83,6 +105,13 @@ func (artifact DerivedArtifact) Validate() error {
 	}
 	if artifact.Active && artifact.LifecycleState != DerivedArtifactAvailable {
 		return fmt.Errorf("only an available derived artifact can be active")
+	}
+	if artifact.ArtifactType == DerivedArtifactMarkdown {
+		if artifact.AnchorMap == nil || artifact.AnchorMap.Validate() != nil || artifact.AnchorMap.MarkdownSHA256 != artifact.SHA256 {
+			return fmt.Errorf("Markdown derived artifact requires an exact anchor map identity")
+		}
+	} else if artifact.AnchorMap != nil {
+		return fmt.Errorf("plaintext derived artifact cannot carry a Markdown anchor map")
 	}
 	switch artifact.LifecycleState {
 	case DerivedArtifactAvailable:

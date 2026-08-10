@@ -196,6 +196,10 @@ func TestOpenAPIContract(t *testing.T) {
 		"/api/v1/contents/{id}/document":                                           {"get": {"200", "400", "401", "404", "503"}},
 		"/api/v1/document-versions/{id}/citation":                                  {"get": {"200", "400", "401", "404", "502", "503"}},
 		"/api/v1/document-versions/{id}/document":                                  {"get": {"200", "304", "400", "401", "403", "404", "409", "502", "503"}},
+		"/api/v1/document-versions/{id}/text-quote-selectors":                      {"post": {"201", "400", "401", "403", "404", "409"}},
+		"/api/v1/content-lineage-decisions/{id}/feedback":                          {"post": {"200", "201", "400", "401", "403", "404", "409"}},
+		"/api/v1/monitors/{id}/document-matches":                                   {"get": {"200", "400", "401", "403", "503"}},
+		"/api/v1/monitors/{id}/document-matches/{match_decision_id}/overrides":     {"post": {"200", "201", "400", "401", "403", "404", "409", "503"}},
 		"/api/v1/monitors/{id}/matches":                                            {"get": {"200", "400", "401", "404", "503"}},
 		"/api/v1/monitors/{id}/matches/{match_id}":                                 {"get": {"200", "400", "401", "404", "503"}},
 		"/api/v1/monitors/{id}/relevance-preview":                                  {"post": {"200", "400", "401", "403", "404", "503"}},
@@ -208,14 +212,17 @@ func TestOpenAPIContract(t *testing.T) {
 		"/api/v1/ai/model-profiles":                                                {"get": {"200", "401", "403", "503"}, "post": {"201", "400", "401", "403", "503"}},
 		"/api/v1/ai/model-profiles/{id}":                                           {"get": {"200", "400", "401", "403", "503"}, "patch": {"200", "400", "401", "403", "409", "503"}, "delete": {"200", "400", "401", "403", "409", "503"}},
 		"/api/v1/ai/model-profiles/{id}/restore":                                   {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/micro-events":                                                     {"get": {"200", "400", "401", "503"}},
+		"/api/v1/micro-events/{id}":                                                {"get": {"200", "400", "401", "404"}},
+		"/api/v1/micro-events/{id}/evidence":                                       {"get": {"200", "400", "401", "404"}, "post": {"200", "201", "400", "401", "403", "409"}},
+		"/api/v1/micro-events/{id}/evidence/{evidence_id}/feedback":                {"post": {"200", "201", "400", "401", "403", "409"}},
+		"/api/v1/micro-events/{id}/feedback":                                       {"post": {"200", "400", "401", "403", "409"}},
 		"/api/v1/events":                                                           {"get": {"200", "400", "401", "503"}},
 		"/api/v1/events/{id}":                                                      {"get": {"200", "400", "401", "404"}},
 		"/api/v1/events/{id}/contents":                                             {"get": {"200", "400", "401", "404"}},
 		"/api/v1/events/{id}/heat":                                                 {"get": {"200", "400", "401", "404", "503"}},
-		"/api/v1/events/{id}/claims":                                               {"post": {"200", "400", "401", "403", "409", "503"}},
 		"/api/v1/events/{id}/intelligence":                                         {"get": {"200", "400", "401", "404", "503"}},
 		"/api/v1/events/{id}/intelligence/summary/regenerate":                      {"post": {"200", "400", "401", "403", "404", "409", "503"}},
-		"/api/v1/events/{id}/intelligence/extract":                                 {"post": {"200", "400", "401", "403", "404", "409", "503"}},
 		"/api/v1/events/{id}/contents/{content_id}/lock":                           {"post": {"200", "400", "401", "403", "404", "409"}},
 		"/api/v1/events/{id}/lifecycle":                                            {"post": {"200", "400", "401", "403", "409"}},
 		"/api/v1/events/{id}/merge":                                                {"post": {"200", "400", "401", "403", "409"}},
@@ -237,6 +244,9 @@ func TestOpenAPIContract(t *testing.T) {
 		"/api/v1/report-subscriptions/{id}/rss-token/rotate":                       {"post": {"200", "400", "401", "404", "409", "503"}},
 		"/api/v1/notifications":                                                    {"get": {"200", "400", "401", "503"}},
 		"/api/v1/notifications/stream":                                             {"get": {"200", "400", "401", "503"}},
+		"/api/v1/notifications/push-capability":                                    {"get": {"200", "401"}},
+		"/api/v1/notifications/push-subscriptions":                                 {"get": {"200", "401", "503"}, "post": {"201", "400", "401", "404", "409", "503"}},
+		"/api/v1/notifications/push-subscriptions/{id}":                            {"put": {"200", "400", "401", "404", "409"}, "delete": {"200", "400", "401", "404", "409"}},
 	}
 	if len(document.Paths) != len(required) {
 		t.Fatalf("public path count = %d, want %d (%v)", len(document.Paths), len(required), document.Paths)
@@ -292,7 +302,7 @@ func TestOpenAPIContract(t *testing.T) {
 		}
 	}
 
-	for _, route := range []string{"/api/v1/auth/me", "/api/v1/auth/password", "/api/v1/users", "/api/v1/users/{id}", "/api/v1/users/{id}/restore", "/api/v1/monitors", "/api/v1/monitors/{id}", "/api/v1/monitors/{id}/draft", "/api/v1/monitors/{id}/draft/ai-candidates", "/api/v1/monitors/{id}/draft/rules/{rule_id}/approval", "/api/v1/monitors/{id}/preview", "/api/v1/monitors/{id}/publish", "/api/v1/monitors/{id}/pause", "/api/v1/monitors/{id}/resume", "/api/v1/monitors/{id}/archive", "/api/v1/monitors/{id}/restore", "/api/v1/monitors/{id}/collect", "/api/v1/source-connections", "/api/v1/source-connections/{id}", "/api/v1/source-connections/{id}/enable", "/api/v1/source-connections/{id}/disable", "/api/v1/source-connections/{id}/archive", "/api/v1/source-connections/{id}/restore", "/api/v1/metric-capability-profiles", "/api/v1/metric-capability-profiles/{id}/publish", "/api/v1/metric-capability-profiles/{id}/archive", "/api/v1/collection-runs", "/api/v1/collection-runs/{id}/retry", "/api/v1/source-connections/{id}/health", "/api/v1/operations/jobs", "/api/v1/operations/jobs/{id}/cancel", "/api/v1/operations/jobs/{id}/retry", "/api/v1/operations/usage", "/api/v1/operations/retention-policies", "/api/v1/operations/retention-policies/{id}/preview", "/api/v1/operations/retention-policies/{id}/run", "/api/v1/operations/audit-logs", "/api/v1/knowledge/documents", "/api/v1/knowledge/documents/{id}", "/api/v1/knowledge/proposals", "/api/v1/knowledge/proposals/{id}", "/api/v1/knowledge/proposals/{id}/approve", "/api/v1/knowledge/proposals/{id}/reject", "/api/v1/knowledge/proposals/{id}/apply", "/api/v1/knowledge/reconcile", "/api/v1/contents", "/api/v1/contents/{id}", "/api/v1/contents/{id}/document", "/api/v1/document-versions/{id}/citation", "/api/v1/document-versions/{id}/document", "/api/v1/monitors/{id}/matches", "/api/v1/monitors/{id}/matches/{match_id}", "/api/v1/monitors/{id}/relevance-preview", "/api/v1/monitors/{id}/matches/{match_id}/feedback", "/api/v1/monitors/{id}/contents/{content_id}/feedback", "/api/v1/monitors/{id}/feedback/evaluation", "/api/v1/monitors/{id}/feedback/suggestions/refresh", "/api/v1/monitors/{id}/feedback/suggestions", "/api/v1/monitors/{id}/feedback/suggestions/{suggestion_id}/review", "/api/v1/ai/model-profiles", "/api/v1/ai/model-profiles/{id}", "/api/v1/ai/model-profiles/{id}/restore", "/api/v1/events", "/api/v1/events/{id}", "/api/v1/events/{id}/contents", "/api/v1/events/{id}/heat", "/api/v1/events/{id}/claims", "/api/v1/events/{id}/intelligence", "/api/v1/events/{id}/intelligence/summary/regenerate", "/api/v1/events/{id}/intelligence/extract", "/api/v1/events/{id}/contents/{content_id}/lock", "/api/v1/events/{id}/lifecycle", "/api/v1/events/{id}/merge", "/api/v1/events/{id}/split", "/api/v1/radar/events", "/api/v1/events/{id}/updates", "/api/v1/alerts", "/api/v1/alerts/{id}", "/api/v1/alerts/{id}/acknowledge", "/api/v1/alerts/{id}/resolve", "/api/v1/alerts/{id}/suppress", "/api/v1/reports", "/api/v1/reports/{id}", "/api/v1/reports/{id}/preview", "/api/v1/reports/{id}/build", "/api/v1/reports/{id}/publish", "/api/v1/report-subscriptions", "/api/v1/report-subscriptions/{id}", "/api/v1/report-subscriptions/{id}/rss-token/rotate", "/api/v1/notifications", "/api/v1/notifications/stream"} {
+	for _, route := range []string{"/api/v1/auth/me", "/api/v1/auth/password", "/api/v1/users", "/api/v1/users/{id}", "/api/v1/users/{id}/restore", "/api/v1/monitors", "/api/v1/monitors/{id}", "/api/v1/monitors/{id}/draft", "/api/v1/monitors/{id}/draft/ai-candidates", "/api/v1/monitors/{id}/draft/rules/{rule_id}/approval", "/api/v1/monitors/{id}/preview", "/api/v1/monitors/{id}/publish", "/api/v1/monitors/{id}/pause", "/api/v1/monitors/{id}/resume", "/api/v1/monitors/{id}/archive", "/api/v1/monitors/{id}/restore", "/api/v1/monitors/{id}/collect", "/api/v1/source-connections", "/api/v1/source-connections/{id}", "/api/v1/source-connections/{id}/enable", "/api/v1/source-connections/{id}/disable", "/api/v1/source-connections/{id}/archive", "/api/v1/source-connections/{id}/restore", "/api/v1/metric-capability-profiles", "/api/v1/metric-capability-profiles/{id}/publish", "/api/v1/metric-capability-profiles/{id}/archive", "/api/v1/collection-runs", "/api/v1/collection-runs/{id}/retry", "/api/v1/source-connections/{id}/health", "/api/v1/operations/jobs", "/api/v1/operations/jobs/{id}/cancel", "/api/v1/operations/jobs/{id}/retry", "/api/v1/operations/usage", "/api/v1/operations/retention-policies", "/api/v1/operations/retention-policies/{id}/preview", "/api/v1/operations/retention-policies/{id}/run", "/api/v1/operations/audit-logs", "/api/v1/knowledge/documents", "/api/v1/knowledge/documents/{id}", "/api/v1/knowledge/proposals", "/api/v1/knowledge/proposals/{id}", "/api/v1/knowledge/proposals/{id}/approve", "/api/v1/knowledge/proposals/{id}/reject", "/api/v1/knowledge/proposals/{id}/apply", "/api/v1/knowledge/reconcile", "/api/v1/contents", "/api/v1/contents/{id}", "/api/v1/contents/{id}/document", "/api/v1/document-versions/{id}/citation", "/api/v1/document-versions/{id}/document", "/api/v1/monitors/{id}/matches", "/api/v1/monitors/{id}/matches/{match_id}", "/api/v1/monitors/{id}/relevance-preview", "/api/v1/monitors/{id}/matches/{match_id}/feedback", "/api/v1/monitors/{id}/contents/{content_id}/feedback", "/api/v1/monitors/{id}/feedback/evaluation", "/api/v1/monitors/{id}/feedback/suggestions/refresh", "/api/v1/monitors/{id}/feedback/suggestions", "/api/v1/monitors/{id}/feedback/suggestions/{suggestion_id}/review", "/api/v1/ai/model-profiles", "/api/v1/ai/model-profiles/{id}", "/api/v1/ai/model-profiles/{id}/restore", "/api/v1/events", "/api/v1/events/{id}", "/api/v1/events/{id}/contents", "/api/v1/events/{id}/heat", "/api/v1/events/{id}/intelligence", "/api/v1/events/{id}/intelligence/summary/regenerate", "/api/v1/events/{id}/contents/{content_id}/lock", "/api/v1/events/{id}/lifecycle", "/api/v1/events/{id}/merge", "/api/v1/events/{id}/split", "/api/v1/radar/events", "/api/v1/events/{id}/updates", "/api/v1/alerts", "/api/v1/alerts/{id}", "/api/v1/alerts/{id}/acknowledge", "/api/v1/alerts/{id}/resolve", "/api/v1/alerts/{id}/suppress", "/api/v1/reports", "/api/v1/reports/{id}", "/api/v1/reports/{id}/preview", "/api/v1/reports/{id}/build", "/api/v1/reports/{id}/publish", "/api/v1/report-subscriptions", "/api/v1/report-subscriptions/{id}", "/api/v1/report-subscriptions/{id}/rss-token/rotate", "/api/v1/notifications", "/api/v1/notifications/stream"} {
 		var operations map[string]openAPIOperation
 		if err := json.Unmarshal(document.Paths[route], &operations); err != nil {
 			t.Fatalf("decode protected path %s: %v", route, err)
@@ -310,6 +320,8 @@ func TestOpenAPIContract(t *testing.T) {
 		"/api/v1/monitors/{id}/draft/expansion-candidates/{candidate_id}/decision",
 		"/api/v1/monitors/{id}/draft/preview-runs",
 		"/api/v1/monitors/{id}/draft/preview-runs/{run_id}",
+		"/api/v1/monitors/{id}/document-matches",
+		"/api/v1/monitors/{id}/document-matches/{match_decision_id}/overrides",
 	} {
 		var operations map[string]openAPIOperation
 		if err := json.Unmarshal(document.Paths[route], &operations); err != nil {
@@ -367,6 +379,7 @@ func TestOpenAPIContract(t *testing.T) {
 	assertSafeAgentTokenOpenAPIDefinitions(t, document.Definitions)
 	assertSafeMonitorSourceOpenAPIDefinitions(t, document.Definitions)
 	assertSafeMonitorIntentOpenAPI(t, document.Paths, document.Definitions)
+	assertSafeDocumentMatchOpenAPI(t, document.Definitions)
 	assertSafeCollectionOpenAPIDefinitions(t, document.Definitions)
 	assertSafeContentOpenAPIDefinitions(t, document.Definitions)
 	assertSafeVersionedCitationOpenAPIDefinitions(t, document.Definitions)
@@ -391,15 +404,28 @@ func assertSafeVersionedCitationOpenAPIDefinitions(t *testing.T, definitions map
 	allowed := map[string]map[string]bool{
 		"http.CitationArtifactResponseDTO": {
 			"artifact_type": true, "transformer_profile_sha256": true, "mime_type": true,
-			"sha256": true, "size_bytes": true, "etag": true,
+			"sha256": true, "size_bytes": true, "etag": true, "anchor_map": true,
+		},
+		"http.CitationArtifactAnchorBlockResponseDTO": {
+			"ordinal": true, "markdown_anchor": true,
+		},
+		"http.CitationArtifactAnchorMapResponseDTO": {
+			"normalization_version": true, "anchor_map_profile_version": true,
+			"anchor_map_sha256": true, "blocks": true,
 		},
 		"http.CitationAnchorMapResponseDTO": {
 			"normalization_version": true, "anchor_map_version": true, "markdown_anchor": true,
 		},
+		"http.CitationPartyResponseDTO": {
+			"role": true, "kind": true, "identity_namespace": true, "external_id": true,
+			"display_name": true, "homepage_url": true,
+		},
 		"http.CitationResponseDTO": {
 			"document_id": true, "document_version_id": true, "source_type": true, "source_name": true,
-			"title": true, "author": true, "publisher": true, "publisher_availability": true,
-			"publisher_unavailable_reason": true, "source_record_url": true, "canonical_url": true,
+			"title": true, "author": true, "publisher": true, "publisher_party": true,
+			"content_origin": true, "distributors": true, "publisher_availability": true,
+			"publisher_unavailable_reason": true, "content_origin_availability": true,
+			"content_origin_unavailable_reason": true, "source_record_url": true, "canonical_url": true,
 			"discussion_url": true, "body_origin": true, "completeness": true, "language": true,
 			"published_at": true, "captured_at": true, "content_sha256": true, "availability": true,
 			"unavailable_reason": true, "artifact": true, "locator_availability": true,
@@ -558,6 +584,61 @@ func assertSafeMonitorIntentOpenAPI(t *testing.T, paths map[string]json.RawMessa
 	}
 }
 
+func assertSafeDocumentMatchOpenAPI(t *testing.T, definitions map[string]struct {
+	Properties map[string]json.RawMessage `json:"properties"`
+	Required   []string                   `json:"required"`
+}) {
+	t.Helper()
+	expected := map[string][]string{
+		"http.DocumentMatchSignalResponseDTO": {
+			"algorithm_version", "channel", "rank", "raw_score",
+		},
+		"http.DocumentMatchResponseDTO": {
+			"match_decision_id", "monitor_id", "monitor_version_id", "compiled_profile_id",
+			"document_version_id", "relevance_profile_id", "matching_algorithm_version",
+			"reranker_version", "calibration_version", "rrf_score", "relevance_probability",
+			"automatic_decision", "effective_decision", "degraded", "reason_codes", "signals",
+			"resource_version", "decided_at",
+		},
+		"http.DocumentMatchPageResponseDTO": {
+			"items", "next_cursor",
+		},
+		"http.OverrideDocumentMatchRequestDTO": {
+			"decision", "reason_code", "note",
+		},
+		"http.OverrideDocumentMatchResponseDTO": {
+			"override_id", "match_decision_id", "monitor_id", "monitor_version_id",
+			"document_version_id", "previous_effective_decision", "decision", "reason_code",
+			"note", "actor_user_id", "resource_version", "reused", "created_at",
+		},
+	}
+	for name, fields := range expected {
+		definition, ok := definitions[name]
+		if !ok {
+			t.Errorf("missing %s", name)
+			continue
+		}
+		if len(definition.Properties) != len(fields) {
+			t.Errorf("%s property count = %d, want %d", name, len(definition.Properties), len(fields))
+		}
+		for _, field := range fields {
+			if _, ok := definition.Properties[field]; !ok {
+				t.Errorf("%s misses %q", name, field)
+			}
+		}
+		for field := range definition.Properties {
+			for _, forbidden := range []string{
+				"body", "markdown", "raw_payload", "object_key", "input_hash", "truth",
+				"credibility", "verification", "confirmation", "unverified", "corroborated",
+			} {
+				if strings.Contains(field, forbidden) {
+					t.Errorf("%s exposes forbidden field %q", name, field)
+				}
+			}
+		}
+	}
+}
+
 func assertSafeAgentTokenOpenAPIDefinitions(t *testing.T, definitions map[string]struct {
 	Properties map[string]json.RawMessage `json:"properties"`
 	Required   []string                   `json:"required"`
@@ -624,7 +705,11 @@ func assertRadarAlertParameterContracts(t *testing.T, paths map[string]json.RawM
 	assertEnum(parameter(radar, "window"), []string{"1h", "6h", "24h", "7d"})
 	assertEnum(parameter(radar, "lifecycle"), []string{"detected", "active", "cooling", "closed", "merged", "archived", "rejected"})
 	assertEnum(parameter(radar, "trend"), []string{"emerging", "rising", "stable", "falling", "dormant"})
-	assertEnum(parameter(radar, "verification"), []string{"disputed", "corroborated", "single_source", "unverified", "insufficient"})
+	for _, candidate := range radar.Parameters {
+		if candidate.Name == "verification" {
+			t.Error("Radar must not expose legacy truth/verification filters")
+		}
+	}
 	assertEnum(parameter(radar, "sort"), []string{"momentum", "attention", "breadth", "latest", "relevance"})
 	assertRange(parameter(radar, "min_heat"), 0, 100)
 	assertRange(parameter(radar, "limit"), 1, 100)
@@ -657,7 +742,7 @@ func assertSafeRadarAlertOpenAPI(t *testing.T, definitions map[string]struct {
 }) {
 	t.Helper()
 	for name, required := range map[string][]string{
-		"http.RadarEventResponse":      {"event_id", "event_key", "title", "attention", "momentum", "breadth", "confirmation", "data_confidence", "ranking_score", "reason_codes", "last_seen_at"},
+		"http.RadarEventResponse":      {"event_id", "event_key", "title", "attention", "momentum", "breadth", "independent_source_count", "ranking_score", "reason_codes", "last_seen_at"},
 		"http.RadarPageResponse":       {"items", "as_of"},
 		"http.EventUpdateResponse":     {"id", "event_id", "sequence_no", "kind", "summary", "observed_at", "reason_codes", "after_state"},
 		"http.AlertThreadResponse":     {"id", "version", "monitor_id", "event_id", "trigger_type", "state", "severity", "occurrence_count", "last_triggered_at", "cooldown_until"},
@@ -677,7 +762,7 @@ func assertSafeRadarAlertOpenAPI(t *testing.T, definitions map[string]struct {
 			}
 		}
 		for field := range definition.Properties {
-			for _, forbidden := range []string{"credential", "provider", "prompt", "payload", "sql", "config"} {
+			for _, forbidden := range []string{"credential", "provider", "prompt", "payload", "sql", "config", "truth", "credibility", "verification", "confirmation", "confidence", "corroborated", "unverified", "confirmed"} {
 				if strings.Contains(field, forbidden) {
 					t.Errorf("%s exposes forbidden field %q", name, field)
 				}
@@ -692,13 +777,12 @@ func assertSafeEventIntelligenceOpenAPI(t *testing.T, definitions map[string]str
 }) {
 	t.Helper()
 	for name, required := range map[string][]string{
-		"http.EventIntelligenceResponse":      {"event_id", "entities", "claims"},
-		"http.IntelligenceEntityResponse":     {"entity_id", "entity_key", "entity_type", "canonical_name", "role", "confidence", "origin", "confirmed"},
-		"http.IntelligenceClaimResponse":      {"id", "normalized_claim", "claim_hash", "status", "confidence", "evidence"},
-		"http.IntelligenceEvidenceResponse":   {"content_id", "locator", "excerpt", "stance", "confidence"},
-		"http.SummaryRegenerationResponse":    {"event_id", "status", "summary"},
-		"http.ExtractionRegenerationResponse": {"event_id", "status", "entity_count", "claim_count"},
-		"http.EventSummaryResponse":           {"version", "title_zh", "degraded", "sentences"},
+		"http.EventIntelligenceResponse":    {"event_id", "entities", "claims"},
+		"http.IntelligenceEntityResponse":   {"entity_id", "entity_key", "entity_type", "canonical_name", "role", "origin"},
+		"http.IntelligenceClaimResponse":    {"id", "normalized_claim", "claim_hash", "evidence"},
+		"http.IntelligenceEvidenceResponse": {"content_id", "locator", "excerpt", "stance"},
+		"http.SummaryRegenerationResponse":  {"event_id", "status", "summary"},
+		"http.EventSummaryResponse":         {"version", "title_zh", "degraded", "sentences"},
 	} {
 		definition, ok := definitions[name]
 		if !ok {
@@ -711,7 +795,7 @@ func assertSafeEventIntelligenceOpenAPI(t *testing.T, definitions map[string]str
 			}
 		}
 		for field := range definition.Properties {
-			if strings.Contains(field, "provider") || strings.Contains(field, "prompt") || strings.Contains(field, "structured_result") || strings.Contains(field, "credential") {
+			if strings.Contains(field, "provider") || strings.Contains(field, "prompt") || strings.Contains(field, "structured_result") || strings.Contains(field, "credential") || strings.Contains(field, "truth") || strings.Contains(field, "confidence") || strings.Contains(field, "confirmed") || strings.Contains(field, "verification") || strings.Contains(field, "corroborated") || strings.Contains(field, "unverified") {
 				t.Errorf("%s exposes intelligence implementation field %q", name, field)
 			}
 		}
@@ -757,7 +841,7 @@ func assertMetricCapabilityOpenAPI(t *testing.T, paths map[string]json.RawMessag
 	allowedResponse := map[string]bool{
 		"id": true, "version": true, "source_type": true, "profile_version": true, "supports_views": true,
 		"supports_likes": true, "supports_comments": true, "supports_shares": true, "independence_strategy": true,
-		"normalization_window_hours": true, "credibility_weight": true, "max_single_item_contribution": true,
+		"normalization_window_hours": true, "max_single_item_contribution": true,
 		"status": true, "published_at": true, "archived_at": true,
 	}
 	for field := range response.Properties {
@@ -895,6 +979,7 @@ func assertSafeContentOpenAPIDefinitions(t *testing.T, definitions map[string]st
 		"published_at": true, "fetched_at": true, "metrics": true, "dedupe_status": true,
 		"dedupe_reason": true, "dedupe_version": true,
 		"relevance_score": true, "match_decision": true, "event_id": true, "event_title": true,
+		"document_version_id": true,
 	}
 	for field := range content.Properties {
 		if !allowed[field] {

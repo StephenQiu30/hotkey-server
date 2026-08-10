@@ -19,6 +19,8 @@ type PreviewSource struct {
 	IncludedRuleIDs    []int64
 	ExcludedRuleIDs    []int64
 	UnapprovedRuleIDs  []int64
+	IncludedTermCount  int
+	ExcludedTermCount  int
 	EstimatedRequests  int
 }
 
@@ -52,7 +54,21 @@ func (service *Service) Preview(ctx context.Context, subject identitydomain.Subj
 	if draft.State != domain.ConfigVersionDraft {
 		return PreviewResult{}, domain.MonitorDraftUnavailable()
 	}
-	effective, err := effectiveLocales(draft.Config, rules)
+	intentPreview := PreviewIntentPublicationResult{}
+	if service.intentPublication != nil {
+		intentPreview, err = service.intentPublication.Preview(ctx, PreviewIntentPublicationCommand{
+			MonitorID: monitor.ID, ConfigVersionID: draft.ID,
+		})
+		if err != nil {
+			return PreviewResult{}, monitorIntentPublicationError(err)
+		}
+	}
+	var effective domain.MonitorConfig
+	if intentPreview.Enabled {
+		effective, err = effectiveIntentLocales(draft.Config, intentPreview.LocaleClauses)
+	} else {
+		effective, err = effectiveLocales(draft.Config, rules)
+	}
 	if err != nil {
 		return PreviewResult{}, domain.InvalidMonitorConfiguration()
 	}
@@ -60,7 +76,10 @@ func (service *Service) Preview(ctx context.Context, subject identitydomain.Subj
 	if err != nil {
 		return PreviewResult{}, domain.InvalidMonitorConfiguration()
 	}
-	result := PreviewResult{Eligible: domain.HasApprovedHumanCoreRule(rules), ConfigHash: hash, Sources: make([]PreviewSource, 0, len(sources)), Warnings: []string{}}
+	if intentPreview.Enabled {
+		hash = intentPublishedConfigHash(hash, intentPreview.ProfileHash)
+	}
+	result := PreviewResult{Eligible: intentPreview.Enabled || domain.HasApprovedHumanCoreRule(rules), ConfigHash: hash, Sources: make([]PreviewSource, 0, len(sources)), Warnings: []string{}}
 	for _, source := range sources {
 		if !source.Enabled {
 			continue
@@ -71,6 +90,9 @@ func (service *Service) Preview(ctx context.Context, subject identitydomain.Subj
 		}
 		preview := PreviewSource{SourceConnectionID: source.SourceConnectionID, QueryMode: "local_filter", MaxQueryBytes: sourcedomain.MaxCollectionQueryBytes, IncludedRuleIDs: []int64{}, ExcludedRuleIDs: []int64{}, UnapprovedRuleIDs: []int64{}, EstimatedRequests: connection.Config.MaxPagesPerRun}
 		for _, rule := range rules {
+			if intentPreview.Enabled {
+				break
+			}
 			if !rule.Enabled {
 				continue
 			}
@@ -83,6 +105,18 @@ func (service *Service) Preview(ctx context.Context, subject identitydomain.Subj
 			} else {
 				preview.IncludedRuleIDs = append(preview.IncludedRuleIDs, rule.ID)
 			}
+		}
+		if intentPreview.Enabled {
+			for _, term := range intentPreview.CollectionTerms {
+				if term.Excluded {
+					preview.ExcludedTermCount++
+				} else {
+					preview.IncludedTermCount++
+				}
+			}
+		} else {
+			preview.IncludedTermCount = len(preview.IncludedRuleIDs)
+			preview.ExcludedTermCount = len(preview.ExcludedRuleIDs)
 		}
 		if !connection.Enabled || connection.Deleted {
 			result.Eligible = false
@@ -99,14 +133,23 @@ func (service *Service) Preview(ctx context.Context, subject identitydomain.Subj
 		}
 		preview.Languages = append([]string(nil), perSource.Languages...)
 		preview.Regions = append([]string(nil), perSource.Regions...)
-		preview.CompiledQuery, err = sourcedomain.CompileCollectionQuery(source.QueryOverride, collectionTerms(rules))
+		terms := collectionTerms(rules)
+		if intentPreview.Enabled {
+			terms = compiledCollectionTerms(intentPreview.CollectionTerms)
+		}
+		preview.CompiledQuery, err = sourcedomain.CompileCollectionQuery(source.QueryOverride, terms)
 		if err != nil {
 			result.Eligible = false
 			result.Warnings = append(result.Warnings, "source_query_limit_exceeded")
 			result.Sources = append(result.Sources, preview)
 			continue
 		}
-		signature, err := querySignature(source, connection, effective, rules)
+		var signature string
+		if intentPreview.Enabled {
+			signature, err = querySignatureFromCompiledIntent(source, connection, effective, intentPreview.CollectionTerms, intentPreview.ProfileHash)
+		} else {
+			signature, err = querySignature(source, connection, effective, rules)
+		}
 		if err != nil {
 			return PreviewResult{}, domain.InvalidMonitorConfiguration()
 		}
@@ -118,6 +161,14 @@ func (service *Service) Preview(ctx context.Context, subject identitydomain.Subj
 		result.Warnings = append(result.Warnings, "no_enabled_sources")
 	}
 	return result, nil
+}
+
+func compiledCollectionTerms(values []CompiledCollectionTermDTO) []sourcedomain.CollectionTerm {
+	terms := make([]sourcedomain.CollectionTerm, len(values))
+	for index, value := range values {
+		terms[index] = sourcedomain.CollectionTerm{Value: value.Value, Excluded: value.Excluded}
+	}
+	return terms
 }
 
 func collectionTerms(rules []domain.MonitorRule) []sourcedomain.CollectionTerm {

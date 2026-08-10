@@ -11,18 +11,18 @@ interface PersistedNotificationState {
 
 interface NotificationState extends PersistedNotificationState {
   userID: number | null;
-  items: HotKeyAPI.NotificationResponse[];
+  items: HotKeyAPI.UserNotificationResponseDTO[];
   unreadCount: number;
   transport: NotificationTransport;
   initializeUser(userID: number): void;
-  ingest(items: HotKeyAPI.NotificationResponse[]): HotKeyAPI.NotificationResponse[];
+  ingest(items: HotKeyAPI.UserNotificationResponseDTO[]): HotKeyAPI.UserNotificationResponseDTO[];
   markAllRead(): void;
   setTransport(transport: NotificationTransport): void;
   reset(): void;
 }
 
 function storageKey(userID: number) {
-  return `hotkey.notifications.${userID}`;
+  return `hotkey.notifications.v2.${userID}`;
 }
 
 function readPersisted(userID: number): PersistedNotificationState {
@@ -45,7 +45,7 @@ function persist(userID: number | null, state: PersistedNotificationState) {
 
 const initialState = {
   userID: null,
-  items: [] as HotKeyAPI.NotificationResponse[],
+  items: [] as HotKeyAPI.UserNotificationResponseDTO[],
   lastEventID: 0,
   readThroughID: 0,
   unreadCount: 0,
@@ -62,7 +62,7 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
   ingest: (incoming) => {
     const current = get();
     const known = new Set(current.items.map((item) => item.id).filter((id): id is number => Number.isSafeInteger(id)));
-    const accepted: HotKeyAPI.NotificationResponse[] = [];
+    const accepted: HotKeyAPI.UserNotificationResponseDTO[] = [];
     for (const item of incoming) {
       if (!Number.isSafeInteger(item.id) || (item.id ?? 0) <= 0 || known.has(item.id!)) continue;
       known.add(item.id!);

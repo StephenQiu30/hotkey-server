@@ -102,6 +102,44 @@ func TestParseFeedNormalizesRSS1RDFItems(t *testing.T) {
 	if item.PublishedAt == nil || item.PublishedAt.Format(time.DateOnly) != "2026-07-17" {
 		t.Fatalf("published_at = %v, want 2026-07-17", item.PublishedAt)
 	}
+	if len(item.Parties) != 1 || item.Parties[0].Role != domain.SourcePartyRoleAuthor || item.Parties[0].DisplayName != "Researcher One" || item.Parties[0].IdentityNamespace != "rss:author" {
+		t.Fatalf("explicit feed author party = %#v", item.Parties)
+	}
+}
+
+func TestParseFeedPreservesOnlyExplicitFeedPublisherDistributorAndContentOrigin(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <id>urn:feed:product-news</id><title>Product News Desk</title>
+  <link rel="alternate" href="https://news.example.test/feed"/>
+  <entry><id>entry-1</id><title>Release</title><content>Release body</content>
+    <link rel="alternate" href="https://product.example.test/release"/>
+    <source><id>urn:publisher:product</id><title>Product Publisher</title>
+      <link rel="alternate" href="https://product.example.test"/></source>
+  </entry>
+</feed>`)
+	feed, err := parseFeed(payload, time.Date(2026, time.August, 10, 0, 0, 0, 0, time.UTC))
+	if err != nil || len(feed.Items) != 1 {
+		t.Fatalf("parseFeed() = %#v / %v", feed, err)
+	}
+	parties := feed.Items[0].Parties
+	if len(parties) != 2 || parties[0].Role != domain.SourcePartyRoleContentOrigin ||
+		parties[0].DisplayName != "Product Publisher" || parties[0].HomepageURL != "https://product.example.test" ||
+		parties[1].Role != domain.SourcePartyRoleDistributor || parties[1].DisplayName != "Product News Desk" {
+		t.Fatalf("explicit Atom parties = %#v", parties)
+	}
+
+	rssPayload := []byte(`<?xml version="1.0"?><rss xmlns:dc="http://purl.org/dc/elements/1.1/"><channel>
+  <title>Wire Feed</title><link>https://wire.example.test</link><item><guid>wire-1</guid><title>Wire item</title>
+  <description>Wire summary</description><dc:publisher>Example Publishing Ltd</dc:publisher></item></channel></rss>`)
+	rssFeed, err := parseFeed(rssPayload, time.Date(2026, time.August, 10, 0, 0, 0, 0, time.UTC))
+	if err != nil || len(rssFeed.Items) != 1 || len(rssFeed.Items[0].Parties) != 2 ||
+		rssFeed.Items[0].Parties[0].Role != domain.SourcePartyRolePublisher ||
+		rssFeed.Items[0].Parties[1].Role != domain.SourcePartyRoleDistributor {
+		t.Fatalf("explicit RSS parties = %#v / %v", rssFeed.Items, err)
+	}
 }
 
 func TestParseFeedPrefersContentAcrossRSSRDFAndAtom(t *testing.T) {

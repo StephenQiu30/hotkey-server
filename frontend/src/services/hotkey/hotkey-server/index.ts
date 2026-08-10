@@ -13,10 +13,13 @@ import * as reports from "./reports";
 import * as ai from "./ai";
 import * as identity from "./identity";
 import * as platform from "./platform";
+import * as contentLineage from "./contentLineage";
 import * as documentVersions from "./documentVersions";
 import * as knowledge from "./knowledge";
 import * as sourceMetricCapabilities from "./sourceMetricCapabilities";
+import * as microEvents from "./microEvents";
 import * as relevance from "./relevance";
+import * as documentMatches from "./documentMatches";
 import * as monitorIntent from "./monitorIntent";
 import * as notifications from "./notifications";
 import * as operations from "./operations";
@@ -36,10 +39,13 @@ export default {
   ai,
   identity,
   platform,
+  contentLineage,
   documentVersions,
   knowledge,
   sourceMetricCapabilities,
+  microEvents,
   relevance,
+  documentMatches,
   monitorIntent,
   notifications,
   operations,

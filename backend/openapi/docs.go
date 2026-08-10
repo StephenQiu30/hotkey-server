@@ -953,7 +953,7 @@ const docTemplate = `{
                 "tags": [
                     "events"
                 ],
-                "summary": "Get verified event intelligence",
+                "summary": "Get evidence-linked event intelligence",
                 "parameters": [
                     {
                         "type": "integer",
@@ -1329,23 +1329,6 @@ const docTemplate = `{
                         "collectionFormat": "csv",
                         "description": "trend filters",
                         "name": "trend",
-                        "in": "query"
-                    },
-                    {
-                        "type": "array",
-                        "items": {
-                            "enum": [
-                                "disputed",
-                                "corroborated",
-                                "single_source",
-                                "unverified",
-                                "insufficient"
-                            ],
-                            "type": "string"
-                        },
-                        "collectionFormat": "csv",
-                        "description": "verification filters",
-                        "name": "verification",
                         "in": "query"
                     },
                     {
@@ -2855,6 +2838,101 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/content-lineage-decisions/{id}/feedback": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "content-lineage"
+                ],
+                "summary": "Review a content lineage decision",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "lineage decision ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "strong current member ETag, e.g. v1",
+                        "name": "If-Match",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "bounded idempotency key",
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "lineage review",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.ReviewContentLineageRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-http_ContentLineageFeedbackResponseDTO"
+                        }
+                    },
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-http_ContentLineageFeedbackResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/contents": {
             "get": {
                 "security": [
@@ -3295,6 +3373,95 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/document-versions/{id}/text-quote-selectors": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "document-versions"
+                ],
+                "summary": "Create an exact document-version quote selector",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "document version ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "strong plaintext SHA-256 ETag",
+                        "name": "If-Match",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "request idempotency key",
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "unique exact excerpt",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.LocateTextQuoteSelectorRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-http_TextQuoteSelectorResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/events": {
             "get": {
                 "security": [
@@ -3401,87 +3568,6 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/events/{id}/claims": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "events"
-                ],
-                "summary": "Save an event claim",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "event ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "claim request",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/http.ClaimRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/http.EventResult-http_ClaimResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
-                        }
-                    },
-                    "503": {
-                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
                         }
@@ -3692,7 +3778,7 @@ const docTemplate = `{
                 "tags": [
                     "events"
                 ],
-                "summary": "Get verified event intelligence",
+                "summary": "Get evidence-linked event intelligence",
                 "parameters": [
                     {
                         "type": "integer",
@@ -3723,75 +3809,6 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
-                        }
-                    },
-                    "503": {
-                        "description": "Service Unavailable",
-                        "schema": {
-                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/events/{id}/intelligence/extract": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "events"
-                ],
-                "summary": "Regenerate event entities and claims",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "event ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/http.EventResult-http_ExtractionRegenerationResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/http.EventResult-internal_modules_event_transport_http_EmptyResponse"
                         }
@@ -4816,6 +4833,452 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/micro-events": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "micro-events"
+                ],
+                "summary": "List semantic micro-events",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "exclusive event cursor",
+                        "name": "cursor_id",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 100,
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "comma-separated lifecycle states",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-http_MicroEventPageResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/micro-events/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "micro-events"
+                ],
+                "summary": "Get semantic micro-event",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "micro-event ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-http_MicroEventResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/micro-events/{id}/evidence": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "micro-events"
+                ],
+                "summary": "List micro-event evidence",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "micro-event ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "exclusive evidence cursor",
+                        "name": "cursor_id",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 100,
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-http_MicroEventEvidencePageResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "micro-events"
+                ],
+                "summary": "Append manually reviewed claim evidence",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "micro-event ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "strong event version ETag",
+                        "name": "If-Match",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "durable idempotency key",
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "exact quoted claim relation",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.RecordClaimEvidenceRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-http_ClaimEvidenceMutationResponseDTO"
+                        }
+                    },
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-http_ClaimEvidenceMutationResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/micro-events/{id}/evidence/{evidence_id}/feedback": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "micro-events"
+                ],
+                "summary": "Correct a claim evidence relation or locator",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "micro-event ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "original claim evidence version ID",
+                        "name": "evidence_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "strong claim version ETag",
+                        "name": "If-Match",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "durable idempotency key",
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "correction facts",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.CorrectClaimEvidenceRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-http_ClaimEvidenceCorrectionResponseDTO"
+                        }
+                    },
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-http_ClaimEvidenceCorrectionResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/micro-events/{id}/feedback": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "micro-events"
+                ],
+                "summary": "Apply micro-event governance feedback",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "micro-event ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "strong event version ETag",
+                        "name": "If-Match",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "durable idempotency key",
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "governance action",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventGovernanceRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-http_MicroEventGovernanceResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/monitors": {
             "get": {
                 "security": [
@@ -5259,6 +5722,189 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/http.ContentResult-http_RelevanceFeedbackResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/monitors/{id}/document-matches": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "document-matches"
+                ],
+                "summary": "List exact document matches for a monitor",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "effective accepted, review, or rejected decision",
+                        "name": "decision",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "opaque cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "page size, 1-100",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-http_DocumentMatchPageResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/monitors/{id}/document-matches/{match_decision_id}/overrides": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "document-matches"
+                ],
+                "summary": "Append a document match review decision",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "automatic match decision ID",
+                        "name": "match_decision_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "strong current resource ETag, e.g. v0",
+                        "name": "If-Match",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "bounded idempotency key",
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "manual relevance decision",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.OverrideDocumentMatchRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-http_OverrideDocumentMatchResponseDTO"
+                        }
+                    },
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-http_OverrideDocumentMatchResponseDTO"
                         }
                     },
                     "400": {
@@ -7154,13 +7800,20 @@ const docTemplate = `{
                 "tags": [
                     "notifications"
                 ],
-                "summary": "List notification events after a durable cursor",
+                "summary": "List current user's monitor notifications after a durable cursor",
                 "parameters": [
                     {
                         "minimum": 0,
                         "type": "integer",
-                        "description": "last processed notification ID",
+                        "description": "last processed user notification ID",
                         "name": "after_id",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "authorized monitor filter",
+                        "name": "monitor_id",
                         "in": "query"
                     },
                     {
@@ -7176,25 +7829,302 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/http.NotificationResult-http_NotificationPageResponse"
+                            "$ref": "#/definitions/http.NotificationResult-http_UserNotificationPageResponseDTO"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/http.NotificationResult-internal_modules_notification_transport_http_EmptyResponse"
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/http.NotificationResult-internal_modules_notification_transport_http_EmptyResponse"
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
                         }
                     },
                     "503": {
                         "description": "Service Unavailable",
                         "schema": {
-                            "$ref": "#/definitions/http.NotificationResult-internal_modules_notification_transport_http_EmptyResponse"
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/notifications/push-capability": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Get Web Push capability",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_PushCapabilityResponseDTO"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/notifications/push-subscriptions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "List current user's Web Push devices",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_PushSubscriptionListResponseDTO"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Register a Web Push device",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "unique registration key",
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "browser subscription and notification preferences",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.RegisterPushSubscriptionRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_PushSubscriptionResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/notifications/push-subscriptions/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Update a Web Push device",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "subscription ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "strong subscription version ETag, e.g. v1",
+                        "name": "If-Match",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "complete device preference replacement",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.UpdatePushSubscriptionRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_PushSubscriptionResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Disable a Web Push device",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "subscription ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "strong subscription version ETag, e.g. v1",
+                        "name": "If-Match",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_PushSubscriptionResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
                         }
                     }
                 }
@@ -7213,19 +8143,26 @@ const docTemplate = `{
                 "tags": [
                     "notifications"
                 ],
-                "summary": "Stream notification events after a durable cursor",
+                "summary": "Stream current user's monitor notifications with durable replay",
                 "parameters": [
                     {
                         "minimum": 0,
                         "type": "integer",
-                        "description": "last processed notification ID",
+                        "description": "last processed user notification ID",
                         "name": "after_id",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "authorized monitor filter",
+                        "name": "monitor_id",
                         "in": "query"
                     },
                     {
                         "minimum": 0,
                         "type": "integer",
-                        "description": "last processed notification ID",
+                        "description": "last processed user notification ID",
                         "name": "Last-Event-ID",
                         "in": "header"
                     }
@@ -7240,19 +8177,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/http.NotificationResult-internal_modules_notification_transport_http_EmptyResponse"
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/http.NotificationResult-internal_modules_notification_transport_http_EmptyResponse"
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
                         }
                     },
                     "503": {
                         "description": "Service Unavailable",
                         "schema": {
-                            "$ref": "#/definitions/http.NotificationResult-internal_modules_notification_transport_http_EmptyResponse"
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
                         }
                     }
                 }
@@ -7902,23 +8839,6 @@ const docTemplate = `{
                         "collectionFormat": "csv",
                         "description": "trend filters",
                         "name": "trend",
-                        "in": "query"
-                    },
-                    {
-                        "type": "array",
-                        "items": {
-                            "enum": [
-                                "disputed",
-                                "corroborated",
-                                "single_source",
-                                "unverified",
-                                "insufficient"
-                            ],
-                            "type": "string"
-                        },
-                        "collectionFormat": "csv",
-                        "description": "verification filters",
-                        "name": "verification",
                         "in": "query"
                     },
                     {
@@ -10786,9 +11706,48 @@ const docTemplate = `{
                 }
             }
         },
+        "http.CitationArtifactAnchorBlockResponseDTO": {
+            "type": "object",
+            "properties": {
+                "markdown_anchor": {
+                    "type": "string"
+                },
+                "ordinal": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.CitationArtifactAnchorMapResponseDTO": {
+            "type": "object",
+            "properties": {
+                "anchor_map_profile_version": {
+                    "type": "string"
+                },
+                "anchor_map_sha256": {
+                    "type": "string"
+                },
+                "blocks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.CitationArtifactAnchorBlockResponseDTO"
+                    }
+                },
+                "normalization_version": {
+                    "type": "string"
+                }
+            }
+        },
         "http.CitationArtifactResponseDTO": {
             "type": "object",
             "properties": {
+                "anchor_map": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/http.CitationArtifactAnchorMapResponseDTO"
+                        }
+                    ],
+                    "x-nullable": true
+                },
                 "artifact_type": {
                     "type": "string",
                     "enum": [
@@ -10810,6 +11769,41 @@ const docTemplate = `{
                 },
                 "transformer_profile_sha256": {
                     "type": "string"
+                }
+            }
+        },
+        "http.CitationPartyResponseDTO": {
+            "type": "object",
+            "properties": {
+                "display_name": {
+                    "type": "string"
+                },
+                "external_id": {
+                    "type": "string"
+                },
+                "homepage_url": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "identity_namespace": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "organization",
+                        "person",
+                        "account"
+                    ]
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "publisher",
+                        "author",
+                        "distributor",
+                        "content_origin"
+                    ]
                 }
             }
         },
@@ -10862,6 +11856,25 @@ const docTemplate = `{
                 "completeness": {
                     "type": "string"
                 },
+                "content_origin": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/http.CitationPartyResponseDTO"
+                        }
+                    ],
+                    "x-nullable": true
+                },
+                "content_origin_availability": {
+                    "type": "string",
+                    "enum": [
+                        "available",
+                        "unavailable"
+                    ]
+                },
+                "content_origin_unavailable_reason": {
+                    "type": "string",
+                    "x-nullable": true
+                },
                 "content_sha256": {
                     "type": "string",
                     "x-nullable": true
@@ -10869,6 +11882,12 @@ const docTemplate = `{
                 "discussion_url": {
                     "type": "string",
                     "x-nullable": true
+                },
+                "distributors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.CitationPartyResponseDTO"
+                    }
                 },
                 "document_id": {
                     "type": "integer"
@@ -10909,6 +11928,14 @@ const docTemplate = `{
                         "unavailable"
                     ]
                 },
+                "publisher_party": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/http.CitationPartyResponseDTO"
+                        }
+                    ],
+                    "x-nullable": true
+                },
                 "publisher_unavailable_reason": {
                     "type": "string",
                     "x-nullable": true
@@ -10940,95 +11967,158 @@ const docTemplate = `{
                 }
             }
         },
-        "http.ClaimEvidenceRequest": {
+        "http.ClaimEvidenceCorrectionResponseDTO": {
             "type": "object",
-            "required": [
-                "content_id",
-                "locator",
-                "stance"
-            ],
             "properties": {
-                "confidence": {
-                    "type": "number"
-                },
-                "content_id": {
+                "evidence_id": {
                     "type": "integer"
                 },
-                "excerpt": {
-                    "type": "string"
+                "evidence_state": {
+                    "$ref": "#/definitions/http.EvidenceStateResponseDTO"
                 },
-                "locator": {
-                    "type": "string"
+                "evidence_version": {
+                    "type": "integer"
                 },
-                "stance": {
-                    "type": "string"
+                "feedback_id": {
+                    "type": "integer"
                 }
             }
         },
-        "http.ClaimRequest": {
+        "http.ClaimEvidenceMutationResponseDTO": {
             "type": "object",
-            "required": [
-                "claim_hash",
-                "evidence",
-                "id",
-                "normalized_claim",
-                "status",
-                "version"
-            ],
             "properties": {
-                "claim_hash": {
+                "claim_id": {
+                    "type": "integer"
+                },
+                "claim_version": {
+                    "type": "integer"
+                },
+                "evidence_id": {
+                    "type": "integer"
+                },
+                "evidence_state": {
+                    "$ref": "#/definitions/http.EvidenceStateResponseDTO"
+                },
+                "evidence_version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.ClaimEvidenceResponseDTO": {
+            "type": "object",
+            "properties": {
+                "availability": {
                     "type": "string"
                 },
-                "confidence": {
-                    "type": "number"
+                "canonical_url": {
+                    "type": "string"
                 },
-                "evidence": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": {
-                        "$ref": "#/definitions/http.ClaimEvidenceRequest"
-                    }
+                "captured_at": {
+                    "type": "string"
+                },
+                "claim_id": {
+                    "type": "integer"
+                },
+                "content_family_id": {
+                    "type": "integer"
+                },
+                "content_family_member_version": {
+                    "type": "integer"
+                },
+                "content_origin": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "decision_origin": {
+                    "type": "string"
+                },
+                "document_version_id": {
+                    "type": "integer"
+                },
+                "exact_quote": {
+                    "type": "string"
+                },
+                "extraction_schema_version": {
+                    "type": "string"
                 },
                 "id": {
                     "type": "integer"
                 },
-                "manual_locked": {
-                    "type": "boolean"
+                "lineage_decision_id": {
+                    "type": "integer"
                 },
-                "normalized_claim": {
+                "lineage_root_document_version_id": {
+                    "type": "integer"
+                },
+                "markdown_anchor": {
                     "type": "string"
                 },
-                "status": {
+                "object": {
                     "type": "string"
+                },
+                "plaintext_sha256": {
+                    "type": "string"
+                },
+                "predicate": {
+                    "type": "string"
+                },
+                "prefix": {
+                    "type": "string"
+                },
+                "published_at": {
+                    "type": "string"
+                },
+                "publisher": {
+                    "type": "string"
+                },
+                "quote_sha256": {
+                    "type": "string"
+                },
+                "relation": {
+                    "type": "string"
+                },
+                "selector_version": {
+                    "type": "string"
+                },
+                "source_record_url": {
+                    "type": "string"
+                },
+                "subject": {
+                    "type": "string"
+                },
+                "suffix": {
+                    "type": "string"
+                },
+                "text_quote_selector_id": {
+                    "type": "integer"
+                },
+                "utf8_byte_end": {
+                    "type": "integer"
+                },
+                "utf8_byte_start": {
+                    "type": "integer"
                 },
                 "version": {
                     "type": "integer"
                 }
             }
         },
-        "http.ClaimResponse": {
+        "http.ClaimQualifierRequestDTO": {
             "type": "object",
+            "required": [
+                "key",
+                "value"
+            ],
             "properties": {
-                "claim_hash": {
-                    "type": "string"
+                "key": {
+                    "type": "string",
+                    "maxLength": 64
                 },
-                "confidence": {
-                    "type": "number"
-                },
-                "event_id": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "normalized_claim": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "version": {
-                    "type": "integer"
+                "value": {
+                    "type": "string",
+                    "maxLength": 512
                 }
             }
         },
@@ -11316,6 +12406,50 @@ const docTemplate = `{
                 }
             }
         },
+        "http.ContentLineageFeedbackResponseDTO": {
+            "type": "object",
+            "properties": {
+                "document_version_id": {
+                    "type": "integer"
+                },
+                "feedback_id": {
+                    "type": "integer"
+                },
+                "feedback_type": {
+                    "type": "string"
+                },
+                "lineage_decision_id": {
+                    "type": "integer"
+                },
+                "original_content_family_id": {
+                    "type": "integer"
+                },
+                "original_parent_document_version_id": {
+                    "type": "integer"
+                },
+                "original_relation": {
+                    "type": "string"
+                },
+                "result_content_family_id": {
+                    "type": "integer"
+                },
+                "result_content_family_version": {
+                    "type": "integer"
+                },
+                "result_lineage_decision_id": {
+                    "type": "integer"
+                },
+                "result_parent_document_version_id": {
+                    "type": "integer"
+                },
+                "result_relation": {
+                    "type": "string"
+                },
+                "reused": {
+                    "type": "boolean"
+                }
+            }
+        },
         "http.ContentMetricsResponse": {
             "type": "object",
             "properties": {
@@ -11375,6 +12509,10 @@ const docTemplate = `{
                 },
                 "dedupe_version": {
                     "type": "string",
+                    "x-nullable": true
+                },
+                "document_version_id": {
+                    "type": "integer",
                     "x-nullable": true
                 },
                 "event_id": {
@@ -11495,6 +12633,20 @@ const docTemplate = `{
                 }
             }
         },
+        "http.ContentResult-http_ContentLineageFeedbackResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.ContentLineageFeedbackResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "http.ContentResult-http_ContentPageResponse": {
             "type": "object",
             "properties": {
@@ -11517,6 +12669,34 @@ const docTemplate = `{
                 },
                 "data": {
                     "$ref": "#/definitions/http.ContentResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ContentResult-http_DocumentMatchPageResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.DocumentMatchPageResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ContentResult-http_OverrideDocumentMatchResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.OverrideDocumentMatchResponseDTO"
                 },
                 "message": {
                     "type": "string"
@@ -11607,6 +12787,20 @@ const docTemplate = `{
                 }
             }
         },
+        "http.ContentResult-http_TextQuoteSelectorResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.TextQuoteSelectorResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "http.ContentResult-http_VersionedDocumentResponseDTO": {
             "type": "object",
             "properties": {
@@ -11635,6 +12829,34 @@ const docTemplate = `{
                 }
             }
         },
+        "http.CorrectClaimEvidenceRequestDTO": {
+            "type": "object",
+            "required": [
+                "expected_claim_version",
+                "reason_code",
+                "result_relation",
+                "result_text_quote_selector_id"
+            ],
+            "properties": {
+                "expected_claim_version": {
+                    "type": "integer"
+                },
+                "note": {
+                    "type": "string",
+                    "maxLength": 1000
+                },
+                "reason_code": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "result_relation": {
+                    "type": "string"
+                },
+                "result_text_quote_selector_id": {
+                    "type": "integer"
+                }
+            }
+        },
         "http.CreateMetricCapabilityProfileRequest": {
             "type": "object",
             "required": [
@@ -11645,11 +12867,6 @@ const docTemplate = `{
                 "source_type"
             ],
             "properties": {
-                "credibility_weight": {
-                    "type": "number",
-                    "maximum": 1,
-                    "minimum": 0
-                },
                 "independence_strategy": {
                     "type": "string",
                     "enum": [
@@ -12104,6 +13321,118 @@ const docTemplate = `{
                 }
             }
         },
+        "http.DocumentMatchPageResponseDTO": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.DocumentMatchResponseDTO"
+                    }
+                },
+                "next_cursor": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.DocumentMatchResponseDTO": {
+            "type": "object",
+            "properties": {
+                "automatic_decision": {
+                    "type": "string",
+                    "enum": [
+                        "accepted",
+                        "review",
+                        "rejected"
+                    ]
+                },
+                "calibration_version": {
+                    "type": "string"
+                },
+                "compiled_profile_id": {
+                    "type": "integer"
+                },
+                "decided_at": {
+                    "type": "string"
+                },
+                "degraded": {
+                    "type": "boolean"
+                },
+                "document_version_id": {
+                    "type": "integer"
+                },
+                "effective_decision": {
+                    "type": "string",
+                    "enum": [
+                        "accepted",
+                        "review",
+                        "rejected"
+                    ]
+                },
+                "match_decision_id": {
+                    "type": "integer"
+                },
+                "matching_algorithm_version": {
+                    "type": "string"
+                },
+                "monitor_id": {
+                    "type": "integer"
+                },
+                "monitor_version_id": {
+                    "type": "integer"
+                },
+                "reason_codes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "relevance_probability": {
+                    "type": "number",
+                    "x-nullable": true
+                },
+                "relevance_profile_id": {
+                    "type": "integer"
+                },
+                "reranker_version": {
+                    "type": "string"
+                },
+                "resource_version": {
+                    "type": "integer"
+                },
+                "rrf_score": {
+                    "type": "number"
+                },
+                "signals": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.DocumentMatchSignalResponseDTO"
+                    }
+                }
+            }
+        },
+        "http.DocumentMatchSignalResponseDTO": {
+            "type": "object",
+            "properties": {
+                "algorithm_version": {
+                    "type": "string"
+                },
+                "channel": {
+                    "type": "string",
+                    "enum": [
+                        "lexical",
+                        "semantic",
+                        "structured"
+                    ]
+                },
+                "rank": {
+                    "type": "integer"
+                },
+                "raw_score": {
+                    "type": "number"
+                }
+            }
+        },
         "http.DocumentResponse": {
             "type": "object",
             "properties": {
@@ -12142,6 +13471,9 @@ const docTemplate = `{
                 }
             }
         },
+        "http.EmptyResponseDTO": {
+            "type": "object"
+        },
         "http.EvaluateRightsActionsRequestDTO": {
             "type": "object",
             "properties": {
@@ -12155,6 +13487,50 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "subject_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.EventHeatV2ResponseDTO": {
+            "type": "object",
+            "properties": {
+                "acceleration": {
+                    "type": "number"
+                },
+                "coverage": {
+                    "type": "number"
+                },
+                "heat_score": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "independent_lineage_root_count": {
+                    "type": "integer"
+                },
+                "micro_event_version": {
+                    "type": "integer"
+                },
+                "normalized_engagement": {
+                    "type": "number"
+                },
+                "reason_codes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "recency": {
+                    "type": "number"
+                },
+                "velocity": {
+                    "type": "number"
+                },
+                "window_ended_at": {
+                    "type": "string"
+                },
+                "window_started_at": {
                     "type": "string"
                 }
             }
@@ -12324,20 +13700,6 @@ const docTemplate = `{
                 }
             }
         },
-        "http.EventResult-http_ClaimResponse": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "integer"
-                },
-                "data": {
-                    "$ref": "#/definitions/http.ClaimResponse"
-                },
-                "message": {
-                    "type": "string"
-                }
-            }
-        },
         "http.EventResult-http_EventIntelligenceResponse": {
             "type": "object",
             "properties": {
@@ -12416,20 +13778,6 @@ const docTemplate = `{
                 },
                 "data": {
                     "$ref": "#/definitions/http.EventUpdatePageResponse"
-                },
-                "message": {
-                    "type": "string"
-                }
-            }
-        },
-        "http.EventResult-http_ExtractionRegenerationResponse": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "integer"
-                },
-                "data": {
-                    "$ref": "#/definitions/http.ExtractionRegenerationResponse"
                 },
                 "message": {
                     "type": "string"
@@ -12605,28 +13953,80 @@ const docTemplate = `{
                 }
             }
         },
-        "http.ExtractionRegenerationResponse": {
+        "http.EvidenceStateResponseDTO": {
             "type": "object",
             "properties": {
-                "claim_count": {
-                    "type": "integer"
-                },
-                "entity_count": {
-                    "type": "integer"
-                },
-                "event_id": {
-                    "type": "integer"
-                },
-                "reason_code": {
+                "algorithm_version": {
                     "type": "string"
                 },
-                "reused": {
-                    "type": "boolean"
+                "calculated_at": {
+                    "type": "string"
                 },
-                "run_id": {
+                "event_version": {
                     "type": "integer"
                 },
-                "status": {
+                "id": {
+                    "type": "integer"
+                },
+                "independent_origin_count": {
+                    "type": "integer"
+                },
+                "reason_codes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "state": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.EvidenceSummaryResponseDTO": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "event_version": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "sentences": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.EvidenceSummarySentenceResponseDTO"
+                    }
+                },
+                "summary_profile_version": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.EvidenceSummarySentenceResponseDTO": {
+            "type": "object",
+            "properties": {
+                "claim_evidence_version_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "decision_origin": {
+                    "type": "string"
+                },
+                "editorial_note": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "ordinal": {
+                    "type": "integer"
+                },
+                "text": {
                     "type": "string"
                 }
             }
@@ -12708,9 +14108,6 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "content_velocity": {
-                    "type": "number"
-                },
-                "credibility": {
                     "type": "number"
                 },
                 "engagement": {
@@ -12853,9 +14250,6 @@ const docTemplate = `{
                 "claim_hash": {
                     "type": "string"
                 },
-                "confidence": {
-                    "type": "number"
-                },
                 "evidence": {
                     "type": "array",
                     "items": {
@@ -12871,9 +14265,6 @@ const docTemplate = `{
                 "normalized_claim": {
                     "type": "string"
                 },
-                "status": {
-                    "type": "string"
-                },
                 "version": {
                     "type": "integer"
                 }
@@ -12884,12 +14275,6 @@ const docTemplate = `{
             "properties": {
                 "canonical_name": {
                     "type": "string"
-                },
-                "confidence": {
-                    "type": "number"
-                },
-                "confirmed": {
-                    "type": "boolean"
                 },
                 "entity_id": {
                     "type": "integer"
@@ -12923,9 +14308,6 @@ const docTemplate = `{
         "http.IntelligenceEvidenceResponse": {
             "type": "object",
             "properties": {
-                "confidence": {
-                    "type": "number"
-                },
                 "content_id": {
                     "type": "integer"
                 },
@@ -13491,6 +14873,26 @@ const docTemplate = `{
                 }
             }
         },
+        "http.LocateTextQuoteSelectorRequestDTO": {
+            "type": "object",
+            "required": [
+                "exact_quote",
+                "normalization_version",
+                "plaintext_sha256"
+            ],
+            "properties": {
+                "exact_quote": {
+                    "type": "string",
+                    "maxLength": 4096
+                },
+                "normalization_version": {
+                    "type": "string"
+                },
+                "plaintext_sha256": {
+                    "type": "string"
+                }
+            }
+        },
         "http.LoginRequest": {
             "type": "object",
             "required": [
@@ -13627,9 +15029,6 @@ const docTemplate = `{
                 "archived_at": {
                     "type": "string"
                 },
-                "credibility_weight": {
-                    "type": "number"
-                },
                 "id": {
                     "type": "integer"
                 },
@@ -13668,6 +15067,261 @@ const docTemplate = `{
                 },
                 "version": {
                     "type": "integer"
+                }
+            }
+        },
+        "http.MicroEventEvidencePageResponseDTO": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.ClaimEvidenceResponseDTO"
+                    }
+                },
+                "next_cursor_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.MicroEventGovernanceRequestDTO": {
+            "type": "object",
+            "required": [
+                "action",
+                "expected_event_version",
+                "reason_code"
+            ],
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "content_family_id": {
+                    "type": "integer"
+                },
+                "expected_event_version": {
+                    "type": "integer"
+                },
+                "expected_member_version": {
+                    "type": "integer"
+                },
+                "expected_target_event_version": {
+                    "type": "integer"
+                },
+                "membership_decision_id": {
+                    "type": "integer"
+                },
+                "note": {
+                    "type": "string",
+                    "maxLength": 1000
+                },
+                "reason_code": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "target_micro_event_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.MicroEventGovernanceResponseDTO": {
+            "type": "object",
+            "properties": {
+                "feedback_id": {
+                    "type": "integer"
+                },
+                "source_event": {
+                    "$ref": "#/definitions/http.MicroEventGovernanceResultDTO"
+                },
+                "target_event": {
+                    "$ref": "#/definitions/http.MicroEventGovernanceResultDTO"
+                }
+            }
+        },
+        "http.MicroEventGovernanceResultDTO": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.MicroEventPageResponseDTO": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.MicroEventResponseDTO"
+                    }
+                },
+                "next_cursor_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.MicroEventResponseDTO": {
+            "type": "object",
+            "properties": {
+                "clustering_profile_version": {
+                    "type": "string"
+                },
+                "content_family_count": {
+                    "type": "integer"
+                },
+                "document_count": {
+                    "type": "integer"
+                },
+                "event_ended_at": {
+                    "type": "string"
+                },
+                "event_key": {
+                    "type": "string"
+                },
+                "event_started_at": {
+                    "type": "string"
+                },
+                "evidence_state": {
+                    "$ref": "#/definitions/http.EvidenceStateResponseDTO"
+                },
+                "evidence_summary": {
+                    "$ref": "#/definitions/http.EvidenceSummaryResponseDTO"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "identifier_keys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "latest_heat": {
+                    "$ref": "#/definitions/http.EventHeatV2ResponseDTO"
+                },
+                "location_keys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "primary_action_key": {
+                    "type": "string"
+                },
+                "primary_subject_key": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "storyline": {
+                    "$ref": "#/definitions/http.StorylineResponseDTO"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.MicroEventV2Result-http_ClaimEvidenceCorrectionResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.ClaimEvidenceCorrectionResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.MicroEventV2Result-http_ClaimEvidenceMutationResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.ClaimEvidenceMutationResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.MicroEventV2Result-http_MicroEventEvidencePageResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.MicroEventEvidencePageResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.MicroEventV2Result-http_MicroEventGovernanceResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.MicroEventGovernanceResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.MicroEventV2Result-http_MicroEventPageResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.MicroEventPageResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.MicroEventV2Result-http_MicroEventResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.MicroEventResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.MicroEventV2Result-internal_modules_event_transport_http_EmptyResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/internal_modules_event_transport_http.EmptyResponse"
+                },
+                "message": {
+                    "type": "string"
                 }
             }
         },
@@ -14333,88 +15987,148 @@ const docTemplate = `{
                 }
             }
         },
-        "http.NotificationPageResponse": {
-            "type": "object",
-            "properties": {
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/http.NotificationResponse"
-                    }
-                },
-                "next_after_id": {
-                    "type": "integer"
-                }
-            }
-        },
-        "http.NotificationPayloadResponse": {
-            "type": "object",
-            "properties": {
-                "severity": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "summary": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                }
-            }
-        },
-        "http.NotificationResponse": {
-            "type": "object",
-            "properties": {
-                "audience": {
-                    "type": "string"
-                },
-                "event_type": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "occurred_at": {
-                    "type": "string"
-                },
-                "payload": {
-                    "$ref": "#/definitions/http.NotificationPayloadResponse"
-                },
-                "resource_id": {
-                    "type": "integer"
-                },
-                "resource_type": {
-                    "type": "string"
-                }
-            }
-        },
-        "http.NotificationResult-http_NotificationPageResponse": {
+        "http.NotificationResult-http_EmptyResponseDTO": {
             "type": "object",
             "properties": {
                 "code": {
                     "type": "integer"
                 },
                 "data": {
-                    "$ref": "#/definitions/http.NotificationPageResponse"
+                    "$ref": "#/definitions/http.EmptyResponseDTO"
                 },
                 "message": {
                     "type": "string"
                 }
             }
         },
-        "http.NotificationResult-internal_modules_notification_transport_http_EmptyResponse": {
+        "http.NotificationResult-http_PushCapabilityResponseDTO": {
             "type": "object",
             "properties": {
                 "code": {
                     "type": "integer"
                 },
                 "data": {
-                    "$ref": "#/definitions/internal_modules_notification_transport_http.EmptyResponse"
+                    "$ref": "#/definitions/http.PushCapabilityResponseDTO"
                 },
                 "message": {
                     "type": "string"
+                }
+            }
+        },
+        "http.NotificationResult-http_PushSubscriptionListResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.PushSubscriptionListResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.NotificationResult-http_PushSubscriptionResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.PushSubscriptionResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.NotificationResult-http_UserNotificationPageResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.UserNotificationPageResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.OverrideDocumentMatchRequestDTO": {
+            "type": "object",
+            "required": [
+                "decision",
+                "reason_code"
+            ],
+            "properties": {
+                "decision": {
+                    "type": "string",
+                    "enum": [
+                        "accepted",
+                        "rejected"
+                    ]
+                },
+                "note": {
+                    "type": "string"
+                },
+                "reason_code": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.OverrideDocumentMatchResponseDTO": {
+            "type": "object",
+            "properties": {
+                "actor_user_id": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "decision": {
+                    "type": "string",
+                    "enum": [
+                        "accepted",
+                        "rejected"
+                    ]
+                },
+                "document_version_id": {
+                    "type": "integer"
+                },
+                "match_decision_id": {
+                    "type": "integer"
+                },
+                "monitor_id": {
+                    "type": "integer"
+                },
+                "monitor_version_id": {
+                    "type": "integer"
+                },
+                "note": {
+                    "type": "string"
+                },
+                "override_id": {
+                    "type": "integer"
+                },
+                "previous_effective_decision": {
+                    "type": "string",
+                    "enum": [
+                        "accepted",
+                        "review",
+                        "rejected"
+                    ]
+                },
+                "reason_code": {
+                    "type": "string"
+                },
+                "resource_version": {
+                    "type": "integer"
+                },
+                "reused": {
+                    "type": "boolean"
                 }
             }
         },
@@ -14487,11 +16201,17 @@ const docTemplate = `{
                         "type": "integer"
                     }
                 },
+                "excluded_term_count": {
+                    "type": "integer"
+                },
                 "included_rule_ids": {
                     "type": "array",
                     "items": {
                         "type": "integer"
                     }
+                },
+                "included_term_count": {
+                    "type": "integer"
                 },
                 "languages": {
                     "type": "array",
@@ -14690,6 +16410,104 @@ const docTemplate = `{
                 }
             }
         },
+        "http.PushCapabilityResponseDTO": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "type": "boolean"
+                },
+                "vapid_public_key": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.PushSubscriptionKeysRequestDTO": {
+            "type": "object",
+            "required": [
+                "auth",
+                "p256dh"
+            ],
+            "properties": {
+                "auth": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "p256dh": {
+                    "type": "string",
+                    "maxLength": 256
+                }
+            }
+        },
+        "http.PushSubscriptionListResponseDTO": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.PushSubscriptionResponseDTO"
+                    }
+                }
+            }
+        },
+        "http.PushSubscriptionResponseDTO": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "device_label": {
+                    "type": "string"
+                },
+                "expiration_reason": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "last_failure_at": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "last_success_at": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "monitor_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "quiet_end": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "quiet_start": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "active",
+                        "disabled",
+                        "expired"
+                    ]
+                },
+                "timezone": {
+                    "type": "string"
+                },
+                "ttl_seconds": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
         "http.RadarEventResponse": {
             "type": "object",
             "properties": {
@@ -14697,15 +16515,6 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "breadth": {
-                    "type": "number"
-                },
-                "confirmation": {
-                    "type": "string"
-                },
-                "confirmation_score": {
-                    "type": "number"
-                },
-                "data_confidence": {
                     "type": "number"
                 },
                 "event_id": {
@@ -14824,6 +16633,50 @@ const docTemplate = `{
                 }
             }
         },
+        "http.RecordClaimEvidenceRequestDTO": {
+            "type": "object",
+            "required": [
+                "document_version_id",
+                "expected_event_version",
+                "object",
+                "predicate",
+                "relation",
+                "subject",
+                "text_quote_selector_id"
+            ],
+            "properties": {
+                "document_version_id": {
+                    "type": "integer"
+                },
+                "expected_event_version": {
+                    "type": "integer"
+                },
+                "object": {
+                    "type": "string",
+                    "maxLength": 2000
+                },
+                "predicate": {
+                    "type": "string",
+                    "maxLength": 256
+                },
+                "qualifiers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.ClaimQualifierRequestDTO"
+                    }
+                },
+                "relation": {
+                    "type": "string"
+                },
+                "subject": {
+                    "type": "string",
+                    "maxLength": 512
+                },
+                "text_quote_selector_id": {
+                    "type": "integer"
+                }
+            }
+        },
         "http.RecordRightsDecisionBatchRequestDTO": {
             "type": "object",
             "properties": {
@@ -14864,6 +16717,55 @@ const docTemplate = `{
                 },
                 "idempotent_replay": {
                     "type": "boolean"
+                }
+            }
+        },
+        "http.RegisterPushSubscriptionRequestDTO": {
+            "type": "object",
+            "required": [
+                "device_label",
+                "endpoint",
+                "keys",
+                "monitor_ids",
+                "timezone",
+                "ttl_seconds"
+            ],
+            "properties": {
+                "device_label": {
+                    "type": "string",
+                    "maxLength": 80
+                },
+                "endpoint": {
+                    "type": "string",
+                    "maxLength": 4096
+                },
+                "keys": {
+                    "$ref": "#/definitions/http.PushSubscriptionKeysRequestDTO"
+                },
+                "monitor_ids": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "quiet_end": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "quiet_start": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "timezone": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "ttl_seconds": {
+                    "type": "integer",
+                    "maximum": 86400,
+                    "minimum": 60
                 }
             }
         },
@@ -15601,6 +17503,39 @@ const docTemplate = `{
                 }
             }
         },
+        "http.ReviewContentLineageRequestDTO": {
+            "type": "object",
+            "required": [
+                "expected_member_version",
+                "feedback_type",
+                "reason_code"
+            ],
+            "properties": {
+                "expected_member_version": {
+                    "type": "integer"
+                },
+                "expected_target_member_version": {
+                    "type": "integer"
+                },
+                "feedback_type": {
+                    "type": "string"
+                },
+                "note": {
+                    "type": "string",
+                    "maxLength": 1000
+                },
+                "reason_code": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "relation_override": {
+                    "type": "string"
+                },
+                "target_parent_document_version_id": {
+                    "type": "integer"
+                }
+            }
+        },
         "http.ReviewIntentExpansionCandidateRequestDTO": {
             "type": "object",
             "required": [
@@ -16083,8 +18018,20 @@ const docTemplate = `{
                 "content_scope": {
                     "type": "string"
                 },
+                "default_access_mode": {
+                    "type": "string"
+                },
+                "document_capture_mode": {
+                    "type": "string"
+                },
                 "follows_canonical_url": {
                     "type": "boolean"
+                },
+                "required_actions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "rights_status": {
                     "type": "string"
@@ -16381,6 +18328,32 @@ const docTemplate = `{
                 }
             }
         },
+        "http.StorylineResponseDTO": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "relation_profile_version": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "storyline_key": {
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
         "http.SubmitIntentExpansionRunRequestDTO": {
             "type": "object",
             "required": [
@@ -16517,6 +18490,54 @@ const docTemplate = `{
                 }
             }
         },
+        "http.TextQuoteSelectorResponseDTO": {
+            "type": "object",
+            "properties": {
+                "document_version_id": {
+                    "type": "integer"
+                },
+                "exact_quote": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "markdown_anchor": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "normalization_version": {
+                    "type": "string"
+                },
+                "plaintext_sha256": {
+                    "type": "string"
+                },
+                "prefix": {
+                    "type": "string"
+                },
+                "quote_sha256": {
+                    "type": "string"
+                },
+                "retention_until": {
+                    "type": "string"
+                },
+                "selector_version": {
+                    "type": "string"
+                },
+                "suffix": {
+                    "type": "string"
+                },
+                "utf8_byte_end": {
+                    "type": "integer"
+                },
+                "utf8_byte_start": {
+                    "type": "integer"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
         "http.TokenResponse": {
             "type": "object",
             "properties": {
@@ -16581,6 +18602,46 @@ const docTemplate = `{
                 "version": {
                     "type": "integer",
                     "example": 1
+                }
+            }
+        },
+        "http.UpdatePushSubscriptionRequestDTO": {
+            "type": "object",
+            "required": [
+                "device_label",
+                "monitor_ids",
+                "timezone",
+                "ttl_seconds"
+            ],
+            "properties": {
+                "device_label": {
+                    "type": "string",
+                    "maxLength": 80
+                },
+                "monitor_ids": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "quiet_end": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "quiet_start": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "timezone": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "ttl_seconds": {
+                    "type": "integer",
+                    "maximum": 86400,
+                    "minimum": 60
                 }
             }
         },
@@ -16677,6 +18738,64 @@ const docTemplate = `{
                 }
             }
         },
+        "http.UserNotificationPageResponseDTO": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.UserNotificationResponseDTO"
+                    }
+                },
+                "next_after_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.UserNotificationResponseDTO": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "deep_link": {
+                    "type": "string"
+                },
+                "event_type": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "monitor_id": {
+                    "type": "integer"
+                },
+                "occurred_at": {
+                    "type": "string"
+                },
+                "resource_id": {
+                    "type": "integer"
+                },
+                "resource_status": {
+                    "type": "string"
+                },
+                "resource_type": {
+                    "type": "string"
+                },
+                "resource_version": {
+                    "type": "integer"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
         "http.UserResponse": {
             "type": "object",
             "properties": {
@@ -16757,9 +18876,6 @@ const docTemplate = `{
             "type": "object"
         },
         "internal_modules_monitor_transport_http.EmptyResponse": {
-            "type": "object"
-        },
-        "internal_modules_notification_transport_http.EmptyResponse": {
             "type": "object"
         },
         "internal_modules_operations_transport_http.EmptyResponse": {

@@ -18,7 +18,6 @@ const componentLabels: Array<[keyof HotKeyAPI.HeatComponentResponse, string]> =
     ["source_breadth", "来源广度"],
     ["engagement", "互动表现"],
     ["recency", "证据新鲜度"],
-    ["credibility", "来源可信度"],
   ];
 
 export function EventHeatPanel({ heat, loading, error }: EventHeatPanelProps) {

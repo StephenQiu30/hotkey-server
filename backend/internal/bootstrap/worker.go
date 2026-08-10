@@ -7,6 +7,7 @@ import (
 	"time"
 
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/infrastructure/postgres"
+	notificationjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/infrastructure/jobs"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/config"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/queue"
@@ -180,6 +181,96 @@ func registerReportSchedulerLifecycle(lifecycle fx.Lifecycle, runner reportSched
 			select {
 			case <-done:
 				logger.Info("report scheduler stopped")
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+	})
+}
+
+func registerNotificationEmailDispatcherLifecycle(lifecycle fx.Lifecycle, dispatcher *notificationjobs.EmailDispatcher, cfg config.Config, logger *zap.Logger) {
+	var cancel context.CancelFunc
+	var done chan struct{}
+	interval := cfg.Notification.PollInterval
+	if interval <= 0 {
+		interval = time.Second
+	}
+	lifecycle.Append(fx.Hook{
+		OnStart: func(context.Context) error {
+			runContext, stop := context.WithCancel(context.Background())
+			cancel, done = stop, make(chan struct{})
+			go func() {
+				defer close(done)
+				ticker := time.NewTicker(interval)
+				defer ticker.Stop()
+				for {
+					if _, err := dispatcher.DispatchBatch(runContext, notificationjobs.DefaultEmailDispatchBatchSize); err != nil && !errors.Is(err, context.Canceled) {
+						logger.Error("notification email dispatch failed", zap.Error(err))
+					}
+					select {
+					case <-runContext.Done():
+						return
+					case <-ticker.C:
+					}
+				}
+			}()
+			logger.Info("notification email dispatcher started", zap.Duration("poll_interval", interval))
+			return nil
+		},
+		OnStop: func(ctx context.Context) error {
+			if cancel == nil {
+				return nil
+			}
+			cancel()
+			select {
+			case <-done:
+				logger.Info("notification email dispatcher stopped")
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+	})
+}
+
+func registerWebPushDispatcherLifecycle(lifecycle fx.Lifecycle, dispatcher *notificationjobs.WebPushDispatcher, cfg config.Config, logger *zap.Logger) {
+	var cancel context.CancelFunc
+	var done chan struct{}
+	interval := cfg.Notification.PollInterval
+	if interval <= 0 {
+		interval = time.Second
+	}
+	lifecycle.Append(fx.Hook{
+		OnStart: func(context.Context) error {
+			runContext, stop := context.WithCancel(context.Background())
+			cancel, done = stop, make(chan struct{})
+			go func() {
+				defer close(done)
+				ticker := time.NewTicker(interval)
+				defer ticker.Stop()
+				for {
+					if _, err := dispatcher.DispatchBatch(runContext, notificationjobs.DefaultWebPushDispatchBatchSize); err != nil && !errors.Is(err, context.Canceled) {
+						logger.Error("Web Push dispatch failed", zap.Error(err))
+					}
+					select {
+					case <-runContext.Done():
+						return
+					case <-ticker.C:
+					}
+				}
+			}()
+			logger.Info("Web Push dispatcher started", zap.Duration("poll_interval", interval))
+			return nil
+		},
+		OnStop: func(ctx context.Context) error {
+			if cancel == nil {
+				return nil
+			}
+			cancel()
+			select {
+			case <-done:
+				logger.Info("Web Push dispatcher stopped")
 				return nil
 			case <-ctx.Done():
 				return ctx.Err()

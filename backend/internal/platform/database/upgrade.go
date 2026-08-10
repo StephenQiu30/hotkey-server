@@ -21,15 +21,28 @@ const (
 // UpgradeInspection is a read-only, credential-free summary suitable for a
 // guarded dry run. It never contains row values, DSNs or object locations.
 type UpgradeInspection struct {
-	Target                    string
-	ServerVersion             int
-	CurrentCatalogFingerprint string
-	TargetSchemaSHA256        string
-	CurrentTables             []string
-	TargetTables              []string
-	MissingTables             []string
-	UnexpectedTables          []string
-	Blockers                  []string
+	Target                       string
+	ServerVersion                int
+	CurrentCatalogFingerprint    string
+	TargetSchemaSHA256           string
+	CurrentTables                []string
+	TargetTables                 []string
+	MissingTables                []string
+	UnexpectedTables             []string
+	MissingIndexCount            int
+	EstimatedRows                int64
+	CurrentTableBytes            int64
+	CurrentIndexBytes            int64
+	EstimatedIndexWorkspaceBytes int64
+	IndexEstimateVersion         string
+	LockRisk                     string
+	Extensions                   []UpgradeExtension
+	Blockers                     []string
+}
+
+type UpgradeExtension struct {
+	Name    string
+	Version string
 }
 
 func (inspection UpgradeInspection) CanApply() bool { return len(inspection.Blockers) == 0 }
@@ -114,15 +127,42 @@ func inspectCanonicalUpgradeTransaction(ctx context.Context, tx pgx.Tx, target s
 	if err != nil {
 		return UpgradeInspection{}, err
 	}
+	actualContract, err := databaseCatalogContract(ctx, tx, targetTables)
+	if err != nil {
+		return UpgradeInspection{}, fmt.Errorf("read current canonical contract: %w", err)
+	}
+	var estimatedRows float64
+	var currentTableBytes, currentIndexBytes int64
+	if err := tx.QueryRow(ctx, `
+SELECT COALESCE(sum(GREATEST(relation.reltuples,0)),0),
+       COALESCE(sum(pg_relation_size(relation.oid)),0),
+       COALESCE(sum(pg_indexes_size(relation.oid)),0)
+FROM pg_class AS relation
+JOIN pg_namespace AS namespace ON namespace.oid=relation.relnamespace
+WHERE namespace.nspname='public' AND relation.relkind='r'`).Scan(&estimatedRows, &currentTableBytes, &currentIndexBytes); err != nil {
+		return UpgradeInspection{}, fmt.Errorf("estimate canonical upgrade storage: %w", err)
+	}
+	extensions, err := canonicalUpgradeExtensions(ctx, tx)
+	if err != nil {
+		return UpgradeInspection{}, err
+	}
 	schemaDigest := sha256.Sum256([]byte(canonicaldb.SchemaSQL))
 	inspection := UpgradeInspection{
 		Target: target, ServerVersion: serverVersion,
-		CurrentCatalogFingerprint: fingerprint,
-		TargetSchemaSHA256:        hex.EncodeToString(schemaDigest[:]),
-		CurrentTables:             currentTables,
-		TargetTables:              targetTables,
-		MissingTables:             difference(targetTables, currentTables),
-		UnexpectedTables:          difference(currentTables, targetTables),
+		CurrentCatalogFingerprint:    fingerprint,
+		TargetSchemaSHA256:           hex.EncodeToString(schemaDigest[:]),
+		CurrentTables:                currentTables,
+		TargetTables:                 targetTables,
+		MissingTables:                difference(targetTables, currentTables),
+		UnexpectedTables:             difference(currentTables, targetTables),
+		MissingIndexCount:            len(difference(expectedContract.Indexes, actualContract.Indexes)),
+		EstimatedRows:                int64(estimatedRows),
+		CurrentTableBytes:            currentTableBytes,
+		CurrentIndexBytes:            currentIndexBytes,
+		EstimatedIndexWorkspaceBytes: currentIndexBytes + currentTableBytes/4,
+		IndexEstimateVersion:         "postgres-index-workspace-v1",
+		LockRisk:                     "access_exclusive_transactional",
+		Extensions:                   extensions,
 	}
 	if serverVersion < 160000 {
 		inspection.Blockers = append(inspection.Blockers, "postgresql_below_16")
@@ -140,4 +180,26 @@ func inspectCanonicalUpgradeTransaction(ctx context.Context, tx pgx.Tx, target s
 	}
 	slices.Sort(inspection.Blockers)
 	return inspection, nil
+}
+
+func canonicalUpgradeExtensions(ctx context.Context, tx pgx.Tx) ([]UpgradeExtension, error) {
+	rows, err := tx.Query(ctx, `
+SELECT extname,extversion FROM pg_extension
+WHERE extname IN ('pg_trgm','vector') ORDER BY extname`)
+	if err != nil {
+		return nil, fmt.Errorf("read canonical upgrade extensions: %w", err)
+	}
+	defer rows.Close()
+	extensions := make([]UpgradeExtension, 0, 2)
+	for rows.Next() {
+		var extension UpgradeExtension
+		if err := rows.Scan(&extension.Name, &extension.Version); err != nil {
+			return nil, fmt.Errorf("scan canonical upgrade extension: %w", err)
+		}
+		extensions = append(extensions, extension)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate canonical upgrade extensions: %w", err)
+	}
+	return extensions, nil
 }

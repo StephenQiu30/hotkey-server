@@ -42,6 +42,10 @@ func (repository *DerivedArtifactRepository) Reserve(ctx context.Context, comman
 		if command.ArtifactType == ingestionapplication.DerivedArtifactPlaintext && command.SHA256 != locked.version.ContentSHA256 {
 			return fmt.Errorf("%w: plaintext projection digest does not match document version", sharedrepository.ErrConflict)
 		}
+		if command.ArtifactType == ingestionapplication.DerivedArtifactMarkdown &&
+			(command.AnchorMap == nil || command.AnchorMap.PlaintextSHA256 != locked.version.ContentSHA256) {
+			return fmt.Errorf("%w: Markdown anchor map plaintext identity does not match document version", sharedrepository.ErrConflict)
+		}
 
 		row, err := scanDerivedArtifactRow(executor.QueryRowContext(transactionCtx, `
 SELECT `+derivedArtifactColumns+`
@@ -125,12 +129,22 @@ RETURNING `+derivedArtifactColumns, row.id))
 INSERT INTO derived_artifacts (
   source_connection_id,document_version_id,store_derived_rights_decision_id,
   retain_rights_decision_id,artifact_type,transformer_profile_sha256,
-  vault_relative_path,mime_type,sha256,size_bytes,retention_until
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+	  vault_relative_path,mime_type,sha256,size_bytes,
+	  anchor_normalization_version,anchor_map_profile_version,anchor_plaintext_sha256,anchor_markdown_sha256,anchor_map_sha256,
+	  retention_until
+	) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
 RETURNING `+derivedArtifactColumns,
 			locked.sourceConnectionID, command.DocumentVersionID, command.StoreDerivedRightsDecisionID,
 			command.RetainRightsDecisionID, string(command.ArtifactType), command.TransformerProfileSHA256,
-			vaultRelativePath, command.MIMEType, command.SHA256, command.SizeBytes, retentionUntil))
+			vaultRelativePath, command.MIMEType, command.SHA256, command.SizeBytes,
+			anchorMapDatabaseValue(command.AnchorMap, func(value ingestionapplication.DerivedArtifactAnchorMapDTO) string { return value.NormalizationVersion }),
+			anchorMapDatabaseValue(command.AnchorMap, func(value ingestionapplication.DerivedArtifactAnchorMapDTO) string {
+				return value.AnchorMapProfileVersion
+			}),
+			anchorMapDatabaseValue(command.AnchorMap, func(value ingestionapplication.DerivedArtifactAnchorMapDTO) string { return value.PlaintextSHA256 }),
+			anchorMapDatabaseValue(command.AnchorMap, func(value ingestionapplication.DerivedArtifactAnchorMapDTO) string { return value.MarkdownSHA256 }),
+			anchorMapDatabaseValue(command.AnchorMap, func(value ingestionapplication.DerivedArtifactAnchorMapDTO) string { return value.AnchorMapSHA256 }),
+			retentionUntil))
 		if err != nil {
 			return mapDerivedArtifactDatabaseError(err)
 		}
@@ -198,6 +212,9 @@ SELECT `+derivedArtifactColumns+` FROM derived_artifacts WHERE id=$1 FOR UPDATE`
 		}
 		if !displayRightsCurrent {
 			return fmt.Errorf("%w: readable document display rights changed before commit", sharedrepository.ErrConflict)
+		}
+		if err := persistExactDocumentAnchorBlocks(transactionCtx, executor, row, command.AnchorBlocks); err != nil {
+			return err
 		}
 		if row.lifecycleState == ingestionapplication.DerivedArtifactAvailable {
 			result = existingResult
@@ -333,7 +350,8 @@ RETURNING `+derivedArtifactColumns, command.ArtifactID))
 const derivedArtifactColumns = `
 id,source_connection_id,document_version_id,store_derived_rights_decision_id,
 retain_rights_decision_id,artifact_type,transformer_profile_sha256,vault_relative_path,
-mime_type,sha256,size_bytes,lifecycle_state,active,failure_code,available_at,
+	mime_type,sha256,size_bytes,anchor_normalization_version,anchor_map_profile_version,
+	anchor_plaintext_sha256,anchor_markdown_sha256,anchor_map_sha256,lifecycle_state,active,failure_code,available_at,
 retention_until,created_at,updated_at`
 
 var derivedArtifactFailureCodePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
@@ -344,15 +362,17 @@ type projectionDocumentVersionLock struct {
 }
 
 type derivedArtifactRow struct {
-	id, sourceConnectionID, documentVersionID                 int64
-	storeDerivedRightsDecisionID, retainRightsDecisionID      int64
-	artifactType, transformerProfileSHA256, vaultRelativePath string
-	mimeType, sha256, lifecycleState                          string
-	sizeBytes                                                 int64
-	active                                                    bool
-	failureCode                                               sql.NullString
-	availableAt                                               sql.NullTime
-	retentionUntil, createdAt, updatedAt                      time.Time
+	id, sourceConnectionID, documentVersionID                    int64
+	storeDerivedRightsDecisionID, retainRightsDecisionID         int64
+	artifactType, transformerProfileSHA256, vaultRelativePath    string
+	mimeType, sha256, lifecycleState                             string
+	anchorNormalizationVersion, anchorMapProfileVersion          sql.NullString
+	anchorPlaintextSHA256, anchorMarkdownSHA256, anchorMapSHA256 sql.NullString
+	sizeBytes                                                    int64
+	active                                                       bool
+	failureCode                                                  sql.NullString
+	availableAt                                                  sql.NullTime
+	retentionUntil, createdAt, updatedAt                         time.Time
 }
 
 func scanDerivedArtifactRow(scanner interface{ Scan(...any) error }) (derivedArtifactRow, error) {
@@ -361,7 +381,9 @@ func scanDerivedArtifactRow(scanner interface{ Scan(...any) error }) (derivedArt
 		&row.id, &row.sourceConnectionID, &row.documentVersionID,
 		&row.storeDerivedRightsDecisionID, &row.retainRightsDecisionID,
 		&row.artifactType, &row.transformerProfileSHA256, &row.vaultRelativePath,
-		&row.mimeType, &row.sha256, &row.sizeBytes, &row.lifecycleState, &row.active,
+		&row.mimeType, &row.sha256, &row.sizeBytes,
+		&row.anchorNormalizationVersion, &row.anchorMapProfileVersion, &row.anchorPlaintextSHA256, &row.anchorMarkdownSHA256, &row.anchorMapSHA256,
+		&row.lifecycleState, &row.active,
 		&row.failureCode, &row.availableAt, &row.retentionUntil, &row.createdAt, &row.updatedAt,
 	)
 	return row, err
@@ -378,6 +400,13 @@ func derivedArtifactDTOFromRow(row derivedArtifactRow) (ingestionapplication.Der
 		LifecycleState: row.lifecycleState, Active: row.active,
 		FailureCode: row.failureCode.String, AvailableAt: optionalArtifactTime(row.availableAt),
 		RetentionUntil: row.retentionUntil.UTC(), CreatedAt: row.createdAt.UTC(), UpdatedAt: row.updatedAt.UTC(),
+	}
+	if row.anchorMapSHA256.Valid {
+		artifact.AnchorMap = &ingestionapplication.DerivedArtifactAnchorMapDTO{
+			NormalizationVersion: row.anchorNormalizationVersion.String, AnchorMapProfileVersion: row.anchorMapProfileVersion.String,
+			PlaintextSHA256: row.anchorPlaintextSHA256.String, MarkdownSHA256: row.anchorMarkdownSHA256.String,
+			AnchorMapSHA256: row.anchorMapSHA256.String,
+		}
 	}
 	if err := ingestionapplication.ValidateDerivedArtifactDTO(artifact); err != nil {
 		return ingestionapplication.DerivedArtifactDTO{}, fmt.Errorf("invalid derived artifact row: %w", err)
@@ -432,7 +461,97 @@ func sameDerivedArtifactProjectionFacts(row derivedArtifactRow, documentID int64
 	return row.documentVersionID == command.DocumentVersionID && row.artifactType == string(command.ArtifactType) &&
 		row.transformerProfileSHA256 == command.TransformerProfileSHA256 &&
 		row.vaultRelativePath == derivedArtifactRelativePath(documentID, command.DocumentVersionID, command.ArtifactType, command.TransformerProfileSHA256) &&
-		row.mimeType == command.MIMEType && row.sha256 == command.SHA256 && row.sizeBytes == command.SizeBytes
+		row.mimeType == command.MIMEType && row.sha256 == command.SHA256 && row.sizeBytes == command.SizeBytes &&
+		sameDerivedArtifactRowAnchorMap(row, command.AnchorMap)
+}
+
+func sameDerivedArtifactRowAnchorMap(row derivedArtifactRow, value *ingestionapplication.DerivedArtifactAnchorMapDTO) bool {
+	if value == nil {
+		return !row.anchorNormalizationVersion.Valid && !row.anchorMapProfileVersion.Valid && !row.anchorPlaintextSHA256.Valid &&
+			!row.anchorMarkdownSHA256.Valid && !row.anchorMapSHA256.Valid
+	}
+	return row.anchorNormalizationVersion.Valid && row.anchorNormalizationVersion.String == value.NormalizationVersion &&
+		row.anchorMapProfileVersion.Valid && row.anchorMapProfileVersion.String == value.AnchorMapProfileVersion &&
+		row.anchorPlaintextSHA256.Valid && row.anchorPlaintextSHA256.String == value.PlaintextSHA256 &&
+		row.anchorMarkdownSHA256.Valid && row.anchorMarkdownSHA256.String == value.MarkdownSHA256 &&
+		row.anchorMapSHA256.Valid && row.anchorMapSHA256.String == value.AnchorMapSHA256
+}
+
+func anchorMapDatabaseValue(value *ingestionapplication.DerivedArtifactAnchorMapDTO, field func(ingestionapplication.DerivedArtifactAnchorMapDTO) string) any {
+	if value == nil {
+		return nil
+	}
+	return field(*value)
+}
+
+func persistExactDocumentAnchorBlocks(ctx context.Context, executor documentVersionExecutor, row derivedArtifactRow, blocks []ingestionapplication.DocumentAnchorBlockDTO) error {
+	identity := derivedArtifactAnchorMapDTOFromRow(row)
+	if identity == nil {
+		if len(blocks) != 0 {
+			return fmt.Errorf("%w: plaintext artifact cannot persist anchor blocks", sharedrepository.ErrConflict)
+		}
+		var count int
+		if err := executor.QueryRowContext(ctx, `SELECT count(*) FROM document_anchor_blocks WHERE derived_artifact_id=$1`, row.id).Scan(&count); err != nil {
+			return mapDerivedArtifactDatabaseError(err)
+		}
+		if count != 0 {
+			return fmt.Errorf("%w: plaintext artifact has persisted anchor blocks", sharedrepository.ErrConflict)
+		}
+		return nil
+	}
+	if err := ingestionapplication.ValidatePersistedDocumentAnchorMap(identity, blocks); err != nil {
+		return fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	var existingCount int
+	if err := executor.QueryRowContext(ctx, `SELECT count(*) FROM document_anchor_blocks WHERE derived_artifact_id=$1`, row.id).Scan(&existingCount); err != nil {
+		return mapDerivedArtifactDatabaseError(err)
+	}
+	if existingCount == 0 {
+		for _, block := range blocks {
+			if _, err := executor.ExecContext(ctx, `
+INSERT INTO document_anchor_blocks (
+  derived_artifact_id,anchor_map_sha256,block_ordinal,
+  plaintext_utf8_byte_start,plaintext_utf8_byte_end,
+  markdown_utf8_byte_start,markdown_utf8_byte_end,markdown_anchor
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, row.id, identity.AnchorMapSHA256, block.Ordinal,
+				block.PlaintextUTF8ByteStart, block.PlaintextUTF8ByteEnd,
+				block.MarkdownUTF8ByteStart, block.MarkdownUTF8ByteEnd, block.MarkdownAnchor); err != nil {
+				return mapDerivedArtifactDatabaseError(err)
+			}
+		}
+		existingCount = len(blocks)
+	}
+	if existingCount != len(blocks) {
+		return fmt.Errorf("%w: persisted document anchor block set differs", sharedrepository.ErrConflict)
+	}
+	for _, expected := range blocks {
+		var actual ingestionapplication.DocumentAnchorBlockDTO
+		var mapSHA string
+		if err := executor.QueryRowContext(ctx, `
+SELECT block_ordinal,plaintext_utf8_byte_start,plaintext_utf8_byte_end,
+       markdown_utf8_byte_start,markdown_utf8_byte_end,markdown_anchor,anchor_map_sha256
+FROM document_anchor_blocks WHERE derived_artifact_id=$1 AND block_ordinal=$2`, row.id, expected.Ordinal).Scan(
+			&actual.Ordinal, &actual.PlaintextUTF8ByteStart, &actual.PlaintextUTF8ByteEnd,
+			&actual.MarkdownUTF8ByteStart, &actual.MarkdownUTF8ByteEnd, &actual.MarkdownAnchor, &mapSHA,
+		); err != nil {
+			return mapDerivedArtifactDatabaseError(err)
+		}
+		if actual != expected || mapSHA != identity.AnchorMapSHA256 {
+			return fmt.Errorf("%w: persisted document anchor block differs", sharedrepository.ErrConflict)
+		}
+	}
+	return nil
+}
+
+func derivedArtifactAnchorMapDTOFromRow(row derivedArtifactRow) *ingestionapplication.DerivedArtifactAnchorMapDTO {
+	if !row.anchorMapSHA256.Valid {
+		return nil
+	}
+	return &ingestionapplication.DerivedArtifactAnchorMapDTO{
+		NormalizationVersion: row.anchorNormalizationVersion.String, AnchorMapProfileVersion: row.anchorMapProfileVersion.String,
+		PlaintextSHA256: row.anchorPlaintextSHA256.String, MarkdownSHA256: row.anchorMarkdownSHA256.String,
+		AnchorMapSHA256: row.anchorMapSHA256.String,
+	}
 }
 
 func derivedArtifactReceiptMatches(row derivedArtifactRow, documentID int64, receipt ingestionapplication.ProjectionReceiptDTO) bool {

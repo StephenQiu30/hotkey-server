@@ -19,25 +19,28 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/evidencecapture"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/sourcenet"
 )
 
 const (
-	sourceCode           = "bing_grounding"
-	toolName             = "web_search"
-	featureHeader        = "Toolboxes=V1Preview"
-	protocolVersion      = "2025-03-26"
-	maxQueryCharacters   = 1024
-	maxResponseBodyBytes = 4 << 20
-	maxRedirects         = 3
-	modelGeneratedTitle  = "Microsoft Foundry Web Search（模型生成的派生证据）"
-	modelGeneratedAuthor = "Microsoft Foundry Web Search（模型生成）"
+	sourceCode              = "bing_grounding"
+	collectorProfileVersion = "bing-foundry-mcp-response-v1"
+	toolName                = "web_search"
+	featureHeader           = "Toolboxes=V1Preview"
+	protocolVersion         = "2025-03-26"
+	maxQueryCharacters      = 1024
+	maxResponseBodyBytes    = 4 << 20
+	maxRedirects            = 3
+	modelGeneratedTitle     = "Microsoft Foundry Web Search（模型生成的派生证据）"
+	modelGeneratedAuthor    = "Microsoft Foundry Web Search（模型生成）"
 )
 
 var (
@@ -127,6 +130,23 @@ type groundingMeta struct {
 		Query   string   `json:"query"`
 		Queries []string `json:"queries"`
 	} `json:"action"`
+}
+
+type fetchedRPCResponse struct {
+	rawPayload    []byte
+	selectedStart int64
+	selectedEnd   int64
+	statusCode    int
+	requestedURL  string
+	finalURL      string
+	redirectChain []string
+	headers       http.Header
+	capturedAt    time.Time
+}
+
+func (value fetchedRPCResponse) snapshot() (domain.EvidenceSnapshot, error) {
+	return evidencecapture.NewHTTPSnapshot(value.rawPayload, "text/event-stream", collectorProfileVersion, value.requestedURL, value.finalURL,
+		value.redirectChain, value.statusCode, value.headers, value.capturedAt)
 }
 
 type citation struct {
@@ -239,7 +259,7 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 	if err != nil {
 		return result, err
 	}
-	envelope, err := connector.postRPC(ctx, token, session, rpcRequest{
+	envelope, captured, err := connector.postRPCCaptured(ctx, token, session, rpcRequest{
 		JSONRPC: "2.0", ID: 3, Method: "tools/call",
 		Params: map[string]any{"name": selectedTool, "arguments": map[string]string{"search_query": query}},
 	})
@@ -250,10 +270,30 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 	if envelope.Error != nil || len(envelope.Result) == 0 || json.Unmarshal(envelope.Result, &call) != nil || call.IsError {
 		return result, parse("invalid Foundry Web Search response")
 	}
-	item, err := connector.mapResult(call, request.QuerySignature, query)
+	item, err := connector.mapResult(call, request.QuerySignature, query, captured.capturedAt)
 	if err != nil {
 		return result, parse("invalid Foundry Web Search evidence")
 	}
+	snapshot, err := captured.snapshot()
+	if err != nil {
+		return result, parse("capture Foundry Web Search response")
+	}
+	selected := captured.rawPayload[captured.selectedStart:captured.selectedEnd]
+	selectedDigest := sha256.Sum256(selected)
+	start, end := captured.selectedStart, captured.selectedEnd
+	item.EvidenceReferences = []domain.EvidenceReference{{
+		SnapshotKey: snapshot.Key, Usage: domain.EvidenceUsageDocumentSource, LocatorType: domain.EvidenceLocatorByteRange,
+		LocatorValue: "bytes[" + strconv.FormatInt(start, 10) + ":" + strconv.FormatInt(end, 10) + "]",
+		ByteStart:    &start, ByteEnd: &end, SelectedPayloadSHA256: hex.EncodeToString(selectedDigest[:]),
+		SelectorVersion: domain.ByteRangeSelectorVersion,
+	}}
+	item.SnapshotKey = snapshot.Key
+	item.ItemLocator = item.EvidenceReferences[0].LocatorValue
+	item, err = domain.NormalizeSourceItem(item)
+	if err != nil {
+		return result, parse("normalize Foundry Web Search evidence")
+	}
+	result.Snapshots = append(result.Snapshots, snapshot)
 	result.Items = append(result.Items, item)
 	return result, nil
 }
@@ -287,7 +327,7 @@ func (connector *Connector) Health(ctx context.Context, connection domain.Source
 }
 
 func (connector *Connector) initialize(ctx context.Context, token string) (string, string, error) {
-	envelope, session, err := connector.post(ctx, token, "", rpcRequest{
+	envelope, session, _, err := connector.post(ctx, token, "", rpcRequest{
 		JSONRPC: "2.0", ID: 1, Method: "initialize",
 		Params: map[string]any{
 			"protocolVersion": protocolVersion, "capabilities": map[string]any{},
@@ -337,44 +377,53 @@ func (connector *Connector) notifyInitialized(ctx context.Context, token, sessio
 }
 
 func (connector *Connector) postRPC(ctx context.Context, token, session string, value rpcRequest) (rpcEnvelope, error) {
-	envelope, _, err := connector.post(ctx, token, session, value, false)
+	envelope, _, _, err := connector.post(ctx, token, session, value, false)
 	return envelope, err
 }
 
-func (connector *Connector) post(ctx context.Context, token, session string, value rpcRequest, captureSession bool) (rpcEnvelope, string, error) {
+func (connector *Connector) postRPCCaptured(ctx context.Context, token, session string, value rpcRequest) (rpcEnvelope, fetchedRPCResponse, error) {
+	envelope, _, captured, err := connector.post(ctx, token, session, value, false)
+	return envelope, captured, err
+}
+
+func (connector *Connector) post(ctx context.Context, token, session string, value rpcRequest, captureSession bool) (rpcEnvelope, string, fetchedRPCResponse, error) {
 	payload, err := json.Marshal(value)
 	if err != nil {
-		return rpcEnvelope{}, "", permanent("encode Foundry MCP request")
+		return rpcEnvelope{}, "", fetchedRPCResponse{}, permanent("encode Foundry MCP request")
 	}
 	request, err := connector.request(ctx, token, session, payload)
 	if err != nil {
-		return rpcEnvelope{}, "", err
+		return rpcEnvelope{}, "", fetchedRPCResponse{}, err
 	}
 	response, err := connector.http.Do(request)
 	if err != nil {
-		return rpcEnvelope{}, "", requestError(err)
+		return rpcEnvelope{}, "", fetchedRPCResponse{}, requestError(err)
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		status := response.StatusCode
 		closeResponse(response)
-		return rpcEnvelope{}, "", statusError(status)
+		return rpcEnvelope{}, "", fetchedRPCResponse{}, statusError(status)
 	}
-	responsePayload, err := readPayload(response)
+	responsePayload, selectedStart, selectedEnd, rawPayload, err := readPayload(response)
 	if err != nil {
-		return rpcEnvelope{}, "", err
+		return rpcEnvelope{}, "", fetchedRPCResponse{}, err
 	}
 	var envelope rpcEnvelope
 	if json.Unmarshal(responsePayload, &envelope) != nil || envelope.JSONRPC != "2.0" || envelope.ID != value.ID || (len(envelope.Result) == 0 && envelope.Error == nil) {
-		return rpcEnvelope{}, "", parse("decode Foundry MCP response")
+		return rpcEnvelope{}, "", fetchedRPCResponse{}, parse("decode Foundry MCP response")
 	}
 	if envelope.Error != nil {
-		return rpcEnvelope{}, "", rpcStatusError(envelope.Error.Code)
+		return rpcEnvelope{}, "", fetchedRPCResponse{}, rpcStatusError(envelope.Error.Code)
 	}
 	responseSession := session
 	if captureSession {
 		responseSession = strings.TrimSpace(response.Header.Get("Mcp-Session-Id"))
 	}
-	return envelope, responseSession, nil
+	return envelope, responseSession, fetchedRPCResponse{
+		rawPayload: rawPayload, selectedStart: selectedStart, selectedEnd: selectedEnd,
+		statusCode: response.StatusCode, requestedURL: request.URL.String(), finalURL: response.Request.URL.String(),
+		redirectChain: evidencecapture.RedirectChain(request.URL.String(), response.Request), headers: response.Header.Clone(), capturedAt: connector.now().UTC(),
+	}, nil
 }
 
 func (connector *Connector) request(ctx context.Context, token, session string, payload []byte) (*http.Request, error) {
@@ -392,16 +441,24 @@ func (connector *Connector) request(ctx context.Context, token, session string, 
 	return request, nil
 }
 
-func readPayload(response *http.Response) ([]byte, error) {
+func readPayload(response *http.Response) ([]byte, int64, int64, []byte, error) {
 	defer response.Body.Close()
 	payload, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBodyBytes+1))
 	if err != nil || len(payload) > maxResponseBodyBytes {
-		return nil, permanent("Foundry response exceeds the safe body limit")
+		return nil, 0, 0, nil, permanent("Foundry response exceeds the safe body limit")
 	}
 	if strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "text/event-stream") {
-		return sseJSON(payload)
+		selected, err := sseJSON(payload)
+		if err != nil {
+			return nil, 0, 0, nil, err
+		}
+		start := bytes.LastIndex(payload, selected)
+		if start < 0 {
+			return nil, 0, 0, nil, parse("locate Foundry event stream payload")
+		}
+		return selected, int64(start), int64(start + len(selected)), payload, nil
 	}
-	return payload, nil
+	return payload, 0, int64(len(payload)), payload, nil
 }
 
 func sseJSON(payload []byte) ([]byte, error) {
@@ -440,7 +497,7 @@ func validWebSearchTool(tool mcpTool) bool {
 	return false
 }
 
-func (connector *Connector) mapResult(result toolCallResult, querySignature, query string) (domain.SourceItem, error) {
+func (connector *Connector) mapResult(result toolCallResult, querySignature, query string, observedAt time.Time) (domain.SourceItem, error) {
 	var answer string
 	var annotations []citation
 	queryReference := query
@@ -492,9 +549,14 @@ func (connector *Connector) mapResult(result toolCallResult, querySignature, que
 	digest := sha256.Sum256([]byte(digestInput))
 	return domain.NormalizeSourceItem(domain.SourceItem{
 		SourceCode: sourceCode, ExternalID: hex.EncodeToString(digest[:]), ContentType: "bulletin",
-		Title: modelGeneratedTitle + " · 查询：" + queryReference, Body: answer, URL: attachments[0].URL, Author: modelGeneratedAuthor,
-		ObservedAt: connector.now().UTC(), EvidenceCompleteness: domain.EvidenceCompletenessSummaryOnly,
+		Title: modelGeneratedTitle + " · 查询：" + queryReference, URL: attachments[0].URL, Author: modelGeneratedAuthor,
+		ObservedAt: observedAt.UTC(), EvidenceCompleteness: domain.EvidenceCompletenessMetadataOnly,
 		Attachments: attachments, Metrics: domain.SourceMetrics{},
+		Parties: []domain.SourcePartyAssertion{{
+			Role: domain.SourcePartyRoleDistributor, Kind: domain.SourcePartyKindOrganization,
+			IdentityNamespace: "platform", ExternalID: "microsoft-bing-grounding", DisplayName: "Microsoft Foundry Web Search",
+			HomepageURL: "https://learn.microsoft.com/azure/ai-foundry/agents/how-to/tools/bing-grounding",
+		}},
 	})
 }
 

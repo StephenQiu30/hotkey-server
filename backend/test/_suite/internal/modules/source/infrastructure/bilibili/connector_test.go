@@ -74,6 +74,16 @@ func TestConnectorVerifiesAccountBeforeCollectingOfficialVideoAndArticle(t *test
 	if result.Items[1].ExternalID != "article:123" || result.Items[1].Metrics.ViewCount == nil || *result.Items[1].Metrics.ViewCount != 8 {
 		t.Errorf("article = %#v", result.Items[1])
 	}
+	if len(result.Snapshots) != 2 || !result.Snapshots[0].VerifyPayload() || !result.Snapshots[1].VerifyPayload() ||
+		result.Items[0].EvidenceReferences[0].LocatorValue != "/data/list/0" || result.Items[1].EvidenceReferences[0].LocatorValue != "/data/list/0" ||
+		result.Items[0].EvidenceReferences[0].SnapshotKey == result.Items[1].EvidenceReferences[0].SnapshotKey {
+		t.Fatalf("Bilibili raw evidence = %#v / %#v", result.Snapshots, result.Items)
+	}
+	for _, item := range result.Items {
+		if len(item.Parties) != 3 || item.Parties[0].Role != domain.SourcePartyRoleContentOrigin || item.Parties[1].Role != domain.SourcePartyRoleDistributor || item.Parties[2].Role != domain.SourcePartyRoleAuthor {
+			t.Fatalf("Bilibili explicit parties = %#v", item.Parties)
+		}
+	}
 }
 
 func TestConnectorStopsBeforeContentWhenAuthorizedAccountDoesNotMatch(t *testing.T) {

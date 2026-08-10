@@ -82,6 +82,7 @@ type RawEvidenceSnapshotDTO struct {
 
 type RawEvidenceReferenceDTO struct {
 	EvidenceKey           string
+	Usage                 string
 	LocatorType           string
 	LocatorValue          string
 	ByteStart             *int64
@@ -119,12 +120,14 @@ type RawEvidenceItemDTO struct {
 	Body                 string
 	Language             string
 	URL                  string
+	DiscussionURL        string
 	Author               string
 	PublishedAt          *time.Time
 	ObservedAt           time.Time
 	EvidenceCompleteness string
 	Attachments          []RawEvidenceAttachmentDTO
 	Metrics              RawEvidenceMetricsDTO
+	Parties              []RawEvidencePartyDTO
 	SnapshotKey          string
 	ItemLocator          string
 	EvidenceReferences   []RawEvidenceReferenceDTO
@@ -203,8 +206,12 @@ func rawEvidenceSnapshotDTOFromEntity(snapshot domain.EvidenceSnapshot) RawEvide
 }
 
 func rawEvidenceReferenceEntityFromDTO(reference RawEvidenceReferenceDTO) (domain.EvidenceReference, error) {
+	usage := domain.EvidenceUsage(reference.Usage)
+	if usage == "" {
+		usage = domain.EvidenceUsageDocumentSource
+	}
 	entity := domain.EvidenceReference{
-		SnapshotKey: reference.EvidenceKey, LocatorType: domain.EvidenceLocatorType(reference.LocatorType),
+		SnapshotKey: reference.EvidenceKey, Usage: usage, LocatorType: domain.EvidenceLocatorType(reference.LocatorType),
 		LocatorValue: reference.LocatorValue, ByteStart: copyInt64(reference.ByteStart), ByteEnd: copyInt64(reference.ByteEnd),
 		SelectedPayloadSHA256: reference.SelectedPayloadSHA256, SelectorVersion: reference.SelectorVersion,
 	}
@@ -216,7 +223,7 @@ func rawEvidenceReferenceEntityFromDTO(reference RawEvidenceReferenceDTO) (domai
 
 func rawEvidenceReferenceDTOFromEntity(reference domain.EvidenceReference) RawEvidenceReferenceDTO {
 	return RawEvidenceReferenceDTO{
-		EvidenceKey: reference.SnapshotKey, LocatorType: string(reference.LocatorType), LocatorValue: reference.LocatorValue,
+		EvidenceKey: reference.SnapshotKey, Usage: string(reference.Usage), LocatorType: string(reference.LocatorType), LocatorValue: reference.LocatorValue,
 		ByteStart: copyInt64(reference.ByteStart), ByteEnd: copyInt64(reference.ByteEnd),
 		SelectedPayloadSHA256: reference.SelectedPayloadSHA256, SelectorVersion: reference.SelectorVersion,
 	}
@@ -241,15 +248,19 @@ func rawEvidenceItemEntityFromDTO(item RawEvidenceItemDTO) (domain.SourceItem, e
 		}
 		references[index] = entity
 	}
+	parties, err := sourcePartyEntitiesFromRawDTOs(item.Parties)
+	if err != nil {
+		return domain.SourceItem{}, err
+	}
 	return domain.NormalizeSourceItem(domain.SourceItem{
 		SourceCode: item.SourceCode, ExternalID: item.ExternalID, ParentExternalID: item.ParentExternalID,
 		ContentType: item.ContentType, Title: item.Title, Body: item.Body, Language: item.Language,
-		URL: item.URL, Author: item.Author, PublishedAt: copyTime(item.PublishedAt), ObservedAt: item.ObservedAt,
+		URL: item.URL, DiscussionURL: item.DiscussionURL, Author: item.Author, PublishedAt: copyTime(item.PublishedAt), ObservedAt: item.ObservedAt,
 		EvidenceCompleteness: completeness, Attachments: attachments,
 		Metrics: domain.SourceMetrics{
 			ViewCount: copyInt64(item.Metrics.ViewCount), LikeCount: copyInt64(item.Metrics.LikeCount),
 			CommentCount: copyInt64(item.Metrics.CommentCount), ShareCount: copyInt64(item.Metrics.ShareCount),
-		},
+		}, Parties: parties,
 		SnapshotKey: item.SnapshotKey, ItemLocator: item.ItemLocator, EvidenceReferences: references,
 	})
 }
@@ -268,12 +279,12 @@ func rawEvidenceItemDTOFromEntity(item domain.SourceItem) RawEvidenceItemDTO {
 	return RawEvidenceItemDTO{
 		SourceCode: item.SourceCode, ExternalID: item.ExternalID, ParentExternalID: item.ParentExternalID,
 		ContentType: item.ContentType, Title: item.Title, Body: item.Body, Language: item.Language,
-		URL: item.URL, Author: item.Author, PublishedAt: copyTime(item.PublishedAt), ObservedAt: item.ObservedAt,
+		URL: item.URL, DiscussionURL: item.DiscussionURL, Author: item.Author, PublishedAt: copyTime(item.PublishedAt), ObservedAt: item.ObservedAt,
 		EvidenceCompleteness: string(item.EvidenceCompleteness), Attachments: attachments,
 		Metrics: RawEvidenceMetricsDTO{
 			ViewCount: copyInt64(item.Metrics.ViewCount), LikeCount: copyInt64(item.Metrics.LikeCount),
 			CommentCount: copyInt64(item.Metrics.CommentCount), ShareCount: copyInt64(item.Metrics.ShareCount),
-		},
+		}, Parties: rawEvidencePartyDTOsFromEntities(item.Parties),
 		SnapshotKey: item.SnapshotKey, ItemLocator: item.ItemLocator, EvidenceReferences: references,
 	}
 }

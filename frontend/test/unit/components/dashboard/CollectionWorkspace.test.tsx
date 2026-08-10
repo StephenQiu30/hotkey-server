@@ -32,6 +32,7 @@ describe("CollectionWorkspace", () => {
         contents={[
           {
             id: 4,
+            document_version_id: 44,
             title: "Agent systems are changing software development",
             source_name: "arXiv · Artificial Intelligence",
             canonical_url: "https://example.test/paper",
@@ -59,7 +60,7 @@ describe("CollectionWorkspace", () => {
       screen.getByRole("link", {
         name: "阅读归档：Agent systems are changing software development",
       })
-    ).toHaveAttribute("href", "/dashboard/contents/4");
+    ).toHaveAttribute("href", "/dashboard/document-versions/44");
     expect(screen.getByRole("link", { name: "访问原站" })).toHaveAttribute(
       "href",
       "https://example.test/paper"
@@ -106,6 +107,7 @@ describe("CollectionWorkspace", () => {
     expect(
       screen.getByRole("link", { name: "阅读归档：Missing canonical URL" })
     ).toHaveAttribute("href", "/dashboard/contents/9");
+    expect(screen.getByText("查看采集记录")).toBeInTheDocument();
   });
 
   it("exposes content deletion only to callers with management permission", async () => {

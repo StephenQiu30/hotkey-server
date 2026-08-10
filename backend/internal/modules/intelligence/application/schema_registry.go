@@ -54,25 +54,28 @@ func NewSchemaRegistry() (*SchemaRegistry, error) {
 }
 
 func buildSchemaRegistry() (*SchemaRegistry, error) {
-	contracts := make(map[schemaKey]schemaContract, 5)
+	contracts := make(map[schemaKey]schemaContract, 6)
 	for _, specification := range []struct {
 		taskType        domain.TaskType
+		version         string
+		directory       string
 		inputName       string
 		outputName      string
 		schemaName      string
 		instructionName string
 	}{
-		{domain.TaskTypeEmbedding, "embedding-input.schema.json", "embedding-output.schema.json", "embedding-output-v1", ""},
-		{domain.TaskTypeTermExpansion, "term-expansion-input.schema.json", "term-expansion-output.schema.json", "term-expansion-output-v1", "term-expansion-instruction-v1.md"},
-		{domain.TaskTypeRelevanceReview, "relevance-review-input.schema.json", "relevance-review-output.schema.json", "relevance-review-output-v1", "relevance-review-instruction-v1.md"},
-		{domain.TaskTypeEventSummary, "event-summary-input.schema.json", "event-summary-output.schema.json", "event-summary-output-v1", "event-summary-instruction-v1.md"},
-		{domain.TaskTypeEntityClaimExtraction, "entity-claim-input.schema.json", "entity-claim-output.schema.json", "entity-claim-output-v1", "entity-claim-instruction-v1.md"},
+		{domain.TaskTypeEmbedding, "v1", "v1", "embedding-input.schema.json", "embedding-output.schema.json", "embedding-output-v1", ""},
+		{domain.TaskTypeTermExpansion, "v1", "v1", "term-expansion-input.schema.json", "term-expansion-output.schema.json", "term-expansion-output-v1", "term-expansion-instruction-v1.md"},
+		{domain.TaskTypeRelevanceReview, "v1", "v1", "relevance-review-input.schema.json", "relevance-review-output.schema.json", "relevance-review-output-v1", "relevance-review-instruction-v1.md"},
+		{domain.TaskTypeEventSummary, "v1", "v1", "event-summary-input.schema.json", "event-summary-output.schema.json", "event-summary-output-v1", "event-summary-instruction-v1.md"},
+		{domain.TaskTypeEntityClaimExtraction, "v1", "v1", "entity-claim-input.schema.json", "entity-claim-output.schema.json", "entity-claim-output-v1", "entity-claim-instruction-v1.md"},
+		{domain.TaskTypeEntityClaimExtraction, "v2", "v2", "atomic-claim-evidence-input.schema.json", "atomic-claim-evidence-output.schema.json", "atomic-claim-evidence-output-v2", "atomic-claim-evidence-instruction-v2.md"},
 	} {
-		input, err := readSchemaAsset(specification.inputName)
+		input, err := readSchemaAsset(specification.directory, specification.inputName)
 		if err != nil {
 			return nil, err
 		}
-		output, err := readSchemaAsset(specification.outputName)
+		output, err := readSchemaAsset(specification.directory, specification.outputName)
 		if err != nil {
 			return nil, err
 		}
@@ -86,7 +89,7 @@ func buildSchemaRegistry() (*SchemaRegistry, error) {
 		}
 		instruction := ""
 		if specification.instructionName != "" {
-			asset, err := readSchemaAsset(specification.instructionName)
+			asset, err := readSchemaAsset(specification.directory, specification.instructionName)
 			if err != nil {
 				return nil, err
 			}
@@ -95,7 +98,7 @@ func buildSchemaRegistry() (*SchemaRegistry, error) {
 				return nil, fmt.Errorf("embedded %s instruction is empty", specification.taskType)
 			}
 		}
-		contracts[schemaKey{taskType: specification.taskType, version: "v1"}] = schemaContract{
+		contracts[schemaKey{taskType: specification.taskType, version: specification.version}] = schemaContract{
 			schemaName: specification.schemaName, input: input, output: output, instruction: instruction,
 			inputSchema: inputSchema, outputSchema: outputSchema,
 		}
@@ -103,8 +106,8 @@ func buildSchemaRegistry() (*SchemaRegistry, error) {
 	return &SchemaRegistry{contracts: contracts}, nil
 }
 
-func readSchemaAsset(name string) ([]byte, error) {
-	asset, err := fs.ReadFile(intelligenceschemas.Files, "v1/"+name)
+func readSchemaAsset(directory, name string) ([]byte, error) {
+	asset, err := fs.ReadFile(intelligenceschemas.Files, directory+"/"+name)
 	if err != nil {
 		return nil, fmt.Errorf("read embedded AI schema %s: %w", name, err)
 	}

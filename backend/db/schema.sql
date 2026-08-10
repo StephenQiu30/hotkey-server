@@ -148,6 +148,7 @@ BEGIN
     RETURN NEW;
 END;
 $$;
+
 DROP TRIGGER IF EXISTS metric_capability_profiles_immutable ON metric_capability_profiles;
 CREATE TRIGGER metric_capability_profiles_immutable
 BEFORE UPDATE OR DELETE ON metric_capability_profiles
@@ -1304,7 +1305,7 @@ CREATE TABLE IF NOT EXISTS source_rights_decision_batches (
     source_connection_id bigint NOT NULL REFERENCES source_connections(id) ON DELETE RESTRICT,
     policy_id bigint NOT NULL,
     expected_policy_version bigint NOT NULL CHECK (expected_policy_version = 1),
-    subject_type varchar(32) NOT NULL CHECK (subject_type IN ('raw_response','source_observation','document_version')),
+    subject_type varchar(32) NOT NULL CHECK (subject_type IN ('source_endpoint','raw_response','source_observation','document_version')),
     subject_key varchar(512) NOT NULL CHECK (octet_length(subject_key) >= 1 AND octet_length(subject_key) <= 512),
     input_digest char(64) NOT NULL CHECK (input_digest ~ '^[0-9a-f]{64}$'),
     recorded_by_user_id bigint NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
@@ -1355,7 +1356,7 @@ CREATE TABLE IF NOT EXISTS source_rights_decisions (
     basis_summary text NOT NULL CHECK (octet_length(basis_summary) >= 1 AND octet_length(basis_summary) <= 1024),
     terms_url text,
     license_uri text,
-    subject_type varchar(32) NOT NULL CHECK (subject_type IN ('raw_response','source_observation','document_version')),
+    subject_type varchar(32) NOT NULL CHECK (subject_type IN ('source_endpoint','raw_response','source_observation','document_version')),
     subject_key varchar(512) NOT NULL CHECK (octet_length(subject_key) >= 1 AND octet_length(subject_key) <= 512),
     input_digest char(64) NOT NULL CHECK (input_digest ~ '^[0-9a-f]{64}$'),
     action varchar(32) NOT NULL CHECK (action IN ('fetch','store_raw','store_derived','display_private','redistribute','quote','embed_local','send_external_model','retain')),
@@ -1433,6 +1434,12 @@ ALTER TABLE source_rights_decisions ALTER COLUMN policy_scope_subject SET DEFAUL
 ALTER TABLE source_rights_decisions ALTER COLUMN priority_rank SET NOT NULL;
 ALTER TABLE source_rights_decisions ALTER COLUMN basis_summary SET NOT NULL;
 ALTER TABLE source_rights_decisions ALTER COLUMN effective_from SET NOT NULL;
+ALTER TABLE source_rights_decision_batches DROP CONSTRAINT IF EXISTS source_rights_decision_batches_subject_type_check;
+ALTER TABLE source_rights_decision_batches ADD CONSTRAINT source_rights_decision_batches_subject_type_check
+    CHECK (subject_type IN ('source_endpoint','raw_response','source_observation','document_version'));
+ALTER TABLE source_rights_decisions DROP CONSTRAINT IF EXISTS source_rights_decisions_subject_type_check;
+ALTER TABLE source_rights_decisions ADD CONSTRAINT source_rights_decisions_subject_type_check
+    CHECK (subject_type IN ('source_endpoint','raw_response','source_observation','document_version'));
 ALTER TABLE source_rights_decisions DROP CONSTRAINT IF EXISTS source_rights_decisions_policy_version_check;
 ALTER TABLE source_rights_decisions DROP CONSTRAINT IF EXISTS source_rights_decisions_policy_revision_check;
 ALTER TABLE source_rights_decisions ADD CONSTRAINT source_rights_decisions_policy_revision_check CHECK (policy_revision > 0);
@@ -1666,6 +1673,7 @@ CREATE TABLE IF NOT EXISTS source_observation_evidences (
     source_connection_id bigint NOT NULL,
     source_observation_id bigint NOT NULL,
     evidence_snapshot_id bigint NOT NULL,
+	usage varchar(24) NOT NULL DEFAULT 'document_source' CHECK (usage IN ('document_source','context')),
     locator_type varchar(24) NOT NULL CHECK (locator_type IN ('json_pointer','xml_path','byte_range','whole_payload')),
     locator_value varchar(2048) NOT NULL,
     byte_start bigint,
@@ -1678,16 +1686,77 @@ CREATE TABLE IF NOT EXISTS source_observation_evidences (
     FOREIGN KEY (evidence_snapshot_id, source_connection_id)
         REFERENCES evidence_snapshots(id, source_connection_id) ON DELETE RESTRICT,
     UNIQUE (source_observation_id, evidence_snapshot_id, locator_type, locator_value),
+    UNIQUE (id, source_connection_id, source_observation_id),
     CHECK (
         locator_type = 'byte_range' AND byte_start IS NOT NULL AND byte_end IS NOT NULL AND byte_start >= 0 AND byte_end > byte_start
         OR locator_type <> 'byte_range' AND byte_start IS NULL AND byte_end IS NULL
     )
 );
+ALTER TABLE source_observation_evidences ADD COLUMN IF NOT EXISTS usage varchar(24);
+UPDATE source_observation_evidences SET usage='document_source' WHERE usage IS NULL;
+ALTER TABLE source_observation_evidences ALTER COLUMN usage SET DEFAULT 'document_source';
+ALTER TABLE source_observation_evidences ALTER COLUMN usage SET NOT NULL;
+ALTER TABLE source_observation_evidences DROP CONSTRAINT IF EXISTS source_observation_evidences_usage_check;
+ALTER TABLE source_observation_evidences ADD CONSTRAINT source_observation_evidences_usage_check
+    CHECK (usage IN ('document_source','context'));
 ALTER TABLE source_observation_evidences DROP CONSTRAINT IF EXISTS source_observation_evidences_selected_payload_sha256_check;
 ALTER TABLE source_observation_evidences ADD CONSTRAINT source_observation_evidences_selected_payload_sha256_check
     CHECK (selected_payload_sha256 ~ '^[0-9a-f]{64}$');
 CREATE INDEX IF NOT EXISTS source_observation_evidences_snapshot_idx
     ON source_observation_evidences(evidence_snapshot_id, source_observation_id);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid='source_observation_evidences'::regclass
+          AND contype='u'
+          AND pg_get_constraintdef(oid)='UNIQUE (id, source_connection_id, source_observation_id)'
+    ) THEN
+        ALTER TABLE source_observation_evidences ADD CONSTRAINT source_observation_evidences_reference_scope_uq
+            UNIQUE (id, source_connection_id, source_observation_id);
+    END IF;
+END;
+$$;
+
+CREATE TABLE IF NOT EXISTS source_parties (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version = 1),
+    source_connection_id bigint NOT NULL REFERENCES source_connections(id) ON DELETE RESTRICT,
+    party_kind varchar(24) NOT NULL CHECK (party_kind IN ('organization','person','account')),
+    identity_namespace varchar(64) NOT NULL
+        CHECK (identity_namespace ~ '^[a-z0-9][a-z0-9._:-]{0,63}$'),
+    external_id varchar(512) NOT NULL CHECK (octet_length(external_id) BETWEEN 1 AND 512),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (source_connection_id, identity_namespace, external_id),
+    UNIQUE (id, source_connection_id)
+);
+
+CREATE TABLE IF NOT EXISTS source_observation_parties (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version = 1),
+    source_connection_id bigint NOT NULL,
+    source_observation_id bigint NOT NULL,
+    source_party_id bigint NOT NULL,
+    evidence_reference_id bigint NOT NULL,
+    role varchar(24) NOT NULL CHECK (role IN ('publisher','author','distributor','content_origin')),
+    display_name_snapshot varchar(512) NOT NULL CHECK (octet_length(display_name_snapshot) BETWEEN 1 AND 512),
+    homepage_url_snapshot text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    FOREIGN KEY (source_observation_id, source_connection_id)
+        REFERENCES source_observations(id, source_connection_id) ON DELETE RESTRICT,
+    FOREIGN KEY (source_party_id, source_connection_id)
+        REFERENCES source_parties(id, source_connection_id) ON DELETE RESTRICT,
+    FOREIGN KEY (evidence_reference_id, source_connection_id, source_observation_id)
+        REFERENCES source_observation_evidences(id, source_connection_id, source_observation_id) ON DELETE RESTRICT,
+    UNIQUE (source_observation_id, role, source_party_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS source_observation_parties_one_publisher_uq
+    ON source_observation_parties(source_observation_id) WHERE role='publisher';
+CREATE UNIQUE INDEX IF NOT EXISTS source_observation_parties_one_content_origin_uq
+    ON source_observation_parties(source_observation_id) WHERE role='content_origin';
+CREATE INDEX IF NOT EXISTS source_observation_parties_party_idx
+    ON source_observation_parties(source_party_id, source_observation_id);
 
 CREATE TABLE IF NOT EXISTS documents (
     id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
@@ -1803,6 +1872,11 @@ CREATE TABLE IF NOT EXISTS derived_artifacts (
     mime_type varchar(64) NOT NULL,
     sha256 char(64) NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
     size_bytes bigint NOT NULL CHECK (size_bytes > 0),
+    anchor_normalization_version varchar(64),
+    anchor_map_profile_version varchar(96),
+    anchor_plaintext_sha256 char(64),
+    anchor_markdown_sha256 char(64),
+    anchor_map_sha256 char(64),
     lifecycle_state varchar(32) NOT NULL DEFAULT 'derive_pending'
         CHECK (lifecycle_state IN ('derive_pending','derived_available','derive_failed','retention_blocked','quarantined','tombstoned')),
     active boolean NOT NULL DEFAULT false,
@@ -1819,6 +1893,20 @@ CREATE TABLE IF NOT EXISTS derived_artifacts (
     ),
     CHECK (NOT active OR lifecycle_state = 'derived_available'),
     CHECK (
+        artifact_type = 'markdown'
+        AND anchor_normalization_version IS NOT NULL
+        AND anchor_map_profile_version IS NOT NULL
+        AND anchor_plaintext_sha256 ~ '^[0-9a-f]{64}$'
+        AND anchor_markdown_sha256 = sha256
+        AND anchor_map_sha256 ~ '^[0-9a-f]{64}$'
+        OR artifact_type = 'plaintext'
+        AND anchor_normalization_version IS NULL
+        AND anchor_map_profile_version IS NULL
+        AND anchor_plaintext_sha256 IS NULL
+        AND anchor_markdown_sha256 IS NULL
+        AND anchor_map_sha256 IS NULL
+    ),
+    CHECK (
         artifact_type = 'markdown' AND left(mime_type, 13) = 'text/markdown' AND right(vault_relative_path, 3) = '.md'
         OR artifact_type = 'plaintext' AND left(mime_type, 10) = 'text/plain' AND right(vault_relative_path, 4) = '.txt'
     )
@@ -1832,6 +1920,11 @@ ALTER TABLE derived_artifacts ADD COLUMN IF NOT EXISTS rights_decision varchar(8
 ALTER TABLE derived_artifacts ADD COLUMN IF NOT EXISTS retain_action varchar(32) NOT NULL DEFAULT 'retain';
 ALTER TABLE derived_artifacts ADD COLUMN IF NOT EXISTS retain_decision varchar(8) NOT NULL DEFAULT 'allow';
 ALTER TABLE derived_artifacts ADD COLUMN IF NOT EXISTS retention_until timestamptz;
+ALTER TABLE derived_artifacts ADD COLUMN IF NOT EXISTS anchor_normalization_version varchar(64);
+ALTER TABLE derived_artifacts ADD COLUMN IF NOT EXISTS anchor_map_profile_version varchar(96);
+ALTER TABLE derived_artifacts ADD COLUMN IF NOT EXISTS anchor_plaintext_sha256 char(64);
+ALTER TABLE derived_artifacts ADD COLUMN IF NOT EXISTS anchor_markdown_sha256 char(64);
+ALTER TABLE derived_artifacts ADD COLUMN IF NOT EXISTS anchor_map_sha256 char(64);
 ALTER TABLE derived_artifacts ALTER COLUMN source_connection_id SET NOT NULL;
 ALTER TABLE derived_artifacts ALTER COLUMN store_derived_rights_decision_id SET NOT NULL;
 ALTER TABLE derived_artifacts ALTER COLUMN retain_rights_decision_id SET NOT NULL;
@@ -1842,6 +1935,49 @@ ALTER TABLE derived_artifacts ADD CONSTRAINT derived_artifacts_transformer_profi
 ALTER TABLE derived_artifacts DROP CONSTRAINT IF EXISTS derived_artifacts_sha256_check;
 ALTER TABLE derived_artifacts ADD CONSTRAINT derived_artifacts_sha256_check
     CHECK (sha256 ~ '^[0-9a-f]{64}$');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'derived_artifacts'::regclass
+          AND contype = 'c'
+          AND pg_get_constraintdef(oid, true) LIKE '%anchor_normalization_version%'
+          AND pg_get_constraintdef(oid, true) LIKE '%anchor_map_sha256%'
+    ) THEN
+        ALTER TABLE derived_artifacts ADD CONSTRAINT derived_artifacts_anchor_identity_check CHECK (
+            artifact_type = 'markdown'
+            AND anchor_normalization_version IS NOT NULL
+            AND anchor_map_profile_version IS NOT NULL
+            AND anchor_plaintext_sha256 ~ '^[0-9a-f]{64}$'
+            AND anchor_markdown_sha256 = sha256
+            AND anchor_map_sha256 ~ '^[0-9a-f]{64}$'
+            OR artifact_type = 'plaintext'
+            AND anchor_normalization_version IS NULL
+            AND anchor_map_profile_version IS NULL
+            AND anchor_plaintext_sha256 IS NULL
+            AND anchor_markdown_sha256 IS NULL
+            AND anchor_map_sha256 IS NULL
+        ) NOT VALID;
+    END IF;
+END;
+$$;
+DO $$
+DECLARE
+    anchor_constraint_name text;
+BEGIN
+    FOR anchor_constraint_name IN
+        SELECT conname
+        FROM pg_constraint
+        WHERE conrelid = 'derived_artifacts'::regclass
+          AND contype = 'c'
+          AND NOT convalidated
+          AND pg_get_constraintdef(oid, true) LIKE '%anchor_normalization_version%'
+          AND pg_get_constraintdef(oid, true) LIKE '%anchor_map_sha256%'
+    LOOP
+        EXECUTE format('ALTER TABLE derived_artifacts VALIDATE CONSTRAINT %I', anchor_constraint_name);
+    END LOOP;
+END;
+$$;
 ALTER TABLE derived_artifacts DROP CONSTRAINT IF EXISTS derived_artifacts_rights_action_check;
 ALTER TABLE derived_artifacts ADD CONSTRAINT derived_artifacts_rights_action_check CHECK (rights_action = 'store_derived');
 ALTER TABLE derived_artifacts DROP CONSTRAINT IF EXISTS derived_artifacts_rights_decision_check;
@@ -1875,6 +2011,68 @@ CREATE UNIQUE INDEX IF NOT EXISTS derived_artifacts_one_active_per_type_uq
     ON derived_artifacts(document_version_id, artifact_type) WHERE active;
 CREATE INDEX IF NOT EXISTS derived_artifacts_reconcile_idx
     ON derived_artifacts(lifecycle_state, updated_at, id);
+
+CREATE TABLE IF NOT EXISTS document_anchor_blocks (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    derived_artifact_id bigint NOT NULL REFERENCES derived_artifacts(id) ON DELETE RESTRICT,
+    anchor_map_sha256 char(64) NOT NULL CHECK (anchor_map_sha256 ~ '^[0-9a-f]{64}$'),
+    block_ordinal integer NOT NULL CHECK (block_ordinal >= 0 AND block_ordinal < 20000),
+    plaintext_utf8_byte_start bigint NOT NULL CHECK (plaintext_utf8_byte_start >= 0),
+    plaintext_utf8_byte_end bigint NOT NULL CHECK (plaintext_utf8_byte_end > plaintext_utf8_byte_start),
+    markdown_utf8_byte_start bigint NOT NULL CHECK (markdown_utf8_byte_start >= 0),
+    markdown_utf8_byte_end bigint NOT NULL CHECK (markdown_utf8_byte_end > markdown_utf8_byte_start),
+    markdown_anchor varchar(64) NOT NULL CHECK (markdown_anchor ~ '^body-[0-9]{4,5}-[0-9a-f]{12}$'),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (derived_artifact_id, block_ordinal),
+    UNIQUE (derived_artifact_id, markdown_anchor)
+);
+CREATE INDEX IF NOT EXISTS document_anchor_blocks_plaintext_range_idx
+    ON document_anchor_blocks(derived_artifact_id, plaintext_utf8_byte_start, plaintext_utf8_byte_end);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'document_anchor_blocks'::regclass
+          AND contype = 'f'
+          AND confrelid = 'derived_artifacts'::regclass
+    ) THEN
+        EXECUTE 'ALTER TABLE document_anchor_blocks '
+            'ADD CONSTRAINT document_anchor_blocks_derived_artifact_fk '
+            'FOREIGN KEY (derived_artifact_id) REFERENCES derived_artifacts(id) ON DELETE RESTRICT';
+    END IF;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION enforce_document_anchor_block_immutability()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    artifact_record derived_artifacts%ROWTYPE;
+    document_content_sha256 char(64);
+BEGIN
+    IF TG_OP <> 'INSERT' THEN
+        RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'document_anchor_blocks_immutable', MESSAGE = 'document anchor blocks are append-only';
+    END IF;
+    SELECT * INTO artifact_record FROM derived_artifacts WHERE id = NEW.derived_artifact_id FOR SHARE;
+    IF artifact_record.id IS NULL
+       OR artifact_record.artifact_type <> 'markdown'
+       OR artifact_record.lifecycle_state NOT IN ('derive_pending','derived_available')
+       OR artifact_record.anchor_map_sha256 IS DISTINCT FROM NEW.anchor_map_sha256 THEN
+        RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'document_anchor_blocks_artifact', MESSAGE = 'document anchor block requires its exact Markdown artifact map';
+    END IF;
+    SELECT content_sha256 INTO document_content_sha256 FROM document_versions WHERE id = artifact_record.document_version_id;
+    IF document_content_sha256 IS NULL OR artifact_record.anchor_plaintext_sha256 IS DISTINCT FROM document_content_sha256 THEN
+        RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'document_anchor_blocks_plaintext', MESSAGE = 'document anchor block plaintext identity must match its document version';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS document_anchor_blocks_immutable ON document_anchor_blocks;
+CREATE TRIGGER document_anchor_blocks_immutable
+BEFORE INSERT OR UPDATE OR DELETE ON document_anchor_blocks
+FOR EACH ROW EXECUTE FUNCTION enforce_document_anchor_block_immutability();
 
 CREATE OR REPLACE FUNCTION enforce_source_rights_decision_batch_policy()
 RETURNS trigger
@@ -1932,6 +2130,12 @@ BEGIN
         END IF;
     ELSIF policy_record.source_connection_id IS DISTINCT FROM NEW.source_connection_id THEN
         RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'source_rights_decisions_policy_source', MESSAGE = 'rights decision source does not match policy source';
+    END IF;
+    IF NEW.subject_type = 'source_endpoint'
+       AND (NEW.subject_key IS DISTINCT FROM NEW.source_connection_id::text
+            OR NEW.input_digest IS DISTINCT FROM policy_record.policy_hash) THEN
+        RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'source_rights_decisions_endpoint_binding',
+            MESSAGE = 'endpoint rights decision must bind the concrete source and immutable policy hash';
     END IF;
     IF NEW.effective_from < policy_record.effective_at
        OR (policy_record.expires_at IS NOT NULL AND (NEW.expires_at IS NULL OR NEW.expires_at > policy_record.expires_at)) THEN
@@ -1995,9 +2199,19 @@ WITH terminal AS (
     SELECT decision.*
     FROM source_rights_decisions AS decision
     WHERE decision.source_connection_id = selected_source_connection_id
-      AND decision.subject_type = selected_subject_type
-      AND decision.subject_key = selected_subject_key
-      AND decision.input_digest = selected_input_digest
+      AND (
+          (decision.subject_type = selected_subject_type
+           AND decision.subject_key = selected_subject_key
+           AND decision.input_digest = selected_input_digest)
+          OR
+          (decision.subject_type = 'source_endpoint'
+           AND decision.subject_key = selected_source_connection_id::text
+           AND EXISTS (
+               SELECT 1 FROM source_rights_policies AS policy
+               WHERE policy.id = decision.policy_id
+                 AND policy.policy_hash = decision.input_digest
+           ))
+      )
       AND decision.action = selected_action
       AND decision.effective_from <= decision_at
       AND (decision.expires_at IS NULL OR decision_at < decision.expires_at)
@@ -2031,9 +2245,19 @@ WITH terminal AS (
     SELECT decision.*
     FROM source_rights_decisions AS decision
     WHERE decision.source_connection_id = selected_source_connection_id
-      AND decision.subject_type = selected_subject_type
-      AND decision.subject_key = selected_subject_key
-      AND decision.input_digest = selected_input_digest
+      AND (
+          (decision.subject_type = selected_subject_type
+           AND decision.subject_key = selected_subject_key
+           AND decision.input_digest = selected_input_digest)
+          OR
+          (decision.subject_type = 'source_endpoint'
+           AND decision.subject_key = selected_source_connection_id::text
+           AND EXISTS (
+               SELECT 1 FROM source_rights_policies AS policy
+               WHERE policy.id = decision.policy_id
+                 AND policy.policy_hash = decision.input_digest
+           ))
+      )
       AND decision.action = 'retain'
       AND decision.effective_from <= decision_at
       AND (decision.expires_at IS NULL OR decision_at < decision.expires_at)
@@ -2069,9 +2293,19 @@ WITH terminal AS (
     SELECT decision.*
     FROM source_rights_decisions AS decision
     WHERE decision.source_connection_id = selected_source_connection_id
-      AND decision.subject_type = selected_subject_type
-      AND decision.subject_key = selected_subject_key
-      AND decision.input_digest = selected_input_digest
+      AND (
+          (decision.subject_type = selected_subject_type
+           AND decision.subject_key = selected_subject_key
+           AND decision.input_digest = selected_input_digest)
+          OR
+          (decision.subject_type = 'source_endpoint'
+           AND decision.subject_key = selected_source_connection_id::text
+           AND EXISTS (
+               SELECT 1 FROM source_rights_policies AS policy
+               WHERE policy.id = decision.policy_id
+                 AND policy.policy_hash = decision.input_digest
+           ))
+      )
       AND decision.action = selected_action
       AND decision.effective_from <= decision_at
       AND (decision.expires_at IS NULL OR decision_at < decision.expires_at)
@@ -2249,6 +2483,14 @@ DROP TRIGGER IF EXISTS source_observation_evidences_append_only ON source_observ
 CREATE TRIGGER source_observation_evidences_append_only
 BEFORE UPDATE OR DELETE ON source_observation_evidences
 FOR EACH ROW EXECUTE FUNCTION reject_immutable_evidence_fact_mutation();
+DROP TRIGGER IF EXISTS source_parties_append_only ON source_parties;
+CREATE TRIGGER source_parties_append_only
+BEFORE UPDATE OR DELETE ON source_parties
+FOR EACH ROW EXECUTE FUNCTION reject_immutable_evidence_fact_mutation();
+DROP TRIGGER IF EXISTS source_observation_parties_append_only ON source_observation_parties;
+CREATE TRIGGER source_observation_parties_append_only
+BEFORE UPDATE OR DELETE ON source_observation_parties
+FOR EACH ROW EXECUTE FUNCTION reject_immutable_evidence_fact_mutation();
 
 CREATE OR REPLACE FUNCTION enforce_evidence_snapshot_lifecycle()
 RETURNS trigger
@@ -2365,6 +2607,10 @@ BEGIN
             JOIN documents AS document ON document.id = NEW.document_id
             WHERE artifact.document_version_id = NEW.id
               AND artifact.source_connection_id = document.source_connection_id
+              AND artifact.artifact_type = 'markdown'
+              AND artifact.anchor_plaintext_sha256 = NEW.content_sha256
+              AND artifact.anchor_markdown_sha256 = artifact.sha256
+              AND artifact.anchor_map_sha256 IS NOT NULL
               AND artifact.lifecycle_state = 'derived_available'
               AND artifact.active
               AND artifact.available_at IS NOT NULL
@@ -2382,6 +2628,11 @@ BEGIN
                   artifact.source_connection_id, 'document_version', artifact.document_version_id::text,
                   NEW.content_sha256, CURRENT_TIMESTAMP
               ) * interval '24 hours'
+              AND EXISTS (
+                  SELECT 1 FROM document_anchor_blocks AS anchor
+                  WHERE anchor.derived_artifact_id = artifact.id
+                    AND anchor.anchor_map_sha256 = artifact.anchor_map_sha256
+              )
         ) THEN
             RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'document_version_readable_artifact', MESSAGE = 'readable document version requires an active healthy retained artifact';
         END IF;
@@ -2431,6 +2682,11 @@ BEGIN
        OR NEW.mime_type IS DISTINCT FROM OLD.mime_type
        OR NEW.sha256 IS DISTINCT FROM OLD.sha256
        OR NEW.size_bytes IS DISTINCT FROM OLD.size_bytes
+       OR NEW.anchor_normalization_version IS DISTINCT FROM OLD.anchor_normalization_version
+       OR NEW.anchor_map_profile_version IS DISTINCT FROM OLD.anchor_map_profile_version
+       OR NEW.anchor_plaintext_sha256 IS DISTINCT FROM OLD.anchor_plaintext_sha256
+       OR NEW.anchor_markdown_sha256 IS DISTINCT FROM OLD.anchor_markdown_sha256
+       OR NEW.anchor_map_sha256 IS DISTINCT FROM OLD.anchor_map_sha256
        OR NEW.retention_until IS DISTINCT FROM OLD.retention_until
        OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
         RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'derived_artifacts_identity_immutable', MESSAGE = 'derived artifact identity is immutable';
@@ -2994,6 +3250,202 @@ CREATE UNIQUE INDEX IF NOT EXISTS audit_logs_idempotency_uq
     ON audit_logs(actor_type, COALESCE(actor_id, 0), action, idempotency_key)
     WHERE idempotency_key IS NOT NULL;
 
+-- Evidence-lineage maintenance runs are auditable operational facts. Dry-run
+-- commands never insert these rows; only an explicitly confirmed apply run is
+-- persisted. Item rows are append-only so a resume cannot rewrite prior
+-- outcomes or conceal a failed/blocked legacy asset.
+CREATE TABLE IF NOT EXISTS evidence_lineage_migration_runs (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
+    phase varchar(32) NOT NULL CHECK (phase IN ('source','evidence_metadata','document','match','family_event','evidence_state')),
+    status varchar(16) NOT NULL DEFAULT 'running' CHECK (status IN ('running','completed','failed','cancelled')),
+    execution_mode varchar(16) NOT NULL DEFAULT 'apply' CHECK (execution_mode = 'apply'),
+    operator_id varchar(128) NOT NULL CHECK (operator_id = btrim(operator_id) AND octet_length(operator_id) BETWEEN 1 AND 128),
+    reviewer_id varchar(128) NOT NULL CHECK (reviewer_id = btrim(reviewer_id) AND octet_length(reviewer_id) BETWEEN 1 AND 128),
+    binary_sha256 char(64) NOT NULL CHECK (binary_sha256 ~ '^[0-9a-f]{64}$'),
+    schema_sha256 char(64) NOT NULL CHECK (schema_sha256 ~ '^[0-9a-f]{64}$'),
+    configuration_sha256 char(64) NOT NULL CHECK (configuration_sha256 ~ '^[0-9a-f]{64}$'),
+    backup_evidence_sha256 char(64) NOT NULL CHECK (backup_evidence_sha256 ~ '^[0-9a-f]{64}$'),
+    rehearsal_evidence_sha256 char(64) NOT NULL CHECK (rehearsal_evidence_sha256 ~ '^[0-9a-f]{64}$'),
+    batch_size integer NOT NULL CHECK (batch_size BETWEEN 1 AND 1000),
+    last_legacy_resource_id bigint NOT NULL DEFAULT 0 CHECK (last_legacy_resource_id >= 0),
+    examined_count bigint NOT NULL DEFAULT 0 CHECK (examined_count >= 0),
+    reused_count bigint NOT NULL DEFAULT 0 CHECK (reused_count >= 0),
+    created_count bigint NOT NULL DEFAULT 0 CHECK (created_count >= 0),
+    skipped_count bigint NOT NULL DEFAULT 0 CHECK (skipped_count >= 0),
+    blocked_count bigint NOT NULL DEFAULT 0 CHECK (blocked_count >= 0),
+    failed_count bigint NOT NULL DEFAULT 0 CHECK (failed_count >= 0),
+    resume_count integer NOT NULL DEFAULT 0 CHECK (resume_count >= 0),
+    failure_code varchar(64),
+    started_at timestamptz NOT NULL DEFAULT now(),
+    completed_at timestamptz,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (operator_id <> reviewer_id),
+    CHECK (completed_at IS NULL OR completed_at >= started_at),
+    CHECK (status = 'running' AND completed_at IS NULL OR status <> 'running' AND completed_at IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS evidence_lineage_migration_runs_resume_idx
+    ON evidence_lineage_migration_runs(status, phase, id);
+
+CREATE TABLE IF NOT EXISTS evidence_lineage_migration_items (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    run_id bigint NOT NULL REFERENCES evidence_lineage_migration_runs(id) ON DELETE RESTRICT,
+    phase varchar(32) NOT NULL CHECK (phase IN ('source','evidence_metadata','document','match','family_event','evidence_state')),
+    legacy_resource_type varchar(64) NOT NULL CHECK (legacy_resource_type = btrim(legacy_resource_type) AND octet_length(legacy_resource_type) BETWEEN 1 AND 64),
+    legacy_resource_id bigint NOT NULL CHECK (legacy_resource_id > 0),
+    input_sha256 char(64) NOT NULL CHECK (input_sha256 ~ '^[0-9a-f]{64}$'),
+    disposition varchar(16) NOT NULL CHECK (disposition IN ('reused','created','skipped','blocked','failed')),
+    target_resource_type varchar(64),
+    target_resource_id bigint,
+    reason_code varchar(64) NOT NULL CHECK (reason_code = btrim(reason_code) AND reason_code ~ '^[a-z][a-z0-9_]{0,63}$'),
+    attempt integer NOT NULL DEFAULT 1 CHECK (attempt > 0),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (run_id, legacy_resource_type, legacy_resource_id, input_sha256),
+    CHECK (
+        target_resource_type IS NULL AND target_resource_id IS NULL
+        OR target_resource_type = btrim(target_resource_type) AND octet_length(target_resource_type) BETWEEN 1 AND 64 AND target_resource_id > 0
+    )
+);
+CREATE INDEX IF NOT EXISTS evidence_lineage_migration_items_cursor_idx
+    ON evidence_lineage_migration_items(run_id, legacy_resource_id, id);
+
+CREATE TABLE IF NOT EXISTS evidence_lineage_reconciliation_runs (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
+    scope varchar(32) NOT NULL CHECK (scope IN ('pg-minio','pg-vault','rights-retention','all')),
+    status varchar(16) NOT NULL DEFAULT 'running' CHECK (status IN ('running','completed','failed','cancelled')),
+    execution_mode varchar(16) NOT NULL DEFAULT 'apply' CHECK (execution_mode = 'apply'),
+    operator_id varchar(128) NOT NULL CHECK (operator_id = btrim(operator_id) AND octet_length(operator_id) BETWEEN 1 AND 128),
+    reviewer_id varchar(128) NOT NULL CHECK (reviewer_id = btrim(reviewer_id) AND octet_length(reviewer_id) BETWEEN 1 AND 128),
+    binary_sha256 char(64) NOT NULL CHECK (binary_sha256 ~ '^[0-9a-f]{64}$'),
+    schema_sha256 char(64) NOT NULL CHECK (schema_sha256 ~ '^[0-9a-f]{64}$'),
+    configuration_sha256 char(64) NOT NULL CHECK (configuration_sha256 ~ '^[0-9a-f]{64}$'),
+    backup_evidence_sha256 char(64) NOT NULL CHECK (backup_evidence_sha256 ~ '^[0-9a-f]{64}$'),
+    rehearsal_evidence_sha256 char(64) NOT NULL CHECK (rehearsal_evidence_sha256 ~ '^[0-9a-f]{64}$'),
+    batch_size integer NOT NULL CHECK (batch_size BETWEEN 1 AND 1000),
+    grace_period_hours integer NOT NULL CHECK (grace_period_hours BETWEEN 1 AND 720),
+    last_asset_id bigint NOT NULL DEFAULT 0 CHECK (last_asset_id >= 0),
+    examined_count bigint NOT NULL DEFAULT 0 CHECK (examined_count >= 0),
+    healthy_count bigint NOT NULL DEFAULT 0 CHECK (healthy_count >= 0),
+    finding_count bigint NOT NULL DEFAULT 0 CHECK (finding_count >= 0),
+    repaired_count bigint NOT NULL DEFAULT 0 CHECK (repaired_count >= 0),
+    failed_count bigint NOT NULL DEFAULT 0 CHECK (failed_count >= 0),
+    resume_count integer NOT NULL DEFAULT 0 CHECK (resume_count >= 0),
+    failure_code varchar(64),
+    started_at timestamptz NOT NULL DEFAULT now(),
+    completed_at timestamptz,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (operator_id <> reviewer_id),
+    CHECK (completed_at IS NULL OR completed_at >= started_at),
+    CHECK (status = 'running' AND completed_at IS NULL OR status <> 'running' AND completed_at IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS evidence_lineage_reconciliation_runs_resume_idx
+    ON evidence_lineage_reconciliation_runs(status, scope, id);
+
+CREATE TABLE IF NOT EXISTS evidence_lineage_reconciliation_items (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    run_id bigint NOT NULL REFERENCES evidence_lineage_reconciliation_runs(id) ON DELETE RESTRICT,
+    scope varchar(32) NOT NULL CHECK (scope IN ('pg-minio','pg-vault','rights-retention','all')),
+    asset_type varchar(32) NOT NULL CHECK (asset_type IN ('evidence_snapshot','derived_artifact','document_version','active_artifact_pointer','raw_object_orphan','vault_file_orphan')),
+    asset_id bigint CHECK (asset_id IS NULL OR asset_id > 0),
+    asset_key_sha256 char(64) NOT NULL CHECK (asset_key_sha256 ~ '^[0-9a-f]{64}$'),
+    source_connection_id bigint REFERENCES source_connections(id) ON DELETE RESTRICT,
+    finding varchar(32) NOT NULL CHECK (finding IN ('missing','orphan_within_grace','orphan_expired','digest_mismatch','policy_blocked','retention_blocked','active_pointer_invalid','healthy')),
+    expected_sha256 char(64) CHECK (expected_sha256 IS NULL OR expected_sha256 ~ '^[0-9a-f]{64}$'),
+    observed_sha256 char(64) CHECK (observed_sha256 IS NULL OR observed_sha256 ~ '^[0-9a-f]{64}$'),
+    lifecycle_before varchar(32),
+    lifecycle_after varchar(32),
+    repair_action varchar(64),
+    reason_code varchar(64) NOT NULL CHECK (reason_code = btrim(reason_code) AND reason_code ~ '^[a-z][a-z0-9_]{0,63}$'),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (run_id, scope, asset_type, asset_key_sha256)
+);
+ALTER TABLE evidence_lineage_reconciliation_items ADD COLUMN IF NOT EXISTS asset_key_sha256 char(64);
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM evidence_lineage_reconciliation_items WHERE asset_key_sha256 IS NULL) THEN
+        RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'evidence_lineage_reconciliation_items_asset_key_backfill_required', MESSAGE = 'existing reconciliation items require an explicit asset key review';
+    END IF;
+END;
+$$;
+ALTER TABLE evidence_lineage_reconciliation_items ALTER COLUMN asset_id DROP NOT NULL;
+ALTER TABLE evidence_lineage_reconciliation_items ALTER COLUMN source_connection_id DROP NOT NULL;
+ALTER TABLE evidence_lineage_reconciliation_items ALTER COLUMN asset_key_sha256 SET NOT NULL;
+ALTER TABLE evidence_lineage_reconciliation_items DROP CONSTRAINT IF EXISTS evidence_lineage_reconciliation_items_asset_type_check;
+ALTER TABLE evidence_lineage_reconciliation_items ADD CONSTRAINT evidence_lineage_reconciliation_items_asset_type_check
+    CHECK (asset_type IN ('evidence_snapshot','derived_artifact','document_version','active_artifact_pointer','raw_object_orphan','vault_file_orphan'));
+ALTER TABLE evidence_lineage_reconciliation_items DROP CONSTRAINT IF EXISTS evidence_lineage_reconciliation_items_asset_id_check;
+ALTER TABLE evidence_lineage_reconciliation_items ADD CONSTRAINT evidence_lineage_reconciliation_items_asset_id_check
+    CHECK (asset_id IS NULL OR asset_id > 0);
+ALTER TABLE evidence_lineage_reconciliation_items DROP CONSTRAINT IF EXISTS evidence_lineage_reconciliation_items_asset_key_sha256_check;
+ALTER TABLE evidence_lineage_reconciliation_items ADD CONSTRAINT evidence_lineage_reconciliation_items_asset_key_sha256_check
+    CHECK (asset_key_sha256 ~ '^[0-9a-f]{64}$');
+DO $$
+DECLARE
+    legacy_reconciliation_identity text;
+BEGIN
+    FOR legacy_reconciliation_identity IN
+        SELECT conname
+        FROM pg_constraint
+        WHERE conrelid = 'evidence_lineage_reconciliation_items'::regclass
+          AND contype = 'u'
+          AND pg_get_constraintdef(oid, true) = 'UNIQUE (run_id, scope, asset_type, asset_id)'
+    LOOP
+        EXECUTE format('ALTER TABLE evidence_lineage_reconciliation_items DROP CONSTRAINT %I', legacy_reconciliation_identity);
+    END LOOP;
+END;
+$$;
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM pg_class AS index_relation
+        JOIN pg_namespace AS namespace ON namespace.oid = index_relation.relnamespace
+        WHERE namespace.nspname = 'public'
+          AND index_relation.relname = 'evidence_lineage_reconciliation_items_identity_uq'
+          AND index_relation.relkind = 'i'
+          AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conindid = index_relation.oid)
+    ) THEN
+        DROP INDEX evidence_lineage_reconciliation_items_identity_uq;
+    END IF;
+END;
+$$;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'evidence_lineage_reconciliation_items'::regclass
+          AND contype = 'u'
+          AND pg_get_constraintdef(oid, true) = 'UNIQUE (run_id, scope, asset_type, asset_key_sha256)'
+    ) THEN
+        ALTER TABLE evidence_lineage_reconciliation_items
+            ADD CONSTRAINT evidence_lineage_reconciliation_items_identity_uq
+            UNIQUE (run_id, scope, asset_type, asset_key_sha256);
+    END IF;
+END;
+$$;
+DROP INDEX IF EXISTS evidence_lineage_reconciliation_items_finding_idx;
+CREATE INDEX IF NOT EXISTS evidence_lineage_reconciliation_items_finding_idx
+    ON evidence_lineage_reconciliation_items(run_id, finding, asset_type, asset_key_sha256);
+
+CREATE OR REPLACE FUNCTION prevent_evidence_lineage_maintenance_item_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = TG_TABLE_NAME || '_append_only', MESSAGE = 'evidence lineage maintenance items are append-only';
+END;
+$$;
+DROP TRIGGER IF EXISTS evidence_lineage_migration_items_append_only ON evidence_lineage_migration_items;
+CREATE TRIGGER evidence_lineage_migration_items_append_only
+BEFORE UPDATE OR DELETE ON evidence_lineage_migration_items
+FOR EACH ROW EXECUTE FUNCTION prevent_evidence_lineage_maintenance_item_mutation();
+DROP TRIGGER IF EXISTS evidence_lineage_reconciliation_items_append_only ON evidence_lineage_reconciliation_items;
+CREATE TRIGGER evidence_lineage_reconciliation_items_append_only
+BEFORE UPDATE OR DELETE ON evidence_lineage_reconciliation_items
+FOR EACH ROW EXECUTE FUNCTION prevent_evidence_lineage_maintenance_item_mutation();
+
 -- River job metadata belongs to the job-queue infrastructure and is not exposed
 -- through application repositories or public APIs. The runtime integration in
 -- PLAN-002 validates its expected River version before workers are enabled.
@@ -3202,6 +3654,8 @@ CREATE TABLE IF NOT EXISTS monitor_intent_expansion_candidates (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS monitor_intent_expansion_candidates_origin_uq
     ON monitor_intent_expansion_candidates(origin_run_id, candidate_id) WHERE origin_run_id IS NOT NULL;
+ALTER TABLE monitor_intent_expansion_candidates
+    ALTER COLUMN similarity TYPE numeric(8,7) USING round(similarity::numeric, 7);
 
 CREATE TABLE IF NOT EXISTS monitor_intent_draft_candidates (
     id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
@@ -3258,6 +3712,10 @@ CREATE TABLE IF NOT EXISTS monitor_intent_preview_recall_signals (
     FOREIGN KEY (sample_id, run_id) REFERENCES monitor_intent_preview_samples(id, run_id) ON DELETE RESTRICT,
     UNIQUE (sample_id, ordinal)
 );
+ALTER TABLE monitor_intent_preview_recall_signals
+    DROP CONSTRAINT IF EXISTS monitor_intent_preview_recall_signals_score_check;
+ALTER TABLE monitor_intent_preview_recall_signals
+    ALTER COLUMN score TYPE numeric(20,10) USING round(score::numeric, 10);
 
 CREATE TABLE IF NOT EXISTS monitor_intent_preview_reasons (
     id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
@@ -3484,6 +3942,7 @@ CREATE TABLE IF NOT EXISTS monitor_compiled_profiles (
     purpose varchar(16) NOT NULL CHECK (purpose IN ('preview','published')),
     config_version_id bigint NOT NULL,
     monitor_version_id bigint,
+    source_preview_compiled_profile_id bigint,
     preview_run_id bigint,
     draft_id bigint,
     draft_resource_version bigint,
@@ -3522,9 +3981,11 @@ CREATE TABLE IF NOT EXISTS monitor_compiled_profiles (
     CHECK (
         purpose = 'published'
             AND monitor_version_id = config_version_id
+            AND source_preview_compiled_profile_id IS NOT NULL
             AND preview_run_id IS NULL AND draft_id IS NULL AND draft_resource_version IS NULL
         OR purpose = 'preview'
             AND monitor_version_id IS NULL
+            AND source_preview_compiled_profile_id IS NULL
             AND preview_run_id IS NOT NULL AND draft_id IS NOT NULL AND draft_resource_version IS NOT NULL
     ),
     CHECK (
@@ -3533,6 +3994,80 @@ CREATE TABLE IF NOT EXISTS monitor_compiled_profiles (
         OR status = 'retired' AND profile_hash IS NOT NULL AND ready_at IS NOT NULL AND retired_at >= ready_at
     )
 );
+ALTER TABLE monitor_compiled_profiles ADD COLUMN IF NOT EXISTS source_preview_compiled_profile_id bigint;
+ALTER TABLE monitor_compiled_profiles DROP CONSTRAINT IF EXISTS monitor_compiled_profiles_check;
+ALTER TABLE monitor_compiled_profiles DROP CONSTRAINT IF EXISTS monitor_compiled_profiles_owner_rule;
+ALTER TABLE monitor_compiled_profiles ADD CONSTRAINT monitor_compiled_profiles_owner_rule CHECK (
+    purpose = 'published'
+        AND monitor_version_id = config_version_id
+        AND source_preview_compiled_profile_id IS NOT NULL
+        AND preview_run_id IS NULL AND draft_id IS NULL AND draft_resource_version IS NULL
+    OR purpose = 'preview'
+        AND monitor_version_id IS NULL
+        AND source_preview_compiled_profile_id IS NULL
+        AND preview_run_id IS NOT NULL AND draft_id IS NOT NULL AND draft_resource_version IS NOT NULL
+);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid='monitor_compiled_profiles'::regclass
+          AND conname='monitor_compiled_profiles_source_preview_fk'
+    ) THEN
+        ALTER TABLE monitor_compiled_profiles
+            ADD CONSTRAINT monitor_compiled_profiles_source_preview_fk
+            FOREIGN KEY (source_preview_compiled_profile_id)
+            REFERENCES monitor_compiled_profiles(id) ON DELETE RESTRICT;
+    END IF;
+END;
+$$;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid='monitor_compiled_profiles'::regclass
+          AND contype='f'
+          AND confrelid='monitor_intent_draft_revisions'::regclass
+          AND conkey = ARRAY[
+              (SELECT attnum FROM pg_attribute WHERE attrelid='monitor_compiled_profiles'::regclass AND attname='intent_revision_id'),
+              (SELECT attnum FROM pg_attribute WHERE attrelid='monitor_compiled_profiles'::regclass AND attname='monitor_id'),
+              (SELECT attnum FROM pg_attribute WHERE attrelid='monitor_compiled_profiles'::regclass AND attname='config_version_id')
+          ]::smallint[]
+    ) THEN
+        EXECUTE 'ALTER TABLE monitor_compiled_profiles '
+            'ADD CONSTRAINT monitor_compiled_profiles_intent_monitor_config_fk '
+            'FOREIGN KEY (intent_revision_id, monitor_id, config_version_id) '
+            'REFERENCES monitor_intent_draft_revisions(id, monitor_id, config_version_id) ON DELETE RESTRICT';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid='monitor_compiled_profiles'::regclass
+          AND contype='f'
+          AND confrelid='monitor_intent_draft_revisions'::regclass
+          AND conkey = ARRAY[
+              (SELECT attnum FROM pg_attribute WHERE attrelid='monitor_compiled_profiles'::regclass AND attname='intent_revision_id'),
+              (SELECT attnum FROM pg_attribute WHERE attrelid='monitor_compiled_profiles'::regclass AND attname='draft_id'),
+              (SELECT attnum FROM pg_attribute WHERE attrelid='monitor_compiled_profiles'::regclass AND attname='draft_resource_version')
+          ]::smallint[]
+    ) THEN
+        EXECUTE 'ALTER TABLE monitor_compiled_profiles '
+            'ADD CONSTRAINT monitor_compiled_profiles_intent_draft_version_fk '
+            'FOREIGN KEY (intent_revision_id, draft_id, draft_resource_version) '
+            'REFERENCES monitor_intent_draft_revisions(id, draft_id, resource_version) ON DELETE RESTRICT';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid='monitor_compiled_profiles'::regclass
+          AND contype='f'
+          AND confrelid='monitor_intent_analysis_runs'::regclass
+    ) THEN
+        EXECUTE 'ALTER TABLE monitor_compiled_profiles '
+            'ADD CONSTRAINT monitor_compiled_profiles_preview_run_owner_fk '
+            'FOREIGN KEY (preview_run_id, monitor_id, draft_id, draft_resource_version) '
+            'REFERENCES monitor_intent_analysis_runs(id, monitor_id, draft_id, draft_resource_version) ON DELETE RESTRICT';
+    END IF;
+END;
+$$;
 ALTER TABLE monitor_compiled_profiles ADD COLUMN IF NOT EXISTS semantic_state varchar(16);
 ALTER TABLE monitor_compiled_profiles ADD COLUMN IF NOT EXISTS semantic_unavailable_reason varchar(64);
 ALTER TABLE monitor_compiled_profiles DROP CONSTRAINT IF EXISTS monitor_compiled_profiles_check2;
@@ -3612,8 +4147,28 @@ CREATE TABLE IF NOT EXISTS monitor_compiled_intent_embeddings (
     FOREIGN KEY (compiled_profile_id, config_version_id)
         REFERENCES monitor_compiled_profiles(id, config_version_id) ON DELETE RESTRICT,
     UNIQUE (compiled_profile_id),
-    UNIQUE (config_version_id, model_profile_id, model_profile_version, model_version, input_hash)
+    UNIQUE (compiled_profile_id, config_version_id, model_profile_id, model_profile_version, model_version, input_hash)
 );
+ALTER TABLE monitor_compiled_intent_embeddings
+    DROP CONSTRAINT IF EXISTS monitor_compiled_intent_embeddings_config_version_id_model_profile_id_model_profile_version_model_version_input_hash_key;
+ALTER TABLE monitor_compiled_intent_embeddings
+    DROP CONSTRAINT IF EXISTS monitor_compiled_intent_embed_config_version_id_model_profi_key;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'monitor_compiled_intent_embeddings'::regclass
+          AND contype = 'u'
+          AND pg_get_constraintdef(oid, true) =
+              'UNIQUE (compiled_profile_id, config_version_id, model_profile_id, model_profile_version, model_version, input_hash)'
+    ) THEN
+        ALTER TABLE monitor_compiled_intent_embeddings
+            ADD CONSTRAINT monitor_compiled_intent_embeddings_identity_uq
+            UNIQUE (compiled_profile_id, config_version_id, model_profile_id, model_profile_version, model_version, input_hash);
+    END IF;
+END;
+$$;
 
 -- PostgreSQL stores only sensitive retrieval projections here, never the
 -- canonical plaintext. tsvector and show_trgm-derived arrays remain rights
@@ -3745,6 +4300,7 @@ DECLARE
     preview_run_kind text;
     preview_run_status text;
     embedding_count integer;
+    allowed_semantic_transition boolean := false;
 BEGIN
     IF TG_OP = 'DELETE' THEN
         RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'monitor_compiled_profiles_retained',
@@ -3758,12 +4314,23 @@ BEGIN
         RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'monitor_compiled_profiles_immutable',
             MESSAGE = 'retired compiled profiles are immutable';
     END IF;
+    IF TG_OP = 'UPDATE' THEN
+        allowed_semantic_transition := OLD.status = 'building'
+            AND OLD.semantic_state = 'unavailable'
+            AND (
+                NEW.semantic_state = 'ready' AND NEW.semantic_unavailable_reason IS NULL
+                    AND OLD.semantic_unavailable_reason IN ('semantic_generation_unavailable','semantic_model_unavailable')
+                OR OLD.semantic_unavailable_reason = 'semantic_generation_unavailable'
+                    AND NEW.semantic_state = 'unavailable' AND NEW.semantic_unavailable_reason = 'semantic_model_unavailable'
+            );
+    END IF;
     IF TG_OP = 'UPDATE' AND (
         NEW.id IS DISTINCT FROM OLD.id OR NEW.version IS DISTINCT FROM OLD.version
         OR NEW.monitor_id IS DISTINCT FROM OLD.monitor_id
         OR NEW.purpose IS DISTINCT FROM OLD.purpose
         OR NEW.config_version_id IS DISTINCT FROM OLD.config_version_id
         OR NEW.monitor_version_id IS DISTINCT FROM OLD.monitor_version_id
+        OR NEW.source_preview_compiled_profile_id IS DISTINCT FROM OLD.source_preview_compiled_profile_id
         OR NEW.preview_run_id IS DISTINCT FROM OLD.preview_run_id
         OR NEW.draft_id IS DISTINCT FROM OLD.draft_id
         OR NEW.draft_resource_version IS DISTINCT FROM OLD.draft_resource_version
@@ -3774,8 +4341,9 @@ BEGIN
         OR NEW.semantic_algorithm_version IS DISTINCT FROM OLD.semantic_algorithm_version
         OR NEW.structured_algorithm_version IS DISTINCT FROM OLD.structured_algorithm_version
         OR NEW.search_normalization_profile_version IS DISTINCT FROM OLD.search_normalization_profile_version
-        OR NEW.semantic_state IS DISTINCT FROM OLD.semantic_state
-        OR NEW.semantic_unavailable_reason IS DISTINCT FROM OLD.semantic_unavailable_reason
+        OR (NEW.semantic_state IS DISTINCT FROM OLD.semantic_state
+            OR NEW.semantic_unavailable_reason IS DISTINCT FROM OLD.semantic_unavailable_reason)
+           AND NOT allowed_semantic_transition
         OR NEW.created_at IS DISTINCT FROM OLD.created_at
         OR OLD.status = 'building' AND NEW.status NOT IN ('building','ready')
         OR OLD.status = 'ready' AND (
@@ -3827,8 +4395,11 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
     profile_status text;
+    profile_purpose text;
     profile_config_version_id bigint;
     profile_semantic_state text;
+    profile_source_preview_id bigint;
+    source_embedding_count integer := 0;
     model_record ai_model_profiles%ROWTYPE;
     run_record ai_runs%ROWTYPE;
 BEGIN
@@ -3836,8 +4407,9 @@ BEGIN
         RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'monitor_compiled_profile_facts_append_only',
             MESSAGE = 'compiled profile facts are append-only';
     END IF;
-    SELECT status,config_version_id,semantic_state
-    INTO profile_status,profile_config_version_id,profile_semantic_state FROM monitor_compiled_profiles
+    SELECT status,purpose,config_version_id,semantic_state,source_preview_compiled_profile_id
+    INTO profile_status,profile_purpose,profile_config_version_id,profile_semantic_state,profile_source_preview_id
+    FROM monitor_compiled_profiles
     WHERE id = NEW.compiled_profile_id FOR KEY SHARE;
     IF profile_status IS DISTINCT FROM 'building' THEN
         RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'monitor_compiled_profile_facts_building_only',
@@ -3846,6 +4418,20 @@ BEGIN
     IF TG_TABLE_NAME = 'monitor_compiled_intent_embeddings' THEN
         SELECT * INTO model_record FROM ai_model_profiles WHERE id = NEW.model_profile_id FOR KEY SHARE;
         SELECT * INTO run_record FROM ai_runs WHERE id = NEW.ai_run_id FOR KEY SHARE;
+        IF profile_purpose = 'published' THEN
+            SELECT count(*) INTO source_embedding_count
+            FROM monitor_compiled_intent_embeddings AS source_embedding
+            JOIN monitor_compiled_profiles AS source_profile
+              ON source_profile.id=source_embedding.compiled_profile_id
+            WHERE source_embedding.compiled_profile_id=profile_source_preview_id
+              AND source_profile.status='ready' AND source_profile.purpose='preview'
+              AND source_embedding.model_profile_id=NEW.model_profile_id
+              AND source_embedding.model_profile_version=NEW.model_profile_version
+              AND source_embedding.model_version=NEW.model_version
+              AND source_embedding.input_hash=NEW.input_hash
+              AND source_embedding.ai_run_id=NEW.ai_run_id
+              AND source_embedding.embedding=NEW.embedding;
+        END IF;
         IF profile_semantic_state IS DISTINCT FROM 'ready'
            OR profile_config_version_id IS DISTINCT FROM NEW.config_version_id
            OR model_record.version IS DISTINCT FROM NEW.model_profile_version
@@ -3855,7 +4441,10 @@ BEGIN
            OR run_record.status IS DISTINCT FROM 'succeeded'
            OR run_record.task_type IS DISTINCT FROM 'embedding'
            OR run_record.target_type IS DISTINCT FROM 'monitor_compiled_profile'
-           OR run_record.target_id IS DISTINCT FROM NEW.compiled_profile_id
+           OR profile_purpose = 'preview' AND run_record.target_id IS DISTINCT FROM NEW.compiled_profile_id
+           OR profile_purpose = 'published' AND (
+               run_record.target_id IS DISTINCT FROM profile_source_preview_id OR source_embedding_count <> 1
+           )
            OR run_record.model_profile_id IS DISTINCT FROM NEW.model_profile_id
            OR run_record.model_profile_version IS DISTINCT FROM NEW.model_profile_version
            OR run_record.model_version IS DISTINCT FROM NEW.model_version
@@ -4079,3 +4668,2411 @@ DROP TRIGGER IF EXISTS document_version_embeddings_integrity ON document_version
 CREATE TRIGGER document_version_embeddings_integrity
 BEFORE INSERT OR UPDATE OR DELETE ON document_version_embeddings
 FOR EACH ROW EXECUTE FUNCTION enforce_document_version_embedding_integrity();
+
+-- A v2 document match is an immutable relevance fact between one published
+-- MonitorVersion and one exact DocumentVersion. It deliberately does not
+-- reuse legacy contents/monitor_matches or any credibility/truth semantics.
+CREATE OR REPLACE FUNCTION document_match_reason_codes_valid(codes text[])
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT codes IS NOT NULL
+       AND cardinality(codes) <= 32
+       AND cardinality(codes) = (SELECT count(DISTINCT code) FROM unnest(codes) AS code)
+       AND NOT EXISTS (
+           SELECT 1 FROM unnest(codes) AS code
+           WHERE code !~ '^[a-z0-9][a-z0-9_:-]{0,63}$'
+       )
+$$;
+
+CREATE TABLE IF NOT EXISTS relevance_evaluation_runs (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version = 1),
+    dataset_version varchar(64) NOT NULL CHECK (dataset_version ~ '^[a-z0-9][a-z0-9._:-]{0,63}$'),
+    dataset_hash char(64) NOT NULL CHECK (dataset_hash ~ '^[0-9a-f]{64}$'),
+    family_isolation_hash char(64) NOT NULL CHECK (family_isolation_hash ~ '^[0-9a-f]{64}$'),
+    annotation_protocol_version varchar(64) NOT NULL CHECK (annotation_protocol_version ~ '^[a-z0-9][a-z0-9._:-]{0,63}$'),
+    annotation_guideline_sha256 char(64) NOT NULL CHECK (annotation_guideline_sha256 ~ '^[0-9a-f]{64}$'),
+    split_strategy_version varchar(64) NOT NULL CHECK (split_strategy_version ~ '^[a-z0-9][a-z0-9._:-]{0,63}$'),
+    annotator_count smallint NOT NULL CHECK (annotator_count BETWEEN 2 AND 20),
+    agreement_metric varchar(32) NOT NULL CHECK (agreement_metric IN ('cohen_kappa','krippendorff_alpha')),
+    agreement_score numeric(8,7) NOT NULL CHECK (agreement_score BETWEEN 0 AND 1),
+    time_boundary timestamptz NOT NULL,
+    sample_window_start timestamptz NOT NULL,
+    sample_window_end timestamptz NOT NULL,
+    matching_algorithm_version varchar(64) NOT NULL CHECK (matching_algorithm_version ~ '^[a-z0-9][a-z0-9._:-]{0,63}$'),
+    reranker_version varchar(64) NOT NULL CHECK (reranker_version ~ '^[a-z0-9][a-z0-9._:-]{0,63}$'),
+    calibration_version varchar(64) NOT NULL CHECK (calibration_version ~ '^[a-z0-9][a-z0-9._:-]{0,63}$'),
+    calibration_slope numeric(12,7) NOT NULL,
+    calibration_intercept numeric(12,7) NOT NULL,
+    reject_threshold numeric(8,7) NOT NULL CHECK (reject_threshold BETWEEN 0 AND 1),
+    accept_threshold numeric(8,7) NOT NULL CHECK (accept_threshold BETWEEN 0 AND 1),
+    sample_count integer NOT NULL CHECK (sample_count > 0),
+    positive_count integer NOT NULL CHECK (positive_count >= 0),
+    negative_count integer NOT NULL CHECK (negative_count >= 0),
+    recall_at_100 numeric(8,7) NOT NULL CHECK (recall_at_100 BETWEEN 0 AND 1),
+    precision_score numeric(8,7) NOT NULL CHECK (precision_score BETWEEN 0 AND 1),
+    recall_score numeric(8,7) NOT NULL CHECK (recall_score BETWEEN 0 AND 1),
+    expected_calibration_error numeric(8,7) NOT NULL CHECK (expected_calibration_error BETWEEN 0 AND 1),
+    brier_score numeric(8,7) NOT NULL CHECK (brier_score BETWEEN 0 AND 1),
+    precision_wilson_lower numeric(8,7) NOT NULL CHECK (precision_wilson_lower BETWEEN 0 AND 1),
+    hard_negative_count integer NOT NULL CHECK (hard_negative_count >= 0),
+    hard_negative_passed boolean NOT NULL,
+    status varchar(16) NOT NULL CHECK (status IN ('passed','failed')),
+    evaluated_by_user_id bigint NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    evaluated_at timestamptz NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (sample_count = (positive_count + negative_count)),
+    CHECK (calibration_slope > 0 AND calibration_slope <= 100 AND calibration_intercept BETWEEN -100 AND 100),
+    CHECK (reject_threshold < accept_threshold),
+    CHECK (time_boundary < sample_window_start AND sample_window_start <= sample_window_end AND sample_window_end <= evaluated_at),
+    CHECK (
+        status = 'failed'
+        OR annotator_count >= 2 AND agreement_score >= 0.80
+           AND positive_count >= 200 AND negative_count >= 200
+           AND recall_at_100 >= 0.95 AND precision_score >= 0.90 AND recall_score >= 0.80
+           AND expected_calibration_error <= 0.05 AND precision_wilson_lower >= 0.87
+           AND hard_negative_count >= 50 AND hard_negative_passed
+    ),
+    UNIQUE (dataset_hash, matching_algorithm_version, reranker_version, calibration_version, reject_threshold, accept_threshold)
+);
+ALTER TABLE relevance_evaluation_runs ADD COLUMN IF NOT EXISTS annotation_protocol_version varchar(64)
+    CHECK (annotation_protocol_version ~ '^[a-z0-9][a-z0-9._:-]{0,63}$');
+ALTER TABLE relevance_evaluation_runs ADD COLUMN IF NOT EXISTS annotation_guideline_sha256 char(64)
+    CHECK (annotation_guideline_sha256 ~ '^[0-9a-f]{64}$');
+ALTER TABLE relevance_evaluation_runs ADD COLUMN IF NOT EXISTS split_strategy_version varchar(64)
+    CHECK (split_strategy_version ~ '^[a-z0-9][a-z0-9._:-]{0,63}$');
+ALTER TABLE relevance_evaluation_runs ADD COLUMN IF NOT EXISTS annotator_count smallint
+    CHECK (annotator_count BETWEEN 2 AND 20);
+ALTER TABLE relevance_evaluation_runs ADD COLUMN IF NOT EXISTS agreement_metric varchar(32)
+    CHECK (agreement_metric IN ('cohen_kappa','krippendorff_alpha'));
+ALTER TABLE relevance_evaluation_runs ADD COLUMN IF NOT EXISTS agreement_score numeric(8,7)
+    CHECK (agreement_score BETWEEN 0 AND 1);
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM relevance_evaluation_runs
+        WHERE annotation_protocol_version IS NULL OR annotation_guideline_sha256 IS NULL
+           OR split_strategy_version IS NULL OR annotator_count IS NULL
+           OR agreement_metric IS NULL OR agreement_score IS NULL
+    ) THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='relevance_evaluation_annotation_metadata_required',
+            MESSAGE='existing relevance evaluation rows require reviewed annotation metadata before canonical convergence';
+    END IF;
+    ALTER TABLE relevance_evaluation_runs ALTER COLUMN annotation_protocol_version SET NOT NULL;
+    ALTER TABLE relevance_evaluation_runs ALTER COLUMN annotation_guideline_sha256 SET NOT NULL;
+    ALTER TABLE relevance_evaluation_runs ALTER COLUMN split_strategy_version SET NOT NULL;
+    ALTER TABLE relevance_evaluation_runs ALTER COLUMN annotator_count SET NOT NULL;
+    ALTER TABLE relevance_evaluation_runs ALTER COLUMN agreement_metric SET NOT NULL;
+    ALTER TABLE relevance_evaluation_runs ALTER COLUMN agreement_score SET NOT NULL;
+END;
+$$;
+-- Earlier revisions used PostgreSQL's generated check4 name for the quality
+-- gate. Rebuild it under a semantic name so empty initialization and an
+-- in-place canonical upgrade converge to the same catalog definition.
+ALTER TABLE relevance_evaluation_runs DROP CONSTRAINT IF EXISTS relevance_evaluation_runs_check4;
+ALTER TABLE relevance_evaluation_runs DROP CONSTRAINT IF EXISTS relevance_evaluation_runs_quality_gate_check;
+ALTER TABLE relevance_evaluation_runs ADD CONSTRAINT relevance_evaluation_runs_quality_gate_check CHECK (
+    status = 'failed'
+    OR annotator_count >= 2 AND agreement_score >= 0.80
+       AND positive_count >= 200 AND negative_count >= 200
+       AND recall_at_100 >= 0.95 AND precision_score >= 0.90 AND recall_score >= 0.80
+       AND expected_calibration_error <= 0.05 AND precision_wilson_lower >= 0.87
+       AND hard_negative_count >= 50 AND hard_negative_passed
+);
+ALTER TABLE relevance_evaluation_runs ADD COLUMN IF NOT EXISTS calibration_slope numeric(12,7) NOT NULL DEFAULT 1;
+ALTER TABLE relevance_evaluation_runs ADD COLUMN IF NOT EXISTS calibration_intercept numeric(12,7) NOT NULL DEFAULT 0;
+ALTER TABLE relevance_evaluation_runs ALTER COLUMN calibration_slope DROP DEFAULT;
+ALTER TABLE relevance_evaluation_runs ALTER COLUMN calibration_intercept DROP DEFAULT;
+ALTER TABLE relevance_evaluation_runs ADD COLUMN IF NOT EXISTS sample_window_start timestamptz;
+ALTER TABLE relevance_evaluation_runs ADD COLUMN IF NOT EXISTS sample_window_end timestamptz;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid='relevance_evaluation_runs'::regclass
+          AND contype='c'
+          AND pg_get_constraintdef(oid, true) LIKE '%calibration_slope%'
+    ) OR NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid='relevance_evaluation_runs'::regclass
+          AND contype='c'
+          AND pg_get_constraintdef(oid, true) LIKE '%calibration_intercept%'
+    ) THEN
+        ALTER TABLE relevance_evaluation_runs ADD CONSTRAINT relevance_evaluation_runs_calibration_coefficients_check
+            CHECK (calibration_slope > 0 AND calibration_slope <= 100 AND calibration_intercept BETWEEN -100 AND 100);
+    END IF;
+END;
+$$;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM relevance_evaluation_runs WHERE sample_window_start IS NULL OR sample_window_end IS NULL) THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='relevance_evaluation_runs_sample_window_required',
+            MESSAGE='existing relevance evaluation rows require an explicit sample window before canonical convergence';
+    END IF;
+    ALTER TABLE relevance_evaluation_runs ALTER COLUMN sample_window_start SET NOT NULL;
+    ALTER TABLE relevance_evaluation_runs ALTER COLUMN sample_window_end SET NOT NULL;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid='relevance_evaluation_runs'::regclass
+          AND contype='c'
+          AND pg_get_constraintdef(oid, true) LIKE '%time_boundary%'
+          AND pg_get_constraintdef(oid, true) LIKE '%sample_window_start%'
+          AND pg_get_constraintdef(oid, true) LIKE '%sample_window_end%'
+    ) THEN
+        ALTER TABLE relevance_evaluation_runs ADD CONSTRAINT relevance_evaluation_runs_sample_window_check
+            CHECK (time_boundary < sample_window_start AND sample_window_start <= sample_window_end AND sample_window_end <= evaluated_at);
+    END IF;
+END;
+$$;
+
+CREATE TABLE IF NOT EXISTS relevance_evaluation_slices (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version = 1),
+    evaluation_run_id bigint NOT NULL REFERENCES relevance_evaluation_runs(id) ON DELETE RESTRICT,
+    dimension varchar(16) NOT NULL CHECK (dimension IN ('language','source')),
+    value varchar(64) NOT NULL CHECK (btrim(value) = value AND octet_length(value) BETWEEN 1 AND 64),
+    sample_count integer NOT NULL CHECK (sample_count >= 0),
+    positive_count integer NOT NULL CHECK (positive_count >= 0),
+    negative_count integer NOT NULL CHECK (negative_count >= 0),
+    precision_score numeric(8,7) NOT NULL CHECK (precision_score BETWEEN 0 AND 1),
+    recall_score numeric(8,7) NOT NULL CHECK (recall_score BETWEEN 0 AND 1),
+    passed boolean NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (sample_count = (positive_count + negative_count)),
+    CHECK (passed = (sample_count >= 50 AND precision_score >= 0.90 AND recall_score >= 0.80)),
+    UNIQUE (evaluation_run_id, dimension, value)
+);
+
+CREATE OR REPLACE FUNCTION reject_relevance_evaluation_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'relevance_evaluation_facts_append_only',
+        MESSAGE = 'relevance evaluation facts are append-only';
+END;
+$$;
+DROP TRIGGER IF EXISTS relevance_evaluation_runs_append_only ON relevance_evaluation_runs;
+CREATE TRIGGER relevance_evaluation_runs_append_only
+BEFORE UPDATE OR DELETE ON relevance_evaluation_runs
+FOR EACH ROW EXECUTE FUNCTION reject_relevance_evaluation_mutation();
+DROP TRIGGER IF EXISTS relevance_evaluation_slices_append_only ON relevance_evaluation_slices;
+CREATE TRIGGER relevance_evaluation_slices_append_only
+BEFORE UPDATE OR DELETE ON relevance_evaluation_slices
+FOR EACH ROW EXECUTE FUNCTION reject_relevance_evaluation_mutation();
+
+CREATE TABLE IF NOT EXISTS relevance_decision_profiles (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version = 1),
+    profile_name varchar(120) NOT NULL CHECK (btrim(profile_name) <> '' AND octet_length(profile_name) <= 120),
+    matching_algorithm_version varchar(64) NOT NULL CHECK (matching_algorithm_version ~ '^[a-z0-9][a-z0-9._:-]{0,63}$'),
+    reranker_version varchar(64) NOT NULL CHECK (reranker_version ~ '^[a-z0-9][a-z0-9._:-]{0,63}$'),
+    calibration_version varchar(64) NOT NULL CHECK (calibration_version ~ '^[a-z0-9][a-z0-9._:-]{0,63}$'),
+    status varchar(16) NOT NULL CHECK (status IN ('uncalibrated','shadow','active','rolled_back')),
+    reject_threshold numeric(8,7) NOT NULL CHECK (reject_threshold BETWEEN 0 AND 1),
+    accept_threshold numeric(8,7) NOT NULL CHECK (accept_threshold BETWEEN 0 AND 1),
+    calibration_slope numeric(12,7) NOT NULL DEFAULT 0,
+    calibration_intercept numeric(12,7) NOT NULL DEFAULT 0,
+    evaluation_sample_count integer NOT NULL DEFAULT 0 CHECK (evaluation_sample_count >= 0),
+    evaluation_run_id bigint,
+    created_by_user_id bigint NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    activated_by_user_id bigint REFERENCES users(id) ON DELETE RESTRICT,
+    activated_at timestamptz,
+    rolled_back_by_user_id bigint REFERENCES users(id) ON DELETE RESTRICT,
+    rolled_back_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (matching_algorithm_version, reranker_version, calibration_version),
+    CHECK (reject_threshold < accept_threshold),
+    CHECK (calibration_slope BETWEEN 0 AND 100 AND calibration_intercept BETWEEN -100 AND 100),
+    CHECK (
+        status IN ('uncalibrated','shadow')
+            AND activated_by_user_id IS NULL AND activated_at IS NULL
+            AND rolled_back_by_user_id IS NULL AND rolled_back_at IS NULL
+        OR status = 'active'
+            AND activated_by_user_id IS NOT NULL AND activated_at IS NOT NULL
+            AND rolled_back_by_user_id IS NULL AND rolled_back_at IS NULL
+        OR status = 'rolled_back'
+            AND activated_by_user_id IS NOT NULL AND activated_at IS NOT NULL
+            AND rolled_back_by_user_id IS NOT NULL AND rolled_back_at >= activated_at
+    ),
+    CHECK (status <> 'uncalibrated' OR left(calibration_version, 12) = 'uncalibrated'),
+    CHECK (status <> 'active' OR left(calibration_version, 12) <> 'uncalibrated')
+);
+ALTER TABLE relevance_decision_profiles ADD COLUMN IF NOT EXISTS evaluation_run_id bigint;
+ALTER TABLE relevance_decision_profiles ADD COLUMN IF NOT EXISTS calibration_slope numeric(12,7) NOT NULL DEFAULT 0;
+ALTER TABLE relevance_decision_profiles ADD COLUMN IF NOT EXISTS calibration_intercept numeric(12,7) NOT NULL DEFAULT 0;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid='relevance_decision_profiles'::regclass
+          AND contype='c'
+          AND pg_get_constraintdef(oid, true) LIKE '%calibration_slope%'
+    ) OR NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid='relevance_decision_profiles'::regclass
+          AND contype='c'
+          AND pg_get_constraintdef(oid, true) LIKE '%calibration_intercept%'
+    ) THEN
+        ALTER TABLE relevance_decision_profiles ADD CONSTRAINT relevance_decision_profiles_calibration_coefficients_check
+            CHECK (calibration_slope BETWEEN 0 AND 100 AND calibration_intercept BETWEEN -100 AND 100);
+    END IF;
+END;
+$$;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid='relevance_decision_profiles'::regclass
+          AND conname='relevance_decision_profiles_evaluation_run_fk'
+    ) THEN
+        ALTER TABLE relevance_decision_profiles
+            ADD CONSTRAINT relevance_decision_profiles_evaluation_run_fk
+            FOREIGN KEY (evaluation_run_id) REFERENCES relevance_evaluation_runs(id) ON DELETE RESTRICT;
+    END IF;
+END;
+$$;
+CREATE UNIQUE INDEX IF NOT EXISTS relevance_decision_profiles_evaluation_run_uq
+    ON relevance_decision_profiles(evaluation_run_id) WHERE evaluation_run_id IS NOT NULL;
+DO $$
+DECLARE
+    calibration_status_constraint text;
+BEGIN
+    FOR calibration_status_constraint IN
+        SELECT constraint_record.conname
+        FROM pg_constraint AS constraint_record
+        WHERE constraint_record.conrelid = 'relevance_decision_profiles'::regclass
+          AND constraint_record.contype = 'c'
+          AND pg_get_constraintdef(constraint_record.oid) LIKE '%status%calibration_version%'
+    LOOP
+        EXECUTE format('ALTER TABLE relevance_decision_profiles DROP CONSTRAINT %I', calibration_status_constraint);
+    END LOOP;
+END;
+$$;
+ALTER TABLE relevance_decision_profiles
+    ADD CONSTRAINT relevance_decision_profiles_uncalibrated_version_check
+    CHECK (status <> 'uncalibrated' OR left(calibration_version, 12) = 'uncalibrated');
+ALTER TABLE relevance_decision_profiles
+    ADD CONSTRAINT relevance_decision_profiles_active_version_check
+    CHECK (status <> 'active' OR left(calibration_version, 12) <> 'uncalibrated');
+
+CREATE TABLE IF NOT EXISTS document_match_decisions (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version = 1),
+    monitor_id bigint NOT NULL,
+    monitor_version_id bigint NOT NULL,
+    compiled_profile_id bigint NOT NULL,
+    document_version_id bigint NOT NULL REFERENCES document_versions(id) ON DELETE RESTRICT,
+    relevance_profile_id bigint NOT NULL REFERENCES relevance_decision_profiles(id) ON DELETE RESTRICT,
+    matching_algorithm_version varchar(64) NOT NULL CHECK (matching_algorithm_version ~ '^[a-z0-9][a-z0-9._:-]{0,63}$'),
+    reranker_version varchar(64) NOT NULL CHECK (reranker_version ~ '^[a-z0-9][a-z0-9._:-]{0,63}$'),
+    calibration_version varchar(64) NOT NULL CHECK (calibration_version ~ '^[a-z0-9][a-z0-9._:-]{0,63}$'),
+    rrf_score numeric(20,10) NOT NULL CHECK (rrf_score >= 0),
+    relevance_probability numeric(8,7) CHECK (relevance_probability BETWEEN 0 AND 1),
+    decision varchar(16) NOT NULL CHECK (decision IN ('accepted','review','rejected')),
+    degraded boolean NOT NULL,
+    reason_codes text[] NOT NULL DEFAULT '{}'::text[] CHECK (document_match_reason_codes_valid(reason_codes)),
+    input_hash char(64) NOT NULL CHECK (input_hash ~ '^[0-9a-f]{64}$'),
+    decided_at timestamptz NOT NULL,
+    FOREIGN KEY (monitor_version_id, monitor_id)
+        REFERENCES monitor_config_versions(id, monitor_id) ON DELETE RESTRICT,
+    FOREIGN KEY (compiled_profile_id, monitor_version_id)
+        REFERENCES monitor_compiled_profiles(id, config_version_id) ON DELETE RESTRICT,
+    UNIQUE (monitor_version_id, document_version_id, matching_algorithm_version),
+    UNIQUE (id, monitor_id, monitor_version_id, document_version_id)
+);
+DO $$
+DECLARE
+    obsolete_constraint text;
+BEGIN
+    FOR obsolete_constraint IN
+        SELECT constraint_record.conname
+        FROM pg_constraint AS constraint_record
+        WHERE constraint_record.conrelid = 'document_match_decisions'::regclass
+          AND constraint_record.contype = 'u'
+          AND pg_get_constraintdef(constraint_record.oid) =
+              'UNIQUE (monitor_version_id, document_version_id, relevance_profile_id)'
+    LOOP
+        EXECUTE format('ALTER TABLE document_match_decisions DROP CONSTRAINT %I', obsolete_constraint);
+    END LOOP;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'document_match_decisions'::regclass
+          AND contype = 'u'
+          AND pg_get_constraintdef(oid) =
+              'UNIQUE (monitor_version_id, document_version_id, matching_algorithm_version)'
+    ) THEN
+        ALTER TABLE document_match_decisions
+            ADD CONSTRAINT document_match_decisions_algorithm_evaluation_uq
+            UNIQUE (monitor_version_id, document_version_id, matching_algorithm_version);
+    END IF;
+END;
+$$;
+CREATE INDEX IF NOT EXISTS document_match_decisions_review_idx
+    ON document_match_decisions(monitor_id, decision, decided_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS document_match_decisions_document_idx
+    ON document_match_decisions(document_version_id, decided_at DESC, id DESC);
+
+CREATE TABLE IF NOT EXISTS document_match_recall_signals (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version = 1),
+    match_decision_id bigint NOT NULL REFERENCES document_match_decisions(id) ON DELETE RESTRICT,
+    ordinal smallint NOT NULL CHECK (ordinal BETWEEN 0 AND 7),
+    channel varchar(16) NOT NULL CHECK (channel IN ('lexical','semantic','structured')),
+    rank integer NOT NULL CHECK (rank BETWEEN 1 AND 100),
+    raw_score numeric(20,10) NOT NULL,
+    algorithm_version varchar(64) NOT NULL CHECK (algorithm_version ~ '^[a-z0-9][a-z0-9._:-]{0,63}$'),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (match_decision_id, ordinal),
+    UNIQUE (match_decision_id, channel)
+);
+
+CREATE TABLE IF NOT EXISTS document_match_overrides (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version = 1),
+    match_decision_id bigint NOT NULL,
+    sequence_no bigint NOT NULL CHECK (sequence_no > 0),
+    monitor_id bigint NOT NULL,
+    monitor_version_id bigint NOT NULL,
+    document_version_id bigint NOT NULL,
+    previous_effective_decision varchar(16) NOT NULL CHECK (previous_effective_decision IN ('accepted','review','rejected')),
+    decision varchar(16) NOT NULL CHECK (decision IN ('accepted','rejected')),
+    reason_code varchar(64) NOT NULL CHECK (reason_code ~ '^[a-z0-9][a-z0-9_:-]{0,63}$'),
+    note text NOT NULL DEFAULT '' CHECK (octet_length(note) <= 8000),
+    actor_user_id bigint NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    idempotency_key varchar(128) NOT NULL UNIQUE CHECK (btrim(idempotency_key) = idempotency_key AND idempotency_key !~ '[[:cntrl:]]'),
+    command_fingerprint char(64) NOT NULL CHECK (command_fingerprint ~ '^[0-9a-f]{64}$'),
+    created_at timestamptz NOT NULL,
+    FOREIGN KEY (match_decision_id, monitor_id, monitor_version_id, document_version_id)
+        REFERENCES document_match_decisions(id, monitor_id, monitor_version_id, document_version_id) ON DELETE RESTRICT,
+    UNIQUE (match_decision_id, sequence_no)
+);
+ALTER TABLE document_match_overrides
+    DROP CONSTRAINT IF EXISTS document_match_overrides_idempotency_key_check;
+ALTER TABLE document_match_overrides
+    ADD CONSTRAINT document_match_overrides_idempotency_key_check
+    CHECK (btrim(idempotency_key) = idempotency_key AND idempotency_key !~ '[[:cntrl:]]');
+CREATE INDEX IF NOT EXISTS document_match_overrides_effective_idx
+    ON document_match_overrides(match_decision_id, sequence_no DESC);
+
+CREATE OR REPLACE FUNCTION enforce_relevance_decision_profile_lifecycle()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    evaluation_record relevance_evaluation_runs%ROWTYPE;
+    active_admin boolean;
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'relevance_decision_profiles_retained',
+            MESSAGE = 'relevance decision profiles are retained';
+    END IF;
+    IF NEW.evaluation_run_id IS NOT NULL THEN
+        SELECT * INTO evaluation_record FROM relevance_evaluation_runs
+        WHERE id=NEW.evaluation_run_id FOR KEY SHARE;
+        IF evaluation_record.id IS NULL
+           OR evaluation_record.matching_algorithm_version IS DISTINCT FROM NEW.matching_algorithm_version
+           OR evaluation_record.reranker_version IS DISTINCT FROM NEW.reranker_version
+           OR evaluation_record.calibration_version IS DISTINCT FROM NEW.calibration_version
+           OR evaluation_record.reject_threshold IS DISTINCT FROM NEW.reject_threshold
+           OR evaluation_record.accept_threshold IS DISTINCT FROM NEW.accept_threshold
+           OR evaluation_record.calibration_slope IS DISTINCT FROM NEW.calibration_slope
+           OR evaluation_record.calibration_intercept IS DISTINCT FROM NEW.calibration_intercept
+           OR evaluation_record.sample_count IS DISTINCT FROM NEW.evaluation_sample_count
+        THEN
+            RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'relevance_decision_profiles_exact_evaluation',
+                MESSAGE = 'relevance profile must bind one exact evaluation run';
+        END IF;
+    END IF;
+    IF NEW.status = 'active' THEN
+        SELECT EXISTS (
+            SELECT 1 FROM users
+            WHERE id=NEW.activated_by_user_id AND role='admin' AND status='active' AND deleted_at IS NULL
+        ) INTO active_admin;
+        IF NEW.evaluation_run_id IS NULL OR NEW.calibration_slope <= 0 OR evaluation_record.status IS DISTINCT FROM 'passed'
+           OR evaluation_record.annotator_count < 2 OR evaluation_record.agreement_score < 0.80
+           OR evaluation_record.positive_count < 200 OR evaluation_record.negative_count < 200
+           OR evaluation_record.recall_at_100 < 0.95 OR evaluation_record.precision_score < 0.90
+           OR evaluation_record.recall_score < 0.80 OR evaluation_record.expected_calibration_error > 0.05
+           OR evaluation_record.precision_wilson_lower < 0.87 OR NOT evaluation_record.hard_negative_passed
+           OR EXISTS (SELECT 1 FROM relevance_evaluation_slices WHERE evaluation_run_id=NEW.evaluation_run_id AND (sample_count < 50 OR precision_score < 0.90 OR recall_score < 0.80 OR NOT passed))
+           OR NOT EXISTS (SELECT 1 FROM relevance_evaluation_slices WHERE evaluation_run_id=NEW.evaluation_run_id AND dimension='language')
+           OR NOT EXISTS (SELECT 1 FROM relevance_evaluation_slices WHERE evaluation_run_id=NEW.evaluation_run_id AND dimension='source')
+           OR NOT active_admin OR NEW.activated_at < evaluation_record.evaluated_at
+        THEN
+            RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'relevance_decision_profiles_activation_gate',
+                MESSAGE = 'active relevance profile requires a passing time-isolated evaluation and active administrator';
+        END IF;
+    END IF;
+    IF TG_OP = 'UPDATE' AND (
+        NEW.id IS DISTINCT FROM OLD.id OR NEW.version IS DISTINCT FROM OLD.version
+        OR NEW.profile_name IS DISTINCT FROM OLD.profile_name
+        OR NEW.matching_algorithm_version IS DISTINCT FROM OLD.matching_algorithm_version
+        OR NEW.reranker_version IS DISTINCT FROM OLD.reranker_version
+        OR NEW.calibration_version IS DISTINCT FROM OLD.calibration_version
+        OR NEW.reject_threshold IS DISTINCT FROM OLD.reject_threshold
+        OR NEW.accept_threshold IS DISTINCT FROM OLD.accept_threshold
+        OR NEW.calibration_slope IS DISTINCT FROM OLD.calibration_slope
+        OR NEW.calibration_intercept IS DISTINCT FROM OLD.calibration_intercept
+        OR NEW.evaluation_sample_count IS DISTINCT FROM OLD.evaluation_sample_count
+        OR NEW.evaluation_run_id IS DISTINCT FROM OLD.evaluation_run_id
+        OR NEW.created_by_user_id IS DISTINCT FROM OLD.created_by_user_id
+        OR NEW.created_at IS DISTINCT FROM OLD.created_at
+        OR OLD.status = 'uncalibrated'
+        OR OLD.status = 'shadow' AND NEW.status <> 'active'
+        OR OLD.status = 'active' AND NEW.status <> 'rolled_back'
+        OR OLD.status = 'rolled_back'
+    ) THEN
+        RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'relevance_decision_profiles_lifecycle',
+            MESSAGE = 'relevance decision profile transition is invalid';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS relevance_decision_profiles_lifecycle ON relevance_decision_profiles;
+CREATE TRIGGER relevance_decision_profiles_lifecycle
+BEFORE INSERT OR UPDATE OR DELETE ON relevance_decision_profiles
+FOR EACH ROW EXECUTE FUNCTION enforce_relevance_decision_profile_lifecycle();
+
+CREATE OR REPLACE FUNCTION enforce_document_match_decision_integrity()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    profile_record relevance_decision_profiles%ROWTYPE;
+    compiled_monitor_id bigint;
+    compiled_monitor_version_id bigint;
+    compiled_matching_version text;
+    compiled_purpose text;
+    compiled_status text;
+BEGIN
+    SELECT * INTO profile_record FROM relevance_decision_profiles
+    WHERE id = NEW.relevance_profile_id FOR KEY SHARE;
+    SELECT monitor_id,monitor_version_id,matching_algorithm_version,purpose,status
+    INTO compiled_monitor_id,compiled_monitor_version_id,compiled_matching_version,compiled_purpose,compiled_status
+    FROM monitor_compiled_profiles WHERE id = NEW.compiled_profile_id FOR KEY SHARE;
+    IF profile_record.id IS NULL
+       OR compiled_purpose IS DISTINCT FROM 'published' OR compiled_status IS DISTINCT FROM 'ready'
+       OR compiled_monitor_id IS DISTINCT FROM NEW.monitor_id
+       OR compiled_monitor_version_id IS DISTINCT FROM NEW.monitor_version_id
+       OR compiled_matching_version IS DISTINCT FROM NEW.matching_algorithm_version
+       OR profile_record.matching_algorithm_version IS DISTINCT FROM NEW.matching_algorithm_version
+       OR profile_record.reranker_version IS DISTINCT FROM NEW.reranker_version
+       OR profile_record.calibration_version IS DISTINCT FROM NEW.calibration_version
+       OR profile_record.status = 'rolled_back'
+       OR profile_record.status <> 'active' AND NEW.decision <> 'review'
+       OR NEW.decision = 'accepted' AND (
+            NEW.degraded OR NEW.relevance_probability IS NULL
+            OR NEW.relevance_probability < profile_record.accept_threshold
+       )
+       OR NEW.decision = 'rejected' AND NOT (
+            NEW.reason_codes @> ARRAY['hard_veto']::text[]
+            OR profile_record.status = 'active' AND NEW.relevance_probability < profile_record.reject_threshold
+       )
+    THEN
+        RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'document_match_decisions_exact_profile',
+            MESSAGE = 'document match decision requires an exact published profile and conservative threshold result';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS document_match_decisions_integrity ON document_match_decisions;
+CREATE TRIGGER document_match_decisions_integrity
+BEFORE INSERT ON document_match_decisions
+FOR EACH ROW EXECUTE FUNCTION enforce_document_match_decision_integrity();
+
+CREATE OR REPLACE FUNCTION reject_document_match_fact_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'document_match_facts_append_only',
+        MESSAGE = 'document match facts are append-only';
+END;
+$$;
+DROP TRIGGER IF EXISTS document_match_decisions_append_only ON document_match_decisions;
+CREATE TRIGGER document_match_decisions_append_only
+BEFORE UPDATE OR DELETE ON document_match_decisions
+FOR EACH ROW EXECUTE FUNCTION reject_document_match_fact_mutation();
+DROP TRIGGER IF EXISTS document_match_recall_signals_append_only ON document_match_recall_signals;
+CREATE TRIGGER document_match_recall_signals_append_only
+BEFORE UPDATE OR DELETE ON document_match_recall_signals
+FOR EACH ROW EXECUTE FUNCTION reject_document_match_fact_mutation();
+DROP TRIGGER IF EXISTS document_match_overrides_append_only ON document_match_overrides;
+CREATE TRIGGER document_match_overrides_append_only
+BEFORE UPDATE OR DELETE ON document_match_overrides
+FOR EACH ROW EXECUTE FUNCTION reject_document_match_fact_mutation();
+
+CREATE OR REPLACE FUNCTION enforce_document_match_override_integrity()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    base_record document_match_decisions%ROWTYPE;
+    current_sequence bigint;
+    current_decision text;
+BEGIN
+    SELECT * INTO base_record FROM document_match_decisions
+    WHERE id = NEW.match_decision_id FOR KEY SHARE;
+    SELECT sequence_no,decision INTO current_sequence,current_decision
+    FROM document_match_overrides
+    WHERE match_decision_id = NEW.match_decision_id
+    ORDER BY sequence_no DESC LIMIT 1;
+    IF current_sequence IS NULL THEN
+        current_sequence := 0;
+        current_decision := base_record.decision;
+    END IF;
+    IF base_record.id IS NULL
+       OR base_record.monitor_id IS DISTINCT FROM NEW.monitor_id
+       OR base_record.monitor_version_id IS DISTINCT FROM NEW.monitor_version_id
+       OR base_record.document_version_id IS DISTINCT FROM NEW.document_version_id
+       OR NEW.sequence_no <> current_sequence + 1
+       OR NEW.previous_effective_decision IS DISTINCT FROM current_decision
+    THEN
+        RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'document_match_overrides_chain',
+            MESSAGE = 'document match override must append to the exact effective decision';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS document_match_overrides_integrity ON document_match_overrides;
+CREATE TRIGGER document_match_overrides_integrity
+BEFORE INSERT ON document_match_overrides
+FOR EACH ROW EXECUTE FUNCTION enforce_document_match_override_integrity();
+
+-- Re-establish exact evidence-lineage foreign keys when a non-empty catalog
+-- previously dropped a parent table with CASCADE. Dynamic DDL keeps the
+-- canonical CREATE declarations as the catalog contract while making the
+-- additive upgrade path converge without a second schema source.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='source_observation_parties'::regclass AND contype='f' AND confrelid='source_observations'::regclass) THEN
+        EXECUTE 'ALTER TABLE source_observation_parties ADD CONSTRAINT source_observation_parties_observation_fk FOREIGN KEY (source_observation_id, source_connection_id) REFERENCES source_observations(id, source_connection_id) ON DELETE RESTRICT';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='source_observation_parties'::regclass AND contype='f' AND confrelid='source_parties'::regclass) THEN
+        EXECUTE 'ALTER TABLE source_observation_parties ADD CONSTRAINT source_observation_parties_party_fk FOREIGN KEY (source_party_id, source_connection_id) REFERENCES source_parties(id, source_connection_id) ON DELETE RESTRICT';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='source_observation_parties'::regclass AND contype='f' AND confrelid='source_observation_evidences'::regclass) THEN
+        EXECUTE 'ALTER TABLE source_observation_parties ADD CONSTRAINT source_observation_parties_evidence_reference_fk FOREIGN KEY (evidence_reference_id, source_connection_id, source_observation_id) REFERENCES source_observation_evidences(id, source_connection_id, source_observation_id) ON DELETE RESTRICT';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='document_match_decisions'::regclass AND contype='f' AND confrelid='document_versions'::regclass) THEN
+        EXECUTE 'ALTER TABLE document_match_decisions ADD CONSTRAINT document_match_decisions_document_version_fk FOREIGN KEY (document_version_id) REFERENCES document_versions(id) ON DELETE RESTRICT';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='monitor_intent_preview_samples'::regclass AND contype='f' AND confrelid='document_versions'::regclass) THEN
+        EXECUTE 'ALTER TABLE monitor_intent_preview_samples ADD CONSTRAINT monitor_intent_preview_samples_document_version_fk FOREIGN KEY (document_version_id) REFERENCES document_versions(id) ON DELETE RESTRICT';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='document_version_search_indexes'::regclass AND contype='f' AND confrelid='document_versions'::regclass) THEN
+        EXECUTE 'ALTER TABLE document_version_search_indexes ADD CONSTRAINT document_version_search_indexes_document_version_fk FOREIGN KEY (document_version_id) REFERENCES document_versions(id) ON DELETE RESTRICT';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='document_version_search_indexes'::regclass AND contype='f' AND confrelid='derived_artifacts'::regclass) THEN
+        EXECUTE 'ALTER TABLE document_version_search_indexes ADD CONSTRAINT document_version_search_indexes_derived_artifact_fk FOREIGN KEY (derived_artifact_id) REFERENCES derived_artifacts(id) ON DELETE RESTRICT';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid='document_version_search_indexes'::regclass AND contype='f'
+          AND pg_get_constraintdef(oid, true) LIKE 'FOREIGN KEY (store_derived_rights_decision_id,%'
+    ) THEN
+        EXECUTE 'ALTER TABLE document_version_search_indexes ADD CONSTRAINT document_version_search_indexes_store_derived_rights_fk FOREIGN KEY (store_derived_rights_decision_id, source_connection_id, rights_action, rights_decision) REFERENCES source_rights_decisions(id, source_connection_id, action, decision) ON DELETE RESTRICT';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid='document_version_search_indexes'::regclass AND contype='f'
+          AND pg_get_constraintdef(oid, true) LIKE 'FOREIGN KEY (retain_rights_decision_id,%'
+    ) THEN
+        EXECUTE 'ALTER TABLE document_version_search_indexes ADD CONSTRAINT document_version_search_indexes_retain_rights_fk FOREIGN KEY (retain_rights_decision_id, source_connection_id, retain_action, retain_decision) REFERENCES source_rights_decisions(id, source_connection_id, action, decision) ON DELETE RESTRICT';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='document_version_embeddings'::regclass AND contype='f' AND confrelid='document_versions'::regclass) THEN
+        EXECUTE 'ALTER TABLE document_version_embeddings ADD CONSTRAINT document_version_embeddings_document_version_fk FOREIGN KEY (document_version_id) REFERENCES document_versions(id) ON DELETE RESTRICT';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid='document_version_embeddings'::regclass AND contype='f'
+          AND pg_get_constraintdef(oid, true) LIKE 'FOREIGN KEY (embed_local_rights_decision_id,%'
+    ) THEN
+        EXECUTE 'ALTER TABLE document_version_embeddings ADD CONSTRAINT document_version_embeddings_embed_local_rights_fk FOREIGN KEY (embed_local_rights_decision_id, source_connection_id, embed_action, embed_decision) REFERENCES source_rights_decisions(id, source_connection_id, action, decision) ON DELETE RESTRICT';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid='document_version_embeddings'::regclass AND contype='f'
+          AND pg_get_constraintdef(oid, true) LIKE 'FOREIGN KEY (retain_rights_decision_id,%'
+    ) THEN
+        EXECUTE 'ALTER TABLE document_version_embeddings ADD CONSTRAINT document_version_embeddings_retain_rights_fk FOREIGN KEY (retain_rights_decision_id, source_connection_id, retain_action, retain_decision) REFERENCES source_rights_decisions(id, source_connection_id, action, decision) ON DELETE RESTRICT';
+    END IF;
+END;
+$$;
+
+-- Immutable W3C-style TextQuoteSelector/TextPositionSelector facts. Exact
+-- excerpts are persisted only under a current quote allow and the exact
+-- document retention allow; the canonical body remains in Vault.
+CREATE TABLE IF NOT EXISTS document_text_quote_selectors (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
+    source_connection_id bigint NOT NULL REFERENCES source_connections(id) ON DELETE RESTRICT,
+    document_version_id bigint NOT NULL REFERENCES document_versions(id) ON DELETE RESTRICT,
+    plaintext_artifact_id bigint NOT NULL REFERENCES derived_artifacts(id) ON DELETE RESTRICT,
+    markdown_artifact_id bigint NOT NULL REFERENCES derived_artifacts(id) ON DELETE RESTRICT,
+    quote_rights_decision_id bigint NOT NULL,
+    retain_rights_decision_id bigint NOT NULL,
+    quote_action varchar(32) NOT NULL DEFAULT 'quote' CHECK (quote_action = 'quote'),
+    quote_decision varchar(8) NOT NULL DEFAULT 'allow' CHECK (quote_decision = 'allow'),
+    retain_action varchar(32) NOT NULL DEFAULT 'retain' CHECK (retain_action = 'retain'),
+    retain_decision varchar(8) NOT NULL DEFAULT 'allow' CHECK (retain_decision = 'allow'),
+    exact_quote text NOT NULL CHECK (octet_length(exact_quote) BETWEEN 1 AND 4096),
+    prefix text NOT NULL DEFAULT '' CHECK (char_length(prefix) <= 64 AND octet_length(prefix) <= 256),
+    suffix text NOT NULL DEFAULT '' CHECK (char_length(suffix) <= 64 AND octet_length(suffix) <= 256),
+    utf8_byte_start bigint NOT NULL CHECK (utf8_byte_start >= 0),
+    utf8_byte_end bigint NOT NULL CHECK (utf8_byte_end > utf8_byte_start),
+    quote_sha256 char(64) NOT NULL CHECK (quote_sha256 ~ '^[0-9a-f]{64}$'),
+    plaintext_sha256 char(64) NOT NULL CHECK (plaintext_sha256 ~ '^[0-9a-f]{64}$'),
+    normalization_version varchar(64) NOT NULL CHECK (normalization_version = 'nfc-lf-collapse-space-v1'),
+    selector_version varchar(96) NOT NULL CHECK (selector_version = 'w3c-text-quote-position-nfc-utf8-v1'),
+    anchor_map_sha256 char(64) NOT NULL CHECK (anchor_map_sha256 ~ '^[0-9a-f]{64}$'),
+    markdown_anchor varchar(64) CHECK (markdown_anchor IS NULL OR markdown_anchor ~ '^body-[0-9]{4,5}-[0-9a-f]{12}$'),
+    retention_until timestamptz NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (document_version_id, plaintext_sha256, utf8_byte_start, utf8_byte_end, quote_sha256),
+    CHECK (retention_until > created_at),
+    FOREIGN KEY (quote_rights_decision_id, source_connection_id, quote_action, quote_decision)
+        REFERENCES source_rights_decisions(id, source_connection_id, action, decision) ON DELETE RESTRICT,
+    FOREIGN KEY (retain_rights_decision_id, source_connection_id, retain_action, retain_decision)
+        REFERENCES source_rights_decisions(id, source_connection_id, action, decision) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS document_text_quote_selectors_version_idx
+    ON document_text_quote_selectors(document_version_id, id);
+
+CREATE OR REPLACE FUNCTION enforce_document_text_quote_selector_integrity()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    document_source_connection_id bigint;
+    document_content_sha256 char(64);
+    document_lifecycle_state varchar(32);
+    plaintext_record derived_artifacts%ROWTYPE;
+    markdown_record derived_artifacts%ROWTYPE;
+BEGIN
+    SELECT document.source_connection_id, version.content_sha256, version.lifecycle_state
+    INTO document_source_connection_id, document_content_sha256, document_lifecycle_state
+    FROM document_versions AS version
+    JOIN documents AS document ON document.id=version.document_id
+    WHERE version.id=NEW.document_version_id
+    FOR SHARE OF version, document;
+    SELECT * INTO plaintext_record FROM derived_artifacts WHERE id=NEW.plaintext_artifact_id FOR SHARE;
+    SELECT * INTO markdown_record FROM derived_artifacts WHERE id=NEW.markdown_artifact_id FOR SHARE;
+    IF document_source_connection_id IS NULL
+       OR document_source_connection_id IS DISTINCT FROM NEW.source_connection_id
+       OR document_content_sha256 IS DISTINCT FROM NEW.plaintext_sha256
+       OR document_lifecycle_state <> 'readable'
+       OR plaintext_record.id IS NULL
+       OR plaintext_record.source_connection_id IS DISTINCT FROM NEW.source_connection_id
+       OR plaintext_record.document_version_id IS DISTINCT FROM NEW.document_version_id
+       OR plaintext_record.artifact_type <> 'plaintext'
+       OR plaintext_record.sha256 IS DISTINCT FROM NEW.plaintext_sha256
+       OR plaintext_record.lifecycle_state <> 'derived_available'
+       OR NOT plaintext_record.active
+       OR plaintext_record.retention_until < NEW.retention_until
+       OR markdown_record.id IS NULL
+       OR markdown_record.source_connection_id IS DISTINCT FROM NEW.source_connection_id
+       OR markdown_record.document_version_id IS DISTINCT FROM NEW.document_version_id
+       OR markdown_record.artifact_type <> 'markdown'
+       OR markdown_record.lifecycle_state <> 'derived_available'
+       OR NOT markdown_record.active
+       OR markdown_record.anchor_map_sha256 IS DISTINCT FROM NEW.anchor_map_sha256
+       OR NOT current_rights_action_allowed(
+           plaintext_record.store_derived_rights_decision_id,NEW.source_connection_id,
+           'document_version',NEW.document_version_id::text,NEW.plaintext_sha256,'store_derived',CURRENT_TIMESTAMP
+       )
+       OR NOT current_rights_action_allowed(
+           plaintext_record.retain_rights_decision_id,NEW.source_connection_id,
+           'document_version',NEW.document_version_id::text,NEW.plaintext_sha256,'retain',CURRENT_TIMESTAMP
+       )
+       OR NOT current_rights_action_allowed(
+           NEW.quote_rights_decision_id,NEW.source_connection_id,
+           'document_version',NEW.document_version_id::text,NEW.plaintext_sha256,'quote',CURRENT_TIMESTAMP
+       )
+       OR NOT current_rights_action_allowed(
+           NEW.retain_rights_decision_id,NEW.source_connection_id,
+           'document_version',NEW.document_version_id::text,NEW.plaintext_sha256,'retain',CURRENT_TIMESTAMP
+       )
+       OR NEW.retention_until > plaintext_record.retention_until
+       OR NEW.retention_until > markdown_record.retention_until
+       OR NEW.retention_until <= CURRENT_TIMESTAMP
+       OR (NEW.markdown_anchor IS NOT NULL AND NOT EXISTS (
+           SELECT 1 FROM document_anchor_blocks AS anchor
+           WHERE anchor.derived_artifact_id=NEW.markdown_artifact_id
+             AND anchor.anchor_map_sha256=NEW.anchor_map_sha256
+             AND anchor.markdown_anchor=NEW.markdown_anchor
+             AND anchor.plaintext_utf8_byte_start<=NEW.utf8_byte_start
+             AND anchor.plaintext_utf8_byte_end>=NEW.utf8_byte_end
+       )) THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='document_text_quote_selectors_integrity',
+            MESSAGE='text quote selector requires exact readable artifacts and current quote/retain rights';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS document_text_quote_selectors_integrity ON document_text_quote_selectors;
+CREATE TRIGGER document_text_quote_selectors_integrity
+BEFORE INSERT ON document_text_quote_selectors
+FOR EACH ROW EXECUTE FUNCTION enforce_document_text_quote_selector_integrity();
+
+CREATE OR REPLACE FUNCTION enforce_document_text_quote_selector_immutability()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='document_text_quote_selectors_immutable',
+        MESSAGE='text quote selectors are append-only';
+END;
+$$;
+DROP TRIGGER IF EXISTS document_text_quote_selectors_immutable ON document_text_quote_selectors;
+CREATE TRIGGER document_text_quote_selectors_immutable
+BEFORE UPDATE OR DELETE ON document_text_quote_selectors
+FOR EACH ROW EXECUTE FUNCTION enforce_document_text_quote_selector_immutability();
+
+-- Content-family lineage stores privacy-bounded fingerprints and immutable
+-- relationship decisions. Canonical plaintext remains in the authorized Vault.
+CREATE TABLE IF NOT EXISTS content_fingerprints (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
+    source_connection_id bigint NOT NULL REFERENCES source_connections(id) ON DELETE RESTRICT,
+    document_version_id bigint NOT NULL REFERENCES document_versions(id) ON DELETE RESTRICT,
+    derived_artifact_id bigint NOT NULL REFERENCES derived_artifacts(id) ON DELETE RESTRICT,
+    store_derived_rights_decision_id bigint NOT NULL,
+    retain_rights_decision_id bigint NOT NULL,
+    store_action varchar(32) NOT NULL DEFAULT 'store_derived' CHECK (store_action = 'store_derived'),
+    store_decision varchar(8) NOT NULL DEFAULT 'allow' CHECK (store_decision = 'allow'),
+    retain_action varchar(32) NOT NULL DEFAULT 'retain' CHECK (retain_action = 'retain'),
+    retain_decision varchar(8) NOT NULL DEFAULT 'allow' CHECK (retain_decision = 'allow'),
+    profile_version varchar(64) NOT NULL CHECK (btrim(profile_version) <> ''),
+    normalized_content_sha256 char(64) CHECK (normalized_content_sha256 ~ '^[0-9a-f]{64}$'),
+    simhash_hex char(16) CHECK (simhash_hex ~ '^[0-9a-f]{16}$'),
+    minhash bytea CHECK (octet_length(minhash) = 512),
+    retention_until timestamptz NOT NULL,
+    lifecycle_state varchar(16) NOT NULL DEFAULT 'active' CHECK (lifecycle_state IN ('active','tombstoned')),
+    tombstoned_at timestamptz,
+    purge_reason varchar(64),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (document_version_id, profile_version),
+    CHECK (lifecycle_state='active' AND normalized_content_sha256 IS NOT NULL AND simhash_hex IS NOT NULL
+            AND minhash IS NOT NULL AND tombstoned_at IS NULL AND purge_reason IS NULL
+        OR lifecycle_state='tombstoned' AND normalized_content_sha256 IS NULL AND simhash_hex IS NULL
+            AND minhash IS NULL AND tombstoned_at IS NOT NULL AND btrim(purge_reason) <> ''),
+    CHECK (retention_until > created_at),
+    FOREIGN KEY (store_derived_rights_decision_id, source_connection_id, store_action, store_decision)
+        REFERENCES source_rights_decisions(id, source_connection_id, action, decision) ON DELETE RESTRICT,
+    FOREIGN KEY (retain_rights_decision_id, source_connection_id, retain_action, retain_decision)
+        REFERENCES source_rights_decisions(id, source_connection_id, action, decision) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS content_fingerprints_similarity_idx
+    ON content_fingerprints(profile_version, normalized_content_sha256, simhash_hex);
+
+CREATE TABLE IF NOT EXISTS content_families (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
+    root_document_version_id bigint NOT NULL REFERENCES document_versions(id) ON DELETE RESTRICT,
+    lineage_profile_version varchar(64) NOT NULL CHECK (btrim(lineage_profile_version) <> ''),
+    status varchar(24) NOT NULL DEFAULT 'active' CHECK (status IN ('active','review_pending','closed')),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (root_document_version_id, lineage_profile_version)
+);
+
+CREATE TABLE IF NOT EXISTS content_lineage_decisions (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
+    document_version_id bigint NOT NULL REFERENCES document_versions(id) ON DELETE RESTRICT,
+    fingerprint_id bigint NOT NULL REFERENCES content_fingerprints(id) ON DELETE RESTRICT,
+    family_id bigint NOT NULL REFERENCES content_families(id) ON DELETE RESTRICT,
+    result_family_version bigint NOT NULL CHECK (result_family_version > 0),
+    candidate_root_document_version_id bigint REFERENCES document_versions(id) ON DELETE RESTRICT,
+    action varchar(16) NOT NULL CHECK (action IN ('create','join','review')),
+    relation varchar(32) NOT NULL CHECK (relation IN ('exact_copy','near_duplicate','syndicated_from','translation_of','revision_of','unrelated')),
+    hamming_distance smallint NOT NULL CHECK (hamming_distance BETWEEN 0 AND 64),
+    minhash_similarity numeric(6,5) NOT NULL CHECK (minhash_similarity BETWEEN 0 AND 1),
+    decision_profile_version varchar(64) NOT NULL CHECK (btrim(decision_profile_version) <> ''),
+    reason_codes jsonb NOT NULL CHECK (jsonb_typeof(reason_codes) = 'array' AND jsonb_array_length(reason_codes) > 0),
+    decision_origin varchar(16) NOT NULL DEFAULT 'automatic' CHECK (decision_origin IN ('automatic','manual')),
+    decided_by_user_id bigint REFERENCES users(id) ON DELETE RESTRICT,
+    idempotency_key varchar(96) NOT NULL UNIQUE CHECK (btrim(idempotency_key) <> ''),
+    command_fingerprint char(64) NOT NULL CHECK (command_fingerprint ~ '^[0-9a-f]{64}$'),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (action = 'create' AND relation = 'unrelated' AND candidate_root_document_version_id IS NULL
+        OR action IN ('join','review') AND relation <> 'unrelated' AND candidate_root_document_version_id IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS content_lineage_decisions_document_idx
+    ON content_lineage_decisions(document_version_id, created_at DESC, id DESC);
+
+CREATE TABLE IF NOT EXISTS content_family_members (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
+    family_id bigint NOT NULL REFERENCES content_families(id) ON DELETE RESTRICT,
+    document_version_id bigint NOT NULL REFERENCES document_versions(id) ON DELETE RESTRICT,
+    fingerprint_id bigint NOT NULL REFERENCES content_fingerprints(id) ON DELETE RESTRICT,
+    lineage_decision_id bigint NOT NULL REFERENCES content_lineage_decisions(id) ON DELETE RESTRICT,
+    lineage_profile_version varchar(64) NOT NULL CHECK (btrim(lineage_profile_version) <> ''),
+    relation varchar(32) NOT NULL CHECK (relation IN ('exact_copy','near_duplicate','syndicated_from','translation_of','revision_of','unrelated')),
+    parent_document_version_id bigint REFERENCES document_versions(id) ON DELETE RESTRICT,
+    active boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    retired_at timestamptz,
+    CHECK (parent_document_version_id IS NULL AND relation = 'unrelated'
+        OR parent_document_version_id IS NOT NULL AND relation <> 'unrelated' AND parent_document_version_id <> document_version_id),
+    CHECK (active AND retired_at IS NULL OR NOT active AND retired_at IS NOT NULL)
+);
+ALTER TABLE content_family_members ADD COLUMN IF NOT EXISTS retired_at timestamptz;
+ALTER TABLE content_family_members DROP CONSTRAINT IF EXISTS content_family_members_document_version_id_lineage_profile_version_key;
+CREATE UNIQUE INDEX IF NOT EXISTS content_family_members_active_document_uq
+    ON content_family_members(document_version_id,lineage_profile_version) WHERE active;
+CREATE INDEX IF NOT EXISTS content_family_members_family_idx
+    ON content_family_members(family_id, active, document_version_id);
+
+CREATE TABLE IF NOT EXISTS content_lineage_feedbacks (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
+    lineage_decision_id bigint NOT NULL REFERENCES content_lineage_decisions(id) ON DELETE RESTRICT,
+    result_lineage_decision_id bigint NOT NULL REFERENCES content_lineage_decisions(id) ON DELETE RESTRICT,
+    document_version_id bigint NOT NULL REFERENCES document_versions(id) ON DELETE RESTRICT,
+    original_family_id bigint NOT NULL REFERENCES content_families(id) ON DELETE RESTRICT,
+    result_family_id bigint NOT NULL REFERENCES content_families(id) ON DELETE RESTRICT,
+    original_relation varchar(32) NOT NULL CHECK (original_relation IN ('exact_copy','near_duplicate','syndicated_from','translation_of','revision_of','unrelated')),
+    result_relation varchar(32) NOT NULL CHECK (result_relation IN ('exact_copy','near_duplicate','syndicated_from','translation_of','revision_of','unrelated')),
+    original_parent_document_version_id bigint REFERENCES document_versions(id) ON DELETE RESTRICT,
+    result_parent_document_version_id bigint REFERENCES document_versions(id) ON DELETE RESTRICT,
+    result_family_version bigint NOT NULL CHECK (result_family_version > 0),
+    actor_user_id bigint NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    feedback_type varchar(24) NOT NULL CHECK (feedback_type IN ('duplicate','not_duplicate','relation_override','withdraw')),
+    relation_override varchar(32) CHECK (relation_override IS NULL OR relation_override IN ('exact_copy','near_duplicate','syndicated_from','translation_of','revision_of','unrelated')),
+    reason_code varchar(64) NOT NULL CHECK (btrim(reason_code) <> ''),
+    note varchar(1000) NOT NULL DEFAULT '',
+    idempotency_key varchar(96) NOT NULL UNIQUE CHECK (btrim(idempotency_key) <> ''),
+    command_fingerprint char(64) NOT NULL CHECK (command_fingerprint ~ '^[0-9a-f]{64}$'),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (feedback_type = 'relation_override' AND relation_override IS NOT NULL
+        OR feedback_type <> 'relation_override' AND relation_override IS NULL),
+    CHECK (result_relation='unrelated' AND result_parent_document_version_id IS NULL
+        OR result_relation<>'unrelated' AND result_parent_document_version_id IS NOT NULL
+            AND result_parent_document_version_id<>document_version_id)
+);
+ALTER TABLE content_lineage_feedbacks ADD COLUMN IF NOT EXISTS result_lineage_decision_id bigint REFERENCES content_lineage_decisions(id) ON DELETE RESTRICT;
+ALTER TABLE content_lineage_feedbacks ADD COLUMN IF NOT EXISTS document_version_id bigint REFERENCES document_versions(id) ON DELETE RESTRICT;
+ALTER TABLE content_lineage_feedbacks ADD COLUMN IF NOT EXISTS original_family_id bigint REFERENCES content_families(id) ON DELETE RESTRICT;
+ALTER TABLE content_lineage_feedbacks ADD COLUMN IF NOT EXISTS result_family_id bigint REFERENCES content_families(id) ON DELETE RESTRICT;
+ALTER TABLE content_lineage_feedbacks ADD COLUMN IF NOT EXISTS original_relation varchar(32);
+ALTER TABLE content_lineage_feedbacks ADD COLUMN IF NOT EXISTS result_relation varchar(32);
+ALTER TABLE content_lineage_feedbacks ADD COLUMN IF NOT EXISTS original_parent_document_version_id bigint REFERENCES document_versions(id) ON DELETE RESTRICT;
+ALTER TABLE content_lineage_feedbacks ADD COLUMN IF NOT EXISTS result_parent_document_version_id bigint REFERENCES document_versions(id) ON DELETE RESTRICT;
+ALTER TABLE content_lineage_feedbacks ADD COLUMN IF NOT EXISTS result_family_version bigint;
+-- Recreate downstream lineage foreign keys that PostgreSQL removes when an
+-- operator rehearses the evidence-lineage table replacement with CASCADE.
+-- CREATE TABLE IF NOT EXISTS cannot restore constraints on tables that stayed
+-- in place, so this convergence loop checks the exact constrained column and
+-- adds only the missing canonical relationship.
+DO $$
+DECLARE
+    relationship record;
+BEGIN
+    FOR relationship IN
+        SELECT * FROM (VALUES
+            ('document_text_quote_selectors','text_quote_selectors_document_version_fk','FOREIGN KEY (document_version_id) REFERENCES document_versions(id) ON DELETE RESTRICT','FOREIGN KEY (document_version_id)'),
+            ('document_text_quote_selectors','text_quote_selectors_plaintext_artifact_fk','FOREIGN KEY (plaintext_artifact_id) REFERENCES derived_artifacts(id) ON DELETE RESTRICT','FOREIGN KEY (plaintext_artifact_id)'),
+            ('document_text_quote_selectors','text_quote_selectors_markdown_artifact_fk','FOREIGN KEY (markdown_artifact_id) REFERENCES derived_artifacts(id) ON DELETE RESTRICT','FOREIGN KEY (markdown_artifact_id)'),
+            ('document_text_quote_selectors','text_quote_selectors_quote_rights_fk','FOREIGN KEY (quote_rights_decision_id,source_connection_id,quote_action,quote_decision) REFERENCES source_rights_decisions(id,source_connection_id,action,decision) ON DELETE RESTRICT','FOREIGN KEY (quote_rights_decision_id'),
+            ('document_text_quote_selectors','text_quote_selectors_retain_rights_fk','FOREIGN KEY (retain_rights_decision_id,source_connection_id,retain_action,retain_decision) REFERENCES source_rights_decisions(id,source_connection_id,action,decision) ON DELETE RESTRICT','FOREIGN KEY (retain_rights_decision_id'),
+            ('content_fingerprints','content_fingerprints_document_version_fk','FOREIGN KEY (document_version_id) REFERENCES document_versions(id) ON DELETE RESTRICT','FOREIGN KEY (document_version_id)'),
+            ('content_fingerprints','content_fingerprints_derived_artifact_fk','FOREIGN KEY (derived_artifact_id) REFERENCES derived_artifacts(id) ON DELETE RESTRICT','FOREIGN KEY (derived_artifact_id)'),
+            ('content_fingerprints','content_fingerprints_store_rights_fk','FOREIGN KEY (store_derived_rights_decision_id,source_connection_id,store_action,store_decision) REFERENCES source_rights_decisions(id,source_connection_id,action,decision) ON DELETE RESTRICT','FOREIGN KEY (store_derived_rights_decision_id'),
+            ('content_fingerprints','content_fingerprints_retain_rights_fk','FOREIGN KEY (retain_rights_decision_id,source_connection_id,retain_action,retain_decision) REFERENCES source_rights_decisions(id,source_connection_id,action,decision) ON DELETE RESTRICT','FOREIGN KEY (retain_rights_decision_id'),
+            ('content_families','content_families_root_document_version_fk','FOREIGN KEY (root_document_version_id) REFERENCES document_versions(id) ON DELETE RESTRICT','FOREIGN KEY (root_document_version_id)'),
+            ('content_lineage_decisions','content_lineage_decisions_document_version_fk','FOREIGN KEY (document_version_id) REFERENCES document_versions(id) ON DELETE RESTRICT','FOREIGN KEY (document_version_id)'),
+            ('content_lineage_decisions','content_lineage_decisions_candidate_root_fk','FOREIGN KEY (candidate_root_document_version_id) REFERENCES document_versions(id) ON DELETE RESTRICT','FOREIGN KEY (candidate_root_document_version_id)'),
+            ('content_family_members','content_family_members_document_version_fk','FOREIGN KEY (document_version_id) REFERENCES document_versions(id) ON DELETE RESTRICT','FOREIGN KEY (document_version_id)'),
+            ('content_family_members','content_family_members_parent_document_version_fk','FOREIGN KEY (parent_document_version_id) REFERENCES document_versions(id) ON DELETE RESTRICT','FOREIGN KEY (parent_document_version_id)'),
+            ('content_lineage_feedbacks','content_lineage_feedbacks_document_version_fk','FOREIGN KEY (document_version_id) REFERENCES document_versions(id) ON DELETE RESTRICT','FOREIGN KEY (document_version_id)'),
+            ('content_lineage_feedbacks','content_lineage_feedbacks_original_parent_fk','FOREIGN KEY (original_parent_document_version_id) REFERENCES document_versions(id) ON DELETE RESTRICT','FOREIGN KEY (original_parent_document_version_id)'),
+            ('content_lineage_feedbacks','content_lineage_feedbacks_result_parent_fk','FOREIGN KEY (result_parent_document_version_id) REFERENCES document_versions(id) ON DELETE RESTRICT','FOREIGN KEY (result_parent_document_version_id)')
+        ) AS relationships(table_name,constraint_name,definition,signature)
+    LOOP
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conrelid=to_regclass(relationship.table_name)
+              AND contype='f'
+              AND pg_get_constraintdef(oid,true) LIKE relationship.signature || '%'
+        ) THEN
+            EXECUTE format('ALTER TABLE %I ADD CONSTRAINT %I %s',
+                relationship.table_name,relationship.constraint_name,relationship.definition);
+        END IF;
+    END LOOP;
+END;
+$$;
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM content_lineage_feedbacks
+        WHERE result_lineage_decision_id IS NULL OR document_version_id IS NULL
+           OR original_family_id IS NULL OR result_family_id IS NULL
+           OR original_relation IS NULL OR result_relation IS NULL OR result_family_version IS NULL
+    ) THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='content_lineage_feedbacks_manual_rebuild_required',
+            MESSAGE='legacy lineage feedback requires operator-reviewed result facts before canonical convergence';
+    END IF;
+END;
+$$;
+ALTER TABLE content_lineage_feedbacks ALTER COLUMN result_lineage_decision_id SET NOT NULL;
+ALTER TABLE content_lineage_feedbacks ALTER COLUMN document_version_id SET NOT NULL;
+ALTER TABLE content_lineage_feedbacks ALTER COLUMN original_family_id SET NOT NULL;
+ALTER TABLE content_lineage_feedbacks ALTER COLUMN result_family_id SET NOT NULL;
+ALTER TABLE content_lineage_feedbacks ALTER COLUMN original_relation SET NOT NULL;
+ALTER TABLE content_lineage_feedbacks ALTER COLUMN result_relation SET NOT NULL;
+ALTER TABLE content_lineage_feedbacks ALTER COLUMN result_family_version SET NOT NULL;
+ALTER TABLE content_lineage_feedbacks DROP CONSTRAINT IF EXISTS content_lineage_feedbacks_original_relation_check;
+ALTER TABLE content_lineage_feedbacks ADD CONSTRAINT content_lineage_feedbacks_original_relation_check
+    CHECK (original_relation IN ('exact_copy','near_duplicate','syndicated_from','translation_of','revision_of','unrelated'));
+ALTER TABLE content_lineage_feedbacks DROP CONSTRAINT IF EXISTS content_lineage_feedbacks_result_relation_check;
+ALTER TABLE content_lineage_feedbacks ADD CONSTRAINT content_lineage_feedbacks_result_relation_check
+    CHECK (result_relation IN ('exact_copy','near_duplicate','syndicated_from','translation_of','revision_of','unrelated'));
+ALTER TABLE content_lineage_feedbacks DROP CONSTRAINT IF EXISTS content_lineage_feedbacks_result_family_version_check;
+ALTER TABLE content_lineage_feedbacks ADD CONSTRAINT content_lineage_feedbacks_result_family_version_check
+    CHECK (result_family_version > 0);
+ALTER TABLE content_lineage_feedbacks DROP CONSTRAINT IF EXISTS content_lineage_feedbacks_result_parent_check;
+ALTER TABLE content_lineage_feedbacks DROP CONSTRAINT IF EXISTS content_lineage_feedbacks_check1;
+ALTER TABLE content_lineage_feedbacks ADD CONSTRAINT content_lineage_feedbacks_result_parent_check
+    CHECK (result_relation='unrelated' AND result_parent_document_version_id IS NULL
+        OR result_relation<>'unrelated' AND result_parent_document_version_id IS NOT NULL
+            AND result_parent_document_version_id<>document_version_id);
+
+CREATE OR REPLACE FUNCTION enforce_content_lineage_feedback_integrity()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    original_record content_lineage_decisions%ROWTYPE;
+    result_record content_lineage_decisions%ROWTYPE;
+BEGIN
+    SELECT * INTO original_record FROM content_lineage_decisions WHERE id=NEW.lineage_decision_id FOR KEY SHARE;
+    SELECT * INTO result_record FROM content_lineage_decisions WHERE id=NEW.result_lineage_decision_id FOR KEY SHARE;
+    IF original_record.id IS NULL OR result_record.id IS NULL
+       OR original_record.document_version_id IS DISTINCT FROM NEW.document_version_id
+       OR original_record.family_id IS DISTINCT FROM NEW.original_family_id
+       OR original_record.relation IS DISTINCT FROM NEW.original_relation
+       OR result_record.document_version_id IS DISTINCT FROM NEW.document_version_id
+       OR result_record.family_id IS DISTINCT FROM NEW.result_family_id
+       OR result_record.result_family_version IS DISTINCT FROM NEW.result_family_version
+       OR result_record.relation IS DISTINCT FROM NEW.result_relation
+       OR result_record.decision_origin IS DISTINCT FROM 'manual'
+       OR result_record.decided_by_user_id IS DISTINCT FROM NEW.actor_user_id
+       OR NOT EXISTS (
+            SELECT 1 FROM users
+            WHERE id=NEW.actor_user_id AND role IN ('editor','admin')
+              AND status='active' AND deleted_at IS NULL
+       ) THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='content_lineage_feedback_integrity',
+            MESSAGE='content lineage feedback must bind exact original and manual result facts';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS content_lineage_feedbacks_integrity ON content_lineage_feedbacks;
+CREATE TRIGGER content_lineage_feedbacks_integrity BEFORE INSERT ON content_lineage_feedbacks
+FOR EACH ROW EXECUTE FUNCTION enforce_content_lineage_feedback_integrity();
+
+CREATE OR REPLACE FUNCTION reject_content_lineage_fact_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'content_lineage_facts_append_only',
+        MESSAGE = 'content lineage facts are append-only';
+END;
+$$;
+CREATE OR REPLACE FUNCTION enforce_content_fingerprint_integrity()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    document_source_connection_id bigint;
+    document_content_sha256 char(64);
+    artifact_record derived_artifacts%ROWTYPE;
+BEGIN
+    SELECT document.source_connection_id,version.content_sha256
+      INTO document_source_connection_id,document_content_sha256
+    FROM document_versions AS version JOIN documents AS document ON document.id=version.document_id
+    WHERE version.id=NEW.document_version_id;
+    SELECT * INTO artifact_record FROM derived_artifacts WHERE id=NEW.derived_artifact_id;
+    IF document_source_connection_id IS NULL OR document_source_connection_id<>NEW.source_connection_id
+       OR artifact_record.id IS NULL OR artifact_record.document_version_id<>NEW.document_version_id
+       OR artifact_record.source_connection_id<>NEW.source_connection_id OR artifact_record.artifact_type<>'plaintext'
+       OR artifact_record.lifecycle_state<>'derived_available' OR NOT artifact_record.active
+       OR artifact_record.sha256<>document_content_sha256 OR NEW.retention_until>artifact_record.retention_until
+       OR NEW.retention_until<=CURRENT_TIMESTAMP
+       OR NOT current_rights_action_allowed(NEW.store_derived_rights_decision_id,NEW.source_connection_id,
+          'document_version',NEW.document_version_id::text,document_content_sha256,'store_derived',CURRENT_TIMESTAMP)
+       OR NOT current_rights_action_allowed(NEW.retain_rights_decision_id,NEW.source_connection_id,
+          'document_version',NEW.document_version_id::text,document_content_sha256,'retain',CURRENT_TIMESTAMP) THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='content_fingerprints_exact_rights',
+            MESSAGE='content fingerprint requires exact active plaintext and current rights';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS content_fingerprints_integrity ON content_fingerprints;
+CREATE TRIGGER content_fingerprints_integrity BEFORE INSERT ON content_fingerprints
+FOR EACH ROW EXECUTE FUNCTION enforce_content_fingerprint_integrity();
+CREATE OR REPLACE FUNCTION enforce_content_fingerprint_lifecycle()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF OLD.lifecycle_state<>'active' OR NEW.lifecycle_state<>'tombstoned'
+       OR NEW.normalized_content_sha256 IS NOT NULL OR NEW.simhash_hex IS NOT NULL OR NEW.minhash IS NOT NULL
+       OR NEW.tombstoned_at IS NULL OR btrim(COALESCE(NEW.purge_reason,''))=''
+       OR ROW(NEW.id,NEW.version,NEW.source_connection_id,NEW.document_version_id,NEW.derived_artifact_id,
+          NEW.store_derived_rights_decision_id,NEW.retain_rights_decision_id,NEW.profile_version,NEW.retention_until,NEW.created_at)
+          IS DISTINCT FROM
+          ROW(OLD.id,OLD.version,OLD.source_connection_id,OLD.document_version_id,OLD.derived_artifact_id,
+          OLD.store_derived_rights_decision_id,OLD.retain_rights_decision_id,OLD.profile_version,OLD.retention_until,OLD.created_at) THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='content_fingerprints_lifecycle',
+            MESSAGE='content fingerprint only permits sensitive-value tombstoning';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS content_fingerprints_lifecycle ON content_fingerprints;
+CREATE TRIGGER content_fingerprints_lifecycle BEFORE UPDATE ON content_fingerprints
+FOR EACH ROW EXECUTE FUNCTION enforce_content_fingerprint_lifecycle();
+DROP TRIGGER IF EXISTS content_fingerprints_append_only ON content_fingerprints;
+CREATE TRIGGER content_fingerprints_append_only BEFORE DELETE ON content_fingerprints
+FOR EACH ROW EXECUTE FUNCTION reject_content_lineage_fact_mutation();
+DROP TRIGGER IF EXISTS content_lineage_decisions_append_only ON content_lineage_decisions;
+CREATE TRIGGER content_lineage_decisions_append_only BEFORE UPDATE OR DELETE ON content_lineage_decisions
+FOR EACH ROW EXECUTE FUNCTION reject_content_lineage_fact_mutation();
+DROP TRIGGER IF EXISTS content_lineage_feedbacks_append_only ON content_lineage_feedbacks;
+CREATE TRIGGER content_lineage_feedbacks_append_only BEFORE UPDATE OR DELETE ON content_lineage_feedbacks
+FOR EACH ROW EXECUTE FUNCTION reject_content_lineage_fact_mutation();
+
+-- Micro-event v2 and storyline facts supersede legacy events/topics for new
+-- writes. They count content-family lineage roots and never store truth or
+-- source-credibility semantics.
+CREATE TABLE IF NOT EXISTS micro_events (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
+    event_key char(64) NOT NULL UNIQUE CHECK (event_key ~ '^[0-9a-f]{64}$'),
+    status varchar(24) NOT NULL DEFAULT 'active' CHECK (status IN ('active','review_pending','closed','merged')),
+    primary_subject_key varchar(256) NOT NULL CHECK (btrim(primary_subject_key) <> ''),
+    primary_action_key varchar(128) NOT NULL CHECK (btrim(primary_action_key) <> ''),
+    location_keys varchar(256)[] NOT NULL DEFAULT '{}',
+    identifier_keys varchar(256)[] NOT NULL DEFAULT '{}',
+    event_started_at timestamptz NOT NULL,
+    event_ended_at timestamptz,
+    clustering_profile_version varchar(64) NOT NULL CHECK (btrim(clustering_profile_version) <> ''),
+    merged_into_micro_event_id bigint REFERENCES micro_events(id) ON DELETE RESTRICT,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (event_ended_at IS NULL OR event_ended_at >= event_started_at),
+    CHECK (status='merged' AND merged_into_micro_event_id IS NOT NULL AND merged_into_micro_event_id<>id
+        OR status<>'merged' AND merged_into_micro_event_id IS NULL)
+);
+CREATE INDEX IF NOT EXISTS micro_events_active_time_idx ON micro_events(status,event_started_at DESC,id DESC);
+
+CREATE TABLE IF NOT EXISTS micro_event_membership_decisions (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
+    content_family_id bigint NOT NULL REFERENCES content_families(id) ON DELETE RESTRICT,
+    document_match_decision_id bigint NOT NULL REFERENCES document_match_decisions(id) ON DELETE RESTRICT,
+    monitor_id bigint NOT NULL REFERENCES monitors(id) ON DELETE RESTRICT,
+    monitor_version_id bigint NOT NULL REFERENCES monitor_config_versions(id) ON DELETE RESTRICT,
+    candidate_micro_event_id bigint REFERENCES micro_events(id) ON DELETE RESTRICT,
+    resulting_micro_event_id bigint NOT NULL REFERENCES micro_events(id) ON DELETE RESTRICT,
+    result_event_version bigint NOT NULL CHECK (result_event_version > 0),
+    action varchar(16) NOT NULL CHECK (action IN ('create','join','review')),
+    same_event_score numeric(8,7) NOT NULL CHECK (same_event_score BETWEEN 0 AND 1),
+    leading_margin numeric(8,7) NOT NULL CHECK (leading_margin BETWEEN 0 AND 1),
+    sparse_similarity numeric(8,7) NOT NULL CHECK (sparse_similarity BETWEEN 0 AND 1),
+    dense_similarity numeric(8,7) NOT NULL CHECK (dense_similarity BETWEEN 0 AND 1),
+    entity_overlap numeric(8,7) NOT NULL CHECK (entity_overlap BETWEEN 0 AND 1),
+    action_overlap numeric(8,7) NOT NULL CHECK (action_overlap BETWEEN 0 AND 1),
+    location_consistency numeric(8,7) NOT NULL CHECK (location_consistency BETWEEN 0 AND 1),
+    identifier_consistency numeric(8,7) NOT NULL CHECK (identifier_consistency BETWEEN 0 AND 1),
+    time_similarity numeric(8,7) NOT NULL CHECK (time_similarity BETWEEN 0 AND 1),
+    lineage_relation numeric(8,7) NOT NULL CHECK (lineage_relation BETWEEN 0 AND 1),
+    hard_conflict_reasons jsonb NOT NULL DEFAULT '[]' CHECK (jsonb_typeof(hard_conflict_reasons)='array'),
+    clustering_profile_version varchar(64) NOT NULL CHECK (btrim(clustering_profile_version) <> ''),
+    reason_codes jsonb NOT NULL CHECK (jsonb_typeof(reason_codes)='array' AND jsonb_array_length(reason_codes)>0),
+    decision_origin varchar(16) NOT NULL DEFAULT 'automatic' CHECK (decision_origin IN ('automatic','manual')),
+    actor_user_id bigint REFERENCES users(id) ON DELETE RESTRICT,
+    idempotency_key varchar(96) NOT NULL UNIQUE CHECK (btrim(idempotency_key) <> ''),
+    command_fingerprint char(64) NOT NULL CHECK (command_fingerprint ~ '^[0-9a-f]{64}$'),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (action='create' AND candidate_micro_event_id IS NULL
+        OR action IN ('join','review') AND candidate_micro_event_id IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS micro_event_membership_decisions_family_idx
+    ON micro_event_membership_decisions(content_family_id,created_at DESC,id DESC);
+
+CREATE OR REPLACE FUNCTION enforce_micro_event_membership_decision_integrity()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    match_record document_match_decisions%ROWTYPE;
+    effective_match_decision varchar(16);
+    event_record micro_events%ROWTYPE;
+BEGIN
+    SELECT * INTO match_record
+    FROM document_match_decisions
+    WHERE id = NEW.document_match_decision_id
+    FOR KEY SHARE;
+    SELECT COALESCE((
+        SELECT override.decision
+        FROM document_match_overrides AS override
+        WHERE override.match_decision_id = NEW.document_match_decision_id
+        ORDER BY override.sequence_no DESC
+        LIMIT 1
+    ), match_record.decision)
+    INTO effective_match_decision;
+    SELECT * INTO event_record
+    FROM micro_events
+    WHERE id = NEW.resulting_micro_event_id
+    FOR KEY SHARE;
+    IF match_record.id IS NULL
+       OR effective_match_decision IS DISTINCT FROM 'accepted'
+       OR match_record.monitor_id IS DISTINCT FROM NEW.monitor_id
+       OR match_record.monitor_version_id IS DISTINCT FROM NEW.monitor_version_id
+       OR NOT EXISTS (
+            SELECT 1
+            FROM content_family_members AS member
+            WHERE member.family_id = NEW.content_family_id
+              AND member.document_version_id = match_record.document_version_id
+              AND member.active
+       )
+       OR event_record.id IS NULL
+       OR event_record.version IS DISTINCT FROM NEW.result_event_version
+       OR event_record.clustering_profile_version IS DISTINCT FROM NEW.clustering_profile_version
+       OR (NEW.action = 'create' AND event_record.version <> 1)
+       OR (NEW.action IN ('join','review') AND NEW.candidate_micro_event_id IS DISTINCT FROM NEW.resulting_micro_event_id)
+    THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='micro_event_membership_decision_integrity',
+            MESSAGE='micro-event membership requires an accepted exact match, active content family member, and exact event version';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS micro_event_membership_decisions_integrity ON micro_event_membership_decisions;
+CREATE TRIGGER micro_event_membership_decisions_integrity
+BEFORE INSERT ON micro_event_membership_decisions
+FOR EACH ROW EXECUTE FUNCTION enforce_micro_event_membership_decision_integrity();
+
+CREATE TABLE IF NOT EXISTS micro_event_members (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
+    micro_event_id bigint NOT NULL REFERENCES micro_events(id) ON DELETE RESTRICT,
+    content_family_id bigint NOT NULL REFERENCES content_families(id) ON DELETE RESTRICT,
+    membership_decision_id bigint NOT NULL REFERENCES micro_event_membership_decisions(id) ON DELETE RESTRICT,
+    clustering_profile_version varchar(64) NOT NULL CHECK (btrim(clustering_profile_version) <> ''),
+    active boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    retired_at timestamptz,
+    CHECK (active AND retired_at IS NULL OR NOT active AND retired_at IS NOT NULL)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS micro_event_members_active_family_uq
+    ON micro_event_members(content_family_id,clustering_profile_version) WHERE active;
+CREATE INDEX IF NOT EXISTS micro_event_members_event_idx ON micro_event_members(micro_event_id,active,content_family_id);
+
+CREATE TABLE IF NOT EXISTS micro_event_feedbacks (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
+    membership_decision_id bigint REFERENCES micro_event_membership_decisions(id) ON DELETE RESTRICT,
+    micro_event_id bigint NOT NULL REFERENCES micro_events(id) ON DELETE RESTRICT,
+    original_event_version bigint NOT NULL CHECK (original_event_version > 0),
+    content_family_id bigint REFERENCES content_families(id) ON DELETE RESTRICT,
+    actor_user_id bigint NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    feedback_type varchar(24) NOT NULL CHECK (feedback_type IN ('same_event','different_event','move_member','merge_events','split_event','withdraw','close_event','reopen_event')),
+    target_micro_event_id bigint REFERENCES micro_events(id) ON DELETE RESTRICT,
+    target_event_version bigint CHECK (target_event_version IS NULL OR target_event_version > 0),
+    result_micro_event_id bigint NOT NULL REFERENCES micro_events(id) ON DELETE RESTRICT,
+    result_event_version bigint NOT NULL CHECK (result_event_version > 0),
+    result_event_status varchar(24) NOT NULL CHECK (result_event_status IN ('active','review_pending','closed','merged')),
+    result_target_micro_event_id bigint REFERENCES micro_events(id) ON DELETE RESTRICT,
+    result_target_event_version bigint CHECK (result_target_event_version IS NULL OR result_target_event_version > 0),
+    result_target_event_status varchar(24) CHECK (result_target_event_status IS NULL OR result_target_event_status IN ('active','review_pending','closed','merged')),
+    result_membership_decision_id bigint REFERENCES micro_event_membership_decisions(id) ON DELETE RESTRICT,
+    result_member_version bigint CHECK (result_member_version IS NULL OR result_member_version > 0),
+    governance_profile_version varchar(64) NOT NULL CHECK (btrim(governance_profile_version) <> ''),
+    reason_code varchar(64) NOT NULL CHECK (btrim(reason_code) <> ''),
+    note varchar(1000) NOT NULL DEFAULT '',
+    idempotency_key varchar(96) NOT NULL UNIQUE CHECK (btrim(idempotency_key) <> ''),
+    command_fingerprint char(64) NOT NULL CHECK (command_fingerprint ~ '^[0-9a-f]{64}$'),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (
+        feedback_type IN ('close_event','reopen_event','merge_events')
+            AND membership_decision_id IS NULL AND content_family_id IS NULL
+        OR feedback_type IN ('same_event','different_event','move_member','split_event','withdraw')
+            AND membership_decision_id IS NOT NULL AND content_family_id IS NOT NULL
+    ),
+    CHECK (
+        feedback_type IN ('move_member','merge_events')
+            AND target_micro_event_id IS NOT NULL AND target_event_version IS NOT NULL
+        OR feedback_type <> ALL (ARRAY['move_member'::varchar,'merge_events'::varchar])
+    )
+);
+ALTER TABLE micro_event_feedbacks ALTER COLUMN membership_decision_id DROP NOT NULL;
+ALTER TABLE micro_event_feedbacks ALTER COLUMN content_family_id DROP NOT NULL;
+ALTER TABLE micro_event_feedbacks ADD COLUMN IF NOT EXISTS original_event_version bigint;
+ALTER TABLE micro_event_feedbacks ADD COLUMN IF NOT EXISTS target_event_version bigint;
+ALTER TABLE micro_event_feedbacks ADD COLUMN IF NOT EXISTS result_micro_event_id bigint REFERENCES micro_events(id) ON DELETE RESTRICT;
+ALTER TABLE micro_event_feedbacks ADD COLUMN IF NOT EXISTS result_event_version bigint;
+ALTER TABLE micro_event_feedbacks ADD COLUMN IF NOT EXISTS result_event_status varchar(24);
+ALTER TABLE micro_event_feedbacks ADD COLUMN IF NOT EXISTS result_target_micro_event_id bigint REFERENCES micro_events(id) ON DELETE RESTRICT;
+ALTER TABLE micro_event_feedbacks ADD COLUMN IF NOT EXISTS result_target_event_version bigint;
+ALTER TABLE micro_event_feedbacks ADD COLUMN IF NOT EXISTS result_target_event_status varchar(24);
+ALTER TABLE micro_event_feedbacks ADD COLUMN IF NOT EXISTS result_membership_decision_id bigint REFERENCES micro_event_membership_decisions(id) ON DELETE RESTRICT;
+ALTER TABLE micro_event_feedbacks ADD COLUMN IF NOT EXISTS result_member_version bigint;
+ALTER TABLE micro_event_feedbacks ADD COLUMN IF NOT EXISTS governance_profile_version varchar(64);
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM micro_event_feedbacks WHERE original_event_version IS NULL OR result_micro_event_id IS NULL
+       OR result_event_version IS NULL OR result_event_status IS NULL OR governance_profile_version IS NULL) THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='micro_event_feedbacks_v2_upgrade_requires_review',
+            MESSAGE='existing micro-event feedback cannot be upgraded without exact governance result facts';
+    END IF;
+END;
+$$;
+ALTER TABLE micro_event_feedbacks ALTER COLUMN original_event_version SET NOT NULL;
+ALTER TABLE micro_event_feedbacks ALTER COLUMN result_micro_event_id SET NOT NULL;
+ALTER TABLE micro_event_feedbacks ALTER COLUMN result_event_version SET NOT NULL;
+ALTER TABLE micro_event_feedbacks ALTER COLUMN result_event_status SET NOT NULL;
+ALTER TABLE micro_event_feedbacks ALTER COLUMN governance_profile_version SET NOT NULL;
+ALTER TABLE micro_event_feedbacks DROP CONSTRAINT IF EXISTS micro_event_feedbacks_feedback_type_check;
+ALTER TABLE micro_event_feedbacks DROP CONSTRAINT IF EXISTS micro_event_feedbacks_feedback_type_rule;
+ALTER TABLE micro_event_feedbacks ADD CONSTRAINT micro_event_feedbacks_feedback_type_rule CHECK (
+    feedback_type IN ('same_event','different_event','move_member','merge_events','split_event','withdraw','close_event','reopen_event')
+);
+ALTER TABLE micro_event_feedbacks DROP CONSTRAINT IF EXISTS micro_event_feedbacks_subject_rule;
+ALTER TABLE micro_event_feedbacks ADD CONSTRAINT micro_event_feedbacks_subject_rule CHECK (
+    feedback_type IN ('close_event','reopen_event','merge_events')
+        AND membership_decision_id IS NULL AND content_family_id IS NULL
+    OR feedback_type IN ('same_event','different_event','move_member','split_event','withdraw')
+        AND membership_decision_id IS NOT NULL AND content_family_id IS NOT NULL
+);
+ALTER TABLE micro_event_feedbacks DROP CONSTRAINT IF EXISTS micro_event_feedbacks_target_rule;
+ALTER TABLE micro_event_feedbacks ADD CONSTRAINT micro_event_feedbacks_target_rule CHECK (
+    feedback_type IN ('move_member','merge_events')
+        AND target_micro_event_id IS NOT NULL AND target_event_version IS NOT NULL
+    OR feedback_type <> ALL (ARRAY['move_member'::varchar,'merge_events'::varchar])
+);
+ALTER TABLE micro_event_feedbacks DROP CONSTRAINT IF EXISTS micro_event_feedbacks_check;
+ALTER TABLE micro_event_feedbacks DROP CONSTRAINT IF EXISTS micro_event_feedbacks_check1;
+ALTER TABLE micro_event_feedbacks DROP CONSTRAINT IF EXISTS micro_event_feedbacks_version_rule;
+ALTER TABLE micro_event_feedbacks DROP CONSTRAINT IF EXISTS micro_event_feedbacks_original_event_version_check;
+ALTER TABLE micro_event_feedbacks ADD CONSTRAINT micro_event_feedbacks_original_event_version_check CHECK (original_event_version > 0);
+ALTER TABLE micro_event_feedbacks DROP CONSTRAINT IF EXISTS micro_event_feedbacks_target_event_version_check;
+ALTER TABLE micro_event_feedbacks ADD CONSTRAINT micro_event_feedbacks_target_event_version_check CHECK (target_event_version IS NULL OR target_event_version > 0);
+ALTER TABLE micro_event_feedbacks DROP CONSTRAINT IF EXISTS micro_event_feedbacks_result_event_version_check;
+ALTER TABLE micro_event_feedbacks ADD CONSTRAINT micro_event_feedbacks_result_event_version_check CHECK (result_event_version > 0);
+ALTER TABLE micro_event_feedbacks DROP CONSTRAINT IF EXISTS micro_event_feedbacks_result_target_event_version_check;
+ALTER TABLE micro_event_feedbacks ADD CONSTRAINT micro_event_feedbacks_result_target_event_version_check CHECK (result_target_event_version IS NULL OR result_target_event_version > 0);
+ALTER TABLE micro_event_feedbacks DROP CONSTRAINT IF EXISTS micro_event_feedbacks_result_member_version_check;
+ALTER TABLE micro_event_feedbacks ADD CONSTRAINT micro_event_feedbacks_result_member_version_check CHECK (result_member_version IS NULL OR result_member_version > 0);
+
+CREATE OR REPLACE FUNCTION enforce_micro_event_lifecycle_update()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.version <> OLD.version+1 OR NEW.updated_at < OLD.updated_at
+       OR ROW(NEW.id,NEW.event_key,NEW.primary_subject_key,NEW.primary_action_key,NEW.location_keys,
+          NEW.identifier_keys,NEW.event_started_at,NEW.clustering_profile_version,NEW.created_at)
+          IS DISTINCT FROM
+          ROW(OLD.id,OLD.event_key,OLD.primary_subject_key,OLD.primary_action_key,OLD.location_keys,
+          OLD.identifier_keys,OLD.event_started_at,OLD.clustering_profile_version,OLD.created_at)
+       OR NOT (
+          OLD.status IN ('active','review_pending') AND NEW.status IN ('active','review_pending','closed','merged')
+          OR OLD.status='closed' AND NEW.status IN ('active','merged')
+       )
+       OR NEW.status IN ('active','review_pending') AND (NEW.event_ended_at IS NOT NULL OR NEW.merged_into_micro_event_id IS NOT NULL)
+       OR NEW.status='closed' AND (NEW.event_ended_at IS NULL OR NEW.merged_into_micro_event_id IS NOT NULL)
+       OR NEW.status='merged' AND (NEW.event_ended_at IS NULL OR NEW.merged_into_micro_event_id IS NULL
+          OR NEW.merged_into_micro_event_id=NEW.id)
+    THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='micro_events_lifecycle_update',
+            MESSAGE='micro-event updates require an exact legal versioned lifecycle transition';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS micro_events_lifecycle_update ON micro_events;
+CREATE TRIGGER micro_events_lifecycle_update BEFORE UPDATE ON micro_events
+FOR EACH ROW EXECUTE FUNCTION enforce_micro_event_lifecycle_update();
+
+CREATE OR REPLACE FUNCTION enforce_micro_event_member_retirement()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.version <> OLD.version+1 OR NOT OLD.active OR NEW.active OR NEW.retired_at IS NULL
+       OR ROW(NEW.id,NEW.micro_event_id,NEW.content_family_id,NEW.membership_decision_id,
+          NEW.clustering_profile_version,NEW.created_at)
+          IS DISTINCT FROM
+          ROW(OLD.id,OLD.micro_event_id,OLD.content_family_id,OLD.membership_decision_id,
+          OLD.clustering_profile_version,OLD.created_at)
+    THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='micro_event_member_retirement',
+            MESSAGE='micro-event membership only permits immutable retirement';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS micro_event_members_retirement ON micro_event_members;
+CREATE TRIGGER micro_event_members_retirement BEFORE UPDATE ON micro_event_members
+FOR EACH ROW EXECUTE FUNCTION enforce_micro_event_member_retirement();
+CREATE OR REPLACE FUNCTION enforce_micro_event_feedback_integrity()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    source_record micro_events%ROWTYPE;
+    target_record micro_events%ROWTYPE;
+    original_decision micro_event_membership_decisions%ROWTYPE;
+    result_decision micro_event_membership_decisions%ROWTYPE;
+BEGIN
+    SELECT * INTO source_record FROM micro_events WHERE id=NEW.result_micro_event_id FOR KEY SHARE;
+    IF source_record.id IS NULL OR source_record.version IS DISTINCT FROM NEW.result_event_version
+       OR source_record.status IS DISTINCT FROM NEW.result_event_status
+       OR NEW.result_event_version <= NEW.original_event_version THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='micro_event_feedback_result_source',
+            MESSAGE='micro-event feedback must bind the exact resulting source event version';
+    END IF;
+    IF NEW.result_target_micro_event_id IS NOT NULL THEN
+        SELECT * INTO target_record FROM micro_events WHERE id=NEW.result_target_micro_event_id FOR KEY SHARE;
+        IF target_record.id IS NULL OR target_record.version IS DISTINCT FROM NEW.result_target_event_version
+           OR target_record.status IS DISTINCT FROM NEW.result_target_event_status THEN
+            RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='micro_event_feedback_result_target',
+                MESSAGE='micro-event feedback must bind the exact resulting target event version';
+        END IF;
+    ELSIF NEW.result_target_event_version IS NOT NULL OR NEW.result_target_event_status IS NOT NULL THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='micro_event_feedback_result_target',
+            MESSAGE='micro-event feedback target result is incomplete';
+    END IF;
+    IF NEW.membership_decision_id IS NOT NULL THEN
+        SELECT * INTO original_decision FROM micro_event_membership_decisions
+        WHERE id=NEW.membership_decision_id FOR KEY SHARE;
+        IF original_decision.id IS NULL OR original_decision.resulting_micro_event_id IS DISTINCT FROM NEW.micro_event_id
+           OR original_decision.content_family_id IS DISTINCT FROM NEW.content_family_id THEN
+            RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='micro_event_feedback_original_decision',
+                MESSAGE='micro-event feedback must bind its original membership decision';
+        END IF;
+    END IF;
+    IF NEW.result_membership_decision_id IS NOT NULL THEN
+        SELECT * INTO result_decision FROM micro_event_membership_decisions
+        WHERE id=NEW.result_membership_decision_id FOR KEY SHARE;
+        IF result_decision.id IS NULL OR result_decision.content_family_id IS DISTINCT FROM NEW.content_family_id
+           OR result_decision.resulting_micro_event_id IS DISTINCT FROM COALESCE(NEW.result_target_micro_event_id,NEW.result_micro_event_id)
+           OR result_decision.decision_origin IS DISTINCT FROM 'manual'
+           OR result_decision.actor_user_id IS DISTINCT FROM NEW.actor_user_id THEN
+            RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='micro_event_feedback_result_decision',
+                MESSAGE='micro-event feedback result must bind the exact manual membership decision';
+        END IF;
+    ELSIF NEW.result_member_version IS NOT NULL THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='micro_event_feedback_result_decision',
+            MESSAGE='micro-event feedback member version requires a result decision';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM users WHERE id=NEW.actor_user_id AND status='active'
+       AND deleted_at IS NULL AND role IN ('editor','admin')) THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='micro_event_feedback_actor',
+            MESSAGE='micro-event feedback requires an active editor or administrator';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS micro_event_feedbacks_integrity ON micro_event_feedbacks;
+CREATE TRIGGER micro_event_feedbacks_integrity BEFORE INSERT ON micro_event_feedbacks
+FOR EACH ROW EXECUTE FUNCTION enforce_micro_event_feedback_integrity();
+
+CREATE TABLE IF NOT EXISTS storylines (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
+    storyline_key char(64) NOT NULL UNIQUE CHECK (storyline_key ~ '^[0-9a-f]{64}$'),
+    title varchar(300) NOT NULL CHECK (btrim(title) <> ''),
+    summary varchar(2000) NOT NULL DEFAULT '',
+    status varchar(16) NOT NULL DEFAULT 'active' CHECK (status IN ('active','closed','merged')),
+    relation_profile_version varchar(64) NOT NULL CHECK (btrim(relation_profile_version) <> ''),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS storyline_events (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
+    storyline_id bigint NOT NULL REFERENCES storylines(id) ON DELETE RESTRICT,
+    micro_event_id bigint NOT NULL REFERENCES micro_events(id) ON DELETE RESTRICT,
+    source_micro_event_version bigint NOT NULL CHECK (source_micro_event_version > 0),
+    result_storyline_version bigint NOT NULL CHECK (result_storyline_version > 0),
+    relation_type varchar(24) NOT NULL CHECK (relation_type IN ('continues','causes','responds_to','updates','related')),
+    relation_score numeric(8,7) NOT NULL CHECK (relation_score BETWEEN 0 AND 1),
+    relation_profile_version varchar(64) NOT NULL CHECK (btrim(relation_profile_version) <> ''),
+    reason_codes jsonb NOT NULL CHECK (jsonb_typeof(reason_codes)='array' AND jsonb_array_length(reason_codes)>0),
+    decision_origin varchar(16) NOT NULL CHECK (decision_origin IN ('automatic','manual')),
+    actor_user_id bigint REFERENCES users(id) ON DELETE RESTRICT,
+    storyline_key_snapshot char(64) NOT NULL CHECK (storyline_key_snapshot ~ '^[0-9a-f]{64}$'),
+    storyline_title_snapshot varchar(300) NOT NULL CHECK (btrim(storyline_title_snapshot) <> ''),
+    storyline_status_snapshot varchar(16) NOT NULL CHECK (storyline_status_snapshot IN ('active','closed','merged')),
+    idempotency_key varchar(96) NOT NULL UNIQUE CHECK (btrim(idempotency_key) <> ''),
+    command_fingerprint char(64) NOT NULL CHECK (command_fingerprint ~ '^[0-9a-f]{64}$'),
+    active boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    retired_at timestamptz,
+    CHECK (active AND retired_at IS NULL OR NOT active AND retired_at IS NOT NULL)
+);
+ALTER TABLE storyline_events ADD COLUMN IF NOT EXISTS source_micro_event_version bigint;
+ALTER TABLE storyline_events ADD COLUMN IF NOT EXISTS result_storyline_version bigint;
+ALTER TABLE storyline_events ADD COLUMN IF NOT EXISTS relation_score numeric(8,7);
+ALTER TABLE storyline_events ADD COLUMN IF NOT EXISTS reason_codes jsonb;
+ALTER TABLE storyline_events ADD COLUMN IF NOT EXISTS storyline_key_snapshot char(64);
+ALTER TABLE storyline_events ADD COLUMN IF NOT EXISTS storyline_title_snapshot varchar(300);
+ALTER TABLE storyline_events ADD COLUMN IF NOT EXISTS storyline_status_snapshot varchar(16);
+ALTER TABLE storyline_events ADD COLUMN IF NOT EXISTS idempotency_key varchar(96);
+ALTER TABLE storyline_events ADD COLUMN IF NOT EXISTS command_fingerprint char(64);
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM storyline_events
+        WHERE source_micro_event_version IS NULL OR result_storyline_version IS NULL OR relation_score IS NULL
+           OR reason_codes IS NULL OR storyline_key_snapshot IS NULL OR storyline_title_snapshot IS NULL
+           OR storyline_status_snapshot IS NULL OR idempotency_key IS NULL OR command_fingerprint IS NULL
+    ) THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='storyline_events_v2_upgrade_requires_review',
+            MESSAGE='existing storyline relations cannot be upgraded without their immutable decision facts';
+    END IF;
+END;
+$$;
+ALTER TABLE storyline_events ALTER COLUMN source_micro_event_version SET NOT NULL;
+ALTER TABLE storyline_events ALTER COLUMN result_storyline_version SET NOT NULL;
+ALTER TABLE storyline_events ALTER COLUMN relation_score SET NOT NULL;
+ALTER TABLE storyline_events ALTER COLUMN reason_codes SET NOT NULL;
+ALTER TABLE storyline_events ALTER COLUMN storyline_key_snapshot SET NOT NULL;
+ALTER TABLE storyline_events ALTER COLUMN storyline_title_snapshot SET NOT NULL;
+ALTER TABLE storyline_events ALTER COLUMN storyline_status_snapshot SET NOT NULL;
+ALTER TABLE storyline_events ALTER COLUMN idempotency_key SET NOT NULL;
+ALTER TABLE storyline_events ALTER COLUMN command_fingerprint SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS storyline_events_idempotency_uq ON storyline_events(idempotency_key);
+CREATE UNIQUE INDEX IF NOT EXISTS storyline_events_active_event_uq
+    ON storyline_events(micro_event_id,relation_profile_version) WHERE active;
+
+CREATE OR REPLACE FUNCTION enforce_storyline_event_integrity()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    event_record micro_events%ROWTYPE;
+    storyline_record storylines%ROWTYPE;
+BEGIN
+    SELECT * INTO event_record FROM micro_events WHERE id=NEW.micro_event_id FOR KEY SHARE;
+    SELECT * INTO storyline_record FROM storylines WHERE id=NEW.storyline_id FOR KEY SHARE;
+    IF event_record.id IS NULL OR event_record.version IS DISTINCT FROM NEW.source_micro_event_version
+       OR event_record.status NOT IN ('active','review_pending')
+       OR storyline_record.id IS NULL OR storyline_record.version IS DISTINCT FROM NEW.result_storyline_version
+       OR storyline_record.relation_profile_version IS DISTINCT FROM NEW.relation_profile_version
+       OR storyline_record.storyline_key IS DISTINCT FROM NEW.storyline_key_snapshot
+       OR storyline_record.title IS DISTINCT FROM NEW.storyline_title_snapshot
+       OR storyline_record.status IS DISTINCT FROM NEW.storyline_status_snapshot
+       OR NEW.decision_origin='manual' AND NEW.actor_user_id IS NULL
+       OR NEW.decision_origin='automatic' AND NEW.actor_user_id IS NOT NULL
+    THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='storyline_event_integrity',
+            MESSAGE='storyline relation must bind the exact active micro-event and storyline versions';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS storyline_events_integrity ON storyline_events;
+CREATE TRIGGER storyline_events_integrity BEFORE INSERT ON storyline_events
+FOR EACH ROW EXECUTE FUNCTION enforce_storyline_event_integrity();
+
+CREATE TABLE IF NOT EXISTS event_heat_profiles (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
+    profile_version varchar(64) NOT NULL UNIQUE CHECK (btrim(profile_version) <> ''),
+    status varchar(16) NOT NULL CHECK (status IN ('shadow','active','rolled_back')),
+    lineage_weight numeric(8,7) NOT NULL CHECK (lineage_weight BETWEEN 0 AND 1),
+    velocity_weight numeric(8,7) NOT NULL CHECK (velocity_weight BETWEEN 0 AND 1),
+    acceleration_weight numeric(8,7) NOT NULL CHECK (acceleration_weight BETWEEN 0 AND 1),
+    coverage_weight numeric(8,7) NOT NULL CHECK (coverage_weight BETWEEN 0 AND 1),
+    engagement_weight numeric(8,7) NOT NULL CHECK (engagement_weight BETWEEN 0 AND 1),
+    recency_weight numeric(8,7) NOT NULL CHECK (recency_weight BETWEEN 0 AND 1),
+    evaluation_run_id bigint REFERENCES relevance_evaluation_runs(id) ON DELETE RESTRICT,
+    activated_by_user_id bigint REFERENCES users(id) ON DELETE RESTRICT,
+    activated_at timestamptz,
+    rolled_back_by_user_id bigint REFERENCES users(id) ON DELETE RESTRICT,
+    rolled_back_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK ((lineage_weight+velocity_weight+acceleration_weight+coverage_weight+engagement_weight+recency_weight)=1),
+    CHECK (status='active' AND activated_by_user_id IS NOT NULL AND activated_at IS NOT NULL AND rolled_back_at IS NULL
+        OR status='shadow' AND activated_at IS NULL AND rolled_back_at IS NULL
+        OR status='rolled_back' AND activated_at IS NOT NULL AND rolled_back_by_user_id IS NOT NULL AND rolled_back_at IS NOT NULL)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS event_heat_profiles_one_active_uq ON event_heat_profiles(status) WHERE status='active';
+
+CREATE TABLE IF NOT EXISTS micro_event_heat_snapshots (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
+    micro_event_id bigint NOT NULL REFERENCES micro_events(id) ON DELETE RESTRICT,
+    micro_event_version bigint NOT NULL CHECK (micro_event_version > 0),
+    heat_profile_id bigint NOT NULL REFERENCES event_heat_profiles(id) ON DELETE RESTRICT,
+    window_started_at timestamptz NOT NULL,
+    window_ended_at timestamptz NOT NULL CHECK (window_ended_at > window_started_at),
+    independent_lineage_root_count integer NOT NULL CHECK (independent_lineage_root_count >= 0),
+    velocity numeric(8,7) NOT NULL CHECK (velocity BETWEEN 0 AND 1),
+    acceleration numeric(8,7) NOT NULL CHECK (acceleration BETWEEN 0 AND 1),
+    coverage numeric(8,7) NOT NULL CHECK (coverage BETWEEN 0 AND 1),
+    normalized_engagement numeric(8,7) CHECK (normalized_engagement IS NULL OR normalized_engagement BETWEEN 0 AND 1),
+    recency numeric(8,7) NOT NULL CHECK (recency BETWEEN 0 AND 1),
+    available_weight numeric(8,7) NOT NULL CHECK (available_weight > 0 AND available_weight <= 1),
+    heat_score numeric(8,4) NOT NULL CHECK (heat_score BETWEEN 0 AND 100),
+    reason_codes jsonb NOT NULL DEFAULT '[]' CHECK (jsonb_typeof(reason_codes)='array'),
+    calculated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (micro_event_id,micro_event_version,heat_profile_id,window_started_at,window_ended_at)
+);
+CREATE INDEX IF NOT EXISTS micro_event_heat_snapshots_ranking_idx
+    ON micro_event_heat_snapshots(heat_profile_id,window_ended_at DESC,heat_score DESC,micro_event_id);
+
+CREATE OR REPLACE FUNCTION reject_micro_event_fact_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='micro_event_facts_append_only',
+        MESSAGE='micro-event decisions, feedback, and heat snapshots are append-only';
+END;
+$$;
+DROP TRIGGER IF EXISTS micro_event_members_no_delete ON micro_event_members;
+CREATE TRIGGER micro_event_members_no_delete BEFORE DELETE ON micro_event_members
+FOR EACH ROW EXECUTE FUNCTION reject_micro_event_fact_mutation();
+DROP TRIGGER IF EXISTS micro_event_membership_decisions_append_only ON micro_event_membership_decisions;
+CREATE TRIGGER micro_event_membership_decisions_append_only BEFORE UPDATE OR DELETE ON micro_event_membership_decisions
+FOR EACH ROW EXECUTE FUNCTION reject_micro_event_fact_mutation();
+DROP TRIGGER IF EXISTS micro_event_feedbacks_append_only ON micro_event_feedbacks;
+CREATE TRIGGER micro_event_feedbacks_append_only BEFORE UPDATE OR DELETE ON micro_event_feedbacks
+FOR EACH ROW EXECUTE FUNCTION reject_micro_event_fact_mutation();
+DROP TRIGGER IF EXISTS micro_event_heat_snapshots_append_only ON micro_event_heat_snapshots;
+CREATE TRIGGER micro_event_heat_snapshots_append_only BEFORE UPDATE OR DELETE ON micro_event_heat_snapshots
+FOR EACH ROW EXECUTE FUNCTION reject_micro_event_fact_mutation();
+
+-- ClaimEvidence v2 binds every user-visible report relation to an immutable,
+-- currently quotable DocumentVersion selector. Legacy event_claims and
+-- claim_evidences remain quarantined and are never projected into these facts.
+CREATE TABLE IF NOT EXISTS claims (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version = 1),
+    micro_event_id bigint NOT NULL REFERENCES micro_events(id) ON DELETE RESTRICT,
+    micro_event_version bigint NOT NULL CHECK (micro_event_version > 0),
+    claim_hash char(64) NOT NULL CHECK (claim_hash ~ '^[0-9a-f]{64}$'),
+    subject varchar(512) NOT NULL CHECK (btrim(subject) <> ''),
+    predicate varchar(256) NOT NULL CHECK (btrim(predicate) <> ''),
+    object text NOT NULL CHECK (btrim(object) <> '' AND octet_length(object) <= 8000),
+    qualifiers jsonb NOT NULL DEFAULT '[]' CHECK (jsonb_typeof(qualifiers)='array'),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (micro_event_id,claim_hash)
+);
+
+CREATE TABLE IF NOT EXISTS claim_evidence_versions (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version = 1),
+    claim_id bigint NOT NULL REFERENCES claims(id) ON DELETE RESTRICT,
+    document_version_id bigint NOT NULL REFERENCES document_versions(id) ON DELETE RESTRICT,
+    text_quote_selector_id bigint NOT NULL REFERENCES document_text_quote_selectors(id) ON DELETE RESTRICT,
+    content_family_id bigint NOT NULL REFERENCES content_families(id) ON DELETE RESTRICT,
+    lineage_root_document_version_id bigint NOT NULL REFERENCES document_versions(id) ON DELETE RESTRICT,
+    relation varchar(24) NOT NULL CHECK (relation IN ('asserts','attributes_to','mentions','contradicts','corrects','withdraws','unknown')),
+    quote_sha256 char(64) NOT NULL CHECK (quote_sha256 ~ '^[0-9a-f]{64}$'),
+    plaintext_sha256 char(64) NOT NULL CHECK (plaintext_sha256 ~ '^[0-9a-f]{64}$'),
+    selector_version varchar(96) NOT NULL CHECK (btrim(selector_version) <> ''),
+    source_record_url_snapshot text,
+    canonical_url_snapshot text,
+    publisher_party_id bigint REFERENCES source_parties(id) ON DELETE RESTRICT,
+    publisher_name_snapshot varchar(512),
+    content_origin_party_id bigint REFERENCES source_parties(id) ON DELETE RESTRICT,
+    content_origin_name_snapshot varchar(512),
+    published_at_snapshot timestamptz,
+    captured_at_snapshot timestamptz NOT NULL,
+    model_run_id bigint REFERENCES ai_runs(id) ON DELETE RESTRICT,
+    model_relation_score numeric(8,7) CHECK (model_relation_score IS NULL OR model_relation_score BETWEEN 0 AND 1),
+    extraction_schema_version varchar(64) NOT NULL CHECK (btrim(extraction_schema_version) <> ''),
+    decision_origin varchar(16) NOT NULL CHECK (decision_origin IN ('automatic','manual')),
+    actor_user_id bigint REFERENCES users(id) ON DELETE RESTRICT,
+    idempotency_key varchar(96) NOT NULL UNIQUE CHECK (btrim(idempotency_key) <> ''),
+    command_fingerprint char(64) NOT NULL CHECK (command_fingerprint ~ '^[0-9a-f]{64}$'),
+    retention_until timestamptz NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (claim_id,document_version_id,quote_sha256,relation,extraction_schema_version),
+    CHECK (retention_until > created_at),
+    CHECK (decision_origin='automatic' AND model_run_id IS NOT NULL AND actor_user_id IS NULL
+        OR decision_origin='manual' AND actor_user_id IS NOT NULL),
+    CHECK (publisher_party_id IS NULL AND publisher_name_snapshot IS NULL
+        OR publisher_party_id IS NOT NULL AND btrim(publisher_name_snapshot) <> ''),
+    CHECK (content_origin_party_id IS NULL AND content_origin_name_snapshot IS NULL
+        OR content_origin_party_id IS NOT NULL AND btrim(content_origin_name_snapshot) <> '')
+);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid='claim_evidence_versions'::regclass
+          AND conname='claim_evidence_versions_document_version_id_fkey'
+    ) THEN
+        EXECUTE 'ALTER TABLE claim_evidence_versions ADD ' ||
+            'CONSTRAINT claim_evidence_versions_document_version_id_fkey ' ||
+            'FOREIGN KEY (document_version_id) REFERENCES document_versions(id) ON DELETE RESTRICT';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid='claim_evidence_versions'::regclass
+          AND conname='claim_evidence_versions_lineage_root_document_version_id_fkey'
+    ) THEN
+        EXECUTE 'ALTER TABLE claim_evidence_versions ADD ' ||
+            'CONSTRAINT claim_evidence_versions_lineage_root_document_version_id_fkey ' ||
+            'FOREIGN KEY (lineage_root_document_version_id) REFERENCES document_versions(id) ON DELETE RESTRICT';
+    END IF;
+END;
+$$;
+CREATE INDEX IF NOT EXISTS claim_evidence_versions_claim_idx
+    ON claim_evidence_versions(claim_id,created_at,id);
+CREATE INDEX IF NOT EXISTS claim_evidence_versions_event_document_idx
+    ON claim_evidence_versions(document_version_id,content_family_id,id);
+
+CREATE TABLE IF NOT EXISTS evidence_state_profiles (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version = 1),
+    algorithm_version varchar(64) NOT NULL UNIQUE CHECK (btrim(algorithm_version) <> ''),
+    status varchar(16) NOT NULL CHECK (status IN ('shadow','active','rolled_back')),
+    activated_by_user_id bigint REFERENCES users(id) ON DELETE RESTRICT,
+    activated_at timestamptz,
+    rolled_back_by_user_id bigint REFERENCES users(id) ON DELETE RESTRICT,
+    rolled_back_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (status='active' AND activated_by_user_id IS NOT NULL AND activated_at IS NOT NULL AND rolled_back_at IS NULL
+        OR status='shadow' AND activated_at IS NULL AND rolled_back_at IS NULL
+        OR status='rolled_back' AND activated_at IS NOT NULL AND rolled_back_by_user_id IS NOT NULL AND rolled_back_at IS NOT NULL)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS evidence_state_profiles_one_active_uq
+    ON evidence_state_profiles(status) WHERE status='active';
+
+CREATE TABLE IF NOT EXISTS evidence_state_snapshots (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version = 1),
+    micro_event_id bigint NOT NULL REFERENCES micro_events(id) ON DELETE RESTRICT,
+    micro_event_version bigint NOT NULL CHECK (micro_event_version > 0),
+    evidence_state_profile_id bigint NOT NULL REFERENCES evidence_state_profiles(id) ON DELETE RESTRICT,
+    algorithm_version varchar(64) NOT NULL CHECK (btrim(algorithm_version) <> ''),
+    evidence_set_hash char(64) NOT NULL CHECK (evidence_set_hash ~ '^[0-9a-f]{64}$'),
+    evidence_state varchar(32) NOT NULL CHECK (evidence_state IN ('no_citable_body','single_origin','multiple_origins','conflicting_reports','publisher_corrected','publisher_withdrawn')),
+    independent_origin_count integer NOT NULL CHECK (independent_origin_count >= 0),
+    reason_codes jsonb NOT NULL CHECK (jsonb_typeof(reason_codes)='array' AND jsonb_array_length(reason_codes)>0),
+    calculated_at timestamptz NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (micro_event_id,micro_event_version,evidence_state_profile_id,evidence_set_hash)
+);
+CREATE INDEX IF NOT EXISTS evidence_state_snapshots_event_idx
+    ON evidence_state_snapshots(micro_event_id,calculated_at DESC,id DESC);
+
+CREATE TABLE IF NOT EXISTS evidence_state_snapshot_items (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    evidence_state_snapshot_id bigint NOT NULL REFERENCES evidence_state_snapshots(id) ON DELETE RESTRICT,
+    claim_evidence_version_id bigint NOT NULL REFERENCES claim_evidence_versions(id) ON DELETE RESTRICT,
+    ordinal integer NOT NULL CHECK (ordinal >= 0),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (evidence_state_snapshot_id,claim_evidence_version_id),
+    UNIQUE (evidence_state_snapshot_id,ordinal)
+);
+
+CREATE TABLE IF NOT EXISTS claim_evidence_feedbacks (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version = 1),
+    claim_id bigint NOT NULL REFERENCES claims(id) ON DELETE RESTRICT,
+    original_claim_evidence_version_id bigint NOT NULL REFERENCES claim_evidence_versions(id) ON DELETE RESTRICT,
+    result_claim_evidence_version_id bigint NOT NULL REFERENCES claim_evidence_versions(id) ON DELETE RESTRICT,
+    target_document_version_id bigint NOT NULL REFERENCES document_versions(id) ON DELETE RESTRICT,
+    original_text_quote_selector_id bigint NOT NULL REFERENCES document_text_quote_selectors(id) ON DELETE RESTRICT,
+    result_text_quote_selector_id bigint NOT NULL REFERENCES document_text_quote_selectors(id) ON DELETE RESTRICT,
+    original_relation varchar(24) NOT NULL CHECK (original_relation IN ('asserts','attributes_to','mentions','contradicts','corrects','withdraws','unknown')),
+    result_relation varchar(24) NOT NULL CHECK (result_relation IN ('asserts','attributes_to','mentions','contradicts','corrects','withdraws','unknown')),
+    actor_user_id bigint NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    expected_claim_version bigint NOT NULL CHECK (expected_claim_version > 0),
+    reason_code varchar(64) NOT NULL CHECK (btrim(reason_code) <> ''),
+    note varchar(1000) NOT NULL DEFAULT '',
+    idempotency_key varchar(96) NOT NULL UNIQUE CHECK (btrim(idempotency_key) <> ''),
+    command_fingerprint char(64) NOT NULL CHECK (command_fingerprint ~ '^[0-9a-f]{64}$'),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (original_claim_evidence_version_id <> result_claim_evidence_version_id),
+    CHECK (original_text_quote_selector_id <> result_text_quote_selector_id OR original_relation <> result_relation)
+);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid='claim_evidence_feedbacks'::regclass
+          AND conname='claim_evidence_feedbacks_target_document_version_id_fkey'
+    ) THEN
+        EXECUTE 'ALTER TABLE claim_evidence_feedbacks ADD ' ||
+            'CONSTRAINT claim_evidence_feedbacks_target_document_version_id_fkey ' ||
+            'FOREIGN KEY (target_document_version_id) REFERENCES document_versions(id) ON DELETE RESTRICT';
+    END IF;
+END;
+$$;
+
+CREATE TABLE IF NOT EXISTS micro_event_summaries (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version = 1),
+    micro_event_id bigint NOT NULL REFERENCES micro_events(id) ON DELETE RESTRICT,
+    micro_event_version bigint NOT NULL CHECK (micro_event_version > 0),
+    summary_profile_version varchar(64) NOT NULL CHECK (btrim(summary_profile_version) <> ''),
+    idempotency_key varchar(96) NOT NULL UNIQUE CHECK (btrim(idempotency_key) <> ''),
+    command_fingerprint char(64) NOT NULL CHECK (command_fingerprint ~ '^[0-9a-f]{64}$'),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (micro_event_id,micro_event_version,summary_profile_version)
+);
+
+CREATE TABLE IF NOT EXISTS micro_event_summary_sentences (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version = 1),
+    micro_event_summary_id bigint NOT NULL REFERENCES micro_event_summaries(id) ON DELETE RESTRICT,
+    ordinal integer NOT NULL CHECK (ordinal >= 0),
+    sentence text NOT NULL CHECK (btrim(sentence) <> '' AND octet_length(sentence) <= 8000),
+    editorial_note boolean NOT NULL DEFAULT false,
+    decision_origin varchar(16) NOT NULL CHECK (decision_origin IN ('automatic','manual')),
+    model_run_id bigint REFERENCES ai_runs(id) ON DELETE RESTRICT,
+    actor_user_id bigint REFERENCES users(id) ON DELETE RESTRICT,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (micro_event_summary_id,ordinal),
+    CHECK (decision_origin='automatic' AND NOT editorial_note AND model_run_id IS NOT NULL AND actor_user_id IS NULL
+        OR decision_origin='manual' AND model_run_id IS NULL AND actor_user_id IS NOT NULL)
+);
+
+ALTER TABLE micro_event_summary_sentences ADD COLUMN IF NOT EXISTS micro_event_summary_id bigint REFERENCES micro_event_summaries(id) ON DELETE RESTRICT;
+ALTER TABLE micro_event_summary_sentences ADD COLUMN IF NOT EXISTS decision_origin varchar(16);
+ALTER TABLE micro_event_summary_sentences ADD COLUMN IF NOT EXISTS actor_user_id bigint REFERENCES users(id) ON DELETE RESTRICT;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM micro_event_summary_sentences WHERE micro_event_summary_id IS NULL OR decision_origin IS NULL) THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='micro_event_summary_manual_rebuild_required',
+            MESSAGE='legacy summary sentences require explicit citation/editorial provenance before convergence';
+    END IF;
+END;
+$$;
+ALTER TABLE micro_event_summary_sentences ALTER COLUMN micro_event_summary_id SET NOT NULL;
+ALTER TABLE micro_event_summary_sentences ALTER COLUMN decision_origin SET NOT NULL;
+ALTER TABLE micro_event_summary_sentences DROP CONSTRAINT IF EXISTS micro_event_summary_sentences_micro_event_id_micro_event_version_su_key;
+ALTER TABLE micro_event_summary_sentences DROP COLUMN IF EXISTS micro_event_id;
+ALTER TABLE micro_event_summary_sentences DROP COLUMN IF EXISTS micro_event_version;
+ALTER TABLE micro_event_summary_sentences DROP COLUMN IF EXISTS summary_profile_version;
+ALTER TABLE micro_event_summary_sentences DROP CONSTRAINT IF EXISTS micro_event_summary_sentences_micro_event_summary_id_ordinal_key;
+ALTER TABLE micro_event_summary_sentences DROP CONSTRAINT IF EXISTS micro_event_summary_sentences_summary_ordinal_uq;
+CREATE UNIQUE INDEX IF NOT EXISTS micro_event_summary_sentences_summary_ordinal_uq
+    ON micro_event_summary_sentences(micro_event_summary_id,ordinal);
+ALTER TABLE micro_event_summary_sentences DROP CONSTRAINT IF EXISTS micro_event_summary_sentences_check;
+ALTER TABLE micro_event_summary_sentences DROP CONSTRAINT IF EXISTS micro_event_summary_sentences_provenance_check;
+ALTER TABLE micro_event_summary_sentences ADD CONSTRAINT micro_event_summary_sentences_provenance_check
+    CHECK (decision_origin='automatic' AND NOT editorial_note AND model_run_id IS NOT NULL AND actor_user_id IS NULL
+        OR decision_origin='manual' AND model_run_id IS NULL AND actor_user_id IS NOT NULL);
+
+CREATE TABLE IF NOT EXISTS micro_event_summary_sentence_evidences (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    summary_sentence_id bigint NOT NULL REFERENCES micro_event_summary_sentences(id) ON DELETE RESTRICT,
+    claim_evidence_version_id bigint NOT NULL REFERENCES claim_evidence_versions(id) ON DELETE RESTRICT,
+    ordinal integer NOT NULL CHECK (ordinal >= 0),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (summary_sentence_id,claim_evidence_version_id),
+    UNIQUE (summary_sentence_id,ordinal)
+);
+
+CREATE OR REPLACE FUNCTION enforce_claim_evidence_integrity()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    claim_record claims%ROWTYPE;
+    event_record micro_events%ROWTYPE;
+    selector_record document_text_quote_selectors%ROWTYPE;
+    family_record content_families%ROWTYPE;
+BEGIN
+    SELECT * INTO claim_record FROM claims WHERE id=NEW.claim_id FOR KEY SHARE;
+    SELECT * INTO event_record FROM micro_events WHERE id=claim_record.micro_event_id FOR KEY SHARE;
+    SELECT * INTO selector_record FROM document_text_quote_selectors WHERE id=NEW.text_quote_selector_id FOR KEY SHARE;
+    SELECT * INTO family_record FROM content_families WHERE id=NEW.content_family_id FOR KEY SHARE;
+    IF claim_record.id IS NULL OR event_record.id IS NULL
+       OR event_record.version IS DISTINCT FROM claim_record.micro_event_version
+       OR event_record.status NOT IN ('active','review_pending')
+       OR selector_record.id IS NULL OR selector_record.document_version_id IS DISTINCT FROM NEW.document_version_id
+       OR selector_record.quote_sha256 IS DISTINCT FROM NEW.quote_sha256
+       OR selector_record.plaintext_sha256 IS DISTINCT FROM NEW.plaintext_sha256
+       OR selector_record.selector_version IS DISTINCT FROM NEW.selector_version
+       OR selector_record.retention_until < NEW.retention_until OR NEW.retention_until <= CURRENT_TIMESTAMP
+       OR family_record.id IS NULL OR family_record.root_document_version_id IS DISTINCT FROM NEW.lineage_root_document_version_id
+       OR family_record.status NOT IN ('active','review_pending')
+       OR NOT EXISTS (
+           SELECT 1 FROM content_family_members AS family_member
+           JOIN micro_event_members AS event_member
+             ON event_member.content_family_id=family_member.family_id AND event_member.active
+           WHERE family_member.family_id=NEW.content_family_id
+             AND family_member.document_version_id=NEW.document_version_id AND family_member.active
+             AND event_member.micro_event_id=claim_record.micro_event_id
+       )
+       OR NOT current_rights_action_allowed(selector_record.quote_rights_decision_id,selector_record.source_connection_id,
+           'document_version',NEW.document_version_id::text,NEW.plaintext_sha256,'quote',CURRENT_TIMESTAMP)
+       OR NOT current_rights_action_allowed(selector_record.retain_rights_decision_id,selector_record.source_connection_id,
+           'document_version',NEW.document_version_id::text,NEW.plaintext_sha256,'retain',CURRENT_TIMESTAMP)
+       OR NEW.decision_origin='automatic' AND NOT EXISTS (
+           SELECT 1 FROM ai_runs WHERE id=NEW.model_run_id AND status='succeeded'
+       )
+       OR NEW.decision_origin='manual' AND NOT EXISTS (
+           SELECT 1 FROM users WHERE id=NEW.actor_user_id AND role IN ('editor','admin') AND status='active' AND deleted_at IS NULL
+       )
+    THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='claim_evidence_versions_integrity',
+            MESSAGE='claim evidence requires exact active event, lineage, selector, rights, and provenance facts';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS claim_evidence_versions_integrity ON claim_evidence_versions;
+CREATE TRIGGER claim_evidence_versions_integrity BEFORE INSERT ON claim_evidence_versions
+FOR EACH ROW EXECUTE FUNCTION enforce_claim_evidence_integrity();
+
+CREATE OR REPLACE FUNCTION enforce_evidence_state_snapshot_integrity()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM micro_events AS event
+        JOIN evidence_state_profiles AS profile ON profile.id=NEW.evidence_state_profile_id
+        WHERE event.id=NEW.micro_event_id AND event.version=NEW.micro_event_version
+          AND profile.status='active' AND profile.algorithm_version=NEW.algorithm_version
+    ) THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='evidence_state_snapshots_integrity',
+            MESSAGE='evidence state snapshot requires exact event version and active algorithm profile';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS evidence_state_snapshots_integrity ON evidence_state_snapshots;
+CREATE TRIGGER evidence_state_snapshots_integrity BEFORE INSERT ON evidence_state_snapshots
+FOR EACH ROW EXECUTE FUNCTION enforce_evidence_state_snapshot_integrity();
+
+CREATE OR REPLACE FUNCTION enforce_claim_evidence_feedback_integrity()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    claim_record claims%ROWTYPE;
+    original_record claim_evidence_versions%ROWTYPE;
+    result_record claim_evidence_versions%ROWTYPE;
+BEGIN
+    SELECT * INTO claim_record FROM claims WHERE id=NEW.claim_id FOR KEY SHARE;
+    SELECT * INTO original_record FROM claim_evidence_versions WHERE id=NEW.original_claim_evidence_version_id FOR KEY SHARE;
+    SELECT * INTO result_record FROM claim_evidence_versions WHERE id=NEW.result_claim_evidence_version_id FOR KEY SHARE;
+    IF claim_record.id IS NULL OR claim_record.version IS DISTINCT FROM NEW.expected_claim_version
+       OR original_record.id IS NULL OR original_record.claim_id IS DISTINCT FROM NEW.claim_id
+       OR result_record.id IS NULL OR result_record.claim_id IS DISTINCT FROM NEW.claim_id
+       OR original_record.document_version_id IS DISTINCT FROM NEW.target_document_version_id
+       OR result_record.document_version_id IS DISTINCT FROM NEW.target_document_version_id
+       OR original_record.text_quote_selector_id IS DISTINCT FROM NEW.original_text_quote_selector_id
+       OR result_record.text_quote_selector_id IS DISTINCT FROM NEW.result_text_quote_selector_id
+       OR original_record.relation IS DISTINCT FROM NEW.original_relation
+       OR result_record.relation IS DISTINCT FROM NEW.result_relation
+       OR result_record.decision_origin <> 'manual' OR result_record.actor_user_id IS DISTINCT FROM NEW.actor_user_id
+       OR NOT EXISTS (SELECT 1 FROM users WHERE id=NEW.actor_user_id AND role IN ('editor','admin')
+                      AND status='active' AND deleted_at IS NULL)
+    THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='claim_evidence_feedbacks_integrity',
+            MESSAGE='claim evidence feedback must bind exact original and manual replacement facts';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS claim_evidence_feedbacks_integrity ON claim_evidence_feedbacks;
+CREATE TRIGGER claim_evidence_feedbacks_integrity BEFORE INSERT ON claim_evidence_feedbacks
+FOR EACH ROW EXECUTE FUNCTION enforce_claim_evidence_feedback_integrity();
+
+CREATE OR REPLACE FUNCTION enforce_micro_event_summary_sentence_integrity()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    summary_record micro_event_summaries%ROWTYPE;
+BEGIN
+    SELECT * INTO summary_record FROM micro_event_summaries WHERE id=NEW.micro_event_summary_id FOR KEY SHARE;
+    IF summary_record.id IS NULL
+       OR NOT EXISTS (SELECT 1 FROM micro_events WHERE id=summary_record.micro_event_id
+                      AND version=summary_record.micro_event_version AND status IN ('active','review_pending'))
+       OR NEW.decision_origin='automatic' AND NOT EXISTS (SELECT 1 FROM ai_runs WHERE id=NEW.model_run_id AND status='succeeded')
+       OR NEW.decision_origin='manual' AND NOT EXISTS (SELECT 1 FROM users WHERE id=NEW.actor_user_id
+                      AND role IN ('editor','admin') AND status='active' AND deleted_at IS NULL)
+    THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='micro_event_summary_sentences_integrity',
+            MESSAGE='summary sentence requires exact event and durable human/model provenance';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS micro_event_summary_sentences_integrity ON micro_event_summary_sentences;
+CREATE TRIGGER micro_event_summary_sentences_integrity BEFORE INSERT ON micro_event_summary_sentences
+FOR EACH ROW EXECUTE FUNCTION enforce_micro_event_summary_sentence_integrity();
+
+CREATE OR REPLACE FUNCTION enforce_micro_event_summary_sentence_citations()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.editorial_note AND EXISTS (
+        SELECT 1 FROM micro_event_summary_sentence_evidences WHERE summary_sentence_id=NEW.id
+    ) OR NOT NEW.editorial_note AND NOT EXISTS (
+        SELECT 1 FROM micro_event_summary_sentence_evidences WHERE summary_sentence_id=NEW.id
+    ) THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='micro_event_summary_sentence_citations',
+            MESSAGE='editorial sentences cannot cite evidence and report sentences require at least one citation';
+    END IF;
+    RETURN NULL;
+END;
+$$;
+DROP TRIGGER IF EXISTS micro_event_summary_sentence_citations ON micro_event_summary_sentences;
+CREATE CONSTRAINT TRIGGER micro_event_summary_sentence_citations
+AFTER INSERT ON micro_event_summary_sentences DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION enforce_micro_event_summary_sentence_citations();
+
+CREATE OR REPLACE FUNCTION reject_claim_evidence_fact_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='claim_evidence_facts_append_only',
+        MESSAGE='claim evidence v2 facts are append-only';
+END;
+$$;
+DROP TRIGGER IF EXISTS claims_append_only ON claims;
+CREATE TRIGGER claims_append_only BEFORE UPDATE OR DELETE ON claims FOR EACH ROW EXECUTE FUNCTION reject_claim_evidence_fact_mutation();
+DROP TRIGGER IF EXISTS claim_evidence_versions_append_only ON claim_evidence_versions;
+CREATE TRIGGER claim_evidence_versions_append_only BEFORE UPDATE OR DELETE ON claim_evidence_versions FOR EACH ROW EXECUTE FUNCTION reject_claim_evidence_fact_mutation();
+DROP TRIGGER IF EXISTS evidence_state_snapshots_append_only ON evidence_state_snapshots;
+CREATE TRIGGER evidence_state_snapshots_append_only BEFORE UPDATE OR DELETE ON evidence_state_snapshots FOR EACH ROW EXECUTE FUNCTION reject_claim_evidence_fact_mutation();
+DROP TRIGGER IF EXISTS evidence_state_snapshot_items_append_only ON evidence_state_snapshot_items;
+CREATE TRIGGER evidence_state_snapshot_items_append_only BEFORE UPDATE OR DELETE ON evidence_state_snapshot_items FOR EACH ROW EXECUTE FUNCTION reject_claim_evidence_fact_mutation();
+DROP TRIGGER IF EXISTS claim_evidence_feedbacks_append_only ON claim_evidence_feedbacks;
+CREATE TRIGGER claim_evidence_feedbacks_append_only BEFORE UPDATE OR DELETE ON claim_evidence_feedbacks FOR EACH ROW EXECUTE FUNCTION reject_claim_evidence_fact_mutation();
+DROP TRIGGER IF EXISTS micro_event_summary_sentences_append_only ON micro_event_summary_sentences;
+CREATE TRIGGER micro_event_summary_sentences_append_only BEFORE UPDATE OR DELETE ON micro_event_summary_sentences FOR EACH ROW EXECUTE FUNCTION reject_claim_evidence_fact_mutation();
+DROP TRIGGER IF EXISTS micro_event_summaries_append_only ON micro_event_summaries;
+CREATE TRIGGER micro_event_summaries_append_only BEFORE UPDATE OR DELETE ON micro_event_summaries FOR EACH ROW EXECUTE FUNCTION reject_claim_evidence_fact_mutation();
+DROP TRIGGER IF EXISTS micro_event_summary_sentence_evidences_append_only ON micro_event_summary_sentence_evidences;
+CREATE TRIGGER micro_event_summary_sentence_evidences_append_only BEFORE UPDATE OR DELETE ON micro_event_summary_sentence_evidences FOR EACH ROW EXECUTE FUNCTION reject_claim_evidence_fact_mutation();
+
+-- User notification v2 facts. Legacy notification_events remains readable for
+-- migration only; new micro-event workflows use these normalized, append-only
+-- records and never place captured bodies, evidence quotes, or object keys in a
+-- notification payload.
+CREATE TABLE IF NOT EXISTS notification_outbox_events (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version = 1),
+    event_type varchar(48) NOT NULL CHECK (event_type IN (
+        'micro_event.created','micro_event.updated','micro_event.review_requested','micro_event.evidence_changed'
+    )),
+    resource_type varchar(24) NOT NULL CHECK (resource_type = 'micro_event'),
+    resource_id bigint NOT NULL REFERENCES micro_events(id) ON DELETE RESTRICT,
+    resource_version bigint NOT NULL CHECK (resource_version > 0),
+    monitor_id bigint NOT NULL REFERENCES monitors(id) ON DELETE RESTRICT,
+    occurred_at timestamptz NOT NULL,
+    title varchar(240) NOT NULL CHECK (btrim(title) <> ''),
+    summary varchar(1000) NOT NULL DEFAULT '',
+    resource_status varchar(32) NOT NULL CHECK (btrim(resource_status) <> ''),
+    deep_link varchar(256) NOT NULL CHECK (deep_link ~ '^/dashboard/events[?]event=[1-9][0-9]{0,18}$'),
+    dedupe_key varchar(128) NOT NULL UNIQUE CHECK (btrim(dedupe_key) <> ''),
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS notification_outbox_events_monitor_cursor_idx
+    ON notification_outbox_events(monitor_id,id);
+ALTER TABLE notification_outbox_events DROP CONSTRAINT IF EXISTS notification_outbox_events_deep_link_check;
+ALTER TABLE notification_outbox_events ADD CONSTRAINT notification_outbox_events_deep_link_check
+    CHECK (deep_link ~ '^/dashboard/events[?]event=[1-9][0-9]{0,18}$');
+
+CREATE TABLE IF NOT EXISTS user_notifications (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version = 1),
+    outbox_event_id bigint NOT NULL REFERENCES notification_outbox_events(id) ON DELETE RESTRICT,
+    user_id bigint NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    monitor_id bigint NOT NULL REFERENCES monitors(id) ON DELETE RESTRICT,
+    event_type varchar(48) NOT NULL CHECK (event_type IN (
+        'micro_event.created','micro_event.updated','micro_event.review_requested','micro_event.evidence_changed'
+    )),
+    resource_type varchar(24) NOT NULL CHECK (resource_type = 'micro_event'),
+    resource_id bigint NOT NULL REFERENCES micro_events(id) ON DELETE RESTRICT,
+    resource_version bigint NOT NULL CHECK (resource_version > 0),
+    occurred_at timestamptz NOT NULL,
+    title varchar(240) NOT NULL CHECK (btrim(title) <> ''),
+    summary varchar(1000) NOT NULL DEFAULT '',
+    resource_status varchar(32) NOT NULL CHECK (btrim(resource_status) <> ''),
+    deep_link varchar(256) NOT NULL CHECK (deep_link ~ '^/dashboard/events[?]event=[1-9][0-9]{0,18}$'),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (outbox_event_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS user_notifications_user_cursor_idx ON user_notifications(user_id,id);
+CREATE INDEX IF NOT EXISTS user_notifications_user_monitor_cursor_idx ON user_notifications(user_id,monitor_id,id);
+ALTER TABLE user_notifications DROP CONSTRAINT IF EXISTS user_notifications_deep_link_check;
+ALTER TABLE user_notifications ADD CONSTRAINT user_notifications_deep_link_check
+    CHECK (deep_link ~ '^/dashboard/events[?]event=[1-9][0-9]{0,18}$');
+
+CREATE TABLE IF NOT EXISTS notification_delivery_attempts (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version = 1),
+    user_notification_id bigint NOT NULL REFERENCES user_notifications(id) ON DELETE RESTRICT,
+    channel varchar(16) NOT NULL CHECK (channel IN ('sse','email','web_push')),
+    delivery_target_key varchar(128) NOT NULL DEFAULT 'primary'
+        CHECK (delivery_target_key ~ '^[a-z][a-z0-9:_-]{0,127}$'),
+    attempt_no integer NOT NULL CHECK (attempt_no > 0),
+    status varchar(24) NOT NULL CHECK (status IN ('succeeded','failed','permanent_failure')),
+    provider_message_id varchar(256),
+    response_code integer CHECK (response_code IS NULL OR response_code BETWEEN 100 AND 599),
+    error_code varchar(64),
+    attempted_at timestamptz NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (status='succeeded' AND error_code IS NULL
+        OR status<>'succeeded' AND error_code IS NOT NULL AND btrim(error_code) <> '')
+);
+ALTER TABLE notification_delivery_attempts ADD COLUMN IF NOT EXISTS delivery_target_key varchar(128) NOT NULL DEFAULT 'primary';
+ALTER TABLE notification_delivery_attempts DROP CONSTRAINT IF EXISTS notification_delivery_attempts_delivery_target_key_check;
+ALTER TABLE notification_delivery_attempts ADD CONSTRAINT notification_delivery_attempts_delivery_target_key_check
+    CHECK (delivery_target_key ~ '^[a-z][a-z0-9:_-]{0,127}$');
+ALTER TABLE notification_delivery_attempts DROP CONSTRAINT IF EXISTS notification_delivery_attempts_user_notification_id_channel_attempt_no_key;
+CREATE UNIQUE INDEX IF NOT EXISTS notification_delivery_attempts_target_attempt_uq
+    ON notification_delivery_attempts(user_notification_id,channel,delivery_target_key,attempt_no);
+DROP INDEX IF EXISTS notification_delivery_attempts_notification_idx;
+CREATE INDEX IF NOT EXISTS notification_delivery_attempts_notification_idx
+    ON notification_delivery_attempts(user_notification_id,channel,delivery_target_key,attempt_no);
+
+-- Mutable, short-lived claims coordinate channel workers. Claims are not
+-- notification or delivery facts and are deleted after a terminal attempt.
+CREATE TABLE IF NOT EXISTS notification_delivery_claims (
+    user_notification_id bigint NOT NULL REFERENCES user_notifications(id) ON DELETE CASCADE,
+    channel varchar(16) NOT NULL CHECK (channel IN ('email','web_push')),
+    delivery_target_key varchar(128) NOT NULL
+        CHECK (delivery_target_key ~ '^[a-z][a-z0-9:_-]{0,127}$'),
+    claim_token char(64) NOT NULL CHECK (claim_token ~ '^[0-9a-f]{64}$'),
+    claimed_at timestamptz NOT NULL,
+    lease_until timestamptz NOT NULL,
+    PRIMARY KEY (user_notification_id,channel,delivery_target_key),
+    CHECK (lease_until > claimed_at)
+);
+CREATE INDEX IF NOT EXISTS notification_delivery_claims_expiry_idx
+    ON notification_delivery_claims(channel,lease_until);
+
+-- Per-device Web Push opt-in. Endpoints and browser key material are encrypted
+-- application-side with a dedicated key; only a lowercase SHA-256 fingerprint
+-- participates in uniqueness and lookup.
+CREATE TABLE IF NOT EXISTS web_push_subscriptions (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
+    user_id bigint NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    endpoint_sha256 char(64) NOT NULL UNIQUE CHECK (endpoint_sha256 ~ '^[0-9a-f]{64}$'),
+    endpoint_ciphertext bytea NOT NULL CHECK (octet_length(endpoint_ciphertext) BETWEEN 32 AND 8192),
+    p256dh_ciphertext bytea NOT NULL CHECK (octet_length(p256dh_ciphertext) BETWEEN 32 AND 1024),
+    auth_ciphertext bytea NOT NULL CHECK (octet_length(auth_ciphertext) BETWEEN 32 AND 512),
+    encryption_key_version integer NOT NULL CHECK (encryption_key_version > 0),
+    device_label varchar(80) NOT NULL CHECK (btrim(device_label) <> ''),
+    timezone varchar(64) NOT NULL DEFAULT 'UTC' CHECK (btrim(timezone) <> ''),
+    quiet_start time without time zone,
+    quiet_end time without time zone,
+    ttl_seconds integer NOT NULL DEFAULT 3600 CHECK (ttl_seconds BETWEEN 60 AND 86400),
+    status varchar(16) NOT NULL DEFAULT 'active' CHECK (status IN ('active','disabled','expired')),
+    expiration_reason varchar(64),
+    last_success_at timestamptz,
+    last_failure_at timestamptz,
+    idempotency_key varchar(96) NOT NULL UNIQUE CHECK (btrim(idempotency_key) <> ''),
+    command_fingerprint char(64) NOT NULL CHECK (command_fingerprint ~ '^[0-9a-f]{64}$'),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK ((quiet_start IS NULL) = (quiet_end IS NULL)),
+    CHECK (quiet_start IS NULL OR quiet_start <> quiet_end),
+    CHECK (status='expired' AND expiration_reason IS NOT NULL AND btrim(expiration_reason)<>''
+        OR status<>'expired' AND expiration_reason IS NULL)
+);
+CREATE INDEX IF NOT EXISTS web_push_subscriptions_user_status_idx
+    ON web_push_subscriptions(user_id,status,id);
+
+CREATE TABLE IF NOT EXISTS web_push_subscription_monitors (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    subscription_id bigint NOT NULL REFERENCES web_push_subscriptions(id) ON DELETE CASCADE,
+    monitor_id bigint NOT NULL REFERENCES monitors(id) ON DELETE RESTRICT,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (subscription_id,monitor_id)
+);
+CREATE INDEX IF NOT EXISTS web_push_subscription_monitors_monitor_idx
+    ON web_push_subscription_monitors(monitor_id,subscription_id);
+
+CREATE OR REPLACE FUNCTION enforce_web_push_subscription_monitor_owner()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM web_push_subscriptions AS subscription
+        JOIN monitors AS monitor ON monitor.id=NEW.monitor_id
+        WHERE subscription.id=NEW.subscription_id AND monitor.created_by=subscription.user_id
+          AND monitor.deleted_at IS NULL AND monitor.status<>'archived'
+    ) THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='web_push_subscription_monitor_owner',
+            MESSAGE='push subscription monitor must remain accessible to the subscriber';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS web_push_subscription_monitors_owner ON web_push_subscription_monitors;
+CREATE TRIGGER web_push_subscription_monitors_owner BEFORE INSERT OR UPDATE ON web_push_subscription_monitors
+FOR EACH ROW EXECUTE FUNCTION enforce_web_push_subscription_monitor_owner();
+
+CREATE OR REPLACE FUNCTION reject_user_notification_fact_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='user_notification_facts_append_only',
+        MESSAGE='user notification facts are append-only';
+END;
+$$;
+DROP TRIGGER IF EXISTS notification_outbox_events_append_only ON notification_outbox_events;
+CREATE TRIGGER notification_outbox_events_append_only BEFORE UPDATE OR DELETE ON notification_outbox_events
+FOR EACH ROW EXECUTE FUNCTION reject_user_notification_fact_mutation();
+DROP TRIGGER IF EXISTS user_notifications_append_only ON user_notifications;
+CREATE TRIGGER user_notifications_append_only BEFORE UPDATE OR DELETE ON user_notifications
+FOR EACH ROW EXECUTE FUNCTION reject_user_notification_fact_mutation();
+DROP TRIGGER IF EXISTS notification_delivery_attempts_append_only ON notification_delivery_attempts;
+CREATE TRIGGER notification_delivery_attempts_append_only BEFORE UPDATE OR DELETE ON notification_delivery_attempts
+FOR EACH ROW EXECUTE FUNCTION reject_user_notification_fact_mutation();
+
+CREATE OR REPLACE FUNCTION project_micro_event_membership_notification()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    event_record micro_events%ROWTYPE;
+    outbox_id bigint;
+    projected_event_type varchar(48);
+    projected_title varchar(240);
+    projected_summary varchar(1000);
+BEGIN
+    SELECT * INTO event_record FROM micro_events WHERE id=NEW.resulting_micro_event_id FOR KEY SHARE;
+    IF event_record.id IS NULL OR event_record.version IS DISTINCT FROM NEW.result_event_version THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='notification_micro_event_version',
+            MESSAGE='notification requires the exact micro-event version';
+    END IF;
+    projected_event_type := CASE NEW.action WHEN 'create' THEN 'micro_event.created'
+        WHEN 'join' THEN 'micro_event.updated' ELSE 'micro_event.review_requested' END;
+    projected_title := left(event_record.primary_subject_key || ' · ' || event_record.primary_action_key,240);
+    projected_summary := CASE NEW.action WHEN 'create' THEN '发现与监控目标相关的新微事件。'
+        WHEN 'join' THEN '微事件新增了一个独立正文谱系成员。' ELSE '微事件归属需要人工复核。' END;
+
+    INSERT INTO notification_outbox_events(
+        event_type,resource_type,resource_id,resource_version,monitor_id,occurred_at,
+        title,summary,resource_status,deep_link,dedupe_key
+    ) VALUES (
+        projected_event_type,'micro_event',event_record.id,event_record.version,NEW.monitor_id,NEW.created_at,
+        projected_title,projected_summary,event_record.status,'/dashboard/events?event=' || event_record.id::text,
+        'micro-event-membership:' || NEW.id::text
+    ) RETURNING id INTO outbox_id;
+
+    INSERT INTO user_notifications(
+        outbox_event_id,user_id,monitor_id,event_type,resource_type,resource_id,resource_version,
+        occurred_at,title,summary,resource_status,deep_link
+    )
+    SELECT outbox_id,user_record.id,NEW.monitor_id,projected_event_type,'micro_event',event_record.id,event_record.version,
+           NEW.created_at,projected_title,projected_summary,event_record.status,
+           '/dashboard/events?event=' || event_record.id::text
+    FROM monitors AS monitor_record
+    JOIN users AS user_record ON user_record.id=monitor_record.created_by
+    WHERE monitor_record.id=NEW.monitor_id AND monitor_record.deleted_at IS NULL
+      AND monitor_record.status<>'archived' AND user_record.status='active' AND user_record.deleted_at IS NULL;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS micro_event_membership_notification_projection ON micro_event_membership_decisions;
+CREATE TRIGGER micro_event_membership_notification_projection AFTER INSERT ON micro_event_membership_decisions
+FOR EACH ROW EXECUTE FUNCTION project_micro_event_membership_notification();
+
+CREATE OR REPLACE FUNCTION project_micro_event_evidence_notification()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    monitor_record record;
+    event_record micro_events%ROWTYPE;
+    outbox_id bigint;
+BEGIN
+    SELECT * INTO event_record FROM micro_events WHERE id=NEW.micro_event_id FOR KEY SHARE;
+    IF event_record.id IS NULL OR event_record.version IS DISTINCT FROM NEW.micro_event_version THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='notification_evidence_event_version',
+            MESSAGE='notification requires the exact evidence-state event version';
+    END IF;
+    FOR monitor_record IN
+        SELECT DISTINCT monitor.id AS monitor_id, user_record.id AS user_id
+        FROM micro_event_membership_decisions AS membership
+        JOIN monitors AS monitor ON monitor.id=membership.monitor_id
+        JOIN users AS user_record ON user_record.id=monitor.created_by
+        WHERE membership.resulting_micro_event_id=NEW.micro_event_id
+          AND monitor.deleted_at IS NULL AND monitor.status<>'archived'
+          AND user_record.status='active' AND user_record.deleted_at IS NULL
+    LOOP
+        INSERT INTO notification_outbox_events(
+            event_type,resource_type,resource_id,resource_version,monitor_id,occurred_at,
+            title,summary,resource_status,deep_link,dedupe_key
+        ) VALUES (
+            'micro_event.evidence_changed','micro_event',event_record.id,event_record.version,
+            monitor_record.monitor_id,NEW.calculated_at,
+            left(event_record.primary_subject_key || ' · ' || event_record.primary_action_key,240),
+            '微事件的可引用证据覆盖已更新，当前状态：' || NEW.evidence_state || '。',
+            NEW.evidence_state,'/dashboard/events?event=' || event_record.id::text,
+            'evidence-state:' || NEW.id::text || ':monitor:' || monitor_record.monitor_id::text
+        ) RETURNING id INTO outbox_id;
+        INSERT INTO user_notifications(
+            outbox_event_id,user_id,monitor_id,event_type,resource_type,resource_id,resource_version,
+            occurred_at,title,summary,resource_status,deep_link
+        ) VALUES (
+            outbox_id,monitor_record.user_id,monitor_record.monitor_id,'micro_event.evidence_changed',
+            'micro_event',event_record.id,event_record.version,NEW.calculated_at,
+            left(event_record.primary_subject_key || ' · ' || event_record.primary_action_key,240),
+            '微事件的可引用证据覆盖已更新，当前状态：' || NEW.evidence_state || '。',
+            NEW.evidence_state,'/dashboard/events?event=' || event_record.id::text
+        );
+    END LOOP;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS micro_event_evidence_notification_projection ON evidence_state_snapshots;
+CREATE TRIGGER micro_event_evidence_notification_projection AFTER INSERT ON evidence_state_snapshots
+FOR EACH ROW EXECUTE FUNCTION project_micro_event_evidence_notification();
+
+-- Versioned, time-isolated quality facts for every automatic semantic decision
+-- profile. Evaluation inputs never retain source bodies; only aggregate
+-- metrics, isolation hashes and bounded slice facts are persisted.
+CREATE TABLE IF NOT EXISTS decision_quality_evaluation_runs (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
+    module varchar(32) NOT NULL CHECK (module IN ('content_family','micro_event_clustering','evidence_locator','evidence_relation','hotspot_detection')),
+    profile_version varchar(64) NOT NULL CHECK (btrim(profile_version) <> ''),
+    dataset_version varchar(96) NOT NULL CHECK (btrim(dataset_version) <> ''),
+    dataset_sha256 char(64) NOT NULL CHECK (dataset_sha256 ~ '^[0-9a-f]{64}$'),
+    annotation_protocol_version varchar(64) NOT NULL CHECK (btrim(annotation_protocol_version) <> ''),
+    annotation_guideline_sha256 char(64) NOT NULL CHECK (annotation_guideline_sha256 ~ '^[0-9a-f]{64}$'),
+    split_strategy_version varchar(64) NOT NULL CHECK (btrim(split_strategy_version) <> ''),
+    family_isolation_sha256 char(64) NOT NULL CHECK (family_isolation_sha256 ~ '^[0-9a-f]{64}$'),
+    event_isolation_sha256 char(64) NOT NULL CHECK (event_isolation_sha256 ~ '^[0-9a-f]{64}$'),
+    annotator_count integer NOT NULL CHECK (annotator_count >= 2),
+    agreement_metric varchar(32) NOT NULL CHECK (btrim(agreement_metric) <> ''),
+    agreement_score numeric(8,7) NOT NULL CHECK (agreement_score BETWEEN 0 AND 1),
+    time_boundary timestamptz NOT NULL,
+    sample_count integer NOT NULL CHECK (sample_count >= 0),
+    positive_count integer NOT NULL CHECK (positive_count >= 0),
+    negative_count integer NOT NULL CHECK (negative_count >= 0),
+    precision_score numeric(8,7) NOT NULL CHECK (precision_score BETWEEN 0 AND 1),
+    recall_score numeric(8,7) NOT NULL CHECK (recall_score BETWEEN 0 AND 1),
+    precision_wilson_lower numeric(8,7) NOT NULL CHECK (precision_wilson_lower BETWEEN 0 AND 1),
+    false_merge_rate numeric(8,7) NOT NULL CHECK (false_merge_rate BETWEEN 0 AND 1),
+    pairwise_precision numeric(8,7) NOT NULL CHECK (pairwise_precision BETWEEN 0 AND 1),
+    b_cubed_f1 numeric(8,7) NOT NULL CHECK (b_cubed_f1 BETWEEN 0 AND 1),
+    ceaf_e numeric(8,7) NOT NULL CHECK (ceaf_e BETWEEN 0 AND 1),
+    cluster_count_ratio numeric(10,7) NOT NULL CHECK (cluster_count_ratio BETWEEN 0 AND 10),
+    locator_accuracy numeric(8,7) NOT NULL CHECK (locator_accuracy BETWEEN 0 AND 1),
+    provenance_completeness numeric(8,7) NOT NULL CHECK (provenance_completeness BETWEEN 0 AND 1),
+    evidence_relation_macro_f1 numeric(8,7) NOT NULL CHECK (evidence_relation_macro_f1 BETWEEN 0 AND 1),
+    hotspot_precision numeric(8,7) NOT NULL CHECK (hotspot_precision BETWEEN 0 AND 1),
+    median_discovery_delay_seconds numeric(12,3) NOT NULL CHECK (median_discovery_delay_seconds >= 0),
+    passed boolean NOT NULL,
+    reason_codes text[] NOT NULL DEFAULT ARRAY[]::text[],
+    evaluated_by_user_id bigint NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    evaluated_at timestamptz NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (module,profile_version,dataset_sha256),
+    CHECK (sample_count >= (positive_count + negative_count)),
+    CHECK (cardinality(reason_codes) > 0)
+);
+CREATE INDEX IF NOT EXISTS decision_quality_evaluation_runs_profile_idx
+    ON decision_quality_evaluation_runs(module,profile_version,evaluated_at DESC,id DESC);
+
+CREATE TABLE IF NOT EXISTS decision_quality_evaluation_slices (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
+    evaluation_run_id bigint NOT NULL REFERENCES decision_quality_evaluation_runs(id) ON DELETE RESTRICT,
+    module varchar(32) NOT NULL CHECK (module IN ('content_family','micro_event_clustering','hotspot_detection')),
+    dimension varchar(32) NOT NULL CHECK (dimension IN ('language','source_type','event_size')),
+    value varchar(64) NOT NULL CHECK (btrim(value) <> ''),
+    sample_count integer NOT NULL CHECK (sample_count >= 50),
+    precision_score numeric(8,7) NOT NULL CHECK (precision_score BETWEEN 0 AND 1),
+    recall_score numeric(8,7) NOT NULL CHECK (recall_score BETWEEN 0 AND 1),
+    passed boolean NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (evaluation_run_id,dimension,value)
+);
+
+CREATE TABLE IF NOT EXISTS decision_quality_profiles (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
+    module varchar(32) NOT NULL CHECK (module IN ('content_family','micro_event_clustering','evidence_locator','evidence_relation','hotspot_detection')),
+    profile_version varchar(64) NOT NULL CHECK (btrim(profile_version) <> ''),
+    status varchar(16) NOT NULL CHECK (status IN ('shadow','active','rolled_back')),
+    evaluation_run_id bigint NOT NULL REFERENCES decision_quality_evaluation_runs(id) ON DELETE RESTRICT,
+    created_by_user_id bigint NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    activated_by_user_id bigint REFERENCES users(id) ON DELETE RESTRICT,
+    activated_at timestamptz,
+    rolled_back_by_user_id bigint REFERENCES users(id) ON DELETE RESTRICT,
+    rolled_back_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (module,profile_version),
+    CHECK (status='shadow' AND activated_by_user_id IS NULL AND activated_at IS NULL AND rolled_back_by_user_id IS NULL AND rolled_back_at IS NULL
+        OR status='active' AND activated_by_user_id IS NOT NULL AND activated_at IS NOT NULL AND rolled_back_by_user_id IS NULL AND rolled_back_at IS NULL
+        OR status='rolled_back' AND activated_by_user_id IS NOT NULL AND activated_at IS NOT NULL AND rolled_back_by_user_id IS NOT NULL AND rolled_back_at IS NOT NULL)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS decision_quality_profiles_one_active_module_uq
+    ON decision_quality_profiles(module) WHERE status='active';
+
+CREATE OR REPLACE FUNCTION enforce_decision_quality_profile_activation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    evaluation_record decision_quality_evaluation_runs%ROWTYPE;
+BEGIN
+    SELECT * INTO evaluation_record FROM decision_quality_evaluation_runs WHERE id=NEW.evaluation_run_id FOR KEY SHARE;
+    IF evaluation_record.id IS NULL OR evaluation_record.module IS DISTINCT FROM NEW.module
+       OR evaluation_record.profile_version IS DISTINCT FROM NEW.profile_version THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='decision_quality_profile_evaluation_identity',
+            MESSAGE='decision quality profile requires its exact evaluation identity';
+    END IF;
+    IF NEW.status='active' AND (NOT evaluation_record.passed
+       OR NEW.activated_by_user_id IS DISTINCT FROM evaluation_record.evaluated_by_user_id
+       OR NOT EXISTS (SELECT 1 FROM users WHERE id=NEW.activated_by_user_id AND role='admin' AND status='active' AND deleted_at IS NULL)) THEN
+        RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='decision_quality_profile_activation_gate',
+            MESSAGE='only the evaluating active administrator may activate a passed decision quality profile';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS decision_quality_profiles_activation_gate ON decision_quality_profiles;
+CREATE TRIGGER decision_quality_profiles_activation_gate BEFORE INSERT OR UPDATE ON decision_quality_profiles
+FOR EACH ROW EXECUTE FUNCTION enforce_decision_quality_profile_activation();
+
+CREATE OR REPLACE FUNCTION reject_decision_quality_evaluation_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION USING ERRCODE='23514', CONSTRAINT='decision_quality_evaluation_append_only',
+        MESSAGE='decision quality evaluation facts are append-only';
+END;
+$$;
+DROP TRIGGER IF EXISTS decision_quality_evaluation_runs_append_only ON decision_quality_evaluation_runs;
+CREATE TRIGGER decision_quality_evaluation_runs_append_only BEFORE UPDATE OR DELETE ON decision_quality_evaluation_runs
+FOR EACH ROW EXECUTE FUNCTION reject_decision_quality_evaluation_mutation();
+DROP TRIGGER IF EXISTS decision_quality_evaluation_slices_append_only ON decision_quality_evaluation_slices;
+CREATE TRIGGER decision_quality_evaluation_slices_append_only BEFORE UPDATE OR DELETE ON decision_quality_evaluation_slices
+FOR EACH ROW EXECUTE FUNCTION reject_decision_quality_evaluation_mutation();

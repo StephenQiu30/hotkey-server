@@ -1,7 +1,35 @@
+import { getAccessToken } from "@/lib/authSession";
+
 export interface SSEFrame {
   id: string;
   event: string;
   data: string;
+}
+
+export async function openNotificationStream(
+  afterID: number,
+  signal: AbortSignal,
+): Promise<ReadableStream<Uint8Array>> {
+  const token = getAccessToken();
+  if (!token) throw new Error("notification stream access token is unavailable");
+
+  const cursor = Math.max(0, Math.trunc(afterID));
+  const headers = new Headers({
+    Accept: "text/event-stream",
+    Authorization: `Bearer ${token}`,
+  });
+  if (cursor > 0) headers.set("Last-Event-ID", String(cursor));
+
+  const response = await fetch(`/api/v1/notifications/stream?after_id=${cursor}`, {
+    cache: "no-store",
+    credentials: "include",
+    headers,
+    method: "GET",
+    signal,
+  });
+  if (!response.ok) throw new Error(`notification stream returned HTTP ${response.status}`);
+  if (!response.body) throw new Error("notification stream response body is unavailable");
+  return response.body;
 }
 
 export interface SSEParser {

@@ -200,6 +200,10 @@ type Content struct {
 	MatchDecision  *MatchDecision
 	EventID        *int64
 	EventTitle     string
+	// DocumentVersionID pins the exact immutable readable document currently
+	// associated with this legacy Content projection. It remains nil when the
+	// association or current display authorization cannot be proven.
+	DocumentVersionID *int64
 }
 
 type ContentListQuery struct {

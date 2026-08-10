@@ -4,7 +4,7 @@ scope: shared
 doc_no: "000"
 title: Plan 索引
 status: completed
-version: v2.1
+version: v2.2
 owner: HotKey Team
 canonical_path: docs/plans/README.md
 ---
@@ -50,4 +50,4 @@ Plan 中的“当前实现”仅用于确定差距；只有 Acceptance 保存完
 | 029 | [来源凭据与个性化配置](../design/archive/029-来源凭据与个性化配置设计.md) | [PRD](../prd/archive/029-来源凭据与个性化配置.md) | [Plan](archive/029-来源凭据与个性化配置计划.md) | completed |
 | 030 | [通知与订阅页面拆分](../design/archive/030-通知与订阅页面拆分设计.md) | [PRD](../prd/archive/030-通知与订阅页面拆分.md) | [Plan](archive/030-通知与订阅页面拆分计划.md) | completed |
 | 031 | [Hacker-News热门榜单与持续观测](../design/archive/031-Hacker-News热门榜单与持续观测设计.md) | [PRD](../prd/archive/031-Hacker-News热门榜单与持续观测.md) | [Plan](archive/031-Hacker-News热门榜单与持续观测计划.md) | completed |
-| 032 | [热点事件语义监控与出处正文](../design/032-热点事件语义监控与出处正文设计.md) | [PRD](../prd/032-热点事件语义监控与出处正文.md) | [Plan](032-热点事件语义监控与出处正文计划.md) | in_progress |
+| 032 | [热点事件语义监控与出处正文](../design/archive/032-热点事件语义监控与出处正文设计.md) | [PRD](../prd/archive/032-热点事件语义监控与出处正文.md) | [Plan](archive/032-热点事件语义监控与出处正文计划.md) | completed |

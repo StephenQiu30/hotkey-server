@@ -412,14 +412,19 @@ WHERE id = $1`, documentVersionID, now.Add(time.Second)); err != nil {
 
 	profile := strings.Repeat("6", 64)
 	path := fmt.Sprintf("documents/%d/%d/markdown/%s.md", documentID, documentVersionID, profile)
+	artifactSHA := strings.Repeat("7", 64)
+	anchorMapSHA := strings.Repeat("a", 64)
 	_, err = runtime.SQL.Exec(`
 INSERT INTO derived_artifacts (
   source_connection_id, document_version_id, store_derived_rights_decision_id,
   retain_rights_decision_id, artifact_type, transformer_profile_sha256,
-  vault_relative_path, mime_type, sha256, size_bytes, retention_until
-) VALUES ($1, $2, $3, $4, 'markdown', $5, $6, 'text/markdown; charset=utf-8', $7, 64, $8)`,
+  vault_relative_path, mime_type, sha256, size_bytes,
+  anchor_normalization_version, anchor_map_profile_version, anchor_plaintext_sha256,
+  anchor_markdown_sha256, anchor_map_sha256, retention_until
+) VALUES ($1, $2, $3, $4, 'markdown', $5, $6, 'text/markdown; charset=utf-8', $7, 64,
+  'nfc-lf-collapse-space-v1', 'commonmark-gfm-visible-blocks-v1', $8, $7, $9, $10)`,
 		sourceID, documentVersionID, wrongDerivedDecisionID, derivedRetainDecisionID,
-		profile, path, strings.Repeat("7", 64), now.Add(30*24*time.Hour))
+		profile, path, artifactSHA, contentDigest, anchorMapSHA, now.Add(30*24*time.Hour))
 	if err == nil {
 		t.Fatal("derived artifact accepted a store_derived decision for another document version")
 	}
@@ -428,10 +433,13 @@ INSERT INTO derived_artifacts (
 	INSERT INTO derived_artifacts (
 	  source_connection_id, document_version_id, store_derived_rights_decision_id,
 	  retain_rights_decision_id, artifact_type, transformer_profile_sha256,
-	  vault_relative_path, mime_type, sha256, size_bytes, retention_until
+	  vault_relative_path, mime_type, sha256, size_bytes,
+	  anchor_normalization_version, anchor_map_profile_version, anchor_plaintext_sha256,
+	  anchor_markdown_sha256, anchor_map_sha256, retention_until
 	) VALUES ($1, $2, $3, $4, 'markdown', $5, '../escape.md',
-	  'text/markdown; charset=utf-8', $6, 64, $7)`, sourceID, documentVersionID,
-		storeDerivedDecisionID, derivedRetainDecisionID, profile, strings.Repeat("7", 64), now.Add(30*24*time.Hour))
+	  'text/markdown; charset=utf-8', $6, 64,
+	  'nfc-lf-collapse-space-v1', 'commonmark-gfm-visible-blocks-v1', $7, $6, $8, $9)`, sourceID, documentVersionID,
+		storeDerivedDecisionID, derivedRetainDecisionID, profile, artifactSHA, contentDigest, anchorMapSHA, now.Add(30*24*time.Hour))
 	if err == nil {
 		t.Fatal("derived artifact accepted a non-deterministic Vault path")
 	}
@@ -440,11 +448,14 @@ INSERT INTO derived_artifacts (
 	INSERT INTO derived_artifacts (
 	  source_connection_id, document_version_id, store_derived_rights_decision_id,
 	  retain_rights_decision_id, artifact_type, transformer_profile_sha256,
-	  vault_relative_path, mime_type, sha256, size_bytes, retention_until
+	  vault_relative_path, mime_type, sha256, size_bytes,
+	  anchor_normalization_version, anchor_map_profile_version, anchor_plaintext_sha256,
+	  anchor_markdown_sha256, anchor_map_sha256, retention_until
 	) VALUES ($1, $2, $3, $4, 'markdown', $5, $6,
-	  'text/markdown; charset=utf-8', $7, 64, $8)`, sourceID, documentVersionID,
+	  'text/markdown; charset=utf-8', $7, 64,
+	  'nfc-lf-collapse-space-v1', 'commonmark-gfm-visible-blocks-v1', $8, $7, $9, $10)`, sourceID, documentVersionID,
 		storeDerivedDecisionID, derivedRetainDecisionID, profile, path,
-		strings.Repeat("7", 64), now.Add(31*24*time.Hour))
+		artifactSHA, contentDigest, anchorMapSHA, now.Add(31*24*time.Hour))
 	if err == nil {
 		t.Fatal("derived artifact exceeded its exact retain decision")
 	}
@@ -455,11 +466,22 @@ INSERT INTO derived_artifacts (
 INSERT INTO derived_artifacts (
   source_connection_id, document_version_id, store_derived_rights_decision_id,
   retain_rights_decision_id, artifact_type, transformer_profile_sha256,
-  vault_relative_path, mime_type, sha256, size_bytes, retention_until
-) VALUES ($1, $2, $3, $4, 'markdown', $5, $6, 'text/markdown; charset=utf-8', $7, 64, $8)
+  vault_relative_path, mime_type, sha256, size_bytes,
+  anchor_normalization_version, anchor_map_profile_version, anchor_plaintext_sha256,
+  anchor_markdown_sha256, anchor_map_sha256, retention_until
+) VALUES ($1, $2, $3, $4, 'markdown', $5, $6, 'text/markdown; charset=utf-8', $7, 64,
+  'nfc-lf-collapse-space-v1', 'commonmark-gfm-visible-blocks-v1', $8, $7, $9, $10)
 RETURNING id`, sourceID, documentVersionID, storeDerivedDecisionID, derivedRetainDecisionID,
-		profile, path, strings.Repeat("7", 64), now.Add(30*24*time.Hour)).Scan(&artifactID); err != nil {
+		profile, path, artifactSHA, contentDigest, anchorMapSHA, now.Add(30*24*time.Hour)).Scan(&artifactID); err != nil {
 		t.Fatalf("insert derived artifact: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO document_anchor_blocks (
+  derived_artifact_id, anchor_map_sha256, block_ordinal,
+  plaintext_utf8_byte_start, plaintext_utf8_byte_end,
+  markdown_utf8_byte_start, markdown_utf8_byte_end, markdown_anchor
+) VALUES ($1, $2, 0, 0, 2, 0, 2, 'body-0000-000000000001')`, artifactID, anchorMapSHA); err != nil {
+		t.Fatalf("insert document anchor block: %v", err)
 	}
 	derivedDenyPolicyID := insertRightsPolicy(t, runtime, sourceID, policySubject, 6, strings.Repeat("f", 64), "derived storage revoked fixture", now.Add(-time.Hour))
 	derivedDeny := derivedDecision
@@ -636,6 +658,75 @@ WHERE id = $1`, documentID, documentVersionID, now.Add(7*time.Second)); err != n
 	) VALUES ($1, $2, 2, $3, 'feed_content', 'full', $4, 'atom-v2', 'atom-profile-v2', $5, $6)`,
 		documentID, observationID, strings.Repeat("8", 64), strings.Repeat("9", 64), strings.Repeat("0", 64), now.Add(time.Minute)); err != nil {
 		t.Fatalf("new extractor profile could not append a document version for the same observation: %v", err)
+	}
+}
+
+func TestEvidenceSnapshotUsesEndpointRightsAndExactDenyStillWins(t *testing.T) {
+	runtime := openTestRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	now := time.Now().UTC().Add(-time.Minute).Truncate(time.Microsecond)
+	suffix := fmt.Sprintf("%d", now.UnixNano())
+	sourceID := insertEvidenceSource(t, runtime, "endpoint-inheritance-"+suffix)
+	policyHash := strings.Repeat("a", 63) + "1"
+	policyID := insertRightsPolicy(t, runtime, sourceID, "endpoint-inheritance", 1, policyHash, "approved endpoint contract", now.Add(-time.Hour))
+	endpointDecision := rightsDecisionFixture{
+		SourceID: sourceID, PolicyID: policyID, PolicyRevision: 1,
+		PolicyScopeType: "source_endpoint", PolicySubject: "endpoint-inheritance", PriorityRank: 300,
+		PolicyBasis: "approved endpoint contract", SubjectType: "source_endpoint", SubjectKey: strconv.FormatInt(sourceID, 10),
+		InputDigest: policyHash, Action: "store_raw", Decision: "allow", EvaluatedAt: now, EffectiveFrom: now.Add(-time.Minute),
+	}
+	storeDecisionID, err := insertRightsDecision(runtime, endpointDecision)
+	if err != nil {
+		t.Fatalf("insert endpoint store_raw decision: %v", err)
+	}
+	endpointDecision.Action = "retain"
+	endpointDecision.RetentionDays = intPointer(30)
+	retainDecisionID, err := insertRightsDecision(runtime, endpointDecision)
+	if err != nil {
+		t.Fatalf("insert endpoint retain decision: %v", err)
+	}
+	snapshotKey := strings.Repeat("c", 63) + "1"
+	payloadDigest := strings.Repeat("d", 63) + "1"
+	var snapshotID int64
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO evidence_snapshots (
+  source_connection_id,store_raw_rights_decision_id,retain_rights_decision_id,
+  snapshot_key,object_key,payload_sha256,collector_profile_version,mime_type,size_bytes,response_status,
+  requested_url,final_url,captured_at,retention_until
+) VALUES ($1,$2,$3,$4,$5,$6,'rss-http-v1','application/atom+xml',1,200,
+  'https://feed.example.test/endpoint','https://feed.example.test/endpoint',$7,$8)
+RETURNING id`, sourceID, storeDecisionID, retainDecisionID, snapshotKey,
+		"source-raw/v1/endpoint-"+suffix, payloadDigest, now, now.Add(30*24*time.Hour)).Scan(&snapshotID); err != nil {
+		t.Fatalf("endpoint rights did not authorize exact snapshot: %v", err)
+	}
+
+	// An observation-scoped policy has higher priority than an endpoint contract.
+	highHash := strings.Repeat("e", 64)
+	actorID := insertEvidenceRightsFixtureActor(t, runtime, highHash)
+	key, fingerprint := evidenceRightsFixtureReceipt("policy", highHash)
+	var exactPolicyID int64
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO source_rights_policies (
+ recorded_by_user_id,approved_by_user_id,idempotency_key,command_fingerprint,source_connection_id,
+ scope_type,scope_subject,policy_revision,priority,basis_summary,policy_hash,effective_at
+) VALUES ($1,$1,$2,$3,$4,'observation',$5,3,400,'exact item restriction',$6,$7) RETURNING id`,
+		actorID, key, fingerprint, sourceID, snapshotKey, highHash, now.Add(-time.Hour)).Scan(&exactPolicyID); err != nil {
+		t.Fatalf("insert exact deny policy: %v", err)
+	}
+	exactDeny := rightsDecisionFixture{
+		SourceID: sourceID, PolicyID: exactPolicyID, PolicyRevision: 3,
+		PolicyScopeType: "observation", PolicySubject: snapshotKey, PriorityRank: 400,
+		PolicyBasis: "exact item restriction", SubjectType: "raw_response", SubjectKey: snapshotKey,
+		InputDigest: payloadDigest, Action: "store_raw", Decision: "deny", EvaluatedAt: now, EffectiveFrom: now.Add(-time.Minute),
+	}
+	if _, err := insertRightsDecision(runtime, exactDeny); err != nil {
+		t.Fatalf("insert exact store_raw deny: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`
+UPDATE evidence_snapshots SET lifecycle_state='raw_available',available_at=$2,updated_at=$2 WHERE id=$1`, snapshotID, now.Add(time.Second)); err == nil {
+		t.Fatal("higher-priority exact deny did not block endpoint-authorized lifecycle commit")
+	} else {
+		assertPostgreSQLState(t, err, "23514")
 	}
 }
 

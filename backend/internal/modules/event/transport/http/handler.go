@@ -66,7 +66,7 @@ func NewHandlerWithIntelligence(read *application.ReadService, lifecycle *applic
 // GetIntelligence returns only the Event-owned, evidence-backed entity and
 // claim projection. It never exposes model prompts, provider payloads, or AI
 // run implementation details.
-// @Summary Get verified event intelligence
+// @Summary Get evidence-linked event intelligence
 // @Tags events
 // @Produce json
 // @Security BearerAuth
@@ -92,7 +92,7 @@ func (handler *Handler) GetIntelligence(c *gin.Context) error {
 	}
 	response := EventIntelligenceResponse{EventID: result.EventID, Entities: make([]IntelligenceEntityResponse, 0, len(result.Entities)), Claims: make([]IntelligenceClaimResponse, 0, len(result.Claims))}
 	for _, item := range result.Entities {
-		response.Entities = append(response.Entities, IntelligenceEntityResponse{EntityID: item.Entity.ID, EntityVersion: item.Entity.Version, EntityKey: item.Entity.Key, EntityType: string(item.Entity.Type), CanonicalName: item.Entity.Name, EntityLocked: item.Entity.ManualLocked, RelationID: item.EventEntity.ID, RelationVersion: item.EventEntity.Version, Role: item.EventEntity.Role, Confidence: item.EventEntity.Confidence, Origin: string(item.EventEntity.Origin), Confirmed: item.EventEntity.Confirmed})
+		response.Entities = append(response.Entities, IntelligenceEntityResponse{EntityID: item.Entity.ID, EntityVersion: item.Entity.Version, EntityKey: item.Entity.Key, EntityType: string(item.Entity.Type), CanonicalName: item.Entity.Name, EntityLocked: item.Entity.ManualLocked, RelationID: item.EventEntity.ID, RelationVersion: item.EventEntity.Version, Role: item.EventEntity.Role, Origin: string(item.EventEntity.Origin)})
 	}
 	for _, claim := range result.Claims {
 		response.Claims = append(response.Claims, intelligenceClaimResponse(claim))
@@ -132,21 +132,8 @@ func (handler *Handler) RegenerateSummary(c *gin.Context) error {
 	return nil
 }
 
-// RegenerateExtraction creates only unconfirmed, evidence-backed Event facts.
-// Provider unavailability returns a degradation result without mutating facts.
-// @Summary Regenerate event entities and claims
-// @Tags events
-// @Produce json
-// @Security BearerAuth
-// @Param id path int true "event ID"
-// @Success 200 {object} EventResult[ExtractionRegenerationResponse]
-// @Failure 400 {object} EventResult[EmptyResponse]
-// @Failure 401 {object} EventResult[EmptyResponse]
-// @Failure 403 {object} EventResult[EmptyResponse]
-// @Failure 404 {object} EventResult[EmptyResponse]
-// @Failure 409 {object} EventResult[EmptyResponse]
-// @Failure 503 {object} EventResult[EmptyResponse]
-// @Router /api/v1/events/{id}/intelligence/extract [post]
+// RegenerateExtraction is retained only for historical migration tests. It is
+// deliberately not registered or documented as a public v2 endpoint.
 func (handler *Handler) RegenerateExtraction(c *gin.Context) error {
 	if handler == nil || handler.extractions == nil {
 		return sharederrors.New(sharederrors.CodeUnavailable, http.StatusServiceUnavailable, "")
@@ -192,23 +179,8 @@ func (handler *Handler) GetHeat(c *gin.Context) error {
 	return nil
 }
 
-// SaveClaim records an evidence-backed claim after the repository verifies
-// that every referenced content item is still active in the event.
-// @Summary Save an event claim
-// @Tags events
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param id path int true "event ID"
-// @Param request body ClaimRequest true "claim request"
-// @Success 200 {object} EventResult[ClaimResponse]
-// @Failure 400 {object} EventResult[EmptyResponse]
-// @Failure 401 {object} EventResult[EmptyResponse]
-// @Failure 403 {object} EventResult[EmptyResponse]
-// @Failure 404 {object} EventResult[EmptyResponse]
-// @Failure 409 {object} EventResult[EmptyResponse]
-// @Failure 503 {object} EventResult[EmptyResponse]
-// @Router /api/v1/events/{id}/claims [post]
+// SaveClaim is retained only for historical migration tests. It is
+// deliberately not registered or documented as a public v2 endpoint.
 func (handler *Handler) SaveClaim(c *gin.Context) error {
 	if handler == nil || handler.claims == nil {
 		return sharederrors.New(sharederrors.CodeUnavailable, http.StatusServiceUnavailable, "")
@@ -279,7 +251,6 @@ func (handler *Handler) List(c *gin.Context) error {
 // @Param monitor_id query int false "monitor ID" minimum(1)
 // @Param lifecycle query []string false "lifecycle filters" collectionFormat(csv) Enums(detected,active,cooling,closed,merged,archived,rejected)
 // @Param trend query []string false "trend filters" collectionFormat(csv) Enums(emerging,rising,stable,falling,dormant)
-// @Param verification query []string false "verification filters" collectionFormat(csv) Enums(disputed,corroborated,single_source,unverified,insufficient)
 // @Param min_heat query number false "minimum heat" minimum(0) maximum(100)
 // @Param sort query string false "ranking dimension" Enums(momentum,attention,breadth,latest,relevance) default(momentum)
 // @Param limit query int false "page size" minimum(1) maximum(100) default(50)
@@ -628,13 +599,6 @@ func radarQuery(c *gin.Context) (domain.RadarQuery, error) {
 	for _, value := range values {
 		query.Trends = append(query.Trends, domain.TrendStatus(value))
 	}
-	values, err = radarQueryValues(c.Query("verification"))
-	if err != nil {
-		return domain.RadarQuery{}, err
-	}
-	for _, value := range values {
-		query.Verifications = append(query.Verifications, domain.RadarConfirmation(value))
-	}
 	return query, nil
 }
 
@@ -676,9 +640,9 @@ func eventError(err error) error {
 }
 
 func intelligenceClaimResponse(claim domain.Claim) IntelligenceClaimResponse {
-	response := IntelligenceClaimResponse{ID: claim.ID, Version: claim.Version, NormalizedClaim: claim.NormalizedClaim, ClaimHash: claim.ClaimHash, Status: string(claim.Status), Confidence: claim.Confidence, ManualLocked: claim.ManualLocked, Evidence: make([]IntelligenceEvidenceResponse, 0, len(claim.Evidence))}
+	response := IntelligenceClaimResponse{ID: claim.ID, Version: claim.Version, NormalizedClaim: claim.NormalizedClaim, ClaimHash: claim.ClaimHash, ManualLocked: claim.ManualLocked, Evidence: make([]IntelligenceEvidenceResponse, 0, len(claim.Evidence))}
 	for _, item := range claim.Evidence {
-		response.Evidence = append(response.Evidence, IntelligenceEvidenceResponse{ContentID: item.ContentID, Locator: item.Locator, Excerpt: item.Excerpt, Stance: item.Stance, Confidence: item.Confidence})
+		response.Evidence = append(response.Evidence, IntelligenceEvidenceResponse{ContentID: item.ContentID, Locator: item.Locator, Excerpt: item.Excerpt, Stance: item.Stance})
 	}
 	return response
 }

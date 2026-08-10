@@ -15,10 +15,9 @@ describe("EventHeatPanel", () => {
           components: {
             independence: 25,
             content_velocity: 20,
-            source_breadth: 50,
-            recency: 97,
-            credibility: 80,
-          },
+			source_breadth: 50,
+			recency: 97,
+		  },
         }}
       />
     );

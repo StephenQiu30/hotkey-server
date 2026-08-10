@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 
 const (
 	RawEvidenceRightsSubjectResponse = "raw_response"
+	RawEvidenceRightsSubjectEndpoint = "source_endpoint"
 	rawStoreFailureCode              = "OBJECT_STORE_FAILED"
 	rawEvidenceObjectRootPrefix      = "source-raw/v1/"
 	MaximumCaptureClockSkew          = 5 * time.Minute
@@ -161,6 +163,7 @@ type SourceObservationDTO struct {
 	DiscoveredAt       time.Time
 	CapturedAt         time.Time
 	Evidence           RawEvidenceReferenceDTO
+	Parties            []SourceObservationPartyDTO
 }
 
 type CommitEvidenceSnapshotCommand struct {
@@ -180,19 +183,21 @@ type EvidenceSnapshotRepository interface {
 // RawEvidenceRightsDecisionDTO is a single-action current authorization read
 // by the archive use case.
 type RawEvidenceRightsDecisionDTO struct {
-	ID                   int64
-	PolicyID             int64
-	PolicyRevision       int64
-	SourceConnectionID   int64
-	SubjectType          string
-	SubjectKey           string
-	InputDigest          string
-	Action               string
-	Decision             string
-	EffectiveFrom        time.Time
-	ExpiresAt            *time.Time
-	RetentionDays        *int
-	SupersedesDecisionID *int64
+	ID                      int64
+	PolicyID                int64
+	PolicyRevision          int64
+	SourceConnectionID      int64
+	SubjectType             string
+	SubjectKey              string
+	InputDigest             string
+	Action                  string
+	Decision                string
+	EffectiveFrom           time.Time
+	ExpiresAt               *time.Time
+	RetentionDays           *int
+	SupersedesDecisionID    *int64
+	AuthorizedEvidenceKey   string
+	AuthorizedPayloadSHA256 string
 }
 
 func (decision RawEvidenceRightsDecisionDTO) authorizes(action domain.RightsAction, sourceConnectionID int64, snapshot domain.EvidenceSnapshot, at time.Time) bool {
@@ -200,8 +205,12 @@ func (decision RawEvidenceRightsDecisionDTO) authorizes(action domain.RightsActi
 	if err != nil {
 		return false
 	}
-	if decision.ID <= 0 || decision.SourceConnectionID != sourceConnectionID || decision.SubjectType != RawEvidenceRightsSubjectResponse ||
-		decision.SubjectKey != snapshot.Key || decision.InputDigest != snapshot.PayloadSHA256 ||
+	exactSubject := decision.SubjectType == RawEvidenceRightsSubjectResponse && decision.SubjectKey == snapshot.Key &&
+		decision.InputDigest == snapshot.PayloadSHA256
+	endpointSubject := decision.SubjectType == RawEvidenceRightsSubjectEndpoint &&
+		decision.SubjectKey == strconv.FormatInt(sourceConnectionID, 10) && validSHA256Hex(decision.InputDigest) &&
+		decision.AuthorizedEvidenceKey == snapshot.Key && decision.AuthorizedPayloadSHA256 == snapshot.PayloadSHA256
+	if decision.ID <= 0 || decision.SourceConnectionID != sourceConnectionID || (!exactSubject && !endpointSubject) ||
 		decisionAction != action || decisionState != domain.RightsAllow || decision.PolicyID <= 0 || decision.PolicyRevision <= 0 ||
 		decision.EffectiveFrom.IsZero() || at.IsZero() || at.Before(decision.EffectiveFrom) {
 		return false
@@ -527,9 +536,9 @@ func sourceObservationDTOFromEntity(sourceConnectionID, collectionRunID int64, i
 	return SourceObservationDTO{
 		SourceConnectionID: sourceConnectionID, CollectionRunID: collectionRunID, ExternalID: item.ExternalID, UpstreamIdentity: upstreamIdentity,
 		SourceCode: item.SourceCode, ContentType: item.ContentType, Title: item.Title, Language: language, Author: item.Author,
-		SourceRecordURL: snapshot.FinalURL, CanonicalURL: canonicalURL, BodyOrigin: bodyOrigin, Completeness: completeness,
+		SourceRecordURL: snapshot.FinalURL, CanonicalURL: canonicalURL, DiscussionURL: item.DiscussionURL, BodyOrigin: bodyOrigin, Completeness: completeness,
 		PublishedAt: publishedAt, DiscoveredAt: item.ObservedAt.UTC(), CapturedAt: snapshot.CapturedAt.UTC(),
-		Evidence: rawEvidenceReferenceDTOFromEntity(reference),
+		Evidence: rawEvidenceReferenceDTOFromEntity(reference), Parties: sourceObservationPartyDTOsFromEntities(item.Parties),
 	}, nil
 }
 
@@ -543,8 +552,13 @@ func sourceObservationIdentity(item domain.SourceItem) string {
 	// Body is transient raw input. Exact selected-payload digests live on the
 	// evidence locator; observation identity must not smuggle Body-derived
 	// material into a repository command.
-	for _, value := range []string{item.SourceCode, item.ExternalID, item.ContentType, item.Title, item.Language, item.URL, item.Author} {
+	for _, value := range []string{item.SourceCode, item.ExternalID, item.ContentType, item.Title, item.Language, item.URL, item.DiscussionURL, item.Author} {
 		_, _ = digest.Write([]byte(fmt.Sprintf("%d:%s", len(value), value)))
+	}
+	for _, party := range item.Parties {
+		for _, value := range []string{string(party.Role), string(party.Kind), party.IdentityNamespace, party.ExternalID, party.DisplayName, party.HomepageURL} {
+			_, _ = digest.Write([]byte(fmt.Sprintf("%d:%s", len(value), value)))
+		}
 	}
 	if item.PublishedAt != nil {
 		_, _ = digest.Write([]byte(item.PublishedAt.UTC().Format(time.RFC3339Nano)))
@@ -571,6 +585,9 @@ func rawBodySemantics(item domain.SourceItem) (string, string) {
 	case "hacker_news", "x", "bilibili", "weibo":
 		return "platform_post", completeness
 	case "bing_grounding", "google_agent_search":
+		if completeness == "summary" {
+			completeness = "snippet"
+		}
 		return "search_snippet", completeness
 	default:
 		return "api_content", completeness

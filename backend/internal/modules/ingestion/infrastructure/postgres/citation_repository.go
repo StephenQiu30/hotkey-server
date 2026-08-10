@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -42,6 +43,7 @@ type citationRecord struct {
 	sourceName             string
 	title                  string
 	author                 sql.NullString
+	partyFactsJSON         []byte
 	sourceRecordURL        sql.NullString
 	canonicalURL           sql.NullString
 	discussionURL          sql.NullString
@@ -54,20 +56,44 @@ type citationRecord struct {
 	displayPrivateAllowed  bool
 	rightsEvaluatedAt      time.Time
 
-	artifactID               sql.NullInt64
-	artifactType             sql.NullString
-	transformerProfileSHA256 sql.NullString
-	mimeType                 sql.NullString
-	artifactSHA256           sql.NullString
-	sizeBytes                sql.NullInt64
-	artifactLifecycleState   sql.NullString
-	artifactActive           sql.NullBool
-	failureCode              sql.NullString
-	availableAt              sql.NullTime
-	retentionUntil           sql.NullTime
-	storeDerivedAllowed      bool
-	retainAllowed            bool
-	currentRetentionDays     sql.NullInt64
+	artifactID                 sql.NullInt64
+	artifactType               sql.NullString
+	transformerProfileSHA256   sql.NullString
+	mimeType                   sql.NullString
+	artifactSHA256             sql.NullString
+	sizeBytes                  sql.NullInt64
+	artifactLifecycleState     sql.NullString
+	artifactActive             sql.NullBool
+	failureCode                sql.NullString
+	availableAt                sql.NullTime
+	retentionUntil             sql.NullTime
+	storeDerivedAllowed        bool
+	retainAllowed              bool
+	currentRetentionDays       sql.NullInt64
+	anchorNormalizationVersion sql.NullString
+	anchorMapProfileVersion    sql.NullString
+	anchorPlaintextSHA256      sql.NullString
+	anchorMarkdownSHA256       sql.NullString
+	anchorMapSHA256            sql.NullString
+	anchorBlocksJSON           []byte
+}
+
+type citationAnchorBlockRecord struct {
+	Ordinal                int    `json:"ordinal"`
+	PlaintextUTF8ByteStart int64  `json:"plaintext_utf8_byte_start"`
+	PlaintextUTF8ByteEnd   int64  `json:"plaintext_utf8_byte_end"`
+	MarkdownUTF8ByteStart  int64  `json:"markdown_utf8_byte_start"`
+	MarkdownUTF8ByteEnd    int64  `json:"markdown_utf8_byte_end"`
+	MarkdownAnchor         string `json:"markdown_anchor"`
+}
+
+type citationPartyRecord struct {
+	Role              string  `json:"role"`
+	Kind              string  `json:"kind"`
+	IdentityNamespace string  `json:"identity_namespace"`
+	ExternalID        string  `json:"external_id"`
+	DisplayName       string  `json:"display_name"`
+	HomepageURL       *string `json:"homepage_url"`
 }
 
 func (repository *CitationRepository) ReadCitation(ctx context.Context, documentVersionID int64) (ingestionapplication.CitationReadDTO, error) {
@@ -89,6 +115,23 @@ SELECT
   source.name,
   observation.title,
   observation.author_snapshot,
+  COALESCE((
+    SELECT jsonb_agg(jsonb_build_object(
+      'role',relation.role,
+      'kind',party.party_kind,
+      'identity_namespace',party.identity_namespace,
+      'external_id',party.external_id,
+      'display_name',relation.display_name_snapshot,
+      'homepage_url',relation.homepage_url_snapshot
+    ) ORDER BY
+      CASE relation.role WHEN 'publisher' THEN 0 WHEN 'content_origin' THEN 1 WHEN 'distributor' THEN 2 ELSE 3 END,
+      party.identity_namespace,party.external_id)
+    FROM source_observation_parties AS relation
+    JOIN source_parties AS party
+      ON party.id=relation.source_party_id AND party.source_connection_id=relation.source_connection_id
+    WHERE relation.source_observation_id=observation.id
+      AND relation.source_connection_id=observation.source_connection_id
+  ),'[]'::jsonb) AS party_facts,
   observation.source_record_url,
   observation.canonical_url,
   observation.discussion_url,
@@ -111,6 +154,24 @@ SELECT
   artifact.mime_type,
   btrim(artifact.sha256),
   artifact.size_bytes,
+  artifact.anchor_normalization_version,
+  artifact.anchor_map_profile_version,
+  btrim(artifact.anchor_plaintext_sha256),
+  btrim(artifact.anchor_markdown_sha256),
+  btrim(artifact.anchor_map_sha256),
+  COALESCE((
+    SELECT jsonb_agg(jsonb_build_object(
+      'ordinal',anchor.block_ordinal,
+      'plaintext_utf8_byte_start',anchor.plaintext_utf8_byte_start,
+      'plaintext_utf8_byte_end',anchor.plaintext_utf8_byte_end,
+      'markdown_utf8_byte_start',anchor.markdown_utf8_byte_start,
+      'markdown_utf8_byte_end',anchor.markdown_utf8_byte_end,
+      'markdown_anchor',anchor.markdown_anchor
+    ) ORDER BY anchor.block_ordinal)
+    FROM document_anchor_blocks AS anchor
+    WHERE anchor.derived_artifact_id=artifact.id
+      AND anchor.anchor_map_sha256=artifact.anchor_map_sha256
+  ),'[]'::jsonb),
   artifact.lifecycle_state,
   artifact.active,
   artifact.failure_code,
@@ -156,7 +217,11 @@ WHERE document_version.id = $1`, documentVersionID))
 	if err != nil {
 		return ingestionapplication.CitationReadDTO{}, databaserepository.MapError(err)
 	}
-	return citationReadDTO(record), nil
+	result, err := citationReadDTO(record)
+	if err != nil {
+		return ingestionapplication.CitationReadDTO{}, fmt.Errorf("%w: invalid persisted citation anchor map", sharedrepository.ErrConflict)
+	}
+	return result, nil
 }
 
 func (repository *CitationRepository) executor(ctx context.Context) citationQueryExecutor {
@@ -171,19 +236,26 @@ func scanCitationRecord(row *sql.Row) (citationRecord, error) {
 	err := row.Scan(
 		&record.documentID, &record.documentVersionID, &record.sourceConnectionID,
 		&record.documentState, &record.documentLifecycleState, &record.observationState,
-		&record.sourceType, &record.sourceName, &record.title, &record.author,
+		&record.sourceType, &record.sourceName, &record.title, &record.author, &record.partyFactsJSON,
 		&record.sourceRecordURL, &record.canonicalURL, &record.discussionURL,
 		&record.bodyOrigin, &record.completeness, &record.language, &record.publishedAt,
 		&record.capturedAt, &record.contentSHA256, &record.displayPrivateAllowed, &record.rightsEvaluatedAt,
 		&record.artifactID, &record.artifactType, &record.transformerProfileSHA256, &record.mimeType,
-		&record.artifactSHA256, &record.sizeBytes, &record.artifactLifecycleState, &record.artifactActive,
+		&record.artifactSHA256, &record.sizeBytes,
+		&record.anchorNormalizationVersion, &record.anchorMapProfileVersion, &record.anchorPlaintextSHA256,
+		&record.anchorMarkdownSHA256, &record.anchorMapSHA256, &record.anchorBlocksJSON,
+		&record.artifactLifecycleState, &record.artifactActive,
 		&record.failureCode, &record.availableAt, &record.retentionUntil,
 		&record.storeDerivedAllowed, &record.retainAllowed, &record.currentRetentionDays,
 	)
 	return record, err
 }
 
-func citationReadDTO(record citationRecord) ingestionapplication.CitationReadDTO {
+func citationReadDTO(record citationRecord) (ingestionapplication.CitationReadDTO, error) {
+	parties, err := citationPartyReadDTOs(record.partyFactsJSON)
+	if err != nil {
+		return ingestionapplication.CitationReadDTO{}, err
+	}
 	result := ingestionapplication.CitationReadDTO{
 		DocumentID: record.documentID, DocumentVersionID: record.documentVersionID,
 		SourceConnectionID: record.sourceConnectionID, DocumentState: record.documentState,
@@ -197,6 +269,23 @@ func citationReadDTO(record citationRecord) ingestionapplication.CitationReadDTO
 		ContentSHA256: record.contentSHA256, DisplayPrivateAllowed: record.displayPrivateAllowed,
 		RightsEvaluatedAt: record.rightsEvaluatedAt.UTC(),
 	}
+	for index := range parties {
+		party := parties[index]
+		switch party.Role {
+		case "publisher":
+			if result.Publisher != nil {
+				return ingestionapplication.CitationReadDTO{}, fmt.Errorf("multiple publisher party facts")
+			}
+			result.Publisher = &party
+		case "content_origin":
+			if result.ContentOrigin != nil {
+				return ingestionapplication.CitationReadDTO{}, fmt.Errorf("multiple content origin party facts")
+			}
+			result.ContentOrigin = &party
+		case "distributor":
+			result.Distributors = append(result.Distributors, party)
+		}
+	}
 	if record.artifactID.Valid {
 		result.Artifact = &ingestionapplication.CitationArtifactReadDTO{
 			ArtifactType: record.artifactType.String, TransformerProfileSHA256: record.transformerProfileSHA256.String,
@@ -206,8 +295,43 @@ func citationReadDTO(record citationRecord) ingestionapplication.CitationReadDTO
 			RetentionUntil: citationTime(record.retentionUntil), StoreDerivedAllowed: record.storeDerivedAllowed,
 			RetainAllowed: record.retainAllowed, CurrentRetentionDays: citationOptionalInt(record.currentRetentionDays),
 		}
+		if record.anchorMapSHA256.Valid {
+			var persisted []citationAnchorBlockRecord
+			if err := json.Unmarshal(record.anchorBlocksJSON, &persisted); err != nil {
+				return ingestionapplication.CitationReadDTO{}, err
+			}
+			result.Artifact.AnchorMap = &ingestionapplication.CitationArtifactAnchorMapReadDTO{
+				NormalizationVersion:    record.anchorNormalizationVersion.String,
+				AnchorMapProfileVersion: record.anchorMapProfileVersion.String,
+				PlaintextSHA256:         record.anchorPlaintextSHA256.String, MarkdownSHA256: record.anchorMarkdownSHA256.String,
+				AnchorMapSHA256: record.anchorMapSHA256.String,
+				Blocks:          make([]ingestionapplication.CitationAnchorBlockReadDTO, len(persisted)),
+			}
+			for index, block := range persisted {
+				result.Artifact.AnchorMap.Blocks[index] = ingestionapplication.CitationAnchorBlockReadDTO{
+					Ordinal: block.Ordinal, PlaintextUTF8ByteStart: block.PlaintextUTF8ByteStart, PlaintextUTF8ByteEnd: block.PlaintextUTF8ByteEnd,
+					MarkdownUTF8ByteStart: block.MarkdownUTF8ByteStart, MarkdownUTF8ByteEnd: block.MarkdownUTF8ByteEnd,
+					MarkdownAnchor: block.MarkdownAnchor,
+				}
+			}
+		}
 	}
-	return result
+	return result, nil
+}
+
+func citationPartyReadDTOs(encoded []byte) ([]ingestionapplication.CitationPartyReadDTO, error) {
+	var persisted []citationPartyRecord
+	if err := json.Unmarshal(encoded, &persisted); err != nil || persisted == nil {
+		return nil, fmt.Errorf("decode citation party facts")
+	}
+	result := make([]ingestionapplication.CitationPartyReadDTO, len(persisted))
+	for index, party := range persisted {
+		result[index] = ingestionapplication.CitationPartyReadDTO{
+			Role: party.Role, Kind: party.Kind, IdentityNamespace: party.IdentityNamespace,
+			ExternalID: party.ExternalID, DisplayName: party.DisplayName, HomepageURL: party.HomepageURL,
+		}
+	}
+	return result, nil
 }
 
 func citationOptionalString(value sql.NullString) *string {

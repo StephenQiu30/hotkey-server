@@ -33,6 +33,10 @@ func (stub *documentRecallProjectionWriterStub) PersistDocumentEmbeddingReceipt(
 	return stub.embeddingResult, nil
 }
 
+func (stub *documentRecallProjectionWriterStub) ReadDocumentEmbeddingReceipt(_ context.Context, _ ReadDocumentEmbeddingReceiptQuery) (DocumentEmbeddingReceiptResult, error) {
+	return stub.embeddingResult, nil
+}
+
 func TestDocumentRecallProjectionServiceNormalizesAndPersistsSensitiveSearchProjection(t *testing.T) {
 	plaintext := "Canonical hot event body"
 	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(plaintext)))

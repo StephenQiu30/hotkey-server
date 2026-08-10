@@ -55,22 +55,28 @@ type AlertEmailPlanner interface {
 	PlanAlertEmail(context.Context, AlertEmailPlan) error
 }
 
+type AlertQualityProfileReader interface {
+	IsDecisionQualityProfileActive(context.Context, string, string) (bool, error)
+}
+
 type Dependencies struct {
-	Candidates   EventCandidateReader
-	Policies     MonitorPolicyReader
-	Occurrences  OccurrenceWriter
-	Clock        sharedclock.Clock
-	Transactions TransactionRunner
-	Emails       AlertEmailPlanner
+	Candidates      EventCandidateReader
+	Policies        MonitorPolicyReader
+	Occurrences     OccurrenceWriter
+	Clock           sharedclock.Clock
+	Transactions    TransactionRunner
+	Emails          AlertEmailPlanner
+	QualityProfiles AlertQualityProfileReader
 }
 
 type Service struct {
-	candidates   EventCandidateReader
-	policies     MonitorPolicyReader
-	occurrences  OccurrenceWriter
-	clock        sharedclock.Clock
-	transactions TransactionRunner
-	emails       AlertEmailPlanner
+	candidates      EventCandidateReader
+	policies        MonitorPolicyReader
+	occurrences     OccurrenceWriter
+	clock           sharedclock.Clock
+	transactions    TransactionRunner
+	emails          AlertEmailPlanner
+	qualityProfiles AlertQualityProfileReader
 }
 
 func NewService(dependencies Dependencies) (*Service, error) {
@@ -80,7 +86,7 @@ func NewService(dependencies Dependencies) (*Service, error) {
 	if dependencies.Clock == nil {
 		dependencies.Clock = sharedclock.System{}
 	}
-	return &Service{candidates: dependencies.Candidates, policies: dependencies.Policies, occurrences: dependencies.Occurrences, clock: dependencies.Clock, transactions: dependencies.Transactions, emails: dependencies.Emails}, nil
+	return &Service{candidates: dependencies.Candidates, policies: dependencies.Policies, occurrences: dependencies.Occurrences, clock: dependencies.Clock, transactions: dependencies.Transactions, emails: dependencies.Emails, qualityProfiles: dependencies.QualityProfiles}, nil
 }
 
 type EvaluationResult struct {
@@ -89,6 +95,8 @@ type EvaluationResult struct {
 	CreatedCount   int
 	DuplicateCount int
 	ReopenedCount  int
+	Degraded       bool
+	ReasonCodes    []string
 }
 
 func (service *Service) Evaluate(ctx context.Context, ref EventUpdateRef) (EvaluationResult, error) {
@@ -97,6 +105,12 @@ func (service *Service) Evaluate(ctx context.Context, ref EventUpdateRef) (Evalu
 	}
 	if err := ref.Validate(); err != nil {
 		return EvaluationResult{}, err
+	}
+	if service.qualityProfiles != nil {
+		active, readErr := service.qualityProfiles.IsDecisionQualityProfileActive(ctx, "hotspot_detection", "event-heat-v2")
+		if readErr != nil || !active {
+			return EvaluationResult{Degraded: true, ReasonCodes: []string{"quality_profile_not_active"}}, nil
+		}
 	}
 	candidates, err := service.candidates.ListAlertCandidates(ctx, ref)
 	if err != nil {

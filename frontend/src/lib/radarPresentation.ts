@@ -6,22 +6,6 @@ const TREND_LABELS: Record<string, string> = {
   dormant: "低活跃",
 };
 
-const CONFIRMATION_LABELS: Record<string, string> = {
-  corroborated: "多源印证",
-  disputed: "存在争议",
-  single_source: "单一来源",
-  unverified: "待核实",
-  insufficient: "证据不足",
-};
-
-const CLAIM_STATUS_LABELS: Record<string, string> = {
-  corroborated: "多源支持",
-  disputed: "存在争议",
-  single_source: "单一来源",
-  unverified: "待核实",
-  insufficient: "证据不足",
-};
-
 const EVIDENCE_STANCE_LABELS: Record<string, string> = {
   supports: "支持",
   contradicts: "反驳",
@@ -39,7 +23,7 @@ const REASON_LABELS: Record<string, string> = {
   evidence_added: "新增可验证证据",
   heat_rising: "事件热度快速上升",
   trend_changed: "事件趋势发生变化",
-  confirmation_changed: "事实确认状态发生变化",
+  confirmation_changed: "证据集合发生变化",
 };
 
 const UPDATE_KIND_LABELS: Record<string, string> = {
@@ -70,24 +54,8 @@ export function trendLabel(value?: string) {
   return (value && TREND_LABELS[value]) || "持续观察";
 }
 
-export function confirmationLabel(value?: string) {
-  return (value && CONFIRMATION_LABELS[value]) || "待核实";
-}
-
-export function claimStatusLabel(value?: string) {
-  return (value && CLAIM_STATUS_LABELS[value]) || "待核实";
-}
-
 export function evidenceStanceLabel(value?: string) {
   return (value && EVIDENCE_STANCE_LABELS[value]) || "相关";
-}
-
-export function formatConfidence(value?: number) {
-  if (value == null) return "— · 置信度未知";
-  const score = Math.round(value);
-  if (score < 60) return `${score} · 低置信度`;
-  if (score < 80) return `${score} · 中等置信度`;
-  return `${score} · 高置信度`;
 }
 
 export function reasonLabel(value?: string) {
@@ -118,10 +86,4 @@ export function trendTone(value?: string) {
   if (value === "emerging" || value === "rising") return "danger" as const;
   if (value === "falling" || value === "dormant") return "muted" as const;
   return "success" as const;
-}
-
-export function confirmationTone(value?: string) {
-  if (value === "corroborated") return "success" as const;
-  if (value === "disputed") return "danger" as const;
-  return "warning" as const;
 }

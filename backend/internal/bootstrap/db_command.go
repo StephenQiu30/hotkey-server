@@ -71,10 +71,13 @@ func runDatabaseUpgrade(ctx context.Context, runtime *database.Runtime, args []s
 			return err
 		}
 		fmt.Printf(
-			"database upgrade dry-run: target=%s PostgreSQL=%d current_fingerprint=%s target_schema_sha256=%s current_tables=%d target_tables=%d missing=%v unexpected=%v blockers=%v\n",
+			"database upgrade dry-run: target=%s PostgreSQL=%d current_fingerprint=%s target_schema_sha256=%s current_tables=%d target_tables=%d missing=%v unexpected=%v missing_indexes=%d estimated_rows=%d table_bytes=%d index_bytes=%d estimated_index_workspace_bytes=%d estimate_version=%s lock_risk=%s extensions=%v blockers=%v\n",
 			inspection.Target, inspection.ServerVersion, inspection.CurrentCatalogFingerprint,
 			inspection.TargetSchemaSHA256, len(inspection.CurrentTables), len(inspection.TargetTables),
-			inspection.MissingTables, inspection.UnexpectedTables, inspection.Blockers,
+			inspection.MissingTables, inspection.UnexpectedTables, inspection.MissingIndexCount,
+			inspection.EstimatedRows, inspection.CurrentTableBytes, inspection.CurrentIndexBytes,
+			inspection.EstimatedIndexWorkspaceBytes, inspection.IndexEstimateVersion, inspection.LockRisk,
+			inspection.Extensions, inspection.Blockers,
 		)
 		if !inspection.CanApply() {
 			return fmt.Errorf("database upgrade dry-run found blockers: %v", inspection.Blockers)

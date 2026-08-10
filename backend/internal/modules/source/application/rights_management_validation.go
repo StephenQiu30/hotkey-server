@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -149,6 +150,10 @@ func validateDecisionPolicyCompatibility(request RecordRightsDecisionRepositoryD
 	}
 	if policy.SourceConnectionID != nil && *policy.SourceConnectionID != request.SourceConnectionID {
 		return fmt.Errorf("%w: decision source does not match policy source", sharedrepository.ErrConstraint)
+	}
+	if request.SubjectType == string(domain.RightsSubjectSourceEndpoint) &&
+		(request.SubjectKey != strconv.FormatInt(request.SourceConnectionID, 10) || request.InputDigest != policy.PolicyHash) {
+		return fmt.Errorf("%w: endpoint decision must bind the concrete source and immutable policy hash", sharedrepository.ErrConstraint)
 	}
 	for _, candidate := range request.Decisions {
 		if candidate.Decision == string(domain.RightsAllow) && policy.ApprovedByUserID == nil {

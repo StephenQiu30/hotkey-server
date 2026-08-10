@@ -41,13 +41,18 @@ func scanContent(scanner interface{ Scan(...any) error }) (ingestiondomain.Conte
 
 func scanContentSearch(scanner interface{ Scan(...any) error }) (ingestiondomain.Content, error) {
 	var record contentRecord
+	var documentVersionID sql.NullInt64
 	var relevanceScore sql.NullFloat64
 	var matchDecision sql.NullString
-	destinations := append(contentRecordDestinations(&record), &relevanceScore, &matchDecision)
+	destinations := append(contentRecordDestinations(&record), &documentVersionID, &relevanceScore, &matchDecision)
 	if err := scanner.Scan(destinations...); err != nil {
 		return ingestiondomain.Content{}, err
 	}
 	content := contentFromRecord(record)
+	if documentVersionID.Valid {
+		value := documentVersionID.Int64
+		content.DocumentVersionID = &value
+	}
 	if relevanceScore.Valid {
 		value := relevanceScore.Float64
 		content.RelevanceScore = &value
@@ -55,6 +60,21 @@ func scanContentSearch(scanner interface{ Scan(...any) error }) (ingestiondomain
 	if matchDecision.Valid {
 		value := ingestiondomain.MatchDecision(matchDecision.String)
 		content.MatchDecision = &value
+	}
+	return content, nil
+}
+
+func scanContentWithDocumentVersion(scanner interface{ Scan(...any) error }) (ingestiondomain.Content, error) {
+	var record contentRecord
+	var documentVersionID sql.NullInt64
+	destinations := append(contentRecordDestinations(&record), &documentVersionID)
+	if err := scanner.Scan(destinations...); err != nil {
+		return ingestiondomain.Content{}, err
+	}
+	content := contentFromRecord(record)
+	if documentVersionID.Valid {
+		value := documentVersionID.Int64
+		content.DocumentVersionID = &value
 	}
 	return content, nil
 }

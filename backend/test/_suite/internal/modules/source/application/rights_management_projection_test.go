@@ -85,6 +85,8 @@ func TestRightsManagementProjectionReportsOnlyNonAuthorizingPublicCapability(t *
 	}
 	if repository.lastEndpointID != 42 || result.SourceEndpointID != 42 || result.SourceType != "rss" ||
 		result.CollectionInterface != "rss_atom_feed" || result.ContentScope != "feed_payload" ||
+		result.DocumentCaptureMode != "policy_gated_body" || result.DefaultAccessMode != "metadata_only" ||
+		!reflect.DeepEqual(result.RequiredActions, []string{"fetch", "store_raw", "store_derived", "display_private", "quote", "embed_local", "retain"}) ||
 		result.Availability != SourceEndpointCapabilityAvailable || result.RightsStatus != SourceEndpointRightsPolicyRequired ||
 		result.FollowsCanonicalURL {
 		t.Fatalf("public capability = %#v", result)
@@ -96,6 +98,50 @@ func TestRightsManagementProjectionReportsOnlyNonAuthorizingPublicCapability(t *
 			t.Fatalf("public capability exposes authorizing or sensitive field %s", forbidden)
 		}
 	}
+}
+
+func TestRightsManagementProjectionFreezesEveryConnectorRightsCapability(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		sourceType, collectionInterface, contentScope, captureMode string
+	}{
+		{"rss", "rss_atom_feed", "feed_payload", "policy_gated_body"},
+		{"hacker_news", "official_api", "platform_post", "policy_gated_body"},
+		{"x", "authorized_official_api", "platform_post", "policy_gated_body"},
+		{"bilibili", "authorized_official_api", "platform_post", "policy_gated_body"},
+		{"weibo", "authorized_official_api", "platform_post", "policy_gated_body"},
+		{"google_agent_search", "authorized_official_api", "discovery_snippet", "policy_gated_snippet"},
+		{"bing_grounding", "authorized_official_api", "discovery_synthesis", "metadata_only"},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.sourceType, func(t *testing.T) {
+			t.Parallel()
+			result, err := sourceEndpointCapability(SourceEndpointCapabilityFactsDTO{
+				SourceEndpointID: 42, SourceType: test.sourceType, Enabled: true, HealthStatus: "healthy",
+			})
+			if err != nil {
+				t.Fatalf("sourceEndpointCapability(): %v", err)
+			}
+			if result.CollectionInterface != test.collectionInterface || result.ContentScope != test.contentScope ||
+				result.DocumentCaptureMode != test.captureMode || result.DefaultAccessMode != "metadata_only" ||
+				result.RightsStatus != SourceEndpointRightsPolicyRequired {
+				t.Fatalf("capability = %#v", result)
+			}
+			if test.captureMode == "metadata_only" && containsRightsAction(result.RequiredActions, "display_private") {
+				t.Fatalf("metadata-only connector requires body display rights: %#v", result.RequiredActions)
+			}
+		})
+	}
+}
+
+func containsRightsAction(actions []string, expected string) bool {
+	for _, action := range actions {
+		if action == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func TestRightsManagementProjectionEvaluatesNineActionsOnlyForExactSubjectDigestAndTime(t *testing.T) {

@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -47,6 +48,28 @@ func TestDerivedArtifactSagaPublishesIdempotentlyAndMovesActiveProfileWithoutPer
 	}
 	firstPath := derivedArtifactFixturePath(fixture.persisted.Document.ID, fixture.persisted.DocumentVersion.ID, firstProfile)
 	assertProjectionFile(t, vaultRoot, firstPath, firstContent)
+	var blockCount int
+	var plaintextStart, plaintextEnd, markdownStart, markdownEnd int64
+	var anchor, mapSHA string
+	if err := runtime.SQL.QueryRow(`
+SELECT count(*),min(plaintext_utf8_byte_start),max(plaintext_utf8_byte_end),
+       min(markdown_utf8_byte_start),max(markdown_utf8_byte_end),min(markdown_anchor),min(anchor_map_sha256)
+FROM document_anchor_blocks WHERE derived_artifact_id=$1`, first.Artifact.ID).Scan(
+		&blockCount, &plaintextStart, &plaintextEnd, &markdownStart, &markdownEnd, &anchor, &mapSHA,
+	); err != nil {
+		t.Fatalf("read immutable anchor blocks: %v", err)
+	}
+	if blockCount != 1 || plaintextStart != 0 || plaintextEnd != int64(len("authorized normalized document body")) ||
+		markdownStart != 0 || markdownEnd != int64(len(firstContent)) || anchor != command.AnchorMap.Blocks[0].MarkdownAnchor ||
+		first.Artifact.AnchorMap == nil || mapSHA != first.Artifact.AnchorMap.AnchorMapSHA256 {
+		t.Fatalf("persisted anchor facts = count %d plain %d..%d markdown %d..%d anchor %q map %q artifact %#v", blockCount, plaintextStart, plaintextEnd, markdownStart, markdownEnd, anchor, mapSHA, first.Artifact.AnchorMap)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE document_anchor_blocks SET markdown_anchor='body-0000-000000000000' WHERE derived_artifact_id=$1`, first.Artifact.ID); err == nil {
+		t.Fatal("document anchor block update was accepted")
+	}
+	if _, err := runtime.SQL.Exec(`DELETE FROM document_anchor_blocks WHERE derived_artifact_id=$1`, first.Artifact.ID); err == nil {
+		t.Fatal("document anchor block deletion was accepted")
+	}
 
 	retried, err := saga.Project(context.Background(), command)
 	if err != nil || retried.Artifact.ID != first.Artifact.ID || retried.DocumentVersion.Version != first.DocumentVersion.Version {
@@ -59,6 +82,7 @@ func TestDerivedArtifactSagaPublishesIdempotentlyAndMovesActiveProfileWithoutPer
 	secondCommand.ExpectedDocumentVersion = retried.DocumentVersion.Version
 	secondCommand.TransformerProfileSHA256 = secondProfile
 	secondCommand.ProjectionBytes = secondContent
+	secondCommand.AnchorMap = derivedArtifactAnchorMap(fixture, secondContent)
 	second, err := saga.Project(context.Background(), secondCommand)
 	if err != nil {
 		t.Fatalf("Project(new profile) error = %v", err)
@@ -129,6 +153,7 @@ func TestDerivedArtifactSagaQuarantinesSamePathWithDifferentBytes(t *testing.T) 
 	conflicting := command
 	conflicting.ExpectedDocumentVersion = first.DocumentVersion.Version
 	conflicting.ProjectionBytes = []byte("# Archived\n\n冲突正文。\n")
+	conflicting.AnchorMap = derivedArtifactAnchorMap(fixture, conflicting.ProjectionBytes)
 	if _, err := saga.Project(context.Background(), conflicting); !errors.Is(err, sharedrepository.ErrConflict) {
 		t.Fatalf("Project(conflict) error = %v, want conflict", err)
 	}
@@ -214,6 +239,7 @@ func TestDerivedArtifactSagaDoesNotMoveActivePointerAfterReadableDisplayRevocati
 	changedCommand.ExpectedDocumentVersion = readable.DocumentVersion.Version
 	changedCommand.TransformerProfileSHA256 = changedProfile
 	changedCommand.ProjectionBytes = changedContent
+	changedCommand.AnchorMap = derivedArtifactAnchorMap(fixture, changedContent)
 	changedCommand.DisplayPrivateRightsDecisionID = nil
 	changedSaga := newDerivedArtifactSaga(t, runtime, revoking, fixture.documentVersions)
 	if _, err := changedSaga.Project(context.Background(), changedCommand); !errors.Is(err, sharedrepository.ErrConflict) {
@@ -382,6 +408,29 @@ func derivedArtifactProjectCommand(fixture derivedArtifactDocumentFixture, profi
 		ArtifactType:            ingestionapplication.DocumentProjectionMarkdown, TransformerProfileSHA256: profile,
 		StoreDerivedRightsDecisionID: storeDecisionID, RetainRightsDecisionID: retainDecisionID,
 		DisplayPrivateRightsDecisionID: displayDecisionID, ProjectionBytes: append([]byte(nil), content...),
+		AnchorMap: derivedArtifactAnchorMap(fixture, content),
+	}
+}
+
+func derivedArtifactAnchorMap(fixture derivedArtifactDocumentFixture, content []byte) *ingestionapplication.ProjectDocumentAnchorMapCommand {
+	plaintext := "authorized normalized document body"
+	mapResult := ingestionapplication.MapDocumentTextResult{
+		Plaintext: plaintext, NormalizationVersion: ingestionapplication.CanonicalDocumentTextNormalizationVersion,
+		AnchorMapProfileVersion: ingestionapplication.CanonicalDocumentAnchorMapProfileVersion,
+		PlaintextSHA256:         fixture.persisted.DocumentVersion.ContentSHA256,
+		MarkdownSHA256:          fmt.Sprintf("%x", sha256.Sum256(content)),
+		Blocks: []ingestionapplication.DocumentAnchorBlockDTO{{
+			Ordinal: 0, PlaintextUTF8ByteStart: 0, PlaintextUTF8ByteEnd: int64(len(plaintext)),
+			MarkdownUTF8ByteStart: 0, MarkdownUTF8ByteEnd: int64(len(content)),
+			MarkdownAnchor: ingestionapplication.DocumentMarkdownAnchor(0, plaintext),
+		}},
+	}
+	mapResult.AnchorMapSHA256 = ingestionapplication.DocumentAnchorMapSHA256(mapResult)
+	return &ingestionapplication.ProjectDocumentAnchorMapCommand{
+		Plaintext: mapResult.Plaintext, NormalizationVersion: mapResult.NormalizationVersion,
+		AnchorMapProfileVersion: mapResult.AnchorMapProfileVersion, PlaintextSHA256: mapResult.PlaintextSHA256,
+		MarkdownSHA256: mapResult.MarkdownSHA256, AnchorMapSHA256: mapResult.AnchorMapSHA256,
+		Blocks: append([]ingestionapplication.DocumentAnchorBlockDTO(nil), mapResult.Blocks...),
 	}
 }
 

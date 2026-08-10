@@ -38,6 +38,8 @@ type rssDocument struct {
 }
 
 type rssChannel struct {
+	Title string    `xml:"title"`
+	Link  string    `xml:"link"`
 	Items []rssItem `xml:"item"`
 }
 
@@ -49,6 +51,7 @@ type rssItem struct {
 	Content     string         `xml:"encoded"`
 	PubDate     string         `xml:"pubDate"`
 	Author      string         `xml:"author"`
+	Publisher   string         `xml:"publisher"`
 	Enclosures  []rssEnclosure `xml:"enclosure"`
 }
 
@@ -59,8 +62,14 @@ type rssEnclosure struct {
 }
 
 type rdfDocument struct {
-	XMLName xml.Name  `xml:"RDF"`
-	Items   []rdfItem `xml:"item"`
+	XMLName xml.Name   `xml:"RDF"`
+	Channel rdfChannel `xml:"channel"`
+	Items   []rdfItem  `xml:"item"`
+}
+
+type rdfChannel struct {
+	Title string `xml:"title"`
+	Link  string `xml:"link"`
 }
 
 type rdfItem struct {
@@ -71,10 +80,13 @@ type rdfItem struct {
 	Content     string `xml:"encoded"`
 	Date        string `xml:"date"`
 	Creator     string `xml:"creator"`
+	Publisher   string `xml:"publisher"`
 }
 
 type atomFeed struct {
 	XMLName xml.Name    `xml:"feed"`
+	ID      string      `xml:"id"`
+	Title   string      `xml:"title"`
 	Entries []atomEntry `xml:"entry"`
 	Links   []atomLink  `xml:"link"`
 }
@@ -88,6 +100,13 @@ type atomEntry struct {
 	Updated   string       `xml:"updated"`
 	Links     []atomLink   `xml:"link"`
 	Authors   []atomAuthor `xml:"author"`
+	Source    atomSource   `xml:"source"`
+}
+
+type atomSource struct {
+	ID    string     `xml:"id"`
+	Title string     `xml:"title"`
+	Links []atomLink `xml:"link"`
 }
 
 type atomLink struct {
@@ -139,6 +158,8 @@ func parseFeed(payload []byte, observedAt time.Time) (parsedFeed, error) {
 
 func parsedRDF(document rdfDocument, observedAt time.Time) parsedFeed {
 	feed := parsedFeed{Items: make([]domain.SourceItem, 0, len(document.Items))}
+	distributor := explicitFeedParty(domain.SourcePartyRoleDistributor, "rss:feed", document.Channel.Link,
+		document.Channel.Title, document.Channel.Link)
 	seen := make(map[string]struct{}, len(document.Items))
 	for index, entry := range document.Items {
 		item, diagnostic := mapRSSItem(rssItem{
@@ -149,7 +170,11 @@ func parsedRDF(document rdfDocument, observedAt time.Time) parsedFeed {
 			Content:     entry.Content,
 			PubDate:     entry.Date,
 			Author:      entry.Creator,
+			Publisher:   entry.Publisher,
 		}, observedAt)
+		item.Parties = append(item.Parties, distributor...)
+		item.Parties = append(item.Parties, explicitFeedParty(domain.SourcePartyRolePublisher, "rss:publisher", entry.Publisher, entry.Publisher, "")...)
+		item, diagnostic = normalizeMappedFeedItem(item, diagnostic)
 		bindXMLItemEvidence(&item, fmt.Sprintf("/rdf:RDF/item[%d]", index+1), RDFItemSelectorVersion, entry)
 		feed.appendItem(item, diagnostic, seen)
 	}
@@ -158,9 +183,14 @@ func parsedRDF(document rdfDocument, observedAt time.Time) parsedFeed {
 
 func parsedRSS(document rssDocument, observedAt time.Time) parsedFeed {
 	feed := parsedFeed{Items: make([]domain.SourceItem, 0, len(document.Channel.Items))}
+	distributor := explicitFeedParty(domain.SourcePartyRoleDistributor, "rss:feed", document.Channel.Link,
+		document.Channel.Title, document.Channel.Link)
 	seen := make(map[string]struct{}, len(document.Channel.Items))
 	for index, entry := range document.Channel.Items {
 		item, diagnostic := mapRSSItem(entry, observedAt)
+		item.Parties = append(item.Parties, distributor...)
+		item.Parties = append(item.Parties, explicitFeedParty(domain.SourcePartyRolePublisher, "rss:publisher", entry.Publisher, entry.Publisher, "")...)
+		item, diagnostic = normalizeMappedFeedItem(item, diagnostic)
 		bindXMLItemEvidence(&item, fmt.Sprintf("/rss/channel/item[%d]", index+1), RSSItemSelectorVersion, entry)
 		feed.appendItem(item, diagnostic, seen)
 	}
@@ -169,9 +199,15 @@ func parsedRSS(document rssDocument, observedAt time.Time) parsedFeed {
 
 func parsedAtom(document atomFeed, observedAt time.Time) parsedFeed {
 	feed := parsedFeed{Items: make([]domain.SourceItem, 0, len(document.Entries)), NextURL: nextAtomURL(document.Links)}
+	distributor := explicitFeedParty(domain.SourcePartyRoleDistributor, "atom:feed", document.ID,
+		document.Title, preferredAtomURL(document.Links))
 	seen := make(map[string]struct{}, len(document.Entries))
 	for index, entry := range document.Entries {
 		item, diagnostic := mapAtomItem(entry, observedAt)
+		item.Parties = append(item.Parties, distributor...)
+		item.Parties = append(item.Parties, explicitFeedParty(domain.SourcePartyRoleContentOrigin, "atom:source", entry.Source.ID,
+			entry.Source.Title, preferredAtomURL(entry.Source.Links))...)
+		item, diagnostic = normalizeMappedFeedItem(item, diagnostic)
 		bindXMLItemEvidence(&item, fmt.Sprintf("/feed/entry[%d]", index+1), AtomEntrySelectorVersion, entry)
 		feed.appendItem(item, diagnostic, seen)
 	}
@@ -229,7 +265,7 @@ func mapRSSItem(entry rssItem, observedAt time.Time) (domain.SourceItem, fetchDi
 		SourceCode: sourceCode, ExternalID: externalID, ContentType: "article", Title: entry.Title,
 		Body: body, URL: strings.TrimSpace(entry.Link), Author: entry.Author,
 		PublishedAt: publishedAt, ObservedAt: observedAt.UTC(), EvidenceCompleteness: completeness,
-		Attachments: rssAttachments(entry.Enclosures),
+		Attachments: rssAttachments(entry.Enclosures), Parties: feedAuthorParty(entry.Author),
 	})
 	if err != nil {
 		return domain.SourceItem{}, fetchDiagnostic{Code: "invalid_source_item", SourceExternalID: externalID}
@@ -267,12 +303,62 @@ func mapAtomItem(entry atomEntry, observedAt time.Time) (domain.SourceItem, fetc
 	item, err := domain.NormalizeSourceItem(domain.SourceItem{
 		SourceCode: sourceCode, ExternalID: externalID, ContentType: "article", Title: entry.Title,
 		Body: body, URL: link, Author: author, PublishedAt: publishedAt, ObservedAt: observedAt.UTC(),
-		EvidenceCompleteness: completeness, Attachments: atomAttachments(entry.Links),
+		EvidenceCompleteness: completeness, Attachments: atomAttachments(entry.Links), Parties: feedAuthorParty(author),
 	})
 	if err != nil {
 		return domain.SourceItem{}, fetchDiagnostic{Code: "invalid_source_item", SourceExternalID: externalID}
 	}
 	return item, fetchDiagnostic{}
+}
+
+func feedAuthorParty(author string) []domain.SourcePartyAssertion {
+	author = strings.TrimSpace(author)
+	if author == "" {
+		return []domain.SourcePartyAssertion{}
+	}
+	digest := sha256.Sum256([]byte(author))
+	return []domain.SourcePartyAssertion{{
+		Role: domain.SourcePartyRoleAuthor, Kind: domain.SourcePartyKindPerson,
+		IdentityNamespace: "rss:author", ExternalID: fmt.Sprintf("%x", digest), DisplayName: author,
+	}}
+}
+
+func explicitFeedParty(role domain.SourcePartyRole, namespace, externalID, displayName, homepageURL string) []domain.SourcePartyAssertion {
+	externalID = strings.TrimSpace(externalID)
+	displayName = strings.TrimSpace(displayName)
+	homepageURL = safeFeedPartyHomepage(homepageURL)
+	if displayName == "" {
+		return []domain.SourcePartyAssertion{}
+	}
+	if externalID == "" || len(externalID) > 512 {
+		digest := sha256.Sum256([]byte(namespace + "\x00" + displayName + "\x00" + homepageURL))
+		externalID = fmt.Sprintf("%x", digest)
+	}
+	return []domain.SourcePartyAssertion{{
+		Role: role, Kind: domain.SourcePartyKindOrganization, IdentityNamespace: namespace,
+		ExternalID: externalID, DisplayName: displayName, HomepageURL: homepageURL,
+	}}
+}
+
+func safeFeedPartyHomepage(value string) string {
+	value = strings.TrimSpace(value)
+	parsed, err := url.Parse(value)
+	if err != nil || parsed == nil || parsed.User != nil || parsed.Fragment != "" ||
+		(parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" || len(value) > 2048 {
+		return ""
+	}
+	return value
+}
+
+func normalizeMappedFeedItem(item domain.SourceItem, diagnostic fetchDiagnostic) (domain.SourceItem, fetchDiagnostic) {
+	if diagnostic.Code != "" {
+		return item, diagnostic
+	}
+	normalized, err := domain.NormalizeSourceItem(item)
+	if err != nil {
+		return domain.SourceItem{}, fetchDiagnostic{Code: "invalid_source_party", SourceExternalID: item.ExternalID}
+	}
+	return normalized, diagnostic
 }
 
 var rssTimeLayouts = []string{time.RFC1123Z, time.RFC1123, time.RFC850, time.ANSIC, time.RFC3339, time.RFC3339Nano, time.DateOnly}

@@ -91,6 +91,14 @@ func TestConnectorMapsOfficialFieldsAndAdvancesHighWaterOnlyAfterPagination(t *t
 	if !first.HasMore || first.NextCursor == "" || diagnosticCodes(first.Diagnostics) != "possibly_sensitive_post,unavailable_post,withheld_post" {
 		t.Errorf("first result = %#v", first)
 	}
+	if len(first.Snapshots) != 1 || !first.Snapshots[0].VerifyPayload() || len(item.EvidenceReferences) != 1 ||
+		item.EvidenceReferences[0].SnapshotKey != first.Snapshots[0].Key || item.EvidenceReferences[0].LocatorValue != "/data/2" {
+		t.Fatalf("raw evidence = snapshots %#v, references %#v", first.Snapshots, item.EvidenceReferences)
+	}
+	if len(item.Parties) != 3 || item.Parties[0].Role != domain.SourcePartyRoleContentOrigin ||
+		item.Parties[1].Role != domain.SourcePartyRoleDistributor || item.Parties[2].Role != domain.SourcePartyRoleAuthor {
+		t.Fatalf("explicit X parties = %#v", item.Parties)
+	}
 
 	request.RequestCursor = first.NextCursor
 	second, err := connector.Fetch(context.Background(), request)
