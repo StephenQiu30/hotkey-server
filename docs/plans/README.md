@@ -4,7 +4,7 @@ scope: shared
 doc_no: "000"
 title: Plan 索引
 status: completed
-version: v2.7
+version: v2.8
 owner: HotKey Team
 canonical_path: docs/plans/README.md
 ---
@@ -13,7 +13,7 @@ canonical_path: docs/plans/README.md
 
 Plan 将已评审 Design 和 PRD 转换为文件级、测试先行、可回滚的执行计划。状态只使用 `planned`、`in_progress`、`blocked`、`completed`。
 
-Plan 中的“当前实现”仅用于确定差距；只有 Acceptance 保存完成证据。001–036 的推荐依赖顺序见 [文档地图](../README.md)。
+Plan 中的“当前实现”仅用于确定差距；只有 Acceptance 保存完成证据。001–037 的推荐依赖顺序见 [文档地图](../README.md)。
 
 ## 交付项
 
@@ -55,3 +55,4 @@ Plan 中的“当前实现”仅用于确定差距；只有 Acceptance 保存完
 | 034 | [X热点核心链路收敛与遗留系统清理](../design/034-X热点核心链路收敛与遗留系统清理设计.md) | [PRD](../prd/034-X热点核心链路收敛与遗留系统清理.md) | [Plan](034-X热点核心链路收敛与遗留系统清理计划.md) | completed |
 | 035 | [多源AI热点监控首版收敛](../design/035-多源AI热点监控首版收敛设计.md) | [PRD](../prd/035-多源AI热点监控首版收敛.md) | [Plan](035-多源AI热点监控首版收敛计划.md) | completed |
 | 036 | [评论会话采集与采集运行时边界](../design/036-评论会话采集与采集运行时边界设计.md) | [PRD](../prd/036-评论会话采集与采集运行时边界.md) | [Plan](036-评论会话采集与采集运行时边界计划.md) | planned |
+| 037 | [实时热点监控MVP功能基线](../design/037-实时热点监控MVP功能基线设计.md) | [PRD](../prd/037-实时热点监控MVP功能基线.md) | [Plan](037-实时热点监控MVP功能基线计划.md) | planned |
