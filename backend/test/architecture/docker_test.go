@@ -47,7 +47,6 @@ func TestDockerDeploymentContract(t *testing.T) {
 
 	baseCompose := readDockerContractFile(t, root, "docker-compose.yml")
 	assertDockerContains(t, "docker-compose.yml", baseCompose,
-		"name: hotkey-server",
 		"image: hotkey-server:env",
 		"image: hotkey-web:env",
 		"pgvector/pgvector:pg16",
@@ -73,6 +72,7 @@ func TestDockerDeploymentContract(t *testing.T) {
 		"minio_data:",
 		"vault_data:",
 	)
+	assertDockerComposeNamingContract(t, "docker-compose.yml", baseCompose, "hotkey", "hotkey")
 	assertDockerUsesLatestUpstreamImages(t, dockerfile, baseCompose)
 
 	readme := readDockerContractFile(t, root, "README.md")
@@ -92,7 +92,6 @@ func TestDockerProductionIsolation(t *testing.T) {
 	baseCompose := readDockerContractFile(t, root, "docker-compose.yml")
 	prodOverride := readDockerContractFile(t, root, "docker-compose-prod.yml")
 	assertDockerContains(t, "docker-compose-prod.yml", prodOverride,
-		"name: hotkey-prod",
 		"pgvector/pgvector:pg16",
 		"redis:latest",
 		"minio/minio:latest",
@@ -120,6 +119,7 @@ func TestDockerProductionIsolation(t *testing.T) {
 		`HOTKEY_REFRESH_COOKIE_SECURE: "true"`,
 		"HOTKEY_DEPLOY_ENV: prod",
 	)
+	assertDockerComposeNamingContract(t, "docker-compose-prod.yml", prodOverride, "hotkey-prod", "hotkey-prod")
 	assertDockerUsesLatestUpstreamImages(t, dockerfile, prodOverride)
 	for name, compose := range map[string]string{"docker-compose.yml": baseCompose, "docker-compose-prod.yml": prodOverride} {
 		for _, service := range []string{"postgres", "redis", "minio", "minio-init", "db-init"} {
@@ -138,6 +138,7 @@ func TestDockerProductionIsolation(t *testing.T) {
 
 	prodExample := readDockerContractFile(t, root, ".env.prod.example")
 	assertDockerContains(t, ".env.prod.example", prodExample,
+		"HOTKEY_CONTAINER_PREFIX=hotkey-prod",
 		"POSTGRES_PASSWORD=",
 		"MINIO_ROOT_USER=",
 		"MINIO_ROOT_PASSWORD=",
@@ -158,6 +159,32 @@ func TestDockerProductionIsolation(t *testing.T) {
 
 	gitignore := readDockerContractFile(t, root, ".gitignore")
 	assertDockerContains(t, ".gitignore", gitignore, "!.env.prod.example")
+}
+
+func assertDockerComposeNamingContract(t *testing.T, name, source, projectName, defaultPrefix string) {
+	t.Helper()
+	projectLine := "name: " + projectName
+	if !strings.Contains("\n"+source+"\n", "\n"+projectLine+"\n") {
+		t.Errorf("%s must contain the exact project name line %q", name, projectLine)
+	}
+	for _, service := range []struct {
+		name   string
+		suffix string
+	}{
+		{name: "postgres", suffix: "postgres"},
+		{name: "redis", suffix: "redis"},
+		{name: "minio", suffix: "minio"},
+		{name: "minio-init", suffix: "minio-init"},
+		{name: "db-init", suffix: "db-init"},
+		{name: "hotkey-server", suffix: "api"},
+		{name: "hotkey-web", suffix: "web"},
+	} {
+		block := dockerComposeServiceBlock(t, source, service.name)
+		expected := `container_name: "${HOTKEY_CONTAINER_PREFIX:-` + defaultPrefix + `}-` + service.suffix + `"`
+		if !strings.Contains(block, expected) {
+			t.Errorf("%s service %s must contain %q", name, service.name, expected)
+		}
+	}
 }
 
 func assertDockerUsesLatestUpstreamImages(t *testing.T, sources ...string) {
