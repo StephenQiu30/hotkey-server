@@ -14,11 +14,11 @@ describe("Docker Compose environment configuration", () => {
     const prodCompose = readRepositoryFile("docker-compose-prod.yml");
 
     expect(existsSync(join(repositoryRoot, "docker-compose.yml"))).toBe(true);
-    expect(baseCompose).toContain("name: hotkey-server");
+    expect(baseCompose).toMatch(/^name: hotkey$/m);
     expect(baseCompose).toContain("image: hotkey-web:env");
     expect(baseCompose).toContain("HOTKEY_DEPLOY_ENV: env");
     expect(baseCompose).toContain("context: ./frontend");
-    expect(prodCompose).toContain("name: hotkey-prod");
+    expect(prodCompose).toMatch(/^name: hotkey-prod$/m);
     expect(prodCompose).toContain("postgres:");
     expect(prodCompose).toContain("redis:");
     expect(prodCompose).toContain("minio:");
@@ -29,6 +29,22 @@ describe("Docker Compose environment configuration", () => {
     expect(prodCompose).toContain("healthcheck:");
     expect(prodCompose).toContain("depends_on:");
     expect(prodCompose).toContain("stop_grace_period: 30s");
+    for (const container of [
+      "postgres",
+      "redis",
+      "minio",
+      "minio-init",
+      "db-init",
+      "api",
+      "web",
+    ]) {
+      expect(baseCompose).toContain(
+        `container_name: "\${HOTKEY_CONTAINER_PREFIX:-hotkey}-${container}"`,
+      );
+      expect(prodCompose).toContain(
+        `container_name: "\${HOTKEY_CONTAINER_PREFIX:-hotkey-prod}-${container}"`,
+      );
+    }
     for (const compose of [baseCompose, prodCompose]) {
       expect(compose).toContain("http://127.0.0.1:9000/minio/health/live");
       expect(compose).toContain("condition: service_healthy");
@@ -48,6 +64,8 @@ describe("Docker Compose environment configuration", () => {
     const prodExample = readRepositoryFile(".env.prod.example");
 
     expect(frontendEnvExample).toContain("# HOTKEY_API_ORIGIN=http://127.0.0.1:8080");
+    expect(envExample).toContain("HOTKEY_CONTAINER_PREFIX=hotkey");
+    expect(prodExample).toContain("HOTKEY_CONTAINER_PREFIX=hotkey-prod");
     expect(envExample).toContain("# WEB_PORT=3000");
     expect(prodExample).toContain("# WEB_PORT=3000");
     expect(prodExample).toContain("HOTKEY_JWT_SECRET=");
