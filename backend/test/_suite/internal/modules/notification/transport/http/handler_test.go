@@ -20,11 +20,12 @@ import (
 )
 
 type notificationServiceStub struct {
-	mu         sync.Mutex
-	queries    []application.ListUserNotificationsQuery
-	items      []application.UserNotificationDTO
-	deliveries []application.RecordNotificationDeliveryAttemptCommand
-	err        error
+	mu               sync.Mutex
+	queries          []application.ListUserNotificationsQuery
+	items            []application.UserNotificationDTO
+	deliveries       []application.RecordNotificationDeliveryAttemptCommand
+	deliveryRecorded chan struct{}
+	err              error
 }
 
 func (stub *notificationServiceStub) ListUserNotifications(_ context.Context, query application.ListUserNotificationsQuery) (application.ListUserNotificationsResult, error) {
@@ -48,6 +49,12 @@ func (stub *notificationServiceStub) RecordDeliveryAttempt(_ context.Context, co
 	stub.mu.Lock()
 	defer stub.mu.Unlock()
 	stub.deliveries = append(stub.deliveries, command)
+	if stub.deliveryRecorded != nil {
+		select {
+		case stub.deliveryRecorded <- struct{}{}:
+		default:
+		}
+	}
 	return application.RecordNotificationDeliveryAttemptResult{DeliveryAttemptID: int64(len(stub.deliveries)), AttemptNo: 1}, nil
 }
 
@@ -87,7 +94,10 @@ func TestListUsesAuthenticatedUserAndSafeEnvelope(t *testing.T) {
 }
 
 func TestStreamResumesFromLastEventIDEmitsSafeFrameAndRecordsDelivery(t *testing.T) {
-	stub := &notificationServiceStub{items: []application.UserNotificationDTO{notificationFixture(12)}}
+	stub := &notificationServiceStub{
+		items:            []application.UserNotificationDTO{notificationFixture(12)},
+		deliveryRecorded: make(chan struct{}, 1),
+	}
 	handler := mustNotificationHandler(t, stub, StreamConfig{PollInterval: 5 * time.Millisecond, HeartbeatInterval: time.Second, MaxConnections: 2})
 	router := gin.New()
 	RegisterRoutes(router, handler, notificationAuthenticator{role: httptransport.RoleViewer})
@@ -122,6 +132,11 @@ func TestStreamResumesFromLastEventIDEmitsSafeFrameAndRecordsDelivery(t *testing
 	if !strings.Contains(frame, "id: 12\n") || !strings.Contains(frame, "event: micro_event.updated\n") ||
 		!strings.Contains(frame, `"resource_id":42`) || strings.Contains(frame, "payload") || strings.Contains(frame, "object_key") {
 		t.Fatalf("SSE frame = %q", frame)
+	}
+	select {
+	case <-stub.deliveryRecorded:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for the SSE delivery attempt to be recorded")
 	}
 	cancel()
 	stub.mu.Lock()
