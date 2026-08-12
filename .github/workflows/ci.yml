@@ -163,6 +163,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     needs: [backend-acceptance, frontend-acceptance, compose-acceptance]
+    env:
+      HOTKEY_CONTAINER_PREFIX: hotkey-ci-${{ github.run_id }}
 
     steps:
       - name: Check out source

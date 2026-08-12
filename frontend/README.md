@@ -72,6 +72,8 @@ Web 端不手写后端 API 类型。所有请求函数和 DTO 都从 `hotkey-ser
 
 ### 本地开发
 
+本机开发直接连接本机启动的 Go 后端，不启动 Docker Compose；后端再连接本机 PostgreSQL、Redis 和 MinIO。
+
 ```bash
 git clone https://github.com/StephenQiu30/hotkey-server.git
 cd hotkey-server/frontend
@@ -94,9 +96,9 @@ HOTKEY_API_ORIGIN=http://127.0.0.1:8080
 
 也可以在 WebStorm 中直接运行 `package.json` 的 `dev` 脚本。Web 端与后端分别启动，不依赖 `.sh` 文件；注册、邮件和管理员配置请参阅 [`backend/` 文档](../backend/README.md)。
 
-### Docker
+### Docker 部署与隔离验收
 
-Docker Compose 已统一为仓库根目录的默认配置与生产覆盖，并同时启动前端、后端、PostgreSQL、Redis 与 MinIO。启动默认环境：
+Docker Compose 不参与本机开发，只用于完整容器部署与隔离验收。仓库根目录的默认配置与生产覆盖会同时启动前端、后端、PostgreSQL、Redis 与 MinIO。启动默认容器环境：
 
 ```bash
 cd ..
@@ -113,7 +115,7 @@ docker compose --env-file .env.prod -f docker-compose-prod.yml config
 docker compose --env-file .env.prod -f docker-compose-prod.yml up --build -d
 ```
 
-公共基线使用内部服务名连接前后端，不再依赖 `host.docker.internal`；覆盖文件只保存环境差异。前端 Dockerfile 仍位于 `frontend/`，根 Compose 负责环境、端口和服务编排。
+公共基线使用内部服务名连接前后端，不再依赖 `host.docker.internal`；容器采用稳定的 `hotkey-*` 名称且不带 `-1`，多套部署使用 `HOTKEY_CONTAINER_PREFIX` 隔离。覆盖文件只保存环境差异。前端 Dockerfile 仍位于 `frontend/`，根 Compose 负责环境、端口和服务编排。
 
 ## 常用命令
 

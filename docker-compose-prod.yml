@@ -2,6 +2,7 @@ name: hotkey-prod
 
 services:
   postgres:
+    container_name: "${HOTKEY_CONTAINER_PREFIX:-hotkey-prod}-postgres"
     image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
@@ -17,6 +18,7 @@ services:
       retries: 20
 
   redis:
+    container_name: "${HOTKEY_CONTAINER_PREFIX:-hotkey-prod}-redis"
     image: redis:latest
     restart: unless-stopped
     healthcheck:
@@ -26,6 +28,7 @@ services:
       retries: 20
 
   minio:
+    container_name: "${HOTKEY_CONTAINER_PREFIX:-hotkey-prod}-minio"
     image: minio/minio:latest
     restart: unless-stopped
     command: server /data --console-address :9001
@@ -42,6 +45,7 @@ services:
       start_period: 5s
 
   minio-init:
+    container_name: "${HOTKEY_CONTAINER_PREFIX:-hotkey-prod}-minio-init"
     image: minio/mc:latest
     restart: "no"
     depends_on:
@@ -60,6 +64,7 @@ services:
         mc mb --ignore-existing "hotkey/$$HOTKEY_MINIO_BUCKET"
 
   db-init:
+    container_name: "${HOTKEY_CONTAINER_PREFIX:-hotkey-prod}-db-init"
     image: hotkey-server:prod
     restart: "no"
     environment:
@@ -77,6 +82,7 @@ services:
           /usr/local/bin/hotkey db verify
 
   hotkey-server:
+    container_name: "${HOTKEY_CONTAINER_PREFIX:-hotkey-prod}-api"
     image: hotkey-server:prod
     build:
       context: ./backend
@@ -121,6 +127,7 @@ services:
     stop_grace_period: 30s
 
   hotkey-web:
+    container_name: "${HOTKEY_CONTAINER_PREFIX:-hotkey-prod}-web"
     image: hotkey-web:prod
     build:
       context: ./frontend

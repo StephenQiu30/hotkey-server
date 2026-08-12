@@ -95,9 +95,9 @@ flowchart LR
 - MinIO
 - 可选：SMTP、OpenAI / DeepSeek API、Ollama、ONNX Runtime
 
-### Docker Compose 启动
+### Docker Compose 部署（不用于本机开发）
 
-默认 Compose 文件位于仓库根目录，包含前端、后端与基础设施的完整配置。默认环境使用 `backend/.env`：
+本机开发直接使用本机安装的 PostgreSQL、Redis 和 MinIO，并从 `backend/` 执行 Go 进程；不要启动 Compose。默认 Compose 文件位于仓库根目录，只用于完整容器部署与隔离验收，包含前端、后端与基础设施的完整配置。默认容器环境使用 `backend/.env`：
 
 ```bash
 cd ..
@@ -113,7 +113,7 @@ cp .env.prod.example .env.prod
 docker compose --env-file .env.prod -f docker-compose-prod.yml up --build -d
 ```
 
-默认文件完整定义服务、初始化、依赖、健康检查和卷；生产覆盖只替换生产镜像、凭据和运行环境。`--env-file .env.prod` 为生产容器映射必要凭据。上游镜像使用 `latest` 浮动标签；pgvector 官方没有 `latest`，因此使用兼容现有数据卷的浮动 `pg16` 标签。生产 HTTP 需要由外部反向代理提供 HTTPS。
+默认文件完整定义服务、初始化、依赖、健康检查和卷；生产覆盖只替换生产镜像、凭据和运行环境。容器使用稳定的 `hotkey-*` 名称，不带 `-1`；多套部署用 `HOTKEY_CONTAINER_PREFIX` 隔离。`--env-file .env.prod` 为生产容器映射必要凭据。上游镜像使用 `latest` 浮动标签；pgvector 官方没有 `latest`，因此使用兼容现有数据卷的浮动 `pg16` 标签。生产 HTTP 需要由外部反向代理提供 HTTPS。
 
 ### 1. 获取代码与配置
 
@@ -122,6 +122,8 @@ git clone https://github.com/StephenQiu30/hotkey-server.git
 cd hotkey-server/backend
 cp .env.example .env
 ```
+
+以下步骤均面向本机原生依赖。确认 `.env` 中 PostgreSQL、Redis 与 MinIO 使用 `localhost` 或 `127.0.0.1`，不要填写 Compose 服务名 `postgres`、`redis`、`minio`。
 
 编辑 `.env`，至少配置专用 PostgreSQL、MinIO、Redis、精确 CORS Origin、两个身份随机密钥和独立的来源凭据主密钥：
 

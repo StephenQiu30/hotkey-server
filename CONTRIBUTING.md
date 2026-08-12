@@ -12,6 +12,8 @@ HotKey 单体仓库包含 `backend/`、`frontend/` 与统一 `docs/`。开始修
 
 ## 本地开发
 
+本机开发使用本机安装的 PostgreSQL 16 + pgvector、Redis 和 MinIO，不启动 Docker Compose。Compose 只用于隔离验收或完整容器部署。
+
 ```bash
 git clone https://github.com/StephenQiu30/hotkey-server.git
 cd hotkey-server
@@ -19,7 +21,10 @@ cd hotkey-server
 # 后端
 cd backend
 cp .env.example .env
+# 仅首次初始化；已有 hotkey 数据库时跳过 createdb 和 db init
+createdb -O hotkey hotkey
 go run ./cmd/hotkey db init --empty-only --confirm-empty
+go run ./cmd/hotkey db verify
 go run ./cmd/hotkey
 
 # 前端（另开终端）

@@ -10,7 +10,9 @@ HotKey 采用单体仓库管理后端与 Web 工作台。
 | [`frontend/`](frontend/README.md) | Next.js Web 工作台、页面组件和生成的 API 客户端 |
 | [`docs/`](docs/README.md) | 不按应用分层的统一正式文档与 OpenAPI 发布契约 |
 
-## 开始开发
+## 本机开发（默认方式）
+
+本机开发不启动 Docker，也不连接 Compose 内的 PostgreSQL、Redis 或 MinIO。请先通过 Homebrew 或其他本机方式启动 PostgreSQL 16 + pgvector、Redis 和 MinIO，再分别运行 Go 与 Next.js 开发进程。
 
 克隆仓库后，在对应子目录执行命令：
 
@@ -21,6 +23,10 @@ cd hotkey-server
 # 后端
 cd backend
 cp .env.example .env
+# 仅首次初始化；已有 hotkey 数据库时跳过以下三行
+createdb -O hotkey hotkey
+go run ./cmd/hotkey db init --empty-only --confirm-empty
+go run ./cmd/hotkey db verify
 go run ./cmd/hotkey
 
 # 前端（另开终端）
@@ -29,7 +35,7 @@ npm ci
 npm run dev
 ```
 
-后端默认监听 `http://127.0.0.1:8080`，前端默认通过自身的 Next.js 服务访问后端。环境变量与部署方式分别见两个子项目的 README。
+`backend/.env` 的数据库、Redis 和 MinIO 地址必须使用本机地址（默认分别为 `localhost:5432`、`127.0.0.1:6379`、`localhost:9000`）。后端默认监听 `http://127.0.0.1:8080`，前端默认通过自身的 Next.js 服务访问后端。环境变量与部署方式分别见两个子项目的 README。
 
 登录后，管理员可在“来源管理”中直接填写和轮换第三方来源凭据。来源参数与加密密文以 PostgreSQL 为事实源；`.env` 只保留数据库、身份、存储等部署配置和独立的 `HOTKEY_SOURCE_CREDENTIAL_MASTER_KEY`。旧 `env:NAME` 来源继续兼容，任何读取接口都不会返回凭据明文或引用。
 
@@ -51,9 +57,13 @@ go run ./cmd/hotkey db verify
 
 `db init` 只接受**全新空库**（public schema 中无任何对象）。若目标库已有旧数据或已安装 extension，会拒绝执行。现有库与当前 `backend/db/schema.sql` 存在结构漂移时**无法增量升级**——请对全新空库初始化，或将现有数据备份后重建。若目标库由非超级用户持有，需先以超级用户安装 `pg_trgm` 与 `vector` 扩展，或临时授予该用户创建扩展的权限。
 
-## Docker Compose
+## Docker Compose 部署与隔离验收
 
-根 `docker-compose.yml` 统一定义前端、后端、PostgreSQL、Redis、MinIO、默认环境配置、健康检查和卷；生产文件只覆盖生产环境差异。默认环境：
+Docker Compose 只用于完整容器部署和隔离验收，不是本机开发依赖。根 `docker-compose.yml` 统一定义前端、后端、PostgreSQL、Redis、MinIO、默认环境配置、健康检查和卷；生产文件只覆盖生产环境差异。
+
+容器使用固定名称 `hotkey-postgres`、`hotkey-redis`、`hotkey-minio`、`hotkey-minio-init`、`hotkey-db-init`、`hotkey-api` 和 `hotkey-web`，不带 `-1`。同一主机运行多套时通过 `HOTKEY_CONTAINER_PREFIX` 设置唯一前缀。
+
+默认容器环境：
 
 ```bash
 cp backend/.env.example backend/.env
