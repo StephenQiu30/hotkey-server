@@ -31,7 +31,6 @@ func NewHandler(service tokenService) *Handler { return &Handler{service: servic
 // @Success 200 {object} AgentAccessResult[[]TokenResponse]
 // @Failure 401 {object} AgentAccessResult[EmptyResponse]
 // @Failure 503 {object} AgentAccessResult[EmptyResponse]
-// @Router /api/v1/agent-tokens [get]
 func (handler *Handler) List(c *gin.Context) error {
 	httptransport.SetModule(c, "agentaccess")
 	subject, err := browserSubject(c)
@@ -59,7 +58,6 @@ func (handler *Handler) List(c *gin.Context) error {
 // @Failure 403 {object} AgentAccessResult[EmptyResponse]
 // @Failure 409 {object} AgentAccessResult[EmptyResponse]
 // @Failure 503 {object} AgentAccessResult[EmptyResponse]
-// @Router /api/v1/agent-tokens [post]
 func (handler *Handler) Create(c *gin.Context) error {
 	httptransport.SetModule(c, "agentaccess")
 	var request CreateTokenRequest
@@ -97,7 +95,6 @@ func (handler *Handler) Create(c *gin.Context) error {
 // @Failure 404 {object} AgentAccessResult[EmptyResponse]
 // @Failure 409 {object} AgentAccessResult[EmptyResponse]
 // @Failure 503 {object} AgentAccessResult[EmptyResponse]
-// @Router /api/v1/agent-tokens/{id}/revoke [post]
 func (handler *Handler) Revoke(c *gin.Context) error {
 	httptransport.SetModule(c, "agentaccess")
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)

@@ -13,6 +13,7 @@ const (
 	MaxUniqueKeyBytes = 256
 
 	KindCollectSource                    = "collect_source"
+	KindRefreshXMetrics                  = "refresh_x_metrics"
 	KindNormalizeContent                 = "normalize_content"
 	KindEvaluateRelevance                = "evaluate_relevance"
 	KindClusterContent                   = "cluster_content"
@@ -30,14 +31,17 @@ const (
 	KindEvaluatePublishedDocumentMatches = "evaluate_published_document_matches"
 	KindBackfillPublishedMonitorMatches  = "backfill_published_monitor_matches"
 	KindProjectAcceptedDocumentMatch     = "project_accepted_document_match"
+	KindExtractAutomaticClaimEvidence    = "extract_automatic_claim_evidence"
 )
 
 func IsKnownKind(kind string) bool {
 	switch kind {
-	case KindCollectSource, KindNormalizeContent, KindEvaluateRelevance, KindClusterContent,
+	case KindCollectSource, KindRefreshXMetrics, KindNormalizeContent, KindEvaluateRelevance, KindClusterContent,
 		KindRecomputeEventHeat, KindEvaluateEventAlerts, KindGenerateEventSummary, KindBuildReport, KindDeliverEmail, KindDeliverAlertEmail,
 		KindProjectKnowledge, KindReconcileKnowledge, KindRunRetention, KindGenerateSourceDocument, KindAnalyzeMonitorIntent,
 		KindEvaluatePublishedDocumentMatches, KindBackfillPublishedMonitorMatches, KindProjectAcceptedDocumentMatch:
+		return true
+	case KindExtractAutomaticClaimEvidence:
 		return true
 	default:
 		return false

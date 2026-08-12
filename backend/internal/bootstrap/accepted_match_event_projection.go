@@ -2,20 +2,23 @@ package bootstrap
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	eventapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/application"
+	eventjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/infrastructure/jobs"
 	eventpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/infrastructure/postgres"
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/application"
 	ingestionjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/jobs"
 	operationspostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/infrastructure/postgres"
-	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
+type acceptedDocumentMatchEventProjector interface {
+	Project(context.Context, eventapplication.ProjectAcceptedDocumentMatchCommand) (eventapplication.ProjectAcceptedDocumentMatchResult, error)
+}
+
 type acceptedDocumentMatchEventProjectionAdapter struct {
-	service  *eventapplication.AcceptedMatchEventProjectionService
-	evidence *eventapplication.AutomaticClaimEvidenceService
+	service  acceptedDocumentMatchEventProjector
+	evidence eventapplication.AutomaticClaimEvidenceScheduler
 }
 
 var _ ingestionapplication.AcceptedDocumentMatchConsumer = (*acceptedDocumentMatchEventProjectionAdapter)(nil)
@@ -36,10 +39,18 @@ func newEventHeatV2Service(repository *eventpostgres.EventHeatRepository) (*even
 	return eventapplication.NewEventHeatService(repository)
 }
 
-func newAcceptedDocumentMatchEventProjectionAdapter(service *eventapplication.AcceptedMatchEventProjectionService,
-	evidence *eventapplication.AutomaticClaimEvidenceService) (*acceptedDocumentMatchEventProjectionAdapter, error) {
+func exposeAutomaticClaimEvidenceScheduler(scheduler *eventjobs.AutomaticClaimEvidenceScheduler) eventapplication.AutomaticClaimEvidenceScheduler {
+	return scheduler
+}
+
+func exposeAcceptedDocumentMatchEventProjector(service *eventapplication.AcceptedMatchEventProjectionService) acceptedDocumentMatchEventProjector {
+	return service
+}
+
+func newAcceptedDocumentMatchEventProjectionAdapter(service acceptedDocumentMatchEventProjector,
+	evidence eventapplication.AutomaticClaimEvidenceScheduler) (*acceptedDocumentMatchEventProjectionAdapter, error) {
 	if service == nil || evidence == nil {
-		return nil, fmt.Errorf("accepted document match event projection service is required")
+		return nil, fmt.Errorf("accepted document match event projection dependencies are required")
 	}
 	return &acceptedDocumentMatchEventProjectionAdapter{service: service, evidence: evidence}, nil
 }
@@ -50,7 +61,7 @@ func newAcceptedDocumentMatchProjectionHandler(adapter *acceptedDocumentMatchEve
 
 func (adapter *acceptedDocumentMatchEventProjectionAdapter) ConsumeAcceptedDocumentMatch(ctx context.Context,
 	command ingestionapplication.ConsumeAcceptedDocumentMatchCommand) (ingestionapplication.ConsumeAcceptedDocumentMatchResult, error) {
-	if adapter == nil || adapter.service == nil || command.DocumentMatchDecisionID <= 0 || command.DocumentVersionID <= 0 {
+	if adapter == nil || adapter.service == nil || adapter.evidence == nil || command.DocumentMatchDecisionID <= 0 || command.DocumentVersionID <= 0 {
 		return ingestionapplication.ConsumeAcceptedDocumentMatchResult{}, ingestionapplication.ErrInvalidDocumentMatchContract
 	}
 	projected, err := adapter.service.Project(ctx, eventapplication.ProjectAcceptedDocumentMatchCommand{
@@ -59,15 +70,14 @@ func (adapter *acceptedDocumentMatchEventProjectionAdapter) ConsumeAcceptedDocum
 		return ingestionapplication.ConsumeAcceptedDocumentMatchResult{}, fmt.Errorf("project accepted match into event v2: %w", err)
 	}
 	if projected.Membership.Action != "review" {
-		extracted, extractionErr := adapter.evidence.Extract(ctx, eventapplication.AutomaticClaimEvidenceCommand{
-			MicroEventID: projected.MicroEvent.ID, ExpectedEventVersion: projected.MicroEvent.Version,
-			DocumentVersionID: command.DocumentVersionID,
+		scheduled, scheduleErr := adapter.evidence.ScheduleAutomaticClaimEvidence(ctx, eventapplication.ScheduleAutomaticClaimEvidenceCommand{
+			MicroEventID: projected.MicroEvent.ID, DocumentVersionID: command.DocumentVersionID,
 		})
-		if extractionErr != nil && !errors.Is(extractionErr, sharedrepository.ErrNotFound) {
-			return ingestionapplication.ConsumeAcceptedDocumentMatchResult{}, fmt.Errorf("extract accepted match claim evidence: %w", extractionErr)
+		if scheduleErr != nil {
+			return ingestionapplication.ConsumeAcceptedDocumentMatchResult{}, fmt.Errorf("schedule automatic claim evidence: %w", scheduleErr)
 		}
-		if extractionErr == nil && extracted.Status != "succeeded" && extracted.Status != "degraded" {
-			return ingestionapplication.ConsumeAcceptedDocumentMatchResult{}, eventapplication.ErrInvalidAutomaticClaimEvidenceContract
+		if scheduled.MicroEventID != projected.MicroEvent.ID || scheduled.DocumentVersionID != command.DocumentVersionID || scheduled.JobID <= 0 {
+			return ingestionapplication.ConsumeAcceptedDocumentMatchResult{}, ingestionapplication.ErrInvalidDocumentMatchContract
 		}
 	}
 	return ingestionapplication.ConsumeAcceptedDocumentMatchResult{DocumentMatchDecisionID: command.DocumentMatchDecisionID,

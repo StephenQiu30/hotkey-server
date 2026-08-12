@@ -13,6 +13,9 @@ export async function getMicroEvents(
     {
       method: "GET",
       params: {
+        // sort has a default value: heat
+        sort: "heat",
+
         ...params,
       },
       ...(options || {}),

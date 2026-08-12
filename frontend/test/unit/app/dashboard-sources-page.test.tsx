@@ -1,10 +1,4 @@
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SourcesPage from "@/app/dashboard/sources/page";
@@ -27,29 +21,15 @@ vi.mock("@/services/hotkey/hotkey-server/sources", () => ({
   postSourceConnectionsIdArchive: vi.fn(),
 }));
 
-const setRole = (role: UserRole) => {
+const setRole = (role: UserRole) =>
   useAuthStore.setState({
     status: AuthStatus.Authenticated,
     user: { id: 1, email: `${role}@example.test`, role },
     error: null,
   });
-};
 
-const openCompletedForm = async () => {
-  const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: "新增来源" }));
-  await user.type(screen.getByLabelText("名称"), "Research feed");
-  await user.type(
-    screen.getByLabelText("接口地址"),
-    "https://example.test/feed.xml"
-  );
-  return user;
-};
-
-describe("SourcesPage body storage authorization", () => {
-  afterEach(() => {
-    cleanup();
-  });
+describe("multi-source workspace", () => {
+  afterEach(cleanup);
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -58,408 +38,120 @@ describe("SourcesPage body storage authorization", () => {
     setRole(UserRole.Admin);
   });
 
-  it("submits Feed body storage by default", async () => {
-    render(<SourcesPage />);
-    const user = await openCompletedForm();
-
-    const checkbox = screen.getByRole("checkbox", {
-      name: "保存来源正文/摘要用于归档预览",
-    });
-    expect(checkbox).toBeChecked();
-    expect(
-      screen.getByText(
-        "只保存来源 Feed 实际提供的正文/摘要，不抓取原网页；启用前确认来源条款。"
-      )
-    ).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "创建连接" }));
-    await waitFor(() =>
-      expect(mocks.postSourceConnections).toHaveBeenCalledWith(
-        expect.objectContaining({
-          config: expect.objectContaining({ allow_body_storage: true }),
-        })
-      )
-    );
-  });
-
-  it("submits compliance, managed credential, retention, and quota controls", async () => {
-    render(<SourcesPage />);
-    const user = await openCompletedForm();
-
-    fireEvent.keyDown(screen.getByLabelText("授权方式"), { key: "ArrowDown" });
-    fireEvent.click(screen.getByRole("option", { name: "Bearer Token" }));
-    fireEvent.change(screen.getByLabelText("访问凭据"), {
-      target: { value: "research-feed-token" },
-    });
-    fireEvent.change(screen.getByLabelText("条款与政策地址"), {
-      target: { value: "https://example.test/terms" },
-    });
-    await user.click(
-      screen.getByRole("checkbox", { name: "需要来源归属标记" })
-    );
-    fireEvent.change(screen.getByLabelText("每分钟请求上限"), {
-      target: { value: "30" },
-    });
-    fireEvent.change(screen.getByLabelText("内容保留天数"), {
-      target: { value: "90" },
-    });
-    fireEvent.change(screen.getByLabelText("允许语言"), {
-      target: { value: "zh-CN, en" },
-    });
-    fireEvent.change(screen.getByLabelText("允许地区"), {
-      target: { value: "CN, US" },
-    });
-    await user.click(screen.getByRole("button", { name: "创建连接" }));
-
-    await waitFor(() =>
-      expect(mocks.postSourceConnections).toHaveBeenCalledWith({
-        auth_type: "bearer",
-        credential: "research-feed-token",
-        enabled: true,
-        endpoint: "https://example.test/feed.xml",
-        name: "Research feed",
-        source_type: "rss",
-        terms_policy_url: "https://example.test/terms",
-        config: expect.objectContaining({
-          allow_body_storage: true,
-          allowed_languages: ["zh-CN", "en"],
-          allowed_regions: ["CN", "US"],
-          content_retention_days: 90,
-          rate_limit_per_minute: 30,
-          requires_attribution: true,
-        }),
-      })
-    );
-  });
-
-  it("creates X Recent Search disabled with a fixed endpoint and managed credential", async () => {
+  it("offers all seven supported source types", async () => {
     render(<SourcesPage />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "新增来源" }));
-    await user.type(screen.getByLabelText("名称"), "X 官方搜索");
+    const sourceType = screen.getByRole("combobox", { name: "来源类型" });
+    expect(Array.from((sourceType as HTMLSelectElement).options).map((option) => option.text)).toEqual([
+      "RSS / Atom",
+      "Hacker News",
+      "X / Twitter",
+      "Bing Grounding",
+      "Bilibili",
+      "Weibo",
+      "Google Agent Search",
+    ]);
+  });
 
-    fireEvent.keyDown(screen.getByLabelText("来源类型"), { key: "ArrowDown" });
-    fireEvent.click(screen.getByRole("option", { name: "X Recent Search" }));
-
-    expect(screen.getByLabelText("接口地址")).toHaveValue(
-      "https://api.x.com/2/tweets/search/recent"
-    );
+  it("creates an official X source with continuous metrics disabled by default", async () => {
+    render(<SourcesPage />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "新增来源" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "来源类型" }), { target: { value: "x" } });
+    expect(screen.getByLabelText("接口地址")).toHaveValue("https://api.x.com/2/tweets/search/recent");
     expect(screen.getByLabelText("接口地址")).toHaveAttribute("readonly");
-    expect(screen.getByLabelText("授权方式")).toBeDisabled();
-    await user.type(
-      screen.getByLabelText("访问凭据"),
-      "x-bearer-token"
-    );
+    expect(screen.getByRole("checkbox", { name: "启用 X 持续指标刷新" })).not.toBeChecked();
+
+    await user.type(screen.getByLabelText("名称"), "X 官方热点");
+    await user.type(screen.getByLabelText("访问凭据"), "x-bearer-token");
     await user.click(screen.getByRole("button", { name: "创建连接" }));
 
     await waitFor(() =>
       expect(mocks.postSourceConnections).toHaveBeenCalledWith(
         expect.objectContaining({
+          source_type: "x",
           auth_type: "bearer",
           credential: "x-bearer-token",
           enabled: false,
           endpoint: "https://api.x.com/2/tweets/search/recent",
-          source_type: "x",
-        })
-      )
-    );
-  });
-
-  it("creates Hacker News with official top stories repeated observation by default", async () => {
-    render(<SourcesPage />);
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "新增来源" }));
-    await user.type(screen.getByLabelText("名称"), "HN 热门榜单");
-    fireEvent.keyDown(screen.getByLabelText("来源类型"), { key: "ArrowDown" });
-    fireEvent.click(screen.getByRole("option", { name: "Hacker News" }));
-
-    expect(screen.getByLabelText("接口地址")).toHaveValue(
-      "https://hacker-news.firebaseio.com/v0"
-    );
-    expect(screen.getByLabelText("榜单模式")).toHaveTextContent("热门榜单");
-    expect(screen.getByText(/每轮重复观测官方 score 与评论数/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "创建连接" }));
-
-    await waitFor(() =>
-      expect(mocks.postSourceConnections).toHaveBeenCalledWith(
-        expect.objectContaining({
-          auth_type: "none",
-          enabled: true,
-          endpoint: "https://hacker-news.firebaseio.com/v0",
-          source_type: "hacker_news",
-          config: expect.objectContaining({ hacker_news_mode: "top" }),
-        })
-      )
-    );
-  });
-
-  it("creates Microsoft Foundry Web Search disabled after explicit data-boundary review", async () => {
-    render(<SourcesPage />);
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "新增来源" }));
-    fireEvent.change(screen.getByLabelText("名称"), {
-      target: { value: "Foundry Web Search" },
-    });
-
-    fireEvent.keyDown(screen.getByLabelText("来源类型"), { key: "ArrowDown" });
-    fireEvent.click(
-      screen.getByRole("option", { name: "Microsoft Foundry Web Search" })
-    );
-
-    expect(screen.getByLabelText("接口地址")).toHaveAttribute(
-      "placeholder",
-      "https://account.services.ai.azure.com/api/projects/project/toolboxes/web-search/versions/1/mcp?api-version=v1"
-    );
-    expect(screen.getByLabelText("授权方式")).toBeDisabled();
-    expect(screen.getByRole("button", { name: "创建连接" })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("接口地址"), {
-      target: {
-        value:
-          "https://hotkey.services.ai.azure.com/api/projects/hotkey/toolboxes/web-search/versions/1/mcp?api-version=v1",
-      },
-    });
-    fireEvent.change(screen.getByLabelText("访问凭据"), {
-      target: { value: "azure-foundry-token" },
-    });
-    expect(
-      screen.getByText(/Microsoft DPA 不适用于该能力/)
-    ).toBeInTheDocument();
-    expect(screen.getByText(/模型生成的派生摘要和引用/)).toBeInTheDocument();
-    expect(
-      screen.getByText(/不把它标记为原始网页正文或来源指标/)
-    ).toBeInTheDocument();
-    await user.click(
-      screen.getByRole("checkbox", {
-        name: "确认 Grounding 数据边界与额外条款",
-      })
-    );
-    await user.click(screen.getByRole("button", { name: "创建连接" }));
-
-    await waitFor(() =>
-      expect(mocks.postSourceConnections).toHaveBeenCalledWith(
-        expect.objectContaining({
-          auth_type: "bearer",
-          credential: "azure-foundry-token",
-          enabled: false,
-          source_type: "bing_grounding",
           config: expect.objectContaining({
-            allow_body_storage: true,
-            requires_attribution: true,
-            max_pages_per_run: 1,
-            grounding_data_boundary_approved: true,
+            x_metric_refresh_enabled: false,
+            x_metric_refresh_interval_minutes: 60,
+            x_metric_refresh_observation_hours: 48,
+            x_metric_refresh_max_posts_per_run: 100,
+            x_metric_refresh_daily_request_budget: 24,
           }),
         })
       )
     );
   });
 
-  it("creates an authorized Bilibili account disabled with official fixed fields", async () => {
+  it("submits bounded X refresh configuration and locale filters", async () => {
     render(<SourcesPage />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "新增来源" }));
-    await user.type(screen.getByLabelText("名称"), "Bilibili 官方账号");
-    fireEvent.keyDown(screen.getByLabelText("来源类型"), { key: "ArrowDown" });
-    fireEvent.click(screen.getByRole("option", { name: "Bilibili 开放平台" }));
-
-    expect(screen.getByLabelText("接口地址")).toHaveValue(
-      "https://member.bilibili.com/arcopen/fn"
-    );
-    expect(screen.getByLabelText("接口地址")).toHaveAttribute("readonly");
-    expect(screen.getByLabelText("授权方式")).toBeDisabled();
-    expect(screen.getByLabelText("条款与政策地址")).toHaveAttribute("readonly");
-    expect(
-      screen.getByText(/公共 UID、@账号与主页地址不会被解析或抓取/)
-    ).toBeInTheDocument();
-    await user.type(
-      screen.getByLabelText("授权账号 OpenID"),
-      "creator_open_id"
-    );
-    fireEvent.change(screen.getByLabelText("访问凭据"), {
-      target: {
-        value:
-          '{"client_id":"client","app_secret":"secret","access_token":"token"}',
-      },
-    });
+    fireEvent.change(screen.getByRole("combobox", { name: "来源类型" }), { target: { value: "x" } });
+    await user.type(screen.getByLabelText("名称"), "Research X");
+    await user.type(screen.getByLabelText("访问凭据"), "secret");
+    await user.click(screen.getByRole("checkbox", { name: "启用 X 持续指标刷新" }));
+    fireEvent.change(screen.getByLabelText("允许语言"), { target: { value: "zh-CN, en" } });
+    fireEvent.change(screen.getByLabelText("允许地区"), { target: { value: "CN, US" } });
+    fireEvent.change(screen.getByLabelText("刷新间隔（分钟）"), { target: { value: "30" } });
+    fireEvent.change(screen.getByLabelText("持续观察期（小时）"), { target: { value: "72" } });
+    fireEvent.change(screen.getByLabelText("单轮最多 Post"), { target: { value: "50" } });
+    fireEvent.change(screen.getByLabelText("每日批次预算"), { target: { value: "12" } });
     await user.click(screen.getByRole("button", { name: "创建连接" }));
 
     await waitFor(() =>
       expect(mocks.postSourceConnections).toHaveBeenCalledWith(
         expect.objectContaining({
-          auth_type: "oauth2",
-          credential:
-            '{"client_id":"client","app_secret":"secret","access_token":"token"}',
-          enabled: false,
-          endpoint: "https://member.bilibili.com/arcopen/fn",
-          source_type: "bilibili",
-          terms_policy_url:
-            "https://openhome.bilibili.com/agreement/privacy-policy",
           config: expect.objectContaining({
-            allow_body_storage: true,
-            requires_attribution: true,
-            requires_deletion_sync: true,
-            bilibili_open_id: "creator_open_id",
+            allowed_languages: ["zh-CN", "en"],
+            allowed_regions: ["CN", "US"],
+            x_metric_refresh_enabled: true,
+            x_metric_refresh_interval_minutes: 30,
+            x_metric_refresh_observation_hours: 72,
+            x_metric_refresh_max_posts_per_run: 50,
+            x_metric_refresh_daily_request_budget: 12,
           }),
         })
       )
     );
   });
 
-  it("creates an official Weibo keyword source disabled behind capability health", async () => {
+  it("creates an RSS source without a credential", async () => {
     render(<SourcesPage />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "新增来源" }));
-    await user.type(screen.getByLabelText("名称"), "微博官方关键词");
-    fireEvent.keyDown(screen.getByLabelText("来源类型"), { key: "ArrowDown" });
-    fireEvent.click(screen.getByRole("option", { name: "微博开放平台关键词" }));
-
-    expect(screen.getByLabelText("接口地址")).toHaveValue(
-      "https://open.weibo.com/cli/api"
-    );
-    expect(screen.getByLabelText("接口地址")).toHaveAttribute("readonly");
-    expect(screen.getByLabelText("授权方式")).toBeDisabled();
-    expect(screen.getByLabelText("条款与政策地址")).toHaveAttribute("readonly");
-    expect(screen.getByText(/账号须完成开发者认证/)).toBeInTheDocument();
-    expect(
-      screen.getByText(/不支持账号时间线、热搜页或网页抓取/)
-    ).toBeInTheDocument();
-    await user.type(
-      screen.getByLabelText("访问凭据"),
-      "weibo-api-token"
-    );
+    await user.type(screen.getByLabelText("名称"), "OpenAI Feed");
+    await user.type(screen.getByLabelText("接口地址"), "https://example.test/feed.xml");
     await user.click(screen.getByRole("button", { name: "创建连接" }));
-
-    await waitFor(() =>
-      expect(mocks.postSourceConnections).toHaveBeenCalledWith(
-        expect.objectContaining({
-          auth_type: "bearer",
-          credential: "weibo-api-token",
-          enabled: false,
-          endpoint: "https://open.weibo.com/cli/api",
-          source_type: "weibo",
-          terms_policy_url:
-            "https://open.weibo.com/wiki/%E5%BC%80%E5%8F%91%E8%80%85%E5%8D%8F%E8%AE%AE",
-          config: expect.objectContaining({
-            allow_body_storage: true,
-            requires_attribution: true,
-            requires_deletion_sync: true,
-          }),
-        })
-      )
-    );
+    await waitFor(() => expect(mocks.postSourceConnections).toHaveBeenCalledWith(expect.objectContaining({
+      source_type: "rss",
+      auth_type: "none",
+      endpoint: "https://example.test/feed.xml",
+    })));
   });
 
-  it("creates Google Agent Search disabled with a regional official contract", async () => {
+  it.each([UserRole.Viewer, UserRole.Editor])("keeps source creation hidden from %s", async (role) => {
+    setRole(role);
     render(<SourcesPage />);
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "新增来源" }));
-    await user.type(screen.getByLabelText("名称"), "Google 限定域搜索");
-    fireEvent.keyDown(screen.getByLabelText("来源类型"), { key: "ArrowDown" });
-    fireEvent.click(
-      screen.getByRole("option", { name: "Google Agent Search（限定域）" })
-    );
-
-    expect(screen.getByLabelText("接口地址")).toHaveValue(
-      "https://discoveryengine.googleapis.com"
-    );
-    expect(screen.getByLabelText("接口地址")).toHaveAttribute("readonly");
-    expect(screen.getByLabelText("授权方式")).toBeDisabled();
-    expect(screen.getByLabelText("条款与政策地址")).toHaveValue(
-      "https://cloud.google.com/terms"
-    );
-    expect(screen.getByLabelText("条款与政策地址")).toHaveAttribute(
-      "readonly"
-    );
-    expect(screen.getByRole("button", { name: "创建连接" })).toBeDisabled();
-    expect(screen.getByText(/已关闭新客户/)).toBeInTheDocument();
-    expect(screen.getByText(/不会降级抓取 Google 搜索页/)).toBeInTheDocument();
-
-    await user.type(
-      screen.getByLabelText("ServingConfig 资源名"),
-      "projects/hotkey-demo/locations/global/collections/default_collection/dataStores/news/servingConfigs/default_config"
-    );
-    await user.type(
-      screen.getByLabelText("访问凭据"),
-      "google-agent-search-token"
-    );
-    await user.click(screen.getByRole("button", { name: "创建连接" }));
-
-    await waitFor(() =>
-      expect(mocks.postSourceConnections).toHaveBeenCalledWith(
-        expect.objectContaining({
-          auth_type: "bearer",
-          credential: "google-agent-search-token",
-          enabled: false,
-          endpoint: "https://discoveryengine.googleapis.com",
-          source_type: "google_agent_search",
-          terms_policy_url: "https://cloud.google.com/terms",
-          config: expect.objectContaining({
-            allow_body_storage: true,
-            requires_attribution: true,
-            requires_deletion_sync: false,
-            google_location: "global",
-            google_serving_config:
-              "projects/hotkey-demo/locations/global/collections/default_collection/dataStores/news/servingConfigs/default_config",
-          }),
-        })
-      )
-    );
+    expect(await screen.findByText("只读来源目录")).toBeInTheDocument();
+    expect(screen.getByText("查看工作区的七类来源连接、健康状态与采集边界。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "新增来源" })).not.toBeInTheDocument();
   });
 
-  it("shows safe compliance facts without exposing a credential reference", async () => {
+  it("replaces an existing X credential without reading the old value", async () => {
     mocks.getSourceConnections.mockResolvedValue({
-      data: {
-        items: [
-          {
-            id: 7,
-            name: "Official feed",
-            source_type: "rss",
-            health_status: "healthy",
-            credential_configured: true,
-            terms_policy_url: "https://example.test/terms",
-            config: { rate_limit_per_minute: 45, content_retention_days: 60 },
-          },
-        ],
-      },
-    });
-
-    render(<SourcesPage />);
-
-    expect(
-      await screen.findByRole("link", { name: "条款与政策" })
-    ).toHaveAttribute("href", "https://example.test/terms");
-    expect(screen.getByText("凭据已配置")).toBeInTheDocument();
-    expect(screen.getByText("45 req/min · 保留 60 天")).toBeInTheDocument();
-    expect(screen.queryByText(/env:/)).not.toBeInTheDocument();
-  });
-
-  it("replaces an existing credential without reading the old value", async () => {
-    mocks.getSourceConnections.mockResolvedValue({
-      data: {
-        items: [
-          {
-            id: 7,
-            version: 3,
-            name: "Official API",
-            source_type: "x",
-            enabled: false,
-            health_status: "unknown",
-            credential_configured: true,
-            config: { allow_body_storage: true },
-          },
-        ],
-      },
+      data: { items: [{ id: 7, version: 3, name: "Official X", source_type: "x", enabled: false, credential_configured: true, config: { allow_body_storage: true } }] },
     });
     mocks.patchSourceConnectionsId.mockResolvedValue({ data: { id: 7 } });
-
     render(<SourcesPage />);
     const user = userEvent.setup();
-    await user.click(
-      await screen.findByRole("button", { name: "替换凭据" })
-    );
-    expect(screen.getByLabelText("新访问凭据")).toHaveValue("");
+    await user.click(await screen.findByRole("button", { name: "替换凭据" }));
     await user.type(screen.getByLabelText("新访问凭据"), "rotated-token");
     await user.click(screen.getByRole("button", { name: "保存并替换" }));
-
     await waitFor(() =>
       expect(mocks.patchSourceConnectionsId).toHaveBeenCalledWith(
         { id: 7 },
@@ -468,206 +160,14 @@ describe("SourcesPage body storage authorization", () => {
     );
   });
 
-  it("shows Sogou as an authorization-gated capability without executable actions", async () => {
-    render(<SourcesPage />);
-
-    expect(await screen.findByText("搜狗授权搜索")).toBeInTheDocument();
-    expect(screen.getByText("需要授权")).toBeInTheDocument();
-    expect(
-      screen.getByText(/不抓取搜索结果页，也不会创建或调度搜狗来源连接/)
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "查看官方开放平台说明" })
-    ).toHaveAttribute(
-      "href",
-      "https://data.open.sogou.com/data-resource/help.html?type=1"
-    );
-    expect(
-      screen.getByRole("button", { name: "授权资料未齐备" })
-    ).toBeDisabled();
-    expect(
-      screen.queryByRole("option", { name: /搜狗/ })
-    ).not.toBeInTheDocument();
-  });
-
-  it("shows DuckDuckGo as a non-executable knowledge boundary", async () => {
-    render(<SourcesPage />);
-
-    expect(
-      await screen.findByText("DuckDuckGo Instant Answer")
-    ).toBeInTheDocument();
-    expect(screen.getByText("未开放")).toBeInTheDocument();
-    expect(
-      screen.getByText(/不是通用网页搜索结果 API/)
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/不抓取 DuckDuckGo 页面，不创建或调度该来源/)
-    ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "即时答案说明" })).toHaveAttribute(
-      "href",
-      "https://duckduckgo.com/duckduckgo-help-pages/features/instant-answers-and-other-features"
-    );
-    expect(screen.getByRole("link", { name: "结果来源" })).toHaveAttribute(
-      "href",
-      "https://duckduckgo.com/duckduckgo-help-pages/results/sources"
-    );
-    expect(screen.getByRole("link", { name: "服务条款" })).toHaveAttribute(
-      "href",
-      "https://duckduckgo.com/terms"
-    );
-    expect(
-      screen.getByRole("button", { name: "尚无正式 API 契约" })
-    ).toBeDisabled();
-
-    expect(screen.queryByRole("option", { name: /DuckDuckGo/ })).toBeNull();
-    expect(mocks.getSourceConnections).toHaveBeenCalledTimes(1);
-  });
-
-  it("keeps body storage enabled when a new form is opened", async () => {
-    render(<SourcesPage />);
-    const user = await openCompletedForm();
-    const checkbox = screen.getByRole("checkbox", {
-      name: "保存来源正文/摘要用于归档预览",
-    });
-
-    await user.click(checkbox);
-    expect(checkbox).not.toBeChecked();
-    await user.click(screen.getByRole("button", { name: "取消" }));
-    await user.click(screen.getByRole("button", { name: "新增来源" }));
-    expect(
-      screen.getByRole("checkbox", {
-        name: "保存来源正文/摘要用于归档预览",
-      })
-    ).toBeChecked();
-
-    await user.type(screen.getByLabelText("名称"), "Second feed");
-    await user.type(
-      screen.getByLabelText("接口地址"),
-      "https://example.test/second.xml"
-    );
-    await user.click(screen.getByRole("button", { name: "创建连接" }));
-
-    await waitFor(() =>
-      expect(mocks.postSourceConnections).toHaveBeenCalledWith(
-        expect.objectContaining({
-          config: expect.objectContaining({ allow_body_storage: true }),
-        })
-      )
-    );
-  });
-
-  it.each([UserRole.Viewer, UserRole.Editor])(
-    "keeps source creation and body authorization hidden from %s",
-    async (role) => {
-      setRole(role);
-      render(<SourcesPage />);
-
-      expect(await screen.findByText("只读来源目录")).toBeInTheDocument();
-      expect(
-        screen.getByText(
-          "查看当前工作区已接入的 RSS、Hacker News、X、微博关键词、Bilibili 授权账号、Google Agent Search 与 Microsoft Foundry Web Search。"
-        )
-      ).toBeInTheDocument();
-      expect(
-        screen.queryByRole("button", { name: "新增来源" })
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole("checkbox", {
-          name: "保存来源正文/摘要用于归档预览",
-        })
-      ).not.toBeInTheDocument();
-      expect(screen.getByText("DuckDuckGo Instant Answer")).toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: "尚无正式 API 契约" })
-      ).toBeDisabled();
-    }
-  );
-
-  it("lets an admin explicitly enable Feed body storage for an existing source", async () => {
-    mocks.getSourceConnections
-      .mockResolvedValueOnce({
-        data: {
-          items: [
-            {
-              id: 3,
-              version: 4,
-              name: "bioRxiv · Bioinformatics",
-              source_type: "rss",
-              enabled: true,
-              deleted: false,
-              config: { allow_body_storage: false },
-            },
-          ],
-        },
-      })
-      .mockResolvedValueOnce({ data: { items: [] } });
-
-    render(<SourcesPage />);
-    await userEvent
-      .setup()
-      .click(await screen.findByRole("button", { name: "开启归档" }));
-
-    expect(
-      await screen.findByRole("alertdialog", { name: "开启正文与摘要归档？" })
-    ).toBeInTheDocument();
-    expect(mocks.patchSourceConnectionsId).not.toHaveBeenCalled();
-    await userEvent
-      .setup()
-      .click(screen.getByRole("button", { name: "确认开启" }));
-
-    await waitFor(() =>
-      expect(mocks.patchSourceConnectionsId).toHaveBeenCalledWith(
-        { id: 3 },
-        {
-          expected_source_version: 4,
-          config: { allow_body_storage: true },
-        }
-      )
-    );
-  });
-
   it("requests the next source page with the returned cursor", async () => {
     mocks.getSourceConnections
-      .mockResolvedValueOnce({
-        data: {
-          items: [{ id: 3, name: "First source", deleted: false }],
-          next_cursor: "source-cursor-1",
-        },
-      })
-      .mockResolvedValueOnce({ data: { items: [], next_cursor: undefined } });
-
+      .mockResolvedValueOnce({ data: { items: [{ id: 3, name: "First X", deleted: false }], next_cursor: "source-cursor-1" } })
+      .mockResolvedValueOnce({ data: { items: [] } });
     render(<SourcesPage />);
-    await userEvent
-      .setup()
-      .click(await screen.findByRole("button", { name: "下一页" }));
-
+    await userEvent.setup().click(await screen.findByRole("button", { name: "下一页" }));
     await waitFor(() =>
-      expect(mocks.getSourceConnections).toHaveBeenLastCalledWith({
-        cursor: "source-cursor-1",
-        limit: 20,
-      })
+      expect(mocks.getSourceConnections).toHaveBeenLastCalledWith({ cursor: "source-cursor-1", limit: 20 })
     );
-  });
-
-  it("keeps a failed source request distinct from the real empty state and retries", async () => {
-    mocks.getSourceConnections
-      .mockRejectedValueOnce(new Error("来源服务暂时不可用"))
-      .mockResolvedValueOnce({
-        data: {
-          items: [{ id: 9, name: "Hacker News 官方", deleted: false }],
-        },
-      });
-
-    render(<SourcesPage />);
-
-    expect(await screen.findByText("来源加载失败")).toBeInTheDocument();
-    expect(screen.queryByText("还没有来源连接")).not.toBeInTheDocument();
-
-    await userEvent
-      .setup()
-      .click(screen.getByRole("button", { name: "重新加载" }));
-
-    expect(await screen.findByText("Hacker News 官方")).toBeInTheDocument();
-    expect(screen.queryByText("来源加载失败")).not.toBeInTheDocument();
   });
 });

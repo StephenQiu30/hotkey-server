@@ -30,7 +30,7 @@ func NewClaimEvidencePostgresRepository(runtime *database.Runtime) (*ClaimEviden
 }
 
 func (repository *ClaimEvidencePostgresRepository) ReadAutomaticClaimEvidenceTarget(ctx context.Context, query eventapplication.AutomaticClaimEvidenceTargetQuery) (eventapplication.AutomaticClaimEvidenceTargetDTO, error) {
-	if repository == nil || repository.runtime == nil || query.MicroEventID <= 0 || query.ExpectedEventVersion <= 0 ||
+	if repository == nil || repository.runtime == nil || query.MicroEventID <= 0 || query.ExpectedEventVersion < 0 ||
 		query.DocumentVersionID <= 0 || query.DecisionAt.IsZero() {
 		return eventapplication.AutomaticClaimEvidenceTargetDTO{}, eventapplication.ErrInvalidAutomaticClaimEvidenceContract
 	}
@@ -50,7 +50,7 @@ JOIN derived_artifacts AS artifact ON artifact.document_version_id=version.id
       'document_version',version.id::text,version.content_sha256,'store_derived',$4)
   AND current_rights_action_allowed(artifact.retain_rights_decision_id,document.source_connection_id,
       'document_version',version.id::text,version.content_sha256,'retain',$4)
-WHERE event.id=$1 AND event.version=$2
+WHERE event.id=$1 AND ($2=0 OR event.version=$2)
   AND EXISTS (
     SELECT 1 FROM micro_event_members AS event_member
     JOIN content_family_members AS family_member ON family_member.family_id=event_member.content_family_id

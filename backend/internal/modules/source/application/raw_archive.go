@@ -285,8 +285,8 @@ func (service *RawEvidenceArchiveService) Archive(ctx context.Context, command A
 	if service == nil || service.store == nil || service.repository == nil || service.selectorVerifier == nil || service.clock == nil {
 		return ArchiveRawEvidenceResult{}, errors.New("raw evidence archive service is not initialized")
 	}
-	if command.SourceConnectionID <= 0 || command.CollectionRunID <= 0 {
-		return ArchiveRawEvidenceResult{}, errors.New("raw evidence source and collection run are required")
+	if command.SourceConnectionID <= 0 || command.CollectionRunID < 0 {
+		return ArchiveRawEvidenceResult{}, errors.New("raw evidence source or collection run is invalid")
 	}
 	now := service.clock.Now().UTC()
 	if now.IsZero() {
@@ -303,6 +303,9 @@ func (service *RawEvidenceArchiveService) Archive(ctx context.Context, command A
 	}
 	if len(orderedSnapshots) == 0 {
 		return ArchiveRawEvidenceResult{Snapshots: []PersistedEvidenceSnapshotDTO{}}, nil
+	}
+	if command.CollectionRunID == 0 && len(fetchResult.Items) != 0 {
+		return ArchiveRawEvidenceResult{}, errors.New("context evidence cannot create source observations")
 	}
 	observations, err := archiveObservationDTOs(command.SourceConnectionID, command.CollectionRunID, fetchResult.Items, snapshotsByKey, service.selectorVerifier)
 	if err != nil {
@@ -478,7 +481,7 @@ func validatePersistedEvidenceSnapshot(persisted PersistedEvidenceSnapshotDTO, r
 		persisted.SourceConnectionID != reservation.SourceConnectionID || persisted.EvidenceKey != reservation.EvidenceKey ||
 		persisted.ObjectKey != reservation.ObjectKey || persisted.PayloadSHA256 != reservation.PayloadSHA256 ||
 		persisted.CollectorProfileVersion != reservation.CollectorProfileVersion || persisted.SizeBytes != reservation.SizeBytes ||
-		persisted.CollectionRunID <= 0 || persisted.StoreRawRightsDecisionID <= 0 || persisted.RetainRightsDecisionID <= 0 ||
+		persisted.CollectionRunID < 0 || persisted.StoreRawRightsDecisionID <= 0 || persisted.RetainRightsDecisionID <= 0 ||
 		persisted.CapturedAt.After(now.Add(maxClockSkew)) || !persisted.RetentionUntil.After(persisted.CapturedAt) || !persisted.RetentionUntil.After(now) {
 		return domain.ErrRawEvidenceConflict
 	}

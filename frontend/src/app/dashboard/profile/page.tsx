@@ -6,14 +6,12 @@ import {
   Activity,
   AlertCircle,
   Database,
-  FileText,
   Loader2,
   Radar,
   User,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { getMonitors } from "@/services/hotkey/hotkey-server/monitors";
-import { getReports } from "@/services/hotkey/hotkey-server/reports";
 import { getSourceConnections } from "@/services/hotkey/hotkey-server/sources";
 import { getOperationsOverview } from "@/services/hotkey/hotkey-server/operations";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -21,10 +19,9 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/dashboard/PageHeader";
-import { AgentTokenManager } from "@/components/agent/AgentTokenManager";
 import { UserRole } from "@/lib/domainEnums";
 
-const emptyStats = { monitors: 0, reports: 0, sources: 0, running: 0 };
+const emptyStats = { monitors: 0, sources: 0, running: 0 };
 
 export default function ProfilePage() {
   const user = useAuthStore((state) => state.user);
@@ -48,12 +45,6 @@ export default function ProfilePage() {
       href: "/dashboard/sources",
     },
     {
-      label: "报告记录",
-      value: stats.reports,
-      icon: FileText,
-      href: "/dashboard/reports",
-    },
-    {
       label: "运行任务",
       value: stats.running,
       icon: Activity,
@@ -65,9 +56,8 @@ export default function ProfilePage() {
     setLoading(true);
     setError(undefined);
     try {
-      const [monitors, reports, sources, overview] = await Promise.all([
+      const [monitors, sources, overview] = await Promise.all([
         getMonitors({ limit: 100 }),
-        getReports({ limit: 100 }),
         getSourceConnections({ limit: 100 }),
         canViewOperations
           ? getOperationsOverview()
@@ -75,7 +65,6 @@ export default function ProfilePage() {
       ]);
       setStats({
         monitors: monitors.data?.items?.length ?? 0,
-        reports: reports.data?.items?.length ?? 0,
         sources: sources.data?.items?.length ?? 0,
         running: overview?.data?.running_jobs ?? 0,
       });
@@ -172,18 +161,12 @@ export default function ProfilePage() {
                   </Link>
                 </Button>
                 <Button asChild variant="outline">
-                  <Link href="/dashboard/reports">查看报告</Link>
-                </Button>
-                <Button asChild variant="outline">
                   <Link href="/dashboard/sources">检查来源</Link>
                 </Button>
               </div>
             </>
           )}
         </section>
-      </div>
-      <div className="mt-5">
-        <AgentTokenManager />
       </div>
     </div>
   );

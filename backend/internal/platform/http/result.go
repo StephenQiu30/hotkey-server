@@ -19,6 +19,14 @@ type Page[T any] struct {
 	PageSize int   `json:"page_size"`
 }
 
+// WebhookChallenge writes the bare data envelope required by third-party
+// endpoint-verification handshakes. Business APIs must continue to use Result.
+func WebhookChallenge[T any](c *gin.Context, data T) {
+	c.JSON(stdhttp.StatusOK, struct {
+		Data T `json:"data"`
+	}{Data: data})
+}
+
 func OK[T any](c *gin.Context, data T) {
 	c.JSON(stdhttp.StatusOK, Result[T]{Code: 0, Message: "success", Data: data})
 }

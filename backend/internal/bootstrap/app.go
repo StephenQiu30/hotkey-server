@@ -7,19 +7,7 @@ import (
 	"os"
 	"strings"
 
-	agentapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/agentaccess/application"
-	agentdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/agentaccess/domain"
-	agentpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/agentaccess/infrastructure/postgres"
-	agenttransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/agentaccess/transport/http"
-	alertapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/alert/application"
-	alertjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/alert/infrastructure/jobs"
-	alertpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/alert/infrastructure/postgres"
-	alerttransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/alert/transport/http"
-	deliveryapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/delivery/application"
-	deliveryjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/delivery/infrastructure/jobs"
-	deliverypostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/delivery/infrastructure/postgres"
 	deliverysmtp "github.com/StephenQiu30/hotkey-server/backend/internal/modules/delivery/infrastructure/smtp"
-	deliverytransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/delivery/transport/http"
 	eventapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/application"
 	eventjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/infrastructure/jobs"
 	eventpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/infrastructure/postgres"
@@ -39,16 +27,11 @@ import (
 	ingestiontransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/transport/http"
 	intelligenceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/application"
 	intelligencedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
-	intelligencejobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/jobs"
 	intelligencepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/postgres"
 	intelligenceprovider "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/provider"
 	intelligencetransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/transport/http"
 	knowledgeapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/application"
-	knowledgejobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/infrastructure/jobs"
-	knowledgeminio "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/infrastructure/minio"
-	knowledgepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/infrastructure/postgres"
 	knowledgevault "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/infrastructure/vault"
-	knowledgetransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/transport/http"
 	monitorapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/application"
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/infrastructure/postgres"
 	monitortransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/transport/http"
@@ -61,10 +44,6 @@ import (
 	operationsapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/application"
 	operationspostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/infrastructure/postgres"
 	operationstransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/transport/http"
-	reportapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/application"
-	reportjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/infrastructure/jobs"
-	reportpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/infrastructure/postgres"
-	reporttransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/transport/http"
 	sourceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/application"
 	sourceinfrastructure "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure"
 	sourcecredentialstore "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/credentialstore"
@@ -144,22 +123,8 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				sourcepostgres.NewCollectionRepository,
 				newIngestionCapturedItemReader,
 				newIngestionService,
-				eventpostgres.NewRepository,
-				newEventReadService,
-				newEventLifecycleService,
-				newEventGovernanceService,
-				newEventHeatService,
 				newEventContentMetricRefreshService,
-				newEventClaimService,
-				newEventIntelligenceRunner,
-				newEventIntelligenceReadService,
-				newEventSummaryService,
-				newEventClaimExtractionService,
-				eventpostgres.NewUpdateRepository,
-				newEventUpdateService,
-				eventpostgres.NewAlertCandidateReader,
 				monitorpostgres.NewPublishedCollectionTargetReader,
-				monitorpostgres.NewAlertPolicyReader,
 				monitorpostgres.NewIntentRepository,
 				newIntentService,
 				newCompiledIntentEmbeddingProjectionService,
@@ -180,8 +145,6 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				eventpostgres.NewMicroEventRepository,
 				exposeAcceptedMatchFamilyReader,
 				newMicroEventService,
-				eventpostgres.NewStorylinePostgresRepository,
-				newStorylineService,
 				eventpostgres.NewEventHeatRepository,
 				newEventHeatV2Service,
 				eventpostgres.NewMicroEventGovernancePostgresRepository,
@@ -190,10 +153,12 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newClaimEvidenceService,
 				eventpostgres.NewEvidenceSummaryPostgresRepository,
 				newEvidenceSummaryService,
-				newAutomaticClaimEvidenceService,
 				eventpostgres.NewMicroEventQueryPostgresRepository,
 				newMicroEventQueryService,
 				eventapplication.NewAcceptedMatchEventProjectionService,
+				exposeAcceptedDocumentMatchEventProjector,
+				eventjobs.NewAutomaticClaimEvidenceScheduler,
+				exposeAutomaticClaimEvidenceScheduler,
 				newAcceptedDocumentMatchEventProjectionAdapter,
 				newAcceptedDocumentMatchProjectionHandler,
 				newPublishedMatchEvaluationService,
@@ -204,19 +169,13 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newMonitorIntentPreviewEvaluator,
 				newMonitorIntentAnalysisProcessor,
 				exposeMonitorIntentAnalysisAvailability,
-				newAlertRepository,
-				newAlertService,
-				knowledgepostgres.NewRepository,
 				newSourceConnectorRegistry,
 				newKnowledgeVaultWriter,
 				newKnowledgeProjectionService,
 				newTextQuoteSelectorService,
+				newAutomaticClaimEvidenceService,
+				eventjobs.NewAutomaticClaimEvidenceHandler,
 				newContentLineageFeedbackService,
-				newKnowledgeProposalService,
-				newKnowledgeReconciler,
-				deliverypostgres.NewRepository,
-				reportpostgres.NewRepository,
-				reportpostgres.NewCandidateReader,
 				notificationpostgres.NewRepository,
 				newNotificationService,
 				newPushSubscriptionCipher,
@@ -225,7 +184,6 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				exposeCollectionTargetReader,
 				sourcejobs.NewCollectionRetryActivator,
 				sourcejobs.NewManualCollectionActivator,
-				newReportService,
 			),
 			fx.Invoke(database.RegisterLifecycle),
 		)
@@ -256,12 +214,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 		if usesDatabase {
 			apiOptions = append(apiOptions,
 				fx.Provide(
-					agentpostgres.NewRepository,
 					operationspostgres.NewRuntimeMetricsCollector,
-					newAgentAccessService,
-					newAgentTokenAuthenticator,
-					newEventRadarRepository,
-					newEventRadarService,
 					newIdentityVerificationStore,
 					newIdentityService,
 					newIdentityAuthenticator,
@@ -275,15 +228,13 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newIngestionContentQueryService,
 					newIngestionCitationService,
 					newIngestionRelevanceAPIService,
-					newDeliverySubscriptionService,
-					newKnowledgeHandler,
 					newOperationsOverviewService,
 					newGovernanceService,
 					newJobService,
 					newNotificationHandler,
 					notificationtransport.NewPushSubscriptionHandler,
 				),
-				fx.Invoke(registerRuntimeMetricsCollector, registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerAgentTokenRoutes, registerSourceRoutes, registerRightsManagementRoutes, registerBilibiliWebhookRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerMonitorIntentRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerEventRoutes, registerMicroEventRoutes, registerRadarRoutes, registerEventUpdateRoutes, registerAlertRoutes, registerDeliveryRoutes, registerDeliverySubscriptionRoutes, registerReportRoutes, registerKnowledgeRoutes, registerJobRoutes, registerOverviewRoutes, registerGovernanceRoutes, registerNotificationRoutes, registerPushSubscriptionRoutes, registerAgentRoutes),
+				fx.Invoke(registerRuntimeMetricsCollector, registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerRightsManagementRoutes, registerBilibiliWebhookRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerMonitorIntentRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerMicroEventRoutes, registerJobRoutes, registerOverviewRoutes, registerGovernanceRoutes, registerNotificationRoutes, registerPushSubscriptionRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -321,29 +272,18 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newDocumentEmbeddingProducerAdapter,
 					newSourceDocumentGenerationService,
 					ingestionjobs.NewSourceDocumentGenerationHandler,
+					newXMetricRefreshService,
+					sourcejobs.NewXMetricRefreshHandler,
+					newXMetricRefreshScheduler,
+					exposeXMetricRefreshSchedulerRunner,
 				))
+				options = append(options, fx.Invoke(registerXMetricRefreshSchedulerLifecycle))
 			}
 			options = append(options,
 				fx.Provide(
 					newCollectionService,
-					newCandidateRecallService,
-					newClusteringExecutionService,
-					exposeContentRepository,
-					exposeRelevanceRepository,
 					sourcejobs.NewCollectHandler,
 					ingestionjobs.NewNormalizeHandler,
-					ingestionjobs.NewEvaluateHandler,
-					eventjobs.NewClusterHandler,
-					newEventHeatHandler,
-					newAlertEvaluateHandler,
-					newSummaryHandler,
-					newKnowledgeProjectHandler,
-					newKnowledgeReconcileHandler,
-					newReportBuildHandler,
-					newDeliveryEmailService,
-					newDeliverEmailHandler,
-					newAlertEmailService,
-					newDeliverAlertEmailHandler,
 					newNotificationEmailDeliveryService,
 					notificationjobs.NewEmailDispatcher,
 					newWebPushSender,
@@ -353,9 +293,8 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					ingestionjobs.NewPublishedDocumentMatchEvaluationHandler,
 					newP0Handlers,
 					newQueueWorker, exposeWorkerRunner, exposeCollectionDueReader, newCollectionScheduler, exposeCollectionSchedulerRunner,
-					newReportScheduler, exposeReportSchedulerRunner,
 				),
-				fx.Invoke(registerPersistentWorkerLifecycle, registerCollectionSchedulerLifecycle, registerReportSchedulerLifecycle, registerNotificationEmailDispatcherLifecycle, registerWebPushDispatcherLifecycle),
+				fx.Invoke(registerPersistentWorkerLifecycle, registerCollectionSchedulerLifecycle, registerNotificationEmailDispatcherLifecycle, registerWebPushDispatcherLifecycle),
 			)
 			options = append(options, fx.Invoke(intelligenceapplication.RegisterRunLeaseReclaimerLifecycle))
 		} else {
@@ -416,21 +355,6 @@ func registerIdentityRoutes(router *gin.Engine, service *identityapplication.Ser
 	identitytransport.RegisterRoutes(router, service, authenticator, cfg)
 }
 
-func registerAgentTokenRoutes(router *gin.Engine, service *agentapplication.Service, authenticator httptransport.Authenticator) {
-	agenttransport.RegisterRoutes(router, service, authenticator)
-}
-
-func registerAgentRoutes(router *gin.Engine, authenticator agentTokenAuthenticator, monitors *monitorapplication.Service, contents *ingestionapplication.ContentQueryService, reports *reportapplication.Service, collections *sourceapplication.CollectionControlService, alerts *alertapplication.Service, read *eventapplication.ReadService, heat *eventapplication.HeatService, intelligence *eventapplication.EventIntelligenceReadService, radar *eventapplication.RadarService, updates *eventapplication.UpdateService, metrics *observability.Metrics) {
-	monitortransport.RegisterAgentRoutes(router, monitors, authenticator)
-	ingestiontransport.RegisterAgentRoutes(router, contents, authenticator, metrics)
-	reporttransport.RegisterAgentRoutes(router, reports, authenticator)
-	sourcetransport.RegisterAgentCollectionRoutes(router, collections, authenticator)
-	alerttransport.RegisterAgentRoutes(router, alerts, authenticator)
-	eventtransport.RegisterAgentRoutesWithIntelligence(router, read, heat, intelligence, authenticator)
-	eventtransport.RegisterAgentRadarRoutes(router, radar, authenticator)
-	eventtransport.RegisterAgentEventUpdateRoutes(router, updates, authenticator)
-}
-
 func registerSourceRoutes(router *gin.Engine, service *sourceapplication.Service, authenticator httptransport.Authenticator) {
 	sourcetransport.RegisterRoutes(router, service, authenticator)
 }
@@ -483,40 +407,8 @@ func registerIntelligenceRoutes(router *gin.Engine, service *intelligenceapplica
 	intelligencetransport.RegisterRoutes(router, service, authenticator)
 }
 
-func registerEventRoutes(router *gin.Engine, read *eventapplication.ReadService, lifecycle *eventapplication.LifecycleService, governance *eventapplication.GovernanceService, heat *eventapplication.HeatService, claims *eventapplication.ClaimService, intelligence *eventapplication.EventIntelligenceReadService, summaries *eventapplication.EventSummaryService, extractions *eventapplication.EventClaimExtractionService, authenticator httptransport.Authenticator) {
-	eventtransport.RegisterRoutesWithIntelligence(router, read, lifecycle, governance, heat, claims, intelligence, summaries, extractions, authenticator)
-}
-
 func registerMicroEventRoutes(router *gin.Engine, queries *eventapplication.MicroEventQueryService, governance *eventapplication.MicroEventGovernanceService, evidence *eventapplication.ClaimEvidenceService, authenticator httptransport.Authenticator) {
 	eventtransport.RegisterMicroEventRoutes(router, queries, governance, evidence, authenticator)
-}
-
-func registerRadarRoutes(router *gin.Engine, radar *eventapplication.RadarService, authenticator httptransport.Authenticator) {
-	eventtransport.RegisterRadarRoutes(router, radar, authenticator)
-}
-
-func registerEventUpdateRoutes(router *gin.Engine, updates *eventapplication.UpdateService, authenticator httptransport.Authenticator) {
-	eventtransport.RegisterEventUpdateRoutes(router, updates, authenticator)
-}
-
-func registerAlertRoutes(router *gin.Engine, service *alertapplication.Service, authenticator httptransport.Authenticator) {
-	alerttransport.RegisterRoutes(router, service, authenticator)
-}
-
-func registerDeliveryRoutes(router *gin.Engine, repository *deliverypostgres.Repository) {
-	deliverytransport.RegisterRoutes(router, repository)
-}
-
-func registerDeliverySubscriptionRoutes(router *gin.Engine, service *deliveryapplication.SubscriptionService, authenticator httptransport.Authenticator) {
-	deliverytransport.RegisterSubscriptionRoutes(router, service, authenticator)
-}
-
-func registerReportRoutes(router *gin.Engine, service *reportapplication.Service, authenticator httptransport.Authenticator) {
-	reporttransport.RegisterRoutes(router, service, authenticator)
-}
-
-func registerKnowledgeRoutes(router *gin.Engine, handler *knowledgetransport.Handler, authenticator httptransport.Authenticator) {
-	knowledgetransport.RegisterRoutes(router, handler, authenticator)
 }
 
 func registerJobRoutes(router *gin.Engine, service *operationsapplication.JobService, authenticator httptransport.Authenticator) {
@@ -534,7 +426,7 @@ func registerGovernanceRoutes(router *gin.Engine, service *operationsapplication
 func newNotificationHandler(service *notificationapplication.Service, cfg config.Config) (*notificationtransport.Handler, error) {
 	return notificationtransport.NewHandler(service, notificationtransport.StreamConfig{
 		PollInterval: cfg.Notification.PollInterval, HeartbeatInterval: cfg.Notification.HeartbeatInterval,
-		MaxConnections: cfg.Notification.MaxConnections,
+		MaxConnections: cfg.Notification.MaxConnections, AllowedOrigins: cfg.Authentication.AllowedOrigins,
 	})
 }
 
@@ -587,77 +479,8 @@ func registerPushSubscriptionRoutes(router *gin.Engine, handler *notificationtra
 	notificationtransport.RegisterPushSubscriptionRoutes(router, handler, authenticator)
 }
 
-// Fx does not infer interface bindings from a concrete repository. Keep the
-// adapters at the composition root so event application services remain
-// decoupled from the PostgreSQL implementation.
-func newEventReadService(repository *eventpostgres.Repository) *eventapplication.ReadService {
-	return eventapplication.NewReadService(repository)
-}
-
-func newEventLifecycleService(repository *eventpostgres.Repository, heat *eventapplication.HeatService) *eventapplication.LifecycleService {
-	return eventapplication.NewLifecycleService(repository, heat)
-}
-
-func newEventGovernanceService(repository *eventpostgres.Repository, heat *eventapplication.HeatService) *eventapplication.GovernanceService {
-	return eventapplication.NewGovernanceService(repository, heat)
-}
-
-func newEventHeatService(repository *eventpostgres.Repository, capabilities *sourceapplication.MetricCapabilityService) (*eventapplication.HeatService, error) {
-	return eventapplication.NewHeatService(eventapplication.HeatServiceDependencies{Snapshots: repository, Capabilities: capabilities})
-}
-
-func newEventContentMetricRefreshService(repository *eventpostgres.Repository, heat *eventapplication.HeatService) (*eventapplication.ContentMetricRefreshService, error) {
+func newEventContentMetricRefreshService(repository *eventpostgres.EventHeatRepository, heat *eventapplication.EventHeatService) (*eventapplication.ContentMetricRefreshService, error) {
 	return eventapplication.NewContentMetricRefreshService(repository, heat)
-}
-
-func newEventClaimService(repository *eventpostgres.Repository) *eventapplication.ClaimService {
-	return eventapplication.NewClaimService(repository)
-}
-
-func newEventIntelligenceRunner(runs *intelligenceapplication.RunService) *intelligenceapplication.EventIntelligenceService {
-	return intelligenceapplication.NewEventIntelligenceService(runs)
-}
-
-func newEventIntelligenceReadService(repository *eventpostgres.Repository) *eventapplication.EventIntelligenceReadService {
-	return eventapplication.NewEventIntelligenceReadService(repository)
-}
-
-func newEventSummaryService(repository *eventpostgres.Repository, runner *intelligenceapplication.EventIntelligenceService) *eventapplication.EventSummaryService {
-	return eventapplication.NewEventSummaryService(repository, runner, repository)
-}
-
-func newEventClaimExtractionService(repository *eventpostgres.Repository, runner *intelligenceapplication.EventIntelligenceService) *eventapplication.EventClaimExtractionService {
-	return eventapplication.NewEventClaimExtractionService(repository, runner, repository)
-}
-
-func newEventUpdateService(repository *eventpostgres.UpdateRepository) *eventapplication.UpdateService {
-	return eventapplication.NewUpdateService(repository)
-}
-
-func newEventRadarRepository(runtime *database.Runtime, cfg config.Config) (*eventpostgres.RadarRepository, error) {
-	return eventpostgres.NewRadarRepositoryWithSigningSecret(runtime, cfg.Authentication.JWTSecret)
-}
-
-func newEventRadarService(repository *eventpostgres.RadarRepository) *eventapplication.RadarService {
-	return eventapplication.NewRadarService(repository)
-}
-
-func newAlertRepository(runtime *database.Runtime, cfg config.Config) (*alertpostgres.Repository, error) {
-	if Role(cfg.Role) == RoleWorker {
-		// A worker never serves Alert list cursors. Keep it independent from API
-		// authentication configuration while still deriving a purpose-scoped key
-		// from its parsed private database connection.
-		return alertpostgres.NewRepository(runtime), nil
-	}
-	return alertpostgres.NewRepositoryWithCursorSecret(runtime, cfg.Authentication.JWTSecret)
-}
-
-func newAlertService(candidates *eventpostgres.AlertCandidateReader, policies *monitorpostgres.AlertPolicyReader, repository *alertpostgres.Repository, runtime *database.Runtime, deliveries *deliverypostgres.Repository, jobs *queue.Store, qualityProfiles *operationspostgres.DecisionQualityRepository) (*alertapplication.Service, error) {
-	return alertapplication.NewService(alertapplication.Dependencies{
-		Candidates: candidates, Policies: policies, Occurrences: repository, Clock: sharedclock.System{},
-		Transactions: alertTransactionRunner{runtime: runtime}, Emails: alertEmailPlanner{repository: deliveries, jobs: jobs},
-		QualityProfiles: qualityProfiles,
-	})
 }
 
 func newSourceService(runtime *database.Runtime, sources *sourcepostgres.Repository, usage *monitorpostgres.SourceUsageReader, references *monitorpostgres.PublishedReferenceReader, credentials *sourcecredentialstore.Store, audit *operationspostgres.AuditWriter) (*sourceapplication.Service, error) {
@@ -693,39 +516,8 @@ func newCollectionService(params collectionServiceParams) (*sourceapplication.Co
 	})
 }
 
-func newCandidateRecallService(candidates *ingestionpostgres.RelevanceCandidateReader) (*ingestionapplication.CandidateRecallService, error) {
-	return ingestionapplication.NewCandidateRecallService(candidates, nil)
-}
-
-func newClusteringExecutionService(repository *eventpostgres.Repository) *eventapplication.ClusteringExecutionService {
-	return eventapplication.NewClusteringExecutionService(eventapplication.NewRecallService(repository), eventapplication.NewClusteringService(), repository)
-}
-
 func exposeCollectionTargetReader(reader *monitorpostgres.PublishedCollectionTargetReader) sourcejobs.CollectionTargetReader {
 	return reader
-}
-
-func exposeContentRepository(repository *ingestionpostgres.ContentRepository) ingestionjobs.ContentRepository {
-	return repository
-}
-
-func exposeRelevanceRepository(repository *ingestionpostgres.RelevanceRepository) ingestionjobs.RelevanceRepository {
-	return repository
-}
-
-func newSummaryHandler(service *eventapplication.EventSummaryService) (*intelligencejobs.SummaryHandler, error) {
-	return intelligencejobs.NewSummaryHandler(func(ctx context.Context, eventID int64) error {
-		_, err := service.Generate(ctx, eventID)
-		return err
-	})
-}
-
-func newEventHeatHandler(service *eventapplication.HeatService, updates *eventapplication.UpdateService, jobs *queue.Store) (*eventjobs.HeatHandler, error) {
-	return eventjobs.NewHeatHandlerWithUpdates(service, updates, jobs)
-}
-
-func newAlertEvaluateHandler(service *alertapplication.Service) *alertjobs.EvaluateHandler {
-	return alertjobs.NewEvaluateHandler(service)
 }
 
 type p0HandlerParams struct {
@@ -733,37 +525,19 @@ type p0HandlerParams struct {
 
 	Collect                          *sourcejobs.CollectHandler
 	Normalize                        *ingestionjobs.NormalizeHandler
-	Evaluate                         *ingestionjobs.EvaluateHandler
-	Cluster                          *eventjobs.ClusterHandler
-	Heat                             *eventjobs.HeatHandler
-	Alerts                           *alertjobs.EvaluateHandler
-	Summary                          *intelligencejobs.SummaryHandler
-	ProjectKnowledge                 *projectKnowledgeHandler
-	ReconcileKnowledge               *reconcileKnowledgeHandler
-	BuildReport                      *reportjobs.BuildHandler
-	DeliverEmail                     *deliveryjobs.DeliverEmailHandler
-	DeliverAlertEmail                *deliveryjobs.DeliverAlertEmailHandler
 	AnalyzeMonitorIntent             *monitorIntentAnalysisHandler
 	GenerateSourceDocument           *ingestionjobs.SourceDocumentGenerationHandler         `optional:"true"`
 	EvaluatePublishedDocumentMatches *ingestionjobs.PublishedDocumentMatchEvaluationHandler `optional:"true"`
 	BackfillPublishedMonitorMatches  *ingestionjobs.PublishedMonitorMatchBackfillHandler    `optional:"true"`
 	ProjectAcceptedDocumentMatch     *ingestionjobs.AcceptedDocumentMatchProjectionHandler  `optional:"true"`
+	ExtractAutomaticClaimEvidence    *eventjobs.AutomaticClaimEvidenceHandler               `optional:"true"`
+	RefreshXMetrics                  *sourcejobs.XMetricRefreshHandler                      `optional:"true"`
 }
 
 func newP0Handlers(params p0HandlerParams) map[string]queue.Handler {
 	handlers := map[string]queue.Handler{
 		queue.KindCollectSource:        params.Collect.Handle,
 		queue.KindNormalizeContent:     params.Normalize.Handle,
-		queue.KindEvaluateRelevance:    params.Evaluate.Handle,
-		queue.KindClusterContent:       params.Cluster.Handle,
-		queue.KindRecomputeEventHeat:   params.Heat.Handle,
-		queue.KindEvaluateEventAlerts:  params.Alerts.Handle,
-		queue.KindGenerateEventSummary: params.Summary.Handle,
-		queue.KindProjectKnowledge:     params.ProjectKnowledge.Handle,
-		queue.KindReconcileKnowledge:   params.ReconcileKnowledge.Handle,
-		queue.KindBuildReport:          params.BuildReport.Handle,
-		queue.KindDeliverEmail:         params.DeliverEmail.Handle,
-		queue.KindDeliverAlertEmail:    params.DeliverAlertEmail.Handle,
 		queue.KindAnalyzeMonitorIntent: params.AnalyzeMonitorIntent.Handle,
 	}
 	if params.GenerateSourceDocument != nil {
@@ -777,6 +551,12 @@ func newP0Handlers(params p0HandlerParams) map[string]queue.Handler {
 	}
 	if params.ProjectAcceptedDocumentMatch != nil {
 		handlers[queue.KindProjectAcceptedDocumentMatch] = params.ProjectAcceptedDocumentMatch.Handle
+	}
+	if params.ExtractAutomaticClaimEvidence != nil {
+		handlers[queue.KindExtractAutomaticClaimEvidence] = params.ExtractAutomaticClaimEvidence.Handle
+	}
+	if params.RefreshXMetrics != nil {
+		handlers[queue.KindRefreshXMetrics] = params.RefreshXMetrics.Handle
 	}
 	return handlers
 }
@@ -801,6 +581,18 @@ func newIngestionService(runtime *database.Runtime, captures *sourceapplication.
 	})
 }
 
+func newXMetricRefreshService(
+	sources *sourcepostgres.Repository,
+	connectors *sourceinfrastructure.ConnectorRegistry,
+	candidates *ingestionpostgres.ContentRepository,
+	metrics *ingestionapplication.Service,
+	evidence *sourceapplication.RawEvidenceCollectionService,
+) (*sourceapplication.XMetricRefreshService, error) {
+	return sourceapplication.NewXMetricRefreshService(sourceapplication.XMetricRefreshDependencies{
+		Sources: sources, Connectors: connectors, Candidates: candidates, Metrics: metrics, Evidence: evidence,
+	})
+}
+
 type unavailableEvidenceStore struct{}
 
 func (unavailableEvidenceStore) PutText(context.Context, ingestiondomain.EvidenceObject) (ingestiondomain.EvidenceReceipt, error) {
@@ -820,7 +612,7 @@ func newIngestionRelevanceReviewService(snapshots *ingestionpostgres.RelevanceRe
 	return ingestionapplication.NewRelevanceReviewService(ingestionapplication.RelevanceReviewServiceDependencies{Snapshots: snapshots, Reviews: reviews})
 }
 
-func newIngestionContentQueryService(contents *ingestionpostgres.ContentRepository, sources *sourceapplication.Service, evidence ingestiondomain.EvidenceStore, lifecycle *ingestionapplication.Service, events *eventpostgres.Repository) (*ingestionapplication.ContentQueryService, error) {
+func newIngestionContentQueryService(contents *ingestionpostgres.ContentRepository, sources *sourceapplication.Service, evidence ingestiondomain.EvidenceStore, lifecycle *ingestionapplication.Service, events *eventpostgres.MicroEventQueryPostgresRepository) (*ingestionapplication.ContentQueryService, error) {
 	return ingestionapplication.NewContentQueryService(ingestionapplication.ContentQueryDependencies{Contents: contents, Sources: sources, Evidence: evidence, Lifecycle: lifecycle, Events: events})
 }
 
@@ -851,103 +643,12 @@ func newIntentControlService(intents *monitorapplication.IntentService, reposito
 	})
 }
 
-func newReportService(repository *reportpostgres.Repository, candidates *reportpostgres.CandidateReader, deliveries *deliverypostgres.Repository, knowledge *knowledgepostgres.Repository, jobs *queue.Store) (*reportapplication.Service, error) {
-	service, err := reportapplication.NewService(repository, candidates)
-	if err != nil {
-		return nil, err
-	}
-	service.SetSubscriptionReader(reportAutomationReader{repository: deliveries})
-	service.SetDeliveryPlanner(&reportDeliveryPlanner{repository: deliveries, jobs: jobs})
-	service.SetArchivePlanner(&reportArchivePlanner{repository: knowledge})
-	return service, nil
-}
-
-func newKnowledgeProposalService(repository *knowledgepostgres.Repository, cfg config.Config) *knowledgeapplication.ProposalService {
-	if snapshots, err := knowledgeminio.NewStore(cfg.MinIO); err == nil {
-		return knowledgeapplication.NewProposalService(repository, repository, snapshots)
-	}
-	// MinIO remains optional for local P0 operation; when configured, every
-	// successful proposal application receives an immutable object snapshot.
-	return knowledgeapplication.NewProposalService(repository, repository)
-}
-
-func newKnowledgeReconciler(repository *knowledgepostgres.Repository, writer *knowledgevault.Writer) *knowledgeapplication.Reconciler {
-	return knowledgeapplication.NewReconciler(repository, writer)
-}
-
 func newKnowledgeVaultWriter(cfg config.Config) *knowledgevault.Writer {
 	return knowledgevault.NewWriter(cfg.VaultPath)
 }
 
 func newKnowledgeProjectionService(writer *knowledgevault.Writer) (*knowledgeapplication.ProjectionService, error) {
 	return knowledgeapplication.NewProjectionService(writer)
-}
-
-func newKnowledgeHandler(proposals *knowledgeapplication.ProposalService, repository *knowledgepostgres.Repository, reconcile *knowledgeapplication.Reconciler, writer *knowledgevault.Writer) *knowledgetransport.Handler {
-	return knowledgetransport.NewHandler(proposals, repository, reconcile, writer)
-}
-
-type projectKnowledgeHandler struct{ handler *knowledgejobs.Handler }
-
-func (handler *projectKnowledgeHandler) Handle(ctx context.Context, job queue.Job) error {
-	return handler.handler.Handle(ctx, job)
-}
-
-func newKnowledgeProjectHandler(proposals *knowledgeapplication.ProposalService, writer *knowledgevault.Writer) (*projectKnowledgeHandler, error) {
-	handler, err := knowledgejobs.NewHandler(queue.KindProjectKnowledge, func(ctx context.Context, id int64) error {
-		_, err := proposals.ApplyByID(ctx, id, writer)
-		return err
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &projectKnowledgeHandler{handler: handler}, nil
-}
-
-type reconcileKnowledgeHandler struct{ handler *knowledgejobs.Handler }
-
-func (handler *reconcileKnowledgeHandler) Handle(ctx context.Context, job queue.Job) error {
-	return handler.handler.Handle(ctx, job)
-}
-
-func newKnowledgeReconcileHandler(reconcile *knowledgeapplication.Reconciler) (*reconcileKnowledgeHandler, error) {
-	handler, err := knowledgejobs.NewHandler(queue.KindReconcileKnowledge, func(ctx context.Context, _ int64) error {
-		_, err := reconcile.Reconcile(ctx)
-		return err
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &reconcileKnowledgeHandler{handler: handler}, nil
-}
-
-func newReportBuildHandler(service *reportapplication.Service) (*reportjobs.BuildHandler, error) {
-	return reportjobs.NewBuildHandler(func(ctx context.Context, id int64) error {
-		_, err := service.BuildAndPublishForSubscription(ctx, id)
-		return err
-	})
-}
-
-type deliveryMailSender struct{ mailer *deliverysmtp.Mailer }
-
-func (sender deliveryMailSender) Send(ctx context.Context, message deliveryapplication.MailMessage) error {
-	return sender.mailer.Send(ctx, deliverysmtp.Message{To: message.To, Subject: message.Subject, HTML: message.HTML, Text: message.Text})
-}
-
-func newDeliveryEmailService(repository *deliverypostgres.Repository, cfg config.Config) (*deliveryapplication.EmailService, error) {
-	return deliveryapplication.NewEmailService(repository, deliveryMailSender{mailer: deliverysmtp.NewMailer(cfg.Authentication.SMTP)}, nil)
-}
-
-func newDeliverEmailHandler(service *deliveryapplication.EmailService, repository *deliverypostgres.Repository) (*deliveryjobs.DeliverEmailHandler, error) {
-	return deliveryjobs.NewDeliverEmailHandler(service, repository)
-}
-
-func newAlertEmailService(repository *deliverypostgres.Repository, cfg config.Config) (*deliveryapplication.AlertEmailService, error) {
-	return deliveryapplication.NewAlertEmailService(repository, deliveryMailSender{mailer: deliverysmtp.NewMailer(cfg.Authentication.SMTP)}, nil)
-}
-
-func newDeliverAlertEmailHandler(service *deliveryapplication.AlertEmailService) (*deliveryjobs.DeliverAlertEmailHandler, error) {
-	return deliveryjobs.NewDeliverAlertEmailHandler(service)
 }
 
 func newJobService(repository *operationspostgres.JobRepository, audit *operationspostgres.AuditWriter) (*operationsapplication.JobService, error) {
@@ -960,10 +661,6 @@ func newOperationsOverviewService(repository *operationspostgres.JobRepository) 
 
 func newGovernanceService(runtime *database.Runtime, store *operationspostgres.GovernanceRepository, retention *operationspostgres.RetentionRepository, audit *operationspostgres.AuditWriter) (*operationsapplication.GovernanceService, error) {
 	return operationsapplication.NewGovernanceService(operationsapplication.GovernanceDependencies{Runtime: runtime, Store: store, Retention: retention, Audit: audit})
-}
-
-func newDeliverySubscriptionService(runtime *database.Runtime, repository *deliverypostgres.Repository, audit *operationspostgres.AuditWriter) (*deliveryapplication.SubscriptionService, error) {
-	return deliveryapplication.NewSubscriptionService(deliveryapplication.SubscriptionDependencies{Runtime: runtime, Store: repository, Audit: audit})
 }
 
 func newIdentityService(runtime *database.Runtime, cfg config.Config, verification *identityredis.VerificationStore) (*identityapplication.Service, error) {
@@ -995,32 +692,6 @@ func newIdentityService(runtime *database.Runtime, cfg config.Config, verificati
 		}),
 		Clock: sharedclock.System{},
 	})
-}
-
-func newAgentAccessService(runtime *database.Runtime, tokens *agentpostgres.Repository) (*agentapplication.Service, error) {
-	return agentapplication.NewService(agentapplication.Dependencies{
-		Runtime: runtime,
-		Tokens:  tokens,
-		Audit:   identitypostgres.NewAuditRepository(runtime),
-		Clock:   sharedclock.System{},
-	})
-}
-
-type agentTokenAuthenticator struct{ service *agentapplication.Service }
-
-func newAgentTokenAuthenticator(service *agentapplication.Service) agentTokenAuthenticator {
-	return agentTokenAuthenticator{service: service}
-}
-
-func (authenticator agentTokenAuthenticator) Authenticate(ctx context.Context, token string) (httptransport.Subject, error) {
-	principal, err := authenticator.service.Authenticate(ctx, token)
-	if err != nil {
-		return httptransport.Subject{}, err
-	}
-	return httptransport.Subject{
-		UserID: principal.UserID, AgentTokenID: principal.TokenID, Role: httptransport.Role(principal.Role),
-		AgentScopes: strings.Join(agentdomain.ScopeStrings(principal.Scopes), ","),
-	}, nil
 }
 
 func newIdentityVerificationStore(cfg config.Config) (*identityredis.VerificationStore, error) {

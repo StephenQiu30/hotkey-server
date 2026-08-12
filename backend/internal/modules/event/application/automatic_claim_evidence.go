@@ -30,6 +30,23 @@ type AutomaticClaimEvidenceCommand struct {
 	MicroEventID, ExpectedEventVersion, DocumentVersionID int64
 }
 
+// ScheduleAutomaticClaimEvidenceCommand contains only durable identities. The
+// consumer resolves the current event version when it starts so a later
+// membership update cannot make an otherwise valid evidence job stale.
+type ScheduleAutomaticClaimEvidenceCommand struct {
+	MicroEventID, DocumentVersionID int64
+}
+
+type ScheduleAutomaticClaimEvidenceResult struct {
+	MicroEventID, DocumentVersionID int64
+	JobID                           int64
+	Created                         bool
+}
+
+type AutomaticClaimEvidenceScheduler interface {
+	ScheduleAutomaticClaimEvidence(context.Context, ScheduleAutomaticClaimEvidenceCommand) (ScheduleAutomaticClaimEvidenceResult, error)
+}
+
 type AutomaticClaimEvidenceTargetQuery struct {
 	MicroEventID, ExpectedEventVersion, DocumentVersionID int64
 	DecisionAt                                            time.Time
@@ -138,7 +155,7 @@ func NewAutomaticClaimEvidenceService(dependencies AutomaticClaimEvidenceDepende
 func (service *AutomaticClaimEvidenceService) Extract(ctx context.Context, command AutomaticClaimEvidenceCommand) (AutomaticClaimEvidenceResult, error) {
 	if service == nil || service.targets == nil || service.projections == nil || service.models == nil || service.selectors == nil ||
 		service.evidence == nil || service.summaries == nil || service.clock == nil || command.MicroEventID <= 0 ||
-		command.ExpectedEventVersion <= 0 || command.DocumentVersionID <= 0 {
+		command.ExpectedEventVersion < 0 || command.DocumentVersionID <= 0 {
 		return AutomaticClaimEvidenceResult{}, ErrInvalidAutomaticClaimEvidenceContract
 	}
 	decisionAt := service.clock.Now().UTC()
@@ -148,6 +165,9 @@ func (service *AutomaticClaimEvidenceService) Extract(ctx context.Context, comma
 	})
 	if err != nil {
 		return AutomaticClaimEvidenceResult{}, fmt.Errorf("read automatic claim evidence target: %w", err)
+	}
+	if command.ExpectedEventVersion == 0 {
+		command.ExpectedEventVersion = target.EventVersion
 	}
 	if !automaticClaimEvidenceTargetMatches(target, command, decisionAt) {
 		return AutomaticClaimEvidenceResult{}, ErrInvalidAutomaticClaimEvidenceContract

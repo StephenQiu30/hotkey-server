@@ -14,7 +14,16 @@ import (
 	httptransport "github.com/StephenQiu30/hotkey-server/backend/internal/platform/http"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 	"github.com/gin-gonic/gin"
+)
+
+const (
+	notificationWebSocketProtocol     = "hotkey.notifications.v1"
+	notificationWebSocketAuthTimeout  = 5 * time.Second
+	notificationWebSocketWriteTimeout = 5 * time.Second
+	notificationWebSocketReadLimit    = 8192
 )
 
 type notificationService interface {
@@ -26,6 +35,7 @@ type StreamConfig struct {
 	PollInterval      time.Duration
 	HeartbeatInterval time.Duration
 	MaxConnections    int
+	AllowedOrigins    []string
 }
 
 type Handler struct {
@@ -33,6 +43,7 @@ type Handler struct {
 	pollInterval      time.Duration
 	heartbeatInterval time.Duration
 	slots             chan struct{}
+	originPatterns    []string
 	clock             func() time.Time
 }
 
@@ -45,7 +56,8 @@ func NewHandler(service notificationService, config StreamConfig) (*Handler, err
 	}
 	return &Handler{
 		service: service, pollInterval: config.PollInterval, heartbeatInterval: config.HeartbeatInterval,
-		slots: make(chan struct{}, config.MaxConnections), clock: func() time.Time { return time.Now().UTC() },
+		slots: make(chan struct{}, config.MaxConnections), originPatterns: append([]string(nil), config.AllowedOrigins...),
+		clock: func() time.Time { return time.Now().UTC() },
 	}, nil
 }
 
@@ -153,6 +165,166 @@ func (handler *Handler) Stream(c *gin.Context) {
 			}
 		}
 	}
+}
+
+type notificationWebSocketAuthenticateFrame struct {
+	Type      string `json:"type"`
+	Token     string `json:"token"`
+	AfterID   int64  `json:"after_id"`
+	MonitorID *int64 `json:"monitor_id,omitempty"`
+}
+
+type notificationWebSocketControlFrame struct {
+	Type    string    `json:"type"`
+	AfterID int64     `json:"after_id"`
+	SentAt  time.Time `json:"sent_at,omitempty"`
+}
+
+type notificationWebSocketItemFrame struct {
+	Type  string                      `json:"type"`
+	ID    int64                       `json:"id"`
+	Event string                      `json:"event"`
+	Data  UserNotificationResponseDTO `json:"data"`
+}
+
+// WebSocket godoc
+//
+// @Summary Upgrade to the authenticated notification WebSocket
+// @Description Request hotkey.notifications.v1, then send one authenticate frame containing token, after_id and optional monitor_id before business data is emitted.
+// @Tags notifications
+// @Produce json
+// @Success 101 {string} string
+// @Failure 400 {object} NotificationResult[EmptyResponseDTO]
+// @Failure 503 {object} NotificationResult[EmptyResponseDTO]
+// @Router /api/v1/notifications/ws [get]
+func (handler *Handler) WebSocket(authenticator httptransport.Authenticator) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		httptransport.SetModule(c, "notification")
+		if !webSocketProtocolRequested(c.Request.Header.Values("Sec-WebSocket-Protocol")) {
+			httptransport.WriteError(c, invalidNotificationRequest())
+			return
+		}
+		select {
+		case handler.slots <- struct{}{}:
+			defer func() { <-handler.slots }()
+		default:
+			httptransport.WriteError(c, sharederrors.New(sharederrors.CodeUnavailable, stdhttp.StatusServiceUnavailable, "notification stream capacity reached"))
+			return
+		}
+
+		connection, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{
+			Subprotocols:   []string{notificationWebSocketProtocol},
+			OriginPatterns: handler.originPatterns,
+		})
+		if err != nil {
+			return
+		}
+		defer connection.CloseNow()
+		connection.SetReadLimit(notificationWebSocketReadLimit)
+
+		authenticationContext, cancelAuthentication := context.WithTimeout(context.Background(), notificationWebSocketAuthTimeout)
+		var authentication notificationWebSocketAuthenticateFrame
+		err = wsjson.Read(authenticationContext, connection, &authentication)
+		if err == nil {
+			err = validateNotificationWebSocketAuthentication(authentication)
+		}
+		var subject httptransport.Subject
+		if err == nil {
+			subject, err = httptransport.AuthenticateBearerToken(authenticationContext, authenticator, authentication.Token)
+		}
+		cancelAuthentication()
+		authentication.Token = ""
+		if err != nil {
+			_ = connection.Close(websocket.StatusPolicyViolation, "authentication failed")
+			return
+		}
+
+		query := application.ListUserNotificationsQuery{
+			UserID: subject.UserID, MonitorID: authentication.MonitorID, AfterID: authentication.AfterID, Limit: 100,
+		}
+		streamContext := connection.CloseRead(context.Background())
+		page, err := handler.service.ListUserNotifications(streamContext, query)
+		if err != nil {
+			_ = connection.Close(websocket.StatusInternalError, "notification service unavailable")
+			return
+		}
+		if err := writeNotificationWebSocketJSON(streamContext, connection, notificationWebSocketControlFrame{Type: "ready", AfterID: query.AfterID}); err != nil {
+			return
+		}
+		cursor, err := handler.writeWebSocketNotificationFrames(streamContext, connection, subject.UserID, page)
+		if err != nil {
+			return
+		}
+
+		poll := time.NewTicker(handler.pollInterval)
+		heartbeat := time.NewTicker(handler.heartbeatInterval)
+		defer poll.Stop()
+		defer heartbeat.Stop()
+		for {
+			select {
+			case <-streamContext.Done():
+				return
+			case <-heartbeat.C:
+				if err := writeNotificationWebSocketJSON(streamContext, connection, notificationWebSocketControlFrame{
+					Type: "heartbeat", AfterID: cursor, SentAt: handler.clock(),
+				}); err != nil {
+					return
+				}
+			case <-poll.C:
+				page, err := handler.service.ListUserNotifications(streamContext, application.ListUserNotificationsQuery{
+					UserID: subject.UserID, MonitorID: authentication.MonitorID, AfterID: cursor, Limit: 100,
+				})
+				if err != nil {
+					return
+				}
+				cursor, err = handler.writeWebSocketNotificationFrames(streamContext, connection, subject.UserID, page)
+				if err != nil {
+					return
+				}
+			}
+		}
+	}
+}
+
+func validateNotificationWebSocketAuthentication(frame notificationWebSocketAuthenticateFrame) error {
+	if frame.Type != "authenticate" || strings.TrimSpace(frame.Token) == "" || len(frame.Token) > notificationWebSocketReadLimit ||
+		frame.AfterID < 0 || frame.MonitorID != nil && *frame.MonitorID <= 0 {
+		return invalidNotificationRequest()
+	}
+	return nil
+}
+
+func webSocketProtocolRequested(values []string) bool {
+	for _, value := range values {
+		for _, protocol := range strings.Split(value, ",") {
+			if strings.TrimSpace(protocol) == notificationWebSocketProtocol {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (handler *Handler) writeWebSocketNotificationFrames(ctx context.Context, connection *websocket.Conn, userID int64, page application.ListUserNotificationsResult) (int64, error) {
+	cursor := page.NextAfterID
+	for _, item := range page.Items {
+		if err := writeNotificationWebSocketJSON(ctx, connection, notificationWebSocketItemFrame{
+			Type: "notification", ID: item.ID, Event: item.EventType, Data: userNotificationResponse(item),
+		}); err != nil {
+			return cursor, err
+		}
+		_, _ = handler.service.RecordDeliveryAttempt(ctx, application.RecordNotificationDeliveryAttemptCommand{
+			UserNotificationID: item.ID, UserID: userID, Channel: "websocket", DeliveryTargetKey: "browser_ws",
+			Status: "succeeded", AttemptedAt: handler.clock(),
+		})
+	}
+	return cursor, nil
+}
+
+func writeNotificationWebSocketJSON(ctx context.Context, connection *websocket.Conn, value any) error {
+	writeContext, cancel := context.WithTimeout(ctx, notificationWebSocketWriteTimeout)
+	defer cancel()
+	return wsjson.Write(writeContext, connection, value)
 }
 
 func (handler *Handler) writeNotificationFrames(c *gin.Context, flusher stdhttp.Flusher, userID int64, page application.ListUserNotificationsResult) (int64, error) {

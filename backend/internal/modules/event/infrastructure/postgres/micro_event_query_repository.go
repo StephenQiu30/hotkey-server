@@ -1,10 +1,14 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -14,22 +18,82 @@ import (
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
-type MicroEventQueryPostgresRepository struct{ runtime *database.Runtime }
+type MicroEventQueryPostgresRepository struct {
+	runtime *database.Runtime
+	now     func() time.Time
+}
 
 var _ eventapplication.MicroEventQueryRepository = (*MicroEventQueryPostgresRepository)(nil)
+var _ eventapplication.ContentSearchReader = (*MicroEventQueryPostgresRepository)(nil)
 
 func NewMicroEventQueryPostgresRepository(runtime *database.Runtime) (*MicroEventQueryPostgresRepository, error) {
 	if runtime == nil || runtime.SQL == nil {
 		return nil, fmt.Errorf("micro-event query database runtime is required")
 	}
-	return &MicroEventQueryPostgresRepository{runtime: runtime}, nil
+	return &MicroEventQueryPostgresRepository{runtime: runtime, now: func() time.Time { return time.Now().UTC() }}, nil
 }
 
-const microEventProjectionSelect = `
+func (repository *MicroEventQueryPostgresRepository) ListContentSearchReferences(ctx context.Context, contentIDs []int64) ([]eventapplication.ContentSearchReference, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	if len(contentIDs) == 0 {
+		return []eventapplication.ContentSearchReference{}, nil
+	}
+	for _, contentID := range contentIDs {
+		if contentID <= 0 {
+			return nil, fmt.Errorf("%w: positive content ids are required", sharedrepository.ErrInvalidInput)
+		}
+	}
+	rows, err := repository.runtime.SQL.QueryContext(ctx, `
+SELECT content.id,
+       min(current_event.id),
+       min(current_event.primary_subject_key || ' · ' || current_event.primary_action_key)
+FROM contents AS content
+JOIN documents AS document
+  ON document.source_connection_id = content.source_connection_id
+ AND document.external_work_id = content.external_id
+ AND document.document_state = 'active'
+JOIN document_versions AS document_version
+  ON document_version.id = document.current_document_version_id
+JOIN content_family_members AS family_member
+  ON family_member.document_version_id = document_version.id
+ AND family_member.active
+JOIN micro_event_members AS member
+  ON member.content_family_id = family_member.family_id
+ AND member.active
+JOIN micro_events AS membership_event ON membership_event.id = member.micro_event_id
+JOIN micro_events AS current_event
+  ON current_event.id = COALESCE(membership_event.merged_into_micro_event_id, membership_event.id)
+WHERE content.id = ANY($1)
+  AND content.content_status = 'active'
+  AND content.deleted_at IS NULL
+GROUP BY content.id
+HAVING count(DISTINCT current_event.id) = 1
+ORDER BY content.id ASC`, contentIDs)
+	if err != nil {
+		return nil, databaserepository.MapError(err)
+	}
+	defer rows.Close()
+	references := make([]eventapplication.ContentSearchReference, 0, len(contentIDs))
+	for rows.Next() {
+		var reference eventapplication.ContentSearchReference
+		if err := rows.Scan(&reference.ContentID, &reference.MicroEventID, &reference.MicroEventTitle); err != nil {
+			return nil, databaserepository.MapError(err)
+		}
+		references = append(references, reference)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, databaserepository.MapError(err)
+	}
+	return references, nil
+}
+
+const microEventProjectionSelectFormat = `
 SELECT event.id,event.version,event.event_key,event.status,event.primary_subject_key,event.primary_action_key,
        to_json(event.location_keys),to_json(event.identifier_keys),event.event_started_at,event.event_ended_at,
        event.clustering_profile_version,
-       storyline.value,heat.value,evidence_state.value,
+       storyline.value,heat.value,relevance.score,evidence_state.value,
        count(DISTINCT member.content_family_id)::integer,
        count(DISTINCT family_member.document_version_id) FILTER (WHERE family_member.active)::integer
 FROM micro_events AS event
@@ -50,11 +114,35 @@ LEFT JOIN LATERAL (
          'acceleration',snapshot.acceleration,'coverage',snapshot.coverage,
          'normalized_engagement',snapshot.normalized_engagement,'recency',snapshot.recency,
          'available_weight',snapshot.available_weight,'heat_score',snapshot.heat_score,
-         'reason_codes',snapshot.reason_codes) AS value
+	     'reason_codes',snapshot.reason_codes) AS value,
+	 snapshot.heat_score::float8 AS score,snapshot.window_ended_at
   FROM micro_event_heat_snapshots AS snapshot JOIN event_heat_profiles AS profile ON profile.id=snapshot.heat_profile_id
-  WHERE snapshot.micro_event_id=event.id AND profile.status='active'
+	WHERE snapshot.micro_event_id=event.id AND profile.status='active'
+	  AND snapshot.window_started_at=snapshot.window_ended_at-interval '1 hour'
+	  AND %s
   ORDER BY snapshot.window_ended_at DESC,snapshot.window_started_at DESC,snapshot.id DESC LIMIT 1
 ) AS heat ON true
+LEFT JOIN LATERAL (
+  SELECT max(decision.relevance_probability)::float8 AS score
+  FROM micro_event_members AS relevant_member
+  JOIN content_family_members AS relevant_family_member
+    ON relevant_family_member.family_id=relevant_member.content_family_id AND relevant_family_member.active
+  JOIN document_match_decisions AS decision
+    ON decision.document_version_id=relevant_family_member.document_version_id
+  JOIN relevance_decision_profiles AS relevance_profile
+    ON relevance_profile.id=decision.relevance_profile_id AND relevance_profile.status='active'
+  LEFT JOIN LATERAL (
+    SELECT decision_override.decision
+    FROM document_match_overrides AS decision_override
+    WHERE decision_override.match_decision_id=decision.id AND %s
+    ORDER BY decision_override.sequence_no DESC,decision_override.id DESC LIMIT 1
+  ) AS effective_override ON true
+  WHERE relevant_member.micro_event_id=event.id AND relevant_member.active
+    AND decision.relevance_probability IS NOT NULL
+    AND COALESCE(effective_override.decision,decision.decision)='accepted'
+    AND %s
+    AND %s
+) AS relevance ON true
 LEFT JOIN LATERAL (
   SELECT jsonb_build_object('id',snapshot.id,'version',snapshot.version,'micro_event_id',snapshot.micro_event_id,
          'event_version',snapshot.micro_event_version,'profile_id',snapshot.evidence_state_profile_id,
@@ -62,10 +150,89 @@ LEFT JOIN LATERAL (
          'state',snapshot.evidence_state,'independent_origin_count',snapshot.independent_origin_count,
          'reason_codes',snapshot.reason_codes,'calculated_at',snapshot.calculated_at) AS value
   FROM evidence_state_snapshots AS snapshot JOIN evidence_state_profiles AS profile ON profile.id=snapshot.evidence_state_profile_id
-  WHERE snapshot.micro_event_id=event.id AND profile.status='active'
+  WHERE snapshot.micro_event_id=event.id AND profile.status='active' AND %s
   ORDER BY snapshot.calculated_at DESC,snapshot.id DESC LIMIT 1
 ) AS evidence_state ON true
 `
+
+func microEventProjectionSelect(heatAsOfPredicate, overrideAsOfPredicate, relevanceAsOfPredicate, relevanceMonitorPredicate, evidenceAsOfPredicate string) string {
+	return fmt.Sprintf(microEventProjectionSelectFormat, heatAsOfPredicate, overrideAsOfPredicate,
+		relevanceAsOfPredicate, relevanceMonitorPredicate, evidenceAsOfPredicate)
+}
+
+type microEventListCursor struct {
+	Version        int       `json:"v"`
+	Sort           string    `json:"s"`
+	Filter         string    `json:"f"`
+	AsOf           time.Time `json:"a"`
+	HasHeat        bool      `json:"hh"`
+	HeatScore      float64   `json:"h,omitempty"`
+	HeatWindowEnd  time.Time `json:"hw,omitempty"`
+	HasRelevance   bool      `json:"hr"`
+	RelevanceScore float64   `json:"r,omitempty"`
+	EventStartedAt time.Time `json:"e"`
+	ID             int64     `json:"id"`
+}
+
+func microEventFilterFingerprint(query eventapplication.MicroEventListQuery) string {
+	statuses := append([]string(nil), query.Statuses...)
+	sourceTypes := append([]string(nil), query.SourceTypes...)
+	evidenceStates := append([]string(nil), query.EvidenceStates...)
+	sort.Strings(statuses)
+	sort.Strings(sourceTypes)
+	sort.Strings(evidenceStates)
+	type fingerprint struct {
+		Statuses       []string `json:"statuses"`
+		MonitorID      int64    `json:"monitor_id"`
+		SourceTypes    []string `json:"source_types"`
+		EvidenceStates []string `json:"evidence_states"`
+		StartedFrom    string   `json:"started_from"`
+		StartedTo      string   `json:"started_to"`
+	}
+	value := fingerprint{Statuses: statuses, MonitorID: query.MonitorID, SourceTypes: sourceTypes, EvidenceStates: evidenceStates}
+	if query.StartedFrom != nil {
+		value.StartedFrom = query.StartedFrom.UTC().Format(time.RFC3339Nano)
+	}
+	if query.StartedTo != nil {
+		value.StartedTo = query.StartedTo.UTC().Format(time.RFC3339Nano)
+	}
+	payload, _ := json.Marshal(value)
+	return fmt.Sprintf("%x", sha256.Sum256(payload))
+}
+
+func encodeMicroEventListCursor(cursor microEventListCursor) (string, error) {
+	cursor.Version = 2
+	payload, err := json.Marshal(cursor)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(payload), nil
+}
+
+func decodeMicroEventListCursor(value, expectedSort, expectedFilter string) (microEventListCursor, error) {
+	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(value))
+	if err != nil || len(payload) == 0 || len(payload) > 8192 {
+		return microEventListCursor{}, eventapplication.ErrInvalidMicroEventQuery
+	}
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	var cursor microEventListCursor
+	if err := decoder.Decode(&cursor); err != nil {
+		return microEventListCursor{}, eventapplication.ErrInvalidMicroEventQuery
+	}
+	validHeat := cursor.Sort == "heat" && (cursor.HasHeat && !cursor.HeatWindowEnd.IsZero() && cursor.HeatScore >= 0 && cursor.HeatScore <= 100 ||
+		!cursor.HasHeat && cursor.HeatWindowEnd.IsZero() && cursor.HeatScore == 0) ||
+		cursor.Sort != "heat" && !cursor.HasHeat && cursor.HeatWindowEnd.IsZero() && cursor.HeatScore == 0
+	validRelevance := cursor.Sort == "relevance" && (cursor.HasRelevance && cursor.RelevanceScore >= 0 && cursor.RelevanceScore <= 1 ||
+		!cursor.HasRelevance && cursor.RelevanceScore == 0) ||
+		cursor.Sort != "relevance" && !cursor.HasRelevance && cursor.RelevanceScore == 0
+	if cursor.Version != 2 || cursor.Sort != expectedSort ||
+		cursor.Filter != expectedFilter || cursor.AsOf.IsZero() || cursor.EventStartedAt.IsZero() || cursor.ID <= 0 ||
+		!validHeat || !validRelevance {
+		return microEventListCursor{}, eventapplication.ErrInvalidMicroEventQuery
+	}
+	return cursor, nil
+}
 
 type microEventProjectionRecord struct {
 	id, version                        int64
@@ -75,18 +242,112 @@ type microEventProjectionRecord struct {
 	startedAt                          time.Time
 	endedAt                            sql.NullTime
 	storylineJSON, heatJSON, stateJSON []byte
+	relevanceScore                     sql.NullFloat64
 	familyCount, documentCount         int
 }
 
 func (repository *MicroEventQueryPostgresRepository) ListMicroEvents(ctx context.Context, query eventapplication.MicroEventListQuery) (eventapplication.MicroEventPageDTO, error) {
+	if repository == nil || repository.runtime == nil || repository.now == nil {
+		return eventapplication.MicroEventPageDTO{}, eventapplication.ErrInvalidMicroEventQuery
+	}
 	statuses := query.Statuses
 	if len(statuses) == 0 {
 		statuses = []string{"active", "review_pending", "closed", "merged"}
 	}
-	rows, err := repository.queryExecutor(ctx).QueryContext(ctx, microEventProjectionSelect+`
-WHERE event.id>$1 AND event.status=ANY($2)
-GROUP BY event.id,storyline.value,heat.value,evidence_state.value
-ORDER BY event.id LIMIT $3`, query.CursorID, statuses, query.Limit+1)
+	query.Statuses = statuses
+	fingerprint := microEventFilterFingerprint(query)
+	cursor := microEventListCursor{Sort: query.Sort, Filter: fingerprint, AsOf: repository.now().UTC()}
+	if query.Cursor != "" {
+		decoded, err := decodeMicroEventListCursor(query.Cursor, query.Sort, fingerprint)
+		if err != nil {
+			return eventapplication.MicroEventPageDTO{}, err
+		}
+		cursor = decoded
+	}
+	arguments := []any{statuses, cursor.AsOf, query.Limit + 1}
+	addArgument := func(value any) string {
+		arguments = append(arguments, value)
+		return fmt.Sprintf("$%d", len(arguments))
+	}
+	relevanceMonitorPredicate := "true"
+	if query.MonitorID > 0 {
+		relevanceMonitorPredicate = "decision.monitor_id=" + addArgument(query.MonitorID)
+	}
+	statement := microEventProjectionSelect("snapshot.calculated_at<=$2", "decision_override.created_at<=$2",
+		"decision.decided_at<=$2", relevanceMonitorPredicate, "snapshot.created_at<=$2") + `
+WHERE event.status=ANY($1) AND event.created_at<=$2`
+	if query.MonitorID > 0 {
+		statement += ` AND relevance.score IS NOT NULL`
+	}
+	if query.StartedFrom != nil {
+		statement += ` AND event.event_started_at>=` + addArgument(query.StartedFrom.UTC())
+	}
+	if query.StartedTo != nil {
+		statement += ` AND event.event_started_at<=` + addArgument(query.StartedTo.UTC())
+	}
+	if len(query.SourceTypes) > 0 {
+		placeholder := addArgument(query.SourceTypes)
+		statement += ` AND EXISTS (
+  SELECT 1
+  FROM micro_event_members AS filtered_member
+  JOIN content_family_members AS filtered_family_member
+    ON filtered_family_member.family_id=filtered_member.content_family_id AND filtered_family_member.active
+  JOIN document_versions AS filtered_version ON filtered_version.id=filtered_family_member.document_version_id
+  JOIN source_observations AS filtered_observation ON filtered_observation.id=filtered_version.source_observation_id
+  JOIN source_connections AS filtered_source ON filtered_source.id=filtered_observation.source_connection_id
+  WHERE filtered_member.micro_event_id=event.id AND filtered_member.active
+    AND filtered_source.source_type=ANY(` + placeholder + `)
+)`
+	}
+	if len(query.EvidenceStates) > 0 {
+		statement += ` AND (evidence_state.value->>'state')=ANY(` + addArgument(query.EvidenceStates) + `)`
+	}
+	groupBy := `
+GROUP BY event.id,storyline.value,heat.value,heat.score,heat.window_ended_at,relevance.score,evidence_state.value`
+	if query.Sort == "latest" {
+		if query.Cursor != "" {
+			startedAt := addArgument(cursor.EventStartedAt)
+			id := addArgument(cursor.ID)
+			statement += ` AND (event.event_started_at<` + startedAt + ` OR (event.event_started_at=` + startedAt + ` AND event.id<` + id + `))`
+		}
+		statement += groupBy + `
+ORDER BY event.event_started_at DESC,event.id DESC LIMIT $3`
+	} else if query.Sort == "heat" {
+		if query.Cursor != "" && cursor.HasHeat {
+			heatScore := addArgument(cursor.HeatScore)
+			heatWindow := addArgument(cursor.HeatWindowEnd)
+			startedAt := addArgument(cursor.EventStartedAt)
+			id := addArgument(cursor.ID)
+			statement += ` AND (heat.score IS NULL OR heat.score<` + heatScore + `
+  OR (heat.score=` + heatScore + ` AND heat.window_ended_at<` + heatWindow + `)
+  OR (heat.score=` + heatScore + ` AND heat.window_ended_at=` + heatWindow + ` AND event.event_started_at<` + startedAt + `)
+  OR (heat.score=` + heatScore + ` AND heat.window_ended_at=` + heatWindow + ` AND event.event_started_at=` + startedAt + ` AND event.id<` + id + `))`
+		} else if query.Cursor != "" {
+			startedAt := addArgument(cursor.EventStartedAt)
+			id := addArgument(cursor.ID)
+			statement += ` AND heat.score IS NULL
+			  AND (event.event_started_at<` + startedAt + ` OR (event.event_started_at=` + startedAt + ` AND event.id<` + id + `))`
+		}
+		statement += groupBy + `
+ORDER BY heat.score DESC NULLS LAST,heat.window_ended_at DESC NULLS LAST,event.event_started_at DESC,event.id DESC LIMIT $3`
+	} else {
+		if query.Cursor != "" && cursor.HasRelevance {
+			relevanceScore := addArgument(cursor.RelevanceScore)
+			startedAt := addArgument(cursor.EventStartedAt)
+			id := addArgument(cursor.ID)
+			statement += ` AND (relevance.score IS NULL OR relevance.score<` + relevanceScore + `
+  OR (relevance.score=` + relevanceScore + ` AND event.event_started_at<` + startedAt + `)
+  OR (relevance.score=` + relevanceScore + ` AND event.event_started_at=` + startedAt + ` AND event.id<` + id + `))`
+		} else if query.Cursor != "" {
+			startedAt := addArgument(cursor.EventStartedAt)
+			id := addArgument(cursor.ID)
+			statement += ` AND relevance.score IS NULL
+  AND (event.event_started_at<` + startedAt + ` OR (event.event_started_at=` + startedAt + ` AND event.id<` + id + `))`
+		}
+		statement += groupBy + `
+ORDER BY relevance.score DESC NULLS LAST,event.event_started_at DESC,event.id DESC LIMIT $3`
+	}
+	rows, err := repository.queryExecutor(ctx).QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return eventapplication.MicroEventPageDTO{}, databaserepository.MapError(err)
 	}
@@ -109,7 +370,19 @@ ORDER BY event.id LIMIT $3`, query.CursorID, statuses, query.Limit+1)
 	page := eventapplication.MicroEventPageDTO{Items: items}
 	if len(page.Items) > query.Limit {
 		page.Items = page.Items[:query.Limit]
-		page.NextCursorID = page.Items[len(page.Items)-1].ID
+		last := page.Items[len(page.Items)-1]
+		next := microEventListCursor{Sort: query.Sort, Filter: fingerprint, AsOf: cursor.AsOf,
+			EventStartedAt: last.EventStartedAt, ID: last.ID}
+		if query.Sort == "heat" && last.LatestHeat != nil {
+			next.HasHeat, next.HeatScore, next.HeatWindowEnd = true, last.LatestHeat.HeatScore, last.LatestHeat.WindowEndedAt
+		}
+		if query.Sort == "relevance" && last.RelevanceScore != nil {
+			next.HasRelevance, next.RelevanceScore = true, *last.RelevanceScore
+		}
+		page.NextCursor, err = encodeMicroEventListCursor(next)
+		if err != nil {
+			return eventapplication.MicroEventPageDTO{}, fmt.Errorf("encode micro-event cursor: %w", err)
+		}
 	}
 	return page, nil
 }
@@ -118,8 +391,8 @@ func (repository *MicroEventQueryPostgresRepository) GetMicroEvent(ctx context.C
 	if repository == nil || repository.runtime == nil || id <= 0 {
 		return eventapplication.MicroEventProjectionDTO{}, eventapplication.ErrInvalidMicroEventQuery
 	}
-	rows, err := repository.queryExecutor(ctx).QueryContext(ctx, microEventProjectionSelect+`
-WHERE event.id=$1 GROUP BY event.id,storyline.value,heat.value,evidence_state.value`, id)
+	rows, err := repository.queryExecutor(ctx).QueryContext(ctx, microEventProjectionSelect("true", "true", "true", "true", "true")+`
+WHERE event.id=$1 GROUP BY event.id,storyline.value,heat.value,heat.score,heat.window_ended_at,relevance.score,evidence_state.value`, id)
 	if err != nil {
 		return eventapplication.MicroEventProjectionDTO{}, databaserepository.MapError(err)
 	}
@@ -277,7 +550,7 @@ func scanMicroEventProjection(rows microEventRows) (microEventProjectionRecord, 
 	var record microEventProjectionRecord
 	if err := rows.Scan(&record.id, &record.version, &record.eventKey, &record.status, &record.subject, &record.action,
 		&record.locationsJSON, &record.identifiersJSON, &record.startedAt, &record.endedAt, &record.profile,
-		&record.storylineJSON, &record.heatJSON, &record.stateJSON, &record.familyCount, &record.documentCount); err != nil {
+		&record.storylineJSON, &record.heatJSON, &record.relevanceScore, &record.stateJSON, &record.familyCount, &record.documentCount); err != nil {
 		return microEventProjectionRecord{}, databaserepository.MapError(err)
 	}
 	return record, nil
@@ -335,6 +608,10 @@ func (record microEventProjectionRecord) dto() (eventapplication.MicroEventProje
 		Status: record.status, PrimarySubjectKey: record.subject, PrimaryActionKey: record.action, LocationKeys: locations,
 		IdentifierKeys: identifiers, EventStartedAt: record.startedAt.UTC(), ClusteringProfileVersion: record.profile,
 		ContentFamilyCount: record.familyCount, DocumentCount: record.documentCount}
+	if record.relevanceScore.Valid {
+		relevance := record.relevanceScore.Float64
+		value.RelevanceScore = &relevance
+	}
 	if record.endedAt.Valid {
 		ended := record.endedAt.Time.UTC()
 		value.EventEndedAt = &ended

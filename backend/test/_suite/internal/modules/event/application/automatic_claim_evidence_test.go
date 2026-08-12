@@ -53,7 +53,7 @@ func TestAutomaticClaimEvidenceServiceUsesAuthorizedPlaintextAndPublishesCitedFa
 	}
 
 	result, err := service.Extract(context.Background(), eventapplication.AutomaticClaimEvidenceCommand{
-		MicroEventID: 7, ExpectedEventVersion: 3, DocumentVersionID: 11,
+		MicroEventID: 7, DocumentVersionID: 11,
 	})
 	if err != nil {
 		t.Fatalf("Extract(): %v", err)
@@ -61,6 +61,9 @@ func TestAutomaticClaimEvidenceServiceUsesAuthorizedPlaintextAndPublishesCitedFa
 	if result.Status != "succeeded" || result.ModelRunID != 23 || len(result.Evidence) != 1 ||
 		result.EvidenceState == nil || result.Summary == nil || targets.calls != 2 || selectors.calls != 1 {
 		t.Fatalf("result/calls = %#v / %d / %d", result, targets.calls, selectors.calls)
+	}
+	if len(targets.queries) != 2 || targets.queries[0].ExpectedEventVersion != 0 || targets.queries[1].ExpectedEventVersion != 3 {
+		t.Fatalf("target queries = %#v, want current-version resolution followed by exact recheck", targets.queries)
 	}
 	if models.input.InputSchemaVersion != "v2" || models.input.SchemaVersion != "v2" ||
 		models.input.PromptVersion != eventapplication.AtomicClaimEvidencePromptVersion ||
@@ -140,12 +143,14 @@ type fixedAutomaticEvidenceClock struct{ at time.Time }
 func (clock fixedAutomaticEvidenceClock) Now() time.Time { return clock.at }
 
 type automaticEvidenceTargetFake struct {
-	target eventapplication.AutomaticClaimEvidenceTargetDTO
-	calls  int
+	target  eventapplication.AutomaticClaimEvidenceTargetDTO
+	calls   int
+	queries []eventapplication.AutomaticClaimEvidenceTargetQuery
 }
 
 func (fake *automaticEvidenceTargetFake) ReadAutomaticClaimEvidenceTarget(_ context.Context, query eventapplication.AutomaticClaimEvidenceTargetQuery) (eventapplication.AutomaticClaimEvidenceTargetDTO, error) {
 	fake.calls++
+	fake.queries = append(fake.queries, query)
 	value := fake.target
 	value.DecisionAt = query.DecisionAt
 	return value, nil

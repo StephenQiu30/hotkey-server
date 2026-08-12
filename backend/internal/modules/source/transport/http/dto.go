@@ -116,21 +116,26 @@ type SourceHealthResponse struct {
 type SourceConfigRequest struct {
 	// Deprecated: retained for legacy source configuration compatibility. This
 	// value never authorizes v2 raw evidence or document body persistence.
-	AllowBodyStorage              *bool     `json:"allow_body_storage,omitempty"`
-	RequiresAttribution           *bool     `json:"requires_attribution,omitempty"`
-	RequiresDeletionSync          *bool     `json:"requires_deletion_sync,omitempty"`
-	ContentRetentionDays          *int      `json:"content_retention_days,omitempty"`
-	MetricsRetentionDays          *int      `json:"metrics_retention_days,omitempty"`
-	AllowedLanguages              *[]string `json:"allowed_languages,omitempty"`
-	AllowedRegions                *[]string `json:"allowed_regions,omitempty"`
-	RateLimitPerMinute            *int      `json:"rate_limit_per_minute,omitempty"`
-	RequestTimeoutSeconds         *int      `json:"request_timeout_seconds,omitempty"`
-	MaxPagesPerRun                *int      `json:"max_pages_per_run,omitempty"`
-	GroundingDataBoundaryApproved *bool     `json:"grounding_data_boundary_approved,omitempty"`
-	BilibiliOpenID                *string   `json:"bilibili_open_id,omitempty"`
-	GoogleLocation                *string   `json:"google_location,omitempty"`
-	GoogleServingConfig           *string   `json:"google_serving_config,omitempty"`
-	HackerNewsMode                *string   `json:"hacker_news_mode,omitempty" binding:"omitempty,oneof=new top best"`
+	AllowBodyStorage                 *bool     `json:"allow_body_storage,omitempty"`
+	RequiresAttribution              *bool     `json:"requires_attribution,omitempty"`
+	RequiresDeletionSync             *bool     `json:"requires_deletion_sync,omitempty"`
+	ContentRetentionDays             *int      `json:"content_retention_days,omitempty"`
+	MetricsRetentionDays             *int      `json:"metrics_retention_days,omitempty"`
+	AllowedLanguages                 *[]string `json:"allowed_languages,omitempty"`
+	AllowedRegions                   *[]string `json:"allowed_regions,omitempty"`
+	RateLimitPerMinute               *int      `json:"rate_limit_per_minute,omitempty"`
+	RequestTimeoutSeconds            *int      `json:"request_timeout_seconds,omitempty"`
+	MaxPagesPerRun                   *int      `json:"max_pages_per_run,omitempty"`
+	GroundingDataBoundaryApproved    *bool     `json:"grounding_data_boundary_approved,omitempty"`
+	BilibiliOpenID                   *string   `json:"bilibili_open_id,omitempty"`
+	GoogleLocation                   *string   `json:"google_location,omitempty"`
+	GoogleServingConfig              *string   `json:"google_serving_config,omitempty"`
+	HackerNewsMode                   *string   `json:"hacker_news_mode,omitempty" binding:"omitempty,oneof=new top best"`
+	XMetricRefreshEnabled            *bool     `json:"x_metric_refresh_enabled,omitempty"`
+	XMetricRefreshIntervalMinutes    *int      `json:"x_metric_refresh_interval_minutes,omitempty" binding:"omitempty,min=15,max=1440"`
+	XMetricRefreshObservationHours   *int      `json:"x_metric_refresh_observation_hours,omitempty" binding:"omitempty,min=1,max=168"`
+	XMetricRefreshMaxPostsPerRun     *int      `json:"x_metric_refresh_max_posts_per_run,omitempty" binding:"omitempty,min=1,max=100"`
+	XMetricRefreshDailyRequestBudget *int      `json:"x_metric_refresh_daily_request_budget,omitempty" binding:"omitempty,min=1,max=1440"`
 }
 
 type CreateSourceRequest struct {
@@ -194,21 +199,26 @@ type SourceReadResponse struct {
 
 type SourceConfigDTO struct {
 	// Deprecated: informational legacy configuration only; not a rights grant.
-	AllowBodyStorage              bool     `json:"allow_body_storage"`
-	RequiresAttribution           bool     `json:"requires_attribution"`
-	RequiresDeletionSync          bool     `json:"requires_deletion_sync"`
-	ContentRetentionDays          int      `json:"content_retention_days"`
-	MetricsRetentionDays          int      `json:"metrics_retention_days"`
-	AllowedLanguages              []string `json:"allowed_languages"`
-	AllowedRegions                []string `json:"allowed_regions"`
-	RateLimitPerMinute            int      `json:"rate_limit_per_minute"`
-	RequestTimeoutSeconds         int      `json:"request_timeout_seconds"`
-	MaxPagesPerRun                int      `json:"max_pages_per_run"`
-	GroundingDataBoundaryApproved bool     `json:"grounding_data_boundary_approved"`
-	BilibiliOpenID                string   `json:"bilibili_open_id"`
-	GoogleLocation                string   `json:"google_location"`
-	GoogleServingConfig           string   `json:"google_serving_config"`
-	HackerNewsMode                string   `json:"hacker_news_mode"`
+	AllowBodyStorage                 bool     `json:"allow_body_storage"`
+	RequiresAttribution              bool     `json:"requires_attribution"`
+	RequiresDeletionSync             bool     `json:"requires_deletion_sync"`
+	ContentRetentionDays             int      `json:"content_retention_days"`
+	MetricsRetentionDays             int      `json:"metrics_retention_days"`
+	AllowedLanguages                 []string `json:"allowed_languages"`
+	AllowedRegions                   []string `json:"allowed_regions"`
+	RateLimitPerMinute               int      `json:"rate_limit_per_minute"`
+	RequestTimeoutSeconds            int      `json:"request_timeout_seconds"`
+	MaxPagesPerRun                   int      `json:"max_pages_per_run"`
+	GroundingDataBoundaryApproved    bool     `json:"grounding_data_boundary_approved"`
+	BilibiliOpenID                   string   `json:"bilibili_open_id"`
+	GoogleLocation                   string   `json:"google_location"`
+	GoogleServingConfig              string   `json:"google_serving_config"`
+	HackerNewsMode                   string   `json:"hacker_news_mode"`
+	XMetricRefreshEnabled            bool     `json:"x_metric_refresh_enabled"`
+	XMetricRefreshIntervalMinutes    int      `json:"x_metric_refresh_interval_minutes"`
+	XMetricRefreshObservationHours   int      `json:"x_metric_refresh_observation_hours"`
+	XMetricRefreshMaxPostsPerRun     int      `json:"x_metric_refresh_max_posts_per_run"`
+	XMetricRefreshDailyRequestBudget int      `json:"x_metric_refresh_daily_request_budget"`
 }
 
 type SourcePageResponse struct {
@@ -273,6 +283,21 @@ func sourceConfig(request SourceConfigRequest) (domain.SourceConfig, error) {
 	if request.HackerNewsMode != nil {
 		values["hacker_news_mode"] = *request.HackerNewsMode
 	}
+	if request.XMetricRefreshEnabled != nil {
+		values["x_metric_refresh_enabled"] = *request.XMetricRefreshEnabled
+	}
+	if request.XMetricRefreshIntervalMinutes != nil {
+		values["x_metric_refresh_interval_minutes"] = *request.XMetricRefreshIntervalMinutes
+	}
+	if request.XMetricRefreshObservationHours != nil {
+		values["x_metric_refresh_observation_hours"] = *request.XMetricRefreshObservationHours
+	}
+	if request.XMetricRefreshMaxPostsPerRun != nil {
+		values["x_metric_refresh_max_posts_per_run"] = *request.XMetricRefreshMaxPostsPerRun
+	}
+	if request.XMetricRefreshDailyRequestBudget != nil {
+		values["x_metric_refresh_daily_request_budget"] = *request.XMetricRefreshDailyRequestBudget
+	}
 	config, err := domain.NormalizeSourceConfig(values)
 	if err != nil {
 		return domain.SourceConfig{}, fmt.Errorf("normalize source config: %w", err)
@@ -326,7 +351,7 @@ func managementReadResponse(source domain.ManagementSourceConnection) SourceRead
 	return SourceReadResponse{SourceResponse: sourceResponse(source.PublicSourceConnection), Endpoint: &endpoint, Config: &config}
 }
 func configResponse(config domain.SourceConfig) SourceConfigDTO {
-	return SourceConfigDTO{AllowBodyStorage: config.AllowBodyStorage, RequiresAttribution: config.RequiresAttribution, RequiresDeletionSync: config.RequiresDeletionSync, ContentRetentionDays: config.ContentRetentionDays, MetricsRetentionDays: config.MetricsRetentionDays, AllowedLanguages: config.AllowedLanguages, AllowedRegions: config.AllowedRegions, RateLimitPerMinute: config.RateLimitPerMinute, RequestTimeoutSeconds: config.RequestTimeoutSeconds, MaxPagesPerRun: config.MaxPagesPerRun, GroundingDataBoundaryApproved: config.GroundingDataBoundaryApproved, BilibiliOpenID: config.BilibiliOpenID, GoogleLocation: config.GoogleLocation, GoogleServingConfig: config.GoogleServingConfig, HackerNewsMode: string(config.HackerNewsMode)}
+	return SourceConfigDTO{AllowBodyStorage: config.AllowBodyStorage, RequiresAttribution: config.RequiresAttribution, RequiresDeletionSync: config.RequiresDeletionSync, ContentRetentionDays: config.ContentRetentionDays, MetricsRetentionDays: config.MetricsRetentionDays, AllowedLanguages: config.AllowedLanguages, AllowedRegions: config.AllowedRegions, RateLimitPerMinute: config.RateLimitPerMinute, RequestTimeoutSeconds: config.RequestTimeoutSeconds, MaxPagesPerRun: config.MaxPagesPerRun, GroundingDataBoundaryApproved: config.GroundingDataBoundaryApproved, BilibiliOpenID: config.BilibiliOpenID, GoogleLocation: config.GoogleLocation, GoogleServingConfig: config.GoogleServingConfig, HackerNewsMode: string(config.HackerNewsMode), XMetricRefreshEnabled: config.XMetricRefreshEnabled, XMetricRefreshIntervalMinutes: config.XMetricRefreshIntervalMinutes, XMetricRefreshObservationHours: config.XMetricRefreshObservationHours, XMetricRefreshMaxPostsPerRun: config.XMetricRefreshMaxPostsPerRun, XMetricRefreshDailyRequestBudget: config.XMetricRefreshDailyRequestBudget}
 }
 
 func metricCapabilityProfileResponse(profile domain.MetricCapabilityProfile) MetricCapabilityProfileResponse {

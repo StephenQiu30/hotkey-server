@@ -8,6 +8,8 @@ import (
 
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/infrastructure/postgres"
 	notificationjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/infrastructure/jobs"
+	sourcejobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/jobs"
+	sourcepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/postgres"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/config"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/queue"
@@ -31,6 +33,10 @@ type collectionSchedulerRunner interface {
 	Run(context.Context, time.Duration) error
 }
 
+type xMetricRefreshSchedulerRunner interface {
+	Run(context.Context, time.Duration) error
+}
+
 func newQueueStore(runtime *database.Runtime) *queue.Store { return queue.NewStore(runtime) }
 
 func exposeCollectionDueReader(reader *monitorpostgres.PublishedCollectionTargetReader) platformscheduler.CollectionDueReader {
@@ -45,11 +51,11 @@ func exposeCollectionSchedulerRunner(scheduler *platformscheduler.CollectionSche
 	return scheduler
 }
 
-type reportSchedulerRunner interface {
-	Run(context.Context, time.Duration) error
+func newXMetricRefreshScheduler(reader *sourcepostgres.Repository, store *queue.Store) (*sourcejobs.XMetricRefreshScheduler, error) {
+	return sourcejobs.NewXMetricRefreshScheduler(reader, store)
 }
 
-func exposeReportSchedulerRunner(scheduler *platformscheduler.ReportScheduler) reportSchedulerRunner {
+func exposeXMetricRefreshSchedulerRunner(scheduler *sourcejobs.XMetricRefreshScheduler) xMetricRefreshSchedulerRunner {
 	return scheduler
 }
 
@@ -156,7 +162,7 @@ func registerCollectionSchedulerLifecycle(lifecycle fx.Lifecycle, runner collect
 	})
 }
 
-func registerReportSchedulerLifecycle(lifecycle fx.Lifecycle, runner reportSchedulerRunner, cfg config.Config, logger *zap.Logger) {
+func registerXMetricRefreshSchedulerLifecycle(lifecycle fx.Lifecycle, runner xMetricRefreshSchedulerRunner, cfg config.Config, logger *zap.Logger) {
 	var cancel context.CancelFunc
 	var done chan struct{}
 	lifecycle.Append(fx.Hook{
@@ -167,20 +173,22 @@ func registerReportSchedulerLifecycle(lifecycle fx.Lifecycle, runner reportSched
 			go func() {
 				defer close(done)
 				if err := runner.Run(runCtx, cronInterval(cfg)); err != nil && !errors.Is(err, context.Canceled) {
-					logger.Error("report scheduler stopped", zap.Error(err))
+					logger.Error("X metric refresh scheduler stopped", zap.Error(err))
 				}
 			}()
-			logger.Info("report scheduler started", zap.Duration("interval", cronInterval(cfg)))
+			logger.Info("X metric refresh scheduler started", zap.Duration("interval", cronInterval(cfg)))
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
-			if cancel == nil {
+			if cancel != nil {
+				cancel()
+			}
+			if done == nil {
 				return nil
 			}
-			cancel()
 			select {
 			case <-done:
-				logger.Info("report scheduler stopped")
+				logger.Info("X metric refresh scheduler stopped")
 				return nil
 			case <-ctx.Done():
 				return ctx.Err()

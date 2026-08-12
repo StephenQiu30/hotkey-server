@@ -59,22 +59,35 @@ type subjectContextKey struct{}
 func RequireAuthentication(authenticator Authenticator) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token, ok := bearerToken(c.GetHeader("Authorization"))
-		if !ok || authenticator == nil {
+		if !ok {
 			WriteError(c, unauthenticated())
 			return
 		}
-		subject, err := authenticator.Authenticate(c.Request.Context(), token)
+		subject, err := AuthenticateBearerToken(c.Request.Context(), authenticator, token)
 		if err != nil {
-			WriteError(c, authenticationError(err))
-			return
-		}
-		if !subject.valid() {
-			WriteError(c, unauthenticated())
+			WriteError(c, err)
 			return
 		}
 		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), subjectContextKey{}, subject))
 		c.Next()
 	}
+}
+
+// AuthenticateBearerToken applies the same authenticator and subject
+// validation used by HTTP Bearer middleware to protocols, such as WebSocket,
+// that carry the short-lived token inside an authenticated application frame.
+func AuthenticateBearerToken(ctx context.Context, authenticator Authenticator, token string) (Subject, error) {
+	if authenticator == nil || strings.TrimSpace(token) == "" {
+		return Subject{}, unauthenticated()
+	}
+	subject, err := authenticator.Authenticate(ctx, token)
+	if err != nil {
+		return Subject{}, authenticationError(err)
+	}
+	if !subject.valid() {
+		return Subject{}, unauthenticated()
+	}
+	return subject, nil
 }
 
 // RequireRoles rejects a request unless a preceding RequireAuthentication has

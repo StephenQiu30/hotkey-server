@@ -33,7 +33,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getAlerts } from "@/services/hotkey/hotkey-server/alerts";
 import { getMicroEvents } from "@/services/hotkey/hotkey-server/microEvents";
 import { getMonitors } from "@/services/hotkey/hotkey-server/monitors";
 import { cn } from "@/lib/utils";
@@ -140,7 +139,6 @@ export default function DashboardPage() {
   const canManage = role === UserRole.Admin || role === UserRole.Editor;
   const [events, setEvents] = useState<HotKeyAPI.MicroEventResponseDTO[]>([]);
   const [monitors, setMonitors] = useState<HotKeyAPI.MonitorResponse[]>([]);
-  const [openAlerts, setOpenAlerts] = useState(0);
   const [asOf, setAsOf] = useState<string>();
   const [timeContext, setTimeContext] = useState({
     greeting: "你好",
@@ -152,10 +150,9 @@ export default function DashboardPage() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(undefined);
-    const [eventResult, monitorResult, alertResult] = await Promise.allSettled([
+    const [eventResult, monitorResult] = await Promise.allSettled([
       getMicroEvents({ limit: 12 }),
       getMonitors({ limit: 4 }),
-      getAlerts({ state: "open", limit: 100 }),
     ]);
 
     if (eventResult.status === "rejected") {
@@ -174,11 +171,6 @@ export default function DashboardPage() {
       monitorResult.status === "fulfilled"
         ? monitorResult.value.data?.items ?? []
         : []
-    );
-    setOpenAlerts(
-      alertResult.status === "fulfilled"
-        ? alertResult.value.data?.items?.length ?? 0
-        : 0
     );
     setLoading(false);
   }, []);
@@ -419,14 +411,14 @@ export default function DashboardPage() {
                     )}
                   </div>
                   <Link
-                    href="/dashboard/alerts"
+                    href="/dashboard/notifications"
                     className="mt-5 flex items-center justify-between rounded-md bg-muted px-4 py-3 text-sm text-foreground no-underline hover:text-primary"
                   >
                     <span className="inline-flex items-center gap-2">
                       <BellRing className="h-4 w-4" />
-                      待处理告警
+                      查看通知
                     </span>
-                    <span className="font-semibold">{openAlerts}</span>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
                   </Link>
                   <Button
                     asChild

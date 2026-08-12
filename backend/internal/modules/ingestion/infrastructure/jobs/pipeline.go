@@ -24,25 +24,26 @@ type EvaluateJobEnqueuer interface {
 }
 
 type capturedRunIngester interface {
-	IngestRunWithHook(context.Context, ingestionapplication.IngestRunInput, func(context.Context, int64) error) (ingestionapplication.IngestRunResult, error)
+	IngestRun(context.Context, ingestionapplication.IngestRunInput) (ingestionapplication.IngestRunResult, error)
 }
 
-// NormalizeHandler consumes only Source-owned captured items and schedules the
-// next deterministic stage for each Content fact produced by the use case.
+// NormalizeHandler keeps the legacy Content projection current for API and
+// metric compatibility. The evidence-owned document pipeline is scheduled at
+// evidence commit time, so normalization must not fan out to the retired
+// relevance/event pipeline.
 type NormalizeHandler struct {
 	service capturedRunIngester
-	jobs    EvaluateJobEnqueuer
 }
 
-func NewNormalizeHandler(service *ingestionapplication.Service, jobs *queue.Store) (*NormalizeHandler, error) {
-	return newNormalizeHandler(service, jobs)
+func NewNormalizeHandler(service *ingestionapplication.Service) (*NormalizeHandler, error) {
+	return newNormalizeHandler(service)
 }
 
-func newNormalizeHandler(service capturedRunIngester, jobs EvaluateJobEnqueuer) (*NormalizeHandler, error) {
-	if service == nil || jobs == nil {
-		return nil, fmt.Errorf("normalize handler dependencies are required")
+func newNormalizeHandler(service capturedRunIngester) (*NormalizeHandler, error) {
+	if service == nil {
+		return nil, fmt.Errorf("normalize handler service is required")
 	}
-	return &NormalizeHandler{service: service, jobs: jobs}, nil
+	return &NormalizeHandler{service: service}, nil
 }
 
 func (handler *NormalizeHandler) Handle(ctx context.Context, job queue.Job) error {
@@ -50,16 +51,7 @@ func (handler *NormalizeHandler) Handle(ctx context.Context, job queue.Job) erro
 		return queue.NewPermanentError(err)
 	}
 	for {
-		result, err := handler.service.IngestRunWithHook(ctx, ingestionapplication.IngestRunInput{RunID: job.Payload.EntityID}, func(transactionCtx context.Context, contentID int64) error {
-			inputHash := queue.StableJobHash(queue.KindEvaluateRelevance, fmt.Sprint(contentID), fmt.Sprint(job.Payload.EntityVersion), job.Payload.InputHash)
-			_, _, err := handler.jobs.Enqueue(transactionCtx, queue.Job{
-				Kind:        queue.KindEvaluateRelevance,
-				UniqueKey:   queue.StableJobKey(queue.KindEvaluateRelevance, contentID, job.Payload.EntityVersion, inputHash),
-				Payload:     queue.Payload{EntityID: contentID, EntityVersion: job.Payload.EntityVersion, WindowStart: job.Payload.WindowStart, WindowEnd: job.Payload.WindowEnd, InputHash: inputHash},
-				ScheduledAt: job.ScheduledAt, MaxAttempts: 3, Priority: 3,
-			})
-			return err
-		})
+		result, err := handler.service.IngestRun(ctx, ingestionapplication.IngestRunInput{RunID: job.Payload.EntityID})
 		if err != nil {
 			return queue.ClassifyHandlerError(ctx, err)
 		}

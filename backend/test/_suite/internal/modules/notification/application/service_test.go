@@ -64,3 +64,18 @@ func TestServiceValidatesIndependentDeliveryAttempt(t *testing.T) {
 		t.Fatalf("RecordDeliveryAttempt() = %#v/%v, repository = %#v", result, err, repository.delivery)
 	}
 }
+
+func TestServiceAcceptsWebSocketAsAnIndependentDeliveryChannel(t *testing.T) {
+	repository := &notificationRepositoryStub{}
+	service, _ := NewService(repository)
+	command := RecordNotificationDeliveryAttemptCommand{
+		UserNotificationID: 12, UserID: 7, Channel: "websocket", DeliveryTargetKey: "browser_ws", Status: "succeeded",
+		AttemptedAt: time.Date(2026, 8, 12, 1, 0, 0, 0, time.UTC),
+	}
+	if _, err := service.RecordDeliveryAttempt(context.Background(), command); err != nil {
+		t.Fatalf("RecordDeliveryAttempt(websocket) error = %v", err)
+	}
+	if repository.delivery.Channel != "websocket" || repository.delivery.DeliveryTargetKey != "browser_ws" {
+		t.Fatalf("repository delivery = %#v", repository.delivery)
+	}
+}

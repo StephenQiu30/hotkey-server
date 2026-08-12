@@ -66,6 +66,29 @@ func TestRawEvidenceCollectionServiceNeverDerivesRightsFromLegacyConfiguration(t
 	}
 }
 
+func TestRawEvidenceCollectionServiceArchivesContextWithoutInventingACollectionRun(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, time.August, 12, 9, 0, 0, 0, time.UTC)
+	snapshot := archiveSnapshot(t, at, []byte(`{"data":[{"id":"9"}]}`), "x-post-lookup-json-v1")
+	rights := &recordingRawEvidenceRightsReader{result: CurrentRawEvidenceRightsResult{
+		StoreRawDecisions: map[string]RawEvidenceRightsDecisionDTO{snapshot.Key: rawStoreAllowDecision(snapshot, at)},
+		RetainDecisions:   map[string]RawEvidenceRightsDecisionDTO{snapshot.Key: rawRetainAllowDecision(snapshot, at)},
+	}}
+	archive := &recordingRawEvidenceArchiveUseCase{}
+	service, err := NewRawEvidenceCollectionService(RawEvidenceCollectionServiceDependencies{Rights: rights, Archive: archive, Clock: &archiveClockFake{now: at}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ArchiveContext(context.Background(), ArchiveContextEvidenceCommand{
+		SourceConnectionID: 42, Snapshots: []RawEvidenceSnapshotDTO{rawEvidenceSnapshotDTOFromEntity(snapshot)},
+	}); err != nil {
+		t.Fatalf("ArchiveContext: %v", err)
+	}
+	if archive.command.CollectionRunID != 0 || len(archive.command.Fetch.Items) != 0 || len(archive.command.Fetch.Snapshots) != 1 {
+		t.Fatalf("context archive command = %#v", archive.command)
+	}
+}
+
 type recordingRawEvidenceRightsReader struct {
 	query  CurrentRawEvidenceRightsQuery
 	result CurrentRawEvidenceRightsResult

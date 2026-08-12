@@ -18,7 +18,7 @@ func TestEventHeatServiceUsesActiveProfileWeightsAndStableSnapshot(t *testing.T)
 		WindowStartedAt: endedAt.Add(-24 * time.Hour), WindowEndedAt: endedAt,
 		IndependentLineageRoots: 4, ReportsInWindow: 8, ReportsInPreviousWindow: 4,
 		ReportsInPriorWindow: 2, PublisherCoverage: 3, SourceTypeCoverage: 2,
-		NormalizedEngagement: &engagement, AgeHours: 2,
+		NormalizedEngagement: &engagement, NormalizationFallback: true, AgeHours: 2,
 	}}
 	service, err := eventapplication.NewEventHeatService(repository)
 	if err != nil {
@@ -31,7 +31,7 @@ func TestEventHeatServiceUsesActiveProfileWeightsAndStableSnapshot(t *testing.T)
 		t.Fatal(err)
 	}
 	if result.Snapshot.HeatScore <= 0 || repository.committed.IndependentLineageRoots != 4 ||
-		repository.committed.AvailableWeight != 1 || len(repository.committed.ReasonCodes) != 0 {
+		repository.committed.AvailableWeight != 1 || len(repository.committed.ReasonCodes) != 1 || repository.committed.ReasonCodes[0] != "normalization_fallback" {
 		t.Fatalf("snapshot/command = %#v / %#v", result, repository.committed)
 	}
 }

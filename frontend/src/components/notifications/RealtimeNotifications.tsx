@@ -3,7 +3,13 @@
 import { useEffect } from "react";
 import { toast } from "sonner";
 import { AuthStatus } from "@/lib/domainEnums";
-import { consumeNotificationStream, openNotificationStream, type SSEFrame } from "@/lib/notificationStream";
+import {
+  consumeNotificationStream,
+  consumeNotificationWebSocket,
+  openNotificationStream,
+  type NotificationWebSocketFrame,
+  type SSEFrame,
+} from "@/lib/notificationStream";
 import { getNotifications } from "@/services/hotkey/hotkey-server/notifications";
 import { useAuthStore } from "@/stores/authStore";
 import { useNotificationStore } from "@/stores/notificationStore";
@@ -12,23 +18,35 @@ const BACKOFF_MS = [1_000, 2_000, 4_000];
 const POLLING_INTERVAL_MS = 10_000;
 const SAFE_MICRO_EVENT_DEEP_LINK = /^\/dashboard\/events\?event=[1-9][0-9]{0,18}$/;
 
+function validNotification(
+  notification: HotKeyAPI.UserNotificationResponseDTO,
+  id: string,
+  event: string,
+): HotKeyAPI.UserNotificationResponseDTO | null {
+  if (
+    !Number.isSafeInteger(notification.id) ||
+    String(notification.id) !== id ||
+    notification.event_type !== event ||
+    !notification.title ||
+    notification.resource_type !== "micro_event" ||
+    !notification.deep_link?.match(SAFE_MICRO_EVENT_DEEP_LINK)
+  ) {
+    return null;
+  }
+  return notification;
+}
+
 function notificationFromFrame(frame: SSEFrame): HotKeyAPI.UserNotificationResponseDTO | null {
   try {
     const notification = JSON.parse(frame.data) as HotKeyAPI.UserNotificationResponseDTO;
-    if (
-      !Number.isSafeInteger(notification.id) ||
-      String(notification.id) !== frame.id ||
-      notification.event_type !== frame.event ||
-      !notification.title ||
-      notification.resource_type !== "micro_event" ||
-      !notification.deep_link?.match(SAFE_MICRO_EVENT_DEEP_LINK)
-    ) {
-      return null;
-    }
-    return notification;
+    return validNotification(notification, frame.id, frame.event);
   } catch {
     return null;
   }
+}
+
+function notificationFromWebSocketFrame(frame: NotificationWebSocketFrame): HotKeyAPI.UserNotificationResponseDTO | null {
+  return validNotification(frame.data as HotKeyAPI.UserNotificationResponseDTO, String(frame.id), frame.event);
 }
 
 function waitForRetry(milliseconds: number, signal: AbortSignal) {
@@ -85,35 +103,48 @@ export function RealtimeNotifications() {
         const cursor = useNotificationStore.getState().lastEventID;
         useNotificationStore.getState().setTransport(failures >= 3 ? "polling" : "connecting");
         try {
-          const response = await openNotificationStream(cursor, controller.signal);
-          failures = 0;
-          useNotificationStore.getState().setTransport("live");
-          await consumeNotificationStream(response, (frame) => {
-              const notification = notificationFromFrame(frame);
-              if (!notification || !active) return;
-              const accepted = useNotificationStore.getState().ingest([notification]);
-              if (accepted.length > 0) {
-                toast(notification.title ?? "收到新通知", {
-                  description: notification.summary,
-                });
-              }
-            });
-          if (active) throw new Error("notification stream ended");
+          await consumeNotificationWebSocket(
+            cursor,
+            controller.signal,
+            (frame) => ingestWithToast(notificationFromWebSocketFrame(frame)),
+            () => {
+              failures = 0;
+              useNotificationStore.getState().setTransport("live");
+            },
+          );
+          if (active) throw new Error("notification WebSocket ended");
         } catch {
           if (!active || controller.signal.aborted) break;
-          failures += 1;
-          if (failures >= 3) {
-            useNotificationStore.getState().setTransport("polling");
-            try {
-              await ingestWithoutToast(useNotificationStore.getState().lastEventID);
-            } catch {
-              // Keep probing the stream without exposing transport details.
+          try {
+            const response = await openNotificationStream(useNotificationStore.getState().lastEventID, controller.signal);
+            failures = 0;
+            useNotificationStore.getState().setTransport("live");
+            await consumeNotificationStream(response, (frame) => ingestWithToast(notificationFromFrame(frame)));
+            if (active) throw new Error("notification SSE fallback ended");
+          } catch {
+            if (!active || controller.signal.aborted) break;
+            failures += 1;
+            if (failures >= 3) {
+              useNotificationStore.getState().setTransport("polling");
+              try {
+                await ingestWithoutToast(useNotificationStore.getState().lastEventID);
+              } catch {
+                // Keep probing real-time transports without exposing internals.
+              }
+              await waitForRetry(POLLING_INTERVAL_MS, controller.signal);
+            } else {
+              await waitForRetry(BACKOFF_MS[failures - 1], controller.signal);
             }
-            await waitForRetry(POLLING_INTERVAL_MS, controller.signal);
-          } else {
-            await waitForRetry(BACKOFF_MS[failures - 1], controller.signal);
           }
         }
+      }
+    };
+
+    const ingestWithToast = (notification: HotKeyAPI.UserNotificationResponseDTO | null) => {
+      if (!notification || !active) return;
+      const accepted = useNotificationStore.getState().ingest([notification]);
+      if (accepted.length > 0) {
+        toast(notification.title ?? "收到新通知", { description: notification.summary });
       }
     };
 

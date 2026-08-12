@@ -30,11 +30,17 @@ func TestConnectorMapsOfficialFieldsAndAdvancesHighWaterOnlyAfterPagination(t *t
 		if got, want := request.URL.Query().Get("query"), `("AI news" -rumor) (lang:en OR lang:zh-CN) (place_country:CN OR place_country:US)`; got != want {
 			t.Errorf("query = %q, want %q", got, want)
 		}
-		if request.URL.Query().Get("max_results") != "100" || request.URL.Query().Get("post.fields") == "" || request.URL.Query().Get("expansions") == "" {
+		fields := request.URL.Query().Get("tweet.fields")
+		if request.URL.Query().Get("max_results") != "100" || fields == "" ||
+			!strings.Contains(fields, "note_tweet") || !strings.Contains(fields, "referenced_tweets") ||
+			request.URL.Query().Get("post.fields") != "" || request.URL.Query().Get("expansions") == "" {
 			t.Errorf("official fields query = %v", request.URL.Query())
 		}
 		switch calls.Add(1) {
 		case 1:
+			if request.URL.Query().Get("sort_order") != "relevancy" {
+				t.Errorf("initial discovery sort = %q", request.URL.Query().Get("sort_order"))
+			}
 			if request.URL.Query().Get("since_id") != "" || request.URL.Query().Get("next_token") != "" {
 				t.Errorf("initial checkpoint query = %v", request.URL.Query())
 			}
@@ -42,18 +48,24 @@ func TestConnectorMapsOfficialFieldsAndAdvancesHighWaterOnlyAfterPagination(t *t
 				"data":[
 					{"id":"202","text":"restricted","author_id":"u1","possibly_sensitive":true},
 					{"id":"201","text":"withheld","author_id":"u1","withheld":{"country_codes":["CN"]}},
-					{"id":"200","text":"Public launch","author_id":"u1","created_at":"2026-08-07T02:55:00Z","conversation_id":"190","lang":"en","referenced_posts":[{"id":"199"}],"attachments":{"media_keys":["m1"]},"public_metrics":{"impression_count":50,"like_count":7,"reply_count":3,"repost_count":2,"quote_count":1}}
+					{"id":"200","text":"Public launch…","note_tweet":{"text":"Public launch long-form body"},"author_id":"u1","created_at":"2026-08-07T02:55:00Z","conversation_id":"190","lang":"en","referenced_tweets":[{"type":"quoted","id":"199"}],"attachments":{"media_keys":["m1"]},"public_metrics":{"impression_count":50,"like_count":7,"reply_count":3,"repost_count":2,"quote_count":1}}
 				],
 				"errors":[{"resource_type":"post","resource_id":"198","title":"Not Found","detail":"must not persist"}],
 				"includes":{"users":[{"id":"u1","username":"official"}],"media":[{"media_key":"m1","type":"photo","url":"https://pbs.twimg.com/media/fixture.jpg"}]},
 				"meta":{"newest_id":"202","oldest_id":"200","next_token":"page-2","result_count":3}
 			}`))
 		case 2:
+			if request.URL.Query().Get("sort_order") != "relevancy" {
+				t.Errorf("backfill pagination sort = %q", request.URL.Query().Get("sort_order"))
+			}
 			if request.URL.Query().Get("since_id") != "" || request.URL.Query().Get("next_token") != "page-2" {
 				t.Errorf("pagination checkpoint query = %v", request.URL.Query())
 			}
 			_, _ = writer.Write([]byte(`{"data":[{"id":"197","text":"Older result","author_id":"u1","created_at":"2026-08-07T02:50:00Z","lang":"en"}],"includes":{"users":[{"id":"u1","username":"official"}]},"meta":{"newest_id":"197","oldest_id":"197","result_count":1}}`))
 		case 3:
+			if request.URL.Query().Get("sort_order") != "recency" {
+				t.Errorf("daily checkpoint sort = %q", request.URL.Query().Get("sort_order"))
+			}
 			if request.URL.Query().Get("since_id") != "202" || request.URL.Query().Get("next_token") != "" {
 				t.Errorf("poll checkpoint query = %v", request.URL.Query())
 			}
@@ -79,7 +91,7 @@ func TestConnectorMapsOfficialFieldsAndAdvancesHighWaterOnlyAfterPagination(t *t
 		t.Fatalf("first items = %#v", first.Items)
 	}
 	item := first.Items[0]
-	if item.URL != "https://x.com/official/status/200" || item.Body != "Public launch" || item.Language != "en" || item.EvidenceCompleteness != domain.EvidenceCompletenessFullBody {
+	if item.URL != "https://x.com/official/status/200" || item.Body != "Public launch long-form body" || item.Language != "en" || item.EvidenceCompleteness != domain.EvidenceCompletenessFullBody {
 		t.Errorf("mapped item = %#v", item)
 	}
 	if len(item.Attachments) != 1 || item.Attachments[0].URL != "https://pbs.twimg.com/media/fixture.jpg" {
@@ -91,7 +103,7 @@ func TestConnectorMapsOfficialFieldsAndAdvancesHighWaterOnlyAfterPagination(t *t
 	if !first.HasMore || first.NextCursor == "" || diagnosticCodes(first.Diagnostics) != "possibly_sensitive_post,unavailable_post,withheld_post" {
 		t.Errorf("first result = %#v", first)
 	}
-	if len(first.Snapshots) != 1 || !first.Snapshots[0].VerifyPayload() || len(item.EvidenceReferences) != 1 ||
+	if len(first.Snapshots) != 1 || first.Snapshots[0].CollectorProfileVersion.String() != "x-recent-search-json-v2" || !first.Snapshots[0].VerifyPayload() || len(item.EvidenceReferences) != 1 ||
 		item.EvidenceReferences[0].SnapshotKey != first.Snapshots[0].Key || item.EvidenceReferences[0].LocatorValue != "/data/2" {
 		t.Fatalf("raw evidence = snapshots %#v, references %#v", first.Snapshots, item.EvidenceReferences)
 	}
@@ -133,6 +145,40 @@ func TestConnectorPreservesMissingAndExplicitZeroMetrics(t *testing.T) {
 	}
 	if result.Items[1].Metrics.ViewCount == nil || result.Items[1].Metrics.LikeCount == nil || result.Items[1].Metrics.CommentCount == nil || result.Items[1].Metrics.ShareCount == nil {
 		t.Errorf("explicit zero metrics = %#v", result.Items[1].Metrics)
+	}
+}
+
+func TestConnectorLooksUpKnownPostMetricsInOneStableOfficialBatch(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 12, 8, 0, 0, 0, time.UTC)
+	server := newXTLSServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet || request.URL.Path != "/2/tweets" || request.URL.Query().Get("ids") != "9,10" ||
+			request.URL.Query().Get("tweet.fields") != "public_metrics" || request.URL.Query().Get("post.fields") != "" {
+			t.Errorf("lookup request = %s %s?%s", request.Method, request.URL.Path, request.URL.RawQuery)
+		}
+		_, _ = writer.Write([]byte(`{
+			"data":[
+				{"id":"10","public_metrics":{"impression_count":100,"like_count":12,"reply_count":3,"repost_count":2,"quote_count":1}},
+				{"id":"9","public_metrics":{"impression_count":0,"like_count":0,"reply_count":0,"repost_count":0,"quote_count":0}}
+			],
+			"errors":[{"resource_type":"tweet","resource_id":"8","title":"Not Found"}]
+		}`))
+	}))
+	defer server.Close()
+	connector := newFixtureConnector(t, server, now, tokenLookup)
+	result, err := connector.LookupPostMetrics(context.Background(), domain.XPostMetricLookupRequest{
+		SourceConnectionID: 10, PostIDs: []string{"10", "9", "10"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Observations) != 2 || result.Observations[0].PostID != "9" || result.Observations[1].PostID != "10" ||
+		metric(result.Observations[0].Metrics.ViewCount) != 0 || metric(result.Observations[1].Metrics.ShareCount) != 3 {
+		t.Fatalf("lookup observations = %#v", result.Observations)
+	}
+	if len(result.Diagnostics) != 1 || result.Diagnostics[0].SourceExternalID != "8" ||
+		len(result.Snapshots) != 1 || result.Snapshots[0].CollectorProfileVersion.String() != "x-post-lookup-json-v1" || !result.Snapshots[0].VerifyPayload() {
+		t.Fatalf("lookup evidence/diagnostics = %#v / %#v", result.Snapshots, result.Diagnostics)
 	}
 }
 

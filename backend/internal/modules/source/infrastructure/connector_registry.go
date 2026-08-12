@@ -133,6 +133,17 @@ func (connector *managedCredentialConnector) Fetch(ctx context.Context, request 
 	return connector.inner.Fetch(ctx, request)
 }
 
+func (connector *managedCredentialConnector) LookupPostMetrics(ctx context.Context, request domain.XPostMetricLookupRequest) (domain.XPostMetricLookupResult, error) {
+	if connector == nil || connector.inner == nil {
+		return domain.XPostMetricLookupResult{}, domain.NewCollectionError(domain.CollectionErrorAuthentication, errors.New("source credential is unavailable"))
+	}
+	lookup, ok := connector.inner.(domain.XPostMetricLookup)
+	if !ok {
+		return domain.XPostMetricLookupResult{}, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("source does not support X metric lookup"))
+	}
+	return lookup.LookupPostMetrics(ctx, request)
+}
+
 func (connector *managedCredentialConnector) Health(ctx context.Context, connection domain.SourceConnection) domain.HealthResult {
 	if err := connector.Validate(ctx, connection); err != nil {
 		return domain.HealthResult{CheckedAt: time.Now().UTC(), ErrorKind: domain.CollectionErrorPermanent, DiagnosticCode: "invalid_source_connection"}

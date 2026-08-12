@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import EventsPage from "@/app/dashboard/events/page";
@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   getMicroEvents: vi.fn(),
   getMicroEventsId: vi.fn(),
   getMicroEventsIdEvidence: vi.fn(),
+  getMonitors: vi.fn(),
   postMicroEventsIdEvidence: vi.fn(),
   postMicroEventsIdFeedback: vi.fn(),
   postMicroEventsIdEvidenceEvidenceIdFeedback: vi.fn(),
@@ -31,6 +32,9 @@ vi.mock("@/services/hotkey/hotkey-server/microEvents", () => ({
 vi.mock("@/services/hotkey/hotkey-server/contentLineage", () => ({
   postContentLineageDecisionsIdFeedback: mocks.postContentLineageDecisionsIdFeedback,
 }));
+vi.mock("@/services/hotkey/hotkey-server/monitors", () => ({
+  getMonitors: mocks.getMonitors,
+}));
 
 const event = {
   id: 11,
@@ -43,6 +47,7 @@ const event = {
   clustering_profile_version: "micro-event-clustering-v1",
   content_family_count: 2,
   document_count: 3,
+	relevance_score: 0.91,
   storyline: { id: 4, version: 1, title: "Acme 产品进展", summary: "多个具体发布事件的长期脉络", status: "active" },
   latest_heat: { id: 8, micro_event_version: 3, heat_score: 72.5, independent_lineage_root_count: 2 },
   evidence_state: { id: 9, event_version: 3, state: "conflicting_reports", independent_origin_count: 2, algorithm_version: "evidence-state-lineage-v2" },
@@ -92,6 +97,7 @@ describe("EventsPage v2", () => {
     mocks.getMicroEvents.mockResolvedValue({ data: { items: [event] } });
     mocks.getMicroEventsId.mockResolvedValue({ data: event });
     mocks.getMicroEventsIdEvidence.mockResolvedValue({ data: { items: [readyEvidence] } });
+	mocks.getMonitors.mockResolvedValue({ data: { items: [{ id: 7, name: "AI 产品", status: "active" }] } });
     mocks.postMicroEventsIdEvidence.mockResolvedValue({ data: {} });
     mocks.postMicroEventsIdFeedback.mockResolvedValue({ data: {} });
     mocks.postMicroEventsIdEvidenceEvidenceIdFeedback.mockResolvedValue({ data: {} });
@@ -109,10 +115,48 @@ describe("EventsPage v2", () => {
     expect(screen.getByText("人工编辑")).toBeInTheDocument();
     expect(screen.getByText("证据版本：#22")).toBeInTheDocument();
     expect(screen.getAllByText("存在相反表述").length).toBeGreaterThan(0);
+		expect(screen.getByText("热度 72.5")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /阅读归档/ })).toHaveAttribute("href", expect.stringContaining("/dashboard/document-versions/31"));
     expect(mocks.getMicroEventsId).toHaveBeenCalledWith({ id: 11 });
     expect(mocks.getMicroEventsIdEvidence).toHaveBeenCalledWith({ id: 11, limit: 100 });
+		expect(mocks.getMicroEvents).toHaveBeenCalledWith({ limit: 30, sort: "heat", cursor: undefined });
   });
+
+	it("requests latest ordering from the server instead of sorting locally", async () => {
+		render(<EventsPage />);
+		await screen.findByRole("heading", { name: "Acme · 发布新项目" });
+		await userEvent.click(screen.getByRole("combobox", { name: "排序" }));
+		await userEvent.click(screen.getByRole("option", { name: "最新发现" }));
+		await waitFor(() => expect(mocks.getMicroEvents).toHaveBeenLastCalledWith({ limit: 30, sort: "latest", cursor: undefined }));
+	});
+
+	it("combines monitor, source, evidence, and event-time filters with relevance ordering", async () => {
+		render(<EventsPage />);
+		await screen.findByRole("heading", { name: "Acme · 发布新项目" });
+
+		await userEvent.click(screen.getByRole("combobox", { name: "排序" }));
+		await userEvent.click(screen.getByRole("option", { name: "相关性最高" }));
+		await userEvent.click(screen.getByRole("combobox", { name: "监控器" }));
+		await userEvent.click(await screen.findByRole("option", { name: "AI 产品" }));
+		await userEvent.click(screen.getByRole("combobox", { name: "来源" }));
+		await userEvent.click(screen.getByRole("option", { name: "X / Twitter" }));
+		await userEvent.click(screen.getByRole("combobox", { name: "证据状态" }));
+		await userEvent.click(screen.getByRole("option", { name: "多个独立起源" }));
+		fireEvent.change(screen.getByLabelText("事件开始时间从"), { target: { value: "2026-08-01T08:30" } });
+		fireEvent.change(screen.getByLabelText("事件开始时间到"), { target: { value: "2026-08-12T18:00" } });
+
+		await waitFor(() => expect(mocks.getMicroEvents).toHaveBeenLastCalledWith({
+			limit: 30,
+			sort: "relevance",
+			cursor: undefined,
+			monitor_id: 7,
+			source_type: "x",
+			evidence_state: "multiple_origins",
+			started_from: new Date("2026-08-01T08:30").toISOString(),
+			started_to: new Date("2026-08-12T18:00").toISOString(),
+		}));
+		expect(screen.getByText("相关性 91%")).toBeInTheDocument();
+	});
 
   it("never renders legacy truth or credibility semantics", async () => {
     const { container } = render(<EventsPage />);

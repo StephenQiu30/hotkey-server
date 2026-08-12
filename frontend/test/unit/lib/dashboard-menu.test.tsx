@@ -6,16 +6,14 @@ import {
 import { UserRole } from "@/lib/domainEnums";
 
 describe("dashboard menu", () => {
-  it("keeps the primary navigation free of the duplicate notification entry", () => {
+  it("keeps only the X hotspot core workflow in primary navigation", () => {
     expect(dashboardMenuItems.map(({ path, name }) => ({ path, name }))).toEqual([
       { path: "/dashboard", name: "概览" },
       { path: "/dashboard/settings", name: "监控" },
       { path: "/dashboard/sources", name: "来源" },
       { path: "/dashboard/contents", name: "内容" },
-      { path: "/dashboard/events", name: "事件" },
-      { path: "/dashboard/alerts", name: "告警" },
-      { path: "/dashboard/reports", name: "报告" },
-      { path: "/dashboard/subscriptions", name: "订阅" },
+      { path: "/dashboard/events", name: "热点事件" },
+      { path: "/dashboard/notifications", name: "通知" },
     ]);
   });
 

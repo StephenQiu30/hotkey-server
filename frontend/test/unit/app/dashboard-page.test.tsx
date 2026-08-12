@@ -6,15 +6,11 @@ import { useAuthStore } from "@/stores/authStore";
 
 const mocks = vi.hoisted(() => ({
   getMicroEvents: vi.fn(),
-  getAlerts: vi.fn(),
   getMonitors: vi.fn(),
 }));
 
 vi.mock("@/services/hotkey/hotkey-server/microEvents", () => ({
   getMicroEvents: mocks.getMicroEvents,
-}));
-vi.mock("@/services/hotkey/hotkey-server/alerts", () => ({
-  getAlerts: mocks.getAlerts,
 }));
 vi.mock("@/services/hotkey/hotkey-server/monitors", () => ({
   getMonitors: mocks.getMonitors,
@@ -63,9 +59,6 @@ describe("DashboardPage", () => {
         ],
       },
     });
-    mocks.getAlerts.mockResolvedValue({
-      data: { items: [{ id: 1, state: "open" }] },
-    });
     mocks.getMonitors.mockResolvedValue({
       data: {
         items: [
@@ -97,6 +90,10 @@ describe("DashboardPage", () => {
     expect(screen.getByRole("link", { name: "查看全部事件" })).toHaveAttribute(
       "href",
       "/dashboard/events"
+    );
+    expect(screen.getByRole("link", { name: "查看通知" })).toHaveAttribute(
+      "href",
+      "/dashboard/notifications"
     );
     expect(mocks.getMicroEvents).toHaveBeenCalledWith({ limit: 12 });
     expect(screen.getByText("Heat v2")).toBeInTheDocument();

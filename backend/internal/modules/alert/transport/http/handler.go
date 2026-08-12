@@ -46,8 +46,6 @@ func NewHandler(service alertService) *Handler { return &Handler{service: servic
 // @Failure 400 {object} AlertResult[EmptyResponse]
 // @Failure 401 {object} AlertResult[EmptyResponse]
 // @Failure 503 {object} AlertResult[EmptyResponse]
-// @Router /api/v1/alerts [get]
-// @Router /api/v1/agent/alerts [get]
 func (handler *Handler) List(c *gin.Context) error {
 	httptransport.SetModule(c, "alert")
 	query, err := alertListQuery(c)
@@ -74,8 +72,6 @@ func (handler *Handler) List(c *gin.Context) error {
 // @Failure 401 {object} AlertResult[EmptyResponse]
 // @Failure 404 {object} AlertResult[EmptyResponse]
 // @Failure 503 {object} AlertResult[EmptyResponse]
-// @Router /api/v1/alerts/{id} [get]
-// @Router /api/v1/agent/alerts/{id} [get]
 func (handler *Handler) Get(c *gin.Context) error {
 	httptransport.SetModule(c, "alert")
 	threadID, err := alertThreadID(c)
@@ -105,8 +101,6 @@ func (handler *Handler) Get(c *gin.Context) error {
 // @Failure 404 {object} AlertResult[EmptyResponse]
 // @Failure 409 {object} AlertResult[EmptyResponse]
 // @Failure 503 {object} AlertResult[EmptyResponse]
-// @Router /api/v1/alerts/{id}/acknowledge [post]
-// @Router /api/v1/agent/alerts/{id}/acknowledge [post]
 func (handler *Handler) Acknowledge(c *gin.Context) error {
 	return handler.action(c, handler.service.Acknowledge)
 }
@@ -126,8 +120,6 @@ func (handler *Handler) Acknowledge(c *gin.Context) error {
 // @Failure 404 {object} AlertResult[EmptyResponse]
 // @Failure 409 {object} AlertResult[EmptyResponse]
 // @Failure 503 {object} AlertResult[EmptyResponse]
-// @Router /api/v1/alerts/{id}/resolve [post]
-// @Router /api/v1/agent/alerts/{id}/resolve [post]
 func (handler *Handler) Resolve(c *gin.Context) error {
 	return handler.action(c, handler.service.Resolve)
 }
@@ -148,7 +140,6 @@ func (handler *Handler) Resolve(c *gin.Context) error {
 // @Failure 404 {object} AlertResult[EmptyResponse]
 // @Failure 409 {object} AlertResult[EmptyResponse]
 // @Failure 503 {object} AlertResult[EmptyResponse]
-// @Router /api/v1/alerts/{id}/suppress [post]
 func (handler *Handler) Suppress(c *gin.Context) error {
 	return handler.action(c, handler.service.Suppress)
 }

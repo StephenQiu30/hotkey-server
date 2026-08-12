@@ -9,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	ingestionjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/jobs"
 	intelligencedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
+	sourcejobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/jobs"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/config"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	httptransport "github.com/StephenQiu30/hotkey-server/backend/internal/platform/http"
@@ -19,6 +21,27 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 )
+
+func TestDefaultP0HandlersExposeTheMultiSourceHotspotCoreChain(t *testing.T) {
+	handlers := newP0Handlers(p0HandlerParams{
+		Collect:              &sourcejobs.CollectHandler{},
+		Normalize:            &ingestionjobs.NormalizeHandler{},
+		AnalyzeMonitorIntent: &monitorIntentAnalysisHandler{},
+	})
+	want := map[string]bool{
+		"collect_source":         true,
+		"normalize_content":      true,
+		"analyze_monitor_intent": true,
+	}
+	if len(handlers) != len(want) {
+		t.Fatalf("default P0 handler count = %d, want %d", len(handlers), len(want))
+	}
+	for kind := range want {
+		if handlers[kind] == nil {
+			t.Errorf("default P0 handler %q is not registered", kind)
+		}
+	}
+}
 
 func TestPlan018AIProviderRegistryUsesExplicitConfiguration(t *testing.T) {
 	cfg := config.Default()
@@ -123,16 +146,36 @@ func TestAPIFxGraphRegistersExactDocumentMatchRoutes(t *testing.T) {
 		"POST /api/v1/notifications/push-subscriptions":                           false,
 		"PUT /api/v1/notifications/push-subscriptions/:id":                        false,
 		"DELETE /api/v1/notifications/push-subscriptions/:id":                     false,
+		"POST /api/v1/source-webhooks/bilibili":                                   false,
+	}
+	forbidden := map[string]bool{
+		"GET /api/v1/events":               false,
+		"GET /api/v1/radar/events":         false,
+		"GET /api/v1/alerts":               false,
+		"GET /api/v1/reports":              false,
+		"GET /api/v1/report-subscriptions": false,
+		"GET /api/v1/knowledge/documents":  false,
+		"GET /api/v1/agent-tokens":         false,
+		"GET /api/v1/agent/events":         false,
+		"GET /feeds/:token":                false,
 	}
 	for _, route := range router.Routes() {
 		key := route.Method + " " + route.Path
 		if _, found := wanted[key]; found {
 			wanted[key] = true
 		}
+		if _, found := forbidden[key]; found {
+			forbidden[key] = true
+		}
 	}
 	for route, found := range wanted {
 		if !found {
 			t.Errorf("route %s is not registered", route)
+		}
+	}
+	for route, found := range forbidden {
+		if found {
+			t.Errorf("legacy route %s remains registered", route)
 		}
 	}
 }
@@ -361,7 +404,7 @@ func TestConfiguredAPIWiresControlPlanes(t *testing.T) {
 		t.Fatalf("Start() error = %v", err)
 	}
 	defer func() { _ = app.Stop(ctx) }()
-	for _, path := range []string{"/api/v1/monitors", "/api/v1/monitors/1/draft", "/api/v1/source-connections", "/api/v1/contents", "/api/v1/ai/model-profiles", "/api/v1/operations/jobs", "/api/v1/radar/events", "/api/v1/alerts", "/api/v1/notifications/push-capability", "/api/v1/notifications/push-subscriptions"} {
+	for _, path := range []string{"/api/v1/monitors", "/api/v1/monitors/1/draft", "/api/v1/source-connections", "/api/v1/contents", "/api/v1/micro-events", "/api/v1/ai/model-profiles", "/api/v1/operations/jobs", "/api/v1/notifications", "/api/v1/notifications/push-capability", "/api/v1/notifications/push-subscriptions"} {
 		response, err := stdhttp.Get("http://" + server.Address() + path)
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)
@@ -369,6 +412,17 @@ func TestConfiguredAPIWiresControlPlanes(t *testing.T) {
 		if response.StatusCode != stdhttp.StatusUnauthorized {
 			response.Body.Close()
 			t.Fatalf("%s status = %d, want %d", path, response.StatusCode, stdhttp.StatusUnauthorized)
+		}
+		response.Body.Close()
+	}
+	for _, path := range []string{"/api/v1/events", "/api/v1/radar/events", "/api/v1/alerts", "/api/v1/reports", "/api/v1/report-subscriptions", "/api/v1/knowledge/documents", "/api/v1/agent-tokens", "/api/v1/agent/events", "/feeds/legacy-token"} {
+		response, err := stdhttp.Get("http://" + server.Address() + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		if response.StatusCode != stdhttp.StatusNotFound {
+			response.Body.Close()
+			t.Fatalf("legacy route %s status = %d, want %d", path, response.StatusCode, stdhttp.StatusNotFound)
 		}
 		response.Body.Close()
 	}

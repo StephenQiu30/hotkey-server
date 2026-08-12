@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	eventapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/application"
+	eventjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/infrastructure/jobs"
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/application"
 	ingestionjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/jobs"
 	sourceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/application"
@@ -17,6 +19,68 @@ import (
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
+
+func TestAcceptedMatchProjectionAdapterSchedulesIndependentEvidenceAfterEventCommit(t *testing.T) {
+	projector := &acceptedDocumentMatchEventProjectorFake{result: eventapplication.ProjectAcceptedDocumentMatchResult{
+		MicroEvent: eventapplication.MicroEventDTO{ID: 7, Version: 3},
+		Membership: eventapplication.MicroEventMembershipDecisionDTO{Action: "join"},
+	}}
+	scheduler := &automaticClaimEvidenceSchedulerFake{}
+	adapter, err := newAcceptedDocumentMatchEventProjectionAdapter(projector, scheduler)
+	if err != nil || adapter == nil {
+		t.Fatalf("newAcceptedDocumentMatchEventProjectionAdapter() = %#v/%v", adapter, err)
+	}
+	consumed, err := adapter.ConsumeAcceptedDocumentMatch(t.Context(), ingestionapplication.ConsumeAcceptedDocumentMatchCommand{
+		DocumentMatchDecisionID: 5, DocumentVersionID: 11,
+	})
+	if err != nil || consumed.DocumentMatchDecisionID != 5 || consumed.DocumentVersionID != 11 ||
+		projector.command.DocumentMatchDecisionID != 5 || projector.command.DocumentVersionID != 11 ||
+		scheduler.command != (eventapplication.ScheduleAutomaticClaimEvidenceCommand{MicroEventID: 7, DocumentVersionID: 11}) {
+		t.Fatalf("consumed/projected/scheduled = %#v / %#v / %#v / %v", consumed, projector.command, scheduler.command, err)
+	}
+}
+
+func TestAcceptedMatchProjectionAdapterSkipsEvidenceForReviewMembership(t *testing.T) {
+	projector := &acceptedDocumentMatchEventProjectorFake{result: eventapplication.ProjectAcceptedDocumentMatchResult{
+		MicroEvent: eventapplication.MicroEventDTO{ID: 7, Version: 3},
+		Membership: eventapplication.MicroEventMembershipDecisionDTO{Action: "review"},
+	}}
+	scheduler := &automaticClaimEvidenceSchedulerFake{}
+	adapter, err := newAcceptedDocumentMatchEventProjectionAdapter(projector, scheduler)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adapter.ConsumeAcceptedDocumentMatch(t.Context(), ingestionapplication.ConsumeAcceptedDocumentMatchCommand{
+		DocumentMatchDecisionID: 5, DocumentVersionID: 11,
+	}); err != nil || scheduler.calls != 0 {
+		t.Fatalf("review consume error/calls = %v/%d", err, scheduler.calls)
+	}
+}
+
+type acceptedDocumentMatchEventProjectorFake struct {
+	command eventapplication.ProjectAcceptedDocumentMatchCommand
+	result  eventapplication.ProjectAcceptedDocumentMatchResult
+	err     error
+}
+
+func (fake *acceptedDocumentMatchEventProjectorFake) Project(_ context.Context,
+	command eventapplication.ProjectAcceptedDocumentMatchCommand) (eventapplication.ProjectAcceptedDocumentMatchResult, error) {
+	fake.command = command
+	return fake.result, fake.err
+}
+
+type automaticClaimEvidenceSchedulerFake struct {
+	command eventapplication.ScheduleAutomaticClaimEvidenceCommand
+	calls   int
+}
+
+func (fake *automaticClaimEvidenceSchedulerFake) ScheduleAutomaticClaimEvidence(_ context.Context,
+	command eventapplication.ScheduleAutomaticClaimEvidenceCommand) (eventapplication.ScheduleAutomaticClaimEvidenceResult, error) {
+	fake.calls++
+	fake.command = command
+	return eventapplication.ScheduleAutomaticClaimEvidenceResult{MicroEventID: command.MicroEventID,
+		DocumentVersionID: command.DocumentVersionID, JobID: 1, Created: true}, nil
+}
 
 func TestSourceEvidenceReaderAdapterCopiesEveryApplicationFactDefensively(t *testing.T) {
 	t.Parallel()
@@ -96,13 +160,17 @@ func TestMinIOWorkerFxGraphConstructsSourceDocumentAndMatchServices(t *testing.T
 	var matchReviews *ingestionapplication.DocumentMatchReviewService
 	var publishedMatchHandler *ingestionjobs.PublishedDocumentMatchEvaluationHandler
 	var acceptedMatchProjectionHandler *ingestionjobs.AcceptedDocumentMatchProjectionHandler
+	var automaticEvidenceService *eventapplication.AutomaticClaimEvidenceService
+	var automaticEvidenceScheduler *eventjobs.AutomaticClaimEvidenceScheduler
+	var automaticEvidenceHandler *eventjobs.AutomaticClaimEvidenceHandler
 	var handlers map[string]queue.Handler
 	app, err := NewAppWithReadiness(
 		cfg,
 		zap.NewNop(),
 		httptransport.ReadinessFunc(func(context.Context) error { return nil }),
 		fx.Populate(&handler, &recallProjections, &publishedMatches, &publishedMatchEvaluations, &matchReviews,
-			&publishedMatchHandler, &acceptedMatchProjectionHandler, &handlers),
+			&publishedMatchHandler, &acceptedMatchProjectionHandler, &automaticEvidenceService, &automaticEvidenceScheduler,
+			&automaticEvidenceHandler, &handlers),
 	)
 	if err != nil {
 		t.Fatalf("NewAppWithReadiness() error = %v", err)
@@ -114,12 +182,17 @@ func TestMinIOWorkerFxGraphConstructsSourceDocumentAndMatchServices(t *testing.T
 	}
 	defer func() { _ = app.Stop(ctx) }()
 	if handler == nil || recallProjections == nil || publishedMatches == nil || publishedMatchEvaluations == nil || matchReviews == nil ||
-		publishedMatchHandler == nil || acceptedMatchProjectionHandler == nil || handlers[queue.KindGenerateSourceDocument] == nil ||
+		publishedMatchHandler == nil || acceptedMatchProjectionHandler == nil || automaticEvidenceService == nil ||
+		automaticEvidenceScheduler == nil || automaticEvidenceHandler == nil || handlers[queue.KindGenerateSourceDocument] == nil ||
 		handlers[queue.KindEvaluatePublishedDocumentMatches] == nil || handlers[queue.KindProjectAcceptedDocumentMatch] == nil {
-		t.Fatalf("source document/match services/registration = %#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v",
+		t.Fatalf("source document/match/evidence services/registration = %#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v",
 			handler, recallProjections, publishedMatches, publishedMatchEvaluations, matchReviews, publishedMatchHandler,
-			acceptedMatchProjectionHandler, handlers[queue.KindGenerateSourceDocument],
-			handlers[queue.KindEvaluatePublishedDocumentMatches], handlers[queue.KindProjectAcceptedDocumentMatch])
+			acceptedMatchProjectionHandler, automaticEvidenceService, automaticEvidenceScheduler, automaticEvidenceHandler,
+			handlers[queue.KindGenerateSourceDocument], handlers[queue.KindEvaluatePublishedDocumentMatches],
+			handlers[queue.KindProjectAcceptedDocumentMatch])
+	}
+	if handlers[queue.KindExtractAutomaticClaimEvidence] == nil {
+		t.Fatal("automatic claim evidence handler is not registered")
 	}
 }
 

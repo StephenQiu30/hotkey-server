@@ -195,7 +195,7 @@ func (record evidenceLocatorRecord) committedReferenceDTO() sourceapplication.Co
 }
 
 func validateEvidenceReservation(command sourceapplication.ReserveEvidenceSnapshotCommand) error {
-	if command.SourceConnectionID <= 0 || command.CollectionRunID <= 0 || command.StoreRawRightsDecisionID <= 0 || command.RetainRightsDecisionID <= 0 ||
+	if command.SourceConnectionID <= 0 || command.CollectionRunID < 0 || command.StoreRawRightsDecisionID <= 0 || command.RetainRightsDecisionID <= 0 ||
 		!validSHA256Record(command.EvidenceKey) || !validSHA256Record(command.PayloadSHA256) || command.SizeBytes < 0 ||
 		command.ResponseStatus < 100 || command.ResponseStatus > 599 || command.CapturedAt.IsZero() ||
 		!command.RetentionUntil.After(command.CapturedAt) {

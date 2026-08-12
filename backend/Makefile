@@ -1,6 +1,7 @@
 .PHONY: test lint build validate validate-arch validate-repository ci smoke clean schema-verify database-runtime-verify openapi openapi-validate openapi-check
 
 GO ?= go
+OPENAPI_EXCLUDE := internal/modules/agentaccess,internal/modules/alert,internal/modules/delivery/transport/http,internal/modules/event/transport/http/handler.go,internal/modules/knowledge/transport/http,internal/modules/report
 
 test:
 	test -n "$$HOTKEY_TEST_DSN"
@@ -28,8 +29,8 @@ database-runtime-verify:
 	sh test/tools/verify-database-runtime.sh
 
 openapi:
-	$(GO) run github.com/swaggo/swag/cmd/swag init --generalInfo cmd/hotkey/main.go --parseInternal --output openapi --outputTypes go --packageName openapi
-	$(GO) run github.com/swaggo/swag/cmd/swag init --generalInfo cmd/hotkey/main.go --parseInternal --output ../docs/openapi --outputTypes json --packageName openapi
+	$(GO) run github.com/swaggo/swag/cmd/swag init --generalInfo cmd/hotkey/main.go --parseInternal --tags '!events,!radar' --exclude $(OPENAPI_EXCLUDE) --output openapi --outputTypes go --packageName openapi
+	$(GO) run github.com/swaggo/swag/cmd/swag init --generalInfo cmd/hotkey/main.go --parseInternal --tags '!events,!radar' --exclude $(OPENAPI_EXCLUDE) --output ../docs/openapi --outputTypes json --packageName openapi
 
 openapi-validate:
 	$(GO) test ./test/architecture -run 'Test(OpenAPIContract|GeneratedOpenAPIRegistryMatchesCommittedArtifact)$$' -count=1

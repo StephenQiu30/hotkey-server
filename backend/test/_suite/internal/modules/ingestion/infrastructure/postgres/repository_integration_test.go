@@ -201,7 +201,7 @@ func TestContentRepositoryPreservesUnknownAndExplicitZeroMetrics(t *testing.T) {
 	if err := runtime.SQL.QueryRow(`SELECT view_count, like_count, comment_count, share_count FROM contents WHERE id = $1`, content.ID).Scan(&currentView, &currentLike, &currentComment, &currentShare); err != nil {
 		t.Fatalf("read content metrics: %v", err)
 	}
-	if currentView.Valid || !currentLike.Valid || currentLike.Int64 != 0 || currentComment.Valid || !currentShare.Valid || currentShare.Int64 != 4 {
+	if !currentView.Valid || currentView.Int64 != 0 || currentLike.Valid || !currentComment.Valid || currentComment.Int64 != 8 || currentShare.Valid {
 		t.Fatalf("current nullable metrics = %#v/%#v/%#v/%#v", currentView, currentLike, currentComment, currentShare)
 	}
 

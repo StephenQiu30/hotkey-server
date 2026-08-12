@@ -401,23 +401,31 @@ BEGIN
     END IF;
     FOR config_key IN SELECT jsonb_object_keys(NEW.config)
     LOOP
-        IF config_key NOT IN ('allow_body_storage', 'requires_attribution', 'requires_deletion_sync', 'content_retention_days', 'metrics_retention_days', 'allowed_languages', 'allowed_regions', 'rate_limit_per_minute', 'request_timeout_seconds', 'max_pages_per_run', 'grounding_data_boundary_approved', 'bilibili_open_id', 'google_location', 'google_serving_config', 'hacker_news_mode') THEN
+        IF config_key NOT IN ('allow_body_storage', 'requires_attribution', 'requires_deletion_sync', 'content_retention_days', 'metrics_retention_days', 'allowed_languages', 'allowed_regions', 'rate_limit_per_minute', 'request_timeout_seconds', 'max_pages_per_run', 'grounding_data_boundary_approved', 'bilibili_open_id', 'google_location', 'google_serving_config', 'hacker_news_mode', 'x_metric_refresh_enabled', 'x_metric_refresh_interval_minutes', 'x_metric_refresh_observation_hours', 'x_metric_refresh_max_posts_per_run', 'x_metric_refresh_daily_request_budget') THEN
             RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'source_connections_config_whitelist_check', MESSAGE = 'source config contains an unsupported key';
         END IF;
     END LOOP;
     IF (NEW.config ? 'allow_body_storage' AND jsonb_typeof(NEW.config->'allow_body_storage') <> 'boolean')
        OR (NEW.config ? 'requires_attribution' AND jsonb_typeof(NEW.config->'requires_attribution') <> 'boolean')
        OR (NEW.config ? 'requires_deletion_sync' AND jsonb_typeof(NEW.config->'requires_deletion_sync') <> 'boolean')
-       OR (NEW.config ? 'grounding_data_boundary_approved' AND jsonb_typeof(NEW.config->'grounding_data_boundary_approved') <> 'boolean') THEN
+       OR (NEW.config ? 'grounding_data_boundary_approved' AND jsonb_typeof(NEW.config->'grounding_data_boundary_approved') <> 'boolean')
+       OR (NEW.config ? 'x_metric_refresh_enabled' AND jsonb_typeof(NEW.config->'x_metric_refresh_enabled') <> 'boolean') THEN
         RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'source_connections_config_boolean_check', MESSAGE = 'source config boolean value is invalid';
     END IF;
     IF (NEW.config ? 'content_retention_days' AND (jsonb_typeof(NEW.config->'content_retention_days') <> 'number' OR (NEW.config->>'content_retention_days')::numeric <> trunc((NEW.config->>'content_retention_days')::numeric) OR (NEW.config->>'content_retention_days')::integer NOT BETWEEN 1 AND 3650))
        OR (NEW.config ? 'metrics_retention_days' AND (jsonb_typeof(NEW.config->'metrics_retention_days') <> 'number' OR (NEW.config->>'metrics_retention_days')::numeric <> trunc((NEW.config->>'metrics_retention_days')::numeric) OR (NEW.config->>'metrics_retention_days')::integer NOT BETWEEN 1 AND 3650))
        OR (NEW.config ? 'rate_limit_per_minute' AND (jsonb_typeof(NEW.config->'rate_limit_per_minute') <> 'number' OR (NEW.config->>'rate_limit_per_minute')::numeric <> trunc((NEW.config->>'rate_limit_per_minute')::numeric) OR (NEW.config->>'rate_limit_per_minute')::integer NOT BETWEEN 1 AND 600))
        OR (NEW.config ? 'request_timeout_seconds' AND (jsonb_typeof(NEW.config->'request_timeout_seconds') <> 'number' OR (NEW.config->>'request_timeout_seconds')::numeric <> trunc((NEW.config->>'request_timeout_seconds')::numeric) OR (NEW.config->>'request_timeout_seconds')::integer NOT BETWEEN 1 AND 120))
-       OR (NEW.config ? 'max_pages_per_run' AND (jsonb_typeof(NEW.config->'max_pages_per_run') <> 'number' OR (NEW.config->>'max_pages_per_run')::numeric <> trunc((NEW.config->>'max_pages_per_run')::numeric) OR (NEW.config->>'max_pages_per_run')::integer NOT BETWEEN 1 AND 20)) THEN
+       OR (NEW.config ? 'max_pages_per_run' AND (jsonb_typeof(NEW.config->'max_pages_per_run') <> 'number' OR (NEW.config->>'max_pages_per_run')::numeric <> trunc((NEW.config->>'max_pages_per_run')::numeric) OR (NEW.config->>'max_pages_per_run')::integer NOT BETWEEN 1 AND 20))
+       OR (NEW.config ? 'x_metric_refresh_interval_minutes' AND (jsonb_typeof(NEW.config->'x_metric_refresh_interval_minutes') <> 'number' OR (NEW.config->>'x_metric_refresh_interval_minutes')::numeric <> trunc((NEW.config->>'x_metric_refresh_interval_minutes')::numeric) OR (NEW.config->>'x_metric_refresh_interval_minutes')::integer NOT BETWEEN 15 AND 1440))
+       OR (NEW.config ? 'x_metric_refresh_observation_hours' AND (jsonb_typeof(NEW.config->'x_metric_refresh_observation_hours') <> 'number' OR (NEW.config->>'x_metric_refresh_observation_hours')::numeric <> trunc((NEW.config->>'x_metric_refresh_observation_hours')::numeric) OR (NEW.config->>'x_metric_refresh_observation_hours')::integer NOT BETWEEN 1 AND 168))
+       OR (NEW.config ? 'x_metric_refresh_max_posts_per_run' AND (jsonb_typeof(NEW.config->'x_metric_refresh_max_posts_per_run') <> 'number' OR (NEW.config->>'x_metric_refresh_max_posts_per_run')::numeric <> trunc((NEW.config->>'x_metric_refresh_max_posts_per_run')::numeric) OR (NEW.config->>'x_metric_refresh_max_posts_per_run')::integer NOT BETWEEN 1 AND 100))
+       OR (NEW.config ? 'x_metric_refresh_daily_request_budget' AND (jsonb_typeof(NEW.config->'x_metric_refresh_daily_request_budget') <> 'number' OR (NEW.config->>'x_metric_refresh_daily_request_budget')::numeric <> trunc((NEW.config->>'x_metric_refresh_daily_request_budget')::numeric) OR (NEW.config->>'x_metric_refresh_daily_request_budget')::integer NOT BETWEEN 1 AND 1440)) THEN
         RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'source_connections_config_integer_check', MESSAGE = 'source config integer value is invalid';
     END IF;
+	IF NEW.source_type <> 'x' AND COALESCE((NEW.config->>'x_metric_refresh_enabled')::boolean, false) IS TRUE THEN
+		RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'source_connections_x_metric_refresh_source_check', MESSAGE = 'X metric refresh is available only for X sources';
+	END IF;
     IF (NEW.config ? 'allowed_languages' AND (jsonb_typeof(NEW.config->'allowed_languages') <> 'array' OR jsonb_array_length(NEW.config->'allowed_languages') > 8 OR EXISTS (SELECT 1 FROM jsonb_array_elements(NEW.config->'allowed_languages') AS value WHERE jsonb_typeof(value) <> 'string')))
        OR (NEW.config ? 'allowed_regions' AND (jsonb_typeof(NEW.config->'allowed_regions') <> 'array' OR jsonb_array_length(NEW.config->'allowed_regions') > 8 OR EXISTS (SELECT 1 FROM jsonb_array_elements(NEW.config->'allowed_regions') AS value WHERE jsonb_typeof(value) <> 'string'))) THEN
         RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'source_connections_config_array_check', MESSAGE = 'source config array value is invalid';
@@ -6726,7 +6734,7 @@ CREATE TABLE IF NOT EXISTS notification_delivery_attempts (
     id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
     version bigint NOT NULL DEFAULT 1 CHECK (version = 1),
     user_notification_id bigint NOT NULL REFERENCES user_notifications(id) ON DELETE RESTRICT,
-    channel varchar(16) NOT NULL CHECK (channel IN ('sse','email','web_push')),
+    channel varchar(16) NOT NULL CHECK (channel IN ('sse','websocket','email','web_push')),
     delivery_target_key varchar(128) NOT NULL DEFAULT 'primary'
         CHECK (delivery_target_key ~ '^[a-z][a-z0-9:_-]{0,127}$'),
     attempt_no integer NOT NULL CHECK (attempt_no > 0),
@@ -6740,6 +6748,9 @@ CREATE TABLE IF NOT EXISTS notification_delivery_attempts (
         OR status<>'succeeded' AND error_code IS NOT NULL AND btrim(error_code) <> '')
 );
 ALTER TABLE notification_delivery_attempts ADD COLUMN IF NOT EXISTS delivery_target_key varchar(128) NOT NULL DEFAULT 'primary';
+ALTER TABLE notification_delivery_attempts DROP CONSTRAINT IF EXISTS notification_delivery_attempts_channel_check;
+ALTER TABLE notification_delivery_attempts ADD CONSTRAINT notification_delivery_attempts_channel_check
+    CHECK (channel IN ('sse','websocket','email','web_push'));
 ALTER TABLE notification_delivery_attempts DROP CONSTRAINT IF EXISTS notification_delivery_attempts_delivery_target_key_check;
 ALTER TABLE notification_delivery_attempts ADD CONSTRAINT notification_delivery_attempts_delivery_target_key_check
     CHECK (delivery_target_key ~ '^[a-z][a-z0-9:_-]{0,127}$');

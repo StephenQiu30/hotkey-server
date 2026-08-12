@@ -4,7 +4,7 @@ scope: shared
 doc_no: "000"
 title: PRD 索引
 status: approved
-version: v2.2
+version: v2.6
 owner: HotKey Team
 canonical_path: docs/prd/README.md
 ---
@@ -13,7 +13,7 @@ canonical_path: docs/prd/README.md
 
 PRD 将每一条设计转换为稳定、可验收的产品范围。状态只使用 `draft`、`approved`、`implemented`、`cancelled`。
 
-001–032 与 Design、Plan 一一对应。任何需求新增、拆分或合并都必须同时修改三类索引和文件，不能只在 Plan 中临时扩大范围。
+001–036 与 Design、Plan 一一对应。任何需求新增、拆分或合并都必须同时修改三类索引和文件，不能只在 Plan 中临时扩大范围。
 
 ## 交付项
 
@@ -51,3 +51,7 @@ PRD 将每一条设计转换为稳定、可验收的产品范围。状态只使�
 | 030 | [通知与订阅页面拆分](../design/archive/030-通知与订阅页面拆分设计.md) | [PRD](archive/030-通知与订阅页面拆分.md) | [Plan](../plans/archive/030-通知与订阅页面拆分计划.md) | implemented |
 | 031 | [Hacker-News热门榜单与持续观测](../design/archive/031-Hacker-News热门榜单与持续观测设计.md) | [PRD](archive/031-Hacker-News热门榜单与持续观测.md) | [Plan](../plans/archive/031-Hacker-News热门榜单与持续观测计划.md) | implemented |
 | 032 | [热点事件语义监控与出处正文](../design/archive/032-热点事件语义监控与出处正文设计.md) | [PRD](archive/032-热点事件语义监控与出处正文.md) | [Plan](../plans/archive/032-热点事件语义监控与出处正文计划.md) | implemented |
+| 033 | [X热点发现与持续热度观测](../design/033-X热点发现与持续热度观测设计.md) | [PRD](033-X热点发现与持续热度观测.md) | [Plan](../plans/033-X热点发现与持续热度观测计划.md) | approved |
+| 034 | [X热点核心链路收敛与遗留系统清理](../design/034-X热点核心链路收敛与遗留系统清理设计.md) | [PRD](034-X热点核心链路收敛与遗留系统清理.md) | [Plan](../plans/034-X热点核心链路收敛与遗留系统清理计划.md) | cancelled |
+| 035 | [多源AI热点监控首版收敛](../design/035-多源AI热点监控首版收敛设计.md) | [PRD](035-多源AI热点监控首版收敛.md) | [Plan](../plans/035-多源AI热点监控首版收敛计划.md) | approved |
+| 036 | [评论会话采集与采集运行时边界](../design/036-评论会话采集与采集运行时边界设计.md) | [PRD](036-评论会话采集与采集运行时边界.md) | [Plan](../plans/036-评论会话采集与采集运行时边界计划.md) | draft |

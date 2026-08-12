@@ -39,8 +39,8 @@ describe("CollectionWorkspace", () => {
             fetched_at: "2026-07-18T04:00:00Z",
             relevance_score: 91.5,
             match_decision: "accepted",
-            event_id: 12,
-            event_title: "Agent 产品发布",
+            micro_event_id: 12,
+            micro_event_title: "Agent 产品发布",
           },
         ]}
       />

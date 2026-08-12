@@ -1,11 +1,8 @@
 import {
   BellRing,
-  Bell,
   Database,
-  FileText,
   Library,
   Radar,
-  Rss,
   ShieldCheck,
   Telescope,
   Users,
@@ -38,23 +35,13 @@ export const dashboardMenuItems: MenuItem[] = [
   },
   {
     path: "/dashboard/events",
-    name: "事件",
+    name: "热点事件",
     icon: <BellRing className="h-4 w-4" />,
   },
   {
-    path: "/dashboard/alerts",
-    name: "告警",
-    icon: <Bell className="h-4 w-4" />,
-  },
-  {
-    path: "/dashboard/reports",
-    name: "报告",
-    icon: <FileText className="h-4 w-4" />,
-  },
-  {
-    path: "/dashboard/subscriptions",
-    name: "订阅",
-    icon: <Rss className="h-4 w-4" />,
+    path: "/dashboard/notifications",
+    name: "通知",
+    icon: <BellRing className="h-4 w-4" />,
   },
 ];
 

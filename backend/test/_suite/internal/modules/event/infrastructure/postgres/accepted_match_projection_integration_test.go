@@ -12,7 +12,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
 
-func TestAcceptedMatchProjectionCreatesMicroEventStorylineAndHeatV2(t *testing.T) {
+func TestAcceptedMatchProjectionCreatesOnlyMicroEventAndHeatV2(t *testing.T) {
 	ctx := context.Background()
 	runtime, err := database.Open(ctx, postgresfixture.New(t))
 	if err != nil {
@@ -37,18 +37,15 @@ VALUES ('heat-v2-integration','active',.25,.20,.15,.15,.10,.15,$1,$2)`, actorID,
 	fixture := seedMicroEventAssignmentFixture(t, runtime, "accepted-projection", "accepted")
 	microRepository, _ := NewMicroEventRepository(runtime)
 	microService, _ := eventapplication.NewMicroEventService(microRepository)
-	storylineRepository, _ := NewStorylinePostgresRepository(runtime)
-	storylineService, _ := eventapplication.NewStorylineService(storylineRepository)
 	heatRepository, _ := NewEventHeatRepository(runtime)
 	heatService, _ := eventapplication.NewEventHeatService(heatRepository)
-	service, err := eventapplication.NewAcceptedMatchEventProjectionService(microRepository, microService,
-		storylineService, heatService)
+	service, err := eventapplication.NewAcceptedMatchEventProjectionService(microRepository, microService, heatService)
 	if err != nil {
 		t.Fatal(err)
 	}
 	projected, err := service.Project(ctx, eventapplication.ProjectAcceptedDocumentMatchCommand{
 		DocumentMatchDecisionID: fixture.matchDecisionID, DocumentVersionID: fixture.documentVersionID})
-	if err != nil || projected.MicroEvent.ID <= 0 || projected.Storyline == nil || projected.StorylineEvent == nil ||
+	if err != nil || projected.MicroEvent.ID <= 0 || projected.Storyline != nil || projected.StorylineEvent != nil ||
 		projected.HeatUnavailable || len(projected.HeatSnapshots) != 3 {
 		t.Fatalf("accepted projection = %#v / %v", projected, err)
 	}
@@ -59,8 +56,8 @@ VALUES ('heat-v2-integration','active',.25,.20,.15,.15,.10,.15,$1,$2)`, actorID,
 	}
 	replayed, err := service.Project(ctx, eventapplication.ProjectAcceptedDocumentMatchCommand{
 		DocumentMatchDecisionID: fixture.matchDecisionID, DocumentVersionID: fixture.documentVersionID})
-	if err != nil || replayed.MicroEvent.ID != projected.MicroEvent.ID || replayed.Storyline == nil ||
-		replayed.Storyline.ID != projected.Storyline.ID || replayed.HeatSnapshots[0].ID != projected.HeatSnapshots[0].ID {
+	if err != nil || replayed.MicroEvent.ID != projected.MicroEvent.ID || replayed.Storyline != nil ||
+		replayed.StorylineEvent != nil || replayed.HeatSnapshots[0].ID != projected.HeatSnapshots[0].ID {
 		t.Fatalf("accepted projection replay = %#v / %v", replayed, err)
 	}
 }
@@ -78,18 +75,15 @@ func TestAcceptedMatchProjectionKeepsEventWhenHeatProfileIsUnavailable(t *testin
 	fixture := seedMicroEventAssignmentFixture(t, runtime, "accepted-without-heat", "accepted")
 	microRepository, _ := NewMicroEventRepository(runtime)
 	microService, _ := eventapplication.NewMicroEventService(microRepository)
-	storylineRepository, _ := NewStorylinePostgresRepository(runtime)
-	storylineService, _ := eventapplication.NewStorylineService(storylineRepository)
 	heatRepository, _ := NewEventHeatRepository(runtime)
 	heatService, _ := eventapplication.NewEventHeatService(heatRepository)
-	service, err := eventapplication.NewAcceptedMatchEventProjectionService(microRepository, microService,
-		storylineService, heatService)
+	service, err := eventapplication.NewAcceptedMatchEventProjectionService(microRepository, microService, heatService)
 	if err != nil {
 		t.Fatal(err)
 	}
 	projected, err := service.Project(ctx, eventapplication.ProjectAcceptedDocumentMatchCommand{
 		DocumentMatchDecisionID: fixture.matchDecisionID, DocumentVersionID: fixture.documentVersionID})
-	if err != nil || projected.MicroEvent.ID <= 0 || projected.Storyline == nil || !projected.HeatUnavailable || len(projected.HeatSnapshots) != 0 {
+	if err != nil || projected.MicroEvent.ID <= 0 || projected.Storyline != nil || !projected.HeatUnavailable || len(projected.HeatSnapshots) != 0 {
 		t.Fatalf("accepted projection without heat profile = %#v / %v", projected, err)
 	}
 }

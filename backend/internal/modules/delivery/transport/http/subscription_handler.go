@@ -41,7 +41,6 @@ func NewSubscriptionHandler(service subscriptionService) *SubscriptionHandler {
 // @Success 200 {object} DeliveryResult[SubscriptionPageResponse]
 // @Failure 401 {object} DeliveryResult[DeliveryEmptyResponse]
 // @Failure 503 {object} DeliveryResult[DeliveryEmptyResponse]
-// @Router /api/v1/report-subscriptions [get]
 func (handler *SubscriptionHandler) List(c *gin.Context) error {
 	subject, err := deliverySubject(c)
 	if err != nil {
@@ -74,7 +73,6 @@ func (handler *SubscriptionHandler) List(c *gin.Context) error {
 // @Failure 401 {object} DeliveryResult[DeliveryEmptyResponse]
 // @Failure 404 {object} DeliveryResult[DeliveryEmptyResponse]
 // @Failure 503 {object} DeliveryResult[DeliveryEmptyResponse]
-// @Router /api/v1/report-subscriptions/{id} [get]
 func (handler *SubscriptionHandler) Get(c *gin.Context) error {
 	subject, err := deliverySubject(c)
 	if err != nil {
@@ -105,7 +103,6 @@ func (handler *SubscriptionHandler) Get(c *gin.Context) error {
 // @Failure 401 {object} DeliveryResult[DeliveryEmptyResponse]
 // @Failure 409 {object} DeliveryResult[DeliveryEmptyResponse]
 // @Failure 503 {object} DeliveryResult[DeliveryEmptyResponse]
-// @Router /api/v1/report-subscriptions [post]
 func (handler *SubscriptionHandler) Create(c *gin.Context) error {
 	subject, err := deliverySubject(c)
 	if err != nil {
@@ -142,7 +139,6 @@ func (handler *SubscriptionHandler) Create(c *gin.Context) error {
 // @Failure 404 {object} DeliveryResult[DeliveryEmptyResponse]
 // @Failure 409 {object} DeliveryResult[DeliveryEmptyResponse]
 // @Failure 503 {object} DeliveryResult[DeliveryEmptyResponse]
-// @Router /api/v1/report-subscriptions/{id} [patch]
 func (handler *SubscriptionHandler) Update(c *gin.Context) error {
 	subject, err := deliverySubject(c)
 	if err != nil {
@@ -179,7 +175,6 @@ func (handler *SubscriptionHandler) Update(c *gin.Context) error {
 // @Failure 404 {object} DeliveryResult[DeliveryEmptyResponse]
 // @Failure 409 {object} DeliveryResult[DeliveryEmptyResponse]
 // @Failure 503 {object} DeliveryResult[DeliveryEmptyResponse]
-// @Router /api/v1/report-subscriptions/{id}/rss-token/rotate [post]
 func (handler *SubscriptionHandler) RotateToken(c *gin.Context) error {
 	subject, err := deliverySubject(c)
 	if err != nil {
@@ -216,7 +211,6 @@ func (handler *SubscriptionHandler) RotateToken(c *gin.Context) error {
 // @Failure 404 {object} DeliveryResult[DeliveryEmptyResponse]
 // @Failure 409 {object} DeliveryResult[DeliveryEmptyResponse]
 // @Failure 503 {object} DeliveryResult[DeliveryEmptyResponse]
-// @Router /api/v1/report-subscriptions/{id} [delete]
 func (handler *SubscriptionHandler) Delete(c *gin.Context) error {
 	subject, err := deliverySubject(c)
 	if err != nil {

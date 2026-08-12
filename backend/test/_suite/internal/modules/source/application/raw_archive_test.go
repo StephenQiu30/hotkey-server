@@ -177,6 +177,26 @@ func TestRawEvidenceArchiveVerifiesAndPersistsSourceOwnedEvidence(t *testing.T) 
 	}
 }
 
+func TestRawEvidenceArchivePersistsContextSnapshotWithoutCollectionRunOrObservation(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 12, 9, 0, 0, 0, time.UTC)
+	snapshot := archiveSnapshot(t, now, []byte(`{"data":[{"id":"9"}]}`), "x-post-lookup-json-v1")
+	command := archiveCommand(snapshot, []domain.SourceItem{}, now)
+	command.CollectionRunID = 0
+	store := &rawEvidenceStoreFake{}
+	repository := &evidenceSnapshotRepositoryFake{}
+	service := newArchiveService(t, store, repository, &archiveClockFake{now: now})
+
+	result, err := service.Archive(context.Background(), command)
+	if err != nil {
+		t.Fatalf("Archive(context): %v", err)
+	}
+	if len(result.Snapshots) != 1 || len(repository.reservations) != 1 || repository.reservations[0].CollectionRunID != 0 ||
+		len(repository.commits) != 1 || len(repository.commits[0].Observations) != 0 {
+		t.Fatalf("context archive = %#v reservations=%#v commits=%#v", result, repository.reservations, repository.commits)
+	}
+}
+
 func TestRawEvidenceArchiveAcceptsConcreteEndpointAuthorizationForExactSnapshot(t *testing.T) {
 	t.Parallel()
 

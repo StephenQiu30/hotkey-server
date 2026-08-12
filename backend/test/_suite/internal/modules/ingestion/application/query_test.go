@@ -34,9 +34,9 @@ func TestContentQueryServiceEnrichesOnlyActiveContentWithSafeSourceReference(t *
 	}
 }
 
-func TestContentQueryServiceBatchEnrichesCurrentEventReference(t *testing.T) {
+func TestContentQueryServiceBatchEnrichesOnlyCurrentMicroEventReference(t *testing.T) {
 	content := queryTestContent(7, 3)
-	events := &contentEventReaderStub{references: []eventapplication.ContentSearchReference{{ContentID: 7, EventID: 11, EventTitle: "发布事件"}}}
+	events := &contentEventReaderStub{references: []eventapplication.ContentSearchReference{{ContentID: 7, MicroEventID: 11, MicroEventTitle: "发布主体 · 发布动作"}}}
 	service, err := NewContentQueryService(ContentQueryDependencies{
 		Contents: &contentQueryRepositoryStub{page: ingestiondomain.ContentPage{Items: []ingestiondomain.Content{content}}},
 		Sources:  &contentSourceReaderStub{references: map[int64]sourcedomain.ContentSourceReference{3: {Name: "RSS", SourceType: sourcedomain.SourceTypeRSS}}},
@@ -46,7 +46,7 @@ func TestContentQueryServiceBatchEnrichesCurrentEventReference(t *testing.T) {
 		t.Fatalf("NewContentQueryService() error = %v", err)
 	}
 	page, err := service.ListActive(context.Background(), ingestiondomain.ContentListQuery{Limit: 10})
-	if err != nil || len(page.Items) != 1 || page.Items[0].EventID == nil || *page.Items[0].EventID != 11 || page.Items[0].EventTitle != "发布事件" {
+	if err != nil || len(page.Items) != 1 || page.Items[0].MicroEventID == nil || *page.Items[0].MicroEventID != 11 || page.Items[0].MicroEventTitle != "发布主体 · 发布动作" {
 		t.Fatalf("ListActive() page/error = %#v/%v", page, err)
 	}
 	if len(events.contentIDs) != 1 || events.contentIDs[0] != 7 {
@@ -65,7 +65,7 @@ func TestContentQueryServiceDegradesWhenEventProjectionIsUnavailable(t *testing.
 		t.Fatalf("NewContentQueryService() error = %v", err)
 	}
 	page, err := service.ListActive(context.Background(), ingestiondomain.ContentListQuery{Limit: 10})
-	if err != nil || len(page.Items) != 1 || page.Items[0].EventID != nil {
+	if err != nil || len(page.Items) != 1 || page.Items[0].MicroEventID != nil {
 		t.Fatalf("ListActive() page/error = %#v/%v", page, err)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/domain"
 	sourcedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
@@ -65,6 +66,24 @@ func NewService(dependencies Dependencies) (*Service, error) {
 		return nil, errors.New("ingestion application dependencies are required")
 	}
 	return &Service{runtime: dependencies.Runtime, captures: dependencies.Captures, contents: dependencies.Contents, evidence: dependencies.Evidence, markdown: dependencies.Markdown, metrics: dependencies.MetricRefresh}, nil
+}
+
+// AppendXMetricObservation is the only write boundary used by Source's X
+// lookup coordinator. The metric snapshot commits before Event recomputation,
+// so a downstream retry can never roll back an observed provider fact.
+func (service *Service) AppendXMetricObservation(ctx context.Context, contentID int64, capturedAt time.Time, metrics sourcedomain.SourceMetrics) error {
+	if service == nil || service.contents == nil || contentID <= 0 || capturedAt.IsZero() {
+		return errors.New("X metric observation identity is invalid")
+	}
+	if err := service.contents.AppendMetricSnapshot(ctx, contentID, capturedAt.UTC(), metrics); err != nil {
+		return fmt.Errorf("append X metric snapshot: %w", err)
+	}
+	if service.metrics != nil {
+		if err := service.metrics.RecomputeMetricsForContent(ctx, contentID); err != nil {
+			return fmt.Errorf("recompute micro-event heat: %w", err)
+		}
+	}
+	return nil
 }
 
 // IngestRun processes one bounded page of Source-owned captures. A failed

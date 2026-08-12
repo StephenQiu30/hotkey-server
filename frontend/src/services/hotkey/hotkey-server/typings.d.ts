@@ -1,28 +1,4 @@
 declare namespace HotKeyAPI {
-  type AgentAccessResultArrayHttpTokenResponse = {
-    code?: number;
-    data?: TokenResponse[];
-    message?: string;
-  };
-
-  type AgentAccessResultHttpCreatedTokenResponse = {
-    code?: number;
-    data?: CreatedTokenResponse;
-    message?: string;
-  };
-
-  type AgentAccessResultHttpTokenResponse = {
-    code?: number;
-    data?: TokenResponse;
-    message?: string;
-  };
-
-  type AgentAccessResultInternalModulesAgentaccessTransportHttpEmptyResponse = {
-    code?: number;
-    data?: EmptyResponse;
-    message?: string;
-  };
-
   type AICandidateRequest = {
     /** Gin must not apply required directly to this nullable wrapper: both an
 explicit JSON null and a positive integer are valid. The application
@@ -35,113 +11,6 @@ required property without making explicit null impossible to bind. */
     rule_type: string;
     value: string;
     weight?: number;
-  };
-
-  type AlertActionRequest = {
-    expected_version: number;
-    reason_code: string;
-  };
-
-  type AlertDetailResponse = {
-    audits?: AlertStateAuditResponse[];
-    email_deliveries?: AlertEmailDeliveryResponse[];
-    occurrences?: AlertOccurrenceResponse[];
-    thread?: AlertThreadResponse;
-  };
-
-  type AlertEmailDeliveryResponse = {
-    attempt_count?: number;
-    id?: number;
-    last_error?: string;
-    next_attempt_at?: string;
-    occurrence_id?: number;
-    severity?: string;
-    status?: string;
-    succeeded_at?: string;
-  };
-
-  type AlertOccurrenceResponse = {
-    breadth_score?: number;
-    event_update_id?: number;
-    final_score?: number;
-    heat_score?: number;
-    id?: number;
-    momentum_score?: number;
-    reason_codes?: string[];
-    severity?: string;
-    threshold?: number;
-    triggered_at?: string;
-  };
-
-  type AlertPageResponse = {
-    items?: AlertThreadResponse[];
-    next_cursor?: string;
-  };
-
-  type AlertResultHttpAlertDetailResponse = {
-    code?: number;
-    data?: AlertDetailResponse;
-    message?: string;
-  };
-
-  type AlertResultHttpAlertPageResponse = {
-    code?: number;
-    data?: AlertPageResponse;
-    message?: string;
-  };
-
-  type AlertResultHttpAlertThreadResponse = {
-    code?: number;
-    data?: AlertThreadResponse;
-    message?: string;
-  };
-
-  type AlertResultInternalModulesAlertTransportHttpEmptyResponse = {
-    code?: number;
-    data?: EmptyResponse;
-    message?: string;
-  };
-
-  type AlertStateAuditResponse = {
-    actor_type?: string;
-    actor_user_id?: number;
-    created_at?: string;
-    expected_version?: number;
-    from_state?: string;
-    id?: number;
-    reason_code?: string;
-    to_state?: string;
-  };
-
-  type AlertThreadResponse = {
-    acknowledged_at?: string;
-    acknowledged_by_user_id?: number;
-    cooldown_minutes?: number;
-    cooldown_until?: string;
-    critical_threshold?: number;
-    event_id?: number;
-    first_triggered_at?: string;
-    id?: number;
-    last_triggered_at?: string;
-    min_breadth?: number;
-    min_heat?: number;
-    min_momentum?: number;
-    monitor_id?: number;
-    monitor_revision?: number;
-    occurrence_count?: number;
-    policy_version?: string;
-    reason?: string;
-    resolved_at?: string;
-    resolved_by_user_id?: number;
-    severity?: string;
-    state?: string;
-    suppressed_at?: string;
-    suppressed_by_user_id?: number;
-    threshold?: number;
-    title?: string;
-    trigger_type?: string;
-    version?: number;
-    warning_threshold?: number;
   };
 
   type ApprovalRequest = {
@@ -465,14 +334,14 @@ required property without making explicit null impossible to bind. */
     dedupe_status?: "active" | "duplicate";
     dedupe_version?: string;
     document_version_id?: number;
-    event_id?: number;
-    event_title?: string;
     external_id?: string;
     fetched_at?: string;
     id?: number;
     language?: string;
     match_decision?: "accepted" | "review" | "rejected";
     metrics?: ContentMetricsResponse;
+    micro_event_id?: number;
+    micro_event_title?: string;
     published_at?: string;
     relevance_score?: number;
     source_name?: string;
@@ -596,19 +465,6 @@ required property without making explicit null impossible to bind. */
     result_text_quote_selector_id: number;
   };
 
-  type CreatedTokenResponse = {
-    created_at?: string;
-    expires_at?: string;
-    id?: number;
-    last_used_at?: string;
-    name?: string;
-    revoked_at?: string;
-    scopes?: string[];
-    token?: string;
-    token_prefix?: string;
-    version?: number;
-  };
-
   type CreateMetricCapabilityProfileRequest = {
     independence_strategy: "source_connection" | "author";
     max_single_item_contribution: number;
@@ -650,13 +506,6 @@ required property without making explicit null impossible to bind. */
     sources: MonitorSourceRequest[];
   };
 
-  type CreateReportRequest = {
-    at?: string;
-    monitor_id?: number;
-    timezone: string;
-    type: "daily" | "weekly";
-  };
-
   type CreateRightsPolicyRequestDTO = {
     approved_by_user_id?: number;
     basis_summary?: string;
@@ -695,29 +544,6 @@ required property without making explicit null impossible to bind. */
     terms_policy_url?: string;
   };
 
-  type CreateSubscriptionRequest = {
-    channel?: "email" | "rss";
-    enabled?: boolean;
-    monitor_id?: number;
-    recipient?: string;
-    report_type?: "daily" | "weekly";
-    schedule?: string;
-    timezone?: string;
-  };
-
-  type CreateTokenRequest = {
-    lifetime_days: number;
-    name: string;
-    scopes: (
-      | "monitors.read"
-      | "events.read"
-      | "contents.read"
-      | "reports.read"
-      | "search.run"
-      | "alerts.write"
-    )[];
-  };
-
   type deleteAiModelProfilesIdParams = {
     /** model profile ID */
     id: number;
@@ -738,44 +564,9 @@ required property without making explicit null impossible to bind. */
     id: number;
   };
 
-  type deleteReportSubscriptionsIdParams = {
-    /** subscription ID */
-    id: number;
-  };
-
-  type DeleteSubscriptionRequest = {
-    expected_version: number;
-  };
-
   type deleteUsersIdParams = {
     /** user ID */
     id: number;
-  };
-
-  type DeliveryEmptyResponse = true;
-
-  type DeliveryResultHttpDeliveryEmptyResponse = {
-    code?: number;
-    data?: DeliveryEmptyResponse;
-    message?: string;
-  };
-
-  type DeliveryResultHttpSubscriptionPageResponse = {
-    code?: number;
-    data?: SubscriptionPageResponse;
-    message?: string;
-  };
-
-  type DeliveryResultHttpSubscriptionResponse = {
-    code?: number;
-    data?: SubscriptionResponse;
-    message?: string;
-  };
-
-  type DeliveryResultHttpSubscriptionSecretResponse = {
-    code?: number;
-    data?: SubscriptionSecretResponse;
-    message?: string;
   };
 
   type DocumentMatchPageResponseDTO = {
@@ -810,28 +601,6 @@ required property without making explicit null impossible to bind. */
     rank?: number;
     raw_score?: number;
   };
-
-  type DocumentResponse = {
-    contentHash?: string;
-    eventID?: number;
-    generatedHash?: string;
-    id?: number;
-    reportID?: number;
-    revisionNo?: number;
-    status?: string;
-    topicID?: number;
-    type?: string;
-    vaultPath?: string;
-    version?: number;
-  };
-
-  type EmptyResponse = true;
-
-  type EmptyResponse = true;
-
-  type EmptyResponse = true;
-
-  type EmptyResponse = true;
 
   type EmptyResponse = true;
 
@@ -871,162 +640,6 @@ required property without making explicit null impossible to bind. */
     window_started_at?: string;
   };
 
-  type EventIntelligenceResponse = {
-    claims?: IntelligenceClaimResponse[];
-    entities?: IntelligenceEntityResponse[];
-    event_id?: number;
-  };
-
-  type EventLifecycleRequest = {
-    expected_version: number;
-    reason: string;
-    to: string;
-  };
-
-  type EventMemberPageResponse = {
-    items?: EventMemberResponse[];
-  };
-
-  type EventMemberResponse = {
-    content_id?: number;
-    event_id?: number;
-    evidence_role?: string;
-    id?: number;
-    manual_locked?: boolean;
-    membership_score?: number;
-    origin?: string;
-    representative?: boolean;
-    version?: number;
-  };
-
-  type EventPageResponse = {
-    items?: EventResponse[];
-    next_cursor?: number;
-  };
-
-  type EventResponse = {
-    calculated_at?: string;
-    capability_profile_set_hash?: string;
-    event_key?: string;
-    first_seen_at?: string;
-    heat_score?: number;
-    heat_version?: string;
-    id?: number;
-    last_seen_at?: string;
-    lifecycle_status?: string;
-    manual_locked?: boolean;
-    merged_into_id?: number;
-    reason_codes?: string[];
-    representative_content_id?: number;
-    summary?: string;
-    title_en?: string;
-    title_zh?: string;
-    trend_score?: number;
-    trend_status?: string;
-    version?: number;
-    window_hours?: number;
-  };
-
-  type EventResultHttpEventIntelligenceResponse = {
-    code?: number;
-    data?: EventIntelligenceResponse;
-    message?: string;
-  };
-
-  type EventResultHttpEventMemberPageResponse = {
-    code?: number;
-    data?: EventMemberPageResponse;
-    message?: string;
-  };
-
-  type EventResultHttpEventMemberResponse = {
-    code?: number;
-    data?: EventMemberResponse;
-    message?: string;
-  };
-
-  type EventResultHttpEventPageResponse = {
-    code?: number;
-    data?: EventPageResponse;
-    message?: string;
-  };
-
-  type EventResultHttpEventResponse = {
-    code?: number;
-    data?: EventResponse;
-    message?: string;
-  };
-
-  type EventResultHttpEventUpdatePageResponse = {
-    code?: number;
-    data?: EventUpdatePageResponse;
-    message?: string;
-  };
-
-  type EventResultHttpHeatResponse = {
-    code?: number;
-    data?: HeatResponse;
-    message?: string;
-  };
-
-  type EventResultHttpRadarPageResponse = {
-    code?: number;
-    data?: RadarPageResponse;
-    message?: string;
-  };
-
-  type EventResultHttpSummaryRegenerationResponse = {
-    code?: number;
-    data?: SummaryRegenerationResponse;
-    message?: string;
-  };
-
-  type EventResultInternalModulesEventTransportHttpEmptyResponse = {
-    code?: number;
-    data?: EmptyResponse;
-    message?: string;
-  };
-
-  type EventSummaryResponse = {
-    degraded?: boolean;
-    sentences?: SummarySentenceResponse[];
-    title_en?: string;
-    title_zh?: string;
-    version?: string;
-  };
-
-  type EventUpdatePageResponse = {
-    items?: EventUpdateResponse[];
-    next_cursor?: number;
-  };
-
-  type EventUpdateResponse = {
-    after_state?: EventUpdateStateResponse;
-    before_state?: EventUpdateStateResponse;
-    event_id?: number;
-    evidence_set_hash?: string;
-    id?: number;
-    kind?: string;
-    observed_at?: string;
-    reason_codes?: string[];
-    sequence_no?: number;
-    summary?: string;
-    version?: number;
-  };
-
-  type EventUpdateStateResponse = {
-    capability_profile_set_hash?: string;
-    content_count?: number;
-    evidence_set_hash?: string;
-    heat_score?: number;
-    heat_version?: string;
-    source_count?: number;
-    trend_score?: number;
-    trend_status?: string;
-    window_end?: string;
-    window_hours?: number;
-  };
-
   type EvidenceStateResponseDTO = {
     algorithm_version?: string;
     calculated_at?: string;
@@ -1054,169 +667,9 @@ required property without making explicit null impossible to bind. */
     text?: string;
   };
 
-  type getAgentAlertsIdParams = {
-    /** alert thread ID */
-    id: number;
-  };
-
-  type getAgentAlertsParams = {
-    /** thread state */
-    state?: "open" | "acknowledged" | "resolved" | "suppressed";
-    /** severity */
-    severity?: "info" | "warning" | "critical";
-    /** monitor ID */
-    monitor_id?: number;
-    /** page size */
-    limit?: number;
-    /** opaque alert cursor */
-    cursor?: string;
-  };
-
-  type getAgentContentsIdDocumentParams = {
-    /** content ID */
-    id: number;
-  };
-
-  type getAgentContentsIdParams = {
-    /** content ID */
-    id: number;
-  };
-
-  type getAgentContentsParams = {
-    /** cursor */
-    cursor?: string;
-    /** page size */
-    limit?: number;
-    /** title or summary keyword */
-    q?: string;
-    /** source connection ID */
-    source_connection_id?: number;
-    /** published at or after (RFC3339) */
-    published_from?: string;
-    /** published at or before (RFC3339) */
-    published_to?: string;
-    /** monitor ID */
-    monitor_id?: number;
-    /** latest monitor match decision */
-    decision?: "accepted" | "review" | "rejected";
-    /** sort order */
-    sort?: "latest" | "relevance";
-  };
-
-  type getAgentEventsIdContentsParams = {
-    /** event ID */
-    id: number;
-  };
-
-  type getAgentEventsIdHeatParams = {
-    /** event ID */
-    id: number;
-  };
-
-  type getAgentEventsIdIntelligenceParams = {
-    /** event ID */
-    id: number;
-  };
-
-  type getAgentEventsIdParams = {
-    /** event ID */
-    id: number;
-  };
-
-  type getAgentEventsIdUpdatesParams = {
-    /** event ID */
-    id: number;
-    /** sequence cursor */
-    cursor?: number;
-    /** page size */
-    limit?: number;
-  };
-
-  type getAgentEventsParams = {
-    /** event id cursor */
-    cursor?: number;
-    /** page size */
-    limit?: number;
-  };
-
-  type getAgentMonitorsIdParams = {
-    /** monitor ID */
-    id: number;
-  };
-
-  type getAgentMonitorsParams = {
-    /** cursor */
-    cursor?: string;
-    /** page size */
-    limit?: number;
-  };
-
-  type getAgentRadarEventsParams = {
-    /** event title or summary keyword */
-    q?: string;
-    /** Radar window */
-    window?: "1h" | "6h" | "24h" | "7d";
-    /** monitor ID */
-    monitor_id?: number;
-    /** lifecycle filters */
-    lifecycle?: (
-      | "detected"
-      | "active"
-      | "cooling"
-      | "closed"
-      | "merged"
-      | "archived"
-      | "rejected"
-    )[];
-    /** trend filters */
-    trend?: ("emerging" | "rising" | "stable" | "falling" | "dormant")[];
-    /** minimum heat */
-    min_heat?: number;
-    /** ranking dimension */
-    sort?: "momentum" | "attention" | "breadth" | "latest" | "relevance";
-    /** page size */
-    limit?: number;
-    /** opaque Radar cursor */
-    cursor?: string;
-  };
-
-  type getAgentReportsIdParams = {
-    /** report ID */
-    id: number;
-  };
-
-  type getAgentReportsParams = {
-    /** report id cursor */
-    cursor?: number;
-    /** page size */
-    limit?: number;
-    /** daily or weekly */
-    type?: string;
-    /** draft, published, failed or archived */
-    status?: string;
-  };
-
   type getAiModelProfilesIdParams = {
     /** model profile ID */
     id: number;
-  };
-
-  type getAlertsIdParams = {
-    /** alert thread ID */
-    id: number;
-  };
-
-  type getAlertsParams = {
-    /** thread state */
-    state?: "open" | "acknowledged" | "resolved" | "suppressed";
-    /** severity */
-    severity?: "info" | "warning" | "critical";
-    /** monitor ID */
-    monitor_id?: number;
-    /** page size */
-    limit?: number;
-    /** opaque alert cursor */
-    cursor?: string;
   };
 
   type getCollectionRunsParams = {
@@ -1267,57 +720,6 @@ required property without making explicit null impossible to bind. */
     id: number;
   };
 
-  type getEventsIdContentsParams = {
-    /** event ID */
-    id: number;
-  };
-
-  type getEventsIdHeatParams = {
-    /** event ID */
-    id: number;
-  };
-
-  type getEventsIdIntelligenceParams = {
-    /** event ID */
-    id: number;
-  };
-
-  type getEventsIdParams = {
-    /** event ID */
-    id: number;
-  };
-
-  type getEventsIdUpdatesParams = {
-    /** event ID */
-    id: number;
-    /** sequence cursor */
-    cursor?: number;
-    /** page size */
-    limit?: number;
-  };
-
-  type getEventsParams = {
-    /** event id cursor */
-    cursor?: number;
-    /** page size */
-    limit?: number;
-  };
-
-  type getKnowledgeDocumentsIdParams = {
-    /** document ID */
-    id: number;
-  };
-
-  type getKnowledgeProposalsIdParams = {
-    /** proposal ID */
-    id: number;
-  };
-
-  type getKnowledgeProposalsParams = {
-    /** proposal status */
-    status?: string;
-  };
-
   type getMicroEventsIdEvidenceParams = {
     /** micro-event ID */
     id: number;
@@ -1333,12 +735,24 @@ required property without making explicit null impossible to bind. */
   };
 
   type getMicroEventsParams = {
-    /** exclusive event cursor */
-    cursor_id?: number;
+    /** opaque frozen-ranking cursor */
+    cursor?: string;
+    /** server ranking */
+    sort?: "heat" | "relevance" | "latest";
     /** page size */
     limit?: number;
     /** comma-separated lifecycle states */
     status?: string;
+    /** monitor relevance filter */
+    monitor_id?: number;
+    /** comma-separated source types */
+    source_type?: string;
+    /** comma-separated evidence states */
+    evidence_state?: string;
+    /** event start lower bound in RFC3339 */
+    started_from?: string;
+    /** event start upper bound in RFC3339 */
+    started_to?: string;
   };
 
   type getMonitorsIdDocumentMatchesParams = {
@@ -1462,63 +876,6 @@ required property without making explicit null impossible to bind. */
     limit?: number;
   };
 
-  type getRadarEventsParams = {
-    /** event title or summary keyword */
-    q?: string;
-    /** Radar window */
-    window?: "1h" | "6h" | "24h" | "7d";
-    /** monitor ID */
-    monitor_id?: number;
-    /** lifecycle filters */
-    lifecycle?: (
-      | "detected"
-      | "active"
-      | "cooling"
-      | "closed"
-      | "merged"
-      | "archived"
-      | "rejected"
-    )[];
-    /** trend filters */
-    trend?: ("emerging" | "rising" | "stable" | "falling" | "dormant")[];
-    /** minimum heat */
-    min_heat?: number;
-    /** ranking dimension */
-    sort?: "momentum" | "attention" | "breadth" | "latest" | "relevance";
-    /** page size */
-    limit?: number;
-    /** opaque Radar cursor */
-    cursor?: string;
-  };
-
-  type getReportsIdParams = {
-    /** report ID */
-    id: number;
-  };
-
-  type getReportsParams = {
-    /** report id cursor */
-    cursor?: number;
-    /** page size */
-    limit?: number;
-    /** daily or weekly */
-    type?: string;
-    /** draft, published, failed or archived */
-    status?: string;
-  };
-
-  type getReportSubscriptionsIdParams = {
-    /** subscription ID */
-    id: number;
-  };
-
-  type getReportSubscriptionsParams = {
-    /** opaque subscription cursor */
-    cursor?: string;
-    /** page size */
-    limit?: number;
-  };
-
   type getSourceConnectionsIdParams = {
     /** source connection ID */
     id: number;
@@ -1591,30 +948,6 @@ required property without making explicit null impossible to bind. */
     message?: string;
   };
 
-  type HeatComponentResponse = {
-    content_velocity?: number;
-    engagement?: number;
-    independence?: number;
-    recency?: number;
-    source_breadth?: number;
-  };
-
-  type HeatResponse = {
-    capability_profile_set_hash?: string;
-    captured_at?: string;
-    components?: HeatComponentResponse;
-    content_count?: number;
-    event_id?: number;
-    evidence_set_hash?: string;
-    heat_score?: number;
-    heat_version?: string;
-    reason_codes?: string[];
-    source_count?: number;
-    trend_score?: number;
-    trend_status?: string;
-    window_hours?: number;
-  };
-
   type IdentityResultArrayHttpUserResponse = {
     code?: number;
     data?: UserResponse[];
@@ -1643,35 +976,6 @@ required property without making explicit null impossible to bind. */
     code?: number;
     data?: EmptyResponse;
     message?: string;
-  };
-
-  type IntelligenceClaimResponse = {
-    claim_hash?: string;
-    evidence?: IntelligenceEvidenceResponse[];
-    id?: number;
-    manual_locked?: boolean;
-    normalized_claim?: string;
-    version?: number;
-  };
-
-  type IntelligenceEntityResponse = {
-    canonical_name?: string;
-    entity_id?: number;
-    entity_key?: string;
-    entity_locked?: boolean;
-    entity_type?: string;
-    entity_version?: number;
-    origin?: string;
-    relation_id?: number;
-    relation_version?: number;
-    role?: string;
-  };
-
-  type IntelligenceEvidenceResponse = {
-    content_id?: number;
-    excerpt?: string;
-    locator?: string;
-    stance?: string;
   };
 
   type IntentClauseRequestDTO = {
@@ -1888,19 +1192,6 @@ probability or a cross-channel relevance percentage. */
     reused?: number;
   };
 
-  type MemberLockRequest = {
-    expected_version: number;
-    locked?: boolean;
-    reason: string;
-  };
-
-  type MergeRequest = {
-    reason: string;
-    source_expected_version: number;
-    target_event_id: number;
-    target_expected_version: number;
-  };
-
   type MetricCapabilityLifecycleRequest = {
     expected_version: number;
     reason_code: string;
@@ -1954,7 +1245,7 @@ probability or a cross-channel relevance percentage. */
 
   type MicroEventPageResponseDTO = {
     items?: MicroEventResponseDTO[];
-    next_cursor_id?: number;
+    next_cursor?: string;
   };
 
   type MicroEventResponseDTO = {
@@ -1972,6 +1263,7 @@ probability or a cross-channel relevance percentage. */
     location_keys?: string[];
     primary_action_key?: string;
     primary_subject_key?: string;
+    relevance_score?: number;
     status?: string;
     storyline?: StorylineResponseDTO;
     version?: number;
@@ -2308,11 +1600,6 @@ probability or a cross-channel relevance percentage. */
     id: number;
   };
 
-  type patchReportSubscriptionsIdParams = {
-    /** subscription ID */
-    id: number;
-  };
-
   type patchSourceConnectionsIdParams = {
     /** source connection ID */
     id: number;
@@ -2323,43 +1610,8 @@ probability or a cross-channel relevance percentage. */
     id: number;
   };
 
-  type postAgentAlertsIdAcknowledgeParams = {
-    /** alert thread ID */
-    id: number;
-  };
-
-  type postAgentAlertsIdResolveParams = {
-    /** alert thread ID */
-    id: number;
-  };
-
-  type postAgentMonitorsIdCollectParams = {
-    /** monitor ID */
-    id: number;
-  };
-
-  type postAgentTokensIdRevokeParams = {
-    /** Agent Token ID */
-    id: number;
-  };
-
   type postAiModelProfilesIdRestoreParams = {
     /** model profile ID */
-    id: number;
-  };
-
-  type postAlertsIdAcknowledgeParams = {
-    /** alert thread ID */
-    id: number;
-  };
-
-  type postAlertsIdResolveParams = {
-    /** alert thread ID */
-    id: number;
-  };
-
-  type postAlertsIdSuppressParams = {
-    /** alert thread ID */
     id: number;
   };
 
@@ -2376,54 +1628,6 @@ probability or a cross-channel relevance percentage. */
   type postDocumentVersionsIdTextQuoteSelectorsParams = {
     /** document version ID */
     id: number;
-  };
-
-  type postEventsIdContentsContentIdLockParams = {
-    /** event ID */
-    id: number;
-    /** content ID */
-    content_id: number;
-  };
-
-  type postEventsIdIntelligenceSummaryRegenerateParams = {
-    /** event ID */
-    id: number;
-  };
-
-  type postEventsIdLifecycleParams = {
-    /** event ID */
-    id: number;
-  };
-
-  type postEventsIdMergeParams = {
-    /** source event ID */
-    id: number;
-  };
-
-  type postEventsIdSplitParams = {
-    /** source event ID */
-    id: number;
-  };
-
-  type postKnowledgeProposalsIdApplyParams = {
-    /** proposal ID */
-    id: number;
-    /** proposal version */
-    version: number;
-  };
-
-  type postKnowledgeProposalsIdApproveParams = {
-    /** proposal ID */
-    id: number;
-    /** proposal version */
-    version: number;
-  };
-
-  type postKnowledgeProposalsIdRejectParams = {
-    /** proposal ID */
-    id: number;
-    /** proposal version */
-    version: number;
   };
 
   type postMetricCapabilityProfilesIdArchiveParams = {
@@ -2561,26 +1765,6 @@ probability or a cross-channel relevance percentage. */
     id: number;
   };
 
-  type postReportsIdBuildParams = {
-    /** report ID */
-    id: number;
-  };
-
-  type postReportsIdPreviewParams = {
-    /** report ID */
-    id: number;
-  };
-
-  type postReportsIdPublishParams = {
-    /** report ID */
-    id: number;
-  };
-
-  type postReportSubscriptionsIdRssTokenRotateParams = {
-    /** subscription ID */
-    id: number;
-  };
-
   type postSourceConnectionsIdArchiveParams = {
     /** source connection ID */
     id: number;
@@ -2650,64 +1834,6 @@ probability or a cross-channel relevance percentage. */
     unapproved_rule_ids?: number[];
   };
 
-  type ProposalRequest = {
-    base_hash?: string;
-    base_revision?: number;
-    body?: string;
-    document_id?: number;
-    frontmatter?: string;
-    reason?: string;
-  };
-
-  type ProposalResponse = {
-    baseHash?: string;
-    baseRevisionNo?: number;
-    diffSummary?: string;
-    documentID?: number;
-    id?: number;
-    proposedBody?: string;
-    proposedFrontmatter?: string;
-    reason?: string;
-    status?: string;
-    version?: number;
-  };
-
-  type ProposalResultArrayHttpDocumentResponse = {
-    code?: number;
-    data?: DocumentResponse[];
-    message?: string;
-  };
-
-  type ProposalResultArrayHttpProposalResponse = {
-    code?: number;
-    data?: ProposalResponse[];
-    message?: string;
-  };
-
-  type ProposalResultHttpDocumentResponse = {
-    code?: number;
-    data?: DocumentResponse;
-    message?: string;
-  };
-
-  type ProposalResultHttpProposalResponse = {
-    code?: number;
-    data?: ProposalResponse;
-    message?: string;
-  };
-
-  type ProposalResultHttpReconciliationResponse = {
-    code?: number;
-    data?: ReconciliationResponse;
-    message?: string;
-  };
-
-  type ProposalResultInternalModulesKnowledgeTransportHttpEmptyResponse = {
-    code?: number;
-    data?: EmptyResponse;
-    message?: string;
-  };
-
   type PublishRequest = {
     /** Gin must not apply required directly to this nullable wrapper: both an
 explicit JSON null and a positive integer are valid. The application
@@ -2775,50 +1901,6 @@ required property without making explicit null impossible to bind. */
   type putNotificationsPushSubscriptionsIdParams = {
     /** subscription ID */
     id: number;
-  };
-
-  type RadarEventResponse = {
-    attention?: number;
-    breadth?: number;
-    event_id?: number;
-    event_key?: string;
-    first_seen_at?: string;
-    independent_source_count?: number;
-    last_seen_at?: string;
-    latest_update?: EventUpdateResponse;
-    lifecycle_status?: string;
-    momentum?: number;
-    ranking_score?: number;
-    reason_codes?: string[];
-    summary?: string;
-    title?: string;
-    title_en?: string;
-    title_zh?: string;
-    trend_score?: number;
-    trend_status?: string;
-    version?: number;
-    watch_final_score?: number;
-    watch_relevance?: number;
-  };
-
-  type RadarPageResponse = {
-    as_of?: string;
-    items?: RadarEventResponse[];
-    next_cursor?: string;
-  };
-
-  type ReconciliationIssueResponse = {
-    actualHash?: string;
-    expectedHash?: string;
-    kind?: string;
-    path?: string;
-  };
-
-  type ReconciliationResponse = {
-    changed?: number;
-    conflict?: number;
-    issues?: ReconciliationIssueResponse[];
-    scanned?: number;
   };
 
   type RecordClaimEvidenceRequestDTO = {
@@ -3011,73 +2093,6 @@ required property without making explicit null impossible to bind. */
     objective: string;
   };
 
-  type ReportItemResponse = {
-    event_id?: number;
-    event_update_id?: number;
-    evidence_set_hash?: string;
-    heat_score?: number;
-    inclusion_reason?: string;
-    rank?: number;
-    reason_codes?: string[];
-    summary?: string;
-    title?: string;
-  };
-
-  type ReportPageResponse = {
-    items?: ReportResponse[];
-    next_cursor?: number;
-  };
-
-  type ReportPreviewResponse = {
-    publishable?: boolean;
-    report?: ReportResponse;
-  };
-
-  type ReportResponse = {
-    body?: string;
-    created_by?: number;
-    frozen?: boolean;
-    generated_at?: string;
-    id?: number;
-    items?: ReportItemResponse[];
-    monitor_id?: number;
-    period_end?: string;
-    period_start?: string;
-    published_at?: string;
-    status?: string;
-    summary?: string;
-    timezone?: string;
-    title?: string;
-    type?: string;
-    updated_by?: number;
-    version?: number;
-    version_no?: number;
-  };
-
-  type ReportResultHttpReportPageResponse = {
-    code?: number;
-    data?: ReportPageResponse;
-    message?: string;
-  };
-
-  type ReportResultHttpReportPreviewResponse = {
-    code?: number;
-    data?: ReportPreviewResponse;
-    message?: string;
-  };
-
-  type ReportResultHttpReportResponse = {
-    code?: number;
-    data?: ReportResponse;
-    message?: string;
-  };
-
-  type ReportResultInternalModulesReportTransportHttpEmptyResponse = {
-    code?: number;
-    data?: EmptyResponse;
-    message?: string;
-  };
-
   type RequestVerificationRequest = {
     email: string;
     purpose: "registration" | "password_reset";
@@ -3119,10 +2134,6 @@ required property without making explicit null impossible to bind. */
     decision: "approved" | "rejected";
     expected_resource_version: number;
     note?: string;
-  };
-
-  type RevokeTokenRequest = {
-    expected_version: number;
   };
 
   type RightsActionCapabilityResponseDTO = {
@@ -3225,10 +2236,6 @@ required property without making explicit null impossible to bind. */
     version?: number;
   };
 
-  type RotateRSSTokenRequest = {
-    expected_version: number;
-  };
-
   type RuntimeOverview = {
     available_jobs?: number;
     cancelled_jobs?: number;
@@ -3257,6 +2264,11 @@ required property without making explicit null impossible to bind. */
     request_timeout_seconds?: number;
     requires_attribution?: boolean;
     requires_deletion_sync?: boolean;
+    x_metric_refresh_daily_request_budget?: number;
+    x_metric_refresh_enabled?: boolean;
+    x_metric_refresh_interval_minutes?: number;
+    x_metric_refresh_max_posts_per_run?: number;
+    x_metric_refresh_observation_hours?: number;
   };
 
   type SourceConfigRequest = {
@@ -3277,6 +2289,11 @@ value never authorizes v2 raw evidence or document body persistence. */
     request_timeout_seconds?: number;
     requires_attribution?: boolean;
     requires_deletion_sync?: boolean;
+    x_metric_refresh_daily_request_budget?: number;
+    x_metric_refresh_enabled?: boolean;
+    x_metric_refresh_interval_minutes?: number;
+    x_metric_refresh_max_posts_per_run?: number;
+    x_metric_refresh_observation_hours?: number;
   };
 
   type SourceEndpointCapabilityResponseDTO = {
@@ -3393,17 +2410,6 @@ value never authorizes v2 raw evidence or document body persistence. */
     message?: string;
   };
 
-  type SplitMemberRequest = {
-    content_id: number;
-    expected_version: number;
-  };
-
-  type SplitRequest = {
-    members: SplitMemberRequest[];
-    reason: string;
-    source_expected_version: number;
-  };
-
   type StorylineResponseDTO = {
     id?: number;
     relation_profile_version?: string;
@@ -3425,42 +2431,6 @@ value never authorizes v2 raw evidence or document body persistence. */
     sample_limit: number;
   };
 
-  type SubscriptionPageResponse = {
-    items?: SubscriptionResponse[];
-    next_cursor?: string;
-  };
-
-  type SubscriptionResponse = {
-    channel?: string;
-    enabled?: boolean;
-    id?: number;
-    monitor_id?: number;
-    recipient?: string;
-    report_type?: string;
-    schedule?: string;
-    timezone?: string;
-    version?: number;
-  };
-
-  type SubscriptionSecretResponse = {
-    rss_token?: string;
-    subscription?: SubscriptionResponse;
-  };
-
-  type SummaryRegenerationResponse = {
-    event_id?: number;
-    reason_code?: string;
-    reused?: boolean;
-    run_id?: number;
-    status?: string;
-    summary?: EventSummaryResponse;
-  };
-
-  type SummarySentenceResponse = {
-    evidence?: IntelligenceEvidenceResponse[];
-    text?: string;
-  };
-
   type TextQuoteSelectorResponseDTO = {
     document_version_id?: number;
     exact_quote?: string;
@@ -3475,18 +2445,6 @@ value never authorizes v2 raw evidence or document body persistence. */
     suffix?: string;
     utf8_byte_end?: number;
     utf8_byte_start?: number;
-    version?: number;
-  };
-
-  type TokenResponse = {
-    created_at?: string;
-    expires_at?: string;
-    id?: number;
-    last_used_at?: string;
-    name?: string;
-    revoked_at?: string;
-    scopes?: string[];
-    token_prefix?: string;
     version?: number;
   };
 
@@ -3526,14 +2484,6 @@ value never authorizes v2 raw evidence or document body persistence. */
       | "weibo"
       | "google_agent_search";
     terms_policy_url?: string;
-  };
-
-  type UpdateSubscriptionRequest = {
-    enabled?: boolean;
-    expected_version: number;
-    recipient?: string;
-    schedule?: string;
-    timezone?: string;
   };
 
   type UpdateUserRequest = {

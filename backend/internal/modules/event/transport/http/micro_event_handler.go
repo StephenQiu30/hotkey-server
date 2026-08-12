@@ -3,6 +3,7 @@ package http
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,9 +30,15 @@ func NewMicroEventHandler(queries *eventapplication.MicroEventQueryService, gove
 // @Tags micro-events
 // @Produce json
 // @Security BearerAuth
-// @Param cursor_id query int false "exclusive event cursor"
+// @Param cursor query string false "opaque frozen-ranking cursor"
+// @Param sort query string false "server ranking" Enums(heat,relevance,latest) default(heat)
 // @Param limit query int false "page size" minimum(1) maximum(100)
 // @Param status query string false "comma-separated lifecycle states"
+// @Param monitor_id query int false "monitor relevance filter" minimum(1)
+// @Param source_type query string false "comma-separated source types"
+// @Param evidence_state query string false "comma-separated evidence states"
+// @Param started_from query string false "event start lower bound in RFC3339"
+// @Param started_to query string false "event start upper bound in RFC3339"
 // @Success 200 {object} MicroEventV2Result[MicroEventPageResponseDTO]
 // @Failure 400 {object} MicroEventV2Result[EmptyResponse]
 // @Failure 401 {object} MicroEventV2Result[EmptyResponse]
@@ -42,26 +49,70 @@ func (handler *MicroEventHandler) List(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	cursor, err := queryCursor(c.Query("cursor_id"))
+	cursor := strings.TrimSpace(c.Query("cursor"))
+	monitorID, err := optionalPositiveQueryID(c.Query("monitor_id"))
 	if err != nil {
 		return err
 	}
-	statuses := []string{}
-	if raw := strings.TrimSpace(c.Query("status")); raw != "" {
-		for _, value := range strings.Split(raw, ",") {
-			statuses = append(statuses, strings.TrimSpace(value))
-		}
+	startedFrom, err := optionalRFC3339QueryTime(c.Query("started_from"))
+	if err != nil {
+		return err
 	}
-	page, err := handler.queries.List(c.Request.Context(), eventapplication.MicroEventListQuery{CursorID: cursor, Limit: limit, Statuses: statuses})
+	startedTo, err := optionalRFC3339QueryTime(c.Query("started_to"))
+	if err != nil {
+		return err
+	}
+	page, err := handler.queries.List(c.Request.Context(), eventapplication.MicroEventListQuery{
+		Cursor: cursor, Limit: limit, Sort: c.Query("sort"), MonitorID: monitorID,
+		Statuses: commaSeparatedQueryValues(c.Query("status")), SourceTypes: commaSeparatedQueryValues(c.Query("source_type")),
+		EvidenceStates: commaSeparatedQueryValues(c.Query("evidence_state")), StartedFrom: startedFrom, StartedTo: startedTo,
+	})
 	if err != nil {
 		return eventError(err)
 	}
-	response := MicroEventPageResponseDTO{Items: make([]MicroEventResponseDTO, len(page.Items)), NextCursorID: page.NextCursorID}
+	response := MicroEventPageResponseDTO{Items: make([]MicroEventResponseDTO, len(page.Items)), NextCursor: page.NextCursor}
 	for index, item := range page.Items {
 		response.Items[index] = microEventResponseDTO(item)
 	}
 	httptransport.OK(c, response)
 	return nil
+}
+
+func commaSeparatedQueryValues(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	values := strings.Split(raw, ",")
+	for index := range values {
+		values[index] = strings.TrimSpace(values[index])
+	}
+	return values
+}
+
+func optionalPositiveQueryID(raw string) (int64, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value <= 0 {
+		return 0, invalidRequest(fmt.Errorf("positive query id is required"))
+	}
+	return value, nil
+}
+
+func optionalRFC3339QueryTime(raw string) (*time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	value, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return nil, invalidRequest(fmt.Errorf("RFC3339 query time is required"))
+	}
+	value = value.UTC()
+	return &value, nil
 }
 
 // Get returns a single MicroEvent with Storyline, Heat v2, and descriptive EvidenceState.
@@ -344,7 +395,7 @@ func microEventResponseDTO(item eventapplication.MicroEventProjectionDTO) MicroE
 		PrimarySubjectKey: item.PrimarySubjectKey, PrimaryActionKey: item.PrimaryActionKey,
 		LocationKeys: item.LocationKeys, IdentifierKeys: item.IdentifierKeys, EventStartedAt: item.EventStartedAt,
 		EventEndedAt: item.EventEndedAt, ClusteringProfileVersion: item.ClusteringProfileVersion,
-		ContentFamilyCount: item.ContentFamilyCount, DocumentCount: item.DocumentCount}
+		RelevanceScore: item.RelevanceScore, ContentFamilyCount: item.ContentFamilyCount, DocumentCount: item.DocumentCount}
 	if item.Storyline != nil {
 		value.Storyline = &StorylineResponseDTO{ID: item.Storyline.ID, Version: item.Storyline.Version,
 			StorylineKey: item.Storyline.StorylineKey, Title: item.Storyline.Title, Summary: item.Storyline.Summary,

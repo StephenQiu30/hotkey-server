@@ -48,7 +48,6 @@ func NewHandler(service monitorService) *Handler { return &Handler{service: serv
 // @Failure 401 {object} MonitorResult[EmptyResponse]
 // @Failure 503 {object} MonitorResult[EmptyResponse]
 // @Router /api/v1/monitors [get]
-// @Router /api/v1/agent/monitors [get]
 func (handler *Handler) List(c *gin.Context) error {
 	httptransport.SetModule(c, "monitor")
 	subject, err := monitorSubject(c)
@@ -83,7 +82,6 @@ func (handler *Handler) List(c *gin.Context) error {
 // @Failure 409 {object} MonitorResult[EmptyResponse]
 // @Failure 503 {object} MonitorResult[EmptyResponse]
 // @Router /api/v1/monitors/{id} [get]
-// @Router /api/v1/agent/monitors/{id} [get]
 func (handler *Handler) Get(c *gin.Context) error {
 	httptransport.SetModule(c, "monitor")
 	subject, err := monitorSubject(c)

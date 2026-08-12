@@ -57,7 +57,10 @@ func (handler *BilibiliWebhookHandler) Receive(c *gin.Context) error {
 			httptransport.Fail(c, stdhttp.StatusBadRequest, 40001, "invalid request")
 			return nil
 		}
-		httptransport.OK[any](c, echo)
+		// Bilibili's endpoint-verification handshake requires the challenge
+		// response shape verbatim; the application's normal response envelope
+		// would make the platform reject an otherwise valid webhook endpoint.
+		httptransport.WebhookChallenge(c, echo)
 		return nil
 	}
 	_, err = handler.service.HandleBilibiliDeauthorization(c.Request.Context(), webhook)

@@ -44,23 +44,22 @@ type ProjectAcceptedDocumentMatchResult struct {
 type AcceptedMatchEventProjectionService struct {
 	families    AcceptedMatchFamilyReader
 	microEvents *MicroEventService
-	storylines  *StorylineService
 	heat        *EventHeatService
 	clock       func() time.Time
 }
 
 func NewAcceptedMatchEventProjectionService(families AcceptedMatchFamilyReader, microEvents *MicroEventService,
-	storylines *StorylineService, heat *EventHeatService) (*AcceptedMatchEventProjectionService, error) {
-	if families == nil || microEvents == nil || storylines == nil || heat == nil {
+	heat *EventHeatService) (*AcceptedMatchEventProjectionService, error) {
+	if families == nil || microEvents == nil || heat == nil {
 		return nil, fmt.Errorf("%w: dependencies are required", ErrInvalidAcceptedMatchProjectionContract)
 	}
 	return &AcceptedMatchEventProjectionService{families: families, microEvents: microEvents,
-		storylines: storylines, heat: heat, clock: func() time.Time { return time.Now().UTC() }}, nil
+		heat: heat, clock: func() time.Time { return time.Now().UTC() }}, nil
 }
 
 func (service *AcceptedMatchEventProjectionService) Project(ctx context.Context, command ProjectAcceptedDocumentMatchCommand) (ProjectAcceptedDocumentMatchResult, error) {
-	if service == nil || service.families == nil || service.microEvents == nil || service.storylines == nil ||
-		service.heat == nil || service.clock == nil || command.DocumentMatchDecisionID <= 0 || command.DocumentVersionID <= 0 {
+	if service == nil || service.families == nil || service.microEvents == nil || service.heat == nil ||
+		service.clock == nil || command.DocumentMatchDecisionID <= 0 || command.DocumentVersionID <= 0 {
 		return ProjectAcceptedDocumentMatchResult{}, ErrInvalidAcceptedMatchProjectionContract
 	}
 	family, err := service.families.ResolveAcceptedMatchFamily(ctx, ResolveAcceptedMatchFamilyQuery{
@@ -80,16 +79,6 @@ func (service *AcceptedMatchEventProjectionService) Project(ctx context.Context,
 	}
 	result := ProjectAcceptedDocumentMatchResult{MicroEvent: assigned.Event, Membership: assigned.Decision,
 		HeatSnapshots: []EventHeatSnapshotDTO{}}
-	if assigned.Decision.Action == "create" {
-		storyline, storylineErr := service.storylines.Assign(ctx, AssignMicroEventToStorylineCommand{
-			MicroEventID: assigned.Event.ID, MicroEventVersion: assigned.Event.Version,
-			RelationProfileVersion: CanonicalStorylineRelationProfileVersion})
-		if storylineErr != nil {
-			return ProjectAcceptedDocumentMatchResult{}, fmt.Errorf("assign micro-event to storyline: %w", storylineErr)
-		}
-		result.Storyline = &storyline.Storyline
-		result.StorylineEvent = &storyline.Relation
-	}
 	if assigned.Decision.Action != "review" {
 		windowEnd := service.clock().UTC().Truncate(time.Minute)
 		if windowEnd.IsZero() {

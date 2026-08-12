@@ -49,8 +49,6 @@ import { sourceHealthPresentation } from "@/lib/domainPresentation";
 import { ConfirmDeleteDialog } from "@/components/dashboard/ConfirmDeleteDialog";
 import { SourceConnectionDialog } from "@/components/dashboard/SourceConnectionDialog";
 import { SourceCredentialDialog } from "@/components/dashboard/SourceCredentialDialog";
-import { SogouAuthorizationCard } from "@/components/dashboard/SogouAuthorizationCard";
-import { DuckDuckGoBoundaryCard } from "@/components/dashboard/DuckDuckGoBoundaryCard";
 import {
   CursorPagination,
   DEFAULT_PAGE_SIZE,
@@ -255,8 +253,8 @@ export default function SourcesPage() {
         title={canManage ? "来源管理" : "来源目录"}
         description={
           canManage
-            ? "连接、探测并管理 RSS、Hacker News、X、微博关键词、Bilibili 授权账号、Google Agent Search 与 Microsoft Foundry Web Search。"
-            : "查看当前工作区已接入的 RSS、Hacker News、X、微博关键词、Bilibili 授权账号、Google Agent Search 与 Microsoft Foundry Web Search。"
+            ? "连接、探测并管理七类正式来源；单个来源失败不会阻塞其他来源，也不会触发隐藏回退。"
+            : "查看工作区的七类来源连接、健康状态与采集边界。"
         }
         action={
           canManage ? (
@@ -276,8 +274,6 @@ export default function SourcesPage() {
           </AlertDescription>
         </Alert>
       )}
-      <SogouAuthorizationCard />
-      <DuckDuckGoBoundaryCard />
       {loadError && (
         <Alert variant="destructive" className="mt-6">
           <div className="mb-1 font-medium leading-none tracking-tight">

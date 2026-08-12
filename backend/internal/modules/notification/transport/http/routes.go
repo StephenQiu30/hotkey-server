@@ -9,7 +9,9 @@ func RegisterRoutes(router *gin.Engine, handler *Handler, authenticator httptran
 	if router == nil || handler == nil {
 		return
 	}
-	api := router.Group("/api/v1/notifications", httptransport.RequireAuthentication(authenticator))
+	root := router.Group("/api/v1/notifications")
+	root.GET("/ws", handler.WebSocket(authenticator))
+	api := root.Group("", httptransport.RequireAuthentication(authenticator))
 	api.GET("", httptransport.Wrap(handler.List))
 	api.GET("/stream", handler.Stream)
 }

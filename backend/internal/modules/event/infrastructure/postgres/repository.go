@@ -44,51 +44,11 @@ var _ application.EventStore = (*Repository)(nil)
 var _ application.GovernanceRepository = (*Repository)(nil)
 var _ application.ReadRepository = (*Repository)(nil)
 var _ application.DecisionStore = (*Repository)(nil)
-var _ application.ContentEventReader = (*Repository)(nil)
 var _ application.EventIntelligenceReader = (*Repository)(nil)
 var _ application.EventSummaryStore = (*Repository)(nil)
-var _ application.ContentSearchReader = (*Repository)(nil)
 
 func NewRepository(runtime *database.Runtime) *Repository {
 	return &Repository{runtime: runtime, ids: id.UUID{}}
-}
-
-func (repository *Repository) ListContentSearchReferences(ctx context.Context, contentIDs []int64) ([]application.ContentSearchReference, error) {
-	if !repository.available() {
-		return nil, sharedrepository.ErrUnavailable
-	}
-	if len(contentIDs) == 0 {
-		return []application.ContentSearchReference{}, nil
-	}
-	for _, contentID := range contentIDs {
-		if contentID <= 0 {
-			return nil, fmt.Errorf("%w: positive content ids are required", sharedrepository.ErrInvalidInput)
-		}
-	}
-	rows, err := repository.runtime.SQL.QueryContext(ctx, `
-SELECT member.content_id, event.id, event.title_zh
-FROM event_contents AS member
-JOIN events AS event ON event.id = member.event_id
-WHERE member.content_id = ANY($1)
-  AND member.evidence_role <> 'duplicate'
-  AND event.deleted_at IS NULL
-ORDER BY member.content_id ASC`, contentIDs)
-	if err != nil {
-		return nil, databaserepository.MapError(err)
-	}
-	defer rows.Close()
-	references := make([]application.ContentSearchReference, 0, len(contentIDs))
-	for rows.Next() {
-		var reference application.ContentSearchReference
-		if err := rows.Scan(&reference.ContentID, &reference.EventID, &reference.EventTitle); err != nil {
-			return nil, databaserepository.MapError(err)
-		}
-		references = append(references, reference)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, databaserepository.MapError(err)
-	}
-	return references, nil
 }
 
 func (repository *Repository) Get(ctx context.Context, eventID int64) (domain.Event, error) {

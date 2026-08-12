@@ -176,9 +176,9 @@ func (service *ContentQueryService) withEvents(ctx context.Context, contents []i
 	}
 	for index := range contents {
 		if reference, found := byContentID[contents[index].ID]; found {
-			eventID := reference.EventID
-			contents[index].EventID = &eventID
-			contents[index].EventTitle = reference.EventTitle
+			eventID := reference.MicroEventID
+			contents[index].MicroEventID = &eventID
+			contents[index].MicroEventTitle = reference.MicroEventTitle
 		}
 	}
 	return contents, nil

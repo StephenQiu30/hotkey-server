@@ -200,4 +200,36 @@ describe("Umi OpenAPI generation contract", () => {
       }
     }
   });
+
+  it("does not regenerate retired product clients or DTOs", () => {
+    const generatedRoot = path.resolve(
+      repositoryRoot,
+      "src/services/hotkey/hotkey-server",
+    );
+    for (const service of [
+      "agentAccess.ts",
+      "alerts.ts",
+      "delivery.ts",
+      "events.ts",
+      "knowledge.ts",
+      "reports.ts",
+    ]) {
+      expect(fs.existsSync(path.join(generatedRoot, service)), service).toBe(false);
+    }
+
+    const typeSource = fs.readFileSync(
+      path.join(generatedRoot, "typings.d.ts"),
+      "utf8",
+    );
+    for (const retiredType of [
+      "AlertThreadResponse",
+      "EventResponse",
+      "ProposalResponse",
+      "ReportResponse",
+      "SubscriptionResponse",
+      "TokenResponse",
+    ]) {
+      expect(typeSource, retiredType).not.toContain(`type ${retiredType}`);
+    }
+  });
 });

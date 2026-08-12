@@ -9,36 +9,33 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 
 const supportedSources = [
-  "RSS / Atom",
+  "X / Twitter",
   "Hacker News",
-  "X",
-  "微博",
-  "哔哩哔哩",
-  "Bing",
-  "Google",
+  "RSS / Atom",
+  "Bilibili",
 ];
 
 const evidence = [
-  { source: "36氪：多家厂商发布端侧 Agent 计划", time: "2 小时前" },
-  { source: "极客公园：端侧 AI 成为下一阶段关键战场", time: "5 小时前" },
-  { source: "官方发布：新一代端侧模型更新", time: "8 小时前" },
+  { source: "X：官方团队发布端侧模型能力", time: "2 小时前" },
+  { source: "Hacker News：开发者集中讨论部署体验", time: "5 小时前" },
+  { source: "Bilibili：相关演示开始获得持续传播", time: "8 小时前" },
 ];
 
 const workflow = [
   {
     step: "01",
-    title: "持续监测",
-    body: "连接已配置权利策略的公开来源，让重要信号在产生时就进入同一条证据链路。",
+    title: "定义监控目标",
+    body: "描述需要关注的主体、动作与排除条件，由 AI 生成可审核的查询扩展。",
   },
   {
     step: "02",
-    title: "AI 识别与判断",
-    body: "合并重复信息，解释变化原因，并保留每一个判断对应的来源证据。",
+    title: "七源聚合与 AI 分析",
+    body: "并行采集七类正式来源，完成相关性判断、去重、证据状态与热点聚合。",
   },
   {
     step: "03",
-    title: "形成共识与行动",
-    body: "把事件、证据和建议整理成可阅读、可订阅、可回溯的团队简报。",
+    title: "实时推送与邮件",
+    body: "按热度、相关性和时间稳定排序，并用可恢复实时连接与邮件提示升温事件。",
   },
 ];
 
@@ -52,19 +49,19 @@ export default function HomePage() {
           <div className="grid items-center gap-12 py-16 lg:translate-y-7 lg:grid-cols-[1.05fr_1.25fr_.7fr] lg:gap-8 lg:py-0">
             <div className="max-w-[520px] lg:pl-9">
               <h1
-                aria-label="重要变化，先形成判断"
+                aria-label="全网热点，先一步看见"
                 className="text-[clamp(3rem,5.3vw,5.25rem)] font-normal leading-[0.98] tracking-[-0.065em]"
               >
-                重要变化，
+                全网热点，
                 <br />
-                先形成判断
+                先一步看见
               </h1>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <Button asChild size="lg" className="rounded-lg px-6">
                   <Link href="/register">开始使用</Link>
                 </Button>
                 <Button asChild size="lg" variant="outline" className="rounded-lg px-6">
-                  <a href="#briefing">查看今日简报</a>
+                  <a href="#briefing">查看热点示例</a>
                 </Button>
               </div>
             </div>
@@ -81,13 +78,13 @@ export default function HomePage() {
             </div>
 
             <div className="space-y-6 text-lg leading-tight lg:pl-8">
-              <p>持续监测公开信号</p>
-              <p>识别真正重要的变化</p>
-              <p>让判断建立在证据之上</p>
+              <p>七类正式来源持续聚合</p>
+              <p>AI 查询扩展、相关性与可信度分析</p>
+              <p>WebSocket 实时推送与邮件通知</p>
             </div>
           </div>
 
-          <div id="sources" className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7">
+          <div id="sources" className="grid grid-cols-2 sm:grid-cols-4">
             {supportedSources.map((source) => (
               <div
                 key={source}
@@ -103,22 +100,22 @@ export default function HomePage() {
           <div className="mx-auto max-w-[1440px] px-5 py-28 sm:px-8 lg:py-44">
             <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-end">
               <h2 className="max-w-5xl text-[clamp(2.8rem,5.4vw,5.5rem)] font-normal leading-[0.98] tracking-[-0.065em]">
-                把公开信号，变成可以核验的团队判断
+                把多源信号，变成可追溯的热点事件
               </h2>
               <p className="max-w-sm text-lg leading-7 text-muted-foreground lg:pb-2">
-                从发现变化到阅读证据，HotKey 把情报判断放在同一个可追溯工作流里。
+                从多源发现、相关性和证据状态到 Heat v2 排序，HotKey 只维护一条可追溯的热点链路。
               </p>
             </div>
 
             <Card
               id="briefing"
               role="region"
-              aria-label="今日情报简报"
+              aria-label="多源热点示例"
               className="mt-16 scroll-mt-24 lg:mt-24"
             >
               <CardHeader className="flex flex-col gap-3 space-y-0 px-0 py-5 sm:flex-row sm:items-center">
                 <div className="flex items-baseline gap-4">
-                  <h3 className="text-base font-semibold">今日情报简报</h3>
+                  <h3 className="text-base font-semibold">多源热点示例</h3>
                   <span className="mono text-xs text-muted-foreground">2026-08-06</span>
                 </div>
                 <div className="flex items-center gap-2 sm:ml-auto">
@@ -132,17 +129,17 @@ export default function HomePage() {
 
               <CardContent className="grid gap-12 p-0 lg:grid-cols-[1.2fr_.8fr_.7fr] lg:gap-10">
                 <article className="py-6">
-                  <span className="mono text-xs text-muted-foreground">01 / SIGNAL</span>
+                  <span className="mono text-xs text-muted-foreground">01 / MICRO EVENT</span>
                   <h3 className="mt-5 max-w-2xl text-2xl font-semibold leading-tight sm:text-3xl">
                     AI Agent 进入端侧部署阶段，生态合作加速落地
                   </h3>
                   <p className="mt-4 max-w-2xl text-sm leading-7 text-muted-foreground">
-                    多家头部厂商宣布端侧 AI Agent 产品计划，能力正从云端下沉到终端设备，带来算力、隐私与交互体验的系统性变化。
+                    X、Hacker News 与 Bilibili 的相关内容在同一观测窗口内出现，经目标匹配与内容家族去重后形成一个微事件。
                   </p>
                   <div className="mt-12 flex items-end justify-between">
                     <div>
-                      <p className="text-xs text-muted-foreground">热度趋势 · 近 7 天</p>
-                      <p className="mt-1 text-xs text-success">连续 4 天上升</p>
+                      <p className="text-xs text-muted-foreground">Heat v2 · 近 6 小时</p>
+                      <p className="mt-1 text-xs text-success">传播速度正在上升</p>
                     </div>
                     <p className="mono text-4xl font-medium">
                       92<span className="ml-1 text-xs font-normal text-muted-foreground">/100</span>
@@ -156,7 +153,7 @@ export default function HomePage() {
                 </article>
 
                 <aside className="py-6 lg:px-4">
-                  <p className="text-sm font-semibold">证据来源</p>
+                  <p className="text-sm font-semibold">多源证据状态</p>
                   <div className="mt-6 space-y-6">
                     {evidence.map((item) => (
                       <div key={item.source} className="grid gap-2">
@@ -166,18 +163,18 @@ export default function HomePage() {
                     ))}
                   </div>
                   <Link
-                    href="/dashboard/reports"
+                    href="/dashboard/events"
                     className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-foreground no-underline hover:opacity-55"
                   >
-                    查看完整情报 <ArrowRight className="h-4 w-4" />
+                    查看热点事件 <ArrowRight className="h-4 w-4" />
                   </Link>
                 </aside>
 
                 <aside className="self-start rounded-2xl bg-muted/55 p-6 sm:p-8">
                   <Sparkles className="h-5 w-5" />
-                  <p className="mt-5 text-sm font-semibold">AI 相关性建议</p>
+                  <p className="mt-5 text-sm font-semibold">相关性说明</p>
                   <p className="mt-3 text-sm leading-7 text-muted-foreground">
-                    这是从“云上能力”到“终端体验”的关键拐点，建议持续跟踪端侧模型压缩、隐私计算与生态伙伴落地节奏。
+                    内容命中已发布监控目标；当前为多来源覆盖。AI 辅助判断证据关系，不把模型分数显示为事实真伪概率。
                   </p>
                   <div className="mt-8 flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">用途</span>
@@ -195,7 +192,7 @@ export default function HomePage() {
               <div>
                 <RadioTower className="h-6 w-6" />
                 <h2 className="mt-6 max-w-xl text-[clamp(2.4rem,4vw,4.5rem)] font-normal leading-[1.02] tracking-[-0.06em]">
-                  让情报系统像团队一样持续工作
+                  一条链路，持续找到正在升温的多源事件
                 </h2>
               </div>
               <div className="space-y-10 lg:pt-2">

@@ -83,21 +83,26 @@ type SourceConfig struct {
 	// AllowBodyStorage is a legacy compatibility flag. It is not a rights fact
 	// and cannot authorize new CapturedItem, EvidenceSnapshot, or DocumentVersion
 	// body persistence; only an exact current RightsDecision can do that.
-	AllowBodyStorage              bool
-	RequiresAttribution           bool
-	RequiresDeletionSync          bool
-	ContentRetentionDays          int
-	MetricsRetentionDays          int
-	AllowedLanguages              []string
-	AllowedRegions                []string
-	RateLimitPerMinute            int
-	RequestTimeoutSeconds         int
-	MaxPagesPerRun                int
-	GroundingDataBoundaryApproved bool
-	BilibiliOpenID                string
-	GoogleLocation                string
-	GoogleServingConfig           string
-	HackerNewsMode                HackerNewsMode
+	AllowBodyStorage                 bool
+	RequiresAttribution              bool
+	RequiresDeletionSync             bool
+	ContentRetentionDays             int
+	MetricsRetentionDays             int
+	AllowedLanguages                 []string
+	AllowedRegions                   []string
+	RateLimitPerMinute               int
+	RequestTimeoutSeconds            int
+	MaxPagesPerRun                   int
+	GroundingDataBoundaryApproved    bool
+	BilibiliOpenID                   string
+	GoogleLocation                   string
+	GoogleServingConfig              string
+	HackerNewsMode                   HackerNewsMode
+	XMetricRefreshEnabled            bool
+	XMetricRefreshIntervalMinutes    int
+	XMetricRefreshObservationHours   int
+	XMetricRefreshMaxPostsPerRun     int
+	XMetricRefreshDailyRequestBudget int
 }
 
 func DefaultSourceConfig() SourceConfig {
@@ -106,7 +111,10 @@ func DefaultSourceConfig() SourceConfig {
 		ContentRetentionDays: 30, MetricsRetentionDays: 30,
 		AllowedLanguages: []string{}, AllowedRegions: []string{},
 		RateLimitPerMinute: 60, RequestTimeoutSeconds: 30, MaxPagesPerRun: 1,
-		HackerNewsMode: HackerNewsModeNew,
+		HackerNewsMode:        HackerNewsModeNew,
+		XMetricRefreshEnabled: false, XMetricRefreshIntervalMinutes: 60,
+		XMetricRefreshObservationHours: 48, XMetricRefreshMaxPostsPerRun: 100,
+		XMetricRefreshDailyRequestBudget: 24,
 	}
 }
 
@@ -148,6 +156,9 @@ func NormalizeSourceConnection(connection SourceConnection) (SourceConnection, e
 	config, err = config.Normalize()
 	if err != nil {
 		return SourceConnection{}, err
+	}
+	if connection.SourceType != SourceTypeX && config.XMetricRefreshEnabled {
+		return SourceConnection{}, fmt.Errorf("X metric refresh is available only for X sources")
 	}
 	if connection.SourceType == SourceTypeBingGrounding && (!config.AllowBodyStorage || !config.RequiresAttribution || config.MaxPagesPerRun != 1) {
 		return SourceConnection{}, fmt.Errorf("Bing Grounding source requires body storage, attribution, and one page per run")
@@ -409,6 +420,36 @@ func NormalizeSourceConfig(input map[string]any) (SourceConfig, error) {
 				return SourceConfig{}, fmt.Errorf("%s must be string", key)
 			}
 			config.HackerNewsMode = HackerNewsMode(text)
+		case "x_metric_refresh_enabled":
+			boolean, ok := value.(bool)
+			if !ok {
+				return SourceConfig{}, fmt.Errorf("%s must be boolean", key)
+			}
+			config.XMetricRefreshEnabled = boolean
+		case "x_metric_refresh_interval_minutes":
+			integer, err := configInteger(value)
+			if err != nil {
+				return SourceConfig{}, fmt.Errorf("%s: %w", key, err)
+			}
+			config.XMetricRefreshIntervalMinutes = integer
+		case "x_metric_refresh_observation_hours":
+			integer, err := configInteger(value)
+			if err != nil {
+				return SourceConfig{}, fmt.Errorf("%s: %w", key, err)
+			}
+			config.XMetricRefreshObservationHours = integer
+		case "x_metric_refresh_max_posts_per_run":
+			integer, err := configInteger(value)
+			if err != nil {
+				return SourceConfig{}, fmt.Errorf("%s: %w", key, err)
+			}
+			config.XMetricRefreshMaxPostsPerRun = integer
+		case "x_metric_refresh_daily_request_budget":
+			integer, err := configInteger(value)
+			if err != nil {
+				return SourceConfig{}, fmt.Errorf("%s: %w", key, err)
+			}
+			config.XMetricRefreshDailyRequestBudget = integer
 		default:
 			return SourceConfig{}, fmt.Errorf("source config key %q is not allowed", key)
 		}
@@ -418,6 +459,19 @@ func NormalizeSourceConfig(input map[string]any) (SourceConfig, error) {
 
 func (config SourceConfig) Normalize() (SourceConfig, error) {
 	var err error
+	defaults := DefaultSourceConfig()
+	if config.XMetricRefreshIntervalMinutes == 0 {
+		config.XMetricRefreshIntervalMinutes = defaults.XMetricRefreshIntervalMinutes
+	}
+	if config.XMetricRefreshObservationHours == 0 {
+		config.XMetricRefreshObservationHours = defaults.XMetricRefreshObservationHours
+	}
+	if config.XMetricRefreshMaxPostsPerRun == 0 {
+		config.XMetricRefreshMaxPostsPerRun = defaults.XMetricRefreshMaxPostsPerRun
+	}
+	if config.XMetricRefreshDailyRequestBudget == 0 {
+		config.XMetricRefreshDailyRequestBudget = defaults.XMetricRefreshDailyRequestBudget
+	}
 	if config.AllowedLanguages, err = normalizeLanguages(config.AllowedLanguages, 0, 8); err != nil {
 		return SourceConfig{}, err
 	}
@@ -436,6 +490,18 @@ func (config SourceConfig) Normalize() (SourceConfig, error) {
 	if config.MaxPagesPerRun < 1 || config.MaxPagesPerRun > 20 {
 		return SourceConfig{}, fmt.Errorf("max pages per run must be from 1 to 20")
 	}
+	if config.XMetricRefreshIntervalMinutes < 15 || config.XMetricRefreshIntervalMinutes > 1440 {
+		return SourceConfig{}, fmt.Errorf("X metric refresh interval must be from 15 to 1440 minutes")
+	}
+	if config.XMetricRefreshObservationHours < 1 || config.XMetricRefreshObservationHours > 168 {
+		return SourceConfig{}, fmt.Errorf("X metric refresh observation period must be from 1 to 168 hours")
+	}
+	if config.XMetricRefreshMaxPostsPerRun < 1 || config.XMetricRefreshMaxPostsPerRun > 100 {
+		return SourceConfig{}, fmt.Errorf("X metric refresh batch must contain from 1 to 100 posts")
+	}
+	if config.XMetricRefreshDailyRequestBudget < 1 || config.XMetricRefreshDailyRequestBudget > 1440 {
+		return SourceConfig{}, fmt.Errorf("X metric refresh daily request budget must be from 1 to 1440")
+	}
 	config.BilibiliOpenID = strings.TrimSpace(config.BilibiliOpenID)
 	config.GoogleLocation = strings.ToLower(strings.TrimSpace(config.GoogleLocation))
 	config.GoogleServingConfig = strings.TrimSpace(config.GoogleServingConfig)
@@ -450,7 +516,7 @@ func (config SourceConfig) Normalize() (SourceConfig, error) {
 }
 
 func (config SourceConfig) isZero() bool {
-	return !config.AllowBodyStorage && !config.RequiresAttribution && !config.RequiresDeletionSync && !config.GroundingDataBoundaryApproved && config.BilibiliOpenID == "" && config.GoogleLocation == "" && config.GoogleServingConfig == "" && config.HackerNewsMode == "" && config.ContentRetentionDays == 0 && config.MetricsRetentionDays == 0 && len(config.AllowedLanguages) == 0 && len(config.AllowedRegions) == 0 && config.RateLimitPerMinute == 0 && config.RequestTimeoutSeconds == 0 && config.MaxPagesPerRun == 0
+	return !config.AllowBodyStorage && !config.RequiresAttribution && !config.RequiresDeletionSync && !config.GroundingDataBoundaryApproved && !config.XMetricRefreshEnabled && config.BilibiliOpenID == "" && config.GoogleLocation == "" && config.GoogleServingConfig == "" && config.HackerNewsMode == "" && config.ContentRetentionDays == 0 && config.MetricsRetentionDays == 0 && len(config.AllowedLanguages) == 0 && len(config.AllowedRegions) == 0 && config.RateLimitPerMinute == 0 && config.RequestTimeoutSeconds == 0 && config.MaxPagesPerRun == 0 && config.XMetricRefreshIntervalMinutes == 0 && config.XMetricRefreshObservationHours == 0 && config.XMetricRefreshMaxPostsPerRun == 0 && config.XMetricRefreshDailyRequestBudget == 0
 }
 
 func (config SourceConfig) Map() map[string]any {
@@ -459,11 +525,16 @@ func (config SourceConfig) Map() map[string]any {
 		"content_retention_days": config.ContentRetentionDays, "metrics_retention_days": config.MetricsRetentionDays,
 		"allowed_languages": append([]string(nil), config.AllowedLanguages...), "allowed_regions": append([]string(nil), config.AllowedRegions...),
 		"rate_limit_per_minute": config.RateLimitPerMinute, "request_timeout_seconds": config.RequestTimeoutSeconds, "max_pages_per_run": config.MaxPagesPerRun,
-		"grounding_data_boundary_approved": config.GroundingDataBoundaryApproved,
-		"bilibili_open_id":                 config.BilibiliOpenID,
-		"google_location":                  config.GoogleLocation,
-		"google_serving_config":            config.GoogleServingConfig,
-		"hacker_news_mode":                 string(config.HackerNewsMode),
+		"grounding_data_boundary_approved":      config.GroundingDataBoundaryApproved,
+		"bilibili_open_id":                      config.BilibiliOpenID,
+		"google_location":                       config.GoogleLocation,
+		"google_serving_config":                 config.GoogleServingConfig,
+		"hacker_news_mode":                      string(config.HackerNewsMode),
+		"x_metric_refresh_enabled":              config.XMetricRefreshEnabled,
+		"x_metric_refresh_interval_minutes":     config.XMetricRefreshIntervalMinutes,
+		"x_metric_refresh_observation_hours":    config.XMetricRefreshObservationHours,
+		"x_metric_refresh_max_posts_per_run":    config.XMetricRefreshMaxPostsPerRun,
+		"x_metric_refresh_daily_request_budget": config.XMetricRefreshDailyRequestBudget,
 	}
 }
 

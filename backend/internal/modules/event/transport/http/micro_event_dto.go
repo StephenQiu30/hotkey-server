@@ -69,14 +69,15 @@ type MicroEventResponseDTO struct {
 	ClusteringProfileVersion string                      `json:"clustering_profile_version"`
 	Storyline                *StorylineResponseDTO       `json:"storyline,omitempty"`
 	LatestHeat               *EventHeatV2ResponseDTO     `json:"latest_heat,omitempty"`
+	RelevanceScore           *float64                    `json:"relevance_score,omitempty"`
 	EvidenceState            *EvidenceStateResponseDTO   `json:"evidence_state,omitempty"`
 	EvidenceSummary          *EvidenceSummaryResponseDTO `json:"evidence_summary,omitempty"`
 	ContentFamilyCount       int                         `json:"content_family_count"`
 	DocumentCount            int                         `json:"document_count"`
 }
 type MicroEventPageResponseDTO struct {
-	Items        []MicroEventResponseDTO `json:"items"`
-	NextCursorID int64                   `json:"next_cursor_id,omitempty"`
+	Items      []MicroEventResponseDTO `json:"items"`
+	NextCursor string                  `json:"next_cursor,omitempty"`
 }
 
 type ClaimEvidenceResponseDTO struct {

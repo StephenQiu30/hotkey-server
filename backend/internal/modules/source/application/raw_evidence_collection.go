@@ -24,6 +24,19 @@ type ArchiveCollectionEvidenceResult struct {
 	Snapshots []PersistedEvidenceSnapshotDTO
 }
 
+// ArchiveContextEvidenceCommand archives a provider response that updates
+// existing facts but does not discover a new SourceObservation. It therefore
+// has no collection run identity; evidence_snapshots.collection_run_id is
+// deliberately nullable for this case.
+type ArchiveContextEvidenceCommand struct {
+	SourceConnectionID int64
+	Snapshots          []RawEvidenceSnapshotDTO
+}
+
+type ContextEvidenceArchiver interface {
+	ArchiveContext(context.Context, ArchiveContextEvidenceCommand) error
+}
+
 type CollectionEvidenceArchiver interface {
 	ArchiveFetch(context.Context, ArchiveCollectionEvidenceCommand) (ArchiveCollectionEvidenceResult, error)
 }
@@ -62,10 +75,14 @@ func (service *RawEvidenceCollectionService) ArchiveFetch(ctx context.Context, c
 	if command.SourceConnectionID <= 0 || command.CollectionRunID <= 0 {
 		return ArchiveCollectionEvidenceResult{}, errors.New("raw evidence collection source and run are required")
 	}
-	if len(command.Fetch.Snapshots) == 0 {
+	return service.archiveFetch(ctx, command.SourceConnectionID, command.CollectionRunID, command.Fetch)
+}
+
+func (service *RawEvidenceCollectionService) archiveFetch(ctx context.Context, sourceConnectionID, collectionRunID int64, fetch RawEvidenceFetchDTO) (ArchiveCollectionEvidenceResult, error) {
+	if len(fetch.Snapshots) == 0 {
 		return ArchiveCollectionEvidenceResult{Snapshots: []PersistedEvidenceSnapshotDTO{}}, nil
 	}
-	fetchResult, err := rawEvidenceFetchEntityFromDTO(command.Fetch)
+	fetchResult, err := rawEvidenceFetchEntityFromDTO(fetch)
 	if err != nil {
 		return ArchiveCollectionEvidenceResult{}, fmt.Errorf("validate collection raw evidence DTO: %w", err)
 	}
@@ -86,7 +103,7 @@ func (service *RawEvidenceCollectionService) ArchiveFetch(ctx context.Context, c
 		return ArchiveCollectionEvidenceResult{}, errors.New("raw evidence collection clock returned zero time")
 	}
 	resolved, err := service.rights.ResolveCurrent(ctx, CurrentRawEvidenceRightsQuery{
-		SourceConnectionID: command.SourceConnectionID,
+		SourceConnectionID: sourceConnectionID,
 		DecisionAt:         decisionAt,
 		Subjects:           subjects,
 	})
@@ -94,9 +111,9 @@ func (service *RawEvidenceCollectionService) ArchiveFetch(ctx context.Context, c
 		return ArchiveCollectionEvidenceResult{}, fmt.Errorf("resolve raw evidence rights: %w", err)
 	}
 	archived, err := service.archive.Archive(ctx, ArchiveRawEvidenceCommand{
-		SourceConnectionID: command.SourceConnectionID,
-		CollectionRunID:    command.CollectionRunID,
-		Fetch:              command.Fetch,
+		SourceConnectionID: sourceConnectionID,
+		CollectionRunID:    collectionRunID,
+		Fetch:              fetch,
 		StoreRawDecisions:  resolved.StoreRawDecisions,
 		RetainDecisions:    resolved.RetainDecisions,
 	})
@@ -104,4 +121,18 @@ func (service *RawEvidenceCollectionService) ArchiveFetch(ctx context.Context, c
 		return ArchiveCollectionEvidenceResult{}, err
 	}
 	return ArchiveCollectionEvidenceResult{Snapshots: archived.Snapshots}, nil
+}
+
+func (service *RawEvidenceCollectionService) ArchiveContext(ctx context.Context, command ArchiveContextEvidenceCommand) error {
+	if service == nil || service.rights == nil || service.archive == nil || service.clock == nil {
+		return errors.New("raw evidence collection service is not initialized")
+	}
+	if command.SourceConnectionID <= 0 {
+		return errors.New("raw context evidence source is required")
+	}
+	if len(command.Snapshots) == 0 {
+		return nil
+	}
+	_, err := service.archiveFetch(ctx, command.SourceConnectionID, 0, RawEvidenceFetchDTO{Items: []RawEvidenceItemDTO{}, Snapshots: command.Snapshots})
+	return err
 }

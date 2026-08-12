@@ -270,13 +270,13 @@ export function CollectionWorkspace({
                               : "已拒绝"}
                           </Badge>
                         ) : null}
-                        {content.event_id != null ? (
+                        {content.micro_event_id != null ? (
                           <Link
                             className="text-xs text-muted-foreground no-underline hover:text-foreground"
-                            href={`/dashboard/events?event=${content.event_id}`}
+                            href={`/dashboard/events?event=${content.micro_event_id}`}
                           >
                             归属事件：
-                            {content.event_title || `#${content.event_id}`}
+                            {content.micro_event_title || `#${content.micro_event_id}`}
                           </Link>
                         ) : null}
                       </div>

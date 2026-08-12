@@ -28,7 +28,8 @@ import (
 
 const (
 	sourceCode              = "x"
-	collectorProfileVersion = "x-recent-search-json-v1"
+	collectorProfileVersion = "x-recent-search-json-v2"
+	metricProfileVersion    = "x-post-lookup-json-v1"
 	maxQueryCharacters      = 512
 	maxResponseBodyBytes    = 4 << 20
 	maxRedirects            = 3
@@ -68,6 +69,8 @@ type searchCursor struct {
 	SinceID     string `json:"s,omitempty"`
 	NextToken   string `json:"n,omitempty"`
 	HighWaterID string `json:"h,omitempty"`
+	Initialized bool   `json:"i,omitempty"`
+	SortOrder   string `json:"o,omitempty"`
 }
 
 type searchResponse struct {
@@ -97,7 +100,12 @@ type post struct {
 	Attachments       postAttachments `json:"attachments"`
 	ReferencedPosts   []postReference `json:"referenced_posts"`
 	ReferencedTweets  []postReference `json:"referenced_tweets"`
+	NoteTweet         noteTweet       `json:"note_tweet"`
 	PublicMetrics     publicMetrics   `json:"public_metrics"`
+}
+
+type noteTweet struct {
+	Text string `json:"text"`
 }
 
 type postReference struct {
@@ -152,9 +160,9 @@ type fetchedJSONResponse struct {
 	capturedAt    time.Time
 }
 
-func (value fetchedJSONResponse) snapshot() (domain.EvidenceSnapshot, error) {
+func (value fetchedJSONResponse) snapshot(profileVersion string) (domain.EvidenceSnapshot, error) {
 	return evidencecapture.NewJSONSnapshot(
-		value.payload, collectorProfileVersion, value.requestedURL, value.finalURL,
+		value.payload, profileVersion, value.requestedURL, value.finalURL,
 		value.redirectChain, value.statusCode, value.headers, value.capturedAt,
 	)
 }
@@ -215,7 +223,7 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 			if len(via) >= maxRedirects {
 				return errRedirectLimit
 			}
-			if !sameOfficialEndpoint(endpoint, request.URL) {
+			if len(via) == 0 || !sameOfficialEndpoint(via[0].URL, request.URL) {
 				return errUnsafeDestination
 			}
 			return nil
@@ -270,7 +278,7 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 	if err := json.Unmarshal(captured.payload, &response); err != nil {
 		return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("decode X recent search response"))
 	}
-	snapshot, err := captured.snapshot()
+	snapshot, err := captured.snapshot(collectorProfileVersion)
 	if err != nil {
 		return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("capture X recent search response"))
 	}
@@ -330,6 +338,7 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 		}
 		result.NextCursor, err = encodeCursor(searchCursor{
 			Version: cursorVersion, SinceID: cursor.SinceID, NextToken: response.Meta.NextToken, HighWaterID: highWater,
+			Initialized: cursor.Initialized, SortOrder: searchSortOrder(cursor),
 		})
 		if err != nil {
 			return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("encode X search cursor"))
@@ -342,11 +351,80 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 		finalSince = highWater
 	}
 	if finalSince != "" {
-		result.NextCursor, err = encodeCursor(searchCursor{Version: cursorVersion, SinceID: finalSince})
+		result.NextCursor, err = encodeCursor(searchCursor{Version: cursorVersion, SinceID: finalSince, Initialized: true})
+		if err != nil {
+			return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("encode X search cursor"))
+		}
+	} else if !cursor.Initialized {
+		result.NextCursor, err = encodeCursor(searchCursor{Version: cursorVersion, Initialized: true})
 		if err != nil {
 			return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("encode X search cursor"))
 		}
 	}
+	return result, nil
+}
+
+func (connector *Connector) LookupPostMetrics(ctx context.Context, request domain.XPostMetricLookupRequest) (domain.XPostMetricLookupResult, error) {
+	result := domain.XPostMetricLookupResult{
+		Observations: []domain.XPostMetricObservation{}, Snapshots: []domain.EvidenceSnapshot{}, Diagnostics: []domain.FetchDiagnostic{},
+	}
+	if err := request.Validate(); err != nil || (connector.sourceID > 0 && request.SourceConnectionID != connector.sourceID) {
+		return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid X metric lookup request"))
+	}
+	if !connector.enabled || connector.deleted {
+		return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X source connection is unavailable"))
+	}
+	token, err := connector.token()
+	if err != nil {
+		return result, err
+	}
+	postIDs := normalizedPostIDs(request.PostIDs)
+	lookupEndpoint := *connector.endpoint
+	lookupEndpoint.Path = "/2/tweets"
+	lookupEndpoint.RawPath = ""
+	parameters := url.Values{
+		"ids":          {strings.Join(postIDs, ",")},
+		"tweet.fields": {"public_metrics"},
+	}
+	captured, rateLimit, err := connector.getAt(ctx, &lookupEndpoint, parameters, token)
+	result.RateLimit = rateLimit
+	if err != nil {
+		return result, err
+	}
+	var response searchResponse
+	if err := json.Unmarshal(captured.payload, &response); err != nil {
+		return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("decode X post lookup response"))
+	}
+	snapshot, err := captured.snapshot(metricProfileVersion)
+	if err != nil {
+		return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("capture X post lookup response"))
+	}
+	result.Snapshots = append(result.Snapshots, snapshot)
+	for _, value := range response.Data {
+		if !postIDPattern.MatchString(value.ID) {
+			result.Diagnostics = append(result.Diagnostics, domain.FetchDiagnostic{Code: "invalid_post"})
+			continue
+		}
+		result.Observations = append(result.Observations, domain.XPostMetricObservation{
+			PostID: value.ID, Metrics: mapMetrics(value.PublicMetrics), CapturedAt: captured.capturedAt,
+		})
+	}
+	for _, problem := range response.Errors {
+		externalID := safePostID(problem.ResourceID)
+		if externalID == "" {
+			externalID = safePostID(problem.Value)
+		}
+		result.Diagnostics = append(result.Diagnostics, domain.FetchDiagnostic{Code: "unavailable_post", SourceExternalID: externalID})
+	}
+	sort.Slice(result.Observations, func(left, right int) bool {
+		return comparePostID(result.Observations[left].PostID, result.Observations[right].PostID) < 0
+	})
+	sort.Slice(result.Diagnostics, func(left, right int) bool {
+		if result.Diagnostics[left].Code != result.Diagnostics[right].Code {
+			return result.Diagnostics[left].Code < result.Diagnostics[right].Code
+		}
+		return comparePostID(result.Diagnostics[left].SourceExternalID, result.Diagnostics[right].SourceExternalID) < 0
+	})
 	return result, nil
 }
 
@@ -380,7 +458,11 @@ func (connector *Connector) token() (string, error) {
 }
 
 func (connector *Connector) get(ctx context.Context, parameters url.Values, token string) (fetchedJSONResponse, domain.RateLimit, error) {
-	target := *connector.endpoint
+	return connector.getAt(ctx, connector.endpoint, parameters, token)
+}
+
+func (connector *Connector) getAt(ctx context.Context, endpoint *url.URL, parameters url.Values, token string) (fetchedJSONResponse, domain.RateLimit, error) {
+	target := *endpoint
 	target.RawQuery = parameters.Encode()
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
 	if err != nil {
@@ -416,6 +498,30 @@ func (connector *Connector) get(ctx context.Context, parameters url.Values, toke
 	}, rateLimit, nil
 }
 
+func normalizedPostIDs(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if _, found := seen[value]; found {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	sort.Slice(result, func(left, right int) bool { return comparePostID(result[left], result[right]) < 0 })
+	return result
+}
+
+func comparePostID(left, right string) int {
+	if len(left) < len(right) {
+		return -1
+	}
+	if len(left) > len(right) {
+		return 1
+	}
+	return strings.Compare(left, right)
+}
+
 func (connector *Connector) mapPost(value post, users map[string]string, media map[string]includedMedia, observedAt time.Time) (domain.SourceItem, error) {
 	if !postIDPattern.MatchString(value.ID) {
 		return domain.SourceItem{}, errors.New("invalid X post ID")
@@ -438,8 +544,12 @@ func (connector *Connector) mapPost(value post, users map[string]string, media m
 		itemURL = "https://x.com/" + username + "/status/" + value.ID
 	}
 	parentID := parentPostID(value)
+	body := value.Text
+	if strings.TrimSpace(value.NoteTweet.Text) != "" {
+		body = value.NoteTweet.Text
+	}
 	evidence := domain.EvidenceCompletenessMetadataOnly
-	if strings.TrimSpace(value.Text) != "" {
+	if strings.TrimSpace(body) != "" {
 		evidence = domain.EvidenceCompletenessFullBody
 	}
 	parties := []domain.SourcePartyAssertion{{
@@ -458,7 +568,7 @@ func (connector *Connector) mapPost(value post, users map[string]string, media m
 	}
 	return domain.NormalizeSourceItem(domain.SourceItem{
 		SourceCode: sourceCode, ExternalID: value.ID, ParentExternalID: parentID,
-		ContentType: "post", Body: value.Text, Language: value.Language, URL: itemURL,
+		ContentType: "post", Body: body, Language: value.Language, URL: itemURL,
 		Author: username, PublishedAt: publishedAt, ObservedAt: observedAt.UTC(),
 		EvidenceCompleteness: evidence, Attachments: mapAttachments(value.Attachments.MediaKeys, media),
 		Metrics: mapMetrics(value.PublicMetrics), Parties: parties,
@@ -541,10 +651,10 @@ func searchParameters(query string, limit int, cursor searchCursor) url.Values {
 		limit = 100
 	}
 	parameters := url.Values{
-		"query": {query}, "max_results": {strconv.Itoa(limit)}, "sort_order": {"recency"},
-		"post.fields": {"attachments,author_id,conversation_id,created_at,lang,possibly_sensitive,public_metrics,referenced_posts,text,withheld"},
-		"expansions":  {"attachments.media_keys,author_id,referenced_posts"},
-		"user.fields": {"name,username"}, "media.fields": {"media_key,preview_image_url,type,url"},
+		"query": {query}, "max_results": {strconv.Itoa(limit)}, "sort_order": {searchSortOrder(cursor)},
+		"tweet.fields": {"attachments,author_id,conversation_id,created_at,lang,note_tweet,possibly_sensitive,public_metrics,referenced_tweets,text,withheld"},
+		"expansions":   {"attachments.media_keys,author_id,referenced_tweets.id"},
+		"user.fields":  {"name,username"}, "media.fields": {"media_key,preview_image_url,type,url"},
 	}
 	if cursor.SinceID != "" {
 		parameters.Set("since_id", cursor.SinceID)
@@ -553,6 +663,16 @@ func searchParameters(query string, limit int, cursor searchCursor) url.Values {
 		parameters.Set("next_token", cursor.NextToken)
 	}
 	return parameters
+}
+
+func searchSortOrder(cursor searchCursor) string {
+	if cursor.SortOrder == "relevancy" || cursor.SortOrder == "recency" {
+		return cursor.SortOrder
+	}
+	if !cursor.Initialized && cursor.SinceID == "" && cursor.NextToken == "" {
+		return "relevancy"
+	}
+	return "recency"
 }
 
 func encodeCursor(cursor searchCursor) (string, error) {
@@ -579,7 +699,9 @@ func decodeCursor(value string) (searchCursor, error) {
 	if (cursor.SinceID != "" && !postIDPattern.MatchString(cursor.SinceID)) ||
 		(cursor.HighWaterID != "" && !postIDPattern.MatchString(cursor.HighWaterID)) ||
 		(cursor.NextToken != "" && (!validOpaqueToken(cursor.NextToken) || cursor.HighWaterID == "")) ||
-		(cursor.NextToken == "" && cursor.HighWaterID != "") {
+		(cursor.NextToken == "" && cursor.HighWaterID != "") ||
+		(cursor.SortOrder != "" && cursor.SortOrder != "recency" && cursor.SortOrder != "relevancy") ||
+		(cursor.NextToken == "" && cursor.SortOrder != "") {
 		return searchCursor{}, errors.New("invalid X cursor state")
 	}
 	return cursor, nil

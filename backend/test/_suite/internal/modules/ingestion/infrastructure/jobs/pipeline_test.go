@@ -24,15 +24,14 @@ func TestPipelineHandlersRejectInvalidEnvelopeBeforeDependencies(t *testing.T) {
 	}
 }
 
-func TestNormalizeHandlerDrainsEveryCapturedItemPage(t *testing.T) {
+func TestNormalizeHandlerDrainsEveryCapturedItemPageWithoutLegacyFanout(t *testing.T) {
 	t.Parallel()
 
 	service := &pagedNormalizeService{pages: []ingestionapplication.IngestRunResult{
 		{Processed: 50, Bound: 50, NextCursor: "more"},
 		{Processed: 50, Bound: 50},
 	}}
-	jobs := &recordingJobEnqueuer{}
-	handler, err := newNormalizeHandler(service, jobs)
+	handler, err := newNormalizeHandler(service)
 	if err != nil {
 		t.Fatalf("newNormalizeHandler() error = %v", err)
 	}
@@ -43,8 +42,8 @@ func TestNormalizeHandlerDrainsEveryCapturedItemPage(t *testing.T) {
 	if err := handler.Handle(context.Background(), job); err != nil {
 		t.Fatalf("Handle() error = %v", err)
 	}
-	if service.calls != 2 || len(jobs.jobs) != 100 {
-		t.Fatalf("drain calls/jobs = %d/%d, want 2/100", service.calls, len(jobs.jobs))
+	if service.calls != 2 {
+		t.Fatalf("drain calls = %d, want 2", service.calls)
 	}
 }
 
@@ -127,13 +126,8 @@ type pagedNormalizeService struct {
 	calls int
 }
 
-func (service *pagedNormalizeService) IngestRunWithHook(_ context.Context, _ ingestionapplication.IngestRunInput, hook func(context.Context, int64) error) (ingestionapplication.IngestRunResult, error) {
+func (service *pagedNormalizeService) IngestRun(_ context.Context, _ ingestionapplication.IngestRunInput) (ingestionapplication.IngestRunResult, error) {
 	result := service.pages[service.calls]
 	service.calls++
-	for offset := 0; offset < result.Bound; offset++ {
-		if err := hook(context.Background(), int64((service.calls-1)*50+offset+1)); err != nil {
-			return ingestionapplication.IngestRunResult{}, err
-		}
-	}
 	return result, nil
 }

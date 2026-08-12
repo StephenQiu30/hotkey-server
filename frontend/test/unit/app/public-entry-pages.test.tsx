@@ -5,30 +5,31 @@ import NotFound from "@/app/not-found";
 import AuthShell from "@/components/auth/AuthShell";
 
 describe("公开入口页面", () => {
-  it("首页清晰表达 AI 热点监控定位与核心工作流", () => {
+  it("首页清晰表达多源 AI 热点监控定位与核心工作流", () => {
     render(<HomePage />);
 
     expect(
-      screen.getByRole("heading", { name: "重要变化，先形成判断" }),
+      screen.getByRole("heading", { name: "全网热点，先一步看见" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "今日情报简报" })).toBeInTheDocument();
-    expect(screen.getByText("证据来源")).toBeInTheDocument();
-    expect(screen.getByText("持续监测")).toBeInTheDocument();
-    expect(screen.getByText("AI 识别与判断")).toBeInTheDocument();
-    expect(screen.getByText("形成共识与行动")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "多源热点示例" })).toBeInTheDocument();
+    expect(screen.getByText("多源证据状态")).toBeInTheDocument();
+    expect(screen.getByText("定义监控目标")).toBeInTheDocument();
+    expect(screen.getByText("七源聚合与 AI 分析")).toBeInTheDocument();
+    expect(screen.getByText("实时推送与邮件")).toBeInTheDocument();
+    expect(screen.getByText("X / Twitter")).toBeInTheDocument();
     expect(screen.getByText("RSS / Atom")).toBeInTheDocument();
     expect(screen.getByText("Hacker News")).toBeInTheDocument();
-    expect(screen.getByText("Google")).toBeInTheDocument();
+    expect(screen.getByText("Bilibili")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "切换到暗色模式" })).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/可信来源|置信度|更可靠/);
   });
 
-  it("首页的完整情报入口指向受保护的报告页面", () => {
+  it("首页的热点入口指向受保护的微事件页面", () => {
     render(<HomePage />);
 
-    expect(screen.getByRole("link", { name: "查看完整情报" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "查看热点事件" })).toHaveAttribute(
       "href",
-      "/dashboard/reports",
+      "/dashboard/events",
     );
   });
 
@@ -36,10 +37,10 @@ describe("公开入口页面", () => {
     render(<HomePage />);
 
     expect(
-      screen.getByRole("heading", { name: "把公开信号，变成可以核验的团队判断" }),
+      screen.getByRole("heading", { name: "把多源信号，变成可追溯的热点事件" }),
     ).toBeInTheDocument();
     expect(screen.getByText("2026-08-06")).toHaveClass("text-muted-foreground");
-    expect(screen.getByText("连续 4 天上升")).toHaveClass("text-success");
+    expect(screen.getByText("传播速度正在上升")).toHaveClass("text-success");
     expect(screen.getByText("/100")).toHaveClass("text-muted-foreground");
     expect(screen.getAllByText(/小时前$/)).toHaveLength(3);
     expect(screen.getByAltText("由多层信号轨道组成的 HotKey 雷达")).toHaveClass(

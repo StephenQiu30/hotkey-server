@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -11,9 +13,15 @@ var ErrInvalidMicroEventQuery = errors.New("micro-event query is invalid")
 var ErrEvidenceSummaryUnavailable = errors.New("micro-event evidence summary is unavailable")
 
 type MicroEventListQuery struct {
-	CursorID int64
-	Limit    int
-	Statuses []string
+	Cursor         string
+	Limit          int
+	Statuses       []string
+	Sort           string
+	MonitorID      int64
+	SourceTypes    []string
+	EvidenceStates []string
+	StartedFrom    *time.Time
+	StartedTo      *time.Time
 }
 
 type MicroEventProjectionDTO struct {
@@ -26,6 +34,7 @@ type MicroEventProjectionDTO struct {
 	ClusteringProfileVersion            string
 	Storyline                           *StorylineDTO
 	LatestHeat                          *EventHeatSnapshotDTO
+	RelevanceScore                      *float64
 	LatestEvidenceState                 *EvidenceStateSnapshotDTO
 	LatestSummary                       *EvidenceSummaryDTO
 	ContentFamilyCount                  int
@@ -33,8 +42,8 @@ type MicroEventProjectionDTO struct {
 }
 
 type MicroEventPageDTO struct {
-	Items        []MicroEventProjectionDTO
-	NextCursorID int64
+	Items      []MicroEventProjectionDTO
+	NextCursor string
 }
 
 type MicroEventEvidenceQuery struct {
@@ -84,18 +93,72 @@ func NewMicroEventQueryService(repository MicroEventQueryRepository) (*MicroEven
 }
 
 func (service *MicroEventQueryService) List(ctx context.Context, query MicroEventListQuery) (MicroEventPageDTO, error) {
-	if service == nil || service.repository == nil || query.CursorID < 0 || query.Limit < 0 || query.Limit > 100 {
+	query.Cursor = strings.TrimSpace(query.Cursor)
+	query.Sort = strings.TrimSpace(query.Sort)
+	if query.Sort == "" {
+		query.Sort = "heat"
+	}
+	if service == nil || service.repository == nil || len(query.Cursor) > 8192 || strings.ContainsAny(query.Cursor, "\r\n") ||
+		(query.Sort != "heat" && query.Sort != "relevance" && query.Sort != "latest") || query.Limit < 0 || query.Limit > 100 ||
+		query.MonitorID < 0 {
 		return MicroEventPageDTO{}, ErrInvalidMicroEventQuery
 	}
 	if query.Limit == 0 {
 		query.Limit = 50
 	}
-	for _, status := range query.Statuses {
-		if status != "active" && status != "review_pending" && status != "closed" && status != "merged" {
-			return MicroEventPageDTO{}, ErrInvalidMicroEventQuery
-		}
+	var err error
+	query.Statuses, err = normalizeMicroEventFilterValues(query.Statuses, map[string]struct{}{
+		"active": {}, "review_pending": {}, "closed": {}, "merged": {},
+	})
+	if err != nil {
+		return MicroEventPageDTO{}, err
+	}
+	query.SourceTypes, err = normalizeMicroEventFilterValues(query.SourceTypes, map[string]struct{}{
+		"rss": {}, "hacker_news": {}, "x": {}, "bing_grounding": {}, "bilibili": {}, "weibo": {}, "google_agent_search": {},
+	})
+	if err != nil {
+		return MicroEventPageDTO{}, err
+	}
+	query.EvidenceStates, err = normalizeMicroEventFilterValues(query.EvidenceStates, map[string]struct{}{
+		"no_citable_body": {}, "single_origin": {}, "multiple_origins": {}, "conflicting_reports": {},
+		"publisher_corrected": {}, "publisher_withdrawn": {},
+	})
+	if err != nil {
+		return MicroEventPageDTO{}, err
+	}
+	if query.StartedFrom != nil {
+		value := query.StartedFrom.UTC()
+		query.StartedFrom = &value
+	}
+	if query.StartedTo != nil {
+		value := query.StartedTo.UTC()
+		query.StartedTo = &value
+	}
+	if query.StartedFrom != nil && query.StartedTo != nil && query.StartedFrom.After(*query.StartedTo) {
+		return MicroEventPageDTO{}, ErrInvalidMicroEventQuery
 	}
 	return service.repository.ListMicroEvents(ctx, query)
+}
+
+func normalizeMicroEventFilterValues(values []string, allowed map[string]struct{}) ([]string, error) {
+	if len(values) > len(allowed) {
+		return nil, ErrInvalidMicroEventQuery
+	}
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, raw := range values {
+		value := strings.TrimSpace(raw)
+		if _, ok := allowed[value]; !ok {
+			return nil, ErrInvalidMicroEventQuery
+		}
+		if _, duplicate := seen[value]; duplicate {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result, nil
 }
 
 func (service *MicroEventQueryService) Get(ctx context.Context, id int64) (MicroEventProjectionDTO, error) {

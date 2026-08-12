@@ -34,8 +34,51 @@ type Repository struct{ runtime *database.Runtime }
 var _ domain.SourceConnectionRepository = (*Repository)(nil)
 var _ domain.MetricSourceContextRepository = (*Repository)(nil)
 var _ domain.BilibiliWebhookRepository = (*Repository)(nil)
+var _ domain.XMetricRefreshScheduleReader = (*Repository)(nil)
 
 func NewRepository(runtime *database.Runtime) *Repository { return &Repository{runtime: runtime} }
+
+func (repository *Repository) ListXMetricRefreshSchedules(ctx context.Context) ([]domain.XMetricRefreshSchedule, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	rows, err := repository.queryRows(ctx, `
+SELECT `+sourceConnectionColumns+`
+FROM source_connections
+WHERE source_type = 'x'
+  AND enabled
+  AND deleted_at IS NULL
+  AND config @> '{"x_metric_refresh_enabled":true}'::jsonb
+ORDER BY id ASC`)
+	if err != nil {
+		return nil, databaserepository.MapError(err)
+	}
+	defer rows.Close()
+	schedules := make([]domain.XMetricRefreshSchedule, 0)
+	for rows.Next() {
+		record, err := scanSourceConnection(rows)
+		if err != nil {
+			return nil, err
+		}
+		connection, err := record.sourceConnection()
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+		}
+		schedule := domain.XMetricRefreshSchedule{
+			SourceConnectionID: connection.ID, SourceVersion: connection.Version,
+			IntervalMinutes:    connection.Config.XMetricRefreshIntervalMinutes,
+			DailyRequestBudget: connection.Config.XMetricRefreshDailyRequestBudget,
+		}
+		if err := schedule.Validate(); err != nil {
+			return nil, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+		}
+		schedules = append(schedules, schedule)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, databaserepository.MapError(err)
+	}
+	return schedules, nil
+}
 
 func (repository *Repository) Create(ctx context.Context, connection *domain.SourceConnection) error {
 	if connection == nil {

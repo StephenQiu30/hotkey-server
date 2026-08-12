@@ -49,14 +49,18 @@ func (repository *EvidenceSnapshotRepository) Reserve(ctx context.Context, comma
 
 	var stored evidenceSnapshotRecord
 	err = repository.withTransaction(ctx, func(transactionCtx context.Context, executor evidenceSnapshotExecutor) error {
-		var collectionRunID int64
-		if err := executor.QueryRowContext(transactionCtx, `
+		var collectionRunID any
+		if command.CollectionRunID > 0 {
+			var storedRunID int64
+			if err := executor.QueryRowContext(transactionCtx, `
 SELECT id FROM collection_runs
 WHERE id=$1 AND source_connection_id=$2
-FOR KEY SHARE`, command.CollectionRunID, command.SourceConnectionID).Scan(&collectionRunID); errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: source collection run is missing", sharedrepository.ErrConstraint)
-		} else if err != nil {
-			return databaserepository.MapError(err)
+		FOR KEY SHARE`, command.CollectionRunID, command.SourceConnectionID).Scan(&storedRunID); errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("%w: source collection run is missing", sharedrepository.ErrConstraint)
+			} else if err != nil {
+				return databaserepository.MapError(err)
+			}
+			collectionRunID = storedRunID
 		}
 
 		_, err := executor.ExecContext(transactionCtx, `
@@ -66,7 +70,7 @@ INSERT INTO evidence_snapshots (
   response_status,requested_url,final_url,redirect_chain,response_headers,captured_at,retention_until
 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15::jsonb,$16,$17)
 ON CONFLICT (source_connection_id,snapshot_key) DO NOTHING`,
-			command.SourceConnectionID, command.CollectionRunID, command.StoreRawRightsDecisionID, command.RetainRightsDecisionID,
+			command.SourceConnectionID, collectionRunID, command.StoreRawRightsDecisionID, command.RetainRightsDecisionID,
 			command.EvidenceKey, command.ObjectKey, command.PayloadSHA256, command.CollectorProfileVersion,
 			command.MIMEType, command.SizeBytes, command.ResponseStatus, command.RequestedURL, command.FinalURL,
 			string(redirectChainJSON), string(responseHeadersJSON), command.CapturedAt.UTC(), command.RetentionUntil.UTC())

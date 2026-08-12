@@ -42,6 +42,7 @@ type EventHeatTargetDTO struct {
 	PublisherCoverage       int
 	SourceTypeCoverage      int
 	NormalizedEngagement    *float64
+	NormalizationFallback   bool
 	AgeHours                float64
 }
 
@@ -128,6 +129,9 @@ func (service *EventHeatService) Calculate(ctx context.Context, command Calculat
 	})
 	if err != nil {
 		return CalculateEventHeatResult{}, fmt.Errorf("%w: %v", ErrInvalidEventHeatContract, err)
+	}
+	if target.NormalizationFallback {
+		calculated.ReasonCodes = append(calculated.ReasonCodes, "normalization_fallback")
 	}
 	mutation := CommitEventHeatSnapshotCommand{MicroEventID: target.MicroEventID, MicroEventVersion: target.MicroEventVersion,
 		HeatProfileID: target.HeatProfileID, WindowStartedAt: target.WindowStartedAt.UTC(), WindowEndedAt: target.WindowEndedAt.UTC(),

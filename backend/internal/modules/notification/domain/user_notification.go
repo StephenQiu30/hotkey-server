@@ -98,13 +98,14 @@ func (query UserNotificationQuery) Validate() error {
 type DeliveryChannel string
 
 const (
-	DeliveryChannelSSE     DeliveryChannel = "sse"
-	DeliveryChannelEmail   DeliveryChannel = "email"
-	DeliveryChannelWebPush DeliveryChannel = "web_push"
+	DeliveryChannelSSE       DeliveryChannel = "sse"
+	DeliveryChannelWebSocket DeliveryChannel = "websocket"
+	DeliveryChannelEmail     DeliveryChannel = "email"
+	DeliveryChannelWebPush   DeliveryChannel = "web_push"
 )
 
 func (channel DeliveryChannel) Valid() bool {
-	return channel == DeliveryChannelSSE || channel == DeliveryChannelEmail || channel == DeliveryChannelWebPush
+	return channel == DeliveryChannelSSE || channel == DeliveryChannelWebSocket || channel == DeliveryChannelEmail || channel == DeliveryChannelWebPush
 }
 
 type DeliveryStatus string

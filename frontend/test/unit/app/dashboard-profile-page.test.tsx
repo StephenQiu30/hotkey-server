@@ -5,30 +5,20 @@ import ProfilePage from "@/app/dashboard/profile/page";
 
 const mocks = vi.hoisted(() => ({
   getMonitors: vi.fn().mockResolvedValue({ data: { items: [] } }),
-  getReports: vi.fn().mockResolvedValue({ data: { items: [] } }),
   getSourceConnections: vi.fn().mockResolvedValue({ data: { items: [] } }),
   getOperationsOverview: vi
     .fn()
     .mockResolvedValue({ data: { running_jobs: 2 } }),
-  getAgentTokens: vi.fn().mockResolvedValue({ data: [] }),
 }));
 
 vi.mock("@/services/hotkey/hotkey-server/monitors", () => ({
   getMonitors: mocks.getMonitors,
-}));
-vi.mock("@/services/hotkey/hotkey-server/reports", () => ({
-  getReports: mocks.getReports,
 }));
 vi.mock("@/services/hotkey/hotkey-server/sources", () => ({
   getSourceConnections: mocks.getSourceConnections,
 }));
 vi.mock("@/services/hotkey/hotkey-server/operations", () => ({
   getOperationsOverview: mocks.getOperationsOverview,
-}));
-vi.mock("@/services/hotkey/hotkey-server/agentAccess", () => ({
-  getAgentTokens: mocks.getAgentTokens,
-  postAgentTokens: vi.fn(),
-  postAgentTokensIdRevoke: vi.fn(),
 }));
 vi.mock("@/stores/authStore", () => ({
   useAuthStore: (
@@ -48,12 +38,10 @@ describe("ProfilePage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getMonitors.mockResolvedValue({ data: { items: [] } });
-    mocks.getReports.mockResolvedValue({ data: { items: [] } });
     mocks.getSourceConnections.mockResolvedValue({ data: { items: [] } });
     mocks.getOperationsOverview.mockResolvedValue({
       data: { running_jobs: 2 },
     });
-    mocks.getAgentTokens.mockResolvedValue({ data: [] });
   });
 
   it("shows viewer profile statistics without requesting the editor-only runtime overview", async () => {
@@ -73,6 +61,7 @@ describe("ProfilePage", () => {
       screen.queryByRole("link", { name: "管理监控" })
     ).not.toBeInTheDocument();
     expect(mocks.getOperationsOverview).not.toHaveBeenCalled();
+    expect(screen.queryByText(/报告记录|Agent Token/)).not.toBeInTheDocument();
   });
 
   it("shows a recoverable error instead of misleading zero statistics", async () => {

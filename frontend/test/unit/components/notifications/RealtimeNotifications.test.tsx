@@ -18,7 +18,12 @@ vi.mock("@/services/hotkey/hotkey-server/notifications", () => ({
 vi.mock("sonner", () => ({ toast: mocks.toast }));
 
 describe("RealtimeNotifications", () => {
-  afterEach(cleanup);
+  const originalWebSocket = globalThis.WebSocket;
+
+  afterEach(() => {
+    cleanup();
+    globalThis.WebSocket = originalWebSocket;
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -33,30 +38,52 @@ describe("RealtimeNotifications", () => {
     setAccessToken("test-access-token", 900);
   });
 
-  it("opens a native browser stream, ingests one frame and shows a toast", async () => {
-    const body = [
-      "id: 4",
-      "event: micro_event.updated",
-      'data: {"id":4,"version":1,"monitor_id":2,"event_type":"micro_event.updated","resource_type":"micro_event","resource_id":9,"resource_version":1,"occurred_at":"2026-08-08T00:00:00Z","created_at":"2026-08-08T00:00:00Z","title":"事件更新","summary":"新增独立正文谱系","resource_status":"active","deep_link":"/dashboard/events?event=9"}',
-      "",
-      "",
-    ].join("\n");
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(new TextEncoder().encode(body));
-          controller.close();
-        },
-      }), { status: 200, headers: { "Content-Type": "text/event-stream" } }),
-    );
+  it("uses the authenticated WebSocket first, ingests one frame and shows a toast", async () => {
+    const sockets: TestWebSocket[] = [];
+    class TestWebSocket extends EventTarget {
+      static readonly OPEN = 1;
+      readonly url: string;
+      readonly protocols: string | string[] | undefined;
+      readonly sent: string[] = [];
+      readyState = TestWebSocket.OPEN;
+
+      constructor(url: string | URL, protocols?: string | string[]) {
+        super();
+        this.url = String(url);
+        this.protocols = protocols;
+        sockets.push(this);
+        queueMicrotask(() => this.dispatchEvent(new Event("open")));
+      }
+
+      send(value: string) {
+        this.sent.push(value);
+        const authentication = JSON.parse(value) as { type?: string; token?: string; after_id?: number };
+        if (authentication.type !== "authenticate") return;
+        queueMicrotask(() => {
+          this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ type: "ready", after_id: authentication.after_id }) }));
+          this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({
+            type: "notification", id: 4, event: "micro_event.updated",
+            data: { id: 4, version: 1, monitor_id: 2, event_type: "micro_event.updated", resource_type: "micro_event", resource_id: 9, resource_version: 1, occurred_at: "2026-08-08T00:00:00Z", created_at: "2026-08-08T00:00:00Z", title: "事件更新", summary: "新增独立正文谱系", resource_status: "active", deep_link: "/dashboard/events?event=9" },
+          }) }));
+        });
+      }
+
+      close() {
+        this.readyState = 3;
+        this.dispatchEvent(new CloseEvent("close", { code: 1000, wasClean: true }));
+      }
+    }
+    globalThis.WebSocket = TestWebSocket as unknown as typeof WebSocket;
+    const fetchMock = vi.spyOn(globalThis, "fetch");
 
     render(<RealtimeNotifications />);
 
     await waitFor(() => expect(useNotificationStore.getState().items).toHaveLength(1));
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/notifications/stream?after_id=0",
-      expect.objectContaining({ method: "GET", cache: "no-store", credentials: "include" }),
-    );
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0]?.url).toBe("ws://localhost:3000/api/v1/notifications/ws");
+    expect(sockets[0]?.protocols).toEqual(["hotkey.notifications.v1"]);
+    expect(JSON.parse(sockets[0]?.sent[0] ?? "{}")).toEqual({ type: "authenticate", token: "test-access-token", after_id: 0 });
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(mocks.toast).toHaveBeenCalledWith("事件更新", { description: "新增独立正文谱系" });
   });
 });

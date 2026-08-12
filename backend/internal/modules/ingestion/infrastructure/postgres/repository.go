@@ -27,10 +27,76 @@ const (
 // adapter's table boundary.
 type ContentRepository struct{ runtime *database.Runtime }
 
+var _ sourcedomain.XMetricRefreshCandidateReader = (*ContentRepository)(nil)
+
 var _ ingestiondomain.ContentRepository = (*ContentRepository)(nil)
 
 func NewContentRepository(runtime *database.Runtime) *ContentRepository {
 	return &ContentRepository{runtime: runtime}
+}
+
+func (repository *ContentRepository) ListXMetricRefreshCandidates(ctx context.Context, query sourcedomain.XMetricRefreshCandidateQuery) ([]sourcedomain.XMetricRefreshCandidate, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	if err := query.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	rows, err := repository.runtime.SQL.QueryContext(ctx, `
+SELECT content.id, content.external_id
+FROM contents AS content
+WHERE content.source_connection_id = $1
+  AND content.content_type = 'post'
+  AND content.content_status = 'active'
+  AND content.deleted_at IS NULL
+  AND content.published_at >= $2
+  AND NOT EXISTS (
+      SELECT 1
+      FROM content_metric_snapshots AS metric
+      WHERE metric.content_id = content.id
+        AND metric.captured_at > $3
+  )
+  AND EXISTS (
+      SELECT 1
+      FROM documents AS document
+      JOIN content_family_members AS family_member
+        ON family_member.document_version_id = document.current_document_version_id
+       AND family_member.active
+      JOIN micro_event_members AS event_member
+        ON event_member.content_family_id = family_member.family_id
+       AND event_member.active
+      JOIN micro_events AS event ON event.id = event_member.micro_event_id
+      WHERE document.source_connection_id = content.source_connection_id
+        AND document.external_work_id = content.external_id
+        AND document.document_state = 'active'
+        AND event.status IN ('active','review_pending')
+  )
+ORDER BY (
+    COALESCE(content.view_count, 0) + COALESCE(content.like_count, 0) * 4 +
+    COALESCE(content.comment_count, 0) * 6 + COALESCE(content.share_count, 0) * 8
+  ) DESC,
+  content.published_at DESC,
+  content.id ASC
+LIMIT $4`, query.SourceConnectionID, query.PublishedAfter.UTC(), query.SnapshotDueBefore.UTC(), query.Limit)
+	if err != nil {
+		return nil, databaserepository.MapError(err)
+	}
+	defer rows.Close()
+	items := make([]sourcedomain.XMetricRefreshCandidate, 0, query.Limit)
+	for rows.Next() {
+		var item sourcedomain.XMetricRefreshCandidate
+		if err := rows.Scan(&item.ContentID, &item.PostID); err != nil {
+			return nil, databaserepository.MapError(err)
+		}
+		if err := item.Validate(); err != nil {
+			return nil, fmt.Errorf("%w: persisted X metric candidate: %v", sharedrepository.ErrConstraint, err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, databaserepository.MapError(err)
+	}
+	return items, nil
 }
 
 // Upsert creates one source fact or refreshes its collection observation. A
@@ -97,7 +163,7 @@ RETURNING id, (xmax = 0)`,
 				}
 			}
 		}
-		if err := appendMetricSnapshot(ctx, transaction.SQL, contentID, content.FetchedAt, content.Metrics); err != nil {
+		if err := appendMetricSnapshot(ctx, transaction.SQL, contentID, content.FetchedAt, content.Metrics, false); err != nil {
 			return err
 		}
 		selected, err := selectContentByID(ctx, transaction.SQL, contentID)
@@ -124,7 +190,7 @@ func (repository *ContentRepository) AppendMetricSnapshot(ctx context.Context, c
 		return fmt.Errorf("%w: source metrics: %v", sharedrepository.ErrInvalidInput, err)
 	}
 	return repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
-		return appendMetricSnapshot(ctx, transaction.SQL, contentID, capturedAt, metrics)
+		return appendMetricSnapshot(ctx, transaction.SQL, contentID, capturedAt, metrics, true)
 	})
 }
 
@@ -437,7 +503,7 @@ WHERE source_connection_id = $1 AND external_id = $2`, content.SourceConnectionI
 	return authorID, nil
 }
 
-func appendMetricSnapshot(ctx context.Context, executor sqlExecutor, contentID int64, capturedAt time.Time, metrics sourcedomain.SourceMetrics) error {
+func appendMetricSnapshot(ctx context.Context, executor sqlExecutor, contentID int64, capturedAt time.Time, metrics sourcedomain.SourceMetrics, updateCurrent bool) error {
 	arguments := []any{contentID, capturedAt.UTC()}
 	arguments = append(arguments, metricArguments(metrics)...)
 	if _, err := executor.ExecContext(ctx, `
@@ -450,6 +516,16 @@ SET view_count = EXCLUDED.view_count,
     like_count = EXCLUDED.like_count,
     comment_count = EXCLUDED.comment_count,
     share_count = EXCLUDED.share_count`, arguments...); err != nil {
+		return databaserepository.MapError(err)
+	}
+	if !updateCurrent {
+		return nil
+	}
+	if _, err := executor.ExecContext(ctx, `
+UPDATE contents
+SET fetched_at=$2,view_count=$3,like_count=$4,comment_count=$5,share_count=$6,
+    version=version+1,updated_at=now()
+WHERE id=$1 AND fetched_at<=$2`, arguments...); err != nil {
 		return databaserepository.MapError(err)
 	}
 	return nil

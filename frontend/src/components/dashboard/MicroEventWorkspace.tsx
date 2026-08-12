@@ -21,6 +21,7 @@ import {
   postMicroEventsIdEvidenceEvidenceIdFeedback,
 } from "@/services/hotkey/hotkey-server/microEvents";
 import { postContentLineageDecisionsIdFeedback } from "@/services/hotkey/hotkey-server/contentLineage";
+import { getMonitors } from "@/services/hotkey/hotkey-server/monitors";
 import { useAuthStore } from "@/stores/authStore";
 
 const evidenceStateLabels: Record<string, string> = {
@@ -32,6 +33,15 @@ const evidenceStateLabels: Record<string, string> = {
   publisher_withdrawn: "发布方已撤回",
 };
 const statusLabels: Record<string, string> = { active: "活跃", review_pending: "待复核", closed: "已关闭", merged: "已合并" };
+const sourceTypeLabels: Record<string, string> = {
+  rss: "RSS",
+  hacker_news: "Hacker News",
+  x: "X / Twitter",
+  bing_grounding: "Bing",
+  bilibili: "B 站",
+  weibo: "微博",
+  google_agent_search: "Google Search",
+};
 const relations = ["asserts", "attributes_to", "mentions", "contradicts", "corrects", "withdraws", "unknown"] as const;
 const lineageFeedbackTypes = ["duplicate", "not_duplicate", "relation_override", "withdraw"] as const;
 const contentRelations = ["exact_copy", "near_duplicate", "syndicated_from", "translation_of", "revision_of", "unrelated"] as const;
@@ -42,6 +52,12 @@ function formatTime(value?: string) {
   return Number.isNaN(date.valueOf()) ? "时间未提供" : new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
+function localDateTimeToRFC3339(value: string) {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? undefined : date.toISOString();
+}
+
 export function MicroEventWorkspace() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -49,12 +65,26 @@ export function MicroEventWorkspace() {
   const canReview = role === "editor" || role === "admin";
   const initialEventID = Number(searchParams.get("event")) || undefined;
   const [status, setStatus] = useState(searchParams.get("status") || "all");
+  const requestedSort = searchParams.get("sort");
+  const [sort, setSort] = useState<"heat" | "relevance" | "latest">(
+    requestedSort === "latest" || requestedSort === "relevance" ? requestedSort : "heat",
+  );
+  const [monitorID, setMonitorID] = useState(searchParams.get("monitor_id") || "all");
+  const requestedSourceType = searchParams.get("source_type") || "all";
+  const [sourceType, setSourceType] = useState(requestedSourceType === "all" || sourceTypeLabels[requestedSourceType] ? requestedSourceType : "all");
+  const requestedEvidenceState = searchParams.get("evidence_state") || "all";
+  const [evidenceState, setEvidenceState] = useState(
+    requestedEvidenceState === "all" || evidenceStateLabels[requestedEvidenceState] ? requestedEvidenceState : "all",
+  );
+  const [startedFrom, setStartedFrom] = useState("");
+  const [startedTo, setStartedTo] = useState("");
+  const [monitors, setMonitors] = useState<HotKeyAPI.MonitorResponse[]>([]);
   const [events, setEvents] = useState<HotKeyAPI.MicroEventResponseDTO[]>([]);
   const [selectedID, setSelectedID] = useState<number | undefined>(initialEventID);
   const [selected, setSelected] = useState<HotKeyAPI.MicroEventResponseDTO>();
   const [evidence, setEvidence] = useState<HotKeyAPI.ClaimEvidenceResponseDTO[]>([]);
-  const [nextCursor, setNextCursor] = useState<number>();
-  const [cursorHistory, setCursorHistory] = useState<number[]>([0]);
+  const [nextCursor, setNextCursor] = useState<string>();
+  const [cursorHistory, setCursorHistory] = useState<string[]>([""]);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -76,10 +106,20 @@ export function MicroEventWorkspace() {
     setLoading(true);
     setError(undefined);
     try {
-      const result = await getMicroEvents({ limit: 30, cursor_id: currentCursor, ...(status !== "all" ? { status } : {}) });
+      const result = await getMicroEvents({
+        limit: 30,
+        sort,
+        cursor: currentCursor,
+        ...(status !== "all" ? { status } : {}),
+        ...(monitorID !== "all" ? { monitor_id: Number(monitorID) } : {}),
+        ...(sourceType !== "all" ? { source_type: sourceType } : {}),
+        ...(evidenceState !== "all" ? { evidence_state: evidenceState } : {}),
+        ...(localDateTimeToRFC3339(startedFrom) ? { started_from: localDateTimeToRFC3339(startedFrom) } : {}),
+        ...(localDateTimeToRFC3339(startedTo) ? { started_to: localDateTimeToRFC3339(startedTo) } : {}),
+      });
       const items = result.data?.items ?? [];
       setEvents(items);
-      setNextCursor(result.data?.next_cursor_id);
+      setNextCursor(result.data?.next_cursor);
       setSelectedID((current) => {
         const preferred = current ?? initialEventID;
         return items.some((item) => item.id === preferred) ? preferred : items[0]?.id;
@@ -90,7 +130,7 @@ export function MicroEventWorkspace() {
     } finally {
       setLoading(false);
     }
-  }, [currentCursor, initialEventID, status]);
+  }, [currentCursor, evidenceState, initialEventID, monitorID, sort, sourceType, startedFrom, startedTo, status]);
 
   const loadDetail = useCallback(async () => {
     if (!selectedID) {
@@ -113,6 +153,18 @@ export function MicroEventWorkspace() {
 
   useEffect(() => { void loadEvents(); }, [loadEvents]);
   useEffect(() => { void loadDetail(); }, [loadDetail]);
+  useEffect(() => {
+    let active = true;
+    void getMonitors({ limit: 100 })
+      .then((result) => { if (active) setMonitors(result.data?.items ?? []); })
+      .catch(() => { if (active) setMonitors([]); });
+    return () => { active = false; };
+  }, []);
+
+  const resetPagination = () => {
+    setPage(0);
+    setCursorHistory([""]);
+  };
 
   const selectEvent = (id?: number) => {
     if (!id) return;
@@ -139,12 +191,50 @@ export function MicroEventWorkspace() {
         <Button onClick={() => void Promise.all([loadEvents(), loadDetail()])} type="button" variant="outline"><RefreshCw />刷新</Button>
       </header>
 
-      <div className="flex max-w-xs items-center gap-3">
-        <Label className="shrink-0" htmlFor="micro-event-status">状态</Label>
-        <Select value={status} onValueChange={(value) => { setStatus(value); setPage(0); setCursorHistory([0]); }}>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="space-y-2">
+          <Label htmlFor="micro-event-sort">排序</Label>
+          <Select value={sort} onValueChange={(value) => { setSort(value as "heat" | "relevance" | "latest"); resetPagination(); }}>
+            <SelectTrigger id="micro-event-sort"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="heat">正在升温</SelectItem><SelectItem value="relevance">相关性最高</SelectItem><SelectItem value="latest">最新发现</SelectItem></SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="micro-event-status">状态</Label>
+          <Select value={status} onValueChange={(value) => { setStatus(value); resetPagination(); }}>
           <SelectTrigger id="micro-event-status"><SelectValue /></SelectTrigger>
           <SelectContent><SelectItem value="all">全部</SelectItem>{Object.entries(statusLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
-        </Select>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="micro-event-monitor">监控器</Label>
+          <Select value={monitorID} onValueChange={(value) => { setMonitorID(value); resetPagination(); }}>
+            <SelectTrigger id="micro-event-monitor"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="all">全部监控器</SelectItem>{monitors.map((monitor) => monitor.id ? <SelectItem key={monitor.id} value={String(monitor.id)}>{monitor.name || `监控器 #${monitor.id}`}</SelectItem> : null)}</SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="micro-event-source">来源</Label>
+          <Select value={sourceType} onValueChange={(value) => { setSourceType(value); resetPagination(); }}>
+            <SelectTrigger id="micro-event-source"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="all">全部来源</SelectItem>{Object.entries(sourceTypeLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="micro-event-evidence-state">证据状态</Label>
+          <Select value={evidenceState} onValueChange={(value) => { setEvidenceState(value); resetPagination(); }}>
+            <SelectTrigger id="micro-event-evidence-state"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="all">全部证据状态</SelectItem>{Object.entries(evidenceStateLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="micro-event-started-from">事件开始时间从</Label>
+          <Input id="micro-event-started-from" onChange={(event) => { setStartedFrom(event.target.value); resetPagination(); }} type="datetime-local" value={startedFrom} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="micro-event-started-to">事件开始时间到</Label>
+          <Input id="micro-event-started-to" onChange={(event) => { setStartedTo(event.target.value); resetPagination(); }} type="datetime-local" value={startedTo} />
+        </div>
       </div>
 
       {error ? <Alert variant="destructive"><AlertTitle>事件列表加载失败</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
@@ -159,7 +249,11 @@ export function MicroEventWorkspace() {
                   <div className="flex items-center justify-between gap-2"><Badge variant="outline">{statusLabels[item.status ?? ""] ?? "状态未知"}</Badge><span className="text-xs text-muted-foreground">#{item.id}</span></div>
                   <h2 className="font-semibold leading-6">{item.primary_subject_key || "未命名主体"} · {item.primary_action_key || "未命名动作"}</h2>
                   <p className="line-clamp-2 text-sm text-muted-foreground">{item.storyline?.title || item.storyline?.summary || "尚未关联长期 Storyline"}</p>
-                  <div className="flex flex-wrap gap-3 text-xs text-muted-foreground"><span>{item.content_family_count ?? 0} 个独立家族</span><span>{item.document_count ?? 0} 个正文版本</span><span>{formatTime(item.event_started_at)}</span></div>
+                  <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                    <span>{item.latest_heat?.heat_score != null ? `热度 ${item.latest_heat.heat_score.toFixed(1)}` : "热度待计算"}</span>
+                    <span>{item.relevance_score != null ? `相关性 ${Math.round(item.relevance_score * 100)}%` : "相关性待分析"}</span>
+                    <span>{item.content_family_count ?? 0} 个独立家族</span><span>{item.document_count ?? 0} 个正文版本</span><span>{formatTime(item.event_started_at)}</span>
+                  </div>
                 </CardContent>
               </Card>
             </button>
@@ -182,9 +276,10 @@ export function MicroEventWorkspace() {
                   <h2 className="text-xl font-semibold outline-none" ref={detailHeading} tabIndex={-1}>{selected.primary_subject_key || "未命名主体"} · {selected.primary_action_key || "未命名动作"}</h2>
                   <p className="text-sm text-muted-foreground">事件版本 v{selected.version ?? "—"} · {formatTime(selected.event_started_at)}{selected.event_ended_at ? ` 至 ${formatTime(selected.event_ended_at)}` : ""}</p>
                 </CardHeader>
-                <CardContent className="grid gap-4 md:grid-cols-3">
+                <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                   <OverviewMetric icon={<GitBranch />} label="Storyline" value={selected.storyline?.title || "尚未关联"} detail={selected.storyline?.summary} />
                   <OverviewMetric icon={<Activity />} label="Heat v2" value={selected.latest_heat?.heat_score != null ? selected.latest_heat.heat_score.toFixed(1) : "暂无快照"} detail={selected.latest_heat ? `${selected.latest_heat.independent_lineage_root_count ?? 0} 个独立起源；互动缺失会自动重归一化` : undefined} />
+                  <OverviewMetric icon={<Layers3 />} label="最高监控相关性" value={selected.relevance_score != null ? `${Math.round(selected.relevance_score * 100)}%` : "暂无结果"} detail="用于监控意图匹配，不等同于事实判断" />
                   <OverviewMetric icon={<ShieldQuestion />} label="证据覆盖" value={evidenceStateLabels[selected.evidence_state?.state ?? ""] ?? "暂无快照"} detail={selected.evidence_state ? `${selected.evidence_state.independent_origin_count ?? 0} 个独立起源` : "不以相关性或模型分数替代证据覆盖"} />
                 </CardContent>
               </Card>

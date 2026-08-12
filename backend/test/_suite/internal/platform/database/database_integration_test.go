@@ -387,6 +387,22 @@ VALUES ('rss', $1, 'https://example.test/invalid', '{"secret":"forbidden"}'::jso
 	} else {
 		assertPostgreSQLState(t, err, "23514")
 	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO source_connections (source_type, name, endpoint, config)
+VALUES ('rss', $1, 'https://example.test/x-refresh-disabled',
+        '{"x_metric_refresh_enabled":false,"x_metric_refresh_interval_minutes":60,"x_metric_refresh_observation_hours":48,"x_metric_refresh_max_posts_per_run":100,"x_metric_refresh_daily_request_budget":24}'::jsonb)`,
+		"monitor-schema-valid-x-refresh-defaults-"+suffix); err != nil {
+		t.Fatalf("valid disabled X metric refresh defaults: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO source_connections (source_type, name, endpoint, config)
+VALUES ('rss', $1, 'https://example.test/x-refresh-invalid',
+        '{"x_metric_refresh_enabled":true,"x_metric_refresh_interval_minutes":1,"x_metric_refresh_observation_hours":48,"x_metric_refresh_max_posts_per_run":100,"x_metric_refresh_daily_request_budget":24}'::jsonb)`,
+		"monitor-schema-invalid-x-refresh-"+suffix); err == nil {
+		t.Fatal("invalid X metric refresh config = nil error, want database rejection")
+	} else {
+		assertPostgreSQLState(t, err, "23514")
+	}
 	if err := runtime.SQL.QueryRow(`INSERT INTO monitors (name) VALUES ($1) RETURNING id`, "monitor-schema-first-"+suffix).Scan(&firstMonitorID); err != nil {
 		t.Fatalf("create first monitor: %v", err)
 	}

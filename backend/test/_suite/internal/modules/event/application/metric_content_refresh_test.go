@@ -3,26 +3,53 @@ package application
 import (
 	"context"
 	"testing"
+	"time"
 )
 
-type contentEventReaderFake struct {
-	eventIDs []int64
+type contentMicroEventReaderFake struct {
+	microEventIDs []int64
 }
 
-func (fake contentEventReaderFake) ListMetricEventIDsForContent(context.Context, int64) ([]int64, error) {
-	return append([]int64(nil), fake.eventIDs...), nil
+func (fake contentMicroEventReaderFake) ListMetricMicroEventIDsForContent(context.Context, int64) ([]int64, error) {
+	return append([]int64(nil), fake.microEventIDs...), nil
 }
 
-func TestContentMetricRefreshDelegatesToTheMetricRecomputeUseCase(t *testing.T) {
-	recompute := &metricRecomputeFake{}
-	service, err := NewContentMetricRefreshService(contentEventReaderFake{eventIDs: []int64{3, 7}}, recompute)
+type eventHeatCalculatorFake struct {
+	commands []CalculateEventHeatCommand
+}
+
+func (fake *eventHeatCalculatorFake) Calculate(_ context.Context, command CalculateEventHeatCommand) (CalculateEventHeatResult, error) {
+	fake.commands = append(fake.commands, command)
+	return CalculateEventHeatResult{}, nil
+}
+
+func TestContentMetricRefreshRecomputesOnlyMicroEventHeatWindows(t *testing.T) {
+	now := time.Date(2026, time.August, 12, 7, 43, 29, 0, time.UTC)
+	calculator := &eventHeatCalculatorFake{}
+	service, err := NewContentMetricRefreshServiceWithClock(
+		contentMicroEventReaderFake{microEventIDs: []int64{3, 7}}, calculator,
+		func() time.Time { return now },
+	)
 	if err != nil {
-		t.Fatalf("NewContentMetricRefreshService: %v", err)
+		t.Fatalf("NewContentMetricRefreshServiceWithClock: %v", err)
 	}
 	if err := service.RecomputeMetricsForContent(context.Background(), 11); err != nil {
 		t.Fatalf("RecomputeMetricsForContent: %v", err)
 	}
-	if len(recompute.commands) != 2 || recompute.commands[0].EventID != 3 || recompute.commands[1].EventID != 7 {
-		t.Fatalf("metric recompute commands = %#v", recompute.commands)
+	want := []CalculateEventHeatCommand{
+		{MicroEventID: 3, WindowHours: 1, WindowEndedAt: now.Truncate(time.Minute)},
+		{MicroEventID: 3, WindowHours: 6, WindowEndedAt: now.Truncate(time.Minute)},
+		{MicroEventID: 3, WindowHours: 24, WindowEndedAt: now.Truncate(time.Minute)},
+		{MicroEventID: 7, WindowHours: 1, WindowEndedAt: now.Truncate(time.Minute)},
+		{MicroEventID: 7, WindowHours: 6, WindowEndedAt: now.Truncate(time.Minute)},
+		{MicroEventID: 7, WindowHours: 24, WindowEndedAt: now.Truncate(time.Minute)},
+	}
+	if len(calculator.commands) != len(want) {
+		t.Fatalf("heat commands = %#v, want %#v", calculator.commands, want)
+	}
+	for index := range want {
+		if calculator.commands[index] != want[index] {
+			t.Fatalf("heat command[%d] = %#v, want %#v", index, calculator.commands[index], want[index])
+		}
 	}
 }

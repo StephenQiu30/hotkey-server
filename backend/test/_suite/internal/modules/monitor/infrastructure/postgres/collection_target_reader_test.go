@@ -62,6 +62,7 @@ func TestPublishedCollectionTargetReaderReturnsOnlyDueActivePublishedEnabledTarg
 	_ = seedCollectionTarget(t, runtime.SQL, "future", "active", true, true, true, false, now.Add(time.Minute))
 	_ = seedCollectionTarget(t, runtime.SQL, "disabled-connection", "active", true, true, false, false, now.Add(-time.Minute))
 	_ = seedCollectionTarget(t, runtime.SQL, "archived-connection", "active", true, true, true, true, now.Add(-time.Minute))
+	nonX := seedCollectionTargetForSource(t, runtime.SQL, "non-x-core", sourcedomain.SourceTypeRSS, "active", true, true, true, false, now.Add(-time.Minute))
 
 	var before int
 	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM collection_runs`).Scan(&before); err != nil {
@@ -78,8 +79,8 @@ func TestPublishedCollectionTargetReaderReturnsOnlyDueActivePublishedEnabledTarg
 	if before != after {
 		t.Fatalf("ListDue wrote collection facts: before=%d after=%d", before, after)
 	}
-	if len(targets) != 1 {
-		t.Fatalf("ListDue() targets = %#v, want only one active published enabled due target", targets)
+	if len(targets) != 2 {
+		t.Fatalf("ListDue() targets = %#v, want due X and RSS targets", targets)
 	}
 	target := targets[0]
 	if target.MonitorSourceID != due.monitorSourceID || target.MonitorConfigVersionID != due.configID || target.SourceConnectionID != due.sourceID {
@@ -94,6 +95,15 @@ func TestPublishedCollectionTargetReaderReturnsOnlyDueActivePublishedEnabledTarg
 	if len(target.Terms) != 2 || target.Terms[0] != (sourcedomain.CollectionTerm{Value: "climate"}) || target.Terms[1] != (sourcedomain.CollectionTerm{Value: "spam", Excluded: true}) {
 		t.Fatalf("target terms = %#v, want approved immutable include/exclude terms only", target.Terms)
 	}
+	foundRSS := false
+	for _, candidate := range targets {
+		if candidate.SourceConnectionID == nonX.sourceID && candidate.MonitorSourceID == nonX.monitorSourceID {
+			foundRSS = true
+		}
+	}
+	if !foundRSS {
+		t.Fatalf("ListDue() targets = %#v, want enabled published RSS target", targets)
+	}
 }
 
 func TestPublishedCollectionTargetReaderPrefersExactCompiledIntentOverLegacyRules(t *testing.T) {
@@ -103,8 +113,8 @@ func TestPublishedCollectionTargetReaderPrefersExactCompiledIntentOverLegacyRule
 	now := time.Date(2026, time.July, 17, 8, 0, 0, 0, time.UTC)
 	var sourceID, monitorSourceID, revisionID, sourcePreviewID, profileID, entityID int64
 	if err := runtime.SQL.QueryRow(`
-INSERT INTO source_connections (source_type,name,endpoint,auth_type,config,enabled,health_status)
-VALUES ('rss','compiled intent source','https://feeds.example.test/compiled','none','{}'::jsonb,true,'unknown') RETURNING id`).Scan(&sourceID); err != nil {
+INSERT INTO source_connections (source_type,name,endpoint,auth_type,credential_ref,config,enabled,health_status)
+VALUES ('x','compiled intent source','https://api.x.com/2/tweets/search/recent','bearer','env:X_BEARER_TOKEN','{}'::jsonb,true,'unknown') RETURNING id`).Scan(&sourceID); err != nil {
 		t.Fatal(err)
 	}
 	if err := runtime.SQL.QueryRow(`
@@ -242,8 +252,21 @@ func seedCollectionTarget(t *testing.T, runtime interface {
 	Exec(string, ...any) (sql.Result, error)
 }, suffix, monitorStatus string, published, monitorSourceEnabled, sourceConnectionEnabled, sourceConnectionDeleted bool, nextPollAt time.Time) seededCollectionTarget {
 	t.Helper()
+	return seedCollectionTargetForSource(t, runtime, suffix, sourcedomain.SourceTypeX, monitorStatus, published, monitorSourceEnabled, sourceConnectionEnabled, sourceConnectionDeleted, nextPollAt)
+}
+
+func seedCollectionTargetForSource(t *testing.T, runtime interface {
+	QueryRow(string, ...any) *sql.Row
+	Exec(string, ...any) (sql.Result, error)
+}, suffix string, sourceType sourcedomain.SourceType, monitorStatus string, published, monitorSourceEnabled, sourceConnectionEnabled, sourceConnectionDeleted bool, nextPollAt time.Time) seededCollectionTarget {
+	t.Helper()
 	var result seededCollectionTarget
-	if err := runtime.QueryRow(`INSERT INTO source_connections (source_type, name, endpoint, auth_type, config, enabled, health_status) VALUES ('rss', $1, 'https://feeds.example.test/collection', 'none', '{}'::jsonb, $2, 'unknown') RETURNING id`, "collection source "+suffix, sourceConnectionEnabled).Scan(&result.sourceID); err != nil {
+	endpoint, authType := sourcedomain.XRecentSearchEndpoint, sourcedomain.AuthTypeBearer
+	var credentialRef any = "env:X_BEARER_TOKEN"
+	if sourceType == sourcedomain.SourceTypeRSS {
+		endpoint, authType, credentialRef = "https://feeds.example.test/collection", sourcedomain.AuthTypeNone, nil
+	}
+	if err := runtime.QueryRow(`INSERT INTO source_connections (source_type, name, endpoint, auth_type, credential_ref, config, enabled, health_status) VALUES ($1, $2, $3, $4, $5, '{}'::jsonb, $6, 'unknown') RETURNING id`, sourceType, "collection source "+suffix, endpoint, authType, credentialRef, sourceConnectionEnabled).Scan(&result.sourceID); err != nil {
 		t.Fatalf("seed %s source: %v", suffix, err)
 	}
 	if sourceConnectionDeleted {
