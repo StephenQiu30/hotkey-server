@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Activity, GitBranch, Layers3, Loader2, RefreshCw, SearchX, ShieldQuestion } from "lucide-react";
+import { CursorPagination } from "@/components/dashboard/CursorPagination";
 import { MicroEventEvidenceCard } from "@/components/dashboard/MicroEventEvidenceCard";
 import { MicroEventReviewPanel } from "@/components/dashboard/MicroEventReviewPanel";
+import { PageHeader } from "@/components/dashboard/PageHeader";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -181,17 +183,16 @@ export function MicroEventWorkspace() {
   );
 
   return (
-    <main className="space-y-6 pb-12">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="eyebrow">Semantic event monitoring</p>
-          <h1 className="mt-2 text-2xl font-semibold sm:text-3xl">热点事件与出处证据</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">按微事件与长期 Storyline 分层浏览。证据状态只描述可引用正文和独立起源，不代表事实真假或来源等级。</p>
-        </div>
-        <Button onClick={() => void Promise.all([loadEvents(), loadDetail()])} type="button" variant="outline"><RefreshCw />刷新</Button>
-      </header>
+    <div className="app-page">
+      <PageHeader
+        action={<Button onClick={() => void Promise.all([loadEvents(), loadDetail()])} type="button" variant="outline"><RefreshCw />刷新</Button>}
+        description="按微事件与长期 Storyline 分层浏览。证据状态只描述可引用正文和独立起源，不代表事实真假或来源等级。"
+        eyebrow="Semantic event monitoring"
+        title="热点事件与出处证据"
+      />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <Card aria-label="热点事件筛选" className="gap-0 py-0" role="region">
+        <CardContent className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4">
         <div className="space-y-2">
           <Label htmlFor="micro-event-sort">排序</Label>
           <Select value={sort} onValueChange={(value) => { setSort(value as "heat" | "relevance" | "latest"); resetPagination(); }}>
@@ -235,13 +236,14 @@ export function MicroEventWorkspace() {
           <Label htmlFor="micro-event-started-to">事件开始时间到</Label>
           <Input id="micro-event-started-to" onChange={(event) => { setStartedTo(event.target.value); resetPagination(); }} type="datetime-local" value={startedTo} />
         </div>
-      </div>
+        </CardContent>
+      </Card>
 
-      {error ? <Alert variant="destructive"><AlertTitle>事件列表加载失败</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(17rem,0.72fr)_minmax(0,1.55fr)]">
-        <section aria-label="微事件列表" className="space-y-3">
+      {error ? <Alert className="mt-6" variant="destructive"><AlertTitle>事件列表加载失败</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
+      <div className="mt-6 grid items-start gap-5 xl:grid-cols-[minmax(17rem,0.72fr)_minmax(0,1.55fr)]">
+        <section aria-label="微事件列表" className={events.length === 0 ? "xl:col-span-2" : "space-y-3"}>
           {loading ? <Loading label="加载微事件" /> : null}
-          {!loading && events.length === 0 ? <Empty><EmptyHeader><EmptyMedia variant="icon"><SearchX /></EmptyMedia><EmptyTitle>暂无微事件</EmptyTitle><EmptyDescription>只有有效相关性决策和可用谱系事实才会进入微事件。</EmptyDescription></EmptyHeader></Empty> : null}
+          {!loading && !error && events.length === 0 ? <Card className="gap-0 overflow-hidden py-0"><Empty className="min-h-72 border-0"><EmptyHeader><EmptyMedia variant="icon"><SearchX /></EmptyMedia><EmptyTitle>暂无微事件</EmptyTitle><EmptyDescription>只有有效相关性决策和可用谱系事实才会进入微事件。</EmptyDescription></EmptyHeader></Empty></Card> : null}
           {events.map((item) => (
             <button aria-pressed={selectedID === item.id} className="w-full rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" key={item.id} onClick={() => selectEvent(item.id)} type="button">
               <Card className={selectedID === item.id ? "border-primary bg-primary/[0.03]" : "transition-colors hover:border-foreground/30"}>
@@ -258,11 +260,17 @@ export function MicroEventWorkspace() {
               </Card>
             </button>
           ))}
-          <div className="flex items-center justify-between gap-2 pt-2">
-            <Button disabled={page === 0 || loading} onClick={() => setPage((value) => Math.max(0, value - 1))} type="button" variant="outline">上一页</Button>
-            <span className="text-xs text-muted-foreground">第 {page + 1} 页</span>
-            <Button disabled={!nextCursor || loading} onClick={() => { if (!nextCursor) return; setCursorHistory((history) => [...history.slice(0, page + 1), nextCursor]); setPage((value) => value + 1); }} type="button" variant="outline">下一页</Button>
-          </div>
+          {page > 0 || nextCursor ? (
+            <Card className="gap-0 overflow-hidden py-0">
+              <CursorPagination
+                hasNext={Boolean(nextCursor)}
+                loading={loading}
+                onNext={() => { if (!nextCursor) return; setCursorHistory((history) => [...history.slice(0, page + 1), nextCursor]); setPage((value) => value + 1); }}
+                onPrevious={() => setPage((value) => Math.max(0, value - 1))}
+                page={page + 1}
+              />
+            </Card>
+          ) : null}
         </section>
 
         <section aria-busy={detailLoading} aria-label="微事件详情" className="min-w-0 space-y-5">
@@ -320,7 +328,7 @@ export function MicroEventWorkspace() {
         } catch (reason) { setLineageError(reason instanceof Error ? reason.message : "正文谱系反馈保存失败"); }
         finally { setLineageBusy(false); }
       }} relation={contentRelation} setFeedbackType={setLineageFeedbackType} setRelation={setContentRelation} />
-    </main>
+    </div>
   );
 }
 

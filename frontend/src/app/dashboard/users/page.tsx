@@ -5,7 +5,6 @@ import {
   AlertCircle,
   Loader2,
   RotateCcw,
-  ShieldCheck,
   Trash2,
   Users,
 } from "lucide-react";
@@ -166,28 +165,7 @@ export default function UsersPage() {
   };
 
   if (!canManage) {
-    return (
-      <div className="app-page">
-        <PageHeader
-          eyebrow="Administration"
-          title="用户与权限"
-          description="管理工作区成员的角色与账户生命周期。"
-        />
-        <Card className="mt-6">
-          <Empty className="min-h-72 border-0">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <ShieldCheck />
-              </EmptyMedia>
-              <EmptyTitle>需要管理员权限</EmptyTitle>
-              <EmptyDescription>
-                当前角色不能读取或修改用户。权限校验由服务端执行。
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        </Card>
-      </div>
-    );
+    return null;
   }
 
   return (

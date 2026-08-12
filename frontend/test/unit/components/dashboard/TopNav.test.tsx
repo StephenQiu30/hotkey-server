@@ -118,6 +118,38 @@ describe("TopNav", () => {
     expect(screen.getByRole("menuitem", { name: /采集内容/ })).toBeInTheDocument();
   });
 
+  it("hides administrator-only primary routes from desktop and mobile navigation", async () => {
+    useAuthStore.setState((state) => ({
+      ...state,
+      user: { ...state.user!, role: UserRole.Viewer },
+    }));
+    const user = userEvent.setup();
+    render(
+      <TopNav
+        menuItems={[
+          { path: "/dashboard", name: "概览", icon: <Activity /> },
+          {
+            path: "/dashboard/sources",
+            name: "来源",
+            icon: <Database />,
+            roles: [UserRole.Admin],
+          },
+        ]}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("navigation", { name: "主导航" })?.querySelector(
+        'a[href="/dashboard/sources"]',
+      ),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "打开导航" }));
+    expect(
+      screen.queryByRole("link", { name: /来源/ }),
+    ).not.toBeInTheDocument();
+  });
+
   it("opens mobile navigation as an accessible sheet", async () => {
     const user = userEvent.setup();
     render(

@@ -10,8 +10,7 @@ const (
 	DimensionAICost               = "ai_cost"
 	DimensionNotificationDelivery = "notification_deliveries"
 
-	ActiveMonitorLimit   int64 = 50
-	ManualSearchDayLimit int64 = 20
+	ActiveMonitorLimit int64 = 50
 )
 
 type UsageItem struct {

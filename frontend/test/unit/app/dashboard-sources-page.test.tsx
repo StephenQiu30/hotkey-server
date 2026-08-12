@@ -52,6 +52,11 @@ describe("multi-source workspace", () => {
       "Weibo",
       "Google Agent Search",
     ]);
+    expect(screen.queryByLabelText("允许语言")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "高级设置" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
   });
 
   it("creates an official X source with continuous metrics disabled by default", async () => {
@@ -59,9 +64,8 @@ describe("multi-source workspace", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "新增来源" }));
     fireEvent.change(screen.getByRole("combobox", { name: "来源类型" }), { target: { value: "x" } });
-    expect(screen.getByLabelText("接口地址")).toHaveValue("https://api.x.com/2/tweets/search/recent");
-    expect(screen.getByLabelText("接口地址")).toHaveAttribute("readonly");
-    expect(screen.getByRole("checkbox", { name: "启用 X 持续指标刷新" })).not.toBeChecked();
+    expect(screen.getByText("官方接口 · Bearer Token")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "启用 X 持续指标刷新" })).not.toBeInTheDocument();
 
     await user.type(screen.getByLabelText("名称"), "X 官方热点");
     await user.type(screen.getByLabelText("访问凭据"), "x-bearer-token");
@@ -94,6 +98,7 @@ describe("multi-source workspace", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "来源类型" }), { target: { value: "x" } });
     await user.type(screen.getByLabelText("名称"), "Research X");
     await user.type(screen.getByLabelText("访问凭据"), "secret");
+    await user.click(screen.getByRole("button", { name: "高级设置" }));
     await user.click(screen.getByRole("checkbox", { name: "启用 X 持续指标刷新" }));
     fireEvent.change(screen.getByLabelText("允许语言"), { target: { value: "zh-CN, en" } });
     fireEvent.change(screen.getByLabelText("允许地区"), { target: { value: "CN, US" } });
@@ -134,13 +139,16 @@ describe("multi-source workspace", () => {
     })));
   });
 
-  it.each([UserRole.Viewer, UserRole.Editor])("keeps source creation hidden from %s", async (role) => {
-    setRole(role);
-    render(<SourcesPage />);
-    expect(await screen.findByText("只读来源目录")).toBeInTheDocument();
-    expect(screen.getByText("查看工作区的七类来源连接、健康状态与采集边界。")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "新增来源" })).not.toBeInTheDocument();
-  });
+  it.each([UserRole.Viewer, UserRole.Editor])(
+    "does not render or load source management for %s",
+    (role) => {
+      setRole(role);
+      const { container } = render(<SourcesPage />);
+
+      expect(container).toBeEmptyDOMElement();
+      expect(mocks.getSourceConnections).not.toHaveBeenCalled();
+    },
+  );
 
   it("replaces an existing X credential without reading the old value", async () => {
     mocks.getSourceConnections.mockResolvedValue({

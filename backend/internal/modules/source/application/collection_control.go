@@ -157,7 +157,7 @@ func (service *CollectionControlService) Manual(ctx context.Context, input Manua
 			}
 		}
 		if summary.Created > 0 && service.quota != nil {
-			if err := service.quota.ConsumeManualSearch(transactionCtx, input.Subject.UserID, now); err != nil {
+			if err := service.quota.RecordManualSearch(transactionCtx, input.Subject.UserID, now); err != nil {
 				return err
 			}
 		}

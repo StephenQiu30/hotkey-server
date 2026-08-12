@@ -240,7 +240,7 @@ VALUES ($1, 'keyword', 'contains', 'climate', 'user', 'approved')`, target.Monit
 	}
 	var consumed int64
 	if err := runtime.SQL.QueryRow(`SELECT used FROM quota_usage_ledgers WHERE subject_id=$1`, editorID).Scan(&consumed); err != nil || consumed != 2 {
-		t.Fatalf("manual quota used = %d/%v, want 2", consumed, err)
+		t.Fatalf("manual search usage = %d/%v, want 2", consumed, err)
 	}
 	if _, err := runtime.SQL.Exec(`UPDATE monitors SET status = 'paused' WHERE id = $1`, monitorID); err != nil {
 		t.Fatal(err)

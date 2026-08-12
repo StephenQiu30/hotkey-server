@@ -112,16 +112,15 @@ func TestWriteErrorStatusMatrix(t *testing.T) {
 }
 
 func TestWriteErrorIncludesOnlyStableProductQuotaData(t *testing.T) {
-	reset := "2026-08-09T00:00:00Z"
 	response := httptest.NewRecorder()
 	ginContext, _ := gin.CreateTestContext(response)
-	WriteError(ginContext, sharederrors.ProductQuotaExceeded("manual_searches", 20, 0, &reset))
+	WriteError(ginContext, sharederrors.ProductQuotaExceeded("active_monitors", 50, 0, nil))
 
 	if response.Code != stdhttp.StatusTooManyRequests {
 		t.Fatalf("status = %d, want 429", response.Code)
 	}
 	assertJSONResultShape(t, response, sharederrors.CodeProductQuotaExceeded, "", map[string]any{
-		"dimension": "manual_searches", "limit": float64(20), "remaining": float64(0), "reset_at": reset,
+		"dimension": "active_monitors", "limit": float64(50), "remaining": float64(0), "reset_at": nil,
 	})
 	if strings.Contains(response.Body.String(), "provider") || strings.Contains(response.Body.String(), "cause") {
 		t.Fatalf("quota response leaked internal data: %s", response.Body.String())

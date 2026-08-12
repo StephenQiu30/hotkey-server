@@ -198,17 +198,6 @@ required property without making explicit null impossible to bind. */
     has_more?: boolean;
   };
 
-  type CollectionQuotaErrorResponse = {
-    code?: number;
-    data?: {
-      dimension?: string;
-      limit?: number;
-      remaining?: number;
-      reset_at?: string;
-    };
-    message?: string;
-  };
-
   type CollectionResultHttpCollectionRunPageResponse = {
     code?: number;
     data?: CollectionRunPageResponse;

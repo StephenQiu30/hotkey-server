@@ -22,7 +22,7 @@ import GovernancePage from "@/app/dashboard/governance/page";
 
 const usage = [
   { dimension: "active_monitors", label: "活跃监控", mode: "hard", used: "12", limit: "50", remaining: "38", unit: "个" },
-  { dimension: "manual_searches", label: "手动搜索", mode: "hard", used: "3", limit: "20", remaining: "17", unit: "次" },
+  { dimension: "manual_searches", label: "手动搜索", mode: "observed", used: "3", unit: "次" },
   { dimension: "source_calls", label: "来源调用", mode: "observed", used: "28", unit: "次" },
   { dimension: "ai_tokens", label: "AI Token", mode: "observed", used: "1200", unit: "tokens" },
   { dimension: "ai_cost", label: "AI 成本", mode: "hard", used: "1.6", limit: "10", reserved: "0.4", settled: "1.2", unit: "USD" },
@@ -56,10 +56,11 @@ describe("GovernancePage", () => {
     mocks.postOperationsRetentionPoliciesIdRun.mockResolvedValue({ data: { data_class: "content_metric_snapshots", affected: 2, batch_size: 100, cutoff: "2026-02-09T00:00:00Z", dry_run: false, has_more: false } });
   });
 
-  it("keeps governance unavailable to non-admin roles", () => {
+  it("does not render or load governance for non-admins", () => {
     setRole(UserRole.Editor);
-    render(<GovernancePage />);
-    expect(screen.getByText("需要管理员权限")).toBeInTheDocument();
+    const { container } = render(<GovernancePage />);
+
+    expect(container).toBeEmptyDOMElement();
     expect(mocks.getOperationsUsage).not.toHaveBeenCalled();
   });
 

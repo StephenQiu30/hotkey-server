@@ -186,7 +186,6 @@ SELECT
 		output <- prometheus.MustNewConstMetric(collector.usageCurrent, prometheus.GaugeValue, usage.value, usage.dimension, usage.scope)
 	}
 	output <- prometheus.MustNewConstMetric(collector.quotaLimit, prometheus.GaugeValue, float64(operationsdomain.ActiveMonitorLimit), operationsdomain.DimensionActiveMonitors, "workspace")
-	output <- prometheus.MustNewConstMetric(collector.quotaLimit, prometheus.GaugeValue, float64(operationsdomain.ManualSearchDayLimit), operationsdomain.DimensionManualSearches, "user")
 	output <- prometheus.MustNewConstMetric(collector.aiCost, prometheus.GaugeValue, reservedCost, "reserved")
 	output <- prometheus.MustNewConstMetric(collector.aiCost, prometheus.GaugeValue, settledCost, "settled")
 	return nil

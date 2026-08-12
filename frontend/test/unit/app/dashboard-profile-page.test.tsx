@@ -61,6 +61,10 @@ describe("ProfilePage", () => {
       screen.queryByRole("link", { name: "管理监控" })
     ).not.toBeInTheDocument();
     expect(mocks.getOperationsOverview).not.toHaveBeenCalled();
+    expect(mocks.getSourceConnections).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("link", { name: /来源连接|检查来源/ }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText(/报告记录|Agent Token/)).not.toBeInTheDocument();
   });
 

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Activity,
   Database,
-  Eye,
   FileText,
   Loader2,
   Power,
@@ -84,6 +83,7 @@ export default function SourcesPage() {
 
   const loadPage = useCallback(
     async (cursor: string | undefined, pageNumber: number) => {
+      if (!canManage) return;
       setLoading(true);
       setLoadError(undefined);
       try {
@@ -105,7 +105,7 @@ export default function SourcesPage() {
         setLoading(false);
       }
     },
-    [pageSize]
+    [canManage, pageSize]
   );
 
   const load = useCallback(async () => {
@@ -246,34 +246,16 @@ export default function SourcesPage() {
     }
   };
 
+  if (!canManage) return null;
+
   return (
     <div className="app-page">
       <PageHeader
         eyebrow="Sources"
-        title={canManage ? "来源管理" : "来源目录"}
-        description={
-          canManage
-            ? "连接、探测并管理七类正式来源；单个来源失败不会阻塞其他来源，也不会触发隐藏回退。"
-            : "查看工作区的七类来源连接、健康状态与采集边界。"
-        }
-        action={
-          canManage ? (
-            <SourceConnectionDialog busy={creating} onSubmit={create} />
-          ) : undefined
-        }
+        title="来源管理"
+        description="连接、探测并管理七类正式来源；单个来源失败不会阻塞其他来源，也不会触发隐藏回退。"
+        action={<SourceConnectionDialog busy={creating} onSubmit={create} />}
       />
-      {!canManage && (
-        <Alert className="mt-6">
-          <Eye />
-          <div className="mb-1 font-medium leading-none tracking-tight">
-            只读来源目录
-          </div>
-          <AlertDescription>
-            当前 {user?.role ?? UserRole.Viewer}{" "}
-            角色可以查看来源状态；新增、探测和启停来源仅对管理员开放。
-          </AlertDescription>
-        </Alert>
-      )}
       {loadError && (
         <Alert variant="destructive" className="mt-6">
           <div className="mb-1 font-medium leading-none tracking-tight">

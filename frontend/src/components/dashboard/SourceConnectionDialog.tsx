@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useState } from "react";
-import { Loader2, Plus } from "lucide-react";
+import { ChevronDown, Loader2, Plus, SlidersHorizontal } from "lucide-react";
 import PasswordInput from "@/components/auth/PasswordInput";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,13 @@ import { SourceType } from "@/lib/domainEnums";
 type AuthType = "none" | "api_key" | "oauth2" | "bearer";
 type GoogleLocation = "global" | "us" | "eu";
 type HackerNewsMode = "new" | "top" | "best";
+
+const authLabels: Record<AuthType, string> = {
+  none: "无需授权",
+  api_key: "API Key",
+  oauth2: "OAuth 2.0",
+  bearer: "Bearer Token",
+};
 
 const GOOGLE_ENDPOINTS: Record<GoogleLocation, string> = {
   global: "https://discoveryengine.googleapis.com",
@@ -211,6 +218,7 @@ type Props = {
 
 export function SourceConnectionDialog({ busy, onSubmit }: Props) {
   const [open, setOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [form, setForm] = useState<SourceForm>(emptyForm);
   const profile = sourceProfiles[form.sourceType];
   const updateForm = (values: Partial<SourceForm>) =>
@@ -262,7 +270,10 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
 
   const changeOpen = (next: boolean) => {
     setOpen(next);
-    if (!next) setForm(emptyForm());
+    if (!next) {
+      setForm(emptyForm());
+      setAdvancedOpen(false);
+    }
   };
 
   const submit = async (event: FormEvent) => {
@@ -321,38 +332,41 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
       <DialogTrigger asChild>
         <Button className="gap-2"><Plus />新增来源</Button>
       </DialogTrigger>
-      <DialogContent className="grid h-[90vh] max-h-[90vh] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:h-auto sm:max-w-2xl">
+      <DialogContent className="grid max-h-[90vh] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-xl">
         <DialogHeader className="border-b border-border px-6 py-5">
           <DialogTitle>新增来源连接</DialogTitle>
           <DialogDescription>
-            连接正式 API、开放平台或 RSS/Atom；访问凭据由服务端加密保存，提交后不回显。
+            先完成连接所需信息；采集和保留策略将使用安全默认值。
           </DialogDescription>
         </DialogHeader>
         <form className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto]" onSubmit={submit}>
-          <div aria-label="来源连接配置" className="grid min-h-0 gap-4 overflow-y-auto px-6 py-5 sm:grid-cols-2" role="region" tabIndex={0}>
-            <div className="sm:col-span-2">
-              <Label htmlFor="source-name">名称</Label>
-              <Input id="source-name" className="mt-2" value={form.name} onChange={(event) => updateForm({ name: event.target.value })} placeholder="AI 行业动态" />
-            </div>
+          <div aria-label="来源连接配置" className="grid min-h-0 gap-5 overflow-y-auto px-6 py-5 sm:grid-cols-2" role="region" tabIndex={0}>
             <div>
               <Label htmlFor="source-type">来源类型</Label>
               <select id="source-type" className="mt-2 h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.sourceType} onChange={(event) => selectSource(event.target.value as SourceType)}>
                 {Object.entries(sourceProfiles).map(([value, item]) => <option key={value} value={value}>{item.label}</option>)}
               </select>
+              {profile.endpointFixed && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  官方接口 · {authLabels[form.authType]}
+                </p>
+              )}
             </div>
             <div>
-              <Label htmlFor="source-auth-type">授权方式</Label>
-              <select id="source-auth-type" className="mt-2 h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60" value={form.authType} disabled={profile.authFixed} onChange={(event) => updateForm({ authType: event.target.value as AuthType, credential: "" })}>
-                <option value="none">无凭据</option><option value="api_key">API Key</option><option value="bearer">Bearer Token</option><option value="oauth2">OAuth 2.0</option>
-              </select>
+              <Label htmlFor="source-name">名称</Label>
+              <Input id="source-name" className="mt-2" value={form.name} onChange={(event) => updateForm({ name: event.target.value })} placeholder={`${profile.label} 热点`} />
             </div>
-            <div className="sm:col-span-2">
+            {!profile.endpointFixed && <div className="sm:col-span-2">
               <Label htmlFor="source-endpoint">接口地址</Label>
-              <Input id="source-endpoint" className="mono mt-2" value={form.endpoint} readOnly={profile.endpointFixed} onChange={(event) => updateForm({ endpoint: event.target.value })} placeholder={form.sourceType === SourceType.BingGrounding ? "https://…/api/projects/…/toolboxes/…/versions/…/mcp" : "https://example.com/feed.xml"} />
-            </div>
+              <Input id="source-endpoint" className="mono mt-2" value={form.endpoint} onChange={(event) => updateForm({ endpoint: event.target.value })} placeholder={form.sourceType === SourceType.BingGrounding ? "https://…/api/projects/…/toolboxes/…/versions/…/mcp" : "https://example.com/feed.xml"} />
+              <p className="mt-2 text-xs text-muted-foreground">
+                {form.sourceType === SourceType.RSS ? "填写 RSS 或 Atom Feed 的 HTTPS 地址。" : "填写已获授权的官方接口地址。"}
+              </p>
+            </div>}
             {form.authType !== "none" && <div className="sm:col-span-2">
               <Label htmlFor="source-credential">访问凭据</Label>
               <PasswordInput id="source-credential" className="mono mt-2" value={form.credential} onChange={(event) => updateForm({ credential: event.target.value })} autoComplete="new-password" maxLength={16 * 1024} aria-invalid={!credentialValid} placeholder="粘贴 API Key、Token 或开放平台凭据" />
+              <p className="mt-2 text-xs text-muted-foreground">凭据由服务端加密保存，提交后不会回显。</p>
             </div>}
             {form.sourceType === SourceType.HackerNews && <div className="sm:col-span-2">
               <Label htmlFor="source-hn-mode">榜单模式</Label>
@@ -369,30 +383,52 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
               <div><Label htmlFor="source-google-serving-config">ServingConfig 资源名</Label><Input id="source-google-serving-config" className="mono mt-2" value={form.googleServingConfig} onChange={(event) => updateForm({ googleServingConfig: event.target.value })} /></div>
             </>}
             {form.sourceType === SourceType.BingGrounding && <Alert className="sm:col-span-2"><AlertDescription><label className="flex items-start gap-2"><Checkbox aria-label="确认 Grounding 数据边界与额外条款" checked={form.groundingDataBoundaryApproved} onCheckedChange={(checked) => updateForm({ groundingDataBoundaryApproved: checked === true })} /><span>我已确认 Foundry Web Search 的数据边界、额外条款和费用。</span></label></AlertDescription></Alert>}
-            <div><Label htmlFor="source-languages">允许语言</Label><Input id="source-languages" className="mt-2" value={form.allowedLanguages} onChange={(event) => updateForm({ allowedLanguages: event.target.value })} placeholder="zh-CN, en" /></div>
-            <div><Label htmlFor="source-regions">允许地区</Label><Input id="source-regions" className="mt-2" value={form.allowedRegions} onChange={(event) => updateForm({ allowedRegions: event.target.value })} placeholder="CN, US" /></div>
-            <div className="sm:col-span-2 rounded-md border border-border p-4">
-              <p className="text-sm font-medium">证据保留边界</p>
-              <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                <label className="flex items-center gap-2 text-sm"><Checkbox checked={form.allowBodyStorage} disabled={profile.requiresAttribution} onCheckedChange={(checked) => updateForm({ allowBodyStorage: checked === true })} />保存正文/摘要</label>
-                <label className="flex items-center gap-2 text-sm"><Checkbox checked={form.requiresAttribution} disabled={profile.requiresAttribution} onCheckedChange={(checked) => updateForm({ requiresAttribution: checked === true })} />需要归属标记</label>
-                <label className="flex items-center gap-2 text-sm"><Checkbox checked={form.requiresDeletionSync} disabled={profile.requiresDeletionSync} onCheckedChange={(checked) => updateForm({ requiresDeletionSync: checked === true })} />同步删除</label>
-              </div>
+            <div className="sm:col-span-2 border-t border-border pt-4">
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-auto w-full justify-between px-0 py-2 hover:bg-transparent"
+                aria-expanded={advancedOpen}
+                aria-controls="source-advanced-settings"
+                onClick={() => setAdvancedOpen((current) => !current)}
+              >
+                <span className="flex items-center gap-2"><SlidersHorizontal />高级设置</span>
+                <ChevronDown className={`transition-transform ${advancedOpen ? "rotate-180" : ""}`} />
+              </Button>
+              <p className="text-xs text-muted-foreground">语言、地区、保留期限和请求边界将使用默认值，可按需调整。</p>
             </div>
-            {(["contentRetentionDays", "metricsRetentionDays", "rateLimitPerMinute", "requestTimeoutSeconds", "maxPagesPerRun"] as const).map((key) => {
-              const labels = { contentRetentionDays: "内容保留天数", metricsRetentionDays: "指标保留天数", rateLimitPerMinute: "每分钟请求上限", requestTimeoutSeconds: "请求超时秒数", maxPagesPerRun: "单次最大页数" };
-              return <div key={key}><Label htmlFor={`source-${key}`}>{labels[key]}</Label><Input id={`source-${key}`} className="mono mt-2" type="number" value={form[key]} onChange={(event) => updateForm({ [key]: Number(event.target.value) })} disabled={form.sourceType === SourceType.BingGrounding && key === "maxPagesPerRun"} /></div>;
-            })}
-            {form.sourceType === SourceType.X && <div className="sm:col-span-2 rounded-md border border-border p-4">
-              <label className="flex items-start gap-3 text-sm font-medium"><Checkbox aria-label="启用 X 持续指标刷新" checked={form.metricRefreshEnabled} onCheckedChange={(checked) => updateForm({ metricRefreshEnabled: checked === true })} /><span>启用 X 持续指标刷新<span className="mt-1 block text-xs font-normal text-muted-foreground">默认关闭；仅刷新观察期内已发现 Post，并受每日预算硬限制。</span></span></label>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                {(["metricRefreshIntervalMinutes", "metricRefreshObservationHours", "metricRefreshMaxPostsPerRun", "metricRefreshDailyRequestBudget"] as const).map((key) => {
-                  const labels = { metricRefreshIntervalMinutes: "刷新间隔（分钟）", metricRefreshObservationHours: "持续观察期（小时）", metricRefreshMaxPostsPerRun: "单轮最多 Post", metricRefreshDailyRequestBudget: "每日批次预算" };
-                  return <div key={key}><Label htmlFor={`source-${key}`}>{labels[key]}</Label><Input id={`source-${key}`} className="mono mt-2" type="number" value={form[key]} onChange={(event) => updateForm({ [key]: Number(event.target.value) })} /></div>;
-                })}
+            {advancedOpen && <div id="source-advanced-settings" className="grid gap-4 rounded-lg border border-border bg-muted/20 p-4 sm:col-span-2 sm:grid-cols-2">
+              {!profile.authFixed && <div className="sm:col-span-2">
+                <Label htmlFor="source-auth-type">授权方式</Label>
+                <select id="source-auth-type" className="mt-2 h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.authType} onChange={(event) => updateForm({ authType: event.target.value as AuthType, credential: "" })}>
+                  <option value="none">无需授权</option><option value="api_key">API Key</option><option value="bearer">Bearer Token</option><option value="oauth2">OAuth 2.0</option>
+                </select>
+              </div>}
+              <div><Label htmlFor="source-languages">允许语言</Label><Input id="source-languages" className="mt-2" value={form.allowedLanguages} onChange={(event) => updateForm({ allowedLanguages: event.target.value })} placeholder="默认不限制" /></div>
+              <div><Label htmlFor="source-regions">允许地区</Label><Input id="source-regions" className="mt-2" value={form.allowedRegions} onChange={(event) => updateForm({ allowedRegions: event.target.value })} placeholder="默认不限制" /></div>
+              <div className="rounded-md border border-border bg-background p-4 sm:col-span-2">
+                <p className="text-sm font-medium">证据保留边界</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  <label className="flex items-center gap-2 text-sm"><Checkbox checked={form.allowBodyStorage} disabled={profile.requiresAttribution} onCheckedChange={(checked) => updateForm({ allowBodyStorage: checked === true })} />保存正文/摘要</label>
+                  <label className="flex items-center gap-2 text-sm"><Checkbox checked={form.requiresAttribution} disabled={profile.requiresAttribution} onCheckedChange={(checked) => updateForm({ requiresAttribution: checked === true })} />需要归属标记</label>
+                  <label className="flex items-center gap-2 text-sm"><Checkbox checked={form.requiresDeletionSync} disabled={profile.requiresDeletionSync} onCheckedChange={(checked) => updateForm({ requiresDeletionSync: checked === true })} />同步删除</label>
+                </div>
               </div>
+              {(["contentRetentionDays", "metricsRetentionDays", "rateLimitPerMinute", "requestTimeoutSeconds", "maxPagesPerRun"] as const).map((key) => {
+                const labels = { contentRetentionDays: "内容保留天数", metricsRetentionDays: "指标保留天数", rateLimitPerMinute: "每分钟请求上限", requestTimeoutSeconds: "请求超时秒数", maxPagesPerRun: "单次最大页数" };
+                return <div key={key}><Label htmlFor={`source-${key}`}>{labels[key]}</Label><Input id={`source-${key}`} className="mono mt-2" type="number" value={form[key]} onChange={(event) => updateForm({ [key]: Number(event.target.value) })} disabled={form.sourceType === SourceType.BingGrounding && key === "maxPagesPerRun"} /></div>;
+              })}
+              {form.sourceType === SourceType.X && <div className="rounded-md border border-border bg-background p-4 sm:col-span-2">
+                <label className="flex items-start gap-3 text-sm font-medium"><Checkbox aria-label="启用 X 持续指标刷新" checked={form.metricRefreshEnabled} onCheckedChange={(checked) => updateForm({ metricRefreshEnabled: checked === true })} /><span>启用 X 持续指标刷新<span className="mt-1 block text-xs font-normal text-muted-foreground">默认关闭；仅刷新观察期内已发现的 Post，并受来源预算限制。</span></span></label>
+                {form.metricRefreshEnabled && <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  {(["metricRefreshIntervalMinutes", "metricRefreshObservationHours", "metricRefreshMaxPostsPerRun", "metricRefreshDailyRequestBudget"] as const).map((key) => {
+                    const labels = { metricRefreshIntervalMinutes: "刷新间隔（分钟）", metricRefreshObservationHours: "持续观察期（小时）", metricRefreshMaxPostsPerRun: "单轮最多 Post", metricRefreshDailyRequestBudget: "每日批次预算" };
+                    return <div key={key}><Label htmlFor={`source-${key}`}>{labels[key]}</Label><Input id={`source-${key}`} className="mono mt-2" type="number" value={form[key]} onChange={(event) => updateForm({ [key]: Number(event.target.value) })} /></div>;
+                  })}
+                </div>}
+              </div>}
+              <div className="sm:col-span-2"><Label htmlFor="source-terms-url">条款与政策地址</Label><Input id="source-terms-url" className="mt-2" value={form.termsPolicyURL} readOnly={profile.termsFixed} onChange={(event) => updateForm({ termsPolicyURL: event.target.value })} placeholder="可选" /></div>
             </div>}
-            <div className="sm:col-span-2"><Label htmlFor="source-terms-url">条款与政策地址</Label><Input id="source-terms-url" className="mt-2" value={form.termsPolicyURL} readOnly={profile.termsFixed} onChange={(event) => updateForm({ termsPolicyURL: event.target.value })} placeholder="https://example.com/terms" /></div>
           </div>
           <DialogFooter className="border-t border-border px-6 py-4"><Button type="button" variant="outline" onClick={() => changeOpen(false)}>取消</Button><Button type="submit" disabled={busy || !valid}>{busy && <Loader2 className="animate-spin" />}创建连接</Button></DialogFooter>
         </form>

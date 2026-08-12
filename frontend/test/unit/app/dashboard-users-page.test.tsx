@@ -39,11 +39,11 @@ describe("UsersPage", () => {
     setRole(UserRole.Admin);
   });
 
-  it("shows a permission state without requesting users for non-admins", async () => {
+  it("does not render or load user management for non-admins", () => {
     setRole(UserRole.Editor);
-    render(<UsersPage />);
+    const { container } = render(<UsersPage />);
 
-    expect(screen.getByText("需要管理员权限")).toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
     expect(mocks.getUsers).not.toHaveBeenCalled();
   });
 

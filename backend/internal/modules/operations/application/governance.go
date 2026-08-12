@@ -19,7 +19,7 @@ import (
 // concrete PostgreSQL adapter automatically joins the caller transaction.
 type QuotaGuard interface {
 	CheckActiveMonitor(context.Context, int64) error
-	ConsumeManualSearch(context.Context, int64, time.Time) error
+	RecordManualSearch(context.Context, int64, time.Time) error
 }
 
 type GovernanceStore interface {

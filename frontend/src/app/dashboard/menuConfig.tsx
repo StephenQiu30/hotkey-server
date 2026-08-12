@@ -8,12 +8,13 @@ import {
   Users,
 } from "lucide-react";
 import { UserRole } from "@/lib/domainEnums";
+import { dashboardRouteRoles } from "@/lib/dashboardAccess";
 
 export interface MenuItem {
   path: string;
   name: string;
   icon: React.ReactNode;
-  roles?: UserRole[];
+  roles?: readonly UserRole[];
 }
 
 export const dashboardMenuItems: MenuItem[] = [
@@ -27,6 +28,7 @@ export const dashboardMenuItems: MenuItem[] = [
     path: "/dashboard/sources",
     name: "来源",
     icon: <Database className="h-4 w-4" />,
+    roles: dashboardRouteRoles["/dashboard/sources"],
   },
   {
     path: "/dashboard/contents",
@@ -38,11 +40,6 @@ export const dashboardMenuItems: MenuItem[] = [
     name: "热点事件",
     icon: <BellRing className="h-4 w-4" />,
   },
-  {
-    path: "/dashboard/notifications",
-    name: "通知",
-    icon: <BellRing className="h-4 w-4" />,
-  },
 ];
 
 export const dashboardAdminMenuItems: MenuItem[] = [
@@ -50,12 +47,12 @@ export const dashboardAdminMenuItems: MenuItem[] = [
     path: "/dashboard/users",
     name: "用户与权限",
     icon: <Users className="h-4 w-4" />,
-    roles: [UserRole.Admin],
+    roles: dashboardRouteRoles["/dashboard/users"],
   },
   {
     path: "/dashboard/governance",
     name: "配额与审计",
     icon: <ShieldCheck className="h-4 w-4" />,
-    roles: [UserRole.Admin],
+    roles: dashboardRouteRoles["/dashboard/governance"],
   },
 ];

@@ -18,17 +18,6 @@ type SourceResult[T any] struct {
 
 type EmptyResponse struct{}
 
-type CollectionQuotaErrorResponse struct {
-	Code    int    `json:"code" example:"10005"`
-	Message string `json:"message" example:"product quota exceeded"`
-	Data    struct {
-		Dimension string  `json:"dimension" example:"manual_searches"`
-		Limit     int64   `json:"limit" example:"20"`
-		Remaining int64   `json:"remaining" example:"0"`
-		ResetAt   *string `json:"reset_at"`
-	} `json:"data"`
-}
-
 type MetricCapabilityProfileResponse struct {
 	ID                        int64      `json:"id"`
 	Version                   int64      `json:"version"`

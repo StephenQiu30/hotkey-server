@@ -49,24 +49,17 @@ WHERE deleted_at IS NULL AND status = 'active' AND id <> $1`, monitorID).Scan(&u
 	return nil
 }
 
-func (repository *GovernanceRepository) ConsumeManualSearch(ctx context.Context, userID int64, now time.Time) error {
+func (repository *GovernanceRepository) RecordManualSearch(ctx context.Context, userID int64, now time.Time) error {
 	if repository == nil || repository.runtime == nil || userID <= 0 {
 		return sharedrepository.ErrUnavailable
 	}
 	windowStart := now.UTC().Truncate(24 * time.Hour)
 	windowEnd := windowStart.Add(24 * time.Hour)
-	var used int64
-	err := repository.queryer(ctx).QueryRowContext(ctx, `
+	_, err := repository.queryer(ctx).ExecContext(ctx, `
 INSERT INTO quota_usage_ledgers (dimension, subject_type, subject_id, window_start, window_end, used)
 VALUES ('manual_searches', 'user', $1, $2, $3, 1)
 ON CONFLICT (dimension, subject_type, subject_id, window_start) DO UPDATE
-SET used = quota_usage_ledgers.used + 1, updated_at = now()
-WHERE quota_usage_ledgers.used < $4
-RETURNING used`, userID, windowStart, windowEnd, operationsdomain.ManualSearchDayLimit).Scan(&used)
-	if err == sql.ErrNoRows {
-		reset := windowEnd.Format(time.RFC3339)
-		return sharederrors.ProductQuotaExceeded(operationsdomain.DimensionManualSearches, operationsdomain.ManualSearchDayLimit, 0, &reset)
-	}
+SET used = quota_usage_ledgers.used + 1, updated_at = now()`, userID, windowStart, windowEnd)
 	return err
 }
 
@@ -113,7 +106,6 @@ FROM usage CROSS JOIN budget`, start).Scan(&reserved, &settled, &budget, &consum
 		return operationsdomain.UsageOverview{}, err
 	}
 	activeLimit, activeRemaining := strconv.FormatInt(operationsdomain.ActiveMonitorLimit, 10), strconv.FormatInt(max(0, operationsdomain.ActiveMonitorLimit-active), 10)
-	manualLimit, manualRemaining := strconv.FormatInt(operationsdomain.ManualSearchDayLimit, 10), strconv.FormatInt(max(0, operationsdomain.ManualSearchDayLimit-manual), 10)
 	aiLimit := budget
 	aiCost := operationsdomain.UsageItem{Dimension: operationsdomain.DimensionAICost, Label: "AI 成本", Scope: "workspace", Mode: "observed", Unit: "USD", Used: consumed, Reserved: &reserved, Settled: &settled, ResetAt: &end}
 	if limitedProfiles > 0 {
@@ -121,7 +113,7 @@ FROM usage CROSS JOIN budget`, start).Scan(&reserved, &settled, &budget, &consum
 	}
 	items := []operationsdomain.UsageItem{
 		{Dimension: operationsdomain.DimensionActiveMonitors, Label: "活跃监控", Scope: "workspace", Mode: "hard", Unit: "个", Used: strconv.FormatInt(active, 10), Limit: &activeLimit, Remaining: &activeRemaining},
-		{Dimension: operationsdomain.DimensionManualSearches, Label: "手动搜索", Scope: "user", Mode: "hard", Unit: "次", Used: strconv.FormatInt(manual, 10), Limit: &manualLimit, Remaining: &manualRemaining, ResetAt: &end},
+		{Dimension: operationsdomain.DimensionManualSearches, Label: "手动搜索", Scope: "user", Mode: "observed", Unit: "次", Used: strconv.FormatInt(manual, 10), ResetAt: &end},
 		{Dimension: operationsdomain.DimensionSourceCalls, Label: "来源调用", Scope: "workspace", Mode: "observed", Unit: "次", Used: strconv.FormatInt(sourceCalls, 10), ResetAt: &end},
 		{Dimension: operationsdomain.DimensionAITokens, Label: "AI Token", Scope: "workspace", Mode: "observed", Unit: "tokens", Used: strconv.FormatInt(aiTokens, 10), ResetAt: &end},
 		aiCost,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, Archive, Gauge, Loader2, ScrollText, ShieldCheck } from "lucide-react";
+import { AlertCircle, Archive, Gauge, Loader2, ScrollText } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -137,9 +137,7 @@ export default function GovernancePage() {
   };
 
   if (!canManage) {
-    return <div className="app-page"><PageHeader eyebrow="Governance" title="配额与审计" description="查看工作区用量、保留策略和安全审计。" />
-      <Card className="mt-6"><Empty className="min-h-72 border-0"><EmptyHeader><EmptyMedia variant="icon"><ShieldCheck /></EmptyMedia><EmptyTitle>需要管理员权限</EmptyTitle><EmptyDescription>当前角色不能读取治理数据或执行保留任务，服务端会拒绝越权请求。</EmptyDescription></EmptyHeader></Empty></Card>
-    </div>;
+    return null;
   }
 
   return <div className="app-page">

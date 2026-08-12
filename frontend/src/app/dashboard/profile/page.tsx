@@ -27,6 +27,7 @@ export default function ProfilePage() {
   const user = useAuthStore((state) => state.user);
   const canViewOperations =
     user?.role === UserRole.Editor || user?.role === UserRole.Admin;
+  const canManageSources = user?.role === UserRole.Admin;
   const canManage = canViewOperations;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -38,12 +39,16 @@ export default function ProfilePage() {
       icon: Radar,
       href: "/dashboard/settings",
     },
-    {
-      label: "来源连接",
-      value: stats.sources,
-      icon: Database,
-      href: "/dashboard/sources",
-    },
+    ...(canManageSources
+      ? [
+          {
+            label: "来源连接",
+            value: stats.sources,
+            icon: Database,
+            href: "/dashboard/sources",
+          },
+        ]
+      : []),
     {
       label: "运行任务",
       value: stats.running,
@@ -58,14 +63,16 @@ export default function ProfilePage() {
     try {
       const [monitors, sources, overview] = await Promise.all([
         getMonitors({ limit: 100 }),
-        getSourceConnections({ limit: 100 }),
+        canManageSources
+          ? getSourceConnections({ limit: 100 })
+          : Promise.resolve(undefined),
         canViewOperations
           ? getOperationsOverview()
           : Promise.resolve(undefined),
       ]);
       setStats({
         monitors: monitors.data?.items?.length ?? 0,
-        sources: sources.data?.items?.length ?? 0,
+        sources: sources?.data?.items?.length ?? 0,
         running: overview?.data?.running_jobs ?? 0,
       });
     } catch (reason) {
@@ -73,7 +80,7 @@ export default function ProfilePage() {
     } finally {
       setLoading(false);
     }
-  }, [canViewOperations]);
+  }, [canManageSources, canViewOperations]);
 
   useEffect(() => {
     void load();
@@ -160,9 +167,11 @@ export default function ProfilePage() {
                     {canManage ? "管理监控" : "查看监控"}
                   </Link>
                 </Button>
-                <Button asChild variant="outline">
-                  <Link href="/dashboard/sources">检查来源</Link>
-                </Button>
+                {canManageSources ? (
+                  <Button asChild variant="outline">
+                    <Link href="/dashboard/sources">检查来源</Link>
+                  </Button>
+                ) : null}
               </div>
             </>
           )}

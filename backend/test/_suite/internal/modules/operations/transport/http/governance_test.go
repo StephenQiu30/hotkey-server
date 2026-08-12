@@ -21,8 +21,7 @@ type governanceServiceFake struct {
 }
 
 func (*governanceServiceFake) Usage(context.Context, identitydomain.Subject) (operationsdomain.UsageOverview, error) {
-	limit := "20"
-	return operationsdomain.UsageOverview{Items: []operationsdomain.UsageItem{{Dimension: operationsdomain.DimensionManualSearches, Limit: &limit}}}, nil
+	return operationsdomain.UsageOverview{Items: []operationsdomain.UsageItem{{Dimension: operationsdomain.DimensionManualSearches, Mode: "observed", Used: "2"}}}, nil
 }
 func (*governanceServiceFake) RetentionPolicies(context.Context, identitydomain.Subject) ([]operationsdomain.RetentionPolicy, error) {
 	return []operationsdomain.RetentionPolicy{{ID: 1, Version: 2, DataClass: "sessions", RetentionDays: 30, Action: "delete", Enabled: true}}, nil

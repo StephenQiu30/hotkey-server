@@ -2672,12 +2672,6 @@ const docTemplate = `{
                             "$ref": "#/definitions/http.CollectionResult-internal_modules_source_transport_http_EmptyResponse"
                         }
                     },
-                    "429": {
-                        "description": "Too Many Requests",
-                        "schema": {
-                            "$ref": "#/definitions/http.CollectionQuotaErrorResponse"
-                        }
-                    },
                     "503": {
                         "description": "Service Unavailable",
                         "schema": {
@@ -7888,39 +7882,6 @@ const docTemplate = `{
                 "value": {
                     "type": "string",
                     "maxLength": 512
-                }
-            }
-        },
-        "http.CollectionQuotaErrorResponse": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "integer",
-                    "example": 10005
-                },
-                "data": {
-                    "type": "object",
-                    "properties": {
-                        "dimension": {
-                            "type": "string",
-                            "example": "manual_searches"
-                        },
-                        "limit": {
-                            "type": "integer",
-                            "example": 20
-                        },
-                        "remaining": {
-                            "type": "integer",
-                            "example": 0
-                        },
-                        "reset_at": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "message": {
-                    "type": "string",
-                    "example": "product quota exceeded"
                 }
             }
         },

@@ -56,7 +56,6 @@ import {
 import { MonitorDetailDialog } from "@/components/dashboard/MonitorDetailDialog";
 import { MonitorDraftDialog } from "@/components/dashboard/MonitorDraftDialog";
 import { PageHeader } from "@/components/dashboard/PageHeader";
-import { ManualSearchQuota } from "@/components/dashboard/ManualSearchQuota";
 import { MonitorRegion, MonitorStatus, UserRole } from "@/lib/domainEnums";
 import { monitorStatusLabel } from "@/lib/domainPresentation";
 import {
@@ -149,7 +148,6 @@ export default function MonitorsPage() {
   const [candidateTarget, setCandidateTarget] =
     useState<HotKeyAPI.MonitorResponse>();
   const [approvingRuleID, setApprovingRuleID] = useState<number>();
-  const [quotaRefreshKey, setQuotaRefreshKey] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -345,7 +343,6 @@ export default function MonitorsPage() {
       toast.success(
         `立即搜索已提交：新建 ${created}，复用 ${reused}；${cooldown} 后可再次提交。可前往采集内容查看进度。`
       );
-      if (created > 0) setQuotaRefreshKey((value) => value + 1);
     } catch (reason) {
       toast.error(
         reason instanceof Error ? reason.message : "立即搜索提交失败"
@@ -472,7 +469,6 @@ export default function MonitorsPage() {
           ) : undefined
         }
       />
-      {canEdit ? <ManualSearchQuota refreshKey={quotaRefreshKey} /> : null}
       {!canEdit && (
         <Card className="mt-6 flex-row items-center justify-between gap-4 px-5 py-4">
           <div>

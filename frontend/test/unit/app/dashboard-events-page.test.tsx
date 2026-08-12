@@ -104,6 +104,21 @@ describe("EventsPage v2", () => {
     mocks.postContentLineageDecisionsIdFeedback.mockResolvedValue({ data: {} });
   });
 
+  it("uses the shared dashboard shell for the header, filters, and empty state", async () => {
+    mocks.getMicroEvents.mockResolvedValue({ data: { items: [] } });
+
+    const { container } = render(<EventsPage />);
+
+    const heading = await screen.findByRole("heading", { name: "热点事件与出处证据" });
+    expect(heading.closest(".app-page")).not.toBeNull();
+    expect(screen.getByRole("group", { name: "热点事件与出处证据" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "热点事件筛选" })).toHaveAttribute("data-slot", "card");
+    expect(screen.getByText("暂无微事件").closest('[data-slot="card"]')).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "上一页" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "下一页" })).not.toBeInTheDocument();
+    expect(container.querySelector("main main")).toBeNull();
+  });
+
   it("loads semantic events, Storyline, Heat v2, and exact evidence in parallel", async () => {
     render(<EventsPage />);
     expect(await screen.findByRole("heading", { name: "Acme · 发布新项目" })).toBeInTheDocument();

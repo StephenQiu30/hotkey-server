@@ -13,7 +13,6 @@ describe("dashboard menu", () => {
       { path: "/dashboard/sources", name: "来源" },
       { path: "/dashboard/contents", name: "内容" },
       { path: "/dashboard/events", name: "热点事件" },
-      { path: "/dashboard/notifications", name: "通知" },
     ]);
   });
 
@@ -27,5 +26,12 @@ describe("dashboard menu", () => {
         item.roles?.includes(UserRole.Admin)
       )
     ).toBe(true);
+  });
+
+  it("marks source management as administrator-only", () => {
+    expect(
+      dashboardMenuItems.find((item) => item.path === "/dashboard/sources")
+        ?.roles,
+    ).toEqual([UserRole.Admin]);
   });
 });

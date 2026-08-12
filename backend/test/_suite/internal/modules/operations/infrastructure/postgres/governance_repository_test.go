@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -20,35 +19,24 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
 
-func TestGovernanceQuotaRepositoryPreventsConcurrentOversell(t *testing.T) {
+func TestGovernanceRepositoryRecordsManualSearchesWithoutProductLimit(t *testing.T) {
 	ctx := context.Background()
 	runtime := governanceRuntime(t)
 	defer runtime.Close()
 	userID := governanceUser(t, runtime)
 	repository := operationspostgres.NewGovernanceRepository(runtime)
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
-	var succeeded, exceeded atomic.Int64
 	var wait sync.WaitGroup
 	for index := 0; index < 25; index++ {
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
-			err := repository.ConsumeManualSearch(ctx, userID, now)
-			var appError *sharederrors.AppError
-			switch {
-			case err == nil:
-				succeeded.Add(1)
-			case errors.As(err, &appError) && appError.Code == sharederrors.CodeProductQuotaExceeded:
-				exceeded.Add(1)
-			default:
-				t.Errorf("ConsumeManualSearch() error = %v", err)
+			if err := repository.RecordManualSearch(ctx, userID, now); err != nil {
+				t.Errorf("RecordManualSearch() error = %v", err)
 			}
 		}()
 	}
 	wait.Wait()
-	if succeeded.Load() != operationsdomain.ManualSearchDayLimit || exceeded.Load() != 5 {
-		t.Fatalf("succeeded/exceeded = %d/%d, want 20/5", succeeded.Load(), exceeded.Load())
-	}
 	overview, err := repository.UsageOverview(ctx, userID, now)
 	if err != nil {
 		t.Fatal(err)
@@ -57,7 +45,7 @@ func TestGovernanceQuotaRepositoryPreventsConcurrentOversell(t *testing.T) {
 		t.Fatalf("usage item count = %d, want six projections for five product dimensions", len(overview.Items))
 	}
 	manual := usageByDimension(t, overview, operationsdomain.DimensionManualSearches)
-	if manual.Used != "20" || manual.Remaining == nil || *manual.Remaining != "0" || manual.ResetAt == nil || !manual.ResetAt.Equal(time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC)) {
+	if manual.Used != "25" || manual.Mode != "observed" || manual.Limit != nil || manual.Remaining != nil || manual.ResetAt == nil || !manual.ResetAt.Equal(time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC)) {
 		t.Fatalf("manual usage = %#v", manual)
 	}
 	for index := int64(0); index < operationsdomain.ActiveMonitorLimit; index++ {

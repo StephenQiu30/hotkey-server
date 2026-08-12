@@ -37,12 +37,13 @@ import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { UserRole } from "@/lib/domainEnums";
+import { canAccessRoles } from "@/lib/dashboardAccess";
 
 interface MenuItem {
   path: string;
   name: string;
   icon: React.ReactNode;
-  roles?: UserRole[];
+  roles?: readonly UserRole[];
 }
 
 function isActivePath(pathname: string, path: string) {
@@ -67,9 +68,11 @@ export default function TopNav({
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const unreadCount = useNotificationStore((state) => state.unreadCount);
-  const visibleAdminMenuItems = adminMenuItems.filter(
-    (item) =>
-      !item.roles || (user?.role && item.roles.includes(user.role as UserRole))
+  const visibleMenuItems = menuItems.filter((item) =>
+    canAccessRoles(item.roles, user?.role),
+  );
+  const visibleAdminMenuItems = adminMenuItems.filter((item) =>
+    canAccessRoles(item.roles, user?.role),
   );
 
   useEffect(() => {
@@ -109,7 +112,7 @@ export default function TopNav({
           className="hidden h-full max-w-none flex-none justify-start xl:flex"
         >
           <NavigationMenuList className="h-full gap-1">
-            {menuItems.map((item) => {
+            {visibleMenuItems.map((item) => {
               const active = isActivePath(pathname, item.path);
               return (
                 <NavigationMenuItem key={item.path}>
@@ -209,7 +212,7 @@ export default function TopNav({
                 </Button>
               </form>
               <nav aria-label="移动导航" className="space-y-1">
-                {menuItems.map((item) => {
+                {visibleMenuItems.map((item) => {
                   const active = isActivePath(pathname, item.path);
                   return (
                     <SheetClose asChild key={item.path}>
