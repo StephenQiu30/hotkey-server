@@ -5798,6 +5798,62 @@
                 }
             }
         },
+        "/api/v1/search": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "search"
+                ],
+                "summary": "Search configured hotspot sources",
+                "parameters": [
+                    {
+                        "description": "instant search",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.InstantSearchRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-http_InstantSearchResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/source-connections": {
             "get": {
                 "security": [
@@ -9170,6 +9226,76 @@
                 }
             }
         },
+        "http.HotspotCardResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "canonical_url": {
+                    "type": "string"
+                },
+                "content_type": {
+                    "type": "string"
+                },
+                "discovered_at": {
+                    "type": "string"
+                },
+                "external_id": {
+                    "type": "string"
+                },
+                "heat_score": {
+                    "type": "number"
+                },
+                "importance": {
+                    "type": "string",
+                    "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "urgent"
+                    ]
+                },
+                "keyword_mentioned": {
+                    "type": "boolean"
+                },
+                "metrics": {
+                    "$ref": "#/definitions/http.InstantSearchMetricsResponse"
+                },
+                "published_at": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "quality_state": {
+                    "type": "string",
+                    "enum": [
+                        "credible",
+                        "suspicious",
+                        "unavailable"
+                    ]
+                },
+                "relevance": {
+                    "type": "integer",
+                    "maximum": 100,
+                    "minimum": 0
+                },
+                "relevance_reason": {
+                    "type": "string"
+                },
+                "source_name": {
+                    "type": "string"
+                },
+                "source_type": {
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
         "http.IdentityResult-array_http_UserResponse": {
             "type": "object",
             "properties": {
@@ -9240,6 +9366,103 @@
                 },
                 "message": {
                     "type": "string"
+                }
+            }
+        },
+        "http.InstantSearchMetricsResponse": {
+            "type": "object",
+            "properties": {
+                "comment_count": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "like_count": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "share_count": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "view_count": {
+                    "type": "integer",
+                    "x-nullable": true
+                }
+            }
+        },
+        "http.InstantSearchRequest": {
+            "type": "object",
+            "required": [
+                "query"
+            ],
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "default": 20,
+                    "maximum": 50,
+                    "minimum": 1
+                },
+                "query": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "example": "Claude"
+                },
+                "source_types": {
+                    "type": "array",
+                    "maxItems": 9,
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "http.InstantSearchResponse": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string"
+                },
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.HotspotCardResponse"
+                    }
+                },
+                "searched_at": {
+                    "type": "string"
+                },
+                "source_statuses": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.InstantSearchSourceStatusResponse"
+                    }
+                }
+            }
+        },
+        "http.InstantSearchSourceStatusResponse": {
+            "type": "object",
+            "properties": {
+                "error_code": {
+                    "type": "string"
+                },
+                "result_count": {
+                    "type": "integer"
+                },
+                "source_name": {
+                    "type": "string"
+                },
+                "source_type": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string",
+                    "enum": [
+                        "success",
+                        "empty",
+                        "partial",
+                        "failed",
+                        "unavailable"
+                    ]
                 }
             }
         },
@@ -12574,6 +12797,20 @@
                 },
                 "data": {
                     "$ref": "#/definitions/http.CreateRightsPolicyResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.SourceResult-http_InstantSearchResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.InstantSearchResponse"
                 },
                 "message": {
                     "type": "string"

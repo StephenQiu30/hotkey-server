@@ -222,6 +222,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					monitorpostgres.NewPublishedReferenceReader,
 					newSourceService,
 					newCollectionControlService,
+					newInstantSearchService,
 					monitorpostgres.NewRepository,
 					newMonitorService,
 					newIntentControlService,
@@ -234,7 +235,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newNotificationHandler,
 					notificationtransport.NewPushSubscriptionHandler,
 				),
-				fx.Invoke(registerRuntimeMetricsCollector, registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerRightsManagementRoutes, registerBilibiliWebhookRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerMonitorRoutes, registerMonitorIntentRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerMicroEventRoutes, registerJobRoutes, registerOverviewRoutes, registerGovernanceRoutes, registerNotificationRoutes, registerPushSubscriptionRoutes),
+				fx.Invoke(registerRuntimeMetricsCollector, registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerRightsManagementRoutes, registerBilibiliWebhookRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerInstantSearchRoutes, registerMonitorRoutes, registerMonitorIntentRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerMicroEventRoutes, registerJobRoutes, registerOverviewRoutes, registerGovernanceRoutes, registerNotificationRoutes, registerPushSubscriptionRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -375,6 +376,10 @@ func registerCollectionRoutes(router *gin.Engine, service *sourceapplication.Col
 	sourcetransport.RegisterCollectionRoutes(router, service, authenticator)
 }
 
+func registerInstantSearchRoutes(router *gin.Engine, service *sourceapplication.InstantSearchService, authenticator httptransport.Authenticator) {
+	sourcetransport.RegisterInstantSearchRoutes(router, service, authenticator)
+}
+
 func registerMonitorRoutes(router *gin.Engine, service *monitorapplication.Service, authenticator httptransport.Authenticator) {
 	monitortransport.RegisterRoutes(router, service, authenticator)
 }
@@ -496,6 +501,10 @@ func newCollectionControlService(runtime *database.Runtime, sources *sourcepostg
 		Runtime: runtime, Sources: sources, Runs: runs, Connectors: connectors, Retries: retries,
 		Manuals: manuals, Targets: targets, Metrics: metrics, Quota: quota,
 	})
+}
+
+func newInstantSearchService(sources *sourcepostgres.Repository, connectors *sourceinfrastructure.ConnectorRegistry) (*sourceapplication.InstantSearchService, error) {
+	return sourceapplication.NewInstantSearchService(sourceapplication.InstantSearchDependencies{Sources: sources, Connectors: connectors})
 }
 
 type collectionServiceParams struct {

@@ -11,6 +11,7 @@ describe("dashboard menu", () => {
       { path: "/dashboard", name: "概览" },
       { path: "/dashboard/settings", name: "监控" },
       { path: "/dashboard/sources", name: "来源" },
+      { path: "/dashboard/search", name: "即时搜索" },
       { path: "/dashboard/contents", name: "内容" },
       { path: "/dashboard/events", name: "热点事件" },
     ]);

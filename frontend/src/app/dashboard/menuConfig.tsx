@@ -3,6 +3,7 @@ import {
   Database,
   Library,
   Radar,
+  Search,
   ShieldCheck,
   Telescope,
   Users,
@@ -29,6 +30,11 @@ export const dashboardMenuItems: MenuItem[] = [
     name: "来源",
     icon: <Database className="h-4 w-4" />,
     roles: dashboardRouteRoles["/dashboard/sources"],
+  },
+  {
+    path: "/dashboard/search",
+    name: "即时搜索",
+    icon: <Search className="h-4 w-4" />,
   },
   {
     path: "/dashboard/contents",

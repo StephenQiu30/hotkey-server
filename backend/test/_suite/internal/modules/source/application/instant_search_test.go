@@ -1,0 +1,115 @@
+package application
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	identitydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
+	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
+)
+
+func TestInstantSearchReturnsPartialResultsAndExplicitSourceStatuses(t *testing.T) {
+	now := time.Date(2026, time.August, 13, 12, 0, 0, 0, time.UTC)
+	repository := instantSearchSourceRepository{connections: []domain.SourceConnection{
+		{ID: 1, SourceType: domain.SourceTypeHackerNews, Name: "HN", Enabled: true, Config: domain.DefaultSourceConfig()},
+		{ID: 2, SourceType: domain.SourceTypeX, Name: "X", Enabled: true, Config: domain.DefaultSourceConfig()},
+	}}
+	registry := instantSearchRegistry{connectors: map[int64]domain.Connector{
+		1: instantSearchConnector{result: domain.FetchResult{Items: []domain.SourceItem{
+			{SourceCode: "hacker_news", ExternalID: "hn-1", ContentType: "article", Title: "Claude ships a realtime API", Body: "Anthropic announced a Claude API update.", URL: "https://news.example.test/claude?utm_source=test#top", Author: "alice", PublishedAt: timePointer(now.Add(-time.Hour)), ObservedAt: now, Metrics: domain.SourceMetrics{LikeCount: domain.KnownMetric(12), CommentCount: domain.KnownMetric(5)}},
+			{SourceCode: "hacker_news", ExternalID: "hn-2", ContentType: "article", Title: "Duplicate Claude link", URL: "https://news.example.test/claude", PublishedAt: timePointer(now.Add(-2 * time.Hour)), ObservedAt: now},
+			{SourceCode: "hacker_news", ExternalID: "hn-old", ContentType: "article", Title: "Claude archive", URL: "https://news.example.test/old", PublishedAt: timePointer(now.Add(-8 * 24 * time.Hour)), ObservedAt: now},
+			{SourceCode: "hacker_news", ExternalID: "hn-other", ContentType: "article", Title: "PostgreSQL release", URL: "https://news.example.test/postgres", PublishedAt: timePointer(now), ObservedAt: now},
+		}}},
+		2: instantSearchConnector{err: domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("provider detail must stay private"))},
+	}}
+	service, err := NewInstantSearchService(InstantSearchDependencies{Sources: repository, Connectors: registry, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatalf("NewInstantSearchService() error = %v", err)
+	}
+
+	result, err := service.Search(context.Background(), InstantSearchInput{
+		Subject: identitydomain.Subject{UserID: 7, Role: identitydomain.RoleViewer},
+		Query:   " Claude ", SourceTypes: []string{"hacker_news", "x", "duckduckgo"}, Limit: 20,
+	})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if result.Query != "Claude" || len(result.Items) != 1 {
+		t.Fatalf("result = %#v, want one normalized Claude item", result)
+	}
+	item := result.Items[0]
+	if item.CanonicalURL != "https://news.example.test/claude" || item.Relevance != 100 || !item.KeywordMentioned {
+		t.Fatalf("normalized item = %#v", item)
+	}
+	if item.QualityState != InstantSearchQualityUnavailable || item.HeatScore <= 0 || item.Importance != InstantSearchImportanceMedium {
+		t.Fatalf("safe analysis fallback = %#v", item)
+	}
+	assertInstantStatus(t, result.SourceStatuses, "hacker_news", InstantSearchSourceSuccess, 1, "")
+	assertInstantStatus(t, result.SourceStatuses, "x", InstantSearchSourceFailed, 0, "rate_limited")
+	assertInstantStatus(t, result.SourceStatuses, "duckduckgo", InstantSearchSourceUnavailable, 0, "not_configured")
+}
+
+func TestInstantSearchValidatesAuthenticationAndInputBeforeCallingSources(t *testing.T) {
+	service, err := NewInstantSearchService(InstantSearchDependencies{
+		Sources: instantSearchSourceRepository{}, Connectors: instantSearchRegistry{},
+	})
+	if err != nil {
+		t.Fatalf("NewInstantSearchService() error = %v", err)
+	}
+	_, err = service.Search(context.Background(), InstantSearchInput{Query: "Claude"})
+	assertAppCode(t, err, sharederrors.CodeUnauthenticated)
+	_, err = service.Search(context.Background(), InstantSearchInput{
+		Subject: identitydomain.Subject{UserID: 1, Role: identitydomain.RoleViewer}, Query: " ",
+	})
+	assertAppCode(t, err, sharederrors.CodeInvalidCollectionRequest)
+}
+
+func assertInstantStatus(t *testing.T, statuses []InstantSearchSourceStatus, sourceType string, state InstantSearchSourceState, count int, code string) {
+	t.Helper()
+	for _, status := range statuses {
+		if status.SourceType == sourceType {
+			if status.State != state || status.ResultCount != count || status.ErrorCode != code {
+				t.Fatalf("status %q = %#v", sourceType, status)
+			}
+			return
+		}
+	}
+	t.Fatalf("missing source status %q in %#v", sourceType, statuses)
+}
+
+type instantSearchSourceRepository struct{ connections []domain.SourceConnection }
+
+func (repository instantSearchSourceRepository) List(context.Context, domain.SourceConnectionListQuery) ([]domain.SourceConnection, string, error) {
+	return append([]domain.SourceConnection(nil), repository.connections...), "", nil
+}
+
+type instantSearchRegistry struct{ connectors map[int64]domain.Connector }
+
+func (registry instantSearchRegistry) Resolve(_ context.Context, connection domain.SourceConnection) (domain.Connector, error) {
+	connector := registry.connectors[connection.ID]
+	if connector == nil {
+		return nil, errors.New("connector unavailable")
+	}
+	return connector, nil
+}
+
+type instantSearchConnector struct {
+	result domain.FetchResult
+	err    error
+}
+
+func (connector instantSearchConnector) Validate(context.Context, domain.SourceConnection) error {
+	return nil
+}
+func (connector instantSearchConnector) Fetch(context.Context, domain.FetchRequest) (domain.FetchResult, error) {
+	return connector.result, connector.err
+}
+func (connector instantSearchConnector) Health(context.Context, domain.SourceConnection) domain.HealthResult {
+	return domain.HealthResult{Healthy: true}
+}
+
+func timePointer(value time.Time) *time.Time { return &value }

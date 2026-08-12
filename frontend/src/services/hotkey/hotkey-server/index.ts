@@ -17,6 +17,7 @@ import * as documentMatches from "./documentMatches";
 import * as monitorIntent from "./monitorIntent";
 import * as notifications from "./notifications";
 import * as operations from "./operations";
+import * as search from "./search";
 import * as sources from "./sources";
 import * as sourceRights from "./sourceRights";
 import * as sourceWebhooks from "./sourceWebhooks";
@@ -36,6 +37,7 @@ export default {
   monitorIntent,
   notifications,
   operations,
+  search,
   sources,
   sourceRights,
   sourceWebhooks,

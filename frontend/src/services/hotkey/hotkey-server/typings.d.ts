@@ -937,6 +937,26 @@ required property without making explicit null impossible to bind. */
     message?: string;
   };
 
+  type HotspotCardResponse = {
+    author?: string;
+    canonical_url?: string;
+    content_type?: string;
+    discovered_at?: string;
+    external_id?: string;
+    heat_score?: number;
+    importance?: "low" | "medium" | "high" | "urgent";
+    keyword_mentioned?: boolean;
+    metrics?: InstantSearchMetricsResponse;
+    published_at?: string;
+    quality_state?: "credible" | "suspicious" | "unavailable";
+    relevance?: number;
+    relevance_reason?: string;
+    source_name?: string;
+    source_type?: string;
+    summary?: string;
+    title?: string;
+  };
+
   type IdentityResultArrayHttpUserResponse = {
     code?: number;
     data?: UserResponse[];
@@ -965,6 +985,34 @@ required property without making explicit null impossible to bind. */
     code?: number;
     data?: EmptyResponse;
     message?: string;
+  };
+
+  type InstantSearchMetricsResponse = {
+    comment_count?: number;
+    like_count?: number;
+    share_count?: number;
+    view_count?: number;
+  };
+
+  type InstantSearchRequest = {
+    limit?: number;
+    query: string;
+    source_types?: string[];
+  };
+
+  type InstantSearchResponse = {
+    query?: string;
+    results?: HotspotCardResponse[];
+    searched_at?: string;
+    source_statuses?: InstantSearchSourceStatusResponse[];
+  };
+
+  type InstantSearchSourceStatusResponse = {
+    error_code?: string;
+    result_count?: number;
+    source_name?: string;
+    source_type?: string;
+    state?: "success" | "empty" | "partial" | "failed" | "unavailable";
   };
 
   type IntentClauseRequestDTO = {
@@ -2330,6 +2378,12 @@ value never authorizes v2 raw evidence or document body persistence. */
   type SourceResultHttpCreateRightsPolicyResponseDTO = {
     code?: number;
     data?: CreateRightsPolicyResponseDTO;
+    message?: string;
+  };
+
+  type SourceResultHttpInstantSearchResponse = {
+    code?: number;
+    data?: InstantSearchResponse;
     message?: string;
   };
 
