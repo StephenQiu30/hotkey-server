@@ -77,6 +77,7 @@ export function RuntimeOperationsPanel() {
   const [error, setError] = useState("");
   const [pending, setPending] = useState<PendingAction>();
   const [mutating, setMutating] = useState(false);
+  const [focusRefreshRequested, setFocusRefreshRequested] = useState(false);
   const refreshButtonRef = useRef<HTMLButtonElement>(null);
   const actionButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -104,6 +105,12 @@ export function RuntimeOperationsPanel() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!focusRefreshRequested || loading || pending) return;
+    refreshButtonRef.current?.focus();
+    setFocusRefreshRequested(false);
+  }, [focusRefreshRequested, loading, pending]);
+
   const mutate = async () => {
     if (!pending?.job.id) return;
     setMutating(true);
@@ -115,9 +122,10 @@ export function RuntimeOperationsPanel() {
         await postOperationsJobsIdCancel({ id: pending.job.id });
         toast.success(`任务 #${pending.job.id} 已取消`);
       }
+      actionButtonRef.current = null;
       setPending(undefined);
       await load();
-      requestAnimationFrame(() => refreshButtonRef.current?.focus());
+      setFocusRefreshRequested(true);
     } catch (reason) {
       toast.error(reason instanceof Error ? reason.message : "任务操作失败");
     } finally {
