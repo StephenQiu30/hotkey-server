@@ -40,3 +40,11 @@ func TestCardHeatDedupeAndOrdering(t *testing.T) {
 		t.Fatalf("sorted cards = %#v, want hot card first", cards)
 	}
 }
+
+func TestResponseKeepsOneFlatCardShape(t *testing.T) {
+	id := int64(7)
+	response := Response(Card{ID: &id, SourceType: "rss", Title: "Release", Language: "en"})
+	if response.ID == nil || *response.ID != 7 || response.SourceType != "rss" || response.Title != "Release" || response.Language != "en" {
+		t.Fatalf("Response() = %#v", response)
+	}
+}

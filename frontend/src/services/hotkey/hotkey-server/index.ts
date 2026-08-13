@@ -9,6 +9,7 @@ import * as collectionRuns from "./collectionRuns";
 import * as contentLineage from "./contentLineage";
 import * as contents from "./contents";
 import * as documentVersions from "./documentVersions";
+import * as hotspots from "./hotspots";
 import * as sourceMetricCapabilities from "./sourceMetricCapabilities";
 import * as microEvents from "./microEvents";
 import * as monitors from "./monitors";
@@ -29,6 +30,7 @@ export default {
   contentLineage,
   contents,
   documentVersions,
+  hotspots,
   sourceMetricCapabilities,
   microEvents,
   monitors,

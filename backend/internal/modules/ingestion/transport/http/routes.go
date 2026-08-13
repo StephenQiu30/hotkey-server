@@ -14,6 +14,8 @@ func RegisterRoutes(router *gin.Engine, service contentQueryService, authenticat
 		return
 	}
 	handler := NewHandler(service, metrics)
+	hotspots := router.Group("/api/v1/hotspots", httptransport.RequireAuthentication(authenticator))
+	hotspots.GET("", httptransport.Wrap(handler.Hotspots))
 	contents := router.Group("/api/v1/contents", httptransport.RequireAuthentication(authenticator))
 	contents.GET("", httptransport.Wrap(handler.List))
 	contents.GET("/:id/document", httptransport.Wrap(handler.Document))

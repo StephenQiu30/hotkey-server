@@ -165,6 +165,7 @@ func TestOpenAPIContract(t *testing.T) {
 		"/api/v1/operations/retention-policies/{id}/run":                           {"post": {"200", "400", "401", "403", "404", "409"}},
 		"/api/v1/operations/audit-logs":                                            {"get": {"200", "400", "401", "403", "503"}},
 		"/api/v1/contents":                                                         {"get": {"200", "400", "401", "404", "503"}},
+		"/api/v1/hotspots":                                                         {"get": {"200", "400", "401", "503"}},
 		"/api/v1/contents/{id}":                                                    {"get": {"200", "400", "401", "404", "503"}},
 		"/api/v1/contents/{id}/document":                                           {"get": {"200", "400", "401", "404", "503"}},
 		"/api/v1/document-versions/{id}/citation":                                  {"get": {"200", "400", "401", "404", "502", "503"}},

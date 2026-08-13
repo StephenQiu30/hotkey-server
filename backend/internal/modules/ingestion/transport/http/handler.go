@@ -80,6 +80,43 @@ func (handler *Handler) List(c *gin.Context) error {
 	return nil
 }
 
+// Hotspots returns persisted Content through the same flat card contract used
+// by instant search. It is a read projection, not a second persistence model.
+// @Summary List persisted hotspots
+// @Tags hotspots
+// @Produce json
+// @Security BearerAuth
+// @Param cursor query string false "cursor"
+// @Param limit query int false "page size" minimum(1) maximum(100)
+// @Param q query string false "title or summary keyword" maxlength(100)
+// @Param source_connection_id query int false "source connection ID"
+// @Param published_from query string false "published at or after (RFC3339)"
+// @Param published_to query string false "published at or before (RFC3339)"
+// @Param monitor_id query int false "monitor ID"
+// @Param decision query string false "latest monitor match decision" Enums(accepted,review,rejected)
+// @Param sort query string false "sort order" Enums(latest,relevance)
+// @Success 200 {object} ContentResult[HotspotPageResponse]
+// @Failure 400 {object} ContentResult[EmptyResponse]
+// @Failure 401 {object} ContentResult[EmptyResponse]
+// @Failure 503 {object} ContentResult[EmptyResponse]
+// @Router /api/v1/hotspots [get]
+func (handler *Handler) Hotspots(c *gin.Context) error {
+	httptransport.SetModule(c, "ingestion")
+	query, err := contentListQuery(c)
+	if err != nil {
+		handler.record(contentQueryListOperation, err)
+		return err
+	}
+	page, err := handler.service.ListActive(c.Request.Context(), query)
+	if err != nil {
+		handler.record(contentQueryListOperation, err)
+		return err
+	}
+	handler.record(contentQueryListOperation, nil)
+	httptransport.OK(c, hotspotPageResponse(page))
+	return nil
+}
+
 // Get returns one active, safe Content projection.
 // @Summary Get active content
 // @Tags contents

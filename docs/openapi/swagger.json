@@ -1569,6 +1569,116 @@
                 }
             }
         },
+        "/api/v1/hotspots": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "hotspots"
+                ],
+                "summary": "List persisted hotspots",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 100,
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "maxLength": 100,
+                        "type": "string",
+                        "description": "title or summary keyword",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "source connection ID",
+                        "name": "source_connection_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "published at or after (RFC3339)",
+                        "name": "published_from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "published at or before (RFC3339)",
+                        "name": "published_to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "monitor_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "accepted",
+                            "review",
+                            "rejected"
+                        ],
+                        "type": "string",
+                        "description": "latest monitor match decision",
+                        "name": "decision",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "latest",
+                            "relevance"
+                        ],
+                        "type": "string",
+                        "description": "sort order",
+                        "name": "sort",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-http_HotspotPageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ContentResult-internal_modules_ingestion_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/metric-capability-profiles": {
             "post": {
                 "security": [
@@ -7545,6 +7655,104 @@
                 }
             }
         },
+        "hotspot.HotspotCardResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "canonical_url": {
+                    "type": "string"
+                },
+                "content_type": {
+                    "type": "string"
+                },
+                "discovered_at": {
+                    "type": "string"
+                },
+                "external_id": {
+                    "type": "string"
+                },
+                "heat_score": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "importance": {
+                    "type": "string",
+                    "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "urgent"
+                    ]
+                },
+                "keyword_mentioned": {
+                    "type": "boolean"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "metrics": {
+                    "$ref": "#/definitions/hotspot.MetricsResponse"
+                },
+                "published_at": {
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "quality_state": {
+                    "type": "string",
+                    "enum": [
+                        "credible",
+                        "suspicious",
+                        "unavailable"
+                    ]
+                },
+                "relevance": {
+                    "type": "integer",
+                    "maximum": 100,
+                    "minimum": 0
+                },
+                "relevance_reason": {
+                    "type": "string"
+                },
+                "source_name": {
+                    "type": "string"
+                },
+                "source_type": {
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "hotspot.MetricsResponse": {
+            "type": "object",
+            "properties": {
+                "comment_count": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "like_count": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "share_count": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "view_count": {
+                    "type": "integer",
+                    "x-nullable": true
+                }
+            }
+        },
         "http.AICandidateRequest": {
             "type": "object",
             "required": [
@@ -8619,6 +8827,20 @@
                 }
             }
         },
+        "http.ContentResult-http_HotspotPageResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.HotspotPageResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "http.ContentResult-http_OverrideDocumentMatchResponseDTO": {
             "type": "object",
             "properties": {
@@ -9371,94 +9593,17 @@
                 }
             }
         },
-        "http.HotspotCardResponse": {
+        "http.HotspotPageResponse": {
             "type": "object",
             "properties": {
-                "author": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/hotspot.HotspotCardResponse"
+                    }
+                },
+                "next_cursor": {
                     "type": "string"
-                },
-                "canonical_url": {
-                    "type": "string"
-                },
-                "content_type": {
-                    "type": "string"
-                },
-                "discovered_at": {
-                    "type": "string"
-                },
-                "external_id": {
-                    "type": "string"
-                },
-                "heat_score": {
-                    "type": "number"
-                },
-                "importance": {
-                    "type": "string",
-                    "enum": [
-                        "low",
-                        "medium",
-                        "high",
-                        "urgent"
-                    ]
-                },
-                "keyword_mentioned": {
-                    "type": "boolean"
-                },
-                "metrics": {
-                    "$ref": "#/definitions/http.HotspotMetricsResponse"
-                },
-                "published_at": {
-                    "type": "string",
-                    "x-nullable": true
-                },
-                "quality_state": {
-                    "type": "string",
-                    "enum": [
-                        "credible",
-                        "suspicious",
-                        "unavailable"
-                    ]
-                },
-                "relevance": {
-                    "type": "integer",
-                    "maximum": 100,
-                    "minimum": 0
-                },
-                "relevance_reason": {
-                    "type": "string"
-                },
-                "source_name": {
-                    "type": "string"
-                },
-                "source_type": {
-                    "type": "string"
-                },
-                "summary": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                }
-            }
-        },
-        "http.HotspotMetricsResponse": {
-            "type": "object",
-            "properties": {
-                "comment_count": {
-                    "type": "integer",
-                    "x-nullable": true
-                },
-                "like_count": {
-                    "type": "integer",
-                    "x-nullable": true
-                },
-                "share_count": {
-                    "type": "integer",
-                    "x-nullable": true
-                },
-                "view_count": {
-                    "type": "integer",
-                    "x-nullable": true
                 }
             }
         },
@@ -9570,7 +9715,7 @@
                 "results": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/http.HotspotCardResponse"
+                        "$ref": "#/definitions/hotspot.HotspotCardResponse"
                     }
                 },
                 "searched_at": {

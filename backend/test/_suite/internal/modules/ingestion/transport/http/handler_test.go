@@ -160,6 +160,51 @@ func TestContentListParsesServerSideSearchShape(t *testing.T) {
 	}
 }
 
+func TestHotspotRouteReturnsPersistedContentAsSharedFlatCard(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	views, likes := int64(1200), int64(42)
+	score := 82.4
+	content := ingestiondomain.Content{
+		ID: 7, SourceType: sourcedomain.SourceTypeRSS, SourceName: "Product feed",
+		ExternalID: "item-7", ContentType: "article", Title: "Claude update",
+		Excerpt: "A concise source excerpt", CanonicalURL: "https://example.test/items/7",
+		Language: "en", Author: ingestiondomain.NormalizedAuthor{DisplayName: "Alice"},
+		PublishedAt:    time.Date(2026, 8, 13, 8, 0, 0, 0, time.UTC),
+		FetchedAt:      time.Date(2026, 8, 13, 8, 1, 0, 0, time.UTC),
+		Metrics:        sourcedomain.SourceMetrics{ViewCount: &views, LikeCount: &likes},
+		RelevanceScore: &score, Status: ingestiondomain.ContentStatusActive,
+	}
+	service := &contentQueryServiceStub{page: ingestiondomain.ContentPage{Items: []ingestiondomain.Content{content}, NextCursor: "next"}}
+	response := performContentRequest(newContentRouter(t, service, httptransport.RoleViewer), stdhttp.MethodGet, "/api/v1/hotspots?monitor_id=3&sort=relevance", "viewer")
+	if response.Code != stdhttp.StatusOK {
+		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
+	}
+	var envelope struct {
+		Data struct {
+			Items      []map[string]any `json:"items"`
+			NextCursor string           `json:"next_cursor"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(envelope.Data.Items) != 1 || envelope.Data.NextCursor != "next" {
+		t.Fatalf("response = %s", response.Body.String())
+	}
+	card := envelope.Data.Items[0]
+	for _, field := range []string{"id", "source_type", "title", "summary", "author", "language", "heat_score", "quality_state", "relevance", "importance", "canonical_url"} {
+		if _, exists := card[field]; !exists {
+			t.Fatalf("hotspot card missing %q: %#v", field, card)
+		}
+	}
+	if card["summary"] != content.Excerpt || card["relevance"] != float64(82) || card["quality_state"] != "unavailable" {
+		t.Fatalf("card = %#v", card)
+	}
+	if _, nested := card["analysis"]; nested || service.lastQuery.MonitorID == nil || service.lastQuery.Sort != ingestiondomain.ContentSortRelevance {
+		t.Fatalf("nested response/query = %#v / %#v", card, service.lastQuery)
+	}
+}
+
 func TestContentListRejectsInvalidSearchCombinationsBeforeApplication(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, path := range []string{

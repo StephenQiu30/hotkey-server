@@ -392,6 +392,12 @@ required property without making explicit null impossible to bind. */
     message?: string;
   };
 
+  type ContentResultHttpHotspotPageResponse = {
+    code?: number;
+    data?: HotspotPageResponse;
+    message?: string;
+  };
+
   type ContentResultHttpOverrideDocumentMatchResponseDTO = {
     code?: number;
     data?: OverrideDocumentMatchResponseDTO;
@@ -714,6 +720,27 @@ required property without making explicit null impossible to bind. */
     id: number;
   };
 
+  type getHotspotsParams = {
+    /** cursor */
+    cursor?: string;
+    /** page size */
+    limit?: number;
+    /** title or summary keyword */
+    q?: string;
+    /** source connection ID */
+    source_connection_id?: number;
+    /** published at or after (RFC3339) */
+    published_from?: string;
+    /** published at or before (RFC3339) */
+    published_to?: string;
+    /** monitor ID */
+    monitor_id?: number;
+    /** latest monitor match decision */
+    decision?: "accepted" | "review" | "rejected";
+    /** sort order */
+    sort?: "latest" | "relevance";
+  };
+
   type getMicroEventsIdEvidenceParams = {
     /** micro-event ID */
     id: number;
@@ -956,9 +983,11 @@ required property without making explicit null impossible to bind. */
     discovered_at?: string;
     external_id?: string;
     heat_score?: number;
+    id?: number;
     importance?: "low" | "medium" | "high" | "urgent";
     keyword_mentioned?: boolean;
-    metrics?: HotspotMetricsResponse;
+    language?: string;
+    metrics?: MetricsResponse;
     published_at?: string;
     quality_state?: "credible" | "suspicious" | "unavailable";
     relevance?: number;
@@ -969,11 +998,9 @@ required property without making explicit null impossible to bind. */
     title?: string;
   };
 
-  type HotspotMetricsResponse = {
-    comment_count?: number;
-    like_count?: number;
-    share_count?: number;
-    view_count?: number;
+  type HotspotPageResponse = {
+    items?: HotspotCardResponse[];
+    next_cursor?: string;
   };
 
   type IdentityResultArrayHttpUserResponse = {
@@ -1261,6 +1288,13 @@ probability or a cross-channel relevance percentage. */
     supports_shares?: boolean;
     supports_views?: boolean;
     version?: number;
+  };
+
+  type MetricsResponse = {
+    comment_count?: number;
+    like_count?: number;
+    share_count?: number;
+    view_count?: number;
   };
 
   type MicroEventEvidencePageResponseDTO = {

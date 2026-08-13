@@ -4,9 +4,11 @@
 package http
 
 import (
+	"math"
 	"time"
 
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/domain"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/hotspot"
 )
 
 // ContentResult mirrors the shared Result envelope for Swagger only. Runtime
@@ -58,6 +60,13 @@ type ContentPageResponse struct {
 	NextCursor string            `json:"next_cursor"`
 }
 
+// HotspotPageResponse exposes the same card shape as instant search while
+// retaining the existing Content cursor and persistence model underneath.
+type HotspotPageResponse struct {
+	Items      []hotspot.HotspotCardResponse `json:"items"`
+	NextCursor string                        `json:"next_cursor"`
+}
+
 type ContentDocumentResponse struct {
 	ContentID         int64      `json:"content_id" example:"7"`
 	Title             string     `json:"title" example:"Release notes"`
@@ -99,6 +108,47 @@ func contentPageResponse(page ingestiondomain.ContentPage) ContentPageResponse {
 		items = append(items, contentResponse(content))
 	}
 	return ContentPageResponse{Items: items, NextCursor: page.NextCursor}
+}
+
+func hotspotPageResponse(page ingestiondomain.ContentPage) HotspotPageResponse {
+	items := make([]hotspot.HotspotCardResponse, 0, len(page.Items))
+	for _, content := range page.Items {
+		items = append(items, hotspot.Response(hotspotCard(content)))
+	}
+	return HotspotPageResponse{Items: items, NextCursor: page.NextCursor}
+}
+
+func hotspotCard(content ingestiondomain.Content) hotspot.Card {
+	id := content.ID
+	publishedAt := content.PublishedAt
+	metrics := hotspot.Metrics{
+		ViewCount: content.Metrics.ViewCount, LikeCount: content.Metrics.LikeCount,
+		CommentCount: content.Metrics.CommentCount, ShareCount: content.Metrics.ShareCount,
+	}
+	heat := hotspot.HeatScore(metrics)
+	relevance := 0
+	if content.RelevanceScore != nil {
+		relevance = int(math.Round(*content.RelevanceScore))
+		if relevance < 0 {
+			relevance = 0
+		} else if relevance > 100 {
+			relevance = 100
+		}
+	}
+	reason := "AI 尚未分析"
+	if content.RelevanceScore != nil {
+		reason = "当前监控的最近一次相关性判断"
+	}
+	return hotspot.Card{
+		ID: &id, SourceType: string(content.SourceType), SourceName: content.SourceName,
+		ExternalID: content.ExternalID, ContentType: content.ContentType, Title: content.Title,
+		Summary: content.Excerpt, CanonicalURL: content.CanonicalURL,
+		Author: content.Author.DisplayName, Language: content.Language,
+		PublishedAt: &publishedAt, DiscoveredAt: content.FetchedAt, Metrics: metrics,
+		HeatScore: heat, QualityState: hotspot.QualityUnavailable,
+		Relevance: relevance, RelevanceReason: reason,
+		Importance: hotspot.Importance(heat),
+	}
 }
 
 func contentDocumentResponse(document ingestiondomain.ContentDocument) ContentDocumentResponse {

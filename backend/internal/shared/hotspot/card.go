@@ -36,6 +36,7 @@ type Metrics struct {
 }
 
 type Card struct {
+	ID               *int64
 	SourceType       string
 	SourceName       string
 	ExternalID       string
@@ -44,6 +45,7 @@ type Card struct {
 	Summary          string
 	CanonicalURL     string
 	Author           string
+	Language         string
 	PublishedAt      *time.Time
 	DiscoveredAt     time.Time
 	Metrics          Metrics
