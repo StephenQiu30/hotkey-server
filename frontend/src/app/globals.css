@@ -3,11 +3,10 @@
 
 @theme inline {
   --font-sans:
-    "Geist", "Geist Fallback", "PingFang SC", "Microsoft YaHei",
-    ui-sans-serif, system-ui, sans-serif;
+    var(--font-geist-sans), "PingFang SC", "Microsoft YaHei", ui-sans-serif,
+    system-ui, sans-serif;
   --font-mono:
-    "Geist Mono", "Geist Mono Fallback", "SF Mono", ui-monospace,
-    monospace;
+    var(--font-geist-mono), "SF Mono", ui-monospace, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -25,6 +24,7 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-input: var(--border-strong);
   --color-ring: var(--ring);
   --color-success: var(--success);
@@ -100,6 +100,7 @@ html {
 body {
   margin: 0;
   min-width: 320px;
+  min-height: 100vh;
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
@@ -126,6 +127,33 @@ h4 {
   background: rgba(0, 112, 243, 0.16);
 }
 
+a:not([data-slot="button"]):focus-visible {
+  border-radius: var(--radius-xs);
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+
+.skip-link {
+  position: fixed;
+  left: 16px;
+  top: 12px;
+  z-index: 100;
+  transform: translateY(calc(-100% - 20px));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--background);
+  color: var(--foreground);
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: transform 150ms ease;
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
 .app-page {
   margin: 0 auto;
   width: 100%;
@@ -150,23 +178,6 @@ h4 {
 .mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-}
-.hairline {
-  border-color: var(--border);
-}
-.panel {
-  border: 0;
-  background: transparent;
-  border-radius: 0;
-  box-shadow: none;
-}
-.panel-header {
-  min-height: 52px;
-  border-bottom: 0;
-  padding: 14px 0;
-}
-[data-slot="card"] > [data-slot="card-header"] {
-  border-bottom-width: 0;
 }
 .eyebrow {
   font-size: 12px;
@@ -280,6 +291,18 @@ h4 {
 @media (max-width: 768px) {
   .app-page {
     padding: 28px 16px 48px;
+  }
+}
+
+@media (pointer: coarse) {
+  button,
+  [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  input,
+  select {
+    min-height: 44px;
   }
 }
 

@@ -24,6 +24,11 @@ function contrast(foreground: string, background: string) {
 }
 
 describe("dashboard theme accessibility", () => {
+  it("binds Tailwind typography tokens to the fonts loaded by next/font", () => {
+    expect(css).toContain("var(--font-geist-sans)");
+    expect(css).toContain("var(--font-geist-mono)");
+  });
+
   it.each([
     ["light", css.match(/:root\s*{([\s\S]*?)}/)?.[1]],
     ["dark", css.match(/\.dark\s*{([\s\S]*?)}/)?.[1]],
@@ -42,5 +47,13 @@ describe("dashboard theme accessibility", () => {
   it("provides a global reduced-motion fallback", () => {
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain("transition-duration: 0.01ms !important");
+  });
+
+  it("keeps explicit card separators and exposes an accessible skip link", () => {
+    expect(css).not.toContain(
+      '[data-slot="card"] > [data-slot="card-header"]'
+    );
+    expect(css).toContain(".skip-link");
+    expect(css).toContain(".skip-link:focus-visible");
   });
 });

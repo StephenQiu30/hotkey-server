@@ -92,13 +92,14 @@ export default function TopNav({
 
   const handleLogout = async () => {
     await logout();
-    window.location.href = "/login";
+    router.replace("/login");
+    router.refresh();
   };
 
   return (
     <header
       data-top-nav
-      className="sticky top-0 z-50 bg-background/90 backdrop-blur-xl"
+      className="sticky top-0 z-50 border-b border-border/70 bg-background/90 backdrop-blur-xl"
     >
       <div className="mx-auto flex h-16 max-w-[1440px] min-w-0 items-center gap-3 px-4 sm:px-6 lg:gap-7 lg:px-8">
         <Link

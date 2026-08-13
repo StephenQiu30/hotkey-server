@@ -34,26 +34,26 @@ export default function AuthShell({
             <BrandLogo markClassName="h-[18px] w-[18px]" />
           </Link>
 
-          <div className="relative z-10 my-auto max-w-[620px]">
+          <div className="relative z-10 my-auto max-w-[min(54%,620px)]">
             <p className="text-xs text-muted-foreground">Editorial intelligence</p>
             <h2 className="mt-6 text-[clamp(3rem,5vw,5.75rem)] font-normal leading-[0.98] tracking-[-0.065em]">
               重要变化，
               <br />
               先形成判断
             </h2>
-            <p className="mt-7 max-w-md text-sm leading-7 text-muted-foreground">
+            <p className="mt-7 text-sm leading-7 text-muted-foreground">
               持续监测公开信号，识别真正重要的变化，让每一次判断都建立在证据之上。
             </p>
           </div>
 
-          <div className="pointer-events-none absolute bottom-[8%] right-[-3%] h-[46%] w-[58%] opacity-70 xl:right-[2%]">
+          <div className="pointer-events-none absolute bottom-[8%] right-[-3%] h-[42%] w-[54%] opacity-70 xl:right-[2%]">
             <Image
               src="/images/hotkey-signal-radar.png"
               alt=""
               fill
               priority
               sizes="50vw"
-              className="object-contain object-right-bottom"
+              className="object-contain object-right-bottom dark:invert"
             />
           </div>
 
@@ -68,15 +68,17 @@ export default function AuthShell({
             >
               <BrandLogo />
             </Link>
-            <Card className="rounded-none">
-              <CardHeader className="px-0">
+            <Card>
+              <CardHeader className="px-5 pt-5 sm:px-6 sm:pt-6">
                 <p className="text-xs text-muted-foreground">HotKey Intelligence</p>
                 <CardTitle>
                   <h1 className="mt-2 text-2xl tracking-[-0.035em]">{title}</h1>
                 </CardTitle>
                 <CardDescription className="leading-6">{subtitle}</CardDescription>
               </CardHeader>
-              <CardContent className="px-0">{children}</CardContent>
+              <CardContent className="px-5 pb-5 sm:px-6 sm:pb-6">
+                {children}
+              </CardContent>
             </Card>
           </div>
         </main>

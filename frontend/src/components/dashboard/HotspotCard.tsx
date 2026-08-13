@@ -23,6 +23,18 @@ export const qualityLabels: Readonly<Record<string, string>> = {
   unavailable: "AI 未分析",
 };
 
+function importanceVariant(value: string | undefined) {
+  if (value === "urgent") return "destructive" as const;
+  if (value === "high") return "warning" as const;
+  return "secondary" as const;
+}
+
+function qualityVariant(value: string | undefined) {
+  if (value === "credible") return "success" as const;
+  if (value === "suspicious") return "warning" as const;
+  return "outline" as const;
+}
+
 export function formatHotspotTime(value: string | undefined) {
   if (!value) return "时间未知";
   const parsed = new Date(value);
@@ -50,19 +62,19 @@ function availableMetrics(card: HotKeyAPI.HotspotCardResponse) {
 
 export function HotspotCard({ card }: { card: HotKeyAPI.HotspotCardResponse }) {
   return (
-    <Card className="border border-border bg-card">
+    <Card className="overflow-hidden">
       <CardHeader className="gap-3 p-5 pb-3 sm:p-6 sm:pb-3">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">
             {card.source_name || sourceTypeLabel(card.source_type)}
           </Badge>
-          <Badge variant="secondary">
+          <Badge variant={importanceVariant(card.importance)}>
             重要性 {importanceLabels[card.importance ?? ""] ?? "未知"}
           </Badge>
-          <Badge variant="secondary">
+          <Badge variant={qualityVariant(card.quality_state)}>
             {qualityLabels[card.quality_state ?? ""] ?? "质量未知"}
           </Badge>
-          <span className="inline-flex items-center gap-1 text-xs font-medium">
+          <span className="mono inline-flex items-center gap-1 text-xs font-medium">
             <Flame className="h-3.5 w-3.5" />
             热度 {card.heat_score ?? 0}
           </span>
@@ -71,7 +83,7 @@ export function HotspotCard({ card }: { card: HotKeyAPI.HotspotCardResponse }) {
           </span>
         </div>
         <CardTitle className="text-xl leading-7">
-          <h2>{card.title || "无标题"}</h2>
+          <h2 className="text-balance">{card.title || "无标题"}</h2>
         </CardTitle>
         <CardDescription className="leading-6">
           {card.summary || "来源未提供摘要。"}
@@ -89,7 +101,7 @@ export function HotspotCard({ card }: { card: HotKeyAPI.HotspotCardResponse }) {
           ))}
         </div>
         <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-muted-foreground">
+          <p className="max-w-3xl text-xs leading-5 text-muted-foreground">
             {card.relevance_reason || "未提供判断理由"}
           </p>
           {card.canonical_url ? (

@@ -11,4 +11,14 @@ describe("Button", () => {
       "text-destructive-foreground",
     );
   });
+
+  it("gives secondary outline actions a visible one-pixel boundary", () => {
+    render(<Button variant="outline">刷新热点</Button>);
+
+    expect(screen.getByRole("button", { name: "刷新热点" })).toHaveClass(
+      "border",
+      "border-border",
+      "bg-background",
+    );
+  });
 });

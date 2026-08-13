@@ -168,7 +168,7 @@ export default function SearchPage() {
   }
 
   return (
-    <main className="app-page">
+    <div className="app-page">
       <PageHeader
         eyebrow="LIVE SEARCH"
         title="即时搜索"
@@ -401,6 +401,6 @@ export default function SearchPage() {
           </div>
         ) : null}
       </section>
-    </main>
+    </div>
   );
 }

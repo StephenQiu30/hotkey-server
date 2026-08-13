@@ -94,8 +94,13 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[calc(100vh-64px)] items-center justify-center">
-        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+      <div
+        aria-live="polite"
+        className="flex min-h-[calc(100vh-64px)] items-center justify-center"
+        role="status"
+      >
+        <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin text-primary" />
+        <span className="sr-only">正在加载工作台</span>
       </div>
     );
   }
@@ -105,7 +110,7 @@ export default function DashboardPage() {
   ).length;
 
   return (
-    <main className="app-page" data-testid="dashboard-overview">
+    <div className="app-page" data-testid="dashboard-overview">
       <header className="flex flex-col gap-6 border-b pb-8 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-3xl font-semibold tracking-[-0.045em] text-foreground sm:text-4xl">
@@ -235,12 +240,16 @@ export default function DashboardPage() {
                         key={monitor.id}
                       >
                         <span
+                          aria-hidden="true"
                           className={`h-2 w-2 rounded-full ${
                             monitor.status === "active"
-                              ? "bg-emerald-500"
+                              ? "bg-success"
                               : "bg-muted-foreground"
                           }`}
                         />
+                        <span className="sr-only">
+                          {monitor.status === "active" ? "启用" : "未启用"}
+                        </span>
                         <span className="min-w-0 flex-1 truncate">
                           {monitor.name || `监控 #${monitor.id}`}
                         </span>
@@ -278,6 +287,6 @@ export default function DashboardPage() {
           </aside>
         </div>
       ) : null}
-    </main>
+    </div>
   );
 }

@@ -219,7 +219,7 @@ export function EmptyWorkspace({
                 <span
                   className={`mono flex h-7 w-7 items-center justify-center rounded-full border text-[11px] ${
                     stage.active
-                      ? "border-green-500/50 text-green-400"
+                      ? "border-success/50 text-success"
                       : "border-border text-muted-foreground"
                   }`}
                 >

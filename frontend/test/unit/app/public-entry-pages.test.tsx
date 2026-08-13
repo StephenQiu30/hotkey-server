@@ -31,6 +31,11 @@ describe("公开入口页面", () => {
   it("首页的热点入口指向受保护的热点雷达", () => {
     render(<HomePage />);
 
+    expect(screen.getByRole("link", { name: "跳到主要内容" })).toHaveAttribute(
+      "href",
+      "#main-content"
+    );
+    expect(screen.getByRole("main")).toHaveAttribute("id", "main-content");
     expect(screen.getByRole("link", { name: "查看热点雷达" })).toHaveAttribute(
       "href",
       "/dashboard/contents"
@@ -65,6 +70,10 @@ describe("公开入口页面", () => {
     expect(
       screen.getByRole("complementary", { name: "HotKey 品牌介绍" })
     ).toBeInTheDocument();
+    expect(screen.getByAltText("")).toHaveClass("dark:invert");
+    expect(screen.getByText("表单内容").closest('[data-slot="card"]')).toHaveClass(
+      "rounded-xl"
+    );
   });
 
   it("未找到页面提供中文说明和可恢复的导航入口", () => {

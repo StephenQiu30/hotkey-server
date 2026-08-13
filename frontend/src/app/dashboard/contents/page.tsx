@@ -5,7 +5,21 @@ import { FilterX, Flame, Loader2, RefreshCw, Search } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -34,6 +48,22 @@ const sortLabels: Readonly<Record<HotspotSort, string>> = {
   relevance: "相关性",
   heat: "热度",
 };
+
+function HotspotLoadingState() {
+  return (
+    <div
+      aria-live="polite"
+      className="flex min-h-80 items-center justify-center"
+      role="status"
+    >
+      <Loader2
+        aria-hidden="true"
+        className="h-5 w-5 animate-spin text-muted-foreground"
+      />
+      <span className="sr-only">正在加载热点</span>
+    </div>
+  );
+}
 
 function positiveNumber(value: string | null) {
   const parsed = Number(value);
@@ -228,7 +258,7 @@ function HotspotRadar() {
   }
 
   return (
-    <main className="app-page">
+    <div className="app-page">
       <PageHeader
         action={
           <Button
@@ -264,9 +294,27 @@ function HotspotRadar() {
         ))}
       </section>
 
-      <Card className="mt-6 shadow-none">
-        <CardContent className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-6">
-          <div className="space-y-2 md:col-span-2">
+      <Card className="mt-6 overflow-hidden" role="region" aria-label="热点筛选">
+        <CardHeader className="flex flex-col gap-4 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle className="text-sm">筛选热点</CardTitle>
+            <CardDescription>
+              条件会同步到地址栏，便于保留和分享当前视图。
+            </CardDescription>
+          </div>
+          <Button
+            className="w-full sm:w-auto"
+            disabled={!filtered}
+            onClick={clearFilters}
+            size="sm"
+            variant="outline"
+          >
+            <FilterX />
+            清除筛选
+          </Button>
+        </CardHeader>
+        <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-12">
+          <div className="space-y-2 md:col-span-2 xl:col-span-3">
             <Label htmlFor="hotspot-search">搜索热点</Label>
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -281,8 +329,8 @@ function HotspotRadar() {
               />
             </div>
           </div>
-          <div className="space-y-2">
-            <Label>来源</Label>
+          <div className="space-y-2 xl:col-span-2">
+            <Label htmlFor="hotspot-source">来源</Label>
             <Select
               value={sourceID?.toString() ?? "all"}
               onValueChange={(value) => {
@@ -291,7 +339,7 @@ function HotspotRadar() {
                 resetPage({ source: next?.toString() });
               }}
             >
-              <SelectTrigger aria-label="热点来源">
+              <SelectTrigger aria-label="热点来源" id="hotspot-source">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -306,8 +354,8 @@ function HotspotRadar() {
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label>监控</Label>
+          <div className="space-y-2 xl:col-span-2">
+            <Label htmlFor="hotspot-monitor">监控</Label>
             <Select
               value={monitorID?.toString() ?? "all"}
               onValueChange={(value) => {
@@ -325,7 +373,7 @@ function HotspotRadar() {
                 });
               }}
             >
-              <SelectTrigger aria-label="热点监控">
+              <SelectTrigger aria-label="热点监控" id="hotspot-monitor">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -343,32 +391,8 @@ function HotspotRadar() {
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="hotspot-from">开始日期</Label>
-            <Input
-              id="hotspot-from"
-              type="date"
-              value={publishedFrom}
-              onChange={(event) => {
-                setPublishedFrom(event.target.value);
-                resetPage({ from: event.target.value || undefined });
-              }}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="hotspot-to">结束日期</Label>
-            <Input
-              id="hotspot-to"
-              type="date"
-              value={publishedTo}
-              onChange={(event) => {
-                setPublishedTo(event.target.value);
-                resetPage({ to: event.target.value || undefined });
-              }}
-            />
-          </div>
-          <div className="space-y-2 md:col-span-2 xl:col-span-2">
-            <Label>排序</Label>
+          <div className="space-y-2 xl:col-span-2">
+            <Label htmlFor="hotspot-sort">排序</Label>
             <Select
               value={sort}
               onValueChange={(value) => {
@@ -377,7 +401,7 @@ function HotspotRadar() {
                 resetPage({ sort: next === "discovered" ? undefined : next });
               }}
             >
-              <SelectTrigger aria-label="热点排序">
+              <SelectTrigger aria-label="热点排序" id="hotspot-sort">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -395,15 +419,31 @@ function HotspotRadar() {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex items-end md:col-span-2 xl:col-span-4">
-            <Button
-              disabled={!filtered}
-              onClick={clearFilters}
-              variant="outline"
-            >
-              <FilterX />
-              清除筛选
-            </Button>
+          <div className="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2 xl:col-span-3">
+            <div className="space-y-2">
+              <Label htmlFor="hotspot-from">开始日期</Label>
+              <Input
+                id="hotspot-from"
+                type="date"
+                value={publishedFrom}
+                onChange={(event) => {
+                  setPublishedFrom(event.target.value);
+                  resetPage({ from: event.target.value || undefined });
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="hotspot-to">结束日期</Label>
+              <Input
+                id="hotspot-to"
+                type="date"
+                value={publishedTo}
+                onChange={(event) => {
+                  setPublishedTo(event.target.value);
+                  resetPage({ to: event.target.value || undefined });
+                }}
+              />
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -421,21 +461,33 @@ function HotspotRadar() {
       ) : null}
 
       {loading && items.length === 0 ? (
-        <div className="flex min-h-80 items-center justify-center">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        </div>
+        <HotspotLoadingState />
       ) : null}
 
       {!loading && !error && items.length === 0 ? (
-        <div className="mt-6 rounded-xl border border-dashed border-border px-6 py-14 text-center">
-          <Flame className="mx-auto h-6 w-6 text-muted-foreground" />
-          <h2 className="mt-4 font-medium">暂时没有热点</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {filtered
-              ? "调整或清除筛选条件。"
-              : "创建监控并立即扫描后，新内容会出现在这里。"}
-          </p>
-        </div>
+        <Card className="mt-6 border-dashed">
+          <Empty className="min-h-72 border-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Flame />
+              </EmptyMedia>
+              <EmptyTitle>暂时没有热点</EmptyTitle>
+              <EmptyDescription>
+                {filtered
+                  ? "当前筛选条件没有结果，可以清除筛选后查看全部热点。"
+                  : "创建监控并立即扫描后，新内容会出现在这里。"}
+              </EmptyDescription>
+            </EmptyHeader>
+            {filtered ? (
+              <EmptyContent>
+                <Button onClick={clearFilters} variant="outline">
+                  <FilterX />
+                  清除筛选
+                </Button>
+              </EmptyContent>
+            ) : null}
+          </Empty>
+        </Card>
       ) : null}
 
       {items.length ? (
@@ -467,7 +519,7 @@ function HotspotRadar() {
           </div>
         </section>
       ) : null}
-    </main>
+    </div>
   );
 }
 
@@ -475,9 +527,7 @@ export default function ContentsPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-80 items-center justify-center">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        </div>
+        <HotspotLoadingState />
       }
     >
       <HotspotRadar />

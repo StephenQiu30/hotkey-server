@@ -347,7 +347,7 @@ export default function MonitorsPage() {
   }
 
   return (
-    <main className="app-page">
+    <div className="app-page">
       <PageHeader
         eyebrow="MONITORING"
         title="热点监控"
@@ -757,6 +757,6 @@ export default function MonitorsPage() {
         resourceName={deleteTarget?.name ?? "未命名监控"}
         title="删除监控？"
       />
-    </main>
+    </div>
   );
 }

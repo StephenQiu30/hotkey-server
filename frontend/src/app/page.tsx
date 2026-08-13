@@ -44,7 +44,7 @@ export default function HomePage() {
     <div className="min-h-screen bg-background text-foreground">
       <PublicHeader />
 
-      <main>
+      <main id="main-content" tabIndex={-1}>
         <section className="mx-auto grid min-h-[calc(100svh-72px)] max-w-[1440px] grid-rows-[1fr_auto] px-5 sm:px-8">
           <div className="grid items-center gap-12 py-16 lg:translate-y-7 lg:grid-cols-[1.05fr_1.25fr_.7fr] lg:gap-8 lg:py-0">
             <div className="max-w-[520px] lg:pl-9">

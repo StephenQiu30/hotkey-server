@@ -25,7 +25,7 @@ export default function ThemeToggle({ className }: { className?: string }) {
             size="icon"
             onClick={toggleTheme}
             aria-label={label}
-            className={cn("h-8 w-8 text-muted-foreground", className)}
+            className={cn("text-muted-foreground", className)}
           >
             {theme === "dark" ? <Sun /> : <Moon />}
           </Button>

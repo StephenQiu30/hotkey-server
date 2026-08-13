@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Menu } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import ThemeToggle from "@/components/ThemeToggle";
+import { SkipLink } from "@/components/SkipLink";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -24,7 +25,8 @@ const navigation = [
 
 export function PublicHeader() {
   return (
-    <header className="sticky top-0 z-50 bg-background/95 backdrop-blur-sm">
+    <header className="sticky top-0 z-50 border-b border-border/70 bg-background/95 backdrop-blur-sm">
+      <SkipLink />
       <div className="mx-auto flex h-[72px] max-w-[1440px] items-center px-5 sm:px-8">
         <Link
           href="/"
