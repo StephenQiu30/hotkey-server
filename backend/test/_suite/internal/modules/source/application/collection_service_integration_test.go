@@ -28,7 +28,7 @@ func TestCollectionServiceFetchesOnceAndDurablyReconcilesEveryTarget(t *testing.
 	request := collectionRequestForService(t, runtime, "shared-capture", 2)
 	connector := &collectionConnectorFake{result: domain.FetchResult{
 		Items: []domain.SourceItem{{
-			SourceCode: "rss", ExternalID: "post-42", ContentType: "article", Title: "Safe title",
+			SourceCode: "rss", ExternalID: "post-42", ContentType: "article", Title: "Climate safe title",
 			Body: "body retained from the source Feed", ObservedAt: time.Date(2026, time.July, 16, 8, 5, 0, 0, time.UTC),
 			Metrics: domain.SourceMetrics{ViewCount: domain.KnownMetric(12), CommentCount: domain.KnownMetric(3)},
 		}}, NextCursor: "cursor-42", ETag: "etag-42", LastModified: "Wed, 16 Jul 2026 08:05:00 GMT",
@@ -95,7 +95,7 @@ func TestCollectionServiceDistinguishesPartialItemResultsFromFullFailure(t *test
 	partialRequest := collectionRequestForService(t, runtime, "partial-item-window", 1)
 	partialConnector := &collectionConnectorFake{result: domain.FetchResult{
 		Items: []domain.SourceItem{{
-			SourceCode: "hacker_news", ExternalID: "101", ContentType: "article", Title: "Completed prefix",
+			SourceCode: "hacker_news", ExternalID: "101", ContentType: "article", Title: "Climate completed prefix",
 			URL: "https://news.ycombinator.com/item?id=101", ObservedAt: partialRequest.WindowStart,
 		}},
 		NextCursor: "101", HasMore: true,
