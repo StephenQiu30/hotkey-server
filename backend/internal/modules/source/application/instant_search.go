@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"math"
 	"strings"
 	"sync"
 	"time"
@@ -180,7 +179,7 @@ func (service *InstantSearchService) searchConnection(ctx context.Context, conne
 		if candidate.PublishedAt != nil && candidate.PublishedAt.Before(now.Add(-7*24*time.Hour)) {
 			continue
 		}
-		relevance, mentioned := instantSearchRelevance(query, candidate.Title+" "+candidate.Body)
+		relevance, mentioned := collectionRelevance(query, candidate.Title+" "+candidate.Body)
 		if relevance < 50 || !mentioned && relevance < 65 {
 			continue
 		}
@@ -239,25 +238,6 @@ func containsInstantSource(values []string, candidate string) bool {
 		}
 	}
 	return false
-}
-
-func instantSearchRelevance(query, text string) (int, bool) {
-	query = normalizedCollectionText(query)
-	text = normalizedCollectionText(text)
-	if query != "" && strings.Contains(text, query) {
-		return 100, true
-	}
-	terms := strings.Fields(query)
-	if len(terms) == 0 {
-		return 0, false
-	}
-	matched := 0
-	for _, term := range terms {
-		if strings.Contains(text, term) {
-			matched++
-		}
-	}
-	return int(math.Round(float64(matched) / float64(len(terms)) * 80)), false
 }
 
 func instantSearchErrorCode(err error) string {

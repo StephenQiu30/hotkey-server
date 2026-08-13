@@ -10,7 +10,6 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	"go.uber.org/zap"
-	"golang.org/x/text/unicode/norm"
 )
 
 const (
@@ -213,11 +212,17 @@ func (service *CollectionService) execute(ctx context.Context, request domain.Co
 }
 
 func filterCollectionItems(items []domain.SourceItem, terms []domain.CollectionTerm) []domain.SourceItem {
+	includes := []string{}
 	excludes := []string{}
 	for _, term := range terms {
 		value := normalizedCollectionText(term.Value)
-		if value != "" && term.Excluded {
+		if value == "" {
+			continue
+		}
+		if term.Excluded {
 			excludes = append(excludes, value)
+		} else {
+			includes = append(includes, value)
 		}
 	}
 	filtered := make([]domain.SourceItem, 0, len(items))
@@ -233,13 +238,22 @@ func filterCollectionItems(items []domain.SourceItem, terms []domain.CollectionT
 		if excluded {
 			continue
 		}
+		if len(includes) > 0 && !matchesAnyCollectionQuery(includes, text) {
+			continue
+		}
 		filtered = append(filtered, item)
 	}
 	return filtered
 }
 
-func normalizedCollectionText(value string) string {
-	return strings.ToLower(strings.Join(strings.Fields(norm.NFKC.String(value)), " "))
+func matchesAnyCollectionQuery(queries []string, text string) bool {
+	for _, query := range queries {
+		relevance, phraseMatched := collectionRelevance(query, text)
+		if relevance >= 50 && (phraseMatched || relevance >= 65) {
+			return true
+		}
+	}
+	return false
 }
 
 func (service *CollectionService) fail(ctx context.Context, run domain.CollectionRun, targets []domain.PublishedCollectionTarget, result domain.FetchResult, kind domain.CollectionErrorKind, cause error) (domain.CollectionRun, error) {
