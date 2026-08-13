@@ -6,6 +6,7 @@ import (
 
 	sourceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/preset"
 )
 
 // SourceResult mirrors Result for Swagger only. Runtime handlers always use
@@ -162,15 +163,45 @@ type SourceConfigRequest struct {
 }
 
 type CreateSourceRequest struct {
-	SourceType     string              `json:"source_type" binding:"required,oneof=rss hacker_news x bing_grounding bilibili weibo google_agent_search"`
-	Name           string              `json:"name" binding:"required"`
-	Endpoint       string              `json:"endpoint" binding:"required"`
-	AuthType       string              `json:"auth_type" binding:"required,oneof=none api_key oauth2 bearer"`
-	CredentialRef  string              `json:"credential_ref"`
-	Credential     *string             `json:"credential,omitempty"`
-	Config         SourceConfigRequest `json:"config"`
-	Enabled        *bool               `json:"enabled,omitempty"`
-	TermsPolicyURL string              `json:"terms_policy_url"`
+	PresetID       string                     `json:"preset_id,omitempty" binding:"omitempty,max=64"`
+	PresetValues   []SourcePresetValueRequest `json:"preset_values,omitempty" binding:"omitempty,max=10"`
+	SourceType     string                     `json:"source_type,omitempty" binding:"omitempty,oneof=rss hacker_news x bing_grounding bilibili weibo google_agent_search"`
+	Name           string                     `json:"name" binding:"required"`
+	Endpoint       string                     `json:"endpoint,omitempty"`
+	AuthType       string                     `json:"auth_type,omitempty" binding:"omitempty,oneof=none api_key oauth2 bearer"`
+	CredentialRef  string                     `json:"credential_ref"`
+	Credential     *string                    `json:"credential,omitempty"`
+	Config         SourceConfigRequest        `json:"config"`
+	Enabled        *bool                      `json:"enabled,omitempty"`
+	TermsPolicyURL string                     `json:"terms_policy_url"`
+}
+
+type SourcePresetValueRequest struct {
+	Key   string `json:"key" binding:"required,max=64"`
+	Value string `json:"value" binding:"required,max=2048"`
+}
+
+type SourcePresetInputResponse struct {
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	Placeholder string `json:"placeholder"`
+	Required    bool   `json:"required"`
+	MaxLength   int    `json:"max_length"`
+}
+
+type SourcePresetResponse struct {
+	ID                 string                      `json:"id"`
+	Label              string                      `json:"label"`
+	Description        string                      `json:"description"`
+	SourceType         string                      `json:"source_type"`
+	AuthLabel          string                      `json:"auth_label"`
+	Cost               string                      `json:"cost" enums:"free,paid,credentialed"`
+	CredentialRequired bool                        `json:"credential_required"`
+	Inputs             []SourcePresetInputResponse `json:"inputs"`
+}
+
+type SourcePresetPageResponse struct {
+	Items []SourcePresetResponse `json:"items"`
 }
 
 type UpdateSourceRequest struct {
@@ -333,11 +364,40 @@ func sourceCreateInput(request CreateSourceRequest) (domain.SourceConnection, er
 	if err != nil {
 		return domain.SourceConnection{}, err
 	}
+	if request.PresetID != "" {
+		if request.SourceType != "" || request.Endpoint != "" || request.AuthType != "" || request.Enabled != nil || request.TermsPolicyURL != "" {
+			return domain.SourceConnection{}, fmt.Errorf("preset creation cannot override server-managed connection fields")
+		}
+		values := make(map[string]string, len(request.PresetValues))
+		for _, item := range request.PresetValues {
+			if item.Key == "" || len(item.Key) > 64 || len([]rune(item.Value)) > 2048 {
+				return domain.SourceConnection{}, fmt.Errorf("invalid preset value")
+			}
+			if _, exists := values[item.Key]; exists {
+				return domain.SourceConnection{}, fmt.Errorf("duplicate preset value %q", item.Key)
+			}
+			values[item.Key] = item.Value
+		}
+		return preset.Resolve(request.PresetID, request.Name, values, config)
+	}
 	enabled := true
 	if request.Enabled != nil {
 		enabled = *request.Enabled
 	}
 	return domain.SourceConnection{SourceType: domain.SourceType(request.SourceType), Name: request.Name, Endpoint: request.Endpoint, AuthType: domain.AuthType(request.AuthType), CredentialRef: request.CredentialRef, Config: config, Enabled: enabled, TermsPolicyURL: request.TermsPolicyURL}, nil
+}
+
+func sourcePresetPageResponse() SourcePresetPageResponse {
+	definitions := preset.Catalog()
+	response := SourcePresetPageResponse{Items: make([]SourcePresetResponse, 0, len(definitions))}
+	for _, definition := range definitions {
+		item := SourcePresetResponse{ID: definition.ID, Label: definition.Label, Description: definition.Description, SourceType: string(definition.SourceType), AuthLabel: definition.AuthLabel, Cost: string(definition.Cost), CredentialRequired: definition.CredentialRequired, Inputs: make([]SourcePresetInputResponse, 0, len(definition.Inputs))}
+		for _, input := range definition.Inputs {
+			item.Inputs = append(item.Inputs, SourcePresetInputResponse{Key: input.Key, Label: input.Label, Placeholder: input.Placeholder, Required: input.Required, MaxLength: input.MaxLength})
+		}
+		response.Items = append(response.Items, item)
+	}
+	return response
 }
 
 func sourceUpdateInput(request UpdateSourceRequest) (sourceapplication.UpdateInput, error) {

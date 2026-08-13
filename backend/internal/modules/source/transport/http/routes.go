@@ -13,6 +13,8 @@ func RegisterRoutes(router *gin.Engine, service sourceService, authenticator htt
 		return
 	}
 	handler := NewHandler(service)
+	presets := router.Group("/api/v1/source-presets", httptransport.RequireAuthentication(authenticator), httptransport.RequireRoles(httptransport.RoleAdmin))
+	presets.GET("", httptransport.Wrap(handler.ListPresets))
 	api := router.Group("/api/v1/source-connections", httptransport.RequireAuthentication(authenticator))
 	api.GET("", httptransport.Wrap(handler.List))
 	api.GET("/:id", httptransport.Wrap(handler.Get))

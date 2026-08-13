@@ -525,14 +525,16 @@ required property without making explicit null impossible to bind. */
   };
 
   type CreateSourceRequest = {
-    auth_type: "none" | "api_key" | "oauth2" | "bearer";
+    auth_type?: "none" | "api_key" | "oauth2" | "bearer";
     config?: SourceConfigRequest;
     credential?: string;
     credential_ref?: string;
     enabled?: boolean;
-    endpoint: string;
+    endpoint?: string;
     name: string;
-    source_type:
+    preset_id?: string;
+    preset_values?: SourcePresetValueRequest[];
+    source_type?:
       | "rss"
       | "hacker_news"
       | "x"
@@ -2374,6 +2376,34 @@ value never authorizes v2 raw evidence or document body persistence. */
     expected_source_version: number;
   };
 
+  type SourcePresetInputResponse = {
+    key?: string;
+    label?: string;
+    max_length?: number;
+    placeholder?: string;
+    required?: boolean;
+  };
+
+  type SourcePresetPageResponse = {
+    items?: SourcePresetResponse[];
+  };
+
+  type SourcePresetResponse = {
+    auth_label?: string;
+    cost?: "free" | "paid" | "credentialed";
+    credential_required?: boolean;
+    description?: string;
+    id?: string;
+    inputs?: SourcePresetInputResponse[];
+    label?: string;
+    source_type?: string;
+  };
+
+  type SourcePresetValueRequest = {
+    key: string;
+    value: string;
+  };
+
   type SourceReadPageResponse = {
     items?: SourceReadResponse[];
     next_cursor?: string;
@@ -2450,6 +2480,12 @@ value never authorizes v2 raw evidence or document body persistence. */
   type SourceResultHttpSourceEndpointCapabilityResponseDTO = {
     code?: number;
     data?: SourceEndpointCapabilityResponseDTO;
+    message?: string;
+  };
+
+  type SourceResultHttpSourcePresetPageResponse = {
+    code?: number;
+    data?: SourcePresetPageResponse;
     message?: string;
   };
 

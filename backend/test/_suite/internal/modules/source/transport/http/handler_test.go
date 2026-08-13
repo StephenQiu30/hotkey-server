@@ -36,6 +36,50 @@ func TestSourceRoutesRequireAdminForManagement(t *testing.T) {
 	}
 }
 
+func TestSourcePresetCatalogIsServedByTheBackend(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	RegisterRoutes(router, &recordingSourceService{}, testAuthenticator{subject: httptransport.Subject{UserID: 1, SessionID: 1, Role: httptransport.RoleAdmin}})
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/source-presets", nil)
+	request.Header.Set("Authorization", "Bearer admin")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	body := response.Body.String()
+	for _, value := range []string{`"id":"youtube_channel"`, `"label":"YouTube 频道（免费）"`, `"key":"youtube_channel_id"`, `"id":"x"`, `"cost":"paid"`} {
+		if !strings.Contains(body, value) {
+			t.Fatalf("preset catalog is missing %s: %s", value, body)
+		}
+	}
+	if strings.Contains(body, "feeds/videos.xml") || strings.Contains(body, "api.x.com") {
+		t.Fatalf("preset catalog exposed server-side endpoint configuration: %s", body)
+	}
+}
+
+func TestSourceCreateResolvesPresetConfigurationOnTheBackend(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &recordingSourceService{}
+	router := gin.New()
+	RegisterRoutes(router, service, testAuthenticator{subject: httptransport.Subject{UserID: 1, SessionID: 1, Role: httptransport.RoleAdmin}})
+	body := `{"preset_id":"github_releases","name":"OpenAI SDK releases","preset_values":[{"key":"github_repository","value":"openai/openai-node"}],"config":{}}`
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/source-connections", strings.NewReader(body))
+	request.Header.Set("Authorization", "Bearer admin")
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusCreated, response.Body.String())
+	}
+	connection := service.input.Connection
+	if connection.SourceType != domain.SourceTypeRSS || connection.AuthType != domain.AuthTypeNone || connection.Endpoint != "https://github.com/openai/openai-node/releases.atom" || !connection.Enabled {
+		t.Fatalf("resolved connection = %#v", connection)
+	}
+}
+
 func TestSourceResponsesNeverEchoCredentialReference(t *testing.T) {
 	t.Parallel()
 	public := sourceResponse(domain.PublicSourceConnection{ID: 1, Version: 2, Name: "RSS", SourceType: domain.SourceTypeRSS, CredentialConfigured: true})
@@ -200,6 +244,16 @@ func TestActualSourceHandlerRecoveryDoesNotLogSensitiveRequestFacts(t *testing.T
 }
 
 type panicSourceService struct{ createCalls int }
+
+type recordingSourceService struct {
+	panicSourceService
+	input sourceapplication.CreateInput
+}
+
+func (service *recordingSourceService) Create(_ context.Context, input sourceapplication.CreateInput) (*domain.ManagementSourceConnection, error) {
+	service.input = input
+	return &domain.ManagementSourceConnection{PublicSourceConnection: domain.PublicSourceConnection{ID: 1, Version: 1, Name: input.Connection.Name, SourceType: input.Connection.SourceType, Enabled: input.Connection.Enabled}, Endpoint: input.Connection.Endpoint, Config: input.Connection.Config}, nil
+}
 
 func (service *panicSourceService) Create(context.Context, sourceapplication.CreateInput) (*domain.ManagementSourceConnection, error) {
 	service.createCalls++

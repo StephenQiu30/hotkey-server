@@ -181,3 +181,14 @@ export async function postSourceConnectionsIdRestore(
     }
   );
 }
+
+/** List source connection presets GET /api/v1/source-presets */
+export async function getSourcePresets(options?: RequestOptions) {
+  return request<HotKeyAPI.SourceResultHttpSourcePresetPageResponse>(
+    "/api/v1/source-presets",
+    {
+      method: "GET",
+      ...(options || {}),
+    }
+  );
+}

@@ -33,6 +33,25 @@ type Handler struct{ service sourceService }
 
 func NewHandler(service sourceService) *Handler { return &Handler{service: service} }
 
+// ListPresets exposes safe source-selection metadata while keeping endpoint
+// templates and fixed connection policy inside the backend resolver.
+// @Summary List source connection presets
+// @Tags sources
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} SourceResult[SourcePresetPageResponse]
+// @Failure 401 {object} SourceResult[EmptyResponse]
+// @Failure 403 {object} SourceResult[EmptyResponse]
+// @Router /api/v1/source-presets [get]
+func (handler *Handler) ListPresets(c *gin.Context) error {
+	httptransport.SetModule(c, "source")
+	if _, err := sourceSubject(c); err != nil {
+		return err
+	}
+	httptransport.OK(c, sourcePresetPageResponse())
+	return nil
+}
+
 // List exposes the public Source fields to viewers/editors. Administrators
 // additionally receive endpoint and fixed allowlisted configuration fields,
 // represented by SourceReadPageResponse's optional management branch.

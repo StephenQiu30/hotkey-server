@@ -6899,6 +6899,42 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/source-presets": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sources"
+                ],
+                "summary": "List source connection presets",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-http_SourcePresetPageResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.SourceResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/source-webhooks/bilibili": {
             "post": {
                 "consumes": [
@@ -8881,10 +8917,7 @@ const docTemplate = `{
         "http.CreateSourceRequest": {
             "type": "object",
             "required": [
-                "auth_type",
-                "endpoint",
-                "name",
-                "source_type"
+                "name"
             ],
             "properties": {
                 "auth_type": {
@@ -8913,6 +8946,17 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                },
+                "preset_id": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "preset_values": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "items": {
+                        "$ref": "#/definitions/http.SourcePresetValueRequest"
+                    }
                 },
                 "source_type": {
                     "type": "string",
@@ -12639,6 +12683,91 @@ const docTemplate = `{
                 }
             }
         },
+        "http.SourcePresetInputResponse": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "max_length": {
+                    "type": "integer"
+                },
+                "placeholder": {
+                    "type": "string"
+                },
+                "required": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "http.SourcePresetPageResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.SourcePresetResponse"
+                    }
+                }
+            }
+        },
+        "http.SourcePresetResponse": {
+            "type": "object",
+            "properties": {
+                "auth_label": {
+                    "type": "string"
+                },
+                "cost": {
+                    "type": "string",
+                    "enum": [
+                        "free",
+                        "paid",
+                        "credentialed"
+                    ]
+                },
+                "credential_required": {
+                    "type": "boolean"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "inputs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.SourcePresetInputResponse"
+                    }
+                },
+                "label": {
+                    "type": "string"
+                },
+                "source_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.SourcePresetValueRequest": {
+            "type": "object",
+            "required": [
+                "key",
+                "value"
+            ],
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "value": {
+                    "type": "string",
+                    "maxLength": 2048
+                }
+            }
+        },
         "http.SourceReadPageResponse": {
             "type": "object",
             "properties": {
@@ -12825,6 +12954,20 @@ const docTemplate = `{
                 },
                 "data": {
                     "$ref": "#/definitions/http.SourceEndpointCapabilityResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.SourceResult-http_SourcePresetPageResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.SourcePresetPageResponse"
                 },
                 "message": {
                     "type": "string"
