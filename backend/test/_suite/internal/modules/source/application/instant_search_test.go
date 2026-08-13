@@ -69,6 +69,31 @@ func TestInstantSearchValidatesAuthenticationAndInputBeforeCallingSources(t *tes
 	assertAppCode(t, err, sharederrors.CodeInvalidCollectionRequest)
 }
 
+func TestCollectionRelevanceUsesASCIIWordBoundariesAndKeepsCJKSubstrings(t *testing.T) {
+	tests := []struct {
+		name      string
+		query     string
+		text      string
+		relevance int
+		mentioned bool
+	}{
+		{name: "standalone acronym", query: "AI", text: "AI governance", relevance: 100, mentioned: true},
+		{name: "hyphenated acronym", query: "AI", text: "AI-generated summary", relevance: 100, mentioned: true},
+		{name: "inside tailscale", query: "AI", text: "Tailscale database corruption", relevance: 0},
+		{name: "inside available", query: "AI", text: "Community Edition is now available", relevance: 0},
+		{name: "multi word phrase", query: "AI governance", text: "Operationalizing AI governance today", relevance: 100, mentioned: true},
+		{name: "cjk substring", query: "热点", text: "持续监控热点事件", relevance: 100, mentioned: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			relevance, mentioned := collectionRelevance(test.query, test.text)
+			if relevance != test.relevance || mentioned != test.mentioned {
+				t.Fatalf("collectionRelevance(%q, %q) = %d/%v, want %d/%v", test.query, test.text, relevance, mentioned, test.relevance, test.mentioned)
+			}
+		})
+	}
+}
+
 func assertInstantStatus(t *testing.T, statuses []sharedhotspot.SourceStatus, sourceType string, state sharedhotspot.SourceState, count int, code string) {
 	t.Helper()
 	for _, status := range statuses {

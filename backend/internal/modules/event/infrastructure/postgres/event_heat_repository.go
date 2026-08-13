@@ -69,7 +69,7 @@ func (repository *EventHeatRepository) ListMetricMicroEventIDsForContent(ctx con
 		return nil, eventapplication.ErrInvalidEventHeatContract
 	}
 	rows, err := repository.runtime.SQL.QueryContext(ctx, `
-SELECT DISTINCT COALESCE(event.merged_into_event_id,event.id) AS current_micro_event_id
+SELECT DISTINCT COALESCE(event.merged_into_micro_event_id,event.id) AS current_micro_event_id
 FROM contents AS content
 JOIN documents AS document
   ON document.source_connection_id=content.source_connection_id

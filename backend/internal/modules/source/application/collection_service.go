@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
@@ -230,7 +229,7 @@ func filterCollectionItems(items []domain.SourceItem, terms []domain.CollectionT
 		text := normalizedCollectionText(item.Title + " " + item.Body)
 		excluded := false
 		for _, term := range excludes {
-			if strings.Contains(text, term) {
+			if containsCollectionQuery(text, term) {
 				excluded = true
 				break
 			}

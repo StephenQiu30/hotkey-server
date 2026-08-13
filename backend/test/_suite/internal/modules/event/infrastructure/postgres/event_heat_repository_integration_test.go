@@ -71,3 +71,49 @@ VALUES ('heat-v2','active',.25,.20,.15,.15,.15,.10,$1,CURRENT_TIMESTAMP) RETURNI
 		t.Fatal("append-only heat snapshot accepted mutation")
 	}
 }
+
+func TestEventHeatRepositoryListsCurrentMicroEventForContent(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	fixture := seedMicroEventAssignmentFixture(t, runtime, "content-refresh", "accepted")
+	microEvents, err := NewMicroEventRepository(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := microEvents.CommitMicroEventMembership(ctx, microEventCommitFixture(
+		fixture, "create", 0, 0, strings.Repeat("9", 64), "micro-event-content-refresh",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE documents
+SET current_document_version_id=$1
+WHERE source_connection_id=$2 AND external_work_id='work-content-refresh'`, fixture.documentVersionID, fixture.sourceID); err != nil {
+		t.Fatal(err)
+	}
+	var contentID int64
+	if err := runtime.SQL.QueryRow(`INSERT INTO contents (
+source_connection_id,external_id,content_type,title,canonical_url,published_at,fetched_at,dedupe_key)
+VALUES ($1,'work-content-refresh','article','content refresh','https://content-refresh.example/article',$2,$2,$3)
+RETURNING id`, fixture.sourceID, fixture.occurredAt, strings.Repeat("7", 64)).Scan(&contentID); err != nil {
+		t.Fatal(err)
+	}
+	repository, err := NewEventHeatRepository(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err := repository.ListMetricMicroEventIDsForContent(ctx, contentID)
+	if err != nil {
+		t.Fatalf("list content micro-events: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != created.Event.ID {
+		t.Fatalf("micro-event ids = %#v, want [%d]", ids, created.Event.ID)
+	}
+}
