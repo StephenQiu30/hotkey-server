@@ -9139,6 +9139,11 @@ const docTemplate = `{
                 "source_connection_ids"
             ],
             "properties": {
+                "alert_email_enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "example": true
+                },
                 "collection_interval_seconds": {
                     "type": "integer",
                     "default": 1800,
@@ -11112,6 +11117,9 @@ const docTemplate = `{
         "http.MonitorResponse": {
             "type": "object",
             "properties": {
+                "alert_email_enabled": {
+                    "type": "boolean"
+                },
                 "collection_interval_seconds": {
                     "type": "integer"
                 },
@@ -13547,6 +13555,7 @@ const docTemplate = `{
         "http.UpdateMonitorRequest": {
             "type": "object",
             "required": [
+                "alert_email_enabled",
                 "collection_interval_seconds",
                 "expected_monitor_version",
                 "name",
@@ -13554,6 +13563,9 @@ const docTemplate = `{
                 "source_connection_ids"
             ],
             "properties": {
+                "alert_email_enabled": {
+                    "type": "boolean"
+                },
                 "collection_interval_seconds": {
                     "type": "integer",
                     "maximum": 86400,

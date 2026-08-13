@@ -498,6 +498,7 @@ required property without making explicit null impossible to bind. */
   };
 
   type CreateMonitorRequest = {
+    alert_email_enabled?: boolean;
     collection_interval_seconds?: number;
     name: string;
     query: string;
@@ -1513,6 +1514,7 @@ probability or a cross-channel relevance percentage. */
   };
 
   type MonitorResponse = {
+    alert_email_enabled?: boolean;
     collection_interval_seconds?: number;
     description?: string;
     id?: number;
@@ -2595,6 +2597,7 @@ value never authorizes v2 raw evidence or document body persistence. */
   };
 
   type UpdateMonitorRequest = {
+    alert_email_enabled: boolean;
     collection_interval_seconds: number;
     expected_monitor_version: number;
     name: string;

@@ -9136,6 +9136,11 @@
                 "source_connection_ids"
             ],
             "properties": {
+                "alert_email_enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "example": true
+                },
                 "collection_interval_seconds": {
                     "type": "integer",
                     "default": 1800,
@@ -11109,6 +11114,9 @@
         "http.MonitorResponse": {
             "type": "object",
             "properties": {
+                "alert_email_enabled": {
+                    "type": "boolean"
+                },
                 "collection_interval_seconds": {
                     "type": "integer"
                 },
@@ -13544,6 +13552,7 @@
         "http.UpdateMonitorRequest": {
             "type": "object",
             "required": [
+                "alert_email_enabled",
                 "collection_interval_seconds",
                 "expected_monitor_version",
                 "name",
@@ -13551,6 +13560,9 @@
                 "source_connection_ids"
             ],
             "properties": {
+                "alert_email_enabled": {
+                    "type": "boolean"
+                },
                 "collection_interval_seconds": {
                     "type": "integer",
                     "maximum": 86400,

@@ -69,6 +69,7 @@ type CreateMonitorRequest struct {
 	Query                     string  `json:"query" binding:"required,max=160" example:"Claude"`
 	SourceConnectionIDs       []int64 `json:"source_connection_ids" binding:"required,min=1,max=10,dive,gt=0" minItems:"1" maxItems:"10"`
 	CollectionIntervalSeconds int     `json:"collection_interval_seconds,omitempty" binding:"omitempty,gte=300,lte=86400" minimum:"300" maximum:"86400" default:"1800" example:"1800"`
+	AlertEmailEnabled         *bool   `json:"alert_email_enabled,omitempty" default:"true" example:"true"`
 }
 
 type UpdateMonitorRequest struct {
@@ -77,6 +78,7 @@ type UpdateMonitorRequest struct {
 	Query                     string  `json:"query" binding:"required,max=160" example:"Claude"`
 	SourceConnectionIDs       []int64 `json:"source_connection_ids" binding:"required,min=1,max=10,dive,gt=0" minItems:"1" maxItems:"10"`
 	CollectionIntervalSeconds int     `json:"collection_interval_seconds" binding:"required,gte=300,lte=86400" minimum:"300" maximum:"86400" example:"1800"`
+	AlertEmailEnabled         *bool   `json:"alert_email_enabled" binding:"required"`
 }
 
 // ExpectedDraftRequest uses RawMessage so omitted and explicit JSON null have
@@ -199,6 +201,7 @@ type MonitorResponse struct {
 	Status                    string                  `json:"status"`
 	Query                     string                  `json:"query"`
 	CollectionIntervalSeconds int                     `json:"collection_interval_seconds"`
+	AlertEmailEnabled         bool                    `json:"alert_email_enabled"`
 	Sources                   []MonitorSourceResponse `json:"sources"`
 }
 
@@ -250,30 +253,50 @@ func monitorDraft(request CreateMonitorRequest) monitorapplication.DraftInput {
 	if interval == 0 {
 		interval = 1800
 	}
-	return simpleMonitorDraft(request.Name, request.Query, request.SourceConnectionIDs, interval)
+	emailEnabled := true
+	if request.AlertEmailEnabled != nil {
+		emailEnabled = *request.AlertEmailEnabled
+	}
+	return simpleMonitorDraft(simpleMonitorInput{
+		Name: request.Name, Query: request.Query, SourceConnectionIDs: request.SourceConnectionIDs,
+		CollectionIntervalSeconds: interval, AlertEmailEnabled: emailEnabled,
+	})
 }
 
 func updateMonitorDraft(request UpdateMonitorRequest) monitorapplication.DraftInput {
-	return simpleMonitorDraft(request.Name, request.Query, request.SourceConnectionIDs, request.CollectionIntervalSeconds)
+	return simpleMonitorDraft(simpleMonitorInput{
+		Name: request.Name, Query: request.Query, SourceConnectionIDs: request.SourceConnectionIDs,
+		CollectionIntervalSeconds: request.CollectionIntervalSeconds,
+		AlertEmailEnabled:         request.AlertEmailEnabled != nil && *request.AlertEmailEnabled,
+	})
 }
 
-func simpleMonitorDraft(name, query string, sourceConnectionIDs []int64, interval int) monitorapplication.DraftInput {
+type simpleMonitorInput struct {
+	Name                      string
+	Query                     string
+	SourceConnectionIDs       []int64
+	CollectionIntervalSeconds int
+	AlertEmailEnabled         bool
+}
+
+func simpleMonitorDraft(input simpleMonitorInput) monitorapplication.DraftInput {
 	rules := []domain.MonitorRule{{
 		RuleType: domain.RuleTypeKeyword, Operator: domain.RuleOperatorContains,
-		Value: query, Weight: 100, Priority: 1, Enabled: true,
+		Value: input.Query, Weight: 100, Priority: 1, Enabled: true,
 	}}
-	sources := make([]domain.MonitorSource, 0, len(sourceConnectionIDs))
-	for index, sourceConnectionID := range sourceConnectionIDs {
+	sources := make([]domain.MonitorSource, 0, len(input.SourceConnectionIDs))
+	for index, sourceConnectionID := range input.SourceConnectionIDs {
 		sources = append(sources, domain.MonitorSource{
 			SourceConnectionID: sourceConnectionID, Priority: int16(index + 1), Enabled: true,
 		})
 	}
 	return monitorapplication.DraftInput{
-		Name: name, Description: "监控 " + query,
+		Name: input.Name, Description: "监控 " + input.Query,
 		Config: domain.MonitorConfig{
 			Timezone: "Asia/Shanghai", Languages: []string{"zh", "en"},
-			CollectionIntervalSeconds: interval, RelevanceThreshold: 60,
-			EventThreshold: 0, RetentionDays: 30,
+			CollectionIntervalSeconds: input.CollectionIntervalSeconds, RelevanceThreshold: 60,
+			EventThreshold: 0, AlertEmailEnabled: input.AlertEmailEnabled,
+			AlertEmailMinSeverity: domain.AlertEmailSeverityWarning, RetentionDays: 30,
 		},
 		Rules: rules, Sources: sources,
 	}
@@ -364,6 +387,7 @@ func monitorResponse(view monitorapplication.MonitorView) MonitorResponse {
 		return response
 	}
 	response.CollectionIntervalSeconds = configuration.Config.Config.CollectionIntervalSeconds
+	response.AlertEmailEnabled = configuration.Config.Config.AlertEmailEnabled
 	for _, rule := range configuration.Rules {
 		if rule.Enabled && rule.ApprovalStatus == domain.RuleApprovalApproved && rule.RuleType != domain.RuleTypeExcludeKeyword {
 			response.Query = rule.Value

@@ -79,6 +79,7 @@ type SimpleMonitorForm = {
   name: string;
   query: string;
   interval: string;
+  alertEmailEnabled: boolean;
   sourceIds: number[];
 };
 
@@ -91,6 +92,7 @@ const emptyForm = (): SimpleMonitorForm => ({
   name: "",
   query: "",
   interval: "1800",
+  alertEmailEnabled: true,
   sourceIds: [],
 });
 
@@ -215,6 +217,7 @@ export default function MonitorsPage() {
       name: monitor.name ?? "",
       query: queryOf(monitor),
       interval: String(monitor.collection_interval_seconds ?? 1800),
+      alertEmailEnabled: monitor.alert_email_enabled ?? false,
       sourceIds: (monitor.sources ?? []).flatMap((source) =>
         source.source_connection_id == null ? [] : [source.source_connection_id]
       ),
@@ -246,6 +249,7 @@ export default function MonitorsPage() {
         query,
         source_connection_ids: form.sourceIds,
         collection_interval_seconds: Number(form.interval),
+        alert_email_enabled: form.alertEmailEnabled,
       };
       if (editTarget?.id != null && editTarget.version != null) {
         await putMonitorsId(
@@ -704,6 +708,26 @@ export default function MonitorsPage() {
                 )}
               </div>
             </fieldset>
+            <label className="flex items-start gap-3 rounded-lg border border-border p-3">
+              <Checkbox
+                aria-label="高优先级邮件提醒"
+                checked={form.alertEmailEnabled}
+                onCheckedChange={(checked) =>
+                  setForm((current) => ({
+                    ...current,
+                    alertEmailEnabled: checked === true,
+                  }))
+                }
+              />
+              <span>
+                <span className="block text-sm font-medium">
+                  高优先级邮件提醒
+                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  仅在热点达到高或紧急等级时发送到当前账号邮箱。
+                </span>
+              </span>
+            </label>
             <DialogFooter>
               <Button
                 type="button"

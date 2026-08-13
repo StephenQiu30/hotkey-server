@@ -43,6 +43,7 @@ const monitor = {
   status: "active",
   query: "Claude",
   collection_interval_seconds: 1800,
+  alert_email_enabled: false,
   sources: [
     {
       source_connection_id: 4,
@@ -156,6 +157,7 @@ describe("MonitorsPage", () => {
     expect(request.query).toBe("Claude");
     expect(request.source_connection_ids).toEqual([4]);
     expect(request.collection_interval_seconds).toBe(1800);
+    expect(request.alert_email_enabled).toBe(true);
   });
 
   it("edits the same simple fields without exposing draft configuration", async () => {
@@ -179,6 +181,7 @@ describe("MonitorsPage", () => {
         query: "Claude AI",
         source_connection_ids: [4],
         collection_interval_seconds: 1800,
+        alert_email_enabled: false,
       }
     );
     expect(screen.queryByText(/草稿|配置哈希/)).not.toBeInTheDocument();

@@ -148,7 +148,7 @@ func TestSimpleMonitorCreateUsesServerDefaultsAndDraftReplacementKeepsLegacyDefa
 		},
 		{
 			name: "simple update", method: http.MethodPut, path: "/api/v1/monitors/1",
-			body:       `{"expected_monitor_version":4,"name":"AI 产品更新","query":"Claude","source_connection_ids":[7],"collection_interval_seconds":900}`,
+			body:       `{"expected_monitor_version":4,"name":"AI 产品更新","query":"Claude","source_connection_ids":[7],"collection_interval_seconds":900,"alert_email_enabled":false}`,
 			wantStatus: http.StatusOK,
 		},
 		{
@@ -195,14 +195,14 @@ func TestSimpleMonitorCreateUsesServerDefaultsAndDraftReplacementKeepsLegacyDefa
 		t.Fatalf("create/update/replace calls = %d/%d/%d, want 1/1/1", len(service.creates), len(service.updates), len(service.replacements))
 	}
 	created := service.creates[0].Draft
-	if created.Config.CollectionIntervalSeconds != 1800 || created.Config.EventThreshold != 0 || created.Config.RelevanceThreshold != 60 || created.Config.RetentionDays != 30 {
+	if created.Config.CollectionIntervalSeconds != 1800 || created.Config.EventThreshold != 0 || created.Config.RelevanceThreshold != 60 || created.Config.RetentionDays != 30 || !created.Config.AlertEmailEnabled || created.Config.AlertEmailMinSeverity != domain.AlertEmailSeverityWarning {
 		t.Fatalf("simple create defaults = %#v", created.Config)
 	}
 	if created.Rules[0].Value != "OpenAI" || created.Rules[0].Priority != 1 || created.Sources[0].Priority != 1 {
 		t.Fatalf("simple create rule/source = %#v / %#v", created.Rules, created.Sources)
 	}
 	updated := service.updates[0]
-	if updated.MonitorID != 1 || updated.ExpectedMonitorVersion != 4 || updated.Draft.Name != "AI 产品更新" || updated.Draft.Config.CollectionIntervalSeconds != 900 || updated.Draft.Rules[0].Value != "Claude" {
+	if updated.MonitorID != 1 || updated.ExpectedMonitorVersion != 4 || updated.Draft.Name != "AI 产品更新" || updated.Draft.Config.CollectionIntervalSeconds != 900 || updated.Draft.Config.AlertEmailEnabled || updated.Draft.Rules[0].Value != "Claude" {
 		t.Fatalf("simple update = %#v", updated)
 	}
 	replaced := service.replacements[0].Draft
