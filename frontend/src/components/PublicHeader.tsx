@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { Menu } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
-import ThemeToggle from "@/components/ThemeToggle";
 import { SkipLink } from "@/components/SkipLink";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,13 +18,13 @@ import {
 const navigation = [
   { href: "#product", label: "产品" },
   { href: "#workflow", label: "解决方案" },
-  { href: "#sources", label: "资源" },
+  { href: "#sources", label: "来源" },
   { href: "#pricing", label: "定价" },
 ];
 
 export function PublicHeader() {
   return (
-    <header className="sticky top-0 z-50 border-b border-border/70 bg-background/95 backdrop-blur-sm">
+    <header className="sticky top-0 z-50 bg-background">
       <SkipLink />
       <div className="mx-auto flex h-[72px] max-w-[1440px] items-center px-5 sm:px-8">
         <Link
@@ -45,25 +44,17 @@ export function PublicHeader() {
               {item.label}
             </a>
           ))}
-          <Link
-            href="/login"
-            className="text-sm text-foreground no-underline transition-opacity hover:opacity-55 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            登录
-          </Link>
           <Button asChild size="sm" className="h-10 rounded-lg px-4">
             <Link href="/register">开始使用</Link>
           </Button>
         </nav>
-
-        <ThemeToggle className="ml-auto md:ml-2" />
 
         <Sheet>
           <SheetTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden"
+              className="ml-auto md:hidden"
               aria-label="打开首页导航"
             >
               <Menu />
@@ -85,14 +76,6 @@ export function PublicHeader() {
                   </a>
                 </SheetClose>
               ))}
-              <SheetClose asChild>
-                <Link
-                  href="/login"
-                  className="rounded-md px-3 py-3 text-sm text-foreground no-underline hover:bg-muted"
-                >
-                  登录
-                </Link>
-              </SheetClose>
               <SheetClose asChild>
                 <Button asChild className="mt-3 w-full">
                   <Link href="/register">开始使用</Link>

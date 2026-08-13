@@ -1,11 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, Check, RadioTower, Sparkles } from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
 import { PublicHeader } from "@/components/PublicHeader";
 import { BrandLogo } from "@/components/BrandLogo";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 
 const supportedSources = [
@@ -45,8 +43,8 @@ export default function HomePage() {
       <PublicHeader />
 
       <main id="main-content" tabIndex={-1}>
-        <section className="mx-auto grid min-h-[calc(100svh-72px)] max-w-[1440px] grid-rows-[1fr_auto] px-5 sm:px-8">
-          <div className="grid items-center gap-12 py-16 lg:translate-y-7 lg:grid-cols-[1.05fr_1.25fr_.7fr] lg:gap-8 lg:py-0">
+        <section className="mx-auto flex min-h-[calc(100svh-72px)] max-w-[1440px] items-center px-5 sm:px-8">
+          <div className="grid w-full items-center gap-12 py-16 lg:grid-cols-[1.05fr_1.25fr_.7fr] lg:gap-8 lg:py-0">
             <div className="max-w-[520px] lg:pl-9">
               <h1
                 aria-label="全网热点，先一步看见"
@@ -88,22 +86,11 @@ export default function HomePage() {
               <p>WebSocket 实时推送与邮件通知</p>
             </div>
           </div>
-
-          <div id="sources" className="grid grid-cols-2 sm:grid-cols-4">
-            {supportedSources.map((source) => (
-              <div
-                key={source}
-                className="flex min-h-20 items-center justify-center text-base font-semibold tracking-[-0.03em] sm:min-h-24 lg:min-h-[140px] lg:items-start lg:pt-5"
-              >
-                {source}
-              </div>
-            ))}
-          </div>
         </section>
 
-        <section id="product">
-          <div className="mx-auto max-w-[1440px] px-5 py-28 sm:px-8 lg:py-44">
-            <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-end">
+        <section id="product" className="scroll-mt-24">
+          <div className="mx-auto max-w-[1440px] px-5 pt-28 sm:px-8 lg:pt-36">
+            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_400px] lg:items-end lg:gap-16">
               <h2 className="max-w-5xl text-[clamp(2.8rem,5.4vw,5.5rem)] font-normal leading-[0.98] tracking-[-0.065em]">
                 把多源信号，变成可追溯的热点事件
               </h2>
@@ -113,112 +100,122 @@ export default function HomePage() {
               </p>
             </div>
 
-            <Card
+            <section
               id="briefing"
-              role="region"
               aria-label="多源热点示例"
-              className="mt-16 scroll-mt-24 lg:mt-24"
+              className="mt-16 scroll-mt-24 border-t border-border lg:mt-20"
             >
-              <CardHeader className="flex flex-col gap-3 space-y-0 px-0 py-5 sm:flex-row sm:items-center">
+              <header className="flex flex-col gap-3 py-6 sm:flex-row sm:items-center">
                 <div className="flex items-baseline gap-4">
-                  <h3 className="text-base font-semibold">多源热点示例</h3>
-                  <span className="mono text-xs text-muted-foreground">
+                  <p className="text-sm font-semibold">多源热点示例</p>
+                  <time
+                    dateTime="2026-08-06"
+                    className="mono text-xs text-muted-foreground"
+                  >
                     2026-08-06
-                  </span>
+                  </time>
                 </div>
-                <div className="flex items-center gap-2 sm:ml-auto">
-                  <Badge variant="outline" className="gap-1.5">
-                    <Check className="h-3 w-3 text-success" />
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 sm:ml-auto sm:justify-end">
+                  <span className="inline-flex items-center gap-1.5 text-sm font-medium">
+                    <Check
+                      aria-hidden="true"
+                      className="h-3.5 w-3.5 text-success"
+                    />
                     值得关注
-                  </Badge>
+                  </span>
                   <span className="text-xs text-muted-foreground">
                     更新于 14:20
                   </span>
                 </div>
-              </CardHeader>
+              </header>
 
-              <CardContent className="grid gap-12 p-0 lg:grid-cols-[1.2fr_.8fr_.7fr] lg:gap-10">
-                <article className="py-6">
-                  <span className="mono text-xs text-muted-foreground">
-                    01 / MICRO EVENT
-                  </span>
-                  <h3 className="mt-5 max-w-2xl text-2xl font-semibold leading-tight sm:text-3xl">
+              <div className="grid gap-16 pb-8 pt-10 lg:grid-cols-12 lg:gap-x-20 lg:pb-12 lg:pt-14">
+                <article className="min-w-0 lg:col-span-7">
+                  <p className="text-sm font-medium text-muted-foreground">
+                    微事件 · 端侧 AI
+                  </p>
+                  <h3 className="mt-4 max-w-3xl text-3xl font-semibold leading-[1.15] sm:text-4xl">
                     AI Agent 进入端侧部署阶段，生态合作加速落地
                   </h3>
-                  <p className="mt-4 max-w-2xl text-sm leading-7 text-muted-foreground">
+                  <p className="mt-5 max-w-2xl text-base leading-8 text-muted-foreground">
                     X、Hacker News 与 Bilibili
                     的相关内容在同一观测窗口内出现，经目标匹配与内容家族去重后形成一个微事件。
                   </p>
-                  <div className="mt-12 flex items-end justify-between">
+                  <div className="mt-12 grid gap-5 sm:grid-cols-[1fr_auto] sm:items-end">
                     <div>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-sm text-muted-foreground">
                         Heat v2 · 近 6 小时
                       </p>
-                      <p className="mt-1 text-xs text-success">
+                      <p className="mt-1 text-sm text-success">
                         传播速度正在上升
                       </p>
                     </div>
-                    <p className="mono text-4xl font-medium">
+                    <p className="mono text-5xl font-medium leading-none">
                       92
-                      <span className="ml-1 text-xs font-normal text-muted-foreground">
+                      <span className="ml-1 text-sm font-normal text-muted-foreground">
                         /100
                       </span>
                     </p>
                   </div>
                   <Progress
                     aria-label="事件热度 92 分"
-                    className="mt-4"
+                    className="mt-5 h-1.5"
                     value={92}
                   />
                 </article>
 
-                <aside className="py-6 lg:px-4">
-                  <p className="text-sm font-semibold">多源证据状态</p>
-                  <div className="mt-6 space-y-6">
-                    {evidence.map((item) => (
-                      <div key={item.source} className="grid gap-2">
-                        <p className="text-sm leading-6">{item.source}</p>
-                        <span className="text-xs text-muted-foreground">
-                          {item.time}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <Link
-                    href="/dashboard/contents"
-                    className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-foreground no-underline hover:opacity-55"
-                  >
-                    查看热点雷达 <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </aside>
+                <div className="min-w-0 lg:col-span-5">
+                  <aside>
+                    <h3 className="text-base font-semibold">多源证据状态</h3>
+                    <ul className="mt-7 space-y-6">
+                      {evidence.map((item) => (
+                        <li
+                          key={item.source}
+                          className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-baseline sm:gap-6"
+                        >
+                          <span className="text-sm leading-6">
+                            {item.source}
+                          </span>
+                          <span className="text-xs text-muted-foreground sm:text-right">
+                            {item.time}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    <Link
+                      href="/dashboard/contents"
+                      className="mt-8 inline-flex items-center gap-1.5 text-sm font-medium text-foreground no-underline hover:opacity-55"
+                    >
+                      查看热点雷达 <ArrowRight className="h-4 w-4" />
+                    </Link>
+                  </aside>
 
-                <aside className="self-start rounded-2xl bg-muted/55 p-6 sm:p-8">
-                  <Sparkles className="h-5 w-5" />
-                  <p className="mt-5 text-sm font-semibold">相关性说明</p>
-                  <p className="mt-3 text-sm leading-7 text-muted-foreground">
-                    内容命中已发布监控目标；当前为多来源覆盖。AI
-                    辅助判断证据关系，不把模型分数显示为事实真伪概率。
-                  </p>
-                  <div className="mt-8 flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">用途</span>
-                    <span className="mono font-semibold">人工复核</span>
-                  </div>
-                </aside>
-              </CardContent>
-            </Card>
+                  <aside className="mt-14 max-w-lg">
+                    <h3 className="text-base font-semibold">相关性说明</h3>
+                    <p className="mt-3 text-sm leading-7 text-muted-foreground">
+                      内容命中已发布监控目标；当前为多来源覆盖。AI
+                      辅助判断证据关系，不把模型分数显示为事实真伪概率。
+                    </p>
+                    <dl className="mt-6 flex items-baseline justify-between gap-6 text-xs">
+                      <dt className="text-muted-foreground">用途</dt>
+                      <dd className="mono font-semibold">人工复核</dd>
+                    </dl>
+                  </aside>
+                </div>
+              </div>
+            </section>
           </div>
         </section>
 
-        <section id="workflow">
-          <div className="mx-auto max-w-[1440px] px-5 py-28 sm:px-8 lg:py-40">
-            <div className="grid gap-12 lg:grid-cols-[.8fr_1.2fr]">
+        <section id="workflow" className="scroll-mt-24">
+          <div className="mx-auto max-w-[1440px] px-5 pt-16 sm:px-8">
+            <div className="grid gap-14 lg:grid-cols-[.8fr_1.2fr] lg:gap-20">
               <div>
-                <RadioTower className="h-6 w-6" />
-                <h2 className="mt-6 max-w-xl text-[clamp(2.4rem,4vw,4.5rem)] font-normal leading-[1.02] tracking-[-0.06em]">
+                <h2 className="max-w-xl text-[clamp(2.4rem,4vw,4.5rem)] font-normal leading-[1.02] tracking-[-0.06em]">
                   一条链路，持续找到正在升温的多源事件
                 </h2>
               </div>
-              <div className="space-y-10 lg:pt-2">
+              <div className="space-y-12 lg:pt-2">
                 {workflow.map((item) => (
                   <article
                     key={item.step}
@@ -238,7 +235,40 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="pricing" className="bg-muted/35">
+        <section
+          id="sources"
+          aria-labelledby="sources-heading"
+          className="scroll-mt-24"
+        >
+          <div className="mx-auto grid max-w-[1440px] gap-12 px-5 py-20 sm:px-8 lg:grid-cols-[.8fr_1.2fr] lg:items-start lg:gap-20 lg:py-24">
+            <div>
+              <h2
+                id="sources-heading"
+                className="max-w-lg text-3xl font-normal leading-tight sm:text-4xl"
+              >
+                正式来源，持续聚合
+              </h2>
+              <p className="mt-4 max-w-md text-base leading-7 text-muted-foreground">
+                来源连接遵守官方或授权边界，热点事件始终保留可回溯证据。
+              </p>
+            </div>
+            <ul
+              aria-label="当前支持的来源"
+              className="grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-4 lg:pt-2"
+            >
+              {supportedSources.map((source) => (
+                <li
+                  key={source}
+                  className="text-base font-semibold tracking-[-0.03em]"
+                >
+                  {source}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
+        <section id="pricing" className="scroll-mt-24 bg-muted/35">
           <div className="mx-auto flex max-w-[1440px] flex-col gap-8 px-5 py-24 sm:px-8 lg:flex-row lg:items-end lg:justify-between lg:py-32">
             <div>
               <p className="text-sm text-muted-foreground">从第一条监控开始</p>

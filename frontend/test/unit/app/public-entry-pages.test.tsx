@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import HomePage from "@/app/page";
 import NotFound from "@/app/not-found";
@@ -23,14 +23,17 @@ describe("公开入口页面", () => {
     expect(screen.getByText("Hacker News")).toBeInTheDocument();
     expect(screen.getByText("Bilibili")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "切换到暗色模式" })
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: /切换到.*模式/ })
+    ).not.toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/可信来源|置信度|更可靠/);
   });
 
   it("首页的热点入口指向受保护的热点雷达", () => {
     render(<HomePage />);
 
+    expect(
+      screen.getByRole("region", { name: "多源热点示例" })
+    ).not.toHaveAttribute("data-slot", "card");
     expect(screen.getByRole("link", { name: "跳到主要内容" })).toHaveAttribute(
       "href",
       "#main-content"
@@ -40,6 +43,45 @@ describe("公开入口页面", () => {
       "href",
       "/dashboard/contents"
     );
+  });
+
+  it("首页目录顺序与顶层滚动章节保持一致", () => {
+    render(<HomePage />);
+
+    const navigation = screen.getByRole("navigation", { name: "首页导航" });
+    expect(
+      within(navigation)
+        .getAllByRole("link")
+        .slice(0, 4)
+        .map((link) => link.getAttribute("href"))
+    ).toEqual(["#product", "#workflow", "#sources", "#pricing"]);
+    expect(
+      within(navigation).getByRole("link", { name: "来源" })
+    ).toHaveAttribute("href", "#sources");
+    expect(
+      within(navigation).queryByRole("link", { name: "登录" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(navigation).getByRole("link", { name: "开始使用" })
+    ).toHaveAttribute("href", "/register");
+
+    const main = screen.getByRole("main");
+    expect(
+      Array.from(main.children)
+        .filter((element) => element.id)
+        .map((element) => element.id)
+    ).toEqual(["product", "workflow", "sources", "pricing"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "打开首页导航" }));
+    const mobileNavigation = screen.getByRole("navigation", {
+      name: "移动端首页导航",
+    });
+    expect(
+      within(mobileNavigation).queryByRole("link", { name: "登录" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(mobileNavigation).getByRole("link", { name: "开始使用" })
+    ).toHaveAttribute("href", "/register");
   });
 
   it("首页使用中性的高对比设计令牌", () => {
