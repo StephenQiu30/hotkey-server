@@ -4,7 +4,7 @@ scope: shared
 doc_no: "000"
 title: Acceptance 索引
 status: active
-version: v2.2
+version: v2.3
 owner: HotKey Team
 canonical_path: docs/acceptance/README.md
 ---
@@ -50,3 +50,4 @@ canonical_path: docs/acceptance/README.md
 | 031 | [Hacker-News热门榜单与持续观测](031-Hacker-News热门榜单与持续观测验收.md) | passed |
 | 032 | [热点事件语义监控与出处正文](032-热点事件语义监控与出处正文验收.md) | passed |
 | 035 | [多源AI热点监控首版收敛](035-多源AI热点监控首版收敛验收.md) | passed |
+| 037 | [实时热点监控MVP功能基线](037-实时热点监控MVP功能基线验收.md) | passed |
