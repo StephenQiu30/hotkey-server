@@ -190,11 +190,13 @@ This layout is an evidence-based choice rather than a copy of a purported standa
 The shared GoLand configuration follows the [official JetBrains Run/Debug configuration model](https://www.jetbrains.com/help/go/run-debug-configuration.html): it uses the `DIRECTORY` run kind with `$PROJECT_DIR$/cmd/hotkey` as the run directory and the repository root as the working directory, without depending on a developer-specific project module name.
 
 ```bash
-make lint
-make test
-make build
-make validate
-make ci
+go run ./test/runner vet ./...
+go run ./test/runner test ./... -count=1
+go build ./...
+sh test/tools/validate-architecture.sh
+sh test/tools/validate-repository.sh
+sh test/tools/verify-database-runtime.sh
+sh test/tools/verify-schema.sh
 ```
 
 The complete CI suite requires a disposable PostgreSQL database and a dedicated Redis test database. GitHub Actions checks OpenAPI drift, database behavior, tests, builds, schemas, and architectural boundaries.

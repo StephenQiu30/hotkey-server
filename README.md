@@ -86,7 +86,13 @@ docker compose --env-file .env.prod -f docker-compose-prod.yml up --build --deta
 
 ```bash
 cd backend
-make ci
+go run ./test/runner vet ./...
+go run ./test/runner test ./... -count=1
+go build ./...
+sh test/tools/validate-architecture.sh
+sh test/tools/validate-repository.sh
+sh test/tools/verify-database-runtime.sh
+sh test/tools/verify-schema.sh
 go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
 
 cd ../frontend

@@ -145,7 +145,7 @@ test/                            # 集中的单元测试
 
 ## OpenAPI 协作流程
 
-1. 在 `backend/` 修改接口并执行 `make openapi`，同步生成 `backend/openapi/docs.go` 与根 `docs/openapi/swagger.json`。
+1. 在 `backend/` 修改接口后，执行 CI 工作流“OpenAPI contract acceptance”中的两条 Swaggo 原生命令，同步生成 `backend/openapi/docs.go` 与根 `docs/openapi/swagger.json`。
 2. 在 `frontend/` 执行 `npm run openapi:generate`，只使用官方 `openapi2ts` CLI 生成客户端；默认直接读取根发布契约，可用 `HOTKEY_OPENAPI_SCHEMA` 临时覆盖来源。
 3. 审查生成差异，业务代码只调用 `src/services/hotkey/hotkey-server/` 中的生成函数，不手写接口路径、请求 DTO 或响应类型。
 4. 执行 `npm run openapi:check`，确认发布契约有效且再次生成不会产生漂移。

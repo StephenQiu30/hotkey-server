@@ -26,7 +26,7 @@
 <!-- 列出实际运行的命令、手工步骤和结果。行为变更请说明测试先行证据。 -->
 
 ```bash
-# 后端示例：cd backend && make test
+# 后端示例：cd backend && go run ./test/runner test ./... -count=1
 # 前端示例：cd frontend && npm run test:unit
 ```
 

@@ -6,7 +6,7 @@
 - `postgresfixture/`：可复用的 PostgreSQL 测试数据库 fixture。
 - `_suite/`：按仓库目录镜像保存需要与被测 Go 包同编译的单元与集成测试。
 
-执行完整测试使用 `make test`；执行某个业务包使用：
+执行完整测试使用 `go run ./test/runner test ./... -count=1`；执行某个业务包使用：
 
 ```bash
 go run ./test/runner test ./internal/modules/event/... -count=1
