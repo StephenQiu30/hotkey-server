@@ -68,7 +68,7 @@ The frontend does not hand-write backend DTOs. Request functions and types are g
 
 - Node.js 22 (the CI version)
 - npm
-- A running [hotkey-server](https://github.com/StephenQiu30/hotkey-server), available at `http://127.0.0.1:8080` by default
+- A running [hotkey-server](https://github.com/StephenQiu30/hotkey-server), available at `http://127.0.0.1:8866` by default
 
 ### Local development
 
@@ -80,12 +80,12 @@ cp .env.example .env
 npm run dev
 ```
 
-Open <http://localhost:3000>.
+Open <http://localhost:8123>.
 
 No environment value is required for the default local backend. Same-origin `/api` and `/healthz` requests are sent through the Next.js server to:
 
 ```dotenv
-HOTKEY_API_ORIGIN=http://127.0.0.1:8080
+HOTKEY_API_ORIGIN=http://127.0.0.1:8866
 ```
 
 This variable is server-only and is not exposed to the browser as `NEXT_PUBLIC_*`. See [`.env.example`](.env.example) for the complete configuration.

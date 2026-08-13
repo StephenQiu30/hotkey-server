@@ -139,13 +139,13 @@ The first user completes normal email verification and registration as a viewer.
 Verify the runtime:
 
 ```bash
-curl --fail http://127.0.0.1:8080/healthz
-curl --fail http://127.0.0.1:8080/readyz
+curl --fail http://127.0.0.1:8866/healthz
+curl --fail http://127.0.0.1:8866/readyz
 ```
 
-- Swagger UI: <http://127.0.0.1:8080/docs>
-- OpenAPI: <http://127.0.0.1:8080/openapi.json>
-- Prometheus: <http://127.0.0.1:8080/metrics>
+- Swagger UI: <http://127.0.0.1:8866/docs>
+- OpenAPI: <http://127.0.0.1:8866/openapi.json>
+- Prometheus: <http://127.0.0.1:8866/metrics>
 
 For production, set `HOTKEY_ENV=production` to load `.env.prod` as an override. Process environment variables always take precedence. API documentation routes are disabled in production.
 

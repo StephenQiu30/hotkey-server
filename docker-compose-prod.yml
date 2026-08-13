@@ -115,7 +115,7 @@ services:
       minio-init:
         condition: service_completed_successfully
     ports:
-      - "${HOTKEY_HTTP_PORT:-8080}:8080"
+      - "${HOTKEY_HTTP_PORT:-8866}:8080"
     volumes:
       - vault_data:/var/lib/hotkey/vault
     healthcheck:
@@ -140,7 +140,7 @@ services:
       hotkey-server:
         condition: service_healthy
     ports:
-      - "${WEB_PORT:-3000}:3000"
+      - "${WEB_PORT:-8123}:3000"
     environment:
       NODE_ENV: production
       HOTKEY_DEPLOY_ENV: prod

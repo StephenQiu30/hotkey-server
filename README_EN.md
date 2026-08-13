@@ -29,7 +29,7 @@ npm ci
 npm run dev
 ```
 
-The backend listens on `http://127.0.0.1:8080` by default. See each project README for environment and deployment details.
+The backend listens on `http://127.0.0.1:8866` by default, and the frontend starts at `http://127.0.0.1:8123`. See each project README for environment and deployment details.
 
 ## Docker Compose
 

@@ -132,7 +132,7 @@ HOTKEY_DATABASE_URL=postgres://hotkey:hotkey@localhost:5432/hotkey?sslmode=disab
 HOTKEY_JWT_SECRET=
 HOTKEY_VERIFICATION_HMAC_SECRET=
 HOTKEY_SOURCE_CREDENTIAL_MASTER_KEY=
-HOTKEY_CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+HOTKEY_CORS_ALLOWED_ORIGINS=http://localhost:8123,http://127.0.0.1:8123
 ```
 
 JWT 与 HMAC 密钥填写各自独立、随机且不少于 32 字节的值；来源凭据主密钥必须是 Base64 编码的 32 个随机字节，可使用 `openssl rand -base64 32` 生成。登录后的“来源管理”会用它认证加密 API Key、Token 或 OAuth 凭据包，读取接口只返回“是否已配置”，从不回显明文。主密钥必须与数据库备份分开保存；旧 `env:NAME` 来源仍兼容。常用配置与可选 Provider 示例见 [`.env.example`](.env.example)，真实密钥不要提交到仓库。
@@ -177,15 +177,15 @@ go run ./cmd/hotkey
 确认服务可用：
 
 ```bash
-curl --fail http://127.0.0.1:8080/healthz
-curl --fail http://127.0.0.1:8080/readyz
+curl --fail http://127.0.0.1:8866/healthz
+curl --fail http://127.0.0.1:8866/readyz
 ```
 
 随后可访问：
 
-- Swagger UI：<http://127.0.0.1:8080/docs>
-- OpenAPI：<http://127.0.0.1:8080/openapi.json>
-- Prometheus Metrics：<http://127.0.0.1:8080/metrics>
+- Swagger UI：<http://127.0.0.1:8866/docs>
+- OpenAPI：<http://127.0.0.1:8866/openapi.json>
+- Prometheus Metrics：<http://127.0.0.1:8866/metrics>
 
 > 生产环境设置 `HOTKEY_ENV=production` 后，服务会在 `.env` 基础上覆盖读取 `.env.prod`；进程环境变量优先级最高。生产环境不会开放 Swagger UI 和 OpenAPI 路由。
 

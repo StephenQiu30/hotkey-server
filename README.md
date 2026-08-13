@@ -35,7 +35,7 @@ npm ci
 npm run dev
 ```
 
-`backend/.env` 的数据库、Redis 和 MinIO 地址必须使用本机地址（默认分别为 `localhost:5432`、`127.0.0.1:6379`、`localhost:9000`）。后端默认监听 `http://127.0.0.1:8080`，前端默认通过自身的 Next.js 服务访问后端。环境变量与部署方式分别见两个子项目的 README。
+`backend/.env` 的数据库、Redis 和 MinIO 地址必须使用本机地址（默认分别为 `localhost:5432`、`127.0.0.1:6379`、`localhost:9000`）。后端默认监听 `http://127.0.0.1:8866`，前端默认启动在 `http://127.0.0.1:8123`，并通过自身的 Next.js 服务访问后端。环境变量与部署方式分别见两个子项目的 README。
 
 登录后，管理员可在“来源管理”中直接填写和轮换第三方来源凭据。来源参数与加密密文以 PostgreSQL 为事实源；`.env` 只保留数据库、身份、存储等部署配置和独立的 `HOTKEY_SOURCE_CREDENTIAL_MASTER_KEY`。旧 `env:NAME` 来源继续兼容，任何读取接口都不会返回凭据明文或引用。
 
@@ -69,8 +69,8 @@ Docker Compose 只用于完整容器部署和隔离验收，不是本机开发�
 cp backend/.env.example backend/.env
 cp .env.example .env
 docker compose -f docker-compose.yml up --build --detach --wait --wait-timeout 240
-curl --fail --silent http://127.0.0.1:8080/readyz
-curl --fail --silent http://127.0.0.1:8080/metrics | grep 'hotkey_runtime_metrics_collection_success'
+curl --fail --silent http://127.0.0.1:8866/readyz
+curl --fail --silent http://127.0.0.1:8866/metrics | grep 'hotkey_runtime_metrics_collection_success'
 ```
 
 生产环境：

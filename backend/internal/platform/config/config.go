@@ -179,7 +179,7 @@ func Default() Config {
 	return Config{
 		Environment:        "development",
 		Role:               "all",
-		HTTPAddr:           ":8080",
+		HTTPAddr:           ":8866",
 		RequestTimeout:     15 * time.Second,
 		ShutdownTimeout:    15 * time.Second,
 		WorkerPollInterval: time.Second,
@@ -204,7 +204,7 @@ func Default() Config {
 			PollInterval:      time.Second,
 			HeartbeatInterval: 10 * time.Second,
 			MaxConnections:    100,
-			WebOrigin:         "http://127.0.0.1:3000",
+			WebOrigin:         "http://127.0.0.1:8123",
 		},
 	}
 }

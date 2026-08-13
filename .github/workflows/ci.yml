@@ -189,9 +189,9 @@ jobs:
 
       - name: HTTP readiness and metrics smoke acceptance
         run: |
-          curl --fail --silent http://127.0.0.1:8080/healthz
-          curl --fail --silent http://127.0.0.1:8080/readyz
-          curl --fail --silent http://127.0.0.1:8080/metrics | grep 'hotkey_runtime_metrics_collection_success'
+          curl --fail --silent http://127.0.0.1:8866/healthz
+          curl --fail --silent http://127.0.0.1:8866/readyz
+          curl --fail --silent http://127.0.0.1:8866/metrics | grep 'hotkey_runtime_metrics_collection_success'
 
       - name: Install browser acceptance runtime
         run: |
@@ -202,11 +202,11 @@ jobs:
         env:
           AGENT_BROWSER_SESSION: hotkey-ci
         run: |
-          agent-browser open http://127.0.0.1:3000
+          agent-browser open http://127.0.0.1:8123
           agent-browser wait --load networkidle
           agent-browser snapshot --compact
           test "$(agent-browser get count 'main')" -eq 1
-          agent-browser open http://127.0.0.1:3000/dashboard/governance
+          agent-browser open http://127.0.0.1:8123/dashboard/governance
           agent-browser wait --url '**/login*'
           agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y.json
           node -e "const report=require('/tmp/hotkey-a11y.json'); if (!report.success || (report.data?.violations ?? []).length) process.exit(1)"

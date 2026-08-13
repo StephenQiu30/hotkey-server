@@ -52,8 +52,12 @@ describe("Docker Compose environment configuration", () => {
       expect(compose).toContain("HOTKEY_CORS_ALLOWED_ORIGINS:");
     }
     expect(baseCompose).toContain(
-      "http://localhost:3000,http://127.0.0.1:3000",
+      "http://localhost:8123,http://127.0.0.1:8123",
     );
+    expect(baseCompose).toContain('"${HOTKEY_HTTP_PORT:-8866}:8080"');
+    expect(prodCompose).toContain('"${HOTKEY_HTTP_PORT:-8866}:8080"');
+    expect(baseCompose).toContain('"${WEB_PORT:-8123}:3000"');
+    expect(prodCompose).toContain('"${WEB_PORT:-8123}:3000"');
     expect(dockerfile.match(/^FROM node:latest AS /gm)).toHaveLength(3);
     expect(dockerfile).toContain("USER node");
   });
@@ -63,11 +67,13 @@ describe("Docker Compose environment configuration", () => {
     const envExample = readRepositoryFile(".env.example");
     const prodExample = readRepositoryFile(".env.prod.example");
 
-    expect(frontendEnvExample).toContain("# HOTKEY_API_ORIGIN=http://127.0.0.1:8080");
+    expect(frontendEnvExample).toContain("# HOTKEY_API_ORIGIN=http://127.0.0.1:8866");
     expect(envExample).toContain("HOTKEY_CONTAINER_PREFIX=hotkey");
     expect(prodExample).toContain("HOTKEY_CONTAINER_PREFIX=hotkey-prod");
-    expect(envExample).toContain("# WEB_PORT=3000");
-    expect(prodExample).toContain("# WEB_PORT=3000");
+    expect(envExample).toContain("# HOTKEY_HTTP_PORT=8866");
+    expect(prodExample).toContain("# HOTKEY_HTTP_PORT=8866");
+    expect(envExample).toContain("# WEB_PORT=8123");
+    expect(prodExample).toContain("# WEB_PORT=8123");
     expect(prodExample).toContain("HOTKEY_JWT_SECRET=");
   });
 
@@ -83,5 +89,7 @@ describe("Docker Compose environment configuration", () => {
     );
     expect(Object.keys(packageJson.scripts)).not.toContain("docker:up");
     expect(Object.keys(packageJson.scripts)).not.toContain("docker:config");
+    expect(packageJson.scripts.dev).toBe("next dev -p 8123");
+    expect(packageJson.scripts.start).toBe("next start -p 8123");
   });
 });

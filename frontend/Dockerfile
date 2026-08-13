@@ -18,7 +18,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-ARG HOTKEY_API_ORIGIN=http://host.docker.internal:8080
+ARG HOTKEY_API_ORIGIN=http://host.docker.internal:8866
 ENV HOTKEY_API_ORIGIN=$HOTKEY_API_ORIGIN
 ENV NEXT_OUTPUT=standalone
 
