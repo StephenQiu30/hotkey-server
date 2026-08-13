@@ -970,7 +970,7 @@ func assertSafeContentOpenAPIDefinitions(t *testing.T, definitions map[string]st
 		"content_type": true, "title": true, "canonical_url": true, "language": true,
 		"published_at": true, "fetched_at": true, "metrics": true, "dedupe_status": true,
 		"dedupe_reason": true, "dedupe_version": true,
-		"relevance_score": true, "match_decision": true, "micro_event_id": true, "micro_event_title": true,
+		"relevance_score": true, "match_decision": true,
 		"document_version_id": true,
 	}
 	for field := range content.Properties {

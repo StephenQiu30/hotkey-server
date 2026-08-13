@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"sort"
 
-	eventapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/application"
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/domain"
 	sourcedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
@@ -22,7 +21,6 @@ type ContentQueryDependencies struct {
 	Sources   sourcedomain.ContentSourceReader
 	Evidence  ingestiondomain.EvidenceStore
 	Lifecycle ContentLifecycle
-	Events    eventapplication.ContentSearchReader
 }
 
 // ContentLifecycle is the narrow mutation boundary consumed by the public
@@ -39,14 +37,13 @@ type ContentQueryService struct {
 	sources   sourcedomain.ContentSourceReader
 	evidence  ingestiondomain.EvidenceStore
 	lifecycle ContentLifecycle
-	events    eventapplication.ContentSearchReader
 }
 
 func NewContentQueryService(dependencies ContentQueryDependencies) (*ContentQueryService, error) {
 	if dependencies.Contents == nil || dependencies.Sources == nil {
 		return nil, errors.New("content query dependencies are required")
 	}
-	return &ContentQueryService{contents: dependencies.Contents, sources: dependencies.Sources, evidence: dependencies.Evidence, lifecycle: dependencies.Lifecycle, events: dependencies.Events}, nil
+	return &ContentQueryService{contents: dependencies.Contents, sources: dependencies.Sources, evidence: dependencies.Evidence, lifecycle: dependencies.Lifecycle}, nil
 }
 
 func (service *ContentQueryService) DeleteContent(ctx context.Context, contentID int64) (DeleteBySourceItemResult, error) {
@@ -148,40 +145,8 @@ func (service *ContentQueryService) ListActive(ctx context.Context, query ingest
 	if err != nil {
 		return ingestiondomain.ContentPage{}, err
 	}
-	page.Items, err = service.withEvents(ctx, items)
-	if err != nil {
-		return ingestiondomain.ContentPage{}, err
-	}
+	page.Items = items
 	return page, nil
-}
-
-func (service *ContentQueryService) withEvents(ctx context.Context, contents []ingestiondomain.Content) ([]ingestiondomain.Content, error) {
-	if service.events == nil || len(contents) == 0 {
-		return contents, nil
-	}
-	contentIDs := make([]int64, len(contents))
-	for index, content := range contents {
-		contentIDs[index] = content.ID
-	}
-	references, err := service.events.ListContentSearchReferences(ctx, contentIDs)
-	if errors.Is(err, sharedrepository.ErrUnavailable) {
-		return contents, nil
-	}
-	if err != nil {
-		return nil, contentQueryReadError(err)
-	}
-	byContentID := make(map[int64]eventapplication.ContentSearchReference, len(references))
-	for _, reference := range references {
-		byContentID[reference.ContentID] = reference
-	}
-	for index := range contents {
-		if reference, found := byContentID[contents[index].ID]; found {
-			eventID := reference.MicroEventID
-			contents[index].MicroEventID = &eventID
-			contents[index].MicroEventTitle = reference.MicroEventTitle
-		}
-	}
-	return contents, nil
 }
 
 func (service *ContentQueryService) GetActive(ctx context.Context, contentID int64) (ingestiondomain.Content, error) {

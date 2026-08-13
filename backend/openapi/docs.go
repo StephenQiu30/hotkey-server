@@ -8690,14 +8690,6 @@ const docTemplate = `{
                 "metrics": {
                     "$ref": "#/definitions/http.ContentMetricsResponse"
                 },
-                "micro_event_id": {
-                    "type": "integer",
-                    "x-nullable": true
-                },
-                "micro_event_title": {
-                    "type": "string",
-                    "x-nullable": true
-                },
                 "published_at": {
                     "type": "string"
                 },

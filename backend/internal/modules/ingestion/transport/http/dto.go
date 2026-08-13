@@ -50,8 +50,6 @@ type ContentResponse struct {
 	DedupeVersion     *string                `json:"dedupe_version" extensions:"x-nullable"`
 	RelevanceScore    *float64               `json:"relevance_score,omitempty" extensions:"x-nullable"`
 	MatchDecision     *string                `json:"match_decision,omitempty" extensions:"x-nullable" enums:"accepted,review,rejected"`
-	MicroEventID      *int64                 `json:"micro_event_id,omitempty" extensions:"x-nullable"`
-	MicroEventTitle   *string                `json:"micro_event_title,omitempty" extensions:"x-nullable"`
 	DocumentVersionID *int64                 `json:"document_version_id,omitempty" extensions:"x-nullable"`
 }
 
@@ -99,7 +97,7 @@ func contentResponse(content ingestiondomain.Content) ContentResponse {
 			CommentCount: content.Metrics.CommentCount, ShareCount: content.Metrics.ShareCount,
 		},
 		DedupeStatus: string(content.Status), DedupeReason: nullableContentField(content.DedupeReason), DedupeVersion: nullableContentField(content.DedupeVersion),
-		RelevanceScore: content.RelevanceScore, MicroEventID: content.MicroEventID, MicroEventTitle: nullableContentField(content.MicroEventTitle),
+		RelevanceScore:    content.RelevanceScore,
 		DocumentVersionID: content.DocumentVersionID,
 	}
 	if content.MatchDecision != nil {

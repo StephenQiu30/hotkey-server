@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	eventapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/application"
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/domain"
 	sourcedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
@@ -31,42 +30,6 @@ func TestContentQueryServiceEnrichesOnlyActiveContentWithSafeSourceReference(t *
 	}
 	if len(page.Items) != 1 || page.Items[0].SourceName != "RSS feed" || page.Items[0].SourceType != sourcedomain.SourceTypeRSS {
 		t.Fatalf("safe source projection = %#v, want type/name only", page.Items)
-	}
-}
-
-func TestContentQueryServiceBatchEnrichesOnlyCurrentMicroEventReference(t *testing.T) {
-	content := queryTestContent(7, 3)
-	events := &contentEventReaderStub{references: []eventapplication.ContentSearchReference{{ContentID: 7, MicroEventID: 11, MicroEventTitle: "发布主体 · 发布动作"}}}
-	service, err := NewContentQueryService(ContentQueryDependencies{
-		Contents: &contentQueryRepositoryStub{page: ingestiondomain.ContentPage{Items: []ingestiondomain.Content{content}}},
-		Sources:  &contentSourceReaderStub{references: map[int64]sourcedomain.ContentSourceReference{3: {Name: "RSS", SourceType: sourcedomain.SourceTypeRSS}}},
-		Events:   events,
-	})
-	if err != nil {
-		t.Fatalf("NewContentQueryService() error = %v", err)
-	}
-	page, err := service.ListActive(context.Background(), ingestiondomain.ContentListQuery{Limit: 10})
-	if err != nil || len(page.Items) != 1 || page.Items[0].MicroEventID == nil || *page.Items[0].MicroEventID != 11 || page.Items[0].MicroEventTitle != "发布主体 · 发布动作" {
-		t.Fatalf("ListActive() page/error = %#v/%v", page, err)
-	}
-	if len(events.contentIDs) != 1 || events.contentIDs[0] != 7 {
-		t.Fatalf("event lookup ids = %#v", events.contentIDs)
-	}
-}
-
-func TestContentQueryServiceDegradesWhenEventProjectionIsUnavailable(t *testing.T) {
-	content := queryTestContent(7, 3)
-	service, err := NewContentQueryService(ContentQueryDependencies{
-		Contents: &contentQueryRepositoryStub{page: ingestiondomain.ContentPage{Items: []ingestiondomain.Content{content}}},
-		Sources:  &contentSourceReaderStub{references: map[int64]sourcedomain.ContentSourceReference{3: {Name: "RSS", SourceType: sourcedomain.SourceTypeRSS}}},
-		Events:   &contentEventReaderStub{err: sharedrepository.ErrUnavailable},
-	})
-	if err != nil {
-		t.Fatalf("NewContentQueryService() error = %v", err)
-	}
-	page, err := service.ListActive(context.Background(), ingestiondomain.ContentListQuery{Limit: 10})
-	if err != nil || len(page.Items) != 1 || page.Items[0].MicroEventID != nil {
-		t.Fatalf("ListActive() page/error = %#v/%v", page, err)
 	}
 }
 
@@ -202,17 +165,6 @@ type contentSourceReaderStub struct {
 	references map[int64]sourcedomain.ContentSourceReference
 	err        error
 	errors     map[int64]error
-}
-
-type contentEventReaderStub struct {
-	references []eventapplication.ContentSearchReference
-	contentIDs []int64
-	err        error
-}
-
-func (reader *contentEventReaderStub) ListContentSearchReferences(_ context.Context, contentIDs []int64) ([]eventapplication.ContentSearchReference, error) {
-	reader.contentIDs = append([]int64(nil), contentIDs...)
-	return reader.references, reader.err
 }
 
 func (reader *contentSourceReaderStub) FindForContent(_ context.Context, id int64) (sourcedomain.ContentSourceReference, error) {

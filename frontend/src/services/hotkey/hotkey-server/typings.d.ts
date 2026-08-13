@@ -335,8 +335,6 @@ required property without making explicit null impossible to bind. */
     language?: string;
     match_decision?: "accepted" | "review" | "rejected";
     metrics?: ContentMetricsResponse;
-    micro_event_id?: number;
-    micro_event_title?: string;
     published_at?: string;
     relevance_score?: number;
     source_name?: string;

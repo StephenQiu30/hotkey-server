@@ -194,12 +194,10 @@ type Content struct {
 	DedupeReason  string
 	DedupeVersion string
 	DeletedAt     *time.Time
-	// Relevance and MicroEvent are optional safe query projections. They are
-	// not persisted on Content and remain nil when no matching context exists.
-	RelevanceScore  *float64
-	MatchDecision   *MatchDecision
-	MicroEventID    *int64
-	MicroEventTitle string
+	// Relevance is an optional safe query projection. It is not persisted on
+	// Content and remains nil when no matching context exists.
+	RelevanceScore *float64
+	MatchDecision  *MatchDecision
 	// DocumentVersionID pins the exact immutable readable document currently
 	// associated with this legacy Content projection. It remains nil when the
 	// association or current display authorization cannot be proven.
