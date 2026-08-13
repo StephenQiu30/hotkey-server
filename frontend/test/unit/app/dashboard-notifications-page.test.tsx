@@ -1,12 +1,25 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import NotificationsPage from "@/app/dashboard/notifications/page";
+import { AuthStatus } from "@/lib/domainEnums";
+import { useAuthStore } from "@/stores/authStore";
 import { useNotificationStore } from "@/stores/notificationStore";
 
 describe("NotificationsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useNotificationStore.getState().reset();
+    useAuthStore.setState({
+      status: AuthStatus.Authenticated,
+      user: {
+        id: 7,
+        email: "viewer@example.test",
+        display_name: "Viewer",
+        role: "viewer",
+        status: "active",
+      },
+      error: null,
+    });
   });
 
   it("shows polling degradation and marks displayed notifications as read", async () => {
@@ -35,6 +48,11 @@ describe("NotificationsPage", () => {
     expect(screen.getByText("轮询中")).toBeInTheDocument();
     expect(screen.getByText("新热点已发现")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "查看通知关联内容" })).toHaveAttribute("href", "/dashboard/contents/8");
+    expect(screen.getByRole("heading", { name: "站内实时通知" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "邮件通知" })).toBeInTheDocument();
+    expect(screen.getByText("viewer@example.test")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "管理邮件提醒" })).toHaveAttribute("href", "/dashboard/settings");
+    expect(screen.queryByText(/Web Push|手机与浏览器通知/)).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "报告订阅" })).not.toBeInTheDocument();
     await waitFor(() => expect(useNotificationStore.getState().unreadCount).toBe(0));
     expect(useNotificationStore.getState().readThroughID).toBe(3);

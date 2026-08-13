@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { HOTKEY_SERVICE_WORKER_PATH } from "@/lib/webPush";
+
+const HOTKEY_SERVICE_WORKER_PATH = "/sw.js";
 
 export function ServiceWorkerRegistrar() {
   useEffect(() => {
@@ -14,8 +15,7 @@ export function ServiceWorkerRegistrar() {
           updateViaCache: "none",
         })
         .catch(() => {
-          // Registration failure must not break the authenticated app. The
-          // notification settings surface reports capability errors explicitly.
+          // Offline-shell registration failure must not break the authenticated app.
         });
     };
 

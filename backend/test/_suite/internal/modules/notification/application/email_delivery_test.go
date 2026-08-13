@@ -59,9 +59,12 @@ func TestEmailDeliveryUsesSafeUserNotificationProjection(t *testing.T) {
 		repository.completed.ProviderMessageID != "smtp-41" || repository.completed.Status != "succeeded" {
 		t.Fatalf("claim/completion = %#v / %#v", repository.claim, repository.completed)
 	}
-	if sender.message.Subject != "[HotKey] 热点事件更新" || strings.Contains(sender.message.HTML, "<script>") ||
+	if sender.message.Subject != "[HotKey][高] AI 产品 · alert(1)" || strings.Contains(sender.message.HTML, "<script>") ||
 		!strings.Contains(sender.message.HTML, "&lt;script&gt;") ||
-		!strings.Contains(sender.message.HTML, `href="https://hotkey.example/dashboard/events?event=42"`) {
+		!strings.Contains(sender.message.HTML, "AI 产品") || !strings.Contains(sender.message.HTML, "Hacker News") ||
+		!strings.Contains(sender.message.HTML, "87.5%") ||
+		!strings.Contains(sender.message.HTML, `href="https://news.example.test/item/42"`) ||
+		!strings.Contains(sender.message.HTML, `href="https://hotkey.example/dashboard/contents/42"`) {
 		t.Fatalf("unsafe or incomplete message = %#v", sender.message)
 	}
 }
@@ -118,11 +121,15 @@ func validEmailDelivery(now time.Time) ClaimedEmailDeliveryDTO {
 	return ClaimedEmailDeliveryDTO{
 		Claimed: true, ClaimToken: strings.Repeat("a", 64), RecipientEmail: "owner@example.com",
 		PublishedConfigID: 7, PublishedRevision: 3, AlertEmailEnabled: true,
+		MonitorName: "AI 产品", SourceName: "Hacker News", SourceType: "hacker_news",
+		RelevanceScore: float64Pointer(87.5), OriginalURL: "https://news.example.test/item/42",
 		Notification: UserNotificationDTO{
 			ID: 11, Version: 1, OutboxEventID: 10, UserID: 1, MonitorID: 2,
-			EventType: "micro_event.created", ResourceType: "micro_event", ResourceID: 42, ResourceVersion: 1,
-			OccurredAt: now, Title: `<script>alert(1)</script>`, Summary: "安全摘要", ResourceStatus: "active",
-			DeepLink: "/dashboard/events?event=42", CreatedAt: now,
+			EventType: "hotspot.discovered", ResourceType: "hotspot", ResourceID: 42, ResourceVersion: 1,
+			OccurredAt: now, Title: `<script>alert(1)</script>`, Summary: "安全摘要", ResourceStatus: "high",
+			DeepLink: "/dashboard/contents/42", CreatedAt: now,
 		},
 	}
 }
+
+func float64Pointer(value float64) *float64 { return &value }

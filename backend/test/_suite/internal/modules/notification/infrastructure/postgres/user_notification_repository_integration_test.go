@@ -70,7 +70,7 @@ RETURNING id`, outboxID, userID, monitorID, eventID, now, fmt.Sprintf("/dashboar
 
 	for attempt := 1; attempt <= 2; attempt++ {
 		result, err := repository.RecordDeliveryAttempt(ctx, application.RecordNotificationDeliveryAttemptCommand{
-			UserNotificationID: notificationID, UserID: userID, Channel: "sse", DeliveryTargetKey: "browser_stream",
+			UserNotificationID: notificationID, UserID: userID, Channel: "websocket", DeliveryTargetKey: "browser_ws",
 			Status: "succeeded", AttemptedAt: now.Add(time.Duration(attempt) * time.Second),
 		})
 		if err != nil || result.AttemptNo != attempt {

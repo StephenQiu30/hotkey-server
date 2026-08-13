@@ -87,46 +87,10 @@ describe("PWA contract", () => {
     expect(cacheMatch).toHaveBeenCalledWith("/offline.html");
   });
 
-  it("rejects enriched or unsafe push payloads and stores only a safe event deep link", async () => {
+  it("does not register browser push handlers in the two-channel notification model", () => {
     const { listeners, showNotification } = serviceWorkerHarness();
-    const invalidWait = vi.fn();
-    listeners.get("push")?.({
-      data: {
-        json: () => ({
-          title: "更新",
-          event_id: 8,
-          deep_link: "/dashboard/events?event=8",
-          priority: "normal",
-          summary: "不应进入推送载荷",
-        }),
-      },
-      waitUntil: invalidWait,
-    });
-    expect(invalidWait).not.toHaveBeenCalled();
+    expect(listeners.has("push")).toBe(false);
+    expect(listeners.has("notificationclick")).toBe(false);
     expect(showNotification).not.toHaveBeenCalled();
-
-    const validWait = vi.fn();
-    listeners.get("push")?.({
-      data: {
-        json: () => ({
-          title: "微事件更新",
-          event_id: 8,
-          deep_link: "/dashboard/events?event=8",
-          priority: "normal",
-        }),
-      },
-      waitUntil: validWait,
-    });
-    await validWait.mock.calls[0][0];
-    expect(showNotification).toHaveBeenCalledWith(
-      "微事件更新",
-      expect.objectContaining({
-        tag: "event-8",
-        data: { deep_link: "/dashboard/events?event=8" },
-      }),
-    );
-    const options = showNotification.mock.calls[0][1];
-    expect(JSON.stringify(options)).not.toContain("summary");
-    expect(JSON.stringify(options)).not.toContain("token");
   });
 });

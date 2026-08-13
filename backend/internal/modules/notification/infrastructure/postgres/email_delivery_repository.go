@@ -22,6 +22,11 @@ type claimedEmailDeliveryRecord struct {
 	publishedConfigID int64
 	publishedRevision int64
 	alertEmailEnabled bool
+	monitorName       string
+	sourceName        string
+	sourceType        string
+	relevanceScore    sql.NullFloat64
+	originalURL       string
 }
 
 func (record claimedEmailDeliveryRecord) dto(claimToken string) (application.ClaimedEmailDeliveryDTO, error) {
@@ -29,12 +34,17 @@ func (record claimedEmailDeliveryRecord) dto(claimToken string) (application.Cla
 	if err != nil {
 		return application.ClaimedEmailDeliveryDTO{}, err
 	}
-	return application.ClaimedEmailDeliveryDTO{
+	result := application.ClaimedEmailDeliveryDTO{
 		Claimed: true, ClaimToken: claimToken, AttemptCount: record.attemptCount,
 		RecipientEmail: record.recipientEmail, Notification: notification,
 		PublishedConfigID: record.publishedConfigID, PublishedRevision: record.publishedRevision,
-		AlertEmailEnabled: record.alertEmailEnabled,
-	}, nil
+		AlertEmailEnabled: record.alertEmailEnabled, MonitorName: record.monitorName,
+		SourceName: record.sourceName, SourceType: record.sourceType, OriginalURL: record.originalURL,
+	}
+	if record.relevanceScore.Valid {
+		result.RelevanceScore = &record.relevanceScore.Float64
+	}
+	return result, nil
 }
 
 func (repository *Repository) ClaimNextEmailDelivery(ctx context.Context, command application.ClaimNextEmailDeliveryCommand) (application.ClaimedEmailDeliveryDTO, error) {
@@ -60,12 +70,25 @@ SELECT notification.id,notification.version,notification.outbox_event_id,notific
        notification.monitor_id,notification.resource_id,notification.resource_version,
        notification.event_type,notification.resource_type,notification.title,notification.summary,
        notification.resource_status,notification.deep_link,notification.occurred_at,notification.created_at,
-       actor.email,COALESCE(attempts.attempt_count,0),config.id,config.revision,config.alert_email_enabled
+       actor.email,COALESCE(attempts.attempt_count,0),config.id,config.revision,config.alert_email_enabled,
+       monitor.name,COALESCE(source.name,''),COALESCE(source.source_type,''),match.final_score,
+       COALESCE(content.canonical_url,'')
 FROM user_notifications AS notification
 JOIN users AS actor ON actor.id=notification.user_id
 JOIN monitors AS monitor ON monitor.id=notification.monitor_id
 JOIN monitor_config_versions AS config ON config.id=monitor.published_config_version_id
     AND config.monitor_id=monitor.id AND config.state='published'
+LEFT JOIN contents AS content ON notification.resource_type='hotspot'
+    AND content.id=notification.resource_id AND content.deleted_at IS NULL
+LEFT JOIN source_connections AS source ON source.id=content.source_connection_id AND source.deleted_at IS NULL
+LEFT JOIN LATERAL (
+    SELECT candidate.final_score
+    FROM monitor_matches AS candidate
+    WHERE candidate.monitor_id=notification.monitor_id AND candidate.content_id=content.id
+      AND candidate.decision='accepted'
+    ORDER BY candidate.created_at DESC,candidate.id DESC
+    LIMIT 1
+) AS match ON true
 LEFT JOIN email_attempts AS attempts ON attempts.user_notification_id=notification.id
 LEFT JOIN notification_delivery_claims AS claim ON claim.user_notification_id=notification.id
     AND claim.channel='email' AND claim.delivery_target_key=$1
@@ -87,7 +110,8 @@ LIMIT 1`, application.PrimaryEmailDeliveryTarget, application.MaximumEmailAttemp
 			&record.notification.title, &record.notification.summary, &record.notification.resourceStatus,
 			&record.notification.deepLink, &record.notification.occurredAt, &record.notification.createdAt,
 			&record.recipientEmail, &record.attemptCount, &record.publishedConfigID, &record.publishedRevision,
-			&record.alertEmailEnabled,
+			&record.alertEmailEnabled, &record.monitorName, &record.sourceName, &record.sourceType,
+			&record.relevanceScore, &record.originalURL,
 		)
 		if err == sql.ErrNoRows {
 			return nil

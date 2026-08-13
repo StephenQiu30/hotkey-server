@@ -2,7 +2,6 @@ package http
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	stdhttp "net/http"
@@ -78,7 +77,7 @@ func NewHandler(service notificationService, config StreamConfig) (*Handler, err
 func (handler *Handler) List(c *gin.Context) error {
 	httptransport.SetModule(c, "notification")
 	c.Header("Cache-Control", "private, no-store")
-	query, err := notificationListQuery(c, false)
+	query, err := notificationListQuery(c)
 	if err != nil {
 		return err
 	}
@@ -88,83 +87,6 @@ func (handler *Handler) List(c *gin.Context) error {
 	}
 	httptransport.OK(c, userNotificationPageResponse(page))
 	return nil
-}
-
-// Stream godoc
-//
-// @Summary Stream current user's monitor notifications with durable replay
-// @Tags notifications
-// @Produce text/event-stream
-// @Security BearerAuth
-// @Param after_id query int false "last processed user notification ID" minimum(0)
-// @Param monitor_id query int false "authorized monitor filter" minimum(1)
-// @Param Last-Event-ID header int false "last processed user notification ID" minimum(0)
-// @Success 200 {string} string
-// @Failure 400 {object} NotificationResult[EmptyResponseDTO]
-// @Failure 401 {object} NotificationResult[EmptyResponseDTO]
-// @Failure 503 {object} NotificationResult[EmptyResponseDTO]
-// @Router /api/v1/notifications/stream [get]
-func (handler *Handler) Stream(c *gin.Context) {
-	httptransport.SetModule(c, "notification")
-	query, err := notificationListQuery(c, true)
-	if err != nil {
-		httptransport.WriteError(c, err)
-		return
-	}
-	select {
-	case handler.slots <- struct{}{}:
-		defer func() { <-handler.slots }()
-	default:
-		httptransport.WriteError(c, sharederrors.New(sharederrors.CodeUnavailable, stdhttp.StatusServiceUnavailable, "notification stream capacity reached"))
-		return
-	}
-
-	page, err := handler.service.ListUserNotifications(c.Request.Context(), query)
-	if err != nil {
-		httptransport.WriteError(c, notificationError(err))
-		return
-	}
-	flusher, ok := c.Writer.(stdhttp.Flusher)
-	if !ok {
-		httptransport.WriteError(c, sharederrors.New(sharederrors.CodeUnavailable, stdhttp.StatusServiceUnavailable, "notification stream unavailable"))
-		return
-	}
-	c.Header("Content-Type", "text/event-stream; charset=utf-8")
-	c.Header("Cache-Control", "private, no-store, no-transform")
-	c.Header("Connection", "keep-alive")
-	c.Header("X-Accel-Buffering", "no")
-	c.Status(stdhttp.StatusOK)
-	cursor, writeErr := handler.writeNotificationFrames(c, flusher, query.UserID, page)
-	if writeErr != nil {
-		return
-	}
-
-	poll := time.NewTicker(handler.pollInterval)
-	heartbeat := time.NewTicker(handler.heartbeatInterval)
-	defer poll.Stop()
-	defer heartbeat.Stop()
-	for {
-		select {
-		case <-c.Request.Context().Done():
-			return
-		case <-heartbeat.C:
-			if _, err := fmt.Fprint(c.Writer, ": heartbeat\n\n"); err != nil {
-				return
-			}
-			flusher.Flush()
-		case <-poll.C:
-			page, err := handler.service.ListUserNotifications(c.Request.Context(), application.ListUserNotificationsQuery{
-				UserID: query.UserID, MonitorID: query.MonitorID, AfterID: cursor, Limit: 100,
-			})
-			if err != nil {
-				return
-			}
-			cursor, err = handler.writeNotificationFrames(c, flusher, query.UserID, page)
-			if err != nil {
-				return
-			}
-		}
-	}
 }
 
 type notificationWebSocketAuthenticateFrame struct {
@@ -327,37 +249,12 @@ func writeNotificationWebSocketJSON(ctx context.Context, connection *websocket.C
 	return wsjson.Write(writeContext, connection, value)
 }
 
-func (handler *Handler) writeNotificationFrames(c *gin.Context, flusher stdhttp.Flusher, userID int64, page application.ListUserNotificationsResult) (int64, error) {
-	cursor := page.NextAfterID
-	for _, item := range page.Items {
-		response := userNotificationResponse(item)
-		payload, err := json.Marshal(response)
-		if err != nil {
-			return cursor, err
-		}
-		if _, err := fmt.Fprintf(c.Writer, "id: %d\nevent: %s\ndata: %s\n\n", item.ID, item.EventType, payload); err != nil {
-			return cursor, err
-		}
-		flusher.Flush()
-		// Delivery attempts are independent append-only transport facts. A
-		// bookkeeping failure must not duplicate or retract an already written SSE frame.
-		_, _ = handler.service.RecordDeliveryAttempt(c.Request.Context(), application.RecordNotificationDeliveryAttemptCommand{
-			UserNotificationID: item.ID, UserID: userID, Channel: "sse", DeliveryTargetKey: "browser_stream",
-			Status: "succeeded", AttemptedAt: handler.clock(),
-		})
-	}
-	return cursor, nil
-}
-
-func notificationListQuery(c *gin.Context, stream bool) (application.ListUserNotificationsQuery, error) {
+func notificationListQuery(c *gin.Context) (application.ListUserNotificationsQuery, error) {
 	subject, ok := httptransport.SubjectFromContext(c)
 	if !ok {
 		return application.ListUserNotificationsQuery{}, sharederrors.New(sharederrors.CodeUnauthenticated, stdhttp.StatusUnauthorized, "")
 	}
 	afterIDValue := strings.TrimSpace(c.Query("after_id"))
-	if stream && strings.TrimSpace(c.GetHeader("Last-Event-ID")) != "" {
-		afterIDValue = strings.TrimSpace(c.GetHeader("Last-Event-ID"))
-	}
 	afterID, err := parseNonNegativeInt64(afterIDValue)
 	if err != nil {
 		return application.ListUserNotificationsQuery{}, invalidNotificationRequest()

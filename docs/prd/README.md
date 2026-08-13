@@ -4,7 +4,7 @@ scope: shared
 doc_no: "000"
 title: PRD 索引
 status: approved
-version: v2.7
+version: v2.8
 owner: HotKey Team
 canonical_path: docs/prd/README.md
 ---
@@ -13,7 +13,7 @@ canonical_path: docs/prd/README.md
 
 PRD 将每一条设计转换为稳定、可验收的产品范围。状态只使用 `draft`、`approved`、`implemented`、`cancelled`。
 
-001–037 与 Design、Plan 一一对应。035 保存已完成的历史交付事实；037 是当前热点监控 MVP 产品范围。任何需求新增、拆分或合并都必须同时修改三类索引和文件，不能只在 Plan 中临时扩大范围。
+001–038 与 Design、Plan 一一对应。035 保存已完成的历史交付事实；037 是当前热点监控 MVP 产品范围，038 明确其邮件与 WebSocket 双通道通知实现。任何需求新增、拆分或合并都必须同时修改三类索引和文件，不能只在 Plan 中临时扩大范围。
 
 ## 交付项
 
@@ -56,3 +56,4 @@ PRD 将每一条设计转换为稳定、可验收的产品范围。状态只使�
 | 035 | [多源AI热点监控首版收敛](../design/035-多源AI热点监控首版收敛设计.md) | [PRD](035-多源AI热点监控首版收敛.md) | [Plan](../plans/035-多源AI热点监控首版收敛计划.md) | implemented |
 | 036 | [评论会话采集与采集运行时边界](../design/036-评论会话采集与采集运行时边界设计.md) | [PRD](036-评论会话采集与采集运行时边界.md) | [Plan](../plans/036-评论会话采集与采集运行时边界计划.md) | draft |
 | 037 | [实时热点监控MVP功能基线](../design/037-实时热点监控MVP功能基线设计.md) | [PRD](037-实时热点监控MVP功能基线.md) | [Plan](../plans/037-实时热点监控MVP功能基线计划.md) | approved |
+| 038 | [邮件与WebSocket双通道通知收敛](../design/038-邮件与WebSocket双通道通知收敛设计.md) | [PRD](038-邮件与WebSocket双通道通知收敛.md) | [Plan](../plans/038-邮件与WebSocket双通道通知收敛计划.md) | implemented |

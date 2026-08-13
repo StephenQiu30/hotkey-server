@@ -343,7 +343,7 @@ func TestValidateAuthenticationRuntimeRejectsKnownPlaceholderSecrets(t *testing.
 	if err != nil {
 		t.Fatalf("read .env.example: %v", err)
 	}
-	content := string(example)
+	content := strings.ReplaceAll(string(example), "\r\n", "\n")
 	for _, line := range []string{"HOTKEY_JWT_SECRET=\n", "HOTKEY_VERIFICATION_HMAC_SECRET=\n"} {
 		if !strings.Contains(content, line) {
 			t.Errorf(".env.example must leave authentication secret blank: %q", strings.TrimSpace(line))

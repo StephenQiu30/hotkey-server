@@ -4,18 +4,15 @@ import { useEffect } from "react";
 import { toast } from "sonner";
 import { AuthStatus } from "@/lib/domainEnums";
 import {
-  consumeNotificationStream,
   consumeNotificationWebSocket,
-  openNotificationStream,
   type NotificationWebSocketFrame,
-  type SSEFrame,
 } from "@/lib/notificationStream";
 import { getNotifications } from "@/services/hotkey/hotkey-server/notifications";
 import { useAuthStore } from "@/stores/authStore";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { isSafeNotificationDeepLink } from "@/lib/notificationLink";
 
-const BACKOFF_MS = [1_000, 2_000, 4_000];
+const BACKOFF_MS = [1_000, 2_000];
 const POLLING_INTERVAL_MS = 10_000;
 function validNotification(
   notification: HotKeyAPI.UserNotificationResponseDTO,
@@ -35,15 +32,6 @@ function validNotification(
     return null;
   }
   return notification;
-}
-
-function notificationFromFrame(frame: SSEFrame): HotKeyAPI.UserNotificationResponseDTO | null {
-  try {
-    const notification = JSON.parse(frame.data) as HotKeyAPI.UserNotificationResponseDTO;
-    return validNotification(notification, frame.id, frame.event);
-  } catch {
-    return null;
-  }
 }
 
 function notificationFromWebSocketFrame(frame: NotificationWebSocketFrame): HotKeyAPI.UserNotificationResponseDTO | null {
@@ -116,27 +104,17 @@ export function RealtimeNotifications() {
           if (active) throw new Error("notification WebSocket ended");
         } catch {
           if (!active || controller.signal.aborted) break;
+          failures += 1;
+          useNotificationStore.getState().setTransport("polling");
           try {
-            const response = await openNotificationStream(useNotificationStore.getState().lastEventID, controller.signal);
-            failures = 0;
-            useNotificationStore.getState().setTransport("live");
-            await consumeNotificationStream(response, (frame) => ingestWithToast(notificationFromFrame(frame)));
-            if (active) throw new Error("notification SSE fallback ended");
+            await ingestWithoutToast(useNotificationStore.getState().lastEventID);
           } catch {
-            if (!active || controller.signal.aborted) break;
-            failures += 1;
-            if (failures >= 3) {
-              useNotificationStore.getState().setTransport("polling");
-              try {
-                await ingestWithoutToast(useNotificationStore.getState().lastEventID);
-              } catch {
-                // Keep probing real-time transports without exposing internals.
-              }
-              await waitForRetry(POLLING_INTERVAL_MS, controller.signal);
-            } else {
-              await waitForRetry(BACKOFF_MS[failures - 1], controller.signal);
-            }
+            // Keep reconnecting WebSocket even if the recovery read also fails.
           }
+          const retryDelay = failures <= BACKOFF_MS.length
+            ? BACKOFF_MS[failures - 1]
+            : POLLING_INTERVAL_MS;
+          await waitForRetry(retryDelay, controller.signal);
         }
       }
     };

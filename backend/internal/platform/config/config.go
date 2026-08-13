@@ -45,51 +45,10 @@ type MinIOConfig struct {
 }
 
 type NotificationConfig struct {
-	PollInterval                  time.Duration
-	HeartbeatInterval             time.Duration
-	MaxConnections                int
-	WebOrigin                     string
-	VAPIDPublicKey                string
-	VAPIDPrivateKey               string
-	VAPIDSubject                  string
-	PushSubscriptionEncryptionKey string
-}
-
-func (configuration NotificationConfig) ValidateWebPushRuntime() error {
-	values := []string{
-		strings.TrimSpace(configuration.VAPIDPublicKey), strings.TrimSpace(configuration.VAPIDPrivateKey),
-		strings.TrimSpace(configuration.VAPIDSubject), strings.TrimSpace(configuration.PushSubscriptionEncryptionKey),
-	}
-	configured := 0
-	for _, value := range values {
-		if value != "" {
-			configured++
-		}
-	}
-	if configured == 0 {
-		return nil
-	}
-	if configured != len(values) {
-		return errors.New("Web Push VAPID and subscription encryption settings must be configured together")
-	}
-	publicKey, publicError := base64.RawURLEncoding.DecodeString(values[0])
-	privateKey, privateError := base64.RawURLEncoding.DecodeString(values[1])
-	encryptionKey, encryptionError := base64.StdEncoding.DecodeString(values[3])
-	if publicError != nil || len(publicKey) != 65 || publicKey[0] != 4 {
-		return errors.New("Web Push VAPID public key is invalid")
-	}
-	if privateError != nil || len(privateKey) != 32 {
-		return errors.New("Web Push VAPID private key is invalid")
-	}
-	if encryptionError != nil || len(encryptionKey) != 32 {
-		return errors.New("Web Push subscription encryption key must be Base64-encoded 32 bytes")
-	}
-	subject, err := url.Parse(values[2])
-	if err != nil || subject.User != nil || subject.Fragment != "" || subject.RawQuery != "" ||
-		(subject.Scheme != "mailto" && subject.Scheme != "https") || strings.TrimSpace(subject.Opaque+subject.Host) == "" {
-		return errors.New("Web Push VAPID subject must be a mailto or HTTPS URI")
-	}
-	return nil
+	PollInterval      time.Duration
+	HeartbeatInterval time.Duration
+	MaxConnections    int
+	WebOrigin         string
 }
 
 // ValidateRuntime 校验运行进程创建唯一 MinIO 客户端所需的最小配置。
@@ -284,14 +243,10 @@ func Load() (Config, error) {
 			ONNXManifestPath:   configString(v, "onnx_manifest_path"),
 		},
 		Notification: NotificationConfig{
-			PollInterval:                  configDuration(v, "notification_poll_interval"),
-			HeartbeatInterval:             configDuration(v, "notification_heartbeat_interval"),
-			MaxConnections:                configInt(v, "notification_max_connections"),
-			WebOrigin:                     configString(v, "notification_web_origin"),
-			VAPIDPublicKey:                configString(v, "web_push_vapid_public_key"),
-			VAPIDPrivateKey:               configString(v, "web_push_vapid_private_key"),
-			VAPIDSubject:                  configString(v, "web_push_vapid_subject"),
-			PushSubscriptionEncryptionKey: configString(v, "web_push_subscription_encryption_key"),
+			PollInterval:      configDuration(v, "notification_poll_interval"),
+			HeartbeatInterval: configDuration(v, "notification_heartbeat_interval"),
+			MaxConnections:    configInt(v, "notification_max_connections"),
+			WebOrigin:         configString(v, "notification_web_origin"),
 		},
 	}
 	return cfg, cfg.Validate()
@@ -376,9 +331,6 @@ func (c Config) Validate() error {
 		if err != nil || len(decoded) != 32 {
 			return errors.New("source credential master key must be Base64-encoded 32 bytes")
 		}
-	}
-	if err := c.Notification.ValidateWebPushRuntime(); err != nil {
-		return err
 	}
 	return c.Authentication.SMTP.ValidateRuntime()
 }
@@ -495,7 +447,6 @@ func configKeys() []string {
 		"jwt_secret", "jwt_issuer", "jwt_audience", "verification_hmac_secret", "redis_url", "smtp_enabled", "smtp_host", "smtp_port", "smtp_tls_mode", "smtp_username", "smtp_password", "smtp_from_email", "smtp_from_name", "cors_allowed_origins", "refresh_cookie_secure",
 		"openai_api_key", "deepseek_api_key", "ollama_enabled", "ollama_base_url", "onnx_runtime_library", "onnx_model_path", "onnx_tokenizer_path", "onnx_manifest_path",
 		"notification_poll_interval", "notification_heartbeat_interval", "notification_max_connections", "notification_web_origin",
-		"web_push_vapid_public_key", "web_push_vapid_private_key", "web_push_vapid_subject", "web_push_subscription_encryption_key",
 	}
 }
 

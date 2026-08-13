@@ -4,7 +4,7 @@ scope: shared
 doc_no: "000"
 title: HotKey MVP 文档地图
 status: active
-version: v2.6
+version: v2.7
 owner: HotKey Team
 canonical_path: docs/README.md
 ---
@@ -65,7 +65,8 @@ canonical_path: docs/README.md
 | 收敛 | 034 | X 热点核心链路收敛与遗留系统清理 | X-only 假设错误，已由 035 替代 |
 | 历史 | 035 | 多源 AI 热点监控首版收敛 | 已完成并通过验收，产品边界由 037 替代 |
 | 候选 | 036 | 评论会话采集与采集运行时边界 | 调研完成，待评审，不进入 037 MVP |
-| 基线 | 037 | 实时热点监控 MVP 功能基线 | 实现中；当前产品范围 |
+| 基线 | 037 | 实时热点监控 MVP 功能基线 | 已验收；当前产品范围 |
+| 交付 | 038 | 邮件与 WebSocket 双通道通知收敛 | 已验收；当前通知实现 |
 
 ## 执行顺序
 
@@ -78,8 +79,9 @@ flowchart LR
   E --> F["032 语义监控、出处正文与证据阅读（已验收）"]
   F --> G["035：历史多源实现（已验收）"]
   G --> H["037：参考项目能力对标与当前 MVP 基线"]
-  H -. "MVP 后按价值评审" .-> I["033：X 持续指标增强（planned）"]
-  H -. "MVP 后按价值评审" .-> J["036：评论会话增强（proposed）"]
+  H --> K["038：邮件与 WebSocket 双通道通知"]
+  K -. "MVP 后按价值评审" .-> I["033：X 持续指标增强（planned）"]
+  K -. "MVP 后按价值评审" .-> J["036：评论会话增强（proposed）"]
 ```
 
 任一条进入开发前必须先将对应 Design 评审为 `accepted`，再将 PRD 评审为 `approved`，最后把 Plan 状态改为 `in_progress`。实现完成后新增同编号 Acceptance；实施期可新增 `planned` Operations 契约，但只有命令和恢复演练通过并随 Acceptance 留证后才能改为 `active`。

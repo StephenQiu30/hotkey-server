@@ -38,8 +38,6 @@ import (
 	notificationapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/application"
 	notificationjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/infrastructure/jobs"
 	notificationpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/infrastructure/postgres"
-	notificationsecurity "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/infrastructure/security"
-	notificationwebpush "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/infrastructure/webpush"
 	notificationtransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/transport/http"
 	operationsapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/application"
 	operationspostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/infrastructure/postgres"
@@ -178,8 +176,6 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newContentLineageFeedbackService,
 				notificationpostgres.NewRepository,
 				newNotificationService,
-				newPushSubscriptionCipher,
-				newPushSubscriptionService,
 				newQueueStore,
 				exposeCollectionTargetReader,
 				sourcejobs.NewCollectionRetryActivator,
@@ -234,9 +230,8 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newGovernanceService,
 					newJobService,
 					newNotificationHandler,
-					notificationtransport.NewPushSubscriptionHandler,
 				),
-				fx.Invoke(registerRuntimeMetricsCollector, registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerRightsManagementRoutes, registerBilibiliWebhookRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerInstantSearchRoutes, registerMonitorRoutes, registerMonitorIntentRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerMicroEventRoutes, registerJobRoutes, registerOverviewRoutes, registerGovernanceRoutes, registerNotificationRoutes, registerPushSubscriptionRoutes),
+				fx.Invoke(registerRuntimeMetricsCollector, registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerRightsManagementRoutes, registerBilibiliWebhookRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerInstantSearchRoutes, registerMonitorRoutes, registerMonitorIntentRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerMicroEventRoutes, registerJobRoutes, registerOverviewRoutes, registerGovernanceRoutes, registerNotificationRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -288,15 +283,12 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					ingestionjobs.NewNormalizeHandler,
 					newNotificationEmailDeliveryService,
 					notificationjobs.NewEmailDispatcher,
-					newWebPushSender,
-					newWebPushDeliveryService,
-					notificationjobs.NewWebPushDispatcher,
 					newMonitorIntentAnalysisHandler,
 					ingestionjobs.NewPublishedDocumentMatchEvaluationHandler,
 					newP0Handlers,
 					newQueueWorker, exposeWorkerRunner, exposeCollectionDueReader, newCollectionScheduler, exposeCollectionSchedulerRunner,
 				),
-				fx.Invoke(registerPersistentWorkerLifecycle, registerCollectionSchedulerLifecycle, registerNotificationEmailDispatcherLifecycle, registerWebPushDispatcherLifecycle),
+				fx.Invoke(registerPersistentWorkerLifecycle, registerCollectionSchedulerLifecycle, registerNotificationEmailDispatcherLifecycle),
 			)
 			options = append(options, fx.Invoke(intelligenceapplication.RegisterRunLeaseReclaimerLifecycle))
 		} else {
@@ -440,16 +432,6 @@ func newNotificationService(repository *notificationpostgres.Repository) (*notif
 	return notificationapplication.NewService(repository)
 }
 
-func newPushSubscriptionCipher(cfg config.Config) (*notificationsecurity.PushSubscriptionCipher, error) {
-	return notificationsecurity.NewPushSubscriptionCipher(cfg.Notification.PushSubscriptionEncryptionKey)
-}
-
-func newPushSubscriptionService(repository *notificationpostgres.Repository, cipher *notificationsecurity.PushSubscriptionCipher, cfg config.Config) (*notificationapplication.PushSubscriptionService, error) {
-	return notificationapplication.NewPushSubscriptionService(notificationapplication.PushSubscriptionServiceDependencies{
-		Repository: repository, Cipher: cipher, VAPIDPublicKey: cfg.Notification.VAPIDPublicKey,
-	})
-}
-
 type notificationEmailSender struct{ mailer *deliverysmtp.Mailer }
 
 func (sender notificationEmailSender) SendNotificationEmail(ctx context.Context, message notificationapplication.NotificationEmailMessageDTO) (string, error) {
@@ -466,23 +448,8 @@ func newNotificationEmailDeliveryService(repository *notificationpostgres.Reposi
 	})
 }
 
-func newWebPushSender(cfg config.Config) (*notificationwebpush.Sender, error) {
-	return notificationwebpush.NewSender(cfg.Notification)
-}
-
-func newWebPushDeliveryService(repository *notificationpostgres.Repository, cipher *notificationsecurity.PushSubscriptionCipher, sender *notificationwebpush.Sender, cfg config.Config) (*notificationapplication.WebPushDeliveryService, error) {
-	return notificationapplication.NewWebPushDeliveryService(notificationapplication.WebPushDeliveryServiceDependencies{
-		Repository: repository, Secrets: cipher, Sender: sender,
-		Enabled: sender != nil && cfg.Notification.VAPIDPrivateKey != "" && cfg.Notification.PushSubscriptionEncryptionKey != "",
-	})
-}
-
 func registerNotificationRoutes(router *gin.Engine, handler *notificationtransport.Handler, authenticator httptransport.Authenticator) {
 	notificationtransport.RegisterRoutes(router, handler, authenticator)
-}
-
-func registerPushSubscriptionRoutes(router *gin.Engine, handler *notificationtransport.PushSubscriptionHandler, authenticator httptransport.Authenticator) {
-	notificationtransport.RegisterPushSubscriptionRoutes(router, handler, authenticator)
 }
 
 func newEventContentMetricRefreshService(repository *eventpostgres.EventHeatRepository, heat *eventapplication.EventHeatService) (*eventapplication.ContentMetricRefreshService, error) {

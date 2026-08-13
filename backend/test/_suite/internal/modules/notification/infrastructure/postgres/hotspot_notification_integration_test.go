@@ -89,6 +89,11 @@ RETURNING id`, sourceID, now).Scan(&contentID); err != nil {
 SET content_id=$1,ingestion_status='succeeded' WHERE id=$2`, contentID, itemID); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := runtime.SQL.Exec(`INSERT INTO monitor_matches(
+monitor_id,monitor_config_version_id,content_id,rule_score,final_score,decision,algorithm_version,input_hash,scoring_version)
+VALUES ($1,$2,$3,87.5,87.5,'accepted','fixture-v1',repeat('e',64),'fixture-v1')`, monitorID, configID, contentID); err != nil {
+		t.Fatal(err)
+	}
 	// A replayed update must not create a second fact.
 	if _, err := runtime.SQL.Exec(`UPDATE collection_run_items SET content_id=content_id WHERE id=$1`, itemID); err != nil {
 		t.Fatal(err)
@@ -108,7 +113,9 @@ SET content_id=$1,ingestion_status='succeeded' WHERE id=$2`, contentID, itemID);
 	claimed, err := repository.ClaimNextEmailDelivery(ctx, application.ClaimNextEmailDeliveryCommand{
 		ClaimToken: strings.Repeat("e", 64), ClaimedAt: now.Add(time.Second), LeaseUntil: now.Add(time.Minute),
 	})
-	if err != nil || !claimed.Claimed || claimed.Notification.ID != notification.ID {
+	if err != nil || !claimed.Claimed || claimed.Notification.ID != notification.ID ||
+		claimed.MonitorName != "热点监控" || claimed.SourceName != "热点 Feed" || claimed.SourceType != "rss" ||
+		claimed.RelevanceScore == nil || *claimed.RelevanceScore != 87.5 || claimed.OriginalURL != "https://example.test/hotspot-1" {
 		t.Fatalf("high hotspot email claim = %#v / %v", claimed, err)
 	}
 }

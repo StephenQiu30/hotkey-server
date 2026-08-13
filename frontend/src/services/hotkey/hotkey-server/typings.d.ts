@@ -558,11 +558,6 @@ required property without making explicit null impossible to bind. */
     id: number;
   };
 
-  type deleteNotificationsPushSubscriptionsIdParams = {
-    /** subscription ID */
-    id: number;
-  };
-
   type deleteUsersIdParams = {
     /** user ID */
     id: number;
@@ -876,13 +871,6 @@ required property without making explicit null impossible to bind. */
     monitor_id?: number;
     /** page size */
     limit?: number;
-  };
-
-  type getNotificationsStreamParams = {
-    /** last processed user notification ID */
-    after_id?: number;
-    /** authorized monitor filter */
-    monitor_id?: number;
   };
 
   type getOperationsAuditLogsParams = {
@@ -1664,24 +1652,6 @@ probability or a cross-channel relevance percentage. */
     message?: string;
   };
 
-  type NotificationResultHttpPushCapabilityResponseDTO = {
-    code?: number;
-    data?: PushCapabilityResponseDTO;
-    message?: string;
-  };
-
-  type NotificationResultHttpPushSubscriptionListResponseDTO = {
-    code?: number;
-    data?: PushSubscriptionListResponseDTO;
-    message?: string;
-  };
-
-  type NotificationResultHttpPushSubscriptionResponseDTO = {
-    code?: number;
-    data?: PushSubscriptionResponseDTO;
-    message?: string;
-  };
-
   type NotificationResultHttpUserNotificationPageResponseDTO = {
     code?: number;
     data?: UserNotificationPageResponseDTO;
@@ -1970,37 +1940,6 @@ required property without making explicit null impossible to bind. */
     expected_monitor_version: number;
   };
 
-  type PushCapabilityResponseDTO = {
-    available?: boolean;
-    vapid_public_key?: string;
-  };
-
-  type PushSubscriptionKeysRequestDTO = {
-    auth: string;
-    p256dh: string;
-  };
-
-  type PushSubscriptionListResponseDTO = {
-    items?: PushSubscriptionResponseDTO[];
-  };
-
-  type PushSubscriptionResponseDTO = {
-    created_at?: string;
-    device_label?: string;
-    expiration_reason?: string;
-    id?: number;
-    last_failure_at?: string;
-    last_success_at?: string;
-    monitor_ids?: number[];
-    quiet_end?: string;
-    quiet_start?: string;
-    status?: "active" | "disabled" | "expired";
-    timezone?: string;
-    ttl_seconds?: number;
-    updated_at?: string;
-    version?: number;
-  };
-
   type putMonitorsIdContentsContentIdFeedbackParams = {
     /** monitor ID */
     id: number;
@@ -2030,11 +1969,6 @@ required property without making explicit null impossible to bind. */
     id: number;
   };
 
-  type putNotificationsPushSubscriptionsIdParams = {
-    /** subscription ID */
-    id: number;
-  };
-
   type RecordClaimEvidenceRequestDTO = {
     document_version_id: number;
     expected_event_version: number;
@@ -2059,17 +1993,6 @@ required property without making explicit null impossible to bind. */
     decision_batch_id?: number;
     decisions?: RightsDecisionResponseDTO[];
     idempotent_replay?: boolean;
-  };
-
-  type RegisterPushSubscriptionRequestDTO = {
-    device_label: string;
-    endpoint: string;
-    keys: PushSubscriptionKeysRequestDTO;
-    monitor_ids: number[];
-    quiet_end?: string;
-    quiet_start?: string;
-    timezone: string;
-    ttl_seconds: number;
   };
 
   type RegistrationRequest = {
@@ -2603,15 +2526,6 @@ value never authorizes v2 raw evidence or document body persistence. */
     name: string;
     query: string;
     source_connection_ids: number[];
-  };
-
-  type UpdatePushSubscriptionRequestDTO = {
-    device_label: string;
-    monitor_ids: number[];
-    quiet_end?: string;
-    quiet_start?: string;
-    timezone: string;
-    ttl_seconds: number;
   };
 
   type UpdateSourceRequest = {

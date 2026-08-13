@@ -131,6 +131,8 @@ func TestAPIFxGraphRegistersExactDocumentMatchRoutes(t *testing.T) {
 	}
 	defer func() { _ = app.Stop(ctx) }()
 	wanted := map[string]bool{
+		"GET /api/v1/notifications":                                               false,
+		"GET /api/v1/notifications/ws":                                            false,
 		"GET /api/v1/monitors/:id/document-matches":                               false,
 		"POST /api/v1/monitors/:id/document-matches/:match_decision_id/overrides": false,
 		"GET /api/v1/micro-events":                                                false,
@@ -141,23 +143,24 @@ func TestAPIFxGraphRegistersExactDocumentMatchRoutes(t *testing.T) {
 		"POST /api/v1/micro-events/:id/feedback":                                  false,
 		"POST /api/v1/document-versions/:id/text-quote-selectors":                 false,
 		"POST /api/v1/content-lineage-decisions/:id/feedback":                     false,
-		"GET /api/v1/notifications/push-capability":                               false,
-		"GET /api/v1/notifications/push-subscriptions":                            false,
-		"POST /api/v1/notifications/push-subscriptions":                           false,
-		"PUT /api/v1/notifications/push-subscriptions/:id":                        false,
-		"DELETE /api/v1/notifications/push-subscriptions/:id":                     false,
 		"POST /api/v1/source-webhooks/bilibili":                                   false,
 	}
 	forbidden := map[string]bool{
-		"GET /api/v1/events":               false,
-		"GET /api/v1/radar/events":         false,
-		"GET /api/v1/alerts":               false,
-		"GET /api/v1/reports":              false,
-		"GET /api/v1/report-subscriptions": false,
-		"GET /api/v1/knowledge/documents":  false,
-		"GET /api/v1/agent-tokens":         false,
-		"GET /api/v1/agent/events":         false,
-		"GET /feeds/:token":                false,
+		"GET /api/v1/notifications/stream":                    false,
+		"GET /api/v1/notifications/push-capability":           false,
+		"GET /api/v1/notifications/push-subscriptions":        false,
+		"POST /api/v1/notifications/push-subscriptions":       false,
+		"PUT /api/v1/notifications/push-subscriptions/:id":    false,
+		"DELETE /api/v1/notifications/push-subscriptions/:id": false,
+		"GET /api/v1/events":                                  false,
+		"GET /api/v1/radar/events":                            false,
+		"GET /api/v1/alerts":                                  false,
+		"GET /api/v1/reports":                                 false,
+		"GET /api/v1/report-subscriptions":                    false,
+		"GET /api/v1/knowledge/documents":                     false,
+		"GET /api/v1/agent-tokens":                            false,
+		"GET /api/v1/agent/events":                            false,
+		"GET /feeds/:token":                                   false,
 	}
 	for _, route := range router.Routes() {
 		key := route.Method + " " + route.Path
@@ -404,7 +407,7 @@ func TestConfiguredAPIWiresControlPlanes(t *testing.T) {
 		t.Fatalf("Start() error = %v", err)
 	}
 	defer func() { _ = app.Stop(ctx) }()
-	for _, path := range []string{"/api/v1/monitors", "/api/v1/monitors/1/draft", "/api/v1/source-connections", "/api/v1/contents", "/api/v1/micro-events", "/api/v1/ai/model-profiles", "/api/v1/operations/jobs", "/api/v1/notifications", "/api/v1/notifications/push-capability", "/api/v1/notifications/push-subscriptions"} {
+	for _, path := range []string{"/api/v1/monitors", "/api/v1/monitors/1/draft", "/api/v1/source-connections", "/api/v1/contents", "/api/v1/micro-events", "/api/v1/ai/model-profiles", "/api/v1/operations/jobs", "/api/v1/notifications"} {
 		response, err := stdhttp.Get("http://" + server.Address() + path)
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)
@@ -415,7 +418,7 @@ func TestConfiguredAPIWiresControlPlanes(t *testing.T) {
 		}
 		response.Body.Close()
 	}
-	for _, path := range []string{"/api/v1/events", "/api/v1/radar/events", "/api/v1/alerts", "/api/v1/reports", "/api/v1/report-subscriptions", "/api/v1/knowledge/documents", "/api/v1/agent-tokens", "/api/v1/agent/events", "/feeds/legacy-token"} {
+	for _, path := range []string{"/api/v1/notifications/stream", "/api/v1/notifications/push-capability", "/api/v1/notifications/push-subscriptions", "/api/v1/events", "/api/v1/radar/events", "/api/v1/alerts", "/api/v1/reports", "/api/v1/report-subscriptions", "/api/v1/knowledge/documents", "/api/v1/agent-tokens", "/api/v1/agent/events", "/feeds/legacy-token"} {
 		response, err := stdhttp.Get("http://" + server.Address() + path)
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)

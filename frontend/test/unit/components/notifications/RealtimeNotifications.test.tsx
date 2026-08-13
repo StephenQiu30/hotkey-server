@@ -86,4 +86,43 @@ describe("RealtimeNotifications", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(mocks.toast).toHaveBeenCalledWith("新热点", { description: "监控词命中" });
   });
+
+  it("pulls the durable REST cursor when WebSocket is temporarily unavailable", async () => {
+    class FailingWebSocket extends EventTarget {
+      static readonly CONNECTING = 0;
+      static readonly OPEN = 1;
+      readyState = FailingWebSocket.CONNECTING;
+
+      constructor() {
+        super();
+        queueMicrotask(() => this.dispatchEvent(new Event("error")));
+      }
+
+      send() {}
+      close() { this.readyState = 3; }
+    }
+    globalThis.WebSocket = FailingWebSocket as unknown as typeof WebSocket;
+    mocks.getNotifications
+      .mockResolvedValueOnce({ data: { items: [], next_after_id: 0 } })
+      .mockResolvedValue({
+        data: {
+          next_after_id: 5,
+          items: [{
+            id: 5, version: 1, monitor_id: 2, event_type: "hotspot.discovered",
+            resource_type: "hotspot", resource_id: 10, resource_version: 1,
+            occurred_at: "2026-08-08T00:00:00Z", created_at: "2026-08-08T00:00:00Z",
+            title: "补拉热点", summary: "来自持久游标", resource_status: "high",
+            deep_link: "/dashboard/contents/10",
+          }],
+        },
+      });
+
+    render(<RealtimeNotifications />);
+
+    await waitFor(() => expect(mocks.getNotifications).toHaveBeenCalledTimes(2));
+    expect(mocks.getNotifications).toHaveBeenLastCalledWith({ after_id: 0, limit: 100 });
+    expect(useNotificationStore.getState().transport).toBe("polling");
+    expect(useNotificationStore.getState().items[0]?.title).toBe("补拉热点");
+    expect(mocks.toast).not.toHaveBeenCalled();
+  });
 });

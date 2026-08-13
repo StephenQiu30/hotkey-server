@@ -22,7 +22,7 @@ import {
   type NotificationTransport,
 } from "@/stores/notificationStore";
 import { cn } from "@/lib/utils";
-import { PushSubscriptionManager } from "@/components/notifications/PushSubscriptionManager";
+import { NotificationChannels } from "@/components/notifications/NotificationChannels";
 
 const transportPresentation: Record<
   NotificationTransport,
@@ -120,7 +120,7 @@ export function NotificationInbox() {
         }
       />
 
-      <PushSubscriptionManager />
+      <NotificationChannels />
 
       {items.length === 0 ? (
         <Card className="mt-6">

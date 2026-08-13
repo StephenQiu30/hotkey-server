@@ -13,5 +13,4 @@ func RegisterRoutes(router *gin.Engine, handler *Handler, authenticator httptran
 	root.GET("/ws", handler.WebSocket(authenticator))
 	api := root.Group("", httptransport.RequireAuthentication(authenticator))
 	api.GET("", httptransport.Wrap(handler.List))
-	api.GET("/stream", handler.Stream)
 }

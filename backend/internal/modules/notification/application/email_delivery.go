@@ -9,6 +9,8 @@ import (
 	"html"
 	"net/mail"
 	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -37,6 +39,11 @@ type ClaimedEmailDeliveryDTO struct {
 	PublishedConfigID int64
 	PublishedRevision int64
 	AlertEmailEnabled bool
+	MonitorName       string
+	SourceName        string
+	SourceType        string
+	RelevanceScore    *float64
+	OriginalURL       string
 }
 
 type CompleteEmailDeliveryCommand struct {
@@ -164,13 +171,40 @@ func (service *EmailDeliveryService) message(claimed ClaimedEmailDeliveryDTO) No
 	absoluteLink := service.webOrigin + notification.DeepLink
 	title := cleanNotificationText(notification.Title)
 	summary := cleanNotificationText(notification.Summary)
-	resourceStatus := cleanNotificationText(notification.ResourceStatus)
-	text := title + "\n\n" + summary + "\n\n状态：" + resourceStatus + "\n在 HotKey 中打开：" + absoluteLink
+	monitorName := cleanNotificationText(claimed.MonitorName)
+	sourceName := cleanNotificationText(claimed.SourceName)
+	statusLabel := notificationSeverityLabel(notification.ResourceStatus)
+	subjectTitle := notificationSubjectText(title)
+	if monitorName == "" {
+		monitorName = "监控"
+	}
+	textLines := []string{title, "", summary, "", "级别：" + statusLabel, "监控：" + monitorName}
+	detailRows := []string{
+		emailDetailRow("级别", statusLabel),
+		emailDetailRow("监控", monitorName),
+	}
+	actionLinks := make([]string, 0, 2)
+	if sourceName != "" {
+		textLines = append(textLines, "来源："+sourceName)
+		detailRows = append(detailRows, emailDetailRow("来源", sourceName))
+	}
+	if claimed.RelevanceScore != nil {
+		relevance := strconv.FormatFloat(*claimed.RelevanceScore, 'f', 1, 64) + "%"
+		textLines = append(textLines, "相关度："+relevance)
+		detailRows = append(detailRows, emailDetailRow("相关度", relevance))
+	}
+	if originalURL := safeNotificationOriginalURL(claimed.OriginalURL); originalURL != "" {
+		textLines = append(textLines, "原文："+originalURL)
+		actionLinks = append(actionLinks, "<p><a href=\""+html.EscapeString(originalURL)+"\">查看原文</a></p>")
+	}
+	textLines = append(textLines, "在 HotKey 中打开："+absoluteLink)
 	htmlBody := "<h1>" + html.EscapeString(title) + "</h1><p>" + html.EscapeString(summary) +
-		"</p><p>状态：" + html.EscapeString(resourceStatus) + "</p><p><a href=\"" + html.EscapeString(absoluteLink) +
-		"\">在 HotKey 中打开</a></p>"
+		"</p><dl>" + strings.Join(detailRows, "") + "</dl>" + strings.Join(actionLinks, "") +
+		"<p><a href=\"" + html.EscapeString(absoluteLink) + "\">在 HotKey 中打开</a></p>"
 	return NotificationEmailMessageDTO{
-		Recipient: claimed.RecipientEmail, Subject: "[HotKey] 热点事件更新", Text: text, HTML: htmlBody,
+		Recipient: claimed.RecipientEmail,
+		Subject:   "[HotKey][" + statusLabel + "] " + monitorName + " · " + subjectTitle,
+		Text:      strings.Join(textLines, "\n"), HTML: htmlBody,
 	}
 }
 
@@ -182,6 +216,9 @@ func validateClaimedEmailDelivery(claimed ClaimedEmailDeliveryDTO, expectedToken
 	}
 	if err := ValidateUserNotificationDTO(claimed.Notification); err != nil {
 		return err
+	}
+	if claimed.RelevanceScore != nil && (*claimed.RelevanceScore < 0 || *claimed.RelevanceScore > 100) {
+		return fmt.Errorf("notification relevance score is invalid")
 	}
 	address, err := mail.ParseAddress(claimed.RecipientEmail)
 	if err != nil || address.Address != claimed.RecipientEmail || strings.ContainsAny(claimed.RecipientEmail, "\r\n") {
@@ -210,6 +247,46 @@ func cleanNotificationText(value string) string {
 		}
 		return character
 	}, strings.TrimSpace(value))
+}
+
+var notificationHTMLTag = regexp.MustCompile(`<[^>]*>`)
+
+func notificationSubjectText(value string) string {
+	value = html.UnescapeString(notificationHTMLTag.ReplaceAllString(value, ""))
+	value = strings.Join(strings.Fields(cleanNotificationText(value)), " ")
+	if value == "" {
+		return "热点更新"
+	}
+	characters := []rune(value)
+	if len(characters) > 120 {
+		return string(characters[:120]) + "…"
+	}
+	return value
+}
+
+func notificationSeverityLabel(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "urgent":
+		return "紧急"
+	case "high":
+		return "高"
+	default:
+		return cleanNotificationText(value)
+	}
+}
+
+func safeNotificationOriginalURL(value string) string {
+	value = strings.TrimSpace(value)
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.User != nil || parsed.Hostname() == "" || parsed.Scheme != "http" && parsed.Scheme != "https" ||
+		strings.ContainsAny(value, "\r\n") {
+		return ""
+	}
+	return parsed.String()
+}
+
+func emailDetailRow(label string, value string) string {
+	return "<dt>" + html.EscapeString(label) + "</dt><dd>" + html.EscapeString(value) + "</dd>"
 }
 
 func newEmailClaimToken() (string, error) {

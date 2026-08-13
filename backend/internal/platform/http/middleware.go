@@ -122,10 +122,6 @@ func cors(allowedOrigins []string) gin.HandlerFunc {
 
 func requestContextTimeout(timeout time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if c.Request.URL.Path == "/api/v1/notifications/stream" {
-			c.Next()
-			return
-		}
 		requestContext, cancel := context.WithTimeout(c.Request.Context(), timeout)
 		defer cancel()
 		c.Request = c.Request.WithContext(requestContext)

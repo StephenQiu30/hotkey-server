@@ -56,7 +56,7 @@ func TestServiceValidatesIndependentDeliveryAttempt(t *testing.T) {
 	repository := &notificationRepositoryStub{}
 	service, _ := NewService(repository)
 	command := RecordNotificationDeliveryAttemptCommand{
-		UserNotificationID: 9, UserID: 7, Channel: "sse", DeliveryTargetKey: "browser_stream", Status: "succeeded",
+		UserNotificationID: 9, UserID: 7, Channel: "email", DeliveryTargetKey: "primary_email", Status: "succeeded",
 		AttemptedAt: time.Date(2026, 8, 10, 1, 0, 0, 0, time.UTC),
 	}
 	result, err := service.RecordDeliveryAttempt(context.Background(), command)

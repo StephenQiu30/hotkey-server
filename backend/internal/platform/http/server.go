@@ -65,7 +65,7 @@ func RegisterServer(lifecycle fx.Lifecycle, server *Server) {
 			server.logger.Info("HTTP server stopping")
 			// Long-lived streams do not become idle just because Shutdown stops
 			// accepting new connections. Cancel the shared request base context
-			// first so SSE and other streaming handlers can finish inside the
+			// first so long-running handlers can finish inside the
 			// graceful-shutdown deadline.
 			if server.cancelRequests != nil {
 				server.cancelRequests()

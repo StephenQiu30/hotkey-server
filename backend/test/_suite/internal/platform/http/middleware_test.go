@@ -98,7 +98,7 @@ func TestMiddlewareMapsPanicAndDeadline(t *testing.T) {
 	}
 }
 
-func TestRequestTimeoutExemptsAuthenticatedNotificationStreamOnly(t *testing.T) {
+func TestRequestTimeoutAppliesToNotificationHTTPRoutes(t *testing.T) {
 	router := gin.New()
 	router.Use(requestContextTimeout(time.Millisecond))
 	deadline := make(chan bool, 2)
@@ -114,7 +114,7 @@ func TestRequestTimeoutExemptsAuthenticatedNotificationStreamOnly(t *testing.T) 
 		path         string
 		wantDeadline bool
 	}{
-		{path: "/api/v1/notifications/stream", wantDeadline: false},
+		{path: "/api/v1/notifications/stream", wantDeadline: true},
 		{path: "/api/v1/notifications", wantDeadline: true},
 	} {
 		response := httptest.NewRecorder()
