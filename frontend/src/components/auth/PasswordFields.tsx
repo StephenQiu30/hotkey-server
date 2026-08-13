@@ -32,27 +32,32 @@ export default function PasswordFields({
   };
 
   const displayError = error || localError;
+  const errorId = `${prefix}-confirm-error`;
+  const requirementsId = `${prefix}-requirements`;
 
   return (
-    <div className="space-y-3">
-      <div className="space-y-1.5">
-        <Label htmlFor={`${prefix}-password`} className="text-xs font-medium">密码</Label>
+    <div className="space-y-5">
+      <div className="space-y-2">
+        <Label htmlFor={`${prefix}-password`}>密码</Label>
         <PasswordInput id={`${prefix}-password`} placeholder="至少 8 位，含大小写字母和数字"
           autoComplete="new-password"
           value={onPasswordChange ? password : localPassword}
           onChange={(e) => handlePasswordChange(e.target.value)}
-          className="h-10 border-border bg-background text-sm" />
+          aria-describedby={requirementsId}
+          className="h-11" />
+        <p id={requirementsId} className="text-xs leading-5 text-muted-foreground">至少 8 位，含大小写字母和数字</p>
       </div>
-      <div className="space-y-1.5">
-        <Label htmlFor={`${prefix}-confirm`} className="text-xs font-medium">确认密码</Label>
+      <div className="space-y-2">
+        <Label htmlFor={`${prefix}-confirm`}>确认密码</Label>
         <PasswordInput id={`${prefix}-confirm`} placeholder="再次输入密码"
           autoComplete="new-password"
           value={onConfirmChange ? confirmPassword : localConfirm}
           onChange={(e) => handleConfirmChange(e.target.value)}
-          className={`h-10 border-border bg-background text-sm ${displayError ? "border-destructive" : ""}`} />
+          aria-invalid={Boolean(displayError)}
+          aria-describedby={displayError ? errorId : undefined}
+          className="h-11" />
+        {displayError && <p id={errorId} role="alert" className="text-sm leading-5 text-destructive">{displayError}</p>}
       </div>
-      {displayError && <p className="text-xs text-destructive">{displayError}</p>}
-      <p className="text-[11px] text-muted-foreground">密码要求：至少 8 位，含大小写字母和数字</p>
     </div>
   );
 }

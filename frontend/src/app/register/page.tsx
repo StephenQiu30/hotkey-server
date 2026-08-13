@@ -79,14 +79,14 @@ export default function RegisterPage() {
           {step === RegistrationStep.Email && <EmailVerificationStep purpose={VerificationFlow.Registration} onConfirmed={handleConfirmed} />}
 
           {step === RegistrationStep.Profile && (
-            <form onSubmit={handleRegister} className="space-y-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="display-name" className="text-sm font-medium">显示名称</Label>
+            <form onSubmit={handleRegister} className="space-y-5">
+              <div className="space-y-2">
+                <Label htmlFor="display-name">显示名称</Label>
                 <div className="relative">
-                  <User className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <User aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input id="display-name" placeholder="您的昵称" value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    className="h-10 border-border bg-background pl-8 text-sm" />
+                    className="h-11 pl-9" />
                 </div>
               </div>
               <PasswordFields prefix="register" password={password} confirmPassword={confirmPassword}
@@ -99,20 +99,20 @@ export default function RegisterPage() {
                 </div>
               )}
               {recovery === "verification" && (
-                <Button type="button" variant="outline" onClick={restartVerification} className="h-10 w-full rounded-md text-sm font-medium">
+                <Button type="button" variant="outline" onClick={restartVerification} className="h-11 w-full">
                   重新验证邮箱
                 </Button>
               )}
-              <Button type="submit" disabled={loading || recovery !== null} className="h-11 w-full">
-                {loading ? "注册中..." : "完成注册"}
+              <Button type="submit" disabled={loading || recovery !== null} className="h-11 w-full disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100">
+                {loading ? "注册中…" : "完成注册"}
               </Button>
             </form>
           )}
         </div>
-        <div className="mt-4 text-center">
-          <a href="/login" className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground">
-            <ArrowLeft className="h-3 w-3" /> 已有账号？去登录
-          </a>
+        <div className="mt-6 text-center">
+          <Link href="/login" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground">
+            <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" /> 已有账号？去登录
+          </Link>
         </div>
       </AuthShell>
     </div>

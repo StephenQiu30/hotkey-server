@@ -56,4 +56,25 @@ describe("EmailVerificationStep", () => {
       });
     });
   });
+
+  it("shows the destination as a wrapping live status before code entry", async () => {
+    const user = userEvent.setup();
+    const email = "very.long.editorial.user@example.com";
+    render(
+      <EmailVerificationStep
+        purpose={VerificationFlow.Registration}
+        onConfirmed={vi.fn()}
+      />,
+    );
+
+    await user.type(screen.getByRole("textbox", { name: "邮箱" }), email);
+    await user.click(screen.getByRole("button", { name: "发送验证码" }));
+
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent(`验证码已发送至${email}`);
+    expect(screen.getByText(email)).toHaveClass("block", "break-all");
+    expect(screen.getByPlaceholderText("输入 6 位验证码")).toHaveClass(
+      "placeholder:tracking-normal",
+    );
+  });
 });

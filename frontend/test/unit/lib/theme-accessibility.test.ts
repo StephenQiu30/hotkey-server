@@ -24,6 +24,10 @@ function contrast(foreground: string, background: string) {
 }
 
 describe("dashboard theme accessibility", () => {
+  it("reserves a stable document scrollbar gutter across dashboard routes", () => {
+    expect(css).toMatch(/html\s*{[\s\S]*?scrollbar-gutter:\s*stable;/);
+  });
+
   it("binds Tailwind typography tokens to the fonts loaded by next/font", () => {
     expect(css).toContain("var(--font-geist-sans)");
     expect(css).toContain("var(--font-geist-mono)");

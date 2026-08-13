@@ -21,11 +21,11 @@ export default function AuthShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-background px-5 sm:px-8">
+    <div className="min-h-screen bg-muted/30 px-5 sm:px-8">
       <div className="mx-auto grid min-h-screen w-full max-w-[1440px] lg:grid-cols-[minmax(0,1fr)_480px]">
         <aside
           aria-label="HotKey 品牌介绍"
-          className="relative hidden min-h-screen overflow-hidden bg-muted/30 p-8 lg:flex lg:flex-col xl:p-10"
+          className="relative hidden min-h-screen overflow-hidden p-8 lg:flex lg:flex-col xl:p-10"
         >
           <Link
             href="/"
@@ -60,23 +60,23 @@ export default function AuthShell({
           <p className="relative z-10 text-xs text-muted-foreground">© 2026 HotKey</p>
         </aside>
 
-        <main className="flex min-h-screen items-center justify-center py-12 sm:px-2 lg:px-14">
-          <div className="w-full max-w-sm">
+        <main className="flex min-h-screen items-center justify-center py-10 sm:px-2 sm:py-12 lg:px-10">
+          <div className="w-full max-w-[400px]">
             <Link
               href="/"
-              className="mb-14 inline-flex text-base font-semibold text-foreground no-underline lg:hidden"
+              className="mb-10 inline-flex text-base font-semibold text-foreground no-underline sm:mb-12 lg:hidden"
             >
               <BrandLogo />
             </Link>
-            <Card>
-              <CardHeader className="px-5 pt-5 sm:px-6 sm:pt-6">
+            <Card className="rounded-none border-0 bg-transparent shadow-none">
+              <CardHeader className="space-y-0 px-0 pb-6 pt-0">
                 <p className="text-xs text-muted-foreground">HotKey Intelligence</p>
-                <CardTitle>
-                  <h1 className="mt-2 text-2xl tracking-[-0.035em]">{title}</h1>
+                <CardTitle className="mt-3">
+                  <h1 className="text-2xl leading-8 tracking-[-0.035em]">{title}</h1>
                 </CardTitle>
-                <CardDescription className="leading-6">{subtitle}</CardDescription>
+                <CardDescription className="mt-1.5 leading-6">{subtitle}</CardDescription>
               </CardHeader>
-              <CardContent className="px-5 pb-5 sm:px-6 sm:pb-6">
+              <CardContent className="px-0 pb-0">
                 {children}
               </CardContent>
             </Card>

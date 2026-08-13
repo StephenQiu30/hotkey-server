@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { CheckCircle } from "lucide-react";
 import AuthShell from "@/components/auth/AuthShell";
 import PasswordFields from "@/components/auth/PasswordFields";
@@ -11,7 +13,7 @@ import { postAuthPasswordResetsConfirm } from "@/services/hotkey/hotkey-server/i
 import { toast } from "sonner";
 
 export default function ResetPasswordPage() {
-  const [ticket, setTicket] = useState("");
+  const [ticket, setTicket] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -23,7 +25,7 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     const stored = sessionStorage.getItem("verification_ticket");
-    if (!stored) { window.location.href = "/forgot-password"; return; }
+    if (!stored) { window.location.replace("/forgot-password"); return; }
     setTicket(stored);
     sessionStorage.removeItem("verification_ticket");
   }, []);
@@ -42,15 +44,33 @@ export default function ResetPasswordPage() {
     finally { setLoading(false); }
   };
 
-  if (!ticket) return null;
+  if (!ticket) {
+    return (
+      <AuthShell title="设置新密码" subtitle="正在验证重置凭证">
+        <div aria-busy="true" aria-label="正在加载" className="space-y-5">
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-11 w-full" />
+          </div>
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-11 w-full" />
+          </div>
+          <Skeleton className="h-11 w-full" />
+        </div>
+      </AuthShell>
+    );
+  }
 
   if (success) {
     return (
       <AuthShell title="密码已重置" subtitle="请使用新密码登录">
-        <div className="text-center">
-          <CheckCircle className="mx-auto mb-3 h-8 w-8 text-primary" />
-          <p className="mb-5 text-xs text-muted-foreground">密码重置成功</p>
-          <a href="/login"><Button className="h-11 w-full">前往登录</Button></a>
+        <div role="status" className="text-center">
+          <CheckCircle aria-hidden="true" className="mx-auto mb-3 h-8 w-8 text-primary" />
+          <p className="mb-5 text-sm text-muted-foreground">密码重置成功</p>
+          <Button asChild className="h-11 w-full">
+            <Link href="/login">前往登录</Link>
+          </Button>
         </div>
       </AuthShell>
     );
@@ -60,12 +80,12 @@ export default function ResetPasswordPage() {
     <div ref={containerRef}>
       <AuthShell title="设置新密码" subtitle="请输入新密码">
         <div className="rp-fade">
-          <form onSubmit={handleReset} className="space-y-3">
+          <form onSubmit={handleReset} className="space-y-5">
             <PasswordFields prefix="reset" password={password} confirmPassword={confirmPassword}
               onPasswordChange={setPassword} onConfirmChange={setConfirmPassword} />
-            {error && <p className="text-xs text-destructive">{error}</p>}
-            <Button type="submit" disabled={loading || !password} className="h-11 w-full">
-              {loading ? "重置中..." : "重置密码"}
+            {error && <p role="alert" className="text-sm leading-5 text-destructive">{error}</p>}
+            <Button type="submit" disabled={loading || !password} className="h-11 w-full disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100">
+              {loading ? "重置中…" : "重置密码"}
             </Button>
           </form>
         </div>

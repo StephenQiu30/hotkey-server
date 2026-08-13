@@ -109,13 +109,20 @@ describe("公开入口页面", () => {
       </AuthShell>
     );
 
-    expect(
-      screen.getByRole("complementary", { name: "HotKey 品牌介绍" })
-    ).toBeInTheDocument();
+    const brandRegion = screen.getByRole("complementary", {
+      name: "HotKey 品牌介绍",
+    });
+    const authCanvas = brandRegion.parentElement?.parentElement;
+    const formSurface = screen
+      .getByText("表单内容")
+      .closest('[data-slot="card"]');
+
+    expect(brandRegion).toBeInTheDocument();
     expect(screen.getByAltText("")).toHaveClass("dark:invert");
-    expect(screen.getByText("表单内容").closest('[data-slot="card"]')).toHaveClass(
-      "rounded-xl"
-    );
+    expect(authCanvas).toHaveClass("bg-muted/30");
+    expect(brandRegion).not.toHaveClass("bg-muted/30");
+    expect(formSurface).toHaveClass("rounded-none", "border-0", "bg-transparent");
+    expect(formSurface).not.toHaveClass("rounded-xl", "border", "bg-card");
   });
 
   it("未找到页面提供中文说明和可恢复的导航入口", () => {

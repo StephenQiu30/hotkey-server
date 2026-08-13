@@ -96,6 +96,7 @@
 html {
   background: var(--background);
   scroll-behavior: smooth;
+  scrollbar-gutter: stable;
 }
 body {
   margin: 0;
