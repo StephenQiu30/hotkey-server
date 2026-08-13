@@ -2358,10 +2358,10 @@
                 "tags": [
                     "monitors"
                 ],
-                "summary": "Create a monitor draft",
+                "summary": "Create a simple monitor",
                 "parameters": [
                     {
-                        "description": "monitor draft",
+                        "description": "simple monitor",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -2448,6 +2448,79 @@
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitors"
+                ],
+                "summary": "Update a simple monitor",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "simple monitor update",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.UpdateMonitorRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-http_MonitorResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
                         }
@@ -4728,6 +4801,66 @@
                         "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/http.MonitorResult-internal_modules_monitor_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/monitors/{id}/scans": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "collection-runs"
+                ],
+                "summary": "List recent monitor scans",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "monitor ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "maximum": 100,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 20,
+                        "description": "scan count",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.CollectionResult-http_MonitorScanPageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.CollectionResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.CollectionResult-internal_modules_source_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.CollectionResult-internal_modules_source_transport_http_EmptyResponse"
                         }
                     }
                 }
@@ -7980,6 +8113,20 @@
                 }
             }
         },
+        "http.CollectionResult-http_MonitorScanPageResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.MonitorScanPageResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "http.CollectionResult-http_SourceHealthResponse": {
             "type": "object",
             "properties": {
@@ -8763,36 +8910,34 @@
         "http.CreateMonitorRequest": {
             "type": "object",
             "required": [
-                "config",
                 "name",
-                "rules",
-                "sources"
+                "query",
+                "source_connection_ids"
             ],
             "properties": {
-                "config": {
-                    "$ref": "#/definitions/http.MonitorConfigRequest"
-                },
-                "description": {
-                    "type": "string"
+                "collection_interval_seconds": {
+                    "type": "integer",
+                    "default": 1800,
+                    "maximum": 86400,
+                    "minimum": 300,
+                    "example": 1800
                 },
                 "name": {
                     "type": "string",
-                    "example": "AI releases"
+                    "maxLength": 120,
+                    "example": "AI 产品"
                 },
-                "rules": {
-                    "type": "array",
-                    "maxItems": 100,
-                    "minItems": 1,
-                    "items": {
-                        "$ref": "#/definitions/http.MonitorRuleRequest"
-                    }
+                "query": {
+                    "type": "string",
+                    "maxLength": 160,
+                    "example": "Claude"
                 },
-                "sources": {
+                "source_connection_ids": {
                     "type": "array",
                     "maxItems": 10,
                     "minItems": 1,
                     "items": {
-                        "$ref": "#/definitions/http.MonitorSourceRequest"
+                        "type": "integer"
                     }
                 }
             }
@@ -10803,11 +10948,11 @@
         "http.MonitorResponse": {
             "type": "object",
             "properties": {
+                "collection_interval_seconds": {
+                    "type": "integer"
+                },
                 "description": {
                     "type": "string"
-                },
-                "draft": {
-                    "$ref": "#/definitions/http.MonitorConfigResponse"
                 },
                 "id": {
                     "type": "integer"
@@ -10815,11 +10960,14 @@
                 "name": {
                     "type": "string"
                 },
-                "published": {
-                    "$ref": "#/definitions/http.MonitorConfigResponse"
+                "query": {
+                    "type": "string"
                 },
-                "published_revision": {
-                    "type": "integer"
+                "sources": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.MonitorSourceResponse"
+                    }
                 },
                 "status": {
                     "type": "string"
@@ -11033,6 +11181,128 @@
                 }
             }
         },
+        "http.MonitorScanPageResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.MonitorScanResponse"
+                    }
+                }
+            }
+        },
+        "http.MonitorScanResponse": {
+            "type": "object",
+            "properties": {
+                "accepted_count": {
+                    "type": "integer"
+                },
+                "candidate_count": {
+                    "type": "integer"
+                },
+                "finished_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "monitor_id": {
+                    "type": "integer"
+                },
+                "rejected_count": {
+                    "type": "integer"
+                },
+                "scheduled_at": {
+                    "type": "string"
+                },
+                "sources": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.MonitorScanSourceResponse"
+                    }
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "queued",
+                        "running",
+                        "succeeded",
+                        "partial",
+                        "failed"
+                    ]
+                },
+                "trigger_type": {
+                    "type": "string",
+                    "enum": [
+                        "schedule",
+                        "manual",
+                        "retry",
+                        "reconcile"
+                    ]
+                }
+            }
+        },
+        "http.MonitorScanSourceResponse": {
+            "type": "object",
+            "properties": {
+                "accepted_count": {
+                    "type": "integer"
+                },
+                "candidate_count": {
+                    "type": "integer"
+                },
+                "error_code": {
+                    "type": "string"
+                },
+                "finished_at": {
+                    "type": "string"
+                },
+                "rejected_count": {
+                    "type": "integer"
+                },
+                "run_id": {
+                    "type": "integer"
+                },
+                "scheduled_at": {
+                    "type": "string"
+                },
+                "source_connection_id": {
+                    "type": "integer"
+                },
+                "source_name": {
+                    "type": "string"
+                },
+                "source_type": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "queued",
+                        "running",
+                        "succeeded",
+                        "failed",
+                        "cancelled"
+                    ]
+                },
+                "trigger_type": {
+                    "type": "string",
+                    "enum": [
+                        "schedule",
+                        "manual",
+                        "retry",
+                        "reconcile"
+                    ]
+                }
+            }
+        },
         "http.MonitorSourceRequest": {
             "type": "object",
             "required": [
@@ -11060,16 +11330,7 @@
                 "enabled": {
                     "type": "boolean"
                 },
-                "id": {
-                    "type": "integer"
-                },
                 "name": {
-                    "type": "string"
-                },
-                "priority": {
-                    "type": "integer"
-                },
-                "query_override": {
                     "type": "string"
                 },
                 "source_connection_id": {
@@ -13116,6 +13377,45 @@
                 "version": {
                     "type": "integer",
                     "example": 1
+                }
+            }
+        },
+        "http.UpdateMonitorRequest": {
+            "type": "object",
+            "required": [
+                "collection_interval_seconds",
+                "expected_monitor_version",
+                "name",
+                "query",
+                "source_connection_ids"
+            ],
+            "properties": {
+                "collection_interval_seconds": {
+                    "type": "integer",
+                    "maximum": 86400,
+                    "minimum": 300,
+                    "example": 1800
+                },
+                "expected_monitor_version": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 120,
+                    "example": "AI 产品"
+                },
+                "query": {
+                    "type": "string",
+                    "maxLength": 160,
+                    "example": "Claude"
+                },
+                "source_connection_ids": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "minItems": 1,
+                    "items": {
+                        "type": "integer"
+                    }
                 }
             }
         },

@@ -128,11 +128,11 @@ func TestReplaceDraftRouteRequiresExplicitNullableDraftVersion(t *testing.T) {
 	}
 }
 
-func TestMonitorDraftRequestsAcceptZeroThresholdAndDefaultOmittedPriorities(t *testing.T) {
+func TestSimpleMonitorCreateUsesServerDefaultsAndDraftReplacementKeepsLegacyDefaults(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	service := &captureMonitorService{readMonitorService: readMonitorService{view: monitorapplication.MonitorView{Monitor: domain.Monitor{ID: 1, Version: 4, Name: "monitor", Status: domain.MonitorStatusDraft}}}}
 	router := gin.New()
-	RegisterRoutes(router, service, testAuthenticator{subject: httptransport.Subject{UserID: 2, SessionID: 2, Role: httptransport.RoleEditor}})
+	RegisterRoutes(router, service, testAuthenticator{subject: httptransport.Subject{UserID: 2, SessionID: 2, Role: httptransport.RoleAdmin}})
 
 	for _, test := range []struct {
 		name       string
@@ -142,9 +142,14 @@ func TestMonitorDraftRequestsAcceptZeroThresholdAndDefaultOmittedPriorities(t *t
 		wantStatus int
 	}{
 		{
-			name: "create explicit zero", method: http.MethodPost, path: "/api/v1/monitors",
-			body:       `{"name":"zero create","config":{"timezone":"UTC","languages":["en"],"collection_interval_seconds":300,"relevance_threshold":60,"event_threshold":0,"retention_days":30},"rules":[{"rule_type":"keyword","operator":"contains","value":"OpenAI"}],"sources":[{"source_connection_id":7}]}`,
+			name: "simple create", method: http.MethodPost, path: "/api/v1/monitors",
+			body:       `{"name":"AI 产品","query":"OpenAI","source_connection_ids":[7]}`,
 			wantStatus: http.StatusCreated,
+		},
+		{
+			name: "simple update", method: http.MethodPut, path: "/api/v1/monitors/1",
+			body:       `{"expected_monitor_version":4,"name":"AI 产品更新","query":"Claude","source_connection_ids":[7],"collection_interval_seconds":900}`,
+			wantStatus: http.StatusOK,
 		},
 		{
 			name: "replace explicit zero", method: http.MethodPut, path: "/api/v1/monitors/1/draft",
@@ -152,8 +157,8 @@ func TestMonitorDraftRequestsAcceptZeroThresholdAndDefaultOmittedPriorities(t *t
 			wantStatus: http.StatusOK,
 		},
 		{
-			name: "missing threshold", method: http.MethodPost, path: "/api/v1/monitors",
-			body:       `{"name":"missing threshold","config":{"timezone":"UTC","languages":["en"],"collection_interval_seconds":300,"relevance_threshold":60,"retention_days":30},"rules":[{"rule_type":"keyword","operator":"contains","value":"OpenAI"}],"sources":[{"source_connection_id":7}]}`,
+			name: "missing query", method: http.MethodPost, path: "/api/v1/monitors",
+			body:       `{"name":"missing query","source_connection_ids":[7]}`,
 			wantStatus: http.StatusBadRequest,
 		},
 		{
@@ -186,16 +191,23 @@ func TestMonitorDraftRequestsAcceptZeroThresholdAndDefaultOmittedPriorities(t *t
 		})
 	}
 
-	if len(service.creates) != 1 || len(service.replacements) != 1 {
-		t.Fatalf("create/replace calls = %d/%d, want 1/1", len(service.creates), len(service.replacements))
+	if len(service.creates) != 1 || len(service.updates) != 1 || len(service.replacements) != 1 {
+		t.Fatalf("create/update/replace calls = %d/%d/%d, want 1/1/1", len(service.creates), len(service.updates), len(service.replacements))
 	}
-	for _, draft := range []monitorapplication.DraftInput{service.creates[0].Draft, service.replacements[0].Draft} {
-		if draft.Config.EventThreshold != 0 {
-			t.Fatalf("event threshold = %v, want explicit zero", draft.Config.EventThreshold)
-		}
-		if draft.Rules[0].Priority != 100 || draft.Sources[0].Priority != 100 {
-			t.Fatalf("omitted priorities = rule %d source %d, want 100", draft.Rules[0].Priority, draft.Sources[0].Priority)
-		}
+	created := service.creates[0].Draft
+	if created.Config.CollectionIntervalSeconds != 1800 || created.Config.EventThreshold != 0 || created.Config.RelevanceThreshold != 60 || created.Config.RetentionDays != 30 {
+		t.Fatalf("simple create defaults = %#v", created.Config)
+	}
+	if created.Rules[0].Value != "OpenAI" || created.Rules[0].Priority != 1 || created.Sources[0].Priority != 1 {
+		t.Fatalf("simple create rule/source = %#v / %#v", created.Rules, created.Sources)
+	}
+	updated := service.updates[0]
+	if updated.MonitorID != 1 || updated.ExpectedMonitorVersion != 4 || updated.Draft.Name != "AI 产品更新" || updated.Draft.Config.CollectionIntervalSeconds != 900 || updated.Draft.Rules[0].Value != "Claude" {
+		t.Fatalf("simple update = %#v", updated)
+	}
+	replaced := service.replacements[0].Draft
+	if replaced.Config.EventThreshold != 0 || replaced.Rules[0].Priority != 100 || replaced.Sources[0].Priority != 100 {
+		t.Fatalf("legacy replacement defaults = %#v / %#v / %#v", replaced.Config, replaced.Rules, replaced.Sources)
 	}
 }
 
@@ -203,13 +215,13 @@ func TestMonitorDraftRequestRejectsMoreThanTenSourcesAtTheTransportBoundary(t *t
 	gin.SetMode(gin.TestMode)
 	service := &captureMonitorService{readMonitorService: readMonitorService{view: monitorapplication.MonitorView{Monitor: domain.Monitor{ID: 1, Version: 1, Name: "monitor", Status: domain.MonitorStatusDraft}}}}
 	router := gin.New()
-	RegisterRoutes(router, service, testAuthenticator{subject: httptransport.Subject{UserID: 2, SessionID: 2, Role: httptransport.RoleEditor}})
+	RegisterRoutes(router, service, testAuthenticator{subject: httptransport.Subject{UserID: 2, SessionID: 2, Role: httptransport.RoleAdmin}})
 
 	sources := make([]string, 11)
 	for index := range sources {
-		sources[index] = `{"source_connection_id":` + strconv.Itoa(index+1) + `}`
+		sources[index] = strconv.Itoa(index + 1)
 	}
-	body := `{"name":"too many sources","config":{"timezone":"UTC","languages":["en"],"collection_interval_seconds":300,"relevance_threshold":60,"event_threshold":0,"retention_days":30},"rules":[{"rule_type":"keyword","operator":"contains","value":"OpenAI"}],"sources":[` + strings.Join(sources, ",") + `]}`
+	body := `{"name":"too many sources","query":"OpenAI","source_connection_ids":[` + strings.Join(sources, ",") + `]}`
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/monitors", strings.NewReader(body))
 	request.Header.Set("Authorization", "Bearer editor")
 	request.Header.Set("Content-Type", "application/json")
@@ -296,7 +308,7 @@ func TestMonitorResponseNeverContainsSourceExecutionFields(t *testing.T) {
 
 func TestMonitorReadRoutesProjectPublishedAndDraftByRole(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	published := monitorapplication.ConfigurationView{Config: domain.MonitorConfigVersion{ID: 10, Revision: 2, Config: domain.MonitorConfig{Timezone: "UTC", Languages: []string{"en"}, CollectionIntervalSeconds: 300, RelevanceThreshold: 60, EventThreshold: 0, RetentionDays: 30}}, Sources: []monitorapplication.MonitorSourceView{{MonitorSource: domain.MonitorSource{ID: 4, SourceConnectionID: 7, Enabled: true}, SourceName: "RSS", SourceType: "rss"}}}
+	published := monitorapplication.ConfigurationView{Config: domain.MonitorConfigVersion{ID: 10, Revision: 2, Config: domain.MonitorConfig{Timezone: "UTC", Languages: []string{"en"}, CollectionIntervalSeconds: 300, RelevanceThreshold: 60, EventThreshold: 0, RetentionDays: 30}}, Rules: []domain.MonitorRule{{Value: "OpenAI", RuleType: domain.RuleTypeKeyword, ApprovalStatus: domain.RuleApprovalApproved, Enabled: true}}, Sources: []monitorapplication.MonitorSourceView{{MonitorSource: domain.MonitorSource{ID: 4, SourceConnectionID: 7, Enabled: true}, SourceName: "RSS", SourceType: "rss"}}}
 	draft := monitorapplication.ConfigurationView{Config: domain.MonitorConfigVersion{ID: 11, Revision: 3, Config: published.Config.Config}}
 	view := monitorapplication.MonitorView{Monitor: domain.Monitor{ID: 1, Version: 4, Name: "monitor", Status: domain.MonitorStatusPaused}, Published: &published, Draft: &draft}
 	service := &readMonitorService{view: view}
@@ -310,7 +322,7 @@ func TestMonitorReadRoutesProjectPublishedAndDraftByRole(t *testing.T) {
 	if viewerResponse.Code != http.StatusOK {
 		t.Fatalf("viewer list status = %d: %s", viewerResponse.Code, viewerResponse.Body.String())
 	}
-	if strings.Contains(viewerResponse.Body.String(), `"draft"`) || !strings.Contains(viewerResponse.Body.String(), `"source_type":"rss"`) || !strings.Contains(viewerResponse.Body.String(), `"name":"RSS"`) {
+	if strings.Contains(viewerResponse.Body.String(), `"draft"`) || strings.Contains(viewerResponse.Body.String(), `"published"`) || !strings.Contains(viewerResponse.Body.String(), `"query":"OpenAI"`) || !strings.Contains(viewerResponse.Body.String(), `"source_type":"rss"`) || !strings.Contains(viewerResponse.Body.String(), `"name":"RSS"`) {
 		t.Fatalf("viewer response did not preserve safe published-only source projection: %s", viewerResponse.Body.String())
 	}
 
@@ -320,8 +332,8 @@ func TestMonitorReadRoutesProjectPublishedAndDraftByRole(t *testing.T) {
 	editorRequest.Header.Set("Authorization", "Bearer editor")
 	editorResponse := httptest.NewRecorder()
 	editorRouter.ServeHTTP(editorResponse, editorRequest)
-	if editorResponse.Code != http.StatusOK || !strings.Contains(editorResponse.Body.String(), `"draft"`) {
-		t.Fatalf("editor response = %d %s, want safe draft metadata", editorResponse.Code, editorResponse.Body.String())
+	if editorResponse.Code != http.StatusOK || strings.Contains(editorResponse.Body.String(), `"draft"`) || strings.Contains(editorResponse.Body.String(), `"published"`) || !strings.Contains(editorResponse.Body.String(), `"query":"OpenAI"`) {
+		t.Fatalf("editor response = %d %s, want one flat monitor shape", editorResponse.Code, editorResponse.Body.String())
 	}
 	for _, forbidden := range []string{"endpoint", "credential_ref", "health_diagnostic"} {
 		if strings.Contains(editorResponse.Body.String(), forbidden) {
@@ -388,13 +400,19 @@ type draftVersionMonitorService struct {
 type captureMonitorService struct {
 	readMonitorService
 	creates      []monitorapplication.CreateInput
+	updates      []monitorapplication.UpdateActiveInput
 	replacements []monitorapplication.ReplaceDraftInput
 	candidates   []monitorapplication.AICandidateInput
 }
 
-func (service *captureMonitorService) Create(_ context.Context, input monitorapplication.CreateInput) (*domain.Monitor, *domain.MonitorConfigVersion, error) {
+func (service *captureMonitorService) CreateActive(_ context.Context, input monitorapplication.CreateInput) (*domain.Monitor, *domain.MonitorConfigVersion, error) {
 	service.creates = append(service.creates, input)
 	return &domain.Monitor{ID: 1}, &domain.MonitorConfigVersion{}, nil
+}
+
+func (service *captureMonitorService) UpdateActive(_ context.Context, input monitorapplication.UpdateActiveInput) (*domain.Monitor, *domain.MonitorConfigVersion, error) {
+	service.updates = append(service.updates, input)
+	return &domain.Monitor{ID: input.MonitorID}, &domain.MonitorConfigVersion{}, nil
 }
 
 func (service *captureMonitorService) ReplaceDraft(_ context.Context, input monitorapplication.ReplaceDraftInput) (*domain.Monitor, *domain.MonitorConfigVersion, error) {
@@ -431,7 +449,10 @@ func (service *readMonitorService) Get(_ context.Context, input identitydomain.S
 func (service *readMonitorService) History(context.Context, identitydomain.Subject, int64) ([]monitorapplication.ConfigurationView, error) {
 	return service.history, nil
 }
-func (*readMonitorService) Create(context.Context, monitorapplication.CreateInput) (*domain.Monitor, *domain.MonitorConfigVersion, error) {
+func (*readMonitorService) CreateActive(context.Context, monitorapplication.CreateInput) (*domain.Monitor, *domain.MonitorConfigVersion, error) {
+	return nil, nil, nil
+}
+func (*readMonitorService) UpdateActive(context.Context, monitorapplication.UpdateActiveInput) (*domain.Monitor, *domain.MonitorConfigVersion, error) {
 	return nil, nil, nil
 }
 func (*readMonitorService) ReplaceDraft(context.Context, monitorapplication.ReplaceDraftInput) (*domain.Monitor, *domain.MonitorConfigVersion, error) {

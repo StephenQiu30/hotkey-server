@@ -12,11 +12,9 @@ describe("EmptyWorkspace", () => {
             id: 8,
             name: "AI Agent 创建工具",
             status: MonitorStatus.Draft,
-            draft: {
-              collection_interval_seconds: 900,
-              rules: [{ value: "Anthropic" }],
-              sources: [{ source_connection_id: 1 }],
-            },
+            query: "Anthropic",
+            collection_interval_seconds: 900,
+            sources: [{ source_connection_id: 1 }],
           },
         ]}
         overview={{ running_jobs: 0 }}
@@ -50,7 +48,7 @@ describe("EmptyWorkspace", () => {
             id: 9,
             name: "AI Agent 创建工具",
             status: MonitorStatus.Active,
-            published: { sources: [{ source_connection_id: 1 }] },
+            sources: [{ source_connection_id: 1 }],
           },
         ]}
         collectionRuns={[]}

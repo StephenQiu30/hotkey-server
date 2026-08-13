@@ -65,11 +65,18 @@ type MonitorSourceRequest struct {
 }
 
 type CreateMonitorRequest struct {
-	Name        string                 `json:"name" binding:"required" example:"AI releases"`
-	Description string                 `json:"description"`
-	Config      MonitorConfigRequest   `json:"config" binding:"required"`
-	Rules       []MonitorRuleRequest   `json:"rules" binding:"required,min=1,max=100" minItems:"1" maxItems:"100"`
-	Sources     []MonitorSourceRequest `json:"sources" binding:"required,min=1,max=10" minItems:"1" maxItems:"10"`
+	Name                      string  `json:"name" binding:"required,max=120" example:"AI 产品"`
+	Query                     string  `json:"query" binding:"required,max=160" example:"Claude"`
+	SourceConnectionIDs       []int64 `json:"source_connection_ids" binding:"required,min=1,max=10,dive,gt=0" minItems:"1" maxItems:"10"`
+	CollectionIntervalSeconds int     `json:"collection_interval_seconds,omitempty" binding:"omitempty,gte=300,lte=86400" minimum:"300" maximum:"86400" default:"1800" example:"1800"`
+}
+
+type UpdateMonitorRequest struct {
+	ExpectedMonitorVersion    int64   `json:"expected_monitor_version" binding:"required,gt=0"`
+	Name                      string  `json:"name" binding:"required,max=120" example:"AI 产品"`
+	Query                     string  `json:"query" binding:"required,max=160" example:"Claude"`
+	SourceConnectionIDs       []int64 `json:"source_connection_ids" binding:"required,min=1,max=10,dive,gt=0" minItems:"1" maxItems:"10"`
+	CollectionIntervalSeconds int     `json:"collection_interval_seconds" binding:"required,gte=300,lte=86400" minimum:"300" maximum:"86400" example:"1800"`
 }
 
 // ExpectedDraftRequest uses RawMessage so omitted and explicit JSON null have
@@ -148,12 +155,9 @@ type MonitorRuleResponse struct {
 }
 
 type MonitorSourceResponse struct {
-	ID                 int64  `json:"id"`
 	SourceConnectionID int64  `json:"source_connection_id"`
 	Name               string `json:"name"`
 	SourceType         string `json:"source_type"`
-	QueryOverride      string `json:"query_override"`
-	Priority           int16  `json:"priority"`
 	Enabled            bool   `json:"enabled"`
 }
 
@@ -188,14 +192,14 @@ type MonitorVersionHistoryResponse struct {
 }
 
 type MonitorResponse struct {
-	ID                int64                  `json:"id"`
-	Version           int64                  `json:"version"`
-	Name              string                 `json:"name"`
-	Description       string                 `json:"description"`
-	Status            string                 `json:"status"`
-	PublishedRevision *int64                 `json:"published_revision,omitempty"`
-	Published         *MonitorConfigResponse `json:"published,omitempty"`
-	Draft             *MonitorConfigResponse `json:"draft,omitempty"`
+	ID                        int64                   `json:"id"`
+	Version                   int64                   `json:"version"`
+	Name                      string                  `json:"name"`
+	Description               string                  `json:"description"`
+	Status                    string                  `json:"status"`
+	Query                     string                  `json:"query"`
+	CollectionIntervalSeconds int                     `json:"collection_interval_seconds"`
+	Sources                   []MonitorSourceResponse `json:"sources"`
 }
 
 type MonitorPageResponse struct {
@@ -242,7 +246,37 @@ func expectedVersions(request ExpectedDraftRequest) (domain.ExpectedVersions, er
 }
 
 func monitorDraft(request CreateMonitorRequest) monitorapplication.DraftInput {
-	return monitorapplication.DraftInput{Name: request.Name, Description: request.Description, Config: monitorConfig(request.Config), Rules: monitorRules(request.Rules), Sources: monitorSources(request.Sources)}
+	interval := request.CollectionIntervalSeconds
+	if interval == 0 {
+		interval = 1800
+	}
+	return simpleMonitorDraft(request.Name, request.Query, request.SourceConnectionIDs, interval)
+}
+
+func updateMonitorDraft(request UpdateMonitorRequest) monitorapplication.DraftInput {
+	return simpleMonitorDraft(request.Name, request.Query, request.SourceConnectionIDs, request.CollectionIntervalSeconds)
+}
+
+func simpleMonitorDraft(name, query string, sourceConnectionIDs []int64, interval int) monitorapplication.DraftInput {
+	rules := []domain.MonitorRule{{
+		RuleType: domain.RuleTypeKeyword, Operator: domain.RuleOperatorContains,
+		Value: query, Weight: 100, Priority: 1, Enabled: true,
+	}}
+	sources := make([]domain.MonitorSource, 0, len(sourceConnectionIDs))
+	for index, sourceConnectionID := range sourceConnectionIDs {
+		sources = append(sources, domain.MonitorSource{
+			SourceConnectionID: sourceConnectionID, Priority: int16(index + 1), Enabled: true,
+		})
+	}
+	return monitorapplication.DraftInput{
+		Name: name, Description: "监控 " + query,
+		Config: domain.MonitorConfig{
+			Timezone: "Asia/Shanghai", Languages: []string{"zh", "en"},
+			CollectionIntervalSeconds: interval, RelevanceThreshold: 60,
+			EventThreshold: 0, RetentionDays: 30,
+		},
+		Rules: rules, Sources: sources,
+	}
 }
 
 func replaceMonitorDraft(request ReplaceDraftRequest) monitorapplication.DraftInput {
@@ -317,16 +351,33 @@ func monitorPriority(priority *int16) int16 {
 }
 
 func monitorResponse(view monitorapplication.MonitorView) MonitorResponse {
-	response := MonitorResponse{ID: view.Monitor.ID, Version: view.Monitor.Version, Name: view.Monitor.Name, Description: view.Monitor.Description, Status: string(view.Monitor.Status)}
-	if view.Published != nil {
-		published := monitorConfigResponse(*view.Published)
-		response.Published = &published
-		revision := view.Published.Config.Revision
-		response.PublishedRevision = &revision
+	response := MonitorResponse{
+		ID: view.Monitor.ID, Version: view.Monitor.Version, Name: view.Monitor.Name,
+		Description: view.Monitor.Description, Status: string(view.Monitor.Status),
+		Sources: []MonitorSourceResponse{},
 	}
-	if view.Draft != nil {
-		draft := monitorConfigResponse(*view.Draft)
-		response.Draft = &draft
+	configuration := view.Published
+	if configuration == nil {
+		configuration = view.Draft
+	}
+	if configuration == nil {
+		return response
+	}
+	response.CollectionIntervalSeconds = configuration.Config.Config.CollectionIntervalSeconds
+	for _, rule := range configuration.Rules {
+		if rule.Enabled && rule.ApprovalStatus == domain.RuleApprovalApproved && rule.RuleType != domain.RuleTypeExcludeKeyword {
+			response.Query = rule.Value
+			break
+		}
+	}
+	for _, source := range configuration.Sources {
+		if !source.MonitorSource.Enabled {
+			continue
+		}
+		response.Sources = append(response.Sources, MonitorSourceResponse{
+			SourceConnectionID: source.MonitorSource.SourceConnectionID,
+			Name:               source.SourceName, SourceType: source.SourceType, Enabled: true,
+		})
 	}
 	return response
 }
@@ -338,7 +389,7 @@ func monitorConfigResponse(view monitorapplication.ConfigurationView) MonitorCon
 		response.Rules = append(response.Rules, MonitorRuleResponse{ID: rule.ID, RuleType: string(rule.RuleType), Operator: string(rule.Operator), Value: rule.Value, Weight: rule.Weight, Priority: rule.Priority, Origin: string(rule.Origin), ApprovalStatus: string(rule.ApprovalStatus), Enabled: rule.Enabled})
 	}
 	for _, source := range sources {
-		response.Sources = append(response.Sources, MonitorSourceResponse{ID: source.MonitorSource.ID, SourceConnectionID: source.MonitorSource.SourceConnectionID, Name: source.SourceName, SourceType: source.SourceType, QueryOverride: source.MonitorSource.QueryOverride, Priority: source.MonitorSource.Priority, Enabled: source.MonitorSource.Enabled})
+		response.Sources = append(response.Sources, MonitorSourceResponse{SourceConnectionID: source.MonitorSource.SourceConnectionID, Name: source.SourceName, SourceType: source.SourceType, Enabled: source.MonitorSource.Enabled})
 	}
 	return response
 }

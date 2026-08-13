@@ -20,7 +20,7 @@ export async function getMonitors(
   );
 }
 
-/** Create a monitor draft POST /api/v1/monitors */
+/** Create a simple monitor POST /api/v1/monitors */
 export async function postMonitors(
   body: HotKeyAPI.CreateMonitorRequest,
   options?: RequestOptions
@@ -50,6 +50,28 @@ export async function getMonitorsId(
     {
       method: "GET",
       params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** Update a simple monitor PUT /api/v1/monitors/${param0} */
+export async function putMonitorsId(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: HotKeyAPI.putMonitorsIdParams,
+  body: HotKeyAPI.UpdateMonitorRequest,
+  options?: RequestOptions
+) {
+  const { id: param0, ...queryParams } = params;
+  return request<HotKeyAPI.MonitorResultHttpMonitorResponse>(
+    `/api/v1/monitors/${param0}`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      params: { ...queryParams },
+      data: body,
       ...(options || {}),
     }
   );

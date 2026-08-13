@@ -14,6 +14,7 @@ func RegisterCollectionRoutes(router *gin.Engine, service collectionControlServi
 	}
 	handler := NewCollectionHandler(service)
 	api := router.Group("/api/v1", httptransport.RequireAuthentication(authenticator))
+	api.GET("/monitors/:id/scans", httptransport.Wrap(handler.Scans))
 	editor := api.Group("", httptransport.RequireRoles(httptransport.RoleEditor, httptransport.RoleAdmin))
 	editor.GET("/collection-runs", httptransport.Wrap(handler.List))
 	editor.POST("/monitors/:id/collect", httptransport.Wrap(handler.Manual))

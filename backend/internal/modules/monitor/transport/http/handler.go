@@ -15,7 +15,8 @@ import (
 )
 
 type monitorService interface {
-	Create(context.Context, monitorapplication.CreateInput) (*domain.Monitor, *domain.MonitorConfigVersion, error)
+	CreateActive(context.Context, monitorapplication.CreateInput) (*domain.Monitor, *domain.MonitorConfigVersion, error)
+	UpdateActive(context.Context, monitorapplication.UpdateActiveInput) (*domain.Monitor, *domain.MonitorConfigVersion, error)
 	ReplaceDraft(context.Context, monitorapplication.ReplaceDraftInput) (*domain.Monitor, *domain.MonitorConfigVersion, error)
 	AddAICandidate(context.Context, monitorapplication.AICandidateInput) (*domain.MonitorConfigVersion, *domain.MonitorRule, error)
 	ApproveAICandidate(context.Context, monitorapplication.ApprovalInput) (*domain.MonitorConfigVersion, error)
@@ -134,14 +135,15 @@ func (handler *Handler) History(c *gin.Context) error {
 	return nil
 }
 
-// Create creates a Monitor and its first draft. The request cannot control
-// rule origin or approval state; DTO conversion fixes both to user/approved.
-// @Summary Create a monitor draft
+// Create accepts only simple product fields and builds the approved keyword
+// rule plus safe defaults on the server. Draft internals never cross this
+// create boundary.
+// @Summary Create a simple monitor
 // @Tags monitors
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body CreateMonitorRequest true "monitor draft"
+// @Param request body CreateMonitorRequest true "simple monitor"
 // @Success 201 {object} MonitorResult[MonitorResponse]
 // @Failure 400 {object} MonitorResult[EmptyResponse]
 // @Failure 401 {object} MonitorResult[EmptyResponse]
@@ -159,7 +161,7 @@ func (handler *Handler) Create(c *gin.Context) error {
 	if err := c.ShouldBindJSON(&request); err != nil {
 		return invalidRequest(err)
 	}
-	monitor, _, err := handler.service.Create(c.Request.Context(), monitorapplication.CreateInput{Subject: subject, Draft: monitorDraft(request)})
+	monitor, _, err := handler.service.CreateActive(c.Request.Context(), monitorapplication.CreateInput{Subject: subject, Draft: monitorDraft(request)})
 	if err != nil {
 		return err
 	}
@@ -168,6 +170,51 @@ func (handler *Handler) Create(c *gin.Context) error {
 		return err
 	}
 	httptransport.Created(c, monitorResponse(view))
+	return nil
+}
+
+// Update applies the same simple fields as create and immediately publishes
+// the replacement. Draft versions remain an internal compatibility detail.
+// @Summary Update a simple monitor
+// @Tags monitors
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "monitor ID"
+// @Param request body UpdateMonitorRequest true "simple monitor update"
+// @Success 200 {object} MonitorResult[MonitorResponse]
+// @Failure 400 {object} MonitorResult[EmptyResponse]
+// @Failure 401 {object} MonitorResult[EmptyResponse]
+// @Failure 403 {object} MonitorResult[EmptyResponse]
+// @Failure 409 {object} MonitorResult[EmptyResponse]
+// @Failure 503 {object} MonitorResult[EmptyResponse]
+// @Router /api/v1/monitors/{id} [put]
+func (handler *Handler) Update(c *gin.Context) error {
+	httptransport.SetModule(c, "monitor")
+	subject, err := monitorSubject(c)
+	if err != nil {
+		return err
+	}
+	id, err := monitorID(c)
+	if err != nil {
+		return err
+	}
+	var request UpdateMonitorRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		return invalidRequest(err)
+	}
+	monitor, _, err := handler.service.UpdateActive(c.Request.Context(), monitorapplication.UpdateActiveInput{
+		Subject: subject, MonitorID: id, ExpectedMonitorVersion: request.ExpectedMonitorVersion,
+		Draft: updateMonitorDraft(request),
+	})
+	if err != nil {
+		return err
+	}
+	view, err := handler.service.Get(c.Request.Context(), subject, monitor.ID)
+	if err != nil {
+		return err
+	}
+	httptransport.OK(c, monitorResponse(view))
 	return nil
 }
 

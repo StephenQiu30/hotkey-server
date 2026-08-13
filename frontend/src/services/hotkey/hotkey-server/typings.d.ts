@@ -216,6 +216,12 @@ required property without making explicit null impossible to bind. */
     message?: string;
   };
 
+  type CollectionResultHttpMonitorScanPageResponse = {
+    code?: number;
+    data?: MonitorScanPageResponse;
+    message?: string;
+  };
+
   type CollectionResultHttpSourceHealthResponse = {
     code?: number;
     data?: SourceHealthResponse;
@@ -488,11 +494,10 @@ required property without making explicit null impossible to bind. */
   };
 
   type CreateMonitorRequest = {
-    config: MonitorConfigRequest;
-    description?: string;
+    collection_interval_seconds?: number;
     name: string;
-    rules: MonitorRuleRequest[];
-    sources: MonitorSourceRequest[];
+    query: string;
+    source_connection_ids: number[];
   };
 
   type CreateRightsPolicyRequestDTO = {
@@ -811,6 +816,13 @@ required property without making explicit null impossible to bind. */
   type getMonitorsIdParams = {
     /** monitor ID */
     id: number;
+  };
+
+  type getMonitorsIdScansParams = {
+    /** monitor ID */
+    id: number;
+    /** scan count */
+    limit?: number;
   };
 
   type getMonitorsIdVersionsParams = {
@@ -1456,12 +1468,12 @@ probability or a cross-channel relevance percentage. */
   };
 
   type MonitorResponse = {
+    collection_interval_seconds?: number;
     description?: string;
-    draft?: MonitorConfigResponse;
     id?: number;
     name?: string;
-    published?: MonitorConfigResponse;
-    published_revision?: number;
+    query?: string;
+    sources?: MonitorSourceResponse[];
     status?: string;
     version?: number;
   };
@@ -1547,6 +1559,40 @@ probability or a cross-channel relevance percentage. */
     weight?: number;
   };
 
+  type MonitorScanPageResponse = {
+    items?: MonitorScanResponse[];
+  };
+
+  type MonitorScanResponse = {
+    accepted_count?: number;
+    candidate_count?: number;
+    finished_at?: string;
+    id?: string;
+    monitor_id?: number;
+    rejected_count?: number;
+    scheduled_at?: string;
+    sources?: MonitorScanSourceResponse[];
+    started_at?: string;
+    status?: "queued" | "running" | "succeeded" | "partial" | "failed";
+    trigger_type?: "schedule" | "manual" | "retry" | "reconcile";
+  };
+
+  type MonitorScanSourceResponse = {
+    accepted_count?: number;
+    candidate_count?: number;
+    error_code?: string;
+    finished_at?: string;
+    rejected_count?: number;
+    run_id?: number;
+    scheduled_at?: string;
+    source_connection_id?: number;
+    source_name?: string;
+    source_type?: string;
+    started_at?: string;
+    status?: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+    trigger_type?: "schedule" | "manual" | "retry" | "reconcile";
+  };
+
   type MonitorSourceRequest = {
     enabled?: boolean;
     priority?: number;
@@ -1556,10 +1602,7 @@ probability or a cross-channel relevance percentage. */
 
   type MonitorSourceResponse = {
     enabled?: boolean;
-    id?: number;
     name?: string;
-    priority?: number;
-    query_override?: string;
     source_connection_id?: number;
     source_type?: string;
   };
@@ -1933,6 +1976,11 @@ required property without making explicit null impossible to bind. */
     id: number;
     /** match ID */
     match_id: number;
+  };
+
+  type putMonitorsIdParams = {
+    /** monitor ID */
+    id: number;
   };
 
   type putNotificationsPushSubscriptionsIdParams = {
@@ -2499,6 +2547,14 @@ value never authorizes v2 raw evidence or document body persistence. */
     max_cost?: string;
     timeout_seconds?: number;
     version?: number;
+  };
+
+  type UpdateMonitorRequest = {
+    collection_interval_seconds: number;
+    expected_monitor_version: number;
+    name: string;
+    query: string;
+    source_connection_ids: number[];
   };
 
   type UpdatePushSubscriptionRequestDTO = {

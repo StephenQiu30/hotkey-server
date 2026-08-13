@@ -220,6 +220,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newIdentityAuthenticator,
 					monitorpostgres.NewSourceUsageReader,
 					monitorpostgres.NewPublishedReferenceReader,
+					monitorpostgres.NewMonitorScanReader,
 					newSourceService,
 					newCollectionControlService,
 					newInstantSearchService,
@@ -496,10 +497,10 @@ func newMetricCapabilityService(runtime *database.Runtime, profiles *sourcepostg
 	return sourceapplication.NewMetricCapabilityService(sourceapplication.MetricCapabilityDependencies{Runtime: runtime, Profiles: profiles, SourceContexts: sources, Audit: audit})
 }
 
-func newCollectionControlService(runtime *database.Runtime, sources *sourcepostgres.Repository, runs *sourcepostgres.CollectionRepository, connectors *sourceinfrastructure.ConnectorRegistry, retries *sourcejobs.CollectionRetryActivator, manuals *sourcejobs.ManualCollectionActivator, targets *monitorpostgres.PublishedCollectionTargetReader, quota *operationspostgres.GovernanceRepository, metrics *observability.Metrics) (*sourceapplication.CollectionControlService, error) {
+func newCollectionControlService(runtime *database.Runtime, sources *sourcepostgres.Repository, runs *sourcepostgres.CollectionRepository, connectors *sourceinfrastructure.ConnectorRegistry, retries *sourcejobs.CollectionRetryActivator, manuals *sourcejobs.ManualCollectionActivator, targets *monitorpostgres.PublishedCollectionTargetReader, scans *monitorpostgres.MonitorScanReader, quota *operationspostgres.GovernanceRepository, metrics *observability.Metrics) (*sourceapplication.CollectionControlService, error) {
 	return sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
 		Runtime: runtime, Sources: sources, Runs: runs, Connectors: connectors, Retries: retries,
-		Manuals: manuals, Targets: targets, Metrics: metrics, Quota: quota,
+		Manuals: manuals, Targets: targets, Scans: scans, Metrics: metrics, Quota: quota,
 	})
 }
 

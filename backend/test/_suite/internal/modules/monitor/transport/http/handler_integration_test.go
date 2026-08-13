@@ -53,7 +53,7 @@ func TestMonitorDraftHTTPDefaultsPersistAndPublishCanonicalHashesAndSignatures(t
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	RegisterRoutes(router, monitors, testAuthenticator{subject: httptransport.Subject{UserID: admin.UserID, SessionID: admin.SessionID, Role: httptransport.RoleAdmin}})
-	create := fmt.Sprintf(`{"name":"HTTP priority monitor","config":{"timezone":"UTC","languages":["en"],"collection_interval_seconds":300,"relevance_threshold":60,"event_threshold":0,"retention_days":30},"rules":[{"rule_type":"keyword","operator":"contains","value":"OpenAI","weight":100}],"sources":[{"source_connection_id":%d}]}`, connection.ID)
+	create := fmt.Sprintf(`{"name":"HTTP priority monitor","query":"OpenAI","source_connection_ids":[%d],"collection_interval_seconds":300}`, connection.ID)
 	monitorHTTPJSON(t, router, http.MethodPost, "/api/v1/monitors", create, http.StatusCreated, nil)
 
 	repository := monitorpostgres.NewRepository(runtime)
@@ -62,26 +62,26 @@ func TestMonitorDraftHTTPDefaultsPersistAndPublishCanonicalHashesAndSignatures(t
 		t.Fatalf("find created monitor: %v", err)
 	}
 	created, err := repository.FindByID(context.Background(), monitorID)
-	if err != nil || created.DraftConfigVersionID == nil {
+	if err != nil || created.PublishedConfigVersionID == nil || created.DraftConfigVersionID != nil || created.Status != domain.MonitorStatusActive {
 		t.Fatalf("created monitor = %#v, %v", created, err)
 	}
-	draft, rules, associations, err := repository.FindConfig(context.Background(), *created.DraftConfigVersionID)
+	publishedConfig, rules, associations, err := repository.FindConfig(context.Background(), *created.PublishedConfigVersionID)
 	if err != nil {
-		t.Fatalf("load omitted-priority draft: %v", err)
+		t.Fatalf("load simple published monitor: %v", err)
 	}
-	assertMonitorHTTPPriority(t, draft, rules, associations, 100)
-	omittedSignature := monitorHTTPPreviewSignature(t, router, monitorID)
-	publishedMonitor, publishedConfig := monitorHTTPPublish(t, router, repository, created, draft, omittedSignature)
+	assertMonitorHTTPPriority(t, publishedConfig, rules, associations, 1)
+	omittedSignature := associations[0].QuerySignature
+	publishedMonitor := created
 	assertMonitorHTTPCanonicalHash(t, publishedMonitor.ID, publishedConfig, repository)
 
-	explicitDefault := fmt.Sprintf(`{"expected_monitor_version":%d,"expected_draft_version":null,"name":"HTTP priority monitor","config":{"timezone":"UTC","languages":["en"],"collection_interval_seconds":300,"relevance_threshold":60,"event_threshold":0,"retention_days":30},"rules":[{"rule_type":"keyword","operator":"contains","value":"OpenAI","weight":100,"priority":100}],"sources":[{"source_connection_id":%d,"priority":100}]}`, publishedMonitor.Version, connection.ID)
+	explicitDefault := fmt.Sprintf(`{"expected_monitor_version":%d,"expected_draft_version":null,"name":"HTTP priority monitor","config":{"timezone":"UTC","languages":["en"],"collection_interval_seconds":300,"relevance_threshold":60,"event_threshold":0,"retention_days":30},"rules":[{"rule_type":"keyword","operator":"contains","value":"OpenAI","weight":100,"priority":1}],"sources":[{"source_connection_id":%d,"priority":1}]}`, publishedMonitor.Version, connection.ID)
 	monitorHTTPJSON(t, router, http.MethodPut, fmt.Sprintf("/api/v1/monitors/%d/draft", monitorID), explicitDefault, http.StatusOK, nil)
 	explicitMonitor, _ := repository.FindByID(context.Background(), monitorID)
 	explicitDraft, explicitRules, explicitSources, err := repository.FindConfig(context.Background(), *explicitMonitor.DraftConfigVersionID)
 	if err != nil {
 		t.Fatalf("load explicit-default draft: %v", err)
 	}
-	assertMonitorHTTPPriority(t, explicitDraft, explicitRules, explicitSources, 100)
+	assertMonitorHTTPPriority(t, explicitDraft, explicitRules, explicitSources, 1)
 	explicitDefaultSignature := monitorHTTPPreviewSignature(t, router, monitorID)
 	if explicitDefaultSignature != omittedSignature {
 		t.Fatalf("omitted priority signature = %s, explicit 100 signature = %s", omittedSignature, explicitDefaultSignature)
@@ -148,6 +148,23 @@ func TestMonitorDraftHTTPDefaultsPersistAndPublishCanonicalHashesAndSignatures(t
 	}
 	publishedMonitor, publishedConfig = monitorHTTPPublish(t, router, repository, approvedMonitor, approvedConfig, approvedSignature)
 	assertMonitorHTTPCanonicalHash(t, publishedMonitor.ID, publishedConfig, repository)
+
+	pauseBody := fmt.Sprintf(`{"expected_monitor_version":%d}`, publishedMonitor.Version)
+	monitorHTTPJSON(t, router, http.MethodPost, fmt.Sprintf("/api/v1/monitors/%d/pause", monitorID), pauseBody, http.StatusOK, nil)
+	pausedMonitor, err := repository.FindByID(context.Background(), monitorID)
+	if err != nil || pausedMonitor.Status != domain.MonitorStatusPaused {
+		t.Fatalf("pause before simple update = %#v, %v", pausedMonitor, err)
+	}
+	simpleUpdate := fmt.Sprintf(`{"expected_monitor_version":%d,"name":"HTTP simple update","query":"Claude","source_connection_ids":[%d],"collection_interval_seconds":900}`, pausedMonitor.Version, connection.ID)
+	monitorHTTPJSON(t, router, http.MethodPut, fmt.Sprintf("/api/v1/monitors/%d", monitorID), simpleUpdate, http.StatusOK, nil)
+	updatedMonitor, err := repository.FindByID(context.Background(), monitorID)
+	if err != nil || updatedMonitor.Status != domain.MonitorStatusPaused || updatedMonitor.DraftConfigVersionID != nil || updatedMonitor.PublishedConfigVersionID == nil {
+		t.Fatalf("simple updated monitor = %#v, %v", updatedMonitor, err)
+	}
+	updatedConfig, updatedRules, updatedSources, err := repository.FindConfig(context.Background(), *updatedMonitor.PublishedConfigVersionID)
+	if err != nil || updatedConfig.Config.CollectionIntervalSeconds != 900 || len(updatedRules) != 1 || updatedRules[0].Value != "Claude" || len(updatedSources) != 1 {
+		t.Fatalf("simple updated config/rules/sources = %#v / %#v / %#v, %v", updatedConfig, updatedRules, updatedSources, err)
+	}
 }
 
 func monitorHTTPRuntime(t *testing.T) *database.Runtime {

@@ -13,8 +13,47 @@ import (
 type collectionControlService interface {
 	List(context.Context, sourceapplication.CollectionRunListInput) (domain.CollectionRunPage, error)
 	Manual(context.Context, sourceapplication.ManualCollectionInput) (domain.ManualCollectionSummary, error)
+	Scans(context.Context, sourceapplication.MonitorScanListInput) ([]domain.MonitorScan, error)
 	Retry(context.Context, sourceapplication.CollectionRunRetryInput) (domain.CollectionRunSummary, error)
 	Health(context.Context, sourceapplication.SourceHealthInput) (domain.SourceHealth, error)
+}
+
+// Scans lists recent runs for one Monitor without exposing connector request
+// internals.
+// @Summary List recent monitor scans
+// @Tags collection-runs
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "monitor ID"
+// @Param limit query int false "scan count" default(20) minimum(1) maximum(100)
+// @Success 200 {object} CollectionResult[MonitorScanPageResponse]
+// @Failure 400 {object} CollectionResult[EmptyResponse]
+// @Failure 401 {object} CollectionResult[EmptyResponse]
+// @Failure 503 {object} CollectionResult[EmptyResponse]
+// @Router /api/v1/monitors/{id}/scans [get]
+func (handler *CollectionHandler) Scans(c *gin.Context) error {
+	httptransport.SetModule(c, "source")
+	subject, err := sourceSubject(c)
+	if err != nil {
+		return err
+	}
+	id, err := collectionResourceID(c, "monitor")
+	if err != nil {
+		return err
+	}
+	limit := 20
+	if raw := c.Query("limit"); raw != "" {
+		limit, err = strconv.Atoi(raw)
+		if err != nil || limit < 1 || limit > 100 {
+			return domain.InvalidCollectionRequest()
+		}
+	}
+	items, err := handler.service.Scans(c.Request.Context(), sourceapplication.MonitorScanListInput{Subject: subject, MonitorID: id, Limit: limit})
+	if err != nil {
+		return err
+	}
+	httptransport.OK(c, monitorScanPageResponse(items))
+	return nil
 }
 
 // Manual submits an immediate durable collection for an active published

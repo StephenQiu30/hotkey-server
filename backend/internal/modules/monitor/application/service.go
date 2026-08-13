@@ -66,6 +66,12 @@ type CreateInput struct {
 	Subject identitydomain.Subject
 	Draft   DraftInput
 }
+type UpdateActiveInput struct {
+	Subject                identitydomain.Subject
+	MonitorID              int64
+	ExpectedMonitorVersion int64
+	Draft                  DraftInput
+}
 type ReplaceDraftInput struct {
 	Subject   identitydomain.Subject
 	MonitorID int64
@@ -126,6 +132,67 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (*domain.
 		return nil, nil, err
 	}
 	return &monitor, &config, nil
+}
+
+// CreateActive is the simple product command. It keeps draft compilation and
+// publication rules inside the application layer so HTTP clients never have
+// to understand optimistic draft versions.
+func (service *Service) CreateActive(ctx context.Context, input CreateInput) (*domain.Monitor, *domain.MonitorConfigVersion, error) {
+	if err := requireAdmin(input.Subject); err != nil {
+		return nil, nil, err
+	}
+	monitor, draft, err := service.Create(ctx, input)
+	if err != nil {
+		return nil, nil, err
+	}
+	return service.Publish(ctx, PublishInput{
+		Subject: input.Subject, MonitorID: monitor.ID,
+		Expected: domain.ExpectedVersions{MonitorVersion: monitor.Version, DraftVersion: int64Pointer(draft.Version)},
+	})
+}
+
+// UpdateActive replaces and publishes the simple product configuration in one
+// server command. Existing draft concurrency stays internal to the service.
+func (service *Service) UpdateActive(ctx context.Context, input UpdateActiveInput) (*domain.Monitor, *domain.MonitorConfigVersion, error) {
+	if err := requireAdmin(input.Subject); err != nil {
+		return nil, nil, err
+	}
+	view, err := service.Get(ctx, input.Subject, input.MonitorID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if view.Monitor.Status == domain.MonitorStatusArchived {
+		return nil, nil, domain.InvalidMonitorState()
+	}
+	if input.ExpectedMonitorVersion <= 0 || view.Monitor.Version != input.ExpectedMonitorVersion {
+		return nil, nil, domain.MonitorVersionConflict()
+	}
+	expected := domain.ExpectedVersions{MonitorVersion: input.ExpectedMonitorVersion}
+	if view.Draft != nil {
+		expected.DraftVersion = int64Pointer(view.Draft.Config.Version)
+	}
+	monitor, draft, err := service.ReplaceDraft(ctx, ReplaceDraftInput{
+		Subject: input.Subject, MonitorID: input.MonitorID, Expected: expected, Draft: input.Draft,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	monitor, published, err := service.Publish(ctx, PublishInput{
+		Subject: input.Subject, MonitorID: input.MonitorID,
+		Expected: domain.ExpectedVersions{MonitorVersion: monitor.Version, DraftVersion: int64Pointer(draft.Version)},
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	if view.Monitor.Status == domain.MonitorStatusPaused {
+		monitor, err = service.Pause(ctx, LifecycleInput{
+			Subject: input.Subject, MonitorID: input.MonitorID, ExpectedMonitorVersion: monitor.Version,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	return monitor, published, nil
 }
 
 func (service *Service) ReplaceDraft(ctx context.Context, input ReplaceDraftInput) (*domain.Monitor, *domain.MonitorConfigVersion, error) {

@@ -606,6 +606,54 @@ type CollectionRunPage struct {
 	NextCursor string
 }
 
+// MonitorScanSource is the simple product projection for one source within a
+// Monitor scan. It exposes source identity and progress, but never collection
+// queries, cursors, endpoints or credentials.
+type MonitorScanSource struct {
+	RunID              int64
+	MonitorID          int64
+	SourceConnectionID int64
+	SourceName         string
+	SourceType         string
+	TriggerType        CollectionTriggerType
+	Status             CollectionRunStatus
+	CandidateCount     int64
+	AcceptedCount      int64
+	RejectedCount      int64
+	ErrorCode          string
+	ScheduledAt        time.Time
+	StartedAt          *time.Time
+	FinishedAt         *time.Time
+}
+
+type MonitorScanStatus string
+
+const (
+	MonitorScanQueued    MonitorScanStatus = "queued"
+	MonitorScanRunning   MonitorScanStatus = "running"
+	MonitorScanSucceeded MonitorScanStatus = "succeeded"
+	MonitorScanPartial   MonitorScanStatus = "partial"
+	MonitorScanFailed    MonitorScanStatus = "failed"
+)
+
+type MonitorScan struct {
+	ID             string
+	MonitorID      int64
+	TriggerType    CollectionTriggerType
+	Status         MonitorScanStatus
+	CandidateCount int64
+	AcceptedCount  int64
+	RejectedCount  int64
+	ScheduledAt    time.Time
+	StartedAt      *time.Time
+	FinishedAt     *time.Time
+	Sources        []MonitorScanSource
+}
+
+type MonitorScanReader interface {
+	ListMonitorScans(context.Context, int64, int) ([]MonitorScanSource, error)
+}
+
 // CapturedItemQuery is the fixed-shape Source-owned reader input used by
 // ingestion. It permits retrying classified ingestion failures only when the
 // caller explicitly requests them; normal readers consume pending captures.

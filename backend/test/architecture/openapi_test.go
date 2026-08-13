@@ -117,7 +117,7 @@ func TestOpenAPIContract(t *testing.T) {
 		"/api/v1/users/{id}":                                  {"patch": {"200", "400", "401", "403", "409", "503"}, "delete": {"200", "401", "403", "409", "503"}},
 		"/api/v1/users/{id}/restore":                          {"post": {"200", "401", "403", "409", "503"}},
 		"/api/v1/monitors":                                    {"get": {"200", "400", "401", "503"}, "post": {"201", "400", "401", "403", "409", "503"}},
-		"/api/v1/monitors/{id}":                               {"get": {"200", "400", "401", "409", "503"}, "delete": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}":                               {"get": {"200", "400", "401", "409", "503"}, "put": {"200", "400", "401", "403", "409", "503"}, "delete": {"200", "400", "401", "403", "409", "503"}},
 		"/api/v1/monitors/{id}/versions":                      {"get": {"200", "400", "401", "409", "503"}},
 		"/api/v1/monitors/{id}/draft":                         {"get": {"200", "400", "401", "403", "404", "503"}, "put": {"200", "400", "401", "403", "409", "503"}},
 		"/api/v1/monitors/{id}/draft/intent":                  {"put": {"200", "201", "400", "401", "403", "404", "409", "503"}},
@@ -151,6 +151,7 @@ func TestOpenAPIContract(t *testing.T) {
 		"/api/v1/collection-runs":                                                  {"get": {"200", "400", "401", "403", "503"}},
 		"/api/v1/collection-runs/{id}/retry":                                       {"post": {"200", "400", "401", "403", "404", "409", "503"}},
 		"/api/v1/monitors/{id}/collect":                                            {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/monitors/{id}/scans":                                              {"get": {"200", "400", "401", "503"}},
 		"/api/v1/search":                                                           {"post": {"200", "400", "401", "503"}},
 		"/api/v1/source-connections/{id}/health":                                   {"post": {"200", "400", "401", "403", "409", "503"}},
 		"/api/v1/source-webhooks/bilibili":                                         {"post": {"200", "400", "401"}},
@@ -256,7 +257,7 @@ func TestOpenAPIContract(t *testing.T) {
 		}
 	}
 
-	for _, route := range []string{"/api/v1/auth/me", "/api/v1/auth/password", "/api/v1/users", "/api/v1/users/{id}", "/api/v1/users/{id}/restore", "/api/v1/monitors", "/api/v1/monitors/{id}", "/api/v1/monitors/{id}/draft", "/api/v1/monitors/{id}/draft/ai-candidates", "/api/v1/monitors/{id}/draft/rules/{rule_id}/approval", "/api/v1/monitors/{id}/preview", "/api/v1/monitors/{id}/publish", "/api/v1/monitors/{id}/pause", "/api/v1/monitors/{id}/resume", "/api/v1/monitors/{id}/archive", "/api/v1/monitors/{id}/restore", "/api/v1/monitors/{id}/collect", "/api/v1/search", "/api/v1/source-connections", "/api/v1/source-connections/{id}", "/api/v1/source-connections/{id}/enable", "/api/v1/source-connections/{id}/disable", "/api/v1/source-connections/{id}/archive", "/api/v1/source-connections/{id}/restore", "/api/v1/metric-capability-profiles", "/api/v1/metric-capability-profiles/{id}/publish", "/api/v1/metric-capability-profiles/{id}/archive", "/api/v1/collection-runs", "/api/v1/collection-runs/{id}/retry", "/api/v1/source-connections/{id}/health", "/api/v1/operations/jobs", "/api/v1/operations/jobs/{id}/cancel", "/api/v1/operations/jobs/{id}/retry", "/api/v1/operations/usage", "/api/v1/operations/retention-policies", "/api/v1/operations/retention-policies/{id}/preview", "/api/v1/operations/retention-policies/{id}/run", "/api/v1/operations/audit-logs", "/api/v1/knowledge/documents", "/api/v1/knowledge/documents/{id}", "/api/v1/knowledge/proposals", "/api/v1/knowledge/proposals/{id}", "/api/v1/knowledge/proposals/{id}/approve", "/api/v1/knowledge/proposals/{id}/reject", "/api/v1/knowledge/proposals/{id}/apply", "/api/v1/knowledge/reconcile", "/api/v1/contents", "/api/v1/contents/{id}", "/api/v1/contents/{id}/document", "/api/v1/document-versions/{id}/citation", "/api/v1/document-versions/{id}/document", "/api/v1/monitors/{id}/matches", "/api/v1/monitors/{id}/matches/{match_id}", "/api/v1/monitors/{id}/relevance-preview", "/api/v1/monitors/{id}/matches/{match_id}/feedback", "/api/v1/monitors/{id}/contents/{content_id}/feedback", "/api/v1/monitors/{id}/feedback/evaluation", "/api/v1/monitors/{id}/feedback/suggestions/refresh", "/api/v1/monitors/{id}/feedback/suggestions", "/api/v1/monitors/{id}/feedback/suggestions/{suggestion_id}/review", "/api/v1/ai/model-profiles", "/api/v1/ai/model-profiles/{id}", "/api/v1/ai/model-profiles/{id}/restore", "/api/v1/events", "/api/v1/events/{id}", "/api/v1/events/{id}/contents", "/api/v1/events/{id}/heat", "/api/v1/events/{id}/intelligence", "/api/v1/events/{id}/intelligence/summary/regenerate", "/api/v1/events/{id}/contents/{content_id}/lock", "/api/v1/events/{id}/lifecycle", "/api/v1/events/{id}/merge", "/api/v1/events/{id}/split", "/api/v1/radar/events", "/api/v1/events/{id}/updates", "/api/v1/alerts", "/api/v1/alerts/{id}", "/api/v1/alerts/{id}/acknowledge", "/api/v1/alerts/{id}/resolve", "/api/v1/alerts/{id}/suppress", "/api/v1/reports", "/api/v1/reports/{id}", "/api/v1/reports/{id}/preview", "/api/v1/reports/{id}/build", "/api/v1/reports/{id}/publish", "/api/v1/report-subscriptions", "/api/v1/report-subscriptions/{id}", "/api/v1/report-subscriptions/{id}/rss-token/rotate", "/api/v1/notifications", "/api/v1/notifications/stream"} {
+	for _, route := range []string{"/api/v1/auth/me", "/api/v1/auth/password", "/api/v1/users", "/api/v1/users/{id}", "/api/v1/users/{id}/restore", "/api/v1/monitors", "/api/v1/monitors/{id}", "/api/v1/monitors/{id}/draft", "/api/v1/monitors/{id}/draft/ai-candidates", "/api/v1/monitors/{id}/draft/rules/{rule_id}/approval", "/api/v1/monitors/{id}/preview", "/api/v1/monitors/{id}/publish", "/api/v1/monitors/{id}/pause", "/api/v1/monitors/{id}/resume", "/api/v1/monitors/{id}/archive", "/api/v1/monitors/{id}/restore", "/api/v1/monitors/{id}/collect", "/api/v1/monitors/{id}/scans", "/api/v1/search", "/api/v1/source-connections", "/api/v1/source-connections/{id}", "/api/v1/source-connections/{id}/enable", "/api/v1/source-connections/{id}/disable", "/api/v1/source-connections/{id}/archive", "/api/v1/source-connections/{id}/restore", "/api/v1/metric-capability-profiles", "/api/v1/metric-capability-profiles/{id}/publish", "/api/v1/metric-capability-profiles/{id}/archive", "/api/v1/collection-runs", "/api/v1/collection-runs/{id}/retry", "/api/v1/source-connections/{id}/health", "/api/v1/operations/jobs", "/api/v1/operations/jobs/{id}/cancel", "/api/v1/operations/jobs/{id}/retry", "/api/v1/operations/usage", "/api/v1/operations/retention-policies", "/api/v1/operations/retention-policies/{id}/preview", "/api/v1/operations/retention-policies/{id}/run", "/api/v1/operations/audit-logs", "/api/v1/knowledge/documents", "/api/v1/knowledge/documents/{id}", "/api/v1/knowledge/proposals", "/api/v1/knowledge/proposals/{id}", "/api/v1/knowledge/proposals/{id}/approve", "/api/v1/knowledge/proposals/{id}/reject", "/api/v1/knowledge/proposals/{id}/apply", "/api/v1/knowledge/reconcile", "/api/v1/contents", "/api/v1/contents/{id}", "/api/v1/contents/{id}/document", "/api/v1/document-versions/{id}/citation", "/api/v1/document-versions/{id}/document", "/api/v1/monitors/{id}/matches", "/api/v1/monitors/{id}/matches/{match_id}", "/api/v1/monitors/{id}/relevance-preview", "/api/v1/monitors/{id}/matches/{match_id}/feedback", "/api/v1/monitors/{id}/contents/{content_id}/feedback", "/api/v1/monitors/{id}/feedback/evaluation", "/api/v1/monitors/{id}/feedback/suggestions/refresh", "/api/v1/monitors/{id}/feedback/suggestions", "/api/v1/monitors/{id}/feedback/suggestions/{suggestion_id}/review", "/api/v1/ai/model-profiles", "/api/v1/ai/model-profiles/{id}", "/api/v1/ai/model-profiles/{id}/restore", "/api/v1/events", "/api/v1/events/{id}", "/api/v1/events/{id}/contents", "/api/v1/events/{id}/heat", "/api/v1/events/{id}/intelligence", "/api/v1/events/{id}/intelligence/summary/regenerate", "/api/v1/events/{id}/contents/{content_id}/lock", "/api/v1/events/{id}/lifecycle", "/api/v1/events/{id}/merge", "/api/v1/events/{id}/split", "/api/v1/radar/events", "/api/v1/events/{id}/updates", "/api/v1/alerts", "/api/v1/alerts/{id}", "/api/v1/alerts/{id}/acknowledge", "/api/v1/alerts/{id}/resolve", "/api/v1/alerts/{id}/suppress", "/api/v1/reports", "/api/v1/reports/{id}", "/api/v1/reports/{id}/preview", "/api/v1/reports/{id}/build", "/api/v1/reports/{id}/publish", "/api/v1/report-subscriptions", "/api/v1/report-subscriptions/{id}", "/api/v1/report-subscriptions/{id}/rss-token/rotate", "/api/v1/notifications", "/api/v1/notifications/stream"} {
 		var operations map[string]openAPIOperation
 		rawPath, exists := document.Paths[route]
 		if !exists {
@@ -355,6 +356,35 @@ func TestOpenAPIContract(t *testing.T) {
 	assertMetricCapabilityOpenAPI(t, document.Paths, document.Definitions)
 	assertDraftExpectedVersionOpenAPI(t, document.Definitions)
 	assertMonitorDraftDefaultsOpenAPI(t, document.Definitions)
+	assertSimpleMonitorResponseOpenAPI(t, document.Definitions)
+}
+
+func assertSimpleMonitorResponseOpenAPI(t *testing.T, definitions map[string]struct {
+	Properties map[string]json.RawMessage `json:"properties"`
+	Required   []string                   `json:"required"`
+}) {
+	t.Helper()
+	monitor, ok := definitions["http.MonitorResponse"]
+	if !ok {
+		t.Error("missing http.MonitorResponse")
+		return
+	}
+	for _, field := range []string{"id", "version", "name", "status", "query", "collection_interval_seconds", "sources"} {
+		if _, exists := monitor.Properties[field]; !exists {
+			t.Errorf("simple MonitorResponse misses %q", field)
+		}
+	}
+	for _, redundant := range []string{"published", "draft", "published_revision", "config"} {
+		if _, exists := monitor.Properties[redundant]; exists {
+			t.Errorf("simple MonitorResponse exposes redundant %q", redundant)
+		}
+	}
+	source := definitions["http.MonitorSourceResponse"]
+	for _, redundant := range []string{"id", "query_override", "priority"} {
+		if _, exists := source.Properties[redundant]; exists {
+			t.Errorf("simple MonitorSourceResponse exposes redundant %q", redundant)
+		}
+	}
 }
 
 func assertSafeVersionedCitationOpenAPIDefinitions(t *testing.T, definitions map[string]struct {
@@ -1107,7 +1137,47 @@ func assertMonitorDraftDefaultsOpenAPI(t *testing.T, definitions map[string]stru
 		}
 	}
 
-	for _, name := range []string{"http.CreateMonitorRequest", "http.ReplaceDraftRequest"} {
+	create, ok := definitions["http.CreateMonitorRequest"]
+	if !ok {
+		t.Error("missing http.CreateMonitorRequest")
+	} else {
+		for _, field := range []string{"name", "query", "source_connection_ids"} {
+			if !contains(create.Required, field) {
+				t.Errorf("http.CreateMonitorRequest must require %s", field)
+			}
+		}
+		for _, redundant := range []string{"config", "rules", "sources", "description"} {
+			if _, exists := create.Properties[redundant]; exists {
+				t.Errorf("simple create request exposes redundant %q", redundant)
+			}
+		}
+		var collection struct {
+			MinItems *int `json:"minItems"`
+			MaxItems *int `json:"maxItems"`
+		}
+		if err := json.Unmarshal(create.Properties["source_connection_ids"], &collection); err != nil {
+			t.Errorf("decode simple create sources: %v", err)
+		} else if collection.MinItems == nil || *collection.MinItems != 1 || collection.MaxItems == nil || *collection.MaxItems != 10 {
+			t.Errorf("simple create source item range = %v..%v, want 1..10", collection.MinItems, collection.MaxItems)
+		}
+	}
+	update, ok := definitions["http.UpdateMonitorRequest"]
+	if !ok {
+		t.Error("missing http.UpdateMonitorRequest")
+	} else {
+		for _, field := range []string{"expected_monitor_version", "name", "query", "source_connection_ids", "collection_interval_seconds"} {
+			if !contains(update.Required, field) {
+				t.Errorf("http.UpdateMonitorRequest must require %s", field)
+			}
+		}
+		for _, redundant := range []string{"config", "rules", "sources", "description", "expected_draft_version"} {
+			if _, exists := update.Properties[redundant]; exists {
+				t.Errorf("simple update request exposes redundant %q", redundant)
+			}
+		}
+	}
+
+	for _, name := range []string{"http.ReplaceDraftRequest"} {
 		definition, ok := definitions[name]
 		if !ok {
 			t.Errorf("missing %s", name)

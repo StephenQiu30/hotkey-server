@@ -128,16 +128,62 @@ func TestCollectionAdminRoutesReturnStableRunErrorsAndRejectInvalidInput(t *test
 	}
 }
 
+func TestMonitorScanRouteReturnsViewerSafeSourceProgress(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	scheduledAt := time.Date(2026, 8, 13, 12, 0, 0, 0, time.UTC)
+	service := &collectionControlServiceFake{scans: []domain.MonitorScan{{
+		ID: "manual:1786622400000000000", MonitorID: 9, TriggerType: domain.CollectionTriggerManual,
+		Status: domain.MonitorScanSucceeded, CandidateCount: 8, AcceptedCount: 3, RejectedCount: 5,
+		ScheduledAt: scheduledAt,
+		Sources: []domain.MonitorScanSource{{
+			RunID: 41, MonitorID: 9, SourceConnectionID: 12, SourceName: "Hacker News", SourceType: "hacker_news",
+			TriggerType: domain.CollectionTriggerManual, Status: domain.CollectionRunSucceeded,
+			CandidateCount: 8, AcceptedCount: 3, RejectedCount: 5, ScheduledAt: scheduledAt,
+		}},
+	}}}
+	router := gin.New()
+	RegisterCollectionRoutes(router, service, testAuthenticator{subject: httptransport.Subject{UserID: 1, SessionID: 2, Role: httptransport.RoleViewer}})
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/monitors/9/scans?limit=10", nil)
+	request.Header.Set("Authorization", "Bearer viewer")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
+	}
+	for _, value := range []string{"\"id\":\"manual:1786622400000000000\"", "\"source_name\":\"Hacker News\"", "\"source_type\":\"hacker_news\"", "\"status\":\"succeeded\"", "\"accepted_count\":3"} {
+		if !strings.Contains(response.Body.String(), value) {
+			t.Fatalf("monitor scan response misses %s: %s", value, response.Body.String())
+		}
+	}
+	for _, sensitive := range []string{"query_signature", "endpoint", "credential", "request_cursor"} {
+		if strings.Contains(response.Body.String(), sensitive) {
+			t.Fatalf("monitor scan response leaked %q: %s", sensitive, response.Body.String())
+		}
+	}
+	if service.scanCalls != 1 || service.scanInput.MonitorID != 9 || service.scanInput.Limit != 10 {
+		t.Fatalf("scan input = %#v, calls = %d", service.scanInput, service.scanCalls)
+	}
+}
+
 type collectionControlServiceFake struct {
 	page        domain.CollectionRunPage
 	retry       domain.CollectionRunSummary
 	health      domain.SourceHealth
 	manual      domain.ManualCollectionSummary
+	scans       []domain.MonitorScan
+	scanInput   sourceapplication.MonitorScanListInput
 	retryErr    error
 	listCalls   int
 	retryCalls  int
 	healthCalls int
 	manualCalls int
+	scanCalls   int
+}
+
+func (service *collectionControlServiceFake) Scans(_ context.Context, input sourceapplication.MonitorScanListInput) ([]domain.MonitorScan, error) {
+	service.scanCalls++
+	service.scanInput = input
+	return append([]domain.MonitorScan(nil), service.scans...), nil
 }
 
 func (service *collectionControlServiceFake) List(_ context.Context, input sourceapplication.CollectionRunListInput) (domain.CollectionRunPage, error) {

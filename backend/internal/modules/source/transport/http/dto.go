@@ -93,6 +93,40 @@ type ManualCollectionResponse struct {
 	CooldownUntil time.Time `json:"cooldown_until"`
 }
 
+type MonitorScanSourceResponse struct {
+	RunID              int64      `json:"run_id"`
+	SourceConnectionID int64      `json:"source_connection_id"`
+	SourceName         string     `json:"source_name"`
+	SourceType         string     `json:"source_type"`
+	TriggerType        string     `json:"trigger_type" enums:"schedule,manual,retry,reconcile"`
+	Status             string     `json:"status" enums:"queued,running,succeeded,failed,cancelled"`
+	CandidateCount     int64      `json:"candidate_count"`
+	AcceptedCount      int64      `json:"accepted_count"`
+	RejectedCount      int64      `json:"rejected_count"`
+	ErrorCode          string     `json:"error_code,omitempty"`
+	ScheduledAt        time.Time  `json:"scheduled_at"`
+	StartedAt          *time.Time `json:"started_at,omitempty"`
+	FinishedAt         *time.Time `json:"finished_at,omitempty"`
+}
+
+type MonitorScanPageResponse struct {
+	Items []MonitorScanResponse `json:"items"`
+}
+
+type MonitorScanResponse struct {
+	ID             string                      `json:"id"`
+	MonitorID      int64                       `json:"monitor_id"`
+	TriggerType    string                      `json:"trigger_type" enums:"schedule,manual,retry,reconcile"`
+	Status         string                      `json:"status" enums:"queued,running,succeeded,partial,failed"`
+	CandidateCount int64                       `json:"candidate_count"`
+	AcceptedCount  int64                       `json:"accepted_count"`
+	RejectedCount  int64                       `json:"rejected_count"`
+	ScheduledAt    time.Time                   `json:"scheduled_at"`
+	StartedAt      *time.Time                  `json:"started_at,omitempty"`
+	FinishedAt     *time.Time                  `json:"finished_at,omitempty"`
+	Sources        []MonitorScanSourceResponse `json:"sources"`
+}
+
 type SourceHealthResponse struct {
 	Healthy   bool      `json:"healthy"`
 	CheckedAt time.Time `json:"checked_at"`
@@ -367,6 +401,30 @@ func manualCollectionResponse(summary domain.ManualCollectionSummary) ManualColl
 		Requested: summary.Requested, Created: summary.Created, Reused: summary.Reused,
 		CooldownUntil: summary.CooldownUntil.UTC(),
 	}
+}
+
+func monitorScanPageResponse(items []domain.MonitorScan) MonitorScanPageResponse {
+	response := MonitorScanPageResponse{Items: make([]MonitorScanResponse, 0, len(items))}
+	for _, item := range items {
+		scan := MonitorScanResponse{
+			ID: item.ID, MonitorID: item.MonitorID, TriggerType: string(item.TriggerType), Status: string(item.Status),
+			CandidateCount: item.CandidateCount, AcceptedCount: item.AcceptedCount, RejectedCount: item.RejectedCount,
+			ScheduledAt: item.ScheduledAt.UTC(), StartedAt: item.StartedAt, FinishedAt: item.FinishedAt,
+			Sources: make([]MonitorScanSourceResponse, 0, len(item.Sources)),
+		}
+		for _, source := range item.Sources {
+			scan.Sources = append(scan.Sources, MonitorScanSourceResponse{
+				RunID: source.RunID, SourceConnectionID: source.SourceConnectionID,
+				SourceName: source.SourceName, SourceType: source.SourceType,
+				TriggerType: string(source.TriggerType), Status: string(source.Status),
+				CandidateCount: source.CandidateCount, AcceptedCount: source.AcceptedCount,
+				RejectedCount: source.RejectedCount, ErrorCode: source.ErrorCode,
+				ScheduledAt: source.ScheduledAt.UTC(), StartedAt: source.StartedAt, FinishedAt: source.FinishedAt,
+			})
+		}
+		response.Items = append(response.Items, scan)
+	}
+	return response
 }
 
 func collectionRunResponse(summary domain.CollectionRunSummary) CollectionRunResponse {

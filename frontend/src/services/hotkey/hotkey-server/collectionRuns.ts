@@ -53,3 +53,24 @@ export async function postMonitorsIdCollect(
     }
   );
 }
+
+/** List recent monitor scans GET /api/v1/monitors/${param0}/scans */
+export async function getMonitorsIdScans(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: HotKeyAPI.getMonitorsIdScansParams,
+  options?: RequestOptions
+) {
+  const { id: param0, ...queryParams } = params;
+  return request<HotKeyAPI.CollectionResultHttpMonitorScanPageResponse>(
+    `/api/v1/monitors/${param0}/scans`,
+    {
+      method: "GET",
+      params: {
+        // limit has a default value: 20
+        limit: "20",
+        ...queryParams,
+      },
+      ...(options || {}),
+    }
+  );
+}

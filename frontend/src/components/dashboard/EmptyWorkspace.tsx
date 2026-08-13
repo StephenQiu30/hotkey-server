@@ -47,7 +47,9 @@ export function EmptyWorkspace({
     (monitor) => monitor.status === MonitorStatus.Draft
   ).length;
   const publishedCount = visibleMonitors.filter(
-    (monitor) => monitor.published != null
+    (monitor) =>
+      monitor.status === MonitorStatus.Active ||
+      monitor.status === MonitorStatus.Paused
   ).length;
   const runningJobs = overview?.running_jobs ?? 0;
   const collectionStarted = collectionRuns.length > 0;
@@ -131,11 +133,6 @@ export function EmptyWorkspace({
         {visibleMonitors.length ? (
           <CardContent className="divide-y divide-border p-0">
             {visibleMonitors.slice(0, 6).map((monitor) => {
-              const config =
-                monitor.status === MonitorStatus.Draft
-                  ? monitor.draft
-                  : monitor.published ?? monitor.draft;
-              const query = config?.rules?.[0]?.value;
               return (
                 <Link
                   key={monitor.id}
@@ -147,11 +144,11 @@ export function EmptyWorkspace({
                       {monitor.name || `监控 #${monitor.id}`}
                     </span>
                     <span className="mono mt-1 block truncate text-xs text-muted-foreground">
-                      {query || monitor.description || "暂无关键词规则"}
+                      {monitor.query || monitor.description || "暂无关键词规则"}
                     </span>
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {config?.sources?.length ?? 0} 个来源
+                    {monitor.sources?.length ?? 0} 个来源
                   </span>
                   <Badge variant="outline" className="w-fit">
                     {monitorStatusLabel(monitor.status)}

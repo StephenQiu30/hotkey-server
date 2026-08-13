@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -25,6 +26,7 @@ type CollectionControlDependencies struct {
 	Retries    CollectionRetryActivator
 	Manuals    ManualCollectionActivator
 	Targets    domain.ManualCollectionTargetReader
+	Scans      domain.MonitorScanReader
 	Now        func() time.Time
 	Quota      operationsapplication.QuotaGuard
 }
@@ -46,6 +48,7 @@ type CollectionControlService struct {
 	retries    CollectionRetryActivator
 	manuals    ManualCollectionActivator
 	targets    domain.ManualCollectionTargetReader
+	scans      domain.MonitorScanReader
 	now        func() time.Time
 	quota      operationsapplication.QuotaGuard
 }
@@ -64,6 +67,7 @@ func NewCollectionControlService(dependencies CollectionControlDependencies) (*C
 		runtime: dependencies.Runtime, sources: dependencies.Sources, runs: dependencies.Runs,
 		connectors: dependencies.Connectors, metrics: dependencies.Metrics, retries: dependencies.Retries,
 		manuals: dependencies.Manuals, targets: dependencies.Targets, now: dependencies.Now, quota: dependencies.Quota,
+		scans: dependencies.Scans,
 	}, nil
 }
 
@@ -80,6 +84,12 @@ type CollectionRunRetryInput struct {
 type ManualCollectionInput struct {
 	Subject   identitydomain.Subject
 	MonitorID int64
+}
+
+type MonitorScanListInput struct {
+	Subject   identitydomain.Subject
+	MonitorID int64
+	Limit     int
 }
 
 type SourceHealthInput struct {
@@ -172,6 +182,89 @@ func (service *CollectionControlService) Manual(ctx context.Context, input Manua
 	}
 	service.metrics.RecordCollectionOperation("manual", "success")
 	return summary, nil
+}
+
+// Scans returns Monitor-scoped runs with source progress. It is safe for
+// viewers and contains no connector request or credential material.
+func (service *CollectionControlService) Scans(ctx context.Context, input MonitorScanListInput) ([]domain.MonitorScan, error) {
+	if err := requireAuthenticated(input.Subject); err != nil {
+		return nil, err
+	}
+	if input.MonitorID <= 0 || input.Limit < 1 || input.Limit > 100 {
+		return nil, domain.InvalidCollectionRequest()
+	}
+	if service.scans == nil {
+		return nil, sharederrors.New(sharederrors.CodeUnavailable, 503, "")
+	}
+	items, err := service.scans.ListMonitorScans(ctx, input.MonitorID, input.Limit)
+	if err != nil {
+		return nil, collectionControlError(err)
+	}
+	return groupMonitorScans(items), nil
+}
+
+func groupMonitorScans(sources []domain.MonitorScanSource) []domain.MonitorScan {
+	items := []domain.MonitorScan{}
+	positions := map[string]int{}
+	for _, source := range sources {
+		key := fmt.Sprintf("%s:%d", source.TriggerType, source.ScheduledAt.UTC().UnixNano())
+		index, exists := positions[key]
+		if !exists {
+			positions[key] = len(items)
+			items = append(items, domain.MonitorScan{
+				ID: key, MonitorID: source.MonitorID, TriggerType: source.TriggerType,
+				ScheduledAt: source.ScheduledAt.UTC(), Sources: []domain.MonitorScanSource{},
+			})
+			index = len(items) - 1
+		}
+		scan := &items[index]
+		scan.Sources = append(scan.Sources, source)
+		scan.CandidateCount += source.CandidateCount
+		scan.AcceptedCount += source.AcceptedCount
+		scan.RejectedCount += source.RejectedCount
+		if source.StartedAt != nil && (scan.StartedAt == nil || source.StartedAt.Before(*scan.StartedAt)) {
+			value := source.StartedAt.UTC()
+			scan.StartedAt = &value
+		}
+		if source.FinishedAt != nil && (scan.FinishedAt == nil || source.FinishedAt.After(*scan.FinishedAt)) {
+			value := source.FinishedAt.UTC()
+			scan.FinishedAt = &value
+		}
+	}
+	for index := range items {
+		items[index].Status = monitorScanStatus(items[index].Sources)
+	}
+	return items
+}
+
+func monitorScanStatus(sources []domain.MonitorScanSource) domain.MonitorScanStatus {
+	if len(sources) == 0 {
+		return domain.MonitorScanFailed
+	}
+	queued, running, succeeded := 0, 0, 0
+	for _, source := range sources {
+		switch source.Status {
+		case domain.CollectionRunQueued:
+			queued++
+		case domain.CollectionRunRunning:
+			running++
+		case domain.CollectionRunSucceeded:
+			succeeded++
+		}
+	}
+	if queued == len(sources) {
+		return domain.MonitorScanQueued
+	}
+	if queued > 0 || running > 0 {
+		return domain.MonitorScanRunning
+	}
+	if succeeded == len(sources) {
+		return domain.MonitorScanSucceeded
+	}
+	if succeeded > 0 {
+		return domain.MonitorScanPartial
+	}
+	return domain.MonitorScanFailed
 }
 
 // Retry atomically restores the failed window and reactivates its original
