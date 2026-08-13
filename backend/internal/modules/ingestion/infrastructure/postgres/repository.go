@@ -377,10 +377,11 @@ func (repository *ContentRepository) ListActive(ctx context.Context, query inges
 	if query.IncludeSummary {
 		var summary ingestiondomain.HotspotSummary
 		if err := repository.queryRow(ctx, `
-SELECT COUNT(*)::bigint,
-       COUNT(*) FILTER (WHERE fetched_at >= date_trunc('day', CURRENT_TIMESTAMP))::bigint
-FROM contents
-WHERE content_status = 'active' AND deleted_at IS NULL`).Scan(&summary.Total, &summary.Today); err != nil {
+	SELECT COUNT(*)::bigint,
+	       COUNT(*) FILTER (WHERE fetched_at >= date_trunc('day', CURRENT_TIMESTAMP))::bigint,
+	       COUNT(*) FILTER (WHERE hotspot_heat_score(view_count,like_count,comment_count,share_count) >= 75)::bigint
+	FROM contents
+	WHERE content_status = 'active' AND deleted_at IS NULL`).Scan(&summary.Total, &summary.Today, &summary.Urgent); err != nil {
 			return ingestiondomain.ContentPage{}, databaserepository.MapError(err)
 		}
 		page.Summary = &summary

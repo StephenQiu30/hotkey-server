@@ -233,14 +233,20 @@ func TestContentRepositoryListsOnlyActiveContentWithPublishedCursor(t *testing.T
 	} {
 		content := normalizedContent(sourceID, test.externalID, test.published)
 		content.PublishedAt = test.published
+		if test.externalID == "newest" {
+			content.Metrics.LikeCount = sourcedomain.KnownMetric(2_000)
+		}
 		if _, _, err := repository.Upsert(context.Background(), content, activeDecision()); err != nil {
 			t.Fatalf("Upsert(%s): %v", test.externalID, err)
 		}
 	}
 
-	first, err := repository.ListActive(context.Background(), ingestiondomain.ContentListQuery{Limit: 2})
+	first, err := repository.ListActive(context.Background(), ingestiondomain.ContentListQuery{Limit: 2, IncludeSummary: true})
 	if err != nil || len(first.Items) != 2 || first.NextCursor == "" {
 		t.Fatalf("ListActive(first) page/error = %#v / %v, want two items and cursor", first, err)
+	}
+	if first.Summary == nil || first.Summary.Total != 3 || first.Summary.Today != 0 || first.Summary.Urgent != 1 {
+		t.Fatalf("ListActive(first) summary = %#v, want total=3 today=0 urgent=1", first.Summary)
 	}
 	second, err := repository.ListActive(context.Background(), ingestiondomain.ContentListQuery{Limit: 2, Cursor: first.NextCursor})
 	if err != nil || len(second.Items) != 1 || second.NextCursor != "" {
