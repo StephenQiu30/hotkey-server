@@ -280,6 +280,14 @@ type simpleMonitorInput struct {
 }
 
 func simpleMonitorDraft(input simpleMonitorInput) monitorapplication.DraftInput {
+	config := domain.DefaultMonitorAlertPolicy()
+	config.Timezone = "Asia/Shanghai"
+	config.Languages = []string{"zh", "en"}
+	config.CollectionIntervalSeconds = input.CollectionIntervalSeconds
+	config.RelevanceThreshold = 60
+	config.AlertEmailEnabled = input.AlertEmailEnabled
+	config.AlertEmailMinSeverity = domain.AlertEmailSeverityWarning
+	config.RetentionDays = 30
 	rules := []domain.MonitorRule{{
 		RuleType: domain.RuleTypeKeyword, Operator: domain.RuleOperatorContains,
 		Value: input.Query, Weight: 100, Priority: 1, Enabled: true,
@@ -292,13 +300,8 @@ func simpleMonitorDraft(input simpleMonitorInput) monitorapplication.DraftInput 
 	}
 	return monitorapplication.DraftInput{
 		Name: input.Name, Description: "监控 " + input.Query,
-		Config: domain.MonitorConfig{
-			Timezone: "Asia/Shanghai", Languages: []string{"zh", "en"},
-			CollectionIntervalSeconds: input.CollectionIntervalSeconds, RelevanceThreshold: 60,
-			EventThreshold: 0, AlertEmailEnabled: input.AlertEmailEnabled,
-			AlertEmailMinSeverity: domain.AlertEmailSeverityWarning, RetentionDays: 30,
-		},
-		Rules: rules, Sources: sources,
+		Config: config,
+		Rules:  rules, Sources: sources,
 	}
 }
 

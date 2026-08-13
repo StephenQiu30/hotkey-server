@@ -184,14 +184,6 @@ func (service *Service) UpdateActive(ctx context.Context, input UpdateActiveInpu
 	if err != nil {
 		return nil, nil, err
 	}
-	if view.Monitor.Status == domain.MonitorStatusPaused {
-		monitor, err = service.Pause(ctx, LifecycleInput{
-			Subject: input.Subject, MonitorID: input.MonitorID, ExpectedMonitorVersion: monitor.Version,
-		})
-		if err != nil {
-			return nil, nil, err
-		}
-	}
 	return monitor, published, nil
 }
 
@@ -397,7 +389,7 @@ func (service *Service) Publish(ctx context.Context, input PublishInput) (*domai
 		if err != nil {
 			return err
 		}
-		if service.quota != nil {
+		if service.quota != nil && monitor.Status != domain.MonitorStatusPaused {
 			if err := service.quota.CheckActiveMonitor(ctx, monitor.ID); err != nil {
 				return err
 			}
@@ -464,7 +456,11 @@ func (service *Service) Publish(ctx context.Context, input PublishInput) (*domai
 		// source checkpoint, and returned domain object share the same timestamp.
 		now := time.Now().UTC().Truncate(time.Microsecond)
 		draft.Config, draft.State, draft.ConfigHash, draft.PublishedAt, draft.Version = effective, domain.ConfigVersionPublished, hash, &now, draft.Version+1
-		monitor.Status, monitor.DraftConfigVersionID, monitor.PublishedConfigVersionID, monitor.Version = domain.MonitorStatusActive, nil, int64Pointer(draft.ID), monitor.Version+1
+		publishedStatus := domain.MonitorStatusActive
+		if monitor.Status == domain.MonitorStatusPaused {
+			publishedStatus = domain.MonitorStatusPaused
+		}
+		monitor.Status, monitor.DraftConfigVersionID, monitor.PublishedConfigVersionID, monitor.Version = publishedStatus, nil, int64Pointer(draft.ID), monitor.Version+1
 		if err := service.monitors.Publish(ctx, monitor, draft, previous, sources); err != nil {
 			return monitorWriteError(err)
 		}
@@ -671,7 +667,7 @@ func (service *Service) lockPublishableDraft(ctx context.Context, id int64, expe
 	if monitor.DraftConfigVersionID == nil {
 		return nil, nil, nil, nil, domain.MonitorDraftUnavailable()
 	}
-	if monitor.Status != domain.MonitorStatusDraft && monitor.Status != domain.MonitorStatusActive {
+	if monitor.Status != domain.MonitorStatusDraft && monitor.Status != domain.MonitorStatusActive && monitor.Status != domain.MonitorStatusPaused {
 		return nil, nil, nil, nil, domain.InvalidMonitorState()
 	}
 	draft, rules, sources, err := service.monitors.LockConfig(ctx, *monitor.DraftConfigVersionID)

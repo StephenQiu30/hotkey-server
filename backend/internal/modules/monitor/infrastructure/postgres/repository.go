@@ -295,7 +295,7 @@ func (repository *Repository) Publish(ctx context.Context, monitor *domain.Monit
 		if changed, _ := result.RowsAffected(); changed != 1 {
 			return sharedrepository.ErrConflict
 		}
-		result, err = transaction.SQL.ExecContext(ctx, `UPDATE monitors SET status = 'active', draft_config_version_id = NULL, published_config_version_id = $1, version = $2, updated_at = now() WHERE id = $3 AND version = $4`, draft.ID, monitor.Version, monitor.ID, monitor.Version-1)
+		result, err = transaction.SQL.ExecContext(ctx, `UPDATE monitors SET status = $1, draft_config_version_id = NULL, published_config_version_id = $2, version = $3, updated_at = now() WHERE id = $4 AND version = $5`, monitor.Status, draft.ID, monitor.Version, monitor.ID, monitor.Version-1)
 		if err != nil {
 			return databaserepository.MapError(err)
 		}
