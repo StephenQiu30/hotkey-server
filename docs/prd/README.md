@@ -53,7 +53,7 @@ PRD 将每一条设计转换为稳定、可验收的产品范围。状态只使�
 | 032 | [热点事件语义监控与出处正文](../design/archive/032-热点事件语义监控与出处正文设计.md) | [PRD](archive/032-热点事件语义监控与出处正文.md) | [Plan](../plans/archive/032-热点事件语义监控与出处正文计划.md) | implemented |
 | 033 | [X热点发现与持续热度观测](../design/033-X热点发现与持续热度观测设计.md) | [PRD](033-X热点发现与持续热度观测.md) | [Plan](../plans/033-X热点发现与持续热度观测计划.md) | approved |
 | 034 | [X热点核心链路收敛与遗留系统清理](../design/034-X热点核心链路收敛与遗留系统清理设计.md) | [PRD](034-X热点核心链路收敛与遗留系统清理.md) | [Plan](../plans/034-X热点核心链路收敛与遗留系统清理计划.md) | cancelled |
-| 035 | [多源AI热点监控首版收敛](../design/035-多源AI热点监控首版收敛设计.md) | [PRD](035-多源AI热点监控首版收敛.md) | [Plan](../plans/035-多源AI热点监控首版收敛计划.md) | implemented |
+| 035 | [多源AI热点监控首版收敛](../design/archive/035-多源AI热点监控首版收敛设计.md) | [PRD](archive/035-多源AI热点监控首版收敛.md) | [Plan](../plans/archive/035-多源AI热点监控首版收敛计划.md) | implemented |
 | 036 | [评论会话采集与采集运行时边界](../design/036-评论会话采集与采集运行时边界设计.md) | [PRD](036-评论会话采集与采集运行时边界.md) | [Plan](../plans/036-评论会话采集与采集运行时边界计划.md) | draft |
-| 037 | [实时热点监控MVP功能基线](../design/037-实时热点监控MVP功能基线设计.md) | [PRD](037-实时热点监控MVP功能基线.md) | [Plan](../plans/037-实时热点监控MVP功能基线计划.md) | approved |
-| 038 | [邮件与WebSocket双通道通知收敛](../design/038-邮件与WebSocket双通道通知收敛设计.md) | [PRD](038-邮件与WebSocket双通道通知收敛.md) | [Plan](../plans/038-邮件与WebSocket双通道通知收敛计划.md) | implemented |
+| 037 | [实时热点监控MVP功能基线](../design/archive/037-实时热点监控MVP功能基线设计.md) | [PRD](archive/037-实时热点监控MVP功能基线.md) | [Plan](../plans/archive/037-实时热点监控MVP功能基线计划.md) | implemented |
+| 038 | [邮件与WebSocket双通道通知收敛](../design/archive/038-邮件与WebSocket双通道通知收敛设计.md) | [PRD](archive/038-邮件与WebSocket双通道通知收敛.md) | [Plan](../plans/archive/038-邮件与WebSocket双通道通知收敛计划.md) | implemented |

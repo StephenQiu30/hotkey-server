@@ -6,9 +6,9 @@ title: 邮件与WebSocket双通道通知收敛设计
 status: accepted
 version: v1.0
 owner: HotKey Team
-canonical_path: docs/design/038-邮件与WebSocket双通道通知收敛设计.md
-prd: docs/prd/038-邮件与WebSocket双通道通知收敛.md
-plan: docs/plans/038-邮件与WebSocket双通道通知收敛计划.md
+canonical_path: docs/design/archive/038-邮件与WebSocket双通道通知收敛设计.md
+prd: docs/prd/archive/038-邮件与WebSocket双通道通知收敛.md
+plan: docs/plans/archive/038-邮件与WebSocket双通道通知收敛计划.md
 reference_commit: 491a17a5303038284cff570df2065ac914bc846e
 ---
 

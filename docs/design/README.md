@@ -11,7 +11,7 @@ canonical_path: docs/design/README.md
 
 # Design 索引
 
-Design 记录长期有效的产品与技术决策。状态只使用 `proposed`、`accepted`、`superseded`。001–032 均已评审、实现并随对应 Acceptance 归档；033 是可延后的 X 增强，错误的 X-only 034 已由 035 替代；035 的复杂首版边界又由 037 收敛为参考项目真实可用的热点监控闭环。036 是 037 之后的评论会话候选，尚未授权实现；038 将 037 的通知体验明确收敛为邮件与 WebSocket 两条通道。
+Design 记录长期有效的产品与技术决策。状态只使用 `proposed`、`accepted`、`superseded`。001–032、035、037、038 均已评审、实现并随对应 Acceptance 归档；033 是可延后的 X 增强，错误的 X-only 034 已由 035 替代；035 的复杂首版边界又由 037 收敛为参考项目真实可用的热点监控闭环。036 是 037 之后的评论会话候选，尚未授权实现；038 将 037 的通知体验明确收敛为邮件与 WebSocket 两条通道。
 
 具体编号和当前实现差距见 [文档地图](../README.md)。同编号必须链接到对应 [PRD](../prd/README.md) 与 [Plan](../plans/README.md)。
 
@@ -53,7 +53,7 @@ Design 记录长期有效的产品与技术决策。状态只使用 `proposed`�
 | 032 | [热点事件语义监控与出处正文](archive/032-热点事件语义监控与出处正文设计.md) | [PRD](../prd/archive/032-热点事件语义监控与出处正文.md) | [Plan](../plans/archive/032-热点事件语义监控与出处正文计划.md) | accepted |
 | 033 | [X热点发现与持续热度观测](033-X热点发现与持续热度观测设计.md) | [PRD](../prd/033-X热点发现与持续热度观测.md) | [Plan](../plans/033-X热点发现与持续热度观测计划.md) | accepted |
 | 034 | [X热点核心链路收敛与遗留系统清理](034-X热点核心链路收敛与遗留系统清理设计.md) | [PRD](../prd/034-X热点核心链路收敛与遗留系统清理.md) | [Plan](../plans/034-X热点核心链路收敛与遗留系统清理计划.md) | superseded |
-| 035 | [多源AI热点监控首版收敛](035-多源AI热点监控首版收敛设计.md) | [PRD](../prd/035-多源AI热点监控首版收敛.md) | [Plan](../plans/035-多源AI热点监控首版收敛计划.md) | superseded |
+| 035 | [多源AI热点监控首版收敛](archive/035-多源AI热点监控首版收敛设计.md) | [PRD](../prd/archive/035-多源AI热点监控首版收敛.md) | [Plan](../plans/archive/035-多源AI热点监控首版收敛计划.md) | superseded |
 | 036 | [评论会话采集与采集运行时边界](036-评论会话采集与采集运行时边界设计.md) | [PRD](../prd/036-评论会话采集与采集运行时边界.md) | [Plan](../plans/036-评论会话采集与采集运行时边界计划.md) | proposed |
-| 037 | [实时热点监控MVP功能基线](037-实时热点监控MVP功能基线设计.md) | [PRD](../prd/037-实时热点监控MVP功能基线.md) | [Plan](../plans/037-实时热点监控MVP功能基线计划.md) | accepted |
-| 038 | [邮件与WebSocket双通道通知收敛](038-邮件与WebSocket双通道通知收敛设计.md) | [PRD](../prd/038-邮件与WebSocket双通道通知收敛.md) | [Plan](../plans/038-邮件与WebSocket双通道通知收敛计划.md) | accepted |
+| 037 | [实时热点监控MVP功能基线](archive/037-实时热点监控MVP功能基线设计.md) | [PRD](../prd/archive/037-实时热点监控MVP功能基线.md) | [Plan](../plans/archive/037-实时热点监控MVP功能基线计划.md) | accepted |
+| 038 | [邮件与WebSocket双通道通知收敛](archive/038-邮件与WebSocket双通道通知收敛设计.md) | [PRD](../prd/archive/038-邮件与WebSocket双通道通知收敛.md) | [Plan](../plans/archive/038-邮件与WebSocket双通道通知收敛计划.md) | accepted |
