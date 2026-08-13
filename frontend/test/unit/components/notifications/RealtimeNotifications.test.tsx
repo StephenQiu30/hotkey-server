@@ -62,8 +62,8 @@ describe("RealtimeNotifications", () => {
         queueMicrotask(() => {
           this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ type: "ready", after_id: authentication.after_id }) }));
           this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({
-            type: "notification", id: 4, event: "micro_event.updated",
-            data: { id: 4, version: 1, monitor_id: 2, event_type: "micro_event.updated", resource_type: "micro_event", resource_id: 9, resource_version: 1, occurred_at: "2026-08-08T00:00:00Z", created_at: "2026-08-08T00:00:00Z", title: "事件更新", summary: "新增独立正文谱系", resource_status: "active", deep_link: "/dashboard/events?event=9" },
+            type: "notification", id: 4, event: "hotspot.discovered",
+            data: { id: 4, version: 1, monitor_id: 2, event_type: "hotspot.discovered", resource_type: "hotspot", resource_id: 9, resource_version: 1, occurred_at: "2026-08-08T00:00:00Z", created_at: "2026-08-08T00:00:00Z", title: "新热点", summary: "监控词命中", resource_status: "high", deep_link: "/dashboard/contents/9" },
           }) }));
         });
       }
@@ -84,6 +84,6 @@ describe("RealtimeNotifications", () => {
     expect(sockets[0]?.protocols).toEqual(["hotkey.notifications.v1"]);
     expect(JSON.parse(sockets[0]?.sent[0] ?? "{}")).toEqual({ type: "authenticate", token: "test-access-token", after_id: 0 });
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(mocks.toast).toHaveBeenCalledWith("事件更新", { description: "新增独立正文谱系" });
+    expect(mocks.toast).toHaveBeenCalledWith("新热点", { description: "监控词命中" });
   });
 });

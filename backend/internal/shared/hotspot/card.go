@@ -20,6 +20,8 @@ const (
 
 	ImportanceLow    = "low"
 	ImportanceMedium = "medium"
+	ImportanceHigh   = "high"
+	ImportanceUrgent = "urgent"
 
 	SourceSuccess     SourceState = "success"
 	SourceEmpty       SourceState = "empty"
@@ -79,10 +81,16 @@ func HeatScore(metrics Metrics) float64 {
 }
 
 func Importance(heat float64) string {
-	if heat >= 25 {
+	switch {
+	case heat >= 75:
+		return ImportanceUrgent
+	case heat >= 50:
+		return ImportanceHigh
+	case heat >= 25:
 		return ImportanceMedium
+	default:
+		return ImportanceLow
 	}
-	return ImportanceLow
 }
 
 // NormalizeURL canonicalizes a credential-free HTTP(S) URL and removes only

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Bell, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/dashboard/PageHeader";
+import { isSafeNotificationDeepLink } from "@/lib/notificationLink";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -34,17 +35,16 @@ const transportPresentation: Record<
 };
 
 const eventTypeLabels: Record<string, string> = {
+  "hotspot.discovered": "新热点",
   "micro_event.created": "新微事件",
   "micro_event.updated": "微事件更新",
   "micro_event.review_requested": "需要复核",
   "micro_event.evidence_changed": "证据覆盖更新",
 };
 
-const SAFE_MICRO_EVENT_DEEP_LINK = /^\/dashboard\/events\?event=[1-9][0-9]{0,18}$/;
-
 function resourceHref(notification: HotKeyAPI.UserNotificationResponseDTO) {
   const deepLink = notification.deep_link ?? "";
-  return SAFE_MICRO_EVENT_DEEP_LINK.test(deepLink)
+  return isSafeNotificationDeepLink(notification.resource_type, deepLink)
     ? deepLink
     : "/dashboard/notifications";
 }
@@ -92,7 +92,7 @@ export function NotificationInbox() {
       <PageHeader
         eyebrow="Notifications"
         title="站内通知"
-        description="实时接收所管理监控的微事件与证据覆盖变化；断线后会从上次游标自动补齐，权限变更会即时生效。"
+        description="实时接收监控发现的新热点；断线后会从上次游标自动补齐。"
         action={
           <div className="flex gap-2">
             <Badge
@@ -131,7 +131,7 @@ export function NotificationInbox() {
               </EmptyMedia>
               <EmptyTitle>暂时没有站内通知</EmptyTitle>
               <EmptyDescription>
-                监控发现新微事件、事件归属变化或证据覆盖更新后会显示在这里。
+                监控发现与关键词相关的新热点后会显示在这里。
               </EmptyDescription>
             </EmptyHeader>
           </Empty>

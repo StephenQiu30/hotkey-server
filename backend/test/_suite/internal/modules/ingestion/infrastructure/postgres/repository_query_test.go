@@ -16,8 +16,8 @@ func TestContentListStatementUsesDatabaseOrderingForEveryHotspotSort(t *testing.
 	}{
 		{sort: ingestiondomain.ContentSortDiscovered, want: "ORDER BY c.fetched_at DESC, c.id DESC"},
 		{sort: ingestiondomain.ContentSortPublished, want: "ORDER BY c.published_at DESC, c.id DESC"},
-		{sort: ingestiondomain.ContentSortImportance, want: "LN(1 + COALESCE(c.like_count, 0)) * 10"},
-		{sort: ingestiondomain.ContentSortHeat, want: "LN(1 + COALESCE(c.share_count, 0)) * 6"},
+		{sort: ingestiondomain.ContentSortImportance, want: "hotspot_heat_score(c.view_count,c.like_count,c.comment_count,c.share_count)"},
+		{sort: ingestiondomain.ContentSortHeat, want: "hotspot_heat_score(c.view_count,c.like_count,c.comment_count,c.share_count)"},
 		{sort: ingestiondomain.ContentSortRelevance, monitorID: &monitorID, want: "ORDER BY latest_match.final_score DESC, c.id DESC"},
 	}
 	for _, test := range tests {

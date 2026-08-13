@@ -13,11 +13,10 @@ import {
 import { getNotifications } from "@/services/hotkey/hotkey-server/notifications";
 import { useAuthStore } from "@/stores/authStore";
 import { useNotificationStore } from "@/stores/notificationStore";
+import { isSafeNotificationDeepLink } from "@/lib/notificationLink";
 
 const BACKOFF_MS = [1_000, 2_000, 4_000];
 const POLLING_INTERVAL_MS = 10_000;
-const SAFE_MICRO_EVENT_DEEP_LINK = /^\/dashboard\/events\?event=[1-9][0-9]{0,18}$/;
-
 function validNotification(
   notification: HotKeyAPI.UserNotificationResponseDTO,
   id: string,
@@ -28,8 +27,10 @@ function validNotification(
     String(notification.id) !== id ||
     notification.event_type !== event ||
     !notification.title ||
-    notification.resource_type !== "micro_event" ||
-    !notification.deep_link?.match(SAFE_MICRO_EVENT_DEEP_LINK)
+    !isSafeNotificationDeepLink(
+      notification.resource_type,
+      notification.deep_link,
+    )
   ) {
     return null;
   }

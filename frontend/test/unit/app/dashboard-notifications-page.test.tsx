@@ -15,15 +15,15 @@ describe("NotificationsPage", () => {
         id: 3,
         version: 1,
         monitor_id: 2,
-        event_type: "micro_event.review_requested",
-        resource_type: "micro_event",
+        event_type: "hotspot.discovered",
+        resource_type: "hotspot",
         resource_id: 8,
         resource_version: 2,
         occurred_at: "2026-08-08T00:00:00Z",
         created_at: "2026-08-08T00:00:00Z",
-        title: "微事件归属需要复核",
-        resource_status: "review_pending",
-        deep_link: "/dashboard/events?event=8",
+        title: "新热点已发现",
+        resource_status: "high",
+        deep_link: "/dashboard/contents/8",
       }],
       lastEventID: 3,
       readThroughID: 0,
@@ -33,8 +33,8 @@ describe("NotificationsPage", () => {
 
     render(<NotificationsPage />);
     expect(screen.getByText("轮询中")).toBeInTheDocument();
-    expect(screen.getByText("微事件归属需要复核")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "查看通知关联内容" })).toHaveAttribute("href", "/dashboard/events?event=8");
+    expect(screen.getByText("新热点已发现")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看通知关联内容" })).toHaveAttribute("href", "/dashboard/contents/8");
     expect(screen.queryByRole("heading", { name: "报告订阅" })).not.toBeInTheDocument();
     await waitFor(() => expect(useNotificationStore.getState().unreadCount).toBe(0));
     expect(useNotificationStore.getState().readThroughID).toBe(3);

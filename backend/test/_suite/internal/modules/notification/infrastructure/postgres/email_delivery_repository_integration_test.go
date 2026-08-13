@@ -113,14 +113,14 @@ VALUES ($1,'subject:email','action:updated',$2,'micro-event-clustering-v1') RETU
 	deepLink := fmt.Sprintf("/dashboard/events?event=%d", eventID)
 	if err := runtime.SQL.QueryRow(`INSERT INTO notification_outbox_events(
 event_type,resource_type,resource_id,resource_version,monitor_id,occurred_at,title,summary,resource_status,deep_link,dedupe_key)
-VALUES ('micro_event.updated','micro_event',$1,1,$2,$3,'邮件事件','安全摘要','active',$4,$5) RETURNING id`,
+VALUES ('micro_event.updated','micro_event',$1,1,$2,$3,'邮件事件','安全摘要','urgent',$4,$5) RETURNING id`,
 		eventID, monitorID, now, deepLink, fmt.Sprintf("notification-email:%d", now.UnixNano())).Scan(&outboxID); err != nil {
 		t.Fatal(err)
 	}
 	if err := runtime.SQL.QueryRow(`INSERT INTO user_notifications(
 outbox_event_id,user_id,monitor_id,event_type,resource_type,resource_id,resource_version,
 occurred_at,title,summary,resource_status,deep_link)
-VALUES ($1,$2,$3,'micro_event.updated','micro_event',$4,1,$5,'邮件事件','安全摘要','active',$6)
+VALUES ($1,$2,$3,'micro_event.updated','micro_event',$4,1,$5,'邮件事件','安全摘要','urgent',$6)
 RETURNING id`, outboxID, userID, monitorID, eventID, now, deepLink).Scan(&notificationID); err != nil {
 		t.Fatal(err)
 	}

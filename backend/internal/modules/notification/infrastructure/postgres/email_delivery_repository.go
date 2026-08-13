@@ -72,6 +72,8 @@ LEFT JOIN notification_delivery_claims AS claim ON claim.user_notification_id=no
 WHERE actor.status='active' AND actor.deleted_at IS NULL AND btrim(actor.email)<>''
   AND monitor.created_by=notification.user_id AND monitor.status='active' AND monitor.deleted_at IS NULL
   AND config.alert_email_enabled
+  AND (notification.resource_status='urgent'
+       OR notification.resource_status='high' AND config.alert_email_min_severity='warning')
   AND COALESCE(attempts.terminal,false)=false AND COALESCE(attempts.attempt_count,0)<$2
   AND (claim.user_notification_id IS NULL OR claim.lease_until<=$3)
   AND (attempts.last_attempted_at IS NULL OR attempts.last_attempted_at <= $3 -

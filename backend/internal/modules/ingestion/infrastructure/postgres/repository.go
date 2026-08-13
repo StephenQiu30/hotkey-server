@@ -704,16 +704,11 @@ LIMIT ` + builder.bind(query.Limit+1)
 	return statement, builder.arguments
 }
 
-// contentHeatSQL mirrors shared/hotspot.HeatScore with PostgreSQL numeric
-// operations. Both card display and ordering therefore use the same inputs,
-// weights, cap and one-decimal rounding.
+// contentHeatSQL delegates to the canonical database function also used by
+// notification projection. Card ordering and notification importance cannot
+// drift apart as new source metrics arrive.
 func contentHeatSQL(alias string) string {
-	return `ROUND(LEAST(100::numeric,
-    LN(1 + COALESCE(` + alias + `.view_count, 0)) * 2 +
-    LN(1 + COALESCE(` + alias + `.like_count, 0)) * 10 +
-    LN(1 + COALESCE(` + alias + `.comment_count, 0)) * 4 +
-    LN(1 + COALESCE(` + alias + `.share_count, 0)) * 6
-), 1)`
+	return `hotspot_heat_score(` + alias + `.view_count,` + alias + `.like_count,` + alias + `.comment_count,` + alias + `.share_count)`
 }
 
 const activeContentDocumentVersionJoin = `LEFT JOIN LATERAL (

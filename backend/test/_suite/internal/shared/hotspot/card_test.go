@@ -48,3 +48,15 @@ func TestResponseKeepsOneFlatCardShape(t *testing.T) {
 		t.Fatalf("Response() = %#v", response)
 	}
 }
+
+func TestImportanceUsesFourStableHeatBands(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		heat float64
+		want string
+	}{{0, ImportanceLow}, {25, ImportanceMedium}, {50, ImportanceHigh}, {75, ImportanceUrgent}, {100, ImportanceUrgent}} {
+		if got := Importance(test.heat); got != test.want {
+			t.Fatalf("Importance(%v) = %q, want %q", test.heat, got, test.want)
+		}
+	}
+}
