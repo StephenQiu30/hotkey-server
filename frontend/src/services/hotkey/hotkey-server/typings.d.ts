@@ -707,7 +707,13 @@ required property without making explicit null impossible to bind. */
     /** latest monitor match decision */
     decision?: "accepted" | "review" | "rejected";
     /** sort order */
-    sort?: "latest" | "relevance";
+    sort?:
+      | "latest"
+      | "discovered"
+      | "published"
+      | "importance"
+      | "relevance"
+      | "heat";
   };
 
   type getDocumentVersionsIdCitationParams = {
@@ -738,7 +744,7 @@ required property without making explicit null impossible to bind. */
     /** latest monitor match decision */
     decision?: "accepted" | "review" | "rejected";
     /** sort order */
-    sort?: "latest" | "relevance";
+    sort?: "discovered" | "published" | "importance" | "relevance" | "heat";
   };
 
   type getMicroEventsIdEvidenceParams = {
@@ -1001,6 +1007,13 @@ required property without making explicit null impossible to bind. */
   type HotspotPageResponse = {
     items?: HotspotCardResponse[];
     next_cursor?: string;
+    summary?: HotspotSummaryResponse;
+  };
+
+  type HotspotSummaryResponse = {
+    today?: number;
+    total?: number;
+    urgent?: number;
   };
 
   type IdentityResultArrayHttpUserResponse = {

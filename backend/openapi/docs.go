@@ -1117,7 +1117,11 @@ const docTemplate = `{
                     {
                         "enum": [
                             "latest",
-                            "relevance"
+                            "discovered",
+                            "published",
+                            "importance",
+                            "relevance",
+                            "heat"
                         ],
                         "type": "string",
                         "description": "sort order",
@@ -1645,8 +1649,11 @@ const docTemplate = `{
                     },
                     {
                         "enum": [
-                            "latest",
-                            "relevance"
+                            "discovered",
+                            "published",
+                            "importance",
+                            "relevance",
+                            "heat"
                         ],
                         "type": "string",
                         "description": "sort order",
@@ -9607,6 +9614,23 @@ const docTemplate = `{
                 },
                 "next_cursor": {
                     "type": "string"
+                },
+                "summary": {
+                    "$ref": "#/definitions/http.HotspotSummaryResponse"
+                }
+            }
+        },
+        "http.HotspotSummaryResponse": {
+            "type": "object",
+            "properties": {
+                "today": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "urgent": {
+                    "type": "integer"
                 }
             }
         },

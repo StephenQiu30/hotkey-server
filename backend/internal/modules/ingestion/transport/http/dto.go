@@ -65,6 +65,13 @@ type ContentPageResponse struct {
 type HotspotPageResponse struct {
 	Items      []hotspot.HotspotCardResponse `json:"items"`
 	NextCursor string                        `json:"next_cursor"`
+	Summary    HotspotSummaryResponse        `json:"summary"`
+}
+
+type HotspotSummaryResponse struct {
+	Total  int64 `json:"total"`
+	Today  int64 `json:"today"`
+	Urgent int64 `json:"urgent"`
 }
 
 type ContentDocumentResponse struct {
@@ -115,7 +122,11 @@ func hotspotPageResponse(page ingestiondomain.ContentPage) HotspotPageResponse {
 	for _, content := range page.Items {
 		items = append(items, hotspot.Response(hotspotCard(content)))
 	}
-	return HotspotPageResponse{Items: items, NextCursor: page.NextCursor}
+	response := HotspotPageResponse{Items: items, NextCursor: page.NextCursor}
+	if page.Summary != nil {
+		response.Summary = HotspotSummaryResponse{Total: page.Summary.Total, Today: page.Summary.Today, Urgent: page.Summary.Urgent}
+	}
+	return response
 }
 
 func hotspotCard(content ingestiondomain.Content) hotspot.Card {

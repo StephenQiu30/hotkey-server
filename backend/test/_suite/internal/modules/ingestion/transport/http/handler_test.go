@@ -174,21 +174,25 @@ func TestHotspotRouteReturnsPersistedContentAsSharedFlatCard(t *testing.T) {
 		Metrics:        sourcedomain.SourceMetrics{ViewCount: &views, LikeCount: &likes},
 		RelevanceScore: &score, Status: ingestiondomain.ContentStatusActive,
 	}
-	service := &contentQueryServiceStub{page: ingestiondomain.ContentPage{Items: []ingestiondomain.Content{content}, NextCursor: "next"}}
-	response := performContentRequest(newContentRouter(t, service, httptransport.RoleViewer), stdhttp.MethodGet, "/api/v1/hotspots?monitor_id=3&sort=relevance", "viewer")
+	service := &contentQueryServiceStub{page: ingestiondomain.ContentPage{
+		Items: []ingestiondomain.Content{content}, NextCursor: "next",
+		Summary: &ingestiondomain.HotspotSummary{Total: 12, Today: 3, Urgent: 1},
+	}}
+	response := performContentRequest(newContentRouter(t, service, httptransport.RoleViewer), stdhttp.MethodGet, "/api/v1/hotspots", "viewer")
 	if response.Code != stdhttp.StatusOK {
 		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 	}
 	var envelope struct {
 		Data struct {
-			Items      []map[string]any `json:"items"`
-			NextCursor string           `json:"next_cursor"`
+			Items      []map[string]any                     `json:"items"`
+			NextCursor string                               `json:"next_cursor"`
+			Summary    struct{ Total, Today, Urgent int64 } `json:"summary"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(envelope.Data.Items) != 1 || envelope.Data.NextCursor != "next" {
+	if len(envelope.Data.Items) != 1 || envelope.Data.NextCursor != "next" || envelope.Data.Summary.Total != 12 || envelope.Data.Summary.Today != 3 || envelope.Data.Summary.Urgent != 1 {
 		t.Fatalf("response = %s", response.Body.String())
 	}
 	card := envelope.Data.Items[0]
@@ -200,7 +204,7 @@ func TestHotspotRouteReturnsPersistedContentAsSharedFlatCard(t *testing.T) {
 	if card["summary"] != content.Excerpt || card["relevance"] != float64(82) || card["quality_state"] != "unavailable" {
 		t.Fatalf("card = %#v", card)
 	}
-	if _, nested := card["analysis"]; nested || service.lastQuery.MonitorID == nil || service.lastQuery.Sort != ingestiondomain.ContentSortRelevance {
+	if _, nested := card["analysis"]; nested || !service.lastQuery.IncludeSummary || service.lastQuery.Sort != ingestiondomain.ContentSortDiscovered {
 		t.Fatalf("nested response/query = %#v / %#v", card, service.lastQuery)
 	}
 }

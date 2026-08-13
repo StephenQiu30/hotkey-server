@@ -56,7 +56,7 @@ func NewHandler(service contentQueryService, metrics *observability.Metrics) *Ha
 // @Param published_to query string false "published at or before (RFC3339)"
 // @Param monitor_id query int false "monitor ID"
 // @Param decision query string false "latest monitor match decision" Enums(accepted,review,rejected)
-// @Param sort query string false "sort order" Enums(latest,relevance)
+// @Param sort query string false "sort order" Enums(latest,discovered,published,importance,relevance,heat)
 // @Success 200 {object} ContentResult[ContentPageResponse]
 // @Failure 400 {object} ContentResult[EmptyResponse]
 // @Failure 401 {object} ContentResult[EmptyResponse]
@@ -94,7 +94,7 @@ func (handler *Handler) List(c *gin.Context) error {
 // @Param published_to query string false "published at or before (RFC3339)"
 // @Param monitor_id query int false "monitor ID"
 // @Param decision query string false "latest monitor match decision" Enums(accepted,review,rejected)
-// @Param sort query string false "sort order" Enums(latest,relevance)
+// @Param sort query string false "sort order" Enums(discovered,published,importance,relevance,heat)
 // @Success 200 {object} ContentResult[HotspotPageResponse]
 // @Failure 400 {object} ContentResult[EmptyResponse]
 // @Failure 401 {object} ContentResult[EmptyResponse]
@@ -107,6 +107,10 @@ func (handler *Handler) Hotspots(c *gin.Context) error {
 		handler.record(contentQueryListOperation, err)
 		return err
 	}
+	if c.Query("sort") == "" {
+		query.Sort = ingestiondomain.ContentSortDiscovered
+	}
+	query.IncludeSummary = true
 	page, err := handler.service.ListActive(c.Request.Context(), query)
 	if err != nil {
 		handler.record(contentQueryListOperation, err)

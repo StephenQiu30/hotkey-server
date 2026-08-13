@@ -353,7 +353,6 @@ func (repository *ContentRepository) ListActive(ctx context.Context, query inges
 		return ingestiondomain.ContentPage{}, databaserepository.MapError(err)
 	}
 	defer rows.Close()
-
 	page := ingestiondomain.ContentPage{Items: make([]ingestiondomain.Content, 0, query.Limit+1)}
 	for rows.Next() {
 		content, err := scanContentSearch(rows)
@@ -365,13 +364,26 @@ func (repository *ContentRepository) ListActive(ctx context.Context, query inges
 	if err := rows.Err(); err != nil {
 		return ingestiondomain.ContentPage{}, databaserepository.MapError(err)
 	}
-	if len(page.Items) <= query.Limit {
-		return page, nil
+	if err := rows.Close(); err != nil {
+		return ingestiondomain.ContentPage{}, databaserepository.MapError(err)
 	}
-	page.Items = page.Items[:query.Limit]
-	page.NextCursor, err = pagination.Encode(string(query.Sort), true, fingerprint, page.Items[len(page.Items)-1].ID)
-	if err != nil {
-		return ingestiondomain.ContentPage{}, fmt.Errorf("%w: encode content cursor: %v", sharedrepository.ErrInvalidInput, err)
+	if len(page.Items) > query.Limit {
+		page.Items = page.Items[:query.Limit]
+		page.NextCursor, err = pagination.Encode(string(query.Sort), true, fingerprint, page.Items[len(page.Items)-1].ID)
+		if err != nil {
+			return ingestiondomain.ContentPage{}, fmt.Errorf("%w: encode content cursor: %v", sharedrepository.ErrInvalidInput, err)
+		}
+	}
+	if query.IncludeSummary {
+		var summary ingestiondomain.HotspotSummary
+		if err := repository.queryRow(ctx, `
+SELECT COUNT(*)::bigint,
+       COUNT(*) FILTER (WHERE fetched_at >= date_trunc('day', CURRENT_TIMESTAMP))::bigint
+FROM contents
+WHERE content_status = 'active' AND deleted_at IS NULL`).Scan(&summary.Total, &summary.Today); err != nil {
+			return ingestiondomain.ContentPage{}, databaserepository.MapError(err)
+		}
+		page.Summary = &summary
 	}
 	return page, nil
 }
@@ -640,7 +652,8 @@ func contentListStatement(query ingestiondomain.ContentListQuery, cursorID int64
 	}
 	if cursorID > 0 {
 		cursor := builder.bind(cursorID)
-		if query.Sort == ingestiondomain.ContentSortRelevance {
+		switch query.Sort {
+		case ingestiondomain.ContentSortRelevance:
 			conditions = append(conditions, `(latest_match.final_score, c.id) < (
     SELECT previous_match.final_score, previous.id
     FROM contents AS previous
@@ -652,13 +665,24 @@ func contentListStatement(query ingestiondomain.ContentListQuery, cursorID int64
         LIMIT 1
     ) AS previous_match ON true
     WHERE previous.id = `+cursor+`)`)
-		} else {
+		case ingestiondomain.ContentSortDiscovered:
+			conditions = append(conditions, `(c.fetched_at, c.id) < (
+    SELECT previous.fetched_at, previous.id FROM contents AS previous WHERE previous.id = `+cursor+`)`)
+		case ingestiondomain.ContentSortHeat, ingestiondomain.ContentSortImportance:
+			conditions = append(conditions, `(`+contentHeatSQL("c")+`, c.id) < (
+    SELECT `+contentHeatSQL("previous")+`, previous.id FROM contents AS previous WHERE previous.id = `+cursor+`)`)
+		default:
 			conditions = append(conditions, `(c.published_at, c.id) < (
     SELECT previous.published_at, previous.id FROM contents AS previous WHERE previous.id = `+cursor+`)`)
 		}
 	}
 	orderBy := "c.published_at DESC, c.id DESC"
-	if query.Sort == ingestiondomain.ContentSortRelevance {
+	switch query.Sort {
+	case ingestiondomain.ContentSortDiscovered:
+		orderBy = "c.fetched_at DESC, c.id DESC"
+	case ingestiondomain.ContentSortHeat, ingestiondomain.ContentSortImportance:
+		orderBy = contentHeatSQL("c") + " DESC, c.id DESC"
+	case ingestiondomain.ContentSortRelevance:
 		orderBy = "latest_match.final_score DESC, c.id DESC"
 	}
 	statement := `SELECT ` + contentColumns + `,
@@ -678,6 +702,18 @@ WHERE ` + strings.Join(conditions, " AND ") + `
 ORDER BY ` + orderBy + `
 LIMIT ` + builder.bind(query.Limit+1)
 	return statement, builder.arguments
+}
+
+// contentHeatSQL mirrors shared/hotspot.HeatScore with PostgreSQL numeric
+// operations. Both card display and ordering therefore use the same inputs,
+// weights, cap and one-decimal rounding.
+func contentHeatSQL(alias string) string {
+	return `ROUND(LEAST(100::numeric,
+    LN(1 + COALESCE(` + alias + `.view_count, 0)) * 2 +
+    LN(1 + COALESCE(` + alias + `.like_count, 0)) * 10 +
+    LN(1 + COALESCE(` + alias + `.comment_count, 0)) * 4 +
+    LN(1 + COALESCE(` + alias + `.share_count, 0)) * 6
+), 1)`
 }
 
 const activeContentDocumentVersionJoin = `LEFT JOIN LATERAL (

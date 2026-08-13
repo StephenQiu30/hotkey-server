@@ -216,17 +216,29 @@ type ContentListQuery struct {
 	MonitorID          *int64
 	Decision           *MatchDecision
 	Sort               ContentSort
+	// IncludeSummary requests the persisted hotspot counters alongside a page.
+	// It does not change item membership or cursor identity.
+	IncludeSummary bool
 }
 
 type ContentSort string
 
 const (
-	ContentSortLatest    ContentSort = "latest"
-	ContentSortRelevance ContentSort = "relevance"
+	ContentSortLatest     ContentSort = "latest"
+	ContentSortDiscovered ContentSort = "discovered"
+	ContentSortPublished  ContentSort = "published"
+	ContentSortImportance ContentSort = "importance"
+	ContentSortRelevance  ContentSort = "relevance"
+	ContentSortHeat       ContentSort = "heat"
 )
 
 func (sortValue ContentSort) Valid() bool {
-	return sortValue == ContentSortLatest || sortValue == ContentSortRelevance
+	switch sortValue {
+	case ContentSortLatest, ContentSortDiscovered, ContentSortPublished, ContentSortImportance, ContentSortRelevance, ContentSortHeat:
+		return true
+	default:
+		return false
+	}
 }
 
 func (query ContentListQuery) Normalized() ContentListQuery {
@@ -295,6 +307,13 @@ func (query ContentListQuery) ShapeFingerprint() (string, error) {
 type ContentPage struct {
 	Items      []Content
 	NextCursor string
+	Summary    *HotspotSummary
+}
+
+type HotspotSummary struct {
+	Total  int64
+	Today  int64
+	Urgent int64
 }
 
 type EvidenceObject struct {

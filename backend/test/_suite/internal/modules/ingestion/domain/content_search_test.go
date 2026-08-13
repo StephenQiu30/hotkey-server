@@ -64,3 +64,21 @@ func TestContentListQueryRejectsInvalidPublicCombinations(t *testing.T) {
 		}
 	}
 }
+
+func TestContentListQueryAcceptsAllHotspotSorts(t *testing.T) {
+	monitorID := int64(7)
+	for _, sortValue := range []ContentSort{ContentSortDiscovered, ContentSortPublished, ContentSortImportance, ContentSortHeat} {
+		if err := (ContentListQuery{Limit: 20, Sort: sortValue}).Validate(); err != nil {
+			t.Fatalf("Validate(%q) error = %v", sortValue, err)
+		}
+	}
+	if err := (ContentListQuery{Limit: 20, Sort: ContentSortRelevance, MonitorID: &monitorID}).Validate(); err != nil {
+		t.Fatalf("Validate(relevance) error = %v", err)
+	}
+	base := ContentListQuery{Limit: 20, Sort: ContentSortHeat}
+	fingerprint, _ := base.ShapeFingerprint()
+	base.IncludeSummary = true
+	if withSummary, _ := base.ShapeFingerprint(); withSummary != fingerprint {
+		t.Fatalf("summary-only query changed item cursor fingerprint")
+	}
+}
