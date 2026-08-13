@@ -3,16 +3,14 @@ package application
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"net"
-	"net/url"
 	"strconv"
 	"strings"
 	"unicode"
 
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/domain"
 	sourcedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
+	sharedhotspot "github.com/StephenQiu30/hotkey-server/backend/internal/shared/hotspot"
 	"golang.org/x/net/html"
-	"golang.org/x/net/idna"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -34,9 +32,9 @@ func NormalizeCapturedItem(item sourcedomain.CapturedItem, sourceConnectionID in
 	if err != nil {
 		return ingestiondomain.NormalizedContent{}, err
 	}
-	canonicalURL, err := normalizeCanonicalURL(item.URL)
+	canonicalURL, err := sharedhotspot.NormalizeURL(item.URL)
 	if err != nil {
-		return ingestiondomain.NormalizedContent{}, err
+		return ingestiondomain.NormalizedContent{}, ingestiondomain.NewError(ingestiondomain.ErrorCodeInvalidCanonicalURL)
 	}
 	metrics, err := cloneMetrics(item.Metrics)
 	if err != nil {
@@ -82,74 +80,6 @@ func normalizeContentType(sourceCode, contentType string) (string, error) {
 		return contentType, nil
 	default:
 		return "", ingestiondomain.NewError(ingestiondomain.ErrorCodeInvalidContentType)
-	}
-}
-
-func normalizeCanonicalURL(rawURL string) (string, error) {
-	parsed, err := url.Parse(norm.NFC.String(strings.TrimSpace(rawURL)))
-	if err != nil || parsed == nil || parsed.User != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
-		return "", ingestiondomain.NewError(ingestiondomain.ErrorCodeInvalidCanonicalURL)
-	}
-	scheme := strings.ToLower(parsed.Scheme)
-	hostname := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
-	if hostname == "" {
-		return "", ingestiondomain.NewError(ingestiondomain.ErrorCodeInvalidCanonicalURL)
-	}
-	if net.ParseIP(hostname) == nil {
-		hostname, err = idna.Lookup.ToASCII(hostname)
-		if err != nil || hostname == "" {
-			return "", ingestiondomain.NewError(ingestiondomain.ErrorCodeInvalidCanonicalURL)
-		}
-	}
-	port := parsed.Port()
-	if (scheme == "http" && port == "80") || (scheme == "https" && port == "443") {
-		port = ""
-	}
-	if port == "" {
-		if strings.Contains(hostname, ":") {
-			parsed.Host = "[" + hostname + "]"
-		} else {
-			parsed.Host = hostname
-		}
-	} else {
-		parsed.Host = net.JoinHostPort(hostname, port)
-	}
-	parsed.Scheme = scheme
-	parsed.User = nil
-	parsed.Fragment = ""
-	parsed.ForceQuery = false
-	if parsed.Path == "" {
-		parsed.Path = "/"
-	} else if parsed.Path != "/" {
-		parsed.Path = strings.TrimRight(parsed.Path, "/")
-		if parsed.Path == "" {
-			parsed.Path = "/"
-		}
-	}
-	parsed.RawPath = ""
-	query, err := url.ParseQuery(parsed.RawQuery)
-	if err != nil {
-		return "", ingestiondomain.NewError(ingestiondomain.ErrorCodeInvalidCanonicalURL)
-	}
-	for key := range query {
-		if isTrackingQueryKey(key) {
-			query.Del(key)
-		}
-	}
-	parsed.RawQuery = query.Encode()
-	return parsed.String(), nil
-}
-
-func isTrackingQueryKey(key string) bool {
-	key = strings.ToLower(strings.TrimSpace(key))
-	if strings.HasPrefix(key, "utm_") {
-		return true
-	}
-	switch key {
-	case "fbclid", "gclid", "dclid", "msclkid", "mc_cid", "mc_eid", "igshid", "yclid", "vero_conv", "vero_id":
-		return true
-	default:
-		return false
 	}
 }
 

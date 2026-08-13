@@ -958,7 +958,7 @@ required property without making explicit null impossible to bind. */
     heat_score?: number;
     importance?: "low" | "medium" | "high" | "urgent";
     keyword_mentioned?: boolean;
-    metrics?: InstantSearchMetricsResponse;
+    metrics?: HotspotMetricsResponse;
     published_at?: string;
     quality_state?: "credible" | "suspicious" | "unavailable";
     relevance?: number;
@@ -967,6 +967,13 @@ required property without making explicit null impossible to bind. */
     source_type?: string;
     summary?: string;
     title?: string;
+  };
+
+  type HotspotMetricsResponse = {
+    comment_count?: number;
+    like_count?: number;
+    share_count?: number;
+    view_count?: number;
   };
 
   type IdentityResultArrayHttpUserResponse = {
@@ -997,13 +1004,6 @@ required property without making explicit null impossible to bind. */
     code?: number;
     data?: EmptyResponse;
     message?: string;
-  };
-
-  type InstantSearchMetricsResponse = {
-    comment_count?: number;
-    like_count?: number;
-    share_count?: number;
-    view_count?: number;
   };
 
   type InstantSearchRequest = {

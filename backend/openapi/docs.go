@@ -9408,7 +9408,7 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "metrics": {
-                    "$ref": "#/definitions/http.InstantSearchMetricsResponse"
+                    "$ref": "#/definitions/http.HotspotMetricsResponse"
                 },
                 "published_at": {
                     "type": "string",
@@ -9441,6 +9441,27 @@ const docTemplate = `{
                 },
                 "title": {
                     "type": "string"
+                }
+            }
+        },
+        "http.HotspotMetricsResponse": {
+            "type": "object",
+            "properties": {
+                "comment_count": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "like_count": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "share_count": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "view_count": {
+                    "type": "integer",
+                    "x-nullable": true
                 }
             }
         },
@@ -9514,27 +9535,6 @@ const docTemplate = `{
                 },
                 "message": {
                     "type": "string"
-                }
-            }
-        },
-        "http.InstantSearchMetricsResponse": {
-            "type": "object",
-            "properties": {
-                "comment_count": {
-                    "type": "integer",
-                    "x-nullable": true
-                },
-                "like_count": {
-                    "type": "integer",
-                    "x-nullable": true
-                },
-                "share_count": {
-                    "type": "integer",
-                    "x-nullable": true
-                },
-                "view_count": {
-                    "type": "integer",
-                    "x-nullable": true
                 }
             }
         },

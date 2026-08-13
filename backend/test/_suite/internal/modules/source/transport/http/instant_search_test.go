@@ -12,6 +12,7 @@ import (
 	sourceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	httptransport "github.com/StephenQiu30/hotkey-server/backend/internal/platform/http"
+	sharedhotspot "github.com/StephenQiu30/hotkey-server/backend/internal/shared/hotspot"
 	"github.com/gin-gonic/gin"
 )
 
@@ -20,16 +21,16 @@ func TestInstantSearchRouteReturnsFlatHotspotCardsAndSourceStatuses(t *testing.T
 	searchedAt := time.Date(2026, time.August, 13, 12, 0, 0, 0, time.UTC)
 	service := &instantSearchServiceFake{result: sourceapplication.InstantSearchResult{
 		Query: "Claude", SearchedAt: searchedAt,
-		Items: []sourceapplication.InstantSearchItem{{
+		Items: []sharedhotspot.Card{{
 			SourceType: "hacker_news", SourceName: "HN", ExternalID: "42", ContentType: "article",
 			Title: "Claude API", Summary: "A realtime update", CanonicalURL: "https://example.test/claude",
 			Author: "alice", DiscoveredAt: searchedAt, HeatScore: 31.2,
-			QualityState: sourceapplication.InstantSearchQualityUnavailable, Relevance: 100,
-			RelevanceReason: "direct match", KeywordMentioned: true, Importance: sourceapplication.InstantSearchImportanceMedium,
+			QualityState: sharedhotspot.QualityUnavailable, Relevance: 100,
+			RelevanceReason: "direct match", KeywordMentioned: true, Importance: sharedhotspot.ImportanceMedium,
 		}},
-		SourceStatuses: []sourceapplication.InstantSearchSourceStatus{{
-			SourceType: "hacker_news", SourceName: "HN", State: sourceapplication.InstantSearchSourceSuccess, ResultCount: 1,
-		}, {SourceType: "x", State: sourceapplication.InstantSearchSourceFailed, ErrorCode: "rate_limited"}},
+		SourceStatuses: []sharedhotspot.SourceStatus{{
+			SourceType: "hacker_news", SourceName: "HN", State: sharedhotspot.SourceSuccess, ResultCount: 1,
+		}, {SourceType: "x", State: sharedhotspot.SourceFailed, ErrorCode: "rate_limited"}},
 	}}
 	router := gin.New()
 	RegisterInstantSearchRoutes(router, service, testAuthenticator{subject: httptransport.Subject{UserID: 7, SessionID: 8, Role: httptransport.RoleViewer}})

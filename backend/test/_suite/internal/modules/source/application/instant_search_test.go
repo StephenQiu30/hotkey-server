@@ -9,6 +9,7 @@ import (
 	identitydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
+	sharedhotspot "github.com/StephenQiu30/hotkey-server/backend/internal/shared/hotspot"
 )
 
 func TestInstantSearchReturnsPartialResultsAndExplicitSourceStatuses(t *testing.T) {
@@ -45,12 +46,12 @@ func TestInstantSearchReturnsPartialResultsAndExplicitSourceStatuses(t *testing.
 	if item.CanonicalURL != "https://news.example.test/claude" || item.Relevance != 100 || !item.KeywordMentioned {
 		t.Fatalf("normalized item = %#v", item)
 	}
-	if item.QualityState != InstantSearchQualityUnavailable || item.HeatScore <= 0 || item.Importance != InstantSearchImportanceMedium {
+	if item.QualityState != sharedhotspot.QualityUnavailable || item.HeatScore <= 0 || item.Importance != sharedhotspot.ImportanceMedium {
 		t.Fatalf("safe analysis fallback = %#v", item)
 	}
-	assertInstantStatus(t, result.SourceStatuses, "hacker_news", InstantSearchSourceSuccess, 1, "")
-	assertInstantStatus(t, result.SourceStatuses, "x", InstantSearchSourceFailed, 0, "rate_limited")
-	assertInstantStatus(t, result.SourceStatuses, "duckduckgo", InstantSearchSourceUnavailable, 0, "not_configured")
+	assertInstantStatus(t, result.SourceStatuses, "hacker_news", sharedhotspot.SourceSuccess, 1, "")
+	assertInstantStatus(t, result.SourceStatuses, "x", sharedhotspot.SourceFailed, 0, "rate_limited")
+	assertInstantStatus(t, result.SourceStatuses, "duckduckgo", sharedhotspot.SourceUnavailable, 0, "not_configured")
 }
 
 func TestInstantSearchValidatesAuthenticationAndInputBeforeCallingSources(t *testing.T) {
@@ -68,7 +69,7 @@ func TestInstantSearchValidatesAuthenticationAndInputBeforeCallingSources(t *tes
 	assertAppCode(t, err, sharederrors.CodeInvalidCollectionRequest)
 }
 
-func assertInstantStatus(t *testing.T, statuses []InstantSearchSourceStatus, sourceType string, state InstantSearchSourceState, count int, code string) {
+func assertInstantStatus(t *testing.T, statuses []sharedhotspot.SourceStatus, sourceType string, state sharedhotspot.SourceState, count int, code string) {
 	t.Helper()
 	for _, status := range statuses {
 		if status.SourceType == sourceType {

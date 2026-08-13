@@ -16,7 +16,7 @@ type InstantSearchRequest struct {
 	Limit       int      `json:"limit,omitempty" binding:"omitempty,gte=1,lte=50" default:"20"`
 }
 
-type InstantSearchMetricsResponse struct {
+type HotspotMetricsResponse struct {
 	ViewCount    *int64 `json:"view_count" extensions:"x-nullable"`
 	LikeCount    *int64 `json:"like_count" extensions:"x-nullable"`
 	CommentCount *int64 `json:"comment_count" extensions:"x-nullable"`
@@ -26,23 +26,23 @@ type InstantSearchMetricsResponse struct {
 // HotspotCardResponse is the flat card contract shared conceptually by live
 // search and the persisted hotspot radar. Analysis fields are never nested.
 type HotspotCardResponse struct {
-	SourceType       string                       `json:"source_type"`
-	SourceName       string                       `json:"source_name"`
-	ExternalID       string                       `json:"external_id"`
-	ContentType      string                       `json:"content_type"`
-	Title            string                       `json:"title"`
-	Summary          string                       `json:"summary"`
-	CanonicalURL     string                       `json:"canonical_url"`
-	Author           string                       `json:"author"`
-	PublishedAt      *time.Time                   `json:"published_at" extensions:"x-nullable"`
-	DiscoveredAt     time.Time                    `json:"discovered_at"`
-	Metrics          InstantSearchMetricsResponse `json:"metrics"`
-	HeatScore        float64                      `json:"heat_score"`
-	QualityState     string                       `json:"quality_state" enums:"credible,suspicious,unavailable"`
-	Relevance        int                          `json:"relevance" minimum:"0" maximum:"100"`
-	RelevanceReason  string                       `json:"relevance_reason"`
-	KeywordMentioned bool                         `json:"keyword_mentioned"`
-	Importance       string                       `json:"importance" enums:"low,medium,high,urgent"`
+	SourceType       string                 `json:"source_type"`
+	SourceName       string                 `json:"source_name"`
+	ExternalID       string                 `json:"external_id"`
+	ContentType      string                 `json:"content_type"`
+	Title            string                 `json:"title"`
+	Summary          string                 `json:"summary"`
+	CanonicalURL     string                 `json:"canonical_url"`
+	Author           string                 `json:"author"`
+	PublishedAt      *time.Time             `json:"published_at" extensions:"x-nullable"`
+	DiscoveredAt     time.Time              `json:"discovered_at"`
+	Metrics          HotspotMetricsResponse `json:"metrics"`
+	HeatScore        float64                `json:"heat_score"`
+	QualityState     string                 `json:"quality_state" enums:"credible,suspicious,unavailable"`
+	Relevance        int                    `json:"relevance" minimum:"0" maximum:"100"`
+	RelevanceReason  string                 `json:"relevance_reason"`
+	KeywordMentioned bool                   `json:"keyword_mentioned"`
+	Importance       string                 `json:"importance" enums:"low,medium,high,urgent"`
 }
 
 type InstantSearchSourceStatusResponse struct {
@@ -122,7 +122,7 @@ func instantSearchResponse(result sourceapplication.InstantSearchResult) Instant
 			SourceType: item.SourceType, SourceName: item.SourceName, ExternalID: item.ExternalID,
 			ContentType: item.ContentType, Title: item.Title, Summary: item.Summary,
 			CanonicalURL: item.CanonicalURL, Author: item.Author, PublishedAt: item.PublishedAt,
-			DiscoveredAt: item.DiscoveredAt, Metrics: InstantSearchMetricsResponse{
+			DiscoveredAt: item.DiscoveredAt, Metrics: HotspotMetricsResponse{
 				ViewCount: item.Metrics.ViewCount, LikeCount: item.Metrics.LikeCount,
 				CommentCount: item.Metrics.CommentCount, ShareCount: item.Metrics.ShareCount,
 			}, HeatScore: item.HeatScore, QualityState: item.QualityState,

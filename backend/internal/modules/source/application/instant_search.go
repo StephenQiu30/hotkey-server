@@ -6,8 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"math"
-	"net/url"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -15,20 +13,10 @@ import (
 
 	identitydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
+	sharedhotspot "github.com/StephenQiu30/hotkey-server/backend/internal/shared/hotspot"
 )
 
 const (
-	InstantSearchQualityUnavailable = "unavailable"
-
-	InstantSearchImportanceLow    = "low"
-	InstantSearchImportanceMedium = "medium"
-
-	InstantSearchSourceSuccess     InstantSearchSourceState = "success"
-	InstantSearchSourceEmpty       InstantSearchSourceState = "empty"
-	InstantSearchSourcePartial     InstantSearchSourceState = "partial"
-	InstantSearchSourceFailed      InstantSearchSourceState = "failed"
-	InstantSearchSourceUnavailable InstantSearchSourceState = "unavailable"
-
 	instantSearchDefaultLimit = 20
 	instantSearchMaximumLimit = 50
 )
@@ -36,8 +24,6 @@ const (
 var instantSearchCapabilities = []string{
 	"x", "bing_grounding", "google_agent_search", "duckduckgo", "hacker_news", "sogou", "bilibili", "weibo", "rss",
 }
-
-type InstantSearchSourceState string
 
 type InstantSearchSourceReader interface {
 	List(context.Context, domain.SourceConnectionListQuery) ([]domain.SourceConnection, string, error)
@@ -62,46 +48,11 @@ type InstantSearchInput struct {
 	Limit       int
 }
 
-type InstantSearchMetrics struct {
-	ViewCount    *int64
-	LikeCount    *int64
-	CommentCount *int64
-	ShareCount   *int64
-}
-
-type InstantSearchItem struct {
-	SourceType       string
-	SourceName       string
-	ExternalID       string
-	ContentType      string
-	Title            string
-	Summary          string
-	CanonicalURL     string
-	Author           string
-	PublishedAt      *time.Time
-	DiscoveredAt     time.Time
-	Metrics          InstantSearchMetrics
-	HeatScore        float64
-	QualityState     string
-	Relevance        int
-	RelevanceReason  string
-	KeywordMentioned bool
-	Importance       string
-}
-
-type InstantSearchSourceStatus struct {
-	SourceType  string
-	SourceName  string
-	State       InstantSearchSourceState
-	ResultCount int
-	ErrorCode   string
-}
-
 type InstantSearchResult struct {
 	Query          string
 	SearchedAt     time.Time
-	Items          []InstantSearchItem
-	SourceStatuses []InstantSearchSourceStatus
+	Items          []sharedhotspot.Card
+	SourceStatuses []sharedhotspot.SourceStatus
 }
 
 func NewInstantSearchService(dependencies InstantSearchDependencies) (*InstantSearchService, error) {
@@ -140,25 +91,19 @@ func (service *InstantSearchService) Search(ctx context.Context, input InstantSe
 		selected[sourceType] = append(selected[sourceType], connection)
 	}
 	now := service.now().UTC()
-	result := InstantSearchResult{Query: query, SearchedAt: now, Items: []InstantSearchItem{}, SourceStatuses: []InstantSearchSourceStatus{}}
+	result := InstantSearchResult{Query: query, SearchedAt: now, Items: []sharedhotspot.Card{}, SourceStatuses: []sharedhotspot.SourceStatus{}}
 	for _, sourceType := range requested {
 		group := selected[sourceType]
 		if len(group) == 0 {
-			result.SourceStatuses = append(result.SourceStatuses, InstantSearchSourceStatus{SourceType: sourceType, State: InstantSearchSourceUnavailable, ErrorCode: "not_configured"})
+			result.SourceStatuses = append(result.SourceStatuses, sharedhotspot.SourceStatus{SourceType: sourceType, State: sharedhotspot.SourceUnavailable, ErrorCode: "not_configured"})
 			continue
 		}
 		items, status := service.searchConnections(ctx, group, query, limit, now)
 		result.Items = append(result.Items, items...)
 		result.SourceStatuses = append(result.SourceStatuses, status)
 	}
-	result.Items = dedupeInstantSearchItems(result.Items)
-	sort.SliceStable(result.Items, func(i, j int) bool {
-		if result.Items[i].HeatScore != result.Items[j].HeatScore {
-			return result.Items[i].HeatScore > result.Items[j].HeatScore
-		}
-		left, right := result.Items[i].DiscoveredAt, result.Items[j].DiscoveredAt
-		return left.After(right)
-	})
+	result.Items = sharedhotspot.Dedupe(result.Items)
+	sharedhotspot.SortByHeat(result.Items)
 	if len(result.Items) > limit {
 		result.Items = result.Items[:limit]
 	}
@@ -167,11 +112,11 @@ func (service *InstantSearchService) Search(ctx context.Context, input InstantSe
 
 type instantConnectionOutcome struct {
 	connection domain.SourceConnection
-	items      []InstantSearchItem
+	items      []sharedhotspot.Card
 	err        error
 }
 
-func (service *InstantSearchService) searchConnections(ctx context.Context, connections []domain.SourceConnection, query string, limit int, now time.Time) ([]InstantSearchItem, InstantSearchSourceStatus) {
+func (service *InstantSearchService) searchConnections(ctx context.Context, connections []domain.SourceConnection, query string, limit int, now time.Time) ([]sharedhotspot.Card, sharedhotspot.SourceStatus) {
 	outcomes := make(chan instantConnectionOutcome, len(connections))
 	var group sync.WaitGroup
 	for _, connection := range connections {
@@ -185,8 +130,8 @@ func (service *InstantSearchService) searchConnections(ctx context.Context, conn
 	}
 	group.Wait()
 	close(outcomes)
-	status := InstantSearchSourceStatus{SourceType: string(connections[0].SourceType), SourceName: connections[0].Name}
-	items := []InstantSearchItem{}
+	status := sharedhotspot.SourceStatus{SourceType: string(connections[0].SourceType), SourceName: connections[0].Name}
+	items := []sharedhotspot.Card{}
 	successes, failures := 0, 0
 	for outcome := range outcomes {
 		if outcome.err != nil {
@@ -199,21 +144,21 @@ func (service *InstantSearchService) searchConnections(ctx context.Context, conn
 		successes++
 		items = append(items, outcome.items...)
 	}
-	status.ResultCount = len(dedupeInstantSearchItems(items))
+	status.ResultCount = len(sharedhotspot.Dedupe(items))
 	switch {
 	case successes == 0:
-		status.State = InstantSearchSourceFailed
+		status.State = sharedhotspot.SourceFailed
 	case failures > 0:
-		status.State = InstantSearchSourcePartial
+		status.State = sharedhotspot.SourcePartial
 	case status.ResultCount == 0:
-		status.State = InstantSearchSourceEmpty
+		status.State = sharedhotspot.SourceEmpty
 	default:
-		status.State = InstantSearchSourceSuccess
+		status.State = sharedhotspot.SourceSuccess
 	}
 	return items, status
 }
 
-func (service *InstantSearchService) searchConnection(ctx context.Context, connection domain.SourceConnection, query string, limit int, now time.Time) ([]InstantSearchItem, error) {
+func (service *InstantSearchService) searchConnection(ctx context.Context, connection domain.SourceConnection, query string, limit int, now time.Time) ([]sharedhotspot.Card, error) {
 	connector, err := service.connectors.Resolve(ctx, connection)
 	if err != nil {
 		return nil, err
@@ -230,7 +175,7 @@ func (service *InstantSearchService) searchConnection(ctx context.Context, conne
 	if err != nil {
 		return nil, err
 	}
-	items := make([]InstantSearchItem, 0, len(result.Items))
+	items := make([]sharedhotspot.Card, 0, len(result.Items))
 	for _, candidate := range result.Items {
 		if candidate.PublishedAt != nil && candidate.PublishedAt.Before(now.Add(-7*24*time.Hour)) {
 			continue
@@ -239,28 +184,29 @@ func (service *InstantSearchService) searchConnection(ctx context.Context, conne
 		if relevance < 50 || !mentioned && relevance < 65 {
 			continue
 		}
-		canonicalURL := normalizeInstantSearchURL(candidate.URL)
+		canonicalURL, err := sharedhotspot.NormalizeURL(candidate.URL)
+		if err != nil {
+			continue
+		}
 		published := candidate.PublishedAt
 		if published != nil {
 			value := published.UTC()
 			published = &value
 		}
-		heat := instantSearchHeat(candidate.Metrics)
-		importance := InstantSearchImportanceLow
-		if heat >= 25 {
-			importance = InstantSearchImportanceMedium
+		metrics := sharedhotspot.Metrics{
+			ViewCount: candidate.Metrics.ViewCount, LikeCount: candidate.Metrics.LikeCount,
+			CommentCount: candidate.Metrics.CommentCount, ShareCount: candidate.Metrics.ShareCount,
 		}
-		items = append(items, InstantSearchItem{
+		heat := sharedhotspot.HeatScore(metrics)
+		items = append(items, sharedhotspot.Card{
 			SourceType: string(connection.SourceType), SourceName: connection.Name,
 			ExternalID: candidate.ExternalID, ContentType: candidate.ContentType,
 			Title: strings.TrimSpace(candidate.Title), Summary: strings.TrimSpace(candidate.Body),
 			CanonicalURL: canonicalURL, Author: strings.TrimSpace(candidate.Author), PublishedAt: published,
-			DiscoveredAt: candidate.ObservedAt.UTC(), Metrics: InstantSearchMetrics{
-				ViewCount: candidate.Metrics.ViewCount, LikeCount: candidate.Metrics.LikeCount,
-				CommentCount: candidate.Metrics.CommentCount, ShareCount: candidate.Metrics.ShareCount,
-			}, HeatScore: heat, QualityState: InstantSearchQualityUnavailable,
+			DiscoveredAt: candidate.ObservedAt.UTC(), Metrics: metrics,
+			HeatScore: heat, QualityState: sharedhotspot.QualityUnavailable,
 			Relevance: relevance, RelevanceReason: "标题或摘要与搜索词直接匹配",
-			KeywordMentioned: mentioned, Importance: importance,
+			KeywordMentioned: mentioned, Importance: sharedhotspot.Importance(heat),
 		})
 	}
 	return items, nil
@@ -312,55 +258,6 @@ func instantSearchRelevance(query, text string) (int, bool) {
 		}
 	}
 	return int(math.Round(float64(matched) / float64(len(terms)) * 80)), false
-}
-
-func instantSearchHeat(metrics domain.SourceMetrics) float64 {
-	metric := func(value *int64) float64 {
-		if value == nil {
-			return 0
-		}
-		return math.Log1p(float64(*value))
-	}
-	score := metric(metrics.ViewCount)*2 + metric(metrics.LikeCount)*10 + metric(metrics.CommentCount)*4 + metric(metrics.ShareCount)*6
-	return math.Round(math.Min(score, 100)*10) / 10
-}
-
-func normalizeInstantSearchURL(value string) string {
-	parsed, err := url.Parse(strings.TrimSpace(value))
-	if err != nil || parsed == nil {
-		return strings.TrimSpace(value)
-	}
-	parsed.Fragment = ""
-	query := parsed.Query()
-	for key := range query {
-		canonical := strings.ToLower(key)
-		if strings.HasPrefix(canonical, "utm_") || canonical == "fbclid" || canonical == "gclid" || canonical == "mc_cid" || canonical == "mc_eid" {
-			query.Del(key)
-		}
-	}
-	parsed.RawQuery = query.Encode()
-	return parsed.String()
-}
-
-func dedupeInstantSearchItems(items []InstantSearchItem) []InstantSearchItem {
-	seenIdentity := map[string]struct{}{}
-	seenURL := map[string]struct{}{}
-	result := make([]InstantSearchItem, 0, len(items))
-	for _, item := range items {
-		identity := item.SourceType + "\x00" + item.ExternalID
-		if _, exists := seenIdentity[identity]; exists {
-			continue
-		}
-		if item.CanonicalURL != "" {
-			if _, exists := seenURL[item.CanonicalURL]; exists {
-				continue
-			}
-			seenURL[item.CanonicalURL] = struct{}{}
-		}
-		seenIdentity[identity] = struct{}{}
-		result = append(result, item)
-	}
-	return result
 }
 
 func instantSearchErrorCode(err error) string {
