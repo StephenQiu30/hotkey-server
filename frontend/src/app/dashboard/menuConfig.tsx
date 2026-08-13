@@ -1,7 +1,6 @@
 import {
-  BellRing,
   Database,
-  Library,
+  Flame,
   Radar,
   Search,
   ShieldCheck,
@@ -38,13 +37,8 @@ export const dashboardMenuItems: MenuItem[] = [
   },
   {
     path: "/dashboard/contents",
-    name: "内容",
-    icon: <Library className="h-4 w-4" />,
-  },
-  {
-    path: "/dashboard/events",
-    name: "热点事件",
-    icon: <BellRing className="h-4 w-4" />,
+    name: "热点雷达",
+    icon: <Flame className="h-4 w-4" />,
   },
 ];
 

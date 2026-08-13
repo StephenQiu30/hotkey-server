@@ -7,18 +7,21 @@ import { UserRole } from "@/lib/domainEnums";
 
 describe("dashboard menu", () => {
   it("keeps only the X hotspot core workflow in primary navigation", () => {
-    expect(dashboardMenuItems.map(({ path, name }) => ({ path, name }))).toEqual([
+    expect(
+      dashboardMenuItems.map(({ path, name }) => ({ path, name }))
+    ).toEqual([
       { path: "/dashboard", name: "概览" },
       { path: "/dashboard/settings", name: "监控" },
       { path: "/dashboard/sources", name: "来源" },
       { path: "/dashboard/search", name: "即时搜索" },
-      { path: "/dashboard/contents", name: "内容" },
-      { path: "/dashboard/events", name: "热点事件" },
+      { path: "/dashboard/contents", name: "热点雷达" },
     ]);
   });
 
   it("keeps only administrator-only governance in the protected menu", () => {
-    expect(dashboardAdminMenuItems.map(({ path, name }) => ({ path, name }))).toEqual([
+    expect(
+      dashboardAdminMenuItems.map(({ path, name }) => ({ path, name }))
+    ).toEqual([
       { path: "/dashboard/users", name: "用户与权限" },
       { path: "/dashboard/governance", name: "配额与审计" },
     ]);
@@ -32,7 +35,7 @@ describe("dashboard menu", () => {
   it("marks source management as administrator-only", () => {
     expect(
       dashboardMenuItems.find((item) => item.path === "/dashboard/sources")
-        ?.roles,
+        ?.roles
     ).toEqual([UserRole.Admin]);
   });
 });

@@ -60,7 +60,12 @@ export default function HomePage() {
                 <Button asChild size="lg" className="rounded-lg px-6">
                   <Link href="/register">开始使用</Link>
                 </Button>
-                <Button asChild size="lg" variant="outline" className="rounded-lg px-6">
+                <Button
+                  asChild
+                  size="lg"
+                  variant="outline"
+                  className="rounded-lg px-6"
+                >
                   <a href="#briefing">查看热点示例</a>
                 </Button>
               </div>
@@ -103,7 +108,8 @@ export default function HomePage() {
                 把多源信号，变成可追溯的热点事件
               </h2>
               <p className="max-w-sm text-lg leading-7 text-muted-foreground lg:pb-2">
-                从多源发现、相关性和证据状态到 Heat v2 排序，HotKey 只维护一条可追溯的热点链路。
+                从多源发现、相关性和证据状态到 Heat v2 排序，HotKey
+                只维护一条可追溯的热点链路。
               </p>
             </div>
 
@@ -116,33 +122,47 @@ export default function HomePage() {
               <CardHeader className="flex flex-col gap-3 space-y-0 px-0 py-5 sm:flex-row sm:items-center">
                 <div className="flex items-baseline gap-4">
                   <h3 className="text-base font-semibold">多源热点示例</h3>
-                  <span className="mono text-xs text-muted-foreground">2026-08-06</span>
+                  <span className="mono text-xs text-muted-foreground">
+                    2026-08-06
+                  </span>
                 </div>
                 <div className="flex items-center gap-2 sm:ml-auto">
                   <Badge variant="outline" className="gap-1.5">
                     <Check className="h-3 w-3 text-success" />
                     值得关注
                   </Badge>
-                  <span className="text-xs text-muted-foreground">更新于 14:20</span>
+                  <span className="text-xs text-muted-foreground">
+                    更新于 14:20
+                  </span>
                 </div>
               </CardHeader>
 
               <CardContent className="grid gap-12 p-0 lg:grid-cols-[1.2fr_.8fr_.7fr] lg:gap-10">
                 <article className="py-6">
-                  <span className="mono text-xs text-muted-foreground">01 / MICRO EVENT</span>
+                  <span className="mono text-xs text-muted-foreground">
+                    01 / MICRO EVENT
+                  </span>
                   <h3 className="mt-5 max-w-2xl text-2xl font-semibold leading-tight sm:text-3xl">
                     AI Agent 进入端侧部署阶段，生态合作加速落地
                   </h3>
                   <p className="mt-4 max-w-2xl text-sm leading-7 text-muted-foreground">
-                    X、Hacker News 与 Bilibili 的相关内容在同一观测窗口内出现，经目标匹配与内容家族去重后形成一个微事件。
+                    X、Hacker News 与 Bilibili
+                    的相关内容在同一观测窗口内出现，经目标匹配与内容家族去重后形成一个微事件。
                   </p>
                   <div className="mt-12 flex items-end justify-between">
                     <div>
-                      <p className="text-xs text-muted-foreground">Heat v2 · 近 6 小时</p>
-                      <p className="mt-1 text-xs text-success">传播速度正在上升</p>
+                      <p className="text-xs text-muted-foreground">
+                        Heat v2 · 近 6 小时
+                      </p>
+                      <p className="mt-1 text-xs text-success">
+                        传播速度正在上升
+                      </p>
                     </div>
                     <p className="mono text-4xl font-medium">
-                      92<span className="ml-1 text-xs font-normal text-muted-foreground">/100</span>
+                      92
+                      <span className="ml-1 text-xs font-normal text-muted-foreground">
+                        /100
+                      </span>
                     </p>
                   </div>
                   <Progress
@@ -158,15 +178,17 @@ export default function HomePage() {
                     {evidence.map((item) => (
                       <div key={item.source} className="grid gap-2">
                         <p className="text-sm leading-6">{item.source}</p>
-                        <span className="text-xs text-muted-foreground">{item.time}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {item.time}
+                        </span>
                       </div>
                     ))}
                   </div>
                   <Link
-                    href="/dashboard/events"
+                    href="/dashboard/contents"
                     className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-foreground no-underline hover:opacity-55"
                   >
-                    查看热点事件 <ArrowRight className="h-4 w-4" />
+                    查看热点雷达 <ArrowRight className="h-4 w-4" />
                   </Link>
                 </aside>
 
@@ -174,7 +196,8 @@ export default function HomePage() {
                   <Sparkles className="h-5 w-5" />
                   <p className="mt-5 text-sm font-semibold">相关性说明</p>
                   <p className="mt-3 text-sm leading-7 text-muted-foreground">
-                    内容命中已发布监控目标；当前为多来源覆盖。AI 辅助判断证据关系，不把模型分数显示为事实真伪概率。
+                    内容命中已发布监控目标；当前为多来源覆盖。AI
+                    辅助判断证据关系，不把模型分数显示为事实真伪概率。
                   </p>
                   <div className="mt-8 flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">用途</span>
@@ -197,10 +220,17 @@ export default function HomePage() {
               </div>
               <div className="space-y-10 lg:pt-2">
                 {workflow.map((item) => (
-                  <article key={item.step} className="grid gap-5 sm:grid-cols-[64px_180px_1fr] sm:items-start">
-                    <span className="mono text-xs text-muted-foreground">{item.step}</span>
+                  <article
+                    key={item.step}
+                    className="grid gap-5 sm:grid-cols-[64px_180px_1fr] sm:items-start"
+                  >
+                    <span className="mono text-xs text-muted-foreground">
+                      {item.step}
+                    </span>
                     <h3 className="text-lg font-semibold">{item.title}</h3>
-                    <p className="max-w-xl text-sm leading-7 text-muted-foreground">{item.body}</p>
+                    <p className="max-w-xl text-sm leading-7 text-muted-foreground">
+                      {item.body}
+                    </p>
                   </article>
                 ))}
               </div>
@@ -216,8 +246,14 @@ export default function HomePage() {
                 让下一次判断更早，也更可回溯。
               </h2>
             </div>
-            <Button asChild size="lg" className="self-start rounded-lg lg:self-auto">
-              <Link href="/register">创建账号 <ArrowRight /></Link>
+            <Button
+              asChild
+              size="lg"
+              className="self-start rounded-lg lg:self-auto"
+            >
+              <Link href="/register">
+                创建账号 <ArrowRight />
+              </Link>
             </Button>
           </div>
         </section>

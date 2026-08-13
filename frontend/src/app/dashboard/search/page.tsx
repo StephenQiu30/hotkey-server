@@ -1,23 +1,11 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
-import {
-  ArrowUpRight,
-  ChevronDown,
-  Flame,
-  Loader2,
-  Search,
-} from "lucide-react";
+import { ChevronDown, Loader2, Search } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,6 +17,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/dashboard/PageHeader";
+import {
+  formatHotspotTime,
+  HotspotCard,
+  importanceLabels,
+  qualityLabels,
+} from "@/components/dashboard/HotspotCard";
 import { postSearch } from "@/services/hotkey/hotkey-server/search";
 import {
   instantSearchSourceOptions,
@@ -65,51 +59,10 @@ const errorLabels: Readonly<Record<string, string>> = {
   invalid_configuration: "配置无效",
 };
 
-const importanceLabels: Readonly<Record<string, string>> = {
-  low: "低",
-  medium: "中",
-  high: "高",
-  urgent: "紧急",
-};
-
-const qualityLabels: Readonly<Record<string, string>> = {
-  credible: "可信",
-  suspicious: "需复核",
-  unavailable: "AI 未配置",
-};
-
 function timeValue(value: string | undefined) {
   if (!value) return 0;
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? 0 : parsed;
-}
-
-function formatTime(value: string | undefined) {
-  if (!value) return "时间未知";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "时间未知";
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(parsed);
-}
-
-function metrics(card: HotKeyAPI.HotspotCardResponse) {
-  const values = [
-    ["浏览", card.metrics?.view_count],
-    ["点赞", card.metrics?.like_count],
-    ["评论", card.metrics?.comment_count],
-    ["分享", card.metrics?.share_count],
-  ] as const;
-  const result: Array<readonly [string, number]> = [];
-  values.forEach(([label, value]) => {
-    if (typeof value === "number" && Number.isFinite(value)) {
-      result.push([label, value]);
-    }
-  });
-  return result;
 }
 
 export default function SearchPage() {
@@ -251,7 +204,9 @@ export default function SearchPage() {
               </Button>
               <Button
                 type="submit"
-                disabled={loading || !query.trim() || selectedSources.length === 0}
+                disabled={
+                  loading || !query.trim() || selectedSources.length === 0
+                }
               >
                 {loading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -320,7 +275,8 @@ export default function SearchPage() {
               来源状态
             </h2>
             <p className="text-xs text-muted-foreground">
-              共 {response.results?.length ?? 0} 条 · 搜索于 {formatTime(response.searched_at)}
+              共 {response.results?.length ?? 0} 条 · 搜索于{" "}
+              {formatHotspotTime(response.searched_at)}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -354,7 +310,10 @@ export default function SearchPage() {
       ) : null}
 
       {response?.results?.length ? (
-        <section aria-label="搜索结果筛选" className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <section
+          aria-label="搜索结果筛选"
+          className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-6"
+        >
           <Select value={sourceFilter} onValueChange={setSourceFilter}>
             <SelectTrigger aria-label="来源筛选">
               <SelectValue placeholder="全部来源" />
@@ -375,7 +334,9 @@ export default function SearchPage() {
             <SelectContent>
               <SelectItem value="all">全部重要性</SelectItem>
               {Object.entries(importanceLabels).map(([value, label]) => (
-                <SelectItem key={value} value={value}>{label}</SelectItem>
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -386,7 +347,9 @@ export default function SearchPage() {
             <SelectContent>
               <SelectItem value="all">全部质量状态</SelectItem>
               {Object.entries(qualityLabels).map(([value, label]) => (
-                <SelectItem key={value} value={value}>{label}</SelectItem>
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -402,7 +365,10 @@ export default function SearchPage() {
             value={publishedTo}
             onChange={(event) => setPublishedTo(event.target.value)}
           />
-          <Select value={sort} onValueChange={(value) => setSort(value as SortMode)}>
+          <Select
+            value={sort}
+            onValueChange={(value) => setSort(value as SortMode)}
+          >
             <SelectTrigger aria-label="排序">
               <SelectValue placeholder="排序" />
             </SelectTrigger>
@@ -419,64 +385,10 @@ export default function SearchPage() {
 
       <section aria-live="polite" className="mt-6 space-y-4">
         {results.map((card) => (
-          <Card
+          <HotspotCard
+            card={card}
             key={`${card.source_type}-${card.external_id}`}
-            className="border border-border bg-card"
-          >
-            <CardHeader className="gap-3 p-5 pb-3 sm:p-6 sm:pb-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline">
-                  {sourceTypeLabel(card.source_type)}
-                </Badge>
-                <Badge variant="secondary">
-                  重要性 {importanceLabels[card.importance ?? ""] ?? "未知"}
-                </Badge>
-                <Badge variant="secondary">
-                  {qualityLabels[card.quality_state ?? ""] ?? "质量未知"}
-                </Badge>
-                <span className="inline-flex items-center gap-1 text-xs font-medium">
-                  <Flame className="h-3.5 w-3.5" />
-                  热度 {card.heat_score ?? 0}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  相关性 {card.relevance ?? 0}%
-                </span>
-              </div>
-              <CardTitle className="text-xl leading-7">
-                <h2>{card.title || "无标题"}</h2>
-              </CardTitle>
-              <CardDescription className="leading-6">
-                {card.summary || "来源未提供摘要。"}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4 p-5 pt-0 sm:p-6 sm:pt-0">
-              <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
-                {card.author ? <span>作者 {card.author}</span> : null}
-                <span>发布 {formatTime(card.published_at)}</span>
-                <span>发现 {formatTime(card.discovered_at)}</span>
-                {metrics(card).map(([label, value]) => (
-                  <span key={label}>{label} {value.toLocaleString("zh-CN")}</span>
-                ))}
-              </div>
-              <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-muted-foreground">
-                  {card.relevance_reason || "未提供判断理由"}
-                </p>
-                {card.canonical_url ? (
-                  <Button asChild variant="outline" size="sm">
-                    <a
-                      href={card.canonical_url}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      查看原文
-                      <ArrowUpRight className="h-4 w-4" />
-                    </a>
-                  </Button>
-                ) : null}
-              </div>
-            </CardContent>
-          </Card>
+          />
         ))}
 
         {searched && !loading && !error && results.length === 0 ? (

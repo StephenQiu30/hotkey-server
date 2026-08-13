@@ -1,10 +1,8 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useState } from "react";
-import Link from "next/link";
+import { FilterX, Flame, Loader2, RefreshCw, Search } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FilterX, Loader2, RefreshCw, Search } from "lucide-react";
-import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,92 +15,68 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ConfirmDeleteDialog } from "@/components/dashboard/ConfirmDeleteDialog";
+import {
+  CursorPagination,
+  DEFAULT_PAGE_SIZE,
+} from "@/components/dashboard/CursorPagination";
+import { HotspotCard } from "@/components/dashboard/HotspotCard";
 import { PageHeader } from "@/components/dashboard/PageHeader";
-import {
-  CollectionWorkspace,
-  type CollectionWorkspacePagination,
-} from "@/components/dashboard/CollectionWorkspace";
-import { DEFAULT_PAGE_SIZE } from "@/components/dashboard/CursorPagination";
-import {
-  getCollectionRuns,
-  postCollectionRunsIdRetry,
-} from "@/services/hotkey/hotkey-server/collectionRuns";
-import {
-  deleteContentsId,
-  getContents,
-} from "@/services/hotkey/hotkey-server/contents";
+import { getHotspots } from "@/services/hotkey/hotkey-server/hotspots";
 import { getMonitors } from "@/services/hotkey/hotkey-server/monitors";
 import { getSourceConnections } from "@/services/hotkey/hotkey-server/sources";
-import { useAuthStore } from "@/stores/authStore";
-import { UserRole } from "@/lib/domainEnums";
 
-type ContentSort = NonNullable<HotKeyAPI.getContentsParams["sort"]>;
-type MatchDecision = NonNullable<HotKeyAPI.getContentsParams["decision"]>;
+type HotspotSort = NonNullable<HotKeyAPI.getHotspotsParams["sort"]>;
+
+const sortLabels: Readonly<Record<HotspotSort, string>> = {
+  discovered: "最新发现",
+  published: "最新发布",
+  importance: "重要性",
+  relevance: "相关性",
+  heat: "热度",
+};
 
 function positiveNumber(value: string | null) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-function ContentsWorkspace() {
+function HotspotRadar() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const serializedSearch = searchParams.toString();
-  const initialKeyword = searchParams.get("q")?.trim() ?? "";
-  const initialCursor = searchParams.get("cursor") || undefined;
   const initialPage = positiveNumber(searchParams.get("page")) ?? 1;
-  const [keyword, setKeyword] = useState(initialKeyword);
-  const [searchInput, setSearchInput] = useState(initialKeyword);
-  const [sourceId, setSourceId] = useState(
+  const initialCursor = searchParams.get("cursor") || undefined;
+  const [query, setQuery] = useState(searchParams.get("q")?.trim() ?? "");
+  const [queryInput, setQueryInput] = useState(query);
+  const [sourceID, setSourceID] = useState(
     positiveNumber(searchParams.get("source"))
   );
-  const [monitorId, setMonitorId] = useState(
+  const [monitorID, setMonitorID] = useState(
     positiveNumber(searchParams.get("monitor"))
   );
   const [publishedFrom, setPublishedFrom] = useState(
     searchParams.get("from") ?? ""
   );
   const [publishedTo, setPublishedTo] = useState(searchParams.get("to") ?? "");
-  const [decision, setDecision] = useState<MatchDecision | undefined>(
-    (searchParams.get("decision") as MatchDecision) || undefined
-  );
-  const [sort, setSort] = useState<ContentSort>(
-    (searchParams.get("sort") as ContentSort) || "latest"
+  const [sort, setSort] = useState<HotspotSort>(
+    (searchParams.get("sort") as HotspotSort) || "discovered"
   );
   const [pageSize, setPageSize] = useState(
     positiveNumber(searchParams.get("limit")) ?? DEFAULT_PAGE_SIZE
   );
-  const user = useAuthStore((state) => state.user);
-  const canManage =
-    user?.role === UserRole.Editor || user?.role === UserRole.Admin;
-  const canViewRuns = canManage;
-  const canRetry = user?.role === UserRole.Admin;
-  const [runs, setRuns] = useState<HotKeyAPI.CollectionRunResponse[]>([]);
-  const [contents, setContents] = useState<HotKeyAPI.ContentResponse[]>([]);
+  const [page, setPage] = useState(initialPage);
+  const [cursor, setCursor] = useState(initialCursor);
+  const [cursors, setCursors] = useState<(string | undefined)[]>(() => {
+    const history = Array<string | undefined>(initialPage).fill(undefined);
+    history[initialPage - 1] = initialCursor;
+    return history;
+  });
+  const [nextCursor, setNextCursor] = useState<string>();
+  const [items, setItems] = useState<HotKeyAPI.HotspotCardResponse[]>([]);
+  const [summary, setSummary] = useState<HotKeyAPI.HotspotSummaryResponse>({});
   const [sources, setSources] = useState<HotKeyAPI.SourceReadResponse[]>([]);
   const [monitors, setMonitors] = useState<HotKeyAPI.MonitorResponse[]>([]);
   const [loading, setLoading] = useState(true);
-  const [contentError, setContentError] = useState<string>();
-  const [runPage, setRunPage] = useState(1);
-  const [runCursors, setRunCursors] = useState<(string | undefined)[]>([
-    undefined,
-  ]);
-  const [runNextCursor, setRunNextCursor] = useState<string>();
-  const [contentPage, setContentPage] = useState(initialPage);
-  const [currentContentCursor, setCurrentContentCursor] =
-    useState(initialCursor);
-  const [contentCursors, setContentCursors] = useState<(string | undefined)[]>(
-    () => {
-      const history = Array<string | undefined>(initialPage).fill(undefined);
-      history[initialPage - 1] = initialCursor;
-      return history;
-    }
-  );
-  const [contentNextCursor, setContentNextCursor] = useState<string>();
-  const [deleteTarget, setDeleteTarget] = useState<HotKeyAPI.ContentResponse>();
-  const [deletingContentID, setDeletingContentID] = useState<number>();
-  const [retryingRunID, setRetryingRunID] = useState<number>();
+  const [error, setError] = useState<string>();
 
   const replaceURL = useCallback(
     (changes: Record<string, string | undefined>) => {
@@ -118,143 +92,56 @@ function ContentsWorkspace() {
     [router, searchParams]
   );
 
-  useEffect(() => {
-    const params = new URLSearchParams(serializedSearch);
-    const nextKeyword = params.get("q")?.trim() ?? "";
-    const nextMonitor = positiveNumber(params.get("monitor"));
-    const nextSort = (params.get("sort") as ContentSort) || "latest";
-    const nextPage = positiveNumber(params.get("page")) ?? 1;
-    const nextCursor = params.get("cursor") || undefined;
-    setKeyword(nextKeyword);
-    setSearchInput(nextKeyword);
-    setSourceId(positiveNumber(params.get("source")));
-    setMonitorId(nextMonitor);
-    setPublishedFrom(params.get("from") ?? "");
-    setPublishedTo(params.get("to") ?? "");
-    setDecision(
-      nextMonitor
-        ? (params.get("decision") as MatchDecision) || undefined
-        : undefined
-    );
-    setSort(nextMonitor || nextSort !== "relevance" ? nextSort : "latest");
-    setPageSize(positiveNumber(params.get("limit")) ?? DEFAULT_PAGE_SIZE);
-    setContentPage(nextPage);
-    setCurrentContentCursor(nextCursor);
-  }, [serializedSearch]);
-
-  const contentParams = useCallback(
-    (cursor?: string): HotKeyAPI.getContentsParams => ({
-      limit: pageSize,
-      ...(cursor ? { cursor } : {}),
-      ...(keyword ? { q: keyword } : {}),
-      ...(sourceId ? { source_connection_id: sourceId } : {}),
-      ...(publishedFrom
-        ? { published_from: `${publishedFrom}T00:00:00Z` }
-        : {}),
-      ...(publishedTo ? { published_to: `${publishedTo}T23:59:59Z` } : {}),
-      ...(monitorId ? { monitor_id: monitorId } : {}),
-      ...(decision ? { decision } : {}),
-      ...(sort !== "latest" ? { sort } : {}),
-    }),
-    [
-      decision,
-      keyword,
-      monitorId,
-      pageSize,
-      publishedFrom,
-      publishedTo,
-      sort,
-      sourceId,
-    ]
-  );
-
-  const loadContentsPage = useCallback(
-    async (cursor: string | undefined, page: number) => {
-      setLoading(true);
-      setContentError(undefined);
-      try {
-        const result = await getContents(contentParams(cursor));
-        setContents(result.data?.items ?? []);
-        setContentNextCursor(result.data?.next_cursor);
-        setContentPage(page);
-      } catch (reason) {
-        const message =
-          reason instanceof Error ? reason.message : "内容加载失败";
-        setContentError(message);
-        setContents([]);
-      } finally {
-        setLoading(false);
-      }
+  const resetPage = useCallback(
+    (changes: Record<string, string | undefined>) => {
+      setPage(1);
+      setCursor(undefined);
+      setCursors([undefined]);
+      replaceURL({ ...changes, cursor: undefined, page: undefined });
     },
-    [contentParams]
-  );
-
-  const loadRunsPage = useCallback(
-    async (cursor: string | undefined, page: number) => {
-      if (!canViewRuns) return;
-      setLoading(true);
-      try {
-        const result = await getCollectionRuns({
-          limit: pageSize,
-          ...(cursor ? { cursor } : {}),
-        });
-        setRuns(result.data?.items ?? []);
-        setRunNextCursor(result.data?.next_cursor);
-        setRunPage(page);
-      } catch (reason) {
-        toast.error(
-          reason instanceof Error ? reason.message : "采集批次加载失败"
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    [canViewRuns, pageSize]
+    [replaceURL]
   );
 
   const load = useCallback(async () => {
-    setContentPage(1);
-    setContentCursors([undefined]);
-    setCurrentContentCursor(undefined);
-    await Promise.all([
-      loadContentsPage(undefined, 1),
-      canViewRuns ? loadRunsPage(undefined, 1) : Promise.resolve(),
-    ]);
-    if (!canViewRuns) {
-      setRuns([]);
-      setRunNextCursor(undefined);
+    setLoading(true);
+    setError(undefined);
+    try {
+      const result = await getHotspots({
+        limit: pageSize,
+        ...(cursor ? { cursor } : {}),
+        ...(query ? { q: query } : {}),
+        ...(sourceID ? { source_connection_id: sourceID } : {}),
+        ...(monitorID ? { monitor_id: monitorID } : {}),
+        ...(publishedFrom
+          ? { published_from: `${publishedFrom}T00:00:00Z` }
+          : {}),
+        ...(publishedTo ? { published_to: `${publishedTo}T23:59:59Z` } : {}),
+        sort,
+      });
+      setItems(result.data?.items ?? []);
+      setSummary(result.data?.summary ?? {});
+      setNextCursor(result.data?.next_cursor);
+    } catch (reason) {
+      setItems([]);
+      setNextCursor(undefined);
+      setError(reason instanceof Error ? reason.message : "热点加载失败");
+    } finally {
+      setLoading(false);
     }
-    setRunPage(1);
-    setRunCursors([undefined]);
-  }, [canViewRuns, loadContentsPage, loadRunsPage]);
+  }, [
+    cursor,
+    monitorID,
+    pageSize,
+    publishedFrom,
+    publishedTo,
+    query,
+    sort,
+    sourceID,
+  ]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      const next = searchInput.trim();
-      if (next === keyword) return;
-      setKeyword(next);
-      setCurrentContentCursor(undefined);
-      setContentPage(1);
-      setContentCursors([undefined]);
-      replaceURL({ q: next || undefined, cursor: undefined, page: undefined });
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [keyword, replaceURL, searchInput]);
-
-  useEffect(() => {
-    void loadContentsPage(currentContentCursor, contentPage);
-  }, [contentPage, currentContentCursor, loadContentsPage]);
-
-  useEffect(() => {
-    setRunPage(1);
-    setRunCursors([undefined]);
-    if (canViewRuns) {
-      void loadRunsPage(undefined, 1);
-    } else {
-      setRuns([]);
-      setRunNextCursor(undefined);
-    }
-  }, [canViewRuns, loadRunsPage]);
+    void load();
+  }, [load]);
 
   useEffect(() => {
     let active = true;
@@ -270,9 +157,7 @@ function ContentsWorkspace() {
       );
       setMonitors(
         monitorResult.status === "fulfilled"
-          ? (monitorResult.value.data?.items ?? []).filter(
-              (item) => item.status === "active" || item.status === "paused"
-            )
+          ? monitorResult.value.data?.items ?? []
           : []
       );
     });
@@ -281,196 +166,141 @@ function ContentsWorkspace() {
     };
   }, []);
 
-  const resetContentPage = (urlChanges: Record<string, string | undefined>) => {
-    setContentPage(1);
-    setContentCursors([undefined]);
-    setCurrentContentCursor(undefined);
-    replaceURL({ ...urlChanges, cursor: undefined, page: undefined });
-  };
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const next = queryInput.trim();
+      if (next === query) return;
+      setQuery(next);
+      resetPage({ q: next || undefined });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [query, queryInput, resetPage]);
 
-  const clearFilters = () => {
-    setSearchInput("");
-    setKeyword("");
-    setSourceId(undefined);
-    setMonitorId(undefined);
+  const filtered = Boolean(
+    query ||
+      sourceID ||
+      monitorID ||
+      publishedFrom ||
+      publishedTo ||
+      sort !== "discovered"
+  );
+  const activeMonitors = monitors.filter(
+    (monitor) => monitor.status === "active"
+  ).length;
+
+  function clearFilters() {
+    setQuery("");
+    setQueryInput("");
+    setSourceID(undefined);
+    setMonitorID(undefined);
     setPublishedFrom("");
     setPublishedTo("");
-    setDecision(undefined);
-    setSort("latest");
-    setContentPage(1);
-    setContentCursors([undefined]);
-    setCurrentContentCursor(undefined);
-    replaceURL({
+    setSort("discovered");
+    resetPage({
       q: undefined,
       source: undefined,
       monitor: undefined,
       from: undefined,
       to: undefined,
-      decision: undefined,
       sort: undefined,
-      cursor: undefined,
-      page: undefined,
     });
-  };
+  }
 
-  const nextContentPage = () => {
-    if (!contentNextCursor) return;
-    const page = contentPage + 1;
-    setContentCursors((history) => [
-      ...history.slice(0, contentPage),
-      contentNextCursor,
-    ]);
-    setCurrentContentCursor(contentNextCursor);
-    setContentPage(page);
-    replaceURL({ cursor: contentNextCursor, page: String(page) });
-  };
-  const previousContentPage = () => {
-    if (contentPage <= 1) return;
-    const page = contentPage - 1;
-    const cursor = contentCursors[page - 1];
-    setCurrentContentCursor(cursor);
-    setContentPage(page);
-    replaceURL({ cursor, page: page === 1 ? undefined : String(page) });
-  };
-  const nextRunPage = () => {
-    if (!runNextCursor) return;
-    const page = runPage + 1;
-    setRunCursors((history) => [...history.slice(0, runPage), runNextCursor]);
-    void loadRunsPage(runNextCursor, page);
-  };
-  const previousRunPage = () => {
-    if (runPage > 1) void loadRunsPage(runCursors[runPage - 2], runPage - 1);
-  };
+  function nextPage() {
+    if (!nextCursor) return;
+    const nextPageNumber = page + 1;
+    setCursors((history) => [...history.slice(0, page), nextCursor]);
+    setCursor(nextCursor);
+    setPage(nextPageNumber);
+    replaceURL({ cursor: nextCursor, page: String(nextPageNumber) });
+  }
 
-  const deleteContent = async () => {
-    const id = deleteTarget?.id;
-    if (!canManage || id == null) return;
-    setDeletingContentID(id);
-    try {
-      await deleteContentsId({ id });
-      setDeleteTarget(undefined);
-      await loadContentsPage(contentCursors[contentPage - 1], contentPage);
-      toast.success("内容已删除，归档证据将按生命周期清理");
-    } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : "内容删除失败");
-    } finally {
-      setDeletingContentID(undefined);
-    }
-  };
-
-  const retryRun = async (run: HotKeyAPI.CollectionRunResponse) => {
-    if (!canRetry || run.id == null) return;
-    setRetryingRunID(run.id);
-    try {
-      await postCollectionRunsIdRetry({ id: run.id });
-      await loadRunsPage(runCursors[runPage - 1], runPage);
-      toast.success(`采集批次 #${run.id} 已重新进入队列`);
-    } catch (reason) {
-      toast.error(
-        reason instanceof Error ? reason.message : "采集批次重试失败"
-      );
-    } finally {
-      setRetryingRunID(undefined);
-    }
-  };
-
-  const changePageSize = (value: number) => {
-    setPageSize(value);
-    setContentPage(1);
-    setContentCursors([undefined]);
-    setCurrentContentCursor(undefined);
+  function previousPage() {
+    if (page <= 1) return;
+    const previousPageNumber = page - 1;
+    const previousCursor = cursors[previousPageNumber - 1];
+    setCursor(previousCursor);
+    setPage(previousPageNumber);
     replaceURL({
-      limit: value === DEFAULT_PAGE_SIZE ? undefined : String(value),
-      cursor: undefined,
-      page: undefined,
+      cursor: previousCursor,
+      page: previousPageNumber === 1 ? undefined : String(previousPageNumber),
     });
-  };
-  const runsPagination: CollectionWorkspacePagination = {
-    page: runPage,
-    hasNext: Boolean(runNextCursor),
-    loading,
-    onPageSizeChange: changePageSize,
-    onPrevious: previousRunPage,
-    onNext: nextRunPage,
-    pageSize,
-  };
-  const contentsPagination: CollectionWorkspacePagination = {
-    page: contentPage,
-    hasNext: Boolean(contentNextCursor),
-    loading,
-    onPageSizeChange: changePageSize,
-    onPrevious: previousContentPage,
-    onNext: nextContentPage,
-    pageSize,
-  };
-  const filtered = Boolean(
-    keyword ||
-      sourceId ||
-      monitorId ||
-      publishedFrom ||
-      publishedTo ||
-      decision ||
-      sort !== "latest"
-  );
+  }
 
   return (
-    <div className="app-page">
+    <main className="app-page">
       <PageHeader
         action={
-          <Button className="gap-2" onClick={load} variant="outline">
+          <Button
+            className="gap-2"
+            onClick={() => void load()}
+            variant="outline"
+          >
             <RefreshCw className={loading ? "animate-spin" : ""} />
-            刷新数据
+            刷新热点
           </Button>
         }
-        description="从服务端检索已标准化内容，并核对采集与事件归属。"
-        eyebrow="Ingestion"
-        title="采集内容"
+        description="持续查看监控扫描发现的文章、帖子和视频，并按来源、监控与热度快速定位。"
+        eyebrow="HOTSPOT RADAR"
+        title="热点雷达"
       />
+
+      <section
+        aria-label="热点统计"
+        className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+      >
+        {[
+          ["总热点", summary.total ?? 0],
+          ["今日新增", summary.today ?? 0],
+          ["紧急热点", summary.urgent ?? 0],
+          ["启用监控", activeMonitors],
+        ].map(([label, value]) => (
+          <Card key={label}>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className="mono mt-3 text-2xl font-medium">{value}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </section>
+
       <Card className="mt-6 shadow-none">
-        <CardContent className="grid gap-4 p-4 lg:grid-cols-4">
-          <div className="space-y-2 lg:col-span-2">
-            <Label htmlFor="content-search">搜索内容</Label>
+        <CardContent className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-6">
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="hotspot-search">搜索热点</Label>
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                id="content-search"
                 className="pl-9"
+                id="hotspot-search"
                 maxLength={100}
+                onChange={(event) => setQueryInput(event.target.value)}
                 placeholder="搜索标题或摘要"
                 type="search"
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    const next = searchInput.trim();
-                    setKeyword(next);
-                    resetContentPage({ q: next || undefined });
-                  }
-                }}
+                value={queryInput}
               />
             </div>
           </div>
           <div className="space-y-2">
             <Label>来源</Label>
             <Select
-              value={sourceId?.toString() ?? "all"}
+              value={sourceID?.toString() ?? "all"}
               onValueChange={(value) => {
                 const next = value === "all" ? undefined : Number(value);
-                setSourceId(next);
-                resetContentPage({ source: next?.toString() });
+                setSourceID(next);
+                resetPage({ source: next?.toString() });
               }}
             >
-              <SelectTrigger aria-label="内容来源">
+              <SelectTrigger aria-label="热点来源">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">全部来源</SelectItem>
                 {sources
-                  .filter((item) => item.id != null && !item.deleted)
-                  .map((item) => (
-                    <SelectItem key={item.id} value={String(item.id)}>
-                      {item.name || `来源 #${item.id}`}
+                  .filter((source) => source.id != null && !source.deleted)
+                  .map((source) => (
+                    <SelectItem key={source.id} value={String(source.id)}>
+                      {source.name || `来源 #${source.id}`}
                     </SelectItem>
                   ))}
               </SelectContent>
@@ -479,107 +309,93 @@ function ContentsWorkspace() {
           <div className="space-y-2">
             <Label>监控</Label>
             <Select
-              value={monitorId?.toString() ?? "all"}
+              value={monitorID?.toString() ?? "all"}
               onValueChange={(value) => {
                 const next = value === "all" ? undefined : Number(value);
-                setMonitorId(next);
-                if (!next) {
-                  setDecision(undefined);
-                  if (sort === "relevance") setSort("latest");
-                }
-                resetContentPage({
+                setMonitorID(next);
+                if (!next && sort === "relevance") setSort("discovered");
+                resetPage({
                   monitor: next?.toString(),
-                  decision: next ? decision : undefined,
-                  sort: next || sort !== "relevance" ? sort : undefined,
+                  sort:
+                    !next && sort === "relevance"
+                      ? undefined
+                      : sort === "discovered"
+                      ? undefined
+                      : sort,
                 });
               }}
             >
-              <SelectTrigger aria-label="内容监控">
+              <SelectTrigger aria-label="热点监控">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">全部监控</SelectItem>
                 {monitors
-                  .filter((item) => item.id != null)
-                  .map((item) => (
-                    <SelectItem key={item.id} value={String(item.id)}>
-                      {item.name || `监控 #${item.id}`}
+                  .filter(
+                    (monitor) =>
+                      monitor.id != null && monitor.status !== "archived"
+                  )
+                  .map((monitor) => (
+                    <SelectItem key={monitor.id} value={String(monitor.id)}>
+                      {monitor.name || `监控 #${monitor.id}`}
                     </SelectItem>
                   ))}
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="published-from">开始日期</Label>
+            <Label htmlFor="hotspot-from">开始日期</Label>
             <Input
-              id="published-from"
+              id="hotspot-from"
               type="date"
               value={publishedFrom}
               onChange={(event) => {
                 setPublishedFrom(event.target.value);
-                resetContentPage({ from: event.target.value });
+                resetPage({ from: event.target.value || undefined });
               }}
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="published-to">结束日期</Label>
+            <Label htmlFor="hotspot-to">结束日期</Label>
             <Input
-              id="published-to"
+              id="hotspot-to"
               type="date"
               value={publishedTo}
               onChange={(event) => {
                 setPublishedTo(event.target.value);
-                resetContentPage({ to: event.target.value });
+                resetPage({ to: event.target.value || undefined });
               }}
             />
           </div>
-          <div className="space-y-2">
-            <Label>匹配决策</Label>
-            <Select
-              disabled={!monitorId}
-              value={decision ?? "all"}
-              onValueChange={(value) => {
-                const next =
-                  value === "all" ? undefined : (value as MatchDecision);
-                setDecision(next);
-                resetContentPage({ decision: next });
-              }}
-            >
-              <SelectTrigger aria-label="匹配决策">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部决策</SelectItem>
-                <SelectItem value="accepted">已接受</SelectItem>
-                <SelectItem value="review">待复核</SelectItem>
-                <SelectItem value="rejected">已拒绝</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
+          <div className="space-y-2 md:col-span-2 xl:col-span-2">
             <Label>排序</Label>
             <Select
               value={sort}
               onValueChange={(value) => {
-                const next = value as ContentSort;
+                const next = value as HotspotSort;
                 setSort(next);
-                resetContentPage({
-                  sort: next === "latest" ? undefined : next,
-                });
+                resetPage({ sort: next === "discovered" ? undefined : next });
               }}
             >
-              <SelectTrigger aria-label="内容排序">
+              <SelectTrigger aria-label="热点排序">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="latest">最新发布</SelectItem>
-                <SelectItem value="relevance" disabled={!monitorId}>
-                  监控相关性
-                </SelectItem>
+                {(
+                  Object.entries(sortLabels) as Array<[HotspotSort, string]>
+                ).map(([value, label]) => (
+                  <SelectItem
+                    disabled={value === "relevance" && !monitorID}
+                    key={value}
+                    value={value}
+                  >
+                    {label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-wrap items-end gap-2 lg:col-span-4">
+          <div className="flex items-end md:col-span-2 xl:col-span-4">
             <Button
               disabled={!filtered}
               onClick={clearFilters}
@@ -588,69 +404,70 @@ function ContentsWorkspace() {
               <FilterX />
               清除筛选
             </Button>
-            {keyword ? (
-              <Button asChild variant="ghost">
-                <Link
-                  href={`/dashboard/events?q=${encodeURIComponent(keyword)}`}
-                >
-                  在事件中搜索同一关键词
-                </Link>
-              </Button>
-            ) : null}
           </div>
         </CardContent>
       </Card>
-      {contentError ? (
+
+      {error ? (
         <Alert className="mt-6" variant="destructive">
-          <AlertTitle>内容检索失败</AlertTitle>
+          <AlertTitle>热点加载失败</AlertTitle>
           <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
-            <span>{contentError}</span>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                void loadContentsPage(currentContentCursor, contentPage)
-              }
-              aria-label="重试内容"
-            >
+            <span>{error}</span>
+            <Button onClick={() => void load()} size="sm" variant="outline">
               重试
             </Button>
           </AlertDescription>
         </Alert>
       ) : null}
-      {contentError ? null : loading && !runs.length && !contents.length ? (
+
+      {loading && items.length === 0 ? (
         <div className="flex min-h-80 items-center justify-center">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
-      ) : (
-        <CollectionWorkspace
-          canManage={canManage}
-          canRetry={canRetry}
-          contentEmptyDescription={
-            filtered
-              ? "没有符合当前检索条件的内容，请调整或清除筛选。"
-              : undefined
-          }
-          contents={contents}
-          contentsPagination={contentsPagination}
-          deletingContentID={deletingContentID}
-          onDelete={setDeleteTarget}
-          onRetry={retryRun}
-          retryingRunID={retryingRunID}
-          runs={runs}
-          runsPagination={runsPagination}
-        />
-      )}
-      <ConfirmDeleteDialog
-        description="内容会从采集列表和后续候选中移除；系统保留生命周期墓碑，并清理已归档的 Markdown 证据。"
-        loading={deletingContentID === deleteTarget?.id}
-        onConfirm={deleteContent}
-        onOpenChange={(open) => !open && setDeleteTarget(undefined)}
-        open={deleteTarget != null}
-        resourceName={deleteTarget?.title || `内容 #${deleteTarget?.id ?? ""}`}
-        title="删除采集内容"
-      />
-    </div>
+      ) : null}
+
+      {!loading && !error && items.length === 0 ? (
+        <div className="mt-6 rounded-xl border border-dashed border-border px-6 py-14 text-center">
+          <Flame className="mx-auto h-6 w-6 text-muted-foreground" />
+          <h2 className="mt-4 font-medium">暂时没有热点</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {filtered
+              ? "调整或清除筛选条件。"
+              : "创建监控并立即扫描后，新内容会出现在这里。"}
+          </p>
+        </div>
+      ) : null}
+
+      {items.length ? (
+        <section aria-live="polite" className="mt-6 space-y-4">
+          {items.map((card, index) => (
+            <HotspotCard
+              card={card}
+              key={
+                card.id ?? `${card.source_type}-${card.external_id}-${index}`
+              }
+            />
+          ))}
+          <div className="overflow-hidden rounded-xl border border-border">
+            <CursorPagination
+              hasNext={Boolean(nextCursor)}
+              loading={loading}
+              onNext={nextPage}
+              onPageSizeChange={(value) => {
+                setPageSize(value);
+                resetPage({
+                  limit:
+                    value === DEFAULT_PAGE_SIZE ? undefined : String(value),
+                });
+              }}
+              onPrevious={previousPage}
+              page={page}
+              pageSize={pageSize}
+            />
+          </div>
+        </section>
+      ) : null}
+    </main>
   );
 }
 
@@ -663,7 +480,7 @@ export default function ContentsPage() {
         </div>
       }
     >
-      <ContentsWorkspace />
+      <HotspotRadar />
     </Suspense>
   );
 }

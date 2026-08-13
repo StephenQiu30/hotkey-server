@@ -4,11 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ContentsPage from "@/app/dashboard/contents/page";
 
 const mocks = vi.hoisted(() => ({
-  role: "editor",
-  getCollectionRuns: vi.fn(),
-  retryCollectionRun: vi.fn(),
-  getContents: vi.fn(),
-  deleteContentsId: vi.fn(),
+  getHotspots: vi.fn(),
   getSourceConnections: vi.fn(),
   getMonitors: vi.fn(),
   routerReplace: vi.fn(),
@@ -19,14 +15,8 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(mocks.navigationQuery),
   useRouter: () => ({ replace: mocks.routerReplace }),
 }));
-
-vi.mock("@/services/hotkey/hotkey-server/collectionRuns", () => ({
-  getCollectionRuns: mocks.getCollectionRuns,
-  postCollectionRunsIdRetry: mocks.retryCollectionRun,
-}));
-vi.mock("@/services/hotkey/hotkey-server/contents", () => ({
-  getContents: mocks.getContents,
-  deleteContentsId: mocks.deleteContentsId,
+vi.mock("@/services/hotkey/hotkey-server/hotspots", () => ({
+  getHotspots: mocks.getHotspots,
 }));
 vi.mock("@/services/hotkey/hotkey-server/sources", () => ({
   getSourceConnections: mocks.getSourceConnections,
@@ -34,64 +24,48 @@ vi.mock("@/services/hotkey/hotkey-server/sources", () => ({
 vi.mock("@/services/hotkey/hotkey-server/monitors", () => ({
   getMonitors: mocks.getMonitors,
 }));
-vi.mock("@/stores/authStore", () => ({
-  useAuthStore: (selector: (state: { user: { role: string } }) => unknown) =>
-    selector({ user: { role: mocks.role } }),
-}));
 
-describe("ContentsPage pagination", () => {
+const card = {
+  id: 7,
+  source_type: "rss",
+  source_name: "官方动态",
+  external_id: "release-7",
+  content_type: "article",
+  title: "Claude 发布实时 API",
+  summary: "Anthropic 公布了新的实时能力。",
+  canonical_url: "https://example.test/release",
+  author: "Alice",
+  published_at: "2026-08-13T11:00:00Z",
+  discovered_at: "2026-08-13T12:00:00Z",
+  heat_score: 36.4,
+  quality_state: "unavailable" as const,
+  relevance: 88,
+  relevance_reason: "当前监控的最近一次相关性判断",
+  importance: "medium" as const,
+  metrics: { like_count: 12 },
+};
+
+describe("HotspotRadar", () => {
   beforeEach(() => {
-    mocks.role = "editor";
     mocks.navigationQuery = "";
-    mocks.getSourceConnections.mockResolvedValue({ data: { items: [] } });
-    mocks.getMonitors.mockResolvedValue({ data: { items: [] } });
-  });
-
-  it("restores URL filters and sends the complete query to the content API", async () => {
-    mocks.navigationQuery =
-      "q=%E5%8F%91%E5%B8%83&source=3&monitor=7&from=2026-08-01&to=2026-08-02&decision=accepted&sort=relevance&limit=50";
-    mocks.getCollectionRuns.mockResolvedValue({ data: { items: [] } });
-    mocks.getContents.mockResolvedValue({ data: { items: [] } });
-
-    render(<ContentsPage />);
-
-    await waitFor(() =>
-      expect(mocks.getContents).toHaveBeenCalledWith({
-        q: "发布",
-        source_connection_id: 3,
-        monitor_id: 7,
-        published_from: "2026-08-01T00:00:00Z",
-        published_to: "2026-08-02T23:59:59Z",
-        decision: "accepted",
-        sort: "relevance",
-        limit: 50,
-      })
-    );
-    expect(
-      screen.getByRole("link", { name: "在事件中搜索同一关键词" })
-    ).toHaveAttribute("href", "/dashboard/events?q=%E5%8F%91%E5%B8%83");
-  });
-
-  it("debounces content search, resets its cursor and persists the query", async () => {
-    mocks.getCollectionRuns.mockResolvedValue({ data: { items: [] } });
-    mocks.getContents.mockResolvedValue({ data: { items: [] } });
-    render(<ContentsPage />);
-
-    await userEvent
-      .setup()
-      .type(screen.getByRole("searchbox", { name: "搜索内容" }), "更新");
-
-    await waitFor(() =>
-      expect(mocks.getContents).toHaveBeenLastCalledWith({
-        limit: 20,
-        q: "更新",
-      })
-    );
-    expect(mocks.getCollectionRuns).toHaveBeenCalledTimes(1);
-    expect(mocks.routerReplace).toHaveBeenCalledWith(
-      "/dashboard/contents?q=%E6%9B%B4%E6%96%B0",
-      { scroll: false }
-    );
+    mocks.getSourceConnections.mockResolvedValue({
+      data: { items: [{ id: 3, name: "官方动态", deleted: false }] },
+    });
+    mocks.getMonitors.mockResolvedValue({
+      data: {
+        items: [
+          { id: 5, name: "Claude", status: "active" },
+          { id: 6, name: "暂停项", status: "paused" },
+        ],
+      },
+    });
+    mocks.getHotspots.mockResolvedValue({
+      data: {
+        items: [card],
+        summary: { total: 12, today: 3, urgent: 1 },
+        next_cursor: "next-1",
+      },
+    });
   });
 
   afterEach(() => {
@@ -99,140 +73,98 @@ describe("ContentsPage pagination", () => {
     vi.clearAllMocks();
   });
 
-  it("loads readable contents without requesting collection runs for a viewer", async () => {
-    mocks.role = "viewer";
-    mocks.getContents.mockResolvedValue({
-      data: { items: [{ id: 7, title: "Fetched content" }] },
-    });
-
+  it("renders server statistics and the same flat hotspot card as instant search", async () => {
     render(<ContentsPage />);
 
-    expect(await screen.findByText("Fetched content")).toBeInTheDocument();
-    expect(mocks.getContents).toHaveBeenCalledWith({ limit: 20 });
-    expect(mocks.getCollectionRuns).not.toHaveBeenCalled();
-  });
-
-  it("passes the collection cursor when navigating to the next page", async () => {
-    mocks.getCollectionRuns
-      .mockResolvedValueOnce({
-        data: {
-          items: [{ id: 1, status: "succeeded" }],
-          next_cursor: "run-cursor-1",
-        },
-      })
-      .mockResolvedValueOnce({ data: { items: [] } });
-    mocks.getContents.mockResolvedValue({ data: { items: [] } });
-
-    render(<ContentsPage />);
-    const nextButtons = await screen.findAllByRole("button", {
-      name: "下一页",
-    });
-    await userEvent.setup().click(nextButtons[0]);
-
-    await waitFor(() =>
-      expect(mocks.getCollectionRuns).toHaveBeenLastCalledWith({
-        cursor: "run-cursor-1",
-        limit: 20,
-      })
-    );
-  });
-
-  it("reloads both collection lists with the selected page size", async () => {
-    mocks.getCollectionRuns.mockResolvedValue({
-      data: { items: [{ id: 1, status: "succeeded" }] },
-    });
-    mocks.getContents.mockResolvedValue({
-      data: { items: [{ id: 7, title: "Fetched content" }] },
-    });
-
-    render(<ContentsPage />);
-    const pageSizeSelectors = await screen.findAllByRole("combobox", {
-      name: "每页条数",
-    });
-    const user = userEvent.setup();
-    await user.click(pageSizeSelectors[0]);
-    await user.click(screen.getByRole("option", { name: "50 条" }));
-
-    await waitFor(() => {
-      expect(mocks.getCollectionRuns).toHaveBeenLastCalledWith({ limit: 50 });
-      expect(mocks.getContents).toHaveBeenLastCalledWith({ limit: 50 });
-    });
-  });
-
-  it("confirms and deletes a fetched content, then refreshes the content page", async () => {
-    mocks.getCollectionRuns.mockResolvedValue({ data: { items: [] } });
-    mocks.getContents.mockResolvedValue({
-      data: { items: [{ id: 7, title: "Fetched content" }] },
-    });
-    mocks.deleteContentsId.mockResolvedValue({ data: null });
-
-    render(<ContentsPage />);
-    const user = userEvent.setup();
-    await user.click(
-      await screen.findByRole("button", { name: "删除内容：Fetched content" })
-    );
-    expect(screen.getByText("删除采集内容")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "确认删除" }));
-
-    await waitFor(() =>
-      expect(mocks.deleteContentsId).toHaveBeenCalledWith({ id: 7 })
-    );
-    expect(mocks.getContents).toHaveBeenCalledTimes(2);
-  });
-
-  it("lets an administrator retry a failed collection run", async () => {
-    mocks.role = "admin";
-    mocks.getCollectionRuns
-      .mockResolvedValueOnce({
-        data: { items: [{ id: 3, status: "failed", error_code: "temporary" }] },
-      })
-      .mockResolvedValueOnce({
-        data: { items: [{ id: 3, status: "queued" }] },
-      });
-    mocks.getContents.mockResolvedValue({ data: { items: [] } });
-    mocks.retryCollectionRun.mockResolvedValue({
-      data: { id: 3, status: "queued" },
-    });
-
-    render(<ContentsPage />);
-    await userEvent
-      .setup()
-      .click(await screen.findByRole("button", { name: "重试采集批次 #3" }));
-
-    await waitFor(() =>
-      expect(mocks.retryCollectionRun).toHaveBeenCalledWith({ id: 3 })
-    );
-    expect(mocks.getCollectionRuns).toHaveBeenCalledTimes(2);
-  });
-
-  it("lets an editor inspect a failed run without exposing manual retry", async () => {
-    mocks.role = "editor";
-    mocks.getCollectionRuns.mockResolvedValue({
-      data: { items: [{ id: 3, status: "failed", error_code: "temporary" }] },
-    });
-    mocks.getContents.mockResolvedValue({ data: { items: [] } });
-
-    render(<ContentsPage />);
-
-    expect(await screen.findByText("temporary")).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "重试采集批次 #3" })
-    ).not.toBeInTheDocument();
-    expect(mocks.getCollectionRuns).toHaveBeenCalledWith({ limit: 20 });
+      await screen.findByRole("heading", { name: card.title })
+    ).toBeInTheDocument();
+    expect(mocks.getHotspots).toHaveBeenCalledWith({
+      limit: 20,
+      sort: "discovered",
+    });
+    expect(screen.getByText("总热点").nextElementSibling).toHaveTextContent(
+      "12"
+    );
+    expect(screen.getByText("今日新增").nextElementSibling).toHaveTextContent(
+      "3"
+    );
+    expect(screen.getByText("紧急热点").nextElementSibling).toHaveTextContent(
+      "1"
+    );
+    await waitFor(() =>
+      expect(screen.getByText("启用监控").nextElementSibling).toHaveTextContent(
+        "1"
+      )
+    );
+    expect(screen.getByText("热度 36.4")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看原文" })).toHaveAttribute(
+      "href",
+      card.canonical_url
+    );
   });
 
-  it("retries content search failures without presenting them as empty results", async () => {
-    mocks.getCollectionRuns.mockResolvedValue({ data: { items: [] } });
-    mocks.getContents
-      .mockRejectedValueOnce(new Error("content unavailable"))
-      .mockResolvedValueOnce({ data: { items: [] } });
-
+  it("restores combined filters and delegates relevance ordering to the server", async () => {
+    mocks.navigationQuery =
+      "q=Claude&source=3&monitor=5&from=2026-08-01&to=2026-08-13&sort=relevance&limit=50";
     render(<ContentsPage />);
-    expect(await screen.findByText("内容检索失败")).toBeInTheDocument();
-    expect(screen.queryByText("暂时没有已入库内容")).not.toBeInTheDocument();
+
+    await waitFor(() =>
+      expect(mocks.getHotspots).toHaveBeenCalledWith({
+        limit: 50,
+        q: "Claude",
+        source_connection_id: 3,
+        monitor_id: 5,
+        published_from: "2026-08-01T00:00:00Z",
+        published_to: "2026-08-13T23:59:59Z",
+        sort: "relevance",
+      })
+    );
+  });
+
+  it("debounces keyword search and resets pagination in the URL", async () => {
+    render(<ContentsPage />);
+    const search = screen.getByRole("searchbox", { name: "搜索热点" });
+    await userEvent.setup().type(search, "更新");
+
+    await waitFor(() =>
+      expect(mocks.getHotspots).toHaveBeenLastCalledWith({
+        limit: 20,
+        q: "更新",
+        sort: "discovered",
+      })
+    );
+    expect(mocks.routerReplace).toHaveBeenCalledWith(
+      "/dashboard/contents?q=%E6%9B%B4%E6%96%B0",
+      { scroll: false }
+    );
+  });
+
+  it("uses the opaque server cursor for the next page", async () => {
+    render(<ContentsPage />);
     await userEvent
       .setup()
-      .click(screen.getByRole("button", { name: "重试内容" }));
-    await waitFor(() => expect(mocks.getContents).toHaveBeenCalledTimes(2));
+      .click(await screen.findByRole("button", { name: "下一页" }));
+
+    await waitFor(() =>
+      expect(mocks.getHotspots).toHaveBeenLastCalledWith({
+        cursor: "next-1",
+        limit: 20,
+        sort: "discovered",
+      })
+    );
+  });
+
+  it("shows request failures separately from a valid empty result and retries", async () => {
+    mocks.getHotspots
+      .mockRejectedValueOnce(new Error("hotspot unavailable"))
+      .mockResolvedValueOnce({ data: { items: [], summary: {} } });
+    render(<ContentsPage />);
+
+    expect(await screen.findByText("热点加载失败")).toBeInTheDocument();
+    expect(screen.queryByText("暂时没有热点")).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(mocks.getHotspots).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("暂时没有热点")).toBeInTheDocument();
   });
 });

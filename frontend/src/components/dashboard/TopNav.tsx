@@ -69,10 +69,10 @@ export default function TopNav({
   const logout = useAuthStore((state) => state.logout);
   const unreadCount = useNotificationStore((state) => state.unreadCount);
   const visibleMenuItems = menuItems.filter((item) =>
-    canAccessRoles(item.roles, user?.role),
+    canAccessRoles(item.roles, user?.role)
   );
   const visibleAdminMenuItems = adminMenuItems.filter((item) =>
-    canAccessRoles(item.roles, user?.role),
+    canAccessRoles(item.roles, user?.role)
   );
 
   useEffect(() => {
@@ -84,8 +84,8 @@ export default function TopNav({
     const normalized = query.trim();
     router.push(
       normalized
-        ? `/dashboard/events?q=${encodeURIComponent(normalized)}`
-        : "/dashboard/events"
+        ? `/dashboard/contents?q=${encodeURIComponent(normalized)}`
+        : "/dashboard/contents"
     );
     setMobileOpen(false);
   };
