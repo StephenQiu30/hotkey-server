@@ -19,5 +19,6 @@ describe("PageHeader", () => {
       "w-full",
       "sm:w-auto",
     );
+    expect(screen.queryByText("Sources")).not.toBeInTheDocument();
   });
 });

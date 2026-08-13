@@ -180,19 +180,12 @@ a:not([data-slot="button"]):focus-visible {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
-.eyebrow {
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted-foreground);
-}
 .focus-ring:focus-visible {
   outline: 2px solid var(--signal);
   outline-offset: 2px;
 }
 .quiet-scrollbar {
-  scrollbar-color: #d4d4d4 transparent;
+  scrollbar-color: var(--border-strong) transparent;
   scrollbar-width: thin;
 }
 .document-markdown {

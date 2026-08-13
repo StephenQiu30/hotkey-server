@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Empty,
   EmptyDescription,
@@ -381,7 +382,7 @@ export function DocumentVersionWorkspace({ documentVersionID }: DocumentVersionW
           </div>
           <form className="mt-4 space-y-3" onSubmit={createQuoteSelector}>
             <Label htmlFor="document-exact-quote">精确摘录</Label>
-            <textarea className="min-h-28 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm leading-6 outline-none focus-visible:ring-2 focus-visible:ring-ring" id="document-exact-quote" maxLength={4096} onChange={(event) => { setExactQuote(event.target.value); setQuoteSelector(undefined); }} required value={exactQuote} />
+            <Textarea className="min-h-28 leading-6" id="document-exact-quote" maxLength={4096} onChange={(event) => { setExactQuote(event.target.value); setQuoteSelector(undefined); }} required value={exactQuote} />
             {quoteFailure ? <p className="text-sm text-destructive" role="alert">{quoteFailure}</p> : null}
             {quoteSelector ? <p className="rounded-md border border-border bg-background px-3 py-2 text-sm">引用选择器 #{quoteSelector.id} 已创建 · UTF-8 {quoteSelector.utf8_byte_start}–{quoteSelector.utf8_byte_end}{quoteSelector.markdown_anchor ? ` · #${quoteSelector.markdown_anchor}` : ""}</p> : null}
             <Button disabled={quoteBusy || !exactQuote.trim()} type="submit">{quoteBusy ? <Loader2 className="animate-spin" /> : null}生成引用选择器</Button>

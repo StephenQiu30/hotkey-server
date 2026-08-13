@@ -28,6 +28,15 @@ const setRole = (role: UserRole) =>
     error: null,
   });
 
+const chooseOption = async (
+  user: ReturnType<typeof userEvent.setup>,
+  label: string,
+  option: string,
+) => {
+  await user.click(screen.getByRole("combobox", { name: label }));
+  await user.click(screen.getByRole("option", { name: option }));
+};
+
 describe("multi-source workspace", () => {
   afterEach(cleanup);
 
@@ -43,7 +52,9 @@ describe("multi-source workspace", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "新增来源" }));
     const sourceType = screen.getByRole("combobox", { name: "来源类型" });
-    expect(Array.from((sourceType as HTMLSelectElement).options).map((option) => option.text)).toEqual([
+    expect(sourceType.tagName).toBe("BUTTON");
+    await user.click(sourceType);
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
       "RSS / Atom",
       "Hacker News",
       "X / Twitter",
@@ -52,6 +63,7 @@ describe("multi-source workspace", () => {
       "Weibo",
       "Google Agent Search",
     ]);
+    await user.keyboard("{Escape}");
     expect(screen.queryByLabelText("允许语言")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "高级设置" })).toHaveAttribute(
       "aria-expanded",
@@ -63,7 +75,7 @@ describe("multi-source workspace", () => {
     render(<SourcesPage />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "新增来源" }));
-    fireEvent.change(screen.getByRole("combobox", { name: "来源类型" }), { target: { value: "x" } });
+    await chooseOption(user, "来源类型", "X / Twitter");
     expect(screen.getByText("官方接口 · Bearer Token")).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: "启用 X 持续指标刷新" })).not.toBeInTheDocument();
 
@@ -95,7 +107,7 @@ describe("multi-source workspace", () => {
     render(<SourcesPage />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "新增来源" }));
-    fireEvent.change(screen.getByRole("combobox", { name: "来源类型" }), { target: { value: "x" } });
+    await chooseOption(user, "来源类型", "X / Twitter");
     await user.type(screen.getByLabelText("名称"), "Research X");
     await user.type(screen.getByLabelText("访问凭据"), "secret");
     await user.click(screen.getByRole("button", { name: "高级设置" }));

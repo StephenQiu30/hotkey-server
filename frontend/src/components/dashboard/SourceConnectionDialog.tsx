@@ -17,6 +17,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { SourceType } from "@/lib/domainEnums";
 
 type AuthType = "none" | "api_key" | "oauth2" | "bearer";
@@ -343,9 +350,16 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
           <div aria-label="来源连接配置" className="grid min-h-0 gap-5 overflow-y-auto px-6 py-5 sm:grid-cols-2" role="region" tabIndex={0}>
             <div>
               <Label htmlFor="source-type">来源类型</Label>
-              <select id="source-type" className="mt-2 h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.sourceType} onChange={(event) => selectSource(event.target.value as SourceType)}>
-                {Object.entries(sourceProfiles).map(([value, item]) => <option key={value} value={value}>{item.label}</option>)}
-              </select>
+              <Select value={form.sourceType} onValueChange={(value) => selectSource(value as SourceType)}>
+                <SelectTrigger id="source-type" className="mt-2 h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(sourceProfiles).map(([value, item]) => (
+                    <SelectItem key={value} value={value}>{item.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {profile.endpointFixed && (
                 <p className="mt-2 text-xs text-muted-foreground">
                   官方接口 · {authLabels[form.authType]}
@@ -370,16 +384,21 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
             </div>}
             {form.sourceType === SourceType.HackerNews && <div className="sm:col-span-2">
               <Label htmlFor="source-hn-mode">榜单模式</Label>
-              <select id="source-hn-mode" className="mt-2 h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.hackerNewsMode} onChange={(event) => updateForm({ hackerNewsMode: event.target.value as HackerNewsMode })}>
-                <option value="top">热门榜单</option><option value="best">最佳榜单</option><option value="new">最新项目</option>
-              </select>
+              <Select value={form.hackerNewsMode} onValueChange={(value) => updateForm({ hackerNewsMode: value as HackerNewsMode })}>
+                <SelectTrigger id="source-hn-mode" className="mt-2 h-10"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="top">热门榜单</SelectItem>
+                  <SelectItem value="best">最佳榜单</SelectItem>
+                  <SelectItem value="new">最新项目</SelectItem>
+                </SelectContent>
+              </Select>
             </div>}
             {form.sourceType === SourceType.Bilibili && <div className="sm:col-span-2">
               <Label htmlFor="source-bilibili-open-id">授权账号 OpenID</Label>
               <Input id="source-bilibili-open-id" className="mono mt-2" value={form.bilibiliOpenID} onChange={(event) => updateForm({ bilibiliOpenID: event.target.value })} />
             </div>}
             {form.sourceType === SourceType.GoogleAgentSearch && <>
-              <div><Label htmlFor="source-google-location">数据位置</Label><select id="source-google-location" className="mt-2 h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.googleLocation} onChange={(event) => { const location = event.target.value as GoogleLocation; updateForm({ googleLocation: location, endpoint: GOOGLE_ENDPOINTS[location], googleServingConfig: "" }); }}><option value="global">Global</option><option value="us">US</option><option value="eu">EU</option></select></div>
+              <div><Label htmlFor="source-google-location">数据位置</Label><Select value={form.googleLocation} onValueChange={(value) => { const location = value as GoogleLocation; updateForm({ googleLocation: location, endpoint: GOOGLE_ENDPOINTS[location], googleServingConfig: "" }); }}><SelectTrigger id="source-google-location" className="mt-2 h-10"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="global">Global</SelectItem><SelectItem value="us">US</SelectItem><SelectItem value="eu">EU</SelectItem></SelectContent></Select></div>
               <div><Label htmlFor="source-google-serving-config">ServingConfig 资源名</Label><Input id="source-google-serving-config" className="mono mt-2" value={form.googleServingConfig} onChange={(event) => updateForm({ googleServingConfig: event.target.value })} /></div>
             </>}
             {form.sourceType === SourceType.BingGrounding && <Alert className="sm:col-span-2"><AlertDescription><label className="flex items-start gap-2"><Checkbox aria-label="确认 Grounding 数据边界与额外条款" checked={form.groundingDataBoundaryApproved} onCheckedChange={(checked) => updateForm({ groundingDataBoundaryApproved: checked === true })} /><span>我已确认 Foundry Web Search 的数据边界、额外条款和费用。</span></label></AlertDescription></Alert>}
@@ -400,9 +419,10 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
             {advancedOpen && <div id="source-advanced-settings" className="grid gap-4 rounded-lg border border-border bg-muted/20 p-4 sm:col-span-2 sm:grid-cols-2">
               {!profile.authFixed && <div className="sm:col-span-2">
                 <Label htmlFor="source-auth-type">授权方式</Label>
-                <select id="source-auth-type" className="mt-2 h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={form.authType} onChange={(event) => updateForm({ authType: event.target.value as AuthType, credential: "" })}>
-                  <option value="none">无需授权</option><option value="api_key">API Key</option><option value="bearer">Bearer Token</option><option value="oauth2">OAuth 2.0</option>
-                </select>
+                <Select value={form.authType} onValueChange={(value) => updateForm({ authType: value as AuthType, credential: "" })}>
+                  <SelectTrigger id="source-auth-type" className="mt-2 h-10"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="none">无需授权</SelectItem><SelectItem value="api_key">API Key</SelectItem><SelectItem value="bearer">Bearer Token</SelectItem><SelectItem value="oauth2">OAuth 2.0</SelectItem></SelectContent>
+                </Select>
               </div>}
               <div><Label htmlFor="source-languages">允许语言</Label><Input id="source-languages" className="mt-2" value={form.allowedLanguages} onChange={(event) => updateForm({ allowedLanguages: event.target.value })} placeholder="默认不限制" /></div>
               <div><Label htmlFor="source-regions">允许地区</Label><Input id="source-regions" className="mt-2" value={form.allowedRegions} onChange={(event) => updateForm({ allowedRegions: event.target.value })} placeholder="默认不限制" /></div>
