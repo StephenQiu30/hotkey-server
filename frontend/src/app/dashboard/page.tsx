@@ -96,7 +96,7 @@ export default function DashboardPage() {
     return (
       <div
         aria-live="polite"
-        className="flex min-h-[calc(100vh-64px)] items-center justify-center"
+        className="app-page flex min-h-full items-center justify-center"
         role="status"
       >
         <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin text-primary" />

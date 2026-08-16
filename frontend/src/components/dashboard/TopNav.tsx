@@ -99,9 +99,10 @@ export default function TopNav({
   return (
     <header
       data-top-nav
-      className="sticky top-0 z-50 border-b border-border/70 bg-background/90 backdrop-blur-xl"
+      data-layout-header
+      className="shrink-0 border-b border-border/70 bg-background/90 backdrop-blur-xl"
     >
-      <div className="mx-auto flex h-16 max-w-[1440px] min-w-0 items-center gap-3 px-4 sm:px-6 lg:gap-7 lg:px-8">
+      <div className="app-shell-container flex h-16 min-w-0 items-center gap-3 lg:gap-7">
         <Link
           href="/dashboard"
           className="flex shrink-0 items-center text-base font-bold tracking-tight text-foreground no-underline"

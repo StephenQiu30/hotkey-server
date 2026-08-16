@@ -108,7 +108,7 @@ export default function ContentDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[calc(100vh-60px)] items-center justify-center">
+      <div className="app-page flex min-h-full items-center justify-center">
         <Loader2
           aria-label="加载归档内容"
           className="h-5 w-5 animate-spin text-muted-foreground"

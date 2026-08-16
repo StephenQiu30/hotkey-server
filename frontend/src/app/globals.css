@@ -155,14 +155,27 @@ a:not([data-slot="button"]):focus-visible {
   transform: translateY(0);
 }
 
-.app-page {
-  margin: 0 auto;
+.app-shell-container {
   width: 100%;
   max-width: 1440px;
-  padding: 56px 32px 96px;
+  margin-inline: auto;
+  padding-inline: 16px;
+}
+
+.app-page {
+  margin: 0 auto;
+  min-width: 0;
+  width: 100%;
+  max-width: 1440px;
+  padding: 56px 16px 96px;
+}
+
+.app-main {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
 }
 .radar-page {
-  min-height: calc(100vh - 64px);
+  min-height: 100%;
 }
 .signal-text {
   color: var(--signal);
@@ -288,6 +301,20 @@ a:not([data-slot="button"]):focus-visible {
   }
 }
 
+@media (min-width: 640px) {
+  .app-shell-container,
+  .app-page {
+    padding-inline: 24px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .app-shell-container,
+  .app-page {
+    padding-inline: 32px;
+  }
+}
+
 @media (pointer: coarse) {
   button,
   [role="button"] {
@@ -329,6 +356,7 @@ a:not([data-slot="button"]):focus-visible {
   }
   nav,
   [data-top-nav],
+  [data-layout-footer],
   [data-sonner-toaster],
   .document-actions {
     display: none !important;
