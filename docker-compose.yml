@@ -102,7 +102,7 @@ services:
       HOTKEY_MINIO_BUCKET: "${HOTKEY_MINIO_BUCKET:-hotkey-evidence}"
       HOTKEY_MINIO_USE_SSL: "false"
       HOTKEY_VAULT_PATH: /var/lib/hotkey/vault
-      HOTKEY_CORS_ALLOWED_ORIGINS: "${HOTKEY_CORS_ALLOWED_ORIGINS:-http://localhost:8123,http://127.0.0.1:8123}"
+      HOTKEY_CORS_ALLOWED_ORIGINS: "${HOTKEY_CORS_ALLOWED_ORIGINS:-http://localhost:8010,http://127.0.0.1:8010}"
       HOTKEY_REFRESH_COOKIE_SECURE: "false"
       HOTKEY_NOTIFICATION_POLL_INTERVAL: ${HOTKEY_NOTIFICATION_POLL_INTERVAL:-1s}
       HOTKEY_NOTIFICATION_HEARTBEAT_INTERVAL: ${HOTKEY_NOTIFICATION_HEARTBEAT_INTERVAL:-10s}
@@ -140,7 +140,7 @@ services:
       hotkey-server:
         condition: service_healthy
     ports:
-      - "${WEB_PORT:-8123}:3000"
+      - "${WEB_PORT:-8010}:3000"
     environment:
       NODE_ENV: production
       HOTKEY_DEPLOY_ENV: env

@@ -80,7 +80,7 @@ cp .env.example .env
 npm run dev
 ```
 
-Open <http://localhost:8123>.
+Open <http://localhost:8010>.
 
 No environment value is required for the default local backend. Same-origin `/api` and `/healthz` requests are sent through the Next.js server to:
 

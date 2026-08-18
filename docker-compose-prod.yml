@@ -140,7 +140,7 @@ services:
       hotkey-server:
         condition: service_healthy
     ports:
-      - "${WEB_PORT:-8123}:3000"
+      - "${WEB_PORT:-8010}:3000"
     environment:
       NODE_ENV: production
       HOTKEY_DEPLOY_ENV: prod

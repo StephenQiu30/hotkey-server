@@ -82,7 +82,7 @@ cp .env.example .env
 npm run dev
 ```
 
-访问 <http://localhost:8123>。
+访问 <http://localhost:8010>。
 
 无需填写环境变量即可使用默认的本机后端地址：
 
@@ -92,7 +92,7 @@ HOTKEY_API_ORIGIN=http://127.0.0.1:8866
 
 `HOTKEY_API_ORIGIN` 只由 Next.js 服务端 rewrites 使用，不会作为 `NEXT_PUBLIC_*` 变量暴露给浏览器。完整说明见 [`.env.example`](.env.example)。
 
-> **与后端配合**：前端启动前请保证 `hotkey-server` 后端已运行于 `HOTKEY_API_ORIGIN` 对应地址，且后端 `HOTKEY_CORS_ALLOWED_ORIGINS` 包含前端 Origin（默认 `http://localhost:8123`）。后端自身从**进程工作目录**读取 `.env`，请从 `backend/` 目录启动，或通过进程环境变量注入正确配置（详见 [backend/README](../backend/README.md)）。
+> **与后端配合**：前端启动前请保证 `hotkey-server` 后端已运行于 `HOTKEY_API_ORIGIN` 对应地址，且后端 `HOTKEY_CORS_ALLOWED_ORIGINS` 包含前端 Origin（默认 `http://localhost:8010`）。后端自身从**进程工作目录**读取 `.env`，请从 `backend/` 目录启动，或通过进程环境变量注入正确配置（详见 [backend/README](../backend/README.md)）。
 
 也可以在 WebStorm 中直接运行 `package.json` 的 `dev` 脚本。Web 端与后端分别启动，不依赖 `.sh` 文件；注册、邮件和管理员配置请参阅 [`backend/` 文档](../backend/README.md)。
 

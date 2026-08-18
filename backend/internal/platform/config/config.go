@@ -163,7 +163,7 @@ func Default() Config {
 			PollInterval:      time.Second,
 			HeartbeatInterval: 10 * time.Second,
 			MaxConnections:    100,
-			WebOrigin:         "http://127.0.0.1:8123",
+			WebOrigin:         "http://127.0.0.1:8010",
 		},
 	}
 }

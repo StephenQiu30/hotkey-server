@@ -230,7 +230,7 @@ func validateClaimedEmailDelivery(claimed ClaimedEmailDeliveryDTO, expectedToken
 func normalizeWebOrigin(value string) (string, error) {
 	value = strings.TrimSuffix(strings.TrimSpace(value), "/")
 	if value == "" {
-		value = "http://127.0.0.1:8123"
+		value = "http://127.0.0.1:8010"
 	}
 	parsed, err := url.Parse(value)
 	if err != nil || parsed.User != nil || parsed.Fragment != "" || parsed.RawQuery != "" || parsed.Path != "" ||

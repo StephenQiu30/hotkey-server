@@ -22,8 +22,8 @@ func TestDefaultIsValid(t *testing.T) {
 	if cfg.HTTPAddr != ":8866" {
 		t.Fatalf("Default().HTTPAddr = %q, want :8866", cfg.HTTPAddr)
 	}
-	if cfg.Notification.WebOrigin != "http://127.0.0.1:8123" {
-		t.Fatalf("Default().Notification.WebOrigin = %q, want http://127.0.0.1:8123", cfg.Notification.WebOrigin)
+	if cfg.Notification.WebOrigin != "http://127.0.0.1:8010" {
+		t.Fatalf("Default().Notification.WebOrigin = %q, want http://127.0.0.1:8010", cfg.Notification.WebOrigin)
 	}
 	if cfg.Notification.PollInterval <= 0 || cfg.Notification.HeartbeatInterval <= 0 || cfg.Notification.MaxConnections <= 0 {
 		t.Fatalf("Default().Notification = %#v, want positive limits", cfg.Notification)
