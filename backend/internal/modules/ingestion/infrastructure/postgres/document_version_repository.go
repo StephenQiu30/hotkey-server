@@ -37,34 +37,112 @@ func (repository *DocumentVersionRepository) ResolveDocument(ctx context.Context
 	if err := ingestionapplication.ValidateDocumentIdentityDTO(identity); err != nil {
 		return ingestionapplication.DocumentDTO{}, false, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
 	}
-	executor := repository.executor(ctx)
-	result, err := executor.ExecContext(ctx, `
+	var document ingestionapplication.DocumentDTO
+	created := false
+	err := repository.withTransaction(ctx, func(transactionCtx context.Context, executor documentVersionExecutor) error {
+		var lockedSourceID int64
+		if err := executor.QueryRowContext(transactionCtx, `
+SELECT id FROM source_connections WHERE id=$1 FOR UPDATE`, identity.SourceConnectionID).Scan(&lockedSourceID); errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: source connection %d", sharedrepository.ErrNotFound, identity.SourceConnectionID)
+		} else if err != nil {
+			return databaserepository.MapError(err)
+		}
+
+		var err error
+		document, err = scanDocumentRow(executor.QueryRowContext(transactionCtx, `
+SELECT document.id,document.version,document.source_connection_id,document.document_key,document.external_work_id,
+       document.current_document_version_id,document.document_state,document.created_at,document.updated_at
+FROM document_identity_keys AS identity_key
+JOIN documents AS document
+  ON document.id=identity_key.document_id AND document.source_connection_id=identity_key.source_connection_id
+WHERE identity_key.source_connection_id=$1 AND document.document_state='active'
+  AND (
+    ($2::text IS NOT NULL AND identity_key.identity_kind='external_id' AND identity_key.identity_value=$2)
+    OR ($3::text<>'' AND identity_key.identity_kind='canonical_url' AND identity_key.identity_value=$3)
+    OR ($4::text<>'' AND identity_key.identity_kind='content_sha256' AND identity_key.identity_value=$4)
+  )
+ORDER BY
+  CASE
+    WHEN identity_key.identity_kind='external_id' THEN 0
+    WHEN identity_key.identity_kind='canonical_url' THEN 1
+    ELSE 2
+  END,
+  document.id
+LIMIT 1
+FOR UPDATE OF document`, identity.SourceConnectionID, documentOptionalString(identity.ExternalWorkID), identity.CanonicalURL, identity.ContentSHA256))
+		if err == nil {
+			return bindDocumentIdentityKeys(transactionCtx, executor, document.ID, identity)
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return databaserepository.MapError(err)
+		}
+
+		result, err := executor.ExecContext(transactionCtx, `
 INSERT INTO documents (source_connection_id, document_key, external_work_id)
 VALUES ($1,$2,$3)
 ON CONFLICT (source_connection_id, document_key) DO NOTHING`,
-		identity.SourceConnectionID, identity.DocumentKey, documentOptionalString(identity.ExternalWorkID))
-	if err != nil {
-		return ingestionapplication.DocumentDTO{}, false, databaserepository.MapError(err)
-	}
-	createdRows, err := result.RowsAffected()
-	if err != nil {
-		return ingestionapplication.DocumentDTO{}, false, databaserepository.MapError(err)
-	}
-	document, err := scanDocumentRow(executor.QueryRowContext(ctx, `
+			identity.SourceConnectionID, identity.DocumentKey, documentOptionalString(identity.ExternalWorkID))
+		if err != nil {
+			return databaserepository.MapError(err)
+		}
+		createdRows, err := result.RowsAffected()
+		if err != nil {
+			return databaserepository.MapError(err)
+		}
+		created = createdRows == 1
+		document, err = scanDocumentRow(executor.QueryRowContext(transactionCtx, `
 SELECT id,version,source_connection_id,document_key,external_work_id,
        current_document_version_id,document_state,created_at,updated_at
 FROM documents WHERE source_connection_id=$1 AND document_key=$2`,
-		identity.SourceConnectionID, identity.DocumentKey))
-	if errors.Is(err, sql.ErrNoRows) {
-		return ingestionapplication.DocumentDTO{}, false, fmt.Errorf("%w: resolved document disappeared", sharedrepository.ErrConflict)
-	}
+			identity.SourceConnectionID, identity.DocumentKey))
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: resolved document disappeared", sharedrepository.ErrConflict)
+		}
+		if err != nil {
+			return databaserepository.MapError(err)
+		}
+		return bindDocumentIdentityKeys(transactionCtx, executor, document.ID, identity)
+	})
 	if err != nil {
-		return ingestionapplication.DocumentDTO{}, false, databaserepository.MapError(err)
+		return ingestionapplication.DocumentDTO{}, false, err
 	}
-	if document.State != ingestionapplication.DocumentStateActive || !optionalDocumentStringsEqual(document.ExternalWorkID, identity.ExternalWorkID) {
+	if document.State != ingestionapplication.DocumentStateActive || document.SourceConnectionID != identity.SourceConnectionID {
 		return ingestionapplication.DocumentDTO{}, false, fmt.Errorf("%w: document identity is inactive or inconsistent", sharedrepository.ErrConflict)
 	}
-	return document, createdRows == 1, nil
+	return document, created, nil
+}
+
+func bindDocumentIdentityKeys(ctx context.Context, executor documentVersionExecutor, documentID int64, identity ingestionapplication.DocumentIdentityDTO) error {
+	keys := make([][2]string, 0, 3)
+	if identity.ExternalWorkID != nil {
+		keys = append(keys, [2]string{"external_id", *identity.ExternalWorkID})
+	}
+	if identity.CanonicalURL != "" {
+		keys = append(keys, [2]string{"canonical_url", identity.CanonicalURL})
+	}
+	if identity.ContentSHA256 != "" {
+		keys = append(keys, [2]string{"content_sha256", identity.ContentSHA256})
+	}
+	for _, key := range keys {
+		if _, err := executor.ExecContext(ctx, `
+INSERT INTO document_identity_keys (source_connection_id,document_id,identity_kind,identity_value)
+VALUES ($1,$2,$3,$4)
+ON CONFLICT (source_connection_id,identity_kind,identity_value) DO NOTHING`,
+			identity.SourceConnectionID, documentID, key[0], key[1]); err != nil {
+			return databaserepository.MapError(err)
+		}
+		var boundDocumentID int64
+		if err := executor.QueryRowContext(ctx, `
+SELECT document_id FROM document_identity_keys
+WHERE source_connection_id=$1 AND identity_kind=$2 AND identity_value=$3`,
+			identity.SourceConnectionID, key[0], key[1]).Scan(&boundDocumentID); err != nil {
+			return databaserepository.MapError(err)
+		}
+		if boundDocumentID != documentID {
+			return fmt.Errorf("%w: document identity keys resolve to different documents", sharedrepository.ErrConflict)
+		}
+	}
+	return nil
 }
 
 func (repository *DocumentVersionRepository) AppendDocumentVersion(ctx context.Context, draft ingestionapplication.DocumentVersionDraftDTO) (ingestionapplication.DocumentVersionDTO, bool, error) {

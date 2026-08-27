@@ -2,6 +2,8 @@ package application
 
 import (
 	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/domain"
@@ -57,6 +59,8 @@ type DocumentIdentityDTO struct {
 	SourceConnectionID int64
 	DocumentKey        string
 	ExternalWorkID     *string
+	CanonicalURL       string
+	ContentSHA256      string
 }
 
 // DocumentDTO is the Application projection of one stable Document entity.
@@ -137,8 +141,21 @@ func ValidateDocumentDTO(value DocumentDTO) error {
 }
 
 func ValidateDocumentIdentityDTO(value DocumentIdentityDTO) error {
-	_, err := documentIdentityDomainFromDTO(value)
-	return err
+	if _, err := documentIdentityDomainFromDTO(value); err != nil {
+		return err
+	}
+	if value.ContentSHA256 != "" && !validLowerHexSHA256(value.ContentSHA256) {
+		return fmt.Errorf("document content identity is invalid")
+	}
+	if value.CanonicalURL != "" {
+		parsed, err := url.Parse(value.CanonicalURL)
+		if err != nil || parsed == nil || parsed.User != nil || parsed.Fragment != "" ||
+			(parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" ||
+			value.CanonicalURL != strings.TrimSpace(value.CanonicalURL) || len(value.CanonicalURL) > 2048 {
+			return fmt.Errorf("document canonical URL identity is invalid")
+		}
+	}
+	return nil
 }
 
 func ValidateDocumentVersionDTO(value DocumentVersionDTO) error {

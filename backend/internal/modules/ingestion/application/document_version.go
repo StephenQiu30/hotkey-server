@@ -26,6 +26,7 @@ type DocumentObservationDTO struct {
 	ID                 int64
 	SourceConnectionID int64
 	ExternalWorkID     string
+	CanonicalURL       string
 	BodyOrigin         string
 	Completeness       string
 	Body               string
@@ -192,14 +193,23 @@ func (service *DocumentVersionService) PersistDocumentObservation(ctx context.Co
 	// Document container. Normalize is repeated after resolving its real ID
 	// because DocumentID participates in the immutable VersionKey.
 	validationCandidate := documentVersionCandidate(1, observation, persistCommand)
-	if _, err := validationCandidate.Normalize(); err != nil {
+	preNormalized, err := validationCandidate.Normalize()
+	if err != nil {
 		return PersistDocumentVersionResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
 	}
 	documentIdentity, err := documentIdentityFromObservationDTO(observation)
 	if err != nil {
 		return PersistDocumentVersionResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
 	}
-	documentDTO, documentCreated, err := service.versions.ResolveDocument(ctx, documentIdentityDTOFromDomain(documentIdentity))
+	resolutionIdentity := documentIdentityDTOFromDomain(documentIdentity)
+	resolutionIdentity.CanonicalURL = strings.TrimSpace(observation.CanonicalURL)
+	if observation.Completeness != BodyCompletenessMetadataOnly {
+		resolutionIdentity.ContentSHA256 = preNormalized.ContentSHA256
+	}
+	if err := ValidateDocumentIdentityDTO(resolutionIdentity); err != nil {
+		return PersistDocumentVersionResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	documentDTO, documentCreated, err := service.versions.ResolveDocument(ctx, resolutionIdentity)
 	if err != nil {
 		return PersistDocumentVersionResult{}, fmt.Errorf("resolve document identity: %w", err)
 	}
@@ -207,7 +217,7 @@ func (service *DocumentVersionService) PersistDocumentObservation(ctx context.Co
 	if err != nil {
 		return PersistDocumentVersionResult{}, fmt.Errorf("%w: resolved document is invalid", sharedrepository.ErrConflict)
 	}
-	if !resolvedDocumentMatches(document, documentIdentity) {
+	if !resolvedDocumentMatches(document, documentIdentity, documentCreated) {
 		return PersistDocumentVersionResult{}, fmt.Errorf("%w: resolved document identity changed", sharedrepository.ErrConflict)
 	}
 
@@ -366,10 +376,15 @@ func documentIdentityFromObservationDTO(observation DocumentObservationDTO) (ing
 	}, nil
 }
 
-func resolvedDocumentMatches(document ingestiondomain.Document, identity ingestiondomain.DocumentIdentity) bool {
-	return document.ID > 0 && document.Version > 0 && document.State == ingestiondomain.DocumentStateActive &&
-		document.SourceConnectionID == identity.SourceConnectionID && document.DocumentKey == identity.DocumentKey &&
-		optionalStringsEqual(document.ExternalWorkID, identity.ExternalWorkID)
+func resolvedDocumentMatches(document ingestiondomain.Document, identity ingestiondomain.DocumentIdentity, created bool) bool {
+	if document.ID <= 0 || document.Version <= 0 || document.State != ingestiondomain.DocumentStateActive ||
+		document.SourceConnectionID != identity.SourceConnectionID {
+		return false
+	}
+	if !created && document.DocumentKey != identity.DocumentKey {
+		return true
+	}
+	return document.DocumentKey == identity.DocumentKey && optionalStringsEqual(document.ExternalWorkID, identity.ExternalWorkID)
 }
 
 func optionalStringsEqual(left, right *string) bool {

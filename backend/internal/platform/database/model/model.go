@@ -291,6 +291,11 @@ type ArchiveDocumentVersion struct {
 	QualityScore                                                       *float64
 	VersionKey, ContentSHA256, ExtractorProfileVersion, LifecycleState string
 }
+type DocumentIdentityKey struct {
+	Record
+	SourceConnectionID, DocumentID int64
+	IdentityKind, IdentityValue    string
+}
 type DerivedArtifact struct {
 	OperationalRecord
 	SourceConnectionID, DocumentVersionID                                     int64
@@ -644,6 +649,7 @@ var specs = []Spec{
 	{"content_assets", LifecycleBusiness, []string{"id", "content_id", "object_key", "object_status"}},
 	{"documents", LifecycleBusiness, []string{"id", "version", "source_connection_id", "document_key", "current_document_version_id", "document_state"}},
 	{"document_versions", LifecycleBusiness, []string{"id", "version", "document_id", "source_observation_id", "revision_no", "version_key", "quality_score", "content_sha256", "extractor_profile_version", "extractor_profile_sha256", "display_private_rights_decision_id", "lifecycle_state"}},
+	{"document_identity_keys", LifecycleBusiness, []string{"id", "version", "source_connection_id", "document_id", "identity_kind", "identity_value"}},
 	{"derived_artifacts", LifecycleOperational, []string{"id", "source_connection_id", "document_version_id", "store_derived_rights_decision_id", "retain_rights_decision_id", "artifact_type", "transformer_profile_sha256", "vault_relative_path", "sha256", "anchor_normalization_version", "anchor_map_profile_version", "anchor_plaintext_sha256", "anchor_markdown_sha256", "anchor_map_sha256", "retention_until", "lifecycle_state", "active"}},
 	{"document_anchor_blocks", LifecycleOperational, []string{"id", "derived_artifact_id", "anchor_map_sha256", "block_ordinal", "plaintext_utf8_byte_start", "plaintext_utf8_byte_end", "markdown_utf8_byte_start", "markdown_utf8_byte_end", "markdown_anchor", "created_at"}},
 	{"document_text_quote_selectors", LifecycleOperational, []string{"id", "version", "source_connection_id", "document_version_id", "plaintext_artifact_id", "markdown_artifact_id", "quote_rights_decision_id", "retain_rights_decision_id", "exact_quote", "prefix", "suffix", "utf8_byte_start", "utf8_byte_end", "quote_sha256", "plaintext_sha256", "normalization_version", "selector_version", "anchor_map_sha256", "markdown_anchor", "retention_until", "created_at"}},
@@ -769,7 +775,7 @@ func PersistenceFor(table string) (Persistence, bool) {
 		switch {
 		case spec.Table == "monitor_config_versions" || spec.Table == "monitor_rules" || spec.Table == "monitor_sources" ||
 			spec.Table == "source_rights_policies" || spec.Table == "source_observations" ||
-			spec.Table == "documents" || spec.Table == "document_versions" ||
+			spec.Table == "documents" || spec.Table == "document_versions" || spec.Table == "document_identity_keys" ||
 			strings.HasPrefix(spec.Table, "monitor_intent_") || strings.HasPrefix(spec.Table, "monitor_compiled_"):
 			persistence.Deletion = DeletionRetained
 			if spec.Table == "monitor_config_versions" {

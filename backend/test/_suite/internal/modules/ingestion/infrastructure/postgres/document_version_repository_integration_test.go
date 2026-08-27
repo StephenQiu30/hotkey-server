@@ -208,6 +208,78 @@ WHERE table_schema='public' AND table_name='document_versions'
 	}
 }
 
+func TestDocumentVersionRepositoryResolvesExactIdentityInExternalURLHashOrder(t *testing.T) {
+	runtime := openDocumentVersionRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	sourceID := createDocumentVersionSource(t, runtime, "exact-identity-order")
+	reader := &integrationDocumentObservationReader{observations: make(map[int64]ingestionapplication.DocumentObservationDTO)}
+	type fixture struct {
+		externalID, canonicalURL, body string
+	}
+	fixtures := []fixture{
+		{"external-a", "https://publisher.example.test/shared", "original exact body"},
+		{"external-b", "https://publisher.example.test/shared", "revised body at the same canonical URL"},
+		{"external-c", "https://publisher.example.test/other", "original exact body"},
+	}
+	observationIDs := make([]int64, len(fixtures))
+	for index, item := range fixtures {
+		observationID := insertSourceObservationWithCanonicalURL(t, runtime, sourceID, item.externalID, item.canonicalURL, 100+index)
+		observationIDs[index] = observationID
+		reader.observations[observationID] = ingestionapplication.DocumentObservationDTO{
+			ID: observationID, SourceConnectionID: sourceID, ExternalWorkID: item.externalID,
+			CanonicalURL: item.canonicalURL, BodyOrigin: ingestionapplication.BodyOriginFeedContent,
+			Completeness: ingestionapplication.BodyCompletenessFull, Body: item.body, Language: "en",
+			CapturedAt: documentVersionCapturedAt(100 + index),
+		}
+	}
+	repository := ingestionpostgres.NewDocumentVersionRepository(runtime)
+	service, err := ingestionapplication.NewDocumentVersionService(ingestionapplication.DocumentVersionDependencies{Observations: reader, Versions: repository})
+	if err != nil {
+		t.Fatal(err)
+	}
+	persist := func(observationID int64) (ingestionapplication.PersistDocumentVersionResult, error) {
+		return service.PersistSourceObservation(context.Background(), ingestionapplication.PersistDocumentVersionCommand{
+			SourceObservationID: observationID, ExtractorVersion: "rss-entry-v2",
+			ExtractorProfileVersion: "rss-profile-v3", ExtractorProfileSHA256: strings.Repeat("a", 64),
+		})
+	}
+	first, err := persist(observationIDs[0])
+	if err != nil || !first.DocumentCreated {
+		t.Fatalf("persist first exact identity fixture = %#v/%v", first, err)
+	}
+	documentID := first.Document.ID
+	type result struct {
+		value ingestionapplication.PersistDocumentVersionResult
+		err   error
+	}
+	results := make(chan result, len(observationIDs)-1)
+	for _, observationID := range observationIDs[1:] {
+		go func() {
+			value, err := persist(observationID)
+			results <- result{value: value, err: err}
+		}()
+	}
+	for range observationIDs[1:] {
+		item := <-results
+		if item.err != nil || item.value.DocumentCreated || item.value.Document.ID != documentID {
+			t.Fatalf("concurrent exact identity fixture created/drifted Document = %#v/%v", item.value, item.err)
+		}
+	}
+	var documentCount, versionCount, identityCount int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM documents WHERE source_connection_id=$1`, sourceID).Scan(&documentCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM document_versions WHERE document_id=$1`, documentID).Scan(&versionCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM document_identity_keys WHERE document_id=$1`, documentID).Scan(&identityCount); err != nil {
+		t.Fatal(err)
+	}
+	if documentCount != 1 || versionCount != 3 || identityCount != 7 {
+		t.Fatalf("exact identity documents/versions/keys = %d/%d/%d, want 1/3/7", documentCount, versionCount, identityCount)
+	}
+}
+
 func TestDocumentVersionRepositoryLifecycleCASAndReadableProjection(t *testing.T) {
 	runtime := openDocumentVersionRuntime(t)
 	defer func() { _ = runtime.Close() }()
@@ -473,6 +545,25 @@ RETURNING id`, sourceID, externalID, upstreamIdentity, fmt.Sprintf("revision %d"
 		fmt.Sprintf("https://publisher.example.test/articles/%s", externalID), capturedAt,
 		capturedAt.Add(-time.Hour), 480).Scan(&observationID); err != nil {
 		t.Fatalf("insert source observation %d: %v", index, err)
+	}
+	return observationID
+}
+
+func insertSourceObservationWithCanonicalURL(t *testing.T, runtime *database.Runtime, sourceID int64, externalID, canonicalURL string, index int) int64 {
+	t.Helper()
+	capturedAt := documentVersionCapturedAt(index)
+	upstreamIdentity := fmt.Sprintf("%064x", index+1)
+	var observationID int64
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO source_observations (
+  source_connection_id,external_id,upstream_identity,source_code,content_type,title,language,
+  source_record_url,canonical_url,body_origin,completeness,published_at,published_utc_offset_minutes,
+  discovered_at,captured_at
+) VALUES ($1,$2,$3,'rss','article',$4,'en',$5,$6,'feed_content','full',$7,480,$8,$8)
+RETURNING id`, sourceID, externalID, upstreamIdentity,
+		externalID, fmt.Sprintf("https://feed.example.test/records/%d", index), canonicalURL,
+		capturedAt.Add(-time.Hour), capturedAt).Scan(&observationID); err != nil {
+		t.Fatalf("insert exact identity source observation %d: %v", index, err)
 	}
 	return observationID
 }

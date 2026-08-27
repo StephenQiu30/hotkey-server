@@ -251,7 +251,8 @@ func (service *SourceDocumentGenerationService) Generate(ctx context.Context, co
 	persisted, err := service.documentVersions.PersistDocumentObservation(ctx, PersistDocumentObservationCommand{
 		Observation: DocumentObservationDTO{
 			ID: evidence.SourceObservationID, SourceConnectionID: evidence.SourceConnectionID, ExternalWorkID: evidence.ExternalWorkID,
-			BodyOrigin: extracted.BodyOrigin, Completeness: extracted.Completeness, Body: extracted.Plaintext,
+			CanonicalURL: evidence.CanonicalURL,
+			BodyOrigin:   extracted.BodyOrigin, Completeness: extracted.Completeness, Body: extracted.Plaintext,
 			Language: extracted.Language, CapturedAt: evidence.CapturedAt,
 		},
 		ExtractorVersion: extracted.ExtractorVersion, ExtractorProfileVersion: extracted.ExtractorProfileVersion,
