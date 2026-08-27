@@ -1,4 +1,5 @@
 import {
+  Activity,
   Database,
   Flame,
   Radar,
@@ -39,6 +40,11 @@ export const dashboardMenuItems: MenuItem[] = [
     path: "/dashboard/contents",
     name: "热点雷达",
     icon: <Flame className="h-4 w-4" />,
+  },
+  {
+    path: "/dashboard/events",
+    name: "语义事件",
+    icon: <Activity className="h-4 w-4" />,
   },
 ];
 

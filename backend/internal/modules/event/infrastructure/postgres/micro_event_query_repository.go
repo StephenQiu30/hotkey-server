@@ -407,7 +407,32 @@ WHERE event.id=$1 GROUP BY event.id,storyline.value,heat.value,heat.score,heat.w
 	if err != nil {
 		return eventapplication.MicroEventProjectionDTO{}, err
 	}
-	return record.dto()
+	if err := rows.Close(); err != nil {
+		return eventapplication.MicroEventProjectionDTO{}, databaserepository.MapError(err)
+	}
+	result, err := record.dto()
+	if err != nil {
+		return eventapplication.MicroEventProjectionDTO{}, err
+	}
+	members, err := repository.queryExecutor(ctx).QueryContext(ctx, `SELECT id,version,content_family_id,membership_decision_id,clustering_profile_version
+FROM micro_event_members WHERE micro_event_id=$1 AND active ORDER BY content_family_id,id`, id)
+	if err != nil {
+		return eventapplication.MicroEventProjectionDTO{}, databaserepository.MapError(err)
+	}
+	defer members.Close()
+	result.Members = make([]eventapplication.MicroEventMemberProjectionDTO, 0, result.ContentFamilyCount)
+	for members.Next() {
+		var member eventapplication.MicroEventMemberProjectionDTO
+		if err := members.Scan(&member.ID, &member.Version, &member.ContentFamilyID, &member.MembershipDecisionID,
+			&member.ClusteringProfileVersion); err != nil {
+			return eventapplication.MicroEventProjectionDTO{}, databaserepository.MapError(err)
+		}
+		result.Members = append(result.Members, member)
+	}
+	if err := members.Err(); err != nil {
+		return eventapplication.MicroEventProjectionDTO{}, databaserepository.MapError(err)
+	}
+	return result, nil
 }
 
 func (repository *MicroEventQueryPostgresRepository) GetMicroEventSummary(ctx context.Context, eventID, eventVersion int64) (*eventapplication.EvidenceSummaryDTO, error) {
@@ -473,7 +498,7 @@ GROUP BY sentence.id ORDER BY sentence.ordinal`, summary.ID)
 func (repository *MicroEventQueryPostgresRepository) ListMicroEventEvidence(ctx context.Context, query eventapplication.MicroEventEvidenceQuery) (eventapplication.MicroEventEvidencePageDTO, error) {
 	rows, err := repository.queryExecutor(ctx).QueryContext(ctx, `
 WITH projection AS (
- SELECT evidence.*,claim.micro_event_id,claim.subject,claim.predicate,claim.object,
+ SELECT evidence.*,claim.version AS claim_version,claim.micro_event_id,claim.subject,claim.predicate,claim.object,
         selector.exact_quote,selector.prefix,selector.suffix,selector.utf8_byte_start,selector.utf8_byte_end,
 		selector.markdown_anchor,lineage.lineage_decision_id,lineage.member_version,
         selector.retention_until>$3
@@ -492,7 +517,7 @@ WITH projection AS (
  ) AS lineage ON true
  WHERE claim.micro_event_id=$1 AND evidence.id>$2
 )
-SELECT id,version,claim_id,document_version_id,text_quote_selector_id,content_family_id,lineage_root_document_version_id,
+SELECT id,version,claim_id,claim_version,document_version_id,text_quote_selector_id,content_family_id,lineage_root_document_version_id,
        lineage_decision_id,member_version,subject,predicate,object,relation,
        CASE WHEN citable THEN 'ready' WHEN retention_until<=$3 THEN 'retention_expired' ELSE 'rights_unavailable' END,
        CASE WHEN citable THEN exact_quote END,CASE WHEN citable THEN prefix END,CASE WHEN citable THEN suffix END,
@@ -514,7 +539,7 @@ FROM projection ORDER BY id LIMIT $4`, query.MicroEventID, query.CursorID, query
 		var lineageDecisionID, memberVersion sql.NullInt64
 		var sourceURL, canonicalURL, publisher, contentOrigin sql.NullString
 		var published sql.NullTime
-		if err := rows.Scan(&item.ID, &item.Version, &item.ClaimID, &item.DocumentVersionID, &item.TextQuoteSelectorID,
+		if err := rows.Scan(&item.ID, &item.Version, &item.ClaimID, &item.ClaimVersion, &item.DocumentVersionID, &item.TextQuoteSelectorID,
 			&item.ContentFamilyID, &item.LineageRootID, &lineageDecisionID, &memberVersion,
 			&item.ClaimSubject, &item.ClaimPredicate, &item.ClaimObject,
 			&item.Relation, &item.Availability, &exact, &prefix, &suffix, &start, &end, &quoteSHA, &plaintextSHA,

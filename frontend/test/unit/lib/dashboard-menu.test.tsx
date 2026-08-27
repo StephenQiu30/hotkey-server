@@ -6,7 +6,7 @@ import {
 import { UserRole } from "@/lib/domainEnums";
 
 describe("dashboard menu", () => {
-  it("keeps only the X hotspot core workflow in primary navigation", () => {
+  it("exposes the hotspot-to-semantic-event workflow in primary navigation", () => {
     expect(
       dashboardMenuItems.map(({ path, name }) => ({ path, name }))
     ).toEqual([
@@ -15,6 +15,7 @@ describe("dashboard menu", () => {
       { path: "/dashboard/sources", name: "来源" },
       { path: "/dashboard/search", name: "即时搜索" },
       { path: "/dashboard/contents", name: "热点雷达" },
+      { path: "/dashboard/events", name: "语义事件" },
     ]);
   });
 

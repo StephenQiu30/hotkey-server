@@ -396,6 +396,14 @@ func microEventResponseDTO(item eventapplication.MicroEventProjectionDTO) MicroE
 		LocationKeys: item.LocationKeys, IdentifierKeys: item.IdentifierKeys, EventStartedAt: item.EventStartedAt,
 		EventEndedAt: item.EventEndedAt, ClusteringProfileVersion: item.ClusteringProfileVersion,
 		RelevanceScore: item.RelevanceScore, ContentFamilyCount: item.ContentFamilyCount, DocumentCount: item.DocumentCount}
+	if len(item.Members) > 0 {
+		value.Members = make([]MicroEventMemberResponseDTO, len(item.Members))
+		for index, member := range item.Members {
+			value.Members[index] = MicroEventMemberResponseDTO{ID: member.ID, Version: member.Version,
+				ContentFamilyID: member.ContentFamilyID, MembershipDecisionID: member.MembershipDecisionID,
+				ClusteringProfileVersion: member.ClusteringProfileVersion}
+		}
+	}
 	if item.Storyline != nil {
 		value.Storyline = &StorylineResponseDTO{ID: item.Storyline.ID, Version: item.Storyline.Version,
 			StorylineKey: item.Storyline.StorylineKey, Title: item.Storyline.Title, Summary: item.Storyline.Summary,
@@ -434,6 +442,7 @@ func evidenceStateResponseDTO(item eventapplication.EvidenceStateSnapshotDTO) *E
 }
 func claimEvidenceResponseDTO(item eventapplication.ClaimEvidenceProjectionDTO) ClaimEvidenceResponseDTO {
 	return ClaimEvidenceResponseDTO{ID: item.ID, Version: item.Version, ClaimID: item.ClaimID, DocumentVersionID: item.DocumentVersionID,
+		ClaimVersion:        item.ClaimVersion,
 		TextQuoteSelectorID: item.TextQuoteSelectorID, ContentFamilyID: item.ContentFamilyID, LineageRootID: item.LineageRootID,
 		LineageDecisionID: item.LineageDecisionID, ContentFamilyMemberVersion: item.ContentFamilyMemberVersion,
 		Subject: item.ClaimSubject, Predicate: item.ClaimPredicate, Object: item.ClaimObject, Relation: item.Relation,

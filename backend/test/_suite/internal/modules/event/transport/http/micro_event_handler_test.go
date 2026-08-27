@@ -90,6 +90,18 @@ func TestMicroEventResponseExposesHeatProfileAvailabilityAndWarmingUp(t *testing
 	}
 }
 
+func TestMicroEventResponseExposesOnlyActiveGovernanceMemberHandles(t *testing.T) {
+	response := microEventResponseDTO(application.MicroEventProjectionDTO{Members: []application.MicroEventMemberProjectionDTO{{
+		ID: 19, Version: 2, ContentFamilyID: 23, MembershipDecisionID: 29,
+		ClusteringProfileVersion: "micro-event-clustering-v1",
+	}}})
+	if len(response.Members) != 1 || response.Members[0].ID != 19 || response.Members[0].Version != 2 ||
+		response.Members[0].ContentFamilyID != 23 || response.Members[0].MembershipDecisionID != 29 ||
+		response.Members[0].ClusteringProfileVersion != "micro-event-clustering-v1" {
+		t.Fatalf("governance member handles = %#v", response.Members)
+	}
+}
+
 func (fake *microEventQueryRepositoryFake) GetMicroEvent(context.Context, int64) (application.MicroEventProjectionDTO, error) {
 	return application.MicroEventProjectionDTO{ID: 7, Version: 3, EventKey: "semantic-event", Status: "active",
 		PrimarySubjectKey: "acme", PrimaryActionKey: "announced", EventStartedAt: time.Date(2026, 8, 10, 8, 0, 0, 0, time.UTC),

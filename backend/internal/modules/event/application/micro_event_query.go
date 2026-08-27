@@ -39,6 +39,12 @@ type MicroEventProjectionDTO struct {
 	LatestSummary                       *EvidenceSummaryDTO
 	ContentFamilyCount                  int
 	DocumentCount                       int
+	Members                             []MicroEventMemberProjectionDTO
+}
+
+type MicroEventMemberProjectionDTO struct {
+	ID, Version, ContentFamilyID, MembershipDecisionID int64
+	ClusteringProfileVersion                           string
 }
 
 type MicroEventPageDTO struct {
@@ -54,21 +60,21 @@ type MicroEventEvidenceQuery struct {
 }
 
 type ClaimEvidenceProjectionDTO struct {
-	ID, Version, ClaimID, DocumentVersionID, TextQuoteSelectorID int64
-	ContentFamilyID, LineageRootID                               int64
-	LineageDecisionID, ContentFamilyMemberVersion                *int64
-	ClaimSubject, ClaimPredicate, ClaimObject                    string
-	Relation, Availability                                       string
-	ExactQuote, Prefix, Suffix                                   *string
-	UTF8ByteStart, UTF8ByteEnd                                   *int64
-	QuoteSHA256, PlaintextSHA256, SelectorVersion                *string
-	MarkdownAnchor                                               *string
-	SourceRecordURL, CanonicalURL                                *string
-	PublisherName, ContentOriginName                             *string
-	PublishedAt                                                  *time.Time
-	CapturedAt                                                   time.Time
-	ExtractionSchemaVersion, DecisionOrigin                      string
-	CreatedAt                                                    time.Time
+	ID, Version, ClaimID, ClaimVersion, DocumentVersionID, TextQuoteSelectorID int64
+	ContentFamilyID, LineageRootID                                             int64
+	LineageDecisionID, ContentFamilyMemberVersion                              *int64
+	ClaimSubject, ClaimPredicate, ClaimObject                                  string
+	Relation, Availability                                                     string
+	ExactQuote, Prefix, Suffix                                                 *string
+	UTF8ByteStart, UTF8ByteEnd                                                 *int64
+	QuoteSHA256, PlaintextSHA256, SelectorVersion                              *string
+	MarkdownAnchor                                                             *string
+	SourceRecordURL, CanonicalURL                                              *string
+	PublisherName, ContentOriginName                                           *string
+	PublishedAt                                                                *time.Time
+	CapturedAt                                                                 time.Time
+	ExtractionSchemaVersion, DecisionOrigin                                    string
+	CreatedAt                                                                  time.Time
 }
 
 type MicroEventEvidencePageDTO struct {

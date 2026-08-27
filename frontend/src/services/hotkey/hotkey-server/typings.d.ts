@@ -174,6 +174,7 @@ required property without making explicit null impossible to bind. */
     canonical_url?: string;
     captured_at?: string;
     claim_id?: number;
+    claim_version?: number;
     content_family_id?: number;
     content_family_member_version?: number;
     content_origin?: string;
@@ -1352,6 +1353,14 @@ probability or a cross-channel relevance percentage. */
     version?: number;
   };
 
+  type MicroEventMemberResponseDTO = {
+    clustering_profile_version?: string;
+    content_family_id?: number;
+    id?: number;
+    membership_decision_id?: number;
+    version?: number;
+  };
+
   type MicroEventPageResponseDTO = {
     items?: MicroEventResponseDTO[];
     next_cursor?: string;
@@ -1370,6 +1379,7 @@ probability or a cross-channel relevance percentage. */
     identifier_keys?: string[];
     latest_heat?: EventHeatV2ResponseDTO;
     location_keys?: string[];
+    members?: MicroEventMemberResponseDTO[];
     primary_action_key?: string;
     primary_subject_key?: string;
     relevance_score?: number;

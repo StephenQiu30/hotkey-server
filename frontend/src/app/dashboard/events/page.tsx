@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { Activity, Flame, Loader2, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -98,6 +99,13 @@ function MicroEventCard({ event }: { event: HotKeyAPI.MicroEventResponseDTO }) {
           <p className="mono break-words text-xs text-muted-foreground sm:col-span-2 lg:col-span-4">
             Heat 理由：{event.latest_heat.reason_codes.join(" · ")}
           </p>
+        ) : null}
+        {event.id ? (
+          <div className="sm:col-span-2 lg:col-span-4">
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/dashboard/events/${event.id}/governance`}>查看治理与证据</Link>
+            </Button>
+          </div>
         ) : null}
       </CardContent>
     </Card>

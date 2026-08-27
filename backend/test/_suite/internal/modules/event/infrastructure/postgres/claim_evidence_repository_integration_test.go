@@ -199,11 +199,14 @@ WHERE evidence.id=$1`, firstResult.Evidence.ID).
 		t.Fatalf("List(v2) = %#v / %v", page, err)
 	}
 	detail, err := queryService.Get(ctx, firstAssignment.Event.ID)
-	if err != nil || detail.Storyline == nil || detail.DocumentCount != 2 {
+	if err != nil || detail.Storyline == nil || detail.DocumentCount != 2 || len(detail.Members) != 2 ||
+		detail.Members[0].ContentFamilyID <= 0 || detail.Members[0].MembershipDecisionID <= 0 || detail.Members[0].Version <= 0 ||
+		detail.Members[1].ContentFamilyID <= 0 || detail.Members[1].MembershipDecisionID <= 0 || detail.Members[1].Version <= 0 {
 		t.Fatalf("Get(v2) = %#v / %v", detail, err)
 	}
 	evidencePage, err := queryService.Evidence(ctx, eventapplication.MicroEventEvidenceQuery{MicroEventID: firstAssignment.Event.ID, Limit: 10, AsOf: now})
-	if err != nil || len(evidencePage.Items) != 3 || evidencePage.Items[0].Availability != "ready" || evidencePage.Items[0].ExactQuote == nil {
+	if err != nil || len(evidencePage.Items) != 3 || evidencePage.Items[0].ClaimVersion != 1 ||
+		evidencePage.Items[0].Availability != "ready" || evidencePage.Items[0].ExactQuote == nil {
 		t.Fatalf("Evidence(v2) = %#v / %v", evidencePage, err)
 	}
 	insertClaimEvidenceQuoteDeny(t, runtime, first, now)

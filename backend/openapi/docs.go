@@ -8002,6 +8002,9 @@ const docTemplate = `{
                 "claim_id": {
                     "type": "integer"
                 },
+                "claim_version": {
+                    "type": "integer"
+                },
                 "content_family_id": {
                     "type": "integer"
                 },
@@ -10400,6 +10403,26 @@ const docTemplate = `{
                 }
             }
         },
+        "http.MicroEventMemberResponseDTO": {
+            "type": "object",
+            "properties": {
+                "clustering_profile_version": {
+                    "type": "string"
+                },
+                "content_family_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "membership_decision_id": {
+                    "type": "integer"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
         "http.MicroEventPageResponseDTO": {
             "type": "object",
             "properties": {
@@ -10457,6 +10480,12 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "type": "string"
+                    }
+                },
+                "members": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.MicroEventMemberResponseDTO"
                     }
                 },
                 "primary_action_key": {

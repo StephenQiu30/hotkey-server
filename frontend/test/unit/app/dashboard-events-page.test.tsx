@@ -43,6 +43,10 @@ describe("EventsPage", () => {
     expect(screen.getByText("2 个内容家族 · 5 篇文档")).toBeInTheDocument();
     expect(screen.getByText("82.5")).toBeInTheDocument();
     expect(screen.getByText("多个独立出处")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看治理与证据" })).toHaveAttribute(
+      "href",
+      "/dashboard/events/17/governance",
+    );
     expect(mocks.getMicroEvents).toHaveBeenCalledWith({ limit: 50, sort: "heat" });
   });
 

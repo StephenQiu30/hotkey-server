@@ -59,24 +59,33 @@ type EvidenceSummaryResponseDTO struct {
 	CreatedAt             time.Time                            `json:"created_at"`
 }
 type MicroEventResponseDTO struct {
-	ID                       int64                       `json:"id"`
-	Version                  int64                       `json:"version"`
-	EventKey                 string                      `json:"event_key"`
-	Status                   string                      `json:"status"`
-	PrimarySubjectKey        string                      `json:"primary_subject_key"`
-	PrimaryActionKey         string                      `json:"primary_action_key"`
-	LocationKeys             []string                    `json:"location_keys"`
-	IdentifierKeys           []string                    `json:"identifier_keys"`
-	EventStartedAt           time.Time                   `json:"event_started_at"`
-	EventEndedAt             *time.Time                  `json:"event_ended_at,omitempty"`
-	ClusteringProfileVersion string                      `json:"clustering_profile_version"`
-	Storyline                *StorylineResponseDTO       `json:"storyline,omitempty"`
-	LatestHeat               *EventHeatV2ResponseDTO     `json:"latest_heat,omitempty"`
-	RelevanceScore           *float64                    `json:"relevance_score,omitempty"`
-	EvidenceState            *EvidenceStateResponseDTO   `json:"evidence_state,omitempty"`
-	EvidenceSummary          *EvidenceSummaryResponseDTO `json:"evidence_summary,omitempty"`
-	ContentFamilyCount       int                         `json:"content_family_count"`
-	DocumentCount            int                         `json:"document_count"`
+	ID                       int64                         `json:"id"`
+	Version                  int64                         `json:"version"`
+	EventKey                 string                        `json:"event_key"`
+	Status                   string                        `json:"status"`
+	PrimarySubjectKey        string                        `json:"primary_subject_key"`
+	PrimaryActionKey         string                        `json:"primary_action_key"`
+	LocationKeys             []string                      `json:"location_keys"`
+	IdentifierKeys           []string                      `json:"identifier_keys"`
+	EventStartedAt           time.Time                     `json:"event_started_at"`
+	EventEndedAt             *time.Time                    `json:"event_ended_at,omitempty"`
+	ClusteringProfileVersion string                        `json:"clustering_profile_version"`
+	Storyline                *StorylineResponseDTO         `json:"storyline,omitempty"`
+	LatestHeat               *EventHeatV2ResponseDTO       `json:"latest_heat,omitempty"`
+	RelevanceScore           *float64                      `json:"relevance_score,omitempty"`
+	EvidenceState            *EvidenceStateResponseDTO     `json:"evidence_state,omitempty"`
+	EvidenceSummary          *EvidenceSummaryResponseDTO   `json:"evidence_summary,omitempty"`
+	ContentFamilyCount       int                           `json:"content_family_count"`
+	DocumentCount            int                           `json:"document_count"`
+	Members                  []MicroEventMemberResponseDTO `json:"members,omitempty"`
+}
+
+type MicroEventMemberResponseDTO struct {
+	ID                       int64  `json:"id"`
+	Version                  int64  `json:"version"`
+	ContentFamilyID          int64  `json:"content_family_id"`
+	MembershipDecisionID     int64  `json:"membership_decision_id"`
+	ClusteringProfileVersion string `json:"clustering_profile_version"`
 }
 type MicroEventPageResponseDTO struct {
 	Items      []MicroEventResponseDTO `json:"items"`
@@ -87,6 +96,7 @@ type ClaimEvidenceResponseDTO struct {
 	ID                         int64      `json:"id"`
 	Version                    int64      `json:"version"`
 	ClaimID                    int64      `json:"claim_id"`
+	ClaimVersion               int64      `json:"claim_version"`
 	DocumentVersionID          int64      `json:"document_version_id"`
 	TextQuoteSelectorID        int64      `json:"text_quote_selector_id"`
 	ContentFamilyID            int64      `json:"content_family_id"`
