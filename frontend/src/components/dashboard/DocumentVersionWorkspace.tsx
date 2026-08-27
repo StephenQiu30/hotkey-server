@@ -51,6 +51,15 @@ function formatDateTime(value?: string) {
   }).format(date);
 }
 
+function formatUTCOffset(value?: number) {
+  if (value === undefined || value < -840 || value > 840) return undefined;
+  const sign = value >= 0 ? "+" : "-";
+  const absolute = Math.abs(value);
+  const hours = String(Math.floor(absolute / 60)).padStart(2, "0");
+  const minutes = String(absolute % 60).padStart(2, "0");
+  return `UTC${sign}${hours}:${minutes}`;
+}
+
 function safeBodyFailure(reason: unknown): string {
   if (reason && typeof reason === "object" && "status" in reason) {
     const status = Number((reason as { status?: unknown }).status);
@@ -268,7 +277,11 @@ export function DocumentVersionWorkspace({ documentVersionID }: DocumentVersionW
               {citation.author ? <span> · {citation.author}</span> : null}
             </p>
             <p className="mt-2 text-xs text-muted-foreground">
-              发布于 {formatDateTime(citation.published_at)} · 采集于 {formatDateTime(citation.captured_at)}
+              {citation.published_at ? `发布于 ${formatDateTime(citation.published_at)}` : "发布时间未知"}
+              {formatUTCOffset(citation.published_utc_offset_minutes)
+                ? ` · 原时区 ${formatUTCOffset(citation.published_utc_offset_minutes)}`
+                : null}
+              {` · 采集于 ${formatDateTime(citation.captured_at)}`}
             </p>
           </div>
           <div className="document-actions flex shrink-0 flex-wrap gap-2">

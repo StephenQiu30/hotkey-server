@@ -31,21 +31,22 @@ type EvidenceSelectionManifestDTO struct {
 	EvidenceSnapshotID  int64
 	SourceConnectionID  int64
 
-	ExternalID       string
-	UpstreamIdentity string
-	SourceCode       string
-	ContentType      string
-	Title            string
-	Language         string
-	Author           string
-	SourceRecordURL  string
-	CanonicalURL     string
-	DiscussionURL    string
-	BodyOrigin       string
-	Completeness     string
-	PublishedAt      *time.Time
-	DiscoveredAt     time.Time
-	ObservationState string
+	ExternalID                string
+	UpstreamIdentity          string
+	SourceCode                string
+	ContentType               string
+	Title                     string
+	Language                  string
+	Author                    string
+	SourceRecordURL           string
+	CanonicalURL              string
+	DiscussionURL             string
+	BodyOrigin                string
+	Completeness              string
+	PublishedAt               *time.Time
+	PublishedUTCOffsetMinutes *int
+	DiscoveredAt              time.Time
+	ObservationState          string
 
 	LifecycleState          string
 	EvidenceKey             string
@@ -124,21 +125,22 @@ type SelectedEvidenceDTO struct {
 	EvidenceSnapshotID  int64
 	SourceConnectionID  int64
 
-	ExternalID       string
-	UpstreamIdentity string
-	SourceCode       string
-	ContentType      string
-	Title            string
-	Language         string
-	Author           string
-	SourceRecordURL  string
-	CanonicalURL     string
-	DiscussionURL    string
-	BodyOrigin       string
-	Completeness     string
-	PublishedAt      *time.Time
-	DiscoveredAt     time.Time
-	CapturedAt       time.Time
+	ExternalID                string
+	UpstreamIdentity          string
+	SourceCode                string
+	ContentType               string
+	Title                     string
+	Language                  string
+	Author                    string
+	SourceRecordURL           string
+	CanonicalURL              string
+	DiscussionURL             string
+	BodyOrigin                string
+	Completeness              string
+	PublishedAt               *time.Time
+	PublishedUTCOffsetMinutes *int
+	DiscoveredAt              time.Time
+	CapturedAt                time.Time
 
 	SelectedPayload       []byte
 	SelectedPayloadSHA256 string
@@ -281,6 +283,8 @@ func validateEvidenceSelectionManifest(manifest EvidenceSelectionManifestDTO, qu
 		len(manifest.Title) > 1<<20 || len(manifest.Author) > 512 ||
 		!validEvidenceBodyOrigin(manifest.BodyOrigin) || !validEvidenceCompleteness(manifest.Completeness) ||
 		!validEvidenceSelectionURLs(manifest) || manifest.ResponseStatus < 100 || manifest.ResponseStatus > 599 ||
+		(manifest.PublishedAt == nil && manifest.PublishedUTCOffsetMinutes != nil) ||
+		(manifest.PublishedUTCOffsetMinutes != nil && (*manifest.PublishedUTCOffsetMinutes < -840 || *manifest.PublishedUTCOffsetMinutes > 840)) ||
 		manifest.CapturedAt.IsZero() ||
 		manifest.DiscoveredAt.IsZero() || manifest.CapturedAt.Before(manifest.DiscoveredAt) || manifest.RightsEvaluatedAt.IsZero() ||
 		lifecycleErr != nil || lifecycleState != domain.EvidenceLifecycleAvailable ||
@@ -375,7 +379,8 @@ func selectedEvidenceDTO(manifest EvidenceSelectionManifestDTO, selected []byte)
 		Language: manifest.Language, Author: manifest.Author, SourceRecordURL: manifest.SourceRecordURL,
 		CanonicalURL: manifest.CanonicalURL, DiscussionURL: manifest.DiscussionURL,
 		BodyOrigin: manifest.BodyOrigin, Completeness: manifest.Completeness,
-		PublishedAt: copyTime(manifest.PublishedAt), DiscoveredAt: manifest.DiscoveredAt.UTC(), CapturedAt: manifest.CapturedAt.UTC(),
+		PublishedAt: copyTime(manifest.PublishedAt), PublishedUTCOffsetMinutes: copyInt(manifest.PublishedUTCOffsetMinutes),
+		DiscoveredAt: manifest.DiscoveredAt.UTC(), CapturedAt: manifest.CapturedAt.UTC(),
 		SelectedPayload: append([]byte(nil), selected...), SelectedPayloadSHA256: manifest.EvidenceReference.SelectedPayloadSHA256,
 		PayloadMIMEType: manifest.MIMEType, SelectorVersion: manifest.EvidenceReference.SelectorVersion,
 	}
@@ -386,5 +391,13 @@ func copyTime(value *time.Time) *time.Time {
 		return nil
 	}
 	copy := value.UTC()
+	return &copy
+}
+
+func copyInt(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	copy := *value
 	return &copy
 }

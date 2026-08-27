@@ -145,25 +145,26 @@ type PersistedEvidenceSnapshotDTO struct {
 }
 
 type SourceObservationDTO struct {
-	SourceConnectionID int64
-	CollectionRunID    int64
-	ExternalID         string
-	UpstreamIdentity   string
-	SourceCode         string
-	ContentType        string
-	Title              string
-	Language           string
-	Author             string
-	SourceRecordURL    string
-	CanonicalURL       string
-	DiscussionURL      string
-	BodyOrigin         string
-	Completeness       string
-	PublishedAt        *time.Time
-	DiscoveredAt       time.Time
-	CapturedAt         time.Time
-	Evidence           RawEvidenceReferenceDTO
-	Parties            []SourceObservationPartyDTO
+	SourceConnectionID        int64
+	CollectionRunID           int64
+	ExternalID                string
+	UpstreamIdentity          string
+	SourceCode                string
+	ContentType               string
+	Title                     string
+	Language                  string
+	Author                    string
+	SourceRecordURL           string
+	CanonicalURL              string
+	DiscussionURL             string
+	BodyOrigin                string
+	Completeness              string
+	PublishedAt               *time.Time
+	PublishedUTCOffsetMinutes *int
+	DiscoveredAt              time.Time
+	CapturedAt                time.Time
+	Evidence                  RawEvidenceReferenceDTO
+	Parties                   []SourceObservationPartyDTO
 }
 
 type CommitEvidenceSnapshotCommand struct {
@@ -532,7 +533,14 @@ func sourceObservationDTOFromEntity(sourceConnectionID, collectionRunID int64, i
 		}
 	}
 	var publishedAt *time.Time
+	var publishedUTCOffsetMinutes *int
 	if item.PublishedAt != nil {
+		_, offsetSeconds := item.PublishedAt.Zone()
+		if offsetSeconds%60 != 0 || offsetSeconds < -14*60*60 || offsetSeconds > 14*60*60 {
+			return SourceObservationDTO{}, fmt.Errorf("raw evidence observation published UTC offset is invalid")
+		}
+		offsetMinutes := offsetSeconds / 60
+		publishedUTCOffsetMinutes = &offsetMinutes
 		value := item.PublishedAt.UTC()
 		publishedAt = &value
 	}
@@ -540,7 +548,8 @@ func sourceObservationDTOFromEntity(sourceConnectionID, collectionRunID int64, i
 		SourceConnectionID: sourceConnectionID, CollectionRunID: collectionRunID, ExternalID: item.ExternalID, UpstreamIdentity: upstreamIdentity,
 		SourceCode: item.SourceCode, ContentType: item.ContentType, Title: item.Title, Language: language, Author: item.Author,
 		SourceRecordURL: snapshot.FinalURL, CanonicalURL: canonicalURL, DiscussionURL: item.DiscussionURL, BodyOrigin: bodyOrigin, Completeness: completeness,
-		PublishedAt: publishedAt, DiscoveredAt: item.ObservedAt.UTC(), CapturedAt: snapshot.CapturedAt.UTC(),
+		PublishedAt: publishedAt, PublishedUTCOffsetMinutes: publishedUTCOffsetMinutes,
+		DiscoveredAt: item.ObservedAt.UTC(), CapturedAt: snapshot.CapturedAt.UTC(),
 		Evidence: rawEvidenceReferenceDTOFromEntity(reference), Parties: sourceObservationPartyDTOsFromEntities(item.Parties),
 	}, nil
 }

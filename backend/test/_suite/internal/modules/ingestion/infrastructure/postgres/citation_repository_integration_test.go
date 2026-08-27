@@ -68,6 +68,7 @@ func TestCitationRepositoryPinsExactVersionAndRechecksCurrentRights(t *testing.T
 	}
 	if read.DocumentVersionID != first.DocumentVersion.ID || read.DocumentID != first.Document.ID ||
 		read.Title != "revision 0" || read.ContentSHA256 != first.DocumentVersion.ContentSHA256 ||
+		read.PublishedAt == nil || read.PublishedUTCOffsetMinutes == nil || *read.PublishedUTCOffsetMinutes != 480 ||
 		read.Artifact == nil || read.Artifact.SHA256 != firstArtifactSHA || !read.DisplayPrivateAllowed ||
 		!read.Artifact.StoreDerivedAllowed || !read.Artifact.RetainAllowed || read.Artifact.AnchorMap == nil ||
 		len(read.Artifact.AnchorMap.Blocks) != 1 || read.Artifact.AnchorMap.Blocks[0].MarkdownAnchor != "body-0000-000000000000" ||

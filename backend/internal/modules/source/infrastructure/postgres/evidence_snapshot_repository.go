@@ -343,15 +343,15 @@ func appendSourceObservation(ctx context.Context, executor evidenceSnapshotExecu
 INSERT INTO source_observations (
   source_connection_id,collection_run_item_id,external_id,upstream_identity,source_code,content_type,
   title,language,author_snapshot,source_record_url,canonical_url,discussion_url,body_origin,
-  completeness,published_at,discovered_at,captured_at
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+  completeness,published_at,published_utc_offset_minutes,discovered_at,captured_at
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
 ON CONFLICT DO NOTHING
 RETURNING `+sourceObservationColumns,
 		observation.SourceConnectionID, nullInt64(collectionItemID), observation.ExternalID, observation.UpstreamIdentity,
 		observation.SourceCode, observation.ContentType, observation.Title, observation.Language, nullString(observation.Author),
 		nullString(observation.SourceRecordURL), nullString(observation.CanonicalURL), nullString(observation.DiscussionURL),
 		observation.BodyOrigin, observation.Completeness, nullTime(observation.PublishedAt),
-		observation.DiscoveredAt.UTC(), observation.CapturedAt.UTC()))
+		nullOptionalInt(observation.PublishedUTCOffsetMinutes), observation.DiscoveredAt.UTC(), observation.CapturedAt.UTC()))
 	if errors.Is(err, sql.ErrNoRows) {
 		stored, err = scanSourceObservationRecord(executor.QueryRowContext(ctx, `
 SELECT `+sourceObservationColumns+`

@@ -51,6 +51,7 @@ type citationRecord struct {
 	completeness                 string
 	language                     string
 	publishedAt                  sql.NullTime
+	publishedUTCOffsetMinutes    sql.NullInt16
 	capturedAt                   time.Time
 	contentSHA256                string
 	displayPrivateAllowed        bool
@@ -144,6 +145,7 @@ SELECT
   document_version.completeness,
   document_version.language,
   observation.published_at,
+  observation.published_utc_offset_minutes,
   document_version.captured_at,
   btrim(document_version.content_sha256),
   current_rights_action_allowed(
@@ -279,7 +281,7 @@ func scanCitationRecord(row *sql.Row) (citationRecord, error) {
 		&record.documentState, &record.documentLifecycleState, &record.observationState,
 		&record.sourceType, &record.sourceName, &record.title, &record.author, &record.partyFactsJSON,
 		&record.sourceRecordURL, &record.canonicalURL, &record.discussionURL,
-		&record.bodyOrigin, &record.completeness, &record.language, &record.publishedAt,
+		&record.bodyOrigin, &record.completeness, &record.language, &record.publishedAt, &record.publishedUTCOffsetMinutes,
 		&record.capturedAt, &record.contentSHA256, &record.displayPrivateAllowed, &record.rightsEvaluatedAt,
 		&record.rawEvidenceAvailability, &record.rawEvidencePayloadsJSON, &record.rawEvidenceRetentionUntil,
 		&record.rawEvidenceDeletionAudited, &record.rawEvidenceExceptionApproved,
@@ -308,7 +310,8 @@ func citationReadDTO(record citationRecord) (ingestionapplication.CitationReadDT
 		Author: citationOptionalString(record.author), SourceRecordURL: citationOptionalString(record.sourceRecordURL),
 		CanonicalURL: citationOptionalString(record.canonicalURL), DiscussionURL: citationOptionalString(record.discussionURL),
 		BodyOrigin: record.bodyOrigin, Completeness: record.completeness,
-		Language: record.language, PublishedAt: citationOptionalTime(record.publishedAt), CapturedAt: record.capturedAt.UTC(),
+		Language: record.language, PublishedAt: citationOptionalTime(record.publishedAt),
+		PublishedUTCOffsetMinutes: citationOptionalSmallInt(record.publishedUTCOffsetMinutes), CapturedAt: record.capturedAt.UTC(),
 		ContentSHA256: record.contentSHA256, DisplayPrivateAllowed: record.displayPrivateAllowed,
 		RightsEvaluatedAt: record.rightsEvaluatedAt.UTC(),
 	}
@@ -399,6 +402,14 @@ func citationOptionalTime(value sql.NullTime) *time.Time {
 		return nil
 	}
 	result := value.Time.UTC()
+	return &result
+}
+
+func citationOptionalSmallInt(value sql.NullInt16) *int {
+	if !value.Valid {
+		return nil
+	}
+	result := int(value.Int16)
 	return &result
 }
 

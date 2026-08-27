@@ -1802,6 +1802,7 @@ CREATE TABLE IF NOT EXISTS source_observations (
     body_origin varchar(48) NOT NULL CHECK (body_origin IN ('api_content','feed_content','feed_summary','structured_article_body','authorized_payload_extraction','platform_post','search_snippet')),
     completeness varchar(24) NOT NULL CHECK (completeness IN ('full','partial','summary','snippet','metadata_only','unknown')),
     published_at timestamptz,
+    published_utc_offset_minutes smallint,
     modified_at timestamptz,
     discovered_at timestamptz NOT NULL,
     captured_at timestamptz NOT NULL,
@@ -1814,8 +1815,27 @@ CREATE TABLE IF NOT EXISTS source_observations (
     UNIQUE (collection_run_item_id),
     CHECK (source_record_url IS NOT NULL OR canonical_url IS NOT NULL OR discussion_url IS NOT NULL),
     CHECK (modified_at IS NULL OR published_at IS NULL OR modified_at >= published_at),
-    CHECK (captured_at >= discovered_at)
+    CHECK (captured_at >= discovered_at),
+    CHECK (
+        published_at IS NULL AND published_utc_offset_minutes IS NULL
+        OR published_at IS NOT NULL AND (published_utc_offset_minutes IS NULL OR published_utc_offset_minutes BETWEEN -840 AND 840)
+    )
 );
+ALTER TABLE source_observations ADD COLUMN IF NOT EXISTS published_utc_offset_minutes smallint;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid='source_observations'::regclass AND contype='c'
+          AND pg_get_constraintdef(oid) LIKE '%published_utc_offset_minutes%'
+    ) THEN
+        ALTER TABLE source_observations ADD CHECK (
+            published_at IS NULL AND published_utc_offset_minutes IS NULL
+            OR published_at IS NOT NULL AND (published_utc_offset_minutes IS NULL OR published_utc_offset_minutes BETWEEN -840 AND 840)
+        );
+    END IF;
+END;
+$$;
 ALTER TABLE source_observations DROP CONSTRAINT IF EXISTS source_observations_upstream_identity_check;
 ALTER TABLE source_observations ADD CONSTRAINT source_observations_upstream_identity_check
     CHECK (upstream_identity ~ '^[0-9a-f]{64}$');

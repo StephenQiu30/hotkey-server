@@ -133,6 +133,7 @@ required property without making explicit null impossible to bind. */
     locator_availability?: "available" | "unavailable";
     locator_unavailable_reason?: string;
     published_at?: string;
+    published_utc_offset_minutes?: number;
     publisher?: string;
     publisher_availability?: "available" | "unavailable";
     publisher_party?: CitationPartyResponseDTO;

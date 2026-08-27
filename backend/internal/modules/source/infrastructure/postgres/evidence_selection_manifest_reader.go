@@ -40,21 +40,22 @@ type evidenceSelectionManifestRecord struct {
 	evidenceSnapshotID  int64
 	sourceConnectionID  int64
 
-	externalID       string
-	upstreamIdentity string
-	sourceCode       string
-	contentType      string
-	title            string
-	language         string
-	author           sql.NullString
-	sourceRecordURL  sql.NullString
-	canonicalURL     sql.NullString
-	discussionURL    sql.NullString
-	bodyOrigin       string
-	completeness     string
-	publishedAt      sql.NullTime
-	discoveredAt     time.Time
-	observationState string
+	externalID                string
+	upstreamIdentity          string
+	sourceCode                string
+	contentType               string
+	title                     string
+	language                  string
+	author                    sql.NullString
+	sourceRecordURL           sql.NullString
+	canonicalURL              sql.NullString
+	discussionURL             sql.NullString
+	bodyOrigin                string
+	completeness              string
+	publishedAt               sql.NullTime
+	publishedUTCOffsetMinutes sql.NullInt16
+	discoveredAt              time.Time
+	observationState          string
 
 	lifecycleState          string
 	evidenceKey             string
@@ -114,6 +115,7 @@ SELECT
   observation.body_origin,
   observation.completeness,
   observation.published_at,
+  observation.published_utc_offset_minutes,
   observation.discovered_at,
   observation.observation_state,
   snapshot.lifecycle_state,
@@ -189,7 +191,8 @@ func scanEvidenceSelectionManifestRecord(row evidenceSelectionManifestRow) (evid
 		&record.evidenceReferenceID, &record.sourceObservationID, &record.evidenceSnapshotID, &record.sourceConnectionID,
 		&record.externalID, &record.upstreamIdentity, &record.sourceCode, &record.contentType, &record.title, &record.language,
 		&record.author, &record.sourceRecordURL, &record.canonicalURL, &record.discussionURL,
-		&record.bodyOrigin, &record.completeness, &record.publishedAt, &record.discoveredAt, &record.observationState,
+		&record.bodyOrigin, &record.completeness, &record.publishedAt, &record.publishedUTCOffsetMinutes,
+		&record.discoveredAt, &record.observationState,
 		&record.lifecycleState, &record.evidenceKey, &record.objectKey, &record.payloadSHA256,
 		&record.collectorProfileVersion, &record.mimeType, &record.sizeBytes, &record.responseStatus,
 		&record.requestedURL, &record.finalURL, &record.redirectChainJSON, &record.responseHeadersJSON,
@@ -218,7 +221,8 @@ func (record evidenceSelectionManifestRecord) applicationDTO() (sourceapplicatio
 		Author: evidenceSelectionString(record.author), SourceRecordURL: evidenceSelectionString(record.sourceRecordURL),
 		CanonicalURL: evidenceSelectionString(record.canonicalURL), DiscussionURL: evidenceSelectionString(record.discussionURL),
 		BodyOrigin: record.bodyOrigin, Completeness: record.completeness,
-		PublishedAt: evidenceSelectionTime(record.publishedAt), DiscoveredAt: record.discoveredAt.UTC(), ObservationState: record.observationState,
+		PublishedAt: evidenceSelectionTime(record.publishedAt), PublishedUTCOffsetMinutes: evidenceSelectionSmallInt(record.publishedUTCOffsetMinutes),
+		DiscoveredAt: record.discoveredAt.UTC(), ObservationState: record.observationState,
 		LifecycleState: record.lifecycleState, EvidenceKey: strings.TrimSpace(record.evidenceKey),
 		ObjectKey: record.objectKey, PayloadSHA256: strings.TrimSpace(record.payloadSHA256),
 		CollectorProfileVersion: record.collectorProfileVersion, MIMEType: record.mimeType,
@@ -247,6 +251,14 @@ func evidenceSelectionTime(value sql.NullTime) *time.Time {
 		return nil
 	}
 	result := value.Time.UTC()
+	return &result
+}
+
+func evidenceSelectionSmallInt(value sql.NullInt16) *int {
+	if !value.Valid {
+		return nil
+	}
+	result := int(value.Int16)
 	return &result
 }
 

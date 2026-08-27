@@ -437,7 +437,7 @@ func assertSafeVersionedCitationOpenAPIDefinitions(t *testing.T, definitions map
 			"publisher_unavailable_reason": true, "content_origin_availability": true,
 			"content_origin_unavailable_reason": true, "source_record_url": true, "canonical_url": true,
 			"discussion_url": true, "body_origin": true, "completeness": true, "language": true,
-			"published_at": true, "captured_at": true, "content_sha256": true, "availability": true,
+			"published_at": true, "published_utc_offset_minutes": true, "captured_at": true, "content_sha256": true, "availability": true,
 			"unavailable_reason": true, "artifact": true, "locator_availability": true,
 			"locator_unavailable_reason": true, "exact_quote": true, "utf8_byte_start": true,
 			"utf8_byte_end": true, "anchor_map": true, "raw_evidence": true,

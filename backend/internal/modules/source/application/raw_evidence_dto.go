@@ -255,7 +255,7 @@ func rawEvidenceItemEntityFromDTO(item RawEvidenceItemDTO) (domain.SourceItem, e
 	return domain.NormalizeSourceItem(domain.SourceItem{
 		SourceCode: item.SourceCode, ExternalID: item.ExternalID, ParentExternalID: item.ParentExternalID,
 		ContentType: item.ContentType, Title: item.Title, Body: item.Body, Language: item.Language,
-		URL: item.URL, DiscussionURL: item.DiscussionURL, Author: item.Author, PublishedAt: copyTime(item.PublishedAt), ObservedAt: item.ObservedAt,
+		URL: item.URL, DiscussionURL: item.DiscussionURL, Author: item.Author, PublishedAt: copyTimePreservingLocation(item.PublishedAt), ObservedAt: item.ObservedAt,
 		EvidenceCompleteness: completeness, Attachments: attachments,
 		Metrics: domain.SourceMetrics{
 			ViewCount: copyInt64(item.Metrics.ViewCount), LikeCount: copyInt64(item.Metrics.LikeCount),
@@ -279,7 +279,7 @@ func rawEvidenceItemDTOFromEntity(item domain.SourceItem) RawEvidenceItemDTO {
 	return RawEvidenceItemDTO{
 		SourceCode: item.SourceCode, ExternalID: item.ExternalID, ParentExternalID: item.ParentExternalID,
 		ContentType: item.ContentType, Title: item.Title, Body: item.Body, Language: item.Language,
-		URL: item.URL, DiscussionURL: item.DiscussionURL, Author: item.Author, PublishedAt: copyTime(item.PublishedAt), ObservedAt: item.ObservedAt,
+		URL: item.URL, DiscussionURL: item.DiscussionURL, Author: item.Author, PublishedAt: copyTimePreservingLocation(item.PublishedAt), ObservedAt: item.ObservedAt,
 		EvidenceCompleteness: string(item.EvidenceCompleteness), Attachments: attachments,
 		Metrics: RawEvidenceMetricsDTO{
 			ViewCount: copyInt64(item.Metrics.ViewCount), LikeCount: copyInt64(item.Metrics.LikeCount),
@@ -287,6 +287,14 @@ func rawEvidenceItemDTOFromEntity(item domain.SourceItem) RawEvidenceItemDTO {
 		}, Parties: rawEvidencePartyDTOsFromEntities(item.Parties),
 		SnapshotKey: item.SnapshotKey, ItemLocator: item.ItemLocator, EvidenceReferences: references,
 	}
+}
+
+func copyTimePreservingLocation(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
 }
 
 func rawEvidenceFetchEntityFromDTO(fetch RawEvidenceFetchDTO) (domain.FetchResult, error) {

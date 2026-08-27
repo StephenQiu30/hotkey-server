@@ -99,30 +99,31 @@ func evidenceStoreResultMatches(record evidenceSnapshotRecord, result sourceappl
 }
 
 type sourceObservationRecord struct {
-	ID                  int64
-	SourceConnectionID  int64
-	CollectionRunItemID sql.NullInt64
-	ExternalID          string
-	UpstreamIdentity    string
-	SourceCode          string
-	ContentType         string
-	Title               string
-	Language            string
-	Author              sql.NullString
-	SourceRecordURL     sql.NullString
-	CanonicalURL        sql.NullString
-	DiscussionURL       sql.NullString
-	BodyOrigin          string
-	Completeness        string
-	PublishedAt         sql.NullTime
-	DiscoveredAt        time.Time
-	CapturedAt          time.Time
+	ID                        int64
+	SourceConnectionID        int64
+	CollectionRunItemID       sql.NullInt64
+	ExternalID                string
+	UpstreamIdentity          string
+	SourceCode                string
+	ContentType               string
+	Title                     string
+	Language                  string
+	Author                    sql.NullString
+	SourceRecordURL           sql.NullString
+	CanonicalURL              sql.NullString
+	DiscussionURL             sql.NullString
+	BodyOrigin                string
+	Completeness              string
+	PublishedAt               sql.NullTime
+	PublishedUTCOffsetMinutes sql.NullInt16
+	DiscoveredAt              time.Time
+	CapturedAt                time.Time
 }
 
 const sourceObservationColumns = `
 id,source_connection_id,collection_run_item_id,external_id,upstream_identity,
 source_code,content_type,title,language,author_snapshot,source_record_url,
-canonical_url,discussion_url,body_origin,completeness,published_at,
+canonical_url,discussion_url,body_origin,completeness,published_at,published_utc_offset_minutes,
 discovered_at,captured_at`
 
 func scanSourceObservationRecord(scanner evidenceSnapshotScanner) (sourceObservationRecord, error) {
@@ -131,7 +132,7 @@ func scanSourceObservationRecord(scanner evidenceSnapshotScanner) (sourceObserva
 		&record.ID, &record.SourceConnectionID, &record.CollectionRunItemID, &record.ExternalID, &record.UpstreamIdentity,
 		&record.SourceCode, &record.ContentType, &record.Title, &record.Language, &record.Author,
 		&record.SourceRecordURL, &record.CanonicalURL, &record.DiscussionURL, &record.BodyOrigin, &record.Completeness,
-		&record.PublishedAt, &record.DiscoveredAt, &record.CapturedAt,
+		&record.PublishedAt, &record.PublishedUTCOffsetMinutes, &record.DiscoveredAt, &record.CapturedAt,
 	)
 	return record, err
 }
@@ -146,7 +147,15 @@ func sameObservationContentFacts(record sourceObservationRecord, observation sou
 		record.ContentType == observation.ContentType && record.Title == observation.Title && record.Language == observation.Language &&
 		nullStringEquals(record.Author, observation.Author) && nullStringEquals(record.CanonicalURL, observation.CanonicalURL) &&
 		nullStringEquals(record.DiscussionURL, observation.DiscussionURL) && record.BodyOrigin == observation.BodyOrigin &&
-		record.Completeness == observation.Completeness && nullTimeEquals(record.PublishedAt, observation.PublishedAt)
+		record.Completeness == observation.Completeness && nullTimeEquals(record.PublishedAt, observation.PublishedAt) &&
+		nullInt16EqualsInt(record.PublishedUTCOffsetMinutes, observation.PublishedUTCOffsetMinutes)
+}
+
+func nullInt16EqualsInt(stored sql.NullInt16, value *int) bool {
+	if value == nil {
+		return !stored.Valid
+	}
+	return stored.Valid && int(stored.Int16) == *value
 }
 
 type evidenceLocatorRecord struct {
@@ -269,6 +278,12 @@ func validateSourceObservation(observation sourceapplication.SourceObservationDT
 	}
 	if observation.SourceRecordURL == "" && observation.CanonicalURL == "" && observation.DiscussionURL == "" {
 		return fmt.Errorf("source observation requires a source URL")
+	}
+	if observation.PublishedAt == nil && observation.PublishedUTCOffsetMinutes != nil {
+		return fmt.Errorf("source observation published UTC offset requires a published time")
+	}
+	if observation.PublishedUTCOffsetMinutes != nil && (*observation.PublishedUTCOffsetMinutes < -840 || *observation.PublishedUTCOffsetMinutes > 840) {
+		return fmt.Errorf("source observation published UTC offset is invalid")
 	}
 	for _, value := range []string{observation.SourceRecordURL, observation.CanonicalURL, observation.DiscussionURL} {
 		if value != "" {
@@ -442,6 +457,13 @@ func nullTimeEquals(stored sql.NullTime, value *time.Time) bool {
 }
 
 func nullInt64(value *int64) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
+func nullOptionalInt(value *int) any {
 	if value == nil {
 		return nil
 	}

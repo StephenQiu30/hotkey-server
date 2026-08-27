@@ -7808,6 +7808,10 @@ const docTemplate = `{
                     "type": "string",
                     "x-nullable": true
                 },
+                "published_utc_offset_minutes": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
                 "publisher": {
                     "type": "string",
                     "x-nullable": true

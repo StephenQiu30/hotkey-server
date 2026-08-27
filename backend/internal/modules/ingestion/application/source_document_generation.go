@@ -42,21 +42,22 @@ type SelectedSourceEvidenceDTO struct {
 	EvidenceSnapshotID  int64
 	SourceConnectionID  int64
 
-	ExternalWorkID   string
-	UpstreamIdentity string
-	SourceCode       string
-	ContentType      string
-	Title            string
-	Language         string
-	Author           string
-	SourceRecordURL  string
-	CanonicalURL     string
-	DiscussionURL    string
-	BodyOrigin       string
-	Completeness     string
-	PublishedAt      *time.Time
-	DiscoveredAt     time.Time
-	CapturedAt       time.Time
+	ExternalWorkID            string
+	UpstreamIdentity          string
+	SourceCode                string
+	ContentType               string
+	Title                     string
+	Language                  string
+	Author                    string
+	SourceRecordURL           string
+	CanonicalURL              string
+	DiscussionURL             string
+	BodyOrigin                string
+	Completeness              string
+	PublishedAt               *time.Time
+	PublishedUTCOffsetMinutes *int
+	DiscoveredAt              time.Time
+	CapturedAt                time.Time
 
 	SelectedPayload       []byte
 	SelectedPayloadSHA256 string
@@ -451,6 +452,12 @@ func validateSelectedSourceEvidence(evidence SelectedSourceEvidenceDTO, requeste
 		evidence.Completeness != BodyCompletenessMetadataOnly {
 		return errors.New("selected source evidence completeness is unsupported")
 	}
+	if evidence.PublishedAt == nil && evidence.PublishedUTCOffsetMinutes != nil {
+		return errors.New("selected source evidence published UTC offset requires a published time")
+	}
+	if evidence.PublishedUTCOffsetMinutes != nil && (*evidence.PublishedUTCOffsetMinutes < -840 || *evidence.PublishedUTCOffsetMinutes > 840) {
+		return errors.New("selected source evidence published UTC offset is invalid")
+	}
 	digest := sha256.Sum256(evidence.SelectedPayload)
 	declared, err := hex.DecodeString(evidence.SelectedPayloadSHA256)
 	if err != nil || len(declared) != sha256.Size || subtle.ConstantTimeCompare(digest[:], declared) != 1 {
@@ -667,6 +674,10 @@ func cloneSelectedSourceEvidence(evidence SelectedSourceEvidenceDTO) SelectedSou
 	if evidence.PublishedAt != nil {
 		publishedAt := evidence.PublishedAt.UTC()
 		copy.PublishedAt = &publishedAt
+	}
+	if evidence.PublishedUTCOffsetMinutes != nil {
+		offset := *evidence.PublishedUTCOffsetMinutes
+		copy.PublishedUTCOffsetMinutes = &offset
 	}
 	return copy
 }

@@ -71,34 +71,40 @@ func selectedSourceEvidenceDTOFromSource(selected sourceapplication.SelectedEvid
 		return ingestionapplication.SelectedSourceEvidenceDTO{}, fmt.Errorf("%w: selected Source body semantics are invalid", sharedrepository.ErrConstraint)
 	}
 	var publishedAt *time.Time
+	var publishedUTCOffsetMinutes *int
 	if selected.PublishedAt != nil {
 		value := *selected.PublishedAt
 		publishedAt = &value
 	}
+	if selected.PublishedUTCOffsetMinutes != nil {
+		value := *selected.PublishedUTCOffsetMinutes
+		publishedUTCOffsetMinutes = &value
+	}
 	return ingestionapplication.SelectedSourceEvidenceDTO{
-		EvidenceReferenceID:   selected.EvidenceReferenceID,
-		SourceObservationID:   selected.SourceObservationID,
-		EvidenceSnapshotID:    selected.EvidenceSnapshotID,
-		SourceConnectionID:    selected.SourceConnectionID,
-		ExternalWorkID:        selected.ExternalID,
-		UpstreamIdentity:      selected.UpstreamIdentity,
-		SourceCode:            selected.SourceCode,
-		ContentType:           selected.ContentType,
-		Title:                 selected.Title,
-		Language:              selected.Language,
-		Author:                selected.Author,
-		SourceRecordURL:       selected.SourceRecordURL,
-		CanonicalURL:          selected.CanonicalURL,
-		DiscussionURL:         selected.DiscussionURL,
-		BodyOrigin:            bodyOrigin,
-		Completeness:          completeness,
-		PublishedAt:           publishedAt,
-		DiscoveredAt:          selected.DiscoveredAt,
-		CapturedAt:            selected.CapturedAt,
-		SelectedPayload:       append([]byte(nil), selected.SelectedPayload...),
-		SelectedPayloadSHA256: selected.SelectedPayloadSHA256,
-		PayloadMIMEType:       selected.PayloadMIMEType,
-		SelectorVersion:       selected.SelectorVersion,
+		EvidenceReferenceID:       selected.EvidenceReferenceID,
+		SourceObservationID:       selected.SourceObservationID,
+		EvidenceSnapshotID:        selected.EvidenceSnapshotID,
+		SourceConnectionID:        selected.SourceConnectionID,
+		ExternalWorkID:            selected.ExternalID,
+		UpstreamIdentity:          selected.UpstreamIdentity,
+		SourceCode:                selected.SourceCode,
+		ContentType:               selected.ContentType,
+		Title:                     selected.Title,
+		Language:                  selected.Language,
+		Author:                    selected.Author,
+		SourceRecordURL:           selected.SourceRecordURL,
+		CanonicalURL:              selected.CanonicalURL,
+		DiscussionURL:             selected.DiscussionURL,
+		BodyOrigin:                bodyOrigin,
+		Completeness:              completeness,
+		PublishedAt:               publishedAt,
+		PublishedUTCOffsetMinutes: publishedUTCOffsetMinutes,
+		DiscoveredAt:              selected.DiscoveredAt,
+		CapturedAt:                selected.CapturedAt,
+		SelectedPayload:           append([]byte(nil), selected.SelectedPayload...),
+		SelectedPayloadSHA256:     selected.SelectedPayloadSHA256,
+		PayloadMIMEType:           selected.PayloadMIMEType,
+		SelectorVersion:           selected.SelectorVersion,
 	}, nil
 }
 

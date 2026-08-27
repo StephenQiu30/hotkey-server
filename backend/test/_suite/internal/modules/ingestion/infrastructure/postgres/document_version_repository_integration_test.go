@@ -466,11 +466,12 @@ func insertSourceObservation(t *testing.T, runtime *database.Runtime, sourceID i
 INSERT INTO source_observations (
   source_connection_id, external_id, upstream_identity, source_code, content_type,
   title, language, source_record_url, canonical_url, body_origin, completeness,
-  discovered_at, captured_at
-) VALUES ($1,$2,$3,'rss','article',$4,'en',$5,$6,'feed_content','full',$7,$7)
+  published_at,published_utc_offset_minutes,discovered_at, captured_at
+) VALUES ($1,$2,$3,'rss','article',$4,'en',$5,$6,'feed_content','full',$8,$9,$7,$7)
 RETURNING id`, sourceID, externalID, upstreamIdentity, fmt.Sprintf("revision %d", index),
 		fmt.Sprintf("https://feed.example.test/records/%d", index),
-		fmt.Sprintf("https://publisher.example.test/articles/%s", externalID), capturedAt).Scan(&observationID); err != nil {
+		fmt.Sprintf("https://publisher.example.test/articles/%s", externalID), capturedAt,
+		capturedAt.Add(-time.Hour), 480).Scan(&observationID); err != nil {
 		t.Fatalf("insert source observation %d: %v", index, err)
 	}
 	return observationID

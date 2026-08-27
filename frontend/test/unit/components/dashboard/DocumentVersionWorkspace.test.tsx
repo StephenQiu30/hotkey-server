@@ -67,6 +67,7 @@ const citation = {
   source_record_url: "https://feed.example/item/9",
   discussion_url: "https://forum.example/t/9",
   published_at: "2026-08-09T08:00:00Z",
+  published_utc_offset_minutes: 480,
   captured_at: "2026-08-09T08:05:00Z",
   locator_availability: "unavailable",
   locator_unavailable_reason: "exact_quote_unavailable",
@@ -125,6 +126,7 @@ describe("DocumentVersionWorkspace", () => {
       "https://wire.example/about",
     );
     expect(screen.getByText("feed_content · full")).toBeInTheDocument();
+    expect(screen.getByText(/原时区 UTC\+08:00/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "发布页" })).toHaveAttribute(
       "href",
       "https://openai.example/release",
@@ -140,6 +142,24 @@ describe("DocumentVersionWorkspace", () => {
     expect(screen.getByText("exact_quote_unavailable")).toBeInTheDocument();
     expect(screen.getByText(/commonmark-gfm-visible-blocks-v1 · 2 blocks/)).toBeInTheDocument();
     expect(screen.queryByText(/可信|已证实|真实性评分/)).not.toBeInTheDocument();
+  });
+
+  it("keeps an unknown publication time distinct from capture time", async () => {
+    const unknownTimeCitation = {
+      ...citation,
+      published_at: undefined,
+      published_utc_offset_minutes: undefined,
+    };
+    mocks.getCitation.mockResolvedValueOnce({ data: unknownTimeCitation });
+    mocks.getDocument.mockResolvedValueOnce({
+      data: { citation: unknownTimeCitation, etag: citation.artifact?.etag, markdown: "# 正式发布\n\n正文内容" },
+    });
+
+    render(<DocumentVersionWorkspace documentVersionID={9} />);
+
+    expect(await screen.findByText(/发布时间未知/)).toBeInTheDocument();
+    expect(screen.getByText(/采集于/)).toBeInTheDocument();
+    expect(screen.queryByText(/发布于 .*采集于/)).not.toBeInTheDocument();
   });
 
   it("keeps missing publisher and content-origin facts explicitly unknown", async () => {

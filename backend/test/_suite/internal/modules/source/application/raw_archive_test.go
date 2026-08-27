@@ -132,6 +132,8 @@ func TestRawEvidenceArchiveVerifiesAndPersistsSourceOwnedEvidence(t *testing.T) 
 	snapshot := archiveSnapshot(t, now, payload, archiveCollectorProfileVersion)
 	first := byteRangeItem(snapshot, "entry-1", []byte("<entry>one</entry>"))
 	second := byteRangeItem(snapshot, "entry-2", []byte("<entry>two</entry>"))
+	publishedAt := time.Date(2026, time.August, 9, 14, 30, 0, 0, time.FixedZone("fixture-cst", 8*60*60))
+	first.PublishedAt = &publishedAt
 	bodyMarker := "synchronous-body-marker-must-not-persist"
 	first.Body = bodyMarker
 	bodyVariant := first
@@ -163,6 +165,14 @@ func TestRawEvidenceArchiveVerifiesAndPersistsSourceOwnedEvidence(t *testing.T) 
 	}
 	if len(repository.commits[0].Observations) != 2 || repository.commits[0].Observations[0].Evidence.LocatorType != string(domain.EvidenceLocatorByteRange) {
 		t.Fatalf("commit = %#v, want independently verified observations", repository.commits[0])
+	}
+	firstObservation, secondObservation := repository.commits[0].Observations[0], repository.commits[0].Observations[1]
+	if firstObservation.PublishedAt == nil || !firstObservation.PublishedAt.Equal(publishedAt.UTC()) ||
+		firstObservation.PublishedUTCOffsetMinutes == nil || *firstObservation.PublishedUTCOffsetMinutes != 480 {
+		t.Fatalf("published time projection = %#v", firstObservation)
+	}
+	if secondObservation.PublishedAt != nil || secondObservation.PublishedUTCOffsetMinutes != nil {
+		t.Fatalf("unknown published time was fabricated = %#v", secondObservation)
 	}
 	if repository.commits[0].TraceID != traceID || repository.commits[0].DocumentGenerationScheduledAt != now {
 		t.Fatalf("commit scheduling context = trace:%q at:%s", repository.commits[0].TraceID, repository.commits[0].DocumentGenerationScheduledAt)

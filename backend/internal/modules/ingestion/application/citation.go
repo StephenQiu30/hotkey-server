@@ -157,13 +157,14 @@ type CitationDTO struct {
 	CanonicalURL                   *string
 	DiscussionURL                  *string
 
-	BodyOrigin    string
-	Completeness  string
-	Language      string
-	PublishedAt   *time.Time
-	CapturedAt    time.Time
-	ContentSHA256 *string
-	RawEvidence   CitationRawEvidenceDTO
+	BodyOrigin                string
+	Completeness              string
+	Language                  string
+	PublishedAt               *time.Time
+	PublishedUTCOffsetMinutes *int
+	CapturedAt                time.Time
+	ContentSHA256             *string
+	RawEvidence               CitationRawEvidenceDTO
 
 	Availability      CitationAvailability
 	UnavailableReason CitationUnavailableReason
@@ -245,13 +246,14 @@ type CitationReadDTO struct {
 	CanonicalURL    *string
 	DiscussionURL   *string
 
-	BodyOrigin    string
-	Completeness  string
-	Language      string
-	PublishedAt   *time.Time
-	CapturedAt    time.Time
-	ContentSHA256 string
-	RawEvidence   CitationRawEvidenceReadDTO
+	BodyOrigin                string
+	Completeness              string
+	Language                  string
+	PublishedAt               *time.Time
+	PublishedUTCOffsetMinutes *int
+	CapturedAt                time.Time
+	ContentSHA256             string
+	RawEvidence               CitationRawEvidenceReadDTO
 
 	DisplayPrivateAllowed bool
 	RightsEvaluatedAt     time.Time
@@ -303,7 +305,9 @@ func (service *CitationService) GetCitation(ctx context.Context, query CitationQ
 		return CitationResult{}, fmt.Errorf("read exact document citation: %w", err)
 	}
 	if read.DocumentVersionID != query.DocumentVersionID || read.DocumentID <= 0 || read.SourceConnectionID <= 0 || read.RightsEvaluatedAt.IsZero() ||
-		!validCitationRawEvidenceRead(read.RawEvidence) {
+		!validCitationRawEvidenceRead(read.RawEvidence) ||
+		(read.PublishedAt == nil && read.PublishedUTCOffsetMinutes != nil) ||
+		(read.PublishedUTCOffsetMinutes != nil && (*read.PublishedUTCOffsetMinutes < -840 || *read.PublishedUTCOffsetMinutes > 840)) {
 		return CitationResult{}, newDocumentReadError(DocumentReadFailureIntegrity, nil)
 	}
 	return CitationResult{Citation: citationDTO(read)}, nil
@@ -462,7 +466,8 @@ func citationDTO(read CitationReadDTO) CitationDTO {
 		ContentOriginAvailability: CitationFactUnavailable, ContentOriginUnavailableReason: CitationReasonContentOriginUnavailable,
 		SourceRecordURL: safeCitationURL(read.SourceRecordURL), CanonicalURL: safeCitationURL(read.CanonicalURL),
 		DiscussionURL: safeCitationURL(read.DiscussionURL), BodyOrigin: read.BodyOrigin, Completeness: read.Completeness,
-		Language: read.Language, PublishedAt: cloneCitationTime(read.PublishedAt), CapturedAt: read.CapturedAt.UTC(),
+		Language: read.Language, PublishedAt: cloneCitationTime(read.PublishedAt),
+		PublishedUTCOffsetMinutes: cloneCitationInt(read.PublishedUTCOffsetMinutes), CapturedAt: read.CapturedAt.UTC(),
 		Availability: availability, UnavailableReason: reason,
 		LocatorAvailability: CitationFactUnavailable, LocatorUnavailableReason: CitationReasonLocatorUnavailable,
 	}
@@ -765,5 +770,13 @@ func cloneCitationTime(value *time.Time) *time.Time {
 		return nil
 	}
 	result := value.UTC()
+	return &result
+}
+
+func cloneCitationInt(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	result := *value
 	return &result
 }
