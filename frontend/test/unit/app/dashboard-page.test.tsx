@@ -99,4 +99,19 @@ describe("DashboardPage", () => {
       screen.queryByRole("link", { name: "创建监控" })
     ).not.toBeInTheDocument();
   });
+
+  it("offers monitor creation to analysts", async () => {
+    useAuthStore.setState({
+      status: AuthStatus.Authenticated,
+      user: { id: 7, email: "analyst@example.test", role: UserRole.Analyst },
+      error: null,
+    });
+    mocks.getHotspots.mockResolvedValue({ data: { items: [], summary: {} } });
+    render(<DashboardPage />);
+
+    expect(await screen.findByRole("link", { name: "创建监控" })).toHaveAttribute(
+      "href",
+      "/dashboard/settings"
+    );
+  });
 });

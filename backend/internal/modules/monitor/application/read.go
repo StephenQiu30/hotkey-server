@@ -39,9 +39,26 @@ type MonitorPage struct {
 	NextCursor string
 }
 
+// AuthorizeContribution is the narrow cross-module authorization port used by
+// workflows such as manual collection. Analyst access is owner-scoped while
+// Editor and Admin retain access to every Monitor.
+func (service *Service) AuthorizeContribution(ctx context.Context, subject identitydomain.Subject, id int64) error {
+	if err := requireContributor(subject); err != nil {
+		return err
+	}
+	if id <= 0 {
+		return domain.MonitorDraftUnavailable()
+	}
+	monitor, err := service.monitors.FindByID(ctx, id)
+	if err != nil {
+		return monitorReadError(err)
+	}
+	return authorizeMonitorContributor(subject, *monitor)
+}
+
 // Get returns a published-safe view to viewers for both active and paused
-// Monitors. Editors and administrators additionally receive current draft
-// metadata when it exists. No resource ownership policy is inferred here.
+// Monitors. Analysts additionally receive their own current draft; Editors and
+// administrators receive every current draft when it exists.
 func (service *Service) Get(ctx context.Context, subject identitydomain.Subject, id int64) (MonitorView, error) {
 	if err := requireAuthenticated(subject); err != nil {
 		return MonitorView{}, err
@@ -70,8 +87,8 @@ func (service *Service) History(ctx context.Context, subject identitydomain.Subj
 	if err != nil {
 		return nil, monitorReadError(err)
 	}
-	viewer := subject.Role == identitydomain.RoleViewer
-	if viewer && (monitor.Status != domain.MonitorStatusActive && monitor.Status != domain.MonitorStatusPaused || monitor.PublishedConfigVersionID == nil) {
+	readOnly := !canReadMonitorDraft(subject, *monitor)
+	if readOnly && (monitor.Status != domain.MonitorStatusActive && monitor.Status != domain.MonitorStatusPaused || monitor.PublishedConfigVersionID == nil) {
 		return nil, domain.MonitorDraftUnavailable()
 	}
 	configs, err := service.monitors.ListConfigs(ctx, id)
@@ -80,7 +97,7 @@ func (service *Service) History(ctx context.Context, subject identitydomain.Subj
 	}
 	result := make([]ConfigurationView, 0, len(configs))
 	for _, config := range configs {
-		if viewer && config.State == domain.ConfigVersionDraft {
+		if readOnly && config.State == domain.ConfigVersionDraft {
 			continue
 		}
 		view, err := service.configurationView(ctx, config.ID)
@@ -99,8 +116,13 @@ func (service *Service) List(ctx context.Context, input ListInput) (MonitorPage,
 	if err := requireAuthenticated(input.Subject); err != nil {
 		return MonitorPage{}, err
 	}
-	viewer := input.Subject.Role == identitydomain.RoleViewer
-	monitors, nextCursor, err := service.monitors.List(ctx, domain.MonitorListQuery{Cursor: input.Cursor, Limit: input.Limit, PublishedOnly: viewer})
+	query := domain.MonitorListQuery{Cursor: input.Cursor, Limit: input.Limit}
+	if input.Subject.Role == identitydomain.RoleViewer {
+		query.PublishedOnly = true
+	} else if input.Subject.Role == identitydomain.RoleAnalyst {
+		query.VisibleOwnerUserID = input.Subject.UserID
+	}
+	monitors, nextCursor, err := service.monitors.List(ctx, query)
 	if err != nil {
 		return MonitorPage{}, monitorReadError(err)
 	}
@@ -116,8 +138,8 @@ func (service *Service) List(ctx context.Context, input ListInput) (MonitorPage,
 }
 
 func (service *Service) monitorView(ctx context.Context, subject identitydomain.Subject, monitor domain.Monitor) (MonitorView, error) {
-	viewer := subject.Role == identitydomain.RoleViewer
-	if viewer && (monitor.Status != domain.MonitorStatusActive && monitor.Status != domain.MonitorStatusPaused || monitor.PublishedConfigVersionID == nil) {
+	readOnly := !canReadMonitorDraft(subject, monitor)
+	if readOnly && (monitor.Status != domain.MonitorStatusActive && monitor.Status != domain.MonitorStatusPaused || monitor.PublishedConfigVersionID == nil) {
 		return MonitorView{}, domain.MonitorDraftUnavailable()
 	}
 	view := MonitorView{Monitor: monitor}
@@ -128,7 +150,7 @@ func (service *Service) monitorView(ctx context.Context, subject identitydomain.
 		}
 		view.Published = published
 	}
-	if !viewer && monitor.DraftConfigVersionID != nil {
+	if !readOnly && monitor.DraftConfigVersionID != nil {
 		draft, err := service.configurationView(ctx, *monitor.DraftConfigVersionID)
 		if err != nil {
 			return MonitorView{}, err
@@ -136,6 +158,11 @@ func (service *Service) monitorView(ctx context.Context, subject identitydomain.
 		view.Draft = draft
 	}
 	return view, nil
+}
+
+func canReadMonitorDraft(subject identitydomain.Subject, monitor domain.Monitor) bool {
+	return subject.Role == identitydomain.RoleEditor || subject.Role == identitydomain.RoleAdmin ||
+		subject.Role == identitydomain.RoleAnalyst && monitor.CreatedByUserID == subject.UserID
 }
 
 func (service *Service) configurationView(ctx context.Context, id int64) (*ConfigurationView, error) {

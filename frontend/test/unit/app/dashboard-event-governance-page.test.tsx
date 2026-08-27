@@ -132,7 +132,7 @@ describe("EventGovernancePage", () => {
 
   it.each([
     [UserRole.Viewer, "当前账号为只读角色"],
-    ["analyst", "Analyst 角色尚未启用"],
+    [UserRole.Analyst, "Analyst 在事件治理中为只读角色"],
   ])("renders the real %s permission boundary without mutation access", async (role, title) => {
     mocks.role = role;
 

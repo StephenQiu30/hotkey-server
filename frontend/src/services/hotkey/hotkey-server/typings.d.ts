@@ -1546,6 +1546,7 @@ probability or a cross-channel relevance percentage. */
   type MonitorResponse = {
     alert_email_enabled?: boolean;
     collection_interval_seconds?: number;
+    created_by_user_id?: number;
     description?: string;
     id?: number;
     name?: string;
@@ -2630,7 +2631,7 @@ value never authorizes v2 raw evidence or document body persistence. */
   };
 
   type UpdateUserRequest = {
-    role?: "admin" | "editor" | "viewer";
+    role?: "admin" | "analyst" | "editor" | "viewer";
     status?: "active" | "disabled";
   };
 
@@ -2681,7 +2682,7 @@ value never authorizes v2 raw evidence or document body persistence. */
     email?: string;
     id?: number;
     last_login_at?: string;
-    role?: "admin" | "editor" | "viewer";
+    role?: "admin" | "analyst" | "editor" | "viewer";
     status?: "active" | "disabled";
     updated_at?: string;
   };

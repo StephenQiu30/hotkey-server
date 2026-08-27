@@ -151,7 +151,7 @@ func TestAuthenticationStoresUnforgeableSubject(t *testing.T) {
 func TestAuthorizationRejectsNonAdminsForAdminRoute(t *testing.T) {
 	t.Parallel()
 
-	for _, role := range []Role{RoleViewer, RoleEditor} {
+	for _, role := range []Role{RoleViewer, RoleAnalyst, RoleEditor} {
 		role := role
 		t.Run(string(role), func(t *testing.T) {
 			authenticator := &authenticatorStub{auth: func(_ context.Context, _ string) (Subject, error) {
@@ -174,11 +174,11 @@ func TestAuthorizationRejectsNonAdminsForAdminRoute(t *testing.T) {
 	}
 }
 
-func TestAuthenticationRejectsAnalystUntilTheCoordinatedRoleMigration(t *testing.T) {
+func TestAuthenticationAcceptsAnalystAsARealNonAdminRole(t *testing.T) {
 	t.Parallel()
 
 	authenticator := &authenticatorStub{auth: func(_ context.Context, _ string) (Subject, error) {
-		return Subject{UserID: 11, SessionID: 22, Role: Role("analyst")}, nil
+		return Subject{UserID: 11, SessionID: 22, Role: RoleAnalyst}, nil
 	}}
 	router := gin.New()
 	called := false
@@ -188,17 +188,17 @@ func TestAuthenticationRejectsAnalystUntilTheCoordinatedRoleMigration(t *testing
 	})
 
 	request := httptest.NewRequest(stdhttp.MethodGet, "/protected", nil)
-	request.Header.Set("Authorization", "Bearer analyst-before-migration")
+	request.Header.Set("Authorization", "Bearer analyst")
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 
-	if response.Code != stdhttp.StatusUnauthorized {
-		t.Fatalf("status = %d, want %d", response.Code, stdhttp.StatusUnauthorized)
+	if response.Code != stdhttp.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, stdhttp.StatusOK)
 	}
-	assertResult(t, response, sharederrors.CodeUnauthenticated, "unauthenticated", nil)
+	assertResult(t, response, 0, "success", nil)
 	assertThreeFieldResult(t, response)
-	if called {
-		t.Fatal("unmigrated analyst reached the protected handler")
+	if !called {
+		t.Fatal("authenticated analyst did not reach the protected handler")
 	}
 }
 

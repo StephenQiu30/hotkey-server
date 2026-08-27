@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	identitydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/application"
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/domain"
 	httptransport "github.com/StephenQiu30/hotkey-server/backend/internal/platform/http"
@@ -39,6 +40,9 @@ func TestPlan009RelevanceRoutes(t *testing.T) {
 		{name: "viewer gets explanation", method: stdhttp.MethodGet, path: "/api/v1/monitors/1/matches/7", role: httptransport.RoleViewer, status: stdhttp.StatusOK},
 		{name: "admin reads suggestions", method: stdhttp.MethodGet, path: "/api/v1/monitors/1/feedback/suggestions?limit=1", role: httptransport.RoleAdmin, status: stdhttp.StatusOK},
 		{name: "editor previews with no side effects", method: stdhttp.MethodPost, path: "/api/v1/monitors/1/relevance-preview", role: httptransport.RoleEditor, status: stdhttp.StatusOK},
+		{name: "analyst previews owned monitor", method: stdhttp.MethodPost, path: "/api/v1/monitors/1/relevance-preview", role: httptransport.RoleAnalyst, status: stdhttp.StatusOK},
+		{name: "analyst writes owned match feedback", method: stdhttp.MethodPut, path: "/api/v1/monitors/1/matches/7/feedback", body: `{"feedback_type":"relevant","expected_feedback_version":null}`, role: httptransport.RoleAnalyst, status: stdhttp.StatusOK},
+		{name: "analyst writes owned false-negative content feedback", method: stdhttp.MethodPut, path: "/api/v1/monitors/1/contents/3/feedback", body: `{"expected_feedback_version":null}`, role: httptransport.RoleAnalyst, status: stdhttp.StatusOK},
 		{name: "editor writes match feedback", method: stdhttp.MethodPut, path: "/api/v1/monitors/1/matches/7/feedback", body: `{"feedback_type":"relevant","expected_feedback_version":null}`, role: httptransport.RoleEditor, status: stdhttp.StatusOK},
 		{name: "editor writes false-negative content feedback", method: stdhttp.MethodPut, path: "/api/v1/monitors/1/contents/3/feedback", body: `{"expected_feedback_version":null}`, role: httptransport.RoleEditor, status: stdhttp.StatusOK},
 		{name: "admin reads evaluation", method: stdhttp.MethodGet, path: "/api/v1/monitors/1/feedback/evaluation", role: httptransport.RoleAdmin, status: stdhttp.StatusOK},
@@ -181,7 +185,7 @@ func (stub *relevanceHTTPStub) GetMatch(_ context.Context, _ int64, _ int64) (in
 	}
 	return ingestionapplication.RelevanceMatchDetail{Snapshot: stub.snapshot, Content: stub.content}, nil
 }
-func (stub *relevanceHTTPStub) Preview(_ context.Context, _ int64) ([]ingestionapplication.RelevancePreviewItem, error) {
+func (stub *relevanceHTTPStub) Preview(_ context.Context, _ identitydomain.Subject, _ int64) ([]ingestionapplication.RelevancePreviewItem, error) {
 	modelVersion := "private-model"
 	return []ingestionapplication.RelevancePreviewItem{{ContentID: 3, Candidates: []ingestionapplication.ScoredRelevanceCandidate{{
 		MonitorID: 1, MonitorConfigVersionID: 2, InputHash: "preview-input-hash", ScoringVersion: "relevance-v1",
@@ -190,13 +194,13 @@ func (stub *relevanceHTTPStub) Preview(_ context.Context, _ int64) ([]ingestiona
 		Decision: ingestiondomain.MatchDecisionReview, EmbeddingProfile: &ingestionapplication.ModelProfileReference{ID: 4, Version: 1, ModelVersion: modelVersion},
 	}}}}, nil
 }
-func (stub *relevanceHTTPStub) UpsertMatchFeedback(_ context.Context, _ int64, _ int64, _ int64, _ ingestiondomain.FeedbackType, _ *int64) (ingestiondomain.RelevanceFeedback, error) {
+func (stub *relevanceHTTPStub) UpsertMatchFeedback(_ context.Context, _ identitydomain.Subject, _ int64, _ int64, _ ingestiondomain.FeedbackType, _ *int64) (ingestiondomain.RelevanceFeedback, error) {
 	if stub.feedbackErr != nil {
 		return ingestiondomain.RelevanceFeedback{}, stub.feedbackErr
 	}
 	return ingestiondomain.RelevanceFeedback{RelevanceFeedbackInput: ingestiondomain.RelevanceFeedbackInput{FeedbackType: ingestiondomain.FeedbackTypeRelevant}, ID: 8, Version: 1}, nil
 }
-func (stub *relevanceHTTPStub) UpsertFalseNegativeContentFeedback(_ context.Context, _ int64, _ int64, _ int64, _ *int64) (ingestiondomain.RelevanceFeedback, error) {
+func (stub *relevanceHTTPStub) UpsertFalseNegativeContentFeedback(_ context.Context, _ identitydomain.Subject, _ int64, _ int64, _ *int64) (ingestiondomain.RelevanceFeedback, error) {
 	return ingestiondomain.RelevanceFeedback{RelevanceFeedbackInput: ingestiondomain.RelevanceFeedbackInput{FeedbackType: ingestiondomain.FeedbackTypeFalseNegative}, ID: 8, Version: 1}, nil
 }
 func (stub *relevanceHTTPStub) Evaluations(context.Context, int64) ([]ingestiondomain.RelevanceEvaluation, error) {

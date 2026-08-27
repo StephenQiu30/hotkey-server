@@ -10997,6 +10997,9 @@
                 "collection_interval_seconds": {
                     "type": "integer"
                 },
+                "created_by_user_id": {
+                    "type": "integer"
+                },
                 "description": {
                     "type": "string"
                 },
@@ -13444,6 +13447,7 @@
                     "type": "string",
                     "enum": [
                         "admin",
+                        "analyst",
                         "editor",
                         "viewer"
                     ]
@@ -13543,6 +13547,7 @@
                     "type": "string",
                     "enum": [
                         "admin",
+                        "analyst",
                         "editor",
                         "viewer"
                     ]

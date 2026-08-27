@@ -40,6 +40,7 @@ vi.mock("@/services/hotkey/hotkey-server/sources", () => ({
 const monitor = {
   id: 9,
   version: 3,
+  created_by_user_id: 7,
   name: "Claude",
   status: "active",
   query: "Claude",
@@ -163,7 +164,7 @@ describe("MonitorsPage", () => {
     expect(screen.queryByRole("button", { name: "新建监控" })).not.toBeInTheDocument();
   });
 
-  it("keeps viewer read-only and grants only scanning to an editor", async () => {
+  it("keeps viewer read-only and grants contributor controls to an editor", async () => {
     useAuthStore.setState({
       user: { role: "viewer" } as HotKeyAPI.UserResponse,
     });
@@ -178,8 +179,30 @@ describe("MonitorsPage", () => {
     });
     render(<MonitorsPage />);
     expect(await screen.findByRole("button", { name: "立即扫描 Claude" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "编辑 Claude" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "暂停" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "编辑 Claude" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "暂停" })).toBeInTheDocument();
+  });
+
+  it("lets an analyst manage only monitors they own", async () => {
+    useAuthStore.setState({
+      user: { id: 7, role: "analyst" } as HotKeyAPI.UserResponse,
+    });
+    mocks.getMonitors.mockResolvedValueOnce({
+      data: {
+        items: [
+          monitor,
+          { ...monitor, id: 10, name: "Other", created_by_user_id: 8 },
+        ],
+      },
+    });
+
+    render(<MonitorsPage />);
+
+    expect(await screen.findByRole("button", { name: "新建监控" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "立即扫描 Claude" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "编辑 Claude" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "立即扫描 Other" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑 Other" })).not.toBeInTheDocument();
   });
 
   it("creates and publishes a monitor in one user action with simple fields", async () => {

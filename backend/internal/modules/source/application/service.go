@@ -657,7 +657,17 @@ func requireEditor(subject identitydomain.Subject) error {
 	if err := requireAuthenticated(subject); err != nil {
 		return err
 	}
-	if subject.Role == identitydomain.RoleViewer {
+	if subject.Role != identitydomain.RoleEditor && subject.Role != identitydomain.RoleAdmin {
+		return sharederrors.New(sharederrors.CodeForbidden, 403, "")
+	}
+	return nil
+}
+
+func requireContributor(subject identitydomain.Subject) error {
+	if err := requireAuthenticated(subject); err != nil {
+		return err
+	}
+	if subject.Role != identitydomain.RoleAnalyst && subject.Role != identitydomain.RoleEditor && subject.Role != identitydomain.RoleAdmin {
 		return sharederrors.New(sharederrors.CodeForbidden, 403, "")
 	}
 	return nil

@@ -33,7 +33,12 @@ func (repository *Repository) ListAfter(ctx context.Context, query domain.Notifi
 	rows, err := repository.runtime.SQL.QueryContext(ctx, `
 SELECT id,event_type,resource_type,resource_id,audience_role,occurred_at,payload
 FROM notification_events
-WHERE id>$1 AND ($2='admin' OR $2='editor' AND audience_role IN ('viewer','editor') OR $2='viewer' AND audience_role='viewer')
+WHERE id>$1 AND (
+    $2='admin'
+    OR $2='editor' AND audience_role IN ('viewer','analyst','editor')
+    OR $2='analyst' AND audience_role IN ('viewer','analyst')
+    OR $2='viewer' AND audience_role='viewer'
+)
 ORDER BY id ASC LIMIT $3`, query.AfterID, query.Role, query.Limit)
 	if err != nil {
 		return domain.NotificationPage{}, databaserepository.MapError(err)

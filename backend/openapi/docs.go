@@ -11000,6 +11000,9 @@ const docTemplate = `{
                 "collection_interval_seconds": {
                     "type": "integer"
                 },
+                "created_by_user_id": {
+                    "type": "integer"
+                },
                 "description": {
                     "type": "string"
                 },
@@ -13447,6 +13450,7 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "admin",
+                        "analyst",
                         "editor",
                         "viewer"
                     ]
@@ -13546,6 +13550,7 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "admin",
+                        "analyst",
                         "editor",
                         "viewer"
                     ]

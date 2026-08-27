@@ -196,6 +196,7 @@ type MonitorVersionHistoryResponse struct {
 type MonitorResponse struct {
 	ID                        int64                   `json:"id"`
 	Version                   int64                   `json:"version"`
+	CreatedByUserID           int64                   `json:"created_by_user_id"`
 	Name                      string                  `json:"name"`
 	Description               string                  `json:"description"`
 	Status                    string                  `json:"status"`
@@ -379,7 +380,8 @@ func monitorPriority(priority *int16) int16 {
 func monitorResponse(view monitorapplication.MonitorView) MonitorResponse {
 	response := MonitorResponse{
 		ID: view.Monitor.ID, Version: view.Monitor.Version, Name: view.Monitor.Name,
-		Description: view.Monitor.Description, Status: string(view.Monitor.Status),
+		CreatedByUserID: view.Monitor.CreatedByUserID,
+		Description:     view.Monitor.Description, Status: string(view.Monitor.Status),
 		Sources: []MonitorSourceResponse{},
 	}
 	configuration := view.Published

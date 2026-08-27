@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	identitydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/application"
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/domain"
 	httptransport "github.com/StephenQiu30/hotkey-server/backend/internal/platform/http"
@@ -19,9 +20,9 @@ import (
 type relevanceHTTPService interface {
 	ListMatches(context.Context, int64, ingestiondomain.RelevanceSnapshotListQuery) (ingestiondomain.RelevanceSnapshotPage, error)
 	GetMatch(context.Context, int64, int64) (ingestionapplication.RelevanceMatchDetail, error)
-	Preview(context.Context, int64) ([]ingestionapplication.RelevancePreviewItem, error)
-	UpsertMatchFeedback(context.Context, int64, int64, int64, ingestiondomain.FeedbackType, *int64) (ingestiondomain.RelevanceFeedback, error)
-	UpsertFalseNegativeContentFeedback(context.Context, int64, int64, int64, *int64) (ingestiondomain.RelevanceFeedback, error)
+	Preview(context.Context, identitydomain.Subject, int64) ([]ingestionapplication.RelevancePreviewItem, error)
+	UpsertMatchFeedback(context.Context, identitydomain.Subject, int64, int64, ingestiondomain.FeedbackType, *int64) (ingestiondomain.RelevanceFeedback, error)
+	UpsertFalseNegativeContentFeedback(context.Context, identitydomain.Subject, int64, int64, *int64) (ingestiondomain.RelevanceFeedback, error)
 	Evaluations(context.Context, int64) ([]ingestiondomain.RelevanceEvaluation, error)
 	RefreshSuggestions(context.Context, int64) (int, error)
 	ListSuggestions(context.Context, int64, ingestiondomain.RelevanceSuggestionListQuery) (ingestiondomain.RelevanceSuggestionPage, error)
@@ -126,11 +127,15 @@ func (handler *RelevanceHandler) GetMatch(c *gin.Context) error {
 // @Router /api/v1/monitors/{id}/relevance-preview [post]
 func (handler *RelevanceHandler) Preview(c *gin.Context) error {
 	httptransport.SetModule(c, "ingestion")
+	subject, err := relevanceSubject(c)
+	if err != nil {
+		return err
+	}
 	monitorID, err := relevancePathID(c, "id")
 	if err != nil {
 		return err
 	}
-	items, err := handler.service.Preview(c.Request.Context(), monitorID)
+	items, err := handler.service.Preview(c.Request.Context(), subject, monitorID)
 	if err != nil {
 		return err
 	}
@@ -162,7 +167,7 @@ func (handler *RelevanceHandler) Preview(c *gin.Context) error {
 // @Router /api/v1/monitors/{id}/matches/{match_id}/feedback [put]
 func (handler *RelevanceHandler) UpsertMatchFeedback(c *gin.Context) error {
 	httptransport.SetModule(c, "ingestion")
-	actorID, err := relevanceActorID(c)
+	subject, err := relevanceSubject(c)
 	if err != nil {
 		return err
 	}
@@ -178,7 +183,7 @@ func (handler *RelevanceHandler) UpsertMatchFeedback(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	feedback, err := handler.service.UpsertMatchFeedback(c.Request.Context(), actorID, monitorID, matchID, feedbackType, expectedVersion)
+	feedback, err := handler.service.UpsertMatchFeedback(c.Request.Context(), subject, monitorID, matchID, feedbackType, expectedVersion)
 	if err != nil {
 		return err
 	}
@@ -206,7 +211,7 @@ func (handler *RelevanceHandler) UpsertMatchFeedback(c *gin.Context) error {
 // @Router /api/v1/monitors/{id}/contents/{content_id}/feedback [put]
 func (handler *RelevanceHandler) UpsertContentFeedback(c *gin.Context) error {
 	httptransport.SetModule(c, "ingestion")
-	actorID, err := relevanceActorID(c)
+	subject, err := relevanceSubject(c)
 	if err != nil {
 		return err
 	}
@@ -222,7 +227,7 @@ func (handler *RelevanceHandler) UpsertContentFeedback(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	feedback, err := handler.service.UpsertFalseNegativeContentFeedback(c.Request.Context(), actorID, monitorID, contentID, expectedVersion)
+	feedback, err := handler.service.UpsertFalseNegativeContentFeedback(c.Request.Context(), subject, monitorID, contentID, expectedVersion)
 	if err != nil {
 		return err
 	}
@@ -526,6 +531,14 @@ func relevanceActorID(c *gin.Context) (int64, error) {
 	return subject.UserID, nil
 }
 
+func relevanceSubject(c *gin.Context) (identitydomain.Subject, error) {
+	subject, ok := httptransport.SubjectFromContext(c)
+	if !ok {
+		return identitydomain.Subject{}, sharederrors.New(sharederrors.CodeUnauthenticated, stdhttp.StatusUnauthorized, "")
+	}
+	return identitydomain.Subject{UserID: subject.UserID, SessionID: subject.SessionID, AgentTokenID: subject.AgentTokenID, Role: identitydomain.Role(subject.Role)}, nil
+}
+
 type relevanceMatchCursorPayload struct {
 	MonitorID  int64   `json:"monitor_id"`
 	Decision   string  `json:"decision"`
@@ -595,19 +608,19 @@ func relevanceSuggestionStatusScope(status *ingestiondomain.SuggestionStatus) st
 }
 
 // RegisterRelevanceRoutes mounts the PLAN-009 public relevance contract. The
-// route groups make the viewer/editor/admin role matrix structural rather than
-// a conditional hidden inside a handler.
+// route groups make the four-role matrix structural rather than a conditional
+// hidden inside a handler; application authorization adds Analyst ownership.
 func RegisterRelevanceRoutesWithCursorCodec(router *gin.Engine, service relevanceHTTPService, authenticator httptransport.Authenticator, codec *pagination.Codec) {
 	if router == nil {
 		return
 	}
 	handler := NewRelevanceHandlerWithCursorCodec(service, codec)
 	monitor := router.Group("/api/v1/monitors/:id", httptransport.RequireAuthentication(authenticator))
-	read := monitor.Group("", httptransport.RequireRoles(httptransport.RoleViewer, httptransport.RoleEditor, httptransport.RoleAdmin))
+	read := monitor.Group("", httptransport.RequireRoles(httptransport.RoleViewer, httptransport.RoleAnalyst, httptransport.RoleEditor, httptransport.RoleAdmin))
 	read.GET("/matches", httptransport.Wrap(handler.ListMatches))
 	read.GET("/matches/:match_id", httptransport.Wrap(handler.GetMatch))
 
-	edit := monitor.Group("", httptransport.RequireRoles(httptransport.RoleEditor, httptransport.RoleAdmin))
+	edit := monitor.Group("", httptransport.RequireRoles(httptransport.RoleAnalyst, httptransport.RoleEditor, httptransport.RoleAdmin))
 	edit.POST("/relevance-preview", httptransport.Wrap(handler.Preview))
 	edit.PUT("/matches/:match_id/feedback", httptransport.Wrap(handler.UpsertMatchFeedback))
 	edit.PUT("/contents/:content_id/feedback", httptransport.Wrap(handler.UpsertContentFeedback))

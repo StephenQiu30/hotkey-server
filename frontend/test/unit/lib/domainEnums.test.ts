@@ -46,9 +46,9 @@ describe("domain enums", () => {
     );
   });
 
-  it("does not publish analyst before the coordinated backend migration", () => {
-    expect(Object.values(UserRole)).toEqual(["admin", "editor", "viewer"]);
-    expect(Object.values(UserRole)).not.toContain("analyst");
+  it("publishes the coordinated four-role identity contract", () => {
+    expect(Object.values(UserRole)).toEqual(["admin", "analyst", "editor", "viewer"]);
+    expect(UserRole.Analyst).toBe("analyst");
   });
 
   it("provides centralized user-facing presentations", () => {

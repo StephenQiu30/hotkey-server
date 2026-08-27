@@ -57,7 +57,7 @@ type ConfirmPasswordResetRequest struct {
 }
 
 type UpdateUserRequest struct {
-	Role   *string `json:"role,omitempty" enums:"admin,editor,viewer"`
+	Role   *string `json:"role,omitempty" enums:"admin,analyst,editor,viewer"`
 	Status *string `json:"status,omitempty" enums:"active,disabled"`
 }
 
@@ -67,7 +67,7 @@ type UserResponse struct {
 	ID          int64      `json:"id" example:"3"`
 	Email       string     `json:"email" example:"reader@example.test"`
 	DisplayName string     `json:"display_name" example:"Reader"`
-	Role        string     `json:"role" enums:"admin,editor,viewer"`
+	Role        string     `json:"role" enums:"admin,analyst,editor,viewer"`
 	Status      string     `json:"status" enums:"active,disabled"`
 	LastLoginAt *time.Time `json:"last_login_at,omitempty"`
 	CreatedAt   time.Time  `json:"created_at"`

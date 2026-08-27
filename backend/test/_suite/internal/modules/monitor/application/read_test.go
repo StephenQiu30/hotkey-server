@@ -12,10 +12,11 @@ import (
 
 func TestMonitorReadsRespectPublishedAndDraftVisibility(t *testing.T) {
 	publishedID, draftID := int64(10), int64(11)
-	active := domain.Monitor{ID: 1, Version: 3, Name: "active", Status: domain.MonitorStatusActive, PublishedConfigVersionID: &publishedID}
-	paused := domain.Monitor{ID: 2, Version: 3, Name: "paused", Status: domain.MonitorStatusPaused, PublishedConfigVersionID: &publishedID}
-	draft := domain.Monitor{ID: 3, Version: 2, Name: "draft", Status: domain.MonitorStatusDraft, DraftConfigVersionID: &draftID}
-	repository := &readRepository{monitors: map[int64]domain.Monitor{1: active, 2: paused, 3: draft}, all: []domain.Monitor{active, paused, draft}, configs: map[int64]readConfiguration{
+	active := domain.Monitor{ID: 1, Version: 3, Name: "active", Status: domain.MonitorStatusActive, PublishedConfigVersionID: &publishedID, CreatedByUserID: 9}
+	paused := domain.Monitor{ID: 2, Version: 3, Name: "paused", Status: domain.MonitorStatusPaused, PublishedConfigVersionID: &publishedID, CreatedByUserID: 8}
+	draft := domain.Monitor{ID: 3, Version: 2, Name: "own draft", Status: domain.MonitorStatusDraft, DraftConfigVersionID: &draftID, CreatedByUserID: 7}
+	otherDraft := domain.Monitor{ID: 4, Version: 2, Name: "other draft", Status: domain.MonitorStatusDraft, DraftConfigVersionID: &draftID, CreatedByUserID: 8}
+	repository := &readRepository{monitors: map[int64]domain.Monitor{1: active, 2: paused, 3: draft, 4: otherDraft}, all: []domain.Monitor{active, paused, draft, otherDraft}, configs: map[int64]readConfiguration{
 		publishedID: {config: testReadConfig(publishedID, domain.ConfigVersionPublished), rules: []domain.MonitorRule{testReadRule()}, sources: []domain.MonitorSource{{ID: 5, SourceConnectionID: 9, Enabled: true}}},
 		draftID:     {config: testReadConfig(draftID, domain.ConfigVersionDraft), rules: []domain.MonitorRule{testReadRule()}, sources: []domain.MonitorSource{{ID: 6, SourceConnectionID: 9, Enabled: true}}},
 	}}
@@ -48,11 +49,25 @@ func TestMonitorReadsRespectPublishedAndDraftVisibility(t *testing.T) {
 	if _, err := service.Get(context.Background(), identitydomain.Subject{UserID: 1, Role: identitydomain.RoleViewer}, 3); err == nil {
 		t.Fatal("viewer read a draft-only monitor")
 	}
+	analyst := identitydomain.Subject{UserID: 7, Role: identitydomain.RoleAnalyst}
+	analystPage, err := service.List(context.Background(), ListInput{Subject: analyst})
+	if err != nil {
+		t.Fatalf("analyst List(): %v", err)
+	}
+	if repository.lastQuery.VisibleOwnerUserID != analyst.UserID || repository.lastQuery.PublishedOnly || len(analystPage.Items) != 3 || analystPage.Items[2].Monitor.ID != draft.ID || analystPage.Items[2].Draft == nil {
+		t.Fatalf("analyst page = %#v query=%#v", analystPage, repository.lastQuery)
+	}
+	if _, err := service.Get(context.Background(), analyst, draft.ID); err != nil {
+		t.Fatalf("analyst Get(own draft): %v", err)
+	}
+	if _, err := service.Get(context.Background(), analyst, otherDraft.ID); err == nil {
+		t.Fatal("analyst read another owner's draft")
+	}
 }
 
 func TestMonitorHistoryReturnsAllVersionsToCollaboratorsAndPublishedOnlyToViewers(t *testing.T) {
 	publishedID, draftID := int64(10), int64(11)
-	monitor := domain.Monitor{ID: 1, Version: 4, Name: "active", Status: domain.MonitorStatusActive, PublishedConfigVersionID: &publishedID, DraftConfigVersionID: &draftID}
+	monitor := domain.Monitor{ID: 1, Version: 4, Name: "active", Status: domain.MonitorStatusActive, PublishedConfigVersionID: &publishedID, DraftConfigVersionID: &draftID, CreatedByUserID: 7}
 	superseded := testReadConfig(9, domain.ConfigVersionSuperseded)
 	superseded.Revision = 1
 	published := testReadConfig(publishedID, domain.ConfigVersionPublished)
@@ -87,6 +102,10 @@ func TestMonitorHistoryReturnsAllVersionsToCollaboratorsAndPublishedOnlyToViewer
 	if len(viewerHistory) != 2 || viewerHistory[0].Config.State != domain.ConfigVersionPublished || viewerHistory[1].Config.State != domain.ConfigVersionSuperseded {
 		t.Fatalf("viewer history = %#v", viewerHistory)
 	}
+	analystHistory, err := service.History(context.Background(), identitydomain.Subject{UserID: 7, Role: identitydomain.RoleAnalyst}, 1)
+	if err != nil || len(analystHistory) != 3 {
+		t.Fatalf("analyst own history = %#v/%v", analystHistory, err)
+	}
 }
 
 type readConfiguration struct {
@@ -116,7 +135,11 @@ func (repository *readRepository) List(_ context.Context, query domain.MonitorLi
 	repository.lastQuery = query
 	result := make([]domain.Monitor, 0, len(repository.all))
 	for _, monitor := range repository.all {
-		if query.PublishedOnly && (monitor.Status != domain.MonitorStatusActive && monitor.Status != domain.MonitorStatusPaused) {
+		published := (monitor.Status == domain.MonitorStatusActive || monitor.Status == domain.MonitorStatusPaused) && monitor.PublishedConfigVersionID != nil
+		if query.PublishedOnly && !published {
+			continue
+		}
+		if query.VisibleOwnerUserID > 0 && !published && monitor.CreatedByUserID != query.VisibleOwnerUserID {
 			continue
 		}
 		result = append(result, monitor)

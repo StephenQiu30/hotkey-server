@@ -26,18 +26,18 @@ HotKey 已有 Go 模块化单体、PostgreSQL 单一 Schema、River 持久任务
 - 绝对互动量无法表达近期升温趋势；
 - AI 结论容易脱离原始出处，难以复核；
 - 报告、长期知识与运行记录缺少一致的审计和恢复闭环；
-- 当前权限只有 `viewer`、`editor`、`admin`，尚无独立 `analyst`，与目标产品角色存在差距。
+- 当前权限已包含 `viewer`、`analyst`、`editor`、`admin`；仍需持续验证 Analyst 所有权边界不会扩大为审核或管理权限。
 
 ## 用户角色
 
-| 产品角色 | 目标职责 | 当前权限模型差距 |
+| 产品角色 | 目标职责 | 当前权限模型状态 |
 |---|---|---|
 | Viewer | 查看事件、内容、证据、报告、知识和全文检索 | 已有 `viewer`，仍需逐接口验证只读边界 |
-| Analyst | 创建自己的 Monitor、手动扫描、反馈相关性、提出治理建议 | 当前无 `analyst`；实施前必须完成 Schema、Domain、OpenAPI、客户端和回归的兼容演进 |
+| Analyst | 创建自己的 Monitor、手动扫描、反馈相关性、提出治理建议 | 已完成四角色兼容演进；仅限自有 Monitor，事件治理与批准仍拒绝 |
 | Editor | 审核规则、事件成员、Claim/Evidence、报告和知识发布 | 已有 `editor`，需收敛审核权限与 Analyst 写权限的边界 |
 | Admin | 管理用户、来源授权、策略、运行、保留、审计和恢复 | 已有 `admin`，不得因此暴露密钥或原始任务 Payload |
 
-在 Analyst 正式落地前，不得仅在前端伪造该角色，也不得把 Editor 的全部权限静默等同于 Analyst。
+Analyst 不得只靠前端隐藏实现，也不得把 Editor 的全部权限静默等同于 Analyst；资源所有权和审核边界必须由服务端执行。
 
 ## 产品目标与 KPI
 
@@ -65,7 +65,7 @@ Monitor → 多来源采集 → 原始证据 → 标准化/去重
 ### P0：24 周承诺范围
 
 - 现有认证、任务、存储、Result 和 OpenAPI 契约内的模块化单体演进；
-- Viewer、Analyst、Editor、Admin 产品权限目标及当前三角色的兼容迁移；
+- Viewer、Analyst、Editor、Admin 四角色权限及兼容演进回归；
 - Monitor 版本生命周期、授权来源、定时/手动扫描和多来源部分成功；
 - 原始证据、内容标准化、去重、事件、Heat 和 Evidence 分离；
 - 根目录 `agent/` 的 Python 数据分析服务及不可用降级；
@@ -108,7 +108,7 @@ Monitor → 多来源采集 → 原始证据 → 标准化/去重
 - `FR-001-003`：PostgreSQL 必须是业务事实源，MinIO 保存原始证据，River 承载持久任务，Redis 只保存短期状态。
 - `FR-001-004`：所有 Web 功能必须通过现有 HTTP API 和生成客户端访问，不得绕过 OpenAPI 直接访问数据库、任务或对象存储。
 - `FR-001-005`：所有 JSON API 必须保持 `code`、`message`、`data` Result，成功业务码为 `0`，无数据使用 `data: null`。
-- `FR-001-006`：系统必须表达 Viewer、Analyst、Editor、Admin 四类产品职责，并对当前缺少 Analyst 的迁移状态给出真实反馈。
+- `FR-001-006`：系统必须表达 Viewer、Analyst、Editor、Admin 四类产品职责，并由服务端执行 Analyst 的资源所有权与审核隔离。
 - `FR-001-007`：每个智能结论、报告 Claim 和知识投影必须保留来源、Evidence ID、生成/审核版本与审计关联。
 - `FR-001-008`：单一来源或 Python Agent 失败时，已完成的采集与确定性处理必须保留，运行状态必须显式显示部分成功或待分析。
 - `FR-001-009`：新知识检索必须使用可审计的词法全文检索、过滤、聚合和高亮，不得依赖向量、Embedding 或 RAG。
@@ -133,7 +133,7 @@ Monitor → 多来源采集 → 原始证据 → 标准化/去重
 | 管理来源授权、策略、用户和运行 | 禁止 | 禁止 | 禁止 | 允许 |
 | 查看密钥明文、原始任务 Payload | 禁止 | 禁止 | 禁止 | 禁止 |
 
-当前实现仍只有 Viewer/Editor/Admin；在 Analyst 迁移完成前，服务端必须按真实角色拒绝请求，界面不得显示虚假成功状态。
+当前实现已包含四角色：Analyst 可管理自有 Monitor、手动扫描与相关性反馈；Editor 可审核并管理全部 Monitor；Admin 额外管理用户、来源与运行。界面隐藏不能替代服务端授权。
 
 ## 界面与交互状态
 
@@ -157,20 +157,20 @@ Monitor → 多来源采集 → 原始证据 → 标准化/去重
 
 | ID | 项目 | 处理要求 |
 |---|---|---|
-| `RSK-001-001` | 当前权限没有 Analyst | 在单一 Schema 中做兼容演进，同时更新 Domain、API、OpenAPI、客户端和测试 |
+| `RSK-001-001` | Analyst 所有权边界发生回退或权限膨胀 | 以单一 Schema、Domain、API、OpenAPI、客户端和正负向测试共同防回归 |
 | `RSK-001-002` | 现有 Go Provider/Codex 路径与目标 Python Agent 路径并存 | 先建立等价评估、回滚和迁移门禁，不做无证据清理 |
 | `RSK-001-003` | 单人研发面对过大范围 | 24 周只承诺 P0，以垂直切片和删减规则控制范围 |
 | `RSK-001-004` | 候选指标无测量口径 | PRD 批准前补齐负载模型和基线报告 |
 | `RSK-001-005` | 原始证据保留期与长期可追溯目标冲突 | 在 002/005 中定义元数据长期保留、原始对象期限和例外策略 |
 
-待决策项包括 Analyst 的兼容迁移方式、P0 三个正式来源的授权就绪条件、Python Agent 不可用时的补算 SLA、知识投影的单写者策略和候选性能基线。
+Analyst 迁移语义已固定并实施：既有用户不重映射、新注册仍为 Viewer、Admin 显式分配。其余待决策项包括 P0 三个正式来源的授权就绪条件、Python Agent 不可用时的补算 SLA、知识投影的单写者策略和候选性能基线。
 
 ## 验收标准
 
 | ID | Given | When | Then |
 |---|---|---|---|
 | `AC-001-001` | 一个已授权用户和至少一个可用来源 | 用户创建并发布 Monitor，完成扫描、研判、事件、通知、日报、知识发布和检索 | 每个步骤状态可见，最终对象可追溯到 Monitor、运行和 Evidence；日报每个事实性 Claim 均引用允许的 Evidence ID，自动知识更新不覆盖人工区域，且没有绕过模块化单体契约 |
-| `AC-001-002` | Viewer、Editor、Admin 当前角色及 Analyst 目标角色 | 分别访问读、写、审核和管理动作 | 服务端按真实权限允许或拒绝；Analyst 未迁移时明确拒绝，不由前端伪造角色 |
+| `AC-001-002` | Viewer、Analyst、Editor、Admin 四角色及自有/他人 Monitor | 分别访问读、写、审核和管理动作 | 服务端按角色与资源所有权允许或拒绝；Analyst 只能管理自有 Monitor、扫描与反馈，不能审核或管理用户、来源、运行 |
 | `AC-001-003` | P0 实施分支及其 Design、PRD、Plan、代码、Schema、OpenAPI 与 Acceptance | 核对目标、当前实现和验收证据 | 只新增根目录 `agent/` Python 分析服务且无业务存储凭据/公网端口；未新增 Kafka、Temporal、其他业务微服务、Elasticsearch、Keycloak 或 migrations 目录；代码/契约只描述当前事实，Design/PRD/Plan 只描述目标与执行状态，只有 Acceptance 声明已验证完成 |
 | `AC-001-004` | 任一核心页面 | 返回正常、空、慢请求、可恢复错误和权限不足响应，并以键盘、减弱动效和可访问性工具操作 | 桌面与移动端分别呈现可辨识的五态，全部关键操作可键盘完成，焦点可见，语义化标签、对比度和 `prefers-reduced-motion` 行为符合仓库规范 |
 | `AC-001-005` | 一个需要新增或修改的 API | 完成后端契约变更 | Result、错误码、DTO、Swaggo、`docs/openapi/swagger.json`、生成客户端和契约测试保持一致，Schema 仍只有 `backend/db/schema.sql` 一套 |

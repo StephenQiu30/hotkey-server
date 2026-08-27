@@ -104,7 +104,7 @@ type LifecycleInput struct {
 // in a draft, but their IDs must be real; publish is where schedulability is
 // enforced atomically.
 func (service *Service) Create(ctx context.Context, input CreateInput) (*domain.Monitor, *domain.MonitorConfigVersion, error) {
-	if err := requireEditor(input.Subject); err != nil {
+	if err := requireContributor(input.Subject); err != nil {
 		return nil, nil, err
 	}
 	draft, err := service.normalizeDraft(ctx, input.Draft, nil, false)
@@ -138,7 +138,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (*domain.
 // publication rules inside the application layer so HTTP clients never have
 // to understand optimistic draft versions.
 func (service *Service) CreateActive(ctx context.Context, input CreateInput) (*domain.Monitor, *domain.MonitorConfigVersion, error) {
-	if err := requireAdmin(input.Subject); err != nil {
+	if err := requireContributor(input.Subject); err != nil {
 		return nil, nil, err
 	}
 	monitor, draft, err := service.Create(ctx, input)
@@ -154,7 +154,7 @@ func (service *Service) CreateActive(ctx context.Context, input CreateInput) (*d
 // UpdateActive replaces and publishes the simple product configuration in one
 // server command. Existing draft concurrency stays internal to the service.
 func (service *Service) UpdateActive(ctx context.Context, input UpdateActiveInput) (*domain.Monitor, *domain.MonitorConfigVersion, error) {
-	if err := requireAdmin(input.Subject); err != nil {
+	if err := requireContributor(input.Subject); err != nil {
 		return nil, nil, err
 	}
 	view, err := service.Get(ctx, input.Subject, input.MonitorID)
@@ -188,7 +188,7 @@ func (service *Service) UpdateActive(ctx context.Context, input UpdateActiveInpu
 }
 
 func (service *Service) ReplaceDraft(ctx context.Context, input ReplaceDraftInput) (*domain.Monitor, *domain.MonitorConfigVersion, error) {
-	if err := requireEditor(input.Subject); err != nil {
+	if err := requireContributor(input.Subject); err != nil {
 		return nil, nil, err
 	}
 	if input.MonitorID <= 0 {
@@ -203,6 +203,9 @@ func (service *Service) ReplaceDraft(ctx context.Context, input ReplaceDraftInpu
 		monitor, err := service.monitors.LockByID(ctx, input.MonitorID)
 		if err != nil {
 			return monitorReadError(err)
+		}
+		if err := authorizeMonitorContributor(input.Subject, *monitor); err != nil {
+			return err
 		}
 		if monitor.Status == domain.MonitorStatusArchived {
 			return domain.InvalidMonitorState()
@@ -326,7 +329,7 @@ func (service *Service) AddAICandidate(ctx context.Context, input AICandidateInp
 }
 
 func (service *Service) ApproveAICandidate(ctx context.Context, input ApprovalInput) (*domain.MonitorConfigVersion, error) {
-	if err := requireAdmin(input.Subject); err != nil {
+	if err := requireEditor(input.Subject); err != nil {
 		return nil, err
 	}
 	if input.Approval != domain.RuleApprovalApproved && input.Approval != domain.RuleApprovalRejected {
@@ -376,7 +379,7 @@ func (service *Service) ApproveAICandidate(ctx context.Context, input ApprovalIn
 }
 
 func (service *Service) Publish(ctx context.Context, input PublishInput) (*domain.Monitor, *domain.MonitorConfigVersion, error) {
-	if err := requireAdmin(input.Subject); err != nil {
+	if err := requireContributor(input.Subject); err != nil {
 		return nil, nil, err
 	}
 	var changed domain.Monitor
@@ -387,6 +390,9 @@ func (service *Service) Publish(ctx context.Context, input PublishInput) (*domai
 		}
 		monitor, draft, rules, sources, err := service.lockPublishableDraft(ctx, input.MonitorID, input.Expected)
 		if err != nil {
+			return err
+		}
+		if err := authorizeMonitorContributor(input.Subject, *monitor); err != nil {
 			return err
 		}
 		if service.quota != nil && monitor.Status != domain.MonitorStatusPaused {
@@ -523,6 +529,9 @@ func (service *Service) Delete(ctx context.Context, input LifecycleInput) (*doma
 		if err != nil {
 			return monitorReadError(err)
 		}
+		if err := authorizeMonitorContributor(input.Subject, *monitor); err != nil {
+			return err
+		}
 		if monitor.Version != input.ExpectedMonitorVersion {
 			return domain.MonitorVersionConflict()
 		}
@@ -547,7 +556,7 @@ func (service *Service) Delete(ctx context.Context, input LifecycleInput) (*doma
 }
 
 func (service *Service) changeState(ctx context.Context, input LifecycleInput, target domain.MonitorStatus, action operationsdomain.AuditAction) (*domain.Monitor, error) {
-	if err := requireAdmin(input.Subject); err != nil {
+	if err := requireContributor(input.Subject); err != nil {
 		return nil, err
 	}
 	if input.MonitorID <= 0 || input.ExpectedMonitorVersion <= 0 {
@@ -561,6 +570,9 @@ func (service *Service) changeState(ctx context.Context, input LifecycleInput, t
 		monitor, err := service.monitors.LockByID(ctx, input.MonitorID)
 		if err != nil {
 			return monitorReadError(err)
+		}
+		if err := authorizeMonitorContributor(input.Subject, *monitor); err != nil {
+			return err
 		}
 		if monitor.Version != input.ExpectedMonitorVersion {
 			return domain.MonitorVersionConflict()
@@ -1052,11 +1064,29 @@ func requireAuthenticated(subject identitydomain.Subject) error {
 	}
 	return nil
 }
+func requireContributor(subject identitydomain.Subject) error {
+	if err := requireAuthenticated(subject); err != nil {
+		return err
+	}
+	if subject.Role != identitydomain.RoleAnalyst && subject.Role != identitydomain.RoleEditor && subject.Role != identitydomain.RoleAdmin {
+		return sharederrors.New(sharederrors.CodeForbidden, 403, "")
+	}
+	return nil
+}
 func requireEditor(subject identitydomain.Subject) error {
 	if err := requireAuthenticated(subject); err != nil {
 		return err
 	}
-	if subject.Role == identitydomain.RoleViewer {
+	if subject.Role != identitydomain.RoleEditor && subject.Role != identitydomain.RoleAdmin {
+		return sharederrors.New(sharederrors.CodeForbidden, 403, "")
+	}
+	return nil
+}
+func authorizeMonitorContributor(subject identitydomain.Subject, monitor domain.Monitor) error {
+	if err := requireContributor(subject); err != nil {
+		return err
+	}
+	if subject.Role == identitydomain.RoleAnalyst && monitor.CreatedByUserID != subject.UserID {
 		return sharederrors.New(sharederrors.CodeForbidden, 403, "")
 	}
 	return nil

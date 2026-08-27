@@ -16,13 +16,14 @@ import (
 type Role string
 
 const (
-	RoleViewer Role = "viewer"
-	RoleEditor Role = "editor"
-	RoleAdmin  Role = "admin"
+	RoleViewer  Role = "viewer"
+	RoleAnalyst Role = "analyst"
+	RoleEditor  Role = "editor"
+	RoleAdmin   Role = "admin"
 )
 
 func (role Role) valid() bool {
-	return role == RoleViewer || role == RoleEditor || role == RoleAdmin
+	return role == RoleViewer || role == RoleAnalyst || role == RoleEditor || role == RoleAdmin
 }
 
 // Subject is the database-backed identity fact made available only after a

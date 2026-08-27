@@ -13,7 +13,7 @@ func RegisterIntentRoutes(router *gin.Engine, service intentHTTPService, authent
 	}
 	handler := NewIntentHandler(service)
 	api := router.Group("/api/v1/monitors", httptransport.RequireAuthentication(authenticator))
-	editor := api.Group("", httptransport.RequireRoles(httptransport.RoleEditor, httptransport.RoleAdmin))
+	editor := api.Group("", httptransport.RequireRoles(httptransport.RoleAnalyst, httptransport.RoleEditor, httptransport.RoleAdmin))
 	editor.GET("/:id/draft", httptransport.Wrap(handler.GetDraft))
 	editor.PUT("/:id/draft/intent", httptransport.Wrap(handler.PutDraft))
 	editor.POST("/:id/draft/preview-runs", httptransport.Wrap(handler.SubmitPreviewRun))

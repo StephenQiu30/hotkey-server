@@ -83,10 +83,10 @@ describe("UsersPage", () => {
     await user.click(
       await screen.findByRole("combobox", { name: "设置 editor@example.test 的角色" }),
     );
-    await user.click(screen.getByRole("option", { name: "查看者" }));
+    await user.click(screen.getByRole("option", { name: "分析者" }));
 
     await waitFor(() =>
-      expect(mocks.patchUsersId).toHaveBeenCalledWith({ id: 2 }, { role: "viewer" }),
+      expect(mocks.patchUsersId).toHaveBeenCalledWith({ id: 2 }, { role: "analyst" }),
     );
   });
 

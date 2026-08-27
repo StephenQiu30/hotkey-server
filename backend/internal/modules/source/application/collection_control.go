@@ -16,7 +16,7 @@ import (
 )
 
 // CollectionControlDependencies are separate from CollectionDependencies:
-// these administrator operations never plan queries or issue Fetch calls.
+// these control-plane operations never plan queries or issue Fetch calls.
 type CollectionControlDependencies struct {
 	Runtime    *database.Runtime
 	Sources    domain.SourceConnectionRepository
@@ -29,6 +29,11 @@ type CollectionControlDependencies struct {
 	Scans      domain.MonitorScanReader
 	Now        func() time.Time
 	Quota      operationsapplication.QuotaGuard
+	Monitors   MonitorContributionAuthorizer
+}
+
+type MonitorContributionAuthorizer interface {
+	AuthorizeContribution(context.Context, identitydomain.Subject, int64) error
 }
 
 type CollectionRetryActivator interface {
@@ -51,6 +56,7 @@ type CollectionControlService struct {
 	scans      domain.MonitorScanReader
 	now        func() time.Time
 	quota      operationsapplication.QuotaGuard
+	monitors   MonitorContributionAuthorizer
 }
 
 func NewCollectionControlService(dependencies CollectionControlDependencies) (*CollectionControlService, error) {
@@ -67,7 +73,7 @@ func NewCollectionControlService(dependencies CollectionControlDependencies) (*C
 		runtime: dependencies.Runtime, sources: dependencies.Sources, runs: dependencies.Runs,
 		connectors: dependencies.Connectors, metrics: dependencies.Metrics, retries: dependencies.Retries,
 		manuals: dependencies.Manuals, targets: dependencies.Targets, now: dependencies.Now, quota: dependencies.Quota,
-		scans: dependencies.Scans,
+		scans: dependencies.Scans, monitors: dependencies.Monitors,
 	}, nil
 }
 
@@ -114,11 +120,19 @@ func (service *CollectionControlService) List(ctx context.Context, input Collect
 // never calls a Connector and relies on the queue's unique key for atomic
 // five-minute cooldown reuse.
 func (service *CollectionControlService) Manual(ctx context.Context, input ManualCollectionInput) (domain.ManualCollectionSummary, error) {
-	if err := requireEditor(input.Subject); err != nil {
+	if err := requireContributor(input.Subject); err != nil {
 		return domain.ManualCollectionSummary{}, err
 	}
 	if input.MonitorID <= 0 {
 		return domain.ManualCollectionSummary{}, domain.InvalidCollectionRequest()
+	}
+	if input.Subject.Role == identitydomain.RoleAnalyst {
+		if service.monitors == nil {
+			return domain.ManualCollectionSummary{}, sharederrors.New(sharederrors.CodeUnavailable, 503, "")
+		}
+		if err := service.monitors.AuthorizeContribution(ctx, input.Subject, input.MonitorID); err != nil {
+			return domain.ManualCollectionSummary{}, err
+		}
 	}
 	if service.manuals == nil || service.targets == nil {
 		return domain.ManualCollectionSummary{}, sharederrors.New(sharederrors.CodeUnavailable, 503, "")

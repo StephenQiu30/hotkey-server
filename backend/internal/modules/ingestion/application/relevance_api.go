@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	identitydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/domain"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
@@ -41,6 +42,11 @@ type RelevanceAPIServiceDependencies struct {
 	Snapshots  relevanceAPISnapshotRepository
 	Contents   ingestiondomain.ContentRepository
 	Candidates ingestiondomain.RelevanceCandidateReader
+	Monitors   relevanceMonitorContributionAuthorizer
+}
+
+type relevanceMonitorContributionAuthorizer interface {
+	AuthorizeContribution(context.Context, identitydomain.Subject, int64) error
 }
 
 // RelevanceAPIService is the sole use-case boundary for the PLAN-009 public
@@ -50,6 +56,7 @@ type RelevanceAPIService struct {
 	snapshots relevanceAPISnapshotRepository
 	contents  ingestiondomain.ContentRepository
 	preview   *CandidateRecallService
+	monitors  relevanceMonitorContributionAuthorizer
 }
 
 func NewRelevanceAPIService(dependencies RelevanceAPIServiceDependencies) (*RelevanceAPIService, error) {
@@ -60,7 +67,7 @@ func NewRelevanceAPIService(dependencies RelevanceAPIServiceDependencies) (*Rele
 	if err != nil {
 		return nil, err
 	}
-	return &RelevanceAPIService{snapshots: dependencies.Snapshots, contents: dependencies.Contents, preview: preview}, nil
+	return &RelevanceAPIService{snapshots: dependencies.Snapshots, contents: dependencies.Contents, preview: preview, monitors: dependencies.Monitors}, nil
 }
 
 func (service *RelevanceAPIService) ListMatches(ctx context.Context, monitorID int64, query ingestiondomain.RelevanceSnapshotListQuery) (ingestiondomain.RelevanceSnapshotPage, error) {
@@ -98,9 +105,12 @@ func (service *RelevanceAPIService) GetMatch(ctx context.Context, monitorID, mat
 // Preview scores at most twenty active Content items using the deterministic,
 // bounded scorer. It never persists a snapshot and has no review executor,
 // therefore it cannot create an ai_run or make a Provider call.
-func (service *RelevanceAPIService) Preview(ctx context.Context, monitorID int64) ([]RelevancePreviewItem, error) {
+func (service *RelevanceAPIService) Preview(ctx context.Context, subject identitydomain.Subject, monitorID int64) ([]RelevancePreviewItem, error) {
 	if service == nil || service.snapshots == nil || service.contents == nil || service.preview == nil {
 		return nil, relevanceUnavailable()
+	}
+	if err := service.authorizeContribution(ctx, subject, monitorID); err != nil {
+		return nil, err
 	}
 	if _, err := service.activePublishedMonitor(ctx, monitorID); err != nil {
 		return nil, err
@@ -130,9 +140,12 @@ func (service *RelevanceAPIService) Preview(ctx context.Context, monitorID int64
 	return items, nil
 }
 
-func (service *RelevanceAPIService) UpsertMatchFeedback(ctx context.Context, actorUserID, monitorID, matchID int64, feedbackType ingestiondomain.FeedbackType, expectedVersion *int64) (ingestiondomain.RelevanceFeedback, error) {
+func (service *RelevanceAPIService) UpsertMatchFeedback(ctx context.Context, subject identitydomain.Subject, monitorID, matchID int64, feedbackType ingestiondomain.FeedbackType, expectedVersion *int64) (ingestiondomain.RelevanceFeedback, error) {
 	if service == nil || service.snapshots == nil {
 		return ingestiondomain.RelevanceFeedback{}, relevanceUnavailable()
+	}
+	if err := service.authorizeContribution(ctx, subject, monitorID); err != nil {
+		return ingestiondomain.RelevanceFeedback{}, err
 	}
 	if _, err := service.activePublishedMonitor(ctx, monitorID); err != nil {
 		return ingestiondomain.RelevanceFeedback{}, err
@@ -143,7 +156,7 @@ func (service *RelevanceAPIService) UpsertMatchFeedback(ctx context.Context, act
 	}
 	feedback, err := service.snapshots.UpsertFeedback(ctx, ingestiondomain.RelevanceFeedbackInput{
 		MonitorID: monitorID, MonitorConfigVersionID: snapshot.MonitorConfigVersionID, ContentID: snapshot.ContentID,
-		MonitorMatchID: &snapshot.ID, ActorUserID: actorUserID, ExpectedVersion: expectedVersion, FeedbackType: feedbackType,
+		MonitorMatchID: &snapshot.ID, ActorUserID: subject.UserID, ExpectedVersion: expectedVersion, FeedbackType: feedbackType,
 	})
 	if err != nil {
 		return ingestiondomain.RelevanceFeedback{}, relevanceError(err)
@@ -155,9 +168,12 @@ func (service *RelevanceAPIService) UpsertMatchFeedback(ctx context.Context, act
 // Content that has no relevance snapshot in the current published config.
 // Keeping the feedback type out of this public use case prevents a caller from
 // turning the unmatched-content route into a general match-feedback endpoint.
-func (service *RelevanceAPIService) UpsertFalseNegativeContentFeedback(ctx context.Context, actorUserID, monitorID, contentID int64, expectedVersion *int64) (ingestiondomain.RelevanceFeedback, error) {
+func (service *RelevanceAPIService) UpsertFalseNegativeContentFeedback(ctx context.Context, subject identitydomain.Subject, monitorID, contentID int64, expectedVersion *int64) (ingestiondomain.RelevanceFeedback, error) {
 	if service == nil || service.snapshots == nil || service.contents == nil {
 		return ingestiondomain.RelevanceFeedback{}, relevanceUnavailable()
+	}
+	if err := service.authorizeContribution(ctx, subject, monitorID); err != nil {
+		return ingestiondomain.RelevanceFeedback{}, err
 	}
 	configID, err := service.activePublishedMonitor(ctx, monitorID)
 	if err != nil {
@@ -168,12 +184,28 @@ func (service *RelevanceAPIService) UpsertFalseNegativeContentFeedback(ctx conte
 	}
 	feedback, err := service.snapshots.UpsertFalseNegativeFeedback(ctx, ingestiondomain.RelevanceFeedbackInput{
 		MonitorID: monitorID, MonitorConfigVersionID: configID, ContentID: contentID,
-		ActorUserID: actorUserID, ExpectedVersion: expectedVersion, FeedbackType: ingestiondomain.FeedbackTypeFalseNegative,
+		ActorUserID: subject.UserID, ExpectedVersion: expectedVersion, FeedbackType: ingestiondomain.FeedbackTypeFalseNegative,
 	})
 	if err != nil {
 		return ingestiondomain.RelevanceFeedback{}, relevanceError(err)
 	}
 	return feedback, nil
+}
+
+func (service *RelevanceAPIService) authorizeContribution(ctx context.Context, subject identitydomain.Subject, monitorID int64) error {
+	if subject.UserID <= 0 || !subject.Role.Valid() {
+		return sharederrors.New(sharederrors.CodeUnauthenticated, 401, "")
+	}
+	if subject.Role != identitydomain.RoleAnalyst && subject.Role != identitydomain.RoleEditor && subject.Role != identitydomain.RoleAdmin {
+		return sharederrors.New(sharederrors.CodeForbidden, 403, "")
+	}
+	if service.monitors == nil {
+		if subject.Role == identitydomain.RoleAnalyst {
+			return relevanceUnavailable()
+		}
+		return nil
+	}
+	return service.monitors.AuthorizeContribution(ctx, subject, monitorID)
 }
 
 func (service *RelevanceAPIService) RefreshSuggestions(ctx context.Context, monitorID int64) (int, error) {

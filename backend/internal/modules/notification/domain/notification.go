@@ -14,17 +14,18 @@ const (
 type AudienceRole string
 
 const (
-	AudienceViewer AudienceRole = "viewer"
-	AudienceEditor AudienceRole = "editor"
-	AudienceAdmin  AudienceRole = "admin"
+	AudienceViewer  AudienceRole = "viewer"
+	AudienceAnalyst AudienceRole = "analyst"
+	AudienceEditor  AudienceRole = "editor"
+	AudienceAdmin   AudienceRole = "admin"
 )
 
 func (role AudienceRole) Valid() bool {
-	return role == AudienceViewer || role == AudienceEditor || role == AudienceAdmin
+	return role == AudienceViewer || role == AudienceAnalyst || role == AudienceEditor || role == AudienceAdmin
 }
 
 func (role AudienceRole) Allows(audience AudienceRole) bool {
-	rank := map[AudienceRole]int{AudienceViewer: 1, AudienceEditor: 2, AudienceAdmin: 3}
+	rank := map[AudienceRole]int{AudienceViewer: 1, AudienceAnalyst: 2, AudienceEditor: 3, AudienceAdmin: 4}
 	viewerRank, viewerOK := rank[role]
 	audienceRank, audienceOK := rank[audience]
 	return viewerOK && audienceOK && viewerRank >= audienceRank

@@ -131,8 +131,10 @@ function formatTime(value: string | undefined) {
 
 export default function MonitorsPage() {
   const user = useAuthStore((state) => state.user);
-  const canScan =
-    user?.role === UserRole.Editor || user?.role === UserRole.Admin;
+  const canContribute =
+    user?.role === UserRole.Analyst ||
+    user?.role === UserRole.Editor ||
+    user?.role === UserRole.Admin;
   const canAdmin = user?.role === UserRole.Admin;
   const [monitors, setMonitors] = useState<HotKeyAPI.MonitorResponse[]>([]);
   const [sources, setSources] = useState<HotKeyAPI.SourceReadResponse[]>([]);
@@ -176,7 +178,7 @@ export default function MonitorsPage() {
       try {
         const [monitorResult, sourceResult] = await Promise.all([
           getMonitors({ limit: pageSize, ...(cursor ? { cursor } : {}) }),
-          canAdmin
+          canContribute
             ? getSourceConnections({ limit: 100 })
             : Promise.resolve(undefined),
         ]);
@@ -197,7 +199,17 @@ export default function MonitorsPage() {
         setLoading(false);
       }
     },
-    [canAdmin, loadScan, pageSize]
+    [canContribute, loadScan, pageSize]
+  );
+
+  const canContributeTo = useCallback(
+    (monitor: HotKeyAPI.MonitorResponse) =>
+      user?.role === UserRole.Editor ||
+      user?.role === UserRole.Admin ||
+      (user?.role === UserRole.Analyst &&
+        user.id != null &&
+        monitor.created_by_user_id === user.id),
+    [user?.id, user?.role]
   );
 
   useEffect(() => {
@@ -275,7 +287,7 @@ export default function MonitorsPage() {
   }
 
   async function collectNow(monitor: HotKeyAPI.MonitorResponse) {
-    if (!canScan || monitor.id == null) return;
+    if (!canContributeTo(monitor) || monitor.id == null) return;
     setBusyID(monitor.id);
     try {
       await postMonitorsIdCollect({ id: monitor.id });
@@ -299,7 +311,7 @@ export default function MonitorsPage() {
     monitor: HotKeyAPI.MonitorResponse,
     action: "pause" | "resume" | "archive" | "restore"
   ) {
-    if (!canAdmin || monitor.id == null || monitor.version == null) return;
+    if (!canContributeTo(monitor) || monitor.id == null || monitor.version == null) return;
     setBusyID(monitor.id);
     const body = { expected_monitor_version: monitor.version };
     try {
@@ -357,7 +369,7 @@ export default function MonitorsPage() {
         title="热点监控"
         description="填写监控词并选择来源后立即启用。系统定时扫描，也可以随时手动触发一次。"
         action={
-          canAdmin ? (
+          canContribute ? (
             <Button onClick={openCreate} disabled={enabledSources.length === 0}>
               <Plus className="h-4 w-4" />
               新建监控
@@ -366,7 +378,7 @@ export default function MonitorsPage() {
         }
       />
 
-      {canAdmin && enabledSources.length === 0 && !loading ? (
+      {canContribute && enabledSources.length === 0 && !loading ? (
         <Card className="mb-6 border border-border bg-card p-5 text-sm">
           尚无可用来源，请管理员先在“来源”中接入 Hacker News、RSS 或授权平台。
         </Card>
@@ -415,7 +427,7 @@ export default function MonitorsPage() {
               </EmptyMedia>
               <EmptyTitle>还没有热点监控</EmptyTitle>
               <EmptyDescription>
-                {canAdmin
+                {canContribute
                   ? "新建一个监控，系统会按设定间隔持续发现新内容。"
                   : "当前没有可查看的监控。"}
               </EmptyDescription>
@@ -430,6 +442,7 @@ export default function MonitorsPage() {
             const scan = scans[monitorID];
             const latest = scan?.items[0];
             const busy = busyID === monitorID;
+            const canManageMonitor = canContributeTo(monitor);
             return (
               <Card key={monitorID} className="border border-border bg-card">
                 <CardHeader className="gap-4 p-5 pb-3 sm:p-6 sm:pb-3">
@@ -452,7 +465,7 @@ export default function MonitorsPage() {
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {canScan && monitor.status === MonitorStatus.Active ? (
+                      {canManageMonitor && monitor.status === MonitorStatus.Active ? (
                         <Button
                           aria-label={`立即扫描 ${monitor.name}`}
                           disabled={busy}
@@ -467,7 +480,7 @@ export default function MonitorsPage() {
                           立即扫描
                         </Button>
                       ) : null}
-                      {canAdmin && monitor.status !== MonitorStatus.Archived ? (
+                      {canManageMonitor && monitor.status !== MonitorStatus.Archived ? (
                         <Button
                           aria-label={`编辑 ${monitor.name}`}
                           size="sm"
@@ -479,7 +492,7 @@ export default function MonitorsPage() {
                           编辑
                         </Button>
                       ) : null}
-                      {canAdmin && monitor.status === MonitorStatus.Active ? (
+                      {canManageMonitor && monitor.status === MonitorStatus.Active ? (
                         <Button
                           size="sm"
                           variant="outline"
@@ -490,7 +503,7 @@ export default function MonitorsPage() {
                           暂停
                         </Button>
                       ) : null}
-                      {canAdmin && monitor.status === MonitorStatus.Paused ? (
+                      {canManageMonitor && monitor.status === MonitorStatus.Paused ? (
                         <Button
                           size="sm"
                           variant="outline"
@@ -501,7 +514,7 @@ export default function MonitorsPage() {
                           恢复
                         </Button>
                       ) : null}
-                      {canAdmin && monitor.status !== MonitorStatus.Archived ? (
+                      {canManageMonitor && monitor.status !== MonitorStatus.Archived ? (
                         <Button
                           size="sm"
                           variant="ghost"
@@ -512,7 +525,7 @@ export default function MonitorsPage() {
                           归档
                         </Button>
                       ) : null}
-                      {canAdmin && monitor.status === MonitorStatus.Archived ? (
+                      {canManageMonitor && monitor.status === MonitorStatus.Archived ? (
                         <>
                           <Button
                             size="sm"
@@ -523,15 +536,17 @@ export default function MonitorsPage() {
                             <RotateCcw />
                             恢复
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={busy}
-                            onClick={() => setDeleteTarget(monitor)}
-                          >
-                            <Trash2 />
-                            删除
-                          </Button>
+                          {canAdmin ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={busy}
+                              onClick={() => setDeleteTarget(monitor)}
+                            >
+                              <Trash2 />
+                              删除
+                            </Button>
+                          ) : null}
                         </>
                       ) : null}
                     </div>

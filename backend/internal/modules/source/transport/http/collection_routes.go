@@ -5,9 +5,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RegisterCollectionRoutes mounts the administrator-only collection control
-// surface separately from SourceConnection CRUD, while retaining the same
-// authentication and Result error semantics.
+// RegisterCollectionRoutes mounts collection control separately from
+// SourceConnection CRUD. Manual collection is contributor-scoped; run retry
+// and source health remain administrator-only.
 func RegisterCollectionRoutes(router *gin.Engine, service collectionControlService, authenticator httptransport.Authenticator) {
 	if router == nil {
 		return
@@ -15,9 +15,10 @@ func RegisterCollectionRoutes(router *gin.Engine, service collectionControlServi
 	handler := NewCollectionHandler(service)
 	api := router.Group("/api/v1", httptransport.RequireAuthentication(authenticator))
 	api.GET("/monitors/:id/scans", httptransport.Wrap(handler.Scans))
+	contributors := api.Group("", httptransport.RequireRoles(httptransport.RoleAnalyst, httptransport.RoleEditor, httptransport.RoleAdmin))
+	contributors.POST("/monitors/:id/collect", httptransport.Wrap(handler.Manual))
 	editor := api.Group("", httptransport.RequireRoles(httptransport.RoleEditor, httptransport.RoleAdmin))
 	editor.GET("/collection-runs", httptransport.Wrap(handler.List))
-	editor.POST("/monitors/:id/collect", httptransport.Wrap(handler.Manual))
 	admin := api.Group("", httptransport.RequireRoles(httptransport.RoleAdmin))
 	admin.POST("/collection-runs/:id/retry", httptransport.Wrap(handler.Retry))
 	admin.POST("/source-connections/:id/health", httptransport.Wrap(handler.Health))
@@ -28,6 +29,6 @@ func RegisterAgentCollectionRoutes(router *gin.Engine, service collectionControl
 		return
 	}
 	handler := NewCollectionHandler(service)
-	api := router.Group("/api/v1/agent", httptransport.RequireAuthentication(authenticator), httptransport.RequireAgentScope("search.run", httptransport.RoleEditor, httptransport.RoleAdmin))
+	api := router.Group("/api/v1/agent", httptransport.RequireAuthentication(authenticator), httptransport.RequireAgentScope("search.run", httptransport.RoleAnalyst, httptransport.RoleEditor, httptransport.RoleAdmin))
 	api.POST("/monitors/:id/collect", httptransport.Wrap(handler.Manual))
 }

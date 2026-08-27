@@ -101,7 +101,7 @@ describe("AuthGuard", () => {
     });
   });
 
-  it("rejects an unrecognized analyst identity on an administrator route", async () => {
+  it("keeps a recognized analyst out of administrator-only routes", async () => {
     navigation.pathname = "/dashboard/users";
     navigation.query = "";
     navigation.auth = {

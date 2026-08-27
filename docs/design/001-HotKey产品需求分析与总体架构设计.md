@@ -105,7 +105,7 @@ Python Agent 只返回经版本化契约校验的建议，不直接读写 Postgr
 - Web 首要工作流为创建或编辑监控、预览规则、发布、查看扫描、阅读内容证据、查看热点事件、接收通知和执行治理操作。
 - API 使用现有认证上下文、角色门禁、统一 Result 和全局错误映射。
 - 关键写入使用业务幂等键或资源版本前置条件；列表使用稳定排序元组、唯一 ID 游标和有界页大小，不使用易受并发插入影响的无序偏移。
-- 当前服务端角色为 Viewer/Editor/Admin，目标产品基线为 Viewer/Analyst/Editor/Admin；Analyst 只能在现有 Identity 模块与唯一 Schema 中显式新增或映射，迁移前不得由前端伪造。
+- 当前服务端已使用 Viewer/Analyst/Editor/Admin 四角色；Analyst 由 Admin 显式分配，只能管理自有 Monitor、手动扫描和相关性反馈，不继承 Editor 的审核能力或 Admin 的用户、来源与运行治理能力。
 - 长耗时操作返回持久任务或运行身份，前端轮询或通过 WebSocket 获取进度，不维持超长 HTTP 请求。
 - 所有新接口先更新后端 DTO、错误码、OpenAPI 与 Transport 测试，再生成前端 Client。
 - 前端只展示服务端提交的 Relevance、Heat 与 Evidence 事实及其解释，不在浏览器内重算或覆盖权威状态。

@@ -29,12 +29,19 @@ func TestAudienceRoleHierarchyDoesNotExposeAdminDiagnostics(t *testing.T) {
 		want             bool
 	}{
 		{AudienceViewer, AudienceViewer, true},
+		{AudienceViewer, AudienceAnalyst, false},
 		{AudienceViewer, AudienceEditor, false},
 		{AudienceViewer, AudienceAdmin, false},
+		{AudienceAnalyst, AudienceViewer, true},
+		{AudienceAnalyst, AudienceAnalyst, true},
+		{AudienceAnalyst, AudienceEditor, false},
+		{AudienceAnalyst, AudienceAdmin, false},
 		{AudienceEditor, AudienceViewer, true},
+		{AudienceEditor, AudienceAnalyst, true},
 		{AudienceEditor, AudienceEditor, true},
 		{AudienceEditor, AudienceAdmin, false},
 		{AudienceAdmin, AudienceViewer, true},
+		{AudienceAdmin, AudienceAnalyst, true},
 		{AudienceAdmin, AudienceEditor, true},
 		{AudienceAdmin, AudienceAdmin, true},
 	}

@@ -11,61 +11,62 @@ import (
 	"testing"
 )
 
-func TestAnalystRoleGapRemainsExplicitAcrossPublishedContracts(t *testing.T) {
+func TestAnalystRoleIsCoordinatedAcrossPublishedContracts(t *testing.T) {
 	repository := filepath.Clean(filepath.Join(repositoryRoot(t), ".."))
 	contracts := map[string][]string{
 		"backend/internal/modules/identity/domain/user.go": {
-			`RoleAdmin  Role = "admin"`,
-			`RoleEditor Role = "editor"`,
-			`RoleViewer Role = "viewer"`,
+			`RoleAdmin   Role = "admin"`,
+			`RoleAnalyst Role = "analyst"`,
+			`RoleEditor  Role = "editor"`,
+			`RoleViewer  Role = "viewer"`,
 		},
 		"backend/internal/platform/http/auth.go": {
-			`RoleViewer Role = "viewer"`,
-			`RoleEditor Role = "editor"`,
-			`RoleAdmin  Role = "admin"`,
+			`RoleViewer  Role = "viewer"`,
+			`RoleAnalyst Role = "analyst"`,
+			`RoleEditor  Role = "editor"`,
+			`RoleAdmin   Role = "admin"`,
 		},
 		"backend/internal/modules/identity/transport/http/dto.go": {
-			`enums:"admin,editor,viewer"`,
+			`enums:"admin,analyst,editor,viewer"`,
 		},
 		"backend/db/schema.sql": {
-			"role IN ('admin', 'editor', 'viewer')",
+			"role IN ('admin', 'analyst', 'editor', 'viewer')",
 		},
 		"docs/openapi/swagger.json": {
 			`"enum": [`,
 			`"admin"`,
+			`"analyst"`,
 			`"editor"`,
 			`"viewer"`,
 		},
 		"frontend/src/lib/domainEnums.ts": {
 			`Admin = "admin"`,
+			`Analyst = "analyst"`,
 			`Editor = "editor"`,
 			`Viewer = "viewer"`,
 		},
 		"frontend/src/services/hotkey/hotkey-server/typings.d.ts": {
-			`role?: "admin" | "editor" | "viewer"`,
+			`role?: "admin" | "analyst" | "editor" | "viewer"`,
 		},
 	}
 
 	for relative, required := range contracts {
 		payload := readRepositoryFile(t, repository, relative)
-		lower := strings.ToLower(payload)
-		if strings.Contains(lower, `"analyst"`) || strings.Contains(lower, `'analyst'`) {
-			t.Errorf("%s publishes analyst before the coordinated role migration is complete", relative)
-		}
 		for _, fragment := range required {
 			if !strings.Contains(payload, fragment) {
-				t.Errorf("%s is missing current-role fact %q", relative, fragment)
+				t.Errorf("%s is missing coordinated Analyst contract %q", relative, fragment)
 			}
 		}
 	}
 
-	prd := readRepositoryFile(t, repository, "docs/prd/001-HotKey产品需求分析与总体架构.md")
+	design := readRepositoryFile(t, repository, "docs/design/005-安全运维质量与交付设计.md")
 	for _, statement := range []string{
-		"当前权限只有 `viewer`、`editor`、`admin`，尚无独立 `analyst`",
-		"在 Analyst 正式落地前，不得仅在前端伪造该角色",
+		"既有用户不自动重映射",
+		"新注册用户仍为 Viewer",
+		"仅 Admin 可显式分配 Analyst",
 	} {
-		if !strings.Contains(prd, statement) {
-			t.Errorf("PRD 001 no longer declares the current Analyst gap: missing %q", statement)
+		if !strings.Contains(design, statement) {
+			t.Errorf("Design 005 is missing the Analyst migration decision %q", statement)
 		}
 	}
 }

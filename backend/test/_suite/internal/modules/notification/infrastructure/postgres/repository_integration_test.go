@@ -18,7 +18,7 @@ func TestRepositoryFiltersAudienceAndResumesFromGlobalCursor(t *testing.T) {
 	repository := NewRepository(runtime)
 	now := time.Now().UTC().Truncate(time.Microsecond)
 
-	for index, audience := range []domain.AudienceRole{domain.AudienceViewer, domain.AudienceEditor, domain.AudienceAdmin} {
+	for index, audience := range []domain.AudienceRole{domain.AudienceViewer, domain.AudienceAnalyst, domain.AudienceEditor, domain.AudienceAdmin} {
 		if _, err := runtime.SQL.ExecContext(ctx, `
 INSERT INTO notification_events (event_type, resource_type, resource_id, audience_role, occurred_at, payload, dedupe_key)
 VALUES ('event.updated', 'event', $1, $2, $3, jsonb_build_object('title', $4::text), $5)`, index+1, audience, now.Add(time.Duration(index)*time.Second), "notification", "repository:"+string(audience)); err != nil {
@@ -34,6 +34,14 @@ VALUES ('event.updated', 'event', $1, $2, $3, jsonb_build_object('title', $4::te
 		t.Fatalf("viewer page = %#v", viewerPage)
 	}
 
+	analystPage, err := repository.ListAfter(ctx, domain.NotificationQuery{Role: domain.AudienceAnalyst, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(analystPage.Items) != 2 || analystPage.Items[1].Audience != domain.AudienceAnalyst {
+		t.Fatalf("analyst page = %#v", analystPage)
+	}
+
 	editorPage, err := repository.ListAfter(ctx, domain.NotificationQuery{Role: domain.AudienceEditor, Limit: 1})
 	if err != nil {
 		t.Fatal(err)
@@ -45,7 +53,7 @@ VALUES ('event.updated', 'event', $1, $2, $3, jsonb_build_object('title', $4::te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(resumed.Items) != 1 || resumed.Items[0].Audience != domain.AudienceEditor {
+	if len(resumed.Items) != 2 || resumed.Items[0].Audience != domain.AudienceAnalyst || resumed.Items[1].Audience != domain.AudienceEditor {
 		t.Fatalf("editor resumed page = %#v", resumed)
 	}
 
@@ -53,8 +61,8 @@ VALUES ('event.updated', 'event', $1, $2, $3, jsonb_build_object('title', $4::te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(adminPage.Items) != 3 {
-		t.Fatalf("admin items = %d, want 3", len(adminPage.Items))
+	if len(adminPage.Items) != 4 {
+		t.Fatalf("admin items = %d, want 4", len(adminPage.Items))
 	}
 	for index := 1; index < len(adminPage.Items); index++ {
 		if adminPage.Items[index-1].ID >= adminPage.Items[index].ID {

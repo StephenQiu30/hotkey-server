@@ -169,10 +169,12 @@ VALUES ($1, 'keyword', 'contains', 'climate', 'user', 'approved')`, target.Monit
 	}
 	now := time.Date(2026, time.July, 16, 9, 2, 0, 0, time.UTC)
 	targetReader := monitorpostgres.NewPublishedCollectionTargetReader(runtime)
+	monitorAuthorizer := &collectionMonitorAuthorizerFake{allowedUserID: 77, allowedMonitorID: monitorID}
 	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
 		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}}, Retries: collectionRetryActivatorFake{},
-		Manuals: manuals, Targets: targetReader, Quota: operationspostgres.NewGovernanceRepository(runtime), Now: func() time.Time { return now },
+		Manuals: manuals, Targets: targetReader, Quota: operationspostgres.NewGovernanceRepository(runtime),
+		Monitors: monitorAuthorizer, Now: func() time.Time { return now },
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -189,6 +191,18 @@ VALUES ($1, 'keyword', 'contains', 'climate', 'user', 'approved')`, target.Monit
 	second, err := control.Manual(context.Background(), sourceapplication.ManualCollectionInput{Subject: editor, MonitorID: monitorID})
 	if err != nil || second.Created != 0 || second.Reused != 1 {
 		t.Fatalf("Manual(second) = %#v / %v, want cooldown reuse", second, err)
+	}
+	analyst := identitydomain.Subject{UserID: 77, SessionID: 3, Role: identitydomain.RoleAnalyst}
+	analystResult, err := control.Manual(context.Background(), sourceapplication.ManualCollectionInput{Subject: analyst, MonitorID: monitorID})
+	if err != nil || analystResult.Created != 0 || analystResult.Reused != 1 {
+		t.Fatalf("Manual(authorized analyst) = %#v / %v, want owner-authorized cooldown reuse", analystResult, err)
+	}
+	otherAnalyst := identitydomain.Subject{UserID: 78, SessionID: 4, Role: identitydomain.RoleAnalyst}
+	if _, err := control.Manual(context.Background(), sourceapplication.ManualCollectionInput{Subject: otherAnalyst, MonitorID: monitorID}); err == nil {
+		t.Fatal("Manual(non-owner analyst) unexpectedly succeeded")
+	}
+	if monitorAuthorizer.calls != 2 {
+		t.Fatalf("monitor contribution authorization calls = %d, want 2 analyst calls", monitorAuthorizer.calls)
 	}
 	var jobCount int
 	var triggerType string
@@ -1129,6 +1143,20 @@ func TestCollectionControlRetryRejectsNewerQueuedOrRunningRun(t *testing.T) {
 }
 
 type collectionRetryActivatorFake struct{}
+
+type collectionMonitorAuthorizerFake struct {
+	allowedUserID    int64
+	allowedMonitorID int64
+	calls            int
+}
+
+func (fake *collectionMonitorAuthorizerFake) AuthorizeContribution(_ context.Context, subject identitydomain.Subject, monitorID int64) error {
+	fake.calls++
+	if subject.UserID != fake.allowedUserID || monitorID != fake.allowedMonitorID {
+		return errors.New("monitor contribution forbidden")
+	}
+	return nil
+}
 
 func (collectionRetryActivatorFake) Reactivate(context.Context, domain.CollectionRunRetry) error {
 	return nil

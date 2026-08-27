@@ -28,7 +28,8 @@ export default function ProfilePage() {
   const canViewOperations =
     user?.role === UserRole.Editor || user?.role === UserRole.Admin;
   const canManageSources = user?.role === UserRole.Admin;
-  const canManage = canViewOperations;
+  const canManage =
+    user?.role === UserRole.Analyst || canViewOperations;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [stats, setStats] = useState(emptyStats);

@@ -34,7 +34,7 @@ type PreviewResult struct {
 // Preview is deliberately read-only: it opens no transaction, never calls an
 // external client, and invokes neither AuditWriter nor any repository write.
 func (service *Service) Preview(ctx context.Context, subject identitydomain.Subject, monitorID int64) (PreviewResult, error) {
-	if err := requireEditor(subject); err != nil {
+	if err := requireContributor(subject); err != nil {
 		return PreviewResult{}, err
 	}
 	if monitorID <= 0 {
@@ -43,6 +43,9 @@ func (service *Service) Preview(ctx context.Context, subject identitydomain.Subj
 	monitor, err := service.monitors.FindByID(ctx, monitorID)
 	if err != nil {
 		return PreviewResult{}, monitorReadError(err)
+	}
+	if err := authorizeMonitorContributor(subject, *monitor); err != nil {
+		return PreviewResult{}, err
 	}
 	if monitor.Status == domain.MonitorStatusArchived || monitor.DraftConfigVersionID == nil {
 		return PreviewResult{}, domain.MonitorDraftUnavailable()

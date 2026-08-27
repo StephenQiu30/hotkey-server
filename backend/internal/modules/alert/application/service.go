@@ -289,7 +289,7 @@ func (service *Service) transition(ctx context.Context, input ActionInput, to do
 	if service == nil || service.clock == nil || !input.Subject.Authenticated() {
 		return domain.Thread{}, fmt.Errorf("%w: invalid alert actor", sharedrepository.ErrInvalidInput)
 	}
-	if elevated && input.Subject.Role == identitydomain.RoleViewer {
+	if elevated && input.Subject.Role != identitydomain.RoleEditor && input.Subject.Role != identitydomain.RoleAdmin {
 		return domain.Thread{}, sharederrors.New(sharederrors.CodeForbidden, http.StatusForbidden, "")
 	}
 	writer, ok := service.occurrences.(stateWriter)

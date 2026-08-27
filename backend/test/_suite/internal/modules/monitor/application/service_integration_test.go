@@ -38,6 +38,71 @@ func (audit monitorFailingAudit) Write(context.Context, operationsdomain.AuditEn
 	return audit.err
 }
 
+func TestAnalystCanManageOnlyAnOwnedMonitor(t *testing.T) {
+	runtime := monitorRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	ctx := context.Background()
+	admin := monitorAdmin(t, runtime)
+	owner := monitorAnalyst(t, runtime, "monitor-owner")
+	other := monitorAnalyst(t, runtime, "monitor-other")
+	usage := monitorpostgres.NewSourceUsageReader(runtime)
+	sources, err := sourceapplication.NewService(sourceapplication.Dependencies{
+		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), MonitorUsage: usage,
+		PublishedReferences: monitorpostgres.NewPublishedReferenceReader(runtime), Audit: operationspostgres.NewAuditWriter(runtime),
+	})
+	if err != nil {
+		t.Fatalf("NewSourceService(): %v", err)
+	}
+	monitors, err := monitorapplication.NewService(monitorapplication.Dependencies{
+		Runtime: runtime, Monitors: monitorpostgres.NewRepository(runtime), Sources: sources, Audit: operationspostgres.NewAuditWriter(runtime),
+	})
+	if err != nil {
+		t.Fatalf("NewMonitorService(): %v", err)
+	}
+	connection, err := sources.Create(ctx, sourceapplication.CreateInput{Subject: admin, Connection: monitorSourceConnection("analyst-owned-source")})
+	if err != nil {
+		t.Fatalf("Create source: %v", err)
+	}
+
+	created, draft, err := monitors.Create(ctx, monitorapplication.CreateInput{Subject: owner, Draft: monitorDraft(connection.ID)})
+	if err != nil {
+		t.Fatalf("analyst Create(): %v", err)
+	}
+	if created.CreatedByUserID != owner.UserID {
+		t.Fatalf("monitor owner = %d, want %d", created.CreatedByUserID, owner.UserID)
+	}
+	if _, err := monitors.Get(ctx, other, created.ID); appCode(err) != sharederrors.CodeMonitorDraftUnavailable {
+		t.Fatalf("other analyst Get(draft) code = %d", appCode(err))
+	}
+	if _, err := monitors.Preview(ctx, owner, created.ID); err != nil {
+		t.Fatalf("owner Preview(): %v", err)
+	}
+	if _, err := monitors.Preview(ctx, other, created.ID); appCode(err) != sharederrors.CodeForbidden {
+		t.Fatalf("other analyst Preview() code = %d", appCode(err))
+	}
+	if err := monitors.AuthorizeContribution(ctx, owner, created.ID); err != nil {
+		t.Fatalf("owner AuthorizeContribution(): %v", err)
+	}
+	if err := monitors.AuthorizeContribution(ctx, other, created.ID); appCode(err) != sharederrors.CodeForbidden {
+		t.Fatalf("other analyst AuthorizeContribution() code = %d", appCode(err))
+	}
+	expected := monitordomain.ExpectedVersions{MonitorVersion: created.Version, DraftVersion: int64Value(draft.Version)}
+	if _, _, err := monitors.Publish(ctx, monitorapplication.PublishInput{Subject: other, MonitorID: created.ID, Expected: expected}); appCode(err) != sharederrors.CodeForbidden {
+		t.Fatalf("other analyst Publish() code = %d", appCode(err))
+	}
+	published, _, err := monitors.Publish(ctx, monitorapplication.PublishInput{Subject: owner, MonitorID: created.ID, Expected: expected})
+	if err != nil {
+		t.Fatalf("owner Publish(): %v", err)
+	}
+	if _, err := monitors.Pause(ctx, monitorapplication.LifecycleInput{Subject: other, MonitorID: created.ID, ExpectedMonitorVersion: published.Version}); appCode(err) != sharederrors.CodeForbidden {
+		t.Fatalf("other analyst Pause() code = %d", appCode(err))
+	}
+	paused, err := monitors.Pause(ctx, monitorapplication.LifecycleInput{Subject: owner, MonitorID: created.ID, ExpectedMonitorVersion: published.Version})
+	if err != nil || paused.Status != monitordomain.MonitorStatusPaused {
+		t.Fatalf("owner Pause() = %#v/%v", paused, err)
+	}
+}
+
 func TestMonitorServicePublishesImmutableConfigurationAndCoordinatesSourceLifecycle(t *testing.T) {
 	runtime := monitorRuntime(t)
 	defer func() { _ = runtime.Close() }()
@@ -185,7 +250,7 @@ WHERE source.config_version_id = $1`, publishedConfig.ID).Scan(&checkpointQueryH
 	if previewWithPending.Sources[0].QuerySignature != preview.Sources[0].QuerySignature {
 		t.Fatalf("pending AI changed query signature: before=%s after=%s", preview.Sources[0].QuerySignature, previewWithPending.Sources[0].QuerySignature)
 	}
-	approved, err := monitors.ApproveAICandidate(ctx, monitorapplication.ApprovalInput{Subject: admin, MonitorID: created.ID, RuleID: aiRule.ID, Expected: monitordomain.ExpectedVersions{MonitorVersion: firstDraftMonitor.Version + 1, DraftVersion: int64Value(candidate.Version)}, Approval: monitordomain.RuleApprovalApproved})
+	approved, err := monitors.ApproveAICandidate(ctx, monitorapplication.ApprovalInput{Subject: monitorEditor(admin.UserID), MonitorID: created.ID, RuleID: aiRule.ID, Expected: monitordomain.ExpectedVersions{MonitorVersion: firstDraftMonitor.Version + 1, DraftVersion: int64Value(candidate.Version)}, Approval: monitordomain.RuleApprovalApproved})
 	if err != nil {
 		t.Fatalf("ApproveAICandidate: %v", err)
 	}
@@ -196,11 +261,8 @@ WHERE source.config_version_id = $1`, publishedConfig.ID).Scan(&checkpointQueryH
 	if previewApproved.Sources[0].QuerySignature == preview.Sources[0].QuerySignature {
 		t.Fatalf("approved AI did not change query signature")
 	}
-	if _, _, err := monitors.Publish(ctx, monitorapplication.PublishInput{Subject: monitorEditor(admin.UserID), MonitorID: created.ID, Expected: monitordomain.ExpectedVersions{MonitorVersion: firstDraftMonitor.Version + 2, DraftVersion: int64Value(approved.Version)}}); appCode(err) != sharederrors.CodeForbidden {
-		t.Fatalf("editor publish code=%d", appCode(err))
-	}
-	if _, _, err := monitors.Publish(ctx, monitorapplication.PublishInput{Subject: admin, MonitorID: created.ID, Expected: monitordomain.ExpectedVersions{MonitorVersion: firstDraftMonitor.Version + 2, DraftVersion: int64Value(approved.Version)}}); err != nil {
-		t.Fatalf("second Publish: %v", err)
+	if _, _, err := monitors.Publish(ctx, monitorapplication.PublishInput{Subject: monitorEditor(admin.UserID), MonitorID: created.ID, Expected: monitordomain.ExpectedVersions{MonitorVersion: firstDraftMonitor.Version + 2, DraftVersion: int64Value(approved.Version)}}); err != nil {
+		t.Fatalf("editor Publish: %v", err)
 	}
 	active, err := monitors.ActivePublished(ctx, identitydomain.Subject{UserID: admin.UserID, Role: identitydomain.RoleViewer})
 	if err != nil || len(active) != 1 || active[0].Config.State != monitordomain.ConfigVersionPublished {
@@ -689,6 +751,15 @@ func monitorAdmin(t *testing.T, runtime *database.Runtime) identitydomain.Subjec
 }
 func monitorEditor(id int64) identitydomain.Subject {
 	return identitydomain.Subject{UserID: id, SessionID: 2, Role: identitydomain.RoleEditor}
+}
+func monitorAnalyst(t *testing.T, runtime *database.Runtime, label string) identitydomain.Subject {
+	t.Helper()
+	var id int64
+	email := fmt.Sprintf("%s-%d@example.test", label, time.Now().UnixNano())
+	if err := runtime.SQL.QueryRow(`INSERT INTO users (email, password_hash, display_name, role, status) VALUES ($1, 'hash', 'Monitor Analyst', 'analyst', 'active') RETURNING id`, email).Scan(&id); err != nil {
+		t.Fatalf("seed monitor analyst: %v", err)
+	}
+	return identitydomain.Subject{UserID: id, SessionID: id, Role: identitydomain.RoleAnalyst}
 }
 func monitorSourceConnection(name string) sourcedomain.SourceConnection {
 	return sourcedomain.SourceConnection{SourceType: sourcedomain.SourceTypeRSS, Name: name, Endpoint: "https://feeds.example.test/rss", AuthType: sourcedomain.AuthTypeNone, Config: sourcedomain.DefaultSourceConfig(), Enabled: true}

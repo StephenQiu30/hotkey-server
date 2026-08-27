@@ -49,7 +49,10 @@ function currentTimeContext() {
 
 export default function DashboardPage() {
   const role = useAuthStore((state) => state.user?.role);
-  const canManage = role === UserRole.Admin || role === UserRole.Editor;
+  const canManage =
+    role === UserRole.Analyst ||
+    role === UserRole.Editor ||
+    role === UserRole.Admin;
   const [hotspots, setHotspots] = useState<HotKeyAPI.HotspotCardResponse[]>([]);
   const [summary, setSummary] = useState<HotKeyAPI.HotspotSummaryResponse>({});
   const [monitors, setMonitors] = useState<HotKeyAPI.MonitorResponse[]>([]);

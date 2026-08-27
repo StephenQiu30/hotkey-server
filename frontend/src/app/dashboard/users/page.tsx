@@ -53,6 +53,7 @@ const PAGE_SIZE = 10;
 
 const roleLabels: Record<string, string> = {
   admin: "管理员",
+  analyst: "分析者",
   editor: "编辑者",
   viewer: "查看者",
 };
@@ -192,6 +193,7 @@ export default function UsersPage() {
             <SelectContent>
               <SelectItem value="all">全部角色</SelectItem>
               <SelectItem value="admin">管理员</SelectItem>
+              <SelectItem value="analyst">分析者</SelectItem>
               <SelectItem value="editor">编辑者</SelectItem>
               <SelectItem value="viewer">查看者</SelectItem>
             </SelectContent>

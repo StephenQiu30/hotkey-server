@@ -40,7 +40,7 @@ func TestNormalizeEmailRejectsMalformedAddresses(t *testing.T) {
 func TestRoleIsLimitedToSupportedValues(t *testing.T) {
 	t.Parallel()
 
-	for _, role := range []Role{RoleAdmin, RoleEditor, RoleViewer} {
+	for _, role := range []Role{RoleAdmin, RoleAnalyst, RoleEditor, RoleViewer} {
 		if !role.Valid() {
 			t.Errorf("role %q is not valid", role)
 		}

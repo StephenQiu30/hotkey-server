@@ -36,7 +36,9 @@ func TestCollectionAdminRoutesEnforceRolesAndExposeOnlySafeRunFacts(t *testing.T
 	}{
 		{name: "viewer list denied", role: httptransport.RoleViewer, path: "/api/v1/collection-runs", method: http.MethodGet, wantStatus: http.StatusForbidden, wantCode: sharederrors.CodeForbidden},
 		{name: "viewer manual denied", role: httptransport.RoleViewer, path: "/api/v1/monitors/9/collect", method: http.MethodPost, wantStatus: http.StatusForbidden, wantCode: sharederrors.CodeForbidden},
-		{name: "analyst target role fails closed before 005", role: httptransport.Role("analyst"), path: "/api/v1/monitors/9/scans", method: http.MethodGet, wantStatus: http.StatusUnauthorized, wantCode: sharederrors.CodeUnauthenticated},
+		{name: "analyst scans", role: httptransport.RoleAnalyst, path: "/api/v1/monitors/9/scans", method: http.MethodGet, wantStatus: http.StatusOK, wantCode: 0},
+		{name: "analyst manual", role: httptransport.RoleAnalyst, path: "/api/v1/monitors/9/collect", method: http.MethodPost, wantStatus: http.StatusOK, wantCode: 0},
+		{name: "analyst list denied", role: httptransport.RoleAnalyst, path: "/api/v1/collection-runs", method: http.MethodGet, wantStatus: http.StatusForbidden, wantCode: sharederrors.CodeForbidden},
 		{name: "editor list", role: httptransport.RoleEditor, path: "/api/v1/collection-runs", method: http.MethodGet, wantStatus: http.StatusOK, wantCode: 0},
 		{name: "editor manual", role: httptransport.RoleEditor, path: "/api/v1/monitors/9/collect", method: http.MethodPost, wantStatus: http.StatusOK, wantCode: 0},
 		{name: "editor retry denied", role: httptransport.RoleEditor, path: "/api/v1/collection-runs/41/retry", method: http.MethodPost, wantStatus: http.StatusForbidden, wantCode: sharederrors.CodeForbidden},
@@ -73,7 +75,7 @@ func TestCollectionAdminRoutesEnforceRolesAndExposeOnlySafeRunFacts(t *testing.T
 			}
 		})
 	}
-	if service.listCalls != 2 || service.manualCalls != 1 || service.retryCalls != 1 || service.healthCalls != 1 {
+	if service.listCalls != 2 || service.manualCalls != 2 || service.retryCalls != 1 || service.healthCalls != 1 {
 		t.Fatalf("service calls = list:%d manual:%d retry:%d health:%d", service.listCalls, service.manualCalls, service.retryCalls, service.healthCalls)
 	}
 }

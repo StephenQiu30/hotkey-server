@@ -521,10 +521,10 @@ func newMetricCapabilityService(runtime *database.Runtime, profiles *sourcepostg
 	return sourceapplication.NewMetricCapabilityService(sourceapplication.MetricCapabilityDependencies{Runtime: runtime, Profiles: profiles, SourceContexts: sources, Audit: audit})
 }
 
-func newCollectionControlService(runtime *database.Runtime, sources *sourcepostgres.Repository, runs *sourcepostgres.CollectionRepository, connectors *sourceinfrastructure.ConnectorRegistry, retries *sourcejobs.CollectionRetryActivator, manuals *sourcejobs.ManualCollectionActivator, targets *monitorpostgres.PublishedCollectionTargetReader, scans *monitorpostgres.MonitorScanReader, quota *operationspostgres.GovernanceRepository, metrics *observability.Metrics) (*sourceapplication.CollectionControlService, error) {
+func newCollectionControlService(runtime *database.Runtime, sources *sourcepostgres.Repository, runs *sourcepostgres.CollectionRepository, connectors *sourceinfrastructure.ConnectorRegistry, retries *sourcejobs.CollectionRetryActivator, manuals *sourcejobs.ManualCollectionActivator, targets *monitorpostgres.PublishedCollectionTargetReader, scans *monitorpostgres.MonitorScanReader, quota *operationspostgres.GovernanceRepository, metrics *observability.Metrics, monitors *monitorapplication.Service) (*sourceapplication.CollectionControlService, error) {
 	return sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
 		Runtime: runtime, Sources: sources, Runs: runs, Connectors: connectors, Retries: retries,
-		Manuals: manuals, Targets: targets, Scans: scans, Metrics: metrics, Quota: quota,
+		Manuals: manuals, Targets: targets, Scans: scans, Metrics: metrics, Quota: quota, Monitors: monitors,
 	})
 }
 
@@ -660,8 +660,8 @@ func newIngestionCitationService(citations *ingestionpostgres.CitationRepository
 	return ingestionapplication.NewCitationService(ingestionapplication.CitationDependencies{Citations: citations, Projections: projections})
 }
 
-func newIngestionRelevanceAPIService(snapshots *ingestionpostgres.RelevanceRepository, contents *ingestionpostgres.ContentRepository, candidates *ingestionpostgres.RelevanceCandidateReader) (*ingestionapplication.RelevanceAPIService, error) {
-	return ingestionapplication.NewRelevanceAPIService(ingestionapplication.RelevanceAPIServiceDependencies{Snapshots: snapshots, Contents: contents, Candidates: candidates})
+func newIngestionRelevanceAPIService(snapshots *ingestionpostgres.RelevanceRepository, contents *ingestionpostgres.ContentRepository, candidates *ingestionpostgres.RelevanceCandidateReader, monitors *monitorapplication.Service) (*ingestionapplication.RelevanceAPIService, error) {
+	return ingestionapplication.NewRelevanceAPIService(ingestionapplication.RelevanceAPIServiceDependencies{Snapshots: snapshots, Contents: contents, Candidates: candidates, Monitors: monitors})
 }
 
 func newMonitorService(runtime *database.Runtime, monitors *monitorpostgres.Repository, sources *sourceapplication.Service, audit *operationspostgres.AuditWriter, quota *operationspostgres.GovernanceRepository, publication *monitorapplication.IntentPublicationService) (*monitorapplication.Service, error) {

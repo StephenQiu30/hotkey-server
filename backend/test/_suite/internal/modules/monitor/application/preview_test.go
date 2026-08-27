@@ -14,7 +14,7 @@ import (
 
 func TestPreviewUsesOnlyReadPortsAndNeverWritesAudit(t *testing.T) {
 	draftID := int64(2)
-	repository := &previewRepository{monitor: domain.Monitor{ID: 1, Version: 1, Name: "preview", Status: domain.MonitorStatusDraft, DraftConfigVersionID: &draftID}, config: domain.MonitorConfigVersion{ID: draftID, Version: 1, MonitorID: 1, Revision: 1, State: domain.ConfigVersionDraft, Config: domain.MonitorConfig{Timezone: "UTC", Languages: []string{"en"}, CollectionIntervalSeconds: 300, RelevanceThreshold: 60, EventThreshold: 0, RetentionDays: 30}}, rules: []domain.MonitorRule{{ID: 3, RuleType: domain.RuleTypeKeyword, Operator: domain.RuleOperatorContains, Value: "preview", Weight: 100, Priority: 1, Origin: domain.RuleOriginUser, ApprovalStatus: domain.RuleApprovalApproved, Enabled: true}}, sources: []domain.MonitorSource{{ID: 4, SourceConnectionID: 5, Priority: 1, Enabled: true}}}
+	repository := &previewRepository{monitor: domain.Monitor{ID: 1, Version: 1, Name: "preview", Status: domain.MonitorStatusDraft, DraftConfigVersionID: &draftID, CreatedByUserID: 7}, config: domain.MonitorConfigVersion{ID: draftID, Version: 1, MonitorID: 1, Revision: 1, State: domain.ConfigVersionDraft, Config: domain.MonitorConfig{Timezone: "UTC", Languages: []string{"en"}, CollectionIntervalSeconds: 300, RelevanceThreshold: 60, EventThreshold: 0, RetentionDays: 30}}, rules: []domain.MonitorRule{{ID: 3, RuleType: domain.RuleTypeKeyword, Operator: domain.RuleOperatorContains, Value: "preview", Weight: 100, Priority: 1, Origin: domain.RuleOriginUser, ApprovalStatus: domain.RuleApprovalApproved, Enabled: true}}, sources: []domain.MonitorSource{{ID: 4, SourceConnectionID: 5, Priority: 1, Enabled: true}}}
 	sources := &previewSourceReader{}
 	audit := &previewAudit{}
 	service, err := NewService(Dependencies{Runtime: &database.Runtime{}, Monitors: repository, Sources: sources, Audit: audit})
@@ -34,6 +34,12 @@ func TestPreviewUsesOnlyReadPortsAndNeverWritesAudit(t *testing.T) {
 	}
 	if _, err := service.Preview(context.Background(), identitydomain.Subject{UserID: 1, Role: identitydomain.RoleViewer}, 1); err == nil {
 		t.Fatal("viewer preview succeeded")
+	}
+	if _, err := service.Preview(context.Background(), identitydomain.Subject{UserID: 7, Role: identitydomain.RoleAnalyst}, 1); err != nil {
+		t.Fatalf("owner analyst Preview(): %v", err)
+	}
+	if _, err := service.Preview(context.Background(), identitydomain.Subject{UserID: 8, Role: identitydomain.RoleAnalyst}, 1); err == nil {
+		t.Fatal("non-owner analyst preview succeeded")
 	}
 }
 

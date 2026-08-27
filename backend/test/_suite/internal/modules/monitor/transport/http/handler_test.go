@@ -34,6 +34,31 @@ func TestMonitorRoutesRequireTheDesignRoles(t *testing.T) {
 	}
 }
 
+func TestAnalystCanReachContributorRoutesButNotAdministrativeDelete(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &captureMonitorService{readMonitorService: readMonitorService{view: monitorapplication.MonitorView{Monitor: domain.Monitor{ID: 1, Version: 1, Name: "own", Status: domain.MonitorStatusActive}}}}
+	router := gin.New()
+	RegisterRoutes(router, service, testAuthenticator{subject: httptransport.Subject{UserID: 7, SessionID: 1, Role: httptransport.RoleAnalyst}})
+
+	create := httptest.NewRequest(http.MethodPost, "/api/v1/monitors", strings.NewReader(`{"name":"own","query":"HotKey","source_connection_ids":[7]}`))
+	create.Header.Set("Authorization", "Bearer analyst")
+	create.Header.Set("Content-Type", "application/json")
+	createResponse := httptest.NewRecorder()
+	router.ServeHTTP(createResponse, create)
+	if createResponse.Code != http.StatusCreated || len(service.creates) != 1 {
+		t.Fatalf("analyst create = %d calls=%d body=%s", createResponse.Code, len(service.creates), createResponse.Body.String())
+	}
+
+	deleteRequest := httptest.NewRequest(http.MethodDelete, "/api/v1/monitors/1", strings.NewReader(`{"expected_monitor_version":1}`))
+	deleteRequest.Header.Set("Authorization", "Bearer analyst")
+	deleteRequest.Header.Set("Content-Type", "application/json")
+	deleteResponse := httptest.NewRecorder()
+	router.ServeHTTP(deleteResponse, deleteRequest)
+	if deleteResponse.Code != http.StatusForbidden {
+		t.Fatalf("analyst delete status = %d, want %d", deleteResponse.Code, http.StatusForbidden)
+	}
+}
+
 func TestArchivedMonitorDeleteRouteRequiresAdminAndExpectedVersion(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	service := &readMonitorService{view: monitorapplication.MonitorView{Monitor: domain.Monitor{ID: 7, Version: 4, Name: "archived", Status: domain.MonitorStatusArchived}}}
@@ -310,7 +335,7 @@ func TestMonitorReadRoutesProjectPublishedAndDraftByRole(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	published := monitorapplication.ConfigurationView{Config: domain.MonitorConfigVersion{ID: 10, Revision: 2, Config: domain.MonitorConfig{Timezone: "UTC", Languages: []string{"en"}, CollectionIntervalSeconds: 300, RelevanceThreshold: 60, EventThreshold: 0, RetentionDays: 30}}, Rules: []domain.MonitorRule{{Value: "OpenAI", RuleType: domain.RuleTypeKeyword, ApprovalStatus: domain.RuleApprovalApproved, Enabled: true}}, Sources: []monitorapplication.MonitorSourceView{{MonitorSource: domain.MonitorSource{ID: 4, SourceConnectionID: 7, Enabled: true}, SourceName: "RSS", SourceType: "rss"}}}
 	draft := monitorapplication.ConfigurationView{Config: domain.MonitorConfigVersion{ID: 11, Revision: 3, Config: published.Config.Config}}
-	view := monitorapplication.MonitorView{Monitor: domain.Monitor{ID: 1, Version: 4, Name: "monitor", Status: domain.MonitorStatusPaused}, Published: &published, Draft: &draft}
+	view := monitorapplication.MonitorView{Monitor: domain.Monitor{ID: 1, Version: 4, Name: "monitor", Status: domain.MonitorStatusPaused, CreatedByUserID: 7}, Published: &published, Draft: &draft}
 	service := &readMonitorService{view: view}
 
 	viewerRouter := gin.New()
@@ -322,7 +347,7 @@ func TestMonitorReadRoutesProjectPublishedAndDraftByRole(t *testing.T) {
 	if viewerResponse.Code != http.StatusOK {
 		t.Fatalf("viewer list status = %d: %s", viewerResponse.Code, viewerResponse.Body.String())
 	}
-	if strings.Contains(viewerResponse.Body.String(), `"draft"`) || strings.Contains(viewerResponse.Body.String(), `"published"`) || !strings.Contains(viewerResponse.Body.String(), `"query":"OpenAI"`) || !strings.Contains(viewerResponse.Body.String(), `"source_type":"rss"`) || !strings.Contains(viewerResponse.Body.String(), `"name":"RSS"`) {
+	if strings.Contains(viewerResponse.Body.String(), `"draft"`) || strings.Contains(viewerResponse.Body.String(), `"published"`) || !strings.Contains(viewerResponse.Body.String(), `"query":"OpenAI"`) || !strings.Contains(viewerResponse.Body.String(), `"source_type":"rss"`) || !strings.Contains(viewerResponse.Body.String(), `"name":"RSS"`) || !strings.Contains(viewerResponse.Body.String(), `"created_by_user_id":7`) {
 		t.Fatalf("viewer response did not preserve safe published-only source projection: %s", viewerResponse.Body.String())
 	}
 

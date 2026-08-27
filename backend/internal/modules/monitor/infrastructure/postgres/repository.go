@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -92,11 +93,15 @@ func (repository *Repository) List(ctx context.Context, query domain.MonitorList
 		return nil, "", err
 	}
 	statement := `SELECT ` + monitorColumns + ` FROM monitors WHERE id > $1 AND deleted_at IS NULL`
+	arguments := []any{cursorID, limit + 1}
 	if query.PublishedOnly {
 		statement += ` AND status IN ('active', 'paused') AND published_config_version_id IS NOT NULL`
+	} else if query.VisibleOwnerUserID > 0 {
+		statement += ` AND ((status IN ('active', 'paused') AND published_config_version_id IS NOT NULL) OR created_by = $3)`
+		arguments = append(arguments, query.VisibleOwnerUserID)
 	}
 	statement += ` ORDER BY id ASC LIMIT $2`
-	rows, err := repository.runtime.SQL.QueryContext(ctx, statement, cursorID, limit+1)
+	rows, err := repository.runtime.SQL.QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, "", databaserepository.MapError(err)
 	}
@@ -119,6 +124,8 @@ func (repository *Repository) List(ctx context.Context, query domain.MonitorList
 	fingerprint := monitorListFingerprint
 	if query.PublishedOnly {
 		fingerprint += "-published"
+	} else if query.VisibleOwnerUserID > 0 {
+		fingerprint += "-published-or-owner-" + strconv.FormatInt(query.VisibleOwnerUserID, 10)
 	}
 	nextCursor, err := repository.cursorCodec.Encode("id", false, fingerprint, monitors[len(monitors)-1].ID)
 	if err != nil {
@@ -353,6 +360,9 @@ func (repository *Repository) ListActivePublished(ctx context.Context) ([]domain
 }
 
 func (repository *Repository) monitorListParameters(query domain.MonitorListQuery) (int, int64, error) {
+	if query.PublishedOnly && query.VisibleOwnerUserID != 0 || query.VisibleOwnerUserID < 0 {
+		return 0, 0, fmt.Errorf("%w: monitor visibility is invalid", sharedrepository.ErrInvalidInput)
+	}
 	limit := query.Limit
 	if limit == 0 {
 		limit = monitorListDefaultLimit
@@ -363,6 +373,8 @@ func (repository *Repository) monitorListParameters(query domain.MonitorListQuer
 	fingerprint := monitorListFingerprint
 	if query.PublishedOnly {
 		fingerprint += "-published"
+	} else if query.VisibleOwnerUserID > 0 {
+		fingerprint += "-published-or-owner-" + strconv.FormatInt(query.VisibleOwnerUserID, 10)
 	}
 	cursor, err := repository.cursorCodec.Decode(query.Cursor, "id", false, fingerprint)
 	if err != nil {

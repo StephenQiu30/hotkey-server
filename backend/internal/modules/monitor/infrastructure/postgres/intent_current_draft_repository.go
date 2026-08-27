@@ -76,7 +76,7 @@ func (repository *IntentRepository) AuthorizeIntentControl(ctx context.Context, 
 	if repository == nil || repository.runtime == nil || query.ActorUserID <= 0 || query.MonitorID <= 0 || !validIntentControlOperation(query.Operation) {
 		return monitorapplication.ErrIntentAuthorizationDenied
 	}
-	requiredRole := "editor"
+	requiredRole := "contributor"
 	if query.Operation == monitorapplication.IntentControlSubmitExpansion || query.Operation == monitorapplication.IntentControlReviewCandidate {
 		requiredRole = "admin"
 	}
@@ -87,7 +87,13 @@ SELECT EXISTS (
   FROM users u
   JOIN monitors m ON m.id=$2 AND m.deleted_at IS NULL
   WHERE u.id=$1 AND u.status='active' AND u.deleted_at IS NULL
-    AND ($3='admin' AND u.role='admin' OR $3='editor' AND u.role IN ('editor','admin'))
+    AND (
+      $3='admin' AND u.role='admin'
+      OR $3='contributor' AND (
+        u.role IN ('editor','admin')
+        OR u.role='analyst' AND m.created_by=u.id
+      )
+    )
 )`, query.ActorUserID, query.MonitorID, requiredRole).Scan(&allowed)
 	if err != nil {
 		return mapIntentDatabaseError(err)

@@ -12,14 +12,15 @@ var ErrInvalidEmail = errors.New("invalid email")
 type Role string
 
 const (
-	RoleAdmin  Role = "admin"
-	RoleEditor Role = "editor"
-	RoleViewer Role = "viewer"
+	RoleAdmin   Role = "admin"
+	RoleAnalyst Role = "analyst"
+	RoleEditor  Role = "editor"
+	RoleViewer  Role = "viewer"
 )
 
 func (r Role) Valid() bool {
 	switch r {
-	case RoleAdmin, RoleEditor, RoleViewer:
+	case RoleAdmin, RoleAnalyst, RoleEditor, RoleViewer:
 		return true
 	default:
 		return false

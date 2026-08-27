@@ -105,7 +105,7 @@ export default function EventGovernancePage() {
   const id = Number(params.id);
   const validID = Number.isSafeInteger(id) && id > 0;
   const canGovern = role === UserRole.Editor || role === UserRole.Admin;
-  const analystUnavailable = role === "analyst";
+  const isAnalyst = role === UserRole.Analyst;
   const [event, setEvent] = useState<HotKeyAPI.MicroEventResponseDTO>();
   const [evidence, setEvidence] = useState<HotKeyAPI.ClaimEvidenceResponseDTO[]>([]);
   const [targets, setTargets] = useState<HotKeyAPI.MicroEventResponseDTO[]>([]);
@@ -305,8 +305,8 @@ export default function EventGovernancePage() {
       <Badge variant="outline">{evidence.length} 条 ClaimEvidence</Badge>
     </div>
 
-    {!canGovern ? <Alert aria-label="只读权限" className="mt-6"><ShieldAlert /><AlertTitle>{analystUnavailable ? "Analyst 角色尚未启用" : "当前账号为只读角色"}</AlertTitle>
-      <AlertDescription>{analystUnavailable ? "当前服务端角色契约尚未包含 Analyst，因此按真实角色拒绝治理写入；该迁移将在 005 中统一完成。" : "Viewer 可以核对事件、成员和证据，但治理写操作只允许 Editor/Admin，并由服务端再次校验。"}</AlertDescription>
+    {!canGovern ? <Alert aria-label="只读权限" className="mt-6"><ShieldAlert /><AlertTitle>{isAnalyst ? "Analyst 在事件治理中为只读角色" : "当前账号为只读角色"}</AlertTitle>
+      <AlertDescription>{isAnalyst ? "Analyst 可以管理自有 Monitor、发起扫描并提交相关性反馈；事件合并、成员移动和证据纠正仍只允许 Editor/Admin。" : "Viewer 可以核对事件、成员和证据，但治理写操作只允许 Editor/Admin，并由服务端再次校验。"}</AlertDescription>
     </Alert> : null}
 
     {conflict ? <Alert aria-label="并发冲突" className="mt-6" variant="destructive"><RefreshCw /><AlertTitle>事件版本冲突</AlertTitle>
