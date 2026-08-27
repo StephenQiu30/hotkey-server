@@ -47,7 +47,10 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"{
 		t.Fatal(err)
 	}
 	gotArguments := strings.Split(strings.TrimSpace(string(arguments)), "\n")
-	wantArguments := []string{"exec", "--json", "--ephemeral", "--sandbox", "read-only", "-"}
+	wantArguments := []string{
+		"exec", "--json", "--ephemeral", "--ignore-user-config", "--ignore-rules", "--skip-git-repo-check",
+		"--color", "never", "--sandbox", "read-only", "-",
+	}
 	if !reflect.DeepEqual(gotArguments, wantArguments) {
 		t.Fatalf("argv = %#v, want %#v", gotArguments, wantArguments)
 	}

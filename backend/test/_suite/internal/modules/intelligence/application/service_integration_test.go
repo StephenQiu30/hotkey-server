@@ -153,6 +153,67 @@ func TestPlan012EventIntelligenceRunRepairsInvalidResult(t *testing.T) {
 	}
 }
 
+func TestRunServiceNeverPersistsOrReusesForgedEvidenceAndRepairConsumesNewAttempt(t *testing.T) {
+	runtime := openApplicationRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	runs := intelligencepostgres.NewRepository(runtime)
+	profile := applicationEventSummaryProfile()
+	profile.Name = "application-event-summary-forged-evidence-profile"
+	if err := runs.CreateProfile(context.Background(), &profile); err != nil {
+		t.Fatal(err)
+	}
+	forged := json.RawMessage(`{"title_zh":"事件","sentences":[{"text":"伪造事实","evidence":[{"content_id":999,"locator":"title"}]}]}`)
+	valid := json.RawMessage(`{"title_zh":"事件","sentences":[{"text":"可引用事实","evidence":[{"content_id":2,"locator":"title"}]}]}`)
+	provider := &applicationFakeProvider{structured: []domain.StructuredResponse{
+		{ModelVersion: profile.ModelVersion, JSON: forged, Usage: domain.Usage{InputTokens: 2, OutputTokens: 1}},
+		{ModelVersion: profile.ModelVersion, JSON: forged, Usage: domain.Usage{InputTokens: 2, OutputTokens: 1}},
+		{ModelVersion: profile.ModelVersion, JSON: valid, Usage: domain.Usage{InputTokens: 2, OutputTokens: 1}},
+	}}
+	clock := &applicationClock{value: time.Date(2026, time.August, 27, 16, 0, 0, 0, time.UTC)}
+	service := NewEventIntelligenceService(newApplicationRunService(t, runs, provider, clock))
+	input := EventIntelligenceInput{
+		TaskType: domain.TaskTypeEventSummary, EventID: 7, EventKey: "evt-7",
+		Evidence: []EventIntelligenceEvidence{{ContentID: 2, Locator: "title", Excerpt: "trusted"}},
+	}
+
+	if _, err := service.Execute(context.Background(), input); err == nil {
+		t.Fatal("forged evidence was accepted after the single repair")
+	} else if code, known := domain.CodeOf(err); !known || code != domain.CodeAIOutputInvalid {
+		t.Fatalf("forged evidence error=%v code=%d known=%v", err, code, known)
+	}
+	var failedRunID int64
+	var failedStatus string
+	var failedAttempt int
+	var failedRepair bool
+	var failedResult []byte
+	if err := runtime.SQL.QueryRow(`
+SELECT id,status,attempt,repair_attempted,structured_result
+FROM ai_runs WHERE task_type='event_summary' AND target_id=7 ORDER BY id DESC LIMIT 1`).
+		Scan(&failedRunID, &failedStatus, &failedAttempt, &failedRepair, &failedResult); err != nil {
+		t.Fatal(err)
+	}
+	if failedStatus != "failed" || failedAttempt != 2 || !failedRepair || string(failedResult) != "{}" {
+		t.Fatalf("failed run id=%d status=%q attempt=%d repair=%v result=%q", failedRunID, failedStatus, failedAttempt, failedRepair, failedResult)
+	}
+
+	recovered, err := service.Execute(context.Background(), input)
+	if err != nil || recovered.Status != "succeeded" || recovered.Reused || recovered.Run.ID == failedRunID {
+		t.Fatalf("recovered result=%#v err=%v", recovered, err)
+	}
+	prepared, prepareErr := service.prepare(input)
+	if prepareErr != nil || validateStructuredOutputPolicy(domain.TaskTypeEventSummary, "v1", prepared.Input, recovered.Result) != nil ||
+		strings.Contains(string(recovered.Result), "999") {
+		t.Fatalf("recovered output did not contain only whitelisted evidence: %s / %v", recovered.Result, prepareErr)
+	}
+	var runCount int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM ai_runs WHERE task_type='event_summary' AND target_id=7`).Scan(&runCount); err != nil {
+		t.Fatal(err)
+	}
+	if runCount != 2 || provider.structuredCalls() != 3 {
+		t.Fatalf("runs=%d provider calls=%d, want failed run plus fresh successful run", runCount, provider.structuredCalls())
+	}
+}
+
 func TestPlan009RelevanceReviewFacadeKeepsSingleOwnerAndProfileScopedReuse(t *testing.T) {
 	runtime := openApplicationRuntime(t)
 	defer func() { _ = runtime.Close() }()

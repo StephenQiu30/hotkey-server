@@ -3,6 +3,7 @@ package provider
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	stdErrors "errors"
 	"os"
 	"os/exec"
@@ -19,12 +20,16 @@ var codexCLIArgumentVector = []string{
 	"exec",
 	"--json",
 	"--ephemeral",
+	"--ignore-user-config",
+	"--ignore-rules",
+	"--skip-git-repo-check",
+	"--color", "never",
 	"--sandbox", "read-only",
-	"-",
 }
 
 const (
 	codexCLISafePath              = "/usr/local/bin:/usr/bin:/bin"
+	codexCLIOutputSchemaName      = "output.schema.json"
 	defaultCodexCLITimeout        = 30 * time.Second
 	defaultCodexCLIOutputBytes    = 1 << 20
 	defaultCodexCLIConcurrentRuns = 1
@@ -44,8 +49,10 @@ type CodexCLIInput struct {
 // process boundary. Business persistence and structured-output validation are
 // intentionally owned by later Application and Domain stages.
 type CodexCLIProcessRequest struct {
-	Prompt []byte
-	Inputs []CodexCLIInput
+	Prompt       []byte
+	Model        string
+	OutputSchema json.RawMessage
+	Inputs       []CodexCLIInput
 }
 
 // CodexCLIProcessResult contains only stdout for the downstream JSONL
@@ -111,6 +118,10 @@ func (adapter *CodexCLIAdapter) Run(ctx context.Context, request CodexCLIProcess
 	if err := validateCodexCLIInputs(request.Inputs); err != nil {
 		return CodexCLIProcessResult{}, err
 	}
+	if (strings.TrimSpace(request.Model) == "") != (len(request.OutputSchema) == 0) ||
+		(len(request.OutputSchema) > 0 && !json.Valid(request.OutputSchema)) {
+		return CodexCLIProcessResult{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
 	runContext, cancel := context.WithTimeout(ctx, adapter.timeout)
 	defer cancel()
 	select {
@@ -138,11 +149,11 @@ func (adapter *CodexCLIAdapter) Run(ctx context.Context, request CodexCLIProcess
 	if err := materializeCodexCLIRuntimeDirectories(workspace); err != nil {
 		return CodexCLIProcessResult{}, err
 	}
-	if err := materializeCodexCLIInputs(workspace, request.Inputs); err != nil {
+	if err := materializeCodexCLIInputs(workspace, request.Inputs, request.OutputSchema); err != nil {
 		return CodexCLIProcessResult{}, err
 	}
 
-	command := exec.Command(adapter.executable, codexCLIArgumentVector...)
+	command := exec.Command(adapter.executable, codexCLIArguments(request)...)
 	command.Dir = workspace
 	command.Env = codexCLIEnvironment(workspace)
 	command.Stdin = bytes.NewReader(request.Prompt)
@@ -176,6 +187,17 @@ func (adapter *CodexCLIAdapter) Run(ctx context.Context, request CodexCLIProcess
 		return CodexCLIProcessResult{}, intelligencedomain.NewError(intelligencedomain.CodeAIProviderTransient)
 	}
 	return CodexCLIProcessResult{Stdout: stdout.bytes()}, nil
+}
+
+func codexCLIArguments(request CodexCLIProcessRequest) []string {
+	arguments := append([]string(nil), codexCLIArgumentVector...)
+	if len(request.OutputSchema) > 0 {
+		arguments = append(arguments,
+			"--model", strings.TrimSpace(request.Model),
+			"--output-schema", filepath.Join("inputs", codexCLIOutputSchemaName),
+		)
+	}
+	return append(arguments, "-")
 }
 
 func materializeCodexCLIRuntimeDirectories(workspace string) error {
@@ -213,6 +235,9 @@ func validateCodexCLIInputs(inputs []CodexCLIInput) error {
 		if _, exists := seen[name]; exists {
 			return intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
 		}
+		if name == codexCLIOutputSchemaName {
+			return intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+		}
 		seen[name] = struct{}{}
 		if len(input.Content) > maxCodexCLIInputBytes-totalBytes {
 			return intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
@@ -222,8 +247,8 @@ func validateCodexCLIInputs(inputs []CodexCLIInput) error {
 	return nil
 }
 
-func materializeCodexCLIInputs(workspace string, inputs []CodexCLIInput) error {
-	if len(inputs) == 0 {
+func materializeCodexCLIInputs(workspace string, inputs []CodexCLIInput, outputSchema json.RawMessage) error {
+	if len(inputs) == 0 && len(outputSchema) == 0 {
 		return nil
 	}
 	inputDirectory := filepath.Join(workspace, "inputs")
@@ -232,6 +257,11 @@ func materializeCodexCLIInputs(workspace string, inputs []CodexCLIInput) error {
 	}
 	for _, input := range inputs {
 		if err := os.WriteFile(filepath.Join(inputDirectory, input.Name), input.Content, 0o400); err != nil {
+			return intelligencedomain.NewError(intelligencedomain.CodeAIProviderTransient)
+		}
+	}
+	if len(outputSchema) > 0 {
+		if err := os.WriteFile(filepath.Join(inputDirectory, codexCLIOutputSchemaName), outputSchema, 0o400); err != nil {
 			return intelligencedomain.NewError(intelligencedomain.CodeAIProviderTransient)
 		}
 	}

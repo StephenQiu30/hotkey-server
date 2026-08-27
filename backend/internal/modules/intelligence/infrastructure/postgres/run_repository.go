@@ -246,10 +246,9 @@ FROM ai_runs r JOIN ai_model_profiles p ON p.id=r.model_profile_id WHERE r.id=$1
 	return lifecycle, nil
 }
 
-// BeginRepair records the one permitted structured-output repair before a
-// second provider request. It refreshes the validating lease under the same
-// budget -> run advisory order and refuses a second repair after a retry or
-// process restart.
+// BeginRepair records the one permitted structured-output repair as a new
+// attempt before a second provider request. It refreshes the validating lease
+// under the same budget -> run advisory order and never exceeds max_attempts.
 func (repository *Repository) BeginRepair(ctx context.Context, runID int64, now time.Time) error {
 	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil || runID <= 0 {
 		return intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
@@ -274,13 +273,14 @@ func (repository *Repository) BeginRepair(ctx context.Context, runID int64, now 
 		if err != nil {
 			return err
 		}
-		if locked.runReference != initial.runReference || locked.Status != intelligencedomain.RunStatusValidating || locked.RepairAttempted {
+		if locked.runReference != initial.runReference || locked.Status != intelligencedomain.RunStatusValidating ||
+			locked.RepairAttempted || locked.Attempt >= locked.MaxAttempts {
 			return intelligencedomain.NewError(intelligencedomain.CodeAIOutputInvalid)
 		}
 		lease := now.Add(time.Duration(locked.TimeoutSeconds+30) * time.Second)
 		result, err := transaction.SQL.ExecContext(ctx, `
 UPDATE ai_runs
-SET repair_attempted=true,lease_expires_at=$1
+SET repair_attempted=true,attempt=attempt+1,lease_expires_at=$1
 WHERE id=$2 AND repair_attempted=false`, lease, runID)
 		if err != nil {
 			return fmt.Errorf("record AI output repair: %w", err)

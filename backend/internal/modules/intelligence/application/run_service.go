@@ -100,7 +100,9 @@ func (service *RunService) ExecuteStructured(ctx context.Context, input Structur
 			return StructuredExecutionResult{}, err
 		}
 		if claim.Reused {
-			if !json.Valid(claim.Run.StructuredResult) || len(claim.Run.StructuredResult) == 0 || service.schemas.ValidateOutput(input.TaskType, input.SchemaVersion, claim.Run.StructuredResult) != nil {
+			if !json.Valid(claim.Run.StructuredResult) || len(claim.Run.StructuredResult) == 0 ||
+				service.schemas.ValidateOutput(input.TaskType, input.SchemaVersion, claim.Run.StructuredResult) != nil ||
+				validateStructuredOutputPolicy(input.TaskType, input.SchemaVersion, input.Input, claim.Run.StructuredResult) != nil {
 				return StructuredExecutionResult{}, domain.NewError(domain.CodeAIOutputInvalid)
 			}
 			return StructuredExecutionResult{Status: "succeeded", Run: claim.Run, Result: cloneRawJSON(claim.Run.StructuredResult), Reused: true}, nil
@@ -114,9 +116,16 @@ func (service *RunService) ExecuteStructured(ctx context.Context, input Structur
 		if err != nil {
 			return StructuredExecutionResult{}, err
 		}
-		if err := service.schemas.ValidateOutput(input.TaskType, input.SchemaVersion, response.JSON); err != nil {
+		if schemaErr := service.schemas.ValidateOutput(input.TaskType, input.SchemaVersion, response.JSON); schemaErr != nil ||
+			validateStructuredOutputPolicy(input.TaskType, input.SchemaVersion, input.Input, response.JSON) != nil {
 			firstUsage := response.Usage
-			repair, repairErr := service.schemas.RepairForInvalidOutput(input.TaskType, input.SchemaVersion, response.JSON, false)
+			var repair *domain.RepairInput
+			var repairErr error
+			if schemaErr != nil {
+				repair, repairErr = service.schemas.RepairForInvalidOutput(input.TaskType, input.SchemaVersion, response.JSON, false)
+			} else {
+				repair = &domain.RepairInput{PreviousOutput: cloneRawJSON(response.JSON), Violations: []domain.SchemaViolation{{InstancePath: "/", Keyword: "evidence_whitelist"}}}
+			}
 			if repairErr != nil || repair == nil {
 				_ = service.fail(ctx, claim.Run.ID, domain.CodeAIOutputInvalid)
 				return StructuredExecutionResult{}, domain.NewError(domain.CodeAIOutputInvalid)
@@ -133,7 +142,8 @@ func (service *RunService) ExecuteStructured(ctx context.Context, input Structur
 			if err != nil {
 				return StructuredExecutionResult{}, err
 			}
-			if err := service.schemas.ValidateOutput(input.TaskType, input.SchemaVersion, response.JSON); err != nil {
+			if err := service.schemas.ValidateOutput(input.TaskType, input.SchemaVersion, response.JSON); err != nil ||
+				validateStructuredOutputPolicy(input.TaskType, input.SchemaVersion, input.Input, response.JSON) != nil {
 				_ = service.fail(ctx, claim.Run.ID, domain.CodeAIOutputInvalid)
 				return StructuredExecutionResult{}, domain.NewError(domain.CodeAIOutputInvalid)
 			}
