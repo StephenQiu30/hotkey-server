@@ -174,6 +174,34 @@ func TestAuthorizationRejectsNonAdminsForAdminRoute(t *testing.T) {
 	}
 }
 
+func TestAuthenticationRejectsAnalystUntilTheCoordinatedRoleMigration(t *testing.T) {
+	t.Parallel()
+
+	authenticator := &authenticatorStub{auth: func(_ context.Context, _ string) (Subject, error) {
+		return Subject{UserID: 11, SessionID: 22, Role: Role("analyst")}, nil
+	}}
+	router := gin.New()
+	called := false
+	router.GET("/protected", RequireAuthentication(authenticator), func(c *gin.Context) {
+		called = true
+		OK[any](c, nil)
+	})
+
+	request := httptest.NewRequest(stdhttp.MethodGet, "/protected", nil)
+	request.Header.Set("Authorization", "Bearer analyst-before-migration")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != stdhttp.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", response.Code, stdhttp.StatusUnauthorized)
+	}
+	assertResult(t, response, sharederrors.CodeUnauthenticated, "unauthenticated", nil)
+	assertThreeFieldResult(t, response)
+	if called {
+		t.Fatal("unmigrated analyst reached the protected handler")
+	}
+}
+
 func TestPublicAuthGroupNeverParsesBearer(t *testing.T) {
 	t.Parallel()
 

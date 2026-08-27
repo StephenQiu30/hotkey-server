@@ -46,6 +46,11 @@ describe("domain enums", () => {
     );
   });
 
+  it("does not publish analyst before the coordinated backend migration", () => {
+    expect(Object.values(UserRole)).toEqual(["admin", "editor", "viewer"]);
+    expect(Object.values(UserRole)).not.toContain("analyst");
+  });
+
   it("provides centralized user-facing presentations", () => {
     expect(sourceHealthPresentation(SourceHealthStatus.Healthy)).toEqual({
       label: "健康",

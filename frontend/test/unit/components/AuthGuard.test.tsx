@@ -80,6 +80,27 @@ describe("AuthGuard", () => {
     });
   });
 
+  it("rejects an unrecognized analyst identity on an administrator route", async () => {
+    navigation.pathname = "/dashboard/users";
+    navigation.query = "";
+    navigation.auth = {
+      status: AuthStatus.Authenticated,
+      user: { role: "analyst" },
+    };
+    window.history.replaceState({}, "", navigation.pathname);
+
+    render(
+      <AuthGuard>
+        <main>administrator page</main>
+      </AuthGuard>,
+    );
+
+    expect(screen.queryByText("administrator page")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(navigation.replace).toHaveBeenCalledWith("/dashboard");
+    });
+  });
+
   it("renders an administrator-only route for an administrator", () => {
     navigation.pathname = "/dashboard/sources";
     navigation.query = "";

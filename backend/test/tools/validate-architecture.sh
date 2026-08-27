@@ -75,8 +75,9 @@ if test -n "$source_evidence_application_contract_domain_leaks"; then
   report "Source raw-evidence Application public contracts must be POJOs without Domain entity or value-object fields"
 fi
 
-if ! (cd "$root" && go test ./test/architecture -run TestArchitectureValidationRejectsDirectGinResponsesInModuleTransport -count=1); then
-  report "direct Gin response output is forbidden in module transport; use internal/platform/http Result helpers and Wrap"
+architecture_tests='Test(ArchitectureValidationRejectsDirectGinResponsesInModuleTransport|AnalystRoleGapRemainsExplicitAcrossPublishedContracts|P0RuntimeRejectsForbiddenDistributedInfrastructure|ForbiddenInfrastructureDetectorCatchesErroneousIntroductions)$'
+if ! (cd "$root" && go test ./test/architecture -run "$architecture_tests" -count=1); then
+  report "executable architecture contracts failed; review Result boundaries, role truth, and forbidden P0 infrastructure"
 fi
 
 test "$errors" -eq 0 || exit 1
