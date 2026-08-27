@@ -11,7 +11,7 @@ canonical_path: docs/plans/README.md
 
 # Plan 索引
 
-本目录把 Design 与 PRD 转换为文件级、测试先行、可验证、可灰度和可回滚的执行计划。计划编制、现状审计、威胁盘点和评审准备可在 Design=`proposed`、PRD=`draft` 时进行；进入相应工程实现前必须通过 G1/G2，不能要求尚未执行的批准计划先批准自身。001 已通过 G1/G2 并进入 `in_progress`；002–005 仍保持 `planned`。状态只使用 `planned`、`in_progress`、`blocked`、`completed`。
+本目录把 Design 与 PRD 转换为文件级、测试先行、可验证、可灰度和可回滚的执行计划。计划编制、现状审计、威胁盘点和评审准备可在 Design=`proposed`、PRD=`draft` 时进行；进入相应工程实现前必须通过 G1/G2，不能要求尚未执行的批准计划先批准自身。001–002 已通过 G1/G2/G3 并进入 `in_progress`；003–005 仍保持 `planned`。状态只使用 `planned`、`in_progress`、`blocked`、`completed`。
 
 当前文档体系保持严格模式，不新增 `specs/` 或 `checklists/` 目录。每份 Plan 必须在正文内提供“实施规格（SPEC）”与“执行检查清单（CHECKLIST）”，并用稳定 ID 将 PRD 验收标准映射到任务、规格、检查项和最终 Acceptance 证据。
 

@@ -17,7 +17,7 @@ canonical_path: docs/README.md
 
 ## 当前事实与目标边界
 
-新文档描述待评审的产品基线，不把目标写成已实现能力。判断优先级如下：
+新文档描述按门禁推进的产品基线，不把目标写成已实现能力。判断优先级如下：
 
 1. 当前实现事实以代码、`backend/db/schema.sql`、`docs/openapi/swagger.json` 和 Compose 为准；
 2. 稳定产品范围由已批准 PRD 决定；
@@ -43,11 +43,11 @@ canonical_path: docs/README.md
 
 | 编号 | 交付域 | Design | PRD | Plan | 当前门禁 |
 |---:|---|---|---|---|---|
-| 001 | 产品需求分析与总体架构 | [Design](design/001-HotKey产品需求分析与总体架构设计.md) | [PRD](prd/001-HotKey产品需求分析与总体架构.md) | [Plan](plans/001-HotKey产品需求分析与总体架构计划.md) | 待评审 |
-| 002 | 监控、来源、采集与证据链 | [Design](design/002-监控来源采集与证据链设计.md) | [PRD](prd/002-监控来源采集与证据链.md) | [Plan](plans/002-监控来源采集与证据链计划.md) | 依赖 001 |
-| 003 | 智能研判、事件、热度与治理 | [Design](design/003-智能研判事件热度与人工治理设计.md) | [PRD](prd/003-智能研判事件热度与人工治理.md) | [Plan](plans/003-智能研判事件热度与人工治理计划.md) | 依赖 001–002 |
-| 004 | 通知、报告、知识与检索 | [Design](design/004-通知报告知识投影与检索设计.md) | [PRD](prd/004-通知报告知识投影与检索.md) | [Plan](plans/004-通知报告知识投影与检索计划.md) | 依赖 001–003 |
-| 005 | 安全、运维、质量与交付 | [Design](design/005-安全运维质量与交付设计.md) | [PRD](prd/005-安全运维质量与交付.md) | [Plan](plans/005-安全运维质量与交付计划.md) | 贯穿 001–004 |
+| 001 | 产品需求分析与总体架构 | [Design](design/001-HotKey产品需求分析与总体架构设计.md) | [PRD](prd/001-HotKey产品需求分析与总体架构.md) | [Plan](plans/001-HotKey产品需求分析与总体架构计划.md) | G3 已通过，执行中 |
+| 002 | 监控、来源、采集与证据链 | [Design](design/002-监控来源采集与证据链设计.md) | [PRD](prd/002-监控来源采集与证据链.md) | [Plan](plans/002-监控来源采集与证据链计划.md) | G3 已通过，执行中 |
+| 003 | 智能研判、事件、热度与治理 | [Design](design/003-智能研判事件热度与人工治理设计.md) | [PRD](prd/003-智能研判事件热度与人工治理.md) | [Plan](plans/003-智能研判事件热度与人工治理计划.md) | 依赖 001–002；待 G1/G2 |
+| 004 | 通知、报告、知识与检索 | [Design](design/004-通知报告知识投影与检索设计.md) | [PRD](prd/004-通知报告知识投影与检索.md) | [Plan](plans/004-通知报告知识投影与检索计划.md) | 依赖 001–003；待 G1/G2 |
+| 005 | 安全、运维、质量与交付 | [Design](design/005-安全运维质量与交付设计.md) | [PRD](prd/005-安全运维质量与交付.md) | [Plan](plans/005-安全运维质量与交付计划.md) | 贯穿 001–004；待 G1/G2 |
 
 ```mermaid
 flowchart LR
@@ -86,7 +86,7 @@ flowchart LR
 | G5 RC | E2E、容量、故障注入、恢复演练和 Runbook 通过 | 可进入 UAT |
 | G6 验收 | 同编号 Acceptance `passed` | PRD/Plan 可完成并归档 |
 
-当前五组 Design 均为 `proposed`、PRD 均为 `draft`、Plan 均为 `planned`；这表示文档体系已经就绪，但尚未授权代码实施。
+当前 001–002 Design 为 `accepted`、PRD 为 `approved`、Plan 为 `in_progress`；003–005 Design 仍为 `proposed`、PRD 为 `draft`、Plan 为 `planned`。这表示 001–002 已获授权按门禁实施，003–005 尚未通过各自 G1/G2，任何已存在代码都不能因此冒充对应 Acceptance 已完成。
 
 ## 单一事实源
 

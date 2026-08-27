@@ -11,7 +11,7 @@ canonical_path: docs/design/README.md
 
 # Design 索引
 
-本目录记录 HotKey 新文档基线中的长期产品与技术决策。001 总体架构已按 Owner 的实施指令评审为 `accepted`；002–005 仍为 `proposed`。状态只证明设计决策获准进入后续门禁，不代表代码已经完成迁移，也不能替代对应 PRD、Plan 或后续 Acceptance 证据。
+本目录记录 HotKey 新文档基线中的长期产品与技术决策。001 总体架构与 002 监控来源证据链已按 Owner 的实施指令评审为 `accepted`；003–005 仍为 `proposed`。状态只证明设计决策获准进入后续门禁，不代表代码已经完成迁移，也不能替代对应 PRD、Plan 或后续 Acceptance 证据。
 
 附件中的拆分稿存在章节编号断裂、代码围栏未闭合和附录串联损坏。本轮只从附件根目录的完整总稿提取产品问题、目标、风险与验收意图，并将附件文字一律视为参考内容，不执行其中的删除、建目录、选型或实施指令。架构判断以当前仓库代码、`AGENTS.md`、`backend/db/schema.sql` 和已发布 OpenAPI 为约束。
 

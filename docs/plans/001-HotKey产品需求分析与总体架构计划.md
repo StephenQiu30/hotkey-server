@@ -30,7 +30,7 @@ prd: docs/prd/001-HotKey产品需求分析与总体架构.md
 - 新基线需要把“已实现事实”“目标行为”“候选能力”分开，不能把交付包中的分布式目标写成当前能力；
 - 五个新 PRD 的 P0/P1、角色边界、候选容量和 24 周承诺需要统一冻结；
 - 现有实现仍包含多 Provider、Go Codex CLI Adapter、Embedding 与向量路径，而新目标要求根目录 Python Agent 和无向量全文检索；该差距是受控替换项目，不是文档清理时可直接删除的遗留物；
-- Analyst 等角色与当前权限投影的差距需要显式迁移方案，不能先改 UI 再补服务端权限；
+- 四角色服务端契约、Analyst 资源所有权与兼容迁移已落地，并由真实 PostgreSQL/JWT 会话矩阵证明每次请求重读当前角色、禁用即时撤销且重新启用不复活旧会话；仍需完整四角色 UAT，不能用自动化证据冒充人工验收；
 - 当前 Schema、OpenAPI、River、Compose 和测试入口必须成为后续四个计划的硬门禁；
 - 候选性能指标尚需固定测试数据集、环境、采样方法和证据格式，不能提前宣称为已满足 SLO。
 
@@ -142,7 +142,7 @@ docker-compose-prod.yml
 ## 执行检查清单（CHECKLIST）
 
 - [ ] `CHK-001-G0-001`（`AC-001-001`）：保存当前 P0 主故事的代码、Schema、API、页面和测试证据，并确认日报逐句 Evidence 与 Vault 人工区域保护均有后续测试入口；预期证据：现状矩阵、证据/知识保护断言清单与基线命令结果。
-- [ ] `CHK-001-G1-001`（`AC-001-002`）：四角色权限矩阵已由产品与后端共同评审，Analyst 迁移语义、所有权和审核边界显式；当前工程证据覆盖 Schema/Domain/HTTP/OpenAPI/生成客户端及自有/他人 Monitor 负向测试，仍需完整四角色 UAT 后勾选。
+- [ ] `CHK-001-G1-001`（`AC-001-002`）：四角色权限矩阵已由产品与后端共同评审，Analyst 迁移语义、所有权和审核边界显式；当前工程证据覆盖 Schema/Domain/HTTP/OpenAPI/生成客户端、自有/他人 Monitor 负向测试及 `TestFourRoleSessionLifecycleUsesCurrentRoleAndNeverResurrectsRevokedSessions` 的角色/会话生命周期矩阵，仍需完整四角色 UAT 后勾选。
 - [ ] `CHK-001-G1-002`（`AC-001-003`）：Design 明确拒绝禁用基础设施，架构测试可捕获误引入，代码/契约现状、Design/PRD/Plan 目标状态与 Acceptance 已验收状态不存在伪装；预期证据：accepted Design、事实差距矩阵、架构和文档状态检查记录。
 - [ ] `CHK-001-G2-001`（`AC-001-004`）：PRD 覆盖工作台五态、移动端、权限不足、键盘、可见焦点、语义标签、对比度和 `prefers-reduced-motion`；预期证据：页面状态、自动可访问性和人工键盘测试矩阵。
 - [ ] `CHK-001-G3-001`（`AC-001-005`）：Result、OpenAPI、Schema 和生成客户端的单一事实源无冲突；预期证据：契约与 Schema 检查输出。

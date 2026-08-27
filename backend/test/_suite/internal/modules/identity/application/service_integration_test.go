@@ -203,6 +203,82 @@ func TestAdminDisableRevokesTargetRealPostgresSessionsAndAccessJWT(t *testing.T)
 	fixture.assertAudit(t, "identity.user_update", target.ID, "success")
 }
 
+func TestFourRoleSessionLifecycleUsesCurrentRoleAndNeverResurrectsRevokedSessions(t *testing.T) {
+	fixture := newApplicationIntegrationFixture(t)
+	target := fixture.register(t, "role-session-matrix@example.test", "target password")
+	first, second := fixture.loginTwice(t, target.Email, "target password")
+	fixture.assertTargetAccessAccepted(t, target, first.AccessToken, second.AccessToken)
+	admin := fixture.createAdminSubject(t, "role-session-admin@example.test", "admin password")
+
+	for _, role := range []domain.Role{domain.RoleAnalyst, domain.RoleEditor, domain.RoleViewer} {
+		changed, err := fixture.service.UpdateUser(context.Background(), admin, target.ID, UserUpdate{Role: pointerToRole(role)})
+		if err != nil {
+			t.Fatalf("UpdateUser(role=%q) error = %v", role, err)
+		}
+		if changed.Role != role || changed.Status != domain.UserStatusActive {
+			t.Fatalf("UpdateUser(role=%q) = %#v, want active %s", role, changed, role)
+		}
+		for index, accessToken := range []string{first.AccessToken, second.AccessToken} {
+			subject := fixture.authenticate(t, accessToken)
+			if subject.UserID != target.ID || subject.Role != role || subject.SessionID <= 0 {
+				t.Fatalf("role=%q access subject %d = %#v, want current PostgreSQL role without reissuing access token", role, index+1, subject)
+			}
+		}
+	}
+
+	refreshed, err := fixture.service.Refresh(context.Background(), first.RefreshToken)
+	if err != nil {
+		t.Fatalf("Refresh(after role transitions) error = %v", err)
+	}
+	if refreshed.User.Role != domain.RoleViewer {
+		t.Fatalf("Refresh(after role transitions) user role = %q, want current viewer", refreshed.User.Role)
+	}
+	if subject := fixture.authenticate(t, refreshed.AccessToken); subject.Role != domain.RoleViewer {
+		t.Fatalf("refreshed access subject = %#v, want current viewer", subject)
+	}
+
+	if _, err := fixture.service.UpdateUser(context.Background(), admin, target.ID, UserUpdate{Status: pointerToStatus(domain.UserStatusDisabled)}); err != nil {
+		t.Fatalf("UpdateUser(disable) error = %v", err)
+	}
+	for _, accessToken := range []string{first.AccessToken, second.AccessToken, refreshed.AccessToken} {
+		fixture.assertAccessRejected(t, accessToken)
+	}
+	fixture.assertRefreshRejected(t, second.RefreshToken)
+	fixture.assertRefreshRejected(t, refreshed.RefreshToken)
+	fixture.assertAllUserSessionsRevoked(t, target.ID, 2)
+
+	changed, err := fixture.service.UpdateUser(context.Background(), admin, target.ID, UserUpdate{Status: pointerToStatus(domain.UserStatusActive)})
+	if err != nil {
+		t.Fatalf("UpdateUser(reactivate) error = %v", err)
+	}
+	if changed.Status != domain.UserStatusActive || changed.Role != domain.RoleViewer {
+		t.Fatalf("UpdateUser(reactivate) = %#v, want active viewer", changed)
+	}
+	fixture.assertAccessRejected(t, first.AccessToken)
+	fixture.assertAccessRejected(t, refreshed.AccessToken)
+	fixture.assertRefreshRejected(t, second.RefreshToken)
+	fixture.assertRefreshRejected(t, refreshed.RefreshToken)
+	fixture.assertAllUserSessionsRevoked(t, target.ID, 2)
+
+	newLogin, err := fixture.service.Login(context.Background(), Credentials{Email: target.Email, Password: "target password"})
+	if err != nil {
+		t.Fatalf("Login(after explicit reactivation) error = %v", err)
+	}
+	if subject := fixture.authenticate(t, newLogin.AccessToken); subject.Role != domain.RoleViewer {
+		t.Fatalf("new access subject = %#v, want active viewer", subject)
+	}
+	var total, revoked, active int
+	if err := fixture.runtime.SQL.QueryRow(`
+SELECT count(*), count(*) FILTER (WHERE revoked_at IS NOT NULL), count(*) FILTER (WHERE revoked_at IS NULL)
+FROM auth_sessions
+WHERE user_id = $1`, target.ID).Scan(&total, &revoked, &active); err != nil {
+		t.Fatalf("count reactivated user sessions: %v", err)
+	}
+	if total != 3 || revoked != 2 || active != 1 {
+		t.Fatalf("reactivated user sessions total=%d revoked=%d active=%d, want 3/2/1", total, revoked, active)
+	}
+}
+
 func TestAdminSoftDeleteRevokesTargetRealPostgresSessionsAndAccessJWT(t *testing.T) {
 	fixture := newApplicationIntegrationFixture(t)
 	target := fixture.register(t, "delete-target@example.test", "target password")
@@ -356,7 +432,16 @@ func (fixture applicationIntegrationFixture) createAdminSubject(t *testing.T, em
 func (fixture applicationIntegrationFixture) assertAccessRejected(t *testing.T, accessToken string) {
 	t.Helper()
 	if _, err := fixture.service.Authenticator().Authenticate(context.Background(), accessToken); err == nil {
-		t.Fatalf("Authenticator accepted revoked access token %q", accessToken)
+		t.Fatal("Authenticator accepted revoked access token")
+	} else {
+		requireAppCode(t, err, sharederrors.CodeSessionInvalid)
+	}
+}
+
+func (fixture applicationIntegrationFixture) assertRefreshRejected(t *testing.T, refreshToken string) {
+	t.Helper()
+	if _, err := fixture.service.Refresh(context.Background(), refreshToken); err == nil {
+		t.Fatal("Refresh() accepted revoked refresh token")
 	} else {
 		requireAppCode(t, err, sharederrors.CodeSessionInvalid)
 	}

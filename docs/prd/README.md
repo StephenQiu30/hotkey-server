@@ -11,7 +11,7 @@ canonical_path: docs/prd/README.md
 
 # PRD 索引
 
-本目录定义 HotKey 重新立项后的稳定产品范围。001 总体范围已按 Owner 的实施指令批准为 `approved`；002–005 仍为 `draft`。批准只允许对应 Plan 按门禁执行，不证明代码已经实现；实施规格与执行检查清单位于同编号 Plan，完成事实只能由 Acceptance 证明。
+本目录定义 HotKey 重新立项后的稳定产品范围。001 总体范围与 002 监控来源证据链已按 Owner 的实施指令批准为 `approved`；003–005 仍为 `draft`。批准只允许对应 Plan 按门禁执行，不证明代码已经实现；实施规格与执行检查清单位于同编号 Plan，完成事实只能由 Acceptance 证明。
 
 ## 交付项
 
