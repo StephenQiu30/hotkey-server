@@ -3,7 +3,7 @@ layer: Plan
 scope: shared
 doc_no: "001"
 title: HotKey 产品需求分析与总体架构计划
-status: planned
+status: in_progress
 version: v1.0
 owner: HotKey Team
 canonical_path: docs/plans/001-HotKey产品需求分析与总体架构计划.md

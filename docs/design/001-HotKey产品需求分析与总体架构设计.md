@@ -3,7 +3,7 @@ layer: Design
 scope: shared
 doc_no: "001"
 title: HotKey产品需求分析与总体架构设计
-status: proposed
+status: accepted
 version: v1.0
 owner: HotKey Team
 canonical_path: docs/design/001-HotKey产品需求分析与总体架构设计.md

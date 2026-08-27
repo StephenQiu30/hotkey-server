@@ -3,7 +3,7 @@ layer: PRD
 scope: shared
 doc_no: "001"
 title: HotKey产品需求分析与总体架构
-status: draft
+status: approved
 version: v1.0
 owner: HotKey Team
 canonical_path: docs/prd/001-HotKey产品需求分析与总体架构.md
