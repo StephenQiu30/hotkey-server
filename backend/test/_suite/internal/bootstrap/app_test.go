@@ -74,6 +74,21 @@ func TestPlan018AIProviderRegistryUsesExplicitConfiguration(t *testing.T) {
 	}
 }
 
+func TestAgentShadowRunnerIsOptionalAndConstructsOnlyFromValidatedInternalConfig(t *testing.T) {
+	cfg := config.Default()
+	disabled, err := newAgentShadowRunner(cfg, zap.NewNop())
+	if err != nil || disabled == nil {
+		t.Fatalf("newAgentShadowRunner(disabled) = %#v / %v", disabled, err)
+	}
+	cfg.Agent = config.AgentConfig{
+		URL: "http://hotkey-agent:8090", AuthToken: "test-agent-secret-0123456789abcdef0123456789abcdef", MaxResponseBytes: 1 << 20, ShadowEnabled: true,
+	}
+	enabled, err := newAgentShadowRunner(cfg, zap.NewNop())
+	if err != nil || enabled == nil {
+		t.Fatalf("newAgentShadowRunner(enabled) = %#v / %v", enabled, err)
+	}
+}
+
 func TestApplicationRolesStartAndStopIndependently(t *testing.T) {
 	t.Parallel()
 

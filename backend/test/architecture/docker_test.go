@@ -69,6 +69,7 @@ func TestDockerDeploymentContract(t *testing.T) {
 		"hotkey-agent:",
 		"hotkey-web:",
 		"HOTKEY_ENV: development",
+		`HOTKEY_AGENT_SHADOW_ENABLED: "${HOTKEY_AGENT_SHADOW_ENABLED:-true}"`,
 		"HOTKEY_DEPLOY_ENV: env",
 		"- ./backend/.env",
 		"db verify ||",
@@ -127,6 +128,7 @@ func TestDockerProductionIsolation(t *testing.T) {
 		"HOTKEY_REDIS_URL: redis://redis:6379/0",
 		"HOTKEY_MINIO_ENDPOINT: minio:9000",
 		`HOTKEY_REFRESH_COOKIE_SECURE: "true"`,
+		`HOTKEY_AGENT_SHADOW_ENABLED: "${HOTKEY_AGENT_SHADOW_ENABLED:-false}"`,
 		"HOTKEY_DEPLOY_ENV: prod",
 	)
 	assertDockerComposeNamingContract(t, "docker-compose-prod.yml", prodOverride, "hotkey-prod", "hotkey-prod")
@@ -154,6 +156,7 @@ func TestDockerProductionIsolation(t *testing.T) {
 		"MINIO_ROOT_PASSWORD=",
 		"HOTKEY_JWT_SECRET=",
 		"HOTKEY_VERIFICATION_HMAC_SECRET=",
+		"HOTKEY_AGENT_SHADOW_ENABLED=false",
 		"HOTKEY_AGENT_AUTH_TOKEN=",
 	)
 	for _, key := range []string{

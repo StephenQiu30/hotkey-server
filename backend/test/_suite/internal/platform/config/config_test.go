@@ -493,15 +493,16 @@ func TestAgentConfigLoadsAnOptionalInternalAnalysisBoundary(t *testing.T) {
 	t.Setenv("HOTKEY_AGENT_URL", "http://hotkey-agent:8090")
 	t.Setenv("HOTKEY_AGENT_AUTH_TOKEN", "test-agent-secret-0123456789abcdef0123456789abcdef")
 	t.Setenv("HOTKEY_AGENT_MAX_RESPONSE_BYTES", "524288")
+	t.Setenv("HOTKEY_AGENT_SHADOW_ENABLED", "true")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.Agent.URL != "http://hotkey-agent:8090" || cfg.Agent.AuthToken != "test-agent-secret-0123456789abcdef0123456789abcdef" || cfg.Agent.MaxResponseBytes != 524288 {
+	if cfg.Agent.URL != "http://hotkey-agent:8090" || cfg.Agent.AuthToken != "test-agent-secret-0123456789abcdef0123456789abcdef" || cfg.Agent.MaxResponseBytes != 524288 || !cfg.Agent.ShadowEnabled || !cfg.Agent.Enabled() {
 		t.Fatalf("Load() Agent = %#v", cfg.Agent)
 	}
-	for _, key := range []string{"agent_url", "agent_auth_token", "agent_max_response_bytes"} {
+	for _, key := range []string{"agent_url", "agent_auth_token", "agent_max_response_bytes", "agent_shadow_enabled"} {
 		if !strings.Contains(strings.Join(configKeys(), ","), key) {
 			t.Errorf("configKeys() does not bind %q", key)
 		}
@@ -513,6 +514,7 @@ func TestAgentConfigFailsClosedWhenPartiallyOrUnsafelyConfigured(t *testing.T) {
 		name   string
 		config AgentConfig
 	}{
+		{name: "enabled without credentials", config: AgentConfig{ShadowEnabled: true, MaxResponseBytes: 262144}},
 		{name: "URL without token", config: AgentConfig{URL: "http://hotkey-agent:8090", MaxResponseBytes: 262144}},
 		{name: "token without URL", config: AgentConfig{AuthToken: "test-agent-secret-0123456789abcdef0123456789abcdef", MaxResponseBytes: 262144}},
 		{name: "short token", config: AgentConfig{URL: "http://hotkey-agent:8090", AuthToken: "short", MaxResponseBytes: 262144}},
@@ -530,6 +532,20 @@ func TestAgentConfigFailsClosedWhenPartiallyOrUnsafelyConfigured(t *testing.T) {
 				t.Fatalf("Validate() error = %v, want redacted rejection", err)
 			}
 		})
+	}
+}
+
+func TestAgentShadowCanBeDisabledWithoutDiscardingValidatedCredentials(t *testing.T) {
+	cfg := Default()
+	cfg.Agent = AgentConfig{
+		URL: "http://hotkey-agent:8090", AuthToken: "test-agent-secret-0123456789abcdef0123456789abcdef", MaxResponseBytes: 262144,
+	}
+	if err := cfg.Validate(); err != nil || cfg.Agent.Enabled() {
+		t.Fatalf("disabled Agent Shadow = %#v / %v", cfg.Agent, err)
+	}
+	cfg.Agent.ShadowEnabled = true
+	if err := cfg.Validate(); err != nil || !cfg.Agent.Enabled() {
+		t.Fatalf("enabled Agent Shadow = %#v / %v", cfg.Agent, err)
 	}
 }
 

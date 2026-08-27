@@ -139,16 +139,20 @@ type AgentConfig struct {
 	URL              string
 	AuthToken        string
 	MaxResponseBytes int64
+	ShadowEnabled    bool
 }
 
 func (c AgentConfig) Enabled() bool {
-	return strings.TrimSpace(c.URL) != "" && strings.TrimSpace(c.AuthToken) != ""
+	return c.ShadowEnabled && strings.TrimSpace(c.URL) != "" && strings.TrimSpace(c.AuthToken) != ""
 }
 
 func (c AgentConfig) Validate() error {
 	urlValue := strings.TrimSpace(c.URL)
 	token := strings.TrimSpace(c.AuthToken)
 	if urlValue == "" && token == "" {
+		if c.ShadowEnabled {
+			return errors.New("Agent Shadow requires URL and auth token")
+		}
 		return nil
 	}
 	if urlValue == "" || token == "" {
@@ -282,6 +286,7 @@ func Load() (Config, error) {
 			URL:              configString(v, "agent_url"),
 			AuthToken:        configString(v, "agent_auth_token"),
 			MaxResponseBytes: int64(configInt(v, "agent_max_response_bytes")),
+			ShadowEnabled:    configBool(v, "agent_shadow_enabled"),
 		},
 		Notification: NotificationConfig{
 			PollInterval:      configDuration(v, "notification_poll_interval"),
@@ -477,6 +482,7 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("ollama_enabled", cfg.AI.OllamaEnabled)
 	v.SetDefault("ollama_base_url", cfg.AI.OllamaBaseURL)
 	v.SetDefault("agent_max_response_bytes", cfg.Agent.MaxResponseBytes)
+	v.SetDefault("agent_shadow_enabled", cfg.Agent.ShadowEnabled)
 	v.SetDefault("notification_poll_interval", cfg.Notification.PollInterval)
 	v.SetDefault("notification_heartbeat_interval", cfg.Notification.HeartbeatInterval)
 	v.SetDefault("notification_max_connections", cfg.Notification.MaxConnections)
@@ -491,7 +497,7 @@ func configKeys() []string {
 		"minio_use_ssl", "vault_path",
 		"jwt_secret", "jwt_issuer", "jwt_audience", "verification_hmac_secret", "redis_url", "smtp_enabled", "smtp_host", "smtp_port", "smtp_tls_mode", "smtp_username", "smtp_password", "smtp_from_email", "smtp_from_name", "cors_allowed_origins", "refresh_cookie_secure",
 		"openai_api_key", "deepseek_api_key", "ollama_enabled", "ollama_base_url", "onnx_runtime_library", "onnx_model_path", "onnx_tokenizer_path", "onnx_manifest_path",
-		"agent_url", "agent_auth_token", "agent_max_response_bytes",
+		"agent_url", "agent_auth_token", "agent_max_response_bytes", "agent_shadow_enabled",
 		"notification_poll_interval", "notification_heartbeat_interval", "notification_max_connections", "notification_web_origin",
 	}
 }

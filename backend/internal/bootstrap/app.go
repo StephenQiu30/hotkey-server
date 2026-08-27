@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	deliverysmtp "github.com/StephenQiu30/hotkey-server/backend/internal/modules/delivery/infrastructure/smtp"
 	eventapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/application"
@@ -27,6 +28,7 @@ import (
 	ingestiontransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/transport/http"
 	intelligenceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/application"
 	intelligencedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
+	intelligenceagent "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/agent"
 	intelligencejobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/jobs"
 	intelligencepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/postgres"
 	intelligenceprovider "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/provider"
@@ -107,6 +109,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				intelligencepostgres.NewRepository,
 				intelligenceapplication.NewSchemaRegistry,
 				newAIProviderRegistry,
+				newAgentShadowRunner,
 				intelligenceapplication.NewModelProfileService,
 				newAIRunService,
 				intelligenceapplication.NewRelevanceReviewService,
@@ -351,8 +354,38 @@ func newAIProviderRegistry(cfg config.Config, logger *zap.Logger) *intelligencea
 	return intelligenceapplication.NewProviderRegistry(providers)
 }
 
-func newAIRunService(runs *intelligencepostgres.Repository, providers *intelligenceapplication.ProviderRegistry, schemas *intelligenceapplication.SchemaRegistry) (*intelligenceapplication.RunService, error) {
-	return intelligenceapplication.NewRunService(intelligenceapplication.RunServiceDependencies{Runs: runs, Providers: providers, Schemas: schemas, Clock: sharedclock.System{}})
+func newAgentShadowRunner(cfg config.Config, logger *zap.Logger) (*intelligenceagent.ShadowRunner, error) {
+	var client *intelligenceagent.Client
+	if cfg.Agent.Enabled() {
+		configured, err := intelligenceagent.NewClient(intelligenceagent.Options{
+			BaseURL: cfg.Agent.URL, AuthToken: cfg.Agent.AuthToken, MaxResponseBytes: cfg.Agent.MaxResponseBytes,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("configure Agent shadow client: %w", err)
+		}
+		client = configured
+	}
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+	return intelligenceagent.NewShadowRunner(client, intelligenceagent.ShadowOptions{
+		Timeout: 2 * time.Second, MaxConcurrency: 2,
+		Observe: func(observation intelligenceagent.ShadowObservation) {
+			logger.Info("Agent shadow comparison",
+				zap.String("task_type", observation.TaskType),
+				zap.String("schema_name", observation.SchemaName),
+				zap.String("schema_version", observation.SchemaVersion),
+				zap.String("result", observation.Result),
+				zap.Int("error_code", observation.ErrorCode),
+				zap.Int64("duration_ms", observation.DurationMS),
+				zap.Bool("dropped", observation.Dropped),
+			)
+		},
+	})
+}
+
+func newAIRunService(runs *intelligencepostgres.Repository, providers *intelligenceapplication.ProviderRegistry, schemas *intelligenceapplication.SchemaRegistry, shadow *intelligenceagent.ShadowRunner) (*intelligenceapplication.RunService, error) {
+	return intelligenceapplication.NewRunService(intelligenceapplication.RunServiceDependencies{Runs: runs, Providers: providers, Schemas: schemas, Clock: sharedclock.System{}, Shadow: shadow})
 }
 
 func newAIRunRecomputeService(runs *intelligencepostgres.Repository, scheduler *intelligencejobs.AIRunRecomputeScheduler) (*intelligenceapplication.AIRunRecomputeService, error) {

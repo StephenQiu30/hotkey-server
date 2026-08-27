@@ -22,12 +22,20 @@ const (
 
 type SleepFunc func(context.Context, time.Duration) error
 
+// StructuredShadow receives a copy of a validated primary request/result for
+// asynchronous comparison. Implementations must never mutate or persist the
+// primary AI Run through this callback.
+type StructuredShadow interface {
+	Submit(context.Context, domain.StructuredRequest, domain.StructuredResponse)
+}
+
 type RunServiceDependencies struct {
 	Runs      *intelligencepostgres.Repository
 	Providers *ProviderRegistry
 	Schemas   *SchemaRegistry
 	Clock     sharedclock.Clock
 	Sleep     SleepFunc
+	Shadow    StructuredShadow
 }
 
 // RunService owns network orchestration, but never a database transaction
@@ -38,6 +46,7 @@ type RunService struct {
 	schemas   *SchemaRegistry
 	clock     sharedclock.Clock
 	sleep     SleepFunc
+	shadow    StructuredShadow
 }
 
 func NewRunService(dependencies RunServiceDependencies) (*RunService, error) {
@@ -50,7 +59,7 @@ func NewRunService(dependencies RunServiceDependencies) (*RunService, error) {
 	if dependencies.Sleep == nil {
 		dependencies.Sleep = waitForRetry
 	}
-	return &RunService{runs: dependencies.Runs, providers: dependencies.Providers, schemas: dependencies.Schemas, clock: dependencies.Clock, sleep: dependencies.Sleep}, nil
+	return &RunService{runs: dependencies.Runs, providers: dependencies.Providers, schemas: dependencies.Schemas, clock: dependencies.Clock, sleep: dependencies.Sleep, shadow: dependencies.Shadow}, nil
 }
 
 type StructuredExecutionInput struct {
@@ -179,6 +188,13 @@ func (service *RunService) ExecuteStructured(ctx context.Context, input Structur
 		})
 		if err != nil {
 			return StructuredExecutionResult{}, err
+		}
+		if service.shadow != nil {
+			service.shadow.Submit(ctx, domain.StructuredRequest{
+				ModelName: profile.ModelName, ModelVersion: profile.ModelVersion, TaskType: input.TaskType,
+				SchemaName: contract.SchemaName, SchemaVersion: contract.SchemaVersion, Instruction: contract.Instruction,
+				Schema: cloneRawJSON(contract.OutputSchema), Input: cloneRawJSON(input.Input),
+			}, response)
 		}
 		return StructuredExecutionResult{Status: "succeeded", Run: completed, Result: cloneRawJSON(completed.StructuredResult)}, nil
 	}

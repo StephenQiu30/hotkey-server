@@ -53,6 +53,60 @@ func TestRunServiceSettlesSafeStructuredResultAndReusesIt(t *testing.T) {
 	}
 }
 
+func TestRunServiceSubmitsShadowAfterPrimaryCommitWithoutChangingResult(t *testing.T) {
+	runtime := openApplicationRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	runs := intelligencepostgres.NewRepository(runtime)
+	profile := applicationTermProfile()
+	profile.Name = "application-shadow-profile"
+	if err := runs.CreateProfile(context.Background(), &profile); err != nil {
+		t.Fatalf("CreateProfile(): %v", err)
+	}
+	provider := &applicationFakeProvider{structured: []domain.StructuredResponse{{
+		ModelVersion: profile.ModelVersion,
+		JSON:         json.RawMessage(`{"terms":[]}`),
+		Usage:        domain.Usage{},
+	}}}
+	shadow := &applicationShadowRecorder{calls: make(chan applicationShadowCall, 1)}
+	clock := &applicationClock{value: time.Date(2026, time.August, 27, 19, 0, 0, 0, time.UTC)}
+	schemas, err := NewSchemaRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := NewRunService(RunServiceDependencies{
+		Runs: runs, Providers: NewProviderRegistry(map[domain.ProviderName]domain.Provider{domain.ProviderOpenAI: provider}), Schemas: schemas, Clock: clock,
+		Shadow: shadow,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.ExecuteStructured(context.Background(), applicationStructuredInput())
+	var returned struct {
+		Terms []any `json:"terms"`
+	}
+	if decodeErr := json.Unmarshal(result.Result, &returned); err != nil || decodeErr != nil || result.Status != "succeeded" || len(returned.Terms) != 0 {
+		t.Fatalf("ExecuteStructured() = %#v / %v", result, err)
+	}
+	select {
+	case call := <-shadow.calls:
+		if call.request.TaskType != domain.TaskTypeTermExpansion || call.request.SchemaName != "term-expansion-output-v1" || string(call.result.JSON) != `{"terms":[]}` {
+			t.Fatalf("shadow call = %#v", call)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("RunService did not submit shadow comparison")
+	}
+	var stored []byte
+	if err := runtime.SQL.QueryRow(`SELECT structured_result FROM ai_runs WHERE id=$1`, result.Run.ID).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	var persisted struct {
+		Terms []any `json:"terms"`
+	}
+	if err := json.Unmarshal(stored, &persisted); err != nil || len(persisted.Terms) != 0 {
+		t.Fatalf("primary structured result changed by shadow = %s", stored)
+	}
+}
+
 func TestPlan009RelevanceReviewContract(t *testing.T) {
 	runtime := openApplicationRuntime(t)
 	defer func() { _ = runtime.Close() }()
@@ -726,6 +780,19 @@ func newApplicationRunService(t *testing.T, runs *intelligencepostgres.Repositor
 		t.Fatalf("NewRunService(): %v", err)
 	}
 	return service
+}
+
+type applicationShadowCall struct {
+	request domain.StructuredRequest
+	result  domain.StructuredResponse
+}
+
+type applicationShadowRecorder struct {
+	calls chan applicationShadowCall
+}
+
+func (recorder *applicationShadowRecorder) Submit(_ context.Context, request domain.StructuredRequest, result domain.StructuredResponse) {
+	recorder.calls <- applicationShadowCall{request: request, result: result}
 }
 
 func applicationTermProfile() domain.ModelProfile {

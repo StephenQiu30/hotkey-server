@@ -56,7 +56,7 @@ func TestAIReplacementInventoryCoversCurrentCallersAndDataDisposition(t *testing
 	for _, decision := range []string{
 		"当前 Provider Registry 只注册 OpenAI、DeepSeek、Ollama 与 ONNX",
 		"Go Codex CLI Adapter 已实现但尚未进入 ProviderName、Model Profile Schema 或生产 Registry",
-		"Python Agent 尚未接入 Go Worker 生产路径",
+		"Python Agent 仅接入 Go Worker 的可选 Shadow 比较路径",
 		"无第一方页面直接调用模型 Profile 管理客户端",
 		"报告模块不直接调用 Provider、Embedding、Codex 或 Agent",
 		"旧记录继续按原 Model Profile、Run 与向量版本可读",
@@ -89,7 +89,27 @@ func TestAIReplacementInventoryRecordsPythonAgentMigrationBoundary(t *testing.T)
 	if !strings.Contains(agentMain, "FastAPI") || !strings.Contains(agentMain, `"/v1/analyze"`) {
 		t.Fatal("approved Python Agent analysis boundary is missing")
 	}
-	if !strings.Contains(agentClient, "type Client struct") || strings.Contains(bootstrap, "intelligenceagent") {
-		t.Fatal("Python Agent client must exist without entering production Bootstrap before S05 switch tests")
+	if !strings.Contains(agentClient, "type Client struct") || !strings.Contains(bootstrap, "newAgentShadowRunner") || !strings.Contains(bootstrap, "NewShadowRunner") {
+		t.Fatal("Python Agent client must enter only the bounded Shadow bootstrap path before S05 switch tests")
+	}
+	providerRegistryStart := strings.Index(bootstrap, "func newAIProviderRegistry")
+	shadowRunnerStart := strings.Index(bootstrap, "func newAgentShadowRunner")
+	if providerRegistryStart < 0 || shadowRunnerStart <= providerRegistryStart || strings.Contains(bootstrap[providerRegistryStart:shadowRunnerStart], "intelligenceagent") {
+		t.Fatal("Python Agent unexpectedly entered the production Provider registry before S05 switch tests")
+	}
+	runServiceStart := strings.Index(bootstrap, "func newAIRunService")
+	if runServiceStart <= shadowRunnerStart {
+		t.Fatal("Python Agent Shadow runner is not isolated from the primary RunService constructor")
+	}
+	shadowBootstrap := bootstrap[shadowRunnerStart:runServiceStart]
+	observerStart := strings.Index(shadowBootstrap, "Observe:")
+	if observerStart < 0 {
+		t.Fatal("Agent Shadow bootstrap is missing a sanitized observation sink")
+	}
+	observerBlock := shadowBootstrap[observerStart:]
+	for _, forbidden := range []string{"PrimaryOutputSHA256", "ShadowOutputSHA256", "AuthToken", "Prompt", "StructuredResult"} {
+		if strings.Contains(observerBlock, forbidden) {
+			t.Fatalf("Agent Shadow bootstrap logs forbidden high-cardinality or secret-bearing field %q", forbidden)
+		}
 	}
 }

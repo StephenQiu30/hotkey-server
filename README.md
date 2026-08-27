@@ -24,13 +24,17 @@ cd hotkey-server
 # 后端
 cd backend
 cp .env.example .env
+# 如需启用 Python Agent Shadow，在 .env 中同时设置：
+# HOTKEY_AGENT_SHADOW_ENABLED=true
+# HOTKEY_AGENT_URL=http://127.0.0.1:8090
+# HOTKEY_AGENT_AUTH_TOKEN=development-agent-token-change-me-000000
 # 仅首次初始化；已有 hotkey 数据库时跳过以下三行
 createdb -O hotkey hotkey
 go run ./cmd/hotkey db init --empty-only --confirm-empty
 go run ./cmd/hotkey db verify
 go run ./cmd/hotkey
 
-# Python Agent（另开终端；当前尚未接入 Go Worker 生产路径）
+# Python Agent（另开终端；配置后仅运行 Go Worker Shadow，不进入 Live 决策）
 cd agent
 uv sync --all-extras --locked
 export HOTKEY_AGENT_AUTH_TOKEN=development-agent-token-change-me-000000
