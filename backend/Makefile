@@ -2,7 +2,7 @@ GO := go
 SWAG := $(GO) run github.com/swaggo/swag/cmd/swag
 OPENAPI_EXCLUDE := internal/modules/agentaccess,internal/modules/alert,internal/modules/delivery/transport/http,internal/modules/event/transport/http/handler.go,internal/modules/knowledge/transport/http,internal/modules/report
 
-.PHONY: test-env openapi openapi-check vet test build architecture repository database-runtime schema vulnerability ci
+.PHONY: test-env openapi openapi-check vet test build architecture repository database-runtime schema capacity-fixture capacity-baseline recovery-evidence vulnerability ci
 
 test-env:
 	@test -n "$(HOTKEY_TEST_DSN)" || { printf '%s\n' 'HOTKEY_TEST_DSN is required for backend acceptance' >&2; exit 1; }
@@ -36,6 +36,15 @@ database-runtime: test-env
 
 schema: test-env
 	sh test/tools/verify-schema.sh
+
+capacity-fixture: test-env
+	sh test/tools/generate-capacity-fixture.sh
+
+capacity-baseline: test-env
+	$(GO) run ./test/tools/capacity-baseline
+
+recovery-evidence:
+	$(GO) run ./test/tools/recovery-evidence
 
 vulnerability:
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
