@@ -2,7 +2,7 @@ GO := go
 SWAG := $(GO) run github.com/swaggo/swag/cmd/swag
 OPENAPI_EXCLUDE := internal/modules/agentaccess,internal/modules/alert,internal/modules/delivery/transport/http,internal/modules/event/transport/http/handler.go,internal/modules/knowledge/transport/http,internal/modules/report
 
-.PHONY: test-env minio-test-env openapi openapi-check vet test worker-recovery-acceptance source-resource-limit-acceptance monitor-publication-acceptance agent-skill-contract-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci
+.PHONY: test-env minio-test-env openapi openapi-check vet test worker-recovery-acceptance source-resource-limit-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci
 
 test-env:
 	@test -n "$(HOTKEY_TEST_DSN)" || { printf '%s\n' 'HOTKEY_TEST_DSN is required for backend acceptance' >&2; exit 1; }
@@ -64,6 +64,18 @@ agent-skill-contract-acceptance: test-env
 		./internal/modules/intelligence/infrastructure/agent \
 		./internal/modules/event/application \
 		-run '^(TestProviderRequestsKeepOnlyProviderNeutralContract|TestClientSendsVersionedAuthenticatedBoundedAnalysisRequest|TestClientRejectsInvalidConfigurationAndRequestBeforeNetwork|TestClientMapsStatusTimeoutAndMalformedResponsesToStableErrors|TestClientRejectsIdentityAndEvidenceForgery|TestClientAdaptsStructuredRequestsToVersionedAgentPayload|TestClientDoesNotPretendToProvideEmbeddings|TestStructuredOutputPolicy.*|TestSchemaRegistry.*|TestP0Skill.*|TestRelevanceReviewSchemaRegistryContract|TestEventIntelligenceSchemaRegistryContracts|TestAtomicClaimEvidenceV2SchemaRequiresExactQuotedEvidence|TestAutomaticClaimEvidenceServiceLeavesOperationalModelFailuresPendingWithoutBusinessWrites|TestPromptInjectionFixtureCannotChangeEvidenceOrOutputContract|TestRunServiceNeverPersistsOrReusesForgedEvidenceAndRepairConsumesNewAttempt)$$' \
+		-count=1 -v
+
+agent-degradation-acceptance: test-env
+	$(GO) run ./test/runner test -p=1 \
+		./internal/bootstrap \
+		./internal/modules/source/application \
+		./internal/modules/ingestion/application \
+		./internal/modules/intelligence/application \
+		./internal/modules/intelligence/infrastructure/agent \
+		./internal/modules/intelligence/infrastructure/jobs \
+		./internal/modules/event/application \
+		-run '^(TestAgentShadowRunnerIsOptionalAndConstructsOnlyFromValidatedInternalConfig|TestRunServiceKeepsPrimaryResultWhenPythonAgentIsUnavailable|TestShadowRunnerMapsAgentFailureAndBoundsConcurrency|TestRunServicePersistsTerminalOperationalFailureAsPendingAnalysis|TestCollectionServiceProjectsThreeSourcePartialSuccessWithoutPersistingAggregateOutcome|TestContentFamilyServicePersistsOnlyFingerprintAndDecisionFacts|TestEventHeatServiceUsesActiveProfileWeightsAndStableSnapshot|TestMicroEventGovernanceServiceBuildsStablePOJOCommand|TestAutomaticClaimEvidenceServiceLeavesOperationalModelFailuresPendingWithoutBusinessWrites|TestAIRunRecomputeServiceSchedulesOnlyOwnedTerminalFailures|TestAIRunRecomputeWorkerReactivatesOwningJobFromRunIDOnly)$$' \
 		-count=1 -v
 
 build:

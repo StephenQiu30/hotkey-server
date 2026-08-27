@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
+	intelligenceagent "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/agent"
 	intelligencepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/postgres"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
@@ -104,6 +107,78 @@ func TestRunServiceSubmitsShadowAfterPrimaryCommitWithoutChangingResult(t *testi
 	}
 	if err := json.Unmarshal(stored, &persisted); err != nil || len(persisted.Terms) != 0 {
 		t.Fatalf("primary structured result changed by shadow = %s", stored)
+	}
+}
+
+func TestRunServiceKeepsPrimaryResultWhenPythonAgentIsUnavailable(t *testing.T) {
+	runtime := openApplicationRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	runs := intelligencepostgres.NewRepository(runtime)
+	profile := applicationTermProfile()
+	profile.Name = "application-agent-outage-profile"
+	if err := runs.CreateProfile(t.Context(), &profile); err != nil {
+		t.Fatal(err)
+	}
+	provider := &applicationFakeProvider{structured: []domain.StructuredResponse{{
+		ModelVersion: profile.ModelVersion,
+		JSON:         json.RawMessage(`{"terms":[]}`),
+	}}}
+	agentServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		http.Error(writer, "not exposed", http.StatusServiceUnavailable)
+	}))
+	defer agentServer.Close()
+	agentClient, err := intelligenceagent.NewClient(intelligenceagent.Options{
+		BaseURL: agentServer.URL, AuthToken: "test-agent-secret-0123456789abcdef0123456789abcdef",
+		HTTPClient: agentServer.Client(), MaxResponseBytes: 4096,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	observations := make(chan intelligenceagent.ShadowObservation, 1)
+	shadow, err := intelligenceagent.NewShadowRunner(agentClient, intelligenceagent.ShadowOptions{
+		Timeout: time.Second, MaxConcurrency: 1,
+		Observe: func(observation intelligenceagent.ShadowObservation) { observations <- observation },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	schemas, err := NewSchemaRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := NewRunService(RunServiceDependencies{
+		Runs: runs, Providers: NewProviderRegistry(map[domain.ProviderName]domain.Provider{domain.ProviderOpenAI: provider}),
+		Schemas: schemas, Clock: &applicationClock{value: time.Date(2026, time.August, 28, 8, 0, 0, 0, time.UTC)}, Shadow: shadow,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := service.ExecuteStructured(t.Context(), applicationStructuredInput())
+	var primaryResult struct {
+		Terms []any `json:"terms"`
+	}
+	if decodeErr := json.Unmarshal(result.Result, &primaryResult); err != nil || decodeErr != nil || result.Status != "succeeded" || len(primaryResult.Terms) != 0 {
+		t.Fatalf("primary result during Agent outage = %#v / %v", result, err)
+	}
+	select {
+	case observation := <-observations:
+		if observation.Result != "agent_error" || observation.ErrorCode != domain.CodeAIModelUnavailable {
+			t.Fatalf("Agent outage observation = %#v", observation)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for Agent outage observation")
+	}
+	var status string
+	var stored []byte
+	if err := runtime.SQL.QueryRow(`SELECT status,structured_result FROM ai_runs WHERE id=$1`, result.Run.ID).Scan(&status, &stored); err != nil {
+		t.Fatal(err)
+	}
+	var persistedResult struct {
+		Terms []any `json:"terms"`
+	}
+	if err := json.Unmarshal(stored, &persistedResult); err != nil || status != "succeeded" || len(persistedResult.Terms) != 0 || provider.structuredCalls() != 1 {
+		t.Fatalf("persisted primary status=%q result=%s calls=%d", status, stored, provider.structuredCalls())
 	}
 }
 
