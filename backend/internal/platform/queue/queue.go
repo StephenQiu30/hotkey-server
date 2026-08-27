@@ -114,7 +114,8 @@ func (job Job) Validate() error {
 
 func kindUsesSemanticDurableArgs(kind string) bool {
 	return kind == KindCollectSource || kind == KindGenerateSourceDocument || kind == KindAnalyzeMonitorIntent || kind == KindEvaluatePublishedDocumentMatches ||
-		kind == KindBackfillPublishedMonitorMatches || kind == KindProjectAcceptedDocumentMatch || kind == KindExtractAutomaticClaimEvidence || kind == KindRecomputeAIRun
+		kind == KindBackfillPublishedMonitorMatches || kind == KindProjectAcceptedDocumentMatch || kind == KindExtractAutomaticClaimEvidence ||
+		kind == KindRefreshProductEvent || kind == KindRecomputeAIRun
 }
 
 func validSemanticDurableArgs(args json.RawMessage) bool {

@@ -106,25 +106,28 @@ type automaticClaimEvidenceExtractor interface {
 }
 
 type AutomaticClaimEvidenceHandler struct {
-	service automaticClaimEvidenceExtractor
+	service   automaticClaimEvidenceExtractor
+	refreshes eventapplication.ProductEventRefreshScheduler
 }
 
-func NewAutomaticClaimEvidenceHandler(service *eventapplication.AutomaticClaimEvidenceService) (*AutomaticClaimEvidenceHandler, error) {
-	return newAutomaticClaimEvidenceHandler(service)
+func NewAutomaticClaimEvidenceHandler(service *eventapplication.AutomaticClaimEvidenceService,
+	refreshes eventapplication.ProductEventRefreshScheduler) (*AutomaticClaimEvidenceHandler, error) {
+	return newAutomaticClaimEvidenceHandler(service, refreshes)
 }
 
-func newAutomaticClaimEvidenceHandler(service automaticClaimEvidenceExtractor) (*AutomaticClaimEvidenceHandler, error) {
-	if service == nil {
-		return nil, fmt.Errorf("automatic claim evidence service is required")
+func newAutomaticClaimEvidenceHandler(service automaticClaimEvidenceExtractor,
+	refreshes eventapplication.ProductEventRefreshScheduler) (*AutomaticClaimEvidenceHandler, error) {
+	if service == nil || refreshes == nil {
+		return nil, fmt.Errorf("automatic claim evidence handler dependencies are required")
 	}
-	return &AutomaticClaimEvidenceHandler{service: service}, nil
+	return &AutomaticClaimEvidenceHandler{service: service, refreshes: refreshes}, nil
 }
 
 func (handler *AutomaticClaimEvidenceHandler) Handle(ctx context.Context, job queue.Job) error {
 	if err := queue.ValidateHandlerJob(job, queue.KindExtractAutomaticClaimEvidence); err != nil {
 		return queue.NewPermanentError(err)
 	}
-	if handler == nil || handler.service == nil {
+	if handler == nil || handler.service == nil || handler.refreshes == nil {
 		return queue.NewRetryableError(fmt.Errorf("automatic claim evidence handler is unavailable"))
 	}
 	args, err := decodeAutomaticClaimEvidenceJobArgs(job.DurableArgs)
@@ -148,6 +151,16 @@ func (handler *AutomaticClaimEvidenceHandler) Handle(ctx context.Context, job qu
 	}
 	if result.Status != "succeeded" || result.ModelRunID <= 0 || result.EvidenceState == nil || result.Summary == nil {
 		return queue.NewPermanentError(eventapplication.ErrInvalidAutomaticClaimEvidenceContract)
+	}
+	refresh, err := handler.refreshes.ScheduleProductEventRefresh(ctx, eventapplication.ScheduleProductEventRefreshCommand{
+		MicroEventID: args.MicroEventID, ExpectedEventVersion: result.EvidenceState.EventVersion,
+	})
+	if err != nil {
+		return queue.ClassifyHandlerError(ctx, err)
+	}
+	if refresh.Available && (refresh.MicroEventID != args.MicroEventID ||
+		refresh.MicroEventVersion != result.EvidenceState.EventVersion || refresh.JobID <= 0) {
+		return queue.NewPermanentError(eventapplication.ErrInvalidProductEventRefreshContract)
 	}
 	return nil
 }

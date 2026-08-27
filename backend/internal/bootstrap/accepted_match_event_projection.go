@@ -19,6 +19,7 @@ type acceptedDocumentMatchEventProjector interface {
 type acceptedDocumentMatchEventProjectionAdapter struct {
 	service  acceptedDocumentMatchEventProjector
 	evidence eventapplication.AutomaticClaimEvidenceScheduler
+	refresh  eventapplication.ProductEventRefreshScheduler
 }
 
 var _ ingestionapplication.AcceptedDocumentMatchConsumer = (*acceptedDocumentMatchEventProjectionAdapter)(nil)
@@ -43,16 +44,39 @@ func exposeAutomaticClaimEvidenceScheduler(scheduler *eventjobs.AutomaticClaimEv
 	return scheduler
 }
 
+func exposeProductEventRefreshScheduleTargetReader(repository *eventpostgres.ProductEventRefreshPostgresRepository) eventapplication.ProductEventRefreshScheduleTargetReader {
+	return repository
+}
+
+func exposeProductEventRefreshRepository(repository *eventpostgres.ProductEventRefreshPostgresRepository) eventapplication.ProductEventRefreshRepository {
+	return repository
+}
+
+func exposeProductEventAlertEvaluator(repository *eventpostgres.ProductEventRefreshPostgresRepository) eventapplication.ProductEventAlertEvaluator {
+	return repository
+}
+
+func newProductEventRefreshService(repository eventapplication.ProductEventRefreshRepository,
+	heat *eventapplication.EventHeatService, evidence *eventapplication.ClaimEvidenceService,
+	alerts eventapplication.ProductEventAlertEvaluator) (*eventapplication.ProductEventRefreshService, error) {
+	return eventapplication.NewProductEventRefreshService(repository, heat, evidence, alerts)
+}
+
+func exposeProductEventRefreshScheduler(scheduler *eventjobs.ProductEventRefreshScheduler) eventapplication.ProductEventRefreshScheduler {
+	return scheduler
+}
+
 func exposeAcceptedDocumentMatchEventProjector(service *eventapplication.AcceptedMatchEventProjectionService) acceptedDocumentMatchEventProjector {
 	return service
 }
 
 func newAcceptedDocumentMatchEventProjectionAdapter(service acceptedDocumentMatchEventProjector,
-	evidence eventapplication.AutomaticClaimEvidenceScheduler) (*acceptedDocumentMatchEventProjectionAdapter, error) {
-	if service == nil || evidence == nil {
+	evidence eventapplication.AutomaticClaimEvidenceScheduler,
+	refresh eventapplication.ProductEventRefreshScheduler) (*acceptedDocumentMatchEventProjectionAdapter, error) {
+	if service == nil || evidence == nil || refresh == nil {
 		return nil, fmt.Errorf("accepted document match event projection dependencies are required")
 	}
-	return &acceptedDocumentMatchEventProjectionAdapter{service: service, evidence: evidence}, nil
+	return &acceptedDocumentMatchEventProjectionAdapter{service: service, evidence: evidence, refresh: refresh}, nil
 }
 
 func newAcceptedDocumentMatchProjectionHandler(adapter *acceptedDocumentMatchEventProjectionAdapter) (*ingestionjobs.AcceptedDocumentMatchProjectionHandler, error) {
@@ -61,7 +85,7 @@ func newAcceptedDocumentMatchProjectionHandler(adapter *acceptedDocumentMatchEve
 
 func (adapter *acceptedDocumentMatchEventProjectionAdapter) ConsumeAcceptedDocumentMatch(ctx context.Context,
 	command ingestionapplication.ConsumeAcceptedDocumentMatchCommand) (ingestionapplication.ConsumeAcceptedDocumentMatchResult, error) {
-	if adapter == nil || adapter.service == nil || adapter.evidence == nil || command.DocumentMatchDecisionID <= 0 || command.DocumentVersionID <= 0 {
+	if adapter == nil || adapter.service == nil || adapter.evidence == nil || adapter.refresh == nil || command.DocumentMatchDecisionID <= 0 || command.DocumentVersionID <= 0 {
 		return ingestionapplication.ConsumeAcceptedDocumentMatchResult{}, ingestionapplication.ErrInvalidDocumentMatchContract
 	}
 	projected, err := adapter.service.Project(ctx, eventapplication.ProjectAcceptedDocumentMatchCommand{
@@ -77,6 +101,16 @@ func (adapter *acceptedDocumentMatchEventProjectionAdapter) ConsumeAcceptedDocum
 			return ingestionapplication.ConsumeAcceptedDocumentMatchResult{}, fmt.Errorf("schedule automatic claim evidence: %w", scheduleErr)
 		}
 		if scheduled.MicroEventID != projected.MicroEvent.ID || scheduled.DocumentVersionID != command.DocumentVersionID || scheduled.JobID <= 0 {
+			return ingestionapplication.ConsumeAcceptedDocumentMatchResult{}, ingestionapplication.ErrInvalidDocumentMatchContract
+		}
+		refresh, refreshErr := adapter.refresh.ScheduleProductEventRefresh(ctx, eventapplication.ScheduleProductEventRefreshCommand{
+			MicroEventID: projected.MicroEvent.ID, ExpectedEventVersion: projected.MicroEvent.Version,
+		})
+		if refreshErr != nil {
+			return ingestionapplication.ConsumeAcceptedDocumentMatchResult{}, fmt.Errorf("schedule product event refresh: %w", refreshErr)
+		}
+		if refresh.Available && (refresh.MicroEventID != projected.MicroEvent.ID ||
+			refresh.MicroEventVersion != projected.MicroEvent.Version || refresh.JobID <= 0) {
 			return ingestionapplication.ConsumeAcceptedDocumentMatchResult{}, ingestionapplication.ErrInvalidDocumentMatchContract
 		}
 	}

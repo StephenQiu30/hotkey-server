@@ -53,12 +53,13 @@ func TestAutomaticClaimEvidenceSchedulerPersistsOnlyEventAndDocumentIdentity(t *
 }
 
 func TestAutomaticClaimEvidenceHandlerResolvesCurrentEventVersionAndIsolatesDegradation(t *testing.T) {
-	state := &eventapplication.EvidenceStateSnapshotDTO{ID: 17}
+	state := &eventapplication.EvidenceStateSnapshotDTO{ID: 17, EventVersion: 3}
 	summary := &eventapplication.EvidenceSummaryDTO{ID: 19}
 	extractor := &automaticClaimEvidenceExtractorFake{result: eventapplication.AutomaticClaimEvidenceResult{
 		Status: "succeeded", ModelRunID: 23, EvidenceState: state, Summary: summary,
 	}}
-	handler, err := newAutomaticClaimEvidenceHandler(extractor)
+	refreshes := &automaticEvidenceRefreshSchedulerFake{}
+	handler, err := newAutomaticClaimEvidenceHandler(extractor, refreshes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,6 +69,9 @@ func TestAutomaticClaimEvidenceHandlerResolvesCurrentEventVersionAndIsolatesDegr
 	}
 	if extractor.command != (eventapplication.AutomaticClaimEvidenceCommand{MicroEventID: 7, DocumentVersionID: 11}) {
 		t.Fatalf("extract command = %#v", extractor.command)
+	}
+	if refreshes.command != (eventapplication.ScheduleProductEventRefreshCommand{MicroEventID: 7, ExpectedEventVersion: 3}) {
+		t.Fatalf("refresh command = %#v", refreshes.command)
 	}
 
 	extractor.result = eventapplication.AutomaticClaimEvidenceResult{Status: "degraded", ReasonCode: "external_model_not_authorized"}
@@ -83,6 +87,17 @@ func TestAutomaticClaimEvidenceHandlerResolvesCurrentEventVersionAndIsolatesDegr
 	if err := handler.Handle(context.Background(), unsafe); !errors.Is(err, queue.ErrPermanent) {
 		t.Fatalf("unsafe args error = %v, want permanent", err)
 	}
+}
+
+type automaticEvidenceRefreshSchedulerFake struct {
+	command eventapplication.ScheduleProductEventRefreshCommand
+}
+
+func (fake *automaticEvidenceRefreshSchedulerFake) ScheduleProductEventRefresh(_ context.Context,
+	command eventapplication.ScheduleProductEventRefreshCommand) (eventapplication.ScheduleProductEventRefreshResult, error) {
+	fake.command = command
+	return eventapplication.ScheduleProductEventRefreshResult{MicroEventID: command.MicroEventID,
+		MicroEventVersion: command.ExpectedEventVersion, JobID: 99, Created: true, Available: true}, nil
 }
 
 type automaticClaimEvidenceEnqueuerFake struct {

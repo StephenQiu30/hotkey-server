@@ -48,13 +48,16 @@ func TestS03DegradationMatrixNamesExecutableEvidenceAndHonestGaps(t *testing.T) 
 		"TestCollectionServiceFetchesOnceAndDurablyReconcilesEveryTarget",
 		"TestContentFamilyServicePersistsOnlyFingerprintAndDecisionFacts",
 		"TestEventHeatServiceUsesActiveProfileWeightsAndStableSnapshot",
+		"TestAIRunRecomputeServiceSchedulesOnlyOwnedTerminalFailures",
+		"TestAIRunRecomputeWorkerReactivatesOwningJobFromRunIDOnly",
+		"TestAIRunRecomputeRouteIsAdminOnlyAndReturnsAcceptedIdentity",
 	} {
 		if !strings.Contains(unavailable, "`"+evidence+"`") {
 			t.Errorf("Codex unavailable row does not name %s: %s", evidence, unavailable)
 		}
 	}
-	if !strings.Contains(unavailable, "`partial`") || !strings.Contains(unavailable, "TASK-003-S02-T03") {
-		t.Errorf("Codex unavailable must keep administrator backfill as an explicit next task: %s", unavailable)
+	if !strings.Contains(unavailable, "`verified`") || strings.Contains(unavailable, "TASK-003-S02-T03") {
+		t.Errorf("Codex unavailable must expose the verified administrator recompute path without a stale next task: %s", unavailable)
 	}
 
 	unauthorized := markdownTableRow(t, matrix, "DEG-001-CODEX-UNAUTHORIZED-SUGGESTION")
@@ -75,6 +78,9 @@ func TestS03DegradationMatrixNamesExecutableEvidenceAndHonestGaps(t *testing.T) 
 		"TestCollectionServiceFetchesOnceAndDurablyReconcilesEveryTarget":                             "backend/test/_suite/internal/modules/source/application/collection_service_integration_test.go",
 		"TestContentFamilyServicePersistsOnlyFingerprintAndDecisionFacts":                             "backend/test/_suite/internal/modules/ingestion/application/content_family_test.go",
 		"TestEventHeatServiceUsesActiveProfileWeightsAndStableSnapshot":                               "backend/test/_suite/internal/modules/event/application/event_heat_test.go",
+		"TestAIRunRecomputeServiceSchedulesOnlyOwnedTerminalFailures":                                 "backend/test/_suite/internal/modules/intelligence/application/run_recompute_test.go",
+		"TestAIRunRecomputeWorkerReactivatesOwningJobFromRunIDOnly":                                   "backend/test/_suite/internal/modules/intelligence/infrastructure/jobs/recompute_test.go",
+		"TestAIRunRecomputeRouteIsAdminOnlyAndReturnsAcceptedIdentity":                                "backend/test/_suite/internal/modules/intelligence/transport/http/run_handler_test.go",
 		"TestRunServiceNeverPersistsOrReusesForgedEvidenceAndRepairConsumesNewAttempt":                "backend/test/_suite/internal/modules/intelligence/application/service_integration_test.go",
 		"TestStructuredOutputPolicyRejectsEvidenceOutsideExactInputWhitelist":                         "backend/test/_suite/internal/modules/intelligence/application/structured_output_policy_test.go",
 	} {

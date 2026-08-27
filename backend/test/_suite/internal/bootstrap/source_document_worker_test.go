@@ -26,7 +26,8 @@ func TestAcceptedMatchProjectionAdapterSchedulesIndependentEvidenceAfterEventCom
 		Membership: eventapplication.MicroEventMembershipDecisionDTO{Action: "join"},
 	}}
 	scheduler := &automaticClaimEvidenceSchedulerFake{}
-	adapter, err := newAcceptedDocumentMatchEventProjectionAdapter(projector, scheduler)
+	refresh := &productEventRefreshSchedulerBootstrapFake{}
+	adapter, err := newAcceptedDocumentMatchEventProjectionAdapter(projector, scheduler, refresh)
 	if err != nil || adapter == nil {
 		t.Fatalf("newAcceptedDocumentMatchEventProjectionAdapter() = %#v/%v", adapter, err)
 	}
@@ -35,8 +36,9 @@ func TestAcceptedMatchProjectionAdapterSchedulesIndependentEvidenceAfterEventCom
 	})
 	if err != nil || consumed.DocumentMatchDecisionID != 5 || consumed.DocumentVersionID != 11 ||
 		projector.command.DocumentMatchDecisionID != 5 || projector.command.DocumentVersionID != 11 ||
-		scheduler.command != (eventapplication.ScheduleAutomaticClaimEvidenceCommand{MicroEventID: 7, DocumentVersionID: 11}) {
-		t.Fatalf("consumed/projected/scheduled = %#v / %#v / %#v / %v", consumed, projector.command, scheduler.command, err)
+		scheduler.command != (eventapplication.ScheduleAutomaticClaimEvidenceCommand{MicroEventID: 7, DocumentVersionID: 11}) ||
+		refresh.command != (eventapplication.ScheduleProductEventRefreshCommand{MicroEventID: 7, ExpectedEventVersion: 3}) {
+		t.Fatalf("consumed/projected/scheduled = %#v / %#v / %#v / %#v / %v", consumed, projector.command, scheduler.command, refresh.command, err)
 	}
 }
 
@@ -46,15 +48,29 @@ func TestAcceptedMatchProjectionAdapterSkipsEvidenceForReviewMembership(t *testi
 		Membership: eventapplication.MicroEventMembershipDecisionDTO{Action: "review"},
 	}}
 	scheduler := &automaticClaimEvidenceSchedulerFake{}
-	adapter, err := newAcceptedDocumentMatchEventProjectionAdapter(projector, scheduler)
+	refresh := &productEventRefreshSchedulerBootstrapFake{}
+	adapter, err := newAcceptedDocumentMatchEventProjectionAdapter(projector, scheduler, refresh)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := adapter.ConsumeAcceptedDocumentMatch(t.Context(), ingestionapplication.ConsumeAcceptedDocumentMatchCommand{
 		DocumentMatchDecisionID: 5, DocumentVersionID: 11,
-	}); err != nil || scheduler.calls != 0 {
-		t.Fatalf("review consume error/calls = %v/%d", err, scheduler.calls)
+	}); err != nil || scheduler.calls != 0 || refresh.calls != 0 {
+		t.Fatalf("review consume error/calls = %v/%d/%d", err, scheduler.calls, refresh.calls)
 	}
+}
+
+type productEventRefreshSchedulerBootstrapFake struct {
+	command eventapplication.ScheduleProductEventRefreshCommand
+	calls   int
+}
+
+func (fake *productEventRefreshSchedulerBootstrapFake) ScheduleProductEventRefresh(_ context.Context,
+	command eventapplication.ScheduleProductEventRefreshCommand) (eventapplication.ScheduleProductEventRefreshResult, error) {
+	fake.calls++
+	fake.command = command
+	return eventapplication.ScheduleProductEventRefreshResult{MicroEventID: command.MicroEventID,
+		MicroEventVersion: command.ExpectedEventVersion, JobID: 2, Created: true, Available: true}, nil
 }
 
 type acceptedDocumentMatchEventProjectorFake struct {
@@ -163,6 +179,8 @@ func TestMinIOWorkerFxGraphConstructsSourceDocumentAndMatchServices(t *testing.T
 	var automaticEvidenceService *eventapplication.AutomaticClaimEvidenceService
 	var automaticEvidenceScheduler *eventjobs.AutomaticClaimEvidenceScheduler
 	var automaticEvidenceHandler *eventjobs.AutomaticClaimEvidenceHandler
+	var productEventRefreshScheduler *eventjobs.ProductEventRefreshScheduler
+	var productEventRefreshHandler *eventjobs.ProductEventRefreshHandler
 	var handlers map[string]queue.Handler
 	app, err := NewAppWithReadiness(
 		cfg,
@@ -170,7 +188,7 @@ func TestMinIOWorkerFxGraphConstructsSourceDocumentAndMatchServices(t *testing.T
 		httptransport.ReadinessFunc(func(context.Context) error { return nil }),
 		fx.Populate(&handler, &recallProjections, &publishedMatches, &publishedMatchEvaluations, &matchReviews,
 			&publishedMatchHandler, &acceptedMatchProjectionHandler, &automaticEvidenceService, &automaticEvidenceScheduler,
-			&automaticEvidenceHandler, &handlers),
+			&automaticEvidenceHandler, &productEventRefreshScheduler, &productEventRefreshHandler, &handlers),
 	)
 	if err != nil {
 		t.Fatalf("NewAppWithReadiness() error = %v", err)
@@ -183,7 +201,8 @@ func TestMinIOWorkerFxGraphConstructsSourceDocumentAndMatchServices(t *testing.T
 	defer func() { _ = app.Stop(ctx) }()
 	if handler == nil || recallProjections == nil || publishedMatches == nil || publishedMatchEvaluations == nil || matchReviews == nil ||
 		publishedMatchHandler == nil || acceptedMatchProjectionHandler == nil || automaticEvidenceService == nil ||
-		automaticEvidenceScheduler == nil || automaticEvidenceHandler == nil || handlers[queue.KindGenerateSourceDocument] == nil ||
+		automaticEvidenceScheduler == nil || automaticEvidenceHandler == nil || productEventRefreshScheduler == nil ||
+		productEventRefreshHandler == nil || handlers[queue.KindGenerateSourceDocument] == nil ||
 		handlers[queue.KindEvaluatePublishedDocumentMatches] == nil || handlers[queue.KindProjectAcceptedDocumentMatch] == nil {
 		t.Fatalf("source document/match/evidence services/registration = %#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v",
 			handler, recallProjections, publishedMatches, publishedMatchEvaluations, matchReviews, publishedMatchHandler,
@@ -193,6 +212,9 @@ func TestMinIOWorkerFxGraphConstructsSourceDocumentAndMatchServices(t *testing.T
 	}
 	if handlers[queue.KindExtractAutomaticClaimEvidence] == nil {
 		t.Fatal("automatic claim evidence handler is not registered")
+	}
+	if handlers[queue.KindRefreshProductEvent] == nil {
+		t.Fatal("product event refresh handler is not registered")
 	}
 }
 

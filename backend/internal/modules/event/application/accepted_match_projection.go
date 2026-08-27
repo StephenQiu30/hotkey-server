@@ -4,9 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
-
-	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
 var ErrInvalidAcceptedMatchProjectionContract = errors.New("accepted match event projection contract is invalid")
@@ -44,22 +41,19 @@ type ProjectAcceptedDocumentMatchResult struct {
 type AcceptedMatchEventProjectionService struct {
 	families    AcceptedMatchFamilyReader
 	microEvents *MicroEventService
-	heat        *EventHeatService
-	clock       func() time.Time
 }
 
-func NewAcceptedMatchEventProjectionService(families AcceptedMatchFamilyReader, microEvents *MicroEventService,
-	heat *EventHeatService) (*AcceptedMatchEventProjectionService, error) {
-	if families == nil || microEvents == nil || heat == nil {
+func NewAcceptedMatchEventProjectionService(families AcceptedMatchFamilyReader,
+	microEvents *MicroEventService) (*AcceptedMatchEventProjectionService, error) {
+	if families == nil || microEvents == nil {
 		return nil, fmt.Errorf("%w: dependencies are required", ErrInvalidAcceptedMatchProjectionContract)
 	}
-	return &AcceptedMatchEventProjectionService{families: families, microEvents: microEvents,
-		heat: heat, clock: func() time.Time { return time.Now().UTC() }}, nil
+	return &AcceptedMatchEventProjectionService{families: families, microEvents: microEvents}, nil
 }
 
 func (service *AcceptedMatchEventProjectionService) Project(ctx context.Context, command ProjectAcceptedDocumentMatchCommand) (ProjectAcceptedDocumentMatchResult, error) {
-	if service == nil || service.families == nil || service.microEvents == nil || service.heat == nil ||
-		service.clock == nil || command.DocumentMatchDecisionID <= 0 || command.DocumentVersionID <= 0 {
+	if service == nil || service.families == nil || service.microEvents == nil ||
+		command.DocumentMatchDecisionID <= 0 || command.DocumentVersionID <= 0 {
 		return ProjectAcceptedDocumentMatchResult{}, ErrInvalidAcceptedMatchProjectionContract
 	}
 	family, err := service.families.ResolveAcceptedMatchFamily(ctx, ResolveAcceptedMatchFamilyQuery{
@@ -79,23 +73,5 @@ func (service *AcceptedMatchEventProjectionService) Project(ctx context.Context,
 	}
 	result := ProjectAcceptedDocumentMatchResult{MicroEvent: assigned.Event, Membership: assigned.Decision,
 		HeatSnapshots: []EventHeatSnapshotDTO{}}
-	if assigned.Decision.Action != "review" {
-		windowEnd := service.clock().UTC().Truncate(time.Minute)
-		if windowEnd.IsZero() {
-			return ProjectAcceptedDocumentMatchResult{}, ErrInvalidAcceptedMatchProjectionContract
-		}
-		for _, windowHours := range []int{1, 6, 24} {
-			calculated, heatErr := service.heat.Calculate(ctx, CalculateEventHeatCommand{MicroEventID: assigned.Event.ID,
-				WindowHours: windowHours, WindowEndedAt: windowEnd})
-			if errors.Is(heatErr, sharedrepository.ErrNotFound) {
-				result.HeatUnavailable = true
-				break
-			}
-			if heatErr != nil {
-				return ProjectAcceptedDocumentMatchResult{}, fmt.Errorf("calculate micro-event heat: %w", heatErr)
-			}
-			result.HeatSnapshots = append(result.HeatSnapshots, calculated.Snapshot)
-		}
-	}
 	return result, nil
 }

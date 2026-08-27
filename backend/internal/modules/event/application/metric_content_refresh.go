@@ -17,27 +17,27 @@ type EventHeatCalculator interface {
 }
 
 // ContentMetricRefreshService is the narrow bridge exposed to ingestion. A
-// metric commit recomputes all supported Heat v2 windows on one stable minute
-// boundary and never invokes legacy Event heat.
+// metric commit schedules one bounded Product Event Refresh per active v2
+// Event on a stable minute boundary and never invokes legacy Event heat.
 type ContentMetricRefreshService struct {
-	events     ContentMicroEventReader
-	calculator EventHeatCalculator
-	now        func() time.Time
+	events    ContentMicroEventReader
+	scheduler ProductEventRefreshScheduler
+	now       func() time.Time
 }
 
-func NewContentMetricRefreshService(events ContentMicroEventReader, calculator EventHeatCalculator) (*ContentMetricRefreshService, error) {
-	return NewContentMetricRefreshServiceWithClock(events, calculator, func() time.Time { return time.Now().UTC() })
+func NewContentMetricRefreshService(events ContentMicroEventReader, scheduler ProductEventRefreshScheduler) (*ContentMetricRefreshService, error) {
+	return NewContentMetricRefreshServiceWithClock(events, scheduler, func() time.Time { return time.Now().UTC() })
 }
 
-func NewContentMetricRefreshServiceWithClock(events ContentMicroEventReader, calculator EventHeatCalculator, now func() time.Time) (*ContentMetricRefreshService, error) {
-	if events == nil || calculator == nil || now == nil {
+func NewContentMetricRefreshServiceWithClock(events ContentMicroEventReader, scheduler ProductEventRefreshScheduler, now func() time.Time) (*ContentMetricRefreshService, error) {
+	if events == nil || scheduler == nil || now == nil {
 		return nil, fmt.Errorf("content metric refresh dependencies are required")
 	}
-	return &ContentMetricRefreshService{events: events, calculator: calculator, now: now}, nil
+	return &ContentMetricRefreshService{events: events, scheduler: scheduler, now: now}, nil
 }
 
 func (service *ContentMetricRefreshService) RecomputeMetricsForContent(ctx context.Context, contentID int64) error {
-	if service == nil || service.events == nil || service.calculator == nil || service.now == nil || contentID <= 0 {
+	if service == nil || service.events == nil || service.scheduler == nil || service.now == nil || contentID <= 0 {
 		return fmt.Errorf("content metric refresh dependencies are required")
 	}
 	microEventIDs, err := service.events.ListMetricMicroEventIDsForContent(ctx, contentID)
@@ -46,12 +46,10 @@ func (service *ContentMetricRefreshService) RecomputeMetricsForContent(ctx conte
 	}
 	windowEnd := service.now().UTC().Truncate(time.Minute)
 	for _, microEventID := range microEventIDs {
-		for _, windowHours := range []int{1, 6, 24} {
-			if _, err := service.calculator.Calculate(ctx, CalculateEventHeatCommand{
-				MicroEventID: microEventID, WindowHours: windowHours, WindowEndedAt: windowEnd,
-			}); err != nil {
-				return fmt.Errorf("recompute micro-event %d heat window %dh: %w", microEventID, windowHours, err)
-			}
+		if _, err := service.scheduler.ScheduleProductEventRefresh(ctx, ScheduleProductEventRefreshCommand{
+			MicroEventID: microEventID, WindowEndedAt: windowEnd,
+		}); err != nil {
+			return fmt.Errorf("schedule micro-event %d refresh: %w", microEventID, err)
 		}
 	}
 	return nil

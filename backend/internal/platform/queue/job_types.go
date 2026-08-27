@@ -33,6 +33,7 @@ const (
 	KindBackfillPublishedMonitorMatches  = "backfill_published_monitor_matches"
 	KindProjectAcceptedDocumentMatch     = "project_accepted_document_match"
 	KindExtractAutomaticClaimEvidence    = "extract_automatic_claim_evidence"
+	KindRefreshProductEvent              = "refresh_product_event"
 	KindRecomputeAIRun                   = "recompute_ai_run"
 )
 
@@ -43,7 +44,7 @@ func IsKnownKind(kind string) bool {
 		KindProjectKnowledge, KindReconcileKnowledge, KindRunRetention, KindGenerateSourceDocument, KindAnalyzeMonitorIntent,
 		KindEvaluatePublishedDocumentMatches, KindBackfillPublishedMonitorMatches, KindProjectAcceptedDocumentMatch:
 		return true
-	case KindExtractAutomaticClaimEvidence, KindRecomputeAIRun:
+	case KindExtractAutomaticClaimEvidence, KindRefreshProductEvent, KindRecomputeAIRun:
 		return true
 	default:
 		return false

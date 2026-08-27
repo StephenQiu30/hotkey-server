@@ -12,7 +12,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
 
-func TestAcceptedMatchProjectionCreatesOnlyMicroEventAndHeatV2(t *testing.T) {
+func TestAcceptedMatchProjectionCreatesOnlyMicroEventAndLeavesRefreshToRiver(t *testing.T) {
 	ctx := context.Background()
 	runtime, err := database.Open(ctx, postgresfixture.New(t))
 	if err != nil {
@@ -37,29 +37,20 @@ VALUES ('heat-v2-integration','active',.25,.20,.15,.15,.10,.15,$1,$2)`, actorID,
 	fixture := seedMicroEventAssignmentFixture(t, runtime, "accepted-projection", "accepted")
 	microRepository, _ := NewMicroEventRepository(runtime)
 	microService, _ := eventapplication.NewMicroEventService(microRepository)
-	heatRepository, _ := NewEventHeatRepository(runtime)
-	heatService, _ := eventapplication.NewEventHeatService(heatRepository)
-	service, err := eventapplication.NewAcceptedMatchEventProjectionService(microRepository, microService, heatService)
+	service, err := eventapplication.NewAcceptedMatchEventProjectionService(microRepository, microService)
 	if err != nil {
 		t.Fatal(err)
 	}
 	projected, err := service.Project(ctx, eventapplication.ProjectAcceptedDocumentMatchCommand{
 		DocumentMatchDecisionID: fixture.matchDecisionID, DocumentVersionID: fixture.documentVersionID})
 	if err != nil || projected.MicroEvent.ID <= 0 || projected.Storyline != nil || projected.StorylineEvent != nil ||
-		projected.HeatUnavailable || len(projected.HeatSnapshots) != 3 {
+		projected.HeatUnavailable || len(projected.HeatSnapshots) != 0 {
 		t.Fatalf("accepted projection = %#v / %v", projected, err)
-	}
-	for _, snapshot := range projected.HeatSnapshots {
-		if snapshot.MicroEventID != projected.MicroEvent.ID || snapshot.HeatProfileID <= 0 ||
-			snapshot.HeatProfileVersion != "heat-v2-integration" || !snapshot.WarmingUp ||
-			snapshot.Velocity != 0 || snapshot.Acceleration != 0 {
-			t.Fatalf("heat snapshot = %#v", snapshot)
-		}
 	}
 	replayed, err := service.Project(ctx, eventapplication.ProjectAcceptedDocumentMatchCommand{
 		DocumentMatchDecisionID: fixture.matchDecisionID, DocumentVersionID: fixture.documentVersionID})
 	if err != nil || replayed.MicroEvent.ID != projected.MicroEvent.ID || replayed.Storyline != nil ||
-		replayed.StorylineEvent != nil || replayed.HeatSnapshots[0].ID != projected.HeatSnapshots[0].ID {
+		replayed.StorylineEvent != nil || len(replayed.HeatSnapshots) != 0 {
 		t.Fatalf("accepted projection replay = %#v / %v", replayed, err)
 	}
 }
@@ -77,15 +68,13 @@ func TestAcceptedMatchProjectionKeepsEventWhenHeatProfileIsUnavailable(t *testin
 	fixture := seedMicroEventAssignmentFixture(t, runtime, "accepted-without-heat", "accepted")
 	microRepository, _ := NewMicroEventRepository(runtime)
 	microService, _ := eventapplication.NewMicroEventService(microRepository)
-	heatRepository, _ := NewEventHeatRepository(runtime)
-	heatService, _ := eventapplication.NewEventHeatService(heatRepository)
-	service, err := eventapplication.NewAcceptedMatchEventProjectionService(microRepository, microService, heatService)
+	service, err := eventapplication.NewAcceptedMatchEventProjectionService(microRepository, microService)
 	if err != nil {
 		t.Fatal(err)
 	}
 	projected, err := service.Project(ctx, eventapplication.ProjectAcceptedDocumentMatchCommand{
 		DocumentMatchDecisionID: fixture.matchDecisionID, DocumentVersionID: fixture.documentVersionID})
-	if err != nil || projected.MicroEvent.ID <= 0 || projected.Storyline != nil || !projected.HeatUnavailable || len(projected.HeatSnapshots) != 0 {
+	if err != nil || projected.MicroEvent.ID <= 0 || projected.Storyline != nil || projected.HeatUnavailable || len(projected.HeatSnapshots) != 0 {
 		t.Fatalf("accepted projection without heat profile = %#v / %v", projected, err)
 	}
 }

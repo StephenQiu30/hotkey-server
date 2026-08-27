@@ -154,6 +154,14 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newClaimEvidenceService,
 				eventpostgres.NewEvidenceSummaryPostgresRepository,
 				newEvidenceSummaryService,
+				eventpostgres.NewProductEventRefreshPostgresRepository,
+				exposeProductEventRefreshScheduleTargetReader,
+				exposeProductEventRefreshRepository,
+				exposeProductEventAlertEvaluator,
+				newProductEventRefreshService,
+				eventjobs.NewProductEventRefreshScheduler,
+				exposeProductEventRefreshScheduler,
+				eventjobs.NewProductEventRefreshHandler,
 				newMicroEventQueryRepository,
 				newMicroEventQueryService,
 				eventapplication.NewAcceptedMatchEventProjectionService,
@@ -468,8 +476,8 @@ func registerNotificationRoutes(router *gin.Engine, handler *notificationtranspo
 	notificationtransport.RegisterRoutes(router, handler, authenticator)
 }
 
-func newEventContentMetricRefreshService(repository *eventpostgres.EventHeatRepository, heat *eventapplication.EventHeatService) (*eventapplication.ContentMetricRefreshService, error) {
-	return eventapplication.NewContentMetricRefreshService(repository, heat)
+func newEventContentMetricRefreshService(repository *eventpostgres.EventHeatRepository, refresh eventapplication.ProductEventRefreshScheduler) (*eventapplication.ContentMetricRefreshService, error) {
+	return eventapplication.NewContentMetricRefreshService(repository, refresh)
 }
 
 func newSourceService(runtime *database.Runtime, sources *sourcepostgres.Repository, usage *monitorpostgres.SourceUsageReader, references *monitorpostgres.PublishedReferenceReader, credentials *sourcecredentialstore.Store, audit *operationspostgres.AuditWriter) (*sourceapplication.Service, error) {
@@ -524,6 +532,7 @@ type p0HandlerParams struct {
 	BackfillPublishedMonitorMatches  *ingestionjobs.PublishedMonitorMatchBackfillHandler    `optional:"true"`
 	ProjectAcceptedDocumentMatch     *ingestionjobs.AcceptedDocumentMatchProjectionHandler  `optional:"true"`
 	ExtractAutomaticClaimEvidence    *eventjobs.AutomaticClaimEvidenceHandler               `optional:"true"`
+	RefreshProductEvent              *eventjobs.ProductEventRefreshHandler                  `optional:"true"`
 	RefreshXMetrics                  *sourcejobs.XMetricRefreshHandler                      `optional:"true"`
 	RecomputeAIRun                   *intelligencejobs.AIRunRecomputeHandler
 }
@@ -549,6 +558,9 @@ func newP0Handlers(params p0HandlerParams) map[string]queue.Handler {
 	}
 	if params.ExtractAutomaticClaimEvidence != nil {
 		handlers[queue.KindExtractAutomaticClaimEvidence] = params.ExtractAutomaticClaimEvidence.Handle
+	}
+	if params.RefreshProductEvent != nil {
+		handlers[queue.KindRefreshProductEvent] = params.RefreshProductEvent.Handle
 	}
 	if params.RefreshXMetrics != nil {
 		handlers[queue.KindRefreshXMetrics] = params.RefreshXMetrics.Handle
