@@ -52,6 +52,7 @@ func TestConnectorRegistryFailsClosedWhenP0RequestBudgetIsUnavailable(t *testing
 	connections := []domain.SourceConnection{
 		{ID: 1, SourceType: domain.SourceTypeRSS, Name: "RSS", Endpoint: "https://feeds.example.test/rss", AuthType: domain.AuthTypeNone, Config: domain.DefaultSourceConfig(), Enabled: true},
 		{ID: 2, SourceType: domain.SourceTypeHackerNews, Name: "HN", Endpoint: domain.HackerNewsEndpoint, AuthType: domain.AuthTypeNone, Config: domain.DefaultSourceConfig(), Enabled: true},
+		{ID: 3, SourceType: domain.SourceTypeX, Name: "X", Endpoint: domain.XRecentSearchEndpoint, AuthType: domain.AuthTypeBearer, CredentialRef: "env:X_BEARER_TOKEN", Config: domain.DefaultSourceConfig(), Enabled: true},
 	}
 	for _, connection := range connections {
 		if _, err := NewConnectorRegistry(resolver, nil, nil).Resolve(context.Background(), connection); err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorPermanent {

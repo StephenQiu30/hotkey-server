@@ -337,7 +337,7 @@ func TestConnectorRejectsUnsafeDestinationAndInvalidQuery(t *testing.T) {
 		{ID: 10, SourceType: domain.SourceTypeX, Name: "X", Endpoint: "https://example.test/2/tweets/search/recent", AuthType: domain.AuthTypeBearer, CredentialRef: "env:X_BEARER_TOKEN", Config: domain.DefaultSourceConfig()},
 		{ID: 10, SourceType: domain.SourceTypeX, Name: "X", Endpoint: domain.XRecentSearchEndpoint, AuthType: domain.AuthTypeNone, Config: domain.DefaultSourceConfig()},
 	} {
-		if _, err := New(connection); domain.ClassifyCollectionError(err) != domain.CollectionErrorPermanent {
+		if _, err := New(connection, allowingRequestBudget{}); domain.ClassifyCollectionError(err) != domain.CollectionErrorPermanent {
 			t.Fatalf("New(%#v) error = %v", connection, err)
 		}
 	}
@@ -353,7 +353,7 @@ func TestConnectorRejectsPrivateDNSBeforeDial(t *testing.T) {
 	t.Parallel()
 	var dialed atomic.Bool
 	connector, err := newConnector(xConnection(), connectorOptions{
-		lookupEnv: tokenLookup,
+		lookupEnv: tokenLookup, requestBudget: allowingRequestBudget{},
 		resolver: func(context.Context, string) ([]net.IPAddr, error) {
 			return []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}}, nil
 		},
@@ -393,7 +393,7 @@ func newFixtureConnectorWithConnection(t *testing.T, server *httptest.Server, co
 	t.Helper()
 	address := server.Listener.Addr().String()
 	connector, err := newConnector(connection, connectorOptions{
-		lookupEnv: lookup,
+		lookupEnv: lookup, requestBudget: allowingRequestBudget{}, retryWait: func(context.Context, int) error { return nil },
 		resolver: func(context.Context, string) ([]net.IPAddr, error) {
 			return []net.IPAddr{{IP: net.ParseIP("93.184.216.34")}}, nil
 		},
@@ -431,6 +431,12 @@ func xFetchRequest() domain.FetchRequest {
 }
 
 func tokenLookup(name string) (string, bool) { return "fixture-secret", name == "X_BEARER_TOKEN" }
+
+type allowingRequestBudget struct{}
+
+func (allowingRequestBudget) ReserveExternalRequest(_ context.Context, reservation domain.ExternalRequestBudgetReservation) (domain.ExternalRequestBudgetDecision, error) {
+	return domain.ExternalRequestBudgetDecision{Allowed: true, Used: 1, ResetAt: reservation.At.UTC().Add(24 * time.Hour)}, nil
+}
 
 func metric(value *int64) int64 {
 	if value == nil {

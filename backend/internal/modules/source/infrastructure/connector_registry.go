@@ -77,9 +77,9 @@ func (registry *ConnectorRegistry) resolveConnector(connection domain.SourceConn
 		return hackernews.New(connection, registry.requestBudget, registry.resolver)
 	case domain.SourceTypeX:
 		if lookup != nil {
-			return xconnector.NewWithCredentialLookup(connection, registry.resolver, lookup)
+			return xconnector.NewWithCredentialLookup(connection, registry.resolver, lookup, registry.requestBudget)
 		}
-		return xconnector.New(connection, registry.resolver)
+		return xconnector.New(connection, registry.requestBudget, registry.resolver)
 	case domain.SourceTypeBingGrounding:
 		if lookup != nil {
 			return binggrounding.NewWithCredentialLookup(connection, registry.resolver, lookup)

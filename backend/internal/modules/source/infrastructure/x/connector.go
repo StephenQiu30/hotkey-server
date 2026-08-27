@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/netip"
@@ -46,22 +45,28 @@ var (
 type lookupIPAddrFunc func(context.Context, string) ([]net.IPAddr, error)
 
 type connectorOptions struct {
-	resolver    lookupIPAddrFunc
-	dialContext func(context.Context, string, string) (net.Conn, error)
-	tlsConfig   *tls.Config
-	now         func() time.Time
-	lookupEnv   func(string) (string, bool)
+	resolver       lookupIPAddrFunc
+	dialContext    func(context.Context, string, string) (net.Conn, error)
+	tlsConfig      *tls.Config
+	now            func() time.Time
+	lookupEnv      func(string) (string, bool)
+	resourceLimits ResourceLimitProfile
+	requestBudget  domain.ExternalRequestBudget
+	retryWait      func(context.Context, int) error
 }
 
 type Connector struct {
-	sourceID      int64
-	endpoint      *url.URL
-	credentialRef string
-	enabled       bool
-	deleted       bool
-	http          *http.Client
-	now           func() time.Time
-	lookupEnv     func(string) (string, bool)
+	sourceID       int64
+	endpoint       *url.URL
+	credentialRef  string
+	enabled        bool
+	deleted        bool
+	http           *http.Client
+	now            func() time.Time
+	lookupEnv      func(string) (string, bool)
+	resourceLimits ResourceLimitProfile
+	requestBudget  domain.ExternalRequestBudget
+	retryWait      func(context.Context, int) error
 }
 
 type searchCursor struct {
@@ -167,16 +172,16 @@ func (value fetchedJSONResponse) snapshot(profileVersion string) (domain.Evidenc
 	)
 }
 
-func New(connection domain.SourceConnection, resolvers ...sourcenet.Resolver) (*Connector, error) {
-	options := connectorOptions{}
+func New(connection domain.SourceConnection, requestBudget domain.ExternalRequestBudget, resolvers ...sourcenet.Resolver) (*Connector, error) {
+	options := connectorOptions{requestBudget: requestBudget}
 	if len(resolvers) > 0 && resolvers[0] != nil {
 		options.resolver = resolvers[0].LookupIPAddr
 	}
 	return newConnector(connection, options)
 }
 
-func NewWithCredentialLookup(connection domain.SourceConnection, resolver sourcenet.Resolver, lookup func(string) (string, bool)) (*Connector, error) {
-	options := connectorOptions{lookupEnv: lookup}
+func NewWithCredentialLookup(connection domain.SourceConnection, resolver sourcenet.Resolver, lookup func(string) (string, bool), requestBudget domain.ExternalRequestBudget) (*Connector, error) {
+	options := connectorOptions{lookupEnv: lookup, requestBudget: requestBudget}
 	if resolver != nil {
 		options.resolver = resolver.LookupIPAddr
 	}
@@ -204,6 +209,15 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 	if options.lookupEnv == nil {
 		options.lookupEnv = os.LookupEnv
 	}
+	if options.resourceLimits.Version == "" {
+		options.resourceLimits = DefaultResourceLimitProfile()
+	}
+	if err := options.resourceLimits.Validate(); err != nil || options.requestBudget == nil || normalized.Config.MaxPagesPerRun > options.resourceLimits.MaxPages {
+		return nil, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid X resource limit profile"))
+	}
+	if options.retryWait == nil {
+		options.retryWait = retryBackoff
+	}
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
 	if options.tlsConfig != nil {
 		tlsConfig = options.tlsConfig.Clone()
@@ -211,14 +225,17 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 			tlsConfig.MinVersion = tls.VersionTLS12
 		}
 	}
-	timeout := time.Duration(normalized.Config.RequestTimeoutSeconds) * time.Second
+	configuredReadTimeout := time.Duration(normalized.Config.RequestTimeoutSeconds) * time.Second
+	reserveRedirect := func(ctx context.Context) error {
+		return reserveXRequest(ctx, options.requestBudget, normalized.ID, options.resourceLimits, options.now)
+	}
 	transport := &http.Transport{
 		Proxy: nil, ForceAttemptHTTP2: true, TLSClientConfig: tlsConfig,
-		TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: timeout,
-		DialContext: secureDialContext(options.resolver, options.dialContext),
+		TLSHandshakeTimeout: options.resourceLimits.ConnectTimeout, ResponseHeaderTimeout: minimumDuration(configuredReadTimeout, options.resourceLimits.ReadTimeout),
+		DialContext: secureDialContext(options.resolver, options.dialContext, options.resourceLimits.ConnectTimeout),
 	}
 	client := &http.Client{
-		Timeout: timeout, Transport: transport,
+		Timeout: options.resourceLimits.ReadTimeout, Transport: transport,
 		CheckRedirect: func(request *http.Request, via []*http.Request) error {
 			if len(via) >= maxRedirects {
 				return errRedirectLimit
@@ -226,13 +243,17 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 			if len(via) == 0 || !sameOfficialEndpoint(via[0].URL, request.URL) {
 				return errUnsafeDestination
 			}
+			if err := reserveRedirect(request.Context()); err != nil {
+				return err
+			}
 			return nil
 		},
 	}
 	return &Connector{
 		sourceID: normalized.ID, endpoint: endpoint, credentialRef: normalized.CredentialRef,
 		enabled: normalized.Enabled, deleted: normalized.Deleted, http: client,
-		now: options.now, lookupEnv: options.lookupEnv,
+		now: options.now, lookupEnv: options.lookupEnv, resourceLimits: options.resourceLimits,
+		requestBudget: options.requestBudget, retryWait: options.retryWait,
 	}, nil
 }
 
@@ -253,10 +274,6 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 	if !connector.enabled || connector.deleted {
 		return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X source connection is unavailable"))
 	}
-	token, err := connector.token()
-	if err != nil {
-		return result, err
-	}
 	query, err := compileSearchQuery(request.Query, request.Languages, request.Regions)
 	if err != nil {
 		return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid X search query"))
@@ -268,8 +285,17 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 			return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid X search cursor"))
 		}
 	}
+	ctx, cancel := context.WithTimeout(ctx, connector.resourceLimits.WallClockTimeout)
+	defer cancel()
+	token, err := connector.token()
+	if err != nil {
+		return result, err
+	}
+	if request.Limit > connector.resourceLimits.MaxItems {
+		request.Limit = connector.resourceLimits.MaxItems
+	}
 	parameters := searchParameters(query, request.Limit, cursor)
-	captured, rateLimit, err := connector.get(ctx, parameters, token)
+	captured, rateLimit, err := connector.get(ctx, parameters, token, newResponseByteBudget(connector.resourceLimits.MaxCumulativeResponseBytes))
 	result.RateLimit = rateLimit
 	if err != nil {
 		return result, err
@@ -277,6 +303,9 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 	var response searchResponse
 	if err := json.Unmarshal(captured.payload, &response); err != nil {
 		return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("decode X recent search response"))
+	}
+	if len(response.Data) > connector.resourceLimits.MaxItems {
+		return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X response exceeds collection item limit"))
 	}
 	snapshot, err := captured.snapshot(collectorProfileVersion)
 	if err != nil {
@@ -374,11 +403,10 @@ func (connector *Connector) LookupPostMetrics(ctx context.Context, request domai
 	if !connector.enabled || connector.deleted {
 		return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X source connection is unavailable"))
 	}
-	token, err := connector.token()
-	if err != nil {
-		return result, err
-	}
 	postIDs := normalizedPostIDs(request.PostIDs)
+	if len(postIDs) > connector.resourceLimits.MaxItems {
+		return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X metric lookup request exceeds collection item limit"))
+	}
 	lookupEndpoint := *connector.endpoint
 	lookupEndpoint.Path = "/2/tweets"
 	lookupEndpoint.RawPath = ""
@@ -386,7 +414,13 @@ func (connector *Connector) LookupPostMetrics(ctx context.Context, request domai
 		"ids":          {strings.Join(postIDs, ",")},
 		"tweet.fields": {"public_metrics"},
 	}
-	captured, rateLimit, err := connector.getAt(ctx, &lookupEndpoint, parameters, token)
+	ctx, cancel := context.WithTimeout(ctx, connector.resourceLimits.WallClockTimeout)
+	defer cancel()
+	token, err := connector.token()
+	if err != nil {
+		return result, err
+	}
+	captured, rateLimit, err := connector.getAt(ctx, &lookupEndpoint, parameters, token, newResponseByteBudget(connector.resourceLimits.MaxCumulativeResponseBytes))
 	result.RateLimit = rateLimit
 	if err != nil {
 		return result, err
@@ -394,6 +428,9 @@ func (connector *Connector) LookupPostMetrics(ctx context.Context, request domai
 	var response searchResponse
 	if err := json.Unmarshal(captured.payload, &response); err != nil {
 		return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("decode X post lookup response"))
+	}
+	if len(response.Data) > connector.resourceLimits.MaxItems {
+		return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X lookup response exceeds collection item limit"))
 	}
 	snapshot, err := captured.snapshot(metricProfileVersion)
 	if err != nil {
@@ -433,12 +470,14 @@ func (connector *Connector) Health(ctx context.Context, connection domain.Source
 	if err := connector.Validate(ctx, connection); err != nil {
 		return domain.HealthResult{CheckedAt: checkedAt, ErrorKind: domain.ClassifyCollectionError(err), DiagnosticCode: "invalid_source_connection"}
 	}
+	ctx, cancel := context.WithTimeout(ctx, connector.resourceLimits.WallClockTimeout)
+	defer cancel()
 	token, err := connector.token()
 	if err != nil {
 		return domain.HealthResult{CheckedAt: checkedAt, ErrorKind: domain.CollectionErrorAuthentication, DiagnosticCode: "credential_unavailable"}
 	}
 	parameters := url.Values{"query": {"from:XDevelopers"}, "max_results": {"10"}, "sort_order": {"recency"}}
-	if _, _, err := connector.get(ctx, parameters, token); err != nil {
+	if _, _, err := connector.get(ctx, parameters, token, newResponseByteBudget(connector.resourceLimits.MaxCumulativeResponseBytes)); err != nil {
 		code := "request_failed"
 		if domain.ClassifyCollectionError(err) == domain.CollectionErrorAuthentication {
 			code = "credential_unavailable"
@@ -457,11 +496,31 @@ func (connector *Connector) token() (string, error) {
 	return token, nil
 }
 
-func (connector *Connector) get(ctx context.Context, parameters url.Values, token string) (fetchedJSONResponse, domain.RateLimit, error) {
-	return connector.getAt(ctx, connector.endpoint, parameters, token)
+func (connector *Connector) get(ctx context.Context, parameters url.Values, token string, byteBudget *responseByteBudget) (fetchedJSONResponse, domain.RateLimit, error) {
+	return connector.getAt(ctx, connector.endpoint, parameters, token, byteBudget)
 }
 
-func (connector *Connector) getAt(ctx context.Context, endpoint *url.URL, parameters url.Values, token string) (fetchedJSONResponse, domain.RateLimit, error) {
+func (connector *Connector) getAt(ctx context.Context, endpoint *url.URL, parameters url.Values, token string, byteBudget *responseByteBudget) (fetchedJSONResponse, domain.RateLimit, error) {
+	for attempt := 0; ; attempt++ {
+		if err := reserveXRequest(ctx, connector.requestBudget, connector.sourceID, connector.resourceLimits, connector.now); err != nil {
+			var quota requestQuotaError
+			if errors.As(err, &quota) {
+				resetAt := quota.resetAt.UTC()
+				return fetchedJSONResponse{}, domain.RateLimit{Remaining: 0, ResetAt: &resetAt, RetryAfter: &resetAt}, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("X daily request quota exceeded"))
+			}
+			return fetchedJSONResponse{}, domain.RateLimit{}, err
+		}
+		captured, rateLimit, err := connector.doRequest(ctx, endpoint, parameters, token, byteBudget)
+		if err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorTemporary || attempt >= connector.resourceLimits.MaxRetries {
+			return captured, rateLimit, err
+		}
+		if err := connector.retryWait(ctx, attempt+1); err != nil {
+			return fetchedJSONResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("X retry interrupted"))
+		}
+	}
+}
+
+func (connector *Connector) doRequest(ctx context.Context, endpoint *url.URL, parameters url.Values, token string, byteBudget *responseByteBudget) (fetchedJSONResponse, domain.RateLimit, error) {
 	target := *endpoint
 	target.RawQuery = parameters.Encode()
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
@@ -472,30 +531,66 @@ func (connector *Connector) getAt(ctx context.Context, endpoint *url.URL, parame
 	request.Header.Set("Authorization", "Bearer "+token)
 	response, err := connector.http.Do(request)
 	if err != nil {
+		var quota requestQuotaError
+		if errors.As(err, &quota) {
+			resetAt := quota.resetAt.UTC()
+			return fetchedJSONResponse{}, domain.RateLimit{Remaining: 0, ResetAt: &resetAt, RetryAfter: &resetAt}, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("X daily request quota exceeded"))
+		}
 		return fetchedJSONResponse{}, domain.RateLimit{}, requestError(err)
 	}
 	rateLimit := parseRateLimit(response.Header)
+	payload, readErr := byteBudget.read(response.Body)
+	closeErr := response.Body.Close()
+	if readErr != nil || closeErr != nil {
+		if errors.Is(readErr, errResponseByteLimit) {
+			return fetchedJSONResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X response exceeds cumulative byte limit"))
+		}
+		return fetchedJSONResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("read X response"))
+	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		status := response.StatusCode
-		closeResponse(response)
 		if status == http.StatusTooManyRequests && rateLimit.ResetAt != nil {
 			rateLimit.RetryAfter = cloneTime(rateLimit.ResetAt)
 		}
 		return fetchedJSONResponse{}, rateLimit, statusError(status)
-	}
-	payload, readErr := io.ReadAll(io.LimitReader(response.Body, maxResponseBodyBytes+1))
-	closeErr := response.Body.Close()
-	if readErr != nil || closeErr != nil {
-		return fetchedJSONResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("read X response"))
-	}
-	if len(payload) > maxResponseBodyBytes {
-		return fetchedJSONResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X response exceeds body byte limit"))
 	}
 	return fetchedJSONResponse{
 		payload: payload, statusCode: response.StatusCode, requestedURL: target.String(),
 		finalURL: response.Request.URL.String(), redirectChain: evidencecapture.RedirectChain(target.String(), response.Request),
 		headers: response.Header.Clone(), capturedAt: connector.now().UTC(),
 	}, rateLimit, nil
+}
+
+type requestQuotaError struct{ resetAt time.Time }
+
+func (err requestQuotaError) Error() string { return "X daily request quota exceeded" }
+
+func reserveXRequest(ctx context.Context, budget domain.ExternalRequestBudget, sourceID int64, profile ResourceLimitProfile, now func() time.Time) error {
+	decision, err := budget.ReserveExternalRequest(ctx, domain.ExternalRequestBudgetReservation{
+		SourceConnectionID: sourceID, ResourceProfileVersion: profile.Version, DailyLimit: profile.DailyRequestQuota, At: now().UTC(),
+	})
+	if err != nil {
+		return domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("reserve X request budget"))
+	}
+	if err := decision.Validate(profile.DailyRequestQuota); err != nil {
+		return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid X request budget decision"))
+	}
+	if !decision.Allowed {
+		return requestQuotaError{resetAt: decision.ResetAt}
+	}
+	return nil
+}
+
+func retryBackoff(ctx context.Context, attempt int) error {
+	delay := time.Duration(100*(1<<min(attempt-1, 5))) * time.Millisecond
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func normalizedPostIDs(values []string) []string {
@@ -854,19 +949,16 @@ func statusError(status int) error {
 	return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X upstream rejected request"))
 }
 
-func closeResponse(response *http.Response) {
-	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxResponseBodyBytes+1))
-	_ = response.Body.Close()
-}
-
 func sameOfficialEndpoint(endpoint, candidate *url.URL) bool {
 	return endpoint != nil && candidate != nil && candidate.Scheme == "https" &&
 		strings.EqualFold(candidate.Hostname(), endpoint.Hostname()) &&
 		(candidate.Port() == "" || candidate.Port() == "443") && candidate.Path == endpoint.Path
 }
 
-func secureDialContext(resolver lookupIPAddrFunc, dialContext func(context.Context, string, string) (net.Conn, error)) func(context.Context, string, string) (net.Conn, error) {
+func secureDialContext(resolver lookupIPAddrFunc, dialContext func(context.Context, string, string) (net.Conn, error), timeout time.Duration) func(context.Context, string, string) (net.Conn, error) {
 	return func(ctx context.Context, network, address string) (net.Conn, error) {
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
 		host, port, err := net.SplitHostPort(address)
 		if err != nil || network != "tcp" || port != "443" {
 			return nil, errUnsafeDestination
@@ -893,6 +985,13 @@ func secureDialContext(resolver lookupIPAddrFunc, dialContext func(context.Conte
 		}
 		return nil, errUnsafeDestination
 	}
+}
+
+func minimumDuration(left, right time.Duration) time.Duration {
+	if left < right {
+		return left
+	}
+	return right
 }
 
 func publicAddress(value net.IP) bool {
