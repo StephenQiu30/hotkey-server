@@ -609,9 +609,12 @@ func eventError(err error) error {
 	switch {
 	case errors.Is(err, sharedrepository.ErrNotFound):
 		return sharederrors.Wrap(sharederrors.CodeNotFound, http.StatusNotFound, "", err)
+	case errors.Is(err, application.ErrMicroEventGovernanceForbidden):
+		return sharederrors.Wrap(sharederrors.CodeForbidden, http.StatusForbidden, "", err)
 	case errors.Is(err, sharedrepository.ErrConflict), errors.Is(err, sharedrepository.ErrImmutable):
 		return sharederrors.Wrap(sharederrors.CodeConflict, http.StatusConflict, "", err)
-	case errors.Is(err, application.ErrInvalidMicroEventQuery), errors.Is(err, sharedrepository.ErrInvalidInput), errors.Is(err, sharedrepository.ErrConstraint):
+	case errors.Is(err, application.ErrInvalidMicroEventQuery), errors.Is(err, application.ErrInvalidMicroEventGovernanceContract),
+		errors.Is(err, sharedrepository.ErrInvalidInput), errors.Is(err, sharedrepository.ErrConstraint):
 		return sharederrors.Wrap(sharederrors.CodeInvalidRequest, http.StatusBadRequest, "", err)
 	case errors.Is(err, sharedrepository.ErrUnavailable):
 		return sharederrors.Wrap(sharederrors.CodeUnavailable, http.StatusServiceUnavailable, "", err)

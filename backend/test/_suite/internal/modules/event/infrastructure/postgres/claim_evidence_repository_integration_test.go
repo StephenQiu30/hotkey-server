@@ -66,6 +66,15 @@ func TestClaimEvidenceRepositoryPersistsQuotedRelationsAndLineageEvidenceState(t
 	if err != nil {
 		t.Fatalf("Record(first): %v", err)
 	}
+	var originalEvidenceBefore, documentBefore, observationBefore string
+	if err := runtime.SQL.QueryRow(`SELECT row_to_json(evidence)::text,row_to_json(document_version)::text,row_to_json(observation)::text
+FROM claim_evidence_versions AS evidence
+JOIN document_versions AS document_version ON document_version.id=evidence.document_version_id
+JOIN source_observations AS observation ON observation.id=document_version.source_observation_id
+WHERE evidence.id=$1`, firstResult.Evidence.ID).
+		Scan(&originalEvidenceBefore, &documentBefore, &observationBefore); err != nil {
+		t.Fatal(err)
+	}
 	replayed, err := service.Record(ctx, manualClaimEvidenceCommand(firstAssignment.Event.ID, currentEventVersion,
 		first.documentVersionID, firstSelectorID, actorID, "asserts", "claim-evidence-first", now))
 	if err != nil || replayed.Evidence.ID != firstResult.Evidence.ID || replayed.Created {
@@ -81,6 +90,31 @@ func TestClaimEvidenceRepositoryPersistsQuotedRelationsAndLineageEvidenceState(t
 	if err != nil || corrected.Feedback.OriginalClaimEvidenceVersionID != firstResult.Evidence.ID ||
 		corrected.Evidence.TextQuoteSelectorID != correctedSelectorID || corrected.Evidence.Relation != "mentions" {
 		t.Fatalf("Correct() = %#v / %v", corrected, err)
+	}
+	var storedActor, expectedClaimVersion int64
+	var storedReason, originalRelation, resultRelation string
+	if err := runtime.SQL.QueryRow(`SELECT actor_user_id,expected_claim_version,reason_code,original_relation,result_relation
+FROM claim_evidence_feedbacks WHERE id=$1`, corrected.Feedback.ID).
+		Scan(&storedActor, &expectedClaimVersion, &storedReason, &originalRelation, &resultRelation); err != nil {
+		t.Fatal(err)
+	}
+	if storedActor != actorID || expectedClaimVersion != firstResult.Claim.Version ||
+		storedReason != "locator_and_relation_corrected" || originalRelation != "asserts" || resultRelation != "mentions" {
+		t.Fatalf("correction audit = actor %d claim v%d reason %q relation %s->%s",
+			storedActor, expectedClaimVersion, storedReason, originalRelation, resultRelation)
+	}
+	var originalEvidenceAfter, documentAfter, observationAfter string
+	if err := runtime.SQL.QueryRow(`SELECT row_to_json(evidence)::text,row_to_json(document_version)::text,row_to_json(observation)::text
+FROM claim_evidence_versions AS evidence
+JOIN document_versions AS document_version ON document_version.id=evidence.document_version_id
+JOIN source_observations AS observation ON observation.id=document_version.source_observation_id
+WHERE evidence.id=$1`, firstResult.Evidence.ID).
+		Scan(&originalEvidenceAfter, &documentAfter, &observationAfter); err != nil {
+		t.Fatal(err)
+	}
+	if originalEvidenceAfter != originalEvidenceBefore || documentAfter != documentBefore || observationAfter != observationBefore {
+		t.Fatalf("correction rewrote immutable facts: evidence changed=%t document changed=%t observation changed=%t",
+			originalEvidenceAfter != originalEvidenceBefore, documentAfter != documentBefore, observationAfter != observationBefore)
 	}
 	correctionReplay, err := service.Correct(ctx, eventapplication.CorrectClaimEvidenceCommand{
 		OriginalClaimEvidenceVersionID: firstResult.Evidence.ID, ExpectedClaimVersion: firstResult.Claim.Version,
@@ -180,6 +214,18 @@ func TestClaimEvidenceRepositoryPersistsQuotedRelationsAndLineageEvidenceState(t
 	}
 	if _, err := runtime.SQL.Exec(`UPDATE claim_evidence_versions SET relation='mentions' WHERE id=$1`, firstResult.Evidence.ID); err == nil {
 		t.Fatal("append-only claim evidence accepted update")
+	} else {
+		assertMicroEventGovernanceSQLState(t, err, "23514")
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE claim_evidence_feedbacks SET note='tampered' WHERE id=$1`, corrected.Feedback.ID); err == nil {
+		t.Fatal("append-only claim evidence feedback accepted update")
+	} else {
+		assertMicroEventGovernanceSQLState(t, err, "23514")
+	}
+	if _, err := runtime.SQL.Exec(`DELETE FROM claim_evidence_feedbacks WHERE id=$1`, corrected.Feedback.ID); err == nil {
+		t.Fatal("append-only claim evidence feedback accepted delete")
+	} else {
+		assertMicroEventGovernanceSQLState(t, err, "23514")
 	}
 }
 

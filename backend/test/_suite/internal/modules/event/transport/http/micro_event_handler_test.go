@@ -10,6 +10,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/application"
 	httptransport "github.com/StephenQiu30/hotkey-server/backend/internal/platform/http"
+	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
 	"github.com/gin-gonic/gin"
 )
 
@@ -150,12 +151,39 @@ func TestMicroEventRoutesRequireAuthenticationAndProtectMutations(t *testing.T) 
 	viewer := gin.New()
 	RegisterMicroEventRoutes(viewer, queries, governance, evidence, microEventViewerAuthenticator{})
 	recorder = httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/micro-events/7/feedback", strings.NewReader(`{}`))
-	request.Header.Set("Authorization", "Bearer viewer")
-	request.Header.Set("Content-Type", "application/json")
-	viewer.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusForbidden {
-		t.Fatalf("viewer mutation status = %d, want 403: %s", recorder.Code, recorder.Body.String())
+	for _, path := range []string{
+		"/api/v1/micro-events/7/feedback",
+		"/api/v1/micro-events/7/evidence",
+		"/api/v1/micro-events/7/evidence/11/feedback",
+	} {
+		recorder = httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
+		request.Header.Set("Authorization", "Bearer viewer")
+		request.Header.Set("Content-Type", "application/json")
+		viewer.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusForbidden {
+			t.Fatalf("viewer mutation %s status = %d, want 403: %s", path, recorder.Code, recorder.Body.String())
+		}
+	}
+}
+
+func TestEventErrorMapsMicroEventGovernanceFailures(t *testing.T) {
+	for _, testCase := range []struct {
+		name       string
+		err        error
+		wantStatus int
+		wantCode   int
+	}{
+		{name: "invalid governance", err: application.ErrInvalidMicroEventGovernanceContract, wantStatus: http.StatusBadRequest, wantCode: 10000},
+		{name: "forbidden governance", err: application.ErrMicroEventGovernanceForbidden, wantStatus: http.StatusForbidden, wantCode: 20001},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			mapped := eventError(testCase.err)
+			appError, ok := mapped.(*sharederrors.AppError)
+			if !ok || appError.HTTPStatus != testCase.wantStatus || appError.Code != testCase.wantCode {
+				t.Fatalf("eventError(%v) = %#v", testCase.err, mapped)
+			}
+		})
 	}
 }
 
