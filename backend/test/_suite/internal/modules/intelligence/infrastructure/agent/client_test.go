@@ -209,6 +209,38 @@ func TestClientAdaptsStructuredRequestsToVersionedAgentPayload(t *testing.T) {
 	}
 }
 
+func TestClientEncodesMissingStructuredEvidenceAsEmptyArray(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var input struct {
+			TaskID   string     `json:"task_id"`
+			TaskType string     `json:"task_type"`
+			Evidence []Evidence `json:"evidence"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+			t.Fatal(err)
+		}
+		if input.TaskType != string(TaskMonitorCompile) || input.Evidence == nil || len(input.Evidence) != 0 {
+			t.Fatalf("structured Agent evidence = %#v, want []", input.Evidence)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(fmt.Sprintf(`{"contract_version":"analysis.v1","task_id":%q,"task_type":"monitor_compile","status":"degraded","suggestions":[{"kind":"monitor_compile","value":{"terms":[]},"confidence":0,"evidence_ids":[],"reason":"safe fallback"}],"runtime":{"name":"deterministic","version":"deterministic.v1","degraded":true}}`, input.TaskID)))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Options{BaseURL: server.URL, AuthToken: testToken, HTTPClient: server.Client(), MaxResponseBytes: 4096})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.GenerateStructured(context.Background(), intelligencedomain.StructuredRequest{
+		ModelName: "agent", ModelVersion: "caller-declared-v1", TaskType: intelligencedomain.TaskTypeTermExpansion,
+		SchemaName: "term-expansion-output-v1", SchemaVersion: "v1", Instruction: "return JSON",
+		InputSchema: json.RawMessage(`{"type":"object"}`), Schema: json.RawMessage(`{"type":"object"}`), Input: json.RawMessage(`{"objective":"track"}`),
+	})
+	if err != nil {
+		t.Fatalf("GenerateStructured() error = %v", err)
+	}
+}
+
 func TestClientDoesNotPretendToProvideEmbeddings(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		t.Fatal("embedding request reached Agent")

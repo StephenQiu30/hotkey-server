@@ -138,7 +138,7 @@ func (client *Client) Analyze(ctx context.Context, input AnalyzeRequest) (Analyz
 		InputHash:       input.InputHash,
 		EvidenceSetHash: input.EvidenceSetHash,
 		Payload:         append(json.RawMessage(nil), input.Payload...),
-		Evidence:        append([]Evidence(nil), input.Evidence...),
+		Evidence:        append(make([]Evidence, 0, len(input.Evidence)), input.Evidence...),
 	})
 	if err != nil || len(payload) > maximumRequestBytes {
 		return AnalyzeResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
@@ -279,11 +279,11 @@ func taskTypeFor(taskType intelligencedomain.TaskType) (TaskType, bool) {
 func structuredEvidence(input any) []Evidence {
 	object, ok := input.(map[string]any)
 	if !ok {
-		return nil
+		return []Evidence{}
 	}
 	items, ok := object["evidence"].([]any)
 	if !ok {
-		return nil
+		return []Evidence{}
 	}
 	evidence := make([]Evidence, 0, min(len(items), maximumEvidenceItems))
 	for _, item := range items {
