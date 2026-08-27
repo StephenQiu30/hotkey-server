@@ -51,7 +51,8 @@ func TestRelevanceHeatClaimEvidenceAndEventEvidenceStateRemainIndependent(t *tes
 		t.Fatalf("relevance.Validate() error = %v", err)
 	}
 	heatInput := EventHeatInput{IndependentLineageRoots: 2, ReportsInWindow: 4, ReportsInPreviousWindow: 2,
-		ReportsInPriorWindow: 1, PublisherCoverage: 2, SourceTypeCoverage: 2, AgeHours: 3, ProfileVersion: "heat-v2"}
+		ReportsInPriorWindow: 1, PublisherCoverage: 2, SourceTypeCoverage: 2, TemporalBaselineAvailable: true,
+		AgeHours: 3, ProfileVersion: "heat-v2"}
 	heat, err := CalculateEventHeat(heatInput)
 	if err != nil {
 		t.Fatal(err)

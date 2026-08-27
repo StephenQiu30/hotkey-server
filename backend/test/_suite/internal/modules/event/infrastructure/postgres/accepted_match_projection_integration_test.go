@@ -50,7 +50,9 @@ VALUES ('heat-v2-integration','active',.25,.20,.15,.15,.10,.15,$1,$2)`, actorID,
 		t.Fatalf("accepted projection = %#v / %v", projected, err)
 	}
 	for _, snapshot := range projected.HeatSnapshots {
-		if snapshot.MicroEventID != projected.MicroEvent.ID || snapshot.HeatProfileID <= 0 {
+		if snapshot.MicroEventID != projected.MicroEvent.ID || snapshot.HeatProfileID <= 0 ||
+			snapshot.HeatProfileVersion != "heat-v2-integration" || !snapshot.WarmingUp ||
+			snapshot.Velocity != 0 || snapshot.Acceleration != 0 {
 			t.Fatalf("heat snapshot = %#v", snapshot)
 		}
 	}

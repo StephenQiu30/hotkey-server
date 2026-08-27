@@ -20,6 +20,7 @@ type StorylineResponseDTO struct {
 type EventHeatV2ResponseDTO struct {
 	ID                          int64     `json:"id"`
 	MicroEventVersion           int64     `json:"micro_event_version"`
+	HeatProfileVersion          string    `json:"heat_profile_version"`
 	WindowStartedAt             time.Time `json:"window_started_at"`
 	WindowEndedAt               time.Time `json:"window_ended_at"`
 	IndependentLineageRootCount int       `json:"independent_lineage_root_count"`
@@ -28,7 +29,9 @@ type EventHeatV2ResponseDTO struct {
 	Coverage                    float64   `json:"coverage"`
 	NormalizedEngagement        *float64  `json:"normalized_engagement"`
 	Recency                     float64   `json:"recency"`
+	AvailableWeight             float64   `json:"available_weight"`
 	HeatScore                   float64   `json:"heat_score"`
+	WarmingUp                   bool      `json:"warming_up"`
 	ReasonCodes                 []string  `json:"reason_codes"`
 }
 type EvidenceStateResponseDTO struct {

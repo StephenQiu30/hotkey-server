@@ -1,0 +1,49 @@
+{
+  "cases": [
+    {
+      "name": "complete_six_component_profile",
+      "coverage": "complete",
+      "profile_version": "event-heat-v2-golden",
+      "weights": {"lineage": 0.25, "velocity": 0.20, "acceleration": 0.15, "coverage": 0.15, "engagement": 0.15, "recency": 0.10},
+      "temporal_baseline_available": true,
+      "normalized_engagement": 0.8,
+      "expected": {"heat_score": 68.4504, "velocity": 0.8, "acceleration": 0.2, "coverage": 0.55, "normalized_engagement": 0.8, "recency": 0.9200444, "available_weight": 1.0, "warming_up": false, "reason_codes": []}
+    },
+    {
+      "name": "engagement_unknown_reweights_available_components",
+      "coverage": "missing_engagement",
+      "profile_version": "event-heat-v2-golden",
+      "weights": {"lineage": 0.25, "velocity": 0.20, "acceleration": 0.15, "coverage": 0.15, "engagement": 0.15, "recency": 0.10},
+      "temporal_baseline_available": true,
+      "expected": {"heat_score": 66.4123, "velocity": 0.8, "acceleration": 0.2, "coverage": 0.55, "normalized_engagement": null, "recency": 0.9200444, "available_weight": 0.85, "warming_up": false, "reason_codes": ["metrics_unavailable"]}
+    },
+    {
+      "name": "missing_time_baseline_is_warming_up",
+      "coverage": "warming_up",
+      "profile_version": "event-heat-v2-golden",
+      "weights": {"lineage": 0.25, "velocity": 0.20, "acceleration": 0.15, "coverage": 0.15, "engagement": 0.15, "recency": 0.10},
+      "temporal_baseline_available": false,
+      "normalized_engagement": 0.8,
+      "expected": {"heat_score": 76.0776, "velocity": 0.0, "acceleration": 0.0, "coverage": 0.55, "normalized_engagement": 0.8, "recency": 0.9200444, "available_weight": 0.65, "warming_up": true, "reason_codes": ["warming_up"]}
+    },
+    {
+      "name": "source_capability_normalization_fallback_is_explained",
+      "coverage": "normalization_fallback",
+      "profile_version": "event-heat-v2-golden",
+      "weights": {"lineage": 0.25, "velocity": 0.20, "acceleration": 0.15, "coverage": 0.15, "engagement": 0.15, "recency": 0.10},
+      "temporal_baseline_available": true,
+      "normalization_fallback": true,
+      "normalized_engagement": 0.8,
+      "expected": {"heat_score": 68.4504, "velocity": 0.8, "acceleration": 0.2, "coverage": 0.55, "normalized_engagement": 0.8, "recency": 0.9200444, "available_weight": 1.0, "warming_up": false, "reason_codes": ["normalization_fallback"]}
+    },
+    {
+      "name": "alternate_profile_version_changes_weighted_result",
+      "coverage": "profile_version",
+      "profile_version": "event-heat-v2-recency-golden",
+      "weights": {"lineage": 0.20, "velocity": 0.10, "acceleration": 0.10, "coverage": 0.15, "engagement": 0.15, "recency": 0.30},
+      "temporal_baseline_available": true,
+      "normalized_engagement": 0.8,
+      "expected": {"heat_score": 73.8513, "velocity": 0.8, "acceleration": 0.2, "coverage": 0.55, "normalized_engagement": 0.8, "recency": 0.9200444, "available_weight": 1.0, "warming_up": false, "reason_codes": []}
+    }
+  ]
+}

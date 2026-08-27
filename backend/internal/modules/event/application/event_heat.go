@@ -29,28 +29,30 @@ type ReadEventHeatTargetQuery struct {
 }
 
 type EventHeatTargetDTO struct {
-	MicroEventID            int64
-	MicroEventVersion       int64
-	HeatProfileID           int64
-	HeatProfileVersion      string
-	Weights                 EventHeatWeightsDTO
-	WindowStartedAt         time.Time
-	WindowEndedAt           time.Time
-	IndependentLineageRoots int
-	ReportsInWindow         int
-	ReportsInPreviousWindow int
-	ReportsInPriorWindow    int
-	PublisherCoverage       int
-	SourceTypeCoverage      int
-	NormalizedEngagement    *float64
-	NormalizationFallback   bool
-	AgeHours                float64
+	MicroEventID              int64
+	MicroEventVersion         int64
+	HeatProfileID             int64
+	HeatProfileVersion        string
+	Weights                   EventHeatWeightsDTO
+	WindowStartedAt           time.Time
+	WindowEndedAt             time.Time
+	IndependentLineageRoots   int
+	ReportsInWindow           int
+	ReportsInPreviousWindow   int
+	ReportsInPriorWindow      int
+	PublisherCoverage         int
+	SourceTypeCoverage        int
+	NormalizedEngagement      *float64
+	NormalizationFallback     bool
+	TemporalBaselineAvailable bool
+	AgeHours                  float64
 }
 
 type CommitEventHeatSnapshotCommand struct {
 	MicroEventID            int64
 	MicroEventVersion       int64
 	HeatProfileID           int64
+	HeatProfileVersion      string
 	WindowStartedAt         time.Time
 	WindowEndedAt           time.Time
 	IndependentLineageRoots int
@@ -61,6 +63,7 @@ type CommitEventHeatSnapshotCommand struct {
 	Recency                 float64
 	AvailableWeight         float64
 	HeatScore               float64
+	WarmingUp               bool
 	ReasonCodes             []string
 }
 
@@ -69,6 +72,7 @@ type EventHeatSnapshotDTO struct {
 	MicroEventID            int64
 	MicroEventVersion       int64
 	HeatProfileID           int64
+	HeatProfileVersion      string
 	WindowStartedAt         time.Time
 	WindowEndedAt           time.Time
 	IndependentLineageRoots int
@@ -79,6 +83,7 @@ type EventHeatSnapshotDTO struct {
 	Recency                 float64
 	AvailableWeight         float64
 	HeatScore               float64
+	WarmingUp               bool
 	ReasonCodes             []string
 	Created                 bool
 }
@@ -123,7 +128,8 @@ func (service *EventHeatService) Calculate(ctx context.Context, command Calculat
 		IndependentLineageRoots: target.IndependentLineageRoots, ReportsInWindow: target.ReportsInWindow,
 		ReportsInPreviousWindow: target.ReportsInPreviousWindow, ReportsInPriorWindow: target.ReportsInPriorWindow,
 		PublisherCoverage: target.PublisherCoverage, SourceTypeCoverage: target.SourceTypeCoverage,
-		NormalizedEngagement: target.NormalizedEngagement, AgeHours: target.AgeHours, ProfileVersion: target.HeatProfileVersion,
+		NormalizedEngagement: target.NormalizedEngagement, TemporalBaselineAvailable: target.TemporalBaselineAvailable,
+		AgeHours: target.AgeHours, ProfileVersion: target.HeatProfileVersion,
 		Weights: eventdomain.EventHeatWeights{Lineage: target.Weights.Lineage, Velocity: target.Weights.Velocity,
 			Acceleration: target.Weights.Acceleration, Coverage: target.Weights.Coverage,
 			Engagement: target.Weights.Engagement, Recency: target.Weights.Recency},
@@ -135,11 +141,12 @@ func (service *EventHeatService) Calculate(ctx context.Context, command Calculat
 		calculated.ReasonCodes = append(calculated.ReasonCodes, "normalization_fallback")
 	}
 	mutation := CommitEventHeatSnapshotCommand{MicroEventID: target.MicroEventID, MicroEventVersion: target.MicroEventVersion,
-		HeatProfileID: target.HeatProfileID, WindowStartedAt: target.WindowStartedAt.UTC(), WindowEndedAt: target.WindowEndedAt.UTC(),
+		HeatProfileID: target.HeatProfileID, HeatProfileVersion: target.HeatProfileVersion,
+		WindowStartedAt: target.WindowStartedAt.UTC(), WindowEndedAt: target.WindowEndedAt.UTC(),
 		IndependentLineageRoots: calculated.IndependentLineageRoots, Velocity: roundEventHeat(calculated.Velocity, 7),
 		Acceleration: roundEventHeat(calculated.Acceleration, 7), Coverage: roundEventHeat(calculated.Coverage, 7),
 		NormalizedEngagement: roundOptionalEventHeat(calculated.NormalizedEngagement, 7), Recency: roundEventHeat(calculated.Recency, 7),
-		AvailableWeight: roundEventHeat(calculated.AvailableWeight, 7), HeatScore: roundEventHeat(calculated.Score, 4),
+		AvailableWeight: roundEventHeat(calculated.AvailableWeight, 7), HeatScore: roundEventHeat(calculated.Score, 4), WarmingUp: calculated.WarmingUp,
 		ReasonCodes: append([]string{}, calculated.ReasonCodes...)}
 	snapshot, err := service.repository.CommitEventHeatSnapshot(ctx, mutation)
 	if err != nil {
@@ -162,11 +169,12 @@ func validEventHeatTarget(value EventHeatTargetDTO, command CalculateEventHeatCo
 
 func eventHeatReceiptMatches(value EventHeatSnapshotDTO, command CommitEventHeatSnapshotCommand) bool {
 	return value.ID > 0 && value.MicroEventID == command.MicroEventID && value.MicroEventVersion == command.MicroEventVersion &&
-		value.HeatProfileID == command.HeatProfileID && value.WindowStartedAt.Equal(command.WindowStartedAt) &&
+		value.HeatProfileID == command.HeatProfileID && value.HeatProfileVersion == command.HeatProfileVersion &&
+		value.WindowStartedAt.Equal(command.WindowStartedAt) &&
 		value.WindowEndedAt.Equal(command.WindowEndedAt) && value.IndependentLineageRoots == command.IndependentLineageRoots &&
 		value.Velocity == command.Velocity && value.Acceleration == command.Acceleration && value.Coverage == command.Coverage &&
 		equalOptionalFloat(value.NormalizedEngagement, command.NormalizedEngagement) && value.Recency == command.Recency &&
-		value.AvailableWeight == command.AvailableWeight && value.HeatScore == command.HeatScore &&
+		value.AvailableWeight == command.AvailableWeight && value.HeatScore == command.HeatScore && value.WarmingUp == command.WarmingUp &&
 		slices.Equal(value.ReasonCodes, command.ReasonCodes)
 }
 

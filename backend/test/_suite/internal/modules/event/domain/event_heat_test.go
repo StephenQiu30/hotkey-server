@@ -7,13 +7,13 @@ func TestHeatV2CountsIndependentLineageAndRenormalizesMissingEngagement(t *testi
 	engagement := .8
 	complete, err := CalculateEventHeat(EventHeatInput{IndependentLineageRoots: 4, ReportsInWindow: 8,
 		ReportsInPreviousWindow: 4, ReportsInPriorWindow: 2, PublisherCoverage: 3, SourceTypeCoverage: 2,
-		NormalizedEngagement: &engagement, AgeHours: 2, ProfileVersion: "heat-v2"})
+		NormalizedEngagement: &engagement, TemporalBaselineAvailable: true, AgeHours: 2, ProfileVersion: "heat-v2"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	missing, err := CalculateEventHeat(EventHeatInput{IndependentLineageRoots: 4, ReportsInWindow: 8,
 		ReportsInPreviousWindow: 4, ReportsInPriorWindow: 2, PublisherCoverage: 3, SourceTypeCoverage: 2,
-		AgeHours: 2, ProfileVersion: "heat-v2"})
+		TemporalBaselineAvailable: true, AgeHours: 2, ProfileVersion: "heat-v2"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,12 +29,40 @@ func TestHeatV2RejectsInvalidMetricsWithoutCredibilityFallback(t *testing.T) {
 	t.Parallel()
 	invalid := -0.1
 	if _, err := CalculateEventHeat(EventHeatInput{IndependentLineageRoots: 3, ReportsInWindow: 3,
-		NormalizedEngagement: &invalid, ProfileVersion: "heat-v2"}); err == nil {
+		NormalizedEngagement: &invalid, TemporalBaselineAvailable: true, ProfileVersion: "heat-v2"}); err == nil {
 		t.Fatal("invalid engagement was accepted")
 	}
 	result, err := CalculateEventHeat(EventHeatInput{IndependentLineageRoots: 3, ReportsInWindow: 3,
-		ProfileVersion: "heat-v2"})
+		TemporalBaselineAvailable: true, ProfileVersion: "heat-v2"})
 	if err != nil || result.Score <= 0 {
 		t.Fatalf("missing engagement should renormalize, got %#v / %v", result, err)
+	}
+}
+
+func TestHeatV2DoesNotInventVelocityWithoutTemporalBaseline(t *testing.T) {
+	t.Parallel()
+	engagement := .8
+	result, err := CalculateEventHeat(EventHeatInput{IndependentLineageRoots: 4, ReportsInWindow: 8,
+		PublisherCoverage: 3, SourceTypeCoverage: 2, NormalizedEngagement: &engagement,
+		AgeHours: 2, ProfileVersion: "heat-v2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.WarmingUp || result.Velocity != 0 || result.Acceleration != 0 || result.AvailableWeight != .65 ||
+		len(result.ReasonCodes) != 1 || result.ReasonCodes[0] != "warming_up" {
+		t.Fatalf("warming-up heat = %#v", result)
+	}
+}
+
+func BenchmarkCalculateEventHeatV2(b *testing.B) {
+	engagement := .8
+	input := EventHeatInput{IndependentLineageRoots: 4, ReportsInWindow: 8, ReportsInPreviousWindow: 4,
+		ReportsInPriorWindow: 2, PublisherCoverage: 3, SourceTypeCoverage: 2,
+		NormalizedEngagement: &engagement, TemporalBaselineAvailable: true, AgeHours: 2, ProfileVersion: "heat-v2"}
+	b.ReportAllocs()
+	for range b.N {
+		if _, err := CalculateEventHeat(input); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

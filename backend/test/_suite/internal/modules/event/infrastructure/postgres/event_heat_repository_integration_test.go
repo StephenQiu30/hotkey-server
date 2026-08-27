@@ -57,8 +57,11 @@ VALUES ('heat-v2','active',.25,.20,.15,.15,.15,.10,$1,CURRENT_TIMESTAMP) RETURNI
 	if err != nil {
 		t.Fatalf("calculate heat: %v", err)
 	}
-	if result.Snapshot.HeatProfileID != profileID || result.Snapshot.IndependentLineageRoots != 1 ||
-		result.Snapshot.HeatScore <= 0 || result.Snapshot.NormalizedEngagement != nil || result.Snapshot.Created != true {
+	if result.Snapshot.HeatProfileID != profileID || result.Snapshot.HeatProfileVersion != "heat-v2" ||
+		result.Snapshot.IndependentLineageRoots != 1 ||
+		result.Snapshot.HeatScore <= 0 || result.Snapshot.NormalizedEngagement != nil || result.Snapshot.Created != true ||
+		!result.Snapshot.WarmingUp || result.Snapshot.Velocity != 0 || result.Snapshot.Acceleration != 0 ||
+		result.Snapshot.AvailableWeight != .5 {
 		t.Fatalf("heat result = %#v", result)
 	}
 	replayed, err := service.Calculate(ctx, eventapplication.CalculateEventHeatCommand{
@@ -69,6 +72,18 @@ VALUES ('heat-v2','active',.25,.20,.15,.15,.15,.10,$1,CURRENT_TIMESTAMP) RETURNI
 	}
 	if _, err := runtime.SQL.Exec(`UPDATE micro_event_heat_snapshots SET heat_score=0 WHERE id=$1`, result.Snapshot.ID); err == nil {
 		t.Fatal("append-only heat snapshot accepted mutation")
+	}
+	if _, err := repository.CommitEventHeatSnapshot(ctx, eventapplication.CommitEventHeatSnapshotCommand{
+		MicroEventID: result.Snapshot.MicroEventID, MicroEventVersion: result.Snapshot.MicroEventVersion,
+		HeatProfileID: result.Snapshot.HeatProfileID, HeatProfileVersion: "wrong-profile-version",
+		WindowStartedAt: result.Snapshot.WindowStartedAt, WindowEndedAt: result.Snapshot.WindowEndedAt,
+		IndependentLineageRoots: result.Snapshot.IndependentLineageRoots, Velocity: result.Snapshot.Velocity,
+		Acceleration: result.Snapshot.Acceleration, Coverage: result.Snapshot.Coverage,
+		NormalizedEngagement: result.Snapshot.NormalizedEngagement, Recency: result.Snapshot.Recency,
+		AvailableWeight: result.Snapshot.AvailableWeight, HeatScore: result.Snapshot.HeatScore,
+		WarmingUp: result.Snapshot.WarmingUp, ReasonCodes: result.Snapshot.ReasonCodes,
+	}); err == nil {
+		t.Fatal("heat snapshot accepted a profile version that did not match the profile id")
 	}
 }
 

@@ -19,7 +19,7 @@ func TestEventHeatServiceUsesActiveProfileWeightsAndStableSnapshot(t *testing.T)
 		WindowStartedAt: endedAt.Add(-24 * time.Hour), WindowEndedAt: endedAt,
 		IndependentLineageRoots: 4, ReportsInWindow: 8, ReportsInPreviousWindow: 4,
 		ReportsInPriorWindow: 2, PublisherCoverage: 3, SourceTypeCoverage: 2,
-		NormalizedEngagement: &engagement, NormalizationFallback: true, AgeHours: 2,
+		NormalizedEngagement: &engagement, NormalizationFallback: true, TemporalBaselineAvailable: true, AgeHours: 2,
 	}}
 	service, err := eventapplication.NewEventHeatService(repository)
 	if err != nil {
@@ -45,7 +45,7 @@ func TestEventHeatServiceRejectsRepositoryRewriteOfDeterministicScore(t *testing
 			Coverage: .15, Engagement: .15, Recency: .10},
 		WindowStartedAt: endedAt.Add(-24 * time.Hour), WindowEndedAt: endedAt,
 		IndependentLineageRoots: 2, ReportsInWindow: 3, ReportsInPreviousWindow: 1,
-		PublisherCoverage: 1, SourceTypeCoverage: 1, AgeHours: 5,
+		PublisherCoverage: 1, SourceTypeCoverage: 1, TemporalBaselineAvailable: true, AgeHours: 5,
 	}, mutate: func(snapshot *eventapplication.EventHeatSnapshotDTO) {
 		snapshot.HeatScore = 99
 		snapshot.ReasonCodes = []string{"model_override"}
@@ -67,7 +67,7 @@ func TestEventHeatServiceRenormalizesWhenEngagementIsUnavailable(t *testing.T) {
 			Coverage: .15, Engagement: .15, Recency: .10},
 		WindowStartedAt: endedAt.Add(-24 * time.Hour), WindowEndedAt: endedAt,
 		IndependentLineageRoots: 2, ReportsInWindow: 3, ReportsInPreviousWindow: 1,
-		PublisherCoverage: 1, SourceTypeCoverage: 1, AgeHours: 5,
+		PublisherCoverage: 1, SourceTypeCoverage: 1, TemporalBaselineAvailable: true, AgeHours: 5,
 	}}
 	service, _ := eventapplication.NewEventHeatService(repository)
 	result, err := service.Calculate(context.Background(), eventapplication.CalculateEventHeatCommand{
@@ -96,11 +96,12 @@ func (repository *eventHeatRepositoryFake) CommitEventHeatSnapshot(_ context.Con
 	repository.committed = command
 	snapshot := eventapplication.EventHeatSnapshotDTO{ID: 9, MicroEventID: command.MicroEventID,
 		MicroEventVersion: command.MicroEventVersion, HeatProfileID: command.HeatProfileID,
-		WindowStartedAt: command.WindowStartedAt, WindowEndedAt: command.WindowEndedAt,
+		HeatProfileVersion: command.HeatProfileVersion,
+		WindowStartedAt:    command.WindowStartedAt, WindowEndedAt: command.WindowEndedAt,
 		IndependentLineageRoots: command.IndependentLineageRoots, Velocity: command.Velocity,
 		Acceleration: command.Acceleration, Coverage: command.Coverage,
 		NormalizedEngagement: command.NormalizedEngagement, Recency: command.Recency,
-		AvailableWeight: command.AvailableWeight, HeatScore: command.HeatScore,
+		AvailableWeight: command.AvailableWeight, HeatScore: command.HeatScore, WarmingUp: command.WarmingUp,
 		ReasonCodes: command.ReasonCodes, Created: true}
 	if repository.mutate != nil {
 		repository.mutate(&snapshot)

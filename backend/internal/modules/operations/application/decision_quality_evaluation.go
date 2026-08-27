@@ -414,7 +414,7 @@ func evaluateHotspotQuality(dataset DecisionQualityDatasetDTO) (DecisionQualityM
 			ReportsInPreviousWindow: sample.Input.ReportsInPreviousWindow, ReportsInPriorWindow: sample.Input.ReportsInPriorWindow,
 			PublisherCoverage: sample.Input.PublisherCoverage, SourceTypeCoverage: sample.Input.SourceTypeCoverage,
 			NormalizedEngagement: sample.Input.NormalizedEngagement, AgeHours: sample.Input.AgeHours,
-			ProfileVersion: dataset.HotspotProfileVersion,
+			TemporalBaselineAvailable: true, ProfileVersion: dataset.HotspotProfileVersion,
 		})
 		if err != nil {
 			return DecisionQualityMetricDTO{}, nil, err

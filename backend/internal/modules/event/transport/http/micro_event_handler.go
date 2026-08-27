@@ -403,11 +403,13 @@ func microEventResponseDTO(item eventapplication.MicroEventProjectionDTO) MicroE
 	}
 	if item.LatestHeat != nil {
 		value.LatestHeat = &EventHeatV2ResponseDTO{ID: item.LatestHeat.ID,
-			MicroEventVersion: item.LatestHeat.MicroEventVersion, WindowStartedAt: item.LatestHeat.WindowStartedAt,
-			WindowEndedAt: item.LatestHeat.WindowEndedAt, IndependentLineageRootCount: item.LatestHeat.IndependentLineageRoots,
+			MicroEventVersion: item.LatestHeat.MicroEventVersion, HeatProfileVersion: item.LatestHeat.HeatProfileVersion,
+			WindowStartedAt: item.LatestHeat.WindowStartedAt,
+			WindowEndedAt:   item.LatestHeat.WindowEndedAt, IndependentLineageRootCount: item.LatestHeat.IndependentLineageRoots,
 			Velocity: item.LatestHeat.Velocity, Acceleration: item.LatestHeat.Acceleration, Coverage: item.LatestHeat.Coverage,
 			NormalizedEngagement: item.LatestHeat.NormalizedEngagement, Recency: item.LatestHeat.Recency,
-			HeatScore: item.LatestHeat.HeatScore, ReasonCodes: item.LatestHeat.ReasonCodes}
+			AvailableWeight: item.LatestHeat.AvailableWeight, HeatScore: item.LatestHeat.HeatScore,
+			WarmingUp: item.LatestHeat.WarmingUp, ReasonCodes: item.LatestHeat.ReasonCodes}
 	}
 	if item.LatestEvidenceState != nil {
 		value.EvidenceState = evidenceStateResponseDTO(*item.LatestEvidenceState)

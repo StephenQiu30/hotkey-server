@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -120,6 +121,7 @@ LEFT JOIN LATERAL (
 LEFT JOIN LATERAL (
   SELECT jsonb_build_object('id',snapshot.id,'micro_event_id',snapshot.micro_event_id,
          'micro_event_version',snapshot.micro_event_version,'heat_profile_id',snapshot.heat_profile_id,
+	     'heat_profile_version',profile.profile_version,
          'window_started_at',snapshot.window_started_at,'window_ended_at',snapshot.window_ended_at,
          'independent_lineage_roots',snapshot.independent_lineage_root_count,'velocity',snapshot.velocity,
          'acceleration',snapshot.acceleration,'coverage',snapshot.coverage,
@@ -571,6 +573,7 @@ type microEventProjectionHeat struct {
 	MicroEventID            int64     `json:"micro_event_id"`
 	MicroEventVersion       int64     `json:"micro_event_version"`
 	HeatProfileID           int64     `json:"heat_profile_id"`
+	HeatProfileVersion      string    `json:"heat_profile_version"`
 	WindowStartedAt         time.Time `json:"window_started_at"`
 	WindowEndedAt           time.Time `json:"window_ended_at"`
 	IndependentLineageRoots int       `json:"independent_lineage_roots"`
@@ -632,10 +635,12 @@ func (record microEventProjectionRecord) dto() (eventapplication.MicroEventProje
 		}
 		value.LatestHeat = &eventapplication.EventHeatSnapshotDTO{ID: projected.ID, MicroEventID: projected.MicroEventID,
 			MicroEventVersion: projected.MicroEventVersion, HeatProfileID: projected.HeatProfileID,
-			WindowStartedAt: projected.WindowStartedAt.UTC(), WindowEndedAt: projected.WindowEndedAt.UTC(),
+			HeatProfileVersion: projected.HeatProfileVersion,
+			WindowStartedAt:    projected.WindowStartedAt.UTC(), WindowEndedAt: projected.WindowEndedAt.UTC(),
 			IndependentLineageRoots: projected.IndependentLineageRoots, Velocity: projected.Velocity,
 			Acceleration: projected.Acceleration, Coverage: projected.Coverage, NormalizedEngagement: projected.NormalizedEngagement,
 			Recency: projected.Recency, AvailableWeight: projected.AvailableWeight, HeatScore: projected.HeatScore,
+			WarmingUp:   slices.Contains(projected.ReasonCodes, "warming_up"),
 			ReasonCodes: projected.ReasonCodes}
 	}
 	if len(record.stateJSON) > 0 && string(record.stateJSON) != "null" {

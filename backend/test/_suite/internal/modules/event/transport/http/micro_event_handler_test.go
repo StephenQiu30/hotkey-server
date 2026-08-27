@@ -72,6 +72,23 @@ func TestMicroEventListRejectsInvalidMultidimensionalFilters(t *testing.T) {
 	}
 }
 
+func TestMicroEventResponseExposesHeatProfileAvailabilityAndWarmingUp(t *testing.T) {
+	projection := application.MicroEventProjectionDTO{ID: 7, Version: 3, EventKey: "semantic-event", Status: "active",
+		PrimarySubjectKey: "acme", PrimaryActionKey: "announced", EventStartedAt: time.Date(2026, 8, 10, 8, 0, 0, 0, time.UTC),
+		ClusteringProfileVersion: "micro-event-clustering-v1", LatestHeat: &application.EventHeatSnapshotDTO{
+			ID: 11, MicroEventVersion: 3, HeatProfileVersion: "event-heat-v2-golden",
+			WindowStartedAt: time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC), WindowEndedAt: time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC),
+			IndependentLineageRoots: 4, Velocity: 0, Acceleration: 0, Coverage: .55, Recency: .92,
+			AvailableWeight: .5, HeatScore: 72, WarmingUp: true, ReasonCodes: []string{"warming_up", "metrics_unavailable"},
+		}}
+	response := microEventResponseDTO(projection)
+	if response.LatestHeat == nil || response.LatestHeat.HeatProfileVersion != "event-heat-v2-golden" ||
+		response.LatestHeat.AvailableWeight != .5 || !response.LatestHeat.WarmingUp ||
+		response.LatestHeat.Velocity != 0 || response.LatestHeat.Acceleration != 0 {
+		t.Fatalf("heat response = %#v", response.LatestHeat)
+	}
+}
+
 func (fake *microEventQueryRepositoryFake) GetMicroEvent(context.Context, int64) (application.MicroEventProjectionDTO, error) {
 	return application.MicroEventProjectionDTO{ID: 7, Version: 3, EventKey: "semantic-event", Status: "active",
 		PrimarySubjectKey: "acme", PrimaryActionKey: "announced", EventStartedAt: time.Date(2026, 8, 10, 8, 0, 0, 0, time.UTC),

@@ -7,16 +7,17 @@ import (
 )
 
 type EventHeatInput struct {
-	IndependentLineageRoots int
-	ReportsInWindow         int
-	ReportsInPreviousWindow int
-	ReportsInPriorWindow    int
-	PublisherCoverage       int
-	SourceTypeCoverage      int
-	NormalizedEngagement    *float64
-	AgeHours                float64
-	ProfileVersion          string
-	Weights                 EventHeatWeights
+	IndependentLineageRoots   int
+	ReportsInWindow           int
+	ReportsInPreviousWindow   int
+	ReportsInPriorWindow      int
+	PublisherCoverage         int
+	SourceTypeCoverage        int
+	NormalizedEngagement      *float64
+	TemporalBaselineAvailable bool
+	AgeHours                  float64
+	ProfileVersion            string
+	Weights                   EventHeatWeights
 }
 
 type EventHeatWeights struct {
@@ -33,6 +34,7 @@ type EventHeatResult struct {
 	NormalizedEngagement    *float64
 	Recency                 float64
 	AvailableWeight         float64
+	WarmingUp               bool
 	ProfileVersion          string
 	ReasonCodes             []string
 }
@@ -55,21 +57,32 @@ func CalculateEventHeat(input EventHeatInput) (EventHeatResult, error) {
 		return EventHeatResult{}, errors.New("invalid event heat weights")
 	}
 	lineage := math.Min(1, float64(input.IndependentLineageRoots)/5)
-	velocity := math.Min(1, float64(input.ReportsInWindow)/10)
-	currentDelta := input.ReportsInWindow - input.ReportsInPreviousWindow
-	previousDelta := input.ReportsInPreviousWindow - input.ReportsInPriorWindow
-	acceleration := math.Min(1, math.Max(0, float64(currentDelta-previousDelta)/10))
+	velocity, acceleration := 0.0, 0.0
+	if input.TemporalBaselineAvailable {
+		velocity = math.Min(1, float64(input.ReportsInWindow)/10)
+		currentDelta := input.ReportsInWindow - input.ReportsInPreviousWindow
+		previousDelta := input.ReportsInPreviousWindow - input.ReportsInPriorWindow
+		acceleration = math.Min(1, math.Max(0, float64(currentDelta-previousDelta)/10))
+	}
 	coverage := math.Min(1, (float64(input.PublisherCoverage)/5+float64(input.SourceTypeCoverage)/4)/2)
 	recency := math.Exp(-input.AgeHours / 24)
-	weighted := lineage*weights.Lineage + velocity*weights.Velocity + acceleration*weights.Acceleration +
-		coverage*weights.Coverage + recency*weights.Recency
-	availableWeight := weights.Lineage + weights.Velocity + weights.Acceleration + weights.Coverage + weights.Recency
+	weighted := lineage*weights.Lineage + coverage*weights.Coverage + recency*weights.Recency
+	availableWeight := weights.Lineage + weights.Coverage + weights.Recency
 	reasons := []string{}
+	if input.TemporalBaselineAvailable {
+		weighted += velocity*weights.Velocity + acceleration*weights.Acceleration
+		availableWeight += weights.Velocity + weights.Acceleration
+	} else {
+		reasons = append(reasons, "warming_up")
+	}
 	if input.NormalizedEngagement != nil {
 		weighted += *input.NormalizedEngagement * weights.Engagement
 		availableWeight += weights.Engagement
 	} else {
 		reasons = append(reasons, "metrics_unavailable")
+	}
+	if availableWeight <= 0 {
+		return EventHeatResult{}, errors.New("no available heat component")
 	}
 	engagement := input.NormalizedEngagement
 	if engagement != nil {
@@ -79,7 +92,7 @@ func CalculateEventHeat(input EventHeatInput) (EventHeatResult, error) {
 	return EventHeatResult{Score: weighted / availableWeight * 100, IndependentLineageRoots: input.IndependentLineageRoots,
 		LineageBreadth: lineage, Velocity: velocity, Acceleration: acceleration, Coverage: coverage,
 		NormalizedEngagement: engagement, Recency: recency, AvailableWeight: availableWeight,
-		ProfileVersion: input.ProfileVersion, ReasonCodes: reasons}, nil
+		WarmingUp: !input.TemporalBaselineAvailable, ProfileVersion: input.ProfileVersion, ReasonCodes: reasons}, nil
 }
 
 func validEventHeatWeights(value EventHeatWeights) bool {

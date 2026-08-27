@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
+	"strings"
 	"time"
 
 	eventapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/application"
@@ -143,7 +145,8 @@ SELECT event.id,event.version,profile.id,profile.profile_version,
        count(DISTINCT document.observation_id) FILTER (WHERE document.observed_at>$4 AND document.observed_at<=$3)::integer,
        count(DISTINCT document.source_party_id) FILTER (WHERE document.source_party_id IS NOT NULL)::integer,
 	       count(DISTINCT document.source_type)::integer,
-	       GREATEST(0,extract(epoch FROM ($5::timestamptz-COALESCE(max(document.observed_at),event.event_started_at)))/3600)::float8
+	       GREATEST(0,extract(epoch FROM ($5::timestamptz-COALESCE(max(document.observed_at),event.event_started_at)))/3600)::float8,
+	       event.event_started_at<=$4::timestamptz
 FROM micro_events AS event CROSS JOIN event_heat_profiles AS profile
 LEFT JOIN event_documents AS document ON true
 WHERE event.id=$1 AND event.status IN ('active','review_pending','closed') AND profile.status='active'
@@ -155,7 +158,7 @@ GROUP BY event.id,event.version,event.event_started_at,profile.id,profile.profil
 		&value.Weights.Coverage, &value.Weights.Engagement, &value.Weights.Recency, &value.WindowStartedAt,
 		&value.WindowEndedAt, &value.IndependentLineageRoots, &value.ReportsInWindow,
 		&value.ReportsInPreviousWindow, &value.ReportsInPriorWindow, &value.PublisherCoverage,
-		&value.SourceTypeCoverage, &value.AgeHours)
+		&value.SourceTypeCoverage, &value.AgeHours, &value.TemporalBaselineAvailable)
 	if errors.Is(err, sql.ErrNoRows) {
 		return eventapplication.EventHeatTargetDTO{}, sharedrepository.ErrNotFound
 	}
@@ -371,32 +374,38 @@ INSERT INTO micro_event_heat_snapshots (
  available_weight,heat_score,reason_codes
 ) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb
 WHERE EXISTS (SELECT 1 FROM micro_events WHERE id=$1 AND version=$2)
-  AND EXISTS (SELECT 1 FROM event_heat_profiles WHERE id=$3 AND status='active')
+  AND EXISTS (SELECT 1 FROM event_heat_profiles WHERE id=$3 AND profile_version=$15 AND status='active')
 ON CONFLICT (micro_event_id,micro_event_version,heat_profile_id,window_started_at,window_ended_at) DO NOTHING
 RETURNING id,micro_event_id,micro_event_version,heat_profile_id,window_started_at,window_ended_at,
  independent_lineage_root_count,velocity::float8,acceleration::float8,coverage::float8,
  normalized_engagement::float8,recency::float8,available_weight::float8,heat_score::float8,reason_codes`,
 		command.MicroEventID, command.MicroEventVersion, command.HeatProfileID, command.WindowStartedAt.UTC(),
 		command.WindowEndedAt.UTC(), command.IndependentLineageRoots, command.Velocity, command.Acceleration,
-		command.Coverage, engagement, command.Recency, command.AvailableWeight, command.HeatScore, string(reasons)).Scan(record.scanDestinations()...)
+		command.Coverage, engagement, command.Recency, command.AvailableWeight, command.HeatScore, string(reasons),
+		command.HeatProfileVersion).Scan(record.scanDestinations()...)
 	if err == nil {
-		value, mapErr := record.dto(true)
+		value, mapErr := record.dto(true, command.HeatProfileVersion)
 		return value, mapErr
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return eventapplication.EventHeatSnapshotDTO{}, databaserepository.MapError(err)
 	}
 	err = repository.queryRow(ctx, `
-SELECT id,micro_event_id,micro_event_version,heat_profile_id,window_started_at,window_ended_at,
- independent_lineage_root_count,velocity::float8,acceleration::float8,coverage::float8,
- normalized_engagement::float8,recency::float8,available_weight::float8,heat_score::float8,reason_codes
-FROM micro_event_heat_snapshots
-WHERE micro_event_id=$1 AND micro_event_version=$2 AND heat_profile_id=$3 AND window_started_at=$4 AND window_ended_at=$5`,
-		command.MicroEventID, command.MicroEventVersion, command.HeatProfileID, command.WindowStartedAt.UTC(), command.WindowEndedAt.UTC()).Scan(record.scanDestinations()...)
+SELECT snapshot.id,snapshot.micro_event_id,snapshot.micro_event_version,snapshot.heat_profile_id,
+ snapshot.window_started_at,snapshot.window_ended_at,snapshot.independent_lineage_root_count,
+ snapshot.velocity::float8,snapshot.acceleration::float8,snapshot.coverage::float8,
+ snapshot.normalized_engagement::float8,snapshot.recency::float8,snapshot.available_weight::float8,
+ snapshot.heat_score::float8,snapshot.reason_codes
+FROM micro_event_heat_snapshots AS snapshot
+JOIN event_heat_profiles AS profile ON profile.id=snapshot.heat_profile_id
+WHERE snapshot.micro_event_id=$1 AND snapshot.micro_event_version=$2 AND snapshot.heat_profile_id=$3
+  AND snapshot.window_started_at=$4 AND snapshot.window_ended_at=$5 AND profile.profile_version=$6`,
+		command.MicroEventID, command.MicroEventVersion, command.HeatProfileID, command.WindowStartedAt.UTC(),
+		command.WindowEndedAt.UTC(), command.HeatProfileVersion).Scan(record.scanDestinations()...)
 	if err != nil {
 		return eventapplication.EventHeatSnapshotDTO{}, databaserepository.MapError(err)
 	}
-	value, err := record.dto(false)
+	value, err := record.dto(false, command.HeatProfileVersion)
 	if err != nil || !eventHeatSnapshotMatchesCommand(value, command) {
 		return eventapplication.EventHeatSnapshotDTO{}, fmt.Errorf("event heat snapshot conflict")
 	}
@@ -419,17 +428,17 @@ func (record *eventHeatSnapshotRecord) scanDestinations() []any {
 		&record.coverage, &record.engagement, &record.recency, &record.availableWeight, &record.heatScore, &record.reasonsJSON}
 }
 
-func (record eventHeatSnapshotRecord) dto(created bool) (eventapplication.EventHeatSnapshotDTO, error) {
+func (record eventHeatSnapshotRecord) dto(created bool, profileVersion string) (eventapplication.EventHeatSnapshotDTO, error) {
 	reasons := []string{}
 	if err := json.Unmarshal(record.reasonsJSON, &reasons); err != nil {
 		return eventapplication.EventHeatSnapshotDTO{}, err
 	}
 	value := eventapplication.EventHeatSnapshotDTO{ID: record.id, MicroEventID: record.microEventID,
-		MicroEventVersion: record.microEventVersion, HeatProfileID: record.heatProfileID,
+		MicroEventVersion: record.microEventVersion, HeatProfileID: record.heatProfileID, HeatProfileVersion: profileVersion,
 		WindowStartedAt: record.windowStartedAt.UTC(), WindowEndedAt: record.windowEndedAt.UTC(),
 		IndependentLineageRoots: record.lineageRoots, Velocity: record.velocity, Acceleration: record.acceleration,
 		Coverage: record.coverage, Recency: record.recency, AvailableWeight: record.availableWeight,
-		HeatScore: record.heatScore, ReasonCodes: reasons, Created: created}
+		HeatScore: record.heatScore, WarmingUp: slices.Contains(reasons, "warming_up"), ReasonCodes: reasons, Created: created}
 	if record.engagement.Valid {
 		value.NormalizedEngagement = floatPointer(record.engagement.Float64)
 	}
@@ -437,12 +446,12 @@ func (record eventHeatSnapshotRecord) dto(created bool) (eventapplication.EventH
 }
 
 func validEventHeatCommit(value eventapplication.CommitEventHeatSnapshotCommand) bool {
-	return value.MicroEventID > 0 && value.MicroEventVersion > 0 && value.HeatProfileID > 0 &&
+	return value.MicroEventID > 0 && value.MicroEventVersion > 0 && value.HeatProfileID > 0 && strings.TrimSpace(value.HeatProfileVersion) != "" &&
 		!value.WindowStartedAt.IsZero() && value.WindowEndedAt.After(value.WindowStartedAt) && value.IndependentLineageRoots >= 0 &&
 		validUnitHeat(value.Velocity) && validUnitHeat(value.Acceleration) && validUnitHeat(value.Coverage) &&
 		(value.NormalizedEngagement == nil || validUnitHeat(*value.NormalizedEngagement)) && validUnitHeat(value.Recency) &&
 		value.AvailableWeight > 0 && value.AvailableWeight <= 1 && !math.IsNaN(value.HeatScore) && !math.IsInf(value.HeatScore, 0) &&
-		value.HeatScore >= 0 && value.HeatScore <= 100
+		value.HeatScore >= 0 && value.HeatScore <= 100 && value.WarmingUp == slices.Contains(value.ReasonCodes, "warming_up")
 }
 
 func validUnitHeat(value float64) bool {
@@ -451,11 +460,13 @@ func validUnitHeat(value float64) bool {
 
 func eventHeatSnapshotMatchesCommand(value eventapplication.EventHeatSnapshotDTO, command eventapplication.CommitEventHeatSnapshotCommand) bool {
 	return value.MicroEventID == command.MicroEventID && value.MicroEventVersion == command.MicroEventVersion &&
-		value.HeatProfileID == command.HeatProfileID && value.WindowStartedAt.Equal(command.WindowStartedAt) &&
+		value.HeatProfileID == command.HeatProfileID && value.HeatProfileVersion == command.HeatProfileVersion &&
+		value.WindowStartedAt.Equal(command.WindowStartedAt) &&
 		value.WindowEndedAt.Equal(command.WindowEndedAt) && value.IndependentLineageRoots == command.IndependentLineageRoots &&
 		value.Velocity == command.Velocity && value.Acceleration == command.Acceleration && value.Coverage == command.Coverage &&
 		optionalHeatEquals(value.NormalizedEngagement, command.NormalizedEngagement) && value.Recency == command.Recency &&
-		value.AvailableWeight == command.AvailableWeight && value.HeatScore == command.HeatScore
+		value.AvailableWeight == command.AvailableWeight && value.HeatScore == command.HeatScore &&
+		value.WarmingUp == command.WarmingUp && slices.Equal(value.ReasonCodes, command.ReasonCodes)
 }
 
 func optionalHeatEquals(left, right *float64) bool {

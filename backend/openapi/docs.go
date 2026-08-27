@@ -9236,8 +9236,14 @@ const docTemplate = `{
                 "acceleration": {
                     "type": "number"
                 },
+                "available_weight": {
+                    "type": "number"
+                },
                 "coverage": {
                     "type": "number"
+                },
+                "heat_profile_version": {
+                    "type": "string"
                 },
                 "heat_score": {
                     "type": "number"
@@ -9265,6 +9271,9 @@ const docTemplate = `{
                 },
                 "velocity": {
                     "type": "number"
+                },
+                "warming_up": {
+                    "type": "boolean"
                 },
                 "window_ended_at": {
                     "type": "string"
