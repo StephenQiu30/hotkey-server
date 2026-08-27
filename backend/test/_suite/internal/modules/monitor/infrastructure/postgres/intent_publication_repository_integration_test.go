@@ -142,6 +142,31 @@ WHERE compiled_profile_id IN ($1,$2) AND ai_run_id=$3 AND input_hash=$4`,
 	if embeddingCount != 2 {
 		t.Fatalf("preview/published embedding count=%d, want copied exact pair", embeddingCount)
 	}
+	if _, err := runtime.SQL.Exec(`
+UPDATE monitor_compiled_profiles SET compiler_version='tampered-v1'
+WHERE id=$1`, prepared.Publication.CompiledProfileID); err == nil {
+		t.Fatal("published compiled profile identity was mutable")
+	}
+	if _, err := runtime.SQL.Exec(`
+UPDATE monitor_compiled_clauses SET value='tampered'
+WHERE compiled_profile_id=$1`, prepared.Publication.CompiledProfileID); err == nil {
+		t.Fatal("published compiled profile facts were mutable")
+	}
+	if _, err := runtime.SQL.Exec(`
+DELETE FROM monitor_compiled_profiles WHERE id=$1`, prepared.Publication.CompiledProfileID); err == nil {
+		t.Fatal("published compiled profile could be deleted")
+	}
+	var retainedCompiler, retainedClause string
+	if err := runtime.SQL.QueryRow(`
+SELECT profile.compiler_version,clause.value
+FROM monitor_compiled_profiles AS profile
+JOIN monitor_compiled_clauses AS clause ON clause.compiled_profile_id=profile.id
+WHERE profile.id=$1 ORDER BY clause.ordinal LIMIT 1`, prepared.Publication.CompiledProfileID).Scan(&retainedCompiler, &retainedClause); err != nil {
+		t.Fatal(err)
+	}
+	if retainedCompiler != previewCommand.CompilerVersion || retainedClause != previewCommand.Clauses[0].Value {
+		t.Fatalf("published snapshot drifted after rejected mutations: compiler=%q clause=%q", retainedCompiler, retainedClause)
+	}
 }
 
 func createCompiledIntentEmbeddingProfile(t *testing.T, databaseExecutor interface {

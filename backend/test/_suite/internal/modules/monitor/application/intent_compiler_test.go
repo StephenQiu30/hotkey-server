@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -73,6 +74,42 @@ func TestIntentCompilerPersistsExactPreviewProfileWithApprovedFactsOnly(t *testi
 	repeated, err := compiler.CompilePreview(context.Background(), CompilePreviewIntentProfileCommand{Preview: PreparedIntentPreviewDTO{Task: task, Draft: draft}})
 	if err != nil || repeated.Profile.ProfileHash != result.Profile.ProfileHash {
 		t.Fatalf("deterministic compile = %#v / %v", repeated, err)
+	}
+}
+
+func TestCompiledIntentProfileHashIsStableAcrossEquivalentPreviewRuns(t *testing.T) {
+	t.Parallel()
+	draft := intentDraftFixture()
+	validatedDraft, err := intentDraftFromDTO(draft)
+	if err != nil {
+		t.Fatalf("intentDraftFromDTO(): %v", err)
+	}
+	task := IntentAnalysisTaskDTO{Run: IntentRunReferenceDTO{
+		RunID: 501, Kind: "preview", MonitorID: draft.MonitorID, DraftID: draft.DraftID,
+		DraftResourceVersion: draft.ResourceVersion,
+	}, AnalysisProfile: "hybrid-preview-v1", SampleLimit: 20}
+	task.Run.InputHash = intentPreviewInputHash(validatedDraft, task.AnalysisProfile, task.SampleLimit)
+	clauses, err := compileIntentClauses(draft)
+	if err != nil {
+		t.Fatalf("compileIntentClauses(): %v", err)
+	}
+	entities, err := compileIntentEntities(draft.Entities)
+	if err != nil {
+		t.Fatalf("compileIntentEntities(): %v", err)
+	}
+
+	first := compiledIntentProfileHash(task, clauses, entities)
+	task.Run.RunID = 502
+	second := compiledIntentProfileHash(task, clauses, entities)
+	if first != second {
+		t.Fatalf("equivalent preview runs produced different profile hashes: %s != %s", first, second)
+	}
+	golden, err := os.ReadFile("testdata/compiled_intent_profile_hash.golden")
+	if err != nil {
+		t.Fatalf("read compiled profile golden: %v", err)
+	}
+	if first != strings.TrimSpace(string(golden)) {
+		t.Fatalf("compiled profile hash drifted: got %s, want %s", first, strings.TrimSpace(string(golden)))
 	}
 }
 

@@ -319,7 +319,12 @@ func sortedUniqueCompiledValues(values []string) []string {
 
 func compiledIntentProfileHash(task IntentAnalysisTaskDTO, clauses []CompiledIntentClauseDTO, entities []CompiledIntentEntityDTO) string {
 	parts := []string{
-		"compiled-intent-profile-v1", strconv.FormatInt(task.Run.RunID, 10), strconv.FormatInt(task.Run.MonitorID, 10),
+		// A Compiled Profile identifies immutable inputs and compiler facts, not
+		// the execution attempt that happened to materialize them. Keeping the
+		// transient run ID out makes retries of the exact draft/version converge
+		// on the same snapshot hash while the profile row still retains provenance
+		// through preview_run_id.
+		"compiled-intent-profile-v1", strconv.FormatInt(task.Run.MonitorID, 10),
 		strconv.FormatInt(task.Run.DraftID, 10), strconv.FormatInt(task.Run.DraftResourceVersion, 10), task.Run.InputHash,
 		IntentCompilerVersion, ingestionapplication.HybridRecallMatchingAlgorithmVersion, ingestionapplication.LexicalRecallAlgorithmVersion,
 		ingestionapplication.SemanticRecallAlgorithmVersion, ingestionapplication.StructuredRecallAlgorithmVersion,
