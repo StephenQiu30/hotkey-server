@@ -127,24 +127,68 @@ func TestPythonAgentIsTheOnlyApprovedAnalysisService(t *testing.T) {
 		}
 	}
 
-	compose := readRepositoryFile(t, repository, "docker-compose.yml")
-	if !strings.Contains(compose, "  hotkey-agent:") {
-		t.Error("development Compose does not declare the approved hotkey-agent service")
+	for _, composePath := range []string{"docker-compose.yml", "docker-compose-prod.yml"} {
+		compose := readRepositoryFile(t, repository, composePath)
+		if !strings.Contains(compose, "  hotkey-agent:") {
+			t.Errorf("%s does not declare the approved hotkey-agent service", composePath)
+			continue
+		}
+		agentBlock := composeServiceBlock(compose, "hotkey-agent")
+		if strings.Contains(agentBlock, "\n    ports:") {
+			t.Errorf("%s must not publish a host port for hotkey-agent", composePath)
+		}
+		for _, forbidden := range []string{
+			"HOTKEY_DATABASE_URL",
+			"HOTKEY_REDIS_URL",
+			"HOTKEY_MINIO_SECRET_KEY",
+			"HOTKEY_VAULT_PATH",
+			"HOTKEY_JWT_SECRET",
+		} {
+			if strings.Contains(agentBlock, forbidden) {
+				t.Errorf("%s gives hotkey-agent forbidden business credential %s", composePath, forbidden)
+			}
+		}
 	}
-	agentBlock := composeServiceBlock(compose, "hotkey-agent")
-	if strings.Contains(agentBlock, "\n    ports:") {
-		t.Error("hotkey-agent must not publish a host port")
-	}
+
+	manifest := strings.ToLower(readRepositoryFile(t, repository, "agent/pyproject.toml"))
 	for _, forbidden := range []string{
+		"sqlalchemy", "psycopg", "asyncpg", "redis", "minio", "boto3",
+	} {
+		if strings.Contains(manifest, forbidden) {
+			t.Errorf("agent/pyproject.toml includes forbidden business-storage dependency %s", forbidden)
+		}
+	}
+
+	sourceRoot := filepath.Join(repository, "agent", "src")
+	forbiddenCredentials := []string{
 		"HOTKEY_DATABASE_URL",
 		"HOTKEY_REDIS_URL",
 		"HOTKEY_MINIO_SECRET_KEY",
 		"HOTKEY_VAULT_PATH",
 		"HOTKEY_JWT_SECRET",
-	} {
-		if strings.Contains(agentBlock, forbidden) {
-			t.Errorf("hotkey-agent receives forbidden business credential %s", forbidden)
+		"HOTKEY_SOURCE_TOKEN",
+	}
+	if err := filepath.WalkDir(sourceRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".py" {
+			return nil
+		}
+		payload, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		contents := string(payload)
+		for _, forbidden := range forbiddenCredentials {
+			if strings.Contains(contents, forbidden) {
+				relative, _ := filepath.Rel(repository, path)
+				t.Errorf("%s reads forbidden business credential %s", filepath.ToSlash(relative), forbidden)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("scan Python Agent source: %v", err)
 	}
 }
 

@@ -36,6 +36,25 @@ def _request(task_type: str = "relevance") -> dict[str, object]:
     }
 
 
+def test_service_exposes_only_internal_analysis_and_health_routes() -> None:
+    application = create_app(
+        Settings(
+            auth_token=TOKEN,
+            runtime="deterministic",
+            max_request_bytes=262_144,
+            max_concurrency=2,
+        )
+    )
+    assert {route.path for route in application.routes} == {
+        "/healthz",
+        "/readyz",
+        "/v1/analyze",
+    }
+    assert application.docs_url is None
+    assert application.redoc_url is None
+    assert application.openapi_url is None
+
+
 def test_health_and_readiness_do_not_expose_configuration() -> None:
     with _client() as client:
         health = client.get("/healthz")

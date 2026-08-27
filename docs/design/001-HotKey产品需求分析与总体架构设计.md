@@ -15,7 +15,7 @@ plan: docs/plans/001-HotKey产品需求分析与总体架构计划.md
 
 ## 现状
 
-HotKey 已是包含 Go 后端与 Next.js Web 工作台的单仓库项目。后端由 `cmd/hotkey` 单一入口启动，以 `all`、`api`、`worker` 三种角色运行模块化单体；业务模块遵循 Transport、Application、Domain、Infrastructure 的依赖方向。PostgreSQL 保存业务事实，Redis 保存验证码和短期状态，MinIO 保存原始证据，本地 Vault 保存人类可读投影，River 兼容表与 Go Worker 承担持久任务。根目录 `agent/` Python 数据分析服务是已批准但尚待落地的目标运行面。前端通过发布 OpenAPI 生成客户端，并使用 Axios、Zustand 与 Recharts 组织请求、状态和可视化。
+HotKey 已是包含 Go 后端、根目录 Python Agent 与 Next.js Web 工作台的单仓库项目。后端由 `cmd/hotkey` 单一入口启动，以 `all`、`api`、`worker` 三种角色运行模块化单体；业务模块遵循 Transport、Application、Domain、Infrastructure 的依赖方向。PostgreSQL 保存业务事实，Redis 保存验证码和短期状态，MinIO 保存原始证据，本地 Vault 保存人类可读投影，River 兼容表与 Go Worker 承担持久任务。根目录 `agent/` 已落地 Python 数据分析服务骨架、`analysis.v1` 版本化内部契约、服务认证、请求/响应边界、健康检查与双端契约测试；当前仅以 `deterministic.v1` 降级运行时接入可选 Shadow 比较，尚未进入 Live 决策或业务事实写入。前端通过发布 OpenAPI 生成客户端，并使用 Axios、Zustand 与 Recharts 组织请求、状态和可视化。
 
 当前仓库已经存在多种 AI Provider、Embedding、pgvector 数据与相关召回实现。这些是必须保护和盘点的当前事实，不代表新基线继续承诺同一产品边界，也不表示它们已经迁移或移除。任何替换都必须通过独立 Plan、数据处置、兼容验证和回滚门禁完成。
 
@@ -46,7 +46,7 @@ Next.js Web 工作台
   -> 邮件与 WebSocket 等受控交付
 ```
 
-智能任务的目标形态是根目录 `agent/` 中的 Python 数据分析服务。Go Worker 从 PostgreSQL 读取任务身份，并经拥有模块取得必要的有界上下文，以内部版本化 HTTP 契约调用 Agent；Agent 只执行相关性、聚类候选、摘要、实体/主题提取与模型编排，返回经 Pydantic/JSON Schema 校验的结构化建议。Go Application 和 Domain 再执行授权、Evidence 白名单、幂等、状态迁移与最终写入。Agent 不接收数据库 DSN、来源凭据、MinIO/Vault 凭据或用户会话，不形成第二事实源。
+智能任务的批准运行面是根目录 `agent/` 中的 Python 数据分析服务。Go Worker 从 PostgreSQL 读取任务身份，并经拥有模块取得必要的有界上下文，以内部版本化 HTTP 契约调用 Agent；Agent 只执行相关性、聚类候选、摘要、实体/主题提取与模型编排，返回经 Pydantic/JSON Schema 校验的结构化建议。Go Application 和 Domain 再执行授权、Evidence 白名单、幂等、状态迁移与最终写入。Agent 不接收数据库 DSN、来源凭据、MinIO/Vault 凭据或用户会话，不形成第二事实源。当前工程骨架和 Shadow 接线证明了服务与契约边界，但真实模型质量、Live 灰度和切回仍以 003 Plan 的 Golden、Shadow、Live 门禁为准。
 
 ## 非目标
 

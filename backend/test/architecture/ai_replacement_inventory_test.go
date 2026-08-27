@@ -72,6 +72,7 @@ func TestAIReplacementInventoryCoversCurrentCallersAndDataDisposition(t *testing
 func TestAIReplacementInventoryRecordsPythonAgentMigrationBoundary(t *testing.T) {
 	root := repositoryRoot(t)
 	repository := filepath.Clean(filepath.Join(root, ".."))
+	design := readRepositoryFile(t, repository, "docs/design/001-HotKey产品需求分析与总体架构设计.md")
 	providerDomain := readRepositoryFile(t, root, "internal/modules/intelligence/domain/provider.go")
 	bootstrap := readRepositoryFile(t, root, "internal/bootstrap/app.go")
 	codexProvider := readRepositoryFile(t, root, "internal/modules/intelligence/infrastructure/provider/codex_cli_provider.go")
@@ -89,6 +90,15 @@ func TestAIReplacementInventoryRecordsPythonAgentMigrationBoundary(t *testing.T)
 	}
 	if !strings.Contains(agentMain, "FastAPI") || !strings.Contains(agentMain, `"/v1/analyze"`) {
 		t.Fatal("approved Python Agent analysis boundary is missing")
+	}
+	for _, currentFact := range []string{
+		"根目录 `agent/` 已落地 Python 数据分析服务骨架",
+		"当前仅以 `deterministic.v1` 降级运行时接入可选 Shadow 比较",
+		"尚未进入 Live 决策或业务事实写入",
+	} {
+		if !strings.Contains(design, currentFact) {
+			t.Errorf("Design 001 does not record the current Python Agent boundary: missing %q", currentFact)
+		}
 	}
 	if !strings.Contains(agentClient, "type Client struct") || !strings.Contains(bootstrap, "newAgentShadowRunner") || !strings.Contains(bootstrap, "NewShadowRunner") {
 		t.Fatal("Python Agent client must enter only the bounded Shadow bootstrap path before S05 switch tests")
