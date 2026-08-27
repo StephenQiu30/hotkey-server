@@ -2,7 +2,7 @@ GO := go
 SWAG := $(GO) run github.com/swaggo/swag/cmd/swag
 OPENAPI_EXCLUDE := internal/modules/agentaccess,internal/modules/alert,internal/modules/delivery/transport/http,internal/modules/event/transport/http/handler.go,internal/modules/knowledge/transport/http,internal/modules/report
 
-.PHONY: test-env minio-test-env openapi openapi-check vet test worker-recovery-acceptance source-resource-limit-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance event-governance-role-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
+.PHONY: test-env minio-test-env openapi openapi-check vet test worker-recovery-acceptance source-resource-limit-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
 
 test-env:
 	@test -n "$(HOTKEY_TEST_DSN)" || { printf '%s\n' 'HOTKEY_TEST_DSN is required for backend acceptance' >&2; exit 1; }
@@ -77,6 +77,9 @@ agent-degradation-acceptance: test-env
 		./internal/modules/event/application \
 		-run '^(TestAgentShadowRunnerIsOptionalAndConstructsOnlyFromValidatedInternalConfig|TestRunServiceKeepsPrimaryResultWhenPythonAgentIsUnavailable|TestShadowRunnerMapsAgentFailureAndBoundsConcurrency|TestRunServicePersistsTerminalOperationalFailureAsPendingAnalysis|TestCollectionServiceProjectsThreeSourcePartialSuccessWithoutPersistingAggregateOutcome|TestContentFamilyServicePersistsOnlyFingerprintAndDecisionFacts|TestEventHeatServiceUsesActiveProfileWeightsAndStableSnapshot|TestMicroEventGovernanceServiceBuildsStablePOJOCommand|TestAutomaticClaimEvidenceServiceLeavesOperationalModelFailuresPendingWithoutBusinessWrites|TestAIRunRecomputeServiceSchedulesOnlyOwnedTerminalFailures|TestAIRunRecomputeWorkerReactivatesOwningJobFromRunIDOnly)$$' \
 		-count=1 -v
+
+agent-capacity-baseline:
+	cd ../agent && uv run python tests/tools/capacity_baseline.py
 
 event-governance-role-acceptance:
 	$(GO) run ./test/runner test ./internal/modules/event/transport/http \

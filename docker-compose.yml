@@ -93,6 +93,16 @@ services:
       HOTKEY_AGENT_RUNTIME: deterministic
       HOTKEY_AGENT_MAX_REQUEST_BYTES: "${HOTKEY_AGENT_MAX_REQUEST_BYTES:-262144}"
       HOTKEY_AGENT_MAX_CONCURRENCY: "${HOTKEY_AGENT_MAX_CONCURRENCY:-2}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: "512m"
+    cpus: "1.0"
+    tmpfs:
+      - /tmp:size=64m,mode=1777
     expose:
       - "8090"
     healthcheck:
