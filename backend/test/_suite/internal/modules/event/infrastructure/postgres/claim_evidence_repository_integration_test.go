@@ -4,6 +4,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	eventapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
 
@@ -89,16 +91,33 @@ func TestClaimEvidenceRepositoryPersistsQuotedRelationsAndLineageEvidenceState(t
 	if err != nil || correctionReplay.Feedback.ID != corrected.Feedback.ID || correctionReplay.Created {
 		t.Fatalf("correction replay = %#v / %v", correctionReplay, err)
 	}
-	if _, err := service.Record(ctx, manualClaimEvidenceCommand(firstAssignment.Event.ID, currentEventVersion,
-		second.documentVersionID, secondSelectorID, actorID, "contradicts", "claim-evidence-second", now)); err != nil {
+	if _, err := service.Correct(ctx, eventapplication.CorrectClaimEvidenceCommand{
+		OriginalClaimEvidenceVersionID: firstResult.Evidence.ID, ExpectedClaimVersion: firstResult.Claim.Version,
+		ResultTextQuoteSelectorID: correctedSelectorID, ResultRelation: "attributes_to", ActorUserID: actorID,
+		ReasonCode: "branch_from_superseded_version", IdempotencyKey: "claim-evidence-invalid-branch", DecisionAt: now,
+	}); !errors.Is(err, sharedrepository.ErrConflict) {
+		t.Fatalf("correction from superseded evidence error = %v", err)
+	}
+	secondResult, err := service.Record(ctx, manualClaimEvidenceCommand(firstAssignment.Event.ID, currentEventVersion,
+		second.documentVersionID, secondSelectorID, actorID, "contradicts", "claim-evidence-second", now))
+	if err != nil {
 		t.Fatalf("Record(second): %v", err)
 	}
 	state, err := service.CalculateState(ctx, eventapplication.CalculateEvidenceStateCommand{MicroEventID: firstAssignment.Event.ID,
 		ExpectedEventVersion: currentEventVersion, AlgorithmVersion: eventapplication.CanonicalEvidenceStateAlgorithmVersion,
 		CalculatedAt: now})
 	if err != nil || state.Snapshot.State != "conflicting_reports" || state.Snapshot.IndependentOriginCount != 2 ||
-		len(state.Snapshot.ClaimEvidenceVersionIDs) != 3 {
+		len(state.Snapshot.ClaimEvidenceVersionIDs) != 2 ||
+		!containsExactlyEvidenceIDs(state.Snapshot.ClaimEvidenceVersionIDs, corrected.Evidence.ID, secondResult.Evidence.ID) {
 		t.Fatalf("CalculateState() = %#v / %v", state, err)
+	}
+	if _, err := repository.CommitEvidenceStateSnapshot(ctx, eventapplication.CommitEvidenceStateSnapshotCommand{
+		MicroEventID: firstAssignment.Event.ID, EventVersion: currentEventVersion, ProfileID: state.Snapshot.ProfileID,
+		AlgorithmVersion: eventapplication.CanonicalEvidenceStateAlgorithmVersion, EvidenceSetHash: strings.Repeat("e", 64),
+		State: "single_origin", IndependentOriginCount: 1, ReasonCodes: []string{"single_independent_origin"},
+		ClaimEvidenceVersionIDs: []int64{firstResult.Evidence.ID}, CalculatedAt: now,
+	}); !errors.Is(err, sharedrepository.ErrConstraint) {
+		t.Fatalf("snapshot accepted a superseded and incomplete Evidence set: %v", err)
 	}
 	replayedState, err := service.CalculateState(ctx, eventapplication.CalculateEvidenceStateCommand{MicroEventID: firstAssignment.Event.ID,
 		ExpectedEventVersion: currentEventVersion, AlgorithmVersion: eventapplication.CanonicalEvidenceStateAlgorithmVersion,
@@ -108,14 +127,22 @@ func TestClaimEvidenceRepositoryPersistsQuotedRelationsAndLineageEvidenceState(t
 	}
 	summaryRepository, _ := NewEvidenceSummaryPostgresRepository(runtime)
 	summaryService, _ := eventapplication.NewEvidenceSummaryService(summaryRepository)
+	if _, err := summaryService.Publish(ctx, eventapplication.PublishEvidenceSummaryCommand{MicroEventID: firstAssignment.Event.ID,
+		ExpectedEventVersion: currentEventVersion, SummaryProfileVersion: "superseded-evidence-summary-v2",
+		IdempotencyKey: "superseded-claim-evidence-summary", CreatedAt: now,
+		Sentences: []eventapplication.EvidenceSummarySentenceInputDTO{{Text: "汇总状态不能替代逐句当前证据。",
+			ClaimEvidenceVersionIDs: []int64{firstResult.Evidence.ID}, DecisionOrigin: "manual", ActorUserID: &actorID}}}); !errors.Is(err, sharedrepository.ErrConstraint) {
+		t.Fatalf("summary approved from superseded ClaimEvidence: %v", err)
+	}
 	summary, err := summaryService.Publish(ctx, eventapplication.PublishEvidenceSummaryCommand{MicroEventID: firstAssignment.Event.ID,
 		ExpectedEventVersion: currentEventVersion, SummaryProfileVersion: "evidence-summary-v2",
 		IdempotencyKey: "claim-evidence-summary", CreatedAt: now,
 		Sentences: []eventapplication.EvidenceSummarySentenceInputDTO{
-			{Text: "报道对该事件存在相反表述。", ClaimEvidenceVersionIDs: []int64{firstResult.Evidence.ID}, DecisionOrigin: "manual", ActorUserID: &actorID},
+			{Text: "报道对该事件存在相反表述。", ClaimEvidenceVersionIDs: []int64{corrected.Evidence.ID, secondResult.Evidence.ID}, DecisionOrigin: "manual", ActorUserID: &actorID},
 			{Text: "编者提示：请继续关注原发布者更新。", EditorialNote: true, DecisionOrigin: "manual", ActorUserID: &actorID},
 		}})
-	if err != nil || len(summary.Summary.Sentences) != 2 || summary.Summary.Sentences[0].ClaimEvidenceVersionIDs[0] != firstResult.Evidence.ID ||
+	if err != nil || len(summary.Summary.Sentences) != 2 ||
+		!containsExactlyEvidenceIDs(summary.Summary.Sentences[0].ClaimEvidenceVersionIDs, corrected.Evidence.ID, secondResult.Evidence.ID) ||
 		!summary.Summary.Sentences[1].EditorialNote || len(summary.Summary.Sentences[1].ClaimEvidenceVersionIDs) != 0 {
 		t.Fatalf("Publish(summary) = %#v / %v", summary, err)
 	}
@@ -123,7 +150,7 @@ func TestClaimEvidenceRepositoryPersistsQuotedRelationsAndLineageEvidenceState(t
 		ExpectedEventVersion: currentEventVersion, SummaryProfileVersion: "evidence-summary-v2",
 		IdempotencyKey: "claim-evidence-summary", CreatedAt: now,
 		Sentences: []eventapplication.EvidenceSummarySentenceInputDTO{
-			{Text: "报道对该事件存在相反表述。", ClaimEvidenceVersionIDs: []int64{firstResult.Evidence.ID}, DecisionOrigin: "manual", ActorUserID: &actorID},
+			{Text: "报道对该事件存在相反表述。", ClaimEvidenceVersionIDs: []int64{corrected.Evidence.ID, secondResult.Evidence.ID}, DecisionOrigin: "manual", ActorUserID: &actorID},
 			{Text: "编者提示：请继续关注原发布者更新。", EditorialNote: true, DecisionOrigin: "manual", ActorUserID: &actorID},
 		}})
 	if err != nil || summaryReplay.Summary.ID != summary.Summary.ID || summaryReplay.Summary.Created {
@@ -154,6 +181,22 @@ func TestClaimEvidenceRepositoryPersistsQuotedRelationsAndLineageEvidenceState(t
 	if _, err := runtime.SQL.Exec(`UPDATE claim_evidence_versions SET relation='mentions' WHERE id=$1`, firstResult.Evidence.ID); err == nil {
 		t.Fatal("append-only claim evidence accepted update")
 	}
+}
+
+func containsExactlyEvidenceIDs(got []int64, want ...int64) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	seen := make(map[int64]int, len(got))
+	for _, id := range got {
+		seen[id]++
+	}
+	for _, id := range want {
+		if seen[id] != 1 {
+			return false
+		}
+	}
+	return true
 }
 
 func insertClaimEvidenceQuoteDeny(t *testing.T, runtime *database.Runtime, fixture microEventAssignmentFixture, now time.Time) {

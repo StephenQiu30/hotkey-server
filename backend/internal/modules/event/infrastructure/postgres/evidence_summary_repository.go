@@ -71,6 +71,10 @@ JOIN document_text_quote_selectors AS selector ON selector.id=evidence.text_quot
 JOIN content_families AS family ON family.id=evidence.content_family_id AND family.status IN ('active','review_pending')
 JOIN micro_event_members AS member ON member.content_family_id=family.id AND member.micro_event_id=$1 AND member.active
 WHERE evidence.id=ANY($2) AND selector.retention_until>$3
+  AND NOT EXISTS (
+      SELECT 1 FROM claim_evidence_feedbacks AS feedback
+      WHERE feedback.original_claim_evidence_version_id=evidence.id
+  )
   AND current_rights_action_allowed(selector.quote_rights_decision_id,selector.source_connection_id,
       'document_version',evidence.document_version_id::text,evidence.plaintext_sha256,'quote',$3)
   AND current_rights_action_allowed(selector.retain_rights_decision_id,selector.source_connection_id,

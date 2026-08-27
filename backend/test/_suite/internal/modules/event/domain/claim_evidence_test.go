@@ -17,7 +17,9 @@ func TestEvidenceStateUsesIndependentLineageRootsWithoutTruthScore(t *testing.T)
 	}{
 		{name: "no body", want: EvidenceNoCitableBody},
 		{name: "single origin", items: []EvidenceStateItem{{1, 11, EvidenceAsserts, true}}, want: EvidenceSingleOrigin, count: 1},
-		{name: "duplicate documents remain one origin", items: []EvidenceStateItem{{1, 11, EvidenceAsserts, true}, {2, 11, EvidenceAsserts, true}}, want: EvidenceSingleOrigin, count: 1},
+		{name: "comments and reposts from one origin remain one independent source", items: []EvidenceStateItem{
+			{1, 11, EvidenceAsserts, true}, {2, 11, EvidenceMentions, true}, {3, 11, EvidenceAttributes, true},
+		}, want: EvidenceSingleOrigin, count: 1},
 		{name: "multiple origins", items: []EvidenceStateItem{{1, 11, EvidenceAsserts, true}, {2, 12, EvidenceAttributes, true}}, want: EvidenceMultipleOrigins, count: 2},
 		{name: "conflict", items: []EvidenceStateItem{{1, 11, EvidenceAsserts, true}, {2, 12, EvidenceContradicts, true}}, want: EvidenceConflictingReports, count: 2},
 		{name: "correction precedence", items: []EvidenceStateItem{{1, 11, EvidenceContradicts, true}, {2, 11, EvidenceCorrects, true}}, want: EvidencePublisherCorrected, count: 1},

@@ -6714,6 +6714,8 @@ CREATE TABLE IF NOT EXISTS claim_evidence_feedbacks (
     CHECK (original_claim_evidence_version_id <> result_claim_evidence_version_id),
     CHECK (original_text_quote_selector_id <> result_text_quote_selector_id OR original_relation <> result_relation)
 );
+CREATE UNIQUE INDEX IF NOT EXISTS claim_evidence_feedbacks_original_version_uq
+    ON claim_evidence_feedbacks(original_claim_evidence_version_id);
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -6889,6 +6891,8 @@ BEGIN
        OR result_record.text_quote_selector_id IS DISTINCT FROM NEW.result_text_quote_selector_id
        OR original_record.relation IS DISTINCT FROM NEW.original_relation
        OR result_record.relation IS DISTINCT FROM NEW.result_relation
+       OR EXISTS (SELECT 1 FROM claim_evidence_feedbacks AS prior_feedback
+                  WHERE prior_feedback.original_claim_evidence_version_id=NEW.original_claim_evidence_version_id)
        OR result_record.decision_origin <> 'manual' OR result_record.actor_user_id IS DISTINCT FROM NEW.actor_user_id
        OR NOT EXISTS (SELECT 1 FROM users WHERE id=NEW.actor_user_id AND role IN ('editor','admin')
                       AND status='active' AND deleted_at IS NULL)

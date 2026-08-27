@@ -242,7 +242,12 @@ JOIN content_family_members AS family_member ON family_member.family_id=family.i
   AND family_member.document_version_id=evidence.document_version_id
 JOIN micro_event_members AS event_member ON event_member.content_family_id=family.id
   AND event_member.micro_event_id=claim.micro_event_id
-WHERE claim.micro_event_id=$1 ORDER BY evidence.id`, query.MicroEventID, query.CalculatedAt.UTC())
+WHERE claim.micro_event_id=$1
+  AND NOT EXISTS (
+      SELECT 1 FROM claim_evidence_feedbacks AS feedback
+      WHERE feedback.original_claim_evidence_version_id=evidence.id
+  )
+ORDER BY evidence.id`, query.MicroEventID, query.CalculatedAt.UTC())
 	if err != nil {
 		return eventapplication.EvidenceStateTargetDTO{}, databaserepository.MapError(err)
 	}
@@ -287,15 +292,19 @@ func (repository *ClaimEvidencePostgresRepository) CommitEvidenceStateSnapshot(c
 			result, readErr = stored.dto(storedIDs, false)
 			return readErr
 		}
-		var validCount int
-		if len(ids) > 0 {
-			if err := transaction.SQL.QueryRowContext(transactionCtx, `SELECT count(*) FROM claim_evidence_versions AS evidence
-JOIN claims AS claim ON claim.id=evidence.claim_id WHERE claim.micro_event_id=$1 AND evidence.id=ANY($2)`, command.MicroEventID, ids).Scan(&validCount); err != nil {
-				return databaserepository.MapError(err)
-			}
-			if validCount != len(ids) {
-				return sharedrepository.ErrConstraint
-			}
+		var currentCount, selectedCount int
+		if err := transaction.SQL.QueryRowContext(transactionCtx, `SELECT count(*),count(*) FILTER (WHERE evidence.id=ANY($2))
+FROM claim_evidence_versions AS evidence
+JOIN claims AS claim ON claim.id=evidence.claim_id
+WHERE claim.micro_event_id=$1
+  AND NOT EXISTS (
+      SELECT 1 FROM claim_evidence_feedbacks AS feedback
+      WHERE feedback.original_claim_evidence_version_id=evidence.id
+  )`, command.MicroEventID, ids).Scan(&currentCount, &selectedCount); err != nil {
+			return databaserepository.MapError(err)
+		}
+		if currentCount != len(ids) || selectedCount != len(ids) {
+			return sharedrepository.ErrConstraint
 		}
 		reasons, _ := json.Marshal(command.ReasonCodes)
 		stored = evidenceStateSnapshotRecord{}
@@ -387,8 +396,14 @@ func (repository *ClaimEvidencePostgresRepository) CommitClaimEvidenceCorrection
 			return sharedrepository.ErrConflict
 		}
 		var original claimEvidenceVersionRecord
-		if err := scanClaimEvidence(transaction.SQL.QueryRowContext(transactionCtx, `SELECT `+claimEvidenceColumns+` FROM claim_evidence_versions WHERE id=$1 FOR KEY SHARE`,
-			command.Target.OriginalEvidence.ID), &original); err != nil {
+		if err := scanClaimEvidence(transaction.SQL.QueryRowContext(transactionCtx, `SELECT `+claimEvidenceColumns+` FROM claim_evidence_versions AS evidence
+WHERE id=$1 AND NOT EXISTS (
+    SELECT 1 FROM claim_evidence_feedbacks AS feedback
+    WHERE feedback.original_claim_evidence_version_id=evidence.id
+) FOR UPDATE OF evidence`,
+			command.Target.OriginalEvidence.ID), &original); errors.Is(err, sql.ErrNoRows) {
+			return sharedrepository.ErrConflict
+		} else if err != nil {
 			return databaserepository.MapError(err)
 		}
 		if original.claimID != claim.id || original.documentVersionID != command.Target.ResultTarget.DocumentVersionID {
