@@ -47,7 +47,7 @@ func TestNormalizeHandlerDrainsEveryCapturedItemPageWithoutLegacyFanout(t *testi
 	}
 }
 
-func TestEvaluateHandlerSkipsClusterOnlyForStaleContent(t *testing.T) {
+func TestEvaluateHandlerSkipsClusterForContentWithoutFreshPublicationTime(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.August, 7, 10, 0, 0, 0, time.UTC)
 	for _, test := range []struct {
@@ -57,6 +57,7 @@ func TestEvaluateHandlerSkipsClusterOnlyForStaleContent(t *testing.T) {
 	}{
 		{name: "inclusive boundary", publishedAt: now.Add(-ingestiondomain.NewEventFreshnessWindow), wantJobs: 1},
 		{name: "stale background", publishedAt: now.Add(-ingestiondomain.NewEventFreshnessWindow - time.Nanosecond), wantJobs: 0},
+		{name: "unknown publication time", publishedAt: time.Time{}, wantJobs: 0},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			content := ingestiondomain.Content{

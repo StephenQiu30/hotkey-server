@@ -106,14 +106,16 @@ type NormalizedContent struct {
 	CanonicalURL       string
 	Language           string
 	Author             NormalizedAuthor
-	PublishedAt        time.Time
-	FetchedAt          time.Time
-	ContentHash        string
-	Metrics            domain.SourceMetrics
+	// PublishedAt is zero only when the source supplied no publication fact;
+	// FetchedAt remains the independent observation/discovery time.
+	PublishedAt time.Time
+	FetchedAt   time.Time
+	ContentHash string
+	Metrics     domain.SourceMetrics
 }
 
 func (content NormalizedContent) Validate() error {
-	if content.SourceConnectionID <= 0 || strings.TrimSpace(content.ExternalID) == "" || strings.TrimSpace(content.ContentType) == "" || strings.TrimSpace(content.CanonicalURL) == "" || content.PublishedAt.IsZero() || content.FetchedAt.IsZero() || !validSHA256(content.ContentHash) {
+	if content.SourceConnectionID <= 0 || strings.TrimSpace(content.ExternalID) == "" || strings.TrimSpace(content.ContentType) == "" || strings.TrimSpace(content.CanonicalURL) == "" || content.FetchedAt.IsZero() || !validSHA256(content.ContentHash) {
 		return NewError(ErrorCodeInvalidNormalizedContent)
 	}
 	if strings.TrimSpace(content.Title) == "" && strings.TrimSpace(content.Body) == "" {
@@ -128,8 +130,9 @@ func (content NormalizedContent) Validate() error {
 // the source's external ID is a stable publisher/item identifier. They let a
 // duplicate target be selected without touching another module's tables.
 type ContentCandidate struct {
-	ID                     int64
-	SourceConnectionID     int64
+	ID                 int64
+	SourceConnectionID int64
+	// PublishedAt may be zero for an unknown source publication time.
 	PublishedAt            time.Time
 	TitleTokens            []string
 	BodyTokens             []string
@@ -140,7 +143,7 @@ type ContentCandidate struct {
 }
 
 func (candidate ContentCandidate) Validate() error {
-	if candidate.ID <= 0 || candidate.SourceConnectionID <= 0 || candidate.PublishedAt.IsZero() || candidate.Completeness < 0 {
+	if candidate.ID <= 0 || candidate.SourceConnectionID <= 0 || candidate.Completeness < 0 {
 		return NewError(ErrorCodeInvalidContentCandidate)
 	}
 	return nil
@@ -176,15 +179,16 @@ type Content struct {
 	SourceConnectionID int64
 	// SourceType and SourceName are a safe, application-enriched read
 	// projection. They are never persisted by ingestion or supplied by HTTP.
-	SourceType    domain.SourceType
-	SourceName    string
-	ExternalID    string
-	Author        NormalizedAuthor
-	ContentType   string
-	Title         string
-	Excerpt       string
-	CanonicalURL  string
-	Language      string
+	SourceType   domain.SourceType
+	SourceName   string
+	ExternalID   string
+	Author       NormalizedAuthor
+	ContentType  string
+	Title        string
+	Excerpt      string
+	CanonicalURL string
+	Language     string
+	// PublishedAt is zero when the persisted SQL value is NULL.
 	PublishedAt   time.Time
 	FetchedAt     time.Time
 	ContentHash   string

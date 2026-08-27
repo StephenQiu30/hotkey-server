@@ -8343,7 +8343,8 @@
                     "example": "# Release notes"
                 },
                 "published_at": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "sha256": {
                     "type": "string",
@@ -8507,7 +8508,8 @@
                     "$ref": "#/definitions/http.ContentMetricsResponse"
                 },
                 "published_at": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "relevance_score": {
                     "type": "number",
@@ -11762,7 +11764,8 @@
                     "type": "string"
                 },
                 "published_at": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "title": {
                     "type": "string"

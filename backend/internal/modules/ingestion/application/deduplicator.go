@@ -72,6 +72,9 @@ func candidatePreferred(candidate, selected ingestiondomain.ContentCandidate) bo
 	if candidate.Completeness != selected.Completeness {
 		return candidate.Completeness > selected.Completeness
 	}
+	if candidate.PublishedAt.IsZero() != selected.PublishedAt.IsZero() {
+		return !candidate.PublishedAt.IsZero()
+	}
 	if !candidate.PublishedAt.Equal(selected.PublishedAt) {
 		return candidate.PublishedAt.Before(selected.PublishedAt)
 	}

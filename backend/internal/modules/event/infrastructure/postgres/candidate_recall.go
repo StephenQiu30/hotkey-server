@@ -110,7 +110,7 @@ type candidateQuery interface {
 
 func (repository *Repository) fingerprintForContent(ctx context.Context, query candidateQuery, contentID int64) (domain.EventFingerprint, bool, error) {
 	var publishedAt time.Time
-	if err := query.QueryRowContext(ctx, `SELECT published_at FROM contents WHERE id = $1 AND content_status = 'active'`, contentID).Scan(&publishedAt); err != nil {
+	if err := query.QueryRowContext(ctx, `SELECT published_at FROM contents WHERE id = $1 AND content_status = 'active' AND published_at IS NOT NULL`, contentID).Scan(&publishedAt); err != nil {
 		if err == sql.ErrNoRows {
 			return domain.EventFingerprint{}, false, fmt.Errorf("%w: active content", sharedrepository.ErrNotFound)
 		}

@@ -100,6 +100,27 @@ ALTER TABLE audit_logs ADD COLUMN command_fingerprint char(64)`); err != nil {
 	}
 }
 
+func TestCanonicalUpgradeMakesLegacyContentPublicationTimeNullable(t *testing.T) {
+	runtime := openTestRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	if _, err := runtime.SQL.Exec(`ALTER TABLE contents ALTER COLUMN published_at SET NOT NULL`); err != nil {
+		t.Fatalf("prepare legacy contents publication constraint: %v", err)
+	}
+	if _, err := Verify(context.Background(), runtime.Pool); err == nil {
+		t.Fatal("legacy NOT NULL publication time unexpectedly passed target verification")
+	}
+	if _, err := ApplyCanonicalUpgrade(context.Background(), runtime.Pool, CanonicalUpgradeTarget); err != nil {
+		t.Fatalf("ApplyCanonicalUpgrade(): %v", err)
+	}
+	var nullable string
+	if err := runtime.SQL.QueryRow(`SELECT is_nullable FROM information_schema.columns WHERE table_schema='public' AND table_name='contents' AND column_name='published_at'`).Scan(&nullable); err != nil {
+		t.Fatalf("read contents publication nullability: %v", err)
+	}
+	if nullable != "YES" {
+		t.Fatalf("contents.published_at is_nullable = %q, want YES", nullable)
+	}
+}
+
 func TestCanonicalUpgradeConvergesTransitionalEvidenceAndIntentCatalog(t *testing.T) {
 	runtime := openTestRuntime(t)
 	defer func() { _ = runtime.Close() }()

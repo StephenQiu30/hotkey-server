@@ -110,6 +110,9 @@ func TestContentRepositoryPersistsStableSourceAuthorAndDuplicateMetadata(t *test
 	if second.Author != first.Author {
 		t.Fatalf("duplicate author = %#v, want stable source author %#v", second.Author, first.Author)
 	}
+	if _, err := repository.GetActive(context.Background(), second.ID); !errors.Is(err, sharedrepository.ErrNotFound) {
+		t.Fatalf("GetActive(duplicate) error = %v, want not found before downstream Event processing", err)
+	}
 
 	var authors int
 	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM source_authors WHERE source_connection_id = $1 AND external_id = $2`, sourceID, first.Author.ExternalID).Scan(&authors); err != nil {
@@ -217,6 +220,31 @@ WHERE content_id = $1 AND captured_at = $2`, content.ID, snapshotAt).Scan(&snaps
 	}
 }
 
+func TestContentRepositoryPersistsUnknownPublishedAtAsNull(t *testing.T) {
+	runtime := openContentRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	repository := ingestionpostgres.NewContentRepository(runtime)
+	sourceID := createContentSource(t, runtime, "unknown-published-at")
+	observedAt := time.Date(2026, time.July, 16, 9, 0, 0, 0, time.UTC)
+	input := normalizedContent(sourceID, "unknown-published-at", observedAt)
+	input.PublishedAt = time.Time{}
+
+	stored, created, err := repository.Upsert(context.Background(), input, activeDecision())
+	if err != nil || !created {
+		t.Fatalf("Upsert() content/created/error = %#v / %t / %v", stored, created, err)
+	}
+	if !stored.PublishedAt.IsZero() || !stored.FetchedAt.Equal(observedAt) {
+		t.Fatalf("stored times = published:%v fetched:%v, want unknown publication and preserved observation", stored.PublishedAt, stored.FetchedAt)
+	}
+	var publishedAt sql.NullTime
+	if err := runtime.SQL.QueryRow(`SELECT published_at FROM contents WHERE id = $1`, stored.ID).Scan(&publishedAt); err != nil {
+		t.Fatalf("read nullable publication time: %v", err)
+	}
+	if publishedAt.Valid {
+		t.Fatalf("published_at = %v, want SQL NULL", publishedAt.Time)
+	}
+}
+
 func TestContentRepositoryListsOnlyActiveContentWithPublishedCursor(t *testing.T) {
 	runtime := openContentRuntime(t)
 	defer func() { _ = runtime.Close() }()
@@ -230,8 +258,10 @@ func TestContentRepositoryListsOnlyActiveContentWithPublishedCursor(t *testing.T
 		{externalID: "middle", published: base.Add(time.Minute)},
 		{externalID: "newest", published: base.Add(2 * time.Minute)},
 		{externalID: "oldest", published: base},
+		{externalID: "unknown-first", published: time.Time{}},
+		{externalID: "unknown-second", published: time.Time{}},
 	} {
-		content := normalizedContent(sourceID, test.externalID, test.published)
+		content := normalizedContent(sourceID, test.externalID, base.Add(3*time.Minute))
 		content.PublishedAt = test.published
 		if test.externalID == "newest" {
 			content.Metrics.LikeCount = sourcedomain.KnownMetric(2_000)
@@ -245,15 +275,19 @@ func TestContentRepositoryListsOnlyActiveContentWithPublishedCursor(t *testing.T
 	if err != nil || len(first.Items) != 2 || first.NextCursor == "" {
 		t.Fatalf("ListActive(first) page/error = %#v / %v, want two items and cursor", first, err)
 	}
-	if first.Summary == nil || first.Summary.Total != 3 || first.Summary.Today != 0 || first.Summary.Urgent != 1 {
-		t.Fatalf("ListActive(first) summary = %#v, want total=3 today=0 urgent=1", first.Summary)
+	if first.Summary == nil || first.Summary.Total != 5 || first.Summary.Today != 0 || first.Summary.Urgent != 1 {
+		t.Fatalf("ListActive(first) summary = %#v, want total=5 today=0 urgent=1", first.Summary)
 	}
 	second, err := repository.ListActive(context.Background(), ingestiondomain.ContentListQuery{Limit: 2, Cursor: first.NextCursor})
-	if err != nil || len(second.Items) != 1 || second.NextCursor != "" {
-		t.Fatalf("ListActive(second) page/error = %#v / %v, want final item", second, err)
+	if err != nil || len(second.Items) != 2 || second.NextCursor == "" {
+		t.Fatalf("ListActive(second) page/error = %#v / %v, want two items and unknown-time cursor", second, err)
+	}
+	third, err := repository.ListActive(context.Background(), ingestiondomain.ContentListQuery{Limit: 2, Cursor: second.NextCursor})
+	if err != nil || len(third.Items) != 1 || third.NextCursor != "" {
+		t.Fatalf("ListActive(third) page/error = %#v / %v, want one final unknown-time item", third, err)
 	}
 	ids := map[int64]struct{}{}
-	for _, content := range append(first.Items, second.Items...) {
+	for _, content := range append(append(first.Items, second.Items...), third.Items...) {
 		if content.Status != ingestiondomain.ContentStatusActive {
 			t.Fatalf("listed status = %q, want active", content.Status)
 		}
@@ -262,8 +296,8 @@ func TestContentRepositoryListsOnlyActiveContentWithPublishedCursor(t *testing.T
 		}
 		ids[content.ID] = struct{}{}
 	}
-	if got := []string{first.Items[0].ExternalID, first.Items[1].ExternalID, second.Items[0].ExternalID}; strings.Join(got, ",") != "newest,middle,oldest" {
-		t.Fatalf("published order = %v, want newest,middle,oldest", got)
+	if got := []string{first.Items[0].ExternalID, first.Items[1].ExternalID, second.Items[0].ExternalID, second.Items[1].ExternalID, third.Items[0].ExternalID}; strings.Join(got, ",") != "newest,middle,oldest,unknown-second,unknown-first" {
+		t.Fatalf("published order = %v, want known times then stable unknown-time IDs", got)
 	}
 }
 

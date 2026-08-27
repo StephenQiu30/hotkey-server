@@ -8346,7 +8346,8 @@ const docTemplate = `{
                     "example": "# Release notes"
                 },
                 "published_at": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "sha256": {
                     "type": "string",
@@ -8510,7 +8511,8 @@ const docTemplate = `{
                     "$ref": "#/definitions/http.ContentMetricsResponse"
                 },
                 "published_at": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "relevance_score": {
                     "type": "number",
@@ -11765,7 +11767,8 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "published_at": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "title": {
                     "type": "string"

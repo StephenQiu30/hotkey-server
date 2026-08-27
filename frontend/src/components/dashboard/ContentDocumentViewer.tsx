@@ -84,7 +84,7 @@ export function ContentDocumentViewer({ document, canManage = false, deleting = 
               {document.title || `归档内容 #${document.content_id ?? "—"}`}
             </h1>
             <p className="mt-3 text-sm text-muted-foreground">
-              {document.source_name || "未知来源"} · 发布于 {formatDateTime(document.published_at)}
+              {document.source_name || "未知来源"} · {document.published_at ? `发布于 ${formatDateTime(document.published_at)}` : "发布时间未知"}
             </p>
           </div>
           <div className="document-actions flex shrink-0 flex-wrap gap-2">

@@ -19,6 +19,8 @@ func TestExpireBeforeExcludesOnlyExpiredActiveContentFromCursor(t *testing.T) {
 	sourceID := createLifecycleSource(t, runtime, "expire")
 	cutoff := time.Date(2026, time.July, 16, 9, 0, 0, 0, time.UTC)
 	old := lifecycleContent(sourceID, "expired", cutoff.Add(-time.Hour))
+	unknownPublished := lifecycleContent(sourceID, "unknown-published", cutoff.Add(-2*time.Hour))
+	unknownPublished.PublishedAt = time.Time{}
 	current := lifecycleContent(sourceID, "current", cutoff.Add(time.Hour))
 	if _, _, err := repository.Upsert(context.Background(), old, ingestiondomain.DedupeDecision{Status: ingestiondomain.ContentStatusActive}); err != nil {
 		t.Fatalf("Upsert(old) error = %v", err)
@@ -26,13 +28,16 @@ func TestExpireBeforeExcludesOnlyExpiredActiveContentFromCursor(t *testing.T) {
 	if _, _, err := repository.Upsert(context.Background(), current, ingestiondomain.DedupeDecision{Status: ingestiondomain.ContentStatusActive}); err != nil {
 		t.Fatalf("Upsert(current) error = %v", err)
 	}
+	if _, _, err := repository.Upsert(context.Background(), unknownPublished, ingestiondomain.DedupeDecision{Status: ingestiondomain.ContentStatusActive}); err != nil {
+		t.Fatalf("Upsert(unknown publication) error = %v", err)
+	}
 	service := newLifecycleService(t, runtime, newEvidenceStoreFake())
 	expired, err := service.ExpireBefore(context.Background(), cutoff)
 	if err != nil {
 		t.Fatalf("ExpireBefore() error = %v", err)
 	}
-	if expired != 1 {
-		t.Fatalf("ExpireBefore() expired = %d, want one active content", expired)
+	if expired != 2 {
+		t.Fatalf("ExpireBefore() expired = %d, want old published and old discovered content", expired)
 	}
 	page, err := repository.ListActive(context.Background(), ingestiondomain.ContentListQuery{Limit: 10})
 	if err != nil {

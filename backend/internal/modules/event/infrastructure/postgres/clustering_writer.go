@@ -96,7 +96,7 @@ func lockClusteringContent(ctx context.Context, transaction *sql.Tx, contentID i
 	err := transaction.QueryRowContext(ctx, `
 SELECT id, title, excerpt, published_at, dedupe_key
 FROM contents
-WHERE id = $1 AND content_status = 'active'
+WHERE id = $1 AND content_status = 'active' AND published_at IS NOT NULL
 FOR UPDATE`, contentID).Scan(&content.ID, &content.Title, &content.Excerpt, &content.PublishedAt, &content.DedupeKey)
 	if errors.Is(err, sql.ErrNoRows) {
 		return clusteringContent{}, fmt.Errorf("%w: active content %d", sharedrepository.ErrNotFound, contentID)

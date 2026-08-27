@@ -80,6 +80,18 @@ func TestDecideDuplicateChoosesExactTargetByCompletenessPublicationAndStableIden
 		t.Fatalf("hash decision target = %#v, want earlier candidate ID %d despite larger ID", decision, earlierLargerID.ID)
 	}
 
+	knownPublication := candidateFor(t, 33, 31, content.CanonicalURL, strings.Repeat("e", 64), "known", "known body", time.Date(2026, time.July, 16, 9, 0, 0, 0, time.UTC))
+	unknownPublication := candidateFor(t, 22, 31, content.CanonicalURL, strings.Repeat("f", 64), "unknown", "unknown body", time.Time{})
+	knownPublication.Completeness = 3
+	unknownPublication.Completeness = 3
+	decision, err = DecideDuplicate(content, []ingestiondomain.ContentCandidate{knownPublication, unknownPublication})
+	if err != nil {
+		t.Fatalf("DecideDuplicate(URL known publication) error = %v", err)
+	}
+	if decision.DuplicateOfID == nil || *decision.DuplicateOfID != knownPublication.ID {
+		t.Fatalf("URL decision target = %#v, want known publication candidate ID %d", decision, knownPublication.ID)
+	}
+
 	lessStable := candidateFor(t, 2, 31, content.CanonicalURL, strings.Repeat("c", 64), "title", "body", content.PublishedAt)
 	lessStable.Completeness = 3
 	stableLargerID := candidateFor(t, 77, 31, content.CanonicalURL, strings.Repeat("d", 64), "title", "body", content.PublishedAt)

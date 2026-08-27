@@ -72,7 +72,7 @@ func TestNormalizeCapturedItemCleansAndPreservesCapturedFacts(t *testing.T) {
 	}
 }
 
-func TestNormalizeCapturedItemUsesObservedAtAndMapsHackerNewsComment(t *testing.T) {
+func TestNormalizeCapturedItemPreservesUnknownPublishedAtAndMapsHackerNewsComment(t *testing.T) {
 	t.Parallel()
 
 	observedAt := time.Date(2026, time.July, 16, 10, 0, 0, 0, time.UTC)
@@ -88,8 +88,8 @@ func TestNormalizeCapturedItemUsesObservedAtAndMapsHackerNewsComment(t *testing.
 	if err != nil {
 		t.Fatalf("NormalizeCapturedItem() error = %v", err)
 	}
-	if content.ContentType != "post" || content.PublishedAt != observedAt || content.FetchedAt != observedAt {
-		t.Fatalf("content = %#v, want HN post with observed timestamp fallback", content)
+	if content.ContentType != "post" || !content.PublishedAt.IsZero() || content.FetchedAt != observedAt {
+		t.Fatalf("content = %#v, want HN post with unknown publication time and independent observed time", content)
 	}
 }
 

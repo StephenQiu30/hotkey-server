@@ -538,7 +538,7 @@ CREATE TABLE IF NOT EXISTS contents (
     external_id varchar(512) NOT NULL, author_id bigint REFERENCES source_authors(id) ON DELETE SET NULL,
     content_type varchar(16) NOT NULL CHECK (content_type IN ('article','post','video','podcast','bulletin')),
     title text NOT NULL DEFAULT '', excerpt text NOT NULL DEFAULT '', canonical_url text NOT NULL,
-    language varchar(16) NOT NULL DEFAULT 'und', published_at timestamptz NOT NULL, fetched_at timestamptz NOT NULL,
+    language varchar(16) NOT NULL DEFAULT 'und', published_at timestamptz, fetched_at timestamptz NOT NULL,
     dedupe_key char(64) NOT NULL, duplicate_of_id bigint REFERENCES contents(id) ON DELETE SET NULL,
     view_count bigint CHECK (view_count >= 0), like_count bigint CHECK (like_count >= 0),
     comment_count bigint CHECK (comment_count >= 0), share_count bigint CHECK (share_count >= 0),
@@ -553,6 +553,10 @@ CREATE TABLE IF NOT EXISTS contents (
     CHECK ((content_status = 'duplicate' AND duplicate_of_id IS NOT NULL AND dedupe_reason IS NOT NULL AND dedupe_version IS NOT NULL)
         OR (content_status <> 'duplicate' AND duplicate_of_id IS NULL AND dedupe_reason IS NULL AND dedupe_version IS NULL))
 );
+-- Existing installations originally required a publication timestamp and
+-- therefore conflated an unknown source value with discovery time. Keep the
+-- canonical schema forward-applicable without fabricating that source fact.
+ALTER TABLE contents ALTER COLUMN published_at DROP NOT NULL;
 CREATE INDEX IF NOT EXISTS contents_published_idx ON contents(published_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS contents_source_published_idx ON contents(source_connection_id, published_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS contents_dedupe_key_idx ON contents(dedupe_key);

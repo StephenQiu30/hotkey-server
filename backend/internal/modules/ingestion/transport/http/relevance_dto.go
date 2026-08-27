@@ -47,11 +47,11 @@ type RelevanceMatchPageResponse struct {
 }
 
 type RelevanceContentResponse struct {
-	ID           int64     `json:"id"`
-	Title        string    `json:"title"`
-	CanonicalURL string    `json:"canonical_url"`
-	Language     string    `json:"language"`
-	PublishedAt  time.Time `json:"published_at"`
+	ID           int64      `json:"id"`
+	Title        string     `json:"title"`
+	CanonicalURL string     `json:"canonical_url"`
+	Language     string     `json:"language"`
+	PublishedAt  *time.Time `json:"published_at" extensions:"x-nullable"`
 }
 
 type RelevanceMatchDetailResponse struct {
@@ -170,7 +170,7 @@ func relevanceExplanationResponse(raw json.RawMessage) RelevanceExplanationRespo
 }
 
 func relevanceContentResponse(content ingestiondomain.Content) RelevanceContentResponse {
-	return RelevanceContentResponse{ID: content.ID, Title: content.Title, CanonicalURL: content.CanonicalURL, Language: content.Language, PublishedAt: content.PublishedAt}
+	return RelevanceContentResponse{ID: content.ID, Title: content.Title, CanonicalURL: content.CanonicalURL, Language: content.Language, PublishedAt: optionalContentTime(content.PublishedAt)}
 }
 
 func relevancePreviewItemResponse(item ingestionapplication.RelevancePreviewItem) RelevancePreviewItemResponse {

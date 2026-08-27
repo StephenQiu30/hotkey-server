@@ -66,6 +66,25 @@ func TestContentRoutes(t *testing.T) {
 		})
 	}
 
+	t.Run("unknown publication time remains JSON null", func(t *testing.T) {
+		unknown := content
+		unknown.PublishedAt = time.Time{}
+		service := &contentQueryServiceStub{content: unknown}
+		response := performContentRequest(newContentRouter(t, service, httptransport.RoleViewer), stdhttp.MethodGet, "/api/v1/contents/7", "viewer")
+		if response.Code != stdhttp.StatusOK {
+			t.Fatalf("status = %d, want 200: %s", response.Code, response.Body.String())
+		}
+		var envelope struct {
+			Data map[string]json.RawMessage `json:"data"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		if string(envelope.Data["published_at"]) != "null" {
+			t.Fatalf("published_at = %s, want null", envelope.Data["published_at"])
+		}
+	})
+
 	t.Run("invalid cursor is a safe bad request", func(t *testing.T) {
 		service := &contentQueryServiceStub{listError: sharederrors.New(sharederrors.CodeInvalidRequest, stdhttp.StatusBadRequest, "")}
 		router := newContentRouter(t, service, httptransport.RoleViewer)

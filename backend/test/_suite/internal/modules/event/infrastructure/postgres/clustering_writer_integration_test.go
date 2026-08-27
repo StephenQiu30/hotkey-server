@@ -4,6 +4,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -11,8 +12,39 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
+
+func TestApplyClusteringRejectsUnknownPublishedAtBeforeWritingEventFacts(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	var sourceID, contentID int64
+	if err := runtime.SQL.QueryRow(`INSERT INTO source_connections (source_type,name,endpoint) VALUES ('rss','unknown-publication','https://event.example') RETURNING id`).Scan(&sourceID); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`INSERT INTO contents (source_connection_id,external_id,content_type,title,canonical_url,published_at,fetched_at,dedupe_key) VALUES ($1,'unknown-publication','article','未知发布时间','https://event.example/unknown',NULL,now(),repeat('a',64)) RETURNING id`, sourceID).Scan(&contentID); err != nil {
+		t.Fatal(err)
+	}
+	decision := domain.Decision{ContentID: contentID, CandidateEventKey: "__new_event__", ClusteringVersion: "v1", FeatureInputHash: strings.Repeat("a", 64), Channel: domain.ChannelFingerprint, Decision: domain.DecisionNewEvent, DecisionOrigin: domain.DecisionOriginRule}
+	if _, err := NewRepository(runtime).ApplyClustering(ctx, []domain.Decision{decision}); !errors.Is(err, sharedrepository.ErrNotFound) {
+		t.Fatalf("ApplyClustering() error = %v, want not found for non-clusterable unknown publication time", err)
+	}
+	var events, members, decisions int
+	if err := runtime.SQL.QueryRow(`SELECT (SELECT count(*) FROM events WHERE representative_content_id=$1),(SELECT count(*) FROM event_contents WHERE content_id=$1),(SELECT count(*) FROM event_clustering_decisions WHERE content_id=$1)`, contentID).Scan(&events, &members, &decisions); err != nil {
+		t.Fatal(err)
+	}
+	if events != 0 || members != 0 || decisions != 0 {
+		t.Fatalf("event side effects = events:%d members:%d decisions:%d, want zero", events, members, decisions)
+	}
+}
 
 func TestApplyClusteringCreatesExactlyOneEventAcrossRetries(t *testing.T) {
 	ctx := context.Background()

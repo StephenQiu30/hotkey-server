@@ -131,7 +131,7 @@ func (repository *ContentRepository) Upsert(ctx context.Context, content ingesti
 		var contentID int64
 		arguments := []any{
 			content.SourceConnectionID, content.ExternalID, content.ContentType, content.Title, content.Excerpt,
-			content.CanonicalURL, content.Language, content.PublishedAt.UTC(), content.FetchedAt.UTC(), content.ContentHash,
+			content.CanonicalURL, content.Language, nullablePublishedAt(content.PublishedAt), content.FetchedAt.UTC(), content.ContentHash,
 			decision.DuplicateOfID, nullableString(decision.Reason), nullableString(decision.Version),
 		}
 		arguments = append(arguments, metricArguments(content.Metrics)...)
@@ -481,7 +481,7 @@ UPDATE contents
 SET content_status = 'expired', version = version + 1, updated_at = now()
 WHERE content_status = 'active'
   AND deleted_at IS NULL
-  AND published_at < $1`, before.UTC())
+  AND COALESCE(published_at, fetched_at) < $1`, before.UTC())
 		if err != nil {
 			return databaserepository.MapError(err)
 		}
@@ -680,11 +680,11 @@ func contentListStatement(query ingestiondomain.ContentListQuery, cursorID int64
 			conditions = append(conditions, `(`+contentHeatSQL("c")+`, c.id) < (
     SELECT `+contentHeatSQL("previous")+`, previous.id FROM contents AS previous WHERE previous.id = `+cursor+`)`)
 		default:
-			conditions = append(conditions, `(c.published_at, c.id) < (
-    SELECT previous.published_at, previous.id FROM contents AS previous WHERE previous.id = `+cursor+`)`)
+			conditions = append(conditions, `(COALESCE(c.published_at, '-infinity'::timestamptz), c.id) < (
+	SELECT COALESCE(previous.published_at, '-infinity'::timestamptz), previous.id FROM contents AS previous WHERE previous.id = `+cursor+`)`)
 		}
 	}
-	orderBy := "c.published_at DESC, c.id DESC"
+	orderBy := "COALESCE(c.published_at, '-infinity'::timestamptz) DESC, c.id DESC"
 	switch query.Sort {
 	case ingestiondomain.ContentSortDiscovered:
 		orderBy = "c.fetched_at DESC, c.id DESC"
@@ -785,6 +785,13 @@ func nullableString(value string) any {
 		return nil
 	}
 	return value
+}
+
+func nullablePublishedAt(value time.Time) any {
+	if value.IsZero() {
+		return nil
+	}
+	return value.UTC()
 }
 
 func validateAsset(asset ingestiondomain.ContentAsset) error {

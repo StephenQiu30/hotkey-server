@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/domain"
@@ -40,7 +41,7 @@ func NormalizeCapturedItem(item sourcedomain.CapturedItem, sourceConnectionID in
 	if err != nil {
 		return ingestiondomain.NormalizedContent{}, err
 	}
-	publishedAt := item.ObservedAt.UTC()
+	publishedAt := time.Time{}
 	if item.PublishedAt != nil && !item.PublishedAt.IsZero() {
 		publishedAt = item.PublishedAt.UTC()
 	}

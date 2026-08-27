@@ -42,7 +42,7 @@ type ContentResponse struct {
 	Title             string                 `json:"title" example:"Release notes"`
 	CanonicalURL      string                 `json:"canonical_url" example:"https://example.test/items/123"`
 	Language          string                 `json:"language" example:"en"`
-	PublishedAt       time.Time              `json:"published_at"`
+	PublishedAt       *time.Time             `json:"published_at" extensions:"x-nullable"`
 	FetchedAt         time.Time              `json:"fetched_at"`
 	Metrics           ContentMetricsResponse `json:"metrics"`
 	DedupeStatus      string                 `json:"dedupe_status" enums:"active,duplicate"`
@@ -78,7 +78,7 @@ type ContentDocumentResponse struct {
 	SourceName        string     `json:"source_name" example:"Product feed"`
 	CanonicalURL      string     `json:"canonical_url" example:"https://example.test/items/123"`
 	Language          string     `json:"language" example:"en"`
-	PublishedAt       time.Time  `json:"published_at"`
+	PublishedAt       *time.Time `json:"published_at" extensions:"x-nullable"`
 	Availability      string     `json:"availability" enums:"ready,not_captured,unavailable"`
 	UnavailableReason *string    `json:"unavailable_reason,omitempty" enums:"pending,missing,deleting,read_failed,integrity_failed" extensions:"x-nullable"`
 	Markdown          string     `json:"markdown" example:"# Release notes"`
@@ -91,7 +91,7 @@ func contentResponse(content ingestiondomain.Content) ContentResponse {
 		ID: content.ID, SourceType: string(content.SourceType), SourceName: content.SourceName,
 		ExternalID: content.ExternalID, ContentType: content.ContentType, Title: content.Title,
 		CanonicalURL: content.CanonicalURL, Language: content.Language,
-		PublishedAt: content.PublishedAt, FetchedAt: content.FetchedAt,
+		PublishedAt: optionalContentTime(content.PublishedAt), FetchedAt: content.FetchedAt,
 		Metrics: ContentMetricsResponse{
 			ViewCount: content.Metrics.ViewCount, LikeCount: content.Metrics.LikeCount,
 			CommentCount: content.Metrics.CommentCount, ShareCount: content.Metrics.ShareCount,
@@ -129,7 +129,6 @@ func hotspotPageResponse(page ingestiondomain.ContentPage) HotspotPageResponse {
 
 func hotspotCard(content ingestiondomain.Content) hotspot.Card {
 	id := content.ID
-	publishedAt := content.PublishedAt
 	metrics := hotspot.Metrics{
 		ViewCount: content.Metrics.ViewCount, LikeCount: content.Metrics.LikeCount,
 		CommentCount: content.Metrics.CommentCount, ShareCount: content.Metrics.ShareCount,
@@ -153,7 +152,7 @@ func hotspotCard(content ingestiondomain.Content) hotspot.Card {
 		ExternalID: content.ExternalID, ContentType: content.ContentType, Title: content.Title,
 		Summary: content.Excerpt, CanonicalURL: content.CanonicalURL,
 		Author: content.Author.DisplayName, Language: content.Language,
-		PublishedAt: &publishedAt, DiscoveredAt: content.FetchedAt, Metrics: metrics,
+		PublishedAt: optionalContentTime(content.PublishedAt), DiscoveredAt: content.FetchedAt, Metrics: metrics,
 		HeatScore: heat, QualityState: hotspot.QualityUnavailable,
 		Relevance: relevance, RelevanceReason: reason,
 		Importance: hotspot.Importance(heat),
@@ -163,7 +162,7 @@ func hotspotCard(content ingestiondomain.Content) hotspot.Card {
 func contentDocumentResponse(document ingestiondomain.ContentDocument) ContentDocumentResponse {
 	response := ContentDocumentResponse{
 		ContentID: document.ContentID, Title: document.Title, SourceName: document.SourceName,
-		CanonicalURL: document.CanonicalURL, Language: document.Language, PublishedAt: document.PublishedAt,
+		CanonicalURL: document.CanonicalURL, Language: document.Language, PublishedAt: optionalContentTime(document.PublishedAt),
 		Availability: string(document.Availability), Markdown: document.Markdown, SHA256: document.SHA256,
 	}
 	if document.UnavailableReason != "" {
@@ -182,4 +181,12 @@ func nullableContentField(value string) *string {
 		return nil
 	}
 	return &value
+}
+
+func optionalContentTime(value time.Time) *time.Time {
+	if value.IsZero() {
+		return nil
+	}
+	utc := value.UTC()
+	return &utc
 }

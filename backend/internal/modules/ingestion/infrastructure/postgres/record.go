@@ -15,7 +15,8 @@ type contentRecord struct {
 	id, version, sourceConnectionID                int64
 	externalID, contentType, title, excerpt        string
 	canonicalURL, language, contentHash, status    string
-	publishedAt, fetchedAt                         time.Time
+	publishedAt                                    sql.NullTime
+	fetchedAt                                      time.Time
 	authorExternalID, authorDisplayName            sql.NullString
 	duplicateOfID                                  sql.NullInt64
 	dedupeReason, dedupeVersion                    sql.NullString
@@ -101,7 +102,6 @@ func contentFromRecord(record contentRecord) ingestiondomain.Content {
 		Excerpt:            record.excerpt,
 		CanonicalURL:       record.canonicalURL,
 		Language:           record.language,
-		PublishedAt:        record.publishedAt.UTC(),
 		FetchedAt:          record.fetchedAt.UTC(),
 		ContentHash:        record.contentHash,
 		Metrics: sourcedomain.SourceMetrics{
@@ -113,6 +113,9 @@ func contentFromRecord(record contentRecord) ingestiondomain.Content {
 		Status:        ingestiondomain.ContentStatus(record.status),
 		DedupeReason:  record.dedupeReason.String,
 		DedupeVersion: record.dedupeVersion.String,
+	}
+	if record.publishedAt.Valid {
+		content.PublishedAt = record.publishedAt.Time.UTC()
 	}
 	if record.authorExternalID.Valid {
 		content.Author.ExternalID = record.authorExternalID.String

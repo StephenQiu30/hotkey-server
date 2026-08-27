@@ -104,6 +104,20 @@ describe("ContentDocumentViewer", () => {
     );
   });
 
+  it("labels an absent publication time without substituting capture time", () => {
+    render(
+      <ContentDocumentViewer
+        document={{
+          ...readyDocument,
+          published_at: undefined,
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/发布时间未知/)).toBeInTheDocument();
+    expect(screen.queryByText(/发布于 —/)).not.toBeInTheDocument();
+  });
+
   it.each([
     ["missing", "归档证据缺失"],
     ["deleting", "归档证据正在清理"],
