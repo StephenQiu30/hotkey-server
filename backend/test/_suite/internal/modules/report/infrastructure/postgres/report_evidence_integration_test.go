@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	reportapp "github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
@@ -54,15 +53,187 @@ func TestReportRepositoryFreezesExactSentenceCitationsAndPublishedVersion(t *tes
 		loaded.Items[0].Sentences[0].ClaimEvidenceVersionIDs[0] != fixture.claimEvidenceVersionID {
 		t.Fatalf("loaded cited report = %#v", loaded)
 	}
-	published, err := reportapp.NewBuilder().Publish(loaded)
+	pending, err := repository.Transition(ctx, domain.RevisionTransition{ReportID: loaded.ID, ExpectedVersion: loaded.Version,
+		ActorID: fixture.actorID, From: domain.ReportDraft, To: domain.ReportPendingApproval})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.Save(ctx, published); err != nil {
+	if err := repository.ValidatePublication(ctx, pending); err != nil {
 		t.Fatal(err)
+	}
+	published, err := repository.Transition(ctx, domain.RevisionTransition{ReportID: pending.ID, ExpectedVersion: pending.Version,
+		ActorID: fixture.actorID, From: domain.ReportPendingApproval, To: domain.ReportPublished})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !published.Frozen {
+		t.Fatalf("published report = %#v", published)
 	}
 	if err := repository.Save(ctx, fixture.report); !errors.Is(err, sharedrepository.ErrImmutable) {
 		t.Fatalf("save stale draft error = %v, want ErrImmutable", err)
+	}
+}
+
+func TestReportRevisionApprovalIsOptimisticAuditedAndRegenerationPreservesApprovedSnapshot(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	fixture := seedReportEvidenceFixture(t, runtime)
+	repository := NewRepository(runtime)
+	if err := repository.Save(ctx, fixture.report); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := repository.Transition(ctx, domain.RevisionTransition{ReportID: fixture.report.ID, ExpectedVersion: 1,
+		ActorID: fixture.actorID, From: domain.ReportDraft, To: domain.ReportPendingApproval})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pending.Version != 2 || pending.Status != domain.ReportPendingApproval {
+		t.Fatalf("pending revision = %#v", pending)
+	}
+	if _, err := repository.Transition(ctx, domain.RevisionTransition{ReportID: fixture.report.ID, ExpectedVersion: 1,
+		ActorID: fixture.actorID, From: domain.ReportPendingApproval, To: domain.ReportPublished}); !errors.Is(err, sharedrepository.ErrConflict) {
+		t.Fatalf("stale approval error = %v, want ErrConflict", err)
+	}
+	if err := repository.ValidatePublication(ctx, pending); err != nil {
+		t.Fatal(err)
+	}
+	approved, err := repository.Transition(ctx, domain.RevisionTransition{ReportID: fixture.report.ID, ExpectedVersion: 2,
+		ActorID: fixture.actorID, From: domain.ReportPendingApproval, To: domain.ReportPublished})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if approved.Version != 3 || approved.Status != domain.ReportPublished || !approved.Frozen {
+		t.Fatalf("approved revision = %#v", approved)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE reports SET body='tampered' WHERE id=$1`, approved.ID); err == nil {
+		t.Fatal("approved report body update succeeded")
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `DELETE FROM report_items WHERE report_id=$1`, approved.ID); err == nil {
+		t.Fatal("approved report item deletion succeeded")
+	}
+
+	regenerated := cloneCitedReport(fixture.report)
+	regenerated.ID, regenerated.Version, regenerated.VersionNo = 1, 1, 2
+	regenerated.Title = "重新生成日报"
+	regenerated.InputSnapshotHash = domain.ComputeInputSnapshotHash(regenerated)
+	regenerated, err = repository.Create(ctx, regenerated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if regenerated.ID == approved.ID || regenerated.VersionNo != 2 || regenerated.Status != domain.ReportDraft {
+		t.Fatalf("regenerated revision = %#v", regenerated)
+	}
+	original, err := repository.Get(ctx, approved.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if original.Status != domain.ReportPublished || original.Title != fixture.report.Title ||
+		len(original.Items) != 1 || len(original.Items[0].Sentences) != 1 ||
+		original.Items[0].Sentences[0].ClaimEvidenceVersionIDs[0] != fixture.claimEvidenceVersionID {
+		t.Fatalf("approved revision changed after regeneration: %#v", original)
+	}
+	latest, err := repository.FindByPeriod(ctx, fixture.report.Type, fixture.report.MonitorID, fixture.report.Period.Start, fixture.report.Period.End)
+	if err != nil || latest.ID != regenerated.ID {
+		t.Fatalf("latest revision = %#v/%v", latest, err)
+	}
+	var transitions int
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT count(*) FROM report_revision_transitions WHERE report_id=$1`, approved.ID).Scan(&transitions); err != nil {
+		t.Fatal(err)
+	}
+	if transitions != 2 {
+		t.Fatalf("revision transitions = %d, want 2", transitions)
+	}
+}
+
+func TestReportRevisionConcurrentApprovalHasOneWinner(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	fixture := seedReportEvidenceFixture(t, runtime)
+	repository := NewRepository(runtime)
+	if err := repository.Save(ctx, fixture.report); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := repository.Transition(ctx, domain.RevisionTransition{ReportID: fixture.report.ID, ExpectedVersion: 1,
+		ActorID: fixture.actorID, From: domain.ReportDraft, To: domain.ReportPendingApproval})
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for index := 0; index < 2; index++ {
+		go func() {
+			<-start
+			_, transitionErr := repository.Transition(ctx, domain.RevisionTransition{ReportID: pending.ID, ExpectedVersion: pending.Version,
+				ActorID: fixture.actorID, From: domain.ReportPendingApproval, To: domain.ReportPublished})
+			results <- transitionErr
+		}()
+	}
+	close(start)
+	winners, conflicts := 0, 0
+	for index := 0; index < 2; index++ {
+		result := <-results
+		switch {
+		case result == nil:
+			winners++
+		case errors.Is(result, sharedrepository.ErrConflict):
+			conflicts++
+		default:
+			t.Fatalf("concurrent approval error = %v", result)
+		}
+	}
+	if winners != 1 || conflicts != 1 {
+		t.Fatalf("concurrent approvals winners=%d conflicts=%d", winners, conflicts)
+	}
+}
+
+func TestReportRevisionRejectionIsFrozenAndAudited(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	fixture := seedReportEvidenceFixture(t, runtime)
+	repository := NewRepository(runtime)
+	if err := repository.Save(ctx, fixture.report); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := repository.Transition(ctx, domain.RevisionTransition{ReportID: fixture.report.ID, ExpectedVersion: 1,
+		ActorID: fixture.actorID, From: domain.ReportDraft, To: domain.ReportPendingApproval})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rejected, err := repository.Transition(ctx, domain.RevisionTransition{ReportID: pending.ID, ExpectedVersion: pending.Version,
+		ActorID: fixture.actorID, From: domain.ReportPendingApproval, To: domain.ReportRejected, ReasonCode: "insufficient_context"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rejected.Status != domain.ReportRejected || rejected.Frozen || rejected.ReviewReason != "insufficient_context" ||
+		rejected.ReviewedBy == nil || *rejected.ReviewedBy != fixture.actorID {
+		t.Fatalf("rejected revision = %#v", rejected)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE reports SET title='tampered',version=version+1 WHERE id=$1`, rejected.ID); err == nil {
+		t.Fatal("rejected report update succeeded")
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE report_revision_transitions SET reason_code='tampered' WHERE report_id=$1`, rejected.ID); err == nil {
+		t.Fatal("revision transition audit update succeeded")
 	}
 }
 
@@ -118,27 +289,19 @@ func TestReportPublicationRevalidatesCitationFactsInsteadOfAggregateEvidenceStat
 
 	hashMismatch := cloneCitedReport(fixture.report)
 	hashMismatch.Items[0].EvidenceSetHash = strings.Repeat("9", 64)
-	if err := repository.Save(ctx, hashMismatch); err != nil {
-		t.Fatal(err)
-	}
+	hashMismatch = saveDraftMutation(t, ctx, repository, hashMismatch)
 	if err := repository.ValidatePublication(ctx, hashMismatch); !errors.Is(err, domain.ErrEvidenceInvalid) {
 		t.Fatalf("evidence hash mismatch error = %v, want ErrEvidenceInvalid", err)
 	}
-	if err := repository.Save(ctx, fixture.report); err != nil {
-		t.Fatal(err)
-	}
+	fixture.report = saveDraftMutation(t, ctx, repository, fixture.report)
 
 	textMismatch := cloneCitedReport(fixture.report)
 	textMismatch.Items[0].Sentences[0].Text = "被篡改的事实句"
-	if err := repository.Save(ctx, textMismatch); err != nil {
-		t.Fatal(err)
-	}
+	textMismatch = saveDraftMutation(t, ctx, repository, textMismatch)
 	if err := repository.ValidatePublication(ctx, textMismatch); !errors.Is(err, domain.ErrEvidenceInvalid) {
 		t.Fatalf("source sentence mismatch error = %v, want ErrEvidenceInvalid", err)
 	}
-	if err := repository.Save(ctx, fixture.report); err != nil {
-		t.Fatal(err)
-	}
+	fixture.report = saveDraftMutation(t, ctx, repository, fixture.report)
 
 	setClaimEvidenceCapturedAt(t, runtime, fixture.claimEvidenceVersionID, fixture.report.Period.Start.Add(-time.Second))
 	if err := repository.ValidatePublication(ctx, fixture.report); !errors.Is(err, domain.ErrEvidenceInvalid) {
@@ -166,6 +329,25 @@ func cloneCitedReport(report domain.Report) domain.Report {
 		}
 	}
 	return result
+}
+
+func saveDraftMutation(t *testing.T, ctx context.Context, repository *Repository, report domain.Report) domain.Report {
+	t.Helper()
+	current, err := repository.Get(ctx, report.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report.Version = current.Version + 1
+	report.Status, report.Frozen = domain.ReportDraft, false
+	report.InputSnapshotHash = domain.ComputeInputSnapshotHash(report)
+	if err := repository.Save(ctx, report); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := repository.Get(ctx, report.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return stored
 }
 
 func seedReportEvidenceFixture(t *testing.T, runtime *database.Runtime) reportEvidenceFixture {
@@ -304,6 +486,7 @@ VALUES ($1,1,$2,'1h-6h-24h-v1',950001,'fixture-heat-v1',$3,$4,950002,950003,9500
 			HeatScore: 77, EvidenceSetHash: strings.Repeat("5", 64), ReasonCodes: []string{"fixture"},
 			Sentences: []domain.Sentence{{SourceSummarySentenceID: sentenceID, Ordinal: 0, Text: "主体完成发布",
 				DecisionOrigin: "manual", ActorUserID: &actorID, ClaimEvidenceVersionIDs: []int64{fixture.claimEvidenceVersionID}}}}}}
+	fixture.report.InputSnapshotHash = domain.ComputeInputSnapshotHash(fixture.report)
 	return fixture
 }
 

@@ -35,21 +35,23 @@ func TestDeliveryRepositoryIsIdempotentAndAppendsAttempts(t *testing.T) {
 	if err := runtime.SQL.QueryRowContext(ctx, `INSERT INTO event_updates (event_id, sequence_no, kind, summary, observed_at, reason_codes, before_state, after_state, evidence_set_hash, idempotency_key) VALUES ($1, 1, 'event_created', 'Delivery snapshot', $2, ARRAY['delivery_fixture'], '{}', '{"heat_score":90}', repeat('a',64), repeat('b',64)) RETURNING id`, eventID, now).Scan(&eventUpdateID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO reports (id, report_type, period_start, period_end, timezone, title, status, version_no) VALUES (8101, 'daily', $1, $2, 'UTC', 'Delivery report', 'published', 1)`, now, now.Add(time.Hour)); err != nil {
+	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO reports (id, report_type, period_start, period_end, timezone, title, status, version_no, created_by, updated_by) VALUES (8101, 'daily', $1, $2, 'UTC', 'Delivery report', 'draft', 1, $3, $3)`, now, now.Add(time.Hour), userID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO report_items (report_id, event_id, event_update_id, rank, section, title_snapshot, summary_snapshot, heat_score_snapshot, evidence_set_hash, reason_codes) VALUES (8101, $1, $2, 1, 'events', 'Delivery event', 'Snapshot', 90, repeat('a',64), ARRAY['delivery_fixture'])`, eventID, eventUpdateID); err != nil {
 		t.Fatal(err)
 	}
+	publishReportFixture(t, ctx, runtime, 8101, userID)
 	if err := runtime.SQL.QueryRowContext(ctx, `INSERT INTO monitors (name, status) VALUES ('delivery-scope-' || md5(random()::text), 'active') RETURNING id`).Scan(&monitorID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO reports (id, monitor_id, report_type, period_start, period_end, timezone, title, status, version_no) VALUES (8102, $1, 'daily', $2, $3, 'UTC', 'Scoped report', 'published', 1)`, monitorID, now.Add(time.Hour), now.Add(2*time.Hour)); err != nil {
+	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO reports (id, monitor_id, report_type, period_start, period_end, timezone, title, status, version_no, created_by, updated_by) VALUES (8102, $1, 'daily', $2, $3, 'UTC', 'Scoped report', 'draft', 1, $4, $4)`, monitorID, now.Add(time.Hour), now.Add(2*time.Hour), userID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO report_items (report_id, event_id, event_update_id, rank, section, title_snapshot, summary_snapshot, heat_score_snapshot, evidence_set_hash, reason_codes) VALUES (8102, $1, $2, 1, 'events', 'Scoped event', 'Scoped snapshot', 95, repeat('a',64), ARRAY['delivery_fixture'])`, eventID, eventUpdateID); err != nil {
 		t.Fatal(err)
 	}
+	publishReportFixture(t, ctx, runtime, 8102, userID)
 	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO report_subscriptions (id, user_id, report_type, channel, recipient, timezone, schedule) VALUES (8201, $1, 'daily', 'email', 'delivery@example.test', 'UTC', '0 8 * * *')`, userID); err != nil {
 		t.Fatal(err)
 	}
@@ -119,5 +121,21 @@ func TestDeliveryRepositoryIsIdempotentAndAppendsAttempts(t *testing.T) {
 	scopedFeed, err := repository.ReadFeed(ctx, scopedRSSSubscription.TokenHash)
 	if err != nil || scopedFeed.Title != "Scoped report" || len(scopedFeed.Items) != 1 {
 		t.Fatalf("Read scoped feed() = %#v/%v", scopedFeed, err)
+	}
+}
+
+func publishReportFixture(t *testing.T, ctx context.Context, runtime *database.Runtime, reportID, actorID int64) {
+	t.Helper()
+	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE reports SET version=2,status='pending_approval',submitted_at=now(),submitted_by=$2,updated_by=$2 WHERE id=$1`, reportID, actorID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO report_revision_transitions (report_id,from_status,to_status,expected_resource_version,result_resource_version,actor_user_id) VALUES ($1,'draft','pending_approval',1,2,$2)`, reportID, actorID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE reports SET version=3,status='published',published_at=now(),reviewed_at=now(),reviewed_by=$2,updated_by=$2 WHERE id=$1`, reportID, actorID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO report_revision_transitions (report_id,from_status,to_status,expected_resource_version,result_resource_version,actor_user_id) VALUES ($1,'pending_approval','published',2,3,$2)`, reportID, actorID); err != nil {
+		t.Fatal(err)
 	}
 }

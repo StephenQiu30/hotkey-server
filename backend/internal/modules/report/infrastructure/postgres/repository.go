@@ -25,7 +25,8 @@ func (repository *Repository) FindByPeriod(ctx context.Context, reportType domai
 	queryer := reportQueryerFor(ctx, repository.runtime)
 	report, err := scanReport(queryer.QueryRowContext(ctx, reportSelect+`
 WHERE report_type = $1 AND monitor_id IS NOT DISTINCT FROM $2
-  AND period_start = $3 AND period_end = $4 AND version_no = 1 AND deleted_at IS NULL`, reportType, monitorID, start.UTC(), end.UTC()))
+  AND period_start = $3 AND period_end = $4 AND deleted_at IS NULL
+ORDER BY version_no DESC LIMIT 1`, reportType, monitorID, start.UTC(), end.UTC()))
 	if err != nil {
 		return domain.Report{}, err
 	}
@@ -59,10 +60,10 @@ func (repository *Repository) Create(ctx context.Context, report domain.Report) 
 	err := repository.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
 		var reportID int64
 		err := transaction.SQL.QueryRowContext(transactionCtx, `
-INSERT INTO reports (version, report_type, monitor_id, period_start, period_end, timezone, title, summary, body, status, version_no, generated_at, created_by, updated_by)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now(),$12,$13)
+INSERT INTO reports (version, report_type, monitor_id, period_start, period_end, timezone, title, summary, body, input_snapshot_hash, status, version_no, generated_at, created_by, updated_by)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now(),$13,$14)
 ON CONFLICT (report_type, COALESCE(monitor_id, 0), period_start, period_end, version_no) DO NOTHING
-RETURNING id`, report.Version, report.Type, report.MonitorID, report.Period.Start.UTC(), report.Period.End.UTC(), report.Period.Location.String(), report.Title, report.Summary, report.Body, report.Status, report.VersionNo, report.CreatedBy, report.UpdatedBy).Scan(&reportID)
+RETURNING id`, report.Version, report.Type, report.MonitorID, report.Period.Start.UTC(), report.Period.End.UTC(), report.Period.Location.String(), report.Title, report.Summary, report.Body, report.InputSnapshotHash, report.Status, report.VersionNo, report.CreatedBy, report.UpdatedBy).Scan(&reportID)
 		if err == nil {
 			report.ID = reportID
 			created = true
@@ -93,15 +94,31 @@ func (repository *Repository) Save(ctx context.Context, report domain.Report) er
 		return fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	write := func(ctx context.Context, transaction database.Transaction) error {
+		var existingVersion int64
 		var existingStatus string
-		err := transaction.SQL.QueryRowContext(ctx, `SELECT status FROM reports WHERE id = $1 FOR UPDATE`, report.ID).Scan(&existingStatus)
+		err := transaction.SQL.QueryRowContext(ctx, `SELECT version,status FROM reports WHERE id = $1 FOR UPDATE`, report.ID).Scan(&existingVersion, &existingStatus)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return databaserepository.MapError(err)
 		}
-		if err == nil && existingStatus == string(domain.ReportPublished) {
-			return sharedrepository.ErrImmutable
+		if err == nil {
+			if existingStatus != string(domain.ReportDraft) || report.Status != domain.ReportDraft {
+				return sharedrepository.ErrImmutable
+			}
+			if report.Version != existingVersion+1 {
+				return sharedrepository.ErrConflict
+			}
+		} else if report.Status != domain.ReportDraft {
+			return sharedrepository.ErrInvalidInput
 		}
-		if _, err := transaction.SQL.ExecContext(ctx, `INSERT INTO reports (id, version, report_type, monitor_id, period_start, period_end, timezone, title, summary, body, status, version_no, generated_at, published_at, created_by, updated_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now(),CASE WHEN $13::text = 'published' THEN now() ELSE NULL END,$14,$15) ON CONFLICT (id) DO UPDATE SET version = EXCLUDED.version, title = EXCLUDED.title, summary = EXCLUDED.summary, body = EXCLUDED.body, status = EXCLUDED.status, generated_at = EXCLUDED.generated_at, published_at = EXCLUDED.published_at, updated_by = EXCLUDED.updated_by, updated_at = now()`, report.ID, report.Version, report.Type, report.MonitorID, report.Period.Start.UTC(), report.Period.End.UTC(), report.Period.Location.String(), report.Title, report.Summary, report.Body, report.Status, report.VersionNo, report.Status, report.CreatedBy, report.UpdatedBy); err != nil {
+		if _, err := transaction.SQL.ExecContext(ctx, `INSERT INTO reports
+(id,version,report_type,monitor_id,period_start,period_end,timezone,title,summary,body,input_snapshot_hash,status,version_no,generated_at,created_by,updated_by)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now(),$14,$15)
+ON CONFLICT (id) DO UPDATE SET version=EXCLUDED.version,title=EXCLUDED.title,summary=EXCLUDED.summary,
+body=EXCLUDED.body,input_snapshot_hash=EXCLUDED.input_snapshot_hash,generated_at=EXCLUDED.generated_at,
+updated_by=EXCLUDED.updated_by,updated_at=now()
+WHERE reports.version=$2-1 AND reports.status='draft'`, report.ID, report.Version, report.Type, report.MonitorID,
+			report.Period.Start.UTC(), report.Period.End.UTC(), report.Period.Location.String(), report.Title, report.Summary,
+			report.Body, report.InputSnapshotHash, report.Status, report.VersionNo, report.CreatedBy, report.UpdatedBy); err != nil {
 			return databaserepository.MapError(err)
 		}
 		if _, err := transaction.SQL.ExecContext(ctx, `DELETE FROM report_items WHERE report_id = $1`, report.ID); err != nil {
@@ -113,6 +130,64 @@ func (repository *Repository) Save(ctx context.Context, report domain.Report) er
 		return write(ctx, transaction)
 	}
 	return repository.runtime.WithinTransaction(ctx, write)
+}
+
+func (repository *Repository) Transition(ctx context.Context, transition domain.RevisionTransition) (domain.Report, error) {
+	if repository == nil || repository.runtime == nil || transition.ReportID <= 0 || transition.ExpectedVersion <= 0 ||
+		transition.ActorID <= 0 || transition.From == transition.To {
+		return domain.Report{}, sharedrepository.ErrInvalidInput
+	}
+	if transition.To == domain.ReportRejected && transition.ReasonCode == "" {
+		return domain.Report{}, sharedrepository.ErrInvalidInput
+	}
+	var result domain.Report
+	write := func(transactionCtx context.Context, transaction database.Transaction) error {
+		row := transaction.SQL.QueryRowContext(transactionCtx, `
+UPDATE reports SET version=version+1,status=$4::varchar,updated_by=$5,updated_at=now(),
+    submitted_at=CASE WHEN $4::varchar='pending_approval' THEN now() ELSE submitted_at END,
+    submitted_by=CASE WHEN $4::varchar='pending_approval' THEN $5 ELSE submitted_by END,
+    reviewed_at=CASE WHEN $4::varchar IN ('published','rejected') THEN now() ELSE reviewed_at END,
+    reviewed_by=CASE WHEN $4::varchar IN ('published','rejected') THEN $5 ELSE reviewed_by END,
+    review_reason=CASE WHEN $4::varchar='rejected' THEN $6::varchar ELSE review_reason END,
+    published_at=CASE WHEN $4::varchar='published' THEN now() ELSE published_at END
+WHERE id=$1 AND version=$2 AND status=$3::varchar AND deleted_at IS NULL
+RETURNING id,version,report_type,monitor_id,period_start,period_end,timezone,title,summary,body,input_snapshot_hash,
+status,version_no,generated_at,published_at,submitted_at,reviewed_at,created_by,updated_by,submitted_by,reviewed_by,review_reason`,
+			transition.ReportID, transition.ExpectedVersion, transition.From, transition.To, transition.ActorID, nullableReportReason(transition.ReasonCode))
+		var err error
+		result, err = scanReport(row)
+		if errors.Is(err, sharedrepository.ErrNotFound) {
+			return sharedrepository.ErrConflict
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := transaction.SQL.ExecContext(transactionCtx, `INSERT INTO report_revision_transitions
+(report_id,from_status,to_status,expected_resource_version,result_resource_version,actor_user_id,reason_code)
+VALUES ($1,$2,$3,$4,$5,$6,$7)`, transition.ReportID, transition.From, transition.To, transition.ExpectedVersion,
+			result.Version, transition.ActorID, nullableReportReason(transition.ReasonCode)); err != nil {
+			return databaserepository.MapError(err)
+		}
+		result.Items, err = repository.items(transactionCtx, transaction.SQL, result.ID)
+		return err
+	}
+	if transaction, ok := database.TransactionFromContext(ctx); ok {
+		if err := write(ctx, transaction); err != nil {
+			return domain.Report{}, err
+		}
+		return result, nil
+	}
+	if err := repository.runtime.WithinTransaction(ctx, write); err != nil {
+		return domain.Report{}, err
+	}
+	return result, nil
+}
+
+func nullableReportReason(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 func insertReportItems(ctx context.Context, transaction *sql.Tx, report domain.Report) error {
@@ -163,13 +238,13 @@ func (repository *Repository) ValidatePublication(ctx context.Context, report do
 		return sharedrepository.ErrUnavailable
 	}
 	if err := report.ValidatePublicationShape(); err != nil {
-		return domain.ErrEvidenceInvalid
+		return err
 	}
 	var invalid bool
 	err := reportQueryerFor(ctx, repository.runtime).QueryRowContext(ctx, `
 SELECT NOT EXISTS (
     SELECT 1 FROM reports
-    WHERE id=$1 AND version=$2 AND status='draft' AND deleted_at IS NULL
+    WHERE id=$1 AND version=$2 AND status=$3 AND status IN ('draft','pending_approval') AND deleted_at IS NULL
 ) OR EXISTS (
     SELECT 1
     FROM report_items AS item
@@ -288,7 +363,7 @@ SELECT NOT EXISTS (
             )
         )
     )
-)`, report.ID, report.Version).Scan(&invalid)
+)`, report.ID, report.Version, report.Status).Scan(&invalid)
 	if err != nil {
 		return databaserepository.MapError(err)
 	}
@@ -376,7 +451,8 @@ LIMIT $4`, reportType, status, query.Cursor, query.Limit+1)
 	return page, nil
 }
 
-const reportSelect = `SELECT id, version, report_type, monitor_id, period_start, period_end, timezone, title, summary, body, status, version_no, generated_at, published_at, created_by, updated_by FROM reports`
+const reportSelect = `SELECT id,version,report_type,monitor_id,period_start,period_end,timezone,title,summary,body,input_snapshot_hash,
+status,version_no,generated_at,published_at,submitted_at,reviewed_at,created_by,updated_by,submitted_by,reviewed_by,review_reason FROM reports`
 
 type reportRow interface {
 	Scan(...any) error
@@ -397,9 +473,13 @@ func reportQueryerFor(ctx context.Context, runtime *database.Runtime) reportQuer
 func scanReport(row reportRow) (domain.Report, error) {
 	var report domain.Report
 	var reportType, status string
-	var monitorID, createdBy, updatedBy sql.NullInt64
-	var generatedAt, publishedAt sql.NullTime
-	if err := row.Scan(&report.ID, &report.Version, &reportType, &monitorID, &report.Period.Start, &report.Period.End, &reportTimezone{period: &report.Period}, &report.Title, &report.Summary, &report.Body, &status, &report.VersionNo, &generatedAt, &publishedAt, &createdBy, &updatedBy); err != nil {
+	var monitorID, createdBy, updatedBy, submittedBy, reviewedBy sql.NullInt64
+	var generatedAt, publishedAt, submittedAt, reviewedAt sql.NullTime
+	var reviewReason sql.NullString
+	if err := row.Scan(&report.ID, &report.Version, &reportType, &monitorID, &report.Period.Start, &report.Period.End,
+		&reportTimezone{period: &report.Period}, &report.Title, &report.Summary, &report.Body, &report.InputSnapshotHash,
+		&status, &report.VersionNo, &generatedAt, &publishedAt, &submittedAt, &reviewedAt, &createdBy, &updatedBy,
+		&submittedBy, &reviewedBy, &reviewReason); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return domain.Report{}, sharedrepository.ErrNotFound
 		}
@@ -419,6 +499,14 @@ func scanReport(row reportRow) (domain.Report, error) {
 		value := publishedAt.Time.UTC()
 		report.PublishedAt = &value
 	}
+	if submittedAt.Valid {
+		value := submittedAt.Time.UTC()
+		report.SubmittedAt = &value
+	}
+	if reviewedAt.Valid {
+		value := reviewedAt.Time.UTC()
+		report.ReviewedAt = &value
+	}
 	if createdBy.Valid {
 		value := createdBy.Int64
 		report.CreatedBy = &value
@@ -426,6 +514,17 @@ func scanReport(row reportRow) (domain.Report, error) {
 	if updatedBy.Valid {
 		value := updatedBy.Int64
 		report.UpdatedBy = &value
+	}
+	if submittedBy.Valid {
+		value := submittedBy.Int64
+		report.SubmittedBy = &value
+	}
+	if reviewedBy.Valid {
+		value := reviewedBy.Int64
+		report.ReviewedBy = &value
+	}
+	if reviewReason.Valid {
+		report.ReviewReason = reviewReason.String
 	}
 	return report, nil
 }

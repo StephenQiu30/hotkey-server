@@ -49,7 +49,7 @@ func TestRetentionRepositoryDeletesOnlyWhitelistedBoundedOperationalRows(t *test
 	if err := runtime.SQL.QueryRowContext(ctx, `INSERT INTO users (email, password_hash, display_name, role) VALUES ('retention-' || md5(random()::text) || '@example.test', 'hash', 'retention', 'viewer') RETURNING id`).Scan(&userID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO reports (id, report_type, period_start, period_end, timezone, title, status, version_no) VALUES (9201, 'daily', $1, $2, 'UTC', 'retention', 'published', 1)`, old, old.Add(time.Hour)); err != nil {
+	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO reports (id, report_type, period_start, period_end, timezone, title, status, version_no, published_at, reviewed_at, reviewed_by, created_by, updated_by) VALUES (9201, 'daily', $1, $2, 'UTC', 'retention', 'published', 1, $1, $1, $3, $3, $3)`, old, old.Add(time.Hour), userID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO report_subscriptions (id, user_id, report_type, channel, recipient, timezone, schedule) VALUES (9301, $1, 'daily', 'email', 'retention@example.test', 'UTC', '0 8 * * *')`, userID); err != nil {

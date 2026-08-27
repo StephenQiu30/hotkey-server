@@ -14,10 +14,13 @@ func RegisterRoutes(router *gin.Engine, service reportService, authenticator htt
 	api.GET("", httptransport.Wrap(handler.List))
 	api.GET("/:id", httptransport.Wrap(handler.Get))
 	api.POST("/:id/preview", httptransport.Wrap(handler.Preview))
-	editor := api.Group("", httptransport.RequireRoles(httptransport.RoleEditor, httptransport.RoleAdmin))
-	editor.POST("", httptransport.Wrap(handler.Create))
-	editor.POST("/:id/build", httptransport.Wrap(handler.Build))
-	editor.POST("/:id/publish", httptransport.Wrap(handler.Publish))
+	contributor := api.Group("", httptransport.RequireRoles(httptransport.RoleAnalyst, httptransport.RoleEditor, httptransport.RoleAdmin))
+	contributor.POST("", httptransport.Wrap(handler.Create))
+	contributor.POST("/:id/build", httptransport.Wrap(handler.Build))
+	contributor.POST("/:id/submit", httptransport.Wrap(handler.SubmitForApproval))
+	approver := api.Group("", httptransport.RequireRoles(httptransport.RoleEditor, httptransport.RoleAdmin))
+	approver.POST("/:id/approve", httptransport.Wrap(handler.ApproveRevision))
+	approver.POST("/:id/reject", httptransport.Wrap(handler.RejectRevision))
 }
 
 func RegisterAgentRoutes(router *gin.Engine, service reportService, authenticator httptransport.Authenticator) {

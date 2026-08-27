@@ -16,6 +16,14 @@ func TestCanonicalCatalogIncludesSetNullForeignKeyFromAlterTable(t *testing.T) {
 	}
 }
 
+func TestNamedTableConstraintSignatureOmitsConstraintIdentifier(t *testing.T) {
+	named := expectedConstraintDefinitions("CONSTRAINT reports_review_check CHECK (status <> 'published')")
+	unnamed := expectedConstraintDefinitions("CHECK (status <> 'published')")
+	if len(named) != 1 || len(unnamed) != 1 || named[0] != unnamed[0] {
+		t.Fatalf("named constraint signature = %v, unnamed = %v", named, unnamed)
+	}
+}
+
 func TestCatalogConstraintNormalizationMatchesPostgreSQLLeaseCheck(t *testing.T) {
 	expected := normalizeCatalogExpression("CHECK (status IN ('queued','running') AND lease_expires_at IS NOT NULL OR status IN ('succeeded') AND lease_expires_at IS NULL)")
 	actual := normalizeCatalogExpression("CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text])) AND lease_expires_at IS NOT NULL OR status = ANY (ARRAY['succeeded'::text]) AND lease_expires_at IS NULL)")

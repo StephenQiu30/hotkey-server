@@ -51,7 +51,7 @@ func TestReportRepositoryKeepsLegacyItemsReadableButRejectsNewPublication(t *tes
 		t.Fatalf("report items = %d, want 1", items)
 	}
 
-	if _, err := builder.Publish(report); !errors.Is(err, domain.ErrEvidenceInvalid) {
+	if err := report.ValidatePublicationShape(); !errors.Is(err, domain.ErrEvidenceInvalid) {
 		t.Fatalf("publish legacy report error = %v, want ErrEvidenceInvalid", err)
 	}
 	loaded, err := repository.Get(ctx, report.ID)

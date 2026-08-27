@@ -4,15 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 
+	identitydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/domain"
+	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
 // Service owns the report-facing application contract. Preview is read-only;
-// only Publish changes a draft, and the repository makes published rows
-// immutable afterwards.
+// submission freezes draft content and only an Editor/Admin approval can make
+// the revision published and immutable.
 type Service struct {
 	store         Store
 	builder       *Builder
@@ -62,6 +65,19 @@ type TransactionRunner interface {
 	WithinTransaction(context.Context, func(context.Context) error) error
 }
 
+type RevisionLifecycleStore interface {
+	Transition(context.Context, domain.RevisionTransition) (domain.Report, error)
+}
+
+type RevisionLifecycleInput struct {
+	Subject         identitydomain.Subject
+	ReportID        int64
+	ExpectedVersion int64
+	ReasonCode      string
+}
+
+var reportReasonCodePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_]{2,63}$`)
+
 type BuildInput struct {
 	ID        int64
 	Type      domain.ReportType
@@ -73,11 +89,11 @@ type BuildInput struct {
 }
 
 type CreateInput struct {
+	Subject   identitydomain.Subject
 	Type      domain.ReportType
 	At        time.Time
 	Timezone  string
 	MonitorID *int64
-	ActorID   int64
 }
 
 func NewService(store Store, readers ...SnapshotReader) (*Service, error) {
@@ -122,10 +138,20 @@ func (service *Service) BuildByID(ctx context.Context, reportID int64) (domain.R
 	return service.Build(ctx, BuildInput{ID: reportID, Type: current.Type, At: current.Period.Start, Timezone: timezone, MonitorID: current.MonitorID, Events: events, ActorID: current.UpdatedBy})
 }
 
+func (service *Service) BuildByIDAs(ctx context.Context, subject identitydomain.Subject, reportID int64) (domain.Report, error) {
+	if err := requireReportContributor(subject); err != nil {
+		return domain.Report{}, err
+	}
+	return service.BuildByID(ctx, reportID)
+}
+
 // CreateDraft creates at most one draft for a type, monitor and calendar
 // period, then refreshes its immutable EventUpdate candidate snapshots.
 func (service *Service) CreateDraft(ctx context.Context, input CreateInput) (domain.Report, error) {
-	if service == nil || service.snapshots == nil || input.ActorID <= 0 || input.At.IsZero() {
+	if err := requireReportContributor(input.Subject); err != nil {
+		return domain.Report{}, err
+	}
+	if service == nil || service.snapshots == nil || input.At.IsZero() {
 		return domain.Report{}, sharedrepository.ErrInvalidInput
 	}
 	location, err := time.LoadLocation(input.Timezone)
@@ -144,20 +170,33 @@ func (service *Service) CreateDraft(ctx context.Context, input CreateInput) (dom
 	if err != nil && !errors.Is(err, sharedrepository.ErrNotFound) {
 		return domain.Report{}, err
 	}
-	actor := input.ActorID
+	actor := input.Subject.UserID
 	if errors.Is(err, sharedrepository.ErrNotFound) {
 		draft, buildErr := service.builder.Build(1, input.Type, input.At, location, nil)
 		if buildErr != nil {
 			return domain.Report{}, buildErr
 		}
 		draft.MonitorID, draft.CreatedBy, draft.UpdatedBy = input.MonitorID, &actor, &actor
+		draft.InputSnapshotHash = domain.ComputeInputSnapshotHash(draft)
 		report, err = automatic.Create(ctx, draft)
 		if err != nil {
 			return domain.Report{}, err
 		}
 	}
-	if report.Status != domain.ReportDraft {
-		return domain.Report{}, sharedrepository.ErrImmutable
+	if report.Status == domain.ReportPublished || report.Status == domain.ReportRejected {
+		next, buildErr := service.builder.Build(1, input.Type, input.At, location, nil)
+		if buildErr != nil {
+			return domain.Report{}, buildErr
+		}
+		next.VersionNo = report.VersionNo + 1
+		next.MonitorID, next.CreatedBy, next.UpdatedBy = input.MonitorID, &actor, &actor
+		next.InputSnapshotHash = domain.ComputeInputSnapshotHash(next)
+		report, err = automatic.Create(ctx, next)
+		if err != nil {
+			return domain.Report{}, err
+		}
+	} else if report.Status != domain.ReportDraft {
+		return domain.Report{}, sharedrepository.ErrConflict
 	}
 	events, err := service.snapshots.ListForPeriod(ctx, input.MonitorID, period.Start, period.End, 100)
 	if err != nil {
@@ -166,10 +205,9 @@ func (service *Service) CreateDraft(ctx context.Context, input CreateInput) (dom
 	return service.Build(ctx, BuildInput{ID: report.ID, Type: input.Type, At: input.At, Timezone: input.Timezone, MonitorID: input.MonitorID, Events: events, ActorID: &actor})
 }
 
-// BuildAndPublishForSubscription is the unattended report path. A
-// subscription is the only schedule input; the service derives the calendar
-// period, monitor scope, report snapshot, publication and delivery trigger.
-func (service *Service) BuildAndPublishForSubscription(ctx context.Context, subscriptionID int64) (domain.Report, error) {
+// BuildForSubscription is the unattended report path. It may build a draft,
+// but it never grants itself Editor authority or approves a revision.
+func (service *Service) BuildForSubscription(ctx context.Context, subscriptionID int64) (domain.Report, error) {
 	if service == nil || service.snapshots == nil || service.subscriptions == nil || subscriptionID <= 0 {
 		return domain.Report{}, sharedrepository.ErrUnavailable
 	}
@@ -210,6 +248,7 @@ func (service *Service) BuildAndPublishForSubscription(ctx context.Context, subs
 		if subscription.UserID > 0 {
 			draft.CreatedBy, draft.UpdatedBy = &subscription.UserID, &subscription.UserID
 		}
+		draft.InputSnapshotHash = domain.ComputeInputSnapshotHash(draft)
 		report, err = automatic.Create(ctx, draft)
 		if err != nil {
 			return domain.Report{}, err
@@ -223,6 +262,9 @@ func (service *Service) BuildAndPublishForSubscription(ctx context.Context, subs
 		}
 		return report, nil
 	}
+	if report.Status == domain.ReportPendingApproval || report.Status == domain.ReportRejected {
+		return report, nil
+	}
 	events, err := service.snapshots.ListForPeriod(ctx, subscription.MonitorID, period.Start, period.End, 100)
 	if err != nil {
 		return domain.Report{}, err
@@ -231,10 +273,7 @@ func (service *Service) BuildAndPublishForSubscription(ctx context.Context, subs
 	if subscription.UserID > 0 {
 		actor = &subscription.UserID
 	}
-	if _, err := service.Build(ctx, BuildInput{ID: report.ID, Type: report.Type, At: at, Timezone: timezone, MonitorID: report.MonitorID, Events: events, ActorID: actor}); err != nil {
-		return domain.Report{}, err
-	}
-	return service.Publish(ctx, report.ID)
+	return service.Build(ctx, BuildInput{ID: report.ID, Type: report.Type, At: at, Timezone: timezone, MonitorID: report.MonitorID, Events: events, ActorID: actor})
 }
 
 func (service *Service) List(ctx context.Context, query domain.ListQuery) (domain.Page, error) {
@@ -258,44 +297,70 @@ func (service *Service) Preview(ctx context.Context, reportID int64) (domain.Rep
 	return service.Get(ctx, reportID)
 }
 
-func (service *Service) Publish(ctx context.Context, reportID int64) (domain.Report, error) {
-	return service.PublishAs(ctx, reportID, 0)
+func (service *Service) SubmitForApproval(ctx context.Context, input RevisionLifecycleInput) (domain.Report, error) {
+	if err := requireReportContributor(input.Subject); err != nil {
+		return domain.Report{}, err
+	}
+	return service.transitionRevision(ctx, input, domain.ReportDraft, domain.ReportPendingApproval, true, false)
 }
 
-func (service *Service) PublishAs(ctx context.Context, reportID, actorID int64) (domain.Report, error) {
-	report, err := service.Get(ctx, reportID)
-	if err != nil {
+func (service *Service) ApproveRevision(ctx context.Context, input RevisionLifecycleInput) (domain.Report, error) {
+	if err := requireReportEditor(input.Subject); err != nil {
 		return domain.Report{}, err
 	}
-	if report.Status != domain.ReportDraft {
-		return domain.Report{}, sharedrepository.ErrImmutable
-	}
-	published, err := service.builder.Publish(report)
-	if err != nil {
+	return service.transitionRevision(ctx, input, domain.ReportPendingApproval, domain.ReportPublished, true, true)
+}
+
+func (service *Service) RejectRevision(ctx context.Context, input RevisionLifecycleInput) (domain.Report, error) {
+	if err := requireReportEditor(input.Subject); err != nil {
 		return domain.Report{}, err
 	}
-	if actorID > 0 {
-		published.UpdatedBy = &actorID
+	if !reportReasonCodePattern.MatchString(input.ReasonCode) {
+		return domain.Report{}, sharedrepository.ErrInvalidInput
 	}
+	return service.transitionRevision(ctx, input, domain.ReportPendingApproval, domain.ReportRejected, false, false)
+}
+
+func (service *Service) transitionRevision(ctx context.Context, input RevisionLifecycleInput, from, to domain.ReportStatus, validateEvidence, publish bool) (domain.Report, error) {
+	if service == nil || service.store == nil || input.ReportID <= 0 || input.ExpectedVersion <= 0 || input.Subject.UserID <= 0 {
+		return domain.Report{}, sharedrepository.ErrInvalidInput
+	}
+	lifecycle, ok := service.store.(RevisionLifecycleStore)
+	if !ok {
+		return domain.Report{}, sharedrepository.ErrUnavailable
+	}
+	var transitioned domain.Report
 	commit := func(transactionCtx context.Context) error {
-		if err := service.store.ValidatePublication(transactionCtx, report); err != nil {
+		report, err := service.store.Get(transactionCtx, input.ReportID)
+		if err != nil {
 			return err
 		}
-		if err := service.store.Save(transactionCtx, published); err != nil {
+		if report.Version != input.ExpectedVersion || report.Status != from {
+			return sharedrepository.ErrConflict
+		}
+		if validateEvidence {
+			if err := service.store.ValidatePublication(transactionCtx, report); err != nil {
+				return err
+			}
+		}
+		transitioned, err = lifecycle.Transition(transactionCtx, domain.RevisionTransition{ReportID: input.ReportID,
+			ExpectedVersion: input.ExpectedVersion, ActorID: input.Subject.UserID, From: from, To: to, ReasonCode: input.ReasonCode})
+		if err != nil {
 			return err
 		}
-		if service.delivery != nil {
-			if err := service.delivery.Schedule(transactionCtx, published); err != nil {
+		if publish && service.delivery != nil {
+			if err := service.delivery.Schedule(transactionCtx, transitioned); err != nil {
 				return fmt.Errorf("schedule report delivery: %w", err)
 			}
 		}
-		if service.archive != nil {
-			if err := service.archive.Prepare(transactionCtx, published); err != nil {
+		if publish && service.archive != nil {
+			if err := service.archive.Prepare(transactionCtx, transitioned); err != nil {
 				return fmt.Errorf("prepare report archive: %w", err)
 			}
 		}
 		return nil
 	}
+	var err error
 	if service.transactions != nil {
 		err = service.transactions.WithinTransaction(ctx, commit)
 	} else {
@@ -304,7 +369,27 @@ func (service *Service) PublishAs(ctx context.Context, reportID, actorID int64) 
 	if err != nil {
 		return domain.Report{}, err
 	}
-	return service.store.Get(ctx, reportID)
+	return transitioned, nil
+}
+
+func requireReportContributor(subject identitydomain.Subject) error {
+	if subject.UserID <= 0 || !subject.Role.Valid() {
+		return sharederrors.New(sharederrors.CodeUnauthenticated, 401, "")
+	}
+	if subject.Role != identitydomain.RoleAnalyst && subject.Role != identitydomain.RoleEditor && subject.Role != identitydomain.RoleAdmin {
+		return sharederrors.New(sharederrors.CodeForbidden, 403, "")
+	}
+	return nil
+}
+
+func requireReportEditor(subject identitydomain.Subject) error {
+	if subject.UserID <= 0 || !subject.Role.Valid() {
+		return sharederrors.New(sharederrors.CodeUnauthenticated, 401, "")
+	}
+	if subject.Role != identitydomain.RoleEditor && subject.Role != identitydomain.RoleAdmin {
+		return sharederrors.New(sharederrors.CodeForbidden, 403, "")
+	}
+	return nil
 }
 
 // Build creates or replaces only a draft for the deterministic report key.
@@ -325,12 +410,18 @@ func (service *Service) Build(ctx context.Context, input BuildInput) (domain.Rep
 	report.MonitorID = input.MonitorID
 	report.CreatedBy, report.UpdatedBy = input.ActorID, input.ActorID
 	if current, getErr := service.store.Get(ctx, input.ID); getErr == nil {
+		if current.Status != domain.ReportDraft {
+			return domain.Report{}, sharedrepository.ErrImmutable
+		}
+		report.Version = current.Version + 1
+		report.VersionNo = current.VersionNo
 		report.CreatedBy = current.CreatedBy
 		if input.ActorID == nil {
 			report.UpdatedBy = current.UpdatedBy
 		}
 	}
 	report.Summary = fallbackSummary(report.Items)
+	report.InputSnapshotHash = domain.ComputeInputSnapshotHash(report)
 	if err := service.store.Save(ctx, report); err != nil {
 		return domain.Report{}, err
 	}

@@ -23,6 +23,11 @@ type CreateReportRequest struct {
 	At        *time.Time `json:"at,omitempty"`
 }
 
+type ReportRevisionLifecycleRequest struct {
+	ExpectedResourceVersion int64  `json:"expected_resource_version" binding:"required,gt=0"`
+	ReasonCode              string `json:"reason_code,omitempty"`
+}
+
 type ReportItemResponse struct {
 	EventID             int64                    `json:"event_id,omitempty"`
 	EventUpdateID       int64                    `json:"event_update_id,omitempty"`
@@ -52,24 +57,30 @@ type ReportSentenceResponse struct {
 }
 
 type ReportResponse struct {
-	ID          int64                `json:"id"`
-	Version     int64                `json:"version"`
-	VersionNo   int64                `json:"version_no"`
-	Type        string               `json:"type"`
-	MonitorID   *int64               `json:"monitor_id,omitempty"`
-	PeriodStart time.Time            `json:"period_start"`
-	PeriodEnd   time.Time            `json:"period_end"`
-	Timezone    string               `json:"timezone"`
-	Title       string               `json:"title"`
-	Summary     string               `json:"summary"`
-	Body        string               `json:"body"`
-	Status      string               `json:"status"`
-	Frozen      bool                 `json:"frozen"`
-	GeneratedAt *time.Time           `json:"generated_at,omitempty"`
-	PublishedAt *time.Time           `json:"published_at,omitempty"`
-	CreatedBy   *int64               `json:"created_by,omitempty"`
-	UpdatedBy   *int64               `json:"updated_by,omitempty"`
-	Items       []ReportItemResponse `json:"items"`
+	ID                int64                `json:"id"`
+	Version           int64                `json:"version"`
+	VersionNo         int64                `json:"version_no"`
+	Type              string               `json:"type"`
+	MonitorID         *int64               `json:"monitor_id,omitempty"`
+	PeriodStart       time.Time            `json:"period_start"`
+	PeriodEnd         time.Time            `json:"period_end"`
+	Timezone          string               `json:"timezone"`
+	Title             string               `json:"title"`
+	Summary           string               `json:"summary"`
+	Body              string               `json:"body"`
+	InputSnapshotHash string               `json:"input_snapshot_hash"`
+	Status            string               `json:"status"`
+	Frozen            bool                 `json:"frozen"`
+	GeneratedAt       *time.Time           `json:"generated_at,omitempty"`
+	PublishedAt       *time.Time           `json:"published_at,omitempty"`
+	SubmittedAt       *time.Time           `json:"submitted_at,omitempty"`
+	ReviewedAt        *time.Time           `json:"reviewed_at,omitempty"`
+	CreatedBy         *int64               `json:"created_by,omitempty"`
+	UpdatedBy         *int64               `json:"updated_by,omitempty"`
+	SubmittedBy       *int64               `json:"submitted_by,omitempty"`
+	ReviewedBy        *int64               `json:"reviewed_by,omitempty"`
+	ReviewReason      string               `json:"review_reason,omitempty"`
+	Items             []ReportItemResponse `json:"items"`
 }
 
 type ReportPageResponse struct {
@@ -79,7 +90,8 @@ type ReportPageResponse struct {
 
 type ReportPreviewResponse struct {
 	Report      ReportResponse `json:"report"`
-	Publishable bool           `json:"publishable"`
+	Submittable bool           `json:"submittable"`
+	Approvable  bool           `json:"approvable"`
 }
 
 func reportResponse(report domain.Report) ReportResponse {
@@ -103,5 +115,5 @@ func reportResponse(report domain.Report) ReportResponse {
 	if report.Period.Location != nil {
 		timezone = report.Period.Location.String()
 	}
-	return ReportResponse{ID: report.ID, Version: report.Version, VersionNo: report.VersionNo, Type: string(report.Type), MonitorID: report.MonitorID, PeriodStart: report.Period.Start, PeriodEnd: report.Period.End, Timezone: timezone, Title: report.Title, Summary: report.Summary, Body: report.Body, Status: string(report.Status), Frozen: report.Frozen, GeneratedAt: report.GeneratedAt, PublishedAt: report.PublishedAt, CreatedBy: report.CreatedBy, UpdatedBy: report.UpdatedBy, Items: items}
+	return ReportResponse{ID: report.ID, Version: report.Version, VersionNo: report.VersionNo, Type: string(report.Type), MonitorID: report.MonitorID, PeriodStart: report.Period.Start, PeriodEnd: report.Period.End, Timezone: timezone, Title: report.Title, Summary: report.Summary, Body: report.Body, InputSnapshotHash: report.InputSnapshotHash, Status: string(report.Status), Frozen: report.Frozen, GeneratedAt: report.GeneratedAt, PublishedAt: report.PublishedAt, SubmittedAt: report.SubmittedAt, ReviewedAt: report.ReviewedAt, CreatedBy: report.CreatedBy, UpdatedBy: report.UpdatedBy, SubmittedBy: report.SubmittedBy, ReviewedBy: report.ReviewedBy, ReviewReason: report.ReviewReason, Items: items}
 }

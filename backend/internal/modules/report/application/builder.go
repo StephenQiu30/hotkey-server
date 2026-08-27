@@ -51,6 +51,7 @@ func (builder *Builder) Build(id int64, reportType domain.ReportType, at time.Ti
 		title = "周报"
 	}
 	report := domain.Report{ID: id, Version: 1, VersionNo: 1, Type: reportType, Period: period, Title: title, Status: domain.ReportDraft, Items: items}
+	report.InputSnapshotHash = domain.ComputeInputSnapshotHash(report)
 	if err := report.Validate(); err != nil {
 		return domain.Report{}, err
 	}
@@ -63,14 +64,4 @@ func cloneReportSentences(sentences []domain.Sentence) []domain.Sentence {
 		result[index].ClaimEvidenceVersionIDs = append([]int64(nil), sentences[index].ClaimEvidenceVersionIDs...)
 	}
 	return result
-}
-
-func (builder *Builder) Publish(report domain.Report) (domain.Report, error) {
-	if err := report.ValidatePublicationShape(); err != nil {
-		return domain.Report{}, err
-	}
-	report.Status = domain.ReportPublished
-	report.Frozen = true
-	report.Version++
-	return report, nil
 }

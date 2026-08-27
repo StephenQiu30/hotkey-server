@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"testing"
+	"time"
 )
 
 func TestCanonicalUpgradeDryRunApplyAndRepeatPreserveRows(t *testing.T) {
@@ -118,6 +119,50 @@ func TestCanonicalUpgradeMakesLegacyContentPublicationTimeNullable(t *testing.T)
 	}
 	if nullable != "YES" {
 		t.Fatalf("contents.published_at is_nullable = %q, want YES", nullable)
+	}
+}
+
+func TestCanonicalUpgradePreservesLegacyPublishedReport(t *testing.T) {
+	runtime := openTestRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	var actorID int64
+	if err := runtime.SQL.QueryRow(`INSERT INTO users (email,password_hash,display_name,role)
+VALUES ('legacy-report-upgrade@example.test','hash','legacy report','editor') RETURNING id`).Scan(&actorID); err != nil {
+		t.Fatalf("insert legacy report actor: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`
+DROP TRIGGER report_revision_transition_guard ON reports;
+DROP TABLE report_revision_transitions;
+ALTER TABLE reports DROP CONSTRAINT reports_status_check;
+ALTER TABLE reports DROP COLUMN input_snapshot_hash CASCADE;
+ALTER TABLE reports DROP COLUMN submitted_at CASCADE;
+ALTER TABLE reports DROP COLUMN submitted_by CASCADE;
+ALTER TABLE reports DROP COLUMN reviewed_at CASCADE;
+ALTER TABLE reports DROP COLUMN reviewed_by CASCADE;
+ALTER TABLE reports DROP COLUMN review_reason CASCADE;
+ALTER TABLE reports ADD CONSTRAINT reports_status_check CHECK (status IN ('draft','published','failed','archived'))`); err != nil {
+		t.Fatalf("prepare legacy report catalog: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`INSERT INTO reports
+(id,version,report_type,period_start,period_end,timezone,title,status,version_no,generated_at,published_at,created_by,updated_by)
+VALUES (9901,4,'daily',now()-interval '1 day',now(),'UTC','legacy approved','published',1,
+        now()-interval '1 hour',now()-interval '30 minutes',$1,$1)`, actorID); err != nil {
+		t.Fatalf("insert legacy published report: %v", err)
+	}
+
+	if _, err := ApplyCanonicalUpgrade(context.Background(), runtime.Pool, CanonicalUpgradeTarget); err != nil {
+		t.Fatalf("ApplyCanonicalUpgrade() legacy published report: %v", err)
+	}
+	var status, snapshotHash string
+	var submittedBy, reviewedBy int64
+	var submittedAt, reviewedAt time.Time
+	if err := runtime.SQL.QueryRow(`SELECT status,input_snapshot_hash,submitted_at,submitted_by,reviewed_at,reviewed_by
+FROM reports WHERE id=9901`).Scan(&status, &snapshotHash, &submittedAt, &submittedBy, &reviewedAt, &reviewedBy); err != nil {
+		t.Fatalf("read upgraded legacy report: %v", err)
+	}
+	if status != "published" || snapshotHash != "0000000000000000000000000000000000000000000000000000000000000000" ||
+		submittedAt.IsZero() || reviewedAt.IsZero() || submittedBy != actorID || reviewedBy != actorID {
+		t.Fatalf("upgraded legacy report = status %q hash %q submitted %v/%d reviewed %v/%d", status, snapshotHash, submittedAt, submittedBy, reviewedAt, reviewedBy)
 	}
 }
 

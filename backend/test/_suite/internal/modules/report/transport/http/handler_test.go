@@ -17,8 +17,10 @@ import (
 
 type reportServiceFake struct {
 	report       domain.Report
-	publishErr   error
-	publishCalls int
+	lifecycleErr error
+	submitCalls  int
+	approveCalls int
+	rejectCalls  int
 	createCalls  int
 }
 
@@ -37,13 +39,28 @@ func (fake *reportServiceFake) Get(_ context.Context, _ int64) (domain.Report, e
 func (fake *reportServiceFake) Preview(_ context.Context, _ int64) (domain.Report, error) {
 	return fake.report, nil
 }
-func (fake *reportServiceFake) Publish(_ context.Context, _ int64) (domain.Report, error) {
-	fake.publishCalls++
-	if fake.publishErr != nil {
-		return domain.Report{}, fake.publishErr
+func (fake *reportServiceFake) SubmitForApproval(_ context.Context, _ reportapplication.RevisionLifecycleInput) (domain.Report, error) {
+	fake.submitCalls++
+	if fake.lifecycleErr != nil {
+		return domain.Report{}, fake.lifecycleErr
 	}
-	fake.report.Status = domain.ReportPublished
-	fake.report.Frozen = true
+	fake.report.Status = domain.ReportPendingApproval
+	return fake.report, nil
+}
+func (fake *reportServiceFake) ApproveRevision(_ context.Context, _ reportapplication.RevisionLifecycleInput) (domain.Report, error) {
+	fake.approveCalls++
+	if fake.lifecycleErr != nil {
+		return domain.Report{}, fake.lifecycleErr
+	}
+	fake.report.Status, fake.report.Frozen = domain.ReportPublished, true
+	return fake.report, nil
+}
+func (fake *reportServiceFake) RejectRevision(_ context.Context, _ reportapplication.RevisionLifecycleInput) (domain.Report, error) {
+	fake.rejectCalls++
+	if fake.lifecycleErr != nil {
+		return domain.Report{}, fake.lifecycleErr
+	}
+	fake.report.Status = domain.ReportRejected
 	return fake.report, nil
 }
 
@@ -72,51 +89,57 @@ func TestReportRoutesProtectPublicationAndExposePreview(t *testing.T) {
 	if response := reportRequest(viewer, http.MethodPost, "/api/v1/reports/7/preview", "viewer"); response.Code != http.StatusOK {
 		t.Fatalf("viewer preview = %d: %s", response.Code, response.Body.String())
 	}
-	if response := reportRequest(viewer, http.MethodPost, "/api/v1/reports/7/publish", "viewer"); response.Code != http.StatusForbidden {
-		t.Fatalf("viewer publish = %d, want 403", response.Code)
+	if response := reportJSONRequest(viewer, "/api/v1/reports/7/approve", "viewer", `{"expected_resource_version":1}`); response.Code != http.StatusForbidden {
+		t.Fatalf("viewer approve = %d, want 403", response.Code)
 	}
 	if response := reportJSONRequest(viewer, "/api/v1/reports", "viewer", `{"type":"daily","timezone":"UTC"}`); response.Code != http.StatusForbidden {
 		t.Fatalf("viewer create = %d, want 403", response.Code)
 	}
 	analyst := gin.New()
 	RegisterRoutes(analyst, service, reportAuthenticator{role: httptransport.RoleAnalyst})
-	if response := reportRequest(analyst, http.MethodPost, "/api/v1/reports/7/publish", "analyst"); response.Code != http.StatusForbidden {
-		t.Fatalf("analyst publish = %d, want 403", response.Code)
+	if response := reportJSONRequest(analyst, "/api/v1/reports", "analyst", `{"type":"daily","timezone":"UTC"}`); response.Code != http.StatusOK {
+		t.Fatalf("analyst create = %d: %s", response.Code, response.Body.String())
+	}
+	if response := reportJSONRequest(analyst, "/api/v1/reports/7/submit", "analyst", `{"expected_resource_version":1}`); response.Code != http.StatusOK || service.submitCalls != 1 {
+		t.Fatalf("analyst submit = %d/calls=%d: %s", response.Code, service.submitCalls, response.Body.String())
+	}
+	if response := reportJSONRequest(analyst, "/api/v1/reports/7/approve", "analyst", `{"expected_resource_version":1}`); response.Code != http.StatusForbidden {
+		t.Fatalf("analyst approve = %d, want 403", response.Code)
 	}
 
 	editor := gin.New()
 	RegisterRoutes(editor, service, reportAuthenticator{role: httptransport.RoleEditor})
-	if response := reportJSONRequest(editor, "/api/v1/reports", "editor", `{"type":"daily","timezone":"UTC"}`); response.Code != http.StatusOK || service.createCalls != 1 {
+	if response := reportJSONRequest(editor, "/api/v1/reports", "editor", `{"type":"daily","timezone":"UTC"}`); response.Code != http.StatusOK || service.createCalls != 2 {
 		t.Fatalf("editor create = %d/calls=%d: %s", response.Code, service.createCalls, response.Body.String())
 	}
-	if response := reportRequest(editor, http.MethodPost, "/api/v1/reports/7/publish", "editor"); response.Code != http.StatusOK || service.publishCalls != 1 {
-		t.Fatalf("editor publish = %d/calls=%d: %s", response.Code, service.publishCalls, response.Body.String())
+	if response := reportJSONRequest(editor, "/api/v1/reports/7/approve", "editor", `{"expected_resource_version":1}`); response.Code != http.StatusOK || service.approveCalls != 1 {
+		t.Fatalf("editor approve = %d/calls=%d: %s", response.Code, service.approveCalls, response.Body.String())
 	}
 
 	admin := gin.New()
 	RegisterRoutes(admin, service, reportAuthenticator{role: httptransport.RoleAdmin})
-	if response := reportRequest(admin, http.MethodPost, "/api/v1/reports/7/publish", "admin"); response.Code != http.StatusOK || service.publishCalls != 2 {
-		t.Fatalf("admin publish = %d/calls=%d: %s", response.Code, service.publishCalls, response.Body.String())
+	if response := reportJSONRequest(admin, "/api/v1/reports/7/reject", "admin", `{"expected_resource_version":1,"reason_code":"insufficient_context"}`); response.Code != http.StatusOK || service.rejectCalls != 1 {
+		t.Fatalf("admin reject = %d/calls=%d: %s", response.Code, service.rejectCalls, response.Body.String())
 	}
 }
 
-func TestReportPublishMapsInvalidEvidenceToStableConflict(t *testing.T) {
+func TestReportApprovalMapsInvalidEvidenceToStableConflict(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	service := &reportServiceFake{publishErr: domain.ErrEvidenceInvalid}
+	service := &reportServiceFake{lifecycleErr: domain.ErrEvidenceInvalid}
 	router := gin.New()
 	RegisterRoutes(router, service, reportAuthenticator{role: httptransport.RoleEditor})
-	response := reportRequest(router, http.MethodPost, "/api/v1/reports/7/publish", "editor")
+	response := reportJSONRequest(router, "/api/v1/reports/7/approve", "editor", `{"expected_resource_version":1}`)
 	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), `"code":80000`) {
 		t.Fatalf("invalid evidence response = %d: %s", response.Code, response.Body.String())
 	}
 }
 
-func TestReportPublishMapsUnsafeContentWithoutReflectingPayload(t *testing.T) {
+func TestReportApprovalMapsUnsafeContentWithoutReflectingPayload(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	service := &reportServiceFake{publishErr: domain.ErrUnsafeContent}
+	service := &reportServiceFake{lifecycleErr: domain.ErrUnsafeContent}
 	router := gin.New()
 	RegisterRoutes(router, service, reportAuthenticator{role: httptransport.RoleEditor})
-	response := reportRequest(router, http.MethodPost, "/api/v1/reports/7/publish", "editor")
+	response := reportJSONRequest(router, "/api/v1/reports/7/approve", "editor", `{"expected_resource_version":1}`)
 	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), `"code":80001`) {
 		t.Fatalf("unsafe content response = %d: %s", response.Code, response.Body.String())
 	}

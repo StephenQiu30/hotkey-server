@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	identitydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
 	reportapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/domain"
 	httptransport "github.com/StephenQiu30/hotkey-server/backend/internal/platform/http"
@@ -20,7 +21,9 @@ type reportService interface {
 	List(context.Context, domain.ListQuery) (domain.Page, error)
 	Get(context.Context, int64) (domain.Report, error)
 	Preview(context.Context, int64) (domain.Report, error)
-	Publish(context.Context, int64) (domain.Report, error)
+	SubmitForApproval(context.Context, reportapplication.RevisionLifecycleInput) (domain.Report, error)
+	ApproveRevision(context.Context, reportapplication.RevisionLifecycleInput) (domain.Report, error)
+	RejectRevision(context.Context, reportapplication.RevisionLifecycleInput) (domain.Report, error)
 }
 
 // Build creates or refreshes a deterministic draft from the current event
@@ -43,13 +46,17 @@ func (handler *Handler) Build(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
+	subject, err := reportSubject(c)
+	if err != nil {
+		return err
+	}
 	builder, ok := handler.service.(interface {
-		BuildByID(context.Context, int64) (domain.Report, error)
+		BuildByIDAs(context.Context, identitydomain.Subject, int64) (domain.Report, error)
 	})
 	if !ok {
 		return reportError(sharedrepository.ErrUnavailable)
 	}
-	report, err := builder.BuildByID(c.Request.Context(), reportID)
+	report, err := builder.BuildByIDAs(c.Request.Context(), subject, reportID)
 	if err != nil {
 		return reportError(err)
 	}
@@ -81,9 +88,9 @@ func (handler *Handler) Create(c *gin.Context) error {
 	if err := c.ShouldBindJSON(&request); err != nil {
 		return sharederrors.New(sharederrors.CodeInvalidRequest, stdhttp.StatusBadRequest, "invalid report draft")
 	}
-	subject, ok := httptransport.SubjectFromContext(c)
-	if !ok {
-		return sharederrors.New(sharederrors.CodeUnauthenticated, stdhttp.StatusUnauthorized, "authentication required")
+	subject, err := reportSubject(c)
+	if err != nil {
+		return err
 	}
 	at := time.Now().UTC()
 	if request.At != nil {
@@ -95,7 +102,7 @@ func (handler *Handler) Create(c *gin.Context) error {
 	if !ok {
 		return reportError(sharedrepository.ErrUnavailable)
 	}
-	report, err := creator.CreateDraft(c.Request.Context(), reportapplication.CreateInput{Type: domain.ReportType(request.Type), MonitorID: request.MonitorID, Timezone: request.Timezone, At: at, ActorID: subject.UserID})
+	report, err := creator.CreateDraft(c.Request.Context(), reportapplication.CreateInput{Subject: subject, Type: domain.ReportType(request.Type), MonitorID: request.MonitorID, Timezone: request.Timezone, At: at})
 	if err != nil {
 		return reportError(err)
 	}
@@ -112,7 +119,7 @@ func (handler *Handler) Create(c *gin.Context) error {
 // @Param cursor query int false "report id cursor"
 // @Param limit query int false "page size"
 // @Param type query string false "daily or weekly"
-// @Param status query string false "draft, published, failed or archived"
+// @Param status query string false "draft, pending_approval, published, rejected, failed or archived"
 // @Success 200 {object} ReportResult[ReportPageResponse]
 // @Failure 400 {object} ReportResult[EmptyResponse]
 // @Failure 401 {object} ReportResult[EmptyResponse]
@@ -182,47 +189,59 @@ func (handler *Handler) Preview(c *gin.Context) error {
 	if err != nil {
 		return reportError(err)
 	}
-	httptransport.OK(c, ReportPreviewResponse{Report: reportResponse(report), Publishable: report.Status == domain.ReportDraft})
+	httptransport.OK(c, ReportPreviewResponse{Report: reportResponse(report), Submittable: report.Status == domain.ReportDraft,
+		Approvable: report.Status == domain.ReportPendingApproval})
 	return nil
 }
 
-// Publish freezes a draft report. Repeating this request is a 409 rather than
-// a silent rewrite, preserving the snapshot contract for downstream delivery.
-// @Summary Publish a draft report
-// @Tags reports
-// @Produce json
-// @Security BearerAuth
-// @Param id path int true "report ID"
-// @Success 200 {object} ReportResult[ReportResponse]
-// @Failure 400 {object} ReportResult[EmptyResponse]
-// @Failure 401 {object} ReportResult[EmptyResponse]
-// @Failure 403 {object} ReportResult[EmptyResponse]
-// @Failure 404 {object} ReportResult[EmptyResponse]
-// @Failure 409 {object} ReportResult[EmptyResponse]
-// @Failure 503 {object} ReportResult[EmptyResponse]
-func (handler *Handler) Publish(c *gin.Context) error {
+func (handler *Handler) SubmitForApproval(c *gin.Context) error {
+	return handler.revisionLifecycle(c, func(ctx context.Context, input reportapplication.RevisionLifecycleInput) (domain.Report, error) {
+		return handler.service.SubmitForApproval(ctx, input)
+	}, false)
+}
+
+func (handler *Handler) ApproveRevision(c *gin.Context) error {
+	return handler.revisionLifecycle(c, func(ctx context.Context, input reportapplication.RevisionLifecycleInput) (domain.Report, error) {
+		return handler.service.ApproveRevision(ctx, input)
+	}, false)
+}
+
+func (handler *Handler) RejectRevision(c *gin.Context) error {
+	return handler.revisionLifecycle(c, func(ctx context.Context, input reportapplication.RevisionLifecycleInput) (domain.Report, error) {
+		return handler.service.RejectRevision(ctx, input)
+	}, true)
+}
+
+func (handler *Handler) revisionLifecycle(c *gin.Context, operation func(context.Context, reportapplication.RevisionLifecycleInput) (domain.Report, error), requireReason bool) error {
 	httptransport.SetModule(c, "report")
 	reportID, err := reportID(c)
 	if err != nil {
 		return err
 	}
-	report, err := domain.Report{}, error(nil)
-	if subject, ok := httptransport.SubjectFromContext(c); ok {
-		if publisher, supported := handler.service.(interface {
-			PublishAs(context.Context, int64, int64) (domain.Report, error)
-		}); supported {
-			report, err = publisher.PublishAs(c.Request.Context(), reportID, subject.UserID)
-		} else {
-			report, err = handler.service.Publish(c.Request.Context(), reportID)
-		}
-	} else {
-		return sharederrors.New(sharederrors.CodeUnauthenticated, stdhttp.StatusUnauthorized, "authentication required")
+	var request ReportRevisionLifecycleRequest
+	if err := c.ShouldBindJSON(&request); err != nil || request.ExpectedResourceVersion <= 0 || requireReason && request.ReasonCode == "" {
+		return sharederrors.New(sharederrors.CodeInvalidRequest, stdhttp.StatusBadRequest, "invalid report revision request")
 	}
+	subject, err := reportSubject(c)
+	if err != nil {
+		return err
+	}
+	report, err := operation(c.Request.Context(), reportapplication.RevisionLifecycleInput{Subject: subject, ReportID: reportID,
+		ExpectedVersion: request.ExpectedResourceVersion, ReasonCode: request.ReasonCode})
 	if err != nil {
 		return reportError(err)
 	}
 	httptransport.OK(c, reportResponse(report))
 	return nil
+}
+
+func reportSubject(c *gin.Context) (identitydomain.Subject, error) {
+	subject, ok := httptransport.SubjectFromContext(c)
+	if !ok {
+		return identitydomain.Subject{}, sharederrors.New(sharederrors.CodeUnauthenticated, stdhttp.StatusUnauthorized, "authentication required")
+	}
+	return identitydomain.Subject{UserID: subject.UserID, SessionID: subject.SessionID, AgentTokenID: subject.AgentTokenID,
+		Role: identitydomain.Role(subject.Role)}, nil
 }
 
 func reportID(c *gin.Context) (int64, error) {
@@ -264,6 +283,10 @@ func reportListQuery(c *gin.Context) (domain.ListQuery, error) {
 }
 
 func reportError(err error) error {
+	var appError *sharederrors.AppError
+	if errors.As(err, &appError) {
+		return appError
+	}
 	switch {
 	case errors.Is(err, domain.ErrUnsafeContent):
 		return sharederrors.New(sharederrors.CodeReportContentUnsafe, stdhttp.StatusBadRequest, "report content is not allowed")

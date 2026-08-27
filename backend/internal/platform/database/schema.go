@@ -495,6 +495,7 @@ func expectedConstraintDefinitions(part string) []string {
 	}
 	if isTableConstraint(lower) {
 		kind := ""
+		definition := part
 		switch {
 		case strings.HasPrefix(lower, "primary key"):
 			kind = "p"
@@ -511,6 +512,8 @@ func expectedConstraintDefinitions(part string) []string {
 			}{{" primary key", "p"}, {" unique", "u"}, {" foreign key", "f"}, {" check", "c"}} {
 				if strings.Contains(lower, candidate.marker) {
 					kind = candidate.kind
+					marker := strings.Index(lower, candidate.marker)
+					definition = strings.TrimSpace(part[marker+1:])
 					break
 				}
 			}
@@ -518,7 +521,7 @@ func expectedConstraintDefinitions(part string) []string {
 		if kind == "" {
 			return nil
 		}
-		return []string{constraintSignature(kind, part)}
+		return []string{constraintSignature(kind, definition)}
 	}
 	fields := strings.Fields(part)
 	if len(fields) < 2 {

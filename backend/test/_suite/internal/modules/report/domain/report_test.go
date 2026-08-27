@@ -32,6 +32,7 @@ func TestReportPublicationRequiresExactMicroEventSentenceCitations(t *testing.T)
 				{SourceSummarySentenceID: 39, Ordinal: 0, Text: "A sourced fact.", DecisionOrigin: "manual", ActorUserID: int64Pointer(3), ClaimEvidenceVersionIDs: []int64{49}},
 				{SourceSummarySentenceID: 40, Ordinal: 1, Text: "Editorial note.", EditorialNote: true, DecisionOrigin: "manual", ActorUserID: int64Pointer(3)},
 			}}}}
+	valid.InputSnapshotHash = ComputeInputSnapshotHash(valid)
 	if err := valid.ValidatePublicationShape(); err != nil {
 		t.Fatalf("valid publication shape: %v", err)
 	}
@@ -86,6 +87,7 @@ func TestReportRejectsUnsafeContentBeforeDraftPersistenceOrPublication(t *testin
 			HeatScore: 80, EvidenceSetHash: testEvidenceHash, ReasonCodes: []string{"rising"},
 			Sentences: []Sentence{{SourceSummarySentenceID: 39, Text: "安全事实句", DecisionOrigin: "manual",
 				ActorUserID: int64Pointer(3), ClaimEvidenceVersionIDs: []int64{49}}}}}}
+	base.InputSnapshotHash = ComputeInputSnapshotHash(base)
 	if err := base.ValidatePublicationShape(); err != nil {
 		t.Fatalf("safe report rejected: %v", err)
 	}
@@ -111,6 +113,43 @@ func TestReportRejectsUnsafeContentBeforeDraftPersistenceOrPublication(t *testin
 				t.Fatalf("ValidatePublicationShape() error = %v, want ErrUnsafeContent", err)
 			}
 		})
+	}
+}
+
+func TestReportRevisionLifecycleAndInputSnapshotAreExplicit(t *testing.T) {
+	period, _ := PeriodFor(time.Now().UTC(), ReportDaily, time.UTC)
+	report := Report{ID: 7, Version: 1, VersionNo: 1, Type: ReportDaily, Period: period, Title: "daily", Status: ReportDraft,
+		Items: []Item{{MicroEventID: 9, MicroEventVersion: 2, MicroEventUpdateID: 19, MicroEventSummaryID: 29,
+			Rank: 1, Title: "event", HeatScore: 80, EvidenceSetHash: testEvidenceHash, ReasonCodes: []string{"rising"},
+			Sentences: []Sentence{{SourceSummarySentenceID: 39, Ordinal: 0, Text: "fact", DecisionOrigin: "manual",
+				ActorUserID: int64Pointer(3), ClaimEvidenceVersionIDs: []int64{49}}}}}}
+	report.InputSnapshotHash = ComputeInputSnapshotHash(report)
+	if err := report.ValidatePublicationShape(); err != nil {
+		t.Fatalf("valid revision rejected: %v", err)
+	}
+	if report.InputSnapshotHash == "" || len(report.InputSnapshotHash) != 64 {
+		t.Fatalf("input snapshot hash = %q", report.InputSnapshotHash)
+	}
+
+	tampered := report
+	tampered.Items = clonePublicationItems(report.Items)
+	tampered.Items[0].Sentences[0].ClaimEvidenceVersionIDs = []int64{50}
+	if err := tampered.ValidatePublicationShape(); !errors.Is(err, ErrEvidenceInvalid) {
+		t.Fatalf("tampered input error = %v, want ErrEvidenceInvalid", err)
+	}
+
+	for _, status := range []ReportStatus{ReportDraft, ReportPendingApproval, ReportPublished, ReportRejected} {
+		candidate := report
+		candidate.Status = status
+		candidate.Frozen = status == ReportPublished
+		if err := candidate.Validate(); err != nil {
+			t.Fatalf("status %q rejected: %v", status, err)
+		}
+	}
+	notFrozen := report
+	notFrozen.Status = ReportPublished
+	if err := notFrozen.Validate(); err == nil {
+		t.Fatal("published revision without frozen state accepted")
 	}
 }
 

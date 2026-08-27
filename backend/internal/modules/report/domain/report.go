@@ -1,6 +1,9 @@
 package domain
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	stdhtml "html"
@@ -22,10 +25,12 @@ const (
 type ReportStatus string
 
 const (
-	ReportDraft     ReportStatus = "draft"
-	ReportPublished ReportStatus = "published"
-	ReportFailed    ReportStatus = "failed"
-	ReportArchived  ReportStatus = "archived"
+	ReportDraft           ReportStatus = "draft"
+	ReportPendingApproval ReportStatus = "pending_approval"
+	ReportPublished       ReportStatus = "published"
+	ReportRejected        ReportStatus = "rejected"
+	ReportFailed          ReportStatus = "failed"
+	ReportArchived        ReportStatus = "archived"
 )
 
 type Period struct {
@@ -94,17 +99,21 @@ var (
 )
 
 type Report struct {
-	ID, Version, VersionNo int64
-	Type                   ReportType
-	MonitorID              *int64
-	Period                 Period
-	Title, Summary, Body   string
-	Status                 ReportStatus
-	Items                  []Item
-	Frozen                 bool
-	GeneratedAt            *time.Time
-	PublishedAt            *time.Time
-	CreatedBy, UpdatedBy   *int64
+	ID, Version, VersionNo  int64
+	Type                    ReportType
+	MonitorID               *int64
+	Period                  Period
+	Title, Summary, Body    string
+	InputSnapshotHash       string
+	Status                  ReportStatus
+	Items                   []Item
+	Frozen                  bool
+	GeneratedAt             *time.Time
+	PublishedAt             *time.Time
+	SubmittedAt, ReviewedAt *time.Time
+	CreatedBy, UpdatedBy    *int64
+	SubmittedBy, ReviewedBy *int64
+	ReviewReason            string
 }
 
 type ListQuery struct {
@@ -117,6 +126,12 @@ type ListQuery struct {
 type Page struct {
 	Items      []Report
 	NextCursor int64
+}
+
+type RevisionTransition struct {
+	ReportID, ExpectedVersion, ActorID int64
+	From, To                           ReportStatus
+	ReasonCode                         string
 }
 
 func (query ListQuery) Validate() error {
@@ -145,12 +160,40 @@ func (report Report) Validate() error {
 	if report.Status == ReportPublished && !report.Frozen {
 		return fmt.Errorf("published report must be frozen")
 	}
+	if report.Status != ReportPublished && report.Frozen {
+		return fmt.Errorf("only published report can be frozen")
+	}
 	for _, item := range report.Items {
 		if err := item.validate(); err != nil {
 			return err
 		}
 	}
+	if len(report.InputSnapshotHash) != 64 || report.InputSnapshotHash != ComputeInputSnapshotHash(report) {
+		return fmt.Errorf("invalid report input snapshot hash")
+	}
 	return nil
+}
+
+func ComputeInputSnapshotHash(report Report) string {
+	timezone := ""
+	if report.Period.Location != nil {
+		timezone = report.Period.Location.String()
+	}
+	payload, _ := json.Marshal(struct {
+		Type        ReportType `json:"type"`
+		MonitorID   *int64     `json:"monitor_id"`
+		PeriodStart string     `json:"period_start"`
+		PeriodEnd   string     `json:"period_end"`
+		Timezone    string     `json:"timezone"`
+		Items       []Item     `json:"items"`
+	}{
+		Type: report.Type, MonitorID: report.MonitorID,
+		PeriodStart: report.Period.Start.UTC().Format(time.RFC3339Nano),
+		PeriodEnd:   report.Period.End.UTC().Format(time.RFC3339Nano),
+		Timezone:    timezone, Items: report.Items,
+	})
+	hash := sha256.Sum256(payload)
+	return hex.EncodeToString(hash[:])
 }
 
 func (report Report) ValidatePublicationShape() error {
@@ -279,7 +322,7 @@ func queryUnescapeReportContent(value string) string {
 
 func validStatus(status ReportStatus) bool {
 	switch status {
-	case ReportDraft, ReportPublished, ReportFailed, ReportArchived:
+	case ReportDraft, ReportPendingApproval, ReportPublished, ReportRejected, ReportFailed, ReportArchived:
 		return true
 	default:
 		return false
