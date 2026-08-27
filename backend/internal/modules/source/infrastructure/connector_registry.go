@@ -74,7 +74,7 @@ func (registry *ConnectorRegistry) resolveConnector(connection domain.SourceConn
 	case domain.SourceTypeRSS:
 		return rss.New(connection, registry.requestBudget, registry.resolver)
 	case domain.SourceTypeHackerNews:
-		return hackernews.New(connection, registry.resolver)
+		return hackernews.New(connection, registry.requestBudget, registry.resolver)
 	case domain.SourceTypeX:
 		if lookup != nil {
 			return xconnector.NewWithCredentialLookup(connection, registry.resolver, lookup)

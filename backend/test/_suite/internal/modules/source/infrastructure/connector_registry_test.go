@@ -44,17 +44,19 @@ func TestConnectorRegistryBindsOnlyKnownSourceTypes(t *testing.T) {
 	}
 }
 
-func TestConnectorRegistryFailsClosedWhenRSSRequestBudgetIsUnavailable(t *testing.T) {
+func TestConnectorRegistryFailsClosedWhenP0RequestBudgetIsUnavailable(t *testing.T) {
 	resolver, err := sourcenet.NewResolver("")
 	if err != nil {
 		t.Fatal(err)
 	}
-	connection := domain.SourceConnection{
-		ID: 1, SourceType: domain.SourceTypeRSS, Name: "RSS", Endpoint: "https://feeds.example.test/rss",
-		AuthType: domain.AuthTypeNone, Config: domain.DefaultSourceConfig(), Enabled: true,
+	connections := []domain.SourceConnection{
+		{ID: 1, SourceType: domain.SourceTypeRSS, Name: "RSS", Endpoint: "https://feeds.example.test/rss", AuthType: domain.AuthTypeNone, Config: domain.DefaultSourceConfig(), Enabled: true},
+		{ID: 2, SourceType: domain.SourceTypeHackerNews, Name: "HN", Endpoint: domain.HackerNewsEndpoint, AuthType: domain.AuthTypeNone, Config: domain.DefaultSourceConfig(), Enabled: true},
 	}
-	if _, err := NewConnectorRegistry(resolver, nil, nil).Resolve(context.Background(), connection); err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorPermanent {
-		t.Fatalf("missing RSS request budget error = %v", err)
+	for _, connection := range connections {
+		if _, err := NewConnectorRegistry(resolver, nil, nil).Resolve(context.Background(), connection); err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorPermanent {
+			t.Fatalf("missing %s request budget error = %v", connection.SourceType, err)
+		}
 	}
 }
 

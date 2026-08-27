@@ -455,7 +455,7 @@ func TestConnectorHonorsContextTimeoutAndOfficialEndpoint(t *testing.T) {
 	})
 
 	t.Run("official_endpoint", func(t *testing.T) {
-		if _, err := New(domain.SourceConnection{SourceType: domain.SourceTypeHackerNews, Name: "HN", Endpoint: "https://example.test/v0", AuthType: domain.AuthTypeNone, Config: domain.DefaultSourceConfig()}); err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorPermanent {
+		if _, err := New(domain.SourceConnection{SourceType: domain.SourceTypeHackerNews, Name: "HN", Endpoint: "https://example.test/v0", AuthType: domain.AuthTypeNone, Config: domain.DefaultSourceConfig()}, allowingRequestBudget{}); err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorPermanent {
 			t.Fatalf("New(non-official endpoint) error = %v, class = %q; want permanent", err, domain.ClassifyCollectionError(err))
 		}
 	})
@@ -476,14 +476,14 @@ func TestConnectorHonorsContextTimeoutAndOfficialEndpoint(t *testing.T) {
 		connector, err := newConnector(domain.SourceConnection{
 			ID: 9, SourceType: domain.SourceTypeHackerNews, Name: "HN", Endpoint: domain.HackerNewsEndpoint,
 			AuthType: domain.AuthTypeNone, Config: config, Enabled: true,
-		}, clientOptions{
-			resolver: func(context.Context, string) ([]net.IPAddr, error) {
+		}, connectorOptions{
+			clientOptions: clientOptions{resolver: func(context.Context, string) ([]net.IPAddr, error) {
 				return []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}}, nil
 			},
-			dialContext: func(context.Context, string, string) (net.Conn, error) {
-				dialed.Store(true)
-				return nil, nil
-			},
+				dialContext: func(context.Context, string, string) (net.Conn, error) {
+					dialed.Store(true)
+					return nil, nil
+				}}, requestBudget: allowingRequestBudget{},
 		})
 		if err != nil {
 			t.Fatalf("newConnector(): %v", err)
@@ -503,7 +503,7 @@ func TestFetchItemsTreatsParentCancellationAsPageFailure(t *testing.T) {
 	}))
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, failure := connector.fetchItems(ctx, 101, 101); failure == nil || domain.ClassifyCollectionError(failure.err) != domain.CollectionErrorTemporary {
+	if _, failure := connector.fetchItems(ctx, 101, 101, newResponseByteBudget(DefaultResourceLimitProfile().MaxCumulativeResponseBytes)); failure == nil || domain.ClassifyCollectionError(failure.err) != domain.CollectionErrorTemporary {
 		t.Fatalf("fetchItems(canceled parent) failure = %#v, want temporary page failure", failure)
 	}
 }
@@ -574,20 +574,27 @@ func newTestConnectorWithMode(t *testing.T, mode domain.HackerNewsMode, handler 
 	connector, err := newConnector(domain.SourceConnection{
 		ID: 9, SourceType: domain.SourceTypeHackerNews, Name: "HN", Endpoint: domain.HackerNewsEndpoint,
 		AuthType: domain.AuthTypeNone, Config: config, Enabled: true,
-	}, clientOptions{
-		resolver: func(context.Context, string) ([]net.IPAddr, error) {
+	}, connectorOptions{
+		clientOptions: clientOptions{resolver: func(context.Context, string) ([]net.IPAddr, error) {
 			return []net.IPAddr{{IP: net.ParseIP("8.8.8.8")}}, nil
 		},
-		dialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-			return (&net.Dialer{}).DialContext(ctx, network, server.Listener.Addr().String())
-		},
-		tlsConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // local httptest transport only
-		now:       func() time.Time { return time.Date(2026, time.July, 16, 9, 0, 0, 0, time.UTC) },
+			dialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+				return (&net.Dialer{}).DialContext(ctx, network, server.Listener.Addr().String())
+			},
+			tlsConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // local httptest transport only
+			now:       func() time.Time { return time.Date(2026, time.July, 16, 9, 0, 0, 0, time.UTC) },
+		}, requestBudget: allowingRequestBudget{}, retryWait: func(context.Context, int) error { return nil },
 	})
 	if err != nil {
 		t.Fatalf("newConnector(): %v", err)
 	}
 	return connector
+}
+
+type allowingRequestBudget struct{}
+
+func (allowingRequestBudget) ReserveExternalRequest(_ context.Context, reservation domain.ExternalRequestBudgetReservation) (domain.ExternalRequestBudgetDecision, error) {
+	return domain.ExternalRequestBudgetDecision{Allowed: true, Used: 1, ResetAt: reservation.At.UTC().Add(24 * time.Hour)}, nil
 }
 
 func testFetchRequest(limit int, cursor string) domain.FetchRequest {

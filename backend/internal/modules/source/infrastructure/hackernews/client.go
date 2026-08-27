@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"io"
 	"net"
 	"net/http"
 	"net/netip"
@@ -47,7 +46,7 @@ type fetchedJSONResponse struct {
 	capturedAt    time.Time
 }
 
-func newClient(endpoint *url.URL, timeout time.Duration, options clientOptions) *client {
+func newClient(endpoint *url.URL, profile ResourceLimitProfile, configuredReadTimeout time.Duration, reserveRedirect func(context.Context) error, options clientOptions) *client {
 	if options.resolver == nil {
 		options.resolver = net.DefaultResolver.LookupIPAddr
 	}
@@ -68,15 +67,15 @@ func newClient(endpoint *url.URL, timeout time.Duration, options clientOptions) 
 		Proxy:                 nil,
 		ForceAttemptHTTP2:     true,
 		TLSClientConfig:       tlsConfig,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ResponseHeaderTimeout: timeout,
-		DialContext:           secureDialContext(options.resolver, options.dialContext),
+		TLSHandshakeTimeout:   profile.ConnectTimeout,
+		ResponseHeaderTimeout: minimumDuration(configuredReadTimeout, profile.ReadTimeout),
+		DialContext:           secureDialContext(options.resolver, options.dialContext, profile.ConnectTimeout),
 	}
 	return &client{
 		endpoint: endpoint,
 		now:      options.now,
 		http: &http.Client{
-			Timeout:   timeout,
+			Timeout:   profile.ReadTimeout,
 			Transport: transport,
 			CheckRedirect: func(request *http.Request, via []*http.Request) error {
 				if len(via) >= maxRedirects {
@@ -85,13 +84,16 @@ func newClient(endpoint *url.URL, timeout time.Duration, options clientOptions) 
 				if !sameOfficialHost(endpoint, request.URL) {
 					return errUnsafeDestination
 				}
+				if err := reserveRedirect(request.Context()); err != nil {
+					return err
+				}
 				return nil
 			},
 		},
 	}
 }
 
-func (client *client) get(ctx context.Context, path string) (fetchedJSONResponse, *time.Time, error) {
+func (client *client) get(ctx context.Context, path string, byteBudget *responseByteBudget) (fetchedJSONResponse, *time.Time, error) {
 	target := *client.endpoint
 	target.Path = strings.TrimSuffix(client.endpoint.Path, "/") + "/" + strings.TrimPrefix(path, "/")
 	target.RawQuery = ""
@@ -101,18 +103,25 @@ func (client *client) get(ctx context.Context, path string) (fetchedJSONResponse
 	}
 	response, err := client.http.Do(request)
 	if err != nil {
+		var quota requestQuotaError
+		if errors.As(err, &quota) {
+			resetAt := quota.resetAt.UTC()
+			return fetchedJSONResponse{}, &resetAt, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("Hacker News daily request quota exceeded"))
+		}
 		return fetchedJSONResponse{}, nil, requestError(err)
 	}
 	retry := retryAfter(response.Header.Get("Retry-After"), client.now())
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		status := response.StatusCode
-		closeResponse(response)
-		return fetchedJSONResponse{}, retry, statusError(status)
-	}
-	payload, readErr := io.ReadAll(response.Body)
+	payload, readErr := byteBudget.read(response.Body)
 	closeErr := response.Body.Close()
 	if readErr != nil || closeErr != nil {
+		if errors.Is(readErr, errResponseByteLimit) {
+			return fetchedJSONResponse{}, nil, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("Hacker News response exceeds cumulative byte limit"))
+		}
 		return fetchedJSONResponse{}, nil, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("read Hacker News response"))
+	}
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		status := response.StatusCode
+		return fetchedJSONResponse{}, retry, statusError(status)
 	}
 	return fetchedJSONResponse{
 		payload: payload, statusCode: response.StatusCode, requestedURL: target.String(),
@@ -161,13 +170,10 @@ func retryAfter(value string, now time.Time) *time.Time {
 	return nil
 }
 
-func closeResponse(response *http.Response) {
-	_, _ = io.Copy(io.Discard, response.Body)
-	_ = response.Body.Close()
-}
-
-func secureDialContext(resolver func(context.Context, string) ([]net.IPAddr, error), dialContext func(context.Context, string, string) (net.Conn, error)) func(context.Context, string, string) (net.Conn, error) {
+func secureDialContext(resolver func(context.Context, string) ([]net.IPAddr, error), dialContext func(context.Context, string, string) (net.Conn, error), timeout time.Duration) func(context.Context, string, string) (net.Conn, error) {
 	return func(ctx context.Context, network, address string) (net.Conn, error) {
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
 		host, port, err := net.SplitHostPort(address)
 		if err != nil || network != "tcp" || port != "443" {
 			return nil, errUnsafeDestination
@@ -194,6 +200,13 @@ func secureDialContext(resolver func(context.Context, string) ([]net.IPAddr, err
 		}
 		return nil, errUnsafeDestination
 	}
+}
+
+func minimumDuration(left, right time.Duration) time.Duration {
+	if left < right {
+		return left
+	}
+	return right
 }
 
 func publicAddress(value net.IP) bool {

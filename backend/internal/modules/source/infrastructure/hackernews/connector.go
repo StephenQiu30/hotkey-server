@@ -26,9 +26,12 @@ const (
 )
 
 type Connector struct {
-	sourceID int64
-	client   *client
-	mode     domain.HackerNewsMode
+	sourceID       int64
+	client         *client
+	mode           domain.HackerNewsMode
+	resourceLimits ResourceLimitProfile
+	requestBudget  domain.ExternalRequestBudget
+	retryWait      func(context.Context, int) error
 }
 
 type hnItem struct {
@@ -62,15 +65,22 @@ func hackerNewsSnapshot(response fetchedJSONResponse) (domain.EvidenceSnapshot, 
 }
 
 // New binds the HN Connector to the only supported official endpoint.
-func New(connection domain.SourceConnection, resolvers ...sourcenet.Resolver) (*Connector, error) {
-	options := clientOptions{}
+func New(connection domain.SourceConnection, requestBudget domain.ExternalRequestBudget, resolvers ...sourcenet.Resolver) (*Connector, error) {
+	options := connectorOptions{requestBudget: requestBudget}
 	if len(resolvers) > 0 && resolvers[0] != nil {
 		options.resolver = resolvers[0].LookupIPAddr
 	}
 	return newConnector(connection, options)
 }
 
-func newConnector(connection domain.SourceConnection, options clientOptions) (*Connector, error) {
+type connectorOptions struct {
+	clientOptions
+	resourceLimits ResourceLimitProfile
+	requestBudget  domain.ExternalRequestBudget
+	retryWait      func(context.Context, int) error
+}
+
+func newConnector(connection domain.SourceConnection, options connectorOptions) (*Connector, error) {
 	normalized, err := domain.NormalizeSourceConnection(connection)
 	if err != nil || normalized.SourceType != domain.SourceTypeHackerNews || normalized.Endpoint != domain.HackerNewsEndpoint {
 		return nil, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid Hacker News source connection"))
@@ -79,8 +89,23 @@ func newConnector(connection domain.SourceConnection, options clientOptions) (*C
 	if err != nil || !sameOfficialHost(endpoint, endpoint) {
 		return nil, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid Hacker News endpoint"))
 	}
-	timeout := time.Duration(normalized.Config.RequestTimeoutSeconds) * time.Second
-	return &Connector{sourceID: normalized.ID, client: newClient(endpoint, timeout, options), mode: normalized.Config.HackerNewsMode}, nil
+	if options.resourceLimits.Version == "" {
+		options.resourceLimits = DefaultResourceLimitProfile()
+	}
+	if err := options.resourceLimits.Validate(); err != nil || options.requestBudget == nil || normalized.Config.MaxPagesPerRun > options.resourceLimits.MaxPages {
+		return nil, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid Hacker News resource limit profile"))
+	}
+	if options.retryWait == nil {
+		options.retryWait = retryBackoff
+	}
+	readTimeout := time.Duration(normalized.Config.RequestTimeoutSeconds) * time.Second
+	reserveRequest := func(ctx context.Context) error {
+		return reserveHackerNewsRequest(ctx, options.requestBudget, normalized.ID, options.resourceLimits, options.clientOptions.now)
+	}
+	return &Connector{
+		sourceID: normalized.ID, client: newClient(endpoint, options.resourceLimits, readTimeout, reserveRequest, options.clientOptions), mode: normalized.Config.HackerNewsMode,
+		resourceLimits: options.resourceLimits, requestBudget: options.requestBudget, retryWait: options.retryWait,
+	}, nil
 }
 
 func (connector *Connector) Validate(_ context.Context, connection domain.SourceConnection) error {
@@ -91,6 +116,62 @@ func (connector *Connector) Validate(_ context.Context, connection domain.Source
 	return nil
 }
 
+func (connector *Connector) get(ctx context.Context, path string, byteBudget *responseByteBudget) (fetchedJSONResponse, *time.Time, error) {
+	for attempt := 0; ; attempt++ {
+		if err := reserveHackerNewsRequest(ctx, connector.requestBudget, connector.sourceID, connector.resourceLimits, connector.client.now); err != nil {
+			var quota requestQuotaError
+			if !errors.As(err, &quota) {
+				return fetchedJSONResponse{}, nil, err
+			}
+			resetAt := quota.resetAt.UTC()
+			return fetchedJSONResponse{}, &resetAt, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("Hacker News daily request quota exceeded"))
+		}
+		response, retryAfter, err := connector.client.get(ctx, path, byteBudget)
+		if err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorTemporary || attempt >= connector.resourceLimits.MaxRetries {
+			return response, retryAfter, err
+		}
+		if err := connector.retryWait(ctx, attempt+1); err != nil {
+			return fetchedJSONResponse{}, nil, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("Hacker News retry interrupted"))
+		}
+	}
+}
+
+type requestQuotaError struct{ resetAt time.Time }
+
+func (err requestQuotaError) Error() string { return "Hacker News daily request quota exceeded" }
+
+func reserveHackerNewsRequest(ctx context.Context, budget domain.ExternalRequestBudget, sourceID int64, profile ResourceLimitProfile, now func() time.Time) error {
+	at := time.Now().UTC()
+	if now != nil {
+		at = now().UTC()
+	}
+	decision, err := budget.ReserveExternalRequest(ctx, domain.ExternalRequestBudgetReservation{
+		SourceConnectionID: sourceID, ResourceProfileVersion: profile.Version, DailyLimit: profile.DailyRequestQuota, At: at,
+	})
+	if err != nil {
+		return domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("reserve Hacker News request budget"))
+	}
+	if err := decision.Validate(profile.DailyRequestQuota); err != nil {
+		return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid Hacker News request budget decision"))
+	}
+	if !decision.Allowed {
+		return requestQuotaError{resetAt: decision.ResetAt}
+	}
+	return nil
+}
+
+func retryBackoff(ctx context.Context, attempt int) error {
+	delay := time.Duration(100*(1<<min(attempt-1, 5))) * time.Millisecond
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
 func (connector *Connector) Fetch(ctx context.Context, request domain.FetchRequest) (domain.FetchResult, error) {
 	if err := request.Validate(); err != nil {
 		return domain.FetchResult{}, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid Hacker News fetch request"))
@@ -98,15 +179,21 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 	if connector.sourceID > 0 && request.SourceConnectionID != connector.sourceID {
 		return domain.FetchResult{}, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("Hacker News fetch request source does not match connector"))
 	}
+	ctx, cancel := context.WithTimeout(ctx, connector.resourceLimits.WallClockTimeout)
+	defer cancel()
+	if request.Limit > connector.resourceLimits.MaxItems {
+		request.Limit = connector.resourceLimits.MaxItems
+	}
+	byteBudget := newResponseByteBudget(connector.resourceLimits.MaxCumulativeResponseBytes)
 	if connector.mode != domain.HackerNewsModeNew {
-		return connector.fetchRanked(ctx, request)
+		return connector.fetchRanked(ctx, request, byteBudget)
 	}
 	cursor, initial, err := parseCursor(request.RequestCursor)
 	if err != nil {
 		return domain.FetchResult{}, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid Hacker News request cursor"))
 	}
 	result := domain.FetchResult{Items: []domain.SourceItem{}, Diagnostics: []domain.FetchDiagnostic{}}
-	maximumResponse, retry, err := connector.client.get(ctx, "maxitem.json")
+	maximumResponse, retry, err := connector.get(ctx, "maxitem.json", byteBudget)
 	if err != nil {
 		result.RateLimit.RetryAfter = retry
 		return result, err
@@ -122,7 +209,7 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 		}
 		return result, nil
 	}
-	outcomes, failure := connector.fetchItems(ctx, start, end)
+	outcomes, failure := connector.fetchItems(ctx, start, end, byteBudget)
 	if failure != nil && ctx.Err() != nil {
 		result.RateLimit.RetryAfter = failure.retryAfter
 		return domain.FetchResult{RateLimit: result.RateLimit}, failure.err
@@ -169,13 +256,13 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 	return result, nil
 }
 
-func (connector *Connector) fetchRanked(ctx context.Context, request domain.FetchRequest) (domain.FetchResult, error) {
+func (connector *Connector) fetchRanked(ctx context.Context, request domain.FetchRequest, byteBudget *responseByteBudget) (domain.FetchResult, error) {
 	result := domain.FetchResult{Items: []domain.SourceItem{}, Diagnostics: []domain.FetchDiagnostic{}}
 	path := "topstories.json"
 	if connector.mode == domain.HackerNewsModeBest {
 		path = "beststories.json"
 	}
-	rankedResponse, retry, err := connector.client.get(ctx, path)
+	rankedResponse, retry, err := connector.get(ctx, path, byteBudget)
 	if err != nil {
 		result.RateLimit.RetryAfter = retry
 		return result, err
@@ -202,7 +289,7 @@ func (connector *Connector) fetchRanked(ctx context.Context, request domain.Fetc
 	if len(ids) == 0 {
 		return result, nil
 	}
-	outcomes, failure := connector.fetchRankedItems(ctx, ids)
+	outcomes, failure := connector.fetchRankedItems(ctx, ids, byteBudget)
 	if ctx.Err() != nil {
 		return domain.FetchResult{}, canceledPageFailure(ctx.Err()).err
 	}
@@ -302,13 +389,15 @@ func (connector *Connector) Health(ctx context.Context, connection domain.Source
 	} else if connector.mode == domain.HackerNewsModeBest {
 		path = "beststories.json"
 	}
-	if _, _, err := connector.client.get(ctx, path); err != nil {
+	ctx, cancel := context.WithTimeout(ctx, connector.resourceLimits.WallClockTimeout)
+	defer cancel()
+	if _, _, err := connector.get(ctx, path, newResponseByteBudget(connector.resourceLimits.MaxCumulativeResponseBytes)); err != nil {
 		return domain.HealthResult{CheckedAt: checkedAt, ErrorKind: domain.ClassifyCollectionError(err), DiagnosticCode: "request_failed"}
 	}
 	return domain.HealthResult{Healthy: true, CheckedAt: checkedAt}
 }
 
-func (connector *Connector) fetchRankedItems(parent context.Context, ids []int64) ([]itemOutcome, *itemOutcome) {
+func (connector *Connector) fetchRankedItems(parent context.Context, ids []int64, byteBudget *responseByteBudget) ([]itemOutcome, *itemOutcome) {
 	if err := parent.Err(); err != nil {
 		return nil, canceledPageFailure(err)
 	}
@@ -323,7 +412,7 @@ func (connector *Connector) fetchRankedItems(parent context.Context, ids []int64
 		go func() {
 			defer group.Done()
 			for id := range jobs {
-				outcome := connector.fetchItem(parent, id)
+				outcome := connector.fetchItem(parent, id, byteBudget)
 				results <- outcome
 				if outcome.err != nil {
 					failureMu.Lock()
@@ -400,7 +489,7 @@ func itemRange(cursor, newest, limit int64, initial bool) (int64, int64) {
 	return cursor + 1, end
 }
 
-func (connector *Connector) fetchItems(parent context.Context, start, end int64) ([]itemOutcome, *itemOutcome) {
+func (connector *Connector) fetchItems(parent context.Context, start, end int64, byteBudget *responseByteBudget) ([]itemOutcome, *itemOutcome) {
 	if err := parent.Err(); err != nil {
 		return nil, canceledPageFailure(err)
 	}
@@ -428,7 +517,7 @@ func (connector *Connector) fetchItems(parent context.Context, start, end int64)
 		go func() {
 			defer group.Done()
 			for id := range jobs {
-				outcome := connector.fetchItem(ctx, id)
+				outcome := connector.fetchItem(ctx, id, byteBudget)
 				outcomes <- outcome
 				if outcome.err != nil {
 					recordFailure(outcome)
@@ -514,8 +603,8 @@ func hnFailurePriority(kind domain.CollectionErrorKind) int {
 	}
 }
 
-func (connector *Connector) fetchItem(ctx context.Context, id int64) itemOutcome {
-	response, retry, err := connector.client.get(ctx, "item/"+strconv.FormatInt(id, 10)+".json")
+func (connector *Connector) fetchItem(ctx context.Context, id int64, byteBudget *responseByteBudget) itemOutcome {
+	response, retry, err := connector.get(ctx, "item/"+strconv.FormatInt(id, 10)+".json", byteBudget)
 	if err != nil {
 		return itemOutcome{id: id, retryAfter: retry, err: err}
 	}
